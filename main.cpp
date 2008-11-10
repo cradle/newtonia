@@ -3,7 +3,6 @@
 
 using namespace std;
 
-// TODO: Must remain normalised if facing (use polar?)
 class Point {
   public:
     Point();
@@ -44,6 +43,7 @@ Point::Point(float x, float y) {
 
 void Point::rotate(float radians) {
   //TODO: implement rotation speed, make use timestep
+  //TODO: Must remain normalised. Is lossy? (floats?)
   float oldx = x;
   float oldy = y;
   x = oldx * cos(radians) - oldy * sin(radians);
