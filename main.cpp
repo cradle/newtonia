@@ -1,4 +1,5 @@
 #include <iostream>
+#include <math.h>
 
 using namespace std;
 
@@ -9,19 +10,20 @@ class Point {
     Point(const Point& other);
     Point(float x, float y);
     char* to_s();
-    void rotate(int degrees);
-    Point operator+=(const Point other);
+    void rotate(float radians);
+    void operator+=(const Point other);
     Point operator*(float scalar);
+    
+  friend ostream& operator << (ostream& os, const Point& p);
+  
   private:
     float x;
     float y;
 };
 
-ostream& operator << (ostream& os, const Point& p);
-
 ostream& operator << (ostream& os, const Point& p)
 {
-  return os << p.to_s() << endl;
+  return os << "(x,y): (" << p.x << "," << p.y << ")";
 }
 
 Point::Point() {
@@ -31,8 +33,8 @@ Point::Point() {
 }
 
 Point::Point(const Point& other) {
-  x = other.x
-  y = other.y
+  x = other.x;
+  y = other.y;
 }
 
 Point::Point(float x, float y) {
@@ -40,20 +42,20 @@ Point::Point(float x, float y) {
   this->y = y;
 }
 
-char* Point::to_s() {
-  return "hai I is point";
-  // return "(x,y): (" + x + "," + y + ")";
+void Point::rotate(float radians) {
+  //TODO: implement rotation speed, make use timestep
+  float oldx = x;
+  float oldy = y;
+  x = oldx * cos(radians) - oldy * sin(radians);
+  y = oldy * cos(radians) + oldx * sin(radians);
 }
 
-void Point::rotate(int degrees) {
-  //TODO: implement rotation
-}
-
-Point Point::operator+=(const Point other) {
+void Point::operator+=(const Point other) {
   x += other.x;
   y += other.y;
 }
 
+//TODO: Write tests
 Point Point::operator*(float scalar) {
   return Point(x * scalar, y * scalar);
 }
@@ -98,7 +100,11 @@ void Ship::rotate_counterclockwise() {
 }
 
 void Ship::puts() {
-  cout << "Position: " <<  position;
+  cout << "Facing: " << facing;
+  cout << " Position: " << position;
+  cout << " Velocity: " << velocity;
+  cout << " Acceleration: " << acceleration;
+  cout << endl;
 }
 
 void Ship::step(float delta) {
@@ -117,6 +123,7 @@ int main() {
     switch(input) {
       case 'h': {
         cout << "c: continue, t: thrust, r: right, l: left, s: step size, h: this message\n";
+        break;
       }
       case 't': {
         ship.thrust();
