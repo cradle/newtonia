@@ -12,6 +12,7 @@ class Point {
     void rotate(float radians);
     void operator+=(const Point other);
     Point operator*(float scalar);
+    Point operator/(float scalar);
     
   friend ostream& operator << (ostream& os, const Point& p);
   
@@ -26,7 +27,6 @@ ostream& operator << (ostream& os, const Point& p)
 }
 
 Point::Point() {
-  // TODO: why do I need this constructor?
   x = 0;
   y = 0;
 }
@@ -60,6 +60,10 @@ Point Point::operator*(float scalar) {
   return Point(x * scalar, y * scalar);
 }
 
+Point Point::operator/(float scalar) {
+  return Point(x / scalar, y / scalar);
+}
+
 class Ship {
   public:
     Ship(float x, float y);
@@ -80,7 +84,11 @@ class Ship {
       RIGHT = 1 
     };
 
+    float mass;
+
     // Linear
+    float thrust_force;
+    Point force;
     Point position;
     Point acceleration;
     Point velocity;
@@ -92,6 +100,9 @@ class Ship {
 };
 
 Ship::Ship(float x, float y) {
+  mass = 100;
+  thrust_force = 100;
+  force = Point(0, 0);
   position = Point(x, y);
   facing = Point(1, 0);
   velocity = Point(0, 0);
@@ -100,7 +111,7 @@ Ship::Ship(float x, float y) {
 }
 
 void Ship::thrust() {
-  acceleration = Point(facing);
+  force = facing * thrust_force;
 }
 
 void Ship::rotate_clockwise() {
@@ -120,13 +131,9 @@ void Ship::puts() {
 }
 
 void Ship::step(float delta) {
-  // TODO: Move to force based system
-  // acceleration = force / mass;
-  // force = Point(0,0);
-  
   // TODO: Move to acceleration/force based rotation
-  
   // Step physics
+  acceleration = force / mass;
   facing.rotate(rotation * delta);
   velocity += acceleration * delta;
   position += velocity * delta;
@@ -134,12 +141,12 @@ void Ship::step(float delta) {
   // Reset forces
   rotation = NONE;
   acceleration = Point();
+  force = Point();
 }
 
 int main() {
   Ship ship = Ship(0.0, 0.0);
   char input = 'h';
-  //FIX: The ship is moving for some reason when this sim starts
   float delta = 0.1;
   //TODO: Play with function pointers in a 'hash' or similar
   while(input != 'q' && input != 'Q') {
