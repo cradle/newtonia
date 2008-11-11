@@ -68,16 +68,27 @@ class Ship {
     void rotate_counterclockwise();
     void thrust();
     
-    // Step moves the engine forward delta seconds, resets inputs
+    // Step moves the engine forward delta seconds, zeroes forces
     void step(float delta);
     
     void puts();
 
   private:
+    enum Rotation { 
+      LEFT = -1, 
+      NONE = 0, 
+      RIGHT = 1 
+    };
+
+    // Linear
     Point position;
-    Point facing;
     Point acceleration;
     Point velocity;
+    
+    // Angular
+    Point facing;
+    Rotation rotation;
+
 };
 
 Ship::Ship(float x, float y) {
@@ -85,6 +96,7 @@ Ship::Ship(float x, float y) {
   facing = Point(1, 0);
   velocity = Point(0, 0);
   acceleration =  Point(0, 0);
+  rotation = NONE;
 }
 
 void Ship::thrust() {
@@ -92,11 +104,11 @@ void Ship::thrust() {
 }
 
 void Ship::rotate_clockwise() {
-  facing.rotate(1);
+  rotation = LEFT;
 }
 
 void Ship::rotate_counterclockwise() {
-  facing.rotate(-1);
+  rotation = RIGHT;
 }
 
 void Ship::puts() {
@@ -108,8 +120,17 @@ void Ship::puts() {
 }
 
 void Ship::step(float delta) {
+  // TODO: Move to force based system
+  // acceleration = force / mass;
+  // force = Point(0,0);
+  
+  // Step physics
+  facing.rotate(rotation * delta);
   velocity += acceleration * delta;
   position += velocity * delta;
+  
+  // Reset forces
+  rotation = NONE;
   acceleration = Point();
 }
 
