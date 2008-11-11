@@ -124,6 +124,8 @@ void Ship::step(float delta) {
   // acceleration = force / mass;
   // force = Point(0,0);
   
+  // TODO: Move to acceleration/force based rotation
+  
   // Step physics
   facing.rotate(rotation * delta);
   velocity += acceleration * delta;
