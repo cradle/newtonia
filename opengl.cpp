@@ -11,7 +11,8 @@ GLvoid ReSizeGLScene(int Width, int Height);
 
 int last_tick = glutGet(GLUT_ELAPSED_TIME);
 Ship ship = Ship(0,0);
-int window_width = 800, window_height = 300;
+int window_width = 400, window_height = 400;
+float aspect_ratio = 1.0;
 
 void tick(void) {
   int current_time = glutGet(GLUT_ELAPSED_TIME);
@@ -77,22 +78,24 @@ int main(int argc, char** argv)
 
 GLvoid ReSizeGLScene(int width, int height)				// Resize And Initialize The GL Window
 { 
-	if (height==0)								// Prevent A Divide By Zero By
-	{
-		height=1;							// Making Height Equal One
-	}
-
   window_width, window_height = width, height;
-
-	glViewport(0, 0, width, height);	
-		glMatrixMode(GL_PROJECTION);						// Select The Projection Matrix
-	glLoadIdentity();							// Reset The Projection Matrix
-
-	// Calculate The Aspect Ratio Of The Window
-	gluPerspective(45.0f,(GLfloat)width/(GLfloat)height,0.1f,100.0f);
-
-	glMatrixMode(GL_MODELVIEW);						// Select The Modelview Matrix
-	glLoadIdentity();							// Reset The Modelview Matrix
+  float hvvw;
+  /* half width of viewing volume */
+  float hvvh;
+  /* half height of viewing volume */
+  aspect_ratio = (float) width / (float) height;
+  if(width >= height) {
+    hvvh = height/2.0;
+    hvvw = width/2.0*aspect_ratio;
+  }
+  else {
+    hvvh = height/2.0/aspect_ratio;
+    hvvw = width/2.0;
+  }
+  glViewport(0, 0, width, height);
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  glOrtho(-hvvw, hvvw, -hvvh, hvvh, -1, 1);
 }
 
 GLvoid InitGL(GLvoid)								// All Setup For OpenGL Goes Here
@@ -110,8 +113,8 @@ GLvoid DrawGLScene(GLvoid)								// Here's Where We Do All The Drawing
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);		// Clear The Screen And The Depth Buffer
 	glLoadIdentity();
   // glTranslatef(-1.5f, 0.0f,-6.0f);       // Position   
-  glTranslatef(ship.position.x, ship.position.y, -6.0f);
-  glScalef( 0.2f, 0.2f, 0.2f);
+  glTranslatef(ship.position.x, ship.position.y, 0.0f);
+  glScalef( 0.1f, 0.1f, 0.1f);
   	//TODO: Translate via position
   	//TODO: Rotate via heading
   glColor3f( 1.0f, 0.0f, 0.0f );
