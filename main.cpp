@@ -10,13 +10,15 @@ class Point {
     Point(float x, float y);
     
     void rotate(float radians);
+    float direction();
+    
     void operator+=(const Point other);
     Point operator*(float scalar);
     Point operator/(float scalar);
     
   friend ostream& operator << (ostream& os, const Point& p);
   
-  private:
+  //TODO: Make friend/private for view
     float x;
     float y;
 };
@@ -39,6 +41,10 @@ Point::Point(const Point& other) {
 Point::Point(float x, float y) {
   this->x = x;
   this->y = y;
+}
+
+float Point::direction() {
+  return atan2(y,x) * 180.0 / M_PI - 90.0;
 }
 
 void Point::rotate(float radians) {
@@ -67,10 +73,13 @@ Point Point::operator/(float scalar) {
 class Ship {
   public:
     Ship(float x, float y);
-    // You must call inputs between every call to step
-    void rotate_clockwise();
-    void rotate_counterclockwise();
-    void thrust();
+    void rotate_left(bool on = true);
+    void rotate_right(bool on = true);
+    void thrust(bool on = true);
+    // TODO: make 'friend' with some sort of VIEW
+    bool thrusting;
+    Point position;
+    float heading();
     
     // Step moves the engine forward delta seconds, zeroes forces
     void step(float delta);
@@ -79,72 +88,69 @@ class Ship {
 
   private:
     enum Rotation { 
-      LEFT = -1, 
+      LEFT = 1, 
       NONE = 0, 
-      RIGHT = 1 
+      RIGHT = -1 
     };
 
     float mass;
 
     // Linear
     float thrust_force;
-    Point force;
-    Point position;
-    Point acceleration;
     Point velocity;
     
     // Angular
+    float rotation_force;
     Point facing;
-    Rotation rotation;
+    Rotation rotation_direction;
 
 };
 
 Ship::Ship(float x, float y) {
-  mass = 100;
-  thrust_force = 100;
-  force = Point(0, 0);
+  mass = 100.0;
+  thrusting = false;
+  thrust_force = 0.0005;
   position = Point(x, y);
-  facing = Point(1, 0);
+  facing = Point(0, 1);
   velocity = Point(0, 0);
-  acceleration =  Point(0, 0);
-  rotation = NONE;
+  rotation_force = 0.3;
+  rotation_direction = NONE;
 }
 
-void Ship::thrust() {
-  force = facing * thrust_force;
+void Ship::thrust(bool on) {
+  thrusting = on;
 }
 
-void Ship::rotate_clockwise() {
-  rotation = LEFT;
+float Ship::heading() {
+  //FIX: shouldn't have to calculate this each time
+  facing.direction();
 }
 
-void Ship::rotate_counterclockwise() {
-  rotation = RIGHT;
+void Ship::rotate_left(bool on) {
+  rotation_direction = on ? LEFT : NONE;
+}
+
+void Ship::rotate_right(bool on) {
+  rotation_direction = on ? RIGHT : NONE;
 }
 
 void Ship::puts() {
   cout << "Facing: " << facing;
   cout << " Position: " << position;
   cout << " Velocity: " << velocity;
-  cout << " Acceleration: " << acceleration;
   cout << endl;
 }
 
 void Ship::step(float delta) {
   // TODO: Move to acceleration/force based rotation
   // Step physics
-  acceleration = force / mass;
-  facing.rotate(rotation * delta);
-  velocity += acceleration * delta;
+  facing.rotate(rotation_direction * rotation_force / mass  * delta );
+  if(thrusting)
+    velocity += ((facing * thrust_force) / mass) * delta;
   position += velocity * delta;
-  
-  // Reset forces
-  rotation = NONE;
-  acceleration = Point();
-  force = Point();
 }
 
-int main() {
+int test() {
   Ship ship = Ship(0.0, 0.0);
   char input = 'h';
   float delta = 0.1;
@@ -160,11 +166,11 @@ int main() {
         break;
       }
       case 'r': {
-        ship.rotate_clockwise();
+        ship.rotate_right();
         break;
       }
       case 'l': {
-        ship.rotate_counterclockwise();
+        ship.rotate_right();
         break;
       }
       case 'p': {

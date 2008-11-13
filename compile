@@ -1,0 +1,1 @@
+g++ -framework GLUT -framework OpenGL -framework Cocoa opengl.cpp -o glutapp
