@@ -8,7 +8,7 @@ class Point {
     Point();
     Point(const Point& other);
     Point(float x, float y);
-    char* to_s();
+    
     void rotate(float radians);
     void operator+=(const Point other);
     Point operator*(float scalar);
