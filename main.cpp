@@ -79,6 +79,8 @@ class Ship {
     // TODO: make 'friend' with some sort of VIEW
     bool thrusting;
     Point position;
+    float width;
+    float height;
     float heading();
     
     // Step moves the engine forward delta seconds, zeroes forces
@@ -108,8 +110,9 @@ class Ship {
 
 Ship::Ship(float x, float y) {
   mass = 100.0;
+  width = height = 10.0;
   thrusting = false;
-  thrust_force = 0.0005;
+  thrust_force = 0.02;
   position = Point(x, y);
   facing = Point(0, 1);
   velocity = Point(0, 0);

@@ -11,8 +11,7 @@ GLvoid ReSizeGLScene(int Width, int Height);
 
 int last_tick = glutGet(GLUT_ELAPSED_TIME);
 Ship ship = Ship(0,0);
-int window_width = 400, window_height = 400;
-float aspect_ratio = 1.0;
+int window_width = 800, window_height = 600;
 
 void tick(void) {
   int current_time = glutGet(GLUT_ELAPSED_TIME);
@@ -78,24 +77,18 @@ int main(int argc, char** argv)
 
 GLvoid ReSizeGLScene(int width, int height)				// Resize And Initialize The GL Window
 { 
-  window_width, window_height = width, height;
-  float hvvw;
-  /* half width of viewing volume */
-  float hvvh;
-  /* half height of viewing volume */
-  aspect_ratio = (float) width / (float) height;
-  if(width >= height) {
-    hvvh = height/2.0;
-    hvvw = width/2.0*aspect_ratio;
-  }
-  else {
-    hvvh = height/2.0/aspect_ratio;
-    hvvw = width/2.0;
-  }
+  window_width = width;
+  window_height = height;
+  
   glViewport(0, 0, width, height);
+  
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  glOrtho(-hvvw, hvvw, -hvvh, hvvh, -1, 1);
+  glOrtho(-width/2, width/2, -height/2, height/2, -1, 1);
+  
+  glMatrixMode(GL_MODELVIEW);  
+  glLoadIdentity();
+
 }
 
 GLvoid InitGL(GLvoid)								// All Setup For OpenGL Goes Here
@@ -106,6 +99,10 @@ GLvoid InitGL(GLvoid)								// All Setup For OpenGL Goes Here
 	glEnable(GL_DEPTH_TEST);						// Enables Depth Testing
 	glDepthFunc(GL_LEQUAL);	
 	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);	
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glEnable(GL_LINE_SMOOTH);
+  glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
  }
  
 GLvoid DrawGLScene(GLvoid)								// Here's Where We Do All The Drawing
@@ -113,8 +110,13 @@ GLvoid DrawGLScene(GLvoid)								// Here's Where We Do All The Drawing
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);		// Clear The Screen And The Depth Buffer
 	glLoadIdentity();
   // glTranslatef(-1.5f, 0.0f,-6.0f);       // Position   
-  glTranslatef(ship.position.x, ship.position.y, 0.0f);
-  glScalef( 0.1f, 0.1f, 0.1f);
+  //TODO: Refactor into a ship viewer
+  //FIX: Ship disappearing bug
+  int x = ((int(ship.position.x) + window_width/2) % window_width) - window_width/2;
+  int y = ((int(ship.position.y) + window_height/2) % window_height) - window_height/2;
+  glTranslatef(x, y, 0.0f);
+  // glScalef( 1.0/window_width, 1.0/window_height, 0.1f);
+  glScalef( ship.width, ship.height, 1.0f);
   	//TODO: Translate via position
   	//TODO: Rotate via heading
   glColor3f( 1.0f, 0.0f, 0.0f );
