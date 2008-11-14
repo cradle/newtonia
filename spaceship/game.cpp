@@ -1,24 +1,22 @@
 #include "game.h"
 #include "glship.h"
-		
-#include <GLUT/glut.h>
 
-Game::Game() {
-  ship = GLShip(0,0);
-  window_width = 800;
-  window_height = 600;
-}
+#include <GLUT/glut.h>
   
 Game::Game(float width, float height) {
-  ship = GLShip(0,0);
-  ship.resize(width, height);
+  player1 = GLShip(-width*3/4,-height*3/4);
+  player1.resize(width, height);
+  player2 = GLShip(width*3/4,height*3/4);
+  player2.resize(width, height);
+  player2.set_keys('j','l','i','/');
   window_width = width;
   window_height = height;
 }
 
 void Game::tick(void) {
   int current_time = glutGet(GLUT_ELAPSED_TIME); 
-  ship.step(current_time - last_tick);
+  player1.step(current_time - last_tick);
+  player2.step(current_time - last_tick);
   last_tick = current_time;
   glutPostRedisplay();
 }
@@ -27,7 +25,8 @@ void Game::resize(int width, int height) {
   window_width = width;
   window_height = height;
 
-  ship.resize(width, height);
+  player1.resize(width, height);
+  player2.resize(width, height);
 
   glViewport(0, 0, width, height);
 
@@ -43,15 +42,18 @@ void Game::resize(int width, int height) {
 void Game::draw(void) {  
   glClear(GL_COLOR_BUFFER_BIT);
   glLoadIdentity();
-  ship.draw();
+  player1.draw();
+  player2.draw();
   glutSwapBuffers();
 }
 
 void Game::keyboard (unsigned char key, int x, int y) {
-  ship.input(key);
+  player1.input(key);
+  player2.input(key);
 }
 void Game::keyboard_up (unsigned char key, int x, int y) {
-  ship.input(key, false);
+  player1.input(key, false);
+  player2.input(key, false);
 }
 
 void Game::init(int argc, char** argv) {

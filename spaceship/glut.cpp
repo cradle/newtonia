@@ -13,6 +13,8 @@ void draw() {
 }
 
 void keyboard(unsigned char key, int x, int y) {
+  if (key == 27) // ESC
+    exit(0);
   game.keyboard(key, x, y);
 }
 

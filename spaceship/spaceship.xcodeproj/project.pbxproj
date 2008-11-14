@@ -11,10 +11,11 @@
 		2150E2DD0ECD699700D89C28 /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2150E2DC0ECD699700D89C28 /* OpenGL.framework */; };
 		2150E2EE0ECD6A6E00D89C28 /* bullet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2E30ECD6A6E00D89C28 /* bullet.cpp */; };
 		2150E2EF0ECD6A6E00D89C28 /* glship.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2E50ECD6A6E00D89C28 /* glship.cpp */; };
-		2150E2F00ECD6A6E00D89C28 /* opengl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2E70ECD6A6E00D89C28 /* opengl.cpp */; };
 		2150E2F10ECD6A6E00D89C28 /* point.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2E80ECD6A6E00D89C28 /* point.cpp */; };
 		2150E2F20ECD6A6E00D89C28 /* ship.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2EA0ECD6A6E00D89C28 /* ship.cpp */; };
 		2150E2F30ECD6A6E00D89C28 /* wrapped_point.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2EC0ECD6A6E00D89C28 /* wrapped_point.cpp */; };
+		2150E2FA0ECD831900D89C28 /* game.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2F70ECD831900D89C28 /* game.cpp */; };
+		2150E2FB0ECD831900D89C28 /* glut.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2F90ECD831900D89C28 /* glut.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -26,13 +27,15 @@
 		2150E2E40ECD6A6E00D89C28 /* bullet.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = bullet.h; sourceTree = "<group>"; };
 		2150E2E50ECD6A6E00D89C28 /* glship.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glship.cpp; sourceTree = "<group>"; };
 		2150E2E60ECD6A6E00D89C28 /* glship.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glship.h; sourceTree = "<group>"; };
-		2150E2E70ECD6A6E00D89C28 /* opengl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = opengl.cpp; sourceTree = "<group>"; };
 		2150E2E80ECD6A6E00D89C28 /* point.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = point.cpp; sourceTree = "<group>"; };
 		2150E2E90ECD6A6E00D89C28 /* point.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = point.h; sourceTree = "<group>"; };
 		2150E2EA0ECD6A6E00D89C28 /* ship.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ship.cpp; sourceTree = "<group>"; };
 		2150E2EB0ECD6A6E00D89C28 /* ship.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ship.h; sourceTree = "<group>"; };
 		2150E2EC0ECD6A6E00D89C28 /* wrapped_point.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = wrapped_point.cpp; sourceTree = "<group>"; };
 		2150E2ED0ECD6A6E00D89C28 /* wrapped_point.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = wrapped_point.h; sourceTree = "<group>"; };
+		2150E2F70ECD831900D89C28 /* game.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = game.cpp; sourceTree = "<group>"; };
+		2150E2F80ECD831900D89C28 /* game.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = game.h; sourceTree = "<group>"; };
+		2150E2F90ECD831900D89C28 /* glut.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glut.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -59,11 +62,13 @@
 		219282740ECD670E002D470F = {
 			isa = PBXGroup;
 			children = (
+				2150E2F70ECD831900D89C28 /* game.cpp */,
+				2150E2F80ECD831900D89C28 /* game.h */,
+				2150E2F90ECD831900D89C28 /* glut.cpp */,
 				2150E2E30ECD6A6E00D89C28 /* bullet.cpp */,
 				2150E2E40ECD6A6E00D89C28 /* bullet.h */,
 				2150E2E50ECD6A6E00D89C28 /* glship.cpp */,
 				2150E2E60ECD6A6E00D89C28 /* glship.h */,
-				2150E2E70ECD6A6E00D89C28 /* opengl.cpp */,
 				2150E2E80ECD6A6E00D89C28 /* point.cpp */,
 				2150E2E90ECD6A6E00D89C28 /* point.h */,
 				2150E2EA0ECD6A6E00D89C28 /* ship.cpp */,
@@ -132,10 +137,11 @@
 			files = (
 				2150E2EE0ECD6A6E00D89C28 /* bullet.cpp in Sources */,
 				2150E2EF0ECD6A6E00D89C28 /* glship.cpp in Sources */,
-				2150E2F00ECD6A6E00D89C28 /* opengl.cpp in Sources */,
 				2150E2F10ECD6A6E00D89C28 /* point.cpp in Sources */,
 				2150E2F20ECD6A6E00D89C28 /* ship.cpp in Sources */,
 				2150E2F30ECD6A6E00D89C28 /* wrapped_point.cpp in Sources */,
+				2150E2FA0ECD831900D89C28 /* game.cpp in Sources */,
+				2150E2FB0ECD831900D89C28 /* glut.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -5,7 +5,7 @@
 
 class Game {
 public:
-  Game();
+  Game() {};
   Game(float width, float height);
 
   void init(int argc, char** argv);
@@ -20,7 +20,8 @@ public:
 private:
   int window_width, window_height;
   int last_tick;
-  GLShip ship;
+  GLShip player1;
+  GLShip player2;
 };
 
 #endif

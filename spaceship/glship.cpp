@@ -7,6 +7,7 @@
 #include <iostream>
 
 GLShip::GLShip(int x, int y) {
+  set_keys('a','d','w',' ');
   ship = Ship(x, y);
 }
 
@@ -24,24 +25,23 @@ void GLShip::resize(float width, float height) {
   }
 }
 
+void GLShip::set_keys(int left, int right, int thrust, int shoot) {
+  left_key = left;
+  right_key = right;
+  shoot_key = shoot;
+  thrust_key = thrust;
+}
+
 void GLShip::input(unsigned char key, bool pressed) {
-  switch(key) {
-    case 27: // ESC
-      exit(0);
-		case 'a':
-      ship.rotate_left(pressed);
-      break;
-    case 'd':
-      ship.rotate_right(pressed);
-      break;		
-    case 'w':
-      ship.thrust(pressed);
-      break;
-    case 32: // spacebar
-      if(pressed)
-        ship.shoot();
-      break;
-	}
+  if (key == left_key) {
+    ship.rotate_left(pressed);
+  } else if (key == right_key) {
+    ship.rotate_right(pressed);
+  } else if (key == thrust_key) {
+    ship.thrust(pressed);
+  } else if (key == shoot_key && pressed) {
+    ship.shoot();
+  }
 }
 
 void GLShip::draw() { 

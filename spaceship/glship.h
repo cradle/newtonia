@@ -10,11 +10,17 @@ public:
   void step(float delta);
   void resize(float screen_width, float screen_height);
   void input(unsigned char key, bool pressed = true);
+  void set_keys(int left, int right, int up, int right);
   void draw();
   
 private:
   Ship ship;
   float window_width, window_height;
+  
+  int thrust_key;
+  int left_key;
+  int right_key;
+  int shoot_key;
 };
 
 #endif
