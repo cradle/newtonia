@@ -1,1 +1,0 @@
-g++ -framework GLUT -framework OpenGL -framework Cocoa opengl.cpp ship.cpp bullet.cpp point.cpp -o spaceship && ./spaceship
