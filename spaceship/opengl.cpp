@@ -1,8 +1,9 @@
+#include "ship.h"
+
 #include <OpenGL/gl.h>		
 #include <OpenGL/glu.h>		
 #include <GLUT/glut.h>		
 
-#include "main.cpp"
 #include <iostream>
 
 GLvoid InitGL(GLvoid);
@@ -25,7 +26,7 @@ void tick(void) {
 
 void keyboard (unsigned char key, int x, int y) {
   switch(key) {
-    case 27:
+    case 27: // ESC
       exit(0);
 		case 'a':
       ship.rotate_left();
@@ -35,6 +36,9 @@ void keyboard (unsigned char key, int x, int y) {
       break;		
     case 'w':
       ship.thrust();
+      break;
+    case 32: // spacebar
+      ship.shoot();
       break;
 	}
 }
@@ -111,15 +115,27 @@ GLvoid DrawGLScene(GLvoid)								// Here's Where We Do All The Drawing
 	glLoadIdentity();
   // glTranslatef(-1.5f, 0.0f,-6.0f);       // Position   
   //TODO: Refactor into a ship viewer
-  //FIX: Ship disappearing bug
-  int x = ((int(ship.position.x) + window_width/2) % window_width) - window_width/2;
-  int y = ((int(ship.position.y) + window_height/2) % window_height) - window_height/2;
+
+  int x = ship.position.x;
+  while (x < -(window_width/2 + ship.width))
+    x += window_width + ship.width*2;
+  while (x > (window_width/2 + ship.width))
+    x -= window_width + ship.width*2;
+    
+  int y = ship.position.y;
+  while (y < -(window_height/2 + ship.height))
+    y += window_height + ship.height*2;
+  while (y > (window_height/2 + ship.height))
+    y -= window_height + ship.height*2;
+    
   glTranslatef(x, y, 0.0f);
   // glScalef( 1.0/window_width, 1.0/window_height, 0.1f);
+  
+  //TODO: Doesn't take into account heading
   glScalef( ship.width, ship.height, 1.0f);
   	//TODO: Translate via position
   	//TODO: Rotate via heading
-  glColor3f( 1.0f, 0.0f, 0.0f );
+  glColor3f( 1.0f, 1.0f, 1.0f );
 
   glRotatef( ship.heading(), 0.0f, 0.0f, 1.0f);
   
