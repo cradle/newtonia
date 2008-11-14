@@ -1,33 +1,33 @@
-#include <stdlib.h> // For EXIT_SUCCESS
+ #include <stdlib.h> // For EXIT_SUCCESS
 
-#include "game.h"
+#include "glgame.h"
 
 #include <GLUT/glut.h>
 
 #include <iostream>
 
-Game game;
+GLGame glgame;
 
 void draw() {
-  game.draw();
+  glgame.draw();
 }
 
 void keyboard(unsigned char key, int x, int y) {
   if (key == 27) // ESC
     exit(0);
-  game.keyboard(key, x, y);
+  glgame.keyboard(key, x, y);
 }
 
 void keyboard_up(unsigned char key, int x, int y) {
-  game.keyboard_up(key, x, y);
+  glgame.keyboard_up(key, x, y);
 }
 
 void resize(int width, int height) {
-  game.resize(width, height);
+  glgame.resize(width, height);
 }
 
 void tick() {
-  game.tick();
+  glgame.tick();
 }
 
 void isVisible(int state) {
@@ -38,17 +38,17 @@ void isVisible(int state) {
 }
 
 int main(int argc, char** argv) {  
-  game = Game(640,480);
-  game.init(argc, argv);
+  glgame = GLGame(800,600);
+  glgame.init(argc, argv);
   
-  glutDisplayFunc(draw);
+  glutDisplayFunc(draw); 
   glutKeyboardFunc(keyboard);
   glutKeyboardUpFunc(keyboard_up);
   glutReshapeFunc(resize);
   glutVisibilityFunc(isVisible);
   //TODO: stop using glut, use SDL
   
-  game.run();
+  glgame.run();
    
   return EXIT_SUCCESS;
 }

@@ -7,7 +7,7 @@
 #include <iostream>
 
 GLShip::GLShip(int x, int y) {
-  set_keys('a','d','w',' ');
+  //TODO: load config from file (colours too)
   ship = Ship(x, y);
 }
 
