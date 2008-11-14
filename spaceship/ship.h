@@ -9,56 +9,55 @@ class Ship {
   public:
     Ship() {};
     Ship(float x, float y);
-    
+
     void set_world_size(float width, float height);
-    
+
     void rotate_left(bool on = true);
     void rotate_right(bool on = true);
     void thrust(bool on = true);
     void shoot();
-    
+
     // TODO: make 'friend' with some sort of VIEW
     bool thrusting;
     WrappedPoint position;
-    float width;
-    float height;
+    float width, height, radius;
     float heading();
     void kill();
     bool is_alive();
-    
+
     // Step moves the engine forward delta seconds, zeroes forces
     void step(float delta);
-    
+
     void puts();
-    
+
     // Projectiles
     //TODO: friends
     std::vector<Bullet> bullets;
-    
+
     static void collide(Ship& first, Ship& second);
-    
+
     void collide(Ship& other);
     bool collide(Bullet bullet);
-    
+
     int score;
 
   private:
-    enum Rotation { 
-      LEFT = 1, 
-      NONE = 0, 
-      RIGHT = -1 
+    enum Rotation {
+      LEFT = 1,
+      NONE = 0,
+      RIGHT = -1
     };
 
     bool alive;
     float mass;
     float world_width, world_height;
-    
+
     Point gun();
 
     // Linear
     float thrust_force;
     Point velocity;
-    
+
     // Angular
     float rotation_force;
     Point facing;

@@ -25,6 +25,10 @@ Point::Point(float x, float y) {
   this->y = y;
 }
 
+float Point::magnitude() {
+  return sqrt(x*x + y*y);
+}
+
 float Point::direction() {
   return atan2(y,x) * 180.0 / M_PI - 90.0;
 }
@@ -45,6 +49,10 @@ void Point::operator+=(const Point other) {
 
 Point Point::operator+(Point other) {
   return Point(x + other.x, y + other.y);
+}
+
+Point Point::operator-(Point other) {
+  return Point(x - other.x, y - other.y);
 }
 
 //TODO: Write tests

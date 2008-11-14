@@ -6,7 +6,7 @@ using namespace std;
 
 Ship::Ship(float x, float y) {
   mass = 100.0;
-  width = height = 10.0;
+  width = height = radius = 10.0;
   thrusting = false;
   thrust_force = 0.02;
   position = WrappedPoint(x, y);
@@ -60,10 +60,7 @@ void Ship::collide(Ship& other) {
 
 bool Ship::collide(Bullet bullet) { // Circle based collision
   //TODO: Make more accurate. Doesn't currently reflect shape of ship at all
-  return (bullet.position.x > (position.x - width) && \
-          bullet.position.x < (position.x + width) && \
-          bullet.position.y > (position.y - height) && \
-          bullet.position.y < (position.y + height));
+  return ((bullet.position - position).magnitude() < radius);
 }
 /*
 bool Ship::collide_square(Bullet bullet) {

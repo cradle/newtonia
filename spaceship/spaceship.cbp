@@ -40,9 +40,22 @@
 			<Add library="glu32" />
 			<Add library="winmm" />
 			<Add library="gdi32" />
+			<Add library="..\..\..\..\..\Program Files\CodeBlocks\MinGW\lib\glut32.lib" />
 			<Add directory="C:\Program Files\CodeBlocks\MinGW\lib" />
 		</Linker>
-		<Unit filename="main.cpp" />
+		<Unit filename="bullet.cpp" />
+		<Unit filename="bullet.h" />
+		<Unit filename="glgame.cpp" />
+		<Unit filename="glgame.h" />
+		<Unit filename="glship.cpp" />
+		<Unit filename="glship.h" />
+		<Unit filename="glut.cpp" />
+		<Unit filename="point.cpp" />
+		<Unit filename="point.h" />
+		<Unit filename="ship.cpp" />
+		<Unit filename="ship.h" />
+		<Unit filename="wrapped_point.cpp" />
+		<Unit filename="wrapped_point.h" />
 		<Extensions>
 			<code_completion />
 			<debugger />
