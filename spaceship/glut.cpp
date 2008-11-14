@@ -2,7 +2,12 @@
 
 #include "glgame.h"
 
+#ifdef __APPLE__
 #include <GLUT/glut.h>
+#else
+#include <windows.h>
+#include <GL/glut.h>
+#endif
 
 #include <iostream>
 
@@ -37,18 +42,18 @@ void isVisible(int state) {
   }
 }
 
-int main(int argc, char** argv) {  
+int main(int argc, char** argv) {
   glgame = GLGame(800,600);
   glgame.init(argc, argv);
-  
-  glutDisplayFunc(draw); 
+
+  glutDisplayFunc(draw);
   glutKeyboardFunc(keyboard);
   glutKeyboardUpFunc(keyboard_up);
   glutReshapeFunc(resize);
   glutVisibilityFunc(isVisible);
   //TODO: stop using glut, use SDL
-  
+
   glgame.run();
-   
+
   return EXIT_SUCCESS;
 }

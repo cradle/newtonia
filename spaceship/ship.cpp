@@ -65,13 +65,13 @@ bool Ship::collide(Bullet bullet) { // Circle based collision
           bullet.position.y > (position.y - height) && \
           bullet.position.y < (position.y + height));
 }
-
+/*
 bool Ship::collide_square(Bullet bullet) {
   return (bullet.position.x > (position.x - width) && \
           bullet.position.x < (position.x + width) && \
           bullet.position.y > (position.y - height) && \
           bullet.position.y < (position.y + height));
-}
+}*/
 
 void Ship::shoot() {
   Bullet bullet = Bullet(gun(), facing*0.2 + velocity*0.9);
@@ -106,7 +106,7 @@ void Ship::puts() {
 void Ship::set_world_size(float world_width, float world_height) {
   this->world_width = world_width;
   this->world_height = world_height;
-  
+
   position.set_boundaries(-(world_width/2 + width), world_height/2 + height,
                             world_width/2 + width, -(world_height/2 + height));
 
@@ -123,9 +123,9 @@ void Ship::step(float delta) {
     velocity += ((facing * thrust_force) / mass) * delta;
   position += velocity * delta;
   position.wrap();
-  
+
   // Step bullets
   for(vector<Bullet>::iterator bullet = bullets.begin(); bullet != bullets.end(); bullet++) {
     bullet->step(delta);
-  }  
+  }
 }

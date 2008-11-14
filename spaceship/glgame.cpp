@@ -1,8 +1,13 @@
 #include "glgame.h"
 #include "glship.h"
 
+#ifdef __APPLE__
 #include <GLUT/glut.h>
-  
+#else
+#include <windows.h>
+#include <GL/glut.h>
+#endif
+
 GLGame::GLGame(float width, float height) {
   GLShip ship = GLShip(-width*3/4,-height*3/4);
   ship.set_keys('a','d','w',' ');
@@ -13,24 +18,24 @@ GLGame::GLGame(float width, float height) {
   ships.push_back(ship);
 
   resize_ships(width, height);
-  
+
   window_width = width;
   window_height = height;
 }
 
 void GLGame::tick(void) {
-  int current_time = glutGet(GLUT_ELAPSED_TIME); 
+  int current_time = glutGet(GLUT_ELAPSED_TIME);
 
   std::vector<GLShip>::iterator ship;
   for(ship = ships.begin(); ship != ships.end(); ship++) {
     ship->step(current_time - last_tick);
   }
-  
+
   last_tick = current_time;
   glutPostRedisplay();
 
   //Fix: Don't do this
-  GLShip::collide(ships[0], ships[1]); 
+  GLShip::collide(ships[0], ships[1]);
 }
 
 void GLGame::resize_ships(int width, int height) {
@@ -40,10 +45,10 @@ void GLGame::resize_ships(int width, int height) {
   }
 }
 
-void GLGame::resize(int width, int height) { 
+void GLGame::resize(int width, int height) {
   window_width = width;
   window_height = height;
-  
+
   resize_ships(width, height);
 
   glViewport(0, 0, width, height);
@@ -53,11 +58,11 @@ void GLGame::resize(int width, int height) {
   //TODO: Refactor into 0, width, 0, height, and change code elsewhere
   glOrtho(-width/2, width/2, -height/2, height/2, -1, 1);
 
-  glMatrixMode(GL_MODELVIEW);  
+  glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
 }
 
-void GLGame::draw(void) {  
+void GLGame::draw(void) {
   glClear(GL_COLOR_BUFFER_BIT);
   glLoadIdentity();
   std::vector<GLShip>::iterator ship;
@@ -85,10 +90,10 @@ void GLGame::init(int argc, char** argv) {
   glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
   glutInitWindowSize(window_width, window_height);
   glutCreateWindow("Asteroids");
-  
-  glShadeModel(GL_FLAT);            
-  glClearColor(0.0f, 0.0f, 0.0f, 0.0f);   
-  glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);  
+
+  glShadeModel(GL_FLAT);
+  glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+  glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glEnable(GL_LINE_SMOOTH);
