@@ -23,6 +23,8 @@ class Ship {
     float width;
     float height;
     float heading();
+    void kill();
+    bool is_alive();
     
     // Step moves the engine forward delta seconds, zeroes forces
     void step(float delta);
@@ -32,6 +34,13 @@ class Ship {
     // Projectiles
     //TODO: friends
     std::vector<Bullet> bullets;
+    
+    static void collide(Ship& first, Ship& second);
+    
+    void collide(Ship& other);
+    bool collide(Bullet bullet);
+    
+    int score;
 
   private:
     enum Rotation { 
@@ -40,8 +49,8 @@ class Ship {
       RIGHT = -1 
     };
 
+    bool alive;
     float mass;
-    
     float world_width, world_height;
     
     Point gun();

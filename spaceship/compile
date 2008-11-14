@@ -1,1 +1,1 @@
-g++ -framework GLUT -framework OpenGL glut.cpp glgame.cpp ship.cpp glship.cpp bullet.cpp point.cpp wrapped_point.cpp -o spaceship && ./spaceship
+g++ -Wall -framework GLUT -framework OpenGL glut.cpp glgame.cpp ship.cpp glship.cpp bullet.cpp point.cpp wrapped_point.cpp -o spaceship 

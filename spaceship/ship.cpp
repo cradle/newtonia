@@ -13,10 +13,64 @@ Ship::Ship(float x, float y) {
   facing = Point(0, 1);
   velocity = Point(0, 0);
   rotation_force = 0.3;
+  alive = true;
+  score = 0;
+  rotation_direction = NONE;
+}
+
+void Ship::kill() {
+  alive = false;
+  thrusting = false;
+  rotation_direction = NONE;
+}
+
+bool Ship::is_alive() {
+  return alive;
 }
 
 void Ship::thrust(bool on) {
   thrusting = on;
+}
+
+void Ship::collide(Ship& first, Ship& second) {
+  // first.collide(second);
+  // second.collide(first);
+  //TODO: DRYness
+  first.collide(second);
+  second.collide(first);
+}
+
+void Ship::collide(Ship& other) {
+  //TODO: Make ships collide with each other too
+  std::vector<Bullet>::iterator bullet = bullets.begin();
+  while(bullet != bullets.end()) {
+    if(collide(*bullet)) {
+      kill();
+      score -= 1;
+      bullet = bullets.erase(bullet);
+    } else if(other.collide(*bullet)) {
+      other.kill();
+      score += 1;
+      bullet = bullets.erase(bullet);
+    } else {
+      bullet++;
+    }
+  }
+}
+
+bool Ship::collide(Bullet bullet) { // Circle based collision
+  //TODO: Make more accurate. Doesn't currently reflect shape of ship at all
+  return (bullet.position.x > (position.x - width) && \
+          bullet.position.x < (position.x + width) && \
+          bullet.position.y > (position.y - height) && \
+          bullet.position.y < (position.y + height));
+}
+
+bool Ship::collide_square(Bullet bullet) {
+  return (bullet.position.x > (position.x - width) && \
+          bullet.position.x < (position.x + width) && \
+          bullet.position.y > (position.y - height) && \
+          bullet.position.y < (position.y + height));
 }
 
 void Ship::shoot() {
@@ -73,6 +127,5 @@ void Ship::step(float delta) {
   // Step bullets
   for(vector<Bullet>::iterator bullet = bullets.begin(); bullet != bullets.end(); bullet++) {
     bullet->step(delta);
-  }
-  
+  }  
 }

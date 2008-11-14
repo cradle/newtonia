@@ -11,6 +11,10 @@ GLShip::GLShip(int x, int y) {
   ship = Ship(x, y);
 }
 
+void GLShip::collide(GLShip& first, GLShip& second) {
+  Ship::collide(first.ship, second.ship);
+}
+
 void GLShip::step(float delta) {
   ship.step(delta);
 }
@@ -33,6 +37,8 @@ void GLShip::set_keys(int left, int right, int thrust, int shoot) {
 }
 
 void GLShip::input(unsigned char key, bool pressed) {
+  if(!ship.is_alive())
+    return;
   if (key == left_key) {
     ship.rotate_left(pressed);
   } else if (key == right_key) {
@@ -50,7 +56,11 @@ void GLShip::draw() {
   //TODO: Doesn't take into account heading
   glScalef( ship.width, ship.height, 1.0f);
   
-  glColor3f( 1.0f, 1.0f, 1.0f );
+  if(ship.is_alive()) {
+    glColor3f( 1.0f, 1.0f, 1.0f );
+  } else { 
+    glColor3f( 1.0f, 1.0f, 0.0f );
+  }
 
   glRotatef( ship.heading(), 0.0f, 0.0f, 1.0f);
   

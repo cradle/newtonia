@@ -13,6 +13,8 @@ public:
   void set_keys(int left, int right, int up, int right);
   void draw();
   
+  static void collide(GLShip& first, GLShip& second);
+  
 private:
   Ship ship;
   float window_width, window_height;

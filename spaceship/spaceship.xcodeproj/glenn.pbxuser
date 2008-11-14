@@ -50,7 +50,7 @@
 				PBXFileTableDataSourceColumnSortingKey = PBXFileDataSource_Filename_ColumnID;
 				PBXFileTableDataSourceColumnWidthsKey = (
 					20,
-					243,
+					993,
 					20,
 					48,
 					43,
@@ -89,8 +89,8 @@
 					PBXFileDataSource_Warnings_ColumnID,
 				);
 			};
-			PBXPerProjectTemplateStateSaveDate = 248342603;
-			PBXWorkspaceStateSaveDate = 248342603;
+			PBXPerProjectTemplateStateSaveDate = 248362883;
+			PBXWorkspaceStateSaveDate = 248362883;
 		};
 		sourceControlManager = 2192827A0ECD670E002D470F /* Source Control */;
 		userBuildSettings = {

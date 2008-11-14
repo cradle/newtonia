@@ -14,8 +14,8 @@
 		2150E2F10ECD6A6E00D89C28 /* point.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2E80ECD6A6E00D89C28 /* point.cpp */; };
 		2150E2F20ECD6A6E00D89C28 /* ship.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2EA0ECD6A6E00D89C28 /* ship.cpp */; };
 		2150E2F30ECD6A6E00D89C28 /* wrapped_point.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2EC0ECD6A6E00D89C28 /* wrapped_point.cpp */; };
-		2150E2FA0ECD831900D89C28 /* game.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2F70ECD831900D89C28 /* game.cpp */; };
 		2150E2FB0ECD831900D89C28 /* glut.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2F90ECD831900D89C28 /* glut.cpp */; };
+		215ED6A50ECDB80400E0778A /* glgame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 215ED6A30ECDB80400E0778A /* glgame.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -33,9 +33,9 @@
 		2150E2EB0ECD6A6E00D89C28 /* ship.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ship.h; sourceTree = "<group>"; };
 		2150E2EC0ECD6A6E00D89C28 /* wrapped_point.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = wrapped_point.cpp; sourceTree = "<group>"; };
 		2150E2ED0ECD6A6E00D89C28 /* wrapped_point.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = wrapped_point.h; sourceTree = "<group>"; };
-		2150E2F70ECD831900D89C28 /* game.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = game.cpp; sourceTree = "<group>"; };
-		2150E2F80ECD831900D89C28 /* game.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = game.h; sourceTree = "<group>"; };
 		2150E2F90ECD831900D89C28 /* glut.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glut.cpp; sourceTree = "<group>"; };
+		215ED6A30ECDB80400E0778A /* glgame.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glgame.cpp; sourceTree = "<group>"; };
+		215ED6A40ECDB80400E0778A /* glgame.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glgame.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,8 +62,8 @@
 		219282740ECD670E002D470F = {
 			isa = PBXGroup;
 			children = (
-				2150E2F70ECD831900D89C28 /* game.cpp */,
-				2150E2F80ECD831900D89C28 /* game.h */,
+				215ED6A30ECDB80400E0778A /* glgame.cpp */,
+				215ED6A40ECDB80400E0778A /* glgame.h */,
 				2150E2F90ECD831900D89C28 /* glut.cpp */,
 				2150E2E30ECD6A6E00D89C28 /* bullet.cpp */,
 				2150E2E40ECD6A6E00D89C28 /* bullet.h */,
@@ -140,8 +140,8 @@
 				2150E2F10ECD6A6E00D89C28 /* point.cpp in Sources */,
 				2150E2F20ECD6A6E00D89C28 /* ship.cpp in Sources */,
 				2150E2F30ECD6A6E00D89C28 /* wrapped_point.cpp in Sources */,
-				2150E2FA0ECD831900D89C28 /* game.cpp in Sources */,
 				2150E2FB0ECD831900D89C28 /* glut.cpp in Sources */,
+				215ED6A50ECDB80400E0778A /* glgame.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
