@@ -11,11 +11,11 @@ public:
   void resize(float screen_width, float screen_height);
   void input(unsigned char key, bool pressed = true);
   void set_keys(int left, int right, int up, int right);
-  void draw();
+  virtual void draw();
   
   static void collide(GLShip& first, GLShip& second);
   
-private:
+protected:
   Ship ship;
   float window_width, window_height;
   

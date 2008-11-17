@@ -23,7 +23,7 @@ private:
   int window_width, window_height;
   int last_tick;
   
-  std::vector<GLShip> ships;
+  std::vector<GLShip*> ships;
 };
 
 #endif

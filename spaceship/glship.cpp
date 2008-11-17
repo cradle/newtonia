@@ -1,7 +1,12 @@
 #include "glship.h"
 #include "ship.h"
 
-#include <GL/gl.h>
+#ifdef __APPLE__
+#include <GLUT/glut.h>
+#else
+#include <windows.h>
+#include <GL/glut.h>
+#endif
 
 #include <vector>
 #include <iostream>

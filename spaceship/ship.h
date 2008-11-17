@@ -26,7 +26,7 @@ class Ship {
     bool is_alive();
 
     // Step moves the engine forward delta seconds, zeroes forces
-    void step(float delta);
+    virtual void step(float delta);
 
     void puts();
 
@@ -41,7 +41,7 @@ class Ship {
 
     int score;
 
-  private:
+  protected:
     enum Rotation {
       LEFT = 1,
       NONE = 0,

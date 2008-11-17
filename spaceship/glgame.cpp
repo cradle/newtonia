@@ -1,5 +1,6 @@
 #include "glgame.h"
 #include "glship.h"
+#include "glcar.h"
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -9,12 +10,13 @@
 #endif
 
 GLGame::GLGame(float width, float height) {
-  GLShip ship = GLShip(-width*3/4,-height*3/4);
-  ship.set_keys('a','d','w',' ');
+  GLShip* ship = new GLShip(-width*3/4,-height*3/4);
+  ship->set_keys('a','d','w',' ');
   ships.push_back(ship);
 
-  ship = GLShip(width*3/4,height*3/4);
-  ship.set_keys('j','l','i','/');
+  //TODO: Make test for this type of overloading
+  ship = new GLCar(width*3/4,height*3/4);
+  ship->set_keys('j','l','i','/');
   ships.push_back(ship);
 
   resize_ships(width, height);
@@ -26,22 +28,24 @@ GLGame::GLGame(float width, float height) {
 void GLGame::tick(void) {
   int current_time = glutGet(GLUT_ELAPSED_TIME);
 
-  std::vector<GLShip>::iterator ship;
+  std::vector<GLShip*>::iterator ship;
   for(ship = ships.begin(); ship != ships.end(); ship++) {
-    ship->step(current_time - last_tick);
+    //TODO: find out how to use vectors better
+    (*ship)->step(current_time - last_tick);
   }
 
   last_tick = current_time;
   glutPostRedisplay();
 
   //Fix: Don't do this
-  GLShip::collide(ships[0], ships[1]);
+  //TODO: fix this
+  GLShip::collide(*ships[0], *ships[1]);
 }
 
 void GLGame::resize_ships(int width, int height) {
-  std::vector<GLShip>::iterator ship;
+  std::vector<GLShip*>::iterator ship;
   for(ship = ships.begin(); ship != ships.end(); ship++) {
-    ship->resize(width, height);
+    (*ship)->resize(width, height);
   }
 }
 
@@ -65,23 +69,23 @@ void GLGame::resize(int width, int height) {
 void GLGame::draw(void) {
   glClear(GL_COLOR_BUFFER_BIT);
   glLoadIdentity();
-  std::vector<GLShip>::iterator ship;
+  std::vector<GLShip*>::iterator ship;
   for(ship = ships.begin(); ship != ships.end(); ship++) {
-    ship->draw();
+    (*ship)->draw();
   }
   glutSwapBuffers();
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
-  std::vector<GLShip>::iterator ship;
+  std::vector<GLShip*>::iterator ship;
   for(ship = ships.begin(); ship != ships.end(); ship++) {
-    ship->input(key);
+    (*ship)->input(key);
   }
 }
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
-  std::vector<GLShip>::iterator ship;
+  std::vector<GLShip*>::iterator ship;
   for(ship = ships.begin(); ship != ships.end(); ship++) {
-    ship->input(key, false);
+    (*ship)->input(key, false);
   }
 }
 
