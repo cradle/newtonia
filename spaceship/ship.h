@@ -34,9 +34,9 @@ class Ship {
     //TODO: friends
     std::vector<Bullet> bullets;
 
-    static void collide(Ship& first, Ship& second);
+    static void collide(Ship* first, Ship* second);
 
-    void collide(Ship& other);
+    void collide(Ship* other);
     bool collide(Bullet bullet);
 
     int score;

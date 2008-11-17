@@ -32,15 +32,15 @@ void Ship::thrust(bool on) {
   thrusting = on;
 }
 
-void Ship::collide(Ship& first, Ship& second) {
+void Ship::collide(Ship* first, Ship* second) {
   // first.collide(second);
   // second.collide(first);
   //TODO: DRYness
-  first.collide(second);
-  second.collide(first);
+  first->collide(second);
+  second->collide(first);
 }
 
-void Ship::collide(Ship& other) {
+void Ship::collide(Ship* other) {
   //TODO: Make ships collide with each other too
   std::vector<Bullet>::iterator bullet = bullets.begin();
   while(bullet != bullets.end()) {
@@ -48,8 +48,8 @@ void Ship::collide(Ship& other) {
       kill();
       score -= 1;
       bullet = bullets.erase(bullet);
-    } else if(other.collide(*bullet)) {
-      other.kill();
+    } else if(other->collide(*bullet)) {
+      other->kill();
       score += 1;
       bullet = bullets.erase(bullet);
     } else {

@@ -13,10 +13,10 @@ public:
   void set_keys(int left, int right, int up, int right);
   virtual void draw();
   
-  static void collide(GLShip& first, GLShip& second);
+  static void collide(GLShip* first, GLShip* second);
   
 protected:
-  Ship ship;
+  Ship *ship;
   float window_width, window_height;
   
   int thrust_key;

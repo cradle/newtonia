@@ -16,6 +16,8 @@
 		2150E2F30ECD6A6E00D89C28 /* wrapped_point.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2EC0ECD6A6E00D89C28 /* wrapped_point.cpp */; };
 		2150E2FB0ECD831900D89C28 /* glut.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2F90ECD831900D89C28 /* glut.cpp */; };
 		215ED6A50ECDB80400E0778A /* glgame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 215ED6A30ECDB80400E0778A /* glgame.cpp */; };
+		2180D3920ED14D100050ED72 /* car.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2180D38E0ED14D100050ED72 /* car.cpp */; };
+		2180D3930ED14D100050ED72 /* glcar.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2180D3900ED14D100050ED72 /* glcar.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +38,10 @@
 		2150E2F90ECD831900D89C28 /* glut.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glut.cpp; sourceTree = "<group>"; };
 		215ED6A30ECDB80400E0778A /* glgame.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glgame.cpp; sourceTree = "<group>"; };
 		215ED6A40ECDB80400E0778A /* glgame.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glgame.h; sourceTree = "<group>"; };
+		2180D38E0ED14D100050ED72 /* car.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = car.cpp; sourceTree = "<group>"; };
+		2180D38F0ED14D100050ED72 /* car.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = car.h; sourceTree = "<group>"; };
+		2180D3900ED14D100050ED72 /* glcar.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glcar.cpp; sourceTree = "<group>"; };
+		2180D3910ED14D100050ED72 /* glcar.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glcar.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,6 +68,10 @@
 		219282740ECD670E002D470F = {
 			isa = PBXGroup;
 			children = (
+				2180D38E0ED14D100050ED72 /* car.cpp */,
+				2180D38F0ED14D100050ED72 /* car.h */,
+				2180D3900ED14D100050ED72 /* glcar.cpp */,
+				2180D3910ED14D100050ED72 /* glcar.h */,
 				215ED6A30ECDB80400E0778A /* glgame.cpp */,
 				215ED6A40ECDB80400E0778A /* glgame.h */,
 				2150E2F90ECD831900D89C28 /* glut.cpp */,
@@ -142,6 +152,8 @@
 				2150E2F30ECD6A6E00D89C28 /* wrapped_point.cpp in Sources */,
 				2150E2FB0ECD831900D89C28 /* glut.cpp in Sources */,
 				215ED6A50ECDB80400E0778A /* glgame.cpp in Sources */,
+				2180D3920ED14D100050ED72 /* car.cpp in Sources */,
+				2180D3930ED14D100050ED72 /* glcar.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -39,7 +39,7 @@ void GLGame::tick(void) {
 
   //Fix: Don't do this
   //TODO: fix this
-  GLShip::collide(*ships[0], *ships[1]);
+  GLShip::collide(ships[0], ships[1]);
 }
 
 void GLGame::resize_ships(int width, int height) {
@@ -75,6 +75,8 @@ void GLGame::draw(void) {
   }
   glutSwapBuffers();
 }
+
+#define ITER(collection, element) for(element = collection.begin(); element != collection.end(); element++)
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
   std::vector<GLShip*>::iterator ship;
