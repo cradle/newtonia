@@ -52,31 +52,60 @@ void GLGame::resize_ships(int width, int height) {
 void GLGame::resize(int width, int height) {
   window_width = width;
   window_height = height;
-
-  resize_ships(width, height);
-
-  glViewport(0, 0, width, height);
-
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  //TODO: Refactor into 0, width, 0, height, and change code elsewhere
-  glOrtho(-width/2, width/2, -height/2, height/2, -1, 1);
-
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
 }
 
 void GLGame::draw(void) {
   glClear(GL_COLOR_BUFFER_BIT);
+
+
+  glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  std::vector<GLShip*>::iterator ship;
-  for(ship = ships.begin(); ship != ships.end(); ship++) {
-    (*ship)->draw();
-  }
+  glOrtho(-window_width/4, window_width/4, -window_height/2, window_height/2, -1, 1);
+  glMatrixMode(GL_MODELVIEW);
+
+  glLoadIdentity();
+  glViewport(0, 0, window_width/2, window_height);
+  glColor3f(0.5f,0.5f,0.5f);
+  glBegin(GL_LINES);
+    glVertex2i( window_width/4-1,-window_height/2);
+    glVertex2i( window_width/4-1,-window_height/8);
+    glVertex2i( window_width/4-1, window_height/8);
+    glVertex2i( window_width/4-1, window_height/2);
+  glEnd();
+  glTranslatef(-ships[0]->ship->position.x, -ships[0]->ship->position.y, 0.0f);
+  ships[0]->draw();
+  ships[1]->draw();
+
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  glOrtho(-window_width/4, window_width/4, -window_height/2, window_height/2, -1, 1);
+  glMatrixMode(GL_MODELVIEW);
+
+  glLoadIdentity();
+  glViewport(window_width/2, 0, window_width/2, window_height);
+  glTranslatef(-ships[1]->ship->position.x, -ships[1]->ship->position.y, 0.0f);
+  ships[0]->draw();
+  ships[1]->draw();
+
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  // TODO: Use world size, not window size
+  glOrtho(-window_width, window_width, -window_height, window_height, -1, 1);
+  glMatrixMode(GL_MODELVIEW);
+  glLoadIdentity();
+  glViewport(window_width*3/8, window_height*3/8, window_width/4, window_height/4);
+  glColor3f(0.5f,0.5f,0.5f);
+  glBegin(GL_LINE_LOOP);
+    glVertex2i( -window_width, window_height);
+    glVertex2i(  window_width, window_height);
+    glVertex2i(  window_width,-window_height);
+    glVertex2i( -window_width,-window_height);
+  glEnd();
+  ships[0]->draw();
+  ships[1]->draw();
+
   glutSwapBuffers();
 }
-
-#define ITER(collection, element) for(element = collection.begin(); element != collection.end(); element++)
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
   std::vector<GLShip*>::iterator ship;
@@ -91,10 +120,12 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   }
 }
 
-void GLGame::init(int argc, char** argv) {
+void GLGame::init(int argc, char** argv, float width, float height) {
   glutInit(&argc, argv);
   glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
-  glutInitWindowSize(window_width, window_height);
+  window_width = width;
+  window_height = height;
+  glutInitWindowSize(width, height);
   glutCreateWindow("Asteroids");
 
   glShadeModel(GL_FLAT);

@@ -15,6 +15,7 @@ GLCar::GLCar(float x, float y) {
 }
 
 void GLCar::draw() {
+  glPushMatrix();
 
   glTranslatef(ship->position.x, ship->position.y, 0.0f);
   //TODO: Doesn't take into account heading
@@ -53,7 +54,7 @@ void GLCar::draw() {
       glEnd();							// Finished Drawing The Flame
 	}
 
-  glLoadIdentity();
+  glPopMatrix();
 
   glBegin(GL_POINTS);
   for(std::vector<Bullet>::iterator bullet = ship->bullets.begin(); bullet != ship->bullets.end(); bullet++) {

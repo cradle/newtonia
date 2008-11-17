@@ -9,20 +9,20 @@ public:
   GLGame() {};
   GLGame(float width, float height);
 
-  void init(int argc, char** argv);
+  void init(int argc, char** argv, float width, float height);
   void run();
-  
+
   void tick(void);
   void resize(int width, int height);
   void draw(void);
   void keyboard (unsigned char key, int x, int y);
   void keyboard_up (unsigned char key, int x, int y);
-  
+
 private:
   void resize_ships(int width, int height);
   int window_width, window_height;
   int last_tick;
-  
+
   std::vector<GLShip*> ships;
 };
 

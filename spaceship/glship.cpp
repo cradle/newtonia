@@ -56,9 +56,8 @@ void GLShip::input(unsigned char key, bool pressed) {
 }
 
 void GLShip::draw() {
-
+  glPushMatrix();
   glTranslatef(ship->position.x, ship->position.y, 0.0f);
-  //TODO: Doesn't take into account heading
   glScalef( ship->width, ship->height, 1.0f);
 
   if(ship->is_alive()) {
@@ -88,7 +87,7 @@ void GLShip::draw() {
   	glEnd();							// Finished Drawing The Flame
 	}
 
-  glLoadIdentity();
+    glPopMatrix();
 
 	glBegin(GL_POINTS);
     for(std::vector<Bullet>::iterator bullet = ship->bullets.begin(); bullet != ship->bullets.end(); bullet++) {

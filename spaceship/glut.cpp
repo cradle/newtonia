@@ -43,8 +43,8 @@ void isVisible(int state) {
 }
 
 int main(int argc, char** argv) {
-  glgame = GLGame(800,600);
-  glgame.init(argc, argv);
+  glgame = GLGame(1600,1600);
+  glgame.init(argc, argv, 800, 600);
 
   glutDisplayFunc(draw);
   glutKeyboardFunc(keyboard);

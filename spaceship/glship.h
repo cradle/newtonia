@@ -12,13 +12,13 @@ public:
   void input(unsigned char key, bool pressed = true);
   void set_keys(int left, int right, int up, int right);
   virtual void draw();
-  
+
   static void collide(GLShip* first, GLShip* second);
-  
-protected:
   Ship *ship;
+
+protected:
   float window_width, window_height;
-  
+
   int thrust_key;
   int left_key;
   int right_key;

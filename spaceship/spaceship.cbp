@@ -45,6 +45,10 @@
 		</Linker>
 		<Unit filename="bullet.cpp" />
 		<Unit filename="bullet.h" />
+		<Unit filename="car.cpp" />
+		<Unit filename="car.h" />
+		<Unit filename="glcar.cpp" />
+		<Unit filename="glcar.h" />
 		<Unit filename="glgame.cpp" />
 		<Unit filename="glgame.h" />
 		<Unit filename="glship.cpp" />
