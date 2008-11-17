@@ -40,14 +40,15 @@ class Ship {
     bool collide(Bullet bullet);
 
     int score;
-
-  protected:
     enum Rotation {
       LEFT = 1,
       NONE = 0,
       RIGHT = -1
     };
+    Rotation rotation_direction;
 
+
+  protected:
     bool alive;
     float mass;
     float world_width, world_height;
@@ -61,7 +62,6 @@ class Ship {
     // Angular
     float rotation_force;
     Point facing;
-    Rotation rotation_direction;
 };
 
 #endif
