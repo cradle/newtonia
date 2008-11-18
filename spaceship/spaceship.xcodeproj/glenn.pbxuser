@@ -30,6 +30,22 @@
 		sourceDirectories = (
 		);
 	};
+	215ED6A30ECDB80400E0778A /* glgame.cpp */ = {
+		uiCtxt = {
+			sepNavIntBoundsRect = "{{0, 0}, {1032, 2044}}";
+			sepNavSelRange = "{2995, 0}";
+			sepNavVisRange = "{1246, 2013}";
+			sepNavWindowFrame = "{{1880, 141}, {1091, 932}}";
+		};
+	};
+	215ED6A40ECDB80400E0778A /* glgame.h */ = {
+		uiCtxt = {
+			sepNavIntBoundsRect = "{{0, 0}, {1032, 804}}";
+			sepNavSelRange = "{520, 0}";
+			sepNavVisRange = "{0, 613}";
+			sepNavWindowFrame = "{{1478, 223}, {1091, 932}}";
+		};
+	};
 	219282760ECD670E002D470F /* Project object */ = {
 		activeArchitecture = ppc;
 		activeBuildConfigurationName = Debug;
@@ -50,7 +66,7 @@
 				PBXFileTableDataSourceColumnSortingKey = PBXFileDataSource_Filename_ColumnID;
 				PBXFileTableDataSourceColumnWidthsKey = (
 					20,
-					993,
+					627,
 					20,
 					48,
 					43,
