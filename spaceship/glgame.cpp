@@ -60,7 +60,7 @@ void GLGame::draw(void) {
 
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  glOrtho(-window_width/4, window_width/4, -window_height/2, window_height/2, -1, 1);
+  gluOrtho2D(-window_width/4, window_width/4, -window_height/2, window_height/2);
   glMatrixMode(GL_MODELVIEW);
 
   glLoadIdentity();
@@ -78,7 +78,7 @@ void GLGame::draw(void) {
 
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  glOrtho(-window_width/4, window_width/4, -window_height/2, window_height/2, -1, 1);
+  gluOrtho2D(-window_width/4, window_width/4, -window_height/2, window_height/2);
   glMatrixMode(GL_MODELVIEW);
 
   glLoadIdentity();
@@ -90,7 +90,7 @@ void GLGame::draw(void) {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   // TODO: make world (0,width,0,height)
-  glOrtho(-world_width, world_width, -world_height, world_height, -1, 1);
+  gluOrtho2D(-world_width, world_width, -world_height, world_height);
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
   glViewport(window_width*3/8, window_height*3/8, window_width/4, window_height/4);

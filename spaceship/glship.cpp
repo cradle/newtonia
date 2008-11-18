@@ -57,6 +57,11 @@ void GLShip::input(unsigned char key, bool pressed) {
 }
 
 void GLShip::draw() {
+  //TODO: I want ship trails
+  //First try it with line strips, there may be a (very) slight performance increase. Also disable all unnecessary modes like lighting, blending etc.
+  //Second, place everything in a display list & use that. I've never noticed a big increase worth writing home about with this method either though.
+  //Last, try it using compiled vertex buffers or even better, hardware supported ones. This is the best performance gain you'll get.
+  
   glPushMatrix();
   glTranslatef(ship->position.x, ship->position.y, 0.0f);
   glScalef( ship->width, ship->height, 1.0f);
@@ -73,18 +78,20 @@ void GLShip::draw() {
   //TODO: Abstract into 'shape' class/struct (or similar)
   // eg: class Shape() {void draw() (?); type = GL_LINE_LOOP; points = [[0,0,0], [1,1,1]]}
 	glBegin(GL_LINE_LOOP);						// Drawing The Ship
-		glVertex3f( 0.0f, 1.0f, 0.0f);				// Top
-		glVertex3f(-0.8f,-1.0f, 0.0f);				// Bottom Left
-		glVertex3f( 0.0f,-0.5f, 0.0f);				// Bottom Middle
-		glVertex3f( 0.8f,-1.0f, 0.0f);				// Bottom Right
+	  // TODO: Use vectors (arrays) and display lists
+	  // glVertex2fv(point);
+		glVertex2f( 0.0f, 1.0f);				// Top
+		glVertex2f(-0.8f,-1.0f);				// Bottom Left
+		glVertex2f( 0.0f,-0.5f);				// Bottom Middle
+		glVertex2f( 0.8f,-1.0f);				// Bottom Right
 	glEnd();							// Finished Drawing The Ship
 
 	if(ship->thrusting) {
   	glBegin(GL_QUADS);						// Drawing The Flame
-  		glVertex3f( 0.0f,-0.5f, 0.0f);				// Top
-  		glVertex3f(-0.4f,-0.75f, 0.0f);				// Left
-  		glVertex3f( 0.0f,-1.5f, 0.0f);				// Bottom
-  		glVertex3f( 0.4f,-0.75f, 0.0f);				// Right
+  		glVertex2f( 0.0f,-0.5f );				// Top
+  		glVertex2f(-0.4f,-0.75f );				// Left
+  		glVertex2f( 0.0f,-1.5f );				// Bottom
+  		glVertex2f( 0.4f,-0.75f );				// Right
   	glEnd();							// Finished Drawing The Flame
 	}
 
