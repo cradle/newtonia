@@ -21,8 +21,8 @@ GLGame::GLGame(float width, float height) {
 
   resize_ships(width, height);
 
-  window_width = width;
-  window_height = height;
+  world_width = width;
+  world_height = height;
 }
 
 void GLGame::tick(void) {
@@ -56,7 +56,7 @@ void GLGame::resize(int width, int height) {
 
 void GLGame::draw(void) {
   glClear(GL_COLOR_BUFFER_BIT);
-
+  //TODO: tesselate drawing
 
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
@@ -89,17 +89,18 @@ void GLGame::draw(void) {
 
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  // TODO: Use world size, not window size
-  glOrtho(-window_width, window_width, -window_height, window_height, -1, 1);
+  // TODO: make world (0,width,0,height)
+  glOrtho(-world_width, world_width, -world_height, world_height, -1, 1);
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
   glViewport(window_width*3/8, window_height*3/8, window_width/4, window_height/4);
+  //TODO: some sort of translucency or clear viewport so world not visible through it
   glColor3f(0.5f,0.5f,0.5f);
   glBegin(GL_LINE_LOOP);
-    glVertex2i( -window_width, window_height);
-    glVertex2i(  window_width, window_height);
-    glVertex2i(  window_width,-window_height);
-    glVertex2i( -window_width,-window_height);
+    glVertex2i( -world_width, world_height);
+    glVertex2i(  world_width, world_height);
+    glVertex2i(  world_width,-world_height);
+    glVertex2i( -world_width,-world_height);
   glEnd();
   ships[0]->draw();
   ships[1]->draw();

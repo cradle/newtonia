@@ -101,11 +101,12 @@ void Ship::puts() {
 }
 
 void Ship::set_world_size(float world_width, float world_height) {
+  //TODO: world should not be (-width, width), should be (0, width)
   this->world_width = world_width;
   this->world_height = world_height;
 
-  position.set_boundaries(-(world_width/2 + width), world_height/2 + height,
-                            world_width/2 + width, -(world_height/2 + height));
+  position.set_boundaries(-world_width, world_height,
+                           world_width, -world_height);
 
   for(vector<Bullet>::iterator bullet = bullets.begin(); bullet != bullets.end(); bullet++) {
     bullet->set_world_size(width, height);
@@ -113,8 +114,7 @@ void Ship::set_world_size(float world_width, float world_height) {
 }
 
 void Ship::step(float delta) {
-  // TODO: Move to acceleration/force based rotation
-  // Step physics
+  // TODO: fix timestep, decouple timestep
   facing.rotate(rotation_direction * rotation_force / mass  * delta );
   if(thrusting)
     velocity += ((facing * thrust_force) / mass) * delta;

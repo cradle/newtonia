@@ -20,7 +20,9 @@ public:
 
 private:
   void resize_ships(int width, int height);
+  //TODO: use Points
   int window_width, window_height;
+  int world_width, world_height;
   int last_tick;
 
   std::vector<GLShip*> ships;

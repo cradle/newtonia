@@ -12,5 +12,5 @@ void Bullet::step(float delta) {
 }
 
 void Bullet::set_world_size(float width, float height) {
-  position.set_boundaries(-width/2, height/2, width/2, -height/2);
+  position.set_boundaries(-width, height, width, -height);
 }

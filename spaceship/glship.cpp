@@ -21,6 +21,7 @@ void GLShip::collide(GLShip* first, GLShip* second) {
 }
 
 void GLShip::step(float delta) {
+  //TODO: decouple timestep
   ship->step(delta);
 }
 
