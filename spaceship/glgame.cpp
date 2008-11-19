@@ -9,44 +9,54 @@
 #include <GL/glut.h>
 #endif
 
-GLGame::GLGame(float width, float height) {
-  GLShip* ship = new GLShip(-width*3/4,-height*3/4);
-  ship->set_keys('a','d','w',' ');
-  ships.push_back(ship);
+#include <iostream>
+#include <vector>
 
-  //TODO: Make test for this type of overloading
-  ship = new GLCar(width*3/4,height*3/4);
-  ship->set_keys('j','l','i','/');
-  ships.push_back(ship);
+GLGame::GLGame(float width, float height) : world_width(width), world_height(height) {
+  GLShip* object = new GLShip(-width*3/4,-height*3/4);
+  object->set_keys('a','d','w',' ');
+  objects.push_back(object);
 
-  resize_ships(width, height);
+  object = new GLCar(width*3/4,height*3/4);
+  object->set_keys('j','l','i','/');
+  objects.push_back(object);
 
-  world_width = width;
-  world_height = height;
+  //TODO: use boost foreach
+  std::vector<GLShip*>::iterator o;
+  for(o = objects.begin(); o != objects.end(); o++) {
+    //TODO: find out how to use vectors better
+    (*o)->resize(width, height);
+  }
+}
+
+GLGame::~GLGame() {
+  //TODO: Make erase, use boost::ptr_vector
+  std::cout << "destructored" << std::endl;
+  GLShip* object;
+  while(!objects.empty()) {
+    object = objects.back();
+    objects.pop_back();
+    delete object;
+  }
+  // std::erase(std::remove_if(v.begin(),v.end(),true), v.end());
 }
 
 void GLGame::tick(void) {
   int current_time = glutGet(GLUT_ELAPSED_TIME);
 
-  std::vector<GLShip*>::iterator ship;
-  for(ship = ships.begin(); ship != ships.end(); ship++) {
+  //TODO: Learn function pointers or some loop abstraction
+  std::vector<GLShip*>::iterator object;
+  for(object = objects.begin(); object != objects.end(); object++) {
     //TODO: find out how to use vectors better
-    (*ship)->step(current_time - last_tick);
+    (*object)->step(current_time - last_tick);
   }
 
   last_tick = current_time;
   glutPostRedisplay();
 
   //Fix: Don't do this
-  //TODO: fix this
-  GLShip::collide(ships[0], ships[1]);
-}
-
-void GLGame::resize_ships(int width, int height) {
-  std::vector<GLShip*>::iterator ship;
-  for(ship = ships.begin(); ship != ships.end(); ship++) {
-    (*ship)->resize(width, height);
-  }
+  //TODO: fix this, should iterate, then iterate inside it, yay n^2
+  GLShip::collide(objects[0], objects[1]);
 }
 
 void GLGame::resize(int width, int height) {
@@ -72,9 +82,9 @@ void GLGame::draw(void) {
     glVertex2i( window_width/4-1, window_height/8);
     glVertex2i( window_width/4-1, window_height/2);
   glEnd();
-  glTranslatef(-ships[0]->ship->position.x, -ships[0]->ship->position.y, 0.0f);
-  ships[0]->draw();
-  ships[1]->draw();
+  glTranslatef(-objects[0]->ship->position.x, -objects[0]->ship->position.y, 0.0f);
+  objects[0]->draw();
+  objects[1]->draw();
 
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
@@ -83,9 +93,9 @@ void GLGame::draw(void) {
 
   glLoadIdentity();
   glViewport(window_width/2, 0, window_width/2, window_height);
-  glTranslatef(-ships[1]->ship->position.x, -ships[1]->ship->position.y, 0.0f);
-  ships[0]->draw();
-  ships[1]->draw();
+  glTranslatef(-objects[1]->ship->position.x, -objects[1]->ship->position.y, 0.0f);
+  objects[0]->draw();
+  objects[1]->draw();
 
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
@@ -102,22 +112,22 @@ void GLGame::draw(void) {
     glVertex2i(  world_width,-world_height);
     glVertex2i( -world_width,-world_height);
   glEnd();
-  ships[0]->draw();
-  ships[1]->draw();
+  objects[0]->draw();
+  objects[1]->draw();
 
   glutSwapBuffers();
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
-  std::vector<GLShip*>::iterator ship;
-  for(ship = ships.begin(); ship != ships.end(); ship++) {
-    (*ship)->input(key);
+  std::vector<GLShip*>::iterator object;
+  for(object = objects.begin(); object != objects.end(); object++) {
+    (*object)->input(key);
   }
 }
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
-  std::vector<GLShip*>::iterator ship;
-  for(ship = ships.begin(); ship != ships.end(); ship++) {
-    (*ship)->input(key, false);
+  std::vector<GLShip*>::iterator object;
+  for(object = objects.begin(); object != objects.end(); object++) {
+    (*object)->input(key, false);
   }
 }
 

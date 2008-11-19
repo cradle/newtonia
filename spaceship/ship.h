@@ -9,6 +9,7 @@ class Ship {
   public:
     Ship() {};
     Ship(float x, float y);
+    virtual ~Ship() {};
 
     void set_world_size(float width, float height);
 

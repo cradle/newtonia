@@ -16,6 +16,10 @@ GLShip::GLShip(int x, int y) {
   ship = new Ship(x, y);
 }
 
+GLShip::~GLShip() {
+  delete ship;
+}
+
 void GLShip::collide(GLShip* first, GLShip* second) {
   Ship::collide(first->ship, second->ship);
 }
@@ -72,6 +76,7 @@ void GLShip::draw() {
     glColor3f( 1.0f, 1.0f, 0.0f );
   }
 
+  //TODO: rotatei could be used with degrees?
   glRotatef( ship->heading(), 0.0f, 0.0f, 1.0f);
 
 
@@ -79,6 +84,7 @@ void GLShip::draw() {
   // eg: class Shape() {void draw() (?); type = GL_LINE_LOOP; points = [[0,0,0], [1,1,1]]}
 	glBegin(GL_LINE_LOOP);						// Drawing The Ship
 	  // TODO: Use vectors (arrays) and display lists
+	  // http://cgm.cs.mcgill.ca/~msuder/courses/557/tutorial/4.c
 	  // glVertex2fv(point);
 		glVertex2f( 0.0f, 1.0f);				// Top
 		glVertex2f(-0.8f,-1.0f);				// Bottom Left

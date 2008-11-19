@@ -8,6 +8,7 @@ class GLGame {
 public:
   GLGame() {};
   GLGame(float width, float height);
+  ~GLGame();
 
   void init(int argc, char** argv, float width, float height);
   void run();
@@ -19,13 +20,14 @@ public:
   void keyboard_up (unsigned char key, int x, int y);
 
 private:
+  
   void resize_ships(int width, int height);
   //TODO: use Points
   int window_width, window_height;
   int world_width, world_height;
   int last_tick;
 
-  std::vector<GLShip*> ships;
+  std::vector<GLShip*> objects;
 };
 
 #endif
