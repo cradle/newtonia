@@ -10,13 +10,15 @@
 #include <GL/glut.h>
 #endif
 
+#include <point.h>
+
 class GLShip {
 public:
   GLShip() {};
   GLShip(int x, int y);
   virtual ~GLShip();
   void step(float delta);
-  void resize(float screen_width, float screen_height);
+  void resize(Point world_size);
   void input(unsigned char key, bool pressed = true);
   void set_keys(int left, int right, int up, int right);
   virtual void draw();
@@ -25,7 +27,7 @@ public:
   Ship *ship;
 
 protected:
-  float window_width, window_height;
+  Point world;
 
   int thrust_key;
   int left_key;

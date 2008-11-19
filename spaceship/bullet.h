@@ -9,7 +9,7 @@ public:
   Bullet() {};
   Bullet(Point position, Point direction);
   void step(float delta);
-  void set_world_size(float width, float height);
+  void set_world_size(Point size);
 
 //TODO: Friends
   WrappedPoint position;

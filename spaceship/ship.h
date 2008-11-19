@@ -11,7 +11,7 @@ class Ship {
     Ship(float x, float y);
     virtual ~Ship() {};
 
-    void set_world_size(float width, float height);
+    void set_world_size(Point world_size);
 
     void rotate_left(bool on = true);
     void rotate_right(bool on = true);
@@ -52,7 +52,7 @@ class Ship {
   protected:
     bool alive;
     float mass;
-    float world_width, world_height;
+    Point world_size;
 
     Point gun();
 

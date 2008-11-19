@@ -12,7 +12,7 @@
 #include <iostream>
 #include <vector>
 
-GLGame::GLGame(float width, float height) : world_width(width), world_height(height) {
+GLGame::GLGame(float width, float height) : world(Point(width, height)) {
   GLShip* object = new GLShip(-width*3/4,-height*3/4);
   object->set_keys('a','d','w',' ');
   objects.push_back(object);
@@ -25,7 +25,7 @@ GLGame::GLGame(float width, float height) : world_width(width), world_height(hei
   std::vector<GLShip*>::iterator o;
   for(o = objects.begin(); o != objects.end(); o++) {
     //TODO: find out how to use vectors better
-    (*o)->resize(width, height);
+    (*o)->resize(world);
   }
 }
 
@@ -60,8 +60,7 @@ void GLGame::tick(void) {
 }
 
 void GLGame::resize(int width, int height) {
-  window_width = width;
-  window_height = height;
+  window = Point(width, height);
 }
 
 void GLGame::draw(void) {
@@ -70,17 +69,17 @@ void GLGame::draw(void) {
 
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluOrtho2D(-window_width/4, window_width/4, -window_height/2, window_height/2);
+  gluOrtho2D(-window.x/4, window.x/4, -window.y/2, window.y/2);
   glMatrixMode(GL_MODELVIEW);
 
   glLoadIdentity();
-  glViewport(0, 0, window_width/2, window_height);
+  glViewport(0, 0, window.x/2, window.y);
   glColor3f(0.5f,0.5f,0.5f);
   glBegin(GL_LINES);
-    glVertex2i( window_width/4-1,-window_height/2);
-    glVertex2i( window_width/4-1,-window_height/8);
-    glVertex2i( window_width/4-1, window_height/8);
-    glVertex2i( window_width/4-1, window_height/2);
+    glVertex2i( window.x/4-1,-window.y/2);
+    glVertex2i( window.x/4-1,-window.y/8);
+    glVertex2i( window.x/4-1, window.y/8);
+    glVertex2i( window.x/4-1, window.y/2);
   glEnd();
   glTranslatef(-objects[0]->ship->position.x, -objects[0]->ship->position.y, 0.0f);
   objects[0]->draw();
@@ -88,29 +87,31 @@ void GLGame::draw(void) {
 
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluOrtho2D(-window_width/4, window_width/4, -window_height/2, window_height/2);
+  gluOrtho2D(-window.x/4, window.x/4, -window.y/2, window.y/2);
   glMatrixMode(GL_MODELVIEW);
 
   glLoadIdentity();
-  glViewport(window_width/2, 0, window_width/2, window_height);
+  glViewport(window.x/2, 0, window.x/2, window.y);
+  //TODO: Refactor somehow as to not look at internals
   glTranslatef(-objects[1]->ship->position.x, -objects[1]->ship->position.y, 0.0f);
+  //TODO: Refactor into loop
   objects[0]->draw();
   objects[1]->draw();
 
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   // TODO: make world (0,width,0,height)
-  gluOrtho2D(-world_width, world_width, -world_height, world_height);
+  gluOrtho2D(-world.x, world.x, -world.y, world.y);
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
-  glViewport(window_width*3/8, window_height*3/8, window_width/4, window_height/4);
+  glViewport(window.x*3/8, window.y*3/8, window.x/4, window.y/4);
   //TODO: some sort of translucency or clear viewport so world not visible through it
   glColor3f(0.5f,0.5f,0.5f);
   glBegin(GL_LINE_LOOP);
-    glVertex2i( -world_width, world_height);
-    glVertex2i(  world_width, world_height);
-    glVertex2i(  world_width,-world_height);
-    glVertex2i( -world_width,-world_height);
+    glVertex2i( -world.x, world.y);
+    glVertex2i(  world.x, world.y);
+    glVertex2i(  world.x,-world.y);
+    glVertex2i( -world.x,-world.y);
   glEnd();
   objects[0]->draw();
   objects[1]->draw();
@@ -134,8 +135,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
 void GLGame::init(int argc, char** argv, float width, float height) {
   glutInit(&argc, argv);
   glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
-  window_width = width;
-  window_height = height;
+  resize(width, height);
   glutInitWindowSize(width, height);
   glutCreateWindow("Asteroids");
 

@@ -7,7 +7,7 @@ public:
   WrappedPoint() {};
   WrappedPoint(float x, float y) : Point(x,y) {};
   WrappedPoint(Point other) : Point(other) {};
-  void set_boundaries(float left, float top, float right, float bottom);
+  void set_boundaries(Point bounds);
   //TODO: learn inheritance on operators
   void wrap(); 
 

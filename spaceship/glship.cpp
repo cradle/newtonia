@@ -29,13 +29,11 @@ void GLShip::step(float delta) {
   ship->step(delta);
 }
 
-void GLShip::resize(float width, float height) {
-  ship->set_world_size(width, height);
-  window_width = width;
-  window_height = height;
-
+void GLShip::resize(Point world_size) {
+  world = world_size;
+  ship->set_world_size(world);
   for(std::vector<Bullet>::iterator bullet = ship->bullets.begin(); bullet != ship->bullets.end(); bullet++) {
-    bullet->set_world_size(width, height);
+    bullet->set_world_size(world);
   }
 }
 

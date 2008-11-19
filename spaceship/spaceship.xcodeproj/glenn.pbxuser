@@ -46,62 +46,6 @@
 			sepNavWindowFrame = "{{1478, 223}, {1091, 932}}";
 		};
 	};
-	217DA95E0ED2806200AFE5A2 /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		comments = "error: expected unqualified-id before ‘@’ token";
-		fRef = 217DA95F0ED2806200AFE5A2 /* NSObjCRuntime.h */;
-		rLen = 1;
-		rLoc = 119;
-		rType = 1;
-	};
-	217DA95F0ED2806200AFE5A2 /* NSObjCRuntime.h */ = {
-		isa = PBXFileReference;
-		lastKnownFileType = sourcecode.c.h;
-		name = NSObjCRuntime.h;
-		path = /System/Library/Frameworks/Foundation.framework/Headers/NSObjCRuntime.h;
-		sourceTree = "<absolute>";
-	};
-	217DA9600ED2806200AFE5A2 /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		fRef = 217DA9610ED2806200AFE5A2 /* NSObjCRuntime.h */;
-		name = "NSObjCRuntime.h: 120";
-		rLen = 27;
-		rLoc = 3729;
-		rType = 0;
-		vrLen = 791;
-		vrLoc = 3337;
-	};
-	217DA9610ED2806200AFE5A2 /* NSObjCRuntime.h */ = {
-		isa = PBXFileReference;
-		lastKnownFileType = sourcecode.c.h;
-		name = NSObjCRuntime.h;
-		path = /System/Library/Frameworks/Foundation.framework/Headers/NSObjCRuntime.h;
-		sourceTree = "<absolute>";
-		uiCtxt = {
-			sepNavIntBoundsRect = "{{0, 0}, {684, 2282}}";
-			sepNavSelRange = "{3729, 27}";
-			sepNavVisRange = "{3337, 791}";
-			sepNavWindowFrame = "{{1455, 244}, {1091, 932}}";
-		};
-	};
-	217DA9710ED2AC8100AFE5A2 /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		comments = "error: expected unqualified-id before ‘@’ token";
-		fRef = 217DA9610ED2806200AFE5A2 /* NSObjCRuntime.h */;
-		rLen = 1;
-		rLoc = 119;
-		rType = 1;
-	};
-	217DA9720ED2AC8100AFE5A2 /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		fRef = 217DA9610ED2806200AFE5A2 /* NSObjCRuntime.h */;
-		name = "NSObjCRuntime.h: 120";
-		rLen = 27;
-		rLoc = 3729;
-		rType = 0;
-		vrLen = 791;
-		vrLoc = 3337;
-	};
 	219282760ECD670E002D470F /* Project object */ = {
 		activeArchitecture = ppc;
 		activeBuildConfigurationName = Debug;
@@ -122,7 +66,7 @@
 				PBXFileTableDataSourceColumnSortingKey = PBXFileDataSource_Filename_ColumnID;
 				PBXFileTableDataSourceColumnWidthsKey = (
 					20,
-					627,
+					633,
 					20,
 					48,
 					43,
@@ -163,12 +107,6 @@
 			};
 			PBXPerProjectTemplateStateSaveDate = 248676420;
 			PBXWorkspaceStateSaveDate = 248676420;
-		};
-		perUserProjectItems = {
-			217DA95E0ED2806200AFE5A2 /* PBXTextBookmark */ = 217DA95E0ED2806200AFE5A2 /* PBXTextBookmark */;
-			217DA9600ED2806200AFE5A2 /* PBXTextBookmark */ = 217DA9600ED2806200AFE5A2 /* PBXTextBookmark */;
-			217DA9710ED2AC8100AFE5A2 /* PBXTextBookmark */ = 217DA9710ED2AC8100AFE5A2 /* PBXTextBookmark */;
-			217DA9720ED2AC8100AFE5A2 /* PBXTextBookmark */ = 217DA9720ED2AC8100AFE5A2 /* PBXTextBookmark */;
 		};
 		sourceControlManager = 2192827A0ECD670E002D470F /* Source Control */;
 		userBuildSettings = {

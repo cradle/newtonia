@@ -12,10 +12,10 @@ void WrappedPoint::wrap() {
     y -= y_max - y_min;
 }
 
-void WrappedPoint::set_boundaries(float left, float top, float right, float bottom) {
-  x_min = left;
-  x_max = right;
-  y_min = bottom;
-  y_max = top;
+void WrappedPoint::set_boundaries(Point bounds) {
+  x_min = -bounds.x;
+  x_max = bounds.x;
+  y_min = -bounds.y;
+  y_max = bounds.y;
   wrap();
 }
