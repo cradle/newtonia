@@ -11,12 +11,14 @@ public:
   void set_world_size(Point size);
   void step(float delta);
   bool is_alive();
+  float aliveness();
 
 //TODO: Friends
   WrappedPoint position;
 
 private:
   Point velocity;
+  float time_to_live;
   float time_left;
 };
 

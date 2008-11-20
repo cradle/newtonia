@@ -6,7 +6,7 @@ Bullet::Bullet(Point position, Point velocity, Point world_size, float ttl) {
   this->velocity = Point(velocity);
   //TODO: make width/height class variables, only need to be set once!
   set_world_size(world_size);
-  time_left = ttl;
+  time_left = time_to_live = ttl;
 }
 
 void Bullet::step(float delta) {
@@ -17,6 +17,10 @@ void Bullet::step(float delta) {
 
 void Bullet::set_world_size(Point size) {
   position.set_boundaries(size);
+}
+
+float Bullet::aliveness() {
+  return time_left / time_to_live;
 }
 
 bool Bullet::is_alive() {

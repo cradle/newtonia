@@ -9,6 +9,7 @@
 #include <GL/glut.h>
 #endif
 
+#include <vector>
 #include <iostream>
 
 using namespace std;
@@ -16,7 +17,7 @@ using namespace std;
 GLShip::GLShip(int x, int y) {
   //TODO: load config from file (colours too)
   ship = new Ship(x, y);
-  trail = new GLTrail(ship);
+  trails.push_back(new GLTrail(ship, GLTrail::DOTS));
 }
 
 GLShip::~GLShip() {
@@ -30,7 +31,10 @@ void GLShip::collide(GLShip* first, GLShip* second) {
 void GLShip::step(float delta) {
   //TODO: decouple timestep
   ship->step(delta);
-  trail->step(delta);
+  
+  for(vector<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
+    (*i)->step(delta);
+  }
 }
 
 void GLShip::resize(Point world_size) {
@@ -65,7 +69,9 @@ void GLShip::draw() {
   //Last, try it using compiled vertex buffers or even better, hardware supported ones. This is the best performance gain you'll get.  
   draw_ship();
   draw_bullets();
-  trail->draw();
+  for(vector<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
+    (*i)->draw();
+  }
 }
 
 void GLShip::draw_ship() {

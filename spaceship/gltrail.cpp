@@ -9,35 +9,46 @@
 #include <GL/glut.h>
 #endif
 
+#include <math.h>
 #include <deque>
 
 using namespace std;
 
-GLTrail::GLTrail(Ship* ship) {
-  this->ship = ship;
-}
+GLTrail::GLTrail(Ship* ship, TYPE type, float deviation, float offset)
+ : ship(ship), type(type), deviation(deviation), offset(offset) {}
 
 void GLTrail::draw() {
   deque<Bullet*>::iterator p;
+  glBegin(type);
   for(p = trail.begin(); p != trail.end(); p++) {
-  	glBegin(GL_POINTS);
-  		glVertex3f((*p)->position.x, (*p)->position.y, 0.0f);
-  	glEnd();
+      glColor4f(1,1,1,(*p)->aliveness());
+  		glVertex2f((*p)->position.x, (*p)->position.y);
   }
+	glEnd();
 }
 
 void GLTrail::step(float delta) {
-  deque<Bullet*>::iterator t;
-  for(t = trail.begin(); t != trail.end(); t++) {
-	(*t)->step(delta);
+  deque<Bullet*>::iterator t = trail.begin();
+  while(t != trail.end()) {
+    (*t)->step(delta);
+    if(!(*t)->is_alive()) {
+      t = trail.erase(t);
+    } else {
+      t++;
+    }
   }
   add();
 }
 
 void GLTrail::add() {
+  Point velocity;
+  Point position;
   if(ship->thrusting) {
+    position = ship->tail() + Point(ship->facing.y, -ship->facing.x) * offset;
+    velocity = ship->facing*-0.25 + ship->velocity*0.99;
+    velocity.rotate((rand() / (float)RAND_MAX) * deviation - deviation / 2.0);
     trail.push_back(  //TODO: scatter points
-      new Bullet(ship->tail(), ship->facing*ship->thrust_force*-5 + ship->velocity, ship->world_size, 1.0)
+      new Bullet(position, velocity, ship->world_size, 2000.0)
     );
   }
 }

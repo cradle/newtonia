@@ -124,14 +124,6 @@
 			PBXPerProjectTemplateStateSaveDate = 248860387;
 			PBXWorkspaceStateSaveDate = 248860387;
 		};
-		perUserProjectItems = {
-			21F0BF4C0ED54FBC00F2BB9B /* PBXTextBookmark */ = 21F0BF4C0ED54FBC00F2BB9B /* PBXTextBookmark */;
-			21F0BF4E0ED54FC800F2BB9B /* PBXTextBookmark */ = 21F0BF4E0ED54FC800F2BB9B /* PBXTextBookmark */;
-			21F0BF520ED54FE500F2BB9B /* PBXTextBookmark */ = 21F0BF520ED54FE500F2BB9B /* PBXTextBookmark */;
-			21F0BF550ED54FE500F2BB9B /* PBXTextBookmark */ = 21F0BF550ED54FE500F2BB9B /* PBXTextBookmark */;
-			21F0BF5F0ED5502100F2BB9B /* PBXTextBookmark */ = 21F0BF5F0ED5502100F2BB9B /* PBXTextBookmark */;
-			21F0BF600ED5502100F2BB9B /* PBXTextBookmark */ = 21F0BF600ED5502100F2BB9B /* PBXTextBookmark */;
-		};
 		sourceControlManager = 2192827A0ECD670E002D470F /* Source Control */;
 		userBuildSettings = {
 		};
@@ -149,9 +141,9 @@
 	};
 	21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */ = {
 		uiCtxt = {
-			sepNavIntBoundsRect = "{{0, 0}, {744, 627}}";
-			sepNavSelRange = "{795, 0}";
-			sepNavVisRange = "{0, 814}";
+			sepNavIntBoundsRect = "{{0, 0}, {684, 602}}";
+			sepNavSelRange = "{59, 0}";
+			sepNavVisRange = "{39, 449}";
 			sepNavWindowFrame = "{{1570, 316}, {803, 755}}";
 		};
 	};
@@ -162,59 +154,5 @@
 			sepNavVisRange = "{0, 264}";
 			sepNavWindowFrame = "{{1524, 649}, {478, 464}}";
 		};
-	};
-	21F0BF4C0ED54FBC00F2BB9B /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		comments = "error: 'class Ship' has no member named 'world'";
-		fRef = 21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */;
-		rLen = 1;
-		rLoc = 39;
-		rType = 1;
-	};
-	21F0BF4E0ED54FC800F2BB9B /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		comments = "error: 'Point Ship::world_size' is protected";
-		fRef = 2150E2EB0ECD6A6E00D89C28 /* ship.h */;
-		rLen = 0;
-		rLoc = 66;
-		rType = 1;
-	};
-	21F0BF520ED54FE500F2BB9B /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		fRef = 2150E2EB0ECD6A6E00D89C28 /* ship.h */;
-		name = "ship.h: 63";
-		rLen = 0;
-		rLoc = 1149;
-		rType = 0;
-		vrLen = 696;
-		vrLoc = 521;
-	};
-	21F0BF550ED54FE500F2BB9B /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		fRef = 21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */;
-		name = "gltrail.cpp: 40";
-		rLen = 0;
-		rLoc = 795;
-		rType = 0;
-		vrLen = 814;
-		vrLoc = 0;
-	};
-	21F0BF5F0ED5502100F2BB9B /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		comments = "error: 'deque' was not declared in this scope";
-		fRef = 21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */;
-		rLen = 1;
-		rLoc = 20;
-		rType = 1;
-	};
-	21F0BF600ED5502100F2BB9B /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		fRef = 21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */;
-		name = "gltrail.cpp: 4";
-		rLen = 0;
-		rLoc = 59;
-		rType = 0;
-		vrLen = 449;
-		vrLoc = 39;
 	};
 }
