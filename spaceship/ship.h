@@ -47,14 +47,9 @@ class Ship {
       RIGHT = -1
     };
     Rotation rotation_direction;
-
-
-  protected:
-    bool alive;
-    float mass;
-    Point world_size;
-
-    Point gun();
+    
+    
+    Point tail();
 
     // Linear
     float thrust_force;
@@ -63,6 +58,14 @@ class Ship {
     // Angular
     float rotation_force;
     Point facing;
+
+
+  protected:
+    bool alive;
+    float mass;
+    Point world_size;
+
+    Point gun();
 };
 
 #endif

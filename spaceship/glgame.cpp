@@ -30,15 +30,14 @@ GLGame::GLGame(float width, float height) : world(Point(width, height)) {
 }
 
 GLGame::~GLGame() {
-  //TODO: Make erase, use boost::ptr_vector
-  std::cout << "destructored" << std::endl;
+  //TODO: Make erase, use boost::ptr_vector? something better
+  // std::erase(std::remove_if(v.begin(),v.end(),true), v.end());
   GLShip* object;
   while(!objects.empty()) {
     object = objects.back();
     objects.pop_back();
     delete object;
   }
-  // std::erase(std::remove_if(v.begin(),v.end(),true), v.end());
 }
 
 void GLGame::tick(void) {

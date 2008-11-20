@@ -8,12 +8,15 @@
 #include <GL/glut.h>
 #endif
 
-#include <vector>
+#include <deque>
 #include <iostream>
+
+using namespace std;
 
 GLShip::GLShip(int x, int y) {
   //TODO: load config from file (colours too)
   ship = new Ship(x, y);
+  trails.push_back(new deque<Bullet*>);
 }
 
 GLShip::~GLShip() {
@@ -26,13 +29,50 @@ void GLShip::collide(GLShip* first, GLShip* second) {
 
 void GLShip::step(float delta) {
   //TODO: decouple timestep
+  
+  //TODO: REALLLY NEED TO ABSTRACT THIS STUPID LOOP, and move into ship/trail
+  deque<deque<Bullet*>*>::iterator trail;
+  for(trail = trails.begin(); trail != trails.end(); trail++) {
+    for(deque<Bullet*>::iterator p = (*trail)->begin(); p != (*trail)->end(); p++) {
+      (*p)->step(delta);
+    }
+  }
+  
   ship->step(delta);
+  if(ship->thrusting) {
+    //TODO: push into trail
+    trails.back()->push_back(
+      //TODO: Add some variance to trail if using dots
+      new Bullet(ship->tail(), ship->facing*ship->thrust_force*-5 + ship->velocity, world, 1.0)
+    ); // opposing force/mass
+  }
+  
+  
+  //TODO: kill dead
+  // Bullet* b;
+  // while(!trails.front()->empty() && !trails.front()->front()->is_alive()) {
+  //   b = trails.front()->front();
+  //   trails.front()->pop_front();
+  //   delete b;
+  //   // if(trails.front() != trails.back() && trails.front()->empty()) {
+  //   //   delete trails.front();
+  //   //   trails.pop_front();
+  //   // }
+  // }
+  // while(!trails.front()->empty() && !trails.front()->front()->is_alive()) {
+  //   delete trails.front()->front();
+  //   trails.front()->pop_front();
+  //   if(trails.size() > 1 && trails.front()->empty()) {
+  //     delete trails.front();
+  //     trails.pop_front();
+  //   }
+  // }
 }
 
 void GLShip::resize(Point world_size) {
   world = world_size;
   ship->set_world_size(world);
-  for(std::vector<Bullet>::iterator bullet = ship->bullets.begin(); bullet != ship->bullets.end(); bullet++) {
+  for(vector<Bullet>::iterator bullet = ship->bullets.begin(); bullet != ship->bullets.end(); bullet++) {
     bullet->set_world_size(world);
   }
 }
@@ -52,6 +92,9 @@ void GLShip::input(unsigned char key, bool pressed) {
   } else if (key == right_key) {
     ship->rotate_right(pressed);
   } else if (key == thrust_key) {
+    if(!pressed) {
+      trails.push_back(new deque<Bullet*>);
+    }
     ship->thrust(pressed);
   } else if (key == shoot_key && pressed) {
     ship->shoot();
@@ -99,10 +142,23 @@ void GLShip::draw() {
   	glEnd();							// Finished Drawing The Flame
 	}
 
-    glPopMatrix();
+  glPopMatrix();
 
+  //TODO: abstract to GLTrail
+  deque<deque<Bullet*>*>::iterator trail;
+  for(trail = trails.begin(); trail != trails.end(); trail++) {
+    //TODO: Use line strip (or scatter points?) but make world wrap nice
+  	glBegin(GL_POINTS);
+    for(deque<Bullet*>::iterator p = (*trail)->begin(); p != (*trail)->end(); p++) {
+      //TODO: Work out how to make bullets draw themselves. GLBullet?
+  		glVertex3f((*p)->position.x, (*p)->position.y, 0.0f);
+    }
+  	glEnd();
+  }
+
+  glColor3f(1,1,1);
 	glBegin(GL_POINTS);
-    for(std::vector<Bullet>::iterator bullet = ship->bullets.begin(); bullet != ship->bullets.end(); bullet++) {
+    for(vector<Bullet>::iterator bullet = ship->bullets.begin(); bullet != ship->bullets.end(); bullet++) {
       //TODO: Work out how to make bullets draw themselves. GLBullet?
   		glVertex3f(bullet->position.x, bullet->position.y , 0.0f);
     }

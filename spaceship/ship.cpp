@@ -71,8 +71,7 @@ bool Ship::collide_square(Bullet bullet) {
 }*/
 
 void Ship::shoot() {
-  Bullet bullet = Bullet(gun(), facing*0.2 + velocity*0.9);
-  bullet.set_world_size(world_size);
+  Bullet bullet = Bullet(gun(), facing*0.2 + velocity*0.9, world_size, 10.0);
   bullets.push_back(bullet);
 }
 
@@ -91,6 +90,10 @@ void Ship::rotate_right(bool on) {
 
 Point Ship::gun() {
   return position + (facing * height);
+}
+
+Point Ship::tail() {
+  return position - (facing * 15.0);
 }
 
 void Ship::puts() {

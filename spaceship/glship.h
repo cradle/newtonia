@@ -2,6 +2,8 @@
 #define GL_SHIP_H
 
 #include "ship.h"
+#include "point.h"
+#include <deque>
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -10,14 +12,12 @@
 #include <GL/glut.h>
 #endif
 
-#include <point.h>
-
 class GLShip {
 public:
   GLShip() {};
   GLShip(int x, int y);
   virtual ~GLShip();
-  void step(float delta);
+  virtual void step(float delta);
   void resize(Point world_size);
   void input(unsigned char key, bool pressed = true);
   void set_keys(int left, int right, int up, int right);
@@ -34,7 +34,7 @@ protected:
   int right_key;
   int shoot_key;
   
-  GLuint body_lines;
+  std::deque<std::deque<Bullet*>*> trails;  
 };
 
 #endif
