@@ -12,5 +12,4 @@ void Car::step(float delta) {
   if(is_alive()) {
     velocity = velocity - velocity * 0.0025 * delta;
   }
-  // 0.5*velocity.magnitude()*velocity.magnitude()*velocity.direction() * delta;
 }

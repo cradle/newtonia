@@ -47,7 +47,7 @@ void GLTrail::add() {
     position = ship->tail() + Point(ship->facing.y, -ship->facing.x) * offset;
     velocity = ship->facing*-0.25 + ship->velocity*0.99;
     velocity.rotate((rand() / (float)RAND_MAX) * deviation - deviation / 2.0);
-    trail.push_back(  //TODO: scatter points
+    trail.push_back( 
       new Bullet(position, velocity, ship->world_size, 2000.0)
     );
   }

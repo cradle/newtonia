@@ -22,22 +22,9 @@ void GLCar::draw_ship() {
   glPushMatrix();
   glTranslatef(ship->position.x, ship->position.y, 0.0f);
   glScalef( ship->width, ship->height, 1.0f);
-
-  if(ship->is_alive()) {
-    glColor3f( 1.0f, 1.0f, 1.0f );
-  } else {
-    glColor3f( 1.0f, 1.0f, 0.0f );
-  }
-
   glRotatef( ship->heading(), 0.0f, 0.0f, 1.0f);
-  
-	glBegin(GL_LINE_LOOP);						// Drawing The Ship
-		glVertex3f( 0.3f, 1.0f, 0.0f);				// Top
-		glVertex3f(-0.3f, 1.0f, 0.0f);				// Top
-		glVertex3f(-0.8f,-1.0f, 0.0f);				// Bottom Left
-		glVertex3f( 0.8f,-1.0f, 0.0f);				// Bottom Right
-	glEnd();							// Finished Drawing The Ship
 
+  glColor3f( 1.0f, 1.0f, 1.0f );
 	if(ship->thrusting || ship->rotation_direction == Ship::LEFT) {
       glBegin(GL_TRIANGLES);						// Drawing The Flame
           glVertex3f( 0.8f,-1.0f, 0.0f);				// Bottom
@@ -52,6 +39,19 @@ void GLCar::draw_ship() {
           glVertex3f(-0.8f,-1.0f, 0.0f);				// Top
       glEnd();							// Finished Drawing The Flame
 	}
+
+  if(ship->is_alive()) {
+    glColor3f( 0.0f, 0.0f, 1.0f );
+  } else {
+    glColor3f( 1.0f, 1.0f, 1.0f );
+  }
+  
+	glBegin(GL_LINE_LOOP);						// Drawing The Ship
+		glVertex3f( 0.3f, 1.0f, 0.0f);				// Top
+		glVertex3f(-0.3f, 1.0f, 0.0f);				// Top
+		glVertex3f(-0.8f,-1.0f, 0.0f);				// Bottom Left
+		glVertex3f( 0.8f,-1.0f, 0.0f);				// Bottom Right
+	glEnd();							// Finished Drawing The Ship
 
   glPopMatrix();
 }

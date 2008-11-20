@@ -3,6 +3,7 @@
 
 #include "glship.h"
 #include "point.h"
+#include "glstarfield.h"
 #include <vector>
 
 class GLGame {
@@ -23,9 +24,9 @@ public:
 private:
   
   void resize_ships(int width, int height);
-  //TODO: use Points
   Point window;
   Point world;
+  GLStarfield* starfield;
   int last_tick;
 
   std::vector<GLShip*> objects;

@@ -71,7 +71,7 @@ bool Ship::collide_square(Bullet bullet) {
 }*/
 
 void Ship::shoot() {
-  Bullet bullet = Bullet(gun(), facing*0.2 + velocity*0.9, world_size, 10.0);
+  Bullet bullet = Bullet(gun(), facing*0.5 + velocity*0.9, world_size, 10.0);
   bullets.push_back(bullet);
 }
 
@@ -122,8 +122,7 @@ void Ship::step(float delta) {
   position += velocity * delta;
   position.wrap();
 
-  // Step bullets
-  for(vector<Bullet>::iterator bullet = bullets.begin(); bullet != bullets.end(); bullet++) {
-    bullet->step(delta);
+  for(vector<Bullet>::iterator b = bullets.begin(); b != bullets.end(); b++) {
+    b->step(delta);
   }
 }

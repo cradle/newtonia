@@ -62,6 +62,50 @@
 			sepNavWindowFrame = "{{1478, 223}, {1091, 932}}";
 		};
 	};
+	218BF7DC0ED5645600C9FE0C /* glstarfield.cpp */ = {
+		uiCtxt = {
+			sepNavIntBoundsRect = "{{0, 0}, {684, 371}}";
+			sepNavSelRange = "{161, 0}";
+			sepNavVisRange = "{0, 345}";
+			sepNavWindowFrame = "{{1481, 307}, {803, 755}}";
+		};
+	};
+	218BF7E00ED5646000C9FE0C /* PBXTextBookmark */ = {
+		isa = PBXTextBookmark;
+		comments = "error: 'Bullet' was not declared in this scope";
+		fRef = 218BF7DC0ED5645600C9FE0C /* glstarfield.cpp */;
+		rLen = 1;
+		rLoc = 4;
+		rType = 1;
+	};
+	218BF7E60ED5647900C9FE0C /* PBXTextBookmark */ = {
+		isa = PBXTextBookmark;
+		fRef = 218BF7DC0ED5645600C9FE0C /* glstarfield.cpp */;
+		name = "glstarfield.cpp: 5";
+		rLen = 0;
+		rLoc = 105;
+		rType = 0;
+		vrLen = 388;
+		vrLoc = 0;
+	};
+	218BF7EE0ED565B000C9FE0C /* PBXTextBookmark */ = {
+		isa = PBXTextBookmark;
+		comments = "error: expected initializer before '<' token";
+		fRef = 218BF7DC0ED5645600C9FE0C /* glstarfield.cpp */;
+		rLen = 1;
+		rLoc = 3;
+		rType = 1;
+	};
+	218BF7EF0ED565B000C9FE0C /* PBXTextBookmark */ = {
+		isa = PBXTextBookmark;
+		fRef = 218BF7DC0ED5645600C9FE0C /* glstarfield.cpp */;
+		name = "glstarfield.cpp: 5";
+		rLen = 0;
+		rLoc = 161;
+		rType = 0;
+		vrLen = 345;
+		vrLoc = 0;
+	};
 	219282760ECD670E002D470F /* Project object */ = {
 		activeArchitecture = ppc;
 		activeBuildConfigurationName = Debug;
@@ -121,8 +165,14 @@
 					PBXFileDataSource_Warnings_ColumnID,
 				);
 			};
-			PBXPerProjectTemplateStateSaveDate = 248860387;
-			PBXWorkspaceStateSaveDate = 248860387;
+			PBXPerProjectTemplateStateSaveDate = 248865861;
+			PBXWorkspaceStateSaveDate = 248865861;
+		};
+		perUserProjectItems = {
+			218BF7E00ED5646000C9FE0C /* PBXTextBookmark */ = 218BF7E00ED5646000C9FE0C /* PBXTextBookmark */;
+			218BF7E60ED5647900C9FE0C /* PBXTextBookmark */ = 218BF7E60ED5647900C9FE0C /* PBXTextBookmark */;
+			218BF7EE0ED565B000C9FE0C /* PBXTextBookmark */ = 218BF7EE0ED565B000C9FE0C /* PBXTextBookmark */;
+			218BF7EF0ED565B000C9FE0C /* PBXTextBookmark */ = 218BF7EF0ED565B000C9FE0C /* PBXTextBookmark */;
 		};
 		sourceControlManager = 2192827A0ECD670E002D470F /* Source Control */;
 		userBuildSettings = {

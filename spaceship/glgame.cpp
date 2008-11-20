@@ -1,6 +1,7 @@
 #include "glgame.h"
 #include "glship.h"
 #include "glcar.h"
+#include "glstarfield.h"
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -27,6 +28,8 @@ GLGame::GLGame(float width, float height) : world(Point(width, height)) {
     //TODO: find out how to use vectors better
     (*o)->resize(world);
   }
+  
+  starfield = new GLStarfield(world);
 }
 
 GLGame::~GLGame() {
@@ -81,9 +84,11 @@ void GLGame::draw(void) {
     glVertex2i( window.x/4-1, window.y/2);
   glEnd();
   glTranslatef(-objects[0]->ship->position.x, -objects[0]->ship->position.y, 0.0f);
+  starfield->draw(objects[0]->ship->velocity, objects[0]->ship->position);
   objects[0]->draw();
   objects[1]->draw();
 
+  /* PLAYER 2 */
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   gluOrtho2D(-window.x/4, window.x/4, -window.y/2, window.y/2);
@@ -94,9 +99,11 @@ void GLGame::draw(void) {
   //TODO: Refactor somehow as to not look at internals
   glTranslatef(-objects[1]->ship->position.x, -objects[1]->ship->position.y, 0.0f);
   //TODO: Refactor into loop
+  starfield->draw(objects[1]->ship->velocity, objects[1]->ship->position);
   objects[0]->draw();
   objects[1]->draw();
 
+  /* VIEWPORT */
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   // TODO: make world (0,width,0,height)
@@ -104,7 +111,13 @@ void GLGame::draw(void) {
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
   glViewport(window.x*3/8, window.y*3/8, window.x/4, window.y/4);
-  //TODO: some sort of translucency or clear viewport so world not visible through it
+  glColor3f(0.0f,0.0f,0.0f);
+  glBegin(GL_POLYGON);
+    glVertex2i( -world.x, world.y);
+    glVertex2i(  world.x, world.y);
+    glVertex2i(  world.x,-world.y);
+    glVertex2i( -world.x,-world.y);
+  glEnd();
   glColor3f(0.5f,0.5f,0.5f);
   glBegin(GL_LINE_LOOP);
     glVertex2i( -world.x, world.y);
@@ -133,18 +146,19 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
 
 void GLGame::init(int argc, char** argv, float width, float height) {
   glutInit(&argc, argv);
-  glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
+  glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
   resize(width, height);
   glutInitWindowSize(width, height);
   glutCreateWindow("Asteroids");
 
-  glShadeModel(GL_FLAT);
-  glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-  glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
+  glPointSize(1.33f);
+  glLineWidth(1.33f);
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glEnable(GL_LINE_SMOOTH);
   glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
+  glEnable(GL_POINT_SMOOTH);
+  glHint(GL_POINT_SMOOTH_HINT, GL_NICEST);
 }
 
 void GLGame::run(void) {
