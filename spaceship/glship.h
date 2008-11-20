@@ -3,7 +3,7 @@
 
 #include "ship.h"
 #include "point.h"
-#include <deque>
+#include "gltrail.h"
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -17,16 +17,19 @@ public:
   GLShip() {};
   GLShip(int x, int y);
   virtual ~GLShip();
-  virtual void step(float delta);
+  void step(float delta);
   void resize(Point world_size);
   void input(unsigned char key, bool pressed = true);
   void set_keys(int left, int right, int up, int right);
-  virtual void draw();
+  void draw();
 
   static void collide(GLShip* first, GLShip* second);
   Ship *ship;
 
 protected:
+  virtual void draw_ship();
+  void draw_bullets();
+  
   Point world;
 
   int thrust_key;
@@ -34,7 +37,7 @@ protected:
   int right_key;
   int shoot_key;
   
-  std::deque<std::deque<Bullet*>*> trails;  
+  GLTrail* trail;
 };
 
 #endif

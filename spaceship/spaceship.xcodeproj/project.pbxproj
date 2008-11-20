@@ -18,6 +18,7 @@
 		215ED6A50ECDB80400E0778A /* glgame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 215ED6A30ECDB80400E0778A /* glgame.cpp */; };
 		2180D3920ED14D100050ED72 /* car.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2180D38E0ED14D100050ED72 /* car.cpp */; };
 		2180D3930ED14D100050ED72 /* glcar.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2180D3900ED14D100050ED72 /* glcar.cpp */; };
+		21F0BF3F0ED54EFE00F2BB9B /* gltrail.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +43,8 @@
 		2180D38F0ED14D100050ED72 /* car.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = car.h; sourceTree = "<group>"; };
 		2180D3900ED14D100050ED72 /* glcar.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glcar.cpp; sourceTree = "<group>"; };
 		2180D3910ED14D100050ED72 /* glcar.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glcar.h; sourceTree = "<group>"; };
+		21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = gltrail.cpp; sourceTree = "<group>"; };
+		21F0BF3E0ED54EFE00F2BB9B /* gltrail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = gltrail.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -68,6 +71,8 @@
 		219282740ECD670E002D470F = {
 			isa = PBXGroup;
 			children = (
+				21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */,
+				21F0BF3E0ED54EFE00F2BB9B /* gltrail.h */,
 				2180D38E0ED14D100050ED72 /* car.cpp */,
 				2180D38F0ED14D100050ED72 /* car.h */,
 				2180D3900ED14D100050ED72 /* glcar.cpp */,
@@ -154,6 +159,7 @@
 				215ED6A50ECDB80400E0778A /* glgame.cpp in Sources */,
 				2180D3920ED14D100050ED72 /* car.cpp in Sources */,
 				2180D3930ED14D100050ED72 /* glcar.cpp in Sources */,
+				21F0BF3F0ED54EFE00F2BB9B /* gltrail.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -163,9 +169,7 @@
 		2150E2AE0ECD687400D89C28 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ARCHS = (
-					ppc,
-				);
+				ARCHS = ppc;
 				COPY_PHASE_STRIP = NO;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_ENABLE_FIX_AND_CONTINUE = YES;

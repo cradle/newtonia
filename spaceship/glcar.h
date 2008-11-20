@@ -7,10 +7,10 @@
 class GLCar : public GLShip {
 public:
   GLCar(float x, float y);
-  void draw();
-  void step(float delta);
   
-  std::deque<std::deque<Bullet*>*> trails2;
+protected:
+  void draw_ship();
+  void draw_trails();
 };
 
 #endif

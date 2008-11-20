@@ -7,16 +7,13 @@ public:
   WrappedPoint() {};
   WrappedPoint(float x, float y) : Point(x,y) {};
   WrappedPoint(Point other) : Point(other) {};
-  void set_boundaries(Point bounds);
-  //TODO: learn inheritance on operators
+  
   void wrap(); 
-
+  
+  void set_boundaries(Point bounds);
+  
 private:  
-  //TODO: make boundaries a class/struct, rename to WrappedPoint
-  int x_min;
-  int x_max;
-  int y_min;
-  int y_max;
+  int x_min, x_max, y_min, y_max;
 };
 
 #endif

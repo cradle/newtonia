@@ -60,10 +60,11 @@ class Ship {
     Point facing;
 
 
+    Point world_size;
+
   protected:
     bool alive;
     float mass;
-    Point world_size;
 
     Point gun();
 };
