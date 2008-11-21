@@ -18,8 +18,29 @@ void draw() {
 }
 
 void keyboard(unsigned char key, int x, int y) {
-  if (key == 27) // ESC
+  static int old_x = 50;
+  static int old_y = 50;
+  static int old_width = 320;
+  static int old_height = 320;
+
+  switch (key) {
+  case 27:
     exit(0);
+    break;
+  case 'f':
+    // http://www.xmission.com/~nate/sgi/sgi-macosx.zip
+    if (glutGet(GLUT_WINDOW_WIDTH) < glutGet(GLUT_SCREEN_WIDTH)) {
+      old_x = glutGet(GLUT_WINDOW_X);
+      old_y = glutGet(GLUT_WINDOW_Y);
+      old_width = glutGet(GLUT_WINDOW_WIDTH);
+      old_height = glutGet(GLUT_WINDOW_HEIGHT);
+      glutFullScreen();
+    } else {
+      glutPositionWindow(old_x, old_y);
+      glutReshapeWindow(old_width, old_height);
+    }
+    break;
+  }
   glgame->keyboard(key, x, y);
 }
 

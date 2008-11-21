@@ -46,25 +46,5 @@ void GLStarfield::draw(Point velocity, Point viewpoint) {
     glScalef(2, 2, 1);
     glCallList(point_layer);
   }
-  glPopMatrix();  
-  
-  // for(int i = 1; i < NUM_LAYERS; i++) {
-  //   float c = 1/(i/2.0+1) + 0.5;
-  //   float x = i*5*velocity.x;
-  //   float y = i*5*velocity.y;
-  //   glPushMatrix();
-  //   glScalef(i, i, i);
-  //   glTranslatef(-i*viewpoint.x/NUM_LAYERS, -i*viewpoint.y/NUM_LAYERS, 0.0f);
-  //   for(int j = 0; j < NUM_STARS; j++) {
-  //     glBegin(GL_LINE_STRIP);
-  //     glColor4f(0,0,0,0);
-  //     glVertex2f(stars[i][j]->x-x, stars[i][j]->y-y);
-  //     glColor4f(c,c,c,c);
-  //     glVertex2f(stars[i][j]->x, stars[i][j]->y);
-  //     glColor4f(0,0,0,0);
-  //     glVertex2f(stars[i][j]->x+x, stars[i][j]->y+y);
-  //     glEnd();
-  //   }
-  //   glPopMatrix();
-  // }
+  glPopMatrix();
 }
