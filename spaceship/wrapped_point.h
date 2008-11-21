@@ -10,10 +10,12 @@ public:
   
   void wrap(); 
   
-  void set_boundaries(Point bounds);
+  static void set_boundaries(Point bounds);
   
-private:  
-  int x_min, x_max, y_min, y_max;
+  static bool cross_boundary(Point start, Point end);
+  
+private:
+  static float x_min;
+  static float x_max, y_min, y_max;
 };
-
 #endif

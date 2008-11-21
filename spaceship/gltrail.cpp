@@ -22,15 +22,17 @@ void GLTrail::split() {
 }
 
 void GLTrail::draw() {
+  Bullet* last = *trail.begin();
   deque<Bullet*>::iterator p;
   glBegin(type);
   for(p = trail.begin(); p != trail.end(); p++) {
       glColor4f(1,1,1,(*p)->aliveness());
   		glVertex2f((*p)->position.x, (*p)->position.y);
-      if((*p)->is_end()) {
+      if((*p)->is_end() || (*p != last && Bullet::cross_boundary(*p, last))) {
         glEnd();
         glBegin(type);
       }
+      last = (*p);
   }
 	glEnd();
 }
@@ -56,7 +58,7 @@ void GLTrail::add() {
     velocity = ship->facing*-0.25 + ship->velocity*0.99;
     velocity.rotate((rand() / (float)RAND_MAX) * deviation - deviation / 2.0);
     trail.push_back( 
-      new Bullet(position, velocity, ship->world_size, 2000.0)
+      new Bullet(position, velocity, 2000.0)
     );
   }
 }

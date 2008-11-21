@@ -37,11 +37,6 @@ void GLShip::step(float delta) {
   }
 }
 
-void GLShip::resize(Point world_size) {
-  world = world_size;
-  ship->set_world_size(world);
-}
-
 void GLShip::set_keys(int left, int right, int thrust, int shoot) {
   left_key = left;
   right_key = right;

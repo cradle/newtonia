@@ -71,7 +71,7 @@ bool Ship::collide_square(Bullet bullet) {
 }*/
 
 void Ship::shoot() {
-  Bullet bullet = Bullet(gun(), facing*0.5 + velocity*0.9, world_size, 10.0);
+  Bullet bullet = Bullet(gun(), facing*0.5 + velocity*0.9, 10.0);
   bullets.push_back(bullet);
 }
 
@@ -101,17 +101,6 @@ void Ship::puts() {
   cout << " Position: " << position;
   cout << " Velocity: " << velocity;
   cout << endl;
-}
-
-void Ship::set_world_size(Point size) {
-  //TODO: world should not be (-width, width), should be (0, width)
-  world_size = size;
-
-  position.set_boundaries(size);
-
-  for(vector<Bullet>::iterator b = bullets.begin(); b != bullets.end(); b++) {
-    b->set_world_size(size);
-  }
 }
 
 void Ship::step(float delta) {

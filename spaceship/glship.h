@@ -19,7 +19,6 @@ public:
   GLShip(int x, int y);
   virtual ~GLShip();
   void step(float delta);
-  void resize(Point world_size);
   virtual void input(unsigned char key, bool pressed = true);
   void set_keys(int left, int right, int up, int right);
   void draw();
@@ -30,8 +29,6 @@ public:
 protected:
   virtual void draw_ship();
   void draw_bullets();
-  
-  Point world;
 
   int thrust_key;
   int left_key;

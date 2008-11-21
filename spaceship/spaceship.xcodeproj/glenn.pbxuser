@@ -30,6 +30,22 @@
 		sourceDirectories = (
 		);
 	};
+	2150E2E30ECD6A6E00D89C28 /* bullet.cpp */ = {
+		uiCtxt = {
+			sepNavIntBoundsRect = "{{0, 0}, {744, 627}}";
+			sepNavSelRange = "{0, 0}";
+			sepNavVisRange = "{0, 670}";
+			sepNavWindowFrame = "{{1455, 421}, {803, 755}}";
+		};
+	};
+	2150E2E40ECD6A6E00D89C28 /* bullet.h */ = {
+		uiCtxt = {
+			sepNavIntBoundsRect = "{{0, 0}, {744, 627}}";
+			sepNavSelRange = "{182, 0}";
+			sepNavVisRange = "{0, 449}";
+			sepNavWindowFrame = "{{1573, 118}, {803, 755}}";
+		};
+	};
 	2150E2E50ECD6A6E00D89C28 /* glship.cpp */ = {
 		uiCtxt = {
 			sepNavIntBoundsRect = "{{0, 0}, {419, 1834}}";
@@ -129,8 +145,8 @@
 					PBXFileDataSource_Warnings_ColumnID,
 				);
 			};
-			PBXPerProjectTemplateStateSaveDate = 248865861;
-			PBXWorkspaceStateSaveDate = 248865861;
+			PBXPerProjectTemplateStateSaveDate = 248946840;
+			PBXWorkspaceStateSaveDate = 248946840;
 		};
 		sourceControlManager = 2192827A0ECD670E002D470F /* Source Control */;
 		userBuildSettings = {

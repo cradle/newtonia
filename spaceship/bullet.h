@@ -7,13 +7,14 @@
 class Bullet {
 public:
   Bullet() {};
-  Bullet(Point position, Point direction, Point world_size, float time_to_live);
-  void set_world_size(Point size);
+  Bullet(Point position, Point direction, float time_to_live);
   void step(float delta);
   bool is_alive();
   float aliveness();
   void set_end(bool value = true);
   bool is_end();
+  
+  static bool cross_boundary(Bullet * start, Bullet * end);
 
 //TODO: Friends
   WrappedPoint position;

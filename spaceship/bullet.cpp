@@ -1,11 +1,10 @@
 #include "bullet.h"
 #include "point.h"
 
-Bullet::Bullet(Point position, Point velocity, Point world_size, float ttl) {
+Bullet::Bullet(Point position, Point velocity, float ttl) {
   this->position = WrappedPoint(position);
   this->velocity = Point(velocity);
   //TODO: make width/height class variables, only need to be set once!
-  set_world_size(world_size);
   time_left = time_to_live = ttl;
   end = false;
 }
@@ -16,8 +15,9 @@ void Bullet::step(float delta) {
   position.wrap();
 }
 
-void Bullet::set_world_size(Point size) {
-  position.set_boundaries(size);
+bool Bullet::cross_boundary(Bullet* first, Bullet* other) {
+  return WrappedPoint::cross_boundary(first->position, other->position) ||
+    WrappedPoint::cross_boundary(other->position, first->position);
 }
 
 float Bullet::aliveness() {

@@ -2,6 +2,7 @@
 #include "glship.h"
 #include "glcar.h"
 #include "glstarfield.h"
+#include "wrapped_point.h"
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -21,13 +22,8 @@ GLGame::GLGame(float width, float height) : world(Point(width, height)) {
   object = new GLCar(width*3/4,height*3/4);
   object->set_keys('j','l','i','/');
   objects.push_back(object);
-
-  //TODO: use boost foreach
-  std::vector<GLShip*>::iterator o;
-  for(o = objects.begin(); o != objects.end(); o++) {
-    //TODO: find out how to use vectors better
-    (*o)->resize(world);
-  }
+  
+  WrappedPoint::set_boundaries(world);
   
   starfield = new GLStarfield(world);
 }
@@ -59,10 +55,6 @@ void GLGame::tick(void) {
   //Fix: Don't do this
   //TODO: fix this, should iterate, then iterate inside it, yay n^2
   GLShip::collide(objects[0], objects[1]);
-}
-
-void GLGame::resize(int width, int height) {
-  window = Point(width, height);
 }
 
 void GLGame::draw(void) {
@@ -144,10 +136,13 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   }
 }
 
+void GLGame::resize(float x, float y) {
+  window = Point(x, y);
+}
+
 void GLGame::init(int argc, char** argv, float width, float height) {
   glutInit(&argc, argv);
   glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
-  resize(width, height);
   glutInitWindowSize(width, height);
   glutCreateWindow("Asteroids");
 
