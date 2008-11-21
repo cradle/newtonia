@@ -7,6 +7,7 @@
 class GLCar : public GLShip {
 public:
   GLCar(float x, float y);
+  void input(unsigned char key, bool pressed);
   
 protected:
   void draw_ship();

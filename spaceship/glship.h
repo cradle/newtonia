@@ -20,7 +20,7 @@ public:
   virtual ~GLShip();
   void step(float delta);
   void resize(Point world_size);
-  void input(unsigned char key, bool pressed = true);
+  virtual void input(unsigned char key, bool pressed = true);
   void set_keys(int left, int right, int up, int right);
   void draw();
 

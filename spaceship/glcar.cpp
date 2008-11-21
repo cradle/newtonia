@@ -18,6 +18,16 @@ GLCar::GLCar(float x, float y) {
   trails.push_back(new GLTrail(ship, GLTrail::LINE, 0.0,-4.5));
 }
 
+void GLCar::input(unsigned char key, bool pressed) {
+  GLShip::input(key, pressed);
+  if (key == thrust_key && !pressed) {
+    vector<GLTrail*>::iterator t = trails.begin();
+    for(t = trails.begin(); t != trails.end(); t++) {
+      (*t)->split();
+    }
+  }
+}
+
 void GLCar::draw_ship() {
   glPushMatrix();
   glTranslatef(ship->position.x, ship->position.y, 0.0f);

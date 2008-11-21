@@ -12,11 +12,14 @@ public:
   void step(float delta);
   bool is_alive();
   float aliveness();
+  void set_end(bool value = true);
+  bool is_end();
 
 //TODO: Friends
   WrappedPoint position;
 
 private:
+  bool end;
   Point velocity;
   float time_to_live;
   float time_left;

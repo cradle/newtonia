@@ -296,7 +296,7 @@
 							<real>186</real>
 						</array>
 						<key>RubberWindowFrame</key>
-						<string>111 181 1080 697 0 0 1440 878 </string>
+						<string>118 165 1080 697 0 0 1440 878 </string>
 					</dict>
 					<key>Module</key>
 					<string>PBXSmartGroupTreeModule</string>
@@ -333,7 +333,7 @@
 								<key>Frame</key>
 								<string>{{0, 0}, {872, 0}}</string>
 								<key>RubberWindowFrame</key>
-								<string>111 181 1080 697 0 0 1440 878 </string>
+								<string>118 165 1080 697 0 0 1440 878 </string>
 							</dict>
 							<key>Module</key>
 							<string>PBXNavigatorGroup</string>
@@ -355,7 +355,7 @@
 								<key>Frame</key>
 								<string>{{0, 5}, {872, 651}}</string>
 								<key>RubberWindowFrame</key>
-								<string>111 181 1080 697 0 0 1440 878 </string>
+								<string>118 165 1080 697 0 0 1440 878 </string>
 							</dict>
 							<key>Module</key>
 							<string>XCDetailModule</string>
@@ -515,11 +515,13 @@
 	<integer>5</integer>
 	<key>WindowOrderList</key>
 	<array>
+		<string>1C78EAAD065D492600B07095</string>
+		<string>1CD10A99069EF8BA00B06720</string>
 		<string>2150E2FD0ECD832B00D89C28</string>
 		<string>/Users/glenn/hobby/cplusplus/spaceship/spaceship.xcodeproj</string>
 	</array>
 	<key>WindowString</key>
-	<string>111 181 1080 697 0 0 1440 878 </string>
+	<string>118 165 1080 697 0 0 1440 878 </string>
 	<key>WindowToolsV3</key>
 	<array>
 		<dict>
@@ -716,13 +718,13 @@
 			<key>TableOfContents</key>
 			<array>
 				<string>1CD10A99069EF8BA00B06720</string>
-				<string>21F0BF570ED54FE500F2BB9B</string>
+				<string>218BF7F10ED58C9700C9FE0C</string>
 				<string>1C162984064C10D400B95A72</string>
-				<string>21F0BF580ED54FE500F2BB9B</string>
-				<string>21F0BF590ED54FE500F2BB9B</string>
-				<string>21F0BF5A0ED54FE500F2BB9B</string>
-				<string>21F0BF5B0ED54FE500F2BB9B</string>
-				<string>21F0BF5C0ED54FE500F2BB9B</string>
+				<string>218BF7F20ED58C9700C9FE0C</string>
+				<string>218BF7F30ED58C9700C9FE0C</string>
+				<string>218BF7F40ED58C9700C9FE0C</string>
+				<string>218BF7F50ED58C9700C9FE0C</string>
+				<string>218BF7F60ED58C9700C9FE0C</string>
 			</array>
 			<key>ToolbarConfiguration</key>
 			<string>xcode.toolbar.config.debugV3</string>
@@ -884,7 +886,7 @@
 			<key>TableOfContents</key>
 			<array>
 				<string>1C78EAAD065D492600B07095</string>
-				<string>21F0BF5D0ED54FE500F2BB9B</string>
+				<string>218BF7F70ED58C9700C9FE0C</string>
 				<string>1C78EAAC065D492600B07095</string>
 			</array>
 			<key>ToolbarConfiguration</key>

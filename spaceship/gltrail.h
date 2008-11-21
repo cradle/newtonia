@@ -20,6 +20,7 @@ public:
   };
   
   GLTrail(Ship* ship, TYPE type, float deviation = 0.05, float offset = 0);
+  void split();
   void draw();
   void step(float delta);
   

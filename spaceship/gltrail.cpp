@@ -17,12 +17,20 @@ using namespace std;
 GLTrail::GLTrail(Ship* ship, TYPE type, float deviation, float offset)
  : ship(ship), type(type), deviation(deviation), offset(offset) {}
 
+void GLTrail::split() {
+  trail.back()->set_end();
+}
+
 void GLTrail::draw() {
   deque<Bullet*>::iterator p;
   glBegin(type);
   for(p = trail.begin(); p != trail.end(); p++) {
       glColor4f(1,1,1,(*p)->aliveness());
   		glVertex2f((*p)->position.x, (*p)->position.y);
+      if((*p)->is_end()) {
+        glEnd();
+        glBegin(type);
+      }
   }
 	glEnd();
 }
