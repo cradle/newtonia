@@ -43,7 +43,7 @@ void isVisible(int state) {
 }
 
 int main(int argc, char** argv) {
-  glgame = new GLGame(1600,1600);
+  glgame = new GLGame(10000,10000);
   glgame->init(argc, argv, 800, 600);
 
   glutDisplayFunc(draw);

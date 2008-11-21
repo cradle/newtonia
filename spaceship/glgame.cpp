@@ -15,17 +15,6 @@
 #include <vector>
 
 GLGame::GLGame(float width, float height) : world(Point(width, height)) {
-  GLShip* object = new GLShip(-width*3/4,-height*3/4);
-  object->set_keys('a','d','w',' ');
-  objects.push_back(object);
-
-  object = new GLCar(width*3/4,height*3/4);
-  object->set_keys('j','l','i','/');
-  objects.push_back(object);
-  
-  WrappedPoint::set_boundaries(world);
-  
-  starfield = new GLStarfield(world);
 }
 
 GLGame::~GLGame() {
@@ -157,6 +146,18 @@ void GLGame::init(int argc, char** argv, float width, float height) {
 }
 
 void GLGame::run(void) {
+  GLShip* object = new GLShip(-world.x*3/4,-world.y*3/4);
+  object->set_keys('a','d','w',' ');
+  objects.push_back(object);
+
+  object = new GLCar(world.x*3/4,world.y*3/4);
+  object->set_keys('j','l','i','/');
+  objects.push_back(object);
+  
+  WrappedPoint::set_boundaries(world);
+  
+  starfield = new GLStarfield(world);
+  
   last_tick = glutGet(GLUT_ELAPSED_TIME);
   glutMainLoop();
 }

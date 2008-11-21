@@ -28,7 +28,7 @@ void GLTrail::draw() {
   for(p = trail.begin(); p != trail.end(); p++) {
       glColor4f(1,1,1,(*p)->aliveness());
   		glVertex2f((*p)->position.x, (*p)->position.y);
-      if((*p)->is_end() || (*p != last && Bullet::cross_boundary(*p, last))) {
+      if((*p)->is_end()) {
         glEnd();
         glBegin(type);
       }

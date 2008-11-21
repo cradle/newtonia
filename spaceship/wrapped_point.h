@@ -12,8 +12,6 @@ public:
   
   static void set_boundaries(Point bounds);
   
-  static bool cross_boundary(Point start, Point end);
-  
 private:
   static float x_min;
   static float x_max, y_min, y_max;

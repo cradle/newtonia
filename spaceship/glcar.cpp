@@ -14,8 +14,8 @@ using namespace std;
 
 GLCar::GLCar(float x, float y) {
   ship = new Car(x,y);
-  trails.push_back(new GLTrail(ship, GLTrail::LINE, 0.0, 4.5));
-  trails.push_back(new GLTrail(ship, GLTrail::LINE, 0.0,-4.5));
+  trails.push_back(new GLTrail(ship, GLTrail::DOTS, 0.01, 4.5));
+  trails.push_back(new GLTrail(ship, GLTrail::DOTS, 0.01,-4.5));
 }
 
 void GLCar::input(unsigned char key, bool pressed) {

@@ -13,8 +13,6 @@ public:
   float aliveness();
   void set_end(bool value = true);
   bool is_end();
-  
-  static bool cross_boundary(Bullet * start, Bullet * end);
 
 //TODO: Friends
   WrappedPoint position;

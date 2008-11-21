@@ -3,6 +3,13 @@
 
 #include "point.h"
 
+#ifdef __APPLE__
+#include <GLUT/glut.h>
+#else
+#include <windows.h>
+#include <GL/glut.h>
+#endif
+
 class GLStarfield {
 public:
   GLStarfield(Point size);
@@ -10,9 +17,10 @@ public:
   void draw(Point velocity, Point viewpoint);
   
 private:
-  static const int NUM_LAYERS = 10;
-  static const int NUM_STARS = 100;
-  Point* stars[NUM_LAYERS][NUM_STARS];  
+  GLuint point_layer;
+  static const int NUM_REAR_LAYERS = 20;
+  static const int NUM_FRONT_LAYERS = 5;
+  static const int NUM_STARS = 3000;
 };
 
 #endif
