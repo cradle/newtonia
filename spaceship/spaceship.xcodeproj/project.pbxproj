@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		210D37990EDAD022009A0BA4 /* glenemy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 210D37970EDAD022009A0BA4 /* glenemy.cpp */; };
+		210D37A70EDAD422009A0BA4 /* enemy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 210D37A50EDAD422009A0BA4 /* enemy.cpp */; };
 		2150E2D90ECD698700D89C28 /* GLUT.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2150E2D80ECD698700D89C28 /* GLUT.framework */; };
 		2150E2DD0ECD699700D89C28 /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2150E2DC0ECD699700D89C28 /* OpenGL.framework */; };
 		2150E2EE0ECD6A6E00D89C28 /* bullet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2E30ECD6A6E00D89C28 /* bullet.cpp */; };
@@ -23,6 +25,10 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		210D37970EDAD022009A0BA4 /* glenemy.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glenemy.cpp; sourceTree = "<group>"; };
+		210D37980EDAD022009A0BA4 /* glenemy.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glenemy.h; sourceTree = "<group>"; };
+		210D37A50EDAD422009A0BA4 /* enemy.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = enemy.cpp; sourceTree = "<group>"; };
+		210D37A60EDAD422009A0BA4 /* enemy.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = enemy.h; sourceTree = "<group>"; };
 		2150E2AA0ECD687300D89C28 /* Spaceship.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Spaceship.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2150E2AD0ECD687300D89C28 /* Spaceship-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Spaceship-Info.plist"; sourceTree = "<group>"; };
 		2150E2D80ECD698700D89C28 /* GLUT.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GLUT.framework; path = /System/Library/Frameworks/GLUT.framework; sourceTree = "<absolute>"; };
@@ -74,6 +80,10 @@
 		219282740ECD670E002D470F = {
 			isa = PBXGroup;
 			children = (
+				210D37A50EDAD422009A0BA4 /* enemy.cpp */,
+				210D37A60EDAD422009A0BA4 /* enemy.h */,
+				210D37970EDAD022009A0BA4 /* glenemy.cpp */,
+				210D37980EDAD022009A0BA4 /* glenemy.h */,
 				218BF7DC0ED5645600C9FE0C /* glstarfield.cpp */,
 				218BF7DD0ED5645600C9FE0C /* glstarfield.h */,
 				21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */,
@@ -166,6 +176,8 @@
 				2180D3930ED14D100050ED72 /* glcar.cpp in Sources */,
 				21F0BF3F0ED54EFE00F2BB9B /* gltrail.cpp in Sources */,
 				218BF7DE0ED5645600C9FE0C /* glstarfield.cpp in Sources */,
+				210D37990EDAD022009A0BA4 /* glenemy.cpp in Sources */,
+				210D37A70EDAD422009A0BA4 /* enemy.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -16,10 +16,10 @@ public:
 
 //TODO: Friends
   WrappedPoint position;
+  Point velocity;
 
 private:
   bool end;
-  Point velocity;
   float time_to_live;
   float time_left;
 };

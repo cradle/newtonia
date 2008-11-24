@@ -1,5 +1,89 @@
 // !$*UTF8*$!
 {
+	210D37970EDAD022009A0BA4 /* glenemy.cpp */ = {
+		uiCtxt = {
+			sepNavIntBoundsRect = "{{0, 0}, {744, 627}}";
+			sepNavSelRange = "{640, 0}";
+			sepNavVisRange = "{0, 640}";
+			sepNavWindowFrame = "{{1400, 123}, {803, 755}}";
+		};
+	};
+	210D37A60EDAD422009A0BA4 /* enemy.h */ = {
+		uiCtxt = {
+			sepNavIntBoundsRect = "{{0, 0}, {684, 371}}";
+			sepNavSelRange = "{228, 0}";
+			sepNavVisRange = "{0, 228}";
+			sepNavWindowFrame = "{{1400, 123}, {803, 755}}";
+		};
+	};
+	210D37AA0EDAD44F009A0BA4 /* PBXTextBookmark */ = {
+		isa = PBXTextBookmark;
+		comments = "error: cannot convert 'Enemy*' to 'Ship*' in assignment";
+		fRef = 210D37970EDAD022009A0BA4 /* glenemy.cpp */;
+		rLen = 1;
+		rLoc = 14;
+		rType = 1;
+	};
+	210D37AB0EDAD450009A0BA4 /* PBXTextBookmark */ = {
+		isa = PBXTextBookmark;
+		comments = "error: expected class-name before '{' token";
+		fRef = 210D37A60EDAD422009A0BA4 /* enemy.h */;
+		rLen = 1;
+		rLoc = 5;
+		rType = 1;
+	};
+	210D37B90EDAD918009A0BA4 /* glu.h */ = {
+		isa = PBXFileReference;
+		lastKnownFileType = sourcecode.c.h;
+		path = glu.h;
+		sourceTree = "<group>";
+	};
+	210D37C00EDAD98D009A0BA4 /* PBXBookmark */ = {
+		isa = PBXBookmark;
+		fRef = 210D37B90EDAD918009A0BA4 /* glu.h */;
+	};
+	210D37D50EDADFDB009A0BA4 /* PBXTextBookmark */ = {
+		isa = PBXTextBookmark;
+		fRef = 210D37D60EDADFDB009A0BA4 /* glu.h */;
+		name = "glu.h: 1";
+		rLen = 0;
+		rLoc = 0;
+		rType = 0;
+		vrLen = 1165;
+		vrLoc = 0;
+	};
+	210D37D60EDADFDB009A0BA4 /* glu.h */ = {
+		isa = PBXFileReference;
+		name = glu.h;
+		path = /System/Library/Frameworks/OpenGL.framework/Headers/glu.h;
+		sourceTree = "<absolute>";
+		uiCtxt = {
+			sepNavIntBoundsRect = "{{0, 0}, {744, 4592}}";
+			sepNavSelRange = "{0, 0}";
+			sepNavVisRange = "{0, 1165}";
+			sepNavWindowFrame = "{{297, 123}, {803, 755}}";
+		};
+	};
+	210D37D90EDADFDB009A0BA4 /* PBXTextBookmark */ = {
+		isa = PBXTextBookmark;
+		fRef = 210D37A60EDAD422009A0BA4 /* enemy.h */;
+		name = "enemy.h: 17";
+		rLen = 0;
+		rLoc = 228;
+		rType = 0;
+		vrLen = 228;
+		vrLoc = 0;
+	};
+	210D37DA0EDADFDB009A0BA4 /* PBXTextBookmark */ = {
+		isa = PBXTextBookmark;
+		fRef = 210D37970EDAD022009A0BA4 /* glenemy.cpp */;
+		name = "glenemy.cpp: 32";
+		rLen = 0;
+		rLoc = 640;
+		rType = 0;
+		vrLen = 640;
+		vrLoc = 0;
+	};
 	2150E2A90ECD687300D89C28 /* Spaceship */ = {
 		activeExec = 0;
 		executables = (
@@ -145,8 +229,16 @@
 					PBXFileDataSource_Warnings_ColumnID,
 				);
 			};
-			PBXPerProjectTemplateStateSaveDate = 248946840;
-			PBXWorkspaceStateSaveDate = 248946840;
+			PBXPerProjectTemplateStateSaveDate = 249221128;
+			PBXWorkspaceStateSaveDate = 249221128;
+		};
+		perUserProjectItems = {
+			210D37AA0EDAD44F009A0BA4 /* PBXTextBookmark */ = 210D37AA0EDAD44F009A0BA4 /* PBXTextBookmark */;
+			210D37AB0EDAD450009A0BA4 /* PBXTextBookmark */ = 210D37AB0EDAD450009A0BA4 /* PBXTextBookmark */;
+			210D37C00EDAD98D009A0BA4 /* PBXBookmark */ = 210D37C00EDAD98D009A0BA4 /* PBXBookmark */;
+			210D37D50EDADFDB009A0BA4 /* PBXTextBookmark */ = 210D37D50EDADFDB009A0BA4 /* PBXTextBookmark */;
+			210D37D90EDADFDB009A0BA4 /* PBXTextBookmark */ = 210D37D90EDADFDB009A0BA4 /* PBXTextBookmark */;
+			210D37DA0EDADFDB009A0BA4 /* PBXTextBookmark */ = 210D37DA0EDADFDB009A0BA4 /* PBXTextBookmark */;
 		};
 		sourceControlManager = 2192827A0ECD670E002D470F /* Source Control */;
 		userBuildSettings = {

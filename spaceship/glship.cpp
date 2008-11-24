@@ -111,14 +111,17 @@ void GLShip::draw_ship() {
   glBegin(GL_LINE_LOOP);
   glCallList(body);
 	glEnd();
+	glBegin(GL_POINTS);
+  glCallList(body);
+	glEnd();
 }
 
 void GLShip::draw_bullets() {
   glColor3f(1,1,1);
-	glBegin(GL_POINTS);
-    for(vector<Bullet>::iterator bullet = ship->bullets.begin(); bullet != ship->bullets.end(); bullet++) {
-      //TODO: Work out how to make bullets draw themselves. GLBullet?
-  		glVertex3f(bullet->position.x, bullet->position.y , 0.0f);
-    }
+  glBegin(GL_POINTS);
+  for(vector<Bullet>::iterator bullet = ship->bullets.begin(); bullet != ship->bullets.end(); bullet++) {
+    //TODO: Work out how to make bullets draw themselves. GLBullet?
+		glVertex2f(bullet->position.x, bullet->position.y);
+  }
 	glEnd();
 }

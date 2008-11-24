@@ -13,7 +13,7 @@
 #include <deque>
 
 class GLTrail {
-public:
+public:  
   enum TYPE { 
     DOTS = GL_POINTS, 
     LINE = GL_LINE_STRIP

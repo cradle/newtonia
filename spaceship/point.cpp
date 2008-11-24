@@ -25,6 +25,11 @@ Point::Point(float x, float y) {
   this->y = y;
 }
 
+Point Point::normalized() {
+  float length = 1.0/magnitude();
+  return Point(x*length, y*length);
+}
+
 float Point::magnitude() {
   return sqrt(x*x + y*y);
 }
@@ -34,8 +39,7 @@ float Point::direction() {
 }
 
 void Point::rotate(float radians) {
-  //TODO: implement rotation speed, make use timestep
-  //TODO: Must remain normalised. Is lossy? (floats?)
+  //TODO: Must remain normalised
   float oldx = x;
   float oldy = y;
   x = oldx * cos(radians) - oldy * sin(radians);

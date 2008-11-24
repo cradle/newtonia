@@ -36,6 +36,7 @@ void GLStarfield::draw(Point velocity, Point viewpoint) {
   for(int i = 0; i < NUM_FRONT_LAYERS; i++) {
     glTranslatef(-viewpoint.x/2.0, -viewpoint.y/2.0, 0.0f);
     glScalef(2, 2, 1);
+    glRotatef(0.1,0,0,1.0f);
     glCallList(point_layer);
   }
   glPopMatrix();

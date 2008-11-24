@@ -29,6 +29,9 @@ private:
   int last_tick;
   int time_until_next_step;
   static const int step_size = 10;
+  
+  void draw_map();
+  void draw_world(GLShip *glship, bool primary);
 
   std::vector<GLShip*> objects;
 };
