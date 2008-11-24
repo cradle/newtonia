@@ -30,6 +30,10 @@ protected:
   virtual void draw_ship();
   void draw_bullets();
 
+  GLuint body, jets;
+  
+  float color[3];
+  
   int thrust_key;
   int left_key;
   int right_key;

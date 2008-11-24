@@ -18,6 +18,29 @@ GLShip::GLShip(int x, int y) {
   //TODO: load config from file (colours too)
   ship = new Ship(x, y);
   trails.push_back(new GLTrail(ship, GLTrail::DOTS));
+  
+  color[1] = color[2] = 0.0;
+  color[0] = 1.0;
+  
+  body = glGenLists(1);
+  glNewList(body, GL_COMPILE);
+  // glVertex2fv(point);
+	glVertex2f( 0.0f, 1.0f);
+	glVertex2f(-0.8f,-1.0f);
+	glVertex2f( 0.0f,-0.5f);
+	glVertex2f( 0.8f,-1.0f);
+  glEndList();
+
+  jets = glGenLists(1);
+  glNewList(jets, GL_COMPILE);
+  glColor3f( 1.0f, 1.0f, 1.0f );
+	glBegin(GL_QUADS);
+	glVertex2f( 0.0f,-0.5f );	
+	glVertex2f(-0.4f,-0.75f );
+	glVertex2f( 0.0f,-1.5f );	
+	glVertex2f( 0.4f,-0.75f );
+	glEnd();
+  glEndList();
 }
 
 GLShip::~GLShip() {
@@ -70,40 +93,24 @@ void GLShip::draw() {
 }
 
 void GLShip::draw_ship() {
-  glPushMatrix();
   glTranslatef(ship->position.x, ship->position.y, 0.0f);
   glScalef( ship->width, ship->height, 1.0f);
   glRotatef( ship->heading(), 0.0f, 0.0f, 1.0f);
   
-  glColor3f( 1.0f, 1.0f, 1.0f );
-	if(ship->thrusting) {
-  	glBegin(GL_QUADS);						// Drawing The Flame
-  		glVertex2f( 0.0f,-0.5f );				// Top
-  		glVertex2f(-0.4f,-0.75f );				// Left
-  		glVertex2f( 0.0f,-1.5f );				// Bottom
-  		glVertex2f( 0.4f,-0.75f );				// Right
-  	glEnd();							// Finished Drawing The Flame
-	}
-	
-  if(ship->is_alive()) {
-    glColor3f( 1.0f, 0.0f, 0.0f );
-  } else {
-    glColor3f( 1.0f, 1.0f, 1.0f );
-  }
-  //TODO: Abstract into 'shape' class/struct (or similar)
-  // eg: class Shape() {void draw() (?); type = GL_LINE_LOOP; points = [[0,0,0], [1,1,1]]}
-	glBegin(GL_LINE_LOOP);						// Drawing The Ship
-	  // TODO: Use vectors (arrays) and display lists
-	  // http://cgm.cs.mcgill.ca/~msuder/courses/557/tutorial/4.c
-	  // glVertex2fv(point);
-		glVertex2f( 0.0f, 1.0f);				// Top
-		glVertex2f(-0.8f,-1.0f);				// Bottom Left
-		glVertex2f( 0.0f,-0.5f);				// Bottom Middle
-		glVertex2f( 0.8f,-1.0f);				// Bottom Right
-	glEnd();							// Finished Drawing The Ship
 
-	
-  glPopMatrix();
+	if(ship->thrusting) {
+    glCallList(jets);
+	}
+
+  glColor3f(0,0,0);
+  glBegin(GL_POLYGON);
+  glCallList(body);
+	glEnd();
+
+  ship->is_alive() ? glColor3fv( color ) : glColor3f( 1.0f, 1.0f, 1.0f );
+  glBegin(GL_LINE_LOOP);
+  glCallList(body);
+	glEnd();
 }
 
 void GLShip::draw_bullets() {

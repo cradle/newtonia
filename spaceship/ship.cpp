@@ -71,7 +71,7 @@ bool Ship::collide_square(Bullet bullet) {
 }*/
 
 void Ship::shoot() {
-  Bullet bullet = Bullet(gun(), facing*0.5 + velocity*0.9, 10.0);
+  Bullet bullet = Bullet(gun(), facing*0.5 + velocity*0.99, 10.0);
   bullets.push_back(bullet);
 }
 
@@ -89,7 +89,7 @@ void Ship::rotate_right(bool on) {
 }
 
 Point Ship::gun() {
-  return position + (facing * height);
+  return position + (facing * height * 1.05);
 }
 
 Point Ship::tail() {
@@ -104,14 +104,13 @@ void Ship::puts() {
 }
 
 void Ship::step(float delta) {
-  // TODO: fix timestep, decouple timestep
+  for(vector<Bullet>::iterator b = bullets.begin(); b != bullets.end(); b++) {
+    b->step(delta);
+  }
+  
   facing.rotate(rotation_direction * rotation_force / mass  * delta );
   if(thrusting)
     velocity += ((facing * thrust_force) / mass) * delta;
   position += velocity * delta;
   position.wrap();
-
-  for(vector<Bullet>::iterator b = bullets.begin(); b != bullets.end(); b++) {
-    b->step(delta);
-  }
 }

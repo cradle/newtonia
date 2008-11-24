@@ -10,6 +10,8 @@ public:
   void input(unsigned char key, bool pressed);
   
 protected:
+  GLuint left_jet, right_jet;
+  
   void draw_ship();
   void draw_trails();
 };

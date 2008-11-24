@@ -14,8 +14,7 @@
 #include <iostream>
 #include <vector>
 
-GLGame::GLGame(float width, float height) : world(Point(width, height)) {
-}
+GLGame::GLGame(float width, float height) : world(Point(width, height)) {}
 
 GLGame::~GLGame() {
   //TODO: Make erase, use boost::ptr_vector? something better
@@ -31,19 +30,30 @@ GLGame::~GLGame() {
 void GLGame::tick(void) {
   int current_time = glutGet(GLUT_ELAPSED_TIME);
 
-  //TODO: Learn function pointers or some loop abstraction
-  std::vector<GLShip*>::iterator object;
-  for(object = objects.begin(); object != objects.end(); object++) {
-    //TODO: find out how to use vectors better
-    (*object)->step(current_time - last_tick);
+  time_until_next_step -= (current_time - last_tick);
+
+  while(time_until_next_step <= 0) {
+    std::vector<GLShip*>::iterator o;
+    for(o = objects.begin(); o != objects.end(); o++) {
+      (*o)->step(step_size);
+    }
+    time_until_next_step += step_size;
   }
 
   last_tick = current_time;
   glutPostRedisplay();
 
-  //Fix: Don't do this
   //TODO: fix this, should iterate, then iterate inside it, yay n^2
   GLShip::collide(objects[0], objects[1]);
+}
+
+void GLGame::draw_objects() {
+  std::vector<GLShip*>::iterator o;
+  for(o = objects.begin(); o != objects.end(); o++) {
+    glPushMatrix();
+    (*o)->draw();
+    glPopMatrix();
+  }  
 }
 
 void GLGame::draw(void) {
@@ -66,8 +76,7 @@ void GLGame::draw(void) {
   glEnd();
   glTranslatef(-objects[0]->ship->position.x, -objects[0]->ship->position.y, 0.0f);
   starfield->draw(objects[0]->ship->velocity, objects[0]->ship->position);
-  objects[0]->draw();
-  objects[1]->draw();
+  draw_objects();
 
   /* PLAYER 2 */
   glMatrixMode(GL_PROJECTION);
@@ -81,8 +90,7 @@ void GLGame::draw(void) {
   glTranslatef(-objects[1]->ship->position.x, -objects[1]->ship->position.y, 0.0f);
   //TODO: Refactor into loop
   starfield->draw(objects[1]->ship->velocity, objects[1]->ship->position);
-  objects[0]->draw();
-  objects[1]->draw();
+  draw_objects();
 
   /* VIEWPORT */
   glMatrixMode(GL_PROJECTION);
@@ -106,8 +114,7 @@ void GLGame::draw(void) {
     glVertex2i(  world.x,-world.y);
     glVertex2i( -world.x,-world.y);
   glEnd();
-  objects[0]->draw();
-  objects[1]->draw();
+  draw_objects();
 
   glutSwapBuffers();
 }
@@ -135,7 +142,7 @@ void GLGame::init(int argc, char** argv, float width, float height) {
   glutInitWindowSize(width, height);
   glutCreateWindow("Asteroids");
 
-  glPointSize(1.33f);
+  glPointSize(2.0f);
   glLineWidth(1.33f);
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -159,5 +166,6 @@ void GLGame::run(void) {
   starfield = new GLStarfield(world);
   
   last_tick = glutGet(GLUT_ELAPSED_TIME);
+  time_until_next_step = 0;
   glutMainLoop();
 }

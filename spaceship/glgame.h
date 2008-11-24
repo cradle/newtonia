@@ -18,6 +18,7 @@ public:
 
   void tick(void);
   void draw(void);
+  void draw_objects();
   void keyboard (unsigned char key, int x, int y);
   void keyboard_up (unsigned char key, int x, int y);
 
@@ -26,6 +27,8 @@ private:
   Point world;
   GLStarfield* starfield;
   int last_tick;
+  int time_until_next_step;
+  static const int step_size = 10;
 
   std::vector<GLShip*> objects;
 };

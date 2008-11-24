@@ -3,7 +3,7 @@
 #include <iostream>
 
 Car::Car(float x, float y) : Ship(x,y) {
-  thrust_force = 0.1;
+  thrust_force = 0.11;
   rotation_force = 0.2;
 }
 

@@ -9,14 +9,6 @@
 #endif
 
 GLStarfield::GLStarfield(Point size) {
-  // for(int i = 0; i < NUM_LAYERS; i++) {
-  //   for(int j = 0; j < NUM_STARS; j++) {
-  //     stars[i][j] = new Point(
-  //       (rand()%(int)size.x*2.0 - size.x), 
-  //       (rand()%(int)size.y*2.0 - size.y)
-  //     );
-  //   }
-  // }
   point_layer = glGenLists(1);
   glNewList(point_layer, GL_COMPILE);
   glBegin(GL_POINTS);

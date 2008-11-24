@@ -16,6 +16,44 @@ GLCar::GLCar(float x, float y) {
   ship = new Car(x,y);
   trails.push_back(new GLTrail(ship, GLTrail::DOTS, 0.01, 4.5));
   trails.push_back(new GLTrail(ship, GLTrail::DOTS, 0.01,-4.5));
+  
+  color[0] = color[1] = 0.0;
+  color[2] = 1.0;
+  
+  body = glGenLists(1);
+  glNewList(body, GL_COMPILE);
+  // glVertex2fv(point);
+  glVertex2f( 0.3f, 1.0f);
+  glVertex2f(-0.3f, 1.0f);
+  glVertex2f(-0.8f,-1.0f);
+  glVertex2f( 0.8f,-1.0);
+  glEndList();
+  
+  left_jet = glGenLists(1);
+  glNewList(left_jet, GL_COMPILE);
+  glColor3f( 1.0f, 1.0f, 1.0f );
+  glBegin(GL_TRIANGLES);						// Drawing The Flame
+    glVertex2f( 0.8f,-1.0f);				// Bottom
+    glVertex2f( 0.4f,-1.75f);				// Left
+    glVertex2f( 0.0f,-1.0f);				// Top
+  glEnd();		
+  glEndList();
+  
+  right_jet = glGenLists(1);
+  glNewList(right_jet, GL_COMPILE);
+  glColor3f( 1.0f, 1.0f, 1.0f );
+  glBegin(GL_TRIANGLES);
+    glVertex2f( 0.0f,-1.0f);
+    glVertex2f(-0.4f,-1.75f);
+    glVertex2f(-0.8f,-1.0f);
+  glEnd();
+  glEndList();
+  
+  jets = glGenLists(1);
+  glNewList(jets, GL_COMPILE);
+  glCallList(left_jet);
+  glCallList(right_jet);
+  glEndList();
 }
 
 void GLCar::input(unsigned char key, bool pressed) {
@@ -29,39 +67,11 @@ void GLCar::input(unsigned char key, bool pressed) {
 }
 
 void GLCar::draw_ship() {
-  glPushMatrix();
-  glTranslatef(ship->position.x, ship->position.y, 0.0f);
-  glScalef( ship->width, ship->height, 1.0f);
-  glRotatef( ship->heading(), 0.0f, 0.0f, 1.0f);
+  GLShip::draw_ship();
 
-  glColor3f( 1.0f, 1.0f, 1.0f );
-	if(ship->thrusting || ship->rotation_direction == Ship::LEFT) {
-      glBegin(GL_TRIANGLES);						// Drawing The Flame
-          glVertex3f( 0.8f,-1.0f, 0.0f);				// Bottom
-          glVertex3f( 0.4f,-1.75f, 0.0f);				// Left
-          glVertex3f( 0.0f,-1.0f, 0.0f);				// Top
-      glEnd();							// Finished Drawing The Flame
-    }
-    if(ship->thrusting || ship->rotation_direction == Ship::RIGHT) {
-      glBegin(GL_TRIANGLES);						// Drawing The Flame
-          glVertex3f( 0.0f,-1.0f, 0.0f);				// Top
-          glVertex3f(-0.4f,-1.75f, 0.0f);				// Left
-          glVertex3f(-0.8f,-1.0f, 0.0f);				// Top
-      glEnd();							// Finished Drawing The Flame
+	if(ship->rotation_direction == Ship::LEFT) {
+    glCallList(left_jet);
+  } else if (ship->rotation_direction == Ship::RIGHT) {
+    glCallList(right_jet);
 	}
-
-  if(ship->is_alive()) {
-    glColor3f( 0.0f, 0.0f, 1.0f );
-  } else {
-    glColor3f( 1.0f, 1.0f, 1.0f );
-  }
-  
-	glBegin(GL_LINE_LOOP);						// Drawing The Ship
-		glVertex3f( 0.3f, 1.0f, 0.0f);				// Top
-		glVertex3f(-0.3f, 1.0f, 0.0f);				// Top
-		glVertex3f(-0.8f,-1.0f, 0.0f);				// Bottom Left
-		glVertex3f( 0.8f,-1.0f, 0.0f);				// Bottom Right
-	glEnd();							// Finished Drawing The Ship
-
-  glPopMatrix();
 }
