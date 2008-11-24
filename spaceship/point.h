@@ -18,12 +18,17 @@ class Point {
     Point operator/(float scalar);
     Point operator+(Point other);
     Point operator-(Point other);
+    
+    operator const float* ();
 
   friend std::ostream& operator << (std::ostream& os, const Point& p);
 
-  //TODO: Make friend/private for view
-    float x;
-    float y;
+    float x() const;
+    float y() const;
+    
+  protected:
+    static const int X = 0, Y = 1;
+    float coords[2];
 };
 
 #endif /* POINT_H */

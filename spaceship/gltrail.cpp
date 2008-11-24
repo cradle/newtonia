@@ -27,7 +27,7 @@ void GLTrail::draw() {
   glBegin(type);
   for(p = trail.begin(); p != trail.end(); p++) {
       glColor4f(1,1,1,(*p)->aliveness());
-  		glVertex2f((*p)->position.x, (*p)->position.y);
+  		glVertex2fv((*p)->position);
       if((*p)->is_end()) {
         glEnd();
         glBegin(type);
@@ -54,7 +54,7 @@ void GLTrail::add() {
   Point velocity;
   Point position;
   if(ship->thrusting) {
-    position = ship->tail() + Point(ship->facing.y, -ship->facing.x) * offset;
+    position = ship->tail() + Point(ship->facing.y(), -ship->facing.x()) * offset;
     velocity = ship->facing*-0.25 + ship->velocity*0.99;
     velocity.rotate((rand() / (float)RAND_MAX) * deviation - deviation / 2.0);
     trail.push_back( 

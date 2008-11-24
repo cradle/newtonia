@@ -53,11 +53,11 @@ void GLGame::tick(void) {
   }
 }
 
-void GLGame::draw_objects() {
+void GLGame::draw_objects(bool minimap) {
   std::vector<GLShip*>::iterator o;
   for(o = objects.begin(); o != objects.end(); o++) {
     glPushMatrix();
-    (*o)->draw();
+    (*o)->draw(minimap);
     glPopMatrix();
   }  
 }
@@ -76,13 +76,13 @@ void GLGame::draw(void) {
 void GLGame::draw_world(GLShip *glship, bool primary) {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluOrtho2D(-window.x/4, window.x/4, -window.y/2, window.y/2);
+  gluOrtho2D(-window.x()/4, window.x()/4, -window.y()/2, window.y()/2);
   glMatrixMode(GL_MODELVIEW);
   
   glLoadIdentity();
-  glViewport((primary ? 0 : (window.x/2)), 0, window.x/2, window.y);
+  glViewport((primary ? 0 : (window.x()/2)), 0, window.x()/2, window.y());
 
-  glTranslatef(-glship->ship->position.x, -glship->ship->position.y, 0.0f);
+  glTranslatef(-glship->ship->position.x(), -glship->ship->position.y(), 0.0f);
   starfield->draw(glship->ship->velocity, glship->ship->position);
   draw_objects();  
 }
@@ -90,35 +90,35 @@ void GLGame::draw_world(GLShip *glship, bool primary) {
 void GLGame::draw_map() {  
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluOrtho2D(-world.x, world.x, -world.y, world.y);
+  gluOrtho2D(-world.x(), world.x(), -world.y(), world.y());
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
     /* DRAW CENTER LINE */  
-  glViewport(-window.x, -window.y, window.x, window.y);
+  glViewport(-window.x(), -window.y(), window.x(), window.y());
   glColor3f(0.5f,0.5f,0.5f);
   glBegin(GL_LINES);
-    glVertex2i(0,-window.y);
-    glVertex2i(0, window.y);
+    glVertex2i(0,-window.y());
+    glVertex2i(0, window.y());
   glEnd();
   /* MINIMAP */
-  glViewport(window.x*3/8, window.y*3/8, window.x/4, window.y/4);
+  glViewport(window.x()*3/8, window.y()*3/8, window.x()/4, window.y()/4);
   glColor3f(0.0f,0.0f,0.0f);
   /* BLACK BOX OVER MINIMAP */
   glBegin(GL_POLYGON);
-    glVertex2i( -world.x, world.y);
-    glVertex2i(  world.x, world.y);
-    glVertex2i(  world.x,-world.y);
-    glVertex2i( -world.x,-world.y);
+    glVertex2i( -world.x(), world.y());
+    glVertex2i(  world.x(), world.y());
+    glVertex2i(  world.x(),-world.y());
+    glVertex2i( -world.x(),-world.y());
   glEnd();
   /* LINE AROUND MINIMAP */
   glColor3f(0.5f,0.5f,0.5f);
   glBegin(GL_LINE_LOOP);
-    glVertex2i( -world.x, world.y);
-    glVertex2i(  world.x, world.y);
-    glVertex2i(  world.x,-world.y);
-    glVertex2i( -world.x,-world.y);
+    glVertex2i( -world.x(), world.y());
+    glVertex2i(  world.x(), world.y());
+    glVertex2i(  world.x(),-world.y());
+    glVertex2i( -world.x(),-world.y());
   glEnd();
-  draw_objects();
+  draw_objects(true);
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
@@ -156,17 +156,17 @@ void GLGame::init(int argc, char** argv, float width, float height) {
 }
 
 void GLGame::run(void) {
-  GLShip* object = new GLCar(-world.x*3/4,-world.y*3/4);
+  GLShip* object = new GLShip(-world.x()*3/4,-world.y()*3/4);
   object->set_keys('a','d','w',' ');
   objects.push_back(object);
 
-  object = new GLCar(world.x*3/4,world.y*3/4);//, objects[0]);
+  object = new GLCar(world.x()*3/4,world.y()*3/4);//, objects[0]);
   object->set_keys('j','l','i','/');
   objects.push_back(object);
   
   for(int i = 0; i < 10; i++) {
-    objects.push_back(new GLEnemy(rand()%(int)(world.x*2), rand()%(int)(world.y*2), objects[1]));
-    objects.push_back(new GLEnemy(rand()%(int)(world.x*2), rand()%(int)(world.y*2), objects[0]));
+    objects.push_back(new GLEnemy(rand()%(int)(world.x()*2), rand()%(int)(world.y()*2), objects[1]));
+    objects.push_back(new GLEnemy(rand()%(int)(world.x()*2), rand()%(int)(world.y()*2), objects[0]));
   }
   
   WrappedPoint::set_boundaries(world);

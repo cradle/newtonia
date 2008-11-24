@@ -21,7 +21,7 @@ public:
   void step(float delta);
   virtual void input(unsigned char key, bool pressed = true);
   void set_keys(int left, int right, int up, int right);
-  void draw();
+  void draw(bool minimap = false);
 
   static void collide(GLShip* first, GLShip* second);
   Ship *ship;

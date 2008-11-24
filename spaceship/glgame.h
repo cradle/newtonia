@@ -18,7 +18,7 @@ public:
 
   void tick(void);
   void draw(void);
-  void draw_objects();
+  void draw_objects(bool minimap = false);
   void keyboard (unsigned char key, int x, int y);
   void keyboard_up (unsigned char key, int x, int y);
 

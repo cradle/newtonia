@@ -81,22 +81,22 @@ void GLShip::input(unsigned char key, bool pressed) {
   }
 }
 
-void GLShip::draw() {
+void GLShip::draw(bool minimap) {
   //First try it with line strips, there may be a (very) slight performance increase. Also disable all unnecessary modes like lighting, blending etc.
-  //Second, place everything in a display list & use that. I've never noticed a big increase worth writing home about with this method either though.
   //Last, try it using compiled vertex buffers or even better, hardware supported ones. This is the best performance gain you'll get.  
-  draw_bullets();
-  for(vector<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
-    (*i)->draw();
+  if(!minimap) {
+    draw_bullets();
+    for(vector<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
+      (*i)->draw();
+    }
   }
   draw_ship();
 }
 
 void GLShip::draw_ship() {
-  glTranslatef(ship->position.x, ship->position.y, 0.0f);
+  glTranslatef(ship->position.x(), ship->position.y(), 0.0f);
   glScalef( ship->width, ship->height, 1.0f);
   glRotatef( ship->heading(), 0.0f, 0.0f, 1.0f);
-  
 
 	if(ship->thrusting) {
     glCallList(jets);
@@ -121,7 +121,7 @@ void GLShip::draw_bullets() {
   glBegin(GL_POINTS);
   for(vector<Bullet>::iterator bullet = ship->bullets.begin(); bullet != ship->bullets.end(); bullet++) {
     //TODO: Work out how to make bullets draw themselves. GLBullet?
-		glVertex2f(bullet->position.x, bullet->position.y);
+		glVertex2fv(bullet->position);
   }
 	glEnd();
 }
