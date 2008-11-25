@@ -37,6 +37,10 @@ Point::operator const float*() {
   return coords;
 }
 
+Point Point::perpendicular() {
+  return Point(y(), -x());
+}
+
 Point Point::normalized() {
   float length = 1.0/magnitude();
   return Point(x()*length, y()*length);

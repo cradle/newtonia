@@ -9,6 +9,8 @@ Ship::Ship(float x, float y) {
   width = height = radius = 10.0;
   thrusting = false;
   thrust_force = 0.02;
+  reversing = false;
+  reverse_force = -0.01;
   position = WrappedPoint(x, y);
   facing = Point(0, 1);
   velocity = Point(0, 0);
@@ -30,6 +32,10 @@ bool Ship::is_alive() {
 
 void Ship::thrust(bool on) {
   thrusting = on;
+}
+
+void Ship::reverse(bool on) {
+  reversing = on;
 }
 
 void Ship::collide(Ship* first, Ship* second) {
@@ -111,6 +117,8 @@ void Ship::step(float delta) {
   facing.rotate(rotation_direction * rotation_force / mass  * delta );
   if(thrusting)
     velocity += ((facing * thrust_force) / mass) * delta;
+  if(reversing)
+    velocity += ((facing * reverse_force) / mass) * delta;
   position += velocity * delta;
   position.wrap();
 }

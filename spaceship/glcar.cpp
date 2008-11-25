@@ -14,8 +14,8 @@ using namespace std;
 
 GLCar::GLCar(float x, float y) {
   ship = new Car(x,y);
-  trails.push_back(new GLTrail(ship, GLTrail::DOTS, 0.01, 4.5));
-  trails.push_back(new GLTrail(ship, GLTrail::DOTS, 0.01,-4.5));
+  trails.push_back(new GLTrail(ship, 0.01, 4.5));
+  trails.push_back(new GLTrail(ship, 0.01,-4.5));
   
   color[0] = color[1] = 0.0;
   color[2] = 1.0;
@@ -54,16 +54,6 @@ GLCar::GLCar(float x, float y) {
   glCallList(left_jet);
   glCallList(right_jet);
   glEndList();
-}
-
-void GLCar::input(unsigned char key, bool pressed) {
-  GLShip::input(key, pressed);
-  if (key == thrust_key && !pressed) {
-    vector<GLTrail*>::iterator t = trails.begin();
-    for(t = trails.begin(); t != trails.end(); t++) {
-      (*t)->split();
-    }
-  }
 }
 
 void GLCar::draw_ship() {

@@ -13,13 +13,9 @@
 #include <deque>
 
 class GLTrail {
-public:  
-  enum TYPE { 
-    DOTS = GL_POINTS, 
-    LINE = GL_LINE_STRIP
-  };
+public: 
   
-  GLTrail(Ship* ship, TYPE type, float deviation = 0.05, float offset = 0);
+  GLTrail(Ship* ship, float deviation = 0.05, float offset = 0, float speed = 0.25);
   void split();
   void draw();
   void step(float delta);
@@ -29,7 +25,7 @@ private:
   
   float deviation;
   float offset;
-  TYPE type;
+  float speed;
   Ship* ship;
   
   std::deque<Bullet*> trail;

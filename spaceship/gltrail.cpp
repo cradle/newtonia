@@ -14,25 +14,16 @@
 
 using namespace std;
 
-GLTrail::GLTrail(Ship* ship, TYPE type, float deviation, float offset)
- : ship(ship), type(type), deviation(deviation), offset(offset) {}
-
-void GLTrail::split() {
-  trail.back()->set_end();
-}
+GLTrail::GLTrail(Ship* ship, float deviation, float offset, float speed)
+ : ship(ship), deviation(deviation), offset(offset), speed(speed) {}
 
 void GLTrail::draw() {
   Bullet* last = *trail.begin();
   deque<Bullet*>::iterator p;
-  glBegin(type);
+  glBegin(GL_POINTS);
   for(p = trail.begin(); p != trail.end(); p++) {
       glColor4f(1,1,1,(*p)->aliveness());
   		glVertex2fv((*p)->position);
-      if((*p)->is_end()) {
-        glEnd();
-        glBegin(type);
-      }
-      last = (*p);
   }
 	glEnd();
 }
@@ -47,18 +38,18 @@ void GLTrail::step(float delta) {
       t++;
     }
   }
-  add();
+  if(ship->thrusting) {
+    add();
+  }
 }
 
 void GLTrail::add() {
   Point velocity;
   Point position;
-  if(ship->thrusting) {
-    position = ship->tail() + Point(ship->facing.y(), -ship->facing.x()) * offset;
-    velocity = ship->facing*-0.25 + ship->velocity*0.99;
-    velocity.rotate((rand() / (float)RAND_MAX) * deviation - deviation / 2.0);
-    trail.push_back( 
-      new Bullet(position, velocity, 2000.0)
-    );
-  }
+  position = ship->tail() + ship->facing.perpendicular() * offset;
+  velocity = ship->facing*-1.0*speed + ship->velocity;
+  velocity.rotate((rand() / (float)RAND_MAX) * deviation - deviation / 2.0);
+  trail.push_back( 
+    new Bullet(position, velocity, 2000.0)
+  );
 }

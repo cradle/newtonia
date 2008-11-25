@@ -157,11 +157,11 @@ void GLGame::init(int argc, char** argv, float width, float height) {
 
 void GLGame::run(void) {
   GLShip* object = new GLShip(-world.x()*3/4,-world.y()*3/4);
-  object->set_keys('a','d','w',' ');
+  object->set_keys('a','d','w',' ','s');
   objects.push_back(object);
 
   object = new GLCar(world.x()*3/4,world.y()*3/4);//, objects[0]);
-  object->set_keys('j','l','i','/');
+  object->set_keys('j','l','i','/','k');
   objects.push_back(object);
   
   for(int i = 0; i < 10; i++) {

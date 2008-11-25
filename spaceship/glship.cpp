@@ -17,7 +17,9 @@ using namespace std;
 GLShip::GLShip(int x, int y) {
   //TODO: load config from file (colours too)
   ship = new Ship(x, y);
-  trails.push_back(new GLTrail(ship, GLTrail::DOTS));
+  trails.push_back(new GLTrail(ship));
+  trails.push_back(new GLTrail(ship, 0.5,-8));
+  trails.push_back(new GLTrail(ship, 0.5, 8));
   
   color[1] = color[2] = 0.0;
   color[0] = 1.0;
@@ -41,6 +43,17 @@ GLShip::GLShip(int x, int y) {
 	glVertex2f( 0.4f,-0.75f );
 	glEnd();
   glEndList();
+  
+  repulsors = glGenLists(1);
+  glNewList(repulsors, GL_COMPILE);
+  glColor3f( 1.0f, 1.0f, 1.0f );
+	glBegin(GL_QUADS);
+	glVertex2f( 0.3f,  0.3f );	
+	glVertex2f( 0.6f,  0.9f );
+	glVertex2f( 0.9f,  0.9f );	
+	glVertex2f( 0.75f, 0.3f );
+	glEnd();
+  glEndList();
 }
 
 GLShip::~GLShip() {
@@ -60,11 +73,12 @@ void GLShip::step(float delta) {
   }
 }
 
-void GLShip::set_keys(int left, int right, int thrust, int shoot) {
+void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse) {
   left_key = left;
   right_key = right;
   shoot_key = shoot;
   thrust_key = thrust;
+  reverse_key = reverse;
 }
 
 void GLShip::input(unsigned char key, bool pressed) {
@@ -76,6 +90,8 @@ void GLShip::input(unsigned char key, bool pressed) {
     ship->rotate_right(pressed);
   } else if (key == thrust_key) {
     ship->thrust(pressed);
+  } else if (key == reverse_key) {
+    ship->reverse(pressed);
   } else if (key == shoot_key && pressed) {
     ship->shoot();
   }
@@ -101,7 +117,14 @@ void GLShip::draw_ship() {
 	if(ship->thrusting) {
     glCallList(jets);
 	}
-
+	if(ship->reversing) {
+    glPushMatrix();
+    glCallList(repulsors);
+    glRotatef(180, 0, 1, 0);
+    glCallList(repulsors);
+    glPopMatrix();
+	}
+	
   glColor3f(0,0,0);
   glBegin(GL_POLYGON);
   glCallList(body);

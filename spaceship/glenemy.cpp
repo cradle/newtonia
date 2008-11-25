@@ -13,7 +13,7 @@ using namespace std;
 
 GLEnemy::GLEnemy(float x, float y, GLShip* target) {
   ship = new Enemy(x,y, target->ship);
-  trails.push_back(new GLTrail(ship, GLTrail::DOTS, 0.3, 0.5));
+  trails.push_back(new GLTrail(ship, 0.3));
   
   color[0] = color[2] = 0.0;
   color[1] = 1.0;

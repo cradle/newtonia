@@ -10,6 +10,7 @@ class Point {
 
     void rotate(float radians);
     Point normalized();
+    Point perpendicular();
     float direction();
     float magnitude();
 

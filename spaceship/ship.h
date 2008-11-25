@@ -16,10 +16,12 @@ class Ship {
     void rotate_left(bool on = true);
     void rotate_right(bool on = true);
     void thrust(bool on = true);
+    void reverse(bool on = true);
     void shoot();
 
     // TODO: make 'friend' with some sort of VIEW
     bool thrusting;
+    bool reversing;
     WrappedPoint position;
     float width, height, radius;
     float heading();
@@ -53,6 +55,7 @@ class Ship {
 
     // Linear
     float thrust_force;
+    float reverse_force;
     Point velocity;
 
     // Angular

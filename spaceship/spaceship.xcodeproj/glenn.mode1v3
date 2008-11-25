@@ -202,46 +202,6 @@
 			<key>Content</key>
 			<dict>
 				<key>PBXProjectModuleGUID</key>
-				<string>219EFF230EDAF223004154E9</string>
-				<key>PBXProjectModuleLabel</key>
-				<string>enemy.cpp</string>
-				<key>PBXSplitModuleInNavigatorKey</key>
-				<dict>
-					<key>Split0</key>
-					<dict>
-						<key>PBXProjectModuleGUID</key>
-						<string>219EFF240EDAF223004154E9</string>
-						<key>PBXProjectModuleLabel</key>
-						<string>enemy.cpp</string>
-						<key>_historyCapacity</key>
-						<integer>0</integer>
-						<key>bookmark</key>
-						<string>219EFF2E0EDAF454004154E9</string>
-						<key>history</key>
-						<array>
-							<string>219EFF200EDAF221004154E9</string>
-						</array>
-					</dict>
-					<key>SplitCount</key>
-					<string>1</string>
-				</dict>
-				<key>StatusBarVisibility</key>
-				<true/>
-			</dict>
-			<key>Geometry</key>
-			<dict>
-				<key>Frame</key>
-				<string>{{0, 20}, {803, 658}}</string>
-				<key>PBXModuleWindowStatusBarHidden2</key>
-				<false/>
-				<key>RubberWindowFrame</key>
-				<string>1400 179 803 699 0 0 1440 878 </string>
-			</dict>
-		</dict>
-		<dict>
-			<key>Content</key>
-			<dict>
-				<key>PBXProjectModuleGUID</key>
 				<string>210D37D30EDADFDB009A0BA4</string>
 				<key>PBXProjectModuleLabel</key>
 				<string>glu.h</string>
@@ -256,10 +216,10 @@
 						<key>_historyCapacity</key>
 						<integer>0</integer>
 						<key>bookmark</key>
-						<string>219EFF2F0EDAF454004154E9</string>
+						<string>21BCF16C0EDBE0100034F231</string>
 						<key>history</key>
 						<array>
-							<string>210D37D50EDADFDB009A0BA4</string>
+							<string>219EFF2F0EDAF454004154E9</string>
 						</array>
 					</dict>
 					<key>SplitCount</key>
@@ -296,10 +256,10 @@
 						<key>_historyCapacity</key>
 						<integer>0</integer>
 						<key>bookmark</key>
-						<string>219EFF310EDAF454004154E9</string>
+						<string>21BCF16E0EDBE0100034F231</string>
 						<key>history</key>
 						<array>
-							<string>210D37D90EDADFDB009A0BA4</string>
+							<string>219EFF310EDAF454004154E9</string>
 						</array>
 					</dict>
 					<key>SplitCount</key>
@@ -315,7 +275,7 @@
 				<key>PBXModuleWindowStatusBarHidden2</key>
 				<false/>
 				<key>RubberWindowFrame</key>
-				<string>1400 179 803 699 0 0 1440 878 </string>
+				<string>3080 482 803 699 1440 131 1680 1050 </string>
 			</dict>
 		</dict>
 		<dict>
@@ -336,10 +296,10 @@
 						<key>_historyCapacity</key>
 						<integer>0</integer>
 						<key>bookmark</key>
-						<string>219EFF320EDAF454004154E9</string>
+						<string>21BCF16F0EDBE0100034F231</string>
 						<key>history</key>
 						<array>
-							<string>210D37DA0EDADFDB009A0BA4</string>
+							<string>219EFF320EDAF454004154E9</string>
 						</array>
 					</dict>
 					<key>SplitCount</key>
@@ -355,7 +315,7 @@
 				<key>PBXModuleWindowStatusBarHidden2</key>
 				<false/>
 				<key>RubberWindowFrame</key>
-				<string>1400 179 803 699 0 0 1440 878 </string>
+				<string>3080 482 803 699 1440 131 1680 1050 </string>
 			</dict>
 		</dict>
 	</array>
@@ -392,6 +352,8 @@
 			<key>Layout</key>
 			<array>
 				<dict>
+					<key>BecomeActive</key>
+					<true/>
 					<key>ContentConfiguration</key>
 					<dict>
 						<key>PBXBottomSmartGroupGIDs</key>
@@ -504,8 +466,6 @@
 							<string>0pt</string>
 						</dict>
 						<dict>
-							<key>BecomeActive</key>
-							<true/>
 							<key>ContentConfiguration</key>
 							<dict>
 								<key>PBXProjectModuleGUID</key>
@@ -542,9 +502,9 @@
 			</array>
 			<key>TableOfContents</key>
 			<array>
-				<string>219EFF210EDAF223004154E9</string>
+				<string>21BCF1660EDBDFFF0034F231</string>
 				<string>1CE0B1FE06471DED0097A5F4</string>
-				<string>219EFF220EDAF223004154E9</string>
+				<string>21BCF1670EDBDFFF0034F231</string>
 				<string>1CE0B20306471E060097A5F4</string>
 				<string>1CE0B20506471E060097A5F4</string>
 			</array>
@@ -683,7 +643,6 @@
 		<string>210D37D30EDADFDB009A0BA4</string>
 		<string>/Users/glenn/hobby/cplusplus/spaceship/spaceship.xcodeproj</string>
 		<string>2150E2FD0ECD832B00D89C28</string>
-		<string>219EFF230EDAF223004154E9</string>
 	</array>
 	<key>WindowString</key>
 	<string>55 168 1080 697 0 0 1440 878 </string>
@@ -707,7 +666,7 @@
 								<key>PBXProjectModuleGUID</key>
 								<string>1CD0528F0623707200166675</string>
 								<key>PBXProjectModuleLabel</key>
-								<string>enemy.cpp</string>
+								<string></string>
 								<key>StatusBarVisibility</key>
 								<true/>
 							</dict>
@@ -765,7 +724,7 @@
 			<key>TableOfContents</key>
 			<array>
 				<string>2150E2FD0ECD832B00D89C28</string>
-				<string>219EFF290EDAF223004154E9</string>
+				<string>21BCF16B0EDBDFFF0034F231</string>
 				<string>1CD0528F0623707200166675</string>
 				<string>XCMainBuildResultsModuleGUID</string>
 			</array>

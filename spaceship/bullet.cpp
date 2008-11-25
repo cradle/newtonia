@@ -5,7 +5,6 @@ Bullet::Bullet(Point position, Point velocity, float ttl) {
   this->position = WrappedPoint(position);
   this->velocity = Point(velocity);
   time_left = time_to_live = ttl;
-  end = false;
 }
 
 void Bullet::step(float delta) {
@@ -16,14 +15,6 @@ void Bullet::step(float delta) {
 
 float Bullet::aliveness() {
   return time_left / time_to_live;
-}
-
-void Bullet::set_end(bool value) {
-  end = value;
-}
-
-bool Bullet::is_end() {
-  return end;
 }
 
 bool Bullet::is_alive() {

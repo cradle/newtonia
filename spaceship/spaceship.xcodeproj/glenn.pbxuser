@@ -3,17 +3,17 @@
 	210D37970EDAD022009A0BA4 /* glenemy.cpp */ = {
 		uiCtxt = {
 			sepNavIntBoundsRect = "{{0, 0}, {744, 627}}";
-			sepNavSelRange = "{640, 0}";
-			sepNavVisRange = "{0, 640}";
-			sepNavWindowFrame = "{{1400, 123}, {803, 755}}";
+			sepNavSelRange = "{620, 0}";
+			sepNavVisRange = "{0, 620}";
+			sepNavWindowFrame = "{{3080, 426}, {803, 755}}";
 		};
 	};
 	210D37A50EDAD422009A0BA4 /* enemy.cpp */ = {
 		uiCtxt = {
-			sepNavIntBoundsRect = "{{0, 0}, {684, 406}}";
+			sepNavIntBoundsRect = "{{0, 0}, {744, 627}}";
 			sepNavSelRange = "{816, 0}";
-			sepNavVisRange = "{0, 805}";
-			sepNavWindowFrame = "{{1400, 123}, {803, 755}}";
+			sepNavVisRange = "{0, 816}";
+			sepNavWindowFrame = "{{365, 17}, {803, 755}}";
 		};
 	};
 	210D37A60EDAD422009A0BA4 /* enemy.h */ = {
@@ -21,51 +21,8 @@
 			sepNavIntBoundsRect = "{{0, 0}, {744, 627}}";
 			sepNavSelRange = "{228, 0}";
 			sepNavVisRange = "{0, 228}";
-			sepNavWindowFrame = "{{1400, 123}, {803, 755}}";
+			sepNavWindowFrame = "{{3080, 426}, {803, 755}}";
 		};
-	};
-	210D37D50EDADFDB009A0BA4 /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		fRef = 210D37D60EDADFDB009A0BA4 /* glu.h */;
-		name = "glu.h: 1";
-		rLen = 0;
-		rLoc = 0;
-		rType = 0;
-		vrLen = 1165;
-		vrLoc = 0;
-	};
-	210D37D60EDADFDB009A0BA4 /* glu.h */ = {
-		isa = PBXFileReference;
-		lastKnownFileType = sourcecode.c.h;
-		name = glu.h;
-		path = /System/Library/Frameworks/OpenGL.framework/Headers/glu.h;
-		sourceTree = "<absolute>";
-		uiCtxt = {
-			sepNavIntBoundsRect = "{{0, 0}, {744, 4592}}";
-			sepNavSelRange = "{0, 0}";
-			sepNavVisRange = "{0, 1165}";
-			sepNavWindowFrame = "{{297, 123}, {803, 755}}";
-		};
-	};
-	210D37D90EDADFDB009A0BA4 /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		fRef = 210D37A60EDAD422009A0BA4 /* enemy.h */;
-		name = "enemy.h: 17";
-		rLen = 0;
-		rLoc = 228;
-		rType = 0;
-		vrLen = 228;
-		vrLoc = 0;
-	};
-	210D37DA0EDADFDB009A0BA4 /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		fRef = 210D37970EDAD022009A0BA4 /* glenemy.cpp */;
-		name = "glenemy.cpp: 32";
-		rLen = 0;
-		rLoc = 640;
-		rType = 0;
-		vrLen = 640;
-		vrLoc = 0;
 	};
 	2150E2A90ECD687300D89C28 /* Spaceship */ = {
 		activeExec = 0;
@@ -212,18 +169,16 @@
 					PBXFileDataSource_Warnings_ColumnID,
 				);
 			};
-			PBXPerProjectTemplateStateSaveDate = 249229833;
-			PBXWorkspaceStateSaveDate = 249229833;
+			PBXPerProjectTemplateStateSaveDate = 249290733;
+			PBXWorkspaceStateSaveDate = 249290733;
 		};
 		perUserProjectItems = {
-			210D37D50EDADFDB009A0BA4 /* PBXTextBookmark */ = 210D37D50EDADFDB009A0BA4 /* PBXTextBookmark */;
-			210D37D90EDADFDB009A0BA4 /* PBXTextBookmark */ = 210D37D90EDADFDB009A0BA4 /* PBXTextBookmark */;
-			210D37DA0EDADFDB009A0BA4 /* PBXTextBookmark */ = 210D37DA0EDADFDB009A0BA4 /* PBXTextBookmark */;
-			219EFF200EDAF221004154E9 /* PBXTextBookmark */ = 219EFF200EDAF221004154E9 /* PBXTextBookmark */;
-			219EFF2E0EDAF454004154E9 /* PBXTextBookmark */ = 219EFF2E0EDAF454004154E9 /* PBXTextBookmark */;
 			219EFF2F0EDAF454004154E9 /* PBXTextBookmark */ = 219EFF2F0EDAF454004154E9 /* PBXTextBookmark */;
 			219EFF310EDAF454004154E9 /* PBXTextBookmark */ = 219EFF310EDAF454004154E9 /* PBXTextBookmark */;
 			219EFF320EDAF454004154E9 /* PBXTextBookmark */ = 219EFF320EDAF454004154E9 /* PBXTextBookmark */;
+			21BCF16C0EDBE0100034F231 /* PBXTextBookmark */ = 21BCF16C0EDBE0100034F231 /* PBXTextBookmark */;
+			21BCF16E0EDBE0100034F231 /* PBXTextBookmark */ = 21BCF16E0EDBE0100034F231 /* PBXTextBookmark */;
+			21BCF16F0EDBE0100034F231 /* PBXTextBookmark */ = 21BCF16F0EDBE0100034F231 /* PBXTextBookmark */;
 		};
 		sourceControlManager = 2192827A0ECD670E002D470F /* Source Control */;
 		userBuildSettings = {
@@ -240,24 +195,6 @@
 		isa = PBXCodeSenseManager;
 		indexTemplatePath = "";
 	};
-	219EFF200EDAF221004154E9 /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		comments = "error: 'class Point' has no member named 'mangitude'";
-		fRef = 210D37A50EDAD422009A0BA4 /* enemy.cpp */;
-		rLen = 1;
-		rLoc = 30;
-		rType = 1;
-	};
-	219EFF2E0EDAF454004154E9 /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		fRef = 210D37A50EDAD422009A0BA4 /* enemy.cpp */;
-		name = "enemy.cpp: 30";
-		rLen = 0;
-		rLoc = 816;
-		rType = 0;
-		vrLen = 816;
-		vrLoc = 0;
-	};
 	219EFF2F0EDAF454004154E9 /* PBXTextBookmark */ = {
 		isa = PBXTextBookmark;
 		fRef = 219EFF300EDAF454004154E9 /* glu.h */;
@@ -270,9 +207,16 @@
 	};
 	219EFF300EDAF454004154E9 /* glu.h */ = {
 		isa = PBXFileReference;
+		lastKnownFileType = sourcecode.c.h;
 		name = glu.h;
 		path = /System/Library/Frameworks/OpenGL.framework/Headers/glu.h;
 		sourceTree = "<absolute>";
+		uiCtxt = {
+			sepNavIntBoundsRect = "{{0, 0}, {744, 4592}}";
+			sepNavSelRange = "{0, 0}";
+			sepNavVisRange = "{0, 1165}";
+			sepNavWindowFrame = "{{297, 123}, {803, 755}}";
+		};
 	};
 	219EFF310EDAF454004154E9 /* PBXTextBookmark */ = {
 		isa = PBXTextBookmark;
@@ -289,9 +233,45 @@
 		fRef = 210D37970EDAD022009A0BA4 /* glenemy.cpp */;
 		name = "glenemy.cpp: 32";
 		rLen = 0;
-		rLoc = 640;
+		rLoc = 620;
 		rType = 0;
-		vrLen = 640;
+		vrLen = 620;
+		vrLoc = 0;
+	};
+	21BCF16C0EDBE0100034F231 /* PBXTextBookmark */ = {
+		isa = PBXTextBookmark;
+		fRef = 21BCF16D0EDBE0100034F231 /* glu.h */;
+		name = "glu.h: 1";
+		rLen = 0;
+		rLoc = 0;
+		rType = 0;
+		vrLen = 1165;
+		vrLoc = 0;
+	};
+	21BCF16D0EDBE0100034F231 /* glu.h */ = {
+		isa = PBXFileReference;
+		name = glu.h;
+		path = /System/Library/Frameworks/OpenGL.framework/Headers/glu.h;
+		sourceTree = "<absolute>";
+	};
+	21BCF16E0EDBE0100034F231 /* PBXTextBookmark */ = {
+		isa = PBXTextBookmark;
+		fRef = 210D37A60EDAD422009A0BA4 /* enemy.h */;
+		name = "enemy.h: 17";
+		rLen = 0;
+		rLoc = 228;
+		rType = 0;
+		vrLen = 228;
+		vrLoc = 0;
+	};
+	21BCF16F0EDBE0100034F231 /* PBXTextBookmark */ = {
+		isa = PBXTextBookmark;
+		fRef = 210D37970EDAD022009A0BA4 /* glenemy.cpp */;
+		name = "glenemy.cpp: 32";
+		rLen = 0;
+		rLoc = 620;
+		rType = 0;
+		vrLen = 620;
 		vrLoc = 0;
 	};
 	21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */ = {
