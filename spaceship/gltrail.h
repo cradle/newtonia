@@ -14,8 +14,14 @@
 
 class GLTrail {
 public: 
+  enum TYPE {
+    THRUSTING = 1,
+    REVERSING = 2,
+    LEFT = 4,
+    RIGHT = 8
+  };
   
-  GLTrail(Ship* ship, float deviation = 0.05, float offset = 0, float speed = 0.25);
+  GLTrail(Ship* ship, float deviation = 0.05, Point offset = Point(), float speed = 0.25, int type = THRUSTING);
   void split();
   void draw();
   void step(float delta);
@@ -23,8 +29,9 @@ public:
 private:
   void add();
   
+  int type;
   float deviation;
-  float offset;
+  Point offset;
   float speed;
   Ship* ship;
   

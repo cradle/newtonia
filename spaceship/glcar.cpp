@@ -14,8 +14,8 @@ using namespace std;
 
 GLCar::GLCar(float x, float y) {
   ship = new Car(x,y);
-  trails.push_back(new GLTrail(ship, 0.01, 4.5));
-  trails.push_back(new GLTrail(ship, 0.01,-4.5));
+  trails.push_back(new GLTrail(ship, 0.01, Point( 4.5,0)));
+  trails.push_back(new GLTrail(ship, 0.01, Point(-4.5,0)));
   
   color[0] = color[1] = 0.0;
   color[2] = 1.0;

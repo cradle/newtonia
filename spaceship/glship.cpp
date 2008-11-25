@@ -18,8 +18,8 @@ GLShip::GLShip(int x, int y) {
   //TODO: load config from file (colours too)
   ship = new Ship(x, y);
   trails.push_back(new GLTrail(ship));
-  trails.push_back(new GLTrail(ship, 0.5,-8));
-  trails.push_back(new GLTrail(ship, 0.5, 8));
+  trails.push_back(new GLTrail(ship, 0.5,Point(-8,13),-0.5, GLTrail::REVERSING | GLTrail::RIGHT));
+  trails.push_back(new GLTrail(ship, 0.5,Point( 8,13),-0.5, GLTrail::REVERSING | GLTrail::LEFT));
   
   color[1] = color[2] = 0.0;
   color[0] = 1.0;
