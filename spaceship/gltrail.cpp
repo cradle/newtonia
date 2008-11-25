@@ -14,8 +14,8 @@
 
 using namespace std;
 
-GLTrail::GLTrail(Ship* ship, float deviation, Point offset, float speed, int type)
- : ship(ship), deviation(deviation), offset(offset), speed(speed), type(type) {}
+GLTrail::GLTrail(Ship* ship, float deviation, Point offset, float speed, float rotation, int type)
+ : ship(ship), deviation(deviation), offset(offset), speed(speed), rotation(rotation), type(type) {}
 
 void GLTrail::draw() {
   Bullet* last = *trail.begin();
@@ -49,9 +49,12 @@ void GLTrail::step(float delta) {
 void GLTrail::add() {
   Point velocity;
   Point position;
+  Point direction;
   //TODO: cross product or something?
   position = ship->tail() + ship->facing * offset.y() + ship->facing.perpendicular() * offset.x();
-  velocity = ship->facing*-1.0*speed + ship->velocity;
+  direction = ship->facing*-1.0;
+  direction.rotate(rotation);
+  velocity = direction*speed + ship->velocity;
   velocity.rotate((rand() / (float)RAND_MAX) * deviation - deviation / 2.0);
   trail.push_back( 
     new Bullet(position, velocity, 2000.0)

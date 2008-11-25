@@ -21,7 +21,12 @@ public:
     RIGHT = 8
   };
   
-  GLTrail(Ship* ship, float deviation = 0.05, Point offset = Point(), float speed = 0.25, int type = THRUSTING);
+  GLTrail(Ship* ship, 
+          float deviation = 0.05, 
+          Point offset = Point(), 
+          float speed = 0.25, 
+          float rotation = 0.0,
+          int type = THRUSTING);
   void split();
   void draw();
   void step(float delta);
@@ -31,6 +36,7 @@ private:
   
   int type;
   float deviation;
+  float rotation;
   Point offset;
   float speed;
   Ship* ship;
