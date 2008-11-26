@@ -90,7 +90,7 @@ void GLGame::draw(void) {
 void GLGame::draw_world(GLShip *glship, bool primary) {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluOrtho2D(-window.x()/2, window.x()/2, -window.y(), window.y());
+  gluOrtho2D(-window.x()/4, window.x()/4, -window.y()/2, window.y()/2);
   glMatrixMode(GL_MODELVIEW);
 
   glLoadIdentity();
@@ -195,13 +195,9 @@ void GLGame::run(void) {
     objects.push_back(new GLEnemy(rand()%(int)(world.x()*2), rand()%(int)(world.y()*2), objects[1]));
     objects.push_back(new GLEnemy(rand()%(int)(world.x()*2), rand()%(int)(world.y()*2), objects[0]));
   }
-<<<<<<< HEAD:spaceship/glgame.cpp
-
-=======
   
   station = new GLStation();
   
->>>>>>> Tweaked lots of variables. temporary commit for rebase.:spaceship/glgame.cpp
   WrappedPoint::set_boundaries(world);
 
   starfield = new GLStarfield(world);

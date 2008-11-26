@@ -68,11 +68,11 @@ void Ship::collide(Ship* other) {
     if(collide(*mine)) {
       kill();
       score -= 1;
-      bullet = mines.erase(mine);
+      mine = mines.erase(mine);
     } else if(other->collide(*mine)) {
       other->kill();
       score += 1;
-      bullet = mines.erase(mine);
+      mine = mines.erase(mine);
     } else {
       mine++;
     }
@@ -131,13 +131,21 @@ void Ship::step(float delta) {
   std::vector<Bullet>::iterator bullet = bullets.begin();
   while(bullet != bullets.end()) {
     bullet->step(delta);
-    bullet = bullet->is_alive() ? bullet+1 : bullets.erase(bullet);
+    if(!bullet->is_alive()) {
+      bullet = bullets.erase(bullet);
+    } else {
+      bullet++;
+    }
   }
   
   std::vector<Bullet>::iterator mine = mines.begin();
   while(mine != mines.end()) {
     mine->step(delta);
-    mine = mine->is_alive() ? mine+1 : mines.erase(mine);
+    if(!mine->is_alive()) {
+      mine = mines.erase(mine);
+    } else {
+      mine++;
+    }
   }
   
   facing.rotate(rotation_direction * rotation_force / mass  * delta );
