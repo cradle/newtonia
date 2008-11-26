@@ -4,6 +4,7 @@
 #include "glship.h"
 #include "point.h"
 #include "glstarfield.h"
+#include "glstation.h"
 #include <vector>
 
 class GLGame {
@@ -26,6 +27,7 @@ private:
   Point window;
   Point world;
   GLStarfield* starfield;
+  GLStation* station;
   int last_tick;
   int time_until_next_step;
   static const int step_size = 10;

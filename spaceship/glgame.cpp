@@ -4,6 +4,7 @@
 #include "glcar.h"
 #include "glstarfield.h"
 #include "wrapped_point.h"
+#include "glstation.h"
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -60,6 +61,7 @@ void GLGame::draw_objects(bool minimap) {
     (*o)->draw(minimap);
     glPopMatrix();
   }
+  station->draw();  
 }
 
 void GLGame::draw(void) {
@@ -88,7 +90,7 @@ void GLGame::draw(void) {
 void GLGame::draw_world(GLShip *glship, bool primary) {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluOrtho2D(-window.x()/4, window.x()/4, -window.y()/2, window.y()/2);
+  gluOrtho2D(-window.x()/2, window.x()/2, -window.y(), window.y());
   glMatrixMode(GL_MODELVIEW);
 
   glLoadIdentity();
@@ -182,18 +184,24 @@ void GLGame::init(int argc, char** argv, float width, float height) {
 
 void GLGame::run(void) {
   GLShip* object = new GLShip(-world.x()*3/4,-world.y()*3/4);
-  object->set_keys('a','d','w',' ','s');
+  object->set_keys('a','d','w',' ','s','x');
   objects.push_back(object);
 
   object = new GLCar(world.x()*3/4,world.y()*3/4);//, objects[0]);
-  object->set_keys('j','l','i','/','k');
+  object->set_keys('j','l','i','/','k',',');
   objects.push_back(object);
 
   for(int i = 0; i < 10; i++) {
     objects.push_back(new GLEnemy(rand()%(int)(world.x()*2), rand()%(int)(world.y()*2), objects[1]));
     objects.push_back(new GLEnemy(rand()%(int)(world.x()*2), rand()%(int)(world.y()*2), objects[0]));
   }
+<<<<<<< HEAD:spaceship/glgame.cpp
 
+=======
+  
+  station = new GLStation();
+  
+>>>>>>> Tweaked lots of variables. temporary commit for rebase.:spaceship/glgame.cpp
   WrappedPoint::set_boundaries(world);
 
   starfield = new GLStarfield(world);

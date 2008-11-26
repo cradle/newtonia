@@ -62,6 +62,21 @@ void Ship::collide(Ship* other) {
       bullet++;
     }
   }
+  
+  std::vector<Bullet>::iterator mine = mines.begin();
+  while(mine != mines.end()) {
+    if(collide(*mine)) {
+      kill();
+      score -= 1;
+      bullet = mines.erase(mine);
+    } else if(other->collide(*mine)) {
+      other->kill();
+      score += 1;
+      bullet = mines.erase(mine);
+    } else {
+      mine++;
+    }
+  }
 }
 
 bool Ship::collide(Bullet bullet) { // Circle based collision
@@ -77,8 +92,11 @@ bool Ship::collide_square(Bullet bullet) {
 }*/
 
 void Ship::shoot() {
-  Bullet bullet = Bullet(gun(), facing*0.5 + velocity*0.99, 10.0);
-  bullets.push_back(bullet);
+  bullets.push_back(Bullet(gun(), facing*0.5 + velocity*0.99, 2000.0));
+}
+
+void Ship::lay_mine() {
+  mines.push_back(Bullet(tail(),  facing*-0.1 + velocity*0.95, 30000.0));
 }
 
 float Ship::heading() {
@@ -110,15 +128,26 @@ void Ship::puts() {
 }
 
 void Ship::step(float delta) {
-  for(vector<Bullet>::iterator b = bullets.begin(); b != bullets.end(); b++) {
-    b->step(delta);
+  std::vector<Bullet>::iterator bullet = bullets.begin();
+  while(bullet != bullets.end()) {
+    bullet->step(delta);
+    bullet = bullet->is_alive() ? bullet+1 : bullets.erase(bullet);
+  }
+  
+  std::vector<Bullet>::iterator mine = mines.begin();
+  while(mine != mines.end()) {
+    mine->step(delta);
+    mine = mine->is_alive() ? mine+1 : mines.erase(mine);
   }
   
   facing.rotate(rotation_direction * rotation_force / mass  * delta );
+  acceleration = Point(0,0);
   if(thrusting)
-    velocity += ((facing * thrust_force) / mass) * delta;
+    acceleration += ((facing * thrust_force) / mass);
   if(reversing)
-    velocity += ((facing * reverse_force) / mass) * delta;
+    acceleration += ((facing * reverse_force) / mass);
+    
+  velocity += acceleration * delta;
   position += velocity * delta;
   position.wrap();
 }

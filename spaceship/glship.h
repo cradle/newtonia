@@ -20,7 +20,7 @@ public:
   virtual ~GLShip();
   void step(float delta);
   virtual void input(unsigned char key, bool pressed = true);
-  void set_keys(int left, int right, int up, int right, int reverse);
+  void set_keys(int left, int right, int up, int right, int reverse, int mine);
   void draw(bool minimap = false);
 
   static void collide(GLShip* first, GLShip* second);
@@ -29,6 +29,7 @@ public:
 protected:
   virtual void draw_ship();
   void draw_bullets();
+  void draw_mines();
 
   GLuint body, jets, repulsors;
   
@@ -39,6 +40,7 @@ protected:
   int right_key;
   int shoot_key;
   int reverse_key;
+  int mine_key;
   
   std::vector<GLTrail*> trails;
 };

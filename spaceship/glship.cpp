@@ -73,12 +73,13 @@ void GLShip::step(float delta) {
   }
 }
 
-void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse) {
+void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, int mine) {
   left_key = left;
   right_key = right;
   shoot_key = shoot;
   thrust_key = thrust;
   reverse_key = reverse;
+  mine_key = mine;
 }
 
 void GLShip::input(unsigned char key, bool pressed) {
@@ -94,6 +95,8 @@ void GLShip::input(unsigned char key, bool pressed) {
     ship->reverse(pressed);
   } else if (key == shoot_key && pressed) {
     ship->shoot();
+  } else if (key == mine_key && pressed) {
+    ship->lay_mine();
   }
 }
 
@@ -105,6 +108,7 @@ void GLShip::draw(bool minimap) {
     for(vector<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
       (*i)->draw();
     }
+    draw_mines();
   }
   draw_ship();
 }
@@ -147,4 +151,26 @@ void GLShip::draw_bullets() {
 		glVertex2fv(bullet->position);
   }
 	glEnd();
+}
+
+void GLShip::draw_mines() {
+  float size = 10.0;
+  for(vector<Bullet>::iterator m = ship->mines.begin(); m != ship->mines.end(); m++) {
+    glBegin(GL_LINE_STRIP);
+    glColor4f(0,0,0,0);
+  	glVertex2fv(m->position + Point(0,-size));
+    glColor3fv(color);
+  	glVertex2fv(m->position);
+    glColor4f(0,0,0,0);
+  	glVertex2fv(m->position + Point(0,size));
+  	glEnd();
+    glBegin(GL_LINE_STRIP);
+    glColor4f(0,0,0,0);
+  	glVertex2fv(m->position + Point(-size,0));
+    glColor3fv(color);
+  	glVertex2fv(m->position);
+    glColor4f(0,0,0,0);
+  	glVertex2fv(m->position + Point(size,0));
+  	glEnd();
+  }
 }

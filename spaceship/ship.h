@@ -18,6 +18,7 @@ class Ship {
     void thrust(bool on = true);
     void reverse(bool on = true);
     void shoot();
+    void lay_mine();
 
     // TODO: make 'friend' with some sort of VIEW
     bool thrusting;
@@ -36,6 +37,7 @@ class Ship {
     // Projectiles
     //TODO: friends
     std::vector<Bullet> bullets;
+    std::vector<Bullet> mines;
 
     static void collide(Ship* first, Ship* second);
 
@@ -57,6 +59,7 @@ class Ship {
     float thrust_force;
     float reverse_force;
     Point velocity;
+    Point acceleration;
 
     // Angular
     float rotation_force;

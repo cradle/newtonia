@@ -202,6 +202,46 @@
 			<key>Content</key>
 			<dict>
 				<key>PBXProjectModuleGUID</key>
+				<string>21696BD60EDD29AC006997A8</string>
+				<key>PBXProjectModuleLabel</key>
+				<string>glgame.h</string>
+				<key>PBXSplitModuleInNavigatorKey</key>
+				<dict>
+					<key>Split0</key>
+					<dict>
+						<key>PBXProjectModuleGUID</key>
+						<string>21696BD70EDD29AC006997A8</string>
+						<key>PBXProjectModuleLabel</key>
+						<string>glgame.h</string>
+						<key>_historyCapacity</key>
+						<integer>0</integer>
+						<key>bookmark</key>
+						<string>21696BD80EDD29AC006997A8</string>
+						<key>history</key>
+						<array>
+							<string>21696BCF0EDD29A1006997A8</string>
+						</array>
+					</dict>
+					<key>SplitCount</key>
+					<string>1</string>
+				</dict>
+				<key>StatusBarVisibility</key>
+				<true/>
+			</dict>
+			<key>Geometry</key>
+			<dict>
+				<key>Frame</key>
+				<string>{{0, 20}, {1091, 835}}</string>
+				<key>PBXModuleWindowStatusBarHidden2</key>
+				<false/>
+				<key>RubberWindowFrame</key>
+				<string>1478 279 1091 876 1440 131 1680 1050 </string>
+			</dict>
+		</dict>
+		<dict>
+			<key>Content</key>
+			<dict>
+				<key>PBXProjectModuleGUID</key>
 				<string>210D37D30EDADFDB009A0BA4</string>
 				<key>PBXProjectModuleLabel</key>
 				<string>glu.h</string>
@@ -216,10 +256,10 @@
 						<key>_historyCapacity</key>
 						<integer>0</integer>
 						<key>bookmark</key>
-						<string>21BCF16C0EDBE0100034F231</string>
+						<string>21696BD90EDD29AC006997A8</string>
 						<key>history</key>
 						<array>
-							<string>219EFF2F0EDAF454004154E9</string>
+							<string>21BCF16C0EDBE0100034F231</string>
 						</array>
 					</dict>
 					<key>SplitCount</key>
@@ -242,46 +282,6 @@
 			<key>Content</key>
 			<dict>
 				<key>PBXProjectModuleGUID</key>
-				<string>210D37D70EDADFDB009A0BA4</string>
-				<key>PBXProjectModuleLabel</key>
-				<string>enemy.h</string>
-				<key>PBXSplitModuleInNavigatorKey</key>
-				<dict>
-					<key>Split0</key>
-					<dict>
-						<key>PBXProjectModuleGUID</key>
-						<string>210D37D80EDADFDB009A0BA4</string>
-						<key>PBXProjectModuleLabel</key>
-						<string>enemy.h</string>
-						<key>_historyCapacity</key>
-						<integer>0</integer>
-						<key>bookmark</key>
-						<string>21BCF16E0EDBE0100034F231</string>
-						<key>history</key>
-						<array>
-							<string>219EFF310EDAF454004154E9</string>
-						</array>
-					</dict>
-					<key>SplitCount</key>
-					<string>1</string>
-				</dict>
-				<key>StatusBarVisibility</key>
-				<true/>
-			</dict>
-			<key>Geometry</key>
-			<dict>
-				<key>Frame</key>
-				<string>{{0, 20}, {803, 658}}</string>
-				<key>PBXModuleWindowStatusBarHidden2</key>
-				<false/>
-				<key>RubberWindowFrame</key>
-				<string>3080 482 803 699 1440 131 1680 1050 </string>
-			</dict>
-		</dict>
-		<dict>
-			<key>Content</key>
-			<dict>
-				<key>PBXProjectModuleGUID</key>
 				<string>210D379E0EDAD036009A0BA4</string>
 				<key>PBXProjectModuleLabel</key>
 				<string>glenemy.cpp</string>
@@ -296,10 +296,10 @@
 						<key>_historyCapacity</key>
 						<integer>0</integer>
 						<key>bookmark</key>
-						<string>21BCF16F0EDBE0100034F231</string>
+						<string>21696BDB0EDD29AC006997A8</string>
 						<key>history</key>
 						<array>
-							<string>219EFF320EDAF454004154E9</string>
+							<string>21BCF16F0EDBE0100034F231</string>
 						</array>
 					</dict>
 					<key>SplitCount</key>
@@ -352,8 +352,6 @@
 			<key>Layout</key>
 			<array>
 				<dict>
-					<key>BecomeActive</key>
-					<true/>
 					<key>ContentConfiguration</key>
 					<dict>
 						<key>PBXBottomSmartGroupGIDs</key>
@@ -402,7 +400,7 @@
 								</array>
 							</array>
 							<key>PBXSmartGroupTreeModuleOutlineStateVisibleRectKey</key>
-							<string>{{0, 76}, {186, 638}}</string>
+							<string>{{0, 0}, {186, 638}}</string>
 						</dict>
 						<key>PBXTopSmartGroupGIDs</key>
 						<array/>
@@ -466,6 +464,8 @@
 							<string>0pt</string>
 						</dict>
 						<dict>
+							<key>BecomeActive</key>
+							<true/>
 							<key>ContentConfiguration</key>
 							<dict>
 								<key>PBXProjectModuleGUID</key>
@@ -502,9 +502,9 @@
 			</array>
 			<key>TableOfContents</key>
 			<array>
-				<string>21BCF1660EDBDFFF0034F231</string>
+				<string>21696BD40EDD29AC006997A8</string>
 				<string>1CE0B1FE06471DED0097A5F4</string>
-				<string>21BCF1670EDBDFFF0034F231</string>
+				<string>21696BD50EDD29AC006997A8</string>
 				<string>1CE0B20306471E060097A5F4</string>
 				<string>1CE0B20506471E060097A5F4</string>
 			</array>
@@ -638,11 +638,11 @@
 	<integer>5</integer>
 	<key>WindowOrderList</key>
 	<array>
+		<string>2150E2FD0ECD832B00D89C28</string>
 		<string>210D379E0EDAD036009A0BA4</string>
-		<string>210D37D70EDADFDB009A0BA4</string>
 		<string>210D37D30EDADFDB009A0BA4</string>
 		<string>/Users/glenn/hobby/cplusplus/spaceship/spaceship.xcodeproj</string>
-		<string>2150E2FD0ECD832B00D89C28</string>
+		<string>21696BD60EDD29AC006997A8</string>
 	</array>
 	<key>WindowString</key>
 	<string>55 168 1080 697 0 0 1440 878 </string>
@@ -666,7 +666,7 @@
 								<key>PBXProjectModuleGUID</key>
 								<string>1CD0528F0623707200166675</string>
 								<key>PBXProjectModuleLabel</key>
-								<string></string>
+								<string>glgame.h</string>
 								<key>StatusBarVisibility</key>
 								<true/>
 							</dict>
@@ -724,7 +724,7 @@
 			<key>TableOfContents</key>
 			<array>
 				<string>2150E2FD0ECD832B00D89C28</string>
-				<string>21BCF16B0EDBDFFF0034F231</string>
+				<string>21696BD30EDD29AB006997A8</string>
 				<string>1CD0528F0623707200166675</string>
 				<string>XCMainBuildResultsModuleGUID</string>
 			</array>
@@ -735,7 +735,7 @@
 			<key>WindowToolGUID</key>
 			<string>2150E2FD0ECD832B00D89C28</string>
 			<key>WindowToolIsVisible</key>
-			<true/>
+			<false/>
 		</dict>
 		<dict>
 			<key>FirstTimeWindowDisplayed</key>

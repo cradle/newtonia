@@ -5,8 +5,8 @@
 
 Enemy::Enemy(float x, float y, Ship* target) : Car(x,y) {
   this->target = target;
-  thrust_force = 0.14;
-  rotation_force = 0.3;
+  thrust_force = 0.145;
+  rotation_force = 0.375;
   thrust(true);
 }
 
