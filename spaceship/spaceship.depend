@@ -10,10 +10,10 @@
 1227689254 c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\point.h
 	<iostream>
 
-1227689254 c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\wrapped_point.h
+1227694481 c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\wrapped_point.h
 	"point.h"
 
-1227692876 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\glgame.cpp
+1227695765 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\glgame.cpp
 	"glgame.h"
 	"glship.h"
 	"glenemy.h"
@@ -26,7 +26,7 @@
 	<iostream>
 	<vector>
 
-1227689254 c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\glgame.h
+1227695777 c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\glgame.h
 	"glship.h"
 	"point.h"
 	"glstarfield.h"
@@ -299,7 +299,7 @@
 	"point.h"
 	"bullet.h"
 
-1227689254 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\wrapped_point.cpp
+1227695596 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\wrapped_point.cpp
 	"wrapped_point.h"
 	"point.h"
 	<iostream>
@@ -316,7 +316,7 @@
 	<GL/glut.h>
 	<iostream>
 
-1227689254 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\enemy.cpp
+1227695426 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\enemy.cpp
 	"enemy.h"
 	<iostream>
 	"point.h"

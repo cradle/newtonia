@@ -7,11 +7,12 @@ public:
   WrappedPoint() {};
   WrappedPoint(float x, float y) : Point(x,y) {};
   WrappedPoint(Point other) : Point(other) {};
-  
-  void wrap(); 
-  
+
+  Point closest_to(Point other);
+  void wrap();
+
   static void set_boundaries(Point bounds);
-  
+
 private:
   static float x_min;
   static float x_max, y_min, y_max;

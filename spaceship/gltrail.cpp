@@ -33,6 +33,7 @@ void GLTrail::step(float delta) {
   while(t != trail.end()) {
     (*t)->step(delta);
     if(!(*t)->is_alive()) {
+      delete *t;
       t = trail.erase(t);
     } else {
       t++;
@@ -56,7 +57,7 @@ void GLTrail::add() {
   direction.rotate(rotation);
   velocity = direction*speed + ship->velocity;
   velocity.rotate((rand() / (float)RAND_MAX) * deviation - deviation / 2.0);
-  trail.push_back( 
+  trail.push_back(
     new Bullet(position, velocity, 2000.0)
   );
 }

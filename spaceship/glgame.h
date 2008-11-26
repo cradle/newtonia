@@ -29,7 +29,9 @@ private:
   int last_tick;
   int time_until_next_step;
   static const int step_size = 10;
-  
+
+  unsigned int gameworld;
+
   void draw_map();
   void draw_world(GLShip *glship, bool primary);
 

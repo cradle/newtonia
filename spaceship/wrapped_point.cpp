@@ -19,6 +19,19 @@ void WrappedPoint::wrap() {
     coords[Y] -= y_max - y_min;
 }
 
+Point WrappedPoint::closest_to(Point other) {
+  Point closest = *this, current;
+  for(int x = -1; x <= 1; x++) {
+    for(int y = -1; y <= 1; y++) {
+      current = *this + Point((x_max-x_min)*x, (y_max-y_min)*y);
+      if((other - current).magnitude() < (other - closest).magnitude()) {
+        closest = current;
+      }
+    }
+  }
+  return closest;
+}
+
 void WrappedPoint::set_boundaries(Point bounds) {
   x_min = -bounds.x();
   x_max = bounds.x();

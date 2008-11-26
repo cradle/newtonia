@@ -1,17 +1,23 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
 <CodeBlocks_layout_file>
-	<ActiveTarget name="Debug" />
-	<File name="glcar.cpp" open="1" top="0" tabpos="6">
-		<Cursor position="565" topLine="34" />
+	<ActiveTarget name="Release" />
+	<File name="enemy.cpp" open="1" top="0" tabpos="9">
+		<Cursor position="803" topLine="3" />
 	</File>
-	<File name="glgame.cpp" open="1" top="1" tabpos="1">
-		<Cursor position="2638" topLine="85" />
+	<File name="glcar.cpp" open="1" top="0" tabpos="6">
+		<Cursor position="213" topLine="2" />
+	</File>
+	<File name="glenemy.cpp" open="0" top="0" tabpos="0">
+		<Cursor position="298" topLine="0" />
+	</File>
+	<File name="glgame.cpp" open="1" top="0" tabpos="1">
+		<Cursor position="5369" topLine="177" />
 	</File>
 	<File name="glgame.h" open="1" top="0" tabpos="3">
-		<Cursor position="225" topLine="0" />
+		<Cursor position="440" topLine="11" />
 	</File>
-	<File name="glship.cpp" open="1" top="0" tabpos="4">
-		<Cursor position="1419" topLine="79" />
+	<File name="glship.cpp" open="1" top="1" tabpos="4">
+		<Cursor position="2186" topLine="10" />
 	</File>
 	<File name="glship.h" open="1" top="0" tabpos="5">
 		<Cursor position="390" topLine="3" />
@@ -19,10 +25,22 @@
 	<File name="glstarfield.cpp" open="1" top="0" tabpos="7">
 		<Cursor position="730" topLine="4" />
 	</File>
-	<File name="gltrail.h" open="1" top="0" tabpos="9">
+	<File name="gltrail.cpp" open="1" top="0" tabpos="13">
+		<Cursor position="841" topLine="23" />
+	</File>
+	<File name="gltrail.h" open="1" top="0" tabpos="8">
 		<Cursor position="690" topLine="21" />
 	</File>
 	<File name="glut.cpp" open="1" top="0" tabpos="2">
 		<Cursor position="623" topLine="33" />
+	</File>
+	<File name="point.cpp" open="1" top="0" tabpos="10">
+		<Cursor position="57" topLine="18" />
+	</File>
+	<File name="wrapped_point.cpp" open="1" top="0" tabpos="12">
+		<Cursor position="778" topLine="14" />
+	</File>
+	<File name="wrapped_point.h" open="1" top="0" tabpos="11">
+		<Cursor position="335" topLine="0" />
 	</File>
 </CodeBlocks_layout_file>

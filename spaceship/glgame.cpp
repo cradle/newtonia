@@ -95,7 +95,6 @@ void GLGame::draw_world(GLShip *glship, bool primary) {
   glViewport((primary ? 0 : (window.x()/2)), 0, window.x()/2, window.y());
 
   // Store the rendered world in a display list
-  unsigned int gameworld = glGenLists(1);
   glNewList(gameworld, GL_COMPILE);
     glTranslatef(-glship->ship->position.x(), -glship->ship->position.y(), 0.0f);
     starfield->draw(glship->ship->velocity, glship->ship->position);
@@ -198,6 +197,8 @@ void GLGame::run(void) {
   WrappedPoint::set_boundaries(world);
 
   starfield = new GLStarfield(world);
+
+  gameworld = glGenLists(1);
 
   last_tick = glutGet(GLUT_ELAPSED_TIME);
   time_until_next_step = 0;
