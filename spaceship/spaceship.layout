@@ -5,16 +5,22 @@
 		<Cursor position="565" topLine="34" />
 	</File>
 	<File name="glgame.cpp" open="1" top="1" tabpos="1">
-		<Cursor position="1642" topLine="81" />
+		<Cursor position="2638" topLine="85" />
 	</File>
 	<File name="glgame.h" open="1" top="0" tabpos="3">
 		<Cursor position="225" topLine="0" />
 	</File>
 	<File name="glship.cpp" open="1" top="0" tabpos="4">
-		<Cursor position="1419" topLine="58" />
+		<Cursor position="1419" topLine="79" />
 	</File>
 	<File name="glship.h" open="1" top="0" tabpos="5">
 		<Cursor position="390" topLine="3" />
+	</File>
+	<File name="glstarfield.cpp" open="1" top="0" tabpos="7">
+		<Cursor position="730" topLine="4" />
+	</File>
+	<File name="gltrail.h" open="1" top="0" tabpos="9">
+		<Cursor position="690" topLine="21" />
 	</File>
 	<File name="glut.cpp" open="1" top="0" tabpos="2">
 		<Cursor position="623" topLine="33" />
