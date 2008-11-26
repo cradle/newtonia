@@ -354,7 +354,7 @@
 	<windows.h>
 	<GL/glut.h>
 
-1227689254 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\gltrail.cpp
+1227696040 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\gltrail.cpp
 	"gltrail.h"
 	"ship.h"
 	"bullet.h"

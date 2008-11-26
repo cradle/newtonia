@@ -62,6 +62,9 @@
 		<Unit filename="gltrail.cpp" />
 		<Unit filename="gltrail.h" />
 		<Unit filename="glut.cpp" />
+		<Unit filename="icon.rc">
+			<Option compilerVar="WINDRES" />
+		</Unit>
 		<Unit filename="point.cpp" />
 		<Unit filename="point.h" />
 		<Unit filename="ship.cpp" />

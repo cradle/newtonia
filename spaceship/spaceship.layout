@@ -16,8 +16,8 @@
 	<File name="glgame.h" open="1" top="0" tabpos="3">
 		<Cursor position="440" topLine="11" />
 	</File>
-	<File name="glship.cpp" open="1" top="1" tabpos="4">
-		<Cursor position="2186" topLine="10" />
+	<File name="glship.cpp" open="1" top="0" tabpos="4">
+		<Cursor position="801" topLine="10" />
 	</File>
 	<File name="glship.h" open="1" top="0" tabpos="5">
 		<Cursor position="390" topLine="3" />
@@ -33,6 +33,9 @@
 	</File>
 	<File name="glut.cpp" open="1" top="0" tabpos="2">
 		<Cursor position="623" topLine="33" />
+	</File>
+	<File name="icon.rc" open="1" top="1" tabpos="14">
+		<Cursor position="31" topLine="0" />
 	</File>
 	<File name="point.cpp" open="1" top="0" tabpos="10">
 		<Cursor position="57" topLine="18" />
