@@ -59,12 +59,24 @@ void GLGame::draw_objects(bool minimap) {
     glPushMatrix();
     (*o)->draw(minimap);
     glPopMatrix();
-  }  
+  }
 }
 
 void GLGame::draw(void) {
   glClear(GL_COLOR_BUFFER_BIT);
   //TODO: tesselate drawing
+
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  gluOrtho2D(-window.x()/2, window.x()/2, -window.y(), window.y());
+  glMatrixMode(GL_MODELVIEW);
+  glLoadIdentity();
+  glViewport(0, 0, window.x(), window.y());
+  glBegin(GL_LINES);
+  glColor3f(1,1,1);
+  glVertex2f(0,-window.y());
+  glVertex2f(0,window.y());
+  glEnd();
 
   draw_world(objects[0], true);
   draw_world(objects[1], false);
@@ -78,22 +90,36 @@ void GLGame::draw_world(GLShip *glship, bool primary) {
   glLoadIdentity();
   gluOrtho2D(-window.x()/4, window.x()/4, -window.y()/2, window.y()/2);
   glMatrixMode(GL_MODELVIEW);
-  
+
   glLoadIdentity();
   glViewport((primary ? 0 : (window.x()/2)), 0, window.x()/2, window.y());
 
-  glTranslatef(-glship->ship->position.x(), -glship->ship->position.y(), 0.0f);
-  starfield->draw(glship->ship->velocity, glship->ship->position);
-  draw_objects();  
+  // Store the rendered world in a display list
+  unsigned int gameworld = glGenLists(1);
+  glNewList(gameworld, GL_COMPILE);
+    glTranslatef(-glship->ship->position.x(), -glship->ship->position.y(), 0.0f);
+    starfield->draw(glship->ship->velocity, glship->ship->position);
+    draw_objects();
+  glEndList();
+
+  // Draw the world tesselated
+  for(int x = -1; x <= 1; x++) {
+    for(int y = -1; y <= 1; y++) {
+      glPushMatrix();
+      glTranslatef(world.x()*2*x, world.y()*2*y, 0.0f);
+      glCallList(gameworld);
+      glPopMatrix();
+    }
+  }
 }
 
-void GLGame::draw_map() {  
+void GLGame::draw_map() {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   gluOrtho2D(-world.x(), world.x(), -world.y(), world.y());
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
-    /* DRAW CENTER LINE */  
+    /* DRAW CENTER LINE */
   glViewport(-window.x(), -window.y(), window.x(), window.y());
   glColor3f(0.5f,0.5f,0.5f);
   glBegin(GL_LINES);
@@ -163,16 +189,16 @@ void GLGame::run(void) {
   object = new GLCar(world.x()*3/4,world.y()*3/4);//, objects[0]);
   object->set_keys('j','l','i','/','k');
   objects.push_back(object);
-  
+
   for(int i = 0; i < 10; i++) {
     objects.push_back(new GLEnemy(rand()%(int)(world.x()*2), rand()%(int)(world.y()*2), objects[1]));
     objects.push_back(new GLEnemy(rand()%(int)(world.x()*2), rand()%(int)(world.y()*2), objects[0]));
   }
-  
+
   WrappedPoint::set_boundaries(world);
-  
+
   starfield = new GLStarfield(world);
-  
+
   last_tick = glutGet(GLUT_ELAPSED_TIME);
   time_until_next_step = 0;
   glutMainLoop();
