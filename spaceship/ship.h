@@ -53,7 +53,7 @@ class Ship {
     Rotation rotation_direction;
     
     
-    Point tail();
+    WrappedPoint tail();
 
     // Linear
     float thrust_force;
@@ -72,7 +72,7 @@ class Ship {
     bool alive;
     float mass;
 
-    Point gun();
+    WrappedPoint gun();
 };
 
 #endif

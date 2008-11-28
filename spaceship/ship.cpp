@@ -112,12 +112,12 @@ void Ship::rotate_right(bool on) {
   rotation_direction = on ? RIGHT : NONE;
 }
 
-Point Ship::gun() {
-  return position + (facing * height * 1.05);
+WrappedPoint Ship::gun() {
+  return WrappedPoint(position + (facing * height * 1.05));
 }
 
-Point Ship::tail() {
-  return position - (facing * 15.0);
+WrappedPoint Ship::tail() {
+  return WrappedPoint(position - (facing * 15.0));
 }
 
 void Ship::puts() {
