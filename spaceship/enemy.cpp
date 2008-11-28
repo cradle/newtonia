@@ -17,12 +17,8 @@ void Enemy::step(float delta) {
 
     // bool close = (target->position - position).magnitude() < 100.0;
     float angle = (heading() - (position.closest_to(target->position) - target->position).normalized().direction());
-    if (angle >= 0 && angle < 90 || angle >= -360 && angle < -270) {
+    if (angle >= 0 && angle < 180 || angle >= -360 && angle < -180) {
       rotate_left(true);
-    } else if (angle >= 90 && angle < 180 || angle > -270 && angle <= -180) {
-      rotate_left(true);
-    } else if (angle >= 180 && angle <= 270){
-      rotate_right(true);
     } else {
       rotate_right(true);
     }
