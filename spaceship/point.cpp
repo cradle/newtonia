@@ -47,7 +47,11 @@ Point Point::normalized() {
 }
 
 float Point::magnitude() {
-  return sqrt(x()*x() + y()*y());
+  return sqrt(magnitude_squared());
+}
+
+float Point::magnitude_squared() {
+  return x()*x() + y()*y();
 }
 
 float Point::direction() {

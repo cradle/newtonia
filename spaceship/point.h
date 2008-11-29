@@ -13,6 +13,7 @@ class Point {
     Point perpendicular();
     float direction();
     float magnitude();
+    float magnitude_squared();
 
     void operator+=(const Point other);
     Point operator*(float scalar);

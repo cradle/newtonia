@@ -24,7 +24,7 @@ Point WrappedPoint::closest_to(Point other) {
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
       current = *this + Point((x_max-x_min)*x, (y_max-y_min)*y);
-      if((other - current).magnitude() < (other - closest).magnitude()) {
+      if((other - current).magnitude_squared() < (other - closest).magnitude_squared()) {
         closest = current;
       }
     }
