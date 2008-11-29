@@ -22,6 +22,7 @@ public:
   virtual void input(unsigned char key, bool pressed = true);
   void set_keys(int left, int right, int up, int right, int reverse, int mine);
   void draw(bool minimap = false);
+  bool is_removable();
 
   static void collide(GLShip* first, GLShip* second);
   Ship *ship;

@@ -65,7 +65,6 @@ void GLShip::collide(GLShip* first, GLShip* second) {
 }
 
 void GLShip::step(float delta) {
-  //TODO: decouple timestep
   ship->step(delta);
 
   for(vector<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
@@ -110,7 +109,9 @@ void GLShip::draw(bool minimap) {
     }
     draw_mines();
   }
-  draw_ship();
+  if(ship->is_alive()) {
+    draw_ship();
+  }
 }
 
 void GLShip::draw_ship() {
@@ -133,8 +134,8 @@ void GLShip::draw_ship() {
   glBegin(GL_POLYGON);
   glCallList(body);
 	glEnd();
-
-  ship->is_alive() ? glColor3fv( color ) : glColor3f( 1.0f, 1.0f, 1.0f );
+  
+  glColor3fv( color );
   glBegin(GL_LINE_LOOP);
   glCallList(body);
 	glEnd();
@@ -151,6 +152,10 @@ void GLShip::draw_bullets() {
 		glVertex2fv(bullet->position);
   }
 	glEnd();
+}
+
+bool GLShip::is_removable() {
+  return ship->is_removable();
 }
 
 void GLShip::draw_mines() {

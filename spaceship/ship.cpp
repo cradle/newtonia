@@ -1,6 +1,7 @@
 #include "ship.h"
 #include "point.h"
 #include "bullet.h"
+#include <math.h>
 
 using namespace std;
 
@@ -24,7 +25,17 @@ Ship::Ship(float x, float y) {
 void Ship::kill() {
   alive = false;
   thrusting = false;
+  reversing = false;
   rotation_direction = NONE;
+  Point dir = (facing * radius * 1.2);
+  for(int i = rand()%100+50; i > 0; i--) {
+    dir.rotate(rand()%360*M_PI/180);
+    bullets.push_back(Bullet(position + dir, velocity + dir*0.0001*(rand()%150), rand()%3500));
+  }
+}
+
+bool Ship::is_removable() {
+  return !alive && bullets.empty();
 }
 
 bool Ship::is_alive() {
@@ -51,11 +62,11 @@ void Ship::collide(Ship* other) {
   //TODO: Make ships collide with each other too
   std::vector<Bullet>::iterator bullet = bullets.begin();
   while(bullet != bullets.end()) {
-    if(collide(*bullet)) {
+    if(is_alive() && collide(*bullet)) {
       kill();
       score -= 1;
       bullet = bullets.erase(bullet);
-    } else if(other->collide(*bullet)) {
+    } else if(other->is_alive() && other->collide(*bullet)) {
       other->kill();
       score += 1;
       bullet = bullets.erase(bullet);
@@ -63,14 +74,14 @@ void Ship::collide(Ship* other) {
       bullet++;
     }
   }
-  
+  //TODO: make these two routines into one
   std::vector<Bullet>::iterator mine = mines.begin();
   while(mine != mines.end()) {
-    if(collide(*mine)) {
+    if(is_alive() && collide(*mine)) {
       kill();
       score -= 1;
       mine = mines.erase(mine);
-    } else if(other->collide(*mine)) {
+    } else if(other->is_alive() && other->collide(*mine)) {
       other->kill();
       score += 1;
       mine = mines.erase(mine);

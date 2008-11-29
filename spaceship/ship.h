@@ -28,6 +28,7 @@ class Ship {
     float heading();
     void kill();
     bool is_alive();
+    bool is_removable();
 
     // Step moves the engine forward delta seconds, zeroes forces
     virtual void step(float delta);

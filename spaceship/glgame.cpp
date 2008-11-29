@@ -27,6 +27,7 @@ GLGame::~GLGame() {
     objects.pop_back();
     delete object;
   }
+  delete station;
 }
 
 void GLGame::tick(void) {
@@ -38,12 +39,23 @@ void GLGame::tick(void) {
 
   std::vector<GLShip*>::iterator o, o2;
   while(time_until_next_step <= 0) {
+    station->step(step_size);
     for(o = objects.begin(); o != objects.end(); o++) {
       (*o)->step(step_size);
       
       //yay O(n^2)
       for(o2 = (o+1); o2 != objects.end(); o2++) {
         GLShip::collide(*o, *o2);
+      }
+    }
+    
+    o = objects.begin();
+    while(o != objects.end()) {
+      if((*o)->is_removable()) {
+        delete *o;
+        o = objects.erase(o);
+      } else {
+        o++;
       }
     }
     
@@ -103,7 +115,6 @@ void GLGame::draw_world(GLShip *glship, bool primary) {
 
 void GLGame::draw_map() {
   float minimap_size = window.y()/4;
-  
   
     /* DRAW CENTER LINE */
   glMatrixMode(GL_PROJECTION);
@@ -189,7 +200,7 @@ void GLGame::run(void) {
   object->set_keys('j','l','i','/','k',',');
   objects.push_back(object);
 
-  for(int i = 0; i < 1; i++) {
+  for(int i = 0; i < 10; i++) {
     objects.push_back(new GLEnemy(rand()%(int)(world.x()*2), rand()%(int)(world.y()*2), objects[1]));
     objects.push_back(new GLEnemy(rand()%(int)(world.x()*2), rand()%(int)(world.y()*2), objects[0]));
   }
