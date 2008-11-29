@@ -62,9 +62,9 @@
 	2150E2AD0ECD687300D89C28 /* Spaceship-Info.plist */ = {
 		uiCtxt = {
 			sepNavIntBoundsRect = "{{0, 0}, {744, 627}}";
-			sepNavSelRange = "{619, 0}";
-			sepNavVisRange = "{0, 794}";
-			sepNavWindowFrame = "{{546, 89}, {803, 755}}";
+			sepNavSelRange = "{633, 0}";
+			sepNavVisRange = "{0, 774}";
+			sepNavWindowFrame = "{{442, 97}, {803, 755}}";
 		};
 	};
 	2150E2E30ECD6A6E00D89C28 /* bullet.cpp */ = {
