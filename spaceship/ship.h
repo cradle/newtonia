@@ -29,6 +29,7 @@ class Ship {
     void kill();
     bool is_alive();
     bool is_removable();
+    void explode(Point position, Point velocity);
 
     // Step moves the engine forward delta seconds, zeroes forces
     virtual void step(float delta);
@@ -43,7 +44,7 @@ class Ship {
     static void collide(Ship* first, Ship* second);
 
     void collide(Ship* other);
-    bool collide(Bullet bullet);
+    bool collide(Bullet bullet, float proximity = 0);
 
     int score;
     enum Rotation {

@@ -27,15 +27,10 @@ void Ship::kill() {
   thrusting = false;
   reversing = false;
   rotation_direction = NONE;
-  Point dir = (facing * radius * 1.2);
-  for(int i = rand()%100+50; i > 0; i--) {
-    dir.rotate(rand()%360*M_PI/180);
-    bullets.push_back(Bullet(position + dir, velocity + dir*0.0001*(rand()%150), rand()%3500));
-  }
 }
 
 bool Ship::is_removable() {
-  return !alive && bullets.empty();
+  return false;//!alive && bullets.empty();
 }
 
 bool Ship::is_alive() {
@@ -74,16 +69,11 @@ void Ship::collide(Ship* other) {
       bullet++;
     }
   }
-  //TODO: make these two routines into one
+  
   std::vector<Bullet>::iterator mine = mines.begin();
   while(mine != mines.end()) {
-    if(is_alive() && collide(*mine)) {
-      kill();
-      score -= 1;
-      mine = mines.erase(mine);
-    } else if(other->is_alive() && other->collide(*mine)) {
-      other->kill();
-      score += 1;
+    if(is_alive() && collide(*mine) || other->is_alive() && other->collide(*mine, 50.0)) {
+      explode(mine->position, mine->velocity);
       mine = mines.erase(mine);
     } else {
       mine++;
@@ -91,9 +81,17 @@ void Ship::collide(Ship* other) {
   }
 }
 
-bool Ship::collide(Bullet bullet) { // Circle based collision
+void Ship::explode(Point position, Point velocity) {
+  Point dir = (facing * radius * 1.2);
+  for(int i = rand()%100+50; i > 0; i--) {
+    dir.rotate(rand()%360*M_PI/180);
+    bullets.push_back(Bullet(position + dir, velocity + dir*0.0001*(rand()%150), rand()%3500));
+  }
+}
+
+bool Ship::collide(Bullet bullet, float proximity) { // Circle based collision
   //TODO: Make more accurate. Doesn't currently reflect shape of ship at all
-  return ((bullet.position - position).magnitude_squared() < radius_squared);
+  return ((bullet.position - position).magnitude_squared() < (radius_squared + proximity*proximity));
 }
 /*
 bool Ship::collide_square(Bullet bullet) {
