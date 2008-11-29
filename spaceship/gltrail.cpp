@@ -22,7 +22,7 @@ void GLTrail::draw() {
   deque<Bullet*>::iterator p;
   glBegin(GL_POINTS);
   for(p = trail.begin(); p != trail.end(); p++) {
-      glColor4f(1,1,1,(*p)->aliveness());
+      glColor4f(0.7,0.7,0.7,(*p)->aliveness());
   		glVertex2fv((*p)->position);
   }
 	glEnd();
