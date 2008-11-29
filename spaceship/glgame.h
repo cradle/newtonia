@@ -37,6 +37,7 @@ private:
   void draw_world(GLShip *glship, bool primary);
 
   std::vector<GLShip*>* objects;
+  std::vector<GLShip*>* players;
 };
 
 #endif

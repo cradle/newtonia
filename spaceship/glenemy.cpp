@@ -9,10 +9,16 @@
 #include <GL/glut.h>
 #endif
 
+#include <vector>
+
 using namespace std;
 
-GLEnemy::GLEnemy(float x, float y, GLShip* target) {
-  ship = new Enemy(x,y, target->ship);
+GLEnemy::GLEnemy(float x, float y, vector<GLShip*>* targets) {
+  vector<Ship*>* ships = new vector<Ship*>;
+  for(unsigned int i = 0; i < targets->size(); i++) {
+    ships->push_back((*targets)[i]->ship);
+  }
+  ship = new Enemy(x,y, ships);
   trails.push_back(new GLTrail(ship, 0.3));
   
   color[0] = color[2] = 0.0;

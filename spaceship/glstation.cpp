@@ -14,7 +14,7 @@
 
 using namespace std;
 
-GLStation::GLStation(vector<GLShip*>* objects) : objects(objects) {
+GLStation::GLStation(vector<GLShip*>* objects, vector<GLShip*>* targets) : objects(objects), targets(targets) {
   time_between_waves = 10000.0;
   time_until_next_wave = 0.0;
 
@@ -52,22 +52,23 @@ void GLStation::draw() {
   glPushMatrix();
   glRotatef(outer_rotation,0,0,1);
   glColor3f(0,0,0);
-  glCallList(body);
+  // glCallList(body);
   glColor3f(1,1,1);
-  glCallList(body);
+  // glCallList(body);
   glPopMatrix();
   glRotatef(inner_rotation,0,0,1);
   glScalef(0.8,0.8,1);
-  glCallList(body);
+  // glCallList(body);
 }
 
 void GLStation::step(float delta) {
   outer_rotation += outer_rotation_speed * delta;
   inner_rotation += inner_rotation_speed * delta;
   time_until_next_wave -= delta;
+  Point pos = Point(1800,0);
+  pos.rotate(rand()%360*M_PI/180);
   while(time_until_next_wave <= 0.0) {
-    objects->push_back(new GLEnemy(0,0, (*objects)[1]));
-    objects->push_back(new GLEnemy(0,0, (*objects)[0]));
+    objects->push_back(new GLEnemy(pos.x(), pos.y(), targets));
     time_until_next_wave += time_between_waves;
   }
 }

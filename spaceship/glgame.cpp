@@ -194,16 +194,19 @@ void GLGame::init(int argc, char** argv, float width, float height) {
 
 void GLGame::run(void) {
   objects = new std::vector<GLShip*>;
+  players = new std::vector<GLShip*>;
   
   GLShip* object = new GLShip(-world.x()*3/4,-world.y()*3/4);
   object->set_keys('a','d','w',' ','s','x');
   objects->push_back(object);
+  players->push_back(object);
 
   object = new GLCar(world.x()*3/4,world.y()*3/4);//, objects[0]);
   object->set_keys('j','l','i','/','k',',');
   objects->push_back(object);
+  players->push_back(object);
   
-  station = new GLStation(objects);
+  station = new GLStation(objects, players);
   
   WrappedPoint::set_boundaries(world);
 

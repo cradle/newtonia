@@ -8,6 +8,7 @@ public:
   WrappedPoint(float x, float y) : Point(x,y) {};
   WrappedPoint(Point other) : Point(other) {};
 
+  float distance_to(WrappedPoint other);
   Point closest_to(Point other);
   void wrap();
 

@@ -32,6 +32,10 @@ Point WrappedPoint::closest_to(Point other) {
   return closest;
 }
 
+float WrappedPoint::distance_to(WrappedPoint other) {
+  return (*this - other.closest_to(*this)).magnitude();
+}
+
 void WrappedPoint::set_boundaries(Point bounds) {
   x_min = -bounds.x();
   x_max = bounds.x();

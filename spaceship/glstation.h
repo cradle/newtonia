@@ -4,9 +4,11 @@
 #include <vector>
 #include "glship.h"
 
+using namespace std;
+
 class GLStation {
 public:
-  GLStation(std::vector<GLShip*>* objects);
+  GLStation(vector<GLShip*>* objects, vector<GLShip*>* targets);
   void draw();
   void step(float delta);
   
@@ -16,6 +18,7 @@ private:
   float inner_rotation, outer_rotation, outer_rotation_speed, inner_rotation_speed;
   
   std::vector<GLShip*>* objects;
+  std::vector<GLShip*>* targets;
   float time_between_waves, time_until_next_wave;
 };
 
