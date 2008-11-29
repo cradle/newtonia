@@ -26,7 +26,7 @@ void GLStarfield::draw(Point velocity, Point viewpoint) {
   for(int i = 0; i < NUM_REAR_LAYERS; i++) {
     float c = 1-i/(float)NUM_REAR_LAYERS;
     glColor3f(c,c,c);
-    glTranslatef(viewpoint.x()/(NUM_REAR_LAYERS+1), viewpoint.y()/(NUM_REAR_LAYERS+1), 0.0f);
+    glTranslatef(viewpoint.x()/(float)(NUM_REAR_LAYERS+1), viewpoint.y()/(float)(NUM_REAR_LAYERS+1), 0.0f);
     glCallList(point_layers+i);
   }
   glPopMatrix();
