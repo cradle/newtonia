@@ -128,7 +128,8 @@ void GLGame::draw_map() {
     glVertex2i(0, window.y());
   glEnd();
   /* MINIMAP */
-  glViewport(window.x()/2 - window.y()/8, window.y()*3/8, window.y()/4, window.y()/4);
+  float minimap_size = window.y()/4;
+  glViewport(window.x()/2 - minimap_size/2, window.y()/2 - minimap_size/2, minimap_size, minimap_size);
   glColor3f(0.0f,0.0f,0.0f);
   /* BLACK BOX OVER MINIMAP */
   glBegin(GL_POLYGON);
