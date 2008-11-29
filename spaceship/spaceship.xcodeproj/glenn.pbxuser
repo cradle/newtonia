@@ -4,8 +4,8 @@
 		uiCtxt = {
 			sepNavIntBoundsRect = "{{0, 0}, {744, 627}}";
 			sepNavSelRange = "{620, 0}";
-			sepNavVisRange = "{0, 620}";
-			sepNavWindowFrame = "{{3080, 426}, {803, 755}}";
+			sepNavVisRange = "{0, 787}";
+			sepNavWindowFrame = "{{1400, 123}, {803, 755}}";
 		};
 	};
 	210D37A50EDAD422009A0BA4 /* enemy.cpp */ = {
@@ -22,6 +22,11 @@
 			sepNavSelRange = "{228, 0}";
 			sepNavVisRange = "{0, 228}";
 			sepNavWindowFrame = "{{3081, 426}, {803, 755}}";
+		};
+	};
+	2119FFEE0EE16F2600DD218B /* icon.icns */ = {
+		uiCtxt = {
+			sepNavWindowFrame = "{{515, 68}, {803, 755}}";
 		};
 	};
 	2150E2A90ECD687300D89C28 /* Spaceship */ = {
@@ -53,6 +58,14 @@
 		name = Spaceship;
 		sourceDirectories = (
 		);
+	};
+	2150E2AD0ECD687300D89C28 /* Spaceship-Info.plist */ = {
+		uiCtxt = {
+			sepNavIntBoundsRect = "{{0, 0}, {744, 627}}";
+			sepNavSelRange = "{619, 0}";
+			sepNavVisRange = "{0, 794}";
+			sepNavWindowFrame = "{{546, 89}, {803, 755}}";
+		};
 	};
 	2150E2E30ECD6A6E00D89C28 /* bullet.cpp */ = {
 		uiCtxt = {
@@ -96,55 +109,11 @@
 	};
 	215ED6A40ECDB80400E0778A /* glgame.h */ = {
 		uiCtxt = {
-			sepNavIntBoundsRect = "{{0, 0}, {684, 588}}";
-			sepNavSelRange = "{828, 3}";
-			sepNavVisRange = "{244, 595}";
-			sepNavWindowFrame = "{{1478, 223}, {1091, 932}}";
+			sepNavIntBoundsRect = "{{0, 0}, {1032, 675}}";
+			sepNavSelRange = "{367, 0}";
+			sepNavVisRange = "{0, 904}";
+			sepNavWindowFrame = "{{23, 75}, {1091, 803}}";
 		};
-	};
-	21696BCF0EDD29A1006997A8 /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		comments = "error: multiple types in one declaration";
-		fRef = 215ED6A40ECDB80400E0778A /* glgame.h */;
-		rLen = 1;
-		rLoc = 38;
-		rType = 1;
-	};
-	21696BD80EDD29AC006997A8 /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		fRef = 215ED6A40ECDB80400E0778A /* glgame.h */;
-		name = "glgame.h: 39";
-		rLen = 3;
-		rLoc = 828;
-		rType = 0;
-		vrLen = 839;
-		vrLoc = 0;
-	};
-	21696BD90EDD29AC006997A8 /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		fRef = 21696BDA0EDD29AC006997A8 /* glu.h */;
-		name = "glu.h: 1";
-		rLen = 0;
-		rLoc = 0;
-		rType = 0;
-		vrLen = 1165;
-		vrLoc = 0;
-	};
-	21696BDA0EDD29AC006997A8 /* glu.h */ = {
-		isa = PBXFileReference;
-		name = glu.h;
-		path = /System/Library/Frameworks/OpenGL.framework/Headers/glu.h;
-		sourceTree = "<absolute>";
-	};
-	21696BDB0EDD29AC006997A8 /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		fRef = 210D37970EDAD022009A0BA4 /* glenemy.cpp */;
-		name = "glenemy.cpp: 32";
-		rLen = 0;
-		rLoc = 620;
-		rType = 0;
-		vrLen = 620;
-		vrLoc = 0;
 	};
 	218BF7DC0ED5645600C9FE0C /* glstarfield.cpp */ = {
 		uiCtxt = {
@@ -156,7 +125,7 @@
 	};
 	219282760ECD670E002D470F /* Project object */ = {
 		activeArchitecture = ppc;
-		activeBuildConfigurationName = Debug;
+		activeBuildConfigurationName = Release;
 		activeExecutable = 2150E2AC0ECD687300D89C28 /* Spaceship */;
 		activeTarget = 2150E2A90ECD687300D89C28 /* Spaceship */;
 		addToTargets = (
@@ -169,6 +138,34 @@
 		ignoreBreakpointsInProjectsDict = {
 		};
 		perUserDictionary = {
+			PBXConfiguration.PBXFileTableDataSource3.PBXErrorsWarningsDataSource = {
+				PBXFileTableDataSourceColumnSortingDirectionKey = "-1";
+				PBXFileTableDataSourceColumnSortingKey = PBXErrorsWarningsDataSource_LocationID;
+				PBXFileTableDataSourceColumnWidthsKey = (
+					20,
+					300,
+					523,
+				);
+				PBXFileTableDataSourceColumnsKey = (
+					PBXErrorsWarningsDataSource_TypeID,
+					PBXErrorsWarningsDataSource_MessageID,
+					PBXErrorsWarningsDataSource_LocationID,
+				);
+			};
+			PBXConfiguration.PBXFileTableDataSource3.PBXExecutablesDataSource = {
+				PBXFileTableDataSourceColumnSortingDirectionKey = "-1";
+				PBXFileTableDataSourceColumnSortingKey = PBXExecutablesDataSource_NameID;
+				PBXFileTableDataSourceColumnWidthsKey = (
+					22,
+					300,
+					521,
+				);
+				PBXFileTableDataSourceColumnsKey = (
+					PBXExecutablesDataSource_ActiveFlagID,
+					PBXExecutablesDataSource_NameID,
+					PBXExecutablesDataSource_CommentsID,
+				);
+			};
 			PBXConfiguration.PBXFileTableDataSource3.PBXFileTableDataSource = {
 				PBXFileTableDataSourceColumnSortingDirectionKey = "-1";
 				PBXFileTableDataSourceColumnSortingKey = PBXFileDataSource_Filename_ColumnID;
@@ -196,7 +193,7 @@
 				PBXFileTableDataSourceColumnSortingKey = PBXFileDataSource_Filename_ColumnID;
 				PBXFileTableDataSourceColumnWidthsKey = (
 					20,
-					587,
+					593,
 					60,
 					20,
 					48,
@@ -213,16 +210,8 @@
 					PBXFileDataSource_Warnings_ColumnID,
 				);
 			};
-			PBXPerProjectTemplateStateSaveDate = 249375088;
-			PBXWorkspaceStateSaveDate = 249375088;
-		};
-		perUserProjectItems = {
-			21696BCF0EDD29A1006997A8 /* PBXTextBookmark */ = 21696BCF0EDD29A1006997A8 /* PBXTextBookmark */;
-			21696BD80EDD29AC006997A8 /* PBXTextBookmark */ = 21696BD80EDD29AC006997A8 /* PBXTextBookmark */;
-			21696BD90EDD29AC006997A8 /* PBXTextBookmark */ = 21696BD90EDD29AC006997A8 /* PBXTextBookmark */;
-			21696BDB0EDD29AC006997A8 /* PBXTextBookmark */ = 21696BDB0EDD29AC006997A8 /* PBXTextBookmark */;
-			21BCF16C0EDBE0100034F231 /* PBXTextBookmark */ = 21BCF16C0EDBE0100034F231 /* PBXTextBookmark */;
-			21BCF16F0EDBE0100034F231 /* PBXTextBookmark */ = 21BCF16F0EDBE0100034F231 /* PBXTextBookmark */;
+			PBXPerProjectTemplateStateSaveDate = 249655022;
+			PBXWorkspaceStateSaveDate = 249655022;
 		};
 		sourceControlManager = 2192827A0ECD670E002D470F /* Source Control */;
 		userBuildSettings = {
@@ -238,39 +227,6 @@
 	2192827B0ECD670E002D470F /* Code sense */ = {
 		isa = PBXCodeSenseManager;
 		indexTemplatePath = "";
-	};
-	21BCF16C0EDBE0100034F231 /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		fRef = 21BCF16D0EDBE0100034F231 /* glu.h */;
-		name = "glu.h: 1";
-		rLen = 0;
-		rLoc = 0;
-		rType = 0;
-		vrLen = 1165;
-		vrLoc = 0;
-	};
-	21BCF16D0EDBE0100034F231 /* glu.h */ = {
-		isa = PBXFileReference;
-		lastKnownFileType = sourcecode.c.h;
-		name = glu.h;
-		path = /System/Library/Frameworks/OpenGL.framework/Headers/glu.h;
-		sourceTree = "<absolute>";
-		uiCtxt = {
-			sepNavIntBoundsRect = "{{0, 0}, {744, 4592}}";
-			sepNavSelRange = "{0, 0}";
-			sepNavVisRange = "{0, 1165}";
-			sepNavWindowFrame = "{{297, 123}, {803, 755}}";
-		};
-	};
-	21BCF16F0EDBE0100034F231 /* PBXTextBookmark */ = {
-		isa = PBXTextBookmark;
-		fRef = 210D37970EDAD022009A0BA4 /* glenemy.cpp */;
-		name = "glenemy.cpp: 32";
-		rLen = 0;
-		rLoc = 620;
-		rType = 0;
-		vrLen = 620;
-		vrLoc = 0;
 	};
 	21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */ = {
 		uiCtxt = {

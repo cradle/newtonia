@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		210D37990EDAD022009A0BA4 /* glenemy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 210D37970EDAD022009A0BA4 /* glenemy.cpp */; };
 		210D37A70EDAD422009A0BA4 /* enemy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 210D37A50EDAD422009A0BA4 /* enemy.cpp */; };
+		2119FFEF0EE16F2600DD218B /* icon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 2119FFEE0EE16F2600DD218B /* icon.icns */; };
 		2150E2D90ECD698700D89C28 /* GLUT.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2150E2D80ECD698700D89C28 /* GLUT.framework */; };
 		2150E2DD0ECD699700D89C28 /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2150E2DC0ECD699700D89C28 /* OpenGL.framework */; };
 		2150E2EE0ECD6A6E00D89C28 /* bullet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2E30ECD6A6E00D89C28 /* bullet.cpp */; };
@@ -30,6 +31,7 @@
 		210D37980EDAD022009A0BA4 /* glenemy.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glenemy.h; sourceTree = "<group>"; };
 		210D37A50EDAD422009A0BA4 /* enemy.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = enemy.cpp; sourceTree = "<group>"; };
 		210D37A60EDAD422009A0BA4 /* enemy.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = enemy.h; sourceTree = "<group>"; };
+		2119FFEE0EE16F2600DD218B /* icon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = icon.icns; sourceTree = "<group>"; };
 		2150E2AA0ECD687300D89C28 /* Spaceship.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Spaceship.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2150E2AD0ECD687300D89C28 /* Spaceship-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Spaceship-Info.plist"; sourceTree = "<group>"; };
 		2150E2D80ECD698700D89C28 /* GLUT.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GLUT.framework; path = /System/Library/Frameworks/GLUT.framework; sourceTree = "<absolute>"; };
@@ -94,6 +96,7 @@
 				21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */,
 				21F0BF3E0ED54EFE00F2BB9B /* gltrail.h */,
 				2180D38E0ED14D100050ED72 /* car.cpp */,
+				2119FFEE0EE16F2600DD218B /* icon.icns */,
 				2180D38F0ED14D100050ED72 /* car.h */,
 				2180D3900ED14D100050ED72 /* glcar.cpp */,
 				2180D3910ED14D100050ED72 /* glcar.h */,
@@ -160,6 +163,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2119FFEF0EE16F2600DD218B /* icon.icns in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -217,16 +221,30 @@
 			};
 			name = Debug;
 		};
-		2150E2AF0ECD687400D89C28 /* Release */ = {
+		2164AC9D0EE165A90011546F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ARCHS = "$(NATIVE_ARCH)";
-				COPY_PHASE_STRIP = YES;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				GCC_ENABLE_FIX_AND_CONTINUE = NO;
+				ARCHS = (
+					i386,
+					ppc,
+				);
+				COPY_PHASE_STRIP = NO;
+				SDKROOT = /Developer/SDKs/MacOSX10.4u.sdk;
+				VALID_ARCHS = "ppc64 ppc7400 ppc970 i386 x86_64 ppc";
+			};
+			name = Release;
+		};
+		2164AC9E0EE165A90011546F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = ppc;
+				COPY_PHASE_STRIP = NO;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_ENABLE_FIX_AND_CONTINUE = YES;
 				GCC_MODEL_TUNING = G5;
+				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
-				GCC_PREFIX_HEADER = "$(SYSTEM_LIBRARY_DIR)/Frameworks/AppKit.framework/Headers/AppKit.h";
+				GCC_PREFIX_HEADER = "";
 				INFOPLIST_FILE = "Spaceship-Info.plist";
 				INSTALL_PATH = "$(HOME)/Applications";
 				MACOSX_DEPLOYMENT_TARGET = 10.3;
@@ -239,7 +257,7 @@
 				PREBINDING = NO;
 				PRODUCT_NAME = Spaceship;
 				WRAPPER_EXTENSION = app;
-				ZERO_LINK = NO;
+				ZERO_LINK = YES;
 			};
 			name = Release;
 		};
@@ -251,22 +269,10 @@
 					ppc,
 				);
 				COPY_PHASE_STRIP = NO;
+				SDKROOT = /Developer/SDKs/MacOSX10.4u.sdk;
 				VALID_ARCHS = "ppc64 ppc7400 ppc970 i386 x86_64 ppc";
 			};
 			name = Debug;
-		};
-		219282780ECD670E002D470F /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ARCHS = (
-					i386,
-					ppc,
-					ppc64,
-					x86_64,
-				);
-				COPY_PHASE_STRIP = YES;
-			};
-			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
@@ -275,19 +281,19 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				2150E2AE0ECD687400D89C28 /* Debug */,
-				2150E2AF0ECD687400D89C28 /* Release */,
+				2164AC9E0EE165A90011546F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 		219282790ECD670E002D470F /* Build configuration list for PBXProject "spaceship" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				219282770ECD670E002D470F /* Debug */,
-				219282780ECD670E002D470F /* Release */,
+				2164AC9D0EE165A90011546F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 	};
