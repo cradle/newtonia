@@ -24,7 +24,7 @@ class Ship {
     bool thrusting;
     bool reversing;
     WrappedPoint position;
-    float width, height, radius;
+    float width, height, radius, radius_squared;
     float heading();
     void kill();
     bool is_alive();

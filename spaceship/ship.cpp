@@ -7,6 +7,7 @@ using namespace std;
 Ship::Ship(float x, float y) {
   mass = 100.0;
   width = height = radius = 10.0;
+  radius_squared = radius*radius;
   thrusting = false;
   thrust_force = 0.02;
   reversing = false;
@@ -81,7 +82,7 @@ void Ship::collide(Ship* other) {
 
 bool Ship::collide(Bullet bullet) { // Circle based collision
   //TODO: Make more accurate. Doesn't currently reflect shape of ship at all
-  return ((bullet.position - position).magnitude() < radius);
+  return ((bullet.position - position).magnitude_squared() < radius_squared);
 }
 /*
 bool Ship::collide_square(Bullet bullet) {
