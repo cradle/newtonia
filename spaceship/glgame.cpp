@@ -191,7 +191,7 @@ void GLGame::run(void) {
   object->set_keys('j','l','i','/','k',',');
   objects.push_back(object);
 
-  for(int i = 0; i < 10; i++) {
+  for(int i = 0; i < 1; i++) {
     objects.push_back(new GLEnemy(rand()%(int)(world.x()*2), rand()%(int)(world.y()*2), objects[1]));
     objects.push_back(new GLEnemy(rand()%(int)(world.x()*2), rand()%(int)(world.y()*2), objects[0]));
   }
