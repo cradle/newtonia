@@ -29,7 +29,8 @@ class Ship {
     void kill();
     bool is_alive();
     bool is_removable();
-    void explode(Point position, Point velocity);
+    void explode();
+    void detonate(Point position, Point velocity);
 
     // Step moves the engine forward delta seconds, zeroes forces
     virtual void step(float delta);
@@ -40,6 +41,7 @@ class Ship {
     //TODO: friends
     std::vector<Bullet> bullets;
     std::vector<Bullet> mines;
+    std::vector<Bullet> debris;
 
     static void collide(Ship* first, Ship* second);
 

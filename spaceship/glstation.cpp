@@ -8,7 +8,16 @@
 #include <GL/glut.h>
 #endif
 
-GLStation::GLStation() {
+#include "glship.h"
+#include "glenemy.h"
+#include <vector>
+
+using namespace std;
+
+GLStation::GLStation(vector<GLShip*>* objects) : objects(objects) {
+  time_between_waves = 10000.0;
+  time_until_next_wave = 0.0;
+
   float segment_size = 360.0/NUM_SEGMENTS;
   outer_rotation_speed = 0.001;
   inner_rotation_speed = -0.00025;
@@ -55,4 +64,10 @@ void GLStation::draw() {
 void GLStation::step(float delta) {
   outer_rotation += outer_rotation_speed * delta;
   inner_rotation += inner_rotation_speed * delta;
+  time_until_next_wave -= delta;
+  while(time_until_next_wave <= 0.0) {
+    objects->push_back(new GLEnemy(0,0, (*objects)[1]));
+    objects->push_back(new GLEnemy(0,0, (*objects)[0]));
+    time_until_next_wave += time_between_waves;
+  }
 }

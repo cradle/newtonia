@@ -104,6 +104,7 @@ void GLShip::draw(bool minimap) {
   //Last, try it using compiled vertex buffers or even better, hardware supported ones. This is the best performance gain you'll get.  
   if(!minimap) {
     draw_bullets();
+    draw_debris();
     for(vector<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
       (*i)->draw();
     }
@@ -156,6 +157,15 @@ void GLShip::draw_bullets() {
 
 bool GLShip::is_removable() {
   return ship->is_removable();
+}
+
+void GLShip::draw_debris() {
+  glBegin(GL_POINTS);
+  for(vector<Bullet>::iterator d = ship->debris.begin(); d != ship->debris.end(); d++) {
+    glColor4f(color[0], color[1], color[2], d->aliveness());
+		glVertex2fv(d->position);
+  }
+	glEnd();
 }
 
 void GLShip::draw_mines() {

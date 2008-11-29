@@ -27,6 +27,7 @@ void Ship::kill() {
   thrusting = false;
   reversing = false;
   rotation_direction = NONE;
+  explode();
 }
 
 bool Ship::is_removable() {
@@ -73,7 +74,7 @@ void Ship::collide(Ship* other) {
   std::vector<Bullet>::iterator mine = mines.begin();
   while(mine != mines.end()) {
     if(is_alive() && collide(*mine) || other->is_alive() && other->collide(*mine, 50.0)) {
-      explode(mine->position, mine->velocity);
+      detonate(mine->position, mine->velocity);
       mine = mines.erase(mine);
     } else {
       mine++;
@@ -81,11 +82,19 @@ void Ship::collide(Ship* other) {
   }
 }
 
-void Ship::explode(Point position, Point velocity) {
+void Ship::detonate(Point position, Point velocity) {
   Point dir = (facing * radius * 1.2);
   for(int i = rand()%100+50; i > 0; i--) {
     dir.rotate(rand()%360*M_PI/180);
-    bullets.push_back(Bullet(position + dir, velocity + dir*0.0001*(rand()%150), rand()%3500));
+    bullets.push_back(Bullet(position + dir, velocity + dir*0.0001*(rand()%200), rand()%1000));
+  }
+}
+
+void Ship::explode() {
+  Point dir = (facing * radius * 1.2);
+  for(int i = rand()%100+50; i > 0; i--) {
+    dir.rotate(rand()%360*M_PI/180);
+    debris.push_back(Bullet(position + dir, velocity + dir*0.0001*(rand()%300), rand()%4000));
   }
 }
 
@@ -155,6 +164,16 @@ void Ship::step(float delta) {
       mine = mines.erase(mine);
     } else {
       mine++;
+    }
+  }
+  
+  std::vector<Bullet>::iterator deb = debris.begin();
+  while(deb != debris.end()) {
+    deb->step(delta);
+    if(!deb->is_alive()) {
+      deb = debris.erase(deb);
+    } else {
+      deb++;
     }
   }
   

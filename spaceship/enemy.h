@@ -8,9 +8,13 @@ class Enemy : public Car {
     Enemy() {};
     Enemy(float x, float y, Ship* target);
     
-    virtual void step(float delta);
+    void step(float delta);
+    bool is_removable();
+    
   private:
     Ship* target;
+    
+    float time_until_next_shot, time_between_shots;
 };
 
 #endif

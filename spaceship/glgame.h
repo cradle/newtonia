@@ -36,7 +36,7 @@ private:
   void draw_map();
   void draw_world(GLShip *glship, bool primary);
 
-  std::vector<GLShip*> objects;
+  std::vector<GLShip*>* objects;
 };
 
 #endif

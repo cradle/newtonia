@@ -22,9 +22,9 @@ GLGame::~GLGame() {
   //TODO: Make erase, use boost::ptr_vector? something better
   // std::erase(std::remove_if(v.begin(),v.end(),true), v.end());
   GLShip* object;
-  while(!objects.empty()) {
-    object = objects.back();
-    objects.pop_back();
+  while(!objects->empty()) {
+    object = objects->back();
+    objects->pop_back();
     delete object;
   }
   delete station;
@@ -40,20 +40,20 @@ void GLGame::tick(void) {
   std::vector<GLShip*>::iterator o, o2;
   while(time_until_next_step <= 0) {
     station->step(step_size);
-    for(o = objects.begin(); o != objects.end(); o++) {
+    for(o = objects->begin(); o != objects->end(); o++) {
       (*o)->step(step_size);
       
       //yay O(n^2)
-      for(o2 = (o+1); o2 != objects.end(); o2++) {
+      for(o2 = (o+1); o2 != objects->end(); o2++) {
         GLShip::collide(*o, *o2);
       }
     }
     
-    o = objects.begin();
-    while(o != objects.end()) {
+    o = objects->begin();
+    while(o != objects->end()) {
       if((*o)->is_removable()) {
         delete *o;
-        o = objects.erase(o);
+        o = objects->erase(o);
       } else {
         o++;
       }
@@ -68,7 +68,7 @@ void GLGame::tick(void) {
 
 void GLGame::draw_objects(bool minimap) {
   std::vector<GLShip*>::iterator o;
-  for(o = objects.begin(); o != objects.end(); o++) {
+  for(o = objects->begin(); o != objects->end(); o++) {
     glPushMatrix();
     (*o)->draw(minimap);
     glPopMatrix();
@@ -79,8 +79,8 @@ void GLGame::draw_objects(bool minimap) {
 void GLGame::draw(void) {
   glClear(GL_COLOR_BUFFER_BIT);
   
-  draw_world(objects[0], true);
-  draw_world(objects[1], false);
+  draw_world((*objects)[0], true);
+  draw_world((*objects)[1], false);
   draw_map();
 
   glutSwapBuffers();
@@ -89,7 +89,8 @@ void GLGame::draw(void) {
 void GLGame::draw_world(GLShip *glship, bool primary) {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluOrtho2D(-window.x()/4, window.x()/4, -window.y()/2, window.y()/2);
+  float zoom = 1.5;
+  gluOrtho2D(-window.x()/4*zoom, window.x()/4*zoom, -window.y()/2*zoom, window.y()/2*zoom);
   glMatrixMode(GL_MODELVIEW);
 
   glLoadIdentity();
@@ -159,14 +160,14 @@ void GLGame::draw_map() {
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
   std::vector<GLShip*>::iterator object;
-  for(object = objects.begin(); object != objects.end(); object++) {
+  for(object = objects->begin(); object != objects->end(); object++) {
     (*object)->input(key);
   }
 }
 
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
   std::vector<GLShip*>::iterator object;
-  for(object = objects.begin(); object != objects.end(); object++) {
+  for(object = objects->begin(); object != objects->end(); object++) {
     (*object)->input(key, false);
   }
 }
@@ -192,20 +193,17 @@ void GLGame::init(int argc, char** argv, float width, float height) {
 }
 
 void GLGame::run(void) {
+  objects = new std::vector<GLShip*>;
+  
   GLShip* object = new GLShip(-world.x()*3/4,-world.y()*3/4);
   object->set_keys('a','d','w',' ','s','x');
-  objects.push_back(object);
+  objects->push_back(object);
 
   object = new GLCar(world.x()*3/4,world.y()*3/4);//, objects[0]);
   object->set_keys('j','l','i','/','k',',');
-  objects.push_back(object);
-
-  for(int i = 0; i < 5; i++) {
-    objects.push_back(new GLEnemy(rand()%(int)(world.x()*2), rand()%(int)(world.y()*2), objects[1]));
-    objects.push_back(new GLEnemy(rand()%(int)(world.x()*2), rand()%(int)(world.y()*2), objects[0]));
-  }
+  objects->push_back(object);
   
-  station = new GLStation();
+  station = new GLStation(objects);
   
   WrappedPoint::set_boundaries(world);
 

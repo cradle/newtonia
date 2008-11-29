@@ -31,6 +31,7 @@ protected:
   virtual void draw_ship();
   void draw_bullets();
   void draw_mines();
+  void draw_debris();
 
   GLuint body, jets, repulsors;
   
