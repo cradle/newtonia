@@ -34,24 +34,22 @@ void GLGame::tick(void) {
 
   time_until_next_step -= (current_time - last_tick);
 
-  std::vector<GLShip*>::iterator o;
+  std::vector<GLShip*>::iterator o, o2;
   while(time_until_next_step <= 0) {
     for(o = objects.begin(); o != objects.end(); o++) {
       (*o)->step(step_size);
+      
+      //yay O(n^2)
+      for(o2 = (o+1); o2 != objects.end(); o2++) {
+        GLShip::collide(*o, *o2);
+      }
     }
+    
     time_until_next_step += step_size;
   }
 
   last_tick = current_time;
   glutPostRedisplay();
-
-  //yay n^2
-  std::vector<GLShip*>::iterator o2;
-  for(o = objects.begin(); o != objects.end(); o++) {
-    for(o2 = (o+1); o2 != objects.end(); o2++) {
-      GLShip::collide(*o, *o2);
-    }
-  }
 }
 
 void GLGame::draw_objects(bool minimap) {
