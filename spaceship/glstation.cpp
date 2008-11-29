@@ -11,10 +11,10 @@
 GLStation::GLStation() {
   body = glGenLists(1);
   glNewList(body, GL_COMPILE);
-  float r = 2000.0, x, y, d;
+  float r = 2000.0, d;
   for (int i = 0; i < 360; i++)
   {
-    d = i*3.14159/180.0;
+    d = i*M_PI/180.0;
     glVertex2f(r*cos(d),r*sin(d));
   }
   glEndList();

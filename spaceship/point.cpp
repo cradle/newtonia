@@ -28,7 +28,7 @@ Point::Point(float x, float y) {
 float Point::x() const {
   return coords[X];
 }
-
+//TODO: Make everything const that should be
 float Point::y() const {
   return coords[Y];
 }
@@ -42,8 +42,7 @@ Point Point::perpendicular() {
 }
 
 Point Point::normalized() {
-  float length = 1.0/magnitude();
-  return Point(x()*length, y()*length);
+  return *this / magnitude();
 }
 
 float Point::magnitude() {

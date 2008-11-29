@@ -33,6 +33,8 @@ void GLGame::tick(void) {
   int current_time = glutGet(GLUT_ELAPSED_TIME);
 
   time_until_next_step -= (current_time - last_tick);
+  
+  num_frames++;
 
   std::vector<GLShip*>::iterator o, o2;
   while(time_until_next_step <= 0) {
@@ -47,7 +49,7 @@ void GLGame::tick(void) {
     
     time_until_next_step += step_size;
   }
-
+  std::cout << (num_frames*1000 / current_time) << std::endl;
   last_tick = current_time;
   glutPostRedisplay();
 }
@@ -204,5 +206,6 @@ void GLGame::run(void) {
 
   last_tick = glutGet(GLUT_ELAPSED_TIME);
   time_until_next_step = 0;
+  num_frames = 0;
   glutMainLoop();
 }

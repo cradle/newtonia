@@ -28,8 +28,7 @@ private:
   Point world;
   GLStarfield* starfield;
   GLStation* station;
-  int last_tick;
-  int time_until_next_step;
+  int last_tick, time_until_next_step, num_frames;
   static const int step_size = 10;
 
   unsigned int gameworld;

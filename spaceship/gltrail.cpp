@@ -18,7 +18,6 @@ GLTrail::GLTrail(Ship* ship, float deviation, Point offset, float speed, float r
  : ship(ship), deviation(deviation), offset(offset), speed(speed), rotation(rotation), type(type) {}
 
 void GLTrail::draw() {
-  Bullet* last = *trail.begin();
   deque<Bullet*>::iterator p;
   glBegin(GL_POINTS);
   for(p = trail.begin(); p != trail.end(); p++) {
