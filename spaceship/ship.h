@@ -17,7 +17,8 @@ class Ship {
     void rotate_right(bool on = true);
     void thrust(bool on = true);
     void reverse(bool on = true);
-    void shoot();
+    void shoot(bool on = true);
+    void fire_shot();
     void lay_mine();
 
     // TODO: make 'friend' with some sort of VIEW
@@ -30,6 +31,7 @@ class Ship {
     bool is_alive();
     bool is_removable();
     void explode();
+    void respawn();
     void detonate(Point position, Point velocity);
 
     // Step moves the engine forward delta seconds, zeroes forces
@@ -48,7 +50,7 @@ class Ship {
     void collide(Ship* other);
     bool collide(Bullet bullet, float proximity = 0);
 
-    int score;
+    int score, value;
     enum Rotation {
       LEFT = 1,
       NONE = 0,
@@ -75,6 +77,11 @@ class Ship {
   protected:
     bool alive;
     float mass;
+    float respawn_time, time_until_respawn;
+    float accuracy;
+    float time_until_next_shot, time_between_shots;
+    bool shooting;
+    bool respawns;
 
     WrappedPoint gun();
 };

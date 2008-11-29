@@ -92,8 +92,8 @@ void GLShip::input(unsigned char key, bool pressed) {
     ship->thrust(pressed);
   } else if (key == reverse_key) {
     ship->reverse(pressed);
-  } else if (key == shoot_key && pressed) {
-    ship->shoot();
+  } else if (key == shoot_key) {
+    ship->shoot(pressed);
   } else if (key == mine_key && pressed) {
     ship->lay_mine();
   }

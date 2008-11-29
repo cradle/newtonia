@@ -10,16 +10,22 @@ Enemy::Enemy(float x, float y, std::vector<Ship*>* targets) : Car(x,y), targets(
   time_until_next_shot = 10000.0;
   time_between_shots = 3000.0;
   thrust(true);
+  score = 20;
+  explode();
+  respawns = false;
   
   time_until_next_lock = 0.0;
   time_between_locks = 1000.0;
+  
+  target = NULL;
 }
 
 void Enemy::lock_nearest_target() {
-  target = *targets->begin();
-  for(unsigned int i = 1; i < targets->size(); i++) {
-    if((*targets)[i]->is_alive() && (*targets)[i]->position.distance_to(position) < target->position.distance_to(position)) {
-      target = (*targets)[i];
+  for(unsigned int i = 0; i < targets->size(); i++) {
+    if((*targets)[i]->is_alive()) {
+      if(target == NULL || (*targets)[i]->position.distance_to(position) < target->position.distance_to(position)) {
+        target = (*targets)[i];
+      }
     }
   }
 }
@@ -36,7 +42,7 @@ void Enemy::step(float delta) {
     // bool close = (target->position - position).magnitude() < 100.0;
     time_until_next_shot -= delta;
     while(time_until_next_shot <= 0) {
-      shoot();
+      fire_shot();
       time_until_next_shot += time_between_shots;
     }
     
@@ -46,11 +52,13 @@ void Enemy::step(float delta) {
       time_until_next_lock += time_between_locks;
     }
     
-    float angle = (heading() - (position.closest_to(target->position) - target->position).normalized().direction());
-    if (angle >= 0 && angle < 180 || angle >= -360 && angle < -180) {
-      rotate_left(true);
-    } else {
-      rotate_right(true);
+    if(target) {
+      float angle = (heading() - (position.closest_to(target->position) - target->position).normalized().direction());
+      if (angle >= 0 && angle < 180 || angle >= -360 && angle < -180) {
+        rotate_left(true);
+      } else {
+        rotate_right(true);
+      }
     }
   }
 }

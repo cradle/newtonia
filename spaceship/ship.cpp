@@ -7,6 +7,8 @@ using namespace std;
 
 Ship::Ship(float x, float y) {
   mass = 100.0;
+  value = 200;
+  accuracy = 0.1;
   width = height = radius = 10.0;
   radius_squared = radius*radius;
   thrusting = false;
@@ -20,14 +22,31 @@ Ship::Ship(float x, float y) {
   alive = true;
   score = 0;
   rotation_direction = NONE;
+  respawn_time = 5000.0;
+  respawns = true;
+  shooting = false;
+  time_until_next_shot = time_between_shots = 30;
+}
+
+void Ship::respawn() {
+  position = WrappedPoint(rand(), rand());
+  facing = Point(0, 1);
+  velocity = Point(0, 0);
+  alive = true;
+  shooting = false;
+  explode();
 }
 
 void Ship::kill() {
-  alive = false;
-  thrusting = false;
-  reversing = false;
-  rotation_direction = NONE;
-  explode();
+  if(is_alive()) {
+    time_until_respawn = respawn_time;
+    score -= value;
+    alive = false;
+    thrusting = false;
+    reversing = false;
+    rotation_direction = NONE;
+    explode();
+  }
 }
 
 bool Ship::is_removable() {
@@ -60,11 +79,10 @@ void Ship::collide(Ship* other) {
   while(bullet != bullets.end()) {
     if(is_alive() && collide(*bullet)) {
       kill();
-      score -= 1;
       bullet = bullets.erase(bullet);
     } else if(other->is_alive() && other->collide(*bullet)) {
       other->kill();
-      score += 1;
+      score += other->value;
       bullet = bullets.erase(bullet);
     } else {
       bullet++;
@@ -110,8 +128,17 @@ bool Ship::collide_square(Bullet bullet) {
           bullet.position.y < (position.y + height));
 }*/
 
-void Ship::shoot() {
-  bullets.push_back(Bullet(gun(), facing*0.5 + velocity*0.99, 2000.0));
+void Ship::shoot(bool on) {
+  shooting = on;
+  if(!on) {
+    time_until_next_shot = time_between_shots;
+  }
+}
+
+void Ship::fire_shot() {
+  Point dir = Point(facing);
+  dir.rotate((rand() / (float)RAND_MAX) * accuracy - accuracy / 2.0);
+  bullets.push_back(Bullet(gun(), dir*0.5 + velocity*0.99, 2000.0));
 }
 
 void Ship::lay_mine() {
@@ -147,6 +174,32 @@ void Ship::puts() {
 }
 
 void Ship::step(float delta) {
+  if(is_alive()) {
+    if(shooting) {
+      time_until_next_shot -= delta;
+      while(time_until_next_shot <= 0) {
+        fire_shot();
+        time_until_next_shot += time_between_shots;
+      }
+    }
+    
+    facing.rotate(rotation_direction * rotation_force / mass  * delta );
+    acceleration = Point(0,0);
+    if(thrusting)
+      acceleration += ((facing * thrust_force) / mass);
+    if(reversing)
+      acceleration += ((facing * reverse_force) / mass);
+    
+    velocity += acceleration * delta;
+    position += velocity * delta;
+    position.wrap();
+  } else if (respawns) {
+    time_until_respawn -= delta;
+    if(time_until_respawn < 0) {
+      respawn();
+    }
+  }
+  
   std::vector<Bullet>::iterator bullet = bullets.begin();
   while(bullet != bullets.end()) {
     bullet->step(delta);
@@ -176,15 +229,4 @@ void Ship::step(float delta) {
       deb++;
     }
   }
-  
-  facing.rotate(rotation_direction * rotation_force / mass  * delta );
-  acceleration = Point(0,0);
-  if(thrusting)
-    acceleration += ((facing * thrust_force) / mass);
-  if(reversing)
-    acceleration += ((facing * reverse_force) / mass);
-    
-  velocity += acceleration * delta;
-  position += velocity * delta;
-  position.wrap();
 }

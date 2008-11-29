@@ -17,7 +17,6 @@ class Enemy : public Car {
     Ship* target;
     std::vector<Ship*> * targets;
     
-    float time_until_next_shot, time_between_shots;
     float time_until_next_lock, time_between_locks;
 };
 

@@ -43,6 +43,8 @@ void GLGame::tick(void) {
     for(o = objects->begin(); o != objects->end(); o++) {
       (*o)->step(step_size);
       
+      station->collide((*o)->ship);
+      
       //yay O(n^2)
       for(o2 = (o+1); o2 != objects->end(); o2++) {
         GLShip::collide(*o, *o2);
