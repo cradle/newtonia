@@ -64,7 +64,7 @@ void isVisible(int state) {
 }
 
 int main(int argc, char** argv) {
-  glgame = new GLGame(20000,20000);
+  glgame = new GLGame(15000,15000);
   glgame->init(argc, argv, 800, 600);
 
   glutSetKeyRepeat(GLUT_KEY_REPEAT_OFF);

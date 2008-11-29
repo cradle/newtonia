@@ -7,8 +7,9 @@
 Enemy::Enemy(float x, float y, std::vector<Ship*>* targets) : Car(x,y), targets(targets) {
   thrust_force = 0.145;
   rotation_force = 0.375;
-  time_until_next_shot = 10000.0;
-  time_between_shots = 3000.0;
+  time_until_next_shot = 1000.0;
+  accuracy = 0.0;
+  time_between_shots = 1000.0;
   thrust(true);
   score = 20;
   explode();

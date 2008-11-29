@@ -25,7 +25,7 @@ Ship::Ship(float x, float y) {
   respawn_time = 5000.0;
   respawns = true;
   shooting = false;
-  time_until_next_shot = time_between_shots = 30;
+  time_until_next_shot = time_between_shots = 60;
 }
 
 void Ship::respawn() {
@@ -142,7 +142,7 @@ void Ship::fire_shot() {
 }
 
 void Ship::lay_mine() {
-  mines.push_back(Bullet(tail(),  facing*-0.1 + velocity*0.95, 30000.0));
+  mines.push_back(Bullet(tail(),  facing*-0.2 + velocity*0.95, 30000.0));
 }
 
 float Ship::heading() {

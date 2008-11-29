@@ -18,7 +18,7 @@ GLStation::GLStation(vector<GLShip*>* objects, vector<GLShip*>* targets) : objec
   position = Point(0,0);
   radius = 100.0;
   radius_squared = radius * radius;
-  time_between_waves = 20000.0;
+  time_between_waves = 10000.0;
   time_until_next_wave = 0.0;
 
   float segment_size = 360.0/NUM_SEGMENTS;

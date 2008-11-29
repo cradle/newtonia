@@ -169,7 +169,7 @@ void GLShip::draw_debris() {
 }
 
 void GLShip::draw_mines() {
-  float size = 10.0;
+  float size = 20.0;
   for(vector<Bullet>::iterator m = ship->mines.begin(); m != ship->mines.end(); m++) {
     glBegin(GL_LINE_STRIP);
     glColor4f(0,0,0,0);
