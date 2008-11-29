@@ -66,20 +66,7 @@ void GLGame::draw_objects(bool minimap) {
 
 void GLGame::draw(void) {
   glClear(GL_COLOR_BUFFER_BIT);
-  //TODO: tesselate drawing
-
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  gluOrtho2D(-window.x()/2, window.x()/2, -window.y(), window.y());
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
-  glViewport(0, 0, window.x(), window.y());
-  glBegin(GL_LINES);
-  glColor3f(1,1,1);
-  glVertex2f(0,-window.y());
-  glVertex2f(0,window.y());
-  glEnd();
-
+  
   draw_world(objects[0], true);
   draw_world(objects[1], false);
   draw_map();
@@ -115,22 +102,32 @@ void GLGame::draw_world(GLShip *glship, bool primary) {
 }
 
 void GLGame::draw_map() {
+  float minimap_size = window.y()/4;
+  
+  
+    /* DRAW CENTER LINE */
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  gluOrtho2D(-window.x(), window.x(), -window.y(), window.y());
+  glMatrixMode(GL_MODELVIEW);
+  glLoadIdentity();
+  glViewport(0, 0, window.x(), window.y());
+  glBegin(GL_LINES);
+  glColor4f(1,1,1,0.5);
+  glVertex2f(0,-window.y());
+  glVertex2f(0,-minimap_size);
+  glVertex2f(0, minimap_size);
+  glVertex2f(0, window.y());
+  glEnd();
+    
+  /* MINIMAP */
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   gluOrtho2D(-world.x(), world.x(), -world.y(), world.y());
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
-    /* DRAW CENTER LINE */
-  glViewport(-window.x(), -window.y(), window.x(), window.y());
-  glColor3f(0.5f,0.5f,0.5f);
-  glBegin(GL_LINES);
-    glVertex2i(0,-window.y());
-    glVertex2i(0, window.y());
-  glEnd();
-  /* MINIMAP */
-  float minimap_size = window.y()/4;
   glViewport(window.x()/2 - minimap_size/2, window.y()/2 - minimap_size/2, minimap_size, minimap_size);
-  glColor3f(0.0f,0.0f,0.0f);
+  glColor4f(0.0f,0.0f,0.0f,0.8f);
   /* BLACK BOX OVER MINIMAP */
   glBegin(GL_POLYGON);
     glVertex2i( -world.x(), world.y());
