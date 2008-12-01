@@ -81,11 +81,6 @@ void GLStation::step(float delta) {
   outer_rotation += outer_rotation_speed * delta;
   inner_rotation += inner_rotation_speed * delta;
 
-  if(!deploying && objects->empty()) {
-    deploying = true;
-    time_until_next_ship = 0.0;
-    ships_left_to_deploy = ships_this_wave;
-  }
   if(deploying) {
     time_until_next_ship -= delta;
     if(ships_left_to_deploy == 0) {
@@ -101,5 +96,9 @@ void GLStation::step(float delta) {
       float distance = 30 + radius;
       objects->push_back(new GLEnemy(distance*cos(rotation), distance*sin(rotation), targets));
     }
+  } else if (objects->empty()) {
+    deploying = true;
+    time_until_next_ship = 0.0;
+    ships_left_to_deploy = ships_this_wave;
   }
 }

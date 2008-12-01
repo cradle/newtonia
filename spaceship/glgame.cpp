@@ -112,7 +112,7 @@ void GLGame::draw(void) {
 void GLGame::draw_world(GLShip *glship, bool primary) {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  float zoom = 1.5;
+  float zoom = 2.0;
   gluOrtho2D(-window.x()/4*zoom, window.x()/4*zoom, -window.y()/2*zoom, window.y()/2*zoom);
   glMatrixMode(GL_MODELVIEW);
 

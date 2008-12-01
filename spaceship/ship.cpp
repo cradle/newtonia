@@ -142,7 +142,7 @@ void Ship::fire_shot() {
 }
 
 void Ship::lay_mine() {
-  mines.push_back(Bullet(tail(),  facing*-0.2 + velocity*0.95, 30000.0));
+  mines.push_back(Bullet(tail(),  facing*-0.1 + velocity*0.1, 30000.0));
 }
 
 float Ship::heading() {
