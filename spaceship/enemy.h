@@ -7,7 +7,7 @@
 class Enemy : public Car {
   public:
     Enemy() {};
-    Enemy(float x, float y, std::vector<Ship*> * targets);
+    Enemy(float x, float y, std::vector<Ship*> * targets, int difficulty = 0);
     
     void step(float delta);
     bool is_removable();

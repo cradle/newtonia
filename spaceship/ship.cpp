@@ -7,7 +7,7 @@ using namespace std;
 
 Ship::Ship(float x, float y) {
   mass = 100.0;
-  value = 200;
+  value = 2000;
   accuracy = 0.1;
   width = height = radius = 10.0;
   radius_squared = radius*radius;
@@ -136,12 +136,14 @@ void Ship::shoot(bool on) {
 }
 
 void Ship::fire_shot() {
+  score -= 1;
   Point dir = Point(facing);
   dir.rotate((rand() / (float)RAND_MAX) * accuracy - accuracy / 2.0);
   bullets.push_back(Bullet(gun(), dir*0.5 + velocity*0.99, 2000.0));
 }
 
 void Ship::lay_mine() {
+  score -= 10;
   mines.push_back(Bullet(tail(),  facing*-0.1 + velocity*0.1, 30000.0));
 }
 

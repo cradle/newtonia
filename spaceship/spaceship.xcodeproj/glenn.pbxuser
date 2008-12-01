@@ -125,7 +125,7 @@
 	};
 	219282760ECD670E002D470F /* Project object */ = {
 		activeArchitecture = ppc;
-		activeBuildConfigurationName = Release;
+		activeBuildConfigurationName = Debug;
 		activeExecutable = 2150E2AC0ECD687300D89C28 /* Spaceship */;
 		activeTarget = 2150E2A90ECD687300D89C28 /* Spaceship */;
 		addToTargets = (
@@ -210,8 +210,8 @@
 					PBXFileDataSource_Warnings_ColumnID,
 				);
 			};
-			PBXPerProjectTemplateStateSaveDate = 249655022;
-			PBXWorkspaceStateSaveDate = 249655022;
+			PBXPerProjectTemplateStateSaveDate = 249819481;
+			PBXWorkspaceStateSaveDate = 249819481;
 		};
 		sourceControlManager = 2192827A0ECD670E002D470F /* Source Control */;
 		userBuildSettings = {

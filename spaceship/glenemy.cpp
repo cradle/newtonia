@@ -15,12 +15,12 @@
 
 using namespace std;
 
-GLEnemy::GLEnemy(float x, float y, vector<GLShip*>* targets) {
+GLEnemy::GLEnemy(float x, float y, vector<GLShip*>* targets, float difficulty) {
   vector<Ship*>* ships = new vector<Ship*>;
   for(unsigned int i = 0; i < targets->size(); i++) {
     ships->push_back((*targets)[i]->ship);
   }
-  ship = new Enemy(x,y, ships);
+  ship = new Enemy(x,y, ships, difficulty);
   trails.push_back(new GLTrail(ship, 0.3));
   
   color[0] = color[2] = 0.0;

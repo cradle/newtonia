@@ -118,6 +118,9 @@ void GLGame::draw_world(GLShip *glship, bool primary) {
 
   glLoadIdentity();
   glViewport((primary ? 0 : (window.x()/2)), 0, window.x()/2, window.y());
+  
+  /* Draw the score */
+  typer->draw(window.x()/2-40, window.y()-20, glship->ship->score, 20);
 
   // Store the rendered world in a display list
   glNewList(gameworld, GL_COMPILE);
@@ -178,7 +181,12 @@ void GLGame::draw_map() {
     glVertex2i(  world.x(),-world.y());
     glVertex2i( -world.x(),-world.y());
   glEnd();
+  glPushMatrix();
   draw_objects(true);
+  glPopMatrix();
+
+  /* DRAW THE LEVEL */
+  typer->draw(world.x()-1500, -world.y()+2000, station->level(), 1000);
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
@@ -218,6 +226,8 @@ void GLGame::init(int argc, char** argv, float width, float height) {
 void GLGame::run(void) {
   enemies = new std::vector<GLShip*>;
   players = new std::vector<GLShip*>;
+  
+  typer = new Typer();
   
   GLShip* object = new GLShip(-world.x()*3/4,-world.y()*3/4);
   object->set_keys('a','d','w',' ','s','x');

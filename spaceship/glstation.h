@@ -13,6 +13,7 @@ public:
   void draw();
   void step(float delta);
   void collide(Ship *ship);
+  int level();
   
 private:
   float radius, radius_squared;
@@ -26,6 +27,7 @@ private:
   int ships_this_wave, max_ships_per_wave, ships_left_to_deploy;
   float time_until_next_ship, time_between_ships;
   bool deploying;
+  int wave, difficulty;
 };
 
 #endif

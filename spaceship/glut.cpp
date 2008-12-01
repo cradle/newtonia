@@ -69,7 +69,6 @@ int main(int argc, char** argv) {
   glgame = new GLGame(15000,15000);
   glgame->init(argc, argv, 800, 600);
 
-  glutSetKeyRepeat(GLUT_KEY_REPEAT_OFF);
   glutDisplayFunc(draw);
   glutKeyboardFunc(keyboard);
   glutKeyboardUpFunc(keyboard_up);

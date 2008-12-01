@@ -5,6 +5,7 @@
 #include "point.h"
 #include "glstarfield.h"
 #include "glstation.h"
+#include "typer.h"
 #include <vector>
 
 class GLGame {
@@ -35,6 +36,8 @@ private:
 
   void draw_map();
   void draw_world(GLShip *glship, bool primary);
+  
+  Typer* typer;
 
   std::vector<GLShip*>* enemies;
   std::vector<GLShip*>* players;

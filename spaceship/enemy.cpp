@@ -4,14 +4,14 @@
 #include <iostream>
 #include "point.h"
 
-Enemy::Enemy(float x, float y, std::vector<Ship*>* targets) : Car(x,y), targets(targets) {
-  thrust_force = 0.145;
-  rotation_force = 0.375;
+Enemy::Enemy(float x, float y, std::vector<Ship*>* targets, int difficulty) : Car(x,y), targets(targets) {
+  thrust_force = 0.145 + difficulty*0.00025;
+  rotation_force = 0.375 + difficulty*0.00025;
   time_until_next_shot = 1000.0;
   accuracy = 0.0;
   time_between_shots = 1000.0;
   thrust(true);
-  score = 20;
+  value = 50 + difficulty * 50;
   explode();
   respawns = false;
   
