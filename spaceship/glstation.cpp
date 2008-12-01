@@ -20,9 +20,13 @@ GLStation::GLStation(vector<GLShip*>* objects, vector<GLShip*>* targets) : objec
   position = Point(0,0);
   radius = 100.0;
   radius_squared = radius * radius;
-  time_between_waves = 10000.0;
-  time_until_next_wave = 0.0;
-
+  ships_this_wave = 2;
+  max_ships_per_wave = 24;
+  time_between_ships = 2000.0;
+  ships_left_to_deploy = ships_this_wave;
+  time_until_next_ship = time_between_ships;
+  deploying = true;
+  
   float segment_size = 360.0/NUM_SEGMENTS;
   outer_rotation_speed = 0.01;
   inner_rotation_speed = -0.0025;
@@ -76,11 +80,26 @@ void GLStation::draw() {
 void GLStation::step(float delta) {
   outer_rotation += outer_rotation_speed * delta;
   inner_rotation += inner_rotation_speed * delta;
-  time_until_next_wave -= delta;
-  Point pos = Point(radius + 30.0,0);
-  pos.rotate(rand()%360*M_PI/180);
-  while(time_until_next_wave <= 0.0) {
-    objects->push_back(new GLEnemy(pos.x(), pos.y(), targets));
-    time_until_next_wave += time_between_waves;
+
+  if(!deploying && objects->empty()) {
+    deploying = true;
+    time_until_next_ship = 0.0;
+    ships_left_to_deploy = ships_this_wave;
+  }
+  if(deploying) {
+    time_until_next_ship -= delta;
+    if(ships_left_to_deploy == 0) {
+      deploying = false;
+      ships_this_wave *= 2;
+      if(ships_this_wave > max_ships_per_wave) {
+        ships_this_wave = max_ships_per_wave;
+      }
+    } else if (time_until_next_ship <= 0) {
+      time_until_next_ship += time_between_ships;
+      ships_left_to_deploy--;
+      float rotation = 360.0/ships_this_wave*ships_left_to_deploy*M_PI/180;
+      float distance = 30 + radius;
+      objects->push_back(new GLEnemy(distance*cos(rotation), distance*sin(rotation), targets));
+    }
   }
 }

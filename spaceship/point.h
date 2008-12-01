@@ -33,4 +33,19 @@ class Point {
     float coords[2];
 };
 
+inline
+float Point::x() const {
+  return coords[X];
+}
+//TODO: Make everything const that should be
+inline
+float Point::y() const {
+  return coords[Y];
+}
+
+inline
+Point::operator const float*() {
+  return coords;
+}
+
 #endif /* POINT_H */

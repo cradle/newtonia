@@ -1,1 +1,1 @@
-g++ -Wall -framework GLUT -framework OpenGL glut.cpp glgame.cpp ship.cpp car.cpp glship.cpp glcar.cpp bullet.cpp point.cpp wrapped_point.cpp glstarfield.cpp gltrail.cpp enemy.cpp glenemy.cpp glstation.cpp -o spaceship 
+make LIBS="-framework GLUT -framework OpenGL" CFLAGS="-Wall -O2 -arch i386 -arch ppc -arch ppc64 -arch x86_64"

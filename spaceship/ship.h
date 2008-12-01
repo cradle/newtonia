@@ -29,7 +29,7 @@ class Ship {
     float heading();
     void kill();
     bool is_alive();
-    bool is_removable();
+    virtual bool is_removable();
     void explode();
     void respawn();
     void detonate(Point position, Point velocity);

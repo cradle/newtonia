@@ -25,18 +25,6 @@ Point::Point(float x, float y) {
   coords[Y] = y;
 }
 
-float Point::x() const {
-  return coords[X];
-}
-//TODO: Make everything const that should be
-float Point::y() const {
-  return coords[Y];
-}
-
-Point::operator const float*() {
-  return coords;
-}
-
 Point Point::perpendicular() {
   return Point(y(), -x());
 }
