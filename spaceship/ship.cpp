@@ -102,17 +102,17 @@ void Ship::collide(Ship* other) {
 
 void Ship::detonate(Point position, Point velocity) {
   Point dir = (facing * radius * 1.2);
-  for(int i = rand()%100+50; i > 0; i--) {
+  for(int i = rand()%50+25; i > 0; i--) {
     dir.rotate(rand()%360*M_PI/180);
-    bullets.push_back(Bullet(position + dir, velocity + dir*0.0001*(rand()%200), rand()%1000));
+    bullets.push_back(Bullet(position + dir, velocity + dir*0.0001*(rand()%150), rand()%1000));
   }
 }
 
 void Ship::explode() {
   Point dir = (facing * radius * 1.2);
-  for(int i = rand()%100+50; i > 0; i--) {
+  for(int i = rand()%60+20; i > 0; i--) {
     dir.rotate(rand()%360*M_PI/180);
-    debris.push_back(Bullet(position + dir, velocity + dir*0.0001*(rand()%300), rand()%4000));
+    debris.push_back(Bullet(position + dir, velocity + dir*0.000025*(rand()%300), rand()%3000));
   }
 }
 
