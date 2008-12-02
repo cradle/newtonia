@@ -184,23 +184,23 @@ void Ship::step(float delta) {
         time_until_next_shot += time_between_shots;
       }
     }
-    
-    facing.rotate(rotation_direction * rotation_force / mass  * delta );
-    acceleration = Point(0,0);
-    if(thrusting)
-      acceleration += ((facing * thrust_force) / mass);
-    if(reversing)
-      acceleration += ((facing * reverse_force) / mass);
-    
-    velocity += acceleration * delta;
-    position += velocity * delta;
-    position.wrap();
   } else if (respawns) {
     time_until_respawn -= delta;
     if(time_until_respawn < 0) {
       respawn();
     }
   }
+  
+  facing.rotate(rotation_direction * rotation_force / mass  * delta );
+  acceleration = Point(0,0);
+  if(thrusting)
+	acceleration += ((facing * thrust_force) / mass);
+  if(reversing)
+	acceleration += ((facing * reverse_force) / mass);
+
+  velocity += acceleration * delta;
+  position += velocity * delta;
+  position.wrap();
   
   std::vector<Bullet>::iterator bullet = bullets.begin();
   while(bullet != bullets.end()) {

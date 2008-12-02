@@ -278,6 +278,7 @@
 							<key>PBXSmartGroupTreeModuleOutlineStateSelectionKey</key>
 							<array>
 								<array>
+									<integer>27</integer>
 									<integer>0</integer>
 								</array>
 							</array>
@@ -301,7 +302,7 @@
 							<real>186</real>
 						</array>
 						<key>RubberWindowFrame</key>
-						<string>1849 275 1080 697 1440 131 1680 1050 </string>
+						<string>1803 440 1080 697 1440 131 1680 1050 </string>
 					</dict>
 					<key>Module</key>
 					<string>PBXSmartGroupTreeModule</string>
@@ -338,7 +339,7 @@
 								<key>Frame</key>
 								<string>{{0, 0}, {872, 0}}</string>
 								<key>RubberWindowFrame</key>
-								<string>1849 275 1080 697 1440 131 1680 1050 </string>
+								<string>1803 440 1080 697 1440 131 1680 1050 </string>
 							</dict>
 							<key>Module</key>
 							<string>PBXNavigatorGroup</string>
@@ -358,7 +359,7 @@
 								<key>Frame</key>
 								<string>{{0, 5}, {872, 651}}</string>
 								<key>RubberWindowFrame</key>
-								<string>1849 275 1080 697 1440 131 1680 1050 </string>
+								<string>1803 440 1080 697 1440 131 1680 1050 </string>
 							</dict>
 							<key>Module</key>
 							<string>XCDetailModule</string>
@@ -518,11 +519,14 @@
 	<integer>5</integer>
 	<key>WindowOrderList</key>
 	<array>
+		<string>21006CA00EE4BC6A005D5CBF</string>
+		<string>1C78EAAD065D492600B07095</string>
+		<string>1CD10A99069EF8BA00B06720</string>
 		<string>2150E2FD0ECD832B00D89C28</string>
 		<string>/Users/glenn/hobby/cplusplus/spaceship/spaceship.xcodeproj</string>
 	</array>
 	<key>WindowString</key>
-	<string>1849 275 1080 697 1440 131 1680 1050 </string>
+	<string>1803 440 1080 697 1440 131 1680 1050 </string>
 	<key>WindowToolsV3</key>
 	<array>
 		<dict>
@@ -719,13 +723,13 @@
 			<key>TableOfContents</key>
 			<array>
 				<string>1CD10A99069EF8BA00B06720</string>
-				<string>21006C800EE3F1CF005D5CBF</string>
+				<string>21006C910EE4BAD8005D5CBF</string>
 				<string>1C162984064C10D400B95A72</string>
-				<string>21006C810EE3F1CF005D5CBF</string>
-				<string>21006C820EE3F1CF005D5CBF</string>
-				<string>21006C830EE3F1CF005D5CBF</string>
-				<string>21006C840EE3F1CF005D5CBF</string>
-				<string>21006C850EE3F1CF005D5CBF</string>
+				<string>21006C920EE4BAD8005D5CBF</string>
+				<string>21006C930EE4BAD8005D5CBF</string>
+				<string>21006C940EE4BAD8005D5CBF</string>
+				<string>21006C950EE4BAD8005D5CBF</string>
+				<string>21006C960EE4BAD8005D5CBF</string>
 			</array>
 			<key>ToolbarConfiguration</key>
 			<string>xcode.toolbar.config.debugV3</string>
@@ -887,7 +891,7 @@
 			<key>TableOfContents</key>
 			<array>
 				<string>1C78EAAD065D492600B07095</string>
-				<string>21006C860EE3F1CF005D5CBF</string>
+				<string>21006C970EE4BAD8005D5CBF</string>
 				<string>1C78EAAC065D492600B07095</string>
 			</array>
 			<key>ToolbarConfiguration</key>

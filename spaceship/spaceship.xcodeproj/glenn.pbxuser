@@ -4,16 +4,16 @@
 		uiCtxt = {
 			sepNavIntBoundsRect = "{{0, 0}, {744, 627}}";
 			sepNavSelRange = "{620, 0}";
-			sepNavVisRange = "{0, 787}";
-			sepNavWindowFrame = "{{1400, 123}, {803, 755}}";
+			sepNavVisRange = "{0, 845}";
+			sepNavWindowFrame = "{{2035, 219}, {803, 755}}";
 		};
 	};
 	210D37A50EDAD422009A0BA4 /* enemy.cpp */ = {
 		uiCtxt = {
-			sepNavIntBoundsRect = "{{0, 0}, {744, 627}}";
-			sepNavSelRange = "{816, 0}";
-			sepNavVisRange = "{0, 816}";
-			sepNavWindowFrame = "{{365, 17}, {803, 755}}";
+			sepNavIntBoundsRect = "{{0, 0}, {744, 980}}";
+			sepNavSelRange = "{320, 0}";
+			sepNavVisRange = "{0, 1185}";
+			sepNavWindowFrame = "{{2102, 238}, {803, 755}}";
 		};
 	};
 	210D37A60EDAD422009A0BA4 /* enemy.h */ = {
@@ -85,10 +85,18 @@
 	};
 	2150E2E50ECD6A6E00D89C28 /* glship.cpp */ = {
 		uiCtxt = {
-			sepNavIntBoundsRect = "{{0, 0}, {419, 1834}}";
-			sepNavSelRange = "{59, 95}";
-			sepNavVisRange = "{0, 370}";
-			sepNavWindowFrame = "{{1547, 628}, {478, 464}}";
+			sepNavIntBoundsRect = "{{0, 0}, {907, 2730}}";
+			sepNavSelRange = "{686, 0}";
+			sepNavVisRange = "{3504, 1214}";
+			sepNavWindowFrame = "{{1547, 310}, {966, 782}}";
+		};
+	};
+	2150E2EA0ECD6A6E00D89C28 /* ship.cpp */ = {
+		uiCtxt = {
+			sepNavIntBoundsRect = "{{0, 0}, {907, 3234}}";
+			sepNavSelRange = "{4456, 0}";
+			sepNavVisRange = "{4001, 1134}";
+			sepNavWindowFrame = "{{1596, 341}, {966, 782}}";
 		};
 	};
 	2150E2EB0ECD6A6E00D89C28 /* ship.h */ = {
@@ -101,9 +109,9 @@
 	};
 	215ED6A30ECDB80400E0778A /* glgame.cpp */ = {
 		uiCtxt = {
-			sepNavIntBoundsRect = "{{0, 0}, {1032, 2044}}";
+			sepNavIntBoundsRect = "{{0, 0}, {1032, 3556}}";
 			sepNavSelRange = "{2995, 0}";
-			sepNavVisRange = "{1246, 2013}";
+			sepNavVisRange = "{2224, 1587}";
 			sepNavWindowFrame = "{{1880, 141}, {1091, 932}}";
 		};
 	};
@@ -125,7 +133,7 @@
 	};
 	219282760ECD670E002D470F /* Project object */ = {
 		activeArchitecture = ppc;
-		activeBuildConfigurationName = Debug;
+		activeBuildConfigurationName = Release;
 		activeExecutable = 2150E2AC0ECD687300D89C28 /* Spaceship */;
 		activeTarget = 2150E2A90ECD687300D89C28 /* Spaceship */;
 		addToTargets = (

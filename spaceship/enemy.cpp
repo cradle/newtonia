@@ -7,7 +7,7 @@
 Enemy::Enemy(float x, float y, std::vector<Ship*>* targets, int difficulty) : Car(x,y), targets(targets) {
   thrust_force = 0.145 + difficulty*0.00025;
   rotation_force = 0.375 + difficulty*0.00025;
-  time_until_next_shot = 1000.0;
+  time_until_next_shot = 900.0 + rand()%100;
   accuracy = 0.0;
   time_between_shots = 1000.0;
   thrust(true);
@@ -16,7 +16,7 @@ Enemy::Enemy(float x, float y, std::vector<Ship*>* targets, int difficulty) : Ca
   respawns = false;
   
   time_until_next_lock = 0.0;
-  time_between_locks = 1000.0;
+  time_between_locks = 900.0 + rand()%100;
   
   target = NULL;
 }
