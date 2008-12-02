@@ -61,12 +61,14 @@ GLCar::GLCar(float x, float y) {
   glEndList();
 }
 
-void GLCar::draw_ship() {
-  GLShip::draw_ship();
+void GLCar::draw_ship(bool minimap) {
+  GLShip::draw_ship(minimap);
 
-	if(ship->rotation_direction == Ship::LEFT) {
-    glCallList(left_jet);
-  } else if (ship->rotation_direction == Ship::RIGHT) {
-    glCallList(right_jet);
+  if(!minimap) {
+  	if(ship->rotation_direction == Ship::LEFT) {
+      glCallList(left_jet);
+    } else if (ship->rotation_direction == Ship::RIGHT) {
+      glCallList(right_jet);
+  	}
 	}
 }

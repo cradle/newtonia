@@ -30,7 +30,7 @@ public:
   Ship *ship;
 
 protected:
-  virtual void draw_ship();
+  virtual void draw_ship(bool minimap = false);
   void draw_particles();
   void draw_mines();
   void draw_debris();

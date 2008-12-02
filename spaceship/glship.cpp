@@ -114,18 +114,27 @@ void GLShip::draw(bool minimap) {
     draw_mines();
   }
   if(ship->is_alive()) {
-    draw_ship();
+    draw_ship(minimap);
   }
 }
 
-void GLShip::draw_ship() {
+void GLShip::draw_ship(bool minimap) {
   glTranslatef(ship->position.x(), ship->position.y(), 0.0f);
   glScalef( ship->radius, ship->radius, 1.0f);
   glRotatef( ship->heading(), 0.0f, 0.0f, 1.0f);
+  
+  if(minimap) {
+    glColor3fv(color);
+    glBegin(GL_POINTS);
+    glVertex2f(0.0f, 0.0f);
+    glEnd();
+    return;
+  }
 
 	if(ship->thrusting) {
     glCallList(jets);
 	}
+	
 	if(ship->reversing) {
     glPushMatrix();
     glCallList(repulsors);
