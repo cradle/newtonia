@@ -77,7 +77,8 @@ void GLGame::tick(void) {
     
     time_until_next_step += step_size;
   }
-  std::cout << (num_frames*1000 / current_time) << std::endl;
+  /* Display FPS */
+  // std::cout << (num_frames*1000 / current_time) << std::endl;
   last_tick = current_time;
   glutPostRedisplay();
 }
@@ -94,7 +95,7 @@ void GLGame::draw_objects(bool minimap) const {
     (*o)->draw(minimap);
     glPopMatrix();
   }
-  station->draw();  
+  station->draw(minimap);  
 }
 
 void GLGame::draw(void) {

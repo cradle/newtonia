@@ -35,7 +35,7 @@ void Enemy::lock_nearest_target() {
   }
 }
 
-bool Enemy::is_removable() {
+bool Enemy::is_removable() const {
   return !alive && bullets.empty();
 }
 

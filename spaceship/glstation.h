@@ -10,7 +10,7 @@ using namespace std;
 class GLStation {
 public:
   GLStation(vector<GLShip*>* objects, vector<GLShip*>* targets);
-  void draw();
+  void draw(bool minimap = false);
   void step(float delta);
   void collide(Ship *ship);
   int level();
@@ -18,7 +18,7 @@ public:
 private:
   float radius, radius_squared;
   WrappedPoint position;
-  unsigned int body;
+  unsigned int body, map_body;
   static const int NUM_SEGMENTS = 30;
   float inner_rotation, outer_rotation, outer_rotation_speed, inner_rotation_speed;
   

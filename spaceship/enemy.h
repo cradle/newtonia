@@ -10,7 +10,7 @@ class Enemy : public Car {
     Enemy(float x, float y, std::vector<Ship*> * targets, int difficulty = 0);
     
     void step(float delta);
-    bool is_removable();
+    bool is_removable() const;
     
   private:
     void lock_nearest_target();
