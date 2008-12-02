@@ -11,7 +11,9 @@ class Point {
     float x() const;
     float y() const;
 
+    void zero();
     void rotate(float radians);
+    
     Point normalized() const;
     Point perpendicular() const;
     float direction() const;

@@ -33,7 +33,7 @@ class Ship {
     bool collide(Particle const particle, float proximity = 0) const;
 
     //TODO: make friends with glship
-    int score;
+    int score, lives;
     float radius, radius_squared;
     bool thrusting, reversing;
     WrappedPoint position;
@@ -44,7 +44,7 @@ class Ship {
     Point velocity;
     
     //TODO: somehow get around this public for glstation
-    void kill();
+    void kill_stop();
     
     vector<Particle> bullets;
     vector<Particle> mines;
@@ -65,6 +65,7 @@ class Ship {
     void explode();
     void respawn();
     void detonate(Point const position, Point const velocity);
+    void kill();
 
     Point world_size;
 

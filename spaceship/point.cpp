@@ -86,3 +86,7 @@ void Point::rotate(float radians) {
   coords[X] = oldx * cos(radians) - oldy * sin(radians);
   coords[Y] = oldy * cos(radians) + oldx * sin(radians);
 }
+
+void Point::zero() {
+  coords[X] = coords[Y] = 0;
+}

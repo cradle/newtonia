@@ -9,6 +9,7 @@ Ship::Ship(float x, float y) {
   mass = 100.0;
   value = 2000;
   accuracy = 0.1;
+  lives = 5;
   width = height = radius = 10.0;
   radius_squared = radius*radius;
   thrusting = false;
@@ -40,12 +41,19 @@ void Ship::respawn() {
 void Ship::kill() {
   if(is_alive()) {
     time_until_respawn = respawn_time;
-    score -= value;
+    lives -= 1;
     alive = false;
     thrusting = false;
     reversing = false;
     rotation_direction = NONE;
     explode();
+  }
+}
+
+void Ship::kill_stop() {
+  if(is_alive()) {
+    velocity.zero();
+    kill();
   }
 }
 

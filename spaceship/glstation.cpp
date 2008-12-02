@@ -70,8 +70,7 @@ GLStation::GLStation(vector<GLShip*>* objects, vector<GLShip*>* targets) : objec
 
 void GLStation::collide(Ship * ship) {
   if( ship->is_alive() && (ship->position - position).magnitude_squared() < (radius_squared + ship->radius_squared) ){
-    //TODO: Make ship stop moving (death), explode other way
-    ship->kill();
+    ship->kill_stop();
   }
 }
 
@@ -117,7 +116,12 @@ void GLStation::step(float delta) {
       ships_left_to_deploy--;
       float rotation = 360.0/ships_this_wave*ships_left_to_deploy*M_PI/180;
       float distance = 30 + radius;
-      objects->push_back(new GLEnemy(distance*cos(rotation), distance*sin(rotation), targets, wave));
+      objects->push_back(
+        new GLEnemy(
+          position.x() + distance*cos(rotation), 
+          position.y() + distance*sin(rotation), targets, wave
+        )
+      );
     }
   } else if (objects->empty()) {
     deploying = true;
