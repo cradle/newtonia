@@ -26,7 +26,7 @@ Point::Point(float x, float y) {
 }
 
 Point Point::perpendicular() {
-  return Point(y(), -x());
+  return Point(coords[Y], -coords[X]);
 }
 
 Point Point::normalized() {
@@ -38,39 +38,17 @@ float Point::magnitude() {
 }
 
 float Point::magnitude_squared() {
-  return x()*x() + y()*y();
+  return coords[X]*coords[X] + coords[Y]*coords[Y];
 }
 
 float Point::direction() {
-  return atan2(y(),x()) * 180.0 / M_PI - 90.0;
+  return atan2(coords[Y],coords[X]) * 180.0 / M_PI - 90.0;
 }
 
 void Point::rotate(float radians) {
   //TODO: Must remain normalised
-  float oldx = x();
-  float oldy = y();
+  float oldx = coords[X];
+  float oldy = coords[Y];
   coords[X] = oldx * cos(radians) - oldy * sin(radians);
   coords[Y] = oldy * cos(radians) + oldx * sin(radians);
-}
-
-void Point::operator+=(const Point other) {
-  coords[X] += other.coords[X];
-  coords[Y] += other.coords[Y];
-}
-
-Point Point::operator+(Point other) {
-  return Point(x() + other.x(), y() + other.y());
-}
-
-Point Point::operator-(Point other) {
-  return Point(x() - other.x(), y() - other.y());
-}
-
-//TODO: Write tests
-Point Point::operator*(float scalar) {
-  return Point(x() * scalar, y() * scalar);
-}
-
-Point Point::operator/(float scalar) {
-  return Point(x() / scalar, y() / scalar);
 }

@@ -48,4 +48,31 @@ Point::operator const float*() {
   return coords;
 }
 
+inline
+void Point::operator+=(const Point other) {
+  coords[X] += other.coords[X];
+  coords[Y] += other.coords[Y];
+}
+
+inline
+Point Point::operator+(Point other) {
+  return Point(coords[X] + other.coords[X], coords[Y] + other.coords[Y]);
+}
+
+inline
+Point Point::operator-(Point other) {
+  return Point(coords[X] - other.coords[X], coords[Y] - other.coords[Y]);
+}
+
+//TODO: Write tests
+inline
+Point Point::operator*(float scalar) {
+  return Point(coords[X] * scalar, coords[Y] * scalar);
+}
+
+inline
+Point Point::operator/(float scalar) {
+  return Point(coords[X] / scalar, coords[Y] / scalar);
+}
+
 #endif /* POINT_H */

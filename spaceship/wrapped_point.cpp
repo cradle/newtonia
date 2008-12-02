@@ -9,14 +9,15 @@ float WrappedPoint::x_max = 0;
 float WrappedPoint::y_max = 0;
 
 void WrappedPoint::wrap() {
-  while(x() < x_min)
-    coords[X] += x_max - x_min;
-  while(x() > x_max)
-    coords[X] -= x_max - x_min;
-  while(y() < y_min)
-    coords[Y] += y_max - y_min;
-  while(y() > y_max)
-    coords[Y] -= y_max - y_min;
+  float width = x_max - x_min, height = y_max - y_min;
+  while(coords[X] < x_min)
+    coords[X] += width;
+  while(coords[X] > x_max)
+    coords[X] -= width;
+  while(coords[Y] < y_min)
+    coords[Y] += height;
+  while(coords[Y] > y_max)
+    coords[Y] -= height;
 }
 
 Point WrappedPoint::closest_to(Point other) {
