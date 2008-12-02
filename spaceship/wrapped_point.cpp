@@ -20,7 +20,7 @@ void WrappedPoint::wrap() {
     coords[Y] -= height;
 }
 
-Point WrappedPoint::closest_to(Point other) {
+Point WrappedPoint::closest_to(const Point other) const {
   Point closest = *this, current;
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
@@ -33,11 +33,11 @@ Point WrappedPoint::closest_to(Point other) {
   return closest;
 }
 
-float WrappedPoint::distance_to(WrappedPoint other) {
+float WrappedPoint::distance_to(const WrappedPoint other) const {
   return (*this - other.closest_to(*this)).magnitude();
 }
 
-void WrappedPoint::set_boundaries(Point bounds) {
+void WrappedPoint::set_boundaries(const Point bounds) {
   x_min = -bounds.x();
   x_max = bounds.x();
   y_min = -bounds.y();

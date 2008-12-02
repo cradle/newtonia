@@ -90,7 +90,7 @@ void GLStation::step(float delta) {
     time_until_next_ship -= delta;
     if(ships_left_to_deploy == 0) {
       deploying = false;
-      ships_this_wave *= 2;
+      ships_this_wave += 2;
       wave++;
       if(ships_this_wave > max_ships_per_wave) {
         ships_this_wave = max_ships_per_wave;

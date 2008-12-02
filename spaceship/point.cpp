@@ -25,23 +25,57 @@ Point::Point(float x, float y) {
   coords[Y] = y;
 }
 
-Point Point::perpendicular() {
+float Point::x() const {
+  return coords[X];
+}
+//TODO: Make everything const that should be
+float Point::y() const {
+  return coords[Y];
+}
+
+Point::operator const float*() const {
+  return coords;
+}
+
+void Point::operator+=(const Point other) {
+  coords[X] += other.coords[X];
+  coords[Y] += other.coords[Y];
+}
+
+Point Point::operator+(const Point other) const {
+  return Point(coords[X] + other.coords[X], coords[Y] + other.coords[Y]);
+}
+
+Point Point::operator-(const Point other) const {
+  return Point(coords[X] - other.coords[X], coords[Y] - other.coords[Y]);
+}
+
+//TODO: Write tests
+Point Point::operator*(float scalar) const {
+  return Point(coords[X] * scalar, coords[Y] * scalar);
+}
+
+Point Point::operator/(float scalar) const {
+  return Point(coords[X] / scalar, coords[Y] / scalar);
+}
+
+Point Point::perpendicular() const {
   return Point(coords[Y], -coords[X]);
 }
 
-Point Point::normalized() {
+Point Point::normalized() const {
   return *this / magnitude();
 }
 
-float Point::magnitude() {
+float Point::magnitude() const {
   return sqrt(magnitude_squared());
 }
 
-float Point::magnitude_squared() {
+float Point::magnitude_squared() const {
   return coords[X]*coords[X] + coords[Y]*coords[Y];
 }
 
-float Point::direction() {
+float Point::direction() const {
   return atan2(coords[Y],coords[X]) * 180.0 / M_PI - 90.0;
 }
 
