@@ -10,7 +10,7 @@
 #include <GL/glut.h>
 #endif
 
-GLStarfield::GLStarfield(Point size) {
+GLStarfield::GLStarfield(Point const size) {
   point_layers = glGenLists(1);
   for(int i = 0; i < NUM_REAR_LAYERS + NUM_FRONT_LAYERS + 1; i++) {
     glNewList(point_layers+i, GL_COMPILE);
@@ -24,7 +24,7 @@ GLStarfield::GLStarfield(Point size) {
   }
 }
 
-void GLStarfield::draw(Point velocity, Point viewpoint) {
+void GLStarfield::draw(Point const viewpoint) const {
   glPushMatrix();
   for(int i = 0; i < NUM_REAR_LAYERS; i++) {
     float c = 1-i/(float)NUM_REAR_LAYERS;

@@ -49,11 +49,11 @@ void Ship::kill() {
   }
 }
 
-bool Ship::is_removable() {
+bool Ship::is_removable() const {
   return false;
 }
 
-bool Ship::is_alive() {
+bool Ship::is_alive() const {
   return alive;
 }
 
@@ -100,7 +100,7 @@ void Ship::collide(Ship* other) {
   }
 }
 
-void Ship::detonate(Point position, Point velocity) {
+void Ship::detonate(Point const position, Point const velocity) {
   Point dir = (facing * radius * 1.2);
   for(int i = rand()%50+25; i > 0; i--) {
     dir.rotate(rand()%360*M_PI/180);
@@ -116,17 +116,10 @@ void Ship::explode() {
   }
 }
 
-bool Ship::collide(Particle particle, float proximity) { // Circle based collision
-  //TODO: Make more accurate. Doesn't currently reflect shape of ship at all
+/* Circle based collision detection */
+bool Ship::collide(Particle const particle, float proximity) const {
   return ((particle.position - position).magnitude_squared() < (radius_squared + proximity*proximity));
 }
-/*
-bool Ship::collide_square(Particle particle) {
-  return (particle.position.x > (position.x - width) && \
-          particle.position.x < (position.x + width) && \
-          particle.position.y > (position.y - height) && \
-          particle.position.y < (position.y + height));
-}*/
 
 void Ship::shoot(bool on) {
   shooting = on;
@@ -142,12 +135,19 @@ void Ship::fire_shot() {
   bullets.push_back(Particle(gun(), dir*0.5 + velocity*0.99, 2000.0));
 }
 
+void Ship::mine(bool on) {
+  if(!mining && on) {
+    lay_mine();
+  }
+  mining = on;
+}
+
 void Ship::lay_mine() {
   score -= 10;
   mines.push_back(Particle(tail(),  facing*-0.1 + velocity*0.1, 30000.0));
 }
 
-float Ship::heading() {
+float Ship::heading() const {
   //FIX: shouldn't have to calculate this each time
   return facing.direction();
 }
@@ -160,11 +160,11 @@ void Ship::rotate_right(bool on) {
   rotation_direction = on ? RIGHT : NONE;
 }
 
-WrappedPoint Ship::gun() {
+WrappedPoint Ship::gun() const {
   return WrappedPoint(position + (facing * height * 1.05));
 }
 
-WrappedPoint Ship::tail() {
+WrappedPoint Ship::tail() const {
   return WrappedPoint(position - (facing * 15.0));
 }
 
@@ -192,7 +192,7 @@ void Ship::step(float delta) {
   }
   
   facing.rotate(rotation_direction * rotation_force / mass  * delta );
-  acceleration = Point(0,0);
+  Point acceleration = Point(0,0);
   if(thrusting)
 	acceleration += ((facing * thrust_force) / mass);
   if(reversing)

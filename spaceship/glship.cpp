@@ -97,8 +97,8 @@ void GLShip::input(unsigned char key, bool pressed) {
     ship->reverse(pressed);
   } else if (key == shoot_key) {
     ship->shoot(pressed);
-  } else if (key == mine_key && pressed) {
-    ship->lay_mine();
+  } else if (key == mine_key) {
+    ship->mine(pressed);
   }
 }
 
@@ -120,7 +120,7 @@ void GLShip::draw(bool minimap) {
 
 void GLShip::draw_ship() {
   glTranslatef(ship->position.x(), ship->position.y(), 0.0f);
-  glScalef( ship->width, ship->height, 1.0f);
+  glScalef( ship->radius, ship->radius, 1.0f);
   glRotatef( ship->heading(), 0.0f, 0.0f, 1.0f);
 
 	if(ship->thrusting) {

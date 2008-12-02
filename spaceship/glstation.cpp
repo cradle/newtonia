@@ -60,6 +60,7 @@ GLStation::GLStation(vector<GLShip*>* objects, vector<GLShip*>* targets) : objec
 
 void GLStation::collide(Ship * ship) {
   if( ship->is_alive() && (ship->position - position).magnitude_squared() < (radius_squared + ship->radius_squared) ){
+    //TODO: Make ship stop moving (death), explode other way
     ship->kill();
   }
 }

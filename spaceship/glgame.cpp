@@ -124,7 +124,7 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   // Store the rendered world in a display list
   glNewList(gameworld, GL_COMPILE);
     glTranslatef(-glship->ship->position.x(), -glship->ship->position.y(), 0.0f);
-    starfield->draw(glship->ship->velocity, glship->ship->position);
+    starfield->draw(glship->ship->position);
     draw_objects();
   glEndList();
 

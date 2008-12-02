@@ -5,85 +5,78 @@
 #include "particle.h"
 #include <vector>
 
+using namespace std;
+
 class Ship {
   public:
     Ship() {};
     Ship(float x, float y);
     virtual ~Ship() {};
+    
+    void puts(); //TODO: convert into iostream operator
 
-    void set_world_size(Point world_size);
+    virtual void step(float delta);
 
     void rotate_left(bool on = true);
     void rotate_right(bool on = true);
     void thrust(bool on = true);
     void reverse(bool on = true);
     void shoot(bool on = true);
-    void fire_shot();
-    void lay_mine();
+    void mine(bool on = true);
 
-    // TODO: make 'friend' with some sort of VIEW
-    bool thrusting;
-    bool reversing;
-    WrappedPoint position;
-    float width, height, radius, radius_squared;
-    float heading();
-    void kill();
-    bool is_alive();
-    virtual bool is_removable();
-    void explode();
-    void respawn();
-    void detonate(Point position, Point velocity);
+    float heading() const;
+    bool is_alive() const;
+    virtual bool is_removable() const;
 
-    // Step moves the engine forward delta seconds, zeroes forces
-    virtual void step(float delta);
-
-    void puts();
-
-    // Projectiles
-    //TODO: friends
-    std::vector<Particle> bullets;
-    std::vector<Particle> mines;
-    std::vector<Particle> debris;
-
-    static void collide(Ship* first, Ship* second);
-
+    static void collide(Ship* first, Ship* second);    
     void collide(Ship* other);
-    bool collide(Particle particle, float proximity = 0);
+    bool collide(Particle const particle, float proximity = 0) const;
 
-    int score, value;
+    //TODO: make friends with glship
+    int score;
+    float radius, radius_squared;
+    bool thrusting, reversing;
+    WrappedPoint position;
+    
+    //TODO: make friends with gltrail (or some other way around these public)
+    WrappedPoint tail() const;
+    Point facing;
+    Point velocity;
+    
+    //TODO: somehow get around this public for glstation
+    void kill();
+    
+    vector<Particle> bullets;
+    vector<Particle> mines;
+    vector<Particle> debris;
+    
     enum Rotation {
       LEFT = 1,
       NONE = 0,
       RIGHT = -1
     };
     Rotation rotation_direction;
+
+  protected:
+    WrappedPoint gun() const;
     
-    
-    WrappedPoint tail();
-
-    // Linear
-    float thrust_force;
-    float reverse_force;
-    Point velocity;
-    Point acceleration;
-
-    // Angular
-    float rotation_force;
-    Point facing;
-
+    void fire_shot();
+    void lay_mine();
+    void explode();
+    void respawn();
+    void detonate(Point const position, Point const velocity);
 
     Point world_size;
 
-  protected:
-    bool alive;
-    float mass;
+    // Forces
+    float thrust_force, reverse_force, rotation_force;
+    // Attributes
+    float width, height, mass, accuracy, value;
+    // States
+    bool shooting, mining, alive, respawns;
+    // Timings
     float respawn_time, time_until_respawn;
-    float accuracy;
     float time_until_next_shot, time_between_shots;
-    bool shooting;
-    bool respawns;
-
-    WrappedPoint gun();
 };
 
 #endif
