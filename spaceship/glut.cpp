@@ -1,5 +1,5 @@
- #include <stdlib.h> // For EXIT_SUCCESS
-
+/* glut.cpp - GLUT Abstraction layer for Game */
+#include <stdlib.h> // For EXIT_SUCCESS
 #include "glgame.h"
 
 #ifdef __APPLE__
@@ -11,12 +11,11 @@
 #include <GL/glut.h>
 #endif
 
-#include <iostream>
-
-GLGame* glgame;
+// Glut callbacks cannot be member functions. Need to pre-declare game object
+GLGame* game;
 
 void draw() {
-  glgame->draw();
+  game->draw();
 }
 
 void keyboard(unsigned char key, int x, int y) {
@@ -43,19 +42,19 @@ void keyboard(unsigned char key, int x, int y) {
     }
     break;
   }
-  glgame->keyboard(key, x, y);
+  game->keyboard(key, x, y);
 }
 
 void keyboard_up(unsigned char key, int x, int y) {
-  glgame->keyboard_up(key, x, y);
+  game->keyboard_up(key, x, y);
 }
 
 void resize(int width, int height) {
-  glgame->resize(width, height);
+  game->resize(width, height);
 }
 
 void tick() {
-  glgame->tick();
+  game->tick();
 }
 
 void isVisible(int state) {
@@ -66,19 +65,16 @@ void isVisible(int state) {
 }
 
 int main(int argc, char** argv) {
-  glgame = new GLGame(15000,15000);
-  glgame->init(argc, argv, 800, 600);
+  game = new GLGame(15000,15000);
+  game->init(argc, argv, 800, 600);
 
   glutDisplayFunc(draw);
   glutKeyboardFunc(keyboard);
   glutKeyboardUpFunc(keyboard_up);
   glutReshapeFunc(resize);
   glutVisibilityFunc(isVisible);
-  //TODO: stop using glut, use SDL
-
-  glgame->run();
-  std::cout << "deleting" << std::endl;
-  delete glgame;
-
+  //TODO: stop using glut (use SDL?)
+  game->run();
+  delete game;
   return EXIT_SUCCESS;
 }

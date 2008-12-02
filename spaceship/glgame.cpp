@@ -82,7 +82,7 @@ void GLGame::tick(void) {
   glutPostRedisplay();
 }
 
-void GLGame::draw_objects(bool minimap) {
+void GLGame::draw_objects(bool minimap) const {
   std::vector<GLShip*>::iterator o;
   for(o = players->begin(); o != players->end(); o++) {
     glPushMatrix();
@@ -108,7 +108,7 @@ void GLGame::draw(void) {
   glutSwapBuffers();
 }
 
-void GLGame::draw_world(GLShip *glship, bool primary) {
+void GLGame::draw_world(GLShip *glship, bool primary) const {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   float zoom = 2.0;
@@ -139,7 +139,7 @@ void GLGame::draw_world(GLShip *glship, bool primary) {
   }
 }
 
-void GLGame::draw_map() {
+void GLGame::draw_map() const {
   float minimap_size = window.y()/4;
   
     /* DRAW CENTER LINE */

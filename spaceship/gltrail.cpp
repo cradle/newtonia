@@ -1,6 +1,6 @@
 #include "gltrail.h"
 #include "ship.h"
-#include "bullet.h"
+#include "particle.h"
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -20,7 +20,7 @@ GLTrail::GLTrail(Ship* ship, float deviation, Point offset, float speed, float r
  : ship(ship), deviation(deviation), offset(offset), speed(speed), rotation(rotation), type(type) {}
 
 void GLTrail::draw() {
-  deque<Bullet*>::iterator p;
+  deque<Particle*>::iterator p;
   glBegin(GL_POINTS);
   for(p = trail.begin(); p != trail.end(); p++) {
       glColor4f(0.7,0.7,0.7,(*p)->aliveness());
@@ -30,7 +30,7 @@ void GLTrail::draw() {
 }
 
 void GLTrail::step(float delta) {
-  deque<Bullet*>::iterator t = trail.begin();
+  deque<Particle*>::iterator t = trail.begin();
   while(t != trail.end()) {
     (*t)->step(delta);
     if(!(*t)->is_alive()) {
@@ -59,6 +59,6 @@ void GLTrail::add() {
   velocity = direction*speed + ship->velocity;
   velocity.rotate((rand() / (float)RAND_MAX) * deviation - deviation / 2.0);
   trail.push_back(
-    new Bullet(position, velocity, 2000.0)
+    new Particle(position, velocity, 2000.0)
   );
 }

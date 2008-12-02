@@ -2,7 +2,7 @@
 #define SHIP_H
 
 #include "point.h"
-#include "bullet.h"
+#include "particle.h"
 #include <vector>
 
 class Ship {
@@ -41,14 +41,14 @@ class Ship {
 
     // Projectiles
     //TODO: friends
-    std::vector<Bullet> bullets;
-    std::vector<Bullet> mines;
-    std::vector<Bullet> debris;
+    std::vector<Particle> bullets;
+    std::vector<Particle> mines;
+    std::vector<Particle> debris;
 
     static void collide(Ship* first, Ship* second);
 
     void collide(Ship* other);
-    bool collide(Bullet bullet, float proximity = 0);
+    bool collide(Particle particle, float proximity = 0);
 
     int score, value;
     enum Rotation {

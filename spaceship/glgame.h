@@ -8,6 +8,8 @@
 #include "typer.h"
 #include <vector>
 
+using namespace std;
+
 class GLGame {
 public:
   GLGame() {};
@@ -17,30 +19,30 @@ public:
   void init(int argc, char** argv, float screen_width, float screen_height);
   void run();
   void resize(float x, float y);
-
   void tick(void);
   void draw(void);
-  void draw_objects(bool minimap = false);
   void keyboard (unsigned char key, int x, int y);
   void keyboard_up (unsigned char key, int x, int y);
 
 private:
-  Point window;
-  Point world;
-  GLStarfield* starfield;
-  GLStation* station;
-  int last_tick, time_until_next_step, num_frames;
+  void draw_map() const;
+  void draw_objects(bool minimap = false) const;
+  void draw_world(GLShip *glship, bool primary) const;
+  
   static const int step_size = 10;
+  
+  Point window, world;
+
+  int last_tick, time_until_next_step, num_frames;
 
   unsigned int gameworld;
-
-  void draw_map();
-  void draw_world(GLShip *glship, bool primary);
   
   Typer* typer;
-
-  std::vector<GLShip*>* enemies;
-  std::vector<GLShip*>* players;
+  
+  GLStarfield* starfield;
+  GLStation* station;
+  vector<GLShip*>* enemies;
+  vector<GLShip*>* players;
 };
 
 #endif

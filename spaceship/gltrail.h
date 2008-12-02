@@ -43,7 +43,7 @@ private:
   float speed;
   Ship* ship;
   
-  std::deque<Bullet*> trail;
+  std::deque<Particle*> trail;
 };
 
 #endif

@@ -43,8 +43,8 @@
 			<Add library="..\..\..\..\..\Program Files\CodeBlocks\MinGW\lib\glut32.lib" />
 			<Add directory="C:\Program Files\CodeBlocks\MinGW\lib" />
 		</Linker>
-		<Unit filename="bullet.cpp" />
-		<Unit filename="bullet.h" />
+		<Unit filename="particle.cpp" />
+		<Unit filename="particle.h" />
 		<Unit filename="car.cpp" />
 		<Unit filename="car.h" />
 		<Unit filename="enemy.cpp" />

@@ -1,9 +1,9 @@
 # depslib dependency file v1.0
-1227689254 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\bullet.cpp
-	"bullet.h"
+1227689254 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\particle.cpp
+	"particle.h"
 	"point.h"
 
-1227689254 c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\bullet.h
+1227689254 c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\particle.h
 	"point.h"
 	"wrapped_point.h"
 
@@ -43,7 +43,7 @@
 
 1227689254 c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\ship.h
 	"point.h"
-	"bullet.h"
+	"particle.h"
 	<vector>
 
 1227689254 c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\glcar.h
@@ -297,7 +297,7 @@
 1227689254 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\ship.cpp
 	"ship.h"
 	"point.h"
-	"bullet.h"
+	"particle.h"
 
 1227695596 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\wrapped_point.cpp
 	"wrapped_point.h"
@@ -357,7 +357,7 @@
 1227696040 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\gltrail.cpp
 	"gltrail.h"
 	"ship.h"
-	"bullet.h"
+	"particle.h"
 	<GLUT/glut.h>
 	<windows.h>
 	<GL/glut.h>

@@ -1,6 +1,6 @@
 #include "ship.h"
 #include "point.h"
-#include "bullet.h"
+#include "particle.h"
 #include <math.h>
 
 using namespace std;
@@ -50,7 +50,7 @@ void Ship::kill() {
 }
 
 bool Ship::is_removable() {
-  return false;//!alive && bullets.empty();
+  return false;
 }
 
 bool Ship::is_alive() {
@@ -75,21 +75,21 @@ void Ship::collide(Ship* first, Ship* second) {
 
 void Ship::collide(Ship* other) {
   //TODO: Make ships collide with each other too
-  std::vector<Bullet>::iterator bullet = bullets.begin();
-  while(bullet != bullets.end()) {
-    if(is_alive() && collide(*bullet)) {
+  std::vector<Particle>::iterator b = bullets.begin();
+  while(b != bullets.end()) {
+    if(is_alive() && collide(*b )) {
       kill();
-      bullet = bullets.erase(bullet);
-    } else if(other->is_alive() && other->collide(*bullet)) {
+      b = bullets.erase(b);
+    } else if(other->is_alive() && other->collide(*b)) {
       other->kill();
       score += other->value;
-      bullet = bullets.erase(bullet);
+      b = bullets.erase(b);
     } else {
-      bullet++;
+      b++;
     }
   }
   
-  std::vector<Bullet>::iterator mine = mines.begin();
+  std::vector<Particle>::iterator mine = mines.begin();
   while(mine != mines.end()) {
     if(is_alive() && collide(*mine) || other->is_alive() && other->collide(*mine, 50.0)) {
       detonate(mine->position, mine->velocity);
@@ -104,7 +104,7 @@ void Ship::detonate(Point position, Point velocity) {
   Point dir = (facing * radius * 1.2);
   for(int i = rand()%50+25; i > 0; i--) {
     dir.rotate(rand()%360*M_PI/180);
-    bullets.push_back(Bullet(position + dir, velocity + dir*0.0001*(rand()%150), rand()%1000));
+    bullets.push_back(Particle(position + dir, velocity + dir*0.0001*(rand()%150), rand()%1000));
   }
 }
 
@@ -112,20 +112,20 @@ void Ship::explode() {
   Point dir = (facing * radius * 1.2);
   for(int i = rand()%60+20; i > 0; i--) {
     dir.rotate(rand()%360*M_PI/180);
-    debris.push_back(Bullet(position + dir, velocity + dir*0.000025*(rand()%300), rand()%3000));
+    debris.push_back(Particle(position + dir, velocity + dir*0.000025*(rand()%300), rand()%3000));
   }
 }
 
-bool Ship::collide(Bullet bullet, float proximity) { // Circle based collision
+bool Ship::collide(Particle particle, float proximity) { // Circle based collision
   //TODO: Make more accurate. Doesn't currently reflect shape of ship at all
-  return ((bullet.position - position).magnitude_squared() < (radius_squared + proximity*proximity));
+  return ((particle.position - position).magnitude_squared() < (radius_squared + proximity*proximity));
 }
 /*
-bool Ship::collide_square(Bullet bullet) {
-  return (bullet.position.x > (position.x - width) && \
-          bullet.position.x < (position.x + width) && \
-          bullet.position.y > (position.y - height) && \
-          bullet.position.y < (position.y + height));
+bool Ship::collide_square(Particle particle) {
+  return (particle.position.x > (position.x - width) && \
+          particle.position.x < (position.x + width) && \
+          particle.position.y > (position.y - height) && \
+          particle.position.y < (position.y + height));
 }*/
 
 void Ship::shoot(bool on) {
@@ -139,12 +139,12 @@ void Ship::fire_shot() {
   score -= 1;
   Point dir = Point(facing);
   dir.rotate((rand() / (float)RAND_MAX) * accuracy - accuracy / 2.0);
-  bullets.push_back(Bullet(gun(), dir*0.5 + velocity*0.99, 2000.0));
+  bullets.push_back(Particle(gun(), dir*0.5 + velocity*0.99, 2000.0));
 }
 
 void Ship::lay_mine() {
   score -= 10;
-  mines.push_back(Bullet(tail(),  facing*-0.1 + velocity*0.1, 30000.0));
+  mines.push_back(Particle(tail(),  facing*-0.1 + velocity*0.1, 30000.0));
 }
 
 float Ship::heading() {
@@ -202,17 +202,17 @@ void Ship::step(float delta) {
   position += velocity * delta;
   position.wrap();
   
-  std::vector<Bullet>::iterator bullet = bullets.begin();
-  while(bullet != bullets.end()) {
-    bullet->step(delta);
-    if(!bullet->is_alive()) {
-      bullet = bullets.erase(bullet);
+  std::vector<Particle>::iterator b = bullets.begin();
+  while(b != bullets.end()) {
+    b->step(delta);
+    if(!b->is_alive()) {
+      b = bullets.erase(b);
     } else {
-      bullet++;
+      b++;
     }
   }
   
-  std::vector<Bullet>::iterator mine = mines.begin();
+  std::vector<Particle>::iterator mine = mines.begin();
   while(mine != mines.end()) {
     mine->step(delta);
     if(!mine->is_alive()) {
@@ -222,7 +222,7 @@ void Ship::step(float delta) {
     }
   }
   
-  std::vector<Bullet>::iterator deb = debris.begin();
+  std::vector<Particle>::iterator deb = debris.begin();
   while(deb != debris.end()) {
     deb->step(delta);
     if(!deb->is_alive()) {

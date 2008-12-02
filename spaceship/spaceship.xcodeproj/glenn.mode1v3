@@ -197,7 +197,48 @@
 	<key>Notifications</key>
 	<array/>
 	<key>OpenEditors</key>
-	<array/>
+	<array>
+		<dict>
+			<key>Content</key>
+			<dict>
+				<key>PBXProjectModuleGUID</key>
+				<string>2121052E0EE55D0100A6F748</string>
+				<key>PBXProjectModuleLabel</key>
+				<string>particle.h</string>
+				<key>PBXSplitModuleInNavigatorKey</key>
+				<dict>
+					<key>Split0</key>
+					<dict>
+						<key>PBXProjectModuleGUID</key>
+						<string>2121052F0EE55D0100A6F748</string>
+						<key>PBXProjectModuleLabel</key>
+						<string>particle.h</string>
+						<key>_historyCapacity</key>
+						<integer>0</integer>
+						<key>bookmark</key>
+						<string>212105310EE55D0100A6F748</string>
+						<key>history</key>
+						<array>
+							<string>212105270EE55CFF00A6F748</string>
+						</array>
+					</dict>
+					<key>SplitCount</key>
+					<string>1</string>
+				</dict>
+				<key>StatusBarVisibility</key>
+				<true/>
+			</dict>
+			<key>Geometry</key>
+			<dict>
+				<key>Frame</key>
+				<string>{{0, 20}, {966, 685}}</string>
+				<key>PBXModuleWindowStatusBarHidden2</key>
+				<false/>
+				<key>RubberWindowFrame</key>
+				<string>1400 152 966 726 0 0 1440 878 </string>
+			</dict>
+		</dict>
+	</array>
 	<key>PerspectiveWidths</key>
 	<array>
 		<integer>-1</integer>
@@ -231,6 +272,8 @@
 			<key>Layout</key>
 			<array>
 				<dict>
+					<key>BecomeActive</key>
+					<true/>
 					<key>ContentConfiguration</key>
 					<dict>
 						<key>PBXBottomSmartGroupGIDs</key>
@@ -266,6 +309,7 @@
 						<dict>
 							<key>PBXSmartGroupTreeModuleOutlineStateExpansionKey</key>
 							<array>
+								<string>219282740ECD670E002D470F</string>
 								<string>1C37FAAC04509CD000000102</string>
 								<string>1C08E77C0454961000C914BD</string>
 								<string>1C37FABC05509CD000000102</string>
@@ -274,8 +318,7 @@
 							<key>PBXSmartGroupTreeModuleOutlineStateSelectionKey</key>
 							<array>
 								<array>
-									<integer>3</integer>
-									<integer>2</integer>
+									<integer>0</integer>
 								</array>
 							</array>
 							<key>PBXSmartGroupTreeModuleOutlineStateVisibleRectKey</key>
@@ -298,7 +341,7 @@
 							<real>186</real>
 						</array>
 						<key>RubberWindowFrame</key>
-						<string>1791 332 1080 697 1440 131 1680 1050 </string>
+						<string>211 155 1080 697 0 0 1440 878 </string>
 					</dict>
 					<key>Module</key>
 					<string>PBXSmartGroupTreeModule</string>
@@ -335,7 +378,7 @@
 								<key>Frame</key>
 								<string>{{0, 0}, {872, 0}}</string>
 								<key>RubberWindowFrame</key>
-								<string>1791 332 1080 697 1440 131 1680 1050 </string>
+								<string>211 155 1080 697 0 0 1440 878 </string>
 							</dict>
 							<key>Module</key>
 							<string>PBXNavigatorGroup</string>
@@ -343,8 +386,6 @@
 							<string>0pt</string>
 						</dict>
 						<dict>
-							<key>BecomeActive</key>
-							<true/>
 							<key>ContentConfiguration</key>
 							<dict>
 								<key>PBXProjectModuleGUID</key>
@@ -357,7 +398,7 @@
 								<key>Frame</key>
 								<string>{{0, 5}, {872, 651}}</string>
 								<key>RubberWindowFrame</key>
-								<string>1791 332 1080 697 1440 131 1680 1050 </string>
+								<string>211 155 1080 697 0 0 1440 878 </string>
 							</dict>
 							<key>Module</key>
 							<string>XCDetailModule</string>
@@ -381,9 +422,9 @@
 			</array>
 			<key>TableOfContents</key>
 			<array>
-				<string>212105160EE50B2C00A6F748</string>
+				<string>2121052C0EE55D0100A6F748</string>
 				<string>1CE0B1FE06471DED0097A5F4</string>
-				<string>212105170EE50B2C00A6F748</string>
+				<string>2121052D0EE55D0100A6F748</string>
 				<string>1CE0B20306471E060097A5F4</string>
 				<string>1CE0B20506471E060097A5F4</string>
 			</array>
@@ -519,9 +560,10 @@
 	<array>
 		<string>2150E2FD0ECD832B00D89C28</string>
 		<string>/Users/glenn/hobby/cplusplus/spaceship/spaceship.xcodeproj</string>
+		<string>2121052E0EE55D0100A6F748</string>
 	</array>
 	<key>WindowString</key>
-	<string>1791 332 1080 697 1440 131 1680 1050 </string>
+	<string>211 155 1080 697 0 0 1440 878 </string>
 	<key>WindowToolsV3</key>
 	<array>
 		<dict>
@@ -542,7 +584,7 @@
 								<key>PBXProjectModuleGUID</key>
 								<string>1CD0528F0623707200166675</string>
 								<key>PBXProjectModuleLabel</key>
-								<string></string>
+								<string>particle.h</string>
 								<key>StatusBarVisibility</key>
 								<true/>
 							</dict>
@@ -559,6 +601,8 @@
 							<string>403pt</string>
 						</dict>
 						<dict>
+							<key>BecomeActive</key>
+							<true/>
 							<key>ContentConfiguration</key>
 							<dict>
 								<key>PBXProjectModuleGUID</key>
@@ -598,7 +642,7 @@
 			<key>TableOfContents</key>
 			<array>
 				<string>2150E2FD0ECD832B00D89C28</string>
-				<string>212105180EE50B2C00A6F748</string>
+				<string>2121052B0EE55D0100A6F748</string>
 				<string>1CD0528F0623707200166675</string>
 				<string>XCMainBuildResultsModuleGUID</string>
 			</array>

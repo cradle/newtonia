@@ -29,6 +29,32 @@
 			sepNavWindowFrame = "{{515, 68}, {803, 755}}";
 		};
 	};
+	212105240EE55CF500A6F748 /* particle.h */ = {
+		uiCtxt = {
+			sepNavIntBoundsRect = "{{0, 0}, {684, 371}}";
+			sepNavSelRange = "{312, 25}";
+			sepNavVisRange = "{0, 425}";
+			sepNavWindowFrame = "{{1400, 96}, {966, 782}}";
+		};
+	};
+	212105270EE55CFF00A6F748 /* PBXTextBookmark */ = {
+		isa = PBXTextBookmark;
+		comments = "error: 'WrappedPoint Particle::position' is private";
+		fRef = 212105240EE55CF500A6F748 /* particle.h */;
+		rLen = 1;
+		rLoc = 17;
+		rType = 1;
+	};
+	212105310EE55D0100A6F748 /* PBXTextBookmark */ = {
+		isa = PBXTextBookmark;
+		fRef = 212105240EE55CF500A6F748 /* particle.h */;
+		name = "particle.h: 18";
+		rLen = 25;
+		rLoc = 312;
+		rType = 0;
+		vrLen = 425;
+		vrLoc = 0;
+	};
 	2150E2A90ECD687300D89C28 /* Spaceship */ = {
 		activeExec = 0;
 		executables = (
@@ -65,22 +91,6 @@
 			sepNavSelRange = "{633, 0}";
 			sepNavVisRange = "{0, 774}";
 			sepNavWindowFrame = "{{442, 97}, {803, 755}}";
-		};
-	};
-	2150E2E30ECD6A6E00D89C28 /* bullet.cpp */ = {
-		uiCtxt = {
-			sepNavIntBoundsRect = "{{0, 0}, {744, 627}}";
-			sepNavSelRange = "{0, 0}";
-			sepNavVisRange = "{0, 670}";
-			sepNavWindowFrame = "{{1455, 421}, {803, 755}}";
-		};
-	};
-	2150E2E40ECD6A6E00D89C28 /* bullet.h */ = {
-		uiCtxt = {
-			sepNavIntBoundsRect = "{{0, 0}, {744, 627}}";
-			sepNavSelRange = "{182, 0}";
-			sepNavVisRange = "{0, 449}";
-			sepNavWindowFrame = "{{1573, 118}, {803, 755}}";
 		};
 	};
 	2150E2E50ECD6A6E00D89C28 /* glship.cpp */ = {
@@ -284,8 +294,12 @@
 					PBXFileDataSource_Warnings_ColumnID,
 				);
 			};
-			PBXPerProjectTemplateStateSaveDate = 249891613;
-			PBXWorkspaceStateSaveDate = 249891613;
+			PBXPerProjectTemplateStateSaveDate = 249912527;
+			PBXWorkspaceStateSaveDate = 249912527;
+		};
+		perUserProjectItems = {
+			212105270EE55CFF00A6F748 /* PBXTextBookmark */ = 212105270EE55CFF00A6F748 /* PBXTextBookmark */;
+			212105310EE55D0100A6F748 /* PBXTextBookmark */ = 212105310EE55D0100A6F748 /* PBXTextBookmark */;
 		};
 		sourceControlManager = 2192827A0ECD670E002D470F /* Source Control */;
 		userBuildSettings = {

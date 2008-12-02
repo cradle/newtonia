@@ -106,7 +106,7 @@ void GLShip::draw(bool minimap) {
   //First try it with line strips, there may be a (very) slight performance increase. Also disable all unnecessary modes like lighting, blending etc.
   //Last, try it using compiled vertex buffers or even better, hardware supported ones. This is the best performance gain you'll get.  
   if(!minimap) {
-    draw_bullets();
+    draw_particles();
     draw_debris();
     for(vector<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
       (*i)->draw();
@@ -148,12 +148,12 @@ void GLShip::draw_ship() {
 	glEnd();
 }
 
-void GLShip::draw_bullets() {
+void GLShip::draw_particles() {
   glColor3fv(color);
   glBegin(GL_POINTS);
-  for(vector<Bullet>::iterator bullet = ship->bullets.begin(); bullet != ship->bullets.end(); bullet++) {
+  for(vector<Particle>::iterator b = ship->bullets.begin(); b != ship->bullets.end(); b++) {
     //TODO: Work out how to make bullets draw themselves. GLBullet?
-		glVertex2fv(bullet->position);
+		glVertex2fv(b->position);
   }
 	glEnd();
 }
@@ -164,7 +164,7 @@ bool GLShip::is_removable() {
 
 void GLShip::draw_debris() {
   glBegin(GL_POINTS);
-  for(vector<Bullet>::iterator d = ship->debris.begin(); d != ship->debris.end(); d++) {
+  for(vector<Particle>::iterator d = ship->debris.begin(); d != ship->debris.end(); d++) {
     glColor4f(color[0], color[1], color[2], d->aliveness());
 		glVertex2fv(d->position);
   }
@@ -173,7 +173,7 @@ void GLShip::draw_debris() {
 
 void GLShip::draw_mines() {
   float size = 20.0;
-  for(vector<Bullet>::iterator m = ship->mines.begin(); m != ship->mines.end(); m++) {
+  for(vector<Particle>::iterator m = ship->mines.begin(); m != ship->mines.end(); m++) {
     glBegin(GL_LINE_STRIP);
     glColor4f(0,0,0,0);
   	glVertex2fv(m->position + Point(0,-size));
