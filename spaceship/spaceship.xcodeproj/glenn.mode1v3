@@ -278,7 +278,6 @@
 							<key>PBXSmartGroupTreeModuleOutlineStateSelectionKey</key>
 							<array>
 								<array>
-									<integer>27</integer>
 									<integer>0</integer>
 								</array>
 							</array>
@@ -383,9 +382,9 @@
 			</array>
 			<key>TableOfContents</key>
 			<array>
-				<string>21006C8D0EE4B658005D5CBF</string>
+				<string>21006CA70EE4BDE4005D5CBF</string>
 				<string>1CE0B1FE06471DED0097A5F4</string>
-				<string>21006C8E0EE4B658005D5CBF</string>
+				<string>21006CA80EE4BDE4005D5CBF</string>
 				<string>1CE0B20306471E060097A5F4</string>
 				<string>1CE0B20506471E060097A5F4</string>
 			</array>
@@ -519,9 +518,6 @@
 	<integer>5</integer>
 	<key>WindowOrderList</key>
 	<array>
-		<string>21006CA00EE4BC6A005D5CBF</string>
-		<string>1C78EAAD065D492600B07095</string>
-		<string>1CD10A99069EF8BA00B06720</string>
 		<string>2150E2FD0ECD832B00D89C28</string>
 		<string>/Users/glenn/hobby/cplusplus/spaceship/spaceship.xcodeproj</string>
 	</array>
@@ -603,7 +599,7 @@
 			<key>TableOfContents</key>
 			<array>
 				<string>2150E2FD0ECD832B00D89C28</string>
-				<string>21006C8F0EE4B658005D5CBF</string>
+				<string>21006CA90EE4BDE4005D5CBF</string>
 				<string>1CD0528F0623707200166675</string>
 				<string>XCMainBuildResultsModuleGUID</string>
 			</array>

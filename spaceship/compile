@@ -1,1 +1,1 @@
-make LIBS="-framework GLUT -framework OpenGL" CFLAGS="-Wall -O2 -arch i386 -arch ppc -arch ppc64 -arch x86_64"
+make LIBS="-framework GLUT -framework OpenGL" CFLAGS="-Wall -arch i386 -arch ppc"
