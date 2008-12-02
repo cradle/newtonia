@@ -23,8 +23,9 @@ GLShip::GLShip(int x, int y) {
   trails.push_back(new GLTrail(ship, 0.5,Point(-4,17),-0.1, 0.9, GLTrail::REVERSING | GLTrail::RIGHT));
   trails.push_back(new GLTrail(ship, 0.5,Point( 4,17),-0.1,-0.9, GLTrail::REVERSING | GLTrail::LEFT));
   
-  color[1] = color[2] = 0.0;
-  color[0] = 1.0;
+  color[0] = 72/255.0;
+  color[1] = 118/255.0;
+  color[2] = 255/255.0;
   
   body = glGenLists(1);
   glNewList(body, GL_COMPILE);
@@ -138,7 +139,7 @@ void GLShip::draw_ship() {
   glCallList(body);
 	glEnd();
   
-  glColor3fv( color );
+  glColor3fv(color);
   glBegin(GL_LINE_LOOP);
   glCallList(body);
 	glEnd();
@@ -148,7 +149,7 @@ void GLShip::draw_ship() {
 }
 
 void GLShip::draw_bullets() {
-  glColor3f(1,1,1);
+  glColor3fv(color);
   glBegin(GL_POINTS);
   for(vector<Bullet>::iterator bullet = ship->bullets.begin(); bullet != ship->bullets.end(); bullet++) {
     //TODO: Work out how to make bullets draw themselves. GLBullet?

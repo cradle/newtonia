@@ -21,8 +21,9 @@ GLCar::GLCar(float x, float y) {
   trails.push_back(new GLTrail(ship, 0.5,  Point(-4,17) ,-0.2, 0.9, GLTrail::REVERSING | GLTrail::RIGHT));
   trails.push_back(new GLTrail(ship, 0.5,  Point( 4,17) ,-0.2,-0.9, GLTrail::REVERSING | GLTrail::LEFT));
   
-  color[0] = color[1] = 0.0;
-  color[2] = 1.0;
+  color[0] = 255/255.0;
+  color[1] = 69/255.0;
+  color[2] = 0/255.0;
   
   body = glGenLists(1);
   glNewList(body, GL_COMPILE);

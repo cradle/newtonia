@@ -68,7 +68,6 @@ void GLGame::tick(void) {
     o = enemies->begin();
     while(o != enemies->end()) {
       if((*o)->is_removable()) {
-        std::cout << "removing object" << std::endl;
         delete *o;
         o = enemies->erase(o);
       } else {

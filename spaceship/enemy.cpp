@@ -54,11 +54,15 @@ void Enemy::step(float delta) {
     }
     
     if(target) {
-      float angle = (heading() - (position.closest_to(target->position) - target->position).normalized().direction());
-      if (angle >= 0 && angle < 180 || angle >= -360 && angle < -180) {
-        rotate_left(true);
+      if(target->is_alive()) {
+        float angle = (heading() - (position.closest_to(target->position) - target->position).normalized().direction());
+        if (angle >= 0 && angle < 180 || angle >= -360 && angle < -180) {
+          rotate_left(true);
+        } else {
+          rotate_right(true);
+        }
       } else {
-        rotate_right(true);
+        rotate_right(false);
       }
     }
   }
