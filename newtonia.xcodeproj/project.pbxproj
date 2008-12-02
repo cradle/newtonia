@@ -1,0 +1,313 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 42;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		21006C7A0EE3F16F005D5CBF /* typer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21006C780EE3F16F005D5CBF /* typer.cpp */; };
+		210D37990EDAD022009A0BA4 /* glenemy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 210D37970EDAD022009A0BA4 /* glenemy.cpp */; };
+		210D37A70EDAD422009A0BA4 /* enemy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 210D37A50EDAD422009A0BA4 /* enemy.cpp */; };
+		2119FFEF0EE16F2600DD218B /* icon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 2119FFEE0EE16F2600DD218B /* icon.icns */; };
+		212105250EE55CF500A6F748 /* particle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 212105230EE55CF500A6F748 /* particle.cpp */; };
+		2150E2D90ECD698700D89C28 /* GLUT.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2150E2D80ECD698700D89C28 /* GLUT.framework */; };
+		2150E2DD0ECD699700D89C28 /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2150E2DC0ECD699700D89C28 /* OpenGL.framework */; };
+		2150E2EF0ECD6A6E00D89C28 /* glship.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2E50ECD6A6E00D89C28 /* glship.cpp */; };
+		2150E2F10ECD6A6E00D89C28 /* point.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2E80ECD6A6E00D89C28 /* point.cpp */; };
+		2150E2F20ECD6A6E00D89C28 /* ship.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2EA0ECD6A6E00D89C28 /* ship.cpp */; };
+		2150E2F30ECD6A6E00D89C28 /* wrapped_point.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2EC0ECD6A6E00D89C28 /* wrapped_point.cpp */; };
+		2150E2FB0ECD831900D89C28 /* glut.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2F90ECD831900D89C28 /* glut.cpp */; };
+		215ED6A50ECDB80400E0778A /* glgame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 215ED6A30ECDB80400E0778A /* glgame.cpp */; };
+		21696BCD0EDD2991006997A8 /* glstation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21696BCB0EDD2991006997A8 /* glstation.cpp */; };
+		2180D3920ED14D100050ED72 /* car.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2180D38E0ED14D100050ED72 /* car.cpp */; };
+		2180D3930ED14D100050ED72 /* glcar.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2180D3900ED14D100050ED72 /* glcar.cpp */; };
+		218BF7DE0ED5645600C9FE0C /* glstarfield.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 218BF7DC0ED5645600C9FE0C /* glstarfield.cpp */; };
+		21F0BF3F0ED54EFE00F2BB9B /* gltrail.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		21006C780EE3F16F005D5CBF /* typer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = typer.cpp; sourceTree = "<group>"; };
+		21006C790EE3F16F005D5CBF /* typer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = typer.h; sourceTree = "<group>"; };
+		210D37970EDAD022009A0BA4 /* glenemy.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glenemy.cpp; sourceTree = "<group>"; };
+		210D37980EDAD022009A0BA4 /* glenemy.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glenemy.h; sourceTree = "<group>"; };
+		210D37A50EDAD422009A0BA4 /* enemy.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = enemy.cpp; sourceTree = "<group>"; };
+		210D37A60EDAD422009A0BA4 /* enemy.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = enemy.h; sourceTree = "<group>"; };
+		2119FFEE0EE16F2600DD218B /* icon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = icon.icns; sourceTree = "<group>"; };
+		212105230EE55CF500A6F748 /* particle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = particle.cpp; sourceTree = "<group>"; };
+		212105240EE55CF500A6F748 /* particle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = particle.h; sourceTree = "<group>"; };
+		2150E2AA0ECD687300D89C28 /* Newtonia.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Newtonia.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2150E2AD0ECD687300D89C28 /* Spaceship-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Spaceship-Info.plist"; sourceTree = "<group>"; };
+		2150E2D80ECD698700D89C28 /* GLUT.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GLUT.framework; path = /System/Library/Frameworks/GLUT.framework; sourceTree = "<absolute>"; };
+		2150E2DC0ECD699700D89C28 /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = /System/Library/Frameworks/OpenGL.framework; sourceTree = "<absolute>"; };
+		2150E2E50ECD6A6E00D89C28 /* glship.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glship.cpp; sourceTree = "<group>"; };
+		2150E2E60ECD6A6E00D89C28 /* glship.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glship.h; sourceTree = "<group>"; };
+		2150E2E80ECD6A6E00D89C28 /* point.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = point.cpp; sourceTree = "<group>"; };
+		2150E2E90ECD6A6E00D89C28 /* point.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = point.h; sourceTree = "<group>"; };
+		2150E2EA0ECD6A6E00D89C28 /* ship.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ship.cpp; sourceTree = "<group>"; };
+		2150E2EB0ECD6A6E00D89C28 /* ship.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ship.h; sourceTree = "<group>"; };
+		2150E2EC0ECD6A6E00D89C28 /* wrapped_point.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = wrapped_point.cpp; sourceTree = "<group>"; };
+		2150E2ED0ECD6A6E00D89C28 /* wrapped_point.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = wrapped_point.h; sourceTree = "<group>"; };
+		2150E2F90ECD831900D89C28 /* glut.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glut.cpp; sourceTree = "<group>"; };
+		215ED6A30ECDB80400E0778A /* glgame.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glgame.cpp; sourceTree = "<group>"; };
+		215ED6A40ECDB80400E0778A /* glgame.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glgame.h; sourceTree = "<group>"; };
+		21696BCB0EDD2991006997A8 /* glstation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glstation.cpp; sourceTree = "<group>"; };
+		21696BCC0EDD2991006997A8 /* glstation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glstation.h; sourceTree = "<group>"; };
+		2180D38E0ED14D100050ED72 /* car.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = car.cpp; sourceTree = "<group>"; };
+		2180D38F0ED14D100050ED72 /* car.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = car.h; sourceTree = "<group>"; };
+		2180D3900ED14D100050ED72 /* glcar.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glcar.cpp; sourceTree = "<group>"; };
+		2180D3910ED14D100050ED72 /* glcar.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glcar.h; sourceTree = "<group>"; };
+		218BF7DC0ED5645600C9FE0C /* glstarfield.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glstarfield.cpp; sourceTree = "<group>"; };
+		218BF7DD0ED5645600C9FE0C /* glstarfield.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glstarfield.h; sourceTree = "<group>"; };
+		21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = gltrail.cpp; sourceTree = "<group>"; };
+		21F0BF3E0ED54EFE00F2BB9B /* gltrail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = gltrail.h; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		2150E2A80ECD687300D89C28 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2150E2D90ECD698700D89C28 /* GLUT.framework in Frameworks */,
+				2150E2DD0ECD699700D89C28 /* OpenGL.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		2150E2AB0ECD687300D89C28 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				2150E2AA0ECD687300D89C28 /* Newtonia.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		219282740ECD670E002D470F = {
+			isa = PBXGroup;
+			children = (
+				212105230EE55CF500A6F748 /* particle.cpp */,
+				212105240EE55CF500A6F748 /* particle.h */,
+				21006C780EE3F16F005D5CBF /* typer.cpp */,
+				21006C790EE3F16F005D5CBF /* typer.h */,
+				21696BCB0EDD2991006997A8 /* glstation.cpp */,
+				21696BCC0EDD2991006997A8 /* glstation.h */,
+				210D37A50EDAD422009A0BA4 /* enemy.cpp */,
+				210D37A60EDAD422009A0BA4 /* enemy.h */,
+				210D37970EDAD022009A0BA4 /* glenemy.cpp */,
+				210D37980EDAD022009A0BA4 /* glenemy.h */,
+				218BF7DC0ED5645600C9FE0C /* glstarfield.cpp */,
+				218BF7DD0ED5645600C9FE0C /* glstarfield.h */,
+				21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */,
+				21F0BF3E0ED54EFE00F2BB9B /* gltrail.h */,
+				2180D38E0ED14D100050ED72 /* car.cpp */,
+				2119FFEE0EE16F2600DD218B /* icon.icns */,
+				2180D38F0ED14D100050ED72 /* car.h */,
+				2180D3900ED14D100050ED72 /* glcar.cpp */,
+				2180D3910ED14D100050ED72 /* glcar.h */,
+				215ED6A30ECDB80400E0778A /* glgame.cpp */,
+				215ED6A40ECDB80400E0778A /* glgame.h */,
+				2150E2F90ECD831900D89C28 /* glut.cpp */,
+				2150E2E50ECD6A6E00D89C28 /* glship.cpp */,
+				2150E2E60ECD6A6E00D89C28 /* glship.h */,
+				2150E2E80ECD6A6E00D89C28 /* point.cpp */,
+				2150E2E90ECD6A6E00D89C28 /* point.h */,
+				2150E2EA0ECD6A6E00D89C28 /* ship.cpp */,
+				2150E2EB0ECD6A6E00D89C28 /* ship.h */,
+				2150E2EC0ECD6A6E00D89C28 /* wrapped_point.cpp */,
+				2150E2ED0ECD6A6E00D89C28 /* wrapped_point.h */,
+				2150E2DC0ECD699700D89C28 /* OpenGL.framework */,
+				2150E2D80ECD698700D89C28 /* GLUT.framework */,
+				2150E2AB0ECD687300D89C28 /* Products */,
+				2150E2AD0ECD687300D89C28 /* Spaceship-Info.plist */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		2150E2A90ECD687300D89C28 /* Spaceship */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2150E2B00ECD687500D89C28 /* Build configuration list for PBXNativeTarget "Spaceship" */;
+			buildPhases = (
+				2150E2A60ECD687300D89C28 /* Resources */,
+				2150E2A70ECD687300D89C28 /* Sources */,
+				2150E2A80ECD687300D89C28 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Spaceship;
+			productName = Spaceship;
+			productReference = 2150E2AA0ECD687300D89C28 /* Newtonia.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		219282760ECD670E002D470F /* Project object */ = {
+			isa = PBXProject;
+			buildConfigurationList = 219282790ECD670E002D470F /* Build configuration list for PBXProject "spaceship" */;
+			compatibilityVersion = "Xcode 2.4";
+			hasScannedForEncodings = 0;
+			mainGroup = 219282740ECD670E002D470F;
+			productRefGroup = 2150E2AB0ECD687300D89C28 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				2150E2A90ECD687300D89C28 /* Spaceship */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		2150E2A60ECD687300D89C28 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2119FFEF0EE16F2600DD218B /* icon.icns in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		2150E2A70ECD687300D89C28 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2150E2EF0ECD6A6E00D89C28 /* glship.cpp in Sources */,
+				2150E2F10ECD6A6E00D89C28 /* point.cpp in Sources */,
+				2150E2F20ECD6A6E00D89C28 /* ship.cpp in Sources */,
+				2150E2F30ECD6A6E00D89C28 /* wrapped_point.cpp in Sources */,
+				2150E2FB0ECD831900D89C28 /* glut.cpp in Sources */,
+				215ED6A50ECDB80400E0778A /* glgame.cpp in Sources */,
+				2180D3920ED14D100050ED72 /* car.cpp in Sources */,
+				2180D3930ED14D100050ED72 /* glcar.cpp in Sources */,
+				21F0BF3F0ED54EFE00F2BB9B /* gltrail.cpp in Sources */,
+				218BF7DE0ED5645600C9FE0C /* glstarfield.cpp in Sources */,
+				210D37990EDAD022009A0BA4 /* glenemy.cpp in Sources */,
+				210D37A70EDAD422009A0BA4 /* enemy.cpp in Sources */,
+				21696BCD0EDD2991006997A8 /* glstation.cpp in Sources */,
+				21006C7A0EE3F16F005D5CBF /* typer.cpp in Sources */,
+				212105250EE55CF500A6F748 /* particle.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		2150E2AE0ECD687400D89C28 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = (
+					i386,
+					ppc,
+				);
+				COPY_PHASE_STRIP = NO;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_ENABLE_FIX_AND_CONTINUE = YES;
+				GCC_MODEL_TUNING = G5;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+				GCC_PREFIX_HEADER = "";
+				INFOPLIST_FILE = "Spaceship-Info.plist";
+				INSTALL_PATH = "$(HOME)/Applications";
+				MACOSX_DEPLOYMENT_TARGET = 10.4;
+				OTHER_LDFLAGS = (
+					"-framework",
+					Foundation,
+					"-framework",
+					AppKit,
+				);
+				PREBINDING = NO;
+				PRODUCT_NAME = Spaceship;
+				WRAPPER_EXTENSION = app;
+				ZERO_LINK = YES;
+			};
+			name = Debug;
+		};
+		2164AC9D0EE165A90011546F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = (
+					i386,
+					ppc,
+				);
+				COPY_PHASE_STRIP = YES;
+				SDKROOT = /Developer/SDKs/MacOSX10.4u.sdk;
+				VALID_ARCHS = "ppc64 ppc7400 ppc970 i386 x86_64 ppc";
+			};
+			name = Release;
+		};
+		2164AC9E0EE165A90011546F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = (
+					i386,
+					ppc,
+				);
+				COPY_PHASE_STRIP = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_ENABLE_FIX_AND_CONTINUE = YES;
+				GCC_MODEL_TUNING = G5;
+				GCC_OPTIMIZATION_LEVEL = 3;
+				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+				GCC_PREFIX_HEADER = "";
+				INFOPLIST_FILE = "Newtonia-Info.plist";
+				INSTALL_PATH = "$(HOME)/Applications";
+				MACOSX_DEPLOYMENT_TARGET = 10.4;
+				OTHER_LDFLAGS = (
+					"-framework",
+					Foundation,
+					"-framework",
+					AppKit,
+				);
+				PREBINDING = YES;
+				PRODUCT_NAME = Newtonia;
+				WRAPPER_EXTENSION = app;
+				ZERO_LINK = YES;
+			};
+			name = Release;
+		};
+		219282770ECD670E002D470F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = (
+					i386,
+					ppc,
+				);
+				COPY_PHASE_STRIP = NO;
+				SDKROOT = /Developer/SDKs/MacOSX10.4u.sdk;
+				VALID_ARCHS = "ppc64 ppc7400 ppc970 i386 x86_64 ppc";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		2150E2B00ECD687500D89C28 /* Build configuration list for PBXNativeTarget "Spaceship" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2150E2AE0ECD687400D89C28 /* Debug */,
+				2164AC9E0EE165A90011546F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		219282790ECD670E002D470F /* Build configuration list for PBXProject "spaceship" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				219282770ECD670E002D470F /* Debug */,
+				2164AC9D0EE165A90011546F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 219282760ECD670E002D470F /* Project object */;
+}
