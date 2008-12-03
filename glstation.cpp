@@ -12,18 +12,18 @@
 
 #include "ship.h"
 #include "glenemy.h"
-#include <vector>
+#include <list>
 #include <iostream>
 
 using namespace std;
 
-GLStation::GLStation(vector<GLShip*>* objects, vector<GLShip*>* targets) : objects(objects), targets(targets) {
+GLStation::GLStation(list<GLShip*>* objects, list<GLShip*>* targets) : objects(objects), targets(targets) {
   position = Point(0,0);
   radius = 500.0;
   radius_squared = radius * radius;
   max_ships_per_wave = 50;
   extra_ships_per_wave = 1;
-  ships_left_to_deploy = ships_this_wave = 2;
+  ships_left_to_deploy = ships_this_wave = 50;//2;
   time_until_next_ship = time_between_ships = 2000.0;
   deploying = true;
   wave = difficulty = 0;

@@ -11,7 +11,7 @@
 #endif
 
 #include "ship.h"
-#include <deque>
+#include <list>
 
 class GLTrail {
 public:   
@@ -42,7 +42,7 @@ private:
   Point offset;
   Ship* ship;
   
-  std::deque<Particle*> trail;
+  std::list<Particle*> trail;
 };
 
 #endif

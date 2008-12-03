@@ -11,7 +11,7 @@
 #include <GL/glut.h>
 #endif
 
-#include <vector>
+#include <list>
 #include <iostream>
 
 using namespace std;
@@ -70,7 +70,7 @@ void GLShip::collide(GLShip* first, GLShip* second) {
 void GLShip::step(float delta) {
   ship->step(delta);
 
-  for(vector<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
+  for(list<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
     (*i)->step(delta);
   }
 }
@@ -108,7 +108,7 @@ void GLShip::draw(bool minimap) {
   if(!minimap) {
     draw_particles();
     draw_debris();
-    for(vector<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
+    for(list<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
       (*i)->draw();
     }
     draw_mines();
@@ -160,7 +160,7 @@ void GLShip::draw_ship(bool minimap) {
 void GLShip::draw_particles() {
   glColor3fv(color);
   glBegin(GL_POINTS);
-  for(vector<Particle>::iterator b = ship->bullets.begin(); b != ship->bullets.end(); b++) {
+  for(list<Particle>::iterator b = ship->bullets.begin(); b != ship->bullets.end(); b++) {
     //TODO: Work out how to make bullets draw themselves. GLBullet?
 		glVertex2fv(b->position);
   }
@@ -173,7 +173,7 @@ bool GLShip::is_removable() {
 
 void GLShip::draw_debris() {
   glBegin(GL_POINTS);
-  for(vector<Particle>::iterator d = ship->debris.begin(); d != ship->debris.end(); d++) {
+  for(list<Particle>::iterator d = ship->debris.begin(); d != ship->debris.end(); d++) {
     glColor4f(color[0], color[1], color[2], d->aliveness());
 		glVertex2fv(d->position);
   }
@@ -182,7 +182,7 @@ void GLShip::draw_debris() {
 
 void GLShip::draw_mines() {
   float size = 20.0;
-  for(vector<Particle>::iterator m = ship->mines.begin(); m != ship->mines.end(); m++) {
+  for(list<Particle>::iterator m = ship->mines.begin(); m != ship->mines.end(); m++) {
     glBegin(GL_LINE_STRIP);
     glColor4f(0,0,0,0);
   	glVertex2fv(m->position + Point(0,-size));

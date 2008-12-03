@@ -1,10 +1,10 @@
 #include "enemy.h"
 
-#include <vector>
+#include <list>
 #include <iostream>
 #include "point.h"
 
-Enemy::Enemy(float x, float y, std::vector<Ship*>* targets, int difficulty) : Car(x,y), targets(targets) {
+Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Car(x,y), targets(targets) {
   thrust_force = 0.135 + difficulty*0.00025 + rand()%50/10000.0;
   rotation_force = 0.15 + difficulty*0.01 + rand()%10/1000.0;
   time_between_shots = 1000.0;
@@ -26,10 +26,11 @@ void Enemy::lock_nearest_target() {
     target = NULL;
   }
 
-  for(unsigned int i = 0; i < targets->size(); i++) {
-    if((*targets)[i]->is_alive()) {
-      if(target == NULL || (*targets)[i]->position.distance_to(position) < target->position.distance_to(position)) {
-        target = (*targets)[i];
+  list<Ship*>::iterator s;
+  for(s = targets->begin(); s != targets->end(); s++) {
+    if((*s)->is_alive()) {
+      if(target == NULL || (*s)->position.distance_to(position) < target->position.distance_to(position)) {
+        target = (*s);
       }
     }
   }

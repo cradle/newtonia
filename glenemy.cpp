@@ -11,14 +11,15 @@
 #include <GL/glut.h>
 #endif
 
-#include <vector>
+#include <list>
 
 using namespace std;
 
-GLEnemy::GLEnemy(float x, float y, vector<GLShip*>* targets, float difficulty) {
-  vector<Ship*>* ships = new vector<Ship*>;
-  for(unsigned int i = 0; i < targets->size(); i++) {
-    ships->push_back((*targets)[i]->ship);
+GLEnemy::GLEnemy(float x, float y, list<GLShip*>* targets, float difficulty) {
+  list<Ship*>* ships = new list<Ship*>;
+  list<GLShip*>::iterator s;
+  for(s = targets->begin(); s != targets->end(); s++) {
+    ships->push_back((*s)->ship);
   }
   ship = new Enemy(x,y, ships, difficulty);
   trails.push_back(new GLTrail(ship, 0.05));

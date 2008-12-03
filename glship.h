@@ -4,7 +4,7 @@
 #include "ship.h"
 #include "point.h"
 #include "gltrail.h"
-#include <vector>
+#include <list>
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -46,7 +46,7 @@ protected:
   int reverse_key;
   int mine_key;
   
-  std::vector<GLTrail*> trails;
+  std::list<GLTrail*> trails;
 };
 
 #endif

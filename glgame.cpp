@@ -16,12 +16,12 @@
 #endif
 
 #include <iostream>
-#include <vector>
+#include <list>
 
 GLGame::GLGame(float width, float height) : world(Point(width, height)) {}
 
 GLGame::~GLGame() {
-  //TODO: Make erase, use boost::ptr_vector? something better
+  //TODO: Make erase, use boost::ptr_list? something better
   // std::erase(std::remove_if(v.begin(),v.end(),true), v.end());
   GLShip* object;
   while(!players->empty()) {
@@ -44,7 +44,7 @@ void GLGame::tick(void) {
   
   num_frames++;
 
-  std::vector<GLShip*>::iterator o, o2;
+  std::list<GLShip*>::iterator o, o2;
   while(time_until_next_step <= 0) {
     station->step(step_size);
     for(o = players->begin(); o != players->end(); o++) {
@@ -57,8 +57,10 @@ void GLGame::tick(void) {
     }
     
     for(o = players->begin(); o != players->end(); o++) {
-      for(o2 = (o+1); o2 != players->end(); o2++) {
-        GLShip::collide(*o, *o2);
+      for(o2 = o; o2 != players->end(); o2++) {
+        if(*o != *o2) {
+          GLShip::collide(*o, *o2);
+        }
       }
       for(o2 = enemies->begin(); o2 != enemies->end(); o2++) {
         GLShip::collide(*o, *o2);
@@ -84,7 +86,7 @@ void GLGame::tick(void) {
 }
 
 void GLGame::draw_objects(bool minimap) const {
-  std::vector<GLShip*>::iterator o;
+  std::list<GLShip*>::iterator o;
   for(o = players->begin(); o != players->end(); o++) {
     glPushMatrix();
     (*o)->draw(minimap);
@@ -101,9 +103,9 @@ void GLGame::draw_objects(bool minimap) const {
 void GLGame::draw(void) {
   glClear(GL_COLOR_BUFFER_BIT);
   
-  //TODO: Don't hardcode this
-  draw_world((*players)[0], true);
-  draw_world((*players)[1], false);
+  //TODO: Don't hardcode this like this
+  draw_world(players->front(), true);
+  draw_world(players->back(), false);
   draw_map();
 
   glutSwapBuffers();
@@ -190,14 +192,14 @@ void GLGame::draw_map() const {
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
-  std::vector<GLShip*>::iterator object;
+  std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
     (*object)->input(key);
   }
 }
 
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
-  std::vector<GLShip*>::iterator object;
+  std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
     (*object)->input(key, false);
   }
@@ -224,8 +226,8 @@ void GLGame::init(int argc, char** argv, float width, float height) {
 }
 
 void GLGame::run(void) {
-  enemies = new std::vector<GLShip*>;
-  players = new std::vector<GLShip*>;
+  enemies = new std::list<GLShip*>;
+  players = new std::list<GLShip*>;
   
   typer = new Typer();
   

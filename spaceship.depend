@@ -24,19 +24,19 @@
 	<windows.h>
 	<GL/glut.h>
 	<iostream>
-	<vector>
+	<list>
 
 1227695777 c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\glgame.h
 	"glship.h"
 	"point.h"
 	"glstarfield.h"
-	<vector>
+	<list>
 
 1227689254 c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\glship.h
 	"ship.h"
 	"point.h"
 	"gltrail.h"
-	<vector>
+	<list>
 	<GLUT/glut.h>
 	<windows.h>
 	<GL/glut.h>
@@ -44,7 +44,7 @@
 1227689254 c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\ship.h
 	"point.h"
 	"particle.h"
-	<vector>
+	<list>
 
 1227689254 c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\glcar.h
 	"glship.h"
@@ -275,7 +275,7 @@
 	<GLUT/glut.h>
 	<windows.h>
 	<GL/glut.h>
-	<vector>
+	<list>
 	<iostream>
 
 1227689254 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\spaceship\glut.cpp

@@ -3,7 +3,7 @@
 
 #include "point.h"
 #include "particle.h"
-#include <vector>
+#include <list>
 
 using namespace std;
 
@@ -46,9 +46,9 @@ class Ship {
     //TODO: somehow get around this public for glstation
     void kill_stop();
     
-    vector<Particle> bullets;
-    vector<Particle> mines;
-    vector<Particle> debris;
+    list<Particle> bullets;
+    list<Particle> mines;
+    list<Particle> debris;
     
     enum Rotation {
       LEFT = 1,

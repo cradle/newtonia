@@ -2,11 +2,11 @@
 #define GLENEMY_H
 
 #include "glship.h"
-#include <vector>
+#include <list>
 
 class GLEnemy : public GLShip {
 public:
-  GLEnemy(float x, float y, std::vector<GLShip*> * target, float difficulty = 1);
+  GLEnemy(float x, float y, std::list<GLShip*> * target, float difficulty = 1);
 };
 
 #endif

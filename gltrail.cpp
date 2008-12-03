@@ -12,7 +12,7 @@
 #endif
 
 #include <math.h>
-#include <deque>
+#include <list>
 
 using namespace std;
 
@@ -20,7 +20,7 @@ GLTrail::GLTrail(Ship* ship, float deviation, Point offset, float speed, float r
  : ship(ship), deviation(deviation), offset(offset), speed(speed), rotation(rotation), type(type), life(life) {}
 
 void GLTrail::draw() {
-  deque<Particle*>::iterator p;
+  list<Particle*>::iterator p;
   glBegin(GL_POINTS);
   for(p = trail.begin(); p != trail.end(); p++) {
       glColor4f(0.5,0.5,0.5,(*p)->aliveness());
@@ -30,7 +30,7 @@ void GLTrail::draw() {
 }
 
 void GLTrail::step(float delta) {
-  deque<Particle*>::iterator t = trail.begin();
+  list<Particle*>::iterator t = trail.begin();
   while(t != trail.end()) {
     (*t)->step(delta);
     if(!(*t)->is_alive()) {

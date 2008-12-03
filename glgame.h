@@ -6,7 +6,7 @@
 #include "glstarfield.h"
 #include "glstation.h"
 #include "typer.h"
-#include <vector>
+#include <list>
 
 using namespace std;
 
@@ -41,8 +41,8 @@ private:
   
   GLStarfield* starfield;
   GLStation* station;
-  vector<GLShip*>* enemies;
-  vector<GLShip*>* players;
+  list<GLShip*>* enemies;
+  list<GLShip*>* players;
 };
 
 #endif

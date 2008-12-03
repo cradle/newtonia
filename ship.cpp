@@ -83,7 +83,7 @@ void Ship::collide(Ship* first, Ship* second) {
 
 void Ship::collide(Ship* other) {
   //TODO: Make ships collide with each other too
-  std::vector<Particle>::iterator b = bullets.begin();
+  std::list<Particle>::iterator b = bullets.begin();
   while(b != bullets.end()) {
     if(is_alive() && collide(*b )) {
       kill();
@@ -97,7 +97,7 @@ void Ship::collide(Ship* other) {
     }
   }
   
-  std::vector<Particle>::iterator mine = mines.begin();
+  std::list<Particle>::iterator mine = mines.begin();
   while(mine != mines.end()) {
     if(is_alive() && collide(*mine) || other->is_alive() && other->collide(*mine, 50.0)) {
       detonate(mine->position, mine->velocity);
@@ -210,7 +210,7 @@ void Ship::step(float delta) {
   position += velocity * delta;
   position.wrap();
   
-  std::vector<Particle>::iterator b = bullets.begin();
+  std::list<Particle>::iterator b = bullets.begin();
   while(b != bullets.end()) {
     b->step(delta);
     if(!b->is_alive()) {
@@ -220,7 +220,7 @@ void Ship::step(float delta) {
     }
   }
   
-  std::vector<Particle>::iterator mine = mines.begin();
+  std::list<Particle>::iterator mine = mines.begin();
   while(mine != mines.end()) {
     mine->step(delta);
     if(!mine->is_alive()) {
@@ -230,7 +230,7 @@ void Ship::step(float delta) {
     }
   }
   
-  std::vector<Particle>::iterator deb = debris.begin();
+  std::list<Particle>::iterator deb = debris.begin();
   while(deb != debris.end()) {
     deb->step(delta);
     if(!deb->is_alive()) {
