@@ -10,12 +10,23 @@
 #include <GL/glut.h>
 #endif
 
-
 #include "ship.h"
 #include <deque>
 
 class GLTrail {
-public: 
+public:   
+  GLTrail(Ship* ship, 
+          float deviation = 0.05, 
+          Point offset = Point(), 
+          float speed = 0.25, 
+          float rotation = 0.0,
+          int type = THRUSTING,
+          float life = 1000.0);
+          
+  void draw();
+  void step(float delta);
+
+  //TODO: Would want constructor to take TYPE type = THRUSTING, but doesn't work
   enum TYPE {
     THRUSTING = 1,
     REVERSING = 2,
@@ -23,24 +34,12 @@ public:
     RIGHT = 8
   };
   
-  GLTrail(Ship* ship, 
-          float deviation = 0.05, 
-          Point offset = Point(), 
-          float speed = 0.25, 
-          float rotation = 0.0,
-          int type = THRUSTING);
-  void split();
-  void draw();
-  void step(float delta);
-  
 private:
   void add();
   
   int type;
-  float deviation;
-  float rotation;
+  float deviation, rotation, speed, life;
   Point offset;
-  float speed;
   Ship* ship;
   
   std::deque<Particle*> trail;

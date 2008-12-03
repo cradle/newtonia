@@ -16,10 +16,10 @@ using namespace std;
 
 GLCar::GLCar(float x, float y) {
   ship = new Car(x,y);
-  trails.push_back(new GLTrail(ship, 0.01, Point( 4.5,0),0.25, 0.0, GLTrail::THRUSTING | GLTrail::LEFT));
-  trails.push_back(new GLTrail(ship, 0.01, Point(-4.5,0),0.25, 0.0, GLTrail::THRUSTING | GLTrail::RIGHT));
-  trails.push_back(new GLTrail(ship, 0.5,  Point(-4,17) ,-0.2, 0.9, GLTrail::REVERSING | GLTrail::RIGHT));
-  trails.push_back(new GLTrail(ship, 0.5,  Point( 4,17) ,-0.2,-0.9, GLTrail::REVERSING | GLTrail::LEFT));
+  trails.push_back(new GLTrail(ship, 0.01, Point( 4.5,0),0.25, 0.0, GLTrail::THRUSTING | GLTrail::LEFT, 4000.0));
+  trails.push_back(new GLTrail(ship, 0.01, Point(-4.5,0),0.25, 0.0, GLTrail::THRUSTING | GLTrail::RIGHT, 4000.0));
+  trails.push_back(new GLTrail(ship, 0.5,  Point(-4,17) ,-0.2, 0.9, GLTrail::REVERSING | GLTrail::RIGHT, 500.0));
+  trails.push_back(new GLTrail(ship, 0.5,  Point( 4,17) ,-0.2,-0.9, GLTrail::REVERSING | GLTrail::LEFT, 500.0));
   
   color[0] = 255/255.0;
   color[1] = 69/255.0;

@@ -16,14 +16,14 @@
 
 using namespace std;
 
-GLTrail::GLTrail(Ship* ship, float deviation, Point offset, float speed, float rotation, int type)
- : ship(ship), deviation(deviation), offset(offset), speed(speed), rotation(rotation), type(type) {}
+GLTrail::GLTrail(Ship* ship, float deviation, Point offset, float speed, float rotation, int type, float life)
+ : ship(ship), deviation(deviation), offset(offset), speed(speed), rotation(rotation), type(type), life(life) {}
 
 void GLTrail::draw() {
   deque<Particle*>::iterator p;
   glBegin(GL_POINTS);
   for(p = trail.begin(); p != trail.end(); p++) {
-      glColor4f(0.7,0.7,0.7,(*p)->aliveness());
+      glColor4f(0.5,0.5,0.5,(*p)->aliveness());
   		glVertex2fv((*p)->position);
   }
 	glEnd();
@@ -59,6 +59,6 @@ void GLTrail::add() {
   velocity = direction*speed + ship->velocity;
   velocity.rotate((rand() / (float)RAND_MAX) * deviation - deviation / 2.0);
   trail.push_back(
-    new Particle(position, velocity, 2000.0)
+    new Particle(position, velocity, life)
   );
 }

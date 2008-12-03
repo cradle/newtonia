@@ -21,7 +21,7 @@ GLEnemy::GLEnemy(float x, float y, vector<GLShip*>* targets, float difficulty) {
     ships->push_back((*targets)[i]->ship);
   }
   ship = new Enemy(x,y, ships, difficulty);
-  trails.push_back(new GLTrail(ship, 0.1));
+  trails.push_back(new GLTrail(ship, 0.05));
   
   color[0] = color[2] = 0.0;
   color[1] = 255/255.0;

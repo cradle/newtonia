@@ -19,9 +19,9 @@ using namespace std;
 GLShip::GLShip(int x, int y) {
   //TODO: load config from file (colours too)
   ship = new Ship(x, y);
-  trails.push_back(new GLTrail(ship));
-  trails.push_back(new GLTrail(ship, 0.5,Point(-4,17),-0.1, 0.9, GLTrail::REVERSING | GLTrail::RIGHT));
-  trails.push_back(new GLTrail(ship, 0.5,Point( 4,17),-0.1,-0.9, GLTrail::REVERSING | GLTrail::LEFT));
+  trails.push_back(new GLTrail(ship, 0.01, Point(0,0), 0.25,0.0, GLTrail::THRUSTING, 5000.0));
+  trails.push_back(new GLTrail(ship, 0.5,Point(-4,17),-0.1, 0.9, GLTrail::REVERSING | GLTrail::RIGHT, 500.0));
+  trails.push_back(new GLTrail(ship, 0.5,Point( 4,17),-0.1,-0.9, GLTrail::REVERSING | GLTrail::LEFT, 500.0));
   
   color[0] = 72/255.0;
   color[1] = 118/255.0;
