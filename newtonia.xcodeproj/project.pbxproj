@@ -24,6 +24,7 @@
 		2180D3920ED14D100050ED72 /* car.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2180D38E0ED14D100050ED72 /* car.cpp */; };
 		2180D3930ED14D100050ED72 /* glcar.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2180D3900ED14D100050ED72 /* glcar.cpp */; };
 		218BF7DE0ED5645600C9FE0C /* glstarfield.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 218BF7DC0ED5645600C9FE0C /* glstarfield.cpp */; };
+		219185D00EE684C10004C960 /* Newtonia-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 219185CF0EE684C10004C960 /* Newtonia-Info.plist */; };
 		21F0BF3F0ED54EFE00F2BB9B /* gltrail.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */; };
 /* End PBXBuildFile section */
 
@@ -37,8 +38,7 @@
 		2119FFEE0EE16F2600DD218B /* icon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = icon.icns; sourceTree = "<group>"; };
 		212105230EE55CF500A6F748 /* particle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = particle.cpp; sourceTree = "<group>"; };
 		212105240EE55CF500A6F748 /* particle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = particle.h; sourceTree = "<group>"; };
-		2150E2AA0ECD687300D89C28 /* Spaceship.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Spaceship.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		2150E2AD0ECD687300D89C28 /* Spaceship-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Spaceship-Info.plist"; sourceTree = "<group>"; };
+		2150E2AA0ECD687300D89C28 /* Newtonia.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Newtonia.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2150E2D80ECD698700D89C28 /* GLUT.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GLUT.framework; path = /System/Library/Frameworks/GLUT.framework; sourceTree = "<absolute>"; };
 		2150E2DC0ECD699700D89C28 /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = /System/Library/Frameworks/OpenGL.framework; sourceTree = "<absolute>"; };
 		2150E2E50ECD6A6E00D89C28 /* glship.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glship.cpp; sourceTree = "<group>"; };
@@ -60,6 +60,7 @@
 		2180D3910ED14D100050ED72 /* glcar.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glcar.h; sourceTree = "<group>"; };
 		218BF7DC0ED5645600C9FE0C /* glstarfield.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glstarfield.cpp; sourceTree = "<group>"; };
 		218BF7DD0ED5645600C9FE0C /* glstarfield.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glstarfield.h; sourceTree = "<group>"; };
+		219185CF0EE684C10004C960 /* Newtonia-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = "Newtonia-Info.plist"; sourceTree = "<group>"; };
 		21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = gltrail.cpp; sourceTree = "<group>"; };
 		21F0BF3E0ED54EFE00F2BB9B /* gltrail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = gltrail.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -80,7 +81,7 @@
 		2150E2AB0ECD687300D89C28 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				2150E2AA0ECD687300D89C28 /* Spaceship.app */,
+				2150E2AA0ECD687300D89C28 /* Newtonia.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -88,6 +89,7 @@
 		219282740ECD670E002D470F = {
 			isa = PBXGroup;
 			children = (
+				219185CF0EE684C10004C960 /* Newtonia-Info.plist */,
 				212105230EE55CF500A6F748 /* particle.cpp */,
 				212105240EE55CF500A6F748 /* particle.h */,
 				21006C780EE3F16F005D5CBF /* typer.cpp */,
@@ -121,16 +123,15 @@
 				2150E2DC0ECD699700D89C28 /* OpenGL.framework */,
 				2150E2D80ECD698700D89C28 /* GLUT.framework */,
 				2150E2AB0ECD687300D89C28 /* Products */,
-				2150E2AD0ECD687300D89C28 /* Spaceship-Info.plist */,
 			);
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		2150E2A90ECD687300D89C28 /* Spaceship */ = {
+		2150E2A90ECD687300D89C28 /* Newtonia */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 2150E2B00ECD687500D89C28 /* Build configuration list for PBXNativeTarget "Spaceship" */;
+			buildConfigurationList = 2150E2B00ECD687500D89C28 /* Build configuration list for PBXNativeTarget "Newtonia" */;
 			buildPhases = (
 				2150E2A60ECD687300D89C28 /* Resources */,
 				2150E2A70ECD687300D89C28 /* Sources */,
@@ -140,9 +141,9 @@
 			);
 			dependencies = (
 			);
-			name = Spaceship;
-			productName = Spaceship;
-			productReference = 2150E2AA0ECD687300D89C28 /* Spaceship.app */;
+			name = Newtonia;
+			productName = Newtonia;
+			productReference = 2150E2AA0ECD687300D89C28 /* Newtonia.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -158,7 +159,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				2150E2A90ECD687300D89C28 /* Spaceship */,
+				2150E2A90ECD687300D89C28 /* Newtonia */,
 			);
 		};
 /* End PBXProject section */
@@ -169,6 +170,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				2119FFEF0EE16F2600DD218B /* icon.icns in Resources */,
+				219185D00EE684C10004C960 /* Newtonia-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -203,10 +205,7 @@
 		2150E2AE0ECD687400D89C28 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ARCHS = (
-					i386,
-					ppc,
-				);
+				ARCHS = "$(NATIVE_ARCH)";
 				COPY_PHASE_STRIP = NO;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_ENABLE_FIX_AND_CONTINUE = YES;
@@ -214,7 +213,7 @@
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "";
-				INFOPLIST_FILE = "Spaceship-Info.plist";
+				INFOPLIST_FILE = "Newtonia-Info.plist";
 				INSTALL_PATH = "$(HOME)/Applications";
 				MACOSX_DEPLOYMENT_TARGET = 10.4;
 				OTHER_LDFLAGS = (
@@ -224,7 +223,7 @@
 					AppKit,
 				);
 				PREBINDING = NO;
-				PRODUCT_NAME = Spaceship;
+				PRODUCT_NAME = Newtonia;
 				WRAPPER_EXTENSION = app;
 				ZERO_LINK = YES;
 			};
@@ -289,7 +288,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		2150E2B00ECD687500D89C28 /* Build configuration list for PBXNativeTarget "Spaceship" */ = {
+		2150E2B00ECD687500D89C28 /* Build configuration list for PBXNativeTarget "Newtonia" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				2150E2AE0ECD687400D89C28 /* Debug */,
