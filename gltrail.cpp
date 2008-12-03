@@ -17,7 +17,7 @@
 using namespace std;
 
 GLTrail::GLTrail(Ship* ship, float deviation, Point offset, float speed, float rotation, int type, float life)
- : ship(ship), deviation(deviation), offset(offset), speed(speed), rotation(rotation), type(type), life(life) {}
+ : type(type), ship(ship), offset(offset), deviation(deviation), rotation(rotation), speed(speed), life(life) {}
 
 void GLTrail::draw() {
   list<Particle*>::iterator p;

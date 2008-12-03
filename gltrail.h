@@ -38,9 +38,9 @@ private:
   void add();
   
   int type;
-  float deviation, rotation, speed, life;
-  Point offset;
   Ship* ship;
+  Point offset;
+  float deviation, rotation, speed, life;
   
   std::list<Particle*> trail;
 };

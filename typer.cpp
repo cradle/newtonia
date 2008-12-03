@@ -35,7 +35,7 @@ void Typer::draw(float x, float y, int number, float size) {
 }
 
 void Typer::draw(float x, float y, char * text, float size) {
-  for(int i = 0; i < strlen(text); i++) {
+  for(unsigned int i = 0; i < strlen(text); i++) {
     draw(x+i*10, y, text[i], size);
   }
 }
