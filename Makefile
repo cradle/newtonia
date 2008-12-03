@@ -4,10 +4,10 @@ LIBS = -lglut
 COMPILE = $(CC) $(CFLAGS) -c 
 OBJFILES := $(patsubst %.cpp,%.o,$(wildcard *.cpp))
 
-all: spaceship
+all: newtonia
 
 spaceship: $(OBJFILES)
-	$(CC) -o spaceship $(OBJFILES) $(LIBS)
+	$(CC) -o newtonia $(OBJFILES) $(LIBS)
 
 %.o: %.cpp
 	$(COMPILE) -o $@ $<

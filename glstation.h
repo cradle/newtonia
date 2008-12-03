@@ -24,7 +24,7 @@ private:
   
   std::vector<GLShip*>* objects;
   std::vector<GLShip*>* targets;
-  int ships_this_wave, max_ships_per_wave, ships_left_to_deploy;
+  int ships_this_wave, max_ships_per_wave, extra_ships_per_wave, ships_left_to_deploy;
   float time_until_next_ship, time_between_ships;
   bool deploying;
   int wave, difficulty;

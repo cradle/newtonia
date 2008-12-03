@@ -140,7 +140,7 @@ void Ship::fire_shot() {
   score -= 1;
   Point dir = Point(facing);
   dir.rotate((rand() / (float)RAND_MAX) * accuracy - accuracy / 2.0);
-  bullets.push_back(Particle(gun(), dir*0.5 + velocity*0.99, 2000.0));
+  bullets.push_back(Particle(gun(), dir*0.5 + velocity*0.99, 4000.0));
 }
 
 void Ship::mine(bool on) {

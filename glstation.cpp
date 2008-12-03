@@ -22,6 +22,7 @@ GLStation::GLStation(vector<GLShip*>* objects, vector<GLShip*>* targets) : objec
   radius = 500.0;
   radius_squared = radius * radius;
   max_ships_per_wave = 24;
+  extra_ships_per_wave = 1;
   ships_left_to_deploy = ships_this_wave = 2;
   time_until_next_ship = time_between_ships = 2000.0;
   deploying = true;
@@ -105,7 +106,7 @@ void GLStation::step(float delta) {
     time_until_next_ship -= delta;
     if(ships_left_to_deploy == 0) {
       deploying = false;
-      ships_this_wave += 2;
+      ships_this_wave += extra_ships_per_wave;
       wave++;
       if(ships_this_wave > max_ships_per_wave) {
         ships_this_wave = max_ships_per_wave;

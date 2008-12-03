@@ -37,7 +37,7 @@
 		2119FFEE0EE16F2600DD218B /* icon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = icon.icns; sourceTree = "<group>"; };
 		212105230EE55CF500A6F748 /* particle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = particle.cpp; sourceTree = "<group>"; };
 		212105240EE55CF500A6F748 /* particle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = particle.h; sourceTree = "<group>"; };
-		2150E2AA0ECD687300D89C28 /* Newtonia.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Newtonia.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2150E2AA0ECD687300D89C28 /* Spaceship.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Spaceship.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2150E2AD0ECD687300D89C28 /* Spaceship-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Spaceship-Info.plist"; sourceTree = "<group>"; };
 		2150E2D80ECD698700D89C28 /* GLUT.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GLUT.framework; path = /System/Library/Frameworks/GLUT.framework; sourceTree = "<absolute>"; };
 		2150E2DC0ECD699700D89C28 /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = /System/Library/Frameworks/OpenGL.framework; sourceTree = "<absolute>"; };
@@ -80,7 +80,7 @@
 		2150E2AB0ECD687300D89C28 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				2150E2AA0ECD687300D89C28 /* Newtonia.app */,
+				2150E2AA0ECD687300D89C28 /* Spaceship.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -142,7 +142,7 @@
 			);
 			name = Spaceship;
 			productName = Spaceship;
-			productReference = 2150E2AA0ECD687300D89C28 /* Newtonia.app */;
+			productReference = 2150E2AA0ECD687300D89C28 /* Spaceship.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -150,7 +150,7 @@
 /* Begin PBXProject section */
 		219282760ECD670E002D470F /* Project object */ = {
 			isa = PBXProject;
-			buildConfigurationList = 219282790ECD670E002D470F /* Build configuration list for PBXProject "spaceship" */;
+			buildConfigurationList = 219282790ECD670E002D470F /* Build configuration list for PBXProject "newtonia" */;
 			compatibilityVersion = "Xcode 2.4";
 			hasScannedForEncodings = 0;
 			mainGroup = 219282740ECD670E002D470F;
@@ -298,7 +298,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		219282790ECD670E002D470F /* Build configuration list for PBXProject "spaceship" */ = {
+		219282790ECD670E002D470F /* Build configuration list for PBXProject "newtonia" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				219282770ECD670E002D470F /* Debug */,

@@ -5,11 +5,11 @@
 #include "point.h"
 
 Enemy::Enemy(float x, float y, std::vector<Ship*>* targets, int difficulty) : Car(x,y), targets(targets) {
-  thrust_force = 0.145 + difficulty*0.00025;
-  rotation_force = 0.375 + difficulty*0.00025;
-  time_until_next_shot = 900.0 + rand()%100;
-  accuracy = 0.0;
+  thrust_force = 0.135 + difficulty*0.00025 + rand()%50/10000.0;
+  rotation_force = 0.15 + difficulty*0.01 + rand()%10/1000.0;
   time_between_shots = 1000.0;
+  time_until_next_shot = rand()%(int)time_between_shots;
+  accuracy = 0.0;
   thrust(true);
   value = 50 + difficulty * 50;
   explode();
