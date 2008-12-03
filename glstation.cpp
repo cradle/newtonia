@@ -69,17 +69,17 @@ GLStation::GLStation(list<GLShip*>* objects, list<GLShip*>* targets) : objects(o
   glEndList();
 }
 
-void GLStation::collide(Ship * ship) {
+void GLStation::collide(Ship * ship) const {
   if( ship->is_alive() && (ship->position - position).magnitude_squared() < (radius_squared + ship->radius_squared) ){
     ship->kill_stop();
   }
 }
 
-int GLStation::level() {
+int GLStation::level() const {
   return wave;
 }
 
-void GLStation::draw(bool minimap) {
+void GLStation::draw(bool minimap) const {
   glTranslatef(position.x(), position.y(), 0);  
   
   if(minimap) {

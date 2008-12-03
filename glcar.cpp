@@ -61,7 +61,7 @@ GLCar::GLCar(float x, float y) {
   glEndList();
 }
 
-void GLCar::draw_ship(bool minimap) {
+void GLCar::draw_ship(bool minimap) const {
   GLShip::draw_ship(minimap);
 
   if(!minimap) {

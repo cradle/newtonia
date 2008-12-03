@@ -103,12 +103,11 @@ void GLShip::input(unsigned char key, bool pressed) {
 }
 
 void GLShip::draw(bool minimap) {
-  //First try it with line strips, there may be a (very) slight performance increase. Also disable all unnecessary modes like lighting, blending etc.
-  //Last, try it using compiled vertex buffers or even better, hardware supported ones. This is the best performance gain you'll get.  
   if(!minimap) {
     draw_particles();
     draw_debris();
-    for(list<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
+    list<GLTrail*>::iterator i;
+    for(i = trails.begin(); i != trails.end(); i++) {
       (*i)->draw();
     }
     draw_mines();
@@ -118,7 +117,7 @@ void GLShip::draw(bool minimap) {
   }
 }
 
-void GLShip::draw_ship(bool minimap) {
+void GLShip::draw_ship(bool minimap) const {
   glTranslatef(ship->position.x(), ship->position.y(), 0.0f);
   glScalef( ship->radius, ship->radius, 1.0f);
   glRotatef( ship->heading(), 0.0f, 0.0f, 1.0f);
@@ -157,7 +156,7 @@ void GLShip::draw_ship(bool minimap) {
 	glEnd();
 }
 
-void GLShip::draw_particles() {
+void GLShip::draw_particles() const {
   glColor3fv(color);
   glBegin(GL_POINTS);
   for(list<Particle>::iterator b = ship->bullets.begin(); b != ship->bullets.end(); b++) {
@@ -167,11 +166,11 @@ void GLShip::draw_particles() {
 	glEnd();
 }
 
-bool GLShip::is_removable() {
+bool GLShip::is_removable() const {
   return ship->is_removable();
 }
 
-void GLShip::draw_debris() {
+void GLShip::draw_debris() const {
   glBegin(GL_POINTS);
   for(list<Particle>::iterator d = ship->debris.begin(); d != ship->debris.end(); d++) {
     glColor4f(color[0], color[1], color[2], d->aliveness());
@@ -180,7 +179,7 @@ void GLShip::draw_debris() {
 	glEnd();
 }
 
-void GLShip::draw_mines() {
+void GLShip::draw_mines() const {
   float size = 20.0;
   for(list<Particle>::iterator m = ship->mines.begin(); m != ship->mines.end(); m++) {
     glBegin(GL_LINE_STRIP);

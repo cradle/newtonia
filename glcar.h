@@ -11,8 +11,7 @@ public:
 protected:
   GLuint left_jet, right_jet;
   
-  void draw_ship(bool minimap);
-  void draw_trails();
+  void draw_ship(bool minimap) const;
 };
 
 #endif

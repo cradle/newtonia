@@ -24,16 +24,16 @@ public:
   virtual void input(unsigned char key, bool pressed = true);
   void set_keys(int left, int right, int up, int right, int reverse, int mine);
   void draw(bool minimap = false);
-  bool is_removable();
+  bool is_removable() const;
 
   static void collide(GLShip* first, GLShip* second);
   Ship *ship;
 
 protected:
-  virtual void draw_ship(bool minimap = false);
-  void draw_particles();
-  void draw_mines();
-  void draw_debris();
+  virtual void draw_ship(bool minimap = false) const;
+  void draw_particles() const;
+  void draw_mines() const;
+  void draw_debris() const;
 
   GLuint body, jets, repulsors;
   

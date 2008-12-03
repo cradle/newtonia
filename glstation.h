@@ -10,10 +10,10 @@ using namespace std;
 class GLStation {
 public:
   GLStation(list<GLShip*>* objects, list<GLShip*>* targets);
-  void draw(bool minimap = false);
+  void draw(bool minimap = false) const;
   void step(float delta);
-  void collide(Ship *ship);
-  int level();
+  void collide(Ship *ship) const;
+  int level() const;
   
 private:
   float radius, radius_squared;
