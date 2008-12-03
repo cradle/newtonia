@@ -41,8 +41,7 @@ private:
   
   GLStarfield* starfield;
   GLStation* station;
-  list<GLShip*>* enemies;
-  list<GLShip*>* players;
+  list<GLShip*>* enemies, *players;
 };
 
 #endif

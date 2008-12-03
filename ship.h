@@ -46,9 +46,7 @@ class Ship {
     //TODO: somehow get around this public for glstation
     void kill_stop();
     
-    list<Particle> bullets;
-    list<Particle> mines;
-    list<Particle> debris;
+    list<Particle> bullets, mines, debris;
     
     enum Rotation {
       LEFT = 1,

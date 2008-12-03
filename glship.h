@@ -39,12 +39,7 @@ protected:
   
   float color[3];
   
-  int thrust_key;
-  int left_key;
-  int right_key;
-  int shoot_key;
-  int reverse_key;
-  int mine_key;
+  int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key;
   
   std::list<GLTrail*> trails;
 };

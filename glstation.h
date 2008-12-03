@@ -22,8 +22,7 @@ private:
   static const int NUM_SEGMENTS = 30;
   float inner_rotation, outer_rotation, outer_rotation_speed, inner_rotation_speed;
   
-  std::list<GLShip*>* objects;
-  std::list<GLShip*>* targets;
+  std::list<GLShip*>* objects, *targets;
   int ships_this_wave, max_ships_per_wave, extra_ships_per_wave, ships_left_to_deploy;
   float time_until_next_ship, time_between_ships;
   bool deploying;
