@@ -1,0 +1,24 @@
+Newtonia is a top down 2D space shooter.
+Written in C++ using GLUT and OpenGL.
+
+Global Keys:
+ fullscreen: f
+       quit: esc 
+
+(two players works best with 2 USB keyboards)
+
+Player 1 Keys:
+  thrust: w
+ reverse: s
+    left: a
+   right: f
+   shoot: space
+    mine: x
+
+Player 2 Keys:
+  thrust: i
+ reverse: k
+    left: j
+   right: l
+   shoot: /
+    mine: ,
