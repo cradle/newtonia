@@ -25,6 +25,7 @@ public:
   void keyboard_up (unsigned char key, int x, int y);
 
 private:
+  void pause();
   void draw_map() const;
   void draw_objects(bool minimap = false) const;
   void draw_world(GLShip *glship, bool primary) const;
@@ -34,6 +35,7 @@ private:
   Point window, world;
 
   int last_tick, time_until_next_step, num_frames;
+  bool running;
 
   unsigned int gameworld;
   

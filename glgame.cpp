@@ -18,7 +18,7 @@
 #include <iostream>
 #include <list>
 
-GLGame::GLGame(float width, float height) : world(Point(width, height)) {}
+GLGame::GLGame(float width, float height) : world(Point(width, height)), running(true) {}
 
 GLGame::~GLGame() {
   //TODO: Make erase, use boost::ptr_list? something better
@@ -37,9 +37,17 @@ GLGame::~GLGame() {
   delete station;
 }
 
-void GLGame::tick(void) {
-  int current_time = glutGet(GLUT_ELAPSED_TIME);
+void GLGame::pause() {
+  if (!running) {
+    last_tick = glutGet(GLUT_ELAPSED_TIME);
+  }
+  running = !running;
+}
 
+void GLGame::tick(void) {
+  if (!running) return;
+  int current_time = glutGet(GLUT_ELAPSED_TIME);
+  
   time_until_next_step -= (current_time - last_tick);
   
   num_frames++;
@@ -199,6 +207,7 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
 }
 
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
+  if (key == 'p') pause();
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
     (*object)->input(key, false);
