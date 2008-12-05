@@ -5,6 +5,9 @@ Global Keys:
  fullscreen: f
       pause: p
        quit: esc 
+   speed up: +
+  slow down: -
+      reset: 0
 
 (two players works best with 2 USB keyboards)
 

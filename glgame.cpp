@@ -18,7 +18,9 @@
 #include <iostream>
 #include <list>
 
-GLGame::GLGame(float width, float height) : world(Point(width, height)), running(true) {}
+GLGame::GLGame(float width, float height) : world(Point(width, height)), running(true) {
+  time_between_steps = step_size;
+}
 
 GLGame::~GLGame() {
   //TODO: Make erase, use boost::ptr_list? something better
@@ -87,7 +89,7 @@ void GLGame::tick(void) {
       }
     }
     
-    time_until_next_step += step_size;
+    time_until_next_step += time_between_steps;
   }
   /* Display FPS */
   // std::cout << (num_frames*1000 / current_time) << std::endl;
@@ -209,6 +211,9 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
 }
 
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
+  if (key == '=' && time_between_steps > 1) time_between_steps--;
+  if (key == '-') time_between_steps++;
+  if (key == '0') time_between_steps = step_size;
   if (key == 'p') toggle_pause();
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {

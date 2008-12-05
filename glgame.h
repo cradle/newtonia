@@ -34,7 +34,7 @@ private:
   
   Point window, world;
 
-  int last_tick, time_until_next_step, num_frames, current_time;
+  int last_tick, time_until_next_step, num_frames, current_time, time_between_steps;
   bool running;
 
   unsigned int gameworld;
