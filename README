@@ -3,6 +3,7 @@ Written in C++ using GLUT and OpenGL.
 
 Global Keys:
  fullscreen: f
+      pause: p
        quit: esc 
 
 (two players works best with 2 USB keyboards)
