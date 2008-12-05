@@ -16,8 +16,9 @@ class Enemy : public Car {
     void lock_nearest_target();
     Ship* target;
     std::list<Ship*> * targets;
-    
-    float time_until_next_lock, time_between_locks;
+
+    int time_until_next_lock, time_between_locks;
+    int burst_time, burst_time_left, time_between_bursts, time_until_next_burst;
 };
 
 #endif

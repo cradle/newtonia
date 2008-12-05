@@ -43,8 +43,8 @@ void Typer::draw(float x, float y, char * text, float size) {
 void Typer::draw(float x, float y, char character, float size) {
   glPushMatrix();
   glColor3f(0,1,0);
-  glTranslatef(x,y-size-padding_proportion*size,0);
-  glScalef(size, size, 0);
+  glTranslatef((int)x,(int)(y-size-padding_proportion*size),0);
+  glScalef((int)size, (int)size, 0);
   switch(character) {
     case '-':
       glBegin(GL_LINES);

@@ -16,7 +16,7 @@ GLStarfield::GLStarfield(Point const size) {
     glNewList(point_layers+i, GL_COMPILE);
     glBegin(GL_POINTS);
     for(int j = 0; j < NUM_STARS; j++) {
-      glColor4f(rand()%100/100.0,0.5,rand()%100/100.0,rand()%50/100.0+0.3);
+      glColor4f(rand()%70/100.0+0.3,0.3,rand()%70/100.0+0.3,rand()%70/100.0+0.3);
       glVertex2f((rand()%(int)size.x()*2.0 - size.x()), (rand()%(int)size.y()*2.0 - size.y()));
     }
     glEnd();

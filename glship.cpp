@@ -151,9 +151,6 @@ void GLShip::draw_ship(bool minimap) const {
   glBegin(GL_LINE_LOOP);
   glCallList(body);
 	glEnd();
-	glBegin(GL_POINTS);
-  glCallList(body);
-	glEnd();
 }
 
 void GLShip::draw_particles() const {

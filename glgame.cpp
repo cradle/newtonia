@@ -226,8 +226,8 @@ void GLGame::init(int argc, char** argv, float width, float height) {
   glutInitWindowSize(width, height);
   glutCreateWindow("Asteroids");
 
-  glPointSize(2.0f);
-  glLineWidth(1.33f);
+  glPointSize(2.5f);
+  glLineWidth(1.2f);
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glEnable(GL_LINE_SMOOTH);
