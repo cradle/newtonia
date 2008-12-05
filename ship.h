@@ -54,6 +54,9 @@ class Ship {
       RIGHT = -1
     };
     Rotation rotation_direction;
+    
+    // Heat
+    float max_temperature, critical_temperature, temperature, explode_temperature;
 
   protected:
     WrappedPoint gun() const;
@@ -66,7 +69,9 @@ class Ship {
     void kill();
 
     Point world_size;
-
+    
+    float heat_rate, cool_rate;
+    
     // Forces
     float thrust_force, reverse_force, rotation_force;
     // Attributes

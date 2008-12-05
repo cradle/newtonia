@@ -137,6 +137,13 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   typer->draw(window.x()/2-40, window.y()-20, glship->ship->score, 20);
   /* Draw the life count */
   typer->draw_lives(window.x()/2-40,-window.y()+70, glship, 18);
+  
+  glPushMatrix();
+  glTranslatef(-window.x()/2.0+30, -window.y()+15, 0.0f);
+  glScalef(20,20,1);
+  glship->draw_temperature();
+  glPopMatrix();
+  
   // Store the rendered world in a display list
   glNewList(gameworld, GL_COMPILE);
     glTranslatef(-glship->ship->position.x(), -glship->ship->position.y(), 0.0f);

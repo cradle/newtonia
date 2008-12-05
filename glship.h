@@ -25,6 +25,7 @@ public:
   void set_keys(int left, int right, int up, int right, int reverse, int mine);
   void draw(bool minimap = false);
   void draw_body() const;
+  void draw_temperature() const;
   bool is_removable() const;
 
   static void collide(GLShip* first, GLShip* second);
@@ -35,6 +36,11 @@ protected:
   void draw_particles() const;
   void draw_mines() const;
   void draw_debris() const;
+  
+  /*delegators*/
+  float max_temperature() const;
+  float temperature() const;
+  float critical_temperature() const;
 
   GLuint body, jets, repulsors;
   
@@ -44,5 +50,19 @@ protected:
   
   std::list<GLTrail*> trails;
 };
+
+/* delegators */
+inline
+float GLShip::max_temperature() const {
+  return ship->max_temperature;
+}
+inline
+float GLShip::temperature() const {
+  return ship->temperature;
+}
+inline
+float GLShip::critical_temperature() const {
+  return ship->critical_temperature;
+}
 
 #endif

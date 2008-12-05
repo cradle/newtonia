@@ -5,7 +5,6 @@
 #include "point.h"
 
 Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Car(x,y), targets(targets) {
-  difficulty = 50;
   thrust_force = 0.135 + difficulty*0.00025 + rand()%50/10000.0;
   rotation_force = 0.15 + difficulty*0.01 + rand()%10/1000.0;
   time_until_next_shot = time_between_shots = 200;
@@ -16,6 +15,8 @@ Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Car(
   value = 50 + difficulty * 50;
   explode();
   respawns = false;
+  heat_rate = 0.0;
+  cool_rate = 1.0;
   
   time_until_next_lock = 0.0;
   time_between_locks = 900.0 + rand()%100;
@@ -74,23 +75,27 @@ void Enemy::step(float delta) {
     
     lock_step(delta);
     
-    if(target && target->is_alive()) {
-      burst_shooting_step(delta);
+    if(target) {
+      if (target->is_alive()) {
+        burst_shooting_step(delta);
 	
-      // float distance = (target->position - position).magnitude();
-      float angle = (heading() - (position.closest_to(target->position) - target->position).normalized().direction());
-      angle = (angle < 0.0) ? (360.0 + angle) : angle;
-      if (angle >= 0 && angle < 180) {
-        rotate_left(true);
-      } else {  
-        rotate_right(true);
+        // float distance = (target->position - position).magnitude();
+        // WrappedPoint target_point = target->position + target->velocity.normalized() * 500.0;
+        WrappedPoint target_point = target->position;
+        float angle = (heading() - (position.closest_to(target_point) - target_point).normalized().direction());
+        angle = (angle < 0.0) ? (360.0 + angle) : angle;
+        if (angle >= 0 && angle < 180) {
+          rotate_left(true);
+        } else {  
+          rotate_right(true);
+        }
+      } else {
+    		target = NULL;
+        time_until_next_lock = 2000.0;
+    		time_until_next_shot = time_until_next_lock + time_between_shots;
+    		shoot(false);
+        rotate_right(false);
       }
-    } else {
-  		target = NULL;
-      time_until_next_lock = 2000.0;
-  		time_until_next_shot = time_until_next_lock + time_between_shots;
-  		shoot(false);
-      rotate_right(false);
     }
   }
 }

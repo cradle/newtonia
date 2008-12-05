@@ -27,6 +27,12 @@ Ship::Ship(float x, float y) {
   respawns = true;
   shooting = false;
   time_until_next_shot = time_between_shots = 60;
+  
+  temperature = max_temperature = 100.0;
+  critical_temperature = max_temperature * 0.80;
+  explode_temperature = max_temperature * 1.2;
+  heat_rate = 0.06;
+  cool_rate = 0.03;
 }
 
 void Ship::respawn() {
@@ -205,10 +211,21 @@ void Ship::step(float delta) {
   
   facing.rotate(rotation_direction * rotation_force / mass  * delta );
   Point acceleration = Point(0,0);
-  if(thrusting)
-	acceleration += ((facing * thrust_force) / mass);
-  if(reversing)
-	acceleration += ((facing * reverse_force) / mass);
+  if(thrusting) {
+  	acceleration += ((facing * thrust_force) / mass);
+    temperature += heat_rate * delta;
+	}
+  if(reversing) {
+  	acceleration += ((facing * reverse_force) / mass);
+    temperature += heat_rate * 0.5 * delta;
+	}
+  temperature -= cool_rate * delta;
+  if(temperature <= 0)
+    temperature = 0;
+  if(temperature > explode_temperature && alive) {
+    kill();
+    detonate(position, velocity);
+  }
 
   velocity += acceleration * delta;
   position += velocity * delta;

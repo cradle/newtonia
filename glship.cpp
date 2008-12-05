@@ -84,6 +84,40 @@ void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, i
   mine_key = mine;
 }
 
+void GLShip::draw_temperature() const {
+  float height = 5.0, width = 1.0;
+  
+  /* temperature */
+  float color[3] = {0,0.8,0};
+  color[1] *= 1.0 - temperature()/max_temperature();
+  color[0] = temperature()/max_temperature();
+  glColor3fv(color);
+  glBegin(GL_POLYGON);
+  glVertex2f(  0.0, 0.0);
+  glVertex2f(width, 0.0);
+  float temp_height = height*temperature()/max_temperature();
+  if(temp_height > height) {
+    temp_height = height;
+  }
+  glVertex2f(width, temp_height);
+  glVertex2f(  0.0, temp_height);
+  glEnd();
+  
+  /* border */
+  glColor3f(1,1,1);
+  glBegin(GL_LINE_LOOP);
+  glVertex2i(    0,      0);
+  glVertex2i(width,      0);
+  glVertex2i(width, height);
+  glVertex2i(    0, height);
+  glEnd();
+  
+  glBegin(GL_LINES);
+  glVertex2f(   0.0, height*critical_temperature()/max_temperature());
+  glVertex2f( width, height*critical_temperature()/max_temperature());
+  glEnd();
+}
+
 void GLShip::input(unsigned char key, bool pressed) {
   if(!ship->is_alive())
     return;
