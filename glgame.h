@@ -39,11 +39,11 @@ private:
 
   unsigned int gameworld;
   
-  Typer* typer;
+  Typer *typer;
   
-  GLStarfield* starfield;
-  GLStation* station;
-  list<GLShip*>* enemies, *players;
+  GLStarfield *starfield;
+  GLStation *station;
+  list<GLShip*> *enemies, *players;
 };
 
 #endif
