@@ -12,7 +12,7 @@ Player 1 Keys:
   thrust: w
  reverse: s
     left: a
-   right: f
+   right: d
    shoot: space
     mine: x
 
