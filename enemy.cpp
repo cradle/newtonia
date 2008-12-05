@@ -5,7 +5,7 @@
 #include "point.h"
 
 Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Car(x,y), targets(targets) {
-  // difficulty = 50;
+  difficulty = 50;
   thrust_force = 0.135 + difficulty*0.00025 + rand()%50/10000.0;
   rotation_force = 0.15 + difficulty*0.01 + rand()%10/1000.0;
   time_until_next_shot = time_between_shots = 200;
@@ -42,38 +42,47 @@ bool Enemy::is_removable() const {
   return !alive && bullets.empty() && debris.empty();
 }
 
+void Enemy::lock_step(float delta) {
+  time_until_next_lock -= delta;
+  if(time_until_next_lock <= 0) {
+    lock_nearest_target();
+    time_until_next_lock += time_between_locks;
+  }
+}
+
+void Enemy::burst_shooting_step(float delta) {
+  if(!shooting) {
+    time_until_next_burst -= delta;
+
+    if(time_until_next_burst <= 0.0) {
+      shoot(true);
+      time_until_next_shot = 0;
+      burst_time_left = burst_time;
+    }
+  } else if (burst_time_left >= 0.0) {
+    burst_time_left -= delta;
+  } else {
+    shoot(false);
+    time_until_next_burst = time_between_bursts;
+  }
+}
+
 void Enemy::step(float delta) {
   Car::step(delta);
   if(is_alive()) {
     velocity = velocity - velocity * 0.0005 * delta;
     
-    time_until_next_lock -= delta;
-    if(time_until_next_lock <= 0) {
-      lock_nearest_target();
-      time_until_next_lock += time_between_locks;
-    }
+    lock_step(delta);
     
     if(target && target->is_alive()) {
-      // bool close = (target->position - position).magnitude() < 100.0;
-      if(!shooting) {
-        time_until_next_burst -= delta;
-
-        if(time_until_next_burst <= 0.0) {
-          shoot(true);
-          time_until_next_shot = 0;
-          burst_time_left = burst_time;
-        }
-      } else if (burst_time_left >= 0.0) {
-        burst_time_left -= delta;
-      } else {
-        shoot(false);
-        time_until_next_burst = time_between_bursts;
-      }
+      burst_shooting_step(delta);
 	
+      // float distance = (target->position - position).magnitude();
       float angle = (heading() - (position.closest_to(target->position) - target->position).normalized().direction());
-      if (angle >= 0 && angle < 180 || angle >= -360 && angle < -180) {
+      angle = (angle < 0.0) ? (360.0 + angle) : angle;
+      if (angle >= 0 && angle < 180) {
         rotate_left(true);
-      } else {
+      } else {  
         rotate_right(true);
       }
     } else {

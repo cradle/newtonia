@@ -13,6 +13,8 @@ class Enemy : public Car {
     bool is_removable() const;
     
   private:
+    void lock_step(float delta);
+    void burst_shooting_step(float delta);
     void lock_nearest_target();
     Ship* target;
     std::list<Ship*> * targets;
