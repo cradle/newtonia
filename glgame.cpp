@@ -37,16 +37,18 @@ GLGame::~GLGame() {
   delete station;
 }
 
-void GLGame::pause() {
+void GLGame::toggle_pause() {
   if (!running) {
-    last_tick = glutGet(GLUT_ELAPSED_TIME);
+    last_tick += glutGet(GLUT_ELAPSED_TIME) - current_time;
+  } else {
+    current_time = glutGet(GLUT_ELAPSED_TIME);
   }
   running = !running;
 }
 
 void GLGame::tick(void) {
   if (!running) return;
-  int current_time = glutGet(GLUT_ELAPSED_TIME);
+  current_time = glutGet(GLUT_ELAPSED_TIME);
   
   time_until_next_step -= (current_time - last_tick);
   
@@ -207,7 +209,7 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
 }
 
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
-  if (key == 'p') pause();
+  if (key == 'p') toggle_pause();
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
     (*object)->input(key, false);
