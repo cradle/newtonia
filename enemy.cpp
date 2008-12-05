@@ -7,6 +7,7 @@
 Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Car(x,y), targets(targets) {
   thrust_force = 0.135 + difficulty*0.00025 + rand()%50/10000.0;
   rotation_force = 0.15 + difficulty*0.01 + rand()%10/1000.0;
+  time_until_next_shot = time_between_shots = 333;
   burst_time = burst_time_left = difficulty*25 + 50;
   time_between_bursts = time_until_next_burst = rand()%100 + (5000/(difficulty+1));
   accuracy = 1.0/(difficulty+10.0);
