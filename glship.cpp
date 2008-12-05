@@ -142,6 +142,10 @@ void GLShip::draw_ship(bool minimap) const {
     glPopMatrix();
 	}
 	
+  draw_body();
+}
+
+void GLShip::draw_body() const {	
   glColor3f(0,0,0);
   glBegin(GL_POLYGON);
   glCallList(body);

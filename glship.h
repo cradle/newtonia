@@ -24,6 +24,7 @@ public:
   virtual void input(unsigned char key, bool pressed = true);
   void set_keys(int left, int right, int up, int right, int reverse, int mine);
   void draw(bool minimap = false);
+  void draw_body() const;
   bool is_removable() const;
 
   static void collide(GLShip* first, GLShip* second);

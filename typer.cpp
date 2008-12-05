@@ -1,7 +1,7 @@
 #include "typer.h"
 
 #include <string>
-
+#include "glship.h"
 #ifdef __APPLE__
 #include <GLUT/glut.h>
 #else
@@ -34,9 +34,10 @@ void Typer::draw(float x, float y, int number, float size) {
   }
 }
 
-void Typer::draw_lives(float x, float y, int lives, float size) {
-  for(int i = 0; i < lives; i++) {
-    draw_life(x-i*size-size*i*padding_proportion, y, size);
+void Typer::draw_lives(float x, float y, GLShip *ship, float size) {
+  padding_proportion = 1.0;
+  for(int i = 0; i < ship->ship->lives; i++) {
+    draw_life(x-i*size-size*i*padding_proportion, y, ship, size);
   }
 }
 
@@ -57,14 +58,9 @@ void Typer::post_draw() {
   glPopMatrix();
 }
 
-void Typer::draw_life(float x, float y, float size) {
+void Typer::draw_life(float x, float y, GLShip* ship, float size) {
   pre_draw(x,y,size);
-  glBegin(GL_LINE_LOOP);
-  glVertex2f(0.5,1.67);
-  glVertex2f(1.0,0.0);
-  glVertex2f(0.5,0.3);
-  glVertex2f(0.0,0.0);
-  glEnd();
+  ship->draw_body();
   post_draw();
 }
 
