@@ -70,7 +70,7 @@ class Ship {
 
     Point world_size;
     
-    float heat_rate, cool_rate;
+    float heat_rate, retro_heat_rate, cool_rate;
     
     // Forces
     float thrust_force, reverse_force, rotation_force;

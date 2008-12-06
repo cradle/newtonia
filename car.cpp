@@ -7,6 +7,7 @@ Car::Car(float x, float y) : Ship(x,y) {
   thrust_force = 0.09;
   rotation_force = 0.2;
   heat_rate = 0.04;
+  retro_heat_rate = 0.035;
   cool_rate = 0.03;
 }
 

@@ -28,10 +28,12 @@ Ship::Ship(float x, float y) {
   shooting = false;
   time_until_next_shot = time_between_shots = 60;
   
-  temperature = max_temperature = 100.0;
+  max_temperature = 100.0;
+  temperature = 0.0;
   critical_temperature = max_temperature * 0.80;
   explode_temperature = max_temperature * 1.2;
   heat_rate = 0.06;
+  retro_heat_rate = 0.04;
   cool_rate = 0.03;
 }
 
@@ -41,6 +43,7 @@ void Ship::respawn() {
   velocity = Point(0, 0);
   alive = true;
   shooting = false;
+  temperature = 0.0;
   explode();
 }
 
@@ -217,7 +220,7 @@ void Ship::step(float delta) {
 	}
   if(reversing) {
   	acceleration += ((facing * reverse_force) / mass);
-    temperature += heat_rate * 0.5 * delta;
+    temperature += retro_heat_rate * delta;
 	}
   temperature -= cool_rate * delta;
   if(temperature <= 0)
