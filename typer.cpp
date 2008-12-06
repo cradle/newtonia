@@ -335,6 +335,136 @@ void Typer::draw(float x, float y, char character, float size) {
       glVertex2f(width, height);
       glEnd();
       break;
+    case 'o':
+    case 'O':
+      glBegin(GL_LINE_LOOP);
+      glVertex2f(0.0f, 0.0f);
+      glVertex2f(0.0f, height);
+      glVertex2f(width, height);
+      glVertex2f(width, 0.0f);
+      glEnd();
+      break;
+    case 'p':
+    case 'P':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(0.0f, 0.0f);
+      glVertex2f(0.0f, height);
+      glVertex2f(width, height);
+      glVertex2f(width, mid_height);
+      glVertex2f(0.0f, mid_height);
+      glEnd();
+      break;
+    case 'q':
+    case 'Q':
+      glBegin(GL_LINE_LOOP);
+      glVertex2f(0.0f, 0.0f);
+      glVertex2f(0.0f, height);
+      glVertex2f(width, height);
+      glVertex2f(width, mid_lower_height);
+      glVertex2f(center, 0.0f);
+      glEnd();
+      glBegin(GL_LINES);
+      glVertex2f(center, mid_lower_height);
+      glVertex2f(width, 0.0f);
+      glEnd();
+      break;
+    case 'r':
+    case 'R':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(0.0f, 0.0f);
+      glVertex2f(0.0f, height);
+      glVertex2f(width, height);
+      glVertex2f(width, mid_height);
+      glVertex2f(0.0f, mid_height);
+      glEnd();
+      glBegin(GL_LINES);
+      glVertex2f(center, mid_height);
+      glVertex2f(width, 0.0f);
+      glEnd();
+      break;
+    case 's':  
+    case 'S':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(width,height);
+      glVertex2f(0.0f,height);
+      glVertex2f(0.0f,mid_height);
+      glVertex2f(width,mid_height);
+      glVertex2f(width,0.0f);
+      glVertex2f(0.0f,0.0f);
+      glEnd();
+      break;
+    case 't':
+    case 'T':
+      glBegin(GL_LINES);
+      glVertex2f(center,height);
+      glVertex2f(center,0);
+      glVertex2f(0.0f, height);
+      glVertex2f(width, height);
+      glEnd();
+      break;
+    case 'u':  
+    case 'U':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(width,height);
+      glVertex2f(width,0.0f);
+      glVertex2f(0.0f,0.0f);
+      glVertex2f(0.0f,height);
+      glEnd();
+      break;
+    case 'v':  
+    case 'V':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(width,height);
+      glVertex2f(width,mid_lower_height);
+      glVertex2f(center,0.0f);
+      glVertex2f(0.0f, 0.0f);
+      glVertex2f(0.0f,height);
+      glEnd();
+      break;
+    case 'w':
+    case 'W':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(0.0f, height);
+      glVertex2f(0.0f, 0.0f);
+      glVertex2f(width, 0.0f);
+      glVertex2f(width, height);
+      glEnd();
+      glBegin(GL_LINES);
+      glVertex2f(center, mid_height);
+      glVertex2f(center, 0.0f);
+      glEnd();
+      break;
+    case 'x':
+    case 'X':
+      glBegin(GL_LINES);
+      glVertex2f(width, height);
+      glVertex2f(0.0f, 0.0f);
+      glVertex2f(0.0f, height);
+      glVertex2f(width, 0.0f);
+      glEnd();
+      break;
+    case 'y':
+    case 'Y':
+      glBegin(GL_LINE_STRIP); 
+      glVertex2f(0.0f, height);
+      glVertex2f(0.0f, mid_height);
+      glVertex2f(width, mid_height);
+      glVertex2f(width, height);
+      glEnd();
+      glBegin(GL_LINES);
+      glVertex2f(center, mid_height);
+      glVertex2f(center, 0.0f);
+      glEnd();
+      break;
+    case 'z':  
+    case 'Z':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(0.0f, height);
+      glVertex2f(width, height);
+      glVertex2f(0.0f, 0.0f);
+      glVertex2f(width, 0.0f);
+      glEnd();
+      break;
   }
   post_draw();
 }
