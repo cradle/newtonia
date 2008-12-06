@@ -137,7 +137,7 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   typer->draw(window.x()/2-40, window.y()-20, glship->ship->score, 20);
   /* Draw the life count */
   typer->draw_lives(window.x()/2-40,-window.y()+70, glship, 18);
-  
+  typer->draw(0,0,"abcdefghijklmnopqrstuvwxyz",20);
   glPushMatrix();
   glTranslatef(-window.x()/2.0+30, -window.y()+15, 0.0f);
   glScalef(20,20,1);
@@ -208,7 +208,7 @@ void GLGame::draw_map() const {
   glPopMatrix();
 
   /* DRAW THE LEVEL */
-  typer->draw(world.x()-1500, -world.y()+2000, station->level(), 1000);
+  typer->draw(world.x()-1500, -world.y()+2000, station->level(), 800);
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {

@@ -43,7 +43,7 @@ void Typer::draw_lives(float x, float y, GLShip *ship, float size) {
 
 void Typer::draw(float x, float y, char * text, float size) {
   for(unsigned int i = 0; i < strlen(text); i++) {
-    draw(x+i*10, y, text[i], size);
+    draw(x+i*size+size*i*padding_proportion, y, text[i], size);
   }
 }
 
@@ -65,112 +65,276 @@ void Typer::draw_life(float x, float y, GLShip* ship, float size) {
 }
 
 void Typer::draw(float x, float y, char character, float size) {
+  float quarter_size = 0.25;
+  float height = 2.0;
+  float mid_upper_height = height - quarter_size;
+  float mid_height = height * 0.6;
+  float mid_lower_height = mid_height - quarter_size;
+  float width = 1.0;
+  float mid_width = width * 0.67;
+  float center = width / 2.0;
   pre_draw(x,y,size);
   switch(character) {
     case '-':
       glBegin(GL_LINES);
-      glVertex2i(0,1);
-      glVertex2i(1,1);
+      glVertex2f(0,mid_height);
+      glVertex2f(width,mid_height);
       glEnd();
       break;
     case '0':
       glBegin(GL_LINE_LOOP);
-      glVertex2i(0,2);
-      glVertex2i(1,2);
-      glVertex2i(1,0);
-      glVertex2i(0,0);
+      glVertex2f(0,height);
+      glVertex2f(width,height);
+      glVertex2f(width,0);
+      glVertex2f(0,0);
       glEnd();
       break;
     case '1':
       glBegin(GL_LINES);
-      glVertex2i(1,2);
-      glVertex2i(1,0);
+      glVertex2f(width,height);
+      glVertex2f(width,0);
       glEnd();
       break;
     case '2':
       glBegin(GL_LINE_STRIP);
-      glVertex2i(0,2);
-      glVertex2i(1,2);
-      glVertex2i(1,1);
-      glVertex2i(0,1);
-      glVertex2i(0,0);
-      glVertex2i(1,0);
+      glVertex2f(0,height);
+      glVertex2f(width,height);
+      glVertex2f(width,mid_height);
+      glVertex2f(0,mid_height);
+      glVertex2f(0,0);
+      glVertex2f(width,0);
       glEnd();
       break;
     case '3':
       glBegin(GL_LINE_STRIP);
-      glVertex2i(0,2);
-      glVertex2i(1,2);
-      glVertex2i(1,0);
-      glVertex2i(0,0);
+      glVertex2f(0,height);
+      glVertex2f(width,height);
+      glVertex2f(width,0);
+      glVertex2f(0,0);
       glEnd();
       glBegin(GL_LINES);
-      glVertex2i(0,1);
-      glVertex2i(1,1);
+      glVertex2f(0,mid_height);
+      glVertex2f(width,mid_height);
       glEnd();
       break;
     case '4':
       glBegin(GL_LINE_STRIP);
-      glVertex2i(0,2);
-      glVertex2i(0,1);
-      glVertex2i(1,1);
-      glVertex2i(1,2);
+      glVertex2f(0,height);
+      glVertex2f(0,mid_height);
+      glVertex2f(width,mid_height);
+      glVertex2f(width,height);
       glEnd();
       glBegin(GL_LINES);
-      glVertex2i(1,1);
-      glVertex2i(1,0);
+      glVertex2f(width,mid_height);
+      glVertex2f(width,0);
       glEnd();
       break;
     case '5':
       glBegin(GL_LINE_STRIP);
-      glVertex2i(1,2);
-      glVertex2i(0,2);
-      glVertex2i(0,1);
-      glVertex2i(1,1);
-      glVertex2i(1,0);
-      glVertex2i(0,0);
+      glVertex2f(width,height);
+      glVertex2f(0,height);
+      glVertex2f(0,mid_height);
+      glVertex2f(width,mid_height);
+      glVertex2f(width,0);
+      glVertex2f(0,0);
       glEnd();
       break;
     case '6':
       glBegin(GL_LINE_STRIP);
-      glVertex2i(1,2);
-      glVertex2i(0,2);
-      glVertex2i(0,0);
-      glVertex2i(1,0);
-      glVertex2i(1,1);
-      glVertex2i(0,1);
+      glVertex2f(width,height);
+      glVertex2f(0,height);
+      glVertex2f(0,0);
+      glVertex2f(width,0);
+      glVertex2f(width,mid_height);
+      glVertex2f(0,mid_height);
       glEnd();
       break;
     case '7':
       glBegin(GL_LINE_STRIP);
-      glVertex2i(0,2);
-      glVertex2i(1,2);
-      glVertex2i(1,0);
+      glVertex2f(0,height);
+      glVertex2f(width,height);
+      glVertex2f(width,0);
       glEnd();
       break;
     case '8':
       glBegin(GL_LINE_LOOP);
-      glVertex2i(1,2);
-      glVertex2i(0,2);
+      glVertex2i(width,height);
+      glVertex2i(0,height);
       glVertex2i(0,0);
-      glVertex2i(1,0);
+      glVertex2i(width,0);
       glEnd();
       glBegin(GL_LINES);
-      glVertex2i(0,1);
-      glVertex2i(1,1);
+      glVertex2i(0,mid_height);
+      glVertex2i(width,mid_height);
       glEnd();
       break;
     case '9':
       glBegin(GL_LINE_STRIP);
       glVertex2i(0,0);
-      glVertex2i(1,0);
-      glVertex2i(1,2);
-      glVertex2i(0,2);
-      glVertex2i(0,1);
-      glVertex2i(1,1);
+      glVertex2i(width,0);
+      glVertex2i(width,height);
+      glVertex2i(0,height);
+      glVertex2i(0,mid_height);
+      glVertex2i(width,mid_height);
       glEnd();
       break;
-        
+    case 'a':
+    case 'A':
+      glBegin(GL_LINE_STRIP);
+      glVertex2i(0,0);
+      glVertex2i(0,height);
+      glVertex2i(width,height);
+      glVertex2i(width,0);
+      glEnd();
+      glBegin(GL_LINES);
+      glVertex2i(0,mid_height);
+      glVertex2i(width,mid_height);
+      glEnd();
+      break;
+    case 'b':
+    case 'B':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(0.0,0.0);
+      glVertex2f(0.0,height);
+      glVertex2f(mid_width,height);
+      glVertex2f(width,mid_upper_height);
+      glVertex2f(width,mid_height);
+      glVertex2f(0.0,mid_height);
+      glEnd();
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(mid_width,mid_height);
+      glVertex2f(width,mid_lower_height);
+      glVertex2f(width,0);
+      glVertex2f(0.0,0.0);
+      glEnd();
+      break;
+    case 'c':
+    case 'C':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(width,0.0);
+      glVertex2f(0.0,0.0);
+      glVertex2f(0.0,height);
+      glVertex2f(width,height);
+      glEnd();
+      break; 
+    case 'd':
+    case 'D':
+      glBegin(GL_LINE_LOOP);
+      glVertex2f(0.0f,0.0f);
+      glVertex2f(0.0f,height);
+      glVertex2f(mid_width,height);
+      glVertex2f(width,mid_upper_height);
+      glVertex2f(width,mid_height);
+      glVertex2f(width, 0.0f);
+      glEnd();
+      break;
+    case 'e':
+    case 'E':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(width,height);
+      glVertex2f(0,height);
+      glVertex2f(0,0);
+      glVertex2f(width,0);
+      glEnd();
+      glBegin(GL_LINES);
+      glVertex2f(0,mid_height);
+      glVertex2f(width,mid_height);
+      glEnd();
+      break;
+    case 'f':
+    case 'F':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(width,height);
+      glVertex2f(0,height);
+      glVertex2f(0,0);
+      glEnd();
+      glBegin(GL_LINES);
+      glVertex2f(0,mid_height);
+      glVertex2f(width,mid_height);
+      glEnd();
+      break;
+    case 'g':
+    case 'G':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(width,height);
+      glVertex2f(0,height);
+      glVertex2f(0,0);
+      glVertex2f(width,0);
+      glVertex2f(width,mid_height);
+      glEnd();
+      break;
+    case 'h':
+    case 'H':
+      glBegin(GL_LINES);
+      glVertex2f(width,mid_height);
+      glVertex2f(0,mid_height);
+      glVertex2f(0,0);
+      glVertex2f(0,height);
+      glVertex2f(width,0);
+      glVertex2f(width,height);
+      glEnd();
+      break;
+    case 'i':
+    case 'I':
+      glBegin(GL_LINES);
+      glVertex2f(center,height);
+      glVertex2f(center,0);
+      glEnd();
+      break;
+    case 'j':
+    case 'J':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(width,height);
+      glVertex2f(width,0);
+      glVertex2f(0,0);
+      glVertex2f(0,mid_height);
+      glEnd();
+      break;
+    case 'k':
+    case 'K':
+      glBegin(GL_LINES);
+      glVertex2f(0.0f, 0.0f);
+      glVertex2f(0.0f, height);
+      glVertex2f(0.0f , mid_height);
+      glVertex2f(width, mid_height);
+      glVertex2f(width, mid_height);
+      glVertex2f(width, 0.0f);
+      glVertex2f(mid_width, mid_height);
+      glVertex2f(width, height);
+      glEnd();
+      break;
+    case 'L':
+    case 'l':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(0.0f, height);
+      glVertex2f(0.0f, 0.0f);
+      glVertex2f(width, 0.0f);
+      glEnd();
+      break;
+    case 'M':
+    case 'm':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(0.0f, 0.0f);
+      glVertex2f(0.0f, height);
+      glVertex2f(width, height);
+      glVertex2f(width, 0.0f);
+      glEnd();
+      glBegin(GL_LINES);
+      glVertex2f(center, height);
+      glVertex2f(center, mid_height);
+      glEnd();
+      break;
+    case 'n':
+    case 'N':
+      glBegin(GL_LINES);
+      glVertex2f(0.0f, 0.0f);
+      glVertex2f(0.0f, height);
+      glVertex2f(0.0f, height);
+      glVertex2f(width, mid_height);
+      glVertex2f(width, 0.0f);
+      glVertex2f(width, height);
+      glEnd();
+      break;
   }
   post_draw();
 }
