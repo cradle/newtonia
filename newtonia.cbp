@@ -2,12 +2,12 @@
 <CodeBlocks_project_file>
 	<FileVersion major="1" minor="6" />
 	<Project>
-		<Option title="spaceship" />
+		<Option title="newtonia" />
 		<Option pch_mode="2" />
 		<Option compiler="gcc" />
 		<Build>
 			<Target title="Debug">
-				<Option output="bin\Debug\spaceship" prefix_auto="1" extension_auto="1" />
+				<Option output="bin\Debug\newtonia" prefix_auto="1" extension_auto="1" />
 				<Option working_dir="C:\Program Files\CodeBlocks\MinGW\bin" />
 				<Option object_output="obj\Debug\" />
 				<Option type="1" />
@@ -17,7 +17,7 @@
 				</Compiler>
 			</Target>
 			<Target title="Release">
-				<Option output="bin\Release\spaceship" prefix_auto="1" extension_auto="1" />
+				<Option output="bin\Release\newtonia" prefix_auto="1" extension_auto="1" />
 				<Option working_dir="C:\Program Files\CodeBlocks\MinGW\bin" />
 				<Option object_output="obj\Release\" />
 				<Option type="0" />
@@ -43,8 +43,6 @@
 			<Add library="..\..\..\..\..\Program Files\CodeBlocks\MinGW\lib\glut32.lib" />
 			<Add directory="C:\Program Files\CodeBlocks\MinGW\lib" />
 		</Linker>
-		<Unit filename="particle.cpp" />
-		<Unit filename="particle.h" />
 		<Unit filename="car.cpp" />
 		<Unit filename="car.h" />
 		<Unit filename="enemy.cpp" />
@@ -59,16 +57,22 @@
 		<Unit filename="glship.h" />
 		<Unit filename="glstarfield.cpp" />
 		<Unit filename="glstarfield.h" />
+		<Unit filename="glstation.cpp" />
+		<Unit filename="glstation.h" />
 		<Unit filename="gltrail.cpp" />
 		<Unit filename="gltrail.h" />
 		<Unit filename="glut.cpp" />
 		<Unit filename="icon.rc">
 			<Option compilerVar="WINDRES" />
 		</Unit>
+		<Unit filename="particle.cpp" />
+		<Unit filename="particle.h" />
 		<Unit filename="point.cpp" />
 		<Unit filename="point.h" />
 		<Unit filename="ship.cpp" />
 		<Unit filename="ship.h" />
+		<Unit filename="typer.cpp" />
+		<Unit filename="typer.h" />
 		<Unit filename="wrapped_point.cpp" />
 		<Unit filename="wrapped_point.h" />
 		<Extensions>
