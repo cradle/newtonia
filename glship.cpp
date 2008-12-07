@@ -133,6 +133,8 @@ void GLShip::input(unsigned char key, bool pressed) {
     ship->shoot(pressed);
   } else if (key == mine_key) {
     ship->mine(pressed);
+  } else if (key == 'g') {
+    ship->lives++;
   }
 }
 
