@@ -18,17 +18,17 @@ Typer::Typer() {
 void Typer::draw(float x, float y, int number, float size) {
   bool negative = (number < 0);
   int i = 0;
-  
+
   if(negative) {
     number *= -1;
   }
-  
+
   do {
     draw(x-i*size-size*i*padding_proportion, y, char((number % 10)+48), size);
     i++;
     number = number / 10;
   } while(number != 0);
-  
+
   if(negative) {
     draw(x-size*i-size*i*padding_proportion,y,'-',size);
   }
@@ -41,7 +41,7 @@ void Typer::draw_lives(float x, float y, GLShip *ship, float size) {
   }
 }
 
-void Typer::draw(float x, float y, char * text, float size) {
+void Typer::draw(float x, float y, const char * text, float size) {
   for(unsigned int i = 0; i < strlen(text); i++) {
     draw(x+i*size+size*i*padding_proportion, y, text[i], size);
   }
@@ -216,7 +216,7 @@ void Typer::draw(float x, float y, char character, float size) {
       glVertex2f(0.0,height);
       glVertex2f(width,height);
       glEnd();
-      break; 
+      break;
     case 'd':
     case 'D':
       glBegin(GL_LINE_LOOP);
@@ -382,7 +382,7 @@ void Typer::draw(float x, float y, char character, float size) {
       glVertex2f(width, 0.0f);
       glEnd();
       break;
-    case 's':  
+    case 's':
     case 'S':
       glBegin(GL_LINE_STRIP);
       glVertex2f(width,height);
@@ -402,7 +402,7 @@ void Typer::draw(float x, float y, char character, float size) {
       glVertex2f(width, height);
       glEnd();
       break;
-    case 'u':  
+    case 'u':
     case 'U':
       glBegin(GL_LINE_STRIP);
       glVertex2f(width,height);
@@ -411,7 +411,7 @@ void Typer::draw(float x, float y, char character, float size) {
       glVertex2f(0.0f,height);
       glEnd();
       break;
-    case 'v':  
+    case 'v':
     case 'V':
       glBegin(GL_LINE_STRIP);
       glVertex2f(width,height);
@@ -445,7 +445,7 @@ void Typer::draw(float x, float y, char character, float size) {
       break;
     case 'y':
     case 'Y':
-      glBegin(GL_LINE_STRIP); 
+      glBegin(GL_LINE_STRIP);
       glVertex2f(0.0f, height);
       glVertex2f(0.0f, mid_height);
       glVertex2f(width, mid_height);
@@ -456,7 +456,7 @@ void Typer::draw(float x, float y, char character, float size) {
       glVertex2f(center, 0.0f);
       glEnd();
       break;
-    case 'z':  
+    case 'z':
     case 'Z':
       glBegin(GL_LINE_STRIP);
       glVertex2f(0.0f, height);

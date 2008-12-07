@@ -30,7 +30,7 @@ GLGame::~GLGame() {
     object = players->back();
     delete object;
     players->pop_back();
-  } 
+  }
   while(!enemies->empty()) {
     object = enemies->back();
     delete object;
@@ -51,9 +51,9 @@ void GLGame::toggle_pause() {
 void GLGame::tick(void) {
   if (!running) return;
   current_time = glutGet(GLUT_ELAPSED_TIME);
-  
+
   time_until_next_step -= (current_time - last_tick);
-  
+
   num_frames++;
 
   std::list<GLShip*>::iterator o, o2;
@@ -61,13 +61,13 @@ void GLGame::tick(void) {
     station->step(step_size);
     for(o = players->begin(); o != players->end(); o++) {
       (*o)->step(step_size);
-      
-      station->collide((*o)->ship); 
+
+      station->collide((*o)->ship);
     }
     for(o = enemies->begin(); o != enemies->end(); o++) {
       (*o)->step(step_size);
     }
-    
+
     for(o = players->begin(); o != players->end(); o++) {
       for(o2 = o; o2 != players->end(); o2++) {
         if(*o != *o2) {
@@ -78,7 +78,7 @@ void GLGame::tick(void) {
         GLShip::collide(*o, *o2);
       }
     }
-    
+
     o = enemies->begin();
     while(o != enemies->end()) {
       if((*o)->is_removable()) {
@@ -88,7 +88,7 @@ void GLGame::tick(void) {
         o++;
       }
     }
-    
+
     time_until_next_step += time_between_steps;
   }
   /* Display FPS */
@@ -109,12 +109,12 @@ void GLGame::draw_objects(bool minimap) const {
     (*o)->draw(minimap);
     glPopMatrix();
   }
-  station->draw(minimap);  
+  station->draw(minimap);
 }
 
 void GLGame::draw(void) {
   glClear(GL_COLOR_BUFFER_BIT);
-  
+
   //TODO: Don't hardcode this like this
   draw_world(players->front(), true);
   draw_world(players->back(), false);
@@ -132,18 +132,20 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
 
   glLoadIdentity();
   glViewport((primary ? 0 : (window.x()/2)), 0, window.x()/2, window.y());
-  
+
   /* Draw the score */
   typer->draw(window.x()/2-40, window.y()-20, glship->ship->score, 20);
   /* Draw the life count */
   typer->draw_lives(window.x()/2-40,-window.y()+70, glship, 18);
-  typer->draw(-window.x()/2+30,window.y()-20,"Player 1",20);
+  // Move name into ship object.
+  const char *name = primary ? "Player 1" : "Player 2";
+  typer->draw(-window.x()/2+30,window.y()-20,name,20);
   glPushMatrix();
   glTranslatef(-window.x()/2.0+30, -window.y()+15, 0.0f);
   glScalef(20,20,1);
   glship->draw_temperature();
   glPopMatrix();
-  
+
   // Store the rendered world in a display list
   glNewList(gameworld, GL_COMPILE);
     glTranslatef(-glship->ship->position.x(), -glship->ship->position.y(), 0.0f);
@@ -164,7 +166,7 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
 
 void GLGame::draw_map() const {
   float minimap_size = window.y()/4;
-  
+
     /* DRAW CENTER LINE */
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
@@ -179,7 +181,7 @@ void GLGame::draw_map() const {
   glVertex2f(0, minimap_size);
   glVertex2f(0, window.y());
   glEnd();
-    
+
   /* MINIMAP */
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
@@ -252,9 +254,9 @@ void GLGame::init(int argc, char** argv, float width, float height) {
 void GLGame::run(void) {
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
-  
+
   typer = new Typer();
-  
+
   GLShip* object = new GLShip(-world.x()*3/4,-world.y()*3/4);
   object->set_keys('a','d','w',' ','s','x');
   players->push_back(object);
@@ -262,9 +264,9 @@ void GLGame::run(void) {
   object = new GLCar(world.x()*3/4,world.y()*3/4);//, objects[0]);
   object->set_keys('j','l','i','/','k',',');
   players->push_back(object);
-  
+
   station = new GLStation(enemies, players);
-  
+
   WrappedPoint::set_boundaries(world);
 
   starfield = new GLStarfield(world);
