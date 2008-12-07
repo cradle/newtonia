@@ -50,14 +50,15 @@ void Ship::respawn() {
 void Ship::kill() {
   if(is_alive()) {
     lives -= 1;
+    alive = false;
+    thrusting = false;
+    reversing = false;
+    rotation_direction = NONE;
+    temperature = 0.0;
     if(lives == 0) {
       respawns = false;
     } else {
       time_until_respawn = respawn_time;
-      alive = false;
-      thrusting = false;
-      reversing = false;
-      rotation_direction = NONE;
     }
     explode();
   }
