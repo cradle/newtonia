@@ -117,7 +117,7 @@ void GLGame::draw(void) {
   
   //TODO: Don't hardcode this like this
   draw_world(players->front(), true);
-  draw_world(players->back(), false);
+  // draw_world(players->back(), false);
   draw_map();
 
   glutSwapBuffers();
@@ -127,19 +127,21 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   float zoom = 2.0;
-  gluOrtho2D(-window.x()/4*zoom, window.x()/4*zoom, -window.y()/2*zoom, window.y()/2*zoom);
+  // gluOrtho2D(-window.x()/4*zoom, window.x()/4*zoom, -window.y()/2*zoom, window.y()/2*zoom);
+  gluOrtho2D(-window.x()/2*zoom, window.x()/2*zoom, -window.y()/2*zoom, window.y()/2*zoom);
   glMatrixMode(GL_MODELVIEW);
 
   glLoadIdentity();
-  glViewport((primary ? 0 : (window.x()/2)), 0, window.x()/2, window.y());
+  // glViewport((primary ? 0 : (window.x()/2)), 0, window.x()/2, window.y());
+  glViewport((primary ? 0 : (window.x())), 0, window.x(), window.y());
   
   /* Draw the score */
-  typer->draw(window.x()/2-40, window.y()-20, glship->ship->score, 20);
+  typer->draw(window.x()-40, window.y()-20, glship->ship->score, 20);
   /* Draw the life count */
-  typer->draw_lives(window.x()/2-40,-window.y()+70, glship, 18);
+  typer->draw_lives(window.x()-40,-window.y()+70, glship, 18);
   
   glPushMatrix();
-  glTranslatef(-window.x()/2.0+30, -window.y()+15, 0.0f);
+  glTranslatef(-window.x()+30, -window.y()+15, 0.0f);
   glScalef(20,20,1);
   glship->draw_temperature();
   glPopMatrix();
@@ -166,19 +168,19 @@ void GLGame::draw_map() const {
   float minimap_size = window.y()/4;
   
     /* DRAW CENTER LINE */
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  gluOrtho2D(-window.x(), window.x(), -window.y(), window.y());
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
-  glViewport(0, 0, window.x(), window.y());
-  glBegin(GL_LINES);
-  glColor4f(1,1,1,0.5);
-  glVertex2f(0,-window.y());
-  glVertex2f(0,-minimap_size);
-  glVertex2f(0, minimap_size);
-  glVertex2f(0, window.y());
-  glEnd();
+  // glMatrixMode(GL_PROJECTION);
+  // glLoadIdentity();
+  // gluOrtho2D(-window.x(), window.x(), -window.y(), window.y());
+  // glMatrixMode(GL_MODELVIEW);
+  // glLoadIdentity();
+  // glViewport(0, 0, window.x(), window.y());
+  // glBegin(GL_LINES);
+  // glColor4f(1,1,1,0.5);
+  // glVertex2f(0,-window.y());
+  // glVertex2f(0,-minimap_size);
+  // glVertex2f(0, minimap_size);
+  // glVertex2f(0, window.y());
+  // glEnd();
     
   /* MINIMAP */
   glMatrixMode(GL_PROJECTION);
@@ -186,7 +188,7 @@ void GLGame::draw_map() const {
   gluOrtho2D(-world.x(), world.x(), -world.y(), world.y());
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
-  glViewport(window.x()/2 - minimap_size/2, window.y()/2 - minimap_size/2, minimap_size, minimap_size);
+  glViewport(window.x()/2 - minimap_size/2, 1, minimap_size, minimap_size);
   glColor4f(0.0f,0.0f,0.0f,0.8f);
   /* BLACK BOX OVER MINIMAP */
   glBegin(GL_POLYGON);
@@ -208,7 +210,7 @@ void GLGame::draw_map() const {
   glPopMatrix();
 
   /* DRAW THE LEVEL */
-  typer->draw(world.x()-1500, -world.y()+2000, station->level(), 1000);
+  typer->draw(world.x()-1500, -world.y()+2500, station->level(), 1000);
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
@@ -259,9 +261,9 @@ void GLGame::run(void) {
   object->set_keys('a','d','w',' ','s','x');
   players->push_back(object);
 
-  object = new GLCar(world.x()*3/4,world.y()*3/4);//, objects[0]);
-  object->set_keys('j','l','i','/','k',',');
-  players->push_back(object);
+  // object = new GLCar(world.x()*3/4,world.y()*3/4);//, objects[0]);
+  // object->set_keys('j','l','i','/','k',',');
+  // players->push_back(object);
   
   station = new GLStation(enemies, players);
   
