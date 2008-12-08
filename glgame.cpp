@@ -37,6 +37,8 @@ GLGame::~GLGame() {
     enemies->pop_back();
   }
   delete station;
+  delete starfield;
+  delete typer;
 }
 
 void GLGame::toggle_pause() {
@@ -149,8 +151,9 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   // Store the rendered world in a display list
   glNewList(gameworld, GL_COMPILE);
     glTranslatef(-glship->ship->position.x(), -glship->ship->position.y(), 0.0f);
-    starfield->draw(glship->ship->position);
+    starfield->draw_rear(glship->ship->position);
     draw_objects();
+    starfield->draw_front(glship->ship->position);
   glEndList();
 
   // Draw the world tesselated
@@ -231,26 +234,6 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   }
 }
 
-void GLGame::resize(float x, float y) {
-  window = Point(x, y);
-}
-
-void GLGame::init(int argc, char** argv, float width, float height) {
-  glutInit(&argc, argv);
-  glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
-  glutInitWindowSize(width, height);
-  glutCreateWindow("Asteroids");
-
-  glPointSize(2.5f);
-  glLineWidth(1.2f);
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glEnable(GL_LINE_SMOOTH);
-  glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
-  glEnable(GL_POINT_SMOOTH);
-  glHint(GL_POINT_SMOOTH_HINT, GL_NICEST);
-}
-
 void GLGame::run(void) {
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
@@ -276,5 +259,4 @@ void GLGame::run(void) {
   last_tick = glutGet(GLUT_ELAPSED_TIME);
   time_until_next_step = 0;
   num_frames = 0;
-  glutMainLoop();
 }

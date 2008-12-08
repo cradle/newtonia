@@ -27,7 +27,7 @@ GLStarfield::GLStarfield(Point const size) {
   }
 }
 
-void GLStarfield::draw(Point const viewpoint) const {
+void GLStarfield::draw_rear(Point const viewpoint) const {
   glPushMatrix();
   for(int i = 0; i < NUM_REAR_LAYERS; i++) {
     float c = 1-i/(float)NUM_REAR_LAYERS;
@@ -39,7 +39,9 @@ void GLStarfield::draw(Point const viewpoint) const {
 
   glColor3f(1.0,1.0,1.0);
   glCallList(point_layers+NUM_REAR_LAYERS);
+}
 
+void GLStarfield::draw_front(Point const viewpoint) const {
   glPushMatrix();
   for(int i = 0; i < NUM_FRONT_LAYERS; i++) {
     glTranslatef(-viewpoint.x()/2.0, -viewpoint.y()/2.0, 0.0f);

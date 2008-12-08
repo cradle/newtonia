@@ -16,7 +16,8 @@ public:
   GLGame(float world_width, float world_height);
   ~GLGame();
 
-  void init(int argc, char** argv, float screen_width, float screen_height);
+  static void init(int argc, char** argv, float screen_width, float screen_height);
+  
   void run();
   void resize(float x, float y);
   void tick(void);

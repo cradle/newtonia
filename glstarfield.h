@@ -16,7 +16,8 @@ class GLStarfield {
 public:
   GLStarfield(Point const size);
   
-  void draw(Point const viewpoint) const;
+  void draw_rear(Point const viewpoint) const;
+  void draw_front(Point const viewpoint) const;
   
 private:
   GLuint point_layers;
