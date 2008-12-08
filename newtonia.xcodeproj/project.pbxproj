@@ -26,6 +26,8 @@
 		218BF7DE0ED5645600C9FE0C /* glstarfield.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 218BF7DC0ED5645600C9FE0C /* glstarfield.cpp */; };
 		219185D00EE684C10004C960 /* Newtonia-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 219185CF0EE684C10004C960 /* Newtonia-Info.plist */; };
 		219B674C0EED0E8A002B7BAE /* state.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 219B674A0EED0E8A002B7BAE /* state.cpp */; };
+		219B67590EED40B7002B7BAE /* menu.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 219B67570EED40B7002B7BAE /* menu.cpp */; };
+		219B675D0EED4575002B7BAE /* state_manager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 219B675B0EED4575002B7BAE /* state_manager.cpp */; };
 		21F0BF3F0ED54EFE00F2BB9B /* gltrail.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */; };
 /* End PBXBuildFile section */
 
@@ -64,6 +66,10 @@
 		219185CF0EE684C10004C960 /* Newtonia-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = "Newtonia-Info.plist"; sourceTree = "<group>"; };
 		219B674A0EED0E8A002B7BAE /* state.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = state.cpp; sourceTree = "<group>"; };
 		219B674B0EED0E8A002B7BAE /* state.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = state.h; sourceTree = "<group>"; };
+		219B67570EED40B7002B7BAE /* menu.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = menu.cpp; sourceTree = "<group>"; };
+		219B67580EED40B7002B7BAE /* menu.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = menu.h; sourceTree = "<group>"; };
+		219B675B0EED4575002B7BAE /* state_manager.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = state_manager.cpp; sourceTree = "<group>"; };
+		219B675C0EED4575002B7BAE /* state_manager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = state_manager.h; sourceTree = "<group>"; };
 		21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = gltrail.cpp; sourceTree = "<group>"; };
 		21F0BF3E0ED54EFE00F2BB9B /* gltrail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = gltrail.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -92,6 +98,10 @@
 		219282740ECD670E002D470F = {
 			isa = PBXGroup;
 			children = (
+				219B675B0EED4575002B7BAE /* state_manager.cpp */,
+				219B675C0EED4575002B7BAE /* state_manager.h */,
+				219B67570EED40B7002B7BAE /* menu.cpp */,
+				219B67580EED40B7002B7BAE /* menu.h */,
 				219B674A0EED0E8A002B7BAE /* state.cpp */,
 				219B674B0EED0E8A002B7BAE /* state.h */,
 				219185CF0EE684C10004C960 /* Newtonia-Info.plist */,
@@ -202,6 +212,8 @@
 				21006C7A0EE3F16F005D5CBF /* typer.cpp in Sources */,
 				212105250EE55CF500A6F748 /* particle.cpp in Sources */,
 				219B674C0EED0E8A002B7BAE /* state.cpp in Sources */,
+				219B67590EED40B7002B7BAE /* menu.cpp in Sources */,
+				219B675D0EED4575002B7BAE /* state_manager.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -1,6 +1,7 @@
 #ifndef GL_GAME_H
 #define GL_GAME_H
 
+#include "state.h"
 #include "glship.h"
 #include "point.h"
 #include "glstarfield.h"
@@ -10,20 +11,16 @@
 
 using namespace std;
 
-class GLGame {
+class GLGame : public State {
 public:
   GLGame() {};
   GLGame(float world_width, float world_height);
   ~GLGame();
 
-  static void init(int argc, char** argv, float screen_width, float screen_height);
-  
-  void run();
-  void resize(float x, float y);
-  void tick(void);
-  void draw(void);
-  void keyboard (unsigned char key, int x, int y);
-  void keyboard_up (unsigned char key, int x, int y);
+  void draw();
+  void tick(int delta);
+  void keyboard(unsigned char key, int x, int y);
+  void keyboard_up(unsigned char key, int x, int y);
 
 private:
   void toggle_pause();
@@ -33,7 +30,7 @@ private:
   
   static const int step_size = 10;
   
-  Point window, world;
+  Point world;
 
   int last_tick, time_until_next_step, num_frames, current_time, time_between_steps;
   bool running;

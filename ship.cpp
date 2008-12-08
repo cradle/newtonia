@@ -37,6 +37,10 @@ Ship::Ship(float x, float y) {
   cool_rate = 0.03;
 }
 
+Ship::~Ship() {
+  list<Particle>::iterator p;
+}
+
 void Ship::respawn() {
   position = WrappedPoint(rand(), rand());
   facing = Point(0, 1);

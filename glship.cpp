@@ -61,6 +61,10 @@ GLShip::GLShip(int x, int y) {
 
 GLShip::~GLShip() {
   delete ship;
+  while(!trails.empty()) {
+    delete trails.back();
+    trails.pop_back();
+  }
 }
 
 void GLShip::collide(GLShip* first, GLShip* second) {

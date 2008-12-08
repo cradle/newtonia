@@ -1,6 +1,7 @@
 /* glut.cpp - GLUT Abstraction layer for Game */
 #include <stdlib.h> // For EXIT_SUCCESS
-#include "state.h"
+
+#include "state_manager.h"
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -12,7 +13,7 @@
 #endif
 
 // Glut callbacks cannot be member functions. Need to pre-declare game object
-State* game;
+StateManager *game;
 
 void draw() {
   game->draw();
@@ -94,9 +95,7 @@ void init(int &argc, char** argv, float width, float height) {
 
 int main(int argc, char** argv) {
   init(argc, argv, 800, 600);
-  // game = new GLGame(15000,15000);
-  game = new State();
+  game = new StateManager();
   glutMainLoop();
-  delete game;
   return EXIT_SUCCESS;
 }

@@ -20,41 +20,62 @@
 
 GLGame::GLGame(float width, float height) : world(Point(width, height)), running(true) {
   time_between_steps = step_size;
+
+  enemies = new std::list<GLShip*>;
+  players = new std::list<GLShip*>;
+
+  typer = new Typer();
+
+  GLShip* object = new GLShip(-world.x()*3/4,-world.y()*3/4);
+  object->set_keys('a','d','w',' ','s','x');
+  players->push_back(object);
+
+  object = new GLCar(world.x()*3/4,world.y()*3/4);//, objects[0]);
+  object->set_keys('j','l','i','/','k',',');
+  players->push_back(object);
+
+  station = new GLStation(enemies, players);
+
+  WrappedPoint::set_boundaries(world);
+
+  starfield = new GLStarfield(world);
+
+  gameworld = glGenLists(1);
+
+  last_tick = glutGet(GLUT_ELAPSED_TIME);
+  time_until_next_step = 0;
+  num_frames = 0;
 }
 
 GLGame::~GLGame() {
   //TODO: Make erase, use boost::ptr_list? something better
   // std::erase(std::remove_if(v.begin(),v.end(),true), v.end());
-  GLShip* object;
   while(!players->empty()) {
-    object = players->back();
-    delete object;
+    delete players->back();
     players->pop_back();
   }
+  delete players;
   while(!enemies->empty()) {
-    object = enemies->back();
-    delete object;
+    delete enemies->back();
     enemies->pop_back();
   }
+  delete enemies;
   delete station;
   delete starfield;
   delete typer;
 }
 
 void GLGame::toggle_pause() {
-  if (!running) {
-    last_tick += glutGet(GLUT_ELAPSED_TIME) - current_time;
-  } else {
-    current_time = glutGet(GLUT_ELAPSED_TIME);
-  }
   running = !running;
 }
 
-void GLGame::tick(void) {
-  if (!running) return;
-  current_time = glutGet(GLUT_ELAPSED_TIME);
-
-  time_until_next_step -= (current_time - last_tick);
+void GLGame::tick(int delta) {
+  if (!running) {
+    last_tick += delta;
+    return;
+  }
+  
+  time_until_next_step -= delta;
 
   num_frames++;
 
@@ -128,8 +149,7 @@ void GLGame::draw(void) {
 void GLGame::draw_world(GLShip *glship, bool primary) const {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  float zoom = 2.0;
-  gluOrtho2D(-window.x()/4*zoom, window.x()/4*zoom, -window.y()/2*zoom, window.y()/2*zoom);
+  gluOrtho2D(-window.x()/2, window.x()/2, -window.y(), window.y());
   glMatrixMode(GL_MODELVIEW);
 
   glLoadIdentity();
@@ -232,31 +252,4 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   for(object = players->begin(); object != players->end(); object++) {
     (*object)->input(key, false);
   }
-}
-
-void GLGame::run(void) {
-  enemies = new std::list<GLShip*>;
-  players = new std::list<GLShip*>;
-
-  typer = new Typer();
-
-  GLShip* object = new GLShip(-world.x()*3/4,-world.y()*3/4);
-  object->set_keys('a','d','w',' ','s','x');
-  players->push_back(object);
-
-  object = new GLCar(world.x()*3/4,world.y()*3/4);//, objects[0]);
-  object->set_keys('j','l','i','/','k',',');
-  players->push_back(object);
-
-  station = new GLStation(enemies, players);
-
-  WrappedPoint::set_boundaries(world);
-
-  starfield = new GLStarfield(world);
-
-  gameworld = glGenLists(1);
-
-  last_tick = glutGet(GLUT_ELAPSED_TIME);
-  time_until_next_step = 0;
-  num_frames = 0;
 }
