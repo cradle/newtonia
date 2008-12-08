@@ -12,7 +12,7 @@
 #endif
 
 Typer::Typer() {
-  padding_proportion = 0.35;
+  padding_proportion = 1.0;
 }
 
 void Typer::draw(float x, float y, int number, float size) {
@@ -35,7 +35,6 @@ void Typer::draw(float x, float y, int number, float size) {
 }
 
 void Typer::draw_lives(float x, float y, GLShip *ship, float size) {
-  padding_proportion = 1.0;
   for(int i = 0; i < ship->ship->lives; i++) {
     draw_life(x-i*size-size*i*padding_proportion, y, ship, size);
   }
