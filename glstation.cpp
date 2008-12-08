@@ -80,6 +80,7 @@ int GLStation::level() const {
 }
 
 void GLStation::draw(bool minimap) const {
+  glPushMatrix();
   glTranslatef(position.x(), position.y(), 0);  
   
   if(minimap) {
@@ -96,6 +97,7 @@ void GLStation::draw(bool minimap) const {
     glScalef(0.8,0.8,1);
     glCallList(body);
   }
+  glPopMatrix();
 }
 
 void GLStation::step(float delta) {
