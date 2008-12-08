@@ -39,3 +39,8 @@ GLEnemy::GLEnemy(float x, float y, list<GLShip*>* targets, float difficulty) {
   glNewList(jets, GL_COMPILE);
   glEndList();
 }
+
+GLEnemy::~GLEnemy() {
+  glDeleteLists(body, 1);
+  glDeleteLists(jets, 1);
+}

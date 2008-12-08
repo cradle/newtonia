@@ -42,7 +42,6 @@ GLGame::GLGame(float width, float height) : world(Point(width, height)), running
 
   gameworld = glGenLists(1);
 
-  last_tick = glutGet(GLUT_ELAPSED_TIME);
   time_until_next_step = 0;
   num_frames = 0;
 }
@@ -63,6 +62,8 @@ GLGame::~GLGame() {
   delete station;
   delete starfield;
   delete typer;
+
+  glDeleteLists(gameworld, 1);
 }
 
 void GLGame::toggle_pause() {
@@ -116,8 +117,6 @@ void GLGame::tick(int delta) {
   }
   /* Display FPS */
   // std::cout << (num_frames*1000 / current_time) << std::endl;
-  last_tick = current_time;
-  glutPostRedisplay();
 }
 
 void GLGame::draw_objects(bool minimap) const {
@@ -142,8 +141,6 @@ void GLGame::draw(void) {
   draw_world(players->front(), true);
   draw_world(players->back(), false);
   draw_map();
-
-  glutSwapBuffers();
 }
 
 void GLGame::draw_world(GLShip *glship, bool primary) const {

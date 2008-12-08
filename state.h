@@ -8,6 +8,8 @@
 
 class State {
 public:
+  virtual ~State() {};
+  
   virtual void draw() = 0;
   virtual void keyboard(unsigned char key, int x, int y) = 0;
   virtual void keyboard_up(unsigned char key, int x, int y) = 0;

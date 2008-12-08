@@ -20,12 +20,12 @@ void draw() {
   glutSwapBuffers();
 }
 
-void keyboard(unsigned char key, int x, int y) {
-  static int old_x = 50;
-  static int old_y = 50;
-  static int old_width = 320;
-  static int old_height = 320;
+int old_x = 50;
+int old_y = 50;
+int old_width = 320;
+int old_height = 320;
 
+void keyboard(unsigned char key, int x, int y) {
   switch (key) {
   case 27:
     exit(0);
@@ -97,5 +97,6 @@ int main(int argc, char** argv) {
   init(argc, argv, 800, 600);
   game = new StateManager();
   glutMainLoop();
+  delete game;
   return EXIT_SUCCESS;
 }

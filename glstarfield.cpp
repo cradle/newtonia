@@ -11,7 +11,7 @@
 #endif
 
 GLStarfield::GLStarfield(Point const size) {
-  point_layers = glGenLists(1);
+  point_layers = glGenLists(NUM_REAR_LAYERS + NUM_FRONT_LAYERS + 1);
   int red, green;
   for(int i = 0; i < NUM_REAR_LAYERS + NUM_FRONT_LAYERS + 1; i++) {
     glNewList(point_layers+i, GL_COMPILE);
@@ -25,6 +25,10 @@ GLStarfield::GLStarfield(Point const size) {
     glEnd();
     glEndList();
   }
+}
+
+GLStarfield::~GLStarfield() {
+  glDeleteLists(point_layers, NUM_REAR_LAYERS + NUM_FRONT_LAYERS + 1);
 }
 
 void GLStarfield::draw_rear(Point const viewpoint) const {
@@ -47,7 +51,7 @@ void GLStarfield::draw_front(Point const viewpoint) const {
     glTranslatef(-viewpoint.x()/2.0, -viewpoint.y()/2.0, 0.0f);
     glScalef(2, 2, 1);
     glRotatef(0.1,0,0,1.0f);
-    glCallList(point_layers + NUM_FRONT_LAYERS + 1);
+    glCallList(point_layers + NUM_REAR_LAYERS + 1 + i);
   }
   glPopMatrix();
 }

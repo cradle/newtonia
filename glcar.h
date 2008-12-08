@@ -7,6 +7,7 @@
 class GLCar : public GLShip {
 public:
   GLCar(float x, float y);
+  virtual ~GLCar();
   
 protected:
   GLuint left_jet, right_jet;

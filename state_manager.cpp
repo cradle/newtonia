@@ -19,7 +19,7 @@ void StateManager::keyboard(unsigned char key, int x, int y) {
 }
 
 void StateManager::keyboard_up(unsigned char key, int x, int y) {
-  if(key == '1') {
+  if(key == '2') {
     delete state;
     state = new GLGame(10000, 10000);
     state->resize(window.x(), window.y());

@@ -61,6 +61,13 @@ GLCar::GLCar(float x, float y) {
   glEndList();
 }
 
+GLCar::~GLCar() {
+  glDeleteLists(body, 1);
+  glDeleteLists(left_jet, 1);
+  glDeleteLists(right_jet, 1);
+  glDeleteLists(jets, 1);
+}
+
 void GLCar::draw_ship(bool minimap) const {
   GLShip::draw_ship(minimap);
 

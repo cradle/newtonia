@@ -60,6 +60,10 @@ GLShip::GLShip(int x, int y) {
 }
 
 GLShip::~GLShip() {
+  //TODO: Make lists static for class (or ShipType or something)
+  glDeleteLists(body, 1);
+  glDeleteLists(jets, 1);
+  glDeleteLists(repulsors, 1);
   delete ship;
   while(!trails.empty()) {
     delete trails.back();
