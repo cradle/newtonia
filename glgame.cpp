@@ -22,23 +22,10 @@
 
 GLGame::GLGame(float width, float height, int player_count) : State(), world(Point(width, height)), running(true) {
   time_between_steps = step_size;
+  num_players = player_count;
 
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
-
-  typer = new Typer();
-
-  GLShip* object = new GLShip(-world.x()*3/4,-world.y()*3/4);
-  object->set_keys('a','d','w',' ','s','x');
-  players->push_back(object);
-  
-  if (player_count == 2) {
-    object = new GLCar(world.x()*3/4,world.y()*3/4);//, objects[0]);
-    object->set_keys('j','l','i','/','k',',');
-    players->push_back(object);
-  }
-
-  station = new GLStation(enemies, players);
 
   WrappedPoint::set_boundaries(world);
 
@@ -48,6 +35,19 @@ GLGame::GLGame(float width, float height, int player_count) : State(), world(Poi
 
   time_until_next_step = 0;
   num_frames = 0;
+  
+  GLShip* object = new GLShip(-world.x()*3/4,-world.y()*3/4);
+  object->set_keys('a','d','w',' ','s','x');
+  players->push_back(object);
+  
+  if (player_count == 2) {
+    object = new GLCar(world.x()*3/4,world.y()*3/4);
+    object->set_keys('j','l','i','/','k',',');
+    players->push_back(object);
+  }
+
+  //GLstation uses players.size() to determine number of ships in first wave
+  station = new GLStation(enemies, players);
 }
 
 GLGame::~GLGame() {
@@ -65,7 +65,6 @@ GLGame::~GLGame() {
   delete enemies;
   delete station;
   delete starfield;
-  delete typer;
 
   glDeleteLists(gameworld, 1);
 }
@@ -142,12 +141,10 @@ void GLGame::draw(void) {
   glClear(GL_COLOR_BUFFER_BIT);
 
   //TODO: Don't hardcode this like this
-  if (is_single()) {
-    draw_world(players->front(), true);
-  } else {
-    draw_world(players->front(), true);
+  draw_world(players->front(), true);
+  if (!is_single()) {
     draw_world(players->back(), false);
-  }
+  } 
   draw_map();
 }
 
@@ -180,12 +177,12 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   }
 
   /* Draw the score */
-  typer->draw(window.x()/width_scale-40, window.y()-20, glship->ship->score, 20);
+  Typer::draw(window.x()/width_scale-40, window.y()-20, glship->ship->score, 20);
   /* Draw the life count */
-  typer->draw_lives(window.x()/width_scale-40,-window.y()+70, glship, 18);
+  Typer::draw_lives(window.x()/width_scale-40,-window.y()+70, glship, 18);
   //TODO: Move name into ship object.
   const char *name = primary ? "Player 1" : "Player 2";
-  typer->draw(-window.x()/width_scale+30,window.y()-20,name,20);
+  Typer::draw(-window.x()/width_scale+30,window.y()-20,name,20);
   glPushMatrix();
   glTranslatef(-window.x()/width_scale+30, -window.y()+15, 0.0f);
   glPushMatrix();
@@ -255,7 +252,7 @@ void GLGame::draw_map() const {
   glPopMatrix();
 
   /* DRAW THE LEVEL */
-  typer->draw(world.x()-1500, -world.y()+2000, station->level(), 800);
+  Typer::draw(world.x()-1500, -world.y()+2000, station->level(), 800);
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {

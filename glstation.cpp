@@ -19,12 +19,13 @@ using namespace std;
 
 GLStation::GLStation(list<GLShip*>* objects, list<GLShip*>* targets) : objects(objects), targets(targets) {
   position = Point(0,0);
-  radius = 500.0;
+  radius = 850.0;
   radius_squared = radius * radius;
   max_ships_per_wave = 50;
   extra_ships_per_wave = 1;
   ships_left_to_deploy = ships_this_wave = targets->size();
-  time_until_next_ship = time_between_ships = 2000.0;
+  time_until_next_ship = 5000;
+  time_between_ships = 500;
   deploying = true;
   wave = difficulty = 0;
   
@@ -114,7 +115,6 @@ void GLStation::step(float delta) {
     if(ships_left_to_deploy == 0) {
       deploying = false;
       ships_this_wave += extra_ships_per_wave;
-      wave++;
       if(ships_this_wave > max_ships_per_wave) {
         ships_this_wave = max_ships_per_wave;
         difficulty++;
@@ -133,6 +133,7 @@ void GLStation::step(float delta) {
     }
   } else if (objects->empty()) {
     deploying = true;
+    wave++;
     time_until_next_ship = 0.0;
     ships_left_to_deploy = ships_this_wave;
   }

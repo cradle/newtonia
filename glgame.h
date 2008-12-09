@@ -6,7 +6,6 @@
 #include "point.h"
 #include "glstarfield.h"
 #include "glstation.h"
-#include "typer.h"
 #include <list>
 
 using namespace std;
@@ -33,12 +32,11 @@ private:
   
   Point world;
 
+  int num_players;
   int last_tick, time_until_next_step, num_frames, current_time, time_between_steps;
   bool running;
 
   unsigned int gameworld;
-  
-  Typer *typer;
   
   GLStarfield *starfield;
   GLStation *station;
