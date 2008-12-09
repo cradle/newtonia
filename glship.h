@@ -4,6 +4,7 @@
 #include "ship.h"
 #include "point.h"
 #include "gltrail.h"
+#include "typer.h"
 #include <list>
 
 #ifdef __APPLE__
@@ -26,6 +27,8 @@ public:
   void draw(bool minimap = false);
   void draw_body() const;
   void draw_temperature() const;
+  void draw_respawn_timer() const;
+  void draw_temperature_status() const;
   bool is_removable() const;
 
   static void collide(GLShip* first, GLShip* second);
@@ -41,7 +44,8 @@ protected:
   float max_temperature() const;
   float temperature() const;
   float critical_temperature() const;
-
+  float explode_temperature() const;
+  
   GLuint body, jets, repulsors;
   
   float color[3];
@@ -63,6 +67,10 @@ float GLShip::temperature() const {
 inline
 float GLShip::critical_temperature() const {
   return ship->critical_temperature;
+}
+inline
+float GLShip::explode_temperature() const {
+  return ship->explode_temperature;
 }
 
 #endif

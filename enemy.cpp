@@ -14,12 +14,13 @@ Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Car(
   thrust(true);
   value = 50 + difficulty * 50;
   explode();
-  respawns = false;
+  lives = 1;
   heat_rate = 0.0;
   cool_rate = 1.0;
+  time_until_respawn = respawn_time = 0;
   
   time_until_next_lock = 0.0;
-  time_between_locks = 900.0 + rand()%100;
+  time_between_locks = 900 + rand()%100;
   
   target = NULL;
 }
@@ -41,10 +42,6 @@ void Enemy::lock_nearest_target() {
       }
     }
   }
-}
-
-bool Enemy::is_removable() const {
-  return !alive && bullets.empty() && debris.empty();
 }
 
 void Enemy::lock_step(float delta) {

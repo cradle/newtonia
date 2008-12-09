@@ -56,7 +56,13 @@ class Ship {
     Rotation rotation_direction;
     
     // Heat
+    float temperature_ratio();
     float max_temperature, critical_temperature, temperature, explode_temperature;
+    
+    // I need friends for views
+    // Timings
+    int respawn_time, time_until_respawn;
+    int time_until_next_shot, time_between_shots;
 
   protected:
     WrappedPoint gun() const;
@@ -77,10 +83,9 @@ class Ship {
     // Attributes
     float width, height, mass, accuracy, value;
     // States
-    bool shooting, mining, alive, respawns;
-    // Timings
-    float respawn_time, time_until_respawn;
-    float time_until_next_shot, time_between_shots;
+    bool shooting, mining, alive, respawns, first_life;
+    
+    friend class GLShip;
 };
 
 #endif

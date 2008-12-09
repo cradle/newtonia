@@ -9,7 +9,8 @@ Ship::Ship(float x, float y) {
   mass = 100.0;
   value = 2000;
   accuracy = 0.1;
-  lives = 5;
+  first_life = true;
+  lives = 6;
   width = height = radius = 10.0;
   radius_squared = radius*radius;
   thrusting = false;
@@ -20,11 +21,10 @@ Ship::Ship(float x, float y) {
   facing = Point(0, 1);
   velocity = Point(0, 0);
   rotation_force = 0.3;
-  alive = true;
+  alive = false;
   score = 0;
   rotation_direction = NONE;
-  respawn_time = 5000.0;
-  respawns = true;
+  respawn_time = time_until_respawn = 4000;
   shooting = false;
   time_until_next_shot = time_between_shots = 60;
   
@@ -32,13 +32,23 @@ Ship::Ship(float x, float y) {
   temperature = 0.0;
   critical_temperature = max_temperature * 0.80;
   explode_temperature = max_temperature * 1.2;
-  heat_rate = 0.06;
-  retro_heat_rate = 0.04;
-  cool_rate = 0.03;
+  heat_rate = 0.060;
+  retro_heat_rate = heat_rate * -1 * reverse_force / thrust_force;
+  cool_rate = 0.035;
+}
+
+float Ship::temperature_ratio() {
+  return temperature/max_temperature; 
 }
 
 void Ship::respawn() {
-  position = WrappedPoint(rand(), rand());
+  if(first_life) {
+    first_life = false;
+  } else {
+    position = WrappedPoint(rand(), rand());
+  }
+  first_life = false;
+  lives -= 1;
   facing = Point(0, 1);
   velocity = Point(0, 0);
   alive = true;
@@ -49,17 +59,12 @@ void Ship::respawn() {
 
 void Ship::kill() {
   if(is_alive()) {
-    lives -= 1;
     alive = false;
     thrusting = false;
     reversing = false;
     rotation_direction = NONE;
     temperature = 0.0;
-    if(lives == 0) {
-      respawns = false;
-    } else {
-      time_until_respawn = respawn_time;
-    }
+    time_until_respawn = respawn_time;
     explode();
   }
 }
@@ -72,7 +77,7 @@ void Ship::kill_stop() {
 }
 
 bool Ship::is_removable() const {
-  return false;
+  return !alive && (lives == 0) && debris.empty() && bullets.empty();
 }
 
 bool Ship::is_alive() const {
@@ -154,7 +159,7 @@ void Ship::fire_shot() {
   score -= 1;
   Point dir = Point(facing);
   dir.rotate((rand() / (float)RAND_MAX) * accuracy - accuracy / 2.0);
-  bullets.push_back(Particle(gun(), dir*0.6 + velocity*0.99, 2800.0));
+  bullets.push_back(Particle(gun(), dir*0.65 + velocity*0.99, 2600.0));
 }
 
 void Ship::mine(bool on) {
@@ -206,7 +211,7 @@ void Ship::step(float delta) {
         time_until_next_shot += time_between_shots;
       }
     }
-  } else if (respawns) {
+  } else if (lives > 0) {
     time_until_respawn -= delta;
     if(time_until_respawn < 0) {
       respawn();

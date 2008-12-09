@@ -1,6 +1,7 @@
 #include "glship.h"
 #include "gltrail.h"
 #include "ship.h"
+#include "typer.h"
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -97,33 +98,68 @@ void GLShip::draw_temperature() const {
   
   /* temperature */
   float color[3] = {0,1.0,0};
-  color[1] *= 1.0 - temperature()/max_temperature();
-  color[0] = temperature()/max_temperature();
+  color[1] *= 1.0 - ship->temperature_ratio();
+  color[0] = ship->temperature_ratio();
   glColor3fv(color);
+  glScalef(width, height, 1.0f);
   glBegin(GL_POLYGON);
-  glVertex2f(  0.0, 0.0);
-  glVertex2f(width, 0.0);
-  float temp_height = height*temperature()/max_temperature();
-  if(temp_height > height) {
-    temp_height = height;
-  }
-  glVertex2f(width, temp_height);
-  glVertex2f(  0.0, temp_height);
+  glVertex2f(0.0f, 0.0f);
+  glVertex2f(1.0f, 0.0f);
+  float temp = temperature() > critical_temperature() ? critical_temperature() : temperature();
+  glVertex2f(1.0f, temp/max_temperature());
+  glVertex2f(0.0f, temp/max_temperature());
   glEnd();
+  
+  if(temperature() > critical_temperature()) {
+    glPushMatrix();
+    glColor3f(1.0f,0.0f,0.0f);
+    glTranslatef(0.0f, critical_temperature()/max_temperature(), 0.0f);
+    glScalef(1.0f, 0.5f, 1.0f);
+    glBegin(GL_POLYGON);
+    glVertex2f( 0.0f, 0.0f);
+    glVertex2f( 1.0f, 0.0f);
+    temp = temperature()/max_temperature()-critical_temperature()/max_temperature();
+    glVertex2f( 1.0f, temp);
+    glVertex2f( 0.0f, temp);
+    glEnd();
+    glPopMatrix();
+  }
   
   /* border */
   glColor3f(1,1,1);
   glBegin(GL_LINE_LOOP);
-  glVertex2i(    0,      0);
-  glVertex2i(width,      0);
-  glVertex2i(width, height);
-  glVertex2i(    0, height);
+  glVertex2i(0.0f,0.0f);
+  glVertex2i(1.0f,0.0f);
+  glVertex2i(1.0f,1.0f);
+  glVertex2i(0.0f,1.0f);
   glEnd();
   
   glBegin(GL_LINES);
-  glVertex2f(   0.0, height*critical_temperature()/max_temperature());
-  glVertex2f( width, height*critical_temperature()/max_temperature());
+  glVertex2f(0.0f, critical_temperature()/max_temperature());
+  glVertex2f(1.0f, critical_temperature()/max_temperature());
   glEnd();
+}
+
+void GLShip::draw_respawn_timer() const {
+  if(!ship->is_alive()) {
+    if(ship->lives > 0) {
+      if(ship->time_until_respawn < 3000) {
+        Typer::draw(-1,1,ship->time_until_respawn/1000+1);
+      } else if (ship->first_life) {
+        Typer::draw(-5,1,"READY");
+      }
+    } else {
+      Typer::draw(-9,0,"Game Over");
+    }
+  }
+}
+
+void GLShip::draw_temperature_status() const {
+  if(temperature() > max_temperature()) {
+    Typer::draw(0,0,"WARNING-TEMPERATURE CRITICAL");
+  } else if(temperature() > critical_temperature()) {
+    Typer::draw(0,0,"WARNING");
+  } 
 }
 
 void GLShip::input(unsigned char key, bool pressed) {

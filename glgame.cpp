@@ -161,19 +161,7 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   glLoadIdentity();
   glViewport((primary ? 0 : (window.x()/2)), 0, window.x()/width_scale, window.y());
 
-  /* Draw the score */
-  typer->draw(window.x()/width_scale-40, window.y()-20, glship->ship->score, 20);
-  /* Draw the life count */
-  typer->draw_lives(window.x()/width_scale-40,-window.y()+70, glship, 18);
-  // Move name into ship object.
-  const char *name = primary ? "Player 1" : "Player 2";
-  typer->draw(-window.x()/width_scale+30,window.y()-20,name,20);
-  glPushMatrix();
-  glTranslatef(-window.x()/width_scale+30, -window.y()+15, 0.0f);
-  glScalef(20,20,1);
-  glship->draw_temperature();
-  glPopMatrix();
-
+  /* Draw the world */
   // Store the rendered world in a display list
   glNewList(gameworld, GL_COMPILE);
     glTranslatef(-glship->ship->position.x(), -glship->ship->position.y(), 0.0f);
@@ -181,7 +169,6 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
     draw_objects();
     starfield->draw_front(glship->ship->position);
   glEndList();
-
   // Draw the world tesselated
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
@@ -191,6 +178,29 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
       glPopMatrix();
     }
   }
+
+  /* Draw the score */
+  typer->draw(window.x()/width_scale-40, window.y()-20, glship->ship->score, 20);
+  /* Draw the life count */
+  typer->draw_lives(window.x()/width_scale-40,-window.y()+70, glship, 18);
+  //TODO: Move name into ship object.
+  const char *name = primary ? "Player 1" : "Player 2";
+  typer->draw(-window.x()/width_scale+30,window.y()-20,name,20);
+  glPushMatrix();
+  glTranslatef(-window.x()/width_scale+30, -window.y()+15, 0.0f);
+  glPushMatrix();
+  glScalef(30,30,1);
+  glship->draw_temperature();
+  glPopMatrix();
+  glTranslatef(42.0f, 147.0f, 0.0f);
+  glScalef(10,10,1);
+  glship->draw_temperature_status();
+  glPopMatrix();
+  
+  glPushMatrix();
+  glScalef(20,20,1);
+  glship->draw_respawn_timer();
+  glPopMatrix();
 }
 
 void GLGame::draw_map() const {

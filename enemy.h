@@ -11,7 +11,6 @@ class Enemy : public Car {
     ~Enemy();
     
     void step(float delta);
-    bool is_removable() const;
     
   private:
     void lock_step(float delta);
