@@ -19,7 +19,7 @@ class GLShip {
 public:
   GLShip() {};
   GLShip(int x, int y);
-  virtual ~GLShip();
+  ~GLShip();
   void step(float delta);
   virtual void input(unsigned char key, bool pressed = true);
   void set_keys(int left, int right, int up, int right, int reverse, int mine);

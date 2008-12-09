@@ -14,7 +14,7 @@ using namespace std;
 class GLGame : public State {
 public:
   GLGame() {};
-  GLGame(float world_width, float world_height);
+  GLGame(float world_width, float world_height, int player_count);
   ~GLGame();
 
   void draw();
@@ -24,6 +24,7 @@ public:
 
 private:
   void toggle_pause();
+  bool is_single() const;
   void draw_map() const;
   void draw_objects(bool minimap = false) const;
   void draw_world(GLShip *glship, bool primary) const;
