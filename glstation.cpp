@@ -69,6 +69,11 @@ GLStation::GLStation(list<GLShip*>* objects, list<GLShip*>* targets) : objects(o
   glEndList();
 }
 
+GLStation::~GLStation() {
+  glDeleteLists(body, 1);
+  glDeleteLists(map_body, 1);
+}
+
 void GLStation::collide(Ship * ship) const {
   if( ship->is_alive() && (ship->position - position).magnitude_squared() < (radius_squared + ship->radius_squared) ){
     ship->kill_stop();
