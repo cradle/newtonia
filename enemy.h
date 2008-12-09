@@ -8,6 +8,7 @@ class Enemy : public Car {
   public:
     Enemy() {};
     Enemy(float x, float y, std::list<Ship*> * targets, int difficulty = 0);
+    ~Enemy();
     
     void step(float delta);
     bool is_removable() const;

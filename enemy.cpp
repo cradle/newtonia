@@ -24,6 +24,10 @@ Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Car(
   target = NULL;
 }
 
+Enemy::~Enemy() {
+  delete targets;
+}
+
 void Enemy::lock_nearest_target() {
   if(target && !target->is_alive()) {
     target = NULL;

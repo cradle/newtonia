@@ -11,7 +11,7 @@ class Ship {
   public:
     Ship() {};
     Ship(float x, float y);
-    virtual ~Ship();
+    virtual ~Ship() {};
     
     void puts(); //TODO: convert into iostream operator
 
