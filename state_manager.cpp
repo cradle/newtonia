@@ -19,23 +19,16 @@ void StateManager::keyboard(unsigned char key, int x, int y) {
 }
 
 void StateManager::keyboard_up(unsigned char key, int x, int y) {
-  if(key == '2') {
-    delete state;
-    state = new GLGame(10000, 10000, 2);
-    state->resize(window.x(), window.y());
-  } else if(key == '1') {
-    delete state;
-    state = new GLGame(10000, 10000, 1);
-    state->resize(window.x(), window.y());
-  } else if(key == 27) { // escape
-    delete state;
-    state = new Menu();
-    state->resize(window.x(), window.y());
-  }
   state->keyboard_up(key, x, y);
 }
 
 void StateManager::tick(int delta) {
+  if(state->is_finished()) {
+    State* next_state = state->get_next_state();
+    next_state->resize(window.x(), window.y());
+    delete state;
+    state = next_state;
+  }
   state->tick(delta);
 }
 

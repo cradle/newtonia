@@ -2,10 +2,11 @@
 
 #include "typer.h"
 #include "glstarfield.h"
+#include "glgame.h"
 
 #include <iostream>
 
-Menu::Menu() : starfield(GLStarfield(Point(10000,10000))) {}
+Menu::Menu() : State(), starfield(GLStarfield(Point(10000,10000))) {}
 
 void Menu::draw() {
   glClear(GL_COLOR_BUFFER_BIT);
@@ -40,6 +41,9 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 }
 
 void Menu::keyboard_up (unsigned char key, int x, int y) {
-  if (key == '1') std::cout << "1 player" << std::endl;
-  if (key == '2') std::cout << "2 players" << std::endl;
+  if (key == '1') {
+    request_state_change(new GLGame(10000, 10000, 1));
+  } else if (key == '2') {
+    request_state_change(new GLGame(10000, 10000, 2));
+  }
 }

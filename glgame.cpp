@@ -5,6 +5,8 @@
 #include "glstarfield.h"
 #include "wrapped_point.h"
 #include "glstation.h"
+#include "menu.h"
+#include "state.h"
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -18,7 +20,7 @@
 #include <iostream>
 #include <list>
 
-GLGame::GLGame(float width, float height, int player_count) : world(Point(width, height)), running(true) {
+GLGame::GLGame(float width, float height, int player_count) : State(), world(Point(width, height)), running(true) {
   time_between_steps = step_size;
 
   enemies = new std::list<GLShip*>;
@@ -262,6 +264,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == '-') time_between_steps++;
   if (key == '0') time_between_steps = step_size;
   if (key == 'p') toggle_pause();
+  if (key == 27) request_state_change(new Menu());
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
     (*object)->input(key, false);
