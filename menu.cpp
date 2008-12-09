@@ -35,7 +35,9 @@ void Menu::tick(int delta) {
   viewpoint += Point(1,0) * (0.1 * delta);
 }
 
-void Menu::keyboard(unsigned char key, int x, int y) {}
+void Menu::keyboard(unsigned char key, int x, int y) {
+  if(key == 27) exit(0); // escape
+}
 
 void Menu::keyboard_up (unsigned char key, int x, int y) {
   if (key == '1') std::cout << "1 player" << std::endl;

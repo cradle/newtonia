@@ -27,9 +27,6 @@ int old_height = 320;
 
 void keyboard(unsigned char key, int x, int y) {
   switch (key) {
-  case 27:
-    exit(0);
-    break;
   case 'f':
     // http://www.xmission.com/~nate/sgi/sgi-macosx.zip
     if (glutGet(GLUT_WINDOW_WIDTH) < glutGet(GLUT_SCREEN_WIDTH)) {

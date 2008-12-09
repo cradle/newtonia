@@ -27,9 +27,12 @@ void StateManager::keyboard_up(unsigned char key, int x, int y) {
     delete state;
     state = new GLGame(10000, 10000, 1);
     state->resize(window.x(), window.y());
-  } else {
-    state->keyboard_up(key, x, y);
+  } else if(key == 27) { // escape
+    delete state;
+    state = new Menu();
+    state->resize(window.x(), window.y());
   }
+  state->keyboard_up(key, x, y);
 }
 
 void StateManager::tick(int delta) {

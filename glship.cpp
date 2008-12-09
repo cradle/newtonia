@@ -96,7 +96,7 @@ void GLShip::draw_temperature() const {
   float height = 5.0, width = 1.0;
   
   /* temperature */
-  float color[3] = {0,0.8,0};
+  float color[3] = {0,1.0,0};
   color[1] *= 1.0 - temperature()/max_temperature();
   color[0] = temperature()/max_temperature();
   glColor3fv(color);
