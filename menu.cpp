@@ -20,9 +20,13 @@ void Menu::draw() {
   
   starfield.draw_rear(viewpoint);
   
-  typer.draw(-50*7,  150, "Newtonia", 50);
+  typer.draw(-50*7,  200, "Newtonia", 50);
   typer.draw(-30*7,    0, "1 - Solo", 30);
   typer.draw(-30*7, -100, "2 - Duet", 30);
+  typer.draw(0,-260,"a",10);
+  typer.draw(-15*18, -300, "Glenn Francis Murray", 15);
+  typer.draw(-10*9,-350,"production",10);
+  typer.draw(-10*13.5, -420, "Copyright 2008", 10);
 
   starfield.draw_front(viewpoint);
 }
