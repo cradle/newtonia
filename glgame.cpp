@@ -20,7 +20,7 @@
 #include <iostream>
 #include <list>
 
-GLGame::GLGame(float width, float height, int player_count) : State(), world(Point(width, height)), running(true) {
+GLGame::GLGame(float width, float height, int player_count, bool spawn_enemies) : State(), world(Point(width, height)), running(true) {
   time_between_steps = step_size;
   num_players = player_count;
 
@@ -47,7 +47,7 @@ GLGame::GLGame(float width, float height, int player_count) : State(), world(Poi
   }
 
   //GLstation uses players.size() to determine number of ships in first wave
-  station = new GLStation(enemies, players);
+  station = spawn_enemies ? (new GLStation(enemies, players)) : NULL;
 }
 
 GLGame::~GLGame() {
@@ -63,7 +63,8 @@ GLGame::~GLGame() {
     enemies->pop_back();
   }
   delete enemies;
-  delete station;
+  if(station != NULL)
+    delete station;
   delete starfield;
 
   glDeleteLists(gameworld, 1);
@@ -85,12 +86,14 @@ void GLGame::tick(int delta) {
 
   std::list<GLShip*>::iterator o, o2;
   while(time_until_next_step <= 0) {
-    station->step(step_size);
+    
+    if(station != NULL) station->step(step_size);
     for(o = players->begin(); o != players->end(); o++) {
       (*o)->step(step_size);
 
-      station->collide((*o)->ship);
+      if(station != NULL) station->collide((*o)->ship);
     }
+    
     for(o = enemies->begin(); o != enemies->end(); o++) {
       (*o)->step(step_size);
     }
@@ -134,7 +137,7 @@ void GLGame::draw_objects(bool minimap) const {
     (*o)->draw(minimap);
     glPopMatrix();
   }
-  station->draw(minimap);
+  if(station != NULL) station->draw(minimap);
 }
 
 void GLGame::draw(void) {
@@ -252,7 +255,9 @@ void GLGame::draw_map() const {
   glPopMatrix();
 
   /* DRAW THE LEVEL */
-  Typer::draw(world.x()-1500, -world.y()+2000, station->level(), 800);
+  if(station != NULL) {
+    Typer::draw(world.x()-1500, -world.y()+2000, station->level(), 800);
+  }
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {

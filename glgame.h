@@ -13,7 +13,7 @@ using namespace std;
 class GLGame : public State {
 public:
   GLGame() {};
-  GLGame(float world_width, float world_height, int player_count);
+  GLGame(float world_width, float world_height, int player_count, bool spawn_enemies = true);
   ~GLGame();
 
   void draw();

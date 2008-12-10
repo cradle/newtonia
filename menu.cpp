@@ -21,9 +21,10 @@ void Menu::draw() {
   
   starfield.draw_rear(viewpoint);
   
-  typer.draw(-50*7,  200, "Newtonia", 50);
-  typer.draw(-30*7,    0, "1 - Solo", 30);
-  typer.draw(-30*7, -100, "2 - Duet", 30);
+  typer.draw(-50*7,  350, "Newtonia", 50);
+  typer.draw(-30*7,  150, "1 - Solo", 30);
+  typer.draw(-30*7,   25, "2 - Duet", 30);
+  typer.draw(-30*7, -100, "3 - Duel", 30);
   typer.draw(0,-260,"a",10);
   typer.draw(-15*18, -300, "Glenn Francis Murray", 15);
   typer.draw(-10*9,-350,"production",10);
@@ -44,6 +45,8 @@ void Menu::keyboard_up (unsigned char key, int x, int y) {
   if (key == '1') {
     request_state_change(new GLGame(10000, 10000, 1));
   } else if (key == '2') {
-    request_state_change(new GLGame(10000, 10000, 2));
+    request_state_change(new GLGame(10000, 10000, 2));  
+  } else if (key == '3') {
+    request_state_change(new GLGame(5000, 5000, 2, false));
   }
 }
