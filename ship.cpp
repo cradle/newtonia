@@ -34,7 +34,7 @@ Ship::Ship(float x, float y) {
   explode_temperature = max_temperature * 1.2;
   heat_rate = 0.060;
   retro_heat_rate = heat_rate * -1 * reverse_force / thrust_force;
-  cool_rate = 0.035;
+  cool_rate = retro_heat_rate * 0.85;
 }
 
 float Ship::temperature_ratio() {
