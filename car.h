@@ -8,8 +8,6 @@ class Car : public Ship {
     Car() {};
     Car(float x, float y);
     virtual ~Car() {};
-    
-    virtual void step(float delta);
 };
 
 #endif

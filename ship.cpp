@@ -21,6 +21,7 @@ Ship::Ship(float x, float y) {
   facing = Point(0, 1);
   velocity = Point(0, 0);
   rotation_force = 0.3;
+  friction = 0;
   alive = false;
   score = 0;
   rotation_direction = NONE;
@@ -33,7 +34,7 @@ Ship::Ship(float x, float y) {
   critical_temperature = max_temperature * 0.80;
   explode_temperature = max_temperature * 1.2;
   heat_rate = 0.060;
-  retro_heat_rate = heat_rate * -1 * reverse_force / thrust_force;
+  retro_heat_rate = heat_rate * -reverse_force / thrust_force;
   cool_rate = retro_heat_rate * 0.85;
 }
 
@@ -237,6 +238,9 @@ void Ship::step(float delta) {
   }
 
   velocity += acceleration * delta;
+  if(is_alive()) {
+    velocity = velocity - velocity * friction * delta;
+  }
   position += velocity * delta;
   position.wrap();
   

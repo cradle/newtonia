@@ -78,6 +78,7 @@ class Ship {
     
     float heat_rate, retro_heat_rate, cool_rate;
     
+    float friction;
     // Forces
     float thrust_force, reverse_force, rotation_force;
     // Attributes
