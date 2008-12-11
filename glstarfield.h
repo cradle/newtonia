@@ -22,9 +22,9 @@ public:
   
 private:
   GLuint point_layers;
-  static const int NUM_REAR_LAYERS = 20;
-  static const int NUM_FRONT_LAYERS = 5;
-  static const int NUM_STARS = 1600;
+  static const int NUM_REAR_LAYERS;
+  static const int NUM_FRONT_LAYERS;
+  static const float STAR_DENSITY;
 };
 
 #endif
