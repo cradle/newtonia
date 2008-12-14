@@ -8,6 +8,11 @@ float WrappedPoint::y_min = 0;
 float WrappedPoint::x_max = 0;
 float WrappedPoint::y_max = 0;
 
+WrappedPoint::WrappedPoint() {
+  coords[X] = rand()%int(x_max - x_min) + x_min;
+  coords[Y] = rand()%int(y_max - y_min) + y_min;
+}
+
 void WrappedPoint::wrap() {
   float width = x_max - x_min, height = y_max - y_min;
   while(coords[X] < x_min)

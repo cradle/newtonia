@@ -47,6 +47,8 @@ void Menu::keyboard_up (unsigned char key, int x, int y) {
   } else if (key == '2') {
     request_state_change(new GLGame(10000, 10000, 2));  
   } else if (key == '3') {
-    request_state_change(new GLGame(5000, 5000, 2, false));
+    request_state_change(new GLGame(5000, 5000, 2, false)); 
+  } else if (key == '4') {
+    request_state_change(new GLGame(5000, 5000, 1, false));
   }
 }

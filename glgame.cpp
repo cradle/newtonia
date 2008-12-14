@@ -7,6 +7,9 @@
 #include "glstation.h"
 #include "menu.h"
 #include "state.h"
+#include "asteroid.h"
+#include "asteroid_drawer.h"
+#include "object.h"
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -26,6 +29,7 @@ GLGame::GLGame(float width, float height, int player_count, bool spawn_enemies) 
 
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
+  objects = new std::list<Object*>;
 
   WrappedPoint::set_boundaries(world);
 
@@ -47,7 +51,16 @@ GLGame::GLGame(float width, float height, int player_count, bool spawn_enemies) 
   }
 
   //GLstation uses players.size() to determine number of ships in first wave
-  station = spawn_enemies ? (new GLStation(enemies, players)) : NULL;
+  if(spawn_enemies) {
+    station = new GLStation(enemies, players);
+  } else {
+    station = NULL;
+    if(player_count == 1) {
+      for(int i = 0; i < 50; i++) {
+        objects->push_back(new Asteroid());
+      }
+    }
+  }
 }
 
 GLGame::~GLGame() {
@@ -86,6 +99,10 @@ void GLGame::tick(int delta) {
 
   std::list<GLShip*>::iterator o, o2;
   while(time_until_next_step <= 0) {
+    std::list<Object*>::iterator oi;
+    for(oi = objects->begin(); oi != objects->end(); oi++) {
+      (*oi)->step(step_size);
+    }
     
     if(station != NULL) station->step(step_size);
     for(o = players->begin(); o != players->end(); o++) {
@@ -126,6 +143,12 @@ void GLGame::tick(int delta) {
 }
 
 void GLGame::draw_objects(bool minimap) const {
+  std::list<Object*>::iterator oi;
+  for(oi = objects->begin(); oi != objects->end(); oi++) {
+    //TODO: make AsteroidController (???), which joins model and view together
+    AsteroidDrawer::draw(*oi);
+  }
+  
   std::list<GLShip*>::iterator o;
   for(o = players->begin(); o != players->end(); o++) {
     glPushMatrix();

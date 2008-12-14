@@ -46,7 +46,7 @@ void Ship::respawn() {
   if(first_life) {
     first_life = false;
   } else {
-    position = WrappedPoint(rand(), rand());
+    position = WrappedPoint();
   }
   first_life = false;
   lives -= 1;

@@ -8,6 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		21006C7A0EE3F16F005D5CBF /* typer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21006C780EE3F16F005D5CBF /* typer.cpp */; };
+		210430000EF47F0800B2097C /* asteroid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21042FF80EF47F0800B2097C /* asteroid.cpp */; };
+		210430010EF47F0800B2097C /* asteroid_drawer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21042FFA0EF47F0800B2097C /* asteroid_drawer.cpp */; };
+		210430020EF47F0800B2097C /* drawer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21042FFC0EF47F0800B2097C /* drawer.cpp */; };
+		210430030EF47F0800B2097C /* object.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21042FFE0EF47F0800B2097C /* object.cpp */; };
 		210D37990EDAD022009A0BA4 /* glenemy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 210D37970EDAD022009A0BA4 /* glenemy.cpp */; };
 		210D37A70EDAD422009A0BA4 /* enemy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 210D37A50EDAD422009A0BA4 /* enemy.cpp */; };
 		2119FFEF0EE16F2600DD218B /* icon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 2119FFEE0EE16F2600DD218B /* icon.icns */; };
@@ -34,6 +38,14 @@
 /* Begin PBXFileReference section */
 		21006C780EE3F16F005D5CBF /* typer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = typer.cpp; sourceTree = "<group>"; };
 		21006C790EE3F16F005D5CBF /* typer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = typer.h; sourceTree = "<group>"; };
+		21042FF80EF47F0800B2097C /* asteroid.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = asteroid.cpp; sourceTree = "<group>"; };
+		21042FF90EF47F0800B2097C /* asteroid.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = asteroid.h; sourceTree = "<group>"; };
+		21042FFA0EF47F0800B2097C /* asteroid_drawer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = asteroid_drawer.cpp; sourceTree = "<group>"; };
+		21042FFB0EF47F0800B2097C /* asteroid_drawer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = asteroid_drawer.h; sourceTree = "<group>"; };
+		21042FFC0EF47F0800B2097C /* drawer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = drawer.cpp; sourceTree = "<group>"; };
+		21042FFD0EF47F0800B2097C /* drawer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = drawer.h; sourceTree = "<group>"; };
+		21042FFE0EF47F0800B2097C /* object.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = object.cpp; sourceTree = "<group>"; };
+		21042FFF0EF47F0800B2097C /* object.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = object.h; sourceTree = "<group>"; };
 		210D37970EDAD022009A0BA4 /* glenemy.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glenemy.cpp; sourceTree = "<group>"; };
 		210D37980EDAD022009A0BA4 /* glenemy.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glenemy.h; sourceTree = "<group>"; };
 		210D37A50EDAD422009A0BA4 /* enemy.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = enemy.cpp; sourceTree = "<group>"; };
@@ -98,6 +110,14 @@
 		219282740ECD670E002D470F = {
 			isa = PBXGroup;
 			children = (
+				21042FF80EF47F0800B2097C /* asteroid.cpp */,
+				21042FF90EF47F0800B2097C /* asteroid.h */,
+				21042FFA0EF47F0800B2097C /* asteroid_drawer.cpp */,
+				21042FFB0EF47F0800B2097C /* asteroid_drawer.h */,
+				21042FFC0EF47F0800B2097C /* drawer.cpp */,
+				21042FFD0EF47F0800B2097C /* drawer.h */,
+				21042FFE0EF47F0800B2097C /* object.cpp */,
+				21042FFF0EF47F0800B2097C /* object.h */,
 				219B675B0EED4575002B7BAE /* state_manager.cpp */,
 				219B675C0EED4575002B7BAE /* state_manager.h */,
 				219B67570EED40B7002B7BAE /* menu.cpp */,
@@ -214,6 +234,10 @@
 				219B674C0EED0E8A002B7BAE /* state.cpp in Sources */,
 				219B67590EED40B7002B7BAE /* menu.cpp in Sources */,
 				219B675D0EED4575002B7BAE /* state_manager.cpp in Sources */,
+				210430000EF47F0800B2097C /* asteroid.cpp in Sources */,
+				210430010EF47F0800B2097C /* asteroid_drawer.cpp in Sources */,
+				210430020EF47F0800B2097C /* drawer.cpp in Sources */,
+				210430030EF47F0800B2097C /* object.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -4,7 +4,7 @@
 
 class WrappedPoint : public Point {
 public:
-  WrappedPoint() {};
+  WrappedPoint();
   WrappedPoint(float x, float y) : Point(x,y) {};
   WrappedPoint(const Point other) : Point(other) {};
 

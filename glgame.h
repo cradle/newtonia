@@ -6,6 +6,7 @@
 #include "point.h"
 #include "glstarfield.h"
 #include "glstation.h"
+#include "object.h"
 #include <list>
 
 using namespace std;
@@ -41,6 +42,7 @@ private:
   GLStarfield *starfield;
   GLStation *station;
   list<GLShip*> *enemies, *players;
+  list<Object*> *objects;
 };
 
 #endif
