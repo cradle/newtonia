@@ -5,7 +5,7 @@
 
 using namespace std;
 
-Ship::Ship(float x, float y) {
+Ship::Ship(float x, float y) : Object() {
   mass = 100.0;
   value = 2000;
   accuracy = 0.1;
@@ -101,11 +101,32 @@ void Ship::collide(Ship* first, Ship* second) {
   second->collide(first);
 }
 
+// void Ship::collide(Object *other) {
+//   std::list<Particle>::iterator b = bullets.begin();
+//   while(b != bullets.end()) {
+//     if (Object::collide(&*b)) {
+//       b = bullets.erase(b);
+//     } else {
+//       b++;
+//     }
+//   }
+//   
+//   std::list<Particle>::iterator mine = mines.begin();
+//   while(mine != mines.end()) {
+//     if(is_alive() && collide(*mine) || other->collide(&*mine)) {
+//       detonate(mine->position, mine->velocity);
+//       mine = mines.erase(mine);
+//     } else {
+//       mine++;
+//     }
+//   }
+// }
+
 void Ship::collide(Ship* other) {
   //TODO: Make ships collide with each other too
   std::list<Particle>::iterator b = bullets.begin();
   while(b != bullets.end()) {
-    if(is_alive() && collide(*b )) {
+    if(is_alive() && collide(*b)) {
       kill();
       b = bullets.erase(b);
     } else if(other->is_alive() && other->collide(*b)) {

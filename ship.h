@@ -7,9 +7,9 @@
 
 using namespace std;
 
-class Ship {
+class Ship : public Object {
   public:
-    Ship() {};
+    Ship() : Object() {};
     Ship(float x, float y);
     virtual ~Ship() {};
     
@@ -28,20 +28,20 @@ class Ship {
     bool is_alive() const;
     virtual bool is_removable() const;
 
-    static void collide(Ship* first, Ship* second);    
-    void collide(Ship* other);
+    static void collide(Ship *first, Ship *second);    
+    // void collide(Object *other);
+    void collide(Ship *other);
     bool collide(Particle const particle, float proximity = 0) const;
 
     //TODO: make friends with glship
     int score, lives;
-    float radius, radius_squared;
+    //TODO: Make this go away, it's wrong 
+    float radius_squared;
     bool thrusting, reversing;
-    WrappedPoint position;
     
     //TODO: make friends with gltrail (or some other way around these public)
     WrappedPoint tail() const;
     Point facing;
-    Point velocity;
     
     //TODO: somehow get around this public for glstation
     void kill_stop();
@@ -86,7 +86,12 @@ class Ship {
     // States
     bool shooting, mining, alive, respawns, first_life;
     
+    //TODO: encapsulate
+    friend class GLStation;
+    friend class Enemy;
     friend class GLShip;
+    friend class GLGame;
+    friend class GLTrail;
 };
 
 #endif

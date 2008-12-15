@@ -99,9 +99,26 @@ void GLGame::tick(int delta) {
 
   std::list<GLShip*>::iterator o, o2;
   while(time_until_next_step <= 0) {
-    std::list<Object*>::iterator oi;
+    std::list<Object*>::iterator oi, ol;
     for(oi = objects->begin(); oi != objects->end(); oi++) {
       (*oi)->step(step_size);
+    }
+
+    for(o = players->begin(); o != players->end(); o++) {
+      // (*o)->ship->collide(*oi);
+    }
+    
+    oi = objects->begin();
+    while(oi != objects->end()) {
+      for(ol = oi; ol != objects->end(); ol++) {
+        (*oi)->collide((*ol));
+      }
+      if((*oi)->is_removable()) {
+        delete *oi;
+        oi = objects->erase(oi);
+      } else {
+        oi++;
+      }
     }
     
     if(station != NULL) station->step(step_size);

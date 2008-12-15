@@ -237,6 +237,7 @@ void GLShip::draw_body() const {
 
 void GLShip::draw_particles() const {
   glColor3fv(color);
+  //TODO: ParticleDrawer::draw(ship->bullets);
   glBegin(GL_POINTS);
   for(list<Particle>::iterator b = ship->bullets.begin(); b != ship->bullets.end(); b++) {
     //TODO: Work out how to make bullets draw themselves. GLBullet?
