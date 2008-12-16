@@ -8,7 +8,7 @@ using namespace std;
 
 Ship::Ship(float x, float y) : CompositeObject() {
   mass = 100.0;
-  value = 2000;
+  value = 1000000;
   accuracy = 0.1;
   first_life = true;
   lives = 6;
@@ -30,7 +30,7 @@ Ship::Ship(float x, float y) : CompositeObject() {
   shooting = false;
   automatic_fire = false;
   time_until_next_shot = time_between_shots = 60;
-  
+
   max_temperature = 100.0;
   temperature = 0.0;
   critical_temperature = max_temperature * 0.80;
@@ -41,7 +41,7 @@ Ship::Ship(float x, float y) : CompositeObject() {
 }
 
 float Ship::temperature_ratio() {
-  return temperature/max_temperature; 
+  return temperature/max_temperature;
 }
 
 void Ship::respawn() {
@@ -111,19 +111,18 @@ int Ship::multiplier() const {
 void Ship::collide_asteroid(Asteroid* other) {
   std::list<Particle>::iterator b = bullets.begin();
   while(b != bullets.end()) {
-    if((*b).collide(other)) {
+    if(other->alive && (*b).collide(other)) {
       score += other->get_value() * multiplier();
       kills_this_life += 1;
       kills += 1;
       explode((*b).position, Point(0,0));
       other->kill();
-      b = bullets.erase(b);
-    } else {
-      b++;
+      bullets.erase(b);
+      return;
     }
+    b++;
   }
-  //do this second... for some reason
-  if(alive && other->collide(this)) {
+  if(alive && other->alive && other->collide(this)) {
     detonate(position, velocity);
     kill_stop();
     other->kill();
@@ -147,7 +146,7 @@ void Ship::collide(Ship* other) {
       b++;
     }
   }
-  
+
   std::list<Particle>::iterator mine = mines.begin();
   while(mine != mines.end()) {
     if(is_alive() && collide(*mine) || other->is_alive() && other->collide(*mine, 50.0)) {
@@ -245,7 +244,7 @@ void Ship::step(float delta) {
       respawn();
     }
   }
-  
+
   facing.rotate(rotation_direction * rotation_force / mass  * delta );
   Point acceleration = Point(0,0);
   if(thrusting) {
@@ -269,7 +268,7 @@ void Ship::step(float delta) {
     velocity = velocity - velocity * friction * delta;
   }
   CompositeObject::step(delta);
-  
+
   std::list<Particle>::iterator b = bullets.begin();
   while(b != bullets.end()) {
     b->step(delta);
@@ -279,7 +278,7 @@ void Ship::step(float delta) {
       b++;
     }
   }
-  
+
   std::list<Particle>::iterator mine = mines.begin();
   while(mine != mines.end()) {
     mine->step(delta);

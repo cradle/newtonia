@@ -16,14 +16,17 @@ Asteroid::Asteroid() : CompositeObject() {
   rotation_speed = (rand()%max_rotation-max_rotation/2)/radius;
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
   value = radius * velocity.magnitude();
+  value *= value;
 }
 
 Asteroid::Asteroid(Asteroid const *mother) {
-  position = mother->position;
   radius = mother->radius/2.0f;
   rotation_speed = (rand()%6-3)/radius;
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
-  value = radius * velocity.magnitude() + mother->value;
+  position = mother->position + velocity.normalized() * radius;
+  value = radius * velocity.magnitude();
+  value *= value;
+  value += mother->value;
 }
 
 void Asteroid::add_children(list<Asteroid*> *roids) const {

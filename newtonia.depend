@@ -1,12 +1,13 @@
 # depslib dependency file v1.0
-1228662155 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\car.cpp
+1229430975 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\car.cpp
 	"car.h"
 	<iostream>
 
-1228309266 c:\documents and settings\glenn.cawthray\desktop\cplusplus\car.h
+1229430975 c:\documents and settings\glenn.cawthray\desktop\cplusplus\car.h
 	"ship.h"
 
-1228662155 c:\documents and settings\glenn.cawthray\desktop\cplusplus\ship.h
+1229431030 c:\documents and settings\glenn.cawthray\desktop\cplusplus\ship.h
+	"composite_object.h"
 	"point.h"
 	"particle.h"
 	<list>
@@ -14,24 +15,25 @@
 1228309266 c:\documents and settings\glenn.cawthray\desktop\cplusplus\point.h
 	<iostream>
 
-1228309266 c:\documents and settings\glenn.cawthray\desktop\cplusplus\particle.h
+1229431030 c:\documents and settings\glenn.cawthray\desktop\cplusplus\particle.h
+	"object.h"
 	"point.h"
 	"wrapped_point.h"
 
-1228309266 c:\documents and settings\glenn.cawthray\desktop\cplusplus\wrapped_point.h
+1229431030 c:\documents and settings\glenn.cawthray\desktop\cplusplus\wrapped_point.h
 	"point.h"
 
-1228660307 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\enemy.cpp
+1229430975 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\enemy.cpp
 	"enemy.h"
 	<list>
 	<iostream>
 	"point.h"
 
-1228660307 c:\documents and settings\glenn.cawthray\desktop\cplusplus\enemy.h
+1229430975 c:\documents and settings\glenn.cawthray\desktop\cplusplus\enemy.h
 	<list>
 	"car.h"
 
-1228309266 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\glcar.cpp
+1229430975 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\glcar.cpp
 	"glcar.h"
 	"gltrail.h"
 	<GLUT/glut.h>
@@ -39,20 +41,21 @@
 	<GL/glut.h>
 	<iostream>
 
-1228309266 c:\documents and settings\glenn.cawthray\desktop\cplusplus\glcar.h
+1229430975 c:\documents and settings\glenn.cawthray\desktop\cplusplus\glcar.h
 	"glship.h"
 	"car.h"
 
-1228660307 c:\documents and settings\glenn.cawthray\desktop\cplusplus\glship.h
+1229430975 c:\documents and settings\glenn.cawthray\desktop\cplusplus\glship.h
 	"ship.h"
 	"point.h"
 	"gltrail.h"
+	"typer.h"
 	<list>
 	<GLUT/glut.h>
 	<windows.h>
 	<GL/glut.h>
 
-1228309266 c:\documents and settings\glenn.cawthray\desktop\cplusplus\gltrail.h
+1229431030 c:\documents and settings\glenn.cawthray\desktop\cplusplus\gltrail.h
 	<GLUT/glut.h>
 	<windows.h>
 	<GL/glut.h>
@@ -274,7 +277,7 @@
 	<stddef.h>
 	<GL/gl.h>
 
-1228309266 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\glenemy.cpp
+1229430975 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\glenemy.cpp
 	"glenemy.h"
 	"gltrail.h"
 	"enemy.h"
@@ -283,63 +286,69 @@
 	<GL/glut.h>
 	<list>
 
-1228309266 c:\documents and settings\glenn.cawthray\desktop\cplusplus\glenemy.h
+1229430975 c:\documents and settings\glenn.cawthray\desktop\cplusplus\glenemy.h
 	"glship.h"
 	<list>
 
-1228309266 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\glgame.cpp
+1229431030 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\glgame.cpp
 	"glgame.h"
 	"glship.h"
 	"glenemy.h"
 	"glcar.h"
 	"glstarfield.h"
 	"wrapped_point.h"
-	"glstation.h"
+	"menu.h"
+	"state.h"
+	"asteroid.h"
+	"asteroid_drawer.h"
+	"object.h"
 	<GLUT/glut.h>
 	<windows.h>
 	<GL/glut.h>
 	<iostream>
 	<list>
 
-1228660307 c:\documents and settings\glenn.cawthray\desktop\cplusplus\glgame.h
+1229431030 c:\documents and settings\glenn.cawthray\desktop\cplusplus\glgame.h
+	"state.h"
 	"glship.h"
 	"point.h"
 	"glstarfield.h"
 	"glstation.h"
-	"typer.h"
+	"asteroid.h"
 	<list>
 
-1228309266 c:\documents and settings\glenn.cawthray\desktop\cplusplus\glstarfield.h
+1229430975 c:\documents and settings\glenn.cawthray\desktop\cplusplus\glstarfield.h
 	"point.h"
 	<GLUT/glut.h>
 	<windows.h>
 	<GL/glut.h>
 
-1228309266 c:\documents and settings\glenn.cawthray\desktop\cplusplus\glstation.h
+1229430975 c:\documents and settings\glenn.cawthray\desktop\cplusplus\glstation.h
 	<list>
 	"glship.h"
 	"wrapped_point.h"
 
-1228662538 c:\documents and settings\glenn.cawthray\desktop\cplusplus\typer.h
+1229430975 c:\documents and settings\glenn.cawthray\desktop\cplusplus\typer.h
 	"glship.h"
 
-1228660307 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\glship.cpp
+1229431030 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\glship.cpp
 	"glship.h"
 	"gltrail.h"
 	"ship.h"
+	"typer.h"
 	<GLUT/glut.h>
 	<windows.h>
 	<GL/glut.h>
 	<list>
 	<iostream>
 
-1228660307 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\glstarfield.cpp
+1229430975 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\glstarfield.cpp
 	"glstarfield.h"
 	<GLUT/glut.h>
 	<windows.h>
 	<GL/glut.h>
 
-1228309266 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\glstation.cpp
+1229430975 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\glstation.cpp
 	"glstation.h"
 	<math.h>
 	<GLUT/glut.h>
@@ -353,7 +362,7 @@
 1198765420 c:\program files\codeblocks\mingw\include\math.h
 	<_mingw.h>
 
-1228309266 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\gltrail.cpp
+1229431030 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\gltrail.cpp
 	"gltrail.h"
 	"ship.h"
 	"particle.h"
@@ -363,16 +372,16 @@
 	<math.h>
 	<list>
 
-1228309266 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\glut.cpp
+1229430975 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\glut.cpp
 	<stdlib.h>
-	"glgame.h"
+	"state_manager.h"
 	<GLUT/glut.h>
 	<windows.h>
 	<GL/glut.h>
 
 1228309266 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\icon.rc
 
-1228309266 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\particle.cpp
+1229431030 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\particle.cpp
 	"particle.h"
 	"point.h"
 
@@ -381,13 +390,14 @@
 	<iostream>
 	<math.h>
 
-1228662155 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\ship.cpp
+1229432128 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\ship.cpp
 	"ship.h"
 	"point.h"
 	"particle.h"
+	"asteroid.h"
 	<math.h>
 
-1228662231 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\typer.cpp
+1229430975 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\typer.cpp
 	"typer.h"
 	<string>
 	"glship.h"
@@ -395,8 +405,75 @@
 	<windows.h>
 	<GL/glut.h>
 
-1228309266 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\wrapped_point.cpp
+1229431030 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\wrapped_point.cpp
 	"wrapped_point.h"
 	"point.h"
+	<iostream>
+
+1229431030 c:\documents and settings\glenn.cawthray\desktop\cplusplus\composite_object.h
+	<list>
+	"particle.h"
+
+1229431030 c:\documents and settings\glenn.cawthray\desktop\cplusplus\object.h
+	<list>
+	"wrapped_point.h"
+
+1229431030 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\composite_object.cpp
+	"composite_object.h"
+	<math.h>
+
+1229430975 c:\documents and settings\glenn.cawthray\desktop\cplusplus\state.h
+	"point.h"
+	"wrapped_point.h"
+	"typer.h"
+	"glstarfield.h"
+
+1229431030 c:\documents and settings\glenn.cawthray\desktop\cplusplus\asteroid.h
+	"composite_object.h"
+	"asteroid_drawer.h"
+
+1229431030 c:\documents and settings\glenn.cawthray\desktop\cplusplus\asteroid_drawer.h
+	"asteroid.h"
+
+1229430975 c:\documents and settings\glenn.cawthray\desktop\cplusplus\menu.h
+	"state.h"
+
+1229431030 c:\documents and settings\glenn.cawthray\desktop\cplusplus\state_manager.h
+	"state.h"
+	<map>
+
+1229432460 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\asteroid.cpp
+	"asteroid.h"
+	"wrapped_point.h"
+	<list>
+
+1229431030 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\asteroid_drawer.cpp
+	"asteroid_drawer.h"
+	"object.h"
+	<math.h>
+	<GLUT/glut.h>
+	<windows.h>
+	<GL/glut.h>
+	<iostream>
+
+1229431030 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\object.cpp
+	"object.h"
+	<list>
+	"wrapped_point.h"
+	<iostream>
+
+1229430975 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\state.cpp
+	"state.h"
+
+1229431030 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\state_manager.cpp
+	"state_manager.h"
+	"glgame.h"
+	"menu.h"
+
+1229431030 source:c:\documents and settings\glenn.cawthray\desktop\cplusplus\menu.cpp
+	"menu.h"
+	"typer.h"
+	"glstarfield.h"
+	"glgame.h"
 	<iostream>
 
