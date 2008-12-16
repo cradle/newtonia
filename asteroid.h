@@ -1,17 +1,25 @@
 #ifndef ASTEROID_H
 #define ASTEROID_H
 
-#include "object.h"
+#include "composite_object.h"
 #include "asteroid_drawer.h"
 
-class Asteroid : public Object {
+class Asteroid : public CompositeObject {
 public:
   Asteroid();
+  Asteroid(Asteroid const *mother);
+  
+  void add_children(list<Asteroid*> *objects) const;
 
   friend class AsteroidDrawer;
 
 private:
   const static int max_speed;
+  const static int radius_variation;
+  const static int minimum_radius;
+  const static int max_rotation;
+  
+  list<Particle> debris;
 };
 
 #endif

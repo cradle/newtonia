@@ -6,7 +6,10 @@
 
 #include <iostream>
 
-Menu::Menu() : State(), starfield(GLStarfield(Point(10000,10000))) {}
+Menu::Menu() : 
+  State(), 
+  starfield(GLStarfield(Point(10000,10000))),
+  viewpoint(Point(-10000,0)) {}
 
 void Menu::draw() {
   glClear(GL_COLOR_BUFFER_BIT);
@@ -24,7 +27,6 @@ void Menu::draw() {
   typer.draw(-50*7,  350, "Newtonia", 50);
   typer.draw(-30*7,  150, "1 - Solo", 30);
   typer.draw(-30*7,   25, "2 - Duet", 30);
-  typer.draw(-30*7, -100, "3 - Duel", 30);
   typer.draw(0,-260,"a",10);
   typer.draw(-15*18, -300, "Glenn Francis Murray", 15);
   typer.draw(-10*9,-350,"production",10);
@@ -35,6 +37,8 @@ void Menu::draw() {
 
 void Menu::tick(int delta) {
   viewpoint += Point(1,0) * (0.1 * delta);
+  //FIX: Wrapping bug
+  // viewpoint.wrap();
 }
 
 void Menu::keyboard(unsigned char key, int x, int y) {
@@ -43,12 +47,8 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 
 void Menu::keyboard_up (unsigned char key, int x, int y) {
   if (key == '1') {
-    request_state_change(new GLGame(10000, 10000, 1));
+    request_state_change(new GLGame(1));
   } else if (key == '2') {
-    request_state_change(new GLGame(10000, 10000, 2));  
-  } else if (key == '3') {
-    request_state_change(new GLGame(5000, 5000, 2, false)); 
-  } else if (key == '4') {
-    request_state_change(new GLGame(5000, 5000, 1, false));
+    request_state_change(new GLGame(2));  
   }
 }

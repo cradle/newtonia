@@ -4,7 +4,6 @@
 #include "glcar.h"
 #include "glstarfield.h"
 #include "wrapped_point.h"
-#include "glstation.h"
 #include "menu.h"
 #include "state.h"
 #include "asteroid.h"
@@ -23,13 +22,20 @@
 #include <iostream>
 #include <list>
 
-GLGame::GLGame(float width, float height, int player_count, bool spawn_enemies) : State(), world(Point(width, height)), running(true) {
+const int GLGame::default_world_width = 5000;
+const int GLGame::default_world_height = 5000;
+const int GLGame::default_num_asteroids = 50;
+
+GLGame::GLGame(int player_count) : 
+  State(), 
+  world(Point(default_world_width, default_world_height)), 
+  running(true) {
   time_between_steps = step_size;
   num_players = player_count;
 
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
-  objects = new std::list<Object*>;
+  objects = new std::list<Asteroid*>;
 
   WrappedPoint::set_boundaries(world);
 
@@ -50,16 +56,8 @@ GLGame::GLGame(float width, float height, int player_count, bool spawn_enemies) 
     players->push_back(object);
   }
 
-  //GLstation uses players.size() to determine number of ships in first wave
-  if(spawn_enemies) {
-    station = new GLStation(enemies, players);
-  } else {
-    station = NULL;
-    if(player_count == 1) {
-      for(int i = 0; i < 50; i++) {
-        objects->push_back(new Asteroid());
-      }
-    }
+  for(int i = 0; i < default_num_asteroids*player_count; i++) {
+    objects->push_back(new Asteroid());
   }
 }
 
@@ -76,8 +74,6 @@ GLGame::~GLGame() {
     enemies->pop_back();
   }
   delete enemies;
-  if(station != NULL)
-    delete station;
   delete starfield;
 
   glDeleteLists(gameworld, 1);
@@ -99,21 +95,22 @@ void GLGame::tick(int delta) {
 
   std::list<GLShip*>::iterator o, o2;
   while(time_until_next_step <= 0) {
-    std::list<Object*>::iterator oi, ol;
+    std::list<Asteroid*>::iterator oi, ol;
     for(oi = objects->begin(); oi != objects->end(); oi++) {
       (*oi)->step(step_size);
-    }
-
-    for(o = players->begin(); o != players->end(); o++) {
-      // (*o)->ship->collide(*oi);
+      
+      for(o = players->begin(); o != players->end(); o++) {
+        (*o)->ship->collide_asteroid(*oi);
+      }
     }
     
     oi = objects->begin();
     while(oi != objects->end()) {
-      for(ol = oi; ol != objects->end(); ol++) {
-        (*oi)->collide((*ol));
-      }
+      // for(ol = oi; ol != objects->end(); ol++) {
+      //   (*oi)->collide((*ol));
+      // }
       if((*oi)->is_removable()) {
+        (*oi)->add_children(objects);
         delete *oi;
         oi = objects->erase(oi);
       } else {
@@ -121,11 +118,8 @@ void GLGame::tick(int delta) {
       }
     }
     
-    if(station != NULL) station->step(step_size);
     for(o = players->begin(); o != players->end(); o++) {
       (*o)->step(step_size);
-
-      if(station != NULL) station->collide((*o)->ship);
     }
     
     for(o = enemies->begin(); o != enemies->end(); o++) {
@@ -160,7 +154,7 @@ void GLGame::tick(int delta) {
 }
 
 void GLGame::draw_objects(bool minimap) const {
-  std::list<Object*>::iterator oi;
+  std::list<Asteroid*>::iterator oi;
   for(oi = objects->begin(); oi != objects->end(); oi++) {
     //TODO: make AsteroidController (???), which joins model and view together
     AsteroidDrawer::draw(*oi);
@@ -177,7 +171,6 @@ void GLGame::draw_objects(bool minimap) const {
     (*o)->draw(minimap);
     glPopMatrix();
   }
-  if(station != NULL) station->draw(minimap);
 }
 
 void GLGame::draw(void) {
@@ -221,6 +214,10 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
 
   /* Draw the score */
   Typer::draw(window.x()/width_scale-40, window.y()-20, glship->ship->score, 20);
+  if(glship->ship->multiplier() > 1) {
+    Typer::draw(window.x()/width_scale-35, window.y()-92, "x", 15);
+    Typer::draw(window.x()/width_scale-65, window.y()-80, glship->ship->multiplier(), 20);
+  }
   /* Draw the life count */
   Typer::draw_lives(window.x()/width_scale-40,-window.y()+70, glship, 18);
   //TODO: Move name into ship object.
@@ -293,11 +290,6 @@ void GLGame::draw_map() const {
   glPushMatrix();
   draw_objects(true);
   glPopMatrix();
-
-  /* DRAW THE LEVEL */
-  if(station != NULL) {
-    Typer::draw(world.x()-1500, -world.y()+2000, station->level(), 800);
-  }
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {

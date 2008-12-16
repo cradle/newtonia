@@ -1,11 +1,12 @@
 #include "ship.h"
 #include "point.h"
 #include "particle.h"
+#include "asteroid.h"
 #include <math.h>
 
 using namespace std;
 
-Ship::Ship(float x, float y) : Object() {
+Ship::Ship(float x, float y) : CompositeObject() {
   mass = 100.0;
   value = 2000;
   accuracy = 0.1;
@@ -14,7 +15,7 @@ Ship::Ship(float x, float y) : Object() {
   width = height = radius = 10.0;
   radius_squared = radius*radius;
   thrusting = false;
-  thrust_force = 0.02;
+  thrust_force = 0.03;
   reversing = false;
   reverse_force = -0.01;
   position = WrappedPoint(x, y);
@@ -23,10 +24,11 @@ Ship::Ship(float x, float y) : Object() {
   rotation_force = 0.3;
   friction = 0;
   alive = false;
-  score = 0;
+  score = kills = kills_this_life = 0;
   rotation_direction = NONE;
   respawn_time = time_until_respawn = 4000;
   shooting = false;
+  automatic_fire = false;
   time_until_next_shot = time_between_shots = 60;
   
   max_temperature = 100.0;
@@ -54,6 +56,7 @@ void Ship::respawn() {
   velocity = Point(0, 0);
   alive = true;
   shooting = false;
+  kills_this_life = 0;
   temperature = 0.0;
   explode();
 }
@@ -78,7 +81,7 @@ void Ship::kill_stop() {
 }
 
 bool Ship::is_removable() const {
-  return !alive && (lives == 0) && debris.empty() && bullets.empty();
+  return CompositeObject::is_removable() && (lives == 0) && bullets.empty();
 }
 
 bool Ship::is_alive() const {
@@ -101,26 +104,31 @@ void Ship::collide(Ship* first, Ship* second) {
   second->collide(first);
 }
 
-// void Ship::collide(Object *other) {
-//   std::list<Particle>::iterator b = bullets.begin();
-//   while(b != bullets.end()) {
-//     if (Object::collide(&*b)) {
-//       b = bullets.erase(b);
-//     } else {
-//       b++;
-//     }
-//   }
-//   
-//   std::list<Particle>::iterator mine = mines.begin();
-//   while(mine != mines.end()) {
-//     if(is_alive() && collide(*mine) || other->collide(&*mine)) {
-//       detonate(mine->position, mine->velocity);
-//       mine = mines.erase(mine);
-//     } else {
-//       mine++;
-//     }
-//   }
-// }
+int Ship::multiplier() const {
+  return kills_this_life / 10 + 1;
+}
+
+void Ship::collide_asteroid(Asteroid* other) {
+  std::list<Particle>::iterator b = bullets.begin();
+  while(b != bullets.end()) {
+    if((*b).collide(other)) {
+      score += other->get_value() * multiplier();
+      kills_this_life += 1;
+      kills += 1;
+      explode((*b).position, Point(0,0));
+      other->kill();
+      b = bullets.erase(b);
+    } else {
+      b++;
+    }
+  }
+  //do this second... for some reason
+  if(alive && other->collide(this)) {
+    detonate(position, velocity);
+    kill_stop();
+    other->kill();
+  }
+}
 
 void Ship::collide(Ship* other) {
   //TODO: Make ships collide with each other too
@@ -131,7 +139,9 @@ void Ship::collide(Ship* other) {
       b = bullets.erase(b);
     } else if(other->is_alive() && other->collide(*b)) {
       other->kill();
-      score += other->value;
+      kills_this_life += 1;
+      kills += 1;
+      score += other->value * multiplier();
       b = bullets.erase(b);
     } else {
       b++;
@@ -157,14 +167,6 @@ void Ship::detonate(Point const position, Point const velocity) {
   }
 }
 
-void Ship::explode() {
-  Point dir = (facing * radius * 1.2);
-  for(int i = rand()%60+20; i > 0; i--) {
-    dir.rotate(rand()%360*M_PI/180);
-    debris.push_back(Particle(position + dir, velocity + dir*0.000025*(rand()%300), rand()%3000));
-  }
-}
-
 /* Circle based collision detection */
 bool Ship::collide(Particle const particle, float proximity) const {
   return ((particle.position - position).magnitude_squared() < (radius_squared + proximity*proximity));
@@ -172,16 +174,20 @@ bool Ship::collide(Particle const particle, float proximity) const {
 
 void Ship::shoot(bool on) {
   shooting = on;
-  if(!on) {
+  if(shooting && time_until_next_shot < 0) {
+    time_until_next_shot = 0;
+  } else {
     time_until_next_shot = time_between_shots;
   }
 }
 
 void Ship::fire_shot() {
-  score -= 1;
   Point dir = Point(facing);
   dir.rotate((rand() / (float)RAND_MAX) * accuracy - accuracy / 2.0);
   bullets.push_back(Particle(gun(), dir*0.615 + velocity*0.99, 2600.0));
+  if(!automatic_fire) {
+    shoot(false);
+  }
 }
 
 void Ship::mine(bool on) {
@@ -226,8 +232,8 @@ void Ship::puts() {
 
 void Ship::step(float delta) {
   if(is_alive()) {
+    time_until_next_shot -= delta;
     if(shooting) {
-      time_until_next_shot -= delta;
       while(time_until_next_shot <= 0) {
         fire_shot();
         time_until_next_shot += time_between_shots;
@@ -262,8 +268,7 @@ void Ship::step(float delta) {
   if(is_alive()) {
     velocity = velocity - velocity * friction * delta;
   }
-  position += velocity * delta;
-  position.wrap();
+  CompositeObject::step(delta);
   
   std::list<Particle>::iterator b = bullets.begin();
   while(b != bullets.end()) {
@@ -282,16 +287,6 @@ void Ship::step(float delta) {
       mine = mines.erase(mine);
     } else {
       mine++;
-    }
-  }
-  
-  std::list<Particle>::iterator deb = debris.begin();
-  while(deb != debris.end()) {
-    deb->step(delta);
-    if(!deb->is_alive()) {
-      deb = debris.erase(deb);
-    } else {
-      deb++;
     }
   }
 }

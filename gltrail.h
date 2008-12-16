@@ -31,7 +31,8 @@ public:
     THRUSTING = 1,
     REVERSING = 2,
     LEFT = 4,
-    RIGHT = 8
+    RIGHT = 8,
+    ALWAYS = 16
   };
   
 private:

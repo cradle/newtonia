@@ -40,7 +40,8 @@ void GLTrail::step(float delta) {
       t++;
     }
   }
-  if(type & THRUSTING && ship->thrusting ||
+  if(type & ALWAYS ||
+     type & THRUSTING && ship->thrusting ||
      type & REVERSING && ship->reversing ||
      type & LEFT      && ship->rotation_direction == Ship::LEFT ||
      type & RIGHT     && ship->rotation_direction == Ship::RIGHT) {

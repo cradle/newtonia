@@ -2,6 +2,7 @@
 #define STATE_MANAGER_H
 
 #include "state.h"
+#include <map>
 
 class StateManager {
 public:
@@ -17,6 +18,8 @@ public:
 private:
   Point window;
   State *state;
+  
+  map<const char, bool> key_states;
 };
 
 #endif

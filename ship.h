@@ -1,15 +1,18 @@
 #ifndef SHIP_H
 #define SHIP_H
 
+#include "composite_object.h"
 #include "point.h"
 #include "particle.h"
 #include <list>
 
+class Asteroid;
+
 using namespace std;
 
-class Ship : public Object {
+class Ship : public CompositeObject {
   public:
-    Ship() : Object() {};
+    Ship() : CompositeObject() {};
     Ship(float x, float y);
     virtual ~Ship() {};
     
@@ -23,18 +26,19 @@ class Ship : public Object {
     void reverse(bool on = true);
     void shoot(bool on = true);
     void mine(bool on = true);
+    int multiplier() const;
 
     float heading() const;
     bool is_alive() const;
     virtual bool is_removable() const;
 
     static void collide(Ship *first, Ship *second);    
-    // void collide(Object *other);
+    void collide_asteroid(Asteroid *other);
     void collide(Ship *other);
     bool collide(Particle const particle, float proximity = 0) const;
 
     //TODO: make friends with glship
-    int score, lives;
+    int score, lives, kills, kills_this_life;
     //TODO: Make this go away, it's wrong 
     float radius_squared;
     bool thrusting, reversing;
@@ -46,7 +50,7 @@ class Ship : public Object {
     //TODO: somehow get around this public for glstation
     void kill_stop();
     
-    list<Particle> bullets, mines, debris;
+    list<Particle> bullets, mines;
     
     enum Rotation {
       LEFT = 1,
@@ -69,7 +73,6 @@ class Ship : public Object {
     
     void fire_shot();
     void lay_mine();
-    void explode();
     void respawn();
     void detonate(Point const position, Point const velocity);
     void kill();
@@ -78,13 +81,12 @@ class Ship : public Object {
     
     float heat_rate, retro_heat_rate, cool_rate;
     
-    float friction;
     // Forces
     float thrust_force, reverse_force, rotation_force;
     // Attributes
     float width, height, mass, accuracy, value;
     // States
-    bool shooting, mining, alive, respawns, first_life;
+    bool shooting, mining, alive, respawns, first_life, automatic_fire;
     
     //TODO: encapsulate
     friend class GLStation;

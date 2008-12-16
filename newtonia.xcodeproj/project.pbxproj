@@ -31,6 +31,7 @@
 		219B674C0EED0E8A002B7BAE /* state.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 219B674A0EED0E8A002B7BAE /* state.cpp */; };
 		219B67590EED40B7002B7BAE /* menu.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 219B67570EED40B7002B7BAE /* menu.cpp */; };
 		219B675D0EED4575002B7BAE /* state_manager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 219B675B0EED4575002B7BAE /* state_manager.cpp */; };
+		21DBAE5B0EF7B31500F97906 /* composite_object.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21DBAE590EF7B31500F97906 /* composite_object.cpp */; };
 		21F0BF3F0ED54EFE00F2BB9B /* gltrail.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */; };
 /* End PBXBuildFile section */
 
@@ -79,6 +80,8 @@
 		219B67580EED40B7002B7BAE /* menu.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = menu.h; sourceTree = "<group>"; };
 		219B675B0EED4575002B7BAE /* state_manager.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = state_manager.cpp; sourceTree = "<group>"; };
 		219B675C0EED4575002B7BAE /* state_manager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = state_manager.h; sourceTree = "<group>"; };
+		21DBAE590EF7B31500F97906 /* composite_object.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = composite_object.cpp; sourceTree = "<group>"; };
+		21DBAE5A0EF7B31500F97906 /* composite_object.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = composite_object.h; sourceTree = "<group>"; };
 		21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = gltrail.cpp; sourceTree = "<group>"; };
 		21F0BF3E0ED54EFE00F2BB9B /* gltrail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = gltrail.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -107,6 +110,8 @@
 		219282740ECD670E002D470F = {
 			isa = PBXGroup;
 			children = (
+				21DBAE590EF7B31500F97906 /* composite_object.cpp */,
+				21DBAE5A0EF7B31500F97906 /* composite_object.h */,
 				21042FF80EF47F0800B2097C /* asteroid.cpp */,
 				21042FF90EF47F0800B2097C /* asteroid.h */,
 				21042FFA0EF47F0800B2097C /* asteroid_drawer.cpp */,
@@ -232,6 +237,7 @@
 				210430000EF47F0800B2097C /* asteroid.cpp in Sources */,
 				210430010EF47F0800B2097C /* asteroid_drawer.cpp in Sources */,
 				210430030EF47F0800B2097C /* object.cpp in Sources */,
+				21DBAE5B0EF7B31500F97906 /* composite_object.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

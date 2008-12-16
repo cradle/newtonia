@@ -6,7 +6,7 @@
 #include "point.h"
 #include "glstarfield.h"
 #include "glstation.h"
-#include "object.h"
+#include "asteroid.h"
 #include <list>
 
 using namespace std;
@@ -14,7 +14,7 @@ using namespace std;
 class GLGame : public State {
 public:
   GLGame() {};
-  GLGame(float world_width, float world_height, int player_count, bool spawn_enemies = true);
+  GLGame(int player_count);
   ~GLGame();
 
   void draw();
@@ -37,12 +37,13 @@ private:
   int last_tick, time_until_next_step, num_frames, current_time, time_between_steps;
   bool running;
 
+  static const int default_world_width, default_world_height;
+  static const int default_num_asteroids;
   unsigned int gameworld;
   
   GLStarfield *starfield;
-  GLStation *station;
   list<GLShip*> *enemies, *players;
-  list<Object*> *objects;
+  list<Asteroid*> *objects;
 };
 
 #endif

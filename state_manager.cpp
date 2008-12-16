@@ -15,11 +15,15 @@ void StateManager::draw() {
 }
 
 void StateManager::keyboard(unsigned char key, int x, int y) {
-  state->keyboard(key, x, y);
+  if(!key_states[key]) {
+    key_states[key] = true;
+    state->keyboard(key, x, y); 
+  }
 }
 
 void StateManager::keyboard_up(unsigned char key, int x, int y) {
   state->keyboard_up(key, x, y);
+  key_states[key] = false;
 }
 
 void StateManager::tick(int delta) {
