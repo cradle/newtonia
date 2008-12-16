@@ -212,6 +212,10 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
     }
   }
 
+  if(players->size() == 1) {
+    Typer::draw(80, window.y()-30, "press 2 to join", 10);
+  }
+
   /* Draw the score */
   Typer::draw(window.x()/width_scale-40, window.y()-20, glship->ship->score, 20);
   if(glship->ship->multiplier() > 1) {
@@ -308,6 +312,11 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == '-') time_between_steps++;
   if (key == '0') time_between_steps = step_size;
   if (key == 'p') toggle_pause();
+  if (key == '2' && (players->size() == 1)) {
+    GLShip* object = new GLShip(world.x()*3/4,world.y()*3/4);
+    object->set_keys('j','l','i','/','k',',');
+    players->push_back(object);
+  }
   if (key == 27) request_state_change(new Menu());
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
