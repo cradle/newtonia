@@ -9,7 +9,7 @@ public:
   Asteroid();
   Asteroid(Asteroid const *mother);
   
-  void add_children(list<Asteroid*> *objects) const;
+  void add_children(list<Asteroid*> *objects);
 
   friend class AsteroidDrawer;
 
@@ -19,7 +19,7 @@ private:
   const static int minimum_radius;
   const static int max_rotation;
   
-  list<Particle> debris;
+  bool children_added;
 };
 
 #endif

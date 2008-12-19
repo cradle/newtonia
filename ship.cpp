@@ -47,6 +47,7 @@ float Ship::temperature_ratio() {
 void Ship::respawn() {
   if(first_life) {
     first_life = false;
+    position.wrap();
   } else {
     position = WrappedPoint();
   }
@@ -55,10 +56,12 @@ void Ship::respawn() {
   facing = Point(0, 1);
   velocity = Point(0, 0);
   alive = true;
+  invincible = true;
+  time_left_invincible = 1000;
   shooting = false;
   kills_this_life = 0;
   temperature = 0.0;
-  explode();
+  detonate();
 }
 
 void Ship::kill() {
@@ -108,7 +111,7 @@ int Ship::multiplier() const {
   return kills_this_life / 10 + 1;
 }
 
-void Ship::collide_asteroid(Asteroid* other) {
+bool Ship::collide_asteroid(Asteroid* other) {
   std::list<Particle>::iterator b = bullets.begin();
   while(b != bullets.end()) {
     if(other->alive && (*b).collide(other)) {
@@ -117,16 +120,19 @@ void Ship::collide_asteroid(Asteroid* other) {
       kills += 1;
       explode((*b).position, Point(0,0));
       other->kill();
+      other->explode();
       bullets.erase(b);
-      return;
+      return true;
     }
     b++;
   }
   if(alive && other->alive && other->collide(this)) {
-    detonate(position, velocity);
+    detonate();
     kill_stop();
     other->kill();
+    return true;
   }
+  return false;
 }
 
 void Ship::collide(Ship* other) {
@@ -158,6 +164,10 @@ void Ship::collide(Ship* other) {
   }
 }
 
+void Ship::detonate() {
+  detonate(position, velocity);
+}
+
 void Ship::detonate(Point const position, Point const velocity) {
   Point dir = (facing * radius * 1.2);
   for(int i = rand()%50+25; i > 0; i--) {
@@ -168,6 +178,7 @@ void Ship::detonate(Point const position, Point const velocity) {
 
 /* Circle based collision detection */
 bool Ship::collide(Particle const particle, float proximity) const {
+  if(invincible) return false;
   return ((particle.position - position).magnitude_squared() < (radius_squared + proximity*proximity));
 }
 
@@ -231,6 +242,12 @@ void Ship::puts() {
 
 void Ship::step(float delta) {
   if(is_alive()) {
+    if(invincible) {
+      time_left_invincible -= delta;
+      if(time_left_invincible < 0) {
+        invincible = false;
+      }
+    }
     time_until_next_shot -= delta;
     if(shooting) {
       while(time_until_next_shot <= 0) {
@@ -260,7 +277,7 @@ void Ship::step(float delta) {
     temperature = 0;
   if(temperature > explode_temperature && alive) {
     kill();
-    detonate(position, velocity);
+    detonate();
   }
 
   velocity += acceleration * delta;

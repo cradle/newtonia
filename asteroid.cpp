@@ -15,8 +15,8 @@ Asteroid::Asteroid() : CompositeObject() {
   radius = rand()%radius_variation + minimum_radius;
   rotation_speed = (rand()%max_rotation-max_rotation/2)/radius;
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
-  value = radius * velocity.magnitude();
-  value *= value;
+  value = (radius_variation + minimum_radius) - radius;
+  children_added = false;
 }
 
 Asteroid::Asteroid(Asteroid const *mother) {
@@ -24,12 +24,15 @@ Asteroid::Asteroid(Asteroid const *mother) {
   rotation_speed = (rand()%6-3)/radius;
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
   position = mother->position + velocity.normalized() * radius;
-  value = radius * velocity.magnitude();
-  value *= value;
+  value = (radius_variation + minimum_radius) - radius;
   value += mother->value;
+  children_added = false;
 }
 
-void Asteroid::add_children(list<Asteroid*> *roids) const {
+void Asteroid::add_children(list<Asteroid*> *roids) {
+  if(children_added) return;
+  children_added = true;
+  
   if(radius/2.0f < minimum_radius) {
     // explode good and proper
   } else {

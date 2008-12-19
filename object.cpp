@@ -16,7 +16,6 @@ Object::Object() :
 Object::Object(WrappedPoint position, Point velocity) : 
   position(position), velocity(velocity) {
   Object();
-  //position(WrappedPoint(position)), velocity(Point(velocity)),
 }
 
 bool Object::is_removable() const {

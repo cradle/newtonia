@@ -68,6 +68,16 @@ void isVisible(int state) {
   }
 }
 
+void init(int &argc, char** argv, float width, float height);
+
+int main(int argc, char** argv) {
+  init(argc, argv, 800, 600);
+  game = new StateManager();
+  glutMainLoop();
+  delete game;
+  return EXIT_SUCCESS;
+}
+
 void init(int &argc, char** argv, float width, float height) {
   glutInit(&argc, argv);
   glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
@@ -88,12 +98,4 @@ void init(int &argc, char** argv, float width, float height) {
   glutKeyboardUpFunc(keyboard_up);
   glutReshapeFunc(resize);
   glutVisibilityFunc(isVisible);
-}
-
-int main(int argc, char** argv) {
-  init(argc, argv, 800, 600);
-  game = new StateManager();
-  glutMainLoop();
-  delete game;
-  return EXIT_SUCCESS;
 }

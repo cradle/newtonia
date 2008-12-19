@@ -149,7 +149,8 @@ void GLShip::draw_respawn_timer() const {
         Typer::draw(-5,1,"READY");
       }
     } else {
-      Typer::draw(-9,0,"Game Over");
+      Typer::draw_centered(0,4,"GameOver",2);
+      Typer::draw_centered(0,-3,ship->score,2);
     }
   }
 }
@@ -220,12 +221,22 @@ void GLShip::draw_ship(bool minimap) const {
     glPopMatrix();
 	}
 	
+	if(ship->invincible) {
+    glLineWidth(3.5f);
+    glColor4f(color[0], color[1], color[2], 0.4f);
+    glBegin(GL_LINE_LOOP);
+    glCallList(body);
+  	glEnd();
+  	//TODO:FIX: make this happen every step, so everything can set customised
+    glLineWidth(1.2f);
+  }
+  
   draw_body();
 }
 
 void GLShip::draw_body() const {	
-  glColor3f(0,0,0);
   glBegin(GL_POLYGON);
+  glColor3f(0.0f,0.0f,0.0f);
   glCallList(body);
 	glEnd();
   
@@ -280,3 +291,4 @@ void GLShip::draw_mines() const {
   	glEnd();
   }
 }
+

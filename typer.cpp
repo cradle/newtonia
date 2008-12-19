@@ -13,6 +13,15 @@
 
 float Typer::colour[] = {0.0f,1.0f,0.0f};
 
+void Typer::draw_centered(float x, float y, int number, float size) {
+  int length = 1, temp = number/10;
+  while(temp != 0) {
+    temp /= 10;
+    length++;
+  }
+  draw(x+length*size/2.0f, y, number, size);
+}
+
 void Typer::draw(float x, float y, int number, float size) {
   bool negative = (number < 0);
   int i = 0;
@@ -22,37 +31,37 @@ void Typer::draw(float x, float y, int number, float size) {
   }
 
   do {
-    draw(x-i*size-size*i*padding_proportion(), y, char((number % 10)+48), size);
+    draw(x-i*size-size*i, y, char((number % 10)+48), size);
     i++;
     number = number / 10;
   } while(number != 0);
 
   if(negative) {
-    draw(x-size*i-size*i*padding_proportion(),y,'-',size);
+    draw(x-size*i-size*i,y,'-',size);
   }
-}
-
-float Typer::padding_proportion() {
-  return 1.0;
 }
 
 void Typer::draw_lives(float x, float y, GLShip *ship, float size) {
   for(int i = 0; i < ship->ship->lives; i++) {
-    draw_life(x-i*size-size*i*padding_proportion(), y, ship, size);
+    draw_life(x-i*size-size*i, y, ship, size);
   }
+}
+
+void Typer::draw_centered(float x, float y, const char * text, float size) {
+  draw(x-size*strlen(text), y, text, size);
 }
 
 void Typer::draw(float x, float y, const char * text, float size) {
   for(unsigned int i = 0; i < strlen(text); i++) {
-    draw(x+i*size+size*i*padding_proportion(), y, text[i], size);
+    draw(x+i*size+size*i, y, text[i], size);
   }
 }
 
 void Typer::pre_draw(float x, float y, float size) {
   glPushMatrix();
   glColor3f(colour[0], colour[1], colour[2]);
-  glTranslatef((int)x,(int)(y-size-padding_proportion()*size),0);
-  glScalef((int)size, (int)size, 0);
+  glTranslatef(x,y-2*size,0);
+  glScalef(size, size, 0);
 }
 
 void Typer::post_draw() {

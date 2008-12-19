@@ -33,7 +33,7 @@ class Ship : public CompositeObject {
     virtual bool is_removable() const;
 
     static void collide(Ship *first, Ship *second);    
-    void collide_asteroid(Asteroid *other);
+    bool collide_asteroid(Asteroid *other);
     void collide(Ship *other);
     bool collide(Particle const particle, float proximity = 0) const;
 
@@ -67,6 +67,10 @@ class Ship : public CompositeObject {
     // Timings
     int respawn_time, time_until_respawn;
     int time_until_next_shot, time_between_shots;
+    
+    //FIX: friends
+    int time_left_invincible;
+    bool invincible;
 
   protected:
     WrappedPoint gun() const;
@@ -74,6 +78,7 @@ class Ship : public CompositeObject {
     void fire_shot();
     void lay_mine();
     void respawn();
+    void detonate();
     void detonate(Point const position, Point const velocity);
     void kill();
 

@@ -100,17 +100,15 @@ void GLGame::tick(int delta) {
       (*oi)->step(step_size);
       
       for(o = players->begin(); o != players->end(); o++) {
-        (*o)->ship->collide_asteroid(*oi);
+        if((*o)->ship->collide_asteroid(*oi)) {
+          (*oi)->add_children(objects);
+        }
       }
     }
     
     oi = objects->begin();
     while(oi != objects->end()) {
-      // for(ol = oi; ol != objects->end(); ol++) {
-      //   (*oi)->collide((*ol));
-      // }
       if((*oi)->is_removable()) {
-        (*oi)->add_children(objects);
         delete *oi;
         oi = objects->erase(oi);
       } else {
@@ -157,7 +155,7 @@ void GLGame::draw_objects(bool minimap) const {
   std::list<Asteroid*>::iterator oi;
   for(oi = objects->begin(); oi != objects->end(); oi++) {
     //TODO: make AsteroidController (???), which joins model and view together
-    AsteroidDrawer::draw(*oi);
+    AsteroidDrawer::draw(*oi, minimap);
   }
   
   std::list<GLShip*>::iterator o;
