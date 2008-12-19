@@ -29,7 +29,8 @@ Ship::Ship(float x, float y) : CompositeObject() {
   respawn_time = time_until_respawn = 4000;
   shooting = false;
   automatic_fire = false;
-  time_until_next_shot = time_between_shots = 60;
+  time_until_next_shot = 0;
+  time_between_shots = 300;
 
   max_temperature = 100.0;
   temperature = 0.0;
@@ -179,7 +180,7 @@ void Ship::detonate(Point const position, Point const velocity) {
 /* Circle based collision detection */
 bool Ship::collide(Particle const particle, float proximity) const {
   if(invincible) return false;
-  return ((particle.position - position).magnitude_squared() < (radius_squared + proximity*proximity));
+  return ((particle.position - position).magnitude_squared() < ((radius+proximity)*(radius+proximity)));
 }
 
 void Ship::shoot(bool on) {
