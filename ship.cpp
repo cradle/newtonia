@@ -30,7 +30,7 @@ Ship::Ship(float x, float y) : CompositeObject() {
   shooting = false;
   automatic_fire = false;
   time_until_next_shot = 0;
-  time_between_shots = 300;
+  time_between_shots = 1000;
 
   max_temperature = 100.0;
   temperature = 0.0;
@@ -184,12 +184,10 @@ bool Ship::collide(Particle const particle, float proximity) const {
 }
 
 void Ship::shoot(bool on) {
-  shooting = on;
-  if(shooting && time_until_next_shot < 0) {
+  if (on && time_until_next_shot < 0){
     time_until_next_shot = 0;
-  } else {
-    time_until_next_shot = time_between_shots;
   }
+  shooting = on;
 }
 
 void Ship::fire_shot() {
