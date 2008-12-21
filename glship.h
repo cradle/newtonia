@@ -46,7 +46,7 @@ protected:
   float critical_temperature() const;
   float explode_temperature() const;
   
-  GLuint body, jets, repulsors;
+  GLuint body, jets, repulsors, force_shield;
   
   float color[3];
   

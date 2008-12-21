@@ -2,6 +2,7 @@
 #include "gltrail.h"
 #include "ship.h"
 #include "typer.h"
+#include <math.h>
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -48,6 +49,19 @@ GLShip::GLShip(int x, int y) {
 	glEnd();
   glEndList();
   
+  force_shield = glGenLists(1);
+  glNewList(force_shield, GL_COMPILE);
+  glBegin(GL_POLYGON);
+  int number_of_segments = 10;
+  float segment_size = 360.0/number_of_segments, d;
+  float shield_size = 2.5;
+  for (float i = 0.0; i < 360.0; i+= segment_size) {
+    d = i*M_PI/180;
+    glVertex2f(cos(d)*shield_size, sin(d)*shield_size);
+  }
+  glEnd();
+  glEndList();
+  
   repulsors = glGenLists(1);
   glNewList(repulsors, GL_COMPILE);
   glColor3f( 1.0f, 1.0f, 1.0f );
@@ -65,6 +79,7 @@ GLShip::~GLShip() {
   glDeleteLists(body, 1);
   glDeleteLists(jets, 1);
   glDeleteLists(repulsors, 1);
+  glDeleteLists(force_shield, 1);
   delete ship;
   while(!trails.empty()) {
     delete trails.back();
@@ -220,18 +235,13 @@ void GLShip::draw_ship(bool minimap) const {
     glCallList(repulsors);
     glPopMatrix();
 	}
-	
-	if(ship->invincible) {
-    glLineWidth(3.5f);
-    glColor4f(color[0], color[1], color[2], 0.4f);
-    glBegin(GL_LINE_LOOP);
-    glCallList(body);
-  	glEnd();
-  	//TODO:FIX: make this happen every step, so everything can set customised
-    glLineWidth(1.2f);
-  }
   
   draw_body();
+  
+	if(ship->invincible) {
+    glColor4f( color[0], color[1], color[2], 0.3f );
+    glCallList(force_shield);
+  }
 }
 
 void GLShip::draw_body() const {	
