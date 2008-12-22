@@ -174,12 +174,19 @@ void GLGame::draw_objects(bool minimap) const {
 void GLGame::draw(void) {
   glClear(GL_COLOR_BUFFER_BIT);
 
+  float q = 0.1;
+  glAccum(GL_MULT, q);
+  glAccum(GL_ACCUM, 1-q);
+  glAccum(GL_RETURN, 1.0);
+
   //TODO: Don't hardcode this like this
   draw_world(players->front(), true);
   if (!is_single()) {
     draw_world(players->back(), false);
   } 
   draw_map();
+  
+  glFlush();
 }
 
 void GLGame::draw_world(GLShip *glship, bool primary) const {
