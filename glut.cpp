@@ -52,6 +52,11 @@ void resize(int width, int height) {
   game->resize(width, height);
 }
 
+void mouse_move(int x, int y) {
+  game->mouse_move(x, y);
+  glutWarpPointer(glutGet(GLUT_WINDOW_WIDTH)/2.0f,glutGet(GLUT_WINDOW_HEIGHT)/2.0f);
+}
+
 int last_tick_time;
 void tick() {
   int current_time = glutGet(GLUT_ELAPSED_TIME);
@@ -97,5 +102,7 @@ void init(int &argc, char** argv, float width, float height) {
   glutKeyboardFunc(keyboard);
   glutKeyboardUpFunc(keyboard_up);
   glutReshapeFunc(resize);
+  glutMotionFunc(mouse_move);
+  glutPassiveMotionFunc(mouse_move);
   glutVisibilityFunc(isVisible);
 }

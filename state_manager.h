@@ -10,6 +10,7 @@ public:
   ~StateManager();
   
   void draw();
+  void mouse_move(int x, int y);
   void keyboard(unsigned char key, int x, int y);
   void keyboard_up(unsigned char key, int x, int y);
   void tick(int delta);

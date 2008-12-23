@@ -24,13 +24,14 @@ void Menu::draw() {
   
   starfield.draw_rear(viewpoint);
   
-  typer.draw(-50*7,  350, "Newtonia", 50);
-  typer.draw(-30*7,  150, "1 - Solo", 30);
-  typer.draw(-30*7,   25, "2 - Duet", 30);
-  typer.draw(0,-260,"a",10);
-  typer.draw(-15*18, -300, "Glenn Francis Murray", 15);
-  typer.draw(-10*9,-350,"production",10);
-  typer.draw(-10*13.5, -420, "Copyright 2008", 10);
+  Typer::draw_centered(0, 200, "Newtonia", 75);
+  Typer::draw_centered(0,-260,"a",10);
+  Typer::draw_centered(0, -300, "Glenn Francis Murray", 15);
+  Typer::draw_centered(0,-350,"production",10);
+  Typer::draw_centered(0, -420, "Copyright 2008", 10);
+
+  Typer::draw_centered(-window.x()/2, window.y()-30, "press 1 to for 1p", 10);
+  Typer::draw_centered( window.x()/2, window.y()-30, "press 2 to for 2p", 10);
 
   starfield.draw_front(viewpoint);
 }
@@ -46,9 +47,12 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 }
 
 void Menu::keyboard_up (unsigned char key, int x, int y) {
-  if (key == '1') {
+  switch(key) {
+  case '1':
     request_state_change(new GLGame(1));
-  } else if (key == '2') {
-    request_state_change(new GLGame(2));  
+    break;
+  case '2':
+    request_state_change(new GLGame(2));
+    break;
   }
 }

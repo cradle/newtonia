@@ -18,3 +18,7 @@ void State::request_state_change(State* next) {
   next_state = next;
   finished = true;
 }
+
+void State::mouse_move(int x, int y) {
+  std::cout << x << ", " << y << std::endl;
+}

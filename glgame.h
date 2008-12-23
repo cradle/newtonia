@@ -14,7 +14,7 @@ using namespace std;
 class GLGame : public State {
 public:
   GLGame() {};
-  GLGame(int player_count);
+  GLGame(int player_count, bool station = false);
   ~GLGame();
 
   void draw();
@@ -42,6 +42,7 @@ private:
   unsigned int gameworld;
   
   GLStarfield *starfield;
+  GLStation *station;
   list<GLShip*> *enemies, *players;
   list<Asteroid*> *objects;
 };

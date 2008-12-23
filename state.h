@@ -12,6 +12,7 @@ public:
   virtual ~State() {};
   
   virtual void draw() = 0;
+  virtual void mouse_move(int x, int y);
   virtual void keyboard(unsigned char key, int x, int y) = 0;
   virtual void keyboard_up(unsigned char key, int x, int y) = 0;
   virtual void tick(int delta) = 0;

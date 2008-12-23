@@ -26,7 +26,7 @@ const int GLGame::default_world_width = 5000;
 const int GLGame::default_world_height = 5000;
 const int GLGame::default_num_asteroids = 50;
 
-GLGame::GLGame(int player_count) : 
+GLGame::GLGame(int player_count, bool has_station) : 
   State(), 
   world(Point(default_world_width, default_world_height)), 
   running(true) {
@@ -56,9 +56,18 @@ GLGame::GLGame(int player_count) :
     players->push_back(object);
   }
 
-  for(int i = 0; i < default_num_asteroids*player_count; i++) {
+  int num_asteroids;
+  if(has_station) {
+    num_asteroids = player_count * 2;
+  } else {
+    num_asteroids = default_num_asteroids * player_count;
+  }
+  for(int i = 0; i < num_asteroids; i++) {
     objects->push_back(new Asteroid());
   }
+  
+  //GLstation uses players.size() to determine number of ships in first wave
+  station = has_station ? (new GLStation(enemies, players)) : NULL;
 }
 
 GLGame::~GLGame() {
@@ -75,6 +84,8 @@ GLGame::~GLGame() {
   }
   delete enemies;
   delete starfield;
+  if(station != NULL)
+    delete station;
 
   glDeleteLists(gameworld, 1);
 }
@@ -95,10 +106,12 @@ void GLGame::tick(int delta) {
 
   std::list<GLShip*>::iterator o, o2;
   while(time_until_next_step <= 0) {
+    if(station != NULL) station->step(step_size); 
+    
     std::list<Asteroid*>::iterator oi, ol;
     for(oi = objects->begin(); oi != objects->end(); oi++) {
       (*oi)->step(step_size);
-      
+     
       for(o = players->begin(); o != players->end(); o++) {
         if((*o)->ship->collide_asteroid(*oi)) {
           (*oi)->add_children(objects);
@@ -169,6 +182,8 @@ void GLGame::draw_objects(bool minimap) const {
     (*o)->draw(minimap);
     glPopMatrix();
   }
+  
+  if(station != NULL) station->draw(minimap);
 }
 
 void GLGame::draw(void) {
