@@ -4,16 +4,15 @@
 #include <iostream>
 #include "point.h"
 
-Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Car(x,y), targets(targets) {
+Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Ship(x,y,false), targets(targets) {
   thrust_force = 0.135 + difficulty*0.00025 + rand()%50/10000.0;
   rotation_force = 0.15 + difficulty*0.01 + rand()%10/1000.0;
+  automatic_fire = true;
   time_until_next_shot = time_between_shots = 200;
   burst_time = burst_time_left = difficulty*25 + 50;
   time_between_bursts = time_until_next_burst = rand()%100 + (5000/(difficulty+1));
   accuracy = 1.0/(difficulty+10.0);
-  thrust(true);
   value = 50 + difficulty * 50;
-  explode();
   lives = 1;
   heat_rate = 0.0;
   cool_rate = 1.0;
@@ -27,6 +26,11 @@ Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Car(
 
 Enemy::~Enemy() {
   delete targets;
+}
+
+void Enemy::reset() {
+  Ship::reset();
+  thrust(true);
 }
 
 void Enemy::lock_nearest_target() {
@@ -70,7 +74,9 @@ void Enemy::burst_shooting_step(float delta) {
 }
 
 void Enemy::step(float delta) {
-  Car::step(delta);
+  cout << ":" << Object::is_removable() << Ship::is_removable() << Enemy::is_removable() << this->is_removable() << endl;
+  cout << !is_alive() << " " << debris.empty() << " " <<  lives << " " << bullets.empty() << endl;
+  Ship::step(delta);
   if(is_alive()) {
     velocity = velocity - velocity * 0.0005 * delta;
     

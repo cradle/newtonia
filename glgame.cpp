@@ -113,6 +113,7 @@ void GLGame::tick(int delta) {
       (*oi)->step(step_size);
      
       for(o = players->begin(); o != players->end(); o++) {
+        if(station != NULL) station->collide((*o)->ship);
         if((*o)->ship->collide_asteroid(*oi)) {
           (*oi)->add_children(objects);
         }
@@ -307,6 +308,11 @@ void GLGame::draw_map() const {
   glPushMatrix();
   draw_objects(true);
   glPopMatrix();
+  
+  /* DRAW THE LEVEL */
+  if(station != NULL) {
+    Typer::draw(world.x()-1500, -world.y()+2000, station->level(), 800);
+  }
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {

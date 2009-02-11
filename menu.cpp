@@ -54,5 +54,11 @@ void Menu::keyboard_up (unsigned char key, int x, int y) {
   case '2':
     request_state_change(new GLGame(2));
     break;
+  case '3':
+    request_state_change(new GLGame(1, true));
+    break;
+  case '4':
+    request_state_change(new GLGame(2, true));
+    break;
   }
 }

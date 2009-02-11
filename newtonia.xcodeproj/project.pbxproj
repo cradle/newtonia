@@ -24,7 +24,6 @@
 		2150E2FB0ECD831900D89C28 /* glut.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2F90ECD831900D89C28 /* glut.cpp */; };
 		215ED6A50ECDB80400E0778A /* glgame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 215ED6A30ECDB80400E0778A /* glgame.cpp */; };
 		21696BCD0EDD2991006997A8 /* glstation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21696BCB0EDD2991006997A8 /* glstation.cpp */; };
-		2180D3920ED14D100050ED72 /* car.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2180D38E0ED14D100050ED72 /* car.cpp */; };
 		2180D3930ED14D100050ED72 /* glcar.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2180D3900ED14D100050ED72 /* glcar.cpp */; };
 		218BF7DE0ED5645600C9FE0C /* glstarfield.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 218BF7DC0ED5645600C9FE0C /* glstarfield.cpp */; };
 		219185D00EE684C10004C960 /* Newtonia-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 219185CF0EE684C10004C960 /* Newtonia-Info.plist */; };
@@ -67,8 +66,6 @@
 		215ED6A40ECDB80400E0778A /* glgame.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glgame.h; sourceTree = "<group>"; };
 		21696BCB0EDD2991006997A8 /* glstation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glstation.cpp; sourceTree = "<group>"; };
 		21696BCC0EDD2991006997A8 /* glstation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glstation.h; sourceTree = "<group>"; };
-		2180D38E0ED14D100050ED72 /* car.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = car.cpp; sourceTree = "<group>"; };
-		2180D38F0ED14D100050ED72 /* car.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = car.h; sourceTree = "<group>"; };
 		2180D3900ED14D100050ED72 /* glcar.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glcar.cpp; sourceTree = "<group>"; };
 		2180D3910ED14D100050ED72 /* glcar.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glcar.h; sourceTree = "<group>"; };
 		218BF7DC0ED5645600C9FE0C /* glstarfield.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glstarfield.cpp; sourceTree = "<group>"; };
@@ -139,9 +136,7 @@
 				218BF7DD0ED5645600C9FE0C /* glstarfield.h */,
 				21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */,
 				21F0BF3E0ED54EFE00F2BB9B /* gltrail.h */,
-				2180D38E0ED14D100050ED72 /* car.cpp */,
 				2119FFEE0EE16F2600DD218B /* icon.icns */,
-				2180D38F0ED14D100050ED72 /* car.h */,
 				2180D3900ED14D100050ED72 /* glcar.cpp */,
 				2180D3910ED14D100050ED72 /* glcar.h */,
 				215ED6A30ECDB80400E0778A /* glgame.cpp */,
@@ -222,7 +217,6 @@
 				2150E2F30ECD6A6E00D89C28 /* wrapped_point.cpp in Sources */,
 				2150E2FB0ECD831900D89C28 /* glut.cpp in Sources */,
 				215ED6A50ECDB80400E0778A /* glgame.cpp in Sources */,
-				2180D3920ED14D100050ED72 /* car.cpp in Sources */,
 				2180D3930ED14D100050ED72 /* glcar.cpp in Sources */,
 				21F0BF3F0ED54EFE00F2BB9B /* gltrail.cpp in Sources */,
 				218BF7DE0ED5645600C9FE0C /* glstarfield.cpp in Sources */,

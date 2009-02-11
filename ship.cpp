@@ -6,40 +6,59 @@
 
 using namespace std;
 
-Ship::Ship(float x, float y) : CompositeObject() {
+Ship::Ship(float x, float y, bool no_friction) : CompositeObject() {
+  alive = false;
+  first_life = true;
+  score = 0;
+  kills = 0;
+  position = WrappedPoint(x, y);
+  init(no_friction);
+}
+
+
+void Ship::init(bool no_friction) {
   mass = 100.0;
   value = 1000000;
   accuracy = 0.1;
-  first_life = true;
   lives = 6;
   width = height = radius = 10.0;
-  radius_squared = radius*radius;
-  thrusting = false;
-  thrust_force = 0.03;
-  reversing = false;
-  reverse_force = -0.01;
-  position = WrappedPoint(x, y);
-  facing = Point(0, 1);
-  velocity = Point(0, 0);
-  rotation_force = 0.3;
-  friction = 0;
-  alive = false;
-  score = kills = kills_this_life = 0;
-  rotation_direction = NONE;
+  radius_squared = radius * radius;
   respawn_time = time_until_respawn = 4000;
-  shooting = false;
   automatic_fire = false;
-  time_until_next_shot = 0;
-  time_between_shots = 1000;
-
+  time_between_shots = 100;
   max_temperature = 100.0;
-  temperature = 0.0;
   critical_temperature = max_temperature * 0.80;
   explode_temperature = max_temperature * 1.2;
-  heat_rate = 0.060;
-  retro_heat_rate = heat_rate * -reverse_force / thrust_force;
-  cool_rate = retro_heat_rate * 0.85;
+  
+  if(no_friction) {
+    friction = 0;
+    reverse_force = -0.01;
+    thrust_force = 0.03;
+    rotation_force = 0.3;
+    heat_rate = 0.060;
+    retro_heat_rate = heat_rate * -reverse_force / thrust_force;
+    cool_rate = retro_heat_rate * 0.85;	
+  } else {
+    friction = 0.001;
+    reverse_force = -0.05;
+    thrust_force = 0.09;
+    rotation_force = 0.2;
+    heat_rate = 0.035;
+    retro_heat_rate = heat_rate * -reverse_force / thrust_force;
+    cool_rate = retro_heat_rate * 0.9;
+  }
+  
+  reset();
 }
+  
+  /* Car Stats */
+  // friction = 0.001;
+  // reverse_force = -0.05;
+  // thrust_force = 0.09;
+  // rotation_force = 0.2;
+  // heat_rate = 0.035;
+  // retro_heat_rate = heat_rate * -reverse_force / thrust_force;
+  // cool_rate = retro_heat_rate * 0.9;
 
 float Ship::temperature_ratio() {
   return temperature/max_temperature;
@@ -52,21 +71,28 @@ void Ship::respawn() {
   } else {
     position = WrappedPoint();
   }
-  first_life = false;
   lives -= 1;
-  facing = Point(0, 1);
-  velocity = Point(0, 0);
   alive = true;
   invincible = true;
   time_left_invincible = 1000;
-  shooting = false;
-  kills_this_life = 0;
-  temperature = 0.0;
+  reset();
   detonate();
 }
 
+void Ship::reset() {
+  facing = Point(0, 1);
+  velocity = Point(0, 0);  
+  thrusting = false;
+  reversing = false;
+  shooting = false;
+  rotation_direction = NONE;
+  time_until_next_shot = 0;
+  temperature = 0.0;
+  kills_this_life = 0;
+}
+
 void Ship::kill() {
-  if(is_alive()) {
+  if(is_alive() && !invincible) {
     alive = false;
     thrusting = false;
     reversing = false;
@@ -78,7 +104,7 @@ void Ship::kill() {
 }
 
 void Ship::kill_stop() {
-  if(is_alive()) {
+  if(is_alive() && !invincible) {
     velocity.zero();
     kill();
   }
@@ -179,7 +205,6 @@ void Ship::detonate(Point const position, Point const velocity) {
 
 /* Circle based collision detection */
 bool Ship::collide(Particle const particle, float proximity) const {
-  if(invincible) return false;
   return ((particle.position - position).magnitude_squared() < ((radius+proximity)*(radius+proximity)));
 }
 

@@ -109,7 +109,6 @@ void GLStation::draw(bool minimap) const {
 void GLStation::step(float delta) {
   outer_rotation += outer_rotation_speed * delta;
   inner_rotation += inner_rotation_speed * delta;
-
   if(deploying) {
     time_until_next_ship -= delta;
     if(ships_left_to_deploy == 0) {
@@ -136,5 +135,7 @@ void GLStation::step(float delta) {
     wave++;
     time_until_next_ship = 0.0;
     ships_left_to_deploy = ships_this_wave;
+  } else {
+    cout << objects->size() << endl;
   }
 }

@@ -19,7 +19,7 @@ Object::Object(WrappedPoint position, Point velocity) :
 }
 
 bool Object::is_removable() const {
-  return !is_alive();
+  return !alive;
 }
   
 void Object::step(int delta) {

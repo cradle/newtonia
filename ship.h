@@ -13,7 +13,7 @@ using namespace std;
 class Ship : public CompositeObject {
   public:
     Ship() : CompositeObject() {};
-    Ship(float x, float y);
+    Ship(float x, float y, bool no_friction = true);
     virtual ~Ship() {};
     
     void puts(); //TODO: convert into iostream operator
@@ -78,6 +78,8 @@ class Ship : public CompositeObject {
     void fire_shot();
     void lay_mine();
     void respawn();
+    void init(bool no_friction);
+    virtual void reset();
     void detonate();
     void detonate(Point const position, Point const velocity);
     void kill();

@@ -20,5 +20,5 @@ void State::request_state_change(State* next) {
 }
 
 void State::mouse_move(int x, int y) {
-  std::cout << x << ", " << y << std::endl;
+  // std::cout << x << ", " << y << std::endl;
 }

@@ -2,15 +2,16 @@
 #define ENEMY_H
 
 #include <list>
-#include "car.h"
+#include "ship.h"
 
-class Enemy : public Car {
+class Enemy : public Ship {
   public:
     Enemy() {};
     Enemy(float x, float y, std::list<Ship*> * targets, int difficulty = 0);
     ~Enemy();
     
     void step(float delta);
+    void reset();
     
   private:
     void lock_step(float delta);

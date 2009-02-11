@@ -2,7 +2,7 @@
 #define GL_CAR_H
 
 #include "glship.h"
-#include "car.h"
+#include "ship.h"
 
 class GLCar : public GLShip {
 public:
