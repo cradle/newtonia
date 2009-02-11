@@ -100,7 +100,5 @@ void init(int &argc, char** argv, float width, float height) {
   glutKeyboardFunc(keyboard);
   glutKeyboardUpFunc(keyboard_up);
   glutReshapeFunc(resize);
-  glutMotionFunc(mouse_move);
-  glutPassiveMotionFunc(mouse_move);
   glutVisibilityFunc(isVisible);
 }
