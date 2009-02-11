@@ -21,7 +21,7 @@ void Ship::init(bool no_friction) {
   value = 1000000;
   accuracy = 0.1;
   lives = 6;
-  width = height = radius = 10.0;
+  width = height = radius = 13;
   radius_squared = radius * radius;
   respawn_time = time_until_respawn = 4000;
   automatic_fire = false;

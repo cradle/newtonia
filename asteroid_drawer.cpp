@@ -23,6 +23,11 @@ void AsteroidDrawer::draw(Asteroid const *object, bool is_minimap) {
     glScalef(object->radius, object->radius, 1.0f);
     glRotatef(object->rotation, 0.0f, 0.0f, 1.0f);
     glColor3f(0.0f, 0.0f, 0.0f);
+    if(is_minimap) {
+      glLineWidth(1.0f);
+    } else {
+      glLineWidth(2.5f);
+    }
     glBegin(GL_POLYGON);
     float segment_size = 360.0/number_of_segments, d;
     for (float i = 0.0; i < 360.0; i+= segment_size) {
@@ -45,6 +50,7 @@ void AsteroidDrawer::draw(Asteroid const *object, bool is_minimap) {
 }
 
 void AsteroidDrawer::draw_debris(list<Particle> debris) {
+  glPointSize(3.0f);
   glBegin(GL_POINTS);
   for(list<Particle>::iterator d = debris.begin(); d != debris.end(); d++) {
     glColor4f(1.0f, 1.0f, 1.0f, rand()/(1.0f*(float)RAND_MAX) * d->aliveness()/2.0f + d->aliveness()/2.0f);

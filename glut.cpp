@@ -89,8 +89,6 @@ void init(int &argc, char** argv, float width, float height) {
   glutInitWindowSize(width, height);
   glutCreateWindow("Newtonia");
 
-  glPointSize(2.5f);
-  glLineWidth(1.2f);
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glEnable(GL_LINE_SMOOTH);
@@ -102,7 +100,7 @@ void init(int &argc, char** argv, float width, float height) {
   glutKeyboardFunc(keyboard);
   glutKeyboardUpFunc(keyboard_up);
   glutReshapeFunc(resize);
-  //glutMotionFunc(mouse_move);
-  //glutPassiveMotionFunc(mouse_move);
+  glutMotionFunc(mouse_move);
+  glutPassiveMotionFunc(mouse_move);
   glutVisibilityFunc(isVisible);
 }

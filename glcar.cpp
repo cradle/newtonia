@@ -41,7 +41,7 @@ GLCar::GLCar(float x, float y) {
     glVertex2f( 0.8f,-1.0f);				// Bottom
     glVertex2f( 0.4f,-1.75f);				// Left
     glVertex2f( 0.0f,-1.0f);				// Top
-  glEnd();		
+  glEnd();
   glEndList();
   
   right_jet = glGenLists(1);

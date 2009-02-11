@@ -31,7 +31,6 @@ GLShip::GLShip(int x, int y) {
   
   body = glGenLists(1);
   glNewList(body, GL_COMPILE);
-  // glVertex2fv(point);
 	glVertex2f( 0.0f, 1.0f);
 	glVertex2f(-0.8f,-1.0f);
 	glVertex2f( 0.0f,-0.5f);
@@ -218,11 +217,15 @@ void GLShip::draw_ship(bool minimap) const {
   
   if(minimap) {
     glColor3fv(color);
+    glPointSize(5.0f);
     glBegin(GL_POINTS);
     glVertex2f(0.0f, 0.0f);
     glEnd();
     return;
   }
+  
+  glPointSize(2.5f);
+  glLineWidth(1.8f);
 
 	if(ship->thrusting) {
     glCallList(jets);
@@ -258,6 +261,7 @@ void GLShip::draw_body() const {
 
 void GLShip::draw_particles() const {
   glColor3fv(color);
+  glPointSize(3.5f);
   //TODO: ParticleDrawer::draw(ship->bullets);
   glBegin(GL_POINTS);
   for(list<Particle>::iterator b = ship->bullets.begin(); b != ship->bullets.end(); b++) {
@@ -272,6 +276,7 @@ bool GLShip::is_removable() const {
 }
 
 void GLShip::draw_debris() const {
+  glPointSize(2.5f);
   glBegin(GL_POINTS);
   for(list<Particle>::iterator d = ship->debris.begin(); d != ship->debris.end(); d++) {
     glColor4f(color[0], rand()/(2.0f*(float)RAND_MAX)+0.5, color[2], d->aliveness());

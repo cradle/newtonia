@@ -189,7 +189,7 @@ void GLGame::draw_objects(bool minimap) const {
 
 void GLGame::draw(void) {
   glClear(GL_COLOR_BUFFER_BIT);
-
+  
   //TODO: Don't hardcode this like this
   draw_world(players->front(), true);
   if (!is_single()) {

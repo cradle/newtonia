@@ -19,7 +19,9 @@ GLStarfield::GLStarfield(Point const size) {
   int red, green;
   for(int i = 0; i < NUM_REAR_LAYERS + NUM_FRONT_LAYERS + 1; i++) {
     glNewList(point_layers+i, GL_COMPILE);
+    glPointSize(3.0f);
     glBegin(GL_POINTS);
+    
     int num_stars = size.x()*size.y()*STAR_DENSITY;
     for(int j = 0; j < num_stars; j++) {
       red = rand()%100;
