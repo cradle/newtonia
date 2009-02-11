@@ -59,7 +59,7 @@ void Typer::draw(float x, float y, const char * text, float size) {
 
 void Typer::pre_draw(float x, float y, float size) {
   glPushMatrix();
-  glLineWidth(2.0f);
+  glLineWidth(1.3f);
   glColor3f(colour[0], colour[1], colour[2]);
   glTranslatef(x,y-2*size,0);
   glScalef(size, size, 0);
