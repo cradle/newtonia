@@ -29,7 +29,7 @@ void Ship::init(bool no_friction) {
   max_temperature = 100.0;
   critical_temperature = max_temperature * 0.80;
   explode_temperature = max_temperature * 1.2;
-  
+
   if(no_friction) {
     friction = 0;
     reverse_force = -0.01;
@@ -37,7 +37,7 @@ void Ship::init(bool no_friction) {
     rotation_force = 0.3;
     heat_rate = 0.060;
     retro_heat_rate = heat_rate * -reverse_force / thrust_force;
-    cool_rate = retro_heat_rate * 0.85;	
+    cool_rate = retro_heat_rate * 0.85;
   } else {
     friction = 0.001;
     reverse_force = -0.05;
@@ -47,18 +47,9 @@ void Ship::init(bool no_friction) {
     retro_heat_rate = heat_rate * -reverse_force / thrust_force;
     cool_rate = retro_heat_rate * 0.9;
   }
-  
+
   reset();
 }
-  
-  /* Car Stats */
-  // friction = 0.001;
-  // reverse_force = -0.05;
-  // thrust_force = 0.09;
-  // rotation_force = 0.2;
-  // heat_rate = 0.035;
-  // retro_heat_rate = heat_rate * -reverse_force / thrust_force;
-  // cool_rate = retro_heat_rate * 0.9;
 
 float Ship::temperature_ratio() {
   return temperature/max_temperature;
@@ -81,7 +72,7 @@ void Ship::respawn() {
 
 void Ship::reset() {
   facing = Point(0, 1);
-  velocity = Point(0, 0);  
+  velocity = Point(0, 0);
   thrusting = false;
   reversing = false;
   shooting = false;
@@ -142,6 +133,7 @@ bool Ship::collide_asteroid(Asteroid* other) {
   std::list<Particle>::iterator b = bullets.begin();
   while(b != bullets.end()) {
     if(other->alive && (*b).collide(other)) {
+      (*b).collide(other);
       score += other->get_value() * multiplier();
       kills_this_life += 1;
       kills += 1;

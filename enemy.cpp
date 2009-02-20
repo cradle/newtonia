@@ -79,8 +79,6 @@ void Enemy::burst_shooting_step(float delta) {
 }
 
 void Enemy::step(float delta) {
-  cout << ":" << Object::is_removable() << Ship::is_removable() << Enemy::is_removable() << this->is_removable() << endl;
-  cout << !is_alive() << " " << debris.empty() << " " <<  lives << " " << bullets.empty() << endl;
   Ship::step(delta);
   if(is_alive()) {
     velocity = velocity - velocity * 0.0005 * delta;
