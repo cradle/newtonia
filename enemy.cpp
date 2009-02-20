@@ -17,15 +17,20 @@ Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Ship
   heat_rate = 0.0;
   cool_rate = 1.0;
   time_until_respawn = respawn_time = 0;
-  
+
   time_until_next_lock = 0.0;
   time_between_locks = 900 + rand()%100;
-  
+
   target = NULL;
 }
 
 Enemy::~Enemy() {
   delete targets;
+}
+
+bool Enemy::is_removable() const {
+  //TODO: Fix this, why can't it just call Ship::is_removable()?
+  return !alive && debris.empty();
 }
 
 void Enemy::reset() {
@@ -79,13 +84,13 @@ void Enemy::step(float delta) {
   Ship::step(delta);
   if(is_alive()) {
     velocity = velocity - velocity * 0.0005 * delta;
-    
+
     lock_step(delta);
-    
+
     if(target) {
       if (target->is_alive()) {
         burst_shooting_step(delta);
-	
+
         // float distance = (target->position - position).magnitude();
         // WrappedPoint target_point = target->position + target->velocity.normalized() * 500.0;
         WrappedPoint target_point = target->position;
@@ -93,7 +98,7 @@ void Enemy::step(float delta) {
         angle = (angle < 0.0) ? (360.0 + angle) : angle;
         if (angle >= 0 && angle < 180) {
           rotate_left(true);
-        } else {  
+        } else {
           rotate_right(true);
         }
       } else {
