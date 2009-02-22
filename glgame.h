@@ -13,8 +13,7 @@ using namespace std;
 
 class GLGame : public State {
 public:
-  GLGame() {};
-  GLGame(int player_count, bool station = false);
+  GLGame();
   ~GLGame();
 
   void draw();
@@ -24,16 +23,14 @@ public:
 
 private:
   void toggle_pause();
-  bool is_single() const;
   void draw_map() const;
   void draw_objects(bool minimap = false) const;
-  void draw_world(GLShip *glship, bool primary) const;
+  void draw_world(GLShip *glship = NULL, bool primary = true) const;
   
   static const int step_size = 10;
   
   Point world;
 
-  int num_players;
   int last_tick, time_until_next_step, num_frames, current_time, time_between_steps;
   bool running;
 

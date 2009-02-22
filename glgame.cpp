@@ -24,14 +24,13 @@
 
 const int GLGame::default_world_width = 5000;
 const int GLGame::default_world_height = 5000;
-const int GLGame::default_num_asteroids = 50;
+const int GLGame::default_num_asteroids = 1;
 
-GLGame::GLGame(int player_count, bool has_station) : 
+GLGame::GLGame() : 
   State(), 
   world(Point(default_world_width, default_world_height)), 
   running(true) {
   time_between_steps = step_size;
-  num_players = player_count;
 
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
@@ -46,28 +45,10 @@ GLGame::GLGame(int player_count, bool has_station) :
   time_until_next_step = 0;
   num_frames = 0;
   
-  GLShip* object = new GLShip(-world.x()*3/4,-world.y()*3/4);
-  object->set_keys('a','d','w',' ','s','x');
-  players->push_back(object);
-  
-  if (player_count == 2) {
-    object = new GLCar(world.x()*3/4,world.y()*3/4);
-    object->set_keys('j','l','i','/','k',',');
-    players->push_back(object);
-  }
-
-  int num_asteroids;
-  if(has_station) {
-    num_asteroids = player_count * 2;
-  } else {
-    num_asteroids = default_num_asteroids * player_count;
-  }
-  for(int i = 0; i < num_asteroids; i++) {
-    objects->push_back(new Asteroid());
-  }
+  objects->push_back(new Asteroid());
   
   //GLstation uses players.size() to determine number of ships in first wave
-  station = has_station ? (new GLStation(enemies, players)) : NULL;
+  station = NULL;
 }
 
 GLGame::~GLGame() {
@@ -190,18 +171,25 @@ void GLGame::draw_objects(bool minimap) const {
 void GLGame::draw(void) {
   glClear(GL_COLOR_BUFFER_BIT);
   
-  //TODO: Don't hardcode this like this
-  draw_world(players->front(), true);
-  if (!is_single()) {
-    draw_world(players->back(), false);
-  } 
-  draw_map();
+  if(players->size() == 0) {
+    draw_world();
+  }
+  else {
+    if(players->size() > 0) {
+      draw_world(players->front(), true);
+    }
+    if(players->size() > 1) {
+      draw_world(players->back(), false);
+    }
+    //Draw map after - for partial translucency
+    draw_map();
+  }
 }
 
 void GLGame::draw_world(GLShip *glship, bool primary) const {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  int width_scale = is_single() ? 1 : 2;
+  int width_scale = (glship == NULL) ? 1 : players->size();
   gluOrtho2D(-window.x()/width_scale, window.x()/width_scale, -window.y(), window.y());
   glMatrixMode(GL_MODELVIEW);
 
@@ -210,11 +198,12 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
 
   /* Draw the world */
   // Store the rendered world in a display list
+  Point position = (glship == NULL) ? Point(0,0) : glship->ship->position;
   glNewList(gameworld, GL_COMPILE);
-    glTranslatef(-glship->ship->position.x(), -glship->ship->position.y(), 0.0f);
-    starfield->draw_rear(glship->ship->position);
+    glTranslatef(-position.x(), -position.y(), 0.0f);
+    starfield->draw_rear(position);
     draw_objects();
-    starfield->draw_front(glship->ship->position);
+    starfield->draw_front(position);
   glEndList();
   // Draw the world tesselated
   for(int x = -1; x <= 1; x++) {
@@ -225,43 +214,44 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
       glPopMatrix();
     }
   }
-
-  if(players->size() == 1) {
-    Typer::draw(80, window.y()-30, "press 2 to join", 10);
+  if(players->size() < 2) {
+    Typer::draw_centered(0, window.y()-20, "press 1 or 2 to join", 10);
   }
 
   /* Draw the score */
-  Typer::draw(window.x()/width_scale-40, window.y()-20, glship->ship->score, 20);
-  if(glship->ship->multiplier() > 1) {
-    Typer::draw(window.x()/width_scale-35, window.y()-92, "x", 15);
-    Typer::draw(window.x()/width_scale-65, window.y()-80, glship->ship->multiplier(), 20);
+  if(glship != NULL) {
+	  Typer::draw(window.x()/width_scale-40, window.y()-20, glship->ship->score, 20);
+	  if(glship->ship->multiplier() > 1) {
+		Typer::draw(window.x()/width_scale-35, window.y()-92, "x", 15);
+		Typer::draw(window.x()/width_scale-65, window.y()-80, glship->ship->multiplier(), 20);
+	  }
+	  /* Draw the life count */
+	  Typer::draw_lives(window.x()/width_scale-40,-window.y()+70, glship, 18);
+	  //TODO: Move name into ship object.
+	  const char *name = primary ? "Player 1" : "Player 2";
+	  Typer::draw(-window.x()/width_scale+30,window.y()-20,name,20);
+	  glPushMatrix();
+	  glTranslatef(-window.x()/width_scale+30, -window.y()+15, 0.0f);
+	  glPushMatrix();
+	  glScalef(30,30,1);
+	  glship->draw_temperature();
+	  glPopMatrix();
+	  glTranslatef(42.0f, 147.0f, 0.0f);
+	  glScalef(10,10,1);
+	  glship->draw_temperature_status();
+	  glPopMatrix();
+	  
+	  glPushMatrix();
+	  glScalef(20,20,1);
+	  glship->draw_respawn_timer();
+	  glPopMatrix();
   }
-  /* Draw the life count */
-  Typer::draw_lives(window.x()/width_scale-40,-window.y()+70, glship, 18);
-  //TODO: Move name into ship object.
-  const char *name = primary ? "Player 1" : "Player 2";
-  Typer::draw(-window.x()/width_scale+30,window.y()-20,name,20);
-  glPushMatrix();
-  glTranslatef(-window.x()/width_scale+30, -window.y()+15, 0.0f);
-  glPushMatrix();
-  glScalef(30,30,1);
-  glship->draw_temperature();
-  glPopMatrix();
-  glTranslatef(42.0f, 147.0f, 0.0f);
-  glScalef(10,10,1);
-  glship->draw_temperature_status();
-  glPopMatrix();
-  
-  glPushMatrix();
-  glScalef(20,20,1);
-  glship->draw_respawn_timer();
-  glPopMatrix();
 }
 
 void GLGame::draw_map() const {
   float minimap_size = window.y()/4;
 
-  if(!is_single()) {
+  if(players->size() > 1) {
     /* DRAW CENTER LINE */
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
@@ -284,7 +274,7 @@ void GLGame::draw_map() const {
   gluOrtho2D(-world.x(), world.x(), -world.y(), world.y());
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
-  if (is_single()) {
+  if (players->size() == 1) {
     glViewport(window.x()/2 - minimap_size/2, 0, minimap_size, minimap_size);
   } else {
     glViewport(window.x()/2 - minimap_size/2, window.y()/2 - minimap_size/2, minimap_size, minimap_size);
@@ -322,18 +312,23 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
   }
 }
 
-bool GLGame::is_single() const {
-  return players->size() == 1;
-}
-
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == '=' && time_between_steps > 1) time_between_steps--;
   if (key == '-') time_between_steps++;
   if (key == '0') time_between_steps = step_size;
   if (key == 'p') toggle_pause();
-  if (key == '2' && (players->size() == 1)) {
-    GLShip* object = new GLShip(world.x()*3/4,world.y()*3/4);
-    object->set_keys('j','l','i','/','k',',');
+  if ((key == '1' || key == '2') && players->size() < 2) {
+  	GLShip* object;
+      if(key == '1') {
+  	  object = new GLShip();
+  	} else {
+  	  object = new GLCar();
+  	}
+      if(players->size() == 0) {
+        object->set_keys('a','d','w',' ','s','x');
+  	} else {
+  	  object->set_keys('j','l','i','/','k',',');
+  	}
     players->push_back(object);
   }
   if (key == 27) request_state_change(new Menu());

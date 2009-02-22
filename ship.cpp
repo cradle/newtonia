@@ -6,12 +6,12 @@
 
 using namespace std;
 
-Ship::Ship(float x, float y, bool no_friction) : CompositeObject() {
+Ship::Ship(bool no_friction) : CompositeObject() {
   alive = false;
   first_life = true;
   score = 0;
   kills = 0;
-  position = WrappedPoint(x, y);
+  position = WrappedPoint();
   init(no_friction);
 }
 
@@ -35,7 +35,7 @@ void Ship::init(bool no_friction) {
     reverse_force = -0.01;
     thrust_force = 0.03;
     rotation_force = 0.3;
-    heat_rate = 0.060;
+    heat_rate = 0.000;
     retro_heat_rate = heat_rate * -reverse_force / thrust_force;
     cool_rate = retro_heat_rate * 0.85;
   } else {

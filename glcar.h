@@ -6,7 +6,7 @@
 
 class GLCar : public GLShip {
 public:
-  GLCar(float x, float y);
+  GLCar();
   ~GLCar();
   
 protected:

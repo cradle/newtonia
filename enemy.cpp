@@ -4,7 +4,8 @@
 #include <iostream>
 #include "point.h"
 
-Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Ship(x,y,false), targets(targets) {
+Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Ship(false), targets(targets) {
+  position = WrappedPoint(x,y);
   thrust_force = 0.135 + difficulty*0.00025 + rand()%50/10000.0;
   rotation_force = 0.15 + difficulty*0.01 + rand()%10/1000.0;
   automatic_fire = true;

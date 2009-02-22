@@ -14,6 +14,7 @@ public:
   
 private:
   Typer typer;
+  int currentTime;
   WrappedPoint viewpoint;
   GLStarfield starfield;
 };

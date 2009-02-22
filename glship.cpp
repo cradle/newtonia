@@ -18,9 +18,9 @@
 
 using namespace std;
 
-GLShip::GLShip(int x, int y) {
+GLShip::GLShip() {
   //TODO: load config from file (colours too)
-  ship = new Ship(x, y);
+  ship = new Ship();
   trails.push_back(new GLTrail(ship, 0.01, Point(0,0), 0.25,0.0, GLTrail::THRUSTING, 5000.0));
   trails.push_back(new GLTrail(ship, 0.5,Point(-4,17),-0.1, 0.9, GLTrail::REVERSING | GLTrail::RIGHT, 500.0));
   trails.push_back(new GLTrail(ship, 0.5,Point( 4,17),-0.1,-0.9, GLTrail::REVERSING | GLTrail::LEFT, 500.0));
@@ -108,6 +108,8 @@ void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, i
 }
 
 void GLShip::draw_temperature() const {
+  if(ship->heat_rate <= 0.0f)
+    return;
   float height = 5.0, width = 1.0;
   
   /* temperature */
@@ -170,6 +172,8 @@ void GLShip::draw_respawn_timer() const {
 }
 
 void GLShip::draw_temperature_status() const {
+  if(ship->heat_rate <= 0.0f)
+    return;
   if(temperature() > max_temperature()) {
     Typer::draw(0,0,"WARNING-TEMPERATURE CRITICAL");
   } else if(temperature() > critical_temperature()) {
@@ -287,6 +291,8 @@ void GLShip::draw_debris() const {
 
 void GLShip::draw_mines() const {
   float size = 20.0;
+  glPointSize(5.0f);
+  glLineWidth(3.0f);
   for(list<Particle>::iterator m = ship->mines.begin(); m != ship->mines.end(); m++) {
     glBegin(GL_LINE_STRIP);
     glColor4f(0,0,0,0);
