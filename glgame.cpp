@@ -220,31 +220,31 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
 
   /* Draw the score */
   if(glship != NULL) {
-	  Typer::draw(window.x()/width_scale-40, window.y()-20, glship->ship->score, 20);
-	  if(glship->ship->multiplier() > 1) {
-		Typer::draw(window.x()/width_scale-35, window.y()-92, "x", 15);
-		Typer::draw(window.x()/width_scale-65, window.y()-80, glship->ship->multiplier(), 20);
-	  }
-	  /* Draw the life count */
-	  Typer::draw_lives(window.x()/width_scale-40,-window.y()+70, glship, 18);
-	  //TODO: Move name into ship object.
-	  const char *name = primary ? "Player 1" : "Player 2";
-	  Typer::draw(-window.x()/width_scale+30,window.y()-20,name,20);
-	  glPushMatrix();
-	  glTranslatef(-window.x()/width_scale+30, -window.y()+15, 0.0f);
-	  glPushMatrix();
-	  glScalef(30,30,1);
-	  glship->draw_temperature();
-	  glPopMatrix();
-	  glTranslatef(42.0f, 147.0f, 0.0f);
-	  glScalef(10,10,1);
-	  glship->draw_temperature_status();
-	  glPopMatrix();
-	  
-	  glPushMatrix();
-	  glScalef(20,20,1);
-	  glship->draw_respawn_timer();
-	  glPopMatrix();
+    Typer::draw(window.x()/width_scale-40, window.y()-20, glship->ship->score, 20);
+    if(glship->ship->multiplier() > 1) {
+    Typer::draw(window.x()/width_scale-35, window.y()-92, "x", 15);
+    Typer::draw(window.x()/width_scale-65, window.y()-80, glship->ship->multiplier(), 20);
+    }
+    /* Draw the life count */
+    Typer::draw_lives(window.x()/width_scale-40,-window.y()+70, glship, 18);
+    //TODO: Move name into ship object.
+    const char *name = primary ? "Player 1" : "Player 2";
+    Typer::draw(-window.x()/width_scale+30,window.y()-20,name,20);
+    glPushMatrix();
+    glTranslatef(-window.x()/width_scale+30, -window.y()+15, 0.0f);
+    glPushMatrix();
+    glScalef(30,30,1);
+    glship->draw_temperature();
+    glPopMatrix();
+    glTranslatef(42.0f, 147.0f, 0.0f);
+    glScalef(10,10,1);
+    glship->draw_temperature_status();
+    glPopMatrix();
+    
+    glPushMatrix();
+    glScalef(20,20,1);
+    glship->draw_respawn_timer();
+    glPopMatrix();
   }
 }
 
@@ -318,17 +318,17 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == '0') time_between_steps = step_size;
   if (key == 'p') toggle_pause();
   if ((key == '1' || key == '2') && players->size() < 2) {
-  	GLShip* object;
+    GLShip* object;
       if(key == '1') {
-  	  object = new GLShip();
-  	} else {
-  	  object = new GLCar();
-  	}
+      object = new GLShip();
+    } else {
+      object = new GLCar();
+    }
       if(players->size() == 0) {
         object->set_keys('a','d','w',' ','s','x');
-  	} else {
-  	  object->set_keys('j','l','i','/','k',',');
-  	}
+    } else {
+      object->set_keys('j','l','i','/','k',',');
+    }
     players->push_back(object);
   }
   if (key == 27) request_state_change(new Menu());
