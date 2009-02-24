@@ -1,6 +1,5 @@
 #include "glgame.h"
 #include "glship.h"
-#include "glenemy.h"
 #include "glcar.h"
 #include "glstarfield.h"
 #include "wrapped_point.h"
@@ -31,6 +30,7 @@ GLGame::GLGame() :
   world(Point(default_world_width, default_world_height)), 
   running(true) {
   time_between_steps = step_size;
+  level_cleared = false;
 
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
@@ -47,8 +47,9 @@ GLGame::GLGame() :
   
   objects->push_back(new Asteroid());
   
-  //GLstation uses players.size() to determine number of ships in first wave
-  station = NULL;
+  station = NULL;//new GLStation(enemies, players);
+  
+  generation = 1;
 }
 
 GLGame::~GLGame() {
@@ -84,10 +85,34 @@ void GLGame::tick(int delta) {
   time_until_next_step -= delta;
 
   num_frames++;
+  
+  if(objects->size() == 0) {
+    if(!level_cleared) {
+      level_cleared = true;
+      time_until_next_generation = 5000;
+    } else if (time_until_next_generation > 0) {
+      time_until_next_generation -= delta;
+    } else {
+      generation++;
+      for(int i = 0; i < generation; i++) {
+        objects->push_back(new Asteroid());
+      }
+      if(generation == 10 && station == NULL) {
+        station = new GLStation(enemies, players);
+      }
+      std::list<GLShip*>::iterator o;
+      for(o = players->begin(); o != players->end(); o++) {
+        (*o)->ship->respawn(false);
+      }
+      level_cleared = false;
+    }
+  }
 
   std::list<GLShip*>::iterator o, o2;
   while(time_until_next_step <= 0) {
-    if(station != NULL) station->step(step_size); 
+    if(station != NULL) {
+      station->step(step_size); 
+    }
     
     std::list<Asteroid*>::iterator oi, ol;
     for(oi = objects->begin(); oi != objects->end(); oi++) {
@@ -220,6 +245,11 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
 
   /* Draw the score */
   if(glship != NULL) {
+    if(level_cleared) {
+      Typer::draw_centered(0, 150, "CLEARED", 50);
+      Typer::draw_centered(0, -60, (time_until_next_generation / 1000), 20);
+    }
+    
     Typer::draw(window.x()/width_scale-40, window.y()-20, glship->ship->score, 20);
     if(glship->ship->multiplier() > 1) {
     Typer::draw(window.x()/width_scale-35, window.y()-92, "x", 15);
@@ -302,6 +332,8 @@ void GLGame::draw_map() const {
   /* DRAW THE LEVEL */
   if(station != NULL) {
     Typer::draw(world.x()-1500, -world.y()+2000, station->level(), 800);
+  } else {
+    Typer::draw(world.x()-750, -world.y()+1000, generation, 400);
   }
 }
 

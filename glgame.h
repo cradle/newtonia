@@ -14,6 +14,7 @@ using namespace std;
 class GLGame : public State {
 public:
   GLGame();
+  GLGame(GLGame const &other);
   ~GLGame();
 
   void draw();
@@ -31,8 +32,10 @@ private:
   
   Point world;
 
+  int generation;
   int last_tick, time_until_next_step, num_frames, current_time, time_between_steps;
-  bool running;
+  int time_until_next_generation;
+  bool running, level_cleared;
 
   static const int default_world_width, default_world_height;
   static const int default_num_asteroids;

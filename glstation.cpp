@@ -90,8 +90,10 @@ void GLStation::draw(bool minimap) const {
   glTranslatef(position.x(), position.y(), 0);  
   
   if(minimap) {
+    glLineWidth(3.0f);
     glCallList(map_body);
   } else {
+    glLineWidth(2.5f);
     glPushMatrix();
     glRotatef(outer_rotation,0,0,1);
     glColor3f(0,0,0);
@@ -135,7 +137,5 @@ void GLStation::step(float delta) {
     wave++;
     time_until_next_ship = 0.0;
     ships_left_to_deploy = ships_this_wave;
-  } else {
-    cout << objects->size() << endl;
   }
 }

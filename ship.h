@@ -76,9 +76,9 @@ class Ship : public CompositeObject {
 
     void fire_shot();
     void lay_mine();
-    void respawn();
+    void respawn(bool was_killed = true);
     void init(bool no_friction);
-    virtual void reset();
+    virtual void reset(bool was_killed = true);
     void detonate();
     void detonate(Point const position, Point const velocity);
     void kill();

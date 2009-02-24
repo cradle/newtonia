@@ -52,22 +52,24 @@ float Ship::temperature_ratio() {
   return temperature/max_temperature;
 }
 
-void Ship::respawn() {
+void Ship::respawn(bool was_killed) {
   if(first_life) {
     first_life = false;
     position.wrap();
   } else {
     position = WrappedPoint();
   }
-  lives -= 1;
+  if(was_killed) {
+    lives -= 1;
+  }
   alive = true;
   invincible = true;
   time_left_invincible = 1000;
-  reset();
+  reset(was_killed);
   detonate();
 }
 
-void Ship::reset() {
+void Ship::reset(bool was_killed) {
   facing = Point(0, 1);
   velocity = Point(0, 0);
   thrusting = false;
@@ -76,7 +78,9 @@ void Ship::reset() {
   rotation_direction = NONE;
   time_until_next_shot = 0;
   temperature = 0.0;
-  kills_this_life = 0;
+  if(was_killed) {
+    kills_this_life = 0;
+  }
 }
 
 void Ship::kill() {
@@ -157,9 +161,11 @@ void Ship::collide(Ship* other) {
   while(b != bullets.end()) {
     if(is_alive() && collide(*b)) {
       kill();
+      detonate();
       b = bullets.erase(b);
     } else if(other->is_alive() && other->collide(*b)) {
       other->kill();
+      other->detonate();
       kills_this_life += 1;
       kills += 1;
       score += other->value * multiplier();
