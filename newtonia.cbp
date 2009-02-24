@@ -47,8 +47,6 @@
 		<Unit filename="asteroid.h" />
 		<Unit filename="asteroid_drawer.cpp" />
 		<Unit filename="asteroid_drawer.h" />
-		<Unit filename="car.cpp" />
-		<Unit filename="car.h" />
 		<Unit filename="composite_object.cpp" />
 		<Unit filename="composite_object.h" />
 		<Unit filename="enemy.cpp" />
