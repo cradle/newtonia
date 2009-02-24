@@ -23,6 +23,8 @@ Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Ship
   time_between_locks = 900 + rand()%100;
 
   target = NULL;
+  //fix: THRUSTING!!!
+  thrusting = true;
 }
 
 Enemy::~Enemy() {
@@ -36,7 +38,7 @@ bool Enemy::is_removable() const {
 
 void Enemy::reset() {
   Ship::reset();
-  thrust(true);
+  thrusting = true;
 }
 
 void Enemy::lock_nearest_target() {

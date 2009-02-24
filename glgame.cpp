@@ -25,9 +25,9 @@ const int GLGame::default_world_width = 5000;
 const int GLGame::default_world_height = 5000;
 const int GLGame::default_num_asteroids = 1;
 
-GLGame::GLGame() : 
-  State(), 
-  world(Point(default_world_width, default_world_height)), 
+GLGame::GLGame() :
+  State(),
+  world(Point(default_world_width, default_world_height)),
   running(true) {
   time_between_steps = step_size;
   level_cleared = false;
@@ -44,11 +44,11 @@ GLGame::GLGame() :
 
   time_until_next_step = 0;
   num_frames = 0;
-  
+
   objects->push_back(new Asteroid());
-  
+
   station = NULL;//new GLStation(enemies, players);
-  
+
   generation = 1;
 }
 
@@ -81,11 +81,11 @@ void GLGame::tick(int delta) {
     last_tick += delta;
     return;
   }
-  
+
   time_until_next_step -= delta;
 
   num_frames++;
-  
+
   if(objects->size() == 0) {
     if(!level_cleared) {
       level_cleared = true;
@@ -111,13 +111,13 @@ void GLGame::tick(int delta) {
   std::list<GLShip*>::iterator o, o2;
   while(time_until_next_step <= 0) {
     if(station != NULL) {
-      station->step(step_size); 
+      station->step(step_size);
     }
-    
+
     std::list<Asteroid*>::iterator oi, ol;
     for(oi = objects->begin(); oi != objects->end(); oi++) {
       (*oi)->step(step_size);
-     
+
       for(o = players->begin(); o != players->end(); o++) {
         if(station != NULL) station->collide((*o)->ship);
         if((*o)->ship->collide_asteroid(*oi)) {
@@ -125,7 +125,7 @@ void GLGame::tick(int delta) {
         }
       }
     }
-    
+
     oi = objects->begin();
     while(oi != objects->end()) {
       if((*oi)->is_removable()) {
@@ -135,11 +135,11 @@ void GLGame::tick(int delta) {
         oi++;
       }
     }
-    
+
     for(o = players->begin(); o != players->end(); o++) {
       (*o)->step(step_size);
     }
-    
+
     for(o = enemies->begin(); o != enemies->end(); o++) {
       (*o)->step(step_size);
     }
@@ -177,7 +177,7 @@ void GLGame::draw_objects(bool minimap) const {
     //TODO: make AsteroidController (???), which joins model and view together
     AsteroidDrawer::draw(*oi, minimap);
   }
-  
+
   std::list<GLShip*>::iterator o;
   for(o = players->begin(); o != players->end(); o++) {
     glPushMatrix();
@@ -189,13 +189,13 @@ void GLGame::draw_objects(bool minimap) const {
     (*o)->draw(minimap);
     glPopMatrix();
   }
-  
+
   if(station != NULL) station->draw(minimap);
 }
 
 void GLGame::draw(void) {
   glClear(GL_COLOR_BUFFER_BIT);
-  
+
   if(players->size() == 0) {
     draw_world();
   }
@@ -249,7 +249,7 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
       Typer::draw_centered(0, 150, "CLEARED", 50);
       Typer::draw_centered(0, -60, (time_until_next_generation / 1000), 20);
     }
-    
+
     Typer::draw(window.x()/width_scale-40, window.y()-20, glship->ship->score, 20);
     if(glship->ship->multiplier() > 1) {
     Typer::draw(window.x()/width_scale-35, window.y()-92, "x", 15);
@@ -270,7 +270,7 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
     glScalef(10,10,1);
     glship->draw_temperature_status();
     glPopMatrix();
-    
+
     glPushMatrix();
     glScalef(20,20,1);
     glship->draw_respawn_timer();
@@ -328,7 +328,7 @@ void GLGame::draw_map() const {
   glPushMatrix();
   draw_objects(true);
   glPopMatrix();
-  
+
   /* DRAW THE LEVEL */
   if(station != NULL) {
     Typer::draw(world.x()-1500, -world.y()+2000, station->level(), 800);
@@ -345,6 +345,11 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
 }
 
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
+  if (key == 'n') {
+      level_cleared = true;
+      time_until_next_generation = 0;
+      objects->clear();
+  }
   if (key == '=' && time_between_steps > 1) time_between_steps--;
   if (key == '-') time_between_steps++;
   if (key == '0') time_between_steps = step_size;

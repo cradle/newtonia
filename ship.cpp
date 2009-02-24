@@ -15,13 +15,12 @@ Ship::Ship(bool no_friction) : CompositeObject() {
   init(no_friction);
 }
 
-
 void Ship::init(bool no_friction) {
   mass = 100.0;
   value = 1000000;
   accuracy = 0.1;
   lives = 6;
-  width = height = radius = 13;
+  width = height = radius = 11;
   radius_squared = radius * radius;
   respawn_time = time_until_respawn = 4000;
   automatic_fire = false;
@@ -161,11 +160,9 @@ void Ship::collide(Ship* other) {
   while(b != bullets.end()) {
     if(is_alive() && collide(*b)) {
       kill();
-      detonate();
       b = bullets.erase(b);
     } else if(other->is_alive() && other->collide(*b)) {
       other->kill();
-      other->detonate();
       kills_this_life += 1;
       kills += 1;
       score += other->value * multiplier();
