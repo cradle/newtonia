@@ -10,6 +10,7 @@ class Object {
 public:
   Object();
   Object(WrappedPoint position, Point velocity);
+  virtual ~Object() {};
   virtual void step(int delta);
   bool collide(Object *other);
   virtual bool is_removable() const;

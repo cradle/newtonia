@@ -8,6 +8,7 @@ class Asteroid : public CompositeObject {
 public:
   Asteroid();
   Asteroid(Asteroid const *mother);
+  virtual ~Asteroid() {};
   
   void add_children(list<Asteroid*> *objects);
 

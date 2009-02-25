@@ -37,13 +37,6 @@ void Object::step(int delta) {
 }
 
 bool Object::collide(Object *other) {
-  // difference_in_position * difference_in_velocity <= 0
-  // if (ball.loc[0] - self.loc[0]) * (self.dx - ball.dx) + \
-  //    (ball.loc[1] - self.loc[1]) * (self.dy - ball.dy) <= 0:
-  Point posDelta = other->position - position;
-  float posMag = posDelta.magnitude_squared();
-  float radSum = radius + other->radius;
-  float radSquard = radSum * radSum;
   return ((other->position - position).magnitude_squared() < ((radius+other->radius)*(radius+other->radius)));
 }
 
