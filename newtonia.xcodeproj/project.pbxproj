@@ -22,6 +22,7 @@
 		2150E2F20ECD6A6E00D89C28 /* ship.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2EA0ECD6A6E00D89C28 /* ship.cpp */; };
 		2150E2F30ECD6A6E00D89C28 /* wrapped_point.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2EC0ECD6A6E00D89C28 /* wrapped_point.cpp */; };
 		2150E2FB0ECD831900D89C28 /* glut.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2F90ECD831900D89C28 /* glut.cpp */; };
+		215669B90F56A0B5004BDC84 /* teleport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 215669B70F56A0B5004BDC84 /* teleport.cpp */; };
 		215ED6A50ECDB80400E0778A /* glgame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 215ED6A30ECDB80400E0778A /* glgame.cpp */; };
 		21696BCD0EDD2991006997A8 /* glstation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21696BCB0EDD2991006997A8 /* glstation.cpp */; };
 		2180D3930ED14D100050ED72 /* glcar.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2180D3900ED14D100050ED72 /* glcar.cpp */; };
@@ -30,6 +31,8 @@
 		219B674C0EED0E8A002B7BAE /* state.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 219B674A0EED0E8A002B7BAE /* state.cpp */; };
 		219B67590EED40B7002B7BAE /* menu.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 219B67570EED40B7002B7BAE /* menu.cpp */; };
 		219B675D0EED4575002B7BAE /* state_manager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 219B675B0EED4575002B7BAE /* state_manager.cpp */; };
+		21CB939E0F5687A500EC8524 /* follower.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21CB939C0F5687A500EC8524 /* follower.cpp */; };
+		21CB93AA0F5687FA00EC8524 /* behaviour.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21CB93A90F5687FA00EC8524 /* behaviour.cpp */; };
 		21DBAE5B0EF7B31500F97906 /* composite_object.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21DBAE590EF7B31500F97906 /* composite_object.cpp */; };
 		21F0BF3F0ED54EFE00F2BB9B /* gltrail.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */; };
 /* End PBXBuildFile section */
@@ -62,6 +65,8 @@
 		2150E2EC0ECD6A6E00D89C28 /* wrapped_point.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = wrapped_point.cpp; sourceTree = "<group>"; };
 		2150E2ED0ECD6A6E00D89C28 /* wrapped_point.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = wrapped_point.h; sourceTree = "<group>"; };
 		2150E2F90ECD831900D89C28 /* glut.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glut.cpp; sourceTree = "<group>"; };
+		215669B70F56A0B5004BDC84 /* teleport.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = teleport.cpp; sourceTree = "<group>"; };
+		215669B80F56A0B5004BDC84 /* teleport.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = teleport.h; sourceTree = "<group>"; };
 		215ED6A30ECDB80400E0778A /* glgame.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glgame.cpp; sourceTree = "<group>"; };
 		215ED6A40ECDB80400E0778A /* glgame.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glgame.h; sourceTree = "<group>"; };
 		21696BCB0EDD2991006997A8 /* glstation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glstation.cpp; sourceTree = "<group>"; };
@@ -77,6 +82,10 @@
 		219B67580EED40B7002B7BAE /* menu.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = menu.h; sourceTree = "<group>"; };
 		219B675B0EED4575002B7BAE /* state_manager.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = state_manager.cpp; sourceTree = "<group>"; };
 		219B675C0EED4575002B7BAE /* state_manager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = state_manager.h; sourceTree = "<group>"; };
+		21CB939B0F5687A500EC8524 /* behaviour.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = behaviour.h; sourceTree = "<group>"; };
+		21CB939C0F5687A500EC8524 /* follower.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = follower.cpp; sourceTree = "<group>"; };
+		21CB939D0F5687A500EC8524 /* follower.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = follower.h; sourceTree = "<group>"; };
+		21CB93A90F5687FA00EC8524 /* behaviour.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = behaviour.cpp; sourceTree = "<group>"; };
 		21DBAE590EF7B31500F97906 /* composite_object.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = composite_object.cpp; sourceTree = "<group>"; };
 		21DBAE5A0EF7B31500F97906 /* composite_object.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = composite_object.h; sourceTree = "<group>"; };
 		21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = gltrail.cpp; sourceTree = "<group>"; };
@@ -107,6 +116,11 @@
 		219282740ECD670E002D470F = {
 			isa = PBXGroup;
 			children = (
+				215669B70F56A0B5004BDC84 /* teleport.cpp */,
+				215669B80F56A0B5004BDC84 /* teleport.h */,
+				21CB939B0F5687A500EC8524 /* behaviour.h */,
+				21CB939C0F5687A500EC8524 /* follower.cpp */,
+				21CB939D0F5687A500EC8524 /* follower.h */,
 				21DBAE590EF7B31500F97906 /* composite_object.cpp */,
 				21DBAE5A0EF7B31500F97906 /* composite_object.h */,
 				21042FF80EF47F0800B2097C /* asteroid.cpp */,
@@ -153,6 +167,7 @@
 				2150E2DC0ECD699700D89C28 /* OpenGL.framework */,
 				2150E2D80ECD698700D89C28 /* GLUT.framework */,
 				2150E2AB0ECD687300D89C28 /* Products */,
+				21CB93A90F5687FA00EC8524 /* behaviour.cpp */,
 			);
 			sourceTree = "<group>";
 		};
@@ -232,6 +247,9 @@
 				210430010EF47F0800B2097C /* asteroid_drawer.cpp in Sources */,
 				210430030EF47F0800B2097C /* object.cpp in Sources */,
 				21DBAE5B0EF7B31500F97906 /* composite_object.cpp in Sources */,
+				21CB939E0F5687A500EC8524 /* follower.cpp in Sources */,
+				21CB93AA0F5687FA00EC8524 /* behaviour.cpp in Sources */,
+				215669B90F56A0B5004BDC84 /* teleport.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

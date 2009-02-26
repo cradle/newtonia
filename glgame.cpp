@@ -357,7 +357,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if ((key == '1' || key == '2') && players->size() < 2) {
     GLShip* object;
       if(key == '1') {
-      object = new GLShip();
+      object = new GLShip(objects);
     } else {
       object = new GLCar();
     }

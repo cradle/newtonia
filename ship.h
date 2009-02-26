@@ -4,6 +4,7 @@
 #include "composite_object.h"
 #include "point.h"
 #include "particle.h"
+#include "behaviour.h"
 #include <list>
 
 class Asteroid;
@@ -12,7 +13,7 @@ using namespace std;
 
 class Ship : public CompositeObject {
   public:
-    Ship(bool no_friction = true);
+    Ship(list<Object *> *targets, bool no_friction = true);
     virtual ~Ship() {};
 
     void puts(); //TODO: convert into iostream operator
@@ -70,6 +71,7 @@ class Ship : public CompositeObject {
     //FIX: friends
     int time_left_invincible;
     bool invincible;
+    void disable_behaviours();
 
   protected:
     WrappedPoint gun() const;
@@ -100,6 +102,9 @@ class Ship : public CompositeObject {
     friend class GLShip;
     friend class GLGame;
     friend class GLTrail;
+    
+  private:
+    list<Behaviour *> behaviours;
 };
 
 #endif

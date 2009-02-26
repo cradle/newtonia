@@ -18,7 +18,7 @@
 
 class GLShip {
 public:
-  GLShip();
+  GLShip(list<Asteroid *> *targets);
   virtual ~GLShip();
   void step(float delta);
   virtual void input(unsigned char key, bool pressed = true);

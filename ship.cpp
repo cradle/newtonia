@@ -1,3 +1,4 @@
+#include "follower.h"
 #include "ship.h"
 #include "point.h"
 #include "particle.h"
@@ -6,14 +7,27 @@
 
 using namespace std;
 
-Ship::Ship(bool no_friction) : CompositeObject() {
+Ship::Ship(list<Object *> *targets, bool no_friction) : CompositeObject() {
   alive = false;
   first_life = true;
   score = 0;
   kills = 0;
   position = WrappedPoint();
   init(no_friction);
+  if(targets)
+    behaviours.push_back(new Follower(this, targets));
 }
+
+void Ship::disable_behaviours() {
+  while(!behaviours.empty()) {
+    delete behaviours.back();
+    behaviours.pop_back();
+  }
+}
+
+// void add_behaviour() {
+//   
+// }
 
 void Ship::init(bool no_friction) {
   mass = 100.0;
@@ -78,6 +92,7 @@ void Ship::reset(bool was_killed) {
   time_until_next_shot = 0;
   temperature = 0.0;
   if(was_killed) {
+    disable_behaviours();
     kills_this_life = 0;
   }
 }
@@ -257,6 +272,17 @@ void Ship::puts() {
 }
 
 void Ship::step(float delta) {
+  list<Behaviour *>::iterator vi = behaviours.begin();
+  while(vi != behaviours.end()) {
+    (*vi)->step(delta);
+    if((*vi)->is_done()) {
+      delete (*vi);
+      vi = behaviours.erase(vi);
+    } else {
+      vi++;
+    }
+  }
+  
   if(is_alive()) {
     if(invincible) {
       time_left_invincible -= delta;

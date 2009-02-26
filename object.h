@@ -21,6 +21,10 @@ public:
   //TODO: work out friend methods ::draw
   //TODO: work out inheritance with static, OR, work out borg?
   friend class AsteroidDrawer;
+  friend class Behaviour;
+  //Fix: y need all these?????
+  friend class Follower;
+  friend class Teleport;
 
 protected:
   void kill();

@@ -14,7 +14,7 @@
 
 using namespace std;
 
-GLCar::GLCar() {
+GLCar::GLCar() : GLShip(NULL) {
   ship = new Ship(false);
   trails.push_back(new GLTrail(ship, 0.01, Point( 4.5,0),0.25, 0.0, GLTrail::THRUSTING | GLTrail::LEFT, 4000.0));
   trails.push_back(new GLTrail(ship, 0.01, Point(-4.5,0),0.25, 0.0, GLTrail::THRUSTING | GLTrail::RIGHT, 4000.0));

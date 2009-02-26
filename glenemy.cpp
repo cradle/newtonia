@@ -15,7 +15,7 @@
 
 using namespace std;
 
-GLEnemy::GLEnemy(float x, float y, list<GLShip*>* targets, float difficulty) {
+GLEnemy::GLEnemy(float x, float y, list<GLShip*>* targets, float difficulty) : GLShip(NULL) {
   list<Ship*>* ships = new list<Ship*>;
   list<GLShip*>::iterator s;
   for(s = targets->begin(); s != targets->end(); s++) {

@@ -2,6 +2,7 @@
 #include "gltrail.h"
 #include "ship.h"
 #include "typer.h"
+#include "teleport.h"
 #include <math.h>
 
 #ifdef __APPLE__
@@ -18,9 +19,9 @@
 
 using namespace std;
 
-GLShip::GLShip() {
+GLShip::GLShip(list<Asteroid *> *targets) {
   //TODO: load config from file (colours too)
-  ship = new Ship();
+  ship = new Ship((list<Object *>*)targets);
   trails.push_back(new GLTrail(ship, 0.01, Point(0,0), 0.25,0.0, GLTrail::THRUSTING, 5000.0));
   trails.push_back(new GLTrail(ship, 0.5,Point(-4,17),-0.1, 0.9, GLTrail::REVERSING | GLTrail::RIGHT, 500.0));
   trails.push_back(new GLTrail(ship, 0.5,Point( 4,17),-0.1,-0.9, GLTrail::REVERSING | GLTrail::LEFT, 500.0));
@@ -196,6 +197,10 @@ void GLShip::input(unsigned char key, bool pressed) {
     ship->shoot(pressed);
   } else if (key == mine_key) {
     ship->mine(pressed);
+  } else if (key == 'z' && pressed) {
+    ship->disable_behaviours();
+  } else if (key == 't' && pressed) {
+    ship->behaviours.push_back(new Teleport(ship));
   }
 }
 

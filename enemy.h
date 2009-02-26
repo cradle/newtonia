@@ -6,7 +6,7 @@
 
 class Enemy : public Ship {
   public:
-    Enemy() {};
+    Enemy() : Ship(NULL, false) {};
     Enemy(float x, float y, std::list<Ship*> * targets, int difficulty = 0);
     ~Enemy();
 
