@@ -21,8 +21,8 @@
 #include <iostream>
 #include <list>
 
-const int GLGame::default_world_width = 5000;
-const int GLGame::default_world_height = 5000;
+const int GLGame::default_world_width = 1000;
+const int GLGame::default_world_height = 1000;
 const int GLGame::default_num_asteroids = 1;
 
 GLGame::GLGame() :
@@ -99,7 +99,11 @@ void GLGame::tick(int delta) {
       }
       if(generation == 10 && station == NULL) {
         station = new GLStation(enemies, players);
+        world += Point(3000, 3000);
+      } else {
+        world += Point(100, 100);
       }
+      WrappedPoint::set_boundaries(world);
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {
         (*o)->ship->respawn(false);
