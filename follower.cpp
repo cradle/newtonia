@@ -2,12 +2,14 @@
 #include "behaviour.h"
 
 #include "ship.h"
+#include <iostream>
+using namespace std;
 
 Follower::Follower(Ship *ship) : Behaviour(ship) {
   common_init();
 }
 
-Follower::Follower(Ship *ship, list<Object *> *targets) : Behaviour(ship), targets(targets){
+Follower::Follower(Ship *ship, list<Object *> *targets) : Behaviour(ship), targets(targets) {
   common_init();
 }
 

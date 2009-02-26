@@ -124,6 +124,11 @@ void GLGame::tick(int delta) {
           (*oi)->add_children(objects);
         }
       }
+      for(o = enemies->begin(); o != enemies->end(); o++) {
+        if((*o)->ship->collide_asteroid(*oi)) {
+          (*oi)->add_children(objects);
+        }
+      }
     }
 
     oi = objects->begin();
@@ -240,7 +245,7 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
     }
   }
   if(players->size() < 2) {
-    Typer::draw_centered(0, window.y()-20, "press 1 or 2 to join", 10);
+    Typer::draw_centered(0, window.y()-20, "press 1 for friction or 2 for non friction", 10);
   }
 
   /* Draw the score */
@@ -355,15 +360,13 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == '0') time_between_steps = step_size;
   if (key == 'p') toggle_pause();
   if ((key == '1' || key == '2') && players->size() < 2) {
+    bool has_friction = (key == '1');
     GLShip* object;
-      if(key == '1') {
-      object = new GLShip(objects);
+    if(players->size() == 0) {
+      object = new GLShip(has_friction);
+      object->set_keys('a','d','w',' ','s','x');
     } else {
-      object = new GLCar();
-    }
-      if(players->size() == 0) {
-        object->set_keys('a','d','w',' ','s','x');
-    } else {
+      object = new GLCar(has_friction);
       object->set_keys('j','l','i','/','k',',');
     }
     players->push_back(object);

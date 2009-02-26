@@ -7,15 +7,13 @@
 
 using namespace std;
 
-Ship::Ship(list<Object *> *targets, bool no_friction) : CompositeObject() {
+Ship::Ship(bool has_friction) : CompositeObject() {
   alive = false;
   first_life = true;
   score = 0;
   kills = 0;
   position = WrappedPoint();
-  init(no_friction);
-  if(targets)
-    behaviours.push_back(new Follower(this, targets));
+  init(!has_friction);
 }
 
 void Ship::disable_behaviours() {
@@ -70,6 +68,7 @@ void Ship::respawn(bool was_killed) {
     first_life = false;
     position.wrap();
   } else {
+    disable_behaviours();
     position = WrappedPoint();
   }
   if(was_killed) {
@@ -92,7 +91,6 @@ void Ship::reset(bool was_killed) {
   time_until_next_shot = 0;
   temperature = 0.0;
   if(was_killed) {
-    disable_behaviours();
     kills_this_life = 0;
   }
 }

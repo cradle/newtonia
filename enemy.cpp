@@ -4,7 +4,7 @@
 #include <iostream>
 #include "point.h"
 
-Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Ship(NULL, false), targets(targets) {
+Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Ship(true), targets(targets) {
   position = WrappedPoint(x,y);
   thrust_force = 0.135 + difficulty*0.00025 + rand()%50/10000.0;
   rotation_force = 0.15 + difficulty*0.01 + rand()%10/1000.0;
@@ -23,8 +23,6 @@ Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Ship
   time_between_locks = 900 + rand()%100;
 
   target = NULL;
-  //fix: THRUSTING!!!
-  thrusting = true;
 }
 
 Enemy::~Enemy() {
@@ -36,8 +34,8 @@ bool Enemy::is_removable() const {
   return !alive && debris.empty();
 }
 
-void Enemy::reset() {
-  Ship::reset();
+void Enemy::reset(bool was_killed) {
+  Ship::reset(was_killed);
   thrusting = true;
 }
 

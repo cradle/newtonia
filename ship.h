@@ -13,7 +13,7 @@ using namespace std;
 
 class Ship : public CompositeObject {
   public:
-    Ship(list<Object *> *targets, bool no_friction = true);
+    Ship(bool has_friction = true);
     virtual ~Ship() {};
 
     void puts(); //TODO: convert into iostream operator

@@ -18,7 +18,7 @@
 
 class GLShip {
 public:
-  GLShip(list<Asteroid *> *targets);
+  GLShip(bool has_friction);
   virtual ~GLShip();
   void step(float delta);
   virtual void input(unsigned char key, bool pressed = true);

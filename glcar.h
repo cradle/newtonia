@@ -6,7 +6,7 @@
 
 class GLCar : public GLShip {
 public:
-  GLCar();
+  GLCar(bool has_friction);
   ~GLCar();
   
 protected:
