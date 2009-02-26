@@ -1,6 +1,11 @@
+## OS X
 .DS_Store
+## Codeblocks
 *.layout
 *.depend
-build
 obj
+## Visual Studio
+build
+## Makefile
 *.o
+newtonia
