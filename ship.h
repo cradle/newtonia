@@ -37,7 +37,8 @@ class Ship : public CompositeObject {
     void collide(Ship *other);
 
     //TODO: make friends with glship
-    int score, lives, kills, kills_this_life;
+    long long score;
+    int lives, kills, kills_this_life;
     //TODO: Make this go away, it's wrong
     float radius_squared;
     bool thrusting, reversing;
@@ -91,7 +92,8 @@ class Ship : public CompositeObject {
     // Forces
     float thrust_force, reverse_force, rotation_force;
     // Attributes
-    float width, height, mass, accuracy, value;
+    float width, height, mass, accuracy;
+    long long value;
     // States
     bool shooting, mining, alive, respawns, first_life, automatic_fire;
 

@@ -103,6 +103,8 @@ void GLGame::tick(int delta) {
       } else {
         world += Point(100, 100);
       }
+      delete starfield;
+      starfield = new GLStarfield(world);
       WrappedPoint::set_boundaries(world);
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {

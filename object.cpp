@@ -37,6 +37,8 @@ void Object::step(int delta) {
 }
 
 bool Object::collide(Object *other, float proximity) {
+  // TODO: should be using "other->position.closest_to(position)", but closest_to is
+  // FIX: very very slow. either optimise closest_to or fix some other way
   return ((other->position - position).magnitude_squared() < ((radius+other->radius+proximity)*(radius+other->radius+proximity)));
 }
 

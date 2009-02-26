@@ -180,7 +180,7 @@ void Ship::collide(Ship* other) {
   //TODO: Make ships collide with each other too
   std::list<Particle>::iterator b = bullets.begin();
   while(b != bullets.end()) {
-    if(is_alive() && b->collide(other)) {
+    if(is_alive() && b->collide(this)) {
       kill();
       b = bullets.erase(b);
     } else if(other->is_alive() && b->collide(other)) {

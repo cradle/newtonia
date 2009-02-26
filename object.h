@@ -16,7 +16,7 @@ public:
   virtual bool is_removable() const;
   void commonInit();
   bool is_alive() const;
-  int get_value() const;
+  long long get_value() const;
 
   //TODO: work out friend methods ::draw
   //TODO: work out inheritance with static, OR, work out borg?
@@ -32,7 +32,7 @@ protected:
   float radius, radius_squared;
   WrappedPoint position;
   Point velocity;
-  int value;
+  long long value;
   float rotation, rotation_speed, friction;
   bool alive;
 };
@@ -43,7 +43,7 @@ bool Object::is_alive() const {
 }
 
 inline
-int Object::get_value() const {
+long long Object::get_value() const {
   return value;
 }
 
