@@ -7,7 +7,7 @@
 class GLEnemy : public GLShip {
 public:
   GLEnemy(float x, float y, std::list<GLShip*> * target, float difficulty = 1);
-  ~GLEnemy();
+  virtual ~GLEnemy();
 };
 
 #endif

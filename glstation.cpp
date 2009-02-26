@@ -71,6 +71,8 @@ GLStation::GLStation(list<GLShip*>* objects, list<GLShip*>* targets) : objects(o
 }
 
 GLStation::~GLStation() {
+  delete targets;
+  delete objects;
   glDeleteLists(body, 1);
   glDeleteLists(map_body, 1);
 }

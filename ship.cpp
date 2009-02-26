@@ -23,6 +23,10 @@ void Ship::disable_behaviours() {
   }
 }
 
+Ship::~Ship() {
+  disable_behaviours();
+}
+
 // void add_behaviour() {
 //   
 // }

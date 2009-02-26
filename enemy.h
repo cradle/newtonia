@@ -8,7 +8,7 @@ class Enemy : public Ship {
   public:
     Enemy() : Ship(true) {};
     Enemy(float x, float y, std::list<Ship*> * targets, int difficulty = 0);
-    ~Enemy();
+    virtual ~Enemy();
 
     void step(float delta);
     void reset(bool was_killed = true);

@@ -7,7 +7,7 @@
 class GLCar : public GLShip {
 public:
   GLCar(bool has_friction);
-  ~GLCar();
+  virtual ~GLCar();
   
 protected:
   GLuint left_jet, right_jet;

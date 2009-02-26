@@ -36,10 +36,8 @@ void Asteroid::add_children(list<Asteroid*> *roids) {
   if(radius/2.0f < minimum_radius) {
     // explode good and proper
   } else {
-    Asteroid *child = new Asteroid(this);
-    roids->push_front(child);
-    child = new Asteroid(this);
-    roids->push_front(child);
+    roids->push_front(new Asteroid(this));
+    roids->push_front(new Asteroid(this));
   }
 
   velocity = velocity / 4;

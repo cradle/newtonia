@@ -15,7 +15,7 @@ class GLGame : public State {
 public:
   GLGame();
   GLGame(GLGame const &other);
-  ~GLGame();
+  virtual ~GLGame();
 
   void draw();
   void tick(int delta);

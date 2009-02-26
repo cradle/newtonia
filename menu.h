@@ -6,6 +6,7 @@
 class Menu : public State {
 public:
   Menu();
+  virtual ~Menu() {};
   
   void draw();
   void keyboard(unsigned char key, int x, int y);

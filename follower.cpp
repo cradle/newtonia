@@ -16,6 +16,7 @@ Follower::Follower(Ship *ship, list<Object *> *targets) : Behaviour(ship), targe
 Follower::~Follower() {
   ship->rotate_right(false);
   ship->thrust(false);
+  delete targets;
 }
 
 void Follower::common_init() {

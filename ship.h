@@ -14,7 +14,7 @@ using namespace std;
 class Ship : public CompositeObject {
   public:
     Ship(bool has_friction = true);
-    virtual ~Ship() {};
+    virtual ~Ship();
 
     void puts(); //TODO: convert into iostream operator
 

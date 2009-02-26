@@ -65,6 +65,11 @@ GLGame::~GLGame() {
     enemies->pop_back();
   }
   delete enemies;
+  while(!objects->empty()) {
+    delete objects->back();
+    objects->pop_back();
+  }
+  delete objects;
   delete starfield;
   if(station != NULL)
     delete station;
