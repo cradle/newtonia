@@ -36,7 +36,7 @@ public:
 protected:
   virtual void draw_ship(bool minimap = false) const;
   void draw_particles() const;
-  void draw_mines() const;
+  void draw_mines(bool minimap) const;
   void draw_debris() const;
   
   /*delegators*/

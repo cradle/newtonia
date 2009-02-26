@@ -35,7 +35,6 @@ class Ship : public CompositeObject {
     static void collide(Ship *first, Ship *second);
     bool collide_asteroid(Asteroid *other);
     void collide(Ship *other);
-    bool collide(Particle const particle, float proximity = 0) const;
 
     //TODO: make friends with glship
     int score, lives, kills, kills_this_life;

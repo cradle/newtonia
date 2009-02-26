@@ -158,6 +158,15 @@ bool Ship::collide_asteroid(Asteroid* other) {
     }
     b++;
   }
+  std::list<Particle>::iterator mine = mines.begin();
+  while(mine != mines.end()) {
+    if(other->alive && mine->collide(other, 50.0f)) {
+      detonate(mine->position, mine->velocity);
+      mine = mines.erase(mine);
+    } else {
+      mine++;
+    }
+  }
   if(alive && other->alive && other->collide(this)) {
     detonate();
     kill_stop();
@@ -171,10 +180,10 @@ void Ship::collide(Ship* other) {
   //TODO: Make ships collide with each other too
   std::list<Particle>::iterator b = bullets.begin();
   while(b != bullets.end()) {
-    if(is_alive() && collide(*b)) {
+    if(is_alive() && b->collide(other)) {
       kill();
       b = bullets.erase(b);
-    } else if(other->is_alive() && other->collide(*b)) {
+    } else if(other->is_alive() && b->collide(other)) {
       other->kill();
       kills_this_life += 1;
       kills += 1;
@@ -187,7 +196,7 @@ void Ship::collide(Ship* other) {
 
   std::list<Particle>::iterator mine = mines.begin();
   while(mine != mines.end()) {
-    if(is_alive() && collide(*mine) || other->is_alive() && other->collide(*mine, 50.0)) {
+    if(is_alive() && other->is_alive() && mine->collide(other, 50.0)) {
       detonate(mine->position, mine->velocity);
       mine = mines.erase(mine);
     } else {
@@ -206,11 +215,6 @@ void Ship::detonate(Point const position, Point const velocity) {
     dir.rotate(rand()%360*M_PI/180);
     bullets.push_back(Particle(position + dir, velocity + dir*0.0001*(rand()%150), rand()%1000));
   }
-}
-
-/* Circle based collision detection */
-bool Ship::collide(Particle const particle, float proximity) const {
-  return ((particle.position - position).magnitude_squared() < ((radius+proximity)*(radius+proximity)));
 }
 
 void Ship::shoot(bool on) {

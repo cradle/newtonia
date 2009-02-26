@@ -36,8 +36,8 @@ void Object::step(int delta) {
   rotation += rotation_speed * delta;
 }
 
-bool Object::collide(Object *other) {
-  return ((other->position - position).magnitude_squared() < ((radius+other->radius)*(radius+other->radius)));
+bool Object::collide(Object *other, float proximity) {
+  return ((other->position - position).magnitude_squared() < ((radius+other->radius+proximity)*(radius+other->radius+proximity)));
 }
 
 void Object::kill() {

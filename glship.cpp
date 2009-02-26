@@ -212,8 +212,8 @@ void GLShip::draw(bool minimap) {
     for(i = trails.begin(); i != trails.end(); i++) {
       (*i)->draw();
     }
-    draw_mines();
   }
+  draw_mines(minimap);
   if(ship->is_alive()) {
     draw_ship(minimap);
   }
@@ -294,7 +294,18 @@ void GLShip::draw_debris() const {
 	glEnd();
 }
 
-void GLShip::draw_mines() const {
+void GLShip::draw_mines(bool minimap) const {
+  if(minimap) {
+    glPointSize(1.5f);
+    glColor3fv(color);
+    glBegin(GL_POINTS);
+    for(list<Particle>::iterator m = ship->mines.begin(); m != ship->mines.end(); m++) {
+      glVertex2fv(m->position);
+    }
+    glEnd();
+    return;
+  }
+  
   float size = 20.0;
   glPointSize(5.0f);
   glLineWidth(3.0f);
