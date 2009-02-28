@@ -22,16 +22,15 @@ public:
   //TODO: work out inheritance with static, OR, work out borg?
   friend class AsteroidDrawer;
   friend class Behaviour;
-  //Fix: y need all these?????
-  friend class Follower;
-  friend class Teleport;
-
+  
+  //TODO: Fix encapsulation
+  WrappedPoint position;
+  Point velocity;
+  
 protected:
   void kill();
 
   float radius, radius_squared;
-  WrappedPoint position;
-  Point velocity;
   long long value;
   float rotation, rotation_speed, friction;
   bool alive;

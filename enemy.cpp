@@ -8,11 +8,11 @@ Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Ship
   position = WrappedPoint(x,y);
   thrust_force = 0.135 + difficulty*0.00025 + rand()%50/10000.0;
   rotation_force = 0.15 + difficulty*0.01 + rand()%10/1000.0;
-  automatic_fire = true;
-  time_until_next_shot = time_between_shots = 200;
+  // automatic_fire = true;
+  // time_until_next_shot = time_between_shots = 200;
   burst_time = burst_time_left = difficulty*25 + 50;
   time_between_bursts = time_until_next_burst = rand()%100 + (5000/(difficulty+1));
-  accuracy = 1.0/(difficulty+10.0);
+  // accuracy = 1.0/(difficulty+10.0);
   value = 50 + difficulty * 50;
   lives = 1;
   heat_rate = 0.0;
@@ -63,20 +63,20 @@ void Enemy::lock_step(float delta) {
 }
 
 void Enemy::burst_shooting_step(float delta) {
-  if(!shooting) {
-    time_until_next_burst -= delta;
-
-    if(time_until_next_burst <= 0.0) {
-      shoot(true);
-      time_until_next_shot = 0;
-      burst_time_left = burst_time;
-    }
-  } else if (burst_time_left >= 0.0) {
-    burst_time_left -= delta;
-  } else {
-    shoot(false);
-    time_until_next_burst = time_between_bursts;
-  }
+  // if(!shooting) {
+  //   time_until_next_burst -= delta;
+  // 
+  //   if(time_until_next_burst <= 0.0) {
+  //     shoot(true);
+  //     time_until_next_shot = 0;
+  //     burst_time_left = burst_time;
+  //   }
+  // } else if (burst_time_left >= 0.0) {
+  //   burst_time_left -= delta;
+  // } else {
+  //   shoot(false);
+  //   time_until_next_burst = time_between_bursts;
+  // }
 }
 
 void Enemy::step(float delta) {
@@ -102,8 +102,8 @@ void Enemy::step(float delta) {
         }
       } else {
     		target = NULL;
-        time_until_next_lock = 2000.0;
-    		time_until_next_shot = time_until_next_lock + time_between_shots;
+        // time_until_next_lock = 2000.0;
+        // time_until_next_shot = time_until_next_lock + time_between_shots;
     		shoot(false);
         rotate_right(false);
       }

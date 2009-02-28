@@ -35,6 +35,7 @@
 		21CB93AA0F5687FA00EC8524 /* behaviour.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21CB93A90F5687FA00EC8524 /* behaviour.cpp */; };
 		21DBAE5B0EF7B31500F97906 /* composite_object.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21DBAE590EF7B31500F97906 /* composite_object.cpp */; };
 		21F0BF3F0ED54EFE00F2BB9B /* gltrail.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */; };
+		21F7B0A80F58CC3F003090D8 /* default.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21F7B0A60F58CC3F003090D8 /* default.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -90,6 +91,9 @@
 		21DBAE5A0EF7B31500F97906 /* composite_object.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = composite_object.h; sourceTree = "<group>"; };
 		21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = gltrail.cpp; sourceTree = "<group>"; };
 		21F0BF3E0ED54EFE00F2BB9B /* gltrail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = gltrail.h; sourceTree = "<group>"; };
+		21F7B0A50F58CC3F003090D8 /* base.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = base.h; sourceTree = "<group>"; };
+		21F7B0A60F58CC3F003090D8 /* default.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = default.cpp; sourceTree = "<group>"; };
+		21F7B0A70F58CC3F003090D8 /* default.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = default.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -116,6 +120,7 @@
 		219282740ECD670E002D470F = {
 			isa = PBXGroup;
 			children = (
+				21F7B0A40F58CC3F003090D8 /* weapon */,
 				215669B70F56A0B5004BDC84 /* teleport.cpp */,
 				215669B80F56A0B5004BDC84 /* teleport.h */,
 				21CB939B0F5687A500EC8524 /* behaviour.h */,
@@ -169,6 +174,16 @@
 				2150E2AB0ECD687300D89C28 /* Products */,
 				21CB93A90F5687FA00EC8524 /* behaviour.cpp */,
 			);
+			sourceTree = "<group>";
+		};
+		21F7B0A40F58CC3F003090D8 /* weapon */ = {
+			isa = PBXGroup;
+			children = (
+				21F7B0A50F58CC3F003090D8 /* base.h */,
+				21F7B0A60F58CC3F003090D8 /* default.cpp */,
+				21F7B0A70F58CC3F003090D8 /* default.h */,
+			);
+			path = weapon;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -250,6 +265,7 @@
 				21CB939E0F5687A500EC8524 /* follower.cpp in Sources */,
 				21CB93AA0F5687FA00EC8524 /* behaviour.cpp in Sources */,
 				215669B90F56A0B5004BDC84 /* teleport.cpp in Sources */,
+				21F7B0A80F58CC3F003090D8 /* default.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -4,9 +4,10 @@
 #include "composite_object.h"
 #include "point.h"
 #include "particle.h"
-#include "behaviour.h"
 #include <list>
 
+class Behaviour;
+namespace Weapon { class Base; }
 class Asteroid;
 
 using namespace std;
@@ -25,6 +26,7 @@ class Ship : public CompositeObject {
     void thrust(bool on = true);
     void reverse(bool on = true);
     void shoot(bool on = true);
+    void shoot_weapon(bool on = true);
     void mine(bool on = true);
     int multiplier() const;
 
@@ -66,17 +68,19 @@ class Ship : public CompositeObject {
     // I need friends for views
     // Timings
     int respawn_time, time_until_respawn;
-    int time_until_next_shot, time_between_shots;
 
     //FIX: friends
     int time_left_invincible;
     bool invincible;
     void disable_behaviours();
-
-  protected:
+    void disable_weapons();
+    
+    void next_weapon();
+    void previous_weapon();
     WrappedPoint gun() const;
 
-    void fire_shot();
+  protected:
+
     void lay_mine();
     void respawn(bool was_killed = true);
     void init(bool no_friction);
@@ -92,10 +96,10 @@ class Ship : public CompositeObject {
     // Forces
     float thrust_force, reverse_force, rotation_force;
     // Attributes
-    float width, height, mass, accuracy;
+    float width, height, mass;
     long long value;
     // States
-    bool shooting, mining, alive, respawns, first_life, automatic_fire;
+    bool mining, alive, respawns, first_life;
 
     //TODO: encapsulate
     friend class GLStation;
@@ -106,6 +110,7 @@ class Ship : public CompositeObject {
     
   private:
     list<Behaviour *> behaviours;
+    list<Weapon::Base *> weapons;
 };
 
 #endif

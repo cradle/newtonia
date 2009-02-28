@@ -1,8 +1,10 @@
-#include "follower.h"
 #include "ship.h"
 #include "point.h"
 #include "particle.h"
 #include "asteroid.h"
+#include "behaviour.h"
+#include "weapon/base.h"
+#include "weapon/default.h"
 #include <math.h>
 
 using namespace std;
@@ -23,24 +25,38 @@ void Ship::disable_behaviours() {
   }
 }
 
-Ship::~Ship() {
-  disable_behaviours();
+void Ship::disable_weapons() {
+  while(!weapons.empty()) {
+    delete weapons.back();
+    weapons.pop_back();
+  }
 }
 
-// void add_behaviour() {
-//   
-// }
+Ship::~Ship() {
+  disable_behaviours();
+} 
+   
+void Ship::next_weapon() {
+  if(weapons.size() != 0) {
+    weapons.push_back(weapons.front());
+    weapons.pop_front();
+  }
+}
+
+void Ship::previous_weapon() {
+  if(weapons.size() != 0) {
+    weapons.push_front(weapons.back());
+    weapons.pop_back();
+  }
+}
 
 void Ship::init(bool no_friction) {
   mass = 100.0;
   value = 1000000;
-  accuracy = 0.1;
   lives = 6;
   width = height = radius = 11;
   radius_squared = radius * radius;
   respawn_time = time_until_respawn = 4000;
-  automatic_fire = false;
-  time_between_shots = 100;
   max_temperature = 100.0;
   critical_temperature = max_temperature * 0.80;
   explode_temperature = max_temperature * 1.2;
@@ -72,7 +88,6 @@ void Ship::respawn(bool was_killed) {
     first_life = false;
     position.wrap();
   } else {
-    disable_behaviours();
     position = WrappedPoint();
   }
   if(was_killed) {
@@ -90,10 +105,11 @@ void Ship::reset(bool was_killed) {
   velocity = Point(0, 0);
   thrusting = false;
   reversing = false;
-  shooting = false;
   rotation_direction = NONE;
-  time_until_next_shot = 0;
   temperature = 0.0;
+  disable_behaviours();
+  disable_weapons();
+  weapons.push_back(new Weapon::Default(this));
   if(was_killed) {
     kills_this_life = 0;
   }
@@ -222,18 +238,8 @@ void Ship::detonate(Point const position, Point const velocity) {
 }
 
 void Ship::shoot(bool on) {
-  if (on && time_until_next_shot < 0){
-    time_until_next_shot = 0;
-  }
-  shooting = on;
-}
-
-void Ship::fire_shot() {
-  Point dir = Point(facing);
-  dir.rotate((rand() / (float)RAND_MAX) * accuracy - accuracy / 2.0);
-  bullets.push_back(Particle(gun(), dir*0.615 + velocity*0.99, 2600.0));
-  if(!automatic_fire) {
-    shoot(false);
+  if(weapons.size() != 0) {
+    weapons.front()->shoot(on);
   }
 }
 
@@ -296,13 +302,10 @@ void Ship::step(float delta) {
         invincible = false;
       }
     }
-    time_until_next_shot -= delta;
-    if(shooting) {
-      while(time_until_next_shot <= 0) {
-        fire_shot();
-        time_until_next_shot += time_between_shots;
-      }
-    }
+    
+    if(weapons.size() != 0)
+      weapons.front()->step(delta);
+      
   } else if (lives > 0) {
     time_until_respawn -= delta;
     if(time_until_respawn < 0) {
