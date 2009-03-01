@@ -91,6 +91,9 @@
 		<Unit filename="teleport.h" />
 		<Unit filename="typer.cpp" />
 		<Unit filename="typer.h" />
+		<Unit filename="weapon\base.h" />
+		<Unit filename="weapon\default.cpp" />
+		<Unit filename="weapon\default.h" />
 		<Unit filename="wrapped_point.cpp" />
 		<Unit filename="wrapped_point.h" />
 		<Extensions>
