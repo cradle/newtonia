@@ -22,12 +22,13 @@ public:
   virtual ~GLShip();
   void step(float delta);
   virtual void input(unsigned char key, bool pressed = true);
-  void set_keys(int left, int right, int up, int right, int reverse, int mine);
+  void set_keys(int left, int right, int up, int right, int reverse, int mine, int next_weapon_key);
   void draw(bool minimap = false);
   void draw_body() const;
   void draw_temperature() const;
   void draw_respawn_timer() const;
   void draw_temperature_status() const;
+  void draw_weapons() const;
   bool is_removable() const;
   //TODO: Clearly there is a Player/View/Controller separation here
   bool rotate_view() const;
@@ -51,7 +52,7 @@ protected:
   
   float color[3];
   
-  int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key;
+  int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key;
   
   bool rotating_view;
   

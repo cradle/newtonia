@@ -275,9 +275,12 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
     }
     /* Draw the life count */
     Typer::draw_lives(window.x()/width_scale-40,-window.y()+70, glship, 18);
-    //TODO: Move name into ship object.
-    const char *name = primary ? "Player 1" : "Player 2";
-    Typer::draw(-window.x()/width_scale+30,window.y()-20,name,20);
+    
+    glPushMatrix();
+    glTranslatef(-window.x()/width_scale+10, window.y()-10, 0.0f);
+    glship->draw_weapons();
+    glPopMatrix();
+    
     glPushMatrix();
     glTranslatef(-window.x()/width_scale+30, -window.y()+15, 0.0f);
     glPushMatrix();
@@ -377,10 +380,10 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     GLShip* object;
     if(players->size() == 0) {
       object = new GLShip(has_friction);
-      object->set_keys('a','d','w',' ','s','x');
+      object->set_keys('a','d','w',' ','s','x','q');
     } else {
       object = new GLCar(has_friction);
-      object->set_keys('j','l','i','/','k',',');
+      object->set_keys('j','l','i','/','k',',','u');
     }
     players->push_back(object);
   }

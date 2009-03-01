@@ -3,18 +3,31 @@
 #include "../point.h"
 #include "../ship.h"
 
+#include <math.h>
+#include <sstream>
 #include <iostream>
 using namespace std;
 
 namespace Weapon {
-  Default::Default(Ship *ship) : 
+  Default::Default(Ship *ship, bool automatic, int level) : 
     Base(ship),
     ship(ship), // FIX: TODO: why do I have to call this when it is in base?
     shooting(false), 
-    automatic(false),
+    automatic(automatic),
     time_until_next_shot(0),
     time_between_shots(100),
-    accuracy(0.1) {
+    level(level),
+    accuracy((level == 0) ? 0.1 : 0.0) {
+      stringstream temp_name;
+      if(level > 0) {
+        temp_name << "LVL" << (level+1) << " ";
+      }
+      if(automatic) {
+        temp_name << "AUTO PP GUN";
+      } else {
+        temp_name << "PP GUN";
+      }
+      _name = temp_name.str();
   }
 
   Default::~Default() {
@@ -31,18 +44,60 @@ namespace Weapon {
     time_until_next_shot -= delta;
     if(shooting) {
     	while(time_until_next_shot <= 0) {
-    	  fire_shot();
+    	  fire();
     	  time_until_next_shot += time_between_shots;
     	}
     }
   }
 
-  void Default::fire_shot() {
+  void Default::fire() {
     Point dir = Point(ship->facing);
-    dir.rotate((rand() / (float)RAND_MAX) * accuracy - accuracy / 2.0);
-    ship->bullets.push_back(Particle(ship->gun(), dir*0.615 + ship->velocity*0.99, 2600.0));
+    switch(level) {
+      case(0):
+        fire_shot(dir);
+        break;
+      case(1):
+        dir.rotate(0.2);
+        fire_shot(dir);
+        dir.rotate(-0.4);
+        fire_shot(dir);
+        break;
+      case(2):
+        fire_shot(dir);
+        dir.rotate(-0.3);
+        fire_shot(dir);
+        dir.rotate(0.6);
+        fire_shot(dir);
+        break;
+      case(3):
+        fire_shot(dir);
+        dir.rotate(-0.3);
+        fire_shot(dir);
+        dir.rotate(0.6);
+        fire_shot(dir);
+        dir.rotate(M_PI - 0.3);
+        fire_shot(dir);
+        break;
+      case(4):
+        fire_shot(dir);
+        dir.rotate(-0.3);
+        fire_shot(dir);
+        dir.rotate(0.6);
+        fire_shot(dir);
+        dir.rotate(M_PI/2.0f - 0.3);
+        fire_shot(dir);
+        dir.rotate(-M_PI);
+        fire_shot(dir);
+        break;
+    }
+  }
+
+  void Default::fire_shot(Point direction) {
+    direction = Point(direction);
+    direction.rotate((rand() / (float)RAND_MAX) * accuracy - accuracy / 2.0);
+    ship->bullets.push_back(Particle(ship->gun(), direction*0.615 + ship->velocity*0.99, 2600.0));
     if(!automatic) {
-  	shoot(false);
+      shoot(false);
     }
   }
 }

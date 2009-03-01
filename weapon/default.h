@@ -3,22 +3,26 @@
 
 #include "base.h"
 
+class Point;
+
 namespace Weapon {
   class Default : public Base {
   public:
-    Default(Ship *ship);
+    Default(Ship *ship, bool automatic = false, int level = 0);
     ~Default();
   
     void shoot(bool on = true);
     void step(int delta);
     
   private:
-    void fire_shot();
+    void fire();
+    void fire_shot(Point direction);
     
     bool shooting, automatic;
     float accuracy;
     Ship *ship;
     int time_until_next_shot, time_between_shots;
+    int level;
   };
 }
 

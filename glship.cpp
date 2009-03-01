@@ -3,6 +3,7 @@
 #include "ship.h"
 #include "typer.h"
 #include "teleport.h"
+#include "weapon/base.h"
 #include <math.h>
 
 #ifdef __APPLE__
@@ -101,13 +102,14 @@ void GLShip::step(float delta) {
   }
 }
 
-void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, int mine) {
+void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, int mine, int next_weapon) {
   left_key = left;
   right_key = right;
   shoot_key = shoot;
   thrust_key = thrust;
   reverse_key = reverse;
   mine_key = mine;
+  next_weapon_key = next_weapon;
 }
 
 void GLShip::draw_temperature() const {
@@ -199,6 +201,8 @@ void GLShip::input(unsigned char key, bool pressed) {
     ship->shoot(pressed);
   } else if (key == mine_key) {
     ship->mine(pressed);
+  } else if(key == next_weapon_key && pressed) {
+    ship->next_weapon();
   } else if (key == 'z' && pressed) {
     ship->disable_behaviours();
   } else if (key == 't' && pressed) {
@@ -270,6 +274,16 @@ void GLShip::draw_body() const {
   glBegin(GL_LINE_LOOP);
   glCallList(body);
 	glEnd();
+}
+
+void GLShip::draw_weapons() const {
+  Typer::draw(0,0,"Weapons",15);
+  Typer::draw(0,-50,"-",10);
+  int i = 0;
+  for(list<Weapon::Base *>::iterator wi = ship->weapons.begin(); wi != ship->weapons.end(); wi++) {
+    Typer::draw(20,-i*40-50,(*wi)->name(),10);
+    i++;
+  }
 }
 
 void GLShip::draw_particles() const {

@@ -112,6 +112,15 @@ void Ship::reset(bool was_killed) {
   disable_behaviours();
   disable_weapons();
   weapons.push_back(new Weapon::Default(this));
+  weapons.push_back(new Weapon::Default(this, false, 1));
+  weapons.push_back(new Weapon::Default(this, false, 2));
+  weapons.push_back(new Weapon::Default(this, false, 3));
+  weapons.push_back(new Weapon::Default(this, false, 4));
+  weapons.push_back(new Weapon::Default(this, true));
+  weapons.push_back(new Weapon::Default(this, true, 1));
+  weapons.push_back(new Weapon::Default(this, true, 2));
+  weapons.push_back(new Weapon::Default(this, true, 3));
+  weapons.push_back(new Weapon::Default(this, true, 4));
   if(was_killed) {
     kills_this_life = 0;
   }
