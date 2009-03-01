@@ -8,6 +8,9 @@ Global Keys:
    speed up: +
   slow down: -
       reset: 0
+   teleport: t
+ skip level: n
+change view: v
 
 (two players works best with 2 USB keyboards)
 
