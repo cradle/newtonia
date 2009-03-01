@@ -28,7 +28,8 @@ const int GLGame::default_num_asteroids = 1;
 GLGame::GLGame() :
   State(),
   world(Point(default_world_width, default_world_height)),
-  running(true) {
+  running(true),
+  friendly_fire(false) {
   time_between_steps = step_size;
   level_cleared = false;
 
@@ -161,9 +162,11 @@ void GLGame::tick(int delta) {
     }
 
     for(o = players->begin(); o != players->end(); o++) {
-      for(o2 = o; o2 != players->end(); o2++) {
-        if(*o != *o2) {
-          GLShip::collide(*o, *o2);
+      if(friendly_fire) {
+        for(o2 = o; o2 != players->end(); o2++) {
+          if(*o != *o2) {
+            GLShip::collide(*o, *o2);
+          }
         }
       }
       for(o2 = enemies->begin(); o2 != enemies->end(); o2++) {
@@ -259,6 +262,10 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   }
   if(players->size() < 2) {
     Typer::draw_centered(0, window.y()-20, "press 1 for friction or 2 for non friction", 10);
+  } else {
+    if(friendly_fire) {
+      Typer::draw_centered(0, window.y()-20, "friendly fire on", 10);
+    }
   }
 
   /* Draw the score */
@@ -270,8 +277,8 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
 
     Typer::draw(window.x()/width_scale-40, window.y()-20, glship->ship->score, 20);
     if(glship->ship->multiplier() > 1) {
-    Typer::draw(window.x()/width_scale-35, window.y()-92, "x", 15);
-    Typer::draw(window.x()/width_scale-65, window.y()-80, glship->ship->multiplier(), 20);
+      Typer::draw(window.x()/width_scale-35, window.y()-92, "x", 15);
+      Typer::draw(window.x()/width_scale-65, window.y()-80, glship->ship->multiplier(), 20);
     }
     /* Draw the life count */
     Typer::draw_lives(window.x()/width_scale-40,-window.y()+70, glship, 18);
@@ -330,8 +337,8 @@ void GLGame::draw_map() const {
   } else {
     glViewport(window.x()/2 - minimap_size/2, window.y()/2 - minimap_size/2, minimap_size, minimap_size);
   }
-  glColor4f(0.0f,0.0f,0.0f,0.8f);
   /* BLACK BOX OVER MINIMAP */
+  glColor4f(0.0f,0.0f,0.0f,0.8f);
   glBegin(GL_POLYGON);
     glVertex2i( -world.x(), world.y());
     glVertex2i(  world.x(), world.y());
@@ -351,10 +358,12 @@ void GLGame::draw_map() const {
   glPopMatrix();
 
   /* DRAW THE LEVEL */
+  Typer::draw(-world.x()+world.x()/15.0f, world.y()-world.y()/15.0f, "LEVEL", world.x()/15.0f);
+  Typer::draw(world.x()-world.x()/15.0f*2.0f, world.y()-world.y()/15.0f, generation, world.x()/15.0f);
+  
   if(station != NULL) {
-    Typer::draw(world.x()-1500, -world.y()+2000, station->level(), 800);
-  } else {
-    Typer::draw(world.x()-750, -world.y()+1000, generation, 400);
+    Typer::draw(-world.x()+world.x()/15.0f, -world.y()+world.y()/15.0f*3.0f, "WAVE", world.x()/15.0f);
+    Typer::draw(world.x()-world.x()/15.0f*2.0f, -world.y()+world.y()/15.0f*3.0f, station->level(), world.x()/15.0f);
   }
 }
 
@@ -370,6 +379,9 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       level_cleared = true;
       time_until_next_generation = 0;
       objects->clear();
+  }
+  if (key == 'g') {
+    friendly_fire = !friendly_fire;
   }
   if (key == '=' && time_between_steps > 1) time_between_steps--;
   if (key == '-') time_between_steps++;
