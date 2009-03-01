@@ -60,6 +60,7 @@ class Ship : public CompositeObject {
       RIGHT = -1
     };
     Rotation rotation_direction;
+    bool still_rotating_left, still_rotating_right;
 
     // Heat
     float temperature_ratio();

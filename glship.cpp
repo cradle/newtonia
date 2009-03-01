@@ -26,6 +26,8 @@ GLShip::GLShip(bool has_friction) {
   trails.push_back(new GLTrail(ship, 0.5,Point(-4,17),-0.1, 0.9, GLTrail::REVERSING | GLTrail::RIGHT, 500.0));
   trails.push_back(new GLTrail(ship, 0.5,Point( 4,17),-0.1,-0.9, GLTrail::REVERSING | GLTrail::LEFT, 500.0));
   
+  rotating_view = false;
+  
   color[0] = 72/255.0;
   color[1] = 118/255.0;
   color[2] = 255/255.0;
@@ -201,6 +203,8 @@ void GLShip::input(unsigned char key, bool pressed) {
     ship->disable_behaviours();
   } else if (key == 't' && pressed) {
     ship->behaviours.push_back(new Teleport(ship));
+  } else if (key == 'v' && pressed) {
+    rotating_view = !rotating_view;
   }
 }
 

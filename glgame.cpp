@@ -250,6 +250,8 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
       glPushMatrix();
+      if(glship != NULL && glship->rotate_view())
+        glRotatef(-glship->ship->heading(), 0.0f, 0.0f, 1.0f);
       glTranslatef(world.x()*2*x, world.y()*2*y, 0.0f);
       glCallList(gameworld);
       glPopMatrix();

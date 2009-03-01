@@ -106,6 +106,8 @@ void Ship::reset(bool was_killed) {
   thrusting = false;
   reversing = false;
   rotation_direction = NONE;
+  still_rotating_left = false;
+  still_rotating_right = false;
   temperature = 0.0;
   disable_behaviours();
   disable_weapons();
@@ -261,11 +263,25 @@ float Ship::heading() const {
 }
 
 void Ship::rotate_left(bool on) {
-  rotation_direction = on ? LEFT : NONE;
+  still_rotating_left = on;
+  if(on) {
+    rotation_direction = LEFT;
+  } else if (still_rotating_right) {
+    rotation_direction = RIGHT;
+  } else {
+    rotation_direction = NONE;
+  }
 }
 
 void Ship::rotate_right(bool on) {
-  rotation_direction = on ? RIGHT : NONE;
+  still_rotating_right = on;
+  if(on) {
+    rotation_direction = RIGHT;
+  } else if (still_rotating_left) {
+    rotation_direction = LEFT;
+  } else {
+    rotation_direction = NONE;
+  }
 }
 
 WrappedPoint Ship::gun() const {

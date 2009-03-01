@@ -29,6 +29,8 @@ public:
   void draw_respawn_timer() const;
   void draw_temperature_status() const;
   bool is_removable() const;
+  //TODO: Clearly there is a Player/View/Controller separation here
+  bool rotate_view() const;
 
   static void collide(GLShip* first, GLShip* second);
   Ship *ship;
@@ -51,6 +53,8 @@ protected:
   
   int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key;
   
+  bool rotating_view;
+  
   std::list<GLTrail*> trails;
 };
 
@@ -71,5 +75,8 @@ inline
 float GLShip::explode_temperature() const {
   return ship->explode_temperature;
 }
-
+inline
+bool GLShip::rotate_view() const {
+  return rotating_view;
+}
 #endif
