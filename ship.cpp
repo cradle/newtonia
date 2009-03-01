@@ -109,19 +109,19 @@ void Ship::reset(bool was_killed) {
   still_rotating_left = false;
   still_rotating_right = false;
   temperature = 0.0;
-  disable_behaviours();
-  disable_weapons();
-  weapons.push_back(new Weapon::Default(this));
-  weapons.push_back(new Weapon::Default(this, false, 1));
-  weapons.push_back(new Weapon::Default(this, false, 2));
-  weapons.push_back(new Weapon::Default(this, false, 3));
-  weapons.push_back(new Weapon::Default(this, false, 4));
-  weapons.push_back(new Weapon::Default(this, true));
-  weapons.push_back(new Weapon::Default(this, true, 1));
-  weapons.push_back(new Weapon::Default(this, true, 2));
-  weapons.push_back(new Weapon::Default(this, true, 3));
-  weapons.push_back(new Weapon::Default(this, true, 4));
   if(was_killed) {
+    disable_behaviours();
+    disable_weapons();
+    weapons.push_back(new Weapon::Default(this));
+    weapons.push_back(new Weapon::Default(this, false, 1));
+    weapons.push_back(new Weapon::Default(this, false, 2));
+    weapons.push_back(new Weapon::Default(this, false, 3));
+    weapons.push_back(new Weapon::Default(this, false, 4));
+    weapons.push_back(new Weapon::Default(this, true));
+    weapons.push_back(new Weapon::Default(this, true, 1));
+    weapons.push_back(new Weapon::Default(this, true, 2));
+    weapons.push_back(new Weapon::Default(this, true, 3));
+    weapons.push_back(new Weapon::Default(this, true, 4));
     kills_this_life = 0;
   }
 }
