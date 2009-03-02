@@ -33,6 +33,7 @@ void Ship::disable_weapons() {
 }
 
 Ship::~Ship() {
+  disable_weapons();
   disable_behaviours();
 } 
    
@@ -75,6 +76,17 @@ void Ship::init(bool no_friction) {
     thrust_force = 0.09;
     rotation_force = 0.2;
   }
+  
+  weapons.push_back(new Weapon::Default(this));
+  weapons.push_back(new Weapon::Default(this, false, 1));
+  weapons.push_back(new Weapon::Default(this, false, 2));
+  weapons.push_back(new Weapon::Default(this, false, 3));
+  weapons.push_back(new Weapon::Default(this, false, 4));
+  weapons.push_back(new Weapon::Default(this, true));
+  weapons.push_back(new Weapon::Default(this, true, 1));
+  weapons.push_back(new Weapon::Default(this, true, 2));
+  weapons.push_back(new Weapon::Default(this, true, 3));
+  weapons.push_back(new Weapon::Default(this, true, 4));
 
   reset();
 }
@@ -110,18 +122,6 @@ void Ship::reset(bool was_killed) {
   still_rotating_right = false;
   temperature = 0.0;
   if(was_killed) {
-    disable_behaviours();
-    disable_weapons();
-    weapons.push_back(new Weapon::Default(this));
-    weapons.push_back(new Weapon::Default(this, false, 1));
-    weapons.push_back(new Weapon::Default(this, false, 2));
-    weapons.push_back(new Weapon::Default(this, false, 3));
-    weapons.push_back(new Weapon::Default(this, false, 4));
-    weapons.push_back(new Weapon::Default(this, true));
-    weapons.push_back(new Weapon::Default(this, true, 1));
-    weapons.push_back(new Weapon::Default(this, true, 2));
-    weapons.push_back(new Weapon::Default(this, true, 3));
-    weapons.push_back(new Weapon::Default(this, true, 4));
     kills_this_life = 0;
   }
 }
@@ -210,8 +210,7 @@ bool Ship::collide_asteroid(Asteroid* other) {
   return false;
 }
 
-void Ship::collide(Ship* other) {
-  //TODO: Make ships collide with each other too
+void Ship::collide(Ship *other) {
   std::list<Particle>::iterator b = bullets.begin();
   while(b != bullets.end()) {
     if(is_alive() && b->collide(this)) {

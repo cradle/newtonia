@@ -11,19 +11,14 @@ class Enemy : public Ship {
     virtual ~Enemy();
 
     void step(float delta);
-    void reset(bool was_killed = true);
+    virtual void reset(bool was_killed = true);
     //FIX: Why isn't this workinging without this method?
     bool is_removable() const;
 
   private:
-    void lock_step(float delta);
-    void burst_shooting_step(float delta);
-    void lock_nearest_target();
     Ship* target;
     std::list<Ship*> * targets;
-
-    int time_until_next_lock, time_between_locks;
-    int burst_time, burst_time_left, time_between_bursts, time_until_next_burst;
+    int difficulty;
 };
 
 #endif

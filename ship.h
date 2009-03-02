@@ -105,6 +105,7 @@ class Ship : public CompositeObject {
     friend class GLStation;
     friend class Enemy;
     friend class GLShip;
+    friend class GLEnemy;
     friend class GLGame;
     friend class GLTrail;
     

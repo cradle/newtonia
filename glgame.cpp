@@ -100,18 +100,23 @@ void GLGame::tick(int delta) {
       time_until_next_generation -= delta;
     } else {
       generation++;
-      for(int i = 0; i < generation; i++) {
-        objects->push_back(new Asteroid());
-      }
-      if(generation == 10 && station == NULL) {
+      if(generation >= 10) {
+        if(station != NULL)
+          delete station;
         station = new GLStation(enemies, players);
         world += Point(3000, 3000);
       } else {
         world += Point(100, 100);
       }
+      if(station != NULL) {
+        station->reset();
+      }
       delete starfield;
       starfield = new GLStarfield(world);
       WrappedPoint::set_boundaries(world);
+      for(int i = 0; i < generation; i++) {
+        objects->push_back(new Asteroid());
+      }
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {
         (*o)->ship->respawn(false);
@@ -131,7 +136,6 @@ void GLGame::tick(int delta) {
       (*oi)->step(step_size);
 
       for(o = players->begin(); o != players->end(); o++) {
-        if(station != NULL) station->collide((*o)->ship);
         if((*o)->ship->collide_asteroid(*oi)) {
           (*oi)->add_children(objects);
         }
@@ -140,6 +144,18 @@ void GLGame::tick(int delta) {
         if((*o)->ship->collide_asteroid(*oi)) {
           (*oi)->add_children(objects);
         }
+      }
+    }
+    if(station != NULL) {
+      for(o = players->begin(); o != players->end(); o++) {
+        Ship::collide(station, (*o)->ship);
+        // if(station->collide((*o)->ship)) {
+        //   (*o)->ship->kill_stop();
+        // }
+        // (*o)->ship->collide(station);
+      }
+      for(o = enemies->begin(); o != enemies->end(); o++) {
+        (*o)->ship->collide(station);
       }
     }
 
@@ -337,6 +353,7 @@ void GLGame::draw_map() const {
   } else {
     glViewport(window.x()/2 - minimap_size/2, window.y()/2 - minimap_size/2, minimap_size, minimap_size);
   }
+  
   /* BLACK BOX OVER MINIMAP */
   glColor4f(0.0f,0.0f,0.0f,0.8f);
   glBegin(GL_POLYGON);
@@ -353,10 +370,7 @@ void GLGame::draw_map() const {
     glVertex2i(  world.x(),-world.y());
     glVertex2i( -world.x(),-world.y());
   glEnd();
-  glPushMatrix();
-  draw_objects(true);
-  glPopMatrix();
-
+  
   /* DRAW THE LEVEL */
   Typer::draw(-world.x()+world.x()/15.0f, world.y()-world.y()/15.0f, "LEVEL", world.x()/15.0f);
   Typer::draw(world.x()-world.x()/15.0f*2.0f, world.y()-world.y()/15.0f, generation, world.x()/15.0f);
@@ -365,6 +379,10 @@ void GLGame::draw_map() const {
     Typer::draw(-world.x()+world.x()/15.0f, -world.y()+world.y()/15.0f*3.0f, "WAVE", world.x()/15.0f);
     Typer::draw(world.x()-world.x()/15.0f*2.0f, -world.y()+world.y()/15.0f*3.0f, station->level(), world.x()/15.0f);
   }
+  
+  glPushMatrix();
+  draw_objects(true);
+  glPopMatrix();
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
@@ -378,7 +396,10 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == 'n') {
       level_cleared = true;
       time_until_next_generation = 0;
-      objects->clear();
+      while(!objects->empty()) {
+        delete objects->back();
+        objects->pop_back();
+      }
   }
   if (key == 'g') {
     friendly_fire = !friendly_fire;

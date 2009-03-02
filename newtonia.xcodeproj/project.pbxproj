@@ -32,7 +32,6 @@
 		219B67590EED40B7002B7BAE /* menu.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 219B67570EED40B7002B7BAE /* menu.cpp */; };
 		219B675D0EED4575002B7BAE /* state_manager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 219B675B0EED4575002B7BAE /* state_manager.cpp */; };
 		21CB939E0F5687A500EC8524 /* follower.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21CB939C0F5687A500EC8524 /* follower.cpp */; };
-		21CB93AA0F5687FA00EC8524 /* behaviour.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21CB93A90F5687FA00EC8524 /* behaviour.cpp */; };
 		21DBAE5B0EF7B31500F97906 /* composite_object.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21DBAE590EF7B31500F97906 /* composite_object.cpp */; };
 		21F0BF3F0ED54EFE00F2BB9B /* gltrail.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */; };
 		21F7B0A80F58CC3F003090D8 /* default.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21F7B0A60F58CC3F003090D8 /* default.cpp */; };
@@ -86,7 +85,6 @@
 		21CB939B0F5687A500EC8524 /* behaviour.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = behaviour.h; sourceTree = "<group>"; };
 		21CB939C0F5687A500EC8524 /* follower.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = follower.cpp; sourceTree = "<group>"; };
 		21CB939D0F5687A500EC8524 /* follower.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = follower.h; sourceTree = "<group>"; };
-		21CB93A90F5687FA00EC8524 /* behaviour.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = behaviour.cpp; sourceTree = "<group>"; };
 		21DBAE590EF7B31500F97906 /* composite_object.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = composite_object.cpp; sourceTree = "<group>"; };
 		21DBAE5A0EF7B31500F97906 /* composite_object.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = composite_object.h; sourceTree = "<group>"; };
 		21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = gltrail.cpp; sourceTree = "<group>"; };
@@ -172,7 +170,6 @@
 				2150E2DC0ECD699700D89C28 /* OpenGL.framework */,
 				2150E2D80ECD698700D89C28 /* GLUT.framework */,
 				2150E2AB0ECD687300D89C28 /* Products */,
-				21CB93A90F5687FA00EC8524 /* behaviour.cpp */,
 			);
 			sourceTree = "<group>";
 		};
@@ -263,7 +260,6 @@
 				210430030EF47F0800B2097C /* object.cpp in Sources */,
 				21DBAE5B0EF7B31500F97906 /* composite_object.cpp in Sources */,
 				21CB939E0F5687A500EC8524 /* follower.cpp in Sources */,
-				21CB93AA0F5687FA00EC8524 /* behaviour.cpp in Sources */,
 				215669B90F56A0B5004BDC84 /* teleport.cpp in Sources */,
 				21F7B0A80F58CC3F003090D8 /* default.cpp in Sources */,
 			);

@@ -9,15 +9,15 @@
 using namespace std;
 
 namespace Weapon {
-  Default::Default(Ship *ship, bool automatic, int level) : 
+  Default::Default(Ship *ship, bool automatic, int level, float accuracy, int time_between_shots) : 
     Base(ship),
     ship(ship), // FIX: TODO: why do I have to call this when it is in base?
     shooting(false), 
     automatic(automatic),
     time_until_next_shot(0),
-    time_between_shots(100),
+    time_between_shots(time_between_shots),
     level(level),
-    accuracy((level == 0) ? 0.1 : 0.0) {
+    accuracy(accuracy) {
       stringstream temp_name;
       if(level > 0) {
         temp_name << "LVL" << (level+1) << " ";

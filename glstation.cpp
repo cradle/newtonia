@@ -14,12 +14,15 @@
 #include "glenemy.h"
 #include <list>
 #include <iostream>
+// #include "follower.h"
 
 using namespace std;
 
-GLStation::GLStation(list<GLShip*>* objects, list<GLShip*>* targets) : objects(objects), targets(targets) {
+GLStation::GLStation(list<GLShip*>* objects, list<GLShip*>* targets) : Ship(false), objects(objects), targets(targets) {
   position = Point(0,0);
-  radius = 850.0;
+  radius = 200.0;
+  time_until_respawn = 0;
+  velocity = Point(0.1f, 0.0f);
   radius_squared = radius * radius;
   max_ships_per_wave = 50;
   extra_ships_per_wave = 1;
@@ -27,7 +30,11 @@ GLStation::GLStation(list<GLShip*>* objects, list<GLShip*>* targets) : objects(o
   time_until_next_ship = 5000;
   time_between_ships = 500;
   deploying = true;
+  redeploying = false;
   wave = difficulty = 0;
+  lives = 1;
+  
+  // behaviours.push_back(new Roamer(this));
   
   outer_rotation_speed = 0.01;
   inner_rotation_speed = -0.0025;
@@ -71,16 +78,22 @@ GLStation::GLStation(list<GLShip*>* objects, list<GLShip*>* targets) : objects(o
 }
 
 GLStation::~GLStation() {
-  delete targets;
-  delete objects;
+  // delete targets;
+  // delete objects;
   glDeleteLists(body, 1);
   glDeleteLists(map_body, 1);
 }
 
-void GLStation::collide(Ship * ship) const {
-  if( ship->is_alive() && (ship->position - position).magnitude_squared() < (radius_squared + ship->radius_squared) ){
-    ship->kill_stop();
+void GLStation::reset() {
+  while(!objects->empty()) {
+    if(objects->back()->ship->is_alive()) {
+      ships_left_to_deploy++;
+    }
+    delete objects->back();
+    objects->pop_back();
   }
+  time_until_next_ship = 5000;
+  deploying = redeploying = true;
 }
 
 int GLStation::level() const {
@@ -88,6 +101,8 @@ int GLStation::level() const {
 }
 
 void GLStation::draw(bool minimap) const {
+  if(!alive)
+    return;
   glPushMatrix();
   glTranslatef(position.x(), position.y(), 0);  
   
@@ -111,6 +126,7 @@ void GLStation::draw(bool minimap) const {
 }
 
 void GLStation::step(float delta) {
+  Ship::step(delta);
   outer_rotation += outer_rotation_speed * delta;
   inner_rotation += inner_rotation_speed * delta;
   if(deploying) {
@@ -120,7 +136,11 @@ void GLStation::step(float delta) {
       ships_this_wave += extra_ships_per_wave;
       if(ships_this_wave > max_ships_per_wave) {
         ships_this_wave = max_ships_per_wave;
-        difficulty++;
+        if(!redeploying) {
+          difficulty++;
+        } else {
+          redeploying = false;
+        }
       }
     } else if (time_until_next_ship <= 0) {
       time_until_next_ship += time_between_ships;
@@ -130,7 +150,7 @@ void GLStation::step(float delta) {
       objects->push_back(
         new GLEnemy(
           position.x() + distance*cos(rotation), 
-          position.y() + distance*sin(rotation), targets, wave
+          position.y() + distance*sin(rotation), targets, difficulty
         )
       );
     }

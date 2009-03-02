@@ -12,7 +12,7 @@ public:
   Object(WrappedPoint position, Point velocity);
   virtual ~Object() {};
   virtual void step(int delta);
-  bool collide(Object *other, float proximity = 0.0f);
+  virtual bool collide(Object *other, float proximity = 0.0f);
   virtual bool is_removable() const;
   void commonInit();
   bool is_alive() const;
@@ -27,9 +27,7 @@ public:
   WrappedPoint position;
   Point velocity;
   
-protected:
   bool kill();
-
   float radius, radius_squared;
   long long value;
   float rotation, rotation_speed, friction;

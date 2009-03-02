@@ -23,6 +23,7 @@ void Follower::common_init() {
   time_until_next_lock = 0.0;
   time_between_locks = 900 + rand()%100;
   target = NULL;
+  done = false;
 }
 
 void Follower::step(int delta) {
