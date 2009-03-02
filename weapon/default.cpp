@@ -18,15 +18,19 @@ namespace Weapon {
     level(level),
     accuracy(accuracy) {
       stringstream temp_name;
+      temp_name << "PP GUN";
       if(level > 0) {
-        temp_name << "LVL" << (level+1) << " ";
+        temp_name << " LVL" << (level+1);
       }
       if(automatic) {
-        temp_name << "AUTO PP GUN";
-      } else {
-        temp_name << "PP GUN";
+        temp_name << " AUTO";
       }
       _name = temp_name.str();
+      
+      unlimited = (level == 0 && !automatic);
+      
+      if(!unlimited)
+        _ammo = 100;
   }
 
   Default::~Default() {
@@ -50,6 +54,12 @@ namespace Weapon {
   }
 
   void Default::fire() {
+    if(!unlimited) {
+      if(_ammo == 0)
+        return;
+      else
+        _ammo--;
+    }
     Point dir = Point(ship->facing);
     switch(level) {
       case(0):

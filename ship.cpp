@@ -81,16 +81,16 @@ void Ship::init(bool no_friction) {
     rotation_force = 0.2;
   }
   
-  weapons.push_back(new Weapon::Default(this));
-  weapons.push_back(new Weapon::Default(this, false, 1));
-  weapons.push_back(new Weapon::Default(this, false, 2));
-  weapons.push_back(new Weapon::Default(this, false, 3));
-  weapons.push_back(new Weapon::Default(this, false, 4));
-  weapons.push_back(new Weapon::Default(this, true));
-  weapons.push_back(new Weapon::Default(this, true, 1));
-  weapons.push_back(new Weapon::Default(this, true, 2));
-  weapons.push_back(new Weapon::Default(this, true, 3));
-  weapons.push_back(new Weapon::Default(this, true, 4));
+  weapons.push_front(new Weapon::Default(this));
+  weapons.push_front(new Weapon::Default(this, false, 1));
+  weapons.push_front(new Weapon::Default(this, false, 2));
+  weapons.push_front(new Weapon::Default(this, false, 3));
+  weapons.push_front(new Weapon::Default(this, false, 4));
+  weapons.push_front(new Weapon::Default(this, true));
+  weapons.push_front(new Weapon::Default(this, true, 1));
+  weapons.push_front(new Weapon::Default(this, true, 2));
+  weapons.push_front(new Weapon::Default(this, true, 3));
+  weapons.push_front(new Weapon::Default(this, true, 4));
 
   reset();
 }
@@ -257,6 +257,8 @@ void Ship::detonate(Point const position, Point const velocity) {
 
 void Ship::shoot(bool on) {
   if(weapons.size() != 0) {
+    if(weapons.front()->empty() && on)
+      next_weapon();
     weapons.front()->shoot(on);
   }
 }

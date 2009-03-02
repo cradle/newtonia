@@ -25,6 +25,15 @@ void Typer::draw_centered(float x, float y, long long number, float size) {
   }
   draw(x+length*size, y, number, size);
 }
+void Typer::draw_lefted(float x, float y, int number, float size) {
+  int length = -1;
+  int temp = number/10;
+  while(temp != 0) {
+    temp /= 10;
+    length++;
+  }
+  draw(x+length*size*2, y, number, size);
+}
 void Typer::draw(float x, float y, int number, float size) {
   draw(x,y,(long long)number, size);
 }

@@ -6,6 +6,7 @@ class GLShip;
 
 class Typer {
 public:
+  static void draw_lefted(float x, float y, int number, float size = 1);
   static void draw(float x, float y, int number, float size = 1);
   static void draw(float x, float y, long long number, float size = 1);
   static void draw(float x, float y, const char *text, float size = 1);

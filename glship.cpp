@@ -280,8 +280,17 @@ void GLShip::draw_weapons() const {
   Typer::draw(0,0,"Weapons",15);
   Typer::draw(0,-50,"-",10);
   int i = 0;
-  for(list<Weapon::Base *>::iterator wi = ship->weapons.begin(); wi != ship->weapons.end(); wi++) {
+  //HACK: only drawing one, no need for loop
+  for(list<Weapon::Base *>::iterator wi = ship->weapons.begin(); wi == ship->weapons.begin(); wi++) {
     Typer::draw(20,-i*40-50,(*wi)->name(),10);
+    if(!(*wi)->is_unlimited()) {
+      if((*wi)->ammo() == 0) {
+        Typer::draw(60+20*strlen((*wi)->name()),-i*40-50,"empty",10);
+      } else {
+        Typer::draw_lefted(60+20*strlen((*wi)->name()),-i*40-50,(*wi)->ammo(),10);
+      }
+    }
+      
     i++;
   }
 }
