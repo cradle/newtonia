@@ -95,7 +95,7 @@ void Ship::respawn(bool was_killed) {
   }
   alive = true;
   invincible = true;
-  time_left_invincible = 1000;
+  time_left_invincible = 1500;
   reset(was_killed);
   detonate();
 }
@@ -127,7 +127,7 @@ void Ship::reset(bool was_killed) {
 }
 
 void Ship::kill() {
-  if(is_alive() && !invincible) {
+  if(alive && !invincible) {
     alive = false;
     thrusting = false;
     reversing = false;
@@ -178,14 +178,15 @@ bool Ship::collide_asteroid(Asteroid* other) {
   while(b != bullets.end()) {
     if(other->alive && (*b).collide(other)) {
       (*b).collide(other);
-      score += other->get_value() * multiplier();
-      kills_this_life += 1;
-      kills += 1;
       explode((*b).position, Point(0,0));
-      other->kill();
-      other->explode();
       bullets.erase(b);
-      return true;
+      if(other->kill()) {
+        score += other->get_value() * multiplier();
+        kills_this_life += 1;
+        kills += 1;
+        other->explode();
+        return true;
+      }
     }
     b++;
   }
@@ -199,10 +200,12 @@ bool Ship::collide_asteroid(Asteroid* other) {
     }
   }
   if(alive && other->alive && other->collide(this)) {
-    detonate();
+    if(!invincible) {
+      detonate(); 
+    }
     kill_stop();
-    other->kill();
-    return true;
+    if(other->kill())
+      return true;
   }
   return false;
 }

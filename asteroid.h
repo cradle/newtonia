@@ -8,11 +8,13 @@ class Asteroid : public CompositeObject {
 public:
   Asteroid();
   Asteroid(Asteroid const *mother);
-  virtual ~Asteroid() {};
+  virtual ~Asteroid();
   
   void add_children(list<Asteroid*> *objects);
 
   friend class AsteroidDrawer;
+  
+  static int num_killable;
 
 private:
   const static int max_speed;

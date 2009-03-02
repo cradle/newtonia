@@ -28,12 +28,12 @@ public:
   Point velocity;
   
 protected:
-  void kill();
+  bool kill();
 
   float radius, radius_squared;
   long long value;
   float rotation, rotation_speed, friction;
-  bool alive;
+  bool alive, invincible;
 };
 
 inline

@@ -92,7 +92,7 @@ void GLGame::tick(int delta) {
 
   num_frames++;
 
-  if(objects->size() == 0) {
+  if(Asteroid::num_killable == 0) {
     if(!level_cleared) {
       level_cleared = true;
       time_until_next_generation = 5000;
