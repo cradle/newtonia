@@ -29,7 +29,8 @@ GLGame::GLGame() :
   State(),
   world(Point(default_world_width, default_world_height)),
   running(true),
-  friendly_fire(false) {
+  friendly_fire(false),
+  stereo(false) {
   time_between_steps = step_size;
   level_cleared = false;
 
@@ -237,9 +238,15 @@ void GLGame::draw(void) {
   else {
     if(players->size() > 0) {
       draw_world(players->front(), true);
+      if(stereo) {
+        draw_world(players->front(), false);
+      }
     }
     if(players->size() > 1) {
       draw_world(players->back(), false);
+      if(stereo) {
+        draw_world(players->back(), true);
+      }
     }
     //Draw map after - for partial translucency
     draw_map();
@@ -249,16 +256,39 @@ void GLGame::draw(void) {
 void GLGame::draw_world(GLShip *glship, bool primary) const {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  int width_scale = (glship == NULL) ? 1 : players->size();
+  int width_scale = 1;
+  if(players->size() != 0)
+    width_scale = players->size();
+  if(stereo)
+    width_scale *= 2;
+    
   gluOrtho2D(-window.x()/width_scale, window.x()/width_scale, -window.y(), window.y());
   glMatrixMode(GL_MODELVIEW);
 
   glLoadIdentity();
-  glViewport((primary ? 0 : (window.x()/2)), 0, window.x()/width_scale, window.y());
+  int left = 0;
+  if(!primary)
+    left += window.x()/2;
+  if(stereo && !primary)
+    left += window.x()/2;
+  glViewport(left, 0, window.x()/width_scale, window.y());
+  if(stereo) {
+   if(primary) {
+     Typer::draw_centered(0, window.y()-40, "left eye", 10);
+   } else {
+     Typer::draw_centered(0, window.y()-40, "right eye", 10);
+   }
+  }
 
   /* Draw the world */
   // Store the rendered world in a display list
   Point position = (glship == NULL) ? Point(0,0) : glship->ship->position;
+  
+  if(stereo && primary)
+    position = position + Point(35.0f, 0.0f);
+  if(stereo && !primary)
+    position = position - Point(35.0f, 0.0f);
+    
   glNewList(gameworld, GL_COMPILE);
     glTranslatef(-position.x(), -position.y(), 0.0f);
     starfield->draw_rear(position);
@@ -408,6 +438,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == '-') time_between_steps++;
   if (key == '0') time_between_steps = step_size;
   if (key == 'p') toggle_pause();
+  if (key == 't') stereo = !stereo;
   if ((key == '1' || key == '2') && players->size() < 2) {
     bool has_friction = (key == '1');
     GLShip* object;

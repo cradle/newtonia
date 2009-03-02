@@ -43,6 +43,7 @@ private:
   
   GLStarfield *starfield;
   GLStation *station;
+  bool stereo;
   list<GLShip*> *enemies, *players;
   list<Asteroid*> *objects;
 };
