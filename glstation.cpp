@@ -78,14 +78,13 @@ GLStation::GLStation(list<GLShip*>* objects, list<GLShip*>* targets) : Ship(fals
 }
 
 GLStation::~GLStation() {
-  // delete targets; 
+  // delete targets;
   // delete objects;
   glDeleteLists(body, 1);
   glDeleteLists(map_body, 1);
 }
 
 void GLStation::reset() {
-  Ship::reset();
   while(!objects->empty()) {
     if(objects->back()->ship->is_alive()) {
       ships_left_to_deploy++;
