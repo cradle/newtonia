@@ -482,6 +482,20 @@ void Typer::draw(float x, float y, char character, float size) {
       glVertex2f(width, 0.0f);
       glEnd();
       break;
+    case '>':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(0.0f, height*0.9f);
+      glVertex2f(width, height/2.0f);
+      glVertex2f(0.0f, height*0.1f);
+      glEnd();
+      break;
+    case '<':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(width, height*0.9f);
+      glVertex2f(0.0f, height/2.0f);
+      glVertex2f(width, height*0.1f);
+      glEnd();
+      break;
   }
   post_draw();
 }

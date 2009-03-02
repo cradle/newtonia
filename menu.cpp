@@ -10,6 +10,7 @@ Menu::Menu() :
   State(), 
   currentTime(0),
   viewpoint(Point(-10000,0)),
+  selected(ARCADE),
   starfield(GLStarfield(Point(10000,10000))) {}
 
 void Menu::draw() {
@@ -25,12 +26,18 @@ void Menu::draw() {
   
   starfield.draw_rear(viewpoint);
   
-  Typer::draw_centered(0, 200, "Newtonia", 75);
+   if((currentTime/700) % 2) {
+     Typer::draw_centered(0, window.y() - 10, "press enter to start", 10); 
+   }
+  
+  Typer::draw_centered(0, 400, "Newtonia", 75);
+  
+  Typer::draw_centered(0, 130, "arcade", 25);
+  Typer::draw_centered(0, -20, "versus", 25);
+  Typer::draw_centered(0, selected == ARCADE ? 130 : -20, ">        <", 25);
+  
   Typer::draw_centered(0,-260,"a",10);
   Typer::draw_centered(0, -300, "Glenn Francis Murray", 15);
-  if((currentTime/700) % 2) {
-    Typer::draw_centered(0, -50, "press enter to start", 15); 
-  }
   Typer::draw_centered(0,-350,"production",10);
   Typer::draw_centered(0, -420, "Copyright 2008-2009", 10);
 
@@ -51,7 +58,24 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 void Menu::keyboard_up (unsigned char key, int x, int y) {
   switch(key) {
   case 13:
-    request_state_change(new GLGame());
+    switch(selected) {
+    case ARCADE:
+      request_state_change(new GLGame());
+      break;
+    case VERSUS:
+      break;
+    }
+    break;
+  case 'w':
+  case 's':
+    switch(selected) {
+    case ARCADE:
+      selected = VERSUS;
+      break;
+    case VERSUS:
+      selected = ARCADE;
+      break;
+    }
     break;
   }
 }

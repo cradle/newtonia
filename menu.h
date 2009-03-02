@@ -18,6 +18,13 @@ private:
   int currentTime;
   WrappedPoint viewpoint;
   GLStarfield starfield;
+  
+  enum MenuItem {
+    ARCADE,
+    VERSUS    
+  };
+  
+  MenuItem selected;
 };
 
 #endif

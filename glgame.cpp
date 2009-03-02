@@ -40,6 +40,10 @@ GLGame::GLGame() :
   WrappedPoint::set_boundaries(world);
 
   starfield = new GLStarfield(world);
+  
+  GLShip *object = new GLShip(true);
+  object->set_keys('a','d','w',' ','s','x','q');
+  players->push_back(object);
 
   gameworld = glGenLists(1);
 
@@ -408,16 +412,9 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == '-') time_between_steps++;
   if (key == '0') time_between_steps = step_size;
   if (key == 'p') toggle_pause();
-  if ((key == '1' || key == '2') && players->size() < 2) {
-    bool has_friction = (key == '1');
-    GLShip* object;
-    if(players->size() == 0) {
-      object = new GLShip(has_friction);
-      object->set_keys('a','d','w',' ','s','x','q');
-    } else {
-      object = new GLCar(has_friction);
-      object->set_keys('j','l','i','/','k',',','u');
-    }
+  if (key == 13 && players->size() < 2) {
+    GLShip* object = new GLCar(true);
+    object->set_keys('j','l','i','/','k',',','u');
     players->push_back(object);
   }
   if (key == 27) request_state_change(new Menu());
