@@ -16,9 +16,9 @@ Asteroid::Asteroid() : CompositeObject() {
   radius = rand()%radius_variation + minimum_radius;
   rotation_speed = (rand()%max_rotation-max_rotation/2)/radius;
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
-  value = (radius_variation + minimum_radius) - radius;
+  value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
   children_added = false;
-  invincible = (rand()/float(RAND_MAX)) > 0.5f;
+  invincible = (rand()/float(RAND_MAX)) > 0.8f;
   if(!invincible) {
     num_killable++;
   }
@@ -35,7 +35,7 @@ Asteroid::Asteroid(Asteroid const *mother) {
   rotation_speed = (rand()%6-3)/radius;
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
   position = mother->position + velocity.normalized() * radius;
-  value = (radius_variation + minimum_radius) - radius;
+  value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
   value += mother->value;
   children_added = false;
   num_killable++;

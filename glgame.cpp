@@ -281,10 +281,10 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
     }
   }
   if(players->size() < 2) {
-    Typer::draw_centered(0, window.y()-20, "press 1 for friction or 2 for non friction", 10);
+    Typer::draw_centered(0, window.y()-20, "press enter to join", 8);
   } else {
     if(friendly_fire) {
-      Typer::draw_centered(0, window.y()-20, "friendly fire on", 10);
+      Typer::draw_centered(0, window.y()-20, "friendly fire on", 8);
     }
   }
 

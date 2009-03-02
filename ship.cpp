@@ -39,6 +39,8 @@ Ship::~Ship() {
    
 void Ship::next_weapon() {
   if(weapons.size() != 0) {
+    weapons.back()->shoot(weapons.front()->is_shooting());
+    weapons.front()->shoot(false);
     weapons.push_back(weapons.front());
     weapons.pop_front();
   }
@@ -46,6 +48,8 @@ void Ship::next_weapon() {
 
 void Ship::previous_weapon() {
   if(weapons.size() != 0) {
+    weapons.front()->shoot(weapons.back()->is_shooting());
+    weapons.back()->shoot(false);
     weapons.push_front(weapons.back());
     weapons.pop_back();
   }
@@ -117,6 +121,7 @@ void Ship::reset(bool was_killed) {
   velocity = Point(0, 0);
   thrusting = false;
   reversing = false;
+  shoot(false);
   rotation_direction = NONE;
   still_rotating_left = false;
   still_rotating_right = false;

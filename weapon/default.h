@@ -18,7 +18,7 @@ namespace Weapon {
     void fire();
     void fire_shot(Point direction);
     
-    bool shooting, automatic;
+    bool automatic;
     float accuracy;
     Ship *ship;
     int time_until_next_shot, time_between_shots;
