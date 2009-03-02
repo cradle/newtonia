@@ -18,12 +18,12 @@ namespace Weapon {
     level(level),
     accuracy(accuracy) {
       stringstream temp_name;
-      temp_name << "PP GUN";
+      temp_name << "PP GUN ";
       if(level > 0) {
-        temp_name << " LVL" << (level+1);
+        temp_name << (level+1);
       }
       if(automatic) {
-        temp_name << " AUTO";
+        temp_name << "A";
       }
       _name = temp_name.str();
       
