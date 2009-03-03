@@ -12,14 +12,12 @@ public:
   Grid(Point size, Point biggest);
   ~Grid();
   
-  void add(Object *object);
   void display() const;
-  void update();
+  void update(list<Object *> *objects);
   
 private:
   Point cell_size;
   int num_rows, num_cols;
-  list<Object *> objects;
   vector< vector< list<Object *> > > cells;
 };
 

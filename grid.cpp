@@ -35,17 +35,13 @@ void Grid::display() const {
   cout << endl;
 }
 
-void Grid::add(Object *object) {
-  objects.push_back(object);
-}
-
-void Grid::update() {
+void Grid::update(list<Object *> *objects) {
   for(int i = 0; i < num_rows; i++) {
     for(int j = 0; j < num_cols; j++) {
       cells[i][j].clear();
     }
   }
-  for(list<Object *>::iterator oi = objects.begin(); oi != objects.end(); oi++) {
+  for(list<Object *>::iterator oi = objects->begin(); oi != objects->end(); oi++) {
     Point p = (*oi)->position;
     int x_cell = p.x()/cell_size.x() + num_rows/2;
     int y_cell = p.y()/cell_size.y() + num_cols/2;

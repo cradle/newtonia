@@ -5,7 +5,7 @@
 
 using namespace std;
 
-const int Asteroid::radius_variation = 435;
+const int Asteroid::radius_variation = 285;
 const int Asteroid::minimum_radius = 15.0f;
 const int Asteroid::max_speed = 7;
 const int Asteroid::max_rotation = 10;
