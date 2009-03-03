@@ -7,7 +7,6 @@
 
 class Particle : public Object {
 public:
-  Particle() : Object() {};
   Particle(const Point position, const Point direction, float time_to_live);
   virtual ~Particle() {};
   

@@ -14,8 +14,10 @@ public:
   
   void display() const;
   void update(list<Object *> *objects);
+  Object * collide(Object &object) const;
   
 private:
+  list<Object *> get(Point position, int x, int y) const;
   Point cell_size;
   int num_rows, num_cols;
   vector< vector< list<Object *> > > cells;

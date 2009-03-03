@@ -48,7 +48,7 @@ bool Object::collide(Object *other, float proximity) {
 }
 
 bool Object::kill() {
-  if(!invincible) {
+  if(!invincible && alive) {
     alive = false; 
     return true;
   }

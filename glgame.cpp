@@ -22,8 +22,8 @@
 #include <iostream>
 #include <list>
 
-const int GLGame::default_world_width = 1000;
-const int GLGame::default_world_height = 1000;
+const int GLGame::default_world_width = 2000;
+const int GLGame::default_world_height = 2000;
 const int GLGame::default_num_asteroids = 1;
 
 GLGame::GLGame() :
@@ -31,7 +31,7 @@ GLGame::GLGame() :
   world(Point(default_world_width, default_world_height)),
   running(true),
   friendly_fire(false),
-  grid(Grid(world, Point(300, 300))) {
+  grid(Grid(world, Point(600,600))) {
   time_between_steps = step_size;
   level_cleared = false;
 
@@ -114,14 +114,14 @@ void GLGame::tick(int delta) {
       } else {
         world += Point(100, 100);
       }
-      grid = Grid(world, Point(300, 300));
+      grid = Grid(world, Point(600, 600));
       if(station != NULL) {
         station->reset();
       }
       delete starfield;
       starfield = new GLStarfield(world);
       WrappedPoint::set_boundaries(world);
-      for(int i = 0; i < generation; i++) {
+      while(Asteroid::num_killable < (generation+1)) {
         objects->push_back(new Asteroid());
       }
       std::list<GLShip*>::iterator o;
@@ -135,27 +135,20 @@ void GLGame::tick(int delta) {
   std::list<GLShip*>::iterator o, o2;
   while(time_until_next_step <= 0) {
     grid.update((std::list<Object *>*)objects);
-    grid.display();
     
     if(station != NULL) {
       station->step(step_size);
     }
 
-    std::list<Asteroid*>::iterator oi, ol;
+    std::list<Asteroid*>::iterator oi;
     for(oi = objects->begin(); oi != objects->end(); oi++) {
       (*oi)->step(step_size);
-
-      for(o = players->begin(); o != players->end(); o++) {
-        if((*o)->ship->collide_asteroid(*oi)) {
-          (*oi)->add_children(objects);
-        }
-      }
-      for(o = enemies->begin(); o != enemies->end(); o++) {
-        if((*o)->ship->collide_asteroid(*oi)) {
-          (*oi)->add_children(objects);
-        }
-      }
     }
+
+    for(o = players->begin(); o != players->end(); o++) {
+      (*o)->ship->collide_grid(grid);
+    }
+    
     if(station != NULL) {
       for(o = players->begin(); o != players->end(); o++) {
         Ship::collide(station, (*o)->ship);
@@ -172,6 +165,7 @@ void GLGame::tick(int delta) {
     oi = objects->begin();
     while(oi != objects->end()) {
       if((*oi)->is_removable()) {
+        (*oi)->add_children(objects);
         delete *oi;
         oi = objects->erase(oi);
       } else {
@@ -281,7 +275,7 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
       glPushMatrix();
       if(glship != NULL && glship->rotate_view())
         glRotatef(-glship->ship->heading(), 0.0f, 0.0f, 1.0f);
-      glTranslatef(world.x()*2*x, world.y()*2*y, 0.0f);
+      glTranslatef(world.x()*x, world.y()*y, 0.0f);
       glCallList(gameworld);
       glPopMatrix();
     }
@@ -355,7 +349,7 @@ void GLGame::draw_map() const {
   /* MINIMAP */
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluOrtho2D(-world.x(), world.x(), -world.y(), world.y());
+  gluOrtho2D(0, world.x(), 0, world.y());
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
   if (players->size() == 1) {
@@ -367,18 +361,18 @@ void GLGame::draw_map() const {
   /* BLACK BOX OVER MINIMAP */
   glColor4f(0.0f,0.0f,0.0f,0.8f);
   glBegin(GL_POLYGON);
-    glVertex2i( -world.x(), world.y());
+    glVertex2i(  0, world.y());
     glVertex2i(  world.x(), world.y());
-    glVertex2i(  world.x(),-world.y());
-    glVertex2i( -world.x(),-world.y());
+    glVertex2i(  world.x(), 0);
+    glVertex2i(  0, 0);
   glEnd();
   /* LINE AROUND MINIMAP */
   glColor3f(0.5f,0.5f,0.5f);
   glBegin(GL_LINE_LOOP);
-    glVertex2i( -world.x(), world.y());
+    glVertex2i( 0, world.y());
     glVertex2i(  world.x(), world.y());
-    glVertex2i(  world.x(),-world.y());
-    glVertex2i( -world.x(),-world.y());
+    glVertex2i(  world.x(),0);
+    glVertex2i( 0,0);
   glEnd();
   
   /* DRAW THE LEVEL */

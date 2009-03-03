@@ -131,16 +131,17 @@ void Ship::reset(bool was_killed) {
   }
 }
 
-void Ship::kill() {
-  if(alive && !invincible) {
+bool Ship::kill() {
+  if(CompositeObject::kill()) {
     alive = false;
     thrusting = false;
     reversing = false;
     rotation_direction = NONE;
     temperature = 0.0;
     time_until_respawn = respawn_time;
-    explode();
+    return true;
   }
+  return false;
 }
 
 void Ship::kill_stop() {
@@ -178,7 +179,25 @@ int Ship::multiplier() const {
   return kills_this_life / 10 + 1;
 }
 
-bool Ship::collide_asteroid(Asteroid* other) {
+void Ship::collide_grid(Grid &grid) {
+  Object * object;
+  std::list<Particle>::iterator b;
+  for(b = bullets.begin(); b != bullets.end(); b++) {
+    object = grid.collide(*b);
+    if(object != NULL) {
+      explode((*b).position, Point(0,0));
+      bullets.erase(b);
+      if(object->kill()) {
+        explode(object->position, object->velocity);
+        score += object->get_value() * multiplier();
+        kills_this_life += 1;
+        kills += 1;
+      }
+    }
+  }
+}
+
+bool Ship::collide_object(Object* other) {
   std::list<Particle>::iterator b = bullets.begin();
   while(b != bullets.end()) {
     if(other->alive && (*b).collide(other)) {
@@ -189,7 +208,7 @@ bool Ship::collide_asteroid(Asteroid* other) {
         score += other->get_value() * multiplier();
         kills_this_life += 1;
         kills += 1;
-        other->explode();
+        // other->explode();
         return true;
       }
     }

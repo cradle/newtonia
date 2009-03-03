@@ -10,7 +10,7 @@ Menu::Menu() :
   State(), 
   currentTime(0),
   viewpoint(Point(-10000,0)),
-  starfield(GLStarfield(Point(10000,10000))) {}
+  starfield(GLStarfield(Point(5000,5000))) {}
 
 void Menu::draw() {
   glClear(GL_COLOR_BUFFER_BIT);

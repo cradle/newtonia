@@ -12,7 +12,7 @@
 
 const int GLStarfield::NUM_REAR_LAYERS = 20;
 const int GLStarfield::NUM_FRONT_LAYERS = 5;
-const float GLStarfield::STAR_DENSITY = 0.00003;
+const float GLStarfield::STAR_DENSITY = 0.000015;
 
 GLStarfield::GLStarfield(Point const size) {
   point_layers = glGenLists(NUM_REAR_LAYERS + NUM_FRONT_LAYERS + 1);

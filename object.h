@@ -27,7 +27,7 @@ public:
   WrappedPoint position;
   Point velocity;
   
-  bool kill();
+  virtual bool kill();
   float radius, radius_squared;
   long long value;
   float rotation, rotation_speed, friction;

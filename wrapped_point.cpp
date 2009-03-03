@@ -43,8 +43,8 @@ float WrappedPoint::distance_to(const WrappedPoint other) const {
 }
 
 void WrappedPoint::set_boundaries(const Point bounds) {
-  x_min = -bounds.x();
+  x_min = 0;
   x_max = bounds.x();
-  y_min = -bounds.y();
+  y_min = 0;
   y_max = bounds.y();
 }

@@ -9,6 +9,7 @@ public:
   virtual ~CompositeObject() {};
   virtual void step(float delta);
   virtual bool is_removable() const;
+
   void explode();
   void explode(Point const position, Point const velocity);
   

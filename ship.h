@@ -4,11 +4,12 @@
 #include "composite_object.h"
 #include "point.h"
 #include "particle.h"
+#include "grid.h"
 #include <list>
 
 class Behaviour;
+class Object;
 namespace Weapon { class Base; }
-class Asteroid;
 
 using namespace std;
 
@@ -35,7 +36,8 @@ class Ship : public CompositeObject {
     virtual bool is_removable() const;
 
     static void collide(Ship *first, Ship *second);
-    bool collide_asteroid(Asteroid *other);
+    bool collide_object(Object *other);
+    void collide_grid(Grid &grid);
     void collide(Ship *other);
 
     //TODO: make friends with glship
@@ -78,6 +80,7 @@ class Ship : public CompositeObject {
     void next_weapon();
     void previous_weapon();
     WrappedPoint gun() const;
+    bool kill();
 
   protected:
 
@@ -87,7 +90,6 @@ class Ship : public CompositeObject {
     virtual void reset(bool was_killed = true);
     void detonate();
     void detonate(Point const position, Point const velocity);
-    void kill();
 
     Point world_size;
 
