@@ -24,6 +24,7 @@
 		2150E2FB0ECD831900D89C28 /* glut.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2F90ECD831900D89C28 /* glut.cpp */; };
 		215669B90F56A0B5004BDC84 /* teleport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 215669B70F56A0B5004BDC84 /* teleport.cpp */; };
 		215ED6A50ECDB80400E0778A /* glgame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 215ED6A30ECDB80400E0778A /* glgame.cpp */; };
+		2162B1AE0F5D0C4600E3FA78 /* grid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2162B1AC0F5D0C4600E3FA78 /* grid.cpp */; };
 		21696BCD0EDD2991006997A8 /* glstation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21696BCB0EDD2991006997A8 /* glstation.cpp */; };
 		2180D3930ED14D100050ED72 /* glcar.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2180D3900ED14D100050ED72 /* glcar.cpp */; };
 		218BF7DE0ED5645600C9FE0C /* glstarfield.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 218BF7DC0ED5645600C9FE0C /* glstarfield.cpp */; };
@@ -69,6 +70,8 @@
 		215669B80F56A0B5004BDC84 /* teleport.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = teleport.h; sourceTree = "<group>"; };
 		215ED6A30ECDB80400E0778A /* glgame.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glgame.cpp; sourceTree = "<group>"; };
 		215ED6A40ECDB80400E0778A /* glgame.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glgame.h; sourceTree = "<group>"; };
+		2162B1AC0F5D0C4600E3FA78 /* grid.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = grid.cpp; sourceTree = "<group>"; };
+		2162B1AD0F5D0C4600E3FA78 /* grid.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = grid.h; sourceTree = "<group>"; };
 		21696BCB0EDD2991006997A8 /* glstation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glstation.cpp; sourceTree = "<group>"; };
 		21696BCC0EDD2991006997A8 /* glstation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glstation.h; sourceTree = "<group>"; };
 		2180D3900ED14D100050ED72 /* glcar.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glcar.cpp; sourceTree = "<group>"; };
@@ -118,6 +121,8 @@
 		219282740ECD670E002D470F = {
 			isa = PBXGroup;
 			children = (
+				2162B1AC0F5D0C4600E3FA78 /* grid.cpp */,
+				2162B1AD0F5D0C4600E3FA78 /* grid.h */,
 				21F7B0A40F58CC3F003090D8 /* weapon */,
 				215669B70F56A0B5004BDC84 /* teleport.cpp */,
 				215669B80F56A0B5004BDC84 /* teleport.h */,
@@ -262,6 +267,7 @@
 				21CB939E0F5687A500EC8524 /* follower.cpp in Sources */,
 				215669B90F56A0B5004BDC84 /* teleport.cpp in Sources */,
 				21F7B0A80F58CC3F003090D8 /* default.cpp in Sources */,
+				2162B1AE0F5D0C4600E3FA78 /* grid.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

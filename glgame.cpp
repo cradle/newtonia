@@ -8,6 +8,7 @@
 #include "asteroid.h"
 #include "asteroid_drawer.h"
 #include "object.h"
+#include "grid.h"
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -29,7 +30,8 @@ GLGame::GLGame() :
   State(),
   world(Point(default_world_width, default_world_height)),
   running(true),
-  friendly_fire(false) {
+  friendly_fire(false),
+  grid(Grid(world, Point(100, 100))) {
   time_between_steps = step_size;
   level_cleared = false;
 
@@ -44,6 +46,7 @@ GLGame::GLGame() :
   GLShip *object = new GLShip(true);
   object->set_keys('a','d','w',' ','s','x','q');
   players->push_back(object);
+  grid.add(object->ship);
 
   gameworld = glGenLists(1);
 
@@ -51,6 +54,7 @@ GLGame::GLGame() :
   num_frames = 0;
 
   objects->push_back(new Asteroid());
+  grid.add(objects->back());
 
   station = NULL;//new GLStation(enemies, players);
 
@@ -131,6 +135,10 @@ void GLGame::tick(int delta) {
 
   std::list<GLShip*>::iterator o, o2;
   while(time_until_next_step <= 0) {
+    grid.update();
+    grid.display();
+    cout << "---------------" << endl;
+    
     if(station != NULL) {
       station->step(step_size);
     }

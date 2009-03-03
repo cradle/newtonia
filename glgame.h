@@ -4,6 +4,7 @@
 #include "state.h"
 #include "glship.h"
 #include "point.h"
+#include "grid.h"
 #include "glstarfield.h"
 #include "glstation.h"
 #include "asteroid.h"
@@ -40,7 +41,8 @@ private:
   static const int default_world_width, default_world_height;
   static const int default_num_asteroids;
   unsigned int gameworld;
-  
+
+  Grid grid;
   GLStarfield *starfield;
   GLStation *station;
   list<GLShip*> *enemies, *players;
