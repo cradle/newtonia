@@ -31,7 +31,7 @@ GLGame::GLGame() :
   world(Point(default_world_width, default_world_height)),
   running(true),
   friendly_fire(false),
-  grid(Grid(world, Point(100, 100))) {
+  grid(Grid(world, Point(400, 400))) {
   time_between_steps = step_size;
   level_cleared = false;
 
@@ -137,7 +137,6 @@ void GLGame::tick(int delta) {
   while(time_until_next_step <= 0) {
     grid.update();
     grid.display();
-    cout << "---------------" << endl;
     
     if(station != NULL) {
       station->step(step_size);
