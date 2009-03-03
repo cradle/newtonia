@@ -15,6 +15,8 @@ public:
   friend class AsteroidDrawer;
   
   static int num_killable;
+  
+  const static int max_radius;
 
 private:
   const static int max_speed;

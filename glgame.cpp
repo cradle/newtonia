@@ -31,7 +31,7 @@ GLGame::GLGame() :
   world(Point(default_world_width, default_world_height)),
   running(true),
   friendly_fire(false),
-  grid(Grid(world, Point(600,600))) {
+  grid(Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2))) {
   time_between_steps = step_size;
   level_cleared = false;
 
@@ -114,7 +114,7 @@ void GLGame::tick(int delta) {
       } else {
         world += Point(100, 100);
       }
-      grid = Grid(world, Point(600, 600));
+      grid = Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2));
       if(station != NULL) {
         station->reset();
       }
@@ -135,6 +135,7 @@ void GLGame::tick(int delta) {
   std::list<GLShip*>::iterator o, o2;
   while(time_until_next_step <= 0) {
     grid.update((std::list<Object *>*)objects);
+    // grid.display();
     
     if(station != NULL) {
       station->step(step_size);

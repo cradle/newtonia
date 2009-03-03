@@ -33,15 +33,16 @@ void Grid::display() const {
 list<Object *> Grid::get(Point position, int x_offset, int y_offset) const {
   int x = (position.x()/cell_size.x()) + x_offset;
   int y = (position.y()/cell_size.y()) + y_offset;
+  // cout << "B" << x << "," << y << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
   if(x<0)
     x += num_rows;
   if(y<0)
     y += num_cols;
-  if(x>=num_rows)
+  if(x >= num_rows)
     x -= num_rows;
-  if(y>=num_cols)
+  if(y >= num_cols)
     y -= num_cols;
-  // cout << x << "," << y << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
+  // cout << "A" << x << "," << y << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
   return cells[x][y];
 }
 
@@ -67,12 +68,13 @@ void Grid::update(list<Object *> *objects) {
     }
   }
   Point p;
+  int x,y;
   for(list<Object *>::iterator oi = objects->begin(); oi != objects->end(); oi++) {
-    if((*oi)->is_alive()) {
+    if((*oi)->alive) {
       p = (*oi)->position;
-      int x_cell = p.x()/cell_size.x();
-      int y_cell = p.y()/cell_size.y();
-      cells[x_cell][y_cell].push_back(*oi);
+      x = p.x()/cell_size.x();
+      y = p.y()/cell_size.y();
+      cells[x][y].push_back(*oi);
     }
   }
 }
