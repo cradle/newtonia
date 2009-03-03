@@ -22,7 +22,8 @@ public:
   void tick(int delta);
   void keyboard(unsigned char key, int x, int y);
   void keyboard_up(unsigned char key, int x, int y);
-
+  
+  list<Asteroid*> *objects;
 private:
   void toggle_pause();
   void draw_map() const;
@@ -46,7 +47,6 @@ private:
   GLStarfield *starfield;
   GLStation *station;
   list<GLShip*> *enemies, *players;
-  list<Asteroid*> *objects;
 };
 
 #endif

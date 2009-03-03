@@ -164,8 +164,8 @@ void GLGame::tick(int delta) {
 
     oi = objects->begin();
     while(oi != objects->end()) {
+      (*oi)->add_children(objects);
       if((*oi)->is_removable()) {
-        (*oi)->add_children(objects);
         delete *oi;
         oi = objects->erase(oi);
       } else {

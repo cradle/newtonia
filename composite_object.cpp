@@ -18,6 +18,14 @@ bool CompositeObject::is_removable() const {
   return Object::is_removable() && debris.empty();
 }
 
+bool CompositeObject::kill() {
+  if(Object::kill()) {
+    explode();
+    return true;
+  }
+  return false;
+}
+
 void CompositeObject::explode() {
   explode(position, velocity);
 }

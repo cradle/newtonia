@@ -181,18 +181,19 @@ int Ship::multiplier() const {
 
 void Ship::collide_grid(Grid &grid) {
   Object * object;
-  std::list<Particle>::iterator b;
-  for(b = bullets.begin(); b != bullets.end(); b++) {
+  std::list<Particle>::iterator b = bullets.begin();
+  while(b != bullets.end()) {
     object = grid.collide(*b);
     if(object != NULL) {
-      explode((*b).position, Point(0,0));
-      bullets.erase(b);
       if(object->kill()) {
-        explode(object->position, object->velocity);
         score += object->get_value() * multiplier();
         kills_this_life += 1;
         kills += 1;
       }
+      explode((*b).position, Point(0,0));
+      b = bullets.erase(b);
+    } else {
+      b++;
     }
   }
 }
