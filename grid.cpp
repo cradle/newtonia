@@ -30,20 +30,11 @@ void Grid::display() const {
   cout << endl;
 }
 
-list<Object *> Grid::get(Point position, int x_offset, int y_offset) const {
-  int x = (position.x()/cell_size.x()) + x_offset;
-  int y = (position.y()/cell_size.y()) + y_offset;
-  // cout << "B" << x << "," << y << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
-  if(x<0)
-    x += num_rows;
-  if(y<0)
-    y += num_cols;
-  if(x >= num_rows)
-    x -= num_rows;
-  if(y >= num_cols)
-    y -= num_cols;
-  // cout << "A" << x << "," << y << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
-  return cells[x][y];
+list<Object *> Grid::get(WrappedPoint position, int x_offset, int y_offset, Point &offset) const {
+  position /= cell_size;
+  position += Point(x_offset, y_offset); 
+  position.wrap_to(0,0,num_rows,num_cols);
+  return cells[position.x()][position.y()];
 }
 
 Object * Grid::collide(Object &object) const {

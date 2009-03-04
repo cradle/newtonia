@@ -11,10 +11,11 @@ public:
   float distance_to(const WrappedPoint other) const;
   Point closest_to(const Point other) const;
   void wrap();
+  void wrap_to(int x, int y);
 
   static void set_boundaries(const Point bounds);
 
 private:
-  static float x_min, x_max, y_min, y_max;
+  static Point max;
 };
 #endif
