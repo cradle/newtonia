@@ -24,7 +24,8 @@
 
 const int GLGame::default_world_width = 2000;
 const int GLGame::default_world_height = 2000;
-const int GLGame::default_num_asteroids = 1;
+const int GLGame::default_num_asteroids = 20;
+const int GLGame::extra_num_asteroids = 10;
 
 GLGame::GLGame() :
   State(),
@@ -51,12 +52,13 @@ GLGame::GLGame() :
 
   time_until_next_step = 0;
   num_frames = 0;
-
-  objects->push_back(new Asteroid());
+  
+  generation = 0;
+  while(Asteroid::num_killable < default_num_asteroids) {
+    objects->push_back(new Asteroid());
+  }
 
   station = NULL;//new GLStation(enemies, players);
-
-  generation = 1;
 }
 
 GLGame::~GLGame() {
@@ -121,7 +123,7 @@ void GLGame::tick(int delta) {
       delete starfield;
       starfield = new GLStarfield(world);
       WrappedPoint::set_boundaries(world);
-      while(Asteroid::num_killable < (generation+1)) {
+      while(Asteroid::num_killable < (default_num_asteroids + generation * extra_num_asteroids)) {
         objects->push_back(new Asteroid());
       }
       std::list<GLShip*>::iterator o;
@@ -134,9 +136,8 @@ void GLGame::tick(int delta) {
 
   std::list<GLShip*>::iterator o, o2;
   while(time_until_next_step <= 0) {
-    grid.update((std::list<Object *>*)objects);
-    // grid.display();
-    
+	/* STEP EVERYTHING */
+	
     if(station != NULL) {
       station->step(step_size);
     }
@@ -145,6 +146,20 @@ void GLGame::tick(int delta) {
     for(oi = objects->begin(); oi != objects->end(); oi++) {
       (*oi)->step(step_size);
     }
+	
+    for(o = players->begin(); o != players->end(); o++) {
+      (*o)->step(step_size);
+    }
+
+    for(o = enemies->begin(); o != enemies->end(); o++) {
+      (*o)->step(step_size);
+    }
+	
+	/* UPDATE COLLISION MAP */
+	
+    grid.update((std::list<Object *>*)objects);
+	
+	/* COLLIDE EVERYTHING */
 
     for(o = players->begin(); o != players->end(); o++) {
       (*o)->ship->collide_grid(grid);
@@ -153,10 +168,6 @@ void GLGame::tick(int delta) {
     if(station != NULL) {
       for(o = players->begin(); o != players->end(); o++) {
         Ship::collide(station, (*o)->ship);
-        // if(station->collide((*o)->ship)) {
-        //   (*o)->ship->kill_stop();
-        // }
-        // (*o)->ship->collide(station);
       }
       for(o = enemies->begin(); o != enemies->end(); o++) {
         (*o)->ship->collide(station);
@@ -172,14 +183,6 @@ void GLGame::tick(int delta) {
       } else {
         oi++;
       }
-    }
-
-    for(o = players->begin(); o != players->end(); o++) {
-      (*o)->step(step_size);
-    }
-
-    for(o = enemies->begin(); o != enemies->end(); o++) {
-      (*o)->step(step_size);
     }
 
     for(o = players->begin(); o != players->end(); o++) {

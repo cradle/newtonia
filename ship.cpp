@@ -6,6 +6,7 @@
 #include "weapon/base.h"
 #include "weapon/default.h"
 #include <math.h>
+#include <iostream>
 
 using namespace std;
 
@@ -133,7 +134,6 @@ void Ship::reset(bool was_killed) {
 
 bool Ship::kill() {
   if(CompositeObject::kill()) {
-    alive = false;
     thrusting = false;
     reversing = false;
     rotation_direction = NONE;
@@ -145,9 +145,8 @@ bool Ship::kill() {
 }
 
 void Ship::kill_stop() {
-  if(is_alive() && !invincible) {
+  if(kill()) {
     velocity.zero();
-    kill();
   }
 }
 
@@ -181,6 +180,19 @@ int Ship::multiplier() const {
 
 void Ship::collide_grid(Grid &grid) {
   Object * object;
+  
+  if(alive) {
+    object = grid.collide(*this);
+    if(object != NULL) {
+      if(object->kill()) {
+        detonate();
+      } else {
+        explode(position, object->velocity);
+      }
+      kill_stop();
+    }
+  }
+  
   std::list<Particle>::iterator b = bullets.begin();
   while(b != bullets.end()) {
     object = grid.collide(*b);
@@ -190,7 +202,7 @@ void Ship::collide_grid(Grid &grid) {
         kills_this_life += 1;
         kills += 1;
       }
-      explode((*b).position, Point(0,0));
+      explode((*b).position, object->velocity);
       b = bullets.erase(b);
     } else {
       b++;

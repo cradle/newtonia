@@ -11,6 +11,7 @@ Grid::Grid(Point size, Point biggest) {
   cell_size = biggest;
   num_rows = int(ceil(size.x()/cell_size.x()));
   num_cols = int(ceil(size.y()/cell_size.y()));
+  cout << "Grid: " << num_rows << "x" << num_cols << endl;
   cells = vector<vector<list<Object *> > >(num_rows);
   for(int row = 0; row < num_rows; row++) {
     cells[row] = vector<list<Object *> >(num_cols);
@@ -70,7 +71,8 @@ void Grid::update(list<Object *> *objects) {
   Point p;
   int x,y;
   for(list<Object *>::iterator oi = objects->begin(); oi != objects->end(); oi++) {
-    if((*oi)->alive) {
+    //FIX: Shouldn't need *oi check, no null objects should be here
+    if(*oi && (*oi)->alive) {
       p = (*oi)->position;
       x = p.x()/cell_size.x();
       y = p.y()/cell_size.y();
