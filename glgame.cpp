@@ -24,7 +24,7 @@
 
 const int GLGame::default_world_width = 2000;
 const int GLGame::default_world_height = 2000;
-const int GLGame::default_num_asteroids = 10;
+const int GLGame::default_num_asteroids = 1;
 const int GLGame::extra_num_asteroids = 5;
 
 GLGame::GLGame() :
@@ -85,13 +85,12 @@ GLGame::~GLGame() {
 }
 
 void GLGame::add_asteroids() {
-  Asteroid *asteroid;
   while(Asteroid::num_killable < (default_num_asteroids + generation * extra_num_asteroids)) {
-    asteroid = new Asteroid();
-    if(asteroid->invincible) {
-      objects->push_front(new Asteroid()); 
-    } else {
-      objects->push_back(new Asteroid());
+    objects->push_front(new Asteroid(false)); 
+  }
+  if(generation > 5) {
+    for(int i = 0; i < generation; i++) {
+      objects->push_front(new Asteroid(true)); 
     }
   }
 }

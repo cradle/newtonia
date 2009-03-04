@@ -9,19 +9,19 @@ const int Asteroid::max_speed = 7;
 const int Asteroid::max_rotation = 10;
 int Asteroid::num_killable = 0;
 
-const int Asteroid::radius_variation = 185;
+const int Asteroid::radius_variation = 385;
 const int Asteroid::minimum_radius = 15.0f;
 
 const int Asteroid::max_radius = Asteroid::radius_variation + Asteroid::minimum_radius;
 
-Asteroid::Asteroid() : CompositeObject() {
+Asteroid::Asteroid(bool invincible) : CompositeObject() {
   position = WrappedPoint();
   radius = rand()%radius_variation + minimum_radius;
   rotation_speed = (rand()%max_rotation-max_rotation/2)/radius;
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
   value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
   children_added = false;
-  invincible = (rand()/float(RAND_MAX)) > 0.1f;
+  invincible = invincible;
   if(!invincible) {
     num_killable++;
   }
