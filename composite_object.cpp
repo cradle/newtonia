@@ -32,7 +32,7 @@ void CompositeObject::explode() {
 
 void CompositeObject::explode(Point position, Point velocity) {
   Point dir = (Point(0.3,0) * radius);
-  for(int i = rand()%10+10; i > 0; i--) {
+  for(int i = rand()%60+20; i > 0; i--) {
     dir.rotate(rand()%360*M_PI/180);
     debris.push_back(Particle(position, velocity + dir*0.00005*(rand()%300 - 150), rand()%3000));
   }  

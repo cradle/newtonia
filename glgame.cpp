@@ -24,8 +24,8 @@
 
 const int GLGame::default_world_width = 2000;
 const int GLGame::default_world_height = 2000;
-const int GLGame::default_num_asteroids = 20;
-const int GLGame::extra_num_asteroids = 10;
+const int GLGame::default_num_asteroids = 10;
+const int GLGame::extra_num_asteroids = 5;
 
 GLGame::GLGame() :
   State(),
@@ -54,9 +54,7 @@ GLGame::GLGame() :
   num_frames = 0;
   
   generation = 0;
-  while(Asteroid::num_killable < default_num_asteroids) {
-    objects->push_back(new Asteroid());
-  }
+  add_asteroids();
 
   station = NULL;//new GLStation(enemies, players);
 }
@@ -84,6 +82,18 @@ GLGame::~GLGame() {
     delete station;
 
   glDeleteLists(gameworld, 1);
+}
+
+void GLGame::add_asteroids() {
+  Asteroid *asteroid;
+  while(Asteroid::num_killable < (default_num_asteroids + generation * extra_num_asteroids)) {
+    asteroid = new Asteroid();
+    if(asteroid->invincible) {
+      objects->push_front(new Asteroid()); 
+    } else {
+      objects->push_back(new Asteroid());
+    }
+  }
 }
 
 void GLGame::toggle_pause() {
@@ -123,9 +133,7 @@ void GLGame::tick(int delta) {
       delete starfield;
       starfield = new GLStarfield(world);
       WrappedPoint::set_boundaries(world);
-      while(Asteroid::num_killable < (default_num_asteroids + generation * extra_num_asteroids)) {
-        objects->push_back(new Asteroid());
-      }
+      add_asteroids();
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {
         (*o)->ship->respawn(false);

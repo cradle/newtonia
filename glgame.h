@@ -25,6 +25,7 @@ public:
   
   list<Asteroid*> *objects;
 private:
+  void add_asteroids();
   void toggle_pause();
   void draw_map() const;
   void draw_objects(bool minimap = false) const;
