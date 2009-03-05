@@ -88,11 +88,11 @@ void GLGame::add_asteroids() {
   while(Asteroid::num_killable < (default_num_asteroids + generation * extra_num_asteroids)) {
     objects->push_front(new Asteroid(false)); 
   }
-  if(generation > 5) {
-    for(int i = 0; i < generation; i++) {
-      objects->push_front(new Asteroid(true)); 
-    }
-  }
+  // if(generation > 2) {
+  //   for(int i = 0; i < generation; i++) {
+  //     objects->push_front(new Asteroid(true)); 
+  //   }
+  // }
 }
 
 void GLGame::toggle_pause() {

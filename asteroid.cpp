@@ -10,7 +10,7 @@ const int Asteroid::max_rotation = 10;
 int Asteroid::num_killable = 0;
 
 const int Asteroid::radius_variation = 385;
-const int Asteroid::minimum_radius = 15.0f;
+const int Asteroid::minimum_radius = 10;
 
 const int Asteroid::max_radius = Asteroid::radius_variation + Asteroid::minimum_radius;
 

@@ -209,6 +209,9 @@ void GLShip::input(unsigned char key, bool pressed) {
     ship->behaviours.push_back(new Teleport(ship));
   } else if (key == 'v' && pressed) {
     rotating_view = !rotating_view;
+  } else if (key == 'e' && pressed) {
+    ship->time_left_invincible += 1000;
+    ship->invincible = true;
   }
 }
 

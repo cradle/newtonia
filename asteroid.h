@@ -6,7 +6,7 @@
 
 class Asteroid : public CompositeObject {
 public:
-  Asteroid(bool invincible = false);
+  Asteroid(bool invincible);
   Asteroid(Asteroid const *mother);
   virtual ~Asteroid();
   

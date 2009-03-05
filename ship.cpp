@@ -83,15 +83,15 @@ void Ship::init(bool no_friction) {
   }
   
   weapons.push_front(new Weapon::Default(this));
-  weapons.push_front(new Weapon::Default(this, false, 1));
-  weapons.push_front(new Weapon::Default(this, false, 2));
-  weapons.push_front(new Weapon::Default(this, false, 3));
-  weapons.push_front(new Weapon::Default(this, false, 4));
-  weapons.push_front(new Weapon::Default(this, true));
-  weapons.push_front(new Weapon::Default(this, true, 1));
-  weapons.push_front(new Weapon::Default(this, true, 2));
-  weapons.push_front(new Weapon::Default(this, true, 3));
-  weapons.push_front(new Weapon::Default(this, true, 4));
+  // weapons.push_front(new Weapon::Default(this, false, 1));
+  // weapons.push_front(new Weapon::Default(this, false, 2));
+  // weapons.push_front(new Weapon::Default(this, false, 3));
+  // weapons.push_front(new Weapon::Default(this, false, 4));
+  // weapons.push_front(new Weapon::Default(this, true));
+  // weapons.push_front(new Weapon::Default(this, true, 1));
+  // weapons.push_front(new Weapon::Default(this, true, 2));
+  // weapons.push_front(new Weapon::Default(this, true, 3));
+  // weapons.push_front(new Weapon::Default(this, true, 4));
 
   reset();
 }
