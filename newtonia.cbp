@@ -70,6 +70,8 @@
 		<Unit filename="gltrail.cpp" />
 		<Unit filename="gltrail.h" />
 		<Unit filename="glut.cpp" />
+		<Unit filename="grid.cpp" />
+		<Unit filename="grid.h" />
 		<Unit filename="icon.rc">
 			<Option compilerVar="WINDRES" />
 		</Unit>
