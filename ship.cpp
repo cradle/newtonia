@@ -193,19 +193,30 @@ void Ship::collide_grid(Grid &grid) {
     }
   }
   
-  std::list<Particle>::iterator b = bullets.begin();
-  while(b != bullets.end()) {
-    object = grid.collide(*b);
+  std::list<Particle>::iterator p = mines.begin();
+  while(p != mines.end()) {
+    object = grid.collide(*p, 50.0f);
+    if(object != NULL && object->alive) {
+      detonate(p->position, p->velocity);
+      p = mines.erase(p);
+    } else {
+      p++;
+    }
+  }
+  
+  p = bullets.begin();
+  while(p != bullets.end()) {
+    object = grid.collide(*p);
     if(object != NULL) {
       if(object->kill()) {
         score += object->get_value() * multiplier();
         kills_this_life += 1;
         kills += 1;
       }
-      explode((*b).position, object->velocity);
-      b = bullets.erase(b);
+      explode((*p).position, object->velocity);
+      p = bullets.erase(p);
     } else {
-      b++;
+      p++;
     }
   }
 }

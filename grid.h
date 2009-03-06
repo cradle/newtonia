@@ -14,7 +14,7 @@ public:
   
   void display() const;
   void update(list<Object *> *objects);
-  Object * collide(Object &object) const;
+  Object * collide(Object &object, float proximity = 0.0f) const;
   
 private:
   list<Object *> get(Point position, int x, int y) const;

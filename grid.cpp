@@ -47,13 +47,13 @@ list<Object *> Grid::get(Point position, int x_offset, int y_offset) const {
   return cells[x][y];
 }
 
-Object * Grid::collide(Object &object) const {
+Object * Grid::collide(Object &object, float proximity) const {
   list<Object *> others;
   for(int i = -1; i <= 1; i++) {
     for(int j = -1; j <= 1; j++) {
       others = get(object.position,i,j);
       for(list<Object *>::iterator o = others.begin(); o != others.end(); o++) {
-        if(object.collide(*o)) {
+        if(object.collide(*o, proximity)) {
           return *o;
         }
       }
