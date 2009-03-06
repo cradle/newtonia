@@ -21,7 +21,7 @@ Asteroid::Asteroid(bool invincible) : CompositeObject() {
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
   value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
   children_added = false;
-  invincible = invincible;
+  this->invincible = invincible;
   if(!invincible) {
     num_killable++;
   }

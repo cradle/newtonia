@@ -33,7 +33,15 @@ void AsteroidDrawer::draw(Asteroid const *object, bool is_minimap) {
       glLineWidth(2.5f);
     }
     glBegin(GL_POLYGON);
-    float segment_size = 360.0/number_of_segments, d;
+    int segment_count = number_of_segments;
+    if(object->radius < 15) {
+      segment_count -= 2;
+    } else if(object->radius < 30) {
+      segment_count -= 1;
+    } else if (object->radius > 200) {
+      segment_count += 2;
+    }
+    float segment_size = 360.0/segment_count, d;
     for (float i = 0.0; i < 360.0; i+= segment_size) {
       d = i*M_PI/180;
       glVertex2f(cos(d),sin(d));
