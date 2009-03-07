@@ -89,8 +89,6 @@ void GLGame::add_asteroids() {
     objects->push_back(new Asteroid(false)); 
     objects->push_front(new Asteroid(true)); 
   }
-  // if(generation > 2) {
-  // }
 }
 
 void GLGame::toggle_pause() {
@@ -151,7 +149,7 @@ void GLGame::tick(int delta) {
     for(oi = objects->begin(); oi != objects->end(); oi++) {
       (*oi)->step(step_size);
     }
-	
+
     for(o = players->begin(); o != players->end(); o++) {
       (*o)->step(step_size);
     }
@@ -159,24 +157,14 @@ void GLGame::tick(int delta) {
     for(o = enemies->begin(); o != enemies->end(); o++) {
       (*o)->step(step_size);
     }
-	
-	/* UPDATE COLLISION MAP */
-	
-    grid.update((std::list<Object *>*)objects);
-	
-	/* COLLIDE EVERYTHING */
 
+    /* UPDATE COLLISION MAP */
+
+    grid.update((std::list<Object *>*)objects);
+
+  /* COLLIDE EVERYTHING */
     for(o = players->begin(); o != players->end(); o++) {
       (*o)->ship->collide_grid(grid);
-    }
-    
-    if(station != NULL) {
-      for(o = players->begin(); o != players->end(); o++) {
-        Ship::collide(station, (*o)->ship);
-      }
-      for(o = enemies->begin(); o != enemies->end(); o++) {
-        (*o)->ship->collide(station);
-      }
     }
 
     oi = objects->begin();

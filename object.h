@@ -12,7 +12,7 @@ public:
   Object(WrappedPoint position, Point velocity);
   virtual ~Object() {};
   virtual void step(int delta);
-  virtual bool collide(Object *other, float proximity = 0.0f);
+  virtual bool collide(const Object &other, float proximity = 0.0f) const;
   virtual bool is_removable() const;
   void commonInit();
   bool is_alive() const;

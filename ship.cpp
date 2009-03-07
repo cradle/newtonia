@@ -220,51 +220,50 @@ void Ship::collide_grid(Grid &grid) {
     }
   }
 }
-
-bool Ship::collide_object(Object* other) {
-  std::list<Particle>::iterator b = bullets.begin();
-  while(b != bullets.end()) {
-    if(other->alive && (*b).collide(other)) {
-      (*b).collide(other);
-      explode((*b).position, Point(0,0));
-      bullets.erase(b);
-      if(other->kill()) {
-        score += other->get_value() * multiplier();
-        kills_this_life += 1;
-        kills += 1;
-        // other->explode();
-        return true;
-      }
-    }
-    b++;
-  }
-  std::list<Particle>::iterator mine = mines.begin();
-  while(mine != mines.end()) {
-    if(other->alive && mine->collide(other, 50.0f)) {
-      detonate(mine->position, mine->velocity);
-      mine = mines.erase(mine);
-    } else {
-      mine++;
-    }
-  }
-  if(alive && other->alive && other->collide(this)) {
-    if(!invincible) {
-      detonate(); 
-    }
-    kill_stop();
-    if(other->kill())
-      return true;
-  }
-  return false;
-}
+// 
+// bool Ship::collide_object(Object* other) {
+//   std::list<Particle>::iterator b = bullets.begin();
+//   while(b != bullets.end()) {
+//     if(other->alive && (*b).collide(*other)) {
+//       explode((*b).position, Point(0,0));
+//       bullets.erase(b);
+//       if(other->kill()) {
+//         score += other->get_value() * multiplier();
+//         kills_this_life += 1;
+//         kills += 1;
+//         // other->explode();
+//         return true;
+//       }
+//     }
+//     b++;
+//   }
+//   std::list<Particle>::iterator mine = mines.begin();
+//   while(mine != mines.end()) {
+//     if(other->alive && mine->collide(other, 50.0f)) {
+//       detonate(mine->position, mine->velocity);
+//       mine = mines.erase(mine);
+//     } else {
+//       mine++;
+//     }
+//   }
+//   if(alive && other->alive && other->collide(this)) {
+//     if(!invincible) {
+//       detonate(); 
+//     }
+//     kill_stop();
+//     if(other->kill())
+//       return true;
+//   }
+//   return false;
+// }
 
 void Ship::collide(Ship *other) {
   std::list<Particle>::iterator b = bullets.begin();
   while(b != bullets.end()) {
-    if(is_alive() && b->collide(this)) {
+    if(is_alive() && b->collide(*this)) {
       kill();
       b = bullets.erase(b);
-    } else if(other->is_alive() && b->collide(other)) {
+    } else if(other->is_alive() && b->collide(*other)) {
       other->kill();
       kills_this_life += 1;
       kills += 1;
@@ -277,7 +276,7 @@ void Ship::collide(Ship *other) {
 
   std::list<Particle>::iterator mine = mines.begin();
   while(mine != mines.end()) {
-    if(is_alive() && other->is_alive() && mine->collide(other, 50.0)) {
+    if(is_alive() && other->is_alive() && mine->collide(*other, 50.0)) {
       detonate(mine->position, mine->velocity);
       mine = mines.erase(mine);
     } else {

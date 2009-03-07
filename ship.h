@@ -36,7 +36,7 @@ class Ship : public CompositeObject {
     virtual bool is_removable() const;
 
     static void collide(Ship *first, Ship *second);
-    bool collide_object(Object *other);
+    // bool collide_object(Object *other);
     void collide_grid(Grid &grid);
     void collide(Ship *other);
 

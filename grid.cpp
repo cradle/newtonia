@@ -47,13 +47,13 @@ list<Object *> Grid::get(Point position, int x_offset, int y_offset) const {
   return cells[x][y];
 }
 
-Object * Grid::collide(Object &object, float proximity) const {
+Object * Grid::collide(const Object &object, float proximity) const {
   list<Object *> others;
   for(int i = -1; i <= 1; i++) {
     for(int j = -1; j <= 1; j++) {
       others = get(object.position,i,j);
       for(list<Object *>::iterator o = others.begin(); o != others.end(); o++) {
-        if(object.collide(*o, proximity)) {
+        if(object.collide(**o, proximity)) {
           return *o;
         }
       }
@@ -62,7 +62,7 @@ Object * Grid::collide(Object &object, float proximity) const {
   return NULL;
 }
 
-void Grid::update(list<Object *> *objects) {
+void Grid::update(const list<Object *> *objects) {
   for(int i = 0; i < num_rows; i++) {
     for(int j = 0; j < num_cols; j++) {
       cells[i][j].clear();
@@ -70,7 +70,8 @@ void Grid::update(list<Object *> *objects) {
   }
   Point p;
   int x,y;
-  for(list<Object *>::iterator oi = objects->begin(); oi != objects->end(); oi++) {
+  list<Object *>::const_iterator oi;
+  for(oi = objects->begin(); oi != objects->end(); oi++) {
     //FIX: Shouldn't need *oi check, no null objects should be here
     if(*oi && (*oi)->alive) {
       p = (*oi)->position;

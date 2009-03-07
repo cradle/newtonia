@@ -13,8 +13,8 @@ public:
   ~Grid();
   
   void display() const;
-  void update(list<Object *> *objects);
-  Object * collide(Object &object, float proximity = 0.0f) const;
+  void update(const list<Object *> *objects);
+  Object * collide(const Object &object, float proximity = 0.0f) const;
   
 private:
   list<Object *> get(Point position, int x, int y) const;
