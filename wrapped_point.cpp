@@ -13,16 +13,15 @@ WrappedPoint::WrappedPoint() {
   coords[Y] = rand()%int(y_max - y_min) + y_min;
 }
 
-void WrappedPoint::wrap() {
-  float width = x_max - x_min, height = y_max - y_min;
-  while(coords[X] < x_min)
-    coords[X] += width;
+void WrappedPoint::wrap(float x_max, float y_max) {
+  while(coords[X] < 0)
+    coords[X] += x_max;
   while(coords[X] > x_max)
-    coords[X] -= width;
-  while(coords[Y] < y_min)
-    coords[Y] += height;
+    coords[X] -= x_max;
+  while(coords[Y] < 0)
+    coords[Y] += y_max;
   while(coords[Y] > y_max)
-    coords[Y] -= height;
+    coords[Y] -= y_max;
 }
 
 Point WrappedPoint::closest_to(const Point other) const {

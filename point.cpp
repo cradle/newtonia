@@ -59,6 +59,10 @@ Point Point::operator/(float scalar) const {
   return Point(coords[X] / scalar, coords[Y] / scalar);
 }
 
+Point Point::operator/(const Point other) const {
+  return Point(coords[X] / other[X], coords[Y] / other[Y]);
+}
+
 Point Point::perpendicular() const {
   return Point(coords[Y], -coords[X]);
 }
