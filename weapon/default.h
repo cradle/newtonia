@@ -20,7 +20,6 @@ namespace Weapon {
     
     bool automatic;
     float accuracy;
-    Ship *ship;
     int time_until_next_shot, time_between_shots;
     int level;
   };

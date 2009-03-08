@@ -282,8 +282,7 @@ void GLShip::draw_body() const {
 void GLShip::draw_weapons() const {
   Typer::draw(0,0,"Weapons",15);
   Typer::draw(0,-50,"-",10);
-  
-  Weapon::Base *weapon = ship->weapons.front();
+  Weapon::Base *weapon = *(ship->primary);
   Typer::draw(20,-50,weapon->name(),10);
   if(!weapon->is_unlimited()) {
     if(weapon->ammo() == 0) {

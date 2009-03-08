@@ -114,6 +114,8 @@ class Ship : public CompositeObject {
   private:
     list<Behaviour *> behaviours;
     list<Weapon::Base *> weapons;
+    list<Weapon::Base *>::iterator primary;
+    list<Weapon::Base *>::iterator secondary;
 };
 
 #endif

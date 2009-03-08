@@ -11,7 +11,6 @@ using namespace std;
 namespace Weapon {
   Default::Default(Ship *ship, bool automatic, int level, float accuracy, int time_between_shots) : 
     Base(ship),
-    ship(ship), // FIX: TODO: why do I have to call this when it is in base?
     automatic(automatic),
     time_until_next_shot(0),
     time_between_shots(time_between_shots),
