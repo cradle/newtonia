@@ -5,6 +5,10 @@
 void Teleport::step(int delta) {
   ship->explode();
   ship->position = WrappedPoint();
-  ship->explode();
+  ship->explode(ship->position, Point());
+  if(ship->time_left_invincible < 1000) {
+    ship->time_left_invincible = 1000;
+    ship->invincible = true;
+  }
   done = true;
 }

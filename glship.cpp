@@ -54,10 +54,18 @@ GLShip::GLShip(bool has_friction) {
   
   force_shield = glGenLists(1);
   glNewList(force_shield, GL_COMPILE);
+  glColor4f(0.0f, 0.0f, 0.0f, 0.3f);
   glBegin(GL_POLYGON);
-  int number_of_segments = 10;
+  int number_of_segments = 20;
   float segment_size = 360.0/number_of_segments, d;
   float shield_size = 2.5;
+  for (float i = 0.0; i < 360.0; i+= segment_size) {
+    d = i*M_PI/180;
+    glVertex2f(cos(d)*shield_size, sin(d)*shield_size);
+  }
+  glEnd();
+  glBegin(GL_LINE_LOOP);
+  glColor4f(color[0], color[1], color[2], 0.5f);
   for (float i = 0.0; i < 360.0; i+= segment_size) {
     d = i*M_PI/180;
     glVertex2f(cos(d)*shield_size, sin(d)*shield_size);
@@ -246,6 +254,10 @@ void GLShip::draw_ship(bool minimap) const {
   
   glPointSize(2.5f);
   glLineWidth(1.8f);
+  
+	if(ship->invincible) {
+    glCallList(force_shield);
+  }
 
 	if(ship->thrusting) {
     glCallList(jets);
@@ -260,11 +272,6 @@ void GLShip::draw_ship(bool minimap) const {
 	}
   
   draw_body();
-  
-	if(ship->invincible) {
-    glColor4f( color[0], color[1], color[2], 0.3f );
-    glCallList(force_shield);
-  }
 }
 
 void GLShip::draw_body() const {	
@@ -281,14 +288,26 @@ void GLShip::draw_body() const {
 
 void GLShip::draw_weapons() const {
   Typer::draw(0,0,"Weapons",15);
-  Typer::draw(0,-50,"-",10);
+  Typer::draw(0.0f,-50.0f,char(shoot_key),10);
+  Typer::draw(20,-50,"-",10);
   Weapon::Base *weapon = *(ship->primary);
-  Typer::draw(20,-50,weapon->name(),10);
+  Typer::draw(50,-50,weapon->name(),10);
   if(!weapon->is_unlimited()) {
     if(weapon->ammo() == 0) {
-      Typer::draw(60+20*strlen(weapon->name()),-50,"empty",10);
+      Typer::draw(80+20*strlen(weapon->name()),-50,"empty",10);
     } else {
-      Typer::draw_lefted(60+20*strlen(weapon->name()),-50,weapon->ammo(),10);
+      Typer::draw_lefted(80+20*strlen(weapon->name()),-50,weapon->ammo(),10);
+    }
+  }
+  weapon = *(ship->secondary);
+  Typer::draw(50,-90,weapon->name(),10);
+  Typer::draw(0.0f,-90.0f,char(mine_key),10);
+  Typer::draw(20,-90,"-",10);
+  if(!weapon->is_unlimited()) {
+    if(weapon->ammo() == 0) {
+      Typer::draw(80+20*strlen(weapon->name()),-90,"empty",10);
+    } else {
+      Typer::draw_lefted(80+20*strlen(weapon->name()),-90,weapon->ammo(),10);
     }
   }
 }

@@ -1,6 +1,6 @@
 #include "mine.h"
-#include "particle.h"
-#include "ship.h"
+#include "../particle.h"
+#include "../ship.h"
 
 namespace Weapon {
   Mine::Mine(Ship *ship) : 
