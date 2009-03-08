@@ -28,9 +28,13 @@ void Ship::disable_behaviours() {
 }
 
 void Ship::disable_weapons() {
-  while(!weapons.empty()) {
-    delete weapons.back();
-    weapons.pop_back();
+  while(!primary_weapons.empty()) {
+    delete primary_weapons.back();
+    primary_weapons.pop_back();
+  }
+  while(!secondary_weapons.empty()) {
+    delete secondary_weapons.back();
+    secondary_weapons.pop_back();
   }
   primary = NULL;
   secondary = NULL;
@@ -48,8 +52,8 @@ void Ship::next_weapon() {
     //TODO: use circular list?
     next++;
     
-    if(next == weapons.end())
-      next = weapons.begin();
+    if(next == primary_weapons.end())
+      next = primary_weapons.begin();
       
     (*next)->shoot((*primary)->is_shooting());
     (*primary)->shoot(false);
@@ -62,8 +66,8 @@ void Ship::previous_weapon() {
     list<Weapon::Base *>::iterator next;
     
     //TODO: use circular list?
-    if(next == weapons.begin())
-      next = weapons.end();
+    if(next == primary_weapons.begin())
+      next = primary_weapons.end();
       
     next--;
       
@@ -99,20 +103,21 @@ void Ship::init(bool no_friction) {
     rotation_force = 0.2;
   }
   
-  weapons.push_front(new Weapon::Default(this));
+  // primary_weapons.push_front(new Weapon::Default(this, false, 1));
+  // primary_weapons.push_front(new Weapon::Default(this, false, 2));
+  // primary_weapons.push_front(new Weapon::Default(this, false, 3));
+  // primary_weapons.push_front(new Weapon::Default(this, false, 4));
+  // primary_weapons.push_front(new Weapon::Default(this, true));
+  // primary_weapons.push_front(new Weapon::Default(this, true, 1));
+  // primary_weapons.push_front(new Weapon::Default(this, true, 2));
+  // primary_weapons.push_front(new Weapon::Default(this, true, 3));
+  // primary_weapons.push_front(new Weapon::Default(this, true, 4));
   
-  primary = weapons.begin();
-  weapons.push_front(new Weapon::Default(this, false, 1));
-  weapons.push_front(new Weapon::Default(this, false, 2));
-  weapons.push_front(new Weapon::Default(this, false, 3));
-  weapons.push_front(new Weapon::Default(this, false, 4));
-  weapons.push_front(new Weapon::Default(this, true));
-  weapons.push_front(new Weapon::Default(this, true, 1));
-  weapons.push_front(new Weapon::Default(this, true, 2));
-  weapons.push_front(new Weapon::Default(this, true, 3));
-  weapons.push_front(new Weapon::Default(this, true, 4));
-  weapons.push_front(new Weapon::Mine(this));
-  secondary = weapons.begin();
+  primary_weapons.push_front(new Weapon::Default(this));
+  primary = primary_weapons.begin();
+  
+  secondary_weapons.push_front(new Weapon::Mine(this));
+  secondary = secondary_weapons.begin();
 
   reset();
 }
@@ -322,17 +327,21 @@ void Ship::detonate(Point const position, Point const velocity) {
 }
 
 void Ship::shoot(bool on) {
-  if(primary != NULL) {
+  if(primary != NULL && !secondary_weapons.empty()) {
     if((*primary)->empty() && on) {
       next_weapon();
+    } else {
+      (*primary)->shoot(on);
     }
-    (*primary)->shoot(on);
   }
 }
 
 void Ship::mine(bool on) {
-  if(secondary != NULL) {
+  if(secondary != NULL && !secondary_weapons.empty()) {
     (*secondary)->shoot(on);
+    if((*secondary)->empty() && on) {
+      secondary = secondary_weapons.erase(secondary);
+    }
   }
 }
 
