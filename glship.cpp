@@ -282,19 +282,15 @@ void GLShip::draw_body() const {
 void GLShip::draw_weapons() const {
   Typer::draw(0,0,"Weapons",15);
   Typer::draw(0,-50,"-",10);
-  int i = 0;
-  //HACK: only drawing one, no need for loop
-  for(list<Weapon::Base *>::iterator wi = ship->weapons.begin(); wi == ship->weapons.begin(); wi++) {
-    Typer::draw(20,-i*40-50,(*wi)->name(),10);
-    if(!(*wi)->is_unlimited()) {
-      if((*wi)->ammo() == 0) {
-        Typer::draw(60+20*strlen((*wi)->name()),-i*40-50,"empty",10);
-      } else {
-        Typer::draw_lefted(60+20*strlen((*wi)->name()),-i*40-50,(*wi)->ammo(),10);
-      }
+  
+  Weapon::Base *weapon = ship->weapons.front();
+  Typer::draw(20,-50,weapon->name(),10);
+  if(!weapon->is_unlimited()) {
+    if(weapon->ammo() == 0) {
+      Typer::draw(60+20*strlen(weapon->name()),-50,"empty",10);
+    } else {
+      Typer::draw_lefted(60+20*strlen(weapon->name()),-50,weapon->ammo(),10);
     }
-      
-    i++;
   }
 }
 
