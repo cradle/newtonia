@@ -337,10 +337,14 @@ void Ship::shoot(bool on) {
 }
 
 void Ship::mine(bool on) {
-  if(secondary != NULL && !secondary_weapons.empty()) {
+  if(secondary != NULL) {
     (*secondary)->shoot(on);
     if((*secondary)->empty() && on) {
+      delete *secondary;
       secondary = secondary_weapons.erase(secondary);
+    }
+    if(secondary_weapons.empty()) {
+      secondary = NULL;
     }
   }
 }

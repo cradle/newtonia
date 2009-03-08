@@ -288,7 +288,7 @@ void GLShip::draw_body() const {
 
 void GLShip::draw_weapons() const {
   Typer::draw(0,0,"Weapons",15);
-  Typer::draw(0.0f,-50.0f,char(shoot_key),10);
+  // Typer::draw(0.0f,-50.0f,char(shoot_key),10);
   Typer::draw(20,-50,"-",10);
   Weapon::Base *weapon = *(ship->primary);
   if(weapon != NULL && !ship->primary_weapons.empty()) {
@@ -301,16 +301,17 @@ void GLShip::draw_weapons() const {
       }
     }
   }
-  weapon = *(ship->secondary);
-  if(weapon != NULL && !ship->secondary_weapons.empty())
-  Typer::draw(50,-90,weapon->name(),10);
-  Typer::draw(0.0f,-90.0f,char(mine_key),10);
-  Typer::draw(20,-90,"-",10);
-  if(!weapon->is_unlimited()) {
-    if(weapon->ammo() == 0) {
-      Typer::draw(80+20*strlen(weapon->name()),-90,"empty",10);
-    } else {
-      Typer::draw_lefted(80+20*strlen(weapon->name()),-90,weapon->ammo(),10);
+  if(ship->secondary != NULL) {
+	  weapon = *(ship->secondary);
+    Typer::draw(50,-90,weapon->name(),10);
+    // Typer::draw(0.0f,-90.0f,char(mine_key),10);
+    Typer::draw(20,-90,"-",10);
+    if(!weapon->is_unlimited()) {
+      if(weapon->ammo() == 0) {
+        Typer::draw(80+20*strlen(weapon->name()),-90,"empty",10);
+      } else {
+        Typer::draw_lefted(80+20*strlen(weapon->name()),-90,weapon->ammo(),10);
+      }
     }
   }
 }

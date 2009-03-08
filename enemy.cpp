@@ -34,9 +34,9 @@ void Enemy::reset(bool was_killed) {
   cout << "reset()" << endl;
   thrust(true);
   if(difficulty > 10) {
-    delete weapons.front();
-    weapons.pop_front();
-    weapons.push_front(new Weapon::Default(this, true, 0, 1.0f/difficulty, rand()%100 + (5000/(difficulty-9))));
+    delete primary_weapons.front();
+    primary_weapons.pop_front();
+    primary_weapons.push_front(new Weapon::Default(this, true, 0, 1.0f/difficulty, rand()%100 + (5000/(difficulty-9))));
     shoot(true);
   } else {
     // FIRE ZE MISSILES!
