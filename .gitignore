@@ -4,6 +4,7 @@
 *.layout
 *.depend
 obj
+bin
 ## Visual Studio
 build
 ## Makefile
