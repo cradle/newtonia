@@ -252,7 +252,7 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   glLoadIdentity();
   int width_scale = (glship == NULL) ? 1 : players->size();
   // gluOrtho2D(-window.x()/width_scale, window.x()/width_scale, -window.y(), window.y());
-  gluPerspective(90.0f, window.x()/window.y(), 900.0f, 1100.0f);
+  gluPerspective(90.0f, window.x()/window.y(), 100.0f, 2000.0f);
   glMatrixMode(GL_MODELVIEW);
 
   glLoadIdentity();

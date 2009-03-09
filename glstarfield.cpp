@@ -27,7 +27,7 @@ GLStarfield::GLStarfield(Point const size) {
       red = rand()%100;
       green = red > 0 ? rand()%red : 0;
       glColor4f(red/100.0,green/100.0,rand()%100/100.0,rand()%50/100.0+0.2);
-      glVertex2f((rand()%(int)size.x()*2.0 - size.x()), (rand()%(int)size.y()*2.0 - size.y()));
+      glVertex3f((rand()%(int)size.x()*2.0 - size.x()), (rand()%(int)size.y()*2.0 - size.y()), (i-NUM_REAR_LAYERS)*100);
     }
     glEnd();
     glEndList();
@@ -39,22 +39,14 @@ GLStarfield::~GLStarfield() {
 }
 
 void GLStarfield::draw_rear(Point const viewpoint) const {
-  glPushMatrix();
   for(int i = 0; i < NUM_REAR_LAYERS; i++) {
     glCallList(point_layers+i);
   }
-  glPopMatrix();
-  glColor3f(1.0,1.0,1.0);
   glCallList(point_layers+NUM_REAR_LAYERS);
 }
 
 void GLStarfield::draw_front(Point const viewpoint) const {
-  glPushMatrix();
   for(int i = 0; i < NUM_FRONT_LAYERS; i++) {
-    glTranslatef(-viewpoint.x()/2.0, -viewpoint.y()/2.0, 0.0f);
-    glScalef(2, 2, 1);
-    glRotatef(0.1,0,0,1.0f);
     glCallList(point_layers + NUM_REAR_LAYERS + 1 + i);
   }
-  glPopMatrix();
 }
