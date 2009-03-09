@@ -58,7 +58,7 @@ GLShip::GLShip(bool has_friction) {
   glBegin(GL_POLYGON);
   int number_of_segments = 20;
   float segment_size = 360.0/number_of_segments, d;
-  float shield_size = 2.5;
+  float shield_size = 2;
   for (float i = 0.0; i < 360.0; i+= segment_size) {
     d = i*M_PI/180;
     glVertex2f(cos(d)*shield_size, sin(d)*shield_size);

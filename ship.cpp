@@ -327,7 +327,7 @@ void Ship::detonate(Point const position, Point const velocity) {
 }
 
 void Ship::shoot(bool on) {
-  if(primary != NULL && !secondary_weapons.empty()) {
+  if(primary != NULL && !primary_weapons.empty()) {
     if((*primary)->empty() && on) {
       next_weapon();
     } else {
