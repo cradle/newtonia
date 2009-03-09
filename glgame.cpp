@@ -251,11 +251,13 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   int width_scale = (glship == NULL) ? 1 : players->size();
-  gluOrtho2D(-window.x()/width_scale, window.x()/width_scale, -window.y(), window.y());
+  // gluOrtho2D(-window.x()/width_scale, window.x()/width_scale, -window.y(), window.y());
+  gluPerspective(90.0f, window.x()/window.y(), 900.0f, 1100.0f);
   glMatrixMode(GL_MODELVIEW);
 
   glLoadIdentity();
   glViewport((primary ? 0 : (window.x()/2)), 0, window.x()/width_scale, window.y());
+  gluLookAt(0.0f, 0.0f, 1000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f );
 
   /* Draw the world */
   // Store the rendered world in a display list
