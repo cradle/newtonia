@@ -226,7 +226,7 @@ void Ship::collide_grid(Grid &grid) {
   while(p != mines.end()) {
     object = grid.collide(*p, 50.0f);
     if(object != NULL && object->alive) {
-      detonate(p->position, p->velocity);
+      detonate(p->position, p->velocity, 50);
       p = mines.erase(p);
     } else {
       p++;
@@ -318,11 +318,11 @@ void Ship::detonate() {
   detonate(position, velocity);
 }
 
-void Ship::detonate(Point const position, Point const velocity) {
+void Ship::detonate(Point const position, Point const velocity, int particle_count) {
   Point dir = (facing * radius * 1.2);
-  for(int i = rand()%50+25; i > 0; i--) {
+  for(int i = rand()%particle_count+particle_count/2; i > 0; i--) {
     dir.rotate(rand()%360*M_PI/180);
-    bullets.push_back(Particle(position + dir, velocity + dir*0.0001*(rand()%150), rand()%1000));
+    bullets.push_back(Particle(position + dir, velocity + dir*0.0001*(rand()%150), rand()%1500));
   }
 }
 

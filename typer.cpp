@@ -14,17 +14,17 @@
 float Typer::colour[] = {0.0f,1.0f,0.0f};
 
 void Typer::draw_centered(float x, float y, int number, float size) {
-  draw_centered(x,y,(long long)number, size);
+  draw_centered(x,y,number, size);
 }
-void Typer::draw_centered(float x, float y, long long number, float size) {
-  int length = -1;
-  long long temp = number/10;
-  while(temp != 0) {
-    temp /= 10;
-    length++;
-  }
-  draw(x+length*size, y, number, size);
-}
+// void Typer::draw_centered(float x, float y, int number, float size) {
+//   int length = -1;
+//   int temp = number/10;
+//   while(temp != 0) {
+//     temp /= 10;
+//     length++;
+//   }
+//   draw(x+length*size, y, number, size);
+// }
 void Typer::draw_lefted(float x, float y, int number, float size) {
   int length = -1;
   int temp = number/10;
@@ -34,10 +34,10 @@ void Typer::draw_lefted(float x, float y, int number, float size) {
   }
   draw(x+length*size*2, y, number, size);
 }
+// void Typer::draw(float x, float y, int number, float size) {
+//   draw(x,y,(int)number, size);
+// }
 void Typer::draw(float x, float y, int number, float size) {
-  draw(x,y,(long long)number, size);
-}
-void Typer::draw(float x, float y, long long number, float size) {
   bool negative = (number < 0);
   int i = 0;
 

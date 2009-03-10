@@ -32,27 +32,28 @@ void Grid::display() const {
 }
 
 list<Object *> Grid::get(Point position, int x_offset, int y_offset) const {
-  int x = (position.x()/cell_size.x()) + x_offset;
-  int y = (position.y()/cell_size.y()) + y_offset;
+  x_offset += (position.x()/cell_size.x());
+  y_offset += (position.y()/cell_size.y());
   // cout << "B" << x << "," << y << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
-  if(x<0)
-    x += num_rows;
-  if(y<0)
-    y += num_cols;
-  if(x >= num_rows)
-    x -= num_rows;
-  if(y >= num_cols)
-    y -= num_cols;
+  if(x_offset<0)
+    x_offset += num_rows;
+  if(y_offset<0)
+    y_offset += num_cols;
+  if(x_offset >= num_rows)
+    x_offset -= num_rows;
+  if(y_offset >= num_cols)
+    y_offset -= num_cols;
   // cout << "A" << x << "," << y << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
-  return cells[x][y];
+  return cells[x_offset][y_offset];
 }
 
 Object * Grid::collide(const Object &object, float proximity) const {
   list<Object *> others;
+  list<Object *>::iterator o;
   for(int i = -1; i <= 1; i++) {
     for(int j = -1; j <= 1; j++) {
       others = get(object.position,i,j);
-      for(list<Object *>::iterator o = others.begin(); o != others.end(); o++) {
+      for(o = others.begin(); o != others.end(); o++) {
         if(object.collide(**o, proximity)) {
           return *o;
         }

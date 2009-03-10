@@ -41,7 +41,7 @@ class Ship : public CompositeObject {
     void collide(Ship *other);
 
     //TODO: make friends with glship
-    long long score;
+    int score;
     int lives, kills, kills_this_life;
     //TODO: Make this go away, it's wrong
     float radius_squared;
@@ -89,8 +89,8 @@ class Ship : public CompositeObject {
     void init(bool no_friction);
     virtual void reset(bool was_killed = true);
     void detonate();
-    void detonate(Point const position, Point const velocity);
-
+    void detonate(Point const position, Point const velocity, int particle_count = 10);
+    
     Point world_size;
 
     float heat_rate, retro_heat_rate, cool_rate;
@@ -99,7 +99,7 @@ class Ship : public CompositeObject {
     float thrust_force, reverse_force, rotation_force;
     // Attributes
     float width, height, mass;
-    long long value;
+    int value;
     // States
     bool mining, respawns, first_life;
 

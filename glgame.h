@@ -38,7 +38,7 @@ private:
   int generation;
   int last_tick, time_until_next_step, num_frames, current_time, time_between_steps;
   int time_until_next_generation;
-  bool running, level_cleared, friendly_fire;
+  bool running, level_cleared, friendly_fire, render_orthogonal;
 
   static const int default_world_width, default_world_height;
   static const int default_num_asteroids, extra_num_asteroids;
