@@ -27,7 +27,7 @@ GLStarfield::GLStarfield(Point const size) {
       red = rand()%100;
       green = red > 0 ? rand()%red : 0;
       glColor4f(red/100.0,green/100.0,rand()%100/100.0,rand()%50/100.0+0.2);
-      glVertex3f((rand()%(int)size.x()*2.0 - size.x()), (rand()%(int)size.y()*2.0 - size.y()), (i-NUM_REAR_LAYERS)*100);
+      glVertex3f(rand()%(int)size.x(), rand()%(int)size.y(), (i-NUM_REAR_LAYERS)*100);
     }
     glEnd();
     glEndList();

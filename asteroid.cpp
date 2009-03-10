@@ -5,7 +5,7 @@
 
 using namespace std;
 
-const int Asteroid::max_speed = 7;
+const int Asteroid::max_speed = 5;
 const int Asteroid::max_rotation = 10;
 int Asteroid::num_killable = 0;
 
