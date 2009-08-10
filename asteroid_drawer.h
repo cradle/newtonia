@@ -9,7 +9,7 @@ class Particle;
 
 class AsteroidDrawer {
 public:  
-  static void draw(Asteroid const *object, bool is_minimap);
+  static void draw(Asteroid const *object, float direction, bool is_minimap);
   static void draw_debris(list<Particle> debris);
 
 private:

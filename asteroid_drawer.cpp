@@ -16,7 +16,7 @@
 
 const int AsteroidDrawer::number_of_segments = 7;
 
-void AsteroidDrawer::draw(Asteroid const *object, bool is_minimap) {
+void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minimap) {
   if(object->alive) {
     glPushMatrix();
     glTranslatef(object->position.x(), object->position.y(), 0.0f);
@@ -61,7 +61,11 @@ void AsteroidDrawer::draw(Asteroid const *object, bool is_minimap) {
     glPopMatrix();
   } else if(!is_minimap) {
     draw_debris(object->debris); 
-    Typer::draw(object->position.x(), object->position.y(), object->value, 15);
+    glPushMatrix();
+    glTranslatef(object->position.x(), object->position.y(), 0.0f);
+    glRotatef(-direction, 0.0f, 0.0f, 1.0f);
+    Typer::draw(0.0f, 0.0f, object->value, 15);
+    glPopMatrix();
   }
 }
 

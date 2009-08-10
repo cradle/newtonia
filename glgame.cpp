@@ -208,11 +208,11 @@ void GLGame::tick(int delta) {
   // std::cout << (num_frames*1000 / current_time) << std::endl;
 }
 
-void GLGame::draw_objects(bool minimap) const {
+void GLGame::draw_objects(float direction, bool minimap) const {
   std::list<Asteroid*>::iterator oi;
   for(oi = objects->begin(); oi != objects->end(); oi++) {
     //TODO: make AsteroidController (???), which joins model and view together
-    AsteroidDrawer::draw(*oi, minimap);
+    AsteroidDrawer::draw(*oi, direction, minimap);
   }
 
   std::list<GLShip*>::iterator o;
@@ -266,18 +266,18 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   /* Draw the world */
   // Store the rendered world in a display list
   Point position = (glship == NULL) ? Point(0,0) : glship->ship->position;
+  float direction = (glship == NULL || !glship->rotate_view()) ? 0.0f : glship->camera_facing();
   glNewList(gameworld, GL_COMPILE);
     glTranslatef(-position.x(), -position.y(), 0.0f);
     starfield->draw_rear(position);
-    draw_objects();
+    draw_objects(direction);
     starfield->draw_front(position);
   glEndList();
   // Draw the world tesselated
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
       glPushMatrix();
-      if(glship != NULL && glship->rotate_view())
-        glRotatef(glship->camera_facing(), 0.0f, 0.0f, 1.0f);
+      glRotatef(direction, 0.0f, 0.0f, 1.0f);
       glTranslatef(world.x()*x, world.y()*y, 0.0f);
       glCallList(gameworld);
       glPopMatrix();
@@ -388,7 +388,7 @@ void GLGame::draw_map() const {
   }
   
   glPushMatrix();
-  draw_objects(true);
+  draw_objects(0.0f, true);
   glPopMatrix();
 }
 

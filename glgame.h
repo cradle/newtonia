@@ -28,7 +28,7 @@ private:
   void add_asteroids();
   void toggle_pause();
   void draw_map() const;
-  void draw_objects(bool minimap = false) const;
+  void draw_objects(float direction = 0.0f, bool minimap = false) const;
   void draw_world(GLShip *glship = NULL, bool primary = true) const;
   
   static const int step_size = 10;
