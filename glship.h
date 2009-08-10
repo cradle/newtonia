@@ -32,6 +32,7 @@ public:
   bool is_removable() const;
   //TODO: Clearly there is a Player/View/Controller separation here
   bool rotate_view() const;
+  float camera_facing() const;
 
   static void collide(GLShip* first, GLShip* second);
   Ship *ship;
@@ -55,6 +56,7 @@ protected:
   int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key;
   
   bool rotating_view;
+  float camera_rotation;
   
   std::list<GLTrail*> trails;
 };

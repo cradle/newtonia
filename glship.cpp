@@ -28,6 +28,7 @@ GLShip::GLShip(bool has_friction) {
   trails.push_back(new GLTrail(ship, 0.5,Point( 4,17),-0.1,-0.9, GLTrail::REVERSING | GLTrail::LEFT, 500.0));
   
   rotating_view = false;
+  camera_rotation = ship->heading();
   
   color[0] = 72/255.0;
   color[1] = 118/255.0;
@@ -98,12 +99,24 @@ GLShip::~GLShip() {
   }
 }
 
+float GLShip::camera_facing() const {
+  return -camera_rotation;
+}
+
 void GLShip::collide(GLShip* first, GLShip* second) {
   Ship::collide(first->ship, second->ship);
 }
 
 void GLShip::step(float delta) {
   ship->step(delta);
+  
+  float camera_rotation_delta = ship->heading() - camera_rotation;
+  if(camera_rotation_delta < -90)
+    camera_rotation_delta += 360;
+  if(camera_rotation_delta > 270)
+    camera_rotation_delta -= 360;
+  camera_rotation += camera_rotation_delta * delta * 0.004;
+  std::cout << (ship->heading() - camera_rotation) << "\t" << camera_rotation << " " << ship->heading() << " " << delta << std::endl;
 
   for(list<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
     (*i)->step(delta);
