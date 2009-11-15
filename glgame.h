@@ -30,6 +30,9 @@ private:
   void draw_map() const;
   void draw_objects(float direction = 0.0f, bool minimap = false) const;
   void draw_world(GLShip *glship = NULL, bool primary = true) const;
+  void setup_viewport(bool primary) const;
+  void setup_perspective(GLShip *glship) const;
+  void setup_orthogonal(GLShip *glship) const;
   
   static const int step_size = 10;
   

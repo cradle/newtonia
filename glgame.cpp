@@ -9,6 +9,7 @@
 #include "asteroid_drawer.h"
 #include "object.h"
 #include "grid.h"
+#include "view/overlay.h"
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -248,7 +249,7 @@ void GLGame::draw(void) {
   }
 }
 
-void GLGame::draw_world(GLShip *glship, bool primary) const {
+void GLGame::setup_perspective(GLShip *glship) const {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   int width_scale = (glship == NULL) ? 1 : players->size();
@@ -256,13 +257,34 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
     gluOrtho2D(-window.x()/width_scale, window.x()/width_scale, -window.y(), window.y());
   else
     gluPerspective(85.0f, window.x()/window.y(), 100.0f, 2000.0f);
-  glMatrixMode(GL_MODELVIEW);
+  glMatrixMode(GL_MODELVIEW); 
+}
 
+void GLGame::setup_orthogonal(GLShip *glship) const {
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  int width_scale = (glship == NULL) ? 1 : players->size();
+  gluOrtho2D(-window.x()/width_scale, window.x()/width_scale, -window.y(), window.y());
+  glMatrixMode(GL_MODELVIEW);
+}
+
+void GLGame::setup_viewport(bool primary) const {
   glLoadIdentity();
   glViewport((primary ? 0 : (window.x()/2)), 0, window.x()/width_scale, window.y());
   if(!render_orthogonal)
     gluLookAt(0.0f, 0.0f, 1000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f );
+}
 
+void GLGame::draw_world(GLShip *glship, bool primary) const {
+  setup_perspective(glship);
+  setup_viewport(primary);
+  draw_perspective(glship);
+  setup_orthogonal(glship);
+  setup_viewport(primary);
+  Overlay::draw(glship);
+}
+
+void GLGame::draw_perspective(GLShip *glship) const {
   /* Draw the world */
   // Store the rendered world in a display list
   Point position = (glship == NULL) ? Point(0,0) : glship->ship->position;
@@ -282,50 +304,6 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
       glCallList(gameworld);
       glPopMatrix();
     }
-  }
-  if(players->size() < 2) {
-    Typer::draw_centered(0, window.y()-20, "press enter to join", 8);
-  } else {
-    if(friendly_fire) {
-      Typer::draw_centered(0, window.y()-20, "friendly fire on", 8);
-    }
-  }
-
-  /* Draw the score */
-  if(glship != NULL) {
-    if(level_cleared) {
-      Typer::draw_centered(0, 150, "CLEARED", 50);
-      Typer::draw_centered(0, -60, (time_until_next_generation / 1000), 20);
-    }
-
-    Typer::draw(window.x()/width_scale-40, window.y()-20, glship->ship->score, 20);
-    if(glship->ship->multiplier() > 1) {
-      Typer::draw(window.x()/width_scale-35, window.y()-92, "x", 15);
-      Typer::draw(window.x()/width_scale-65, window.y()-80, glship->ship->multiplier(), 20);
-    }
-    /* Draw the life count */
-    Typer::draw_lives(window.x()/width_scale-40,-window.y()+70, glship, 18);
-    
-    glPushMatrix();
-    glTranslatef(-window.x()/width_scale+10, window.y()-10, 0.0f);
-    glship->draw_weapons();
-    glPopMatrix();
-    
-    glPushMatrix();
-    glTranslatef(-window.x()/width_scale+30, -window.y()+15, 0.0f);
-    glPushMatrix();
-    glScalef(30,30,1);
-    glship->draw_temperature();
-    glPopMatrix();
-    glTranslatef(42.0f, 147.0f, 0.0f);
-    glScalef(10,10,1);
-    glship->draw_temperature_status();
-    glPopMatrix();
-
-    glPushMatrix();
-    glScalef(20,20,1);
-    glship->draw_respawn_timer();
-    glPopMatrix();
   }
 }
 
