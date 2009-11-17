@@ -24,6 +24,7 @@
 		2150E2F30ECD6A6E00D89C28 /* wrapped_point.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2EC0ECD6A6E00D89C28 /* wrapped_point.cpp */; };
 		2150E2FB0ECD831900D89C28 /* glut.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2F90ECD831900D89C28 /* glut.cpp */; };
 		215669B90F56A0B5004BDC84 /* teleport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 215669B70F56A0B5004BDC84 /* teleport.cpp */; };
+		215D9E8F10B0545A00786C48 /* overlay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 215D9E8D10B0545A00786C48 /* overlay.cpp */; };
 		215ED6A50ECDB80400E0778A /* glgame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 215ED6A30ECDB80400E0778A /* glgame.cpp */; };
 		2162B1AE0F5D0C4600E3FA78 /* grid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2162B1AC0F5D0C4600E3FA78 /* grid.cpp */; };
 		21696BCD0EDD2991006997A8 /* glstation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21696BCB0EDD2991006997A8 /* glstation.cpp */; };
@@ -71,6 +72,8 @@
 		2150E2F90ECD831900D89C28 /* glut.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glut.cpp; sourceTree = "<group>"; };
 		215669B70F56A0B5004BDC84 /* teleport.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = teleport.cpp; sourceTree = "<group>"; };
 		215669B80F56A0B5004BDC84 /* teleport.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = teleport.h; sourceTree = "<group>"; };
+		215D9E8D10B0545A00786C48 /* overlay.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = overlay.cpp; path = view/overlay.cpp; sourceTree = "<group>"; };
+		215D9E8E10B0545A00786C48 /* overlay.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = overlay.h; path = view/overlay.h; sourceTree = "<group>"; };
 		215ED6A30ECDB80400E0778A /* glgame.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glgame.cpp; sourceTree = "<group>"; };
 		215ED6A40ECDB80400E0778A /* glgame.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glgame.h; sourceTree = "<group>"; };
 		2162B1AC0F5D0C4600E3FA78 /* grid.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = grid.cpp; sourceTree = "<group>"; };
@@ -124,6 +127,8 @@
 		219282740ECD670E002D470F = {
 			isa = PBXGroup;
 			children = (
+				215D9E8D10B0545A00786C48 /* overlay.cpp */,
+				215D9E8E10B0545A00786C48 /* overlay.h */,
 				2162B1AC0F5D0C4600E3FA78 /* grid.cpp */,
 				2162B1AD0F5D0C4600E3FA78 /* grid.h */,
 				21F7B0A40F58CC3F003090D8 /* weapon */,
@@ -274,6 +279,7 @@
 				21F7B0A80F58CC3F003090D8 /* default.cpp in Sources */,
 				2162B1AE0F5D0C4600E3FA78 /* grid.cpp in Sources */,
 				2129874D0F63BE89009C3556 /* mine.cpp in Sources */,
+				215D9E8F10B0545A00786C48 /* overlay.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

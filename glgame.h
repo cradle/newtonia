@@ -23,6 +23,8 @@ public:
   void keyboard(unsigned char key, int x, int y);
   void keyboard_up(unsigned char key, int x, int y);
   
+  bool cleared() const;
+  
   list<Asteroid*> *objects;
 private:
   void add_asteroids();
@@ -30,9 +32,12 @@ private:
   void draw_map() const;
   void draw_objects(float direction = 0.0f, bool minimap = false) const;
   void draw_world(GLShip *glship = NULL, bool primary = true) const;
+  void draw_perspective(GLShip *glship) const;
   void setup_viewport(bool primary) const;
   void setup_perspective(GLShip *glship) const;
   void setup_orthogonal(GLShip *glship) const;
+  
+  int num_x_viewports() const;
   
   static const int step_size = 10;
   

@@ -97,6 +97,10 @@ void GLGame::toggle_pause() {
   running = !running;
 }
 
+bool GLGame::cleared() const {
+  return level_cleared;
+}
+
 void GLGame::tick(int delta) {
   if (!running) {
     last_tick += delta;
@@ -252,25 +256,24 @@ void GLGame::draw(void) {
 void GLGame::setup_perspective(GLShip *glship) const {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  int width_scale = (glship == NULL) ? 1 : players->size();
-  if(render_orthogonal)
-    gluOrtho2D(-window.x()/width_scale, window.x()/width_scale, -window.y(), window.y());
-  else
-    gluPerspective(85.0f, window.x()/window.y(), 100.0f, 2000.0f);
+  gluPerspective(85.0f, window.x()/window.y(), 100.0f, 2000.0f);
   glMatrixMode(GL_MODELVIEW); 
+}
+
+int GLGame::num_x_viewports() const {
+  return (players->size() == 0) ? 1 : players->size();
 }
 
 void GLGame::setup_orthogonal(GLShip *glship) const {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  int width_scale = (glship == NULL) ? 1 : players->size();
-  gluOrtho2D(-window.x()/width_scale, window.x()/width_scale, -window.y(), window.y());
+  gluOrtho2D(-window.x()/num_x_viewports(), window.x()/num_x_viewports(), -window.y(), window.y());
   glMatrixMode(GL_MODELVIEW);
 }
 
 void GLGame::setup_viewport(bool primary) const {
   glLoadIdentity();
-  glViewport((primary ? 0 : (window.x()/2)), 0, window.x()/width_scale, window.y());
+  glViewport((primary ? 0 : (window.x()/2)), 0, window.x()/num_x_viewports(), window.y());
   if(!render_orthogonal)
     gluLookAt(0.0f, 0.0f, 1000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f );
 }
@@ -281,7 +284,7 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   draw_perspective(glship);
   setup_orthogonal(glship);
   setup_viewport(primary);
-  Overlay::draw(glship);
+  Overlay::draw(this, glship);
 }
 
 void GLGame::draw_perspective(GLShip *glship) const {
