@@ -314,7 +314,8 @@ void GLShip::draw_weapons() const {
       }
     }
   }
-  if(ship->secondary != NULL) {
+  //TODO: FIX: this conditional is breaking in new OSX, not sure when broke
+  /*if(ship->secondary != NULL) {
 	  weapon = *(ship->secondary);
     Typer::draw(50,-90,weapon->name(),10);
     // Typer::draw(0.0f,-90.0f,char(mine_key),10);
@@ -326,7 +327,7 @@ void GLShip::draw_weapons() const {
         Typer::draw_lefted(80+20*strlen(weapon->name()),-90,weapon->ammo(),10);
       }
     }
-  }
+  }*/
 }
 
 void GLShip::draw_particles() const {

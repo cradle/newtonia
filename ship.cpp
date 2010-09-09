@@ -36,8 +36,6 @@ void Ship::disable_weapons() {
     delete secondary_weapons.back();
     secondary_weapons.pop_back();
   }
-  primary = NULL;
-  secondary = NULL;
 }
 
 Ship::~Ship() {
@@ -46,35 +44,31 @@ Ship::~Ship() {
 } 
    
 void Ship::next_weapon() {
-  if(primary != NULL) {
-    list<Weapon::Base *>::iterator next(primary);
+  list<Weapon::Base *>::iterator next(primary);
+  
+  //TODO: use circular list?
+  next++;
+  
+  if(next == primary_weapons.end())
+    next = primary_weapons.begin();
     
-    //TODO: use circular list?
-    next++;
-    
-    if(next == primary_weapons.end())
-      next = primary_weapons.begin();
-      
-    (*next)->shoot((*primary)->is_shooting());
-    (*primary)->shoot(false);
-    primary = next;
-  }
+  (*next)->shoot((*primary)->is_shooting());
+  (*primary)->shoot(false);
+  primary = next;
 }
 
 void Ship::previous_weapon() {
-  if(primary != NULL) {
-    list<Weapon::Base *>::iterator next;
+  list<Weapon::Base *>::iterator next;
+  
+  //TODO: use circular list?
+  if(next == primary_weapons.begin())
+    next = primary_weapons.end();
     
-    //TODO: use circular list?
-    if(next == primary_weapons.begin())
-      next = primary_weapons.end();
-      
-    next--;
-      
-    (*next)->shoot((*primary)->is_shooting());
-    (*primary)->shoot(false);
-    primary = next;
-  }
+  next--;
+    
+  (*next)->shoot((*primary)->is_shooting());
+  (*primary)->shoot(false);
+  primary = next;
 }
 
 void Ship::init(bool no_friction) {
@@ -327,7 +321,7 @@ void Ship::detonate(Point const position, Point const velocity, int particle_cou
 }
 
 void Ship::shoot(bool on) {
-  if(primary != NULL && !primary_weapons.empty()) {
+  if(!primary_weapons.empty()) {
     if((*primary)->empty() && on) {
       next_weapon();
     } else {
@@ -337,15 +331,10 @@ void Ship::shoot(bool on) {
 }
 
 void Ship::mine(bool on) {
-  if(secondary != NULL) {
-    (*secondary)->shoot(on);
-    if((*secondary)->empty() && on) {
-      delete *secondary;
-      secondary = secondary_weapons.erase(secondary);
-    }
-    if(secondary_weapons.empty()) {
-      secondary = NULL;
-    }
+  (*secondary)->shoot(on);
+  if((*secondary)->empty() && on) {
+    delete *secondary;
+    secondary = secondary_weapons.erase(secondary);
   }
 }
 
@@ -411,8 +400,7 @@ void Ship::step(float delta) {
       }
     }
     
-    if(primary != NULL)
-      (*primary)->step(delta);
+    (*primary)->step(delta);
       
   } else if (lives > 0) {
     time_until_respawn -= delta;
