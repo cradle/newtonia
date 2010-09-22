@@ -1,7 +1,7 @@
 #include "overlay.h"
-#include "../glship.h"
-#include "../glgame.h"
-#include "../typer.h"
+#include "glship.h"
+#include "glgame.h"
+#include "typer.h"
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -12,7 +12,7 @@
 #include <GL/glut.h>
 #endif
 
-void Overlay::draw() {//GlGame *glgame, GLShip *glship) {
+void Overlay::draw(const GLGame *glgame, GLShip *glship) {
   title_text();
 
   if(glship != NULL) {

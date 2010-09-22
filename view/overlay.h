@@ -6,7 +6,7 @@ class GLGame;
 
 class Overlay {
 public:  
-  static void draw();//const GLGame * glgame, GLShip *glship);
+  static void draw(const GLGame * glgame, GLShip *glship);
 
 private:
   static void score(GLShip *glship);
