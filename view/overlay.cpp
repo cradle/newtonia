@@ -1,7 +1,7 @@
 #include "overlay.h"
-#include "../glship.h"
-#include "../glgame.h"
-#include "../typer.h"
+#include "glship.h"
+#include "glgame.h"
+#include "typer.h"
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -12,12 +12,12 @@
 #include <GL/glut.h>
 #endif
 
-void Overlay::draw() {//GlGame *glgame, GLShip *glship) {
+void Overlay::draw(const GLGame *glgame, GLShip *glship) {
   title_text();
 
   if(glship != NULL) {
     score(glship);
-    if(glgame->level_cleared()) {
+    if(glgame->level_cleared) {
       level_cleared();
     }
     lives(glship);
@@ -36,22 +36,22 @@ void Overlay::score(GLShip *glship) {
 }
 
 void Overlay::level_cleared() {
-  Typer::centered(0, 150, "CLEARED", 50);
-  Typer::centered(0, -60, (time_until_next_generation / 1000), 20);
+  Typer::draw_centered(0, 150, "CLEARED", 50);
+  Typer::draw_centered(0, -60, (time_until_next_generation / 1000), 20);
 }
 
 void Overlay::lives(GLShip *glship) {
   Typer::lives(window.x()/width_scale-40, -window.y()+70, glship, 18);
 }
 
-void Overlay::weapons(GLship *glship) {
+void Overlay::weapons(GLShip *glship) {
   glPushMatrix();
   glTranslatef(-window.x()/width_scale+10, window.y()-10, 0.0f);
   glship->draw_weapons();
   glPopMatrix();
 }
 
-void Overlay::temperature(GLship *glship) {
+void Overlay::temperature(GLShip *glship) {
   glPushMatrix();
   glTranslatef(-window.x()/width_scale+30, -window.y()+15, 0.0f);
   glPushMatrix();
@@ -64,19 +64,19 @@ void Overlay::temperature(GLship *glship) {
   glPopMatrix();
 }
 
-void Overlay::respawn_timer(GLship *glship) {
+void Overlay::respawn_timer(GLShip *glship) {
   glPushMatrix();
   glScalef(20,20,1);
   glship->draw_respawn_timer();
   glPopMatrix();
 }
 
-void Overlay::title_text(GLship *glship) {
+void Overlay::title_text(GLShip *glship) {
   if(players->size() < 2) {
-    Typer::centered(0, window.y()-20, "press enter to join", 8);
+    Typer::draw_centered(0, window.y()-20, "press enter to join", 8);
   } else {
     if(friendly_fire) {
-      Typer::centered(0, window.y()-20, "friendly fire on", 8);
+      Typer::draw_centered(0, window.y()-20, "friendly fire on", 8);
     }
   }
 }

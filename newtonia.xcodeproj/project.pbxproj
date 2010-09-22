@@ -16,6 +16,7 @@
 		2119FFEF0EE16F2600DD218B /* icon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 2119FFEE0EE16F2600DD218B /* icon.icns */; };
 		212105250EE55CF500A6F748 /* particle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 212105230EE55CF500A6F748 /* particle.cpp */; };
 		2129874D0F63BE89009C3556 /* mine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2129874B0F63BE89009C3556 /* mine.cpp */; };
+		212FDED1124A89C40016911E /* overlay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 212FDECF124A89C40016911E /* overlay.cpp */; };
 		2150E2D90ECD698700D89C28 /* GLUT.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2150E2D80ECD698700D89C28 /* GLUT.framework */; };
 		2150E2DD0ECD699700D89C28 /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2150E2DC0ECD699700D89C28 /* OpenGL.framework */; };
 		2150E2EF0ECD6A6E00D89C28 /* glship.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2E50ECD6A6E00D89C28 /* glship.cpp */; };
@@ -24,7 +25,6 @@
 		2150E2F30ECD6A6E00D89C28 /* wrapped_point.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2EC0ECD6A6E00D89C28 /* wrapped_point.cpp */; };
 		2150E2FB0ECD831900D89C28 /* glut.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2150E2F90ECD831900D89C28 /* glut.cpp */; };
 		215669B90F56A0B5004BDC84 /* teleport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 215669B70F56A0B5004BDC84 /* teleport.cpp */; };
-		215D9E8F10B0545A00786C48 /* overlay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 215D9E8D10B0545A00786C48 /* overlay.cpp */; };
 		215ED6A50ECDB80400E0778A /* glgame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 215ED6A30ECDB80400E0778A /* glgame.cpp */; };
 		2162B1AE0F5D0C4600E3FA78 /* grid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2162B1AC0F5D0C4600E3FA78 /* grid.cpp */; };
 		21696BCD0EDD2991006997A8 /* glstation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21696BCB0EDD2991006997A8 /* glstation.cpp */; };
@@ -58,6 +58,8 @@
 		212105240EE55CF500A6F748 /* particle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = particle.h; sourceTree = "<group>"; };
 		2129874B0F63BE89009C3556 /* mine.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = mine.cpp; sourceTree = "<group>"; };
 		2129874C0F63BE89009C3556 /* mine.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = mine.h; sourceTree = "<group>"; };
+		212FDECF124A89C40016911E /* overlay.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = overlay.cpp; sourceTree = "<group>"; };
+		212FDED0124A89C40016911E /* overlay.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = overlay.h; sourceTree = "<group>"; };
 		2150E2AA0ECD687300D89C28 /* Newtonia.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Newtonia.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2150E2D80ECD698700D89C28 /* GLUT.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GLUT.framework; path = /System/Library/Frameworks/GLUT.framework; sourceTree = "<absolute>"; };
 		2150E2DC0ECD699700D89C28 /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = /System/Library/Frameworks/OpenGL.framework; sourceTree = "<absolute>"; };
@@ -72,8 +74,6 @@
 		2150E2F90ECD831900D89C28 /* glut.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glut.cpp; sourceTree = "<group>"; };
 		215669B70F56A0B5004BDC84 /* teleport.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = teleport.cpp; sourceTree = "<group>"; };
 		215669B80F56A0B5004BDC84 /* teleport.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = teleport.h; sourceTree = "<group>"; };
-		215D9E8D10B0545A00786C48 /* overlay.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = overlay.cpp; path = view/overlay.cpp; sourceTree = "<group>"; };
-		215D9E8E10B0545A00786C48 /* overlay.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = overlay.h; path = view/overlay.h; sourceTree = "<group>"; };
 		215ED6A30ECDB80400E0778A /* glgame.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = glgame.cpp; sourceTree = "<group>"; };
 		215ED6A40ECDB80400E0778A /* glgame.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = glgame.h; sourceTree = "<group>"; };
 		2162B1AC0F5D0C4600E3FA78 /* grid.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = grid.cpp; sourceTree = "<group>"; };
@@ -116,19 +116,19 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		2150E2AB0ECD687300D89C28 /* Products */ = {
+		212FDECE124A89B10016911E /* view */ = {
 			isa = PBXGroup;
 			children = (
-				2150E2AA0ECD687300D89C28 /* Newtonia.app */,
+				212FDECF124A89C40016911E /* overlay.cpp */,
+				212FDED0124A89C40016911E /* overlay.h */,
 			);
-			name = Products;
+			path = view;
 			sourceTree = "<group>";
 		};
-		219282740ECD670E002D470F = {
+		212FDEDE124A8A2A0016911E /* src */ = {
 			isa = PBXGroup;
 			children = (
-				215D9E8D10B0545A00786C48 /* overlay.cpp */,
-				215D9E8E10B0545A00786C48 /* overlay.h */,
+				212FDECE124A89B10016911E /* view */,
 				2162B1AC0F5D0C4600E3FA78 /* grid.cpp */,
 				2162B1AD0F5D0C4600E3FA78 /* grid.h */,
 				21F7B0A40F58CC3F003090D8 /* weapon */,
@@ -180,6 +180,22 @@
 				2150E2EB0ECD6A6E00D89C28 /* ship.h */,
 				2150E2EC0ECD6A6E00D89C28 /* wrapped_point.cpp */,
 				2150E2ED0ECD6A6E00D89C28 /* wrapped_point.h */,
+			);
+			name = src;
+			sourceTree = "<group>";
+		};
+		2150E2AB0ECD687300D89C28 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				2150E2AA0ECD687300D89C28 /* Newtonia.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		219282740ECD670E002D470F = {
+			isa = PBXGroup;
+			children = (
+				212FDEDE124A8A2A0016911E /* src */,
 				2150E2DC0ECD699700D89C28 /* OpenGL.framework */,
 				2150E2D80ECD698700D89C28 /* GLUT.framework */,
 				2150E2AB0ECD687300D89C28 /* Products */,
@@ -279,7 +295,7 @@
 				21F7B0A80F58CC3F003090D8 /* default.cpp in Sources */,
 				2162B1AE0F5D0C4600E3FA78 /* grid.cpp in Sources */,
 				2129874D0F63BE89009C3556 /* mine.cpp in Sources */,
-				215D9E8F10B0545A00786C48 /* overlay.cpp in Sources */,
+				212FDED1124A89C40016911E /* overlay.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
