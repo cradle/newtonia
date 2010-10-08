@@ -64,7 +64,7 @@ void Overlay::temperature(GLShip *glship) {
   glPopMatrix();
 }
 
-void Overlay::respawn_timer(GLShip *glship) {
+void Overlay::respawn_timer(GLship *glship) {
   glPushMatrix();
   glScalef(20,20,1);
   glship->draw_respawn_timer();

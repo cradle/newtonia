@@ -11,9 +11,9 @@
 #endif
 
 #include "ship.h"
-#include <list>
+#include <list> 
 
-class GLTrail {
+class GLTrail {what la 
 public:   
   GLTrail(Ship* ship, 
           float deviation = 0.05, 

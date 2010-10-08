@@ -30,7 +30,6 @@
 		21696BCD0EDD2991006997A8 /* glstation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21696BCB0EDD2991006997A8 /* glstation.cpp */; };
 		2180D3930ED14D100050ED72 /* glcar.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2180D3900ED14D100050ED72 /* glcar.cpp */; };
 		218BF7DE0ED5645600C9FE0C /* glstarfield.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 218BF7DC0ED5645600C9FE0C /* glstarfield.cpp */; };
-		219185D00EE684C10004C960 /* Newtonia-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 219185CF0EE684C10004C960 /* Newtonia-Info.plist */; };
 		219B674C0EED0E8A002B7BAE /* state.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 219B674A0EED0E8A002B7BAE /* state.cpp */; };
 		219B67590EED40B7002B7BAE /* menu.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 219B67570EED40B7002B7BAE /* menu.cpp */; };
 		219B675D0EED4575002B7BAE /* state_manager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 219B675B0EED4575002B7BAE /* state_manager.cpp */; };
@@ -241,7 +240,14 @@
 			isa = PBXProject;
 			buildConfigurationList = 219282790ECD670E002D470F /* Build configuration list for PBXProject "newtonia" */;
 			compatibilityVersion = "Xcode 2.4";
+			developmentRegion = English;
 			hasScannedForEncodings = 0;
+			knownRegions = (
+				English,
+				Japanese,
+				French,
+				German,
+			);
 			mainGroup = 219282740ECD670E002D470F;
 			productRefGroup = 2150E2AB0ECD687300D89C28 /* Products */;
 			projectDirPath = "";
@@ -258,7 +264,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				2119FFEF0EE16F2600DD218B /* icon.icns in Resources */,
-				219185D00EE684C10004C960 /* Newtonia-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -332,12 +337,11 @@
 		2164AC9D0EE165A90011546F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ARCHS = (
-					i386,
-					ppc,
-				);
+				ARCHS = "$(ARCHS_STANDARD_32_64_BIT_PRE_XCODE_3_1)";
+				ARCHS_STANDARD_32_64_BIT_PRE_XCODE_3_1 = "x86_64 i386 ppc";
 				COPY_PHASE_STRIP = YES;
-				SDKROOT = /Developer/SDKs/MacOSX10.4u.sdk;
+				ENABLE_OPENMP_SUPPORT = YES;
+				SDKROOT = /Developer/SDKs/MacOSX10.5.sdk;
 				VALID_ARCHS = "ppc64 ppc7400 ppc970 i386 x86_64 ppc";
 			};
 			name = Release;
@@ -380,7 +384,7 @@
 					ppc,
 				);
 				COPY_PHASE_STRIP = NO;
-				SDKROOT = /Developer/SDKs/MacOSX10.4u.sdk;
+				SDKROOT = /Developer/SDKs/MacOSX10.5.sdk;
 				VALID_ARCHS = "ppc64 ppc7400 ppc970 i386 x86_64 ppc";
 			};
 			name = Debug;
