@@ -13,7 +13,7 @@
 #include "ship.h"
 #include <list> 
 
-class GLTrail {what la 
+class GLTrail {
 public:   
   GLTrail(Ship* ship, 
           float deviation = 0.05, 

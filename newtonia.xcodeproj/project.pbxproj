@@ -238,6 +238,9 @@
 /* Begin PBXProject section */
 		219282760ECD670E002D470F /* Project object */ = {
 			isa = PBXProject;
+			attributes = {
+				ORGANIZATIONNAME = metonymous.com;
+			};
 			buildConfigurationList = 219282790ECD670E002D470F /* Build configuration list for PBXProject "newtonia" */;
 			compatibilityVersion = "Xcode 2.4";
 			developmentRegion = English;
@@ -341,6 +344,11 @@
 				ARCHS_STANDARD_32_64_BIT_PRE_XCODE_3_1 = "x86_64 i386 ppc";
 				COPY_PHASE_STRIP = YES;
 				ENABLE_OPENMP_SUPPORT = YES;
+				EXCLUDED_RECURSIVE_SEARCH_PATH_SUBDIRECTORIES = ".git *.nib *.lproj *.framework *.gch *.xcode* (*) CVS .svn";
+				GCC_AUTO_VECTORIZATION = YES;
+				GCC_ENABLE_SSE3_EXTENSIONS = NO;
+				GCC_ENABLE_SSE41_EXTENSIONS = NO;
+				GCC_ENABLE_SSE42_EXTENSIONS = NO;
 				SDKROOT = /Developer/SDKs/MacOSX10.5.sdk;
 				VALID_ARCHS = "ppc64 ppc7400 ppc970 i386 x86_64 ppc";
 			};
@@ -379,13 +387,10 @@
 		219282770ECD670E002D470F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ARCHS = (
-					i386,
-					ppc,
-				);
+				ARCHS = "$(NATIVE_ARCH_ACTUAL)";
 				COPY_PHASE_STRIP = NO;
-				SDKROOT = /Developer/SDKs/MacOSX10.5.sdk;
-				VALID_ARCHS = "ppc64 ppc7400 ppc970 i386 x86_64 ppc";
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = "";
 			};
 			name = Debug;
 		};

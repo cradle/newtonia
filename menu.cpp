@@ -32,7 +32,7 @@ void Menu::draw() {
     Typer::draw_centered(0, -50, "press enter to start", 15); 
   }
   Typer::draw_centered(0,-350,"production",10);
-  Typer::draw_centered(0, -420, "Copyright 2008-2009", 10);
+  Typer::draw_centered(0, -420, "Copyright 2008-2010", 10);
 
   starfield.draw_front(viewpoint);
 }

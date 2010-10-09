@@ -23,6 +23,8 @@ public:
   void keyboard(unsigned char key, int x, int y);
   void keyboard_up(unsigned char key, int x, int y);
   
+  friend class Overlay;
+  
   bool cleared() const;
   
   list<Asteroid*> *objects;

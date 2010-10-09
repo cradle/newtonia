@@ -9,14 +9,13 @@ public:
   static void draw(const GLGame * glgame, GLShip *glship);
 
 private:
-  static void score(GLShip *glship);
-  static void level_cleared();
-  static void title_text();
-  static void lives(GLShip *glship);
-  static void weapons(GLShip *glship);
-  static void temperature(GLShip *glship);
+  static void score(const GLGame *glgame, GLShip *glship);
+  static void level_cleared(const GLGame *glgame);
+  static void lives(const GLGame *glgame, GLShip *glship);
+  static void weapons(const GLGame *glgame, GLShip *glship);
+  static void temperature(const GLGame *glgame, GLShip *glship);
   static void respawn_timer(GLShip *glship);
-  static void title_text(GLShip *glship);
+  static void title_text(const GLGame *glgame);
 };
 
 #endif
