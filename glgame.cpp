@@ -374,6 +374,9 @@ void GLGame::draw_map() const {
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
+  if (!running)
+    return;
+  
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
     (*object)->input(key);
@@ -403,6 +406,10 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     players->push_back(object);
   }
   if (key == 27) request_state_change(new Menu());
+  
+  if (!running)
+    return;
+  
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
     (*object)->input(key, false);
