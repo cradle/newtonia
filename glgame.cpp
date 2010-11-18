@@ -33,7 +33,6 @@ GLGame::GLGame() :
   world(Point(default_world_width, default_world_height)),
   running(true),
   friendly_fire(false),
-  render_orthogonal(false),
   grid(Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2))) {
   time_between_steps = step_size;
   level_cleared = false;
@@ -258,7 +257,7 @@ void GLGame::draw(void) {
 void GLGame::setup_perspective(GLShip *glship) const {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluPerspective(85.0f, window.x()/window.y(), 100.0f, 2000.0f);
+  gluPerspective(85.0f, window.x()/num_x_viewports()/window.y(), 100.0f, 2000.0f);
   glMatrixMode(GL_MODELVIEW); 
 }
 
@@ -281,8 +280,7 @@ void GLGame::setup_viewport(bool primary) const {
 void GLGame::draw_world(GLShip *glship, bool primary) const {
   setup_perspective(glship);
   setup_viewport(primary);
-  if(!render_orthogonal)
-    gluLookAt(0.0f, 0.0f, 1000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f );
+  gluLookAt(0.0f, 0.0f, 1000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f );
   draw_perspective(glship);
   setup_orthogonal();
   setup_viewport(primary);
@@ -422,7 +420,6 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == 'g') {
     friendly_fire = !friendly_fire;
   }
-  if (key == 'r') render_orthogonal = !render_orthogonal;
   if (key == '=' && time_between_steps > 1) time_between_steps--;
   if (key == '-') time_between_steps++;
   if (key == '0') time_between_steps = step_size;
