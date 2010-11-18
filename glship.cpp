@@ -116,7 +116,7 @@ void GLShip::step(float delta) {
   if(camera_rotation_delta > 270)
     camera_rotation_delta -= 360;
   camera_rotation += camera_rotation_delta * delta * 0.004;
-  std::cout << (ship->heading() - camera_rotation) << "\t" << camera_rotation << " " << ship->heading() << " " << delta << std::endl;
+  //std::cout << (ship->heading() - camera_rotation) << "\t" << camera_rotation << " " << ship->heading() << " " << delta << std::endl;
 
   for(list<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
     (*i)->step(delta);
@@ -132,6 +132,10 @@ void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, i
   mine_key = mine;
   next_weapon_key = next_weapon;
 }
+
+//void GLShip::draw_controls() const {
+  //TODO: implement overlay of key controls
+//}
 
 void GLShip::draw_temperature() const {
   if(ship->heat_rate <= 0.0f)

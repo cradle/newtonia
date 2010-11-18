@@ -50,7 +50,9 @@ GLGame::GLGame() :
   object->set_keys('a','d','w',' ','s','x','q');
   players->push_back(object);
 
+  rearstars = glGenLists(1);
   gameworld = glGenLists(1);
+  frontstars = glGenLists(1);
 
   time_until_next_step = 0;
   num_frames = 0;
@@ -264,7 +266,7 @@ int GLGame::num_x_viewports() const {
   return (players->size() == 0) ? 1 : players->size();
 }
 
-void GLGame::setup_orthogonal(GLShip *glship) const {
+void GLGame::setup_orthogonal() const {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   gluOrtho2D(-window.x()/num_x_viewports(), window.x()/num_x_viewports(), -window.y(), window.y());
@@ -274,15 +276,15 @@ void GLGame::setup_orthogonal(GLShip *glship) const {
 void GLGame::setup_viewport(bool primary) const {
   glLoadIdentity();
   glViewport((primary ? 0 : (window.x()/2)), 0, window.x()/num_x_viewports(), window.y());
-  if(!render_orthogonal)
-    gluLookAt(0.0f, 0.0f, 1000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f );
 }
 
 void GLGame::draw_world(GLShip *glship, bool primary) const {
   setup_perspective(glship);
   setup_viewport(primary);
+  if(!render_orthogonal)
+    gluLookAt(0.0f, 0.0f, 1000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f );
   draw_perspective(glship);
-  setup_orthogonal(glship);
+  setup_orthogonal();
   setup_viewport(primary);
   Overlay::draw(this, glship);
 }
@@ -292,19 +294,44 @@ void GLGame::draw_perspective(GLShip *glship) const {
   // Store the rendered world in a display list
   Point position = (glship == NULL) ? Point(0,0) : glship->ship->position;
   float direction = (glship == NULL || !glship->rotate_view()) ? 0.0f : glship->camera_facing();
-  glNewList(gameworld, GL_COMPILE);
+  glNewList(rearstars, GL_COMPILE);
     glTranslatef(-position.x(), -position.y(), 0.0f);
     starfield->draw_rear(position);
+  glEndList();
+  glNewList(gameworld, GL_COMPILE);
+    glTranslatef(-position.x(), -position.y(), 0.0f);
     draw_objects(direction);
+  glEndList();
+  glNewList(frontstars, GL_COMPILE);
+    glTranslatef(-position.x(), -position.y(), 0.0f);
     starfield->draw_front(position);
   glEndList();
   // Draw the world tesselated
+  ///TODO: DRY this up a bit
+  for(int x = -1; x <= 1; x++) {
+    for(int y = -1; y <= 1; y++) {
+      glPushMatrix();
+      glRotatef(direction, 0.0f, 0.0f, 1.0f);
+      glTranslatef(world.x()*x, world.y()*y, 0.0f);
+      glCallList(rearstars);
+      glPopMatrix();
+    }
+  }
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
       glPushMatrix();
       glRotatef(direction, 0.0f, 0.0f, 1.0f);
       glTranslatef(world.x()*x, world.y()*y, 0.0f);
       glCallList(gameworld);
+      glPopMatrix();
+    }
+  }
+  for(int x = -1; x <= 1; x++) {
+    for(int y = -1; y <= 1; y++) {
+      glPushMatrix();
+      glRotatef(direction, 0.0f, 0.0f, 1.0f);
+      glTranslatef(world.x()*x, world.y()*y, 0.0f);
+      glCallList(frontstars);
       glPopMatrix();
     }
   }

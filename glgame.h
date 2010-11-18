@@ -37,7 +37,7 @@ private:
   void draw_perspective(GLShip *glship) const;
   void setup_viewport(bool primary) const;
   void setup_perspective(GLShip *glship) const;
-  void setup_orthogonal(GLShip *glship) const;
+  void setup_orthogonal() const;
   
   int num_x_viewports() const;
   
@@ -52,7 +52,7 @@ private:
 
   static const int default_world_width, default_world_height;
   static const int default_num_asteroids, extra_num_asteroids;
-  unsigned int gameworld;
+  unsigned int gameworld, frontstars, rearstars;
 
   Grid grid;
   GLStarfield *starfield;
