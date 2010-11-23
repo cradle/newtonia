@@ -257,7 +257,7 @@ void GLGame::draw(void) {
 void GLGame::setup_perspective(GLShip *glship) const {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluPerspective(85.0f, window.x()/num_x_viewports()/window.y(), 100.0f, 2000.0f);
+  gluPerspective(70.0f, window.x()/num_x_viewports()/window.y(), 100.0f, 2000.0f);
   glMatrixMode(GL_MODELVIEW); 
 }
 

@@ -135,6 +135,7 @@ void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, i
 
 //void GLShip::draw_controls() const {
   //TODO: implement overlay of key controls
+  // or name too intuuitive to need it
 //}
 
 void GLShip::draw_temperature() const {
@@ -305,7 +306,7 @@ void GLShip::draw_body() const {
 
 void GLShip::draw_weapons() const {
   Typer::draw(0,0,"Weapons",15);
-  // Typer::draw(0.0f,-50.0f,char(shoot_key),10);
+  Typer::draw(0.0f,-50.0f,char(shoot_key),10);
   Typer::draw(20,-50,"-",10);
   Weapon::Base *weapon = *(ship->primary);
   if(weapon != NULL && !ship->primary_weapons.empty()) {
@@ -318,11 +319,11 @@ void GLShip::draw_weapons() const {
       }
     }
   }
-  //TODO: FIX: this conditional is breaking in new OSX, not sure when broke
-  /*if(ship->secondary != NULL) {
+
+  if(ship->secondary != NULL) {
 	  weapon = *(ship->secondary);
     Typer::draw(50,-90,weapon->name(),10);
-    // Typer::draw(0.0f,-90.0f,char(mine_key),10);
+    Typer::draw(0.0f,-90.0f,char(mine_key),10);
     Typer::draw(20,-90,"-",10);
     if(!weapon->is_unlimited()) {
       if(weapon->ammo() == 0) {
@@ -331,7 +332,7 @@ void GLShip::draw_weapons() const {
         Typer::draw_lefted(80+20*strlen(weapon->name()),-90,weapon->ammo(),10);
       }
     }
-  }*/
+  }
 }
 
 void GLShip::draw_particles() const {
