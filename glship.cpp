@@ -30,6 +30,8 @@ GLShip::GLShip(bool has_friction) {
   rotating_view = false;
   camera_rotation = ship->heading();
   
+  camera_angle = 85.0f;
+  
   color[0] = 72/255.0;
   color[1] = 118/255.0;
   color[2] = 255/255.0;

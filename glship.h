@@ -33,6 +33,7 @@ public:
   //TODO: Clearly there is a Player/View/Controller separation here
   bool rotate_view() const;
   float camera_facing() const;
+  float view_angle() const;
 
   static void collide(GLShip* first, GLShip* second);
   Ship *ship;
@@ -57,6 +58,7 @@ protected:
   
   bool rotating_view;
   float camera_rotation;
+  float camera_angle;
   
   std::list<GLTrail*> trails;
 };
@@ -81,5 +83,9 @@ float GLShip::explode_temperature() const {
 inline
 bool GLShip::rotate_view() const {
   return rotating_view;
+}
+inline
+float GLShip::view_angle() const {
+  return camera_angle;
 }
 #endif
