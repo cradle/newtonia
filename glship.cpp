@@ -199,7 +199,7 @@ void GLShip::draw_respawn_timer() const {
       }
     } else {
       Typer::draw_centered(0,4,"GameOver",2);
-      Typer::draw_centered(0,-3,ship->score,2);
+      Typer::draw(0,-1,ship->score);
     }
   }
 }
@@ -215,8 +215,13 @@ void GLShip::draw_temperature_status() const {
 }
 
 void GLShip::input(unsigned char key, bool pressed) {
-  if(!ship->is_alive())
-    return;
+  if(!ship->is_alive()) {
+    if(key == shoot_key && ship->lives > 0) {
+      ship->time_until_respawn = 0;
+    } else {
+      return;
+    }
+  }
   if (key == left_key) {
     ship->rotate_left(pressed);
   } else if (key == right_key) {
