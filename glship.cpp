@@ -26,16 +26,16 @@ GLShip::GLShip(bool has_friction) {
   trails.push_back(new GLTrail(ship, 0.01, Point(0,0), 0.3,0.0, GLTrail::THRUSTING, 5000.0));
   trails.push_back(new GLTrail(ship, 0.5,Point(-4,17),-0.1, 0.9, GLTrail::REVERSING | GLTrail::RIGHT, 500.0));
   trails.push_back(new GLTrail(ship, 0.5,Point( 4,17),-0.1,-0.9, GLTrail::REVERSING | GLTrail::LEFT, 500.0));
-  
+
   rotating_view = false;
   camera_rotation = ship->heading();
-  
+
   camera_angle = 85.0f;
-  
+
   color[0] = 72/255.0;
   color[1] = 118/255.0;
   color[2] = 255/255.0;
-  
+
   body = glGenLists(1);
   glNewList(body, GL_COMPILE);
 	glVertex2f( 0.0f, 1.0f);
@@ -48,13 +48,13 @@ GLShip::GLShip(bool has_friction) {
   glNewList(jets, GL_COMPILE);
   glColor3f( 1.0f, 1.0f, 1.0f );
 	glBegin(GL_QUADS);
-	glVertex2f( 0.0f,-0.5f );	
+	glVertex2f( 0.0f,-0.5f );
 	glVertex2f(-0.4f,-0.75f );
-	glVertex2f( 0.0f,-1.5f );	
+	glVertex2f( 0.0f,-1.5f );
 	glVertex2f( 0.4f,-0.75f );
 	glEnd();
   glEndList();
-  
+
   force_shield = glGenLists(1);
   glNewList(force_shield, GL_COMPILE);
   glColor4f(0.0f, 0.0f, 0.0f, 0.3f);
@@ -75,14 +75,14 @@ GLShip::GLShip(bool has_friction) {
   }
   glEnd();
   glEndList();
-  
+
   repulsors = glGenLists(1);
   glNewList(repulsors, GL_COMPILE);
   glColor3f( 1.0f, 1.0f, 1.0f );
 	glBegin(GL_QUADS);
-	glVertex2f( 0.3f,  0.3f );	
+	glVertex2f( 0.3f,  0.3f );
 	glVertex2f( 0.6f,  0.9f );
-	glVertex2f( 0.9f,  0.9f );	
+	glVertex2f( 0.9f,  0.9f );
 	glVertex2f( 0.75f, 0.3f );
 	glEnd();
   glEndList();
@@ -111,7 +111,7 @@ void GLShip::collide(GLShip* first, GLShip* second) {
 
 void GLShip::step(float delta) {
   ship->step(delta);
-  
+
   float camera_rotation_delta = ship->heading() - camera_rotation;
   if(camera_rotation_delta < -90)
     camera_rotation_delta += 360;
@@ -144,7 +144,7 @@ void GLShip::draw_temperature() const {
   if(ship->heat_rate <= 0.0f)
     return;
   float height = 5.0, width = 1.0;
-  
+
   /* temperature */
   float color[3] = {0,1.0,0};
   color[1] *= 1.0 - ship->temperature_ratio();
@@ -158,7 +158,7 @@ void GLShip::draw_temperature() const {
   glVertex2f(1.0f, temp/max_temperature());
   glVertex2f(0.0f, temp/max_temperature());
   glEnd();
-  
+
   if(temperature() > critical_temperature()) {
     glPushMatrix();
     glColor3f(1.0f,0.0f,0.0f);
@@ -173,7 +173,7 @@ void GLShip::draw_temperature() const {
     glEnd();
     glPopMatrix();
   }
-  
+
   /* border */
   glColor3f(1,1,1);
   glBegin(GL_LINE_LOOP);
@@ -182,7 +182,7 @@ void GLShip::draw_temperature() const {
   glVertex2i(1.0f,1.0f);
   glVertex2i(0.0f,1.0f);
   glEnd();
-  
+
   glBegin(GL_LINES);
   glVertex2f(0.0f, critical_temperature()/max_temperature());
   glVertex2f(1.0f, critical_temperature()/max_temperature());
@@ -211,7 +211,7 @@ void GLShip::draw_temperature_status() const {
     Typer::draw(0,0,"WARNING-TEMPERATURE CRITICAL");
   } else if(temperature() > critical_temperature()) {
     Typer::draw(0,0,"WARNING");
-  } 
+  }
 }
 
 void GLShip::input(unsigned char key, bool pressed) {
@@ -267,7 +267,7 @@ void GLShip::draw_ship(bool minimap) const {
   glTranslatef(ship->position.x(), ship->position.y(), 0.0f);
   glScalef( ship->radius, ship->radius, 1.0f);
   glRotatef( ship->heading(), 0.0f, 0.0f, 1.0f);
-  
+
   if(minimap) {
     glColor3fv(color);
     glPointSize(5.0f);
@@ -276,10 +276,10 @@ void GLShip::draw_ship(bool minimap) const {
     glEnd();
     return;
   }
-  
+
   glPointSize(2.5f);
   glLineWidth(1.8f);
-  
+
 	if(ship->invincible) {
     glCallList(force_shield);
   }
@@ -287,7 +287,7 @@ void GLShip::draw_ship(bool minimap) const {
 	if(ship->thrusting) {
     glCallList(jets);
 	}
-	
+
 	if(ship->reversing) {
     glPushMatrix();
     glCallList(repulsors);
@@ -295,16 +295,16 @@ void GLShip::draw_ship(bool minimap) const {
     glCallList(repulsors);
     glPopMatrix();
 	}
-  
+
   draw_body();
 }
 
-void GLShip::draw_body() const {	
+void GLShip::draw_body() const {
   glBegin(GL_POLYGON);
   glColor3f(0.0f,0.0f,0.0f);
   glCallList(body);
 	glEnd();
-  
+
   glColor3fv(color);
   glBegin(GL_LINE_LOOP);
   glCallList(body);
@@ -327,7 +327,7 @@ void GLShip::draw_weapons() const {
     }
   }
 
-  if(ship->secondary != NULL) {
+  /*if(ship->secondary && ship->secondary != NULL) {
 	  weapon = *(ship->secondary);
     Typer::draw(50,-90,weapon->name(),10);
     Typer::draw(0.0f,-90.0f,char(mine_key),10);
@@ -339,7 +339,7 @@ void GLShip::draw_weapons() const {
         Typer::draw_lefted(80+20*strlen(weapon->name()),-90,weapon->ammo(),10);
       }
     }
-  }
+  }*/
 }
 
 void GLShip::draw_particles() const {
@@ -379,7 +379,7 @@ void GLShip::draw_mines(bool minimap) const {
     glEnd();
     return;
   }
-  
+
   float size = 20.0;
   glPointSize(5.0f);
   glLineWidth(3.0f);

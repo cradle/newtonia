@@ -6,10 +6,11 @@
 #include <math.h>
 #include <sstream>
 #include <iostream>
+#include <cstdlib>
 using namespace std;
 
 namespace Weapon {
-  Default::Default(Ship *ship, bool automatic, int level, float accuracy, int time_between_shots) : 
+  Default::Default(Ship *ship, bool automatic, int level, float accuracy, int time_between_shots) :
     Base(ship),
     automatic(automatic),
     time_until_next_shot(0),
@@ -25,9 +26,9 @@ namespace Weapon {
         temp_name << "A";
       }
       _name = temp_name.str();
-      
+
       unlimited = (level == 0 && !automatic);
-      
+
       if(!unlimited)
         _ammo = 100;
   }

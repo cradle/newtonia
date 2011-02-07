@@ -2,6 +2,7 @@
 
 #include <list>
 #include <iostream>
+#include <cstdlib>
 using namespace std;
 #include "point.h"
 #include "follower.h"

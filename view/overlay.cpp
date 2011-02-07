@@ -1,7 +1,7 @@
 #include "overlay.h"
-#include "glship.h"
-#include "glgame.h"
-#include "typer.h"
+#include "../glship.h"
+#include "../glgame.h"
+#include "../typer.h"
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -31,7 +31,7 @@ void Overlay::score(const GLGame *glgame, GLShip *glship) {
   if(glship->ship->multiplier() > 1) {
     Typer::draw(glgame->window.x()/glgame->players->size()-35, glgame->window.y()-92, "x", 15);
     Typer::draw(glgame->window.x()/glgame->players->size()-65, glgame->window.y()-80, glship->ship->multiplier(), 20);
-  }  
+  }
 }
 
 void Overlay::level_cleared(const GLGame *glgame) {

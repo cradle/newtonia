@@ -3,6 +3,7 @@
 
 #include "ship.h"
 #include <iostream>
+#include <cstdlib>
 using namespace std;
 
 Follower::Follower(Ship *ship) : Behaviour(ship) {
@@ -29,7 +30,7 @@ void Follower::common_init() {
 void Follower::step(int delta) {
   if(ship->is_alive()) {
     lock_step(delta);
-    
+
     if(target) {
       if (target->is_alive()) {
         ship->thrust(true);
@@ -48,7 +49,7 @@ void Follower::step(int delta) {
       }
     }
   }
-} 
+}
 
 void Follower::lock_nearest_target() {
   if(target && !target->is_alive()) {

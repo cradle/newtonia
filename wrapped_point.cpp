@@ -2,6 +2,7 @@
 #include "point.h"
 
 #include <iostream>
+#include <cstdlib>
 
 float WrappedPoint::x_min = 0;
 float WrappedPoint::y_min = 0;

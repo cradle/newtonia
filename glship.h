@@ -22,7 +22,7 @@ public:
   virtual ~GLShip();
   void step(float delta);
   virtual void input(unsigned char key, bool pressed = true);
-  void set_keys(int left, int right, int up, int right, int reverse, int mine, int next_weapon_key);
+  void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key);
   void draw(bool minimap = false);
   void draw_body() const;
   void draw_temperature() const;
@@ -43,23 +43,23 @@ protected:
   void draw_particles() const;
   void draw_mines(bool minimap) const;
   void draw_debris() const;
-  
+
   /*delegators*/
   float max_temperature() const;
   float temperature() const;
   float critical_temperature() const;
   float explode_temperature() const;
-  
+
   GLuint body, jets, repulsors, force_shield;
-  
+
   float color[3];
-  
+
   int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key;
-  
+
   bool rotating_view;
   float camera_rotation;
   float camera_angle;
-  
+
   std::list<GLTrail*> trails;
 };
 

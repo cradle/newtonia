@@ -24,6 +24,7 @@
 				<Option compiler="gcc" />
 				<Compiler>
 					<Add option="-O2" />
+					<Add directory="gl" />
 				</Compiler>
 				<Linker>
 					<Add option="-s" />
@@ -47,7 +48,6 @@
 		<Unit filename="asteroid.h" />
 		<Unit filename="asteroid_drawer.cpp" />
 		<Unit filename="asteroid_drawer.h" />
-		<Unit filename="behaviour.cpp" />
 		<Unit filename="behaviour.h" />
 		<Unit filename="composite_object.cpp" />
 		<Unit filename="composite_object.h" />
@@ -93,9 +93,13 @@
 		<Unit filename="teleport.h" />
 		<Unit filename="typer.cpp" />
 		<Unit filename="typer.h" />
+		<Unit filename="view\overlay.cpp" />
+		<Unit filename="view\overlay.h" />
 		<Unit filename="weapon\base.h" />
 		<Unit filename="weapon\default.cpp" />
 		<Unit filename="weapon\default.h" />
+		<Unit filename="weapon\mine.cpp" />
+		<Unit filename="weapon\mine.h" />
 		<Unit filename="wrapped_point.cpp" />
 		<Unit filename="wrapped_point.h" />
 		<Extensions>
