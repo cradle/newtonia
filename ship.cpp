@@ -41,17 +41,17 @@ void Ship::disable_weapons() {
 Ship::~Ship() {
   disable_weapons();
   disable_behaviours();
-} 
-   
+}
+
 void Ship::next_weapon() {
   list<Weapon::Base *>::iterator next(primary);
-  
+
   //TODO: use circular list?
   next++;
-  
+
   if(next == primary_weapons.end())
     next = primary_weapons.begin();
-    
+
   (*next)->shoot((*primary)->is_shooting());
   (*primary)->shoot(false);
   primary = next;
@@ -59,13 +59,13 @@ void Ship::next_weapon() {
 
 void Ship::previous_weapon() {
   list<Weapon::Base *>::iterator next;
-  
+
   //TODO: use circular list?
   if(next == primary_weapons.begin())
     next = primary_weapons.end();
-    
+
   next--;
-    
+
   (*next)->shoot((*primary)->is_shooting());
   (*primary)->shoot(false);
   primary = next;
@@ -84,32 +84,35 @@ void Ship::init(bool no_friction) {
   heat_rate = 0.000;
   retro_heat_rate = heat_rate * -reverse_force / thrust_force;
   cool_rate = retro_heat_rate * 0.9;
+  boost_heat = 0.000;
+  boost_force = 2.0;
+  boosting = false;
 
   if(no_friction) {
     friction = 0;
     reverse_force = -0.01;
     thrust_force = 0.03;
-    rotation_force = 0.3;
+    rotation_force = 0.5;
   } else {
     friction = 0.001;
     reverse_force = -0.05;
     thrust_force = 0.09;
-    rotation_force = 0.2;
+    rotation_force = 0.4;
   }
-  
-  // primary_weapons.push_front(new Weapon::Default(this, false, 1));
-  // primary_weapons.push_front(new Weapon::Default(this, false, 2));
-  // primary_weapons.push_front(new Weapon::Default(this, false, 3));
-  // primary_weapons.push_front(new Weapon::Default(this, false, 4));
-  // primary_weapons.push_front(new Weapon::Default(this, true));
-  // primary_weapons.push_front(new Weapon::Default(this, true, 1));
-  // primary_weapons.push_front(new Weapon::Default(this, true, 2));
-  // primary_weapons.push_front(new Weapon::Default(this, true, 3));
-  // primary_weapons.push_front(new Weapon::Default(this, true, 4));
-  
+
+   primary_weapons.push_front(new Weapon::Default(this, false, 1));
+   primary_weapons.push_front(new Weapon::Default(this, false, 2));
+   primary_weapons.push_front(new Weapon::Default(this, false, 3));
+   primary_weapons.push_front(new Weapon::Default(this, false, 4));
+   primary_weapons.push_front(new Weapon::Default(this, true));
+   primary_weapons.push_front(new Weapon::Default(this, true, 1));
+   primary_weapons.push_front(new Weapon::Default(this, true, 2));
+   primary_weapons.push_front(new Weapon::Default(this, true, 3));
+   primary_weapons.push_front(new Weapon::Default(this, true, 4));
+
   primary_weapons.push_front(new Weapon::Default(this));
   primary = primary_weapons.begin();
-  
+
   secondary_weapons.push_front(new Weapon::Mine(this));
   secondary = secondary_weapons.begin();
 
@@ -189,6 +192,10 @@ void Ship::reverse(bool on) {
   reversing = on;
 }
 
+void Ship::boost() {
+  boosting = true;
+}
+
 void Ship::collide(Ship* first, Ship* second) {
   // first.collide(second);
   // second.collide(first);
@@ -203,7 +210,7 @@ int Ship::multiplier() const {
 
 void Ship::collide_grid(Grid &grid) {
   Object * object;
-  
+
   if(alive) {
     object = grid.collide(*this);
     if(object != NULL) {
@@ -215,7 +222,7 @@ void Ship::collide_grid(Grid &grid) {
       kill_stop();
     }
   }
-  
+
   std::list<Particle>::iterator p = mines.begin();
   while(p != mines.end()) {
     object = grid.collide(*p, 50.0f);
@@ -226,7 +233,7 @@ void Ship::collide_grid(Grid &grid) {
       p++;
     }
   }
-  
+
   p = bullets.begin();
   while(p != bullets.end()) {
     object = grid.collide(*p);
@@ -243,7 +250,7 @@ void Ship::collide_grid(Grid &grid) {
     }
   }
 }
-// 
+//
 // bool Ship::collide_object(Object* other) {
 //   std::list<Particle>::iterator b = bullets.begin();
 //   while(b != bullets.end()) {
@@ -271,7 +278,7 @@ void Ship::collide_grid(Grid &grid) {
 //   }
 //   if(alive && other->alive && other->collide(this)) {
 //     if(!invincible) {
-//       detonate(); 
+//       detonate();
 //     }
 //     kill_stop();
 //     if(other->kill())
@@ -392,7 +399,7 @@ void Ship::step(float delta) {
       vi++;
     }
   }
-  
+
   if(is_alive()) {
     if(invincible) {
       time_left_invincible -= delta;
@@ -400,9 +407,9 @@ void Ship::step(float delta) {
         invincible = false;
       }
     }
-    
+
     (*primary)->step(delta);
-      
+
   } else if (lives > 0) {
     time_until_respawn -= delta;
     if(time_until_respawn < 0) {
@@ -412,6 +419,12 @@ void Ship::step(float delta) {
 
   facing.rotate(rotation_direction * rotation_force / mass  * delta );
   Point acceleration = Point(0,0);
+  if(boosting) {
+  	acceleration += ((facing * boost_force) / mass);
+    temperature += boost_heat;
+    explode();
+    boosting = false;
+    }
   if(thrusting) {
   	acceleration += ((facing * thrust_force) / mass);
     temperature += heat_rate * delta;

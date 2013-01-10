@@ -125,7 +125,7 @@ void GLShip::step(float delta) {
   }
 }
 
-void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, int mine, int next_weapon) {
+void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, int mine, int next_weapon, int boost) {
   left_key = left;
   right_key = right;
   shoot_key = shoot;
@@ -133,6 +133,7 @@ void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, i
   reverse_key = reverse;
   mine_key = mine;
   next_weapon_key = next_weapon;
+  boost_key = boost;
 }
 
 //void GLShip::draw_controls() const {
@@ -234,6 +235,8 @@ void GLShip::input(unsigned char key, bool pressed) {
     ship->shoot(pressed);
   } else if (key == mine_key) {
     ship->mine(pressed);
+  } else if (key == boost_key && pressed) {
+    ship->boost();
   } else if(key == next_weapon_key && pressed) {
     ship->next_weapon();
   } else if (key == 'z' && pressed) {

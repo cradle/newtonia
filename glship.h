@@ -22,7 +22,7 @@ public:
   virtual ~GLShip();
   void step(float delta);
   virtual void input(unsigned char key, bool pressed = true);
-  void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key);
+  void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key);
   void draw(bool minimap = false);
   void draw_body() const;
   void draw_temperature() const;
@@ -54,7 +54,7 @@ protected:
 
   float color[3];
 
-  int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key;
+  int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, boost_key;
 
   bool rotating_view;
   float camera_rotation;

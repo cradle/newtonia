@@ -44,9 +44,9 @@ GLGame::GLGame() :
   WrappedPoint::set_boundaries(world);
 
   starfield = new GLStarfield(world);
-  
+
   GLShip *object = new GLShip(true);
-  object->set_keys('a','d','w',' ','s','x','q');
+  object->set_keys('a','d','w',' ','s','x','q','e');
   players->push_back(object);
 
   rearstars = glGenLists(1);
@@ -55,7 +55,7 @@ GLGame::GLGame() :
 
   time_until_next_step = 0;
   num_frames = 0;
-  
+
   generation = 0;
   add_asteroids();
 
@@ -89,8 +89,8 @@ GLGame::~GLGame() {
 
 void GLGame::add_asteroids() {
   while(Asteroid::num_killable < (default_num_asteroids + generation * extra_num_asteroids)) {
-    objects->push_back(new Asteroid(false)); 
-    objects->push_front(new Asteroid(true)); 
+    objects->push_back(new Asteroid(false));
+    objects->push_front(new Asteroid(true));
   }
 }
 
@@ -147,7 +147,7 @@ void GLGame::tick(int delta) {
   std::list<GLShip*>::iterator o, o2;
   while(time_until_next_step <= 0) {
 	/* STEP EVERYTHING */
-	
+
     if(station != NULL) {
       station->step(step_size);
     }
@@ -258,7 +258,7 @@ void GLGame::setup_perspective(GLShip *glship) const {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   gluPerspective(glship->view_angle(), window.x()/num_x_viewports()/window.y(), 100.0f, 2000.0f);
-  glMatrixMode(GL_MODELVIEW); 
+  glMatrixMode(GL_MODELVIEW);
 }
 
 int GLGame::num_x_viewports() const {
@@ -366,7 +366,7 @@ void GLGame::draw_map() const {
   } else {
     glViewport(window.x()/2 - minimap_size/2, window.y()/2 - minimap_size/2, minimap_size, minimap_size);
   }
-  
+
   /* BLACK BOX OVER MINIMAP */
   glColor4f(0.0f,0.0f,0.0f,0.8f);
   glBegin(GL_POLYGON);
@@ -383,16 +383,16 @@ void GLGame::draw_map() const {
     glVertex2i(  world.x(),0);
     glVertex2i( 0,0);
   glEnd();
-  
+
   /* DRAW THE LEVEL */
   Typer::draw(-world.x()+world.x()/15.0f, world.y()-world.y()/15.0f, "LEVEL", world.x()/15.0f);
   Typer::draw(world.x()-world.x()/15.0f*2.0f, world.y()-world.y()/15.0f, generation, world.x()/15.0f);
-  
+
   if(station != NULL) {
     Typer::draw(-world.x()+world.x()/15.0f, -world.y()+world.y()/15.0f*3.0f, "WAVE", world.x()/15.0f);
     Typer::draw(world.x()-world.x()/15.0f*2.0f, -world.y()+world.y()/15.0f*3.0f, station->level(), world.x()/15.0f);
   }
-  
+
   glPushMatrix();
   draw_objects(0.0f, true);
   glPopMatrix();
@@ -401,7 +401,7 @@ void GLGame::draw_map() const {
 void GLGame::keyboard (unsigned char key, int x, int y) {
   if (!running)
     return;
-  
+
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
     (*object)->input(key);
@@ -426,14 +426,14 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == 'p') toggle_pause();
   if (key == 13 && players->size() < 2) {
     GLShip* object = new GLCar(true);
-    object->set_keys('j','l','i','/','k',',','u');
+    object->set_keys('j','l','i','/','k',',','u','o');
     players->push_back(object);
   }
   if (key == 27) request_state_change(new Menu());
-  
+
   if (!running)
     return;
-  
+
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
     (*object)->input(key, false);

@@ -29,6 +29,7 @@ class Ship : public CompositeObject {
     void shoot(bool on = true);
     void shoot_weapon(bool on = true);
     void mine(bool on = true);
+    void boost();
     int multiplier() const;
 
     float heading() const;
@@ -45,7 +46,7 @@ class Ship : public CompositeObject {
     int lives, kills, kills_this_life;
     //TODO: Make this go away, it's wrong
     float radius_squared;
-    bool thrusting, reversing;
+    bool thrusting, reversing, boosting;
 
     //TODO: make friends with gltrail (or some other way around these public)
     WrappedPoint tail() const;
@@ -76,7 +77,7 @@ class Ship : public CompositeObject {
     int time_left_invincible;
     void disable_behaviours();
     void disable_weapons();
-    
+
     void next_weapon();
     void previous_weapon();
     WrappedPoint gun() const;
@@ -90,13 +91,13 @@ class Ship : public CompositeObject {
     virtual void reset(bool was_killed = true);
     void detonate();
     void detonate(Point const position, Point const velocity, int particle_count = 10);
-    
+
     Point world_size;
 
-    float heat_rate, retro_heat_rate, cool_rate;
+    float heat_rate, retro_heat_rate, cool_rate, boost_heat;
 
     // Forces
-    float thrust_force, reverse_force, rotation_force;
+    float thrust_force, reverse_force, rotation_force, boost_force;
     // Attributes
     float width, height, mass;
     int value;
@@ -110,7 +111,7 @@ class Ship : public CompositeObject {
     friend class GLEnemy;
     friend class GLGame;
     friend class GLTrail;
-    
+
   private:
     list<Behaviour *> behaviours;
     list<Weapon::Base *> primary_weapons;

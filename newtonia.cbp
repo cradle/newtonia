@@ -23,7 +23,9 @@
 				<Option type="0" />
 				<Option compiler="gcc" />
 				<Compiler>
-					<Add option="-O2" />
+					<Add option="-march=k8" />
+					<Add option="-fexpensive-optimizations" />
+					<Add option="-O3" />
 					<Add directory="gl" />
 				</Compiler>
 				<Linker>
@@ -34,6 +36,7 @@
 		<Compiler>
 			<Add option="-Wall" />
 			<Add directory="C:\Program Files\CodeBlocks\MinGW\include" />
+			<Add directory="..\cradle-newtonia-1c45a20" />
 		</Compiler>
 		<Linker>
 			<Add library="glut32" />
@@ -41,8 +44,9 @@
 			<Add library="glu32" />
 			<Add library="winmm" />
 			<Add library="gdi32" />
-			<Add library="..\..\..\..\..\Program Files\CodeBlocks\MinGW\lib\glut32.lib" />
+			<Add library="..\..\..\..\Program Files (x86)\CodeBlocks\MinGW\lib\glut32.lib" />
 			<Add directory="C:\Program Files\CodeBlocks\MinGW\lib" />
+			<Add directory="..\cradle-newtonia-1c45a20" />
 		</Linker>
 		<Unit filename="asteroid.cpp" />
 		<Unit filename="asteroid.h" />
