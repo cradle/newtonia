@@ -14,7 +14,7 @@
 float Typer::colour[] = {0.0f,1.0f,0.0f};
 
 void Typer::draw_centered(float x, float y, int number, float size) {
-  draw_centered(x,y,number, size);
+  draw(x,y,number, size);
 }
 // void Typer::draw_centered(float x, float y, int number, float size) {
 //   int length = -1;
