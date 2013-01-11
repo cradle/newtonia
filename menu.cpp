@@ -5,42 +5,59 @@
 
 #include <iostream>
 
+const int Menu::default_world_width = 5000;
+const int Menu::default_world_height = 5000;
+
 Menu::Menu() :
   State(),
   currentTime(0),
-  viewpoint(Point(-10000,0)),
-  starfield(GLStarfield(Point(5000,5000))) {}
+  viewpoint(Point(0,default_world_height/2)),
+  starfield(GLStarfield(Point(default_world_width,default_world_height))) {}
 
 void Menu::draw() {
   glClear(GL_COLOR_BUFFER_BIT);
 
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluOrtho2D(-window.x(), window.x(), -window.y(), window.y());
+  gluPerspective(90, window.x()/window.y(), 100.0f, 2000.0f);
   glMatrixMode(GL_MODELVIEW);
 
   glLoadIdentity();
   glViewport(0, 0, window.x(), window.y());
 
-  starfield.draw_rear(viewpoint);
-
-  Typer::draw_centered(0, 200, "Newtonia", 75);
-  Typer::draw_centered(0,-260,"a",10);
-  Typer::draw_centered(0, -300, "Glenn Francis Murray", 15);
-  if((currentTime/700) % 2) {
-    Typer::draw_centered(0, -50, "press enter to start", 15);
-  }
-  Typer::draw_centered(0,-350,"production",10);
-  Typer::draw_centered(0, -420, "Copyright 2008-2013", 10);
-
+  glTranslatef(-viewpoint.x(), -viewpoint.y(), 0.0f);
   starfield.draw_front(viewpoint);
+  starfield.draw_rear(viewpoint);
+  glTranslatef(default_world_width, 0, 0.0f);
+  starfield.draw_front(viewpoint);
+  starfield.draw_rear(viewpoint);
+  glTranslatef(-default_world_width*2, 0, 0.0f);
+  starfield.draw_front(viewpoint);
+  starfield.draw_rear(viewpoint);
+  glTranslatef(default_world_width, 0, 0.0f);
+
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  gluOrtho2D(-window.x(), window.x(), -window.y(), window.y());
+  glMatrixMode(GL_MODELVIEW);
+
+  Typer::draw_centered(viewpoint.x(), viewpoint.y()+200, "Newtonia", 75);
+  Typer::draw_centered(viewpoint.x(),viewpoint.y()-260,"a",10);
+  Typer::draw_centered(viewpoint.x(), viewpoint.y()-300, "Glenn Francis Murray", 15);
+  if((currentTime/1400) % 2) {
+    Typer::draw_centered(viewpoint.x(), viewpoint.y()-50, "press enter to start", 15);
+  }
+  Typer::draw_centered(viewpoint.x(),viewpoint.y()-350,"production",10);
+  Typer::draw_centered(viewpoint.x(), viewpoint.y()-420, "Copyright 2008-2013", 10);
 }
 
 void Menu::tick(int delta) {
   currentTime += delta;
   viewpoint += Point(1,0) * (0.1 * delta);
   //FIX: Wrapping bug
-  // viewpoint.wrap();
+  if(viewpoint.x() > default_world_width) {
+      viewpoint += Point(-default_world_width,0);
+  }
 }
 
 void Menu::keyboard(unsigned char key, int x, int y) {

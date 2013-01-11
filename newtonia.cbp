@@ -23,7 +23,11 @@
 				<Option type="0" />
 				<Option compiler="gcc" />
 				<Compiler>
+					<Add option="-march=athlon-fx" />
+					<Add option="-march=athlon64" />
+					<Add option="-march=opteron" />
 					<Add option="-march=k8" />
+					<Add option="-march=core2" />
 					<Add option="-fexpensive-optimizations" />
 					<Add option="-O3" />
 					<Add directory="gl" />
