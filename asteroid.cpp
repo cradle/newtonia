@@ -41,7 +41,9 @@ Asteroid::Asteroid(Asteroid const *mother) {
   value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
   value += mother->value;
   children_added = false;
-  num_killable++;
+  if(!invincible) {
+    num_killable++;
+  }
 }
 
 void Asteroid::add_children(list<Asteroid*> *roids) {

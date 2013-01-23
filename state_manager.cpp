@@ -21,7 +21,7 @@ void StateManager::mouse_move(int x, int y) {
 void StateManager::keyboard(unsigned char key, int x, int y) {
   if(!key_states[key]) {
     key_states[key] = true;
-    state->keyboard(key, x, y); 
+    state->keyboard(key, x, y);
   }
 }
 
@@ -34,6 +34,7 @@ void StateManager::tick(int delta) {
   if(state->is_finished()) {
     State* next_state = state->get_next_state();
     next_state->resize(window.x(), window.y());
+    delete state;
     state = next_state;
   }
   state->tick(delta);
