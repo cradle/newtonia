@@ -33,6 +33,7 @@ GLGame::GLGame() :
   world(Point(default_world_width, default_world_height)),
   running(true),
   friendly_fire(false),
+  current_time(0),
   grid(Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2))) {
   time_between_steps = step_size;
   level_cleared = false;
@@ -103,6 +104,8 @@ bool GLGame::cleared() const {
 }
 
 void GLGame::tick(int delta) {
+  current_time += delta;
+
   if (!running) {
     last_tick += delta;
     return;

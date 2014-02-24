@@ -74,7 +74,9 @@ void Overlay::respawn_timer(GLShip *glship) {
 
 void Overlay::title_text(const GLGame *glgame) {
   if(glgame->players->size() < 2) {
-    Typer::draw_centered(0, glgame->window.y()-20, "press enter to join", 8);
+    if((glgame->current_time/1400) % 2) {
+        Typer::draw_centered(glgame->window.x()/2, glgame->window.y()-20, "player 2 press enter to join", 8);
+    }
   } else {
     if(glgame->friendly_fire) {
       Typer::draw_centered(0, glgame->window.y()-20, "friendly fire on", 8);

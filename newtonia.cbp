@@ -7,9 +7,9 @@
 		<Option compiler="gcc" />
 		<Build>
 			<Target title="Debug">
-				<Option output="bin\Debug\newtonia" prefix_auto="1" extension_auto="1" />
-				<Option working_dir="C:\Program Files\CodeBlocks\MinGW\bin" />
-				<Option object_output="obj\Debug\" />
+				<Option output="bin/Debug/newtonia" prefix_auto="1" extension_auto="1" />
+				<Option working_dir="C:/Program Files/CodeBlocks/MinGW/bin" />
+				<Option object_output="obj/Debug/" />
 				<Option type="1" />
 				<Option compiler="gcc" />
 				<Compiler>
@@ -17,9 +17,9 @@
 				</Compiler>
 			</Target>
 			<Target title="Release">
-				<Option output="bin\Release\newtonia" prefix_auto="1" extension_auto="1" />
-				<Option working_dir="C:\Program Files\CodeBlocks\MinGW\bin" />
-				<Option object_output="obj\Release\" />
+				<Option output="bin/Release/newtonia" prefix_auto="1" extension_auto="1" />
+				<Option working_dir="C:/Program Files/CodeBlocks/MinGW/bin" />
+				<Option object_output="obj/Release/" />
 				<Option type="0" />
 				<Option compiler="gcc" />
 				<Compiler>
@@ -39,7 +39,7 @@
 		</Build>
 		<Compiler>
 			<Add option="-Wall" />
-			<Add directory="C:\Program Files\CodeBlocks\MinGW\include" />
+			<Add directory="C:/Program Files/CodeBlocks/MinGW/include" />
 			<Add directory="." />
 		</Compiler>
 		<Linker>
@@ -49,7 +49,7 @@
 			<Add library="winmm" />
 			<Add library="gdi32" />
 			<Add library="..\..\..\..\Program Files (x86)\CodeBlocks\MinGW\lib\glut32.lib" />
-			<Add directory="C:\Program Files\CodeBlocks\MinGW\lib" />
+			<Add directory="C:/Program Files/CodeBlocks/MinGW/lib" />
 			<Add directory="." />
 		</Linker>
 		<Unit filename="asteroid.cpp" />
@@ -101,18 +101,19 @@
 		<Unit filename="teleport.h" />
 		<Unit filename="typer.cpp" />
 		<Unit filename="typer.h" />
-		<Unit filename="view\overlay.cpp" />
-		<Unit filename="view\overlay.h" />
-		<Unit filename="weapon\base.h" />
-		<Unit filename="weapon\default.cpp" />
-		<Unit filename="weapon\default.h" />
-		<Unit filename="weapon\mine.cpp" />
-		<Unit filename="weapon\mine.h" />
+		<Unit filename="view/overlay.cpp" />
+		<Unit filename="view/overlay.h" />
+		<Unit filename="weapon/base.h" />
+		<Unit filename="weapon/default.cpp" />
+		<Unit filename="weapon/default.h" />
+		<Unit filename="weapon/mine.cpp" />
+		<Unit filename="weapon/mine.h" />
 		<Unit filename="wrapped_point.cpp" />
 		<Unit filename="wrapped_point.h" />
 		<Extensions>
 			<code_completion />
 			<debugger />
+			<envvars />
 		</Extensions>
 	</Project>
 </CodeBlocks_project_file>

@@ -48,7 +48,7 @@ void Menu::draw() {
     Typer::draw_centered(viewpoint.x(), viewpoint.y()-50, "press enter to start", 15);
   }
   Typer::draw_centered(viewpoint.x(),viewpoint.y()-350,"production",10);
-  Typer::draw_centered(viewpoint.x(), viewpoint.y()-420, "Copyright 2008-2013", 10);
+  Typer::draw_centered(viewpoint.x(), viewpoint.y()-420, "Copyright 2008-2014", 10);
 }
 
 void Menu::tick(int delta) {
