@@ -22,11 +22,11 @@ public:
   void tick(int delta);
   void keyboard(unsigned char key, int x, int y);
   void keyboard_up(unsigned char key, int x, int y);
-  
+
   friend class Overlay;
-  
+
   bool cleared() const;
-  
+
   list<Asteroid*> *objects;
 private:
   void add_asteroids();
@@ -38,17 +38,17 @@ private:
   void setup_viewport(bool primary) const;
   void setup_perspective(GLShip *glship) const;
   void setup_orthogonal() const;
-  
+
   int num_x_viewports() const;
-  
+
   static const int step_size = 10;
-  
+
   Point world;
 
   int generation;
   int last_tick, time_until_next_step, num_frames, current_time, time_between_steps;
   int time_until_next_generation;
-  bool running, level_cleared, friendly_fire;
+  bool running, level_cleared, friendly_fire, show_help;
 
   static const int default_world_width, default_world_height;
   static const int default_num_asteroids, extra_num_asteroids;

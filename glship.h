@@ -25,6 +25,7 @@ public:
   void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key);
   void draw(bool minimap = false);
   void draw_body() const;
+  void draw_keymap() const;
   void draw_temperature() const;
   void draw_respawn_timer() const;
   void draw_temperature_status() const;
@@ -56,7 +57,7 @@ protected:
 
   int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, boost_key;
 
-  bool rotating_view;
+  bool rotating_view, show_keys;
   float camera_rotation;
   float camera_angle;
 

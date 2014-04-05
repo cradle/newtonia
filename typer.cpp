@@ -12,19 +12,17 @@
 #endif
 
 float Typer::colour[] = {0.0f,1.0f,0.0f};
-
-void Typer::draw_centered(float x, float y, int number, float size) {
-  draw(x,y,number, size);
+//}
+ void Typer::draw_centered(float x, float y, int number, float size) {
+   int length = -1;
+   int temp = number/10;
+   while(temp != 0) {
+     temp /= 10;
+     length++;
+   }
+   draw(x+length*size, y, number, size);
 }
-// void Typer::draw_centered(float x, float y, int number, float size) {
-//   int length = -1;
-//   int temp = number/10;
-//   while(temp != 0) {
-//     temp /= 10;
-//     length++;
-//   }
-//   draw(x+length*size, y, number, size);
-// }
+
 void Typer::draw_lefted(float x, float y, int number, float size) {
   int length = -1;
   int temp = number/10;
@@ -34,9 +32,7 @@ void Typer::draw_lefted(float x, float y, int number, float size) {
   }
   draw(x+length*size*2, y, number, size);
 }
-// void Typer::draw(float x, float y, int number, float size) {
-//   draw(x,y,(int)number, size);
-// }
+
 void Typer::draw(float x, float y, int number, float size) {
   bool negative = (number < 0);
   int i = 0;
@@ -107,12 +103,24 @@ void Typer::draw(float x, float y, char character, float size) {
       glVertex2f(width,mid_height);
       glEnd();
       break;
+    case '+':
+      glBegin(GL_LINES);
+      glVertex2f(0,mid_height);
+      glVertex2f(width,mid_height);
+      glVertex2f(width*0.5,1.75);
+      glVertex2f(width*0.5,0.25);
+      glEnd();
+      break;
     case '0':
       glBegin(GL_LINE_LOOP);
       glVertex2f(0,height);
       glVertex2f(width,height);
       glVertex2f(width,0);
       glVertex2f(0,0);
+      glEnd();
+      glBegin(GL_LINES);
+      glVertex2f(width,height);
+      glVertex2f(0.0f, 0.0f);
       glEnd();
       break;
     case '1':
@@ -503,6 +511,18 @@ void Typer::draw(float x, float y, char character, float size) {
       glVertex2f(width, height*0.9f);
       glVertex2f(0.0f, height/2.0f);
       glVertex2f(width, height*0.1f);
+      glEnd();
+      break;
+    case '/':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(width,height);
+      glVertex2f(0.0f, 0.0f);
+      glEnd();
+      break;
+    case ',':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(width/2.0f,height/3.0f);
+      glVertex2f(0.0f, 0.0f);
       glEnd();
       break;
   }

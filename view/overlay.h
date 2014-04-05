@@ -5,7 +5,7 @@ class GLShip;
 class GLGame;
 
 class Overlay {
-public:  
+public:
   static void draw(const GLGame * glgame, GLShip *glship);
 
 private:
@@ -15,6 +15,7 @@ private:
   static void weapons(const GLGame *glgame, GLShip *glship);
   static void temperature(const GLGame *glgame, GLShip *glship);
   static void respawn_timer(GLShip *glship);
+  static void keymap(const GLGame *glgame, const GLShip *glship);
   static void title_text(const GLGame *glgame);
 };
 

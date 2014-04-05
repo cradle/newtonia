@@ -44,8 +44,16 @@ void keyboard(unsigned char key, int x, int y) {
   game->keyboard(key, x, y);
 }
 
+void special(int key, int x, int y) {
+  keyboard(key, x, y);
+}
+
 void keyboard_up(unsigned char key, int x, int y) {
   game->keyboard_up(key, x, y);
+}
+
+void special_up(int key, int x, int y) {
+  keyboard_up(key, x, y);
 }
 
 void resize(int width, int height) {
@@ -99,6 +107,8 @@ void init(int &argc, char** argv, float width, float height) {
   glutDisplayFunc(draw);
   glutKeyboardFunc(keyboard);
   glutKeyboardUpFunc(keyboard_up);
+  glutSpecialFunc(special);
+  glutSpecialUpFunc(special_up);
   glutReshapeFunc(resize);
   glutVisibilityFunc(isVisible);
 }

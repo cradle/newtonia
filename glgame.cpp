@@ -33,6 +33,7 @@ GLGame::GLGame() :
   world(Point(default_world_width, default_world_height)),
   running(true),
   friendly_fire(false),
+  show_help(false),
   current_time(0),
   grid(Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2))) {
   time_between_steps = step_size;
@@ -423,6 +424,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == 'g') {
     friendly_fire = !friendly_fire;
   }
+  if (key == GLUT_KEY_F1) show_help = !show_help;
   if (key == '=' && time_between_steps > 1) time_between_steps--;
   if (key == '-') time_between_steps++;
   if (key == '0') time_between_steps = step_size;

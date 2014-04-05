@@ -17,6 +17,7 @@ void Overlay::draw(const GLGame *glgame, GLShip *glship) {
 
   if(glship != NULL) {
     score(glgame, glship);
+    keymap(glgame, glship);
     level_cleared(glgame);
     lives(glgame, glship);
     weapons(glgame, glship);
@@ -72,14 +73,32 @@ void Overlay::respawn_timer(GLShip *glship) {
   glPopMatrix();
 }
 
+void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
+  if(glgame->show_help) {
+    glPushMatrix();
+    glship->draw_keymap();
+    glPopMatrix();
+  }
+}
+
 void Overlay::title_text(const GLGame *glgame) {
   if(glgame->players->size() < 2) {
     if((glgame->current_time/1400) % 2) {
         Typer::draw_centered(glgame->window.x()/2, glgame->window.y()-20, "player 2 press enter to join", 8);
     }
+    if(glgame->show_help) {
+      Typer::draw_centered(-1*glgame->window.x()/2, glgame->window.y()-20, "press f1 to hide controls", 8);
+    } else if ((glgame->current_time)/12000 % 2) {
+      Typer::draw_centered(-1*glgame->window.x()/2, glgame->window.y()-20, "press f1 to show controls", 8);
+    }
   } else {
     if(glgame->friendly_fire) {
-      Typer::draw_centered(0, glgame->window.y()-20, "friendly fire on", 8);
+      Typer::draw_centered(0, glgame->window.y()-40, "friendly fire on", 8);
+    }
+    if(glgame->show_help) {
+      Typer::draw_centered(0, glgame->window.y()-20, "press f1 to hide controls", 8);
+    } else if ((glgame->current_time)/12000 % 2) {
+      Typer::draw_centered(0, glgame->window.y()-20, "press f1 to show controls", 8);
     }
   }
 }
