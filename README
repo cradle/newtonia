@@ -1,34 +1,6 @@
 Newtonia is a top down 2D space shooter.
 Written in C++ using GLUT and OpenGL.
 
-Global Keys:
-   fullscreen: f
-        pause: p
-         quit: esc 
-     speed up: +
-    slow down: -
-        reset: 0
-     teleport: t
-   skip level: n
-  change view: v
-friendly fire: g
+Two players works best with 2 USB keyboards.
 
-(two players works best with 2 USB keyboards)
-
-Player 1 Keys:
-next weapon: q
-     thrust: w
-    reverse: s
-       left: a
-      right: d
-      shoot: space
-       mine: x
-
-Player 2 Keys:
-next weapon: u
-     thrust: i
-    reverse: k
-       left: j
-      right: l
-      shoot: /
-       mine: ,
+Start game with ENTER, press F1 to view controls.
