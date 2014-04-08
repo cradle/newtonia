@@ -278,7 +278,19 @@ void GLGame::setup_orthogonal() const {
 
 void GLGame::setup_viewport(bool primary) const {
   glLoadIdentity();
-  glViewport((primary ? 0 : (window.x()/2)), 0, window.x()/num_x_viewports(), window.y());
+  if(primary) {
+    if(window.y() > window.x()) {
+      glViewport(0, 0, window.x(), window.y()/num_x_viewports());
+    } else {
+      glViewport(0, 0, window.x()/num_x_viewports(), window.y());
+    }
+  } else {
+    if(window.y() > window.x()) {
+      glViewport(0, window.y()/num_x_viewports(), window.x(), window.y()/num_x_viewports());
+    } else {
+      glViewport(window.x()/num_x_viewports(), 0, window.x()/num_x_viewports(), window.y());
+    }
+  }
 }
 
 void GLGame::draw_world(GLShip *glship, bool primary) const {
@@ -352,10 +364,17 @@ void GLGame::draw_map() const {
     glViewport(0, 0, window.x(), window.y());
     glBegin(GL_LINES);
     glColor4f(1,1,1,0.5);
-    glVertex2f(0,-window.y());
-    glVertex2f(0,-minimap_size);
-    glVertex2f(0, minimap_size);
-    glVertex2f(0, window.y());
+    if(window.x() < window.y()) {
+      glVertex2f(-window.x(),0);
+      glVertex2f(-minimap_size,0);
+      glVertex2f(minimap_size,0);
+      glVertex2f(window.x(),0);
+    } else {
+      glVertex2f(0,-window.y());
+      glVertex2f(0,-minimap_size);
+      glVertex2f(0, minimap_size);
+      glVertex2f(0, window.y());
+    }
     glEnd();
   }
 
@@ -379,14 +398,6 @@ void GLGame::draw_map() const {
     glVertex2i(  world.x(), 0);
     glVertex2i(  0, 0);
   glEnd();
-  /* LINE AROUND MINIMAP */
-  glColor3f(0.5f,0.5f,0.5f);
-  glBegin(GL_LINE_LOOP);
-    glVertex2i( 0, world.y());
-    glVertex2i(  world.x(), world.y());
-    glVertex2i(  world.x(),0);
-    glVertex2i( 0,0);
-  glEnd();
 
   /* DRAW THE LEVEL */
   Typer::draw(-world.x()+world.x()/15.0f, world.y()-world.y()/15.0f, "LEVEL", world.x()/15.0f);
@@ -397,9 +408,30 @@ void GLGame::draw_map() const {
     Typer::draw(world.x()-world.x()/15.0f*2.0f, -world.y()+world.y()/15.0f*3.0f, station->level(), world.x()/15.0f);
   }
 
-  glPushMatrix();
+  glNewList(gameworld, GL_COMPILE);
   draw_objects(0.0f, true);
+  glEndList();
+
+  glPushMatrix();
+  glCallList(gameworld);
+  glTranslatef(world.x(), 0.0f, 0.0f);
+  glCallList(gameworld);
+  glTranslatef(-2*world.x(), 0.0f, 0.0f);
+  glCallList(gameworld);
+  glTranslatef(world.x(), world.y(), 0.0f);
+  glCallList(gameworld);
+  glTranslatef(0.0f, -2*world.y(), 0.0f);
+  glCallList(gameworld);
   glPopMatrix();
+
+  /* LINE AROUND MINIMAP */
+  glColor3f(0.5f,0.5f,0.5f);
+  glBegin(GL_LINE_LOOP);
+    glVertex2i( 0, world.y());
+    glVertex2i(  world.x(), world.y());
+    glVertex2i(  world.x(),0);
+    glVertex2i( 0,0);
+  glEnd();
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
