@@ -290,10 +290,7 @@ void Ship::collide_grid(Grid &grid) {
 void Ship::collide(Ship *other) {
   std::list<Particle>::iterator b = bullets.begin();
   while(b != bullets.end()) {
-    if(is_alive() && b->collide(*this)) {
-      kill();
-      b = bullets.erase(b);
-    } else if(other->is_alive() && b->collide(*other)) {
+    if(other->is_alive() && b->collide(*other)) {
       other->kill();
       kills_this_life += 1;
       kills += 1;
