@@ -57,6 +57,7 @@ void special_up(int key, int x, int y) {
 }
 
 void resize(int width, int height) {
+  Typer::resize(width, height);
   game->resize(width, height);
 }
 

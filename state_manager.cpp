@@ -43,4 +43,5 @@ void StateManager::tick(int delta) {
 void StateManager::resize(int x, int y) {
   window = Point(x,y);
   state->resize(x,y);
+  Typer::resize(x,y);
 }

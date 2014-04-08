@@ -13,6 +13,10 @@
 #endif
 
 float Typer::colour[] = {0.0f,1.0f,0.0f};
+int Typer::window_width = 600;
+int Typer::window_height = 800;
+float Typer::window_x_scale = 1.0f;
+float Typer::window_y_scale = 1.0f;
 //}
  void Typer::draw_centered(float x, float y, int number, float size, int time) {
    int length = -1;
@@ -22,6 +26,13 @@ float Typer::colour[] = {0.0f,1.0f,0.0f};
      length++;
    }
    draw(x+length*size, y, number, size, time);
+}
+
+void Typer::resize(int x, int y) {
+  window_width = x;
+  window_height = y;
+  window_x_scale = window_width / 800;
+  window_y_scale = window_height / 640;
 }
 
 void Typer::draw_lefted(float x, float y, int number, float size, int time) {
@@ -121,6 +132,12 @@ void Typer::draw(float x, float y, char character, float size, int time) {
       glBegin(GL_LINES);
       glVertex2f(0,mid_height);
       glVertex2f(width,mid_height);
+      glEnd();
+      break;
+    case '.':
+      glPointSize(2.0f);
+      glBegin(GL_POINTS);
+      glVertex2f(width*0.5,height*0.125);
       glEnd();
       break;
     case '+':

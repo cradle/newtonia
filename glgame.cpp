@@ -261,34 +261,37 @@ void GLGame::draw(void) {
 void GLGame::setup_perspective(GLShip *glship) const {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluPerspective(glship->view_angle(), window.x()/num_x_viewports()/window.y(), 100.0f, 2000.0f);
+  gluPerspective(num_y_viewports() == 1 ? glship->view_angle() : glship->view_angle()*0.75, window.x()/num_x_viewports()/(window.y()/num_y_viewports()), 100.0f, 2000.0f);
   glMatrixMode(GL_MODELVIEW);
 }
 
 int GLGame::num_x_viewports() const {
-  return (players->size() == 0) ? 1 : players->size();
+  return (players->size() == 0) ? 1 : (window.x() > window.y()) ? players->size() : 1;
+}
+
+int GLGame::num_y_viewports() const {
+  return (players->size() == 0) ? 1 : (window.x() > window.y()) ? 1 : players->size();
 }
 
 void GLGame::setup_orthogonal() const {
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluOrtho2D(-window.x()/num_x_viewports(), window.x()/num_x_viewports(), -window.y(), window.y());
+  gluOrtho2D(-window.x()/num_x_viewports(), window.x()/num_x_viewports(), -window.y()/num_y_viewports(), window.y()/num_y_viewports());
   glMatrixMode(GL_MODELVIEW);
 }
 
 void GLGame::setup_viewport(bool primary) const {
+  if(players->size() > 1 && window.x() <= window.y()) {
+    primary = !primary; //HACK: Fix this
+  }
   glLoadIdentity();
   if(primary) {
-    if(window.y() > window.x()) {
-      glViewport(0, 0, window.x(), window.y()/num_x_viewports());
-    } else {
-      glViewport(0, 0, window.x()/num_x_viewports(), window.y());
-    }
+    glViewport(0, 0, window.x()/num_x_viewports(), window.y()/num_y_viewports());
   } else {
-    if(window.y() > window.x()) {
-      glViewport(0, window.y()/num_x_viewports(), window.x(), window.y()/num_x_viewports());
+    if(window.x() > window.y()) {
+      glViewport(window.x()/num_x_viewports(), 0, window.x()/num_x_viewports(), window.y()/num_y_viewports());
     } else {
-      glViewport(window.x()/num_x_viewports(), 0, window.x()/num_x_viewports(), window.y());
+      glViewport(0, window.y()/num_y_viewports(), window.x()/num_x_viewports(), window.y()/num_y_viewports());
     }
   }
 }
@@ -352,7 +355,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
 }
 
 void GLGame::draw_map() const {
-  float minimap_size = window.y()/4;
+  float minimap_size = num_y_viewports() == 2 ? window.y()/6 : window.y()/4;
 
   if(players->size() > 1) {
     /* DRAW CENTER LINE */

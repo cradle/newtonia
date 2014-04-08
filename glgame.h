@@ -28,6 +28,9 @@ public:
   bool cleared() const;
 
   list<Asteroid*> *objects;
+
+  int num_x_viewports() const;
+  int num_y_viewports() const;
 private:
   void add_asteroids();
   void toggle_pause();
@@ -38,8 +41,6 @@ private:
   void setup_viewport(bool primary) const;
   void setup_perspective(GLShip *glship) const;
   void setup_orthogonal() const;
-
-  int num_x_viewports() const;
 
   static const int step_size = 10;
 

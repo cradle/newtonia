@@ -28,10 +28,10 @@ void Overlay::draw(const GLGame *glgame, GLShip *glship) {
 
 void Overlay::score(const GLGame *glgame, GLShip *glship) {
   //FIX: Window encapsulation? Players size encapsulation?
-  Typer::draw(glgame->window.x()/glgame->players->size()-40, glgame->window.y()-20, glship->ship->score, 20);
+  Typer::draw(glgame->window.x()/glgame->num_x_viewports()-40, glgame->window.y()/glgame->num_y_viewports()-20, glship->ship->score, 20);
   if(glship->ship->multiplier() > 1) {
-    Typer::draw(glgame->window.x()/glgame->players->size()-35, glgame->window.y()-92, "x", 15);
-    Typer::draw(glgame->window.x()/glgame->players->size()-65, glgame->window.y()-80, glship->ship->multiplier(), 20);
+    Typer::draw(glgame->window.x()/glgame->num_x_viewports()-35, glgame->window.y()/glgame->num_y_viewports()-92, "x", 15);
+    Typer::draw(glgame->window.x()/glgame->num_x_viewports()-65, glgame->window.y()/glgame->num_y_viewports()-80, glship->ship->multiplier(), 20);
   }
 }
 
@@ -43,19 +43,19 @@ void Overlay::level_cleared(const GLGame *glgame) {
 }
 
 void Overlay::lives(const GLGame *glgame, GLShip *glship) {
-  Typer::draw_lives(glgame->window.x()/glgame->players->size()-40, -glgame->window.y()+70, glship, 18);
+  Typer::draw_lives(glgame->window.x()/glgame->num_x_viewports()-40, -glgame->window.y()/glgame->num_y_viewports()+70, glship, 18);
 }
 
 void Overlay::weapons(const GLGame *glgame, GLShip *glship) {
   glPushMatrix();
-  glTranslatef(-glgame->window.x()/glgame->players->size()+10, glgame->window.y()-10, 0.0f);
+  glTranslatef(-glgame->window.x()/glgame->num_x_viewports()+10, glgame->window.y()/glgame->num_y_viewports()-10, 0.0f);
   glship->draw_weapons();
   glPopMatrix();
 }
 
 void Overlay::temperature(const GLGame *glgame, GLShip *glship) {
   glPushMatrix();
-  glTranslatef(-glgame->window.x()/glgame->players->size()+30, -glgame->window.y()+15, 0.0f);
+  glTranslatef(-glgame->window.x()/glgame->num_x_viewports()+30, -glgame->window.y()/glgame->num_y_viewports()+15, 0.0f);
   glPushMatrix();
   glScalef(30,30,1);
   glship->draw_temperature();
@@ -93,12 +93,12 @@ void Overlay::title_text(const GLGame *glgame) {
     }
   } else {
     if(glgame->friendly_fire) {
-      Typer::draw_centered(0, glgame->window.y()-40, "friendly fire on", 8);
+      Typer::draw_centered(0, glgame->window.y()/glgame->num_y_viewports()-50, "friendly fire on", 8);
     }
     if(glgame->show_help) {
-      Typer::draw_centered(0, glgame->window.y()-20, "press f1 to hide controls", 8);
+      Typer::draw_centered(0, glgame->window.y()/glgame->num_y_viewports()-20, "press f1 to hide controls", 8);
     } else if ((glgame->current_time)/12000 % 2) {
-      Typer::draw_centered(0, glgame->window.y()-20, "press f1 to show controls", 8);
+      Typer::draw_centered(0, glgame->window.y()/glgame->num_y_viewports()-20, "press f1 to show controls", 8);
     }
   }
 }
