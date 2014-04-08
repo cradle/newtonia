@@ -97,6 +97,20 @@ void Typer::draw(float x, float y, char character, float size) {
   float center = width / 2.0;
   pre_draw(x,y,size);
   switch(character) {
+    case '©':
+      glBegin(GL_LINE_STRIP);
+      glVertex2f(width*quarter_size*3,mid_lower_height);
+      glVertex2f(width*quarter_size,mid_lower_height);
+      glVertex2f(width*quarter_size,mid_upper_height);
+      glVertex2f(width*quarter_size*3,mid_upper_height);
+      glEnd();
+      glBegin(GL_LINE_LOOP);
+      glVertex2f(-quarter_size, 0.0f);
+      glVertex2f(-quarter_size, height+quarter_size);
+      glVertex2f(width+quarter_size, height+quarter_size);
+      glVertex2f(width+quarter_size, 0.0f);
+      glEnd();
+      break;
     case '-':
       glBegin(GL_LINES);
       glVertex2f(0,mid_height);

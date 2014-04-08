@@ -42,13 +42,10 @@ void Menu::draw() {
   glMatrixMode(GL_MODELVIEW);
 
   Typer::draw_centered(viewpoint.x(), viewpoint.y()+200, "Newtonia", 75);
-  Typer::draw_centered(viewpoint.x(),viewpoint.y()-260,"a",10);
-  Typer::draw_centered(viewpoint.x(), viewpoint.y()-300, "Glenn Francis Murray", 15);
   if((currentTime/1400) % 2) {
     Typer::draw_centered(viewpoint.x(), viewpoint.y()-50, "press enter to start", 15);
   }
-  Typer::draw_centered(viewpoint.x(),viewpoint.y()-350,"production",10);
-  Typer::draw_centered(viewpoint.x(), viewpoint.y()-420, "Copyright 2008-2014", 10);
+  Typer::draw_centered(viewpoint.x(), viewpoint.y()-420, "Copyright 2008-2014 METONYMOUS", 10);
 }
 
 void Menu::tick(int delta) {
