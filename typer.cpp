@@ -1,6 +1,7 @@
 #include "typer.h"
 
 #include <string>
+#include <math.h>
 #include "glship.h"
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -95,6 +96,8 @@ void Typer::draw(float x, float y, char character, float size) {
   float width = 1.0;
   float mid_width = width * 0.67;
   float center = width / 2.0;
+  int segment_count = 6;
+  float segment_size = 360.0/segment_count, d;
   pre_draw(x,y,size);
   switch(character) {
     case '©':
@@ -104,12 +107,16 @@ void Typer::draw(float x, float y, char character, float size) {
       glVertex2f(width*quarter_size,mid_upper_height);
       glVertex2f(width*quarter_size*3,mid_upper_height);
       glEnd();
+      glPushMatrix();
+      glTranslatef(0.5f,mid_height,0.0f);
+      glScalef(1.0f,1.2f,1.0f);
       glBegin(GL_LINE_LOOP);
-      glVertex2f(-quarter_size, 0.0f);
-      glVertex2f(-quarter_size, height+quarter_size);
-      glVertex2f(width+quarter_size, height+quarter_size);
-      glVertex2f(width+quarter_size, 0.0f);
+      for (float i = 0.0; i < 360.0; i+= segment_size) {
+        d = i*M_PI/180;
+        glVertex2f(cos(d),sin(d));
+      }
       glEnd();
+      glPopMatrix();
       break;
     case '-':
       glBegin(GL_LINES);

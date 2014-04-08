@@ -45,7 +45,7 @@ void Menu::draw() {
   if((currentTime/1400) % 2) {
     Typer::draw_centered(viewpoint.x(), viewpoint.y()-50, "press enter to start", 15);
   }
-  Typer::draw_centered(viewpoint.x(), viewpoint.y()-420, "Copyright 2008-2014 METONYMOUS", 10);
+  Typer::draw_centered(viewpoint.x(), viewpoint.y()-420, "Copyright © 2008-2014 METONYMOUS", 12);
 }
 
 void Menu::tick(int delta) {
