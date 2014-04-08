@@ -14,27 +14,27 @@
 
 float Typer::colour[] = {0.0f,1.0f,0.0f};
 //}
- void Typer::draw_centered(float x, float y, int number, float size) {
+ void Typer::draw_centered(float x, float y, int number, float size, int time) {
    int length = -1;
    int temp = number/10;
    while(temp != 0) {
      temp /= 10;
      length++;
    }
-   draw(x+length*size, y, number, size);
+   draw(x+length*size, y, number, size, time);
 }
 
-void Typer::draw_lefted(float x, float y, int number, float size) {
+void Typer::draw_lefted(float x, float y, int number, float size, int time) {
   int length = -1;
   int temp = number/10;
   while(temp != 0) {
     temp /= 10;
     length++;
   }
-  draw(x+length*size*2, y, number, size);
+  draw(x+length*size*2, y, number, size, time);
 }
 
-void Typer::draw(float x, float y, int number, float size) {
+void Typer::draw(float x, float y, int number, float size, int time) {
   bool negative = (number < 0);
   int i = 0;
 
@@ -43,29 +43,29 @@ void Typer::draw(float x, float y, int number, float size) {
   }
 
   do {
-    draw(x-i*size*2, y, char((number % 10)+48), size);
+    draw(x-i*size*2, y, char((number % 10)+48), size, time);
     i++;
     number = number / 10;
   } while(number != 0);
 
   if(negative) {
-    draw(x-size*i-size*i,y,'-',size);
+    draw(x-size*i-size*i,y,'-',size, time);
   }
 }
 
-void Typer::draw_lives(float x, float y, GLShip *ship, float size) {
+void Typer::draw_lives(float x, float y, GLShip *ship, float size, int time) {
   for(int i = 0; i < ship->ship->lives; i++) {
     draw_life(x-i*size*2, y, ship, size);
   }
 }
 
-void Typer::draw_centered(float x, float y, const char * text, float size) {
-  draw(x-size*strlen(text), y, text, size);
+void Typer::draw_centered(float x, float y, const char * text, float size, int time) {
+  draw(x-size*strlen(text), y, text, size, time);
 }
 
-void Typer::draw(float x, float y, const char * text, float size) {
+void Typer::draw(float x, float y, const char * text, float size, int time) {
   for(unsigned int i = 0; i < strlen(text); i++) {
-    draw(x+i*size*2, y, text[i], size);
+    draw(x+i*size*2, y, text[i], size, time);
   }
 }
 
@@ -87,7 +87,7 @@ void Typer::draw_life(float x, float y, GLShip* ship, float size) {
   post_draw();
 }
 
-void Typer::draw(float x, float y, char character, float size) {
+void Typer::draw(float x, float y, char character, float size, int time) {
   float quarter_size = 0.25;
   float height = 2.0;
   float mid_upper_height = height - quarter_size;
@@ -96,7 +96,7 @@ void Typer::draw(float x, float y, char character, float size) {
   float width = 1.0;
   float mid_width = width * 0.67;
   float center = width / 2.0;
-  int segment_count = 6;
+  int segment_count = 7;
   float segment_size = 360.0/segment_count, d;
   pre_draw(x,y,size);
   switch(character) {
@@ -107,16 +107,15 @@ void Typer::draw(float x, float y, char character, float size) {
       glVertex2f(width*quarter_size,mid_upper_height);
       glVertex2f(width*quarter_size*3,mid_upper_height);
       glEnd();
-      glPushMatrix();
       glTranslatef(0.5f,mid_height,0.0f);
       glScalef(1.0f,1.2f,1.0f);
+      glRotated(time/-16.0, 0.0f, 0.0f, 1.0f);
       glBegin(GL_LINE_LOOP);
       for (float i = 0.0; i < 360.0; i+= segment_size) {
         d = i*M_PI/180;
         glVertex2f(cos(d),sin(d));
       }
       glEnd();
-      glPopMatrix();
       break;
     case '-':
       glBegin(GL_LINES);
