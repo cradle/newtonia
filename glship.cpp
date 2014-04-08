@@ -27,7 +27,7 @@ GLShip::GLShip(bool has_friction) {
   trails.push_back(new GLTrail(ship, 0.5,Point(-4,17),-0.1, 0.9, GLTrail::REVERSING | GLTrail::RIGHT, 500.0));
   trails.push_back(new GLTrail(ship, 0.5,Point( 4,17),-0.1,-0.9, GLTrail::REVERSING | GLTrail::LEFT, 500.0));
 
-  rotating_view = false;
+  rotating_view = true;
   camera_rotation = ship->heading();
 
   camera_angle = 85.0f;
