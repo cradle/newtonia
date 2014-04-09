@@ -8,9 +8,10 @@
 using namespace std;
 
 Grid::Grid(Point size, Point biggest) {
-  cell_size = biggest;
-  num_rows = int(ceil(size.x()/cell_size.x()));
-  num_cols = int(ceil(size.y()/cell_size.y()));
+  cell_size = size;//biggest;
+  world_size = size;
+  num_rows = 1;//int(ceil(size.x()/cell_size.x()));
+  num_cols = 1;//int(ceil(size.y()/cell_size.y()));
   cout << "Grid: " << num_rows << "x" << num_cols << endl;
   cells = vector<vector<list<Object *> > >(num_rows);
   for(int row = 0; row < num_rows; row++) {
@@ -35,13 +36,13 @@ list<Object *> Grid::get(Point position, int x_offset, int y_offset) const {
   x_offset += (position.x()/cell_size.x());
   y_offset += (position.y()/cell_size.y());
   // cout << "B" << x << "," << y << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
-  if(x_offset<0)
+  while(x_offset<0)
     x_offset += num_rows;
-  if(y_offset<0)
+  while(y_offset<0)
     y_offset += num_cols;
-  if(x_offset >= num_rows)
+  while(x_offset >= num_rows)
     x_offset -= num_rows;
-  if(y_offset >= num_cols)
+  while(y_offset >= num_cols)
     y_offset -= num_cols;
   // cout << "A" << x << "," << y << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
   return cells[x_offset][y_offset];
@@ -50,11 +51,13 @@ list<Object *> Grid::get(Point position, int x_offset, int y_offset) const {
 Object * Grid::collide(const Object &object, float proximity) const {
   list<Object *> others;
   list<Object *>::iterator o;
+  Point offset;
   for(int i = -1; i <= 1; i++) {
     for(int j = -1; j <= 1; j++) {
-      others = get(object.position,i,j);
+      others = get(object.position,0,0);
       for(o = others.begin(); o != others.end(); o++) {
-        if(object.collide(**o, proximity)) {
+        offset = Point(i*world_size.x(), j*world_size.y());
+        if(object.collide(**o, proximity, offset)) {
           return *o;
         }
       }

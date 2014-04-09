@@ -38,12 +38,16 @@ void Object::step(int delta) {
 }
 
 bool Object::collide(const Object &other, float proximity) const {
-  return ((other.position - position).magnitude_squared() < ((radius+other.radius+proximity)*(radius+other.radius+proximity)));
+  return collide(other, proximity, Point(0,0));
+}
+
+bool Object::collide(const Object &other, float proximity, const Point offset) const {
+  return ((other.position - position + offset).magnitude_squared() < ((radius+other.radius+proximity)*(radius+other.radius+proximity)));
 }
 
 bool Object::kill() {
   if(!invincible && alive) {
-    alive = false; 
+    alive = false;
     return true;
   }
   return false;
