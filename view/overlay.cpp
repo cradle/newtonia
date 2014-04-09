@@ -83,7 +83,8 @@ void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
 
 void Overlay::title_text(const GLGame *glgame) {
   if(glgame->players->size() < 2) {
-    if((glgame->current_time/1400) % 2) {
+    Ship* p1 = glgame->players->front()->ship;
+    if((p1->is_alive() || p1->lives > 0) && (glgame->current_time/1400) % 2) {
         Typer::draw_centered(glgame->window.x()/2, glgame->window.y()-20, "player 2 press enter to join", 8);
     }
     if(glgame->show_help) {

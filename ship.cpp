@@ -74,7 +74,7 @@ void Ship::previous_weapon() {
 void Ship::init(bool no_friction) {
   mass = 100.0;
   value = 1000000;
-  lives = 6;
+  lives = 3;
   width = height = radius = 11;
   radius_squared = radius * radius;
   respawn_time = time_until_respawn = 4000;

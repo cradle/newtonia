@@ -465,9 +465,12 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == '0') time_between_steps = step_size;
   if (key == 'p') toggle_pause();
   if (key == 13 && players->size() < 2) {
-    GLShip* object = new GLCar(true);
-    object->set_keys('j','l','i','/','k',',','u','o');
-    players->push_back(object);
+    Ship* p1 = players->front()->ship;
+    if(p1->is_alive() || p1->lives) {
+      GLShip* object = new GLCar(true);
+      object->set_keys('j','l','i','/','k',',','u','o');
+      players->push_back(object);
+    }
   }
   if (key == 27) request_state_change(new Menu());
 
