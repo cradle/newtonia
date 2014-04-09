@@ -8,10 +8,10 @@
 using namespace std;
 
 Grid::Grid(Point size, Point biggest) {
-  cell_size = size;//biggest;
+  cell_size = biggest;
   world_size = size;
-  num_rows = 1;//int(ceil(size.x()/cell_size.x()));
-  num_cols = 1;//int(ceil(size.y()/cell_size.y()));
+  num_rows = int(ceil(size.x()/cell_size.x()));
+  num_cols = int(ceil(size.y()/cell_size.y()));
   cout << "Grid: " << num_rows << "x" << num_cols << endl;
   cells = vector<vector<list<Object *> > >(num_rows);
   for(int row = 0; row < num_rows; row++) {
@@ -54,9 +54,9 @@ Object * Grid::collide(const Object &object, float proximity) const {
   Point offset;
   for(int i = -1; i <= 1; i++) {
     for(int j = -1; j <= 1; j++) {
-      others = get(object.position,0,0);
+      others = get(object.position,i,j);
+      offset = Point(i*world_size.x(), j*world_size.y());
       for(o = others.begin(); o != others.end(); o++) {
-        offset = Point(i*world_size.x(), j*world_size.y());
         if(object.collide(**o, proximity, offset)) {
           return *o;
         }
