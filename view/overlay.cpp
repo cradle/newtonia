@@ -12,7 +12,7 @@
 #include <GL/glut.h>
 #endif
 
-void Overlay::draw(const GLGame *glgame, GLShip *glship) {
+void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   title_text(glgame);
 
   if(glship != NULL) {
@@ -22,11 +22,11 @@ void Overlay::draw(const GLGame *glgame, GLShip *glship) {
     lives(glgame, glship);
     weapons(glgame, glship);
     temperature(glgame, glship);
-    respawn_timer(glship);
+    respawn_timer(glgame, glship);
   }
 }
 
-void Overlay::score(const GLGame *glgame, GLShip *glship) {
+void Overlay::score(const GLGame *glgame, const GLShip *glship) {
   //FIX: Window encapsulation? Players size encapsulation?
   Typer::draw(glgame->window.x()/glgame->num_x_viewports()-40, glgame->window.y()/glgame->num_y_viewports()-20, glship->ship->score, 20);
   if(glship->ship->multiplier() > 1) {
@@ -42,18 +42,18 @@ void Overlay::level_cleared(const GLGame *glgame) {
   }
 }
 
-void Overlay::lives(const GLGame *glgame, GLShip *glship) {
+void Overlay::lives(const GLGame *glgame, const GLShip *glship) {
   Typer::draw_lives(glgame->window.x()/glgame->num_x_viewports()-40, -glgame->window.y()/glgame->num_y_viewports()+70, glship, 18);
 }
 
-void Overlay::weapons(const GLGame *glgame, GLShip *glship) {
+void Overlay::weapons(const GLGame *glgame, const GLShip *glship) {
   glPushMatrix();
   glTranslatef(-glgame->window.x()/glgame->num_x_viewports()+10, glgame->window.y()/glgame->num_y_viewports()-10, 0.0f);
   glship->draw_weapons();
   glPopMatrix();
 }
 
-void Overlay::temperature(const GLGame *glgame, GLShip *glship) {
+void Overlay::temperature(const GLGame *glgame, const GLShip *glship) {
   glPushMatrix();
   glTranslatef(-glgame->window.x()/glgame->num_x_viewports()+30, -glgame->window.y()/glgame->num_y_viewports()+15, 0.0f);
   glPushMatrix();
@@ -66,11 +66,13 @@ void Overlay::temperature(const GLGame *glgame, GLShip *glship) {
   glPopMatrix();
 }
 
-void Overlay::respawn_timer(GLShip *glship) {
-  glPushMatrix();
-  glScalef(20,20,1);
-  glship->draw_respawn_timer();
-  glPopMatrix();
+void Overlay::respawn_timer(const GLGame *glgame, const GLShip *glship) {
+  if(!glgame->show_help) {
+    glPushMatrix();
+    glScalef(20,20,1);
+    glship->draw_respawn_timer();
+    glPopMatrix();
+  }
 }
 
 void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
@@ -86,6 +88,8 @@ void Overlay::title_text(const GLGame *glgame) {
     Ship* p1 = glgame->players->front()->ship;
     if((p1->is_alive() || p1->lives > 0) && (glgame->current_time/1400) % 2) {
         Typer::draw_centered(glgame->window.x()/2, glgame->window.y()-20, "player 2 press enter to join", 8);
+    } else {
+        Typer::draw_centered(0, glgame->window.y()-20, "player ESC to return to menu", 8);
     }
     if(glgame->show_help) {
       Typer::draw_centered(-1*glgame->window.x()/2, glgame->window.y()-20, "press f1 to hide controls", 8);

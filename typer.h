@@ -11,7 +11,7 @@ public:
   static void draw(float x, float y, const char *text, float size = 1, int time = 0);
   static void draw_centered(float x, float y, int number, float size = 1, int time = 0);
   static void draw_centered(float x, float y, const char *text, float size = 1, int time = 0);
-  static void draw_lives(float x, float y, GLShip *ship, float size = 1, int time = 0);
+  static void draw_lives(float x, float y, const GLShip *ship, float size = 1, int time = 0);
   static void draw(float x, float y, char character, float size = 1, int time = 0);
   static void resize(int width, int height);
 
@@ -21,7 +21,7 @@ private:
   static float colour[3];
   static void pre_draw(float x, float y, float size = 1);
   static void post_draw();
-  static void draw_life(float x, float y, GLShip *ship, float size = 1);
+  static void draw_life(float x, float y, const GLShip *ship, float size = 1);
 };
 
 #endif

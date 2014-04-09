@@ -64,7 +64,7 @@ void Typer::draw(float x, float y, int number, float size, int time) {
   }
 }
 
-void Typer::draw_lives(float x, float y, GLShip *ship, float size, int time) {
+void Typer::draw_lives(float x, float y, const GLShip *ship, float size, int time) {
   for(int i = 0; i < ship->ship->lives; i++) {
     draw_life(x-i*size*2, y, ship, size);
   }
@@ -92,7 +92,7 @@ void Typer::post_draw() {
   glPopMatrix();
 }
 
-void Typer::draw_life(float x, float y, GLShip* ship, float size) {
+void Typer::draw_life(float x, float y, const GLShip* ship, float size) {
   pre_draw(x,y,size);
   ship->draw_body();
   post_draw();
