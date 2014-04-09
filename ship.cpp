@@ -116,6 +116,7 @@ void Ship::init(bool no_friction) {
   secondary_weapons.push_front(new Weapon::Mine(this));
   secondary = secondary_weapons.begin();
 
+  facing = Point(0, 1);
   reset();
 }
 
@@ -141,7 +142,6 @@ void Ship::respawn(bool was_killed) {
 }
 
 void Ship::reset(bool was_killed) {
-  facing = Point(0, 1);
   velocity = Point(0, 0);
   thrusting = false;
   reversing = false;
@@ -163,6 +163,8 @@ bool Ship::kill() {
     thrusting = false;
     reversing = false;
     rotation_direction = NONE;
+    still_rotating_left = false;
+    still_rotating_right = false;
     temperature = 0.0;
     time_until_respawn = respawn_time;
     return true;

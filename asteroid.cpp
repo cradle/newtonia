@@ -16,7 +16,11 @@ const int Asteroid::max_radius = Asteroid::radius_variation + Asteroid::minimum_
 
 Asteroid::Asteroid(bool invincible) : CompositeObject() {
   position = WrappedPoint();
-  radius = rand()%radius_variation + minimum_radius;
+  if(invincible) {
+    radius = rand()%radius_variation + minimum_radius;
+  } else {
+    radius = (rand()%radius_variation + minimum_radius) * 0.5;
+  }
   rotation_speed = (rand()%max_rotation-max_rotation/2)/radius;
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
   value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
