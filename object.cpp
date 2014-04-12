@@ -42,7 +42,7 @@ bool Object::collide(const Object &other, float proximity) const {
 }
 
 bool Object::collide(const Object &other, float proximity, const Point offset) const {
-  return ((other.position - position + offset).magnitude_squared() < ((radius+other.radius+proximity)*(radius+other.radius+proximity)));
+  return ((other.position + offset) - position).magnitude_squared() < ((radius+other.radius+proximity)*(radius+other.radius+proximity));
 }
 
 bool Object::kill() {

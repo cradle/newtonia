@@ -33,37 +33,42 @@ void Grid::display() const {
 }
 
 list<Object *> Grid::get(Point position, int x_offset, int y_offset) const {
-  x_offset += (position.x()/cell_size.x());
-  y_offset += (position.y()/cell_size.y());
+  int row_num = x_offset + (position.x()/cell_size.x());
+  int col_num = y_offset + (position.y()/cell_size.y());
   // cout << "B" << x << "," << y << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
-  while(x_offset<0)
-    x_offset += num_rows;
-  while(y_offset<0)
-    y_offset += num_cols;
-  while(x_offset >= num_rows)
-    x_offset -= num_rows;
-  while(y_offset >= num_cols)
-    y_offset -= num_cols;
+  while(row_num < 0)
+    row_num += num_rows;
+  while(col_num < 0)
+    col_num += num_cols;
+  while(row_num >= num_rows)
+    row_num -= num_rows;
+  while(col_num >= num_cols)
+    col_num -= num_cols;
   // cout << "A" << x << "," << y << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
-  return cells[x_offset][y_offset];
+  return cells[row_num][col_num];
 }
 
 Object * Grid::collide(const Object &object, float proximity) const {
   list<Object *> others;
   list<Object *>::iterator o;
   Point offset;
-  for(int i = -1; i <= 1; i++) {
-    for(int j = -1; j <= 1; j++) {
+  Object *collided = NULL;
+  for(int i = -1; i <= 1 && collided == NULL; i++) {
+    for(int j = -1; j <= 1 && collided == NULL; j++) {
       others = get(object.position,i,j);
-      offset = Point(i*world_size.x(), j*world_size.y());
-      for(o = others.begin(); o != others.end(); o++) {
-        if(object.collide(**o, proximity, offset)) {
-          return *o;
+      for(int x = -1;  x <= 1 && collided == NULL; x++) {
+        for(int y = -1; y <= 1 && collided == NULL; y++) {
+          offset = Point(-x*world_size.x(), -y*world_size.y());
+          for(o = others.begin(); o != others.end() && collided == NULL; o++) {
+            if(object.collide(**o, proximity, offset)) {
+              collided = *o;
+            }
+          }
         }
       }
     }
   }
-  return NULL;
+  return collided;
 }
 
 void Grid::update(const list<Object *> *objects) {
