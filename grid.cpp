@@ -33,9 +33,9 @@ void Grid::display() const {
 }
 
 list<Object *> Grid::get(Point position, int x_offset, int y_offset) const {
-  int row_num = x_offset + (position.x()/cell_size.x());
-  int col_num = y_offset + (position.y()/cell_size.y());
-  // cout << "B" << x << "," << y << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
+  int row_num = x_offset + floor(position.x()/cell_size.x());
+  int col_num = y_offset + floor(position.y()/cell_size.y());
+  //cout << "B" << row_num << "," << col_num << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
   while(row_num < 0)
     row_num += num_rows;
   while(col_num < 0)
@@ -44,7 +44,7 @@ list<Object *> Grid::get(Point position, int x_offset, int y_offset) const {
     row_num -= num_rows;
   while(col_num >= num_cols)
     col_num -= num_cols;
-  // cout << "A" << x << "," << y << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
+  //cout << "A" << row_num << "," << col_num << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
   return cells[row_num][col_num];
 }
 
@@ -58,7 +58,7 @@ Object * Grid::collide(const Object &object, float proximity) const {
       others = get(object.position,i,j);
       for(int x = -1;  x <= 1 && collided == NULL; x++) {
         for(int y = -1; y <= 1 && collided == NULL; y++) {
-          offset = Point(-x*world_size.x(), -y*world_size.y());
+          offset = Point(x*world_size.x(), y*world_size.y());
           for(o = others.begin(); o != others.end() && collided == NULL; o++) {
             if(object.collide(**o, proximity, offset)) {
               collided = *o;
