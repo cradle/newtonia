@@ -398,9 +398,9 @@ void GLShip::draw_particles() const {
   glBegin(GL_POINTS);
   for(list<Particle>::iterator b = ship->bullets.begin(); b != ship->bullets.end(); b++) {
     //TODO: Work out how to make bullets draw themselves. GLBullet?
-		glVertex2fv(b->position);
+    glVertex2fv(b->position);
   }
-	glEnd();
+  glEnd();
 }
 
 bool GLShip::is_removable() const {

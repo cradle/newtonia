@@ -18,7 +18,7 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   if(glship != NULL) {
     score(glgame, glship);
     keymap(glgame, glship);
-    level_cleared(glgame);
+    level_cleared(glgame, glship);
     lives(glgame, glship);
     weapons(glgame, glship);
     temperature(glgame, glship);
@@ -35,8 +35,8 @@ void Overlay::score(const GLGame *glgame, const GLShip *glship) {
   }
 }
 
-void Overlay::level_cleared(const GLGame *glgame) {
-  if(glgame->level_cleared) {
+void Overlay::level_cleared(const GLGame *glgame, const GLShip *glship) {
+  if(glgame->level_cleared && glship->ship->is_alive() && glship->ship->lives > 0) {
     Typer::draw_centered(0, 150, "CLEARED", 50);
     Typer::draw_centered(0, -60, (glgame->time_until_next_generation / 1000), 20);
   }

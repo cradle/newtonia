@@ -10,7 +10,7 @@ public:
 
 private:
   static void score(const GLGame *glgame, const GLShip *glship);
-  static void level_cleared(const GLGame *glgame);
+  static void level_cleared(const GLGame *glgame, const GLShip *glship);
   static void lives(const GLGame *glgame, const GLShip *glship);
   static void weapons(const GLGame *glgame, const GLShip *glship);
   static void temperature(const GLGame *glgame, const GLShip *glship);

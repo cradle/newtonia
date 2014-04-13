@@ -125,20 +125,22 @@ float Ship::temperature_ratio() {
 }
 
 void Ship::respawn(bool was_killed) {
-  if(first_life) {
-    first_life = false;
-    position.wrap();
-  } else {
-    position = WrappedPoint();
+  if(alive || lives > 0) {
+    if(first_life) {
+      first_life = false;
+      position.wrap();
+    } else {
+      position = WrappedPoint();
+    }
+    if(was_killed) {
+      lives -= 1;
+    }
+    alive = true;
+    invincible = true;
+    time_left_invincible = 1500;
+    reset(was_killed);
+    detonate();
   }
-  if(was_killed) {
-    lives -= 1;
-  }
-  alive = true;
-  invincible = true;
-  time_left_invincible = 1500;
-  reset(was_killed);
-  detonate();
 }
 
 void Ship::reset(bool was_killed) {
@@ -252,42 +254,6 @@ void Ship::collide_grid(Grid &grid) {
     }
   }
 }
-//
-// bool Ship::collide_object(Object* other) {
-//   std::list<Particle>::iterator b = bullets.begin();
-//   while(b != bullets.end()) {
-//     if(other->alive && (*b).collide(*other)) {
-//       explode((*b).position, Point(0,0));
-//       bullets.erase(b);
-//       if(other->kill()) {
-//         score += other->get_value() * multiplier();
-//         kills_this_life += 1;
-//         kills += 1;
-//         // other->explode();
-//         return true;
-//       }
-//     }
-//     b++;
-//   }
-//   std::list<Particle>::iterator mine = mines.begin();
-//   while(mine != mines.end()) {
-//     if(other->alive && mine->collide(other, 50.0f)) {
-//       detonate(mine->position, mine->velocity);
-//       mine = mines.erase(mine);
-//     } else {
-//       mine++;
-//     }
-//   }
-//   if(alive && other->alive && other->collide(this)) {
-//     if(!invincible) {
-//       detonate();
-//     }
-//     kill_stop();
-//     if(other->kill())
-//       return true;
-//   }
-//   return false;
-// }
 
 void Ship::collide(Ship *other) {
   std::list<Particle>::iterator b = bullets.begin();
