@@ -11,20 +11,21 @@
 #endif
 
 #include "ship.h"
-#include <list> 
+#include <list>
 
 class GLTrail {
-public:   
-  GLTrail(Ship* ship, 
-          float deviation = 0.05, 
-          Point offset = Point(), 
-          float speed = 0.25, 
+public:
+  GLTrail(Ship* ship,
+          float deviation = 0.05,
+          Point offset = Point(),
+          float speed = 0.25,
           float rotation = 0.0,
           int type = THRUSTING,
           float life = 1000.0);
   virtual ~GLTrail();
   void draw();
   void step(float delta);
+  void collide_grid(Grid &grid);
 
   //TODO: Would want constructor to take TYPE type = THRUSTING, but doesn't work
   enum TYPE {
@@ -34,15 +35,15 @@ public:
     RIGHT = 8,
     ALWAYS = 16
   };
-  
+
 private:
   void add();
-  
+
   int type;
   Ship* ship;
   Point offset;
   float deviation, rotation, speed, life;
-  
+
   std::list<Particle*> trail;
 };
 

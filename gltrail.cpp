@@ -18,7 +18,7 @@ using namespace std;
 
 GLTrail::GLTrail(Ship* ship, float deviation, Point offset, float speed, float rotation, int type, float life)
  : type(type), ship(ship), offset(offset), deviation(deviation), rotation(rotation), speed(speed), life(life) {}
- 
+
 GLTrail::~GLTrail() {
   while(!trail.empty()) {
     delete trail.back();
@@ -30,10 +30,24 @@ void GLTrail::draw() {
   list<Particle*>::iterator p;
   glBegin(GL_POINTS);
   for(p = trail.begin(); p != trail.end(); p++) {
-      glColor4f(0.5,0.5,0.5,(*p)->aliveness());
-  		glVertex2fv((*p)->position);
+      glColor4f((*p)->aliveness(),(*p)->aliveness(),(*p)->aliveness(),(*p)->aliveness());
+  	  glVertex2fv((*p)->position);
   }
-	glEnd();
+  glEnd();
+}
+
+void GLTrail::collide_grid(Grid &grid) {
+  list<Particle*>::iterator t = trail.begin();
+  Object *object;
+  while(t != trail.end()) {
+    object = grid.collide(*(*t));
+    if(object != NULL) {
+      delete *t;
+      t = trail.erase(t);
+    } else {
+      t++;
+    }
+  }
 }
 
 void GLTrail::step(float delta) {

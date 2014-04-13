@@ -34,7 +34,7 @@ GLGame::GLGame() :
   current_time(0),
   running(true),
   level_cleared(false),
-  friendly_fire(false),
+  friendly_fire(true),
   show_help(false),
   grid(Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2))) {
   time_between_steps = step_size;
@@ -175,7 +175,7 @@ void GLGame::tick(int delta) {
 
   /* COLLIDE EVERYTHING */
     for(o = players->begin(); o != players->end(); o++) {
-      (*o)->ship->collide_grid(grid);
+      (*o)->collide_grid(grid);
     }
 
     oi = objects->begin();
