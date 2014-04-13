@@ -19,7 +19,7 @@ const int AsteroidDrawer::number_of_segments = 7;
 void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minimap) {
   if(object->alive) {
     glPushMatrix();
-    glTranslatef(object->position.x(), object->position.y(), 0.0f);
+    glTranslatef(object->position.x(), object->position.y(), object->invincible ? -10.0f : 10.0f);
     glScalef(object->radius, object->radius, 1.0f);
     glRotatef(object->rotation, 0.0f, 0.0f, 1.0f);
     if(object->invincible) {
@@ -44,7 +44,7 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
     float segment_size = 360.0/segment_count, d;
     for (float i = 0.0; i < 360.0; i+= segment_size) {
       d = i*M_PI/180;
-      glVertex3f(cos(d),sin(d),object->invincible ? -10.0f : 10.0f);
+      glVertex2f(cos(d),sin(d));
     }
     glEnd();
     if(object->invincible) {
@@ -55,14 +55,14 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
     glBegin(GL_LINE_LOOP);
     for (float i = 0.0; i < 360.0; i+= segment_size) {
       d = i*M_PI/180;
-      glVertex3f(cos(d),sin(d),object->invincible ? -10.0f : 10.0f);
+      glVertex2f(cos(d),sin(d));
     }
     glEnd();
     glPopMatrix();
   } else if(!is_minimap) {
     draw_debris(object->debris);
     glPushMatrix();
-    glTranslatef(object->position.x(), object->position.y(), 20.0f);
+    glTranslatef(object->position.x(), object->position.y(), 0.0f);
     glRotatef(-direction, 0.0f, 0.0f, 1.0f);
     Typer::draw(0.0f, 0.0f, object->value, 15);
     glPopMatrix();

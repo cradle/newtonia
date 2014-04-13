@@ -291,21 +291,21 @@ void GLShip::draw_ship(bool minimap) const {
   glPointSize(2.5f);
   glLineWidth(1.8f);
 
-	if(ship->invincible) {
+  if(ship->invincible) {
     glCallList(force_shield);
   }
 
-	if(ship->thrusting) {
+  if(ship->thrusting) {
     glCallList(jets);
-	}
+  }
 
-	if(ship->reversing) {
+  if(ship->reversing) {
     glPushMatrix();
     glCallList(repulsors);
     glRotatef(180, 0, 1, 0);
     glCallList(repulsors);
     glPopMatrix();
-	}
+  }
 
   draw_body();
 }
