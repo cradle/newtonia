@@ -19,7 +19,7 @@ const int AsteroidDrawer::number_of_segments = 7;
 void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minimap) {
   if(object->alive) {
     glPushMatrix();
-    glTranslatef(object->position.x(), object->position.y(), object->invincible ? -10.0f : 10.0f);
+    glTranslatef(object->position.x(), object->position.y(), 0.0f);
     glScalef(object->radius, object->radius, 1.0f);
     glRotatef(object->rotation, 0.0f, 0.0f, 1.0f);
     if(object->invincible) {

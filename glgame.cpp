@@ -241,7 +241,7 @@ void GLGame::draw_objects(float direction, bool minimap) const {
 }
 
 void GLGame::draw(void) {
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  glClear(GL_COLOR_BUFFER_BIT /*| GL_DEPTH_BUFFER_BIT*/);
 
   if(players->size() == 0) {
     draw_world();
@@ -403,12 +403,12 @@ void GLGame::draw_map() const {
   glEnd();
 
   /* DRAW THE LEVEL */
-  Typer::draw(-world.x()+world.x()/15.0f, world.y()-world.y()/15.0f, "LEVEL", world.x()/15.0f);
-  Typer::draw(world.x()-world.x()/15.0f*2.0f, world.y()-world.y()/15.0f, generation, world.x()/15.0f);
+  Typer::draw(+world.x()/20.0f, world.y()-world.y()/20.0f, "LEVEL", world.x()/20.0f);
+  Typer::draw(world.x()-world.x()/20.0f*2.0f, world.y()-world.y()/20.0f, generation+1, world.x()/20.0f);
 
   if(station != NULL) {
-    Typer::draw(-world.x()+world.x()/15.0f, -world.y()+world.y()/15.0f*3.0f, "WAVE", world.x()/15.0f);
-    Typer::draw(world.x()-world.x()/15.0f*2.0f, -world.y()+world.y()/15.0f*3.0f, station->level(), world.x()/15.0f);
+    Typer::draw(-world.x()+world.x()/20.0f, -world.y()+world.y()/20.0f*3.0f, "WAVE", world.x()/20.0f);
+    Typer::draw(world.x()-world.x()/20.0f*2.0f, -world.y()+world.y()/20.0f*3.0f, station->level(), world.x()/20.0f);
   }
 
   glNewList(gameworld, GL_COMPILE);
