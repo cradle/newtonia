@@ -17,6 +17,7 @@
 
 #include <list>
 #include <iostream>
+#include <cstring>
 
 using namespace std;
 
@@ -319,7 +320,6 @@ void GLShip::draw_keymap() const {
   int num_controls  = 8;
   int padding = 2.0f;
   int char_height = 5.0f;
-  int top = num_controls/2 * size + padding;
   Typer::draw_centered(0, (num_controls+1.5)/2.0f * (size + padding) * char_height, "- PLAYER -", size+2);
   glTranslatef(-160.0f,0.0f,0.0f);
   Typer::draw(0, num_controls/2.0f * (size + padding) * char_height, "THRUST", size);
@@ -382,20 +382,6 @@ void GLShip::draw_weapons() const {
       }
     }
   }
-
-  /*if(ship->secondary && ship->secondary != NULL) {
-	  weapon = *(ship->secondary);
-    Typer::draw(50,-90,weapon->name(),10);
-    Typer::draw(0.0f,-90.0f,char(mine_key),10);
-    Typer::draw(20,-90,"-",10);
-    if(!weapon->is_unlimited()) {
-      if(weapon->ammo() == 0) {
-        Typer::draw(80+20*strlen(weapon->name()),-90,"empty",10);
-      } else {
-        Typer::draw_lefted(80+20*strlen(weapon->name()),-90,weapon->ammo(),10);
-      }
-    }
-  }*/
 }
 
 void GLShip::draw_particles() const {

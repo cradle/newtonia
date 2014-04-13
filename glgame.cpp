@@ -31,13 +31,13 @@ const int GLGame::extra_num_asteroids = 5;
 GLGame::GLGame() :
   State(),
   world(Point(default_world_width, default_world_height)),
+  current_time(0),
   running(true),
+  level_cleared(false),
   friendly_fire(false),
   show_help(false),
-  current_time(0),
   grid(Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2))) {
   time_between_steps = step_size;
-  level_cleared = false;
 
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;

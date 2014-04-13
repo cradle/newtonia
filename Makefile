@@ -2,7 +2,7 @@ CC = g++
 CFLAGS = -Wall -O3
 OSX_LIBS = -framework GLUT -framework OpenGL
 OSX_CFLAGS = $(CFLAGS) -arch i386 -arch ppc
-LIBS = -lglut
+LIBS = -lglut -lGL -lGLU
 COMPILE = $(CC) $(CFLAGS) -c 
 OBJFILES := $(patsubst %.cpp,%.o,$(wildcard *.cpp) $(wildcard */*.cpp))
 

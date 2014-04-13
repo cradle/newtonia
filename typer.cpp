@@ -1,6 +1,6 @@
 #include "typer.h"
 
-#include <string>
+#include <cstring>
 #include <math.h>
 #include "glship.h"
 #ifdef __APPLE__
