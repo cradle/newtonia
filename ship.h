@@ -15,7 +15,7 @@ using namespace std;
 
 class Ship : public CompositeObject {
   public:
-    Ship(bool has_friction = true);
+    Ship(const Grid &grid, bool has_friction = true);
     virtual ~Ship();
 
     void puts(); //TODO: convert into iostream operator
@@ -113,6 +113,8 @@ class Ship : public CompositeObject {
     friend class GLTrail;
 
   private:
+    void safe_position(const Grid &grid);
+
     list<Behaviour *> behaviours;
     list<Weapon::Base *> primary_weapons;
     list<Weapon::Base *> secondary_weapons;

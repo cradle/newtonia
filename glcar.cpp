@@ -14,17 +14,17 @@
 
 using namespace std;
 
-GLCar::GLCar(bool has_friction) : GLShip(has_friction) {
-  ship = new Ship(has_friction);
+GLCar::GLCar(const Grid &grid, bool has_friction) : GLShip(grid, has_friction) {
+  ship = new Ship(grid, has_friction);
   trails.push_back(new GLTrail(ship, 0.01, Point( 4.5,0),0.25, 0.0, GLTrail::THRUSTING | GLTrail::LEFT, 4000.0));
   trails.push_back(new GLTrail(ship, 0.01, Point(-4.5,0),0.25, 0.0, GLTrail::THRUSTING | GLTrail::RIGHT, 4000.0));
   trails.push_back(new GLTrail(ship, 0.5,  Point(-4,17) ,-0.2, 0.9, GLTrail::REVERSING | GLTrail::RIGHT, 500.0));
   trails.push_back(new GLTrail(ship, 0.5,  Point( 4,17) ,-0.2,-0.9, GLTrail::REVERSING | GLTrail::LEFT, 500.0));
-  
+
   color[0] = 255/255.0;
   color[1] = 69/255.0;
   color[2] = 0/255.0;
-  
+
   body = glGenLists(1);
   glNewList(body, GL_COMPILE);
   // glVertex2fv(point);
@@ -33,7 +33,7 @@ GLCar::GLCar(bool has_friction) : GLShip(has_friction) {
   glVertex2f(-0.8f,-1.0f);
   glVertex2f( 0.8f,-1.0);
   glEndList();
-  
+
   left_jet = glGenLists(1);
   glNewList(left_jet, GL_COMPILE);
   glColor3f( 1.0f, 1.0f, 1.0f );
@@ -43,7 +43,7 @@ GLCar::GLCar(bool has_friction) : GLShip(has_friction) {
     glVertex2f( 0.0f,-1.0f);				// Top
   glEnd();
   glEndList();
-  
+
   right_jet = glGenLists(1);
   glNewList(right_jet, GL_COMPILE);
   glColor3f( 1.0f, 1.0f, 1.0f );
@@ -53,7 +53,7 @@ GLCar::GLCar(bool has_friction) : GLShip(has_friction) {
     glVertex2f(-0.8f,-1.0f);
   glEnd();
   glEndList();
-  
+
   jets = glGenLists(1);
   glNewList(jets, GL_COMPILE);
   glCallList(left_jet);

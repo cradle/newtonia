@@ -18,7 +18,7 @@
 
 using namespace std;
 
-GLStation::GLStation(list<GLShip*>* objects, list<GLShip*>* targets) : Ship(false), objects(objects), targets(targets) {
+GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* targets) : Ship(grid, false), objects(objects), targets(targets) {
   position = Point(0,0);
   radius = 200.0;
   time_until_respawn = 0;
@@ -149,6 +149,7 @@ void GLStation::step(float delta, const Grid &grid) {
       float distance = 30 + radius;
       objects->push_back(
         new GLEnemy(
+          grid,
           position.x() + distance*cos(rotation),
           position.y() + distance*sin(rotation), targets, difficulty
         )

@@ -9,7 +9,7 @@ using namespace std;
 
 class GLStation : public Ship {
 public:
-  GLStation(list<GLShip*>* objects, list<GLShip*>* targets);
+  GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* targets);
   virtual ~GLStation();
 
   void draw(bool minimap = false) const;

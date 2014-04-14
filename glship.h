@@ -18,7 +18,7 @@
 
 class GLShip {
 public:
-  GLShip(bool has_friction);
+  GLShip(const Grid &grid, bool has_friction);
   virtual ~GLShip();
   void step(float delta, const Grid &grid);
   virtual void input(unsigned char key, bool pressed = true);

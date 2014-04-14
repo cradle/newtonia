@@ -8,7 +8,7 @@ using namespace std;
 #include "follower.h"
 #include "weapon/default.h"
 
-Enemy::Enemy(float x, float y, std::list<Ship*>* targets, int difficulty) : Ship(true), targets(targets), difficulty(difficulty) {
+Enemy::Enemy(const Grid &grid, float x, float y, std::list<Ship*>* targets, int difficulty) : Ship(grid, true), targets(targets), difficulty(difficulty) {
   position = WrappedPoint(x,y);
   thrust_force = 0.135 + difficulty*0.00025 + rand()%50/10000.0;
   rotation_force = 0.15 + difficulty*0.01 + rand()%10/1000.0;

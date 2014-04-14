@@ -6,12 +6,12 @@
 
 class GLCar : public GLShip {
 public:
-  GLCar(bool has_friction);
+  GLCar(const Grid &grid, bool has_friction);
   virtual ~GLCar();
-  
+
 protected:
   GLuint left_jet, right_jet;
-  
+
   void draw_ship(bool minimap) const;
 };
 

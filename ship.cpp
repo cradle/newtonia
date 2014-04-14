@@ -11,12 +11,13 @@
 
 using namespace std;
 
-Ship::Ship(bool has_friction) : CompositeObject() {
+Ship::Ship(const Grid &grid, bool has_friction) : CompositeObject() {
   alive = false;
   first_life = true;
   score = 0;
   kills = 0;
   position = WrappedPoint();
+  safe_position(grid);
   init(!has_friction);
 }
 
@@ -138,12 +139,16 @@ void Ship::respawn(const Grid &grid, bool was_killed) {
     alive = true;
     time_left_invincible = 1500;
     reset(was_killed);
-    do {
-      position = WrappedPoint();
-    } while(grid.collide(*this, 50.0f) != NULL);
+    safe_position(grid);
     invincible = true;
     detonate();
   }
+}
+
+void Ship::safe_position(const Grid &grid) {
+  do {
+    position = WrappedPoint();
+  } while(grid.collide(*this, 50.0f) != NULL);
 }
 
 void Ship::reset(bool was_killed) {

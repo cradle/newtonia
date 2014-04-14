@@ -47,7 +47,7 @@ GLGame::GLGame() :
 
   starfield = new GLStarfield(world);
 
-  GLShip *object = new GLShip(true);
+  GLShip *object = new GLShip(grid, true);
   object->set_keys('a','d','w',' ','s','x','q','e');
   players->push_back(object);
 
@@ -127,7 +127,7 @@ void GLGame::tick(int delta) {
       if(generation >= 10) {
         if(station != NULL)
           delete station;
-        station = new GLStation(enemies, players);
+        station = new GLStation(grid, enemies, players);
         world += Point(3000, 3000);
       } else {
         world += Point(100, 100);
@@ -467,7 +467,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == 13 && players->size() < 2) {
     Ship* p1 = players->front()->ship;
     if(p1->is_alive() || p1->lives) {
-      GLShip* object = new GLCar(true);
+      GLShip* object = new GLCar(grid, true);
       object->set_keys('j','l','i','/','k',',','u','o');
       players->push_back(object);
     }
