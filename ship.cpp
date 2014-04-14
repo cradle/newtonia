@@ -146,9 +146,9 @@ void Ship::respawn(const Grid &grid, bool was_killed) {
 }
 
 void Ship::safe_position(const Grid &grid) {
-  do {
+  while(grid.collide(*this, 50.0f) != NULL) {
     position = WrappedPoint();
-  } while(grid.collide(*this, 50.0f) != NULL);
+  }
 }
 
 void Ship::reset(bool was_killed) {
