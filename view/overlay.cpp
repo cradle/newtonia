@@ -23,6 +23,14 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
     weapons(glgame, glship);
     temperature(glgame, glship);
     respawn_timer(glgame, glship);
+    paused(glgame);
+  }
+}
+
+void Overlay::paused(const GLGame *glgame) {
+  if(!glgame->running && !glgame->show_help) {
+    Typer::draw_centered(0, 30, "Paused", 25);
+    Typer::draw_centered(0, -40, "press p to unpause", 8);
   }
 }
 
@@ -36,7 +44,7 @@ void Overlay::score(const GLGame *glgame, const GLShip *glship) {
 }
 
 void Overlay::level_cleared(const GLGame *glgame, const GLShip *glship) {
-  if(glgame->level_cleared && glship->ship->is_alive() && glship->ship->lives > 0) {
+  if(glgame->running && glgame->level_cleared && glship->ship->is_alive() && glship->ship->lives > 0) {
     Typer::draw_centered(0, 150, "CLEARED", 50);
     Typer::draw_centered(0, -60, (glgame->time_until_next_generation / 1000), 20);
   }
@@ -67,7 +75,7 @@ void Overlay::temperature(const GLGame *glgame, const GLShip *glship) {
 }
 
 void Overlay::respawn_timer(const GLGame *glgame, const GLShip *glship) {
-  if(!glgame->show_help) {
+  if(glgame->running && !glgame->show_help) {
     glPushMatrix();
     glScalef(20,20,1);
     glship->draw_respawn_timer();
@@ -107,5 +115,8 @@ void Overlay::title_text(const GLGame *glgame) {
     } else if ((glgame->current_time)/12000 % 2) {
       Typer::draw_centered(0, glgame->window.y()/glgame->num_y_viewports()-20, "show controls with f1", 8);
     }
+  }
+  if(!glgame->running && glgame->show_help) {
+    Typer::draw_centered(0, glgame->window.y()/glgame->num_y_viewports()-80, "press p to unpause", 8);
   }
 }

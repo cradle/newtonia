@@ -17,6 +17,7 @@ private:
   static void respawn_timer(const GLGame *glgame, const GLShip *glship);
   static void keymap(const GLGame *glgame, const GLShip *glship);
   static void title_text(const GLGame *glgame);
+  static void paused(const GLGame *glgame);
 };
 
 #endif
