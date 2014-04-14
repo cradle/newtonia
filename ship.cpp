@@ -74,7 +74,7 @@ void Ship::previous_weapon() {
 void Ship::init(bool no_friction) {
   mass = 100.0;
   value = 1000000;
-  lives = 3;
+  lives = 10;
   width = height = radius = 11;
   radius_squared = radius * radius;
   respawn_time = time_until_respawn = 4000;
@@ -85,7 +85,7 @@ void Ship::init(bool no_friction) {
   retro_heat_rate = heat_rate * -reverse_force / thrust_force;
   cool_rate = retro_heat_rate * 0.9;
   boost_heat = 0.000;
-  boost_force = 2.0;
+  boost_force = 4.0;
   boosting = false;
 
   if(no_friction) {
@@ -94,10 +94,10 @@ void Ship::init(bool no_friction) {
     thrust_force = 0.03;
     rotation_force = 0.5;
   } else {
-    friction = 0.001;
-    reverse_force = -0.05;
-    thrust_force = 0.09;
-    rotation_force = 0.4;
+    friction = 0.004;
+    reverse_force = -0.1;
+    thrust_force = 0.2;
+    rotation_force = 0.5;
   }
 
    primary_weapons.push_front(new Weapon::Default(this, false, 1));
@@ -124,7 +124,7 @@ float Ship::temperature_ratio() {
   return temperature/max_temperature;
 }
 
-void Ship::respawn(bool was_killed) {
+void Ship::respawn(const Grid &grid, bool was_killed) {
   if(alive || lives > 0) {
     if(first_life) {
       first_life = false;
@@ -136,9 +136,12 @@ void Ship::respawn(bool was_killed) {
       lives -= 1;
     }
     alive = true;
-    invincible = true;
     time_left_invincible = 1500;
     reset(was_killed);
+    do {
+      position = WrappedPoint();
+    } while(grid.collide(*this, 50.0f) != NULL);
+    invincible = true;
     detonate();
   }
 }
@@ -353,7 +356,7 @@ void Ship::puts() {
   cout << endl;
 }
 
-void Ship::step(float delta) {
+void Ship::step(float delta, const Grid &grid) {
   list<Behaviour *>::iterator vi = behaviours.begin();
   while(vi != behaviours.end()) {
     (*vi)->step(delta);
@@ -378,7 +381,7 @@ void Ship::step(float delta) {
   } else if (lives > 0) {
     time_until_respawn -= delta;
     if(time_until_respawn < 0) {
-      respawn();
+      respawn(grid);
     }
   }
 

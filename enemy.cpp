@@ -22,8 +22,8 @@ Enemy::~Enemy() {
   delete targets;
 }
 
-void Enemy::step(float delta) {
-  Ship::step(delta);
+void Enemy::step(float delta, const Grid &grid) {
+  Ship::step(delta, grid);
 }
 
 bool Enemy::is_removable() const {

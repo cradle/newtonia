@@ -117,8 +117,8 @@ void GLShip::collide(GLShip* first, GLShip* second) {
   Ship::collide(first->ship, second->ship);
 }
 
-void GLShip::step(float delta) {
-  ship->step(delta);
+void GLShip::step(float delta, const Grid &grid) {
+  ship->step(delta, grid);
 
   float camera_rotation_delta = ship->heading() - camera_rotation;
   while(camera_rotation_delta < -90)

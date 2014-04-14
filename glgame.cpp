@@ -142,7 +142,7 @@ void GLGame::tick(int delta) {
       add_asteroids();
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {
-        (*o)->ship->respawn(false);
+        (*o)->ship->respawn(grid, false);
       }
       level_cleared = false;
     }
@@ -153,7 +153,7 @@ void GLGame::tick(int delta) {
 	/* STEP EVERYTHING */
 
     if(station != NULL) {
-      station->step(step_size);
+      station->step(step_size, grid);
     }
 
     std::list<Asteroid*>::iterator oi;
@@ -162,11 +162,11 @@ void GLGame::tick(int delta) {
     }
 
     for(o = players->begin(); o != players->end(); o++) {
-      (*o)->step(step_size);
+      (*o)->step(step_size, grid);
     }
 
     for(o = enemies->begin(); o != enemies->end(); o++) {
-      (*o)->step(step_size);
+      (*o)->step(step_size, grid);
     }
 
     /* UPDATE COLLISION MAP */

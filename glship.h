@@ -20,7 +20,7 @@ class GLShip {
 public:
   GLShip(bool has_friction);
   virtual ~GLShip();
-  void step(float delta);
+  void step(float delta, const Grid &grid);
   virtual void input(unsigned char key, bool pressed = true);
   void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key);
   void draw(bool minimap = false);

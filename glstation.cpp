@@ -33,13 +33,13 @@ GLStation::GLStation(list<GLShip*>* objects, list<GLShip*>* targets) : Ship(fals
   redeploying = false;
   wave = difficulty = 0;
   lives = 1;
-  
+
   // behaviours.push_back(new Roamer(this));
-  
+
   outer_rotation_speed = 0.01;
   inner_rotation_speed = -0.0025;
   inner_rotation = outer_rotation = 0;
-  
+
   body = glGenLists(1);
   glNewList(body, GL_COMPILE);
   float r = radius, r2 = radius * 0.9, d;
@@ -63,7 +63,7 @@ GLStation::GLStation(list<GLShip*>* objects, list<GLShip*>* targets) : Ship(fals
     glEnd();
   }
   glEndList();
-  
+
   map_body = glGenLists(1);
   glNewList(map_body, GL_COMPILE);
   glColor3f(1,1,1);
@@ -104,8 +104,8 @@ void GLStation::draw(bool minimap) const {
   if(!alive)
     return;
   glPushMatrix();
-  glTranslatef(position.x(), position.y(), 0);  
-  
+  glTranslatef(position.x(), position.y(), 0);
+
   if(minimap) {
     glLineWidth(3.0f);
     glCallList(map_body);
@@ -125,8 +125,8 @@ void GLStation::draw(bool minimap) const {
   glPopMatrix();
 }
 
-void GLStation::step(float delta) {
-  Ship::step(delta);
+void GLStation::step(float delta, const Grid &grid) {
+  Ship::step(delta, grid);
   outer_rotation += outer_rotation_speed * delta;
   inner_rotation += inner_rotation_speed * delta;
   if(deploying) {
@@ -149,7 +149,7 @@ void GLStation::step(float delta) {
       float distance = 30 + radius;
       objects->push_back(
         new GLEnemy(
-          position.x() + distance*cos(rotation), 
+          position.x() + distance*cos(rotation),
           position.y() + distance*sin(rotation), targets, difficulty
         )
       );

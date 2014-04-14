@@ -20,7 +20,7 @@ class Ship : public CompositeObject {
 
     void puts(); //TODO: convert into iostream operator
 
-    virtual void step(float delta);
+    virtual void step(float delta, const Grid &grid);
 
     void rotate_left(bool on = true);
     void rotate_right(bool on = true);
@@ -86,7 +86,7 @@ class Ship : public CompositeObject {
   protected:
 
     void lay_mine();
-    void respawn(bool was_killed = true);
+    void respawn(const Grid &grid, bool was_killed = true);
     void init(bool no_friction);
     virtual void reset(bool was_killed = true);
     void detonate();
