@@ -43,12 +43,11 @@
 			<Add directory="." />
 		</Compiler>
 		<Linker>
-			<Add library="glut32" />
+			<Add library="freeglut" />
 			<Add library="opengl32" />
 			<Add library="glu32" />
 			<Add library="winmm" />
 			<Add library="gdi32" />
-			<Add library="..\..\..\..\Program Files (x86)\CodeBlocks\MinGW\lib\glut32.lib" />
 			<Add directory="C:/Program Files/CodeBlocks/MinGW/lib" />
 			<Add directory="." />
 		</Linker>
