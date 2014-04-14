@@ -39,11 +39,12 @@
 		</Build>
 		<Compiler>
 			<Add option="-Wall" />
+			<Add option="-DFREEGLUT_STATIC" />
 			<Add directory="C:/Program Files/CodeBlocks/MinGW/include" />
 			<Add directory="." />
 		</Compiler>
 		<Linker>
-			<Add library="freeglut" />
+			<Add library="freeglut_static" />
 			<Add library="opengl32" />
 			<Add library="glu32" />
 			<Add library="winmm" />
