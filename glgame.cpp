@@ -28,6 +28,7 @@ const int GLGame::default_world_height = 2000;
 const int GLGame::default_num_asteroids = 1;
 const int GLGame::extra_num_asteroids = 5;
 
+
 GLGame::GLGame() :
   State(),
   world(Point(default_world_width, default_world_height)),
@@ -215,7 +216,7 @@ void GLGame::tick(int delta) {
     time_until_next_step += time_between_steps;
   }
   /* Display FPS */
-  // std::cout << (num_frames*1000 / current_time) << std::endl;
+  //std::cout << (num_frames*1000 / current_time) << std::endl;
 }
 
 void GLGame::draw_objects(float direction, bool minimap) const {

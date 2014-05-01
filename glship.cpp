@@ -314,12 +314,12 @@ void GLShip::draw_body() const {
   glBegin(GL_POLYGON);
   glColor3f(0.0f,0.0f,0.0f);
   glCallList(body);
-	glEnd();
+  glEnd();
 
   glColor3fv(color);
   glBegin(GL_LINE_LOOP);
   glCallList(body);
-	glEnd();
+  glEnd();
 }
 
 void GLShip::draw_keymap() const {

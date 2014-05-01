@@ -42,6 +42,7 @@
 			<Add option="-DFREEGLUT_STATIC" />
 			<Add directory="C:/Program Files/CodeBlocks/MinGW/include" />
 			<Add directory="." />
+			<Add directory="C:/Program Files (x86)/FMOD SoundSystem/FMOD Studio API Windows/api/lowlevel/inc" />
 		</Compiler>
 		<Linker>
 			<Add library="freeglut_static" />
