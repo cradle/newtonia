@@ -37,10 +37,10 @@ GLCar::GLCar(const Grid &grid, bool has_friction) : GLShip(grid, has_friction) {
   left_jet = glGenLists(1);
   glNewList(left_jet, GL_COMPILE);
   glColor3f( 1.0f, 1.0f, 1.0f );
-  glBegin(GL_TRIANGLES);						// Drawing The Flame
-    glVertex2f( 0.8f,-1.0f);				// Bottom
-    glVertex2f( 0.4f,-1.75f);				// Left
-    glVertex2f( 0.0f,-1.0f);				// Top
+  glBegin(GL_TRIANGLES);
+    glVertex2f( 0.8f,-1.0f);
+    glVertex2f( 0.4f,-1.75f);
+    glVertex2f( 0.0f,-1.0f);
   glEnd();
   glEndList();
 
@@ -59,6 +59,8 @@ GLCar::GLCar(const Grid &grid, bool has_friction) : GLShip(grid, has_friction) {
   glCallList(left_jet);
   glCallList(right_jet);
   glEndList();
+
+  genForceShield();
 }
 
 GLCar::~GLCar() {

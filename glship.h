@@ -23,6 +23,7 @@ public:
   void step(float delta, const Grid &grid);
   virtual void input(unsigned char key, bool pressed = true);
   void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key);
+  void genForceShield();
   void draw(bool minimap = false);
   void draw_body() const;
   void draw_keymap() const;

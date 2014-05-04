@@ -56,26 +56,7 @@ GLShip::GLShip(const Grid &grid, bool has_friction) {
 	glEnd();
   glEndList();
 
-  force_shield = glGenLists(1);
-  glNewList(force_shield, GL_COMPILE);
-  glColor4f(0.0f, 0.0f, 0.0f, 0.3f);
-  glBegin(GL_POLYGON);
-  int number_of_segments = 20;
-  float segment_size = 360.0/number_of_segments, d;
-  float shield_size = 2;
-  for (float i = 0.0; i < 360.0; i+= segment_size) {
-    d = i*M_PI/180;
-    glVertex2f(cos(d)*shield_size, sin(d)*shield_size);
-  }
-  glEnd();
-  glBegin(GL_LINE_LOOP);
-  glColor4f(color[0], color[1], color[2], 0.5f);
-  for (float i = 0.0; i < 360.0; i+= segment_size) {
-    d = i*M_PI/180;
-    glVertex2f(cos(d)*shield_size, sin(d)*shield_size);
-  }
-  glEnd();
-  glEndList();
+  genForceShield();
 
   repulsors = glGenLists(1);
   glNewList(repulsors, GL_COMPILE);
@@ -86,6 +67,30 @@ GLShip::GLShip(const Grid &grid, bool has_friction) {
 	glVertex2f( 0.9f,  0.9f );
 	glVertex2f( 0.75f, 0.3f );
 	glEnd();
+  glEndList();
+}
+
+void GLShip::genForceShield() {
+  force_shield = glGenLists(1);
+  glNewList(force_shield, GL_COMPILE);
+  glColor4f(color[0], color[1], color[2], 0.3f);
+  glBegin(GL_POLYGON);
+  int number_of_segments = 20;
+  float segment_size = 360.0/number_of_segments, d;
+  float shield_size = 2;
+  for (float i = 0.0; i < 360.0; i+= segment_size) {
+    d = i*M_PI/180;
+    glVertex2f(cos(d)*shield_size, sin(d)*shield_size);
+  }
+  glEnd();
+  glPointSize(15.0f);
+  glColor4f(color[0], color[1], color[2], 1.0f);
+  glBegin(GL_LINE_LOOP);
+  for (float i = 0.0; i < 360.0; i+= segment_size) {
+    d = i*M_PI/180;
+    glVertex2f(cos(d)*shield_size, sin(d)*shield_size);
+  }
+  glEnd();
   glEndList();
 }
 
