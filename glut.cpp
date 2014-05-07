@@ -49,6 +49,12 @@ void keyboard(unsigned char key, int x, int y) {
 }
 
 void special(int key, int x, int y) {
+  switch (key) {
+  case GLUT_KEY_F4:
+    if(glutGetModifiers() == GLUT_ACTIVE_ALT) {
+      exit(0);
+    }
+  }
   keyboard(key, x, y);
 }
 
