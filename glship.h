@@ -24,7 +24,7 @@ public:
   virtual ~GLShip();
   void step(float delta, const Grid &grid);
   virtual void input(unsigned char key, bool pressed = true);
-  void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key);
+  void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key, int teleport_key);
   void genForceShield();
   void draw(bool minimap = false);
   void draw_body() const;
@@ -57,9 +57,9 @@ protected:
   float critical_temperature() const;
   float explode_temperature() const;
 
-  GLuint body, jets, repulsors, force_shield;
+  GLuint body, jets, repulsors, force_shield, force_shield_bg;
 
-  int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, boost_key;
+  int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, boost_key, teleport_key;
 
   bool rotating_view, show_keys;
   float camera_rotation;

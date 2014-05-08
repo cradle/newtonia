@@ -11,7 +11,9 @@
 
 using namespace std;
 
-Ship::Ship(const Grid &grid, bool has_friction) : CompositeObject() {
+Ship::Ship(const Grid &grid, bool has_friction) :
+    CompositeObject(),
+    toggled(false) {
   alive = false;
   first_life = true;
   score = 0;
@@ -362,6 +364,7 @@ void Ship::puts() {
 }
 
 void Ship::step(float delta, const Grid &grid) {
+  toggled = !toggled;
   list<Behaviour *>::iterator vi = behaviours.begin();
   while(vi != behaviours.end()) {
     (*vi)->step(delta);

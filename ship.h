@@ -102,7 +102,7 @@ class Ship : public CompositeObject {
     float width, height, mass;
     int value;
     // States
-    bool mining, respawns, first_life;
+    bool mining, respawns, first_life, toggled;
 
     //TODO: encapsulate
     friend class GLStation;

@@ -15,7 +15,8 @@
 // Glut callbacks cannot be member functions. Need to pre-declare game object
 StateManager *game;
 
-bool BLUR = false;
+bool ALLOW_BLUR = false;
+bool BLUR = ALLOW_BLUR;
 double blur_factor = 0.5;
 
 void draw() {
@@ -120,8 +121,8 @@ int main(int argc, char** argv) {
 
 void init(int &argc, char** argv, float width, float height) {
   glutInit(&argc, argv);
-  int DISPLAY_TYPE = GLUT_RGBA | GLUT_ALPHA | GLUT_DOUBLE | GLUT_STEREO;
-  if(BLUR) {
+  int DISPLAY_TYPE = GLUT_RGBA;
+  if(ALLOW_BLUR) {
     DISPLAY_TYPE = DISPLAY_TYPE | GLUT_ACCUM;
   }
   glutInitDisplayMode(DISPLAY_TYPE);
