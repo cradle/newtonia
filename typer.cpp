@@ -162,8 +162,8 @@ void Typer::draw(float x, float y, char character, float size, int time) {
       break;
     case '1':
       glBegin(GL_LINES);
-      glVertex2f(width,height);
-      glVertex2f(width,0);
+      glVertex2f(mid_width,height);
+      glVertex2f(mid_width,0);
       glEnd();
       break;
     case '2':
