@@ -15,7 +15,15 @@
 // Glut callbacks cannot be member functions. Need to pre-declare game object
 StateManager *game;
 
+bool BLUR = true;
+
 void draw() {
+  if(BLUR) {
+    float q = 0.85;
+    glAccum(GL_MULT, q);
+    glAccum(GL_ACCUM, 1.0-q);
+    glAccum(GL_RETURN, 1.0);
+  }
   game->draw();
   glutSwapBuffers();
 }
@@ -27,6 +35,10 @@ int old_height = 320;
 
 void keyboard(unsigned char key, int x, int y) {
   switch (key) {
+  case 'b':
+    BLUR = !BLUR;
+    cout << BLUR << endl;
+    break;
   case '\r':
     if(glutGetModifiers() != GLUT_ACTIVE_ALT) {
       break;
@@ -73,7 +85,7 @@ void resize(int width, int height) {
 
 void mouse_move(int x, int y) {
   game->mouse_move(x, y);
-  glutWarpPointer(glutGet(GLUT_WINDOW_WIDTH)/2.0f,glutGet(GLUT_WINDOW_HEIGHT)/2.0f);
+  glutWarpPointer(glutGet(GLUT_WINDOW_WIDTH)/2.0f, glutGet(GLUT_WINDOW_HEIGHT)/2.0f);
 }
 
 int last_tick_time;
@@ -104,7 +116,10 @@ int main(int argc, char** argv) {
 
 void init(int &argc, char** argv, float width, float height) {
   glutInit(&argc, argv);
-  glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE /*| GLUT_DEPTH*/);
+  int DISPLAY_TYPE = GLUT_RGBA | GLUT_DOUBLE;
+  if(BLUR) {
+    DISPLAY_TYPE = DISPLAY_TYPE | GLUT_ACCUM;
+  }
   glutInitWindowSize(width, height);
   glutCreateWindow("Newtonia");
 

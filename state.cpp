@@ -4,6 +4,8 @@ State::State() : finished(false) {}
 
 void State::resize(int x, int y) {
   window = Point(x, y);
+  glClearAccum(0.0f, 0.0f, 0.0f, 1.0f);
+  glClear(GL_ACCUM_BUFFER_BIT);
 }
 
 bool State::is_finished() {
