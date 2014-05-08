@@ -18,13 +18,15 @@ StateManager *game;
 bool BLUR = true;
 
 void draw() {
+  game->draw();
   if(BLUR) {
-    float q = 0.85;
+    float q = 0.8;
     glAccum(GL_MULT, q);
     glAccum(GL_ACCUM, 1.0-q);
+  }
+  if(BLUR) {
     glAccum(GL_RETURN, 1.0);
   }
-  game->draw();
   glutSwapBuffers();
 }
 
@@ -116,10 +118,11 @@ int main(int argc, char** argv) {
 
 void init(int &argc, char** argv, float width, float height) {
   glutInit(&argc, argv);
-  int DISPLAY_TYPE = GLUT_RGBA | GLUT_DOUBLE;
+  int DISPLAY_TYPE = GLUT_RGBA | GLUT_ALPHA | GLUT_DOUBLE | GLUT_STEREO;
   if(BLUR) {
     DISPLAY_TYPE = DISPLAY_TYPE | GLUT_ACCUM;
   }
+  glutInitDisplayMode(DISPLAY_TYPE);
   glutInitWindowSize(width, height);
   glutCreateWindow("Newtonia");
 
@@ -131,6 +134,8 @@ void init(int &argc, char** argv, float width, float height) {
   glEnable(GL_LINE_SMOOTH);
   glHint(GL_POINT_SMOOTH_HINT, GL_NICEST);
   glEnable(GL_POINT_SMOOTH);
+  glEnable(GL_ACCUM);
+  glClear(GL_ACCUM_BUFFER_BIT);
 
   glutDisplayFunc(draw);
   glutKeyboardFunc(keyboard);
