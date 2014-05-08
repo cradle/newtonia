@@ -15,16 +15,14 @@
 // Glut callbacks cannot be member functions. Need to pre-declare game object
 StateManager *game;
 
-bool BLUR = true;
+bool BLUR = false;
+double blur_factor = 0.5;
 
 void draw() {
   game->draw();
   if(BLUR) {
-    float q = 0.2;
-    glAccum(GL_MULT, q);
-    glAccum(GL_ACCUM, 1.0-q);
-  }
-  if(BLUR) {
+    glAccum(GL_MULT, blur_factor);
+    glAccum(GL_ACCUM, 1.0-blur_factor);
     glAccum(GL_RETURN, 1.0);
   }
   glutSwapBuffers();
@@ -37,9 +35,13 @@ int old_height = 320;
 
 void keyboard(unsigned char key, int x, int y) {
   switch (key) {
+  case 'B':
+    blur_factor = (1+blur_factor) / 2.0;
+    cout << blur_factor << endl;
+    break;
   case 'b':
-    BLUR = !BLUR;
-    cout << BLUR << endl;
+    blur_factor = blur_factor / 2.0;
+    cout << blur_factor << endl;
     break;
   case '\r':
     if(glutGetModifiers() != GLUT_ACTIVE_ALT) {
@@ -69,7 +71,7 @@ void special(int key, int x, int y) {
       exit(0);
     }
   }
-  keyboard(key, x, y);
+  keyboard(key+128, x, y);
 }
 
 void keyboard_up(unsigned char key, int x, int y) {
@@ -77,7 +79,7 @@ void keyboard_up(unsigned char key, int x, int y) {
 }
 
 void special_up(int key, int x, int y) {
-  keyboard_up(key, x, y);
+  keyboard_up(key+128, x, y);
 }
 
 void resize(int width, int height) {

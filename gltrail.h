@@ -21,7 +21,7 @@ public:
           float speed = 0.25,
           float rotation = 0.0,
           int type = THRUSTING,
-          float life = 1000.0);
+          float life = 500.0);
   virtual ~GLTrail();
   void draw();
   void step(float delta);

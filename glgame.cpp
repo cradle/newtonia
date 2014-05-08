@@ -460,7 +460,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == 'g') {
     friendly_fire = !friendly_fire;
   }
-  if (key == GLUT_KEY_F1) show_help = !show_help;
+  if (key == 128+GLUT_KEY_F1) show_help = !show_help;
   if (key == '=' && time_between_steps > 1) time_between_steps--;
   if (key == '-') time_between_steps++;
   if (key == '0') time_between_steps = step_size;
