@@ -25,7 +25,7 @@ float Typer::window_y_scale = 1.0f;
      temp /= 10;
      length++;
    }
-   draw(x+length*size, y, number, size, time);
+   draw(x+(length+0.5)*size, y, number, size, time);
 }
 
 void Typer::resize(int x, int y) {
@@ -71,7 +71,7 @@ void Typer::draw_lives(float x, float y, const GLShip *ship, float size, int tim
 }
 
 void Typer::draw_centered(float x, float y, const char * text, float size, int time) {
-  draw(x-size*strlen(text), y, text, size, time);
+  draw(x-size*(strlen(text)+0.5)+size, y, text, size, time);
 }
 
 void Typer::draw(float x, float y, const char * text, float size, int time) {

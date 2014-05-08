@@ -20,7 +20,7 @@ bool BLUR = true;
 void draw() {
   game->draw();
   if(BLUR) {
-    float q = 0.8;
+    float q = 0.2;
     glAccum(GL_MULT, q);
     glAccum(GL_ACCUM, 1.0-q);
   }
