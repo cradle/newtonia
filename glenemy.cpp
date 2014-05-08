@@ -30,7 +30,7 @@ GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, flo
   ship->value = 50 + difficulty * 50;
   ship->lives = 1;
 
-  trails.push_back(new GLTrail(ship, 0.05));
+  trails.push_back(new GLTrail(this, 0.05));
 
   color[0] = color[2] = 0.0;
   color[1] = 255/255.0;

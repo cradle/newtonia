@@ -16,6 +16,8 @@
 #include <GL/glut.h>
 #endif
 
+class GLTrail;
+
 class GLShip {
 public:
   GLShip(const Grid &grid, bool has_friction);
@@ -41,6 +43,8 @@ public:
   static void collide(GLShip* first, GLShip* second);
   Ship *ship;
 
+  float color[3];
+
 protected:
   virtual void draw_ship(bool minimap = false) const;
   void draw_particles() const;
@@ -54,8 +58,6 @@ protected:
   float explode_temperature() const;
 
   GLuint body, jets, repulsors, force_shield;
-
-  float color[3];
 
   int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, boost_key;
 

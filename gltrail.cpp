@@ -16,7 +16,7 @@
 
 using namespace std;
 
-GLTrail::GLTrail(Ship* ship, float deviation, Point offset, float speed, float rotation, int type, float life)
+GLTrail::GLTrail(GLShip* ship, float deviation, Point offset, float speed, float rotation, int type, float life)
  : type(type), ship(ship), offset(offset), deviation(deviation), rotation(rotation), speed(speed), life(life) {}
 
 GLTrail::~GLTrail() {
@@ -30,7 +30,7 @@ void GLTrail::draw() {
   list<Particle*>::iterator p;
   glBegin(GL_POINTS);
   for(p = trail.begin(); p != trail.end(); p++) {
-      glColor4f((*p)->aliveness(),(*p)->aliveness(),(*p)->aliveness(),(*p)->aliveness());
+      glColor4f(1.0-ship->color[0], 1.0-ship->color[1], 1.0-ship->color[2],(*p)->aliveness());
   	  glVertex2fv((*p)->position);
   }
   glEnd();
@@ -62,10 +62,10 @@ void GLTrail::step(float delta) {
     }
   }
   if(type & ALWAYS ||
-     (type & THRUSTING && ship->thrusting) ||
-     (type & REVERSING && ship->reversing) ||
-     (type & LEFT      && ship->rotation_direction == Ship::LEFT) ||
-     (type & RIGHT     && ship->rotation_direction == Ship::RIGHT)) {
+     (type & THRUSTING && ship->ship->thrusting) ||
+     (type & REVERSING && ship->ship->reversing) ||
+     (type & LEFT      && ship->ship->rotation_direction == Ship::LEFT) ||
+     (type & RIGHT     && ship->ship->rotation_direction == Ship::RIGHT)) {
        add();
    }
 }
@@ -75,10 +75,10 @@ void GLTrail::add() {
   Point position;
   Point direction;
   //TODO: cross product or something?
-  position = ship->tail() + ship->facing * offset.y() + ship->facing.perpendicular() * offset.x();
-  direction = ship->facing*-1.0;
+  position = ship->ship->tail() + ship->ship->facing * offset.y() + ship->ship->facing.perpendicular() * offset.x();
+  direction = ship->ship->facing*-1.0;
   direction.rotate(rotation);
-  velocity = direction*speed + ship->velocity;
+  velocity = direction*speed + ship->ship->velocity;
   velocity.rotate((rand() / (float)RAND_MAX) * deviation - deviation / 2.0);
   trail.push_back(
     new Particle(position, velocity, life)

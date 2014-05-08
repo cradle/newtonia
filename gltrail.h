@@ -10,18 +10,20 @@
 #include <GL/glut.h>
 #endif
 
-#include "ship.h"
+#include "glship.h"
 #include <list>
+
+class GLShip;
 
 class GLTrail {
 public:
-  GLTrail(Ship* ship,
+  GLTrail(GLShip* ship,
           float deviation = 0.05,
           Point offset = Point(),
           float speed = 0.25,
           float rotation = 0.0,
           int type = THRUSTING,
-          float life = 500.0);
+          float life = 250.0);
   virtual ~GLTrail();
   void draw();
   void step(float delta);
@@ -40,7 +42,7 @@ private:
   void add();
 
   int type;
-  Ship* ship;
+  GLShip* ship;
   Point offset;
   float deviation, rotation, speed, life;
 

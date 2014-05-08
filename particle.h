@@ -9,11 +9,11 @@ class Particle : public Object {
 public:
   Particle(const Point position, const Point direction, float time_to_live);
   virtual ~Particle() {};
-  
+
   virtual void step(float delta);
   bool is_alive() const;
   float aliveness() const;
-  
+
   //TODO: Fix encapsulation, GLShip -> ParticleDrawer etc.
   friend class GLShip;
   friend class Ship;
