@@ -216,7 +216,7 @@ void GLGame::tick(int delta) {
     time_until_next_step += time_between_steps;
   }
   /* Display FPS */
-  std::cout << (num_frames*1000 / current_time) << std::endl;
+  //std::cout << (num_frames*1000 / current_time) << std::endl;
 }
 
 void GLGame::draw_objects(float direction, bool minimap) const {
@@ -469,7 +469,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     Ship* p1 = players->front()->ship;
     if(p1->is_alive() || p1->lives) {
       GLShip* object = new GLCar(grid, true);
-      object->set_keys('j','l','i','/','k',',','u','o','[');
+      object->set_keys('j','l','i','/','k',',','u','o','y');
       players->push_back(object);
     }
   }

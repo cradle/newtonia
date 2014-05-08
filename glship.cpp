@@ -362,31 +362,32 @@ void GLShip::draw_keymap() const {
   Typer::draw(320, (num_controls-6)/2.0f * (size + padding) * char_height, (char)next_weapon_key, size);
   Typer::draw(0, (num_controls-7)/2.0f * (size + padding) * char_height, "BOOST", size);
   Typer::draw(320, (num_controls-7)/2.0f * (size + padding) * char_height, (char)boost_key, size);
-  Typer::draw(0, (num_controls-7)/2.0f * (size + padding) * char_height, "TELEPORT", size);
-  Typer::draw(320, (num_controls-7)/2.0f * (size + padding) * char_height, (char)teleport_key, size);
+  Typer::draw(0, (num_controls-8)/2.0f * (size + padding) * char_height, "TELEPORT", size);
+  Typer::draw(320, (num_controls-8)/2.0f * (size + padding) * char_height, (char)teleport_key, size);
 
+  int common_offset = 10;
+  Typer::draw_centered(160.0f, (num_controls-common_offset )/2.0f * (size + padding) * char_height, "- COMMON -", size +2);
+  Typer::draw(0, (num_controls-common_offset-1.5)/2.0f * (size + padding) * char_height, "PAUSE", size);
+  Typer::draw(320, (num_controls-common_offset-1.5)/2.0f * (size + padding) * char_height, 'p', size);
+  Typer::draw(0, (num_controls-common_offset-2.5)/2.0f * (size + padding) * char_height, "FULLSCREEN", size);
+  Typer::draw(320, (num_controls-common_offset-2.5)/2.0f * (size + padding) * char_height, 'f', size);
+  Typer::draw(0, (num_controls-common_offset-3.5)/2.0f * (size + padding) * char_height, "FRIENDLY FIRE", size);
+  Typer::draw(320, (num_controls-common_offset-3.5)/2.0f * (size + padding) * char_height, 'g', size);
+  Typer::draw(0, (num_controls-common_offset-4.5)/2.0f * (size + padding) * char_height, "HIDE THIS", size);
+  Typer::draw(320, (num_controls-common_offset-4.5)/2.0f * (size + padding) * char_height, "f1", size);
+  Typer::draw(0, (num_controls-common_offset-5.5)/2.0f * (size + padding) * char_height, "QUIT", size);
+  Typer::draw(320, (num_controls-common_offset-5.5)/2.0f * (size + padding) * char_height, "ESC", size);
 
-  Typer::draw_centered(160.0f, (num_controls-8)/2.0f * (size + padding) * char_height, "- COMMON -", size +2);
-  Typer::draw(0, (num_controls-9.5)/2.0f * (size + padding) * char_height, "PAUSE", size);
-  Typer::draw(320, (num_controls-9.5)/2.0f * (size + padding) * char_height, 'p', size);
-  Typer::draw(0, (num_controls-10.5)/2.0f * (size + padding) * char_height, "FULLSCREEN", size);
-  Typer::draw(320, (num_controls-10.5)/2.0f * (size + padding) * char_height, 'f', size);
-  Typer::draw(0, (num_controls-11.5)/2.0f * (size + padding) * char_height, "FRIENDLY FIRE", size);
-  Typer::draw(320, (num_controls-11.5)/2.0f * (size + padding) * char_height, 'g', size);
-  Typer::draw(0, (num_controls-12.5)/2.0f * (size + padding) * char_height, "HIDE THIS", size);
-  Typer::draw(320, (num_controls-12.5)/2.0f * (size + padding) * char_height, "f1", size);
-  Typer::draw(0, (num_controls-13.5)/2.0f * (size + padding) * char_height, "QUIT", size);
-  Typer::draw(320, (num_controls-13.5)/2.0f * (size + padding) * char_height, "ESC", size);
-
-  Typer::draw_centered(160.0f, (num_controls-15.5)/2.0f * (size + padding) * char_height, "- CHEATS -", size +2);
-  Typer::draw(0, (num_controls-17)/2.0f * (size + padding) * char_height, "SPEED UP", size);
-  Typer::draw(320, (num_controls-17)/2.0f * (size + padding) * char_height, '+', size);
-  Typer::draw(0, (num_controls-18)/2.0f * (size + padding) * char_height, "SLOW DOWN", size);
-  Typer::draw(320, (num_controls-18)/2.0f * (size + padding) * char_height, '-', size);
-  Typer::draw(0, (num_controls-19)/2.0f * (size + padding) * char_height, "RESET SPEED", size);
-  Typer::draw(320, (num_controls-19)/2.0f * (size + padding) * char_height, '0', size);
-  Typer::draw(0, (num_controls-20)/2.0f * (size + padding) * char_height, "SKIP LEVEL", size);
-  Typer::draw(320, (num_controls-20)/2.0f * (size + padding) * char_height, 'n', size);
+  int cheat_offset = common_offset + 7;
+  Typer::draw_centered(160.0f, (num_controls-cheat_offset-0.5)/2.0f * (size + padding) * char_height, "- CHEATS -", size +2);
+  Typer::draw(0, (num_controls-cheat_offset-2)/2.0f * (size + padding) * char_height, "SPEED UP", size);
+  Typer::draw(320, (num_controls-cheat_offset-2)/2.0f * (size + padding) * char_height, '+', size);
+  Typer::draw(0, (num_controls-cheat_offset-3)/2.0f * (size + padding) * char_height, "SLOW DOWN", size);
+  Typer::draw(320, (num_controls-cheat_offset-3)/2.0f * (size + padding) * char_height, '-', size);
+  Typer::draw(0, (num_controls-cheat_offset-4)/2.0f * (size + padding) * char_height, "RESET SPEED", size);
+  Typer::draw(320, (num_controls-cheat_offset-4)/2.0f * (size + padding) * char_height, '0', size);
+  Typer::draw(0, (num_controls-cheat_offset-5)/2.0f * (size + padding) * char_height, "SKIP LEVEL", size);
+  Typer::draw(320, (num_controls-cheat_offset-5)/2.0f * (size + padding) * char_height, 'n', size);
 }
 
 void GLShip::draw_weapons() const {
