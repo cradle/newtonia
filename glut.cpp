@@ -1,6 +1,8 @@
 /* glut.cpp - GLUT Abstraction layer for Game */
 #include <stdlib.h> // For EXIT_SUCCESS
 
+#include <SDL.h>
+
 #include "state_manager.h"
 
 #ifdef __APPLE__
@@ -18,6 +20,7 @@ StateManager *game;
 bool ALLOW_BLUR = false;
 bool BLUR = ALLOW_BLUR;
 double blur_factor = 0.5;
+SDL_GameController *controller = NULL;
 
 void draw() {
   game->draw();
@@ -98,6 +101,16 @@ void tick() {
   int current_time = glutGet(GLUT_ELAPSED_TIME);
   game->tick(current_time - last_tick_time);
   last_tick_time = current_time;
+  SDL_Event e;
+  while(SDL_PollEvent(&e)) {
+    if(e.type == SDL_JOYBUTTONDOWN) {
+      cout << "Button Down" << endl;
+      keyboard(e.jbutton.button+256, 0, 0);
+    } else if (e.type == SDL_JOYBUTTONUP) {
+      cout << "Button Up" << endl;
+      keyboard_up(e.jbutton.button+256, 0, 0);
+    }
+  }
   glutPostRedisplay();
 }
 
@@ -109,9 +122,9 @@ void isVisible(int state) {
   }
 }
 
-void init(int &argc, char** argv, float width, float height);
+void init(int &argc, char* argv[], float width, float height);
 
-int main(int argc, char** argv) {
+int main(int argc, char* argv[]) {
   init(argc, argv, 800, 600);
   game = new StateManager();
   glutMainLoop();
@@ -119,7 +132,7 @@ int main(int argc, char** argv) {
   return EXIT_SUCCESS;
 }
 
-void init(int &argc, char** argv, float width, float height) {
+void init(int &argc, char* argv[], float width, float height) {
   glutInit(&argc, argv);
   int DISPLAY_TYPE = GLUT_RGBA;
   if(ALLOW_BLUR) {
@@ -147,4 +160,20 @@ void init(int &argc, char** argv, float width, float height) {
   glutSpecialUpFunc(special_up);
   glutReshapeFunc(resize);
   glutVisibilityFunc(isVisible);
+
+  SDL_Init( SDL_INIT_GAMECONTROLLER );
+  std::cout << "Num joysticks: " << SDL_NumJoysticks() << std::endl;
+  for (int i = 0; i < SDL_NumJoysticks(); ++i) {
+    if (SDL_IsGameController(i)) {
+      controller = SDL_GameControllerOpen(i);
+      if (controller) {
+        std::cout << "Controller: " << SDL_GameControllerName(controller) << std::endl;
+        break;
+      } else {
+        std::cout <<  "Could not open gamecontroller " << i << ":" << SDL_GetError() << std::endl;
+      }
+    } else {
+      std::cout << "Not controller";
+    }
+  }
 }
