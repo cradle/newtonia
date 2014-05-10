@@ -104,11 +104,9 @@ void tick() {
   SDL_Event e;
   while(SDL_PollEvent(&e)) {
     if(e.type == SDL_JOYBUTTONDOWN) {
-      cout << "Button Down" << endl;
-      keyboard(e.jbutton.button+256, 0, 0);
+      keyboard(e.jbutton.button, 0, 0);
     } else if (e.type == SDL_JOYBUTTONUP) {
-      cout << "Button Up" << endl;
-      keyboard_up(e.jbutton.button+256, 0, 0);
+      keyboard_up(e.jbutton.button, 0, 0);
     }
   }
   glutPostRedisplay();
@@ -122,10 +120,33 @@ void isVisible(int state) {
   }
 }
 
+void init_controllers() {
+  SDL_Init(SDL_INIT_GAMECONTROLLER);
+  SDL_JoystickEventState(SDL_ENABLE);
+  if(SDL_NumJoysticks() == 0) {
+    std::cout << "No joysticks" << std::endl;
+  } else {
+    for (int i = 0; i < SDL_NumJoysticks(); ++i) {
+      if (SDL_IsGameController(i)) {
+        controller = SDL_GameControllerOpen(i);
+        if (controller) {
+          std::cout << "Controller: " << SDL_GameControllerName(controller) << std::endl;
+          break;
+        } else {
+          std::cout <<  "Could not open gamecontroller " << i << ":" << SDL_GetError() << std::endl;
+        }
+      } else {
+        std::cout << "Not controller";
+      }
+    }
+  }
+}
+
 void init(int &argc, char* argv[], float width, float height);
 
 int main(int argc, char* argv[]) {
   init(argc, argv, 800, 600);
+  init_controllers();
   game = new StateManager();
   glutMainLoop();
   delete game;
@@ -160,20 +181,4 @@ void init(int &argc, char* argv[], float width, float height) {
   glutSpecialUpFunc(special_up);
   glutReshapeFunc(resize);
   glutVisibilityFunc(isVisible);
-
-  SDL_Init( SDL_INIT_GAMECONTROLLER );
-  std::cout << "Num joysticks: " << SDL_NumJoysticks() << std::endl;
-  for (int i = 0; i < SDL_NumJoysticks(); ++i) {
-    if (SDL_IsGameController(i)) {
-      controller = SDL_GameControllerOpen(i);
-      if (controller) {
-        std::cout << "Controller: " << SDL_GameControllerName(controller) << std::endl;
-        break;
-      } else {
-        std::cout <<  "Could not open gamecontroller " << i << ":" << SDL_GetError() << std::endl;
-      }
-    } else {
-      std::cout << "Not controller";
-    }
-  }
 }

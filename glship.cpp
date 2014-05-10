@@ -240,17 +240,18 @@ void GLShip::input(unsigned char key, bool pressed) {
       return;
     }
   }
-  if (key == left_key) {
+  cout << "Button:" << int(key) << endl;
+  if (key == left_key || key == 2) {
     ship->rotate_left(pressed);
-  } else if (key == right_key) {
+  } else if (key == right_key || key == 3) {
     ship->rotate_right(pressed);
-  } else if (key == thrust_key) {
+  } else if (key == thrust_key || key == 10) {
     ship->thrust(pressed);
-  } else if (key == reverse_key) {
+  } else if (key == reverse_key || key == 13) {
     ship->reverse(pressed);
-  } else if (key == shoot_key) {
+  } else if (key == shoot_key || key == 12) {
     ship->shoot(pressed);
-  } else if (key == mine_key) {
+  } else if (key == mine_key || key == 11) {
     ship->mine(pressed);
   } else if (key == boost_key && pressed) {
     ship->boost();

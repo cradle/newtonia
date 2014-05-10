@@ -58,12 +58,13 @@ void Menu::tick(int delta) {
 }
 
 void Menu::keyboard(unsigned char key, int x, int y) {
-  if(key == 27) exit(0); // escape
+  if(key == 27 || key == 5) exit(0); // escape || controller back
 }
 
 void Menu::keyboard_up (unsigned char key, int x, int y) {
   switch(key) {
   case 13:
+  case 4: // controller
     request_state_change(new GLGame());
     break;
   }
