@@ -255,7 +255,7 @@ void GLShip::input(unsigned char key, bool pressed) {
     ship->mine(pressed);
   } else if (key == boost_key && pressed) {
     ship->boost();
-  } else if(key == next_weapon_key && pressed) {
+  } else if((key == next_weapon_key || key == 8) && pressed) {
     ship->next_weapon();
   } else if (key == 'z' && pressed) {
     ship->disable_behaviours();

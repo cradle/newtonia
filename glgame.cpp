@@ -439,6 +439,8 @@ void GLGame::draw_map() const {
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
+  if (key == 4) toggle_pause(); // controller start
+  if (key == 5) request_state_change(new Menu()); // controller back
   if (!running)
     return;
 
@@ -464,7 +466,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == '=' && time_between_steps > 1) time_between_steps--;
   if (key == '-') time_between_steps++;
   if (key == '0') time_between_steps = step_size;
-  if (key == 'p' || key == 4) toggle_pause();
+  if (key == 'p') toggle_pause();
   if (key == 13 && players->size() < 2) {
     Ship* p1 = players->front()->ship;
     if(p1->is_alive() || p1->lives) {
@@ -473,7 +475,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       players->push_back(object);
     }
   }
-  if (key == 27 || key == 5) request_state_change(new Menu());
+  if (key == 27) request_state_change(new Menu());
 
   if (!running)
     return;

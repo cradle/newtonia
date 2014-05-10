@@ -96,11 +96,7 @@ void mouse_move(int x, int y) {
   glutWarpPointer(glutGet(GLUT_WINDOW_WIDTH)/2.0f, glutGet(GLUT_WINDOW_HEIGHT)/2.0f);
 }
 
-int last_tick_time;
-void tick() {
-  int current_time = glutGet(GLUT_ELAPSED_TIME);
-  game->tick(current_time - last_tick_time);
-  last_tick_time = current_time;
+void check_controller() {
   SDL_Event e;
   while(SDL_PollEvent(&e)) {
     if(e.type == SDL_JOYBUTTONDOWN) {
@@ -109,6 +105,14 @@ void tick() {
       keyboard_up(e.jbutton.button, 0, 0);
     }
   }
+}
+
+int last_tick_time;
+void tick() {
+  int current_time = glutGet(GLUT_ELAPSED_TIME);
+  game->tick(current_time - last_tick_time);
+  last_tick_time = current_time;
+  check_controller();
   glutPostRedisplay();
 }
 
