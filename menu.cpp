@@ -60,9 +60,9 @@ void Menu::tick(int delta) {
 
 void Menu::controller(SDL_Event event) {
  if(event.type == SDL_CONTROLLERBUTTONDOWN) {
-    if(event.jbutton.button == 4) { //SDL_CONTROLLER_BUTTON_BACK
+    if(event.jbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
       glutLeaveMainLoop();
-    } else if(event.jbutton.button == 6) { //SDL_CONTROLLER_BUTTON_START
+    } else if(event.jbutton.button == SDL_CONTROLLER_BUTTON_START) {
       request_state_change(new GLGame());
     }
   }

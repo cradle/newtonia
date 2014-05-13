@@ -123,10 +123,8 @@ void isVisible(int state) {
 }
 
 void init_controllers() {
-}
-
-void void_test() {
   SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+  SDL_SetHint(SDL_HINT_GAMECONTROLLERCONFIG, "1");
   SDL_Init(SDL_INIT_GAMECONTROLLER); // custom mappings SDL_HINT_GAMECONTROLLERCONFIG
   SDL_JoystickEventState(SDL_ENABLE);
   if(SDL_NumJoysticks() == 0) {
@@ -142,7 +140,7 @@ void void_test() {
           std::cout <<  "Could not open gamecontroller " << i << ":" << SDL_GetError() << std::endl;
         }
       } else {
-        std::cout << "Not controller";
+        std::cout << "Not controller" << std::endl;
       }
     }
   }
