@@ -44,7 +44,11 @@ void Menu::draw() {
 
   Typer::draw_centered(viewpoint.x(), viewpoint.y()+200, "Newtonia", 75);
   if((currentTime/1400) % 2) {
-    Typer::draw_centered(viewpoint.x(), viewpoint.y()-50, "press enter", 16);
+    if(SDL_NumJoysticks() == 0) {
+      Typer::draw_centered(viewpoint.x(), viewpoint.y()-50, "press enter", 16);
+    } else {
+      Typer::draw_centered(viewpoint.x(), viewpoint.y()-50, "press start", 16);
+    }
   }
   Typer::draw_centered(viewpoint.x(), viewpoint.y()-420, "© 2008-2014 METONYM.US", 12, currentTime);
 }
@@ -60,11 +64,11 @@ void Menu::tick(int delta) {
 
 void Menu::controller(SDL_Event event) {
  if(event.type == SDL_CONTROLLERBUTTONDOWN) {
-    if(event.jbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
+    if(event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
       glutLeaveMainLoop();
-    } else if(event.jbutton.button == SDL_CONTROLLER_BUTTON_START ||
-              event.jbutton.button == SDL_CONTROLLER_BUTTON_A) {
-      request_state_change(new GLGame());
+    } else if(event.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
+              event.cbutton.button == SDL_CONTROLLER_BUTTON_A) {
+      request_state_change(new GLGame(SDL_GameControllerOpen(event.cbutton.which)));
     }
   }
 }

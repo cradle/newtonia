@@ -21,7 +21,7 @@
 
 using namespace std;
 
-GLShip::GLShip(const Grid &grid, bool has_friction) {
+GLShip::GLShip(const Grid &grid, bool has_friction) : show_help(false) {
   //TODO: load config from file (colours too)
   ship = new Ship(grid, has_friction);
   trails.push_back(new GLTrail(this, 0.01, Point(0,0), 0.3,0.0, GLTrail::THRUSTING, 2500.0));
@@ -141,7 +141,7 @@ void GLShip::step(float delta, const Grid &grid) {
   }
 }
 
-void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, int mine, int next_weapon, int boost, int teleport) {
+void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, int mine, int next_weapon, int boost, int teleport, int help) {
   left_key = left;
   right_key = right;
   shoot_key = shoot;
@@ -151,16 +151,12 @@ void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, i
   mine_key = mine;
   next_weapon_key = next_weapon;
   boost_key = boost;
+  help_key = help;
 }
 
 void GLShip::set_controller(SDL_GameController *game_controller) {
   controller = game_controller;
 }
-
-//void GLShip::draw_controls() const {
-  //TODO: implement overlay of key controls
-  // or name too intuuitive to need it
-//}
 
 void GLShip::draw_temperature() const {
   if(ship->heat_rate <= 0.0f)
@@ -238,16 +234,18 @@ void GLShip::draw_temperature_status() const {
 
 void GLShip::controller_input(SDL_Event event) {
   if(controller != NULL && SDL_GameControllerGetAttached(controller)) {
-    if(event.cbutton.which == SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller))) {
-      std::cout << "My Button " << SDL_GameControllerName(controller) << std::endl;
-    } else {
-      std::cout << "Not My Button" << SDL_GameControllerNameForIndex(event.cbutton.which) << std::endl;
+    if(event.cbutton.which != SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller))) {
       return;
     }
+  } else {
+    return;
   }
-  bool pressed = event.jbutton.state == SDL_PRESSED;
+  bool pressed = event.cbutton.state == SDL_PRESSED;
+  if (event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE) {
+    show_help = pressed;
+  }
   if(!ship->is_alive()) {
-    if(pressed && event.jbutton.button == SDL_CONTROLLER_BUTTON_A && ship->lives > 0) {
+    if(pressed && event.cbutton.button == SDL_CONTROLLER_BUTTON_A && ship->lives > 0) {
       ship->time_until_respawn = 0;
     } else {
       return;
@@ -269,10 +267,13 @@ void GLShip::controller_input(SDL_Event event) {
     ship->boost();
   } else if(event.cbutton.button == SDL_CONTROLLER_BUTTON_X && pressed) {
     ship->next_weapon();
+  } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_RIGHTSHOULDER && pressed) {
+    ship->behaviours.push_back(new Teleport(ship));
   }
 }
 
 void GLShip::input(unsigned char key, bool pressed) {
+  if (key == help_key && pressed) show_help = !show_help;
   if(!ship->is_alive()) {
     if(key == shoot_key && ship->lives > 0) {
       ship->time_until_respawn = 0;
@@ -280,29 +281,29 @@ void GLShip::input(unsigned char key, bool pressed) {
       return;
     }
   }
-  if (key == left_key || key == SDL_CONTROLLER_BUTTON_DPAD_LEFT) {
+  if (key == left_key) {
     ship->rotate_left(pressed);
-  } else if (key == right_key || key == SDL_CONTROLLER_BUTTON_DPAD_RIGHT) {
+  } else if (key == right_key) {
     ship->rotate_right(pressed);
-  } else if (key == thrust_key || key == SDL_CONTROLLER_BUTTON_DPAD_UP) {
+  } else if (key == thrust_key) {
     ship->thrust(pressed);
-  } else if (key == reverse_key || key == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
+  } else if (key == reverse_key) {
     ship->reverse(pressed);
-  } else if (key == shoot_key || key == SDL_CONTROLLER_BUTTON_A) {
+  } else if (key == shoot_key) {
     ship->shoot(pressed);
-  } else if (key == mine_key || key == SDL_CONTROLLER_BUTTON_B) {
+  } else if (key == mine_key) {
     ship->mine(pressed);
   } else if (key == boost_key && pressed) {
     ship->boost();
-  } else if((key == next_weapon_key || key == SDL_CONTROLLER_BUTTON_X) && pressed) {
+  } else if(key == next_weapon_key && pressed) {
     ship->next_weapon();
-  } else if (key == 'z' && pressed) {
+  } else if (key == 'q' && pressed) {
     ship->disable_behaviours();
   } else if (key == teleport_key && pressed) {
     ship->behaviours.push_back(new Teleport(ship));
   } else if (key == 'v' && pressed) {
     rotating_view = !rotating_view;
-  } else if (key == 'e' && pressed) {
+  } else if (key == 'z' && pressed) {
     ship->time_left_invincible += 1000;
     ship->invincible = true;
   }
@@ -383,40 +384,88 @@ void GLShip::draw_keymap() const {
   Typer::draw_centered(0, (num_controls+1.5)/2.0f * (size + padding) * char_height, "- PLAYER -", size+2);
   glTranslatef(-160.0f,0.0f,0.0f);
   Typer::draw(0, num_controls/2.0f * (size + padding) * char_height, "THRUST", size);
-  Typer::draw(320, num_controls/2.0f * (size + padding) * char_height, (char)thrust_key, size);
-  Typer::draw(0, (num_controls-1)/2.0f * (size + padding) * char_height, "REVERSE", size);
-  Typer::draw(320, (num_controls-1)/2.0f * (size + padding) * char_height, (char)reverse_key, size);
-  Typer::draw(0, (num_controls-2)/2.0f * (size + padding) * char_height, "TURN RIGHT", size);
-  Typer::draw(320, (num_controls-2)/2.0f * (size + padding) * char_height, (char)right_key, size);
-  Typer::draw(0, (num_controls-3)/2.0f * (size + padding) * char_height, "TURN LEFT", size);
-  Typer::draw(320, (num_controls-3)/2.0f * (size + padding) * char_height, (char)left_key, size);
-  Typer::draw(0, (num_controls-4)/2.0f * (size + padding) * char_height, "SHOOT", size);
-  if(shoot_key == ' ') {
-    Typer::draw(320, (num_controls-4)/2.0f * (size + padding) * char_height, "SPACE", size);
+  if(controller == NULL) {
+    Typer::draw(320, num_controls/2.0f * (size + padding) * char_height, (char)thrust_key, size);
   } else {
+    Typer::draw(320, num_controls/2.0f * (size + padding) * char_height, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_DPAD_UP), size);
+  }
+  Typer::draw(0, (num_controls-1)/2.0f * (size + padding) * char_height, "REVERSE", size);
+  if(controller == NULL) {
+    Typer::draw(320, (num_controls-1)/2.0f * (size + padding) * char_height, (char)reverse_key, size);
+  } else {
+    Typer::draw(320, (num_controls-1)/2.0f * (size + padding) * char_height, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_DPAD_DOWN), size);
+  }
+  Typer::draw(0, (num_controls-2)/2.0f * (size + padding) * char_height, "TURN RIGHT", size);
+  if(controller == NULL) {
+    Typer::draw(320, (num_controls-2)/2.0f * (size + padding) * char_height, (char)right_key, size);
+  } else {
+    Typer::draw(320, (num_controls-2)/2.0f * (size + padding) * char_height, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_DPAD_RIGHT), size);
+  }
+  Typer::draw(0, (num_controls-3)/2.0f * (size + padding) * char_height, "TURN LEFT", size);
+  if(controller == NULL) {
+    Typer::draw(320, (num_controls-3)/2.0f * (size + padding) * char_height, (char)left_key, size);
+  } else {
+    Typer::draw(320, (num_controls-3)/2.0f * (size + padding) * char_height, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_DPAD_LEFT), size);
+  }
+  Typer::draw(0, (num_controls-4)/2.0f * (size + padding) * char_height, "SHOOT", size);
+  if(controller == NULL && shoot_key == ' ') {
+    Typer::draw(320, (num_controls-4)/2.0f * (size + padding) * char_height, "SPACE", size);
+  } else if (controller == NULL) {
     Typer::draw(320, (num_controls-4)/2.0f * (size + padding) * char_height, (char)shoot_key, size);
+  } else {
+    Typer::draw(320, (num_controls-4)/2.0f * (size + padding) * char_height, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_A), size);
   }
   Typer::draw(0, (num_controls-5)/2.0f * (size + padding) * char_height, "MINE", size);
-  Typer::draw(320, (num_controls-5)/2.0f * (size + padding) * char_height, (char)mine_key, size);
+  if(controller == NULL) {
+    Typer::draw(320, (num_controls-5)/2.0f * (size + padding) * char_height, (char)mine_key, size);
+  } else {
+    Typer::draw(320, (num_controls-5)/2.0f * (size + padding) * char_height, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_B), size);
+  }
   Typer::draw(0, (num_controls-6)/2.0f * (size + padding) * char_height, "CHANGE WEAPON", size);
-  Typer::draw(320, (num_controls-6)/2.0f * (size + padding) * char_height, (char)next_weapon_key, size);
+  if(controller == NULL) {
+    Typer::draw(320, (num_controls-6)/2.0f * (size + padding) * char_height, (char)next_weapon_key, size);
+  } else {
+    Typer::draw(320, (num_controls-6)/2.0f * (size + padding) * char_height, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_X), size);
+  }
   Typer::draw(0, (num_controls-7)/2.0f * (size + padding) * char_height, "BOOST", size);
-  Typer::draw(320, (num_controls-7)/2.0f * (size + padding) * char_height, (char)boost_key, size);
+  if(controller == NULL) {
+    Typer::draw(320, (num_controls-7)/2.0f * (size + padding) * char_height, (char)boost_key, size);
+  } else {
+    Typer::draw(320, (num_controls-7)/2.0f * (size + padding) * char_height, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_LEFTSHOULDER), size);
+  }
   Typer::draw(0, (num_controls-8)/2.0f * (size + padding) * char_height, "TELEPORT", size);
-  Typer::draw(320, (num_controls-8)/2.0f * (size + padding) * char_height, (char)teleport_key, size);
+  if(controller == NULL) {
+    Typer::draw(320, (num_controls-8)/2.0f * (size + padding) * char_height, (char)teleport_key, size);
+  } else {
+    Typer::draw(320, (num_controls-8)/2.0f * (size + padding) * char_height, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER), size);
+  }
 
   int common_offset = 10;
-  Typer::draw_centered(160.0f, (num_controls-common_offset )/2.0f * (size + padding) * char_height, "- COMMON -", size +2);
+  Typer::draw_centered(160.0f, (num_controls-common_offset )/2.0f * (size + padding) * char_height, "- GAME -", size +2);
   Typer::draw(0, (num_controls-common_offset-1.5)/2.0f * (size + padding) * char_height, "PAUSE", size);
-  Typer::draw(320, (num_controls-common_offset-1.5)/2.0f * (size + padding) * char_height, 'p', size);
+  if(controller == NULL) {
+    Typer::draw(320, (num_controls-common_offset-1.5)/2.0f * (size + padding) * char_height, 'p', size);
+  } else {
+    Typer::draw(320, (num_controls-common_offset-1.5)/2.0f * (size + padding) * char_height, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_START), size);
+  }
   Typer::draw(0, (num_controls-common_offset-2.5)/2.0f * (size + padding) * char_height, "FULLSCREEN", size);
   Typer::draw(320, (num_controls-common_offset-2.5)/2.0f * (size + padding) * char_height, 'f', size);
   Typer::draw(0, (num_controls-common_offset-3.5)/2.0f * (size + padding) * char_height, "FRIENDLY FIRE", size);
   Typer::draw(320, (num_controls-common_offset-3.5)/2.0f * (size + padding) * char_height, 'g', size);
   Typer::draw(0, (num_controls-common_offset-4.5)/2.0f * (size + padding) * char_height, "HIDE THIS", size);
-  Typer::draw(320, (num_controls-common_offset-4.5)/2.0f * (size + padding) * char_height, "f1", size);
+  if(controller == NULL) {
+    Typer::draw(320, (num_controls-common_offset-4.5)/2.0f * (size + padding) * char_height, "f1", size);
+  } else if(help_key == 128 + GLUT_KEY_F8) {
+    Typer::draw(320, (num_controls-common_offset-4.5)/2.0f * (size + padding) * char_height, "f8", size);
+  } else {
+    Typer::draw(320, (num_controls-common_offset-4.5)/2.0f * (size + padding) * char_height, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_GUIDE), size);
+  }
   Typer::draw(0, (num_controls-common_offset-5.5)/2.0f * (size + padding) * char_height, "QUIT", size);
-  Typer::draw(320, (num_controls-common_offset-5.5)/2.0f * (size + padding) * char_height, "ESC", size);
+  if(controller == NULL) {
+    Typer::draw(320, (num_controls-common_offset-5.5)/2.0f * (size + padding) * char_height, "ESC", size);
+  } else {
+    Typer::draw(320, (num_controls-common_offset-5.5)/2.0f * (size + padding) * char_height, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_BACK), size);
+  }
 
   int cheat_offset = common_offset + 7;
   Typer::draw_centered(160.0f, (num_controls-cheat_offset-0.5)/2.0f * (size + padding) * char_height, "- CHEATS -", size +2);

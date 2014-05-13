@@ -26,7 +26,7 @@ public:
   void step(float delta, const Grid &grid);
   virtual void input(unsigned char key, bool pressed = true);
   virtual void controller_input(SDL_Event event);
-  void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key, int teleport_key);
+  void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key, int teleport_key, int help_key);
   void set_controller(SDL_GameController *game_controller);
   void genForceShield();
   void draw(bool minimap = false);
@@ -48,6 +48,8 @@ public:
 
   float color[3];
 
+  friend class Overlay;
+
 protected:
   virtual void draw_ship(bool minimap = false) const;
   void draw_particles() const;
@@ -62,11 +64,11 @@ protected:
 
   GLuint body, jets, repulsors, force_shield, force_shield_bg;
 
-  int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, boost_key, teleport_key;
+  int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, boost_key, teleport_key, help_key;
 
   SDL_GameController *controller = NULL;
 
-  bool rotating_view, show_keys;
+  bool rotating_view, show_help;
   float camera_rotation;
   float camera_angle;
 

@@ -15,7 +15,7 @@ using namespace std;
 
 class GLGame : public State {
 public:
-  GLGame();
+  GLGame(SDL_GameController *controller = NULL);
   GLGame(GLGame const &other);
   virtual ~GLGame();
 
@@ -51,7 +51,7 @@ private:
   int generation;
   int last_tick, time_until_next_step, num_frames, current_time, time_between_steps;
   int time_until_next_generation;
-  bool running, level_cleared, friendly_fire, show_help;
+  bool running, level_cleared, friendly_fire;
 
   static const int default_world_width, default_world_height;
   static const int default_num_asteroids, extra_num_asteroids;

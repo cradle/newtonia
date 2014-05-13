@@ -10,6 +10,7 @@
 #include "object.h"
 #include "grid.h"
 #include "view/overlay.h"
+#include <SDL.h>
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -29,14 +30,13 @@ const int GLGame::default_num_asteroids = 1;
 const int GLGame::extra_num_asteroids = 5;
 
 
-GLGame::GLGame() :
+GLGame::GLGame(SDL_GameController *controller) :
   State(),
   world(Point(default_world_width, default_world_height)),
   current_time(0),
   running(true),
   level_cleared(false),
   friendly_fire(true),
-  show_help(false),
   grid(Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2))) {
   time_between_steps = step_size;
 
@@ -49,7 +49,11 @@ GLGame::GLGame() :
   starfield = new GLStarfield(world);
 
   GLShip *object = new GLShip(grid, true);
-  object->set_keys('a','d','w',' ','s','x','q','e', 't');
+  if(controller != NULL) {
+    object->set_controller(controller);
+  } else {
+    object->set_keys('a','d','w',' ','s','x','q','e', 't', 128+GLUT_KEY_F1);
+  }
   players->push_back(object);
 
   rearstars = glGenLists(1);
@@ -480,7 +484,6 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == 'g') {
     friendly_fire = !friendly_fire;
   }
-  if (key == 128+GLUT_KEY_F1) show_help = !show_help;
   if (key == '=' && time_between_steps > 1) time_between_steps--;
   if (key == '-') time_between_steps++;
   if (key == '0') time_between_steps = step_size;
@@ -489,7 +492,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     Ship* p1 = players->front()->ship;
     if(p1->is_alive() || p1->lives) {
       GLShip* object = new GLCar(grid, true);
-      object->set_keys('j','l','i','/','k',',','u','o','y');
+      object->set_keys('j','l','i','/','k',',','u','o','y',128+GLUT_KEY_F8);
       players->push_back(object);
     }
   }
