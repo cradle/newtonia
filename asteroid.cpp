@@ -29,6 +29,10 @@ Asteroid::Asteroid(bool invincible) : CompositeObject() {
   if(!invincible) {
     num_killable++;
   }
+  explode_sound = Mix_LoadWAV("explode.wav");
+  if(explode_sound == NULL) {
+    std::cout << "Unable to load explode.wav (" << Mix_GetError() << ")" << std::endl;
+  }
 }
 
 Asteroid::~Asteroid() {
@@ -59,6 +63,6 @@ void Asteroid::add_children(list<Asteroid*> *roids) {
     roids->push_back(new Asteroid(this));
     roids->push_back(new Asteroid(this));
   }
-
+  Mix_PlayChannel(-1, explode_sound, 0);
   velocity = velocity / 4;
 }

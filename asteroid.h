@@ -4,6 +4,8 @@
 #include "composite_object.h"
 #include "asteroid_drawer.h"
 #include <cstdlib>
+#include <SDL.h>
+#include <SDL_mixer.h>
 
 class Asteroid : public CompositeObject {
 public:
@@ -26,6 +28,8 @@ private:
   const static int max_rotation;
 
   bool children_added;
+
+  Mix_Chunk *explode_sound = NULL;
 };
 
 #endif
