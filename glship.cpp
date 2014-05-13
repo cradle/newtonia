@@ -5,6 +5,7 @@
 #include "teleport.h"
 #include "weapon/base.h"
 #include <math.h>
+#include <SDL.h>
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>

@@ -6,6 +6,8 @@
 #include "particle.h"
 #include "grid.h"
 #include <list>
+#include <SDL.h>
+#include <SDL_mixer.h>
 
 class Behaviour;
 class Object;

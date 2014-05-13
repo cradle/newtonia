@@ -6,6 +6,7 @@
 #include "gltrail.h"
 #include "typer.h"
 #include <SDL.h>
+#include <SDL_mixer.h>
 #include <list>
 
 #ifdef __APPLE__

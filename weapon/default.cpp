@@ -31,14 +31,20 @@ namespace Weapon {
 
       if(!unlimited)
         _ammo = 100;
+
+      shoot_sound = Mix_LoadWAV("shoot.wav");
+      if(shoot_sound == NULL) {
+        std::cout << "Unable to load shoot.wav (" << Mix_GetError() << ")" << std::endl;
+      }
   }
 
   Default::~Default() {
+    Mix_FreeChunk(shoot_sound);
   }
 
   void Default::shoot(bool on) {
     if (on && time_until_next_shot < 0){
-  	time_until_next_shot = 0;
+      time_until_next_shot = 0;
     }
     shooting = on;
   }
@@ -60,6 +66,7 @@ namespace Weapon {
       else
         _ammo--;
     }
+    Mix_PlayChannel(-1, shoot_sound, 0);
     Point dir = Point(ship->facing);
     switch(level) {
       case(0):
