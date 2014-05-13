@@ -117,6 +117,8 @@ class Ship : public CompositeObject {
   private:
     void safe_position(const Grid &grid);
 
+    Mix_Chunk *boost_sound = NULL;
+
     list<Behaviour *> behaviours;
     list<Weapon::Base *> primary_weapons;
     list<Weapon::Base *> secondary_weapons;

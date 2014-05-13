@@ -53,6 +53,7 @@
 			<Add library="mingw32" />
 			<Add library="SDL2main" />
 			<Add library="SDL2" />
+			<Add library="SDL2_mixer" />
 			<Add directory="C:/Program Files/CodeBlocks/MinGW/lib" />
 			<Add directory="sdl/lib" />
 			<Add directory="." />
