@@ -57,17 +57,24 @@ void Menu::tick(int delta) {
   }
 }
 
-void Menu::keyboard(unsigned char key, int x, int y) {
-  if(key == 27 || key == 5) exit(0); // escape || controller back
-  switch(key) {
-  case 4: // controller start
-    request_state_change(new GLGame());
-    break;
+void Menu::controller(SDL_Event event) {
+ if(event.type == SDL_CONTROLLERBUTTONDOWN) {
+    if(event.jbutton.button == 4) { //SDL_CONTROLLER_BUTTON_BACK
+      exit(0);
+    } else if(event.jbutton.button == 6) { //SDL_CONTROLLER_BUTTON_START
+      request_state_change(new GLGame());
+    }
   }
+}
+
+void Menu::keyboard(unsigned char key, int x, int y) {
 }
 
 void Menu::keyboard_up (unsigned char key, int x, int y) {
   switch(key) {
+  case 27:
+    exit(0);
+    break;
   case 13:
     request_state_change(new GLGame());
     break;

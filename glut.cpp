@@ -99,11 +99,7 @@ void mouse_move(int x, int y) {
 void check_controller() {
   SDL_Event e;
   while(SDL_PollEvent(&e)) {
-    if(e.type == SDL_JOYBUTTONDOWN) {
-      keyboard(e.jbutton.button, 0, 0);
-    } else if (e.type == SDL_JOYBUTTONUP) {
-      keyboard_up(e.jbutton.button, 0, 0);
-    }
+    game->controller(e);
   }
 }
 

@@ -438,9 +438,17 @@ void GLGame::draw_map() const {
   glEnd();
 }
 
+void GLGame::controller(SDL_Event event) {
+  if(event.jbutton.type == SDL_CONTROLLERBUTTONDOWN) {
+    if (event.jbutton.button == 6) { // SDL_CONTROLLER_BUTTON_START
+      toggle_pause();
+    } else if (event.jbutton.button == 4) { // SDL_CONTROLLER_BUTTON_BACK
+      request_state_change(new Menu());
+    }
+  }
+}
+
 void GLGame::keyboard (unsigned char key, int x, int y) {
-  if (key == 4) toggle_pause(); // controller start
-  if (key == 5) request_state_change(new Menu()); // controller back
   if (!running)
     return;
 

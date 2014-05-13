@@ -1,6 +1,7 @@
 #ifndef MENU_H
 #define MENU_H
 
+#include <SDL.h>
 #include "state.h"
 
 class Menu : public State {
@@ -11,6 +12,7 @@ public:
   void draw();
   void keyboard(unsigned char key, int x, int y);
   void keyboard_up(unsigned char key, int x, int y);
+  void controller(SDL_Event event);
   void tick(int delta);
 
 private:

@@ -8,6 +8,7 @@
 #include "glstarfield.h"
 #include "glstation.h"
 #include "asteroid.h"
+#include <SDL.h>
 #include <list>
 
 using namespace std;
@@ -22,6 +23,7 @@ public:
   void tick(int delta);
   void keyboard(unsigned char key, int x, int y);
   void keyboard_up(unsigned char key, int x, int y);
+  void controller(SDL_Event event);
 
   friend class Overlay;
 
