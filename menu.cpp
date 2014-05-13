@@ -2,7 +2,8 @@
 #include "glstarfield.h"
 #include "glgame.h"
 #include "menu.h"
-
+#include <GL/freeglut_std.h>
+#include <GL/freeglut_ext.h>
 #include <iostream>
 
 const int Menu::default_world_width = 5000;
@@ -60,7 +61,7 @@ void Menu::tick(int delta) {
 void Menu::controller(SDL_Event event) {
  if(event.type == SDL_CONTROLLERBUTTONDOWN) {
     if(event.jbutton.button == 4) { //SDL_CONTROLLER_BUTTON_BACK
-      exit(0);
+      glutLeaveMainLoop();
     } else if(event.jbutton.button == 6) { //SDL_CONTROLLER_BUTTON_START
       request_state_change(new GLGame());
     }
@@ -73,7 +74,7 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 void Menu::keyboard_up (unsigned char key, int x, int y) {
   switch(key) {
   case 27:
-    exit(0);
+    glutLeaveMainLoop();
     break;
   case 13:
     request_state_change(new GLGame());

@@ -439,12 +439,24 @@ void GLGame::draw_map() const {
 }
 
 void GLGame::controller(SDL_Event event) {
-  if(event.jbutton.type == SDL_CONTROLLERBUTTONDOWN) {
-    if (event.jbutton.button == 6) { // SDL_CONTROLLER_BUTTON_START
+  if(event.cbutton.type == SDL_CONTROLLERBUTTONDOWN) {
+    if (event.cbutton.button == 6) { // SDL_CONTROLLER_BUTTON_START
       toggle_pause();
-    } else if (event.jbutton.button == 4) { // SDL_CONTROLLER_BUTTON_BACK
+    } else if (event.cbutton.button == 4) { // SDL_CONTROLLER_BUTTON_BACK
       request_state_change(new Menu());
     }
+  }
+
+  if(!running)
+    return;
+
+  if(event.type == SDL_CONTROLLERBUTTONDOWN || event.type == SDL_CONTROLLERBUTTONUP) {
+    std::list<GLShip*>::iterator object;
+    for(object = players->begin(); object != players->end(); object++) {
+      (*object)->controller_input(event);
+    }
+  } else {
+    std::cout << "Warning: Unknown controller event" << std::endl;
   }
 }
 

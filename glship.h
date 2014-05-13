@@ -5,6 +5,7 @@
 #include "point.h"
 #include "gltrail.h"
 #include "typer.h"
+#include <SDL.h>
 #include <list>
 
 #ifdef __APPLE__
@@ -24,7 +25,9 @@ public:
   virtual ~GLShip();
   void step(float delta, const Grid &grid);
   virtual void input(unsigned char key, bool pressed = true);
+  virtual void controller_input(SDL_Event event);
   void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key, int teleport_key);
+  void set_controller(SDL_GameController *game_controller);
   void genForceShield();
   void draw(bool minimap = false);
   void draw_body() const;
@@ -60,6 +63,8 @@ protected:
   GLuint body, jets, repulsors, force_shield, force_shield_bg;
 
   int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, boost_key, teleport_key;
+
+  SDL_GameController *controller = NULL;
 
   bool rotating_view, show_keys;
   float camera_rotation;

@@ -153,6 +153,10 @@ void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, i
   boost_key = boost;
 }
 
+void GLShip::set_controller(SDL_GameController *game_controller) {
+  controller = game_controller;
+}
+
 //void GLShip::draw_controls() const {
   //TODO: implement overlay of key controls
   // or name too intuuitive to need it
@@ -232,6 +236,16 @@ void GLShip::draw_temperature_status() const {
   }
 }
 
+void GLShip::controller_input(SDL_Event event) {
+  if(controller != NULL && SDL_GameControllerGetAttached(controller)) {
+    if(event.cbutton.which == SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller))) {
+      std::cout << "My Button " << SDL_GameControllerName(controller) << std::endl;
+    } else {
+      std::cout << "Not My Button" << SDL_GameControllerNameForIndex(event.cbutton.which) << std::endl;
+    }
+  }
+}
+
 void GLShip::input(unsigned char key, bool pressed) {
   if(!ship->is_alive()) {
     if(key == shoot_key && ship->lives > 0) {
@@ -240,7 +254,6 @@ void GLShip::input(unsigned char key, bool pressed) {
       return;
     }
   }
-  cout << "Button:" << int(key) << endl;
   if (key == left_key || key == 2) {
     ship->rotate_left(pressed);
   } else if (key == right_key || key == 3) {

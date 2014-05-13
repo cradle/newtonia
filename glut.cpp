@@ -12,6 +12,8 @@
 #include <windows.h>
 #endif
 #include <GL/glut.h>
+#include <GL/freeglut_std.h>
+#include <GL/freeglut_ext.h>
 #endif
 
 // Glut callbacks cannot be member functions. Need to pre-declare game object
@@ -72,7 +74,7 @@ void special(int key, int x, int y) {
   switch (key) {
   case GLUT_KEY_F4:
     if(glutGetModifiers() == GLUT_ACTIVE_ALT) {
-      exit(0);
+      glutLeaveMainLoop();
     }
   }
   keyboard(key+128, x, y);
@@ -121,7 +123,11 @@ void isVisible(int state) {
 }
 
 void init_controllers() {
-  SDL_Init(SDL_INIT_GAMECONTROLLER);
+}
+
+void void_test() {
+  SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+  SDL_Init(SDL_INIT_GAMECONTROLLER); // custom mappings SDL_HINT_GAMECONTROLLERCONFIG
   SDL_JoystickEventState(SDL_ENABLE);
   if(SDL_NumJoysticks() == 0) {
     std::cout << "No joysticks" << std::endl;
@@ -149,6 +155,9 @@ int main(int argc, char* argv[]) {
   init_controllers();
   game = new StateManager();
   glutMainLoop();
+  if (SDL_GameControllerGetAttached(controller)) {
+    SDL_GameControllerClose(controller);
+  }
   delete game;
   return EXIT_SUCCESS;
 }
