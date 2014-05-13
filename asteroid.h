@@ -14,6 +14,7 @@ public:
   virtual ~Asteroid();
 
   void add_children(list<Asteroid*> *objects);
+  virtual bool kill();
 
   friend class AsteroidDrawer;
 
@@ -21,7 +22,7 @@ public:
 
   const static int max_radius;
 
-  static Mix_Chunk *explode_sound;
+  static Mix_Chunk *explode_sound, *thud_sound;
 
 private:
   const static int max_speed;

@@ -57,6 +57,8 @@ private:
   static const int default_num_asteroids, extra_num_asteroids;
   unsigned int gameworld, frontstars, rearstars;
 
+  Mix_Chunk *tic_sound = NULL;
+
   Grid grid;
   GLStarfield *starfield;
   GLStation *station;

@@ -10,6 +10,7 @@
 #include "object.h"
 #include "grid.h"
 #include "view/overlay.h"
+#include <math.h>
 #include <SDL.h>
 
 #ifdef __APPLE__
@@ -67,6 +68,13 @@ GLGame::GLGame(SDL_GameController *controller) :
   add_asteroids();
 
   station = NULL;//new GLStation(enemies, players);
+
+  if(tic_sound == NULL) {
+    tic_sound = Mix_LoadWAV("tic.wav");
+    if(tic_sound == NULL) {
+      std::cout << "Unable to load tic.wav" << std::endl;
+    }
+  }
 }
 
 GLGame::~GLGame() {
@@ -126,6 +134,11 @@ void GLGame::tick(int delta) {
       level_cleared = true;
       time_until_next_generation = 5000;
     } else if (time_until_next_generation > 0) {
+      if(floor(time_until_next_generation/1000) != floor((time_until_next_generation-delta)/1000)) {
+        if(tic_sound != NULL) {
+          Mix_PlayChannel(-1, tic_sound, 0);
+        }
+      }
       time_until_next_generation -= delta;
     } else {
       generation++;

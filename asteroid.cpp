@@ -13,6 +13,7 @@ const int Asteroid::radius_variation = 220;
 const int Asteroid::minimum_radius = 20;
 
 Mix_Chunk * Asteroid::explode_sound = NULL;
+Mix_Chunk * Asteroid::thud_sound = NULL;
 
 const int Asteroid::max_radius = Asteroid::radius_variation + Asteroid::minimum_radius;
 
@@ -33,9 +34,17 @@ Asteroid::Asteroid(bool invincible) : CompositeObject() {
   }
   if(explode_sound == NULL) {
     explode_sound = Mix_LoadWAV("explode.wav");
+    if(explode_sound == NULL) {
+      std::cout << "Unable to load explode.wav (" << Mix_GetError() << ")" << std::endl;
+    }
   }
-  if(explode_sound == NULL) {
-    std::cout << "Unable to load explode.wav (" << Mix_GetError() << ")" << std::endl;
+  if(thud_sound == NULL) {
+    thud_sound = Mix_LoadWAV("thud.wav");
+    if(thud_sound == NULL) {
+        std::cout << "Unable to load thud.wav (" << Mix_GetError() << ")" << std::endl;
+    } else {
+        Mix_VolumeChunk(thud_sound, MIX_MAX_VOLUME/2); // Todo:  distance volume
+    }
   }
 }
 
@@ -56,6 +65,13 @@ Asteroid::Asteroid(Asteroid const *mother) {
   if(!invincible) {
     num_killable++;
   }
+}
+
+bool Asteroid::kill() {
+  if(thud_sound != NULL && invincible) {
+    Mix_PlayChannel(-1, thud_sound, 0);
+  }
+  return CompositeObject::kill();
 }
 
 void Asteroid::add_children(list<Asteroid*> *roids) {
