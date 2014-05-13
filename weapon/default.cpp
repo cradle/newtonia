@@ -66,7 +66,9 @@ namespace Weapon {
       else
         _ammo--;
     }
-    Mix_PlayChannel(-1, shoot_sound, 0);
+    if(shoot_sound != NULL) {
+      Mix_PlayChannel(-1, shoot_sound, 0);
+    }
     Point dir = Point(ship->facing);
     switch(level) {
       case(0):
@@ -111,7 +113,7 @@ namespace Weapon {
   void Default::fire_shot(Point direction) {
     direction = Point(direction);
     direction.rotate((rand() / (float)RAND_MAX) * accuracy - accuracy / 2.0);
-    ship->bullets.push_back(Particle(ship->gun(), direction*0.615 + ship->velocity*0.99, 2600.0));
+    ship->bullets.push_back(Particle(ship->gun(), direction*0.615 + ship->velocity*0.99, 2000.0));
     if(!automatic) {
       shoot(false);
     }

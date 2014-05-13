@@ -21,12 +21,14 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   position = WrappedPoint();
   safe_position(grid);
   init(!has_friction);
-  boost_sound = Mix_LoadWAV("boost.wav");
   if(boost_sound == NULL) {
-    std::cout << "Unable to load boost.wav (" << Mix_GetError() << ")" << std::endl;
-  } else {
+    boost_sound = Mix_LoadWAV("boost.wav");
+  }
+  if(boost_sound != NULL) {
     Mix_VolumeChunk(boost_sound, 0);
     Mix_PlayChannel(-1, boost_sound, -1);
+  } else {
+    std::cout << "Unable to load boost.wav (" << Mix_GetError() << ")" << std::endl;
   }
 }
 
@@ -207,28 +209,32 @@ bool Ship::is_alive() const {
 
 void Ship::thrust(bool on) {
   thrusting = on;
-  if(on && !reversing) {
-    Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME);
-  }
-  if(!on && !reversing) {
-    if(still_rotating_left || still_rotating_right) {
-      Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/2);
-    } else {
-      Mix_VolumeChunk(boost_sound, 0);
+  if(boost_sound != NULL) {
+    if(on && !reversing) {
+      Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME);
+    }
+    if(!on && !reversing) {
+      if(still_rotating_left || still_rotating_right) {
+        Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/2);
+      } else {
+        Mix_VolumeChunk(boost_sound, 0);
+      }
     }
   }
 }
 
 void Ship::reverse(bool on) {
   reversing = on;
-  if(on && !thrusting) {
-    Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME);
-  }
-  if(!on && !thrusting) {
-    if(still_rotating_left || still_rotating_right) {
-      Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/2);
-    } else {
-      Mix_VolumeChunk(boost_sound, 0);
+  if(boost_sound != NULL) {
+    if(on && !thrusting) {
+      Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME);
+    }
+    if(!on && !thrusting) {
+      if(still_rotating_left || still_rotating_right) {
+        Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/2);
+      } else {
+        Mix_VolumeChunk(boost_sound, 0);
+      }
     }
   }
 }
@@ -355,16 +361,6 @@ float Ship::heading() const {
 
 void Ship::rotate_left(bool on) {
   still_rotating_left = on;
-  if(on && !thrusting && !reversing) {
-    Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/2);
-  }
-  if(!on) {
-    if(thrusting || reversing) {
-      Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME);
-    } else {
-      Mix_VolumeChunk(boost_sound, 0);
-    }
-  }
   if(on) {
     rotation_direction = LEFT;
   } else if (still_rotating_right) {
@@ -372,26 +368,33 @@ void Ship::rotate_left(bool on) {
   } else {
     rotation_direction = NONE;
   }
+  play_rotating_sound(on);
 }
 
 void Ship::rotate_right(bool on) {
   still_rotating_right = on;
-  if(on && !thrusting && !reversing) {
-    Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/2);
-  }
-  if(!on) {
-    if(thrusting || reversing) {
-      Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME);
-    } else {
-      Mix_VolumeChunk(boost_sound, 0);
-    }
-  }
   if(on) {
     rotation_direction = RIGHT;
   } else if (still_rotating_left) {
     rotation_direction = LEFT;
   } else {
     rotation_direction = NONE;
+  }
+  play_rotating_sound(on);
+}
+
+void Ship::play_rotating_sound(bool on) {
+  if(boost_sound != NULL) {
+    if(on && !thrusting && !reversing) {
+      Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/2);
+    }
+    if(!on) {
+      if(thrusting || reversing) {
+        Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME);
+      } else {
+        Mix_VolumeChunk(boost_sound, 0);
+      }
+    }
   }
 }
 

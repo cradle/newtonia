@@ -24,8 +24,8 @@
 #include <iostream>
 #include <list>
 
-const int GLGame::default_world_width = 2000;
-const int GLGame::default_world_height = 2000;
+const int GLGame::default_world_width = 2200;
+const int GLGame::default_world_height = 2200;
 const int GLGame::default_num_asteroids = 1;
 const int GLGame::extra_num_asteroids = 5;
 

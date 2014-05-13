@@ -117,6 +117,7 @@ class Ship : public CompositeObject {
   private:
     void safe_position(const Grid &grid);
 
+    void play_rotating_sound(bool on);
     Mix_Chunk *boost_sound = NULL;
 
     list<Behaviour *> behaviours;

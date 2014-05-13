@@ -17,8 +17,8 @@ using namespace std;
 GLCar::GLCar(const Grid &grid, bool has_friction) : GLShip(grid, has_friction) {
   ship = new Ship(grid, has_friction);
   trails.clear();
-  trails.push_back(new GLTrail(this, 0.01, Point( 4.5,0),0.25, 0.0, GLTrail::THRUSTING | GLTrail::LEFT, 2000.0));
-  trails.push_back(new GLTrail(this, 0.01, Point(-4.5,0),0.25, 0.0, GLTrail::THRUSTING | GLTrail::RIGHT, 2000.0));
+  trails.push_back(new GLTrail(this, 0.01, Point( 4.5,0),0.25, 0.0, GLTrail::THRUSTING | GLTrail::LEFT, 1000.0));
+  trails.push_back(new GLTrail(this, 0.01, Point(-4.5,0),0.25, 0.0, GLTrail::THRUSTING | GLTrail::RIGHT, 1000.0));
   trails.push_back(new GLTrail(this, 0.5,  Point(-4,17) ,-0.2, 0.9, GLTrail::REVERSING | GLTrail::RIGHT, 250.0));
   trails.push_back(new GLTrail(this, 0.5,  Point( 4,17) ,-0.2,-0.9, GLTrail::REVERSING | GLTrail::LEFT, 250.0));
 

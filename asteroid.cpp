@@ -6,11 +6,11 @@
 using namespace std;
 
 const int Asteroid::max_speed = 5;
-const int Asteroid::max_rotation = 10;
+const int Asteroid::max_rotation = 15;
 int Asteroid::num_killable = 0;
 
-const int Asteroid::radius_variation = 190;
-const int Asteroid::minimum_radius = 10;
+const int Asteroid::radius_variation = 220;
+const int Asteroid::minimum_radius = 20;
 
 Mix_Chunk * Asteroid::explode_sound = NULL;
 
@@ -67,6 +67,8 @@ void Asteroid::add_children(list<Asteroid*> *roids) {
     roids->push_back(new Asteroid(this));
     roids->push_back(new Asteroid(this));
   }
-  Mix_PlayChannel(-1, explode_sound, 0);
+  if(explode_sound != NULL) {
+    Mix_PlayChannel(-1, explode_sound, 0);
+  }
   velocity = velocity / 4;
 }
