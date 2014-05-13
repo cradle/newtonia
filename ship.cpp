@@ -200,6 +200,9 @@ bool Ship::kill() {
     still_rotating_right = false;
     temperature = 0.0;
     time_until_respawn = respawn_time;
+    if(boost_sound != NULL) {
+      Mix_VolumeChunk(boost_sound, 0);
+    }
     return true;
   }
   return false;

@@ -72,7 +72,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   if(tic_sound == NULL) {
     tic_sound = Mix_LoadWAV("tic.wav");
     if(tic_sound == NULL) {
-      std::cout << "Unable to load tic.wav" << std::endl;
+      std::cout << "Unable to load tic.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
 }
