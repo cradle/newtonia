@@ -12,6 +12,8 @@ int Asteroid::num_killable = 0;
 const int Asteroid::radius_variation = 190;
 const int Asteroid::minimum_radius = 10;
 
+Mix_Chunk * Asteroid::explode_sound = NULL;
+
 const int Asteroid::max_radius = Asteroid::radius_variation + Asteroid::minimum_radius;
 
 Asteroid::Asteroid(bool invincible) : CompositeObject() {
@@ -29,7 +31,9 @@ Asteroid::Asteroid(bool invincible) : CompositeObject() {
   if(!invincible) {
     num_killable++;
   }
-  explode_sound = Mix_LoadWAV("explode.wav");
+  if(explode_sound == NULL) {
+    explode_sound = Mix_LoadWAV("explode.wav");
+  }
   if(explode_sound == NULL) {
     std::cout << "Unable to load explode.wav (" << Mix_GetError() << ")" << std::endl;
   }

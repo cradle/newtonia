@@ -21,6 +21,8 @@ public:
 
   const static int max_radius;
 
+  static Mix_Chunk *explode_sound;
+
 private:
   const static int max_speed;
   const static int radius_variation;
@@ -28,8 +30,5 @@ private:
   const static int max_rotation;
 
   bool children_added;
-
-  Mix_Chunk *explode_sound = NULL;
 };
-
 #endif

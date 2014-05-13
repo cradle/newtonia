@@ -127,7 +127,7 @@ void init_controllers() {
   SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
   SDL_SetHint(SDL_HINT_GAMECONTROLLERCONFIG, "1");
   SDL_Init(SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO); // custom mappings SDL_HINT_GAMECONTROLLERCONFIG
-  if( Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 1024 ) < 0) {
+  if( Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 512 ) < 0) {
     std::cout << "Unable to open audio device" << std::endl;
   }
   SDL_JoystickEventState(SDL_ENABLE);
