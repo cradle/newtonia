@@ -21,6 +21,18 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   position = WrappedPoint();
   safe_position(grid);
   init(!has_friction);
+  if(tic_sound == NULL) {
+    tic_sound = Mix_LoadWAV("tic.wav");
+    if(tic_sound == NULL) {
+      std::cout << "Unable to load tic.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(tic_low_sound == NULL) {
+    tic_low_sound = Mix_LoadWAV("tic_low.wav");
+    if(tic_low_sound == NULL) {
+      std::cout << "Unable to load tic_low.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
   if(boost_sound == NULL) {
     boost_sound = Mix_LoadWAV("boost.wav");
   }
@@ -437,6 +449,17 @@ void Ship::step(float delta, const Grid &grid) {
     (*primary)->step(delta);
 
   } else if (lives > 0) {
+    if(floor((time_until_respawn-1)/1000) != floor((time_until_respawn-delta-1)/1000)) {
+      if(time_until_respawn > 1000) {
+        if(tic_sound != NULL) {
+          Mix_PlayChannel(-1, tic_sound, 0);
+        }
+      } else {
+        if(tic_low_sound != NULL) {
+          Mix_PlayChannel(-1, tic_low_sound, 0);
+        }
+      }
+    }
     time_until_respawn -= delta;
     if(time_until_respawn < 0) {
       respawn(grid);

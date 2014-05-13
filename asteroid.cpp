@@ -43,7 +43,7 @@ Asteroid::Asteroid(bool invincible) : CompositeObject() {
     if(thud_sound == NULL) {
         std::cout << "Unable to load thud.wav (" << Mix_GetError() << ")" << std::endl;
     } else {
-        Mix_VolumeChunk(thud_sound, MIX_MAX_VOLUME/2); // Todo:  distance volume
+        //Mix_VolumeChunk(thud_sound, MIX_MAX_VOLUME/2); // Todo:  distance volume
     }
   }
 }
