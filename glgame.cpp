@@ -455,8 +455,6 @@ void GLGame::controller(SDL_Event event) {
     for(object = players->begin(); object != players->end(); object++) {
       (*object)->controller_input(event);
     }
-  } else {
-    std::cout << "Warning: Unknown controller event" << std::endl;
   }
 }
 

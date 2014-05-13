@@ -31,9 +31,7 @@ void StateManager::keyboard_up(unsigned char key, int x, int y) {
 }
 
 void StateManager::controller(SDL_Event event) {
-  if(event.type == SDL_CONTROLLERBUTTONDOWN) {
-    cout << "Pressed:" << (int)event.cbutton.button << endl;
-  } else if(event.type == SDL_CONTROLLERDEVICEADDED) {
+  if(event.type == SDL_CONTROLLERDEVICEADDED) {
     cout << "Controller added" << endl;
   } else if(event.type == SDL_CONTROLLERDEVICEREMOVED) {
     cout << "Controller removed" << endl;

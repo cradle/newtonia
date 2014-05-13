@@ -242,7 +242,33 @@ void GLShip::controller_input(SDL_Event event) {
       std::cout << "My Button " << SDL_GameControllerName(controller) << std::endl;
     } else {
       std::cout << "Not My Button" << SDL_GameControllerNameForIndex(event.cbutton.which) << std::endl;
+      return;
     }
+  }
+  bool pressed = event.jbutton.state == SDL_PRESSED;
+  if(!ship->is_alive()) {
+    if(pressed && event.jbutton.button == SDL_CONTROLLER_BUTTON_A && ship->lives > 0) {
+      ship->time_until_respawn = 0;
+    } else {
+      return;
+    }
+  }
+  if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_LEFT) {
+    ship->rotate_left(pressed);
+  } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_RIGHT) {
+    ship->rotate_right(pressed);
+  } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
+    ship->thrust(pressed);
+  } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
+    ship->reverse(pressed);
+  } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A) {
+    ship->shoot(pressed);
+  } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_B) {
+    ship->mine(pressed);
+  } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_LEFTSHOULDER && pressed) {
+    ship->boost();
+  } else if(event.cbutton.button == SDL_CONTROLLER_BUTTON_X && pressed) {
+    ship->next_weapon();
   }
 }
 
@@ -254,21 +280,21 @@ void GLShip::input(unsigned char key, bool pressed) {
       return;
     }
   }
-  if (key == left_key || key == 2) {
+  if (key == left_key || key == SDL_CONTROLLER_BUTTON_DPAD_LEFT) {
     ship->rotate_left(pressed);
-  } else if (key == right_key || key == 3) {
+  } else if (key == right_key || key == SDL_CONTROLLER_BUTTON_DPAD_RIGHT) {
     ship->rotate_right(pressed);
-  } else if (key == thrust_key || key == 10) {
+  } else if (key == thrust_key || key == SDL_CONTROLLER_BUTTON_DPAD_UP) {
     ship->thrust(pressed);
-  } else if (key == reverse_key || key == 13) {
+  } else if (key == reverse_key || key == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
     ship->reverse(pressed);
-  } else if (key == shoot_key || key == 12) {
+  } else if (key == shoot_key || key == SDL_CONTROLLER_BUTTON_A) {
     ship->shoot(pressed);
-  } else if (key == mine_key || key == 11) {
+  } else if (key == mine_key || key == SDL_CONTROLLER_BUTTON_B) {
     ship->mine(pressed);
   } else if (key == boost_key && pressed) {
     ship->boost();
-  } else if((key == next_weapon_key || key == 8) && pressed) {
+  } else if((key == next_weapon_key || key == SDL_CONTROLLER_BUTTON_X) && pressed) {
     ship->next_weapon();
   } else if (key == 'z' && pressed) {
     ship->disable_behaviours();
