@@ -82,7 +82,8 @@ void special(int key, int x, int y) {
 }
 
 void keyboard_up(unsigned char key, int x, int y) {
-  game->keyboard_up(key, x, y);
+  if(!(key == '\r' && glutGetModifiers() == GLUT_ACTIVE_ALT))
+    game->keyboard_up(key, x, y);
 }
 
 void special_up(int key, int x, int y) {

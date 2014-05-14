@@ -55,20 +55,20 @@ void Menu::draw() {
   gluOrtho2D(-window.x(), window.x(), -window.y(), window.y());
   glMatrixMode(GL_MODELVIEW);
 
-  Typer::draw_centered(viewpoint.x(), viewpoint.y()+200, "Newtonia", 75);
+  Typer::draw_centered(viewpoint.x(), viewpoint.y()+200, "Newtonia", 80);
   if((currentTime/1400) % 2) {
     if(SDL_NumJoysticks() == 0) {
-      Typer::draw_centered(viewpoint.x(), viewpoint.y()-50, "press enter", 16);
+      Typer::draw_centered(viewpoint.x(), viewpoint.y()-50, "press enter", 18);
     } else {
-      Typer::draw_centered(viewpoint.x(), viewpoint.y()-50, "press start", 16);
+      Typer::draw_centered(viewpoint.x(), viewpoint.y()-50, "press start", 18);
     }
   }
-  Typer::draw_centered(viewpoint.x(), viewpoint.y()-420, "© 2008-2014 METONYM.US", 12, currentTime);
+  Typer::draw_centered(viewpoint.x(), viewpoint.y()-420, "© 2008-2014", 13, currentTime);
 }
 
 void Menu::tick(int delta) {
   currentTime += delta;
-  viewpoint += Point(1,0) * (0.1 * delta);
+  viewpoint += Point(1,0) * (0.025 * delta);
   //FIX: Wrapping bug
   if(viewpoint.x() > default_world_width) {
       viewpoint += Point(-default_world_width,0);
