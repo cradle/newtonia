@@ -5,8 +5,8 @@
 namespace Weapon {
   Mine::Mine(Ship *ship) :
     Base(ship) {
-      _name = "Mines";
-      _ammo = 10;
+      _name = "FLOATERS";
+      _ammo = 100;
       unlimited = false;
 
       mine_sound = Mix_LoadWAV("mine.wav");

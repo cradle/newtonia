@@ -18,12 +18,12 @@ namespace Weapon {
     time_between_shots(time_between_shots),
     level(level) {
       stringstream temp_name;
-      temp_name << "PP GUN ";
+      temp_name << "PEW PEW";
       if(level > 0) {
-        temp_name << (level+1);
+        temp_name << " " << (level+1);
       }
       if(automatic) {
-        temp_name << "A";
+        temp_name << " AUTO";
       }
       _name = temp_name.str();
 
@@ -34,17 +34,20 @@ namespace Weapon {
 
       shoot_sound = Mix_LoadWAV("shoot.wav");
       if(shoot_sound == NULL) {
-        std::cout << "Unable to load shoot.wav (" << Mix_GetError() << ")" << std::endl;
+        cout << "Unable to load shoot.wav (" << Mix_GetError() << ")" << endl;
       }
 
-      empty_sound = Mix_LoadWAV("empty.wav");
-      if(empty_sound == NULL) {
-        std::cout << "Unable to load empty.wav (" << Mix_GetError() << ")" << std::endl;
+      if(!unlimited) {
+        empty_sound = Mix_LoadWAV("empty.wav");
+        if(empty_sound == NULL) {
+          cout << "Unable to load empty.wav (" << Mix_GetError() << ")" << endl;
+        }
       }
   }
 
   Default::~Default() {
     Mix_FreeChunk(shoot_sound);
+    Mix_FreeChunk(empty_sound);
   }
 
   void Default::shoot(bool on) {
@@ -76,6 +79,10 @@ namespace Weapon {
         if(shoot_sound != NULL) {
           Mix_PlayChannel(-1, shoot_sound, 0);
         }
+      }
+    } else {
+      if(shoot_sound != NULL) {
+        Mix_PlayChannel(-1, shoot_sound, 0);
       }
     }
     Point dir = Point(ship->facing);

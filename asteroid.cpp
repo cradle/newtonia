@@ -91,5 +91,5 @@ void Asteroid::add_children(list<Asteroid*> *roids) {
   if(explode_sound != NULL) {
     Mix_PlayChannel(-1, explode_sound, 0);
   }
-  velocity = velocity / 4;
+  velocity = velocity / 8;
 }
