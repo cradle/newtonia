@@ -7,7 +7,7 @@
 class Menu : public State {
 public:
   Menu();
-  virtual ~Menu() {};
+  virtual ~Menu();
 
   void draw();
   void keyboard(unsigned char key, int x, int y);
@@ -28,6 +28,8 @@ private:
   };
 
   MenuItem selected;
+
+  Mix_Music *music = NULL;
 };
 
 #endif

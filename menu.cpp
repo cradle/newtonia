@@ -13,7 +13,20 @@ Menu::Menu() :
   State(),
   currentTime(0),
   viewpoint(Point(0,default_world_height/2)),
-  starfield(GLStarfield(Point(default_world_width,default_world_height))) {}
+  starfield(GLStarfield(Point(default_world_width,default_world_height))) {
+  if(music == NULL) {
+    music = Mix_LoadMUS("title.mp3");
+    if(music == NULL) {
+      std::cout << "Unable to load title.mp3 (" << Mix_GetError() << ")" << std::endl;
+    } else {
+      Mix_PlayMusic(music, -1);
+    }
+  }
+}
+
+Menu::~Menu() {
+  Mix_FreeMusic(music);
+}
 
 void Menu::draw() {
   glClear(GL_COLOR_BUFFER_BIT);

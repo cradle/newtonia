@@ -36,6 +36,11 @@ namespace Weapon {
       if(shoot_sound == NULL) {
         std::cout << "Unable to load shoot.wav (" << Mix_GetError() << ")" << std::endl;
       }
+
+      empty_sound = Mix_LoadWAV("empty.wav");
+      if(empty_sound == NULL) {
+        std::cout << "Unable to load empty.wav (" << Mix_GetError() << ")" << std::endl;
+      }
   }
 
   Default::~Default() {
@@ -61,13 +66,17 @@ namespace Weapon {
 
   void Default::fire() {
     if(!unlimited) {
-      if(_ammo == 0)
+      if(_ammo == 0) {
+        if(empty_sound != NULL) {
+          Mix_PlayChannel(-1, empty_sound, 0);
+        }
         return;
-      else
+      } else {
         _ammo--;
-    }
-    if(shoot_sound != NULL) {
-      Mix_PlayChannel(-1, shoot_sound, 0);
+        if(shoot_sound != NULL) {
+          Mix_PlayChannel(-1, shoot_sound, 0);
+        }
+      }
     }
     Point dir = Point(ship->facing);
     switch(level) {

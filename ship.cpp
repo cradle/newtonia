@@ -33,6 +33,12 @@ Ship::Ship(const Grid &grid, bool has_friction) :
       std::cout << "Unable to load tic_low.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
+  if(click_sound == NULL) {
+    click_sound = Mix_LoadWAV("click.wav");
+    if(click_sound == NULL) {
+      std::cout << "Unable to load click.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
   if(boost_sound == NULL) {
     boost_sound = Mix_LoadWAV("boost.wav");
   }
@@ -74,9 +80,15 @@ Ship::~Ship() {
   if(boost_sound != NULL) {
     Mix_FreeChunk(boost_sound);
   }
+  if(click_sound != NULL) {
+    Mix_FreeChunk(click_sound);
+  }
 }
 
 void Ship::next_weapon() {
+  if(click_sound != NULL) {
+    Mix_PlayChannel(-1, click_sound, 0);
+  }
   list<Weapon::Base *>::iterator next(primary);
 
   //TODO: use circular list?
@@ -87,10 +99,14 @@ void Ship::next_weapon() {
 
   (*next)->shoot((*primary)->is_shooting());
   (*primary)->shoot(false);
+
   primary = next;
 }
 
 void Ship::previous_weapon() {
+  if(click_sound != NULL) {
+    Mix_PlayChannel(-1, click_sound, 0);
+  }
   list<Weapon::Base *>::iterator next;
 
   //TODO: use circular list?

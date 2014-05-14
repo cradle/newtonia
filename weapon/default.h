@@ -25,7 +25,7 @@ namespace Weapon {
     int time_until_next_shot, time_between_shots;
     int level;
 
-    Mix_Chunk *shoot_sound = NULL;
+    Mix_Chunk *shoot_sound = NULL, *empty_sound = NULL;
   };
 }
 
