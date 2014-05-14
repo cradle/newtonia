@@ -65,6 +65,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   num_frames = 0;
 
   generation = 0;
+  Asteroid::num_killable = 0;
   add_asteroids();
 
   station = NULL;//new GLStation(enemies, players);

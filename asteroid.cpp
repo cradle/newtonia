@@ -49,6 +49,9 @@ Asteroid::Asteroid(bool invincible) : CompositeObject(), killed(false) {
 }
 
 Asteroid::~Asteroid() {
+  if(!killed && !invincible) {
+    num_killable--;
+  }
 }
 
 Asteroid::Asteroid(Asteroid const *mother) {
@@ -60,6 +63,7 @@ Asteroid::Asteroid(Asteroid const *mother) {
   value += mother->value;
   children_added = false;
   if(!invincible) {
+    killed = false;
     num_killable++;
   }
 }
