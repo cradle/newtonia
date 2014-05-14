@@ -100,6 +100,10 @@ GLGame::~GLGame() {
     delete station;
 
   glDeleteLists(gameworld, 1);
+
+  if(tic_sound != NULL) {
+    Mix_FreeChunk(tic_sound);
+  }
 }
 
 void GLGame::add_asteroids() {

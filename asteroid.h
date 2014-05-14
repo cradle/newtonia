@@ -30,6 +30,6 @@ private:
   const static int minimum_radius;
   const static int max_rotation;
 
-  bool children_added;
+  bool children_added, killed;
 };
 #endif

@@ -21,8 +21,8 @@ Follower::~Follower() {
 }
 
 void Follower::common_init() {
-  time_until_next_lock = 0.0;
-  time_between_locks = 900 + rand()%100;
+  time_until_next_lock = 2500.0 + rand()%500;
+  time_between_locks = 900 + rand()%1000;
   target = NULL;
   done = false;
 }
@@ -43,8 +43,8 @@ void Follower::step(int delta) {
           ship->rotate_right(true);
         }
       } else {
-       target = NULL;
-        time_until_next_lock = 2000.0;
+        target = NULL;
+        time_until_next_lock = time_between_locks;
         ship->rotate_right(false);
       }
     }

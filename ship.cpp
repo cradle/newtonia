@@ -65,6 +65,15 @@ void Ship::disable_weapons() {
 Ship::~Ship() {
   disable_weapons();
   disable_behaviours();
+  if(tic_sound != NULL) {
+    Mix_FreeChunk(tic_sound);
+  }
+  if(tic_low_sound != NULL) {
+    Mix_FreeChunk(tic_low_sound);
+  }
+  if(boost_sound != NULL) {
+    Mix_FreeChunk(boost_sound);
+  }
 }
 
 void Ship::next_weapon() {
