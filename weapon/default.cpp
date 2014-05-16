@@ -19,8 +19,22 @@ namespace Weapon {
     level(level) {
       stringstream temp_name;
       temp_name << "PEW PEW";
-      if(level > 0) {
+      if(level == 5) {
+        temp_name << " SCATTER";
+      } else if (level > 0) {
         temp_name << " " << (level+1);
+      }
+      if(accuracy > 0.1f) {
+        temp_name << " LOOSE";
+      } else if (accuracy > 0.0f && accuracy < 0.1f) {
+        temp_name << " TIGHT";
+      } else if (accuracy == 0.0f) {
+        temp_name << " POINT";
+      }
+      if(time_between_shots < 100) {
+        temp_name << " RAPID";
+      } else if(time_between_shots > 100) {
+        temp_name << " SLOW";
       }
       if(automatic) {
         temp_name << " AUTO";
@@ -121,6 +135,17 @@ namespace Weapon {
         dir.rotate(M_PI/2.0f - 0.3);
         fire_shot(dir);
         dir.rotate(-M_PI);
+        fire_shot(dir);
+        break;
+      case(5):
+        fire_shot(dir);
+        dir.rotate(-0.1);
+        fire_shot(dir);
+        dir.rotate(-0.1);
+        fire_shot(dir);
+        dir.rotate(0.3);
+        fire_shot(dir);
+        dir.rotate(0.1);
         fire_shot(dir);
         break;
     }

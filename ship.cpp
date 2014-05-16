@@ -144,7 +144,7 @@ void Ship::init(bool no_friction) {
     thrust_force = 0.03;
     rotation_force = 0.5;
   } else {
-    friction = 0.004;
+    friction = 0.003;
     reverse_force = -0.1;
     thrust_force = 0.2;
     rotation_force = 0.5;
@@ -154,11 +154,17 @@ void Ship::init(bool no_friction) {
    primary_weapons.push_front(new Weapon::Default(this, false, 2));
    primary_weapons.push_front(new Weapon::Default(this, false, 3));
    primary_weapons.push_front(new Weapon::Default(this, false, 4));
+   primary_weapons.push_front(new Weapon::Default(this, false, 5));
+   primary_weapons.push_front(new Weapon::Default(this, false, 0, 0.1f, 50));
+   primary_weapons.push_front(new Weapon::Default(this, false, 0, 0.0f, 200));
    primary_weapons.push_front(new Weapon::Default(this, true));
    primary_weapons.push_front(new Weapon::Default(this, true, 1));
    primary_weapons.push_front(new Weapon::Default(this, true, 2));
    primary_weapons.push_front(new Weapon::Default(this, true, 3));
    primary_weapons.push_front(new Weapon::Default(this, true, 4));
+   primary_weapons.push_front(new Weapon::Default(this, true, 5));
+   primary_weapons.push_front(new Weapon::Default(this, true, 0, 0.1f, 50));
+   primary_weapons.push_front(new Weapon::Default(this, true, 0, 0.0f, 200));
 
   primary_weapons.push_front(new Weapon::Default(this));
   primary = primary_weapons.begin();
