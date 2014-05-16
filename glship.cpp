@@ -48,7 +48,7 @@ GLShip::GLShip(const Grid &grid, bool has_friction) : show_help(false) {
 
   jets = glGenLists(1);
   glNewList(jets, GL_COMPILE);
-  glColor3f( 1.0f, 1.0f, 1.0f );
+  glColor3f( 1.0f-color[0], 1.0f-color[1], 1.0f-color[2] );
 	glBegin(GL_QUADS);
 	glVertex2f( 0.0f,-0.5f );
 	glVertex2f(-0.4f,-0.75f );
@@ -58,10 +58,13 @@ GLShip::GLShip(const Grid &grid, bool has_friction) : show_help(false) {
   glEndList();
 
   genForceShield();
+  genRepulsor();
+}
 
+void GLShip::genRepulsor() {
   repulsors = glGenLists(1);
   glNewList(repulsors, GL_COMPILE);
-  glColor3f( 1.0f, 1.0f, 1.0f );
+  glColor3f( 1.0f-color[0], 1.0f-color[1], 1.0f-color[2] );
 	glBegin(GL_QUADS);
 	glVertex2f( 0.3f,  0.3f );
 	glVertex2f( 0.6f,  0.9f );

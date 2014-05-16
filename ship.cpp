@@ -91,6 +91,7 @@ void Ship::next_weapon() {
   }
   list<Weapon::Base *>::iterator next(primary);
 
+  //TODO: delete exhausted
   //TODO: use circular list?
   next++;
 

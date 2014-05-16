@@ -43,7 +43,7 @@ void Overlay::score(const GLGame *glgame, const GLShip *glship) {
 void Overlay::level_cleared(const GLGame *glgame, const GLShip *glship) {
   if(glgame->running && glgame->level_cleared && glship->ship->is_alive() && glship->ship->lives > 0) {
     Typer::draw_centered(0, 150, "CLEARED", 50);
-    Typer::draw_centered(0, -60, (glgame->time_until_next_generation / 1000), 20);
+    Typer::draw_centered(0, -60, (glgame->time_until_next_generation / 1000)+1, 20); // respawn AT 0
   }
 }
 

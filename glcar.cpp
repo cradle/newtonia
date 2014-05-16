@@ -37,7 +37,7 @@ GLCar::GLCar(const Grid &grid, bool has_friction) : GLShip(grid, has_friction) {
 
   left_jet = glGenLists(1);
   glNewList(left_jet, GL_COMPILE);
-  glColor3f( 1.0f, 1.0f, 1.0f );
+  glColor3f( 1-color[0], 1-color[1], 1-color[2] );
   glBegin(GL_TRIANGLES);
     glVertex2f( 0.8f,-1.0f);
     glVertex2f( 0.4f,-1.75f);
@@ -47,7 +47,7 @@ GLCar::GLCar(const Grid &grid, bool has_friction) : GLShip(grid, has_friction) {
 
   right_jet = glGenLists(1);
   glNewList(right_jet, GL_COMPILE);
-  glColor3f( 1.0f, 1.0f, 1.0f );
+  glColor3f( 1-color[0], 1-color[1], 1-color[2] );
   glBegin(GL_TRIANGLES);
     glVertex2f( 0.0f,-1.0f);
     glVertex2f(-0.4f,-1.75f);
@@ -62,6 +62,7 @@ GLCar::GLCar(const Grid &grid, bool has_friction) : GLShip(grid, has_friction) {
   glEndList();
 
   genForceShield();
+  genRepulsor();
 }
 
 GLCar::~GLCar() {
