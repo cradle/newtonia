@@ -92,8 +92,8 @@ void Typer::pre_draw(float x, float y, float size) {
   glPushMatrix();
   glLineWidth(1.4f);
   glColor3fv(colour);
-  glTranslatef(x*scale,(y*scale-2*size*scale),0);
-  glScalef(size*scale, size*scale, 0);
+  glTranslatef(x*window_x_scale,(y*window_y_scale-2*size*window_y_scale),0);
+  glScalef(size*window_x_scale, size*window_y_scale, 0);
 }
 
 void Typer::post_draw() {

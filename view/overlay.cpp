@@ -95,7 +95,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
       if(p1->is_alive() || p1->lives > 0) {
         Typer::draw_centered(Typer::original_window_width/2, Typer::original_window_height-20, "player 2 press enter to join", 8);
       } else {
-        Typer::draw_centered(0, glgame->window.y()-20, "return to menu with ESC", 8);
+        Typer::draw_centered(0, Typer::window_height-20, "return to menu with ESC", 8);
       }
     }
     if(glship->controller == NULL) {
