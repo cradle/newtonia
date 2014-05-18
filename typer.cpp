@@ -15,11 +15,14 @@
 float Typer::colour[] = {0.0f,1.0f,0.0f};
 const int Typer::original_window_width = 800;
 int Typer::window_width = Typer::original_window_width;
+float Typer::scaled_window_height = Typer::window_height;
 const int Typer::original_window_height = 600;
 int Typer::window_height = Typer::original_window_height;
+float Typer::scaled_window_width = Typer::window_width;
 float Typer::scale = 1.0f;
 float Typer::window_x_scale = 1.0f;
 float Typer::window_y_scale = 1.0f;
+float Typer::aspect_ratio = window_width / window_height;
 //}
  void Typer::draw_centered(float x, float y, int number, float size, int time) {
    int length = -1;
@@ -37,8 +40,14 @@ void Typer::resize(int x, int y) {
   window_x_scale = (float)window_width / (float)original_window_width;
   window_y_scale = (float)window_height / (float)original_window_height;
   scale = window_x_scale;
-  if(window_y_scale > window_x_scale) {
+  aspect_ratio = (float)window_width / (float)window_height;
+  if(window_y_scale < window_x_scale) {
     scale = window_y_scale;
+    scaled_window_height = original_window_height;
+    scaled_window_width = original_window_width * aspect_ratio;
+  } else {
+    scaled_window_height = original_window_height * aspect_ratio;
+    scaled_window_width = original_window_width;
   }
   cout << "scale:" << scale << endl;
 }
@@ -92,8 +101,8 @@ void Typer::pre_draw(float x, float y, float size) {
   glPushMatrix();
   glLineWidth(1.4f);
   glColor3fv(colour);
-  glTranslatef(x*window_x_scale,(y*window_y_scale-2*size*window_y_scale),0);
-  glScalef(size*window_x_scale, size*window_y_scale, 0);
+  glTranslatef(x*scale,(y*scale-2*size*scale),0);
+  glScalef(size*scale, size*scale, 0);
 }
 
 void Typer::post_draw() {

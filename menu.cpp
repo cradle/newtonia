@@ -55,15 +55,16 @@ void Menu::draw() {
   gluOrtho2D(-window.x(), window.x(), -window.y(), window.y());
   glMatrixMode(GL_MODELVIEW);
 
-  Typer::draw_centered(viewpoint.x(), viewpoint.y()+200, "Newtonia", 80);
+  glTranslatef(viewpoint.x(), viewpoint.y(), 0.0f);
+  Typer::draw_centered(0, 200, "Newtonia", 80);
   if((currentTime/1400) % 2) {
     if(SDL_NumJoysticks() == 0) {
-      Typer::draw_centered(viewpoint.x(), viewpoint.y()-50, "press enter", 18);
+      Typer::draw_centered(0, -50, "press enter", 18);
     } else {
-      Typer::draw_centered(viewpoint.x(), viewpoint.y()-50, "press start", 18);
+      Typer::draw_centered(0, -50, "press start", 18);
     }
   }
-  Typer::draw_centered(viewpoint.x(), viewpoint.y()-420, "© 2008-2014", 13, currentTime);
+  Typer::draw_centered(0, -420, "© 2008-2014", 13, currentTime);
 }
 
 void Menu::tick(int delta) {

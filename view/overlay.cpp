@@ -33,10 +33,10 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
 
 void Overlay::score(const GLGame *glgame, const GLShip *glship) {
   //FIX: Window encapsulation? Players size encapsulation?
-  Typer::draw(Typer::original_window_width/glgame->num_x_viewports()-40, Typer::original_window_height/glgame->num_y_viewports()-20, glship->ship->score, 20);
+  Typer::draw((Typer::scaled_window_width*Typer::window_x_scale)/glgame->num_x_viewports()-40, Typer::scaled_window_height/glgame->num_y_viewports()-20, glship->ship->score, 20);
   if(glship->ship->multiplier() > 1) {
-    Typer::draw(Typer::original_window_width/glgame->num_x_viewports()-35, Typer::original_window_height/glgame->num_y_viewports()-92, "x", 15);
-    Typer::draw(Typer::original_window_width/glgame->num_x_viewports()-65, Typer::original_window_height/glgame->num_y_viewports()-80, glship->ship->multiplier(), 20);
+    Typer::draw(Typer::original_window_width/glgame->num_x_viewports()-35, Typer::scaled_window_height/glgame->num_y_viewports()-92, "x", 15);
+    Typer::draw(Typer::original_window_width/glgame->num_x_viewports()-65, Typer::scaled_window_height/glgame->num_y_viewports()-80, glship->ship->multiplier(), 20);
   }
 }
 
