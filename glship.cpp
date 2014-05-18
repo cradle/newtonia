@@ -484,7 +484,7 @@ void GLShip::draw_keymap() const {
 }
 
 void GLShip::draw_weapons() const {
-  Typer::draw(0,0,"Weapons",15);
+  Typer::draw(0, 0, "Weapons", 15);
   Weapon::Base *weapon = *(ship->primary);
   if(weapon != NULL && !ship->primary_weapons.empty()) {
     Typer::draw(10,-50,weapon->name(),10);

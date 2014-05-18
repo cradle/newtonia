@@ -13,8 +13,11 @@
 #endif
 
 float Typer::colour[] = {0.0f,1.0f,0.0f};
-int Typer::window_width = 600;
-int Typer::window_height = 800;
+const int Typer::original_window_width = 800;
+int Typer::window_width = Typer::original_window_width;
+const int Typer::original_window_height = 600;
+int Typer::window_height = Typer::original_window_height;
+float Typer::scale = 1.0f;
 float Typer::window_x_scale = 1.0f;
 float Typer::window_y_scale = 1.0f;
 //}
@@ -31,8 +34,13 @@ float Typer::window_y_scale = 1.0f;
 void Typer::resize(int x, int y) {
   window_width = x;
   window_height = y;
-  window_x_scale = window_width / 800;
-  window_y_scale = window_height / 640;
+  window_x_scale = (float)window_width / (float)original_window_width;
+  window_y_scale = (float)window_height / (float)original_window_height;
+  scale = window_x_scale;
+  if(window_y_scale > window_x_scale) {
+    scale = window_y_scale;
+  }
+  cout << "scale:" << scale << endl;
 }
 
 void Typer::draw_lefted(float x, float y, int number, float size, int time) {
@@ -82,10 +90,10 @@ void Typer::draw(float x, float y, const char * text, float size, int time) {
 
 void Typer::pre_draw(float x, float y, float size) {
   glPushMatrix();
-  glLineWidth(1.3f);
-  glColor3f(colour[0], colour[1], colour[2]);
-  glTranslatef(x,y-2*size,0);
-  glScalef(size, size, 0);
+  glLineWidth(1.4f);
+  glColor3fv(colour);
+  glTranslatef(x*scale,(y*scale-2*size*scale),0);
+  glScalef(size*scale, size*scale, 0);
 }
 
 void Typer::post_draw() {
@@ -309,7 +317,7 @@ void Typer::draw(float x, float y, char character, float size, int time) {
       glEnd();
       glBegin(GL_LINES);
       glVertex2f(0,mid_height);
-      glVertex2f(width,mid_height);
+      glVertex2f(mid_width,mid_height);
       glEnd();
       break;
     case 'f':

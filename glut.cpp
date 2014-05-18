@@ -20,7 +20,7 @@
 // Glut callbacks cannot be member functions. Need to pre-declare game object
 StateManager *game;
 
-bool ALLOW_BLUR = false;
+bool ALLOW_BLUR = true;
 bool BLUR = ALLOW_BLUR;
 double blur_factor = 0.5;
 SDL_GameController *controller = NULL;
