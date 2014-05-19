@@ -44,8 +44,8 @@ void Typer::resize(int x, int y) {
   if(window_y_scale < window_x_scale) {
     scale = window_y_scale;
   }
-  if(window_x_scale > original_window_width) {
-    scaled_window_width = original_window_width;
+  if(window_x_scale > 1.33) {
+    scaled_window_width = window_width;
   } else {
     scaled_window_width = original_window_width;
   }
