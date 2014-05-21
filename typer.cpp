@@ -40,19 +40,16 @@ void Typer::resize(int x, int y) {
   window_x_scale = (float)window_width / (float)original_window_width;
   window_y_scale = (float)window_height / (float)original_window_height;
   scale = window_x_scale;
-  aspect_ratio = (float)window_width / (float)window_height;
+  aspect_ratio = (float)window_x_scale / (float)window_y_scale;
   if(window_y_scale < window_x_scale) {
     scale = window_y_scale;
   }
-  if(window_x_scale > 1.33) {
-    scaled_window_width = window_width;
+  if(aspect_ratio > 1) {
+    scaled_window_width = original_window_width * aspect_ratio;
+    scaled_window_height = original_window_height;
   } else {
     scaled_window_width = original_window_width;
-  }
-  if(window_height > original_window_height) {
-    scaled_window_height = original_window_height;
-  } else {
-    scaled_window_height = original_window_height;
+    scaled_window_height = original_window_height / aspect_ratio;
   }
   cout << "scale:" << scale << endl;
 }
