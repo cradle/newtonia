@@ -29,8 +29,8 @@ GLCar::GLCar(const Grid &grid, bool has_friction) : GLShip(grid, has_friction) {
   body = glGenLists(1);
   glNewList(body, GL_COMPILE);
   // glVertex2fv(point);
-  glVertex2f( 0.3f, 1.0f);
-  glVertex2f(-0.3f, 1.0f);
+  glVertex2f( 0.35f, 1.0f);
+  glVertex2f(-0.35f, 1.0f);
   glVertex2f(-0.8f,-1.0f);
   glVertex2f( 0.8f,-1.0);
   glEndList();

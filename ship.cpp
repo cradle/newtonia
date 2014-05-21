@@ -125,7 +125,7 @@ void Ship::init(bool no_friction) {
   mass = 100.0;
   value = 1000000;
   lives = 10;
-  width = height = radius = 11;
+  width = height = radius = 15;
   radius_squared = radius * radius;
   respawn_time = time_until_respawn = 4000;
   max_temperature = 100.0;
