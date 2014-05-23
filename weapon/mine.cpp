@@ -5,7 +5,7 @@
 namespace Weapon {
   Mine::Mine(Ship *ship) :
     Base(ship) {
-      _name = "FLOATERS";
+      _name = "MINES";
       _ammo = 100;
       unlimited = false;
 
