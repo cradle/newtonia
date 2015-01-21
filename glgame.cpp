@@ -478,6 +478,12 @@ void GLGame::controller(SDL_Event event) {
       (*object)->controller_input(event);
     }
   }
+  if(event.type == SDL_CONTROLLERAXISMOTION) {
+    std::list<GLShip*>::iterator object;
+    for(object = players->begin(); object != players->end(); object++) {
+      (*object)->controller_axis_input(event);
+    }
+  }
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {

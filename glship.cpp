@@ -236,12 +236,20 @@ void GLShip::draw_temperature_status() const {
   }
 }
 
-void GLShip::controller_input(SDL_Event event) {
+bool GLShip::wasMyController(SDL_JoystickID id) {
   if(controller != NULL && SDL_GameControllerGetAttached(controller)) {
-    if(event.cbutton.which != SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller))) {
-      return;
+    if(id != SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller))) {
+      return false;
+    } else {
+      return true;
     }
   } else {
+    return false;
+  }
+}
+
+void GLShip::controller_input(SDL_Event event) {
+  if(!wasMyController(event.cbutton.which)) {
     return;
   }
   bool pressed = event.cbutton.state == SDL_PRESSED;
@@ -273,6 +281,37 @@ void GLShip::controller_input(SDL_Event event) {
     ship->next_weapon();
   } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_RIGHTSHOULDER && pressed) {
     ship->behaviours.push_back(new Teleport(ship));
+  }
+}
+
+void GLShip::controller_axis_input(SDL_Event event) {
+  if(!wasMyController(event.cbutton.which)) {
+    return;
+  }
+  if(!ship->is_alive()) {
+    return;
+  }
+  Sint16 deadzone = 10000;
+  bool pressed = event.caxis.value > 10000; // deadzone // SDL_CONTROLLER_AXIS_MAX
+
+  if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) {
+    if(event.caxis.value > deadzone) {
+      ship->rotate_right(true);
+    } else if (event.caxis.value < -deadzone) {
+      ship->rotate_left(true);
+    } else {
+      ship->rotate_left(false);
+      ship->rotate_right(false);
+    }
+  } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
+    if(event.caxis.value > deadzone) {
+      ship->reverse(true);
+    } else if (event.caxis.value < -deadzone) {
+      ship->thrust(true);
+    } else {
+      ship->thrust(false);
+      ship->reverse(false);
+    }
   }
 }
 
@@ -383,69 +422,87 @@ void GLShip::draw_body() const {
 void GLShip::draw_keymap() const {
   int size = 10;
   int num_controls  = 8;
+  if(controller != NULL) {
+    num_controls++;
+  }
   int padding = 2.0f;
   int char_height = 5.0f;
   float y_offset = 170.0f; // above minimap
   Typer::draw_centered(0, (num_controls+1.5)/2.0f * (size + padding) * char_height + y_offset, "- PLAYER -", size+2);
   float offset = -160.0f;
-  Typer::draw(offset, num_controls/2.0f * (size + padding) * char_height + y_offset, "THRUST", size);
-  if(controller == NULL) {
-    Typer::draw(-offset, num_controls/2.0f * (size + padding) * char_height + y_offset, (char)thrust_key, size);
-  } else {
-    Typer::draw(-offset, num_controls/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_DPAD_UP), size);
+  int control_index = 0;
+  if(controller != NULL) {
+    Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "MOVE", size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "LEFT STICK", size);
+    control_index++;
   }
-  Typer::draw(offset, (num_controls-1)/2.0f * (size + padding) * char_height + y_offset, "REVERSE", size);
+  Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "THRUST", size);
   if(controller == NULL) {
-    Typer::draw(-offset, (num_controls-1)/2.0f * (size + padding) * char_height + y_offset, (char)reverse_key, size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, (char)thrust_key, size);
   } else {
-    Typer::draw(-offset, (num_controls-1)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_DPAD_DOWN), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_DPAD_UP), size);
   }
-  Typer::draw(offset, (num_controls-2)/2.0f * (size + padding) * char_height + y_offset, "TURN RIGHT", size);
+  control_index++;
+  Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "REVERSE", size);
   if(controller == NULL) {
-    Typer::draw(-offset, (num_controls-2)/2.0f * (size + padding) * char_height + y_offset, (char)right_key, size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, (char)reverse_key, size);
   } else {
-    Typer::draw(-offset, (num_controls-2)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_DPAD_RIGHT), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_DPAD_DOWN), size);
   }
-  Typer::draw(offset, (num_controls-3)/2.0f * (size + padding) * char_height + y_offset, "TURN LEFT", size);
+  control_index++;
+  Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "TURN RIGHT", size);
   if(controller == NULL) {
-    Typer::draw(-offset, (num_controls-3)/2.0f * (size + padding) * char_height + y_offset, (char)left_key, size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, (char)right_key, size);
   } else {
-    Typer::draw(-offset, (num_controls-3)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_DPAD_LEFT), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_DPAD_RIGHT), size);
   }
-  Typer::draw(offset, (num_controls-4)/2.0f * (size + padding) * char_height + y_offset, "SHOOT", size);
+  control_index++;
+  Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "TURN LEFT", size);
+  if(controller == NULL) {
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, (char)left_key, size);
+  } else {
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_DPAD_LEFT), size);
+  }
+  control_index++;
+  Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "SHOOT", size);
   if(controller == NULL && shoot_key == ' ') {
-    Typer::draw(-offset, (num_controls-4)/2.0f * (size + padding) * char_height + y_offset, "SPACE", size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "SPACE", size);
   } else if (controller == NULL) {
-    Typer::draw(-offset, (num_controls-4)/2.0f * (size + padding) * char_height + y_offset, (char)shoot_key, size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, (char)shoot_key, size);
   } else {
-    Typer::draw(-offset, (num_controls-4)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_A), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_A), size);
   }
-  Typer::draw(offset, (num_controls-5)/2.0f * (size + padding) * char_height + y_offset, "MINE", size);
+  control_index++;
+  Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "MINE", size);
   if(controller == NULL) {
-    Typer::draw(-offset, (num_controls-5)/2.0f * (size + padding) * char_height + y_offset, (char)mine_key, size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, (char)mine_key, size);
   } else {
-    Typer::draw(-offset, (num_controls-5)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_B), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_B), size);
   }
-  Typer::draw(offset, (num_controls-6)/2.0f * (size + padding) * char_height + y_offset, "CHANGE WEAPON", size);
+  control_index++;
+  Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "CHANGE WEAPON", size);
   if(controller == NULL) {
-    Typer::draw(-offset, (num_controls-6)/2.0f * (size + padding) * char_height + y_offset, (char)next_weapon_key, size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, (char)next_weapon_key, size);
   } else {
-    Typer::draw(-offset, (num_controls-6)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_X), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_X), size);
   }
-  Typer::draw(offset, (num_controls-7)/2.0f * (size + padding) * char_height + y_offset, "BOOST", size);
+  control_index++;
+  Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "BOOST", size);
   if(controller == NULL) {
-    Typer::draw(-offset, (num_controls-7)/2.0f * (size + padding) * char_height + y_offset, (char)boost_key, size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, (char)boost_key, size);
   } else {
-    Typer::draw(-offset, (num_controls-7)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_LEFTSHOULDER), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_LEFTSHOULDER), size);
   }
-  Typer::draw(offset, (num_controls-8)/2.0f * (size + padding) * char_height + y_offset, "TELEPORT", size);
+  control_index++;
+  Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "TELEPORT", size);
   if(controller == NULL) {
-    Typer::draw(-offset, (num_controls-8)/2.0f * (size + padding) * char_height + y_offset, (char)teleport_key, size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, (char)teleport_key, size);
   } else {
-    Typer::draw(-offset, (num_controls-8)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER), size);
   }
+  control_index++;
 
-  int common_offset = 10;
+  int common_offset = control_index+1;
   Typer::draw_centered(0, (num_controls-common_offset )/2.0f * (size + padding) * char_height + y_offset, "- GAME -", size +2);
   Typer::draw(offset, (num_controls-common_offset-1.5)/2.0f * (size + padding) * char_height + y_offset, "PAUSE", size);
   if(controller == NULL) {

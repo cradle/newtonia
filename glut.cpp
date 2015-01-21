@@ -74,10 +74,11 @@ void keyboard(unsigned char key, int x, int y) {
 
 void special(int key, int x, int y) {
   switch (key) {
-  case GLUT_KEY_F4:
-    if(glutGetModifiers() == GLUT_ACTIVE_ALT) {
-      glutLeaveMainLoop();
-    }
+    case GLUT_KEY_F4:
+      if(glutGetModifiers() == GLUT_ACTIVE_ALT) {
+        glutLeaveMainLoop();
+      }
+      break;
   }
   keyboard(key+128, x, y);
 }
@@ -125,7 +126,7 @@ void isVisible(int state) {
   }
 }
 
-void init_controllers() {
+void init_controllers_and_audio() {
   SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
   SDL_SetHint(SDL_HINT_GAMECONTROLLERCONFIG, "1");
   Uint32 SDL_INIT_FLAGS = SDL_INIT_GAMECONTROLLER;
@@ -138,6 +139,8 @@ void init_controllers() {
       std::cout << "Unable to open audio device" << std::endl;
       std::cout << Mix_GetError() << std::endl;
     }
+    //TODO: SDL_JOYDEVICEADDED or SDL_JOYDEVICEREMOVED
+    //SDL_GameControllerEventState(int state);
     SDL_JoystickEventState(SDL_ENABLE);
     if(SDL_NumJoysticks() == 0) {
       std::cout << "No joysticks" << std::endl;
@@ -166,7 +169,7 @@ void init(int &argc, char* argv[], float width, float height);
 
 int main(int argc, char* argv[]) {
   init(argc, argv, 800, 600);
-  init_controllers();
+  init_controllers_and_audio();
   game = new StateManager();
   glutMainLoop();
   if (SDL_GameControllerGetAttached(controller)) {
