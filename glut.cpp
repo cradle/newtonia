@@ -22,8 +22,9 @@ StateManager *game;
 
 bool ALLOW_BLUR = true;
 bool BLUR = ALLOW_BLUR;
-double blur_factor = 0.5;
+double blur_factor = 0.15;
 SDL_GameController *controller = NULL;
+bool ENABLE_AUDIO = true;
 
 void draw() {
   game->draw();
@@ -127,27 +128,37 @@ void isVisible(int state) {
 void init_controllers() {
   SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
   SDL_SetHint(SDL_HINT_GAMECONTROLLERCONFIG, "1");
-  SDL_Init(SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO); // custom mappings SDL_HINT_GAMECONTROLLERCONFIG
-  if( Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 1024 ) < 0) {
-    std::cout << "Unable to open audio device" << std::endl;
+  Uint32 SDL_INIT_FLAGS = SDL_INIT_GAMECONTROLLER;
+  // custom mappings SDL_HINT_GAMECONTROLLERCONFIG;
+  if(ENABLE_AUDIO) {
+    SDL_INIT_FLAGS |= SDL_INIT_AUDIO; // this does not seem to work :S
   }
-  SDL_JoystickEventState(SDL_ENABLE);
-  if(SDL_NumJoysticks() == 0) {
-    std::cout << "No joysticks" << std::endl;
-  } else {
-    for (int i = 0; i < SDL_NumJoysticks(); ++i) {
-      if (SDL_IsGameController(i)) {
-        controller = SDL_GameControllerOpen(i);
-        if (controller) {
-          std::cout << "Controller: " << SDL_GameControllerName(controller) << std::endl;
-          break;
+  if(SDL_Init(SDL_INIT_FLAGS) == 0) {
+    if( ENABLE_AUDIO && Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 1024 ) < 0) {
+      std::cout << "Unable to open audio device" << std::endl;
+      std::cout << Mix_GetError() << std::endl;
+    }
+    SDL_JoystickEventState(SDL_ENABLE);
+    if(SDL_NumJoysticks() == 0) {
+      std::cout << "No joysticks" << std::endl;
+    } else {
+      for (int i = 0; i < SDL_NumJoysticks(); ++i) {
+        if (SDL_IsGameController(i)) {
+          controller = SDL_GameControllerOpen(i);
+          if (controller) {
+            std::cout << "Controller: " << SDL_GameControllerName(controller) << std::endl;
+            break;
+          } else {
+            std::cout <<  "Could not open gamecontroller " << i << ":" << SDL_GetError() << std::endl;
+          }
         } else {
-          std::cout <<  "Could not open gamecontroller " << i << ":" << SDL_GetError() << std::endl;
+          std::cout << "Not controller" << std::endl;
         }
-      } else {
-        std::cout << "Not controller" << std::endl;
       }
     }
+  } else {
+    std::cout << "SDL Failed to initialize" << std::endl;
+    std::cout << SDL_GetError() << std::endl;
   }
 }
 
