@@ -9,8 +9,8 @@ Object::Object() {
   commonInit();
 }
 
-Object::Object(WrappedPoint position, Point velocity) :
-  position(position), velocity(velocity) {
+Object::Object(WrappedPoint position, Point velocity, float rotation_speed) :
+  position(position), velocity(velocity), rotation_speed(rotation_speed) {
   //Annoyingly horrible workaround
   commonInit();
 }
@@ -21,7 +21,6 @@ void Object::commonInit() {
   radius = 1.0f;
   rotation = 0.0f;
   alive = true;
-  rotation_speed = 0.0f;
   value = 0;
   friction = 0.0f;
   invincible = false;

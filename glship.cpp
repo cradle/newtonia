@@ -615,7 +615,7 @@ void GLShip::draw_mines(bool minimap) const {
   for(list<Particle>::iterator m = ship->mines.begin(); m != ship->mines.end(); m++) {
     glPushMatrix();
     glTranslatef(m->position.x(), m->position.y(), 0.0f);
-    glRotated((glutGet(GLUT_ELAPSED_TIME) - m->time_left)/-8.0, 0.0f, 0.0f, 1.0f);
+    glRotated(m->rotation, 0.0f, 0.0f, 1.0f);
     glBegin(GL_LINE_LOOP);
     glColor3fv(color);
   	glVertex2fv(Point(0,-size));

@@ -32,7 +32,7 @@ namespace Weapon {
         return;
       } else {
         _ammo--;
-        ship->mines.push_back(Particle(ship->tail(),  ship->facing*-0.1 + ship->velocity*0.1, 30000.0));
+        ship->mines.push_back(Particle(ship->tail(),  ship->facing*-0.1 + ship->velocity*0.1, 30000.0, 0.2f));
         if(mine_sound != NULL) {
           Mix_PlayChannel(-1, mine_sound, 0);
         }

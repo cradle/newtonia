@@ -1,8 +1,8 @@
 #include "particle.h"
 #include "point.h"
 
-Particle::Particle(const Point position, const Point velocity, float ttl) :
-  Object(position, velocity), time_to_live(ttl), time_left(ttl) {
+Particle::Particle(const Point position, const Point velocity, float ttl, float rotation_speed) :
+  Object(position, velocity, rotation_speed), time_to_live(ttl), time_left(ttl) {
   // commonInit();
 }
 

@@ -7,7 +7,7 @@
 
 class Particle : public Object {
 public:
-  Particle(const Point position, const Point direction, float time_to_live);
+  Particle(const Point position, const Point direction, float time_to_live, float rotation_speed = 0.0f);
   virtual ~Particle() {};
 
   virtual void step(float delta);

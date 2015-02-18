@@ -9,7 +9,7 @@ using namespace std;
 class Object {
 public:
   Object();
-  Object(WrappedPoint position, Point velocity);
+  Object(WrappedPoint position, Point velocity, float rotation_speed = 0.0f);
   virtual ~Object() {};
   virtual void step(int delta);
   virtual bool collide(const Object &other, float proximity = 0.0f) const;
