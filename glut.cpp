@@ -1,4 +1,3 @@
-/* glut.cpp - GLUT Abstraction layer for Game */
 #include <stdlib.h> // For EXIT_SUCCESS
 
 #include <SDL.h>
@@ -20,20 +19,25 @@
 // Glut callbacks cannot be member functions. Need to pre-declare game object
 StateManager *game;
 
-bool ALLOW_BLUR = true;
-bool BLUR = ALLOW_BLUR;
+bool ALLOW_BLUR = false;
 double blur_factor = 0.15;
 SDL_GameController *controller = NULL;
 bool ENABLE_AUDIO = true;
 
+int last_render_time;
 void draw() {
+  int current_time = glutGet(GLUT_ELAPSED_TIME);
+  //cout << "fps: " << 1000.0 / (current_time - last_render_time) << endl;
+  last_render_time = current_time;
   game->draw();
-  if(BLUR) {
+  if(ALLOW_BLUR) {
     glAccum(GL_MULT, blur_factor);
     glAccum(GL_ACCUM, 1.0-blur_factor);
     glAccum(GL_RETURN, 1.0);
   }
   glutSwapBuffers();
+  //glutPostRedisplay();
+  //glFlush();
 }
 
 int old_x = 50;
@@ -112,6 +116,7 @@ void check_controller() {
 int last_tick_time;
 void tick() {
   int current_time = glutGet(GLUT_ELAPSED_TIME);
+  //cout << "tps: " << 1000.0 / (current_time - last_tick_time) << endl;
   game->tick(current_time - last_tick_time);
   last_tick_time = current_time;
   check_controller();
@@ -120,7 +125,7 @@ void tick() {
 
 void isVisible(int state) {
   if(state == GLUT_VISIBLE) {
-    last_tick_time = glutGet(GLUT_ELAPSED_TIME);
+    last_render_time = last_tick_time = glutGet(GLUT_ELAPSED_TIME);
     glutVisibilityFunc(NULL);
     glutIdleFunc(tick);
   }
@@ -181,7 +186,7 @@ int main(int argc, char* argv[]) {
 
 void init(int &argc, char* argv[], float width, float height) {
   glutInit(&argc, argv);
-  int DISPLAY_TYPE = GLUT_RGBA;
+  int DISPLAY_TYPE = GLUT_RGBA | GLUT_DOUBLE;
   if(ALLOW_BLUR) {
     DISPLAY_TYPE = DISPLAY_TYPE | GLUT_ACCUM;
   }
@@ -197,8 +202,10 @@ void init(int &argc, char* argv[], float width, float height) {
   glEnable(GL_LINE_SMOOTH);
   glHint(GL_POINT_SMOOTH_HINT, GL_NICEST);
   glEnable(GL_POINT_SMOOTH);
-  glEnable(GL_ACCUM);
-  glClear(GL_ACCUM_BUFFER_BIT);
+  if(ALLOW_BLUR) {
+    glEnable(GL_ACCUM);
+    glClear(GL_ACCUM_BUFFER_BIT);
+  }
 
   glutDisplayFunc(draw);
   glutKeyboardFunc(keyboard);

@@ -30,7 +30,6 @@ const int GLGame::default_world_height = 2500;
 const int GLGame::default_num_asteroids = 3;
 const int GLGame::extra_num_asteroids = 5;
 
-
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
   world(Point(default_world_width, default_world_height)),

@@ -41,6 +41,8 @@ public:
 private:
   void add();
 
+  static const int add_interval = 15;
+  int last_add_time;
   int type;
   GLShip* ship;
   Point offset;

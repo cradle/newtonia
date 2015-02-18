@@ -17,7 +17,9 @@
 using namespace std;
 
 GLTrail::GLTrail(GLShip* ship, float deviation, Point offset, float speed, float rotation, int type, float life)
- : type(type), ship(ship), offset(offset), deviation(deviation), rotation(rotation), speed(speed), life(life) {}
+ : type(type), ship(ship), offset(offset), deviation(deviation), rotation(rotation), speed(speed), life(life) {
+   last_add_time = glutGet(GLUT_ELAPSED_TIME);
+ }
 
 GLTrail::~GLTrail() {
   while(!trail.empty()) {
@@ -66,7 +68,11 @@ void GLTrail::step(float delta) {
      (type & REVERSING && ship->ship->reversing) ||
      (type & LEFT      && ship->ship->rotation_direction == Ship::LEFT) ||
      (type & RIGHT     && ship->ship->rotation_direction == Ship::RIGHT)) {
-       add();
+       int current_time = glutGet(GLUT_ELAPSED_TIME);
+       if(last_add_time + add_interval < current_time) {
+          add();
+          last_add_time = current_time;
+       }
    }
 }
 
