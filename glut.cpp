@@ -41,7 +41,7 @@ void draw(int window, int window_index) {
   glFlush();
 }
 
-int num_windows = 1;
+int num_windows = 0;
 
 void drawBoth() {
   int current_time = glutGet(GLUT_ELAPSED_TIME);
@@ -72,7 +72,6 @@ void keyboard(unsigned char key, int x, int y) {
   case '2':
     if(num_windows == 1) {
       secondaryWindow = initWindow();
-      num_windows = 2;
     }
   case 'B':
     blur_factor = (1+blur_factor) / 2.0;
@@ -87,17 +86,12 @@ void keyboard(unsigned char key, int x, int y) {
       break;
     }
   case 'f':
-    // http://www.xmission.com/~nate/sgi/sgi-macosx.zip
-    if (glutGet(GLUT_WINDOW_WIDTH) < glutGet(GLUT_SCREEN_WIDTH)) {
-      old_x = glutGet(GLUT_WINDOW_X);
-      old_y = glutGet(GLUT_WINDOW_Y);
-      old_width = glutGet(GLUT_WINDOW_WIDTH);
-      old_height = glutGet(GLUT_WINDOW_HEIGHT);
-      glutFullScreen();
-    } else {
-      glutPositionWindow(old_x, old_y);
-      glutReshapeWindow(old_width, old_height);
-    }
+    glutFullScreenToggle();
+    //if (glutGet(GLUT_WINDOW_WIDTH) < glutGet(GLUT_SCREEN_WIDTH)) {
+    //  glutFullScreen();
+    //} else {
+    //  glutLeaveFullScreen();
+    //}
     break;
   }
   game->keyboard(key, x, y);
@@ -213,6 +207,7 @@ int main(int argc, char* argv[]) {
 
 int initWindow() {
   int window_index = glutCreateWindow("Newtonia");
+  num_windows++;
 
   //glEnable(GL_DEPTH_TEST);
   //glDepthFunc(GL_LESS);
@@ -248,7 +243,6 @@ void init(int &argc, char* argv[], float width, float height) {
   glutInitWindowSize(width, height);
 
   primaryWindow = initWindow();
-  num_windows = 1;
 
   glutVisibilityFunc(isVisible);
 }
