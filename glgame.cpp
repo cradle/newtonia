@@ -99,7 +99,9 @@ GLGame::~GLGame() {
   if(station != NULL)
     delete station;
 
+  glDeleteLists(rearstars, 1);
   glDeleteLists(gameworld, 1);
+  glDeleteLists(frontstars, 1);
 
   if(tic_sound != NULL) {
     Mix_FreeChunk(tic_sound);
@@ -264,7 +266,7 @@ void GLGame::draw_objects(float direction, bool minimap) const {
 
 void GLGame::draw(int window_index) {
   glClear(GL_COLOR_BUFFER_BIT /*| GL_DEPTH_BUFFER_BIT*/);
-  Typer::draw_centered(0,0,window_index,50);
+
   if(players->size() == 0) {
     //draw_world();
   }
@@ -379,6 +381,9 @@ void GLGame::draw_perspective(GLShip *glship) const {
       glPopMatrix();
     }
   }
+  glDeleteLists(rearstars, 1);
+  glDeleteLists(frontstars, 1);
+  glDeleteLists(gameworld, 1);
 }
 
 void GLGame::draw_map() const {
