@@ -10,7 +10,7 @@ public:
   Particle(const Point position, const Point direction, float time_to_live, float rotation_speed = 0.0f);
   virtual ~Particle() {};
 
-  virtual void step(float delta);
+  virtual void step(int delta);
   bool is_alive() const;
   float aliveness() const;
 

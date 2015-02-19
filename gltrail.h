@@ -46,7 +46,7 @@ private:
   int type;
   GLShip* ship;
   Point offset;
-  float deviation, rotation, speed, life;
+  float deviation, rotation, speed, life, point_size;
 
   std::list<Particle*> trail;
 };

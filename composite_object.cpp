@@ -2,7 +2,7 @@
 #include <math.h>
 #include <cstdlib>
 
-void CompositeObject::step(float delta) {
+void CompositeObject::step(int delta) {
   Object::step(delta);
   std::list<Particle>::iterator deb = debris.begin();
   while(deb != debris.end()) {

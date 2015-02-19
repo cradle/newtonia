@@ -6,6 +6,7 @@
 #include "state_manager.h"
 
 #ifdef __APPLE__
+#define glutLeaveMainLoop() exit(EXIT_SUCCESS)
 #include <GLUT/glut.h>
 #else
 #ifdef _WIN32

@@ -6,6 +6,7 @@
 #include "gltrail.h"
 #include "typer.h"
 #include <SDL.h>
+#include <SDL_joystick.h>
 #include <SDL_mixer.h>
 #include <list>
 
@@ -24,7 +25,7 @@ class GLShip {
 public:
   GLShip(const Grid &grid, bool has_friction);
   virtual ~GLShip();
-  void step(float delta, const Grid &grid);
+  void step(int delta, const Grid &grid);
   virtual void input(unsigned char key, bool pressed = true);
   virtual void controller_input(SDL_Event event);
   virtual void controller_axis_input(SDL_Event event);

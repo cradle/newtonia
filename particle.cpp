@@ -6,7 +6,7 @@ Particle::Particle(const Point position, const Point velocity, float ttl, float 
   // commonInit();
 }
 
-void Particle::step(float delta) {
+void Particle::step(int delta) {
   Object::step(delta);
   time_left -= delta;
 }

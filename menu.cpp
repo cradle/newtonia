@@ -2,8 +2,17 @@
 #include "glstarfield.h"
 #include "glgame.h"
 #include "menu.h"
+#ifdef __APPLE__
+#define glutLeaveMainLoop() exit(EXIT_SUCCESS)
+#include <GLUT/glut.h>
+#else
+#ifdef _WIN32
+#include <windows.h>
+#endif
+#include <GL/glut.h>
 #include <GL/freeglut_std.h>
 #include <GL/freeglut_ext.h>
+#endif
 #include <iostream>
 
 const int Menu::default_world_width = 5000;
@@ -64,7 +73,7 @@ void Menu::draw() {
       Typer::draw_centered(0, -50, "press start", 18);
     }
   }
-  Typer::draw_centered(0, -420, "© 2008-2015", 13, currentTime);
+  Typer::draw_centered(0, -420, "Â© 2008-2015", 13, currentTime);
 }
 
 void Menu::tick(int delta) {
@@ -79,7 +88,7 @@ void Menu::tick(int delta) {
 void Menu::controller(SDL_Event event) {
  if(event.type == SDL_CONTROLLERBUTTONDOWN) {
     if(event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
-      glutLeaveMainLoop();
+      //glutLeaveMainLoop();
     } else if(event.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
               event.cbutton.button == SDL_CONTROLLER_BUTTON_A) {
       request_state_change(new GLGame(SDL_GameControllerOpen(event.cbutton.which)));
@@ -93,7 +102,7 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 void Menu::keyboard_up (unsigned char key, int x, int y) {
   switch(key) {
   case 27:
-    glutLeaveMainLoop();
+    //glutLeaveMainLoop();
     break;
   case 13:
     request_state_change(new GLGame());

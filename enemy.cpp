@@ -22,7 +22,7 @@ Enemy::~Enemy() {
   delete targets;
 }
 
-void Enemy::step(float delta, const Grid &grid) {
+void Enemy::step(int delta, const Grid &grid) {
   Ship::step(delta, grid);
 }
 
