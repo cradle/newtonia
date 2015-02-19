@@ -7,7 +7,7 @@
 class CompositeObject : public Object {
 public:
   virtual ~CompositeObject() {};
-  virtual void step(float delta);
+  virtual void step(int delta);
   virtual bool is_removable() const;
   virtual bool kill();
   void explode();

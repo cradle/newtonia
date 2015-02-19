@@ -19,6 +19,7 @@ using namespace std;
 GLTrail::GLTrail(GLShip* ship, float deviation, Point offset, float speed, float rotation, int type, float life)
  : type(type), ship(ship), offset(offset), deviation(deviation), rotation(rotation), speed(speed), life(life) {
    last_add_time = glutGet(GLUT_ELAPSED_TIME);
+   point_size = 3.5f;
  }
 
 GLTrail::~GLTrail() {
@@ -30,6 +31,7 @@ GLTrail::~GLTrail() {
 
 void GLTrail::draw() {
   list<Particle*>::iterator p;
+  glPointSize(point_size);
   glBegin(GL_POINTS);
   for(p = trail.begin(); p != trail.end(); p++) {
       glColor4f(1.0-ship->color[0], 1.0-ship->color[1], 1.0-ship->color[2],(*p)->aliveness());
@@ -86,7 +88,6 @@ void GLTrail::add() {
   direction.rotate(rotation);
   velocity = direction*speed + ship->ship->velocity;
   velocity.rotate((rand() / (float)RAND_MAX) * deviation - deviation / 2.0);
-  trail.push_back(
-    new Particle(position, velocity, life)
-  );
+  Particle *particle = new Particle(position, velocity, life);
+  trail.push_back(particle);
 }

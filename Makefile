@@ -1,6 +1,6 @@
 CC = g++
 CFLAGS = -Wall -O3
-OSX_LIBS = -framework GLUT -framework OpenGL
+OSX_LIBS = -framework GLUT -framework OpenGL -framework SDL2 -framework SDL2_mixer
 OSX_CFLAGS = $(CFLAGS) -arch i386 -arch ppc
 LIBS = -lglut -lGL -lGLU
 COMPILE = $(CC) $(CFLAGS) -c 

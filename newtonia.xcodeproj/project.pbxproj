@@ -37,6 +37,8 @@
 		21DBAE5B0EF7B31500F97906 /* composite_object.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21DBAE590EF7B31500F97906 /* composite_object.cpp */; };
 		21F0BF3F0ED54EFE00F2BB9B /* gltrail.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21F0BF3D0ED54EFE00F2BB9B /* gltrail.cpp */; };
 		21F7B0A80F58CC3F003090D8 /* default.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21F7B0A60F58CC3F003090D8 /* default.cpp */; };
+		C5EE0D191A95B19700451D99 /* SDL2_mixer.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C5EE0D171A95B19700451D99 /* SDL2_mixer.framework */; };
+		C5EE0D1A1A95B19700451D99 /* SDL2.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C5EE0D181A95B19700451D99 /* SDL2.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -101,6 +103,8 @@
 		21F7B0A50F58CC3F003090D8 /* base.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = base.h; sourceTree = "<group>"; };
 		21F7B0A60F58CC3F003090D8 /* default.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = default.cpp; sourceTree = "<group>"; };
 		21F7B0A70F58CC3F003090D8 /* default.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = default.h; sourceTree = "<group>"; };
+		C5EE0D171A95B19700451D99 /* SDL2_mixer.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SDL2_mixer.framework; path = ../../../Library/Frameworks/SDL2_mixer.framework; sourceTree = "<group>"; };
+		C5EE0D181A95B19700451D99 /* SDL2.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SDL2.framework; path = ../../../Library/Frameworks/SDL2.framework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -108,8 +112,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C5EE0D191A95B19700451D99 /* SDL2_mixer.framework in Frameworks */,
 				2150E2D90ECD698700D89C28 /* GLUT.framework in Frameworks */,
 				2150E2DD0ECD699700D89C28 /* OpenGL.framework in Frameworks */,
+				C5EE0D1A1A95B19700451D99 /* SDL2.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -128,6 +134,7 @@
 		212FDEDE124A8A2A0016911E /* src */ = {
 			isa = PBXGroup;
 			children = (
+				2105329912969CE100411B53 /* ship.cpp */,
 				212FDECE124A89B10016911E /* view */,
 				2162B1AC0F5D0C4600E3FA78 /* grid.cpp */,
 				2162B1AD0F5D0C4600E3FA78 /* grid.h */,
@@ -196,10 +203,11 @@
 			isa = PBXGroup;
 			children = (
 				212FDEDE124A8A2A0016911E /* src */,
+				C5EE0D181A95B19700451D99 /* SDL2.framework */,
+				C5EE0D171A95B19700451D99 /* SDL2_mixer.framework */,
 				2150E2DC0ECD699700D89C28 /* OpenGL.framework */,
 				2150E2D80ECD698700D89C28 /* GLUT.framework */,
 				2150E2AB0ECD687300D89C28 /* Products */,
-				2105329912969CE100411B53 /* ship.cpp */,
 			);
 			sourceTree = "<group>";
 		};
@@ -241,6 +249,7 @@
 		219282760ECD670E002D470F /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
+				LastUpgradeCheck = 0610;
 				ORGANIZATIONNAME = metonymous.com;
 			};
 			buildConfigurationList = 219282790ECD670E002D470F /* Build configuration list for PBXProject "newtonia" */;
@@ -315,17 +324,27 @@
 		2150E2AE0ECD687400D89C28 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ARCHS = "$(NATIVE_ARCH)";
+				COMBINE_HIDPI_IMAGES = YES;
 				COPY_PHASE_STRIP = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(LOCAL_LIBRARY_DIR)/Frameworks",
+				);
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_ENABLE_FIX_AND_CONTINUE = YES;
 				GCC_MODEL_TUNING = G5;
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "";
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
+					/Library/Frameworks/SDL2.framework/Headers,
+					/Library/Frameworks/SDL2_mixer.framework/Headers,
+				);
 				INFOPLIST_FILE = "Newtonia-Info.plist";
 				INSTALL_PATH = "$(HOME)/Applications";
-				MACOSX_DEPLOYMENT_TARGET = 10.4;
+				MACOSX_DEPLOYMENT_TARGET = 10.5;
 				OTHER_LDFLAGS = (
 					"-framework",
 					Foundation,
@@ -342,8 +361,6 @@
 		2164AC9D0EE165A90011546F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ARCHS = "$(ARCHS_STANDARD_32_64_BIT_PRE_XCODE_3_1)";
-				ARCHS_STANDARD_32_64_BIT_PRE_XCODE_3_1 = "x86_64 i386 ppc";
 				COPY_PHASE_STRIP = YES;
 				ENABLE_OPENMP_SUPPORT = YES;
 				EXCLUDED_RECURSIVE_SEARCH_PATH_SUBDIRECTORIES = ".git *.nib *.lproj *.framework *.gch *.xcode* (*) CVS .svn";
@@ -359,20 +376,27 @@
 		2164AC9E0EE165A90011546F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ARCHS = (
-					i386,
-					ppc,
-				);
+				COMBINE_HIDPI_IMAGES = YES;
 				COPY_PHASE_STRIP = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(LOCAL_LIBRARY_DIR)/Frameworks",
+				);
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_ENABLE_FIX_AND_CONTINUE = YES;
 				GCC_MODEL_TUNING = G5;
 				GCC_OPTIMIZATION_LEVEL = 3;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "";
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
+					/Library/Frameworks/SDL2.framework/Headers,
+					/Library/Frameworks/SDL2_mixer.framework/Headers,
+				);
 				INFOPLIST_FILE = "Newtonia-Info.plist";
 				INSTALL_PATH = "$(HOME)/Applications";
-				MACOSX_DEPLOYMENT_TARGET = 10.4;
+				MACOSX_DEPLOYMENT_TARGET = 10.5;
 				OTHER_LDFLAGS = (
 					"-framework",
 					Foundation,
@@ -389,7 +413,6 @@
 		219282770ECD670E002D470F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ARCHS = "$(NATIVE_ARCH_ACTUAL)";
 				COPY_PHASE_STRIP = NO;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = "";
