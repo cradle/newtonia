@@ -10,8 +10,8 @@ StateManager::~StateManager() {
   delete state;
 }
 
-void StateManager::draw() {
-  state->draw();
+void StateManager::draw(int window) {
+  state->draw(window);
 }
 
 void StateManager::mouse_move(int x, int y) {

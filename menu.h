@@ -9,7 +9,7 @@ public:
   Menu();
   virtual ~Menu();
 
-  void draw();
+  void draw(int window_index);
   void keyboard(unsigned char key, int x, int y);
   void keyboard_up(unsigned char key, int x, int y);
   void controller(SDL_Event event);

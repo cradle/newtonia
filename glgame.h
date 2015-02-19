@@ -19,7 +19,7 @@ public:
   GLGame(GLGame const &other);
   virtual ~GLGame();
 
-  void draw();
+  void draw(int window_index);
   void tick(int delta);
   void keyboard(unsigned char key, int x, int y);
   void keyboard_up(unsigned char key, int x, int y);

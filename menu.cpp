@@ -37,7 +37,7 @@ Menu::~Menu() {
   Mix_FreeMusic(music);
 }
 
-void Menu::draw() {
+void Menu::draw(int window_index) {
   glClear(GL_COLOR_BUFFER_BIT);
 
   glMatrixMode(GL_PROJECTION);

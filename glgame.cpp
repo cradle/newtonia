@@ -262,18 +262,23 @@ void GLGame::draw_objects(float direction, bool minimap) const {
   if(station != NULL) station->draw(minimap);
 }
 
-void GLGame::draw(void) {
+void GLGame::draw(int window_index) {
   glClear(GL_COLOR_BUFFER_BIT /*| GL_DEPTH_BUFFER_BIT*/);
-
+  Typer::draw_centered(0,0,window_index,50);
   if(players->size() == 0) {
-    draw_world();
+    //draw_world();
   }
   else {
-    if(players->size() > 0) {
+    if(players->size() == 1) {
       draw_world(players->front(), true);
     }
-    if(players->size() > 1) {
-      draw_world(players->back(), false);
+    if(players->size() == 2) {
+      if(window_index == 0) {
+        draw_world(players->front(), true);
+      }
+      if(window_index == 1) {
+        draw_world(players->back(), true);
+      }
     }
     //Draw map after - for partial translucency
     draw_map();
@@ -288,11 +293,11 @@ void GLGame::setup_perspective(GLShip *glship) const {
 }
 
 int GLGame::num_x_viewports() const {
-  return (players->size() == 0) ? 1 : (window.x() > window.y()) ? players->size() : 1;
+  return 1;//(players->size() == 0) ? 1 : (window.x() > window.y()) ? players->size() : 1;
 }
 
 int GLGame::num_y_viewports() const {
-  return (players->size() == 0) ? 1 : (window.x() > window.y()) ? 1 : players->size();
+  return 1;//(players->size() == 0) ? 1 : (window.x() > window.y()) ? 1 : players->size();
 }
 
 void GLGame::setup_orthogonal() const {
@@ -303,9 +308,9 @@ void GLGame::setup_orthogonal() const {
 }
 
 void GLGame::setup_viewport(bool primary) const {
-  if(players->size() > 1 && window.x() <= window.y()) {
-    primary = !primary; //HACK: Fix this
-  }
+  //if(players->size() > 1 && window.x() <= window.y()) {
+  //  primary = !primary; //HACK: Fix this
+  //}
   glLoadIdentity();
   if(primary) {
     glViewport(0, 0, window.x()/num_x_viewports(), window.y()/num_y_viewports());
@@ -379,7 +384,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
 void GLGame::draw_map() const {
   float minimap_size = num_y_viewports() == 2 ? window.y()/6 : window.y()/4;
 
-  if(players->size() > 1) {
+  if(num_x_viewports() > 1 || num_y_viewports() > 1) {
     /* DRAW CENTER LINE */
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
@@ -409,7 +414,7 @@ void GLGame::draw_map() const {
   gluOrtho2D(0, world.x(), 0, world.y());
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
-  if (players->size() == 1) {
+  if (num_x_viewports() == 1 && num_y_viewports() == 1) {
     glViewport(window.x()/2 - minimap_size/2, 0, minimap_size, minimap_size);
   } else {
     glViewport(window.x()/2 - minimap_size/2, window.y()/2 - minimap_size/2, minimap_size, minimap_size);

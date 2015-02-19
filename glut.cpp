@@ -24,21 +24,33 @@ bool ALLOW_BLUR = false;
 double blur_factor = 0.15;
 SDL_GameController *controller = NULL;
 bool ENABLE_AUDIO = true;
+int primaryWindow;
+int secondaryWindow;
 
 int last_render_time;
-void draw() {
-  int current_time = glutGet(GLUT_ELAPSED_TIME);
-  //cout << "fps: " << 1000.0 / (current_time - last_render_time) << endl;
-  last_render_time = current_time;
-  game->draw();
+void draw(int window, int window_index) {
+  glutSetWindow(window);
+  game->draw(window_index);
   if(ALLOW_BLUR) {
     glAccum(GL_MULT, blur_factor);
     glAccum(GL_ACCUM, 1.0-blur_factor);
     glAccum(GL_RETURN, 1.0);
   }
   glutSwapBuffers();
-  //glutPostRedisplay();
-  //glFlush();
+  glutPostRedisplay();
+  glFlush();
+}
+
+int num_windows = 1;
+
+void drawBoth() {
+  int current_time = glutGet(GLUT_ELAPSED_TIME);
+  //cout << "fps: " << 1000.0 / (current_time - last_render_time) << endl;
+  last_render_time = current_time;
+  draw(primaryWindow, 0);
+  if(num_windows == 2) {
+    draw(secondaryWindow, 1);
+  }
 }
 
 int old_x = 50;
@@ -46,8 +58,22 @@ int old_y = 50;
 int old_width = 320;
 int old_height = 320;
 
+int initWindow(); // forward declare
+
 void keyboard(unsigned char key, int x, int y) {
   switch (key) {
+  case '1':
+    if(num_windows == 2) {
+      glutDestroyWindow(secondaryWindow);
+      glutSetWindow(primaryWindow);
+      num_windows = 1;
+    }
+    break;
+  case '2':
+    if(num_windows == 1) {
+      secondaryWindow = initWindow();
+      num_windows = 2;
+    }
   case 'B':
     blur_factor = (1+blur_factor) / 2.0;
     cout << blur_factor << endl;
@@ -185,15 +211,8 @@ int main(int argc, char* argv[]) {
   return EXIT_SUCCESS;
 }
 
-void init(int &argc, char* argv[], float width, float height) {
-  glutInit(&argc, argv);
-  int DISPLAY_TYPE = GLUT_RGBA | GLUT_DOUBLE;
-  if(ALLOW_BLUR) {
-    DISPLAY_TYPE = DISPLAY_TYPE | GLUT_ACCUM;
-  }
-  glutInitDisplayMode(DISPLAY_TYPE);
-  glutInitWindowSize(width, height);
-  glutCreateWindow("Newtonia");
+int initWindow() {
+  int window_index = glutCreateWindow("Newtonia");
 
   //glEnable(GL_DEPTH_TEST);
   //glDepthFunc(GL_LESS);
@@ -208,11 +227,28 @@ void init(int &argc, char* argv[], float width, float height) {
     glClear(GL_ACCUM_BUFFER_BIT);
   }
 
-  glutDisplayFunc(draw);
   glutKeyboardFunc(keyboard);
   glutKeyboardUpFunc(keyboard_up);
   glutSpecialFunc(special);
   glutSpecialUpFunc(special_up);
   glutReshapeFunc(resize);
+  glutDisplayFunc(drawBoth);
+
+  return window_index;
+}
+
+
+void init(int &argc, char* argv[], float width, float height) {
+  glutInit(&argc, argv);
+  int DISPLAY_TYPE = GLUT_RGBA | GLUT_DOUBLE;
+  if(ALLOW_BLUR) {
+    DISPLAY_TYPE = DISPLAY_TYPE | GLUT_ACCUM;
+  }
+  glutInitDisplayMode(DISPLAY_TYPE);
+  glutInitWindowSize(width, height);
+
+  primaryWindow = initWindow();
+  num_windows = 1;
+
   glutVisibilityFunc(isVisible);
 }
