@@ -35,6 +35,7 @@ float Typer::aspect_ratio = window_width / window_height;
 }
 
 void Typer::resize(int x, int y) {
+  //TODO: optimize
   window_width = x;
   window_height = y;
   window_x_scale = (float)window_width / (float)original_window_width;
@@ -51,7 +52,7 @@ void Typer::resize(int x, int y) {
     scaled_window_width = original_window_width;
     scaled_window_height = original_window_height / aspect_ratio;
   }
-  cout << "scale:" << scale << endl;
+  //cout << "scale:" << scale << endl;
 }
 
 void Typer::draw_lefted(float x, float y, int number, float size, int time) {

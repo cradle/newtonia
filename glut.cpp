@@ -30,6 +30,7 @@ int secondaryWindow;
 int last_render_time;
 void draw(int window, int window_index) {
   glutSetWindow(window);
+  game->resize(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT));
   game->draw(window_index);
   if(ALLOW_BLUR) {
     glAccum(GL_MULT, blur_factor);
@@ -235,7 +236,7 @@ int initWindow() {
 
 void init(int &argc, char* argv[], float width, float height) {
   glutInit(&argc, argv);
-  int DISPLAY_TYPE = GLUT_RGBA | GLUT_DOUBLE;
+  int DISPLAY_TYPE = GLUT_RGBA | GLUT_DOUBLE | GLUT_ALPHA;
   if(ALLOW_BLUR) {
     DISPLAY_TYPE = DISPLAY_TYPE | GLUT_ACCUM;
   }
