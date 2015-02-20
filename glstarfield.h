@@ -24,6 +24,7 @@ public:
 private:
   GLuint point_layers;
   const Point size;
+  int rands[8];
   static const int NUM_REAR_LAYERS;
   static const int NUM_FRONT_LAYERS;
   static const float STAR_DENSITY;

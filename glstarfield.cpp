@@ -15,6 +15,7 @@ const int GLStarfield::NUM_FRONT_LAYERS = 5;
 const float GLStarfield::STAR_DENSITY = 0.000015;
 
 GLStarfield::GLStarfield(Point const _size) : size(_size) {
+  point_layers = glGenLists(NUM_REAR_LAYERS + NUM_FRONT_LAYERS + 1);
   update_lists();
 }
 
@@ -23,7 +24,9 @@ GLStarfield::~GLStarfield() {
 }
 
 void GLStarfield::update_lists() {
+  glDeleteLists(point_layers, NUM_REAR_LAYERS + NUM_FRONT_LAYERS + 1);
   point_layers = glGenLists(NUM_REAR_LAYERS + NUM_FRONT_LAYERS + 1);
+  srand(1); // apparently this should not be done
   int red, green;
   for(int i = 0; i < NUM_REAR_LAYERS + NUM_FRONT_LAYERS + 1; i++) {
     glNewList(point_layers+i, GL_COMPILE);
@@ -43,13 +46,17 @@ void GLStarfield::update_lists() {
 }
 
 void GLStarfield::draw_rear(Point const viewpoint) const {
+  glPushMatrix();
   for(int i = 0; i <= NUM_REAR_LAYERS; i++) {
     glCallList(point_layers+i);
   }
+  glPopMatrix();
 }
 
 void GLStarfield::draw_front(Point const viewpoint) const {
+  glPushMatrix();
   for(int i = 0; i < NUM_FRONT_LAYERS; i++) {
     glCallList(point_layers + NUM_REAR_LAYERS + 1 + i);
   }
+  glPopMatrix();
 }
