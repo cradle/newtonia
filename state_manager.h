@@ -17,6 +17,7 @@ public:
   void controller(SDL_Event event);
   void tick(int delta);
   void resize(int x, int y);
+  void update_lists();
 
 private:
   Point window;

@@ -34,7 +34,13 @@ Menu::Menu() :
 }
 
 Menu::~Menu() {
-  Mix_FreeMusic(music);
+  if(music != NULL) {
+    Mix_FreeMusic(music);
+  }
+}
+
+void Menu::update_lists() {
+  starfield.update_lists();
 }
 
 void Menu::draw(int window_index) {
@@ -47,7 +53,6 @@ void Menu::draw(int window_index) {
 
   glLoadIdentity();
   glViewport(0, 0, window.x(), window.y());
-
   glTranslatef(-viewpoint.x(), -viewpoint.y(), 0.0f);
   starfield.draw_front(viewpoint);
   starfield.draw_rear(viewpoint);

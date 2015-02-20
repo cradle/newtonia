@@ -39,7 +39,17 @@ GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* ta
   outer_rotation_speed = 0.01;
   inner_rotation_speed = -0.0025;
   inner_rotation = outer_rotation = 0;
+  update_lists();
+}
 
+GLStation::~GLStation() {
+  // delete targets;
+  // delete objects;
+  glDeleteLists(body, 1);
+  glDeleteLists(map_body, 1);
+}
+
+void GLStation::update_lists() {
   body = glGenLists(1);
   glNewList(body, GL_COMPILE);
   float r = radius, r2 = radius * 0.9, d;
@@ -75,13 +85,6 @@ GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* ta
   }
   glEnd();
   glEndList();
-}
-
-GLStation::~GLStation() {
-  // delete targets;
-  // delete objects;
-  glDeleteLists(body, 1);
-  glDeleteLists(map_body, 1);
 }
 
 void GLStation::reset() {

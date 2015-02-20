@@ -38,23 +38,41 @@ GLShip::GLShip(const Grid &grid, bool has_friction) : show_help(false) {
   color[1] = 118/255.0;
   color[2] = 255/255.0;
 
+  update_lists();
+}
+
+GLShip::~GLShip() {
+  //TODO: Make lists static for class (or ShipType or something)
+  glDeleteLists(body, 1);
+  glDeleteLists(jets, 1);
+  glDeleteLists(repulsors, 1);
+  glDeleteLists(force_shield, 1);
+  delete ship;
+  while(!trails.empty()) {
+    delete trails.back();
+    trails.pop_back();
+  }
+}
+
+void GLShip::update_lists() {
+  cout << "makin' ship lists" << endl;
   body = glGenLists(1);
   glNewList(body, GL_COMPILE);
-	glVertex2f( 0.0f, 1.0f);
-	glVertex2f(-0.8f,-1.0f);
-	glVertex2f( 0.0f,-0.5f);
-	glVertex2f( 0.8f,-1.0f);
+  glVertex2f( 0.0f, 1.0f);
+  glVertex2f(-0.8f,-1.0f);
+  glVertex2f( 0.0f,-0.5f);
+  glVertex2f( 0.8f,-1.0f);
   glEndList();
 
   jets = glGenLists(1);
   glNewList(jets, GL_COMPILE);
   glColor3f( 1.0f-color[0], 1.0f-color[1], 1.0f-color[2] );
-	glBegin(GL_QUADS);
-	glVertex2f( 0.0f,-0.5f );
-	glVertex2f(-0.4f,-0.75f );
-	glVertex2f( 0.0f,-1.5f );
-	glVertex2f( 0.4f,-0.75f );
-	glEnd();
+  glBegin(GL_QUADS);
+  glVertex2f( 0.0f,-0.5f );
+  glVertex2f(-0.4f,-0.75f );
+  glVertex2f( 0.0f,-1.5f );
+  glVertex2f( 0.4f,-0.75f );
+  glEnd();
   glEndList();
 
   genForceShield();
@@ -99,19 +117,6 @@ void GLShip::genForceShield() {
   }
   glEnd();
   glEndList();
-}
-
-GLShip::~GLShip() {
-  //TODO: Make lists static for class (or ShipType or something)
-  glDeleteLists(body, 1);
-  glDeleteLists(jets, 1);
-  glDeleteLists(repulsors, 1);
-  glDeleteLists(force_shield, 1);
-  delete ship;
-  while(!trails.empty()) {
-    delete trails.back();
-    trails.pop_back();
-  }
 }
 
 float GLShip::camera_facing() const {

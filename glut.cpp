@@ -73,6 +73,7 @@ void keyboard(unsigned char key, int x, int y) {
   case '2':
     if(num_windows == 1) {
       secondaryWindow = initWindow();
+      game->update_lists();
     }
   case 'B':
     blur_factor = (1+blur_factor) / 2.0;
@@ -87,12 +88,23 @@ void keyboard(unsigned char key, int x, int y) {
       break;
     }
   case 'f':
-    glutFullScreenToggle();
+    // glutFullScreenToggle();
     //if (glutGet(GLUT_WINDOW_WIDTH) < glutGet(GLUT_SCREEN_WIDTH)) {
     //  glutFullScreen();
     //} else {
     //  glutLeaveFullScreen();
     //}
+    // http://www.xmission.com/~nate/sgi/sgi-macosx.zip
+    if (glutGet(GLUT_WINDOW_WIDTH) < glutGet(GLUT_SCREEN_WIDTH)) {
+      old_x = glutGet(GLUT_WINDOW_X);
+      old_y = glutGet(GLUT_WINDOW_Y);
+      old_width = glutGet(GLUT_WINDOW_WIDTH);
+      old_height = glutGet(GLUT_WINDOW_HEIGHT);
+      glutFullScreen();
+    } else {
+      glutPositionWindow(old_x, old_y);
+      glutReshapeWindow(old_width, old_height);
+    }
     break;
   }
   game->keyboard(key, x, y);

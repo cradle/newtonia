@@ -108,6 +108,24 @@ GLGame::~GLGame() {
   }
 }
 
+void GLGame::update_lists() {
+  std::list<GLShip*>::iterator o, o2;
+
+  if(station != NULL) {
+    station->update_lists();
+  }
+
+  for(o = players->begin(); o != players->end(); o++) {
+    (*o)->update_lists();
+  }
+
+  for(o = enemies->begin(); o != enemies->end(); o++) {
+    (*o)->update_lists();
+  }
+
+  starfield->update_lists();
+}
+
 void GLGame::add_asteroids() {
   while(Asteroid::num_killable < (default_num_asteroids + generation * extra_num_asteroids)) {
     objects->push_back(new Asteroid(false));

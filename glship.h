@@ -29,6 +29,7 @@ public:
   virtual void input(unsigned char key, bool pressed = true);
   virtual void controller_input(SDL_Event event);
   virtual void controller_axis_input(SDL_Event event);
+  virtual void update_lists();
   bool wasMyController(SDL_JoystickID id);
 
   void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key, int teleport_key, int help_key);

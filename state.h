@@ -18,6 +18,7 @@ public:
   virtual void keyboard_up(unsigned char key, int x, int y) = 0;
   virtual void controller(SDL_Event event) = 0;
   virtual void tick(int delta) = 0;
+  virtual void update_lists();
   bool is_finished();
   State* get_next_state();
 

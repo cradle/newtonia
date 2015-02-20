@@ -24,6 +24,7 @@ public:
   void keyboard(unsigned char key, int x, int y);
   void keyboard_up(unsigned char key, int x, int y);
   void controller(SDL_Event event);
+  void update_lists();
 
   friend class Overlay;
 

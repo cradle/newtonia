@@ -30,6 +30,10 @@ void StateManager::keyboard_up(unsigned char key, int x, int y) {
   key_states[key] = false;
 }
 
+void StateManager::update_lists() {
+  state->update_lists();
+}
+
 void StateManager::controller(SDL_Event event) {
   if(event.type == SDL_CONTROLLERDEVICEADDED) {
     cout << "Controller added" << endl;
