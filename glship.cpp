@@ -297,22 +297,21 @@ void GLShip::controller_axis_input(SDL_Event event) {
     return;
   }
   Sint16 deadzone = 10000;
-  bool pressed = event.caxis.value > 10000; // deadzone // SDL_CONTROLLER_AXIS_MAX
 
   if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) {
     if(event.caxis.value > deadzone) {
-      ship->rotate_right(true);
+      ship->rotate_right(true, (event.caxis.value-deadzone)/(32767.0f-deadzone));
     } else if (event.caxis.value < -deadzone) {
-      ship->rotate_left(true);
+      ship->rotate_left(true, (-event.caxis.value-deadzone)/(32767.0f-deadzone));
     } else {
       ship->rotate_left(false);
       ship->rotate_right(false);
     }
   } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
     if(event.caxis.value > deadzone) {
-      ship->reverse(true);
+      ship->reverse(true, (event.caxis.value-deadzone)/(32767.0f-deadzone));
     } else if (event.caxis.value < -deadzone) {
-      ship->thrust(true);
+      ship->thrust(true, (-event.caxis.value-deadzone)/(32767.0f-deadzone));
     } else {
       ship->thrust(false);
       ship->reverse(false);

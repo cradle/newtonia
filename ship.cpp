@@ -137,6 +137,9 @@ void Ship::init(bool no_friction) {
   boost_heat = 0.000;
   boost_force = 4.0;
   boosting = false;
+  thrust_amount = 0.0f;
+  reverse_amount = 0.0f;
+  rotation_amount = 0.0f;
 
   if(no_friction) {
     friction = 0;
@@ -254,8 +257,9 @@ bool Ship::is_alive() const {
   return alive;
 }
 
-void Ship::thrust(bool on) {
+void Ship::thrust(bool on, float amount) {
   thrusting = on;
+  thrust_amount = amount;
   if(boost_sound != NULL) {
     if(on && !reversing) {
       Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME);
@@ -270,8 +274,9 @@ void Ship::thrust(bool on) {
   }
 }
 
-void Ship::reverse(bool on) {
+void Ship::reverse(bool on, float amount) {
   reversing = on;
+  reverse_amount = amount;
   if(boost_sound != NULL) {
     if(on && !thrusting) {
       Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME);
@@ -406,8 +411,9 @@ float Ship::heading() const {
   return facing.direction();
 }
 
-void Ship::rotate_left(bool on) {
+void Ship::rotate_left(bool on, float amount) {
   still_rotating_left = on;
+  rotation_amount = amount;
   if(on) {
     rotation_direction = LEFT;
   } else if (still_rotating_right) {
@@ -418,8 +424,9 @@ void Ship::rotate_left(bool on) {
   play_rotating_sound(on);
 }
 
-void Ship::rotate_right(bool on) {
+void Ship::rotate_right(bool on, float amount) {
   still_rotating_right = on;
+  rotation_amount = amount;
   if(on) {
     rotation_direction = RIGHT;
   } else if (still_rotating_left) {
@@ -501,7 +508,7 @@ void Ship::step(float delta, const Grid &grid) {
     }
   }
 
-  facing.rotate(rotation_direction * rotation_force / mass  * delta );
+  facing.rotate((rotation_direction * rotation_force * rotation_amount) / mass  * delta );
   Point acceleration = Point(0,0);
   if(boosting) {
   	acceleration += ((facing * boost_force) / mass);
@@ -510,11 +517,11 @@ void Ship::step(float delta, const Grid &grid) {
     boosting = false;
   }
   if(thrusting) {
-  	acceleration += ((facing * thrust_force) / mass);
+  	acceleration += ((facing * thrust_force * thrust_amount) / mass);
     temperature += heat_rate * delta;
 	}
   if(reversing) {
-  	acceleration += ((facing * reverse_force) / mass);
+  	acceleration += ((facing * reverse_force * reverse_amount) / mass);
     temperature += retro_heat_rate * delta;
 	}
   temperature -= cool_rate * delta;

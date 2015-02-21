@@ -24,10 +24,10 @@ class Ship : public CompositeObject {
 
     virtual void step(float delta, const Grid &grid);
 
-    void rotate_left(bool on = true);
-    void rotate_right(bool on = true);
-    void thrust(bool on = true);
-    void reverse(bool on = true);
+    void rotate_left(bool on = true, float amount = 1.0f);
+    void rotate_right(bool on = true, float amount = 1.0f);
+    void thrust(bool on = true, float amount = 1.0f);
+    void reverse(bool on = true, float amount = 1.0f);
     void shoot(bool on = true);
     void shoot_weapon(bool on = true);
     void mine(bool on = true);
@@ -100,6 +100,8 @@ class Ship : public CompositeObject {
 
     // Forces
     float thrust_force, reverse_force, rotation_force, boost_force;
+    // Current Movement Amounts
+    float thrust_amount, reverse_amount, rotation_amount;
     // Attributes
     float width, height, mass;
     int value;

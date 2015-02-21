@@ -87,6 +87,9 @@ void GLTrail::add() {
   direction = ship->ship->facing*-1.0;
   direction.rotate(rotation);
   velocity = direction*speed + ship->ship->velocity;
+  if(type & THRUSTING) {
+    velocity = velocity * ship->ship->thrust_amount;
+  }
   velocity.rotate((rand() / (float)RAND_MAX) * deviation - deviation / 2.0);
   Particle *particle = new Particle(position, velocity, life);
   trail.push_back(particle);
