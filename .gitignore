@@ -14,3 +14,7 @@ newtonia
 GL/
 ## SDL
 SDL*
+## Gradle
+android/.gradle/
+android/app/build/
+android/build/
