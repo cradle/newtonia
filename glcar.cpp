@@ -1,14 +1,7 @@
 #include "glcar.h"
 #include "gltrail.h"
 
-#ifdef __APPLE__
-#include <GLUT/glut.h>
-#else
-#ifdef _WIN32
-#include <windows.h>
-#endif
-#include <GL/glut.h>
-#endif
+#include "gl_compat.h"
 
 #include <iostream>
 

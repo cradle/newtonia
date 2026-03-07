@@ -3,14 +3,7 @@
 #include <cstring>
 #include <math.h>
 #include "glship.h"
-#ifdef __APPLE__
-#include <GLUT/glut.h>
-#else
-#ifdef _WIN32
-#include <windows.h>
-#endif
-#include <GL/glut.h>
-#endif
+#include "gl_compat.h"
 
 float Typer::colour[] = {0.0f,1.0f,0.0f};
 const int Typer::original_window_width = 800;

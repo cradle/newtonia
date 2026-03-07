@@ -13,14 +13,7 @@
 #include <math.h>
 #include <SDL.h>
 
-#ifdef __APPLE__
-#include <GLUT/glut.h>
-#else
-#ifdef _WIN32
-#include <windows.h>
-#endif
-#include <GL/glut.h>
-#endif
+#include "gl_compat.h"
 
 #include <iostream>
 #include <list>

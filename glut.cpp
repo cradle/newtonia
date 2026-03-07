@@ -1,3 +1,6 @@
+// Desktop-only entry point. Android uses android_main.cpp instead.
+#ifndef __ANDROID__
+
 #include <stdlib.h> // For EXIT_SUCCESS
 
 #include <SDL.h>
@@ -216,3 +219,5 @@ void init(int &argc, char* argv[], float width, float height) {
   glutReshapeFunc(resize);
   glutVisibilityFunc(isVisible);
 }
+
+#endif // !__ANDROID__

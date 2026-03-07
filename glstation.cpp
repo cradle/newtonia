@@ -1,14 +1,7 @@
 #include "glstation.h"
 #include <math.h>
 
-#ifdef __APPLE__
-#include <GLUT/glut.h>
-#else
-#ifdef _WIN32
-#include <windows.h>
-#endif
-#include <GL/glut.h>
-#endif
+#include "gl_compat.h"
 
 #include "ship.h"
 #include "glenemy.h"

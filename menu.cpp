@@ -2,17 +2,7 @@
 #include "glstarfield.h"
 #include "glgame.h"
 #include "menu.h"
-#ifdef __APPLE__
-#define glutLeaveMainLoop() exit(EXIT_SUCCESS)
-#include <GLUT/glut.h>
-#else
-#ifdef _WIN32
-#include <windows.h>
-#endif
-#include <GL/glut.h>
-#include <GL/freeglut_std.h>
-#include <GL/freeglut_ext.h>
-#endif
+#include "gl_compat.h"
 #include <iostream>
 
 const int Menu::default_world_width = 5000;
