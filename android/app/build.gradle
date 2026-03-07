@@ -18,8 +18,8 @@ android {
                 cppFlags "-std=c++11"
                 // SDL2 source dirs — cloned as siblings to the repo root.
                 // CMakeLists.txt uses add_subdirectory to build them from source.
-                arguments "-DSDL2_SOURCE_DIR=${rootDir}/../SDL2",
-                          "-DSDL2_MIXER_SOURCE_DIR=${rootDir}/../SDL2_mixer"
+                arguments "-DSDL2_SOURCE_DIR=${rootDir}/../../SDL2",
+                          "-DSDL2_MIXER_SOURCE_DIR=${rootDir}/../../SDL2_mixer"
             }
         }
         ndk {
