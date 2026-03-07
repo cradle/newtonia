@@ -13,8 +13,14 @@ file(GLOB_RECURSE GAME_SOURCES
 # Exclude the desktop entry point; android_main.cpp is included automatically.
 list(FILTER GAME_SOURCES EXCLUDE REGEX ".*glut\\.cpp$")
 
-# On Android the NDK exposes SDL2 via find_package or direct linking.
-# SDL2 is expected to be built as a shared library first (SDL2 Android build).
+# SDL2 dependency: build from source if SDL2_SOURCE_DIR is provided (e.g. CI),
+# otherwise expect pre-built SDL2 to be found via SDL2_DIR / SDL2_mixer_DIR.
+if(DEFINED SDL2_SOURCE_DIR AND DEFINED SDL2_MIXER_SOURCE_DIR)
+    add_subdirectory(${SDL2_SOURCE_DIR} ${CMAKE_BINARY_DIR}/SDL2 EXCLUDE_FROM_ALL)
+    # Expose SDL2's build dir so SDL2_mixer's find_package(SDL2) can locate it.
+    set(SDL2_DIR ${CMAKE_BINARY_DIR}/SDL2 CACHE PATH "" FORCE)
+    add_subdirectory(${SDL2_MIXER_SOURCE_DIR} ${CMAKE_BINARY_DIR}/SDL2_mixer EXCLUDE_FROM_ALL)
+endif()
 
 add_library(newtonia SHARED ${GAME_SOURCES})
 

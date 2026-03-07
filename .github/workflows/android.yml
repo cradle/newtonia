@@ -1,0 +1,51 @@
+name: Android APK
+
+on:
+  push:
+    branches:
+      - master
+      - main
+      - 'claude/**'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: newtonia
+
+      - name: Clone SDL2
+        run: git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL.git SDL2
+
+      - name: Clone SDL2_mixer
+        run: git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK and CMake
+        run: sdkmanager "ndk;26.3.11579264" "cmake;3.22.1"
+
+      - name: Build debug APK
+        working-directory: newtonia/android
+        run: ./gradlew assembleDebug --stacktrace
+        env:
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_HOME }}/ndk/26.3.11579264
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: newtonia-debug
+          path: newtonia/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
