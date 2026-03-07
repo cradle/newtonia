@@ -46,6 +46,8 @@ android {
         main {
             // Game assets (sounds, etc.) are placed in android/app/src/main/assets
             assets.srcDirs = ['src/main/assets']
+            // SDL2 Java sources are cloned as a sibling to the repo root in CI
+            java.srcDirs += ["${rootDir}/../../SDL2/android-project/app/src/main/java"]
         }
     }
 }
