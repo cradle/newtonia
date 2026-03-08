@@ -12,6 +12,10 @@ file(GLOB_RECURSE GAME_SOURCES
 
 # Exclude the desktop entry point; android_main.cpp is included automatically.
 list(FILTER GAME_SOURCES EXCLUDE REGEX ".*glut\\.cpp$")
+# Exclude CMake-generated compiler-identification files that end up inside
+# the source tree when Gradle runs CMake from android/app/.cxx/.
+list(FILTER GAME_SOURCES EXCLUDE REGEX ".*/CMakeFiles/.*")
+list(FILTER GAME_SOURCES EXCLUDE REGEX ".*\\.cxx/.*")
 
 # SDL2 dependency: build from source if SDL2_SOURCE_DIR is provided (e.g. CI),
 # otherwise expect pre-built SDL2 to be found via SDL2_DIR / SDL2_mixer_DIR.
