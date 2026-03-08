@@ -6,6 +6,10 @@
 #include <GLES2/gl2.h>
 #include <SDL.h>
 
+// GLdouble / GLclampd are desktop-only; define them for the shim API.
+typedef double  GLdouble;
+typedef double  GLclampd;
+
 // ---- Constants not present in GLES2 ----
 #define GL_POLYGON              0x0009
 #define GL_QUADS                0x0007
