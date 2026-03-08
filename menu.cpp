@@ -67,7 +67,7 @@ void Menu::draw() {
     }
 #endif
   }
-  Typer::draw_centered(0, -420, "© 2008-2015", 13, currentTime);
+  Typer::draw_centered(0, -420, "© 2008-2026", 13, currentTime);
 }
 
 void Menu::tick(int delta) {
