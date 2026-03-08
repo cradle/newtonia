@@ -23,7 +23,9 @@ jobs:
         run: git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL.git SDL2
 
       - name: Clone SDL2_mixer
-        run: git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
+        run: |
+          git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
+          git -C SDL2_mixer submodule update --init --depth 1
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
