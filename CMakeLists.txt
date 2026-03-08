@@ -19,6 +19,17 @@ if(DEFINED SDL2_SOURCE_DIR AND DEFINED SDL2_MIXER_SOURCE_DIR)
     add_subdirectory(${SDL2_SOURCE_DIR} ${CMAKE_BINARY_DIR}/SDL2 EXCLUDE_FROM_ALL)
     # Expose SDL2's build dir so SDL2_mixer's find_package(SDL2) can locate it.
     set(SDL2_DIR ${CMAKE_BINARY_DIR}/SDL2 CACHE PATH "" FORCE)
+
+    # Disable optional SDL2_mixer formats — the game only initialises the
+    # mixer for future use and does not load any audio files yet.
+    set(SDL2MIXER_VORBIS  ""    CACHE STRING "" FORCE)
+    set(SDL2MIXER_WAVPACK OFF   CACHE BOOL   "" FORCE)
+    set(SDL2MIXER_FLAC    OFF   CACHE BOOL   "" FORCE)
+    set(SDL2MIXER_OPUS    OFF   CACHE BOOL   "" FORCE)
+    set(SDL2MIXER_MOD     OFF   CACHE BOOL   "" FORCE)
+    set(SDL2MIXER_MIDI    OFF   CACHE BOOL   "" FORCE)
+    set(SDL2MIXER_MP3     OFF   CACHE BOOL   "" FORCE)
+
     add_subdirectory(${SDL2_MIXER_SOURCE_DIR} ${CMAKE_BINARY_DIR}/SDL2_mixer EXCLUDE_FROM_ALL)
 endif()
 
