@@ -3,7 +3,7 @@
 #include "../glgame.h"
 #include "../typer.h"
 
-#include "gl_compat.h"
+#include "../gl_compat.h"
 
 void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   title_text(glgame, glship);
