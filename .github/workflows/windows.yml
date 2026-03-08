@@ -23,6 +23,7 @@ jobs:
           update: true
           install: >-
             mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-pkgconf
             mingw-w64-x86_64-freeglut
             mingw-w64-x86_64-SDL2
             mingw-w64-x86_64-SDL2_mixer
