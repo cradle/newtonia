@@ -33,7 +33,7 @@ jobs:
           SRCS=$(find . -name "*.cpp" \
             -not -path "./android/*" \
             -not -path "./.git/*")
-          g++ -O2 -Wall -o newtonia.exe $SRCS \
+          g++ -O2 -Wall -std=c++11 -o newtonia.exe $SRCS \
             $(pkg-config --cflags --libs sdl2 SDL2_mixer freeglut) \
             -lopengl32 -lglu32
 
