@@ -33,25 +33,27 @@ jobs:
         env:
           MACOSX_DEPLOYMENT_TARGET: "12.0"
         run: |
-          g++ -O2 -Wall -std=c++11 -arch arm64 \
+          clang++ -O2 -Wall -std=c++11 -arch arm64 \
             -mmacosx-version-min=12.0 \
             -o newtonia-arm64 $(cat srcs.txt) \
             $(/opt/homebrew/bin/sdl2-config --cflags --libs) \
             -L/opt/homebrew/lib -lSDL2_mixer \
             -I/opt/homebrew/include/SDL2 \
             -framework GLUT -framework OpenGL
+          lipo -info newtonia-arm64
 
       - name: Build x86_64
         env:
           MACOSX_DEPLOYMENT_TARGET: "12.0"
         run: |
-          arch -x86_64 g++ -O2 -Wall -std=c++11 -arch x86_64 \
+          clang++ -O2 -Wall -std=c++11 -arch x86_64 \
             -mmacosx-version-min=12.0 \
             -o newtonia-x86_64 $(cat srcs.txt) \
             $(/usr/local/bin/sdl2-config --cflags --libs) \
             -L/usr/local/lib -lSDL2_mixer \
             -I/usr/local/include/SDL2 \
             -framework GLUT -framework OpenGL
+          lipo -info newtonia-x86_64
 
       - name: Create universal binary
         run: lipo -create -output newtonia newtonia-arm64 newtonia-x86_64
@@ -73,16 +75,21 @@ jobs:
               if [ ! -f "$dest" ]; then
                 arm=$(echo "$dep" | sed 's|/usr/local/|/opt/homebrew/|g')
                 x86=$(echo "$dep" | sed 's|/opt/homebrew/|/usr/local/|g')
-                if [ -f "$arm" ] && [ -f "$x86" ]; then
+                if [ "$arm" != "$x86" ] && [ -f "$arm" ] && [ -f "$x86" ]; then
                   lipo -create "$arm" "$x86" -output "$dest"
                 elif [ -f "$dep" ]; then
                   cp "$dep" "$dest"
+                elif [ -f "$arm" ]; then
+                  cp "$arm" "$dest"
+                elif [ -f "$x86" ]; then
+                  cp "$x86" "$dest"
                 else
                   echo "WARNING: $dep not found, skipping" >&2
                   continue
                 fi
                 install_name_tool -id "@executable_path/../Frameworks/$name" "$dest"
                 bundle "$dest"
+                codesign --sign - --force "$dest"
               fi
               install_name_tool -change "$dep" "@executable_path/../Frameworks/$name" "$target"
             done < <(otool -L "$target" | tail -n +2 | awk '{print $1}' \
@@ -90,6 +97,7 @@ jobs:
           }
 
           bundle Newtonia.app/Contents/MacOS/newtonia
+          codesign --sign - --force Newtonia.app/Contents/MacOS/newtonia
 
           cat > Newtonia.app/Contents/Info.plist <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
