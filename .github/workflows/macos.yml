@@ -58,8 +58,41 @@ jobs:
 
       - name: Bundle .app
         run: |
-          mkdir -p Newtonia.app/Contents/MacOS
+          mkdir -p Newtonia.app/Contents/{MacOS,Frameworks}
+
+          # Detect exact dylib paths baked into each arch slice
+          ARM_SDL2=$(otool -L newtonia-arm64 | awk '/libSDL2[^_]/{print $1; exit}')
+          X86_SDL2=$(otool -L newtonia-x86_64 | awk '/libSDL2[^_]/{print $1; exit}')
+          ARM_MIX=$(otool  -L newtonia-arm64 | awk '/libSDL2_mixer/{print $1; exit}')
+          X86_MIX=$(otool  -L newtonia-x86_64 | awk '/libSDL2_mixer/{print $1; exit}')
+          SDL2_NAME=$(basename "$ARM_SDL2")
+          MIX_NAME=$(basename "$ARM_MIX")
+
+          # Create universal dylibs inside Frameworks/
+          lipo -create "$ARM_SDL2" "$X86_SDL2" -output "Newtonia.app/Contents/Frameworks/$SDL2_NAME"
+          lipo -create "$ARM_MIX"  "$X86_MIX"  -output "Newtonia.app/Contents/Frameworks/$MIX_NAME"
+
+          # Fix dylib install names so they resolve relative to the app
+          install_name_tool -id "@executable_path/../Frameworks/$SDL2_NAME" \
+            "Newtonia.app/Contents/Frameworks/$SDL2_NAME"
+          install_name_tool -id "@executable_path/../Frameworks/$MIX_NAME" \
+            "Newtonia.app/Contents/Frameworks/$MIX_NAME"
+
+          # Fix SDL2_mixer's internal reference to SDL2
+          install_name_tool \
+            -change "$ARM_SDL2" "@executable_path/../Frameworks/$SDL2_NAME" \
+            -change "$X86_SDL2" "@executable_path/../Frameworks/$SDL2_NAME" \
+            "Newtonia.app/Contents/Frameworks/$MIX_NAME"
+
+          # Copy binary and rewrite its library references
           cp newtonia Newtonia.app/Contents/MacOS/newtonia
+          install_name_tool \
+            -change "$ARM_SDL2" "@executable_path/../Frameworks/$SDL2_NAME" \
+            -change "$X86_SDL2" "@executable_path/../Frameworks/$SDL2_NAME" \
+            -change "$ARM_MIX"  "@executable_path/../Frameworks/$MIX_NAME" \
+            -change "$X86_MIX"  "@executable_path/../Frameworks/$MIX_NAME" \
+            Newtonia.app/Contents/MacOS/newtonia
+
           cat > Newtonia.app/Contents/Info.plist <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
