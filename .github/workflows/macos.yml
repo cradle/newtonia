@@ -8,62 +8,51 @@ on:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        include:
-          - runner: macos-13       # Intel x86_64
-            arch: x86_64
-            deployment_target: "12.0"
-          - runner: macos-latest   # Apple Silicon arm64
-            arch: arm64
-            deployment_target: "12.0"
-
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-latest   # arm64 (Apple Silicon)
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install arm64 dependencies
         run: brew install sdl2 sdl2_mixer
 
-      - name: Build
-        env:
-          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.deployment_target }}
+      - name: Install x86_64 Homebrew and dependencies
         run: |
-          SRCS=$(find . -name "*.cpp" \
+          arch -x86_64 /bin/bash -c \
+            "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          arch -x86_64 /usr/local/bin/brew install sdl2 sdl2_mixer
+
+      - name: Collect sources
+        run: |
+          find . -name "*.cpp" \
             -not -path "./android/*" \
             -not -path "./.git/*" \
-            -not -name "gles2_compat.cpp")
-          g++ -O2 -Wall -std=c++11 \
-            -arch ${{ matrix.arch }} \
-            -mmacosx-version-min=${{ matrix.deployment_target }} \
-            -o newtonia-${{ matrix.arch }} $SRCS \
-            $(sdl2-config --cflags --libs) \
-            $(pkg-config --cflags --libs SDL2_mixer) \
+            -not -name "gles2_compat.cpp" > srcs.txt
+
+      - name: Build arm64
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "12.0"
+        run: |
+          g++ -O2 -Wall -std=c++11 -arch arm64 \
+            -mmacosx-version-min=12.0 \
+            -o newtonia-arm64 $(cat srcs.txt) \
+            $(/opt/homebrew/bin/sdl2-config --cflags --libs) \
+            $(/opt/homebrew/bin/pkg-config --cflags --libs SDL2_mixer) \
             -framework GLUT -framework OpenGL
 
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: newtonia-${{ matrix.arch }}
-          path: newtonia-${{ matrix.arch }}
-          retention-days: 1
-
-  universal:
-    needs: build
-    runs-on: macos-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download binaries
-        uses: actions/download-artifact@v4
-        with:
-          pattern: newtonia-*
-          merge-multiple: true
+      - name: Build x86_64
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "12.0"
+        run: |
+          arch -x86_64 g++ -O2 -Wall -std=c++11 -arch x86_64 \
+            -mmacosx-version-min=12.0 \
+            -o newtonia-x86_64 $(cat srcs.txt) \
+            $(/usr/local/bin/sdl2-config --cflags --libs) \
+            $(/usr/local/bin/pkg-config --cflags --libs SDL2_mixer) \
+            -framework GLUT -framework OpenGL
 
       - name: Create universal binary
-        run: lipo -create -output newtonia newtonia-x86_64 newtonia-arm64
+        run: lipo -create -output newtonia newtonia-arm64 newtonia-x86_64
 
       - name: Bundle .app
         run: |
@@ -75,12 +64,12 @@ jobs:
             "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
-            <key>CFBundleExecutable</key>          <string>newtonia</string>
-            <key>CFBundleIdentifier</key>          <string>com.newtonia.app</string>
-            <key>CFBundleName</key>                <string>Newtonia</string>
-            <key>CFBundleVersion</key>             <string>1.0</string>
-            <key>CFBundlePackageType</key>         <string>APPL</string>
-            <key>LSMinimumSystemVersion</key>      <string>12.0</string>
+            <key>CFBundleExecutable</key>     <string>newtonia</string>
+            <key>CFBundleIdentifier</key>     <string>com.newtonia.app</string>
+            <key>CFBundleName</key>           <string>Newtonia</string>
+            <key>CFBundleVersion</key>        <string>1.0</string>
+            <key>CFBundlePackageType</key>    <string>APPL</string>
+            <key>LSMinimumSystemVersion</key> <string>12.0</string>
           </dict>
           </plist>
           PLIST
