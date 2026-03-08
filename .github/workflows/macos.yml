@@ -37,7 +37,8 @@ jobs:
             -mmacosx-version-min=12.0 \
             -o newtonia-arm64 $(cat srcs.txt) \
             $(/opt/homebrew/bin/sdl2-config --cflags --libs) \
-            $(/opt/homebrew/bin/pkg-config --cflags --libs SDL2_mixer) \
+            -L/opt/homebrew/lib -lSDL2_mixer \
+            -I/opt/homebrew/include/SDL2 \
             -framework GLUT -framework OpenGL
 
       - name: Build x86_64
@@ -48,7 +49,8 @@ jobs:
             -mmacosx-version-min=12.0 \
             -o newtonia-x86_64 $(cat srcs.txt) \
             $(/usr/local/bin/sdl2-config --cflags --libs) \
-            $(/usr/local/bin/pkg-config --cflags --libs SDL2_mixer) \
+            -L/usr/local/lib -lSDL2_mixer \
+            -I/usr/local/include/SDL2 \
             -framework GLUT -framework OpenGL
 
       - name: Create universal binary
