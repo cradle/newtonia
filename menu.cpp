@@ -57,11 +57,15 @@ void Menu::draw() {
   glTranslatef(viewpoint.x(), viewpoint.y(), 0.0f);
   Typer::draw_centered(0, 200, "Newtonia", 80);
   if((currentTime/1400) % 2) {
+#ifdef __ANDROID__
+    Typer::draw_centered(0, -50, "tap to start", 18);
+#else
     if(SDL_NumJoysticks() == 0) {
       Typer::draw_centered(0, -50, "press enter", 18);
     } else {
       Typer::draw_centered(0, -50, "press start", 18);
     }
+#endif
   }
   Typer::draw_centered(0, -420, "© 2008-2015", 13, currentTime);
 }
@@ -90,12 +94,6 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 }
 
 void Menu::keyboard_up (unsigned char key, int x, int y) {
-  switch(key) {
-  case 27:
-    //glutLeaveMainLoop();
-    break;
-  case 13:
-    request_state_change(new GLGame());
-    break;
-  }
+  if (key == 27) return; // ESC
+  request_state_change(new GLGame());
 }
