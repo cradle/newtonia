@@ -68,13 +68,15 @@ jobs:
           # Recursively bundle all non-system dylibs into Frameworks/
           bundle() {
             local target="$1"
+            # Collect deps from BOTH arch slices so fat-binary paths are all seen
             while IFS= read -r dep; do
               local name dest arm x86
               name=$(basename "$dep")
               dest="$FW/$name"
+              # Compute the equivalent path in each Homebrew prefix
+              arm=$(echo "$dep" | sed 's|/usr/local/|/opt/homebrew/|g')
+              x86=$(echo "$dep" | sed 's|/opt/homebrew/|/usr/local/|g')
               if [ ! -f "$dest" ]; then
-                arm=$(echo "$dep" | sed 's|/usr/local/|/opt/homebrew/|g')
-                x86=$(echo "$dep" | sed 's|/opt/homebrew/|/usr/local/|g')
                 if [ "$arm" != "$x86" ] && [ -f "$arm" ] && [ -f "$x86" ]; then
                   lipo -create "$arm" "$x86" -output "$dest"
                 elif [ -f "$dep" ]; then
@@ -91,9 +93,16 @@ jobs:
                 bundle "$dest"
                 codesign --sign - --force "$dest"
               fi
-              install_name_tool -change "$dep" "@executable_path/../Frameworks/$name" "$target"
-            done < <(otool -L "$target" | tail -n +2 | awk '{print $1}' \
-                       | grep -Ev '^(/usr/lib|/System|@)')
+              # Rewrite both arch prefixes in the target (fat binary has both)
+              install_name_tool -change "$arm" "@executable_path/../Frameworks/$name" "$target" 2>/dev/null || true
+              install_name_tool -change "$x86" "@executable_path/../Frameworks/$name" "$target" 2>/dev/null || true
+            done < <(
+              { otool -arch arm64  -L "$target" 2>/dev/null
+                otool -arch x86_64 -L "$target" 2>/dev/null; } \
+              | awk '/^\t/{print $1}' \
+              | grep -Ev '^(/usr/lib|/System|@)' \
+              | sort -u
+            )
           }
 
           bundle Newtonia.app/Contents/MacOS/newtonia
