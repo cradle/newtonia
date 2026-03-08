@@ -95,61 +95,6 @@ static void finger_up(SDL_FingerID id) {
 }
 
 // ============================================================
-// Touch control HUD (simple coloured rectangles)
-// ============================================================
-static void draw_hud() {
-    // Draw semi-transparent touch zone overlays so the player can see the
-    // control areas.  We keep it minimal: just faint outlines.
-
-    // Left half zones ── four quadrants
-    struct Zone { float x, y, w, h; float r, g, b; const char *label; };
-    float sw = (float)s_w, sh = (float)s_h;
-    Zone zones[] = {
-        // left half: thrust (top), reverse (bottom), left/right (middle)
-        {0,    0,    sw*0.5f, sh*0.4f,   0.2f,0.8f,0.2f, "THRUST"},
-        {0,    sh*0.6f, sw*0.25f, sh*0.4f, 0.8f,0.2f,0.2f, "LEFT"},
-        {sw*0.25f, sh*0.6f, sw*0.25f, sh*0.4f, 0.2f,0.2f,0.8f, "RIGHT"},
-        {0,    sh*0.4f, sw*0.25f, sh*0.2f, 0.8f,0.8f,0.2f, "L-TURN"},
-        {sw*0.25f,sh*0.4f,sw*0.25f,sh*0.2f,0.8f,0.8f,0.2f, "R-TURN"},
-        // right half
-        {sw*0.5f, 0,    sw*0.5f, sh*0.35f, 0.6f,0.6f,0.6f, "START"},
-        {sw*0.5f, sh*0.35f, sw*0.25f, sh*0.65f, 0.9f,0.5f,0.1f, "SHOOT"},
-        {sw*0.75f,sh*0.35f, sw*0.25f, sh*0.65f, 0.5f,0.1f,0.9f, "MINE"},
-    };
-
-    // Save matrices; set up pixel-space ortho for the HUD
-    glMatrixMode(GL_PROJECTION);
-    glPushMatrix();
-    glLoadIdentity();
-    glOrtho(0, sw, sh, 0, -1, 1);
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-    glLoadIdentity();
-
-    for (auto &z : zones) {
-        glColor4f(z.r, z.g, z.b, 0.08f);
-        glBegin(GL_POLYGON);
-        glVertex2f(z.x,        z.y);
-        glVertex2f(z.x + z.w,  z.y);
-        glVertex2f(z.x + z.w,  z.y + z.h);
-        glVertex2f(z.x,        z.y + z.h);
-        glEnd();
-        glColor4f(z.r, z.g, z.b, 0.3f);
-        glBegin(GL_LINE_LOOP);
-        glVertex2f(z.x + 2,        z.y + 2);
-        glVertex2f(z.x + z.w - 2,  z.y + 2);
-        glVertex2f(z.x + z.w - 2,  z.y + z.h - 2);
-        glVertex2f(z.x + 2,        z.y + z.h - 2);
-        glEnd();
-    }
-
-    glMatrixMode(GL_PROJECTION);
-    glPopMatrix();
-    glMatrixMode(GL_MODELVIEW);
-    glPopMatrix();
-}
-
-// ============================================================
 // SDL2 main
 // ============================================================
 extern "C" int SDL_main(int argc, char *argv[]) {
@@ -278,8 +223,6 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         glClear(GL_COLOR_BUFFER_BIT);
         s_game->draw();
 
-        // Draw touch control HUD on top
-        draw_hud();
 
         SDL_GL_SwapWindow(s_window);
     }
