@@ -40,7 +40,9 @@ jobs:
         run: sdkmanager "ndk;26.3.11579264" "cmake;3.22.1"
 
       - name: Copy SDL2 Java sources into app source tree
-        run: cp -r SDL2/android-project/app/src/main/java/org/libsdl newtonia/android/app/src/main/java/org/
+        run: |
+          mkdir -p newtonia/android/app/src/main/java/org
+          cp -r SDL2/android-project/app/src/main/java/org/libsdl newtonia/android/app/src/main/java/org/
 
       - name: Build debug APK
         working-directory: newtonia/android
