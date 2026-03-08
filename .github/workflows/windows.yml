@@ -1,0 +1,53 @@
+name: Windows
+
+on:
+  push:
+    branches: [master, main, 'claude/**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-freeglut
+            mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-SDL2_mixer
+
+      - name: Build
+        run: |
+          SRCS=$(find . -name "*.cpp" \
+            -not -path "./android/*" \
+            -not -path "./.git/*")
+          g++ -O2 -Wall -o newtonia.exe $SRCS \
+            $(pkg-config --cflags --libs sdl2 SDL2_mixer freeglut) \
+            -lopengl32 -lglu32
+
+      - name: Bundle runtime DLLs
+        run: |
+          ldd newtonia.exe \
+            | grep '/mingw64/bin' \
+            | awk '{print $3}' \
+            | xargs -I{} cp {} .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: newtonia-windows
+          path: |
+            newtonia.exe
+            *.dll
+          retention-days: 30
