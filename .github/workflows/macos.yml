@@ -1,0 +1,54 @@
+name: macOS
+
+on:
+  push:
+    branches: [master, main, 'claude/**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install sdl2 sdl2_mixer
+
+      - name: Build
+        run: |
+          SRCS=$(find . -name "*.cpp" \
+            -not -path "./android/*" \
+            -not -path "./.git/*" \
+            -not -name "gles2_compat.cpp")
+          g++ -O2 -Wall -std=c++11 -o newtonia $SRCS \
+            $(sdl2-config --cflags --libs) \
+            $(pkg-config --cflags --libs SDL2_mixer) \
+            -framework GLUT -framework OpenGL
+
+      - name: Bundle .app
+        run: |
+          mkdir -p Newtonia.app/Contents/MacOS
+          cp newtonia Newtonia.app/Contents/MacOS/newtonia
+          cat > Newtonia.app/Contents/Info.plist <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key>   <string>newtonia</string>
+            <key>CFBundleIdentifier</key>   <string>com.newtonia.app</string>
+            <key>CFBundleName</key>         <string>Newtonia</string>
+            <key>CFBundleVersion</key>      <string>1.0</string>
+            <key>CFBundlePackageType</key>  <string>APPL</string>
+          </dict>
+          </plist>
+          PLIST
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: newtonia-macos
+          path: Newtonia.app
+          retention-days: 30
