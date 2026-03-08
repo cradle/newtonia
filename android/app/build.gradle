@@ -46,8 +46,9 @@ android {
         main {
             // Game assets (sounds, etc.) are placed in android/app/src/main/assets
             assets.srcDirs = ['src/main/assets']
-            // SDL2 Java sources are copied into src/main/java/org/libsdl by CI
-            // (see android.yml "Copy SDL2 Java sources" step) so no extra srcDir needed.
+            // Include SDL2 Java sources directly from the SDL2 sibling directory so
+            // the build works both locally and in CI without a manual copy step.
+            java.srcDirs += ["${rootDir}/../../SDL2/android-project/app/src/main/java"]
         }
     }
 }
