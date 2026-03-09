@@ -60,8 +60,9 @@ jobs:
 
       - name: Bundle .app
         run: |
-          mkdir -p Newtonia.app/Contents/{MacOS,Frameworks}
+          mkdir -p Newtonia.app/Contents/{MacOS,Frameworks,Resources}
           cp newtonia Newtonia.app/Contents/MacOS/newtonia
+          cp icon.icns Newtonia.app/Contents/Resources/icon.icns
 
           FW="Newtonia.app/Contents/Frameworks"
 
