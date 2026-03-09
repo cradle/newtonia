@@ -32,38 +32,34 @@ void Grid::display() const {
   cout << endl;
 }
 
-list<Object *> Grid::get(Point position, int x_offset, int y_offset) const {
-  int row_num = x_offset + floor(position.x()/cell_size.x());
-  int col_num = y_offset + floor(position.y()/cell_size.y());
-  //cout << "B" << row_num << "," << col_num << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
-  while(row_num < 0)
-    row_num += num_rows;
-  while(col_num < 0)
-    col_num += num_cols;
-  while(row_num >= num_rows)
-    row_num -= num_rows;
-  while(col_num >= num_cols)
-    col_num -= num_cols;
-  //cout << "A" << row_num << "," << col_num << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
-  return cells[row_num][col_num];
+const list<Object *> &Grid::get(int row, int col) const {
+  while(row < 0) row += num_rows;
+  while(col < 0) col += num_cols;
+  while(row >= num_rows) row -= num_rows;
+  while(col >= num_cols) col -= num_cols;
+  return cells[row][col];
 }
 
 Object * Grid::collide(const Object &object, float proximity) const {
-  list<Object *> others;
-  list<Object *>::iterator o;
-  Point offset;
+  list<Object *>::const_iterator o;
   Object *collided = NULL;
+
+  int base_row = (int)floor(object.position.x() / cell_size.x());
+  int base_col = (int)floor(object.position.y() / cell_size.y());
+
   for(int i = -1; i <= 1 && collided == NULL; i++) {
+    int row = base_row + i;
+    float x_off = (row < 0) ? -world_size.x() : (row >= num_rows) ? world_size.x() : 0.0f;
+
     for(int j = -1; j <= 1 && collided == NULL; j++) {
-      others = get(object.position,i,j);
-      for(int x = -1;  x <= 1 && collided == NULL; x++) {
-        for(int y = -1; y <= 1 && collided == NULL; y++) {
-          offset = Point(x*world_size.x(), y*world_size.y());
-          for(o = others.begin(); o != others.end() && collided == NULL; o++) {
-            if(object.collide(**o, proximity, offset)) {
-              collided = *o;
-            }
-          }
+      int col = base_col + j;
+      float y_off = (col < 0) ? -world_size.y() : (col >= num_cols) ? world_size.y() : 0.0f;
+
+      const list<Object *> &others = get(row, col);
+      Point offset(x_off, y_off);
+      for(o = others.begin(); o != others.end() && collided == NULL; o++) {
+        if(object.collide(**o, proximity, offset)) {
+          collided = *o;
         }
       }
     }
