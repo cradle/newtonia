@@ -52,11 +52,18 @@ jobs:
             build-arm64/libSDL2_mixer.dylib
           cp build-arm64/libSDL2_mixer.dylib /opt/homebrew/lib/libSDL2_mixer.dylib
 
-          # x86_64 — use arch -x86_64 so the toolchain targets the right slice
-          arch -x86_64 cmake -B build-x86 "${cmake_flags[@]}" \
+          # x86_64 — cross-compile using the native arm64 cmake (can't run cmake
+          # under Rosetta because it's arm64-only).  STATIC_LIBRARY mode stops
+          # cmake from trying to execute x86_64 test binaries on this arm64 host.
+          cmake -B build-x86 "${cmake_flags[@]}" \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DCMAKE_C_FLAGS="-target x86_64-apple-macos12.0" \
+            -DCMAKE_CXX_FLAGS="-target x86_64-apple-macos12.0" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-target x86_64-apple-macos12.0" \
+            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
             -DCMAKE_PREFIX_PATH=/usr/local \
             -DCMAKE_INSTALL_PREFIX=/usr/local
-          arch -x86_64 cmake --build build-x86 -j$(sysctl -n hw.logicalcpu)
+          cmake --build build-x86 -j$(sysctl -n hw.logicalcpu)
           install_name_tool -id /usr/local/lib/libSDL2_mixer.dylib \
             build-x86/libSDL2_mixer.dylib
           cp build-x86/libSDL2_mixer.dylib /usr/local/lib/libSDL2_mixer.dylib
