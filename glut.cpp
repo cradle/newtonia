@@ -30,6 +30,7 @@ bool ENABLE_AUDIO = true;
 
 int last_render_time;
 void draw() {
+  if (!game) return;
   int current_time = glutGet(GLUT_ELAPSED_TIME);
   //cout << "fps: " << 1000.0 / (current_time - last_render_time) << endl;
   last_render_time = current_time;
