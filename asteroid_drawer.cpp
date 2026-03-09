@@ -127,12 +127,25 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, float direction,
   }
   glEnd();
 
-  // --- Dead asteroids: debris particles + score text ---
+  // --- Dead asteroids: debris particles (batched) + score text ---
   if (!is_minimap) {
+    // All debris from all dead asteroids in one GL_POINTS call.
+    glPointSize(3.0f);
+    glBegin(GL_POINTS);
     for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
       Asteroid const *a = *it;
       if (a->alive) continue;
-      draw_debris(a->debris);
+      for (list<Particle>::const_iterator d = a->debris.begin(); d != a->debris.end(); ++d) {
+        float alpha = rand() / (float)RAND_MAX * d->aliveness() / 2.0f + d->aliveness() / 2.0f;
+        glColor4f(1.0f, 1.0f, 1.0f, alpha);
+        glVertex2fv(d->position);
+      }
+    }
+    glEnd();
+    // Score text must be drawn per-asteroid (Typer is not batchable).
+    for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
+      Asteroid const *a = *it;
+      if (a->alive) continue;
       glPushMatrix();
       glTranslatef(a->position.x(), a->position.y(), 0.0f);
       glRotatef(-direction, 0.0f, 0.0f, 1.0f);
@@ -142,7 +155,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, float direction,
   }
 }
 
-void AsteroidDrawer::draw_debris(list<Particle> debris) {
+void AsteroidDrawer::draw_debris(list<Particle> const &debris) {
   glPointSize(3.0f);
   glBegin(GL_POINTS);
   for(list<Particle>::iterator d = debris.begin(); d != debris.end(); d++) {
