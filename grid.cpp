@@ -45,23 +45,18 @@ Object * Grid::collide(const Object &object, float proximity) const {
   list<Object *>::const_iterator o;
   Object *collided = NULL;
 
-  int base_row = (int)floor(object.position.x() / cell_size.x());
-  int base_col = (int)floor(object.position.y() / cell_size.y());
+  // Since update() stores each object in all cells its body overlaps,
+  // we only need to query cells the query object's effective radius spans.
+  float r = object.radius + proximity;
+  int row_min = (int)floor((object.position.x() - r) / cell_size.x());
+  int row_max = (int)floor((object.position.x() + r) / cell_size.x());
+  int col_min = (int)floor((object.position.y() - r) / cell_size.y());
+  int col_max = (int)floor((object.position.y() + r) / cell_size.y());
 
-  // An object whose radius + proximity extends past the current cell may collide
-  // with objects whose centres are in cells beyond the immediate neighbours.
-  // Derive the search range so it scales correctly with any object size or proximity.
-  // Formula: (R-1)*cell_size <= object.radius + cell_size/2 + proximity
-  //       => R = floor((object.radius + proximity) / cell_size + 0.5) + 1
-  float min_cell = std::min(cell_size.x(), cell_size.y());
-  int search_range = (int)floor((object.radius + proximity) / min_cell + 0.5f) + 1;
-
-  for(int i = -search_range; i <= search_range && collided == NULL; i++) {
-    int row = base_row + i;
+  for(int row = row_min; row <= row_max && collided == NULL; row++) {
     float x_off = (row < 0) ? -world_size.x() : (row >= num_rows) ? world_size.x() : 0.0f;
 
-    for(int j = -search_range; j <= search_range && collided == NULL; j++) {
-      int col = base_col + j;
+    for(int col = col_min; col <= col_max && collided == NULL; col++) {
       float y_off = (col < 0) ? -world_size.y() : (col >= num_cols) ? world_size.y() : 0.0f;
 
       const list<Object *> &others = get(row, col);
@@ -77,22 +72,24 @@ Object * Grid::collide(const Object &object, float proximity) const {
 }
 
 void Grid::update(const list<Object *> *objects) {
-  for(int i = 0; i < num_rows; i++) {
-    for(int j = 0; j < num_cols; j++) {
+  for(int i = 0; i < num_rows; i++)
+    for(int j = 0; j < num_cols; j++)
       cells[i][j].clear();
-    }
-  }
-  Point p;
-  int x,y;
+
   list<Object *>::const_iterator oi;
   for(oi = objects->begin(); oi != objects->end(); oi++) {
-    //FIX: Shouldn't need *oi check, no null objects should be here
-    if(*oi && (*oi)->alive) {
-      p = (*oi)->position;
-      x = p.x()/cell_size.x();
-      y = p.y()/cell_size.y();
-      cells[x][y].push_back(*oi);
-    }
+    if(!(*oi) || !(*oi)->alive) continue;
+    Point p = (*oi)->position;
+    float r = (*oi)->radius;
+    // Insert into every cell the object's body overlaps.
+    // Clamped to valid range; query-time offsets handle world-wrap collisions.
+    int x_min = std::max(0, (int)floor((p.x() - r) / cell_size.x()));
+    int x_max = std::min(num_rows - 1, (int)floor((p.x() + r) / cell_size.x()));
+    int y_min = std::max(0, (int)floor((p.y() - r) / cell_size.y()));
+    int y_max = std::min(num_cols - 1, (int)floor((p.y() + r) / cell_size.y()));
+    for(int x = x_min; x <= x_max; x++)
+      for(int y = y_min; y <= y_max; y++)
+        cells[x][y].push_back(*oi);
   }
 }
 
