@@ -97,7 +97,9 @@ void Menu::keyboard_up (unsigned char key, int x, int y) {
 #ifdef __ANDROID__
   request_state_change(new GLGame());
 #else
-  if (key == ' ' || key == '\r' || key == '\n')
+  if (key == 27)
+    glutLeaveMainLoop();
+  else if (key == ' ' || key == '\r' || key == '\n')
     request_state_change(new GLGame());
 #endif
 }

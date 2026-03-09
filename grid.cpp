@@ -4,6 +4,7 @@
 #include <vector>
 #include <list>
 #include <math.h>
+#include <algorithm>
 #include <iostream>
 using namespace std;
 
@@ -32,38 +33,38 @@ void Grid::display() const {
   cout << endl;
 }
 
-list<Object *> Grid::get(Point position, int x_offset, int y_offset) const {
-  int row_num = x_offset + floor(position.x()/cell_size.x());
-  int col_num = y_offset + floor(position.y()/cell_size.y());
-  //cout << "B" << row_num << "," << col_num << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
-  while(row_num < 0)
-    row_num += num_rows;
-  while(col_num < 0)
-    col_num += num_cols;
-  while(row_num >= num_rows)
-    row_num -= num_rows;
-  while(col_num >= num_cols)
-    col_num -= num_cols;
-  //cout << "A" << row_num << "," << col_num << ": " << "[" << cells.size() << "][" << cells.front().size() << "]" << endl;
-  return cells[row_num][col_num];
+const list<Object *> &Grid::get(int row, int col) const {
+  while(row < 0) row += num_rows;
+  while(col < 0) col += num_cols;
+  while(row >= num_rows) row -= num_rows;
+  while(col >= num_cols) col -= num_cols;
+  return cells[row][col];
 }
 
 Object * Grid::collide(const Object &object, float proximity) const {
-  list<Object *> others;
-  list<Object *>::iterator o;
-  Point offset;
+  list<Object *>::const_iterator o;
   Object *collided = NULL;
-  for(int i = -1; i <= 1 && collided == NULL; i++) {
-    for(int j = -1; j <= 1 && collided == NULL; j++) {
-      others = get(object.position,i,j);
-      for(int x = -1;  x <= 1 && collided == NULL; x++) {
-        for(int y = -1; y <= 1 && collided == NULL; y++) {
-          offset = Point(x*world_size.x(), y*world_size.y());
-          for(o = others.begin(); o != others.end() && collided == NULL; o++) {
-            if(object.collide(**o, proximity, offset)) {
-              collided = *o;
-            }
-          }
+
+  // Query cells the object's effective radius spans, plus one cell on each
+  // side. The ±1 allows row/col to go out of bounds, which triggers the
+  // world-wrap offset below — essential for collisions across world edges.
+  float r = object.radius + proximity;
+  int row_min = (int)floor((object.position.x() - r) / cell_size.x()) - 1;
+  int row_max = (int)floor((object.position.x() + r) / cell_size.x()) + 1;
+  int col_min = (int)floor((object.position.y() - r) / cell_size.y()) - 1;
+  int col_max = (int)floor((object.position.y() + r) / cell_size.y()) + 1;
+
+  for(int row = row_min; row <= row_max && collided == NULL; row++) {
+    float x_off = (row < 0) ? -world_size.x() : (row >= num_rows) ? world_size.x() : 0.0f;
+
+    for(int col = col_min; col <= col_max && collided == NULL; col++) {
+      float y_off = (col < 0) ? -world_size.y() : (col >= num_cols) ? world_size.y() : 0.0f;
+
+      const list<Object *> &others = get(row, col);
+      Point offset(x_off, y_off);
+      for(o = others.begin(); o != others.end() && collided == NULL; o++) {
+        if(object.collide(**o, proximity, offset)) {
+          collided = *o;
         }
       }
     }
@@ -72,22 +73,24 @@ Object * Grid::collide(const Object &object, float proximity) const {
 }
 
 void Grid::update(const list<Object *> *objects) {
-  for(int i = 0; i < num_rows; i++) {
-    for(int j = 0; j < num_cols; j++) {
+  for(int i = 0; i < num_rows; i++)
+    for(int j = 0; j < num_cols; j++)
       cells[i][j].clear();
-    }
-  }
-  Point p;
-  int x,y;
+
   list<Object *>::const_iterator oi;
   for(oi = objects->begin(); oi != objects->end(); oi++) {
-    //FIX: Shouldn't need *oi check, no null objects should be here
-    if(*oi && (*oi)->alive) {
-      p = (*oi)->position;
-      x = p.x()/cell_size.x();
-      y = p.y()/cell_size.y();
-      cells[x][y].push_back(*oi);
-    }
+    if(!(*oi) || !(*oi)->alive) continue;
+    Point p = (*oi)->position;
+    float r = (*oi)->radius;
+    // Insert into every cell the object's body overlaps (clamped to grid).
+    // World-wrap collisions are handled at query time via out-of-bounds offsets.
+    int x_min = std::max(0, (int)floor((p.x() - r) / cell_size.x()));
+    int x_max = std::min(num_rows - 1, (int)floor((p.x() + r) / cell_size.x()));
+    int y_min = std::max(0, (int)floor((p.y() - r) / cell_size.y()));
+    int y_max = std::min(num_cols - 1, (int)floor((p.y() + r) / cell_size.y()));
+    for(int x = x_min; x <= x_max; x++)
+      for(int y = y_min; y <= y_max; y++)
+        cells[x][y].push_back(*oi);
   }
 }
 
