@@ -81,15 +81,18 @@ void Grid::update(const list<Object *> *objects) {
     if(!(*oi) || !(*oi)->alive) continue;
     Point p = (*oi)->position;
     float r = (*oi)->radius;
-    // Insert into every cell the object's body overlaps.
-    // Clamped to valid range; query-time offsets handle world-wrap collisions.
-    int x_min = std::max(0, (int)floor((p.x() - r) / cell_size.x()));
-    int x_max = std::min(num_rows - 1, (int)floor((p.x() + r) / cell_size.x()));
-    int y_min = std::max(0, (int)floor((p.y() - r) / cell_size.y()));
-    int y_max = std::min(num_cols - 1, (int)floor((p.y() + r) / cell_size.y()));
-    for(int x = x_min; x <= x_max; x++)
-      for(int y = y_min; y <= y_max; y++)
-        cells[x][y].push_back(*oi);
+    // Insert into every cell the object's body overlaps, wrapping at world edges.
+    int x_min = (int)floor((p.x() - r) / cell_size.x());
+    int x_max = (int)floor((p.x() + r) / cell_size.x());
+    int y_min = (int)floor((p.y() - r) / cell_size.y());
+    int y_max = (int)floor((p.y() + r) / cell_size.y());
+    for(int x = x_min; x <= x_max; x++) {
+      int wx = ((x % num_rows) + num_rows) % num_rows;
+      for(int y = y_min; y <= y_max; y++) {
+        int wy = ((y % num_cols) + num_cols) % num_cols;
+        cells[wx][wy].push_back(*oi);
+      }
+    }
   }
 }
 
