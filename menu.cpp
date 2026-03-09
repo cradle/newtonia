@@ -94,6 +94,6 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 }
 
 void Menu::keyboard_up (unsigned char key, int x, int y) {
-  if (key == 27) return; // ESC
-  request_state_change(new GLGame());
+  if (key == ' ' || key == '\r' || key == '\n')
+    request_state_change(new GLGame());
 }
