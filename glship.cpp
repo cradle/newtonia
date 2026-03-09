@@ -603,20 +603,19 @@ void GLShip::draw_mines(bool minimap) const {
   }
 
   float size = 7.5;
-  glPointSize(5.0f);
   glLineWidth(2.0f);
+  glColor3fv(color);
+  glBegin(GL_LINES);
   for(list<Particle>::iterator m = ship->mines.begin(); m != ship->mines.end(); m++) {
-    glPushMatrix();
-    glTranslatef(m->position.x(), m->position.y(), 0.0f);
-    glRotated(m->rotation, 0.0f, 0.0f, 1.0f);
-    glBegin(GL_LINE_LOOP);
-    glColor3fv(color);
-  	glVertex2fv(Point(0,-size));
-  	glVertex2fv(Point(size,0));
-    glVertex2fv(Point(0,size));
-  	glVertex2fv(Point(-size,0));
-  	glEnd();
-    glPopMatrix();
+    float angle = m->rotation * (float)M_PI / 180.0f;
+    Point v0(0,-size), v1(size,0), v2(0,size), v3(-size,0);
+    v0.rotate(angle); v1.rotate(angle); v2.rotate(angle); v3.rotate(angle);
+    v0 += m->position; v1 += m->position; v2 += m->position; v3 += m->position;
+    glVertex2fv(v0); glVertex2fv(v1);
+    glVertex2fv(v1); glVertex2fv(v2);
+    glVertex2fv(v2); glVertex2fv(v3);
+    glVertex2fv(v3); glVertex2fv(v0);
   }
+  glEnd();
 }
 
