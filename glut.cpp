@@ -102,7 +102,7 @@ void special_up(int key, int x, int y) {
 
 void resize(int width, int height) {
   Typer::resize(width, height);
-  game->resize(width, height);
+  if (game) game->resize(width, height);
 }
 
 void mouse_move(int x, int y) {
