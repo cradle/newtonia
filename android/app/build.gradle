@@ -1,0 +1,54 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'org.newtonia'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "org.newtonia"
+        minSdk 21           // Android 5.0 (GLES2 guaranteed)
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++11"
+                // SDL2 source dirs — cloned as siblings to the repo root.
+                // CMakeLists.txt uses add_subdirectory to build them from source.
+                arguments "-DSDL2_SOURCE_DIR=${rootDir}/../../SDL2",
+                          "-DSDL2_MIXER_SOURCE_DIR=${rootDir}/../../SDL2_mixer"
+            }
+        }
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "${rootDir}/../CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
+                          'proguard-rules.pro'
+        }
+    }
+
+    sourceSets {
+        main {
+            // Game assets (sounds, etc.) are placed in android/app/src/main/assets
+            assets.srcDirs = ['src/main/assets']
+            // Include SDL2 Java sources directly from the SDL2 sibling directory so
+            // the build works both locally and in CI without a manual copy step.
+            java.srcDirs += ["${rootDir}/../../SDL2/android-project/app/src/main/java"]
+        }
+    }
+}

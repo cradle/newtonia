@@ -10,6 +10,7 @@ all: newtonia
 
 osx: $(OBJFILES)
 	CFLAGS="$(OSX_CFLAGS)" $(CC) -o newtonia $(OBJFILES) $(OSX_LIBS)
+	cp icon.icns Newtonia.app/Contents/Resources/icon.icns
 
 newtonia: $(OBJFILES)
 	$(CC) -o newtonia $(OBJFILES) $(LIBS)

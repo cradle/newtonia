@@ -1,3 +1,6 @@
+// Desktop-only entry point. Android uses android_main.cpp instead.
+#ifndef __ANDROID__
+
 #include <stdlib.h> // For EXIT_SUCCESS
 
 #include <SDL.h>
@@ -27,6 +30,7 @@ bool ENABLE_AUDIO = true;
 
 int last_render_time;
 void draw() {
+  if (!game) return;
   int current_time = glutGet(GLUT_ELAPSED_TIME);
   //cout << "fps: " << 1000.0 / (current_time - last_render_time) << endl;
   last_render_time = current_time;
@@ -99,7 +103,7 @@ void special_up(int key, int x, int y) {
 
 void resize(int width, int height) {
   Typer::resize(width, height);
-  game->resize(width, height);
+  if (game) game->resize(width, height);
 }
 
 void mouse_move(int x, int y) {
@@ -177,6 +181,7 @@ int main(int argc, char* argv[]) {
   init(argc, argv, 800, 600);
   init_controllers_and_audio();
   game = new StateManager();
+  resize(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT));
   glutMainLoop();
   if (SDL_GameControllerGetAttached(controller)) {
     SDL_GameControllerClose(controller);
@@ -216,3 +221,5 @@ void init(int &argc, char* argv[], float width, float height) {
   glutReshapeFunc(resize);
   glutVisibilityFunc(isVisible);
 }
+
+#endif // !__ANDROID__

@@ -13,14 +13,7 @@
 #include <math.h>
 #include <SDL.h>
 
-#ifdef __APPLE__
-#include <GLUT/glut.h>
-#else
-#ifdef _WIN32
-#include <windows.h>
-#endif
-#include <GL/glut.h>
-#endif
+#include "gl_compat.h"
 
 #include <iostream>
 #include <list>
@@ -511,6 +504,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == '-') time_between_steps++;
   if (key == '0') time_between_steps = step_size;
   if (key == 'p') toggle_pause();
+#ifndef __ANDROID__
   if (key == 13 && players->size() < 2) {
     Ship* p1 = players->front()->ship;
     if(p1->is_alive() || p1->lives) {
@@ -519,6 +513,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       players->push_back(object);
     }
   }
+#endif
   if (key == 27) request_state_change(new Menu());
 
   if (!running)

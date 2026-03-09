@@ -1,14 +1,7 @@
 #include "glstarfield.h"
 
 
-#ifdef __APPLE__
-#include <GLUT/glut.h>
-#else
-#ifdef _WIN32
-#include <windows.h>
-#endif
-#include <GL/glut.h>
-#endif
+#include "gl_compat.h"
 
 const int GLStarfield::NUM_REAR_LAYERS = 10;
 const int GLStarfield::NUM_FRONT_LAYERS = 5;

@@ -2,17 +2,7 @@
 #include "glstarfield.h"
 #include "glgame.h"
 #include "menu.h"
-#ifdef __APPLE__
-#define glutLeaveMainLoop() exit(EXIT_SUCCESS)
-#include <GLUT/glut.h>
-#else
-#ifdef _WIN32
-#include <windows.h>
-#endif
-#include <GL/glut.h>
-#include <GL/freeglut_std.h>
-#include <GL/freeglut_ext.h>
-#endif
+#include "gl_compat.h"
 #include <iostream>
 
 const int Menu::default_world_width = 5000;
@@ -67,13 +57,17 @@ void Menu::draw() {
   glTranslatef(viewpoint.x(), viewpoint.y(), 0.0f);
   Typer::draw_centered(0, 200, "Newtonia", 80);
   if((currentTime/1400) % 2) {
+#ifdef __ANDROID__
+    Typer::draw_centered(0, -50, "tap to start", 18);
+#else
     if(SDL_NumJoysticks() == 0) {
       Typer::draw_centered(0, -50, "press enter", 18);
     } else {
       Typer::draw_centered(0, -50, "press start", 18);
     }
+#endif
   }
-  Typer::draw_centered(0, -420, "© 2008-2015", 13, currentTime);
+  Typer::draw_centered(0, -420, "© 2008-2026", 13, currentTime);
 }
 
 void Menu::tick(int delta) {
@@ -100,12 +94,10 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 }
 
 void Menu::keyboard_up (unsigned char key, int x, int y) {
-  switch(key) {
-  case 27:
-    //glutLeaveMainLoop();
-    break;
-  case 13:
+#ifdef __ANDROID__
+  request_state_change(new GLGame());
+#else
+  if (key == ' ' || key == '\r' || key == '\n')
     request_state_change(new GLGame());
-    break;
-  }
+#endif
 }

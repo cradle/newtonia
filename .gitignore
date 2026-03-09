@@ -9,8 +9,12 @@ bin
 build
 ## Makefile
 *.o
-newtonia
+/newtonia
 ## Glut (binaries)
 GL/
 ## SDL
 SDL*
+## Gradle
+android/.gradle/
+android/app/build/
+android/build/
