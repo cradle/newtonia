@@ -158,7 +158,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, float direction,
 void AsteroidDrawer::draw_debris(list<Particle> const &debris) {
   glPointSize(3.0f);
   glBegin(GL_POINTS);
-  for(list<Particle>::iterator d = debris.begin(); d != debris.end(); d++) {
+  for(list<Particle>::const_iterator d = debris.begin(); d != debris.end(); d++) {
     glColor4f(1.0f, 1.0f, 1.0f, rand()/(1.0f*(float)RAND_MAX) * d->aliveness()/2.0f + d->aliveness()/2.0f);
 		glVertex2fv(d->position);
   }
