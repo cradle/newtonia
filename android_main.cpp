@@ -195,12 +195,23 @@ extern "C" int SDL_main(int argc, char *argv[]) {
             case SDL_FINGERUP:
                 finger_up(e.tfinger.fingerId);
                 break;
-            case SDL_FINGERMOTION:
-                // Re-evaluate which zone the finger is in
-                finger_up(e.tfinger.fingerId);
-                finger_down(e.tfinger.fingerId,
-                            e.tfinger.x, e.tfinger.y);
+            case SDL_FINGERMOTION: {
+                // Only switch keys if the finger crossed into a different zone;
+                // re-triggering on every motion event would re-fire one-shot
+                // actions (shoot, mine) on each tiny tremor.
+                unsigned char new_key = touch_to_key(e.tfinger.x, e.tfinger.y);
+                for (int i = 0; i < s_finger_count; i++) {
+                    if (s_finger_keys[i].finger_id == e.tfinger.fingerId) {
+                        if (s_finger_keys[i].key != new_key) {
+                            s_game->keyboard_up(s_finger_keys[i].key, 0, 0);
+                            s_finger_keys[i].key = new_key;
+                            s_game->keyboard(new_key, 0, 0);
+                        }
+                        break;
+                    }
+                }
                 break;
+            }
 
             // Game controller
             default:
