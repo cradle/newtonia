@@ -30,6 +30,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   running(true),
   level_cleared(false),
   friendly_fire(true),
+  debug_grid(false),
   grid(Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2))) {
   time_between_steps = step_size;
 
@@ -234,6 +235,8 @@ void GLGame::tick(int delta) {
 }
 
 void GLGame::draw_objects(float direction, bool minimap) const {
+  if(debug_grid && !minimap) grid.draw_debug();
+
   std::list<Asteroid*>::iterator oi;
   for(oi = objects->begin(); oi != objects->end(); oi++) {
     //TODO: make AsteroidController (???), which joins model and view together
@@ -499,6 +502,9 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   }
   if (key == 'g') {
     friendly_fire = !friendly_fire;
+  }
+  if (key == 'b') {
+    debug_grid = !debug_grid;
   }
   if (key == '=' && time_between_steps > 1) time_between_steps--;
   if (key == '-') time_between_steps++;

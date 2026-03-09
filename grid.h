@@ -13,6 +13,7 @@ public:
   ~Grid();
 
   void display() const;
+  void draw_debug() const;
   void update(const list<Object *> *objects);
   Object * collide(const Object &object, float proximity = 0.0f) const;
 
