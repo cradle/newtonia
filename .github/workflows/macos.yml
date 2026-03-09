@@ -43,32 +43,25 @@ jobs:
             -DSDL2MIXER_WAVE=ON
           )
 
-          # arm64
+          # arm64 — build natively on the arm64 runner
           cmake -B build-arm64 "${cmake_flags[@]}" \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_C_FLAGS="-arch arm64" \
-            -DCMAKE_CXX_FLAGS="-arch arm64" \
             -DCMAKE_PREFIX_PATH=/opt/homebrew \
             -DCMAKE_INSTALL_PREFIX=/opt/homebrew
           cmake --build build-arm64 -j$(sysctl -n hw.logicalcpu)
+          install_name_tool -id /opt/homebrew/lib/libSDL2_mixer.dylib \
+            build-arm64/libSDL2_mixer.dylib
+          cp build-arm64/libSDL2_mixer.dylib /opt/homebrew/lib/libSDL2_mixer.dylib
 
-          # x86_64
-          cmake -B build-x86 "${cmake_flags[@]}" \
-            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
-            -DCMAKE_C_FLAGS="-arch x86_64" \
-            -DCMAKE_CXX_FLAGS="-arch x86_64" \
+          # x86_64 — use arch -x86_64 so the toolchain targets the right slice
+          arch -x86_64 cmake -B build-x86 "${cmake_flags[@]}" \
             -DCMAKE_PREFIX_PATH=/usr/local \
             -DCMAKE_INSTALL_PREFIX=/usr/local
-          cmake --build build-x86 -j$(sysctl -n hw.logicalcpu)
+          arch -x86_64 cmake --build build-x86 -j$(sysctl -n hw.logicalcpu)
+          install_name_tool -id /usr/local/lib/libSDL2_mixer.dylib \
+            build-x86/libSDL2_mixer.dylib
+          cp build-x86/libSDL2_mixer.dylib /usr/local/lib/libSDL2_mixer.dylib
 
-          # Install fat lib to both prefixes so the linker steps find it
-          lipo -create build-arm64/libSDL2_mixer.dylib build-x86/libSDL2_mixer.dylib \
-            -output libSDL2_mixer_fat.dylib
-          # Set absolute install name so otool -L on the final binary records a
-          # real path instead of @rpath/..., which the bundle script would skip
-          install_name_tool -id /opt/homebrew/lib/libSDL2_mixer.dylib libSDL2_mixer_fat.dylib
-          cp libSDL2_mixer_fat.dylib /opt/homebrew/lib/libSDL2_mixer.dylib
-          cp libSDL2_mixer_fat.dylib /usr/local/lib/libSDL2_mixer.dylib
+          # Headers (arch-independent)
           cp include/SDL_mixer.h /opt/homebrew/include/SDL2/SDL_mixer.h
           cp include/SDL_mixer.h /usr/local/include/SDL2/SDL_mixer.h
 
