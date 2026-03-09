@@ -21,18 +21,30 @@ void Grid::draw_debug() const {
   }
   glEnd();
 
-  // Cell boundary lines
+  // Interior cell boundary lines — thin, faint cyan
+  glLineWidth(1.0f);
   glColor4f(0.0f, 0.8f, 0.8f, 0.3f);
   glBegin(GL_LINES);
-  for(int row = 0; row <= num_rows; row++) {
+  for(int row = 1; row < num_rows; row++) {
     float x = row * cell_size.x();
     glVertex2f(x, 0);
     glVertex2f(x, num_cols * cell_size.y());
   }
-  for(int col = 0; col <= num_cols; col++) {
+  for(int col = 1; col < num_cols; col++) {
     float y = col * cell_size.y();
     glVertex2f(0, y);
     glVertex2f(num_rows * cell_size.x(), y);
   }
   glEnd();
+
+  // Outer boundary — thicker, bright white
+  float W = num_rows * cell_size.x();
+  float H = num_cols * cell_size.y();
+  glLineWidth(3.0f);
+  glColor4f(1.0f, 1.0f, 1.0f, 0.8f);
+  glBegin(GL_LINE_LOOP);
+  glVertex2f(0, 0); glVertex2f(W, 0);
+  glVertex2f(W, H); glVertex2f(0, H);
+  glEnd();
+  glLineWidth(1.0f);
 }
