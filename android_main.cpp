@@ -66,7 +66,9 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
         }
     } else {
         float rx = (norm_x - 0.5f) * 2.0f; // 0-1 within right half
-        if (rx < 0.5f) {
+        if (norm_y < 0.4f) {
+            return '\r';                  // start / confirm
+        } else if (rx < 0.5f) {
             return ' ';                   // shoot
         } else {
             return 'x';                   // mine
