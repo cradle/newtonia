@@ -181,6 +181,7 @@ int main(int argc, char* argv[]) {
   init(argc, argv, 800, 600);
   init_controllers_and_audio();
   game = new StateManager();
+  resize(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT));
   glutMainLoop();
   if (SDL_GameControllerGetAttached(controller)) {
     SDL_GameControllerClose(controller);
