@@ -60,6 +60,9 @@ jobs:
           # Install fat lib to both prefixes so the linker steps find it
           lipo -create build-arm64/libSDL2_mixer.dylib build-x86/libSDL2_mixer.dylib \
             -output libSDL2_mixer_fat.dylib
+          # Set absolute install name so otool -L on the final binary records a
+          # real path instead of @rpath/..., which the bundle script would skip
+          install_name_tool -id /opt/homebrew/lib/libSDL2_mixer.dylib libSDL2_mixer_fat.dylib
           cp libSDL2_mixer_fat.dylib /opt/homebrew/lib/libSDL2_mixer.dylib
           cp libSDL2_mixer_fat.dylib /usr/local/lib/libSDL2_mixer.dylib
           cp include/SDL_mixer.h /opt/homebrew/include/SDL2/SDL_mixer.h
