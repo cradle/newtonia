@@ -4,6 +4,7 @@
 #include <vector>
 #include <list>
 #include <math.h>
+#include <algorithm>
 #include <iostream>
 using namespace std;
 
@@ -47,11 +48,19 @@ Object * Grid::collide(const Object &object, float proximity) const {
   int base_row = (int)floor(object.position.x() / cell_size.x());
   int base_col = (int)floor(object.position.y() / cell_size.y());
 
-  for(int i = -1; i <= 1 && collided == NULL; i++) {
+  // An object whose radius + proximity extends past the current cell may collide
+  // with objects whose centres are in cells beyond the immediate neighbours.
+  // Derive the search range so it scales correctly with any object size or proximity.
+  // Formula: (R-1)*cell_size <= object.radius + cell_size/2 + proximity
+  //       => R = floor((object.radius + proximity) / cell_size + 0.5) + 1
+  float min_cell = std::min(cell_size.x(), cell_size.y());
+  int search_range = (int)floor((object.radius + proximity) / min_cell + 0.5f) + 1;
+
+  for(int i = -search_range; i <= search_range && collided == NULL; i++) {
     int row = base_row + i;
     float x_off = (row < 0) ? -world_size.x() : (row >= num_rows) ? world_size.x() : 0.0f;
 
-    for(int j = -1; j <= 1 && collided == NULL; j++) {
+    for(int j = -search_range; j <= search_range && collided == NULL; j++) {
       int col = base_col + j;
       float y_off = (col < 0) ? -world_size.y() : (col >= num_cols) ? world_size.y() : 0.0f;
 
