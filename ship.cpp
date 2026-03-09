@@ -317,55 +317,55 @@ void Ship::collide_grid(Grid &grid) {
     }
   }
 
-  std::list<Particle>::iterator p = mines.begin();
-  while(p != mines.end()) {
-    object = grid.collide(*p, 50.0f);
+  for(size_t i = 0; i < mines.size(); ) {
+    object = grid.collide(mines[i], 50.0f);
     if(object != NULL && object->alive) {
-      detonate(p->position, p->velocity, 50);
-      p = mines.erase(p);
+      detonate(mines[i].position, mines[i].velocity, 50);
+      mines[i] = std::move(mines.back());
+      mines.pop_back();
     } else {
-      p++;
+      ++i;
     }
   }
 
-  p = bullets.begin();
-  while(p != bullets.end()) {
-    object = grid.collide(*p);
+  for(size_t i = 0; i < bullets.size(); ) {
+    object = grid.collide(bullets[i]);
     if(object != NULL) {
       if(object->kill()) {
         score += object->get_value() * multiplier();
         kills_this_life += 1;
         kills += 1;
       }
-      explode((*p).position, object->velocity);
-      p = bullets.erase(p);
+      explode(bullets[i].position, object->velocity);
+      bullets[i] = std::move(bullets.back());
+      bullets.pop_back();
     } else {
-      p++;
+      ++i;
     }
   }
 }
 
 void Ship::collide(Ship *other) {
-  std::list<Particle>::iterator b = bullets.begin();
-  while(b != bullets.end()) {
-    if(other->is_alive() && b->collide(*other)) {
+  for(size_t i = 0; i < bullets.size(); ) {
+    if(other->is_alive() && bullets[i].collide(*other)) {
       other->kill();
       kills_this_life += 1;
       kills += 1;
       score += other->value * multiplier();
-      b = bullets.erase(b);
+      bullets[i] = std::move(bullets.back());
+      bullets.pop_back();
     } else {
-      b++;
+      ++i;
     }
   }
 
-  std::list<Particle>::iterator mine = mines.begin();
-  while(mine != mines.end()) {
-    if(is_alive() && other->is_alive() && mine->collide(*other, 50.0)) {
-      detonate(mine->position, mine->velocity);
-      mine = mines.erase(mine);
+  for(size_t i = 0; i < mines.size(); ) {
+    if(is_alive() && other->is_alive() && mines[i].collide(*other, 50.0)) {
+      detonate(mines[i].position, mines[i].velocity);
+      mines[i] = std::move(mines.back());
+      mines.pop_back();
     } else {
-      mine++;
+      ++i;
     }
   }
 }
@@ -531,23 +531,23 @@ void Ship::step(float delta, const Grid &grid) {
   }
   CompositeObject::step(delta);
 
-  std::list<Particle>::iterator b = bullets.begin();
-  while(b != bullets.end()) {
-    b->step(delta);
-    if(!b->is_alive()) {
-      b = bullets.erase(b);
+  for(size_t i = 0; i < bullets.size(); ) {
+    bullets[i].step(delta);
+    if(!bullets[i].is_alive()) {
+      bullets[i] = std::move(bullets.back());
+      bullets.pop_back();
     } else {
-      b++;
+      ++i;
     }
   }
 
-  std::list<Particle>::iterator mine = mines.begin();
-  while(mine != mines.end()) {
-    mine->step(delta);
-    if(!mine->is_alive()) {
-      mine = mines.erase(mine);
+  for(size_t i = 0; i < mines.size(); ) {
+    mines[i].step(delta);
+    if(!mines[i].is_alive()) {
+      mines[i] = std::move(mines.back());
+      mines.pop_back();
     } else {
-      mine++;
+      ++i;
     }
   }
 }

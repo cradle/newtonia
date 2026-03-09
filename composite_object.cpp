@@ -4,13 +4,13 @@
 
 void CompositeObject::step(int delta) {
   Object::step(delta);
-  std::list<Particle>::iterator deb = debris.begin();
-  while(deb != debris.end()) {
-    deb->step(delta);
-    if(!deb->is_alive()) {
-      deb = debris.erase(deb);
+  for(size_t i = 0; i < debris.size(); ) {
+    debris[i].step(delta);
+    if(!debris[i].is_alive()) {
+      debris[i] = std::move(debris.back());
+      debris.pop_back();
     } else {
-      deb++;
+      ++i;
     }
   }
 }

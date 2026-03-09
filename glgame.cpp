@@ -51,7 +51,6 @@ GLGame::GLGame(SDL_GameController *controller) :
   players->push_back(object);
 
   rearstars = glGenLists(1);
-  gameworld = glGenLists(1);
   frontstars = glGenLists(1);
 
   time_until_next_step = 0;
@@ -92,8 +91,6 @@ GLGame::~GLGame() {
   delete starfield;
   if(station != NULL)
     delete station;
-
-  glDeleteLists(gameworld, 1);
 
   if(tic_sound != NULL) {
     Mix_FreeChunk(tic_sound);
@@ -237,11 +234,7 @@ void GLGame::tick(int delta) {
 void GLGame::draw_objects(float direction, bool minimap) const {
   if(debug_grid && !minimap) grid.draw_debug();
 
-  std::list<Asteroid*>::iterator oi;
-  for(oi = objects->begin(); oi != objects->end(); oi++) {
-    //TODO: make AsteroidController (???), which joins model and view together
-    AsteroidDrawer::draw(*oi, direction, minimap);
-  }
+  AsteroidDrawer::draw_batch(objects, direction, minimap);
 
   std::list<GLShip*>::iterator o;
   for(o = players->begin(); o != players->end(); o++) {
@@ -326,22 +319,20 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
 
 void GLGame::draw_perspective(GLShip *glship) const {
   /* Draw the world */
-  // Store the rendered world in a display list
   Point position = (glship == NULL) ? Point(0,0) : glship->ship->position;
   float direction = (glship == NULL || !glship->rotate_view()) ? 0.0f : glship->camera_facing();
+
+  // Starfields are static per-frame, so compile once and replay 9 times.
   glNewList(rearstars, GL_COMPILE);
     glTranslatef(-position.x(), -position.y(), 0.0f);
     starfield->draw_rear(position);
-  glEndList();
-  glNewList(gameworld, GL_COMPILE);
-    glTranslatef(-position.x(), -position.y(), 0.0f);
-    draw_objects(direction);
   glEndList();
   glNewList(frontstars, GL_COMPILE);
     glTranslatef(-position.x(), -position.y(), 0.0f);
     starfield->draw_front(position);
   glEndList();
-  // Draw the world tesselated
+
+  // Draw the world tessellated 3x3.
   ///TODO: DRY this up a bit
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
@@ -352,12 +343,14 @@ void GLGame::draw_perspective(GLShip *glship) const {
       glPopMatrix();
     }
   }
+  // Game objects: drawn directly each tile (no display list) so draw_batch
+  // can emit all asteroids in two draw calls per tile instead of one per asteroid.
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
       glPushMatrix();
       glRotatef(direction, 0.0f, 0.0f, 1.0f);
-      glTranslatef(world.x()*x, world.y()*y, 0.0f);
-      glCallList(gameworld);
+      glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+      draw_objects(direction);
       glPopMatrix();
     }
   }
@@ -429,20 +422,16 @@ void GLGame::draw_map() const {
     Typer::draw(world.x()-world.x()/20.0f*2.0f, -world.y()+world.y()/20.0f*3.0f, station->level(), world.x()/20.0f);
   }
 
-  glNewList(gameworld, GL_COMPILE);
-  draw_objects(0.0f, true);
-  glEndList();
-
   glPushMatrix();
-  glCallList(gameworld);
+  draw_objects(0.0f, true);
   glTranslatef(world.x(), 0.0f, 0.0f);
-  glCallList(gameworld);
+  draw_objects(0.0f, true);
   glTranslatef(-2*world.x(), 0.0f, 0.0f);
-  glCallList(gameworld);
+  draw_objects(0.0f, true);
   glTranslatef(world.x(), world.y(), 0.0f);
-  glCallList(gameworld);
+  draw_objects(0.0f, true);
   glTranslatef(0.0f, -2*world.y(), 0.0f);
-  glCallList(gameworld);
+  draw_objects(0.0f, true);
   glPopMatrix();
 
   /* LINE AROUND MINIMAP */

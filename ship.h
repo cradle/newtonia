@@ -6,6 +6,7 @@
 #include "particle.h"
 #include "grid.h"
 #include <list>
+#include <vector>
 #include <SDL.h>
 #include <SDL_mixer.h>
 
@@ -57,7 +58,7 @@ class Ship : public CompositeObject {
     //TODO: somehow get around this public for glstation
     void kill_stop();
 
-    list<Particle> bullets, mines;
+    std::vector<Particle> bullets, mines;
 
     enum Rotation {
       LEFT = 1,

@@ -1,7 +1,7 @@
 #ifndef COMPOSITE_OBJECT_H
 #define COMPOSITE_OBJECT_H
 
-#include <list>
+#include <vector>
 #include "particle.h"
 
 class CompositeObject : public Object {
@@ -12,9 +12,9 @@ public:
   virtual bool kill();
   void explode();
   void explode(Point const position, Point const velocity);
-  
+
 protected:
-  list<Particle> debris;
+  std::vector<Particle> debris;
   
   //FIX: encapsulation
   // friend class GLShip;
