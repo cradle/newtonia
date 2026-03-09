@@ -568,7 +568,7 @@ void GLShip::draw_particles() const {
   glLineWidth(2.5f);
   //TODO: ParticleDrawer::draw(ship->bullets);
   glBegin(GL_LINES);
-  for(list<Particle>::iterator b = ship->bullets.begin(); b != ship->bullets.end(); b++) {
+  for(auto b = ship->bullets.begin(); b != ship->bullets.end(); b++) {
     //TODO: Work out how to make bullets draw themselves. GLBullet?
     glVertex2fv(b->position - b->velocity*10);
     glVertex2fv(b->position);
@@ -592,7 +592,7 @@ void GLShip::draw_debris() const {
 
   glPointSize(2.5f);
   glBegin(GL_POINTS);
-  for(list<Particle>::iterator d = ship->debris.begin(); d != ship->debris.end(); d++) {
+  for(auto d = ship->debris.begin(); d != ship->debris.end(); d++) {
     glColor4f(color[0], flicker[idx++ % 64], color[2], d->aliveness());
 		glVertex2fv(d->position);
   }
@@ -604,7 +604,7 @@ void GLShip::draw_mines(bool minimap) const {
     glPointSize(1.5f);
     glColor3fv(color);
     glBegin(GL_POINTS);
-    for(list<Particle>::iterator m = ship->mines.begin(); m != ship->mines.end(); m++) {
+    for(auto m = ship->mines.begin(); m != ship->mines.end(); m++) {
       glVertex2fv(m->position);
     }
     glEnd();
@@ -615,7 +615,7 @@ void GLShip::draw_mines(bool minimap) const {
   glLineWidth(2.0f);
   glColor3fv(color);
   glBegin(GL_LINES);
-  for(list<Particle>::iterator m = ship->mines.begin(); m != ship->mines.end(); m++) {
+  for(auto m = ship->mines.begin(); m != ship->mines.end(); m++) {
     float angle = m->rotation * (float)M_PI / 180.0f;
     Point v0(0,-size), v1(size,0), v2(0,size), v3(-size,0);
     v0.rotate(angle); v1.rotate(angle); v2.rotate(angle); v3.rotate(angle);

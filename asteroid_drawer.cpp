@@ -129,14 +129,24 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, float direction,
 
   // --- Dead asteroids: debris particles (batched) + score text ---
   if (!is_minimap) {
+    static float flicker[64];
+    static bool flicker_init = false;
+    static int flicker_idx = 0;
+    if (!flicker_init) {
+      for (int i = 0; i < 64; i++)
+        flicker[i] = rand() / (float)RAND_MAX;
+      flicker_init = true;
+    }
+
     // All debris from all dead asteroids in one GL_POINTS call.
     glPointSize(3.0f);
     glBegin(GL_POINTS);
     for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
       Asteroid const *a = *it;
       if (a->alive) continue;
-      for (list<Particle>::const_iterator d = a->debris.begin(); d != a->debris.end(); ++d) {
-        float alpha = rand() / (float)RAND_MAX * d->aliveness() / 2.0f + d->aliveness() / 2.0f;
+      for (auto d = a->debris.begin(); d != a->debris.end(); ++d) {
+        float alive = d->aliveness();
+        float alpha = flicker[flicker_idx++ % 64] * alive / 2.0f + alive / 2.0f;
         glColor4f(1.0f, 1.0f, 1.0f, alpha);
         glVertex2fv(d->position);
       }
@@ -155,11 +165,20 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, float direction,
   }
 }
 
-void AsteroidDrawer::draw_debris(list<Particle> const &debris) {
+void AsteroidDrawer::draw_debris(vector<Particle> const &debris) {
+  static float flicker[64];
+  static bool flicker_init = false;
+  static int flicker_idx = 0;
+  if (!flicker_init) {
+    for (int i = 0; i < 64; i++)
+      flicker[i] = rand() / (float)RAND_MAX;
+    flicker_init = true;
+  }
   glPointSize(3.0f);
   glBegin(GL_POINTS);
-  for(list<Particle>::const_iterator d = debris.begin(); d != debris.end(); d++) {
-    glColor4f(1.0f, 1.0f, 1.0f, rand()/(1.0f*(float)RAND_MAX) * d->aliveness()/2.0f + d->aliveness()/2.0f);
+  for(auto d = debris.begin(); d != debris.end(); d++) {
+    float alive = d->aliveness();
+    glColor4f(1.0f, 1.0f, 1.0f, flicker[flicker_idx++ % 64] * alive / 2.0f + alive / 2.0f);
 		glVertex2fv(d->position);
   }
 	glEnd();
