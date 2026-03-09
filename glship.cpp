@@ -581,10 +581,19 @@ bool GLShip::is_removable() const {
 }
 
 void GLShip::draw_debris() const {
+  static float flicker[64];
+  static bool initialized = false;
+  static int idx = 0;
+  if(!initialized) {
+    for(int i = 0; i < 64; i++)
+      flicker[i] = rand() / (2.0f * (float)RAND_MAX) + 0.5f;
+    initialized = true;
+  }
+
   glPointSize(2.5f);
   glBegin(GL_POINTS);
   for(list<Particle>::iterator d = ship->debris.begin(); d != ship->debris.end(); d++) {
-    glColor4f(color[0], color[1], color[2], d->aliveness());
+    glColor4f(color[0], flicker[idx++ % 64], color[2], d->aliveness());
 		glVertex2fv(d->position);
   }
 	glEnd();
