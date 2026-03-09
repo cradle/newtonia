@@ -46,6 +46,8 @@ jobs:
           # arm64
           cmake -B build-arm64 "${cmake_flags[@]}" \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_C_FLAGS="-arch arm64" \
+            -DCMAKE_CXX_FLAGS="-arch arm64" \
             -DCMAKE_PREFIX_PATH=/opt/homebrew \
             -DCMAKE_INSTALL_PREFIX=/opt/homebrew
           cmake --build build-arm64 -j$(sysctl -n hw.logicalcpu)
@@ -53,6 +55,8 @@ jobs:
           # x86_64
           cmake -B build-x86 "${cmake_flags[@]}" \
             -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DCMAKE_C_FLAGS="-arch x86_64" \
+            -DCMAKE_CXX_FLAGS="-arch x86_64" \
             -DCMAKE_PREFIX_PATH=/usr/local \
             -DCMAKE_INSTALL_PREFIX=/usr/local
           cmake --build build-x86 -j$(sysctl -n hw.logicalcpu)
