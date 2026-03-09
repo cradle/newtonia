@@ -8,12 +8,14 @@ class Asteroid;
 class Particle;
 
 class AsteroidDrawer {
-public:  
+public:
   static void draw(Asteroid const *object, float direction, bool is_minimap);
+  static void draw_batch(list<Asteroid*> const *objects, float direction, bool is_minimap);
   static void draw_debris(list<Particle> debris);
 
 private:
   static const int number_of_segments;
+  static int seg_count(float radius);
 };
 
 #endif 
