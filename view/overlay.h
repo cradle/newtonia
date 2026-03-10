@@ -6,6 +6,7 @@ class GLGame;
 
 class Overlay {
 public:
+  static const float CORNER_INSET = 35.0f;
   static void draw(const GLGame * glgame, const GLShip *glship);
 
 private:
