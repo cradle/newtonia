@@ -28,13 +28,16 @@ jobs:
             mingw-w64-x86_64-SDL2
             mingw-w64-x86_64-SDL2_mixer
 
+      - name: Compile icon resource
+        run: windres icon.rc -o icon_rc.o
+
       - name: Build
         run: |
           SRCS=$(find . -name "*.cpp" \
             -not -path "./android/*" \
             -not -path "./.git/*" \
             -not -name "gles2_compat.cpp")
-          g++ -O2 -Wall -std=c++11 -D_USE_MATH_DEFINES -o newtonia.exe $SRCS \
+          g++ -O2 -Wall -std=c++11 -D_USE_MATH_DEFINES -o newtonia.exe $SRCS icon_rc.o \
             $(pkg-config --cflags --libs sdl2 SDL2_mixer freeglut) \
             -lopengl32 -lglu32
 
