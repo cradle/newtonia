@@ -11,7 +11,7 @@
 
 using namespace std;
 
-GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* targets) : Ship(grid, false), objects(objects), targets(targets) {
+GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* targets, list<Object*>* asteroids) : Ship(grid, false), objects(objects), targets(targets), asteroids(asteroids) {
   position = Point(0,0);
   radius = 200.0;
   time_until_respawn = 0;
@@ -94,15 +94,13 @@ int GLStation::level() const {
 }
 
 void GLStation::draw(bool minimap) const {
-  if(!alive)
-    return;
   glPushMatrix();
   glTranslatef(position.x(), position.y(), 0);
 
   if(minimap) {
-    glLineWidth(3.0f);
+    glColor3f(1.0f, 0.8f, 0.0f);
     glCallList(map_body);
-  } else {
+  } else if(alive) {
     glLineWidth(2.5f);
     glPushMatrix();
     glRotatef(outer_rotation,0,0,1);
@@ -144,7 +142,7 @@ void GLStation::step(float delta, const Grid &grid) {
         new GLEnemy(
           grid,
           position.x() + distance*cos(rotation),
-          position.y() + distance*sin(rotation), targets, difficulty
+          position.y() + distance*sin(rotation), targets, difficulty, asteroids
         )
       );
     }

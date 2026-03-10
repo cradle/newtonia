@@ -4,13 +4,18 @@
 #include "ship.h"
 #include <iostream>
 #include <cstdlib>
+#include <cmath>
 using namespace std;
 
-Follower::Follower(Ship *ship) : Behaviour(ship) {
+Follower::Follower(Ship *ship) : Behaviour(ship), asteroids(NULL) {
   common_init();
 }
 
-Follower::Follower(Ship *ship, list<Object *> *targets) : Behaviour(ship), targets(targets) {
+Follower::Follower(Ship *ship, list<Object *> *targets) : Behaviour(ship), targets(targets), asteroids(NULL) {
+  common_init();
+}
+
+Follower::Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids) : Behaviour(ship), targets(targets), asteroids(asteroids) {
   common_init();
 }
 
@@ -28,6 +33,46 @@ void Follower::common_init() {
   done = false;
 }
 
+bool Follower::compute_avoidance(float &avoidance_angle) {
+  static const float AVOID_RANGE = 350.0f;
+  static const float FORWARD_FOV = 60.0f;  // only avoid asteroids within ±60° ahead
+
+  if(!asteroids) return false;
+
+  Object *closest = NULL;
+  float closest_dist = AVOID_RANGE;
+
+  list<Object *>::iterator it;
+  for(it = asteroids->begin(); it != asteroids->end(); ++it) {
+    Object *a = *it;
+    if(!a->alive) continue;
+    float dist = ship->position.distance_to(a->position) - a->radius;
+    if(dist >= closest_dist) continue;
+
+    // Check if asteroid is in the forward cone
+    WrappedPoint apos = a->position;
+    Point toward = (ship->position.closest_to(apos) - apos) * -1.0f;  // ship → asteroid
+    float angle_to = ship->heading() - toward.normalized().direction();
+    angle_to = fmod(angle_to, 360.0f);
+    if(angle_to > 180.0f)  angle_to -= 360.0f;
+    if(angle_to < -180.0f) angle_to += 360.0f;
+    if(fabs(angle_to) > FORWARD_FOV) continue;
+
+    closest_dist = dist;
+    closest = a;
+  }
+
+  if(!closest) return false;
+
+  // Vector from asteroid toward ship (direction to steer)
+  WrappedPoint roid_pos = closest->position;
+  Point away = ship->position.closest_to(roid_pos) - roid_pos;
+  avoidance_angle = ship->heading() - away.normalized().direction();
+  avoidance_angle = fmod(avoidance_angle, 360.0f);
+  if(avoidance_angle < 0.0f) avoidance_angle += 360.0f;
+  return true;
+}
+
 void Follower::step(int delta) {
   if(ship->is_alive()) {
     lock_step(delta);
@@ -35,15 +80,28 @@ void Follower::step(int delta) {
     if(target) {
       if (target->is_alive()) {
         ship->thrust(true);
-        WrappedPoint target_point = target->position;
-        float angle = (ship->heading() - (ship->position.closest_to(target_point) - target_point).normalized().direction());
-        angle = (angle < 0.0) ? (360.0 + angle) : angle;
-        if (angle >= 0 && angle < 180) {
-          ship->rotate_left(true);
+
+        float avoidance_angle;
+        if(compute_avoidance(avoidance_angle)) {
+          // Steer away from asteroid, ignore target rotation this frame
+          if(avoidance_angle >= 0 && avoidance_angle < 180) {
+            ship->rotate_right(true);
+            ship->rotate_left(false);
+          } else {
+            ship->rotate_left(true);
+            ship->rotate_right(false);
+          }
         } else {
-          ship->rotate_right(true);
+          WrappedPoint target_point = target->position;
+          float angle = (ship->heading() - (ship->position.closest_to(target_point) - target_point).normalized().direction());
+          angle = (angle < 0.0) ? (360.0 + angle) : angle;
+          if (angle >= 0 && angle < 180) {
+            ship->rotate_left(true);
+          } else {
+            ship->rotate_right(true);
+          }
+          burst_shooting_step(delta, angle, target_point);
         }
-        burst_shooting_step(delta, angle, target_point);
       } else {
         target = NULL;
         time_until_next_lock = time_between_locks;

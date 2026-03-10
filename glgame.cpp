@@ -140,7 +140,7 @@ void GLGame::tick(int delta) {
       if(generation >= 10) {
         if(station != NULL)
           delete station;
-        station = new GLStation(grid, enemies, players);
+        station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
         world += Point(3000, 3000);
       } else {
         world += Point(100, 100);
