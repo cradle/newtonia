@@ -3,13 +3,14 @@
 
 #include <list>
 #include "glship.h"
+#include "object.h"
 #include "wrapped_point.h"
 
 using namespace std;
 
 class GLStation : public Ship {
 public:
-  GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* targets);
+  GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* targets, list<Object*>* asteroids = NULL);
   virtual ~GLStation();
 
   void draw(bool minimap = false) const;
@@ -24,6 +25,7 @@ private:
   float inner_rotation, outer_rotation, outer_rotation_speed, inner_rotation_speed;
 
   std::list<GLShip*>* objects, *targets;
+  std::list<Object*>* asteroids;
   int ships_this_wave, max_ships_per_wave, extra_ships_per_wave, ships_left_to_deploy;
   int time_until_next_ship, time_between_ships;
   bool deploying, redeploying;
