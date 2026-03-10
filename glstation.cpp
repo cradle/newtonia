@@ -94,15 +94,13 @@ int GLStation::level() const {
 }
 
 void GLStation::draw(bool minimap) const {
-  if(!alive)
-    return;
   glPushMatrix();
   glTranslatef(position.x(), position.y(), 0);
 
   if(minimap) {
-    glLineWidth(3.0f);
+    glColor3f(1.0f, 0.8f, 0.0f);
     glCallList(map_body);
-  } else {
+  } else if(alive) {
     glLineWidth(2.5f);
     glPushMatrix();
     glRotatef(outer_rotation,0,0,1);
