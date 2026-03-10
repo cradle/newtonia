@@ -190,6 +190,9 @@ void GLGame::tick(int delta) {
     for(o = players->begin(); o != players->end(); o++) {
       (*o)->collide_grid(grid);
     }
+    for(o = enemies->begin(); o != enemies->end(); o++) {
+      (*o)->collide_grid(grid);
+    }
 
     oi = objects->begin();
     while(oi != objects->end()) {

@@ -23,6 +23,7 @@ Follower::~Follower() {
 void Follower::common_init() {
   time_until_next_lock = 2500.0 + rand()%500;
   time_between_locks = 900 + rand()%1000;
+  shoot_timer = 0;
   target = NULL;
   done = false;
 }
@@ -42,12 +43,30 @@ void Follower::step(int delta) {
         } else {
           ship->rotate_right(true);
         }
+        burst_shooting_step(delta, angle, target_point);
       } else {
         target = NULL;
         time_until_next_lock = time_between_locks;
         ship->rotate_right(false);
       }
     }
+  }
+}
+
+void Follower::burst_shooting_step(int delta, float angle, const WrappedPoint &target_point) {
+  static const float SHOOT_RANGE   = 600.0f;
+  static const float FACING_CONE   = 25.0f;
+  static const int   SHOOT_INTERVAL = 3000;
+
+  shoot_timer -= delta;
+  if(shoot_timer > 0) return;
+
+  bool in_range  = ship->position.distance_to(target_point) < SHOOT_RANGE;
+  bool facing    = angle > 180.0f - FACING_CONE && angle < 180.0f + FACING_CONE;
+
+  if(in_range && facing) {
+    ship->shoot(true);
+    shoot_timer = SHOOT_INTERVAL;
   }
 }
 
