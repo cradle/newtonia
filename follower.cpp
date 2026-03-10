@@ -75,11 +75,11 @@ void Follower::step(int delta) {
         if(compute_avoidance(avoidance_angle)) {
           // Steer away from asteroid, ignore target rotation this frame
           if(avoidance_angle >= 0 && avoidance_angle < 180) {
-            ship->rotate_left(true);
-            ship->rotate_right(false);
-          } else {
             ship->rotate_right(true);
             ship->rotate_left(false);
+          } else {
+            ship->rotate_left(true);
+            ship->rotate_right(false);
           }
         } else {
           WrappedPoint target_point = target->position;
