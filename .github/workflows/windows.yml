@@ -17,12 +17,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout SDL2_mixer
+        uses: actions/checkout@v4
+        with:
+          repository: libsdl-org/SDL_mixer
+          ref: release-2.8.0
+          path: SDL2_mixer-2.8.0
+          fetch-depth: 1
+
       - uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           update: true
           install: >-
-            git
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-pkgconf
@@ -32,7 +39,6 @@ jobs:
 
       - name: Build SDL2_mixer (static, WAV + MP3 only)
         run: |
-          git clone --depth 1 --branch release-2.8.0 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer-2.8.0
           cmake -S SDL2_mixer-2.8.0 -B SDL2_mixer-build \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=OFF \
