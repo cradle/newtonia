@@ -513,6 +513,24 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
 #endif
+#ifdef __ANDROID__
+  // On Android there is no ESC key; any tap on the game over screen goes to menu.
+  if (key != 27) {
+    bool all_game_over = !players->empty();
+    for (auto* glship : *players) {
+      if (glship->ship->is_alive() || glship->ship->lives > 0) {
+        all_game_over = false;
+        break;
+      }
+    }
+    if (all_game_over) {
+      for (auto* glship : *players)
+        save_high_score(glship->ship->score);
+      request_state_change(new Menu());
+      return;
+    }
+  }
+#endif
   if (key == 27) {
     for (auto* glship : *players) {
       if (!glship->ship->is_alive() && glship->ship->lives == 0)
