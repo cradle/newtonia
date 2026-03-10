@@ -59,8 +59,8 @@ void Menu::draw() {
   glTranslatef(viewpoint.x(), viewpoint.y(), 0.0f);
   Typer::draw_centered(0, 200, "Newtonia", 80);
   if (high_score > 0) {
-    Typer::draw_centered(0, 100, "HIGH SCORE", 14);
-    Typer::draw_centered(0, 70, high_score, 18);
+    Typer::draw_centered(0, -215, "HIGH SCORE", 14);
+    Typer::draw_centered(0, -255, high_score, 18);
   }
   if((currentTime/1400) % 2) {
 #ifdef __ANDROID__
