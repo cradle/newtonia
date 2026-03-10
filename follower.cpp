@@ -35,6 +35,7 @@ void Follower::common_init() {
 
 bool Follower::compute_avoidance(float &avoidance_angle) {
   static const float AVOID_RANGE = 350.0f;
+  static const float FORWARD_FOV = 60.0f;  // only avoid asteroids within ±60° ahead
 
   if(!asteroids) return false;
 
@@ -46,10 +47,19 @@ bool Follower::compute_avoidance(float &avoidance_angle) {
     Object *a = *it;
     if(!a->alive) continue;
     float dist = ship->position.distance_to(a->position) - a->radius;
-    if(dist < closest_dist) {
-      closest_dist = dist;
-      closest = a;
-    }
+    if(dist >= closest_dist) continue;
+
+    // Check if asteroid is in the forward cone
+    WrappedPoint apos = a->position;
+    Point toward = (ship->position.closest_to(apos) - apos) * -1.0f;  // ship → asteroid
+    float angle_to = ship->heading() - toward.normalized().direction();
+    angle_to = fmod(angle_to, 360.0f);
+    if(angle_to > 180.0f)  angle_to -= 360.0f;
+    if(angle_to < -180.0f) angle_to += 360.0f;
+    if(fabs(angle_to) > FORWARD_FOV) continue;
+
+    closest_dist = dist;
+    closest = a;
   }
 
   if(!closest) return false;
