@@ -1,4 +1,5 @@
 #include "glgame.h"
+#include "highscore.h"
 #include "glship.h"
 #include "glcar.h"
 #include "glstarfield.h"
@@ -402,7 +403,7 @@ void GLGame::draw_map() const {
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
   if (players->size() == 1) {
-    glViewport(window.x()/2 - minimap_size/2, 0, minimap_size, minimap_size);
+    glViewport(Overlay::CORNER_INSET, Overlay::CORNER_INSET, minimap_size, minimap_size);
   } else {
     glViewport(window.x()/2 - minimap_size/2, window.y()/2 - minimap_size/2, minimap_size, minimap_size);
   }
@@ -530,7 +531,13 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
 #endif
-  if (key == 27) request_state_change(new Menu());
+  if (key == 27) {
+    for (auto* glship : *players) {
+      if (!glship->ship->is_alive() && glship->ship->lives == 0)
+        save_high_score(glship->ship->score);
+    }
+    request_state_change(new Menu());
+  }
 
   if (!running)
     return;

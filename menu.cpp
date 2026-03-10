@@ -1,4 +1,5 @@
 #include "typer.h"
+#include "highscore.h"
 #include "glstarfield.h"
 #include "glgame.h"
 #include "menu.h"
@@ -11,6 +12,7 @@ const int Menu::default_world_height = 5000;
 Menu::Menu() :
   State(),
   currentTime(0),
+  high_score(load_high_score()),
   viewpoint(Point(0,default_world_height/2)),
   starfield(GLStarfield(Point(default_world_width,default_world_height))) {
   if(music == NULL) {
@@ -56,6 +58,10 @@ void Menu::draw() {
 
   glTranslatef(viewpoint.x(), viewpoint.y(), 0.0f);
   Typer::draw_centered(0, 200, "Newtonia", 80);
+  if (high_score > 0) {
+    Typer::draw_centered(0, 100, "HIGH SCORE", 14);
+    Typer::draw_centered(0, 70, high_score, 18);
+  }
   if((currentTime/1400) % 2) {
 #ifdef __ANDROID__
     Typer::draw_centered(0, -50, "tap to start", 18);
