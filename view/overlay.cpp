@@ -41,8 +41,8 @@ void Overlay::score(const GLGame *glgame, const GLShip *glship) {
   float vh = Typer::scaled_window_height / glgame->num_y_viewports();
   Typer::draw(vw - 40 - CORNER_INSET, vh - 20 - CORNER_INSET, glship->ship->score, 20);
   if(glship->ship->multiplier() > 1) {
-    Typer::draw(vw - 35 - 2*CORNER_INSET, vh - 92 - CORNER_INSET, "x", 15);
-    Typer::draw(vw - 65 - 2*CORNER_INSET, vh - 80 - CORNER_INSET, glship->ship->multiplier(), 20);
+    Typer::draw(vw - 35 - CORNER_INSET, vh - 92 - CORNER_INSET, "x", 15);
+    Typer::draw(vw - 65 - CORNER_INSET, vh - 80 - CORNER_INSET, glship->ship->multiplier(), 20);
   }
 }
 
