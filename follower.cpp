@@ -56,7 +56,7 @@ void Follower::step(int delta) {
 void Follower::burst_shooting_step(int delta, float angle, const WrappedPoint &target_point) {
   static const float SHOOT_RANGE   = 600.0f;
   static const float FACING_CONE   = 25.0f;
-  static const int   SHOOT_INTERVAL = 1200;
+  static const int   SHOOT_INTERVAL = 3000;
 
   shoot_timer -= delta;
   if(shoot_timer > 0) return;
