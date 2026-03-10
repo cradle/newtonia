@@ -99,7 +99,9 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   if(glgame->players->size() < 2) {
     if((glgame->current_time/1400) % 2) {
       if(p1->is_alive() || p1->lives > 0) {
+#ifndef __ANDROID__
         Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-10, "player 2 press enter to join", 8);
+#endif
       } else {
         Typer::draw_centered(0, Typer::window_height-10, "return to menu with ESC", 8);
       }
