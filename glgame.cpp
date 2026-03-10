@@ -1,4 +1,5 @@
 #include "glgame.h"
+#include "highscore.h"
 #include "glship.h"
 #include "glcar.h"
 #include "glstarfield.h"
@@ -512,7 +513,13 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
 #endif
-  if (key == 27) request_state_change(new Menu());
+  if (key == 27) {
+    for (auto* glship : *players) {
+      if (!glship->ship->is_alive() && glship->ship->lives == 0)
+        save_high_score(glship->ship->score);
+    }
+    request_state_change(new Menu());
+  }
 
   if (!running)
     return;
