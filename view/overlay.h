@@ -18,6 +18,7 @@ private:
   static void keymap(const GLGame *glgame, const GLShip *glship);
   static void title_text(const GLGame *glgame, const GLShip *glship);
   static void paused(const GLGame *glgame, const GLShip *glship);
+  static void level(const GLGame *glgame, const GLShip *glship);
 };
 
 #endif

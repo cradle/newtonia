@@ -4,9 +4,11 @@
 #include "../typer.h"
 
 #include "../gl_compat.h"
+#include <cstdio>
 
 void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   title_text(glgame, glship);
+  level(glgame, glship);
   score(glgame, glship);
   keymap(glgame, glship);
   level_cleared(glgame, glship);
@@ -25,6 +27,13 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
 }
 
 static const float CORNER_INSET = 20.0f;
+
+void Overlay::level(const GLGame *glgame, const GLShip *glship) {
+  char buf[16];
+  snprintf(buf, sizeof(buf), "LEVEL %d", glgame->generation + 1);
+  float vh = Typer::scaled_window_height / glgame->num_y_viewports();
+  Typer::draw_centered(0, vh - 20 - CORNER_INSET, buf, 12);
+}
 
 void Overlay::score(const GLGame *glgame, const GLShip *glship) {
   //FIX: Window encapsulation? Players size encapsulation?
