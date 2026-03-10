@@ -24,12 +24,16 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
   }
 }
 
+static const float CORNER_INSET = 20.0f;
+
 void Overlay::score(const GLGame *glgame, const GLShip *glship) {
   //FIX: Window encapsulation? Players size encapsulation?
-  Typer::draw((Typer::scaled_window_width)/glgame->num_x_viewports()-40, Typer::scaled_window_height/glgame->num_y_viewports()-20, glship->ship->score, 20);
+  float vw = Typer::scaled_window_width / glgame->num_x_viewports();
+  float vh = Typer::scaled_window_height / glgame->num_y_viewports();
+  Typer::draw(vw - 40 - CORNER_INSET, vh - 20 - CORNER_INSET, glship->ship->score, 20);
   if(glship->ship->multiplier() > 1) {
-    Typer::draw(Typer::scaled_window_width/glgame->num_x_viewports()-35, Typer::scaled_window_height/glgame->num_y_viewports()-92, "x", 15);
-    Typer::draw(Typer::scaled_window_width/glgame->num_x_viewports()-65, Typer::scaled_window_height/glgame->num_y_viewports()-80, glship->ship->multiplier(), 20);
+    Typer::draw(vw - 35 - CORNER_INSET, vh - 92, "x", 15);
+    Typer::draw(vw - 65 - CORNER_INSET, vh - 80, glship->ship->multiplier(), 20);
   }
 }
 
@@ -41,19 +45,19 @@ void Overlay::level_cleared(const GLGame *glgame, const GLShip *glship) {
 }
 
 void Overlay::lives(const GLGame *glgame, const GLShip *glship) {
-  Typer::draw_lives(Typer::scaled_window_width/glgame->num_x_viewports()-40, -Typer::scaled_window_height/glgame->num_y_viewports()+70, glship, 18);
+  Typer::draw_lives(Typer::scaled_window_width/glgame->num_x_viewports()-40-CORNER_INSET, -Typer::scaled_window_height/glgame->num_y_viewports()+70+CORNER_INSET, glship, 18);
 }
 
 void Overlay::weapons(const GLGame *glgame, const GLShip *glship) {
   glPushMatrix();
-  glTranslatef(-Typer::window_width/glgame->num_x_viewports(), Typer::window_height/glgame->num_y_viewports(), 0.0f);
+  glTranslatef(-Typer::window_width/glgame->num_x_viewports()+CORNER_INSET, Typer::window_height/glgame->num_y_viewports()-CORNER_INSET, 0.0f);
   glship->draw_weapons();
   glPopMatrix();
 }
 
 void Overlay::temperature(const GLGame *glgame, const GLShip *glship) {
   glPushMatrix();
-  glTranslatef(-Typer::scaled_window_width/glgame->num_x_viewports()+30, -Typer::scaled_window_height/glgame->num_y_viewports()+15, 0.0f);
+  glTranslatef(-Typer::scaled_window_width/glgame->num_x_viewports()+30+CORNER_INSET, -Typer::scaled_window_height/glgame->num_y_viewports()+15+CORNER_INSET, 0.0f);
   glPushMatrix();
   glScalef(30,30,1);
   glship->draw_temperature();
