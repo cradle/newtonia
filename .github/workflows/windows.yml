@@ -23,10 +23,32 @@ jobs:
           update: true
           install: >-
             mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
             mingw-w64-x86_64-pkgconf
             mingw-w64-x86_64-freeglut
             mingw-w64-x86_64-SDL2
-            mingw-w64-x86_64-SDL2_mixer
+            mingw-w64-x86_64-mpg123
+
+      - name: Build SDL2_mixer (static, WAV + MP3 only)
+        run: |
+          SDL_MIXER_VER=2.8.0
+          curl -fsSL https://github.com/libsdl-org/SDL_mixer/releases/download/release-${SDL_MIXER_VER}/SDL2_mixer-${SDL_MIXER_VER}.tar.gz | tar xz
+          cmake -S SDL2_mixer-${SDL_MIXER_VER} -B SDL2_mixer-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DSDL2MIXER_VENDORED=OFF \
+            -DSDL2MIXER_SAMPLES=OFF \
+            -DSDL2MIXER_WAVE=ON \
+            -DSDL2MIXER_MP3=ON \
+            -DSDL2MIXER_MP3_MPG123=ON \
+            -DSDL2MIXER_OGG=OFF \
+            -DSDL2MIXER_VORBIS=OFF \
+            -DSDL2MIXER_FLAC=OFF \
+            -DSDL2MIXER_OPUS=OFF \
+            -DSDL2MIXER_MOD=OFF \
+            -DSDL2MIXER_MIDI=OFF \
+            -DSDL2MIXER_WAVPACK=OFF
+          cmake --build SDL2_mixer-build -j$(nproc)
 
       - name: Compile icon resource
         run: windres icon.rc -o icon_rc.o
@@ -36,23 +58,19 @@ jobs:
           SRCS=$(find . -name "*.cpp" \
             -not -path "./android/*" \
             -not -path "./.git/*" \
+            -not -path "./SDL2_mixer*" \
             -not -name "gles2_compat.cpp")
           g++ -O2 -Wall -std=c++11 -D_USE_MATH_DEFINES -o newtonia.exe $SRCS icon_rc.o \
-            $(pkg-config --cflags --libs sdl2 SDL2_mixer freeglut) \
-            -lopengl32 -lglu32
-
-      - name: Bundle runtime DLLs
-        run: |
-          ldd newtonia.exe \
-            | grep '/mingw64/bin' \
-            | awk '{print $3}' \
-            | xargs -I{} cp {} .
+            -ISDL2_mixer-2.8.0/include \
+            -LSDL2_mixer-build \
+            $(pkg-config --static --cflags --libs sdl2 freeglut) \
+            -lSDL2_mixer -lmpg123 \
+            -lopengl32 -lglu32 \
+            -static
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: newtonia-windows
-          path: |
-            newtonia.exe
-            *.dll
+          path: newtonia.exe
           retention-days: 30
