@@ -62,7 +62,7 @@ void Follower::burst_shooting_step(int delta, float angle, const WrappedPoint &t
   if(shoot_timer > 0) return;
 
   bool in_range  = ship->position.distance_to(target_point) < SHOOT_RANGE;
-  bool facing    = angle < FACING_CONE || angle > 360.0f - FACING_CONE;
+  bool facing    = angle > 180.0f - FACING_CONE && angle < 180.0f + FACING_CONE;
 
   if(in_range && facing) {
     ship->shoot(true);
