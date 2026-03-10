@@ -402,7 +402,7 @@ void GLGame::draw_map() const {
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
   if (players->size() == 1) {
-    glViewport(0, 0, minimap_size, minimap_size);
+    glViewport(35, 35, minimap_size, minimap_size);
   } else {
     glViewport(window.x()/2 - minimap_size/2, window.y()/2 - minimap_size/2, minimap_size, minimap_size);
   }
