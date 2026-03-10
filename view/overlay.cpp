@@ -26,7 +26,7 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
   }
 }
 
-static const float CORNER_INSET = 20.0f;
+static const float CORNER_INSET = 35.0f;
 
 void Overlay::level(const GLGame *glgame, const GLShip *glship) {
   char buf[16];
