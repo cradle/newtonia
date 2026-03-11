@@ -293,7 +293,8 @@ void GLGame::tick(int delta) {
 void GLGame::draw_objects(float direction, bool minimap) const {
   if(debug_grid && !minimap) grid.draw_debug();
 
-  AsteroidDrawer::draw_batch(objects, direction, minimap);
+  AsteroidDrawer::draw_batch(objects, direction, minimap,
+                             minimap ? world.x() : 0, minimap ? world.y() : 0);
 
   for(auto pi = pickups->begin(); pi != pickups->end(); pi++) {
     glPushMatrix();

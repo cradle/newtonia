@@ -11,7 +11,8 @@ class Particle;
 class AsteroidDrawer {
 public:
   static void draw(Asteroid const *object, float direction, bool is_minimap);
-  static void draw_batch(list<Asteroid*> const *objects, float direction, bool is_minimap);
+  static void draw_batch(list<Asteroid*> const *objects, float direction, bool is_minimap,
+                         float wrap_x = 0, float wrap_y = 0);
   static void draw_debris(vector<Particle> const &debris);
 
 private:
