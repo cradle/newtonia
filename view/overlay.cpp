@@ -115,21 +115,22 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
       }
     }
   } else {
+    float vhb = -Typer::scaled_window_height/glgame->num_y_viewports();
     if(glgame->friendly_fire) {
-      Typer::draw_centered(0, Typer::scaled_window_height/glgame->num_y_viewports()-40, "friendly fire on", 8);
+      Typer::draw_centered(0, vhb+30, "friendly fire on", 8);
     }
     if(glship->controller == NULL) {
       if(p1 == glship->ship) {
         if(glship->show_help) {
-          Typer::draw_centered(0, Typer::scaled_window_height/glgame->num_y_viewports()-10, "hide controls with F1", 8);
+          Typer::draw_centered(0, vhb+10, "hide controls with F1", 8);
         } else if ((glgame->current_time)/12000 % 2) {
-          Typer::draw_centered(0, Typer::scaled_window_height/glgame->num_y_viewports()-10, "show controls with f1", 8);
+          Typer::draw_centered(0, vhb+10, "show controls with F1", 8);
         }
       } else {
         if(glship->show_help) {
-          Typer::draw_centered(0, Typer::scaled_window_height/glgame->num_y_viewports()-10, "hide controls with F8", 8);
+          Typer::draw_centered(0, vhb+10, "hide controls with F8", 8);
         } else if ((glgame->current_time)/12000 % 2) {
-          Typer::draw_centered(0, Typer::scaled_window_height/glgame->num_y_viewports()-10, "show controls with f8", 8);
+          Typer::draw_centered(0, vhb+10, "show controls with F8", 8);
         }
       }
     }
