@@ -554,6 +554,25 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
         objects->pop_back();
       }
   }
+  if (key == '~') {
+      // DEBUG: skip to level 9 and give best weapon with 1000 ammo
+      while(generation < 8) {
+        generation++;
+        world += Point(100, 100);
+      }
+      level_cleared = true;
+      time_until_next_generation = 0;
+      while(!objects->empty()) {
+        delete objects->back();
+        objects->pop_back();
+      }
+      Asteroid::num_killable = 0;
+      for (auto* glship : *players) {
+        for (int i = 0; i < 10; i++)
+          glship->ship->add_weapon(12); // automatic level-5 scatter, 1000 ammo
+        glship->ship->add_mine_ammo(1000);
+      }
+  }
   if (key == 'g') {
     friendly_fire = !friendly_fire;
   }
