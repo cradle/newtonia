@@ -25,6 +25,7 @@ const int GLGame::default_num_asteroids = 3;
 const int GLGame::extra_num_asteroids = 5;
 const float GLGame::extra_life_drop_chance = 0.05f;
 const float GLGame::weapon_pickup_drop_chance = 0.05f;
+const float GLGame::mine_pickup_drop_chance = 0.05f;
 
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
@@ -217,6 +218,8 @@ void GLGame::tick(int delta) {
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance) {
             int weapon_index = rand() % 15;
             pickups->push_back(new WeaponPickup((*oi)->position, weapon_index));
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance) {
+            pickups->push_back(new MinePickup((*oi)->position));
           }
         }
       }
