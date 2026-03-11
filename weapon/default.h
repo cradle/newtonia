@@ -10,11 +10,12 @@ class Point;
 namespace Weapon {
   class Default : public Base {
   public:
-    Default(Ship *ship, bool automatic = false, int level = 0, float accuracy = 0.1f, int time_between_shots = 100);
+    Default(Ship *ship, bool automatic = false, int level = 0, float accuracy = 0.1f, int time_between_shots = 100, int weapon_index = -1);
     ~Default();
 
     void shoot(bool on = true);
     void step(int delta);
+    int weapon_index() const { return _weapon_index; }
 
   private:
     void fire();
@@ -24,6 +25,7 @@ namespace Weapon {
     float accuracy;
     int time_until_next_shot, time_between_shots;
     int level;
+    int _weapon_index;
 
     Mix_Chunk *shoot_sound = NULL, *empty_sound = NULL;
   };
