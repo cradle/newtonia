@@ -397,12 +397,13 @@ void GLGame::draw_perspective(GLShip *glship) const {
     starfield->draw_front(position);
   glEndList();
 
-  // Compute a conservative view radius for tile-level frustum culling.
-  // Camera is at z=1000, FOV ~85°; visible half-extent ≈ tan(FOV/2)*1000.
-  // Use 1.5× margin to account for large asteroids at tile edges.
+  // Compute cull radius from actual viewport dimensions.
+  // Camera is at z=1000; gluPerspective FOV is vertical.
   float fov_deg = glship ? glship->view_angle() : 85.0f;
-  float cull_radius = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f * 1.5f;
-  float cull_r2 = cull_radius * cull_radius;
+  float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
+  float aspect = window.x() / (float)(window.y() / num_y_viewports());
+  float half_w = half_h * aspect;
+  float cull_r2 = (half_w * half_w + half_h * half_h) * 1.1f; // 10% margin for edge objects
 
   // Draw the world tessellated 3x3, culling tiles that are entirely off-screen.
   for(int x = -1; x <= 1; x++) {
