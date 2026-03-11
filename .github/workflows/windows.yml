@@ -35,7 +35,7 @@ jobs:
             -not -path "./.git/*" \
             -not -name "gles2_compat.cpp")
           windres icon.rc -O coff -o icon.res
-          g++ -O2 -Wall -std=c++11 -D_USE_MATH_DEFINES \
+          g++ -O2 -Wall -std=c++11 -D_USE_MATH_DEFINES -DFREEGLUT_STATIC \
             $(pkg-config --cflags sdl2 SDL2_mixer freeglut) \
             -o newtonia.exe $SRCS icon.res \
             -static \
