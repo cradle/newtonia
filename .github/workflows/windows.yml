@@ -34,22 +34,17 @@ jobs:
             -not -path "./android/*" \
             -not -path "./.git/*" \
             -not -name "gles2_compat.cpp")
-          g++ -O2 -Wall -std=c++11 -D_USE_MATH_DEFINES -o newtonia.exe $SRCS \
-            $(pkg-config --cflags --libs sdl2 SDL2_mixer freeglut) \
+          windres icon.rc -O coff -o icon.res
+          g++ -O2 -Wall -std=c++11 -D_USE_MATH_DEFINES \
+            $(pkg-config --cflags sdl2 SDL2_mixer freeglut) \
+            -o newtonia.exe $SRCS icon.res \
+            -static \
+            $(pkg-config --libs --static sdl2 SDL2_mixer freeglut) \
             -lopengl32 -lglu32
-
-      - name: Bundle runtime DLLs
-        run: |
-          ldd newtonia.exe \
-            | grep '/mingw64/bin' \
-            | awk '{print $3}' \
-            | xargs -I{} cp {} .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: newtonia-windows
-          path: |
-            newtonia.exe
-            *.dll
+          path: newtonia.exe
           retention-days: 30
