@@ -266,34 +266,39 @@ static std::vector<Vertex> quads_to_triangles(const std::vector<Vertex> &in) {
 }
 
 // Flush vertex_buffer to GPU and draw.
+// Static buffers avoid per-draw-call heap allocation.
+static std::vector<Vertex> s_converted;
+static std::vector<float>  s_pos;
+static std::vector<float>  s_col;
+
 static void flush_vertices() {
     if (s_vbuf.empty()) return;
 
     std::vector<Vertex> *src = &s_vbuf;
-    std::vector<Vertex> converted;
     GLenum gl_mode = s_begin_mode;
 
     if (s_begin_mode == GL_POLYGON) {
         gl_mode = GL_TRIANGLE_FAN;
     } else if (s_begin_mode == GL_QUADS) {
-        converted = quads_to_triangles(s_vbuf);
-        src       = &converted;
-        gl_mode   = GL_TRIANGLES;
+        s_converted = quads_to_triangles(s_vbuf);
+        src         = &s_converted;
+        gl_mode     = GL_TRIANGLES;
     }
 
     if (src->empty()) return;
 
     // Separate position and colour arrays for the VBOs.
     size_t n = src->size();
-    std::vector<float> pos(n * 3), col(n * 4);
+    s_pos.resize(n * 3);
+    s_col.resize(n * 4);
     for (size_t i = 0; i < n; i++) {
-        pos[i*3+0] = (*src)[i].x;
-        pos[i*3+1] = (*src)[i].y;
-        pos[i*3+2] = (*src)[i].z;
-        col[i*4+0] = (*src)[i].r;
-        col[i*4+1] = (*src)[i].g;
-        col[i*4+2] = (*src)[i].b;
-        col[i*4+3] = (*src)[i].a;
+        s_pos[i*3+0] = (*src)[i].x;
+        s_pos[i*3+1] = (*src)[i].y;
+        s_pos[i*3+2] = (*src)[i].z;
+        s_col[i*4+0] = (*src)[i].r;
+        s_col[i*4+1] = (*src)[i].g;
+        s_col[i*4+2] = (*src)[i].b;
+        s_col[i*4+3] = (*src)[i].a;
     }
 
     glUseProgram(s_prog);
@@ -304,13 +309,13 @@ static void flush_vertices() {
 
     // Position VBO
     glBindBuffer(GL_ARRAY_BUFFER, s_vbo_pos);
-    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(n*3*sizeof(float)), pos.data(), GL_STREAM_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(n*3*sizeof(float)), s_pos.data(), GL_STREAM_DRAW);
     glEnableVertexAttribArray(s_attr_pos);
     glVertexAttribPointer(s_attr_pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
     // Colour VBO
     glBindBuffer(GL_ARRAY_BUFFER, s_vbo_col);
-    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(n*4*sizeof(float)), col.data(), GL_STREAM_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(n*4*sizeof(float)), s_col.data(), GL_STREAM_DRAW);
     glEnableVertexAttribArray(s_attr_color);
     glVertexAttribPointer(s_attr_color, 4, GL_FLOAT, GL_FALSE, 0, 0);
 

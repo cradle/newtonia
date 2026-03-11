@@ -163,6 +163,11 @@ void GLGame::tick(int delta) {
       delete starfield;
       starfield = new GLStarfield(world);
       WrappedPoint::set_boundaries(world);
+      while(!objects->empty()) {
+        delete objects->back();
+        objects->pop_back();
+      }
+      Asteroid::num_killable = 0;
       add_asteroids();
       grid.update((std::list<Object *>*)objects);
       while(!pickups->empty()) {
@@ -288,7 +293,8 @@ void GLGame::tick(int delta) {
 void GLGame::draw_objects(float direction, bool minimap) const {
   if(debug_grid && !minimap) grid.draw_debug();
 
-  AsteroidDrawer::draw_batch(objects, direction, minimap);
+  AsteroidDrawer::draw_batch(objects, direction, minimap,
+                             minimap ? world.x() : 0, minimap ? world.y() : 0);
 
   for(auto pi = pickups->begin(); pi != pickups->end(); pi++) {
     glPushMatrix();
@@ -392,10 +398,27 @@ void GLGame::draw_perspective(GLShip *glship) const {
     starfield->draw_front(position);
   glEndList();
 
-  // Draw the world tessellated 3x3.
-  ///TODO: DRY this up a bit
+  // Compute cull radius from actual viewport dimensions.
+  // Camera is at z=1000; gluPerspective FOV is vertical.
+  float fov_deg = glship ? glship->view_angle() : 85.0f;
+  float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
+  float aspect = window.x() / (float)(window.y() / num_y_viewports());
+  float half_w = half_h * aspect;
+  float cull_r2 = (half_w * half_w + half_h * half_h) * 1.1f; // 10% margin for edge objects
+
+  // Draw the world tessellated 3x3, culling tiles that are entirely off-screen.
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
+      // Nearest distance from camera to tile rectangle (starfield tiles are
+      // centered on world origin, not on the player).
+      float smin_x = world.x()*x - position.x();
+      float smax_x = smin_x + world.x();
+      float smin_y = world.y()*y - position.y();
+      float smax_y = smin_y + world.y();
+      float snx = (smin_x > 0) ? smin_x : (smax_x < 0) ? -smax_x : 0;
+      float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
+      if (snx*snx + sny*sny > cull_r2) continue;
+
       glPushMatrix();
       glRotatef(direction, 0.0f, 0.0f, 1.0f);
       glTranslatef(world.x()*x, world.y()*y, 0.0f);
@@ -407,6 +430,15 @@ void GLGame::draw_perspective(GLShip *glship) const {
   // can emit all asteroids in two draw calls per tile instead of one per asteroid.
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
+      // Nearest distance from camera to tile rect (objects span [0,world) per tile)
+      float tmin_x = world.x()*x - position.x();
+      float tmax_x = tmin_x + world.x();
+      float tmin_y = world.y()*y - position.y();
+      float tmax_y = tmin_y + world.y();
+      float nx = (tmin_x > 0) ? tmin_x : (tmax_x < 0) ? -tmax_x : 0;
+      float ny = (tmin_y > 0) ? tmin_y : (tmax_y < 0) ? -tmax_y : 0;
+      if (nx*nx + ny*ny > cull_r2) continue;
+
       glPushMatrix();
       glRotatef(direction, 0.0f, 0.0f, 1.0f);
       glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
@@ -416,6 +448,14 @@ void GLGame::draw_perspective(GLShip *glship) const {
   }
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
+      float smin_x = world.x()*x - position.x();
+      float smax_x = smin_x + world.x();
+      float smin_y = world.y()*y - position.y();
+      float smax_y = smin_y + world.y();
+      float snx = (smin_x > 0) ? smin_x : (smax_x < 0) ? -smax_x : 0;
+      float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
+      if (snx*snx + sny*sny > cull_r2) continue;
+
       glPushMatrix();
       glRotatef(direction, 0.0f, 0.0f, 1.0f);
       glTranslatef(world.x()*x, world.y()*y, 0.0f);
@@ -482,15 +522,8 @@ void GLGame::draw_map() const {
     Typer::draw(world.x()-world.x()/20.0f*2.0f, -world.y()+world.y()/20.0f*3.0f, station->level(), world.x()/20.0f);
   }
 
+  // Single draw pass for minimap; wrapping tiles are negligible at minimap scale.
   glPushMatrix();
-  draw_objects(0.0f, true);
-  glTranslatef(world.x(), 0.0f, 0.0f);
-  draw_objects(0.0f, true);
-  glTranslatef(-2*world.x(), 0.0f, 0.0f);
-  draw_objects(0.0f, true);
-  glTranslatef(world.x(), world.y(), 0.0f);
-  draw_objects(0.0f, true);
-  glTranslatef(0.0f, -2*world.y(), 0.0f);
   draw_objects(0.0f, true);
   glPopMatrix();
 
@@ -548,7 +581,9 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
         delete objects->back();
         objects->pop_back();
       }
+      Asteroid::num_killable = 0;
   }
+
   if (key == 'g') {
     friendly_fire = !friendly_fire;
   }

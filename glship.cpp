@@ -113,9 +113,6 @@ float GLShip::camera_facing() const {
 
 void GLShip::collide_grid(Grid &grid) {
     ship->collide_grid(grid);
-    for(list<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
-        (*i)->collide_grid(grid);
-    }
 }
 
 void GLShip::collide(GLShip* first, GLShip* second) {

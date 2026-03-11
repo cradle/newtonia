@@ -67,7 +67,10 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
 // draw_batch renders all alive asteroids in two draw calls (fill + outline),
 // then handles dead asteroid debris/scores individually. Vertices are computed
 // in world space so the caller only needs a tile-offset matrix transform.
-void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, float direction, bool is_minimap) {
+// When wrap_x/wrap_y are non-zero (minimap), asteroids near world edges are
+// drawn again at the opposite edge so wrapping is visible.
+void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, float direction, bool is_minimap,
+                                float wrap_x, float wrap_y) {
   // --- Fill pass: all alive asteroids as GL_TRIANGLES ---
   glBegin(GL_TRIANGLES);
   for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
@@ -82,17 +85,34 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, float direction,
     if (a->invincible) glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
     else               glColor3f(0.0f, 0.0f, 0.0f);
 
-    float vx[9], vy[9];
+    // Compute vertices relative to center (trig only once per asteroid)
+    float dvx[9], dvy[9];
     for (int i = 0; i < segs; i++) {
       float angle = rot + i * step;
-      vx[i] = cx + r * cosf(angle);
-      vy[i] = cy + r * sinf(angle);
+      dvx[i] = r * cosf(angle);
+      dvy[i] = r * sinf(angle);
     }
-    // Triangle fan decomposition (v0, vi, vi+1)
-    for (int i = 1; i < segs - 1; i++) {
-      glVertex2f(vx[0],   vy[0]);
-      glVertex2f(vx[i],   vy[i]);
-      glVertex2f(vx[i+1], vy[i+1]);
+
+    // Determine wrap offsets for edge-adjacent asteroids
+    float dx = 0, dy = 0;
+    if (wrap_x > 0) {
+      if (cx < r)              dx = wrap_x;
+      else if (cx + r > wrap_x) dx = -wrap_x;
+      if (cy < r)              dy = wrap_y;
+      else if (cy + r > wrap_y) dy = -wrap_y;
+    }
+
+    // Emit vertices at original position + any wrap copies
+    for (int wi = 0; wi < (dx != 0 ? 2 : 1); wi++) {
+      for (int wj = 0; wj < (dy != 0 ? 2 : 1); wj++) {
+        float wcx = cx + wi * dx;
+        float wcy = cy + wj * dy;
+        for (int i = 1; i < segs - 1; i++) {
+          glVertex2f(wcx + dvx[0],   wcy + dvy[0]);
+          glVertex2f(wcx + dvx[i],   wcy + dvy[i]);
+          glVertex2f(wcx + dvx[i+1], wcy + dvy[i+1]);
+        }
+      }
     }
   }
   glEnd();
@@ -112,17 +132,31 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, float direction,
     if (a->invincible) glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
     else               glColor3f(1.0f, 1.0f, 1.0f);
 
-    float vx[9], vy[9];
+    float dvx[9], dvy[9];
     for (int i = 0; i < segs; i++) {
       float angle = rot + i * step;
-      vx[i] = cx + r * cosf(angle);
-      vy[i] = cy + r * sinf(angle);
+      dvx[i] = r * cosf(angle);
+      dvy[i] = r * sinf(angle);
     }
-    // LINE_LOOP as explicit pairs
-    for (int i = 0; i < segs; i++) {
-      int j = (i + 1) % segs;
-      glVertex2f(vx[i], vy[i]);
-      glVertex2f(vx[j], vy[j]);
+
+    float dx = 0, dy = 0;
+    if (wrap_x > 0) {
+      if (cx < r)              dx = wrap_x;
+      else if (cx + r > wrap_x) dx = -wrap_x;
+      if (cy < r)              dy = wrap_y;
+      else if (cy + r > wrap_y) dy = -wrap_y;
+    }
+
+    for (int wi = 0; wi < (dx != 0 ? 2 : 1); wi++) {
+      for (int wj = 0; wj < (dy != 0 ? 2 : 1); wj++) {
+        float wcx = cx + wi * dx;
+        float wcy = cy + wj * dy;
+        for (int i = 0; i < segs; i++) {
+          int j = (i + 1) % segs;
+          glVertex2f(wcx + dvx[i], wcy + dvy[i]);
+          glVertex2f(wcx + dvx[j], wcy + dvy[j]);
+        }
+      }
     }
   }
   glEnd();

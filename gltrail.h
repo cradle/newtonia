@@ -4,7 +4,7 @@
 #include "gl_compat.h"
 
 #include "glship.h"
-#include <list>
+#include <vector>
 
 class GLShip;
 
@@ -20,7 +20,6 @@ public:
   virtual ~GLTrail();
   void draw();
   void step(float delta);
-  void collide_grid(Grid &grid);
 
   //TODO: Would want constructor to take TYPE type = THRUSTING, but doesn't work
   enum TYPE {
@@ -41,7 +40,7 @@ private:
   Point offset;
   float deviation, rotation, speed, life, point_size;
 
-  std::list<Particle*> trail;
+  std::vector<Particle> trail;
 };
 
 #endif
