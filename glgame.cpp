@@ -35,6 +35,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   level_cleared(false),
   friendly_fire(true),
   debug_grid(false),
+  score_saved(false),
   grid(Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2))) {
   time_between_steps = step_size;
 
@@ -288,6 +289,22 @@ void GLGame::tick(int delta) {
 
     time_until_next_step += time_between_steps;
   }
+  /* Save high score automatically on game over */
+  if (!score_saved && !players->empty()) {
+    bool all_game_over = true;
+    for (auto* glship : *players) {
+      if (glship->ship->is_alive() || glship->ship->lives > 0) {
+        all_game_over = false;
+        break;
+      }
+    }
+    if (all_game_over) {
+      for (auto* glship : *players)
+        save_high_score(glship->ship->score);
+      score_saved = true;
+    }
+  }
+
   /* Display FPS */
   //std::cout << (num_frames*1000 / current_time) << std::endl;
 }
@@ -617,18 +634,12 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       }
     }
     if (all_game_over) {
-      for (auto* glship : *players)
-        save_high_score(glship->ship->score);
       request_state_change(new Menu());
       return;
     }
   }
 #endif
   if (key == 27) {
-    for (auto* glship : *players) {
-      if (!glship->ship->is_alive() && glship->ship->lives == 0)
-        save_high_score(glship->ship->score);
-    }
     request_state_change(new Menu());
   }
 
