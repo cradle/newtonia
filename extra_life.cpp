@@ -5,7 +5,7 @@ ExtraLife::ExtraLife(WrappedPoint pos) : collected(false) {
   position = pos;
   velocity = Point(0, 0);
   radius = 20.0f;
-  rotation_speed = 0.5f;
+  rotation_speed = 0.0f;
   alive = true;
 }
 
@@ -13,11 +13,12 @@ bool ExtraLife::is_removable() const {
   return collected;
 }
 
-void ExtraLife::draw() const {
+void ExtraLife::draw(float world_rotation) const {
   float s = radius * 0.8f;
 
   glTranslatef(position.x(), position.y(), 0.0f);
-  glRotatef(rotation, 0.0f, 0.0f, 1.0f);
+  // Counter-rotate by the world rotation so the heart always appears upright
+  glRotatef(-world_rotation, 0.0f, 0.0f, 1.0f);
   glColor3f(1.0f, 0.0f, 0.0f);
 
   // Angular heart: 8 vertices forming two bumps at top and a V-point at bottom

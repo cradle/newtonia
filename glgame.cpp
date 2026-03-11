@@ -280,7 +280,7 @@ void GLGame::draw_objects(float direction, bool minimap) const {
 
   for(auto pi = pickups->begin(); pi != pickups->end(); pi++) {
     glPushMatrix();
-    (*pi)->draw();
+    (*pi)->draw(direction);
     glPopMatrix();
   }
 

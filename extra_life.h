@@ -6,7 +6,7 @@
 class ExtraLife : public Object {
 public:
   ExtraLife(WrappedPoint pos);
-  void draw() const;
+  void draw(float world_rotation = 0.0f) const;
   bool is_removable() const override;
   bool collected;
 };
