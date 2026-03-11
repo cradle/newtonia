@@ -122,15 +122,15 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     if(glship->controller == NULL) {
       if(p1 == glship->ship) {
         if(glship->show_help) {
-          Typer::draw_centered(0, vhb+10, "hide controls with F1", 8);
+          Typer::draw_centered(0, vhb+60, "hide controls with F1", 8);
         } else if ((glgame->current_time)/12000 % 2) {
-          Typer::draw_centered(0, vhb+10, "show controls with F1", 8);
+          Typer::draw_centered(0, vhb+60, "show controls with F1", 8);
         }
       } else {
         if(glship->show_help) {
-          Typer::draw_centered(0, vhb+10, "hide controls with F8", 8);
+          Typer::draw_centered(0, vhb+60, "hide controls with F8", 8);
         } else if ((glgame->current_time)/12000 % 2) {
-          Typer::draw_centered(0, vhb+10, "show controls with F8", 8);
+          Typer::draw_centered(0, vhb+60, "show controls with F8", 8);
         }
       }
     }
