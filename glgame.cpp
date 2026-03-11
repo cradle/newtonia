@@ -47,14 +47,6 @@ GLGame::GLGame(SDL_GameController *controller) :
 
   starfield = new GLStarfield(world);
 
-  GLShip *object = new GLShip(grid, true);
-  if(controller != NULL) {
-    object->set_controller(controller);
-  } else {
-    object->set_keys('a','d','w',' ','s','x','q','e', 't', 128+GLUT_KEY_F1);
-  }
-  players->push_back(object);
-
   rearstars = glGenLists(1);
   frontstars = glGenLists(1);
 
@@ -64,6 +56,15 @@ GLGame::GLGame(SDL_GameController *controller) :
   generation = 0;
   Asteroid::num_killable = 0;
   add_asteroids();
+  grid.update((std::list<Object *>*)objects);
+
+  GLShip *object = new GLShip(grid, true);
+  if(controller != NULL) {
+    object->set_controller(controller);
+  } else {
+    object->set_keys('a','d','w',' ','s','x','q','e', 't', 128+GLUT_KEY_F1);
+  }
+  players->push_back(object);
 
   station = NULL;//new GLStation(enemies, players);
 
@@ -163,6 +164,7 @@ void GLGame::tick(int delta) {
       starfield = new GLStarfield(world);
       WrappedPoint::set_boundaries(world);
       add_asteroids();
+      grid.update((std::list<Object *>*)objects);
       while(!pickups->empty()) {
         delete pickups->back();
         pickups->pop_back();
