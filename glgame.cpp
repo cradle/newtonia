@@ -23,8 +23,8 @@ const int GLGame::default_world_width = 2500;
 const int GLGame::default_world_height = 2500;
 const int GLGame::default_num_asteroids = 3;
 const int GLGame::extra_num_asteroids = 5;
-const float GLGame::extra_life_drop_chance = 0.15f;
-const float GLGame::weapon_pickup_drop_chance = 0.20f;
+const float GLGame::extra_life_drop_chance = 0.05f;
+const float GLGame::weapon_pickup_drop_chance = 0.05f;
 
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
