@@ -151,7 +151,18 @@ static const int num_weapon_configs = sizeof(weapon_configs) / sizeof(weapon_con
 void Ship::add_weapon(int weapon_index) {
   if(weapon_index < 0 || weapon_index >= num_weapon_configs) return;
   const WeaponConfig &cfg = weapon_configs[weapon_index];
-  primary_weapons.push_back(new Weapon::Default(this, cfg.automatic, cfg.level, cfg.accuracy, cfg.time_between_shots));
+
+  for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
+    Weapon::Default *w = dynamic_cast<Weapon::Default*>(*it);
+    if(w && w->weapon_index() == weapon_index) {
+      w->add_ammo(100);
+      (*primary)->shoot(false);
+      primary = it;
+      return;
+    }
+  }
+
+  primary_weapons.push_back(new Weapon::Default(this, cfg.automatic, cfg.level, cfg.accuracy, cfg.time_between_shots, weapon_index));
   (*primary)->shoot(false);
   primary = --primary_weapons.end();
 }

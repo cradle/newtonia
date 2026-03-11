@@ -10,13 +10,14 @@
 using namespace std;
 
 namespace Weapon {
-  Default::Default(Ship *ship, bool automatic, int level, float accuracy, int time_between_shots) :
+  Default::Default(Ship *ship, bool automatic, int level, float accuracy, int time_between_shots, int weapon_index) :
     Base(ship),
     automatic(automatic),
     accuracy(accuracy),
     time_until_next_shot(0),
     time_between_shots(time_between_shots),
-    level(level) {
+    level(level),
+    _weapon_index(weapon_index) {
       stringstream temp_name;
       temp_name << "PEW PEW";
       if(level == 5) {
