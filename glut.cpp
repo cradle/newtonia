@@ -72,9 +72,11 @@ void keyboard(unsigned char key, int x, int y) {
       old_width = glutGet(GLUT_WINDOW_WIDTH);
       old_height = glutGet(GLUT_WINDOW_HEIGHT);
       glutFullScreen();
+      glutSetCursor(GLUT_CURSOR_NONE);
     } else {
       glutPositionWindow(old_x, old_y);
       glutReshapeWindow(old_width, old_height);
+      glutSetCursor(GLUT_CURSOR_LEFT_ARROW);
     }
     break;
   }
