@@ -121,6 +121,18 @@ void Ship::previous_weapon() {
   primary = next;
 }
 
+void Ship::set_primary_weapon(int index) {
+  if(index < 0 || index >= (int)primary_weapons.size()) return;
+  if(click_sound != NULL) {
+    Mix_PlayChannel(-1, click_sound, 0);
+  }
+  auto next = primary_weapons.begin();
+  std::advance(next, index);
+  (*next)->shoot((*primary)->is_shooting());
+  (*primary)->shoot(false);
+  primary = next;
+}
+
 void Ship::init(bool no_friction) {
   mass = 100.0;
   value = 1000000;
