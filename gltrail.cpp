@@ -5,7 +5,7 @@
 #include "gl_compat.h"
 
 #include <math.h>
-#include <list>
+#include <vector>
 
 using namespace std;
 
@@ -16,46 +16,26 @@ GLTrail::GLTrail(GLShip* ship, float deviation, Point offset, float speed, float
  }
 
 GLTrail::~GLTrail() {
-  while(!trail.empty()) {
-    delete trail.back();
-    trail.pop_back();
-  }
 }
 
 void GLTrail::draw() {
-  list<Particle*>::iterator p;
   glPointSize(point_size);
   glBegin(GL_POINTS);
-  for(p = trail.begin(); p != trail.end(); p++) {
-      glColor4f(1.0-ship->color[0], 1.0-ship->color[1], 1.0-ship->color[2],(*p)->aliveness());
-  	  glVertex2fv((*p)->position);
+  for(size_t i = 0; i < trail.size(); i++) {
+      glColor4f(1.0-ship->color[0], 1.0-ship->color[1], 1.0-ship->color[2], trail[i].aliveness());
+  	  glVertex2fv(trail[i].position);
   }
   glEnd();
 }
 
-void GLTrail::collide_grid(Grid &grid) {
-  list<Particle*>::iterator t = trail.begin();
-  Object *object;
-  while(t != trail.end()) {
-    object = grid.collide(*(*t));
-    if(object != NULL) {
-      delete *t;
-      t = trail.erase(t);
-    } else {
-      t++;
-    }
-  }
-}
-
 void GLTrail::step(float delta) {
-  list<Particle*>::iterator t = trail.begin();
-  while(t != trail.end()) {
-    (*t)->step(delta);
-    if(!(*t)->is_alive()) {
-      delete *t;
-      t = trail.erase(t);
+  for(size_t i = 0; i < trail.size(); ) {
+    trail[i].step(delta);
+    if(!trail[i].is_alive()) {
+      trail[i] = std::move(trail.back());
+      trail.pop_back();
     } else {
-      t++;
+      ++i;
     }
   }
   if(type & ALWAYS ||
@@ -81,6 +61,5 @@ void GLTrail::add() {
   direction.rotate(rotation);
   velocity = direction*speed + ship->ship->velocity;
   velocity.rotate((rand() / (float)RAND_MAX) * deviation - deviation / 2.0);
-  Particle *particle = new Particle(position, velocity, life);
-  trail.push_back(particle);
+  trail.push_back(Particle(position, velocity, life));
 }
