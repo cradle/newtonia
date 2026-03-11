@@ -1,14 +1,13 @@
 #ifndef EXTRA_LIFE_H
 #define EXTRA_LIFE_H
 
-#include "object.h"
+#include "pickup.h"
 
-class ExtraLife : public Object {
+class ExtraLife : public Pickup {
 public:
   ExtraLife(WrappedPoint pos);
   void draw(float world_rotation = 0.0f) const;
-  bool is_removable() const override;
-  bool collected;
+  void apply(Ship *ship);
 };
 
 #endif

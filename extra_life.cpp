@@ -1,16 +1,12 @@
 #include "extra_life.h"
+#include "ship.h"
 #include "gl_compat.h"
 
-ExtraLife::ExtraLife(WrappedPoint pos) : collected(false) {
-  position = pos;
-  velocity = Point(0, 0);
-  radius = 20.0f;
-  rotation_speed = 0.0f;
-  alive = true;
+ExtraLife::ExtraLife(WrappedPoint pos) : Pickup(pos) {
 }
 
-bool ExtraLife::is_removable() const {
-  return collected;
+void ExtraLife::apply(Ship *ship) {
+  ship->lives++;
 }
 
 void ExtraLife::draw(float world_rotation) const {

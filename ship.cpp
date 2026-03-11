@@ -121,16 +121,37 @@ void Ship::previous_weapon() {
   primary = next;
 }
 
-void Ship::set_primary_weapon(int index) {
-  if(index < 0 || index >= (int)primary_weapons.size()) return;
-  if(click_sound != NULL) {
-    Mix_PlayChannel(-1, click_sound, 0);
-  }
-  auto next = primary_weapons.begin();
-  std::advance(next, index);
-  (*next)->shoot((*primary)->is_shooting());
-  (*primary)->shoot(false);
-  primary = next;
+struct WeaponConfig {
+  bool automatic;
+  int level;
+  float accuracy;
+  int time_between_shots;
+};
+
+static const WeaponConfig weapon_configs[] = {
+  { false, 1, 0.1f, 100 },   // 0
+  { false, 2, 0.1f, 100 },   // 1
+  { false, 3, 0.1f, 100 },   // 2
+  { false, 4, 0.1f, 100 },   // 3
+  { false, 5, 0.1f, 100 },   // 4
+  { false, 0, 0.1f,  50 },   // 5
+  { false, 0, 0.0f, 200 },   // 6
+  { true,  0, 0.1f, 100 },   // 7
+  { true,  1, 0.1f, 100 },   // 8
+  { true,  2, 0.1f, 100 },   // 9
+  { true,  3, 0.1f, 100 },   // 10
+  { true,  4, 0.1f, 100 },   // 11
+  { true,  5, 0.1f, 100 },   // 12
+  { true,  0, 0.1f,  50 },   // 13
+  { true,  0, 0.0f, 200 },   // 14
+};
+
+static const int num_weapon_configs = sizeof(weapon_configs) / sizeof(weapon_configs[0]);
+
+void Ship::add_weapon(int weapon_index) {
+  if(weapon_index < 0 || weapon_index >= num_weapon_configs) return;
+  const WeaponConfig &cfg = weapon_configs[weapon_index];
+  primary_weapons.push_back(new Weapon::Default(this, cfg.automatic, cfg.level, cfg.accuracy, cfg.time_between_shots));
 }
 
 void Ship::init(bool no_friction) {
@@ -161,22 +182,6 @@ void Ship::init(bool no_friction) {
     thrust_force = 0.2;
     rotation_force = 0.5;
   }
-
-   primary_weapons.push_front(new Weapon::Default(this, false, 1));
-   primary_weapons.push_front(new Weapon::Default(this, false, 2));
-   primary_weapons.push_front(new Weapon::Default(this, false, 3));
-   primary_weapons.push_front(new Weapon::Default(this, false, 4));
-   primary_weapons.push_front(new Weapon::Default(this, false, 5));
-   primary_weapons.push_front(new Weapon::Default(this, false, 0, 0.1f, 50));
-   primary_weapons.push_front(new Weapon::Default(this, false, 0, 0.0f, 200));
-   primary_weapons.push_front(new Weapon::Default(this, true));
-   primary_weapons.push_front(new Weapon::Default(this, true, 1));
-   primary_weapons.push_front(new Weapon::Default(this, true, 2));
-   primary_weapons.push_front(new Weapon::Default(this, true, 3));
-   primary_weapons.push_front(new Weapon::Default(this, true, 4));
-   primary_weapons.push_front(new Weapon::Default(this, true, 5));
-   primary_weapons.push_front(new Weapon::Default(this, true, 0, 0.1f, 50));
-   primary_weapons.push_front(new Weapon::Default(this, true, 0, 0.0f, 200));
 
   primary_weapons.push_front(new Weapon::Default(this));
   primary = primary_weapons.begin();

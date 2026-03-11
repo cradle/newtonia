@@ -1,14 +1,14 @@
 #ifndef WEAPON_PICKUP_H
 #define WEAPON_PICKUP_H
 
-#include "object.h"
+#include "pickup.h"
 
-class WeaponPickup : public Object {
+class WeaponPickup : public Pickup {
 public:
   WeaponPickup(WrappedPoint pos, int weapon_index);
   void draw(float world_rotation = 0.0f) const;
-  bool is_removable() const override;
-  bool collected;
+  void apply(Ship *ship);
+private:
   int weapon_index;
 };
 
