@@ -148,13 +148,15 @@ void GLGame::tick(int delta) {
       time_until_next_generation -= delta;
     } else {
       generation++;
+      if(generation == 20) {
+        world += Point(3000, 3000);
+      } else {
+        world += Point(50, 50);
+      }
       if(generation >= 20) {
         if(station != NULL)
           delete station;
         station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
-        world += Point(3000, 3000);
-      } else {
-        world += Point(100, 100);
       }
       grid = Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2));
       if(station != NULL) {
