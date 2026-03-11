@@ -163,6 +163,11 @@ void GLGame::tick(int delta) {
       delete starfield;
       starfield = new GLStarfield(world);
       WrappedPoint::set_boundaries(world);
+      while(!objects->empty()) {
+        delete objects->back();
+        objects->pop_back();
+      }
+      Asteroid::num_killable = 0;
       add_asteroids();
       grid.update((std::list<Object *>*)objects);
       while(!pickups->empty()) {
