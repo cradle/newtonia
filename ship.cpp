@@ -167,6 +167,12 @@ void Ship::add_weapon(int weapon_index) {
   primary = --primary_weapons.end();
 }
 
+void Ship::add_mine_ammo(int amount) {
+  if(!secondary_weapons.empty()) {
+    (*secondary)->add_ammo(amount);
+  }
+}
+
 void Ship::init(bool no_friction) {
   mass = 100.0;
   value = 1000000;
