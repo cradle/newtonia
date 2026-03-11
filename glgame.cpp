@@ -23,6 +23,7 @@ const int GLGame::default_world_width = 2500;
 const int GLGame::default_world_height = 2500;
 const int GLGame::default_num_asteroids = 3;
 const int GLGame::extra_num_asteroids = 5;
+const float GLGame::extra_life_drop_chance = 0.15f;
 
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
@@ -38,6 +39,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
   objects = new std::list<Asteroid*>;
+  pickups = new std::list<ExtraLife*>;
 
   WrappedPoint::set_boundaries(world);
 
@@ -89,6 +91,11 @@ GLGame::~GLGame() {
     objects->pop_back();
   }
   delete objects;
+  while(!pickups->empty()) {
+    delete pickups->back();
+    pickups->pop_back();
+  }
+  delete pickups;
   delete starfield;
   if(station != NULL)
     delete station;
@@ -154,6 +161,10 @@ void GLGame::tick(int delta) {
       starfield = new GLStarfield(world);
       WrappedPoint::set_boundaries(world);
       add_asteroids();
+      while(!pickups->empty()) {
+        delete pickups->back();
+        pickups->pop_back();
+      }
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {
         (*o)->ship->respawn(grid, false);
@@ -197,7 +208,11 @@ void GLGame::tick(int delta) {
 
     oi = objects->begin();
     while(oi != objects->end()) {
-      (*oi)->add_children(objects);
+      if((*oi)->add_children(objects)) {
+        if(!(*oi)->invincible && (rand() / float(RAND_MAX)) < extra_life_drop_chance) {
+          pickups->push_back(new ExtraLife((*oi)->position));
+        }
+      }
       if((*oi)->is_removable()) {
         delete *oi;
         oi = objects->erase(oi);
@@ -229,6 +244,29 @@ void GLGame::tick(int delta) {
       }
     }
 
+    /* COLLIDE PICKUPS WITH PLAYERS */
+    for(o = players->begin(); o != players->end(); o++) {
+      if(!(*o)->ship->is_alive()) continue;
+      for(auto pi = pickups->begin(); pi != pickups->end(); pi++) {
+        if(!(*pi)->collected && (*pi)->collide(*(*o)->ship)) {
+          (*pi)->collected = true;
+          (*o)->ship->lives++;
+        }
+      }
+    }
+
+    /* STEP AND CLEAN UP PICKUPS */
+    auto pi = pickups->begin();
+    while(pi != pickups->end()) {
+      if((*pi)->is_removable()) {
+        delete *pi;
+        pi = pickups->erase(pi);
+      } else {
+        (*pi)->step(step_size);
+        pi++;
+      }
+    }
+
     time_until_next_step += time_between_steps;
   }
   /* Display FPS */
@@ -239,6 +277,12 @@ void GLGame::draw_objects(float direction, bool minimap) const {
   if(debug_grid && !minimap) grid.draw_debug();
 
   AsteroidDrawer::draw_batch(objects, direction, minimap);
+
+  for(auto pi = pickups->begin(); pi != pickups->end(); pi++) {
+    glPushMatrix();
+    (*pi)->draw();
+    glPopMatrix();
+  }
 
   std::list<GLShip*>::iterator o;
   for(o = players->begin(); o != players->end(); o++) {

@@ -79,8 +79,8 @@ bool Asteroid::kill() {
   return CompositeObject::kill();
 }
 
-void Asteroid::add_children(list<Asteroid*> *roids) {
-  if(alive || children_added) return;
+bool Asteroid::add_children(list<Asteroid*> *roids) {
+  if(alive || children_added) return false;
   children_added = true;
   if(radius/2.0f < minimum_radius) {
     // explode good and proper
@@ -92,4 +92,5 @@ void Asteroid::add_children(list<Asteroid*> *roids) {
     Mix_PlayChannel(-1, explode_sound, 0);
   }
   velocity = velocity / 8;
+  return true;
 }
