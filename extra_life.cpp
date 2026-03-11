@@ -15,6 +15,7 @@ void ExtraLife::draw(float world_rotation) const {
   glTranslatef(position.x(), position.y(), 0.0f);
   // Counter-rotate by the world rotation so the heart always appears upright
   glRotatef(-world_rotation, 0.0f, 0.0f, 1.0f);
+  glLineWidth(1.8f);
   glColor3f(1.0f, 0.0f, 0.0f);
 
   // Angular heart: 8 vertices forming two bumps at top and a V-point at bottom
