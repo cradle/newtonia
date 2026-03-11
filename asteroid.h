@@ -13,7 +13,7 @@ public:
   Asteroid(Asteroid const *mother);
   virtual ~Asteroid();
 
-  void add_children(list<Asteroid*> *objects);
+  bool add_children(list<Asteroid*> *objects);
   virtual bool kill();
 
   friend class AsteroidDrawer;
