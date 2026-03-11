@@ -157,7 +157,8 @@ void Ship::add_weapon(int weapon_index) {
     if(w && w->weapon_index() == weapon_index) {
       w->add_ammo(100);
       (*primary)->shoot(false);
-      primary = it;
+      primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
+      primary = --primary_weapons.end();
       return;
     }
   }
@@ -176,7 +177,7 @@ void Ship::add_mine_ammo(int amount) {
 void Ship::init(bool no_friction) {
   mass = 100.0;
   value = 1000000;
-  lives = 3;
+  lives = 4;
   width = height = radius = 15;
   radius_squared = radius * radius;
   respawn_time = time_until_respawn = 4000;
