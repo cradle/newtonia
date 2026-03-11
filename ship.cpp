@@ -108,7 +108,7 @@ void Ship::previous_weapon() {
   if(click_sound != NULL) {
     Mix_PlayChannel(-1, click_sound, 0);
   }
-  list<Weapon::Base *>::iterator next;
+  list<Weapon::Base *>::iterator next(primary);
 
   //TODO: use circular list?
   if(next == primary_weapons.begin())
@@ -421,7 +421,7 @@ void Ship::detonate(Point const position, Point const velocity, int particle_cou
 void Ship::shoot(bool on) {
   if(!primary_weapons.empty()) {
     if((*primary)->empty() && on) {
-      next_weapon();
+      previous_weapon();
     } else {
       (*primary)->shoot(on);
     }
