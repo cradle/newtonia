@@ -24,6 +24,8 @@ const int GLGame::default_world_height = 2500;
 const int GLGame::default_num_asteroids = 3;
 const int GLGame::extra_num_asteroids = 5;
 const float GLGame::extra_life_drop_chance = 0.15f;
+const float GLGame::weapon_drop_chance = 0.20f;
+const int GLGame::num_weapon_types = 16;
 
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
@@ -40,6 +42,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   players = new std::list<GLShip*>;
   objects = new std::list<Asteroid*>;
   pickups = new std::list<ExtraLife*>;
+  weapon_pickups = new std::list<WeaponPickup*>;
 
   WrappedPoint::set_boundaries(world);
 
@@ -96,6 +99,11 @@ GLGame::~GLGame() {
     pickups->pop_back();
   }
   delete pickups;
+  while(!weapon_pickups->empty()) {
+    delete weapon_pickups->back();
+    weapon_pickups->pop_back();
+  }
+  delete weapon_pickups;
   delete starfield;
   if(station != NULL)
     delete station;
@@ -165,6 +173,10 @@ void GLGame::tick(int delta) {
         delete pickups->back();
         pickups->pop_back();
       }
+      while(!weapon_pickups->empty()) {
+        delete weapon_pickups->back();
+        weapon_pickups->pop_back();
+      }
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {
         (*o)->ship->respawn(grid, false);
@@ -209,8 +221,14 @@ void GLGame::tick(int delta) {
     oi = objects->begin();
     while(oi != objects->end()) {
       if((*oi)->add_children(objects)) {
-        if(!(*oi)->invincible && (rand() / float(RAND_MAX)) < extra_life_drop_chance) {
-          pickups->push_back(new ExtraLife((*oi)->position));
+        if(!(*oi)->invincible) {
+          float roll = rand() / float(RAND_MAX);
+          if(roll < extra_life_drop_chance) {
+            pickups->push_back(new ExtraLife((*oi)->position));
+          } else if(roll < extra_life_drop_chance + weapon_drop_chance) {
+            int weapon_index = 1 + rand() % num_weapon_types;
+            weapon_pickups->push_back(new WeaponPickup((*oi)->position, weapon_index));
+          }
         }
       }
       if((*oi)->is_removable()) {
@@ -255,6 +273,17 @@ void GLGame::tick(int delta) {
       }
     }
 
+    /* COLLIDE WEAPON PICKUPS WITH PLAYERS */
+    for(o = players->begin(); o != players->end(); o++) {
+      if(!(*o)->ship->is_alive()) continue;
+      for(auto wi = weapon_pickups->begin(); wi != weapon_pickups->end(); wi++) {
+        if(!(*wi)->collected && (*wi)->collide(*(*o)->ship)) {
+          (*wi)->collected = true;
+          (*o)->ship->set_primary_weapon((*wi)->weapon_index);
+        }
+      }
+    }
+
     /* STEP AND CLEAN UP PICKUPS */
     auto pi = pickups->begin();
     while(pi != pickups->end()) {
@@ -264,6 +293,18 @@ void GLGame::tick(int delta) {
       } else {
         (*pi)->step(step_size);
         pi++;
+      }
+    }
+
+    /* STEP AND CLEAN UP WEAPON PICKUPS */
+    auto wi = weapon_pickups->begin();
+    while(wi != weapon_pickups->end()) {
+      if((*wi)->is_removable()) {
+        delete *wi;
+        wi = weapon_pickups->erase(wi);
+      } else {
+        (*wi)->step(step_size);
+        wi++;
       }
     }
 
@@ -281,6 +322,12 @@ void GLGame::draw_objects(float direction, bool minimap) const {
   for(auto pi = pickups->begin(); pi != pickups->end(); pi++) {
     glPushMatrix();
     (*pi)->draw(direction);
+    glPopMatrix();
+  }
+
+  for(auto wi = weapon_pickups->begin(); wi != weapon_pickups->end(); wi++) {
+    glPushMatrix();
+    (*wi)->draw(direction);
     glPopMatrix();
   }
 
