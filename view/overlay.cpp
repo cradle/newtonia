@@ -6,7 +6,7 @@
 #include "../gl_compat.h"
 #include <cstdio>
 
-const float Overlay::CORNER_INSET = 0.05f;
+const float Overlay::CORNER_INSET = 35.0f;
 
 void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   title_text(glgame, glship);
