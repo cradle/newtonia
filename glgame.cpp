@@ -24,6 +24,7 @@ const int GLGame::default_world_height = 2500;
 const int GLGame::default_num_asteroids = 3;
 const int GLGame::extra_num_asteroids = 5;
 const float GLGame::extra_life_drop_chance = 0.15f;
+const float GLGame::weapon_pickup_drop_chance = 0.20f;
 
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
@@ -39,7 +40,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
   objects = new std::list<Asteroid*>;
-  pickups = new std::list<ExtraLife*>;
+  pickups = new std::list<Pickup*>;
 
   WrappedPoint::set_boundaries(world);
 
@@ -209,8 +210,14 @@ void GLGame::tick(int delta) {
     oi = objects->begin();
     while(oi != objects->end()) {
       if((*oi)->add_children(objects)) {
-        if(!(*oi)->invincible && (rand() / float(RAND_MAX)) < extra_life_drop_chance) {
-          pickups->push_back(new ExtraLife((*oi)->position));
+        if(!(*oi)->invincible) {
+          float roll = rand() / float(RAND_MAX);
+          if(roll < extra_life_drop_chance) {
+            pickups->push_back(new ExtraLife((*oi)->position));
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance) {
+            int weapon_index = rand() % 15;
+            pickups->push_back(new WeaponPickup((*oi)->position, weapon_index));
+          }
         }
       }
       if((*oi)->is_removable()) {
@@ -250,7 +257,7 @@ void GLGame::tick(int delta) {
       for(auto pi = pickups->begin(); pi != pickups->end(); pi++) {
         if(!(*pi)->collected && (*pi)->collide(*(*o)->ship)) {
           (*pi)->collected = true;
-          (*o)->ship->lives++;
+          (*pi)->apply((*o)->ship);
         }
       }
     }

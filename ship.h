@@ -83,6 +83,7 @@ class Ship : public CompositeObject {
 
     void next_weapon();
     void previous_weapon();
+    void add_weapon(int weapon_index);
     WrappedPoint gun() const;
     bool kill();
 

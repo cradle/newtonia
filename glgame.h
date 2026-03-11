@@ -8,7 +8,9 @@
 #include "glstarfield.h"
 #include "glstation.h"
 #include "asteroid.h"
+#include "pickup.h"
 #include "extra_life.h"
+#include "weapon_pickup.h"
 #include <SDL.h>
 #include <list>
 
@@ -31,7 +33,7 @@ public:
   bool cleared() const;
 
   list<Asteroid*> *objects;
-  list<ExtraLife*> *pickups;
+  list<Pickup*> *pickups;
 
   int num_x_viewports() const;
   int num_y_viewports() const;
@@ -58,6 +60,7 @@ private:
   static const int default_world_width, default_world_height;
   static const int default_num_asteroids, extra_num_asteroids;
   static const float extra_life_drop_chance;
+  static const float weapon_pickup_drop_chance;
   unsigned int frontstars, rearstars;
 
   Mix_Chunk *tic_sound = NULL;
