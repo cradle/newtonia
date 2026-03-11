@@ -52,9 +52,9 @@ static bool          s_running  = true;
 static unsigned char touch_to_key(float norm_x, float norm_y) {
     // norm_x, norm_y are 0-1 relative to whole screen
 
-    // DEBUG: top-right corner tap → skip to level 9 + best weapon
+    // DEBUG: top-right corner tap → skip to next level
     if (norm_x > 0.85f && norm_y < 0.15f) {
-        return '~';
+        return 'n';
     }
 
     bool left_half = (norm_x < 0.5f);
