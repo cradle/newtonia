@@ -581,6 +581,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
         delete objects->back();
         objects->pop_back();
       }
+      Asteroid::num_killable = 0;
   }
 
   if (key == 'g') {
