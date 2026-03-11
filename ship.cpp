@@ -152,6 +152,8 @@ void Ship::add_weapon(int weapon_index) {
   if(weapon_index < 0 || weapon_index >= num_weapon_configs) return;
   const WeaponConfig &cfg = weapon_configs[weapon_index];
   primary_weapons.push_back(new Weapon::Default(this, cfg.automatic, cfg.level, cfg.accuracy, cfg.time_between_shots));
+  (*primary)->shoot(false);
+  primary = --primary_weapons.end();
 }
 
 void Ship::init(bool no_friction) {
