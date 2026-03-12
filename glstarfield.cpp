@@ -2,6 +2,7 @@
 
 
 #include "gl_compat.h"
+#include "typer.h"
 
 const int GLStarfield::NUM_REAR_LAYERS = 10;
 const int GLStarfield::NUM_FRONT_LAYERS = 5;
@@ -12,7 +13,6 @@ GLStarfield::GLStarfield(Point const size) {
   int red, green;
   for(int i = 0; i < NUM_REAR_LAYERS + NUM_FRONT_LAYERS + 1; i++) {
     glNewList(point_layers+i, GL_COMPILE);
-    glPointSize(4.0f);
     glBegin(GL_POINTS);
 
     int num_stars = size.x()*size.y()*STAR_DENSITY;
@@ -32,6 +32,7 @@ GLStarfield::~GLStarfield() {
 }
 
 void GLStarfield::draw_rear(Point const viewpoint) const {
+  glPointSize(4.0f * Typer::scale);
   for(int i = 0; i < NUM_REAR_LAYERS; i++) {
     glCallList(point_layers+i);
   }
@@ -39,6 +40,7 @@ void GLStarfield::draw_rear(Point const viewpoint) const {
 }
 
 void GLStarfield::draw_front(Point const viewpoint) const {
+  glPointSize(4.0f * Typer::scale);
   for(int i = 0; i < NUM_FRONT_LAYERS; i++) {
     glCallList(point_layers + NUM_REAR_LAYERS + 1 + i);
   }

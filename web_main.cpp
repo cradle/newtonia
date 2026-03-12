@@ -133,8 +133,12 @@ static void main_loop() {
 
         case SDL_WINDOWEVENT:
             if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
-                s_w = e.window.data1;
-                s_h = e.window.data2;
+                // e.window.data1/data2 are CSS pixels; scale to physical pixels
+                // so the canvas renders at full device resolution.
+                double dpr = emscripten_get_device_pixel_ratio();
+                s_w = (int)(e.window.data1 * dpr);
+                s_h = (int)(e.window.data2 * dpr);
+                SDL_SetWindowSize(s_window, s_w, s_h);
                 s_game->resize(s_w, s_h);
                 Typer::resize(s_w, s_h);
             }
@@ -204,6 +208,16 @@ int main(int argc, char *argv[]) {
         SDL_DestroyWindow(s_window);
         SDL_Quit();
         return 1;
+    }
+
+    // Scale the initial canvas to physical pixels using devicePixelRatio so
+    // the game renders at full device resolution instead of CSS pixel resolution.
+    {
+        double dpr = emscripten_get_device_pixel_ratio();
+        SDL_GetWindowSize(s_window, &s_w, &s_h);
+        s_w = (int)(s_w * dpr);
+        s_h = (int)(s_h * dpr);
+        SDL_SetWindowSize(s_window, s_w, s_h);
     }
 
     SDL_GL_SetSwapInterval(1); // vsync
