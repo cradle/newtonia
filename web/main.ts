@@ -89,6 +89,19 @@ declare const Module: {
     (Module as ModuleEx)._web_touch_joystick?.(nx, ny);
   }
 
+  // Module-level refs so setMenuMode can show/hide them.
+  let _circleButtonEls: HTMLElement[] = [];
+  let _menuOverlay: HTMLElement | null = null;
+
+  // Called from C++ via EM_ASM when game state changes.
+  function setMenuMode(isMenu: boolean): void {
+    for (const el of _circleButtonEls) {
+      el.style.display = isMenu ? "none" : "";
+    }
+    if (_menuOverlay) _menuOverlay.style.display = isMenu ? "block" : "none";
+  }
+  (window as any).setMenuMode = setMenuMode;
+
   // Builds the touch UI and returns a resize handler.
   // The caller is responsible for adding/removing the resize listener.
   function buildTouchControls(): () => void {
@@ -237,9 +250,22 @@ declare const Module: {
     // Capture button elements once; reused by the resize handler to avoid
     // repeated querySelector calls.
     const circleButtons = [
-      { el: container.querySelector<HTMLElement>(".touch-shoot")!, cx: 0.62, cy: 0.73 },
-      { el: container.querySelector<HTMLElement>(".touch-mine")!,  cx: 0.85, cy: 0.73 },
+      { el: container.querySelector<HTMLElement>(".touch-shoot")!, cx: 0.62, cy: 0.85 },
+      { el: container.querySelector<HTMLElement>(".touch-mine")!,  cx: 0.85, cy: 0.85 },
     ];
+    _circleButtonEls = circleButtons.map(b => b.el);
+
+    // Full-screen overlay active during menu: any tap dispatches Enter to start the game.
+    const menuOverlay = document.createElement("div");
+    menuOverlay.className = "menu-overlay";
+    menuOverlay.addEventListener("touchend", (e) => {
+      e.preventDefault();
+      canvas.dispatchEvent(new KeyboardEvent("keyup", {
+        key: "Enter", code: "Enter", bubbles: true, cancelable: true,
+      }));
+    }, { passive: false });
+    container.appendChild(menuOverlay);
+    _menuOverlay = menuOverlay;
 
     // Size and centre circular buttons. transform is handled by CSS so that
     // the .pressed scale animation works without fighting inline styles.
@@ -268,6 +294,7 @@ declare const Module: {
       tc.style.display = "block";
       _resizeFn = buildTouchControls();
       window.addEventListener("resize", _resizeFn);
+      setMenuMode(true); // Start in menu: hide action buttons, show tap overlay
     } else {
       tc.style.display = "none";
     }

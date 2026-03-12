@@ -1,4 +1,3 @@
-"use strict";
 // UI chrome for the Newtonia web port.
 // Handles fullscreen, mute, and on-screen touch controls.
 // Compiled to main.js via tsc and loaded after the Emscripten script.
@@ -11,8 +10,9 @@
         if (!document.fullscreenElement) {
             const container = document.getElementById("game-container");
             container.requestFullscreen().catch(() => {
+                var _a;
                 // Fallback: fullscreen just the canvas
-                canvas.requestFullscreen?.();
+                (_a = canvas.requestFullscreen) === null || _a === void 0 ? void 0 : _a.call(canvas);
             });
             fsBtn.textContent = "⛶";
         }
@@ -31,10 +31,11 @@
     let audioCtx = null;
     let gainNode = null;
     function getAudioContext() {
+        var _a, _b;
         // Emscripten creates a global AudioContext accessible via window.
         // If it isn't available yet, return null and retry on first user gesture.
         const w = window;
-        return w.SDL?.audioContext ?? null;
+        return (_b = (_a = w.SDL) === null || _a === void 0 ? void 0 : _a.audioContext) !== null && _b !== void 0 ? _b : null;
     }
     function ensureGain() {
         if (gainNode)
@@ -52,10 +53,11 @@
         return gainNode;
     }
     muteBtn.addEventListener("click", () => {
+        var _a;
         muted = !muted;
         muteBtn.textContent = muted ? "🔇" : "🔊";
         muteBtn.title = muted ? "Unmute" : "Mute";
-        const ctx = getAudioContext() ?? audioCtx;
+        const ctx = (_a = getAudioContext()) !== null && _a !== void 0 ? _a : audioCtx;
         if (ctx) {
             if (muted) {
                 ctx.suspend();
@@ -72,8 +74,21 @@
     // Multi-touch is supported — joystick and action buttons track independent fingers.
     const TOUCH_MEDIA = window.matchMedia("(pointer: coarse)");
     function callTouchJoystick(nx, ny) {
-        Module._web_touch_joystick?.(nx, ny);
+        var _a, _b;
+        (_b = (_a = Module)._web_touch_joystick) === null || _b === void 0 ? void 0 : _b.call(_a, nx, ny);
     }
+    // Module-level refs so setMenuMode can show/hide them.
+    let _circleButtonEls = [];
+    let _menuOverlay = null;
+    // Called from C++ via EM_ASM when game state changes.
+    function setMenuMode(isMenu) {
+        for (const el of _circleButtonEls) {
+            el.style.display = isMenu ? "none" : "";
+        }
+        if (_menuOverlay)
+            _menuOverlay.style.display = isMenu ? "block" : "none";
+    }
+    window.setMenuMode = setMenuMode;
     // Builds the touch UI and returns a resize handler.
     // The caller is responsible for adding/removing the resize listener.
     function buildTouchControls() {
@@ -204,9 +219,21 @@
         // Capture button elements once; reused by the resize handler to avoid
         // repeated querySelector calls.
         const circleButtons = [
-            { el: container.querySelector(".touch-shoot"), cx: 0.62, cy: 0.73 },
-            { el: container.querySelector(".touch-mine"), cx: 0.85, cy: 0.73 },
+            { el: container.querySelector(".touch-shoot"), cx: 0.62, cy: 0.85 },
+            { el: container.querySelector(".touch-mine"), cx: 0.85, cy: 0.85 },
         ];
+        _circleButtonEls = circleButtons.map(b => b.el);
+        // Full-screen overlay active during menu: any tap dispatches Enter to start the game.
+        const menuOverlay = document.createElement("div");
+        menuOverlay.className = "menu-overlay";
+        menuOverlay.addEventListener("touchend", (e) => {
+            e.preventDefault();
+            canvas.dispatchEvent(new KeyboardEvent("keyup", {
+                key: "Enter", code: "Enter", bubbles: true, cancelable: true,
+            }));
+        }, { passive: false });
+        container.appendChild(menuOverlay);
+        _menuOverlay = menuOverlay;
         // Size and centre circular buttons. transform is handled by CSS so that
         // the .pressed scale animation works without fighting inline styles.
         function sizeCircleButtons() {
@@ -234,6 +261,7 @@
             tc.style.display = "block";
             _resizeFn = buildTouchControls();
             window.addEventListener("resize", _resizeFn);
+            setMenuMode(true); // Start in menu: hide action buttons, show tap overlay
         }
         else {
             tc.style.display = "none";
