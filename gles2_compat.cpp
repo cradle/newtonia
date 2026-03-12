@@ -291,6 +291,13 @@ static void flush_vertices() {
         s_converted = quads_to_triangles(s_vbuf);
         src         = &s_converted;
         gl_mode     = GL_TRIANGLES;
+    } else if (s_begin_mode == GL_LINE_LOOP) {
+        // GL_LINE_LOOP's closing segment is unreliable on WebGL/GLES2.
+        // Emulate by repeating the first vertex and using GL_LINE_STRIP.
+        s_converted = s_vbuf;
+        s_converted.push_back(s_vbuf[0]);
+        src     = &s_converted;
+        gl_mode = GL_LINE_STRIP;
     }
 
     if (src->empty()) return;

@@ -69,8 +69,13 @@ void Menu::draw() {
     Typer::draw_centered(0, -255, high_score, 18);
   }
   if((currentTime/1400) % 2) {
-#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__)
+#if defined(__ANDROID__) || defined(__IOS__)
     Typer::draw_centered(0, -50, "tap to start", 18);
+#elif defined(__EMSCRIPTEN__)
+    if (EM_ASM_INT(return window.matchMedia('(pointer: coarse)').matches ? 1 : 0;))
+      Typer::draw_centered(0, -50, "tap to start", 18);
+    else
+      Typer::draw_centered(0, -50, "press enter", 18);
 #else
     if(SDL_NumJoysticks() == 0) {
       Typer::draw_centered(0, -50, "press enter", 18);

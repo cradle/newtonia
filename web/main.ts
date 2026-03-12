@@ -82,8 +82,11 @@ declare const Module: {
 
   const TOUCH_MEDIA = window.matchMedia("(pointer: coarse)");
 
-  // Extend Module type to include our exported C function.
-  type ModuleEx = typeof Module & { _web_touch_joystick?(nx: number, ny: number): void };
+  // Extend Module type to include our exported C functions.
+  type ModuleEx = typeof Module & {
+    _web_touch_joystick?(nx: number, ny: number): void;
+    _web_tap_start?(): void;
+  };
 
   function callTouchJoystick(nx: number, ny: number): void {
     (Module as ModuleEx)._web_touch_joystick?.(nx, ny);
@@ -260,9 +263,7 @@ declare const Module: {
     menuOverlay.className = "menu-overlay";
     menuOverlay.addEventListener("touchend", (e) => {
       e.preventDefault();
-      canvas.dispatchEvent(new KeyboardEvent("keyup", {
-        key: "Enter", code: "Enter", bubbles: true, cancelable: true,
-      }));
+      (Module as ModuleEx)._web_tap_start?.();
     }, { passive: false });
     container.appendChild(menuOverlay);
     _menuOverlay = menuOverlay;
