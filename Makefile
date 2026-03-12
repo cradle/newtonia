@@ -46,6 +46,7 @@ WEB_FLAGS = -std=c++11 -O2 \
             -s SDL2_MIXER_FORMATS='["wav","mp3"]' \
             -s FULL_ES2=1 \
             -s ALLOW_MEMORY_GROWTH=1 \
+            -lidbfs.js \
             --shell-file web/shell.html
 
 # If audio assets exist in a sounds/ directory, uncomment:

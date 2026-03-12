@@ -2,6 +2,14 @@
 // Compiles the game to WebAssembly + WebGL via Emscripten.
 // Mirrors android_main.cpp but uses emscripten_set_main_loop() instead of a
 // blocking while-loop, because the browser controls the event loop.
+//
+// High-score persistence
+// ----------------------
+// SDL_GetPrefPath() returns an in-memory MEMFS path.  We mount an IDBFS
+// (IndexedDB-backed) filesystem over that path so the highscore.dat file
+// survives page refreshes.  The mount + initial sync happen asynchronously;
+// web_on_idb_ready() is called from JS when the sync completes, and only
+// then do we create the StateManager and start the game loop.
 
 #ifdef __EMSCRIPTEN__
 
@@ -14,6 +22,7 @@
 #include "typer.h"
 
 #include <cmath>
+#include <string>
 
 // ============================================================
 // Touch → game-input mapping (same regions as android_main.cpp)
@@ -145,6 +154,25 @@ static void main_loop() {
 }
 
 // ============================================================
+// Game startup — called once IDBFS is ready
+// ============================================================
+static void start_game() {
+    s_game = new StateManager();
+    s_game->resize(s_w, s_h);
+    Typer::resize(s_w, s_h);
+    s_last_tick = SDL_GetTicks();
+    // Hand control to the browser's requestAnimationFrame loop.
+    // simulate_infinite_loop=1 means main() never returns.
+    emscripten_set_main_loop(main_loop, 0, 1);
+}
+
+// Called from JS after FS.syncfs(true) completes (IDBFS → memory).
+// EMSCRIPTEN_KEEPALIVE exports this symbol so JS can call Module._web_on_idb_ready().
+extern "C" EMSCRIPTEN_KEEPALIVE void web_on_idb_ready() {
+    start_game();
+}
+
+// ============================================================
 // main
 // ============================================================
 int main(int argc, char *argv[]) {
@@ -200,17 +228,36 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    s_game = new StateManager();
-    s_game->resize(s_w, s_h);
-    Typer::resize(s_w, s_h);
+    // ---- IDBFS: mount persistent storage over the SDL pref path ----
+    // SDL_GetPrefPath creates an empty MEMFS directory; we overlay IDBFS on
+    // top so reads/writes automatically go through IndexedDB.
+    // The async sync (IDB → memory) completes before start_game() is called.
+    char *raw_pref = SDL_GetPrefPath("org.newtonia", "newtonia");
+    if (raw_pref) {
+        // Strip trailing slash — FS.mount needs the dir itself, not a child path.
+        std::string pref(raw_pref);
+        SDL_free(raw_pref);
+        if (!pref.empty() && pref.back() == '/') pref.pop_back();
 
-    s_last_tick = SDL_GetTicks();
+        EM_ASM({
+            var path = UTF8ToString($0);
+            try {
+                FS.mount(IDBFS, {}, path);
+            } catch (e) {
+                console.warn('[newtonia] IDBFS mount failed:', e);
+            }
+            // Populate memory from IndexedDB, then start the game.
+            FS.syncfs(true, function(err) {
+                if (err) console.error('[newtonia] IDBFS initial sync failed:', err);
+                Module._web_on_idb_ready();
+            });
+        }, pref.c_str());
+    } else {
+        // No pref path available — start without persistence.
+        start_game();
+    }
 
-    // Hand control to the browser's requestAnimationFrame loop.
-    // simulate_infinite_loop=1 means main() never returns.
-    emscripten_set_main_loop(main_loop, 0, 1);
-
-    // Unreachable, but keep for clarity:
+    // Unreachable (emscripten_set_main_loop never returns), but keep for clarity:
     delete s_game;
     gles2_shutdown();
     Mix_CloseAudio();
