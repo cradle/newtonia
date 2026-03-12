@@ -3,6 +3,11 @@
 // shaders + vertex arrays.
 
 #include "gles2_compat.h"
+// Undef our viewport macro so gles2_set_viewport can call the native function
+// without recursing, and so replay_list's glViewport call reaches GLES2 directly.
+#ifdef glViewport
+#  undef glViewport
+#endif
 
 #include <SDL.h>
 
@@ -144,6 +149,7 @@ struct Vertex {
 static float         s_color[4]     = {1,1,1,1};
 static float         s_point_size   = 1.0f;
 static float         s_line_width   = 1.0f;
+static GLint         s_viewport[4]  = {0, 0, 800, 600}; // cached; avoids glGetIntegerv in hot path
 static bool          s_in_begin     = false;
 static GLenum        s_begin_mode   = GL_POINTS;
 static std::vector<Vertex> s_vbuf;
@@ -289,9 +295,8 @@ static void draw_thick_lines(const std::vector<Vertex>& verts, GLenum mode) {
 
     mat4 mvp; get_mvp(mvp);
 
-    GLint vp[4]; glGetIntegerv(GL_VIEWPORT, vp);
-    float hw = (float)vp[2] * 0.5f;
-    float hh = (float)vp[3] * 0.5f;
+    float hw = (float)s_viewport[2] * 0.5f;
+    float hh = (float)s_viewport[3] * 0.5f;
     if (hw < 1.0f || hh < 1.0f) return;
 
     float half_lw = s_line_width * 0.5f;
@@ -308,10 +313,15 @@ static void draw_thick_lines(const std::vector<Vertex>& verts, GLenum mode) {
 
     s_thick_quads.clear();
 
-    size_t segs = (mode == GL_LINES) ? n / 2 : n - 1;
+    // For GL_LINE_LOOP, draw n segments (last vertex back to first).
+    size_t segs = (mode == GL_LINES)     ? n / 2 :
+                  (mode == GL_LINE_LOOP) ? n     : n - 1;
     for (size_t si = 0; si < segs; si++) {
-        const Vertex& va = (mode == GL_LINES) ? verts[si*2]   : verts[si];
-        const Vertex& vb = (mode == GL_LINES) ? verts[si*2+1] : verts[si+1];
+        const Vertex& va = (mode == GL_LINES)     ? verts[si*2]          :
+                                                    verts[si];
+        const Vertex& vb = (mode == GL_LINES)     ? verts[si*2+1]        :
+                           (mode == GL_LINE_LOOP) ? verts[(si+1) % n]    :
+                                                    verts[si+1];
 
         float ax, ay, bx, by;
         project(va, ax, ay);
@@ -390,20 +400,15 @@ static void flush_vertices() {
         s_converted = quads_to_triangles(s_vbuf);
         src         = &s_converted;
         gl_mode     = GL_TRIANGLES;
-    } else if (s_begin_mode == GL_LINE_LOOP) {
-        // GL_LINE_LOOP's closing segment is unreliable on WebGL/GLES2.
-        // Emulate by repeating the first vertex and using GL_LINE_STRIP.
-        s_converted = s_vbuf;
-        s_converted.push_back(s_vbuf[0]);
-        src     = &s_converted;
-        gl_mode = GL_LINE_STRIP;
     }
 
     if (src->empty()) return;
 
     // Thick line emulation: macOS WebGL (Metal) clamps glLineWidth to 1.
     // For any width > 1, expand line segments to screen-space quads instead.
-    if (s_line_width > 1.05f && (gl_mode == GL_LINES || gl_mode == GL_LINE_STRIP)) {
+    // GL_LINE_LOOP is also handled here — draw_thick_lines closes the loop.
+    if (s_line_width > 1.05f && (gl_mode == GL_LINES || gl_mode == GL_LINE_STRIP ||
+                                  gl_mode == GL_LINE_LOOP)) {
         draw_thick_lines(*src, gl_mode);
         return;
     }
@@ -634,6 +639,13 @@ void gles2_set_line_width(GLfloat width) {
         DLCommand c; c.type = DLCommand::LINE_WIDTH; c.f[0] = width; dl_push(c); return;
     }
     s_line_width = width;
+}
+
+// ---- Viewport (intercepted via macro to keep s_viewport cache current) ----
+void gles2_set_viewport(GLint x, GLint y, GLsizei w, GLsizei h) {
+    s_viewport[0] = x; s_viewport[1] = y;
+    s_viewport[2] = (GLint)w; s_viewport[3] = (GLint)h;
+    glViewport(x, y, w, h);  // macro not active here; calls native GL
 }
 
 // ---- Display lists ----

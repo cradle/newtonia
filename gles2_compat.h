@@ -114,6 +114,11 @@ void glPointSize(GLfloat size);
 void gles2_set_line_width(GLfloat width);
 #define glLineWidth(w) gles2_set_line_width(w)
 
+// glViewport is intercepted to keep an internal cache used by thick line
+// emulation (avoids glGetIntegerv in the draw hot path).
+void gles2_set_viewport(GLint x, GLint y, GLsizei w, GLsizei h);
+#define glViewport(x,y,w,h) gles2_set_viewport((x),(y),(w),(h))
+
 // ---- Display lists ----
 GLuint glGenLists(GLsizei range);
 void   glNewList(GLuint list, GLenum mode);
