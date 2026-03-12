@@ -7,6 +7,10 @@
 #include <GLES2/gl2.h>
 #elif defined(__IOS__)
 #include <OpenGLES/ES2/gl.h>
+#elif defined(__EMSCRIPTEN__)
+// SDL2's bundled GLES2 header — always available under USE_SDL=2.
+// Avoids depending on the Emscripten sysroot cache being pre-warmed.
+#include <SDL_opengles2.h>
 #endif
 #include <SDL.h>
 
