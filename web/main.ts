@@ -75,82 +75,205 @@ declare const Module: {
     ensureGain();
   });
 
-  // ---- On-screen touch controls (portrait / coarse pointer) ----
-  // We build invisible tap zones over the canvas that map to the same
-  // keyboard zones defined in web_main.cpp's touch_to_key().
-  // Instead of fighting SDL2's touch event routing, we synthesise
-  // SDL-style keyboard events by posting them into the canvas as
-  // KeyboardEvent dispatches (Emscripten's SDL2 port listens on the canvas).
+  // ---- On-screen touch controls ----
+  // Left half: floating analog joystick that calls Module._web_touch_joystick(nx, ny).
+  // Right half: large circular action buttons with press-state visual feedback.
+  // Multi-touch is supported — joystick and action buttons track independent fingers.
 
   const TOUCH_MEDIA = window.matchMedia("(pointer: coarse)");
 
-  interface Zone {
-    label: string;
-    key: string;
-    left: string;
-    top: string;
-    width: string;
-    height: string;
-  }
+  // Extend Module type to include our exported C function.
+  type ModuleEx = typeof Module & { _web_touch_joystick?(nx: number, ny: number): void };
 
-  const ZONES: Zone[] = [
-    // Left half — movement
-    { label: "▲",  key: "w", left: "5%",  top: "5%",   width: "40%", height: "35%" },
-    { label: "◀",  key: "a", left: "5%",  top: "40%",  width: "20%", height: "20%" },
-    { label: "▶",  key: "d", left: "25%", top: "40%",  width: "20%", height: "20%" },
-    { label: "▼",  key: "s", left: "5%",  top: "60%",  width: "40%", height: "35%" },
-    // Right half — actions
-    { label: "↵",  key: "Enter", left: "55%", top: "5%",  width: "40%", height: "35%" },
-    { label: "🔫", key: " ",     left: "55%", top: "40%", width: "20%", height: "55%" },
-    { label: "💣", key: "x",     left: "75%", top: "40%", width: "20%", height: "55%" },
-  ];
+  function callTouchJoystick(nx: number, ny: number): void {
+    try { (Module as ModuleEx)._web_touch_joystick?.(nx, ny); } catch (_) { /* not loaded yet */ }
+  }
 
   function buildTouchControls(): void {
     const container = document.getElementById("touch-controls")!;
     container.innerHTML = "";
 
-    ZONES.forEach((zone) => {
-      const div = document.createElement("div");
-      div.className = "touch-zone";
-      div.style.cssText = [
-        `left:${zone.left}`,
-        `top:${zone.top}`,
-        `width:${zone.width}`,
-        `height:${zone.height}`,
-        "display:flex",
-        "align-items:center",
-        "justify-content:center",
-        "font-size:1.4rem",
-        "color:rgba(255,255,255,0.18)",
-        "border:1px solid rgba(255,255,255,0.08)",
-        "border-radius:8px",
-        "user-select:none",
-        "-webkit-user-select:none",
-      ].join(";");
-      div.textContent = zone.label;
+    // ------------------------------------------------------------------
+    // Left half — floating analog joystick
+    // ------------------------------------------------------------------
+    const joyZone = document.createElement("div");
+    joyZone.className = "joy-zone";
 
-      const dispatch = (type: string) => {
-        const actualKey = zone.key === " " ? " " : zone.key;
+    const joyBase = document.createElement("div");
+    joyBase.className = "joy-base";
+    joyBase.style.display = "none";
+
+    const joyNub = document.createElement("div");
+    joyNub.className = "joy-nub";
+    joyNub.style.display = "none";
+
+    container.appendChild(joyZone);
+    container.appendChild(joyBase);
+    container.appendChild(joyNub);
+
+    let joyFinger: number | null = null;
+    let joyCX = 0, joyCY = 0;
+
+    function joyRadius(): number {
+      const r = canvas.getBoundingClientRect();
+      return Math.min(r.width, r.height) * 0.13;
+    }
+
+    function relPos(touch: Touch): { x: number; y: number } {
+      const r = canvas.getBoundingClientRect();
+      return { x: touch.clientX - r.left, y: touch.clientY - r.top };
+    }
+
+    function showJoystick(x: number, y: number): void {
+      const rad = joyRadius();
+      const baseSize = rad * 2;
+      const nubSize  = rad * 0.62;
+      joyBase.style.cssText = `display:block;width:${baseSize}px;height:${baseSize}px;left:${x}px;top:${y}px;`;
+      joyNub.style.cssText  = `display:block;width:${nubSize}px;height:${nubSize}px;left:${x}px;top:${y}px;`;
+      joyCX = x;
+      joyCY = y;
+    }
+
+    function moveJoystick(x: number, y: number): void {
+      const rad = joyRadius();
+      const dx = x - joyCX, dy = y - joyCY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const clamped = Math.min(dist, rad);
+      const nx = dist > 0.5 ? (dx / dist) * (clamped / rad) : 0;
+      const ny = dist > 0.5 ? (dy / dist) * (clamped / rad) : 0;
+      joyNub.style.left = `${joyCX + nx * rad}px`;
+      joyNub.style.top  = `${joyCY + ny * rad}px`;
+      // Game Y-axis: positive = up; screen Y: positive = down — invert ny.
+      callTouchJoystick(nx, -ny);
+    }
+
+    function hideJoystick(): void {
+      joyFinger = null;
+      joyBase.style.display = "none";
+      joyNub.style.display  = "none";
+      callTouchJoystick(0, 0);
+    }
+
+    joyZone.addEventListener("touchstart", (e) => {
+      e.preventDefault();
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        if (joyFinger === null) {
+          joyFinger = t.identifier;
+          const { x, y } = relPos(t);
+          showJoystick(x, y);
+          moveJoystick(x, y);
+          break;
+        }
+      }
+    }, { passive: false });
+
+    joyZone.addEventListener("touchmove", (e) => {
+      e.preventDefault();
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        if (t.identifier === joyFinger) {
+          const { x, y } = relPos(t);
+          moveJoystick(x, y);
+          break;
+        }
+      }
+    }, { passive: false });
+
+    const onJoyEnd = (e: TouchEvent) => {
+      e.preventDefault();
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === joyFinger) { hideJoystick(); break; }
+      }
+    };
+    joyZone.addEventListener("touchend",    onJoyEnd, { passive: false });
+    joyZone.addEventListener("touchcancel", onJoyEnd, { passive: false });
+
+    // ------------------------------------------------------------------
+    // Right half — action buttons with visual press feedback
+    // ------------------------------------------------------------------
+    interface BtnCfg { label: string; key: string; cls: string }
+
+    const BUTTONS: BtnCfg[] = [
+      { label: "↵",  key: "Enter", cls: "touch-btn touch-enter" },
+      { label: "🔫", key: " ",     cls: "touch-btn touch-shoot" },
+      { label: "💣", key: "x",     cls: "touch-btn touch-mine"  },
+    ];
+
+    // Size and centre circular buttons based on the container dimensions.
+    // Called once on build and again if the window resizes.
+    function sizeCircleButtons(): void {
+      const r = canvas.getBoundingClientRect();
+      const minDim = Math.min(r.width, r.height);
+      const btnR   = minDim * 0.095; // radius in px
+      const diam   = btnR * 2;
+      // Shoot: centred at (62%, 73%) of container
+      const shootEl = container.querySelector<HTMLElement>(".touch-shoot");
+      const mineEl  = container.querySelector<HTMLElement>(".touch-mine");
+      if (shootEl) {
+        shootEl.style.width  = `${diam}px`;
+        shootEl.style.height = `${diam}px`;
+        shootEl.style.left   = `${r.width  * 0.62}px`;
+        shootEl.style.top    = `${r.height * 0.73}px`;
+        shootEl.style.transform = "translate(-50%,-50%)";
+      }
+      if (mineEl) {
+        mineEl.style.width  = `${diam}px`;
+        mineEl.style.height = `${diam}px`;
+        mineEl.style.left   = `${r.width  * 0.85}px`;
+        mineEl.style.top    = `${r.height * 0.73}px`;
+        mineEl.style.transform = "translate(-50%,-50%)";
+      }
+    }
+
+    BUTTONS.forEach(({ label, key, cls }) => {
+      const btn = document.createElement("div");
+      btn.className = cls;
+      btn.textContent = label;
+
+      const dispatchKey = (type: string) => {
         canvas.dispatchEvent(new KeyboardEvent(type, {
-          key: actualKey,
-          code: actualKey === " " ? "Space" : `Key${actualKey.toUpperCase()}`,
+          key,
+          code: key === " " ? "Space" : `Key${key.toUpperCase()}`,
           bubbles: true,
           cancelable: true,
         }));
       };
 
-      div.addEventListener("touchstart", (e) => {
+      // Track active fingers so multi-finger presses keep the button held.
+      const activeFingers = new Set<number>();
+
+      btn.addEventListener("touchstart", (e) => {
         e.preventDefault();
-        dispatch("keydown");
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          const id = e.changedTouches[i].identifier;
+          if (!activeFingers.has(id)) {
+            if (activeFingers.size === 0) dispatchKey("keydown");
+            activeFingers.add(id);
+          }
+        }
+        btn.classList.add("pressed");
       }, { passive: false });
 
-      div.addEventListener("touchend", (e) => {
+      const onBtnEnd = (e: TouchEvent) => {
         e.preventDefault();
-        dispatch("keyup");
-      }, { passive: false });
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          activeFingers.delete(e.changedTouches[i].identifier);
+        }
+        if (activeFingers.size === 0) {
+          dispatchKey("keyup");
+          btn.classList.remove("pressed");
+        }
+      };
+      btn.addEventListener("touchend",    onBtnEnd, { passive: false });
+      btn.addEventListener("touchcancel", onBtnEnd, { passive: false });
 
-      container.appendChild(div);
+      container.appendChild(btn);
     });
+
+    // Size circular buttons now and whenever the window resizes.
+    sizeCircleButtons();
+    window.addEventListener("resize", sizeCircleButtons);
   }
 
   function applyTouchVisibility(): void {
