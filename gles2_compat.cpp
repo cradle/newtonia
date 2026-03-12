@@ -192,6 +192,7 @@ static GLint  s_attr_pos   = -1;
 static GLint  s_attr_color = -1;
 static GLint  s_uni_mvp    = -1;
 static GLint  s_uni_ptsz   = -1;
+static GLint  s_uni_ispt   = -1;
 static GLuint s_vbo_pos    = 0;
 static GLuint s_vbo_col    = 0;
 
@@ -210,7 +211,14 @@ static const char *VERT_SRC =
 static const char *FRAG_SRC =
     "precision mediump float;\n"
     "varying vec4 vCol;\n"
-    "void main(){ gl_FragColor = vCol; }\n";
+    "uniform int uIsPoint;\n"
+    "void main(){\n"
+    "  if(uIsPoint != 0){\n"
+    "    vec2 pc = gl_PointCoord - vec2(0.5);\n"
+    "    if(dot(pc,pc) > 0.25) discard;\n"
+    "  }\n"
+    "  gl_FragColor = vCol;\n"
+    "}\n";
 
 static GLuint compile_shader(GLenum type, const char *src) {
     GLuint sh = glCreateShader(type);
@@ -238,6 +246,7 @@ static void init_shader() {
     s_attr_color = glGetAttribLocation (s_prog, "aCol");
     s_uni_mvp    = glGetUniformLocation(s_prog, "uMVP");
     s_uni_ptsz   = glGetUniformLocation(s_prog, "uPointSize");
+    s_uni_ispt   = glGetUniformLocation(s_prog, "uIsPoint");
 
     glGenBuffers(1, &s_vbo_pos);
     glGenBuffers(1, &s_vbo_col);
@@ -305,6 +314,7 @@ static void flush_vertices() {
     mat4 mvp; get_mvp(mvp);
     glUniformMatrix4fv(s_uni_mvp,  1, GL_FALSE, mvp);
     glUniform1f       (s_uni_ptsz, s_point_size);
+    glUniform1i       (s_uni_ispt, s_begin_mode == GL_POINTS ? 1 : 0);
 
     // Position VBO
     glBindBuffer(GL_ARRAY_BUFFER, s_vbo_pos);
