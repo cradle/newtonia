@@ -42,6 +42,9 @@ jobs:
 
       - name: Build SDL2_mixer static library for iOS Simulator
         run: |
+          # SDL2_mixer's FindPrivateSDL2.cmake looks for SDL2_LIBRARY and
+          # SDL2_INCLUDE_DIR directly; point them at the pre-built SDL2.
+          SDL2_LIB=$(find "$(pwd)/SDL2/build-ios-sim" -name "libSDL2.a" | head -1)
           cmake -S SDL2_mixer -B SDL2_mixer/build-ios-sim \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT=iphonesimulator \
@@ -55,9 +58,10 @@ jobs:
             -DSDL2MIXER_MOD=OFF \
             -DSDL2MIXER_MIDI=OFF \
             -DSDL2MIXER_MP3=OFF \
+            -DSDL2_LIBRARY="$SDL2_LIB" \
+            -DSDL2_INCLUDE_DIR="$(pwd)/SDL2/include" \
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY="" \
-            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
-            -DSDL2_DIR="$(pwd)/SDL2/build-ios-sim/Release-iphonesimulator"
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO
           cmake --build SDL2_mixer/build-ios-sim --config Release
 
       - name: Collect game sources
