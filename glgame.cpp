@@ -582,6 +582,11 @@ void GLGame::controller(SDL_Event event) {
   }
 }
 
+void GLGame::touch_joystick(float nx, float ny) {
+  if(!running || players->empty()) return;
+  players->front()->touch_joystick_input(nx, ny);
+}
+
 void GLGame::keyboard (unsigned char key, int x, int y) {
   if (!running)
     return;

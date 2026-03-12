@@ -190,6 +190,9 @@ void Ship::init(bool no_friction) {
   boost_heat = 0.000;
   boost_force = 4.0;
   boosting = false;
+  rotation_scale = 1.0f;
+  thrust_analog  = 1.0f;
+  reverse_analog = 1.0f;
 
   if(no_friction) {
     friction = 0;
@@ -538,7 +541,7 @@ void Ship::step(float delta, const Grid &grid) {
     }
   }
 
-  facing.rotate(rotation_direction * rotation_force / mass  * delta );
+  facing.rotate(rotation_direction * rotation_force * rotation_scale / mass * delta);
   Point acceleration = Point(0,0);
   if(boosting) {
   	acceleration += ((facing * boost_force) / mass);
@@ -547,11 +550,11 @@ void Ship::step(float delta, const Grid &grid) {
     boosting = false;
   }
   if(thrusting) {
-  	acceleration += ((facing * thrust_force) / mass);
+  	acceleration += ((facing * thrust_force * thrust_analog) / mass);
     temperature += heat_rate * delta;
 	}
   if(reversing) {
-  	acceleration += ((facing * reverse_force) / mass);
+  	acceleration += ((facing * reverse_force * reverse_analog) / mass);
     temperature += retro_heat_rate * delta;
 	}
   temperature -= cool_rate * delta;

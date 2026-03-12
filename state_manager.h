@@ -17,6 +17,7 @@ public:
   void controller(SDL_Event event);
   void tick(int delta);
   void resize(int x, int y);
+  void touch_joystick(float nx, float ny);
 
 private:
   Point window;

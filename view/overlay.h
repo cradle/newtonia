@@ -20,6 +20,8 @@ private:
   static void title_text(const GLGame *glgame, const GLShip *glship);
   static void paused(const GLGame *glgame, const GLShip *glship);
   static void level(const GLGame *glgame, const GLShip *glship);
+  static void touch_controls(const GLGame *glgame, const GLShip *glship);
+  static void draw_circle(float cx, float cy, float r, int segs, bool filled);
 };
 
 #endif

@@ -282,26 +282,74 @@ void GLShip::controller_axis_input(SDL_Event event) {
     return;
   }
   Sint16 deadzone = 10000;
-  bool pressed = event.caxis.value > 10000; // deadzone // SDL_CONTROLLER_AXIS_MAX
 
   if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) {
+    float scale = (std::abs((float)event.caxis.value) - deadzone) / (float)(32767 - deadzone);
+    if(scale < 0.0f) scale = 0.0f;
     if(event.caxis.value > deadzone) {
+      ship->rotation_scale = scale;
       ship->rotate_right(true);
+      ship->rotate_left(false);
     } else if (event.caxis.value < -deadzone) {
+      ship->rotation_scale = scale;
       ship->rotate_left(true);
+      ship->rotate_right(false);
     } else {
+      ship->rotation_scale = 1.0f;
       ship->rotate_left(false);
       ship->rotate_right(false);
     }
   } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
     if(event.caxis.value > deadzone) {
       ship->reverse(true);
+      ship->thrust(false);
     } else if (event.caxis.value < -deadzone) {
       ship->thrust(true);
+      ship->reverse(false);
     } else {
       ship->thrust(false);
       ship->reverse(false);
     }
+  }
+}
+
+void GLShip::touch_joystick_input(float nx, float ny) {
+  if(!ship->is_alive()) return;
+  const float dz = 0.10f;
+
+  // Rotation (x axis): positive nx = right on screen = rotate right
+  float abs_nx = nx < 0.0f ? -nx : nx;
+  if(abs_nx > dz) {
+    ship->rotation_scale = abs_nx;
+    if(nx > 0.0f) {
+      ship->rotate_right(true);
+      ship->rotate_left(false);
+    } else {
+      ship->rotate_left(true);
+      ship->rotate_right(false);
+    }
+  } else {
+    ship->rotation_scale = 1.0f;
+    ship->rotate_left(false);
+    ship->rotate_right(false);
+  }
+
+  // Thrust / reverse (y axis): SDL y increases downward,
+  // so ny < 0 = joystick pushed up = thrust forward.
+  float abs_ny = ny < 0.0f ? -ny : ny;
+  if(ny < -dz) {
+    ship->thrust_analog  = abs_ny;
+    ship->reverse_analog = 1.0f;
+    ship->thrust(true);
+    ship->reverse(false);
+  } else if(ny > dz) {
+    ship->reverse_analog = abs_ny;
+    ship->thrust_analog  = 1.0f;
+    ship->reverse(true);
+    ship->thrust(false);
+  } else {
+    ship->thrust(false);
+    ship->reverse(false);
   }
 }
 

@@ -54,3 +54,8 @@ void StateManager::resize(int x, int y) {
   state->resize(x,y);
   Typer::resize(x,y);
 }
+
+void StateManager::touch_joystick(float nx, float ny) {
+  GLGame *game = dynamic_cast<GLGame*>(state);
+  if(game) game->touch_joystick(nx, ny);
+}

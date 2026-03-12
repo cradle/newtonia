@@ -10,6 +10,7 @@
 
 #include "gles2_compat.h"
 #include "state_manager.h"
+#include "touch_controls.h"
 #include "typer.h"
 
 #include <iostream>
@@ -18,30 +19,17 @@
 // ============================================================
 // Touch → game-input mapping
 // ============================================================
-// We split the screen into a left half (movement) and right half (actions).
+// The screen is divided into:
+//   LEFT HALF  (x < 0.5)  – virtual joystick (floating base)
+//   RIGHT HALF (x >= 0.5) – action buttons or legacy keys
 //
-// Left half regions (normalised 0-1 within the left half):
-//   top-left    quarter → rotate left  (key 'a')
-//   top-right   quarter → rotate right (key 'd')
-//   center-top          → thrust        (key 'w')
-//   center-bottom       → reverse       (key 's')
+// Right half layout:
+//   top strip (y < 0.4)           → '\r'  (start / confirm for menu)
+//   bottom-left button area       → ' '   (shoot)
+//   bottom-right button area      → 'x'   (mine)
 //
-// Right half regions:
-//   bottom-left  → shoot  (key ' ')
-//   bottom-right → mine   (key 'x')
-//   top          → start/enter ('\r')
-//
-// Each active touch finger is mapped to a virtual key.  We synthesise
-// keyboard_down / keyboard_up events as fingers appear / disappear.
-
-struct FingerKey {
-    SDL_FingerID finger_id;
-    unsigned char key;
-};
-
-static const int MAX_FINGERS = 10;
-static FingerKey s_finger_keys[MAX_FINGERS];
-static int       s_finger_count = 0;
+// Button hit-testing uses the positions configured by touch_controls_resize.
+// DEBUG: very top-right corner (x>0.85, y<0.15) → 'n' (skip level).
 
 static StateManager *s_game     = nullptr;
 static SDL_Window   *s_window   = nullptr;
@@ -49,54 +37,102 @@ static SDL_GLContext s_gl_ctx   = nullptr;
 static int           s_w = 800, s_h = 600;
 static bool          s_running  = true;
 
-static unsigned char touch_to_key(float norm_x, float norm_y) {
-    // norm_x, norm_y are 0-1 relative to whole screen
+// ---- Utility ----
 
-    // DEBUG: top-right corner tap → skip to next level
-    if (norm_x > 0.85f && norm_y < 0.15f) {
-        return 'n';
-    }
-
-    bool left_half = (norm_x < 0.5f);
-    if (left_half) {
-        float lx = norm_x * 2.0f;        // 0-1 within left half
-        float ly = norm_y;
-        if (ly < 0.4f) {
-            return 'w';                   // thrust
-        } else if (ly > 0.6f) {
-            return 's';                   // reverse
-        } else if (lx < 0.5f) {
-            return 'a';                   // rotate left
-        } else {
-            return 'd';                   // rotate right
-        }
-    } else {
-        float rx = (norm_x - 0.5f) * 2.0f; // 0-1 within right half
-        if (norm_y < 0.4f) {
-            return '\r';                  // start / confirm
-        } else if (rx < 0.5f) {
-            return ' ';                   // shoot
-        } else {
-            return 'x';                   // mine
-        }
-    }
+static inline float tc_dist(float ax, float ay, float bx, float by) {
+    float dx = ax - bx, dy = ay - by;
+    return sqrtf(dx * dx + dy * dy);
 }
 
+// Update the joystick nub position from an absolute screen-pixel position.
+static void update_joystick_nub(float px, float py) {
+    float dx = px - g_touch_controls.joy_cx;
+    float dy = py - g_touch_controls.joy_cy;
+    float dist = sqrtf(dx * dx + dy * dy);
+    float r = g_touch_controls.joy_radius;
+    if(dist > r) {
+        dx = dx * r / dist;
+        dy = dy * r / dist;
+        dist = r;
+    }
+    g_touch_controls.joy_nx = (r > 0.0f) ? dx / r : 0.0f;
+    g_touch_controls.joy_ny = (r > 0.0f) ? dy / r : 0.0f;
+}
+
+// ---- Finger event handlers ----
+
 static void finger_down(SDL_FingerID id, float x, float y) {
-    if (s_finger_count >= MAX_FINGERS) return;
-    unsigned char key = touch_to_key(x, y);
-    s_finger_keys[s_finger_count++] = {id, key};
-    s_game->keyboard(key, 0, 0);
+    float px = x * (float)s_w;
+    float py = y * (float)s_h;
+
+    // DEBUG: top-right corner → skip to next level
+    if(x > 0.85f && y < 0.15f) {
+        s_game->keyboard('n', 0, 0);
+        return;
+    }
+
+    if(x < 0.5f) {
+        // ---- Left half: virtual joystick (floating base) ----
+        g_touch_controls.joy_cx     = px;
+        g_touch_controls.joy_cy     = py;
+        g_touch_controls.joy_nx     = 0.0f;
+        g_touch_controls.joy_ny     = 0.0f;
+        g_touch_controls.joy_active = true;
+        g_touch_controls.joy_finger = id;
+    } else {
+        // ---- Right half ----
+        if(y < 0.4f) {
+            // Top strip: menu / start key
+            s_game->keyboard('\r', 0, 0);
+        } else if(!g_touch_controls.shoot_pressed &&
+                  tc_dist(px, py,
+                          g_touch_controls.shoot_cx,
+                          g_touch_controls.shoot_cy) <= g_touch_controls.shoot_radius * 1.4f) {
+            g_touch_controls.shoot_pressed = true;
+            g_touch_controls.shoot_finger  = id;
+            s_game->keyboard(' ', 0, 0);
+        } else if(!g_touch_controls.mine_pressed &&
+                  tc_dist(px, py,
+                          g_touch_controls.mine_cx,
+                          g_touch_controls.mine_cy) <= g_touch_controls.mine_radius * 1.4f) {
+            g_touch_controls.mine_pressed = true;
+            g_touch_controls.mine_finger  = id;
+            s_game->keyboard('x', 0, 0);
+        }
+        // Touches that don't hit a button are silently ignored.
+    }
 }
 
 static void finger_up(SDL_FingerID id) {
-    for (int i = 0; i < s_finger_count; i++) {
-        if (s_finger_keys[i].finger_id == id) {
-            s_game->keyboard_up(s_finger_keys[i].key, 0, 0);
-            s_finger_keys[i] = s_finger_keys[--s_finger_count];
-            return;
-        }
+    if(g_touch_controls.joy_active && g_touch_controls.joy_finger == id) {
+        g_touch_controls.joy_active = false;
+        g_touch_controls.joy_nx     = 0.0f;
+        g_touch_controls.joy_ny     = 0.0f;
+        // Immediately stop all movement
+        s_game->touch_joystick(0.0f, 0.0f);
+        return;
     }
+    if(g_touch_controls.shoot_pressed && g_touch_controls.shoot_finger == id) {
+        g_touch_controls.shoot_pressed = false;
+        s_game->keyboard_up(' ', 0, 0);
+        return;
+    }
+    if(g_touch_controls.mine_pressed && g_touch_controls.mine_finger == id) {
+        g_touch_controls.mine_pressed = false;
+        s_game->keyboard_up('x', 0, 0);
+        return;
+    }
+    // Legacy: release '\r' (sent without finger tracking; just always release)
+    s_game->keyboard_up('\r', 0, 0);
+}
+
+static void finger_motion(SDL_FingerID id, float x, float y) {
+    if(!g_touch_controls.joy_active || g_touch_controls.joy_finger != id)
+        return;
+
+    float px = x * (float)s_w;
+    float py = y * (float)s_h;
+    update_joystick_nub(px, py);
 }
 
 // ============================================================
@@ -169,6 +205,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     s_game = new StateManager();
     s_game->resize(s_w, s_h);
     Typer::resize(s_w, s_h);
+    touch_controls_resize(s_w, s_h);
 
     Uint32 last_tick = SDL_GetTicks();
 
@@ -203,29 +240,21 @@ extern "C" int SDL_main(int argc, char *argv[]) {
             case SDL_FINGERUP:
                 finger_up(e.tfinger.fingerId);
                 break;
-            case SDL_FINGERMOTION: {
-                // Only switch keys if the finger crossed into a different zone;
-                // re-triggering on every motion event would re-fire one-shot
-                // actions (shoot, mine) on each tiny tremor.
-                unsigned char new_key = touch_to_key(e.tfinger.x, e.tfinger.y);
-                for (int i = 0; i < s_finger_count; i++) {
-                    if (s_finger_keys[i].finger_id == e.tfinger.fingerId) {
-                        if (s_finger_keys[i].key != new_key) {
-                            s_game->keyboard_up(s_finger_keys[i].key, 0, 0);
-                            s_finger_keys[i].key = new_key;
-                            s_game->keyboard(new_key, 0, 0);
-                        }
-                        break;
-                    }
-                }
+            case SDL_FINGERMOTION:
+                finger_motion(e.tfinger.fingerId,
+                              e.tfinger.x, e.tfinger.y);
                 break;
-            }
 
             // Game controller
             default:
                 s_game->controller(e);
                 break;
             }
+        }
+
+        // Apply continuous joystick state every tick
+        if(g_touch_controls.joy_active) {
+            s_game->touch_joystick(g_touch_controls.joy_nx, g_touch_controls.joy_ny);
         }
 
         Uint32 now   = SDL_GetTicks();
