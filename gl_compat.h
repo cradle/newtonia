@@ -3,8 +3,14 @@
 // Unified OpenGL/GLES2 compatibility header.
 // Include this instead of platform-specific GLUT/OpenGL headers.
 
-#if defined(__ANDROID__) || defined(__IOS__)
+#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__)
 #include "gles2_compat.h"
+#  ifdef __EMSCRIPTEN__
+#    include <emscripten.h>
+#    define glutLeaveMainLoop() emscripten_cancel_main_loop()
+#  else
+#    define glutLeaveMainLoop() // no-op on Android / iOS
+#  endif
 #else
 
 #ifdef __APPLE__
@@ -21,4 +27,4 @@
 #endif
 #endif
 
-#endif // __ANDROID__ || __IOS__
+#endif // __ANDROID__ || __IOS__ || __EMSCRIPTEN__

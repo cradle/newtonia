@@ -1,0 +1,224 @@
+// Web (Emscripten/WebAssembly) entry point.
+// Compiles the game to WebAssembly + WebGL via Emscripten.
+// Mirrors android_main.cpp but uses emscripten_set_main_loop() instead of a
+// blocking while-loop, because the browser controls the event loop.
+
+#ifdef __EMSCRIPTEN__
+
+#include <emscripten.h>
+#include <SDL.h>
+#include <SDL_mixer.h>
+
+#include "gles2_compat.h"
+#include "state_manager.h"
+#include "typer.h"
+
+#include <cmath>
+
+// ============================================================
+// Touch → game-input mapping (same regions as android_main.cpp)
+// ============================================================
+struct FingerKey {
+    SDL_FingerID finger_id;
+    unsigned char key;
+};
+
+static const int MAX_FINGERS = 10;
+static FingerKey s_finger_keys[MAX_FINGERS];
+static int       s_finger_count = 0;
+
+static StateManager    *s_game    = nullptr;
+static SDL_Window      *s_window  = nullptr;
+static SDL_GLContext    s_gl_ctx  = nullptr;
+static int              s_w = 800, s_h = 600;
+static Uint32           s_last_tick = 0;
+static SDL_GameController *s_controller = nullptr;
+
+static unsigned char touch_to_key(float norm_x, float norm_y) {
+    if (norm_x > 0.85f && norm_y < 0.15f)
+        return 'n'; // debug: skip level
+
+    bool left_half = (norm_x < 0.5f);
+    if (left_half) {
+        float lx = norm_x * 2.0f;
+        float ly = norm_y;
+        if (ly < 0.4f)       return 'w'; // thrust
+        else if (ly > 0.6f)  return 's'; // reverse
+        else if (lx < 0.5f)  return 'a'; // rotate left
+        else                 return 'd'; // rotate right
+    } else {
+        float rx = (norm_x - 0.5f) * 2.0f;
+        if (norm_y < 0.4f)   return '\r'; // start/confirm
+        else if (rx < 0.5f)  return ' ';  // shoot
+        else                 return 'x';  // mine
+    }
+}
+
+static void finger_down(SDL_FingerID id, float x, float y) {
+    if (s_finger_count >= MAX_FINGERS) return;
+    unsigned char key = touch_to_key(x, y);
+    s_finger_keys[s_finger_count++] = {id, key};
+    s_game->keyboard(key, 0, 0);
+}
+
+static void finger_up(SDL_FingerID id) {
+    for (int i = 0; i < s_finger_count; i++) {
+        if (s_finger_keys[i].finger_id == id) {
+            s_game->keyboard_up(s_finger_keys[i].key, 0, 0);
+            s_finger_keys[i] = s_finger_keys[--s_finger_count];
+            return;
+        }
+    }
+}
+
+// ============================================================
+// Main loop — called by Emscripten once per animation frame
+// ============================================================
+static void main_loop() {
+    SDL_Event e;
+    while (SDL_PollEvent(&e)) {
+        switch (e.type) {
+        case SDL_QUIT:
+            emscripten_cancel_main_loop();
+            return;
+
+        case SDL_KEYDOWN: {
+            SDL_Keycode k = e.key.keysym.sym;
+            unsigned char key = (k < 128) ? (unsigned char)k : 0;
+            if (key) s_game->keyboard(key, 0, 0);
+            break;
+        }
+        case SDL_KEYUP: {
+            SDL_Keycode k = e.key.keysym.sym;
+            unsigned char key = (k < 128) ? (unsigned char)k : 0;
+            if (key) s_game->keyboard_up(key, 0, 0);
+            break;
+        }
+
+        case SDL_FINGERDOWN:
+            finger_down(e.tfinger.fingerId, e.tfinger.x, e.tfinger.y);
+            break;
+        case SDL_FINGERUP:
+            finger_up(e.tfinger.fingerId);
+            break;
+        case SDL_FINGERMOTION: {
+            unsigned char new_key = touch_to_key(e.tfinger.x, e.tfinger.y);
+            for (int i = 0; i < s_finger_count; i++) {
+                if (s_finger_keys[i].finger_id == e.tfinger.fingerId) {
+                    if (s_finger_keys[i].key != new_key) {
+                        s_game->keyboard_up(s_finger_keys[i].key, 0, 0);
+                        s_finger_keys[i].key = new_key;
+                        s_game->keyboard(new_key, 0, 0);
+                    }
+                    break;
+                }
+            }
+            break;
+        }
+
+        case SDL_WINDOWEVENT:
+            if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
+                s_w = e.window.data1;
+                s_h = e.window.data2;
+                s_game->resize(s_w, s_h);
+                Typer::resize(s_w, s_h);
+            }
+            break;
+
+        default:
+            s_game->controller(e);
+            break;
+        }
+    }
+
+    Uint32 now   = SDL_GetTicks();
+    int    delta = (int)(now - s_last_tick);
+    s_last_tick  = now;
+
+    s_game->tick(delta);
+
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    s_game->draw();
+
+    SDL_GL_SwapWindow(s_window);
+}
+
+// ============================================================
+// main
+// ============================================================
+int main(int argc, char *argv[]) {
+    (void)argc; (void)argv;
+
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
+        SDL_Log("SDL_Init failed: %s", SDL_GetError());
+        return 1;
+    }
+
+    // Request WebGL 1.0 (OpenGL ES 2.0 profile)
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
+
+    s_window = SDL_CreateWindow("Newtonia",
+                                SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+                                s_w, s_h,
+                                SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+    if (!s_window) {
+        SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());
+        SDL_Quit();
+        return 1;
+    }
+
+    s_gl_ctx = SDL_GL_CreateContext(s_window);
+    if (!s_gl_ctx) {
+        SDL_Log("SDL_GL_CreateContext failed: %s", SDL_GetError());
+        SDL_DestroyWindow(s_window);
+        SDL_Quit();
+        return 1;
+    }
+
+    SDL_GL_SetSwapInterval(1); // vsync
+
+    gles2_init();
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // Audio — may silently fail before first user gesture (browser policy).
+    // SDL2_mixer on Emscripten defers actual playback until unlocked.
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024) < 0)
+        SDL_Log("Mix_OpenAudio failed: %s", Mix_GetError());
+
+    SDL_JoystickEventState(SDL_ENABLE);
+    for (int i = 0; i < SDL_NumJoysticks(); i++) {
+        if (SDL_IsGameController(i)) {
+            s_controller = SDL_GameControllerOpen(i);
+            if (s_controller) break;
+        }
+    }
+
+    s_game = new StateManager();
+    s_game->resize(s_w, s_h);
+    Typer::resize(s_w, s_h);
+
+    s_last_tick = SDL_GetTicks();
+
+    // Hand control to the browser's requestAnimationFrame loop.
+    // simulate_infinite_loop=1 means main() never returns.
+    emscripten_set_main_loop(main_loop, 0, 1);
+
+    // Unreachable, but keep for clarity:
+    delete s_game;
+    gles2_shutdown();
+    Mix_CloseAudio();
+    if (s_controller) SDL_GameControllerClose(s_controller);
+    SDL_GL_DeleteContext(s_gl_ctx);
+    SDL_DestroyWindow(s_window);
+    SDL_Quit();
+    return 0;
+}
+
+#endif // __EMSCRIPTEN__

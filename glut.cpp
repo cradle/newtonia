@@ -1,5 +1,5 @@
-// Desktop-only entry point. Android uses android_main.cpp instead.
-#ifndef __ANDROID__
+// Desktop-only entry point. Android uses android_main.cpp; web uses web_main.cpp.
+#if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
 
 #include <stdlib.h> // For EXIT_SUCCESS
 
@@ -224,4 +224,4 @@ void init(int &argc, char* argv[], float width, float height) {
   glutVisibilityFunc(isVisible);
 }
 
-#endif // !__ANDROID__
+#endif // !__ANDROID__ && !__EMSCRIPTEN__

@@ -101,7 +101,12 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 
 void Menu::keyboard_up (unsigned char key, int x, int y) {
 #if defined(__ANDROID__) || defined(__IOS__)
+  // Touch/mobile — any key starts the game
   request_state_change(new GLGame());
+#elif defined(__EMSCRIPTEN__)
+  // Web — no quit (close the tab to exit)
+  if (key == ' ' || key == '\r' || key == '\n')
+    request_state_change(new GLGame());
 #else
   if (key == 27)
     glutLeaveMainLoop();
