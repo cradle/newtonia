@@ -50,6 +50,9 @@
 		AB000036 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000036 /* AVFoundation.framework */; };
 		AB000037 /* CoreHaptics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000037 /* CoreHaptics.framework */; };
 		AB000038 /* GameController.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000038 /* GameController.framework */; };
+		AB000039 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000039 /* CoreAudio.framework */; };
+		AB00003A /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA00003A /* QuartzCore.framework */; };
+		AB00003B /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA00003B /* Metal.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -96,6 +99,9 @@
 		AA000036 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		AA000037 /* CoreHaptics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreHaptics.framework; path = System/Library/Frameworks/CoreHaptics.framework; sourceTree = SDKROOT; };
 		AA000038 /* GameController.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GameController.framework; path = System/Library/Frameworks/GameController.framework; sourceTree = SDKROOT; };
+		AA000039 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
+		AA00003A /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		AA00003B /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		AA000040 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA000050 /* Newtonia.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Newtonia.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -114,6 +120,9 @@
 				AB000036 /* AVFoundation.framework in Frameworks */,
 				AB000037 /* CoreHaptics.framework in Frameworks */,
 				AB000038 /* GameController.framework in Frameworks */,
+				AB000039 /* CoreAudio.framework in Frameworks */,
+				AB00003A /* QuartzCore.framework in Frameworks */,
+				AB00003B /* Metal.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -183,6 +192,9 @@
 				AA000036 /* AVFoundation.framework */,
 				AA000037 /* CoreHaptics.framework */,
 				AA000038 /* GameController.framework */,
+				AA000039 /* CoreAudio.framework */,
+				AA00003A /* QuartzCore.framework */,
+				AA00003B /* Metal.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";

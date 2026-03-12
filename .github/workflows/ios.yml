@@ -114,10 +114,13 @@ jobs:
             -framework Foundation \
             -framework CoreGraphics \
             -framework CoreMotion \
+            -framework CoreAudio \
             -framework AudioToolbox \
             -framework AVFoundation \
             -framework CoreHaptics \
-            -framework GameController
+            -framework GameController \
+            -framework QuartzCore \
+            -framework Metal
 
       - name: Bundle .app
         run: |
