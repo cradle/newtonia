@@ -86,10 +86,12 @@ declare const Module: {
   type ModuleEx = typeof Module & { _web_touch_joystick?(nx: number, ny: number): void };
 
   function callTouchJoystick(nx: number, ny: number): void {
-    try { (Module as ModuleEx)._web_touch_joystick?.(nx, ny); } catch (_) { /* not loaded yet */ }
+    (Module as ModuleEx)._web_touch_joystick?.(nx, ny);
   }
 
-  function buildTouchControls(): void {
+  // Builds the touch UI and returns a resize handler.
+  // The caller is responsible for adding/removing the resize listener.
+  function buildTouchControls(): () => void {
     const container = document.getElementById("touch-controls")!;
     container.innerHTML = "";
 
@@ -112,37 +114,25 @@ declare const Module: {
     container.appendChild(joyNub);
 
     let joyFinger: number | null = null;
-    let joyCX = 0, joyCY = 0;
+    let joyCX = 0, joyCY = 0, joyRad = 0;
 
-    function joyRadius(): number {
-      const r = canvas.getBoundingClientRect();
-      return Math.min(r.width, r.height) * 0.13;
-    }
-
-    function relPos(touch: Touch): { x: number; y: number } {
-      const r = canvas.getBoundingClientRect();
-      return { x: touch.clientX - r.left, y: touch.clientY - r.top };
-    }
-
-    function showJoystick(x: number, y: number): void {
-      const rad = joyRadius();
-      const baseSize = rad * 2;
-      const nubSize  = rad * 0.62;
+    // Radius is captured at touchstart and reused for the whole drag — avoids
+    // a getBoundingClientRect() call on every touchmove.
+    function showJoystick(x: number, y: number, rad: number): void {
+      const baseSize = rad * 2, nubSize = rad * 0.62;
       joyBase.style.cssText = `display:block;width:${baseSize}px;height:${baseSize}px;left:${x}px;top:${y}px;`;
       joyNub.style.cssText  = `display:block;width:${nubSize}px;height:${nubSize}px;left:${x}px;top:${y}px;`;
-      joyCX = x;
-      joyCY = y;
+      joyCX = x; joyCY = y; joyRad = rad;
     }
 
     function moveJoystick(x: number, y: number): void {
-      const rad = joyRadius();
       const dx = x - joyCX, dy = y - joyCY;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      const clamped = Math.min(dist, rad);
-      const nx = dist > 0.5 ? (dx / dist) * (clamped / rad) : 0;
-      const ny = dist > 0.5 ? (dy / dist) * (clamped / rad) : 0;
-      joyNub.style.left = `${joyCX + nx * rad}px`;
-      joyNub.style.top  = `${joyCY + ny * rad}px`;
+      const clamped = Math.min(dist, joyRad);
+      const nx = dist > 0.5 ? (dx / dist) * (clamped / joyRad) : 0;
+      const ny = dist > 0.5 ? (dy / dist) * (clamped / joyRad) : 0;
+      joyNub.style.left = `${joyCX + nx * joyRad}px`;
+      joyNub.style.top  = `${joyCY + ny * joyRad}px`;
       // Game Y-axis: positive = up; screen Y: positive = down — invert ny.
       callTouchJoystick(nx, -ny);
     }
@@ -160,9 +150,8 @@ declare const Module: {
         const t = e.changedTouches[i];
         if (joyFinger === null) {
           joyFinger = t.identifier;
-          const { x, y } = relPos(t);
-          showJoystick(x, y);
-          moveJoystick(x, y);
+          const r = canvas.getBoundingClientRect();
+          showJoystick(t.clientX - r.left, t.clientY - r.top, Math.min(r.width, r.height) * 0.13);
           break;
         }
       }
@@ -173,8 +162,8 @@ declare const Module: {
       for (let i = 0; i < e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
         if (t.identifier === joyFinger) {
-          const { x, y } = relPos(t);
-          moveJoystick(x, y);
+          const r = canvas.getBoundingClientRect();
+          moveJoystick(t.clientX - r.left, t.clientY - r.top);
           break;
         }
       }
@@ -199,32 +188,6 @@ declare const Module: {
       { label: "🔫", key: " ",     cls: "touch-btn touch-shoot" },
       { label: "💣", key: "x",     cls: "touch-btn touch-mine"  },
     ];
-
-    // Size and centre circular buttons based on the container dimensions.
-    // Called once on build and again if the window resizes.
-    function sizeCircleButtons(): void {
-      const r = canvas.getBoundingClientRect();
-      const minDim = Math.min(r.width, r.height);
-      const btnR   = minDim * 0.095; // radius in px
-      const diam   = btnR * 2;
-      // Shoot: centred at (62%, 73%) of container
-      const shootEl = container.querySelector<HTMLElement>(".touch-shoot");
-      const mineEl  = container.querySelector<HTMLElement>(".touch-mine");
-      if (shootEl) {
-        shootEl.style.width  = `${diam}px`;
-        shootEl.style.height = `${diam}px`;
-        shootEl.style.left   = `${r.width  * 0.62}px`;
-        shootEl.style.top    = `${r.height * 0.73}px`;
-        shootEl.style.transform = "translate(-50%,-50%)";
-      }
-      if (mineEl) {
-        mineEl.style.width  = `${diam}px`;
-        mineEl.style.height = `${diam}px`;
-        mineEl.style.left   = `${r.width  * 0.85}px`;
-        mineEl.style.top    = `${r.height * 0.73}px`;
-        mineEl.style.transform = "translate(-50%,-50%)";
-      }
-    }
 
     BUTTONS.forEach(({ label, key, cls }) => {
       const btn = document.createElement("div");
@@ -271,15 +234,43 @@ declare const Module: {
       container.appendChild(btn);
     });
 
-    // Size circular buttons now and whenever the window resizes.
+    // Capture button elements once; reused by the resize handler to avoid
+    // repeated querySelector calls.
+    const circleButtons = [
+      { el: container.querySelector<HTMLElement>(".touch-shoot")!, cx: 0.62, cy: 0.73 },
+      { el: container.querySelector<HTMLElement>(".touch-mine")!,  cx: 0.85, cy: 0.73 },
+    ];
+
+    // Size and centre circular buttons. transform is handled by CSS so that
+    // the .pressed scale animation works without fighting inline styles.
+    function sizeCircleButtons(): void {
+      const r = canvas.getBoundingClientRect();
+      const diam = Math.min(r.width, r.height) * 0.19;
+      for (const { el, cx, cy } of circleButtons) {
+        el.style.width  = `${diam}px`;
+        el.style.height = `${diam}px`;
+        el.style.left   = `${r.width  * cx}px`;
+        el.style.top    = `${r.height * cy}px`;
+      }
+    }
+
     sizeCircleButtons();
-    window.addEventListener("resize", sizeCircleButtons);
+    return sizeCircleButtons;
   }
+
+  // Tracks the active resize listener so it can be removed on rebuild.
+  let _resizeFn: (() => void) | null = null;
 
   function applyTouchVisibility(): void {
     const tc = document.getElementById("touch-controls")!;
-    tc.style.display = TOUCH_MEDIA.matches ? "block" : "none";
-    if (TOUCH_MEDIA.matches) buildTouchControls();
+    if (_resizeFn) { window.removeEventListener("resize", _resizeFn); _resizeFn = null; }
+    if (TOUCH_MEDIA.matches) {
+      tc.style.display = "block";
+      _resizeFn = buildTouchControls();
+      window.addEventListener("resize", _resizeFn);
+    } else {
+      tc.style.display = "none";
+    }
   }
 
   TOUCH_MEDIA.addEventListener("change", applyTouchVisibility);
