@@ -33,7 +33,7 @@ jobs:
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT=iphonesimulator \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" \
             -DSDL_SHARED=OFF \
             -DSDL_STATIC=ON \
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY="" \
@@ -49,7 +49,7 @@ jobs:
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT=iphonesimulator \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" \
             -DSDL_SHARED=OFF \
             -DSDL2MIXER_SHARED=OFF \
             -DBUILD_SHARED_LIBS=OFF \
@@ -84,7 +84,7 @@ jobs:
       - name: Compile and link Newtonia for iOS Simulator
         run: |
           SYSROOT=$(xcrun --sdk iphonesimulator --show-sdk-path)
-          SIM_FLAGS="-target arm64-apple-ios13.0-simulator -isysroot $SYSROOT"
+          SIM_FLAGS="-arch arm64 -arch x86_64 -isysroot $SYSROOT -miphonesimulator-version-min=13.0"
           SDL2_LIB=$(find SDL2/build-ios-sim -name "libSDL2.a" | head -1)
           SDL2MAIN_LIB=$(find SDL2/build-ios-sim -name "libSDL2main.a" | head -1)
           SDL2MIX_LIB=$(find SDL2_mixer/build-ios-sim -name "libSDL2_mixer.a" | head -1)
