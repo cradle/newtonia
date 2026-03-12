@@ -107,9 +107,17 @@ void glColor3fv(const GLfloat *v);
 void glColor4fv(const GLfloat *v);
 
 // ---- Point / line size ----
-// glLineWidth exists in GLES2 but with limited support; keep as-is.
 // glPointSize does NOT exist in GLES2 – we emulate via a shader uniform.
+// glLineWidth is silently clamped to 1 on macOS/Metal WebGL; we intercept it
+// and emulate thick lines by expanding segments to screen-space quads.
 void glPointSize(GLfloat size);
+void gles2_set_line_width(GLfloat width);
+#define glLineWidth(w) gles2_set_line_width(w)
+
+// glViewport is intercepted to keep an internal cache used by thick line
+// emulation (avoids glGetIntegerv in the draw hot path).
+void gles2_set_viewport(GLint x, GLint y, GLsizei w, GLsizei h);
+#define glViewport(x,y,w,h) gles2_set_viewport((x),(y),(w),(h))
 
 // ---- Display lists ----
 GLuint glGenLists(GLsizei range);
