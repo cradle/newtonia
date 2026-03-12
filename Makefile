@@ -31,5 +31,35 @@ newtonia: $(OBJFILES)
 clean:
 	rm -rf $(OBJFILES) newtonia
 
+# ============================================================
+# Web / Emscripten target
+# ============================================================
+EMCC = emcc
+
+# Exclude desktop and Android entry points; add web entry point
+WEB_EXCL = glut.cpp android_main.cpp
+WEB_SRCS := $(filter-out $(WEB_EXCL), $(wildcard *.cpp) $(wildcard */*.cpp))
+
+WEB_FLAGS = -std=c++11 -O2 \
+            -s USE_SDL=2 \
+            -s USE_SDL_MIXER=2 \
+            -s SDL2_MIXER_FORMATS='["wav","mp3"]' \
+            -s FULL_ES2=1 \
+            -s ALLOW_MEMORY_GROWTH=1 \
+            --shell-file web/shell.html
+
+# If audio assets exist in a sounds/ directory, uncomment:
+# WEB_FLAGS += --preload-file sounds@/
+
+.PHONY: web web-clean
+
+web:
+	mkdir -p web/dist
+	$(EMCC) $(WEB_SRCS) $(WEB_FLAGS) -o web/dist/index.html
+	cp web/main.js web/dist/main.js
+
+web-clean:
+	rm -rf web/dist
+
 %.o: %.cpp
 	$(COMPILE) -o $@ $<

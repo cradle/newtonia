@@ -18,4 +18,6 @@ SDL*
 android/.gradle/
 android/app/build/
 android/build/
+## Web build output
+web/dist/
 .claude/
