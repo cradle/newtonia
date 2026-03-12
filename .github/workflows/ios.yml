@@ -68,48 +68,45 @@ jobs:
           cmake --build SDL2_mixer/build-ios-sim --config Release
 
       - name: Collect game sources
-        working-directory: newtonia
         run: |
-          find . -name "*.cpp" \
+          find newtonia -name "*.cpp" \
             -not -name "glut.cpp" \
             -not -name "android_main.cpp" \
-            -not -path "./android/*" \
-            -not -path "./.git/*" \
-            -not -path "./CMakeFiles/*" \
-            -not -path "./*.cxx/*" \
-            > ../srcs.txt
-          echo "./ios_main.mm" >> ../srcs.txt
+            -not -path "*/android/*" \
+            -not -path "*/.git/*" \
+            -not -path "*/CMakeFiles/*" \
+            | sed 's|^newtonia/||' \
+            > srcs.txt
+          echo "ios_main.mm" >> srcs.txt
           echo "Sources to compile:"
-          cat ../srcs.txt
+          cat srcs.txt
 
-      - name: Compile for iOS Simulator
+      - name: Compile and link Newtonia for iOS Simulator
         run: |
           SYSROOT=$(xcrun --sdk iphonesimulator --show-sdk-path)
           SIM_FLAGS="-target arm64-apple-ios13.0-simulator -isysroot $SYSROOT"
-
-          mkdir -p obj
-          cd newtonia
-          while IFS= read -r src; do
-            obj="../obj/$(echo "$src" | tr '/' '_' | sed 's/\.\(cpp\|mm\)$/.o/')"
-            clang++ $SIM_FLAGS -std=c++11 -O2 \
-              -D__IOS__=1 \
-              -I. -Iview -Iweapon \
-              -I../SDL2/include \
-              -I../SDL2_mixer/include \
-              -c "$src" -o "$obj"
-          done < ../srcs.txt
-
-      - name: Link Newtonia for iOS Simulator
-        run: |
-          SYSROOT=$(xcrun --sdk iphonesimulator --show-sdk-path)
-          SIM_FLAGS="-target arm64-apple-ios13.0-simulator -isysroot $SYSROOT"
-
           SDL2_LIB=$(find SDL2/build-ios-sim -name "libSDL2.a" | head -1)
           SDL2MIX_LIB=$(find SDL2_mixer/build-ios-sim -name "libSDL2_mixer.a" | head -1)
 
+          mkdir -p obj
+          while IFS= read -r src; do
+            objname=$(echo "$src" | tr '/' '_' | sed 's/\.\(cpp\|mm\)$/.o/')
+            clang++ $SIM_FLAGS -std=c++11 -O2 \
+              -D__IOS__=1 \
+              -Inewtonia -Inewtonia/view -Inewtonia/weapon \
+              -I SDL2/include \
+              -I SDL2_mixer/include \
+              -c "newtonia/$src" -o "obj/$objname"
+          done < srcs.txt
+
+          OBJS=$(find obj -name '*.o' | sort)
+          if [ -z "$OBJS" ]; then
+            echo "Error: no object files compiled" >&2; exit 1
+          fi
+
           clang++ $SIM_FLAGS \
             -o Newtonia \
-            obj/*.o \
+            $OBJS \
             "$SDL2_LIB" \
             "$SDL2MIX_LIB" \
             -framework OpenGLES \
