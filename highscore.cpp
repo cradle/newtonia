@@ -3,6 +3,10 @@
 #include <string>
 #include <cstdio>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 static const char* HS_ORG  = "org.newtonia";
 static const char* HS_APP  = "newtonia";
 static const char* HS_FILE = "highscore.dat";
@@ -25,5 +29,17 @@ void save_high_score(int score) {
   std::string filepath = std::string(path) + HS_FILE;
   SDL_free(path);
   FILE *f = fopen(filepath.c_str(), "wb");
-  if (f) { fwrite(&score, sizeof(int), 1, f); fclose(f); }
+  if (f) {
+    fwrite(&score, sizeof(int), 1, f);
+    fclose(f);
+#ifdef __EMSCRIPTEN__
+    // Flush the in-memory filesystem to IndexedDB so the score
+    // survives page refreshes.
+    EM_ASM(
+      FS.syncfs(false, function(err) {
+        if (err) console.error('[newtonia] IDBFS save failed:', err);
+      });
+    );
+#endif
+  }
 }

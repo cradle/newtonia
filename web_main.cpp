@@ -2,6 +2,14 @@
 // Compiles the game to WebAssembly + WebGL via Emscripten.
 // Mirrors android_main.cpp but uses emscripten_set_main_loop() instead of a
 // blocking while-loop, because the browser controls the event loop.
+//
+// High-score persistence
+// ----------------------
+// SDL_GetPrefPath() returns an in-memory MEMFS path.  We mount an IDBFS
+// (IndexedDB-backed) filesystem over that path so the highscore.dat file
+// survives page refreshes.  The mount + initial sync happen asynchronously;
+// web_on_idb_ready() is called from JS when the sync completes, and only
+// then do we create the StateManager and start the game loop.
 
 #ifdef __EMSCRIPTEN__
 
@@ -14,6 +22,7 @@
 #include "typer.h"
 
 #include <cmath>
+#include <string>
 
 // ============================================================
 // Touch → game-input mapping (same regions as android_main.cpp)
@@ -33,6 +42,9 @@ static SDL_GLContext    s_gl_ctx  = nullptr;
 static int              s_w = 800, s_h = 600;
 static Uint32           s_last_tick = 0;
 static SDL_GameController *s_controller = nullptr;
+// Set to true by web_on_idb_ready() once IDBFS has been populated.
+// The main loop skips tick/draw until this flag is set.
+static bool             s_idb_ready = false;
 
 static unsigned char touch_to_key(float norm_x, float norm_y) {
     if (norm_x > 0.85f && norm_y < 0.15f)
@@ -75,6 +87,9 @@ static void finger_up(SDL_FingerID id) {
 // Main loop — called by Emscripten once per animation frame
 // ============================================================
 static void main_loop() {
+    // Hold until IDBFS sync completes so StateManager is initialised.
+    if (!s_idb_ready) return;
+
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
         switch (e.type) {
@@ -144,6 +159,17 @@ static void main_loop() {
     SDL_GL_SwapWindow(s_window);
 }
 
+// Called from JS after FS.syncfs(true) completes (IDBFS → memory).
+// Initialises the StateManager then releases the main loop gate.
+// EMSCRIPTEN_KEEPALIVE exports this so JS can call Module._web_on_idb_ready().
+extern "C" EMSCRIPTEN_KEEPALIVE void web_on_idb_ready() {
+    s_game = new StateManager();
+    s_game->resize(s_w, s_h);
+    Typer::resize(s_w, s_h);
+    s_last_tick = SDL_GetTicks();
+    s_idb_ready = true; // open the main_loop gate
+}
+
 // ============================================================
 // main
 // ============================================================
@@ -200,17 +226,40 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    s_game = new StateManager();
-    s_game->resize(s_w, s_h);
-    Typer::resize(s_w, s_h);
+    // ---- IDBFS: mount persistent storage over the SDL pref path ----
+    // SDL_GetPrefPath creates an empty MEMFS directory; we overlay IDBFS on
+    // top so reads/writes automatically go through IndexedDB.
+    // The async sync (IDB → memory) completes before start_game() is called.
+    char *raw_pref = SDL_GetPrefPath("org.newtonia", "newtonia");
+    if (raw_pref) {
+        // Strip trailing slash — FS.mount needs the dir itself, not a child path.
+        std::string pref(raw_pref);
+        SDL_free(raw_pref);
+        if (!pref.empty() && pref.back() == '/') pref.pop_back();
 
-    s_last_tick = SDL_GetTicks();
+        EM_ASM({
+            var path = UTF8ToString($0);
+            try {
+                FS.mount(IDBFS, {}, path);
+            } catch (e) {
+                console.warn('[newtonia] IDBFS mount failed:', e);
+            }
+            // Populate memory from IndexedDB, then open the main loop gate.
+            FS.syncfs(true, function(err) {
+                if (err) console.error('[newtonia] IDBFS initial sync failed:', err);
+                Module._web_on_idb_ready();
+            });
+        }, pref.c_str());
+    } else {
+        // No pref path — initialise without persistence.
+        web_on_idb_ready();
+    }
 
-    // Hand control to the browser's requestAnimationFrame loop.
-    // simulate_infinite_loop=1 means main() never returns.
+    // emscripten_set_main_loop stays in main() so the WebGL context is never
+    // torn down.  The loop returns early until s_idb_ready is set.
     emscripten_set_main_loop(main_loop, 0, 1);
 
-    // Unreachable, but keep for clarity:
+    // Unreachable, but kept for clarity:
     delete s_game;
     gles2_shutdown();
     Mix_CloseAudio();
