@@ -133,8 +133,9 @@ declare const Module: {
       const ny = dist > 0.5 ? (dy / dist) * (clamped / joyRad) : 0;
       joyNub.style.left = `${joyCX + nx * joyRad}px`;
       joyNub.style.top  = `${joyCY + ny * joyRad}px`;
-      // Game Y-axis: positive = up; screen Y: positive = down — invert ny.
-      callTouchJoystick(nx, -ny);
+      // C++ touch_joystick_input: ny < 0 = thrust, ny > 0 = reverse.
+      // Screen dy is already negative when pushing up, so pass ny directly.
+      callTouchJoystick(nx, ny);
     }
 
     function hideJoystick(): void {
@@ -184,9 +185,8 @@ declare const Module: {
     interface BtnCfg { label: string; key: string; cls: string }
 
     const BUTTONS: BtnCfg[] = [
-      { label: "↵",  key: "Enter", cls: "touch-btn touch-enter" },
-      { label: "🔫", key: " ",     cls: "touch-btn touch-shoot" },
-      { label: "💣", key: "x",     cls: "touch-btn touch-mine"  },
+      { label: "",  key: " ", cls: "touch-btn touch-shoot" },
+      { label: "",  key: "x", cls: "touch-btn touch-mine"  },
     ];
 
     BUTTONS.forEach(({ label, key, cls }) => {
