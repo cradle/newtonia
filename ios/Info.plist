@@ -10,7 +10,7 @@
     <key>CFBundleDisplayName</key>
     <string>Newtonia</string>
     <key>CFBundleExecutable</key>
-    <string>$(EXECUTABLE_NAME)</string>
+    <string>Newtonia</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>CFBundleShortVersionString</key>
