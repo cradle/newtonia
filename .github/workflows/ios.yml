@@ -53,6 +53,7 @@ jobs:
             -DSDL_SHARED=OFF \
             -DSDL2MIXER_SHARED=OFF \
             -DBUILD_SHARED_LIBS=OFF \
+            -DSDL2MIXER_SAMPLES=OFF \
             -DSDL2MIXER_VORBIS="" \
             -DSDL2MIXER_WAVPACK=OFF \
             -DSDL2MIXER_FLAC=OFF \
