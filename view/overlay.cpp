@@ -160,17 +160,18 @@ void Overlay::draw_circle(float cx, float cy, float r, int segs, bool filled) {
 
 void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
 #ifdef __ANDROID__
-  // Convert pixel positions (origin top-left) to overlay coordinates
-  // (origin centre, y+ up).
+  // Only render for the primary (first) player.
+  if(glgame->players->front() != glship) return;
+
+  // setup_orthogonal() calls gluOrtho2D(-window_w, +window_w, -window_h, +window_h),
+  // so 1 screen pixel = 2 GL units.
+  // Conversion: gl_x = 2*px - window_w,  gl_y = window_h - 2*py
   float pw = (float)Typer::window_width;
   float ph = (float)Typer::window_height;
-  float sw = Typer::scaled_window_width  / (float)glgame->num_x_viewports();
-  float sh = Typer::scaled_window_height / (float)glgame->num_y_viewports();
 
-  auto ox = [&](float px) { return (px / pw - 0.5f) * Typer::scaled_window_width; };
-  auto oy = [&](float py) { return (0.5f - py / ph) * Typer::scaled_window_height; };
-  auto sr = [&](float r)  { return r / pw * Typer::scaled_window_width; };
-  (void)sw; (void)sh;
+  auto ox = [&](float px) { return 2.0f * px - pw; };
+  auto oy = [&](float py) { return ph - 2.0f * py; };
+  auto sr = [&](float r)  { return 2.0f * r; };
 
   const TouchControlsState &tc = g_touch_controls;
 
