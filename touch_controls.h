@@ -5,7 +5,7 @@
 // rendering).  All code is guarded by __ANDROID__ so desktop builds are
 // unaffected.
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__IOS__)
 
 #include <SDL.h>
 
@@ -37,4 +37,4 @@ extern TouchControlsState g_touch_controls;
 // Call whenever the window is resized to reposition controls.
 void touch_controls_resize(int w, int h);
 
-#endif // __ANDROID__
+#endif // __ANDROID__ || __IOS__

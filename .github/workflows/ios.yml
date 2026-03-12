@@ -1,0 +1,130 @@
+name: iOS
+
+on:
+  push:
+    branches:
+      - master
+      - main
+      - 'claude/**'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: newtonia
+
+      - name: Clone SDL2
+        run: git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL.git SDL2
+
+      - name: Clone SDL2_mixer
+        run: |
+          git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
+          git -C SDL2_mixer submodule update --init --depth 1
+
+      - name: Build SDL2 static library for iOS Simulator
+        run: |
+          cmake -S SDL2 -B SDL2/build-ios-sim \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DSDL_SHARED=OFF \
+            -DSDL_STATIC=ON \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY="" \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO
+          cmake --build SDL2/build-ios-sim --config Release
+
+      - name: Build SDL2_mixer static library for iOS Simulator
+        run: |
+          cmake -S SDL2_mixer -B SDL2_mixer/build-ios-sim \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DSDL_SHARED=OFF \
+            -DSDL2MIXER_VORBIS="" \
+            -DSDL2MIXER_WAVPACK=OFF \
+            -DSDL2MIXER_FLAC=OFF \
+            -DSDL2MIXER_OPUS=OFF \
+            -DSDL2MIXER_MOD=OFF \
+            -DSDL2MIXER_MIDI=OFF \
+            -DSDL2MIXER_MP3=OFF \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY="" \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
+            -DSDL2_DIR="$(pwd)/SDL2/build-ios-sim/Release-iphonesimulator"
+          cmake --build SDL2_mixer/build-ios-sim --config Release
+
+      - name: Collect game sources
+        working-directory: newtonia
+        run: |
+          find . -name "*.cpp" \
+            -not -name "glut.cpp" \
+            -not -name "android_main.cpp" \
+            -not -path "./android/*" \
+            -not -path "./.git/*" \
+            -not -path "./CMakeFiles/*" \
+            -not -path "./*.cxx/*" \
+            > ../srcs.txt
+          echo "./ios_main.mm" >> ../srcs.txt
+          echo "Sources to compile:"
+          cat ../srcs.txt
+
+      - name: Compile for iOS Simulator
+        run: |
+          SYSROOT=$(xcrun --sdk iphonesimulator --show-sdk-path)
+          SIM_FLAGS="-target arm64-apple-ios13.0-simulator -isysroot $SYSROOT"
+
+          mkdir -p obj
+          cd newtonia
+          while IFS= read -r src; do
+            obj="../obj/$(echo "$src" | tr '/' '_' | sed 's/\.\(cpp\|mm\)$/.o/')"
+            clang++ $SIM_FLAGS -std=c++11 -O2 \
+              -D__IOS__=1 \
+              -I. -Iview -Iweapon \
+              -I../SDL2/include \
+              -I../SDL2_mixer/include \
+              -c "$src" -o "$obj"
+          done < ../srcs.txt
+
+      - name: Link Newtonia for iOS Simulator
+        run: |
+          SYSROOT=$(xcrun --sdk iphonesimulator --show-sdk-path)
+          SIM_FLAGS="-target arm64-apple-ios13.0-simulator -isysroot $SYSROOT"
+
+          SDL2_LIB=$(find SDL2/build-ios-sim -name "libSDL2.a" | head -1)
+          SDL2MIX_LIB=$(find SDL2_mixer/build-ios-sim -name "libSDL2_mixer.a" | head -1)
+
+          clang++ $SIM_FLAGS \
+            -o Newtonia \
+            obj/*.o \
+            "$SDL2_LIB" \
+            "$SDL2MIX_LIB" \
+            -framework OpenGLES \
+            -framework UIKit \
+            -framework Foundation \
+            -framework CoreGraphics \
+            -framework CoreMotion \
+            -framework AudioToolbox \
+            -framework AVFoundation \
+            -framework CoreHaptics \
+            -framework GameController
+
+      - name: Bundle .app
+        run: |
+          mkdir -p Newtonia.app
+          cp Newtonia Newtonia.app/Newtonia
+          cp newtonia/ios/Info.plist Newtonia.app/Info.plist
+          zip -r Newtonia-iOS-Simulator.zip Newtonia.app
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: newtonia-ios-simulator
+          path: Newtonia-iOS-Simulator.zip
+          retention-days: 30

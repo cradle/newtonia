@@ -3,7 +3,11 @@
 // OpenGL ES 2.0 compatibility shim.
 // Provides OpenGL 1.x immediate-mode / fixed-function API on top of GLES2.
 
+#if defined(__ANDROID__)
 #include <GLES2/gl2.h>
+#elif defined(__IOS__)
+#include <OpenGLES/ES2/gl.h>
+#endif
 #include <SDL.h>
 
 // GLdouble / GLclampd are desktop-only; define them for the shim API.
