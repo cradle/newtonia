@@ -105,8 +105,9 @@ jobs:
             echo "Error: no object files compiled" >&2; exit 1
           fi
 
+          mkdir -p Newtonia.app
           clang++ $SIM_FLAGS \
-            -o Newtonia \
+            -o Newtonia.app/Newtonia \
             $OBJS \
             "$SDL2MAIN_LIB" \
             "$SDL2_LIB" \
@@ -127,8 +128,6 @@ jobs:
 
       - name: Bundle .app
         run: |
-          mkdir -p Newtonia.app
-          cp Newtonia Newtonia.app/Newtonia
           cp newtonia/ios/Info.plist Newtonia.app/Info.plist
           zip -r Newtonia-iOS-Simulator.zip Newtonia.app
 
