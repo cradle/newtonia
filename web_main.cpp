@@ -60,9 +60,8 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
         else                 return 'd'; // rotate right
     } else {
         float rx = (norm_x - 0.5f) * 2.0f;
-        if (norm_y < 0.4f)   return '\r'; // start/confirm
-        else if (rx < 0.5f)  return ' ';  // shoot
-        else                 return 'x';  // mine
+        if (rx < 0.5f)  return ' ';  // shoot
+        else            return 'x';  // mine
     }
 }
 

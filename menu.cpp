@@ -5,6 +5,9 @@
 #include "menu.h"
 #include "gl_compat.h"
 #include <iostream>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 const int Menu::default_world_width = 5000;
 const int Menu::default_world_height = 5000;
@@ -15,6 +18,9 @@ Menu::Menu() :
   high_score(load_high_score()),
   viewpoint(Point(0,default_world_height/2)),
   starfield(GLStarfield(Point(default_world_width,default_world_height))) {
+#ifdef __EMSCRIPTEN__
+  EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
+#endif
   if(music == NULL) {
     music = Mix_LoadMUS("title.mp3");
     if(music == NULL) {
@@ -63,7 +69,7 @@ void Menu::draw() {
     Typer::draw_centered(0, -255, high_score, 18);
   }
   if((currentTime/1400) % 2) {
-#if defined(__ANDROID__) || defined(__IOS__)
+#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__)
     Typer::draw_centered(0, -50, "tap to start", 18);
 #else
     if(SDL_NumJoysticks() == 0) {
@@ -91,6 +97,9 @@ void Menu::controller(SDL_Event event) {
       //glutLeaveMainLoop();
     } else if(event.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
               event.cbutton.button == SDL_CONTROLLER_BUTTON_A) {
+#ifdef __EMSCRIPTEN__
+      EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
+#endif
       request_state_change(new GLGame(SDL_GameControllerOpen(event.cbutton.which)));
     }
   }
@@ -100,13 +109,12 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 }
 
 void Menu::keyboard_up (unsigned char key, int x, int y) {
-#if defined(__ANDROID__) || defined(__IOS__)
-  // Touch/mobile — any key starts the game
+#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__)
+  // Touch/mobile/web — any key starts the game
+#ifdef __EMSCRIPTEN__
+  EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
+#endif
   request_state_change(new GLGame());
-#elif defined(__EMSCRIPTEN__)
-  // Web — no quit (close the tab to exit)
-  if (key == ' ' || key == '\r' || key == '\n')
-    request_state_change(new GLGame());
 #else
   if (key == 27)
     glutLeaveMainLoop();
