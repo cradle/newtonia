@@ -11,6 +11,7 @@
 #include "object.h"
 #include "grid.h"
 #include "view/overlay.h"
+#include "touch_controls.h"
 #include <math.h>
 #include <SDL.h>
 
@@ -518,7 +519,13 @@ void GLGame::draw_map() const {
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
   if (players->size() == 1) {
-    glViewport(Overlay::CORNER_INSET, Overlay::CORNER_INSET, minimap_size, minimap_size);
+#ifdef __ANDROID__
+    // Shift the minimap right of the virtual joystick so they don't overlap.
+    int map_x = (int)(g_touch_controls.joy_hint_cx + g_touch_controls.joy_radius + Overlay::CORNER_INSET);
+#else
+    int map_x = (int)Overlay::CORNER_INSET;
+#endif
+    glViewport(map_x, Overlay::CORNER_INSET, minimap_size, minimap_size);
   } else {
     glViewport(window.x()/2 - minimap_size/2, window.y()/2 - minimap_size/2, minimap_size, minimap_size);
   }
@@ -580,6 +587,11 @@ void GLGame::controller(SDL_Event event) {
       (*object)->controller_axis_input(event);
     }
   }
+}
+
+void GLGame::touch_joystick(float nx, float ny) {
+  if(!running || players->empty()) return;
+  players->front()->touch_joystick_input(nx, ny);
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {

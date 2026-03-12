@@ -28,6 +28,7 @@ public:
   void keyboard(unsigned char key, int x, int y);
   void keyboard_up(unsigned char key, int x, int y);
   void controller(SDL_Event event);
+  void touch_joystick(float nx, float ny);
 
   friend class Overlay;
 

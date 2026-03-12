@@ -51,6 +51,11 @@ class Ship : public CompositeObject {
     float radius_squared;
     bool thrusting, reversing, boosting;
 
+    // Analog scale factors (0.0–1.0); set by joystick/controller input
+    float rotation_scale;  // scales rotation_force (default 1.0)
+    float thrust_analog;   // scales thrust_force   (default 1.0)
+    float reverse_analog;  // scales reverse_force  (default 1.0)
+
     //TODO: make friends with gltrail (or some other way around these public)
     WrappedPoint tail() const;
     Point facing;
