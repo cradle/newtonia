@@ -163,6 +163,12 @@ static void main_loop() {
     SDL_GL_SwapWindow(s_window);
 }
 
+// Called from JS touch controls to apply analog joystick input directly.
+// nx/ny are normalised [-1, 1]; ny positive = down on screen = reverse thrust.
+extern "C" EMSCRIPTEN_KEEPALIVE void web_touch_joystick(float nx, float ny) {
+    if (s_game) s_game->touch_joystick(nx, ny);
+}
+
 // Called from JS after FS.syncfs(true) completes (IDBFS → memory).
 // Initialises the StateManager then releases the main loop gate.
 // EMSCRIPTEN_KEEPALIVE exports this so JS can call Module._web_on_idb_ready().
