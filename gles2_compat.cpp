@@ -5,7 +5,6 @@
 #include "gles2_compat.h"
 
 #include <SDL.h>
-#include <GLES2/gl2.h>
 
 #include <cmath>
 #include <cstring>

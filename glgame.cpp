@@ -519,7 +519,7 @@ void GLGame::draw_map() const {
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
   if (players->size() == 1) {
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__IOS__)
     // Shift the minimap right of the virtual joystick so they don't overlap.
     int map_x = (int)(g_touch_controls.joy_hint_cx + g_touch_controls.joy_radius + Overlay::CORNER_INSET);
 #else
@@ -625,7 +625,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == '-') time_between_steps++;
   if (key == '0') time_between_steps = step_size;
   if (key == 'p') toggle_pause();
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(__IOS__)
   if (key == 13 && players->size() < 2) {
     Ship* p1 = players->front()->ship;
     if(p1->is_alive() || p1->lives) {
@@ -635,8 +635,8 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
 #endif
-#ifdef __ANDROID__
-  // On Android there is no ESC key; any tap on the game over screen goes to menu.
+#if defined(__ANDROID__) || defined(__IOS__)
+  // On mobile there is no ESC key; any tap on the game over screen goes to menu.
   if (key != 27) {
     bool all_game_over = !players->empty();
     for (auto* glship : *players) {

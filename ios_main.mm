@@ -166,7 +166,8 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     s_window = SDL_CreateWindow("Newtonia",
                                 SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                                 s_w, s_h,
-                                SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN);
+                                SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN |
+                                SDL_WINDOW_ALLOW_HIGHDPI);
     if (!s_window) {
         SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());
         SDL_Quit();
@@ -180,6 +181,9 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         SDL_Quit();
         return 1;
     }
+
+    // Retina: get actual drawable pixel dimensions (differ from logical points on HiDPI)
+    SDL_GL_GetDrawableSize(s_window, &s_w, &s_h);
 
     SDL_GL_SetSwapInterval(1);   // vsync
 
