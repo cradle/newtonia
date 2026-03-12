@@ -86,6 +86,7 @@ jobs:
           SYSROOT=$(xcrun --sdk iphonesimulator --show-sdk-path)
           SIM_FLAGS="-target arm64-apple-ios13.0-simulator -isysroot $SYSROOT"
           SDL2_LIB=$(find SDL2/build-ios-sim -name "libSDL2.a" | head -1)
+          SDL2MAIN_LIB=$(find SDL2/build-ios-sim -name "libSDL2main.a" | head -1)
           SDL2MIX_LIB=$(find SDL2_mixer/build-ios-sim -name "libSDL2_mixer.a" | head -1)
 
           mkdir -p obj
@@ -107,6 +108,7 @@ jobs:
           clang++ $SIM_FLAGS \
             -o Newtonia \
             $OBJS \
+            "$SDL2MAIN_LIB" \
             "$SDL2_LIB" \
             "$SDL2MIX_LIB" \
             -framework OpenGLES \
@@ -117,6 +119,7 @@ jobs:
             -framework CoreAudio \
             -framework AudioToolbox \
             -framework AVFoundation \
+            -framework CoreBluetooth \
             -framework CoreHaptics \
             -framework GameController \
             -framework QuartzCore \
