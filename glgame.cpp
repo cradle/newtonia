@@ -539,15 +539,6 @@ void GLGame::draw_map() const {
     glVertex2i(  0, 0);
   glEnd();
 
-  /* DRAW THE LEVEL */
-  Typer::draw(+world.x()/20.0f, world.y()-world.y()/20.0f, "LEVEL", world.x()/20.0f);
-  Typer::draw(world.x()-world.x()/20.0f*2.0f, world.y()-world.y()/20.0f, generation+1, world.x()/20.0f);
-
-  if(station != NULL) {
-    Typer::draw(-world.x()+world.x()/20.0f, -world.y()+world.y()/20.0f*3.0f, "WAVE", world.x()/20.0f);
-    Typer::draw(world.x()-world.x()/20.0f*2.0f, -world.y()+world.y()/20.0f*3.0f, station->level(), world.x()/20.0f);
-  }
-
   // Single draw pass for minimap; wrapping tiles are negligible at minimap scale.
   glPushMatrix();
   draw_objects(0.0f, true);
