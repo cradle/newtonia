@@ -3,7 +3,7 @@
 // Unified OpenGL/GLES2 compatibility header.
 // Include this instead of platform-specific GLUT/OpenGL headers.
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__IOS__)
 #include "gles2_compat.h"
 #else
 
@@ -21,4 +21,4 @@
 #endif
 #endif
 
-#endif // __ANDROID__
+#endif // __ANDROID__ || __IOS__

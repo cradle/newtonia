@@ -1,0 +1,428 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		AB000001 /* ios_main.mm in Sources */ = {isa = PBXBuildFile; fileRef = AA000001 /* ios_main.mm */; };
+		AB000002 /* asteroid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000002 /* asteroid.cpp */; };
+		AB000003 /* asteroid_drawer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000003 /* asteroid_drawer.cpp */; };
+		AB000004 /* composite_object.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000004 /* composite_object.cpp */; };
+		AB000005 /* enemy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000005 /* enemy.cpp */; };
+		AB000006 /* extra_life.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000006 /* extra_life.cpp */; };
+		AB000007 /* follower.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000007 /* follower.cpp */; };
+		AB000008 /* glcar.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000008 /* glcar.cpp */; };
+		AB000009 /* glenemy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000009 /* glenemy.cpp */; };
+		AB00000A /* gles2_compat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000A /* gles2_compat.cpp */; };
+		AB00000B /* glgame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000B /* glgame.cpp */; };
+		AB00000C /* glship.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000C /* glship.cpp */; };
+		AB00000D /* glstarfield.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000D /* glstarfield.cpp */; };
+		AB00000E /* glstation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000E /* glstation.cpp */; };
+		AB00000F /* gltrail.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00000F /* gltrail.cpp */; };
+		AB000010 /* grid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000010 /* grid.cpp */; };
+		AB000011 /* grid_debug.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000011 /* grid_debug.cpp */; };
+		AB000012 /* highscore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000012 /* highscore.cpp */; };
+		AB000013 /* menu.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000013 /* menu.cpp */; };
+		AB000014 /* mine_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000014 /* mine_pickup.cpp */; };
+		AB000015 /* object.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000015 /* object.cpp */; };
+		AB000016 /* particle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000016 /* particle.cpp */; };
+		AB000017 /* point.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000017 /* point.cpp */; };
+		AB000018 /* ship.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000018 /* ship.cpp */; };
+		AB000019 /* state.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000019 /* state.cpp */; };
+		AB00001A /* state_manager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00001A /* state_manager.cpp */; };
+		AB00001B /* teleport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00001B /* teleport.cpp */; };
+		AB00001C /* touch_controls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00001C /* touch_controls.cpp */; };
+		AB00001D /* typer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00001D /* typer.cpp */; };
+		AB00001E /* weapon_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00001E /* weapon_pickup.cpp */; };
+		AB00001F /* wrapped_point.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00001F /* wrapped_point.cpp */; };
+		AB000020 /* overlay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000020 /* overlay.cpp */; };
+		AB000021 /* default.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000021 /* default.cpp */; };
+		AB000022 /* mine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000022 /* mine.cpp */; };
+		AB000030 /* OpenGLES.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000030 /* OpenGLES.framework */; };
+		AB000031 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000031 /* UIKit.framework */; };
+		AB000032 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000032 /* Foundation.framework */; };
+		AB000033 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000033 /* CoreGraphics.framework */; };
+		AB000034 /* CoreMotion.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000034 /* CoreMotion.framework */; };
+		AB000035 /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000035 /* AudioToolbox.framework */; };
+		AB000036 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000036 /* AVFoundation.framework */; };
+		AB000037 /* CoreHaptics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000037 /* CoreHaptics.framework */; };
+		AB000038 /* GameController.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000038 /* GameController.framework */; };
+		AB000039 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000039 /* CoreAudio.framework */; };
+		AB00003A /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA00003A /* QuartzCore.framework */; };
+		AB00003B /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA00003B /* Metal.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		AA000001 /* ios_main.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = ../ios_main.mm; sourceTree = SOURCE_ROOT; };
+		AA000002 /* asteroid.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../asteroid.cpp; sourceTree = SOURCE_ROOT; };
+		AA000003 /* asteroid_drawer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../asteroid_drawer.cpp; sourceTree = SOURCE_ROOT; };
+		AA000004 /* composite_object.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../composite_object.cpp; sourceTree = SOURCE_ROOT; };
+		AA000005 /* enemy.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../enemy.cpp; sourceTree = SOURCE_ROOT; };
+		AA000006 /* extra_life.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../extra_life.cpp; sourceTree = SOURCE_ROOT; };
+		AA000007 /* follower.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../follower.cpp; sourceTree = SOURCE_ROOT; };
+		AA000008 /* glcar.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../glcar.cpp; sourceTree = SOURCE_ROOT; };
+		AA000009 /* glenemy.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../glenemy.cpp; sourceTree = SOURCE_ROOT; };
+		AA00000A /* gles2_compat.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../gles2_compat.cpp; sourceTree = SOURCE_ROOT; };
+		AA00000B /* glgame.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../glgame.cpp; sourceTree = SOURCE_ROOT; };
+		AA00000C /* glship.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../glship.cpp; sourceTree = SOURCE_ROOT; };
+		AA00000D /* glstarfield.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../glstarfield.cpp; sourceTree = SOURCE_ROOT; };
+		AA00000E /* glstation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../glstation.cpp; sourceTree = SOURCE_ROOT; };
+		AA00000F /* gltrail.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../gltrail.cpp; sourceTree = SOURCE_ROOT; };
+		AA000010 /* grid.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../grid.cpp; sourceTree = SOURCE_ROOT; };
+		AA000011 /* grid_debug.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../grid_debug.cpp; sourceTree = SOURCE_ROOT; };
+		AA000012 /* highscore.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../highscore.cpp; sourceTree = SOURCE_ROOT; };
+		AA000013 /* menu.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../menu.cpp; sourceTree = SOURCE_ROOT; };
+		AA000014 /* mine_pickup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../mine_pickup.cpp; sourceTree = SOURCE_ROOT; };
+		AA000015 /* object.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../object.cpp; sourceTree = SOURCE_ROOT; };
+		AA000016 /* particle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../particle.cpp; sourceTree = SOURCE_ROOT; };
+		AA000017 /* point.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../point.cpp; sourceTree = SOURCE_ROOT; };
+		AA000018 /* ship.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../ship.cpp; sourceTree = SOURCE_ROOT; };
+		AA000019 /* state.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../state.cpp; sourceTree = SOURCE_ROOT; };
+		AA00001A /* state_manager.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../state_manager.cpp; sourceTree = SOURCE_ROOT; };
+		AA00001B /* teleport.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../teleport.cpp; sourceTree = SOURCE_ROOT; };
+		AA00001C /* touch_controls.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../touch_controls.cpp; sourceTree = SOURCE_ROOT; };
+		AA00001D /* typer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../typer.cpp; sourceTree = SOURCE_ROOT; };
+		AA00001E /* weapon_pickup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon_pickup.cpp; sourceTree = SOURCE_ROOT; };
+		AA00001F /* wrapped_point.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../wrapped_point.cpp; sourceTree = SOURCE_ROOT; };
+		AA000020 /* overlay.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../view/overlay.cpp; sourceTree = SOURCE_ROOT; };
+		AA000021 /* default.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/default.cpp; sourceTree = SOURCE_ROOT; };
+		AA000022 /* mine.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/mine.cpp; sourceTree = SOURCE_ROOT; };
+		AA000030 /* OpenGLES.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGLES.framework; path = System/Library/Frameworks/OpenGLES.framework; sourceTree = SDKROOT; };
+		AA000031 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		AA000032 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		AA000033 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		AA000034 /* CoreMotion.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMotion.framework; path = System/Library/Frameworks/CoreMotion.framework; sourceTree = SDKROOT; };
+		AA000035 /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
+		AA000036 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
+		AA000037 /* CoreHaptics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreHaptics.framework; path = System/Library/Frameworks/CoreHaptics.framework; sourceTree = SDKROOT; };
+		AA000038 /* GameController.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GameController.framework; path = System/Library/Frameworks/GameController.framework; sourceTree = SDKROOT; };
+		AA000039 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
+		AA00003A /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		AA00003B /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		AA000040 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AA000050 /* Newtonia.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Newtonia.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AD000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AB000030 /* OpenGLES.framework in Frameworks */,
+				AB000031 /* UIKit.framework in Frameworks */,
+				AB000032 /* Foundation.framework in Frameworks */,
+				AB000033 /* CoreGraphics.framework in Frameworks */,
+				AB000034 /* CoreMotion.framework in Frameworks */,
+				AB000035 /* AudioToolbox.framework in Frameworks */,
+				AB000036 /* AVFoundation.framework in Frameworks */,
+				AB000037 /* CoreHaptics.framework in Frameworks */,
+				AB000038 /* GameController.framework in Frameworks */,
+				AB000039 /* CoreAudio.framework in Frameworks */,
+				AB00003A /* QuartzCore.framework in Frameworks */,
+				AB00003B /* Metal.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		AC000001 /* = */ = {
+			isa = PBXGroup;
+			children = (
+				AC000002 /* Sources */,
+				AC000005 /* Frameworks */,
+				AA000040 /* Info.plist */,
+				AC000006 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AC000002 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				AA000001 /* ios_main.mm */,
+				AA000002 /* asteroid.cpp */,
+				AA000003 /* asteroid_drawer.cpp */,
+				AA000004 /* composite_object.cpp */,
+				AA000005 /* enemy.cpp */,
+				AA000006 /* extra_life.cpp */,
+				AA000007 /* follower.cpp */,
+				AA000008 /* glcar.cpp */,
+				AA000009 /* glenemy.cpp */,
+				AA00000A /* gles2_compat.cpp */,
+				AA00000B /* glgame.cpp */,
+				AA00000C /* glship.cpp */,
+				AA00000D /* glstarfield.cpp */,
+				AA00000E /* glstation.cpp */,
+				AA00000F /* gltrail.cpp */,
+				AA000010 /* grid.cpp */,
+				AA000011 /* grid_debug.cpp */,
+				AA000012 /* highscore.cpp */,
+				AA000013 /* menu.cpp */,
+				AA000014 /* mine_pickup.cpp */,
+				AA000015 /* object.cpp */,
+				AA000016 /* particle.cpp */,
+				AA000017 /* point.cpp */,
+				AA000018 /* ship.cpp */,
+				AA000019 /* state.cpp */,
+				AA00001A /* state_manager.cpp */,
+				AA00001B /* teleport.cpp */,
+				AA00001C /* touch_controls.cpp */,
+				AA00001D /* typer.cpp */,
+				AA00001E /* weapon_pickup.cpp */,
+				AA00001F /* wrapped_point.cpp */,
+				AA000020 /* overlay.cpp */,
+				AA000021 /* default.cpp */,
+				AA000022 /* mine.cpp */,
+			);
+			name = Sources;
+			sourceTree = "<group>";
+		};
+		AC000005 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				AA000030 /* OpenGLES.framework */,
+				AA000031 /* UIKit.framework */,
+				AA000032 /* Foundation.framework */,
+				AA000033 /* CoreGraphics.framework */,
+				AA000034 /* CoreMotion.framework */,
+				AA000035 /* AudioToolbox.framework */,
+				AA000036 /* AVFoundation.framework */,
+				AA000037 /* CoreHaptics.framework */,
+				AA000038 /* GameController.framework */,
+				AA000039 /* CoreAudio.framework */,
+				AA00003A /* QuartzCore.framework */,
+				AA00003B /* Metal.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		AC000006 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AA000050 /* Newtonia.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AE000001 /* Newtonia */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B0000011 /* Build configuration list for PBXNativeTarget "Newtonia" */;
+			buildPhases = (
+				AD000001 /* Resources */,
+				AD000002 /* Sources */,
+				AD000003 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Newtonia;
+			productName = Newtonia;
+			productReference = AA000050 /* Newtonia.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AF000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 1500;
+				ORGANIZATIONNAME = "cc.gfm";
+			};
+			buildConfigurationList = B0000010 /* Build configuration list for PBXProject "Newtonia-iOS" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = AC000001;
+			productRefGroup = AC000006 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AE000001 /* Newtonia */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AD000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AD000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AB000001 /* ios_main.mm in Sources */,
+				AB000002 /* asteroid.cpp in Sources */,
+				AB000003 /* asteroid_drawer.cpp in Sources */,
+				AB000004 /* composite_object.cpp in Sources */,
+				AB000005 /* enemy.cpp in Sources */,
+				AB000006 /* extra_life.cpp in Sources */,
+				AB000007 /* follower.cpp in Sources */,
+				AB000008 /* glcar.cpp in Sources */,
+				AB000009 /* glenemy.cpp in Sources */,
+				AB00000A /* gles2_compat.cpp in Sources */,
+				AB00000B /* glgame.cpp in Sources */,
+				AB00000C /* glship.cpp in Sources */,
+				AB00000D /* glstarfield.cpp in Sources */,
+				AB00000E /* glstation.cpp in Sources */,
+				AB00000F /* gltrail.cpp in Sources */,
+				AB000010 /* grid.cpp in Sources */,
+				AB000011 /* grid_debug.cpp in Sources */,
+				AB000012 /* highscore.cpp in Sources */,
+				AB000013 /* menu.cpp in Sources */,
+				AB000014 /* mine_pickup.cpp in Sources */,
+				AB000015 /* object.cpp in Sources */,
+				AB000016 /* particle.cpp in Sources */,
+				AB000017 /* point.cpp in Sources */,
+				AB000018 /* ship.cpp in Sources */,
+				AB000019 /* state.cpp in Sources */,
+				AB00001A /* state_manager.cpp in Sources */,
+				AB00001B /* teleport.cpp in Sources */,
+				AB00001C /* touch_controls.cpp in Sources */,
+				AB00001D /* typer.cpp in Sources */,
+				AB00001E /* weapon_pickup.cpp in Sources */,
+				AB00001F /* wrapped_point.cpp in Sources */,
+				AB000020 /* overlay.cpp in Sources */,
+				AB000021 /* default.cpp in Sources */,
+				AB000022 /* mine.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		B0000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B0000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		B0000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"__IOS__=1",
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/..",
+					"$(SRCROOT)/../view",
+					"$(SRCROOT)/../weapon",
+					"$(SDL2_HEADER_PATH)",
+					"$(SDL2_MIXER_HEADER_PATH)",
+				);
+				INFOPLIST_FILE = "$(SRCROOT)/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				OTHER_CPLUSPLUSFLAGS = "-std=c++11";
+				OTHER_LDFLAGS = (
+					"$(SDL2_LIB_PATH)",
+					"$(SDL2_MIXER_LIB_PATH)",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = cc.gfm.Newtonia;
+				PRODUCT_NAME = Newtonia;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B0000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				GCC_OPTIMIZATION_LEVEL = 3;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"__IOS__=1",
+					"$(inherited)",
+				);
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/..",
+					"$(SRCROOT)/../view",
+					"$(SRCROOT)/../weapon",
+					"$(SDL2_HEADER_PATH)",
+					"$(SDL2_MIXER_HEADER_PATH)",
+				);
+				INFOPLIST_FILE = "$(SRCROOT)/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				OTHER_CPLUSPLUSFLAGS = "-std=c++11";
+				OTHER_LDFLAGS = (
+					"$(SDL2_LIB_PATH)",
+					"$(SDL2_MIXER_LIB_PATH)",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = cc.gfm.Newtonia;
+				PRODUCT_NAME = Newtonia;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B0000010 /* Build configuration list for PBXProject "Newtonia-iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B0000001 /* Debug */,
+				B0000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B0000011 /* Build configuration list for PBXNativeTarget "Newtonia" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B0000003 /* Debug */,
+				B0000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = AF000001 /* Project object */;
+}

@@ -1,4 +1,4 @@
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__IOS__)
 
 #include "touch_controls.h"
 #include <algorithm>
@@ -25,4 +25,4 @@ void touch_controls_resize(int w, int h) {
     g_touch_controls.mine_radius  = btnR;
 }
 
-#endif // __ANDROID__
+#endif // __ANDROID__ || __IOS__

@@ -63,7 +63,7 @@ void Menu::draw() {
     Typer::draw_centered(0, -255, high_score, 18);
   }
   if((currentTime/1400) % 2) {
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__IOS__)
     Typer::draw_centered(0, -50, "tap to start", 18);
 #else
     if(SDL_NumJoysticks() == 0) {
@@ -100,7 +100,7 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 }
 
 void Menu::keyboard_up (unsigned char key, int x, int y) {
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__IOS__)
   request_state_change(new GLGame());
 #else
   if (key == 27)

@@ -103,7 +103,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   if(glgame->players->size() < 2) {
     if((glgame->current_time/1400) % 2) {
       if(p1->is_alive() || p1->lives > 0) {
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(__IOS__)
         Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-10, "player 2 press enter to join", 8);
 #endif
       } else {
@@ -159,7 +159,7 @@ void Overlay::draw_circle(float cx, float cy, float r, int segs, bool filled) {
 }
 
 void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__IOS__)
   // Only render for the primary (first) player.
   if(glgame->players->front() != glship) return;
 
@@ -226,5 +226,5 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     glColor4f(0.35f, 0.6f, 1.0f, alpha_outline);
     draw_circle(bx, by, br, 28, false);
   }
-#endif // __ANDROID__
+#endif // __ANDROID__ || __IOS__
 }
