@@ -90,7 +90,7 @@ jobs:
 
           mkdir -p obj
           while IFS= read -r src; do
-            objname=$(echo "$src" | tr '/' '_' | sed 's/\.\(cpp\|mm\)$/.o/')
+            objname=$(echo "$src" | tr '/' '_' | sed -E 's/\.(cpp|mm)$/.o/')
             clang++ $SIM_FLAGS -std=c++11 -O2 \
               -D__IOS__=1 \
               -Inewtonia -Inewtonia/view -Inewtonia/weapon \
