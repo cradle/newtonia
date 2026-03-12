@@ -227,10 +227,9 @@
         const menuOverlay = document.createElement("div");
         menuOverlay.className = "menu-overlay";
         menuOverlay.addEventListener("touchend", (e) => {
+            var _a, _b;
             e.preventDefault();
-            canvas.dispatchEvent(new KeyboardEvent("keyup", {
-                key: "Enter", code: "Enter", bubbles: true, cancelable: true,
-            }));
+            (_b = (_a = Module)._web_tap_start) === null || _b === void 0 ? void 0 : _b.call(_a);
         }, { passive: false });
         container.appendChild(menuOverlay);
         _menuOverlay = menuOverlay;

@@ -168,6 +168,12 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_touch_joystick(float nx, float ny) {
     if (s_game) s_game->touch_joystick(nx, ny);
 }
 
+// Called from the JS menu overlay on touchend.
+// Bypasses SDL keyboard handling (unreliable on mobile) and fires directly.
+extern "C" EMSCRIPTEN_KEEPALIVE void web_tap_start() {
+    if (s_game) s_game->keyboard_up('\r', 0, 0);
+}
+
 // Called from JS after FS.syncfs(true) completes (IDBFS → memory).
 // Initialises the StateManager then releases the main loop gate.
 // EMSCRIPTEN_KEEPALIVE exports this so JS can call Module._web_on_idb_ready().
