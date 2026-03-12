@@ -143,6 +143,7 @@ struct Vertex {
 
 static float         s_color[4]     = {1,1,1,1};
 static float         s_point_size   = 1.0f;
+static float         s_line_width   = 1.0f;
 static bool          s_in_begin     = false;
 static GLenum        s_begin_mode   = GL_POINTS;
 static std::vector<Vertex> s_vbuf;
@@ -276,8 +277,106 @@ static std::vector<Vertex> quads_to_triangles(const std::vector<Vertex> &in) {
 // Flush vertex_buffer to GPU and draw.
 // Static buffers avoid per-draw-call heap allocation.
 static std::vector<Vertex> s_converted;
+static std::vector<Vertex> s_thick_quads;
 static std::vector<float>  s_pos;
 static std::vector<float>  s_col;
+
+// Emulate thick lines by expanding each segment to a screen-space quad.
+// Called by flush_vertices when s_line_width > 1.0f and mode is a line type.
+static void draw_thick_lines(const std::vector<Vertex>& verts, GLenum mode) {
+    size_t n = verts.size();
+    if (n < 2) return;
+
+    mat4 mvp; get_mvp(mvp);
+
+    GLint vp[4]; glGetIntegerv(GL_VIEWPORT, vp);
+    float hw = (float)vp[2] * 0.5f;
+    float hh = (float)vp[3] * 0.5f;
+    if (hw < 1.0f || hh < 1.0f) return;
+
+    float half_lw = s_line_width * 0.5f;
+
+    // Project a vertex through MVP to NDC (perspective divide).
+    auto project = [&](const Vertex& v, float& ox, float& oy) {
+        float cx = mvp[0]*v.x + mvp[4]*v.y + mvp[8]*v.z  + mvp[12];
+        float cy = mvp[1]*v.x + mvp[5]*v.y + mvp[9]*v.z  + mvp[13];
+        float cw = mvp[3]*v.x + mvp[7]*v.y + mvp[11]*v.z + mvp[15];
+        if (fabsf(cw) < 1e-6f) cw = 1.0f;
+        ox = cx / cw;
+        oy = cy / cw;
+    };
+
+    s_thick_quads.clear();
+
+    size_t segs = (mode == GL_LINES) ? n / 2 : n - 1;
+    for (size_t si = 0; si < segs; si++) {
+        const Vertex& va = (mode == GL_LINES) ? verts[si*2]   : verts[si];
+        const Vertex& vb = (mode == GL_LINES) ? verts[si*2+1] : verts[si+1];
+
+        float ax, ay, bx, by;
+        project(va, ax, ay);
+        project(vb, bx, by);
+
+        // Screen-space direction vector
+        float dx = (bx - ax) * hw;
+        float dy = (by - ay) * hh;
+        float len = sqrtf(dx*dx + dy*dy);
+        if (len < 0.5f) continue;
+
+        // Perpendicular (rotated 90°), scaled to half-width in NDC
+        float px = (-dy / len) * half_lw / hw;
+        float py = ( dx / len) * half_lw / hh;
+
+        // 4 corners of the quad (NDC, z=0)
+        Vertex c[4];
+        c[0] = va; c[0].x = ax - px; c[0].y = ay - py; c[0].z = 0.0f;
+        c[1] = va; c[1].x = ax + px; c[1].y = ay + py; c[1].z = 0.0f;
+        c[2] = vb; c[2].x = bx + px; c[2].y = by + py; c[2].z = 0.0f;
+        c[3] = vb; c[3].x = bx - px; c[3].y = by - py; c[3].z = 0.0f;
+
+        s_thick_quads.push_back(c[0]); s_thick_quads.push_back(c[1]); s_thick_quads.push_back(c[2]);
+        s_thick_quads.push_back(c[0]); s_thick_quads.push_back(c[2]); s_thick_quads.push_back(c[3]);
+    }
+
+    if (s_thick_quads.empty()) return;
+
+    size_t n2 = s_thick_quads.size();
+    s_pos.resize(n2 * 3);
+    s_col.resize(n2 * 4);
+    for (size_t i = 0; i < n2; i++) {
+        s_pos[i*3+0] = s_thick_quads[i].x;
+        s_pos[i*3+1] = s_thick_quads[i].y;
+        s_pos[i*3+2] = s_thick_quads[i].z;
+        s_col[i*4+0] = s_thick_quads[i].r;
+        s_col[i*4+1] = s_thick_quads[i].g;
+        s_col[i*4+2] = s_thick_quads[i].b;
+        s_col[i*4+3] = s_thick_quads[i].a;
+    }
+
+    glUseProgram(s_prog);
+
+    // Draw quads in NDC using an identity MVP so vertices are passed through as-is.
+    mat4 identity; mat4_identity(identity);
+    glUniformMatrix4fv(s_uni_mvp, 1, GL_FALSE, identity);
+    glUniform1f(s_uni_ptsz, 1.0f);
+    glUniform1i(s_uni_ispt, 0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, s_vbo_pos);
+    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(n2*3*sizeof(float)), s_pos.data(), GL_STREAM_DRAW);
+    glEnableVertexAttribArray(s_attr_pos);
+    glVertexAttribPointer(s_attr_pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, s_vbo_col);
+    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(n2*4*sizeof(float)), s_col.data(), GL_STREAM_DRAW);
+    glEnableVertexAttribArray(s_attr_color);
+    glVertexAttribPointer(s_attr_color, 4, GL_FLOAT, GL_FALSE, 0, 0);
+
+    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)n2);
+
+    glDisableVertexAttribArray(s_attr_pos);
+    glDisableVertexAttribArray(s_attr_color);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
 
 static void flush_vertices() {
     if (s_vbuf.empty()) return;
@@ -301,6 +400,13 @@ static void flush_vertices() {
     }
 
     if (src->empty()) return;
+
+    // Thick line emulation: macOS WebGL (Metal) clamps glLineWidth to 1.
+    // For any width > 1, expand line segments to screen-space quads instead.
+    if (s_line_width > 1.05f && (gl_mode == GL_LINES || gl_mode == GL_LINE_STRIP)) {
+        draw_thick_lines(*src, gl_mode);
+        return;
+    }
 
     // Separate position and colour arrays for the VBOs.
     size_t n = src->size();
@@ -520,6 +626,14 @@ void glPointSize(GLfloat size) {
         DLCommand c; c.type = DLCommand::POINT_SIZE; c.f[0] = size; dl_push(c); return;
     }
     s_point_size = size;
+}
+
+// ---- Line width (intercepted via macro in gles2_compat.h) ----
+void gles2_set_line_width(GLfloat width) {
+    if (s_is_recording) {
+        DLCommand c; c.type = DLCommand::LINE_WIDTH; c.f[0] = width; dl_push(c); return;
+    }
+    s_line_width = width;
 }
 
 // ---- Display lists ----
