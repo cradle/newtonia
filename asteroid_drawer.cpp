@@ -193,7 +193,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, float direction,
       glPushMatrix();
       glTranslatef(a->position.x(), a->position.y(), 0.0f);
       glRotatef(-direction, 0.0f, 0.0f, 1.0f);
-      Typer::draw(0.0f, 0.0f, a->value, 9);
+      Typer::draw(0.0f, 0.0f, a->value, 9.0f / Typer::scale);
       glPopMatrix();
     }
   }
