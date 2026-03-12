@@ -42,6 +42,9 @@ static SDL_GLContext    s_gl_ctx  = nullptr;
 static int              s_w = 800, s_h = 600;
 static Uint32           s_last_tick = 0;
 static SDL_GameController *s_controller = nullptr;
+// Set to true by web_on_idb_ready() once IDBFS has been populated.
+// The main loop skips tick/draw until this flag is set.
+static bool             s_idb_ready = false;
 
 static unsigned char touch_to_key(float norm_x, float norm_y) {
     if (norm_x > 0.85f && norm_y < 0.15f)
@@ -84,6 +87,9 @@ static void finger_up(SDL_FingerID id) {
 // Main loop — called by Emscripten once per animation frame
 // ============================================================
 static void main_loop() {
+    // Hold until IDBFS sync completes so StateManager is initialised.
+    if (!s_idb_ready) return;
+
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
         switch (e.type) {
@@ -153,23 +159,15 @@ static void main_loop() {
     SDL_GL_SwapWindow(s_window);
 }
 
-// ============================================================
-// Game startup — called once IDBFS is ready
-// ============================================================
-static void start_game() {
+// Called from JS after FS.syncfs(true) completes (IDBFS → memory).
+// Initialises the StateManager then releases the main loop gate.
+// EMSCRIPTEN_KEEPALIVE exports this so JS can call Module._web_on_idb_ready().
+extern "C" EMSCRIPTEN_KEEPALIVE void web_on_idb_ready() {
     s_game = new StateManager();
     s_game->resize(s_w, s_h);
     Typer::resize(s_w, s_h);
     s_last_tick = SDL_GetTicks();
-    // Hand control to the browser's requestAnimationFrame loop.
-    // simulate_infinite_loop=1 means main() never returns.
-    emscripten_set_main_loop(main_loop, 0, 1);
-}
-
-// Called from JS after FS.syncfs(true) completes (IDBFS → memory).
-// EMSCRIPTEN_KEEPALIVE exports this symbol so JS can call Module._web_on_idb_ready().
-extern "C" EMSCRIPTEN_KEEPALIVE void web_on_idb_ready() {
-    start_game();
+    s_idb_ready = true; // open the main_loop gate
 }
 
 // ============================================================
@@ -246,18 +244,22 @@ int main(int argc, char *argv[]) {
             } catch (e) {
                 console.warn('[newtonia] IDBFS mount failed:', e);
             }
-            // Populate memory from IndexedDB, then start the game.
+            // Populate memory from IndexedDB, then open the main loop gate.
             FS.syncfs(true, function(err) {
                 if (err) console.error('[newtonia] IDBFS initial sync failed:', err);
                 Module._web_on_idb_ready();
             });
         }, pref.c_str());
     } else {
-        // No pref path available — start without persistence.
-        start_game();
+        // No pref path — initialise without persistence.
+        web_on_idb_ready();
     }
 
-    // Unreachable (emscripten_set_main_loop never returns), but keep for clarity:
+    // emscripten_set_main_loop stays in main() so the WebGL context is never
+    // torn down.  The loop returns early until s_idb_ready is set.
+    emscripten_set_main_loop(main_loop, 0, 1);
+
+    // Unreachable, but kept for clarity:
     delete s_game;
     gles2_shutdown();
     Mix_CloseAudio();
