@@ -4,12 +4,12 @@ plugins {
 
 android {
     namespace 'org.newtonia'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId "org.newtonia"
         minSdk 21           // Android 5.0 (GLES2 guaranteed)
-        targetSdk 34
+        targetSdk 35
         versionCode 1
         versionName project.findProperty('versionName') ?: "0.0.1"
 
