@@ -191,8 +191,12 @@ void Ship::add_weapon(int weapon_index) {
 }
 
 void Ship::add_mine_ammo(int amount) {
-  if(!secondary_weapons.empty()) {
-    (*secondary)->add_ammo(amount);
+  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    if(dynamic_cast<Weapon::Mine*>(*it)) {
+      (*it)->add_ammo(amount);
+      secondary = it;
+      return;
+    }
   }
 }
 

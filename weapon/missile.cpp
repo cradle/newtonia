@@ -18,9 +18,10 @@ const float MissileShot::SEEK_RANGE    = 700.0f;
 const float MissileShot::TURN_RATE     = 0.06f;   // degrees per ms
 const int   MissileShot::TRAIL_LENGTH  = 20;
 
-MissileShot::MissileShot(WrappedPoint pos, Point facing_dir, Point base_velocity)
-  : Object(pos, base_velocity + facing_dir * INITIAL_SPEED),
+MissileShot::MissileShot(WrappedPoint pos, Point facing_dir, Point bv)
+  : Object(pos, bv + facing_dir * INITIAL_SPEED),
     facing(facing_dir),
+    base_velocity(bv),
     speed(INITIAL_SPEED),
     time_left(TIME_TO_LIVE)
 {
@@ -81,7 +82,7 @@ void MissileShot::step_missile(int delta, std::list<Object*> *asteroids) {
   speed += ACCELERATION * (float)delta;
   if (speed > MAX_SPEED) speed = MAX_SPEED;
 
-  velocity = facing * speed;
+  velocity = base_velocity + facing * speed;
 
   // Update position (Object::step handles position += velocity*delta + wrap)
   Object::step(delta);
@@ -97,7 +98,7 @@ namespace Weapon {
 
 Missile::Missile(Ship *ship) : Base(ship) {
   _name = "MISSILES";
-  _ammo = 0;
+  _ammo = 3;
   unlimited = false;
 
   fly_sound = Mix_LoadWAV("missile_fly.wav");
