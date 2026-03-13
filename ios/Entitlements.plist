@@ -10,8 +10,5 @@
     <key>get-task-allow</key>
     <false/>
 
-    <!-- Game Center entitlement (enable in App Store Connect if using leaderboards) -->
-    <key>com.apple.developer.game-center</key>
-    <true/>
 </dict>
 </plist>
