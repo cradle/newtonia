@@ -30,6 +30,11 @@ void touch_controls_resize(int w, int h) {
     float halfGap   = (g_touch_controls.mine_cx - g_touch_controls.shoot_cx) * 0.5f;
     float mineEdge  = (float)w - g_touch_controls.mine_cx;
     g_touch_controls.btn_hit_radius = (halfGap < mineEdge) ? halfGap : mineEdge;
+
+    // Pause zone: top-centre over the LEVEL text
+    g_touch_controls.pause_cx     = (float)w * 0.5f;
+    g_touch_controls.pause_cy     = (float)h * 0.07f;
+    g_touch_controls.pause_radius = minDim * 0.10f;
 }
 
 #endif // __ANDROID__ || __IOS__

@@ -35,6 +35,11 @@ struct TouchControlsState {
     // Half the distance between the two button centres so the touch regions are
     // as large as possible without overlapping each other.
     float btn_hit_radius;
+
+    // ---- Pause zone (top-centre, over the LEVEL text) ----
+    float pause_cx, pause_cy, pause_radius;
+    bool  pause_active;
+    SDL_FingerID pause_finger;
 };
 
 extern TouchControlsState g_touch_controls;
