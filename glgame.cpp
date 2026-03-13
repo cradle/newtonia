@@ -1,5 +1,8 @@
 #include "glgame.h"
 #include "highscore.h"
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 #include "glship.h"
 #include "glcar.h"
 #include "glstarfield.h"
@@ -303,6 +306,10 @@ void GLGame::tick(int delta) {
       for (auto* glship : *players)
         save_high_score(glship->ship->score);
       score_saved = true;
+#ifdef __EMSCRIPTEN__
+      // Show the tap-to-continue overlay so any touch reaches _web_tap_start().
+      EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
+#endif
     }
   }
 
@@ -626,8 +633,8 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
 #endif
-#if defined(__ANDROID__) || defined(__IOS__)
-  // On mobile there is no ESC key; any tap on the game over screen goes to menu.
+#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__)
+  // On mobile/web there is no ESC key; any tap on the game over screen goes to menu.
   if (key != 27) {
     bool all_game_over = !players->empty();
     for (auto* glship : *players) {
