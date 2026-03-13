@@ -10,12 +10,12 @@
 #endif
 
 // MissileShot constants
-const float MissileShot::TIME_TO_LIVE  = 4000.0f;
+const float MissileShot::TIME_TO_LIVE  = 2000.0f;
 const float MissileShot::INITIAL_SPEED = 0.3f;
 const float MissileShot::ACCELERATION  = 0.00015f;
 const float MissileShot::MAX_SPEED     = 0.8f;
 const float MissileShot::SEEK_RANGE    = 700.0f;
-const float MissileShot::TURN_RATE     = 0.12f;   // degrees per ms
+const float MissileShot::TURN_RATE     = 0.24f;   // degrees per ms
 const int   MissileShot::TRAIL_LENGTH  = 20;
 
 MissileShot::MissileShot(WrappedPoint pos, Point facing_dir, Point bv)
@@ -31,7 +31,7 @@ void MissileShot::step_missile(int delta, std::list<Object*> *asteroids) {
   time_left -= delta;
 
   // Seek nearest asteroid within forward cone
-  static const float FORWARD_FOV = 60.0f;  // only seek asteroids within ±60° ahead
+  static const float FORWARD_FOV = 90.0f;  // only seek asteroids within ±90° ahead
   if (asteroids) {
     Object *target = NULL;
     float closest = SEEK_RANGE;
