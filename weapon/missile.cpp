@@ -32,7 +32,7 @@ void MissileShot::step_missile(int delta, std::list<Object*> *asteroids) {
   time_left -= delta;
 
   // Seek nearest asteroid within forward cone
-  static const float FORWARD_FOV = 90.0f;  // only seek asteroids within ±90° ahead
+  static const float FORWARD_FOV = 45.0f;  // only seek asteroids within ±45° ahead
   if (asteroids) {
     Object *target = NULL;
     float closest = SEEK_RANGE;
