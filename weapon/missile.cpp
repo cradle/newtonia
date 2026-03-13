@@ -10,7 +10,7 @@
 #endif
 
 // MissileShot constants
-const float MissileShot::TIME_TO_LIVE  = 2000.0f;
+const float MissileShot::TIME_TO_LIVE  = 3000.0f;
 const float MissileShot::INITIAL_SPEED = 0.3f;
 const float MissileShot::ACCELERATION  = 0.00015f;
 const float MissileShot::MAX_SPEED     = 0.8f;
@@ -21,7 +21,7 @@ const int   MissileShot::TRAIL_LENGTH  = 20;
 MissileShot::MissileShot(WrappedPoint pos, Point facing_dir, Point bv)
   : Object(pos, bv + facing_dir * INITIAL_SPEED),
     facing(facing_dir),
-    speed(INITIAL_SPEED),
+    speed((bv + facing_dir * INITIAL_SPEED).magnitude()),
     time_left(TIME_TO_LIVE)
 {
   radius = 3.0f;
