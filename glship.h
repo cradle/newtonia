@@ -54,6 +54,7 @@ protected:
   virtual void draw_ship(bool minimap = false) const;
   void draw_particles() const;
   void draw_mines(bool minimap) const;
+  void draw_missiles() const;
   void draw_debris() const;
 
   /*delegators*/
@@ -64,7 +65,7 @@ protected:
 
   GLuint body, jets, repulsors, force_shield, force_shield_bg;
 
-  int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, boost_key, teleport_key, help_key;
+  int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, next_secondary_key, boost_key, teleport_key, help_key;
 
   SDL_GameController *controller = NULL;
 
