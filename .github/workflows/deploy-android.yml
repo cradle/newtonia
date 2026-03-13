@@ -58,11 +58,14 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           SIGNING_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
         run: |
+          TAG_VERSION="${{ github.ref_name }}"
+          VERSION="${TAG_VERSION#v}"
           ./gradlew bundleRelease \
             -Pandroid.injected.signing.store.file="$(pwd)/release.jks" \
             -Pandroid.injected.signing.store.password="${SIGNING_STORE_PASSWORD}" \
             -Pandroid.injected.signing.key.alias="${SIGNING_KEY_ALIAS}" \
             -Pandroid.injected.signing.key.password="${SIGNING_KEY_PASSWORD}" \
+            -PversionName="${VERSION:-0.0.1}" \
             --stacktrace
 
       - name: Upload AAB artifact
