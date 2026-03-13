@@ -28,7 +28,11 @@
 //   bottom-left button area       → ' '   (shoot)
 //   bottom-right button area      → 'x'   (mine)
 //
+// Any tap anywhere also sends '\r' down/up so that tapping anywhere on the
+// screen starts the game from the menu (Menu::keyboard_up handles any key).
+//
 // Button hit-testing uses the positions configured by touch_controls_resize.
+// Hit-test radius is btn_hit_radius: half the distance between button centres.
 // DEBUG: very top-right corner (x>0.85, y<0.15) → 'n' (skip level).
 
 static StateManager *s_game     = nullptr;
@@ -79,6 +83,8 @@ static void finger_down(SDL_FingerID id, float x, float y) {
         g_touch_controls.joy_ny     = 0.0f;
         g_touch_controls.joy_active = true;
         g_touch_controls.joy_finger = id;
+        // '\r' is ignored during gameplay but lets any tap start from the menu
+        s_game->keyboard('\r', 0, 0);
     } else {
         // ---- Right half ----
         if(y < 0.4f) {
@@ -87,14 +93,14 @@ static void finger_down(SDL_FingerID id, float x, float y) {
         } else if(!g_touch_controls.shoot_pressed &&
                   tc_dist(px, py,
                           g_touch_controls.shoot_cx,
-                          g_touch_controls.shoot_cy) <= g_touch_controls.shoot_radius * 1.4f) {
+                          g_touch_controls.shoot_cy) <= g_touch_controls.btn_hit_radius) {
             g_touch_controls.shoot_pressed = true;
             g_touch_controls.shoot_finger  = id;
             s_game->keyboard(' ', 0, 0);
         } else if(!g_touch_controls.mine_pressed &&
                   tc_dist(px, py,
                           g_touch_controls.mine_cx,
-                          g_touch_controls.mine_cy) <= g_touch_controls.mine_radius * 1.4f) {
+                          g_touch_controls.mine_cy) <= g_touch_controls.btn_hit_radius) {
             g_touch_controls.mine_pressed = true;
             g_touch_controls.mine_finger  = id;
             s_game->keyboard('x', 0, 0);
@@ -110,6 +116,8 @@ static void finger_up(SDL_FingerID id) {
         g_touch_controls.joy_ny     = 0.0f;
         // Immediately stop all movement
         s_game->touch_joystick(0.0f, 0.0f);
+        // Pair the '\r' sent in finger_down for the left half
+        s_game->keyboard_up('\r', 0, 0);
         return;
     }
     if(g_touch_controls.shoot_pressed && g_touch_controls.shoot_finger == id) {

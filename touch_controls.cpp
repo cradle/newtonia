@@ -23,6 +23,13 @@ void touch_controls_resize(int w, int h) {
     g_touch_controls.mine_cx      = (float)w * 0.90f;
     g_touch_controls.mine_cy      = (float)h * 0.82f;
     g_touch_controls.mine_radius  = btnR;
+
+    // Hit radius: half the distance between the two button centres so the touch
+    // areas are as large as possible without overlapping each other.
+    // Also capped at the distance from the mine centre to the right screen edge.
+    float halfGap   = (g_touch_controls.mine_cx - g_touch_controls.shoot_cx) * 0.5f;
+    float mineEdge  = (float)w - g_touch_controls.mine_cx;
+    g_touch_controls.btn_hit_radius = (halfGap < mineEdge) ? halfGap : mineEdge;
 }
 
 #endif // __ANDROID__ || __IOS__
