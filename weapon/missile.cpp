@@ -15,7 +15,7 @@ const float MissileShot::INITIAL_SPEED = 0.3f;
 const float MissileShot::ACCELERATION  = 0.00015f;
 const float MissileShot::MAX_SPEED     = 0.8f;
 const float MissileShot::SEEK_RANGE    = 700.0f;
-const float MissileShot::TURN_RATE     = 0.06f;   // degrees per ms
+const float MissileShot::TURN_RATE     = 0.12f;   // degrees per ms
 const int   MissileShot::TRAIL_LENGTH  = 20;
 
 MissileShot::MissileShot(WrappedPoint pos, Point facing_dir, Point bv)
