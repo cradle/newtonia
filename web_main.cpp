@@ -36,6 +36,10 @@ static const int MAX_FINGERS = 10;
 static FingerKey s_finger_keys[MAX_FINGERS];
 static int       s_finger_count = 0;
 
+// Pause zone finger tracking (top-centre, over the LEVEL text)
+static bool          s_pause_active = false;
+static SDL_FingerID  s_pause_finger = 0;
+
 static StateManager    *s_game    = nullptr;
 static SDL_Window      *s_window  = nullptr;
 static SDL_GLContext    s_gl_ctx  = nullptr;
@@ -66,6 +70,13 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
 }
 
 static void finger_down(SDL_FingerID id, float x, float y) {
+    // Pause zone: top-centre over the LEVEL text (x in [0.35, 0.65], y < 0.15)
+    if(!s_pause_active && x >= 0.35f && x <= 0.65f && y < 0.15f) {
+        s_pause_active = true;
+        s_pause_finger = id;
+        s_game->keyboard('\r', 0, 0);  // allow menu start on same tap
+        return;
+    }
     if (s_finger_count >= MAX_FINGERS) return;
     unsigned char key = touch_to_key(x, y);
     s_finger_keys[s_finger_count++] = {id, key};
@@ -73,6 +84,11 @@ static void finger_down(SDL_FingerID id, float x, float y) {
 }
 
 static void finger_up(SDL_FingerID id) {
+    if(s_pause_active && s_pause_finger == id) {
+        s_pause_active = false;
+        s_game->keyboard_up('p', 0, 0);
+        return;
+    }
     for (int i = 0; i < s_finger_count; i++) {
         if (s_finger_keys[i].finger_id == id) {
             s_game->keyboard_up(s_finger_keys[i].key, 0, 0);

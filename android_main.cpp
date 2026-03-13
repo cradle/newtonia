@@ -75,6 +75,15 @@ static void finger_down(SDL_FingerID id, float x, float y) {
         return;
     }
 
+    // Pause zone: top-centre over the LEVEL text
+    if(!g_touch_controls.pause_active &&
+       tc_dist(px, py, g_touch_controls.pause_cx, g_touch_controls.pause_cy) <= g_touch_controls.pause_radius) {
+        g_touch_controls.pause_active = true;
+        g_touch_controls.pause_finger = id;
+        s_game->keyboard('\r', 0, 0);  // allow menu start on same tap
+        return;
+    }
+
     if(x < 0.5f) {
         // ---- Left half: virtual joystick (floating base) ----
         g_touch_controls.joy_cx     = px;
@@ -110,6 +119,11 @@ static void finger_down(SDL_FingerID id, float x, float y) {
 }
 
 static void finger_up(SDL_FingerID id) {
+    if(g_touch_controls.pause_active && g_touch_controls.pause_finger == id) {
+        g_touch_controls.pause_active = false;
+        s_game->keyboard_up('p', 0, 0);
+        return;
+    }
     if(g_touch_controls.joy_active && g_touch_controls.joy_finger == id) {
         g_touch_controls.joy_active = false;
         g_touch_controls.joy_nx     = 0.0f;

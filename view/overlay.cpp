@@ -160,19 +160,6 @@ void Overlay::draw_circle(float cx, float cy, float r, int segs, bool filled) {
 
 void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
 #if defined(__ANDROID__) || defined(__IOS__)
-  // Only render for the primary (first) player.
-  if(glgame->players->front() != glship) return;
-
-  // setup_orthogonal() calls gluOrtho2D(-window_w, +window_w, -window_h, +window_h),
-  // so 1 screen pixel = 2 GL units.
-  // Conversion: gl_x = 2*px - window_w,  gl_y = window_h - 2*py
-  float pw = (float)Typer::window_width;
-  float ph = (float)Typer::window_height;
-
-  auto ox = [&](float px) { return 2.0f * px - pw; };
-  auto oy = [&](float py) { return ph - 2.0f * py; };
-  auto sr = [&](float r)  { return 2.0f * r; };
-
   const TouchControlsState &tc = g_touch_controls;
 
   // ---- Virtual joystick ----
