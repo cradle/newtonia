@@ -15,7 +15,7 @@ const float MissileShot::INITIAL_SPEED = 0.3f;
 const float MissileShot::ACCELERATION  = 0.00015f;
 const float MissileShot::MAX_SPEED     = 0.8f;
 const float MissileShot::SEEK_RANGE    = 700.0f;
-const float MissileShot::TURN_RATE     = 0.12f;   // degrees per ms
+const float MissileShot::TURN_RATE     = 0.06f;   // degrees per ms
 const int   MissileShot::TRAIL_LENGTH  = 20;
 
 MissileShot::MissileShot(WrappedPoint pos, Point facing_dir, Point base_velocity)
@@ -30,7 +30,8 @@ MissileShot::MissileShot(WrappedPoint pos, Point facing_dir, Point base_velocity
 void MissileShot::step_missile(int delta, std::list<Object*> *asteroids) {
   time_left -= delta;
 
-  // Seek nearest asteroid
+  // Seek nearest asteroid within forward cone
+  static const float FORWARD_FOV = 60.0f;  // only seek asteroids within ±60° ahead
   if (asteroids) {
     Object *target = NULL;
     float closest = SEEK_RANGE;
@@ -40,10 +41,18 @@ void MissileShot::step_missile(int delta, std::list<Object*> *asteroids) {
       if (!a->alive) continue;
       WrappedPoint apos = a->position;
       float dist = position.distance_to(apos) - a->radius;
-      if (dist < closest) {
-        closest = dist;
-        target = a;
-      }
+      if (dist >= closest) continue;
+
+      // Check if asteroid is in the forward cone
+      Point toward = (position.closest_to(apos) - apos) * -1.0f;  // missile → asteroid
+      float angle_to = facing.direction() - toward.normalized().direction();
+      angle_to = std::fmod(angle_to, 360.0f);
+      if (angle_to >  180.0f) angle_to -= 360.0f;
+      if (angle_to < -180.0f) angle_to += 360.0f;
+      if (std::fabs(angle_to) > FORWARD_FOV) continue;
+
+      closest = dist;
+      target = a;
     }
     if (target) {
       WrappedPoint tpos = target->position;
