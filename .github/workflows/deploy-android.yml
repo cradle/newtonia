@@ -41,19 +41,44 @@ jobs:
       - name: Install NDK and CMake
         run: sdkmanager "ndk;26.3.11579264" "cmake;3.22.1"
 
-      # TEST MODE: build a debug AAB (no signing secrets required) and upload
-      # as a workflow artifact to verify the build works end-to-end.
-      # TODO: replace with signed release build + Play Store upload once
-      #       the Play Console account is verified and secrets are configured.
-      - name: Build debug AAB
+      # Decode the base64-encoded release keystore stored as a GitHub secret.
+      # To generate and encode: keytool -genkey -v -keystore release.jks \
+      #   -alias newtonia -keyalg RSA -keysize 2048 -validity 10000
+      # Then: base64 -i release.jks | tr -d '\n'  →  paste into KEYSTORE_BASE64 secret
+      - name: Decode release keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > newtonia/android/release.jks
+
+      # Build a signed release AAB (Android App Bundle).
+      # Play Store requires AAB for new apps; APK is still accepted for updates.
+      - name: Build signed release AAB
         working-directory: newtonia/android
         env:
           ANDROID_NDK_ROOT: ${{ env.ANDROID_HOME }}/ndk/26.3.11579264
-        run: ./gradlew bundleDebug --stacktrace
+          SIGNING_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: |
+          ./gradlew bundleRelease \
+            -Pandroid.injected.signing.store.file="$(pwd)/release.jks" \
+            -Pandroid.injected.signing.store.password="${SIGNING_STORE_PASSWORD}" \
+            -Pandroid.injected.signing.key.alias="${SIGNING_KEY_ALIAS}" \
+            -Pandroid.injected.signing.key.password="${SIGNING_KEY_PASSWORD}" \
+            --stacktrace
 
-      - name: Upload AAB artifact
-        uses: actions/upload-artifact@v4
+      # Upload the AAB to the Play Store internal testing track.
+      # Promote to alpha/beta/production from the Play Console UI,
+      # or change `track` below to 'alpha', 'beta', or 'production'.
+      #
+      # One-time setup required in Google Play Console:
+      #   1. Create app listing and set package name to org.newtonia
+      #   2. Create a Google Cloud service account with Play Developer API access
+      #   3. Download the service account JSON key
+      #   4. Store the JSON content in the GOOGLE_PLAY_SERVICE_ACCOUNT_JSON secret
+      - name: Upload to Google Play (internal track)
+        uses: r0adkll/upload-google-play@v1
         with:
-          name: newtonia-debug-aab
-          path: newtonia/android/app/build/outputs/bundle/debug/app-debug.aab
-          retention-days: 7
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: org.newtonia
+          releaseFiles: newtonia/android/app/build/outputs/bundle/release/app-release.aab
+          track: internal
+          status: completed
