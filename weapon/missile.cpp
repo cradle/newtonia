@@ -21,6 +21,7 @@ const int   MissileShot::TRAIL_LENGTH  = 20;
 MissileShot::MissileShot(WrappedPoint pos, Point facing_dir, Point bv)
   : Object(pos, bv + facing_dir * INITIAL_SPEED),
     facing(facing_dir),
+    thrust(INITIAL_SPEED),
     time_left(TIME_TO_LIVE)
 {
   radius = 3.0f;
@@ -75,10 +76,10 @@ void MissileShot::step_missile(int delta, std::list<Object*> *asteroids) {
     }
   }
 
-  // Accelerate along facing direction, accumulate into velocity (same as ship)
-  velocity += facing * (ACCELERATION * (float)delta);
-  float spd = velocity.magnitude();
-  if (spd > MAX_SPEED) velocity = velocity * (MAX_SPEED / spd);
+  // Thrust grows over time; facing gives its direction (same model as ship)
+  thrust += ACCELERATION * (float)delta;
+  if (thrust > MAX_SPEED) thrust = MAX_SPEED;
+  velocity += facing * (thrust * (float)delta);
 
   // Update position (Object::step handles position += velocity*delta + wrap)
   Object::step(delta);

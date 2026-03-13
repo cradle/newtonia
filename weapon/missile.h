@@ -11,6 +11,7 @@
 
 struct MissileShot : public Object {
   Point facing;
+  float thrust;
   float time_left;
   std::deque<WrappedPoint> trail;
 
