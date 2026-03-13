@@ -510,11 +510,10 @@ void Ship::shoot(bool on) {
 }
 
 void Ship::mine(bool on) {
-  (*secondary)->shoot(on);
   if((*secondary)->empty() && on) {
-    //TODO: allow 'empty' secondary when needed
-    //delete *secondary;
-    //secondary = secondary_weapons.erase(secondary);
+    next_secondary_weapon();
+  } else {
+    (*secondary)->shoot(on);
   }
 }
 
