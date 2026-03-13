@@ -21,7 +21,6 @@ const int   MissileShot::TRAIL_LENGTH  = 20;
 MissileShot::MissileShot(WrappedPoint pos, Point facing_dir, Point bv)
   : Object(pos, bv + facing_dir * INITIAL_SPEED),
     facing(facing_dir),
-    base_velocity(bv),
     speed(INITIAL_SPEED),
     time_left(TIME_TO_LIVE)
 {
@@ -78,11 +77,10 @@ void MissileShot::step_missile(int delta, std::list<Object*> *asteroids) {
     }
   }
 
-  // Accelerate
+  // Accelerate along facing direction
   speed += ACCELERATION * (float)delta;
   if (speed > MAX_SPEED) speed = MAX_SPEED;
-
-  velocity = base_velocity + facing * speed;
+  velocity += facing * (ACCELERATION * (float)delta);
 
   // Update position (Object::step handles position += velocity*delta + wrap)
   Object::step(delta);
