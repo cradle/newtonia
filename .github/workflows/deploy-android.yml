@@ -65,6 +65,13 @@ jobs:
             -Pandroid.injected.signing.key.password="${SIGNING_KEY_PASSWORD}" \
             --stacktrace
 
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: newtonia-release-aab
+          path: newtonia/android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 30
+
       # Upload the AAB to the Play Store internal testing track.
       # Promote to alpha/beta/production from the Play Console UI,
       # or change `track` below to 'alpha', 'beta', or 'production'.
