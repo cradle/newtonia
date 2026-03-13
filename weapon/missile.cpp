@@ -13,6 +13,7 @@
 const float MissileShot::TIME_TO_LIVE  = 3000.0f;
 const float MissileShot::INITIAL_SPEED = 0.3f;
 const float MissileShot::ACCELERATION  = 0.00015f;
+const float MissileShot::MAX_THRUST    = 0.003f;    // acceleration units (units/ms²)
 const float MissileShot::MAX_SPEED     = 0.8f;
 const float MissileShot::SEEK_RANGE    = 700.0f;
 const float MissileShot::TURN_RATE     = 0.24f;   // degrees per ms
@@ -21,7 +22,7 @@ const int   MissileShot::TRAIL_LENGTH  = 20;
 MissileShot::MissileShot(WrappedPoint pos, Point facing_dir, Point bv)
   : Object(pos, bv + facing_dir * INITIAL_SPEED),
     facing(facing_dir),
-    thrust(INITIAL_SPEED),
+    thrust(0.0f),
     time_left(TIME_TO_LIVE)
 {
   radius = 3.0f;
@@ -78,8 +79,10 @@ void MissileShot::step_missile(int delta, std::list<Object*> *asteroids) {
 
   // Thrust grows over time; facing gives its direction (same model as ship)
   thrust += ACCELERATION * (float)delta;
-  if (thrust > MAX_SPEED) thrust = MAX_SPEED;
+  if (thrust > MAX_THRUST) thrust = MAX_THRUST;
   velocity += facing * (thrust * (float)delta);
+  float spd = velocity.magnitude();
+  if (spd > MAX_SPEED) velocity = velocity * (MAX_SPEED / spd);
 
   // Update position (Object::step handles position += velocity*delta + wrap)
   Object::step(delta);

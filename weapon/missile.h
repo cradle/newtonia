@@ -18,6 +18,7 @@ struct MissileShot : public Object {
   static const float TIME_TO_LIVE;
   static const float INITIAL_SPEED;
   static const float ACCELERATION;
+  static const float MAX_THRUST;
   static const float MAX_SPEED;
   static const float SEEK_RANGE;
   static const float TURN_RATE;
