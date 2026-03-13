@@ -32,7 +32,7 @@
 // screen starts the game from the menu (Menu::keyboard_up handles any key).
 //
 // Button hit-testing uses the positions configured by touch_controls_resize.
-// Hit-test radius multiplier is 2.0x (visual radius) for a generous tap target.
+// Hit-test radius is btn_hit_radius: half the distance between button centres.
 // DEBUG: very top-right corner (x>0.85, y<0.15) → 'n' (skip level).
 
 static StateManager *s_game     = nullptr;
@@ -93,14 +93,14 @@ static void finger_down(SDL_FingerID id, float x, float y) {
         } else if(!g_touch_controls.shoot_pressed &&
                   tc_dist(px, py,
                           g_touch_controls.shoot_cx,
-                          g_touch_controls.shoot_cy) <= g_touch_controls.shoot_radius * 2.0f) {
+                          g_touch_controls.shoot_cy) <= g_touch_controls.btn_hit_radius) {
             g_touch_controls.shoot_pressed = true;
             g_touch_controls.shoot_finger  = id;
             s_game->keyboard(' ', 0, 0);
         } else if(!g_touch_controls.mine_pressed &&
                   tc_dist(px, py,
                           g_touch_controls.mine_cx,
-                          g_touch_controls.mine_cy) <= g_touch_controls.mine_radius * 2.0f) {
+                          g_touch_controls.mine_cy) <= g_touch_controls.btn_hit_radius) {
             g_touch_controls.mine_pressed = true;
             g_touch_controls.mine_finger  = id;
             s_game->keyboard('x', 0, 0);

@@ -30,6 +30,11 @@ struct TouchControlsState {
     float mine_cx, mine_cy, mine_radius;
     bool  mine_pressed;
     SDL_FingerID mine_finger;
+
+    // ---- Shared hit-test radius for shoot & mine ----
+    // Half the distance between the two button centres so the touch regions are
+    // as large as possible without overlapping each other.
+    float btn_hit_radius;
 };
 
 extern TouchControlsState g_touch_controls;
