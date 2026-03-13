@@ -46,6 +46,7 @@ GLGame::GLGame(SDL_GameController *controller) :
 
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
+  ship_objects = new std::list<Object*>;
   objects = new std::list<Asteroid*>;
   pickups = new std::list<Pickup*>;
 
@@ -71,6 +72,8 @@ GLGame::GLGame(SDL_GameController *controller) :
     object->set_keys('a','d','w',' ','s','x','q','e', 't', 128+GLUT_KEY_F1);
   }
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
+  ship_objects->push_back(object->ship);
+  object->ship->set_missile_ships(ship_objects);
   players->push_back(object);
 
   station = NULL;//new GLStation(enemies, players);
@@ -96,6 +99,7 @@ GLGame::~GLGame() {
     enemies->pop_back();
   }
   delete enemies;
+  delete ship_objects;
   while(!objects->empty()) {
     delete objects->back();
     objects->pop_back();
@@ -265,6 +269,7 @@ void GLGame::tick(int delta) {
     o = enemies->begin();
     while(o != enemies->end()) {
       if((*o)->is_removable()) {
+        ship_objects->remove((*o)->ship);
         delete *o;
         o = enemies->erase(o);
       } else {
@@ -634,6 +639,9 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       GLShip* object = new GLCar(grid, true);
       object->set_keys('j','l','i','/','k',',','u','o','y',128+GLUT_KEY_F8);
       object->ship->set_missile_asteroids((std::list<Object*>*)objects);
+      ship_objects->push_back(object->ship);
+      for (auto *p : *players) p->ship->set_missile_ships(ship_objects);
+      object->ship->set_missile_ships(ship_objects);
       players->push_back(object);
     }
   }

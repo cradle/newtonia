@@ -74,6 +74,7 @@ private:
   GLStarfield *starfield;
   GLStation *station;
   list<GLShip*> *enemies, *players;
+  list<Object*> *ship_objects;  // Ship* (as Object*) for missile homing
 };
 
 #endif

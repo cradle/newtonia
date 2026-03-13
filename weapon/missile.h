@@ -25,7 +25,7 @@ struct MissileShot : public Object {
   static const int   TRAIL_LENGTH;
 
   MissileShot(WrappedPoint pos, Point facing_dir, Point base_velocity);
-  void step_missile(int delta, std::list<Object*> *asteroids);
+  void step_missile(int delta, std::list<Object*> *asteroids, std::list<Object*> *ships = nullptr);
   bool is_alive() const { return time_left > 0; }
 };
 
@@ -38,10 +38,12 @@ namespace Weapon {
     void shoot(bool on = true);
     void step(int delta);
     void set_asteroids(std::list<Object*> *a) { asteroids = a; }
+    void set_ship_targets(std::list<Object*> *s) { ship_targets = s; }
 
     Mix_Chunk *fly_sound = NULL, *empty_sound = NULL;
   private:
     std::list<Object*> *asteroids = nullptr;
+    std::list<Object*> *ship_targets = nullptr;
   };
 }
 

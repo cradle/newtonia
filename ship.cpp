@@ -218,6 +218,13 @@ void Ship::set_missile_asteroids(std::list<Object*> *asteroids) {
   }
 }
 
+void Ship::set_missile_ships(std::list<Object*> *ships) {
+  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    Weapon::Missile *mw = dynamic_cast<Weapon::Missile*>(*it);
+    if(mw) { mw->set_ship_targets(ships); return; }
+  }
+}
+
 void Ship::init(bool no_friction) {
   mass = 100.0;
   value = 1000000;

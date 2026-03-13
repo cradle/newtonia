@@ -28,32 +28,38 @@ MissileShot::MissileShot(WrappedPoint pos, Point facing_dir, Point bv)
   radius = 3.0f;
 }
 
-void MissileShot::step_missile(int delta, std::list<Object*> *asteroids) {
+void MissileShot::step_missile(int delta, std::list<Object*> *asteroids, std::list<Object*> *ships) {
   time_left -= delta;
 
-  // Seek nearest asteroid within forward cone
-  static const float FORWARD_FOV = 45.0f;  // only seek asteroids within ±45° ahead
-  if (asteroids) {
+  // Seek nearest target (asteroid or ship) within forward cone
+  static const float FORWARD_FOV = 45.0f;  // only seek targets within ±45° ahead
+  {
     Object *target = NULL;
     float closest = SEEK_RANGE;
-    std::list<Object*>::iterator it;
-    for (it = asteroids->begin(); it != asteroids->end(); ++it) {
-      Object *a = *it;
-      if (!a->alive) continue;
-      WrappedPoint apos = a->position;
-      float dist = position.distance_to(apos) - a->radius;
-      if (dist >= closest) continue;
 
-      // Check if asteroid is in the forward cone
-      Point toward = (position.closest_to(apos) - apos) * -1.0f;  // missile → asteroid
-      float angle_to = facing.direction() - toward.normalized().direction();
-      while (angle_to >  180.0f) angle_to -= 360.0f;
-      while (angle_to < -180.0f) angle_to += 360.0f;
-      if (std::fabs(angle_to) > FORWARD_FOV) continue;
+    auto seek_list = [&](std::list<Object*> *lst) {
+      if (!lst) return;
+      for (auto it = lst->begin(); it != lst->end(); ++it) {
+        Object *a = *it;
+        if (!a->alive) continue;
+        WrappedPoint apos = a->position;
+        float dist = position.distance_to(apos) - a->radius;
+        if (dist >= closest) continue;
 
-      closest = dist;
-      target = a;
-    }
+        Point toward = (position.closest_to(apos) - apos) * -1.0f;
+        float angle_to = facing.direction() - toward.normalized().direction();
+        while (angle_to >  180.0f) angle_to -= 360.0f;
+        while (angle_to < -180.0f) angle_to += 360.0f;
+        if (std::fabs(angle_to) > FORWARD_FOV) continue;
+
+        closest = dist;
+        target = a;
+      }
+    };
+
+    seek_list(asteroids);
+    seek_list(ships);
+
     if (target) {
       WrappedPoint tpos = target->position;
       // Direction from missile toward asteroid
@@ -134,7 +140,7 @@ void Missile::shoot(bool on) {
 
 void Missile::step(int delta) {
   for(size_t i = 0; i < ship->missiles.size(); i++) {
-    ship->missiles[i].step_missile(delta, asteroids);
+    ship->missiles[i].step_missile(delta, asteroids, ship_targets);
   }
 }
 
