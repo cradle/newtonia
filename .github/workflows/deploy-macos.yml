@@ -225,19 +225,12 @@ jobs:
             --sign "3rd Party Mac Developer Installer" \
             Newtonia.pkg
 
-      # Upload to App Store Connect (Mac target).
-      # The build will appear under TestFlight for internal testing;
-      # submit for Mac App Store review from the App Store Connect UI.
-      - name: Upload to App Store Connect
-        env:
-          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
-        run: |
-          mkdir -p ~/.private_keys
-          echo "$API_KEY_CONTENT" > ~/.private_keys/AuthKey_${API_KEY_ID}.p8
-          xcrun altool --upload-app \
-            --type macos \
-            --file Newtonia.pkg \
-            --apiKey "$API_KEY_ID" \
-            --apiIssuer "$API_ISSUER_ID"
+      # Upload to TestFlight. The build appears under TestFlight for internal
+      # testing immediately; submit for Mac App Store review from App Store Connect UI.
+      - name: Upload to TestFlight
+        uses: apple-actions/upload-testflight-build@v1
+        with:
+          app-path: Newtonia.pkg
+          issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          api-key-id: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          api-private-key: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
