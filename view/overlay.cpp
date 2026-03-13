@@ -159,39 +159,6 @@ void Overlay::draw_circle(float cx, float cy, float r, int segs, bool filled) {
 }
 
 void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
-#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__)
-  // Only render for the primary (first) player.
-  if(glgame->players->front() != glship) return;
-
-  // setup_orthogonal() calls gluOrtho2D(-window_w, +window_w, -window_h, +window_h),
-  // so 1 screen pixel = 2 GL units.
-  // Conversion: gl_x = 2*px - window_w,  gl_y = window_h - 2*py
-  float pw = (float)Typer::window_width;
-  float ph = (float)Typer::window_height;
-
-  auto ox = [&](float px) { return 2.0f * px - pw; };
-  auto oy = [&](float py) { return ph - 2.0f * py; };
-  auto sr = [&](float r)  { return 2.0f * r; };
-
-  // ---- Pause zone hint (top-centre, over the LEVEL text) ----
-  {
-    float minDim = pw < ph ? pw : ph;
-    float bx = ox(pw * 0.5f);
-    float by = oy(ph * 0.07f);
-    float br = sr(minDim * 0.10f);
-    if(!glgame->running) {
-      glColor4f(1.0f, 0.9f, 0.3f, 0.30f);
-      draw_circle(bx, by, br, 28, true);
-      glColor4f(1.0f, 0.9f, 0.3f, 0.65f);
-      draw_circle(bx, by, br, 28, false);
-    } else {
-      glColor4f(0.9f, 0.9f, 0.9f, 0.10f);
-      draw_circle(bx, by, br, 28, true);
-      glColor4f(0.9f, 0.9f, 0.9f, 0.28f);
-      draw_circle(bx, by, br, 28, false);
-    }
-  }
-
 #if defined(__ANDROID__) || defined(__IOS__)
   const TouchControlsState &tc = g_touch_controls;
 
@@ -247,5 +214,4 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     draw_circle(bx, by, br, 28, false);
   }
 #endif // __ANDROID__ || __IOS__
-#endif // __ANDROID__ || __IOS__ || __EMSCRIPTEN__
 }
