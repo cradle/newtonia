@@ -4,6 +4,7 @@
 #include "composite_object.h"
 #include "point.h"
 #include "particle.h"
+#include "weapon/missile.h"
 #include "grid.h"
 #include <list>
 #include <vector>
@@ -64,6 +65,7 @@ class Ship : public CompositeObject {
     void kill_stop();
 
     std::vector<Particle> bullets, mines;
+    std::vector<MissileShot> missiles;
 
     enum Rotation {
       LEFT = 1,
@@ -88,8 +90,12 @@ class Ship : public CompositeObject {
 
     void next_weapon();
     void previous_weapon();
+    void next_secondary_weapon();
     void add_weapon(int weapon_index);
     void add_mine_ammo(int amount);
+    void add_missile_ammo(int amount);
+    void set_missile_asteroids(std::list<Object*> *asteroids);
+    void set_missile_ships(std::list<Object*> *ships);
     WrappedPoint gun() const;
     bool kill();
 
@@ -127,6 +133,7 @@ class Ship : public CompositeObject {
 
     void play_rotating_sound(bool on);
     Mix_Chunk *boost_sound = NULL, *tic_sound = NULL, *tic_low_sound = NULL, *click_sound = NULL;
+    Mix_Chunk *missile_explode_sound = NULL;
 
     list<Behaviour *> behaviours;
     list<Weapon::Base *> primary_weapons;

@@ -26,6 +26,7 @@ GLShip::GLShip(const Grid &grid, bool has_friction) : show_help(false) {
   camera_rotation = ship->heading();
 
   camera_angle = 85.0f;
+  next_secondary_key = 'c';
 
   color[0] = 72/255.0;
   color[1] = 118/255.0;
@@ -269,6 +270,8 @@ void GLShip::controller_input(SDL_Event event) {
     ship->boost();
   } else if(event.cbutton.button == SDL_CONTROLLER_BUTTON_X && pressed) {
     ship->next_weapon();
+  } else if(event.cbutton.button == SDL_CONTROLLER_BUTTON_Y && pressed) {
+    ship->next_secondary_weapon();
   } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_RIGHTSHOULDER && pressed) {
     ship->behaviours.push_back(new Teleport(ship));
   }
@@ -378,6 +381,8 @@ void GLShip::input(unsigned char key, bool pressed) {
     ship->boost();
   } else if(key == next_weapon_key && pressed) {
     ship->next_weapon();
+  } else if(key == next_secondary_key && pressed) {
+    ship->next_secondary_weapon();
   } else if (key == 'q' && pressed) {
     ship->disable_behaviours();
   } else if (key == teleport_key && pressed) {
@@ -400,6 +405,9 @@ void GLShip::draw(bool minimap) {
     }
   }
   draw_mines(minimap);
+  if(!minimap) {
+    draw_missiles();
+  }
   if(ship->is_alive()) {
     draw_ship(minimap);
   }
@@ -459,7 +467,7 @@ void GLShip::draw_body() const {
 
 void GLShip::draw_keymap() const {
   int size = 10;
-  int num_controls  = 8;
+  int num_controls  = 9;
   if(controller != NULL) {
     num_controls++;
   }
@@ -523,6 +531,13 @@ void GLShip::draw_keymap() const {
     Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, (char)next_weapon_key, size);
   } else {
     Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_X), size);
+  }
+  control_index++;
+  Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "CHANGE SECONDARY", size);
+  if(controller == NULL) {
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, (char)next_secondary_key, size);
+  } else {
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_Y), size);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "BOOST", size);
@@ -671,5 +686,36 @@ void GLShip::draw_mines(bool minimap) const {
     glVertex2fv(v3); glVertex2fv(v0);
   }
   glEnd();
+}
+
+void GLShip::draw_missiles() const {
+  for(auto &m : ship->missiles) {
+    // Trail: fading dots in player colour, oldest (dim) to newest (bright)
+    if(!m.trail.empty()) {
+      glPointSize(2.5f);
+      glBegin(GL_POINTS);
+      int trail_sz = (int)m.trail.size();
+      for(int ti = trail_sz - 1; ti >= 0; ti--) {
+        float alpha = (1.0f - (float)ti / (float)trail_sz) * 0.6f;
+        glColor4f(color[0], color[1], color[2], alpha);
+        glVertex2fv(m.trail[ti]);
+      }
+      glEnd();
+    }
+
+    // Missile body: small triangle in player colour
+    glPushMatrix();
+    glTranslatef(m.position.x(), m.position.y(), 0.0f);
+    glRotatef(m.facing.direction(), 0.0f, 0.0f, 1.0f);
+    float sz = 5.0f;
+    glColor3fv(color);
+    glLineWidth(1.5f);
+    glBegin(GL_LINE_LOOP);
+    glVertex2f( 0.0f,  sz);        // tip (forward)
+    glVertex2f(-sz * 0.5f, -sz);  // rear left
+    glVertex2f( sz * 0.5f, -sz);  // rear right
+    glEnd();
+    glPopMatrix();
+  }
 }
 
