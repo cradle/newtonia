@@ -1,0 +1,185 @@
+name: Deploy Windows (Microsoft Store)
+
+# Triggered by pushing a version tag, e.g.:
+#   git tag v1.0.0 && git push --tags
+# Or manually from the Actions tab.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-freeglut
+            mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-SDL2_mixer
+
+      - name: Build
+        run: |
+          SRCS=$(find . -name "*.cpp" \
+            -not -path "./android/*" \
+            -not -path "./.git/*" \
+            -not -name "gles2_compat.cpp")
+          windres icon.rc -O coff -o icon.res
+          g++ -O2 -Wall -std=c++11 -D_USE_MATH_DEFINES -DFREEGLUT_STATIC \
+            $(pkg-config --cflags sdl2 SDL2_mixer freeglut) \
+            -o newtonia.exe $SRCS icon.res \
+            -static \
+            $(pkg-config --libs --static sdl2 SDL2_mixer freeglut) \
+            -lopengl32 -lglu32
+
+      # The following steps switch to PowerShell to use Windows-native tools.
+      #
+      # One-time setup required for Microsoft Store:
+      #   1. Create a Microsoft Partner Center account (free) at partner.microsoft.com
+      #   2. Create an app listing and reserve the package name "Newtonia"
+      #   3. Note the Store ID (e.g. 9NBLGGH4NNS1) from the app overview page
+      #   4. In Azure Portal, register an app under Azure Active Directory:
+      #        - Grant it "Windows Store Submission API" permissions
+      #        - Create a client secret
+      #      Store as secrets: AZURE_AD_TENANT_ID, AZURE_AD_CLIENT_ID,
+      #                        AZURE_AD_CLIENT_SECRET
+      #   5. In Partner Center → Account settings → User management, link the
+      #      Azure AD app with "Manager" role
+      #   6. Obtain a code signing certificate (EV cert recommended for Store):
+      #        base64 -w0 CodeSigning.pfx → WINDOWS_CERTIFICATE_BASE64 secret
+      #        Store password → WINDOWS_CERTIFICATE_PASSWORD secret
+
+      # Decode the code signing certificate needed for MSIX.
+      - name: Decode signing certificate
+        shell: pwsh
+        run: |
+          $certBytes = [Convert]::FromBase64String("${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}")
+          [IO.File]::WriteAllBytes("cert.pfx", $certBytes)
+
+      # Create the MSIX package layout and manifest.
+      # MSIX is the package format required by the Microsoft Store.
+      - name: Create MSIX package layout
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path MsixLayout
+          Copy-Item newtonia.exe MsixLayout\
+
+          # Copy MSYS2 runtime DLLs that were statically linked — if any remain
+          # as dynamic dependencies they must be bundled here.
+
+          # Write AppxManifest.xml (required for MSIX)
+          @"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <Package
+            xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+            xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+            IgnorableNamespaces="uap">
+            <Identity
+              Name="Newtonia"
+              Publisher="CN=${{ secrets.PUBLISHER_COMMON_NAME }}"
+              Version="${{ github.ref_name }}.0"
+              ProcessorArchitecture="x64"/>
+            <Properties>
+              <DisplayName>Newtonia</DisplayName>
+              <PublisherDisplayName>Newtonia</PublisherDisplayName>
+              <Logo>Assets\StoreLogo.png</Logo>
+            </Properties>
+            <Dependencies>
+              <TargetDeviceFamily Name="Windows.Desktop"
+                MinVersion="10.0.17763.0"
+                MaxVersionTested="10.0.22621.0"/>
+            </Dependencies>
+            <Resources>
+              <Resource Language="en-US"/>
+            </Resources>
+            <Applications>
+              <Application Id="Newtonia" Executable="newtonia.exe"
+                EntryPoint="Windows.FullTrustApplication">
+                <uap:VisualElements
+                  DisplayName="Newtonia"
+                  Description="A 2-player space shooter game"
+                  BackgroundColor="transparent"
+                  Square150x150Logo="Assets\Square150x150Logo.png"
+                  Square44x44Logo="Assets\Square44x44Logo.png"/>
+              </Application>
+            </Applications>
+          </Package>
+          "@ | Out-File -Encoding UTF8 MsixLayout\AppxManifest.xml
+
+          # Placeholder assets — replace with actual store artwork before release.
+          # Required sizes: 150x150, 44x44, 50x50 (StoreLogo) PNG files.
+          New-Item -ItemType Directory -Force -Path MsixLayout\Assets
+          Add-Type -AssemblyName System.Drawing
+          foreach ($spec in @(
+            @{W=150;H=150;Name="Square150x150Logo.png"},
+            @{W=44; H=44; Name="Square44x44Logo.png"},
+            @{W=50; H=50; Name="StoreLogo.png"}
+          )) {
+            $bmp = New-Object System.Drawing.Bitmap($spec.W, $spec.H)
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            $g.FillRectangle([System.Drawing.Brushes]::DarkBlue, 0, 0, $spec.W, $spec.H)
+            $bmp.Save("MsixLayout\Assets\$($spec.Name)", [System.Drawing.Imaging.ImageFormat]::Png)
+            $g.Dispose(); $bmp.Dispose()
+          }
+
+      # Pack the directory into a .msix file using makeappx (included with Windows SDK).
+      - name: Pack MSIX
+        shell: pwsh
+        run: |
+          $makeappx = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" `
+            -Recurse -Filter makeappx.exe | Select-Object -Last 1).FullName
+          & $makeappx pack /d MsixLayout /p Newtonia.msix /nv
+
+      # Sign the MSIX with the code signing certificate.
+      - name: Sign MSIX
+        shell: pwsh
+        run: |
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" `
+            -Recurse -Filter signtool.exe | Select-Object -Last 1).FullName
+          & $signtool sign /fd SHA256 /p "${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}" `
+            /f cert.pfx Newtonia.msix
+
+      # Submit to the Microsoft Store via the Partner Center Submission API.
+      # Uses the StoreBroker PowerShell module for convenience.
+      - name: Submit to Microsoft Store
+        shell: pwsh
+        env:
+          TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
+          CLIENT_ID: ${{ secrets.AZURE_AD_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.AZURE_AD_CLIENT_SECRET }}
+          STORE_APP_ID: ${{ secrets.PARTNER_CENTER_APP_ID }}
+        run: |
+          Install-Module -Name StoreBroker -Force -Scope CurrentUser
+
+          # Authenticate with the Store Submission API
+          Set-StoreBrokerAuthentication `
+            -TenantId $env:TENANT_ID `
+            -ClientId $env:CLIENT_ID `
+            -ClientSecret $env:CLIENT_SECRET
+
+          # Create a new submission based on the last published submission
+          $sub = New-ApplicationSubmission -AppId $env:STORE_APP_ID -Force
+
+          # Upload the MSIX package
+          Update-ApplicationSubmissionPackage `
+            -PackagePath Newtonia.msix `
+            -SubmissionId $sub.id `
+            -AppId $env:STORE_APP_ID
+
+          # Commit the submission (triggers Store certification review)
+          Complete-ApplicationSubmission `
+            -AppId $env:STORE_APP_ID `
+            -SubmissionId $sub.id
