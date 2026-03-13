@@ -27,7 +27,11 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
 void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
   if(!glgame->running && !glship->show_help) {
     Typer::draw_centered(0, 30, "Paused", 25);
+#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__)
+    Typer::draw_centered(0, -40, "TOUCH LEVEL TO UNPAUSE", 8);
+#else
     Typer::draw_centered(0, -40, "press p to unpause", 8);
+#endif
   }
 }
 
