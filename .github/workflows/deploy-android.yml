@@ -58,8 +58,13 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           SIGNING_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
         run: |
-          TAG_VERSION="${{ github.ref_name }}"
-          VERSION="${TAG_VERSION#v}"
+          REF="${{ github.ref }}"
+          if [[ "$REF" == refs/tags/v* ]]; then
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+          else
+            VERSION="0.0.1"
+          fi
           ./gradlew bundleRelease \
             -Pandroid.injected.signing.store.file="$(pwd)/release.jks" \
             -Pandroid.injected.signing.store.password="${SIGNING_STORE_PASSWORD}" \
