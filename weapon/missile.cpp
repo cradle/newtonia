@@ -46,9 +46,8 @@ void MissileShot::step_missile(int delta, std::list<Object*> *asteroids) {
       // Check if asteroid is in the forward cone
       Point toward = (position.closest_to(apos) - apos) * -1.0f;  // missile → asteroid
       float angle_to = facing.direction() - toward.normalized().direction();
-      angle_to = std::fmod(angle_to, 360.0f);
-      if (angle_to >  180.0f) angle_to -= 360.0f;
-      if (angle_to < -180.0f) angle_to += 360.0f;
+      while (angle_to >  180.0f) angle_to -= 360.0f;
+      while (angle_to < -180.0f) angle_to += 360.0f;
       if (std::fabs(angle_to) > FORWARD_FOV) continue;
 
       closest = dist;
@@ -77,10 +76,10 @@ void MissileShot::step_missile(int delta, std::list<Object*> *asteroids) {
     }
   }
 
-  // Accelerate along facing direction
+  // Accelerate along facing direction, velocity always matches facing
   speed += ACCELERATION * (float)delta;
   if (speed > MAX_SPEED) speed = MAX_SPEED;
-  velocity += facing * (ACCELERATION * (float)delta);
+  velocity = facing * speed;
 
   // Update position (Object::step handles position += velocity*delta + wrap)
   Object::step(delta);
