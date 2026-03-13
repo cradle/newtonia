@@ -122,11 +122,16 @@ jobs:
             -framework Metal
 
       - name: Bundle .app
-        run: cp newtonia/ios/Info.plist Newtonia.app/Info.plist
+        run: |
+          cp newtonia/ios/Info.plist Newtonia.app/Info.plist
+          TAG_VERSION="${{ github.ref_name }}"
+          VERSION="${TAG_VERSION#v}"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" Newtonia.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Newtonia.app/Info.plist
 
       # Import the Apple Distribution certificate and provisioning profile.
       # One-time setup required:
-      #   1. In Apple Developer Portal, create an App ID for com.newtonia.app
+      #   1. In Apple Developer Portal, create an App ID for cc.gfm.Newtonia
       #   2. Create an App Store Distribution provisioning profile
       #   3. Export the Distribution certificate as .p12, base64-encode it:
       #        base64 -w0 Certificates.p12  → DISTRIBUTION_CERT_BASE64 secret
