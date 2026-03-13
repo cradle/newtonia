@@ -40,6 +40,9 @@ static int       s_finger_count = 0;
 static bool          s_pause_active = false;
 static SDL_FingerID  s_pause_finger = 0;
 
+// Set on first SDL_FINGERDOWN; used by overlay to show touch-specific hints.
+bool g_web_touch_detected = false;
+
 static StateManager    *s_game    = nullptr;
 static SDL_Window      *s_window  = nullptr;
 static SDL_GLContext    s_gl_ctx  = nullptr;
@@ -70,6 +73,7 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
 }
 
 static void finger_down(SDL_FingerID id, float x, float y) {
+    g_web_touch_detected = true;
     // Pause zone: top-centre over the LEVEL text (x in [0.35, 0.65], y < 0.15)
     if(!s_pause_active && x >= 0.35f && x <= 0.65f && y < 0.15f) {
         s_pause_active = true;
