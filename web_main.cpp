@@ -63,6 +63,7 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
         else if (lx < 0.5f)  return 'a'; // rotate left
         else                 return 'd'; // rotate right
     } else {
+        if (norm_y < 0.65f) return 0;  // dead zone above buttons
         float rx = (norm_x - 0.5f) * 2.0f;
         if (rx < 0.5f)  return ' ';  // shoot
         else            return 'x';  // mine
@@ -79,6 +80,7 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     }
     if (s_finger_count >= MAX_FINGERS) return;
     unsigned char key = touch_to_key(x, y);
+    if (!key) return;
     s_finger_keys[s_finger_count++] = {id, key};
     s_game->keyboard(key, 0, 0);
 }

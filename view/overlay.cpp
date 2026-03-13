@@ -7,6 +7,9 @@
 #include "../gl_compat.h"
 #include <cstdio>
 #include <cmath>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 const float Overlay::CORNER_INSET = 35.0f;
 
@@ -27,7 +30,16 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
 void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
   if(!glgame->running && !glship->show_help) {
     Typer::draw_centered(0, 30, "Paused", 25);
+#if defined(__ANDROID__) || defined(__IOS__)
+    Typer::draw_centered(0, -40, "TOUCH LEVEL TO UNPAUSE", 8);
+#elif defined(__EMSCRIPTEN__)
+    if(EM_ASM_INT(return window.matchMedia('(pointer: coarse)').matches ? 1 : 0;))
+      Typer::draw_centered(0, -40, "TOUCH LEVEL TO UNPAUSE", 8);
+    else
+      Typer::draw_centered(0, -40, "press p to unpause", 8);
+#else
     Typer::draw_centered(0, -40, "press p to unpause", 8);
+#endif
   }
 }
 
