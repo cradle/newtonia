@@ -18,6 +18,7 @@ namespace Weapon {
   }
 
   void Shield::shoot(bool on) {
+    shooting = on;
     if(on) {
       if(_ammo == 0) {
         if(empty_sound != NULL) {
@@ -32,5 +33,16 @@ namespace Weapon {
   }
 
   void Shield::step(int delta) {
+    if(shooting && ship->time_left_invincible <= 0) {
+      if(_ammo == 0) {
+        if(empty_sound != NULL) {
+          Mix_PlayChannel(-1, empty_sound, 0);
+        }
+        return;
+      }
+      _ammo--;
+      ship->time_left_invincible += 1000;
+      ship->invincible = true;
+    }
   }
 }
