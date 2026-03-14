@@ -10,5 +10,9 @@
     <key>get-task-allow</key>
     <false/>
 
+    <!-- Physical gamepad support -->
+    <key>com.apple.developer.game-controllers</key>
+    <true/>
+
 </dict>
 </plist>
