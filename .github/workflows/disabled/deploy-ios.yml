@@ -145,14 +145,16 @@ jobs:
           CERT_BASE64: ${{ secrets.DISTRIBUTION_CERT_BASE64 }}
           CERT_PASSWORD: ${{ secrets.DISTRIBUTION_CERT_PASSWORD }}
         run: |
-          echo "$CERT_BASE64" | base64 -d > cert.p12
-          security create-keychain -p "" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "" build.keychain
-          security import cert.p12 -k build.keychain -P "$CERT_PASSWORD" \
-            -T /usr/bin/codesign
+          echo "$CERT_BASE64" | base64 -d > "$RUNNER_TEMP/cert.p12"
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          security create-keychain -p "" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security list-keychain -d user -s "$KEYCHAIN"
           security set-key-partition-list -S apple-tool:,apple: \
-            -s -k "" build.keychain
+            -s -k "" "$KEYCHAIN"
 
       - name: Install provisioning profile
         env:
