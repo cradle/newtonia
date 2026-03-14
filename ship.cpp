@@ -7,6 +7,7 @@
 #include "weapon/default.h"
 #include "weapon/mine.h"
 #include "weapon/missile.h"
+#include "weapon/shield.h"
 #include <math.h>
 #include <iostream>
 
@@ -211,6 +212,16 @@ void Ship::add_missile_ammo(int amount) {
   }
 }
 
+void Ship::add_shield_ammo(int amount) {
+  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    if(dynamic_cast<Weapon::Shield*>(*it)) {
+      (*it)->add_ammo(amount);
+      secondary = it;
+      return;
+    }
+  }
+}
+
 void Ship::set_missile_asteroids(std::list<Object*> *asteroids) {
   for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
     Weapon::Missile *mw = dynamic_cast<Weapon::Missile*>(*it);
@@ -262,6 +273,7 @@ void Ship::init(bool no_friction) {
 
   secondary_weapons.push_back(new Weapon::Mine(this));
   secondary_weapons.push_back(new Weapon::Missile(this));
+  secondary_weapons.push_back(new Weapon::Shield(this));
   secondary = secondary_weapons.begin();
 
   facing = Point(0, 1);

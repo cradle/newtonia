@@ -31,6 +31,7 @@ const float GLGame::extra_life_drop_chance = 0.05f;
 const float GLGame::weapon_pickup_drop_chance = 0.05f;
 const float GLGame::mine_pickup_drop_chance = 0.05f;
 const float GLGame::missile_pickup_drop_chance = 0.05f;
+const float GLGame::shield_pickup_drop_chance = 0.05f;
 
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
@@ -242,6 +243,8 @@ void GLGame::tick(int delta) {
             pickups->push_back(new MinePickup((*oi)->position));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + missile_pickup_drop_chance) {
             pickups->push_back(new MissilePickup((*oi)->position));
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance) {
+            pickups->push_back(new ShieldPickup((*oi)->position));
           }
         }
       }
