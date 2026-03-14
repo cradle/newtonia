@@ -11,7 +11,7 @@ MissilePickup::MissilePickup(WrappedPoint pos) : Pickup(pos) {
 }
 
 void MissilePickup::apply(Ship *ship) {
-  ship->add_missile_ammo(3);
+  ship->add_missile_ammo(10);
 }
 
 void MissilePickup::draw(float world_rotation) const {
