@@ -447,10 +447,6 @@ void GLShip::draw_ship(bool minimap) const {
   if(ship->invincible) {
     glCallList(force_shield);
   }
-
-  if(ship->invincible) {
-    glCallList(force_shield_bg);
-  }
 }
 
 void GLShip::draw_body() const {

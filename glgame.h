@@ -13,6 +13,7 @@
 #include "weapon_pickup.h"
 #include "mine_pickup.h"
 #include "missile_pickup.h"
+#include "shield_pickup.h"
 #include <SDL.h>
 #include <list>
 
@@ -66,6 +67,7 @@ private:
   static const float weapon_pickup_drop_chance;
   static const float mine_pickup_drop_chance;
   static const float missile_pickup_drop_chance;
+  static const float shield_pickup_drop_chance;
   unsigned int frontstars, rearstars;
 
   Mix_Chunk *tic_sound = NULL;
