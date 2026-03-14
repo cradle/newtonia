@@ -5,7 +5,7 @@
 namespace Weapon {
   Shield::Shield(Ship *ship) : Base(ship) {
     _name = "SHIELD";
-    _ammo = 0;
+    _ammo = 10;
     unlimited = false;
 
     empty_sound = Mix_LoadWAV("empty.wav");
