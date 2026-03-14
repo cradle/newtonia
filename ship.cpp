@@ -610,7 +610,8 @@ void Ship::step(float delta, const Grid &grid) {
 
     (*primary)->step(delta);
     for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
-      (*it)->step(delta);
+      if (!dynamic_cast<Weapon::Missile*>(*it))
+        (*it)->step(delta);
     }
 
   } else if (lives > 0) {
@@ -679,6 +680,12 @@ void Ship::step(float delta, const Grid &grid) {
     } else {
       ++i;
     }
+  }
+
+  // Step missiles unconditionally so they keep flying after the ship dies.
+  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    Weapon::Missile *mw = dynamic_cast<Weapon::Missile*>(*it);
+    if (mw) mw->step(delta);
   }
 
   // Missile movement is handled in Weapon::Missile::step() above.
