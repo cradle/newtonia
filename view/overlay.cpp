@@ -110,6 +110,16 @@ void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
   }
 }
 
+static bool is_touch_mode() {
+#if defined(__ANDROID__) || defined(__IOS__)
+  return true;
+#elif defined(__EMSCRIPTEN__)
+  return EM_ASM_INT(return window.matchMedia('(pointer: coarse)').matches ? 1 : 0;) != 0;
+#else
+  return false;
+#endif
+}
+
 void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   Ship* p1 = glgame->players->front()->ship;
   if(glgame->players->size() < 2) {
@@ -122,7 +132,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
         Typer::draw_centered(0, Typer::window_height-10, "return to menu with ESC", 8);
       }
     }
-    if(glship->controller == NULL) {
+    if(glship->controller == NULL && !is_touch_mode()) {
       if(glship->show_help) {
         Typer::draw_centered(-1*Typer::scaled_window_width/2, Typer::scaled_window_height-10, "hide controls with F1", 8);
       } else if ((glgame->current_time)/12000 % 2) {
@@ -134,7 +144,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     if(glgame->friendly_fire) {
       Typer::draw_centered(0, vhb+30, "friendly fire on", 8);
     }
-    if(glship->controller == NULL) {
+    if(glship->controller == NULL && !is_touch_mode()) {
       if(p1 == glship->ship) {
         if(glship->show_help) {
           Typer::draw_centered(0, vhb+60, "hide controls with F1", 8);
