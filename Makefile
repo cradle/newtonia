@@ -1,7 +1,7 @@
 CC = g++
 SDL2_CFLAGS := $(shell sdl2-config --cflags)
 SDL2_LIBS   := $(shell sdl2-config --libs) -lSDL2_mixer
-CFLAGS = -Wall -O3 $(SDL2_CFLAGS)
+CFLAGS = -Wall -O3 -std=c++11 $(SDL2_CFLAGS)
 
 UNAME := $(shell uname)
 ANDROID_SRCS = gles2_compat.cpp android_main.cpp
