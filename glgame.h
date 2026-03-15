@@ -36,7 +36,8 @@ public:
 
   bool cleared() const;
 
-  list<Asteroid*> *objects;
+  list<Asteroid*> *objects;      // alive asteroids (in collision grid)
+  list<Asteroid*> *dead_objects; // killed asteroids with lingering debris
   list<Pickup*> *pickups;
 
   int num_x_viewports() const;
