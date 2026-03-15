@@ -9,7 +9,7 @@
 
 using namespace std;
 
-GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, float difficulty, list<Object*>* asteroids) : GLShip(grid, NULL) {
+GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, float difficulty, list<Object*>* asteroids) : GLShip(grid, false) {
   list<Ship*>* ships = new list<Ship*>;
   list<GLShip*>::iterator s;
   for(s = targets->begin(); s != targets->end(); s++) {
