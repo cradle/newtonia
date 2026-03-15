@@ -329,6 +329,20 @@ void Ship::reset(bool was_killed) {
   temperature = 0.0;
   if(was_killed) {
     kills_this_life = 0;
+
+    // Remove all upgraded primary weapons, keeping only the base PEW PEW at the front
+    auto it = primary_weapons.begin();
+    ++it;
+    while(it != primary_weapons.end()) {
+      delete *it;
+      it = primary_weapons.erase(it);
+    }
+    primary = primary_weapons.begin();
+
+    // Reset secondary weapon ammo to initial values
+    for(auto &w : secondary_weapons) {
+      w->set_ammo(10);
+    }
   }
 }
 
