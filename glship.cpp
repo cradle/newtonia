@@ -688,11 +688,11 @@ void GLShip::draw_missiles() const {
   for(auto &m : ship->missiles) {
     // Trail: fading dots in player colour, oldest (dim) to newest (bright)
     if(!m.trail.empty()) {
-      glPointSize(2.5f);
+      glPointSize(4.0f);
       glBegin(GL_POINTS);
       int trail_sz = (int)m.trail.size();
       for(int ti = trail_sz - 1; ti >= 0; ti--) {
-        float alpha = (1.0f - (float)ti / (float)trail_sz) * 0.6f;
+        float alpha = (1.0f - (float)ti / (float)trail_sz);
         glColor4f(color[0], color[1], color[2], alpha);
         glVertex2fv(m.trail[ti]);
       }
