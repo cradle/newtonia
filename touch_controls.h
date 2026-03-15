@@ -8,6 +8,7 @@
 #if defined(__ANDROID__) || defined(__IOS__)
 
 #include <SDL.h>
+class StateManager;
 
 struct TouchControlsState {
     // ---- Virtual joystick ----
@@ -46,5 +47,9 @@ extern TouchControlsState g_touch_controls;
 
 // Call whenever the window is resized to reposition controls.
 void touch_controls_resize(int w, int h);
+
+// Release all held touch inputs and send corresponding key-up events.
+// Call when the app goes to the background so no inputs get stuck.
+void touch_controls_reset(StateManager *game);
 
 #endif // __ANDROID__ || __IOS__

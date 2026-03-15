@@ -35,11 +35,12 @@
 // Hit-test radius is btn_hit_radius: half the distance between button centres.
 // DEBUG: very top-right corner (x>0.85, y<0.15) → 'n' (skip level).
 
-static StateManager *s_game     = nullptr;
-static SDL_Window   *s_window   = nullptr;
-static SDL_GLContext s_gl_ctx   = nullptr;
+static StateManager *s_game          = nullptr;
+static SDL_Window   *s_window        = nullptr;
+static SDL_GLContext s_gl_ctx        = nullptr;
 static int           s_w = 800, s_h = 600;
-static bool          s_running  = true;
+static bool          s_running       = true;
+static bool          s_reset_tick    = false;  // set on focus-gained to skip catch-up
 
 // ---- Utility ----
 
@@ -267,6 +268,29 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                               e.tfinger.x, e.tfinger.y);
                 break;
 
+            // App lifecycle: auto-pause when backgrounded, auto-resume when foregrounded.
+            // SDL2 on Android fires SDL_APP_* events on some versions/configurations
+            // and SDL_WINDOWEVENT focus events on others; handle both so we catch it.
+            case SDL_APP_WILLENTERBACKGROUND:
+                touch_controls_reset(s_game);
+                s_game->focus_lost();
+                break;
+            case SDL_APP_DIDENTERFOREGROUND:
+                s_game->focus_gained();
+                s_reset_tick = true;
+                break;
+            case SDL_WINDOWEVENT:
+                if(e.window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
+                   e.window.event == SDL_WINDOWEVENT_MINIMIZED) {
+                    touch_controls_reset(s_game);
+                    s_game->focus_lost();
+                } else if(e.window.event == SDL_WINDOWEVENT_FOCUS_GAINED ||
+                          e.window.event == SDL_WINDOWEVENT_RESTORED) {
+                    s_game->focus_gained();
+                    s_reset_tick = true;
+                }
+                break;
+
             // Game controller
             default:
                 s_game->controller(e);
@@ -280,6 +304,12 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         }
 
         Uint32 now   = SDL_GetTicks();
+        if(s_reset_tick) {
+            // App just returned from background; discard the elapsed time so the
+            // simulation doesn't try to catch up on the entire suspended period.
+            last_tick    = now;
+            s_reset_tick = false;
+        }
         int    delta = (int)(now - last_tick);
         last_tick    = now;
 

@@ -36,6 +36,9 @@ public:
 
   bool cleared() const;
 
+  void focus_lost();
+  void focus_gained();
+
   list<Asteroid*> *objects;      // alive asteroids (in collision grid)
   list<Asteroid*> *dead_objects; // killed asteroids with lingering debris
   list<Pickup*> *pickups;
@@ -61,6 +64,7 @@ private:
   int last_tick, time_until_next_step, num_frames, current_time, time_between_steps;
   int time_until_next_generation;
   bool running, level_cleared, friendly_fire, debug_grid, score_saved;
+  bool auto_paused = false;
   int game_over_time;
 
   static const int default_world_width, default_world_height;
