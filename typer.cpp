@@ -501,7 +501,7 @@ void Typer::draw(float x, float y, char character, float size, int time) {
   float segment_size = 360.0f / 7;
   pre_draw(x, y, size);
   switch(character) {
-    case '�': {
+    case '\xa9': {
       float d;
       glBegin(GL_LINE_STRIP);
       glVertex2f(TW*TQ*3, TML);
