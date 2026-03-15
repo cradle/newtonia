@@ -42,6 +42,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   friendly_fire(true),
   debug_grid(false),
   score_saved(false),
+  game_over_time(-1),
   grid(Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2))) {
   time_between_steps = step_size;
 
@@ -349,6 +350,7 @@ void GLGame::tick(int delta) {
       for (auto* glship : *players)
         save_high_score(glship->ship->score);
       score_saved = true;
+      game_over_time = current_time;
 #ifdef __EMSCRIPTEN__
       // Show the tap-to-continue overlay so any touch reaches _web_tap_start().
       EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
@@ -684,8 +686,8 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
 #endif
-#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__)
-  // On mobile/web there is no ESC key; any tap on the game over screen goes to menu.
+  // On all platforms: any non-ESC key goes to menu when all players are game over,
+  // with a short delay so the last shoot input doesn't immediately skip the game over screen.
   if (key != 27) {
     bool all_game_over = !players->empty();
     for (auto* glship : *players) {
@@ -695,11 +697,12 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       }
     }
     if (all_game_over) {
+      if (game_over_time >= 0 && current_time - game_over_time < 3000)
+        return;
       request_state_change(new Menu());
       return;
     }
   }
-#endif
   if (key == 27) {
     request_state_change(new Menu());
   }

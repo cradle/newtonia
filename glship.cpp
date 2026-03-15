@@ -248,11 +248,11 @@ void GLShip::controller_input(SDL_Event event) {
     show_help = pressed;
   }
   if(!ship->is_alive()) {
-    if(pressed && event.cbutton.button == SDL_CONTROLLER_BUTTON_A && ship->lives > 0) {
+    if(pressed && event.cbutton.button == SDL_CONTROLLER_BUTTON_A && ship->lives > 0 &&
+       ship->time_until_respawn <= ship->respawn_time - 1000) {
       ship->time_until_respawn = 0;
-    } else {
-      return;
     }
+    return;
   }
   if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_LEFT) {
     ship->rotate_left(pressed);
@@ -359,11 +359,11 @@ void GLShip::touch_joystick_input(float nx, float ny) {
 void GLShip::input(unsigned char key, bool pressed) {
   if (key == help_key && pressed) show_help = !show_help;
   if(!ship->is_alive()) {
-    if(key == shoot_key && ship->lives > 0) {
+    if(key == shoot_key && ship->lives > 0 &&
+       ship->time_until_respawn <= ship->respawn_time - 1000) {
       ship->time_until_respawn = 0;
-    } else {
-      return;
     }
+    return;
   }
   if (key == left_key) {
     ship->rotate_left(pressed);
