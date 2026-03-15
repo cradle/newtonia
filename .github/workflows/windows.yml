@@ -18,7 +18,7 @@ jobs:
         shell: msys2 {0}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: msys2/setup-msys2@v2
         with:
@@ -46,7 +46,7 @@ jobs:
             -lopengl32 -lglu32
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: newtonia-windows
           path: newtonia.exe
