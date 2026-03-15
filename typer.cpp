@@ -6,6 +6,8 @@
 #include "gl_compat.h"
 
 float Typer::colour[] = {0.0f,1.0f,0.0f};
+GLuint Typer::char_lists[256] = {};
+bool Typer::lists_initialized = false;
 const int Typer::original_window_width = 800;
 int Typer::window_width = Typer::original_window_width;
 float Typer::scaled_window_height = Typer::window_height;
@@ -110,470 +112,414 @@ void Typer::draw_life(float x, float y, const GLShip* ship, float size) {
   post_draw();
 }
 
+// Geometry constants shared between init_lists() and the animated-char fallback.
+// These match the local variables that were previously declared inside draw(char).
+static const float TQ  = 0.25f;        // quarter_size
+static const float TH  = 2.0f;         // height
+static const float TMU = TH - TQ;      // mid_upper_height  = 1.75
+static const float TM  = TH * 0.6f;    // mid_height        = 1.2
+static const float TML = TM - TQ;      // mid_lower_height  = 0.95
+static const float TW  = 1.0f;         // width
+static const float TMW = TW * 0.67f;   // mid_width         = 0.67
+static const float TC  = TW / 2.0f;    // center            = 0.5
+
+// Compile the vertex geometry for every supported character into GL display
+// lists so that draw(char) becomes pre_draw + glCallList + post_draw instead
+// of many individual glBegin/glEnd pairs.
+// The animated character (case '©') is excluded; its list entry stays 0.
+void Typer::init_lists() {
+  lists_initialized = true;
+
+  // Helper: allocate one list, start compiling it, record its id.
+  auto begin = [](unsigned char c) {
+    GLuint id = glGenLists(1);
+    char_lists[c] = id;
+    glNewList(id, GL_COMPILE);
+  };
+
+  begin('-');
+  glBegin(GL_LINES);
+  glVertex2f(0,TM); glVertex2f(TW,TM);
+  glEnd();
+  glEndList();
+
+  begin('.');
+  glPointSize(2.0f);
+  glBegin(GL_POINTS);
+  glVertex2f(TW*0.5f, TH*0.125f);
+  glEnd();
+  glEndList();
+
+  begin('+');
+  glBegin(GL_LINES);
+  glVertex2f(0,TM);  glVertex2f(TW,TM);
+  glVertex2f(TW*0.5f,1.75f); glVertex2f(TW*0.5f,0.25f);
+  glEnd();
+  glEndList();
+
+  begin('0');
+  glBegin(GL_LINE_LOOP);
+  glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,0); glVertex2f(0,0);
+  glEnd();
+  glBegin(GL_LINES);
+  glVertex2f(TW,TH); glVertex2f(0,0);
+  glEnd();
+  glEndList();
+
+  begin('1');
+  glBegin(GL_LINES);
+  glVertex2f(TMW,TH); glVertex2f(TMW,0);
+  glEnd();
+  glEndList();
+
+  begin('2');
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,TM);
+  glVertex2f(0,TM); glVertex2f(0,0);   glVertex2f(TW,0);
+  glEnd();
+  glEndList();
+
+  begin('3');
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,0); glVertex2f(0,0);
+  glEnd();
+  glBegin(GL_LINES);
+  glVertex2f(0,TM); glVertex2f(TW,TM);
+  glEnd();
+  glEndList();
+
+  begin('4');
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(0,TH); glVertex2f(0,TM); glVertex2f(TW,TM); glVertex2f(TW,TH);
+  glEnd();
+  glBegin(GL_LINES);
+  glVertex2f(TW,TM); glVertex2f(TW,0);
+  glEnd();
+  glEndList();
+
+  begin('5');
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(TW,TH); glVertex2f(0,TH); glVertex2f(0,TM); glVertex2f(TW,TM);
+  glVertex2f(TW,0);  glVertex2f(0,0);
+  glEnd();
+  glEndList();
+
+  begin('6');
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(TW,TH); glVertex2f(0,TH); glVertex2f(0,0);  glVertex2f(TW,0);
+  glVertex2f(TW,TM); glVertex2f(0,TM);
+  glEnd();
+  glEndList();
+
+  begin('7');
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,0);
+  glEnd();
+  glEndList();
+
+  begin('8');
+  glBegin(GL_LINE_LOOP);
+  glVertex2f(TW,TH); glVertex2f(0,TH); glVertex2f(0,0); glVertex2f(TW,0);
+  glEnd();
+  glBegin(GL_LINES);
+  glVertex2f(0,TM); glVertex2f(TW,TM);
+  glEnd();
+  glEndList();
+
+  begin('9');
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(0,0);   glVertex2f(TW,0);  glVertex2f(TW,TH);
+  glVertex2f(0,TH);  glVertex2f(0,TM);  glVertex2f(TW,TM);
+  glEnd();
+  glEndList();
+
+  // Letters — upper and lower case share the same display list.
+  char_lists['A'] = glGenLists(1);
+  char_lists['a'] = char_lists['A'];
+  glNewList(char_lists['A'], GL_COMPILE);
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(0,0); glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,0);
+  glEnd();
+  glBegin(GL_LINES);
+  glVertex2f(0,TM); glVertex2f(TW,TM);
+  glEnd();
+  glEndList();
+
+  char_lists['B'] = glGenLists(1); char_lists['b'] = char_lists['B'];
+  glNewList(char_lists['B'], GL_COMPILE);
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(0,0); glVertex2f(0,TH); glVertex2f(TMW,TH); glVertex2f(TW,TMU);
+  glVertex2f(TW,TM); glVertex2f(0,TM);
+  glEnd();
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(TMW,TM); glVertex2f(TW,TML); glVertex2f(TW,0); glVertex2f(0,0);
+  glEnd();
+  glEndList();
+
+  char_lists['C'] = glGenLists(1); char_lists['c'] = char_lists['C'];
+  glNewList(char_lists['C'], GL_COMPILE);
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(TW,0); glVertex2f(0,0); glVertex2f(0,TH); glVertex2f(TW,TH);
+  glEnd();
+  glEndList();
+
+  char_lists['D'] = glGenLists(1); char_lists['d'] = char_lists['D'];
+  glNewList(char_lists['D'], GL_COMPILE);
+  glBegin(GL_LINE_LOOP);
+  glVertex2f(0,0); glVertex2f(0,TH); glVertex2f(TMW,TH); glVertex2f(TW,TMU);
+  glVertex2f(TW,TM); glVertex2f(TW,0);
+  glEnd();
+  glEndList();
+
+  char_lists['E'] = glGenLists(1); char_lists['e'] = char_lists['E'];
+  glNewList(char_lists['E'], GL_COMPILE);
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(TW,TH); glVertex2f(0,TH); glVertex2f(0,0); glVertex2f(TW,0);
+  glEnd();
+  glBegin(GL_LINES);
+  glVertex2f(0,TM); glVertex2f(TMW,TM);
+  glEnd();
+  glEndList();
+
+  char_lists['F'] = glGenLists(1); char_lists['f'] = char_lists['F'];
+  glNewList(char_lists['F'], GL_COMPILE);
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(TW,TH); glVertex2f(0,TH); glVertex2f(0,0);
+  glEnd();
+  glBegin(GL_LINES);
+  glVertex2f(0,TM); glVertex2f(TW,TM);
+  glEnd();
+  glEndList();
+
+  char_lists['G'] = glGenLists(1); char_lists['g'] = char_lists['G'];
+  glNewList(char_lists['G'], GL_COMPILE);
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(TW,TH); glVertex2f(0,TH); glVertex2f(0,0); glVertex2f(TW,0);
+  glVertex2f(TW,TM);
+  glEnd();
+  glEndList();
+
+  char_lists['H'] = glGenLists(1); char_lists['h'] = char_lists['H'];
+  glNewList(char_lists['H'], GL_COMPILE);
+  glBegin(GL_LINES);
+  glVertex2f(TW,TM); glVertex2f(0,TM);
+  glVertex2f(0,0);   glVertex2f(0,TH);
+  glVertex2f(TW,0);  glVertex2f(TW,TH);
+  glEnd();
+  glEndList();
+
+  char_lists['I'] = glGenLists(1); char_lists['i'] = char_lists['I'];
+  glNewList(char_lists['I'], GL_COMPILE);
+  glBegin(GL_LINES);
+  glVertex2f(TC,TH); glVertex2f(TC,0);
+  glEnd();
+  glEndList();
+
+  char_lists['J'] = glGenLists(1); char_lists['j'] = char_lists['J'];
+  glNewList(char_lists['J'], GL_COMPILE);
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(TW,TH); glVertex2f(TW,0); glVertex2f(0,0); glVertex2f(0,TM);
+  glEnd();
+  glEndList();
+
+  char_lists['K'] = glGenLists(1); char_lists['k'] = char_lists['K'];
+  glNewList(char_lists['K'], GL_COMPILE);
+  glBegin(GL_LINES);
+  glVertex2f(0,0);  glVertex2f(0,TH);
+  glVertex2f(0,TM); glVertex2f(TW,TM);
+  glVertex2f(TW,TM);glVertex2f(TW,0);
+  glVertex2f(TMW,TM);glVertex2f(TW,TH);
+  glEnd();
+  glEndList();
+
+  char_lists['L'] = glGenLists(1); char_lists['l'] = char_lists['L'];
+  glNewList(char_lists['L'], GL_COMPILE);
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(0,TH); glVertex2f(0,0); glVertex2f(TW,0);
+  glEnd();
+  glEndList();
+
+  char_lists['M'] = glGenLists(1); char_lists['m'] = char_lists['M'];
+  glNewList(char_lists['M'], GL_COMPILE);
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(0,0); glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,0);
+  glEnd();
+  glBegin(GL_LINES);
+  glVertex2f(TC,TH); glVertex2f(TC,TM);
+  glEnd();
+  glEndList();
+
+  char_lists['N'] = glGenLists(1); char_lists['n'] = char_lists['N'];
+  glNewList(char_lists['N'], GL_COMPILE);
+  glBegin(GL_LINES);
+  glVertex2f(0,0);   glVertex2f(0,TH);
+  glVertex2f(0,TH);  glVertex2f(TW,TM);
+  glVertex2f(TW,0);  glVertex2f(TW,TH);
+  glEnd();
+  glEndList();
+
+  char_lists['O'] = glGenLists(1); char_lists['o'] = char_lists['O'];
+  glNewList(char_lists['O'], GL_COMPILE);
+  glBegin(GL_LINE_LOOP);
+  glVertex2f(0,0); glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,0);
+  glEnd();
+  glEndList();
+
+  char_lists['P'] = glGenLists(1); char_lists['p'] = char_lists['P'];
+  glNewList(char_lists['P'], GL_COMPILE);
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(0,0); glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,TM);
+  glVertex2f(0,TM);
+  glEnd();
+  glEndList();
+
+  char_lists['Q'] = glGenLists(1); char_lists['q'] = char_lists['Q'];
+  glNewList(char_lists['Q'], GL_COMPILE);
+  glBegin(GL_LINE_LOOP);
+  glVertex2f(0,0); glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,TML);
+  glVertex2f(TC,0);
+  glEnd();
+  glBegin(GL_LINES);
+  glVertex2f(TC,TML); glVertex2f(TW,0);
+  glEnd();
+  glEndList();
+
+  char_lists['R'] = glGenLists(1); char_lists['r'] = char_lists['R'];
+  glNewList(char_lists['R'], GL_COMPILE);
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(0,0); glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,TM);
+  glVertex2f(0,TM);
+  glEnd();
+  glBegin(GL_LINES);
+  glVertex2f(TC,TM); glVertex2f(TW,0);
+  glEnd();
+  glEndList();
+
+  char_lists['S'] = glGenLists(1); char_lists['s'] = char_lists['S'];
+  glNewList(char_lists['S'], GL_COMPILE);
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(TW,TH); glVertex2f(0,TH); glVertex2f(0,TM); glVertex2f(TW,TM);
+  glVertex2f(TW,0);  glVertex2f(0,0);
+  glEnd();
+  glEndList();
+
+  char_lists['T'] = glGenLists(1); char_lists['t'] = char_lists['T'];
+  glNewList(char_lists['T'], GL_COMPILE);
+  glBegin(GL_LINES);
+  glVertex2f(TC,TH); glVertex2f(TC,0);
+  glVertex2f(0,TH);  glVertex2f(TW,TH);
+  glEnd();
+  glEndList();
+
+  char_lists['U'] = glGenLists(1); char_lists['u'] = char_lists['U'];
+  glNewList(char_lists['U'], GL_COMPILE);
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(TW,TH); glVertex2f(TW,0); glVertex2f(0,0); glVertex2f(0,TH);
+  glEnd();
+  glEndList();
+
+  char_lists['V'] = glGenLists(1); char_lists['v'] = char_lists['V'];
+  glNewList(char_lists['V'], GL_COMPILE);
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(TW,TH); glVertex2f(TW,TML); glVertex2f(TC,0); glVertex2f(0,0);
+  glVertex2f(0,TH);
+  glEnd();
+  glEndList();
+
+  char_lists['W'] = glGenLists(1); char_lists['w'] = char_lists['W'];
+  glNewList(char_lists['W'], GL_COMPILE);
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(0,TH); glVertex2f(0,0); glVertex2f(TW,0); glVertex2f(TW,TH);
+  glEnd();
+  glBegin(GL_LINES);
+  glVertex2f(TC,TM); glVertex2f(TC,0);
+  glEnd();
+  glEndList();
+
+  char_lists['X'] = glGenLists(1); char_lists['x'] = char_lists['X'];
+  glNewList(char_lists['X'], GL_COMPILE);
+  glBegin(GL_LINES);
+  glVertex2f(TW,TH); glVertex2f(0,0);
+  glVertex2f(0,TH);  glVertex2f(TW,0);
+  glEnd();
+  glEndList();
+
+  char_lists['Y'] = glGenLists(1); char_lists['y'] = char_lists['Y'];
+  glNewList(char_lists['Y'], GL_COMPILE);
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(0,TH); glVertex2f(0,TM); glVertex2f(TW,TM); glVertex2f(TW,TH);
+  glEnd();
+  glBegin(GL_LINES);
+  glVertex2f(TC,TM); glVertex2f(TC,0);
+  glEnd();
+  glEndList();
+
+  char_lists['Z'] = glGenLists(1); char_lists['z'] = char_lists['Z'];
+  glNewList(char_lists['Z'], GL_COMPILE);
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(0,0); glVertex2f(TW,0);
+  glEnd();
+  glEndList();
+
+  begin('>');
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(0,TH*0.9f); glVertex2f(TW,TH/2.0f); glVertex2f(0,TH*0.1f);
+  glEnd();
+  glEndList();
+
+  begin('<');
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(TW,TH*0.9f); glVertex2f(0,TH/2.0f); glVertex2f(TW,TH*0.1f);
+  glEnd();
+  glEndList();
+
+  begin('/');
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(TW,TH); glVertex2f(0,0);
+  glEnd();
+  glEndList();
+
+  begin(',');
+  glBegin(GL_LINE_STRIP);
+  glVertex2f(TW/2.0f,TH/3.0f); glVertex2f(0,0);
+  glEnd();
+  glEndList();
+}
+
 void Typer::draw(float x, float y, char character, float size, int time) {
-  float quarter_size = 0.25;
-  float height = 2.0;
-  float mid_upper_height = height - quarter_size;
-  float mid_height = height * 0.6;
-  float mid_lower_height = mid_height - quarter_size;
-  float width = 1.0;
-  float mid_width = width * 0.67;
-  float center = width / 2.0;
-  int segment_count = 7;
-  float segment_size = 360.0/segment_count, d;
-  pre_draw(x,y,size);
+  if (!lists_initialized) init_lists();
+
+  // Fast path: geometry is pre-compiled on the GPU.
+  if (char_lists[(unsigned char)character] != 0) {
+    pre_draw(x, y, size);
+    glCallList(char_lists[(unsigned char)character]);
+    post_draw();
+    return;
+  }
+
+  // Fallback for characters with time-dependent geometry (the animated char).
+  float segment_size = 360.0f / 7;
+  pre_draw(x, y, size);
   switch(character) {
-    case '�':
+    case '\xa9': {
+      float d;
       glBegin(GL_LINE_STRIP);
-      glVertex2f(width*quarter_size*3,mid_lower_height);
-      glVertex2f(width*quarter_size,mid_lower_height);
-      glVertex2f(width*quarter_size,mid_upper_height);
-      glVertex2f(width*quarter_size*3,mid_upper_height);
+      glVertex2f(TW*TQ*3, TML);
+      glVertex2f(TW*TQ,   TML);
+      glVertex2f(TW*TQ,   TMU);
+      glVertex2f(TW*TQ*3, TMU);
       glEnd();
-      glTranslatef(0.5f,mid_height,0.0f);
-      glScalef(1.0f,1.2f,1.0f);
-      glRotated(time/-16.0, 0.0f, 0.0f, 1.0f);
+      glTranslatef(0.5f, TM, 0.0f);
+      glScalef(1.0f, 1.2f, 1.0f);
+      glRotated(time / -16.0, 0.0f, 0.0f, 1.0f);
       glBegin(GL_LINE_LOOP);
-      for (float i = 0.0; i < 360.0; i+= segment_size) {
-        d = i*M_PI/180;
-        glVertex2f(cos(d),sin(d));
+      for (float i = 0.0f; i < 360.0f; i += segment_size) {
+        d = i * (float)M_PI / 180.0f;
+        glVertex2f(cosf(d), sinf(d));
       }
       glEnd();
       break;
-    case '-':
-      glBegin(GL_LINES);
-      glVertex2f(0,mid_height);
-      glVertex2f(width,mid_height);
-      glEnd();
-      break;
-    case '.':
-      glPointSize(2.0f);
-      glBegin(GL_POINTS);
-      glVertex2f(width*0.5,height*0.125);
-      glEnd();
-      break;
-    case '+':
-      glBegin(GL_LINES);
-      glVertex2f(0,mid_height);
-      glVertex2f(width,mid_height);
-      glVertex2f(width*0.5,1.75);
-      glVertex2f(width*0.5,0.25);
-      glEnd();
-      break;
-    case '0':
-      glBegin(GL_LINE_LOOP);
-      glVertex2f(0,height);
-      glVertex2f(width,height);
-      glVertex2f(width,0);
-      glVertex2f(0,0);
-      glEnd();
-      glBegin(GL_LINES);
-      glVertex2f(width,height);
-      glVertex2f(0.0f, 0.0f);
-      glEnd();
-      break;
-    case '1':
-      glBegin(GL_LINES);
-      glVertex2f(mid_width,height);
-      glVertex2f(mid_width,0);
-      glEnd();
-      break;
-    case '2':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(0,height);
-      glVertex2f(width,height);
-      glVertex2f(width,mid_height);
-      glVertex2f(0,mid_height);
-      glVertex2f(0,0);
-      glVertex2f(width,0);
-      glEnd();
-      break;
-    case '3':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(0,height);
-      glVertex2f(width,height);
-      glVertex2f(width,0);
-      glVertex2f(0,0);
-      glEnd();
-      glBegin(GL_LINES);
-      glVertex2f(0,mid_height);
-      glVertex2f(width,mid_height);
-      glEnd();
-      break;
-    case '4':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(0,height);
-      glVertex2f(0,mid_height);
-      glVertex2f(width,mid_height);
-      glVertex2f(width,height);
-      glEnd();
-      glBegin(GL_LINES);
-      glVertex2f(width,mid_height);
-      glVertex2f(width,0);
-      glEnd();
-      break;
-    case '5':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(width,height);
-      glVertex2f(0,height);
-      glVertex2f(0,mid_height);
-      glVertex2f(width,mid_height);
-      glVertex2f(width,0);
-      glVertex2f(0,0);
-      glEnd();
-      break;
-    case '6':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(width,height);
-      glVertex2f(0,height);
-      glVertex2f(0,0);
-      glVertex2f(width,0);
-      glVertex2f(width,mid_height);
-      glVertex2f(0,mid_height);
-      glEnd();
-      break;
-    case '7':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(0,height);
-      glVertex2f(width,height);
-      glVertex2f(width,0);
-      glEnd();
-      break;
-    case '8':
-      glBegin(GL_LINE_LOOP);
-      glVertex2i(width,height);
-      glVertex2i(0,height);
-      glVertex2i(0,0);
-      glVertex2i(width,0);
-      glEnd();
-      glBegin(GL_LINES);
-      glVertex2i(0,mid_height);
-      glVertex2i(width,mid_height);
-      glEnd();
-      break;
-    case '9':
-      glBegin(GL_LINE_STRIP);
-      glVertex2i(0,0);
-      glVertex2i(width,0);
-      glVertex2i(width,height);
-      glVertex2i(0,height);
-      glVertex2i(0,mid_height);
-      glVertex2i(width,mid_height);
-      glEnd();
-      break;
-    case 'a':
-    case 'A':
-      glBegin(GL_LINE_STRIP);
-      glVertex2i(0,0);
-      glVertex2i(0,height);
-      glVertex2i(width,height);
-      glVertex2i(width,0);
-      glEnd();
-      glBegin(GL_LINES);
-      glVertex2i(0,mid_height);
-      glVertex2i(width,mid_height);
-      glEnd();
-      break;
-    case 'b':
-    case 'B':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(0.0,0.0);
-      glVertex2f(0.0,height);
-      glVertex2f(mid_width,height);
-      glVertex2f(width,mid_upper_height);
-      glVertex2f(width,mid_height);
-      glVertex2f(0.0,mid_height);
-      glEnd();
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(mid_width,mid_height);
-      glVertex2f(width,mid_lower_height);
-      glVertex2f(width,0);
-      glVertex2f(0.0,0.0);
-      glEnd();
-      break;
-    case 'c':
-    case 'C':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(width,0.0);
-      glVertex2f(0.0,0.0);
-      glVertex2f(0.0,height);
-      glVertex2f(width,height);
-      glEnd();
-      break;
-    case 'd':
-    case 'D':
-      glBegin(GL_LINE_LOOP);
-      glVertex2f(0.0f,0.0f);
-      glVertex2f(0.0f,height);
-      glVertex2f(mid_width,height);
-      glVertex2f(width,mid_upper_height);
-      glVertex2f(width,mid_height);
-      glVertex2f(width, 0.0f);
-      glEnd();
-      break;
-    case 'e':
-    case 'E':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(width,height);
-      glVertex2f(0,height);
-      glVertex2f(0,0);
-      glVertex2f(width,0);
-      glEnd();
-      glBegin(GL_LINES);
-      glVertex2f(0,mid_height);
-      glVertex2f(mid_width,mid_height);
-      glEnd();
-      break;
-    case 'f':
-    case 'F':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(width,height);
-      glVertex2f(0,height);
-      glVertex2f(0,0);
-      glEnd();
-      glBegin(GL_LINES);
-      glVertex2f(0,mid_height);
-      glVertex2f(width,mid_height);
-      glEnd();
-      break;
-    case 'g':
-    case 'G':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(width,height);
-      glVertex2f(0,height);
-      glVertex2f(0,0);
-      glVertex2f(width,0);
-      glVertex2f(width,mid_height);
-      glEnd();
-      break;
-    case 'h':
-    case 'H':
-      glBegin(GL_LINES);
-      glVertex2f(width,mid_height);
-      glVertex2f(0,mid_height);
-      glVertex2f(0,0);
-      glVertex2f(0,height);
-      glVertex2f(width,0);
-      glVertex2f(width,height);
-      glEnd();
-      break;
-    case 'i':
-    case 'I':
-      glBegin(GL_LINES);
-      glVertex2f(center,height);
-      glVertex2f(center,0);
-      glEnd();
-      break;
-    case 'j':
-    case 'J':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(width,height);
-      glVertex2f(width,0);
-      glVertex2f(0,0);
-      glVertex2f(0,mid_height);
-      glEnd();
-      break;
-    case 'k':
-    case 'K':
-      glBegin(GL_LINES);
-      glVertex2f(0.0f, 0.0f);
-      glVertex2f(0.0f, height);
-      glVertex2f(0.0f , mid_height);
-      glVertex2f(width, mid_height);
-      glVertex2f(width, mid_height);
-      glVertex2f(width, 0.0f);
-      glVertex2f(mid_width, mid_height);
-      glVertex2f(width, height);
-      glEnd();
-      break;
-    case 'L':
-    case 'l':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(0.0f, height);
-      glVertex2f(0.0f, 0.0f);
-      glVertex2f(width, 0.0f);
-      glEnd();
-      break;
-    case 'M':
-    case 'm':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(0.0f, 0.0f);
-      glVertex2f(0.0f, height);
-      glVertex2f(width, height);
-      glVertex2f(width, 0.0f);
-      glEnd();
-      glBegin(GL_LINES);
-      glVertex2f(center, height);
-      glVertex2f(center, mid_height);
-      glEnd();
-      break;
-    case 'n':
-    case 'N':
-      glBegin(GL_LINES);
-      glVertex2f(0.0f, 0.0f);
-      glVertex2f(0.0f, height);
-      glVertex2f(0.0f, height);
-      glVertex2f(width, mid_height);
-      glVertex2f(width, 0.0f);
-      glVertex2f(width, height);
-      glEnd();
-      break;
-    case 'o':
-    case 'O':
-      glBegin(GL_LINE_LOOP);
-      glVertex2f(0.0f, 0.0f);
-      glVertex2f(0.0f, height);
-      glVertex2f(width, height);
-      glVertex2f(width, 0.0f);
-      glEnd();
-      break;
-    case 'p':
-    case 'P':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(0.0f, 0.0f);
-      glVertex2f(0.0f, height);
-      glVertex2f(width, height);
-      glVertex2f(width, mid_height);
-      glVertex2f(0.0f, mid_height);
-      glEnd();
-      break;
-    case 'q':
-    case 'Q':
-      glBegin(GL_LINE_LOOP);
-      glVertex2f(0.0f, 0.0f);
-      glVertex2f(0.0f, height);
-      glVertex2f(width, height);
-      glVertex2f(width, mid_lower_height);
-      glVertex2f(center, 0.0f);
-      glEnd();
-      glBegin(GL_LINES);
-      glVertex2f(center, mid_lower_height);
-      glVertex2f(width, 0.0f);
-      glEnd();
-      break;
-    case 'r':
-    case 'R':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(0.0f, 0.0f);
-      glVertex2f(0.0f, height);
-      glVertex2f(width, height);
-      glVertex2f(width, mid_height);
-      glVertex2f(0.0f, mid_height);
-      glEnd();
-      glBegin(GL_LINES);
-      glVertex2f(center, mid_height);
-      glVertex2f(width, 0.0f);
-      glEnd();
-      break;
-    case 's':
-    case 'S':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(width,height);
-      glVertex2f(0.0f,height);
-      glVertex2f(0.0f,mid_height);
-      glVertex2f(width,mid_height);
-      glVertex2f(width,0.0f);
-      glVertex2f(0.0f,0.0f);
-      glEnd();
-      break;
-    case 't':
-    case 'T':
-      glBegin(GL_LINES);
-      glVertex2f(center,height);
-      glVertex2f(center,0);
-      glVertex2f(0.0f, height);
-      glVertex2f(width, height);
-      glEnd();
-      break;
-    case 'u':
-    case 'U':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(width,height);
-      glVertex2f(width,0.0f);
-      glVertex2f(0.0f,0.0f);
-      glVertex2f(0.0f,height);
-      glEnd();
-      break;
-    case 'v':
-    case 'V':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(width,height);
-      glVertex2f(width,mid_lower_height);
-      glVertex2f(center,0.0f);
-      glVertex2f(0.0f, 0.0f);
-      glVertex2f(0.0f,height);
-      glEnd();
-      break;
-    case 'w':
-    case 'W':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(0.0f, height);
-      glVertex2f(0.0f, 0.0f);
-      glVertex2f(width, 0.0f);
-      glVertex2f(width, height);
-      glEnd();
-      glBegin(GL_LINES);
-      glVertex2f(center, mid_height);
-      glVertex2f(center, 0.0f);
-      glEnd();
-      break;
-    case 'x':
-    case 'X':
-      glBegin(GL_LINES);
-      glVertex2f(width, height);
-      glVertex2f(0.0f, 0.0f);
-      glVertex2f(0.0f, height);
-      glVertex2f(width, 0.0f);
-      glEnd();
-      break;
-    case 'y':
-    case 'Y':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(0.0f, height);
-      glVertex2f(0.0f, mid_height);
-      glVertex2f(width, mid_height);
-      glVertex2f(width, height);
-      glEnd();
-      glBegin(GL_LINES);
-      glVertex2f(center, mid_height);
-      glVertex2f(center, 0.0f);
-      glEnd();
-      break;
-    case 'z':
-    case 'Z':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(0.0f, height);
-      glVertex2f(width, height);
-      glVertex2f(0.0f, 0.0f);
-      glVertex2f(width, 0.0f);
-      glEnd();
-      break;
-    case '>':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(0.0f, height*0.9f);
-      glVertex2f(width, height/2.0f);
-      glVertex2f(0.0f, height*0.1f);
-      glEnd();
-      break;
-    case '<':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(width, height*0.9f);
-      glVertex2f(0.0f, height/2.0f);
-      glVertex2f(width, height*0.1f);
-      glEnd();
-      break;
-    case '/':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(width,height);
-      glVertex2f(0.0f, 0.0f);
-      glEnd();
-      break;
-    case ',':
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(width/2.0f,height/3.0f);
-      glVertex2f(0.0f, 0.0f);
-      glEnd();
-      break;
+    }
   }
   post_draw();
 }

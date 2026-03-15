@@ -64,53 +64,65 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
   }
 }
 
+// Cached per-asteroid vertex data, computed once and shared between fill and
+// outline passes to avoid redundant cosf/sinf calls.
+struct AsteroidVerts {
+  float dvx[9], dvy[9];
+  float cx, cy, dx, dy;
+  int segs;
+  bool invincible;
+};
+
 // draw_batch renders all alive asteroids in two draw calls (fill + outline),
 // then handles dead asteroid debris/scores individually. Vertices are computed
-// in world space so the caller only needs a tile-offset matrix transform.
+// once per asteroid and reused for both passes.
 // When wrap_x/wrap_y are non-zero (minimap), asteroids near world edges are
 // drawn again at the opposite edge so wrapping is visible.
-void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, float direction, bool is_minimap,
+void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> const *dead_objects,
+                                float direction, bool is_minimap,
                                 float wrap_x, float wrap_y) {
-  // --- Fill pass: all alive asteroids as GL_TRIANGLES ---
-  glBegin(GL_TRIANGLES);
+  // --- Pre-compute vertex data for all alive asteroids (trig once per asteroid) ---
+  vector<AsteroidVerts> verts;
+  verts.reserve(objects->size());
   for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
     Asteroid const *a = *it;
-    if (!a->alive) continue;
-    float cx = a->position.x(), cy = a->position.y();
-    float r  = a->radius;
+    AsteroidVerts v;
+    v.cx = a->position.x();
+    v.cy = a->position.y();
+    float r   = a->radius;
     float rot = a->rotation * (float)M_PI / 180.0f;
-    int segs  = seg_count(r);
-    float step = 2.0f * (float)M_PI / segs;
-
-    if (a->invincible) glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
-    else               glColor3f(0.0f, 0.0f, 0.0f);
-
-    // Compute vertices relative to center (trig only once per asteroid)
-    float dvx[9], dvy[9];
-    for (int i = 0; i < segs; i++) {
+    v.segs    = seg_count(r);
+    float step = 2.0f * (float)M_PI / v.segs;
+    for (int i = 0; i < v.segs; i++) {
       float angle = rot + i * step;
-      dvx[i] = r * cosf(angle);
-      dvy[i] = r * sinf(angle);
+      v.dvx[i] = r * cosf(angle);
+      v.dvy[i] = r * sinf(angle);
     }
-
-    // Determine wrap offsets for edge-adjacent asteroids
-    float dx = 0, dy = 0;
+    v.dx = 0; v.dy = 0;
     if (wrap_x > 0) {
-      if (cx < r)              dx = wrap_x;
-      else if (cx + r > wrap_x) dx = -wrap_x;
-      if (cy < r)              dy = wrap_y;
-      else if (cy + r > wrap_y) dy = -wrap_y;
+      if (v.cx < r)               v.dx = wrap_x;
+      else if (v.cx + r > wrap_x) v.dx = -wrap_x;
+      if (v.cy < r)               v.dy = wrap_y;
+      else if (v.cy + r > wrap_y) v.dy = -wrap_y;
     }
+    v.invincible = a->invincible;
+    verts.push_back(v);
+  }
 
-    // Emit vertices at original position + any wrap copies
-    for (int wi = 0; wi < (dx != 0 ? 2 : 1); wi++) {
-      for (int wj = 0; wj < (dy != 0 ? 2 : 1); wj++) {
-        float wcx = cx + wi * dx;
-        float wcy = cy + wj * dy;
-        for (int i = 1; i < segs - 1; i++) {
-          glVertex2f(wcx + dvx[0],   wcy + dvy[0]);
-          glVertex2f(wcx + dvx[i],   wcy + dvy[i]);
-          glVertex2f(wcx + dvx[i+1], wcy + dvy[i+1]);
+  // --- Fill pass: all alive asteroids as GL_TRIANGLES ---
+  glBegin(GL_TRIANGLES);
+  for (size_t ai = 0; ai < verts.size(); ++ai) {
+    AsteroidVerts const &v = verts[ai];
+    if (v.invincible) glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
+    else              glColor3f(0.0f, 0.0f, 0.0f);
+    for (int wi = 0; wi < (v.dx != 0 ? 2 : 1); wi++) {
+      for (int wj = 0; wj < (v.dy != 0 ? 2 : 1); wj++) {
+        float wcx = v.cx + wi * v.dx;
+        float wcy = v.cy + wj * v.dy;
+        for (int i = 1; i < v.segs - 1; i++) {
+          glVertex2f(wcx + v.dvx[0],   wcy + v.dvy[0]);
+          glVertex2f(wcx + v.dvx[i],   wcy + v.dvy[i]);
+          glVertex2f(wcx + v.dvx[i+1], wcy + v.dvy[i+1]);
         }
       }
     }
@@ -120,41 +132,18 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, float direction,
   // --- Outline pass: all alive asteroids as GL_LINES ---
   glLineWidth(is_minimap ? 1.0f : 2.5f);
   glBegin(GL_LINES);
-  for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
-    Asteroid const *a = *it;
-    if (!a->alive) continue;
-    float cx = a->position.x(), cy = a->position.y();
-    float r   = a->radius;
-    float rot = a->rotation * (float)M_PI / 180.0f;
-    int segs  = seg_count(r);
-    float step = 2.0f * (float)M_PI / segs;
-
-    if (a->invincible) glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
-    else               glColor3f(1.0f, 1.0f, 1.0f);
-
-    float dvx[9], dvy[9];
-    for (int i = 0; i < segs; i++) {
-      float angle = rot + i * step;
-      dvx[i] = r * cosf(angle);
-      dvy[i] = r * sinf(angle);
-    }
-
-    float dx = 0, dy = 0;
-    if (wrap_x > 0) {
-      if (cx < r)              dx = wrap_x;
-      else if (cx + r > wrap_x) dx = -wrap_x;
-      if (cy < r)              dy = wrap_y;
-      else if (cy + r > wrap_y) dy = -wrap_y;
-    }
-
-    for (int wi = 0; wi < (dx != 0 ? 2 : 1); wi++) {
-      for (int wj = 0; wj < (dy != 0 ? 2 : 1); wj++) {
-        float wcx = cx + wi * dx;
-        float wcy = cy + wj * dy;
-        for (int i = 0; i < segs; i++) {
-          int j = (i + 1) % segs;
-          glVertex2f(wcx + dvx[i], wcy + dvy[i]);
-          glVertex2f(wcx + dvx[j], wcy + dvy[j]);
+  for (size_t ai = 0; ai < verts.size(); ++ai) {
+    AsteroidVerts const &v = verts[ai];
+    if (v.invincible) glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
+    else              glColor3f(1.0f, 1.0f, 1.0f);
+    for (int wi = 0; wi < (v.dx != 0 ? 2 : 1); wi++) {
+      for (int wj = 0; wj < (v.dy != 0 ? 2 : 1); wj++) {
+        float wcx = v.cx + wi * v.dx;
+        float wcy = v.cy + wj * v.dy;
+        for (int i = 0; i < v.segs; i++) {
+          int j = (i + 1) % v.segs;
+          glVertex2f(wcx + v.dvx[i], wcy + v.dvy[i]);
+          glVertex2f(wcx + v.dvx[j], wcy + v.dvy[j]);
         }
       }
     }
@@ -175,9 +164,8 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, float direction,
     // All debris from all dead asteroids in one GL_POINTS call.
     glPointSize(3.0f);
     glBegin(GL_POINTS);
-    for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
+    for (list<Asteroid*>::const_iterator it = dead_objects->begin(); it != dead_objects->end(); ++it) {
       Asteroid const *a = *it;
-      if (a->alive) continue;
       for (auto d = a->debris.begin(); d != a->debris.end(); ++d) {
         float alive = d->aliveness();
         float alpha = flicker[flicker_idx++ % 64] * alive / 2.0f + alive / 2.0f;
@@ -187,9 +175,8 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, float direction,
     }
     glEnd();
     // Score text must be drawn per-asteroid (Typer is not batchable).
-    for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
+    for (list<Asteroid*>::const_iterator it = dead_objects->begin(); it != dead_objects->end(); ++it) {
       Asteroid const *a = *it;
-      if (a->alive) continue;
       glPushMatrix();
       glTranslatef(a->position.x(), a->position.y(), 0.0f);
       glRotatef(-direction, 0.0f, 0.0f, 1.0f);

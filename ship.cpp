@@ -6,6 +6,8 @@
 #include "weapon/base.h"
 #include "weapon/default.h"
 #include "weapon/mine.h"
+#include "weapon/missile.h"
+#include "weapon/shield.h"
 #include <math.h>
 #include <iostream>
 
@@ -48,6 +50,12 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   } else {
     std::cout << "Unable to load boost.wav (" << Mix_GetError() << ")" << std::endl;
   }
+  if(missile_explode_sound == NULL) {
+    missile_explode_sound = Mix_LoadWAV("missile_explode.wav");
+    if(missile_explode_sound == NULL) {
+      std::cout << "Unable to load missile_explode.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
 }
 
 void Ship::disable_behaviours() {
@@ -82,6 +90,9 @@ Ship::~Ship() {
   }
   if(click_sound != NULL) {
     Mix_FreeChunk(click_sound);
+  }
+  if(missile_explode_sound != NULL) {
+    Mix_FreeChunk(missile_explode_sound);
   }
 }
 
@@ -119,6 +130,19 @@ void Ship::previous_weapon() {
   (*next)->shoot((*primary)->is_shooting());
   (*primary)->shoot(false);
   primary = next;
+}
+
+void Ship::next_secondary_weapon() {
+  if(secondary_weapons.empty()) return;
+  if(click_sound != NULL) {
+    Mix_PlayChannel(-1, click_sound, 0);
+  }
+  list<Weapon::Base *>::iterator next(secondary);
+  next++;
+  if(next == secondary_weapons.end())
+    next = secondary_weapons.begin();
+  (*secondary)->shoot(false);
+  secondary = next;
 }
 
 struct WeaponConfig {
@@ -169,8 +193,50 @@ void Ship::add_weapon(int weapon_index) {
 }
 
 void Ship::add_mine_ammo(int amount) {
-  if(!secondary_weapons.empty()) {
-    (*secondary)->add_ammo(amount);
+  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    if(dynamic_cast<Weapon::Mine*>(*it)) {
+      (*it)->add_ammo(amount);
+      (*secondary)->shoot(false);
+      secondary = it;
+      return;
+    }
+  }
+}
+
+void Ship::add_missile_ammo(int amount) {
+  // Find the Missile weapon in secondary_weapons, add ammo and switch to it.
+  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    if(dynamic_cast<Weapon::Missile*>(*it)) {
+      (*it)->add_ammo(amount);
+      (*secondary)->shoot(false);
+      secondary = it;
+      return;
+    }
+  }
+}
+
+void Ship::add_shield_ammo(int amount) {
+  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    if(dynamic_cast<Weapon::Shield*>(*it)) {
+      (*it)->add_ammo(amount);
+      (*secondary)->shoot(false);
+      secondary = it;
+      return;
+    }
+  }
+}
+
+void Ship::set_missile_asteroids(std::list<Object*> *asteroids) {
+  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    Weapon::Missile *mw = dynamic_cast<Weapon::Missile*>(*it);
+    if(mw) { mw->set_asteroids(asteroids); return; }
+  }
+}
+
+void Ship::set_missile_ships(std::list<Object*> *ships) {
+  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    Weapon::Missile *mw = dynamic_cast<Weapon::Missile*>(*it);
+    if(mw) { mw->set_ship_targets(ships); return; }
   }
 }
 
@@ -209,7 +275,9 @@ void Ship::init(bool no_friction) {
   primary_weapons.push_front(new Weapon::Default(this));
   primary = primary_weapons.begin();
 
-  secondary_weapons.push_front(new Weapon::Mine(this));
+  secondary_weapons.push_back(new Weapon::Mine(this));
+  secondary_weapons.push_back(new Weapon::Missile(this));
+  secondary_weapons.push_back(new Weapon::Shield(this));
   secondary = secondary_weapons.begin();
 
   facing = Point(0, 1);
@@ -253,6 +321,7 @@ void Ship::reset(bool was_killed) {
   shoot(false);
   mines.clear();
   bullets.clear();
+  missiles.clear();
   debris.clear();
   rotation_direction = NONE;
   still_rotating_left = false;
@@ -383,6 +452,24 @@ void Ship::collide_grid(Grid &grid) {
       ++i;
     }
   }
+
+  for(size_t i = 0; i < missiles.size(); ) {
+    object = grid.collide(missiles[i], 5.0f);
+    if(object != NULL && object->alive) {
+      object->kill();
+      score += object->get_value() * multiplier();
+      kills_this_life += 1;
+      kills += 1;
+      detonate(missiles[i].position, missiles[i].velocity, 50);
+      if(missile_explode_sound != NULL) {
+        Mix_PlayChannel(-1, missile_explode_sound, 0);
+      }
+      missiles[i] = std::move(missiles.back());
+      missiles.pop_back();
+    } else {
+      ++i;
+    }
+  }
 }
 
 void Ship::collide(Ship *other) {
@@ -404,6 +491,23 @@ void Ship::collide(Ship *other) {
       detonate(mines[i].position, mines[i].velocity);
       mines[i] = std::move(mines.back());
       mines.pop_back();
+    } else {
+      ++i;
+    }
+  }
+
+  for(size_t i = 0; i < missiles.size(); ) {
+    if(is_alive() && other->is_alive() && missiles[i].collide(*other, 5.0)) {
+      other->kill();
+      kills_this_life += 1;
+      kills += 1;
+      score += other->value * multiplier();
+      detonate(missiles[i].position, missiles[i].velocity, 50);
+      if(missile_explode_sound != NULL) {
+        Mix_PlayChannel(-1, missile_explode_sound, 0);
+      }
+      missiles[i] = std::move(missiles.back());
+      missiles.pop_back();
     } else {
       ++i;
     }
@@ -433,11 +537,10 @@ void Ship::shoot(bool on) {
 }
 
 void Ship::mine(bool on) {
-  (*secondary)->shoot(on);
   if((*secondary)->empty() && on) {
-    //TODO: allow 'empty' secondary when needed
-    //delete *secondary;
-    //secondary = secondary_weapons.erase(secondary);
+    next_secondary_weapon();
+  } else {
+    (*secondary)->shoot(on);
   }
 }
 
@@ -522,6 +625,10 @@ void Ship::step(float delta, const Grid &grid) {
     }
 
     (*primary)->step(delta);
+    for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+      if (!dynamic_cast<Weapon::Missile*>(*it))
+        (*it)->step(delta);
+    }
 
   } else if (lives > 0) {
     if(floor((time_until_respawn-1)/1000) != floor((time_until_respawn-delta-1)/1000)) {
@@ -586,6 +693,27 @@ void Ship::step(float delta, const Grid &grid) {
     if(!mines[i].is_alive()) {
       mines[i] = std::move(mines.back());
       mines.pop_back();
+    } else {
+      ++i;
+    }
+  }
+
+  // Step missiles unconditionally so they keep flying after the ship dies.
+  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    Weapon::Missile *mw = dynamic_cast<Weapon::Missile*>(*it);
+    if (mw) mw->step(delta);
+  }
+
+  // Missile movement is handled in Weapon::Missile::step() above.
+  // Here we only handle expiry detonation.
+  for(size_t i = 0; i < missiles.size(); ) {
+    if(!missiles[i].is_alive()) {
+      detonate(missiles[i].position, missiles[i].velocity, 50);
+      if(missile_explode_sound != NULL) {
+        Mix_PlayChannel(-1, missile_explode_sound, 0);
+      }
+      missiles[i] = std::move(missiles.back());
+      missiles.pop_back();
     } else {
       ++i;
     }
