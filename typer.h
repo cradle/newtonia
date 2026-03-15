@@ -25,6 +25,9 @@ private:
   static void pre_draw(float x, float y, float size = 1);
   static void post_draw();
   static void draw_life(float x, float y, const GLShip *ship, float size = 1);
+  static void init_lists();
+  static GLuint char_lists[256];
+  static bool lists_initialized;
 };
 
 #endif
