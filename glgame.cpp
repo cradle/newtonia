@@ -49,6 +49,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   players = new std::list<GLShip*>;
   ship_objects = new std::list<Object*>;
   objects = new std::list<Asteroid*>;
+  dead_objects = new std::list<Asteroid*>;
   pickups = new std::list<Pickup*>;
 
   WrappedPoint::set_boundaries(world);
@@ -106,6 +107,11 @@ GLGame::~GLGame() {
     objects->pop_back();
   }
   delete objects;
+  while(!dead_objects->empty()) {
+    delete dead_objects->back();
+    dead_objects->pop_back();
+  }
+  delete dead_objects;
   while(!pickups->empty()) {
     delete pickups->back();
     pickups->pop_back();
@@ -181,6 +187,10 @@ void GLGame::tick(int delta) {
         delete objects->back();
         objects->pop_back();
       }
+      while(!dead_objects->empty()) {
+        delete dead_objects->back();
+        dead_objects->pop_back();
+      }
       Asteroid::num_killable = 0;
       add_asteroids();
       grid.update((std::list<Object *>*)objects);
@@ -206,6 +216,9 @@ void GLGame::tick(int delta) {
 
     std::list<Asteroid*>::iterator oi;
     for(oi = objects->begin(); oi != objects->end(); oi++) {
+      (*oi)->step(step_size);
+    }
+    for(oi = dead_objects->begin(); oi != dead_objects->end(); oi++) {
       (*oi)->step(step_size);
     }
 
@@ -247,10 +260,28 @@ void GLGame::tick(int delta) {
             pickups->push_back(new ShieldPickup((*oi)->position));
           }
         }
+        // Move to dead_objects so the collision grid no longer iterates this
+        // asteroid while its debris particles are still fading out.
+        if(!(*oi)->is_removable()) {
+          dead_objects->push_back(*oi);
+          oi = objects->erase(oi);
+          continue;
+        }
       }
       if((*oi)->is_removable()) {
         delete *oi;
         oi = objects->erase(oi);
+      } else {
+        oi++;
+      }
+    }
+
+    // Clean up dead asteroids whose debris has fully faded.
+    oi = dead_objects->begin();
+    while(oi != dead_objects->end()) {
+      if((*oi)->is_removable()) {
+        delete *oi;
+        oi = dead_objects->erase(oi);
       } else {
         oi++;
       }
@@ -332,7 +363,7 @@ void GLGame::tick(int delta) {
 void GLGame::draw_objects(float direction, bool minimap) const {
   if(debug_grid && !minimap) grid.draw_debug();
 
-  AsteroidDrawer::draw_batch(objects, direction, minimap,
+  AsteroidDrawer::draw_batch(objects, dead_objects, direction, minimap,
                              minimap ? world.x() : 0, minimap ? world.y() : 0);
 
   for(auto pi = pickups->begin(); pi != pickups->end(); pi++) {
@@ -621,6 +652,10 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       while(!objects->empty()) {
         delete objects->back();
         objects->pop_back();
+      }
+      while(!dead_objects->empty()) {
+        delete dead_objects->back();
+        dead_objects->pop_back();
       }
       Asteroid::num_killable = 0;
   }
