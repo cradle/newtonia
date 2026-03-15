@@ -141,6 +141,7 @@ void Ship::next_secondary_weapon() {
   next++;
   if(next == secondary_weapons.end())
     next = secondary_weapons.begin();
+  (*secondary)->shoot(false);
   secondary = next;
 }
 
@@ -195,6 +196,7 @@ void Ship::add_mine_ammo(int amount) {
   for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
     if(dynamic_cast<Weapon::Mine*>(*it)) {
       (*it)->add_ammo(amount);
+      (*secondary)->shoot(false);
       secondary = it;
       return;
     }
@@ -206,6 +208,7 @@ void Ship::add_missile_ammo(int amount) {
   for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
     if(dynamic_cast<Weapon::Missile*>(*it)) {
       (*it)->add_ammo(amount);
+      (*secondary)->shoot(false);
       secondary = it;
       return;
     }
@@ -216,6 +219,7 @@ void Ship::add_shield_ammo(int amount) {
   for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
     if(dynamic_cast<Weapon::Shield*>(*it)) {
       (*it)->add_ammo(amount);
+      (*secondary)->shoot(false);
       secondary = it;
       return;
     }
