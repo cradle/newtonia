@@ -20,6 +20,7 @@ namespace Weapon {
   void Shield::shoot(bool on) {
     shooting = on;
     if(on) {
+      if(ship->invincible) return;  // already active, don't consume ammo again
       if(_ammo == 0) {
         if(empty_sound != NULL) {
           Mix_PlayChannel(-1, empty_sound, 0);
