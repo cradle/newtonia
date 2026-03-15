@@ -63,7 +63,8 @@ jobs:
             VERSION="${{ github.ref_name }}"
             VERSION="${VERSION#v}"
           else
-            VERSION="0.0.1"
+            SHORT_SHA=$(git -C "$GITHUB_WORKSPACE/newtonia" rev-parse --short HEAD)
+            VERSION="0.0.1-${SHORT_SHA}"
           fi
           ./gradlew bundleRelease \
             -Pandroid.injected.signing.store.file="$(pwd)/release.jks" \
