@@ -274,6 +274,16 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                               e.tfinger.x, e.tfinger.y);
                 break;
 
+            // App lifecycle: auto-pause when backgrounded, auto-resume when foregrounded
+            case SDL_APP_WILLENTERBACKGROUND:
+                // Release any held touch inputs so nothing gets stuck
+                touch_controls_reset(s_game);
+                s_game->focus_lost();
+                break;
+            case SDL_APP_DIDENTERFOREGROUND:
+                s_game->focus_gained();
+                break;
+
             // Game controller
             default:
                 s_game->controller(e);

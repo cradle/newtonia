@@ -138,6 +138,22 @@ void GLGame::toggle_pause() {
   running = !running;
 }
 
+void GLGame::focus_lost() {
+  if(running) {
+    toggle_pause();
+    auto_paused = true;
+  }
+  Mix_PauseMusic();
+}
+
+void GLGame::focus_gained() {
+  Mix_ResumeMusic();
+  if(auto_paused) {
+    toggle_pause();
+    auto_paused = false;
+  }
+}
+
 bool GLGame::cleared() const {
   return level_cleared;
 }

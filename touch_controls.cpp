@@ -1,6 +1,7 @@
 #if defined(__ANDROID__) || defined(__IOS__)
 
 #include "touch_controls.h"
+#include "state_manager.h"
 #include <algorithm>
 
 TouchControlsState g_touch_controls = {};
@@ -35,6 +36,28 @@ void touch_controls_resize(int w, int h) {
     g_touch_controls.pause_cx     = (float)w * 0.5f;
     g_touch_controls.pause_cy     = (float)h * 0.07f;
     g_touch_controls.pause_radius = minDim * 0.10f;
+}
+
+void touch_controls_reset(StateManager *game) {
+    if(g_touch_controls.joy_active) {
+        g_touch_controls.joy_active = false;
+        g_touch_controls.joy_nx = 0.0f;
+        g_touch_controls.joy_ny = 0.0f;
+        game->touch_joystick(0.0f, 0.0f);
+        game->keyboard_up('\r', 0, 0);
+    }
+    if(g_touch_controls.shoot_pressed) {
+        g_touch_controls.shoot_pressed = false;
+        game->keyboard_up(' ', 0, 0);
+    }
+    if(g_touch_controls.mine_pressed) {
+        g_touch_controls.mine_pressed = false;
+        game->keyboard_up('x', 0, 0);
+    }
+    if(g_touch_controls.pause_active) {
+        g_touch_controls.pause_active = false;
+        game->keyboard_up('p', 0, 0);
+    }
 }
 
 #endif // __ANDROID__ || __IOS__
