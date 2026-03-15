@@ -19,6 +19,7 @@ namespace Weapon {
     bool empty() const;
     int ammo() const;
     void add_ammo(int amount);
+    void set_ammo(int amount);
     
   protected:
     Ship *ship;
@@ -47,6 +48,9 @@ namespace Weapon {
   }
   inline void Base::add_ammo(int amount) {
     if(!unlimited) _ammo += amount;
+  }
+  inline void Base::set_ammo(int amount) {
+    if(!unlimited) _ammo = amount;
   }
 }
 

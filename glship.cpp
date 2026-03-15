@@ -605,14 +605,16 @@ void GLShip::draw_weapons() const {
       }
     }
   }
-  weapon = *(ship->secondary);
-  if(weapon != NULL && !ship->secondary_weapons.empty()) {
-    Typer::draw(x+10,y-95,weapon->name(),10);
-    if(!weapon->is_unlimited()) {
-      if(weapon->ammo() == 0) {
-        Typer::draw(x+30+20*strlen(weapon->name()),y-95,"empty",10);
-      } else {
-        Typer::draw_lefted(x+50+20*strlen(weapon->name()),y-95,weapon->ammo(),10);
+  if(!ship->secondary_weapons.empty()) {
+    weapon = *(ship->secondary);
+    if(weapon != NULL) {
+      Typer::draw(x+10,y-95,weapon->name(),10);
+      if(!weapon->is_unlimited()) {
+        if(weapon->ammo() == 0) {
+          Typer::draw(x+30+20*strlen(weapon->name()),y-95,"empty",10);
+        } else {
+          Typer::draw_lefted(x+50+20*strlen(weapon->name()),y-95,weapon->ammo(),10);
+        }
       }
     }
   }

@@ -201,6 +201,10 @@ void Ship::add_mine_ammo(int amount) {
       return;
     }
   }
+  Weapon::Mine *w = new Weapon::Mine(this);
+  w->set_ammo(amount);
+  secondary_weapons.push_back(w);
+  secondary = --secondary_weapons.end();
 }
 
 void Ship::add_missile_ammo(int amount) {
@@ -213,6 +217,12 @@ void Ship::add_missile_ammo(int amount) {
       return;
     }
   }
+  Weapon::Missile *w = new Weapon::Missile(this);
+  w->set_ammo(amount);
+  if(missile_asteroids) w->set_asteroids(missile_asteroids);
+  if(missile_ships_list) w->set_ship_targets(missile_ships_list);
+  secondary_weapons.push_back(w);
+  secondary = --secondary_weapons.end();
 }
 
 void Ship::add_shield_ammo(int amount) {
@@ -224,9 +234,14 @@ void Ship::add_shield_ammo(int amount) {
       return;
     }
   }
+  Weapon::Shield *w = new Weapon::Shield(this);
+  w->set_ammo(amount);
+  secondary_weapons.push_back(w);
+  secondary = --secondary_weapons.end();
 }
 
 void Ship::set_missile_asteroids(std::list<Object*> *asteroids) {
+  missile_asteroids = asteroids;
   for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
     Weapon::Missile *mw = dynamic_cast<Weapon::Missile*>(*it);
     if(mw) { mw->set_asteroids(asteroids); return; }
@@ -234,6 +249,7 @@ void Ship::set_missile_asteroids(std::list<Object*> *asteroids) {
 }
 
 void Ship::set_missile_ships(std::list<Object*> *ships) {
+  missile_ships_list = ships;
   for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
     Weapon::Missile *mw = dynamic_cast<Weapon::Missile*>(*it);
     if(mw) { mw->set_ship_targets(ships); return; }
@@ -275,10 +291,7 @@ void Ship::init(bool no_friction) {
   primary_weapons.push_front(new Weapon::Default(this));
   primary = primary_weapons.begin();
 
-  secondary_weapons.push_back(new Weapon::Mine(this));
-  secondary_weapons.push_back(new Weapon::Missile(this));
-  secondary_weapons.push_back(new Weapon::Shield(this));
-  secondary = secondary_weapons.begin();
+  secondary = secondary_weapons.end();
 
   facing = Point(0, 1);
   reset();
@@ -329,6 +342,22 @@ void Ship::reset(bool was_killed) {
   temperature = 0.0;
   if(was_killed) {
     kills_this_life = 0;
+
+    // Remove all upgraded primary weapons, keeping only the base PEW PEW at the front
+    auto it = primary_weapons.begin();
+    ++it;
+    while(it != primary_weapons.end()) {
+      delete *it;
+      it = primary_weapons.erase(it);
+    }
+    primary = primary_weapons.begin();
+
+    // Remove all secondary weapons (pickup-only)
+    while(!secondary_weapons.empty()) {
+      delete secondary_weapons.back();
+      secondary_weapons.pop_back();
+    }
+    secondary = secondary_weapons.end();
   }
 }
 
@@ -537,8 +566,16 @@ void Ship::shoot(bool on) {
 }
 
 void Ship::mine(bool on) {
+  if(secondary_weapons.empty()) return;
   if((*secondary)->empty() && on) {
-    next_secondary_weapon();
+    auto to_remove = secondary;
+    auto next = to_remove;
+    ++next;
+    if(next == secondary_weapons.end())
+      next = secondary_weapons.begin();
+    delete *to_remove;
+    secondary_weapons.erase(to_remove);
+    secondary = secondary_weapons.empty() ? secondary_weapons.end() : next;
   } else {
     (*secondary)->shoot(on);
   }
@@ -698,10 +735,9 @@ void Ship::step(float delta, const Grid &grid) {
     }
   }
 
-  // Step missiles unconditionally so they keep flying after the ship dies.
-  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
-    Weapon::Missile *mw = dynamic_cast<Weapon::Missile*>(*it);
-    if (mw) mw->step(delta);
+  // Step missiles unconditionally so they keep flying regardless of weapon state.
+  for(size_t i = 0; i < missiles.size(); i++) {
+    missiles[i].step_missile(delta, missile_asteroids, missile_ships_list);
   }
 
   // Missile movement is handled in Weapon::Missile::step() above.
