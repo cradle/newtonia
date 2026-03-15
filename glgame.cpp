@@ -686,9 +686,8 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
 #endif
-#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__)
-  // On mobile/web there is no ESC key; any tap on the game over screen goes to menu.
-  // Ignore for a few seconds after game over so the last shoot input doesn't skip it.
+  // On all platforms: any non-ESC key goes to menu when all players are game over,
+  // with a short delay so the last shoot input doesn't immediately skip the game over screen.
   if (key != 27) {
     bool all_game_over = !players->empty();
     for (auto* glship : *players) {
@@ -704,7 +703,6 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       return;
     }
   }
-#endif
   if (key == 27) {
     request_state_change(new Menu());
   }
