@@ -11,7 +11,7 @@ jobs:
     runs-on: macos-latest   # arm64 (Apple Silicon)
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install arm64 dependencies
         run: brew install sdl2 mpg123
@@ -180,7 +180,7 @@ jobs:
           zip -r Newtonia.zip Newtonia.app
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: newtonia-macos-universal
           path: Newtonia.zip
