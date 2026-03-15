@@ -274,14 +274,25 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                               e.tfinger.x, e.tfinger.y);
                 break;
 
-            // App lifecycle: auto-pause when backgrounded, auto-resume when foregrounded
+            // App lifecycle: auto-pause when backgrounded, auto-resume when foregrounded.
+            // SDL2 fires SDL_APP_* events on some versions/configurations and
+            // SDL_WINDOWEVENT focus events on others; handle both so we catch it.
             case SDL_APP_WILLENTERBACKGROUND:
-                // Release any held touch inputs so nothing gets stuck
                 touch_controls_reset(s_game);
                 s_game->focus_lost();
                 break;
             case SDL_APP_DIDENTERFOREGROUND:
                 s_game->focus_gained();
+                break;
+            case SDL_WINDOWEVENT:
+                if(e.window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
+                   e.window.event == SDL_WINDOWEVENT_MINIMIZED) {
+                    touch_controls_reset(s_game);
+                    s_game->focus_lost();
+                } else if(e.window.event == SDL_WINDOWEVENT_FOCUS_GAINED ||
+                          e.window.event == SDL_WINDOWEVENT_RESTORED) {
+                    s_game->focus_gained();
+                }
                 break;
 
             // Game controller
