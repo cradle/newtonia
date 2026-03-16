@@ -627,6 +627,8 @@ void GLGame::controller(SDL_Event event) {
     if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) {
       toggle_pause();
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
+      for (auto* glship : *players)
+        save_high_score(glship->ship->score);
       request_state_change(new Menu());
     }
   }
@@ -715,11 +717,15 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     if (all_game_over) {
       if (game_over_time >= 0 && current_time - game_over_time < 3000)
         return;
+      for (auto* glship : *players)
+        save_high_score(glship->ship->score);
       request_state_change(new Menu());
       return;
     }
   }
   if (key == 27) {
+    for (auto* glship : *players)
+      save_high_score(glship->ship->score);
     request_state_change(new Menu());
   }
 
