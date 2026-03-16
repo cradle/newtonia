@@ -468,6 +468,16 @@ void Ship::collide_grid(Grid &grid) {
         detonate();
       } else {
         explode(position, object->velocity);
+        // The hit object was invincible. If the ship is also invincible
+        // (shielded), neither side died — but we still need to check whether
+        // the ship is simultaneously touching a killable asteroid, because
+        // grid.collide() stops at the first hit and would have skipped it.
+        if(invincible) {
+          Object *killable = grid.collide(*this, 0.0f, true);
+          if(killable != NULL && killable->kill()) {
+            detonate();
+          }
+        }
       }
       kill_stop();
     }

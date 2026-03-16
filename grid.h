@@ -15,7 +15,7 @@ public:
   void display() const;
   void draw_debug() const;
   void update(const list<Object *> *objects);
-  Object * collide(const Object &object, float proximity = 0.0f) const;
+  Object * collide(const Object &object, float proximity = 0.0f, bool skip_invincible = false) const;
 
 private:
   const vector<Object *> &get(int row, int col) const;
