@@ -39,7 +39,7 @@ const vector<Object *> &Grid::get(int row, int col) const {
   return cells[row][col];
 }
 
-Object * Grid::collide(const Object &object, float proximity) const {
+Object * Grid::collide(const Object &object, float proximity, bool skip_invincible) const {
   vector<Object *>::const_iterator o;
   Object *collided = NULL;
 
@@ -61,6 +61,7 @@ Object * Grid::collide(const Object &object, float proximity) const {
       const vector<Object *> &others = get(row, col);
       Point offset(x_off, y_off);
       for(o = others.begin(); o != others.end() && collided == NULL; o++) {
+        if(skip_invincible && (*o)->invincible) continue;
         if(object.collide(**o, proximity, offset)) {
           collided = *o;
         }

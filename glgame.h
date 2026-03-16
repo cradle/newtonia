@@ -36,6 +36,9 @@ public:
 
   bool cleared() const;
 
+  void focus_lost();
+  void focus_gained();
+
   list<Asteroid*> *objects;      // alive asteroids (in collision grid)
   list<Asteroid*> *dead_objects; // killed asteroids with lingering debris
   list<Pickup*> *pickups;
@@ -53,7 +56,7 @@ private:
   void setup_perspective(GLShip *glship) const;
   void setup_orthogonal() const;
 
-  static const int step_size = 5;
+  static const int step_size = 16;
 
   Point world;
 
@@ -61,6 +64,8 @@ private:
   int last_tick, time_until_next_step, num_frames, current_time, time_between_steps;
   int time_until_next_generation;
   bool running, level_cleared, friendly_fire, debug_grid, score_saved;
+  bool auto_paused = false;
+  int game_over_time;
 
   static const int default_world_width, default_world_height;
   static const int default_num_asteroids, extra_num_asteroids;

@@ -18,6 +18,8 @@ public:
   void tick(int delta);
   void resize(int x, int y);
   void touch_joystick(float nx, float ny);
+  void focus_lost();
+  void focus_gained();
 
 private:
   Point window;

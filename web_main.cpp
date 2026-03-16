@@ -117,12 +117,26 @@ static void main_loop() {
         case SDL_KEYDOWN: {
             SDL_Keycode k = e.key.keysym.sym;
             unsigned char key = (k < 128) ? (unsigned char)k : 0;
+            if (!key) switch (k) {
+                case SDLK_F1:  key = 128 + GLUT_KEY_F1;  break;
+                case SDLK_F4:  key = 128 + GLUT_KEY_F4;  break;
+                case SDLK_F8:  key = 128 + GLUT_KEY_F8;  break;
+                case SDLK_F11: key = 128 + GLUT_KEY_F11; break;
+                default: break;
+            }
             if (key) s_game->keyboard(key, 0, 0);
             break;
         }
         case SDL_KEYUP: {
             SDL_Keycode k = e.key.keysym.sym;
             unsigned char key = (k < 128) ? (unsigned char)k : 0;
+            if (!key) switch (k) {
+                case SDLK_F1:  key = 128 + GLUT_KEY_F1;  break;
+                case SDLK_F4:  key = 128 + GLUT_KEY_F4;  break;
+                case SDLK_F8:  key = 128 + GLUT_KEY_F8;  break;
+                case SDLK_F11: key = 128 + GLUT_KEY_F11; break;
+                default: break;
+            }
             if (key) s_game->keyboard_up(key, 0, 0);
             break;
         }

@@ -141,6 +141,8 @@ class Ship : public CompositeObject {
     list<Weapon::Base *> secondary_weapons;
     list<Weapon::Base *>::iterator primary;
     list<Weapon::Base *>::iterator secondary;
+    std::list<Object*> *missile_asteroids = nullptr;
+    std::list<Object*> *missile_ships_list = nullptr;
 };
 
 #endif

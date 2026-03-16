@@ -5,9 +5,6 @@
 #include "menu.h"
 #include "gl_compat.h"
 #include <iostream>
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-#endif
 
 const int Menu::default_world_width = 5000;
 const int Menu::default_world_height = 5000;
@@ -69,22 +66,15 @@ void Menu::draw() {
     Typer::draw_centered(0, -255, high_score, 18);
   }
   if((currentTime/1400) % 2) {
-#if defined(__ANDROID__) || defined(__IOS__)
-    Typer::draw_centered(0, -50, "tap to start", 18);
-#elif defined(__EMSCRIPTEN__)
-    if (EM_ASM_INT(return window.matchMedia('(pointer: coarse)').matches ? 1 : 0;))
+    if(is_touch_mode()) {
       Typer::draw_centered(0, -50, "tap to start", 18);
-    else
-      Typer::draw_centered(0, -50, "press enter", 18);
-#else
-    if(SDL_NumJoysticks() == 0) {
+    } else if(SDL_NumJoysticks() == 0) {
       Typer::draw_centered(0, -50, "press enter", 18);
     } else {
       Typer::draw_centered(0, -50, "press start", 18);
     }
-#endif
   }
-  Typer::draw_centered(0, -420, "© 2008-2026", 13, currentTime);
+  Typer::draw_centered(0, -420, "© 2008-2026 METONYMOUS", 13, currentTime);
 }
 
 void Menu::tick(int delta) {

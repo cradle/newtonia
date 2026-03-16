@@ -28,3 +28,16 @@
 #endif
 
 #endif // __ANDROID__ || __IOS__ || __EMSCRIPTEN__
+
+// Returns true when the primary input is touch (Android, iOS, or web with a
+// coarse pointer such as a touchscreen).  Use this instead of repeating the
+// platform-specific preprocessor / matchMedia boilerplate everywhere.
+inline bool is_touch_mode() {
+#if defined(__ANDROID__) || defined(__IOS__)
+  return true;
+#elif defined(__EMSCRIPTEN__)
+  return EM_ASM_INT(return window.matchMedia('(pointer: coarse)').matches ? 1 : 0;) != 0;
+#else
+  return false;
+#endif
+}
