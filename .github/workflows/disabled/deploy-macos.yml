@@ -1,0 +1,236 @@
+name: Deploy macOS (Mac App Store)
+
+# Triggered by pushing a version tag, e.g.:
+#   git tag v1.0.0 && git push --tags
+# Or manually from the Actions tab.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: macos-latest   # arm64 (Apple Silicon)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install arm64 dependencies
+        run: brew install sdl2 mpg123
+
+      - name: Install x86_64 Homebrew and dependencies
+        run: |
+          arch -x86_64 /bin/bash -c \
+            "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          arch -x86_64 /usr/local/bin/brew install sdl2 mpg123
+
+      - name: Build SDL2_mixer from source (WAV + MP3 only)
+        run: |
+          SDL_MIXER_VER=2.8.0
+          curl -fsSL https://github.com/libsdl-org/SDL_mixer/releases/download/release-${SDL_MIXER_VER}/SDL2_mixer-${SDL_MIXER_VER}.tar.gz | tar xz
+          cd SDL2_mixer-${SDL_MIXER_VER}
+
+          cmake_flags=(
+            -DCMAKE_BUILD_TYPE=Release
+            -DSDL2MIXER_VENDORED=OFF
+            -DSDL2MIXER_SAMPLES=OFF
+            -DSDL2MIXER_OGG=OFF
+            -DSDL2MIXER_FLAC=OFF
+            -DSDL2MIXER_MIDI=OFF
+            -DSDL2MIXER_OPUS=OFF
+            -DSDL2MIXER_MOD=OFF
+            -DSDL2MIXER_WAVPACK=OFF
+            -DSDL2MIXER_MP3=ON
+            -DSDL2MIXER_MP3_MPG123=ON
+            -DSDL2MIXER_WAVE=ON
+          )
+
+          cmake -B build-arm64 "${cmake_flags[@]}" \
+            -DCMAKE_PREFIX_PATH=/opt/homebrew \
+            -DCMAKE_INSTALL_PREFIX=/opt/homebrew
+          cmake --build build-arm64 -j$(sysctl -n hw.logicalcpu)
+          install_name_tool -id /opt/homebrew/lib/libSDL2_mixer.dylib \
+            build-arm64/libSDL2_mixer.dylib
+          cp build-arm64/libSDL2_mixer.dylib /opt/homebrew/lib/libSDL2_mixer.dylib
+
+          cmake -B build-x86 "${cmake_flags[@]}" \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DCMAKE_C_FLAGS="-target x86_64-apple-macos12.0" \
+            -DCMAKE_CXX_FLAGS="-target x86_64-apple-macos12.0" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-target x86_64-apple-macos12.0" \
+            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
+            -DCMAKE_PREFIX_PATH=/usr/local \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build build-x86 -j$(sysctl -n hw.logicalcpu)
+          install_name_tool -id /usr/local/lib/libSDL2_mixer.dylib \
+            build-x86/libSDL2_mixer.dylib
+          cp build-x86/libSDL2_mixer.dylib /usr/local/lib/libSDL2_mixer.dylib
+
+          cp include/SDL_mixer.h /opt/homebrew/include/SDL2/SDL_mixer.h
+          cp include/SDL_mixer.h /usr/local/include/SDL2/SDL_mixer.h
+
+      - name: Collect sources
+        run: |
+          find . -name "*.cpp" \
+            -not -path "./android/*" \
+            -not -path "./.git/*" \
+            -not -name "gles2_compat.cpp" > srcs.txt
+
+      - name: Build arm64
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "12.0"
+        run: |
+          clang++ -O2 -Wall -std=c++11 -arch arm64 \
+            -mmacosx-version-min=12.0 \
+            -o newtonia-arm64 $(cat srcs.txt) \
+            $(/opt/homebrew/bin/sdl2-config --cflags --libs) \
+            -L/opt/homebrew/lib -lSDL2_mixer \
+            -I/opt/homebrew/include/SDL2 \
+            -framework GLUT -framework OpenGL
+
+      - name: Build x86_64
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "12.0"
+        run: |
+          clang++ -O2 -Wall -std=c++11 -arch x86_64 \
+            -mmacosx-version-min=12.0 \
+            -o newtonia-x86_64 $(cat srcs.txt) \
+            $(/usr/local/bin/sdl2-config --cflags --libs) \
+            -L/usr/local/lib -lSDL2_mixer \
+            -I/usr/local/include/SDL2 \
+            -framework GLUT -framework OpenGL
+
+      - name: Create universal binary
+        run: lipo -create -output newtonia newtonia-arm64 newtonia-x86_64
+
+      - name: Bundle .app
+        run: |
+          mkdir -p Newtonia.app/Contents/{MacOS,Frameworks,Resources}
+          cp newtonia Newtonia.app/Contents/MacOS/newtonia
+          cp icon.icns Newtonia.app/Contents/Resources/icon.icns
+
+          FW="Newtonia.app/Contents/Frameworks"
+
+          bundle() {
+            local target="$1"
+            while IFS= read -r dep; do
+              local name dest arm x86
+              name=$(basename "$dep")
+              dest="$FW/$name"
+              arm=$(echo "$dep" | sed 's|/usr/local/|/opt/homebrew/|g')
+              x86=$(echo "$dep" | sed 's|/opt/homebrew/|/usr/local/|g')
+              if [ ! -f "$dest" ]; then
+                if [ "$arm" != "$x86" ] && [ -f "$arm" ] && [ -f "$x86" ]; then
+                  lipo -create "$arm" "$x86" -output "$dest"
+                elif [ -f "$dep" ]; then
+                  cp "$dep" "$dest"
+                elif [ -f "$arm" ]; then
+                  cp "$arm" "$dest"
+                elif [ -f "$x86" ]; then
+                  cp "$x86" "$dest"
+                else
+                  echo "WARNING: $dep not found, skipping" >&2
+                  continue
+                fi
+                bundle "$dest"
+              fi
+              install_name_tool -change "$arm" "@executable_path/../Frameworks/$name" "$target" 2>/dev/null || true
+              install_name_tool -change "$x86" "@executable_path/../Frameworks/$name" "$target" 2>/dev/null || true
+            done < <(
+              { otool -arch arm64  -L "$target" 2>/dev/null
+                otool -arch x86_64 -L "$target" 2>/dev/null; } \
+              | awk '/^\t/{print $1}' \
+              | grep -Ev '^(/usr/lib|/System|@)' \
+              | sort -u
+            )
+          }
+
+          bundle Newtonia.app/Contents/MacOS/newtonia
+
+          # Use the existing Info.plist, patching in the release version from the git tag
+          # and setting the required Mac App Store deployment target.
+          cp Newtonia-Info.plist Newtonia.app/Contents/Info.plist
+          TAG_VERSION="${{ github.ref_name }}"          # e.g. v1.2.3
+          VERSION="${TAG_VERSION#v}"                    # strip leading 'v' → 1.2.3
+          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable newtonia" \
+            Newtonia.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" \
+            Newtonia.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" \
+            Newtonia.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 12.0" \
+            Newtonia.app/Contents/Info.plist 2>/dev/null || \
+          /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 12.0" \
+            Newtonia.app/Contents/Info.plist
+
+      # Import the Apple Developer ID / Mac App Store signing certificate.
+      # One-time setup required:
+      #   1. In Apple Developer Portal, create an app record for cc.gfm.Newtonia (macOS)
+      #   2. Create a "Mac App Distribution" certificate + "Mac Installer Distribution" certificate
+      #   3. Export both as .p12, base64-encode and store as MAC_DIST_CERT_BASE64,
+      #      MAC_INSTALLER_CERT_BASE64 (with passwords MAC_DIST_CERT_PASSWORD,
+      #      MAC_INSTALLER_CERT_PASSWORD)
+      #   4. Create a Mac App Store provisioning profile, base64-encode it →
+      #      MAC_PROVISIONING_PROFILE_BASE64
+      #   5. App Store Connect API key (same as iOS, or create a new one):
+      #      APP_STORE_CONNECT_API_KEY_ID, APP_STORE_CONNECT_ISSUER_ID,
+      #      APP_STORE_CONNECT_API_KEY_CONTENT
+      - name: Import signing certificates
+        env:
+          DIST_CERT_BASE64: ${{ secrets.MAC_DIST_CERT_BASE64 }}
+          DIST_CERT_PASSWORD: ${{ secrets.MAC_DIST_CERT_PASSWORD }}
+          INSTALLER_CERT_BASE64: ${{ secrets.MAC_INSTALLER_CERT_BASE64 }}
+          INSTALLER_CERT_PASSWORD: ${{ secrets.MAC_INSTALLER_CERT_PASSWORD }}
+        run: |
+          echo "$DIST_CERT_BASE64" | base64 -d > dist.p12
+          echo "$INSTALLER_CERT_BASE64" | base64 -d > installer.p12
+          security create-keychain -p "" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+          security import dist.p12 -k build.keychain -P "$DIST_CERT_PASSWORD" \
+            -T /usr/bin/codesign
+          security import installer.p12 -k build.keychain \
+            -P "$INSTALLER_CERT_PASSWORD" -T /usr/bin/productbuild
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "" build.keychain
+
+      - name: Install provisioning profile
+        env:
+          PROFILE_BASE64: ${{ secrets.MAC_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          echo "$PROFILE_BASE64" | base64 -d > profile.provisionprofile
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          UUID=$(security cms -D -i profile.provisionprofile \
+            | plutil -extract UUID xml1 -o - - \
+            | sed -n 's|.*<string>\(.*\)</string>.*|\1|p')
+          cp profile.provisionprofile \
+            ~/Library/MobileDevice/Provisioning\ Profiles/"$UUID".provisionprofile
+
+      - name: Sign .app with Mac App Distribution certificate
+        run: |
+          # Sign frameworks first (inner → outer)
+          find Newtonia.app/Contents/Frameworks -name "*.dylib" \
+            -exec codesign --force --sign "3rd Party Mac Developer Application" \
+              --options runtime {} \;
+          codesign --force --sign "3rd Party Mac Developer Application" \
+            --options runtime \
+            --entitlements newtonia/Newtonia.entitlements \
+            Newtonia.app
+
+      # Package as .pkg for Mac App Store submission.
+      - name: Package as .pkg installer
+        run: |
+          productbuild --component Newtonia.app /Applications \
+            --sign "3rd Party Mac Developer Installer" \
+            Newtonia.pkg
+
+      # Upload to TestFlight. The build appears under TestFlight for internal
+      # testing immediately; submit for Mac App Store review from App Store Connect UI.
+      - name: Upload to TestFlight
+        uses: apple-actions/upload-testflight-build@v1
+        with:
+          app-path: Newtonia.pkg
+          issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          api-key-id: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          api-private-key: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
