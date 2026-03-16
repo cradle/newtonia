@@ -7,8 +7,6 @@ on:
   push:
     tags:
       - 'v*.*.*'
-    branches:
-      - 'claude/app-store-deployment-automation-Sd0kD'
   workflow_dispatch:
 
 jobs:
