@@ -10,7 +10,7 @@ android {
         applicationId "org.newtonia"
         minSdk 21           // Android 5.0 (GLES2 guaranteed)
         targetSdk 35
-        versionCode 1
+        versionCode (project.findProperty('versionCode') as Integer) ?: 1
         versionName project.findProperty('versionName') ?: "0.0.1"
 
         externalNativeBuild {

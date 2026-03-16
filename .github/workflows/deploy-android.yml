@@ -72,6 +72,7 @@ jobs:
             -Pandroid.injected.signing.key.alias="${SIGNING_KEY_ALIAS}" \
             -Pandroid.injected.signing.key.password="${SIGNING_KEY_PASSWORD}" \
             -PversionName="${VERSION:-0.0.1}" \
+            -PversionCode="${{ github.run_number }}" \
             --stacktrace
 
       - name: Upload AAB artifact
