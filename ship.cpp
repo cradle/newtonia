@@ -192,19 +192,30 @@ void Ship::add_weapon(int weapon_index) {
   primary = --primary_weapons.end();
 }
 
+// Returns true if the player is currently holding the shield key.
+// In that case we add ammo to a picked-up secondary without switching away.
+static bool shield_held(const list<Weapon::Base*>& secondary_weapons,
+                        list<Weapon::Base*>::const_iterator secondary) {
+  if (secondary == secondary_weapons.end()) return false;
+  return dynamic_cast<const Weapon::Shield*>(*secondary) && (*secondary)->is_shooting();
+}
+
 void Ship::add_mine_ammo(int amount) {
   for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
     if(dynamic_cast<Weapon::Mine*>(*it)) {
       (*it)->add_ammo(amount);
-      (*secondary)->shoot(false);
-      secondary = it;
+      if(!shield_held(secondary_weapons, secondary)) {
+        (*secondary)->shoot(false);
+        secondary = it;
+      }
       return;
     }
   }
   Weapon::Mine *w = new Weapon::Mine(this);
   w->set_ammo(amount);
   secondary_weapons.push_back(w);
-  secondary = --secondary_weapons.end();
+  if(!shield_held(secondary_weapons, secondary))
+    secondary = --secondary_weapons.end();
 }
 
 void Ship::add_missile_ammo(int amount) {
@@ -212,8 +223,10 @@ void Ship::add_missile_ammo(int amount) {
   for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
     if(dynamic_cast<Weapon::Missile*>(*it)) {
       (*it)->add_ammo(amount);
-      (*secondary)->shoot(false);
-      secondary = it;
+      if(!shield_held(secondary_weapons, secondary)) {
+        (*secondary)->shoot(false);
+        secondary = it;
+      }
       return;
     }
   }
@@ -222,15 +235,20 @@ void Ship::add_missile_ammo(int amount) {
   if(missile_asteroids) w->set_asteroids(missile_asteroids);
   if(missile_ships_list) w->set_ship_targets(missile_ships_list);
   secondary_weapons.push_back(w);
-  secondary = --secondary_weapons.end();
+  if(!shield_held(secondary_weapons, secondary))
+    secondary = --secondary_weapons.end();
 }
 
 void Ship::add_shield_ammo(int amount) {
   for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
     if(dynamic_cast<Weapon::Shield*>(*it)) {
       (*it)->add_ammo(amount);
-      (*secondary)->shoot(false);
-      secondary = it;
+      // Only re-select the shield if it isn't already the active held weapon,
+      // to avoid calling shoot(false) and briefly dropping the shield.
+      if(secondary != it) {
+        (*secondary)->shoot(false);
+        secondary = it;
+      }
       return;
     }
   }
