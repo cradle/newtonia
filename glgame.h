@@ -56,7 +56,7 @@ private:
   void setup_perspective(GLShip *glship) const;
   void setup_orthogonal() const;
 
-  static const int step_size = 10;
+  static const int step_size = 16;
 
   Point world;
 
