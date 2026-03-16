@@ -1,5 +1,5 @@
 Newtonia is a top down 2D space shooter.
-Written in C++ using GLUT and OpenGL.
+Written in C++ using SDL and OpenGL.
 
 Two players works best with 2 USB keyboards.
 
