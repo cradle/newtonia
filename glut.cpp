@@ -11,6 +11,7 @@
 #ifdef __APPLE__
 #define glutLeaveMainLoop() exit(EXIT_SUCCESS)
 #include <GLUT/glut.h>
+#include <OpenGL/OpenGL.h>
 #else
 #ifdef _WIN32
 #include <windows.h>
@@ -201,6 +202,18 @@ void init(int &argc, char* argv[], float width, float height) {
   glutInitDisplayMode(DISPLAY_TYPE);
   glutInitWindowSize(width, height);
   glutCreateWindow("Newtonia");
+
+#ifdef __APPLE__
+  // Enable VSync so glutSwapBuffers() blocks until the display's vertical
+  // blank. Without this, the idle loop runs uncapped and produces jank on
+  // external monitors (e.g. a 50 Hz display on M1) because rendered frames
+  // are not aligned to the screen's refresh cycle.
+  {
+    CGLContextObj ctx = CGLGetCurrentContext();
+    GLint swapInterval = 1;
+    CGLSetParameter(ctx, kCGLCPSwapInterval, &swapInterval);
+  }
+#endif
 
   //glEnable(GL_DEPTH_TEST);
   //glDepthFunc(GL_LESS);
