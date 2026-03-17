@@ -137,6 +137,41 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :MinimumOSVersion 13.0" Newtonia.app/Info.plist 2>/dev/null \
             || /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string 13.0" Newtonia.app/Info.plist
 
+      - name: Generate and bundle app icons
+        run: |
+          SRC="newtonia/icon.png"
+          # All sizes required for iPhone, iPad, and App Store
+          declare -A ICONS=(
+            [AppIcon-20@2x.png]=40
+            [AppIcon-20@3x.png]=60
+            [AppIcon-29@2x.png]=58
+            [AppIcon-29@3x.png]=87
+            [AppIcon-40@2x.png]=80
+            [AppIcon-40@3x.png]=120
+            [AppIcon-60@2x.png]=120
+            [AppIcon-60@3x.png]=180
+            [AppIcon-76@1x.png]=76
+            [AppIcon-76@2x.png]=152
+            [AppIcon-83.5@2x.png]=167
+            [AppIcon-1024.png]=1024
+          )
+          for NAME in "${!ICONS[@]}"; do
+            SIZE="${ICONS[$NAME]}"
+            sips -z "$SIZE" "$SIZE" "$SRC" --out "Newtonia.app/$NAME" >/dev/null
+          done
+          # Wire icons into Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" Newtonia.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons dict" Newtonia.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons:CFBundlePrimaryIcon dict" Newtonia.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles array" Newtonia.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles:0 string AppIcon-60@2x" Newtonia.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles:1 string AppIcon-60@3x" Newtonia.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons~ipad dict" Newtonia.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons~ipad:CFBundlePrimaryIcon dict" Newtonia.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons~ipad:CFBundlePrimaryIcon:CFBundleIconFiles array" Newtonia.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons~ipad:CFBundlePrimaryIcon:CFBundleIconFiles:0 string AppIcon-76@2x" Newtonia.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons~ipad:CFBundlePrimaryIcon:CFBundleIconFiles:1 string AppIcon-83.5@2x" Newtonia.app/Info.plist
+
       # Import the Apple Distribution certificate and provisioning profile.
       # One-time setup required:
       #   1. In Apple Developer Portal, create an App ID for cc.gfm.Newtonia
