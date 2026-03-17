@@ -284,8 +284,18 @@ jobs:
 
       # Upload to TestFlight. Testers can install immediately;
       # submit for App Store review from App Store Connect UI.
+      - name: Pre-install API key for iTMSTransporter
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+        run: |
+          # upload-testflight-build@v4 writes the key to ~/private_keys/ but
+          # iTMSTransporter looks in ~/.private_keys/ — pre-install in both.
+          mkdir -p ~/.private_keys
+          echo "$KEY_CONTENT" > ~/.private_keys/AuthKey_${KEY_ID}.p8
+
       - name: Upload to TestFlight
-        uses: apple-actions/upload-testflight-build@v3
+        uses: apple-actions/upload-testflight-build@v4
         with:
           app-path: Newtonia.ipa
           issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
