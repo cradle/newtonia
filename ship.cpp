@@ -623,6 +623,7 @@ void Ship::fire_secondary(bool on) {
 void Ship::set_shield_hum(bool on) {
   if(shield_hum_sound == NULL) return;
   if(on) {
+    if(shield_hum_channel >= 0) return; // already playing, don't leak a new channel
     shield_hum_channel = Mix_PlayChannel(-1, shield_hum_sound, -1);
   } else if(shield_hum_channel >= 0) {
     Mix_HaltChannel(shield_hum_channel);
