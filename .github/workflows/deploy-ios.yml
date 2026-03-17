@@ -285,6 +285,9 @@ jobs:
           cp -r Newtonia.app Payload/
           zip -qr Newtonia.ipa Payload/
 
+      - name: Print DTXcodeBuild
+        run: /usr/libexec/PlistBuddy -c "Print :DTXcodeBuild" Newtonia.app/Info.plist || echo "DTXcodeBuild not set"
+
       # Upload to TestFlight. Testers can install immediately;
       # submit for App Store review from App Store Connect UI.
       - name: Upload to TestFlight
