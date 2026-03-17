@@ -144,15 +144,9 @@ jobs:
 
       - name: Generate and bundle app icons
         run: |
-          SRC="newtonia/icon.png"
+          SRC="icon-ios.png"
           ICONSET="AppIcon.appiconset"
           mkdir -p "$ICONSET"
-
-          # Flatten alpha channel in source (Apple rejects icons with transparency)
-          FLAT_SRC="/tmp/icon-src-flat.png"
-          pip3 install --quiet Pillow
-          python3 -c "import sys; from PIL import Image; img=Image.open(sys.argv[1]).convert('RGBA'); bg=Image.new('RGB',img.size,(255,255,255)); bg.paste(img,mask=img.split()[3]); bg.save(sys.argv[2])" "$SRC" "$FLAT_SRC"
-          SRC="$FLAT_SRC"
 
           # Generate all required sizes
           sips -z 40   40   "$SRC" --out "$ICONSET/icon-20@2x.png"   >/dev/null
