@@ -16,19 +16,11 @@ public:
   void tick(int delta);
 
 private:
-  Typer typer;
   int currentTime;
   int high_score;
   WrappedPoint viewpoint;
   GLStarfield starfield;
   static const int default_world_width, default_world_height;
-
-  enum MenuItem {
-    ARCADE,
-    VERSUS
-  };
-
-  MenuItem selected;
 
   Mix_Music *music = NULL;
 };
