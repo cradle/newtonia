@@ -98,6 +98,7 @@ jobs:
               -miphoneos-version-min=13.0 \
               -std=c++11 -O2 \
               -D__IOS__=1 \
+              -DGLES_SILENCE_DEPRECATION \
               -Inewtonia -Inewtonia/view -Inewtonia/weapon \
               -ISDL2/include \
               -ISDL2_mixer/include \
