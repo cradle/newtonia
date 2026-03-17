@@ -9,7 +9,6 @@
 #include "state_manager.h"
 
 #ifdef __APPLE__
-#define glutLeaveMainLoop() exit(EXIT_SUCCESS)
 #include <GLUT/glut.h>
 #include <OpenGL/OpenGL.h>
 #else
