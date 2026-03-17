@@ -105,13 +105,20 @@ def make_missile_explode():
     return samples
 
 def make_missile_fly():
-    """Missile in-flight: modulated whoosh, 500ms (loopable)."""
+    """Missile in-flight: high-pitched turbine whine with noise, 500ms (loopable)."""
     n = int(SAMPLE_RATE * 0.5)
+    rng = random.Random(55)
     samples = []
+    phase = 0.0
     for i in range(n):
         t = i / SAMPLE_RATE
-        freq = 400 + 200 * math.sin(2 * math.pi * 3 * t)
-        samples.append(math.sin(2 * math.pi * freq * t) * 0.5)
+        # Rising whine that levels off
+        freq = 1200 + 600 * (1 - math.exp(-t * 8))
+        phase += 2 * math.pi * freq / SAMPLE_RATE
+        whine = math.sin(phase) * 0.35
+        whine += math.sin(phase * 2) * 0.1
+        noise = (rng.random() * 2 - 1) * 0.15
+        samples.append(whine + noise)
     return samples
 
 def make_tic():
@@ -138,7 +145,6 @@ def make_boost():
     """Engine rumble: loopable low-frequency hum, 1s."""
     n = int(SAMPLE_RATE * 1.0)
     rng = random.Random(123)
-    dur = 1.0
     samples = []
     for i in range(n):
         t = i / SAMPLE_RATE
@@ -146,9 +152,7 @@ def make_boost():
         s += math.sin(2 * math.pi * 100 * t) * 0.2
         s += math.sin(2 * math.pi * 150 * t) * 0.1
         s += (rng.random() * 2 - 1) * 0.1
-        # Fade in/out for clean loop
-        fade = min(1.0, t * 10) * min(1.0, (dur - t) * 10)
-        samples.append(s * fade * 0.7)
+        samples.append(s * 0.7)
     return samples
 
 def make_pickup():
