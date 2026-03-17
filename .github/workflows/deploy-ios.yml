@@ -172,13 +172,31 @@ jobs:
         run: |
           echo "$PROFILE_BASE64" | base64 -d > profile.mobileprovision
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          UUID=$(security cms -D -i profile.mobileprovision \
-            | plutil -extract UUID xml1 -o - - \
+          PROFILE_PLIST=$(security cms -D -i profile.mobileprovision)
+          UUID=$(echo "$PROFILE_PLIST" | plutil -extract UUID xml1 -o - - \
             | sed -n 's|.*<string>\(.*\)</string>.*|\1|p')
+          TEAM_ID=$(echo "$PROFILE_PLIST" | plutil -extract TeamIdentifier.0 xml1 -o - - \
+            | sed -n 's|.*<string>\(.*\)</string>.*|\1|p')
+          echo "Team ID: $TEAM_ID"
           cp profile.mobileprovision \
             ~/Library/MobileDevice/Provisioning\ Profiles/"$UUID".mobileprovision
-          # Also embed it inside the .app bundle as required by App Store
           cp profile.mobileprovision Newtonia.app/embedded.mobileprovision
+          # Substitute real team ID into entitlements
+          sed "s/TEAM_ID_PLACEHOLDER/$TEAM_ID/" \
+            newtonia/ios/Entitlements.plist > entitlements-final.plist
+
+      - name: Inject build metadata into Info.plist
+        run: |
+          SYSROOT=$(xcrun --sdk iphoneos --show-sdk-path)
+          SDK_VERSION=$(xcrun --sdk iphoneos --show-sdk-version)
+          XCODE_VERSION=$(xcodebuild -version | head -1 | awk '{print $2}')
+          XCODE_BUILD=$(xcodebuild -version | tail -1 | awk '{print $3}')
+          /usr/libexec/PlistBuddy -c "Set :DTPlatformName iphoneos" Newtonia.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :DTPlatformVersion $SDK_VERSION" Newtonia.app/Info.plist 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :DTPlatformVersion string $SDK_VERSION" Newtonia.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :DTSDKName string iphoneos${SDK_VERSION}" Newtonia.app/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :DTXcode string $XCODE_VERSION" Newtonia.app/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :DTXcodeBuild string $XCODE_BUILD" Newtonia.app/Info.plist 2>/dev/null || true
 
       - name: Sign .app
         run: |
@@ -188,7 +206,7 @@ jobs:
             | sed -E 's/.*"(.+)"/\1/')
           echo "Signing with: $IDENTITY"
           codesign --force --sign "$IDENTITY" \
-            --entitlements newtonia/ios/Entitlements.plist \
+            --entitlements entitlements-final.plist \
             Newtonia.app
 
       # Package as .ipa (the format required for App Store submission).
