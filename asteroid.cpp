@@ -33,13 +33,13 @@ Asteroid::Asteroid(bool invincible) : CompositeObject(), killed(false) {
     num_killable++;
   }
   if(explode_sound == NULL) {
-    explode_sound = Mix_LoadWAV("explode.wav");
+    explode_sound = Mix_LoadWAV("audio/explode.wav");
     if(explode_sound == NULL) {
       std::cout << "Unable to load explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(thud_sound == NULL) {
-    thud_sound = Mix_LoadWAV("thud.wav");
+    thud_sound = Mix_LoadWAV("audio/thud.wav");
     if(thud_sound == NULL) {
         std::cout << "Unable to load thud.wav (" << Mix_GetError() << ")" << std::endl;
     } else {

@@ -200,7 +200,9 @@ def make_title():
 
 
 if __name__ == '__main__':
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    repo_root = os.path.dirname(os.path.abspath(__file__))
+    os.makedirs(os.path.join(repo_root, 'audio'), exist_ok=True)
+    os.chdir(os.path.join(repo_root, 'audio'))
 
     sounds = {
         'shoot.wav':           make_shoot,

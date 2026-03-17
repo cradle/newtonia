@@ -19,7 +19,7 @@ Menu::Menu() :
   EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
 #endif
   if(music == NULL) {
-    music = Mix_LoadMUS("title.wav");
+    music = Mix_LoadMUS("audio/title.wav");
     if(music == NULL) {
       std::cout << "Unable to load title.wav (" << Mix_GetError() << ")" << std::endl;
     } else {

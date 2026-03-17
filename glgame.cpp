@@ -82,7 +82,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   station = NULL;//new GLStation(enemies, players);
 
   if(tic_sound == NULL) {
-    tic_sound = Mix_LoadWAV("tic.wav");
+    tic_sound = Mix_LoadWAV("audio/tic.wav");
     if(tic_sound == NULL) {
       std::cout << "Unable to load tic.wav (" << Mix_GetError() << ")" << std::endl;
     }
