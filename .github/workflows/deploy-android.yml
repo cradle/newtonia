@@ -46,6 +46,9 @@ jobs:
       - name: Decode release keystore
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > newtonia/android/release.jks
 
+      - name: Copy audio assets
+        run: mkdir -p newtonia/android/app/src/main/assets && cp -r newtonia/audio newtonia/android/app/src/main/assets/
+
       # Build a signed release AAB (Android App Bundle).
       # Play Store requires AAB for new apps; APK is still accepted for updates.
       - name: Build signed release AAB

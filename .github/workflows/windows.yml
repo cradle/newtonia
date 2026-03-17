@@ -49,5 +49,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: newtonia-windows
-          path: newtonia.exe
+          path: |
+            newtonia.exe
+            audio/
           retention-days: 30

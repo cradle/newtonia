@@ -9,12 +9,12 @@ namespace Weapon {
       _ammo = 10;
       unlimited = false;
 
-      mine_sound = Mix_LoadWAV("mine.wav");
+      mine_sound = Mix_LoadWAV("audio/mine.wav");
       if(mine_sound == NULL) {
         std::cout << "Unable to load mine.wav (" << Mix_GetError() << ")" << std::endl;
       }
 
-      empty_sound = Mix_LoadWAV("empty.wav");
+      empty_sound = Mix_LoadWAV("audio/empty.wav");
       if(empty_sound == NULL) {
         std::cout << "Unable to load empty.wav (" << Mix_GetError() << ")" << std::endl;
       }

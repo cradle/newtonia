@@ -183,6 +183,9 @@ jobs:
             PROVISIONING_PROFILE="$PROFILE_UUID" \
             CODE_SIGN_IDENTITY="Apple Distribution"
 
+      - name: Copy audio into app bundle
+        run: cp -r newtonia/audio "Newtonia.xcarchive/Products/Applications/Newtonia.app/audio"
+
       - name: Export .ipa
         run: |
           cat > ExportOptions.plist << EOF

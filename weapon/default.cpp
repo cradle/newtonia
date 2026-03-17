@@ -47,13 +47,13 @@ namespace Weapon {
       if(!unlimited)
         _ammo = 100;
 
-      shoot_sound = Mix_LoadWAV("shoot.wav");
+      shoot_sound = Mix_LoadWAV("audio/shoot.wav");
       if(shoot_sound == NULL) {
         cout << "Unable to load shoot.wav (" << Mix_GetError() << ")" << endl;
       }
 
       if(!unlimited) {
-        empty_sound = Mix_LoadWAV("empty.wav");
+        empty_sound = Mix_LoadWAV("audio/empty.wav");
         if(empty_sound == NULL) {
           cout << "Unable to load empty.wav (" << Mix_GetError() << ")" << endl;
         }

@@ -24,25 +24,25 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   safe_position(grid);
   init(!has_friction);
   if(tic_sound == NULL) {
-    tic_sound = Mix_LoadWAV("tic.wav");
+    tic_sound = Mix_LoadWAV("audio/tic.wav");
     if(tic_sound == NULL) {
       std::cout << "Unable to load tic.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(tic_low_sound == NULL) {
-    tic_low_sound = Mix_LoadWAV("tic_low.wav");
+    tic_low_sound = Mix_LoadWAV("audio/tic_low.wav");
     if(tic_low_sound == NULL) {
       std::cout << "Unable to load tic_low.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(click_sound == NULL) {
-    click_sound = Mix_LoadWAV("click.wav");
+    click_sound = Mix_LoadWAV("audio/click.wav");
     if(click_sound == NULL) {
       std::cout << "Unable to load click.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(boost_sound == NULL) {
-    boost_sound = Mix_LoadWAV("boost.wav");
+    boost_sound = Mix_LoadWAV("audio/boost.wav");
   }
   if(boost_sound != NULL) {
     Mix_VolumeChunk(boost_sound, 0);
@@ -51,7 +51,7 @@ Ship::Ship(const Grid &grid, bool has_friction) :
     std::cout << "Unable to load boost.wav (" << Mix_GetError() << ")" << std::endl;
   }
   if(missile_explode_sound == NULL) {
-    missile_explode_sound = Mix_LoadWAV("missile_explode.wav");
+    missile_explode_sound = Mix_LoadWAV("audio/missile_explode.wav");
     if(missile_explode_sound == NULL) {
       std::cout << "Unable to load missile_explode.wav (" << Mix_GetError() << ")" << std::endl;
     }

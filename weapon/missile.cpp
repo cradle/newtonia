@@ -108,12 +108,12 @@ Missile::Missile(Ship *ship) : Base(ship) {
   _ammo = 10;
   unlimited = false;
 
-  fly_sound = Mix_LoadWAV("missile_fly.wav");
+  fly_sound = Mix_LoadWAV("audio/missile_fly.wav");
   if (fly_sound == NULL) {
     std::cout << "Unable to load missile_fly.wav (" << Mix_GetError() << ")" << std::endl;
   }
 
-  empty_sound = Mix_LoadWAV("empty.wav");
+  empty_sound = Mix_LoadWAV("audio/empty.wav");
   if (empty_sound == NULL) {
     std::cout << "Unable to load empty.wav (" << Mix_GetError() << ")" << std::endl;
   }
