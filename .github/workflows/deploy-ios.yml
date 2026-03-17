@@ -260,10 +260,13 @@ jobs:
       - name: Inject build metadata into Info.plist
         run: |
           SDK_VERSION=$(xcrun --sdk iphoneos --show-sdk-version)
+          XCODE_BUILD=$(xcodebuild -version | awk '/Build version/{print $3}')
           /usr/libexec/PlistBuddy -c "Set :DTPlatformName iphoneos" Newtonia.app/Info.plist
           /usr/libexec/PlistBuddy -c "Set :DTPlatformVersion $SDK_VERSION" Newtonia.app/Info.plist 2>/dev/null \
             || /usr/libexec/PlistBuddy -c "Add :DTPlatformVersion string $SDK_VERSION" Newtonia.app/Info.plist
           /usr/libexec/PlistBuddy -c "Add :DTSDKName string iphoneos${SDK_VERSION}" Newtonia.app/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :DTXcode string 1630" Newtonia.app/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :DTXcodeBuild string $XCODE_BUILD" Newtonia.app/Info.plist 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :CFBundleSupportedPlatforms array" Newtonia.app/Info.plist 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :CFBundleSupportedPlatforms:0 string iPhoneOS" Newtonia.app/Info.plist 2>/dev/null || true
 
