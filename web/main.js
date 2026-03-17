@@ -1,3 +1,4 @@
+"use strict";
 // UI chrome for the Newtonia web port.
 // Handles fullscreen, mute, and on-screen touch controls.
 // Compiled to main.js via tsc and loaded after the Emscripten script.
@@ -10,9 +11,8 @@
         if (!document.fullscreenElement) {
             const container = document.getElementById("game-container");
             container.requestFullscreen().catch(() => {
-                var _a;
                 // Fallback: fullscreen just the canvas
-                (_a = canvas.requestFullscreen) === null || _a === void 0 ? void 0 : _a.call(canvas);
+                canvas.requestFullscreen?.();
             });
             fsBtn.textContent = "⛶";
         }
@@ -31,11 +31,10 @@
     let audioCtx = null;
     let gainNode = null;
     function getAudioContext() {
-        var _a, _b;
         // Emscripten creates a global AudioContext accessible via window.
         // If it isn't available yet, return null and retry on first user gesture.
         const w = window;
-        return (_b = (_a = w.SDL) === null || _a === void 0 ? void 0 : _a.audioContext) !== null && _b !== void 0 ? _b : null;
+        return w.SDL?.audioContext ?? null;
     }
     function ensureGain() {
         if (gainNode)
@@ -53,11 +52,10 @@
         return gainNode;
     }
     muteBtn.addEventListener("click", () => {
-        var _a;
         muted = !muted;
         muteBtn.textContent = muted ? "🔇" : "🔊";
         muteBtn.title = muted ? "Unmute" : "Mute";
-        const ctx = (_a = getAudioContext()) !== null && _a !== void 0 ? _a : audioCtx;
+        const ctx = getAudioContext() ?? audioCtx;
         if (ctx) {
             if (muted) {
                 ctx.suspend();
@@ -74,8 +72,7 @@
     // Multi-touch is supported — joystick and action buttons track independent fingers.
     const TOUCH_MEDIA = window.matchMedia("(pointer: coarse)");
     function callTouchJoystick(nx, ny) {
-        var _a, _b;
-        (_b = (_a = Module)._web_touch_joystick) === null || _b === void 0 ? void 0 : _b.call(_a, nx, ny);
+        Module._web_touch_joystick?.(nx, ny);
     }
     // Module-level refs so setMenuMode can show/hide them.
     let _circleButtonEls = [];
@@ -92,8 +89,8 @@
         for (const el of _joyPlaceholderEls) {
             el.style.display = isMenu ? "none" : "";
         }
-        if (!isMenu && _positionJoyPlaceholder)
-            _positionJoyPlaceholder();
+        if (!isMenu)
+            _positionJoyPlaceholder?.();
         if (_menuOverlay)
             _menuOverlay.style.display = isMenu ? "block" : "none";
     }
@@ -129,18 +126,6 @@
             joyCY = y;
             joyRad = rad;
         }
-        function positionJoyPlaceholder() {
-            if (_inMenuMode) return;
-            const r = canvas.getBoundingClientRect();
-            if (r.width === 0) return; // layout not ready yet
-            const rad = Math.min(r.width, r.height) * 0.13;
-            const baseSize = rad * 2, nubSize = rad * 0.62;
-            const px = r.left + r.width * 0.18;
-            const py = r.top + r.height * 0.75;
-            joyBase.style.cssText = `display:block;width:${baseSize}px;height:${baseSize}px;left:${px}px;top:${py}px;opacity:0.4;`;
-            joyNub.style.cssText = `display:block;width:${nubSize}px;height:${nubSize}px;left:${px}px;top:${py}px;opacity:0.4;`;
-        }
-        requestAnimationFrame(positionJoyPlaceholder);
         function moveJoystick(x, y) {
             const dx = x - joyCX, dy = y - joyCY;
             const dist = Math.sqrt(dx * dx + dy * dy);
@@ -158,6 +143,24 @@
             callTouchJoystick(0, 0);
             positionJoyPlaceholder();
         }
+        // Show a faint placeholder at the default position so the user knows
+        // where the joystick zone is before touching.
+        function positionJoyPlaceholder() {
+            if (_inMenuMode)
+                return;
+            const r = canvas.getBoundingClientRect();
+            if (r.width === 0)
+                return; // layout not ready yet
+            const rad = Math.min(r.width, r.height) * 0.13;
+            const baseSize = rad * 2, nubSize = rad * 0.62;
+            const px = r.left + r.width * 0.18;
+            const py = r.top + r.height * 0.75;
+            joyBase.style.cssText = `display:block;width:${baseSize}px;height:${baseSize}px;left:${px}px;top:${py}px;opacity:0.4;`;
+            joyNub.style.cssText = `display:block;width:${nubSize}px;height:${nubSize}px;left:${px}px;top:${py}px;opacity:0.4;`;
+        }
+        _joyPlaceholderEls = [joyBase, joyNub];
+        _positionJoyPlaceholder = positionJoyPlaceholder;
+        requestAnimationFrame(positionJoyPlaceholder);
         joyZone.addEventListener("touchstart", (e) => {
             e.preventDefault();
             for (let i = 0; i < e.changedTouches.length; i++) {
@@ -243,15 +246,12 @@
             { el: container.querySelector(".touch-mine"), cx: 0.85, cy: 0.75 },
         ];
         _circleButtonEls = circleButtons.map(b => b.el);
-        _joyPlaceholderEls = [joyBase, joyNub];
-        _positionJoyPlaceholder = positionJoyPlaceholder;
         // Full-screen overlay active during menu: any tap dispatches Enter to start the game.
         const menuOverlay = document.createElement("div");
         menuOverlay.className = "menu-overlay";
         menuOverlay.addEventListener("touchend", (e) => {
-            var _a, _b;
             e.preventDefault();
-            (_b = (_a = Module)._web_tap_start) === null || _b === void 0 ? void 0 : _b.call(_a);
+            Module._web_tap_start?.();
         }, { passive: false });
         container.appendChild(menuOverlay);
         _menuOverlay = menuOverlay;
@@ -266,7 +266,8 @@
                 el.style.left = `${r.left + r.width * cx}px`;
                 el.style.top = `${r.top + r.height * cy}px`;
             }
-            if (joyFinger === null) positionJoyPlaceholder();
+            if (joyFinger === null)
+                positionJoyPlaceholder();
         }
         requestAnimationFrame(sizeCircleButtons);
         return sizeCircleButtons;
