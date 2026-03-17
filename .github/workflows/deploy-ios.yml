@@ -200,14 +200,8 @@ jobs:
             --output-partial-info-plist actool-info.plist \
             --compress-pngs
 
-          # Merge actool output into Info.plist
-          if [ -f actool-info.plist ]; then
-            while IFS= read -r key; do
-              value=$(/usr/libexec/PlistBuddy -c "Print :$key" actool-info.plist 2>/dev/null)
-              /usr/libexec/PlistBuddy -c "Set :$key $value" Newtonia.app/Info.plist 2>/dev/null \
-                || /usr/libexec/PlistBuddy -c "Add :$key string $value" Newtonia.app/Info.plist
-            done < <(/usr/libexec/PlistBuddy -c "Print" actool-info.plist | grep "^    " | awk '{print $1}')
-          fi
+          # Merge actool output (CFBundleIconName, CFBundleIcons, etc.) into Info.plist
+          /usr/libexec/PlistBuddy -c "Merge actool-info.plist" Newtonia.app/Info.plist
 
       # Import the Apple Distribution certificate and provisioning profile.
       # One-time setup required:
