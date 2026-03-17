@@ -150,7 +150,14 @@ jobs:
 
           # Flatten alpha channel in source (Apple rejects icons with transparency)
           FLAT_SRC="/tmp/icon-src-flat.png"
-          convert "$SRC" -background white -alpha remove -alpha off "$FLAT_SRC"
+          pip3 install --quiet Pillow
+          python3 -c "
+from PIL import Image
+img = Image.open('$SRC').convert('RGBA')
+bg = Image.new('RGB', img.size, (255, 255, 255))
+bg.paste(img, mask=img.split()[3])
+bg.save('$FLAT_SRC')
+"
           SRC="$FLAT_SRC"
 
           # Generate all required sizes
