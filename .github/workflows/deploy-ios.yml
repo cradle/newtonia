@@ -163,9 +163,9 @@ jobs:
 
       - name: Build with xcodebuild archive
         run: |
-          SDL2_LIB=$(find SDL2/build-ios -name "libSDL2.a" | head -1)
-          SDL2MAIN_LIB=$(find SDL2/build-ios -name "libSDL2main.a" | head -1)
-          SDL2MIX_LIB=$(find SDL2_mixer/build-ios -name "libSDL2_mixer.a" | head -1)
+          SDL2_LIB=$(find "$(pwd)/SDL2/build-ios" -name "libSDL2.a" | head -1)
+          SDL2MAIN_LIB=$(find "$(pwd)/SDL2/build-ios" -name "libSDL2main.a" | head -1)
+          SDL2MIX_LIB=$(find "$(pwd)/SDL2_mixer/build-ios" -name "libSDL2_mixer.a" | head -1)
           OTHER_LD="-ObjC $SDL2MAIN_LIB $SDL2_LIB $SDL2MIX_LIB"
 
           xcodebuild archive \
