@@ -105,20 +105,23 @@ def make_missile_explode():
     return samples
 
 def make_missile_fly():
-    """Missile in-flight: high-pitched turbine whine with noise, 500ms (loopable)."""
+    """Missile in-flight: low thruster roar with exhaust hiss, 500ms (loopable)."""
     n = int(SAMPLE_RATE * 0.5)
     rng = random.Random(55)
     samples = []
     phase = 0.0
+    phase2 = 0.0
     for i in range(n):
-        t = i / SAMPLE_RATE
-        # Rising whine that levels off
-        freq = 1200 + 600 * (1 - math.exp(-t * 8))
-        phase += 2 * math.pi * freq / SAMPLE_RATE
-        whine = math.sin(phase) * 0.35
-        whine += math.sin(phase * 2) * 0.1
-        noise = (rng.random() * 2 - 1) * 0.15
-        samples.append(whine + noise)
+        # Low thruster: 60 Hz with odd harmonics (square-wave character)
+        phase += 2 * math.pi * 60 / SAMPLE_RATE
+        thruster = math.sin(phase) * 0.28
+        thruster += math.sin(phase * 3) * 0.11
+        thruster += math.sin(phase * 5) * 0.05
+        # Exhaust hiss: noise shaped by a mid-freq carrier
+        phase2 += 2 * math.pi * 300 / SAMPLE_RATE
+        raw = (rng.random() * 2 - 1)
+        hiss = raw * (0.5 + 0.5 * abs(math.sin(phase2))) * 0.28
+        samples.append(thruster + hiss)
     return samples
 
 def make_tic():
