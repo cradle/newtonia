@@ -46,7 +46,8 @@ jobs:
             -lopengl32 -lglu32
 
       - name: Package release zip
-        run: zip -r newtonia-windows.zip newtonia.exe audio/
+        shell: pwsh
+        run: Compress-Archive -Path newtonia.exe, audio -DestinationPath newtonia-windows.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
