@@ -18,11 +18,11 @@ void touch_controls_resize(int w, int h) {
     float btnR = minDim * 0.07f;
 
     g_touch_controls.shoot_cx     = (float)w * 0.75f;
-    g_touch_controls.shoot_cy     = (float)h * 0.82f;
+    g_touch_controls.shoot_cy     = (float)h * 0.80f;
     g_touch_controls.shoot_radius = btnR;
 
     g_touch_controls.mine_cx      = (float)w * 0.90f;
-    g_touch_controls.mine_cy      = (float)h * 0.82f;
+    g_touch_controls.mine_cy      = (float)h * 0.80f;
     g_touch_controls.mine_radius  = btnR;
 
     // Hit radius: half the distance between the two button centres so the touch

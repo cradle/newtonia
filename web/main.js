@@ -80,11 +80,20 @@
     // Module-level refs so setMenuMode can show/hide them.
     let _circleButtonEls = [];
     let _menuOverlay = null;
+    let _joyPlaceholderEls = [];
+    let _positionJoyPlaceholder = null;
+    let _inMenuMode = true;
     // Called from C++ via EM_ASM when game state changes.
     function setMenuMode(isMenu) {
+        _inMenuMode = isMenu;
         for (const el of _circleButtonEls) {
             el.style.display = isMenu ? "none" : "";
         }
+        for (const el of _joyPlaceholderEls) {
+            el.style.display = isMenu ? "none" : "";
+        }
+        if (!isMenu && _positionJoyPlaceholder)
+            _positionJoyPlaceholder();
         if (_menuOverlay)
             _menuOverlay.style.display = isMenu ? "block" : "none";
     }
@@ -121,6 +130,7 @@
             joyRad = rad;
         }
         function positionJoyPlaceholder() {
+            if (_inMenuMode) return;
             const r = canvas.getBoundingClientRect();
             if (r.width === 0) return; // layout not ready yet
             const rad = Math.min(r.width, r.height) * 0.13;
@@ -229,10 +239,12 @@
         // Capture button elements once; reused by the resize handler to avoid
         // repeated querySelector calls.
         const circleButtons = [
-            { el: container.querySelector(".touch-shoot"), cx: 0.62, cy: 0.85 },
-            { el: container.querySelector(".touch-mine"), cx: 0.85, cy: 0.85 },
+            { el: container.querySelector(".touch-shoot"), cx: 0.62, cy: 0.75 },
+            { el: container.querySelector(".touch-mine"), cx: 0.85, cy: 0.75 },
         ];
         _circleButtonEls = circleButtons.map(b => b.el);
+        _joyPlaceholderEls = [joyBase, joyNub];
+        _positionJoyPlaceholder = positionJoyPlaceholder;
         // Full-screen overlay active during menu: any tap dispatches Enter to start the game.
         const menuOverlay = document.createElement("div");
         menuOverlay.className = "menu-overlay";
