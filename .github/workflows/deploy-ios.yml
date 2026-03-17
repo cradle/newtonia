@@ -144,7 +144,7 @@ jobs:
 
       - name: Generate and bundle app icons
         run: |
-          SRC="icon-ios.png"
+          SRC="newtonia/icon-ios.png"
           ICONSET="AppIcon.appiconset"
           mkdir -p "$ICONSET"
 
