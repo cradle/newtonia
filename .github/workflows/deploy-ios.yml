@@ -285,7 +285,7 @@ jobs:
         run: |
           mkdir -p Payload
           cp -r Newtonia.app Payload/
-          ditto -c -k --keepParent Payload Newtonia.ipa
+          zip -qr Newtonia.ipa Payload/
 
       # Upload to TestFlight. Testers can install immediately;
       # submit for App Store review from App Store Connect UI.
