@@ -144,6 +144,24 @@ def make_tic_low():
         samples.append(math.sin(2 * math.pi * 440 * t) * env * 0.9)
     return samples
 
+def make_shield_hum():
+    """Shield active: low quiet electromagnetic hum, 1s (loopable)."""
+    n = int(SAMPLE_RATE * 1.0)
+    samples = []
+    phase1 = 0.0
+    phase2 = 0.0
+    phase3 = 0.0
+    for i in range(n):
+        # 120 Hz fundamental + subtle 3rd harmonic for a warm "electric" tone
+        phase1 += 2 * math.pi * 120 / SAMPLE_RATE
+        phase2 += 2 * math.pi * 360 / SAMPLE_RATE
+        phase3 += 2 * math.pi * 600 / SAMPLE_RATE
+        s  = math.sin(phase1) * 0.30
+        s += math.sin(phase2) * 0.10
+        s += math.sin(phase3) * 0.04
+        samples.append(s * 0.5)
+    return samples
+
 def make_boost():
     """Engine rumble: loopable low-frequency hum, 1s."""
     n = int(SAMPLE_RATE * 1.0)
@@ -236,6 +254,7 @@ if __name__ == '__main__':
         'missile_fly.wav':     make_missile_fly,
         'tic.wav':             make_tic,
         'tic_low.wav':         make_tic_low,
+        'shield_hum.wav':      make_shield_hum,
         'boost.wav':           make_boost,
         'title.wav':           make_title,
         'pickup.wav':          make_pickup,
