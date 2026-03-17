@@ -148,10 +148,11 @@ def make_shield_hum():
     phase2 = 0.0
     phase3 = 0.0
     for i in range(n):
-        # 120 Hz fundamental + 3rd/5th harmonics for a warm "electric" tone
-        phase1 += 2 * math.pi * 120 / SAMPLE_RATE
-        phase2 += 2 * math.pi * 360 / SAMPLE_RATE
-        phase3 += 2 * math.pi * 600 / SAMPLE_RATE
+        # 105 Hz fundamental + 3rd/5th harmonics for a warm "electric" tone
+        # 105/315/525 Hz all divide 44100 evenly -> seamless loop, no click
+        phase1 += 2 * math.pi * 105 / SAMPLE_RATE
+        phase2 += 2 * math.pi * 315 / SAMPLE_RATE
+        phase3 += 2 * math.pi * 525 / SAMPLE_RATE
         s  = math.sin(phase1) * 0.30
         s += math.sin(phase2) * 0.10
         s += math.sin(phase3) * 0.04
