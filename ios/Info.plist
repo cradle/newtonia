@@ -35,5 +35,7 @@
     <true/>
     <key>UIRequiresFullScreen</key>
     <true/>
+    <key>MinimumOSVersion</key>
+    <string>13.0</string>
 </dict>
 </plist>
