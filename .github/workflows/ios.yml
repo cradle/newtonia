@@ -129,6 +129,7 @@ jobs:
       - name: Bundle .app
         run: |
           cp newtonia/ios/Info.plist Newtonia.app/Info.plist
+          cp -r newtonia/audio Newtonia.app/audio
           zip -r Newtonia-iOS-Simulator.zip Newtonia.app
 
       - name: Upload artifact

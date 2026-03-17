@@ -159,6 +159,8 @@ jobs:
           bundle Newtonia.app/Contents/MacOS/newtonia
           codesign --sign - --force Newtonia.app/Contents/MacOS/newtonia
 
+          cp -r audio Newtonia.app/Contents/Resources/audio
+
           cat > Newtonia.app/Contents/Info.plist <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"

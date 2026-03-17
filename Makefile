@@ -49,8 +49,7 @@ WEB_FLAGS = -std=c++11 -O2 \
             -lidbfs.js \
             --shell-file web/shell.html
 
-# If audio assets exist in a sounds/ directory, uncomment:
-# WEB_FLAGS += --preload-file sounds@/
+WEB_FLAGS += --preload-file audio@audio
 
 .PHONY: web web-clean
 
