@@ -48,7 +48,7 @@
     <string>This app does not use Bluetooth. This description is required because a third-party library references Bluetooth APIs.</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
-    <key>UILaunchStoryboardName</key>
-    <string>LaunchScreen</string>
+    <key>UILaunchScreen</key>
+    <dict/>
 </dict>
 </plist>

@@ -150,14 +150,6 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :MinimumOSVersion 13.0" Newtonia.app/Info.plist 2>/dev/null \
             || /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string 13.0" Newtonia.app/Info.plist
 
-      - name: Compile and bundle LaunchScreen storyboard
-        run: |
-          ibtool --compile Newtonia.app/LaunchScreen.storyboardc \
-            --sdk $(xcrun --sdk iphoneos --show-sdk-path) \
-            --minimum-deployment-target 13.0 \
-            --target-device iphone --target-device ipad \
-            newtonia/ios/LaunchScreen.storyboard
-
       - name: Generate and bundle app icons
         run: |
           SRC="newtonia/icon-ios.png"
