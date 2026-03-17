@@ -622,9 +622,11 @@ void Ship::mine(bool on) {
   } else {
     (*secondary)->shoot(on);
   }
+}
+
+void Ship::set_shield_hum(bool on) {
   if(shield_hum_sound != NULL) {
-    bool shielding = shield_held(secondary_weapons, secondary);
-    Mix_VolumeChunk(shield_hum_sound, shielding ? MIX_MAX_VOLUME/5 : 0);
+    Mix_VolumeChunk(shield_hum_sound, on ? MIX_MAX_VOLUME/5 : 0);
   }
 }
 
