@@ -57,6 +57,7 @@ WEB_FLAGS += --preload-file audio@audio
 
 web:
 	mkdir -p web/dist
+	tsc -p web/tsconfig.json
 	$(EMCC) $(WEB_SRCS) $(WEB_FLAGS) -o web/dist/index.html
 	cp web/main.js web/dist/main.js
 
