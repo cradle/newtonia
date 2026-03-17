@@ -116,6 +116,11 @@
 
     @media (pointer: coarse) {
       #touch-controls { display: block; }
+      /* Hover doesn't fire reliably on touch devices, so always show the controls bar */
+      #controls-bar {
+        opacity: 1;
+        pointer-events: auto;
+      }
     }
 
     /* Analog joystick rings — positioned in JS */
