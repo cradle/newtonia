@@ -161,8 +161,9 @@ jobs:
           sips -z 152  152  "$SRC" --out "$ICONSET/icon-76@2x.png"   >/dev/null
           sips -z 167  167  "$SRC" --out "$ICONSET/icon-83.5@2x.png" >/dev/null
           sips -z 1024 1024 "$SRC" --out "$ICONSET/icon-1024.png"    >/dev/null
-          # App Store icon must not have an alpha channel
-          sips -s formatOptions 100 --deleteProperty hasAlpha "$ICONSET/icon-1024.png" >/dev/null
+          # App Store icon must not have an alpha channel; BMP round-trip strips it losslessly
+          sips -s format bmp "$ICONSET/icon-1024.png" --out /tmp/icon-flat.bmp >/dev/null
+          sips -s format png /tmp/icon-flat.bmp --out "$ICONSET/icon-1024.png" >/dev/null
 
           cat > "$ICONSET/Contents.json" <<'JSON'
           {
