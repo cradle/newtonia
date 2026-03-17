@@ -24,6 +24,7 @@ all: newtonia
 
 osx: $(OBJFILES)
 	CFLAGS="$(OSX_CFLAGS)" $(CC) -o newtonia $(OBJFILES) $(OSX_LIBS)
+	mkdir -p Newtonia.app/Contents/Resources
 	cp icon.icns Newtonia.app/Contents/Resources/icon.icns
 
 newtonia: $(OBJFILES)
