@@ -114,12 +114,23 @@
         // a getBoundingClientRect() call on every touchmove.
         function showJoystick(x, y, rad) {
             const baseSize = rad * 2, nubSize = rad * 0.62;
-            joyBase.style.cssText = `display:block;width:${baseSize}px;height:${baseSize}px;left:${x}px;top:${y}px;`;
-            joyNub.style.cssText = `display:block;width:${nubSize}px;height:${nubSize}px;left:${x}px;top:${y}px;`;
+            joyBase.style.cssText = `display:block;width:${baseSize}px;height:${baseSize}px;left:${x}px;top:${y}px;opacity:1;`;
+            joyNub.style.cssText = `display:block;width:${nubSize}px;height:${nubSize}px;left:${x}px;top:${y}px;opacity:1;`;
             joyCX = x;
             joyCY = y;
             joyRad = rad;
         }
+        function positionJoyPlaceholder() {
+            const r = canvas.getBoundingClientRect();
+            if (r.width === 0) return; // layout not ready yet
+            const rad = Math.min(r.width, r.height) * 0.13;
+            const baseSize = rad * 2, nubSize = rad * 0.62;
+            const px = r.left + r.width * 0.18;
+            const py = r.top + r.height * 0.75;
+            joyBase.style.cssText = `display:block;width:${baseSize}px;height:${baseSize}px;left:${px}px;top:${py}px;opacity:0.4;`;
+            joyNub.style.cssText = `display:block;width:${nubSize}px;height:${nubSize}px;left:${px}px;top:${py}px;opacity:0.4;`;
+        }
+        requestAnimationFrame(positionJoyPlaceholder);
         function moveJoystick(x, y) {
             const dx = x - joyCX, dy = y - joyCY;
             const dist = Math.sqrt(dx * dx + dy * dy);
@@ -134,9 +145,8 @@
         }
         function hideJoystick() {
             joyFinger = null;
-            joyBase.style.display = "none";
-            joyNub.style.display = "none";
             callTouchJoystick(0, 0);
+            positionJoyPlaceholder();
         }
         joyZone.addEventListener("touchstart", (e) => {
             e.preventDefault();
@@ -145,7 +155,8 @@
                 if (joyFinger === null) {
                     joyFinger = t.identifier;
                     const r = canvas.getBoundingClientRect();
-                    showJoystick(t.clientX - r.left, t.clientY - r.top, Math.min(r.width, r.height) * 0.13);
+                    // clientX/Y are viewport-relative; touch-controls is position:fixed so no offset needed.
+                    showJoystick(t.clientX, t.clientY, Math.min(r.width, r.height) * 0.13);
                     break;
                 }
             }
@@ -155,8 +166,7 @@
             for (let i = 0; i < e.changedTouches.length; i++) {
                 const t = e.changedTouches[i];
                 if (t.identifier === joyFinger) {
-                    const r = canvas.getBoundingClientRect();
-                    moveJoystick(t.clientX - r.left, t.clientY - r.top);
+                    moveJoystick(t.clientX, t.clientY);
                     break;
                 }
             }
@@ -245,8 +255,9 @@
                 el.style.left = `${r.left + r.width * cx}px`;
                 el.style.top = `${vh * cy}px`;
             }
+            if (joyFinger === null) positionJoyPlaceholder();
         }
-        sizeCircleButtons();
+        requestAnimationFrame(sizeCircleButtons);
         return sizeCircleButtons;
     }
     // Tracks the active resize listener so it can be removed on rebuild.
