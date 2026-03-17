@@ -45,6 +45,7 @@ namespace Weapon {
       _ammo--;
       ship->time_left_invincible += 1000;
       ship->invincible = true;
+      ship->set_shield_hum(true);
     }
   }
 }

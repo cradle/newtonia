@@ -344,6 +344,7 @@ void Ship::respawn(const Grid &grid, bool was_killed) {
     reset(was_killed);
     safe_position(grid);
     invincible = true;
+    set_shield_hum(true);
     detonate();
   }
 }
