@@ -9,9 +9,12 @@ on:
 jobs:
   build:
     runs-on: macos-latest   # arm64 (Apple Silicon)
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install arm64 dependencies
         run: brew install sdl2 mpg123
@@ -184,7 +187,7 @@ jobs:
         run: ditto -c -k --keepParent Newtonia.app newtonia-macos-universal.zip
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: newtonia-macos-universal
           path: newtonia-macos-universal.zip

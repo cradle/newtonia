@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           path: newtonia
 
@@ -133,7 +133,7 @@ jobs:
           zip -r Newtonia-iOS-Simulator.zip Newtonia.app
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: newtonia-ios-simulator
           path: Newtonia-iOS-Simulator.zip
