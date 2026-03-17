@@ -78,137 +78,6 @@ jobs:
             -DCMAKE_CXX_FLAGS="-DGLES_SILENCE_DEPRECATION"
           cmake --build SDL2_mixer/build-ios --config Release
 
-      - name: Collect game sources
-        run: |
-          find newtonia -name "*.cpp" \
-            -not -name "glut.cpp" \
-            -not -name "android_main.cpp" \
-            -not -path "*/android/*" \
-            -not -path "*/.git/*" \
-            -not -path "*/CMakeFiles/*" \
-            | sed 's|^newtonia/||' \
-            > srcs.txt
-          echo "ios_main.mm" >> srcs.txt
-
-      # Compile against the real iphoneos SDK (arm64 only — real device).
-      - name: Compile Newtonia for iOS (arm64 real device)
-        run: |
-          SYSROOT=$(xcrun --sdk iphoneos --show-sdk-path)
-          SDL2_LIB=$(find SDL2/build-ios -name "libSDL2.a" | head -1)
-          SDL2MAIN_LIB=$(find SDL2/build-ios -name "libSDL2main.a" | head -1)
-          SDL2MIX_LIB=$(find SDL2_mixer/build-ios -name "libSDL2_mixer.a" | head -1)
-
-          mkdir -p obj
-          while IFS= read -r src; do
-            objname=$(echo "$src" | tr '/' '_' | sed -E 's/\.(cpp|mm)$/.o/')
-            clang++ -arch arm64 -isysroot "$SYSROOT" \
-              -miphoneos-version-min=13.0 \
-              -std=c++11 -O2 \
-              -D__IOS__=1 \
-              -DGLES_SILENCE_DEPRECATION \
-              -Inewtonia -Inewtonia/view -Inewtonia/weapon \
-              -ISDL2/include \
-              -ISDL2_mixer/include \
-              -c "newtonia/$src" -o "obj/$objname"
-          done < srcs.txt
-
-          OBJS=$(find obj -name '*.o' | sort)
-          mkdir -p Newtonia.app
-          clang++ -arch arm64 -isysroot "$SYSROOT" \
-            -miphoneos-version-min=13.0 \
-            -o Newtonia.app/Newtonia \
-            $OBJS \
-            "$SDL2MAIN_LIB" \
-            "$SDL2_LIB" \
-            "$SDL2MIX_LIB" \
-            -framework OpenGLES \
-            -framework UIKit \
-            -framework Foundation \
-            -framework CoreGraphics \
-            -framework CoreMotion \
-            -framework CoreAudio \
-            -framework AudioToolbox \
-            -framework AVFoundation \
-            -framework CoreHaptics \
-            -framework GameController \
-            -framework QuartzCore \
-            -framework Metal
-
-      - name: Bundle .app
-        run: |
-          cp newtonia/ios/Info.plist Newtonia.app/Info.plist
-          TAG_VERSION="${{ github.ref_name }}"
-          SHORT_VERSION="${TAG_VERSION#v}"
-          # Fall back to 1.0 if not triggered by a version tag
-          if ! echo "$SHORT_VERSION" | grep -qE '^[0-9]+(\.[0-9]+){0,2}$'; then
-            SHORT_VERSION="1.0"
-          fi
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" Newtonia.app/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SHORT_VERSION" Newtonia.app/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :MinimumOSVersion 13.0" Newtonia.app/Info.plist 2>/dev/null \
-            || /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string 13.0" Newtonia.app/Info.plist
-
-      - name: Generate and bundle app icons
-        run: |
-          SRC="newtonia/icon-ios.png"
-          ICONSET="AppIcon.appiconset"
-          mkdir -p "$ICONSET"
-
-          # Generate all required sizes
-          sips -z 40   40   "$SRC" --out "$ICONSET/icon-20@2x.png"   >/dev/null
-          sips -z 60   60   "$SRC" --out "$ICONSET/icon-20@3x.png"   >/dev/null
-          sips -z 58   58   "$SRC" --out "$ICONSET/icon-29@2x.png"   >/dev/null
-          sips -z 87   87   "$SRC" --out "$ICONSET/icon-29@3x.png"   >/dev/null
-          sips -z 80   80   "$SRC" --out "$ICONSET/icon-40@2x.png"   >/dev/null
-          sips -z 120  120  "$SRC" --out "$ICONSET/icon-40@3x.png"   >/dev/null
-          sips -z 120  120  "$SRC" --out "$ICONSET/icon-60@2x.png"   >/dev/null
-          sips -z 180  180  "$SRC" --out "$ICONSET/icon-60@3x.png"   >/dev/null
-          sips -z 76   76   "$SRC" --out "$ICONSET/icon-76@1x.png"   >/dev/null
-          sips -z 152  152  "$SRC" --out "$ICONSET/icon-76@2x.png"   >/dev/null
-          sips -z 167  167  "$SRC" --out "$ICONSET/icon-83.5@2x.png" >/dev/null
-          sips -z 1024 1024 "$SRC" --out "$ICONSET/icon-1024.png"    >/dev/null
-
-          cat > "$ICONSET/Contents.json" <<'JSON'
-          {
-            "images": [
-              {"size":"20x20",   "scale":"2x", "idiom":"iphone",      "filename":"icon-20@2x.png"},
-              {"size":"20x20",   "scale":"3x", "idiom":"iphone",      "filename":"icon-20@3x.png"},
-              {"size":"29x29",   "scale":"2x", "idiom":"iphone",      "filename":"icon-29@2x.png"},
-              {"size":"29x29",   "scale":"3x", "idiom":"iphone",      "filename":"icon-29@3x.png"},
-              {"size":"40x40",   "scale":"2x", "idiom":"iphone",      "filename":"icon-40@2x.png"},
-              {"size":"40x40",   "scale":"3x", "idiom":"iphone",      "filename":"icon-40@3x.png"},
-              {"size":"60x60",   "scale":"2x", "idiom":"iphone",      "filename":"icon-60@2x.png"},
-              {"size":"60x60",   "scale":"3x", "idiom":"iphone",      "filename":"icon-60@3x.png"},
-              {"size":"20x20",   "scale":"1x", "idiom":"ipad",        "filename":"icon-20@2x.png"},
-              {"size":"20x20",   "scale":"2x", "idiom":"ipad",        "filename":"icon-20@2x.png"},
-              {"size":"29x29",   "scale":"1x", "idiom":"ipad",        "filename":"icon-29@2x.png"},
-              {"size":"29x29",   "scale":"2x", "idiom":"ipad",        "filename":"icon-29@2x.png"},
-              {"size":"40x40",   "scale":"1x", "idiom":"ipad",        "filename":"icon-40@2x.png"},
-              {"size":"40x40",   "scale":"2x", "idiom":"ipad",        "filename":"icon-40@2x.png"},
-              {"size":"76x76",   "scale":"1x", "idiom":"ipad",        "filename":"icon-76@1x.png"},
-              {"size":"76x76",   "scale":"2x", "idiom":"ipad",        "filename":"icon-76@2x.png"},
-              {"size":"83.5x83.5","scale":"2x","idiom":"ipad",        "filename":"icon-83.5@2x.png"},
-              {"size":"1024x1024","scale":"1x","idiom":"ios-marketing","filename":"icon-1024.png"}
-            ],
-            "info": {"version": 1, "author": "xcode"}
-          }
-          JSON
-
-          mkdir -p Assets.xcassets
-          mv "$ICONSET" Assets.xcassets/AppIcon.appiconset
-
-          SYSROOT=$(xcrun --sdk iphoneos --show-sdk-path)
-          xcrun actool Assets.xcassets \
-            --compile Newtonia.app \
-            --platform iphoneos \
-            --minimum-deployment-target 13.0 \
-            --app-icon AppIcon \
-            --output-partial-info-plist actool-info.plist \
-            --compress-pngs
-
-          # Merge actool output (CFBundleIconName, CFBundleIcons, etc.) into Info.plist
-          /usr/libexec/PlistBuddy -c "Merge actool-info.plist" Newtonia.app/Info.plist
-
       # Import the Apple Distribution certificate and provisioning profile.
       # One-time setup required:
       #   1. In Apple Developer Portal, create an App ID for cc.gfm.Newtonia
@@ -249,54 +118,104 @@ jobs:
             | sed -n 's|.*<string>\(.*\)</string>.*|\1|p')
           TEAM_ID=$(echo "$PROFILE_PLIST" | plutil -extract TeamIdentifier.0 xml1 -o - - \
             | sed -n 's|.*<string>\(.*\)</string>.*|\1|p')
+          PROFILE_NAME=$(echo "$PROFILE_PLIST" | plutil -extract Name xml1 -o - - \
+            | sed -n 's|.*<string>\(.*\)</string>.*|\1|p')
           echo "Team ID: $TEAM_ID"
+          echo "Profile UUID: $UUID"
+          echo "Profile Name: $PROFILE_NAME"
           cp profile.mobileprovision \
             ~/Library/MobileDevice/Provisioning\ Profiles/"$UUID".mobileprovision
-          cp profile.mobileprovision Newtonia.app/embedded.mobileprovision
           # Substitute real team ID into entitlements
           sed "s/TEAM_ID_PLACEHOLDER/$TEAM_ID/" \
             newtonia/ios/Entitlements.plist > entitlements-final.plist
+          # Export for subsequent steps
+          echo "TEAM_ID=$TEAM_ID" >> $GITHUB_ENV
+          echo "PROFILE_UUID=$UUID" >> $GITHUB_ENV
+          echo "PROFILE_NAME=$PROFILE_NAME" >> $GITHUB_ENV
 
-      - name: Inject build metadata into Info.plist
+      - name: Set version numbers
         run: |
-          SDK_VERSION=$(xcrun --sdk iphoneos --show-sdk-version)
-          XCODE_BUILD=$(xcodebuild -version | awk '/Build version/{print $3}')
-          /usr/libexec/PlistBuddy -c "Set :DTPlatformName iphoneos" Newtonia.app/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :DTPlatformVersion $SDK_VERSION" Newtonia.app/Info.plist 2>/dev/null \
-            || /usr/libexec/PlistBuddy -c "Add :DTPlatformVersion string $SDK_VERSION" Newtonia.app/Info.plist
-          /usr/libexec/PlistBuddy -c "Add :DTSDKName string iphoneos${SDK_VERSION}" Newtonia.app/Info.plist 2>/dev/null || true
-          /usr/libexec/PlistBuddy -c "Add :DTXcode string 1630" Newtonia.app/Info.plist 2>/dev/null || true
-          /usr/libexec/PlistBuddy -c "Add :DTXcodeBuild string $XCODE_BUILD" Newtonia.app/Info.plist 2>/dev/null || true
-          /usr/libexec/PlistBuddy -c "Add :CFBundleSupportedPlatforms array" Newtonia.app/Info.plist 2>/dev/null || true
-          /usr/libexec/PlistBuddy -c "Add :CFBundleSupportedPlatforms:0 string iPhoneOS" Newtonia.app/Info.plist 2>/dev/null || true
+          TAG_VERSION="${{ github.ref_name }}"
+          SHORT_VERSION="${TAG_VERSION#v}"
+          # Fall back to 1.0 if not triggered by a version tag
+          if ! echo "$SHORT_VERSION" | grep -qE '^[0-9]+(\.[0-9]+){0,2}$'; then
+            SHORT_VERSION="1.0"
+          fi
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" newtonia/ios/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SHORT_VERSION" newtonia/ios/Info.plist
 
-      - name: Sign .app
+      - name: Generate app icons
         run: |
-          IDENTITY=$(security find-identity -v -p codesigning "$RUNNER_TEMP/build.keychain-db" \
-            | grep -E '"(Apple Distribution|iPhone Distribution)' \
-            | head -1 \
-            | sed -E 's/.*"(.+)"/\1/')
-          echo "Signing with: $IDENTITY"
-          codesign --force --sign "$IDENTITY" \
-            --entitlements entitlements-final.plist \
-            Newtonia.app
+          SRC="newtonia/icon-ios.png"
+          ICONSET="newtonia/ios/Assets.xcassets/AppIcon.appiconset"
+          sips -z 40   40   "$SRC" --out "$ICONSET/icon-20@2x.png"   >/dev/null
+          sips -z 60   60   "$SRC" --out "$ICONSET/icon-20@3x.png"   >/dev/null
+          sips -z 58   58   "$SRC" --out "$ICONSET/icon-29@2x.png"   >/dev/null
+          sips -z 87   87   "$SRC" --out "$ICONSET/icon-29@3x.png"   >/dev/null
+          sips -z 80   80   "$SRC" --out "$ICONSET/icon-40@2x.png"   >/dev/null
+          sips -z 120  120  "$SRC" --out "$ICONSET/icon-40@3x.png"   >/dev/null
+          sips -z 120  120  "$SRC" --out "$ICONSET/icon-60@2x.png"   >/dev/null
+          sips -z 180  180  "$SRC" --out "$ICONSET/icon-60@3x.png"   >/dev/null
+          sips -z 76   76   "$SRC" --out "$ICONSET/icon-76@1x.png"   >/dev/null
+          sips -z 152  152  "$SRC" --out "$ICONSET/icon-76@2x.png"   >/dev/null
+          sips -z 167  167  "$SRC" --out "$ICONSET/icon-83.5@2x.png" >/dev/null
+          sips -z 1024 1024 "$SRC" --out "$ICONSET/icon-1024.png"    >/dev/null
 
-      # Package as .ipa (the format required for App Store submission).
-      - name: Package as .ipa
+      - name: Build with xcodebuild archive
         run: |
-          mkdir -p Payload
-          cp -r Newtonia.app Payload/
-          zip -qr Newtonia.ipa Payload/
+          SDL2_LIB=$(find SDL2/build-ios -name "libSDL2.a" | head -1)
+          SDL2MAIN_LIB=$(find SDL2/build-ios -name "libSDL2main.a" | head -1)
+          SDL2MIX_LIB=$(find SDL2_mixer/build-ios -name "libSDL2_mixer.a" | head -1)
+          OTHER_LD="-ObjC $SDL2MAIN_LIB $SDL2_LIB $SDL2MIX_LIB"
 
-      - name: Print DTXcodeBuild
-        run: /usr/libexec/PlistBuddy -c "Print :DTXcodeBuild" Newtonia.app/Info.plist || echo "DTXcodeBuild not set"
+          xcodebuild archive \
+            -project newtonia/ios/Newtonia-iOS.xcodeproj \
+            -target Newtonia \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath Newtonia.xcarchive \
+            "SDL2_HEADER_PATH=$(pwd)/SDL2/include" \
+            "SDL2_MIXER_HEADER_PATH=$(pwd)/SDL2_mixer/include" \
+            "OTHER_LDFLAGS=$OTHER_LD" \
+            "CODE_SIGN_ENTITLEMENTS=$(pwd)/entitlements-final.plist" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE="$PROFILE_UUID" \
+            CODE_SIGN_IDENTITY="Apple Distribution"
+
+      - name: Export .ipa
+        run: |
+          cat > ExportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>teamID</key>
+            <string>$TEAM_ID</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>cc.gfm.Newtonia</key>
+              <string>$PROFILE_NAME</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild -exportArchive \
+            -archivePath Newtonia.xcarchive \
+            -exportPath IPA \
+            -exportOptionsPlist ExportOptions.plist
 
       # Upload to TestFlight. Testers can install immediately;
       # submit for App Store review from App Store Connect UI.
       - name: Upload to TestFlight
         uses: apple-actions/upload-testflight-build@v3
         with:
-          app-path: Newtonia.ipa
+          app-path: IPA/Newtonia.ipa
           issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           api-key-id: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           api-private-key: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
