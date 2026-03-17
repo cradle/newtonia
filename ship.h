@@ -33,7 +33,7 @@ class Ship : public CompositeObject {
     void reverse(bool on = true);
     void shoot(bool on = true);
     void shoot_weapon(bool on = true);
-    void mine(bool on = true);
+    void fire_secondary(bool on = true);
     void boost();
     int multiplier() const;
 
@@ -138,6 +138,7 @@ class Ship : public CompositeObject {
     void play_rotating_sound(bool on);
     Mix_Chunk *boost_sound = NULL, *tic_sound = NULL, *tic_low_sound = NULL, *click_sound = NULL;
     Mix_Chunk *missile_explode_sound = NULL, *shield_hum_sound = NULL;
+    int shield_hum_channel = -1;
 
     list<Behaviour *> behaviours;
     list<Weapon::Base *> primary_weapons;
