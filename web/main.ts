@@ -297,14 +297,11 @@ declare const Module: {
     function sizeCircleButtons(): void {
       const r = canvas.getBoundingClientRect();
       const diam = Math.min(r.width, r.height) * 0.19;
-      // Use viewport height so buttons stay in thumb reach on portrait screens
-      // where the canvas only occupies the top portion of the screen.
-      const vh = window.innerHeight;
       for (const { el, cx, cy } of circleButtons) {
         el.style.width  = `${diam}px`;
         el.style.height = `${diam}px`;
         el.style.left   = `${r.left + r.width * cx}px`;
-        el.style.top    = `${vh * cy}px`;
+        el.style.top    = `${r.top + r.height * cy}px`;
       }
       if (joyFinger === null) positionJoyPlaceholder();
     }

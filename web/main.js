@@ -260,12 +260,11 @@
         function sizeCircleButtons() {
             const r = canvas.getBoundingClientRect();
             const diam = Math.min(r.width, r.height) * 0.19;
-            const vh = window.innerHeight;
             for (const { el, cx, cy } of circleButtons) {
                 el.style.width = `${diam}px`;
                 el.style.height = `${diam}px`;
                 el.style.left = `${r.left + r.width * cx}px`;
-                el.style.top = `${vh * cy}px`;
+                el.style.top = `${r.top + r.height * cy}px`;
             }
             if (joyFinger === null) positionJoyPlaceholder();
         }
