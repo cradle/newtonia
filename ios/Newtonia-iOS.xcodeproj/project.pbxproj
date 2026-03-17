@@ -41,6 +41,8 @@
 		AB000020 /* overlay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000020 /* overlay.cpp */; };
 		AB000021 /* default.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000021 /* default.cpp */; };
 		AB000022 /* mine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000022 /* mine.cpp */; };
+		AB000042 /* missile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000042 /* missile.cpp */; };
+		AB000043 /* shield.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000043 /* shield.cpp */; };
 		AB000030 /* OpenGLES.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000030 /* OpenGLES.framework */; };
 		AB000031 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000031 /* UIKit.framework */; };
 		AB000032 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000032 /* Foundation.framework */; };
@@ -91,6 +93,8 @@
 		AA000020 /* overlay.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../view/overlay.cpp; sourceTree = SOURCE_ROOT; };
 		AA000021 /* default.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/default.cpp; sourceTree = SOURCE_ROOT; };
 		AA000022 /* mine.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/mine.cpp; sourceTree = SOURCE_ROOT; };
+		AA000042 /* missile.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/missile.cpp; sourceTree = SOURCE_ROOT; };
+		AA000043 /* shield.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/shield.cpp; sourceTree = SOURCE_ROOT; };
 		AA000030 /* OpenGLES.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGLES.framework; path = System/Library/Frameworks/OpenGLES.framework; sourceTree = SDKROOT; };
 		AA000031 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		AA000032 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
@@ -179,6 +183,8 @@
 				AA000020 /* overlay.cpp */,
 				AA000021 /* default.cpp */,
 				AA000022 /* mine.cpp */,
+				AA000042 /* missile.cpp */,
+				AA000043 /* shield.cpp */,
 			);
 			name = Sources;
 			sourceTree = "<group>";
@@ -307,6 +313,8 @@
 				AB000020 /* overlay.cpp in Sources */,
 				AB000021 /* default.cpp in Sources */,
 				AB000022 /* mine.cpp in Sources */,
+				AB000042 /* missile.cpp in Sources */,
+				AB000043 /* shield.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
