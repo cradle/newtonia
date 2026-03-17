@@ -45,11 +45,13 @@ jobs:
             $(pkg-config --libs --static sdl2 SDL2_mixer freeglut) \
             -lopengl32 -lglu32
 
+      - name: Package release zip
+        shell: pwsh
+        run: Compress-Archive -Path newtonia.exe, audio -DestinationPath newtonia-windows.zip
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: newtonia-windows
-          path: |
-            newtonia.exe
-            audio/
+          path: newtonia-windows.zip
           retention-days: 30
