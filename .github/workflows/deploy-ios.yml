@@ -154,9 +154,11 @@ jobs:
           security unlock-keychain -p "" "$KEYCHAIN"
           security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
             -P "$CERT_PASSWORD" -T /usr/bin/codesign
-          security list-keychain -d user -s "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"' | xargs)
           security set-key-partition-list -S apple-tool:,apple: \
             -s -k "" "$KEYCHAIN"
+          echo "Available signing identities:"
+          security find-identity -v -p codesigning "$KEYCHAIN"
 
       - name: Install provisioning profile
         env:
@@ -172,7 +174,12 @@ jobs:
 
       - name: Sign .app
         run: |
-          codesign --force --sign "iPhone Distribution" \
+          IDENTITY=$(security find-identity -v -p codesigning "$RUNNER_TEMP/build.keychain-db" \
+            | grep -E '"(Apple Distribution|iPhone Distribution)' \
+            | head -1 \
+            | sed -E 's/.*"(.+)"/\1/')
+          echo "Signing with: $IDENTITY"
+          codesign --force --sign "$IDENTITY" \
             --entitlements newtonia/ios/Entitlements.plist \
             Newtonia.app
 
