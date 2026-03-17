@@ -87,6 +87,12 @@ GLGame::GLGame(SDL_GameController *controller) :
       std::cout << "Unable to load tic.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
+  if(pickup_sound == NULL) {
+    pickup_sound = Mix_LoadWAV("audio/pickup.wav");
+    if(pickup_sound == NULL) {
+      std::cout << "Unable to load pickup.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
 }
 
 GLGame::~GLGame() {
@@ -124,6 +130,9 @@ GLGame::~GLGame() {
 
   if(tic_sound != NULL) {
     Mix_FreeChunk(tic_sound);
+  }
+  if(pickup_sound != NULL) {
+    Mix_FreeChunk(pickup_sound);
   }
 }
 
@@ -335,6 +344,8 @@ void GLGame::tick(int delta) {
         if(!(*pi)->collected && (*pi)->collide(*(*o)->ship)) {
           (*pi)->collected = true;
           (*pi)->apply((*o)->ship);
+          if(pickup_sound != NULL)
+            Mix_PlayChannel(-1, pickup_sound, 0);
         }
       }
     }

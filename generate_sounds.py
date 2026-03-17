@@ -151,6 +151,20 @@ def make_boost():
         samples.append(s * fade * 0.7)
     return samples
 
+def make_pickup():
+    """Item pickup: cheerful rising chime, 200ms."""
+    n = int(SAMPLE_RATE * 0.2)
+    samples = []
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        freq = 600 + 800 * (i / n)
+        env = math.exp(-t * 10)
+        s  = math.sin(2 * math.pi * freq * t) * 0.6 * env
+        s += math.sin(2 * math.pi * freq * 2 * t) * 0.2 * env
+        samples.append(s)
+    return samples
+
+
 def make_title():
     """Space ambient title music: simple synth melody + bass, 8s (loopable)."""
     dur = 8.0
@@ -217,6 +231,7 @@ if __name__ == '__main__':
         'tic_low.wav':         make_tic_low,
         'boost.wav':           make_boost,
         'title.wav':           make_title,
+        'pickup.wav':          make_pickup,
     }
 
     for filename, fn in sounds.items():
