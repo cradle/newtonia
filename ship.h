@@ -24,6 +24,7 @@ class Ship : public CompositeObject {
 
     void puts(); //TODO: convert into iostream operator
 
+    using CompositeObject::step;
     virtual void step(float delta, const Grid &grid);
 
     void rotate_left(bool on = true);
