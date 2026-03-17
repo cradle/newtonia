@@ -14,10 +14,9 @@ public:
   virtual ~GLStation();
 
   void draw(bool minimap = false) const;
-  using Ship::reset;
   void step(float delta, const Grid &grid);
   // void collide(Ship *ship) const;
-  void reset();
+  void reset(bool was_killed = true);
   int level() const;
 
 private:
