@@ -15,7 +15,7 @@ else
   ALL_SRCS := $(filter-out $(ANDROID_SRCS),$(wildcard *.cpp) $(wildcard */*.cpp))
 endif
 
-OSX_LIBS = -framework GLUT -framework OpenGL -framework SDL2 -framework SDL2_mixer
+OSX_LIBS = -framework GLUT -framework OpenGL $(SDL2_LIBS)
 OSX_CFLAGS = $(CFLAGS) -std=c++11 -arch i386 -arch ppc
 COMPILE = $(CC) $(CFLAGS) -c
 OBJFILES := $(patsubst %.cpp,%.o,$(ALL_SRCS))
