@@ -13,9 +13,12 @@ on:
 
 jobs:
   deploy:
-    runs-on: macos-15
+    runs-on: macos-26
 
     steps:
+      - name: Select stable Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.3.app
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
