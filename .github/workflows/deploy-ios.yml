@@ -170,7 +170,7 @@ jobs:
 
           xcodebuild archive \
             -project newtonia/ios/Newtonia-iOS.xcodeproj \
-            -target Newtonia \
+            -scheme Newtonia \
             -sdk iphoneos \
             -configuration Release \
             -archivePath Newtonia.xcarchive \
