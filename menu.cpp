@@ -19,9 +19,9 @@ Menu::Menu() :
   EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
 #endif
   if(music == NULL) {
-    music = Mix_LoadMUS("title.mp3");
+    music = Mix_LoadMUS("title.wav");
     if(music == NULL) {
-      std::cout << "Unable to load title.mp3 (" << Mix_GetError() << ")" << std::endl;
+      std::cout << "Unable to load title.wav (" << Mix_GetError() << ")" << std::endl;
     } else {
       Mix_PlayMusic(music, -1);
     }
