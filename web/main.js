@@ -25,46 +25,46 @@
         fsBtn.title = document.fullscreenElement ? "Exit fullscreen" : "Fullscreen";
     });
     // ---- Mute ----
-    // Emscripten SDL2_mixer exposes volume via the C API; we use the Web Audio
-    // API as a simpler cross-cutting mute that doesn't require EXPORTED_FUNCTIONS.
+    // We use AudioContext.suspend/resume to silence all SDL2_mixer output.
+    // Emscripten's SDL2 port calls ctx.resume() on every user gesture to comply
+    // with browser autoplay policy, which would immediately undo a suspend-based
+    // mute. To prevent that, we replace ctx.resume with a no-op while muted and
+    // restore it when the user unmutes.
     let muted = false;
     let audioCtx = null;
-    let gainNode = null;
     function getAudioContext() {
-        // Emscripten creates a global AudioContext accessible via window.
-        // If it isn't available yet, return null and retry on first user gesture.
+        // SDL2/Emscripten exposes its AudioContext at window.SDL.audioContext.
+        // We also check window._newtAudioCtx, which is set by the AudioContext
+        // constructor intercept in shell.html (covers the case where the context
+        // was created before SDL exports it, or on alternate Emscripten builds).
         const w = window;
-        return w.SDL?.audioContext ?? null;
-    }
-    function ensureGain() {
-        if (gainNode)
-            return gainNode;
-        const ctx = getAudioContext();
-        if (!ctx)
-            return null;
-        audioCtx = ctx;
-        gainNode = ctx.createGain();
-        gainNode.connect(ctx.destination);
-        // Reconnect Emscripten's master output through our gain node.
-        // SDL2/Emscripten uses ctx.destination as its output; intercept by
-        // disconnecting and rerouting is fragile, so we rely on AudioContext.suspend
-        // instead (simpler and reliable).
-        return gainNode;
+        return w.SDL?.audioContext ?? w._newtAudioCtx ?? null;
     }
     muteBtn.addEventListener("click", () => {
         muted = !muted;
         muteBtn.textContent = muted ? "🔇" : "🔊";
         muteBtn.title = muted ? "Unmute" : "Mute";
-        const ctx = getAudioContext() ?? audioCtx;
-        if (ctx) {
+        // Lazily capture context; covers clicking mute before audio has started.
+        if (!audioCtx)
+            audioCtx = getAudioContext();
+        if (audioCtx) {
             if (muted) {
-                ctx.suspend();
+                audioCtx.suspend();
+                // Block SDL2/browser from resuming while muted.
+                if (!audioCtx._origResume) {
+                    audioCtx._origResume = audioCtx.resume.bind(audioCtx);
+                    audioCtx.resume = () => Promise.resolve();
+                }
             }
             else {
-                ctx.resume();
+                const orig = audioCtx._origResume;
+                if (orig) {
+                    audioCtx.resume = orig;
+                    delete audioCtx._origResume;
+                }
+                audioCtx.resume();
             }
         }
-        ensureGain();
     });
     // ---- On-screen touch controls ----
     // Left half: floating analog joystick that calls Module._web_touch_joystick(nx, ny).
@@ -289,7 +289,8 @@
             window.removeEventListener("resize", _resizeFn);
             _resizeFn = null;
         }
-        _resizeObserver?.disconnect(); _resizeObserver = null;
+        _resizeObserver?.disconnect();
+        _resizeObserver = null;
         if (TOUCH_MEDIA.matches) {
             tc.style.display = "block";
             _resizeFn = buildTouchControls();

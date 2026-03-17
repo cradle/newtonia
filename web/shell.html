@@ -223,6 +223,22 @@
   </div>
 
   <script>
+    // Intercept AudioContext construction so we can capture the instance used
+    // by SDL2/Emscripten for mute support (created lazily on first user gesture).
+    (function() {
+      var Orig = window.AudioContext;
+      if (!Orig) return;
+      function PatchedAudioContext(options) {
+        var ctx = new Orig(options);
+        window._newtAudioCtx = ctx;
+        return ctx;
+      }
+      PatchedAudioContext.prototype = Orig.prototype;
+      window.AudioContext = PatchedAudioContext;
+    })();
+  </script>
+
+  <script>
     // Emscripten Module configuration — must be defined before the main script.
     var Module = {
       canvas: (function() {
