@@ -122,8 +122,8 @@ def make_missile_fly():
     return samples
 
 def make_tic():
-    """Heat warning high: short 880 Hz beep, 120ms."""
-    n = int(SAMPLE_RATE * 0.12)
+    """Heat warning high: short 880 Hz beep, 250ms."""
+    n = int(SAMPLE_RATE * 0.25)
     samples = []
     for i in range(n):
         t = i / SAMPLE_RATE
@@ -132,8 +132,8 @@ def make_tic():
     return samples
 
 def make_tic_low():
-    """Heat warning low: short 440 Hz beep, 120ms."""
-    n = int(SAMPLE_RATE * 0.12)
+    """Heat warning low: short 440 Hz beep, 250ms."""
+    n = int(SAMPLE_RATE * 0.25)
     samples = []
     for i in range(n):
         t = i / SAMPLE_RATE
