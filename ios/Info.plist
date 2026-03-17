@@ -44,5 +44,7 @@
     <true/>
     <key>MinimumOSVersion</key>
     <string>13.0</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>This app does not use Bluetooth. This description is required because a third-party library references Bluetooth APIs.</string>
 </dict>
 </plist>
