@@ -178,9 +178,12 @@ jobs:
           </plist>
           PLIST
 
+      - name: Package .app as zip
+        run: ditto -c -k --keepParent Newtonia.app newtonia-macos-universal.zip
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: newtonia-macos-universal
-          path: Newtonia.app/
+          path: newtonia-macos-universal.zip
           retention-days: 30
