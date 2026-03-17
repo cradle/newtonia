@@ -37,11 +37,12 @@ void MissileShot::step_missile(int delta, std::list<Object*> *asteroids, std::li
     Object *target = NULL;
     float closest = SEEK_RANGE;
 
-    auto seek_list = [&](std::list<Object*> *lst) {
+    auto seek_list = [&](std::list<Object*> *lst, bool skip_invincible) {
       if (!lst) return;
       for (auto it = lst->begin(); it != lst->end(); ++it) {
         Object *a = *it;
         if (!a->alive) continue;
+        if (skip_invincible && a->invincible) continue;
         WrappedPoint apos = a->position;
         float dist = position.distance_to(apos) - a->radius;
         if (dist >= closest) continue;
@@ -57,8 +58,8 @@ void MissileShot::step_missile(int delta, std::list<Object*> *asteroids, std::li
       }
     };
 
-    seek_list(asteroids);
-    seek_list(ships);
+    seek_list(asteroids, true);
+    seek_list(ships, false);
 
     if (target) {
       WrappedPoint tpos = target->position;
@@ -104,7 +105,7 @@ namespace Weapon {
 
 Missile::Missile(Ship *ship) : Base(ship) {
   _name = "MISSILES";
-  _ammo = 3;
+  _ammo = 10;
   unlimited = false;
 
   fly_sound = Mix_LoadWAV("missile_fly.wav");

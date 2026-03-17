@@ -1,0 +1,99 @@
+name: Deploy Android (Google Play)
+
+# Triggered by pushing a version tag, e.g.:
+#   git tag v1.0.0 && git push --tags
+# Or manually from the Actions tab.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: newtonia
+
+      - name: Clone SDL2
+        run: git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL.git SDL2
+
+      - name: Clone SDL2_mixer
+        run: |
+          git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
+          git -C SDL2_mixer submodule update --init --depth 1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK and CMake
+        run: sdkmanager "ndk;26.3.11579264" "cmake;3.22.1"
+
+      # Decode the base64-encoded release keystore stored as a GitHub secret.
+      # To generate and encode: keytool -genkey -v -keystore release.jks \
+      #   -alias newtonia -keyalg RSA -keysize 2048 -validity 10000
+      # Then: base64 -i release.jks | tr -d '\n'  →  paste into KEYSTORE_BASE64 secret
+      - name: Decode release keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > newtonia/android/release.jks
+
+      # Build a signed release AAB (Android App Bundle).
+      # Play Store requires AAB for new apps; APK is still accepted for updates.
+      - name: Build signed release AAB
+        working-directory: newtonia/android
+        env:
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_HOME }}/ndk/26.3.11579264
+          SIGNING_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: |
+          REF="${{ github.ref }}"
+          if [[ "$REF" == refs/tags/v* ]]; then
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+          else
+            SHORT_SHA=$(git -C "$GITHUB_WORKSPACE/newtonia" rev-parse --short HEAD)
+            VERSION="0.0.1-${SHORT_SHA}"
+          fi
+          ./gradlew bundleRelease \
+            -Pandroid.injected.signing.store.file="$(pwd)/release.jks" \
+            -Pandroid.injected.signing.store.password="${SIGNING_STORE_PASSWORD}" \
+            -Pandroid.injected.signing.key.alias="${SIGNING_KEY_ALIAS}" \
+            -Pandroid.injected.signing.key.password="${SIGNING_KEY_PASSWORD}" \
+            -PversionName="${VERSION:-0.0.1}" \
+            -PversionCode="${{ github.run_number }}" \
+            --stacktrace
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: newtonia-release-aab
+          path: newtonia/android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 30
+
+      # Upload the AAB to the Play Store internal testing track.
+      # Promote to alpha/beta/production from the Play Console UI,
+      # or change `track` below to 'alpha', 'beta', or 'production'.
+      #
+      # One-time setup required in Google Play Console:
+      #   1. Create app listing and set package name to org.newtonia
+      #   2. Create a Google Cloud service account with Play Developer API access
+      #   3. Download the service account JSON key
+      #   4. Store the JSON content in the GOOGLE_PLAY_SERVICE_ACCOUNT_JSON secret
+      - name: Upload to Google Play (internal track)
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: org.newtonia
+          releaseFiles: newtonia/android/app/build/outputs/bundle/release/app-release.aab
+          track: internal
+          status: draft

@@ -13,6 +13,7 @@
 #include "weapon_pickup.h"
 #include "mine_pickup.h"
 #include "missile_pickup.h"
+#include "shield_pickup.h"
 #include <SDL.h>
 #include <list>
 
@@ -35,7 +36,11 @@ public:
 
   bool cleared() const;
 
-  list<Asteroid*> *objects;
+  void focus_lost();
+  void focus_gained();
+
+  list<Asteroid*> *objects;      // alive asteroids (in collision grid)
+  list<Asteroid*> *dead_objects; // killed asteroids with lingering debris
   list<Pickup*> *pickups;
 
   int num_x_viewports() const;
@@ -51,7 +56,7 @@ private:
   void setup_perspective(GLShip *glship) const;
   void setup_orthogonal() const;
 
-  static const int step_size = 5;
+  static const int step_size = 16;
 
   Point world;
 
@@ -59,6 +64,8 @@ private:
   int last_tick, time_until_next_step, num_frames, current_time, time_between_steps;
   int time_until_next_generation;
   bool running, level_cleared, friendly_fire, debug_grid, score_saved;
+  bool auto_paused = false;
+  int game_over_time;
 
   static const int default_world_width, default_world_height;
   static const int default_num_asteroids, extra_num_asteroids;
@@ -66,6 +73,7 @@ private:
   static const float weapon_pickup_drop_chance;
   static const float mine_pickup_drop_chance;
   static const float missile_pickup_drop_chance;
+  static const float shield_pickup_drop_chance;
   unsigned int frontstars, rearstars;
 
   Mix_Chunk *tic_sound = NULL;

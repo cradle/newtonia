@@ -94,6 +94,7 @@ class Ship : public CompositeObject {
     void add_weapon(int weapon_index);
     void add_mine_ammo(int amount);
     void add_missile_ammo(int amount);
+    void add_shield_ammo(int amount);
     void set_missile_asteroids(std::list<Object*> *asteroids);
     void set_missile_ships(std::list<Object*> *ships);
     WrappedPoint gun() const;
@@ -140,6 +141,8 @@ class Ship : public CompositeObject {
     list<Weapon::Base *> secondary_weapons;
     list<Weapon::Base *>::iterator primary;
     list<Weapon::Base *>::iterator secondary;
+    std::list<Object*> *missile_asteroids = nullptr;
+    std::list<Object*> *missile_ships_list = nullptr;
 };
 
 #endif

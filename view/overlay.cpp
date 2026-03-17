@@ -7,9 +7,6 @@
 #include "../gl_compat.h"
 #include <cstdio>
 #include <cmath>
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-#endif
 
 const float Overlay::CORNER_INSET = 35.0f;
 
@@ -30,16 +27,10 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
 void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
   if(!glgame->running && !glship->show_help) {
     Typer::draw_centered(0, 30, "Paused", 25);
-#if defined(__ANDROID__) || defined(__IOS__)
-    Typer::draw_centered(0, -40, "TOUCH LEVEL TO UNPAUSE", 8);
-#elif defined(__EMSCRIPTEN__)
-    if(EM_ASM_INT(return window.matchMedia('(pointer: coarse)').matches ? 1 : 0;))
+    if(is_touch_mode())
       Typer::draw_centered(0, -40, "TOUCH LEVEL TO UNPAUSE", 8);
     else
       Typer::draw_centered(0, -40, "press p to unpause", 8);
-#else
-    Typer::draw_centered(0, -40, "press p to unpause", 8);
-#endif
   }
 }
 
@@ -115,14 +106,13 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   if(glgame->players->size() < 2) {
     if((glgame->current_time/1400) % 2) {
       if(p1->is_alive() || p1->lives > 0) {
-#if !defined(__ANDROID__) && !defined(__IOS__)
-        Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-10, "player 2 press enter to join", 8);
-#endif
+        if(!is_touch_mode())
+          Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-10, "player 2 press enter to join", 8);
       } else {
         Typer::draw_centered(0, Typer::window_height-10, "return to menu with ESC", 8);
       }
     }
-    if(glship->controller == NULL) {
+    if(glship->controller == NULL && !is_touch_mode()) {
       if(glship->show_help) {
         Typer::draw_centered(-1*Typer::scaled_window_width/2, Typer::scaled_window_height-10, "hide controls with F1", 8);
       } else if ((glgame->current_time)/12000 % 2) {
@@ -134,7 +124,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     if(glgame->friendly_fire) {
       Typer::draw_centered(0, vhb+30, "friendly fire on", 8);
     }
-    if(glship->controller == NULL) {
+    if(glship->controller == NULL && !is_touch_mode()) {
       if(p1 == glship->ship) {
         if(glship->show_help) {
           Typer::draw_centered(0, vhb+60, "hide controls with F1", 8);

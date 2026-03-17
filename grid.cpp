@@ -8,16 +8,14 @@
 #include <iostream>
 using namespace std;
 
+
 Grid::Grid(Point size, Point biggest) {
   cell_size = biggest;
   world_size = size;
   num_rows = int(ceil(size.x()/cell_size.x()));
   num_cols = int(ceil(size.y()/cell_size.y()));
   cout << "Grid: " << num_rows << "x" << num_cols << endl;
-  cells = vector<vector<list<Object *> > >(num_rows);
-  for(int row = 0; row < num_rows; row++) {
-    cells[row] = vector<list<Object *> >(num_cols);
-  }
+  cells = vector<vector<vector<Object *>>>(num_rows, vector<vector<Object *>>(num_cols));
 }
 
 void Grid::display() const {
@@ -33,7 +31,7 @@ void Grid::display() const {
   cout << endl;
 }
 
-const list<Object *> &Grid::get(int row, int col) const {
+const vector<Object *> &Grid::get(int row, int col) const {
   while(row < 0) row += num_rows;
   while(col < 0) col += num_cols;
   while(row >= num_rows) row -= num_rows;
@@ -41,8 +39,8 @@ const list<Object *> &Grid::get(int row, int col) const {
   return cells[row][col];
 }
 
-Object * Grid::collide(const Object &object, float proximity) const {
-  list<Object *>::const_iterator o;
+Object * Grid::collide(const Object &object, float proximity, bool skip_invincible) const {
+  vector<Object *>::const_iterator o;
   Object *collided = NULL;
 
   // Query cells the object's effective radius spans, plus one cell on each
@@ -60,9 +58,10 @@ Object * Grid::collide(const Object &object, float proximity) const {
     for(int col = col_min; col <= col_max && collided == NULL; col++) {
       float y_off = (col < 0) ? -world_size.y() : (col >= num_cols) ? world_size.y() : 0.0f;
 
-      const list<Object *> &others = get(row, col);
+      const vector<Object *> &others = get(row, col);
       Point offset(x_off, y_off);
       for(o = others.begin(); o != others.end() && collided == NULL; o++) {
+        if(skip_invincible && (*o)->invincible) continue;
         if(object.collide(**o, proximity, offset)) {
           collided = *o;
         }
@@ -78,7 +77,7 @@ void Grid::update(const list<Object *> *objects) {
       cells[i][j].clear();
 
   list<Object *>::const_iterator oi;
-  for(oi = objects->begin(); oi != objects->end(); oi++) {
+  for(oi = objects->cbegin(); oi != objects->cend(); oi++) {
     if(!(*oi) || !(*oi)->alive) continue;
     Point p = (*oi)->position;
     float r = (*oi)->radius;

@@ -248,11 +248,11 @@ void GLShip::controller_input(SDL_Event event) {
     show_help = pressed;
   }
   if(!ship->is_alive()) {
-    if(pressed && event.cbutton.button == SDL_CONTROLLER_BUTTON_A && ship->lives > 0) {
+    if(pressed && event.cbutton.button == SDL_CONTROLLER_BUTTON_A && ship->lives > 0 &&
+       ship->time_until_respawn <= ship->respawn_time - 1000) {
       ship->time_until_respawn = 0;
-    } else {
-      return;
     }
+    return;
   }
   if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_LEFT) {
     ship->rotate_left(pressed);
@@ -359,11 +359,11 @@ void GLShip::touch_joystick_input(float nx, float ny) {
 void GLShip::input(unsigned char key, bool pressed) {
   if (key == help_key && pressed) show_help = !show_help;
   if(!ship->is_alive()) {
-    if(key == shoot_key && ship->lives > 0) {
+    if(key == shoot_key && ship->lives > 0 &&
+       ship->time_until_respawn <= ship->respawn_time - 1000) {
       ship->time_until_respawn = 0;
-    } else {
-      return;
     }
+    return;
   }
   if (key == left_key) {
     ship->rotate_left(pressed);
@@ -446,10 +446,6 @@ void GLShip::draw_ship(bool minimap) const {
 
   if(ship->invincible) {
     glCallList(force_shield);
-  }
-
-  if(ship->invincible) {
-    glCallList(force_shield_bg);
   }
 }
 
@@ -609,14 +605,16 @@ void GLShip::draw_weapons() const {
       }
     }
   }
-  weapon = *(ship->secondary);
-  if(weapon != NULL && !ship->secondary_weapons.empty()) {
-    Typer::draw(x+10,y-95,weapon->name(),10);
-    if(!weapon->is_unlimited()) {
-      if(weapon->ammo() == 0) {
-        Typer::draw(x+30+20*strlen(weapon->name()),y-95,"empty",10);
-      } else {
-        Typer::draw_lefted(x+50+20*strlen(weapon->name()),y-95,weapon->ammo(),10);
+  if(!ship->secondary_weapons.empty()) {
+    weapon = *(ship->secondary);
+    if(weapon != NULL) {
+      Typer::draw(x+10,y-95,weapon->name(),10);
+      if(!weapon->is_unlimited()) {
+        if(weapon->ammo() == 0) {
+          Typer::draw(x+30+20*strlen(weapon->name()),y-95,"empty",10);
+        } else {
+          Typer::draw_lefted(x+50+20*strlen(weapon->name()),y-95,weapon->ammo(),10);
+        }
       }
     }
   }
@@ -692,11 +690,11 @@ void GLShip::draw_missiles() const {
   for(auto &m : ship->missiles) {
     // Trail: fading dots in player colour, oldest (dim) to newest (bright)
     if(!m.trail.empty()) {
-      glPointSize(2.5f);
+      glPointSize(4.0f);
       glBegin(GL_POINTS);
       int trail_sz = (int)m.trail.size();
       for(int ti = trail_sz - 1; ti >= 0; ti--) {
-        float alpha = (1.0f - (float)ti / (float)trail_sz) * 0.6f;
+        float alpha = (1.0f - (float)ti / (float)trail_sz);
         glColor4f(color[0], color[1], color[2], alpha);
         glVertex2fv(m.trail[ti]);
       }
