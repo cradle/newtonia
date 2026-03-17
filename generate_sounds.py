@@ -107,7 +107,6 @@ def make_missile_explode():
 def make_missile_fly():
     """Missile in-flight: wailing screamer with air rush, 500ms (loopable)."""
     n = int(SAMPLE_RATE * 0.5)
-    rng = random.Random(55)
     samples = []
     phase = 0.0
     for i in range(n):
@@ -118,9 +117,7 @@ def make_missile_fly():
         phase += 2 * math.pi * 350 / SAMPLE_RATE
         tone  = math.sin(phase) * 0.28 * am
         tone += math.sin(phase * 2) * 0.10 * am
-        # Air rush
-        noise = (rng.random() * 2 - 1) * 0.18
-        samples.append(tone + noise)
+        samples.append(tone)
     return samples
 
 def make_tic():
