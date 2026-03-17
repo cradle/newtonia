@@ -175,6 +175,8 @@ jobs:
             | sed -n 's|.*<string>\(.*\)</string>.*|\1|p')
           cp profile.mobileprovision \
             ~/Library/MobileDevice/Provisioning\ Profiles/"$UUID".mobileprovision
+          # Also embed it inside the .app bundle as required by App Store
+          cp profile.mobileprovision Newtonia.app/embedded.mobileprovision
 
       - name: Sign .app
         run: |
