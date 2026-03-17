@@ -33,7 +33,7 @@ class Ship : public CompositeObject {
     void reverse(bool on = true);
     void shoot(bool on = true);
     void shoot_weapon(bool on = true);
-    void mine(bool on = true);
+    void fire_secondary(bool on = true);
     void boost();
     int multiplier() const;
 
@@ -97,6 +97,7 @@ class Ship : public CompositeObject {
     void add_mine_ammo(int amount);
     void add_missile_ammo(int amount);
     void add_shield_ammo(int amount);
+    void set_shield_hum(bool on);
     void set_missile_asteroids(std::list<Object*> *asteroids);
     void set_missile_ships(std::list<Object*> *ships);
     WrappedPoint gun() const;
@@ -136,7 +137,8 @@ class Ship : public CompositeObject {
 
     void play_rotating_sound(bool on);
     Mix_Chunk *boost_sound = NULL, *tic_sound = NULL, *tic_low_sound = NULL, *click_sound = NULL;
-    Mix_Chunk *missile_explode_sound = NULL;
+    Mix_Chunk *missile_explode_sound = NULL, *shield_hum_sound = NULL;
+    int shield_hum_channel = -1;
 
     list<Behaviour *> behaviours;
     list<Weapon::Base *> primary_weapons;

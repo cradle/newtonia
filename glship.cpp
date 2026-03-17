@@ -265,7 +265,7 @@ void GLShip::controller_input(SDL_Event event) {
   } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A) {
     ship->shoot(pressed);
   } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_B) {
-    ship->mine(pressed);
+    ship->fire_secondary(pressed);
   } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_LEFTSHOULDER && pressed) {
     ship->boost();
   } else if(event.cbutton.button == SDL_CONTROLLER_BUTTON_X && pressed) {
@@ -376,7 +376,7 @@ void GLShip::input(unsigned char key, bool pressed) {
   } else if (key == shoot_key) {
     ship->shoot(pressed);
   } else if (key == mine_key) {
-    ship->mine(pressed);
+    ship->fire_secondary(pressed);
   } else if (key == boost_key && pressed) {
     ship->boost();
   } else if(key == next_weapon_key && pressed) {

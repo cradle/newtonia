@@ -56,6 +56,12 @@ Ship::Ship(const Grid &grid, bool has_friction) :
       std::cout << "Unable to load missile_explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
+  if(shield_hum_sound == NULL) {
+    shield_hum_sound = Mix_LoadWAV("audio/shield_hum.wav");
+  }
+  if(shield_hum_sound == NULL) {
+    std::cout << "Unable to load shield_hum.wav (" << Mix_GetError() << ")" << std::endl;
+  }
 }
 
 void Ship::disable_behaviours() {
@@ -93,6 +99,9 @@ Ship::~Ship() {
   }
   if(missile_explode_sound != NULL) {
     Mix_FreeChunk(missile_explode_sound);
+  }
+  if(shield_hum_sound != NULL) {
+    Mix_FreeChunk(shield_hum_sound);
   }
 }
 
@@ -335,6 +344,7 @@ void Ship::respawn(const Grid &grid, bool was_killed) {
     reset(was_killed);
     safe_position(grid);
     invincible = true;
+    set_shield_hum(true);
     detonate();
   }
 }
@@ -391,6 +401,7 @@ bool Ship::kill() {
     if(boost_sound != NULL) {
       Mix_VolumeChunk(boost_sound, 0);
     }
+    set_shield_hum(false);
     return true;
   }
   return false;
@@ -593,7 +604,7 @@ void Ship::shoot(bool on) {
   }
 }
 
-void Ship::mine(bool on) {
+void Ship::fire_secondary(bool on) {
   if(secondary_weapons.empty()) return;
   if((*secondary)->empty() && on) {
     auto to_remove = secondary;
@@ -606,6 +617,16 @@ void Ship::mine(bool on) {
     secondary = secondary_weapons.empty() ? secondary_weapons.end() : next;
   } else {
     (*secondary)->shoot(on);
+  }
+}
+
+void Ship::set_shield_hum(bool on) {
+  if(shield_hum_sound == NULL) return;
+  if(on) {
+    shield_hum_channel = Mix_PlayChannel(-1, shield_hum_sound, -1);
+  } else if(shield_hum_channel >= 0) {
+    Mix_HaltChannel(shield_hum_channel);
+    shield_hum_channel = -1;
   }
 }
 
@@ -686,6 +707,7 @@ void Ship::step(float delta, const Grid &grid) {
       time_left_invincible -= delta;
       if(time_left_invincible < 0) {
         invincible = false;
+        set_shield_hum(false);
       }
     }
 

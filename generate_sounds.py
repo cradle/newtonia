@@ -105,18 +105,24 @@ def make_missile_explode():
     return samples
 
 def make_missile_fly():
-    """Missile in-flight: modulated whoosh, 500ms (loopable)."""
+    """Missile in-flight: wailing screamer with air rush, 500ms (loopable)."""
     n = int(SAMPLE_RATE * 0.5)
     samples = []
+    phase = 0.0
     for i in range(n):
         t = i / SAMPLE_RATE
-        freq = 400 + 200 * math.sin(2 * math.pi * 3 * t)
-        samples.append(math.sin(2 * math.pi * freq * t) * 0.5)
+        # 350 Hz tone, amplitude-modulated at 8 Hz for a wailing/screaming quality
+        # Both 8 Hz and 350 Hz divide evenly into 0.5s -> seamless loop
+        am = 0.55 + 0.45 * math.sin(2 * math.pi * 8 * t)
+        phase += 2 * math.pi * 350 / SAMPLE_RATE
+        tone  = math.sin(phase) * 0.28 * am
+        tone += math.sin(phase * 2) * 0.10 * am
+        samples.append(tone)
     return samples
 
 def make_tic():
-    """Heat warning high: short 880 Hz beep, 120ms."""
-    n = int(SAMPLE_RATE * 0.12)
+    """Heat warning high: short 880 Hz beep, 250ms."""
+    n = int(SAMPLE_RATE * 0.25)
     samples = []
     for i in range(n):
         t = i / SAMPLE_RATE
@@ -125,8 +131,8 @@ def make_tic():
     return samples
 
 def make_tic_low():
-    """Heat warning low: short 440 Hz beep, 120ms."""
-    n = int(SAMPLE_RATE * 0.12)
+    """Heat warning low: short 440 Hz beep, 250ms."""
+    n = int(SAMPLE_RATE * 0.25)
     samples = []
     for i in range(n):
         t = i / SAMPLE_RATE
@@ -134,11 +140,29 @@ def make_tic_low():
         samples.append(math.sin(2 * math.pi * 440 * t) * env * 0.9)
     return samples
 
+def make_shield_hum():
+    """Shield active: low quiet electromagnetic hum, 1s (loopable)."""
+    n = int(SAMPLE_RATE * 1.0)
+    samples = []
+    phase1 = 0.0
+    phase2 = 0.0
+    phase3 = 0.0
+    for i in range(n):
+        # 105 Hz fundamental + 3rd/5th harmonics for a warm "electric" tone
+        # 105/315/525 Hz all divide 44100 evenly -> seamless loop, no click
+        phase1 += 2 * math.pi * 105 / SAMPLE_RATE
+        phase2 += 2 * math.pi * 315 / SAMPLE_RATE
+        phase3 += 2 * math.pi * 525 / SAMPLE_RATE
+        s  = math.sin(phase1) * 0.30
+        s += math.sin(phase2) * 0.10
+        s += math.sin(phase3) * 0.04
+        samples.append(s * 0.85)
+    return samples
+
 def make_boost():
     """Engine rumble: loopable low-frequency hum, 1s."""
     n = int(SAMPLE_RATE * 1.0)
     rng = random.Random(123)
-    dur = 1.0
     samples = []
     for i in range(n):
         t = i / SAMPLE_RATE
@@ -146,10 +170,22 @@ def make_boost():
         s += math.sin(2 * math.pi * 100 * t) * 0.2
         s += math.sin(2 * math.pi * 150 * t) * 0.1
         s += (rng.random() * 2 - 1) * 0.1
-        # Fade in/out for clean loop
-        fade = min(1.0, t * 10) * min(1.0, (dur - t) * 10)
-        samples.append(s * fade * 0.7)
+        samples.append(s * 0.7)
     return samples
+
+def make_pickup():
+    """Item pickup: cheerful rising chime, 200ms."""
+    n = int(SAMPLE_RATE * 0.2)
+    samples = []
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        freq = 600 + 800 * (i / n)
+        env = math.exp(-t * 10)
+        s  = math.sin(2 * math.pi * freq * t) * 0.6 * env
+        s += math.sin(2 * math.pi * freq * 2 * t) * 0.2 * env
+        samples.append(s)
+    return samples
+
 
 def make_title():
     """Space ambient title music: simple synth melody + bass, 8s (loopable)."""
@@ -215,8 +251,10 @@ if __name__ == '__main__':
         'missile_fly.wav':     make_missile_fly,
         'tic.wav':             make_tic,
         'tic_low.wav':         make_tic_low,
+        'shield_hum.wav':      make_shield_hum,
         'boost.wav':           make_boost,
         'title.wav':           make_title,
+        'pickup.wav':          make_pickup,
     }
 
     for filename, fn in sounds.items():

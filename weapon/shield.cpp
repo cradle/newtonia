@@ -19,6 +19,7 @@ namespace Weapon {
 
   void Shield::shoot(bool on) {
     shooting = on;
+    if(on) ship->set_shield_hum(true);
     if(on) {
       if(ship->invincible) return;  // already active, don't consume ammo again
       if(_ammo == 0) {
@@ -44,6 +45,7 @@ namespace Weapon {
       _ammo--;
       ship->time_left_invincible += 1000;
       ship->invincible = true;
+      ship->set_shield_hum(true);
     }
   }
 }

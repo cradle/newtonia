@@ -77,6 +77,7 @@ private:
   unsigned int frontstars, rearstars;
 
   Mix_Chunk *tic_sound = NULL;
+  Mix_Chunk *pickup_sound = NULL;
 
   Grid grid;
   GLStarfield *starfield;
