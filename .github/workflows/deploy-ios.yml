@@ -128,6 +128,10 @@ jobs:
           cp newtonia/ios/Info.plist Newtonia.app/Info.plist
           TAG_VERSION="${{ github.ref_name }}"
           VERSION="${TAG_VERSION#v}"
+          # Fall back to 1.0 if not triggered by a version tag
+          if ! echo "$VERSION" | grep -qE '^[0-9]+(\.[0-9]+){0,2}$'; then
+            VERSION="1.0"
+          fi
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" Newtonia.app/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Newtonia.app/Info.plist
 
