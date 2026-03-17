@@ -122,7 +122,6 @@ jobs:
             -framework CoreAudio \
             -framework AudioToolbox \
             -framework AVFoundation \
-            -framework CoreBluetooth \
             -framework CoreHaptics \
             -framework GameController \
             -framework QuartzCore \
