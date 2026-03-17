@@ -178,12 +178,9 @@ jobs:
           </plist>
           PLIST
 
-          # Zip with the .app wrapper intact
-          zip -r Newtonia.zip Newtonia.app
-
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: newtonia-macos-universal
-          path: Newtonia.zip
+          path: Newtonia.app/
           retention-days: 30
