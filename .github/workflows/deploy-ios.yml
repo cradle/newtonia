@@ -263,6 +263,8 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :DTSDKName string iphoneos${SDK_VERSION}" Newtonia.app/Info.plist 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :DTXcode string $XCODE_VERSION" Newtonia.app/Info.plist 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :DTXcodeBuild string $XCODE_BUILD" Newtonia.app/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleSupportedPlatforms array" Newtonia.app/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleSupportedPlatforms:0 string iPhoneOS" Newtonia.app/Info.plist 2>/dev/null || true
 
       - name: Sign .app
         run: |
