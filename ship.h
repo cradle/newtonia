@@ -24,6 +24,7 @@ class Ship : public CompositeObject {
 
     void puts(); //TODO: convert into iostream operator
 
+    using CompositeObject::step;
     virtual void step(float delta, const Grid &grid);
 
     void rotate_left(bool on = true);
@@ -40,6 +41,7 @@ class Ship : public CompositeObject {
     bool is_alive() const;
     virtual bool is_removable() const;
 
+    using Object::collide;
     static void collide(Ship *first, Ship *second);
     // bool collide_object(Object *other);
     void collide_grid(Grid &grid);

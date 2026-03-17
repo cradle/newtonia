@@ -77,7 +77,7 @@ GLStation::~GLStation() {
   glDeleteLists(map_body, 1);
 }
 
-void GLStation::reset() {
+void GLStation::reset(bool was_killed) {
   while(!objects->empty()) {
     if(objects->back()->ship->is_alive()) {
       ships_left_to_deploy++;

@@ -10,6 +10,7 @@ class Enemy : public Ship {
     Enemy(const Grid &grid, float x, float y, std::list<Ship*> * targets, int difficulty = 0);
     virtual ~Enemy();
 
+    using Ship::step;
     void step(int delta, const Grid &grid);
     virtual void reset(bool was_killed = true);
     //FIX: Why isn't this workinging without this method?

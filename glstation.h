@@ -16,7 +16,7 @@ public:
   void draw(bool minimap = false) const;
   void step(float delta, const Grid &grid);
   // void collide(Ship *ship) const;
-  void reset();
+  void reset(bool was_killed = true);
   int level() const;
 
 private:
