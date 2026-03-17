@@ -89,8 +89,10 @@
         for (const el of _joyPlaceholderEls) {
             el.style.display = isMenu ? "none" : "";
         }
-        if (!isMenu)
+        if (!isMenu) {
+            _resizeFn?.(); // Ensure buttons are correctly sized when they become visible
             _positionJoyPlaceholder?.();
+        }
         if (_menuOverlay)
             _menuOverlay.style.display = isMenu ? "block" : "none";
     }
@@ -259,6 +261,8 @@
         // the .pressed scale animation works without fighting inline styles.
         function sizeCircleButtons() {
             const r = canvas.getBoundingClientRect();
+            if (r.width === 0)
+                return; // layout not ready yet
             const diam = Math.min(r.width, r.height) * 0.19;
             for (const { el, cx, cy } of circleButtons) {
                 el.style.width = `${diam}px`;
