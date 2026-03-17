@@ -105,23 +105,22 @@ def make_missile_explode():
     return samples
 
 def make_missile_fly():
-    """Missile in-flight: low thruster roar with exhaust hiss, 500ms (loopable)."""
+    """Missile in-flight: wailing screamer with air rush, 500ms (loopable)."""
     n = int(SAMPLE_RATE * 0.5)
     rng = random.Random(55)
     samples = []
     phase = 0.0
-    phase2 = 0.0
     for i in range(n):
-        # Low thruster: 60 Hz with odd harmonics (square-wave character)
-        phase += 2 * math.pi * 60 / SAMPLE_RATE
-        thruster = math.sin(phase) * 0.28
-        thruster += math.sin(phase * 3) * 0.11
-        thruster += math.sin(phase * 5) * 0.05
-        # Exhaust hiss: noise shaped by a mid-freq carrier
-        phase2 += 2 * math.pi * 300 / SAMPLE_RATE
-        raw = (rng.random() * 2 - 1)
-        hiss = raw * (0.5 + 0.5 * abs(math.sin(phase2))) * 0.28
-        samples.append(thruster + hiss)
+        t = i / SAMPLE_RATE
+        # 350 Hz tone, amplitude-modulated at 8 Hz for a wailing/screaming quality
+        # Both 8 Hz and 350 Hz divide evenly into 0.5s -> seamless loop
+        am = 0.55 + 0.45 * math.sin(2 * math.pi * 8 * t)
+        phase += 2 * math.pi * 350 / SAMPLE_RATE
+        tone  = math.sin(phase) * 0.28 * am
+        tone += math.sin(phase * 2) * 0.10 * am
+        # Air rush
+        noise = (rng.random() * 2 - 1) * 0.18
+        samples.append(tone + noise)
     return samples
 
 def make_tic():
@@ -152,14 +151,14 @@ def make_shield_hum():
     phase2 = 0.0
     phase3 = 0.0
     for i in range(n):
-        # 120 Hz fundamental + subtle 3rd harmonic for a warm "electric" tone
+        # 120 Hz fundamental + 3rd/5th harmonics for a warm "electric" tone
         phase1 += 2 * math.pi * 120 / SAMPLE_RATE
         phase2 += 2 * math.pi * 360 / SAMPLE_RATE
         phase3 += 2 * math.pi * 600 / SAMPLE_RATE
         s  = math.sin(phase1) * 0.30
         s += math.sin(phase2) * 0.10
         s += math.sin(phase3) * 0.04
-        samples.append(s * 0.5)
+        samples.append(s * 0.85)
     return samples
 
 def make_boost():
