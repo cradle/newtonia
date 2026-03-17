@@ -269,17 +269,23 @@
             if (joyFinger === null)
                 positionJoyPlaceholder();
         }
-        requestAnimationFrame(sizeCircleButtons);
+        // Use ResizeObserver so buttons are sized correctly on initial layout
+        // (requestAnimationFrame fires too early, before the canvas has its final size).
+        _resizeObserver?.disconnect();
+        _resizeObserver = new ResizeObserver(sizeCircleButtons);
+        _resizeObserver.observe(canvas);
         return sizeCircleButtons;
     }
     // Tracks the active resize listener so it can be removed on rebuild.
     let _resizeFn = null;
+    let _resizeObserver = null;
     function applyTouchVisibility() {
         const tc = document.getElementById("touch-controls");
         if (_resizeFn) {
             window.removeEventListener("resize", _resizeFn);
             _resizeFn = null;
         }
+        _resizeObserver?.disconnect(); _resizeObserver = null;
         if (TOUCH_MEDIA.matches) {
             tc.style.display = "block";
             _resizeFn = buildTouchControls();
