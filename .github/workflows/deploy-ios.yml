@@ -16,8 +16,8 @@ jobs:
     runs-on: macos-15
 
     steps:
-      - name: Select stable Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - name: Print Xcode version
+        run: xcodebuild -version
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -285,7 +285,7 @@ jobs:
       # Upload to TestFlight. Testers can install immediately;
       # submit for App Store review from App Store Connect UI.
       - name: Upload to TestFlight
-        uses: apple-actions/upload-testflight-build@v1
+        uses: apple-actions/upload-testflight-build@v4
         with:
           app-path: Newtonia.ipa
           issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
