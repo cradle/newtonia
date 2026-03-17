@@ -201,7 +201,11 @@ jobs:
             --minimum-deployment-target 13.0 \
             --app-icon AppIcon \
             --output-partial-info-plist actool-info.plist \
-            --compress-pngs
+            --compress-pngs || true
+          # actool exits non-zero on macos-15 due to a missing simulator runtime
+          # warning, but still produces the device icons we need. Fail explicitly
+          # only if the icons weren't actually generated.
+          test -f Newtonia.app/AppIcon60x60@2x.png || { echo "actool did not generate icons"; exit 1; }
 
           # Merge actool output (CFBundleIconName, CFBundleIcons, etc.) into Info.plist
           /usr/libexec/PlistBuddy -c "Merge actool-info.plist" Newtonia.app/Info.plist
