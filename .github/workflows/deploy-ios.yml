@@ -134,6 +134,8 @@ jobs:
           fi
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" Newtonia.app/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Newtonia.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :MinimumOSVersion 13.0" Newtonia.app/Info.plist 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string 13.0" Newtonia.app/Info.plist
 
       # Import the Apple Distribution certificate and provisioning profile.
       # One-time setup required:
