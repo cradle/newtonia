@@ -40,6 +40,7 @@ class Ship : public CompositeObject {
     bool is_alive() const;
     virtual bool is_removable() const;
 
+    using Object::collide;
     static void collide(Ship *first, Ship *second);
     // bool collide_object(Object *other);
     void collide_grid(Grid &grid);
