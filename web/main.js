@@ -122,14 +122,15 @@
         }
         function positionJoyPlaceholder() {
             const r = canvas.getBoundingClientRect();
+            if (r.width === 0) return; // layout not ready yet
             const rad = Math.min(r.width, r.height) * 0.13;
             const baseSize = rad * 2, nubSize = rad * 0.62;
             const px = r.left + r.width * 0.18;
             const py = r.top + r.height * 0.75;
-            joyBase.style.cssText = `display:block;width:${baseSize}px;height:${baseSize}px;left:${px}px;top:${py}px;opacity:0.25;`;
-            joyNub.style.cssText = `display:block;width:${nubSize}px;height:${nubSize}px;left:${px}px;top:${py}px;opacity:0.25;`;
+            joyBase.style.cssText = `display:block;width:${baseSize}px;height:${baseSize}px;left:${px}px;top:${py}px;opacity:0.4;`;
+            joyNub.style.cssText = `display:block;width:${nubSize}px;height:${nubSize}px;left:${px}px;top:${py}px;opacity:0.4;`;
         }
-        positionJoyPlaceholder();
+        requestAnimationFrame(positionJoyPlaceholder);
         function moveJoystick(x, y) {
             const dx = x - joyCX, dy = y - joyCY;
             const dist = Math.sqrt(dx * dx + dy * dy);
@@ -256,7 +257,7 @@
             }
             if (joyFinger === null) positionJoyPlaceholder();
         }
-        sizeCircleButtons();
+        requestAnimationFrame(sizeCircleButtons);
         return sizeCircleButtons;
     }
     // Tracks the active resize listener so it can be removed on rebuild.
