@@ -417,7 +417,7 @@ bool Ship::kill() {
       Mix_VolumeChunk(boost_sound, 0);
     }
     set_shield_hum(false);
-    if(explode_sound != NULL) {
+    if(explode_sound != NULL && sound_volume_scale > 0.0f) {
       Mix_PlayChannel(-1, explode_sound, 0);
     }
     return true;
