@@ -211,8 +211,9 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // Audio
-    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024) < 0)
+    // Audio — use a smaller buffer (512) to reduce mixer latency on Android.
+    // 1024 adds ~23ms before the HAL; 512 halves that contribution.
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 512) < 0)
         SDL_Log("Mix_OpenAudio failed: %s", Mix_GetError());
     Mix_AllocateChannels(32);
 
