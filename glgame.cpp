@@ -784,9 +784,6 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     request_state_change(new Menu());
   }
 
-  if (!running)
-    return;
-
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
     (*object)->input(key, false);
