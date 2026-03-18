@@ -20,8 +20,7 @@ list(FILTER GAME_SOURCES EXCLUDE REGEX ".*\\.cxx/.*")
 # SDL2 dependency: build from source if SDL2_SOURCE_DIR is provided (e.g. CI),
 # otherwise expect pre-built SDL2 to be found via SDL2_DIR / SDL2_mixer_DIR.
 if(DEFINED SDL2_SOURCE_DIR AND DEFINED SDL2_MIXER_SOURCE_DIR)
-    set(SDL_OPENSLCES ON CACHE BOOL "" FORCE)   # fallback on API < 26
-    set(SDL_AAUDIO    ON CACHE BOOL "" FORCE)   # low-latency path on API 26+
+    set(SDL_OPENSLCES ON CACHE BOOL "" FORCE)
     add_subdirectory(${SDL2_SOURCE_DIR} ${CMAKE_BINARY_DIR}/SDL2 EXCLUDE_FROM_ALL)
     # Expose SDL2's build dir so SDL2_mixer's find_package(SDL2) can locate it.
     set(SDL2_DIR ${CMAKE_BINARY_DIR}/SDL2 CACHE PATH "" FORCE)
