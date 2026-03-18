@@ -4,6 +4,7 @@
 
 #ifdef __ANDROID__
 
+#include <jni.h>
 #include <SDL.h>
 #include <SDL_mixer.h>
 #include <GLES2/gl2.h>
