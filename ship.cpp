@@ -621,7 +621,7 @@ void Ship::fire_secondary(bool on) {
 }
 
 void Ship::set_shield_hum(bool on) {
-  if(shield_hum_sound == NULL) return;
+  if(shield_hum_sound == NULL || sound_volume_scale < 1.0f) return;
   if(on) {
     if(shield_hum_channel >= 0) return; // already playing, don't leak a new channel
     shield_hum_channel = Mix_PlayChannel(-1, shield_hum_sound, -1);
@@ -719,14 +719,16 @@ void Ship::step(float delta, const Grid &grid) {
     }
 
   } else if (lives > 0) {
-    if(floor((time_until_respawn-1)/1000) != floor((time_until_respawn-delta-1)/1000)) {
-      if(time_until_respawn > 1000) {
-        if(tic_sound != NULL) {
-          Mix_PlayChannel(-1, tic_sound, 0);
-        }
-      } else {
-        if(tic_low_sound != NULL) {
-          Mix_PlayChannel(-1, tic_low_sound, 0);
+    if(sound_volume_scale >= 1.0f) {
+      if(floor((time_until_respawn-1)/1000) != floor((time_until_respawn-delta-1)/1000)) {
+        if(time_until_respawn > 1000) {
+          if(tic_sound != NULL) {
+            Mix_PlayChannel(-1, tic_sound, 0);
+          }
+        } else {
+          if(tic_low_sound != NULL) {
+            Mix_PlayChannel(-1, tic_low_sound, 0);
+          }
         }
       }
     }
