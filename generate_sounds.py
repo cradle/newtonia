@@ -6,7 +6,7 @@ import math
 import random
 import os
 
-SAMPLE_RATE = 44100
+SAMPLE_RATE = 48000
 
 def write_wav(filename, samples):
     with wave.open(filename, 'w') as f:
