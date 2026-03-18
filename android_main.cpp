@@ -165,9 +165,10 @@ static void finger_motion(SDL_FingerID id, float x, float y) {
 extern "C" int SDL_main(int argc, char *argv[]) {
     (void)argc; (void)argv;
 
-    // Prefer OpenSL ES over Java AudioTrack for lower audio latency.
-    // Only takes effect if SDL2 was compiled with OpenSL ES support.
-    SDL_setenv("SDL_AUDIODRIVER", "openslES", 1);
+    // Let SDL2 auto-select the best audio backend: AAudio on API 26+ (which
+    // honours the "game" stream role → AAUDIO_PERFORMANCE_MODE_LOW_LATENCY),
+    // falling back to OpenSL ES on older devices.  Forcing a driver name here
+    // would break SDL_Init on devices that don't support it.
     SDL_SetHint(SDL_HINT_AUDIO_DEVICE_STREAM_ROLE, "game");
 
     // Initialise SDL
@@ -175,7 +176,8 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         return 1;
     }
-    SDL_Log("Audio driver in use: %s", SDL_GetCurrentAudioDriver());
+    SDL_Log("Audio driver in use: %s (AAudio=low-latency on API26+, openslES=fallback)",
+            SDL_GetCurrentAudioDriver());
 
     // Request OpenGL ES 2.0 context
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
