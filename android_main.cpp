@@ -218,21 +218,20 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // Audio — optimised for low latency on Android:
-    // - 48000 Hz matches most Android hardware natively, avoiding OS resampling.
-    // - 512-sample buffer halves the mixer's own latency vs the old 1024.
-    // - ALLOW_FREQUENCY_CHANGE / ALLOW_SAMPLES_CHANGE let the driver pick the
-    //   closest values the HAL actually supports rather than forcing a mismatch.
+    // Audio — 512-sample buffer at 48 kHz (~10 ms latency).
+    // Do NOT pass SDL_AUDIO_ALLOW_SAMPLES_CHANGE: that lets Android choose a
+    // much larger buffer (often 2048-4096 samples), which is the main source
+    // of audible sound lag.  SDL will handle any internal adaptation needed.
+    // ALLOW_FREQUENCY_CHANGE is kept so the driver can settle on its native
+    // rate rather than forcing a mismatch.
     if (Mix_OpenAudioDevice(48000, MIX_DEFAULT_FORMAT, 2, 512,
                             NULL,
-                            SDL_AUDIO_ALLOW_FREQUENCY_CHANGE |
-                            SDL_AUDIO_ALLOW_SAMPLES_CHANGE) < 0) {
+                            SDL_AUDIO_ALLOW_FREQUENCY_CHANGE) < 0) {
         SDL_Log("Mix_OpenAudioDevice failed: %s", Mix_GetError());
     } else {
-        int freq; Uint16 fmt; int chans; int chunksize;
+        int freq; Uint16 fmt; int chans;
         Mix_QuerySpec(&freq, &fmt, &chans);
-        // chunk size is what was actually opened — not directly queryable, log what we asked for
-        SDL_Log("Mix opened: %d Hz, fmt=0x%x, channels=%d, requested_chunk=512", freq, fmt, chans);
+        SDL_Log("Mix opened: %d Hz, fmt=0x%x, channels=%d, chunk=512", freq, fmt, chans);
     }
     Mix_AllocateChannels(32);
 
