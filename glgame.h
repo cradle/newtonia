@@ -45,6 +45,7 @@ public:
 
   int num_x_viewports() const;
   int num_y_viewports() const;
+  bool is_visible_to_any_player(const Ship &ship) const;
 private:
   void add_asteroids();
   void toggle_pause();
@@ -78,6 +79,7 @@ private:
 
   Mix_Chunk *tic_sound = NULL;
   Mix_Chunk *pickup_sound = NULL;
+  Mix_Chunk *ship_explode_sound = NULL;
 
   Grid grid;
   GLStarfield *starfield;

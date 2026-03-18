@@ -24,6 +24,8 @@ public:
 
   static Mix_Chunk *explode_sound, *thud_sound;
 
+  static void free_sounds();
+
 private:
   const static int max_speed;
   const static int radius_variation;

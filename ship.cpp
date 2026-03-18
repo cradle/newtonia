@@ -46,7 +46,7 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   }
   if(boost_sound != NULL) {
     Mix_VolumeChunk(boost_sound, 0);
-    Mix_PlayChannel(-1, boost_sound, -1);
+    boost_channel = Mix_PlayChannel(-1, boost_sound, -1);
   } else {
     std::cout << "Unable to load boost.wav (" << Mix_GetError() << ")" << std::endl;
   }
@@ -91,6 +91,9 @@ Ship::~Ship() {
   if(tic_low_sound != NULL) {
     Mix_FreeChunk(tic_low_sound);
   }
+  if(boost_channel >= 0) {
+    Mix_HaltChannel(boost_channel);
+  }
   if(boost_sound != NULL) {
     Mix_FreeChunk(boost_sound);
   }
@@ -99,6 +102,9 @@ Ship::~Ship() {
   }
   if(missile_explode_sound != NULL) {
     Mix_FreeChunk(missile_explode_sound);
+  }
+  if(shield_hum_channel >= 0) {
+    Mix_HaltChannel(shield_hum_channel);
   }
   if(shield_hum_sound != NULL) {
     Mix_FreeChunk(shield_hum_sound);
@@ -621,7 +627,7 @@ void Ship::fire_secondary(bool on) {
 }
 
 void Ship::set_shield_hum(bool on) {
-  if(shield_hum_sound == NULL) return;
+  if(shield_hum_sound == NULL || sound_volume_scale < 1.0f) return;
   if(on) {
     if(shield_hum_channel >= 0) return; // already playing, don't leak a new channel
     shield_hum_channel = Mix_PlayChannel(-1, shield_hum_sound, -1);
@@ -719,14 +725,16 @@ void Ship::step(float delta, const Grid &grid) {
     }
 
   } else if (lives > 0) {
-    if(floor((time_until_respawn-1)/1000) != floor((time_until_respawn-delta-1)/1000)) {
-      if(time_until_respawn > 1000) {
-        if(tic_sound != NULL) {
-          Mix_PlayChannel(-1, tic_sound, 0);
-        }
-      } else {
-        if(tic_low_sound != NULL) {
-          Mix_PlayChannel(-1, tic_low_sound, 0);
+    if(sound_volume_scale >= 1.0f) {
+      if(floor((time_until_respawn-1)/1000) != floor((time_until_respawn-delta-1)/1000)) {
+        if(time_until_respawn > 1000) {
+          if(tic_sound != NULL) {
+            Mix_PlayChannel(-1, tic_sound, 0);
+          }
+        } else {
+          if(tic_low_sound != NULL) {
+            Mix_PlayChannel(-1, tic_low_sound, 0);
+          }
         }
       }
     }

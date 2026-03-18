@@ -93,6 +93,12 @@ GLGame::GLGame(SDL_GameController *controller) :
       std::cout << "Unable to load pickup.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
+  if(ship_explode_sound == NULL) {
+    ship_explode_sound = Mix_LoadWAV("audio/explode.wav");
+    if(ship_explode_sound == NULL) {
+      std::cout << "Unable to load explode.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
 }
 
 GLGame::~GLGame() {
@@ -133,6 +139,9 @@ GLGame::~GLGame() {
   }
   if(pickup_sound != NULL) {
     Mix_FreeChunk(pickup_sound);
+  }
+  if(ship_explode_sound != NULL) {
+    Mix_FreeChunk(ship_explode_sound);
   }
 }
 
@@ -253,7 +262,19 @@ void GLGame::tick(int delta) {
     }
 
     for(o = enemies->begin(); o != enemies->end(); o++) {
+      Ship* s = (*o)->ship;
+      s->sound_volume_scale = is_visible_to_any_player(*s) ? 0.5f : 0.0f;
       (*o)->step(step_size, grid);
+      // Re-apply boost volume after step since thrust() inside may have reset it
+      if(s->boost_sound != NULL) {
+        if(s->thrusting || s->reversing) {
+          Mix_VolumeChunk(s->boost_sound, (int)(MIX_MAX_VOLUME/8 * s->sound_volume_scale));
+        } else if(s->still_rotating_left || s->still_rotating_right) {
+          Mix_VolumeChunk(s->boost_sound, (int)(MIX_MAX_VOLUME/16 * s->sound_volume_scale));
+        } else {
+          Mix_VolumeChunk(s->boost_sound, 0);
+        }
+      }
     }
 
     /* UPDATE COLLISION MAP */
@@ -321,8 +342,12 @@ void GLGame::tick(int delta) {
           }
         }
       }
+      bool was_alive = (*o)->ship->is_alive();
       for(o2 = enemies->begin(); o2 != enemies->end(); o2++) {
         GLShip::collide(*o, *o2);
+      }
+      if(was_alive && !(*o)->ship->is_alive() && ship_explode_sound != NULL) {
+        Mix_PlayChannel(-1, ship_explode_sound, 0);
       }
     }
 
@@ -447,6 +472,20 @@ int GLGame::num_x_viewports() const {
 
 int GLGame::num_y_viewports() const {
   return (players->size() == 0) ? 1 : (window.x() > window.y()) ? 1 : players->size();
+}
+
+bool GLGame::is_visible_to_any_player(const Ship &ship) const {
+  for(auto* glship : *players) {
+    if(!glship->ship->is_alive()) continue;
+    float fov_deg = glship->view_angle();
+    float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
+    float aspect = window.x() / (float)(window.y() / num_y_viewports());
+    float half_w = half_h * aspect;
+    float cull_r2 = (half_w * half_w + half_h * half_h) * 1.1f;
+    float dist = glship->ship->position.distance_to(ship.position);
+    if(dist * dist <= cull_r2) return true;
+  }
+  return false;
 }
 
 void GLGame::setup_orthogonal() const {

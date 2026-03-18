@@ -20,6 +20,7 @@
 #include "gles2_compat.h"
 #include "state_manager.h"
 #include "typer.h"
+#include "asteroid.h"
 
 #include <cmath>
 #include <string>
@@ -274,6 +275,7 @@ int main(int argc, char *argv[]) {
     // SDL2_mixer on Emscripten defers actual playback until unlocked.
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024) < 0)
         SDL_Log("Mix_OpenAudio failed: %s", Mix_GetError());
+    Mix_AllocateChannels(32);
 
     SDL_JoystickEventState(SDL_ENABLE);
     for (int i = 0; i < SDL_NumJoysticks(); i++) {
@@ -318,6 +320,7 @@ int main(int argc, char *argv[]) {
 
     // Unreachable, but kept for clarity:
     delete s_game;
+    Asteroid::free_sounds();
     gles2_shutdown();
     Mix_CloseAudio();
     if (s_controller) SDL_GameControllerClose(s_controller);

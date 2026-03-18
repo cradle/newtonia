@@ -54,6 +54,11 @@ Asteroid::~Asteroid() {
   }
 }
 
+void Asteroid::free_sounds() {
+  if(explode_sound != NULL) { Mix_FreeChunk(explode_sound); explode_sound = NULL; }
+  if(thud_sound != NULL)    { Mix_FreeChunk(thud_sound);    thud_sound    = NULL; }
+}
+
 Asteroid::Asteroid(Asteroid const *mother) {
   radius = mother->radius/2.0f;
   rotation_speed = (rand()%6-3)/radius;

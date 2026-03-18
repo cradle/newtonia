@@ -12,6 +12,7 @@
 #include "state_manager.h"
 #include "touch_controls.h"
 #include "typer.h"
+#include "asteroid.h"
 
 #include <iostream>
 #include <cmath>
@@ -164,11 +165,19 @@ static void finger_motion(SDL_FingerID id, float x, float y) {
 extern "C" int SDL_main(int argc, char *argv[]) {
     (void)argc; (void)argv;
 
+    // Let SDL2 auto-select the best audio backend: AAudio on API 26+ (which
+    // honours the "game" stream role → AAUDIO_PERFORMANCE_MODE_LOW_LATENCY),
+    // falling back to OpenSL ES on older devices.  Forcing a driver name here
+    // would break SDL_Init on devices that don't support it.
+    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_STREAM_ROLE, "game");
+
     // Initialise SDL
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         return 1;
     }
+    SDL_Log("Audio driver in use: %s (AAudio=low-latency on API26+, openslES=fallback)",
+            SDL_GetCurrentAudioDriver());
 
     // Request OpenGL ES 2.0 context
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
@@ -210,9 +219,30 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // Audio
-    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024) < 0)
-        SDL_Log("Mix_OpenAudio failed: %s", Mix_GetError());
+    // Audio — optimised for low latency on Android:
+    // - 48000 Hz matches most Android hardware natively, avoiding OS resampling.
+    // - 512-sample buffer halves the mixer's own latency vs the old 1024.
+    // - ALLOW_FREQUENCY_CHANGE / ALLOW_SAMPLES_CHANGE let the driver pick the
+    //   closest values the HAL actually supports rather than forcing a mismatch.
+    if (Mix_OpenAudioDevice(48000, MIX_DEFAULT_FORMAT, 2, 512,
+                            NULL,
+                            SDL_AUDIO_ALLOW_FREQUENCY_CHANGE |
+                            SDL_AUDIO_ALLOW_SAMPLES_CHANGE) < 0) {
+        SDL_Log("Mix_OpenAudioDevice failed: %s", Mix_GetError());
+    } else {
+        int freq; Uint16 fmt; int chans; int chunksize;
+        Mix_QuerySpec(&freq, &fmt, &chans);
+        // chunk size is what was actually opened — not directly queryable, log what we asked for
+        SDL_Log("Mix opened: %d Hz, fmt=0x%x, channels=%d, requested_chunk=512", freq, fmt, chans);
+    }
+    Mix_AllocateChannels(32);
+
+    // Pre-warm the audio pipeline so the first real sound plays without delay.
+    {
+        Uint8 silence[4] = {0, 0, 0, 0};
+        Mix_Chunk warm = {0, silence, sizeof(silence), 0};
+        Mix_PlayChannel(-1, &warm, 0);
+    }
 
     // Game controller (Android may have a physical gamepad via USB/BT)
     SDL_JoystickEventState(SDL_ENABLE);
@@ -326,6 +356,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
 
     // Cleanup
     delete s_game;
+    Asteroid::free_sounds();
     gles2_shutdown();
     Mix_CloseAudio();
     if (controller) SDL_GameControllerClose(controller);

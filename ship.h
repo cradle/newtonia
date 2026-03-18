@@ -53,6 +53,7 @@ class Ship : public CompositeObject {
     //TODO: Make this go away, it's wrong
     float radius_squared;
     bool thrusting, reversing, boosting;
+    float sound_volume_scale = 1.0f;  // 0=silent, 1=full; set by GLGame for enemy AI
 
     // Analog scale factors (0.0–1.0); set by joystick/controller input
     float rotation_scale;  // scales rotation_force (default 1.0)
@@ -139,6 +140,7 @@ class Ship : public CompositeObject {
     Mix_Chunk *boost_sound = NULL, *tic_sound = NULL, *tic_low_sound = NULL, *click_sound = NULL;
     Mix_Chunk *missile_explode_sound = NULL, *shield_hum_sound = NULL;
     int shield_hum_channel = -1;
+    int boost_channel = -1;
 
     list<Behaviour *> behaviours;
     list<Weapon::Base *> primary_weapons;

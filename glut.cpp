@@ -151,6 +151,7 @@ void init_controllers_and_audio() {
       std::cout << "Unable to open audio device" << std::endl;
       std::cout << Mix_GetError() << std::endl;
     }
+    if(ENABLE_AUDIO) Mix_AllocateChannels(32);
     //TODO: SDL_JOYDEVICEADDED or SDL_JOYDEVICEREMOVED
     //SDL_GameControllerEventState(int state);
     SDL_JoystickEventState(SDL_ENABLE);
