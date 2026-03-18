@@ -62,6 +62,12 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   if(shield_hum_sound == NULL) {
     std::cout << "Unable to load shield_hum.wav (" << Mix_GetError() << ")" << std::endl;
   }
+  if(explode_sound == NULL) {
+    explode_sound = Mix_LoadWAV("audio/explode.wav");
+    if(explode_sound == NULL) {
+      std::cout << "Unable to load explode.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
 }
 
 void Ship::disable_behaviours() {
@@ -108,6 +114,9 @@ Ship::~Ship() {
   }
   if(shield_hum_sound != NULL) {
     Mix_FreeChunk(shield_hum_sound);
+  }
+  if(explode_sound != NULL) {
+    Mix_FreeChunk(explode_sound);
   }
 }
 
@@ -408,6 +417,9 @@ bool Ship::kill() {
       Mix_VolumeChunk(boost_sound, 0);
     }
     set_shield_hum(false);
+    if(explode_sound != NULL) {
+      Mix_PlayChannel(-1, explode_sound, 0);
+    }
     return true;
   }
   return false;
@@ -464,11 +476,27 @@ void Ship::boost() {
 }
 
 void Ship::collide(Ship* first, Ship* second) {
-  // first.collide(second);
-  // second.collide(first);
+  // Weapon-to-ship collisions
   //TODO: DRYness
   first->collide(second);
   second->collide(first);
+
+  // Body-to-body collision: if the two ships physically overlap, kill the
+  // non-invincible one(s).  If both are invincible nothing happens.
+  if(first->is_alive() && second->is_alive() && first->Object::collide(*second)) {
+    if(!first->invincible && !second->invincible) {
+      first->kill_stop();
+      first->detonate();
+      second->kill_stop();
+      second->detonate();
+    } else if(!first->invincible) {
+      first->kill_stop();
+      first->detonate();
+    } else if(!second->invincible) {
+      second->kill_stop();
+      second->detonate();
+    }
+  }
 }
 
 int Ship::multiplier() const {
