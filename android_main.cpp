@@ -165,9 +165,10 @@ static void finger_motion(SDL_FingerID id, float x, float y) {
 extern "C" int SDL_main(int argc, char *argv[]) {
     (void)argc; (void)argv;
 
-    // Use OpenSL ES for low-latency audio (reliable on all Android devices
-    // including Samsung where AAudio support is inconsistent).
-    SDL_setenv("SDL_AUDIODRIVER", "openslES", 1);
+    // Let SDL2 auto-select the best audio backend: AAudio on API 26+ (which
+    // honours SDL_HINT_AUDIO_DEVICE_STREAM_ROLE="game" →
+    // AAUDIO_PERFORMANCE_MODE_LOW_LATENCY), falling back to OpenSL ES on
+    // older devices.
     SDL_SetHint(SDL_HINT_AUDIO_DEVICE_STREAM_ROLE, "game");
 
     // Initialise SDL
