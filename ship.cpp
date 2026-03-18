@@ -46,7 +46,7 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   }
   if(boost_sound != NULL) {
     Mix_VolumeChunk(boost_sound, 0);
-    Mix_PlayChannel(-1, boost_sound, -1);
+    boost_channel = Mix_PlayChannel(-1, boost_sound, -1);
   } else {
     std::cout << "Unable to load boost.wav (" << Mix_GetError() << ")" << std::endl;
   }
@@ -91,6 +91,9 @@ Ship::~Ship() {
   if(tic_low_sound != NULL) {
     Mix_FreeChunk(tic_low_sound);
   }
+  if(boost_channel >= 0) {
+    Mix_HaltChannel(boost_channel);
+  }
   if(boost_sound != NULL) {
     Mix_FreeChunk(boost_sound);
   }
@@ -99,6 +102,9 @@ Ship::~Ship() {
   }
   if(missile_explode_sound != NULL) {
     Mix_FreeChunk(missile_explode_sound);
+  }
+  if(shield_hum_channel >= 0) {
+    Mix_HaltChannel(shield_hum_channel);
   }
   if(shield_hum_sound != NULL) {
     Mix_FreeChunk(shield_hum_sound);
