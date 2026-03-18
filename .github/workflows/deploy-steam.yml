@@ -1,14 +1,15 @@
-name: Steam Publishing
+name: Deploy Steam
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
     inputs:
       branch:
         description: 'Steam branch to deploy to (e.g. beta, default)'
         required: true
-        default: 'beta'
+        default: 'default'
 
 jobs:
   build-windows:
@@ -49,6 +50,7 @@ jobs:
         run: |
           mkdir -p steam_output/windows
           cp newtonia.exe steam_output/windows/
+          cp -r audio steam_output/windows/
 
       - uses: actions/upload-artifact@v4
         with:
@@ -127,6 +129,7 @@ jobs:
         run: |
           clang++ -O2 -std=c++11 -arch arm64 \
             -mmacosx-version-min=12.0 \
+            -DGL_SILENCE_DEPRECATION \
             -o newtonia-arm64 $(cat srcs.txt) \
             $(/opt/homebrew/bin/sdl2-config --cflags --libs) \
             -L/opt/homebrew/lib -lSDL2_mixer \
@@ -139,6 +142,7 @@ jobs:
         run: |
           clang++ -O2 -std=c++11 -arch x86_64 \
             -mmacosx-version-min=12.0 \
+            -DGL_SILENCE_DEPRECATION \
             -o newtonia-x86_64 $(cat srcs.txt) \
             $(/usr/local/bin/sdl2-config --cflags --libs) \
             -L/usr/local/lib -lSDL2_mixer \
@@ -214,6 +218,7 @@ jobs:
         run: |
           mkdir -p steam_output/macos
           cp -r Newtonia.app steam_output/macos/
+          cp -r audio steam_output/macos/
 
       - uses: actions/upload-artifact@v4
         with:
@@ -246,4 +251,4 @@ jobs:
           rootPath: steam_output
           depot1Path: windows
           depot2Path: macos
-          releaseBranch: ${{ github.event.inputs.branch || 'beta' }}
+          releaseBranch: ${{ github.event.inputs.branch || 'default' }}
