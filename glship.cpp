@@ -26,7 +26,7 @@ GLShip::GLShip(const Grid &grid, bool has_friction) : show_help(false) {
   camera_rotation = ship->heading();
 
   camera_angle = 85.0f;
-  next_secondary_key = 'c';
+  next_secondary_key = 0;
 
   color[0] = 72/255.0;
   color[1] = 118/255.0;
@@ -136,7 +136,7 @@ void GLShip::step(int delta, const Grid &grid) {
   }
 }
 
-void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, int mine, int next_weapon, int boost, int teleport, int help) {
+void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, int mine, int next_weapon, int boost, int teleport, int help, int next_secondary) {
   left_key = left;
   right_key = right;
   shoot_key = shoot;
@@ -147,6 +147,7 @@ void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, i
   next_weapon_key = next_weapon;
   boost_key = boost;
   help_key = help;
+  next_secondary_key = next_secondary;
 }
 
 void GLShip::set_controller(SDL_GameController *game_controller) {

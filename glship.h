@@ -25,7 +25,7 @@ public:
   void touch_joystick_input(float nx, float ny);
   bool wasMyController(SDL_JoystickID id);
 
-  void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key, int teleport_key, int help_key);
+  void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key, int teleport_key, int help_key, int next_secondary_key);
   void set_controller(SDL_GameController *game_controller);
   void genForceShield();
   void genRepulsor();
