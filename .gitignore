@@ -21,3 +21,6 @@ android/build/
 ## Web build output
 web/dist/
 .claude/
+## Python
+__pycache__/
+*.pyc

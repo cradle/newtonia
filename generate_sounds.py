@@ -141,22 +141,28 @@ def make_tic_low():
     return samples
 
 def make_shield_hum():
-    """Shield active: low quiet electromagnetic hum, 1s (loopable)."""
+    """Shield active: pulsing high-energy electromagnetic hum, 1s (loopable)."""
     n = int(SAMPLE_RATE * 1.0)
     samples = []
     phase1 = 0.0
     phase2 = 0.0
     phase3 = 0.0
+    phase4 = 0.0
     for i in range(n):
-        # 105 Hz fundamental + 3rd/5th harmonics for a warm "electric" tone
-        # 105/315/525 Hz all divide 44100 evenly -> seamless loop, no click
-        phase1 += 2 * math.pi * 105 / SAMPLE_RATE
-        phase2 += 2 * math.pi * 315 / SAMPLE_RATE
+        t = i / SAMPLE_RATE
+        # 175/350/525/700 Hz harmonics – all divide 44100 evenly -> seamless loop, no click
+        # Higher fundamental (175 vs 105) gives a more energetic "active barrier" quality
+        phase1 += 2 * math.pi * 175 / SAMPLE_RATE
+        phase2 += 2 * math.pi * 350 / SAMPLE_RATE
         phase3 += 2 * math.pi * 525 / SAMPLE_RATE
-        s  = math.sin(phase1) * 0.30
-        s += math.sin(phase2) * 0.10
-        s += math.sin(phase3) * 0.04
-        samples.append(s * 0.85)
+        phase4 += 2 * math.pi * 700 / SAMPLE_RATE
+        # 2 Hz amplitude pulse (2 full cycles per 1 s loop) -> energetic shield throb
+        pulse = 0.75 + 0.25 * math.sin(2 * math.pi * 2 * t)
+        s  = math.sin(phase1) * 0.35 * pulse
+        s += math.sin(phase2) * 0.18
+        s += math.sin(phase3) * 0.08
+        s += math.sin(phase4) * 0.03
+        samples.append(s * 0.80)
     return samples
 
 def make_boost():
@@ -188,46 +194,84 @@ def make_pickup():
 
 
 def make_title():
-    """Space ambient title music: simple synth melody + bass, 8s (loopable)."""
+    """Space title music: A-minor synth melody with vibrato, pad chords, and bass, 8s (loopable)."""
     dur = 8.0
     n = int(SAMPLE_RATE * dur)
     samples = [0.0] * n
 
     note_freqs = {
-        'C3': 130.81, 'F3': 174.61, 'G3': 196.00, 'A3': 220.00,
+        'D3': 146.83, 'E3': 164.81, 'F3': 174.61, 'G3': 196.00,
+        'A3': 220.00, 'B3': 246.94,
         'C4': 261.63, 'D4': 293.66, 'E4': 329.63, 'F4': 349.23,
         'G4': 392.00, 'A4': 440.00, 'B4': 493.88,
         'C5': 523.25,
     }
 
-    def add_note(freq, start, length, vol=0.25):
+    def add_note(freq, start, length, vol=0.22, vibrato=True):
+        """Lead synth: 3 harmonics + optional vibrato for a warm, expressive tone."""
+        s0 = int(start * SAMPLE_RATE)
+        s1 = min(n, int((start + length) * SAMPLE_RATE))
+        phase = 0.0
+        for i in range(s0, s1):
+            t = (i - s0) / SAMPLE_RATE
+            attack  = min(1.0, t / 0.04)
+            release = min(1.0, (length - t) / 0.10) if length > 0.10 else 1.0
+            env = attack * max(0.0, release)
+            vib = (1.0 + 0.012 * math.sin(2 * math.pi * 5.5 * t)) if vibrato else 1.0
+            phase += 2 * math.pi * freq * vib / SAMPLE_RATE
+            s  = math.sin(phase)         * 0.55 * env
+            s += math.sin(phase * 2)     * 0.25 * env
+            s += math.sin(phase * 3)     * 0.10 * env
+            samples[i] += s * vol
+
+    def add_pad(freq, start, length, vol=0.09):
+        """Soft pad: slow attack/release, two harmonics for an airy chord texture."""
         s0 = int(start * SAMPLE_RATE)
         s1 = min(n, int((start + length) * SAMPLE_RATE))
         for i in range(s0, s1):
             t = (i - s0) / SAMPLE_RATE
-            env = min(1.0, t / 0.02) * min(1.0, (length - t) / 0.08)
-            if env < 0:
-                env = 0.0
-            samples[i] += (
-                math.sin(2 * math.pi * freq * t) * env * vol +
-                math.sin(2 * math.pi * freq * 2 * t) * env * vol * 0.25
-            )
+            attack  = min(1.0, t / 0.18)
+            release = min(1.0, (length - t) / 0.28) if length > 0.28 else 1.0
+            env = attack * max(0.0, release)
+            s  = math.sin(2 * math.pi * freq * t)     * 0.60 * env
+            s += math.sin(2 * math.pi * freq * 2 * t) * 0.20 * env
+            samples[i] += s * vol
 
+    # Melody in A minor (A B C D E F G), moderately paced with longer note durations
     melody = [
-        ('C4', 0.0), ('E4', 0.5), ('G4', 1.0), ('C5', 1.5),
-        ('G4', 2.0), ('E4', 2.5), ('D4', 3.0), ('F4', 3.5),
-        ('C4', 4.0), ('E4', 4.5), ('A4', 5.0), ('C5', 5.5),
-        ('G4', 6.0), ('F4', 6.5), ('E4', 7.0), ('C4', 7.5),
-    ]
-    bass = [
-        ('C3', 0.0, 1.9), ('G3', 2.0, 1.9),
-        ('A3', 4.0, 1.9), ('F3', 6.0, 1.9),
+        ('A4', 0.00, 0.45), ('C5', 0.50, 0.45),
+        ('B4', 1.00, 0.90),
+        ('G4', 2.00, 0.65), ('E4', 2.75, 0.45),
+        ('F4', 3.25, 0.95),
+        ('E4', 4.25, 0.45), ('D4', 4.75, 0.45),
+        ('C4', 5.25, 0.45), ('D4', 5.75, 0.20),
+        ('E4', 6.00, 0.45),
+        ('A4', 6.50, 0.90),
+        ('G4', 7.50, 0.45),
     ]
 
-    for (note, start) in melody:
-        add_note(note_freqs[note], start, 0.4, 0.25)
-    for (note, start, length) in bass:
-        add_note(note_freqs[note], start, length, 0.20)
+    # Sustained bass line – one note per 2-bar phrase
+    bass = [
+        ('A3', 0.0, 1.85),
+        ('F3', 2.0, 1.85),
+        ('D3', 4.0, 1.85),
+        ('E3', 6.0, 1.85),
+    ]
+
+    # Pad chords: Am | Fmaj | Dm | Em (one per phrase)
+    pad_notes = [
+        ('A3', 0.0, 2.0), ('C4', 0.0, 2.0), ('E4', 0.0, 2.0),   # Am
+        ('F3', 2.0, 2.0), ('A3', 2.0, 2.0), ('C4', 2.0, 2.0),   # Fmaj
+        ('D3', 4.0, 2.0), ('F3', 4.0, 2.0), ('A3', 4.0, 2.0),   # Dm
+        ('E3', 6.0, 2.0), ('G3', 6.0, 2.0), ('B3', 6.0, 2.0),   # Em
+    ]
+
+    for note, start, length in melody:
+        add_note(note_freqs[note], start, length, 0.25)
+    for note, start, length in bass:
+        add_note(note_freqs[note], start, length, 0.22, vibrato=False)
+    for note, start, length in pad_notes:
+        add_pad(note_freqs[note], start, length, 0.09)
 
     peak = max(abs(s) for s in samples)
     if peak > 0:
