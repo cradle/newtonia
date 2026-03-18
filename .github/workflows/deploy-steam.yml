@@ -1,14 +1,15 @@
 name: Deploy Steam
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
     inputs:
       branch:
         description: 'Steam branch to deploy to (e.g. beta, default)'
         required: true
-        default: 'beta'
+        default: 'default'
 
 jobs:
   build-windows:
@@ -248,4 +249,4 @@ jobs:
           rootPath: steam_output
           depot1Path: windows
           depot2Path: macos
-          releaseBranch: ${{ github.event.inputs.branch || 'beta' }}
+          releaseBranch: ${{ github.event.inputs.branch || 'default' }}
