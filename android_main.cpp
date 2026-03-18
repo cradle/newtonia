@@ -165,6 +165,11 @@ static void finger_motion(SDL_FingerID id, float x, float y) {
 extern "C" int SDL_main(int argc, char *argv[]) {
     (void)argc; (void)argv;
 
+    // Prefer OpenSL ES over Java AudioTrack for lower audio latency.
+    // Only takes effect if SDL2 was compiled with OpenSL ES support.
+    SDL_setenv("SDL_AUDIODRIVER", "openslES", 1);
+    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_STREAM_ROLE, "game");
+
     // Initialise SDL
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
@@ -211,11 +216,25 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // Audio — use a smaller buffer (512) to reduce mixer latency on Android.
-    // 1024 adds ~23ms before the HAL; 512 halves that contribution.
-    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 512) < 0)
-        SDL_Log("Mix_OpenAudio failed: %s", Mix_GetError());
+    // Audio — optimised for low latency on Android:
+    // - 48000 Hz matches most Android hardware natively, avoiding OS resampling.
+    // - 512-sample buffer halves the mixer's own latency vs the old 1024.
+    // - ALLOW_FREQUENCY_CHANGE / ALLOW_SAMPLES_CHANGE let the driver pick the
+    //   closest values the HAL actually supports rather than forcing a mismatch.
+    if (Mix_OpenAudioDevice(48000, MIX_DEFAULT_FORMAT, 2, 512,
+                            NULL,
+                            SDL_AUDIO_ALLOW_FREQUENCY_CHANGE |
+                            SDL_AUDIO_ALLOW_SAMPLES_CHANGE) < 0) {
+        SDL_Log("Mix_OpenAudioDevice failed: %s", Mix_GetError());
+    }
     Mix_AllocateChannels(32);
+
+    // Pre-warm the audio pipeline so the first real sound plays without delay.
+    {
+        Uint8 silence[4] = {0, 0, 0, 0};
+        Mix_Chunk warm = {0, silence, sizeof(silence), 0};
+        Mix_PlayChannel(-1, &warm, 0);
+    }
 
     // Game controller (Android may have a physical gamepad via USB/BT)
     SDL_JoystickEventState(SDL_ENABLE);
