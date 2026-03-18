@@ -218,20 +218,42 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // Audio — 512-sample buffer at 48 kHz (~10 ms latency).
-    // Do NOT pass SDL_AUDIO_ALLOW_SAMPLES_CHANGE: that lets Android choose a
-    // much larger buffer (often 2048-4096 samples), which is the main source
-    // of audible sound lag.  SDL will handle any internal adaptation needed.
-    // ALLOW_FREQUENCY_CHANGE is kept so the driver can settle on its native
-    // rate rather than forcing a mismatch.
-    if (Mix_OpenAudioDevice(48000, MIX_DEFAULT_FORMAT, 2, 512,
+    // Read the device's native audio parameters from NewtoniaActivity via JNI.
+    // AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE and PROPERTY_OUTPUT_FRAMES_PER_BUFFER
+    // give the primary output stream's optimal values; matching them avoids
+    // resampling and achieves the lowest possible round-trip latency.
+    int audio_rate   = 48000;
+    int audio_frames = 512;
+    {
+        JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+        jobject activity = (jobject)SDL_AndroidGetActivity();
+        if (env && activity) {
+            jclass clazz = env->GetObjectClass(activity);
+            if (clazz) {
+                jfieldID fRate = env->GetStaticFieldID(clazz, "sOptimalSampleRate", "I");
+                jfieldID fBuf  = env->GetStaticFieldID(clazz, "sOptimalFramesPerBuffer", "I");
+                if (fRate) audio_rate   = env->GetStaticIntField(clazz, fRate);
+                if (fBuf)  audio_frames = env->GetStaticIntField(clazz, fBuf);
+                env->DeleteLocalRef(clazz);
+            }
+            env->DeleteLocalRef(activity);
+        }
+        SDL_Log("Optimal audio params: rate=%d frames=%d", audio_rate, audio_frames);
+    }
+
+    // Open the mixer at the device's native rate and buffer size.
+    // Do NOT pass SDL_AUDIO_ALLOW_SAMPLES_CHANGE: that lets Android override
+    // our buffer size with a much larger one (often 2048–4096 samples), which
+    // is the main source of audible sound lag.
+    if (Mix_OpenAudioDevice(audio_rate, MIX_DEFAULT_FORMAT, 2, audio_frames,
                             NULL,
                             SDL_AUDIO_ALLOW_FREQUENCY_CHANGE) < 0) {
         SDL_Log("Mix_OpenAudioDevice failed: %s", Mix_GetError());
     } else {
         int freq; Uint16 fmt; int chans;
         Mix_QuerySpec(&freq, &fmt, &chans);
-        SDL_Log("Mix opened: %d Hz, fmt=0x%x, channels=%d, chunk=512", freq, fmt, chans);
+        SDL_Log("Mix opened: %d Hz, fmt=0x%x, channels=%d, chunk=%d",
+                freq, fmt, chans, audio_frames);
     }
     Mix_AllocateChannels(32);
 
