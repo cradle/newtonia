@@ -411,6 +411,33 @@ void GLGame::tick(int delta) {
       }
     }
 
+    /* COLLIDE PLAYERS AND BULLETS WITH STATION */
+    if (station != NULL && station->is_alive()) {
+      for (o = players->begin(); o != players->end(); o++) {
+        Ship* s = (*o)->ship;
+        // Body collision: kill non-invincible player, always damage station
+        if (s->is_alive() && station->Object::collide(*s)) {
+          station->hit();
+          if (!s->invincible) {
+            s->kill_stop();
+            s->detonate();
+          }
+        }
+        // Bullet collision: consume bullet, damage station
+        if (!station->is_alive()) break;
+        for (size_t i = 0; i < s->bullets.size(); ) {
+          if (station->Object::collide(s->bullets[i])) {
+            station->hit();
+            s->bullets[i] = std::move(s->bullets.back());
+            s->bullets.pop_back();
+            if (!station->is_alive()) break;
+          } else {
+            ++i;
+          }
+        }
+      }
+    }
+
     o = enemies->begin();
     while(o != enemies->end()) {
       if((*o)->is_removable()) {

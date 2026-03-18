@@ -1,5 +1,6 @@
 #include "glstation.h"
 #include <math.h>
+#include <cstdlib>
 
 #include "gl_compat.h"
 
@@ -26,6 +27,7 @@ GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* ta
   redeploying = false;
   wave = difficulty = 0;
   lives = 1;
+  health = 100;
 
   // behaviours.push_back(new Roamer(this));
 
@@ -89,6 +91,30 @@ void GLStation::reset(bool was_killed) {
   deploying = redeploying = true;
 }
 
+void GLStation::hit() {
+  if (!alive) return;
+  if (--health <= 0)
+    destroy();
+}
+
+void GLStation::destroy() {
+  alive = false;
+  lives = 0;
+  // Large radial burst: 300 particles, all guaranteed to expand beyond radius.
+  // Speed 0.15–0.60 units/ms × TTL 1500–2500ms → min reach 225 units > 200.
+  int count = 300;
+  debris.reserve(debris.size() + count);
+  for (int i = 0; i < count; i++) {
+    float angle = (float)(rand() % 100000) / 100000.0f * 2.0f * (float)M_PI;
+    float dist  = (float)(rand() % (int)radius);
+    Point start(position.x() + dist * cosf(angle),
+                position.y() + dist * sinf(angle));
+    float speed = 0.15f + (float)(rand() % 100) / 222.0f;
+    Point vel(speed * cosf(angle), speed * sinf(angle));
+    debris.push_back(Particle(start, vel, 1500.0f + rand() % 1000));
+  }
+}
+
 int GLStation::level() const {
   return wave;
 }
@@ -114,10 +140,21 @@ void GLStation::draw(bool minimap) const {
     glCallList(body);
   }
   glPopMatrix();
+
+  if (!minimap && !debris.empty()) {
+    glPointSize(3.0f);
+    glBegin(GL_POINTS);
+    for (const auto& d : debris) {
+      glColor4f(1.0f, 0.7f, 0.2f, d.aliveness());
+      glVertex2fv(d.position);
+    }
+    glEnd();
+  }
 }
 
 void GLStation::step(float delta, const Grid &grid) {
   Ship::step(delta, grid);
+  if (!alive) return;
   outer_rotation += outer_rotation_speed * delta;
   inner_rotation += inner_rotation_speed * delta;
   if(deploying) {
