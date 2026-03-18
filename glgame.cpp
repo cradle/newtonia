@@ -93,6 +93,12 @@ GLGame::GLGame(SDL_GameController *controller) :
       std::cout << "Unable to load pickup.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
+  if(ship_explode_sound == NULL) {
+    ship_explode_sound = Mix_LoadWAV("audio/explode.wav");
+    if(ship_explode_sound == NULL) {
+      std::cout << "Unable to load explode.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
 }
 
 GLGame::~GLGame() {
@@ -133,6 +139,9 @@ GLGame::~GLGame() {
   }
   if(pickup_sound != NULL) {
     Mix_FreeChunk(pickup_sound);
+  }
+  if(ship_explode_sound != NULL) {
+    Mix_FreeChunk(ship_explode_sound);
   }
 }
 
@@ -333,8 +342,12 @@ void GLGame::tick(int delta) {
           }
         }
       }
+      bool was_alive = (*o)->ship->is_alive();
       for(o2 = enemies->begin(); o2 != enemies->end(); o2++) {
         GLShip::collide(*o, *o2);
+      }
+      if(was_alive && !(*o)->ship->is_alive() && ship_explode_sound != NULL) {
+        Mix_PlayChannel(-1, ship_explode_sound, 0);
       }
     }
 

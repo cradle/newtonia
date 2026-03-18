@@ -79,6 +79,7 @@ private:
 
   Mix_Chunk *tic_sound = NULL;
   Mix_Chunk *pickup_sound = NULL;
+  Mix_Chunk *ship_explode_sound = NULL;
 
   Grid grid;
   GLStarfield *starfield;

@@ -274,6 +274,7 @@ int main(int argc, char *argv[]) {
     // SDL2_mixer on Emscripten defers actual playback until unlocked.
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024) < 0)
         SDL_Log("Mix_OpenAudio failed: %s", Mix_GetError());
+    Mix_AllocateChannels(32);
 
     SDL_JoystickEventState(SDL_ENABLE);
     for (int i = 0; i < SDL_NumJoysticks(); i++) {

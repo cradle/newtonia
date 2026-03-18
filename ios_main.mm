@@ -220,6 +220,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     // Audio
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024) < 0)
         SDL_Log("Mix_OpenAudio failed: %s", Mix_GetError());
+    Mix_AllocateChannels(32);
 
     // Game controller (physical gamepad via Bluetooth)
     SDL_JoystickEventState(SDL_ENABLE);
