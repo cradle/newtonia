@@ -245,7 +245,5 @@ jobs:
           buildDescription: ${{ github.ref_name || github.sha }}
           rootPath: steam_output
           depot1Path: windows
-          depot1Id: ${{ secrets.STEAM_WINDOWS_DEPOT_ID }}
           depot2Path: macos
-          depot2Id: ${{ secrets.STEAM_MACOS_DEPOT_ID }}
           releaseBranch: ${{ github.event.inputs.branch || 'beta' }}
