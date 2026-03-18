@@ -1,4 +1,4 @@
-name: Steam Publishing
+name: Deploy Steam
 
 on:
   release:
