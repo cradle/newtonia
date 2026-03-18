@@ -175,6 +175,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         return 1;
     }
+    SDL_Log("Audio driver in use: %s", SDL_GetCurrentAudioDriver());
 
     // Request OpenGL ES 2.0 context
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
@@ -226,6 +227,11 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                             SDL_AUDIO_ALLOW_FREQUENCY_CHANGE |
                             SDL_AUDIO_ALLOW_SAMPLES_CHANGE) < 0) {
         SDL_Log("Mix_OpenAudioDevice failed: %s", Mix_GetError());
+    } else {
+        int freq; Uint16 fmt; int chans; int chunksize;
+        Mix_QuerySpec(&freq, &fmt, &chans);
+        // chunk size is what was actually opened — not directly queryable, log what we asked for
+        SDL_Log("Mix opened: %d Hz, fmt=0x%x, channels=%d, requested_chunk=512", freq, fmt, chans);
     }
     Mix_AllocateChannels(32);
 
