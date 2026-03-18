@@ -154,6 +154,11 @@ void GLGame::add_asteroids() {
 
 void GLGame::toggle_pause() {
   running = !running;
+  if (running) {
+    Mix_Resume(-1);
+  } else {
+    Mix_Pause(-1);
+  }
 }
 
 void GLGame::focus_lost() {
