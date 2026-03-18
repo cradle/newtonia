@@ -20,6 +20,7 @@
 #include "gles2_compat.h"
 #include "state_manager.h"
 #include "typer.h"
+#include "asteroid.h"
 
 #include <cmath>
 #include <string>
@@ -319,6 +320,7 @@ int main(int argc, char *argv[]) {
 
     // Unreachable, but kept for clarity:
     delete s_game;
+    Asteroid::free_sounds();
     gles2_shutdown();
     Mix_CloseAudio();
     if (s_controller) SDL_GameControllerClose(s_controller);

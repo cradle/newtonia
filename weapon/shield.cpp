@@ -15,6 +15,7 @@ namespace Weapon {
   }
 
   Shield::~Shield() {
+    if(empty_sound != NULL) Mix_FreeChunk(empty_sound);
   }
 
   void Shield::shoot(bool on) {

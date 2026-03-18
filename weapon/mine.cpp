@@ -21,6 +21,8 @@ namespace Weapon {
   }
 
   Mine::~Mine() {
+    if(mine_sound != NULL) Mix_FreeChunk(mine_sound);
+    if(empty_sound != NULL) Mix_FreeChunk(empty_sound);
   }
 
   void Mine::shoot(bool on) {

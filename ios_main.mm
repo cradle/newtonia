@@ -12,6 +12,7 @@
 #include "state_manager.h"
 #include "touch_controls.h"
 #include "typer.h"
+#include "asteroid.h"
 
 #include <iostream>
 #include <cmath>
@@ -333,6 +334,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
 
     // Cleanup
     delete s_game;
+    Asteroid::free_sounds();
     gles2_shutdown();
     Mix_CloseAudio();
     if (controller) SDL_GameControllerClose(controller);
