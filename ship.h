@@ -53,6 +53,7 @@ class Ship : public CompositeObject {
     //TODO: Make this go away, it's wrong
     float radius_squared;
     bool thrusting, reversing, boosting;
+    float sound_volume_scale = 1.0f;  // 0=silent, 1=full; set by GLGame for enemy AI
 
     // Analog scale factors (0.0–1.0); set by joystick/controller input
     float rotation_scale;  // scales rotation_force (default 1.0)

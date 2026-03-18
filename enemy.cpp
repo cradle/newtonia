@@ -16,6 +16,7 @@ Enemy::Enemy(const Grid &grid, float x, float y, std::list<Ship*>* targets, int 
   lives = 1;
   target = NULL;
   alive = true;
+  sound_volume_scale = 0.0f;  // silent until visible to a player
 }
 
 Enemy::~Enemy() {
