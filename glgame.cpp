@@ -154,6 +154,11 @@ void GLGame::add_asteroids() {
 
 void GLGame::toggle_pause() {
   running = !running;
+  if (running) {
+    Mix_Resume(-1);
+  } else {
+    Mix_Pause(-1);
+  }
 }
 
 void GLGame::focus_lost() {
@@ -778,9 +783,6 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       save_high_score(glship->ship->score);
     request_state_change(new Menu());
   }
-
-  if (!running)
-    return;
 
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
