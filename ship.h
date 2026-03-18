@@ -138,7 +138,7 @@ class Ship : public CompositeObject {
 
     void play_rotating_sound(bool on);
     Mix_Chunk *boost_sound = NULL, *tic_sound = NULL, *tic_low_sound = NULL, *click_sound = NULL;
-    Mix_Chunk *missile_explode_sound = NULL, *shield_hum_sound = NULL;
+    Mix_Chunk *missile_explode_sound = NULL, *shield_hum_sound = NULL, *explode_sound = NULL;
     int shield_hum_channel = -1;
     int boost_channel = -1;
 
