@@ -56,9 +56,6 @@ GLGame::GLGame(SDL_GameController *controller) :
 
   WrappedPoint::set_boundaries(world);
 
-  // Spawn one black hole near the centre of the world.
-  black_holes->push_back(new BlackHole(WrappedPoint(
-    default_world_width / 2.0f, default_world_height / 2.0f)));
 
   starfield = new GLStarfield(world);
 
@@ -244,7 +241,8 @@ void GLGame::tick(int delta) {
         delete black_holes->back();
         black_holes->pop_back();
       }
-      black_holes->push_back(new BlackHole(WrappedPoint(world.x() / 2.0f, world.y() / 2.0f)));
+      if(generation > 10)
+        black_holes->push_back(new BlackHole(WrappedPoint(world.x() / 2.0f, world.y() / 2.0f)));
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {
         (*o)->ship->respawn(grid, false);
