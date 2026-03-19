@@ -12,7 +12,7 @@ const float BlackHole::influence_radius = 800.0f;
 BlackHole::BlackHole(WrappedPoint pos) {
   position = pos;
   velocity = Point(0.0f, 0.0f);
-  radius = 40.0f;
+  radius = 80.0f;
   radius_squared = radius * radius;
   alive = true;
   invincible = true;  // cannot be shot/killed
@@ -45,7 +45,7 @@ bool BlackHole::apply_gravity(Object &other, int delta) const {
   // Clamp the effective distance to a minimum (softened gravity) so that objects
   // just outside the event horizon don't receive a near-infinite impulse and get
   // flung across the map at ridiculous speed.
-  const float softening = radius * 2.0f;  // 80 units
+  const float softening = radius * 2.0f;  // 160 units
   float soft_dist_sq = dist_sq < softening * softening ? softening * softening : dist_sq;
   float accel = gravitational_strength / soft_dist_sq * (float)delta;
   Point force = diff.normalized() * accel;
