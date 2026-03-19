@@ -427,6 +427,7 @@ void GLGame::tick(int delta) {
         if (!station->is_alive()) break;
         for (size_t i = 0; i < s->bullets.size(); ) {
           if (station->Object::collide(s->bullets[i])) {
+            s->explode(s->bullets[i].position, s->bullets[i].velocity);
             station->hit();
             s->bullets[i] = std::move(s->bullets.back());
             s->bullets.pop_back();
