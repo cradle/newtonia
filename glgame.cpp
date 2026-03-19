@@ -303,15 +303,19 @@ void GLGame::tick(int delta) {
       }
     }
 
-    // Apply black-hole gravity to bullets.
+    // Apply black-hole gravity to bullets and missiles.
     for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
       for(o = players->begin(); o != players->end(); o++) {
         for(auto &b : (*o)->ship->bullets)
           (*bhi)->apply_gravity(b, step_size);
+        for(auto &m : (*o)->ship->missiles)
+          (*bhi)->apply_gravity(m, step_size);
       }
       for(o = enemies->begin(); o != enemies->end(); o++) {
         for(auto &b : (*o)->ship->bullets)
           (*bhi)->apply_gravity(b, step_size);
+        for(auto &m : (*o)->ship->missiles)
+          (*bhi)->apply_gravity(m, step_size);
       }
     }
 
