@@ -8,6 +8,7 @@
 #include "glstarfield.h"
 #include "glstation.h"
 #include "asteroid.h"
+#include "black_hole.h"
 #include "pickup.h"
 #include "extra_life.h"
 #include "weapon_pickup.h"
@@ -42,6 +43,7 @@ public:
   list<Asteroid*> *objects;      // alive asteroids (in collision grid)
   list<Asteroid*> *dead_objects; // killed asteroids with lingering debris
   list<Pickup*> *pickups;
+  list<BlackHole*> *black_holes;
 
   int num_x_viewports() const;
   int num_y_viewports() const;

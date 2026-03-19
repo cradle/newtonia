@@ -52,8 +52,10 @@ GLGame::GLGame(SDL_GameController *controller) :
   objects = new std::list<Asteroid*>;
   dead_objects = new std::list<Asteroid*>;
   pickups = new std::list<Pickup*>;
+  black_holes = new std::list<BlackHole*>;
 
   WrappedPoint::set_boundaries(world);
+
 
   starfield = new GLStarfield(world);
 
@@ -124,6 +126,11 @@ GLGame::~GLGame() {
     pickups->pop_back();
   }
   delete pickups;
+  while(!black_holes->empty()) {
+    delete black_holes->back();
+    black_holes->pop_back();
+  }
+  delete black_holes;
   delete starfield;
   if(station != NULL)
     delete station;
@@ -229,6 +236,13 @@ void GLGame::tick(int delta) {
         delete pickups->back();
         pickups->pop_back();
       }
+      // Reposition the black hole at the new world centre.
+      while(!black_holes->empty()) {
+        delete black_holes->back();
+        black_holes->pop_back();
+      }
+      if(generation > 10)
+        black_holes->push_back(new BlackHole(WrappedPoint(world.x() / 2.0f, world.y() / 2.0f)));
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {
         (*o)->ship->respawn(grid, false);
@@ -245,6 +259,11 @@ void GLGame::tick(int delta) {
       station->step(step_size, grid);
     }
 
+    // Step black holes (visual animation only).
+    for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
+      (*bhi)->step(step_size);
+    }
+
     std::list<Asteroid*>::iterator oi;
     for(oi = objects->begin(); oi != objects->end(); oi++) {
       (*oi)->step(step_size);
@@ -253,8 +272,53 @@ void GLGame::tick(int delta) {
       (*oi)->step(step_size);
     }
 
+    // Apply black-hole gravity to asteroids (asteroids pass through, not swallowed).
+    for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
+      oi = objects->begin();
+      while(oi != objects->end()) {
+        (*bhi)->apply_gravity(**oi, step_size);
+        oi++;
+      }
+    }
+
     for(o = players->begin(); o != players->end(); o++) {
       (*o)->step(step_size, grid);
+    }
+
+    // Apply black-hole gravity to ships.
+    for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
+      for(o = players->begin(); o != players->end(); o++) {
+        if(!(*o)->ship->is_alive()) continue;
+        if((*bhi)->apply_gravity(*(*o)->ship, step_size)) {
+          (*o)->ship->kill();
+        }
+      }
+      for(o = enemies->begin(); o != enemies->end(); o++) {
+        if(!(*o)->ship->is_alive()) continue;
+        if((*bhi)->apply_gravity(*(*o)->ship, step_size)) {
+          (*o)->ship->kill();
+        }
+      }
+    }
+
+    // Apply black-hole gravity to bullets, missiles, and mines.
+    for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
+      for(o = players->begin(); o != players->end(); o++) {
+        for(auto &b : (*o)->ship->bullets)
+          (*bhi)->apply_gravity(b, step_size);
+        for(auto &m : (*o)->ship->missiles)
+          (*bhi)->apply_gravity(m, step_size);
+        for(auto &n : (*o)->ship->mines)
+          (*bhi)->apply_gravity(n, step_size);
+      }
+      for(o = enemies->begin(); o != enemies->end(); o++) {
+        for(auto &b : (*o)->ship->bullets)
+          (*bhi)->apply_gravity(b, step_size);
+        for(auto &m : (*o)->ship->missiles)
+          (*bhi)->apply_gravity(m, step_size);
+        for(auto &n : (*o)->ship->mines)
+          (*bhi)->apply_gravity(n, step_size);
+      }
     }
 
     for(o = enemies->begin(); o != enemies->end(); o++) {
@@ -408,6 +472,10 @@ void GLGame::tick(int delta) {
 
 void GLGame::draw_objects(float direction, bool minimap) const {
   if(debug_grid && !minimap) grid.draw_debug();
+
+  for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
+    (*bhi)->draw(minimap);
+  }
 
   AsteroidDrawer::draw_batch(objects, dead_objects, direction, minimap,
                              minimap ? world.x() : 0, minimap ? world.y() : 0);
@@ -593,6 +661,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
       glPopMatrix();
     }
   }
+
 }
 
 void GLGame::draw_map() const {
