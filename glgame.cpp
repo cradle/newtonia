@@ -427,7 +427,17 @@ void GLGame::tick(int delta) {
         if (!station->is_alive()) break;
         for (size_t i = 0; i < s->bullets.size(); ) {
           if (station->Object::collide(s->bullets[i])) {
-            s->explode(s->bullets[i].position, s->bullets[i].velocity);
+            // Reflect debris off the station surface normal
+            Point bpos = s->bullets[i].position;
+            Point bvel = s->bullets[i].velocity;
+            Point normal = Point(bpos.x() - station->position.x(),
+                                 bpos.y() - station->position.y()).normalized();
+            float dot = bvel.x() * normal.x() + bvel.y() * normal.y();
+            Point reflected(bvel.x() - 2.0f * dot * normal.x(),
+                            bvel.y() - 2.0f * dot * normal.y());
+            s->explode(bpos, reflected);
+            if (Asteroid::thud_sound != NULL)
+              Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
             station->hit();
             s->bullets[i] = std::move(s->bullets.back());
             s->bullets.pop_back();
