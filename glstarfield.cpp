@@ -84,7 +84,10 @@ static void draw_lensed_points(std::vector<GLStarfield::StarPoint> const &stars,
       shift = 0.0f;
     }
     glColor4f(s.r, s.g, s.b, s.a);
-    glVertex3f(s.x + nx * shift, s.y + ny * shift, s.z);
+    // Use z=0 so the shifted position projects at the same scale as the
+    // void circle (which is also drawn at z=0).  Stars at positive z
+    // would otherwise project further out on screen and escape the void.
+    glVertex3f(s.x + nx * shift, s.y + ny * shift, 0.0f);
   }
   glEnd();
 }
