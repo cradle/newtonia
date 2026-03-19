@@ -645,7 +645,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
 
         float ax = a->position.x();
         float ay = a->position.y();
-        float r  = a->radius;
+        float void_r = a->radius * 1.5f;
 
         glPushMatrix();
         glRotatef(direction, 0.0f, 0.0f, 1.0f);
@@ -657,12 +657,12 @@ void GLGame::draw_perspective(GLShip *glship) const {
         glColor3f(0.0f, 0.0f, 0.0f);
         glBegin(GL_POLYGON);
         for (int i = 0; i < LENS_SEGS; i++) {
-          glVertex2f(ax + r * cosf(i * LENS_STEP), ay + r * sinf(i * LENS_STEP));
+          glVertex2f(ax + void_r * cosf(i * LENS_STEP), ay + void_r * sinf(i * LENS_STEP));
         }
         glEnd();
 
         // Redraw rear stars near the asteroid at radially shifted positions
-        starfield->draw_stars_near(ax, ay, r);
+        starfield->draw_stars_near(ax, ay, void_r);
 
         glPopMatrix();
       }
@@ -704,6 +704,45 @@ void GLGame::draw_perspective(GLShip *glship) const {
       glTranslatef(world.x()*x, world.y()*y, 0.0f);
       glCallList(frontstars);
       glPopMatrix();
+    }
+  }
+
+  // --- Front star lensing (same void + shift, applied after front stars) ---
+  for(int x = -1; x <= 1; x++) {
+    for(int y = -1; y <= 1; y++) {
+      float smin_x = world.x()*x - position.x();
+      float smax_x = smin_x + world.x();
+      float smin_y = world.y()*y - position.y();
+      float smax_y = smin_y + world.y();
+      float snx = (smin_x > 0) ? smin_x : (smax_x < 0) ? -smax_x : 0;
+      float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
+      if (snx*snx + sny*sny > cull_r2) continue;
+
+      for(list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
+        Asteroid const *a = *it;
+        if (!a->invisible || !a->alive) continue;
+
+        float ax = a->position.x();
+        float ay = a->position.y();
+        float void_r = a->radius * 1.5f;
+
+        glPushMatrix();
+        glRotatef(direction, 0.0f, 0.0f, 1.0f);
+        glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+
+        const int LENS_SEGS = 16;
+        const float LENS_STEP = 2.0f * (float)M_PI / LENS_SEGS;
+        glColor3f(0.0f, 0.0f, 0.0f);
+        glBegin(GL_POLYGON);
+        for (int i = 0; i < LENS_SEGS; i++) {
+          glVertex2f(ax + void_r * cosf(i * LENS_STEP), ay + void_r * sinf(i * LENS_STEP));
+        }
+        glEnd();
+
+        starfield->draw_front_stars_near(ax, ay, void_r);
+
+        glPopMatrix();
+      }
     }
   }
 

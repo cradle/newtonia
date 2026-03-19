@@ -30,9 +30,11 @@ GLStarfield::GLStarfield(Point const size) {
       float z_f = (float)((i - NUM_REAR_LAYERS) * 100);
       glColor4f(r_f, g_f, b_f, a_f);
       glVertex3f(x_f, y_f, z_f);
-      // Store rear-layer and middle-layer stars for lensing
+      // Store stars for lensing
       if (i <= NUM_REAR_LAYERS) {
         rear_stars.push_back({x_f, y_f, z_f, r_f, g_f, b_f, a_f});
+      } else {
+        front_stars.push_back({x_f, y_f, z_f, r_f, g_f, b_f, a_f});
       }
     }
     glEnd();
@@ -59,12 +61,13 @@ void GLStarfield::draw_front(Point const viewpoint) const {
   }
 }
 
-void GLStarfield::draw_stars_near(float cx, float cy, float radius) const {
+static void draw_lensed_points(std::vector<GLStarfield::StarPoint> const &stars,
+                               float cx, float cy, float radius) {
   float r2 = radius * radius;
   glPointSize(2.0f * Typer::scale);
   glBegin(GL_POINTS);
-  for (size_t k = 0; k < rear_stars.size(); k++) {
-    StarPoint const &s = rear_stars[k];
+  for (size_t k = 0; k < stars.size(); k++) {
+    GLStarfield::StarPoint const &s = stars[k];
     float dx = s.x - cx;
     float dy = s.y - cy;
     float dist2 = dx * dx + dy * dy;
@@ -74,14 +77,21 @@ void GLStarfield::draw_stars_near(float cx, float cy, float radius) const {
     if (dist > 0.001f) {
       nx = dx / dist;
       ny = dy / dist;
-      // Shift stars radially outward; strongest at centre, zero at edge
       shift = radius * 2.0f * (1.0f - dist / radius);
     } else {
       nx = 1.0f; ny = 0.0f;
-      shift = radius * 0.5f;
+      shift = radius * 2.0f;
     }
     glColor4f(s.r, s.g, s.b, s.a);
     glVertex3f(s.x + nx * shift, s.y + ny * shift, s.z);
   }
   glEnd();
+}
+
+void GLStarfield::draw_stars_near(float cx, float cy, float radius) const {
+  draw_lensed_points(rear_stars, cx, cy, radius);
+}
+
+void GLStarfield::draw_front_stars_near(float cx, float cy, float radius) const {
+  draw_lensed_points(front_stars, cx, cy, radius);
 }
