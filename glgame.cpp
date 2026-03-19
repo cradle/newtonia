@@ -411,6 +411,45 @@ void GLGame::tick(int delta) {
       }
     }
 
+    /* COLLIDE PLAYERS AND BULLETS WITH STATION */
+    if (station != NULL && station->is_alive()) {
+      for (o = players->begin(); o != players->end(); o++) {
+        Ship* s = (*o)->ship;
+        // Body collision: mirrors invincible-asteroid behaviour — impact
+        // particles and velocity stop always; death particles only if killed.
+        if (s->is_alive() && station->Object::collide(*s)) {
+          station->hit();
+          s->explode(s->position, station->velocity);
+          s->kill_stop();
+          if (!s->is_alive())
+            s->detonate();
+        }
+        // Bullet collision: consume bullet, damage station
+        if (!station->is_alive()) break;
+        for (size_t i = 0; i < s->bullets.size(); ) {
+          if (station->Object::collide(s->bullets[i])) {
+            // Reflect debris off the station surface normal
+            Point bpos = s->bullets[i].position;
+            Point bvel = s->bullets[i].velocity;
+            Point normal = Point(bpos.x() - station->position.x(),
+                                 bpos.y() - station->position.y()).normalized();
+            float dot = bvel.x() * normal.x() + bvel.y() * normal.y();
+            Point reflected(bvel.x() - 2.0f * dot * normal.x(),
+                            bvel.y() - 2.0f * dot * normal.y());
+            s->explode(bpos, reflected.normalized() * station->velocity.magnitude());
+            if (Asteroid::thud_sound != NULL)
+              Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+            station->hit();
+            s->bullets[i] = std::move(s->bullets.back());
+            s->bullets.pop_back();
+            if (!station->is_alive()) break;
+          } else {
+            ++i;
+          }
+        }
+      }
+    }
+
     o = enemies->begin();
     while(o != enemies->end()) {
       if((*o)->is_removable()) {

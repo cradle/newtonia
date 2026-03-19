@@ -18,6 +18,10 @@ public:
   // void collide(Ship *ship) const;
   void reset(bool was_killed = true);
   int level() const;
+  void hit();
+  void destroy();
+
+  int health;
 
 private:
   unsigned int body, map_body;
