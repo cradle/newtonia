@@ -303,6 +303,18 @@ void GLGame::tick(int delta) {
       }
     }
 
+    // Apply black-hole gravity to bullets.
+    for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
+      for(o = players->begin(); o != players->end(); o++) {
+        for(auto &b : (*o)->ship->bullets)
+          (*bhi)->apply_gravity(b, step_size);
+      }
+      for(o = enemies->begin(); o != enemies->end(); o++) {
+        for(auto &b : (*o)->ship->bullets)
+          (*bhi)->apply_gravity(b, step_size);
+      }
+    }
+
     for(o = enemies->begin(); o != enemies->end(); o++) {
       Ship* s = (*o)->ship;
       s->sound_volume_scale = is_visible_to_any_player(*s) ? 0.5f : 0.0f;
