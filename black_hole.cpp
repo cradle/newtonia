@@ -4,7 +4,7 @@
 
 // Gravitational strength constant (G*M in game units).
 // At 400 units this imparts ~0.01 units/ms per step — a gentle but accumulating pull.
-const float BlackHole::gravitational_strength = 100.0f;
+const float BlackHole::gravitational_strength = 50.0f;
 
 // Objects beyond this distance are not affected (performance optimisation).
 const float BlackHole::influence_radius = 800.0f;

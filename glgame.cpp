@@ -274,13 +274,11 @@ void GLGame::tick(int delta) {
       (*oi)->step(step_size);
     }
 
-    // Apply black-hole gravity to asteroids; kill those swallowed.
+    // Apply black-hole gravity to asteroids (asteroids pass through, not swallowed).
     for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
       oi = objects->begin();
       while(oi != objects->end()) {
-        if((*bhi)->apply_gravity(**oi, step_size)) {
-          (*oi)->kill();
-        }
+        (*bhi)->apply_gravity(**oi, step_size);
         oi++;
       }
     }
