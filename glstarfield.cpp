@@ -77,10 +77,11 @@ static void draw_lensed_points(std::vector<GLStarfield::StarPoint> const &stars,
     if (dist > 0.001f) {
       nx = dx / dist;
       ny = dy / dist;
-      shift = radius * 2.0f * (1.0f - dist / radius);
+      float max_shift = radius - dist;
+      shift = fminf(radius * 2.0f * (1.0f - dist / radius), max_shift);
     } else {
       nx = 1.0f; ny = 0.0f;
-      shift = radius * 2.0f;
+      shift = 0.0f;
     }
     glColor4f(s.r, s.g, s.b, s.a);
     glVertex3f(s.x + nx * shift, s.y + ny * shift, s.z);
