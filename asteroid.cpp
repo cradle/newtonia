@@ -68,7 +68,7 @@ Asteroid::Asteroid(Asteroid const *mother) {
   value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
   value += mother->value;
   children_added = false;
-  invisible = mother->invisible;
+  invisible = false;
   if(!invincible) {
     killed = false;
     num_killable++;
