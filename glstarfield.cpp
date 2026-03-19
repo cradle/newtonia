@@ -24,7 +24,7 @@ GLStarfield::GLStarfield(Point const size) {
       float r_f = red / 100.0f;
       float g_f = green / 100.0f;
       float b_f = rand()%100 / 100.0f;
-      float a_f = rand()%50 / 100.0f + 0.2f;
+      float a_f = rand()%40 / 100.0f + 0.6f;
       float x_f = (float)(rand()%(int)size.x());
       float y_f = (float)(rand()%(int)size.y());
       float z_f = (float)((i - NUM_REAR_LAYERS) * 100);

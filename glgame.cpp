@@ -145,7 +145,7 @@ GLGame::~GLGame() {
 
 void GLGame::add_asteroids() {
   while(Asteroid::num_killable < (default_num_asteroids + generation * extra_num_asteroids)) {
-    bool make_invisible = (rand() % 4 == 0);
+    bool make_invisible = true;
     objects->push_back(new Asteroid(false, make_invisible));
     objects->push_front(new Asteroid(true));
   }
