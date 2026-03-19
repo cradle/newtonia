@@ -88,7 +88,7 @@ void BlackHole::draw(bool is_minimap) const {
   glVertex2f(0.0f, 0.0f);
   for (int i = 0; i <= segments; i++) {
     float a = i * 2.0f * (float)M_PI / segments;
-    glVertex2f(cosf(a) * radius * 4.0f, sinf(a) * radius * 4.0f);
+    glVertex2f(cosf(a) * radius * 8.0f, sinf(a) * radius * 8.0f);
   }
   glEnd();
   glEnable(GL_BLEND);
