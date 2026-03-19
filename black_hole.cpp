@@ -3,8 +3,8 @@
 #include <math.h>
 
 // Gravitational strength constant (G*M in game units).
-// Tuned so that a ship at ~400 units away feels a noticeable but escapable pull.
-const float BlackHole::gravitational_strength = 18000.0f;
+// At 400 units this imparts ~0.01 units/ms per step — a gentle but accumulating pull.
+const float BlackHole::gravitational_strength = 100.0f;
 
 // Objects beyond this distance are not affected (performance optimisation).
 const float BlackHole::influence_radius = 800.0f;
@@ -48,7 +48,12 @@ bool BlackHole::apply_gravity(Object &other, int delta) const {
     return true;  // caller should kill this object
 
   // Gravitational acceleration: a = G*M / r^2, directed toward the black hole.
-  float accel = gravitational_strength / dist_sq * (float)delta;
+  // Clamp the effective distance to a minimum (softened gravity) so that objects
+  // just outside the event horizon don't receive a near-infinite impulse and get
+  // flung across the map at ridiculous speed.
+  const float softening = radius * 2.0f;  // 80 units
+  float soft_dist_sq = dist_sq < softening * softening ? softening * softening : dist_sq;
+  float accel = gravitational_strength / soft_dist_sq * (float)delta;
   Point force = diff.normalized() * accel;
   other.velocity += force;
 
