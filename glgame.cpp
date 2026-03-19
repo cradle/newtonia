@@ -415,13 +415,14 @@ void GLGame::tick(int delta) {
     if (station != NULL && station->is_alive()) {
       for (o = players->begin(); o != players->end(); o++) {
         Ship* s = (*o)->ship;
-        // Body collision: kill non-invincible player, always damage station
+        // Body collision: mirrors invincible-asteroid behaviour — impact
+        // particles and velocity stop always; death particles only if killed.
         if (s->is_alive() && station->Object::collide(*s)) {
           station->hit();
-          if (!s->invincible) {
-            s->kill_stop();
+          s->explode(s->position, station->velocity);
+          s->kill_stop();
+          if (!s->is_alive())
             s->detonate();
-          }
         }
         // Bullet collision: consume bullet, damage station
         if (!station->is_alive()) break;
