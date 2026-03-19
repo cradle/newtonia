@@ -22,7 +22,7 @@ Asteroid::Asteroid(bool invincible, bool invisible) : CompositeObject(), killed(
   if(invincible) {
     radius = rand()%radius_variation + minimum_radius;
   } else if(invisible) {
-    radius = max_radius / 2 + rand() % (max_radius / 2 + 1);
+    radius = max_radius / 4 + rand() % (max_radius / 2 + 1);
   } else {
     radius = (rand()%radius_variation + minimum_radius) * 0.5;
   }
