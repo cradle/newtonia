@@ -435,7 +435,7 @@ void GLGame::tick(int delta) {
             float dot = bvel.x() * normal.x() + bvel.y() * normal.y();
             Point reflected(bvel.x() - 2.0f * dot * normal.x(),
                             bvel.y() - 2.0f * dot * normal.y());
-            s->explode(bpos, reflected);
+            s->explode(bpos, reflected.normalized() * station->velocity.magnitude());
             if (Asteroid::thud_sound != NULL)
               Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
             station->hit();
