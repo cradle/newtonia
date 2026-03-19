@@ -145,7 +145,8 @@ GLGame::~GLGame() {
 
 void GLGame::add_asteroids() {
   while(Asteroid::num_killable < (default_num_asteroids + generation * extra_num_asteroids)) {
-    objects->push_back(new Asteroid(false));
+    bool make_invisible = (rand() % 4 == 0);
+    objects->push_back(new Asteroid(false, make_invisible));
     objects->push_front(new Asteroid(true));
   }
 }
@@ -624,6 +625,50 @@ void GLGame::draw_perspective(GLShip *glship) const {
       glPopMatrix();
     }
   }
+  // --- Invisible asteroid lensing: draw shifted stars over a black mask circle ---
+  // For each invisible asteroid, cover its footprint with black (hiding the
+  // original star positions), then redraw the rear stars inside that region
+  // with a radial outward shift, creating a gravitational-lensing appearance.
+  for(int x = -1; x <= 1; x++) {
+    for(int y = -1; y <= 1; y++) {
+      float smin_x = world.x()*x - position.x();
+      float smax_x = smin_x + world.x();
+      float smin_y = world.y()*y - position.y();
+      float smax_y = smin_y + world.y();
+      float snx = (smin_x > 0) ? smin_x : (smax_x < 0) ? -smax_x : 0;
+      float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
+      if (snx*snx + sny*sny > cull_r2) continue;
+
+      for(list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
+        Asteroid const *a = *it;
+        if (!a->invisible || !a->alive) continue;
+
+        float ax = a->position.x();
+        float ay = a->position.y();
+        float r  = a->radius;
+
+        glPushMatrix();
+        glRotatef(direction, 0.0f, 0.0f, 1.0f);
+        glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+
+        // Black filled circle to mask original star positions
+        const int LENS_SEGS = 16;
+        const float LENS_STEP = 2.0f * (float)M_PI / LENS_SEGS;
+        glColor3f(0.0f, 0.0f, 0.0f);
+        glBegin(GL_POLYGON);
+        for (int i = 0; i < LENS_SEGS; i++) {
+          glVertex2f(ax + r * cosf(i * LENS_STEP), ay + r * sinf(i * LENS_STEP));
+        }
+        glEnd();
+
+        // Redraw rear stars near the asteroid at radially shifted positions
+        starfield->draw_stars_near(ax, ay, r);
+
+        glPopMatrix();
+      }
+    }
+  }
+
   // Game objects: drawn directly each tile (no display list) so draw_batch
   // can emit all asteroids in two draw calls per tile instead of one per asteroid.
   for(int x = -1; x <= 1; x++) {

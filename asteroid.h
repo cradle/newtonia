@@ -9,7 +9,7 @@
 
 class Asteroid : public CompositeObject {
 public:
-  Asteroid(bool invincible);
+  Asteroid(bool invincible, bool invisible = false);
   Asteroid(Asteroid const *mother);
   virtual ~Asteroid();
 
@@ -25,6 +25,8 @@ public:
   static Mix_Chunk *explode_sound, *thud_sound;
 
   static void free_sounds();
+
+  bool invisible;
 
 private:
   const static int max_speed;

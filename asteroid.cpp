@@ -17,7 +17,7 @@ Mix_Chunk * Asteroid::thud_sound = NULL;
 
 const int Asteroid::max_radius = Asteroid::radius_variation + Asteroid::minimum_radius;
 
-Asteroid::Asteroid(bool invincible) : CompositeObject(), killed(false) {
+Asteroid::Asteroid(bool invincible, bool invisible) : CompositeObject(), killed(false) {
   position = WrappedPoint();
   if(invincible) {
     radius = rand()%radius_variation + minimum_radius;
@@ -29,6 +29,7 @@ Asteroid::Asteroid(bool invincible) : CompositeObject(), killed(false) {
   value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
   children_added = false;
   this->invincible = invincible;
+  this->invisible = invisible;
   if(!invincible) {
     num_killable++;
   }
@@ -67,6 +68,7 @@ Asteroid::Asteroid(Asteroid const *mother) {
   value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
   value += mother->value;
   children_added = false;
+  invisible = mother->invisible;
   if(!invincible) {
     killed = false;
     num_killable++;
