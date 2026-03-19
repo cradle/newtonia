@@ -107,13 +107,13 @@ void BlackHole::draw(bool is_minimap) const {
     glEnd();
   }
 
-  // --- Event horizon: solid black circle ---
+  // --- Black circle, twice the event horizon radius ---
   glColor3f(0.0f, 0.0f, 0.0f);
   glBegin(GL_TRIANGLE_FAN);
   glVertex2f(0.0f, 0.0f);
   for (int i = 0; i <= segments; i++) {
     float a = i * 2.0f * (float)M_PI / segments;
-    glVertex2f(cosf(a) * radius, sinf(a) * radius);
+    glVertex2f(cosf(a) * radius * 2.0f, sinf(a) * radius * 2.0f);
   }
   glEnd();
 
