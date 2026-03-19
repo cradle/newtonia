@@ -27,6 +27,13 @@ Asteroid::Asteroid(bool invincible, bool invisible) : CompositeObject(), killed(
     radius = (rand()%radius_variation + minimum_radius) * 0.5;
   }
   rotation_speed = (rand()%max_rotation-max_rotation/2)/radius;
+  if (invisible) {
+    // Large radius + random sign can yield near-zero rotation. Ensure a
+    // perceptible minimum of ~20 deg/s regardless of size.
+    float min_rot = 4.0f / radius;
+    if (rotation_speed > -min_rot && rotation_speed < min_rot)
+      rotation_speed = (rand() % 2) ? min_rot : -min_rot;
+  }
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
   value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
   children_added = false;
