@@ -12,19 +12,13 @@ const float BlackHole::influence_radius = 800.0f;
 BlackHole::BlackHole(WrappedPoint pos) {
   position = pos;
   velocity = Point(0.0f, 0.0f);
-  rotation_speed = 0.5f;  // slow visual spin
   radius = 40.0f;
   radius_squared = radius * radius;
   alive = true;
   invincible = true;  // cannot be shot/killed
-  pulse_phase = 0.0f;
 }
 
 void BlackHole::step(int delta) {
-  rotation += rotation_speed * delta;
-  pulse_phase += 0.003f * delta;
-  if (pulse_phase > 2.0f * (float)M_PI)
-    pulse_phase -= 2.0f * (float)M_PI;
   // Black hole does not move.
 }
 
@@ -62,7 +56,6 @@ bool BlackHole::apply_gravity(Object &other, int delta) const {
 
 void BlackHole::draw(bool is_minimap) const {
   const int segments = 32;
-  float pulse = 0.15f * sinf(pulse_phase);
 
   glPushMatrix();
   glTranslatef(position.x(), position.y(), 0.0f);
@@ -89,7 +82,6 @@ void BlackHole::draw(bool is_minimap) const {
     return;
   }
 
-  // --- Filled black circle (drawn first so accretion disk renders on top) ---
   glDisable(GL_BLEND);
   glColor3f(0.0f, 0.0f, 0.0f);
   glBegin(GL_TRIANGLE_FAN);
@@ -100,24 +92,6 @@ void BlackHole::draw(bool is_minimap) const {
   }
   glEnd();
   glEnable(GL_BLEND);
-
-  // --- Accretion disk (glowing outer ring) ---
-  float disk_inner = radius * 1.15f;
-  float disk_outer = radius * (2.2f + pulse);
-  glLineWidth(1.0f);
-  for (int ring = 0; ring < 3; ring++) {
-    float t = ring / 2.0f;
-    float r_ring = disk_inner + (disk_outer - disk_inner) * t;
-    float alpha  = (1.0f - t) * 0.7f;
-    glColor4f(0.8f - t * 0.4f, 0.2f + t * 0.1f, 1.0f - t * 0.3f, alpha);
-    glBegin(GL_LINE_LOOP);
-    for (int i = 0; i < segments; i++) {
-      float a = i * 2.0f * (float)M_PI / segments + rotation * (float)M_PI / 180.0f;
-      float wobble = 1.0f + 0.06f * sinf(3.0f * a + pulse_phase);
-      glVertex2f(cosf(a) * r_ring * wobble, sinf(a) * r_ring * wobble * 0.5f);
-    }
-    glEnd();
-  }
 
   glPopMatrix();
 }

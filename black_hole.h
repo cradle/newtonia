@@ -23,8 +23,6 @@ public:
   static const float gravitational_strength;
   static const float influence_radius;
 
-private:
-  float pulse_phase; // for visual pulsing of the accretion disk
 };
 
 #endif
