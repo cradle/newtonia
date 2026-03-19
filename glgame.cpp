@@ -643,6 +643,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
       glPopMatrix();
     }
   }
+
 }
 
 void GLGame::draw_map() const {

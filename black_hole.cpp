@@ -89,6 +89,18 @@ void BlackHole::draw(bool is_minimap) const {
     return;
   }
 
+  // --- Filled black circle (drawn first so accretion disk renders on top) ---
+  glDisable(GL_BLEND);
+  glColor3f(0.0f, 0.0f, 0.0f);
+  glBegin(GL_TRIANGLE_FAN);
+  glVertex2f(0.0f, 0.0f);
+  for (int i = 0; i <= segments; i++) {
+    float a = i * 2.0f * (float)M_PI / segments;
+    glVertex2f(cosf(a) * radius * 4.0f, sinf(a) * radius * 4.0f);
+  }
+  glEnd();
+  glEnable(GL_BLEND);
+
   // --- Accretion disk (glowing outer ring) ---
   float disk_inner = radius * 1.15f;
   float disk_outer = radius * (2.2f + pulse);
@@ -106,16 +118,6 @@ void BlackHole::draw(bool is_minimap) const {
     }
     glEnd();
   }
-
-  // --- Black circle, twice the event horizon radius ---
-  glColor3f(0.0f, 0.0f, 0.0f);
-  glBegin(GL_TRIANGLE_FAN);
-  glVertex2f(0.0f, 0.0f);
-  for (int i = 0; i <= segments; i++) {
-    float a = i * 2.0f * (float)M_PI / segments;
-    glVertex2f(cosf(a) * radius * 4.0f, sinf(a) * radius * 4.0f);
-  }
-  glEnd();
 
   glPopMatrix();
 }
