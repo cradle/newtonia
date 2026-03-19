@@ -64,6 +64,26 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
   }
 }
 
+void AsteroidDrawer::draw_invisible_mask(Asteroid const *object, float x, float y) {
+  int segs = seg_count(object->radius);
+  float step = 2.0f * (float)M_PI / segs;
+  float rot = object->rotation * (float)M_PI / 180.0f;
+  glColor3f(0.0f, 0.0f, 0.0f);
+  glBegin(GL_POLYGON);
+  for (int i = 0; i < segs; i++) {
+    float angle = rot + i * step;
+    glVertex2f(x + object->radius * cosf(angle), y + object->radius * sinf(angle));
+  }
+  glEnd();
+  glLineWidth(2.5f);
+  glBegin(GL_LINE_LOOP);
+  for (int i = 0; i < segs; i++) {
+    float angle = rot + i * step;
+    glVertex2f(x + object->radius * cosf(angle), y + object->radius * sinf(angle));
+  }
+  glEnd();
+}
+
 // Cached per-asteroid vertex data, computed once and shared between fill and
 // outline passes to avoid redundant cosf/sinf calls.
 struct AsteroidVerts {

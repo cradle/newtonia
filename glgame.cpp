@@ -628,10 +628,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
       glPopMatrix();
     }
   }
-  // --- Invisible asteroid lensing: draw shifted stars over a black mask circle ---
-  // For each invisible asteroid, cover its footprint with black (hiding the
-  // original star positions), then redraw the rear stars inside that region
-  // with a radial outward shift, creating a gravitational-lensing appearance.
+  // --- Invisible asteroid lensing: black asteroid polygon + shifted rear stars ---
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
       float smin_x = world.x()*x - position.x();
@@ -654,17 +651,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
         glRotatef(direction, 0.0f, 0.0f, 1.0f);
         glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
 
-        // Black filled circle to mask original star positions
-        const int LENS_SEGS = 16;
-        const float LENS_STEP = 2.0f * (float)M_PI / LENS_SEGS;
-        glColor3f(0.0f, 0.0f, 0.0f);
-        glBegin(GL_POLYGON);
-        for (int i = 0; i < LENS_SEGS; i++) {
-          glVertex2f(ax + void_r * cosf(i * LENS_STEP), ay + void_r * sinf(i * LENS_STEP));
-        }
-        glEnd();
-
-        // Redraw rear stars near the asteroid at radially shifted positions
+        AsteroidDrawer::draw_invisible_mask(a, ax, ay);
         starfield->draw_stars_near(ax, ay, void_r);
 
         glPopMatrix();
@@ -733,15 +720,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
         glRotatef(direction, 0.0f, 0.0f, 1.0f);
         glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
 
-        const int LENS_SEGS = 16;
-        const float LENS_STEP = 2.0f * (float)M_PI / LENS_SEGS;
-        glColor3f(0.0f, 0.0f, 0.0f);
-        glBegin(GL_POLYGON);
-        for (int i = 0; i < LENS_SEGS; i++) {
-          glVertex2f(ax + void_r * cosf(i * LENS_STEP), ay + void_r * sinf(i * LENS_STEP));
-        }
-        glEnd();
-
+        AsteroidDrawer::draw_invisible_mask(a, ax, ay);
         starfield->draw_front_stars_near(ax, ay, void_r);
 
         glPopMatrix();
