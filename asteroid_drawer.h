@@ -15,6 +15,7 @@ public:
                          float direction, bool is_minimap,
                          float wrap_x = 0, float wrap_y = 0);
   static void draw_debris(vector<Particle> const &debris);
+  static void draw_invisible_mask(Asteroid const *object, float x, float y);
 
 private:
   static const int number_of_segments;

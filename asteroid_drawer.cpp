@@ -19,7 +19,7 @@ int AsteroidDrawer::seg_count(float radius) {
 
 // draw() is kept for dead asteroids (score + debris) called from legacy paths.
 void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minimap) {
-  if(object->alive) {
+  if(object->alive && !object->invisible) {
     glPushMatrix();
     glTranslatef(object->position.x(), object->position.y(), 0.0f);
     glScalef(object->radius, object->radius, 1.0f);
@@ -64,6 +64,26 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
   }
 }
 
+void AsteroidDrawer::draw_invisible_mask(Asteroid const *object, float x, float y) {
+  int segs = seg_count(object->radius);
+  float step = 2.0f * (float)M_PI / segs;
+  float rot = object->rotation * (float)M_PI / 180.0f;
+  glColor3f(0.0f, 0.0f, 0.0f);
+  glBegin(GL_POLYGON);
+  for (int i = 0; i < segs; i++) {
+    float angle = rot + i * step;
+    glVertex2f(x + object->radius * cosf(angle), y + object->radius * sinf(angle));
+  }
+  glEnd();
+  glLineWidth(2.5f);
+  glBegin(GL_LINE_LOOP);
+  for (int i = 0; i < segs; i++) {
+    float angle = rot + i * step;
+    glVertex2f(x + object->radius * cosf(angle), y + object->radius * sinf(angle));
+  }
+  glEnd();
+}
+
 // Cached per-asteroid vertex data, computed once and shared between fill and
 // outline passes to avoid redundant cosf/sinf calls.
 struct AsteroidVerts {
@@ -71,6 +91,7 @@ struct AsteroidVerts {
   float cx, cy, dx, dy;
   int segs;
   bool invincible;
+  bool invisible;
 };
 
 // draw_batch renders all alive asteroids in two draw calls (fill + outline),
@@ -106,6 +127,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
       else if (v.cy + r > wrap_y) v.dy = -wrap_y;
     }
     v.invincible = a->invincible;
+    v.invisible  = a->invisible;
     verts.push_back(v);
   }
 
@@ -113,6 +135,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
   glBegin(GL_TRIANGLES);
   for (size_t ai = 0; ai < verts.size(); ++ai) {
     AsteroidVerts const &v = verts[ai];
+    if (v.invisible) continue;
     if (v.invincible) glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
     else              glColor3f(0.0f, 0.0f, 0.0f);
     for (int wi = 0; wi < (v.dx != 0 ? 2 : 1); wi++) {
@@ -134,6 +157,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
   glBegin(GL_LINES);
   for (size_t ai = 0; ai < verts.size(); ++ai) {
     AsteroidVerts const &v = verts[ai];
+    if (v.invisible) continue;
     if (v.invincible) glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
     else              glColor3f(1.0f, 1.0f, 1.0f);
     for (int wi = 0; wi < (v.dx != 0 ? 2 : 1); wi++) {

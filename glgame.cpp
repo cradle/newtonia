@@ -148,6 +148,10 @@ void GLGame::add_asteroids() {
     objects->push_back(new Asteroid(false));
     objects->push_front(new Asteroid(true));
   }
+  int num_invisible = (generation >= 5) ? (generation - 5) / 5 + 1 : 0;
+  for(int i = 0; i < num_invisible; i++) {
+    objects->push_back(new Asteroid(false, true));
+  }
 }
 
 void GLGame::toggle_pause() {
@@ -624,6 +628,35 @@ void GLGame::draw_perspective(GLShip *glship) const {
       glPopMatrix();
     }
   }
+  // --- Invisible asteroid lensing: black asteroid polygon + shifted rear stars ---
+  for(int x = -1; x <= 1; x++) {
+    for(int y = -1; y <= 1; y++) {
+      float smin_x = world.x()*x - position.x();
+      float smax_x = smin_x + world.x();
+      float smin_y = world.y()*y - position.y();
+      float smax_y = smin_y + world.y();
+      float snx = (smin_x > 0) ? smin_x : (smax_x < 0) ? -smax_x : 0;
+      float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
+      if (snx*snx + sny*sny > cull_r2) continue;
+
+      for(list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
+        Asteroid const *a = *it;
+        if (!a->invisible || !a->alive) continue;
+
+        float ax = a->position.x();
+        float ay = a->position.y();
+        glPushMatrix();
+        glRotatef(direction, 0.0f, 0.0f, 1.0f);
+        glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+
+        AsteroidDrawer::draw_invisible_mask(a, ax, ay);
+        starfield->draw_stars_near(ax, ay, a->radius);
+
+        glPopMatrix();
+      }
+    }
+  }
+
   // Game objects: drawn directly each tile (no display list) so draw_batch
   // can emit all asteroids in two draw calls per tile instead of one per asteroid.
   for(int x = -1; x <= 1; x++) {
@@ -659,6 +692,35 @@ void GLGame::draw_perspective(GLShip *glship) const {
       glTranslatef(world.x()*x, world.y()*y, 0.0f);
       glCallList(frontstars);
       glPopMatrix();
+    }
+  }
+
+  // --- Front star lensing (same void + shift, applied after front stars) ---
+  for(int x = -1; x <= 1; x++) {
+    for(int y = -1; y <= 1; y++) {
+      float smin_x = world.x()*x - position.x();
+      float smax_x = smin_x + world.x();
+      float smin_y = world.y()*y - position.y();
+      float smax_y = smin_y + world.y();
+      float snx = (smin_x > 0) ? smin_x : (smax_x < 0) ? -smax_x : 0;
+      float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
+      if (snx*snx + sny*sny > cull_r2) continue;
+
+      for(list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
+        Asteroid const *a = *it;
+        if (!a->invisible || !a->alive) continue;
+
+        float ax = a->position.x();
+        float ay = a->position.y();
+        glPushMatrix();
+        glRotatef(direction, 0.0f, 0.0f, 1.0f);
+        glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+
+        AsteroidDrawer::draw_invisible_mask(a, ax, ay);
+        starfield->draw_front_stars_near(ax, ay, a->radius);
+
+        glPopMatrix();
+      }
     }
   }
 
