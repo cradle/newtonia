@@ -75,7 +75,7 @@ void GLStarfield::draw_stars_near(float cx, float cy, float radius) const {
       nx = dx / dist;
       ny = dy / dist;
       // Shift stars radially outward; strongest at centre, zero at edge
-      shift = radius * 0.5f * (1.0f - dist / radius);
+      shift = radius * 2.0f * (1.0f - dist / radius);
     } else {
       nx = 1.0f; ny = 0.0f;
       shift = radius * 0.5f;
