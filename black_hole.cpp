@@ -113,17 +113,7 @@ void BlackHole::draw(bool is_minimap) const {
   glVertex2f(0.0f, 0.0f);
   for (int i = 0; i <= segments; i++) {
     float a = i * 2.0f * (float)M_PI / segments;
-    glVertex2f(cosf(a) * radius * 2.0f, sinf(a) * radius * 2.0f);
-  }
-  glEnd();
-
-  // --- Photon ring: bright rim just outside the event horizon ---
-  glColor4f(0.9f, 0.6f, 1.0f, 0.9f);
-  glLineWidth(2.5f);
-  glBegin(GL_LINE_LOOP);
-  for (int i = 0; i < segments; i++) {
-    float a = i * 2.0f * (float)M_PI / segments;
-    glVertex2f(cosf(a) * radius, sinf(a) * radius);
+    glVertex2f(cosf(a) * radius * 4.0f, sinf(a) * radius * 4.0f);
   }
   glEnd();
 
