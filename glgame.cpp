@@ -645,14 +645,12 @@ void GLGame::draw_perspective(GLShip *glship) const {
 
         float ax = a->position.x();
         float ay = a->position.y();
-        float void_r = a->radius * 1.5f;
-
         glPushMatrix();
         glRotatef(direction, 0.0f, 0.0f, 1.0f);
         glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
 
         AsteroidDrawer::draw_invisible_mask(a, ax, ay);
-        starfield->draw_stars_near(ax, ay, void_r);
+        starfield->draw_stars_near(ax, ay, a->radius);
 
         glPopMatrix();
       }
@@ -714,8 +712,6 @@ void GLGame::draw_perspective(GLShip *glship) const {
 
         float ax = a->position.x();
         float ay = a->position.y();
-        float void_r = a->radius * 1.5f;
-
         glPushMatrix();
         glRotatef(direction, 0.0f, 0.0f, 1.0f);
         glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
