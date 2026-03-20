@@ -601,14 +601,24 @@ void Ship::collide_grid(Grid &grid) {
   for(size_t i = 0; i < bullets.size(); ) {
     object = grid.collide(bullets[i]);
     if(object != NULL) {
-      if(object->kill()) {
-        score += object->get_value() * multiplier();
-        kills_this_life += 1;
-        kills += 1;
+      Asteroid *ast = dynamic_cast<Asteroid*>(object);
+      if(ast && ast->reflective) {
+        // Reflect bullet velocity off the asteroid surface normal
+        Point normal = (bullets[i].position - object->position).normalized();
+        float dot = normal.x() * bullets[i].velocity.x() + normal.y() * bullets[i].velocity.y();
+        bullets[i].velocity = bullets[i].velocity - normal * (2.0f * dot);
+        object->kill(); // plays thud sound
+        ++i;
+      } else {
+        if(object->kill()) {
+          score += object->get_value() * multiplier();
+          kills_this_life += 1;
+          kills += 1;
+        }
+        explode(bullets[i].position, object->velocity);
+        bullets[i] = std::move(bullets.back());
+        bullets.pop_back();
       }
-      explode(bullets[i].position, object->velocity);
-      bullets[i] = std::move(bullets.back());
-      bullets.pop_back();
     } else {
       ++i;
     }

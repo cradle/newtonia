@@ -24,7 +24,9 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
     glTranslatef(object->position.x(), object->position.y(), 0.0f);
     glScalef(object->radius, object->radius, 1.0f);
     glRotatef(object->rotation, 0.0f, 0.0f, 1.0f);
-    if(object->invincible) {
+    if(object->reflective) {
+      glColor4f(0.0f, 0.4f, 0.5f, 0.6f);
+    } else if(object->invincible) {
       glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
     } else {
       glColor3f(0.0f, 0.0f, 0.0f);
@@ -43,7 +45,9 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
       glVertex2f(off * cosf(d), off * sinf(d));
     }
     glEnd();
-    if(object->invincible) {
+    if(object->reflective) {
+      glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
+    } else if(object->invincible) {
       glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
     } else {
       glColor3f(1.0f, 1.0f, 1.0f);
@@ -96,6 +100,7 @@ struct AsteroidVerts {
   int segs;
   bool invincible;
   bool invisible;
+  bool reflective;
 };
 
 // draw_batch renders all alive asteroids in two draw calls (fill + outline),
@@ -131,8 +136,9 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
       if (v.cy < r)               v.dy = wrap_y;
       else if (v.cy + r > wrap_y) v.dy = -wrap_y;
     }
-    v.invincible = a->invincible;
-    v.invisible  = a->invisible;
+    v.invincible  = a->invincible;
+    v.invisible   = a->invisible;
+    v.reflective  = a->reflective;
     verts.push_back(v);
   }
 
@@ -141,8 +147,9 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
   for (size_t ai = 0; ai < verts.size(); ++ai) {
     AsteroidVerts const &v = verts[ai];
     if (v.invisible) continue;
-    if (v.invincible) glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
-    else              glColor3f(0.0f, 0.0f, 0.0f);
+    if (v.reflective)      glColor4f(0.0f, 0.4f, 0.5f, 0.6f);
+    else if (v.invincible) glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
+    else                   glColor3f(0.0f, 0.0f, 0.0f);
     for (int wi = 0; wi < (v.dx != 0 ? 2 : 1); wi++) {
       for (int wj = 0; wj < (v.dy != 0 ? 2 : 1); wj++) {
         float wcx = v.cx + wi * v.dx;
@@ -164,8 +171,9 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
   for (size_t ai = 0; ai < verts.size(); ++ai) {
     AsteroidVerts const &v = verts[ai];
     if (v.invisible) continue;
-    if (v.invincible) glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
-    else              glColor3f(1.0f, 1.0f, 1.0f);
+    if (v.reflective)      glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
+    else if (v.invincible) glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
+    else                   glColor3f(1.0f, 1.0f, 1.0f);
     for (int wi = 0; wi < (v.dx != 0 ? 2 : 1); wi++) {
       for (int wj = 0; wj < (v.dy != 0 ? 2 : 1); wj++) {
         float wcx = v.cx + wi * v.dx;
