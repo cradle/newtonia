@@ -147,10 +147,11 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
       for (int wj = 0; wj < (v.dy != 0 ? 2 : 1); wj++) {
         float wcx = v.cx + wi * v.dx;
         float wcy = v.cy + wj * v.dy;
-        for (int i = 1; i < v.segs - 1; i++) {
-          glVertex2f(wcx + v.dvx[0],   wcy + v.dvy[0]);
+        for (int i = 0; i < v.segs; i++) {
+          int j = (i + 1) % v.segs;
+          glVertex2f(wcx,               wcy);
           glVertex2f(wcx + v.dvx[i],   wcy + v.dvy[i]);
-          glVertex2f(wcx + v.dvx[i+1], wcy + v.dvy[i+1]);
+          glVertex2f(wcx + v.dvx[j],   wcy + v.dvy[j]);
         }
       }
     }
