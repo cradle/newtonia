@@ -251,4 +251,4 @@ jobs:
           rootPath: steam_output
           depot1Path: windows
           depot2Path: macos
-          releaseBranch: ${{ github.event.inputs.branch }}
+          releaseBranch: ${{ github.event.inputs.branch || 'beta' }}
