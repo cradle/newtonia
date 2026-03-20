@@ -699,18 +699,6 @@ void Ship::detonate(Point const position, Point const velocity, int particle_cou
 }
 
 void Ship::giga_detonate(Point const position, Point const velocity) {
-  // Massive debris burst: 150-200 particles
-  int count = 150 + rand() % 51;
-  Point dir(0, Asteroid::max_radius * 1.0f);
-  for(int i = count; i > 0; i--) {
-    dir.rotate(rand() % 360 * M_PI / 180.0f);
-    float speed_scale = 0.00008f * (float)(rand() % 200 + 50);
-    bullets.push_back(Particle(
-      position + dir * ((float)(rand() % 100) / 100.0f),
-      velocity + dir * speed_scale,
-      500 + rand() % 2000
-    ));
-  }
   // Launch expanding shockwave ring: radius grows to max_radius over ~700ms
   float max_r = (float)Asteroid::max_radius;
   float duration = 700.0f;
