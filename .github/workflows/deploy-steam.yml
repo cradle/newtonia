@@ -48,14 +48,14 @@ jobs:
       - name: Stage depot
         shell: bash
         run: |
-          mkdir -p steam_output/windows
-          cp newtonia.exe steam_output/windows/
-          cp -r audio steam_output/windows/
+          mkdir -p steam-windows
+          cp newtonia.exe steam-windows/
+          cp -r audio steam-windows/
 
       - uses: actions/upload-artifact@v4
         with:
           name: steam-windows
-          path: steam_output/windows/
+          path: steam-windows/
 
   build-macos:
     runs-on: macos-latest
