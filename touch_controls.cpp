@@ -12,7 +12,7 @@ void touch_controls_resize(int w, int h) {
     // Joystick: bottom-left area
     g_touch_controls.joy_radius   = minDim * 0.20f;
     g_touch_controls.joy_hint_cx  = (float)w * 0.15f;
-    g_touch_controls.joy_hint_cy  = (float)h * 0.80f;
+    g_touch_controls.joy_hint_cy  = (float)h * 0.75f;
 
     // Action buttons: bottom-right area
     float btnR = minDim * 0.07f;
