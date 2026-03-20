@@ -18,6 +18,7 @@ using namespace std;
 GLShip::GLShip(const Grid &grid, bool has_friction) : show_help(false) {
   //TODO: load config from file (colours too)
   ship = new Ship(grid, has_friction);
+  ship->add_giga_mine_ammo(10);
   trails.push_back(new GLTrail(this, 0.01, Point(0,0), 0.3,0.0, GLTrail::THRUSTING, 2500.0));
   trails.push_back(new GLTrail(this, 0.5,Point(-4,17),-0.1, 0.9, GLTrail::REVERSING | GLTrail::RIGHT, 250.0));
   trails.push_back(new GLTrail(this, 0.5,Point( 4,17),-0.1,-0.9, GLTrail::REVERSING | GLTrail::LEFT, 250.0));
@@ -121,7 +122,11 @@ void GLShip::collide(GLShip* first, GLShip* second) {
 }
 
 void GLShip::step(int delta, const Grid &grid) {
+  bool was_alive = ship->is_alive();
   ship->step(delta, grid);
+  if(!was_alive && ship->is_alive()) {
+    ship->add_giga_mine_ammo(10);
+  }
 
   float camera_rotation_delta = ship->heading() - camera_rotation;
   while(camera_rotation_delta < -90)

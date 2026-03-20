@@ -431,7 +431,6 @@ void Ship::reset(bool was_killed) {
       secondary_weapons.pop_back();
     }
     secondary = secondary_weapons.end();
-    add_giga_mine_ammo(10);
   }
 }
 
@@ -707,7 +706,7 @@ void Ship::detonate(Point const position, Point const velocity, int particle_cou
   }
 }
 
-void Ship::giga_detonate(Point const position, Point const velocity) {
+void Ship::giga_detonate(Point const position, Point const /*velocity*/) {
   if(giga_mine_explode_sound != NULL) {
     Mix_PlayChannel(-1, giga_mine_explode_sound, 0);
   }
