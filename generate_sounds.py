@@ -179,6 +179,30 @@ def make_boost():
         samples.append(s * 0.7)
     return samples
 
+def make_giga_mine_explode():
+    """Giga-mine explosion: massive deep boom with rumble, 2s."""
+    n = int(SAMPLE_RATE * 2.0)
+    rng = random.Random(7)
+    samples = []
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        # Sharp transient at the front
+        attack = min(1.0, t / 0.003)
+        env = attack * math.exp(-t * 2.5)
+        # Sub bass (30 Hz) – felt more than heard
+        sub   = math.sin(2 * math.pi * 30  * t) * math.exp(-t * 3.0) * 0.9
+        # Low boom (60 Hz)
+        boom  = math.sin(2 * math.pi * 60  * t) * math.exp(-t * 4.0) * 0.7
+        # Mid thud (120 Hz), decays faster
+        thud  = math.sin(2 * math.pi * 120 * t) * math.exp(-t * 8.0) * 0.4
+        # Noise burst (heavy at start, fades fast)
+        noise = (rng.random() * 2 - 1) * math.exp(-t * 12.0) * 0.6
+        # Trailing rumble noise
+        rumble = (rng.random() * 2 - 1) * math.exp(-t * 1.5) * 0.15
+        samples.append((sub + boom + thud + noise + rumble) * env)
+    return samples
+
+
 def make_pickup():
     """Item pickup: cheerful rising chime, 200ms."""
     n = int(SAMPLE_RATE * 0.2)
@@ -299,6 +323,7 @@ if __name__ == '__main__':
         'boost.wav':           make_boost,
         'title.wav':           make_title,
         'pickup.wav':          make_pickup,
+        'giga_mine_explode.wav': make_giga_mine_explode,
     }
 
     for filename, fn in sounds.items():
