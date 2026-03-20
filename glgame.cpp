@@ -30,6 +30,7 @@ const int GLGame::extra_num_asteroids = 5;
 const float GLGame::extra_life_drop_chance = 0.003125f;
 const float GLGame::weapon_pickup_drop_chance = 0.025f;
 const float GLGame::mine_pickup_drop_chance = 0.025f;
+const float GLGame::giga_mine_pickup_drop_chance = 0.010f;
 const float GLGame::missile_pickup_drop_chance = 0.025f;
 const float GLGame::shield_pickup_drop_chance = 0.025f;
 
@@ -314,6 +315,8 @@ void GLGame::tick(int delta) {
           (*bhi)->apply_gravity(m, step_size);
         for(auto &n : (*o)->ship->mines)
           (*bhi)->apply_gravity(n, step_size);
+        for(auto &n : (*o)->ship->giga_mines)
+          (*bhi)->apply_gravity(n, step_size);
       }
       for(o = enemies->begin(); o != enemies->end(); o++) {
         for(auto &b : (*o)->ship->bullets)
@@ -321,6 +324,8 @@ void GLGame::tick(int delta) {
         for(auto &m : (*o)->ship->missiles)
           (*bhi)->apply_gravity(m, step_size);
         for(auto &n : (*o)->ship->mines)
+          (*bhi)->apply_gravity(n, step_size);
+        for(auto &n : (*o)->ship->giga_mines)
           (*bhi)->apply_gravity(n, step_size);
       }
     }
@@ -365,9 +370,11 @@ void GLGame::tick(int delta) {
             pickups->push_back(new WeaponPickup((*oi)->position, weapon_index));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance) {
             pickups->push_back(new MinePickup((*oi)->position));
-          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + missile_pickup_drop_chance) {
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance) {
+            pickups->push_back(new GigaMinePickup((*oi)->position));
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance) {
             pickups->push_back(new MissilePickup((*oi)->position));
-          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance) {
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance) {
             pickups->push_back(new ShieldPickup((*oi)->position));
           }
         }

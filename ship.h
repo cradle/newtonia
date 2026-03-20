@@ -11,6 +11,28 @@
 #include <SDL.h>
 #include <SDL_mixer.h>
 
+struct Shockwave {
+  Point position;
+  float radius;
+  float prev_radius;
+  float max_radius;
+  float speed;        // units per ms
+  float time_left;   // ms
+
+  Shockwave(Point pos, float max_r, float spd, float duration)
+    : position(pos), radius(0.0f), prev_radius(0.0f),
+      max_radius(max_r), speed(spd), time_left(duration) {}
+
+  bool alive() const { return time_left > 0.0f && radius < max_radius; }
+
+  void step(float delta) {
+    prev_radius = radius;
+    radius += speed * delta;
+    time_left -= delta;
+    if(radius > max_radius) radius = max_radius;
+  }
+};
+
 class Behaviour;
 class Object;
 namespace Weapon { class Base; }
@@ -67,8 +89,9 @@ class Ship : public CompositeObject {
     //TODO: somehow get around this public for glstation
     void kill_stop();
 
-    std::vector<Particle> bullets, mines;
+    std::vector<Particle> bullets, mines, giga_mines;
     std::vector<MissileShot> missiles;
+    std::vector<Shockwave> shockwaves;
 
     enum Rotation {
       LEFT = 1,
@@ -96,6 +119,7 @@ class Ship : public CompositeObject {
     void next_secondary_weapon();
     void add_weapon(int weapon_index);
     void add_mine_ammo(int amount);
+    void add_giga_mine_ammo(int amount);
     void add_missile_ammo(int amount);
     void add_shield_ammo(int amount);
     void set_shield_hum(bool on);
@@ -112,6 +136,7 @@ class Ship : public CompositeObject {
     virtual void reset(bool was_killed = true);
     void detonate();
     void detonate(Point const position, Point const velocity, int particle_count = 10);
+    void giga_detonate(Point const position, Point const velocity);
 
     Point world_size;
 

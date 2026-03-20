@@ -406,8 +406,10 @@ void GLShip::draw(bool minimap) {
     }
   }
   draw_mines(minimap);
+  draw_giga_mines(minimap);
   if(!minimap) {
     draw_missiles();
+    draw_shockwaves();
   }
   if(ship->is_alive()) {
     draw_ship(minimap);
@@ -685,6 +687,87 @@ void GLShip::draw_mines(bool minimap) const {
     glVertex2fv(v3); glVertex2fv(v0);
   }
   glEnd();
+}
+
+void GLShip::draw_giga_mines(bool minimap) const {
+  if(minimap) {
+    glPointSize(3.0f);
+    glColor3f(1.0f, 0.2f, 0.0f);
+    glBegin(GL_POINTS);
+    for(auto &m : ship->giga_mines) {
+      glVertex2fv(m.position);
+    }
+    glEnd();
+    return;
+  }
+
+  float size = 16.0f;
+  float inner = size * 0.4f;
+  glLineWidth(2.5f);
+  glColor3f(1.0f, 0.2f, 0.0f);
+
+  for(auto &m : ship->giga_mines) {
+    float angle = m.rotation * (float)M_PI / 180.0f;
+    // Draw 8-pointed star shape (spiky)
+    glBegin(GL_LINES);
+    for(int i = 0; i < 8; i++) {
+      float a = angle + i * (float)M_PI / 4.0f;
+      float ox = cos(a) * size + m.position.x();
+      float oy = sin(a) * size + m.position.y();
+      float a2 = angle + (i + 0.5f) * (float)M_PI / 4.0f;
+      float ix = cos(a2) * inner + m.position.x();
+      float iy = sin(a2) * inner + m.position.y();
+      float a3 = angle + (i + 1.0f) * (float)M_PI / 4.0f;
+      float ox2 = cos(a3) * size + m.position.x();
+      float oy2 = sin(a3) * size + m.position.y();
+      glVertex2f(ox, oy);
+      glVertex2f(ix, iy);
+      glVertex2f(ix, iy);
+      glVertex2f(ox2, oy2);
+    }
+    glEnd();
+    // Center circle
+    glBegin(GL_LINE_LOOP);
+    for(int i = 0; i < 8; i++) {
+      float a = angle + i * (float)M_PI / 4.0f;
+      glVertex2f(cos(a) * inner * 0.6f + m.position.x(),
+                 sin(a) * inner * 0.6f + m.position.y());
+    }
+    glEnd();
+  }
+}
+
+void GLShip::draw_shockwaves() const {
+  for(auto &sw : ship->shockwaves) {
+    if(!sw.alive()) continue;
+    float alpha = sw.time_left / 700.0f;
+    if(alpha > 1.0f) alpha = 1.0f;
+    if(alpha < 0.0f) alpha = 0.0f;
+
+    // Bright expanding ring
+    glLineWidth(3.0f);
+    glColor4f(1.0f, 0.6f, 0.1f, alpha);
+    glBegin(GL_LINE_LOOP);
+    int segs = 64;
+    for(int i = 0; i < segs; i++) {
+      float a = i * 2.0f * (float)M_PI / segs;
+      glVertex2f(sw.position.x() + cos(a) * sw.radius,
+                 sw.position.y() + sin(a) * sw.radius);
+    }
+    glEnd();
+
+    // Second slightly-larger translucent ring for glow effect
+    glLineWidth(1.5f);
+    glColor4f(1.0f, 0.3f, 0.0f, alpha * 0.4f);
+    glBegin(GL_LINE_LOOP);
+    float r2 = sw.radius * 1.06f;
+    for(int i = 0; i < segs; i++) {
+      float a = i * 2.0f * (float)M_PI / segs;
+      glVertex2f(sw.position.x() + cos(a) * r2,
+                 sw.position.y() + sin(a) * r2);
+    }
+    glEnd();
+  }
 }
 
 void GLShip::draw_missiles() const {

@@ -6,6 +6,7 @@
 #include "weapon/base.h"
 #include "weapon/default.h"
 #include "weapon/mine.h"
+#include "weapon/giga_mine.h"
 #include "weapon/missile.h"
 #include "weapon/shield.h"
 #include <math.h>
@@ -242,6 +243,24 @@ void Ship::add_mine_ammo(int amount) {
     secondary = --secondary_weapons.end();
 }
 
+void Ship::add_giga_mine_ammo(int amount) {
+  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    if(dynamic_cast<Weapon::GigaMine*>(*it)) {
+      (*it)->add_ammo(amount);
+      if(!shield_held(secondary_weapons, secondary)) {
+        (*secondary)->shoot(false);
+        secondary = it;
+      }
+      return;
+    }
+  }
+  Weapon::GigaMine *w = new Weapon::GigaMine(this);
+  w->set_ammo(amount);
+  secondary_weapons.push_back(w);
+  if(!shield_held(secondary_weapons, secondary))
+    secondary = --secondary_weapons.end();
+}
+
 void Ship::add_missile_ammo(int amount) {
   // Find the Missile weapon in secondary_weapons, add ammo and switch to it.
   for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
@@ -376,8 +395,10 @@ void Ship::reset(bool was_killed) {
   reversing = false;
   shoot(false);
   mines.clear();
+  giga_mines.clear();
   bullets.clear();
   missiles.clear();
+  shockwaves.clear();
   debris.clear();
   rotation_direction = NONE;
   still_rotating_left = false;
@@ -539,6 +560,35 @@ void Ship::collide_grid(Grid &grid) {
     }
   }
 
+  for(size_t i = 0; i < giga_mines.size(); ) {
+    object = grid.collide(giga_mines[i], 50.0f);
+    if(object != NULL && object->alive) {
+      giga_detonate(giga_mines[i].position, giga_mines[i].velocity);
+      giga_mines[i] = std::move(giga_mines.back());
+      giga_mines.pop_back();
+    } else {
+      ++i;
+    }
+  }
+
+  // Process active shockwaves: kill everything in the expanding ring
+  for(auto &sw : shockwaves) {
+    if(!missile_asteroids) continue;
+    for(auto it = missile_asteroids->begin(); it != missile_asteroids->end(); ++it) {
+      Object *obj = *it;
+      if(!obj->alive || obj->invincible) continue;
+      float dist = (obj->position - sw.position).magnitude();
+      // Kill objects swept by the ring (between prev_radius and current_radius)
+      if(dist <= sw.radius && dist > sw.prev_radius - obj->radius) {
+        if(obj->kill()) {
+          score += obj->get_value() * multiplier();
+          kills_this_life += 1;
+          kills += 1;
+        }
+      }
+    }
+  }
+
   for(size_t i = 0; i < bullets.size(); ) {
     object = grid.collide(bullets[i]);
     if(object != NULL) {
@@ -598,6 +648,25 @@ void Ship::collide(Ship *other) {
     }
   }
 
+  for(size_t i = 0; i < giga_mines.size(); ) {
+    if(is_alive() && other->is_alive() && giga_mines[i].collide(*other, 50.0)) {
+      giga_detonate(giga_mines[i].position, giga_mines[i].velocity);
+      giga_mines[i] = std::move(giga_mines.back());
+      giga_mines.pop_back();
+    } else {
+      ++i;
+    }
+  }
+
+  // Shockwave kills other ships
+  for(auto &sw : shockwaves) {
+    if(!other->is_alive()) break;
+    float dist = (other->position - sw.position).magnitude();
+    if(dist <= sw.radius && dist + other->radius > sw.prev_radius) {
+      other->kill_stop();
+    }
+  }
+
   for(size_t i = 0; i < missiles.size(); ) {
     if(is_alive() && other->is_alive() && missiles[i].collide(*other, 5.0)) {
       other->kill();
@@ -626,6 +695,26 @@ void Ship::detonate(Point const position, Point const velocity, int particle_cou
     dir.rotate(rand()%360*M_PI/180);
     bullets.push_back(Particle(position + dir, velocity + dir*0.0001*(rand()%150), rand()%1500));
   }
+}
+
+void Ship::giga_detonate(Point const position, Point const velocity) {
+  // Massive debris burst: 150-200 particles
+  int count = 150 + rand() % 51;
+  Point dir(0, Asteroid::max_radius * 1.0f);
+  for(int i = count; i > 0; i--) {
+    dir.rotate(rand() % 360 * M_PI / 180.0f);
+    float speed_scale = 0.00008f * (float)(rand() % 200 + 50);
+    bullets.push_back(Particle(
+      position + dir * ((float)(rand() % 100) / 100.0f),
+      velocity + dir * speed_scale,
+      500 + rand() % 2000
+    ));
+  }
+  // Launch expanding shockwave ring: radius grows to max_radius over ~700ms
+  float max_r = (float)Asteroid::max_radius;
+  float duration = 700.0f;
+  float speed = max_r / duration;
+  shockwaves.push_back(Shockwave(position, max_r, speed, duration));
 }
 
 void Ship::shoot(bool on) {
@@ -817,6 +906,26 @@ void Ship::step(float delta, const Grid &grid) {
     if(!mines[i].is_alive()) {
       mines[i] = std::move(mines.back());
       mines.pop_back();
+    } else {
+      ++i;
+    }
+  }
+
+  for(size_t i = 0; i < giga_mines.size(); ) {
+    giga_mines[i].step(delta);
+    if(!giga_mines[i].is_alive()) {
+      giga_mines[i] = std::move(giga_mines.back());
+      giga_mines.pop_back();
+    } else {
+      ++i;
+    }
+  }
+
+  for(size_t i = 0; i < shockwaves.size(); ) {
+    shockwaves[i].step(delta);
+    if(!shockwaves[i].alive()) {
+      shockwaves[i] = std::move(shockwaves.back());
+      shockwaves.pop_back();
     } else {
       ++i;
     }
