@@ -353,6 +353,7 @@ void Ship::init(bool no_friction) {
   primary = primary_weapons.begin();
 
   secondary = secondary_weapons.end();
+  add_giga_mine_ammo(10);
 
   facing = Point(0, 1);
   reset();
