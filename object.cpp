@@ -44,6 +44,10 @@ bool Object::collide(const Object &other, float proximity, const Point offset) c
   return ((other.position + offset) - position).magnitude_squared() < ((radius+other.radius+proximity)*(radius+other.radius+proximity));
 }
 
+bool Object::contains(Point /*p*/) const {
+  return true; // default: circle hit is sufficient
+}
+
 bool Object::kill() {
   if(!invincible && alive) {
     alive = false;

@@ -15,6 +15,7 @@ public:
 
   bool add_children(list<Asteroid*> *objects);
   virtual bool kill();
+  virtual bool contains(Point p) const override;
 
   friend class AsteroidDrawer;
 

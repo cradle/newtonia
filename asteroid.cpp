@@ -2,6 +2,7 @@
 #include "wrapped_point.h"
 
 #include <list>
+#include <cmath>
 
 using namespace std;
 
@@ -86,6 +87,33 @@ Asteroid::Asteroid(Asteroid const *mother) {
     killed = false;
     num_killable++;
   }
+}
+
+bool Asteroid::contains(Point p) const {
+  float lx = p.x() - position.x();
+  float ly = p.y() - position.y();
+
+  const int segs = 9;
+  const float step = 2.0f * M_PI / segs;
+
+  float vx[segs], vy[segs];
+  for (int i = 0; i < segs; i++) {
+    float angle = rotation + i * step;
+    vx[i] = radius * vertex_offsets[i] * cosf(angle);
+    vy[i] = radius * vertex_offsets[i] * sinf(angle);
+  }
+
+  // Test each triangle (origin, vi, vi+1) — same fan used for rendering
+  for (int i = 0; i < segs; i++) {
+    int j = (i + 1) % segs;
+    float d1 = vx[i] * ly - vy[i] * lx;
+    float d2 = (vx[j]-vx[i]) * (ly-vy[i]) - (vy[j]-vy[i]) * (lx-vx[i]);
+    float d3 = -vx[j] * (ly-vy[j]) + vy[j] * (lx-vx[j]);
+    bool has_neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+    bool has_pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+    if (!(has_neg && has_pos)) return true;
+  }
+  return false;
 }
 
 bool Asteroid::kill() {
