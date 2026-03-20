@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: 'Steam branch to deploy to (e.g. beta, default)'
-        required: true
-        default: 'default'
+        description: 'Steam branch to deploy to (leave empty for default public branch, or enter a beta branch name)'
+        required: false
+        default: ''
 
 jobs:
   build-windows:
@@ -251,4 +251,4 @@ jobs:
           rootPath: steam_output
           depot1Path: windows
           depot2Path: macos
-          releaseBranch: ${{ github.event.inputs.branch || 'default' }}
+          releaseBranch: ${{ github.event.inputs.branch || '' }}
