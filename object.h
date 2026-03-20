@@ -14,7 +14,7 @@ public:
   virtual void step(int delta);
   virtual bool collide(const Object &other, float proximity = 0.0f) const;
   virtual bool collide(const Object &other, float proximity, const Point offset) const;
-  virtual bool contains(Point p) const;
+  virtual bool contains(Point p, float r = 0.0f) const;
   virtual float effective_radius() const { return radius; }
   virtual bool is_removable() const;
   void commonInit();

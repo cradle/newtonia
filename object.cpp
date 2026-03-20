@@ -45,7 +45,7 @@ bool Object::collide(const Object &other, float proximity, const Point offset) c
   return ((other.position + offset) - position).magnitude_squared() < r * r;
 }
 
-bool Object::contains(Point /*p*/) const {
+bool Object::contains(Point /*p*/, float /*r*/) const {
   return true; // default: circle hit is sufficient
 }
 

@@ -64,7 +64,7 @@ Object * Grid::collide(const Object &object, float proximity, bool skip_invincib
         if(skip_invincible && (*o)->invincible) continue;
         if(object.collide(**o, proximity, offset)) {
           // Narrow phase: for exact tests (proximity==0) refine with polygon
-          if(proximity == 0.0f && !(*o)->contains(object.position - offset)) continue;
+          if(proximity == 0.0f && !(*o)->contains(object.position - offset, object.radius)) continue;
           collided = *o;
         }
       }

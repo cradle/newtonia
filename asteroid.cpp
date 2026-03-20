@@ -95,7 +95,7 @@ Asteroid::Asteroid(Asteroid const *mother) {
   }
 }
 
-bool Asteroid::contains(Point p) const {
+bool Asteroid::contains(Point p, float r) const {
   float lx = p.x() - position.x();
   float ly = p.y() - position.y();
 
@@ -108,11 +108,14 @@ bool Asteroid::contains(Point p) const {
   float rot = rotation * (float)M_PI / 180.0f;
   const float step = 2.0f * (float)M_PI / segs;
 
+  // Inflate each vertex outward by r (Minkowski expansion for circle vs polygon).
+  // For bullets r≈1 this is negligible; for ships r=15 this accounts for the
+  // ship's body so collision triggers when the ship circle touches the polygon.
   float vx[9], vy[9];
   for (int i = 0; i < segs; i++) {
     float angle = rot + i * step;
-    vx[i] = radius * vertex_offsets[i] * cosf(angle);
-    vy[i] = radius * vertex_offsets[i] * sinf(angle);
+    vx[i] = (radius * vertex_offsets[i] + r) * cosf(angle);
+    vy[i] = (radius * vertex_offsets[i] + r) * sinf(angle);
   }
 
   // Test each triangle (origin, vi, vi+1) — same fan used for rendering
