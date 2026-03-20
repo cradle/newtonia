@@ -218,7 +218,7 @@ jobs:
         run: |
           mkdir -p steam_output/macos
           cp -r Newtonia.app steam_output/macos/
-          cp -r audio steam_output/macos/
+          cp -r audio steam_output/macos/Newtonia.app/Contents/Resources/
 
       - uses: actions/upload-artifact@v4
         with:
