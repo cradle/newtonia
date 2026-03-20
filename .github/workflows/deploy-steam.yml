@@ -265,8 +265,11 @@ jobs:
           curl -sqL "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" \
             | tar zxf - -C /tmp/steamcmd
 
-          mkdir -p "$HOME/Steam/config"
-          echo "$STEAM_CONFIG_VDF" | base64 -d > "$HOME/Steam/config/config.vdf"
+          # Let the bootstrap update itself so all commands (including app_set_build_live) are available
+          /tmp/steamcmd/steamcmd.sh +quit
+
+          mkdir -p "$HOME/.steam/steam/config"
+          echo "$STEAM_CONFIG_VDF" | base64 -d > "$HOME/.steam/steam/config/config.vdf"
 
           /tmp/steamcmd/steamcmd.sh \
             +login "$STEAM_USERNAME" \
