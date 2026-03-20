@@ -147,13 +147,13 @@ GLGame::~GLGame() {
 void GLGame::add_asteroids() {
   while(Asteroid::num_killable < (default_num_asteroids + generation * extra_num_asteroids)) {
     objects->push_back(new Asteroid(false));
-    objects->push_front(new Asteroid(true));
+    if(generation > 0) objects->push_front(new Asteroid(true));
   }
   int num_invisible = (generation >= 5) ? (generation - 5) / 5 + 1 : 0;
   for(int i = 0; i < num_invisible; i++) {
     objects->push_back(new Asteroid(false, true));
   }
-  int num_reflective = (generation >= 1) ? (generation - 1) / 2 + 1 : 0;
+  int num_reflective = (generation >= 2) ? (generation - 2) / 2 + 1 : 0;
   for(int i = 0; i < num_reflective; i++) {
     objects->push_front(new Asteroid(false, false, true));
   }
