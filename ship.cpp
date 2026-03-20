@@ -69,6 +69,12 @@ Ship::Ship(const Grid &grid, bool has_friction) :
       std::cout << "Unable to load explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
+  if(giga_mine_explode_sound == NULL) {
+    giga_mine_explode_sound = Mix_LoadWAV("audio/giga_mine_explode.wav");
+    if(giga_mine_explode_sound == NULL) {
+      std::cout << "Unable to load giga_mine_explode.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
 }
 
 void Ship::disable_behaviours() {
@@ -118,6 +124,9 @@ Ship::~Ship() {
   }
   if(explode_sound != NULL) {
     Mix_FreeChunk(explode_sound);
+  }
+  if(giga_mine_explode_sound != NULL) {
+    Mix_FreeChunk(giga_mine_explode_sound);
   }
 }
 
@@ -699,6 +708,9 @@ void Ship::detonate(Point const position, Point const velocity, int particle_cou
 }
 
 void Ship::giga_detonate(Point const position, Point const velocity) {
+  if(giga_mine_explode_sound != NULL) {
+    Mix_PlayChannel(-1, giga_mine_explode_sound, 0);
+  }
   // Launch expanding shockwave ring: radius grows to max_radius over ~700ms
   float max_r = (float)Asteroid::max_radius;
   float duration = 700.0f;
