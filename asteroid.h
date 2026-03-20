@@ -16,6 +16,7 @@ public:
   bool add_children(list<Asteroid*> *objects);
   virtual bool kill() override;
   virtual bool contains(Point p) const override;
+  virtual float effective_radius() const override { return radius * max_vertex_offset; }
 
   friend class AsteroidDrawer;
 
@@ -37,5 +38,6 @@ private:
 
   bool children_added, killed;
   float vertex_offsets[9]; // per-vertex radius multipliers for irregular shape
+  float max_vertex_offset;  // bounding circle scale: max of vertex_offsets
 };
 #endif

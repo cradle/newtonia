@@ -39,16 +39,9 @@ Asteroid::Asteroid(bool invincible, bool invisible) : CompositeObject(), killed(
   value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
   for (int i = 0; i < 9; i++)
     vertex_offsets[i] = 0.7f + (rand() / (float)RAND_MAX) * 0.6f;
-  // Scale radius to the true bounding circle (outermost vertex) and normalize
-  // offsets accordingly. The product radius*vertex_offsets[i] is unchanged so
-  // rendering and contains() produce the same vertices, but the broad-phase
-  // circle check now encompasses all convex protrusions.
-  float max_off = vertex_offsets[0];
+  max_vertex_offset = vertex_offsets[0];
   for (int i = 1; i < 9; i++)
-    if (vertex_offsets[i] > max_off) max_off = vertex_offsets[i];
-  radius *= max_off;
-  for (int i = 0; i < 9; i++)
-    vertex_offsets[i] /= max_off;
+    if (vertex_offsets[i] > max_vertex_offset) max_vertex_offset = vertex_offsets[i];
   children_added = false;
   this->invincible = invincible;
   this->invisible = invisible;
@@ -91,12 +84,9 @@ Asteroid::Asteroid(Asteroid const *mother) {
   value += mother->value;
   for (int i = 0; i < 9; i++)
     vertex_offsets[i] = 0.7f + (rand() / (float)RAND_MAX) * 0.6f;
-  float max_off = vertex_offsets[0];
+  max_vertex_offset = vertex_offsets[0];
   for (int i = 1; i < 9; i++)
-    if (vertex_offsets[i] > max_off) max_off = vertex_offsets[i];
-  radius *= max_off;
-  for (int i = 0; i < 9; i++)
-    vertex_offsets[i] /= max_off;
+    if (vertex_offsets[i] > max_vertex_offset) max_vertex_offset = vertex_offsets[i];
   children_added = false;
   invisible = false;
   if(!invincible) {
