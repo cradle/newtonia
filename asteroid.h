@@ -35,5 +35,6 @@ private:
   const static int max_rotation;
 
   bool children_added, killed;
+  float vertex_offsets[9]; // per-vertex radius multipliers for irregular shape
 };
 #endif

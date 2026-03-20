@@ -36,6 +36,8 @@ Asteroid::Asteroid(bool invincible, bool invisible) : CompositeObject(), killed(
   }
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
   value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
+  for (int i = 0; i < 9; i++)
+    vertex_offsets[i] = 0.7f + (rand() / (float)RAND_MAX) * 0.6f;
   children_added = false;
   this->invincible = invincible;
   this->invisible = invisible;
@@ -76,6 +78,8 @@ Asteroid::Asteroid(Asteroid const *mother) {
   position = mother->position + velocity.normalized() * radius;
   value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
   value += mother->value;
+  for (int i = 0; i < 9; i++)
+    vertex_offsets[i] = 0.7f + (rand() / (float)RAND_MAX) * 0.6f;
   children_added = false;
   invisible = false;
   if(!invincible) {
