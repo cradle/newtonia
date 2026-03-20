@@ -572,7 +572,7 @@ void Ship::collide_grid(Grid &grid) {
   for(size_t i = 0; i < giga_mines.size(); ) {
     object = grid.collide(giga_mines[i], 50.0f);
     if(object != NULL && object->alive) {
-      giga_detonate(giga_mines[i].position, giga_mines[i].velocity);
+      giga_detonate(giga_mines[i].position);
       giga_mines[i] = std::move(giga_mines.back());
       giga_mines.pop_back();
     } else {
@@ -659,7 +659,7 @@ void Ship::collide(Ship *other) {
 
   for(size_t i = 0; i < giga_mines.size(); ) {
     if(is_alive() && other->is_alive() && giga_mines[i].collide(*other, 50.0)) {
-      giga_detonate(giga_mines[i].position, giga_mines[i].velocity);
+      giga_detonate(giga_mines[i].position);
       giga_mines[i] = std::move(giga_mines.back());
       giga_mines.pop_back();
     } else {
@@ -706,7 +706,7 @@ void Ship::detonate(Point const position, Point const velocity, int particle_cou
   }
 }
 
-void Ship::giga_detonate(Point const position, Point const /*velocity*/) {
+void Ship::giga_detonate(Point const position) {
   if(giga_mine_explode_sound != NULL) {
     Mix_PlayChannel(-1, giga_mine_explode_sound, 0);
   }

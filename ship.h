@@ -136,7 +136,7 @@ class Ship : public CompositeObject {
     virtual void reset(bool was_killed = true);
     void detonate();
     void detonate(Point const position, Point const velocity, int particle_count = 10);
-    void giga_detonate(Point const position, Point const velocity);
+    void giga_detonate(Point const position);
 
     Point world_size;
 
