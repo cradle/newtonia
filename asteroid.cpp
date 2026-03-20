@@ -93,12 +93,18 @@ bool Asteroid::contains(Point p) const {
   float lx = p.x() - position.x();
   float ly = p.y() - position.y();
 
-  const int segs = 9;
-  const float step = 2.0f * M_PI / segs;
+  // Match segment count to renderer (mirrors AsteroidDrawer::seg_count logic)
+  int segs = 7;
+  if      (radius < 15)  segs = 5;
+  else if (radius < 30)  segs = 6;
+  else if (radius > 200) segs = 9;
 
-  float vx[segs], vy[segs];
+  float rot = rotation * (float)M_PI / 180.0f;
+  const float step = 2.0f * (float)M_PI / segs;
+
+  float vx[9], vy[9];
   for (int i = 0; i < segs; i++) {
-    float angle = rotation + i * step;
+    float angle = rot + i * step;
     vx[i] = radius * vertex_offsets[i] * cosf(angle);
     vy[i] = radius * vertex_offsets[i] * sinf(angle);
   }
