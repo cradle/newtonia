@@ -153,7 +153,7 @@
             const r = canvas.getBoundingClientRect();
             if (r.width === 0)
                 return; // layout not ready yet
-            const rad = Math.min(r.width, r.height) * 0.13;
+            const rad = Math.min(r.width, r.height) * 0.26;
             const baseSize = rad * 2, nubSize = rad * 0.62;
             const px = r.left + r.width * 0.18;
             const py = r.top + r.height * 0.75;
@@ -171,7 +171,7 @@
                     joyFinger = t.identifier;
                     const r = canvas.getBoundingClientRect();
                     // clientX/Y are viewport-relative; touch-controls is position:fixed so no offset needed.
-                    showJoystick(t.clientX, t.clientY, Math.min(r.width, r.height) * 0.13);
+                    showJoystick(t.clientX, t.clientY, Math.min(r.width, r.height) * 0.26);
                     break;
                 }
             }
