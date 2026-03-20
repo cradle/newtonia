@@ -37,9 +37,10 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
     int sc = seg_count(object->radius);
     float segment_size = 360.0f / sc, d;
     glBegin(GL_POLYGON);
-    for (float i = 0.0f; i < 360.0f; i += segment_size) {
-      d = i * (float)M_PI / 180.0f;
-      glVertex2f(cosf(d), sinf(d));
+    for (int vi = 0; vi < sc; vi++) {
+      d = vi * segment_size * (float)M_PI / 180.0f;
+      float off = object->vertex_offsets[vi];
+      glVertex2f(off * cosf(d), off * sinf(d));
     }
     glEnd();
     if(object->invincible) {
@@ -48,9 +49,10 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
       glColor3f(1.0f, 1.0f, 1.0f);
     }
     glBegin(GL_LINE_LOOP);
-    for (float i = 0.0f; i < 360.0f; i += segment_size) {
-      d = i * (float)M_PI / 180.0f;
-      glVertex2f(cosf(d), sinf(d));
+    for (int vi = 0; vi < sc; vi++) {
+      d = vi * segment_size * (float)M_PI / 180.0f;
+      float off = object->vertex_offsets[vi];
+      glVertex2f(off * cosf(d), off * sinf(d));
     }
     glEnd();
     glPopMatrix();
@@ -72,14 +74,16 @@ void AsteroidDrawer::draw_invisible_mask(Asteroid const *object, float x, float 
   glBegin(GL_POLYGON);
   for (int i = 0; i < segs; i++) {
     float angle = rot + i * step;
-    glVertex2f(x + object->radius * cosf(angle), y + object->radius * sinf(angle));
+    float off = object->vertex_offsets[i];
+    glVertex2f(x + object->radius * off * cosf(angle), y + object->radius * off * sinf(angle));
   }
   glEnd();
   glLineWidth(2.5f);
   glBegin(GL_LINE_LOOP);
   for (int i = 0; i < segs; i++) {
     float angle = rot + i * step;
-    glVertex2f(x + object->radius * cosf(angle), y + object->radius * sinf(angle));
+    float off = object->vertex_offsets[i];
+    glVertex2f(x + object->radius * off * cosf(angle), y + object->radius * off * sinf(angle));
   }
   glEnd();
 }
@@ -116,8 +120,9 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     float step = 2.0f * (float)M_PI / v.segs;
     for (int i = 0; i < v.segs; i++) {
       float angle = rot + i * step;
-      v.dvx[i] = r * cosf(angle);
-      v.dvy[i] = r * sinf(angle);
+      float off = a->vertex_offsets[i];
+      v.dvx[i] = r * off * cosf(angle);
+      v.dvy[i] = r * off * sinf(angle);
     }
     v.dx = 0; v.dy = 0;
     if (wrap_x > 0) {
@@ -142,10 +147,11 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
       for (int wj = 0; wj < (v.dy != 0 ? 2 : 1); wj++) {
         float wcx = v.cx + wi * v.dx;
         float wcy = v.cy + wj * v.dy;
-        for (int i = 1; i < v.segs - 1; i++) {
-          glVertex2f(wcx + v.dvx[0],   wcy + v.dvy[0]);
+        for (int i = 0; i < v.segs; i++) {
+          int j = (i + 1) % v.segs;
+          glVertex2f(wcx,               wcy);
           glVertex2f(wcx + v.dvx[i],   wcy + v.dvy[i]);
-          glVertex2f(wcx + v.dvx[i+1], wcy + v.dvy[i+1]);
+          glVertex2f(wcx + v.dvx[j],   wcy + v.dvy[j]);
         }
       }
     }

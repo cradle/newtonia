@@ -41,7 +41,12 @@ bool Object::collide(const Object &other, float proximity) const {
 }
 
 bool Object::collide(const Object &other, float proximity, const Point offset) const {
-  return ((other.position + offset) - position).magnitude_squared() < ((radius+other.radius+proximity)*(radius+other.radius+proximity));
+  float r = radius + other.effective_radius() + proximity;
+  return ((other.position + offset) - position).magnitude_squared() < r * r;
+}
+
+bool Object::contains(Point /*p*/, float /*r*/) const {
+  return true; // default: circle hit is sufficient
 }
 
 bool Object::kill() {

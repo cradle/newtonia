@@ -2,6 +2,7 @@
 #include "wrapped_point.h"
 
 #include <list>
+#include <cmath>
 
 using namespace std;
 
@@ -36,6 +37,11 @@ Asteroid::Asteroid(bool invincible, bool invisible) : CompositeObject(), killed(
   }
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
   value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
+  for (int i = 0; i < 9; i++)
+    vertex_offsets[i] = 0.7f + (rand() / (float)RAND_MAX) * 0.6f;
+  max_vertex_offset = vertex_offsets[0];
+  for (int i = 1; i < 9; i++)
+    if (vertex_offsets[i] > max_vertex_offset) max_vertex_offset = vertex_offsets[i];
   children_added = false;
   this->invincible = invincible;
   this->invisible = invisible;
@@ -76,12 +82,53 @@ Asteroid::Asteroid(Asteroid const *mother) {
   position = mother->position + velocity.normalized() * radius;
   value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
   value += mother->value;
+  for (int i = 0; i < 9; i++)
+    vertex_offsets[i] = 0.7f + (rand() / (float)RAND_MAX) * 0.6f;
+  max_vertex_offset = vertex_offsets[0];
+  for (int i = 1; i < 9; i++)
+    if (vertex_offsets[i] > max_vertex_offset) max_vertex_offset = vertex_offsets[i];
   children_added = false;
   invisible = false;
   if(!invincible) {
     killed = false;
     num_killable++;
   }
+}
+
+bool Asteroid::contains(Point p, float r) const {
+  float lx = p.x() - position.x();
+  float ly = p.y() - position.y();
+
+  // Match segment count to renderer (mirrors AsteroidDrawer::seg_count logic)
+  int segs = 7;
+  if      (radius < 15)  segs = 5;
+  else if (radius < 30)  segs = 6;
+  else if (radius > 200) segs = 9;
+
+  float rot = rotation * (float)M_PI / 180.0f;
+  const float step = 2.0f * (float)M_PI / segs;
+
+  // Inflate each vertex outward by r (Minkowski expansion for circle vs polygon).
+  // For bullets r≈1 this is negligible; for ships r=15 this accounts for the
+  // ship's body so collision triggers when the ship circle touches the polygon.
+  float vx[9], vy[9];
+  for (int i = 0; i < segs; i++) {
+    float angle = rot + i * step;
+    vx[i] = (radius * vertex_offsets[i] + r) * cosf(angle);
+    vy[i] = (radius * vertex_offsets[i] + r) * sinf(angle);
+  }
+
+  // Test each triangle (origin, vi, vi+1) — same fan used for rendering
+  for (int i = 0; i < segs; i++) {
+    int j = (i + 1) % segs;
+    float d1 = vx[i] * ly - vy[i] * lx;
+    float d2 = (vx[j]-vx[i]) * (ly-vy[i]) - (vy[j]-vy[i]) * (lx-vx[i]);
+    float d3 = -vx[j] * (ly-vy[j]) + vy[j] * (lx-vx[j]);
+    bool has_neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+    bool has_pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+    if (!(has_neg && has_pos)) return true;
+  }
+  return false;
 }
 
 bool Asteroid::kill() {
