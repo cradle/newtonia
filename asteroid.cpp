@@ -18,8 +18,10 @@ Mix_Chunk * Asteroid::thud_sound = NULL;
 
 const int Asteroid::max_radius = Asteroid::radius_variation + Asteroid::minimum_radius;
 
-Asteroid::Asteroid(bool invincible, bool invisible) : CompositeObject(), killed(false) {
+Asteroid::Asteroid(bool invincible, bool invisible, bool reflective) : CompositeObject(), killed(false) {
   position = WrappedPoint();
+  this->reflective = reflective;
+  if(reflective) invincible = true;
   if(invincible) {
     radius = rand()%radius_variation + minimum_radius;
   } else if(invisible) {
@@ -89,6 +91,7 @@ Asteroid::Asteroid(Asteroid const *mother) {
     if (vertex_offsets[i] > max_vertex_offset) max_vertex_offset = vertex_offsets[i];
   children_added = false;
   invisible = false;
+  reflective = false;
   if(!invincible) {
     killed = false;
     num_killable++;
