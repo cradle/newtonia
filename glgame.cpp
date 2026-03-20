@@ -153,7 +153,7 @@ void GLGame::add_asteroids() {
   for(int i = 0; i < num_invisible; i++) {
     objects->push_back(new Asteroid(false, true));
   }
-  int num_reflective = (generation >= 2) ? (generation - 2) / 2 + 1 : 0;
+  int num_reflective = (generation >= 1) ? (generation - 1) / 2 + 1 : 0;
   for(int i = 0; i < num_reflective; i++) {
     objects->push_front(new Asteroid(false, false, true));
   }
