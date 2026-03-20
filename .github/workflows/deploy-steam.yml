@@ -242,6 +242,7 @@ jobs:
           path: steam_output/macos/
 
       - name: Deploy to Steam
+        id: steam-deploy
         uses: game-ci/steam-deploy@v3
         with:
           username: ${{ secrets.STEAM_USERNAME }}
@@ -251,4 +252,23 @@ jobs:
           rootPath: steam_output
           depot1Path: windows
           depot2Path: macos
-          releaseBranch: ${{ github.event.inputs.branch || 'default' }}
+
+      - name: Set build live on Steam branch
+        env:
+          STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+          STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
+          STEAM_APP_ID: ${{ secrets.STEAM_APP_ID }}
+          RELEASE_BRANCH: ${{ github.event.inputs.branch || 'default' }}
+          BUILD_ID: ${{ steps.steam-deploy.outputs.buildId }}
+        run: |
+          mkdir -p /tmp/steamcmd
+          curl -sqL "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" \
+            | tar zxf - -C /tmp/steamcmd
+
+          mkdir -p "$HOME/Steam/config"
+          echo "$STEAM_CONFIG_VDF" | base64 -d > "$HOME/Steam/config/config.vdf"
+
+          /tmp/steamcmd/steamcmd.sh \
+            +login "$STEAM_USERNAME" \
+            +app_set_build_live "$STEAM_APP_ID" "$BUILD_ID" "$RELEASE_BRANCH" \
+            +quit
