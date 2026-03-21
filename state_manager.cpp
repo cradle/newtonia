@@ -34,15 +34,29 @@ void StateManager::controller(SDL_Event event) {
   state->controller(event);
 }
 
-void StateManager::set_controller(SDL_GameController *ctrl) {
-  active_controller = ctrl;
+void StateManager::controller_added(SDL_GameController *ctrl) {
+  SDL_JoystickID id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(ctrl));
+  for(int i = 0; i < 2; i++) {
+    if(active_controllers[i] == NULL) {
+      active_controllers[i] = ctrl;
+      active_controller_ids[i] = id;
+      break;
+    }
+  }
   GLGame *game = dynamic_cast<GLGame*>(state);
-  if(game) game->set_controller(ctrl);
+  if(game) game->controller_added(ctrl);
 }
 
-void StateManager::controller_disconnected() {
+void StateManager::controller_removed(SDL_JoystickID id) {
+  for(int i = 0; i < 2; i++) {
+    if(active_controller_ids[i] == id) {
+      active_controllers[i] = NULL;
+      active_controller_ids[i] = -1;
+      break;
+    }
+  }
   GLGame *game = dynamic_cast<GLGame*>(state);
-  if(game) game->controller_disconnected();
+  if(game) game->controller_removed(id);
 }
 
 void StateManager::tick(int delta) {
@@ -52,7 +66,11 @@ void StateManager::tick(int delta) {
     delete state;
     state = next_state;
     GLGame *game = dynamic_cast<GLGame*>(state);
-    if(game && active_controller) game->set_controller(active_controller);
+    if(game) {
+      for(int i = 0; i < 2; i++) {
+        if(active_controllers[i]) game->controller_added(active_controllers[i]);
+      }
+    }
   }
   state->tick(delta);
 }

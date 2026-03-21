@@ -95,7 +95,7 @@ void Menu::controller(SDL_Event event) {
 #ifdef __EMSCRIPTEN__
       EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
-      request_state_change(new GLGame(SDL_GameControllerOpen(event.cbutton.which)));
+      request_state_change(new GLGame(SDL_GameControllerFromInstanceID(event.cbutton.which)));
     }
   }
 }

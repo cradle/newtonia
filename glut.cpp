@@ -25,7 +25,8 @@ StateManager *game;
 
 bool ALLOW_BLUR = false;
 double blur_factor = 0.15;
-SDL_GameController *controller = NULL;
+SDL_GameController *controllers[2] = {NULL, NULL};
+SDL_JoystickID controller_ids[2] = {-1, -1};
 bool ENABLE_AUDIO = true;
 
 int last_render_time;
@@ -117,32 +118,27 @@ void check_controller() {
   SDL_Event e;
   while(SDL_PollEvent(&e)) {
     if(e.type == SDL_CONTROLLERDEVICEADDED) {
-      if(controller == NULL) {
-        controller = SDL_GameControllerOpen(e.cdevice.which);
-        if(controller) {
-          std::cout << "Controller connected: " << SDL_GameControllerName(controller) << std::endl;
-          game->set_controller(controller);
+      for(int i = 0; i < 2; i++) {
+        if(controllers[i] == NULL) {
+          controllers[i] = SDL_GameControllerOpen(e.cdevice.which);
+          if(controllers[i]) {
+            controller_ids[i] = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controllers[i]));
+            std::cout << "Controller " << i+1 << " connected: " << SDL_GameControllerName(controllers[i]) << std::endl;
+            game->controller_added(controllers[i]);
+          }
+          break;
         }
       }
     } else if(e.type == SDL_CONTROLLERDEVICEREMOVED) {
-      if(controller && !SDL_GameControllerGetAttached(controller)) {
-        SDL_GameControllerClose(controller);
-        controller = NULL;
-        std::cout << "Controller disconnected" << std::endl;
-        game->controller_disconnected();
-        // Try to open another available controller
-        for(int i = 0; i < SDL_NumJoysticks(); i++) {
-          if(SDL_IsGameController(i)) {
-            controller = SDL_GameControllerOpen(i);
-            if(controller) {
-              std::cout << "Switched to controller: " << SDL_GameControllerName(controller) << std::endl;
-              game->set_controller(controller);
-              break;
-            }
-          }
-        }
-        if(!controller) {
-          game->set_controller(NULL);
+      SDL_JoystickID removed_id = e.cdevice.which;
+      for(int i = 0; i < 2; i++) {
+        if(controller_ids[i] == removed_id) {
+          SDL_GameControllerClose(controllers[i]);
+          controllers[i] = NULL;
+          controller_ids[i] = -1;
+          std::cout << "Controller " << i+1 << " disconnected" << std::endl;
+          game->controller_removed(removed_id);
+          break;
         }
       }
     }
@@ -182,26 +178,21 @@ void init_controllers_and_audio() {
       std::cout << Mix_GetError() << std::endl;
     }
     if(ENABLE_AUDIO) Mix_AllocateChannels(32);
-    //TODO: SDL_JOYDEVICEADDED or SDL_JOYDEVICEREMOVED
-    //SDL_GameControllerEventState(int state);
     SDL_JoystickEventState(SDL_ENABLE);
-    if(SDL_NumJoysticks() == 0) {
-      std::cout << "No joysticks" << std::endl;
-    } else {
-      for (int i = 0; i < SDL_NumJoysticks(); ++i) {
-        if (SDL_IsGameController(i)) {
-          controller = SDL_GameControllerOpen(i);
-          if (controller) {
-            std::cout << "Controller: " << SDL_GameControllerName(controller) << std::endl;
-            break;
-          } else {
-            std::cout <<  "Could not open gamecontroller " << i << ":" << SDL_GetError() << std::endl;
-          }
+    int opened = 0;
+    for (int i = 0; i < SDL_NumJoysticks() && opened < 2; ++i) {
+      if (SDL_IsGameController(i)) {
+        controllers[opened] = SDL_GameControllerOpen(i);
+        if (controllers[opened]) {
+          controller_ids[opened] = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controllers[opened]));
+          std::cout << "Controller " << opened+1 << ": " << SDL_GameControllerName(controllers[opened]) << std::endl;
+          opened++;
         } else {
-          std::cout << "Not controller" << std::endl;
+          std::cout << "Could not open gamecontroller " << i << ": " << SDL_GetError() << std::endl;
         }
       }
     }
+    if(opened == 0) std::cout << "No controllers found" << std::endl;
   } else {
     std::cout << "SDL Failed to initialize" << std::endl;
     std::cout << SDL_GetError() << std::endl;
@@ -214,11 +205,15 @@ int main(int argc, char* argv[]) {
   init(argc, argv, 800, 600);
   init_controllers_and_audio();
   game = new StateManager();
-  if(controller) game->set_controller(controller);
+  for(int i = 0; i < 2; i++) {
+    if(controllers[i]) game->controller_added(controllers[i]);
+  }
   resize(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT));
   glutMainLoop();
-  if (SDL_GameControllerGetAttached(controller)) {
-    SDL_GameControllerClose(controller);
+  for(int i = 0; i < 2; i++) {
+    if(controllers[i] && SDL_GameControllerGetAttached(controllers[i])) {
+      SDL_GameControllerClose(controllers[i]);
+    }
   }
   delete game;
   return EXIT_SUCCESS;
