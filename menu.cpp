@@ -71,7 +71,7 @@ void Menu::draw() {
     } else if(SDL_NumJoysticks() == 0) {
       Typer::draw_centered(0, -50, "press enter", 18);
     } else {
-      Typer::draw_centered(0, -50, "press start", 18);
+      Typer::draw_centered(0, -50, "press button to start", 18);
     }
   }
   Typer::draw_centered(0, -420, "© 2008-2026 METONYMOUS", 13, currentTime);
@@ -95,7 +95,7 @@ void Menu::controller(SDL_Event event) {
 #ifdef __EMSCRIPTEN__
       EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
-      request_state_change(new GLGame(SDL_GameControllerOpen(event.cbutton.which)));
+      request_state_change(new GLGame(SDL_GameControllerFromInstanceID(event.cbutton.which)));
     }
   }
 }

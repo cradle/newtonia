@@ -40,6 +40,8 @@ public:
 
   void focus_lost();
   void focus_gained();
+  void controller_added(SDL_GameController *ctrl);
+  void controller_removed(SDL_JoystickID id);
 
   list<Asteroid*> *objects;      // alive asteroids (in collision grid)
   list<Asteroid*> *dead_objects; // killed asteroids with lingering debris
@@ -49,8 +51,10 @@ public:
   int num_x_viewports() const;
   int num_y_viewports() const;
   bool is_visible_to_any_player(const Ship &ship) const;
+  bool has_free_controller() const;
 private:
   void add_asteroids();
+  void add_player2(SDL_GameController *ctrl);
   void toggle_pause();
   void draw_map() const;
   void draw_objects(float direction = 0.0f, bool minimap = false) const;

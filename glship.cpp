@@ -152,6 +152,19 @@ void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, i
 
 void GLShip::set_controller(SDL_GameController *game_controller) {
   controller = game_controller;
+  if(controller) {
+    controller_instance_id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller));
+  } else {
+    controller_instance_id = -1;
+  }
+}
+
+bool GLShip::has_controller() const {
+  return controller_instance_id != -1;
+}
+
+bool GLShip::is_my_controller_id(SDL_JoystickID id) const {
+  return id != -1 && controller_instance_id == id;
 }
 
 void GLShip::draw_temperature() const {

@@ -176,6 +176,58 @@ void GLGame::focus_lost() {
   Mix_PauseMusic();
 }
 
+void GLGame::controller_added(SDL_GameController *ctrl) {
+  SDL_JoystickID id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(ctrl));
+  // Skip if any player already has this controller
+  for(auto* glship : *players) {
+    if(glship->is_my_controller_id(id)) return;
+  }
+  // Assign to the first player who has no controller
+  for(auto* glship : *players) {
+    if(!glship->has_controller()) {
+      glship->set_controller(ctrl);
+      return;
+    }
+  }
+}
+
+bool GLGame::has_free_controller() const {
+  int n = SDL_NumJoysticks();
+  for(int i = 0; i < n; i++) {
+    if(!SDL_IsGameController(i)) continue;
+    SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(i);
+    bool assigned = false;
+    for(auto* glship : *players) {
+      if(glship->is_my_controller_id(id)) { assigned = true; break; }
+    }
+    if(!assigned) return true;
+  }
+  return false;
+}
+
+void GLGame::controller_removed(SDL_JoystickID id) {
+  for(auto* glship : *players) {
+    if(glship->is_my_controller_id(id)) {
+      glship->set_controller(NULL);
+      if(running) toggle_pause();
+      return;
+    }
+  }
+}
+
+void GLGame::add_player2(SDL_GameController *ctrl) {
+  if(players->size() >= 2) return;
+  Ship* p1 = players->front()->ship;
+  if(!p1->is_alive() && !p1->lives) return;
+  GLShip* object = new GLCar(grid, true);
+  object->set_controller(ctrl);
+  object->ship->set_missile_asteroids((std::list<Object*>*)objects);
+  ship_objects->push_back(object->ship);
+  for(auto *p : *players) p->ship->set_missile_ships(ship_objects);
+  object->ship->set_missile_ships(ship_objects);
+  players->push_back(object);
+}
+
 void GLGame::focus_gained() {
   Mix_ResumeMusic();
   if(auto_paused) {
@@ -851,7 +903,36 @@ void GLGame::draw_map() const {
 void GLGame::controller(SDL_Event event) {
   if(event.cbutton.type == SDL_CONTROLLERBUTTONDOWN) {
     if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) {
-      toggle_pause();
+      bool known_player = false;
+      for(auto* glship : *players) {
+        if(glship->wasMyController(event.cbutton.which)) {
+          known_player = true;
+          break;
+        }
+      }
+      if(known_player) {
+        toggle_pause();
+      } else if(players->size() < 2) {
+        SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(event.cbutton.which);
+        if(ctrl) add_player2(ctrl);
+      }
+    } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A ||
+               event.cbutton.button == SDL_CONTROLLER_BUTTON_B ||
+               event.cbutton.button == SDL_CONTROLLER_BUTTON_X ||
+               event.cbutton.button == SDL_CONTROLLER_BUTTON_Y) {
+      bool known_player = false;
+      for(auto* glship : *players) {
+        if(glship->wasMyController(event.cbutton.which)) {
+          known_player = true;
+          break;
+        }
+      }
+      if(!known_player && players->size() < 2) {
+        SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(event.cbutton.which);
+        if(ctrl) add_player2(ctrl);
+      }
+    } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE) {
+      if(running) toggle_pause();
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
       for (auto* glship : *players)
         save_high_score(glship->ship->score);

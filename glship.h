@@ -27,6 +27,8 @@ public:
 
   void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key, int teleport_key, int help_key, int next_secondary_key);
   void set_controller(SDL_GameController *game_controller);
+  bool has_controller() const;
+  bool is_my_controller_id(SDL_JoystickID id) const;
   void genForceShield();
   void genRepulsor();
   void draw(bool minimap = false);
@@ -70,6 +72,7 @@ protected:
   int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, next_secondary_key, boost_key, teleport_key, help_key;
 
   SDL_GameController *controller = NULL;
+  SDL_JoystickID controller_instance_id = -1;
 
   bool rotating_view, show_help;
   float camera_rotation;
