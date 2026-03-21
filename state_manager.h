@@ -20,8 +20,11 @@ public:
   void touch_joystick(float nx, float ny);
   void focus_lost();
   void focus_gained();
+  void set_controller(SDL_GameController *ctrl);
+  void controller_disconnected();
 
 private:
+  SDL_GameController *active_controller = NULL;
   Point window;
   State *state;
 

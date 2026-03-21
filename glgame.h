@@ -40,6 +40,8 @@ public:
 
   void focus_lost();
   void focus_gained();
+  void set_controller(SDL_GameController *ctrl);
+  void controller_disconnected();
 
   list<Asteroid*> *objects;      // alive asteroids (in collision grid)
   list<Asteroid*> *dead_objects; // killed asteroids with lingering debris

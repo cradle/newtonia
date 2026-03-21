@@ -31,12 +31,18 @@ void StateManager::keyboard_up(unsigned char key, int x, int y) {
 }
 
 void StateManager::controller(SDL_Event event) {
-  if(event.type == SDL_CONTROLLERDEVICEADDED) {
-    cout << "Controller added" << endl;
-  } else if(event.type == SDL_CONTROLLERDEVICEREMOVED) {
-    cout << "Controller removed" << endl;
-  }
   state->controller(event);
+}
+
+void StateManager::set_controller(SDL_GameController *ctrl) {
+  active_controller = ctrl;
+  GLGame *game = dynamic_cast<GLGame*>(state);
+  if(game) game->set_controller(ctrl);
+}
+
+void StateManager::controller_disconnected() {
+  GLGame *game = dynamic_cast<GLGame*>(state);
+  if(game) game->controller_disconnected();
 }
 
 void StateManager::tick(int delta) {
@@ -45,6 +51,8 @@ void StateManager::tick(int delta) {
     next_state->resize(window.x(), window.y());
     delete state;
     state = next_state;
+    GLGame *game = dynamic_cast<GLGame*>(state);
+    if(game && active_controller) game->set_controller(active_controller);
   }
   state->tick(delta);
 }

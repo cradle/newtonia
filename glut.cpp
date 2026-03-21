@@ -116,6 +116,36 @@ void mouse_move(int x, int y) {
 void check_controller() {
   SDL_Event e;
   while(SDL_PollEvent(&e)) {
+    if(e.type == SDL_CONTROLLERDEVICEADDED) {
+      if(controller == NULL) {
+        controller = SDL_GameControllerOpen(e.cdevice.which);
+        if(controller) {
+          std::cout << "Controller connected: " << SDL_GameControllerName(controller) << std::endl;
+          game->set_controller(controller);
+        }
+      }
+    } else if(e.type == SDL_CONTROLLERDEVICEREMOVED) {
+      if(controller && !SDL_GameControllerGetAttached(controller)) {
+        SDL_GameControllerClose(controller);
+        controller = NULL;
+        std::cout << "Controller disconnected" << std::endl;
+        game->controller_disconnected();
+        // Try to open another available controller
+        for(int i = 0; i < SDL_NumJoysticks(); i++) {
+          if(SDL_IsGameController(i)) {
+            controller = SDL_GameControllerOpen(i);
+            if(controller) {
+              std::cout << "Switched to controller: " << SDL_GameControllerName(controller) << std::endl;
+              game->set_controller(controller);
+              break;
+            }
+          }
+        }
+        if(!controller) {
+          game->set_controller(NULL);
+        }
+      }
+    }
     game->controller(e);
   }
 }
@@ -184,6 +214,7 @@ int main(int argc, char* argv[]) {
   init(argc, argv, 800, 600);
   init_controllers_and_audio();
   game = new StateManager();
+  if(controller) game->set_controller(controller);
   resize(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT));
   glutMainLoop();
   if (SDL_GameControllerGetAttached(controller)) {

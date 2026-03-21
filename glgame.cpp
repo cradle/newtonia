@@ -176,6 +176,18 @@ void GLGame::focus_lost() {
   Mix_PauseMusic();
 }
 
+void GLGame::set_controller(SDL_GameController *ctrl) {
+  for(auto* glship : *players) {
+    glship->set_controller(ctrl);
+  }
+}
+
+void GLGame::controller_disconnected() {
+  if(running) {
+    toggle_pause();
+  }
+}
+
 void GLGame::focus_gained() {
   Mix_ResumeMusic();
   if(auto_paused) {
@@ -852,6 +864,8 @@ void GLGame::controller(SDL_Event event) {
   if(event.cbutton.type == SDL_CONTROLLERBUTTONDOWN) {
     if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) {
       toggle_pause();
+    } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE) {
+      if(running) toggle_pause();
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
       for (auto* glship : *players)
         save_high_score(glship->ship->score);
