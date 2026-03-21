@@ -1,0 +1,61 @@
+name: Linux
+
+on:
+  push:
+    branches: [master, main, 'claude/**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libsdl2-dev \
+            libsdl2-mixer-dev \
+            freeglut3-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev
+
+      - name: Build
+        run: |
+          SRCS=$(find . -name "*.cpp" \
+            -not -path "./android/*" \
+            -not -path "./.git/*" \
+            -not -name "gles2_compat.cpp")
+          g++ -O2 -Wall -std=c++11 \
+            $(sdl2-config --cflags) \
+            -o newtonia $SRCS \
+            -lglut -lGL -lGLU \
+            $(sdl2-config --libs) -lSDL2_mixer
+
+      - name: Bundle libraries
+        run: |
+          mkdir -p dist
+          cp newtonia dist/
+          cp -r audio dist/
+          # Copy SDL2 shared libs so the binary runs without system packages
+          ldd newtonia | awk '/libSDL2/{print $3}' | xargs -I{} cp {} dist/
+          cat > dist/newtonia.sh <<'EOF'
+          #!/bin/bash
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          export LD_LIBRARY_PATH="$DIR:$LD_LIBRARY_PATH"
+          exec "$DIR/newtonia" "$@"
+          EOF
+          chmod +x dist/newtonia.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: newtonia-linux
+          path: dist/
+          retention-days: 30
