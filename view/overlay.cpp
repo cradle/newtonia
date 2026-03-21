@@ -29,6 +29,8 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
     Typer::draw_centered(0, 30, "Paused", 25);
     if(is_touch_mode())
       Typer::draw_centered(0, -40, "TOUCH LEVEL TO UNPAUSE", 8);
+    else if(glship->has_controller())
+      Typer::draw_centered(0, -40, "press home to unpause", 8);
     else
       Typer::draw_centered(0, -40, "press p to unpause", 8);
   }
@@ -141,7 +143,8 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     }
   }
   if(!glgame->running && glship->show_help) {
-    Typer::draw_centered(0, Typer::scaled_window_height/glgame->num_y_viewports()-80, "press p to unpause", 8);
+    const char* unpause = glship->has_controller() ? "press home to unpause" : "press p to unpause";
+    Typer::draw_centered(0, Typer::scaled_window_height/glgame->num_y_viewports()-80, unpause, 8);
   }
 }
 

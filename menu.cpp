@@ -71,7 +71,7 @@ void Menu::draw() {
     } else if(SDL_NumJoysticks() == 0) {
       Typer::draw_centered(0, -50, "press enter", 18);
     } else {
-      Typer::draw_centered(0, -50, "press start", 18);
+      Typer::draw_centered(0, -50, "press any button to start", 18);
     }
   }
   Typer::draw_centered(0, -420, "© 2008-2026 METONYMOUS", 13, currentTime);
