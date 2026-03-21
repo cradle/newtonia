@@ -191,6 +191,20 @@ void GLGame::controller_added(SDL_GameController *ctrl) {
   }
 }
 
+bool GLGame::has_free_controller() const {
+  int n = SDL_NumJoysticks();
+  for(int i = 0; i < n; i++) {
+    if(!SDL_IsGameController(i)) continue;
+    SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(i);
+    bool assigned = false;
+    for(auto* glship : *players) {
+      if(glship->is_my_controller_id(id)) { assigned = true; break; }
+    }
+    if(!assigned) return true;
+  }
+  return false;
+}
+
 void GLGame::controller_removed(SDL_JoystickID id) {
   for(auto* glship : *players) {
     if(glship->is_my_controller_id(id)) {
@@ -899,6 +913,21 @@ void GLGame::controller(SDL_Event event) {
       if(known_player) {
         toggle_pause();
       } else if(players->size() < 2) {
+        SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(event.cbutton.which);
+        if(ctrl) add_player2(ctrl);
+      }
+    } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A ||
+               event.cbutton.button == SDL_CONTROLLER_BUTTON_B ||
+               event.cbutton.button == SDL_CONTROLLER_BUTTON_X ||
+               event.cbutton.button == SDL_CONTROLLER_BUTTON_Y) {
+      bool known_player = false;
+      for(auto* glship : *players) {
+        if(glship->wasMyController(event.cbutton.which)) {
+          known_player = true;
+          break;
+        }
+      }
+      if(!known_player && players->size() < 2) {
         SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(event.cbutton.which);
         if(ctrl) add_player2(ctrl);
       }

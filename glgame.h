@@ -51,6 +51,7 @@ public:
   int num_x_viewports() const;
   int num_y_viewports() const;
   bool is_visible_to_any_player(const Ship &ship) const;
+  bool has_free_controller() const;
 private:
   void add_asteroids();
   void add_player2(SDL_GameController *ctrl);
