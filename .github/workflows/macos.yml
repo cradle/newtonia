@@ -133,7 +133,7 @@ jobs:
 
       - name: Install provisioning profile
         env:
-          PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+          PROFILE_BASE64: ${{ secrets.MAC_PROVISIONING_PROFILE_BASE64 }}
         run: |
           echo "$PROFILE_BASE64" | base64 -d > profile.provisionprofile
           mkdir -p ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles
