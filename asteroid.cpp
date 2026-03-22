@@ -98,6 +98,63 @@ Asteroid::Asteroid(Asteroid const *mother) {
   }
 }
 
+// Returns the outward normal of the polygon edge the bullet crossed.
+// Primary criterion: closest edge to 'entry' (the back-traced surface point).
+// Tiebreaker for corners (equidistant edges): edge whose normal most opposes
+// incoming_dir, i.e. the face the bullet was actually heading toward.
+Point Asteroid::surface_normal(Point entry, Point incoming_dir) const {
+  int segs = 7;
+  if      (radius < 15)  segs = 5;
+  else if (radius < 30)  segs = 6;
+  else if (radius > 200) segs = 9;
+
+  float rot = rotation * (float)M_PI / 180.0f;
+  const float step = 2.0f * (float)M_PI / segs;
+
+  float vx[9], vy[9];
+  for (int i = 0; i < segs; i++) {
+    float angle = rot + i * step;
+    vx[i] = position.x() + radius * vertex_offsets[i] * cosf(angle);
+    vy[i] = position.y() + radius * vertex_offsets[i] * sinf(angle);
+  }
+
+  Point inc = incoming_dir.normalized();
+  float best_dist = 1e30f;
+  float best_align = 2.0f;
+  float best_nx = 0.0f, best_ny = 1.0f;
+
+  for (int i = 0; i < segs; i++) {
+    int j = (i + 1) % segs;
+    float dx = vx[j] - vx[i], dy = vy[j] - vy[i];
+    float len2 = dx * dx + dy * dy;
+    if (len2 < 1e-12f) continue;
+
+    // Closest point on this edge segment to entry
+    float t = ((entry.x() - vx[i]) * dx + (entry.y() - vy[i]) * dy) / len2;
+    t = fmaxf(0.0f, fminf(1.0f, t));
+    float cx = vx[i] + t * dx, cy = vy[i] + t * dy;
+    float dist = sqrtf((entry.x() - cx) * (entry.x() - cx) +
+                       (entry.y() - cy) * (entry.y() - cy));
+
+    // Outward normal: perpendicular to edge, pointing away from asteroid center
+    float len = sqrtf(len2);
+    float nx = -dy / len, ny = dx / len;
+    float mid_x = (vx[i] + vx[j]) * 0.5f - position.x();
+    float mid_y = (vy[i] + vy[j]) * 0.5f - position.y();
+    if (nx * mid_x + ny * mid_y < 0.0f) { nx = -nx; ny = -ny; }
+
+    float align = nx * inc.x() + ny * inc.y();
+
+    // Pick closest edge; break ties (within 1px) by most-opposing normal
+    if (dist < best_dist - 1.0f || (dist < best_dist + 1.0f && align < best_align)) {
+      best_dist  = dist;
+      best_align = align;
+      best_nx = nx; best_ny = ny;
+    }
+  }
+  return Point(best_nx, best_ny);
+}
+
 bool Asteroid::contains(Point p, float r) const {
   float lx = p.x() - position.x();
   float ly = p.y() - position.y();

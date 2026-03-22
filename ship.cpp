@@ -616,10 +616,33 @@ void Ship::collide_grid(Grid &grid) {
     if(object != NULL) {
       Asteroid *ast = dynamic_cast<Asteroid*>(object);
       if(ast && ast->reflective) {
-        // Reflect bullet velocity off the asteroid surface normal
-        Point normal = (bullets[i].position - object->position).normalized();
-        float dot = normal.x() * bullets[i].velocity.x() + normal.y() * bullets[i].velocity.y();
-        bullets[i].velocity = bullets[i].velocity - normal * (2.0f * dot);
+        // Back-trace along the bullet's velocity to find where it crossed the surface.
+        // The bullet is guaranteed to be inside the polygon here; stepping backward
+        // by 1px increments finds the entry point in ~10 steps for typical bullet speeds.
+        Point vel_norm = bullets[i].velocity.normalized();
+        float max_trace = ast->effective_radius() * 2.0f + 4.0f;
+        WrappedPoint entry = bullets[i].position;
+        for (float d = 1.0f; d <= max_trace; d += 1.0f) {
+          WrappedPoint test(bullets[i].position.x() - vel_norm.x() * d,
+                            bullets[i].position.y() - vel_norm.y() * d);
+          if (!ast->contains(test)) {
+            entry = test;
+            break;
+          }
+        }
+        // Use the edge normal most facing the bullet so corner hits reflect
+        // away from the struck face, not along its bisector.
+        Point rel_vel = bullets[i].velocity - object->velocity;
+        Point normal = ast->surface_normal(entry, rel_vel);
+        // Reflect in the asteroid's reference frame so a chasing asteroid
+        // doesn't immediately catch the bullet again.
+        float dot = normal.x() * rel_vel.x() + normal.y() * rel_vel.y();
+        bullets[i].velocity = object->velocity + (rel_vel - normal * (2.0f * dot));
+        // Push out by a full step's worth of relative travel so glancing hits
+        // (tiny outward component) still clear the surface next frame.
+        float push = rel_vel.magnitude() * 16.0f + 2.0f;
+        bullets[i].position = WrappedPoint(entry.x() + normal.x() * push,
+                                           entry.y() + normal.y() * push);
         object->kill(); // plays thud sound
         ++i;
       } else {
