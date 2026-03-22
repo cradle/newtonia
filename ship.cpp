@@ -633,7 +633,7 @@ void Ship::collide_grid(Grid &grid) {
         // Use the edge normal most facing the bullet so corner hits reflect
         // away from the struck face, not along its bisector.
         Point rel_vel = bullets[i].velocity - object->velocity;
-        Point normal = ast->surface_normal(rel_vel);
+        Point normal = ast->surface_normal(entry, rel_vel);
         // Reflect in the asteroid's reference frame so a chasing asteroid
         // doesn't immediately catch the bullet again.
         float dot = normal.x() * rel_vel.x() + normal.y() * rel_vel.y();
