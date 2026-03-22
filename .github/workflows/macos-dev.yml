@@ -128,6 +128,16 @@ jobs:
             -s -k "" "$KEYCHAIN"
           echo "Available signing identities:"
           security find-identity -v -p codesigning "$KEYCHAIN"
+          if ! security find-identity -v -p codesigning "$KEYCHAIN" | grep -q "Developer ID Application"; then
+            echo ""
+            echo "ERROR: No 'Developer ID Application' identity found in the keychain." >&2
+            echo "The DEVELOPER_ID_CERT_BASE64 secret must contain a Developer ID Application" >&2
+            echo "certificate, not Developer ID Installer or any other type." >&2
+            echo "" >&2
+            echo "All identities present in the .p12 (any policy):" >&2
+            security find-identity -v "$KEYCHAIN" >&2
+            exit 1
+          fi
 
       - name: Bundle .app
         run: |
