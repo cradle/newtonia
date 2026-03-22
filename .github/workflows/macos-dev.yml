@@ -123,7 +123,7 @@ jobs:
           security unlock-keychain -p "" "$KEYCHAIN"
           security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
             -P "$CERT_PASSWORD" -T /usr/bin/codesign
-          security list-keychain -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"' | xargs)
+          security list-keychain -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"' | xargs) /Library/Keychains/System.keychain
           security set-key-partition-list -S apple-tool:,apple: \
             -s -k "" "$KEYCHAIN"
           echo "Available signing identities:"
