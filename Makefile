@@ -29,6 +29,7 @@ osx: $(OBJFILES)
 	cp newtonia Newtonia.app/Contents/MacOS/newtonia
 	cp -r audio Newtonia.app/Contents/Resources/audio
 	cp icon.icns Newtonia.app/Contents/Resources/icon.icns
+	sed 's/$${EXECUTABLE_NAME}/newtonia/g' Newtonia-Info.plist > Newtonia.app/Contents/Info.plist
 
 newtonia: $(OBJFILES)
 	$(CC) -o newtonia $(OBJFILES) $(LIBS)
