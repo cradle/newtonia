@@ -26,7 +26,10 @@ osx: $(OBJFILES)
 	CFLAGS="$(OSX_CFLAGS)" $(CC) -o newtonia $(OBJFILES) $(OSX_LIBS)
 	mkdir -p Newtonia.app/Contents/MacOS
 	mkdir -p Newtonia.app/Contents/Resources
-	cp newtonia Newtonia.app/Contents/MacOS/newtonia
+	cp newtonia Newtonia.app/Contents/MacOS/newtonia_bin
+	cp -r audio Newtonia.app/Contents/Resources/audio
+	printf '#!/bin/sh\ncd "$$(dirname "$$0")/../Resources"\nexec ../MacOS/newtonia_bin "$$@"\n' > Newtonia.app/Contents/MacOS/newtonia
+	chmod +x Newtonia.app/Contents/MacOS/newtonia
 	cp icon.icns Newtonia.app/Contents/Resources/icon.icns
 
 newtonia: $(OBJFILES)
