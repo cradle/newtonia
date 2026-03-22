@@ -620,6 +620,9 @@ void Ship::collide_grid(Grid &grid) {
         Point normal = (bullets[i].position - object->position).normalized();
         float dot = normal.x() * bullets[i].velocity.x() + normal.y() * bullets[i].velocity.y();
         bullets[i].velocity = bullets[i].velocity - normal * (2.0f * dot);
+        // Push the bullet outside the asteroid so it can't re-collide next frame
+        bullets[i].position = WrappedPoint(object->position.x() + normal.x() * (object->radius + 2.0f),
+                                           object->position.y() + normal.y() * (object->radius + 2.0f));
         object->kill(); // plays thud sound
         ++i;
       } else {
