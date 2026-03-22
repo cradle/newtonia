@@ -219,7 +219,7 @@ jobs:
           <plist version="1.0">
           <dict>
             <key>CFBundleExecutable</key>     <string>Newtonia</string>
-            <key>CFBundleIdentifier</key>     <string>com.newtonia.app</string>
+            <key>CFBundleIdentifier</key>     <string>cc.gfm.Newtonia</string>
             <key>CFBundleName</key>           <string>Newtonia</string>
             <key>CFBundleIconFile</key>       <string>icon</string>
             <key>CFBundleVersion</key>        <string>1.0</string>
