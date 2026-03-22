@@ -228,6 +228,20 @@ jobs:
       - name: Package .app as zip
         run: ditto -c -k --keepParent Newtonia.app newtonia-macos-dev.zip
 
+      - name: Notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_APP_SPECIFIC_PASSWORD }}
+        run: |
+          xcrun notarytool submit newtonia-macos-dev.zip \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$NOTARY_PASSWORD" \
+            --wait
+          xcrun stapler staple Newtonia.app
+          ditto -c -k --keepParent Newtonia.app newtonia-macos-dev.zip
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
