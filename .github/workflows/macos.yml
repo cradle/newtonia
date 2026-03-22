@@ -25,10 +25,7 @@ jobs:
       - name: Build SDL2_mixer from source (WAV + MP3 only)
         run: |
           SDL_MIXER_VER=2.8.0
-          curl -fSL --retry 5 --retry-delay 10 --retry-all-errors \
-            -o SDL2_mixer.tar.gz \
-            "https://github.com/libsdl-org/SDL_mixer/releases/download/release-${SDL_MIXER_VER}/SDL2_mixer-${SDL_MIXER_VER}.tar.gz"
-          tar xzf SDL2_mixer.tar.gz
+          curl -fsSL https://github.com/libsdl-org/SDL_mixer/releases/download/release-${SDL_MIXER_VER}/SDL2_mixer-${SDL_MIXER_VER}.tar.gz | tar xz
           cd SDL2_mixer-${SDL_MIXER_VER}
 
           cmake_flags=(
