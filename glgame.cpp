@@ -759,6 +759,26 @@ void GLGame::draw_perspective(GLShip *glship) const {
     }
   }
 
+  // Game objects: drawn directly each tile (no display list) so draw_batch
+  // can emit all asteroids in two draw calls per tile instead of one per asteroid.
+  for(int x = -1; x <= 1; x++) {
+    for(int y = -1; y <= 1; y++) {
+      // Nearest distance from camera to tile rect (objects span [0,world) per tile)
+      float tmin_x = world.x()*x - position.x();
+      float tmax_x = tmin_x + world.x();
+      float tmin_y = world.y()*y - position.y();
+      float tmax_y = tmin_y + world.y();
+      float nx = (tmin_x > 0) ? tmin_x : (tmax_x < 0) ? -tmax_x : 0;
+      float ny = (tmin_y > 0) ? tmin_y : (tmax_y < 0) ? -tmax_y : 0;
+      if (nx*nx + ny*ny > cull_r2) continue;
+
+      glPushMatrix();
+      glRotatef(direction, 0.0f, 0.0f, 1.0f);
+      glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+      draw_objects(direction);
+      glPopMatrix();
+    }
+  }
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
       float smin_x = world.x()*x - position.x();
@@ -777,7 +797,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
     }
   }
 
-  // --- Front star lensing (void + shift, applied after front stars) ---
+  // --- Front star lensing (same void + shift, applied after front stars) ---
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
       float smin_x = world.x()*x - position.x();
@@ -803,28 +823,6 @@ void GLGame::draw_perspective(GLShip *glship) const {
 
         glPopMatrix();
       }
-    }
-  }
-
-  // Game objects: drawn last so they appear in front of all star layers and
-  // invisible asteroid masks. draw_batch emits all asteroids in two draw calls
-  // per tile instead of one per asteroid.
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
-      // Nearest distance from camera to tile rect (objects span [0,world) per tile)
-      float tmin_x = world.x()*x - position.x();
-      float tmax_x = tmin_x + world.x();
-      float tmin_y = world.y()*y - position.y();
-      float tmax_y = tmin_y + world.y();
-      float nx = (tmin_x > 0) ? tmin_x : (tmax_x < 0) ? -tmax_x : 0;
-      float ny = (tmin_y > 0) ? tmin_y : (tmax_y < 0) ? -tmax_y : 0;
-      if (nx*nx + ny*ny > cull_r2) continue;
-
-      glPushMatrix();
-      glRotatef(direction, 0.0f, 0.0f, 1.0f);
-      glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
-      draw_objects(direction);
-      glPopMatrix();
     }
   }
 
