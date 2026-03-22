@@ -113,6 +113,49 @@ jobs:
       - name: Create universal binary
         run: lipo -create -output newtonia newtonia-arm64 newtonia-x86_64
 
+      - name: Import code signing certificate
+        env:
+          CERT_BASE64: ${{ secrets.DISTRIBUTION_CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.DISTRIBUTION_CERT_PASSWORD }}
+        run: |
+          echo "$CERT_BASE64" | base64 -d > "$RUNNER_TEMP/cert.p12"
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          security create-keychain -p "" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security list-keychain -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"' | xargs)
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "" "$KEYCHAIN"
+          echo "Available signing identities:"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
+      - name: Install provisioning profile
+        env:
+          PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          echo "$PROFILE_BASE64" | base64 -d > profile.provisionprofile
+          mkdir -p ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles
+          PROFILE_PLIST=$(security cms -D -i profile.provisionprofile)
+          UUID=$(echo "$PROFILE_PLIST" | plutil -extract UUID xml1 -o - - \
+            | sed -n 's|.*<string>\(.*\)</string>.*|\1|p')
+          TEAM_ID=$(echo "$PROFILE_PLIST" | plutil -extract TeamIdentifier.0 xml1 -o - - \
+            | sed -n 's|.*<string>\(.*\)</string>.*|\1|p')
+          PROFILE_NAME=$(echo "$PROFILE_PLIST" | plutil -extract Name xml1 -o - - \
+            | sed -n 's|.*<string>\(.*\)</string>.*|\1|p')
+          echo "Team ID: $TEAM_ID"
+          echo "Profile UUID: $UUID"
+          echo "Profile Name: $PROFILE_NAME"
+          cp profile.provisionprofile \
+            ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/"$UUID".provisionprofile
+          sed "s/TEAM_ID_PLACEHOLDER/$TEAM_ID/" \
+            macos/Entitlements.plist > entitlements-final.plist
+          echo "TEAM_ID=$TEAM_ID" >> $GITHUB_ENV
+          echo "PROFILE_UUID=$UUID" >> $GITHUB_ENV
+          echo "PROFILE_NAME=$PROFILE_NAME" >> $GITHUB_ENV
+          echo "PROFILE_PATH=profile.provisionprofile" >> $GITHUB_ENV
+
       - name: Bundle .app
         run: |
           mkdir -p Newtonia.app/Contents/{MacOS,Frameworks,Resources}
@@ -147,7 +190,7 @@ jobs:
                 fi
                 install_name_tool -id "@executable_path/../Frameworks/$name" "$dest"
                 bundle "$dest"
-                codesign --sign - --force "$dest"
+                codesign --sign "Apple Distribution" --force --timestamp "$dest"
               fi
               # Rewrite both arch prefixes in the target (fat binary has both)
               install_name_tool -change "$arm" "@executable_path/../Frameworks/$name" "$target" 2>/dev/null || true
@@ -162,9 +205,12 @@ jobs:
           }
 
           bundle Newtonia.app/Contents/MacOS/Newtonia
-          codesign --sign - --force Newtonia.app/Contents/MacOS/Newtonia
+          codesign --sign "Apple Distribution" --force --timestamp \
+            --entitlements entitlements-final.plist \
+            Newtonia.app/Contents/MacOS/Newtonia
 
           cp -r audio Newtonia.app/Contents/Resources/audio
+          cp "$PROFILE_PATH" Newtonia.app/Contents/embedded.provisionprofile
 
           cat > Newtonia.app/Contents/Info.plist <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -182,6 +228,12 @@ jobs:
           </dict>
           </plist>
           PLIST
+
+      - name: Sign .app bundle
+        run: |
+          codesign --sign "Apple Distribution" --force --timestamp \
+            --entitlements entitlements-final.plist \
+            Newtonia.app
 
       - name: Package .app as zip
         run: ditto -c -k --keepParent Newtonia.app newtonia-macos-universal.zip
