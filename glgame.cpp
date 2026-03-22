@@ -80,6 +80,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
   object->ship->set_missile_ships(ship_objects);
+  object->ship->set_black_holes(black_holes);
   players->push_back(object);
 
   station = NULL;//new GLStation(enemies, players);
@@ -225,6 +226,7 @@ void GLGame::add_player2(SDL_GameController *ctrl) {
   ship_objects->push_back(object->ship);
   for(auto *p : *players) p->ship->set_missile_ships(ship_objects);
   object->ship->set_missile_ships(ship_objects);
+  object->ship->set_black_holes(black_holes);
   players->push_back(object);
 }
 

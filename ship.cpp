@@ -326,6 +326,10 @@ void Ship::set_missile_ships(std::list<Object*> *ships) {
   }
 }
 
+void Ship::set_black_holes(const std::list<BlackHole*> *bhs) {
+  black_holes = bhs;
+}
+
 void Ship::init(bool no_friction) {
   mass = 100.0;
   value = 1000000;
@@ -393,9 +397,18 @@ void Ship::respawn(const Grid &grid, bool was_killed) {
 }
 
 void Ship::safe_position(const Grid &grid) {
-  while(grid.collide(*this, 50.0f) != NULL) {
+  auto in_black_hole_pull = [this]() {
+    if(!black_holes) return false;
+    for(const BlackHole *bh : *black_holes) {
+      Point diff = bh->position.closest_to(position) - position;
+      if(diff.magnitude_squared() < BlackHole::influence_radius * BlackHole::influence_radius)
+        return true;
+    }
+    return false;
+  };
+  do {
     position = WrappedPoint();
-  }
+  } while(grid.collide(*this, 50.0f) != NULL || in_black_hole_pull());
 }
 
 void Ship::reset(bool was_killed) {
