@@ -116,7 +116,7 @@ jobs:
           CERT_BASE64: ${{ secrets.DEVELOPER_ID_CERT_BASE64 }}
           CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
         run: |
-          echo "$CERT_BASE64" | base64 -d > "$RUNNER_TEMP/cert.p12"
+          printf '%s' "$CERT_BASE64" | base64 -d > "$RUNNER_TEMP/cert.p12"
           KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
           security create-keychain -p "" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
