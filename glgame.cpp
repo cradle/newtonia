@@ -334,10 +334,12 @@ void GLGame::tick(int delta) {
     }
 
     // Apply black-hole gravity to asteroids (asteroids pass through, not swallowed).
+    // Invincible asteroids are unaffected.
     for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
       oi = objects->begin();
       while(oi != objects->end()) {
-        (*bhi)->apply_gravity(**oi, step_size);
+        if(!(*oi)->invincible)
+          (*bhi)->apply_gravity(**oi, step_size);
         oi++;
       }
     }
