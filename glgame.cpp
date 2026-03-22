@@ -818,7 +818,9 @@ void GLGame::draw_perspective(GLShip *glship) const {
         glRotatef(direction, 0.0f, 0.0f, 1.0f);
         glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
 
-        AsteroidDrawer::draw_invisible_mask(a, ax, ay);
+        // No black mask here — draw_batch already renders the invisible asteroid
+        // fill behind visible asteroids. Drawing it again after game objects would
+        // overdraw visible asteroids on top of invisible ones.
         starfield->draw_front_stars_near(ax, ay, a->radius);
 
         glPopMatrix();
