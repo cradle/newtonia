@@ -142,8 +142,25 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     verts.push_back(v);
   }
 
-  // --- Fill pass: all alive asteroids as GL_TRIANGLES ---
+  // --- Fill pass: invisible asteroids first (behind), then visible ---
   glBegin(GL_TRIANGLES);
+  for (size_t ai = 0; ai < verts.size(); ++ai) {
+    AsteroidVerts const &v = verts[ai];
+    if (!v.invisible) continue;
+    glColor3f(0.0f, 0.0f, 0.0f);
+    for (int wi = 0; wi < (v.dx != 0 ? 2 : 1); wi++) {
+      for (int wj = 0; wj < (v.dy != 0 ? 2 : 1); wj++) {
+        float wcx = v.cx + wi * v.dx;
+        float wcy = v.cy + wj * v.dy;
+        for (int i = 0; i < v.segs; i++) {
+          int j = (i + 1) % v.segs;
+          glVertex2f(wcx,               wcy);
+          glVertex2f(wcx + v.dvx[i],   wcy + v.dvy[i]);
+          glVertex2f(wcx + v.dvx[j],   wcy + v.dvy[j]);
+        }
+      }
+    }
+  }
   for (size_t ai = 0; ai < verts.size(); ++ai) {
     AsteroidVerts const &v = verts[ai];
     if (v.invisible) continue;
@@ -165,9 +182,25 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
   }
   glEnd();
 
-  // --- Outline pass: all alive asteroids as GL_LINES ---
+  // --- Outline pass: invisible asteroids first (behind), then visible ---
   glLineWidth(is_minimap ? 1.0f : 2.5f);
   glBegin(GL_LINES);
+  for (size_t ai = 0; ai < verts.size(); ++ai) {
+    AsteroidVerts const &v = verts[ai];
+    if (!v.invisible) continue;
+    glColor3f(0.0f, 0.0f, 0.0f);
+    for (int wi = 0; wi < (v.dx != 0 ? 2 : 1); wi++) {
+      for (int wj = 0; wj < (v.dy != 0 ? 2 : 1); wj++) {
+        float wcx = v.cx + wi * v.dx;
+        float wcy = v.cy + wj * v.dy;
+        for (int i = 0; i < v.segs; i++) {
+          int j = (i + 1) % v.segs;
+          glVertex2f(wcx + v.dvx[i], wcy + v.dvy[i]);
+          glVertex2f(wcx + v.dvx[j], wcy + v.dvy[j]);
+        }
+      }
+    }
+  }
   for (size_t ai = 0; ai < verts.size(); ++ai) {
     AsteroidVerts const &v = verts[ai];
     if (v.invisible) continue;
