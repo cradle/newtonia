@@ -1,0 +1,260 @@
+name: macOS Dev
+
+on:
+  push:
+    branches: [master, main, 'claude/**']
+    tags: ['v*.*.*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest   # arm64 (Apple Silicon)
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install arm64 dependencies
+        run: brew install sdl2 mpg123
+
+      - name: Install x86_64 Homebrew and dependencies
+        run: |
+          arch -x86_64 /bin/bash -c \
+            "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          arch -x86_64 /usr/local/bin/brew install sdl2 mpg123
+
+      - name: Build SDL2_mixer from source (WAV + MP3 only)
+        run: |
+          SDL_MIXER_VER=2.8.0
+          curl -fSL --retry 5 --retry-delay 10 --retry-all-errors \
+            -o SDL2_mixer.tar.gz \
+            "https://github.com/libsdl-org/SDL_mixer/releases/download/release-${SDL_MIXER_VER}/SDL2_mixer-${SDL_MIXER_VER}.tar.gz"
+          tar xzf SDL2_mixer.tar.gz
+          cd SDL2_mixer-${SDL_MIXER_VER}
+
+          cmake_flags=(
+            -DCMAKE_BUILD_TYPE=Release
+            -DSDL2MIXER_VENDORED=OFF
+            -DSDL2MIXER_SAMPLES=OFF
+            -DSDL2MIXER_OGG=OFF
+            -DSDL2MIXER_FLAC=OFF
+            -DSDL2MIXER_MIDI=OFF
+            -DSDL2MIXER_OPUS=OFF
+            -DSDL2MIXER_MOD=OFF
+            -DSDL2MIXER_WAVPACK=OFF
+            -DSDL2MIXER_MP3=ON
+            -DSDL2MIXER_MP3_MPG123=ON
+            -DSDL2MIXER_WAVE=ON
+          )
+
+          # arm64 — build natively on the arm64 runner
+          cmake -B build-arm64 "${cmake_flags[@]}" \
+            -DCMAKE_PREFIX_PATH=/opt/homebrew \
+            -DCMAKE_INSTALL_PREFIX=/opt/homebrew
+          cmake --build build-arm64 -j$(sysctl -n hw.logicalcpu)
+          install_name_tool -id /opt/homebrew/lib/libSDL2_mixer.dylib \
+            build-arm64/libSDL2_mixer.dylib
+          cp build-arm64/libSDL2_mixer.dylib /opt/homebrew/lib/libSDL2_mixer.dylib
+
+          # x86_64 — cross-compile using the native arm64 cmake
+          cmake -B build-x86 "${cmake_flags[@]}" \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DCMAKE_C_FLAGS="-target x86_64-apple-macos12.0" \
+            -DCMAKE_CXX_FLAGS="-target x86_64-apple-macos12.0" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-target x86_64-apple-macos12.0" \
+            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
+            -DCMAKE_PREFIX_PATH=/usr/local \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build build-x86 -j$(sysctl -n hw.logicalcpu)
+          install_name_tool -id /usr/local/lib/libSDL2_mixer.dylib \
+            build-x86/libSDL2_mixer.dylib
+          cp build-x86/libSDL2_mixer.dylib /usr/local/lib/libSDL2_mixer.dylib
+
+          # Headers (arch-independent)
+          cp include/SDL_mixer.h /opt/homebrew/include/SDL2/SDL_mixer.h
+          cp include/SDL_mixer.h /usr/local/include/SDL2/SDL_mixer.h
+
+      - name: Collect sources
+        run: |
+          find . -name "*.cpp" \
+            -not -path "./android/*" \
+            -not -path "./.git/*" \
+            -not -name "gles2_compat.cpp" > srcs.txt
+
+      - name: Build arm64
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "12.0"
+        run: |
+          clang++ -O2 -Wall -std=c++11 -arch arm64 \
+            -DGL_SILENCE_DEPRECATION \
+            -mmacosx-version-min=12.0 \
+            -o newtonia-arm64 $(cat srcs.txt) \
+            $(/opt/homebrew/bin/sdl2-config --cflags --libs) \
+            -L/opt/homebrew/lib -lSDL2_mixer \
+            -I/opt/homebrew/include/SDL2 \
+            -framework GLUT -framework OpenGL
+          lipo -info newtonia-arm64
+
+      - name: Build x86_64
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "12.0"
+        run: |
+          clang++ -O2 -Wall -std=c++11 -arch x86_64 \
+            -DGL_SILENCE_DEPRECATION \
+            -mmacosx-version-min=12.0 \
+            -o newtonia-x86_64 $(cat srcs.txt) \
+            $(/usr/local/bin/sdl2-config --cflags --libs) \
+            -L/usr/local/lib -lSDL2_mixer \
+            -I/usr/local/include/SDL2 \
+            -framework GLUT -framework OpenGL
+          lipo -info newtonia-x86_64
+
+      - name: Create universal binary
+        run: lipo -create -output newtonia newtonia-arm64 newtonia-x86_64
+
+      - name: Import Developer ID certificate
+        env:
+          CERT_BASE64: ${{ secrets.DEVELOPER_ID_CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+        run: |
+          printf '%s' "$CERT_BASE64" | base64 -d > "$RUNNER_TEMP/cert.p12"
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          security create-keychain -p "" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security list-keychain -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"' | xargs) /Library/Keychains/System.keychain
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "" "$KEYCHAIN"
+          echo "Available signing identities:"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+          if ! security find-identity -v -p codesigning "$KEYCHAIN" | grep -q "Developer ID Application"; then
+            echo ""
+            echo "ERROR: No 'Developer ID Application' identity found in the keychain." >&2
+            echo "The DEVELOPER_ID_CERT_BASE64 secret must contain a Developer ID Application" >&2
+            echo "certificate, not Developer ID Installer or any other type." >&2
+            echo "" >&2
+            echo "All identities present in the .p12 (any policy):" >&2
+            security find-identity -v "$KEYCHAIN" >&2
+            exit 1
+          fi
+
+      - name: Bundle .app
+        run: |
+          mkdir -p Newtonia.app/Contents/{MacOS,Frameworks,Resources}
+          cp newtonia Newtonia.app/Contents/MacOS/Newtonia
+          cp icon.icns Newtonia.app/Contents/Resources/icon.icns
+
+          FW="Newtonia.app/Contents/Frameworks"
+
+          # Recursively bundle all non-system dylibs into Frameworks/
+          bundle() {
+            local target="$1"
+            # Collect deps from BOTH arch slices so fat-binary paths are all seen
+            while IFS= read -r dep; do
+              local name dest arm x86
+              name=$(basename "$dep")
+              dest="$FW/$name"
+              # Compute the equivalent path in each Homebrew prefix
+              arm=$(echo "$dep" | sed 's|/usr/local/|/opt/homebrew/|g')
+              x86=$(echo "$dep" | sed 's|/opt/homebrew/|/usr/local/|g')
+              if [ ! -f "$dest" ]; then
+                if [ "$arm" != "$x86" ] && [ -f "$arm" ] && [ -f "$x86" ]; then
+                  lipo -create "$arm" "$x86" -output "$dest"
+                elif [ -f "$dep" ]; then
+                  cp "$dep" "$dest"
+                elif [ -f "$arm" ]; then
+                  cp "$arm" "$dest"
+                elif [ -f "$x86" ]; then
+                  cp "$x86" "$dest"
+                else
+                  echo "WARNING: $dep not found, skipping" >&2
+                  continue
+                fi
+                install_name_tool -id "@executable_path/../Frameworks/$name" "$dest"
+                bundle "$dest"
+                codesign --sign "Developer ID Application" --force --timestamp \
+                  --options runtime "$dest"
+              fi
+              # Rewrite both arch prefixes in the target (fat binary has both)
+              install_name_tool -change "$arm" "@executable_path/../Frameworks/$name" "$target" 2>/dev/null || true
+              install_name_tool -change "$x86" "@executable_path/../Frameworks/$name" "$target" 2>/dev/null || true
+            done < <(
+              { otool -arch arm64  -L "$target" 2>/dev/null
+                otool -arch x86_64 -L "$target" 2>/dev/null; } \
+              | awk '/^\t/{print $1}' \
+              | grep -Ev '^(/usr/lib|/System|@)' \
+              | sort -u
+            )
+          }
+
+          bundle Newtonia.app/Contents/MacOS/Newtonia
+          codesign --sign "Developer ID Application" --force --timestamp \
+            --options runtime \
+            --entitlements macos/EntitlementsDevID.plist \
+            Newtonia.app/Contents/MacOS/Newtonia
+
+          cp -r audio Newtonia.app/Contents/Resources/audio
+
+          cat > Newtonia.app/Contents/Info.plist <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key>     <string>Newtonia</string>
+            <key>CFBundleIdentifier</key>     <string>cc.gfm.Newtonia</string>
+            <key>CFBundleName</key>           <string>Newtonia</string>
+            <key>CFBundleIconFile</key>       <string>icon</string>
+            <key>CFBundleVersion</key>        <string>1.0</string>
+            <key>CFBundlePackageType</key>    <string>APPL</string>
+            <key>LSMinimumSystemVersion</key> <string>12.0</string>
+          </dict>
+          </plist>
+          PLIST
+
+      - name: Sign .app bundle
+        run: |
+          codesign --sign "Developer ID Application" --force --timestamp \
+            --options runtime \
+            --entitlements macos/EntitlementsDevID.plist \
+            Newtonia.app
+
+      - name: Verify signature
+        run: |
+          codesign --verify --deep --strict --verbose=2 Newtonia.app
+          spctl --assess --type exec --verbose Newtonia.app || true
+
+      - name: Package .app as zip
+        run: ditto -c -k --keepParent Newtonia.app newtonia-macos-dev.zip
+
+      - name: Upload artifact (pre-notarization)
+        uses: actions/upload-artifact@v7
+        with:
+          name: newtonia-macos-dev-unsigned
+          path: newtonia-macos-dev.zip
+          retention-days: 30
+
+      - name: Notarize
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_APP_SPECIFIC_PASSWORD }}
+        run: |
+          xcrun notarytool submit newtonia-macos-dev.zip \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$NOTARY_PASSWORD" \
+            --wait
+          xcrun stapler staple Newtonia.app
+          ditto -c -k --keepParent Newtonia.app newtonia-macos-dev.zip
+
+      - name: Upload artifact (notarized)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v7
+        with:
+          name: newtonia-macos-dev
+          path: newtonia-macos-dev.zip
+          retention-days: 30
