@@ -116,7 +116,7 @@ jobs:
       - name: Bundle .app
         run: |
           mkdir -p Newtonia.app/Contents/{MacOS,Frameworks,Resources}
-          cp newtonia Newtonia.app/Contents/MacOS/newtonia
+          cp newtonia Newtonia.app/Contents/MacOS/Newtonia
           cp icon.icns Newtonia.app/Contents/Resources/icon.icns
 
           FW="Newtonia.app/Contents/Frameworks"
@@ -161,8 +161,8 @@ jobs:
             )
           }
 
-          bundle Newtonia.app/Contents/MacOS/newtonia
-          codesign --sign - --force Newtonia.app/Contents/MacOS/newtonia
+          bundle Newtonia.app/Contents/MacOS/Newtonia
+          codesign --sign - --force Newtonia.app/Contents/MacOS/Newtonia
 
           cp -r audio Newtonia.app/Contents/Resources/audio
 
@@ -172,7 +172,7 @@ jobs:
             "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
-            <key>CFBundleExecutable</key>     <string>newtonia</string>
+            <key>CFBundleExecutable</key>     <string>Newtonia</string>
             <key>CFBundleIdentifier</key>     <string>com.newtonia.app</string>
             <key>CFBundleName</key>           <string>Newtonia</string>
             <key>CFBundleIconFile</key>       <string>icon</string>
