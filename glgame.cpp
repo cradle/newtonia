@@ -80,6 +80,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
   object->ship->set_missile_ships(ship_objects);
+  object->ship->set_black_holes(black_holes);
   players->push_back(object);
 
   station = NULL;//new GLStation(enemies, players);
@@ -225,6 +226,7 @@ void GLGame::add_player2(SDL_GameController *ctrl) {
   ship_objects->push_back(object->ship);
   for(auto *p : *players) p->ship->set_missile_ships(ship_objects);
   object->ship->set_missile_ships(ship_objects);
+  object->ship->set_black_holes(black_holes);
   players->push_back(object);
 }
 
@@ -334,10 +336,12 @@ void GLGame::tick(int delta) {
     }
 
     // Apply black-hole gravity to asteroids (asteroids pass through, not swallowed).
+    // Invincible asteroids are unaffected.
     for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
       oi = objects->begin();
       while(oi != objects->end()) {
-        (*bhi)->apply_gravity(**oi, step_size);
+        if(!(*oi)->invincible)
+          (*bhi)->apply_gravity(**oi, step_size);
         oi++;
       }
     }
@@ -818,7 +822,9 @@ void GLGame::draw_perspective(GLShip *glship) const {
         glRotatef(direction, 0.0f, 0.0f, 1.0f);
         glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
 
-        AsteroidDrawer::draw_invisible_mask(a, ax, ay);
+        // No black mask here — draw_batch already renders the invisible asteroid
+        // fill behind visible asteroids. Drawing it again after game objects would
+        // overdraw visible asteroids on top of invisible ones.
         starfield->draw_front_stars_near(ax, ay, a->radius);
 
         glPopMatrix();

@@ -6,6 +6,7 @@
 #include "particle.h"
 #include "weapon/missile.h"
 #include "grid.h"
+#include "black_hole.h"
 #include <list>
 #include <vector>
 #include <SDL.h>
@@ -125,6 +126,7 @@ class Ship : public CompositeObject {
     void set_shield_hum(bool on);
     void set_missile_asteroids(std::list<Object*> *asteroids);
     void set_missile_ships(std::list<Object*> *ships);
+    void set_black_holes(const std::list<BlackHole*> *bhs);
     WrappedPoint gun() const;
     bool kill();
 
@@ -174,6 +176,7 @@ class Ship : public CompositeObject {
     list<Weapon::Base *>::iterator primary;
     list<Weapon::Base *>::iterator secondary;
     std::list<Object*> *missile_asteroids = nullptr;
+    const std::list<BlackHole*> *black_holes = nullptr;
     std::list<Object*> *missile_ships_list = nullptr;
 };
 
