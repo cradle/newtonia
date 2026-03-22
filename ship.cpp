@@ -630,16 +630,17 @@ void Ship::collide_grid(Grid &grid) {
             break;
           }
         }
-        // Normal points outward from asteroid center through the entry point
-        Point normal = (entry - object->position).normalized();
-        // Reflect in the asteroid's reference frame so a chasing/moving asteroid
-        // doesn't immediately catch the bullet again.
+        // Use the edge normal most facing the bullet so corner hits reflect
+        // away from the struck face, not along its bisector.
         Point rel_vel = bullets[i].velocity - object->velocity;
+        Point normal = ast->surface_normal(rel_vel);
+        // Reflect in the asteroid's reference frame so a chasing asteroid
+        // doesn't immediately catch the bullet again.
         float dot = normal.x() * rel_vel.x() + normal.y() * rel_vel.y();
         bullets[i].velocity = object->velocity + (rel_vel - normal * (2.0f * dot));
-        // Push out by the relative displacement per frame so that glancing hits
-        // (where the outward component is small) still clear the surface.
-        float push = rel_vel.magnitude() * 20.0f + 2.0f;
+        // Push out by a full step's worth of relative travel so glancing hits
+        // (tiny outward component) still clear the surface next frame.
+        float push = rel_vel.magnitude() * 16.0f + 2.0f;
         bullets[i].position = WrappedPoint(entry.x() + normal.x() * push,
                                            entry.y() + normal.y() * push);
         object->kill(); // plays thud sound

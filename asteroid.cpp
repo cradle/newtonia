@@ -98,6 +98,47 @@ Asteroid::Asteroid(Asteroid const *mother) {
   }
 }
 
+// Returns the outward normal of the polygon edge most directly facing
+// incoming_dir (i.e. whose normal most opposes it). This correctly handles
+// corners: rather than bisecting two edges, we pick the edge the bullet was
+// actually travelling toward.
+Point Asteroid::surface_normal(Point incoming_dir) const {
+  int segs = 7;
+  if      (radius < 15)  segs = 5;
+  else if (radius < 30)  segs = 6;
+  else if (radius > 200) segs = 9;
+
+  float rot = rotation * (float)M_PI / 180.0f;
+  const float step = 2.0f * (float)M_PI / segs;
+
+  float vx[9], vy[9];
+  for (int i = 0; i < segs; i++) {
+    float angle = rot + i * step;
+    vx[i] = position.x() + radius * vertex_offsets[i] * cosf(angle);
+    vy[i] = position.y() + radius * vertex_offsets[i] * sinf(angle);
+  }
+
+  Point inc = incoming_dir.normalized();
+  float best_align = 2.0f; // higher is worse; dot ranges from -1 to +1
+  float best_nx = 0.0f, best_ny = 1.0f;
+
+  for (int i = 0; i < segs; i++) {
+    int j = (i + 1) % segs;
+    float dx = vx[j] - vx[i], dy = vy[j] - vy[i];
+    float len = sqrtf(dx * dx + dy * dy);
+    if (len < 1e-6f) continue;
+    // One of the two perpendiculars — pick the outward one (opposes incoming)
+    float nx = -dy / len, ny = dx / len;
+    float align = nx * inc.x() + ny * inc.y();
+    if (align > 0) { nx = -nx; ny = -ny; align = -align; } // flip to outward
+    if (align < best_align) {
+      best_align = align;
+      best_nx = nx; best_ny = ny;
+    }
+  }
+  return Point(best_nx, best_ny);
+}
+
 bool Asteroid::contains(Point p, float r) const {
   float lx = p.x() - position.x();
   float ly = p.y() - position.y();

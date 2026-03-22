@@ -17,6 +17,7 @@ public:
   virtual bool kill() override;
   virtual bool contains(Point p, float r = 0.0f) const override;
   virtual float effective_radius() const override { return radius * max_vertex_offset; }
+  Point surface_normal(Point incoming_dir) const;
 
   friend class AsteroidDrawer;
 
