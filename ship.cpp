@@ -620,7 +620,7 @@ void Ship::collide_grid(Grid &grid) {
         // The bullet is guaranteed to be inside the polygon here; stepping backward
         // by 1px increments finds the entry point in ~10 steps for typical bullet speeds.
         Point vel_norm = bullets[i].velocity.normalized();
-        float max_trace = ast->radius * ast->max_vertex_offset * 2.0f + 4.0f;
+        float max_trace = ast->effective_radius() * 2.0f + 4.0f;
         WrappedPoint entry = bullets[i].position;
         for (float d = 1.0f; d <= max_trace; d += 1.0f) {
           WrappedPoint test(bullets[i].position.x() - vel_norm.x() * d,
