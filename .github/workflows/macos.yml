@@ -113,10 +113,10 @@ jobs:
       - name: Create universal binary
         run: lipo -create -output newtonia newtonia-arm64 newtonia-x86_64
 
-      - name: Import code signing certificate
+      - name: Import Developer ID certificate
         env:
-          CERT_BASE64: ${{ secrets.DISTRIBUTION_CERT_BASE64 }}
-          CERT_PASSWORD: ${{ secrets.DISTRIBUTION_CERT_PASSWORD }}
+          CERT_BASE64: ${{ secrets.DEVELOPER_ID_CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
         run: |
           echo "$CERT_BASE64" | openssl base64 -d -A > "$RUNNER_TEMP/cert.p12"
           KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
@@ -130,32 +130,6 @@ jobs:
             -s -k "" "$KEYCHAIN"
           echo "Available signing identities:"
           security find-identity -v -p codesigning "$KEYCHAIN"
-
-      - name: Install provisioning profile
-        env:
-          PROFILE_BASE64: ${{ secrets.MAC_PROVISIONING_PROFILE_BASE64 }}
-        run: |
-          echo "$PROFILE_BASE64" | openssl base64 -d -A > profile.provisionprofile
-          mkdir -p ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles
-          PROFILE_PLIST=$(openssl smime -verify -noverify -inform DER \
-            -in profile.provisionprofile 2>/dev/null)
-          UUID=$(echo "$PROFILE_PLIST" | plutil -extract UUID xml1 -o - - \
-            | sed -n 's|.*<string>\(.*\)</string>.*|\1|p')
-          TEAM_ID=$(echo "$PROFILE_PLIST" | plutil -extract TeamIdentifier.0 xml1 -o - - \
-            | sed -n 's|.*<string>\(.*\)</string>.*|\1|p')
-          PROFILE_NAME=$(echo "$PROFILE_PLIST" | plutil -extract Name xml1 -o - - \
-            | sed -n 's|.*<string>\(.*\)</string>.*|\1|p')
-          echo "Team ID: $TEAM_ID"
-          echo "Profile UUID: $UUID"
-          echo "Profile Name: $PROFILE_NAME"
-          cp profile.provisionprofile \
-            ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/"$UUID".provisionprofile
-          sed "s/TEAM_ID_PLACEHOLDER/$TEAM_ID/" \
-            macos/Entitlements.plist > entitlements-final.plist
-          echo "TEAM_ID=$TEAM_ID" >> $GITHUB_ENV
-          echo "PROFILE_UUID=$UUID" >> $GITHUB_ENV
-          echo "PROFILE_NAME=$PROFILE_NAME" >> $GITHUB_ENV
-          echo "PROFILE_PATH=profile.provisionprofile" >> $GITHUB_ENV
 
       - name: Bundle .app
         run: |
@@ -191,7 +165,8 @@ jobs:
                 fi
                 install_name_tool -id "@executable_path/../Frameworks/$name" "$dest"
                 bundle "$dest"
-                codesign --sign "Apple Distribution" --force --timestamp "$dest"
+                codesign --sign "Developer ID Application" --force --timestamp \
+                  --options runtime "$dest"
               fi
               # Rewrite both arch prefixes in the target (fat binary has both)
               install_name_tool -change "$arm" "@executable_path/../Frameworks/$name" "$target" 2>/dev/null || true
@@ -206,12 +181,12 @@ jobs:
           }
 
           bundle Newtonia.app/Contents/MacOS/Newtonia
-          codesign --sign "Apple Distribution" --force --timestamp \
-            --entitlements entitlements-final.plist \
+          codesign --sign "Developer ID Application" --force --timestamp \
+            --options runtime \
+            --entitlements macos/Entitlements.plist \
             Newtonia.app/Contents/MacOS/Newtonia
 
           cp -r audio Newtonia.app/Contents/Resources/audio
-          cp "$PROFILE_PATH" Newtonia.app/Contents/embedded.provisionprofile
 
           cat > Newtonia.app/Contents/Info.plist <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -232,9 +207,28 @@ jobs:
 
       - name: Sign .app bundle
         run: |
-          codesign --sign "Apple Distribution" --force --timestamp \
-            --entitlements entitlements-final.plist \
+          codesign --sign "Developer ID Application" --force --timestamp \
+            --options runtime \
+            --entitlements macos/Entitlements.plist \
             Newtonia.app
+
+      - name: Notarize .app
+        env:
+          NOTARIZATION_APPLE_ID: ${{ secrets.NOTARIZATION_APPLE_ID }}
+          NOTARIZATION_TEAM_ID: ${{ secrets.NOTARIZATION_TEAM_ID }}
+          NOTARIZATION_APP_PASSWORD: ${{ secrets.NOTARIZATION_APP_PASSWORD }}
+        run: |
+          # Zip for submission (notarytool requires a zip, dmg, or pkg)
+          ditto -c -k --keepParent Newtonia.app Newtonia-notarize.zip
+
+          xcrun notarytool submit Newtonia-notarize.zip \
+            --apple-id "$NOTARIZATION_APPLE_ID" \
+            --team-id "$NOTARIZATION_TEAM_ID" \
+            --password "$NOTARIZATION_APP_PASSWORD" \
+            --wait
+
+          # Staple the notarization ticket to the .app so it works offline
+          xcrun stapler staple Newtonia.app
 
       - name: Package .app as zip
         run: ditto -c -k --keepParent Newtonia.app newtonia-macos-universal.zip
