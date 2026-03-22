@@ -616,13 +616,27 @@ void Ship::collide_grid(Grid &grid) {
     if(object != NULL) {
       Asteroid *ast = dynamic_cast<Asteroid*>(object);
       if(ast && ast->reflective) {
-        // Reflect bullet velocity off the asteroid surface normal
-        Point normal = (bullets[i].position - object->position).normalized();
+        // Back-trace along the bullet's velocity to find where it crossed the surface.
+        // The bullet is guaranteed to be inside the polygon here; stepping backward
+        // by 1px increments finds the entry point in ~10 steps for typical bullet speeds.
+        Point vel_norm = bullets[i].velocity.normalized();
+        float max_trace = ast->radius * ast->max_vertex_offset * 2.0f + 4.0f;
+        WrappedPoint entry = bullets[i].position;
+        for (float d = 1.0f; d <= max_trace; d += 1.0f) {
+          WrappedPoint test(bullets[i].position.x() - vel_norm.x() * d,
+                            bullets[i].position.y() - vel_norm.y() * d);
+          if (!ast->contains(test)) {
+            entry = test;
+            break;
+          }
+        }
+        // Normal points outward from asteroid center through the entry point
+        Point normal = (entry - object->position).normalized();
         float dot = normal.x() * bullets[i].velocity.x() + normal.y() * bullets[i].velocity.y();
         bullets[i].velocity = bullets[i].velocity - normal * (2.0f * dot);
-        // Push the bullet outside the asteroid so it can't re-collide next frame
-        bullets[i].position = WrappedPoint(object->position.x() + normal.x() * (object->radius + 2.0f),
-                                           object->position.y() + normal.y() * (object->radius + 2.0f));
+        // Place bullet just outside the surface so it can't re-collide next frame
+        bullets[i].position = WrappedPoint(entry.x() + normal.x() * 2.0f,
+                                           entry.y() + normal.y() * 2.0f);
         object->kill(); // plays thud sound
         ++i;
       } else {
