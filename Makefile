@@ -26,10 +26,10 @@ osx: $(OBJFILES)
 	CFLAGS="$(OSX_CFLAGS)" $(CC) -o newtonia $(OBJFILES) $(OSX_LIBS)
 	mkdir -p Newtonia.app/Contents/MacOS
 	mkdir -p Newtonia.app/Contents/Resources
-	cp newtonia Newtonia.app/Contents/MacOS/newtonia
+	cp newtonia Newtonia.app/Contents/MacOS/Newtonia
 	cp -r audio Newtonia.app/Contents/Resources/audio
 	cp icon.icns Newtonia.app/Contents/Resources/icon.icns
-	sed 's/$${EXECUTABLE_NAME}/newtonia/g' Newtonia-Info.plist > Newtonia.app/Contents/Info.plist
+	sed 's/$${EXECUTABLE_NAME}/Newtonia/g' Newtonia-Info.plist > Newtonia.app/Contents/Info.plist
 
 newtonia: $(OBJFILES)
 	$(CC) -o newtonia $(OBJFILES) $(LIBS)
