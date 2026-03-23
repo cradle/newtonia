@@ -53,8 +53,8 @@ void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
 
   Point ship_pos = glship->ship->position;
 
-  const float inset = 30.0f;
-  const float arrow_size = 14.0f;
+  const float inset = 40.0f;
+  const float arrow_size = 24.0f;
 
   float edge_hw = hw - inset;
   float edge_hh = hh - inset;
