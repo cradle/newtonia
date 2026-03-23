@@ -272,12 +272,12 @@ void GLGame::tick(int delta) {
       } else {
         world += Point(50, 50);
       }
+      grid = Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2));
       if(generation >= 20) {
         if(station != NULL)
           delete station;
         station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
       }
-      grid = Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2));
       if(station != NULL) {
         station->reset();
       }
