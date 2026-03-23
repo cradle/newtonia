@@ -212,7 +212,20 @@ bool Asteroid::add_children(list<Asteroid*> *roids) {
     roids->push_back(new Asteroid(this));
   }
   if(explode_sound != NULL) {
-    Mix_PlayChannel(-1, explode_sound, 0);
+    // Reserve channels 0-3 for explosion sounds on first use so that at most
+    // 4 explosions can overlap.  If all 4 are busy the extra sound is dropped
+    // rather than mixed in, preventing audio clipping when many asteroids die
+    // in the same frame.
+    static bool channels_set_up = false;
+    if (!channels_set_up) {
+      channels_set_up = true;
+      Mix_ReserveChannels(4);
+      Mix_GroupChannels(0, 3, 1);  // group 1 = explosion channel pool
+    }
+    int ch = Mix_GroupAvailable(1);
+    if (ch >= 0) {
+      Mix_PlayChannel(ch, explode_sound, 0);
+    }
   }
   velocity = velocity / 8;
   return true;
