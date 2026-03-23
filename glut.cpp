@@ -116,13 +116,6 @@ void resize(int width, int height) {
   if (is_fullscreen) glutSetCursor(GLUT_CURSOR_NONE);
 }
 
-void mouse_move(int x, int y) {
-  game->mouse_move(x, y);
-#ifndef __APPLE__
-  // glutWarpPointer triggers an accessibility permission prompt on macOS.
-  glutWarpPointer(glutGet(GLUT_WINDOW_WIDTH)/2.0f, glutGet(GLUT_WINDOW_HEIGHT)/2.0f);
-#endif
-}
 
 void check_controller() {
   SDL_Event e;
@@ -271,8 +264,6 @@ void init(int &argc, char* argv[], float width, float height) {
   glutSpecialFunc(special);
   glutSpecialUpFunc(special_up);
   glutReshapeFunc(resize);
-  glutMotionFunc(mouse_move);
-  glutPassiveMotionFunc(mouse_move);
   glutVisibilityFunc(isVisible);
 }
 
