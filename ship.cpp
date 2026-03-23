@@ -377,6 +377,7 @@ float Ship::temperature_ratio() {
 
 void Ship::respawn(const Grid &grid, bool was_killed) {
   if(alive || lives > 0) {
+    bool try_current_position = first_life;
     if(first_life) {
       first_life = false;
       position.wrap();
@@ -389,14 +390,14 @@ void Ship::respawn(const Grid &grid, bool was_killed) {
     alive = true;
     time_left_invincible = 1500;
     reset(was_killed);
-    safe_position(grid);
+    safe_position(grid, try_current_position);
     invincible = true;
     set_shield_hum(true);
     detonate();
   }
 }
 
-void Ship::safe_position(const Grid &grid) {
+void Ship::safe_position(const Grid &grid, bool try_current) {
   auto in_black_hole_pull = [this]() {
     if(!black_holes) return false;
     for(const BlackHole *bh : *black_holes) {
@@ -406,6 +407,8 @@ void Ship::safe_position(const Grid &grid) {
     }
     return false;
   };
+  if(try_current && grid.collide(*this, 50.0f) == NULL && !in_black_hole_pull())
+    return;
   do {
     position = WrappedPoint();
   } while(grid.collide(*this, 50.0f) != NULL || in_black_hole_pull());

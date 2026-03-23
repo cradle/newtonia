@@ -161,7 +161,7 @@ class Ship : public CompositeObject {
     friend class GLTrail;
 
   private:
-    void safe_position(const Grid &grid);
+    void safe_position(const Grid &grid, bool try_current = false);
 
     void play_rotating_sound(bool on);
     Mix_Chunk *boost_sound = NULL, *tic_sound = NULL, *tic_low_sound = NULL, *click_sound = NULL;
