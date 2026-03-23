@@ -118,7 +118,10 @@ void resize(int width, int height) {
 
 void mouse_move(int x, int y) {
   game->mouse_move(x, y);
+#ifndef __APPLE__
+  // glutWarpPointer triggers an accessibility permission prompt on macOS.
   glutWarpPointer(glutGet(GLUT_WINDOW_WIDTH)/2.0f, glutGet(GLUT_WINDOW_HEIGHT)/2.0f);
+#endif
 }
 
 void check_controller() {
