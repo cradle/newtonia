@@ -127,7 +127,7 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
     else if(glship->has_controller())
       Typer::draw_centered(0, -40, "press start to unpause", 8);
     else
-      Typer::draw_centered(0, -40, "press p to unpause", 8);
+      Typer::draw_centered(0, -40, "press p or esc to unpause", 8);
   }
 }
 
