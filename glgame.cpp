@@ -528,6 +528,12 @@ void GLGame::tick(int delta) {
       }
     }
 
+    // Remove dead station once its debris has faded and all its ships are gone.
+    if (station != NULL && station->is_removable() && enemies->empty()) {
+      delete station;
+      station = NULL;
+    }
+
     /* COLLIDE PICKUPS WITH PLAYERS */
     for(o = players->begin(); o != players->end(); o++) {
       if(!(*o)->ship->is_alive()) continue;
