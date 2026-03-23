@@ -74,8 +74,10 @@ void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
     float sx = (wdx * cos_d - wdy * sin_d) * scale_x;
     float sy = (wdx * sin_d + wdy * cos_d) * scale_y;
 
-    // Skip if asteroid is on screen
-    if (fabsf(sx) <= hw && fabsf(sy) <= hh) continue;
+    // Skip if asteroid is fully or partially visible
+    float r_sx = a->effective_radius() * scale_x;
+    float r_sy = a->effective_radius() * scale_y;
+    if (sx - r_sx < hw && sx + r_sx > -hw && sy - r_sy < hh && sy + r_sy > -hh) continue;
 
     // Project direction onto screen edge with inset
     float tx = (fabsf(sx) > 1e-6f) ? edge_hw / fabsf(sx) : 1e9f;
