@@ -16,6 +16,8 @@
 
 #include <iostream>
 #include <cmath>
+#include <cstdlib>
+#include <ctime>
 
 // ============================================================
 // Touch → game-input mapping
@@ -164,6 +166,7 @@ static void finger_motion(SDL_FingerID id, float x, float y) {
 // ============================================================
 extern "C" int SDL_main(int argc, char *argv[]) {
     (void)argc; (void)argv;
+    srand(time(NULL));
 
     // Lock orientation to landscape before any window is created
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");

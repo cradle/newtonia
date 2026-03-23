@@ -23,6 +23,8 @@
 #include "asteroid.h"
 
 #include <cmath>
+#include <cstdlib>
+#include <ctime>
 #include <string>
 
 // ============================================================
@@ -223,6 +225,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_on_idb_ready() {
 // ============================================================
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
+    srand(time(NULL));
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
