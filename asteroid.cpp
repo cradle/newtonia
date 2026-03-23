@@ -54,11 +54,6 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective) : Composite
     explode_sound = Mix_LoadWAV("audio/explode.wav");
     if(explode_sound == NULL) {
       std::cout << "Unable to load explode.wav (" << Mix_GetError() << ")" << std::endl;
-    } else {
-      // Lower per-chunk volume so that 2 simultaneous explosions (our channel
-      // cap) sum to ~1.0 full scale rather than clipping.
-      // explode.wav peaks at ~0.75 FS; 2 × (85/128) × 0.75 ≈ 0.99.
-      Mix_VolumeChunk(explode_sound, 85);
     }
   }
   if(thud_sound == NULL) {
@@ -217,19 +212,13 @@ bool Asteroid::add_children(list<Asteroid*> *roids) {
     roids->push_back(new Asteroid(this));
   }
   if(explode_sound != NULL) {
-    // Reserve channels 0-3 for explosion sounds on first use so that at most
-    // 4 explosions can overlap.  If all 4 are busy the extra sound is dropped
-    // rather than mixed in, preventing audio clipping when many asteroids die
-    // in the same frame.
-    static bool channels_set_up = false;
-    if (!channels_set_up) {
-      channels_set_up = true;
-      Mix_ReserveChannels(2);
-      Mix_GroupChannels(0, 1, 1);  // group 1 = explosion channel pool (2 slots)
-    }
-    int ch = Mix_GroupAvailable(1);
-    if (ch >= 0) {
-      Mix_PlayChannel(ch, explode_sound, 0);
+    // Play at most once per millisecond tick: multiple asteroids dying in the
+    // same frame would stack identical waveforms and clip the audio output.
+    static Uint32 last_explode_tick = 0;
+    Uint32 now = SDL_GetTicks();
+    if(now != last_explode_tick) {
+      last_explode_tick = now;
+      Mix_PlayChannel(-1, explode_sound, 0);
     }
   }
   velocity = velocity / 8;
