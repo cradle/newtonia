@@ -123,6 +123,17 @@ void resize(int width, int height) {
   set_cursor_hidden(is_fullscreen);
 }
 
+#ifdef __APPLE__
+// On macOS, GLUT uses NSTrackingArea for cursor management. When the mouse
+// enters a new tracking region the OS resets the cursor, undoing our hide.
+// Re-apply on every mouse move during fullscreen to counteract this.
+void mouse_passive(int x, int y) {
+  if (!is_fullscreen) return;
+  cursor_hidden = false; // assume OS reset it; force re-apply
+  set_cursor_hidden(true);
+}
+#endif
+
 
 void check_controller() {
   SDL_Event e;
@@ -271,6 +282,9 @@ void init(int &argc, char* argv[], float width, float height) {
   glutSpecialFunc(special);
   glutSpecialUpFunc(special_up);
   glutReshapeFunc(resize);
+#ifdef __APPLE__
+  glutPassiveMotionFunc(mouse_passive);
+#endif
   glutVisibilityFunc(isVisible);
 }
 
