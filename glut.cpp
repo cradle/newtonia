@@ -54,6 +54,10 @@ int old_height = 320;
 bool is_fullscreen = false;
 bool cursor_hidden = false;
 
+#ifdef __APPLE__
+void hide_cursor_after_fullscreen(int);
+#endif
+
 void set_cursor_hidden(bool hide) {
   if (!hide && !cursor_hidden) return;
   cursor_hidden = hide;
