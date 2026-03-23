@@ -497,7 +497,7 @@ void GLGame::tick(int delta) {
         for (size_t i = 0; i < s->missiles.size(); ) {
           if (station->Object::collide(s->missiles[i])) {
             station->hit();
-            s->explode(s->missiles[i].position, s->missiles[i].velocity);
+            s->detonate(s->missiles[i].position, s->missiles[i].velocity, 25);
             if (s->missile_explode_sound != NULL)
               Mix_PlayChannel(-1, s->missile_explode_sound, 0);
             s->missiles[i] = std::move(s->missiles.back());
