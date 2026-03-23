@@ -195,7 +195,7 @@ bool Asteroid::kill() {
   if(thud_sound != NULL && invincible) {
     static Uint32 last_thud_tick = UINT32_MAX;
     Uint32 now = SDL_GetTicks();
-    if(now - last_thud_tick >= 250) {
+    if(now - last_thud_tick >= 125) {
       last_thud_tick = now;
       Mix_PlayChannel(-1, thud_sound, 0);
     }
