@@ -76,13 +76,14 @@ void keyboard(unsigned char key, int x, int y) {
     }
   case 'f':
     // http://www.xmission.com/~nate/sgi/sgi-macosx.zip
-    if (glutGet(GLUT_WINDOW_WIDTH) < glutGet(GLUT_SCREEN_WIDTH)) {
+    if (!is_fullscreen) {
       old_x = glutGet(GLUT_WINDOW_X);
       old_y = glutGet(GLUT_WINDOW_Y);
       old_width = glutGet(GLUT_WINDOW_WIDTH);
       old_height = glutGet(GLUT_WINDOW_HEIGHT);
       glutFullScreen();
       is_fullscreen = true;
+      set_cursor_hidden(true);
     } else {
       is_fullscreen = false;
       set_cursor_hidden(false);
