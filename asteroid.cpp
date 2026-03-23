@@ -212,7 +212,14 @@ bool Asteroid::add_children(list<Asteroid*> *roids) {
     roids->push_back(new Asteroid(this));
   }
   if(explode_sound != NULL) {
-    Mix_PlayChannel(-1, explode_sound, 0);
+    // Play at most once per millisecond tick: multiple asteroids dying in the
+    // same frame would stack identical waveforms and clip the audio output.
+    static Uint32 last_explode_tick = UINT32_MAX;
+    Uint32 now = SDL_GetTicks();
+    if(now != last_explode_tick) {
+      last_explode_tick = now;
+      Mix_PlayChannel(-1, explode_sound, 0);
+    }
   }
   velocity = velocity / 8;
   return true;
