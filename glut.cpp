@@ -55,9 +55,18 @@ bool is_fullscreen = false;
 bool cursor_hidden = false;
 
 void set_cursor_hidden(bool hide) {
-  if (hide == cursor_hidden) return;
+  if (!hide && !cursor_hidden) return;
   cursor_hidden = hide;
-  glutSetCursor(hide ? GLUT_CURSOR_NONE : GLUT_CURSOR_LEFT_ARROW);
+  if (hide) {
+#ifdef __APPLE__
+    // Show then hide resets the macOS cursor-hide reference count to a
+    // known state before applying the hide, making it reliable.
+    glutSetCursor(GLUT_CURSOR_LEFT_ARROW);
+#endif
+    glutSetCursor(GLUT_CURSOR_NONE);
+  } else {
+    glutSetCursor(GLUT_CURSOR_LEFT_ARROW);
+  }
 }
 
 void keyboard(unsigned char key, int x, int y) {
@@ -126,10 +135,11 @@ void resize(int width, int height) {
 #ifdef __APPLE__
 // On macOS, GLUT uses NSTrackingArea for cursor management. When the mouse
 // enters a new tracking region the OS resets the cursor, undoing our hide.
-// Re-apply on every mouse move during fullscreen to counteract this.
+// Re-apply on every mouse move during fullscreen using the show-then-hide
+// trick to guarantee the reference count is in the right state.
 void mouse_passive(int x, int y) {
   if (!is_fullscreen) return;
-  cursor_hidden = false; // assume OS reset it; force re-apply
+  cursor_hidden = false; // bypass guard so set_cursor_hidden always re-applies
   set_cursor_hidden(true);
 }
 #endif
