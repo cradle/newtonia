@@ -17,6 +17,8 @@
 
 #include <iostream>
 #include <cmath>
+#include <cstdlib>
+#include <ctime>
 
 // ============================================================
 // Touch → game-input mapping
@@ -165,6 +167,7 @@ static void finger_motion(SDL_FingerID id, float x, float y) {
 // ============================================================
 extern "C" int SDL_main(int argc, char *argv[]) {
     (void)argc; (void)argv;
+    srand(time(NULL));
 
     // Let SDL2 auto-select the best audio backend: AAudio on API 26+ (which
     // honours SDL_HINT_AUDIO_DEVICE_STREAM_ROLE="game" →

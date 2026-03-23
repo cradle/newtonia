@@ -2,6 +2,7 @@
 #if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
 
 #include <stdlib.h> // For EXIT_SUCCESS
+#include <time.h>   // For time()
 
 #include <SDL.h>
 #include <SDL_mixer.h>
@@ -202,6 +203,7 @@ void init_controllers_and_audio() {
 void init(int &argc, char* argv[], float width, float height);
 
 int main(int argc, char* argv[]) {
+  srand(time(NULL));
   init(argc, argv, 800, 600);
   init_controllers_and_audio();
   game = new StateManager();
