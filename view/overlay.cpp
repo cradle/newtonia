@@ -59,6 +59,23 @@ void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
   float edge_hw = hw - inset;
   float edge_hh = hh - inset;
 
+  // Only show off-screen arrows when no killable asteroids are visible on screen
+  for (auto it = glgame->objects->cbegin(); it != glgame->objects->cend(); ++it) {
+    const Asteroid *a = *it;
+    if (!a->alive || a->invincible) continue;
+
+    Point closest = a->position.closest_to(ship_pos);
+    float wdx = closest.x() - ship_pos.x();
+    float wdy = closest.y() - ship_pos.y();
+
+    float sx = (wdx * cos_d - wdy * sin_d) * scale_x;
+    float sy = (wdx * sin_d + wdy * cos_d) * scale_y;
+
+    float r_sx = a->effective_radius() * scale_x;
+    float r_sy = a->effective_radius() * scale_y;
+    if (sx - r_sx < hw && sx + r_sx > -hw && sy - r_sy < hh && sy + r_sy > -hh) return;
+  }
+
   glColor3f(1.0f, 1.0f, 1.0f);
 
   for (auto it = glgame->objects->cbegin(); it != glgame->objects->cend(); ++it) {
