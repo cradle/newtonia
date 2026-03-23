@@ -22,6 +22,82 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   respawn_timer(glgame, glship);
   paused(glgame, glship);
   touch_controls(glgame, glship);
+  edge_indicators(glgame, glship);
+}
+
+void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
+  if (!glship->ship->is_alive()) return;
+  if (glgame->objects->empty()) return;
+
+  int nx = glgame->num_x_viewports();
+  int ny = glgame->num_y_viewports();
+
+  // Overlay half-extents in orthogonal coordinates
+  float hw = (float)Typer::window_width / nx;
+  float hh = (float)Typer::window_height / ny;
+
+  // Perspective visible half-extents at z=0, matching draw_perspective
+  float fov_deg = glship->view_angle();
+  float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
+  float aspect = (float)glgame->window.x() / ((float)glgame->window.y() / ny);
+  float half_w = half_h * aspect;
+
+  float scale_x = hw / half_w;
+  float scale_y = hh / half_h;
+
+  // View rotation matching draw_perspective
+  float dir_deg = glship->rotate_view() ? glship->camera_facing() : 0.0f;
+  float dir_rad = dir_deg * (float)M_PI / 180.0f;
+  float cos_d = cosf(dir_rad);
+  float sin_d = sinf(dir_rad);
+
+  Point ship_pos = glship->ship->position;
+
+  const float inset = 30.0f;
+  const float arrow_size = 14.0f;
+
+  float edge_hw = hw - inset;
+  float edge_hh = hh - inset;
+
+  glColor3f(1.0f, 1.0f, 1.0f);
+
+  for (auto it = glgame->objects->cbegin(); it != glgame->objects->cend(); ++it) {
+    const Asteroid *a = *it;
+    if (!a->alive || a->invincible) continue;
+
+    // Find closest wrapped position to ship
+    Point closest = a->position.closest_to(ship_pos);
+    float wdx = closest.x() - ship_pos.x();
+    float wdy = closest.y() - ship_pos.y();
+
+    // Rotate into screen space
+    float sx = (wdx * cos_d - wdy * sin_d) * scale_x;
+    float sy = (wdx * sin_d + wdy * cos_d) * scale_y;
+
+    // Skip if asteroid is on screen
+    if (fabsf(sx) <= hw && fabsf(sy) <= hh) continue;
+
+    // Project direction onto screen edge with inset
+    float tx = (fabsf(sx) > 1e-6f) ? edge_hw / fabsf(sx) : 1e9f;
+    float ty = (fabsf(sy) > 1e-6f) ? edge_hh / fabsf(sy) : 1e9f;
+    float t = (tx < ty) ? tx : ty;
+
+    float ax = fmaxf(fminf(sx * t, edge_hw), -edge_hw);
+    float ay = fmaxf(fminf(sy * t, edge_hh), -edge_hh);
+
+    // Arrow angle pointing toward asteroid
+    float angle = atan2f(sy, sx);
+    float cos_a   = cosf(angle);
+    float sin_a   = sinf(angle);
+    float cos_a90 = cosf(angle + (float)M_PI / 2.0f);
+    float sin_a90 = sinf(angle + (float)M_PI / 2.0f);
+
+    glBegin(GL_TRIANGLES);
+    glVertex2f(ax + cos_a * arrow_size,               ay + sin_a * arrow_size);
+    glVertex2f(ax + cos_a90 * (arrow_size * 0.5f),    ay + sin_a90 * (arrow_size * 0.5f));
+    glVertex2f(ax - cos_a90 * (arrow_size * 0.5f),    ay - sin_a90 * (arrow_size * 0.5f));
+    glEnd();
+  }
 }
 
 void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
