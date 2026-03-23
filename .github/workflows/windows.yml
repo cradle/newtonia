@@ -45,6 +45,34 @@ jobs:
             $(pkg-config --libs --static sdl2 SDL2_mixer freeglut) \
             -lopengl32 -lglu32
 
+      # Decode and sign the executable with a PFX code signing certificate.
+      # To set up:
+      #   1. Obtain a code signing certificate (.pfx file)
+      #   2. base64 -w0 CodeSigning.pfx → store as WINDOWS_CERTIFICATE_BASE64 secret
+      #   3. Store the certificate password as WINDOWS_CERTIFICATE_PASSWORD secret
+      # Without these secrets the signing steps are skipped (e.g. on fork PRs).
+      - name: Decode signing certificate
+        if: ${{ env.WINDOWS_CERTIFICATE_BASE64 != '' }}
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+        run: |
+          $certBytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64)
+          [IO.File]::WriteAllBytes("cert.pfx", $certBytes)
+
+      - name: Sign executable
+        if: ${{ env.WINDOWS_CERTIFICATE_BASE64 != '' }}
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" `
+            -Recurse -Filter signtool.exe | Select-Object -Last 1).FullName
+          & $signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com `
+            /f cert.pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD newtonia.exe
+          Remove-Item cert.pfx
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
