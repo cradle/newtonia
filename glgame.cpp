@@ -1059,9 +1059,13 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
   if (key == 27) {
-    for (auto* glship : *players)
-      save_high_score(glship->ship->score);
-    request_state_change(new Menu());
+    if (!running) {
+      toggle_pause();
+    } else {
+      for (auto* glship : *players)
+        save_high_score(glship->ship->score);
+      request_state_change(new Menu());
+    }
   }
 
   std::list<GLShip*>::iterator object;
