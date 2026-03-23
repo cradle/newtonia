@@ -491,6 +491,22 @@ void GLGame::tick(int delta) {
           if (!s->is_alive())
             s->detonate();
         }
+        // Missile collision: consume missile, deal 1 damage, scatter debris
+        // (debris bullets are then picked up by the bullet loop below)
+        if (!station->is_alive()) break;
+        for (size_t i = 0; i < s->missiles.size(); ) {
+          if (station->Object::collide(s->missiles[i])) {
+            station->hit();
+            s->detonate(s->missiles[i].position, s->missiles[i].velocity, 50);
+            if (s->missile_explode_sound != NULL)
+              Mix_PlayChannel(-1, s->missile_explode_sound, 0);
+            s->missiles[i] = std::move(s->missiles.back());
+            s->missiles.pop_back();
+            if (!station->is_alive()) break;
+          } else {
+            ++i;
+          }
+        }
         // Bullet collision: consume bullet, damage station
         if (!station->is_alive()) break;
         for (size_t i = 0; i < s->bullets.size(); ) {
