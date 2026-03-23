@@ -214,7 +214,7 @@ bool Asteroid::add_children(list<Asteroid*> *roids) {
   if(explode_sound != NULL) {
     // Play at most once per millisecond tick: multiple asteroids dying in the
     // same frame would stack identical waveforms and clip the audio output.
-    static Uint32 last_explode_tick = 0;
+    static Uint32 last_explode_tick = UINT32_MAX;
     Uint32 now = SDL_GetTicks();
     if(now != last_explode_tick) {
       last_explode_tick = now;
