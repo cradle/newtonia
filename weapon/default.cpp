@@ -42,7 +42,7 @@ namespace Weapon {
       }
       _name = temp_name.str();
 
-      unlimited = (level == 0 && !automatic);
+      unlimited = (weapon_index == -1);
 
       if(!unlimited)
         _ammo = 100;
