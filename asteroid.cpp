@@ -193,7 +193,12 @@ bool Asteroid::contains(Point p, float r) const {
 
 bool Asteroid::kill() {
   if(thud_sound != NULL && invincible) {
-    Mix_PlayChannel(-1, thud_sound, 0);
+    static Uint32 last_thud_tick = UINT32_MAX;
+    Uint32 now = SDL_GetTicks();
+    if(now != last_thud_tick) {
+      last_thud_tick = now;
+      Mix_PlayChannel(-1, thud_sound, 0);
+    }
   }
   if(!invincible && !killed) {
     num_killable--;
