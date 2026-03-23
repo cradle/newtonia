@@ -670,7 +670,7 @@ void Ship::collide_grid(Grid &grid) {
       score += object->get_value() * multiplier();
       kills_this_life += 1;
       kills += 1;
-      detonate(missiles[i].position, missiles[i].velocity, 50);
+      detonate(missiles[i].position, missiles[i].velocity, 25);
       if(missile_explode_sound != NULL) {
         Mix_PlayChannel(-1, missile_explode_sound, 0);
       }
@@ -731,7 +731,7 @@ void Ship::collide(Ship *other) {
       kills_this_life += 1;
       kills += 1;
       score += other->value * multiplier();
-      detonate(missiles[i].position, missiles[i].velocity, 50);
+      detonate(missiles[i].position, missiles[i].velocity, 25);
       if(missile_explode_sound != NULL) {
         Mix_PlayChannel(-1, missile_explode_sound, 0);
       }
@@ -989,7 +989,7 @@ void Ship::step(float delta, const Grid &grid) {
   // Here we only handle expiry detonation.
   for(size_t i = 0; i < missiles.size(); ) {
     if(!missiles[i].is_alive()) {
-      detonate(missiles[i].position, missiles[i].velocity, 50);
+      detonate(missiles[i].position, missiles[i].velocity, 25);
       if(missile_explode_sound != NULL) {
         Mix_PlayChannel(-1, missile_explode_sound, 0);
       }
