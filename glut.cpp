@@ -51,6 +51,7 @@ int old_x = 50;
 int old_y = 50;
 int old_width = 320;
 int old_height = 320;
+bool is_fullscreen = false;
 
 void keyboard(unsigned char key, int x, int y) {
   switch (key) {
@@ -74,8 +75,10 @@ void keyboard(unsigned char key, int x, int y) {
       old_width = glutGet(GLUT_WINDOW_WIDTH);
       old_height = glutGet(GLUT_WINDOW_HEIGHT);
       glutFullScreen();
+      is_fullscreen = true;
       glutSetCursor(GLUT_CURSOR_NONE);
     } else {
+      is_fullscreen = false;
       glutPositionWindow(old_x, old_y);
       glutReshapeWindow(old_width, old_height);
       glutSetCursor(GLUT_CURSOR_LEFT_ARROW);
@@ -108,6 +111,9 @@ void special_up(int key, int x, int y) {
 void resize(int width, int height) {
   Typer::resize(width, height);
   if (game) game->resize(width, height);
+  // On macOS the fullscreen transition is asynchronous: the reshape fires
+  // after the OS resets cursor state, so re-apply hiding here.
+  if (is_fullscreen) glutSetCursor(GLUT_CURSOR_NONE);
 }
 
 void mouse_move(int x, int y) {
@@ -262,6 +268,8 @@ void init(int &argc, char* argv[], float width, float height) {
   glutSpecialFunc(special);
   glutSpecialUpFunc(special_up);
   glutReshapeFunc(resize);
+  glutMotionFunc(mouse_move);
+  glutPassiveMotionFunc(mouse_move);
   glutVisibilityFunc(isVisible);
 }
 
