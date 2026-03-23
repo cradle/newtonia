@@ -37,9 +37,9 @@ void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
   float hh = (float)Typer::window_height / ny;
 
   // Perspective visible half-extents at z=0, matching draw_perspective
-  float fov_deg = glship->view_angle();
+  float fov_deg = (ny == 1) ? glship->view_angle() : glship->view_angle() * 0.75f;
   float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
-  float aspect = (float)glgame->window.x() / ((float)glgame->window.y() / ny);
+  float aspect = ((float)glgame->window.x() / nx) / ((float)glgame->window.y() / ny);
   float half_w = half_h * aspect;
 
   float scale_x = hw / half_w;
