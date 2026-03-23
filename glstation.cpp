@@ -123,7 +123,7 @@ void GLStation::draw(bool minimap) const {
   glPushMatrix();
   glTranslatef(position.x(), position.y(), 0);
 
-  if(minimap) {
+  if(minimap && alive) {
     glColor3f(1.0f, 0.8f, 0.0f);
     glCallList(map_body);
   } else if(alive) {
