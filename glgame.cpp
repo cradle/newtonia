@@ -243,6 +243,13 @@ bool GLGame::cleared() const {
 }
 
 void GLGame::tick(int delta) {
+  // Cap delta to prevent large catch-up when returning from a long Android
+  // background/suspend.  Without this, a single oversized delta could drain
+  // time_until_next_generation in one frame, making the "CLEARED" countdown
+  // invisible, and could also spin the inner simulation-step loop hundreds of
+  // times causing a visible freeze.
+  if(delta > 250) delta = 250;
+
   current_time += delta;
 
   if (!running) {
