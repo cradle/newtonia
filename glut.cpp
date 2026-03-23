@@ -51,6 +51,27 @@ int old_x = 50;
 int old_y = 50;
 int old_width = 320;
 int old_height = 320;
+bool is_fullscreen = false;
+bool cursor_hidden = false;
+
+#ifdef __APPLE__
+void hide_cursor_after_fullscreen(int);
+#endif
+
+void set_cursor_hidden(bool hide) {
+  if (!hide && !cursor_hidden) return;
+  cursor_hidden = hide;
+  if (hide) {
+#ifdef __APPLE__
+    // Show then hide resets the macOS cursor-hide reference count to a
+    // known state before applying the hide, making it reliable.
+    glutSetCursor(GLUT_CURSOR_LEFT_ARROW);
+#endif
+    glutSetCursor(GLUT_CURSOR_NONE);
+  } else {
+    glutSetCursor(GLUT_CURSOR_LEFT_ARROW);
+  }
+}
 
 void keyboard(unsigned char key, int x, int y) {
   switch (key) {
@@ -68,17 +89,25 @@ void keyboard(unsigned char key, int x, int y) {
     }
   case 'f':
     // http://www.xmission.com/~nate/sgi/sgi-macosx.zip
-    if (glutGet(GLUT_WINDOW_WIDTH) < glutGet(GLUT_SCREEN_WIDTH)) {
+    if (!is_fullscreen) {
       old_x = glutGet(GLUT_WINDOW_X);
       old_y = glutGet(GLUT_WINDOW_Y);
       old_width = glutGet(GLUT_WINDOW_WIDTH);
       old_height = glutGet(GLUT_WINDOW_HEIGHT);
       glutFullScreen();
-      glutSetCursor(GLUT_CURSOR_NONE);
+      is_fullscreen = true;
+#ifdef __APPLE__
+      // macOS fullscreen animation resets cursor state after the resize fires.
+      // Wait for the animation to settle before hiding.
+      glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
+#else
+      set_cursor_hidden(true);
+#endif
     } else {
+      is_fullscreen = false;
+      set_cursor_hidden(false);
       glutPositionWindow(old_x, old_y);
       glutReshapeWindow(old_width, old_height);
-      glutSetCursor(GLUT_CURSOR_LEFT_ARROW);
     }
     break;
   }
@@ -108,12 +137,30 @@ void special_up(int key, int x, int y) {
 void resize(int width, int height) {
   Typer::resize(width, height);
   if (game) game->resize(width, height);
+#ifndef __APPLE__
+  set_cursor_hidden(is_fullscreen);
+#endif
 }
 
-void mouse_move(int x, int y) {
-  game->mouse_move(x, y);
-  glutWarpPointer(glutGet(GLUT_WINDOW_WIDTH)/2.0f, glutGet(GLUT_WINDOW_HEIGHT)/2.0f);
+#ifdef __APPLE__
+void hide_cursor_after_fullscreen(int) {
+  if (is_fullscreen) {
+    cursor_hidden = false;
+    set_cursor_hidden(true);
+  }
 }
+
+// On macOS, GLUT uses NSTrackingArea for cursor management. When the mouse
+// enters a new tracking region the OS resets the cursor, undoing our hide.
+// Re-apply on every mouse move during fullscreen using the show-then-hide
+// trick to guarantee the reference count is in the right state.
+void mouse_passive(int x, int y) {
+  if (!is_fullscreen) return;
+  cursor_hidden = false;
+  set_cursor_hidden(true);
+}
+#endif
+
 
 void check_controller() {
   SDL_Event e;
@@ -262,6 +309,9 @@ void init(int &argc, char* argv[], float width, float height) {
   glutSpecialFunc(special);
   glutSpecialUpFunc(special_up);
   glutReshapeFunc(resize);
+#ifdef __APPLE__
+  glutPassiveMotionFunc(mouse_passive);
+#endif
   glutVisibilityFunc(isVisible);
 }
 
