@@ -7,7 +7,7 @@
 #include <emscripten.h>
 #endif
 
-static const char* HS_ORG  = "org.newtonia";
+static const char* HS_ORG  = "cc.gfm";
 static const char* HS_APP  = "newtonia";
 static const char* HS_FILE = "highscore.dat";
 

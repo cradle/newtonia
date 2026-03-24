@@ -292,7 +292,7 @@ int main(int argc, char *argv[]) {
     // SDL_GetPrefPath creates an empty MEMFS directory; we overlay IDBFS on
     // top so reads/writes automatically go through IndexedDB.
     // The async sync (IDB → memory) completes before start_game() is called.
-    char *raw_pref = SDL_GetPrefPath("org.newtonia", "newtonia");
+    char *raw_pref = SDL_GetPrefPath("cc.gfm", "newtonia");
     if (raw_pref) {
         // Strip trailing slash — FS.mount needs the dir itself, not a child path.
         std::string pref(raw_pref);
