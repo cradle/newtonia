@@ -18,6 +18,7 @@ public:
   virtual bool contains(Point p, float r = 0.0f) const override;
   virtual float effective_radius() const override { return radius * max_vertex_offset; }
   Point surface_normal(Point entry, Point incoming_dir) const;
+  bool segment_hit(Point a, Point b, float &t_hit) const;
 
   friend class AsteroidDrawer;
 

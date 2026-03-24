@@ -553,7 +553,7 @@ int Ship::multiplier() const {
   return kills_this_life / 10 + 1;
 }
 
-void Ship::collide_grid(Grid &grid) {
+void Ship::collide_grid(Grid &grid, int delta) {
   Object * object;
 
   if(alive) {
@@ -618,8 +618,31 @@ void Ship::collide_grid(Grid &grid) {
     }
   }
 
+  vector<Object *> sweep_candidates;
   for(size_t i = 0; i < bullets.size(); ) {
-    object = grid.collide(bullets[i]);
+    // Swept collision via segment-polygon intersection: test the bullet's
+    // full path this frame against asteroid polygon edges so fast bullets
+    // cannot tunnel through.
+    Point seg_a(bullets[i].position.x() - bullets[i].velocity.x() * delta,
+                bullets[i].position.y() - bullets[i].velocity.y() * delta);
+    Point seg_b(bullets[i].position.x(), bullets[i].position.y());
+    sweep_candidates.clear();
+    grid.query_segment(seg_a, seg_b, sweep_candidates);
+    object = NULL;
+    float best_t = 2.0f;
+    for (Object *cand : sweep_candidates) {
+      Asteroid *ast = dynamic_cast<Asteroid*>(cand);
+      if (!ast) continue;
+      float t;
+      if (ast->segment_hit(seg_a, seg_b, t) && t < best_t) {
+        best_t = t;
+        object = cand;
+      }
+    }
+    if (object != NULL) {
+      bullets[i].position = WrappedPoint(seg_a.x() + (seg_b.x() - seg_a.x()) * best_t,
+                                         seg_a.y() + (seg_b.y() - seg_a.y()) * best_t);
+    }
     if(object != NULL) {
       Asteroid *ast = dynamic_cast<Asteroid*>(object);
       if(ast && ast->reflective) {

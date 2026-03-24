@@ -113,8 +113,8 @@ float GLShip::camera_facing() const {
   return -camera_rotation;
 }
 
-void GLShip::collide_grid(Grid &grid) {
-    ship->collide_grid(grid);
+void GLShip::collide_grid(Grid &grid, int delta) {
+    ship->collide_grid(grid, delta);
 }
 
 void GLShip::collide(GLShip* first, GLShip* second) {

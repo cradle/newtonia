@@ -414,10 +414,10 @@ void GLGame::tick(int delta) {
 
   /* COLLIDE EVERYTHING */
     for(o = players->begin(); o != players->end(); o++) {
-      (*o)->collide_grid(grid);
+      (*o)->collide_grid(grid, step_size);
     }
     for(o = enemies->begin(); o != enemies->end(); o++) {
-      (*o)->collide_grid(grid);
+      (*o)->collide_grid(grid, step_size);
     }
 
     oi = objects->begin();
