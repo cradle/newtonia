@@ -141,9 +141,6 @@ void Missile::shoot(bool on) {
 }
 
 void Missile::step(int delta) {
-  for(size_t i = 0; i < ship->missiles.size(); i++) {
-    ship->missiles[i].step_missile(delta, asteroids, ship_targets);
-  }
   if (ship->missiles.empty() && fly_channel != -1) {
     Mix_HaltChannel(fly_channel);
     fly_channel = -1;

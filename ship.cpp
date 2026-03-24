@@ -890,8 +890,7 @@ void Ship::step(float delta, const Grid &grid) {
 
     (*primary)->step(delta);
     for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
-      if (!dynamic_cast<Weapon::Missile*>(*it))
-        (*it)->step(delta);
+      (*it)->step(delta);
     }
 
   } else if (lives > 0) {
