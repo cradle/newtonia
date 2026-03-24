@@ -29,6 +29,15 @@
 
 #endif // __ANDROID__ || __IOS__ || __EMSCRIPTEN__
 
+// Returns true when running in Steam Game Mode (Steam Deck).
+inline bool is_steam_gamemode() {
+#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__) || defined(__APPLE__)
+  return false;
+#else
+  return getenv("SteamDeck") != nullptr;
+#endif
+}
+
 // Returns true when the primary input is touch (Android, iOS, or web with a
 // coarse pointer such as a touchscreen).  Use this instead of repeating the
 // platform-specific preprocessor / matchMedia boilerplate everywhere.
