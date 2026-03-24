@@ -336,7 +336,7 @@ void Ship::set_black_holes(const std::list<BlackHole*> *bhs) {
 
 void Ship::init(bool no_friction) {
   mass = 100.0;
-  value = 1000000;
+  value = 200;
   lives = 4;
   width = height = radius = 15;
   radius_squared = radius * radius;
@@ -731,6 +731,7 @@ void Ship::collide(Ship *other) {
       other->kill();
       kills_this_life += 1;
       kills += 1;
+      score += other->value * multiplier();
       bullets[i] = std::move(bullets.back());
       bullets.pop_back();
     } else {
@@ -772,6 +773,7 @@ void Ship::collide(Ship *other) {
       other->kill();
       kills_this_life += 1;
       kills += 1;
+      score += other->value * multiplier();
       detonate(missiles[i].position, missiles[i].velocity, 25);
       if(missile_explode_sound != NULL) {
         Mix_PlayChannel(-1, missile_explode_sound, 0);
