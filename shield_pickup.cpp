@@ -1,4 +1,5 @@
 #include "shield_pickup.h"
+#include "shield_pickup_behaviour.h"
 #include "ship.h"
 #include "gl_compat.h"
 #include <math.h>
@@ -11,7 +12,7 @@ ShieldPickup::ShieldPickup(WrappedPoint pos) : Pickup(pos) {
 }
 
 void ShieldPickup::apply(Ship *ship) {
-  ship->add_shield_ammo(10);
+  ship->add_behaviour(new ShieldPickupBehaviour(ship, 10));
 }
 
 void ShieldPickup::draw(float world_rotation) const {

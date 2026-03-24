@@ -112,6 +112,7 @@ class Ship : public CompositeObject {
 
     //FIX: friends
     int time_left_invincible;
+    void add_behaviour(Behaviour *b);
     void disable_behaviours();
     void disable_weapons();
 

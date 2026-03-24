@@ -77,6 +77,10 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   }
 }
 
+void Ship::add_behaviour(Behaviour *b) {
+  behaviours.push_back(b);
+}
+
 void Ship::disable_behaviours() {
   while(!behaviours.empty()) {
     delete behaviours.back();
