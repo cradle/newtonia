@@ -89,7 +89,7 @@ void Menu::tick(int delta) {
 void Menu::controller(SDL_Event event) {
  if(event.type == SDL_CONTROLLERBUTTONDOWN) {
     if(event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
-      //glutLeaveMainLoop();
+      glutLeaveMainLoop();
     } else if(event.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
               event.cbutton.button == SDL_CONTROLLER_BUTTON_A) {
 #ifdef __EMSCRIPTEN__
