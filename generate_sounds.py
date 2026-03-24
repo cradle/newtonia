@@ -79,21 +79,21 @@ def make_explode():
     return samples
 
 def make_thud():
-    """Bullet hits invincible asteroid: low woody knock, 250ms."""
-    n = int(SAMPLE_RATE * 0.25)
+    """Bullet hits invincible asteroid: low woody knock, 380ms."""
+    n = int(SAMPLE_RATE * 0.38)
     rng = random.Random(99)
     samples = []
     for i in range(n):
         t = i / SAMPLE_RATE
         # Slow body decay for a dense, woody resonance
-        body_env = math.exp(-t * 14)
+        body_env = math.exp(-t * 9)
         # Low fundamental with inharmonic partials (like a log/block of wood)
-        body  = math.sin(2 * math.pi * 55  * t) * 0.55 * body_env
-        body += math.sin(2 * math.pi * 110 * t) * 0.25 * body_env
-        body += math.sin(2 * math.pi * 175 * t) * 0.10 * body_env
+        body  = math.sin(2 * math.pi * 55  * t) * 0.70 * body_env
+        body += math.sin(2 * math.pi * 110 * t) * 0.32 * body_env
+        body += math.sin(2 * math.pi * 175 * t) * 0.13 * body_env
         # Very brief noise transient at the attack (muffled knock character)
         click_env = math.exp(-t * 150)
-        noise = (rng.random() * 2 - 1) * 0.25 * click_env
+        noise = (rng.random() * 2 - 1) * 0.32 * click_env
         samples.append(body + noise)
     return samples
 
