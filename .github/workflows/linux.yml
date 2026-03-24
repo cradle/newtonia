@@ -50,7 +50,7 @@ jobs:
             -not -path "./.git/*" \
             -not -name "gles2_compat.cpp")
           g++ -O2 -Wall -std=c++11 \
-            $(sdl2-config --cflags) \
+            $(sdl2-config --cflags) -I/usr/local/include/SDL2 \
             -o newtonia $SRCS \
             -lglut -lGL -lGLU \
             $(sdl2-config --libs) -lSDL2_mixer
