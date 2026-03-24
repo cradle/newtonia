@@ -155,6 +155,44 @@ Point Asteroid::surface_normal(Point entry, Point incoming_dir) const {
   return Point(best_nx, best_ny);
 }
 
+// Test whether the segment [a,b] crosses any edge of the asteroid polygon.
+// t_hit is set to the parameter of the earliest crossing (0=a, 1=b).
+bool Asteroid::segment_hit(Point a, Point b, float &t_hit) const {
+  int segs = 7;
+  if      (radius < 15)  segs = 5;
+  else if (radius < 30)  segs = 6;
+  else if (radius > 200) segs = 9;
+
+  float rot = rotation * (float)M_PI / 180.0f;
+  const float ang_step = 2.0f * (float)M_PI / segs;
+
+  float vx[9], vy[9];
+  for (int i = 0; i < segs; i++) {
+    float angle = rot + i * ang_step;
+    vx[i] = position.x() + radius * vertex_offsets[i] * cosf(angle);
+    vy[i] = position.y() + radius * vertex_offsets[i] * sinf(angle);
+  }
+
+  float dx = b.x() - a.x(), dy = b.y() - a.y();
+  t_hit = 2.0f;
+  bool hit = false;
+
+  for (int i = 0; i < segs; i++) {
+    int j = (i + 1) % segs;
+    float ex = vx[j] - vx[i], ey = vy[j] - vy[i];
+    float denom = dx * ey - dy * ex;
+    if (fabsf(denom) < 1e-10f) continue; // parallel
+    float fx = vx[i] - a.x(), fy = vy[i] - a.y();
+    float t = (fx * ey - fy * ex) / denom; // parameter along bullet segment
+    float u = (fx * dy - fy * dx) / denom; // parameter along polygon edge
+    if (t >= 0.0f && t <= 1.0f && u >= 0.0f && u <= 1.0f && t < t_hit) {
+      t_hit = t;
+      hit = true;
+    }
+  }
+  return hit;
+}
+
 bool Asteroid::contains(Point p, float r) const {
   float lx = p.x() - position.x();
   float ly = p.y() - position.y();

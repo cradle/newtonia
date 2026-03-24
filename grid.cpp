@@ -95,5 +95,27 @@ void Grid::update(const list<Object *> *objects) {
   }
 }
 
+// Collect all live objects in the grid cells that the segment [a,b] overlaps.
+// Duplicates (objects spanning multiple cells) are skipped via linear scan —
+// in practice at most a handful of asteroids appear per bullet path.
+void Grid::query_segment(Point a, Point b, vector<Object *> &out) const {
+  float x0 = min(a.x(), b.x()), x1 = max(a.x(), b.x());
+  float y0 = min(a.y(), b.y()), y1 = max(a.y(), b.y());
+  int row_min = (int)floor(x0 / cell_size.x()) - 1;
+  int row_max = (int)floor(x1 / cell_size.x()) + 1;
+  int col_min = (int)floor(y0 / cell_size.y()) - 1;
+  int col_max = (int)floor(y1 / cell_size.y()) + 1;
+  for (int row = row_min; row <= row_max; row++) {
+    for (int col = col_min; col <= col_max; col++) {
+      const vector<Object *> &cell = get(row, col);
+      for (Object *o : cell) {
+        if (!o->alive) continue;
+        if (find(out.begin(), out.end(), o) == out.end())
+          out.push_back(o);
+      }
+    }
+  }
+}
+
 Grid::~Grid() {
 }
