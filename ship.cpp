@@ -633,12 +633,21 @@ void Ship::collide_grid(Grid &grid, int delta) {
     for (Object *cand : sweep_candidates) {
       Asteroid *ast = dynamic_cast<Asteroid*>(cand);
       if (!ast) continue;
+      // When the bullet's path crosses a world edge, seg_a can lie outside
+      // [x_min, x_max] while the asteroid sits near the opposite edge.
+      // Translate both endpoints into the same world-copy as the asteroid so
+      // the segment/polygon tests produce correct results.
+      Point ast_near = ast->position.closest_to(seg_a);
+      float ox = ast_near.x() - ast->position.x();
+      float oy = ast_near.y() - ast->position.y();
+      Point local_a(seg_a.x() - ox, seg_a.y() - oy);
+      Point local_b(seg_b.x() - ox, seg_b.y() - oy);
       float t;
-      bool edge_hit = ast->segment_hit(seg_a, seg_b, t);
+      bool edge_hit = ast->segment_hit(local_a, local_b, t);
       if (edge_hit && t < best_t) {
         best_t = t;
         object = cand;
-      } else if (!edge_hit && ast->contains(seg_b) && 1.0f < best_t) {
+      } else if (!edge_hit && ast->contains(local_b) && 1.0f < best_t) {
         // Bullet is inside the asteroid without crossing its edge this frame
         // (e.g. fired point-blank into a large asteroid, or asteroid moved
         // over the bullet). Treat as a hit at the bullet's current position.
