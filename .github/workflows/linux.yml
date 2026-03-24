@@ -38,7 +38,7 @@ jobs:
             -DSDL2MIXER_MOD=OFF \
             -DSDL2MIXER_MIDI=OFF \
             -DSDL2MIXER_WAVPACK=OFF \
-            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_SHARED_LIBS=OFF \
             -DSDL2MIXER_SAMPLES=OFF
           cmake --build SDL2_mixer/build --parallel
           sudo cmake --install SDL2_mixer/build
@@ -53,22 +53,13 @@ jobs:
             $(sdl2-config --cflags) -I/usr/local/include/SDL2 \
             -o newtonia $SRCS \
             -lglut -lGL -lGLU \
-            $(sdl2-config --libs) -lSDL2_mixer
+            -lSDL2_mixer $(sdl2-config --static-libs)
 
-      - name: Bundle libraries
+      - name: Bundle
         run: |
           mkdir -p dist
           cp newtonia dist/
           cp -r audio dist/
-          # Only bundle the libs we explicitly use: SDL2 and SDL2_mixer
-          ldd newtonia | awk '/libSDL2/ && $3~/^\// {print $3}' | xargs -I{} cp -n {} dist/
-          cat > dist/newtonia.sh <<'EOF'
-          #!/bin/bash
-          DIR="$(cd "$(dirname "$0")" && pwd)"
-          export LD_LIBRARY_PATH="$DIR:$LD_LIBRARY_PATH"
-          exec "$DIR/newtonia" "$@"
-          EOF
-          chmod +x dist/newtonia.sh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
