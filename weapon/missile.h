@@ -40,6 +40,9 @@ namespace Weapon {
     void set_asteroids(std::list<Object*> *a) { asteroids = a; }
     void set_ship_targets(std::list<Object*> *s) { ship_targets = s; }
 
+    void halt_sound();
+    static void halt_if_all_gone(std::list<Weapon::Base*>& weapons, size_t missile_count);
+
     Mix_Chunk *fly_sound = NULL, *empty_sound = NULL;
     int fly_channel = -1;
   private:

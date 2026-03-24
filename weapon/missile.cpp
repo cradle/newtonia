@@ -140,11 +140,19 @@ void Missile::shoot(bool on) {
     fly_channel = Mix_PlayChannel(-1, fly_sound, -1);
 }
 
-void Missile::step(int delta) {
-  if (ship->missiles.empty() && fly_channel != -1) {
+void Missile::halt_sound() {
+  if (fly_channel != -1) {
     Mix_HaltChannel(fly_channel);
     fly_channel = -1;
   }
 }
+
+void Missile::halt_if_all_gone(std::list<Weapon::Base*>& weapons, size_t missile_count) {
+  if (missile_count > 0) return;
+  for (auto* w : weapons)
+    if (auto* mw = dynamic_cast<Missile*>(w)) { mw->halt_sound(); return; }
+}
+
+void Missile::step(int delta) {}
 
 } // namespace Weapon

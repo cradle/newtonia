@@ -680,6 +680,7 @@ void Ship::collide_grid(Grid &grid) {
       }
       missiles[i] = std::move(missiles.back());
       missiles.pop_back();
+      Weapon::Missile::halt_if_all_gone(secondary_weapons, missiles.size());
     } else {
       ++i;
     }
@@ -741,6 +742,7 @@ void Ship::collide(Ship *other) {
       }
       missiles[i] = std::move(missiles.back());
       missiles.pop_back();
+      Weapon::Missile::halt_if_all_gone(secondary_weapons, missiles.size());
     } else {
       ++i;
     }
@@ -890,7 +892,8 @@ void Ship::step(float delta, const Grid &grid) {
 
     (*primary)->step(delta);
     for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
-      (*it)->step(delta);
+      if (!dynamic_cast<Weapon::Missile*>(*it))
+        (*it)->step(delta);
     }
 
   } else if (lives > 0) {
@@ -998,6 +1001,7 @@ void Ship::step(float delta, const Grid &grid) {
       }
       missiles[i] = std::move(missiles.back());
       missiles.pop_back();
+      Weapon::Missile::halt_if_all_gone(secondary_weapons, missiles.size());
     } else {
       ++i;
     }
