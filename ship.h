@@ -67,7 +67,7 @@ class Ship : public CompositeObject {
     using Object::collide;
     static void collide(Ship *first, Ship *second);
     // bool collide_object(Object *other);
-    void collide_grid(Grid &grid);
+    void collide_grid(Grid &grid, int delta);
     void collide(Ship *other);
 
     //TODO: make friends with glship

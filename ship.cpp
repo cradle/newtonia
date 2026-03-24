@@ -553,7 +553,7 @@ int Ship::multiplier() const {
   return kills_this_life / 10 + 1;
 }
 
-void Ship::collide_grid(Grid &grid) {
+void Ship::collide_grid(Grid &grid, int delta) {
   Object * object;
 
   if(alive) {
@@ -619,7 +619,22 @@ void Ship::collide_grid(Grid &grid) {
   }
 
   for(size_t i = 0; i < bullets.size(); ) {
-    object = grid.collide(bullets[i]);
+    // Swept collision detection: sample along the bullet's path this frame
+    // so fast-moving bullets cannot tunnel through asteroids between steps.
+    {
+      float vx = bullets[i].velocity.x() * delta;
+      float vy = bullets[i].velocity.y() * delta;
+      float dist = bullets[i].velocity.magnitude() * delta;
+      int steps = (dist > 2.0f) ? (int)ceil(dist / 2.0f) : 1;
+      float start_x = bullets[i].position.x() - vx;
+      float start_y = bullets[i].position.y() - vy;
+      object = NULL;
+      for (int s = 1; s <= steps && object == NULL; s++) {
+        float t = (float)s / steps;
+        bullets[i].position = WrappedPoint(start_x + vx * t, start_y + vy * t);
+        object = grid.collide(bullets[i]);
+      }
+    }
     if(object != NULL) {
       Asteroid *ast = dynamic_cast<Asteroid*>(object);
       if(ast && ast->reflective) {

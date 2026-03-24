@@ -44,7 +44,7 @@ public:
   float camera_facing() const;
   float view_angle() const;
 
-  void collide_grid(Grid &grid);
+  void collide_grid(Grid &grid, int delta);
   static void collide(GLShip* first, GLShip* second);
   Ship *ship;
 
