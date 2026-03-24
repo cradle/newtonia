@@ -14,6 +14,7 @@ public:
   static void draw_lives(float x, float y, const GLShip *ship, float size = 1, int time = 0);
   static void draw(float x, float y, char character, float size = 1, int time = 0);
   static void resize(int width, int height);
+  static void cleanup();
   static const int original_window_width, original_window_height;
   static float scaled_window_width, scaled_window_height;
   static int window_width, window_height;

@@ -324,6 +324,7 @@ int main(int argc, char *argv[]) {
     // Unreachable, but kept for clarity:
     delete s_game;
     Asteroid::free_sounds();
+    Typer::cleanup();
     gles2_shutdown();
     Mix_CloseAudio();
     if (s_controller) SDL_GameControllerClose(s_controller);

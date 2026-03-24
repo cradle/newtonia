@@ -143,6 +143,8 @@ GLGame::~GLGame() {
   if(pickup_sound != NULL) {
     Mix_FreeChunk(pickup_sound);
   }
+  glDeleteLists(rearstars, 1);
+  glDeleteLists(frontstars, 1);
 }
 
 void GLGame::add_asteroids() {
