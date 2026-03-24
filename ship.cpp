@@ -731,7 +731,6 @@ void Ship::collide(Ship *other) {
       other->kill();
       kills_this_life += 1;
       kills += 1;
-      score += other->value * multiplier();
       bullets[i] = std::move(bullets.back());
       bullets.pop_back();
     } else {
@@ -773,7 +772,6 @@ void Ship::collide(Ship *other) {
       other->kill();
       kills_this_life += 1;
       kills += 1;
-      score += other->value * multiplier();
       detonate(missiles[i].position, missiles[i].velocity, 25);
       if(missile_explode_sound != NULL) {
         Mix_PlayChannel(-1, missile_explode_sound, 0);
