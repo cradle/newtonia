@@ -100,6 +100,7 @@ GLShip::~GLShip() {
   glDeleteLists(body, 1);
   glDeleteLists(jets, 1);
   glDeleteLists(repulsors, 1);
+  glDeleteLists(force_shield_bg, 1);
   glDeleteLists(force_shield, 1);
   delete ship;
   while(!trails.empty()) {

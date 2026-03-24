@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <math.h>
+#include <set>
 #include "glship.h"
 #include "gl_compat.h"
 
@@ -484,6 +485,21 @@ void Typer::init_lists() {
   glVertex2f(TW/2.0f,TH/3.0f); glVertex2f(0,0);
   glEnd();
   glEndList();
+}
+
+void Typer::cleanup() {
+  if (!lists_initialized) return;
+  // Upper and lower case share the same list ID, so track freed IDs to avoid
+  // double-deleting the same GL display list.
+  std::set<GLuint> freed;
+  for (int i = 0; i < 256; i++) {
+    if (char_lists[i] != 0 && freed.find(char_lists[i]) == freed.end()) {
+      freed.insert(char_lists[i]);
+      glDeleteLists(char_lists[i], 1);
+    }
+    char_lists[i] = 0;
+  }
+  lists_initialized = false;
 }
 
 void Typer::draw(float x, float y, char character, float size, int time) {

@@ -8,6 +8,8 @@
 #include <SDL_mixer.h>
 
 #include "state_manager.h"
+#include "asteroid.h"
+#include "typer.h"
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -265,6 +267,8 @@ int main(int argc, char* argv[]) {
     }
   }
   delete game;
+  Asteroid::free_sounds();
+  Typer::cleanup();
   return EXIT_SUCCESS;
 }
 

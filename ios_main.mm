@@ -338,6 +338,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     // Cleanup
     delete s_game;
     Asteroid::free_sounds();
+    Typer::cleanup();
     gles2_shutdown();
     Mix_CloseAudio();
     if (controller) SDL_GameControllerClose(controller);
