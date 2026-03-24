@@ -35,6 +35,7 @@ jobs:
             -DSDL2MIXER_FLAC=OFF \
             -DSDL2MIXER_VORBIS=OFF \
             -DSDL2MIXER_OPUS=OFF \
+            -DSDL2MIXER_MOD=OFF \
             -DSDL2MIXER_FLUIDSYNTH=OFF \
             -DBUILD_SHARED_LIBS=ON \
             -DSDL2MIXER_SAMPLES=OFF
