@@ -1,5 +1,6 @@
 #include "shield.h"
 #include "../ship.h"
+#include "../shield_behaviour.h"
 #include <iostream>
 
 namespace Weapon {
@@ -20,33 +21,25 @@ namespace Weapon {
 
   void Shield::shoot(bool on) {
     shooting = on;
-    if(on) ship->set_shield_hum(true);
     if(on) {
       if(ship->invincible) return;  // already active, don't consume ammo again
       if(_ammo == 0) {
-        if(empty_sound != NULL) {
-          Mix_PlayChannel(-1, empty_sound, 0);
-        }
+        if(empty_sound != NULL) Mix_PlayChannel(-1, empty_sound, 0);
         return;
       }
       _ammo--;
-      ship->time_left_invincible += 1000;
-      ship->invincible = true;
+      ship->add_behaviour(new ShieldBehaviour(ship, 1000));
     }
   }
 
   void Shield::step(int delta) {
-    if(shooting && ship->time_left_invincible <= 0) {
+    if(shooting && !ship->invincible) {
       if(_ammo == 0) {
-        if(empty_sound != NULL) {
-          Mix_PlayChannel(-1, empty_sound, 0);
-        }
+        if(empty_sound != NULL) Mix_PlayChannel(-1, empty_sound, 0);
         return;
       }
       _ammo--;
-      ship->time_left_invincible += 1000;
-      ship->invincible = true;
-      ship->set_shield_hum(true);
+      ship->add_behaviour(new ShieldBehaviour(ship, 1000));
     }
   }
 }
