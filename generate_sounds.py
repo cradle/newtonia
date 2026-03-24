@@ -79,16 +79,22 @@ def make_explode():
     return samples
 
 def make_thud():
-    """Asteroid collision: impact thud, 250ms."""
-    n = int(SAMPLE_RATE * 0.25)
+    """Bullet hits invincible asteroid: low woody knock, 600ms."""
+    n = int(SAMPLE_RATE * 0.60)
     rng = random.Random(99)
     samples = []
     for i in range(n):
         t = i / SAMPLE_RATE
-        env = math.exp(-t * 12)
-        noise = (rng.random() * 2 - 1) * 0.3
-        thud  = math.sin(2 * math.pi * 80 * t) * 0.7
-        samples.append((noise + thud) * env)
+        # Slow body decay for a dense, woody resonance
+        body_env = math.exp(-t * 5)
+        # Low fundamental with inharmonic partials (like a log/block of wood)
+        body  = math.sin(2 * math.pi * 55  * t) * 0.95 * body_env
+        body += math.sin(2 * math.pi * 110 * t) * 0.45 * body_env
+        body += math.sin(2 * math.pi * 175 * t) * 0.18 * body_env
+        # Very brief noise transient at the attack (muffled knock character)
+        click_env = math.exp(-t * 150)
+        noise = (rng.random() * 2 - 1) * 0.45 * click_env
+        samples.append(body + noise)
     return samples
 
 def make_missile_explode():
