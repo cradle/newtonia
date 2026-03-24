@@ -203,8 +203,12 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   if(glgame->players->size() < 2) {
     if((glgame->current_time/1400) % 2) {
       if(p1->is_alive() || p1->lives > 0) {
-        if(!is_touch_mode())
-          Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-10, glgame->has_free_controller() ? "player 2 press button to join" : "player 2 press enter to join", 8);
+        if(!is_touch_mode()) {
+          if(glgame->has_free_controller())
+            Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-10, "player 2 press start to join", 8);
+          else if(!is_steam_gamemode())
+            Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-10, "player 2 press enter to join", 8);
+        }
       } else {
         Typer::draw_centered(0, Typer::window_height-10, glship->has_controller() ? "return to menu with start" : "return to menu with ESC", 8);
       }
