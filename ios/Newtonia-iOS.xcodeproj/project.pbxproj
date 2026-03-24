@@ -48,6 +48,7 @@
 		AB000046 /* black_hole.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000046 /* black_hole.cpp */; };
 		AB000047 /* giga_mine_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000047 /* giga_mine_pickup.cpp */; };
 		AB000048 /* giga_mine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000048 /* giga_mine.cpp */; };
+		AB000049 /* shield_behaviour.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000049 /* shield_behaviour.cpp */; };
 		AB000030 /* OpenGLES.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000030 /* OpenGLES.framework */; };
 		AB000031 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000031 /* UIKit.framework */; };
 		AB000032 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000032 /* Foundation.framework */; };
@@ -105,6 +106,7 @@
 		AA000046 /* black_hole.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../black_hole.cpp; sourceTree = SOURCE_ROOT; };
 		AA000047 /* giga_mine_pickup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../giga_mine_pickup.cpp; sourceTree = SOURCE_ROOT; };
 		AA000048 /* giga_mine.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/giga_mine.cpp; sourceTree = SOURCE_ROOT; };
+		AA000049 /* shield_behaviour.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../shield_behaviour.cpp; sourceTree = SOURCE_ROOT; };
 		AA000030 /* OpenGLES.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGLES.framework; path = System/Library/Frameworks/OpenGLES.framework; sourceTree = SDKROOT; };
 		AA000031 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		AA000032 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
@@ -200,6 +202,7 @@
 			AA000046 /* black_hole.cpp */,
 			AA000047 /* giga_mine_pickup.cpp */,
 			AA000048 /* giga_mine.cpp */,
+			AA000049 /* shield_behaviour.cpp */,
 			);
 			name = Sources;
 			sourceTree = "<group>";
@@ -335,6 +338,7 @@
 			AB000046 /* black_hole.cpp in Sources */,
 			AB000047 /* giga_mine_pickup.cpp in Sources */,
 			AB000048 /* giga_mine.cpp in Sources */,
+			AB000049 /* shield_behaviour.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
