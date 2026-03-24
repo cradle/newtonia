@@ -61,10 +61,7 @@ jobs:
           cp newtonia dist/
           cp -r audio dist/
           # Only bundle the libs we explicitly use: SDL2 and SDL2_mixer
-          for lib in libSDL2-2.0.so.0 libSDL2_mixer-2.0.so.0; do
-            src=$(ldconfig -p | grep " $lib " | grep -o '[^ ]*$')
-            [ -n "$src" ] && cp -n "$src" dist/
-          done
+          ldd newtonia | awk '/libSDL2/ && $3~/^\// {print $3}' | xargs -I{} cp -n {} dist/
           cat > dist/newtonia.sh <<'EOF'
           #!/bin/bash
           DIR="$(cd "$(dirname "$0")" && pwd)"
