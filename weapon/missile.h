@@ -7,6 +7,7 @@
 #include "../wrapped_point.h"
 #include <deque>
 #include <list>
+#include <memory>
 #include <SDL_mixer.h>
 
 struct MissileShot : public Object {
@@ -14,6 +15,7 @@ struct MissileShot : public Object {
   float thrust;
   float time_left;
   std::deque<WrappedPoint> trail;
+  std::shared_ptr<int> sound_handle;
 
   static const float TIME_TO_LIVE;
   static const float INITIAL_SPEED;
@@ -40,11 +42,8 @@ namespace Weapon {
     void set_asteroids(std::list<Object*> *a) { asteroids = a; }
     void set_ship_targets(std::list<Object*> *s) { ship_targets = s; }
 
-    void halt_sound();
-    static void halt_if_all_gone(std::list<Weapon::Base*>& weapons, size_t missile_count);
-
     Mix_Chunk *fly_sound = NULL, *empty_sound = NULL;
-    int fly_channel = -1;
+    std::weak_ptr<int> fly_channel_handle;
   private:
     std::list<Object*> *asteroids = nullptr;
     std::list<Object*> *ship_targets = nullptr;

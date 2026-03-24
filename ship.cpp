@@ -680,7 +680,6 @@ void Ship::collide_grid(Grid &grid) {
       }
       missiles[i] = std::move(missiles.back());
       missiles.pop_back();
-      Weapon::Missile::halt_if_all_gone(secondary_weapons, missiles.size());
     } else {
       ++i;
     }
@@ -742,7 +741,6 @@ void Ship::collide(Ship *other) {
       }
       missiles[i] = std::move(missiles.back());
       missiles.pop_back();
-      Weapon::Missile::halt_if_all_gone(secondary_weapons, missiles.size());
     } else {
       ++i;
     }
@@ -1001,7 +999,6 @@ void Ship::step(float delta, const Grid &grid) {
       }
       missiles[i] = std::move(missiles.back());
       missiles.pop_back();
-      Weapon::Missile::halt_if_all_gone(secondary_weapons, missiles.size());
     } else {
       ++i;
     }
