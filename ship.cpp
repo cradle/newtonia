@@ -77,6 +77,10 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   }
 }
 
+void Ship::add_behaviour(Behaviour *b) {
+  behaviours.push_back(b);
+}
+
 void Ship::disable_behaviours() {
   while(!behaviours.empty()) {
     delete behaviours.back();
@@ -880,7 +884,6 @@ void Ship::step(float delta, const Grid &grid) {
       time_left_invincible -= delta;
       if(time_left_invincible < 0) {
         invincible = false;
-        set_shield_hum(false);
       }
     }
 
