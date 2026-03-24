@@ -336,7 +336,7 @@ void Ship::set_black_holes(const std::list<BlackHole*> *bhs) {
 
 void Ship::init(bool no_friction) {
   mass = 100.0;
-  value = 1000000;
+  value = 200;
   lives = 4;
   width = height = radius = 15;
   radius_squared = radius * radius;
