@@ -41,6 +41,7 @@ namespace Weapon {
     void set_ship_targets(std::list<Object*> *s) { ship_targets = s; }
 
     Mix_Chunk *fly_sound = NULL, *empty_sound = NULL;
+    int fly_channel = -1;
   private:
     std::list<Object*> *asteroids = nullptr;
     std::list<Object*> *ship_targets = nullptr;

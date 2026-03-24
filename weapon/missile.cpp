@@ -136,12 +136,17 @@ void Missile::shoot(bool on) {
   ship->missiles.push_back(
     MissileShot(ship->gun(), ship->facing.normalized(), ship->velocity)
   );
-  if (fly_sound) Mix_PlayChannel(-1, fly_sound, 0);
+  if (fly_sound && (fly_channel == -1 || !Mix_Playing(fly_channel)))
+    fly_channel = Mix_PlayChannel(-1, fly_sound, -1);
 }
 
 void Missile::step(int delta) {
   for(size_t i = 0; i < ship->missiles.size(); i++) {
     ship->missiles[i].step_missile(delta, asteroids, ship_targets);
+  }
+  if (ship->missiles.empty() && fly_channel != -1) {
+    Mix_HaltChannel(fly_channel);
+    fly_channel = -1;
   }
 }
 
