@@ -136,13 +136,17 @@ void Missile::shoot(bool on) {
   ship->missiles.push_back(
     MissileShot(ship->gun(), ship->facing.normalized(), ship->velocity)
   );
-  if (fly_sound) Mix_PlayChannel(-1, fly_sound, 0);
+  auto sp = fly_channel_handle.lock();
+  if (!sp && fly_sound) {
+    int ch = Mix_PlayChannel(-1, fly_sound, -1);
+    if (ch != -1) {
+      sp = std::shared_ptr<int>(new int(ch), [](int *p) { Mix_HaltChannel(*p); delete p; });
+      fly_channel_handle = sp;
+    }
+  }
+  ship->missiles.back().sound_handle = sp;
 }
 
-void Missile::step(int delta) {
-  for(size_t i = 0; i < ship->missiles.size(); i++) {
-    ship->missiles[i].step_missile(delta, asteroids, ship_targets);
-  }
-}
+void Missile::step(int delta) {}
 
 } // namespace Weapon
