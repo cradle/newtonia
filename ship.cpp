@@ -634,8 +634,15 @@ void Ship::collide_grid(Grid &grid, int delta) {
       Asteroid *ast = dynamic_cast<Asteroid*>(cand);
       if (!ast) continue;
       float t;
-      if (ast->segment_hit(seg_a, seg_b, t) && t < best_t) {
+      bool edge_hit = ast->segment_hit(seg_a, seg_b, t);
+      if (edge_hit && t < best_t) {
         best_t = t;
+        object = cand;
+      } else if (!edge_hit && ast->contains(seg_b) && 1.0f < best_t) {
+        // Bullet is inside the asteroid without crossing its edge this frame
+        // (e.g. fired point-blank into a large asteroid, or asteroid moved
+        // over the bullet). Treat as a hit at the bullet's current position.
+        best_t = 1.0f;
         object = cand;
       }
     }
