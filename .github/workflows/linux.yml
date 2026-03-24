@@ -60,10 +60,8 @@ jobs:
           mkdir -p dist
           cp newtonia dist/
           cp -r audio dist/
-          # Copy SDL2 and its transitive deps (e.g. SDL2_mixer, fluidsynth) but leave GL/libc as system libs
-          ldd newtonia | awk 'NF==4 && $3~/^\// {print $3}' | \
-            grep -vE 'lib(c|m|dl|pthread|rt|GL|GLU|glut|gcc_s|stdc\+\+)\.so' | \
-            xargs -I{} cp -n {} dist/
+          # Only bundle the libs we explicitly use: SDL2 and SDL2_mixer
+          ldd newtonia | awk 'NF==4 && $3~/libSDL2/{print $3}' | xargs -I{} cp -n {} dist/
           cat > dist/newtonia.sh <<'EOF'
           #!/bin/bash
           DIR="$(cd "$(dirname "$0")" && pwd)"
