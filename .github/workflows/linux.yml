@@ -37,6 +37,7 @@ jobs:
             -DSDL2MIXER_OPUS=OFF \
             -DSDL2MIXER_MOD=OFF \
             -DSDL2MIXER_MIDI=OFF \
+            -DSDL2MIXER_WAVPACK=OFF \
             -DBUILD_SHARED_LIBS=ON \
             -DSDL2MIXER_SAMPLES=OFF
           cmake --build SDL2_mixer/build --parallel
