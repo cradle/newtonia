@@ -884,6 +884,7 @@ void Ship::step(float delta, const Grid &grid) {
       time_left_invincible -= delta;
       if(time_left_invincible < 0) {
         invincible = false;
+        set_shield_hum(false);
       }
     }
 
