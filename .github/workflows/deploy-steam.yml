@@ -225,8 +225,67 @@ jobs:
           name: steam-macos
           path: steam_output/macos/
 
+  build-linux:
+    runs-on: ubuntu-22.04
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libsdl2-dev \
+            freeglut3-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            cmake
+
+      - name: Build SDL2_mixer (WAV + MP3 only)
+        run: |
+          git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
+          cmake -S SDL2_mixer -B SDL2_mixer/build \
+            -DSDL2MIXER_WAV=ON \
+            -DSDL2MIXER_MP3=ON \
+            -DSDL2MIXER_FLAC=OFF \
+            -DSDL2MIXER_VORBIS=OFF \
+            -DSDL2MIXER_OPUS=OFF \
+            -DSDL2MIXER_MOD=OFF \
+            -DSDL2MIXER_MIDI=OFF \
+            -DSDL2MIXER_WAVPACK=OFF \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DSDL2MIXER_SAMPLES=OFF
+          cmake --build SDL2_mixer/build --parallel
+          sudo cmake --install SDL2_mixer/build
+
+      - name: Build
+        run: |
+          SRCS=$(find . -name "*.cpp" \
+            -not -path "./android/*" \
+            -not -path "./.git/*" \
+            -not -name "gles2_compat.cpp")
+          g++ -O2 -Wall -std=c++11 \
+            $(sdl2-config --cflags) -I/usr/local/include/SDL2 \
+            -o newtonia $SRCS \
+            -lglut -lGL -lGLU \
+            -lSDL2_mixer $(sdl2-config --static-libs)
+
+      - name: Stage depot
+        run: |
+          mkdir -p steam_output/linux
+          cp newtonia steam_output/linux/
+          cp -r audio steam_output/linux/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: steam-linux
+          path: steam_output/linux/
+
   deploy-steam:
-    needs: [build-windows, build-macos]
+    needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -241,6 +300,11 @@ jobs:
           name: steam-macos
           path: steam_output/macos/
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: steam-linux
+          path: steam_output/linux/
+
       - name: Deploy to Steam
         uses: game-ci/steam-deploy@v3
         with:
@@ -251,4 +315,5 @@ jobs:
           rootPath: steam_output
           depot1Path: windows
           depot2Path: macos
+          depot3Path: linux
           releaseBranch: ${{ github.event.inputs.branch || 'beta' }}
