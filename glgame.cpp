@@ -756,9 +756,11 @@ bool GLGame::is_point_faced_by_any_player(Point p) const {
     float aspect = window.x() / (float)(window.y() / num_y_viewports());
     float half_w = half_h * aspect;
     float cull_r2 = (half_w * half_w + half_h * half_h) * 1.1f;
-    Point closest = s->position.closest_to(p);
-    float dx = closest.x() - s->position.x();
-    float dy = closest.y() - s->position.y();
+    // Shift the ship into the world-copy nearest the asteroid, then compute
+    // the vector from that shifted ship position to the asteroid.
+    Point ship_near = s->position.closest_to(p);
+    float dx = p.x() - ship_near.x();
+    float dy = p.y() - ship_near.y();
     float dist2 = dx * dx + dy * dy;
     if(dist2 > cull_r2) continue;
     // Facing check: asteroid must be within 45 degrees of ship's heading (90 deg total cone)
