@@ -152,7 +152,7 @@ void GLGame::add_asteroids() {
     objects->push_back(new Asteroid(false));
     if(generation > 0) objects->push_front(new Asteroid(true));
   }
-  int num_invisible = (generation >= 5) ? (generation - 5) / 5 + 1 : 0;
+  int num_invisible = (generation >= 4) ? (generation - 4) / 5 + 1 : 0;
   for(int i = 0; i < num_invisible; i++) {
     objects->push_back(new Asteroid(false, true));
   }
@@ -160,7 +160,7 @@ void GLGame::add_asteroids() {
   for(int i = 0; i < num_reflective; i++) {
     objects->push_front(new Asteroid(false, false, true));
   }
-  int num_teleporting = generation / 2 + 1;
+  int num_teleporting = (generation >= 3) ? (generation - 3) / 2 + 1 : 0;
   for(int i = 0; i < num_teleporting; i++) {
     objects->push_back(new Asteroid(false, false, false, true));
   }
