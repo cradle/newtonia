@@ -750,24 +750,26 @@ bool GLGame::is_point_faced_by_any_player(Point p) const {
   for(auto* glship : *players) {
     Ship *s = glship->ship;
     if(!s->is_alive()) continue;
-    // Distance check: within viewport range
+    // Get wrapped vector from ship to point
+    Point ship_near = s->position.closest_to(p);
+    float dx = p.x() - ship_near.x();
+    float dy = p.y() - ship_near.y();
+    // Project into the ship's facing frame:
+    //   fwd  = component along facing direction (positive = in front)
+    //   side = component along the right perpendicular of facing
+    float fwd  = dx * s->facing.x() + dy * s->facing.y();
+    float side = dx * s->facing.y() - dy * s->facing.x();
+    // Viewport rectangle in world units (camera at z=1000, FOV-derived)
     float fov_deg = glship->view_angle();
     float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
     float aspect = window.x() / (float)(window.y() / num_y_viewports());
     float half_w = half_h * aspect;
-    float cull_r2 = (half_w * half_w + half_h * half_h) * 1.1f;
-    // Shift the ship into the world-copy nearest the asteroid, then compute
-    // the vector from that shifted ship position to the asteroid.
-    Point ship_near = s->position.closest_to(p);
-    float dx = p.x() - ship_near.x();
-    float dy = p.y() - ship_near.y();
-    float dist2 = dx * dx + dy * dy;
-    if(dist2 > cull_r2) continue;
-    // Facing check: asteroid must be within 45 degrees of ship's heading (90 deg total cone)
-    float len = sqrtf(dist2);
-    if(len < 1e-6f) return true; // on top of it, counts as observed
-    float dot = s->facing.x() * (dx / len) + s->facing.y() * (dy / len);
-    if(dot > 0.7071f) return true;
+    // Reject if outside the on-screen rectangle
+    if(fwd <= 0.0f || fwd > half_h || fabsf(side) > half_w) continue;
+    // Facing cone: ±45° from ship heading
+    float len = sqrtf(fwd * fwd + side * side);
+    if(len < 1e-6f) return true;
+    if(fwd / len > 0.7071f) return true;
   }
   return false;
 }
