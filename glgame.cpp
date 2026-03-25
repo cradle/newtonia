@@ -733,7 +733,7 @@ int GLGame::num_y_viewports() const {
 }
 
 bool GLGame::is_visible_to_any_player(const Ship &ship) const {
-  return is_point_visible_to_any_player(ship.position);
+  return is_point_faced_by_any_player(ship.position);
 }
 
 bool GLGame::is_point_faced_by_any_player(Point p) const {
