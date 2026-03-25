@@ -105,6 +105,8 @@ struct AsteroidVerts {
   bool teleporting;
   bool teleport_vulnerable;
   float teleport_angle;
+  bool quantum;
+  bool quantum_observed;
 };
 
 // draw_batch renders all alive asteroids in two draw calls (fill + outline),
@@ -141,12 +143,14 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
       if (v.cy < r)               v.dy = wrap_y;
       else if (v.cy + r > wrap_y) v.dy = -wrap_y;
     }
-    v.invincible         = a->invincible;
-    v.invisible          = a->invisible;
-    v.reflective         = a->reflective;
-    v.teleporting        = a->teleporting;
+    v.invincible          = a->invincible;
+    v.invisible           = a->invisible;
+    v.reflective          = a->reflective;
+    v.teleporting         = a->teleporting;
     v.teleport_vulnerable = a->teleport_vulnerable;
-    v.teleport_angle     = a->teleport_angle;
+    v.teleport_angle      = a->teleport_angle;
+    v.quantum             = a->quantum;
+    v.quantum_observed    = a->quantum_observed;
     verts.push_back(v);
   }
 
@@ -172,7 +176,9 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
   for (size_t ai = 0; ai < verts.size(); ++ai) {
     AsteroidVerts const &v = verts[ai];
     if (v.invisible) continue;
-    if (v.teleporting)                          glColor3f(0.0f, 0.0f, 0.0f);
+    if (v.quantum && v.quantum_observed)        glColor4f(0.15f, 0.0f, 0.35f, 0.85f);
+    else if (v.quantum)                         glColor4f(0.05f, 0.0f, 0.12f, 0.4f);
+    else if (v.teleporting)                     glColor3f(0.0f, 0.0f, 0.0f);
     else if (v.reflective)                      glColor4f(0.0f, 0.4f, 0.5f, 0.6f);
     else if (v.invincible)                      glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
     else                                        glColor3f(0.0f, 0.0f, 0.0f);
@@ -197,7 +203,9 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
   for (size_t ai = 0; ai < verts.size(); ++ai) {
     AsteroidVerts const &v = verts[ai];
     if (v.invisible) continue;
-    if (v.teleporting)                          glColor3f(1.0f, 1.0f, 1.0f);
+    if (v.quantum && v.quantum_observed)        glColor4f(0.65f, 0.1f, 1.0f, 1.0f);
+    else if (v.quantum)                         glColor4f(0.3f, 0.05f, 0.5f, 0.35f);
+    else if (v.teleporting)                     glColor3f(1.0f, 1.0f, 1.0f);
     else if (v.reflective)                      glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
     else if (v.invincible)                      glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
     else                                        glColor3f(1.0f, 1.0f, 1.0f);

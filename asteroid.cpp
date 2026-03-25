@@ -18,7 +18,7 @@ Mix_Chunk * Asteroid::thud_sound = NULL;
 
 const int Asteroid::max_radius = Asteroid::radius_variation + Asteroid::minimum_radius;
 
-Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool teleporting) : CompositeObject(), killed(false) {
+Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool teleporting, bool quantum) : CompositeObject(), killed(false) {
   position = WrappedPoint();
   this->reflective = reflective;
   this->teleporting = teleporting;
@@ -26,10 +26,16 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   this->teleport_pending = false;
   this->teleport_angle = rand() / (float)RAND_MAX * 2.0f * (float)M_PI;
   this->vulnerable_time_left = 0;
+  this->quantum = quantum;
+  this->quantum_observed = true; // start in observed (collapsed) state
+  this->quantum_base_speed = 0.0f; // set after velocity is computed below
   if(reflective) invincible = true;
   if(teleporting) invincible = false; // teleporting asteroids are killable when vulnerable
+  if(quantum) invincible = false;     // quantum asteroids start killable (observed state)
   if(teleporting) {
     radius = rand() % 100 + 70; // 70–170: noticeably large
+  } else if(quantum) {
+    radius = rand() % 70 + 50;  // 50–120: medium-large
   } else if(invincible) {
     radius = rand()%radius_variation + minimum_radius;
   } else if(invisible) {
@@ -46,6 +52,7 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
       rotation_speed = (rand() % 2) ? min_rot : -min_rot;
   }
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
+  if(quantum) quantum_base_speed = velocity.magnitude();
   value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
   for (int i = 0; i < 9; i++)
     vertex_offsets[i] = 0.7f + (rand() / (float)RAND_MAX) * 0.6f;
@@ -117,6 +124,9 @@ Asteroid::Asteroid(Asteroid const *mother) {
   teleport_pending = false;
   teleport_angle = 0.0f;
   vulnerable_time_left = 0;
+  quantum = false;
+  quantum_observed = true;
+  quantum_base_speed = 0.0f;
   if(!invincible) {
     killed = false;
     num_killable++;
