@@ -751,11 +751,11 @@ bool GLGame::is_point_faced_by_any_player(Point p) const {
     float dy = closest.y() - s->position.y();
     float dist2 = dx * dx + dy * dy;
     if(dist2 > cull_r2) continue;
-    // Facing check: asteroid must be in the ship's forward half-plane
+    // Facing check: asteroid must be within 45 degrees of ship's heading (90 deg total cone)
     float len = sqrtf(dist2);
     if(len < 1e-6f) return true; // on top of it, counts as observed
     float dot = s->facing.x() * (dx / len) + s->facing.y() * (dy / len);
-    if(dot > 0.0f) return true;
+    if(dot > 0.7071f) return true;
   }
   return false;
 }
