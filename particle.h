@@ -21,6 +21,7 @@ public:
 
 private:
   float time_to_live, time_left;
+  bool world_bullet = false;
 };
 
 #endif /* PARTICLE_H */

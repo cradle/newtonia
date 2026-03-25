@@ -690,6 +690,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
         bullets[i].position = WrappedPoint(entry.x() + normal.x() * push,
                                            entry.y() + normal.y() * push);
         object->kill(); // plays thud sound
+        bullets[i].world_bullet = true;
         ++i;
       } else {
         if(object->kill()) {
@@ -701,6 +702,18 @@ void Ship::collide_grid(Grid &grid, int delta) {
         bullets[i] = std::move(bullets.back());
         bullets.pop_back();
       }
+    } else {
+      ++i;
+    }
+  }
+
+  // World bullets (ricocheted off reflective asteroids) can kill their owner.
+  for(size_t i = 0; i < bullets.size(); ) {
+    if(bullets[i].world_bullet && is_alive() && bullets[i].collide(*this)) {
+      kill();
+      explode(bullets[i].position, bullets[i].velocity);
+      bullets[i] = std::move(bullets.back());
+      bullets.pop_back();
     } else {
       ++i;
     }
