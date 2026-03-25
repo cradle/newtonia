@@ -28,7 +28,9 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   this->vulnerable_time_left = 0;
   if(reflective) invincible = true;
   if(teleporting) invincible = false; // teleporting asteroids are killable when vulnerable
-  if(invincible) {
+  if(teleporting) {
+    radius = rand() % 100 + 70; // 70–170: noticeably large
+  } else if(invincible) {
     radius = rand()%radius_variation + minimum_radius;
   } else if(invisible) {
     radius = max_radius / 2 + rand() % (max_radius / 4 + 1);
