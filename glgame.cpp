@@ -160,6 +160,10 @@ void GLGame::add_asteroids() {
   for(int i = 0; i < num_reflective; i++) {
     objects->push_front(new Asteroid(false, false, true));
   }
+  int num_teleporting = (generation >= 1) ? (generation - 1) / 2 + 1 : 0;
+  for(int i = 0; i < num_teleporting; i++) {
+    objects->push_back(new Asteroid(false, false, false, true));
+  }
 }
 
 void GLGame::toggle_pause() {
@@ -454,6 +458,32 @@ void GLGame::tick(int delta) {
       } else {
         oi++;
       }
+    }
+
+    // Handle teleporting asteroids: relocate to a safe position away from ships.
+    for(oi = objects->begin(); oi != objects->end(); ++oi) {
+      Asteroid *ast = *oi;
+      if(!ast->teleport_pending) continue;
+      // Find a random position not too close to any living player
+      const float min_dist = 400.0f;
+      WrappedPoint new_pos;
+      for(int tries = 0; tries < 30; tries++) {
+        new_pos = WrappedPoint();
+        bool safe = true;
+        for(auto po = players->begin(); po != players->end(); ++po) {
+          if((*po)->ship->is_alive() &&
+             new_pos.distance_to((*po)->ship->position) < min_dist) {
+            safe = false;
+            break;
+          }
+        }
+        if(safe) break;
+      }
+      ast->position = new_pos;
+      ast->teleport_vulnerable = true;
+      ast->vulnerable_time_left = 30000; // 30 seconds of vulnerability
+      ast->teleport_pending = false;
+      ast->teleport_angle = rand() / (float)RAND_MAX * 2.0f * (float)M_PI;
     }
 
     // Clean up dead asteroids whose debris has fully faded.

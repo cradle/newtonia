@@ -9,12 +9,13 @@
 
 class Asteroid : public CompositeObject {
 public:
-  Asteroid(bool invincible, bool invisible = false, bool reflective = false);
+  Asteroid(bool invincible, bool invisible = false, bool reflective = false, bool teleporting = false);
   Asteroid(Asteroid const *mother);
   virtual ~Asteroid();
 
   bool add_children(list<Asteroid*> *objects);
   virtual bool kill() override;
+  virtual void step(int delta) override;
   virtual bool contains(Point p, float r = 0.0f) const override;
   virtual float effective_radius() const override { return radius * max_vertex_offset; }
   Point surface_normal(Point entry, Point incoming_dir) const;
@@ -32,6 +33,11 @@ public:
 
   bool invisible;
   bool reflective;
+  bool teleporting;         // true = this is a teleporting asteroid type
+  bool teleport_vulnerable; // true = has teleported, now vulnerable for limited time
+  bool teleport_pending;    // true = needs to be relocated by game loop this tick
+  float teleport_angle;     // direction of the in-asteroid indicator (radians)
+  int vulnerable_time_left; // countdown in ms while teleport_vulnerable is true
 
 private:
   const static int max_speed;
