@@ -481,7 +481,7 @@ void GLGame::tick(int delta) {
       }
       ast->position = new_pos;
       ast->teleport_vulnerable = true;
-      ast->vulnerable_time_left = 30000; // 30 seconds of vulnerability
+      ast->vulnerable_time_left = 10000; // 10 seconds of vulnerability
       ast->teleport_pending = false;
       ast->teleport_angle = rand() / (float)RAND_MAX * 2.0f * (float)M_PI;
     }
