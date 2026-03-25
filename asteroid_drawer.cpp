@@ -172,8 +172,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
   for (size_t ai = 0; ai < verts.size(); ++ai) {
     AsteroidVerts const &v = verts[ai];
     if (v.invisible) continue;
-    if (v.teleporting && v.teleport_vulnerable) glColor4f(0.3f, 0.0f, 0.5f, 0.7f);
-    else if (v.teleporting)                     glColor4f(0.5f, 0.2f, 0.0f, 0.7f);
+    if (v.teleporting)                          glColor3f(0.0f, 0.0f, 0.0f);
     else if (v.reflective)                      glColor4f(0.0f, 0.4f, 0.5f, 0.6f);
     else if (v.invincible)                      glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
     else                                        glColor3f(0.0f, 0.0f, 0.0f);
@@ -198,8 +197,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
   for (size_t ai = 0; ai < verts.size(); ++ai) {
     AsteroidVerts const &v = verts[ai];
     if (v.invisible) continue;
-    if (v.teleporting && v.teleport_vulnerable) glColor4f(0.7f, 0.0f, 1.0f, 1.0f);
-    else if (v.teleporting)                     glColor4f(1.0f, 0.5f, 0.0f, 1.0f);
+    if (v.teleporting)                          glColor3f(1.0f, 1.0f, 1.0f);
     else if (v.reflective)                      glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
     else if (v.invincible)                      glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
     else                                        glColor3f(1.0f, 1.0f, 1.0f);
@@ -226,7 +224,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
       float r = v.radius * 0.45f; // indicator size relative to asteroid
       if (v.teleport_vulnerable) {
         // Draw a circle inside to show vulnerability
-        glColor4f(0.9f, 0.4f, 1.0f, 0.9f);
+        glColor3f(1.0f, 1.0f, 1.0f);
         glBegin(GL_LINE_LOOP);
         const int circle_segs = 14;
         for (int k = 0; k < circle_segs; k++) {
@@ -246,13 +244,13 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
         float bl_y = v.cy + base_r * sinf(back_angle) + base_r * 0.6f * sinf(perp);
         float br_x = v.cx + base_r * cosf(back_angle) - base_r * 0.6f * cosf(perp);
         float br_y = v.cy + base_r * sinf(back_angle) - base_r * 0.6f * sinf(perp);
-        glColor4f(1.0f, 0.6f, 0.0f, 0.9f);
+        glColor3f(1.0f, 1.0f, 1.0f);
         glBegin(GL_TRIANGLES);
         glVertex2f(tip_x, tip_y);
         glVertex2f(bl_x, bl_y);
         glVertex2f(br_x, br_y);
         glEnd();
-        glColor4f(1.0f, 0.8f, 0.2f, 1.0f);
+        glColor3f(1.0f, 1.0f, 1.0f);
         glBegin(GL_LINE_LOOP);
         glVertex2f(tip_x, tip_y);
         glVertex2f(bl_x, bl_y);
