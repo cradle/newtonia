@@ -642,7 +642,7 @@ void GLShip::draw_particles() const {
   for(auto b = ship->bullets.begin(); b != ship->bullets.end(); b++) {
     //TODO: Work out how to make bullets draw themselves. GLBullet?
     if(b->world_bullet) {
-      glColor3f(1.0f, 1.0f, 0.0f);
+      glColor3f(1.0f, 1.0f, 1.0f);
     } else {
       glColor3fv(color);
     }
