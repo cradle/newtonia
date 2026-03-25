@@ -464,11 +464,17 @@ void GLGame::tick(int delta) {
     for(oi = objects->begin(); oi != objects->end(); ++oi) {
       Asteroid *ast = *oi;
       if(!ast->teleport_pending) continue;
-      // Find a random position not too close to any living player
+      // Find a random position within half the world size of the current position,
+      // and not too close to any living player.
       const float min_dist = 400.0f;
+      const float half_w = world.x() * 0.5f;
+      const float half_h = world.y() * 0.5f;
       WrappedPoint new_pos;
       for(int tries = 0; tries < 30; tries++) {
-        new_pos = WrappedPoint();
+        float ox = (rand() / (float)RAND_MAX - 0.5f) * 2.0f * half_w;
+        float oy = (rand() / (float)RAND_MAX - 0.5f) * 2.0f * half_h;
+        new_pos = WrappedPoint(ast->position.x() + ox, ast->position.y() + oy);
+        new_pos.wrap();
         bool safe = true;
         for(auto po = players->begin(); po != players->end(); ++po) {
           if((*po)->ship->is_alive() &&
