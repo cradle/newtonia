@@ -2,7 +2,6 @@
 #include "asteroid.h"
 #include "typer.h"
 #include <math.h>
-#include <SDL.h>
 
 #include "gl_compat.h"
 
@@ -264,49 +263,6 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
         glVertex2f(tip_x, tip_y);
         glVertex2f(bl_x, bl_y);
         glVertex2f(br_x, br_y);
-        glEnd();
-      }
-    }
-  }
-
-  // --- Quantum asteroid indicators: pulsing ring when observed, faint ring when not ---
-  if (!is_minimap) {
-    Uint32 now_ms = SDL_GetTicks();
-    float pulse = 0.5f + 0.5f * sinf(now_ms * 0.004f); // 0..1, ~1.6 Hz
-    glLineWidth(1.5f);
-    for (size_t ai = 0; ai < verts.size(); ++ai) {
-      AsteroidVerts const &v = verts[ai];
-      if (!v.quantum) continue;
-      const int ring_segs = 16;
-      float ring_r = v.radius * (1.3f + 0.15f * pulse); // outer pulsing ring
-      if (v.quantum_observed) {
-        glColor4f(0.65f, 0.1f, 1.0f, 0.4f + 0.4f * pulse);
-        glBegin(GL_LINE_LOOP);
-        for (int k = 0; k < ring_segs; k++) {
-          float a = k * 2.0f * (float)M_PI / ring_segs;
-          glVertex2f(v.cx + ring_r * cosf(a), v.cy + ring_r * sinf(a));
-        }
-        glEnd();
-        // Inner crosshair-style markers at cardinal points to signal "locked on"
-        glColor4f(0.8f, 0.3f, 1.0f, 0.6f + 0.3f * pulse);
-        glBegin(GL_LINES);
-        float tick = v.radius * 0.18f;
-        for (int k = 0; k < 4; k++) {
-          float a = k * (float)M_PI / 2.0f;
-          float base_r = v.radius * 1.05f;
-          glVertex2f(v.cx + base_r * cosf(a),           v.cy + base_r * sinf(a));
-          glVertex2f(v.cx + (base_r + tick) * cosf(a),  v.cy + (base_r + tick) * sinf(a));
-        }
-        glEnd();
-      } else {
-        // Unobserved: faint outer ring (visible on minimap, ghostly in-world if nearby)
-        glColor4f(0.3f, 0.05f, 0.5f, 0.2f);
-        glBegin(GL_LINE_LOOP);
-        for (int k = 0; k < ring_segs; k++) {
-          float a = k * 2.0f * (float)M_PI / ring_segs;
-          float r = v.radius * 1.25f;
-          glVertex2f(v.cx + r * cosf(a), v.cy + r * sinf(a));
-        }
         glEnd();
       }
     }
