@@ -502,7 +502,7 @@ void GLGame::tick(int delta) {
     for(oi = objects->begin(); oi != objects->end(); ++oi) {
       Asteroid *ast = *oi;
       if(!ast->quantum) continue;
-      bool now_observed = is_point_visible_to_any_player(ast->position);
+      bool now_observed = is_point_faced_by_any_player(ast->position);
       if(now_observed == ast->quantum_observed) continue;
       ast->quantum_observed = now_observed;
       float spd = ast->velocity.magnitude();
@@ -736,16 +736,26 @@ bool GLGame::is_visible_to_any_player(const Ship &ship) const {
   return is_point_visible_to_any_player(ship.position);
 }
 
-bool GLGame::is_point_visible_to_any_player(Point p) const {
+bool GLGame::is_point_faced_by_any_player(Point p) const {
   for(auto* glship : *players) {
-    if(!glship->ship->is_alive()) continue;
+    Ship *s = glship->ship;
+    if(!s->is_alive()) continue;
+    // Distance check: within viewport range
     float fov_deg = glship->view_angle();
     float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
     float aspect = window.x() / (float)(window.y() / num_y_viewports());
     float half_w = half_h * aspect;
     float cull_r2 = (half_w * half_w + half_h * half_h) * 1.1f;
-    float dist = glship->ship->position.distance_to(p);
-    if(dist * dist <= cull_r2) return true;
+    Point closest = s->position.closest_to(p);
+    float dx = closest.x() - s->position.x();
+    float dy = closest.y() - s->position.y();
+    float dist2 = dx * dx + dy * dy;
+    if(dist2 > cull_r2) continue;
+    // Facing check: asteroid must be in the ship's forward half-plane
+    float len = sqrtf(dist2);
+    if(len < 1e-6f) return true; // on top of it, counts as observed
+    float dot = s->facing.x() * (dx / len) + s->facing.y() * (dy / len);
+    if(dot > 0.0f) return true;
   }
   return false;
 }
