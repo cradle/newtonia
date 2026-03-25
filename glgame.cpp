@@ -28,11 +28,11 @@ const int GLGame::default_world_height = 2500;
 const int GLGame::default_num_asteroids = 3;
 const int GLGame::extra_num_asteroids = 5;
 const float GLGame::extra_life_drop_chance = 0.003125f;
-const float GLGame::weapon_pickup_drop_chance = 0.025f;
-const float GLGame::mine_pickup_drop_chance = 0.025f;
-const float GLGame::giga_mine_pickup_drop_chance = 0.010f;
-const float GLGame::missile_pickup_drop_chance = 0.025f;
-const float GLGame::shield_pickup_drop_chance = 0.025f;
+const float GLGame::weapon_pickup_drop_chance = 0.0125f;
+const float GLGame::mine_pickup_drop_chance = 0.0125f;
+const float GLGame::giga_mine_pickup_drop_chance = 0.005f;
+const float GLGame::missile_pickup_drop_chance = 0.0125f;
+const float GLGame::shield_pickup_drop_chance = 0.0125f;
 
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
