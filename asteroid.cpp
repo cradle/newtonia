@@ -18,11 +18,19 @@ Mix_Chunk * Asteroid::thud_sound = NULL;
 
 const int Asteroid::max_radius = Asteroid::radius_variation + Asteroid::minimum_radius;
 
-Asteroid::Asteroid(bool invincible, bool invisible, bool reflective) : CompositeObject(), killed(false) {
+Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool teleporting) : CompositeObject(), killed(false) {
   position = WrappedPoint();
   this->reflective = reflective;
+  this->teleporting = teleporting;
+  this->teleport_vulnerable = false;
+  this->teleport_pending = false;
+  this->teleport_angle = rand() / (float)RAND_MAX * 2.0f * (float)M_PI;
+  this->vulnerable_time_left = 0;
   if(reflective) invincible = true;
-  if(invincible) {
+  if(teleporting) invincible = false; // teleporting asteroids are killable when vulnerable
+  if(teleporting) {
+    radius = rand() % 100 + 70; // 70–170: noticeably large
+  } else if(invincible) {
     radius = rand()%radius_variation + minimum_radius;
   } else if(invisible) {
     radius = max_radius / 2 + rand() % (max_radius / 4 + 1);
@@ -66,6 +74,18 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective) : Composite
   }
 }
 
+void Asteroid::step(int delta) {
+  CompositeObject::step(delta);
+  if(teleporting && teleport_vulnerable) {
+    vulnerable_time_left -= delta;
+    if(vulnerable_time_left <= 0) {
+      teleport_vulnerable = false;
+      // Reset direction indicator for next hit
+      teleport_angle = rand() / (float)RAND_MAX * 2.0f * (float)M_PI;
+    }
+  }
+}
+
 Asteroid::~Asteroid() {
   if(!killed && !invincible) {
     num_killable--;
@@ -92,6 +112,11 @@ Asteroid::Asteroid(Asteroid const *mother) {
   children_added = false;
   invisible = false;
   reflective = false;
+  teleporting = false;
+  teleport_vulnerable = false;
+  teleport_pending = false;
+  teleport_angle = 0.0f;
+  vulnerable_time_left = 0;
   if(!invincible) {
     killed = false;
     num_killable++;
@@ -230,6 +255,25 @@ bool Asteroid::contains(Point p, float r) const {
 }
 
 bool Asteroid::kill() {
+  // Teleporting asteroid in ready-to-teleport state: evade instead of dying
+  if(teleporting && !teleport_vulnerable && !killed) {
+    if(!teleport_pending) {
+      // Spawn plenty of debris at current position for the visual teleport effect
+      explode();
+      explode();
+      explode();
+      teleport_pending = true;
+      if(thud_sound != NULL) {
+        static Uint32 last_teleport_tick = UINT32_MAX;
+        Uint32 now = SDL_GetTicks();
+        if(now - last_teleport_tick >= 125) {
+          last_teleport_tick = now;
+          Mix_PlayChannel(-1, thud_sound, 0);
+        }
+      }
+    }
+    return false;
+  }
   if(thud_sound != NULL && invincible) {
     static Uint32 last_thud_tick = UINT32_MAX;
     Uint32 now = SDL_GetTicks();

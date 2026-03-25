@@ -709,10 +709,11 @@ void Ship::collide_grid(Grid &grid, int delta) {
   for(size_t i = 0; i < missiles.size(); ) {
     object = grid.collide(missiles[i], 5.0f);
     if(object != NULL && object->alive) {
-      object->kill();
-      score += object->get_value() * multiplier();
-      kills_this_life += 1;
-      kills += 1;
+      if(object->kill()) {
+        score += object->get_value() * multiplier();
+        kills_this_life += 1;
+        kills += 1;
+      }
       detonate(missiles[i].position, missiles[i].velocity, 25);
       if(missile_explode_sound != NULL) {
         Mix_PlayChannel(-1, missile_explode_sound, 0);

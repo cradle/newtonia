@@ -98,9 +98,13 @@ struct AsteroidVerts {
   float dvx[9], dvy[9];
   float cx, cy, dx, dy;
   int segs;
+  float radius;
   bool invincible;
   bool invisible;
   bool reflective;
+  bool teleporting;
+  bool teleport_vulnerable;
+  float teleport_angle;
 };
 
 // draw_batch renders all alive asteroids in two draw calls (fill + outline),
@@ -129,6 +133,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
       v.dvx[i] = r * off * cosf(angle);
       v.dvy[i] = r * off * sinf(angle);
     }
+    v.radius = r;
     v.dx = 0; v.dy = 0;
     if (wrap_x > 0) {
       if (v.cx < r)               v.dx = wrap_x;
@@ -136,9 +141,12 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
       if (v.cy < r)               v.dy = wrap_y;
       else if (v.cy + r > wrap_y) v.dy = -wrap_y;
     }
-    v.invincible  = a->invincible;
-    v.invisible   = a->invisible;
-    v.reflective  = a->reflective;
+    v.invincible         = a->invincible;
+    v.invisible          = a->invisible;
+    v.reflective         = a->reflective;
+    v.teleporting        = a->teleporting;
+    v.teleport_vulnerable = a->teleport_vulnerable;
+    v.teleport_angle     = a->teleport_angle;
     verts.push_back(v);
   }
 
@@ -164,9 +172,11 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
   for (size_t ai = 0; ai < verts.size(); ++ai) {
     AsteroidVerts const &v = verts[ai];
     if (v.invisible) continue;
-    if (v.reflective)      glColor4f(0.0f, 0.4f, 0.5f, 0.6f);
-    else if (v.invincible) glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
-    else                   glColor3f(0.0f, 0.0f, 0.0f);
+    if (v.teleporting && v.teleport_vulnerable) glColor4f(0.3f, 0.0f, 0.5f, 0.7f);
+    else if (v.teleporting)                     glColor4f(0.5f, 0.2f, 0.0f, 0.7f);
+    else if (v.reflective)                      glColor4f(0.0f, 0.4f, 0.5f, 0.6f);
+    else if (v.invincible)                      glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
+    else                                        glColor3f(0.0f, 0.0f, 0.0f);
     for (int wi = 0; wi < (v.dx != 0 ? 2 : 1); wi++) {
       for (int wj = 0; wj < (v.dy != 0 ? 2 : 1); wj++) {
         float wcx = v.cx + wi * v.dx;
@@ -188,9 +198,11 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
   for (size_t ai = 0; ai < verts.size(); ++ai) {
     AsteroidVerts const &v = verts[ai];
     if (v.invisible) continue;
-    if (v.reflective)      glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
-    else if (v.invincible) glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
-    else                   glColor3f(1.0f, 1.0f, 1.0f);
+    if (v.teleporting && v.teleport_vulnerable) glColor4f(0.7f, 0.0f, 1.0f, 1.0f);
+    else if (v.teleporting)                     glColor4f(1.0f, 0.5f, 0.0f, 1.0f);
+    else if (v.reflective)                      glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
+    else if (v.invincible)                      glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
+    else                                        glColor3f(1.0f, 1.0f, 1.0f);
     for (int wi = 0; wi < (v.dx != 0 ? 2 : 1); wi++) {
       for (int wj = 0; wj < (v.dy != 0 ? 2 : 1); wj++) {
         float wcx = v.cx + wi * v.dx;
@@ -204,6 +216,86 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     }
   }
   glEnd();
+
+  // --- Inner indicator pass for teleporting asteroids ---
+  if (!is_minimap) {
+    glLineWidth(2.0f);
+    for (size_t ai = 0; ai < verts.size(); ++ai) {
+      AsteroidVerts const &v = verts[ai];
+      if (!v.teleporting) continue;
+      float r = v.radius * 0.45f; // indicator size relative to asteroid
+      if (v.teleport_vulnerable) {
+        // Draw a circle inside to show vulnerability
+        glColor4f(0.9f, 0.4f, 1.0f, 0.9f);
+        glBegin(GL_LINE_LOOP);
+        const int circle_segs = 14;
+        for (int k = 0; k < circle_segs; k++) {
+          float a = k * 2.0f * (float)M_PI / circle_segs;
+          glVertex2f(v.cx + r * cosf(a), v.cy + r * sinf(a));
+        }
+        glEnd();
+      } else {
+        // Draw a filled triangle arrow pointing in teleport_angle direction
+        // Triangle: tip pointing forward, base behind
+        float tip_x  = v.cx + r * cosf(v.teleport_angle);
+        float tip_y  = v.cy + r * sinf(v.teleport_angle);
+        float base_r = r * 0.55f;
+        float back_angle = v.teleport_angle + (float)M_PI;
+        float perp = v.teleport_angle + (float)M_PI / 2.0f;
+        float bl_x = v.cx + base_r * cosf(back_angle) + base_r * 0.6f * cosf(perp);
+        float bl_y = v.cy + base_r * sinf(back_angle) + base_r * 0.6f * sinf(perp);
+        float br_x = v.cx + base_r * cosf(back_angle) - base_r * 0.6f * cosf(perp);
+        float br_y = v.cy + base_r * sinf(back_angle) - base_r * 0.6f * sinf(perp);
+        glColor4f(1.0f, 0.6f, 0.0f, 0.9f);
+        glBegin(GL_TRIANGLES);
+        glVertex2f(tip_x, tip_y);
+        glVertex2f(bl_x, bl_y);
+        glVertex2f(br_x, br_y);
+        glEnd();
+        glColor4f(1.0f, 0.8f, 0.2f, 1.0f);
+        glBegin(GL_LINE_LOOP);
+        glVertex2f(tip_x, tip_y);
+        glVertex2f(bl_x, bl_y);
+        glVertex2f(br_x, br_y);
+        glEnd();
+      }
+    }
+  }
+
+  // --- Debris from alive teleporting asteroids (teleport ghost effect) ---
+  if (!is_minimap) {
+    static float tp_flicker[64];
+    static bool tp_flicker_init = false;
+    static int tp_flicker_idx = 0;
+    if (!tp_flicker_init) {
+      for (int i = 0; i < 64; i++)
+        tp_flicker[i] = rand() / (float)RAND_MAX;
+      tp_flicker_init = true;
+    }
+    bool any_debris = false;
+    for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
+      if ((*it)->teleporting && !(*it)->debris.empty()) { any_debris = true; break; }
+    }
+    if (any_debris) {
+      glPointSize(3.0f);
+      glBegin(GL_POINTS);
+      for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
+        Asteroid const *a = *it;
+        if (!a->teleporting) continue;
+        for (auto const &d : a->debris) {
+          float alive = d.aliveness();
+          float alpha = tp_flicker[tp_flicker_idx++ % 64] * alive / 2.0f + alive / 2.0f;
+          // Orange/yellow debris for teleport-ready, purple for post-teleport
+          if (a->teleport_vulnerable)
+            glColor4f(0.8f, 0.2f, 1.0f, alpha);
+          else
+            glColor4f(1.0f, 0.6f, 0.1f, alpha);
+          glVertex2fv(d.position);
+        }
+      }
+      glEnd();
+    }
+  }
 
   // --- Dead asteroids: debris particles (batched) + score text ---
   if (!is_minimap) {

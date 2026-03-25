@@ -152,13 +152,17 @@ void GLGame::add_asteroids() {
     objects->push_back(new Asteroid(false));
     if(generation > 0) objects->push_front(new Asteroid(true));
   }
-  int num_invisible = (generation >= 5) ? (generation - 5) / 5 + 1 : 0;
+  int num_invisible = (generation >= 4) ? (generation - 4) / 5 + 1 : 0;
   for(int i = 0; i < num_invisible; i++) {
     objects->push_back(new Asteroid(false, true));
   }
   int num_reflective = (generation >= 2) ? (generation - 2) / 2 + 1 : 0;
   for(int i = 0; i < num_reflective; i++) {
     objects->push_front(new Asteroid(false, false, true));
+  }
+  int num_teleporting = (generation >= 3) ? (generation - 3) / 2 + 1 : 0;
+  for(int i = 0; i < num_teleporting; i++) {
+    objects->push_back(new Asteroid(false, false, false, true));
   }
 }
 
@@ -454,6 +458,38 @@ void GLGame::tick(int delta) {
       } else {
         oi++;
       }
+    }
+
+    // Handle teleporting asteroids: relocate in the direction of the arrow.
+    for(oi = objects->begin(); oi != objects->end(); ++oi) {
+      Asteroid *ast = *oi;
+      if(!ast->teleport_pending) continue;
+      // Travel in teleport_angle direction, random distance from 200 to half world size.
+      const float min_dist_from_ship = 400.0f;
+      const float max_travel = fminf(world.x(), world.y()) * 0.5f;
+      const float min_travel = 200.0f;
+      WrappedPoint new_pos;
+      for(int tries = 0; tries < 30; tries++) {
+        float dist = min_travel + (rand() / (float)RAND_MAX) * (max_travel - min_travel);
+        float ox = cosf(ast->teleport_angle) * dist;
+        float oy = sinf(ast->teleport_angle) * dist;
+        new_pos = WrappedPoint(ast->position.x() + ox, ast->position.y() + oy);
+        new_pos.wrap();
+        bool safe = true;
+        for(auto po = players->begin(); po != players->end(); ++po) {
+          if((*po)->ship->is_alive() &&
+             new_pos.distance_to((*po)->ship->position) < min_dist_from_ship) {
+            safe = false;
+            break;
+          }
+        }
+        if(safe) break;
+      }
+      ast->position = new_pos;
+      ast->teleport_vulnerable = true;
+      ast->vulnerable_time_left = 10000; // 10 seconds of vulnerability
+      ast->teleport_pending = false;
+      ast->teleport_angle = rand() / (float)RAND_MAX * 2.0f * (float)M_PI;
     }
 
     // Clean up dead asteroids whose debris has fully faded.
