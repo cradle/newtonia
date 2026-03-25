@@ -513,9 +513,9 @@ void GLGame::tick(int delta) {
           ast->invincible = false;
           ast->velocity = dir * ast->quantum_base_speed;
         } else {
-          // Superposition: speed up 3x, become invincible
+          // Superposition: speed up 6x, become invincible
           ast->invincible = true;
-          ast->velocity = dir * ast->quantum_base_speed * 3.0f;
+          ast->velocity = dir * ast->quantum_base_speed * 6.0f;
         }
       }
     }
