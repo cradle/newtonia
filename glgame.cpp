@@ -164,6 +164,10 @@ void GLGame::add_asteroids() {
   for(int i = 0; i < num_teleporting; i++) {
     objects->push_back(new Asteroid(false, false, false, true));
   }
+  int num_quantum = (generation >= 5) ? (generation - 5) / 3 + 1 : 0;
+  for(int i = 0; i < num_quantum; i++) {
+    objects->push_back(new Asteroid(false, false, false, false, true));
+  }
 }
 
 void GLGame::toggle_pause() {
@@ -492,6 +496,30 @@ void GLGame::tick(int delta) {
       ast->teleport_angle = rand() / (float)RAND_MAX * 2.0f * (float)M_PI;
     }
 
+    // Update quantum asteroid observation state: collapse when any player looks at
+    // it (becomes killable, normal speed), enter superposition otherwise (invincible,
+    // 3x speed so it can sneak up on players who look away).
+    for(oi = objects->begin(); oi != objects->end(); ++oi) {
+      Asteroid *ast = *oi;
+      if(!ast->quantum) continue;
+      bool now_observed = is_point_visible_to_any_player(ast->position);
+      if(now_observed == ast->quantum_observed) continue;
+      ast->quantum_observed = now_observed;
+      float spd = ast->velocity.magnitude();
+      if(spd > 1e-6f) {
+        Point dir = ast->velocity * (1.0f / spd);
+        if(now_observed) {
+          // Collapse: slow to base speed, become killable
+          ast->invincible = false;
+          ast->velocity = dir * ast->quantum_base_speed;
+        } else {
+          // Superposition: speed up 3x, become invincible
+          ast->invincible = true;
+          ast->velocity = dir * ast->quantum_base_speed * 3.0f;
+        }
+      }
+    }
+
     // Clean up dead asteroids whose debris has fully faded.
     oi = dead_objects->begin();
     while(oi != dead_objects->end()) {
@@ -705,6 +733,10 @@ int GLGame::num_y_viewports() const {
 }
 
 bool GLGame::is_visible_to_any_player(const Ship &ship) const {
+  return is_point_visible_to_any_player(ship.position);
+}
+
+bool GLGame::is_point_visible_to_any_player(Point p) const {
   for(auto* glship : *players) {
     if(!glship->ship->is_alive()) continue;
     float fov_deg = glship->view_angle();
@@ -712,7 +744,7 @@ bool GLGame::is_visible_to_any_player(const Ship &ship) const {
     float aspect = window.x() / (float)(window.y() / num_y_viewports());
     float half_w = half_h * aspect;
     float cull_r2 = (half_w * half_w + half_h * half_h) * 1.1f;
-    float dist = glship->ship->position.distance_to(ship.position);
+    float dist = glship->ship->position.distance_to(p);
     if(dist * dist <= cull_r2) return true;
   }
   return false;

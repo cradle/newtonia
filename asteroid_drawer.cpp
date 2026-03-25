@@ -2,6 +2,7 @@
 #include "asteroid.h"
 #include "typer.h"
 #include <math.h>
+#include <SDL.h>
 
 #include "gl_compat.h"
 
@@ -105,6 +106,8 @@ struct AsteroidVerts {
   bool teleporting;
   bool teleport_vulnerable;
   float teleport_angle;
+  bool quantum;
+  bool quantum_observed;
 };
 
 // draw_batch renders all alive asteroids in two draw calls (fill + outline),
@@ -141,12 +144,14 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
       if (v.cy < r)               v.dy = wrap_y;
       else if (v.cy + r > wrap_y) v.dy = -wrap_y;
     }
-    v.invincible         = a->invincible;
-    v.invisible          = a->invisible;
-    v.reflective         = a->reflective;
-    v.teleporting        = a->teleporting;
+    v.invincible          = a->invincible;
+    v.invisible           = a->invisible;
+    v.reflective          = a->reflective;
+    v.teleporting         = a->teleporting;
     v.teleport_vulnerable = a->teleport_vulnerable;
-    v.teleport_angle     = a->teleport_angle;
+    v.teleport_angle      = a->teleport_angle;
+    v.quantum             = a->quantum;
+    v.quantum_observed    = a->quantum_observed;
     verts.push_back(v);
   }
 
@@ -172,7 +177,9 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
   for (size_t ai = 0; ai < verts.size(); ++ai) {
     AsteroidVerts const &v = verts[ai];
     if (v.invisible) continue;
-    if (v.teleporting)                          glColor3f(0.0f, 0.0f, 0.0f);
+    if (v.quantum && v.quantum_observed)        glColor4f(0.15f, 0.0f, 0.35f, 0.85f);
+    else if (v.quantum)                         glColor4f(0.05f, 0.0f, 0.12f, 0.4f);
+    else if (v.teleporting)                     glColor3f(0.0f, 0.0f, 0.0f);
     else if (v.reflective)                      glColor4f(0.0f, 0.4f, 0.5f, 0.6f);
     else if (v.invincible)                      glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
     else                                        glColor3f(0.0f, 0.0f, 0.0f);
@@ -197,7 +204,9 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
   for (size_t ai = 0; ai < verts.size(); ++ai) {
     AsteroidVerts const &v = verts[ai];
     if (v.invisible) continue;
-    if (v.teleporting)                          glColor3f(1.0f, 1.0f, 1.0f);
+    if (v.quantum && v.quantum_observed)        glColor4f(0.65f, 0.1f, 1.0f, 1.0f);
+    else if (v.quantum)                         glColor4f(0.3f, 0.05f, 0.5f, 0.35f);
+    else if (v.teleporting)                     glColor3f(1.0f, 1.0f, 1.0f);
     else if (v.reflective)                      glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
     else if (v.invincible)                      glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
     else                                        glColor3f(1.0f, 1.0f, 1.0f);
@@ -255,6 +264,49 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
         glVertex2f(tip_x, tip_y);
         glVertex2f(bl_x, bl_y);
         glVertex2f(br_x, br_y);
+        glEnd();
+      }
+    }
+  }
+
+  // --- Quantum asteroid indicators: pulsing ring when observed, faint ring when not ---
+  if (!is_minimap) {
+    Uint32 now_ms = SDL_GetTicks();
+    float pulse = 0.5f + 0.5f * sinf(now_ms * 0.004f); // 0..1, ~1.6 Hz
+    glLineWidth(1.5f);
+    for (size_t ai = 0; ai < verts.size(); ++ai) {
+      AsteroidVerts const &v = verts[ai];
+      if (!v.quantum) continue;
+      const int ring_segs = 16;
+      float ring_r = v.radius * (1.3f + 0.15f * pulse); // outer pulsing ring
+      if (v.quantum_observed) {
+        glColor4f(0.65f, 0.1f, 1.0f, 0.4f + 0.4f * pulse);
+        glBegin(GL_LINE_LOOP);
+        for (int k = 0; k < ring_segs; k++) {
+          float a = k * 2.0f * (float)M_PI / ring_segs;
+          glVertex2f(v.cx + ring_r * cosf(a), v.cy + ring_r * sinf(a));
+        }
+        glEnd();
+        // Inner crosshair-style markers at cardinal points to signal "locked on"
+        glColor4f(0.8f, 0.3f, 1.0f, 0.6f + 0.3f * pulse);
+        glBegin(GL_LINES);
+        float tick = v.radius * 0.18f;
+        for (int k = 0; k < 4; k++) {
+          float a = k * (float)M_PI / 2.0f;
+          float base_r = v.radius * 1.05f;
+          glVertex2f(v.cx + base_r * cosf(a),           v.cy + base_r * sinf(a));
+          glVertex2f(v.cx + (base_r + tick) * cosf(a),  v.cy + (base_r + tick) * sinf(a));
+        }
+        glEnd();
+      } else {
+        // Unobserved: faint outer ring (visible on minimap, ghostly in-world if nearby)
+        glColor4f(0.3f, 0.05f, 0.5f, 0.2f);
+        glBegin(GL_LINE_LOOP);
+        for (int k = 0; k < ring_segs; k++) {
+          float a = k * 2.0f * (float)M_PI / ring_segs;
+          float r = v.radius * 1.25f;
+          glVertex2f(v.cx + r * cosf(a), v.cy + r * sinf(a));
+        }
         glEnd();
       }
     }

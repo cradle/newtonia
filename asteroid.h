@@ -9,7 +9,7 @@
 
 class Asteroid : public CompositeObject {
 public:
-  Asteroid(bool invincible, bool invisible = false, bool reflective = false, bool teleporting = false);
+  Asteroid(bool invincible, bool invisible = false, bool reflective = false, bool teleporting = false, bool quantum = false);
   Asteroid(Asteroid const *mother);
   virtual ~Asteroid();
 
@@ -38,6 +38,10 @@ public:
   bool teleport_pending;    // true = needs to be relocated by game loop this tick
   float teleport_angle;     // direction of the in-asteroid indicator (radians)
   int vulnerable_time_left; // countdown in ms while teleport_vulnerable is true
+
+  bool quantum;             // true = quantum asteroid (observer-dependent behavior)
+  bool quantum_observed;    // true = currently observed by a player (collapsed, killable)
+  float quantum_base_speed; // base speed magnitude for observation state transitions
 
 private:
   const static int max_speed;
