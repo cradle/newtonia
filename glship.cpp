@@ -635,13 +635,17 @@ void GLShip::draw_weapons() const {
 }
 
 void GLShip::draw_particles() const {
-  glColor3fv(color);
   glPointSize(3.5f);
   glLineWidth(2.5f);
   //TODO: ParticleDrawer::draw(ship->bullets);
   glBegin(GL_LINES);
   for(auto b = ship->bullets.begin(); b != ship->bullets.end(); b++) {
     //TODO: Work out how to make bullets draw themselves. GLBullet?
+    if(b->world_bullet) {
+      glColor3f(1.0f, 1.0f, 0.0f);
+    } else {
+      glColor3fv(color);
+    }
     glVertex2fv(b->position - b->velocity*10);
     glVertex2fv(b->position);
   }
