@@ -149,6 +149,22 @@ jobs:
             -I/usr/local/include/SDL2 \
             -framework GLUT -framework OpenGL
 
+      - name: Import Developer ID certificate
+        env:
+          CERT_BASE64: ${{ secrets.DEVELOPER_ID_CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+        run: |
+          printf '%s' "$CERT_BASE64" | base64 -d > "$RUNNER_TEMP/cert.p12"
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          security create-keychain -p "" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security list-keychain -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"' | xargs) /Library/Keychains/System.keychain
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "" "$KEYCHAIN"
+
       - name: Create universal binary and bundle .app
         run: |
           lipo -create -output newtonia newtonia-arm64 newtonia-x86_64
@@ -181,7 +197,8 @@ jobs:
                 fi
                 install_name_tool -id "@executable_path/../Frameworks/$name" "$dest"
                 bundle "$dest"
-                codesign --sign - --force "$dest"
+                codesign --sign "Developer ID Application" --force --timestamp \
+                  --options runtime "$dest"
               fi
               install_name_tool -change "$arm" "@executable_path/../Frameworks/$name" "$target" 2>/dev/null || true
               install_name_tool -change "$x86" "@executable_path/../Frameworks/$name" "$target" 2>/dev/null || true
@@ -195,7 +212,10 @@ jobs:
           }
 
           bundle Newtonia.app/Contents/MacOS/newtonia
-          codesign --sign - --force Newtonia.app/Contents/MacOS/newtonia
+          codesign --sign "Developer ID Application" --force --timestamp \
+            --options runtime \
+            --entitlements macos/EntitlementsDevID.plist \
+            Newtonia.app/Contents/MacOS/newtonia
 
           cat > Newtonia.app/Contents/Info.plist <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -213,6 +233,27 @@ jobs:
           </dict>
           </plist>
           PLIST
+
+      - name: Sign .app bundle
+        run: |
+          codesign --sign "Developer ID Application" --force --timestamp \
+            --options runtime \
+            --entitlements macos/EntitlementsDevID.plist \
+            Newtonia.app
+
+      - name: Notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_APP_SPECIFIC_PASSWORD }}
+        run: |
+          ditto -c -k --keepParent Newtonia.app newtonia-steam-macos.zip
+          xcrun notarytool submit newtonia-steam-macos.zip \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$NOTARY_PASSWORD" \
+            --wait
+          xcrun stapler staple Newtonia.app
 
       - name: Stage depot
         run: |
