@@ -168,6 +168,10 @@ void GLGame::add_asteroids() {
   for(int i = 0; i < num_quantum; i++) {
     objects->push_back(new Asteroid(false, false, false, false, true));
   }
+  int num_elastic = (generation >= 2) ? (generation - 2) / 2 + 1 : 0;
+  for(int i = 0; i < num_elastic; i++) {
+    objects->push_back(new Asteroid(false, false, false, false, false, true));
+  }
 }
 
 void GLGame::toggle_pause() {
@@ -419,6 +423,61 @@ void GLGame::tick(int delta) {
     /* UPDATE COLLISION MAP */
 
     grid.update((std::list<Object *>*)objects);
+
+  /* ELASTIC ASTEROID-ASTEROID COLLISIONS */
+    // For each pair of live asteroids where at least one is elastic, apply
+    // 2D elastic collision physics (mass ~ radius^2, conservation of momentum
+    // and kinetic energy along the collision normal). Pairs are processed once
+    // via inner iterator starting after outer to avoid double-application.
+    {
+      std::list<Asteroid*>::iterator ai, bi;
+      for(ai = objects->begin(); ai != objects->end(); ++ai) {
+        Asteroid *a = *ai;
+        if(!a->alive) continue;
+        bi = ai; ++bi;
+        for(; bi != objects->end(); ++bi) {
+          Asteroid *b = *bi;
+          if(!b->alive) continue;
+          if(!a->elastic && !b->elastic) continue;
+
+          // Use world-wrap aware distance: get closest copy of A to B
+          Point a_near = a->position.closest_to(b->position);
+          float dx = a_near.x() - b->position.x();
+          float dy = a_near.y() - b->position.y();
+          float dist2 = dx * dx + dy * dy;
+          float sum_r = a->effective_radius() + b->effective_radius();
+          if(dist2 >= sum_r * sum_r) continue; // no overlap
+
+          float dist = sqrtf(dist2);
+          if(dist < 1e-4f) continue; // degenerate overlap, skip
+
+          // Collision normal pointing from B to A
+          float nx = dx / dist;
+          float ny = dy / dist;
+
+          // Relative velocity along normal (negative = approaching)
+          float vrel_n = (a->velocity.x() - b->velocity.x()) * nx
+                       + (a->velocity.y() - b->velocity.y()) * ny;
+          if(vrel_n >= 0.0f) continue; // already separating
+
+          // Mass proportional to area (radius^2)
+          float ma = a->radius * a->radius;
+          float mb = b->radius * b->radius;
+          float impulse = -2.0f * vrel_n * ma * mb / (ma + mb);
+
+          a->velocity = a->velocity + Point(nx, ny) * (impulse / ma);
+          b->velocity = b->velocity - Point(nx, ny) * (impulse / mb);
+
+          // Positional correction: push apart to resolve overlap
+          float overlap = sum_r - dist;
+          float push = overlap * 0.5f + 0.5f;
+          a->position += Point(nx, ny) * push;
+          a->position.wrap();
+          b->position += Point(-nx, -ny) * push;
+          b->position.wrap();
+        }
+      }
+    }
 
   /* COLLIDE EVERYTHING */
     for(o = players->begin(); o != players->end(); o++) {
