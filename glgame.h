@@ -16,6 +16,7 @@
 #include "giga_mine_pickup.h"
 #include "missile_pickup.h"
 #include "shield_pickup.h"
+#include "god_mode_pickup.h"
 #include <SDL.h>
 #include <list>
 
