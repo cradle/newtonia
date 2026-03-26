@@ -30,6 +30,19 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   this->quantum_observed = true; // start in observed (collapsed) state
   this->quantum_base_speed = 0.0f; // set after velocity is computed below
   this->elastic = elastic;
+  if(elastic) {
+    health = 5;
+    // Pre-compute stable crack geometry (rotation-invariant: stored as t and perp fractions).
+    // seg count mirrors the renderer so crack_vertex indices stay in range.
+    int segs = (radius < 15) ? 5 : (radius < 30) ? 6 : (radius > 200) ? 9 : 7;
+    for(int k = 0; k < 5; k++) {
+      crack_vertex[k] = rand() % segs;
+      crack_t[k]      = 0.35f + (rand() / (float)RAND_MAX) * 0.30f; // 0.35–0.65
+      crack_perp[k]   = (rand() / (float)RAND_MAX - 0.5f) * 0.70f; // −0.35..0.35
+    }
+  } else {
+    health = 1;
+  }
   if(reflective) invincible = true;
   if(teleporting) invincible = false; // teleporting asteroids are killable when vulnerable
   if(quantum) invincible = false;     // quantum asteroids start killable (observed state)
@@ -131,6 +144,7 @@ Asteroid::Asteroid(Asteroid const *mother) {
   quantum_observed = true;
   quantum_base_speed = 0.0f;
   elastic = false;
+  health = 1;
   if(!invincible) {
     killed = false;
     num_killable++;
@@ -284,6 +298,19 @@ bool Asteroid::kill() {
           last_teleport_tick = now;
           Mix_PlayChannel(-1, thud_sound, 0);
         }
+      }
+    }
+    return false;
+  }
+  // Elastic asteroid absorbs a hit without dying until health reaches 1.
+  if(elastic && health > 1) {
+    health--;
+    if(thud_sound != NULL) {
+      static Uint32 last_elastic_thud = UINT32_MAX;
+      Uint32 now = SDL_GetTicks();
+      if(now - last_elastic_thud >= 125) {
+        last_elastic_thud = now;
+        Mix_PlayChannel(-1, thud_sound, 0);
       }
     }
     return false;

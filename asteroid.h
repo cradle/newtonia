@@ -45,6 +45,11 @@ public:
 
   bool elastic;             // true = elastic asteroid: bounces off all other asteroids
 
+  int health;               // hits remaining (elastic: 5, others: 1)
+  int crack_vertex[5];      // which polygon vertex each crack line starts from
+  float crack_t[5];         // position along vertex→center (0.35–0.65)
+  float crack_perp[5];      // perpendicular jitter as fraction of vertex distance (−0.35..0.35)
+
 private:
   const static int max_speed;
   const static int radius_variation;
