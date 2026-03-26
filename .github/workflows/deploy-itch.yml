@@ -48,13 +48,13 @@ jobs:
           BUTLER_VERSION=$(curl -s https://api.github.com/repos/itchio/butler/releases/latest | jq -r .tag_name)
           curl -L -o butler.zip "https://github.com/itchio/butler/releases/download/${BUTLER_VERSION}/butler-linux-amd64.zip"
           unzip butler.zip
-          chmod +x butler
-          ./butler -V
+          chmod +x linux-amd64/butler
+          linux-amd64/butler -V
 
       - name: Push to itch.io
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_CREDENTIALS }}
         run: |
           CHANNEL="${{ github.event.inputs.channel || 'html5' }}"
-          ./butler push web/dist ${{ secrets.ITCH_GAME }}:${CHANNEL} \
+          linux-amd64/butler push web/dist ${{ secrets.ITCH_GAME }}:${CHANNEL} \
             --userversion "${{ github.ref_name || github.sha }}"
