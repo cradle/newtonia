@@ -35,8 +35,15 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
     // Pre-compute stable crack geometry (rotation-invariant: stored as t and perp fractions).
     // seg count mirrors the renderer so crack_vertex indices stay in range.
     int segs = (radius < 15) ? 5 : (radius < 30) ? 6 : (radius > 200) ? 9 : 7;
+    // Shuffle vertex indices so every crack starts at a distinct vertex.
+    int order[9];
+    for(int i = 0; i < segs; i++) order[i] = i;
+    for(int i = segs - 1; i > 0; i--) {
+      int j = rand() % (i + 1);
+      int tmp = order[i]; order[i] = order[j]; order[j] = tmp;
+    }
     for(int k = 0; k < 5; k++) {
-      crack_vertex[k] = rand() % segs;
+      crack_vertex[k] = order[k];
       crack_t[k]      = 0.35f + (rand() / (float)RAND_MAX) * 0.30f; // 0.35–0.65
       crack_perp[k]   = (rand() / (float)RAND_MAX - 0.5f) * 0.70f; // −0.35..0.35
     }
