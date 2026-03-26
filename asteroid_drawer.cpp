@@ -268,11 +268,15 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
         float perp_dist = v.crack_perp[k] * len;
         float mx = lx + (-vy / len) * perp_dist;
         float my = ly + ( vx / len) * perp_dist;
-        // Two segments: vertex → midpoint → centre
-        glVertex2f(v.cx + vx, v.cy + vy);
-        glVertex2f(v.cx + mx, v.cy + my);
-        glVertex2f(v.cx + mx, v.cy + my);
-        glVertex2f(v.cx,      v.cy);
+        // Two segments: vertex → midpoint → halfway-to-centre (half length)
+        float half_mx = vx + (mx - vx) * 0.5f;
+        float half_my = vy + (my - vy) * 0.5f;
+        float half_ex = vx * 0.5f;
+        float half_ey = vy * 0.5f;
+        glVertex2f(v.cx + vx,      v.cy + vy);
+        glVertex2f(v.cx + half_mx, v.cy + half_my);
+        glVertex2f(v.cx + half_mx, v.cy + half_my);
+        glVertex2f(v.cx + half_ex, v.cy + half_ey);
       }
     }
     glEnd();
