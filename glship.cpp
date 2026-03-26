@@ -2,6 +2,7 @@
 #include "gltrail.h"
 #include "ship.h"
 #include "typer.h"
+#include "asteroid.h"
 #include "teleport.h"
 #include "weapon/base.h"
 #include <math.h>
@@ -602,6 +603,8 @@ void GLShip::draw_keymap() const {
   Typer::draw(-offset, (num_controls-cheat_offset-4)/2.0f * (size + padding) * char_height + y_offset, '0', size);
   Typer::draw(offset, (num_controls-cheat_offset-5)/2.0f * (size + padding) * char_height + y_offset, "SKIP LEVEL", size);
   Typer::draw(-offset, (num_controls-cheat_offset-5)/2.0f * (size + padding) * char_height + y_offset, 'n', size);
+  Typer::draw(offset, (num_controls-cheat_offset-6)/2.0f * (size + padding) * char_height + y_offset, Asteroid::god_mode ? "GOD MODE ON" : "GOD MODE", size);
+  Typer::draw(-offset, (num_controls-cheat_offset-6)/2.0f * (size + padding) * char_height + y_offset, 'm', size);
 }
 
 void GLShip::draw_weapons() const {

@@ -361,6 +361,10 @@ void GLGame::tick(int delta) {
     }
 
     for(o = players->begin(); o != players->end(); o++) {
+      if(Asteroid::god_mode && (*o)->ship->is_alive()) {
+        (*o)->ship->invincible = true;
+        (*o)->ship->time_left_invincible = step_size * 2;
+      }
       (*o)->step(step_size, grid);
     }
 
@@ -1173,6 +1177,9 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   }
   if (key == 'b') {
     debug_grid = !debug_grid;
+  }
+  if (key == 'm') {
+    Asteroid::god_mode = !Asteroid::god_mode;
   }
   if (key == '=' && time_between_steps > 1) time_between_steps--;
   if (key == '-') time_between_steps++;

@@ -9,6 +9,7 @@ using namespace std;
 const int Asteroid::max_speed = 5;
 const int Asteroid::max_rotation = 15;
 int Asteroid::num_killable = 0;
+bool Asteroid::god_mode = false;
 
 const int Asteroid::radius_variation = 220;
 const int Asteroid::minimum_radius = 20;
@@ -290,6 +291,17 @@ bool Asteroid::contains(Point p, float r) const {
 }
 
 bool Asteroid::kill() {
+  if(god_mode && !killed) {
+    // In god mode, force-kill all asteroids bypassing all special protections.
+    // Only decrement num_killable if this asteroid was already counted (non-invincible).
+    if(!invincible) {
+      num_killable--;
+    }
+    killed = true;
+    teleport_pending = false;
+    invincible = false;
+    return CompositeObject::kill();
+  }
   // Teleporting asteroid in ready-to-teleport state: evade instead of dying
   if(teleporting && !teleport_vulnerable && !killed) {
     if(!teleport_pending) {

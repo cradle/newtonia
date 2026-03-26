@@ -2,6 +2,7 @@
 #include "../glship.h"
 #include "../glgame.h"
 #include "../typer.h"
+#include "../asteroid.h"
 #include "../touch_controls.h"
 
 #include "../gl_compat.h"
@@ -23,6 +24,7 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   paused(glgame, glship);
   touch_controls(glgame, glship);
   edge_indicators(glgame, glship);
+  god_mode_indicator(glgame, glship);
 }
 
 void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
@@ -196,6 +198,13 @@ void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
     glship->draw_keymap();
     glPopMatrix();
   }
+}
+
+void Overlay::god_mode_indicator(const GLGame *glgame, const GLShip *glship) {
+  if(!Asteroid::god_mode) return;
+  float vw = Typer::scaled_window_width / glgame->num_x_viewports();
+  float vh = Typer::scaled_window_height / glgame->num_y_viewports();
+  Typer::draw_centered(0, vh - 50 - CORNER_INSET, "GOD MODE", 12);
 }
 
 void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {

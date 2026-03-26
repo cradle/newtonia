@@ -24,6 +24,7 @@ public:
   friend class AsteroidDrawer;
 
   static int num_killable;
+  static bool god_mode;
 
   const static int max_radius;
 
