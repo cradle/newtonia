@@ -24,7 +24,9 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
     glTranslatef(object->position.x(), object->position.y(), 0.0f);
     glScalef(object->radius, object->radius, 1.0f);
     glRotatef(object->rotation, 0.0f, 0.0f, 1.0f);
-    if(object->reflective) {
+    if(object->elastic) {
+      glColor4f(0.5f, 0.25f, 0.0f, 0.9f);
+    } else if(object->reflective) {
       glColor4f(0.0f, 0.4f, 0.5f, 0.6f);
     } else if(object->invincible) {
       glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
@@ -45,7 +47,9 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
       glVertex2f(off * cosf(d), off * sinf(d));
     }
     glEnd();
-    if(object->reflective) {
+    if(object->elastic) {
+      glColor4f(1.0f, 0.55f, 0.0f, 1.0f);
+    } else if(object->reflective) {
       glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
     } else if(object->invincible) {
       glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
@@ -107,6 +111,7 @@ struct AsteroidVerts {
   float teleport_angle;
   bool quantum;
   bool quantum_observed;
+  bool elastic;
 };
 
 // draw_batch renders all alive asteroids in two draw calls (fill + outline),
@@ -151,6 +156,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     v.teleport_angle      = a->teleport_angle;
     v.quantum             = a->quantum;
     v.quantum_observed    = a->quantum_observed;
+    v.elastic             = a->elastic;
     verts.push_back(v);
   }
 
@@ -178,6 +184,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     if (v.invisible) continue;
     if (v.quantum && v.quantum_observed)        glColor4f(0.15f, 0.0f, 0.35f, 0.85f);
     else if (v.quantum)                         glColor4f(0.05f, 0.0f, 0.12f, 0.4f);
+    else if (v.elastic)                         glColor4f(0.5f, 0.25f, 0.0f, 0.9f);
     else if (v.teleporting)                     glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
     else if (v.reflective)                      glColor4f(0.0f, 0.4f, 0.5f, 0.6f);
     else if (v.invincible)                      glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
@@ -205,6 +212,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     if (v.invisible) continue;
     if (v.quantum && v.quantum_observed)        glColor4f(0.65f, 0.1f, 1.0f, 1.0f);
     else if (v.quantum)                         glColor4f(0.3f, 0.05f, 0.5f, 0.35f);
+    else if (v.elastic)                         glColor4f(1.0f, 0.55f, 0.0f, 1.0f);
     else if (v.teleporting)                     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     else if (v.reflective)                      glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
     else if (v.invincible)                      glColor4f(0.8f, 0.8f, 0.8f, 0.8f);

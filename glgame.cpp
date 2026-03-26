@@ -168,7 +168,7 @@ void GLGame::add_asteroids() {
   for(int i = 0; i < num_quantum; i++) {
     objects->push_back(new Asteroid(false, false, false, false, true));
   }
-  int num_elastic = (generation >= 2) ? (generation - 2) / 2 + 1 : 0;
+  int num_elastic = generation / 2 + 1;
   for(int i = 0; i < num_elastic; i++) {
     objects->push_back(new Asteroid(false, false, false, false, false, true));
   }
