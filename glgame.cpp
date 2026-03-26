@@ -445,7 +445,7 @@ void GLGame::tick(int delta) {
           float dx = a_near.x() - b->position.x();
           float dy = a_near.y() - b->position.y();
           float dist2 = dx * dx + dy * dy;
-          float sum_r = a->effective_radius() + b->effective_radius();
+          float sum_r = a->radius + b->radius;
           if(dist2 >= sum_r * sum_r) continue; // no overlap
 
           float dist = sqrtf(dist2);
