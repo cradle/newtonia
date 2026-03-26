@@ -605,7 +605,7 @@ void GLShip::draw_keymap() const {
 }
 
 void GLShip::draw_weapons() const {
-  int x = 20;
+  int x = 40;
   int y = -20;
   Typer::draw(x, y, "Weapons", 15);
   Weapon::Base *weapon = *(ship->primary);
