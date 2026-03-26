@@ -33,6 +33,7 @@ const float GLGame::mine_pickup_drop_chance = 0.0125f;
 const float GLGame::giga_mine_pickup_drop_chance = 0.005f;
 const float GLGame::missile_pickup_drop_chance = 0.0125f;
 const float GLGame::shield_pickup_drop_chance = 0.0125f;
+const float GLGame::god_mode_pickup_drop_chance = 0.002f;
 
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
@@ -361,10 +362,6 @@ void GLGame::tick(int delta) {
     }
 
     for(o = players->begin(); o != players->end(); o++) {
-      if(Asteroid::god_mode && (*o)->ship->is_alive()) {
-        (*o)->ship->invincible = true;
-        (*o)->ship->time_left_invincible = step_size * 2;
-      }
       (*o)->step(step_size, grid);
     }
 
@@ -509,6 +506,8 @@ void GLGame::tick(int delta) {
             pickups->push_back(new MissilePickup((*oi)->position));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance) {
             pickups->push_back(new ShieldPickup((*oi)->position));
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance) {
+            pickups->push_back(new GodModePickup((*oi)->position));
           }
         }
         // Move to dead_objects so the collision grid no longer iterates this
@@ -677,6 +676,15 @@ void GLGame::tick(int delta) {
     if (station != NULL && station->is_removable() && enemies->empty()) {
       delete station;
       station = NULL;
+    }
+
+    /* EXPIRE GOD MODE */
+    if(Asteroid::god_mode) {
+      Asteroid::god_mode_time_left -= step_size;
+      if(Asteroid::god_mode_time_left <= 0) {
+        Asteroid::god_mode = false;
+        Asteroid::god_mode_time_left = 0;
+      }
     }
 
     /* COLLIDE PICKUPS WITH PLAYERS */
@@ -1177,9 +1185,6 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   }
   if (key == 'b') {
     debug_grid = !debug_grid;
-  }
-  if (key == 'm') {
-    Asteroid::god_mode = !Asteroid::god_mode;
   }
   if (key == '=' && time_between_steps > 1) time_between_steps--;
   if (key == '-') time_between_steps++;

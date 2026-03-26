@@ -25,6 +25,7 @@ public:
 
   static int num_killable;
   static bool god_mode;
+  static int god_mode_time_left; // ms remaining; god_mode cleared when this hits 0
 
   const static int max_radius;
 

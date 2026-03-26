@@ -202,9 +202,10 @@ void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
 
 void Overlay::god_mode_indicator(const GLGame *glgame, const GLShip *glship) {
   if(!Asteroid::god_mode) return;
-  float vw = Typer::scaled_window_width / glgame->num_x_viewports();
   float vh = Typer::scaled_window_height / glgame->num_y_viewports();
   Typer::draw_centered(0, vh - 50 - CORNER_INSET, "GOD MODE", 12);
+  int secs = (Asteroid::god_mode_time_left + 999) / 1000;
+  Typer::draw_centered(0, vh - 70 - CORNER_INSET, secs, 10);
 }
 
 void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
