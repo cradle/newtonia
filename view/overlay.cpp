@@ -163,7 +163,7 @@ void Overlay::lives(const GLGame *glgame, const GLShip *glship) {
 
 void Overlay::weapons(const GLGame *glgame, const GLShip *glship) {
   glPushMatrix();
-  glTranslatef(-Typer::window_width/glgame->num_x_viewports()+CORNER_INSET, Typer::window_height/glgame->num_y_viewports()-CORNER_INSET, 0.0f);
+  glTranslatef(-Typer::scaled_window_width/glgame->num_x_viewports()+CORNER_INSET+20, Typer::scaled_window_height/glgame->num_y_viewports()-CORNER_INSET, 0.0f);
   glship->draw_weapons();
   glPopMatrix();
 }
