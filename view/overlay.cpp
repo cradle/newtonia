@@ -8,7 +8,7 @@
 #include <cstdio>
 #include <cmath>
 
-const float Overlay::CORNER_INSET = 35.0f;
+const float Overlay::CORNER_INSET = 55.0f;
 
 void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   title_text(glgame, glship);
