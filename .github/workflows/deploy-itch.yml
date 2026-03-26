@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*.*.*'
+    branches:
+      - claude/setup-itch-upload-BO1xa
   workflow_dispatch:
     inputs:
       channel:
