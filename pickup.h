@@ -106,6 +106,45 @@ protected:
 
     glDisable(GL_BLEND);
   }
+
+  // Draw a glowing lightning bolt shape. Call after glTranslatef/glRotatef.
+  static void draw_glow_bolt(float r, float g, float b, float s) {
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+
+    struct Layer { float scale; float alpha; float lw; };
+    static const Layer layers[] = {
+      {2.0f,  0.05f, 6.0f},
+      {1.5f,  0.12f, 4.0f},
+      {1.15f, 0.28f, 2.5f},
+    };
+    for (const Layer& L : layers) {
+      float sc = s * L.scale;
+      glLineWidth(L.lw);
+      glColor4f(r, g, b, L.alpha);
+      glBegin(GL_LINE_LOOP);
+        glVertex2f( 0.2f * sc,  1.0f * sc);
+        glVertex2f(-0.2f * sc,  0.1f * sc);
+        glVertex2f( 0.3f * sc,  0.1f * sc);
+        glVertex2f(-0.2f * sc, -1.0f * sc);
+        glVertex2f( 0.2f * sc, -0.1f * sc);
+        glVertex2f(-0.3f * sc, -0.1f * sc);
+      glEnd();
+    }
+
+    glLineWidth(2.0f);
+    glColor4f(r, g, b, 1.0f);
+    glBegin(GL_LINE_LOOP);
+      glVertex2f( 0.2f * s,  1.0f * s);
+      glVertex2f(-0.2f * s,  0.1f * s);
+      glVertex2f( 0.3f * s,  0.1f * s);
+      glVertex2f(-0.2f * s, -1.0f * s);
+      glVertex2f( 0.2f * s, -0.1f * s);
+      glVertex2f(-0.3f * s, -0.1f * s);
+    glEnd();
+
+    glDisable(GL_BLEND);
+  }
 };
 
 #endif
