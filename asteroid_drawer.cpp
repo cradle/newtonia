@@ -24,7 +24,9 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
     glTranslatef(object->position.x(), object->position.y(), 0.0f);
     glScalef(object->radius, object->radius, 1.0f);
     glRotatef(object->rotation, 0.0f, 0.0f, 1.0f);
-    if(object->reflective) {
+    if(object->elastic) {
+      glColor4f(0.5f, 0.25f, 0.0f, 0.9f);
+    } else if(object->reflective) {
       glColor4f(0.0f, 0.4f, 0.5f, 0.6f);
     } else if(object->invincible) {
       glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
@@ -45,7 +47,9 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
       glVertex2f(off * cosf(d), off * sinf(d));
     }
     glEnd();
-    if(object->reflective) {
+    if(object->elastic) {
+      glColor4f(1.0f, 0.55f, 0.0f, 1.0f);
+    } else if(object->reflective) {
       glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
     } else if(object->invincible) {
       glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
@@ -107,6 +111,11 @@ struct AsteroidVerts {
   float teleport_angle;
   bool quantum;
   bool quantum_observed;
+  bool elastic;
+  int health;
+  int crack_vertex[5];
+  float crack_t[5];
+  float crack_perp[5];
 };
 
 // draw_batch renders all alive asteroids in two draw calls (fill + outline),
@@ -151,6 +160,13 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     v.teleport_angle      = a->teleport_angle;
     v.quantum             = a->quantum;
     v.quantum_observed    = a->quantum_observed;
+    v.elastic             = a->elastic;
+    v.health              = a->health;
+    for(int k = 0; k < 5; k++) {
+      v.crack_vertex[k] = a->crack_vertex[k];
+      v.crack_t[k]      = a->crack_t[k];
+      v.crack_perp[k]   = a->crack_perp[k];
+    }
     verts.push_back(v);
   }
 
@@ -178,6 +194,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     if (v.invisible) continue;
     if (v.quantum && v.quantum_observed)        glColor4f(0.15f, 0.0f, 0.35f, 0.85f);
     else if (v.quantum)                         glColor4f(0.05f, 0.0f, 0.12f, 0.4f);
+    else if (v.elastic)                         glColor4f(0.5f, 0.25f, 0.0f, 0.9f);
     else if (v.teleporting)                     glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
     else if (v.reflective)                      glColor4f(0.0f, 0.4f, 0.5f, 0.6f);
     else if (v.invincible)                      glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
@@ -205,6 +222,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     if (v.invisible) continue;
     if (v.quantum && v.quantum_observed)        glColor4f(0.65f, 0.1f, 1.0f, 1.0f);
     else if (v.quantum)                         glColor4f(0.3f, 0.05f, 0.5f, 0.35f);
+    else if (v.elastic)                         glColor4f(1.0f, 0.55f, 0.0f, 1.0f);
     else if (v.teleporting)                     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     else if (v.reflective)                      glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
     else if (v.invincible)                      glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
@@ -222,6 +240,47 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     }
   }
   glEnd();
+
+  // --- Crack pass for elastic asteroids ---
+  // Each hit reveals one more two-segment crack (vertex → jittered midpoint → centre).
+  // crack_t and crack_perp are rotation-invariant fractions; reconstruct world coords
+  // from the already-rotated dvx/dvy vertex offsets.
+  if (!is_minimap) {
+    glLineWidth(1.5f);
+    glBegin(GL_LINES);
+    for (size_t ai = 0; ai < verts.size(); ++ai) {
+      AsteroidVerts const &v = verts[ai];
+      if (!v.elastic || v.invisible) continue;
+      int hits_taken = 5 - v.health;
+      if (hits_taken <= 0) continue;
+      glColor4f(1.0f, 0.85f, 0.3f, 1.0f); // bright yellow-orange crack
+      for (int k = 0; k < hits_taken; k++) {
+        int vi = v.crack_vertex[k];
+        if (vi >= v.segs) vi = v.segs - 1;
+        float vx = v.dvx[vi], vy = v.dvy[vi]; // vertex relative to centre
+        float len = sqrtf(vx * vx + vy * vy);
+        if (len < 1e-6f) continue;
+        // Point along the straight vertex→centre line at parameter t
+        float t = v.crack_t[k];
+        float lx = vx * (1.0f - t);
+        float ly = vy * (1.0f - t);
+        // Perpendicular jitter (crack_perp is a fraction of vertex distance)
+        float perp_dist = v.crack_perp[k] * len;
+        float mx = lx + (-vy / len) * perp_dist;
+        float my = ly + ( vx / len) * perp_dist;
+        // Two segments: vertex → midpoint → halfway-to-centre (half length)
+        float half_mx = vx + (mx - vx) * 0.5f;
+        float half_my = vy + (my - vy) * 0.5f;
+        float half_ex = vx * 0.5f;
+        float half_ey = vy * 0.5f;
+        glVertex2f(v.cx + vx,      v.cy + vy);
+        glVertex2f(v.cx + half_mx, v.cy + half_my);
+        glVertex2f(v.cx + half_mx, v.cy + half_my);
+        glVertex2f(v.cx + half_ex, v.cy + half_ey);
+      }
+    }
+    glEnd();
+  }
 
   // --- Inner indicator pass for teleporting asteroids ---
   if (!is_minimap) {
