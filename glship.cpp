@@ -335,6 +335,12 @@ void GLShip::controller_axis_input(SDL_Event event) {
       r2_shoot_active = pressed;
       ship->shoot(pressed);
     }
+  } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERLEFT) {
+    bool pressed = event.caxis.value > 8000;
+    if(pressed != l2_shoot_active) {
+      l2_shoot_active = pressed;
+      ship->fire_secondary(pressed);
+    }
   }
 }
 
