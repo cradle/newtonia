@@ -254,12 +254,12 @@ void init(int &argc, char* argv[], float width, float height);
 int main(int argc, char* argv[]) {
   srand(time(NULL));
   init(argc, argv, 800, 600);
-#ifndef __APPLE__
-  if (getenv("SteamDeck")) {
-    glutFullScreen();
-    is_fullscreen = true;
-    set_cursor_hidden(true);
-  }
+  glutFullScreen();
+  is_fullscreen = true;
+#ifdef __APPLE__
+  glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
+#else
+  set_cursor_hidden(true);
 #endif
   init_controllers_and_audio();
   game = new StateManager();
@@ -281,16 +281,6 @@ int main(int argc, char* argv[]) {
 
 void init(int &argc, char* argv[], float width, float height) {
   glutInit(&argc, argv);
-#ifndef __APPLE__
-  if (getenv("SteamDeck")) {
-    int screen_w = glutGet(GLUT_SCREEN_WIDTH);
-    int screen_h = glutGet(GLUT_SCREEN_HEIGHT);
-    if (screen_w > 0 && screen_h > 0) {
-      width = screen_w;
-      height = screen_h;
-    }
-  }
-#endif
   int DISPLAY_TYPE = GLUT_RGBA | GLUT_DOUBLE;
   if(ALLOW_BLUR) {
     DISPLAY_TYPE = DISPLAY_TYPE | GLUT_ACCUM;
