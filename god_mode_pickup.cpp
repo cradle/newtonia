@@ -2,7 +2,6 @@
 #include "ship.h"
 #include "gl_compat.h"
 #include <math.h>
-#include <climits>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -12,8 +11,7 @@ GodModePickup::GodModePickup(WrappedPoint pos) : Pickup(pos) {
 }
 
 void GodModePickup::apply(Ship *ship) {
-  ship->invincible = true;
-  ship->time_left_invincible = INT_MAX;
+  ship->add_god_mode();
 }
 
 void GodModePickup::draw(float world_rotation) const {

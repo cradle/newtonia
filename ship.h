@@ -124,6 +124,8 @@ class Ship : public CompositeObject {
     void add_giga_mine_ammo(int amount);
     void add_missile_ammo(int amount);
     void add_shield_ammo(int amount);
+    void add_god_mode(int duration_ms = 10000);
+    int god_mode_time_remaining() const;
     void set_shield_hum(bool on);
     void set_missile_asteroids(std::list<Object*> *asteroids);
     void set_missile_ships(std::list<Object*> *ships);

@@ -2,6 +2,7 @@
 #include "../glship.h"
 #include "../glgame.h"
 #include "../typer.h"
+#include "../ship.h"
 #include "../touch_controls.h"
 
 #include "../gl_compat.h"
@@ -13,6 +14,7 @@ const float Overlay::CORNER_INSET = 55.0f;
 void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   title_text(glgame, glship);
   level(glgame, glship);
+  god_mode(glgame, glship);
   score(glgame, glship);
   keymap(glgame, glship);
   level_cleared(glgame, glship);
@@ -137,6 +139,15 @@ void Overlay::level(const GLGame *glgame, const GLShip *glship) {
   snprintf(buf, sizeof(buf), "LEVEL %d", glgame->generation + 1);
   float vh = Typer::scaled_window_height / glgame->num_y_viewports();
   Typer::draw_centered(0, vh - 20 - CORNER_INSET, buf, 12);
+}
+
+void Overlay::god_mode(const GLGame *glgame, const GLShip *glship) {
+  int remaining = glship->ship->god_mode_time_remaining();
+  if(remaining <= 0) return;
+  float vh = Typer::scaled_window_height / glgame->num_y_viewports();
+  float base_y = vh - 20 - CORNER_INSET;
+  Typer::draw_centered(0, base_y - 22, "God mode", 10);
+  Typer::draw_centered(0, base_y - 38, (remaining / 1000) + 1, 10);
 }
 
 void Overlay::score(const GLGame *glgame, const GLShip *glship) {
