@@ -850,6 +850,13 @@ void Ship::shoot(bool on) {
   if(!primary_weapons.empty()) {
     if((*primary)->empty() && on) {
       previous_weapon();
+    } else if(dynamic_cast<Weapon::GodMode*>(*primary)) {
+      for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
+        if(!dynamic_cast<Weapon::GodMode*>(*it)) {
+          (*it)->shoot(on);
+          break;
+        }
+      }
     } else {
       (*primary)->shoot(on);
     }
