@@ -459,7 +459,18 @@ void GLShip::draw_ship(bool minimap) const {
   draw_body();
 
   if(ship->invincible) {
-    glCallList(force_shield);
+    if(ship->god_mode_time_remaining() > 0) {
+      float shield_size = 2.0f;
+      glColor4f(1.0f, 1.0f, 0.0f, 1.0f);
+      glBegin(GL_LINE_LOOP);
+      for(int i = 0; i < 20; i++) {
+        float d = i * 2.0f * (float)M_PI / 20.0f;
+        glVertex2f(cosf(d) * shield_size, sinf(d) * shield_size);
+      }
+      glEnd();
+    } else {
+      glCallList(force_shield);
+    }
   }
 }
 

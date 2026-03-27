@@ -964,8 +964,19 @@ void Ship::step(float delta, const Grid &grid) {
       }
     }
 
-    for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it)
+    for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ) {
       (*it)->step(delta);
+      Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
+      if(gm && gm->empty()) {
+        auto next = it; ++next;
+        if(next == primary_weapons.end()) next = primary_weapons.begin();
+        if(it == primary) primary = next;
+        delete *it;
+        it = primary_weapons.erase(it);
+      } else {
+        ++it;
+      }
+    }
     for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
       if (!dynamic_cast<Weapon::Missile*>(*it))
         (*it)->step(delta);
