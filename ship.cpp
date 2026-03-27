@@ -147,6 +147,7 @@ Ship::~Ship() {
 }
 
 void Ship::next_weapon() {
+  if(god_mode_time_remaining() > 0) return;
   if(click_sound != NULL) {
     Mix_PlayChannel(-1, click_sound, 0);
   }
@@ -166,6 +167,7 @@ void Ship::next_weapon() {
 }
 
 void Ship::previous_weapon() {
+  if(god_mode_time_remaining() > 0) return;
   if(click_sound != NULL) {
     Mix_PlayChannel(-1, click_sound, 0);
   }
@@ -226,20 +228,26 @@ void Ship::add_weapon(int weapon_index) {
   if(weapon_index < 0 || weapon_index >= num_weapon_configs) return;
   const WeaponConfig &cfg = weapon_configs[weapon_index];
 
+  bool in_god_mode = god_mode_time_remaining() > 0;
+
   for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
     Weapon::Default *w = dynamic_cast<Weapon::Default*>(*it);
     if(w && w->weapon_index() == weapon_index) {
       w->add_ammo(100);
-      (*primary)->shoot(false);
-      primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
-      primary = --primary_weapons.end();
+      if(!in_god_mode) {
+        (*primary)->shoot(false);
+        primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
+        primary = --primary_weapons.end();
+      }
       return;
     }
   }
 
   primary_weapons.push_back(new Weapon::Default(this, cfg.automatic, cfg.level, cfg.accuracy, cfg.time_between_shots, weapon_index));
-  (*primary)->shoot(false);
-  primary = --primary_weapons.end();
+  if(!in_god_mode) {
+    (*primary)->shoot(false);
+    primary = --primary_weapons.end();
+  }
 }
 
 // Returns true if the player is currently holding the shield key.
