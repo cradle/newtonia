@@ -1,15 +1,11 @@
 #include "god_mode.h"
 #include "../ship.h"
-#include <climits>
-
 namespace Weapon {
   GodMode::GodMode(Ship *ship, int duration_ms) : Base(ship) {
     _name = "GOD MODE";
     _ammo = duration_ms;
     unlimited = false;
     ship->invincible = true;
-    // Set very high so Ship::step doesn't expire it; GodMode::step manages the timer
-    ship->time_left_invincible = INT_MAX;
   }
 
   void GodMode::step(int delta) {
