@@ -1038,6 +1038,20 @@ void Ship::step(float delta, const Grid &grid) {
       bullets[i] = std::move(bullets.back());
       bullets.pop_back();
     } else {
+      if(bullets[i].has_trail) {
+        Point spread((rand()%100-50)*0.0002f, (rand()%100-50)*0.0002f);
+        bullet_trails.push_back(Particle(bullets[i].position, spread, 200.0f));
+      }
+      ++i;
+    }
+  }
+
+  for(size_t i = 0; i < bullet_trails.size(); ) {
+    bullet_trails[i].step(delta);
+    if(!bullet_trails[i].is_alive()) {
+      bullet_trails[i] = std::move(bullet_trails.back());
+      bullet_trails.pop_back();
+    } else {
       ++i;
     }
   }

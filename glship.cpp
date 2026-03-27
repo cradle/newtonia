@@ -661,6 +661,16 @@ void GLShip::draw_particles() const {
     glVertex2fv(b->position);
   }
   glEnd();
+
+  if(!ship->bullet_trails.empty()) {
+    glPointSize(2.5f);
+    glBegin(GL_POINTS);
+    for(auto &p : ship->bullet_trails) {
+      glColor4f(1.0f, 1.0f, 0.0f, p.aliveness());
+      glVertex2fv(p.position);
+    }
+    glEnd();
+  }
 }
 
 bool GLShip::is_removable() const {
