@@ -1,5 +1,6 @@
 #include "god_mode.h"
 #include "../ship.h"
+#include <climits>
 
 namespace Weapon {
   GodMode::GodMode(Ship *ship, int duration_ms) : Base(ship) {
