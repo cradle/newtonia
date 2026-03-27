@@ -146,8 +146,8 @@ void Overlay::god_mode(const GLGame *glgame, const GLShip *glship) {
   if(remaining <= 0) return;
   float vh = Typer::scaled_window_height / glgame->num_y_viewports();
   float base_y = vh - 20 - CORNER_INSET;
-  Typer::draw_centered(0, base_y - 42, "God mode", 10);
-  Typer::draw_centered(0, base_y - 58, remaining / 1000, 10);
+  Typer::draw_centered(0, base_y - 62, "God mode", 10);
+  Typer::draw_centered(0, base_y - 84, remaining / 1000, 10);
 }
 
 void Overlay::score(const GLGame *glgame, const GLShip *glship) {
