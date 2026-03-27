@@ -1014,7 +1014,11 @@ void Ship::step(float delta, const Grid &grid) {
       Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
       if(gm && gm->empty()) {
         auto next = it; ++next;
-        if(next == primary_weapons.end()) next = primary_weapons.begin();
+        if(next == primary_weapons.end()) {
+          // God mode is always pushed to the back; return to the weapon before it
+          next = it;
+          if(next != primary_weapons.begin()) --next;
+        }
         if(it == primary) primary = next;
         delete *it;
         it = primary_weapons.erase(it);
