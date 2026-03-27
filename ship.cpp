@@ -716,6 +716,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
         bullets[i].world_bullet = true;
         ++i;
       } else {
+        if(bullets[i].has_trail) object->invincible = false;
         if(object->kill()) {
           score += object->get_value() * multiplier();
           kills_this_life += 1;
