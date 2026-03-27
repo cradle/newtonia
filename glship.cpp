@@ -4,6 +4,7 @@
 #include "typer.h"
 #include "teleport.h"
 #include "weapon/base.h"
+#include "weapon/god_mode.h"
 #include <math.h>
 #include <SDL.h>
 
@@ -626,7 +627,8 @@ void GLShip::draw_weapons() const {
       if(weapon->ammo() == 0) {
         Typer::draw(x+30+20*strlen(weapon->name()),y-55,"empty",10);
       } else {
-        Typer::draw_lefted(x+50+20*strlen(weapon->name()),y-55,weapon->ammo(),10);
+        int display_ammo = dynamic_cast<Weapon::GodMode*>(weapon) ? weapon->ammo()/1000 : weapon->ammo();
+        Typer::draw_lefted(x+50+20*strlen(weapon->name()),y-55,display_ammo,10);
       }
     }
   }
