@@ -33,7 +33,7 @@ const float GLGame::mine_pickup_drop_chance = 0.0125f;
 const float GLGame::giga_mine_pickup_drop_chance = 0.005f;
 const float GLGame::missile_pickup_drop_chance = 0.0125f;
 const float GLGame::shield_pickup_drop_chance = 0.0125f;
-const float GLGame::god_mode_pickup_drop_chance = 0.005f;
+const float GLGame::god_mode_pickup_drop_chance = 0.0025f;
 
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
