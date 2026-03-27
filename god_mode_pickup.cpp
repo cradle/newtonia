@@ -20,5 +20,8 @@ void GodModePickup::apply(Ship *ship) {
 void GodModePickup::draw(float world_rotation) const {
   glTranslatef(position.x(), position.y(), 0.0f);
   glRotatef(-world_rotation, 0.0f, 0.0f, 1.0f);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
   glCallList(display_list);
+  glDisable(GL_BLEND);
 }
