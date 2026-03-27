@@ -316,7 +316,7 @@ void Ship::add_shield_ammo(int amount) {
 }
 
 void Ship::add_god_mode(int duration_ms) {
-  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+  for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
     if(dynamic_cast<Weapon::GodMode*>(*it)) {
       (*it)->set_ammo(duration_ms);
       invincible = true;
@@ -324,13 +324,13 @@ void Ship::add_god_mode(int duration_ms) {
       return;
     }
   }
-  secondary_weapons.push_back(new Weapon::GodMode(this, duration_ms));
-  if(!shield_held(secondary_weapons, secondary))
-    secondary = --secondary_weapons.end();
+  primary_weapons.push_back(new Weapon::GodMode(this, duration_ms));
+  (*primary)->shoot(false);
+  primary = --primary_weapons.end();
 }
 
 int Ship::god_mode_time_remaining() const {
-  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+  for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
     Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
     if(gm) return gm->time_remaining();
   }
@@ -964,7 +964,8 @@ void Ship::step(float delta, const Grid &grid) {
       }
     }
 
-    (*primary)->step(delta);
+    for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it)
+      (*it)->step(delta);
     for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
       if (!dynamic_cast<Weapon::Missile*>(*it))
         (*it)->step(delta);
