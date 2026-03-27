@@ -684,7 +684,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
     }
     if(object != NULL) {
       Asteroid *ast = dynamic_cast<Asteroid*>(object);
-      if(ast && ast->reflective) {
+      if(ast && ast->reflective && !bullets[i].has_trail) {
         // Back-trace along the bullet's velocity to find where it crossed the surface.
         // The bullet is guaranteed to be inside the polygon here; stepping backward
         // by 1px increments finds the entry point in ~10 steps for typical bullet speeds.
