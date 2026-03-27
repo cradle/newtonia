@@ -159,7 +159,7 @@ namespace Weapon {
     direction.rotate((rand() / (float)RAND_MAX) * accuracy - accuracy / 2.0);
     ship->bullets.push_back(Particle(ship->gun(), direction*0.615 + ship->velocity*0.99, 2000.0));
     if(ship->god_mode_time_remaining() > 0)
-      ship->bullets.back().has_trail = true;
+      ship->mark_last_bullet_trail();
     if(!automatic) {
       shoot(false);
     }

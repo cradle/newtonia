@@ -931,6 +931,11 @@ WrappedPoint Ship::gun() const {
   return WrappedPoint(position + (facing * height * 1.05));
 }
 
+void Ship::mark_last_bullet_trail() {
+  if(!bullets.empty())
+    bullets.back().has_trail = true;
+}
+
 WrappedPoint Ship::tail() const {
   return WrappedPoint(position - (facing * 15.0));
 }
