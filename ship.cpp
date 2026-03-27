@@ -9,6 +9,7 @@
 #include "weapon/giga_mine.h"
 #include "weapon/missile.h"
 #include "weapon/shield.h"
+#include "weapon/god_mode.h"
 #include <math.h>
 #include <iostream>
 
@@ -312,6 +313,26 @@ void Ship::add_shield_ammo(int amount) {
   w->set_ammo(amount);
   secondary_weapons.push_back(w);
   secondary = --secondary_weapons.end();
+}
+
+void Ship::add_god_mode(int duration_ms) {
+  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    if(dynamic_cast<Weapon::GodMode*>(*it)) {
+      (*it)->set_ammo(duration_ms);
+      invincible = true;
+      time_left_invincible = INT_MAX;
+      return;
+    }
+  }
+  secondary_weapons.push_back(new Weapon::GodMode(this, duration_ms));
+}
+
+int Ship::god_mode_time_remaining() const {
+  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
+    if(gm) return gm->time_remaining();
+  }
+  return 0;
 }
 
 void Ship::set_missile_asteroids(std::list<Object*> *asteroids) {
