@@ -666,7 +666,8 @@ void GLShip::draw_particles() const {
     glPointSize(2.5f);
     glBegin(GL_POINTS);
     for(auto &p : ship->bullet_trails) {
-      glColor4f(1.0f, 1.0f, 0.0f, p.aliveness());
+      float a = p.aliveness();
+      glColor4f(a, a, 0.0f, a);
       glVertex2fv(p.position);
     }
     glEnd();
