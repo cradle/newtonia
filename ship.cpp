@@ -325,6 +325,8 @@ void Ship::add_god_mode(int duration_ms) {
     }
   }
   secondary_weapons.push_back(new Weapon::GodMode(this, duration_ms));
+  if(!shield_held(secondary_weapons, secondary))
+    secondary = --secondary_weapons.end();
 }
 
 int Ship::god_mode_time_remaining() const {
