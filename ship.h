@@ -131,6 +131,7 @@ class Ship : public CompositeObject {
     void set_missile_ships(std::list<Object*> *ships);
     void set_black_holes(const std::list<BlackHole*> *bhs);
     WrappedPoint gun() const;
+    void mark_last_bullet_trail();
     bool kill();
 
   protected:
