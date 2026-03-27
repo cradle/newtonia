@@ -23,6 +23,7 @@ private:
   float time_to_live, time_left;
   bool world_bullet = false;
   bool has_trail = false;
+  int trail_timer = 0;
 };
 
 #endif /* PARTICLE_H */

@@ -11,6 +11,7 @@
 #include "weapon/shield.h"
 #include "weapon/god_mode.h"
 #include <math.h>
+#include <climits>
 #include <iostream>
 
 using namespace std;
@@ -22,6 +23,7 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   first_life = true;
   score = 0;
   kills = 0;
+  bullet_trails.reserve(256);
   position = WrappedPoint();
   safe_position(grid);
   init(!has_friction);
@@ -1050,8 +1052,12 @@ void Ship::step(float delta, const Grid &grid) {
       bullets.pop_back();
     } else {
       if(bullets[i].has_trail) {
-        Point spread((rand()%100-50)*0.0002f, (rand()%100-50)*0.0002f);
-        bullet_trails.push_back(Particle(bullets[i].position, spread, 200.0f));
+        bullets[i].trail_timer -= delta;
+        if(bullets[i].trail_timer <= 0) {
+          bullets[i].trail_timer = 50;
+          Point spread((rand()%100-50)*0.0002f, (rand()%100-50)*0.0002f);
+          bullet_trails.push_back(Particle(bullets[i].position, spread, 200.0f));
+        }
       }
       ++i;
     }
