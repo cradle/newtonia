@@ -64,6 +64,48 @@ protected:
     glDisable(GL_BLEND);
   }
 
+  // Draw a glowing lightning bolt. Call after glTranslatef/glRotatef.
+  static void draw_glow_lightning(float r, float g, float b, float s) {
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+
+    // 8-vertex ⚡ polygon: upper-right arm, middle notch, lower-left arm
+    static const float pts[][2] = {
+      {  0.2f,  1.0f },   // top-left of upper arm
+      {  0.6f,  1.0f },   // top-right
+      {  0.1f,  0.1f },   // inner-right of middle
+      {  0.5f,  0.1f },   // outer-right of notch
+      { -0.2f, -1.0f },   // bottom-right of lower arm
+      { -0.6f, -1.0f },   // bottom-left
+      { -0.1f, -0.1f },   // inner-left of middle
+      { -0.5f, -0.1f },   // outer-left of notch
+    };
+
+    struct Layer { float scale; float alpha; float lw; };
+    static const Layer layers[] = {
+      {2.0f,  0.05f, 6.0f},
+      {1.5f,  0.12f, 4.0f},
+      {1.15f, 0.28f, 2.5f},
+    };
+    for (const Layer& L : layers) {
+      glLineWidth(L.lw);
+      glColor4f(r, g, b, L.alpha);
+      glBegin(GL_LINE_LOOP);
+      for (int i = 0; i < 8; i++)
+        glVertex2f(pts[i][0] * s * L.scale, pts[i][1] * s * L.scale);
+      glEnd();
+    }
+
+    glLineWidth(1.8f);
+    glColor4f(r, g, b, 1.0f);
+    glBegin(GL_LINE_LOOP);
+    for (int i = 0; i < 8; i++)
+      glVertex2f(pts[i][0] * s, pts[i][1] * s);
+    glEnd();
+
+    glDisable(GL_BLEND);
+  }
+
   // Draw a glowing heart shape. Call after glTranslatef/glRotatef.
   static void draw_glow_heart(float r, float g, float b, float s) {
     glEnable(GL_BLEND);
