@@ -22,6 +22,7 @@ public:
 private:
   float time_to_live, time_left;
   bool world_bullet = false;
+  bool has_trail = false;
 };
 
 #endif /* PARTICLE_H */
