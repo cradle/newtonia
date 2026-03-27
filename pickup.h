@@ -62,7 +62,7 @@ protected:
     glEnd();
 
     glLineWidth(1.0f);
-    glDisable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   }
 
   // Draw a glowing lightning bolt. Call after glTranslatef/glRotatef.
@@ -105,7 +105,7 @@ protected:
     glEnd();
 
     glLineWidth(1.0f);
-    glDisable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   }
 
   // Draw a glowing heart shape. Call after glTranslatef/glRotatef.
@@ -149,7 +149,7 @@ protected:
     glEnd();
 
     glLineWidth(1.0f);
-    glDisable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   }
 };
 
