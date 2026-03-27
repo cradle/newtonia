@@ -33,6 +33,7 @@ const float GLGame::mine_pickup_drop_chance = 0.0125f;
 const float GLGame::giga_mine_pickup_drop_chance = 0.005f;
 const float GLGame::missile_pickup_drop_chance = 0.0125f;
 const float GLGame::shield_pickup_drop_chance = 0.0125f;
+const float GLGame::god_mode_pickup_drop_chance = 0.0025f;
 
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
@@ -505,6 +506,8 @@ void GLGame::tick(int delta) {
             pickups->push_back(new MissilePickup((*oi)->position));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance) {
             pickups->push_back(new ShieldPickup((*oi)->position));
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance) {
+            pickups->push_back(new GodModePickup((*oi)->position));
           }
         }
         // Move to dead_objects so the collision grid no longer iterates this

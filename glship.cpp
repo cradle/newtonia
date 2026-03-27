@@ -4,6 +4,7 @@
 #include "typer.h"
 #include "teleport.h"
 #include "weapon/base.h"
+#include "weapon/god_mode.h"
 #include <math.h>
 #include <SDL.h>
 
@@ -459,7 +460,18 @@ void GLShip::draw_ship(bool minimap) const {
   draw_body();
 
   if(ship->invincible) {
-    glCallList(force_shield);
+    if(ship->god_mode_time_remaining() > 0) {
+      float shield_size = 2.0f;
+      glColor4f(1.0f, 1.0f, 0.0f, 1.0f);
+      glBegin(GL_LINE_LOOP);
+      for(int i = 0; i < 20; i++) {
+        float d = i * 2.0f * (float)M_PI / 20.0f;
+        glVertex2f(cosf(d) * shield_size, sinf(d) * shield_size);
+      }
+      glEnd();
+    } else {
+      glCallList(force_shield);
+    }
   }
 }
 
@@ -615,7 +627,8 @@ void GLShip::draw_weapons() const {
       if(weapon->ammo() == 0) {
         Typer::draw(x+30+20*strlen(weapon->name()),y-55,"empty",10);
       } else {
-        Typer::draw_lefted(x+50+20*strlen(weapon->name()),y-55,weapon->ammo(),10);
+        int display_ammo = dynamic_cast<Weapon::GodMode*>(weapon) ? weapon->ammo()/1000 : weapon->ammo();
+        Typer::draw_lefted(x+50+20*strlen(weapon->name()),y-55,display_ammo,10);
       }
     }
   }
@@ -650,6 +663,17 @@ void GLShip::draw_particles() const {
     glVertex2fv(b->position);
   }
   glEnd();
+
+  if(!ship->bullet_trails.empty()) {
+    glPointSize(2.5f);
+    glBegin(GL_POINTS);
+    for(auto &p : ship->bullet_trails) {
+      float a = p.aliveness();
+      glColor4f(a, a, 0.0f, a);
+      glVertex2fv(p.position);
+    }
+    glEnd();
+  }
 }
 
 bool GLShip::is_removable() const {
@@ -702,6 +726,22 @@ void GLShip::draw_mines(bool minimap) const {
     glVertex2fv(v3); glVertex2fv(v0);
   }
   glEnd();
+
+  // Pulsing red circle: flashes once per second
+  float t = (SDL_GetTicks() % 1000) / 1000.0f;
+  float pulse = 0.5f + 0.5f * sinf(t * 2.0f * (float)M_PI);
+  float pulse_radius = size + 4.5f;
+  glLineWidth(1.5f);
+  glColor4f(1.0f, 0.0f, 0.0f, pulse);
+  for(auto m = ship->mines.begin(); m != ship->mines.end(); m++) {
+    glBegin(GL_LINE_LOOP);
+    for(int i = 0; i < 16; i++) {
+      float a = i * 2.0f * (float)M_PI / 16.0f;
+      glVertex2f(cosf(a) * pulse_radius + m->position.x(),
+                 sinf(a) * pulse_radius + m->position.y());
+    }
+    glEnd();
+  }
 }
 
 void GLShip::draw_giga_mines(bool minimap) const {

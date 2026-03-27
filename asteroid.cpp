@@ -152,8 +152,9 @@ Asteroid::Asteroid(Asteroid const *mother) {
   quantum_base_speed = 0.0f;
   elastic = false;
   health = 1;
+  killed = false;
+  invincible = mother->invincible;
   if(!invincible) {
-    killed = false;
     num_killable++;
   }
 }

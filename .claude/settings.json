@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command'); if echo \"$cmd\" | grep -qE 'git commit'; then files=$(git -C /home/user/newtonia diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep -E '\\.(cpp|h)$'); if [ -n \"$files\" ]; then all_errors=''; for f in $files; do out=$(cd /home/user/newtonia && g++ -std=c++11 -fsyntax-only -I. -I/usr/include/SDL2 \"$f\" 2>&1); if [ $? -ne 0 ]; then real=$(echo \"$out\" | grep 'error:' | grep -v 'No such file or directory'); if [ -n \"$real\" ]; then all_errors=\"$all_errors\\n$real\"; fi; fi; done; if [ -n \"$all_errors\" ]; then printf '{\"continue\": false, \"stopReason\": \"C++ syntax errors — fix before committing:%s\"}' \"$all_errors\"; exit 0; fi; fi; fi",
+            "statusMessage": "Checking C++ syntax..."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -90,7 +90,7 @@ class Ship : public CompositeObject {
     //TODO: somehow get around this public for glstation
     void kill_stop();
 
-    std::vector<Particle> bullets, mines, giga_mines;
+    std::vector<Particle> bullets, mines, giga_mines, bullet_trails;
     std::vector<MissileShot> missiles;
     std::vector<Shockwave> shockwaves;
 
@@ -124,11 +124,15 @@ class Ship : public CompositeObject {
     void add_giga_mine_ammo(int amount);
     void add_missile_ammo(int amount);
     void add_shield_ammo(int amount);
+    void add_god_mode(int duration_ms = 10000);
+    int god_mode_time_remaining() const;
     void set_shield_hum(bool on);
     void set_missile_asteroids(std::list<Object*> *asteroids);
     void set_missile_ships(std::list<Object*> *ships);
     void set_black_holes(const std::list<BlackHole*> *bhs);
     WrappedPoint gun() const;
+    void mark_last_bullet_trail();
+    void fire_bullet_from_gun();
     bool kill();
 
   protected:

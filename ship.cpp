@@ -9,7 +9,9 @@
 #include "weapon/giga_mine.h"
 #include "weapon/missile.h"
 #include "weapon/shield.h"
+#include "weapon/god_mode.h"
 #include <math.h>
+#include <climits>
 #include <iostream>
 
 using namespace std;
@@ -21,6 +23,7 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   first_life = true;
   score = 0;
   kills = 0;
+  bullet_trails.reserve(256);
   position = WrappedPoint();
   safe_position(grid);
   init(!has_friction);
@@ -312,6 +315,28 @@ void Ship::add_shield_ammo(int amount) {
   w->set_ammo(amount);
   secondary_weapons.push_back(w);
   secondary = --secondary_weapons.end();
+}
+
+void Ship::add_god_mode(int duration_ms) {
+  for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
+    if(dynamic_cast<Weapon::GodMode*>(*it)) {
+      (*it)->set_ammo(duration_ms);
+      invincible = true;
+      time_left_invincible = INT_MAX;
+      return;
+    }
+  }
+  primary_weapons.push_back(new Weapon::GodMode(this, duration_ms));
+  (*primary)->shoot(false);
+  primary = --primary_weapons.end();
+}
+
+int Ship::god_mode_time_remaining() const {
+  for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
+    Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
+    if(gm) return gm->time_remaining();
+  }
+  return 0;
 }
 
 void Ship::set_missile_asteroids(std::list<Object*> *asteroids) {
@@ -661,7 +686,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
     }
     if(object != NULL) {
       Asteroid *ast = dynamic_cast<Asteroid*>(object);
-      if(ast && ast->reflective) {
+      if(ast && ast->reflective && !bullets[i].has_trail) {
         // Back-trace along the bullet's velocity to find where it crossed the surface.
         // The bullet is guaranteed to be inside the polygon here; stepping backward
         // by 1px increments finds the entry point in ~10 steps for typical bullet speeds.
@@ -693,7 +718,11 @@ void Ship::collide_grid(Grid &grid, int delta) {
         bullets[i].world_bullet = true;
         ++i;
       } else {
+        bool was_invincible = object->invincible;
+        if(bullets[i].has_trail) object->invincible = false;
         if(object->kill()) {
+          object->invincible = was_invincible;
+          if(was_invincible) Asteroid::num_killable++;
           score += object->get_value() * multiplier();
           kills_this_life += 1;
           kills += 1;
@@ -908,6 +937,16 @@ WrappedPoint Ship::gun() const {
   return WrappedPoint(position + (facing * height * 1.05));
 }
 
+void Ship::mark_last_bullet_trail() {
+  if(!bullets.empty())
+    bullets.back().has_trail = true;
+}
+
+void Ship::fire_bullet_from_gun() {
+  bullets.push_back(Particle(gun(), facing * 0.615f + velocity * 0.99f, 2000.0f));
+  mark_last_bullet_trail();
+}
+
 WrappedPoint Ship::tail() const {
   return WrappedPoint(position - (facing * 15.0));
 }
@@ -941,7 +980,19 @@ void Ship::step(float delta, const Grid &grid) {
       }
     }
 
-    (*primary)->step(delta);
+    for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ) {
+      (*it)->step(delta);
+      Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
+      if(gm && gm->empty()) {
+        auto next = it; ++next;
+        if(next == primary_weapons.end()) next = primary_weapons.begin();
+        if(it == primary) primary = next;
+        delete *it;
+        it = primary_weapons.erase(it);
+      } else {
+        ++it;
+      }
+    }
     for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
       if (!dynamic_cast<Weapon::Missile*>(*it))
         (*it)->step(delta);
@@ -1002,6 +1053,24 @@ void Ship::step(float delta, const Grid &grid) {
     if(!bullets[i].is_alive()) {
       bullets[i] = std::move(bullets.back());
       bullets.pop_back();
+    } else {
+      if(bullets[i].has_trail) {
+        bullets[i].trail_timer -= delta;
+        if(bullets[i].trail_timer <= 0) {
+          bullets[i].trail_timer = 50;
+          Point spread((rand()%100-50)*0.0002f, (rand()%100-50)*0.0002f);
+          bullet_trails.push_back(Particle(bullets[i].position, spread, 200.0f));
+        }
+      }
+      ++i;
+    }
+  }
+
+  for(size_t i = 0; i < bullet_trails.size(); ) {
+    bullet_trails[i].step(delta);
+    if(!bullet_trails[i].is_alive()) {
+      bullet_trails[i] = std::move(bullet_trails.back());
+      bullet_trails.pop_back();
     } else {
       ++i;
     }
