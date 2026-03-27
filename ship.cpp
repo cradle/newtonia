@@ -593,7 +593,19 @@ void Ship::collide_grid(Grid &grid, int delta) {
   if(alive) {
     object = grid.collide(*this);
     if(object != NULL) {
-      if(object->kill()) {
+      if(god_mode_time_remaining() > 0) {
+        bool was_invincible = object->invincible;
+        object->invincible = false;
+        if(object->kill()) {
+          object->invincible = was_invincible;
+          if(was_invincible) Asteroid::num_killable++;
+          score += object->get_value() * multiplier();
+          kills_this_life += 1;
+          kills += 1;
+        } else {
+          object->invincible = was_invincible;
+        }
+      } else if(object->kill()) {
         detonate();
       } else {
         explode(position, object->velocity);
@@ -696,7 +708,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
     }
     if(object != NULL) {
       Asteroid *ast = dynamic_cast<Asteroid*>(object);
-      if(ast && ast->reflective && !bullets[i].has_trail) {
+      if(ast && ast->reflective && !bullets[i].kills_invincible) {
         // Back-trace along the bullet's velocity to find where it crossed the surface.
         // The bullet is guaranteed to be inside the polygon here; stepping backward
         // by 1px increments finds the entry point in ~10 steps for typical bullet speeds.
@@ -729,7 +741,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
         ++i;
       } else {
         bool was_invincible = object->invincible;
-        if(bullets[i].has_trail) object->invincible = false;
+        if(bullets[i].kills_invincible) object->invincible = false;
         if(object->kill()) {
           object->invincible = was_invincible;
           if(was_invincible) Asteroid::num_killable++;
@@ -953,9 +965,15 @@ void Ship::mark_last_bullet_trail() {
     bullets.back().has_trail = true;
 }
 
+void Ship::mark_last_bullet_kills_invincible() {
+  if(!bullets.empty())
+    bullets.back().kills_invincible = true;
+}
+
 void Ship::fire_bullet_from_gun() {
   bullets.push_back(Particle(gun(), facing * 0.615f + velocity * 0.99f, 2000.0f));
   mark_last_bullet_trail();
+  mark_last_bullet_kills_invincible();
 }
 
 WrappedPoint Ship::tail() const {
