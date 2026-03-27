@@ -850,13 +850,6 @@ void Ship::shoot(bool on) {
   if(!primary_weapons.empty()) {
     if((*primary)->empty() && on) {
       previous_weapon();
-    } else if(dynamic_cast<Weapon::GodMode*>(*primary)) {
-      for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
-        if(!dynamic_cast<Weapon::GodMode*>(*it)) {
-          (*it)->shoot(on);
-          break;
-        }
-      }
     } else {
       (*primary)->shoot(on);
     }
@@ -941,6 +934,11 @@ WrappedPoint Ship::gun() const {
 void Ship::mark_last_bullet_trail() {
   if(!bullets.empty())
     bullets.back().has_trail = true;
+}
+
+void Ship::fire_bullet_from_gun() {
+  bullets.push_back(Particle(gun(), facing * 0.615f + velocity * 0.99f, 2000.0f));
+  mark_last_bullet_trail();
 }
 
 WrappedPoint Ship::tail() const {

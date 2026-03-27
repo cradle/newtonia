@@ -13,6 +13,11 @@ namespace Weapon {
   }
 
   void GodMode::step(int delta) {
+    time_until_next_shot -= delta;
+    if(shooting && time_until_next_shot <= 0) {
+      ship->fire_bullet_from_gun();
+      time_until_next_shot = time_between_shots;
+    }
     if (_ammo <= 0) return;
     _ammo -= delta;
     if (_ammo <= 0) {
