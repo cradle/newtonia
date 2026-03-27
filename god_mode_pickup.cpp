@@ -3,6 +3,14 @@
 #include "gl_compat.h"
 
 GodModePickup::GodModePickup(WrappedPoint pos) : Pickup(pos) {
+  display_list = glGenLists(1);
+  glNewList(display_list, GL_COMPILE);
+  draw_glow_lightning(1.0f, 0.9f, 0.0f, radius * 0.8f);
+  glEndList();
+}
+
+GodModePickup::~GodModePickup() {
+  glDeleteLists(display_list, 1);
 }
 
 void GodModePickup::apply(Ship *ship) {
@@ -12,5 +20,5 @@ void GodModePickup::apply(Ship *ship) {
 void GodModePickup::draw(float world_rotation) const {
   glTranslatef(position.x(), position.y(), 0.0f);
   glRotatef(-world_rotation, 0.0f, 0.0f, 1.0f);
-  draw_glow_lightning(1.0f, 0.9f, 0.0f, radius * 0.8f);
+  glCallList(display_list);
 }
