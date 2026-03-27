@@ -61,6 +61,7 @@ protected:
     }
     glEnd();
 
+    glLineWidth(1.0f);
     glDisable(GL_BLEND);
   }
 
@@ -103,6 +104,7 @@ protected:
       glVertex2f(pts[i][0] * s, pts[i][1] * s);
     glEnd();
 
+    glLineWidth(1.0f);
     glDisable(GL_BLEND);
   }
 
@@ -146,6 +148,7 @@ protected:
       glVertex2f(-0.5f * s,  1.0f * s);
     glEnd();
 
+    glLineWidth(1.0f);
     glDisable(GL_BLEND);
   }
 };

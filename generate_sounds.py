@@ -97,17 +97,45 @@ def make_thud():
         samples.append(body + noise)
     return samples
 
+def make_mine_explode():
+    """Mine explosion: mid-weight boom with metallic clang and noise burst, 800ms."""
+    n = int(SAMPLE_RATE * 0.8)
+    rng = random.Random(53)
+    samples = []
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        attack = min(1.0, t / 0.003)
+        # Low boom
+        boom   = math.sin(2 * math.pi * 70  * t) * math.exp(-t * 6.0) * 0.75
+        # Metallic clang (high harmonics decay quickly)
+        clang  = math.sin(2 * math.pi * 420 * t) * math.exp(-t * 25.0) * 0.35
+        clang += math.sin(2 * math.pi * 780 * t) * math.exp(-t * 35.0) * 0.15
+        # Noise burst
+        noise  = (rng.random() * 2 - 1) * math.exp(-t * 14.0) * 0.65
+        # Trailing rumble
+        rumble = (rng.random() * 2 - 1) * math.exp(-t * 4.0) * 0.15
+        samples.append((boom + clang + noise + rumble) * attack)
+    return samples
+
+
 def make_missile_explode():
-    """Missile explosion: sharper burst than asteroid, 600ms."""
-    n = int(SAMPLE_RATE * 0.6)
+    """Missile impact explosion: sharp attack, deep boom, noise burst, trailing rumble, 1s."""
+    n = int(SAMPLE_RATE * 1.0)
     rng = random.Random(77)
     samples = []
     for i in range(n):
         t = i / SAMPLE_RATE
-        env = math.exp(-t * 7)
-        noise = (rng.random() * 2 - 1) * 0.6
-        thud  = math.sin(2 * math.pi * 80 * t) * 0.4 * math.exp(-t * 12)
-        samples.append((noise + thud) * env)
+        # Very sharp attack transient (2ms rise)
+        attack = min(1.0, t / 0.002)
+        # Low boom
+        boom   = math.sin(2 * math.pi * 55  * t) * math.exp(-t * 5.0) * 0.85
+        # Mid thud (decays faster)
+        thud   = math.sin(2 * math.pi * 120 * t) * math.exp(-t * 10.0) * 0.5
+        # Heavy noise burst at front
+        noise  = (rng.random() * 2 - 1) * math.exp(-t * 18.0) * 0.75
+        # Trailing rumble
+        rumble = (rng.random() * 2 - 1) * math.exp(-t * 3.5) * 0.18
+        samples.append((boom + thud + noise + rumble) * attack)
     return samples
 
 def make_missile_fly():
@@ -321,6 +349,7 @@ if __name__ == '__main__':
         'mine.wav':            make_mine,
         'explode.wav':         make_explode,
         'thud.wav':            make_thud,
+        'mine_explode.wav':     make_mine_explode,
         'missile_explode.wav': make_missile_explode,
         'missile_fly.wav':     make_missile_fly,
         'tic.wav':             make_tic,

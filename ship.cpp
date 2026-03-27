@@ -78,6 +78,12 @@ Ship::Ship(const Grid &grid, bool has_friction) :
       std::cout << "Unable to load giga_mine_explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
+  if(mine_explode_sound == NULL) {
+    mine_explode_sound = Mix_LoadWAV("audio/mine_explode.wav");
+    if(mine_explode_sound == NULL) {
+      std::cout << "Unable to load mine_explode.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
 }
 
 void Ship::add_behaviour(Behaviour *b) {
@@ -134,6 +140,9 @@ Ship::~Ship() {
   }
   if(giga_mine_explode_sound != NULL) {
     Mix_FreeChunk(giga_mine_explode_sound);
+  }
+  if(mine_explode_sound != NULL) {
+    Mix_FreeChunk(mine_explode_sound);
   }
 }
 
@@ -607,6 +616,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
     object = grid.collide(mines[i], 50.0f);
     if(object != NULL && object->alive) {
       detonate(mines[i].position, mines[i].velocity, 50);
+      if(mine_explode_sound != NULL) Mix_PlayChannel(-1, mine_explode_sound, 0);
       mines[i] = std::move(mines.back());
       mines.pop_back();
     } else {
@@ -785,6 +795,7 @@ void Ship::collide(Ship *other) {
   for(size_t i = 0; i < mines.size(); ) {
     if(is_alive() && other->is_alive() && mines[i].collide(*other, 50.0)) {
       detonate(mines[i].position, mines[i].velocity);
+      if(mine_explode_sound != NULL) Mix_PlayChannel(-1, mine_explode_sound, 0);
       mines[i] = std::move(mines.back());
       mines.pop_back();
     } else {
