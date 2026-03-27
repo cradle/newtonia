@@ -73,6 +73,8 @@ protected:
 
   SDL_GameController *controller = NULL;
   SDL_JoystickID controller_instance_id = -1;
+  bool r2_shoot_active = false;
+  bool l2_shoot_active = false;
 
   bool rotating_view, show_help;
   float camera_rotation;
