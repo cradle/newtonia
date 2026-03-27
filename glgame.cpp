@@ -27,13 +27,13 @@ const int GLGame::default_world_width = 2500;
 const int GLGame::default_world_height = 2500;
 const int GLGame::default_num_asteroids = 3;
 const int GLGame::extra_num_asteroids = 5;
-const float GLGame::extra_life_drop_chance = 0.0f;
-const float GLGame::weapon_pickup_drop_chance = 0.5f;
-const float GLGame::mine_pickup_drop_chance = 0.0f;
-const float GLGame::giga_mine_pickup_drop_chance = 0.0f;
-const float GLGame::missile_pickup_drop_chance = 0.0f;
-const float GLGame::shield_pickup_drop_chance = 0.0f;
-const float GLGame::god_mode_pickup_drop_chance = 0.5f;
+const float GLGame::extra_life_drop_chance = 0.003125f;
+const float GLGame::weapon_pickup_drop_chance = 0.0125f;
+const float GLGame::mine_pickup_drop_chance = 0.0125f;
+const float GLGame::giga_mine_pickup_drop_chance = 0.005f;
+const float GLGame::missile_pickup_drop_chance = 0.0125f;
+const float GLGame::shield_pickup_drop_chance = 0.0125f;
+const float GLGame::god_mode_pickup_drop_chance = 0.0025f;
 
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
@@ -496,7 +496,7 @@ void GLGame::tick(int delta) {
           if(roll < extra_life_drop_chance) {
             pickups->push_back(new ExtraLife((*oi)->position));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance) {
-            int weapon_index = 4; // level 5 scatter (testing)
+            int weapon_index = rand() % 15;
             pickups->push_back(new WeaponPickup((*oi)->position, weapon_index));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance) {
             pickups->push_back(new MinePickup((*oi)->position));
