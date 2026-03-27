@@ -702,6 +702,22 @@ void GLShip::draw_mines(bool minimap) const {
     glVertex2fv(v3); glVertex2fv(v0);
   }
   glEnd();
+
+  // Pulsing red circle: flashes once per second
+  float t = (SDL_GetTicks() % 1000) / 1000.0f;
+  float pulse = 0.5f + 0.5f * sinf(t * 2.0f * (float)M_PI);
+  float pulse_radius = size + 4.5f;
+  glLineWidth(1.5f);
+  glColor4f(1.0f, 0.0f, 0.0f, pulse);
+  for(auto m = ship->mines.begin(); m != ship->mines.end(); m++) {
+    glBegin(GL_LINE_LOOP);
+    for(int i = 0; i < 16; i++) {
+      float a = i * 2.0f * (float)M_PI / 16.0f;
+      glVertex2f(cosf(a) * pulse_radius + m->position.x(),
+                 sinf(a) * pulse_radius + m->position.y());
+    }
+    glEnd();
+  }
 }
 
 void GLShip::draw_giga_mines(bool minimap) const {
