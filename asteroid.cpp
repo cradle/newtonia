@@ -141,7 +141,7 @@ Asteroid::Asteroid(Asteroid const *mother) {
     if (vertex_offsets[i] > max_vertex_offset) max_vertex_offset = vertex_offsets[i];
   children_added = false;
   invisible = false;
-  reflective = false;
+  reflective = mother->reflective;
   teleporting = false;
   teleport_vulnerable = false;
   teleport_pending = false;
