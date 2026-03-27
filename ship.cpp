@@ -84,6 +84,12 @@ Ship::Ship(const Grid &grid, bool has_friction) :
       std::cout << "Unable to load mine_explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
+  if(shoot_sound == NULL) {
+    shoot_sound = Mix_LoadWAV("audio/shoot.wav");
+    if(shoot_sound == NULL) {
+      std::cout << "Unable to load shoot.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
 }
 
 void Ship::add_behaviour(Behaviour *b) {
@@ -143,6 +149,9 @@ Ship::~Ship() {
   }
   if(mine_explode_sound != NULL) {
     Mix_FreeChunk(mine_explode_sound);
+  }
+  if(shoot_sound != NULL) {
+    Mix_FreeChunk(shoot_sound);
   }
 }
 
@@ -979,6 +988,10 @@ void Ship::mark_last_bullet_kills_invincible() {
 }
 
 void Ship::fire_bullet_from_gun() {
+  if(shoot_sound != NULL && sound_volume_scale > 0.0f) {
+    Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * sound_volume_scale));
+    Mix_PlayChannel(-1, shoot_sound, 0);
+  }
   bullets.push_back(Particle(gun(), facing * 0.615f + velocity * 0.99f, 2000.0f));
   mark_last_bullet_trail();
   mark_last_bullet_kills_invincible();
@@ -1009,7 +1022,7 @@ void Ship::step(float delta, const Grid &grid) {
   }
 
   if(is_alive()) {
-    if(invincible) {
+    if(invincible && god_mode_time_remaining() <= 0) {
       time_left_invincible -= delta;
       if(time_left_invincible < 0) {
         invincible = false;
