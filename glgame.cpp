@@ -77,6 +77,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   } else {
     object->set_keys('a','d','w',' ','s','x','q','e', 't', 128+GLUT_KEY_F1, 'c');
   }
+  object->ship->add_mine_ammo(100);
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
   object->ship->set_missile_ships(ship_objects);
