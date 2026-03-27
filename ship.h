@@ -132,6 +132,7 @@ class Ship : public CompositeObject {
     void set_black_holes(const std::list<BlackHole*> *bhs);
     WrappedPoint gun() const;
     void mark_last_bullet_trail();
+    void mark_last_bullet_kills_invincible();
     void fire_bullet_from_gun();
     bool kill();
 
@@ -172,6 +173,7 @@ class Ship : public CompositeObject {
     Mix_Chunk *boost_sound = NULL, *tic_sound = NULL, *tic_low_sound = NULL, *click_sound = NULL;
     Mix_Chunk *missile_explode_sound = NULL, *shield_hum_sound = NULL, *explode_sound = NULL;
     Mix_Chunk *giga_mine_explode_sound = NULL, *mine_explode_sound = NULL;
+    Mix_Chunk *shoot_sound = NULL;
     int shield_hum_channel = -1;
     int boost_channel = -1;
 

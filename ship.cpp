@@ -84,6 +84,12 @@ Ship::Ship(const Grid &grid, bool has_friction) :
       std::cout << "Unable to load mine_explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
+  if(shoot_sound == NULL) {
+    shoot_sound = Mix_LoadWAV("audio/shoot.wav");
+    if(shoot_sound == NULL) {
+      std::cout << "Unable to load shoot.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
 }
 
 void Ship::add_behaviour(Behaviour *b) {
@@ -144,9 +150,13 @@ Ship::~Ship() {
   if(mine_explode_sound != NULL) {
     Mix_FreeChunk(mine_explode_sound);
   }
+  if(shoot_sound != NULL) {
+    Mix_FreeChunk(shoot_sound);
+  }
 }
 
 void Ship::next_weapon() {
+  if(god_mode_time_remaining() > 0) return;
   if(click_sound != NULL) {
     Mix_PlayChannel(-1, click_sound, 0);
   }
@@ -166,6 +176,7 @@ void Ship::next_weapon() {
 }
 
 void Ship::previous_weapon() {
+  if(god_mode_time_remaining() > 0) return;
   if(click_sound != NULL) {
     Mix_PlayChannel(-1, click_sound, 0);
   }
@@ -226,20 +237,26 @@ void Ship::add_weapon(int weapon_index) {
   if(weapon_index < 0 || weapon_index >= num_weapon_configs) return;
   const WeaponConfig &cfg = weapon_configs[weapon_index];
 
+  bool in_god_mode = god_mode_time_remaining() > 0;
+
   for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
     Weapon::Default *w = dynamic_cast<Weapon::Default*>(*it);
     if(w && w->weapon_index() == weapon_index) {
       w->add_ammo(100);
-      (*primary)->shoot(false);
-      primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
-      primary = --primary_weapons.end();
+      if(!in_god_mode) {
+        (*primary)->shoot(false);
+        primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
+        primary = --primary_weapons.end();
+      }
       return;
     }
   }
 
   primary_weapons.push_back(new Weapon::Default(this, cfg.automatic, cfg.level, cfg.accuracy, cfg.time_between_shots, weapon_index));
-  (*primary)->shoot(false);
-  primary = --primary_weapons.end();
+  if(!in_god_mode) {
+    (*primary)->shoot(false);
+    primary = --primary_weapons.end();
+  }
 }
 
 // Returns true if the player is currently holding the shield key.
@@ -593,7 +610,19 @@ void Ship::collide_grid(Grid &grid, int delta) {
   if(alive) {
     object = grid.collide(*this);
     if(object != NULL) {
-      if(object->kill()) {
+      if(god_mode_time_remaining() > 0) {
+        bool was_invincible = object->invincible;
+        object->invincible = false;
+        if(object->kill()) {
+          object->invincible = was_invincible;
+          if(was_invincible) Asteroid::num_killable++;
+          score += object->get_value() * multiplier();
+          kills_this_life += 1;
+          kills += 1;
+        } else {
+          object->invincible = was_invincible;
+        }
+      } else if(object->kill()) {
         detonate();
       } else {
         explode(position, object->velocity);
@@ -696,7 +725,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
     }
     if(object != NULL) {
       Asteroid *ast = dynamic_cast<Asteroid*>(object);
-      if(ast && ast->reflective && !bullets[i].has_trail) {
+      if(ast && ast->reflective && !bullets[i].kills_invincible) {
         // Back-trace along the bullet's velocity to find where it crossed the surface.
         // The bullet is guaranteed to be inside the polygon here; stepping backward
         // by 1px increments finds the entry point in ~10 steps for typical bullet speeds.
@@ -729,7 +758,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
         ++i;
       } else {
         bool was_invincible = object->invincible;
-        if(bullets[i].has_trail) object->invincible = false;
+        if(bullets[i].kills_invincible) object->invincible = false;
         if(object->kill()) {
           object->invincible = was_invincible;
           if(was_invincible) Asteroid::num_killable++;
@@ -953,9 +982,19 @@ void Ship::mark_last_bullet_trail() {
     bullets.back().has_trail = true;
 }
 
+void Ship::mark_last_bullet_kills_invincible() {
+  if(!bullets.empty())
+    bullets.back().kills_invincible = true;
+}
+
 void Ship::fire_bullet_from_gun() {
+  if(shoot_sound != NULL && sound_volume_scale > 0.0f) {
+    Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * sound_volume_scale));
+    Mix_PlayChannel(-1, shoot_sound, 0);
+  }
   bullets.push_back(Particle(gun(), facing * 0.615f + velocity * 0.99f, 2000.0f));
   mark_last_bullet_trail();
+  mark_last_bullet_kills_invincible();
 }
 
 WrappedPoint Ship::tail() const {
@@ -983,7 +1022,7 @@ void Ship::step(float delta, const Grid &grid) {
   }
 
   if(is_alive()) {
-    if(invincible) {
+    if(invincible && god_mode_time_remaining() <= 0) {
       time_left_invincible -= delta;
       if(time_left_invincible < 0) {
         invincible = false;
@@ -996,7 +1035,11 @@ void Ship::step(float delta, const Grid &grid) {
       Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
       if(gm && gm->empty()) {
         auto next = it; ++next;
-        if(next == primary_weapons.end()) next = primary_weapons.begin();
+        if(next == primary_weapons.end()) {
+          // God mode is always pushed to the back; return to the weapon before it
+          next = it;
+          if(next != primary_weapons.begin()) --next;
+        }
         if(it == primary) primary = next;
         delete *it;
         it = primary_weapons.erase(it);
