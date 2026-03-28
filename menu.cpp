@@ -87,7 +87,7 @@ void Menu::tick(int delta) {
 }
 
 void Menu::controller(SDL_Event event) {
- if(event.type == SDL_CONTROLLERBUTTONDOWN) {
+  if(event.type == SDL_CONTROLLERBUTTONDOWN) {
     if(event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
       glutLeaveMainLoop();
     } else if(event.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
@@ -96,6 +96,13 @@ void Menu::controller(SDL_Event event) {
       EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
       request_state_change(new GLGame(SDL_GameControllerFromInstanceID(event.cbutton.which)));
+    }
+  } else if(event.type == SDL_CONTROLLERAXISMOTION) {
+    if(event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT && event.caxis.value > 8000) {
+#ifdef __EMSCRIPTEN__
+      EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
+#endif
+      request_state_change(new GLGame(SDL_GameControllerFromInstanceID(event.caxis.which)));
     }
   }
 }

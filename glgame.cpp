@@ -1113,7 +1113,23 @@ void GLGame::controller(SDL_Event event) {
           break;
         }
       }
-      if(!known_player && players->size() < 2) {
+      if(known_player) {
+        bool all_game_over = !players->empty();
+        for (auto* glship : *players) {
+          if (glship->ship->is_alive() || glship->ship->lives > 0) {
+            all_game_over = false;
+            break;
+          }
+        }
+        if (all_game_over) {
+          if (!(game_over_time >= 0 && current_time - game_over_time < 3000)) {
+            for (auto* glship : *players)
+              save_high_score(glship->ship->score);
+            request_state_change(new Menu());
+          }
+          return;
+        }
+      } else if(players->size() < 2) {
         SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(event.cbutton.which);
         if(ctrl) add_player2(ctrl);
       }
@@ -1123,6 +1139,26 @@ void GLGame::controller(SDL_Event event) {
       for (auto* glship : *players)
         save_high_score(glship->ship->score);
       request_state_change(new Menu());
+    }
+  }
+
+  if(event.type == SDL_CONTROLLERAXISMOTION &&
+     event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT &&
+     event.caxis.value > 8000) {
+    bool all_game_over = !players->empty();
+    for (auto* glship : *players) {
+      if (glship->ship->is_alive() || glship->ship->lives > 0) {
+        all_game_over = false;
+        break;
+      }
+    }
+    if (all_game_over) {
+      if (game_over_time >= 0 && current_time - game_over_time < 3000)
+        return;
+      for (auto* glship : *players)
+        save_high_score(glship->ship->score);
+      request_state_change(new Menu());
+      return;
     }
   }
 
