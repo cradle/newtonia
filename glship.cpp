@@ -298,6 +298,14 @@ void GLShip::controller_axis_input(SDL_Event event) {
     return;
   }
   if(!ship->is_alive()) {
+    if(event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) {
+      bool pressed = event.caxis.value > 8000;
+      if(pressed && !r2_shoot_active && ship->lives > 0 &&
+         ship->time_until_respawn <= ship->respawn_time - 1000) {
+        ship->time_until_respawn = 0;
+      }
+      r2_shoot_active = pressed;
+    }
     return;
   }
   Sint16 deadzone = 10000;
