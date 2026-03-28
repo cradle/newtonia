@@ -279,11 +279,24 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libsdl2-dev \
             freeglut3-dev \
             libgl1-mesa-dev \
             libglu1-mesa-dev \
-            cmake
+            cmake \
+            libudev-dev \
+            libasound2-dev \
+            libpulse-dev
+
+      - name: Build SDL2 from source
+        run: |
+          git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL.git SDL2_source
+          cmake -S SDL2_source -B SDL2_source/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSDL_SHARED=OFF \
+            -DSDL_STATIC=ON \
+            -DSDL_TESTS=OFF
+          cmake --build SDL2_source/build --parallel
+          sudo cmake --install SDL2_source/build
 
       - name: Build SDL2_mixer (WAV + MP3 only)
         run: |
