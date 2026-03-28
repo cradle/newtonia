@@ -27,7 +27,7 @@ public:
 
   const static int max_radius;
 
-  static Mix_Chunk *explode_sound, *thud_sound;
+  static Mix_Chunk *explode_sound, *thud_sound, *ting_sound, *asteroid_ting_sound;
 
   static void free_sounds();
 
