@@ -135,7 +135,7 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
 
 
 void Overlay::level(const GLGame *glgame, const GLShip *glship) {
-  char buf[16];
+  char buf[20];
   snprintf(buf, sizeof(buf), "LEVEL %d", glgame->generation + 1);
   float vh = Typer::scaled_window_height / glgame->num_y_viewports();
   Typer::draw_centered(0, vh - 20 - CORNER_INSET, buf, 12);
