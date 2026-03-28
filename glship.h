@@ -22,6 +22,7 @@ public:
   virtual void input(unsigned char key, bool pressed = true);
   virtual void controller_input(SDL_Event event);
   virtual void controller_axis_input(SDL_Event event);
+  virtual void controller_touchpad_input(SDL_Event event);
   void touch_joystick_input(float nx, float ny);
   bool wasMyController(SDL_JoystickID id);
 
