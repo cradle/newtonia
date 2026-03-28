@@ -24,9 +24,7 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
     glTranslatef(object->position.x(), object->position.y(), 0.0f);
     glScalef(object->radius, object->radius, 1.0f);
     glRotatef(object->rotation, 0.0f, 0.0f, 1.0f);
-    if(object->tough) {
-      glColor4f(0.5f, 0.25f, 0.0f, 0.9f);
-    } else if(object->reflective) {
+    if(object->reflective) {
       glColor4f(0.0f, 0.4f, 0.5f, 0.6f);
     } else if(object->invincible) {
       glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
@@ -47,9 +45,7 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
       glVertex2f(off * cosf(d), off * sinf(d));
     }
     glEnd();
-    if(object->tough) {
-      glColor4f(1.0f, 0.55f, 0.0f, 1.0f);
-    } else if(object->reflective) {
+    if(object->reflective) {
       glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
     } else if(object->invincible) {
       glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
@@ -194,7 +190,6 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     if (v.invisible) continue;
     if (v.quantum && v.quantum_observed)        glColor4f(0.15f, 0.0f, 0.35f, 0.85f);
     else if (v.quantum)                         glColor4f(0.05f, 0.0f, 0.12f, 0.4f);
-    else if (v.tough)                           glColor4f(0.5f, 0.25f, 0.0f, 0.9f);
     else if (v.teleporting)                     glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
     else if (v.reflective)                      glColor4f(0.0f, 0.4f, 0.5f, 0.6f);
     else if (v.invincible)                      glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
@@ -222,7 +217,6 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     if (v.invisible) continue;
     if (v.quantum && v.quantum_observed)        glColor4f(0.65f, 0.1f, 1.0f, 1.0f);
     else if (v.quantum)                         glColor4f(0.3f, 0.05f, 0.5f, 0.35f);
-    else if (v.tough)                           glColor4f(1.0f, 0.55f, 0.0f, 1.0f);
     else if (v.teleporting)                     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     else if (v.reflective)                      glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
     else if (v.invincible)                      glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
@@ -241,8 +235,9 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
   }
   glEnd();
 
-  // --- Crack pass for elastic asteroids ---
-  // Each hit reveals one more two-segment crack (vertex → jittered midpoint → centre).
+  // --- Crack pass for tough asteroids ---
+  // Tough asteroids start with 1 crack; each subsequent hit reveals one more
+  // (vertex → jittered midpoint → halfway-to-centre). Max 5 cracks visible.
   // crack_t and crack_perp are rotation-invariant fractions; reconstruct world coords
   // from the already-rotated dvx/dvy vertex offsets.
   if (!is_minimap) {
@@ -251,9 +246,9 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     for (size_t ai = 0; ai < verts.size(); ++ai) {
       AsteroidVerts const &v = verts[ai];
       if (!v.tough || v.invisible) continue;
-      int hits_taken = 5 - v.health;
-      if (hits_taken <= 0) continue;
-      glColor4f(1.0f, 0.85f, 0.3f, 1.0f); // bright yellow-orange crack
+      int hits_taken = 7 - v.health; // health=6 → 1 crack from the start
+      if (hits_taken > 5) hits_taken = 5;
+      glColor4f(0.7f, 0.7f, 0.7f, 1.0f); // grey crack on normal-coloured body
       for (int k = 0; k < hits_taken; k++) {
         int vi = v.crack_vertex[k];
         if (vi >= v.segs) vi = v.segs - 1;
