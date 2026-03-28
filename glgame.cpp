@@ -33,7 +33,7 @@ const float GLGame::mine_pickup_drop_chance = 0.0125f;
 const float GLGame::giga_mine_pickup_drop_chance = 0.005f;
 const float GLGame::missile_pickup_drop_chance = 0.0125f;
 const float GLGame::shield_pickup_drop_chance = 0.0125f;
-const float GLGame::god_mode_pickup_drop_chance = 1.0f; // testing: always drop
+const float GLGame::god_mode_pickup_drop_chance = 0.0025f;
 
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
@@ -157,7 +157,7 @@ void GLGame::add_asteroids() {
   for(int i = 0; i < num_invisible; i++) {
     objects->push_back(new Asteroid(false, true));
   }
-  int num_reflective = generation / 2 + 1; // testing: spawn from level 1
+  int num_reflective = (generation >= 2) ? (generation - 2) / 2 + 1 : 0;
   for(int i = 0; i < num_reflective; i++) {
     objects->push_front(new Asteroid(false, false, true));
   }
@@ -169,7 +169,7 @@ void GLGame::add_asteroids() {
   for(int i = 0; i < num_quantum; i++) {
     objects->push_back(new Asteroid(false, false, false, false, true));
   }
-  int num_tough = generation / 2 + 1; // testing: spawn from level 1
+  int num_tough = (generation >= 6) ? (generation - 6) / 2 + 1 : 0;
   for(int i = 0; i < num_tough; i++) {
     objects->push_back(new Asteroid(false, false, false, false, false, true));
   }
