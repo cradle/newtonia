@@ -200,9 +200,10 @@ int last_tick_time;
 void tick() {
   int current_time = glutGet(GLUT_ELAPSED_TIME);
   //cout << "tps: " << 1000.0 / (current_time - last_tick_time) << endl;
-  game->tick(current_time - last_tick_time);
+  int delta = current_time - last_tick_time;
   last_tick_time = current_time;
   check_controller();
+  game->tick(delta);
   glutPostRedisplay();
 }
 
@@ -217,6 +218,9 @@ void isVisible(int state) {
 void init_controllers_and_audio() {
   SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
   SDL_SetHint(SDL_HINT_GAMECONTROLLERCONFIG, "1");
+  // On Steam Deck, bypass Steam Input and use HIDAPI directly so that trigger
+  // axis events are available immediately without requiring a button press first.
+  SDL_SetHint("SDL_JOYSTICK_HIDAPI_STEAMDECK", "1");
   Uint32 SDL_INIT_FLAGS = SDL_INIT_GAMECONTROLLER;
   // custom mappings SDL_HINT_GAMECONTROLLERCONFIG;
   if(ENABLE_AUDIO) {
