@@ -18,7 +18,7 @@ Mix_Chunk * Asteroid::thud_sound = NULL;
 
 const int Asteroid::max_radius = Asteroid::radius_variation + Asteroid::minimum_radius;
 
-Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool teleporting, bool quantum, bool elastic) : CompositeObject(), killed(false) {
+Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool teleporting, bool quantum, bool tough) : CompositeObject(), killed(false) {
   position = WrappedPoint();
   this->reflective = reflective;
   this->teleporting = teleporting;
@@ -29,8 +29,9 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   this->quantum = quantum;
   this->quantum_observed = true; // start in observed (collapsed) state
   this->quantum_base_speed = 0.0f; // set after velocity is computed below
-  this->elastic = elastic;
-  if(elastic) {
+  this->elastic = reflective; // reflective asteroids bounce off other elastic asteroids
+  this->tough = tough;
+  if(this->tough) {
     health = 5;
     // Pre-compute stable crack geometry (rotation-invariant: stored as t and perp fractions).
     // seg count mirrors the renderer so crack_vertex indices stay in range.
@@ -53,7 +54,7 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   if(reflective) invincible = true;
   if(teleporting) invincible = false; // teleporting asteroids are killable when vulnerable
   if(quantum) invincible = false;     // quantum asteroids start killable (observed state)
-  if(elastic) {
+  if(tough) {
     radius = rand() % 70 + 60;  // 60–130: medium, noticeable heft
   } else if(teleporting) {
     radius = rand() % 100 + 70; // 70–170: noticeably large
@@ -150,7 +151,8 @@ Asteroid::Asteroid(Asteroid const *mother) {
   quantum = false;
   quantum_observed = true;
   quantum_base_speed = 0.0f;
-  elastic = false;
+  elastic = mother->elastic;
+  tough = false;
   health = 1;
   killed = false;
   invincible = mother->invincible;
@@ -310,8 +312,8 @@ bool Asteroid::kill() {
     }
     return false;
   }
-  // Elastic asteroid absorbs a hit without dying until health reaches 1.
-  if(elastic && health > 1) {
+  // Tough asteroid absorbs a hit without dying until health reaches 1.
+  if(tough && health > 1) {
     health--;
     if(thud_sound != NULL) {
       static Uint32 last_elastic_thud = UINT32_MAX;

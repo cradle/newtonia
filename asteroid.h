@@ -9,7 +9,7 @@
 
 class Asteroid : public CompositeObject {
 public:
-  Asteroid(bool invincible, bool invisible = false, bool reflective = false, bool teleporting = false, bool quantum = false, bool elastic = false);
+  Asteroid(bool invincible, bool invisible = false, bool reflective = false, bool teleporting = false, bool quantum = false, bool tough = false);
   Asteroid(Asteroid const *mother);
   virtual ~Asteroid();
 
@@ -43,9 +43,10 @@ public:
   bool quantum_observed;    // true = currently observed by a player (collapsed, killable)
   float quantum_base_speed; // base speed magnitude for observation state transitions
 
-  bool elastic;             // true = elastic asteroid: bounces off all other asteroids
+  bool elastic;             // true = bounces off other elastic asteroids
+  bool tough;               // true = tough asteroid: absorbs 5 hits before dying
 
-  int health;               // hits remaining (elastic: 5, others: 1)
+  int health;               // hits remaining (tough: 5, others: 1)
   int crack_vertex[5];      // which polygon vertex each crack line starts from
   float crack_t[5];         // position along vertex→center (0.35–0.65)
   float crack_perp[5];      // perpendicular jitter as fraction of vertex distance (−0.35..0.35)
