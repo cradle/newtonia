@@ -392,6 +392,22 @@ void GLShip::touch_joystick_input(float nx, float ny) {
   }
 }
 
+void GLShip::controller_touchpad_input(SDL_Event event) {
+  // Only handle the left touchpad (index 0) on Steam Deck
+  if(event.ctouchpad.touchpad != 0) return;
+  if(!wasMyController(event.ctouchpad.which)) return;
+
+  if(event.type == SDL_CONTROLLERTOUCHPADUP) {
+    touch_joystick_input(0.0f, 0.0f);
+    return;
+  }
+
+  // Convert touchpad [0,1] coordinates to joystick [-1,1] centred at 0.5
+  float nx = (event.ctouchpad.x - 0.5f) * 2.0f;
+  float ny = (event.ctouchpad.y - 0.5f) * 2.0f;
+  touch_joystick_input(nx, ny);
+}
+
 void GLShip::input(unsigned char key, bool pressed) {
   if (key == help_key && pressed) show_help = !show_help;
   if(!ship->is_alive()) {

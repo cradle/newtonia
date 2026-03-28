@@ -1177,6 +1177,14 @@ void GLGame::controller(SDL_Event event) {
       (*object)->controller_axis_input(event);
     }
   }
+  if(event.type == SDL_CONTROLLERTOUCHPADDOWN ||
+     event.type == SDL_CONTROLLERTOUCHPADMOTION ||
+     event.type == SDL_CONTROLLERTOUCHPADUP) {
+    std::list<GLShip*>::iterator object;
+    for(object = players->begin(); object != players->end(); object++) {
+      (*object)->controller_touchpad_input(event);
+    }
+  }
 }
 
 void GLGame::touch_joystick(float nx, float ny) {
