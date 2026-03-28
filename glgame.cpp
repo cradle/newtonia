@@ -426,8 +426,8 @@ void GLGame::tick(int delta) {
     grid.update((std::list<Object *>*)objects);
 
   /* ELASTIC ASTEROID-ASTEROID COLLISIONS */
-    // For each pair of live asteroids where at least one is elastic, apply
-    // 2D elastic collision physics (mass ~ radius^2, conservation of momentum
+    // For each pair of live asteroids where at least one is elastic or reflective,
+    // apply 2D elastic collision physics (mass ~ radius^2, conservation of momentum
     // and kinetic energy along the collision normal). Pairs are processed once
     // via inner iterator starting after outer to avoid double-application.
     {
@@ -439,7 +439,7 @@ void GLGame::tick(int delta) {
         for(; bi != objects->end(); ++bi) {
           Asteroid *b = *bi;
           if(!b->alive) continue;
-          if(!a->elastic && !b->elastic) continue;
+          if(!a->elastic && !b->elastic && !a->reflective && !b->reflective) continue;
 
           // Use world-wrap aware distance: get closest copy of A to B
           Point a_near = a->position.closest_to(b->position);
