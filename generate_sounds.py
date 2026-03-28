@@ -237,6 +237,32 @@ def make_giga_mine_explode():
     return samples
 
 
+def make_ting():
+    """Bullet hits reflective asteroid: sharp high metallic ping with inharmonic partials, 400ms."""
+    n = int(SAMPLE_RATE * 0.4)
+    samples = []
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        envelope = math.exp(-t * 12.0)
+        s  = 0.6 * math.sin(2 * math.pi * 2800 * t) * math.exp(-t * 10.0)
+        s += 0.3 * math.sin(2 * math.pi * 4600 * t) * math.exp(-t * 14.0)
+        s += 0.1 * math.sin(2 * math.pi * 7200 * t) * math.exp(-t * 18.0)
+        samples.append(s * envelope * 0.85)
+    return samples
+
+def make_asteroid_ting():
+    """Asteroid hits reflective asteroid: deeper resonant metallic clang, 600ms."""
+    n = int(SAMPLE_RATE * 0.6)
+    samples = []
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        envelope = math.exp(-t * 7.0)
+        s  = 0.55 * math.sin(2 * math.pi * 650  * t) * math.exp(-t * 5.0)
+        s += 0.30 * math.sin(2 * math.pi * 1060 * t) * math.exp(-t * 8.0)
+        s += 0.15 * math.sin(2 * math.pi * 1750 * t) * math.exp(-t * 12.0)
+        samples.append(s * envelope * 0.85)
+    return samples
+
 def make_pickup():
     """Item pickup: cheerful rising chime, 200ms."""
     n = int(SAMPLE_RATE * 0.2)
@@ -359,6 +385,8 @@ if __name__ == '__main__':
         'title.wav':           make_title,
         'pickup.wav':          make_pickup,
         'giga_mine_explode.wav': make_giga_mine_explode,
+        'ting.wav':              make_ting,
+        'asteroid_ting.wav':     make_asteroid_ting,
     }
 
     for filename, fn in sounds.items():

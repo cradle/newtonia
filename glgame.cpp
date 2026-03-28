@@ -478,6 +478,22 @@ void GLGame::tick(int delta) {
 
           a->velocity = a->velocity + Point(nx, ny) * (impulse / ma);
           b->velocity = b->velocity - Point(nx, ny) * (impulse / mb);
+
+          // Play a deep metallic ting when an asteroid strikes a reflective one,
+          // but only if the collision is visible to any player.
+          if((a->reflective || b->reflective) && Asteroid::asteroid_ting_sound != NULL) {
+            Point contact(
+              (a->position.x() + b->position.x()) * 0.5f,
+              (a->position.y() + b->position.y()) * 0.5f);
+            if(is_point_faced_by_any_player(contact)) {
+              static Uint32 last_asteroid_ting_tick = UINT32_MAX;
+              Uint32 now = SDL_GetTicks();
+              if(now - last_asteroid_ting_tick >= 125) {
+                last_asteroid_ting_tick = now;
+                Mix_PlayChannel(-1, Asteroid::asteroid_ting_sound, 0);
+              }
+            }
+          }
         }
       }
     }

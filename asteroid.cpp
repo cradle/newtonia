@@ -16,6 +16,7 @@ const int Asteroid::minimum_radius = 20;
 Mix_Chunk * Asteroid::explode_sound = NULL;
 Mix_Chunk * Asteroid::thud_sound = NULL;
 Mix_Chunk * Asteroid::ting_sound = NULL;
+Mix_Chunk * Asteroid::asteroid_ting_sound = NULL;
 
 const int Asteroid::max_radius = Asteroid::radius_variation + Asteroid::minimum_radius;
 
@@ -110,6 +111,12 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
         std::cout << "Unable to load ting.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
+  if(asteroid_ting_sound == NULL) {
+    asteroid_ting_sound = Mix_LoadWAV("audio/asteroid_ting.wav");
+    if(asteroid_ting_sound == NULL) {
+        std::cout << "Unable to load asteroid_ting.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
 }
 
 void Asteroid::step(int delta) {
@@ -131,9 +138,10 @@ Asteroid::~Asteroid() {
 }
 
 void Asteroid::free_sounds() {
-  if(explode_sound != NULL) { Mix_FreeChunk(explode_sound); explode_sound = NULL; }
-  if(thud_sound != NULL)    { Mix_FreeChunk(thud_sound);    thud_sound    = NULL; }
-  if(ting_sound != NULL)    { Mix_FreeChunk(ting_sound);    ting_sound    = NULL; }
+  if(explode_sound != NULL)        { Mix_FreeChunk(explode_sound);        explode_sound        = NULL; }
+  if(thud_sound != NULL)           { Mix_FreeChunk(thud_sound);           thud_sound           = NULL; }
+  if(ting_sound != NULL)           { Mix_FreeChunk(ting_sound);           ting_sound           = NULL; }
+  if(asteroid_ting_sound != NULL)  { Mix_FreeChunk(asteroid_ting_sound);  asteroid_ting_sound  = NULL; }
 }
 
 Asteroid::Asteroid(Asteroid const *mother) {
