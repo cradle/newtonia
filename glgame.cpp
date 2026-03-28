@@ -457,10 +457,19 @@ void GLGame::tick(int delta) {
           float nx = dx / dist;
           float ny = dy / dist;
 
-          // Relative velocity along normal (negative = approaching)
+          // Positional correction: always push apart to resolve overlap,
+          // including the case where children spawn inside each other.
+          float overlap = sum_r - dist;
+          float push = overlap * 0.5f + 0.5f;
+          a->position += Point(nx, ny) * push;
+          a->position.wrap();
+          b->position += Point(-nx, -ny) * push;
+          b->position.wrap();
+
+          // Velocity impulse: only when approaching (negative = approaching)
           float vrel_n = (a->velocity.x() - b->velocity.x()) * nx
                        + (a->velocity.y() - b->velocity.y()) * ny;
-          if(vrel_n >= 0.0f) continue; // already separating
+          if(vrel_n >= 0.0f) continue; // already separating, no impulse needed
 
           // Mass proportional to area (radius^2)
           float ma = a->radius * a->radius;
@@ -469,14 +478,6 @@ void GLGame::tick(int delta) {
 
           a->velocity = a->velocity + Point(nx, ny) * (impulse / ma);
           b->velocity = b->velocity - Point(nx, ny) * (impulse / mb);
-
-          // Positional correction: push apart to resolve overlap
-          float overlap = sum_r - dist;
-          float push = overlap * 0.5f + 0.5f;
-          a->position += Point(nx, ny) * push;
-          a->position.wrap();
-          b->position += Point(-nx, -ny) * push;
-          b->position.wrap();
         }
       }
     }
