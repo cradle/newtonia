@@ -246,8 +246,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     for (size_t ai = 0; ai < verts.size(); ++ai) {
       AsteroidVerts const &v = verts[ai];
       if (!v.tough || v.invisible) continue;
-      int hits_taken = 7 - v.health; // health=6 → 1 crack from the start
-      if (hits_taken > 5) hits_taken = 5;
+      int hits_taken = 6 - v.health; // health=5 → 1 crack at full health, +1 per hit
       glColor4f(0.7f, 0.7f, 0.7f, 1.0f); // grey crack on normal-coloured body
       for (int k = 0; k < hits_taken; k++) {
         int vi = v.crack_vertex[k];

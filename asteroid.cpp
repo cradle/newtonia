@@ -32,7 +32,7 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   this->elastic = reflective; // reflective asteroids bounce off other elastic asteroids
   this->tough = tough;
   if(this->tough) {
-    health = 6;
+    health = 5;
     // Pre-compute stable crack geometry (rotation-invariant: stored as t and perp fractions).
     // seg count mirrors the renderer so crack_vertex indices stay in range.
     int segs = (radius < 15) ? 5 : (radius < 30) ? 6 : (radius > 200) ? 9 : 7;

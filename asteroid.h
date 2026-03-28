@@ -46,7 +46,7 @@ public:
   bool elastic;             // true = bounces off other elastic asteroids
   bool tough;               // true = tough asteroid: absorbs 5 hits before dying
 
-  int health;               // hits remaining (tough: 6, others: 1)
+  int health;               // hits remaining (tough: 5, others: 1)
   int crack_vertex[5];      // which polygon vertex each crack line starts from
   float crack_t[5];         // position along vertex→center (0.35–0.65)
   float crack_perp[5];      // perpendicular jitter as fraction of vertex distance (−0.35..0.35)
