@@ -18,7 +18,7 @@ Mix_Chunk * Asteroid::thud_sound = NULL;
 
 const int Asteroid::max_radius = Asteroid::radius_variation + Asteroid::minimum_radius;
 
-Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool teleporting, bool quantum, bool elastic) : CompositeObject(), killed(false) {
+Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool teleporting, bool quantum, bool tough) : CompositeObject(), killed(false) {
   position = WrappedPoint();
   this->reflective = reflective;
   this->teleporting = teleporting;
@@ -30,7 +30,7 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   this->quantum_observed = true; // start in observed (collapsed) state
   this->quantum_base_speed = 0.0f; // set after velocity is computed below
   this->elastic = reflective; // reflective asteroids bounce off other elastic asteroids
-  this->tough = elastic;
+  this->tough = tough;
   if(this->tough) {
     health = 5;
     // Pre-compute stable crack geometry (rotation-invariant: stored as t and perp fractions).
@@ -54,7 +54,7 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   if(reflective) invincible = true;
   if(teleporting) invincible = false; // teleporting asteroids are killable when vulnerable
   if(quantum) invincible = false;     // quantum asteroids start killable (observed state)
-  if(this->tough) {
+  if(tough) {
     radius = rand() % 70 + 60;  // 60–130: medium, noticeable heft
   } else if(teleporting) {
     radius = rand() % 100 + 70; // 70–170: noticeably large
