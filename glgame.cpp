@@ -485,7 +485,18 @@ void GLGame::tick(int delta) {
             Point contact(
               (a->position.x() + b->position.x()) * 0.5f,
               (a->position.y() + b->position.y()) * 0.5f);
-            if(is_point_faced_by_any_player(contact)) {
+            bool on_screen = false;
+            for(auto* glship : *players) {
+              if(!glship->ship->is_alive()) continue;
+              float fov_deg = glship->view_angle();
+              float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
+              float aspect = window.x() / (float)(window.y() / num_y_viewports());
+              float half_w = half_h * aspect;
+              float cull_r2 = (half_w * half_w + half_h * half_h) * 1.1f;
+              float dist = glship->ship->position.distance_to(contact);
+              if(dist * dist <= cull_r2) { on_screen = true; break; }
+            }
+            if(on_screen) {
               static Uint32 last_asteroid_ting_tick = UINT32_MAX;
               Uint32 now = SDL_GetTicks();
               if(now - last_asteroid_ting_tick >= 125) {
