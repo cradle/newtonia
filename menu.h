@@ -23,6 +23,7 @@ private:
   static const int default_world_width, default_world_height;
 
   Mix_Music *music = NULL;
+  bool r2_active = false;
 };
 
 #endif

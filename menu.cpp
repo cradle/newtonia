@@ -84,6 +84,25 @@ void Menu::tick(int delta) {
   if(viewpoint.x() > default_world_width) {
       viewpoint += Point(-default_world_width,0);
   }
+
+  // Poll R2 trigger directly each tick as a fallback for the first menu load,
+  // where SDL may not have sent initial axis-motion events for the trigger yet.
+  bool r2_pressed = false;
+  int n = SDL_NumJoysticks();
+  for(int i = 0; i < n; i++) {
+    SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(SDL_JoystickGetDeviceInstanceID(i));
+    if(!ctrl) continue;
+    if(SDL_GameControllerGetAxis(ctrl, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 8000) {
+      r2_pressed = true;
+      if(!r2_active) {
+        r2_active = true;
+        request_state_change(new GLGame(ctrl));
+        return;
+      }
+      break;
+    }
+  }
+  if(!r2_pressed) r2_active = false;
 }
 
 void Menu::controller(SDL_Event event) {
@@ -98,11 +117,16 @@ void Menu::controller(SDL_Event event) {
       request_state_change(new GLGame(SDL_GameControllerFromInstanceID(event.cbutton.which)));
     }
   } else if(event.type == SDL_CONTROLLERAXISMOTION) {
-    if(event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT && event.caxis.value > 8000) {
+    if(event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) {
+      bool pressed = event.caxis.value > 8000;
+      if(pressed && !r2_active) {
+        r2_active = true;
 #ifdef __EMSCRIPTEN__
-      EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
+        EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
-      request_state_change(new GLGame(SDL_GameControllerFromInstanceID(event.caxis.which)));
+        request_state_change(new GLGame(SDL_GameControllerFromInstanceID(event.caxis.which)));
+      }
+      if(!pressed) r2_active = false;
     }
   }
 }
