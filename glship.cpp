@@ -314,28 +314,38 @@ void GLShip::controller_axis_input(SDL_Event event) {
     float scale = (std::abs((float)event.caxis.value) - deadzone) / (float)(32767 - deadzone);
     if(scale < 0.0f) scale = 0.0f;
     if(event.caxis.value > deadzone) {
+      left_axis_x_active = true;
       ship->rotation_scale = scale;
       ship->rotate_right(true);
       ship->rotate_left(false);
     } else if (event.caxis.value < -deadzone) {
+      left_axis_x_active = true;
       ship->rotation_scale = scale;
       ship->rotate_left(true);
       ship->rotate_right(false);
     } else {
-      ship->rotation_scale = 1.0f;
-      ship->rotate_left(false);
-      ship->rotate_right(false);
+      if (left_axis_x_active) {
+        ship->rotation_scale = 1.0f;
+        ship->rotate_left(false);
+        ship->rotate_right(false);
+      }
+      left_axis_x_active = false;
     }
   } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
     if(event.caxis.value > deadzone) {
+      left_axis_y_active = true;
       ship->reverse(true);
       ship->thrust(false);
     } else if (event.caxis.value < -deadzone) {
+      left_axis_y_active = true;
       ship->thrust(true);
       ship->reverse(false);
     } else {
-      ship->thrust(false);
-      ship->reverse(false);
+      if (left_axis_y_active) {
+        ship->thrust(false);
+        ship->reverse(false);
+      }
+      left_axis_y_active = false;
     }
   } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) {
     bool pressed = event.caxis.value > 8000;
