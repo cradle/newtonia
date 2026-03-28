@@ -218,6 +218,10 @@ void isVisible(int state) {
 void init_controllers_and_audio() {
   SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
   SDL_SetHint(SDL_HINT_GAMECONTROLLERCONFIG, "1");
+  // On Steam Deck, bypass Steam Input and use HIDAPI directly so that d-pad
+  // button events and touchpad SDL_CONTROLLERTOUCHPAD* events are available.
+  // Without this, Steam Input maps the touchpad to mouse and may remap d-pad.
+  SDL_SetHint("SDL_JOYSTICK_HIDAPI_STEAMDECK", "1");
   Uint32 SDL_INIT_FLAGS = SDL_INIT_GAMECONTROLLER;
   // custom mappings SDL_HINT_GAMECONTROLLERCONFIG;
   if(ENABLE_AUDIO) {
