@@ -348,7 +348,6 @@ void Ship::add_god_mode(int duration_ms) {
     if(dynamic_cast<Weapon::GodMode*>(*it)) {
       (*it)->set_ammo(duration_ms);
       invincible = true;
-      time_left_invincible = INT_MAX;
       return;
     }
   }
