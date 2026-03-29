@@ -332,16 +332,24 @@ void GLShip::controller_axis_input(SDL_Event event) {
       left_axis_x_active = false;
     }
   } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
+    float scale = (std::abs((float)event.caxis.value) - deadzone) / (float)(32767 - deadzone);
+    if(scale < 0.0f) scale = 0.0f;
     if(event.caxis.value > deadzone) {
       left_axis_y_active = true;
+      ship->reverse_analog = scale;
+      ship->thrust_analog  = 1.0f;
       ship->reverse(true);
       ship->thrust(false);
     } else if (event.caxis.value < -deadzone) {
       left_axis_y_active = true;
+      ship->thrust_analog  = scale;
+      ship->reverse_analog = 1.0f;
       ship->thrust(true);
       ship->reverse(false);
     } else {
       if (left_axis_y_active) {
+        ship->thrust_analog  = 1.0f;
+        ship->reverse_analog = 1.0f;
         ship->thrust(false);
         ship->reverse(false);
       }
