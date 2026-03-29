@@ -167,7 +167,7 @@ void GLGame::add_asteroids() {
   for(int i = 0; i < num_teleporting; i++) {
     objects->push_back(new Asteroid(false, false, false, true));
   }
-  int num_quantum = (generation >= 5) ? (generation - 5) / 3 + 1 : 0;
+  int num_quantum = (generation >= 0) ? (generation - 0) / 3 + 1 : 0;
   for(int i = 0; i < num_quantum; i++) {
     objects->push_back(new Asteroid(false, false, false, false, true));
   }
