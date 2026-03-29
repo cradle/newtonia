@@ -164,14 +164,15 @@ Asteroid::Asteroid(Asteroid const *mother) {
   teleport_pending = false;
   teleport_angle = 0.0f;
   vulnerable_time_left = 0;
-  quantum = false;
+  quantum = mother->quantum;
   quantum_observed = true;
-  quantum_base_speed = 0.0f;
+  quantum_base_speed = quantum ? velocity.magnitude() : 0.0f;
   elastic = mother->elastic;
   tough = false;
   health = 1;
   killed = false;
   invincible = mother->invincible;
+  if(quantum) invincible = false; // quantum children start in observed (killable) state
   if(!invincible) {
     num_killable++;
   }
