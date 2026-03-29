@@ -1,9 +1,10 @@
 #include "state_manager.h"
 #include "glgame.h"
 #include "menu.h"
+#include "splash.h"
 
 StateManager::StateManager() {
-  state = new Menu();
+  state = new Splash();
 }
 
 StateManager::~StateManager() {
