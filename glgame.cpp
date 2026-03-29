@@ -63,6 +63,7 @@ GLGame::GLGame(SDL_GameController *controller) :
 
   rearstars = glGenLists(1);
   frontstars = glGenLists(1);
+  warp_pass_ = new WarpPass();
 
   time_until_next_step = 0;
   num_frames = 0;
@@ -146,6 +147,7 @@ GLGame::~GLGame() {
   }
   glDeleteLists(rearstars, 1);
   glDeleteLists(frontstars, 1);
+  delete warp_pass_;
 }
 
 void GLGame::add_asteroids() {
@@ -1036,6 +1038,46 @@ void GLGame::draw_perspective(GLShip *glship) const {
         // fill behind visible asteroids. Drawing it again after game objects would
         // overdraw visible asteroids on top of invisible ones.
         starfield->draw_front_stars_near(ax, ay, a->radius);
+
+        glPopMatrix();
+      }
+    }
+  }
+
+  // --- Warp pass: distort the contents of each invisible asteroid ---
+  // Check whether any invisible asteroids are present to avoid the capture cost.
+  bool has_invisible = false;
+  for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
+    if ((*it)->invisible && (*it)->alive) { has_invisible = true; break; }
+  }
+
+  if (has_invisible) {
+    // Snapshot the current viewport (stars + game objects) into the warp texture.
+    GLint vp[4];
+    glGetIntegerv(GL_VIEWPORT, vp);
+    warp_pass_->capture(vp[0], vp[1], vp[2], vp[3]);
+
+    // Re-run the tile loop with the warp shader to overwrite each invisible
+    // asteroid's black fill with the gravitational-lens distortion.
+    for (int x = -1; x <= 1; x++) {
+      for (int y = -1; y <= 1; y++) {
+        float smin_x = world.x()*x - position.x();
+        float smax_x = smin_x + world.x();
+        float smin_y = world.y()*y - position.y();
+        float smax_y = smin_y + world.y();
+        float snx = (smin_x > 0) ? smin_x : (smax_x < 0) ? -smax_x : 0;
+        float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
+        if (snx*snx + sny*sny > cull_r2) continue;
+
+        glPushMatrix();
+        glRotatef(direction, 0.0f, 0.0f, 1.0f);
+        glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+
+        for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
+          Asteroid const *a = *it;
+          if (!a->invisible || !a->alive) continue;
+          warp_pass_->draw(a, a->position.x(), a->position.y(), vp[0], vp[1], vp[2], vp[3]);
+        }
 
         glPopMatrix();
       }

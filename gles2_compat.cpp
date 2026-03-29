@@ -476,6 +476,10 @@ void gles2_shutdown() {
     s_lists.clear();
 }
 
+void gles2_get_mvp(float mvp[16]) {
+    get_mvp(mvp);
+}
+
 // ---- Matrix stack ----
 
 void glMatrixMode(GLenum mode) {
