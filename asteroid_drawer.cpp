@@ -181,7 +181,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     AsteroidVerts const &v = verts[ai];
     if (v.invisible) continue;
     if (v.quantum && v.quantum_observed)        glColor4f(0.15f, 0.0f, 0.35f, 0.85f);
-    else if (v.quantum)                         glColor4f(0.05f, 0.0f, 0.12f, 0.4f);
+    else if (v.quantum)                         glColor4f(0.1f, 0.0f, 0.25f, 0.6f);
     else if (v.teleporting)                     glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
     else if (v.reflective)                      glColor4f(0.0f, 0.4f, 0.5f, 0.6f);
     else if (v.invincible)                      glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
@@ -208,7 +208,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     AsteroidVerts const &v = verts[ai];
     if (v.invisible) continue;
     if (v.quantum && v.quantum_observed)        glColor4f(0.65f, 0.1f, 1.0f, 1.0f);
-    else if (v.quantum)                         glColor4f(0.3f, 0.05f, 0.5f, 0.35f);
+    else if (v.quantum)                         glColor4f(0.5f, 0.1f, 0.8f, 0.65f);
     else if (v.teleporting)                     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     else if (v.reflective)                      glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
     else if (v.invincible)                      glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
