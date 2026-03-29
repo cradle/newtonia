@@ -162,42 +162,37 @@ static const char *WARP_VERT =
 
 // Distortion model
 // ─────────────────
-// For a fragment at normalised distance t = dist/radius from the asteroid
-// centre (t ∈ [0,1]):
+// uWarpRadiusNDC is now a vec2 (rx, ry): the NDC extents of the asteroid
+// radius measured horizontally and vertically.  Because perspective maps a
+// world-space circle to a taller NDC ellipse on landscape screens (the Y
+// NDC range covers fewer pixels per unit than X), using a single scalar
+// radius produced an elliptical warp effect on screen.  Using per-axis
+// radii to normalise the distance calculation makes the falloff circular
+// in screen pixels, matching the actual asteroid shape.
 //
-//   warp = 0.55 * sin(t·π) * radius_ndc
-//        + 0.04 * sin(t·10 + rotation) * (1−t) * radius_ndc   ← ripple
-//
-// The sample coordinate is displaced *outward* by `warp` from the asteroid
-// centre.  At t ≈ 0.5 the outward shift exceeds the remaining distance to
-// the edge (0.5·r + 0.55·r ≈ 1.05·r), so we sample from *outside* the
-// asteroid – pulling visible stars and game objects inward into the lens.
-// The centre (t≈0) and edge (t≈1) have near-zero warp, producing the
-// classic black-hole shadow + Einstein-ring appearance.
-//
-// A smooth edge darkening hints at the asteroid boundary even in empty space.
+// The warp displaces samples *outward* from the asteroid centre.  At t≈0.5
+// the shift exceeds the remaining distance to the edge, pulling exterior
+// scene content inward to create a gravitational-lens / Einstein-ring look.
 static const char *WARP_FRAG =
     WARP_PREC
     "varying vec4      vWarpClip;\n"
     "uniform sampler2D uWarpTex;\n"
     "uniform vec2      uWarpCenterNDC;\n"
-    "uniform float     uWarpRadiusNDC;\n"
-    "uniform float     uWarpTime;\n"       // asteroid rotation (radians)
+    "uniform vec2      uWarpRadiusNDC;\n"   // (rx, ry): per-axis NDC radii
+    "uniform float     uWarpTime;\n"
     "void main() {\n"
-    "  vec2  ndc  = vWarpClip.xy / vWarpClip.w;\n"
-    "  vec2  d    = ndc - uWarpCenterNDC;\n"
-    "  float dist = length(d);\n"
-    "  float t    = dist / uWarpRadiusNDC;\n"
+    "  vec2  ndc   = vWarpClip.xy / vWarpClip.w;\n"
+    "  vec2  d     = ndc - uWarpCenterNDC;\n"
+    // Normalise per-axis so t=1 at the circular asteroid boundary in screen pixels.
+    "  vec2  dNorm = d / uWarpRadiusNDC;\n"
+    "  float t     = length(dNorm);\n"
     "  if (t > 1.0) discard;\n"
-    // Outward radial warp: peaks at midpoint, zero at centre and edge.
-    "  float warp  = 0.55 * sin(t * 3.14159265) * uWarpRadiusNDC;\n"
-    // Subtle time-based ripple (uses asteroid rotation as a clock).
-    "  warp += 0.04 * sin(t * 10.0 + uWarpTime) * (1.0 - t) * uWarpRadiusNDC;\n"
-    "  vec2 dir = (dist > 0.001) ? d / dist : vec2(0.0);\n"
-    "  vec2 warpedNDC = ndc + dir * warp;\n"
-    // NDC [-1,1] → texture UV [0,1]. The texture covers the viewport exactly.
+    // Direction in screen-circular space, then back to NDC for the displacement.
+    "  vec2 dir = (t > 0.001) ? dNorm / t : vec2(0.0);\n"
+    "  float ws = 0.55 * sin(t * 3.14159265)\n"
+    "           + 0.04 * sin(t * 10.0 + uWarpTime) * (1.0 - t);\n"
+    "  vec2 warpedNDC = ndc + dir * uWarpRadiusNDC * ws;\n"
     "  vec2 uv = clamp((warpedNDC + vec2(1.0)) * 0.5, 0.0, 1.0);\n"
-    // Dim the edge to hint at the asteroid boundary.
     "  float edge = smoothstep(0.75, 1.0, t);\n"
     "  vec4 col   = texture2D(uWarpTex, uv);\n"
     "  gl_FragColor = vec4(col.rgb * (1.0 - 0.45 * edge), col.a);\n"
@@ -300,12 +295,22 @@ void WarpPass::draw(const Asteroid *a, float ax, float ay,
     float cx = (mvp[0]*ax + mvp[4]*ay + mvp[12]) / cw;
     float cy = (mvp[1]*ax + mvp[5]*ay + mvp[13]) / cw;
 
-    // ---- Estimate NDC radius by projecting a point on the edge ----
+    // ---- Estimate NDC radii by projecting edge points in X and Y ----
+    // The asteroid is circular in world space but the perspective projection
+    // maps it to a taller NDC ellipse on landscape screens (Y NDC covers
+    // fewer pixels per unit than X).  Both radii are needed so the shader
+    // can normalise per-axis and produce a circular falloff in screen pixels.
     float ew = mvp[3]*(ax + a->radius) + mvp[7]*ay + mvp[15];
     if (fabsf(ew) < 1e-6f) ew = 1.0f;
     float ex = (mvp[0]*(ax + a->radius) + mvp[4]*ay + mvp[12]) / ew;
-    float radius_ndc = fabsf(ex - cx);
-    if (radius_ndc < 1e-5f) return;
+    float radius_ndc_x = fabsf(ex - cx);
+    if (radius_ndc_x < 1e-5f) return;
+
+    float eh = mvp[3]*ax + mvp[7]*(ay + a->radius) + mvp[15];
+    if (fabsf(eh) < 1e-6f) eh = 1.0f;
+    float ey = (mvp[1]*ax + mvp[5]*(ay + a->radius) + mvp[13]) / eh;
+    float radius_ndc_y = fabsf(ey - cy);
+    if (radius_ndc_y < 1e-5f) return;
 
     // ---- Build triangle-fan polygon matching the asteroid shape ----
     // seg count mirrors AsteroidDrawer::seg_count(): 5 + radius/60, capped at 9.
@@ -337,7 +342,7 @@ void WarpPass::draw(const Asteroid *a, float ax, float ay,
     glUniform1i       (u_tex_,        0);
     glUniformMatrix4fv(u_mvp_,        1, GL_FALSE, mvp);
     glUniform2f       (u_center_ndc_, cx, cy);
-    glUniform1f       (u_radius_ndc_, radius_ndc);
+    glUniform2f       (u_radius_ndc_, radius_ndc_x, radius_ndc_y);
     // Use the asteroid's rotation (in radians) as a time value so
     // the ripple animates as the asteroid spins.
     glUniform1f       (u_time_,       a->rotation * 0.01745329f);
