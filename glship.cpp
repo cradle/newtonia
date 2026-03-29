@@ -405,6 +405,8 @@ void GLShip::touch_joystick_input(float nx, float ny) {
     ship->reverse(true);
     ship->thrust(false);
   } else {
+    ship->thrust_analog  = 1.0f;
+    ship->reverse_analog = 1.0f;
     ship->thrust(false);
     ship->reverse(false);
   }
