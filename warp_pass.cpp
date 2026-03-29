@@ -353,6 +353,12 @@ void WarpPass::draw(const Asteroid *a, float ax, float ay,
     glDisableVertexAttribArray(a_pos_);
 
     glBindTexture(GL_TEXTURE_2D, 0);
-    // Leave glUseProgram as-is: the gles2_compat layer (or fixed-function
-    // fallback on desktop) will restore its own program on the next draw call.
+#if !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__)
+    // Restore the fixed-function pipeline.  Desktop OpenGL does not clear the
+    // bound program automatically when switching back to glBegin/glEnd calls,
+    // so the warp shader would remain active for all subsequent rendering.
+    // On GLES2 targets, gles2_compat explicitly calls glUseProgram(s_prog)
+    // before each draw, so no reset is needed there.
+    glUseProgram(0);
+#endif
 }
