@@ -1,6 +1,19 @@
-// On Linux desktop, GL_GLEXT_PROTOTYPES must be defined before any OpenGL
-// header is included so that <GL/glext.h> declares the OpenGL 2.0+ shader
-// functions (glCreateShader, glUseProgram, etc.).
+// ============================================================
+// Platform GL setup
+// ============================================================
+//
+// Desktop targets need OpenGL 2.0+ shader API declarations/loaders
+// that are absent from the vanilla GL 1.1 headers shipped with GLUT.
+//
+//   Linux   – GL_GLEXT_PROTOTYPES causes <GL/glext.h> to declare
+//             all the function prototypes; libGL exports them.
+//   Windows – opengl32.dll only exports GL 1.1; we load 2.0+
+//             functions at runtime via wglGetProcAddress.
+//   macOS   – <GLUT/glut.h> already pulls in OpenGL up to 4.1;
+//             no extra work needed.
+//   GLES2   – shader API is core; gles2_compat.h provides the
+//             necessary MVP accessor.
+
 #if !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__)
 #  if defined(__linux__)
 #    ifndef GL_GLEXT_PROTOTYPES
@@ -9,19 +22,88 @@
 #  endif
 #endif
 
-#include "warp_pass.h"
+#include "warp_pass.h"   // pulls in gl_compat.h → platform GL/GLUT headers
 
-// After gl_compat.h has pulled in the platform GL headers, include glext.h on
-// Linux to get the OpenGL 2.0+ shader-API declarations.
+// Post-GL-header includes and Windows function loader.
 #if !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__)
 #  if defined(__linux__)
+     // GL_GLEXT_PROTOTYPES was set before the GL headers were included;
+     // glext.h now adds declarations for all extension functions.
 #    include <GL/glext.h>
-#  endif
-#endif
 
-#include <cmath>
-#include <cstring>
-#include <SDL.h>
+#  elif defined(_WIN32)
+     // Include glext.h for constants (GL_VERTEX_SHADER, GL_CLAMP_TO_EDGE,
+     // GL_TEXTURE0 …) and PFN* typedefs. Do NOT define GL_GLEXT_PROTOTYPES
+     // here – opengl32.dll doesn't export those symbols and the linker
+     // would error.
+#    include <GL/glext.h>
+
+     // Table of every GL 2.0+ function this file calls.
+#    define WARP_GL_FNS \
+       X(PFNGLCREATESHADERPROC,             glCreateShader           ) \
+       X(PFNGLSHADERSOURCEPROC,             glShaderSource           ) \
+       X(PFNGLCOMPILESHADERPROC,            glCompileShader          ) \
+       X(PFNGLGETSHADERIVPROC,              glGetShaderiv            ) \
+       X(PFNGLGETSHADERINFOLOGPROC,         glGetShaderInfoLog       ) \
+       X(PFNGLCREATEPROGRAMPROC,            glCreateProgram          ) \
+       X(PFNGLATTACHSHADERPROC,             glAttachShader           ) \
+       X(PFNGLLINKPROGRAMPROC,              glLinkProgram            ) \
+       X(PFNGLDELETESHADERPROC,             glDeleteShader           ) \
+       X(PFNGLDELETEPROGRAMPROC,            glDeleteProgram          ) \
+       X(PFNGLGETPROGRAMIVPROC,             glGetProgramiv           ) \
+       X(PFNGLGETPROGRAMINFOLOGPROC,        glGetProgramInfoLog      ) \
+       X(PFNGLGETATTRIBLOCATIONPROC,        glGetAttribLocation      ) \
+       X(PFNGLGETUNIFORMLOCATIONPROC,       glGetUniformLocation     ) \
+       X(PFNGLUSEPROGRAMPROC,               glUseProgram             ) \
+       X(PFNGLACTIVETEXTUREPROC,            glActiveTexture          ) \
+       X(PFNGLUNIFORM1IPROC,                glUniform1i              ) \
+       X(PFNGLUNIFORMMATRIX4FVPROC,         glUniformMatrix4fv       ) \
+       X(PFNGLUNIFORM2FPROC,                glUniform2f              ) \
+       X(PFNGLUNIFORM1FPROC,                glUniform1f              ) \
+       X(PFNGLENABLEVERTEXATTRIBARRAYPROC,  glEnableVertexAttribArray) \
+       X(PFNGLVERTEXATTRIBPOINTERPROC,      glVertexAttribPointer    ) \
+       X(PFNGLDISABLEVERTEXATTRIBARRAYPROC, glDisableVertexAttribArray)
+
+     // Declare file-scope function pointers (wp_ prefix avoids collisions).
+#    define X(T, name) static T wp_##name = NULL;
+     WARP_GL_FNS
+#    undef X
+
+     // Load all pointers from the current OpenGL context.
+     static void warp_load_gl_fns() {
+#      define X(T, name) wp_##name = (T)wglGetProcAddress(#name);
+       WARP_GL_FNS
+#      undef X
+     }
+
+     // Redirect the standard GL names to our runtime-loaded pointers
+     // for all code below this point in this translation unit.
+#    define glCreateShader            wp_glCreateShader
+#    define glShaderSource            wp_glShaderSource
+#    define glCompileShader           wp_glCompileShader
+#    define glGetShaderiv             wp_glGetShaderiv
+#    define glGetShaderInfoLog        wp_glGetShaderInfoLog
+#    define glCreateProgram           wp_glCreateProgram
+#    define glAttachShader            wp_glAttachShader
+#    define glLinkProgram             wp_glLinkProgram
+#    define glDeleteShader            wp_glDeleteShader
+#    define glDeleteProgram           wp_glDeleteProgram
+#    define glGetProgramiv            wp_glGetProgramiv
+#    define glGetProgramInfoLog       wp_glGetProgramInfoLog
+#    define glGetAttribLocation       wp_glGetAttribLocation
+#    define glGetUniformLocation      wp_glGetUniformLocation
+#    define glUseProgram              wp_glUseProgram
+#    define glActiveTexture           wp_glActiveTexture
+#    define glUniform1i               wp_glUniform1i
+#    define glUniformMatrix4fv        wp_glUniformMatrix4fv
+#    define glUniform2f               wp_glUniform2f
+#    define glUniform1f               wp_glUniform1f
+#    define glEnableVertexAttribArray  wp_glEnableVertexAttribArray
+#    define glVertexAttribPointer      wp_glVertexAttribPointer
+#    define glDisableVertexAttribArray wp_glDisableVertexAttribArray
+
+#  endif // _WIN32
+#endif   // desktop
 
 // ============================================================
 // Platform-specific MVP retrieval
@@ -29,7 +111,7 @@
 
 #if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__)
 // GLES2: matrix state lives inside gles2_compat – query it directly.
-#include "gles2_compat.h"
+#  include "gles2_compat.h"
 static void get_current_mvp(float mvp[16]) {
     gles2_get_mvp(mvp);
 }
@@ -57,8 +139,12 @@ static void get_current_mvp(float mvp[16]) {
 // Shader source
 // ============================================================
 
-// GLES2 fragment shaders require an explicit precision qualifier; desktop
-// GLSL (version 110/120) does not support the keyword at all.
+#include <cmath>
+#include <cstring>
+#include <SDL.h>
+
+// GLES2 fragment shaders require an explicit precision qualifier;
+// desktop GLSL (version 110/120) does not support the keyword at all.
 #if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__)
 #  define WARP_PREC "precision mediump float;\n"
 #else
@@ -86,8 +172,8 @@ static const char *WARP_VERT =
 // centre.  At t ≈ 0.5 the outward shift exceeds the remaining distance to
 // the edge (0.5·r + 0.55·r ≈ 1.05·r), so we sample from *outside* the
 // asteroid – pulling visible stars and game objects inward into the lens.
-// The centre (t≈0) and edge (t≈1) have near-zero warp so they stay dark,
-// producing the classic black-hole shadow + Einstein-ring appearance.
+// The centre (t≈0) and edge (t≈1) have near-zero warp, producing the
+// classic black-hole shadow + Einstein-ring appearance.
 //
 // A smooth edge darkening hints at the asteroid boundary even in empty space.
 static const char *WARP_FRAG =
@@ -109,7 +195,7 @@ static const char *WARP_FRAG =
     "  warp += 0.04 * sin(t * 10.0 + uWarpTime) * (1.0 - t) * uWarpRadiusNDC;\n"
     "  vec2 dir = (dist > 0.001) ? d / dist : vec2(0.0);\n"
     "  vec2 warpedNDC = ndc + dir * warp;\n"
-    // NDC [-1,1] → texture UV [0,1].  The texture covers the viewport exactly.
+    // NDC [-1,1] → texture UV [0,1]. The texture covers the viewport exactly.
     "  vec2 uv = clamp((warpedNDC + vec2(1.0)) * 0.5, 0.0, 1.0);\n"
     // Dim the edge to hint at the asteroid boundary.
     "  float edge = smoothstep(0.75, 1.0, t);\n"
@@ -143,6 +229,10 @@ WarpPass::WarpPass()
       a_pos_(-1), u_mvp_(-1), u_tex_(-1),
       u_center_ndc_(-1), u_radius_ndc_(-1), u_time_(-1)
 {
+#ifdef _WIN32
+    warp_load_gl_fns();
+#endif
+
     glGenTextures(1, &tex_);
     glBindTexture(GL_TEXTURE_2D, tex_);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -248,7 +338,7 @@ void WarpPass::draw(const Asteroid *a, float ax, float ay,
     glUniformMatrix4fv(u_mvp_,        1, GL_FALSE, mvp);
     glUniform2f       (u_center_ndc_, cx, cy);
     glUniform1f       (u_radius_ndc_, radius_ndc);
-    // Use the asteroid's rotation (converted to radians) as a time value so
+    // Use the asteroid's rotation (in radians) as a time value so
     // the ripple animates as the asteroid spins.
     glUniform1f       (u_time_,       a->rotation * 0.01745329f);
 
