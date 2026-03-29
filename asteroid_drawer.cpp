@@ -82,14 +82,6 @@ void AsteroidDrawer::draw_invisible_mask(Asteroid const *object, float x, float 
     glVertex2f(x + object->radius * off * cosf(angle), y + object->radius * off * sinf(angle));
   }
   glEnd();
-  glLineWidth(2.5f);
-  glBegin(GL_LINE_LOOP);
-  for (int i = 0; i < segs; i++) {
-    float angle = rot + i * step;
-    float off = object->vertex_offsets[i];
-    glVertex2f(x + object->radius * off * cosf(angle), y + object->radius * off * sinf(angle));
-  }
-  glEnd();
 }
 
 // Cached per-asteroid vertex data, computed once and shared between fill and
