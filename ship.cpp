@@ -757,7 +757,11 @@ void Ship::collide_grid(Grid &grid, int delta) {
         ++i;
       } else {
         bool was_invincible = object->invincible;
-        if(bullets[i].kills_invincible) object->invincible = false;
+        bool was_teleport_vulnerable = ast ? ast->teleport_vulnerable : false;
+        if(bullets[i].kills_invincible) {
+          object->invincible = false;
+          if(ast && ast->teleporting) ast->teleport_vulnerable = true;
+        }
         if(object->kill()) {
           object->invincible = was_invincible;
           if(was_invincible) Asteroid::num_killable++;
