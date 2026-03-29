@@ -22,6 +22,7 @@ public:
   bool segment_hit(Point a, Point b, float &t_hit) const;
 
   friend class AsteroidDrawer;
+  friend class WarpPass;
 
   static int num_killable;
 

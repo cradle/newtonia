@@ -136,3 +136,7 @@ inline void glClearAccum(GLfloat /*r*/, GLfloat /*g*/,
 
 // ---- GLUT timing stub ----
 int glutGet(GLenum query);
+
+// ---- MVP matrix access (used by warp pass) ----
+// Returns the combined Projection × ModelView matrix (column-major, 16 floats).
+void gles2_get_mvp(float mvp[16]);

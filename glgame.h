@@ -4,6 +4,7 @@
 #include "state.h"
 #include "glship.h"
 #include "point.h"
+#include "warp_pass.h"
 #include "grid.h"
 #include "glstarfield.h"
 #include "glstation.h"
@@ -88,6 +89,7 @@ private:
   static const float shield_pickup_drop_chance;
   static const float god_mode_pickup_drop_chance;
   unsigned int frontstars, rearstars;
+  mutable WarpPass *warp_pass_;
 
   Mix_Chunk *tic_sound = NULL;
   Mix_Chunk *pickup_sound = NULL;
