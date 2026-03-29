@@ -27,6 +27,9 @@ static const float SAFE_HW = 636.0f;
 static const float SAFE_HH = 281.0f;
 
 ScreenshotGame::ScreenshotGame() : GLGame() {
+  // 0. Freeze immediately so no tick/controller path can add a second player.
+  screenshot_mode_ = true;
+
   // 1. Widen the world to match the view so asteroids don't loop.
   resize_world(WORLD_W, WORLD_H);
 
@@ -45,7 +48,7 @@ ScreenshotGame::ScreenshotGame() : GLGame() {
   Asteroid::num_killable = 0;
 
   // 4. Spawn asteroids with rejection sampling for the safe zone.
-  //    40 normal (killable) + 40 invincible = 80 total.
+  //    80 normal (killable) + 80 invincible = 160 total.
   auto place = [&](bool invincible) {
     for(int attempt = 0; attempt < 200; attempt++) {
       Asteroid *a = new Asteroid(invincible);
@@ -71,11 +74,10 @@ ScreenshotGame::ScreenshotGame() : GLGame() {
     objects->push_back(new Asteroid(invincible));
   };
 
-  for(int i = 0; i < 40; i++) place(false);
-  for(int i = 0; i < 40; i++) place(true);
+  for(int i = 0; i < 80; i++) place(false);
+  for(int i = 0; i < 80; i++) place(true);
 
-  // 5. Freeze physics and disable HUD / ship rendering.
-  screenshot_mode_ = true;
+  // (screenshot_mode_ already set at top of constructor)
 }
 
 #endif // !__ANDROID__ && !__EMSCRIPTEN__

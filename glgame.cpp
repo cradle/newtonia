@@ -813,7 +813,7 @@ void GLGame::draw(void) {
       draw_world(players->back(), false);
     }
     //Draw map after - for partial translucency
-    draw_map();
+    if(!screenshot_mode_) draw_map();
   }
 }
 
