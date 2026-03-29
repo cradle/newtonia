@@ -15,9 +15,6 @@ public:
   void controller(SDL_Event event);
   void tick(int delta);
 
-private:
-  static const float ORTHO_W;
-  static const float ORTHO_H;
 };
 
 #endif

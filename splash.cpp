@@ -3,10 +3,6 @@
 #include "typer.h"
 #include "gl_compat.h"
 
-// Fixed ortho extents so text always fits within 1280x720
-const float Splash::ORTHO_W = 1280.0f;
-const float Splash::ORTHO_H = 720.0f;
-
 Splash::Splash() : State() {}
 
 void Splash::draw() {
@@ -14,7 +10,7 @@ void Splash::draw() {
 
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluOrtho2D(-ORTHO_W, ORTHO_W, -ORTHO_H, ORTHO_H);
+  gluOrtho2D(-window.x(), window.x(), -window.y(), window.y());
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
   glViewport(0, 0, window.x(), window.y());
