@@ -2,6 +2,7 @@
 #if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
 
 #include <stdlib.h> // For EXIT_SUCCESS
+#include <string.h> // For strcmp
 #include <time.h>   // For time()
 
 #include <SDL.h>
@@ -254,16 +255,27 @@ void init(int &argc, char* argv[], float width, float height);
 
 int main(int argc, char* argv[]) {
   srand(time(NULL));
-  init(argc, argv, 800, 600);
-  glutFullScreen();
-  is_fullscreen = true;
+
+  bool screenshot_mode = false;
+  for(int i = 1; i < argc; i++) {
+    if(strcmp(argv[i], "--screenshot") == 0) screenshot_mode = true;
+  }
+
+  if(screenshot_mode) {
+    init(argc, argv, 3840, 1240);
+  } else {
+    init(argc, argv, 800, 600);
+    glutFullScreen();
+    is_fullscreen = true;
 #ifdef __APPLE__
-  glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
+    glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
 #else
-  set_cursor_hidden(true);
+    set_cursor_hidden(true);
 #endif
+  }
+
   init_controllers_and_audio();
-  game = new StateManager();
+  game = new StateManager(screenshot_mode);
   for(int i = 0; i < 2; i++) {
     if(controllers[i]) game->controller_added(controllers[i]);
   }

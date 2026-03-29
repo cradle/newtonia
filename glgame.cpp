@@ -177,6 +177,12 @@ void GLGame::add_asteroids() {
   }
 }
 
+void GLGame::set_camera_position(float x, float y) {
+  if(!players->empty()) {
+    players->front()->ship->position = WrappedPoint(x, y);
+  }
+}
+
 void GLGame::toggle_pause() {
   running = !running;
   if (running) {
@@ -260,6 +266,8 @@ bool GLGame::cleared() const {
 }
 
 void GLGame::tick(int delta) {
+  if(screenshot_mode_) return;
+
   current_time += delta;
 
   if (!running) {
@@ -766,19 +774,21 @@ void GLGame::draw_objects(float direction, bool minimap) const {
     glPopMatrix();
   }
 
-  std::list<GLShip*>::iterator o;
-  for(o = players->begin(); o != players->end(); o++) {
-    glPushMatrix();
-    (*o)->draw(minimap);
-    glPopMatrix();
-  }
-  for(o = enemies->begin(); o != enemies->end(); o++) {
-    glPushMatrix();
-    (*o)->draw(minimap);
-    glPopMatrix();
-  }
+  if(!screenshot_mode_) {
+    std::list<GLShip*>::iterator o;
+    for(o = players->begin(); o != players->end(); o++) {
+      glPushMatrix();
+      (*o)->draw(minimap);
+      glPopMatrix();
+    }
+    for(o = enemies->begin(); o != enemies->end(); o++) {
+      glPushMatrix();
+      (*o)->draw(minimap);
+      glPopMatrix();
+    }
 
-  if(station != NULL) station->draw(minimap);
+    if(station != NULL) station->draw(minimap);
+  }
 }
 
 void GLGame::draw(void) {
@@ -898,9 +908,11 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   setup_viewport(primary);
   gluLookAt(0.0f, 0.0f, 1000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f );
   draw_perspective(glship);
-  setup_orthogonal();
-  setup_viewport(primary);
-  Overlay::draw(this, glship);
+  if(!screenshot_mode_) {
+    setup_orthogonal();
+    setup_viewport(primary);
+    Overlay::draw(this, glship);
+  }
 }
 
 void GLGame::draw_perspective(GLShip *glship) const {

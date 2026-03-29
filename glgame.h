@@ -72,6 +72,12 @@ private:
 
   Point world;
 
+protected:
+  bool screenshot_mode_ = false;
+  void set_camera_position(float x, float y);
+
+private:
+
   int generation;
   int last_tick, time_until_next_step, num_frames, current_time, time_between_steps;
   int time_until_next_generation;

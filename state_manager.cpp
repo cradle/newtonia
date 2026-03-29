@@ -1,8 +1,17 @@
 #include "state_manager.h"
 #include "glgame.h"
 #include "menu.h"
+#if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
+#include "screenshot_game.h"
+#endif
 
-StateManager::StateManager() {
+StateManager::StateManager(bool screenshot_mode) {
+#if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
+  if(screenshot_mode) {
+    state = new ScreenshotGame();
+    return;
+  }
+#endif
   state = new Menu();
 }
 

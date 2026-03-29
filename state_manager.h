@@ -7,7 +7,7 @@
 
 class StateManager {
 public:
-  StateManager();
+  StateManager(bool screenshot_mode = false);
   ~StateManager();
 
   void draw();
