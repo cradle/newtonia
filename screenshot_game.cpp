@@ -6,30 +6,34 @@
 #include <cmath>
 #include <cstdlib>
 
-// Safe-area computation for a 3840x1240 window with an 860x380 centre safe zone.
+// World dimensions for the screenshot:
+//   Width 5700 matches the visible world width so asteroids never repeat
+//   horizontally across the 3840x1240 view.
 //
-// Camera: z=1000, vertical FOV=85°
-//   half_h = tan(42.5°) × 1000 ≈ 916.3 world units  (maps to 620 px)
-//   aspect  = 3840 / 1240 ≈ 3.0968
-//   half_w  = half_h × aspect ≈ 2837.9 world units  (maps to 1920 px)
-//
-// Safe zone half-extents in world units:
+// Visible half-extents at z=1000, vertical FOV=85°, aspect=3840/1240:
+//   half_h = tan(42.5°) × 1000 ≈ 916.3  →  full visible height ≈ 1832  (<2500, no y-looping)
+//   half_w = half_h × 3.0968     ≈ 2837.9 →  full visible width  ≈ 5676  (≤5700, no x-looping)
+static const float WORLD_W = 5700.0f;
+static const float WORLD_H = 2500.0f;
+
+// Camera centres on world mid-point so safe area is screen-centre.
+static const float CAM_X = WORLD_W / 2.0f;   // 2850
+static const float CAM_Y = WORLD_H / 2.0f;   // 1250
+
+// Safe-area half-extents in world units (860x380 px safe zone):
 //   safe_hw = (860/2) / 1920 × 2837.9 ≈ 635.7
 //   safe_hh = (380/2) /  620 ×  916.3 ≈ 280.8
 static const float SAFE_HW = 636.0f;
 static const float SAFE_HH = 281.0f;
 
-static const float WORLD_W = 2500.0f;
-static const float WORLD_H = 2500.0f;
-// Camera centres on world mid-point so safe area is screen-centre.
-static const float CAM_X   = WORLD_W / 2.0f;   // 1250
-static const float CAM_Y   = WORLD_H / 2.0f;   // 1250
-
 ScreenshotGame::ScreenshotGame() : GLGame() {
-  // 1. Move camera (player ship) to world centre.
+  // 1. Widen the world to match the view so asteroids don't loop.
+  resize_world(WORLD_W, WORLD_H);
+
+  // 2. Move camera (player ship) to world centre.
   set_camera_position(CAM_X, CAM_Y);
 
-  // 2. Clear the 3 default asteroids spawned by GLGame().
+  // 3. Clear the default asteroids spawned by GLGame().
   while(!objects->empty()) {
     delete objects->back();
     objects->pop_back();
@@ -40,8 +44,8 @@ ScreenshotGame::ScreenshotGame() : GLGame() {
   }
   Asteroid::num_killable = 0;
 
-  // 3. Spawn asteroids with rejection sampling for the safe zone.
-  //    Mix: 20 normal  (killable)  + 20 invincible.
+  // 4. Spawn asteroids with rejection sampling for the safe zone.
+  //    40 normal (killable) + 40 invincible = 80 total.
   auto place = [&](bool invincible) {
     for(int attempt = 0; attempt < 200; attempt++) {
       Asteroid *a = new Asteroid(invincible);
@@ -67,10 +71,10 @@ ScreenshotGame::ScreenshotGame() : GLGame() {
     objects->push_back(new Asteroid(invincible));
   };
 
-  for(int i = 0; i < 20; i++) place(false);
-  for(int i = 0; i < 20; i++) place(true);
+  for(int i = 0; i < 40; i++) place(false);
+  for(int i = 0; i < 40; i++) place(true);
 
-  // 4. Freeze physics and disable HUD / ship rendering.
+  // 5. Freeze physics and disable HUD / ship rendering.
   screenshot_mode_ = true;
 }
 

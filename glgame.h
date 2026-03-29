@@ -75,6 +75,7 @@ private:
 protected:
   bool screenshot_mode_ = false;
   void set_camera_position(float x, float y);
+  void resize_world(float w, float h);
 
 private:
 

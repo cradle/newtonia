@@ -183,6 +183,14 @@ void GLGame::set_camera_position(float x, float y) {
   }
 }
 
+void GLGame::resize_world(float w, float h) {
+  world = Point(w, h);
+  delete starfield;
+  starfield = new GLStarfield(world);
+  grid = Grid(world, Point(Asteroid::max_radius*2, Asteroid::max_radius*2));
+  WrappedPoint::set_boundaries(world);
+}
+
 void GLGame::toggle_pause() {
   running = !running;
   if (running) {
