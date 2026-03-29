@@ -115,8 +115,6 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
     asteroid_ting_sound = Mix_LoadWAV("audio/asteroid_ting.wav");
     if(asteroid_ting_sound == NULL) {
         std::cout << "Unable to load asteroid_ting.wav (" << Mix_GetError() << ")" << std::endl;
-    } else {
-      Mix_VolumeChunk(asteroid_ting_sound, MIX_MAX_VOLUME / 2);
     }
   }
 }

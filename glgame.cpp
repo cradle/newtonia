@@ -487,11 +487,13 @@ void GLGame::tick(int delta) {
             Point contact(
               (a->position.x() + b->position.x()) * 0.5f,
               (a->position.y() + b->position.y()) * 0.5f);
-            if(is_visible_to_any_player(contact)) {
+            float vol_scale = sound_volume_for_point(contact);
+            if(vol_scale > 0.0f) {
               static Uint32 last_asteroid_ting_tick = UINT32_MAX;
               Uint32 now = SDL_GetTicks();
               if(now - last_asteroid_ting_tick >= 125) {
                 last_asteroid_ting_tick = now;
+                Mix_VolumeChunk(Asteroid::asteroid_ting_sound, (int)(MIX_MAX_VOLUME / 2 * vol_scale));
                 Mix_PlayChannel(-1, Asteroid::asteroid_ting_sound, 0);
               }
             }
@@ -840,6 +842,24 @@ bool GLGame::is_visible_to_any_player(Point p) const {
     if(dist * dist <= cull_r2) return true;
   }
   return false;
+}
+
+// Returns a volume scale in [0, 1]: 1.0 when at a player's position,
+// linearly fading to 0.0 at the edge of the screen, 0.0 when off-screen.
+float GLGame::sound_volume_for_point(Point p) const {
+  float best = 0.0f;
+  for(auto* glship : *players) {
+    if(!glship->ship->is_alive()) continue;
+    float fov_deg = glship->view_angle();
+    float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
+    float aspect = window.x() / (float)(window.y() / num_y_viewports());
+    float half_w = half_h * aspect;
+    float cull_r = sqrtf((half_w * half_w + half_h * half_h) * 1.1f);
+    float dist = glship->ship->position.distance_to(p);
+    float scale = 1.0f - dist / cull_r;
+    if(scale > best) best = scale;
+  }
+  return best < 0.0f ? 0.0f : best;
 }
 
 bool GLGame::is_point_faced_by_any_player(Point p) const {
