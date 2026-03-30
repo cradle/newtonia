@@ -70,11 +70,17 @@ void Menu::draw() {
   }
 
   if (has_save_) {
-    // Two-option selector — always visible so the player can read both choices
-    std::string cont    = std::string(menu_selection == 0 ? "> " : "  ") + "CONTINUE";
-    std::string newgame = std::string(menu_selection == 1 ? "> " : "  ") + "NEW GAME";
-    Typer::draw_centered(0,  -10, cont.c_str(),    22);
-    Typer::draw_centered(0, -100, newgame.c_str(), 22);
+    if (is_touch_mode()) {
+      // Side-by-side layout for touch: full left/right halves are tap targets
+      Typer::draw_centered(-window.x() / 2, -50, "CONTINUE", 26);
+      Typer::draw_centered( window.x() / 2, -50, "NEW GAME", 26);
+    } else {
+      // Stacked layout for keyboard/controller with selection indicator
+      std::string cont    = std::string(menu_selection == 0 ? "> " : "  ") + "CONTINUE";
+      std::string newgame = std::string(menu_selection == 1 ? "> " : "  ") + "NEW GAME";
+      Typer::draw_centered(0,  -10, cont.c_str(),    22);
+      Typer::draw_centered(0, -100, newgame.c_str(), 22);
+    }
   } else {
     if((currentTime/1400) % 2) {
       if(is_touch_mode()) {
@@ -172,8 +178,8 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
 
 void Menu::touch_tap(float nx, float ny) {
   if (!has_save_) return;
-  // Upper ~60% of screen = CONTINUE, lower ~40% = NEW GAME
-  menu_selection = (ny > 0.6f) ? 1 : 0;
+  // Left half = CONTINUE, right half = NEW GAME
+  menu_selection = (nx >= 0.5f) ? 1 : 0;
   confirm_selection(nullptr);
 }
 
