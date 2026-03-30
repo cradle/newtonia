@@ -447,7 +447,7 @@ void Ship::respawn(const Grid &grid, bool was_killed) {
     reset(was_killed);
     safe_position(grid, try_current_position);
     invincible = true;
-    set_shield_hum(true);
+    if(god_mode_time_remaining() <= 0) set_shield_hum(true);
     detonate();
   }
 }
