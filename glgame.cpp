@@ -224,6 +224,8 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
       gs->set_controller(controller);
     } else if (is_p1) {
       gs->set_keys('a','d','w',' ','s','x','q','e', 't', 128+GLUT_KEY_F1, 'c');
+    } else {
+      gs->set_keys('j','l','i','/','k',',','u','o','y', 128+GLUT_KEY_F8, '.');
     }
     gs->ship->set_missile_asteroids((std::list<Object*>*)objects);
     ship_objects->push_back(gs->ship);
