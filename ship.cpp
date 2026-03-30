@@ -760,6 +760,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
         if(bullets[i].kills_invincible) {
           object->invincible = false;
           if(ast && ast->teleporting) ast->teleport_vulnerable = true;
+          if(ast && ast->tough) ast->health = 1;
         }
         if(object->kill()) {
           object->invincible = was_invincible;
