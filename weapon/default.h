@@ -16,6 +16,7 @@ namespace Weapon {
     void shoot(bool on = true);
     void step(int delta);
     int weapon_index() const { return _weapon_index; }
+    bool is_automatic() const override { return automatic; }
 
   private:
     void fire();
