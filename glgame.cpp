@@ -234,6 +234,15 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     players->push_back(gs);
   }
 
+  // Assign any already-connected controllers to players that don't have one yet
+  // (controller_added only fires for newly connected controllers, not pre-existing ones)
+  for (int i = 0; i < SDL_NumJoysticks(); i++) {
+    if (!SDL_IsGameController(i)) continue;
+    SDL_GameController *ctrl = SDL_GameControllerOpen(i);
+    if (!ctrl) continue;
+    controller_added(ctrl);
+  }
+
   if (save.station.present) {
     station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
     station->restore_state(save.station);
