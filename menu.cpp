@@ -72,8 +72,8 @@ void Menu::draw() {
   if (has_save_) {
     if (is_touch_mode()) {
       // Side-by-side layout for touch: full left/right halves are tap targets
-      Typer::draw_centered(-window.x() / 2, -50, "CONTINUE", 26);
-      Typer::draw_centered( window.x() / 2, -50, "NEW GAME", 26);
+      Typer::draw_centered(-Typer::scaled_window_width / 2, -50, "CONTINUE", 26);
+      Typer::draw_centered( Typer::scaled_window_width / 2, -50, "NEW GAME", 26);
     } else {
       // Stacked layout for keyboard/controller with selection indicator
       std::string cont    = std::string(menu_selection == 0 ? "> " : "  ") + "CONTINUE";
