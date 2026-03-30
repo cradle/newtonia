@@ -74,8 +74,8 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
 }
 
 static void finger_down(SDL_FingerID id, float x, float y) {
-    // Pause zone: top-centre over the LEVEL text (x in [0.35, 0.65], y < 0.15)
-    if(!s_pause_active && x >= 0.35f && x <= 0.65f && y < 0.15f) {
+    // Pause button: bottom-centre (x in [0.35, 0.65], y > 0.80)
+    if(!s_pause_active && x >= 0.35f && x <= 0.65f && y > 0.80f) {
         s_pause_active = true;
         s_pause_finger = id;
         s_game->keyboard('\r', 0, 0);  // allow menu start on same tap
