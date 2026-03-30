@@ -353,15 +353,32 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     glColor4f(1.0f, 1.0f, 1.0f, alpha_outline);
     draw_circle(bx, by, br, 32, false);
 
-    // Right-pointing triangle (play/resume icon), nudged slightly right to look centred
-    float th = br * 0.45f; // half-height of triangle
-    float tx = bx + br * 0.08f; // slight rightward nudge for optical centre
     glColor4f(1.0f, 1.0f, 1.0f, alpha_outline);
-    glBegin(GL_TRIANGLES);
-    glVertex2f(tx - th * 0.6f, by - th);
-    glVertex2f(tx + th,        by);
-    glVertex2f(tx - th * 0.6f, by + th);
-    glEnd();
+    if(glgame->running) {
+      // Two vertical bars (pause icon)
+      float bw  = br * 0.15f;
+      float bh  = br * 0.38f;
+      float sep = br * 0.20f;
+      glBegin(GL_QUADS);
+      glVertex2f(bx - sep - bw*2, by - bh);
+      glVertex2f(bx - sep,        by - bh);
+      glVertex2f(bx - sep,        by + bh);
+      glVertex2f(bx - sep - bw*2, by + bh);
+      glVertex2f(bx + sep,        by - bh);
+      glVertex2f(bx + sep + bw*2, by - bh);
+      glVertex2f(bx + sep + bw*2, by + bh);
+      glVertex2f(bx + sep,        by + bh);
+      glEnd();
+    } else {
+      // Right-pointing triangle (play/resume icon)
+      float th = br * 0.45f;
+      float tx = bx + br * 0.08f;
+      glBegin(GL_TRIANGLES);
+      glVertex2f(tx - th * 0.6f, by - th);
+      glVertex2f(tx + th,        by);
+      glVertex2f(tx - th * 0.6f, by + th);
+      glEnd();
+    }
   }
 #endif // __ANDROID__ || __IOS__
 }
