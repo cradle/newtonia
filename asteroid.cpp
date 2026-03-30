@@ -55,7 +55,6 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   }
   if(reflective) invincible = true;
   if(teleporting) invincible = false; // teleporting asteroids are killable when vulnerable
-  if(quantum) invincible = false;     // quantum asteroids start killable (observed state)
   if(tough) {
     radius = rand() % 70 + 60;  // 60–130: medium, noticeable heft
   } else if(teleporting) {
@@ -172,7 +171,6 @@ Asteroid::Asteroid(Asteroid const *mother) {
   health = 1;
   killed = false;
   invincible = mother->invincible;
-  if(quantum) invincible = false; // quantum children start in observed (killable) state
   if(!invincible) {
     num_killable++;
   }

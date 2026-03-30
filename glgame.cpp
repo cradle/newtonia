@@ -581,8 +581,8 @@ void GLGame::tick(int delta) {
     }
 
     // Update quantum asteroid observation state: collapse when any player looks at
-    // it (becomes killable, normal speed), enter superposition otherwise (invincible,
-    // 3x speed so it can sneak up on players who look away).
+    // it (normal speed), enter superposition otherwise (4x speed so it can sneak
+    // up on players who look away). Quantum asteroids are always killable.
     for(oi = objects->begin(); oi != objects->end(); ++oi) {
       Asteroid *ast = *oi;
       if(!ast->quantum) continue;
@@ -593,12 +593,10 @@ void GLGame::tick(int delta) {
       if(spd > 1e-6f) {
         Point dir = ast->velocity * (1.0f / spd);
         if(now_observed) {
-          // Collapse: slow to base speed, become killable
-          ast->invincible = false;
+          // Collapse: slow to base speed
           ast->velocity = dir * ast->quantum_base_speed;
         } else {
-          // Superposition: speed up 6x, become invincible
-          ast->invincible = true;
+          // Superposition: speed up 4x
           ast->velocity = dir * ast->quantum_base_speed * 4.0f;
         }
       }
