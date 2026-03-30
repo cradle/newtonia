@@ -617,7 +617,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
         if(object->kill()) {
           object->invincible = was_invincible;
           if(was_invincible) Asteroid::num_killable++;
-          score += object->get_value() * multiplier();
+          score += object->get_value() * multiplier() * (was_invincible ? 5 : 1);
           kills_this_life += 1;
           kills += 1;
         } else {
@@ -767,7 +767,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
         if(object->kill()) {
           object->invincible = was_invincible;
           if(was_invincible) Asteroid::num_killable++;
-          score += object->get_value() * multiplier();
+          score += object->get_value() * multiplier() * (was_invincible ? 5 : 1);
           kills_this_life += 1;
           kills += 1;
         }
