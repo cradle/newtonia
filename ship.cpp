@@ -238,12 +238,13 @@ void Ship::add_weapon(int weapon_index) {
   const WeaponConfig &cfg = weapon_configs[weapon_index];
 
   bool in_god_mode = god_mode_time_remaining() > 0;
+  bool auto_shooting = !primary_weapons.empty() && (*primary)->is_automatic() && (*primary)->is_shooting();
 
   for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
     Weapon::Default *w = dynamic_cast<Weapon::Default*>(*it);
     if(w && w->weapon_index() == weapon_index) {
       w->add_ammo(100);
-      if(!in_god_mode) {
+      if(!in_god_mode && !auto_shooting) {
         (*primary)->shoot(false);
         primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
         primary = --primary_weapons.end();
@@ -253,7 +254,7 @@ void Ship::add_weapon(int weapon_index) {
   }
 
   primary_weapons.push_back(new Weapon::Default(this, cfg.automatic, cfg.level, cfg.accuracy, cfg.time_between_shots, weapon_index));
-  if(!in_god_mode) {
+  if(!in_god_mode && !auto_shooting) {
     (*primary)->shoot(false);
     primary = --primary_weapons.end();
   }
