@@ -51,8 +51,8 @@ void draw() {
 
 int old_x = 50;
 int old_y = 50;
-int old_width = 320;
-int old_height = 320;
+int old_width = 1280;
+int old_height = 720;
 bool is_fullscreen = false;
 bool cursor_hidden = false;
 
