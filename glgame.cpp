@@ -267,7 +267,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   } else {
     station = NULL;
   }
-  warp_pass_ = nullptr;
+  warp_pass_ = new WarpPass();
 
   if(tic_sound == NULL) {
     tic_sound = Mix_LoadWAV("audio/tic.wav");
