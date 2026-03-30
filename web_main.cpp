@@ -74,9 +74,6 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
 }
 
 static void finger_down(SDL_FingerID id, float x, float y) {
-    // Forward tap position to whichever state is active (e.g. Menu uses this for Continue/New Game)
-    s_game->touch_tap(x, y);
-
     // Pause zone: top-centre over the LEVEL text (x in [0.35, 0.65], y < 0.15)
     if(!s_pause_active && x >= 0.35f && x <= 0.65f && y < 0.15f) {
         s_pause_active = true;
@@ -91,7 +88,10 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     s_game->keyboard(key, 0, 0);
 }
 
-static void finger_up(SDL_FingerID id) {
+static void finger_up(SDL_FingerID id, float x, float y) {
+    // Forward tap position on finger-up so menu selections fire on release, not press
+    s_game->touch_tap(x, y);
+
     if(s_pause_active && s_pause_finger == id) {
         s_pause_active = false;
         s_game->keyboard_up('p', 0, 0);
@@ -151,7 +151,7 @@ static void main_loop() {
             finger_down(e.tfinger.fingerId, e.tfinger.x, e.tfinger.y);
             break;
         case SDL_FINGERUP:
-            finger_up(e.tfinger.fingerId);
+            finger_up(e.tfinger.fingerId, e.tfinger.x, e.tfinger.y);
             break;
         case SDL_FINGERMOTION: {
             unsigned char new_key = touch_to_key(e.tfinger.x, e.tfinger.y);

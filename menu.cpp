@@ -158,7 +158,10 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 
 void Menu::keyboard_up(unsigned char key, int x, int y) {
 #if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__)
-  // Touch/mobile/web — any key starts the game (touch_tap handles Continue/New Game)
+  // Touch/mobile/web — touch_tap handles Continue/New Game when a save exists;
+  // suppress \r so a finger-down on the left (joystick) half doesn't immediately
+  // confirm before the user lifts their finger.
+  if (has_save_ && (key == '\r' || key == '\n')) return;
 #ifdef __EMSCRIPTEN__
   EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
