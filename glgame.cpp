@@ -23,6 +23,13 @@
 #include <iostream>
 #include <list>
 
+static void set_player_keys(GLShip *gs, int player_index) {
+  if (player_index == 0)
+    gs->set_keys('a','d','w',' ','s','x','q','e','t', 128+GLUT_KEY_F1, 'c');
+  else
+    gs->set_keys('j','l','i','/','k',',','u','o','y', 128+GLUT_KEY_F8, '.');
+}
+
 const int GLGame::default_world_width = 2500;
 const int GLGame::default_world_height = 2500;
 const int GLGame::default_num_asteroids = 3;
@@ -77,7 +84,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   if(controller != NULL) {
     object->set_controller(controller);
   } else {
-    object->set_keys('a','d','w',' ','s','x','q','e', 't', 128+GLUT_KEY_F1, 'c');
+    set_player_keys(object, 0);
   }
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
@@ -222,10 +229,8 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     GLShip *gs = is_p1 ? new GLShip(grid, true) : new GLCar(grid, true);
     if (controller != NULL && is_p1) {
       gs->set_controller(controller);
-    } else if (is_p1) {
-      gs->set_keys('a','d','w',' ','s','x','q','e', 't', 128+GLUT_KEY_F1, 'c');
     } else {
-      gs->set_keys('j','l','i','/','k',',','u','o','y', 128+GLUT_KEY_F8, '.');
+      set_player_keys(gs, is_p1 ? 0 : 1);
     }
     gs->ship->set_missile_asteroids((std::list<Object*>*)objects);
     ship_objects->push_back(gs->ship);
@@ -1531,7 +1536,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     Ship* p1 = players->front()->ship;
     if(p1->is_alive() || p1->lives) {
       GLShip* object = new GLCar(grid, true);
-      object->set_keys('j','l','i','/','k',',','u','o','y',128+GLUT_KEY_F8, '.');
+      set_player_keys(object, 1);
       object->ship->set_missile_asteroids((std::list<Object*>*)objects);
       ship_objects->push_back(object->ship);
       for (auto *p : *players) p->ship->set_missile_ships(ship_objects);
