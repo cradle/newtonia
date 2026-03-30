@@ -52,10 +52,13 @@ static bool read_weapon(FILE *f, Save::WeaponEntry &w) {
 }
 
 static bool write_player(FILE *f, const Save::Player &p) {
-    if (!wv(f, (int32_t)p.score))          return false;
-    if (!wv(f, (int32_t)p.lives))          return false;
-    if (!wv(f, (int32_t)p.kills))          return false;
+    if (!wv(f, (int32_t)p.score))           return false;
+    if (!wv(f, (int32_t)p.lives))           return false;
+    if (!wv(f, (int32_t)p.kills))           return false;
     if (!wv(f, (int32_t)p.kills_this_life)) return false;
+    if (!wv(f, p.pos_x) || !wv(f, p.pos_y))             return false;
+    if (!wv(f, p.facing_x) || !wv(f, p.facing_y))       return false;
+    if (!wv(f, p.vel_x) || !wv(f, p.vel_y))             return false;
 
     uint32_t pc = (uint32_t)p.primary_weapons.size();
     if (!wv(f, pc)) return false;
@@ -76,6 +79,9 @@ static bool read_player(FILE *f, Save::Player &p) {
     int32_t score = 0, lives = 0, kills = 0, kills_this_life = 0;
     if (!rv(f, score) || !rv(f, lives) || !rv(f, kills) || !rv(f, kills_this_life)) return false;
     p.score = score; p.lives = lives; p.kills = kills; p.kills_this_life = kills_this_life;
+    if (!rv(f, p.pos_x) || !rv(f, p.pos_y))       return false;
+    if (!rv(f, p.facing_x) || !rv(f, p.facing_y)) return false;
+    if (!rv(f, p.vel_x) || !rv(f, p.vel_y))       return false;
 
     uint32_t pc;
     if (!rv(f, pc)) return false;

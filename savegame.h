@@ -28,6 +28,9 @@ struct WeaponEntry {
 
 struct Player {
     int score, lives, kills, kills_this_life;
+    float pos_x, pos_y;          // world position
+    float facing_x, facing_y;    // unit direction vector
+    float vel_x, vel_y;          // current velocity
     std::vector<WeaponEntry> primary_weapons;
     std::vector<WeaponEntry> secondary_weapons;
     int selected_primary_idx;    // index into primary_weapons
@@ -85,7 +88,7 @@ struct BlackHole {
 
 struct GameState {
     static constexpr uint32_t MAGIC   = 0x4E57544E;  // "NWTN"
-    static constexpr uint16_t VERSION = 2;
+    static constexpr uint16_t VERSION = 3;
 
     int   generation;
     float world_x, world_y;

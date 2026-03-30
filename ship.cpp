@@ -374,8 +374,14 @@ Save::Player Ship::capture_state() const {
   // one life that won't be deducted until respawn() fires. Subtract it now so
   // restore_state() with respawn(false) gives the correct count.
   p.lives          = alive ? lives : lives - 1;
-  p.kills          = kills;
+  p.kills           = kills;
   p.kills_this_life = kills_this_life;
+  p.pos_x           = position.x();
+  p.pos_y           = position.y();
+  p.facing_x        = facing.x();
+  p.facing_y        = facing.y();
+  p.vel_x           = velocity.x();
+  p.vel_y           = velocity.y();
 
   // Primary weapons
   list<Weapon::Base*>::const_iterator cprimary = primary;
@@ -423,7 +429,8 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
   lives           = p.lives;
   kills           = p.kills;
   kills_this_life = p.kills_this_life;
-  first_life      = false;
+  position        = WrappedPoint(p.pos_x, p.pos_y);
+  first_life      = true;  // tells respawn() to try the saved position first
 
   disable_weapons();
   primary   = primary_weapons.end();
@@ -472,6 +479,10 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
   }
 
   respawn(grid, false);
+  // respawn()'s reset() zeroes velocity; restore after.
+  // facing is not touched by reset() but set here for clarity.
+  facing   = Point(p.facing_x, p.facing_y);
+  velocity = Point(p.vel_x, p.vel_y);
 }
 
 void Ship::set_missile_asteroids(std::list<Object*> *asteroids) {
