@@ -125,11 +125,11 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
   if(!glgame->running && !glship->show_help) {
     Typer::draw_centered(0, 30, "Paused", 25);
     if(is_touch_mode())
-      Typer::draw_centered(0, -40, "TOUCH LEVEL TO UNPAUSE", 8);
+      Typer::draw_centered(0, -40, "press pause to resume", 8);
     else if(glship->has_controller())
-      Typer::draw_centered(0, -40, "press start to unpause", 8);
+      Typer::draw_centered(0, -40, "press start to resume", 8);
     else {
-      Typer::draw_centered(0, -40, "press p to unpause", 8);
+      Typer::draw_centered(0, -40, "press p to resume", 8);
       Typer::draw_centered(0, -70, "press esc to return to menu", 8);
     }
   }
@@ -255,7 +255,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     }
   }
   if(!glgame->running && glship->show_help) {
-    const char* unpause = glship->has_controller() ? "press start to unpause" : "press p to unpause";
+    const char* unpause = glship->has_controller() ? "press start to resume" : "press p to resume";
     Typer::draw_centered(0, Typer::scaled_window_height/glgame->num_y_viewports()-80, unpause, 8);
   }
 }
@@ -353,22 +353,14 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     glColor4f(1.0f, 1.0f, 1.0f, alpha_outline);
     draw_circle(bx, by, br, 32, false);
 
-    // Two vertical bars (pause icon)
-    float bw = br * 0.15f;  // bar half-width
-    float bh = br * 0.38f;  // bar half-height
-    float sep = br * 0.20f; // distance from centre to bar inner edge
+    // Right-pointing triangle (play/resume icon), nudged slightly right to look centred
+    float th = br * 0.45f; // half-height of triangle
+    float tx = bx + br * 0.08f; // slight rightward nudge for optical centre
     glColor4f(1.0f, 1.0f, 1.0f, alpha_outline);
-    glBegin(GL_QUADS);
-    // Left bar
-    glVertex2f(bx - sep - bw*2, by - bh);
-    glVertex2f(bx - sep,        by - bh);
-    glVertex2f(bx - sep,        by + bh);
-    glVertex2f(bx - sep - bw*2, by + bh);
-    // Right bar
-    glVertex2f(bx + sep,        by - bh);
-    glVertex2f(bx + sep + bw*2, by - bh);
-    glVertex2f(bx + sep + bw*2, by + bh);
-    glVertex2f(bx + sep,        by + bh);
+    glBegin(GL_TRIANGLES);
+    glVertex2f(tx - th * 0.6f, by - th);
+    glVertex2f(tx + th,        by);
+    glVertex2f(tx - th * 0.6f, by + th);
     glEnd();
   }
 #endif // __ANDROID__ || __IOS__
