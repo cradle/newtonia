@@ -212,6 +212,7 @@ void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
             << " ships_left=" << s.ships_left_to_deploy << std::endl;
   for (const auto &se : s.enemies) {
     GLEnemy *ge = new GLEnemy(grid, se.pos_x, se.pos_y, targets, (float)difficulty, asteroids);
+    ge->ship->alive = true;
     ge->ship->position = WrappedPoint(se.pos_x, se.pos_y);
     ge->ship->velocity = Point(se.vel_x, se.vel_y);
     ge->ship->facing = Point(se.facing_x, se.facing_y);
