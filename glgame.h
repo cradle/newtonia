@@ -31,11 +31,11 @@ public:
   GLGame(GLGame const &other);
   virtual ~GLGame();
 
-  void draw();
-  void tick(int delta);
-  void keyboard(unsigned char key, int x, int y);
-  void keyboard_up(unsigned char key, int x, int y);
-  void controller(SDL_Event event);
+  void draw() override;
+  void tick(int delta) override;
+  void keyboard(unsigned char key, int x, int y) override;
+  void keyboard_up(unsigned char key, int x, int y) override;
+  void controller(SDL_Event event) override;
   void touch_joystick(float nx, float ny);
 
   friend class Overlay;
