@@ -73,6 +73,9 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     float px = x * (float)s_w;
     float py = y * (float)s_h;
 
+    // Forward tap position to whichever state is active (e.g. Menu uses this for Continue/New Game)
+    s_game->touch_tap(x, y);
+
     // DEBUG: top-right corner → skip to next level
     if(x > 0.85f && y < 0.15f) {
         s_game->keyboard('n', 0, 0);
