@@ -300,7 +300,10 @@ extern "C" int SDL_main(int argc, char *argv[]) {
             // Physical keyboard (Bluetooth keyboard, emulator, etc.)
             case SDL_KEYDOWN: {
                 SDL_Keycode k = e.key.keysym.sym;
-                if (k == SDLK_ESCAPE) { s_running = false; break; }
+                if (k == SDLK_AC_BACK || k == SDLK_ESCAPE) {
+                    if (!s_game->back_pressed()) s_running = false;
+                    break;
+                }
                 unsigned char key = (k < 128) ? (unsigned char)k : 0;
                 if (key) s_game->keyboard(key, 0, 0);
                 break;

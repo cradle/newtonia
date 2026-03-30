@@ -44,6 +44,7 @@ public:
 
   void focus_lost();
   void focus_gained();
+  bool back_pressed() override;
   void controller_added(SDL_GameController *ctrl);
   void controller_removed(SDL_JoystickID id);
 

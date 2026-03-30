@@ -16,6 +16,7 @@ public:
   void controller(SDL_Event event) override;
   void tick(int delta) override;
   void touch_tap(float nx, float ny) override;
+  bool back_pressed() override;
 
 private:
   void confirm_selection(SDL_GameController *ctrl);

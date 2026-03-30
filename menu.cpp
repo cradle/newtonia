@@ -176,6 +176,10 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
 #endif
 }
 
+bool Menu::back_pressed() {
+  return false; // signal the platform to quit the app
+}
+
 void Menu::touch_tap(float nx, float ny) {
   if (!has_save_) return;
   // Left half = CONTINUE, right half = NEW GAME
