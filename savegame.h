@@ -84,7 +84,7 @@ struct BlackHole {
 // ── Top-level game state ─────────────────────────────────────────────────────
 
 struct GameState {
-    static constexpr uint32_t MAGIC   = 0x4E574E4F;  // "NWNO"
+    static constexpr uint32_t MAGIC   = 0x4E57544E;  // "NWTN"
     static constexpr uint16_t VERSION = 1;
 
     int   generation;
