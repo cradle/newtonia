@@ -239,12 +239,13 @@ void Ship::add_weapon(int weapon_index) {
   const WeaponConfig &cfg = weapon_configs[weapon_index];
 
   bool in_god_mode = god_mode_time_remaining() > 0;
+  bool auto_shooting = !primary_weapons.empty() && (*primary)->is_automatic() && (*primary)->is_shooting();
 
   for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
     Weapon::Default *w = dynamic_cast<Weapon::Default*>(*it);
     if(w && w->weapon_index() == weapon_index) {
       w->add_ammo(100);
-      if(!in_god_mode) {
+      if(!in_god_mode && !auto_shooting) {
         (*primary)->shoot(false);
         primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
         primary = --primary_weapons.end();
@@ -254,7 +255,7 @@ void Ship::add_weapon(int weapon_index) {
   }
 
   primary_weapons.push_back(new Weapon::Default(this, cfg.automatic, cfg.level, cfg.accuracy, cfg.time_between_shots, weapon_index));
-  if(!in_god_mode) {
+  if(!in_god_mode && !auto_shooting) {
     if (primary != primary_weapons.end())
       (*primary)->shoot(false);
     primary = --primary_weapons.end();
@@ -346,6 +347,7 @@ void Ship::add_shield_ammo(int amount) {
 }
 
 void Ship::add_god_mode(int duration_ms) {
+  set_shield_hum(false);
   for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
     if(dynamic_cast<Weapon::GodMode*>(*it)) {
       (*it)->set_ammo(duration_ms);
@@ -567,7 +569,7 @@ void Ship::respawn(const Grid &grid, bool was_killed) {
     reset(was_killed);
     safe_position(grid, try_current_position);
     invincible = true;
-    set_shield_hum(true);
+    if(god_mode_time_remaining() <= 0) set_shield_hum(true);
     detonate();
   }
 }
@@ -736,7 +738,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
         if(object->kill()) {
           object->invincible = was_invincible;
           if(was_invincible) Asteroid::num_killable++;
-          score += object->get_value() * multiplier();
+          score += object->get_value() * multiplier() * (was_invincible ? 5 : 1);
           kills_this_life += 1;
           kills += 1;
         } else {
@@ -878,11 +880,15 @@ void Ship::collide_grid(Grid &grid, int delta) {
         ++i;
       } else {
         bool was_invincible = object->invincible;
-        if(bullets[i].kills_invincible) object->invincible = false;
+        if(bullets[i].kills_invincible) {
+          object->invincible = false;
+          if(ast && ast->teleporting) ast->teleport_vulnerable = true;
+          if(ast && ast->tough) ast->health = 1;
+        }
         if(object->kill()) {
           object->invincible = was_invincible;
           if(was_invincible) Asteroid::num_killable++;
-          score += object->get_value() * multiplier();
+          score += object->get_value() * multiplier() * (was_invincible ? 5 : 1);
           kills_this_life += 1;
           kills += 1;
         }

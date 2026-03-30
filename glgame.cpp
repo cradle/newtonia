@@ -63,6 +63,7 @@ GLGame::GLGame(SDL_GameController *controller) :
 
   rearstars = glGenLists(1);
   frontstars = glGenLists(1);
+  warp_pass_ = new WarpPass();
 
   time_until_next_step = 0;
   num_frames = 0;
@@ -149,6 +150,7 @@ GLGame::~GLGame() {
   }
   glDeleteLists(rearstars, 1);
   glDeleteLists(frontstars, 1);
+  delete warp_pass_;
 }
 
 GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
@@ -431,13 +433,13 @@ void GLGame::tick(int delta) {
       time_until_next_generation -= delta;
     } else {
       generation++;
-      if(generation == 8) {
+      if(generation == 9) {
         world += Point(3000, 3000);
       } else {
         world += Point(50, 50);
       }
       grid = Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2));
-      if(generation >= 8) {
+      if(generation >= 9) {
         if(station != NULL)
           delete station;
         station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
@@ -468,7 +470,7 @@ void GLGame::tick(int delta) {
         delete black_holes->back();
         black_holes->pop_back();
       }
-      if(generation > 10)
+      if(generation >= 8)
         black_holes->push_back(new BlackHole(WrappedPoint(world.x() / 2.0f, world.y() / 2.0f)));
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {
@@ -636,11 +638,13 @@ void GLGame::tick(int delta) {
             Point contact(
               (a->position.x() + b->position.x()) * 0.5f,
               (a->position.y() + b->position.y()) * 0.5f);
-            if(is_visible_to_any_player(contact)) {
+            float vol = sound_volume_for_point(contact);
+            if(vol > 0.0f) {
               static Uint32 last_asteroid_ting_tick = UINT32_MAX;
               Uint32 now = SDL_GetTicks();
               if(now - last_asteroid_ting_tick >= 125) {
                 last_asteroid_ting_tick = now;
+                Mix_VolumeChunk(Asteroid::asteroid_ting_sound, (int)(MIX_MAX_VOLUME * vol));
                 Mix_PlayChannel(-1, Asteroid::asteroid_ting_sound, 0);
               }
             }
@@ -728,8 +732,8 @@ void GLGame::tick(int delta) {
     }
 
     // Update quantum asteroid observation state: collapse when any player looks at
-    // it (becomes killable, normal speed), enter superposition otherwise (invincible,
-    // 3x speed so it can sneak up on players who look away).
+    // it (normal speed), enter superposition otherwise (4x speed so it can sneak
+    // up on players who look away). Quantum asteroids are always killable.
     for(oi = objects->begin(); oi != objects->end(); ++oi) {
       Asteroid *ast = *oi;
       if(!ast->quantum) continue;
@@ -740,13 +744,11 @@ void GLGame::tick(int delta) {
       if(spd > 1e-6f) {
         Point dir = ast->velocity * (1.0f / spd);
         if(now_observed) {
-          // Collapse: slow to base speed, become killable
-          ast->invincible = false;
+          // Collapse: slow to base speed
           ast->velocity = dir * ast->quantum_base_speed;
         } else {
-          // Superposition: speed up 6x, become invincible
-          ast->invincible = true;
-          ast->velocity = dir * ast->quantum_base_speed * 6.0f;
+          // Superposition: speed up 4x
+          ast->velocity = dir * ast->quantum_base_speed * 4.0f;
         }
       }
     }
@@ -1015,6 +1017,24 @@ bool GLGame::is_visible_to_any_player(Point p) const {
   return false;
 }
 
+float GLGame::sound_volume_for_point(Point p) const {
+  float best = 0.0f;
+  for(auto* glship : *players) {
+    if(!glship->ship->is_alive()) continue;
+    float fov_deg = glship->view_angle();
+    float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
+    float aspect = window.x() / (float)(window.y() / num_y_viewports());
+    float half_w = half_h * aspect;
+    float cull_r = sqrtf(half_w * half_w + half_h * half_h) * sqrtf(1.1f);
+    float dist = glship->ship->position.distance_to(p);
+    if(dist < cull_r) {
+      float v = 1.0f - dist / cull_r;
+      if(v > best) best = v;
+    }
+  }
+  return best;
+}
+
 bool GLGame::is_point_faced_by_any_player(Point p) const {
   for(auto* glship : *players) {
     Ship *s = glship->ship;
@@ -1211,6 +1231,46 @@ void GLGame::draw_perspective(GLShip *glship) const {
         // fill behind visible asteroids. Drawing it again after game objects would
         // overdraw visible asteroids on top of invisible ones.
         starfield->draw_front_stars_near(ax, ay, a->radius);
+
+        glPopMatrix();
+      }
+    }
+  }
+
+  // --- Warp pass: distort the contents of each invisible asteroid ---
+  // Check whether any invisible asteroids are present to avoid the capture cost.
+  bool has_invisible = false;
+  for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
+    if ((*it)->invisible && (*it)->alive) { has_invisible = true; break; }
+  }
+
+  if (has_invisible) {
+    // Snapshot the current viewport (stars + game objects) into the warp texture.
+    GLint vp[4];
+    glGetIntegerv(GL_VIEWPORT, vp);
+    warp_pass_->capture(vp[0], vp[1], vp[2], vp[3]);
+
+    // Re-run the tile loop with the warp shader to overwrite each invisible
+    // asteroid's black fill with the gravitational-lens distortion.
+    for (int x = -1; x <= 1; x++) {
+      for (int y = -1; y <= 1; y++) {
+        float smin_x = world.x()*x - position.x();
+        float smax_x = smin_x + world.x();
+        float smin_y = world.y()*y - position.y();
+        float smax_y = smin_y + world.y();
+        float snx = (smin_x > 0) ? smin_x : (smax_x < 0) ? -smax_x : 0;
+        float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
+        if (snx*snx + sny*sny > cull_r2) continue;
+
+        glPushMatrix();
+        glRotatef(direction, 0.0f, 0.0f, 1.0f);
+        glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+
+        for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
+          Asteroid const *a = *it;
+          if (!a->invisible || !a->alive) continue;
+          warp_pass_->draw(a, a->position.x(), a->position.y(), vp[0], vp[1], vp[2], vp[3]);
+        }
 
         glPopMatrix();
       }
@@ -1466,7 +1526,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
   if (key == 27) {
-    if (!running) {
+    if (running) {
       toggle_pause();
     } else {
       for (auto* glship : *players)

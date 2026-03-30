@@ -20,6 +20,7 @@ namespace Weapon {
       _ammo = 0;
       ship->invincible = false;
       ship->time_left_invincible = 0;
+      ship->set_shield_hum(false);
     }
   }
 }

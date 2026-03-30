@@ -23,6 +23,7 @@ public:
   bool segment_hit(Point a, Point b, float &t_hit) const;
 
   friend class AsteroidDrawer;
+  friend class WarpPass;
 
   // Serialisation: each object captures and restores its own state.
   Save::Asteroid capture_state() const;

@@ -5,6 +5,7 @@
 #include "savegame.h"
 #include "glship.h"
 #include "point.h"
+#include "warp_pass.h"
 #include "grid.h"
 #include "glstarfield.h"
 #include "glstation.h"
@@ -55,6 +56,7 @@ public:
   int num_y_viewports() const;
   bool is_visible_to_any_player(const Ship &ship) const;
   bool is_visible_to_any_player(Point p) const;
+  float sound_volume_for_point(Point p) const;
   bool is_point_faced_by_any_player(Point p) const;
   bool has_free_controller() const;
 private:
@@ -93,6 +95,7 @@ private:
   static const float shield_pickup_drop_chance;
   static const float god_mode_pickup_drop_chance;
   unsigned int frontstars, rearstars;
+  mutable WarpPass *warp_pass_;
 
   Mix_Chunk *tic_sound = NULL;
   Mix_Chunk *pickup_sound = NULL;

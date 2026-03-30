@@ -55,7 +55,6 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   }
   if(reflective) invincible = true;
   if(teleporting) invincible = false; // teleporting asteroids are killable when vulnerable
-  if(quantum) invincible = false;     // quantum asteroids start killable (observed state)
   if(tough) {
     radius = rand() % 70 + 60;  // 60–130: medium, noticeable heft
   } else if(teleporting) {
@@ -79,7 +78,10 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   }
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
   if(quantum) quantum_base_speed = velocity.magnitude();
-  value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
+  { float ratio = float(minimum_radius) / fmaxf(float(radius), 1.0f);
+    value = (int)fminf(100.0f, 100.0f * ratio * ratio);
+    if (value < 1) value = 1; }
+  if(quantum) value *= 2;
   for (int i = 0; i < 9; i++)
     vertex_offsets[i] = 0.7f + (rand() / (float)RAND_MAX) * 0.6f;
   max_vertex_offset = vertex_offsets[0];
@@ -223,8 +225,9 @@ Asteroid::Asteroid(Asteroid const *mother) {
   rotation_speed = (rand()%6-3)/radius;
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
   position = mother->position + velocity.normalized() * radius;
-  value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
-  value += mother->value;
+  { float ratio = float(minimum_radius) / fmaxf(float(radius), 1.0f);
+    value = (int)fminf(100.0f, 100.0f * ratio * ratio);
+    if (value < 1) value = 1; }
   for (int i = 0; i < 9; i++)
     vertex_offsets[i] = 0.7f + (rand() / (float)RAND_MAX) * 0.6f;
   max_vertex_offset = vertex_offsets[0];
@@ -238,9 +241,10 @@ Asteroid::Asteroid(Asteroid const *mother) {
   teleport_pending = false;
   teleport_angle = 0.0f;
   vulnerable_time_left = 0;
-  quantum = false;
+  quantum = mother->quantum;
   quantum_observed = true;
-  quantum_base_speed = 0.0f;
+  quantum_base_speed = quantum ? velocity.magnitude() : 0.0f;
+  if(quantum) value *= 2;
   elastic = mother->elastic;
   tough = false;
   health = 1;
