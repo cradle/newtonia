@@ -200,8 +200,13 @@ bool Save::save_exists() {
     if (path.empty()) return false;
     FILE *f = fopen(path.c_str(), "rb");
     if (!f) return false;
+    uint32_t magic   = 0;
+    uint16_t version = 0;
+    bool ok = rv(f, magic) && rv(f, version)
+              && magic   == GameState::MAGIC
+              && version == GameState::VERSION;
     fclose(f);
-    return true;
+    return ok;
 }
 
 bool Save::save_game(const Save::GameState &s) {
