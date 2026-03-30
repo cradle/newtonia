@@ -73,8 +73,8 @@ void Menu::draw() {
     // Two-option selector — always visible so the player can read both choices
     std::string cont    = std::string(menu_selection == 0 ? "> " : "  ") + "CONTINUE";
     std::string newgame = std::string(menu_selection == 1 ? "> " : "  ") + "NEW GAME";
-    Typer::draw_centered(0, -30,  cont.c_str(),    22);
-    Typer::draw_centered(0, -80,  newgame.c_str(),  22);
+    Typer::draw_centered(0,  -10, cont.c_str(),    22);
+    Typer::draw_centered(0, -100, newgame.c_str(), 22);
   } else {
     if((currentTime/1400) % 2) {
       if(is_touch_mode()) {
