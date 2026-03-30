@@ -185,10 +185,6 @@ Save::Station GLStation::capture_state() const {
     e.value = gs->ship->value;
     s.enemies.push_back(e);
   }
-  std::cout << "[save] station: present=1 alive=" << s.alive
-            << " enemies=" << s.enemies.size()
-            << " deploying=" << s.deploying
-            << " ships_left=" << s.ships_left_to_deploy << std::endl;
   return s;
 }
 
@@ -206,10 +202,6 @@ void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
   time_until_next_ship = (float)s.time_until_next_ship;
   deploying = s.deploying;
   redeploying = s.redeploying;
-  std::cout << "[load] station: present=" << s.present << " alive=" << s.alive
-            << " enemies=" << s.enemies.size()
-            << " deploying=" << s.deploying
-            << " ships_left=" << s.ships_left_to_deploy << std::endl;
   for (const auto &se : s.enemies) {
     GLEnemy *ge = new GLEnemy(grid, se.pos_x, se.pos_y, targets, (float)difficulty, asteroids);
     ge->ship->alive = true;
@@ -220,8 +212,6 @@ void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
     ge->ship->rotation_force = se.rotation_force;
     ge->ship->value = se.value;
     objects->push_back(ge);
-    std::cout << "[load] enemy pos=(" << ge->ship->position.x() << "," << ge->ship->position.y()
-              << ") alive=" << ge->ship->alive << " lives=" << ge->ship->lives << std::endl;
   }
 }
 
