@@ -234,7 +234,24 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     players->push_back(gs);
   }
 
-  station = NULL;
+  if (save.station.present) {
+    station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
+    station->restore_state(save.station);
+    // Restore each deployed enemy
+    for (const auto &se : save.station.enemies) {
+      GLEnemy *ge = new GLEnemy(grid, se.pos_x, se.pos_y, players, save.station.difficulty, (std::list<Object*>*)objects);
+      ge->ship->position = WrappedPoint(se.pos_x, se.pos_y);
+      ge->ship->velocity = Point(se.vel_x, se.vel_y);
+      ge->ship->facing = Point(se.facing_x, se.facing_y);
+      ge->ship->thrust_force = se.thrust_force;
+      ge->ship->rotation_force = se.rotation_force;
+      ge->ship->value = se.value;
+      enemies->push_back(ge);
+    }
+  } else {
+    station = NULL;
+  }
+  warp_pass_ = nullptr;
 
   if(tic_sound == NULL) {
     tic_sound = Mix_LoadWAV("audio/tic.wav");
@@ -293,6 +310,12 @@ Save::GameState GLGame::build_save_data() const {
 
   for (auto* bh : *black_holes)
     s.black_holes.push_back({bh->position.x(), bh->position.y()});
+
+  if (station) {
+    s.station = station->capture_state();
+  } else {
+    s.station.present = false;
+  }
 
   return s;
 }

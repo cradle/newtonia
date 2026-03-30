@@ -84,11 +84,37 @@ struct BlackHole {
     float pos_x, pos_y;
 };
 
+// ── Enemy ship ───────────────────────────────────────────────────────────────
+
+struct Enemy {
+    float pos_x, pos_y;
+    float vel_x, vel_y;
+    float facing_x, facing_y;
+    float thrust_force, rotation_force;
+    int   value;
+};
+
+// ── Station ──────────────────────────────────────────────────────────────────
+
+struct Station {
+    bool  present;          // false = no station in this save
+    bool  alive;
+    int   health;
+    float pos_x, pos_y;
+    float vel_x, vel_y;
+    float inner_rotation, outer_rotation;
+    int   wave, difficulty;
+    int   ships_this_wave, ships_left_to_deploy;
+    float time_until_next_ship;
+    bool  deploying, redeploying;
+    std::vector<Enemy> enemies;
+};
+
 // ── Top-level game state ─────────────────────────────────────────────────────
 
 struct GameState {
     static constexpr uint32_t MAGIC   = 0x4E57544E;  // "NWTN"
-    static constexpr uint16_t VERSION = 3;
+    static constexpr uint16_t VERSION = 4;
 
     int   generation;
     float world_x, world_y;
@@ -100,6 +126,7 @@ struct GameState {
     std::vector<Asteroid>  asteroids;
     std::vector<Pickup>    pickups;
     std::vector<BlackHole> black_holes;
+    Station                station;
 };
 
 // ── API ───────────────────────────────────────────────────────────────────────

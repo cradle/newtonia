@@ -9,6 +9,7 @@
 #include "grid.h"
 #include "glstarfield.h"
 #include "glstation.h"
+#include "glenemy.h"
 #include "asteroid.h"
 #include "black_hole.h"
 #include "pickup.h"

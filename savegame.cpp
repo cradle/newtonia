@@ -199,6 +199,72 @@ static bool read_pickup(FILE *f, Save::Pickup &p) {
     return true;
 }
 
+static bool write_enemy(FILE *f, const Save::Enemy &e) {
+    return wv(f, e.pos_x) && wv(f, e.pos_y)
+        && wv(f, e.vel_x) && wv(f, e.vel_y)
+        && wv(f, e.facing_x) && wv(f, e.facing_y)
+        && wv(f, e.thrust_force) && wv(f, e.rotation_force)
+        && wv(f, (int32_t)e.value);
+}
+
+static bool read_enemy(FILE *f, Save::Enemy &e) {
+    int32_t value = 0;
+    if (!rv(f, e.pos_x) || !rv(f, e.pos_y)
+     || !rv(f, e.vel_x) || !rv(f, e.vel_y)
+     || !rv(f, e.facing_x) || !rv(f, e.facing_y)
+     || !rv(f, e.thrust_force) || !rv(f, e.rotation_force)
+     || !rv(f, value)) return false;
+    e.value = (int)value;
+    return true;
+}
+
+static bool write_station(FILE *f, const Save::Station &s) {
+    if (!wv(f, (uint8_t)s.present)) return false;
+    if (!s.present) return true;
+    if (!wv(f, (uint8_t)s.alive)) return false;
+    if (!wv(f, (int32_t)s.health)) return false;
+    if (!wv(f, s.pos_x) || !wv(f, s.pos_y)) return false;
+    if (!wv(f, s.vel_x) || !wv(f, s.vel_y)) return false;
+    if (!wv(f, s.inner_rotation) || !wv(f, s.outer_rotation)) return false;
+    if (!wv(f, (int32_t)s.wave) || !wv(f, (int32_t)s.difficulty)) return false;
+    if (!wv(f, (int32_t)s.ships_this_wave) || !wv(f, (int32_t)s.ships_left_to_deploy)) return false;
+    if (!wv(f, s.time_until_next_ship)) return false;
+    if (!wv(f, (uint8_t)s.deploying) || !wv(f, (uint8_t)s.redeploying)) return false;
+    uint32_t cnt = (uint32_t)s.enemies.size();
+    if (!wv(f, cnt)) return false;
+    for (const auto &e : s.enemies)
+        if (!write_enemy(f, e)) return false;
+    return true;
+}
+
+static bool read_station(FILE *f, Save::Station &s) {
+    uint8_t present = 0;
+    if (!rv(f, present)) return false;
+    s.present = (bool)present;
+    if (!s.present) return true;
+    uint8_t alive = 0, deploying = 0, redeploying = 0;
+    int32_t health = 0, wave = 0, difficulty = 0, ships_this_wave = 0, ships_left = 0;
+    if (!rv(f, alive) || !rv(f, health)) return false;
+    s.alive  = (bool)alive;
+    s.health = (int)health;
+    if (!rv(f, s.pos_x) || !rv(f, s.pos_y)) return false;
+    if (!rv(f, s.vel_x) || !rv(f, s.vel_y)) return false;
+    if (!rv(f, s.inner_rotation) || !rv(f, s.outer_rotation)) return false;
+    if (!rv(f, wave) || !rv(f, difficulty)) return false;
+    s.wave = (int)wave; s.difficulty = (int)difficulty;
+    if (!rv(f, ships_this_wave) || !rv(f, ships_left)) return false;
+    s.ships_this_wave = (int)ships_this_wave; s.ships_left_to_deploy = (int)ships_left;
+    if (!rv(f, s.time_until_next_ship)) return false;
+    if (!rv(f, deploying) || !rv(f, redeploying)) return false;
+    s.deploying = (bool)deploying; s.redeploying = (bool)redeploying;
+    uint32_t cnt = 0;
+    if (!rv(f, cnt)) return false;
+    s.enemies.resize(cnt);
+    for (auto &e : s.enemies)
+        if (!read_enemy(f, e)) return false;
+    return true;
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 bool Save::save_exists() {
@@ -250,6 +316,8 @@ bool Save::save_game(const Save::GameState &s) {
     cnt = (uint32_t)s.black_holes.size();
     ok = ok && wv(f, cnt);
     for (const auto &bh : s.black_holes) ok = ok && wv(f, bh.pos_x) && wv(f, bh.pos_y);
+
+    ok = ok && write_station(f, s.station);
 
     fclose(f);
 
@@ -304,6 +372,8 @@ bool Save::load_game(Save::GameState &s) {
     s.black_holes.resize(cnt);
     for (auto &bh : s.black_holes)
         ok = ok && rv(f, bh.pos_x) && rv(f, bh.pos_y);
+
+    ok = ok && read_station(f, s.station);
 
     fclose(f);
     return ok;
