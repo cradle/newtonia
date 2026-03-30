@@ -7,10 +7,6 @@
 #include <emscripten.h>
 #endif
 
-// Out-of-line definitions required by C++11 for ODR-used static constexpr members.
-constexpr uint32_t Save::GameState::MAGIC;
-constexpr uint16_t Save::GameState::VERSION;
-
 static const char *SG_ORG  = "cc.gfm";
 static const char *SG_APP  = "newtonia";
 static const char *SG_FILE = "savegame.dat";
@@ -215,8 +211,10 @@ bool Save::save_game(const Save::GameState &s) {
     if (!f) return false;
 
     bool ok = true;
-    ok = ok && wv(f, GameState::MAGIC);
-    ok = ok && wv(f, GameState::VERSION);
+    uint32_t magic   = GameState::MAGIC;
+    uint16_t version = GameState::VERSION;
+    ok = ok && wv(f, magic);
+    ok = ok && wv(f, version);
     ok = ok && wv(f, (int32_t)s.generation);
     ok = ok && wv(f, s.world_x) && wv(f, s.world_y);
     ok = ok && wv(f, (uint8_t)s.level_cleared);
