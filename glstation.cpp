@@ -10,6 +10,7 @@
 #include <iostream>
 #include "savegame.h"
 #include "grid.h"
+#include "follower.h"
 // #include "follower.h"
 
 using namespace std;
@@ -212,6 +213,10 @@ void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
     ge->ship->rotation_force = se.rotation_force;
     ge->ship->value = se.value;
     objects->push_back(ge);
+    // Skip the initial 2.5s lock delay — enemy is already deployed at saved position
+    if (!ge->ship->behaviours.empty())
+      if (Follower *f = dynamic_cast<Follower*>(ge->ship->behaviours.front()))
+        f->lock_now();
   }
 }
 

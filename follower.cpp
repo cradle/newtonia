@@ -143,6 +143,11 @@ void Follower::lock_nearest_target() {
   }
 }
 
+void Follower::lock_now() {
+  time_until_next_lock = 0;
+  lock_nearest_target();
+}
+
 void Follower::lock_step(int delta) {
   time_until_next_lock -= delta;
   if(time_until_next_lock <= 0) {

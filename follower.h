@@ -16,6 +16,7 @@ public:
   virtual ~Follower();
 
   virtual void step(int delta);
+  void lock_now();  // skip initial delay and acquire target immediately
 
 private:
   void common_init();
