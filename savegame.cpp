@@ -7,6 +7,10 @@
 #include <emscripten.h>
 #endif
 
+// Out-of-line definitions required by C++11 for ODR-used static constexpr members.
+constexpr uint32_t Save::GameState::MAGIC;
+constexpr uint16_t Save::GameState::VERSION;
+
 static const char *SG_ORG  = "cc.gfm";
 static const char *SG_APP  = "newtonia";
 static const char *SG_FILE = "savegame.dat";
