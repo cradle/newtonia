@@ -370,7 +370,10 @@ int Ship::god_mode_time_remaining() const {
 Save::Player Ship::capture_state() const {
   Save::Player p;
   p.score = score;
-  p.lives = lives;
+  // If currently dead (mid-respawn countdown), the current death has consumed
+  // one life that won't be deducted until respawn() fires. Subtract it now so
+  // restore_state() with respawn(false) gives the correct count.
+  p.lives = alive ? lives : lives - 1;
   p.kills = kills;
 
   // Primary weapons
@@ -425,10 +428,23 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
   secondary = secondary_weapons.end();
 
   for (const auto &we : p.primary_weapons) {
-    if (we.kind == Save::WeaponEntry::Kind::GodMode)
+    if (we.kind == Save::WeaponEntry::Kind::GodMode) {
       add_god_mode(we.ammo);
-    else
-      add_weapon(we.weapon_index);
+    } else {
+      // Bypass add_weapon(): it rejects weapon_index==-1 (base weapon) and
+      // ignores saved ammo. Construct directly and restore ammo explicitly.
+      Weapon::Default *w;
+      if (we.weapon_index < 0) {
+        w = new Weapon::Default(this);  // base weapon, unlimited ammo
+      } else {
+        const WeaponConfig &cfg = weapon_configs[we.weapon_index];
+        w = new Weapon::Default(this, cfg.automatic, cfg.level, cfg.accuracy,
+                                cfg.time_between_shots, we.weapon_index);
+        w->set_ammo(we.ammo);
+      }
+      primary_weapons.push_back(w);
+      primary = --primary_weapons.end();
+    }
   }
   if (!primary_weapons.empty()) {
     int clamp = std::min(p.selected_primary_idx, (int)primary_weapons.size() - 1);
