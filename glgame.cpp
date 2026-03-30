@@ -1333,7 +1333,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
   if (key == 27) {
-    if (!running) {
+    if (running) {
       toggle_pause();
     } else {
       for (auto* glship : *players)
