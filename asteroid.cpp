@@ -119,6 +119,80 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   }
 }
 
+Save::Asteroid Asteroid::capture_state() const {
+    Save::Asteroid s;
+    s.pos_x          = position.x();
+    s.pos_y          = position.y();
+    s.vel_x          = velocity.x();
+    s.vel_y          = velocity.y();
+    s.radius         = radius;
+    s.rotation       = rotation;
+    s.rotation_speed = rotation_speed;
+    s.value          = value;
+    s.health         = health;
+    for (int i = 0; i < 9; i++) s.vertex_offsets[i] = vertex_offsets[i];
+    s.max_vertex_offset = max_vertex_offset;
+    s.invincible     = invincible;
+    s.invisible      = invisible;
+    s.reflective     = reflective;
+    s.teleporting    = teleporting;
+    s.quantum        = quantum;
+    s.tough          = tough;
+    s.elastic        = elastic;
+    s.teleport_vulnerable  = teleport_vulnerable;
+    s.teleport_angle       = teleport_angle;
+    s.vulnerable_time_left = vulnerable_time_left;
+    s.quantum_observed     = quantum_observed;
+    s.quantum_base_speed   = quantum_base_speed;
+    for (int i = 0; i < 5; i++) {
+        s.crack_vertex[i] = crack_vertex[i];
+        s.crack_t[i]      = crack_t[i];
+        s.crack_perp[i]   = crack_perp[i];
+    }
+    return s;
+}
+
+void Asteroid::restore_state(const Save::Asteroid &s) {
+    // Position and motion
+    position       = WrappedPoint(s.pos_x, s.pos_y);
+    velocity       = Point(s.vel_x, s.vel_y);
+    radius         = s.radius;
+    rotation       = s.rotation;
+    rotation_speed = s.rotation_speed;
+    value          = s.value;
+    health         = s.health;
+
+    // Visual geometry (private — only settable from within Asteroid)
+    for (int i = 0; i < 9; i++) vertex_offsets[i] = s.vertex_offsets[i];
+    max_vertex_offset = s.max_vertex_offset;
+
+    // Type flags and associated state
+    invincible     = s.invincible;
+    invisible      = s.invisible;
+    reflective     = s.reflective;
+    teleporting    = s.teleporting;
+    quantum        = s.quantum;
+    tough          = s.tough;
+    elastic        = s.elastic;
+
+    teleport_vulnerable  = s.teleport_vulnerable;
+    teleport_angle       = s.teleport_angle;
+    vulnerable_time_left = s.vulnerable_time_left;
+    teleport_pending     = false;  // never mid-teleport at save time
+
+    quantum_observed     = s.quantum_observed;
+    quantum_base_speed   = s.quantum_base_speed;
+
+    for (int i = 0; i < 5; i++) {
+        crack_vertex[i] = s.crack_vertex[i];
+        crack_t[i]      = s.crack_t[i];
+        crack_perp[i]   = s.crack_perp[i];
+    }
+
+    // radius_squared must match radius
+    radius_squared = radius * radius;
+}
+
 void Asteroid::step(int delta) {
   CompositeObject::step(delta);
   if(teleporting && teleport_vulnerable) {

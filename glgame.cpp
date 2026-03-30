@@ -101,6 +101,9 @@ GLGame::GLGame(SDL_GameController *controller) :
 }
 
 GLGame::~GLGame() {
+  if (!score_saved)
+    Save::save_game(build_save_data());
+
   //TODO: Make erase, use boost::ptr_list? something better
   // std::erase(std::remove_if(v.begin(),v.end(),true), v.end());
   while(!players->empty()) {
@@ -148,6 +151,148 @@ GLGame::~GLGame() {
   glDeleteLists(frontstars, 1);
 }
 
+GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
+  State(),
+  world(Point(save.world_x, save.world_y)),
+  generation(save.generation),
+  current_time(save.current_time),
+  running(true),
+  level_cleared(save.level_cleared),
+  friendly_fire(true),
+  debug_grid(false),
+  score_saved(false),
+  game_over_time(-1),
+  grid(Grid(Point(save.world_x, save.world_y),
+            Point(Asteroid::max_radius*2, Asteroid::max_radius*2))) {
+  time_between_steps = step_size;
+  time_until_next_generation = save.time_until_next_generation;
+
+  enemies = new std::list<GLShip*>;
+  players = new std::list<GLShip*>;
+  ship_objects = new std::list<Object*>;
+  objects = new std::list<Asteroid*>;
+  dead_objects = new std::list<Asteroid*>;
+  pickups = new std::list<Pickup*>;
+  black_holes = new std::list<BlackHole*>;
+
+  WrappedPoint::set_boundaries(world);
+
+  starfield = new GLStarfield(world);
+
+  rearstars = glGenLists(1);
+  frontstars = glGenLists(1);
+
+  time_until_next_step = 0;
+  num_frames = 0;
+
+  // Restore asteroids
+  Asteroid::num_killable = 0;
+  for (const auto &sa : save.asteroids) {
+    Asteroid *a = new Asteroid(sa.invincible, sa.invisible, sa.reflective,
+                               sa.teleporting, sa.quantum, sa.tough);
+    a->restore_state(sa);
+    objects->push_back(a);
+  }
+  grid.update((std::list<Object*>*)objects);
+
+  // Restore pickups
+  for (const auto &sp : save.pickups) {
+    WrappedPoint pos(sp.pos_x, sp.pos_y);
+    switch (sp.type) {
+      case Save::PickupType::Weapon:   pickups->push_back(new WeaponPickup(pos, sp.weapon_index)); break;
+      case Save::PickupType::Mine:     pickups->push_back(new MinePickup(pos)); break;
+      case Save::PickupType::GigaMine: pickups->push_back(new GigaMinePickup(pos)); break;
+      case Save::PickupType::Missile:  pickups->push_back(new MissilePickup(pos)); break;
+      case Save::PickupType::Shield:   pickups->push_back(new ShieldPickup(pos)); break;
+      case Save::PickupType::GodMode:  pickups->push_back(new GodModePickup(pos)); break;
+      case Save::PickupType::ExtraLife: pickups->push_back(new ExtraLife(pos)); break;
+    }
+  }
+
+  // Restore black holes
+  for (const auto &sbh : save.black_holes) {
+    black_holes->push_back(new BlackHole(WrappedPoint(sbh.pos_x, sbh.pos_y)));
+  }
+
+  // Restore players
+  for (const auto &sp : save.players) {
+    GLShip *gs = new GLShip(grid, true);
+    if (controller != NULL && players->empty()) {
+      gs->set_controller(controller);
+    } else if (players->empty()) {
+      gs->set_keys('a','d','w',' ','s','x','q','e', 't', 128+GLUT_KEY_F1, 'c');
+    }
+    gs->ship->set_missile_asteroids((std::list<Object*>*)objects);
+    ship_objects->push_back(gs->ship);
+    gs->ship->set_missile_ships(ship_objects);
+    gs->ship->set_black_holes(black_holes);
+    gs->ship->restore_state(sp, grid);
+    players->push_back(gs);
+  }
+
+  station = NULL;
+
+  if(tic_sound == NULL) {
+    tic_sound = Mix_LoadWAV("audio/tic.wav");
+    if(tic_sound == NULL) {
+      std::cout << "Unable to load tic.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(pickup_sound == NULL) {
+    pickup_sound = Mix_LoadWAV("audio/pickup.wav");
+    if(pickup_sound == NULL) {
+      std::cout << "Unable to load pickup.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+}
+
+Save::GameState GLGame::build_save_data() const {
+  Save::GameState s;
+  s.generation                 = generation;
+  s.world_x                    = world.x();
+  s.world_y                    = world.y();
+  s.level_cleared              = level_cleared;
+  s.time_until_next_generation = time_until_next_generation;
+  s.current_time               = current_time;
+
+  for (auto* gs : *players)
+    s.players.push_back(gs->ship->capture_state());
+
+  for (auto* a : *objects)
+    s.asteroids.push_back(a->capture_state());
+
+  for (auto* p : *pickups) {
+    Save::Pickup sp;
+    sp.pos_x = p->position.x();
+    sp.pos_y = p->position.y();
+    sp.weapon_index = -1;
+    if (WeaponPickup *wp = dynamic_cast<WeaponPickup*>(p)) {
+      sp.type = Save::PickupType::Weapon;
+      sp.weapon_index = wp->get_weapon_index();
+    } else if (dynamic_cast<MinePickup*>(p)) {
+      sp.type = Save::PickupType::Mine;
+    } else if (dynamic_cast<GigaMinePickup*>(p)) {
+      sp.type = Save::PickupType::GigaMine;
+    } else if (dynamic_cast<MissilePickup*>(p)) {
+      sp.type = Save::PickupType::Missile;
+    } else if (dynamic_cast<ShieldPickup*>(p)) {
+      sp.type = Save::PickupType::Shield;
+    } else if (dynamic_cast<GodModePickup*>(p)) {
+      sp.type = Save::PickupType::GodMode;
+    } else if (dynamic_cast<ExtraLife*>(p)) {
+      sp.type = Save::PickupType::ExtraLife;
+    } else {
+      continue; // unknown pickup type, skip
+    }
+    s.pickups.push_back(sp);
+  }
+
+  for (auto* bh : *black_holes)
+    s.black_holes.push_back({bh->position.x(), bh->position.y()});
+
+  return s;
+}
+
 void GLGame::add_asteroids() {
   while(Asteroid::num_killable < (default_num_asteroids + generation * extra_num_asteroids)) {
     objects->push_back(new Asteroid(false));
@@ -185,6 +330,8 @@ void GLGame::toggle_pause() {
 }
 
 void GLGame::focus_lost() {
+  if (!score_saved)
+    Save::save_game(build_save_data());
   if(running) {
     toggle_pause();
     auto_paused = true;
@@ -742,6 +889,30 @@ void GLGame::tick(int delta) {
       EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
 #endif
     }
+  }
+
+  /* Delete save on true game over */
+  if (score_saved && !save_deleted_) {
+    Save::delete_save();
+    save_deleted_ = true;
+  }
+
+  /* Save on death while lives remain (once per death window) */
+  if (!score_saved && !players->empty()) {
+    bool any_dead_with_lives = false;
+    bool any_dead_no_lives   = false;
+    for (auto* glship : *players) {
+      if (!glship->ship->is_alive()) {
+        if (glship->ship->lives > 0) any_dead_with_lives = true;
+        else                         any_dead_no_lives   = true;
+      }
+    }
+    if (any_dead_with_lives && !any_dead_no_lives && !save_written_this_death_) {
+      Save::save_game(build_save_data());
+      save_written_this_death_ = true;
+    }
+    if (!any_dead_with_lives)
+      save_written_this_death_ = false;
   }
 
   /* Display FPS */

@@ -5,6 +5,7 @@
 #include "menu.h"
 #include "gl_compat.h"
 #include <iostream>
+#include <string>
 
 const int Menu::default_world_width = 5000;
 const int Menu::default_world_height = 5000;
@@ -13,6 +14,8 @@ Menu::Menu() :
   State(),
   currentTime(0),
   high_score(load_high_score()),
+  has_save_(Save::save_exists()),
+  menu_selection(0),
   viewpoint(Point(0,default_world_height/2)),
   starfield(GLStarfield(Point(default_world_width,default_world_height))) {
 #ifdef __EMSCRIPTEN__
@@ -65,13 +68,22 @@ void Menu::draw() {
     Typer::draw_centered(0, -215, "HIGH SCORE", 14);
     Typer::draw_centered(0, -255, high_score, 18);
   }
-  if((currentTime/1400) % 2) {
-    if(is_touch_mode()) {
-      Typer::draw_centered(0, -50, "tap to start", 18);
-    } else if(SDL_NumJoysticks() == 0) {
-      Typer::draw_centered(0, -50, "press enter", 18);
-    } else {
-      Typer::draw_centered(0, -50, "press start", 18);
+
+  if (has_save_) {
+    // Two-option selector — always visible so the player can read both choices
+    std::string cont    = std::string(menu_selection == 0 ? "> " : "  ") + "CONTINUE";
+    std::string newgame = std::string(menu_selection == 1 ? "> " : "  ") + "NEW GAME";
+    Typer::draw_centered(0, -30,  cont.c_str(),    22);
+    Typer::draw_centered(0, -80,  newgame.c_str(),  22);
+  } else {
+    if((currentTime/1400) % 2) {
+      if(is_touch_mode()) {
+        Typer::draw_centered(0, -50, "tap to start", 18);
+      } else if(SDL_NumJoysticks() == 0) {
+        Typer::draw_centered(0, -50, "press enter", 18);
+      } else {
+        Typer::draw_centered(0, -50, "press start", 18);
+      }
     }
   }
   Typer::draw_centered(0, -420, "© 2008-2026 METONYMOUS", 13, currentTime);
@@ -96,7 +108,7 @@ void Menu::tick(int delta) {
       r2_pressed = true;
       if(!r2_active) {
         r2_active = true;
-        request_state_change(new GLGame(ctrl));
+        confirm_selection(ctrl);
         return;
       }
       break;
@@ -109,12 +121,16 @@ void Menu::controller(SDL_Event event) {
   if(event.type == SDL_CONTROLLERBUTTONDOWN) {
     if(event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
       glutLeaveMainLoop();
+    } else if(has_save_ && event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
+      menu_selection = 0;
+    } else if(has_save_ && event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
+      menu_selection = 1;
     } else if(event.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
               event.cbutton.button == SDL_CONTROLLER_BUTTON_A) {
 #ifdef __EMSCRIPTEN__
       EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
-      request_state_change(new GLGame(SDL_GameControllerFromInstanceID(event.cbutton.which)));
+      confirm_selection(SDL_GameControllerFromInstanceID(event.cbutton.which));
     }
   } else if(event.type == SDL_CONTROLLERAXISMOTION) {
     if(event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) {
@@ -124,7 +140,7 @@ void Menu::controller(SDL_Event event) {
 #ifdef __EMSCRIPTEN__
         EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
-        request_state_change(new GLGame(SDL_GameControllerFromInstanceID(event.caxis.which)));
+        confirm_selection(SDL_GameControllerFromInstanceID(event.caxis.which));
       }
       if(!pressed) r2_active = false;
     }
@@ -134,17 +150,42 @@ void Menu::controller(SDL_Event event) {
 void Menu::keyboard(unsigned char key, int x, int y) {
 }
 
-void Menu::keyboard_up (unsigned char key, int x, int y) {
+void Menu::keyboard_up(unsigned char key, int x, int y) {
 #if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__)
-  // Touch/mobile/web — any key starts the game
+  // Touch/mobile/web — any key starts the game (touch_tap handles Continue/New Game)
 #ifdef __EMSCRIPTEN__
   EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
-  request_state_change(new GLGame());
+  confirm_selection(nullptr);
 #else
-  if (key == 27)
+  if (key == 27) {
     glutLeaveMainLoop();
-  else if (key == ' ' || key == '\r' || key == '\n')
-    request_state_change(new GLGame());
+  } else if (key == ' ' || key == '\r' || key == '\n') {
+    confirm_selection(nullptr);
+  } else if (has_save_ && (key == 'w' || key == 'W')) {
+    menu_selection = 0;
+  } else if (has_save_ && (key == 's' || key == 'S')) {
+    menu_selection = 1;
+  }
 #endif
+}
+
+void Menu::touch_tap(float nx, float ny) {
+  if (!has_save_) return;
+  // Upper ~60% of screen = CONTINUE, lower ~40% = NEW GAME
+  menu_selection = (ny > 0.6f) ? 1 : 0;
+  confirm_selection(nullptr);
+}
+
+void Menu::confirm_selection(SDL_GameController *ctrl) {
+  if (has_save_ && menu_selection == 0) {
+    Save::GameState s;
+    if (Save::load_game(s)) {
+      request_state_change(new GLGame(s, ctrl));
+      return;
+    }
+    // Corrupt or missing save — fall through to new game
+    has_save_ = false;
+  }
+  request_state_change(new GLGame(ctrl));
 }

@@ -3,6 +3,7 @@
 
 #include <SDL.h>
 #include "state.h"
+#include "savegame.h"
 
 class Menu : public State {
 public:
@@ -14,10 +15,15 @@ public:
   void keyboard_up(unsigned char key, int x, int y);
   void controller(SDL_Event event);
   void tick(int delta);
+  void touch_tap(float nx, float ny) override;
 
 private:
+  void confirm_selection(SDL_GameController *ctrl);
+
   int currentTime;
   int high_score;
+  bool has_save_ = false;
+  int  menu_selection = 0;  // 0 = CONTINUE, 1 = NEW GAME (only relevant when has_save_)
   WrappedPoint viewpoint;
   GLStarfield starfield;
   static const int default_world_width, default_world_height;

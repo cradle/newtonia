@@ -74,6 +74,9 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
 }
 
 static void finger_down(SDL_FingerID id, float x, float y) {
+    // Forward tap position to whichever state is active (e.g. Menu uses this for Continue/New Game)
+    s_game->touch_tap(x, y);
+
     // Pause zone: top-centre over the LEVEL text (x in [0.35, 0.65], y < 0.15)
     if(!s_pause_active && x >= 0.35f && x <= 0.65f && y < 0.15f) {
         s_pause_active = true;
