@@ -214,12 +214,13 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     black_holes->push_back(new BlackHole(WrappedPoint(sbh.pos_x, sbh.pos_y)));
   }
 
-  // Restore players
+  // Restore players — player 1 is GLShip, player 2+ is GLCar (matches add_player2)
   for (const auto &sp : save.players) {
-    GLShip *gs = new GLShip(grid, true);
-    if (controller != NULL && players->empty()) {
+    bool is_p1 = players->empty();
+    GLShip *gs = is_p1 ? new GLShip(grid, true) : new GLCar(grid, true);
+    if (controller != NULL && is_p1) {
       gs->set_controller(controller);
-    } else if (players->empty()) {
+    } else if (is_p1) {
       gs->set_keys('a','d','w',' ','s','x','q','e', 't', 128+GLUT_KEY_F1, 'c');
     }
     gs->ship->set_missile_asteroids((std::list<Object*>*)objects);
