@@ -114,6 +114,10 @@ float GLShip::camera_facing() const {
   return -camera_rotation;
 }
 
+void GLShip::snap_camera_to_heading() {
+  camera_rotation = ship->heading();
+}
+
 void GLShip::collide_grid(Grid &grid, int delta) {
     ship->collide_grid(grid, delta);
 }

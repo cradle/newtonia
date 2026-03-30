@@ -227,6 +227,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     gs->ship->set_missile_ships(ship_objects);
     gs->ship->set_black_holes(black_holes);
     gs->ship->restore_state(sp, grid);
+    gs->snap_camera_to_heading();
     players->push_back(gs);
   }
 
