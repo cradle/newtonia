@@ -373,8 +373,9 @@ Save::Player Ship::capture_state() const {
   // If currently dead (mid-respawn countdown), the current death has consumed
   // one life that won't be deducted until respawn() fires. Subtract it now so
   // restore_state() with respawn(false) gives the correct count.
-  p.lives = alive ? lives : lives - 1;
-  p.kills = kills;
+  p.lives          = alive ? lives : lives - 1;
+  p.kills          = kills;
+  p.kills_this_life = kills_this_life;
 
   // Primary weapons
   list<Weapon::Base*>::const_iterator cprimary = primary;
@@ -418,10 +419,11 @@ Save::Player Ship::capture_state() const {
 }
 
 void Ship::restore_state(const Save::Player &p, const Grid &grid) {
-  score      = p.score;
-  lives      = p.lives;
-  kills      = p.kills;
-  first_life = false;
+  score           = p.score;
+  lives           = p.lives;
+  kills           = p.kills;
+  kills_this_life = p.kills_this_life;
+  first_life      = false;
 
   disable_weapons();
   primary   = primary_weapons.end();

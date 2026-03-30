@@ -473,6 +473,8 @@ void GLGame::tick(int delta) {
         (*o)->ship->respawn(grid, false);
       }
       level_cleared = false;
+      if (!score_saved)
+        Save::save_game(build_save_data());
     }
   }
 
