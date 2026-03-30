@@ -372,7 +372,7 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     } else {
       // Right-pointing triangle (play/resume icon)
       float th = br * 0.45f;
-      float tx = bx + br * 0.08f;
+      float tx = bx - br * 0.05f;
       glBegin(GL_TRIANGLES);
       glVertex2f(tx - th * 0.6f, by - th);
       glVertex2f(tx + th,        by);
