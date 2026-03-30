@@ -170,6 +170,7 @@ static void finger_motion(SDL_FingerID id, float x, float y) {
 // ============================================================
 extern "C" int SDL_main(int argc, char *argv[]) {
     (void)argc; (void)argv;
+    s_running = true;  // reset in case process was kept alive after a previous quit
     srand(time(NULL));
 
     // Let SDL2 auto-select the best audio backend: AAudio on API 26+ (which
