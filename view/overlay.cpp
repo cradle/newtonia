@@ -125,7 +125,7 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
   if(!glgame->running && !glship->show_help) {
     Typer::draw_centered(0, 30, "Paused", 25);
     if(is_touch_mode())
-      Typer::draw_centered(0, -40, "press pause to resume", 8);
+      Typer::draw_centered(0, -40, "press play to resume", 8);
     else if(glship->has_controller())
       Typer::draw_centered(0, -40, "press start to resume", 8);
     else {
