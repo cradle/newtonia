@@ -9,6 +9,7 @@
 #include <list>
 #include <iostream>
 #include "savegame.h"
+#include "grid.h"
 // #include "follower.h"
 
 using namespace std;
@@ -187,7 +188,7 @@ Save::Station GLStation::capture_state() const {
   return s;
 }
 
-void GLStation::restore_state(const Save::Station &s) {
+void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
   alive = s.alive;
   health = s.health;
   position = WrappedPoint(s.pos_x, s.pos_y);
@@ -201,6 +202,16 @@ void GLStation::restore_state(const Save::Station &s) {
   time_until_next_ship = (float)s.time_until_next_ship;
   deploying = s.deploying;
   redeploying = s.redeploying;
+  for (const auto &se : s.enemies) {
+    GLEnemy *ge = new GLEnemy(grid, se.pos_x, se.pos_y, targets, (float)difficulty, asteroids);
+    ge->ship->position = WrappedPoint(se.pos_x, se.pos_y);
+    ge->ship->velocity = Point(se.vel_x, se.vel_y);
+    ge->ship->facing = Point(se.facing_x, se.facing_y);
+    ge->ship->thrust_force = se.thrust_force;
+    ge->ship->rotation_force = se.rotation_force;
+    ge->ship->value = se.value;
+    objects->push_back(ge);
+  }
 }
 
 void GLStation::step(float delta, const Grid &grid) {

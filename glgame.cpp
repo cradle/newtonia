@@ -252,18 +252,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
 
   if (save.station.present) {
     station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
-    station->restore_state(save.station);
-    // Restore each deployed enemy
-    for (const auto &se : save.station.enemies) {
-      GLEnemy *ge = new GLEnemy(grid, se.pos_x, se.pos_y, players, save.station.difficulty, (std::list<Object*>*)objects);
-      ge->ship->position = WrappedPoint(se.pos_x, se.pos_y);
-      ge->ship->velocity = Point(se.vel_x, se.vel_y);
-      ge->ship->facing = Point(se.facing_x, se.facing_y);
-      ge->ship->thrust_force = se.thrust_force;
-      ge->ship->rotation_force = se.rotation_force;
-      ge->ship->value = se.value;
-      enemies->push_back(ge);
-    }
+    station->restore_state(save.station, grid);
   } else {
     station = NULL;
   }

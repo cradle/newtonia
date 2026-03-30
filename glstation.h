@@ -23,7 +23,7 @@ public:
   void destroy();
 
   Save::Station capture_state() const;
-  void restore_state(const Save::Station &s);
+  void restore_state(const Save::Station &s, const Grid &grid);
 
   int health;
 
