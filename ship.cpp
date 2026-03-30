@@ -344,6 +344,7 @@ void Ship::add_shield_ammo(int amount) {
 }
 
 void Ship::add_god_mode(int duration_ms) {
+  set_shield_hum(false);
   for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
     if(dynamic_cast<Weapon::GodMode*>(*it)) {
       (*it)->set_ammo(duration_ms);
