@@ -265,8 +265,8 @@ bool Save::load_game(Save::GameState &s) {
     uint32_t magic;   if (!rv(f, magic)   || magic   != GameState::MAGIC)   { fclose(f); return false; }
     uint16_t version; if (!rv(f, version) || version != GameState::VERSION)  { fclose(f); return false; }
 
-    int32_t  ival;
-    uint8_t  bval;
+    int32_t  ival = 0;
+    uint8_t  bval = 0;
 
     ok = ok && rv(f, ival);  s.generation = (int)ival;
     ok = ok && rv(f, s.world_x) && rv(f, s.world_y);
@@ -274,7 +274,7 @@ bool Save::load_game(Save::GameState &s) {
     ok = ok && rv(f, ival);  s.time_until_next_generation = (int)ival;
     ok = ok && rv(f, ival);  s.current_time = (int)ival;
 
-    uint32_t cnt;
+    uint32_t cnt = 0;
 
     ok = ok && rv(f, cnt);
     s.players.resize(cnt);
