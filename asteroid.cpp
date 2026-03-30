@@ -79,6 +79,7 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
   if(quantum) quantum_base_speed = velocity.magnitude();
   value = (1.0f - (radius - minimum_radius) / float(radius_variation)) * 90.0f + 10.0f;
+  if(quantum) value *= 2;
   for (int i = 0; i < 9; i++)
     vertex_offsets[i] = 0.7f + (rand() / (float)RAND_MAX) * 0.6f;
   max_vertex_offset = vertex_offsets[0];
@@ -165,6 +166,7 @@ Asteroid::Asteroid(Asteroid const *mother) {
   quantum = mother->quantum;
   quantum_observed = true;
   quantum_base_speed = quantum ? velocity.magnitude() : 0.0f;
+  if(quantum) value *= 2;
   elastic = mother->elastic;
   tough = false;
   health = 1;
