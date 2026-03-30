@@ -863,6 +863,9 @@ void GLGame::tick(int delta) {
     o = enemies->begin();
     while(o != enemies->end()) {
       if((*o)->is_removable()) {
+        std::cout << "[tick] removing enemy: alive=" << (*o)->ship->alive
+                  << " lives=" << (*o)->ship->lives
+                  << " debris=" << (*o)->ship->debris.size() << std::endl;
         ship_objects->remove((*o)->ship);
         delete *o;
         o = enemies->erase(o);

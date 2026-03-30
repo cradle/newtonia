@@ -219,6 +219,8 @@ void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
     ge->ship->rotation_force = se.rotation_force;
     ge->ship->value = se.value;
     objects->push_back(ge);
+    std::cout << "[load] enemy pos=(" << ge->ship->position.x() << "," << ge->ship->position.y()
+              << ") alive=" << ge->ship->alive << " lives=" << ge->ship->lives << std::endl;
   }
 }
 
