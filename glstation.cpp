@@ -170,7 +170,7 @@ Save::Station GLStation::capture_state() const {
   s.difficulty = difficulty;
   s.ships_this_wave = ships_this_wave;
   s.ships_left_to_deploy = ships_left_to_deploy;
-  s.time_until_next_ship = (int)time_until_next_ship;
+  s.time_until_next_ship = time_until_next_ship;
   s.deploying = deploying;
   s.redeploying = redeploying;
   for (const auto *gs : *objects) {

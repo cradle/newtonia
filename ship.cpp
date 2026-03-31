@@ -445,7 +445,7 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
       // Bypass add_weapon(): it rejects weapon_index==-1 (base weapon) and
       // ignores saved ammo. Construct directly and restore ammo explicitly.
       Weapon::Default *w;
-      if (we.weapon_index < 0) {
+      if (we.weapon_index < 0 || we.weapon_index >= num_weapon_configs) {
         w = new Weapon::Default(this);  // base weapon, unlimited ammo
       } else {
         const WeaponConfig &cfg = weapon_configs[we.weapon_index];
