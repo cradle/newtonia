@@ -362,15 +362,9 @@ void GLGame::toggle_pause() {
 }
 
 bool GLGame::back_pressed() {
-  if (running) {
-    toggle_pause();
-    if (!score_saved)
-      Save::save_game(build_save_data());
-  } else {
-    for (auto* glship : *players)
-      save_high_score(glship->ship->score);
-    request_state_change(new Menu());
-  }
+  if (!score_saved)
+    Save::save_game(build_save_data());
+  request_state_change(new Menu());
   return true;
 }
 
@@ -1567,13 +1561,9 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
   if (key == 27) {
-    if (running) {
-      toggle_pause();
-    } else {
-      for (auto* glship : *players)
-        save_high_score(glship->ship->score);
-      request_state_change(new Menu());
-    }
+    if (!score_saved)
+      Save::save_game(build_save_data());
+    request_state_change(new Menu());
   }
 
   std::list<GLShip*>::iterator object;
