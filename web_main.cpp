@@ -74,8 +74,8 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
 }
 
 static void finger_down(SDL_FingerID id, float x, float y) {
-    // Pause button: bottom-centre, enlarged hit area (x in [0.30, 0.70], y > 0.76)
-    if(!s_pause_active && x >= 0.30f && x <= 0.70f && y > 0.76f) {
+    // Pause button: top-right, below score/multiplier
+    if(!s_pause_active && x >= 0.75f && y < 0.25f) {
         s_pause_active = true;
         s_pause_finger = id;
         s_game->keyboard('\r', 0, 0);

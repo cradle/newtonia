@@ -80,7 +80,7 @@ static void finger_down(SDL_FingerID id, float x, float y) {
         return;
     }
 
-    // Pause button hit zone (larger than the visual circle)
+    // Pause button hit zone: top-right, below score/multiplier (larger than visual circle)
     if(!g_touch_controls.pause_active &&
        tc_dist(px, py, g_touch_controls.pause_cx, g_touch_controls.pause_cy) <= g_touch_controls.pause_hit_radius) {
         g_touch_controls.pause_active = true;
