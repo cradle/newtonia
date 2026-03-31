@@ -10,6 +10,7 @@
 #include "weapon/missile.h"
 #include "weapon/shield.h"
 #include "weapon/god_mode.h"
+#include <algorithm>
 #include <math.h>
 #include <climits>
 #include <iostream>
@@ -255,7 +256,8 @@ void Ship::add_weapon(int weapon_index) {
 
   primary_weapons.push_back(new Weapon::Default(this, cfg.automatic, cfg.level, cfg.accuracy, cfg.time_between_shots, weapon_index));
   if(!in_god_mode && !auto_shooting) {
-    (*primary)->shoot(false);
+    if (primary != primary_weapons.end())
+      (*primary)->shoot(false);
     primary = --primary_weapons.end();
   }
 }
@@ -354,7 +356,8 @@ void Ship::add_god_mode(int duration_ms) {
     }
   }
   primary_weapons.push_back(new Weapon::GodMode(this, duration_ms));
-  (*primary)->shoot(false);
+  if (primary != primary_weapons.end())
+    (*primary)->shoot(false);
   primary = --primary_weapons.end();
 }
 
@@ -364,6 +367,124 @@ int Ship::god_mode_time_remaining() const {
     if(gm) return gm->time_remaining();
   }
   return 0;
+}
+
+Save::Player Ship::capture_state() const {
+  Save::Player p;
+  p.score = score;
+  // If currently dead (mid-respawn countdown), the current death has consumed
+  // one life that won't be deducted until respawn() fires. Subtract it now so
+  // restore_state() with respawn(false) gives the correct count.
+  p.lives          = alive ? lives : lives - 1;
+  p.kills           = kills;
+  p.kills_this_life = kills_this_life;
+  p.pos_x           = position.x();
+  p.pos_y           = position.y();
+  p.facing_x        = facing.x();
+  p.facing_y        = facing.y();
+  p.vel_x           = velocity.x();
+  p.vel_y           = velocity.y();
+
+  // Primary weapons
+  list<Weapon::Base*>::const_iterator cprimary = primary;
+  p.selected_primary_idx = 0;
+  int idx = 0;
+  for (auto it = primary_weapons.cbegin(); it != primary_weapons.cend(); ++it, ++idx) {
+    if (it == cprimary) p.selected_primary_idx = idx;
+    Save::WeaponEntry we;
+    Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
+    if (gm) {
+      we.kind         = Save::WeaponEntry::Kind::GodMode;
+      we.weapon_index = -1;
+      we.ammo         = gm->time_remaining();
+    } else {
+      Weapon::Default *dw = dynamic_cast<Weapon::Default*>(*it);
+      we.kind         = Save::WeaponEntry::Kind::Default;
+      we.weapon_index = dw ? dw->weapon_index() : -1;
+      we.ammo         = (*it)->ammo();
+    }
+    p.primary_weapons.push_back(we);
+  }
+
+  // Secondary weapons
+  list<Weapon::Base*>::const_iterator csecondary = secondary;
+  p.selected_secondary_idx = -1;
+  idx = 0;
+  for (auto it = secondary_weapons.cbegin(); it != secondary_weapons.cend(); ++it, ++idx) {
+    if (it == csecondary) p.selected_secondary_idx = idx;
+    Save::WeaponEntry we;
+    we.ammo         = (*it)->ammo();
+    we.weapon_index = -1;
+    if      (dynamic_cast<Weapon::Mine*>(*it))     we.kind = Save::WeaponEntry::Kind::Mine;
+    else if (dynamic_cast<Weapon::GigaMine*>(*it)) we.kind = Save::WeaponEntry::Kind::GigaMine;
+    else if (dynamic_cast<Weapon::Missile*>(*it))  we.kind = Save::WeaponEntry::Kind::Missile;
+    else if (dynamic_cast<Weapon::Shield*>(*it))   we.kind = Save::WeaponEntry::Kind::Shield;
+    else we.kind = Save::WeaponEntry::Kind::Mine; // fallback
+    p.secondary_weapons.push_back(we);
+  }
+
+  return p;
+}
+
+void Ship::restore_state(const Save::Player &p, const Grid &grid) {
+  score           = p.score;
+  lives           = p.lives;
+  kills           = p.kills;
+  kills_this_life = p.kills_this_life;
+  position        = WrappedPoint(p.pos_x, p.pos_y);
+  first_life      = true;  // tells respawn() to try the saved position first
+
+  disable_weapons();
+  primary   = primary_weapons.end();
+  secondary = secondary_weapons.end();
+
+  for (const auto &we : p.primary_weapons) {
+    if (we.kind == Save::WeaponEntry::Kind::GodMode) {
+      add_god_mode(we.ammo);
+    } else {
+      // Bypass add_weapon(): it rejects weapon_index==-1 (base weapon) and
+      // ignores saved ammo. Construct directly and restore ammo explicitly.
+      Weapon::Default *w;
+      if (we.weapon_index < 0 || we.weapon_index >= num_weapon_configs) {
+        w = new Weapon::Default(this);  // base weapon, unlimited ammo
+      } else {
+        const WeaponConfig &cfg = weapon_configs[we.weapon_index];
+        w = new Weapon::Default(this, cfg.automatic, cfg.level, cfg.accuracy,
+                                cfg.time_between_shots, we.weapon_index);
+        w->set_ammo(we.ammo);
+      }
+      primary_weapons.push_back(w);
+      primary = --primary_weapons.end();
+    }
+  }
+  if (!primary_weapons.empty()) {
+    int clamp = std::min(p.selected_primary_idx, (int)primary_weapons.size() - 1);
+    primary = primary_weapons.begin();
+    std::advance(primary, clamp);
+  }
+
+  for (const auto &we : p.secondary_weapons) {
+    switch (we.kind) {
+      case Save::WeaponEntry::Kind::Mine:     add_mine_ammo(we.ammo);     break;
+      case Save::WeaponEntry::Kind::GigaMine: add_giga_mine_ammo(we.ammo); break;
+      case Save::WeaponEntry::Kind::Missile:  add_missile_ammo(we.ammo);  break;
+      case Save::WeaponEntry::Kind::Shield:   add_shield_ammo(we.ammo);   break;
+      default: break;
+    }
+  }
+  if (p.selected_secondary_idx >= 0 && !secondary_weapons.empty()) {
+    int clamp = std::min(p.selected_secondary_idx, (int)secondary_weapons.size() - 1);
+    secondary = secondary_weapons.begin();
+    std::advance(secondary, clamp);
+  } else {
+    secondary = secondary_weapons.end();
+  }
+
+  respawn(grid, false);
+  // respawn()'s reset() zeroes velocity; restore after.
+  // facing is not touched by reset() but set here for clarity.
+  facing   = Point(p.facing_x, p.facing_y);
+  velocity = Point(p.vel_x, p.vel_y);
 }
 
 void Ship::set_missile_asteroids(std::list<Object*> *asteroids) {

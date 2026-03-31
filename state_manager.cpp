@@ -86,6 +86,14 @@ void StateManager::touch_joystick(float nx, float ny) {
   if(game) game->touch_joystick(nx, ny);
 }
 
+void StateManager::touch_tap(float nx, float ny) {
+  state->touch_tap(nx, ny);
+}
+
+bool StateManager::back_pressed() {
+  return state->back_pressed();
+}
+
 void StateManager::focus_lost() {
   GLGame *game = dynamic_cast<GLGame*>(state);
   if(game) game->focus_lost();

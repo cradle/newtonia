@@ -5,6 +5,7 @@
 #include "glship.h"
 #include "object.h"
 #include "wrapped_point.h"
+#include "savegame.h"
 
 using namespace std;
 
@@ -20,6 +21,9 @@ public:
   int level() const;
   void hit();
   void destroy();
+
+  Save::Station capture_state() const;
+  void restore_state(const Save::Station &s, const Grid &grid);
 
   int health;
 

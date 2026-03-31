@@ -2,6 +2,7 @@
 #define GL_GAME_H
 
 #include "state.h"
+#include "savegame.h"
 #include "glship.h"
 #include "point.h"
 #include "warp_pass.h"
@@ -26,14 +27,15 @@ using namespace std;
 class GLGame : public State {
 public:
   GLGame(SDL_GameController *controller = NULL);
+  GLGame(const Save::GameState &save, SDL_GameController *controller = NULL);
   GLGame(GLGame const &other);
   virtual ~GLGame();
 
-  void draw();
-  void tick(int delta);
-  void keyboard(unsigned char key, int x, int y);
-  void keyboard_up(unsigned char key, int x, int y);
-  void controller(SDL_Event event);
+  void draw() override;
+  void tick(int delta) override;
+  void keyboard(unsigned char key, int x, int y) override;
+  void keyboard_up(unsigned char key, int x, int y) override;
+  void controller(SDL_Event event) override;
   void touch_joystick(float nx, float ny);
 
   friend class Overlay;
@@ -42,6 +44,7 @@ public:
 
   void focus_lost();
   void focus_gained();
+  bool back_pressed() override;
   void controller_added(SDL_GameController *ctrl);
   void controller_removed(SDL_JoystickID id);
 
@@ -60,6 +63,7 @@ public:
 private:
   void add_asteroids();
   void add_player2(SDL_GameController *ctrl);
+  Save::GameState build_save_data() const;
   void toggle_pause();
   void draw_map() const;
   void draw_objects(float direction = 0.0f, bool minimap = false) const;
@@ -78,6 +82,8 @@ private:
   int time_until_next_generation;
   bool running, level_cleared, friendly_fire, debug_grid, score_saved;
   bool auto_paused = false;
+  bool save_written_this_death_ = false;
+  bool save_deleted_ = false;
   int game_over_time;
 
   static const int default_world_width, default_world_height;

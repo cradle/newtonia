@@ -37,8 +37,9 @@ struct TouchControlsState {
     // as large as possible without overlapping each other.
     float btn_hit_radius;
 
-    // ---- Pause zone (top-centre, over the LEVEL text) ----
-    float pause_cx, pause_cy, pause_radius;
+    // ---- Pause zone (bottom-centre) ----
+    float pause_cx, pause_cy, pause_radius; // visual radius
+    float pause_hit_radius;                 // hit-test radius (larger than visual)
     bool  pause_active;
     SDL_FingerID pause_finger;
 };

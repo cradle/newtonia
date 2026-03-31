@@ -8,6 +8,9 @@
 #include "glenemy.h"
 #include <list>
 #include <iostream>
+#include "savegame.h"
+#include "grid.h"
+#include "follower.h"
 // #include "follower.h"
 
 using namespace std;
@@ -149,6 +152,71 @@ void GLStation::draw(bool minimap) const {
       glVertex2fv(d.position);
     }
     glEnd();
+  }
+}
+
+Save::Station GLStation::capture_state() const {
+  Save::Station s;
+  s.present = true;
+  s.alive = alive;
+  s.health = health;
+  s.pos_x = position.x();
+  s.pos_y = position.y();
+  s.vel_x = velocity.x();
+  s.vel_y = velocity.y();
+  s.inner_rotation = inner_rotation;
+  s.outer_rotation = outer_rotation;
+  s.wave = wave;
+  s.difficulty = difficulty;
+  s.ships_this_wave = ships_this_wave;
+  s.ships_left_to_deploy = ships_left_to_deploy;
+  s.time_until_next_ship = time_until_next_ship;
+  s.deploying = deploying;
+  s.redeploying = redeploying;
+  for (const auto *gs : *objects) {
+    Save::Enemy e;
+    e.pos_x = gs->ship->position.x();
+    e.pos_y = gs->ship->position.y();
+    e.vel_x = gs->ship->velocity.x();
+    e.vel_y = gs->ship->velocity.y();
+    e.facing_x = gs->ship->facing.x();
+    e.facing_y = gs->ship->facing.y();
+    e.thrust_force = gs->ship->thrust_force;
+    e.rotation_force = gs->ship->rotation_force;
+    e.value = gs->ship->value;
+    s.enemies.push_back(e);
+  }
+  return s;
+}
+
+void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
+  alive = s.alive;
+  health = s.health;
+  position = WrappedPoint(s.pos_x, s.pos_y);
+  velocity = Point(s.vel_x, s.vel_y);
+  inner_rotation = s.inner_rotation;
+  outer_rotation = s.outer_rotation;
+  wave = s.wave;
+  difficulty = s.difficulty;
+  ships_this_wave = s.ships_this_wave;
+  ships_left_to_deploy = s.ships_left_to_deploy;
+  time_until_next_ship = (float)s.time_until_next_ship;
+  deploying = s.deploying;
+  redeploying = s.redeploying;
+  for (const auto &se : s.enemies) {
+    GLEnemy *ge = new GLEnemy(grid, se.pos_x, se.pos_y, targets, (float)difficulty, asteroids);
+    ge->ship->alive = true;
+    ge->ship->position = WrappedPoint(se.pos_x, se.pos_y);
+    ge->ship->velocity = Point(se.vel_x, se.vel_y);
+    ge->ship->facing = Point(se.facing_x, se.facing_y);
+    ge->ship->thrust_force = se.thrust_force;
+    ge->ship->rotation_force = se.rotation_force;
+    ge->ship->value = se.value;
+    objects->push_back(ge);
+    // Skip the initial 2.5s lock delay — enemy is already deployed at saved position
+    if (!ge->ship->behaviours.empty())
+      if (Follower *f = dynamic_cast<Follower*>(ge->ship->behaviours.front()))
+        f->lock_now();
   }
 }
 

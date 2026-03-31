@@ -21,6 +21,8 @@ public:
   bool is_finished();
   State* get_next_state();
 
+  virtual void touch_tap(float nx, float ny) {}
+  virtual bool back_pressed() { return false; } // true = handled, false = quit app
   virtual void resize(int width, int height);
 
 protected:

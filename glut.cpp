@@ -263,6 +263,13 @@ int main(int argc, char* argv[]) {
   set_cursor_hidden(true);
 #endif
   init_controllers_and_audio();
+  // On macOS, Apple's GLUT handles Cmd+Q by calling exit() directly so
+  // glutMainLoop() never returns and ~StateManager() is never called.
+  // Register an atexit handler so the save fires regardless of how the
+  // process terminates.  game is nulled before delete below so that on
+  // platforms where glutMainLoop() does return (freeglut) the handler is
+  // a no-op and we avoid a use-after-free.
+  atexit([]{ if (game) game->focus_lost(); });
   game = new StateManager();
   for(int i = 0; i < 2; i++) {
     if(controllers[i]) game->controller_added(controllers[i]);
@@ -274,7 +281,9 @@ int main(int argc, char* argv[]) {
       SDL_GameControllerClose(controllers[i]);
     }
   }
-  delete game;
+  StateManager *g = game;
+  game = nullptr;  // tell the atexit handler to skip (destructor handles it)
+  delete g;
   Asteroid::free_sounds();
   Typer::cleanup();
   return EXIT_SUCCESS;

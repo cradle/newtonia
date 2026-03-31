@@ -3,6 +3,7 @@
 
 #include "composite_object.h"
 #include "asteroid_drawer.h"
+#include "savegame.h"
 #include <cstdlib>
 #include <SDL.h>
 #include <SDL_mixer.h>
@@ -23,6 +24,10 @@ public:
 
   friend class AsteroidDrawer;
   friend class WarpPass;
+
+  // Serialisation: each object captures and restores its own state.
+  Save::Asteroid capture_state() const;
+  void           restore_state(const Save::Asteroid &saved);
 
   static int num_killable;
 

@@ -125,11 +125,11 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
   if(!glgame->running && !glship->show_help) {
     Typer::draw_centered(0, 30, "Paused", 25);
     if(is_touch_mode())
-      Typer::draw_centered(0, -40, "TOUCH LEVEL TO UNPAUSE", 8);
+      Typer::draw_centered(0, -40, "press play to resume", 8);
     else if(glship->has_controller())
-      Typer::draw_centered(0, -40, "press start to unpause", 8);
+      Typer::draw_centered(0, -40, "press start to resume", 8);
     else {
-      Typer::draw_centered(0, -40, "press p to unpause", 8);
+      Typer::draw_centered(0, -40, "press p to resume", 8);
       Typer::draw_centered(0, -70, "press esc to return to menu", 8);
     }
   }
@@ -255,7 +255,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     }
   }
   if(!glgame->running && glship->show_help) {
-    const char* unpause = glship->has_controller() ? "press start to unpause" : "press p to unpause";
+    const char* unpause = glship->has_controller() ? "press start to resume" : "press p to resume";
     Typer::draw_centered(0, Typer::scaled_window_height/glgame->num_y_viewports()-80, unpause, 8);
   }
 }
@@ -339,6 +339,46 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     draw_circle(bx, by, br, 28, true);
     glColor4f(0.35f, 0.6f, 1.0f, alpha_outline);
     draw_circle(bx, by, br, 28, false);
+  }
+
+  // ---- Pause button: bottom-centre, circle with two vertical bars ----
+  {
+    float bx = ox(tc.pause_cx);
+    float by = oy(tc.pause_cy);
+    float br = sr(tc.pause_radius);
+    float alpha_fill    = tc.pause_active ? 0.35f : 0.08f;
+    float alpha_outline = tc.pause_active ? 0.70f : 0.30f;
+    glColor4f(1.0f, 1.0f, 1.0f, alpha_fill);
+    draw_circle(bx, by, br, 32, true);
+    glColor4f(1.0f, 1.0f, 1.0f, alpha_outline);
+    draw_circle(bx, by, br, 32, false);
+
+    glColor4f(1.0f, 1.0f, 1.0f, alpha_outline);
+    if(glgame->running) {
+      // Two vertical bars (pause icon)
+      float bw  = br * 0.15f;
+      float bh  = br * 0.38f;
+      float sep = br * 0.20f;
+      glBegin(GL_QUADS);
+      glVertex2f(bx - sep - bw*2, by - bh);
+      glVertex2f(bx - sep,        by - bh);
+      glVertex2f(bx - sep,        by + bh);
+      glVertex2f(bx - sep - bw*2, by + bh);
+      glVertex2f(bx + sep,        by - bh);
+      glVertex2f(bx + sep + bw*2, by - bh);
+      glVertex2f(bx + sep + bw*2, by + bh);
+      glVertex2f(bx + sep,        by + bh);
+      glEnd();
+    } else {
+      // Right-pointing triangle (play/resume icon)
+      float th = br * 0.45f;
+      float tx = bx - br * 0.05f;
+      glBegin(GL_TRIANGLES);
+      glVertex2f(tx - th * 0.6f, by - th);
+      glVertex2f(tx + th,        by);
+      glVertex2f(tx - th * 0.6f, by + th);
+      glEnd();
+    }
   }
 #endif // __ANDROID__ || __IOS__
 }

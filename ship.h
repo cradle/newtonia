@@ -7,6 +7,7 @@
 #include "weapon/missile.h"
 #include "grid.h"
 #include "black_hole.h"
+#include "savegame.h"
 #include <list>
 #include <vector>
 #include <SDL.h>
@@ -112,6 +113,10 @@ class Ship : public CompositeObject {
 
     //FIX: friends
     int time_left_invincible;
+    // Serialisation: capture/restore the full player state including weapons.
+    Save::Player capture_state() const;
+    void restore_state(const Save::Player &p, const Grid &grid);
+
     void add_behaviour(Behaviour *b);
     void disable_behaviours();
     void disable_weapons();
