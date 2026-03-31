@@ -346,8 +346,8 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     float bx = ox(tc.pause_cx);
     float by = oy(tc.pause_cy);
     float br = sr(tc.pause_radius);
-    float alpha_fill    = tc.pause_active ? 0.55f : 0.20f;
-    float alpha_outline = tc.pause_active ? 0.95f : 0.60f;
+    float alpha_fill    = tc.pause_active ? 0.35f : 0.08f;
+    float alpha_outline = tc.pause_active ? 0.70f : 0.30f;
     glColor4f(1.0f, 1.0f, 1.0f, alpha_fill);
     draw_circle(bx, by, br, 32, true);
     glColor4f(1.0f, 1.0f, 1.0f, alpha_outline);

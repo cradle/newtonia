@@ -35,7 +35,7 @@ void touch_controls_resize(int w, int h) {
     // Pause button: bottom-centre between the joystick and action buttons
     g_touch_controls.pause_cx     = (float)w * 0.5f;
     g_touch_controls.pause_cy     = (float)h * 0.88f;
-    g_touch_controls.pause_radius = minDim * 0.08f;
+    g_touch_controls.pause_radius = minDim * 0.06f;
 }
 
 void touch_controls_reset(StateManager *game) {
