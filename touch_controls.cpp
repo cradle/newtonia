@@ -33,9 +33,10 @@ void touch_controls_resize(int w, int h) {
     g_touch_controls.btn_hit_radius = (halfGap < mineEdge) ? halfGap : mineEdge;
 
     // Pause button: bottom-centre between the joystick and action buttons
-    g_touch_controls.pause_cx     = (float)w * 0.5f;
-    g_touch_controls.pause_cy     = (float)h * 0.88f;
-    g_touch_controls.pause_radius = minDim * 0.06f;
+    g_touch_controls.pause_cx         = (float)w * 0.5f;
+    g_touch_controls.pause_cy         = (float)h * 0.88f;
+    g_touch_controls.pause_radius     = minDim * 0.06f;
+    g_touch_controls.pause_hit_radius = minDim * 0.12f; // 2× visual, invisible extra area
 }
 
 void touch_controls_reset(StateManager *game) {

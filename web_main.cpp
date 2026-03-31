@@ -74,11 +74,19 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
 }
 
 static void finger_down(SDL_FingerID id, float x, float y) {
-    // Pause button: bottom-centre (x in [0.35, 0.65], y > 0.80)
-    if(!s_pause_active && x >= 0.35f && x <= 0.65f && y > 0.80f) {
+    // Pause button: bottom-centre, enlarged hit area (x in [0.30, 0.70], y > 0.76)
+    if(!s_pause_active && x >= 0.30f && x <= 0.70f && y > 0.76f) {
         s_pause_active = true;
         s_pause_finger = id;
-        s_game->keyboard('\r', 0, 0);  // allow menu start on same tap
+        s_game->keyboard('\r', 0, 0);
+        return;
+    }
+
+    // Centre-screen pause zone (large invisible area, avoids edges used by controls)
+    if(!s_pause_active && x >= 0.30f && x <= 0.70f && y >= 0.25f && y <= 0.75f) {
+        s_pause_active = true;
+        s_pause_finger = id;
+        s_game->keyboard('\r', 0, 0);
         return;
     }
     if (s_finger_count >= MAX_FINGERS) return;

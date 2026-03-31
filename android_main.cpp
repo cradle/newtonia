@@ -80,12 +80,21 @@ static void finger_down(SDL_FingerID id, float x, float y) {
         return;
     }
 
-    // Pause zone: top-centre over the LEVEL text
+    // Pause button hit zone (larger than the visual circle)
     if(!g_touch_controls.pause_active &&
-       tc_dist(px, py, g_touch_controls.pause_cx, g_touch_controls.pause_cy) <= g_touch_controls.pause_radius) {
+       tc_dist(px, py, g_touch_controls.pause_cx, g_touch_controls.pause_cy) <= g_touch_controls.pause_hit_radius) {
         g_touch_controls.pause_active = true;
         g_touch_controls.pause_finger = id;
-        s_game->keyboard('\r', 0, 0);  // allow menu start on same tap
+        s_game->keyboard('\r', 0, 0);
+        return;
+    }
+
+    // Centre-screen pause zone (large invisible area, avoids edges used by controls)
+    if(!g_touch_controls.pause_active &&
+       x >= 0.30f && x <= 0.70f && y >= 0.25f && y <= 0.75f) {
+        g_touch_controls.pause_active = true;
+        g_touch_controls.pause_finger = id;
+        s_game->keyboard('\r', 0, 0);
         return;
     }
 
