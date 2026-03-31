@@ -36,7 +36,7 @@ void touch_controls_resize(int w, int h) {
     // Pause button: top-right, below score and multiplier
     float pr = minDim * 0.06f;
     g_touch_controls.pause_cx         = (float)w - pr - 0.015f * (float)w;
-    g_touch_controls.pause_cy         = 105.0f * ts;
+    g_touch_controls.pause_cy         = 160.0f * ts;
     g_touch_controls.pause_radius     = pr;
     g_touch_controls.pause_hit_radius = pr * 2.0f;
 }
