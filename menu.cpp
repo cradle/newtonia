@@ -149,6 +149,17 @@ void Menu::controller(SDL_Event event) {
         confirm_selection(SDL_GameControllerFromInstanceID(event.caxis.which));
       }
       if(!pressed) r2_active = false;
+    } else if(has_save_ && event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
+      bool up   = event.caxis.value < -8000;
+      bool down = event.caxis.value >  8000;
+      if(up && !left_stick_up_active) {
+        menu_selection = 0;
+      }
+      if(down && !left_stick_down_active) {
+        menu_selection = 1;
+      }
+      left_stick_up_active   = up;
+      left_stick_down_active = down;
     }
   }
 }

@@ -31,6 +31,8 @@ private:
 
   Mix_Music *music = NULL;
   bool r2_active = false;
+  bool left_stick_up_active = false;
+  bool left_stick_down_active = false;
 };
 
 #endif
