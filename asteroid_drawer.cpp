@@ -189,7 +189,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     else if (v.teleporting)                     glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
     else if (v.reflective)                      glColor4f(0.0f, 0.4f, 0.5f, 0.6f);
     else if (v.invincible)                      glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
-    else if (v.armoured)                        glColor4f(0.15f, 0.1f, 0.0f, 1.0f);
+    else if (v.armoured)                        glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
     else                                        glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
     for (int wi = 0; wi < (v.dx != 0 ? 2 : 1); wi++) {
       for (int wj = 0; wj < (v.dy != 0 ? 2 : 1); wj++) {
@@ -217,7 +217,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     else if (v.teleporting)                     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     else if (v.reflective)                      glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
     else if (v.invincible)                      glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
-    else if (v.armoured)                        glColor4f(0.8f, 0.5f, 0.1f, 1.0f);
+    else if (v.armoured)                        glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     else                                        glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     for (int wi = 0; wi < (v.dx != 0 ? 2 : 1); wi++) {
       for (int wj = 0; wj < (v.dy != 0 ? 2 : 1); wj++) {
@@ -286,7 +286,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
       AsteroidVerts const &v = verts[ai];
       if (!v.armoured || v.invisible) continue;
       float adx = cosf(v.armour_angle), ady = sinf(v.armour_angle);
-      glColor4f(1.0f, 0.55f, 0.0f, 1.0f);
+      glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
       for (int i = 0; i < v.segs; i++) {
         int j = (i + 1) % v.segs;
         // Use edge midpoint angle to decide if this edge is in the shield arc
