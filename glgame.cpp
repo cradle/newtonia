@@ -109,8 +109,12 @@ GLGame::GLGame(SDL_GameController *controller) :
 }
 
 GLGame::~GLGame() {
-  if (!score_saved)
+  if (score_saved && !save_deleted_) {
+    Save::delete_save();
+    save_deleted_ = true;
+  } else if (!score_saved) {
     Save::save_game(build_save_data());
+  }
 
   //TODO: Make erase, use boost::ptr_list? something better
   // std::erase(std::remove_if(v.begin(),v.end(),true), v.end());

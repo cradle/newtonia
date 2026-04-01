@@ -391,5 +391,13 @@ bool Save::load_game(Save::GameState &s) {
 
 void Save::delete_save() {
     std::string path = save_path();
-    if (!path.empty()) std::remove(path.c_str());
+    if (path.empty()) return;
+    std::remove(path.c_str());
+#ifdef __EMSCRIPTEN__
+    EM_ASM(
+        FS.syncfs(false, function(err) {
+            if (err) console.error('[newtonia] IDBFS delete failed:', err);
+        });
+    );
+#endif
 }
