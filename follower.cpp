@@ -99,10 +99,14 @@ void Follower::step(int delta) {
             ship->rotate_left(true);
             ship->rotate_right(false);
           }
-          // Cut thrust when avoidance pressure is high so the ship doesn't
-          // fly straight into the obstacle it's trying to turn away from.
-          ship->thrust(avoidance_strength < 0.5f);
+          // Scale thrust down with avoidance pressure but keep a floor so the
+          // ship can always power out of a cluster it drifted into.
+          float t = 1.0f - avoidance_strength;
+          if(t < 0.3f) t = 0.3f;
+          ship->thrust_analog = t;
+          ship->thrust(true);
         } else {
+          ship->thrust_analog = 1.0f;
           ship->thrust(true);
           WrappedPoint target_point = target->position;
           float angle = (ship->heading() - (ship->position.closest_to(target_point) - target_point).normalized().direction());
