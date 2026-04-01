@@ -278,7 +278,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
   // For each polygon edge whose midpoint falls within the ±75° shield arc,
   // redraw that edge scaled slightly outward in orange.
   if (!is_minimap) {
-    const float arc_cos = 0.259f; // cos(75°) — must match collision threshold in ship.cpp
+    const float arc_cos = -0.5f;  // cos(120°) = 2/3 coverage — must match collision threshold in ship.cpp
     const float scale   = 1.18f;  // draw outside the polygon surface
     glLineWidth(3.0f);
     glBegin(GL_LINES);
