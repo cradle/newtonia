@@ -284,7 +284,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
       if (!v.armoured || v.invisible) continue;
       float r = v.radius * 1.08f; // just outside the asteroid surface
       const int arc_segs = 14;
-      const float half_arc = (float)M_PI / 3.0f; // 60° each side = 120° total
+      const float half_arc = 5.0f * (float)M_PI / 12.0f; // 75° each side = 150° total
       glColor4f(1.0f, 0.55f, 0.0f, 1.0f); // bright orange
       glBegin(GL_LINE_STRIP);
       for (int k = 0; k <= arc_segs; k++) {

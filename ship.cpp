@@ -879,14 +879,14 @@ void Ship::collide_grid(Grid &grid, int delta) {
         bullets[i].world_bullet = true;
         ++i;
       } else if (ast && ast->armoured && !bullets[i].kills_invincible) {
-        // Armoured asteroid: check if bullet hits the shielded face (±60° arc).
-        // Bullet incoming direction dot shield normal > cos(60°) = 0.5 means shielded.
+        // Armoured asteroid: check if bullet hits the shielded face (±75° arc).
+        // Bullet incoming direction dot shield normal > cos(75°) ≈ 0.259 means shielded.
         Point rel_vel = bullets[i].velocity - object->velocity;
         Point rel_dir = rel_vel.normalized();
         float shield_dot = -(rel_dir.x() * cosf(ast->armour_angle) +
                              rel_dir.y() * sinf(ast->armour_angle));
-        if (shield_dot > 0.5f) {
-          // Hit the armoured face — reflect bullet off the surface
+        if (shield_dot > 0.259f) {
+          // Hit the armoured face — reflect bullet, do NOT damage the asteroid
           Point vel_norm = bullets[i].velocity.normalized();
           float max_trace = ast->effective_radius() * 2.0f + 4.0f;
           WrappedPoint entry = bullets[i].position;
@@ -901,7 +901,14 @@ void Ship::collide_grid(Grid &grid, int delta) {
           float push = rel_vel.magnitude() * 16.0f + 2.0f;
           bullets[i].position = WrappedPoint(entry.x() + normal.x() * push,
                                              entry.y() + normal.y() * push);
-          object->kill(); // plays thud sound
+          if (Asteroid::ting_sound != NULL) {
+            static Uint32 last_armour_ting = UINT32_MAX;
+            Uint32 now = SDL_GetTicks();
+            if (now - last_armour_ting >= 125) {
+              last_armour_ting = now;
+              Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
+            }
+          }
           bullets[i].world_bullet = true;
           ++i;
         } else {
