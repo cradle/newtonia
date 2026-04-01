@@ -71,6 +71,7 @@ static bool write_player(FILE *f, const Save::Player &p) {
     for (const auto &w : p.secondary_weapons)
         if (!write_weapon(f, w)) return false;
     if (!wv(f, (int32_t)p.selected_secondary_idx)) return false;
+    if (!wv(f, p.respawning))                      return false;
 
     return true;
 }
@@ -99,6 +100,7 @@ static bool read_player(FILE *f, Save::Player &p) {
         if (!read_weapon(f, w)) return false;
     if (!rv(f, si)) return false;
     p.selected_secondary_idx = (int)si;
+    if (!rv(f, p.respawning)) return false;
 
     return true;
 }

@@ -372,10 +372,8 @@ int Ship::god_mode_time_remaining() const {
 Save::Player Ship::capture_state() const {
   Save::Player p;
   p.score = score;
-  // If currently dead (mid-respawn countdown), the current death has consumed
-  // one life that won't be deducted until respawn() fires. Subtract it now so
-  // restore_state() with respawn(false) gives the correct count.
-  p.lives          = alive ? lives : lives - 1;
+  p.lives      = lives;
+  p.respawning = !alive;  // if mid-countdown, restore_state will consume the life via respawn(true)
   p.kills           = kills;
   p.kills_this_life = kills_this_life;
   p.pos_x           = position.x();
@@ -480,7 +478,7 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
     secondary = secondary_weapons.end();
   }
 
-  respawn(grid, false);
+  respawn(grid, p.respawning);
   // respawn()'s reset() zeroes velocity; restore after.
   // facing is not touched by reset() but set here for clarity.
   facing   = Point(p.facing_x, p.facing_y);
