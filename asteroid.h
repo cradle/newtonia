@@ -10,7 +10,7 @@
 
 class Asteroid : public CompositeObject {
 public:
-  Asteroid(bool invincible, bool invisible = false, bool reflective = false, bool teleporting = false, bool quantum = false, bool tough = false);
+  Asteroid(bool invincible, bool invisible = false, bool reflective = false, bool teleporting = false, bool quantum = false, bool tough = false, bool armoured = false);
   Asteroid(Asteroid const *mother);
   virtual ~Asteroid();
 
@@ -51,6 +51,8 @@ public:
 
   bool elastic;             // true = bounces off other elastic asteroids
   bool tough;               // true = tough asteroid: absorbs 5 hits before dying
+  bool armoured;            // true = one face deflects bullets; rotating weak spot
+  float armour_angle;       // world-space angle (radians) the armour face points toward
 
   int health;               // hits remaining (tough: 5, others: 1)
   int crack_vertex[5];      // which polygon vertex each crack line starts from

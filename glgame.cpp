@@ -198,7 +198,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   Asteroid::num_killable = 0;
   for (const auto &sa : save.asteroids) {
     Asteroid *a = new Asteroid(sa.invincible, sa.invisible, sa.reflective,
-                               sa.teleporting, sa.quantum, sa.tough);
+                               sa.teleporting, sa.quantum, sa.tough, sa.armoured);
     a->restore_state(sa);
     objects->push_back(a);
   }
@@ -349,6 +349,10 @@ void GLGame::add_asteroids() {
   int num_tough = (generation >= 6) ? (generation - 6) / 2 + 1 : 0;
   for(int i = 0; i < num_tough; i++) {
     objects->push_back(new Asteroid(false, false, false, false, false, true));
+  }
+  int num_armoured = (generation >= 7) ? (generation - 7) / 2 + 1 : 0;
+  for(int i = 0; i < num_armoured; i++) {
+    objects->push_back(new Asteroid(false, false, false, false, false, false, true));
   }
 }
 

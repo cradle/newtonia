@@ -121,6 +121,7 @@ static bool write_asteroid(FILE *f, const Save::Asteroid &a) {
     if (a.quantum)     flags |= (1 << 4);
     if (a.tough)       flags |= (1 << 5);
     if (a.elastic)     flags |= (1 << 6);
+    if (a.armoured)    flags |= (1 << 7);
     if (!wv(f, flags)) return false;
 
     if (a.teleporting) {
@@ -131,6 +132,9 @@ static bool write_asteroid(FILE *f, const Save::Asteroid &a) {
     if (a.quantum) {
         if (!wv(f, (uint8_t)a.quantum_observed)) return false;
         if (!wv(f, a.quantum_base_speed)) return false;
+    }
+    if (a.armoured) {
+        if (!wv(f, a.armour_angle)) return false;
     }
     if (a.tough) {
         if (!wa(f, a.crack_vertex)) return false;
@@ -159,6 +163,7 @@ static bool read_asteroid(FILE *f, Save::Asteroid &a) {
     a.quantum     = (flags >> 4) & 1;
     a.tough       = (flags >> 5) & 1;
     a.elastic     = (flags >> 6) & 1;
+    a.armoured    = (flags >> 7) & 1;
 
     if (a.teleporting) {
         uint8_t tv; int32_t vtl;
@@ -180,6 +185,11 @@ static bool read_asteroid(FILE *f, Save::Asteroid &a) {
         a.quantum_base_speed = 0.0f;
     }
 
+    if (a.armoured) {
+        if (!rv(f, a.armour_angle)) return false;
+    } else {
+        a.armour_angle = 0.0f;
+    }
     if (a.tough) {
         if (!ra(f, a.crack_vertex) || !ra(f, a.crack_t) || !ra(f, a.crack_perp)) return false;
     }

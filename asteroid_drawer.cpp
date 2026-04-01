@@ -104,6 +104,8 @@ struct AsteroidVerts {
   int crack_vertex[5];
   float crack_t[5];
   float crack_perp[5];
+  bool armoured;
+  float armour_angle;
 };
 
 // draw_batch renders all alive asteroids in two draw calls (fill + outline),
@@ -150,6 +152,8 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     v.quantum_observed    = a->quantum_observed;
     v.tough               = a->tough;
     v.health              = a->health;
+    v.armoured            = a->armoured;
+    v.armour_angle        = a->armour_angle;
     for(int k = 0; k < 5; k++) {
       v.crack_vertex[k] = a->crack_vertex[k];
       v.crack_t[k]      = a->crack_t[k];
@@ -185,6 +189,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     else if (v.teleporting)                     glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
     else if (v.reflective)                      glColor4f(0.0f, 0.4f, 0.5f, 0.6f);
     else if (v.invincible)                      glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
+    else if (v.armoured)                        glColor4f(0.15f, 0.1f, 0.0f, 1.0f);
     else                                        glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
     for (int wi = 0; wi < (v.dx != 0 ? 2 : 1); wi++) {
       for (int wj = 0; wj < (v.dy != 0 ? 2 : 1); wj++) {
@@ -212,6 +217,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     else if (v.teleporting)                     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     else if (v.reflective)                      glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
     else if (v.invincible)                      glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
+    else if (v.armoured)                        glColor4f(0.8f, 0.5f, 0.1f, 1.0f);
     else                                        glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     for (int wi = 0; wi < (v.dx != 0 ? 2 : 1); wi++) {
       for (int wj = 0; wj < (v.dy != 0 ? 2 : 1); wj++) {
@@ -266,6 +272,27 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
       }
     }
     glEnd();
+  }
+
+  // --- Armour arc indicator pass ---
+  // Draw a bright orange arc on the shielded face (±60° around armour_angle)
+  // so the player can see which face deflects bullets.
+  if (!is_minimap) {
+    glLineWidth(3.0f);
+    for (size_t ai = 0; ai < verts.size(); ++ai) {
+      AsteroidVerts const &v = verts[ai];
+      if (!v.armoured || v.invisible) continue;
+      float r = v.radius * 1.08f; // just outside the asteroid surface
+      const int arc_segs = 14;
+      const float half_arc = (float)M_PI / 3.0f; // 60° each side = 120° total
+      glColor4f(1.0f, 0.55f, 0.0f, 1.0f); // bright orange
+      glBegin(GL_LINE_STRIP);
+      for (int k = 0; k <= arc_segs; k++) {
+        float a = v.armour_angle - half_arc + k * (2.0f * half_arc) / arc_segs;
+        glVertex2f(v.cx + r * cosf(a), v.cy + r * sinf(a));
+      }
+      glEnd();
+    }
   }
 
   // --- Inner indicator pass for teleporting asteroids ---

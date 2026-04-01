@@ -49,7 +49,7 @@ struct Asteroid {
     float max_vertex_offset;
 
     // type flags
-    bool invincible, invisible, reflective, teleporting, quantum, tough, elastic;
+    bool invincible, invisible, reflective, teleporting, quantum, tough, elastic, armoured;
 
     // teleporting state (only meaningful when teleporting == true)
     bool  teleport_vulnerable;
@@ -59,6 +59,9 @@ struct Asteroid {
     // quantum state (only meaningful when quantum == true)
     bool  quantum_observed;
     float quantum_base_speed;
+
+    // armoured state (only meaningful when armoured == true)
+    float armour_angle;
 
     // tough crack geometry (only meaningful when tough == true)
     int   crack_vertex[5];
@@ -114,7 +117,7 @@ struct Station {
 
 struct GameState {
     static constexpr uint32_t MAGIC   = 0x4E57544E;  // "NWTN"
-    static constexpr uint16_t VERSION = 4;
+    static constexpr uint16_t VERSION = 5;
 
     int   generation;
     float world_x, world_y;
