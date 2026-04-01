@@ -64,6 +64,7 @@ private:
   void add_asteroids();
   void add_player2(SDL_GameController *ctrl);
   Save::GameState build_save_data() const;
+  void save_progress();   // save only when at least one player is alive or has lives
   void toggle_pause();
   void draw_map() const;
   void draw_objects(float direction = 0.0f, bool minimap = false) const;
