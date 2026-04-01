@@ -478,6 +478,10 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
     secondary = secondary_weapons.end();
   }
 
+  // If the player was alive when saved, alive==false right now (Ship ctor default)
+  // but respawn() needs alive||lives>0 to proceed. Set alive=true so it passes
+  // even when lives==0 (e.g. last life, actively playing).
+  if (!p.respawning) alive = true;
   respawn(grid, p.respawning);
   // respawn()'s reset() zeroes velocity; restore after.
   // facing is not touched by reset() but set here for clarity.
