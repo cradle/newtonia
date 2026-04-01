@@ -71,6 +71,7 @@ static bool write_player(FILE *f, const Save::Player &p) {
     for (const auto &w : p.secondary_weapons)
         if (!write_weapon(f, w)) return false;
     if (!wv(f, (int32_t)p.selected_secondary_idx)) return false;
+    if (!wv(f, p.respawning))                      return false;
 
     return true;
 }
@@ -99,6 +100,7 @@ static bool read_player(FILE *f, Save::Player &p) {
         if (!read_weapon(f, w)) return false;
     if (!rv(f, si)) return false;
     p.selected_secondary_idx = (int)si;
+    if (!rv(f, p.respawning)) return false;
 
     return true;
 }
@@ -232,6 +234,7 @@ static bool write_station(FILE *f, const Save::Station &s) {
     if (!wv(f, (uint8_t)s.present)) return false;
     if (!s.present) return true;
     if (!wv(f, (uint8_t)s.alive)) return false;
+    if (!wv(f, (int32_t)s.lives)) return false;
     if (!wv(f, (int32_t)s.health)) return false;
     if (!wv(f, s.pos_x) || !wv(f, s.pos_y)) return false;
     if (!wv(f, s.vel_x) || !wv(f, s.vel_y)) return false;
@@ -253,9 +256,10 @@ static bool read_station(FILE *f, Save::Station &s) {
     s.present = (bool)present;
     if (!s.present) return true;
     uint8_t alive = 0, deploying = 0, redeploying = 0;
-    int32_t health = 0, wave = 0, difficulty = 0, ships_this_wave = 0, ships_left = 0;
-    if (!rv(f, alive) || !rv(f, health)) return false;
+    int32_t lives = 0, health = 0, wave = 0, difficulty = 0, ships_this_wave = 0, ships_left = 0;
+    if (!rv(f, alive) || !rv(f, lives) || !rv(f, health)) return false;
     s.alive  = (bool)alive;
+    s.lives  = (int)lives;
     s.health = (int)health;
     if (!rv(f, s.pos_x) || !rv(f, s.pos_y)) return false;
     if (!rv(f, s.vel_x) || !rv(f, s.vel_y)) return false;
@@ -391,5 +395,13 @@ bool Save::load_game(Save::GameState &s) {
 
 void Save::delete_save() {
     std::string path = save_path();
-    if (!path.empty()) std::remove(path.c_str());
+    if (path.empty()) return;
+    std::remove(path.c_str());
+#ifdef __EMSCRIPTEN__
+    EM_ASM(
+        FS.syncfs(false, function(err) {
+            if (err) console.error('[newtonia] IDBFS delete failed:', err);
+        });
+    );
+#endif
 }

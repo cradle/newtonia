@@ -16,7 +16,7 @@ GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, flo
     ships->push_back((*s)->ship);
   }
   ship = new Ship(grid); // FIX: Enemy is unused
-  ship->behaviours.push_back(new Follower(ship, (list<Object*>*)ships, asteroids));
+  ship->behaviours.push_back(new Follower(ship, (list<Object*>*)ships, asteroids, difficulty));
   ship->position = WrappedPoint(x,y);
   ship->thrust_force = 0.129 + difficulty*0.00025 + rand()%50/10000.0;
   ship->rotation_force = 0.15 + difficulty*0.01 + rand()%10/1000.0;

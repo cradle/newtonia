@@ -109,8 +109,7 @@ GLGame::GLGame(SDL_GameController *controller) :
 }
 
 GLGame::~GLGame() {
-  if (!score_saved)
-    Save::save_game(build_save_data());
+  save_progress();
 
   //TODO: Make erase, use boost::ptr_list? something better
   // std::erase(std::remove_if(v.begin(),v.end(),true), v.end());
@@ -272,6 +271,21 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   }
 }
 
+void GLGame::save_progress() {
+  if (score_saved) return;
+  for (auto* gs : *players) {
+    if (gs->ship->is_alive() || gs->ship->lives > 0) {
+      Save::save_game(build_save_data());
+      return;
+    }
+  }
+  // All players dead with no lives remaining — game over, delete any save
+  if (!save_deleted_) {
+    Save::delete_save();
+    save_deleted_ = true;
+  }
+}
+
 Save::GameState GLGame::build_save_data() const {
   Save::GameState s;
   s.generation                 = generation;
@@ -366,15 +380,13 @@ void GLGame::toggle_pause() {
 }
 
 bool GLGame::back_pressed() {
-  if (!score_saved)
-    Save::save_game(build_save_data());
+  save_progress();
   request_state_change(new Menu());
   return true;
 }
 
 void GLGame::focus_lost() {
-  if (!score_saved)
-    Save::save_game(build_save_data());
+  save_progress();
   if(running) {
     toggle_pause();
     auto_paused = true;
@@ -516,8 +528,7 @@ void GLGame::tick(int delta) {
         (*o)->ship->respawn(grid, false);
       }
       level_cleared = false;
-      if (!score_saved)
-        Save::save_game(build_save_data());
+      save_progress();
     }
   }
 
@@ -1565,8 +1576,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
   if (key == 27) {
-    if (!score_saved)
-      Save::save_game(build_save_data());
+    save_progress();
     request_state_change(new Menu());
   }
 

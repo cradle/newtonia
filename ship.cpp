@@ -372,10 +372,8 @@ int Ship::god_mode_time_remaining() const {
 Save::Player Ship::capture_state() const {
   Save::Player p;
   p.score = score;
-  // If currently dead (mid-respawn countdown), the current death has consumed
-  // one life that won't be deducted until respawn() fires. Subtract it now so
-  // restore_state() with respawn(false) gives the correct count.
-  p.lives          = alive ? lives : lives - 1;
+  p.lives      = lives;
+  p.respawning = !alive;  // if mid-countdown, restore_state will consume the life via respawn(true)
   p.kills           = kills;
   p.kills_this_life = kills_this_life;
   p.pos_x           = position.x();
@@ -480,7 +478,11 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
     secondary = secondary_weapons.end();
   }
 
-  respawn(grid, false);
+  // If the player was alive when saved, alive==false right now (Ship ctor default)
+  // but respawn() needs alive||lives>0 to proceed. Set alive=true so it passes
+  // even when lives==0 (e.g. last life, actively playing).
+  if (!p.respawning) alive = true;
+  respawn(grid, p.respawning);
   // respawn()'s reset() zeroes velocity; restore after.
   // facing is not touched by reset() but set here for clarity.
   facing   = Point(p.facing_x, p.facing_y);
@@ -744,18 +746,42 @@ void Ship::collide_grid(Grid &grid, int delta) {
         } else {
           object->invincible = was_invincible;
         }
-      } else if(object->kill()) {
-        detonate();
       } else {
-        explode(position, object->velocity);
-        // The hit object was invincible. If the ship is also invincible
-        // (shielded), neither side died — but we still need to check whether
-        // the ship is simultaneously touching a killable asteroid, because
-        // grid.collide() stops at the first hit and would have skipped it.
-        if(invincible) {
-          Object *killable = grid.collide(*this, 0.0f, true);
-          if(killable != NULL && killable->kill()) {
-            detonate();
+        // Check if this is an armoured asteroid hit on its armoured face.
+        // Use the same arc test as the bullet handler: approach direction vs armour_angle.
+        Asteroid *ast = dynamic_cast<Asteroid*>(object);
+        bool armour_blocked = false;
+        if(ast && ast->armoured) {
+          Point approach = (object->position - position).normalized();
+          float shield_dot = -(approach.x() * cosf(ast->armour_angle) +
+                                approach.y() * sinf(ast->armour_angle));
+          armour_blocked = (shield_dot > cosf(2.0f * (float)M_PI / 3.0f));
+        }
+
+        if(armour_blocked) {
+          // Armoured face: ship is destroyed but asteroid is unharmed.
+          explode(position, object->velocity);
+          if(Asteroid::ting_sound != NULL) {
+            static Uint32 last_armour_ting = UINT32_MAX;
+            Uint32 now = SDL_GetTicks();
+            if(now - last_armour_ting >= 125) {
+              last_armour_ting = now;
+              Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
+            }
+          }
+        } else if(object->kill()) {
+          detonate();
+        } else {
+          explode(position, object->velocity);
+          // The hit object was invincible. If the ship is also invincible
+          // (shielded), neither side died — but we still need to check whether
+          // the ship is simultaneously touching a killable asteroid, because
+          // grid.collide() stops at the first hit and would have skipped it.
+          if(invincible) {
+            Object *killable = grid.collide(*this, 0.0f, true);
+            if(killable != NULL && killable->kill()) {
+              detonate();
+            }
           }
         }
       }
