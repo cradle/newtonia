@@ -104,6 +104,8 @@ struct AsteroidVerts {
   int crack_vertex[5];
   float crack_t[5];
   float crack_perp[5];
+  bool armoured;
+  float armour_angle;
 };
 
 // draw_batch renders all alive asteroids in two draw calls (fill + outline),
@@ -150,6 +152,8 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     v.quantum_observed    = a->quantum_observed;
     v.tough               = a->tough;
     v.health              = a->health;
+    v.armoured            = a->armoured;
+    v.armour_angle        = a->armour_angle;
     for(int k = 0; k < 5; k++) {
       v.crack_vertex[k] = a->crack_vertex[k];
       v.crack_t[k]      = a->crack_t[k];
@@ -185,6 +189,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     else if (v.teleporting)                     glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
     else if (v.reflective)                      glColor4f(0.0f, 0.4f, 0.5f, 0.6f);
     else if (v.invincible)                      glColor4f(0.5f, 0.5f, 0.5f, 0.5f);
+    else if (v.armoured)                        glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
     else                                        glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
     for (int wi = 0; wi < (v.dx != 0 ? 2 : 1); wi++) {
       for (int wj = 0; wj < (v.dy != 0 ? 2 : 1); wj++) {
@@ -212,6 +217,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     else if (v.teleporting)                     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     else if (v.reflective)                      glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
     else if (v.invincible)                      glColor4f(0.8f, 0.8f, 0.8f, 0.8f);
+    else if (v.armoured)                        glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     else                                        glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     for (int wi = 0; wi < (v.dx != 0 ? 2 : 1); wi++) {
       for (int wj = 0; wj < (v.dy != 0 ? 2 : 1); wj++) {
@@ -263,6 +269,64 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
         glVertex2f(v.cx + half_mx, v.cy + half_my);
         glVertex2f(v.cx + half_mx, v.cy + half_my);
         glVertex2f(v.cx + half_ex, v.cy + half_ey);
+      }
+    }
+    glEnd();
+  }
+
+  // --- Armour edge indicator pass ---
+  // Redraw the polygon edges that fall within the ±120° shield arc, scaled
+  // slightly outward in cyan. Edges that straddle the arc boundary are clipped
+  // precisely at the boundary ray so the highlight matches exactly.
+  if (!is_minimap) {
+    const float scale = 1.18f;
+    glLineWidth(3.0f);
+    glColor4f(0.3f, 0.9f, 1.0f, 0.9f);
+    glBegin(GL_LINES);
+    for (size_t ai = 0; ai < verts.size(); ++ai) {
+      AsteroidVerts const &v = verts[ai];
+      if (!v.armoured || v.invisible) continue;
+      float adx = cosf(v.armour_angle), ady = sinf(v.armour_angle);
+      // The two rays that bound the ±120° arc
+      float b1x = cosf(v.armour_angle + 2.0f * (float)M_PI / 3.0f);
+      float b1y = sinf(v.armour_angle + 2.0f * (float)M_PI / 3.0f);
+      float b2x = cosf(v.armour_angle - 2.0f * (float)M_PI / 3.0f);
+      float b2y = sinf(v.armour_angle - 2.0f * (float)M_PI / 3.0f);
+      for (int i = 0; i < v.segs; i++) {
+        int j = (i + 1) % v.segs;
+        float ax = v.dvx[i], ay = v.dvy[i];
+        float bx = v.dvx[j], by = v.dvy[j];
+        float la = sqrtf(ax*ax + ay*ay);
+        float lb = sqrtf(bx*bx + by*by);
+        // A vertex is inside the arc when dot(vertex, armour_dir) > cos(120°)*|vertex|
+        bool a_in = (la > 1e-6f) && (ax*adx + ay*ady > -0.5f * la);
+        bool b_in = (lb > 1e-6f) && (bx*adx + by*ady > -0.5f * lb);
+        if (!a_in && !b_in) continue;
+        float draw_ax = ax, draw_ay = ay;
+        float draw_bx = bx, draw_by = by;
+        if (!a_in || !b_in) {
+          // One vertex is outside: clip edge at the boundary ray it crosses.
+          // For ray R from origin, cross(R, P(t)) = 0  →  t = -cross(R,A)/cross(R,B-A)
+          float edx = bx - ax, edy = by - ay;
+          float t = -1.0f;
+          float d1 = b1x * edy - b1y * edx;
+          if (fabsf(d1) > 1e-10f) {
+            float tc = -(b1x * ay - b1y * ax) / d1;
+            if (tc >= 0.0f && tc <= 1.0f) t = tc;
+          }
+          if (t < 0.0f) {
+            float d2 = b2x * edy - b2y * edx;
+            if (fabsf(d2) > 1e-10f) {
+              float tc = -(b2x * ay - b2y * ax) / d2;
+              if (tc >= 0.0f && tc <= 1.0f) t = tc;
+            }
+          }
+          if (t < 0.0f) continue;
+          if (!a_in) { draw_ax = ax + t*edx; draw_ay = ay + t*edy; }
+          else        { draw_bx = ax + t*edx; draw_by = ay + t*edy; }
+        }
+        glVertex2f(v.cx + draw_ax * scale, v.cy + draw_ay * scale);
+        glVertex2f(v.cx + draw_bx * scale, v.cy + draw_by * scale);
       }
     }
     glEnd();

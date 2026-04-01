@@ -20,7 +20,7 @@ Mix_Chunk * Asteroid::asteroid_ting_sound = NULL;
 
 const int Asteroid::max_radius = Asteroid::radius_variation + Asteroid::minimum_radius;
 
-Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool teleporting, bool quantum, bool tough) : CompositeObject(), killed(false) {
+Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool teleporting, bool quantum, bool tough, bool armoured) : CompositeObject(), killed(false) {
   position = WrappedPoint();
   this->reflective = reflective;
   this->teleporting = teleporting;
@@ -33,6 +33,8 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   this->quantum_base_speed = 0.0f; // set after velocity is computed below
   this->elastic = reflective; // reflective asteroids bounce off other elastic asteroids
   this->tough = tough;
+  this->armoured = armoured;
+  this->armour_angle = rand() / (float)RAND_MAX * 2.0f * (float)M_PI;
   if(this->tough) {
     health = 5;
     // Pre-compute stable crack geometry (rotation-invariant: stored as t and perp fractions).
@@ -55,7 +57,9 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   }
   if(reflective) invincible = true;
   if(teleporting) invincible = false; // teleporting asteroids are killable when vulnerable
-  if(tough) {
+  if(armoured) {
+    radius = rand() % 60 + 50;  // 50–110: medium, shield arc fits comfortably
+  } else if(tough) {
     radius = rand() % 70 + 60;  // 60–130: medium, noticeable heft
   } else if(teleporting) {
     radius = rand() % 100 + 70; // 70–170: noticeably large
@@ -141,6 +145,8 @@ Save::Asteroid Asteroid::capture_state() const {
     s.quantum        = quantum;
     s.tough          = tough;
     s.elastic        = elastic;
+    s.armoured       = armoured;
+    s.armour_angle   = armour_angle;
     s.teleport_vulnerable  = teleport_vulnerable;
     s.teleport_angle       = teleport_angle;
     s.vulnerable_time_left = vulnerable_time_left;
@@ -176,6 +182,8 @@ void Asteroid::restore_state(const Save::Asteroid &s) {
     quantum        = s.quantum;
     tough          = s.tough;
     elastic        = s.elastic;
+    armoured       = s.armoured;
+    armour_angle   = s.armour_angle;
 
     teleport_vulnerable  = s.teleport_vulnerable;
     teleport_angle       = s.teleport_angle;
@@ -197,6 +205,9 @@ void Asteroid::restore_state(const Save::Asteroid &s) {
 
 void Asteroid::step(int delta) {
   CompositeObject::step(delta);
+  if(armoured) {
+    armour_angle += rotation_speed * delta * (float)M_PI / 180.0f;
+  }
   if(teleporting && teleport_vulnerable) {
     vulnerable_time_left -= delta;
     if(vulnerable_time_left <= 0) {
@@ -247,6 +258,8 @@ Asteroid::Asteroid(Asteroid const *mother) {
   if(quantum) value *= 2;
   elastic = mother->elastic;
   tough = false;
+  armoured = false;
+  armour_angle = 0.0f;
   health = 1;
   killed = false;
   invincible = mother->invincible;

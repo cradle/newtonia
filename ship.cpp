@@ -878,6 +878,50 @@ void Ship::collide_grid(Grid &grid, int delta) {
         object->kill(); // plays thud sound
         bullets[i].world_bullet = true;
         ++i;
+      } else if (ast && ast->armoured && !bullets[i].kills_invincible) {
+        // Armoured asteroid: check if bullet hits the shielded face (±120° arc = 2/3 of shape).
+        // Bullet incoming direction dot shield normal > cos(120°) = -0.5 means shielded.
+        Point rel_vel = bullets[i].velocity - object->velocity;
+        Point rel_dir = rel_vel.normalized();
+        float shield_dot = -(rel_dir.x() * cosf(ast->armour_angle) +
+                             rel_dir.y() * sinf(ast->armour_angle));
+        if (shield_dot > -0.5f) {
+          // Hit the armoured face — reflect bullet, do NOT damage the asteroid
+          Point vel_norm = bullets[i].velocity.normalized();
+          float max_trace = ast->effective_radius() * 2.0f + 4.0f;
+          WrappedPoint entry = bullets[i].position;
+          for (float d = 1.0f; d <= max_trace; d += 1.0f) {
+            WrappedPoint test(bullets[i].position.x() - vel_norm.x() * d,
+                              bullets[i].position.y() - vel_norm.y() * d);
+            if (!ast->contains(test)) { entry = test; break; }
+          }
+          Point normal = ast->surface_normal(entry, rel_vel);
+          float dot = normal.x() * rel_vel.x() + normal.y() * rel_vel.y();
+          bullets[i].velocity = object->velocity + (rel_vel - normal * (2.0f * dot));
+          float push = rel_vel.magnitude() * 16.0f + 2.0f;
+          bullets[i].position = WrappedPoint(entry.x() + normal.x() * push,
+                                             entry.y() + normal.y() * push);
+          if (Asteroid::ting_sound != NULL) {
+            static Uint32 last_armour_ting = UINT32_MAX;
+            Uint32 now = SDL_GetTicks();
+            if (now - last_armour_ting >= 125) {
+              last_armour_ting = now;
+              Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
+            }
+          }
+          bullets[i].world_bullet = true;
+          ++i;
+        } else {
+          // Hit the unarmoured face — kill normally
+          if(object->kill()) {
+            score += object->get_value() * multiplier();
+            kills_this_life += 1;
+            kills += 1;
+          }
+          explode(bullets[i].position, object->velocity);
+          bullets[i] = std::move(bullets.back());
+          bullets.pop_back();
+        }
       } else {
         bool was_invincible = object->invincible;
         if(bullets[i].kills_invincible) {
