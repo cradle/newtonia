@@ -87,42 +87,39 @@ void Follower::step(int delta) {
   if(ship->is_alive()) {
     lock_step(delta);
 
-    if(target) {
-      if (target->is_alive()) {
-        float avoidance_angle, avoidance_strength;
-        if(compute_avoidance(avoidance_angle, avoidance_strength)) {
-          // Steer away from the composite repulsion vector.
-          if(avoidance_angle >= 0 && avoidance_angle < 180) {
-            ship->rotate_right(true);
-            ship->rotate_left(false);
-          } else {
-            ship->rotate_left(true);
-            ship->rotate_right(false);
-          }
-          // Scale thrust down with avoidance pressure but keep a floor so the
-          // ship can always power out of a cluster it drifted into.
-          float t = 1.0f - avoidance_strength;
-          if(t < 0.3f) t = 0.3f;
-          ship->thrust_analog = t;
-          ship->thrust(true);
-        } else {
-          ship->thrust_analog = 1.0f;
-          ship->thrust(true);
-          WrappedPoint target_point = target->position;
-          float angle = (ship->heading() - (ship->position.closest_to(target_point) - target_point).normalized().direction());
-          angle = (angle < 0.0) ? (360.0 + angle) : angle;
-          if (angle >= 0 && angle < 180) {
-            ship->rotate_left(true);
-          } else {
-            ship->rotate_right(true);
-          }
-          burst_shooting_step(delta, angle, target_point);
-        }
+    float avoidance_angle, avoidance_strength;
+    bool avoiding = compute_avoidance(avoidance_angle, avoidance_strength);
+
+    if(target && !target->is_alive()) {
+      target = NULL;
+      time_until_next_lock = time_between_locks;
+      ship->rotate_right(false);
+    }
+
+    if(avoiding) {
+      if(avoidance_angle >= 0 && avoidance_angle < 180) {
+        ship->rotate_right(true);
+        ship->rotate_left(false);
       } else {
-        target = NULL;
-        time_until_next_lock = time_between_locks;
+        ship->rotate_left(true);
         ship->rotate_right(false);
       }
+      float t = 1.0f - avoidance_strength;
+      if(t < 0.3f) t = 0.3f;
+      ship->thrust_analog = t;
+      ship->thrust(true);
+    } else if(target) {
+      ship->thrust_analog = 1.0f;
+      ship->thrust(true);
+      WrappedPoint target_point = target->position;
+      float angle = (ship->heading() - (ship->position.closest_to(target_point) - target_point).normalized().direction());
+      angle = (angle < 0.0) ? (360.0 + angle) : angle;
+      if(angle >= 0 && angle < 180) {
+        ship->rotate_left(true);
+      } else {
+        ship->rotate_right(true);
+      }
+      burst_shooting_step(delta, angle, target_point);
     }
   }
 }
