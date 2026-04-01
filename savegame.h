@@ -102,6 +102,7 @@ struct Enemy {
 struct Station {
     bool  present;          // false = no station in this save
     bool  alive;
+    int   lives;
     int   health;
     float pos_x, pos_y;
     float vel_x, vel_y;
@@ -117,7 +118,7 @@ struct Station {
 
 struct GameState {
     static constexpr uint32_t MAGIC   = 0x4E57544E;  // "NWTN"
-    static constexpr uint16_t VERSION = 5;
+    static constexpr uint16_t VERSION = 6;
 
     int   generation;
     float world_x, world_y;

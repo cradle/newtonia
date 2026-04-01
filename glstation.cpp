@@ -31,6 +31,7 @@ GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* ta
   wave = difficulty = 0;
   lives = 1;
   health = 100;
+  alive = true;
 
   // behaviours.push_back(new Roamer(this));
 
@@ -159,6 +160,7 @@ Save::Station GLStation::capture_state() const {
   Save::Station s;
   s.present = true;
   s.alive = alive;
+  s.lives = lives;
   s.health = health;
   s.pos_x = position.x();
   s.pos_y = position.y();
@@ -191,6 +193,7 @@ Save::Station GLStation::capture_state() const {
 
 void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
   alive = s.alive;
+  lives = s.lives;
   health = s.health;
   position = WrappedPoint(s.pos_x, s.pos_y);
   velocity = Point(s.vel_x, s.vel_y);
