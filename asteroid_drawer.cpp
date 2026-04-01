@@ -274,25 +274,32 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects, list<Asteroid*> 
     glEnd();
   }
 
-  // --- Armour arc indicator pass ---
-  // Draw a bright orange arc on the shielded face (±60° around armour_angle)
-  // so the player can see which face deflects bullets.
+  // --- Armour edge indicator pass ---
+  // For each polygon edge whose midpoint falls within the ±75° shield arc,
+  // redraw that edge scaled slightly outward in orange.
   if (!is_minimap) {
+    const float arc_cos = 0.259f; // cos(75°) — must match collision threshold in ship.cpp
+    const float scale   = 1.18f;  // draw outside the polygon surface
     glLineWidth(3.0f);
+    glBegin(GL_LINES);
     for (size_t ai = 0; ai < verts.size(); ++ai) {
       AsteroidVerts const &v = verts[ai];
       if (!v.armoured || v.invisible) continue;
-      float r = v.radius * 1.08f; // just outside the asteroid surface
-      const int arc_segs = 14;
-      const float half_arc = 5.0f * (float)M_PI / 12.0f; // 75° each side = 150° total
-      glColor4f(1.0f, 0.55f, 0.0f, 1.0f); // bright orange
-      glBegin(GL_LINE_STRIP);
-      for (int k = 0; k <= arc_segs; k++) {
-        float a = v.armour_angle - half_arc + k * (2.0f * half_arc) / arc_segs;
-        glVertex2f(v.cx + r * cosf(a), v.cy + r * sinf(a));
+      float adx = cosf(v.armour_angle), ady = sinf(v.armour_angle);
+      glColor4f(1.0f, 0.55f, 0.0f, 1.0f);
+      for (int i = 0; i < v.segs; i++) {
+        int j = (i + 1) % v.segs;
+        // Use edge midpoint angle to decide if this edge is in the shield arc
+        float mx = (v.dvx[i] + v.dvx[j]) * 0.5f;
+        float my = (v.dvy[i] + v.dvy[j]) * 0.5f;
+        float mlen = sqrtf(mx * mx + my * my);
+        if (mlen < 1e-6f) continue;
+        if ((mx * adx + my * ady) / mlen < arc_cos) continue;
+        glVertex2f(v.cx + v.dvx[i] * scale, v.cy + v.dvy[i] * scale);
+        glVertex2f(v.cx + v.dvx[j] * scale, v.cy + v.dvy[j] * scale);
       }
-      glEnd();
     }
+    glEnd();
   }
 
   // --- Inner indicator pass for teleporting asteroids ---
