@@ -350,7 +350,7 @@ void GLGame::add_asteroids() {
   for(int i = 0; i < num_tough; i++) {
     objects->push_back(new Asteroid(false, false, false, false, false, true));
   }
-  int num_armoured = (generation >= 0) ? (generation - 0) / 2 + 1 : 0;
+  int num_armoured = (generation >= 7) ? (generation - 7) / 2 + 1 : 0;
   for(int i = 0; i < num_armoured; i++) {
     objects->push_back(new Asteroid(false, false, false, false, false, false, true));
   }
