@@ -65,6 +65,42 @@ GLShip::GLShip(const Grid &grid, bool has_friction) : show_help(false) {
 
   genForceShield();
   genRepulsor();
+  genGodShield();
+
+  {
+    MeshBuilder mb;
+    mb.begin(GL_POINTS);
+    mb.color(1.0f, 1.0f, 1.0f);
+    mb.vertex(0.0f, 0.0f);
+    mb.end();
+    minimap_dot.upload(mb);
+  }
+
+  {
+    MeshBuilder mb;
+    float sz = 5.0f;
+    mb.begin(GL_LINE_LOOP);
+    mb.color(color[0], color[1], color[2]);
+    mb.vertex( 0.0f,  sz);
+    mb.vertex(-sz * 0.5f, -sz);
+    mb.vertex( sz * 0.5f, -sz);
+    mb.end();
+    missile_body.upload(mb);
+  }
+}
+
+void GLShip::genGodShield() {
+  const int segs = 20;
+  const float shield_size = 2.0f;
+  MeshBuilder mb;
+  mb.begin(GL_LINE_LOOP);
+  mb.color(1.0f, 1.0f, 0.0f, 1.0f);
+  for (int i = 0; i < segs; i++) {
+    float d = i * 2.0f * (float)M_PI / segs;
+    mb.vertex(cosf(d) * shield_size, sinf(d) * shield_size);
+  }
+  mb.end();
+  god_shield.upload(mb);
 }
 
 void GLShip::genRepulsor() {
@@ -168,50 +204,63 @@ bool GLShip::is_my_controller_id(SDL_JoystickID id) const {
 void GLShip::draw_temperature() const {
   if(ship->heat_rate <= 0.0f)
     return;
-  float height = 5.0, width = 1.0;
 
-  /* temperature */
-  float color[3] = {0,1.0,0};
-  color[1] *= 1.0 - ship->temperature_ratio();
-  color[0] = ship->temperature_ratio();
-  glColor3fv(color);
-  glScalef(width, height, 1.0f);
-  glBegin(GL_POLYGON);
-  glVertex2f(0.0f, 0.0f);
-  glVertex2f(1.0f, 0.0f);
+  float cr = ship->temperature_ratio();
+  float cg = 1.0f - cr;
+  glScalef(1.0f, 5.0f, 1.0f);
+
+  static MeshBuilder mb;
+  static Mesh mesh;
+
+  // Temperature bar fill (green → red)
   float temp = temperature() > critical_temperature() ? critical_temperature() : temperature();
-  glVertex2f(1.0f, temp/max_temperature());
-  glVertex2f(0.0f, temp/max_temperature());
-  glEnd();
+  float th = temp / max_temperature();
+  mb.clear();
+  mb.begin(GL_TRIANGLES);
+  mb.color(cr, cg, 0.0f);
+  mb.vertex(0.0f, 0.0f); mb.vertex(1.0f, 0.0f); mb.vertex(1.0f, th);
+  mb.vertex(0.0f, 0.0f); mb.vertex(1.0f, th);   mb.vertex(0.0f, th);
+  mb.end();
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
 
+  // Critical overflow fill (red)
   if(temperature() > critical_temperature()) {
+    float cy = critical_temperature() / max_temperature();
+    float oh = temperature() / max_temperature() - cy;
     glPushMatrix();
-    glColor3f(1.0f,0.0f,0.0f);
-    glTranslatef(0.0f, critical_temperature()/max_temperature(), 0.0f);
+    glTranslatef(0.0f, cy, 0.0f);
     glScalef(1.0f, 0.5f, 1.0f);
-    glBegin(GL_POLYGON);
-    glVertex2f( 0.0f, 0.0f);
-    glVertex2f( 1.0f, 0.0f);
-    temp = temperature()/max_temperature()-critical_temperature()/max_temperature();
-    glVertex2f( 1.0f, temp);
-    glVertex2f( 0.0f, temp);
-    glEnd();
+    mb.clear();
+    mb.begin(GL_TRIANGLES);
+    mb.color(1.0f, 0.0f, 0.0f);
+    mb.vertex(0.0f, 0.0f); mb.vertex(1.0f, 0.0f); mb.vertex(1.0f, oh);
+    mb.vertex(0.0f, 0.0f); mb.vertex(1.0f, oh);   mb.vertex(0.0f, oh);
+    mb.end();
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw();
     glPopMatrix();
   }
 
-  /* border */
-  glColor3f(1,1,1);
-  glBegin(GL_LINE_LOOP);
-  glVertex2i(0.0f,0.0f);
-  glVertex2i(1.0f,0.0f);
-  glVertex2i(1.0f,1.0f);
-  glVertex2i(0.0f,1.0f);
-  glEnd();
+  // Border
+  mb.clear();
+  mb.begin(GL_LINE_LOOP);
+  mb.color(1.0f, 1.0f, 1.0f);
+  mb.vertex(0.0f, 0.0f); mb.vertex(1.0f, 0.0f);
+  mb.vertex(1.0f, 1.0f); mb.vertex(0.0f, 1.0f);
+  mb.end();
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
 
-  glBegin(GL_LINES);
-  glVertex2f(0.0f, critical_temperature()/max_temperature());
-  glVertex2f(1.0f, critical_temperature()/max_temperature());
-  glEnd();
+  // Critical level line
+  float crit_y = critical_temperature() / max_temperature();
+  mb.clear();
+  mb.begin(GL_LINES);
+  mb.color(1.0f, 1.0f, 1.0f);
+  mb.vertex(0.0f, crit_y); mb.vertex(1.0f, crit_y);
+  mb.end();
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
 }
 
 void GLShip::draw_respawn_timer() const {
@@ -486,11 +535,7 @@ void GLShip::draw_ship(bool minimap) const {
   glRotatef( ship->heading(), 0.0f, 0.0f, 1.0f);
 
   if(minimap) {
-    glColor3fv(color);
-    glPointSize(5.0f);
-    glBegin(GL_POINTS);
-    glVertex2f(0.0f, 0.0f);
-    glEnd();
+    minimap_dot.draw_tinted(color[0], color[1], color[2], 1.0f, 5.0f);
     return;
   }
 
@@ -513,14 +558,7 @@ void GLShip::draw_ship(bool minimap) const {
 
   if(ship->invincible) {
     if(ship->god_mode_time_remaining() > 0) {
-      float shield_size = 2.0f;
-      glColor4f(1.0f, 1.0f, 0.0f, 1.0f);
-      glBegin(GL_LINE_LOOP);
-      for(int i = 0; i < 20; i++) {
-        float d = i * 2.0f * (float)M_PI / 20.0f;
-        glVertex2f(cosf(d) * shield_size, sinf(d) * shield_size);
-      }
-      glEnd();
+      god_shield.draw();
     } else {
       force_shield.draw();
     }
@@ -693,31 +731,42 @@ void GLShip::draw_weapons() const {
 }
 
 void GLShip::draw_particles() const {
-  glPointSize(3.5f);
-  glLineWidth(2.5f);
+  static MeshBuilder mb;
+  static Mesh mesh;
+
   //TODO: ParticleDrawer::draw(ship->bullets);
-  glBegin(GL_LINES);
-  for(auto b = ship->bullets.begin(); b != ship->bullets.end(); b++) {
-    //TODO: Work out how to make bullets draw themselves. GLBullet?
-    if(b->world_bullet) {
-      glColor3f(1.0f, 1.0f, 1.0f);
-    } else {
-      glColor3fv(color);
+  if (!ship->bullets.empty()) {
+    mb.clear();
+    mb.begin(GL_LINES);
+    for(auto b = ship->bullets.begin(); b != ship->bullets.end(); b++) {
+      //TODO: Work out how to make bullets draw themselves. GLBullet?
+      if(b->world_bullet) {
+        mb.color(1.0f, 1.0f, 1.0f);
+      } else {
+        mb.color(color[0], color[1], color[2]);
+      }
+      Point tail = b->position - b->velocity * 10;
+      mb.vertex(tail.x(), tail.y());
+      mb.vertex(b->position.x(), b->position.y());
     }
-    glVertex2fv(b->position - b->velocity*10);
-    glVertex2fv(b->position);
+    mb.end();
+    glLineWidth(2.5f);
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw();
   }
-  glEnd();
 
   if(!ship->bullet_trails.empty()) {
-    glPointSize(2.5f);
-    glBegin(GL_POINTS);
+    mb.clear();
+    mb.begin(GL_POINTS);
     for(auto &p : ship->bullet_trails) {
       float a = p.aliveness();
-      glColor4f(a, a, 0.0f, a);
-      glVertex2fv(p.position);
+      mb.color(a, a, 0.0f, a);
+      mb.vertex(p.position.x(), p.position.y());
     }
-    glEnd();
+    mb.end();
+    glPointSize(2.5f);
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw();
   }
 }
 
@@ -726,6 +775,8 @@ bool GLShip::is_removable() const {
 }
 
 void GLShip::draw_debris() const {
+  if(ship->debris.empty()) return;
+
   static float flicker[64];
   static bool initialized = false;
   static int idx = 0;
@@ -735,109 +786,153 @@ void GLShip::draw_debris() const {
     initialized = true;
   }
 
-  glPointSize(2.5f);
-  glBegin(GL_POINTS);
+  static MeshBuilder mb;
+  static Mesh mesh;
+
+  mb.clear();
+  mb.begin(GL_POINTS);
   for(auto d = ship->debris.begin(); d != ship->debris.end(); d++) {
-    glColor4f(color[0], flicker[idx++ % 64], color[2], d->aliveness());
-		glVertex2fv(d->position);
+    mb.color(color[0], flicker[idx++ % 64], color[2], d->aliveness());
+    mb.vertex(d->position.x(), d->position.y());
   }
-	glEnd();
+  mb.end();
+  glPointSize(2.5f);
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
 }
 
 void GLShip::draw_mines(bool minimap) const {
+  if(ship->mines.empty()) return;
+
+  static MeshBuilder mb;
+  static Mesh mesh;
+
   if(minimap) {
-    glPointSize(1.5f);
-    glColor3fv(color);
-    glBegin(GL_POINTS);
+    mb.clear();
+    mb.begin(GL_POINTS);
+    mb.color(color[0], color[1], color[2]);
     for(auto m = ship->mines.begin(); m != ship->mines.end(); m++) {
-      glVertex2fv(m->position);
+      mb.vertex(m->position.x(), m->position.y());
     }
-    glEnd();
+    mb.end();
+    glPointSize(1.5f);
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw();
     return;
   }
 
-  float size = 7.5;
-  glLineWidth(2.0f);
-  glColor3fv(color);
-  glBegin(GL_LINES);
+  // Mine cross (rotated diamond)
+  float size = 7.5f;
+  mb.clear();
+  mb.begin(GL_LINES);
+  mb.color(color[0], color[1], color[2]);
   for(auto m = ship->mines.begin(); m != ship->mines.end(); m++) {
     float angle = m->rotation * (float)M_PI / 180.0f;
     Point v0(0,-size), v1(size,0), v2(0,size), v3(-size,0);
     v0.rotate(angle); v1.rotate(angle); v2.rotate(angle); v3.rotate(angle);
     v0 += m->position; v1 += m->position; v2 += m->position; v3 += m->position;
-    glVertex2fv(v0); glVertex2fv(v1);
-    glVertex2fv(v1); glVertex2fv(v2);
-    glVertex2fv(v2); glVertex2fv(v3);
-    glVertex2fv(v3); glVertex2fv(v0);
+    mb.vertex(v0.x(), v0.y()); mb.vertex(v1.x(), v1.y());
+    mb.vertex(v1.x(), v1.y()); mb.vertex(v2.x(), v2.y());
+    mb.vertex(v2.x(), v2.y()); mb.vertex(v3.x(), v3.y());
+    mb.vertex(v3.x(), v3.y()); mb.vertex(v0.x(), v0.y());
   }
-  glEnd();
+  mb.end();
+  glLineWidth(2.0f);
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
 
-  // Pulsing red circle: flashes once per second
+  // Pulsing red circles: one GL_LINE_LOOP group per mine, all in one VBO
   float t = (SDL_GetTicks() % 1000) / 1000.0f;
   float pulse = 0.5f + 0.5f * sinf(t * 2.0f * (float)M_PI);
   float pulse_radius = size + 4.5f;
-  glLineWidth(1.5f);
-  glColor4f(1.0f, 0.0f, 0.0f, pulse);
+  mb.clear();
   for(auto m = ship->mines.begin(); m != ship->mines.end(); m++) {
-    glBegin(GL_LINE_LOOP);
+    mb.begin(GL_LINE_LOOP);
+    mb.color(1.0f, 0.0f, 0.0f, pulse);
     for(int i = 0; i < 16; i++) {
       float a = i * 2.0f * (float)M_PI / 16.0f;
-      glVertex2f(cosf(a) * pulse_radius + m->position.x(),
-                 sinf(a) * pulse_radius + m->position.y());
+      mb.vertex(cosf(a) * pulse_radius + m->position.x(),
+                sinf(a) * pulse_radius + m->position.y());
     }
-    glEnd();
+    mb.end();
   }
+  glLineWidth(1.5f);
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
 }
 
 void GLShip::draw_giga_mines(bool minimap) const {
+  if(ship->giga_mines.empty()) return;
+
+  static MeshBuilder mb;
+  static Mesh mesh;
+
   if(minimap) {
-    glPointSize(3.0f);
-    glColor3f(1.0f, 0.2f, 0.0f);
-    glBegin(GL_POINTS);
+    mb.clear();
+    mb.begin(GL_POINTS);
+    mb.color(1.0f, 0.2f, 0.0f);
     for(auto &m : ship->giga_mines) {
-      glVertex2fv(m.position);
+      mb.vertex(m.position.x(), m.position.y());
     }
-    glEnd();
+    mb.end();
+    glPointSize(3.0f);
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw();
     return;
   }
 
   float size = 16.0f;
   float inner = size * 0.4f;
-  glLineWidth(2.5f);
-  glColor3f(1.0f, 0.2f, 0.0f);
 
+  // 8-pointed star spikes: all mines in one GL_LINES batch
+  mb.clear();
+  mb.begin(GL_LINES);
+  mb.color(1.0f, 0.2f, 0.0f);
   for(auto &m : ship->giga_mines) {
     float angle = m.rotation * (float)M_PI / 180.0f;
-    // Draw 8-pointed star shape (spiky)
-    glBegin(GL_LINES);
     for(int i = 0; i < 8; i++) {
-      float a = angle + i * (float)M_PI / 4.0f;
-      float ox = cos(a) * size + m.position.x();
-      float oy = sin(a) * size + m.position.y();
+      float a  = angle + i * (float)M_PI / 4.0f;
       float a2 = angle + (i + 0.5f) * (float)M_PI / 4.0f;
-      float ix = cos(a2) * inner + m.position.x();
-      float iy = sin(a2) * inner + m.position.y();
       float a3 = angle + (i + 1.0f) * (float)M_PI / 4.0f;
-      float ox2 = cos(a3) * size + m.position.x();
-      float oy2 = sin(a3) * size + m.position.y();
-      glVertex2f(ox, oy);
-      glVertex2f(ix, iy);
-      glVertex2f(ix, iy);
-      glVertex2f(ox2, oy2);
+      float ox  = cosf(a)  * size  + m.position.x(), oy  = sinf(a)  * size  + m.position.y();
+      float ix  = cosf(a2) * inner + m.position.x(), iy  = sinf(a2) * inner + m.position.y();
+      float ox2 = cosf(a3) * size  + m.position.x(), oy2 = sinf(a3) * size  + m.position.y();
+      mb.vertex(ox, oy);   mb.vertex(ix, iy);
+      mb.vertex(ix, iy);   mb.vertex(ox2, oy2);
     }
-    glEnd();
-    // Center circle
-    glBegin(GL_LINE_LOOP);
+  }
+  mb.end();
+  glLineWidth(2.5f);
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
+
+  // Center circles: one GL_LINE_LOOP group per mine, all in one VBO
+  mb.clear();
+  for(auto &m : ship->giga_mines) {
+    float angle = m.rotation * (float)M_PI / 180.0f;
+    mb.begin(GL_LINE_LOOP);
+    mb.color(1.0f, 0.2f, 0.0f);
     for(int i = 0; i < 8; i++) {
       float a = angle + i * (float)M_PI / 4.0f;
-      glVertex2f(cos(a) * inner * 0.6f + m.position.x(),
-                 sin(a) * inner * 0.6f + m.position.y());
+      mb.vertex(cosf(a) * inner * 0.6f + m.position.x(),
+                sinf(a) * inner * 0.6f + m.position.y());
     }
-    glEnd();
+    mb.end();
   }
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
 }
 
 void GLShip::draw_shockwaves() const {
+  if(ship->shockwaves.empty()) return;
+
+  static MeshBuilder mb_bright, mb_glow;
+  static Mesh mesh_bright, mesh_glow;
+
+  mb_bright.clear();
+  mb_glow.clear();
+
+  const int segs = 64;
   for(auto &sw : ship->shockwaves) {
     if(!sw.alive()) continue;
     float alpha = sw.time_left / 700.0f;
@@ -845,58 +940,65 @@ void GLShip::draw_shockwaves() const {
     if(alpha < 0.0f) alpha = 0.0f;
 
     // Bright expanding ring
-    glLineWidth(3.0f);
-    glColor4f(1.0f, 0.6f, 0.1f, alpha);
-    glBegin(GL_LINE_LOOP);
-    int segs = 64;
+    mb_bright.begin(GL_LINE_LOOP);
+    mb_bright.color(1.0f, 0.6f, 0.1f, alpha);
     for(int i = 0; i < segs; i++) {
       float a = i * 2.0f * (float)M_PI / segs;
-      glVertex2f(sw.position.x() + cos(a) * sw.radius,
-                 sw.position.y() + sin(a) * sw.radius);
+      mb_bright.vertex(sw.position.x() + cosf(a) * sw.radius,
+                       sw.position.y() + sinf(a) * sw.radius);
     }
-    glEnd();
+    mb_bright.end();
 
-    // Second slightly-larger translucent ring for glow effect
-    glLineWidth(1.5f);
-    glColor4f(1.0f, 0.3f, 0.0f, alpha * 0.4f);
-    glBegin(GL_LINE_LOOP);
+    // Slightly-larger translucent glow ring
     float r2 = sw.radius * 1.06f;
+    mb_glow.begin(GL_LINE_LOOP);
+    mb_glow.color(1.0f, 0.3f, 0.0f, alpha * 0.4f);
     for(int i = 0; i < segs; i++) {
       float a = i * 2.0f * (float)M_PI / segs;
-      glVertex2f(sw.position.x() + cos(a) * r2,
-                 sw.position.y() + sin(a) * r2);
+      mb_glow.vertex(sw.position.x() + cosf(a) * r2,
+                     sw.position.y() + sinf(a) * r2);
     }
-    glEnd();
+    mb_glow.end();
   }
+
+  glLineWidth(3.0f);
+  mesh_bright.upload(mb_bright, GL_DYNAMIC_DRAW);
+  mesh_bright.draw();
+
+  glLineWidth(1.5f);
+  mesh_glow.upload(mb_glow, GL_DYNAMIC_DRAW);
+  mesh_glow.draw();
 }
 
 void GLShip::draw_missiles() const {
-  for(auto &m : ship->missiles) {
-    // Trail: fading dots in player colour, oldest (dim) to newest (bright)
-    if(!m.trail.empty()) {
-      glPointSize(4.0f);
-      glBegin(GL_POINTS);
-      int trail_sz = (int)m.trail.size();
-      for(int ti = trail_sz - 1; ti >= 0; ti--) {
-        float alpha = (1.0f - (float)ti / (float)trail_sz);
-        glColor4f(color[0], color[1], color[2], alpha);
-        glVertex2fv(m.trail[ti]);
-      }
-      glEnd();
-    }
+  if(ship->missiles.empty()) return;
 
-    // Missile body: small triangle in player colour
+  static MeshBuilder mb;
+  static Mesh mesh;
+
+  // All missile trails batched into one GL_POINTS draw
+  mb.clear();
+  mb.begin(GL_POINTS);
+  for(auto &m : ship->missiles) {
+    int trail_sz = (int)m.trail.size();
+    for(int ti = trail_sz - 1; ti >= 0; ti--) {
+      float alpha = 1.0f - (float)ti / (float)trail_sz;
+      mb.color(color[0], color[1], color[2], alpha);
+      mb.vertex(m.trail[ti].x(), m.trail[ti].y());
+    }
+  }
+  mb.end();
+  glPointSize(4.0f);
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
+
+  // Missile bodies: pre-built triangle mesh, one draw per missile via matrix
+  glLineWidth(1.5f);
+  for(auto &m : ship->missiles) {
     glPushMatrix();
     glTranslatef(m.position.x(), m.position.y(), 0.0f);
     glRotatef(m.facing.direction(), 0.0f, 0.0f, 1.0f);
-    float sz = 5.0f;
-    glColor3fv(color);
-    glLineWidth(1.5f);
-    glBegin(GL_LINE_LOOP);
-    glVertex2f( 0.0f,  sz);        // tip (forward)
-    glVertex2f(-sz * 0.5f, -sz);  // rear left
-    glVertex2f( sz * 0.5f, -sz);  // rear right
-    glEnd();
+    missile_body.draw();
     glPopMatrix();
   }
 }

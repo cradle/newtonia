@@ -33,6 +33,7 @@ public:
   bool is_my_controller_id(SDL_JoystickID id) const;
   void genForceShield();
   void genRepulsor();
+  void genGodShield();
   void draw(bool minimap = false);
   void draw_body() const;
   void draw_keymap() const;
@@ -73,6 +74,9 @@ protected:
   // body_fill: black polygon; body_outline: ship-coloured line loop.
   Mesh body_fill, body_outline;
   Mesh jets, repulsors, force_shield;
+  Mesh god_shield;     // yellow shield circle for god-mode invincibility
+  Mesh minimap_dot;    // single white vertex at origin, tinted per draw
+  Mesh missile_body;   // unit missile triangle (ship colour), per-missile matrix
 
   int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, next_secondary_key, boost_key, teleport_key, help_key;
 
