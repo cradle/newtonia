@@ -26,10 +26,11 @@
 // then gles2_compat.h which adds the compat_ shim macros on top.
 #ifdef __APPLE__
 #define glutLeaveMainLoop() exit(0)
-// Include gl3.h before GLUT so that gl3.h sets __gl_h_ and GLUT's subsequent
-// gl.h include becomes a no-op.  Without this, both headers are included and
-// the compiler emits a warning about removed functionality going unchecked.
+// gl3.h defines __gl3_h_ (not __gl_h_), so GLUT's gl.h would still be
+// processed and emit a "both included" warning.  Manually define __gl_h_
+// after pulling in gl3.h to block GLUT from re-including gl.h at all.
 #include <OpenGL/gl3.h>
+#define __gl_h_
 #include <GLUT/glut.h>
 #else
 #ifdef _WIN32
