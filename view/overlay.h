@@ -23,7 +23,8 @@ private:
   static void god_mode(const GLGame *glgame, const GLShip *glship);
   static void touch_controls(const GLGame *glgame, const GLShip *glship);
   static void edge_indicators(const GLGame *glgame, const GLShip *glship);
-  static void draw_circle(float cx, float cy, float r, int segs, bool filled);
+  static void draw_circle(float cx, float cy, float r, int segs, bool filled,
+                          float cr, float cg, float cb, float ca);
 };
 
 #endif
