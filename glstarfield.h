@@ -12,6 +12,7 @@ class GLStarfield {
 public:
   GLStarfield(Point const size);
   virtual ~GLStarfield();
+  GLStarfield(GLStarfield&&) = default;
 
   void draw_rear(Point const viewpoint) const;
   void draw_front(Point const viewpoint) const;
