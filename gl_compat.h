@@ -31,10 +31,17 @@
 #ifdef _WIN32
 #include <windows.h>
 #endif
+// GL_GLEXT_PROTOTYPES makes <GL/glext.h> declare all GL 2.0+ functions
+// (glUniformMatrix4fv, glBindVertexArray, etc.) as extern symbols on Linux.
+// Must be defined before the first gl.h inclusion (glut.h drags it in).
+#ifndef GL_GLEXT_PROTOTYPES
+#  define GL_GLEXT_PROTOTYPES
+#endif
 #include <GL/glut.h>
 #ifndef __APPLE__
 #include <GL/freeglut_std.h>
 #include <GL/freeglut_ext.h>
+#include <GL/glext.h>
 #endif
 #endif
 
