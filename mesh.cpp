@@ -10,15 +10,6 @@
 #    include <GL/glext.h>
 #  elif defined(__APPLE__)
 #    include <OpenGL/gl3.h>
-#  elif defined(__MINGW32__) || defined(__MINGW64__)
-#    ifndef GL_GLEXT_PROTOTYPES
-#      define GL_GLEXT_PROTOTYPES
-#    endif
-#    include <windows.h>
-#    undef near
-#    undef far
-#    include <GL/gl.h>
-#    include <GL/glext.h>
 #  elif defined(_WIN32)
 #    include <windows.h>
 #    undef near
