@@ -140,7 +140,7 @@ Mesh::~Mesh() {
 #endif
 }
 
-void Mesh::upload(const MeshBuilder& mb) {
+void Mesh::upload(const MeshBuilder& mb, GLenum usage) {
     groups_       = mb.groups();
     vertex_count_ = mb.vertex_count();
     if (vertex_count_ == 0) return;
@@ -154,14 +154,14 @@ void Mesh::upload(const MeshBuilder& mb) {
     glBindBuffer(GL_ARRAY_BUFFER, vbo_pos_);
     glBufferData(GL_ARRAY_BUFFER,
                  (GLsizeiptr)(mb.positions().size() * sizeof(float)),
-                 mb.positions().data(), GL_STATIC_DRAW);
+                 mb.positions().data(), usage);
     glEnableVertexAttribArray(p->attr_pos);
     glVertexAttribPointer(p->attr_pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo_col_);
     glBufferData(GL_ARRAY_BUFFER,
                  (GLsizeiptr)(mb.colours().size() * sizeof(float)),
-                 mb.colours().data(), GL_STATIC_DRAW);
+                 mb.colours().data(), usage);
     glEnableVertexAttribArray(p->attr_col);
     glVertexAttribPointer(p->attr_col, 4, GL_FLOAT, GL_FALSE, 0, 0);
 

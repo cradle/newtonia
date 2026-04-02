@@ -71,8 +71,9 @@ public:
     Mesh& operator=(Mesh&&)      = delete;
 
     // Upload geometry from a MeshBuilder.  May be called multiple times to
-    // replace previous geometry.
-    void upload(const MeshBuilder& mb);
+    // replace previous geometry.  Pass GL_DYNAMIC_DRAW or GL_STREAM_DRAW for
+    // geometry that changes every frame.
+    void upload(const MeshBuilder& mb, GLenum usage = GL_STATIC_DRAW);
 
     // Draw with current matrix-stack MVP and no tint (1,1,1,1).
     void draw(float point_size = 1.0f) const;
