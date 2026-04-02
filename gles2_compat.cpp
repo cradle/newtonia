@@ -19,7 +19,10 @@
 #    include <GL/gl.h>
 #    include <GL/glext.h>
 
-     // Windows: GL 2.0+ functions must be loaded at runtime.
+     // Windows: GL 2.0+ functions must be loaded at runtime via wglGetProcAddress.
+     // The function pointers are defined here as globals (no 'static') so that
+     // mesh.cpp and any other TU can use them via the extern declarations in
+     // gles2_compat.h.
 #    define COMPAT_GL_FNS \
        X(PFNGLCREATESHADERPROC,            glCreateShader           ) \
        X(PFNGLSHADERSOURCEPROC,            glShaderSource           ) \
@@ -38,6 +41,7 @@
        X(PFNGLUSEPROGRAMPROC,              glUseProgram             ) \
        X(PFNGLUNIFORM1IPROC,               glUniform1i              ) \
        X(PFNGLUNIFORM1FPROC,               glUniform1f              ) \
+       X(PFNGLUNIFORM4FPROC,               glUniform4f              ) \
        X(PFNGLUNIFORMMATRIX4FVPROC,        glUniformMatrix4fv       ) \
        X(PFNGLGENBUFFERSPROC,              glGenBuffers             ) \
        X(PFNGLBINDBUFFERPROC,              glBindBuffer             ) \
@@ -50,7 +54,7 @@
        X(PFNGLBINDVERTEXARRAYPROC,         glBindVertexArray        ) \
        X(PFNGLDELETEVERTEXARRAYSPROC,      glDeleteVertexArrays     )
 
-#    define X(T, name) static T name = NULL;
+#    define X(T, name) T name = NULL;
      COMPAT_GL_FNS
 #    undef X
 

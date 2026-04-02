@@ -11,6 +11,49 @@
 // headers (gl_compat.h guarantees this).  gles2_compat.cpp includes its own
 // GL headers before including this file.
 
+// ============================================================
+// Windows: GL 2.0+ function pointer externs
+// ============================================================
+// On Windows, opengl32.dll only exports OpenGL 1.1.  All GL 2.0+ functions
+// are loaded at runtime by gles2_compat.cpp via wglGetProcAddress.  The
+// pointers are global (non-static) so any TU that includes this header can
+// call them directly without its own wglGetProcAddress calls.
+// This block must come before the platform-specific GL headers below because
+// gl_compat.h includes <GL/glut.h> (which drags in <GL/gl.h>) before this
+// file, so GL types are already available.
+#if defined(_WIN32) && !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__)
+#  include <GL/glext.h>
+extern PFNGLCREATESHADERPROC             glCreateShader;
+extern PFNGLSHADERSOURCEPROC             glShaderSource;
+extern PFNGLCOMPILESHADERPROC            glCompileShader;
+extern PFNGLGETSHADERIVPROC              glGetShaderiv;
+extern PFNGLGETSHADERINFOLOGPROC         glGetShaderInfoLog;
+extern PFNGLCREATEPROGRAMPROC            glCreateProgram;
+extern PFNGLATTACHSHADERPROC             glAttachShader;
+extern PFNGLLINKPROGRAMPROC              glLinkProgram;
+extern PFNGLDELETESHADERPROC             glDeleteShader;
+extern PFNGLDELETEPROGRAMPROC            glDeleteProgram;
+extern PFNGLGETPROGRAMIVPROC             glGetProgramiv;
+extern PFNGLGETPROGRAMINFOLOGPROC        glGetProgramInfoLog;
+extern PFNGLGETATTRIBLOCATIONPROC        glGetAttribLocation;
+extern PFNGLGETUNIFORMLOCATIONPROC       glGetUniformLocation;
+extern PFNGLUSEPROGRAMPROC               glUseProgram;
+extern PFNGLUNIFORM1IPROC                glUniform1i;
+extern PFNGLUNIFORM1FPROC                glUniform1f;
+extern PFNGLUNIFORM4FPROC                glUniform4f;
+extern PFNGLUNIFORMMATRIX4FVPROC         glUniformMatrix4fv;
+extern PFNGLGENBUFFERSPROC               glGenBuffers;
+extern PFNGLBINDBUFFERPROC               glBindBuffer;
+extern PFNGLBUFFERDATAPROC               glBufferData;
+extern PFNGLDELETEBUFFERSPROC            glDeleteBuffers;
+extern PFNGLENABLEVERTEXATTRIBARRAYPROC  glEnableVertexAttribArray;
+extern PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray;
+extern PFNGLVERTEXATTRIBPOINTERPROC      glVertexAttribPointer;
+extern PFNGLGENVERTEXARRAYSPROC          glGenVertexArrays;
+extern PFNGLBINDVERTEXARRAYPROC          glBindVertexArray;
+extern PFNGLDELETEVERTEXARRAYSPROC       glDeleteVertexArrays;
+#endif // _WIN32
+
 #if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__)
 // ---- GLES2 platform GL headers ----
 #  if defined(__ANDROID__)
