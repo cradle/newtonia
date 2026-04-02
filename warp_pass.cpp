@@ -14,20 +14,14 @@
 //   GLES2   – shader API is core; gles2_compat.h provides the
 //             necessary MVP accessor.
 
-#if !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__)
-#  if defined(__linux__)
-#    ifndef GL_GLEXT_PROTOTYPES
-#      define GL_GLEXT_PROTOTYPES
-#    endif
-#  elif defined(__APPLE__)
-     // Must be included before GLUT pulls in <OpenGL/gl.h>.  gl3.h sets __gl_h_
-     // so the subsequent GLUT gl.h include becomes a no-op, leaving only the
-     // Core Profile API in scope (which declares glBindVertexArray etc.).
-#    include <OpenGL/gl3.h>
+#if defined(__linux__) && !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
+#  ifndef GL_GLEXT_PROTOTYPES
+#    define GL_GLEXT_PROTOTYPES
 #  endif
 #endif
 
 #include "warp_pass.h"   // pulls in gl_compat.h → platform GL/GLUT headers
+                         // On macOS, gl_compat.h now includes gl3.h before GLUT.
 
 // Post-GL-header includes and Windows function loader.
 #if !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__)
