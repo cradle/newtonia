@@ -78,8 +78,7 @@ jobs:
         run: |
           find . -name "*.cpp" \
             -not -path "./android/*" \
-            -not -path "./.git/*" \
-            -not -name "gles2_compat.cpp" > srcs.txt
+            -not -path "./.git/*" > srcs.txt
 
       - name: Build arm64
         env:
