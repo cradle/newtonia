@@ -21,7 +21,7 @@
 // This block must come before the platform-specific GL headers below because
 // gl_compat.h includes <GL/glut.h> (which drags in <GL/gl.h>) before this
 // file, so GL types are already available.
-#if defined(_WIN32) && !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__)
+#if defined(_WIN32) && !defined(__MINGW32__) && !defined(__MINGW64__) && !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__)
 #  include <GL/glext.h>
 extern PFNGLCREATESHADERPROC             glCreateShader;
 extern PFNGLSHADERSOURCEPROC             glShaderSource;

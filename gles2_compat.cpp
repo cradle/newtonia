@@ -14,12 +14,21 @@
 #  elif defined(__APPLE__)
      // OpenGL/gl3.h exposes the Core Profile API without legacy declarations.
 #    include <OpenGL/gl3.h>
+#  elif defined(__MINGW32__) || defined(__MINGW64__)
+     // MinGW/MSYS2: freeglut provides GL 2.0+ implementations and its glext.h
+     // declares all functions as regular prototypes — no wglGetProcAddress needed.
+#    ifndef GL_GLEXT_PROTOTYPES
+#      define GL_GLEXT_PROTOTYPES
+#    endif
+#    include <windows.h>
+#    include <GL/gl.h>
+#    include <GL/glext.h>
 #  elif defined(_WIN32)
 #    include <windows.h>
 #    include <GL/gl.h>
 #    include <GL/glext.h>
 
-     // Windows: GL 2.0+ functions must be loaded at runtime via wglGetProcAddress.
+     // MSVC Windows: GL 2.0+ functions must be loaded at runtime via wglGetProcAddress.
      // The function pointers are defined here as globals (no 'static') so that
      // mesh.cpp and any other TU can use them via the extern declarations in
      // gles2_compat.h.
@@ -63,7 +72,7 @@
        COMPAT_GL_FNS
 #      undef X
      }
-#  endif // _WIN32
+#  endif // _WIN32 / MinGW
 #endif   // desktop
 
 #include "gles2_compat.h"
@@ -384,7 +393,7 @@ static GLuint compile_shader(GLenum type, const char *src) {
 }
 
 static void init_shader() {
-#if defined(_WIN32) && defined(DESKTOP_COMPAT_GL)
+#if defined(_WIN32) && !defined(__MINGW32__) && !defined(__MINGW64__) && defined(DESKTOP_COMPAT_GL)
     compat_load_gl_fns();
 #endif
 
