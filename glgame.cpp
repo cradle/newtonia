@@ -19,6 +19,7 @@
 #include <SDL.h>
 
 #include "gl_compat.h"
+#include "mesh.h"
 
 #include <iostream>
 #include <list>
@@ -1329,20 +1330,23 @@ void GLGame::draw_map() const {
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     glViewport(0, 0, window.x(), window.y());
-    glBegin(GL_LINES);
-    glColor4f(1,1,1,0.5);
-    if(window.x() < window.y()) {
-      glVertex2f(-window.x(),0);
-      glVertex2f(-minimap_size,0);
-      glVertex2f(minimap_size,0);
-      glVertex2f(window.x(),0);
-    } else {
-      glVertex2f(0,-window.y());
-      glVertex2f(0,-minimap_size);
-      glVertex2f(0, minimap_size);
-      glVertex2f(0, window.y());
+    {
+      static MeshBuilder mb;
+      static Mesh mesh;
+      mb.clear();
+      mb.begin(GL_LINES);
+      mb.color(1.0f, 1.0f, 1.0f, 0.5f);
+      if(window.x() < window.y()) {
+        mb.vertex(-window.x(), 0); mb.vertex(-minimap_size, 0);
+        mb.vertex(minimap_size, 0); mb.vertex(window.x(), 0);
+      } else {
+        mb.vertex(0, -window.y()); mb.vertex(0, -minimap_size);
+        mb.vertex(0, minimap_size); mb.vertex(0, window.y());
+      }
+      mb.end();
+      mesh.upload(mb, GL_DYNAMIC_DRAW);
+      mesh.draw();
     }
-    glEnd();
   }
 
   /* MINIMAP */
@@ -1364,13 +1368,19 @@ void GLGame::draw_map() const {
   }
 
   /* BLACK BOX OVER MINIMAP */
-  glColor4f(0.0f,0.0f,0.0f,0.8f);
-  glBegin(GL_POLYGON);
-    glVertex2i(  0, world.y());
-    glVertex2i(  world.x(), world.y());
-    glVertex2i(  world.x(), 0);
-    glVertex2i(  0, 0);
-  glEnd();
+  {
+    static MeshBuilder mb;
+    static Mesh mesh;
+    mb.clear();
+    mb.begin(GL_TRIANGLES);
+    mb.color(0.0f, 0.0f, 0.0f, 0.8f);
+    float wx = (float)world.x(), wy = (float)world.y();
+    mb.vertex(0, 0);    mb.vertex(wx, 0);  mb.vertex(wx, wy);
+    mb.vertex(0, 0);    mb.vertex(wx, wy); mb.vertex(0, wy);
+    mb.end();
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw();
+  }
 
   // Single draw pass for minimap; wrapping tiles are negligible at minimap scale.
   glPushMatrix();
@@ -1378,13 +1388,18 @@ void GLGame::draw_map() const {
   glPopMatrix();
 
   /* LINE AROUND MINIMAP */
-  glColor3f(0.5f,0.5f,0.5f);
-  glBegin(GL_LINE_LOOP);
-    glVertex2i( 0, world.y());
-    glVertex2i(  world.x(), world.y());
-    glVertex2i(  world.x(),0);
-    glVertex2i( 0,0);
-  glEnd();
+  {
+    static MeshBuilder mb;
+    static Mesh mesh;
+    mb.clear();
+    mb.begin(GL_LINE_LOOP);
+    mb.color(0.5f, 0.5f, 0.5f, 1.0f);
+    float wx = (float)world.x(), wy = (float)world.y();
+    mb.vertex(0, 0); mb.vertex(wx, 0); mb.vertex(wx, wy); mb.vertex(0, wy);
+    mb.end();
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw();
+  }
 }
 
 void GLGame::controller(SDL_Event event) {

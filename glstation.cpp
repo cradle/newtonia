@@ -148,13 +148,18 @@ void GLStation::draw(bool minimap) const {
   glPopMatrix();
 
   if (!minimap && !debris.empty()) {
-    glPointSize(3.0f);
-    glBegin(GL_POINTS);
+    static MeshBuilder mb;
+    static Mesh mesh;
+    mb.clear();
+    mb.begin(GL_POINTS);
     for (const auto& d : debris) {
-      glColor4f(1.0f, 0.7f, 0.2f, d.aliveness());
-      glVertex2fv(d.position);
+      mb.color(1.0f, 0.7f, 0.2f, d.aliveness());
+      mb.vertex(d.position.x(), d.position.y());
     }
-    glEnd();
+    mb.end();
+    glPointSize(3.0f);
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw();
   }
 }
 
