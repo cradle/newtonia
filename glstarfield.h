@@ -28,6 +28,8 @@ public:
   void draw_front_stars_near(float cx, float cy, float radius) const;
 
 private:
+  void rebuild_lens_cache(float cx, float cy, float radius) const;
+
   std::vector<StarPoint> rear_stars;
   std::vector<StarPoint> front_stars;
 
@@ -35,6 +37,11 @@ private:
   static const int NUM_REAR_LAYERS;
   static const int NUM_FRONT_LAYERS;
   static const float STAR_DENSITY;
+
+  // Cached lensed-star meshes; rebuilt only when lens position/radius changes.
+  // Since the black hole is stationary this is effectively a one-time build.
+  mutable float lens_cx_ = 0.0f, lens_cy_ = 0.0f, lens_radius_ = -1.0f;
+  mutable Mesh lensed_rear_mesh_, lensed_front_mesh_;
 };
 
 #endif
