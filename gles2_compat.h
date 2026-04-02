@@ -29,9 +29,12 @@
 
 #include <SDL.h>
 
-// GLdouble / GLclampd are desktop-only; define them for the shim API.
+// GLdouble / GLclampd: needed for the shim API on GLES2 (not in gl2.h).
+// On desktop the GL/GLUT headers already provide them.
+#ifndef DESKTOP_COMPAT_GL
 typedef double  GLdouble;
 typedef double  GLclampd;
+#endif
 
 // ---- Constants not present in GLES2 ----
 #ifndef GL_POLYGON
@@ -79,7 +82,8 @@ typedef double  GLclampd;
 #  define GL_COMPILE              0x1300
 #endif
 
-// GLUT stubs (used by GLES2 / web platforms)
+// GLUT stubs (used by GLES2 / web platforms only; desktop has the real GLUT).
+#ifndef DESKTOP_COMPAT_GL
 #define GLUT_ELAPSED_TIME         700
 #define GLUT_VISIBLE              1
 #define GLUT_KEY_F1               1
@@ -89,6 +93,7 @@ typedef double  GLclampd;
 #define GLUT_ACTIVE_ALT           4
 #define GLUT_WINDOW_WIDTH         100
 #define GLUT_WINDOW_HEIGHT        101
+#endif
 
 // ============================================================
 // Shim API — init / shutdown / MVP access
