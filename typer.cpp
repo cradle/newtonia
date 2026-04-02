@@ -369,6 +369,7 @@ void Typer::draw(float x, float y, char character, float size, int time) {
   // Fallback for characters with time-dependent geometry (the animated char).
   float segment_size = 360.0f / 7;
   pre_draw(x, y, size);
+  glColor3fv(colour);
   switch(character) {
     case '\xa9': {
       float d;
