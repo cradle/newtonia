@@ -19,6 +19,11 @@
 #    ifndef GL_GLEXT_PROTOTYPES
 #      define GL_GLEXT_PROTOTYPES
 #    endif
+#  elif defined(__APPLE__)
+     // Must be included before GLUT pulls in <OpenGL/gl.h>.  gl3.h sets __gl_h_
+     // so the subsequent GLUT gl.h include becomes a no-op, leaving only the
+     // Core Profile API in scope (which declares glBindVertexArray etc.).
+#    include <OpenGL/gl3.h>
 #  endif
 #endif
 
