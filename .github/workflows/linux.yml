@@ -47,8 +47,7 @@ jobs:
         run: |
           SRCS=$(find . -name "*.cpp" \
             -not -path "./android/*" \
-            -not -path "./.git/*" \
-            -not -name "gles2_compat.cpp")
+            -not -path "./.git/*")
           g++ -O2 -Wall -std=c++11 \
             $(sdl2-config --cflags) -I/usr/local/include/SDL2 \
             -o newtonia $SRCS \
