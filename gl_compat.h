@@ -31,18 +31,22 @@
 #ifdef _WIN32
 #include <windows.h>
 #endif
-// GL_GLEXT_PROTOTYPES makes <GL/glext.h> declare all GL 2.0+ functions
-// (glUniformMatrix4fv, glBindVertexArray, etc.) as extern symbols on Linux.
-// Must be defined before the first gl.h inclusion (glut.h drags it in).
-#ifndef GL_GLEXT_PROTOTYPES
-#  define GL_GLEXT_PROTOTYPES
-#endif
 #include <GL/glut.h>
 #ifndef __APPLE__
 #include <GL/freeglut_std.h>
 #include <GL/freeglut_ext.h>
-#include <GL/glext.h>
 #endif
+#ifdef __linux__
+// On Linux, GL 2.0+ functions are exported by libGL and can be declared as
+// regular extern symbols.  GL_GLEXT_PROTOTYPES enables those declarations in
+// <GL/glext.h>.  Must be defined before the first inclusion of glext.h.
+// On Windows/MinGW we skip this: glext.h would declare them as regular
+// functions which would conflict with our wglGetProcAddress pointer variables.
+#ifndef GL_GLEXT_PROTOTYPES
+#  define GL_GLEXT_PROTOTYPES
+#endif
+#include <GL/glext.h>
+#endif // __linux__
 #endif
 
 // Shim: redirect legacy GL calls to our VBO/VAO/shader implementation.
