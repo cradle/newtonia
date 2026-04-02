@@ -96,7 +96,6 @@ private:
   static const float missile_pickup_drop_chance;
   static const float shield_pickup_drop_chance;
   static const float god_mode_pickup_drop_chance;
-  unsigned int frontstars, rearstars;
   mutable WarpPass *warp_pass_;
 
   Mix_Chunk *tic_sound = NULL;

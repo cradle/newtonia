@@ -11,6 +11,7 @@
 #include <list>
 
 #include "gl_compat.h"
+#include "mesh.h"
 
 class GLTrail;
 
@@ -69,7 +70,9 @@ protected:
   float critical_temperature() const;
   float explode_temperature() const;
 
-  GLuint body, jets, repulsors, force_shield, force_shield_bg;
+  // body_fill: black polygon; body_outline: ship-coloured line loop.
+  Mesh body_fill, body_outline;
+  Mesh jets, repulsors, force_shield;
 
   int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, next_secondary_key, boost_key, teleport_key, help_key;
 

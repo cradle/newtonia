@@ -101,6 +101,22 @@ void gles2_shutdown();
 // Used by WarpPass on all platforms.
 void gles2_get_mvp(float mvp[16]);
 
+// Per-draw tint multiplied against vertex colour in the fragment shader.
+// Call gles2_set_tint(r,g,b,a) before drawing, reset to (1,1,1,1) afterwards.
+void gles2_set_tint(float r, float g, float b, float a);
+
+// Exposes internal shader/VAO handles so that Mesh and other GPU objects
+// can share the same program without duplicating shader state.
+struct GLCompatProg {
+    GLuint prog;
+    GLint  attr_pos, attr_col;
+    GLint  uni_mvp, uni_ptsz, uni_ispt, uni_tint;
+#ifdef DESKTOP_COMPAT_GL
+    GLuint vao;
+#endif
+};
+const GLCompatProg* gles2_program_info();
+
 // ============================================================
 // Point / line size (intercepted on all platforms)
 // ============================================================

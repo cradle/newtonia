@@ -3,6 +3,7 @@
 #include <cstdlib>
 
 #include "gl_compat.h"
+#include "mesh.h"
 
 #include "ship.h"
 #include "glenemy.h"
@@ -39,48 +40,53 @@ GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* ta
   inner_rotation_speed = -0.0025;
   inner_rotation = outer_rotation = 0;
 
-  body = glGenLists(1);
-  glNewList(body, GL_COMPILE);
-  float r = radius, r2 = radius * 0.9, d;
-  glColor3f(0,0,0);
-  glBegin(GL_POLYGON);
-  float segment_size = 360.0/NUM_SEGMENTS;
-  for (int i = 0; i < 360; i+= segment_size) {
-    d = i*M_PI/180;
-    glVertex2f(r*cos(d),r*sin(d));
-  }
-  glEnd();
-  glColor3f(1,1,1);
-  for (int i = 0; i < 360; i+= segment_size) {
-    glBegin(GL_LINE_LOOP);
-    d = i*M_PI/180;
-    glVertex2f(r*cos(d),r*sin(d));
-    glVertex2f(r2*cos(d),r2*sin(d));
-    d = (i+segment_size)*M_PI/180;
-    glVertex2f(r2*cos(d),r2*sin(d));
-    glVertex2f(r*cos(d),r*sin(d));
-    glEnd();
-  }
-  glEndList();
+  float r = radius, r2 = radius * 0.9f;
+  float segment_size = 360.0f / NUM_SEGMENTS;
 
-  map_body = glGenLists(1);
-  glNewList(map_body, GL_COMPILE);
-  glColor3f(1,1,1);
-  glBegin(GL_POLYGON);
-  segment_size = 360.0/8;
-  for (int i = 0; i < 360; i+= segment_size) {
-    d = i*M_PI/180;
-    glVertex2f(r*cos(d),r*sin(d));
+  {
+    MeshBuilder mb;
+    // Black filled disc
+    mb.begin(GL_TRIANGLE_FAN);
+    mb.color(0.0f, 0.0f, 0.0f);
+    for (float i = 0.0f; i < 360.0f; i += segment_size) {
+      float d = i * (float)M_PI / 180.0f;
+      mb.vertex(r*cosf(d), r*sinf(d));
+    }
+    mb.end();
+    // White spoke quads as GL_TRIANGLES
+    mb.begin(GL_TRIANGLES);
+    mb.color(1.0f, 1.0f, 1.0f);
+    for (float i = 0.0f; i < 360.0f; i += segment_size) {
+      float d0 = i * (float)M_PI / 180.0f;
+      float d1 = (i + segment_size) * (float)M_PI / 180.0f;
+      float ox0 = r *cosf(d0), oy0 = r *sinf(d0);
+      float ix0 = r2*cosf(d0), iy0 = r2*sinf(d0);
+      float ix1 = r2*cosf(d1), iy1 = r2*sinf(d1);
+      float ox1 = r *cosf(d1), oy1 = r *sinf(d1);
+      mb.vertex(ox0, oy0); mb.vertex(ix0, iy0); mb.vertex(ix1, iy1);
+      mb.vertex(ox0, oy0); mb.vertex(ix1, iy1); mb.vertex(ox1, oy1);
+    }
+    mb.end();
+    body_mesh.upload(mb);
   }
-  glEnd();
-  glEndList();
+
+  {
+    MeshBuilder mb;
+    mb.begin(GL_TRIANGLE_FAN);
+    mb.color(1.0f, 1.0f, 1.0f);
+    float mseg = 360.0f / 8;
+    for (float i = 0.0f; i < 360.0f; i += mseg) {
+      float d = i * (float)M_PI / 180.0f;
+      mb.vertex(r*cosf(d), r*sinf(d));
+    }
+    mb.end();
+    map_body_mesh.upload(mb);
+  }
 }
 
 GLStation::~GLStation() {
   // delete targets;
   // delete objects;
-  glDeleteLists(body, 1);
-  glDeleteLists(map_body, 1);
 }
 
 void GLStation::reset(bool was_killed) {
@@ -128,20 +134,16 @@ void GLStation::draw(bool minimap) const {
   glTranslatef(position.x(), position.y(), 0);
 
   if(minimap && alive) {
-    glColor3f(1.0f, 0.8f, 0.0f);
-    glCallList(map_body);
+    map_body_mesh.draw_tinted(1.0f, 0.8f, 0.0f, 1.0f);
   } else if(alive) {
     glLineWidth(2.5f);
     glPushMatrix();
     glRotatef(outer_rotation,0,0,1);
-    glColor3f(0,0,0);
-    glCallList(body);
-    glColor3f(1,1,1);
-    glCallList(body);
+    body_mesh.draw();
     glPopMatrix();
     glRotatef(inner_rotation,0,0,1);
-    glScalef(0.8,0.8,1);
-    glCallList(body);
+    glScalef(0.8f, 0.8f, 1.0f);
+    body_mesh.draw();
   }
   glPopMatrix();
 

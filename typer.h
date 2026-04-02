@@ -2,6 +2,7 @@
 #define TYPER_H
 
 #include "glship.h"
+#include "mesh.h"
 class GLShip;
 
 class Typer {
@@ -26,9 +27,9 @@ private:
   static void pre_draw(float x, float y, float size = 1);
   static void post_draw();
   static void draw_life(float x, float y, const GLShip *ship, float size = 1);
-  static void init_lists();
-  static GLuint char_lists[256];
-  static bool lists_initialized;
+  static void init_meshes();
+  static Mesh* char_meshes[256];
+  static bool meshes_initialized;
 };
 
 #endif

@@ -1,7 +1,7 @@
 #include "glstarfield.h"
 
-
 #include "gl_compat.h"
+#include "mesh.h"
 #include "typer.h"
 
 #include <math.h>
@@ -11,13 +11,15 @@ const int GLStarfield::NUM_FRONT_LAYERS = 5;
 const float GLStarfield::STAR_DENSITY = 0.000015;
 
 GLStarfield::GLStarfield(Point const size) {
-  point_layers = glGenLists(NUM_REAR_LAYERS + NUM_FRONT_LAYERS + 1);
-  int red, green;
-  for(int i = 0; i < NUM_REAR_LAYERS + NUM_FRONT_LAYERS + 1; i++) {
-    glNewList(point_layers+i, GL_COMPILE);
-    glBegin(GL_POINTS);
+  int total = NUM_REAR_LAYERS + 1 + NUM_FRONT_LAYERS;
+  layer_meshes.resize(total);
 
-    int num_stars = size.x()*size.y()*STAR_DENSITY;
+  int red, green;
+  for(int i = 0; i < total; i++) {
+    MeshBuilder mb;
+    mb.begin(GL_POINTS);
+
+    int num_stars = (int)(size.x()*size.y()*STAR_DENSITY);
     for(int j = 0; j < num_stars; j++) {
       red = rand()%100;
       green = red > 0 ? rand()%red : 0;
@@ -28,8 +30,8 @@ GLStarfield::GLStarfield(Point const size) {
       float x_f = (float)(rand()%(int)size.x());
       float y_f = (float)(rand()%(int)size.y());
       float z_f = (float)((i - NUM_REAR_LAYERS) * 100);
-      glColor4f(r_f, g_f, b_f, a_f);
-      glVertex3f(x_f, y_f, z_f);
+      mb.color(r_f, g_f, b_f, a_f);
+      mb.vertex(x_f, y_f, z_f);
       // Store stars for lensing
       if (i <= NUM_REAR_LAYERS) {
         rear_stars.push_back({x_f, y_f, z_f, r_f, g_f, b_f, a_f});
@@ -37,27 +39,28 @@ GLStarfield::GLStarfield(Point const size) {
         front_stars.push_back({x_f, y_f, z_f, r_f, g_f, b_f, a_f});
       }
     }
-    glEnd();
-    glEndList();
+    mb.end();
+    layer_meshes[i] = new Mesh();
+    layer_meshes[i]->upload(mb);
   }
 }
 
 GLStarfield::~GLStarfield() {
-  glDeleteLists(point_layers, NUM_REAR_LAYERS + NUM_FRONT_LAYERS + 1);
+  for (Mesh* m : layer_meshes) delete m;
 }
 
 void GLStarfield::draw_rear(Point const viewpoint) const {
-  glPointSize(2.0f * Typer::scale);
+  float ps = 2.0f * Typer::scale;
   for(int i = 0; i < NUM_REAR_LAYERS; i++) {
-    glCallList(point_layers+i);
+    layer_meshes[i]->draw(ps);
   }
-  glCallList(point_layers+NUM_REAR_LAYERS);
+  layer_meshes[NUM_REAR_LAYERS]->draw(ps);
 }
 
 void GLStarfield::draw_front(Point const viewpoint) const {
-  glPointSize(2.0f * Typer::scale);
+  float ps = 2.0f * Typer::scale;
   for(int i = 0; i < NUM_FRONT_LAYERS; i++) {
-    glCallList(point_layers + NUM_REAR_LAYERS + 1 + i);
+    layer_meshes[NUM_REAR_LAYERS + 1 + i]->draw(ps);
   }
 }
 

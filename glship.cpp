@@ -9,6 +9,7 @@
 #include <SDL.h>
 
 #include "gl_compat.h"
+#include "mesh.h"
 
 #include <list>
 #include <iostream>
@@ -33,76 +34,67 @@ GLShip::GLShip(const Grid &grid, bool has_friction) : show_help(false) {
   color[1] = 118/255.0;
   color[2] = 255/255.0;
 
-  body = glGenLists(1);
-  glNewList(body, GL_COMPILE);
-	glVertex2f( 0.0f, 1.0f);
-	glVertex2f(-0.8f,-1.0f);
-	glVertex2f( 0.0f,-0.5f);
-	glVertex2f( 0.8f,-1.0f);
-  glEndList();
+  {
+    MeshBuilder mb;
+    mb.begin(GL_TRIANGLE_FAN);
+    mb.color(0.0f, 0.0f, 0.0f);
+    mb.vertex( 0.0f, 1.0f); mb.vertex(-0.8f,-1.0f);
+    mb.vertex( 0.0f,-0.5f); mb.vertex( 0.8f,-1.0f);
+    mb.end();
+    body_fill.upload(mb);
 
-  jets = glGenLists(1);
-  glNewList(jets, GL_COMPILE);
-  glColor3f( 1.0f-color[0], 1.0f-color[1], 1.0f-color[2] );
-	glBegin(GL_QUADS);
-	glVertex2f( 0.0f,-0.5f );
-	glVertex2f(-0.4f,-0.75f );
-	glVertex2f( 0.0f,-1.5f );
-	glVertex2f( 0.4f,-0.75f );
-	glEnd();
-  glEndList();
+    mb.clear();
+    mb.begin(GL_LINE_LOOP);
+    mb.color(color[0], color[1], color[2]);
+    mb.vertex( 0.0f, 1.0f); mb.vertex(-0.8f,-1.0f);
+    mb.vertex( 0.0f,-0.5f); mb.vertex( 0.8f,-1.0f);
+    mb.end();
+    body_outline.upload(mb);
+  }
+
+  {
+    float rc = 1.0f-color[0], gc = 1.0f-color[1], bc = 1.0f-color[2];
+    MeshBuilder mb;
+    mb.begin(GL_TRIANGLES);
+    mb.color(rc, gc, bc);
+    mb.vertex( 0.0f,-0.5f); mb.vertex(-0.4f,-0.75f); mb.vertex( 0.0f,-1.5f);
+    mb.vertex( 0.0f,-0.5f); mb.vertex( 0.0f,-1.5f);  mb.vertex( 0.4f,-0.75f);
+    mb.end();
+    jets.upload(mb);
+  }
 
   genForceShield();
   genRepulsor();
 }
 
 void GLShip::genRepulsor() {
-  repulsors = glGenLists(1);
-  glNewList(repulsors, GL_COMPILE);
-  glColor3f( 1.0f-color[0], 1.0f-color[1], 1.0f-color[2] );
-	glBegin(GL_QUADS);
-	glVertex2f( 0.3f,  0.3f );
-	glVertex2f( 0.6f,  0.9f );
-	glVertex2f( 0.9f,  0.9f );
-	glVertex2f( 0.75f, 0.3f );
-	glEnd();
-  glEndList();
+  float rc = 1.0f-color[0], gc = 1.0f-color[1], bc = 1.0f-color[2];
+  MeshBuilder mb;
+  mb.begin(GL_TRIANGLES);
+  mb.color(rc, gc, bc);
+  mb.vertex( 0.3f,  0.3f); mb.vertex( 0.6f,  0.9f); mb.vertex( 0.9f,  0.9f);
+  mb.vertex( 0.3f,  0.3f); mb.vertex( 0.9f,  0.9f); mb.vertex( 0.75f, 0.3f);
+  mb.end();
+  repulsors.upload(mb);
 }
 
 void GLShip::genForceShield() {
-  force_shield_bg = glGenLists(1);
-  glNewList(force_shield_bg, GL_COMPILE);
-  glColor4f(color[0], color[1], color[2], 0.5f);
-  glBegin(GL_POLYGON);
-  int number_of_segments = 20;
-  float segment_size = 360.0/number_of_segments, d;
-  float shield_size = 2;
-  for (float i = 0.0; i < 360.0; i+= segment_size) {
-    d = i*M_PI/180;
-    glVertex2f(cos(d)*shield_size, sin(d)*shield_size);
+  const int number_of_segments = 20;
+  const float segment_size = 360.0f / number_of_segments;
+  const float shield_size  = 2.0f;
+
+  MeshBuilder mb;
+  mb.begin(GL_LINE_LOOP);
+  mb.color(color[0], color[1], color[2], 1.0f);
+  for (float i = 0.0f; i < 360.0f; i += segment_size) {
+    float d = i * (float)M_PI / 180.0f;
+    mb.vertex(cosf(d)*shield_size, sinf(d)*shield_size);
   }
-  glEnd();
-  glEndList();
-  force_shield = glGenLists(1);
-  glNewList(force_shield, GL_COMPILE);
-  glPointSize(15.0f);
-  glColor4f(color[0], color[1], color[2], 1.0f);
-  glBegin(GL_LINE_LOOP);
-  for (float i = 0.0; i < 360.0; i+= segment_size) {
-    d = i*M_PI/180;
-    glVertex2f(cos(d)*shield_size, sin(d)*shield_size);
-  }
-  glEnd();
-  glEndList();
+  mb.end();
+  force_shield.upload(mb);
 }
 
 GLShip::~GLShip() {
-  //TODO: Make lists static for class (or ShipType or something)
-  glDeleteLists(body, 1);
-  glDeleteLists(jets, 1);
-  glDeleteLists(repulsors, 1);
-  glDeleteLists(force_shield_bg, 1);
-  glDeleteLists(force_shield, 1);
   delete ship;
   while(!trails.empty()) {
     delete trails.back();
@@ -506,14 +498,14 @@ void GLShip::draw_ship(bool minimap) const {
   glLineWidth(1.8f);
 
   if(ship->thrusting) {
-    glCallList(jets);
+    jets.draw();
   }
 
   if(ship->reversing) {
     glPushMatrix();
-    glCallList(repulsors);
+    repulsors.draw();
     glRotatef(180, 0, 1, 0);
-    glCallList(repulsors);
+    repulsors.draw();
     glPopMatrix();
   }
 
@@ -530,21 +522,14 @@ void GLShip::draw_ship(bool minimap) const {
       }
       glEnd();
     } else {
-      glCallList(force_shield);
+      force_shield.draw();
     }
   }
 }
 
 void GLShip::draw_body() const {
-  glBegin(GL_POLYGON);
-  glColor3f(0.0f,0.0f,0.0f);
-  glCallList(body);
-  glEnd();
-
-  glColor3fv(color);
-  glBegin(GL_LINE_LOOP);
-  glCallList(body);
-  glEnd();
+  body_fill.draw();
+  body_outline.draw();
 }
 
 void GLShip::draw_keymap() const {

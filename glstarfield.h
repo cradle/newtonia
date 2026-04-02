@@ -4,6 +4,7 @@
 #include "point.h"
 
 #include "gl_compat.h"
+#include "mesh.h"
 
 #include <vector>
 
@@ -30,7 +31,7 @@ private:
   std::vector<StarPoint> rear_stars;
   std::vector<StarPoint> front_stars;
 
-  GLuint point_layers;
+  std::vector<Mesh*> layer_meshes; // NUM_REAR_LAYERS + 1 rear + NUM_FRONT_LAYERS front
   static const int NUM_REAR_LAYERS;
   static const int NUM_FRONT_LAYERS;
   static const float STAR_DENSITY;

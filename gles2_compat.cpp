@@ -298,6 +298,7 @@ static GLint  s_attr_color= -1;
 static GLint  s_uni_mvp   = -1;
 static GLint  s_uni_ptsz  = -1;
 static GLint  s_uni_ispt  = -1;
+static GLint  s_uni_tint  = -1;
 static GLuint s_vbo_pos   = 0;
 static GLuint s_vbo_col   = 0;
 #ifdef DESKTOP_COMPAT_GL
@@ -326,14 +327,15 @@ static const char *VERT_SRC =
 static const char *FRAG_SRC =
     "#version 150 core\n"
     "in  vec4 vCol;\n"
-    "uniform int uIsPoint;\n"
+    "uniform int  uIsPoint;\n"
+    "uniform vec4 uTint;\n"
     "out vec4 fragColor;\n"
     "void main(){\n"
     "  if(uIsPoint != 0){\n"
     "    vec2 pc = gl_PointCoord - vec2(0.5);\n"
     "    if(dot(pc,pc) > 0.25) discard;\n"
     "  }\n"
-    "  fragColor = vCol;\n"
+    "  fragColor = vCol * uTint;\n"
     "}\n";
 
 #else // GLES2
@@ -353,13 +355,14 @@ static const char *VERT_SRC =
 static const char *FRAG_SRC =
     "precision mediump float;\n"
     "varying vec4 vCol;\n"
-    "uniform int uIsPoint;\n"
+    "uniform int  uIsPoint;\n"
+    "uniform vec4 uTint;\n"
     "void main(){\n"
     "  if(uIsPoint != 0){\n"
     "    vec2 pc = gl_PointCoord - vec2(0.5);\n"
     "    if(dot(pc,pc) > 0.25) discard;\n"
     "  }\n"
-    "  gl_FragColor = vCol;\n"
+    "  gl_FragColor = vCol * uTint;\n"
     "}\n";
 
 #endif // DESKTOP_COMPAT_GL
@@ -400,6 +403,7 @@ static void init_shader() {
     s_uni_mvp    = glGetUniformLocation(s_prog, "uMVP");
     s_uni_ptsz   = glGetUniformLocation(s_prog, "uPointSize");
     s_uni_ispt   = glGetUniformLocation(s_prog, "uIsPoint");
+    s_uni_tint   = glGetUniformLocation(s_prog, "uTint");
 
 #ifdef DESKTOP_COMPAT_GL
     // GL 3.3 Core Profile requires a VAO to be bound before any
@@ -613,8 +617,31 @@ void gles2_init() {
     s_projection.top = 0;
     s_matrix_mode    = GL_MODELVIEW;
 
+    glUseProgram(s_prog);
+    glUniform4f(s_uni_tint, 1.0f, 1.0f, 1.0f, 1.0f);
+
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+}
+
+void gles2_set_tint(float r, float g, float b, float a) {
+    glUseProgram(s_prog);
+    glUniform4f(s_uni_tint, r, g, b, a);
+}
+
+const GLCompatProg* gles2_program_info() {
+    static GLCompatProg info;
+    info.prog     = s_prog;
+    info.attr_pos = s_attr_pos;
+    info.attr_col = s_attr_color;
+    info.uni_mvp  = s_uni_mvp;
+    info.uni_ptsz = s_uni_ptsz;
+    info.uni_ispt = s_uni_ispt;
+    info.uni_tint = s_uni_tint;
+#ifdef DESKTOP_COMPAT_GL
+    info.vao      = s_vao;
+#endif
+    return &info;
 }
 
 void gles2_shutdown() {

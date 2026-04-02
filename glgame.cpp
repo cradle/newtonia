@@ -67,9 +67,6 @@ GLGame::GLGame(SDL_GameController *controller) :
 
 
   starfield = new GLStarfield(world);
-
-  rearstars = glGenLists(1);
-  frontstars = glGenLists(1);
   warp_pass_ = new WarpPass();
 
   time_until_next_step = 0;
@@ -154,8 +151,6 @@ GLGame::~GLGame() {
   if(pickup_sound != NULL) {
     Mix_FreeChunk(pickup_sound);
   }
-  glDeleteLists(rearstars, 1);
-  glDeleteLists(frontstars, 1);
   delete warp_pass_;
 }
 
@@ -186,9 +181,6 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   WrappedPoint::set_boundaries(world);
 
   starfield = new GLStarfield(world);
-
-  rearstars = glGenLists(1);
-  frontstars = glGenLists(1);
 
   time_until_next_step = 0;
   num_frames = 0;
@@ -1151,15 +1143,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
   Point position = (glship == NULL) ? Point(0,0) : glship->ship->position;
   float direction = (glship == NULL || !glship->rotate_view()) ? 0.0f : glship->camera_facing();
 
-  // Starfields are static per-frame, so compile once and replay 9 times.
-  glNewList(rearstars, GL_COMPILE);
-    glTranslatef(-position.x(), -position.y(), 0.0f);
-    starfield->draw_rear(position);
-  glEndList();
-  glNewList(frontstars, GL_COMPILE);
-    glTranslatef(-position.x(), -position.y(), 0.0f);
-    starfield->draw_front(position);
-  glEndList();
+  // Starfields are Mesh-based (GPU-resident), drawn directly in each tile.
 
   // Compute cull radius from actual viewport dimensions.
   // Camera is at z=1000; gluPerspective FOV is vertical.
@@ -1185,7 +1169,8 @@ void GLGame::draw_perspective(GLShip *glship) const {
       glPushMatrix();
       glRotatef(direction, 0.0f, 0.0f, 1.0f);
       glTranslatef(world.x()*x, world.y()*y, 0.0f);
-      glCallList(rearstars);
+      glTranslatef(-position.x(), -position.y(), 0.0f);
+      starfield->draw_rear(position);
       glPopMatrix();
     }
   }
@@ -1251,7 +1236,8 @@ void GLGame::draw_perspective(GLShip *glship) const {
       glPushMatrix();
       glRotatef(direction, 0.0f, 0.0f, 1.0f);
       glTranslatef(world.x()*x, world.y()*y, 0.0f);
-      glCallList(frontstars);
+      glTranslatef(-position.x(), -position.y(), 0.0f);
+      starfield->draw_front(position);
       glPopMatrix();
     }
   }
