@@ -5,6 +5,7 @@
 #include <math.h>
 
 #include "gl_compat.h"
+#include "mat4.h"
 
 const int AsteroidDrawer::number_of_segments = 7;
 
@@ -68,11 +69,13 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
     mesh.draw();
   } else if (!is_minimap) {
     draw_debris(object->debris);
-    glPushMatrix();
-    glTranslatef(object->position.x(), object->position.y(), 0.0f);
-    glRotatef(-direction, 0.0f, 0.0f, 1.0f);
+    float tile_vp[16]; gles2_get_mvp(tile_vp);
+    float val_vp[16];
+    mat4_translate(val_vp, tile_vp, object->position.x(), object->position.y(), 0.0f);
+    mat4_rotate_z(val_vp, val_vp, -direction);
+    gles2_set_vp(val_vp);
     Typer::draw(0.0f, 0.0f, object->value, 18.0f / Typer::scale);
-    glPopMatrix();
+    gles2_set_vp(tile_vp);
   }
 }
 
@@ -396,9 +399,8 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
       }
       mb.end();
     }
-    glPointSize(3.0f);
     mesh_debris.upload(mb, GL_DYNAMIC_DRAW);
-    mesh_debris.draw();
+    mesh_debris.draw(3.0f);
 
     // --- Dead asteroid debris + score text ---
     {
@@ -422,19 +424,20 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
         }
       }
       mb.end();
-      glPointSize(3.0f);
       mesh_dead_debris.upload(mb, GL_DYNAMIC_DRAW);
-      mesh_dead_debris.draw();
+      mesh_dead_debris.draw(3.0f);
     }
 
+    float tile_vp[16]; gles2_get_mvp(tile_vp);
     for (list<Asteroid*>::const_iterator it = dead_objects->begin(); it != dead_objects->end(); ++it) {
       Asteroid const *a = *it;
-      glPushMatrix();
-      glTranslatef(a->position.x(), a->position.y(), 0.0f);
-      glRotatef(-direction, 0.0f, 0.0f, 1.0f);
+      float val_vp[16];
+      mat4_translate(val_vp, tile_vp, a->position.x(), a->position.y(), 0.0f);
+      mat4_rotate_z(val_vp, val_vp, -direction);
+      gles2_set_vp(val_vp);
       Typer::draw(0.0f, 0.0f, a->value, 18.0f / Typer::scale);
-      glPopMatrix();
     }
+    gles2_set_vp(tile_vp);
   }
 }
 
@@ -457,7 +460,6 @@ void AsteroidDrawer::draw_debris(vector<Particle> const &debris) {
     mb.vertex(d->position.x(), d->position.y());
   }
   mb.end();
-  glPointSize(3.0f);
   mesh.upload(mb, GL_DYNAMIC_DRAW);
-  mesh.draw();
+  mesh.draw(3.0f);
 }

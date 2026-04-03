@@ -21,6 +21,7 @@
 
 #include "mesh.h"
 #include "gles2_compat.h"
+#include "mat4.h"
 
 // Undefine the compat_ redirect macros so we can call real GL functions
 // directly in this translation unit.
@@ -171,12 +172,10 @@ void Mesh::upload(const MeshBuilder& mb, GLenum usage) {
 #endif
 }
 
-void Mesh::draw_internal(float point_size) const {
+void Mesh::draw_with_mvp(const float mvp[16], float point_size) const {
     if (groups_.empty()) return;
 
     const GLCompatProg* p = gles2_program_info();
-    float mvp[16];
-    gles2_get_mvp(mvp);
 
     glUseProgram(p->prog);
     glUniformMatrix4fv(p->uni_mvp,  1, GL_FALSE, mvp);
@@ -208,6 +207,12 @@ void Mesh::draw_internal(float point_size) const {
 #endif
 }
 
+void Mesh::draw_internal(float point_size) const {
+    float mvp[16];
+    gles2_get_mvp(mvp);
+    draw_with_mvp(mvp, point_size);
+}
+
 void Mesh::draw(float point_size) const {
     draw_internal(point_size);
 }
@@ -216,5 +221,44 @@ void Mesh::draw_tinted(float r, float g, float b, float a,
                        float point_size) const {
     gles2_set_tint(r, g, b, a);
     draw_internal(point_size);
+    gles2_set_tint(1.0f, 1.0f, 1.0f, 1.0f);
+}
+
+void Mesh::draw_at(float x, float y, float angle_deg, float point_size) const {
+    float vp[16];
+    gles2_get_mvp(vp);
+    float rad = angle_deg * (float)M_PI / 180.0f;
+    float c = cosf(rad), s = sinf(rad);
+    // Column-major T*R model matrix (rotate then translate to world position)
+    float model[16] = {
+         c,  s, 0, 0,
+        -s,  c, 0, 0,
+         0,  0, 1, 0,
+         x,  y, 0, 1
+    };
+    float mvp[16];
+    mat4_mul(mvp, vp, model);
+    draw_with_mvp(mvp, point_size);
+}
+
+void Mesh::draw_tinted_at(float r, float g, float b, float a,
+                          float x, float y, float angle_deg,
+                          float point_size) const {
+    gles2_set_tint(r, g, b, a);
+    draw_at(x, y, angle_deg, point_size);
+    gles2_set_tint(1.0f, 1.0f, 1.0f, 1.0f);
+}
+
+void Mesh::draw_with_model(const float model[16], float point_size) const {
+    float vp[16], mvp[16];
+    gles2_get_mvp(vp);
+    mat4_mul(mvp, vp, model);
+    draw_with_mvp(mvp, point_size);
+}
+
+void Mesh::draw_tinted_with_model(float r, float g, float b, float a,
+                                  const float model[16], float point_size) const {
+    gles2_set_tint(r, g, b, a);
+    draw_with_model(model, point_size);
     gles2_set_tint(1.0f, 1.0f, 1.0f, 1.0f);
 }

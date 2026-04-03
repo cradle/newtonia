@@ -32,9 +32,8 @@ void GLTrail::draw() {
   }
   mb.end();
 
-  glPointSize(point_size);
   mesh_.upload(mb, GL_DYNAMIC_DRAW);
-  mesh_.draw();
+  mesh_.draw(point_size);
 }
 
 void GLTrail::step(float delta) {

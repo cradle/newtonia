@@ -93,20 +93,16 @@ bool BlackHole::apply_gravity(Object &other, int delta) const {
 }
 
 void BlackHole::draw(bool is_minimap) const {
-  glPushMatrix();
-  glTranslatef(position.x(), position.y(), 0.0f);
+  float px = position.x(), py = position.y();
 
   if (is_minimap) {
-    mesh_map_fill.draw();
+    mesh_map_fill.draw_at(px, py, 0.0f);
     glLineWidth(1.0f);
-    mesh_map_ring.draw();
-    glPopMatrix();
+    mesh_map_ring.draw_at(px, py, 0.0f);
     return;
   }
 
   glDisable(GL_BLEND);
-  mesh_fill.draw();
+  mesh_fill.draw_at(px, py, 0.0f);
   glEnable(GL_BLEND);
-
-  glPopMatrix();
 }

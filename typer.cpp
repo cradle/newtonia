@@ -5,6 +5,7 @@
 #include <set>
 #include "glship.h"
 #include "gl_compat.h"
+#include "mat4.h"
 
 float Typer::colour[] = {0.0f,1.0f,0.0f};
 Mesh* Typer::char_meshes[256] = {};
@@ -95,15 +96,21 @@ void Typer::draw(float x, float y, const char * text, float size, int time) {
   }
 }
 
+static float s_saved_vp[16];
+
 void Typer::pre_draw(float x, float y, float size) {
-  glPushMatrix();
+  gles2_get_mvp(s_saved_vp);
+  float tx = x * scale, ty = y * scale - 2.0f * size * scale;
+  float sx = size * scale, sy = size * scale;
+  float char_vp[16];
+  mat4_translate(char_vp, s_saved_vp, tx, ty, 0.0f);
+  mat4_scale(char_vp, char_vp, sx, sy, 1.0f);
+  gles2_set_vp(char_vp);
   glLineWidth(1.1f * scale);
-  glTranslatef(x*scale,(y*scale-2*size*scale),0);
-  glScalef(size*scale, size*scale, 0);
 }
 
 void Typer::post_draw() {
-  glPopMatrix();
+  gles2_set_vp(s_saved_vp);
 }
 
 void Typer::draw_life(float x, float y, const GLShip* ship, float size) {
@@ -369,25 +376,36 @@ void Typer::draw(float x, float y, char character, float size, int time) {
   // Fallback for characters with time-dependent geometry (the animated char).
   float segment_size = 360.0f / 7;
   pre_draw(x, y, size);
-  glColor3fv(colour);
   switch(character) {
     case '\xa9': {
-      float d;
-      glBegin(GL_LINE_STRIP);
-      glVertex2f(TW*TQ*3, TML);
-      glVertex2f(TW*TQ,   TML);
-      glVertex2f(TW*TQ,   TMU);
-      glVertex2f(TW*TQ*3, TMU);
-      glEnd();
-      glTranslatef(0.5f, TM, 0.0f);
-      glScalef(1.0f, 1.2f, 1.0f);
-      glRotated(time / -16.0, 0.0f, 0.0f, 1.0f);
-      glBegin(GL_LINE_LOOP);
+      static Mesh copyright_mesh;
+      MeshBuilder mb;
+      mb.color(colour[0], colour[1], colour[2]);
+
+      // C-bracket (static geometry in pre_draw local space)
+      mb.begin(GL_LINE_STRIP);
+      mb.vertex(TW*TQ*3, TML);
+      mb.vertex(TW*TQ,   TML);
+      mb.vertex(TW*TQ,   TMU);
+      mb.vertex(TW*TQ*3, TMU);
+      mb.end();
+
+      // Spinning circle: bake translate(0.5,TM) + scale(1,1.2) + rotate(time/-16)
+      // into vertex positions so no shim matrix calls are needed.
+      float angle_r = (float)(time / -16.0) * (float)M_PI / 180.0f;
+      float cos_a = cosf(angle_r), sin_a = sinf(angle_r);
+      mb.begin(GL_LINE_LOOP);
       for (float i = 0.0f; i < 360.0f; i += segment_size) {
-        d = i * (float)M_PI / 180.0f;
-        glVertex2f(cosf(d), sinf(d));
+        float d = i * (float)M_PI / 180.0f;
+        float lx = cosf(d);
+        float ly = sinf(d) * 1.2f;
+        mb.vertex(lx * cos_a - ly * sin_a + 0.5f,
+                  lx * sin_a + ly * cos_a + TM);
       }
-      glEnd();
+      mb.end();
+
+      copyright_mesh.upload(mb, GL_STREAM_DRAW);
+      copyright_mesh.draw();
       break;
     }
   }
