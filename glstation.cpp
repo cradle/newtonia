@@ -4,6 +4,7 @@
 
 #include "gl_compat.h"
 #include "mesh.h"
+#include "mat4.h"
 
 #include "ship.h"
 #include "glenemy.h"
@@ -142,22 +143,20 @@ int GLStation::level() const {
 }
 
 void GLStation::draw(bool minimap) const {
-  glPushMatrix();
-  glTranslatef(position.x(), position.y(), 0);
+  float px = position.x(), py = position.y();
 
   if(minimap && alive) {
-    map_body_mesh.draw();
+    map_body_mesh.draw_at(px, py, 0.0f);
   } else if(alive) {
     glLineWidth(2.5f);
-    glPushMatrix();
-    glRotatef(outer_rotation,0,0,1);
-    body_mesh.draw();
-    glPopMatrix();
-    glRotatef(inner_rotation,0,0,1);
-    glScalef(0.8f, 0.8f, 1.0f);
-    body_mesh.draw();
+    body_mesh.draw_at(px, py, outer_rotation);
+    // Inner ring: translate + rotate + scale(0.8)
+    float inner_model[16]; mat4_identity(inner_model);
+    mat4_translate(inner_model, inner_model, px, py, 0.0f);
+    mat4_rotate_z(inner_model, inner_model, inner_rotation);
+    mat4_scale(inner_model, inner_model, 0.8f, 0.8f, 1.0f);
+    body_mesh.draw_with_model(inner_model);
   }
-  glPopMatrix();
 
   if (!minimap && !debris.empty()) {
     static MeshBuilder mb;
@@ -169,9 +168,8 @@ void GLStation::draw(bool minimap) const {
       mb.vertex(d.position.x(), d.position.y());
     }
     mb.end();
-    glPointSize(3.0f);
     mesh.upload(mb, GL_DYNAMIC_DRAW);
-    mesh.draw();
+    mesh.draw(3.0f);
   }
 }
 

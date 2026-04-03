@@ -5,6 +5,7 @@
 #include "teleport.h"
 #include "weapon/base.h"
 #include "weapon/god_mode.h"
+#include "mat4.h"
 #include <math.h>
 #include <SDL.h>
 
@@ -207,7 +208,11 @@ void GLShip::draw_temperature() const {
 
   float cr = ship->temperature_ratio();
   float cg = 1.0f - cr;
-  glScalef(1.0f, 5.0f, 1.0f);
+
+  // Apply y-scale(5) to the current VP so all sub-draws see it
+  float base_vp[16]; gles2_get_mvp(base_vp);
+  float scaled_vp[16]; mat4_scale(scaled_vp, base_vp, 1.0f, 5.0f, 1.0f);
+  gles2_set_vp(scaled_vp);
 
   static MeshBuilder mb;
   static Mesh mesh;
@@ -228,9 +233,10 @@ void GLShip::draw_temperature() const {
   if(temperature() > critical_temperature()) {
     float cy = critical_temperature() / max_temperature();
     float oh = temperature() / max_temperature() - cy;
-    glPushMatrix();
-    glTranslatef(0.0f, cy, 0.0f);
-    glScalef(1.0f, 0.5f, 1.0f);
+    float over_vp[16];
+    mat4_translate(over_vp, scaled_vp, 0.0f, cy, 0.0f);
+    mat4_scale(over_vp, over_vp, 1.0f, 0.5f, 1.0f);
+    gles2_set_vp(over_vp);
     mb.clear();
     mb.begin(GL_TRIANGLES);
     mb.color(1.0f, 0.0f, 0.0f);
@@ -239,7 +245,7 @@ void GLShip::draw_temperature() const {
     mb.end();
     mesh.upload(mb, GL_DYNAMIC_DRAW);
     mesh.draw();
-    glPopMatrix();
+    gles2_set_vp(scaled_vp);
   }
 
   // Border
@@ -261,6 +267,8 @@ void GLShip::draw_temperature() const {
   mb.end();
   mesh.upload(mb, GL_DYNAMIC_DRAW);
   mesh.draw();
+
+  gles2_set_vp(base_vp);  // restore caller's VP
 }
 
 void GLShip::draw_respawn_timer() const {
@@ -530,16 +538,21 @@ void GLShip::draw(bool minimap) {
 }
 
 void GLShip::draw_ship(bool minimap) const {
-  glTranslatef(ship->position.x(), ship->position.y(), 0.0f);
-  glScalef( ship->radius, ship->radius, 1.0f);
-  glRotatef( ship->heading(), 0.0f, 0.0f, 1.0f);
+  // Build ship model: translate(pos) × scale(radius) × rotate_z(heading)
+  float tile_vp[16]; gles2_get_mvp(tile_vp);
+  float ship_model[16]; mat4_identity(ship_model);
+  mat4_translate(ship_model, ship_model, ship->position.x(), ship->position.y(), 0.0f);
+  mat4_scale(ship_model, ship_model, ship->radius, ship->radius, 1.0f);
+  mat4_rotate_z(ship_model, ship_model, ship->heading());
+  float ship_mvp[16]; mat4_mul(ship_mvp, tile_vp, ship_model);
+  gles2_set_vp(ship_mvp);
 
   if(minimap) {
     minimap_dot.draw_tinted(color[0], color[1], color[2], 1.0f, 5.0f);
+    gles2_set_vp(tile_vp);
     return;
   }
 
-  glPointSize(2.5f);
   glLineWidth(1.8f);
 
   if(ship->thrusting) {
@@ -547,11 +560,11 @@ void GLShip::draw_ship(bool minimap) const {
   }
 
   if(ship->reversing) {
-    glPushMatrix();
     repulsors.draw();
-    glRotatef(180, 0, 1, 0);
+    float flip_mvp[16]; mat4_rotate_y(flip_mvp, ship_mvp, 180.0f);
+    gles2_set_vp(flip_mvp);
     repulsors.draw();
-    glPopMatrix();
+    gles2_set_vp(ship_mvp);
   }
 
   draw_body();
@@ -563,6 +576,8 @@ void GLShip::draw_ship(bool minimap) const {
       force_shield.draw();
     }
   }
+
+  gles2_set_vp(tile_vp);
 }
 
 void GLShip::draw_body() const {
@@ -764,9 +779,8 @@ void GLShip::draw_particles() const {
       mb.vertex(p.position.x(), p.position.y());
     }
     mb.end();
-    glPointSize(2.5f);
     mesh.upload(mb, GL_DYNAMIC_DRAW);
-    mesh.draw();
+    mesh.draw(2.5f);
   }
 }
 
@@ -796,9 +810,8 @@ void GLShip::draw_debris() const {
     mb.vertex(d->position.x(), d->position.y());
   }
   mb.end();
-  glPointSize(2.5f);
   mesh.upload(mb, GL_DYNAMIC_DRAW);
-  mesh.draw();
+  mesh.draw(2.5f);
 }
 
 void GLShip::draw_mines(bool minimap) const {
@@ -815,9 +828,8 @@ void GLShip::draw_mines(bool minimap) const {
       mb.vertex(m->position.x(), m->position.y());
     }
     mb.end();
-    glPointSize(1.5f);
     mesh.upload(mb, GL_DYNAMIC_DRAW);
-    mesh.draw();
+    mesh.draw(1.5f);
     return;
   }
 
@@ -875,9 +887,8 @@ void GLShip::draw_giga_mines(bool minimap) const {
       mb.vertex(m.position.x(), m.position.y());
     }
     mb.end();
-    glPointSize(3.0f);
     mesh.upload(mb, GL_DYNAMIC_DRAW);
-    mesh.draw();
+    mesh.draw(3.0f);
     return;
   }
 
@@ -988,18 +999,13 @@ void GLShip::draw_missiles() const {
     }
   }
   mb.end();
-  glPointSize(4.0f);
   mesh.upload(mb, GL_DYNAMIC_DRAW);
-  mesh.draw();
+  mesh.draw(4.0f);
 
-  // Missile bodies: pre-built triangle mesh, one draw per missile via matrix
+  // Missile bodies: pre-built triangle mesh, one draw per missile via draw_at
   glLineWidth(1.5f);
   for(auto &m : ship->missiles) {
-    glPushMatrix();
-    glTranslatef(m.position.x(), m.position.y(), 0.0f);
-    glRotatef(m.facing.direction(), 0.0f, 0.0f, 1.0f);
-    missile_body.draw();
-    glPopMatrix();
+    missile_body.draw_at(m.position.x(), m.position.y(), m.facing.direction());
   }
 }
 

@@ -6,6 +6,7 @@
 #include "../touch_controls.h"
 
 #include "../gl_compat.h"
+#include "../mat4.h"
 #include "../mesh.h"
 #include <cstdio>
 #include <cmath>
@@ -165,39 +166,43 @@ void Overlay::lives(const GLGame *glgame, const GLShip *glship) {
 }
 
 void Overlay::weapons(const GLGame *glgame, const GLShip *glship) {
-  glPushMatrix();
-  glTranslatef(-Typer::window_width/glgame->num_x_viewports()+CORNER_INSET, Typer::window_height/glgame->num_y_viewports()-CORNER_INSET, 0.0f);
+  float saved[16]; gles2_get_mvp(saved);
+  float vp[16]; mat4_translate(vp, saved,
+    -Typer::window_width/glgame->num_x_viewports()+CORNER_INSET,
+    Typer::window_height/glgame->num_y_viewports()-CORNER_INSET, 0.0f);
+  gles2_set_vp(vp);
   glship->draw_weapons();
-  glPopMatrix();
+  gles2_set_vp(saved);
 }
 
 void Overlay::temperature(const GLGame *glgame, const GLShip *glship) {
-  glPushMatrix();
-  glTranslatef(-Typer::scaled_window_width/glgame->num_x_viewports()+30+CORNER_INSET, -Typer::scaled_window_height/glgame->num_y_viewports()+15+CORNER_INSET, 0.0f);
-  glPushMatrix();
-  glScalef(30,30,1);
+  float base[16]; gles2_get_mvp(base);
+  float tx = -Typer::scaled_window_width/glgame->num_x_viewports()+30+CORNER_INSET;
+  float ty = -Typer::scaled_window_height/glgame->num_y_viewports()+15+CORNER_INSET;
+  float inner[16]; mat4_translate(inner, base, tx, ty, 0.0f);
+  float temp_vp[16]; mat4_scale(temp_vp, inner, 30.0f, 30.0f, 1.0f);
+  gles2_set_vp(temp_vp);
   glship->draw_temperature();
-  glPopMatrix();
-  glTranslatef(42.0f, 147.0f, 0.0f);
-  glScalef(10,10,1);
+  float status_vp[16]; mat4_translate(status_vp, inner, 42.0f, 147.0f, 0.0f);
+  mat4_scale(status_vp, status_vp, 10.0f, 10.0f, 1.0f);
+  gles2_set_vp(status_vp);
   glship->draw_temperature_status();
-  glPopMatrix();
+  gles2_set_vp(base);
 }
 
 void Overlay::respawn_timer(const GLGame *glgame, const GLShip *glship) {
   if(glgame->running && !glship->show_help) {
-    glPushMatrix();
-    glScalef(20,20,1);
+    float saved[16]; gles2_get_mvp(saved);
+    float vp[16]; mat4_scale(vp, saved, 20.0f, 20.0f, 1.0f);
+    gles2_set_vp(vp);
     glship->draw_respawn_timer();
-    glPopMatrix();
+    gles2_set_vp(saved);
   }
 }
 
 void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
   if(glship->show_help) {
-    glPushMatrix();
     glship->draw_keymap();
-    glPopMatrix();
   }
 }
 

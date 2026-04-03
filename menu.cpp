@@ -4,6 +4,7 @@
 #include "glgame.h"
 #include "menu.h"
 #include "gl_compat.h"
+#include "mat4.h"
 #include <iostream>
 #include <string>
 
@@ -38,31 +39,33 @@ Menu::~Menu() {
 void Menu::draw() {
   glClear(GL_COLOR_BUFFER_BIT);
 
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  gluPerspective(90, window.x()/window.y(), 100.0f, 2000.0f);
-  glMatrixMode(GL_MODELVIEW);
-
-  glLoadIdentity();
   glViewport(0, 0, window.x(), window.y());
 
-  glTranslatef(-viewpoint.x(), -viewpoint.y(), 0.0f);
-  starfield.draw_front(viewpoint);
-  starfield.draw_rear(viewpoint);
-  glTranslatef(default_world_width, 0, 0.0f);
-  starfield.draw_front(viewpoint);
-  starfield.draw_rear(viewpoint);
-  glTranslatef(-default_world_width*2, 0, 0.0f);
-  starfield.draw_front(viewpoint);
-  starfield.draw_rear(viewpoint);
-  glTranslatef(default_world_width, 0, 0.0f);
+  // Perspective starfield: camera at origin looking down -Z, stars have negative z.
+  float proj[16];
+  mat4_perspective(proj, 90.0f, window.x() / window.y(), 100.0f, 2000.0f);
 
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  gluOrtho2D(-window.x(), window.x(), -window.y(), window.y());
-  glMatrixMode(GL_MODELVIEW);
+  float vp[16];
+  mat4_translate(vp, proj, -viewpoint.x(), -viewpoint.y(), 0.0f);
+  gles2_set_vp(vp);
+  starfield.draw_front(viewpoint);
+  starfield.draw_rear(viewpoint);
 
-  glTranslatef(viewpoint.x(), viewpoint.y(), 0.0f);
+  mat4_translate(vp, proj, -viewpoint.x() + default_world_width, -viewpoint.y(), 0.0f);
+  gles2_set_vp(vp);
+  starfield.draw_front(viewpoint);
+  starfield.draw_rear(viewpoint);
+
+  mat4_translate(vp, proj, -viewpoint.x() - default_world_width, -viewpoint.y(), 0.0f);
+  gles2_set_vp(vp);
+  starfield.draw_front(viewpoint);
+  starfield.draw_rear(viewpoint);
+
+  // Ortho overlay for text (identity model — Typer applies its own transforms via pre_draw).
+  float ortho[16];
+  mat4_ortho(ortho, -window.x(), window.x(), -window.y(), window.y(), -1.0f, 1.0f);
+  gles2_set_vp(ortho);
+
   Typer::draw_centered(0, 200, "Newtonia", 80);
   if (high_score > 0) {
     Typer::draw_centered(0, -215, "HIGH SCORE", 14);

@@ -5,6 +5,7 @@
 #include <set>
 #include "glship.h"
 #include "gl_compat.h"
+#include "mat4.h"
 
 float Typer::colour[] = {0.0f,1.0f,0.0f};
 Mesh* Typer::char_meshes[256] = {};
@@ -95,15 +96,21 @@ void Typer::draw(float x, float y, const char * text, float size, int time) {
   }
 }
 
+static float s_saved_vp[16];
+
 void Typer::pre_draw(float x, float y, float size) {
-  glPushMatrix();
+  gles2_get_mvp(s_saved_vp);
+  float tx = x * scale, ty = y * scale - 2.0f * size * scale;
+  float sx = size * scale, sy = size * scale;
+  float char_vp[16];
+  mat4_translate(char_vp, s_saved_vp, tx, ty, 0.0f);
+  mat4_scale(char_vp, char_vp, sx, sy, 1.0f);
+  gles2_set_vp(char_vp);
   glLineWidth(1.1f * scale);
-  glTranslatef(x*scale,(y*scale-2*size*scale),0);
-  glScalef(size*scale, size*scale, 0);
 }
 
 void Typer::post_draw() {
-  glPopMatrix();
+  gles2_set_vp(s_saved_vp);
 }
 
 void Typer::draw_life(float x, float y, const GLShip* ship, float size) {

@@ -21,7 +21,7 @@
 
 #include "mesh.h"
 #include "gles2_compat.h"
-#include <math.h>
+#include "mat4.h"
 
 // Undefine the compat_ redirect macros so we can call real GL functions
 // directly in this translation unit.
@@ -172,16 +172,6 @@ void Mesh::upload(const MeshBuilder& mb, GLenum usage) {
 #endif
 }
 
-// Multiply two 4x4 column-major matrices: out = a * b
-static void mat4_mul(float* out, const float* a, const float* b) {
-    for (int c = 0; c < 4; c++)
-        for (int r = 0; r < 4; r++) {
-            float s = 0;
-            for (int k = 0; k < 4; k++) s += a[r + k*4] * b[k + c*4];
-            out[r + c*4] = s;
-        }
-}
-
 void Mesh::draw_with_mvp(const float mvp[16], float point_size) const {
     if (groups_.empty()) return;
 
@@ -256,5 +246,19 @@ void Mesh::draw_tinted_at(float r, float g, float b, float a,
                           float point_size) const {
     gles2_set_tint(r, g, b, a);
     draw_at(x, y, angle_deg, point_size);
+    gles2_set_tint(1.0f, 1.0f, 1.0f, 1.0f);
+}
+
+void Mesh::draw_with_model(const float model[16], float point_size) const {
+    float vp[16], mvp[16];
+    gles2_get_mvp(vp);
+    mat4_mul(mvp, vp, model);
+    draw_with_mvp(mvp, point_size);
+}
+
+void Mesh::draw_tinted_with_model(float r, float g, float b, float a,
+                                  const float model[16], float point_size) const {
+    gles2_set_tint(r, g, b, a);
+    draw_with_model(model, point_size);
     gles2_set_tint(1.0f, 1.0f, 1.0f, 1.0f);
 }

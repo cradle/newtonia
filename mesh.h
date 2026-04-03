@@ -91,6 +91,13 @@ public:
                         float x, float y, float angle_deg,
                         float point_size = 1.0f) const;
 
+    // Draw with an explicit 4x4 column-major model matrix combined with the
+    // current VP from gles2_get_mvp().
+    void draw_with_model(const float model[16], float point_size = 1.0f) const;
+    void draw_tinted_with_model(float r, float g, float b, float a,
+                                const float model[16],
+                                float point_size = 1.0f) const;
+
     bool empty() const { return groups_.empty(); }
 
 private:
