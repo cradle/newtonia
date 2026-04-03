@@ -104,6 +104,12 @@ GLGame::GLGame(SDL_GameController *controller) :
       std::cout << "Unable to load pickup.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
+  if(warp_sound == NULL) {
+    warp_sound = Mix_LoadWAV("audio/warp.wav");
+    if(warp_sound == NULL) {
+      std::cout << "Unable to load warp.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
 }
 
 GLGame::~GLGame() {
@@ -151,6 +157,9 @@ GLGame::~GLGame() {
   }
   if(pickup_sound != NULL) {
     Mix_FreeChunk(pickup_sound);
+  }
+  if(warp_sound != NULL) {
+    Mix_FreeChunk(warp_sound);
   }
   delete warp_pass_;
 }
@@ -260,6 +269,12 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     pickup_sound = Mix_LoadWAV("audio/pickup.wav");
     if(pickup_sound == NULL) {
       std::cout << "Unable to load pickup.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(warp_sound == NULL) {
+    warp_sound = Mix_LoadWAV("audio/warp.wav");
+    if(warp_sound == NULL) {
+      std::cout << "Unable to load warp.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
 }
@@ -772,6 +787,8 @@ void GLGame::tick(int delta) {
       ast->vulnerable_time_left = 5000; // 5 seconds of vulnerability
       ast->teleport_pending = false;
       ast->teleport_angle = rand() / (float)RAND_MAX * 2.0f * (float)M_PI;
+      if(warp_sound != NULL)
+        Mix_PlayChannel(-1, warp_sound, 0);
     }
 
     // Update quantum asteroid observation state: collapse when any player looks at
