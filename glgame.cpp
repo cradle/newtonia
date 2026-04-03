@@ -1154,175 +1154,101 @@ void GLGame::draw_perspective(GLShip *glship) const {
   Point position = (glship == NULL) ? Point(0,0) : glship->ship->position;
   float direction = (glship == NULL || !glship->rotate_view()) ? 0.0f : glship->camera_facing();
 
-  // Starfields are Mesh-based (GPU-resident), drawn directly in each tile.
-
   // Compute cull radius from actual viewport dimensions.
   // Camera is at z=1000; gluPerspective FOV is vertical.
   float fov_deg = glship ? glship->view_angle() : 85.0f;
   float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
   float aspect = window.x() / (float)(window.y() / num_y_viewports());
   float half_w = half_h * aspect;
-  float cull_r2 = (half_w * half_w + half_h * half_h) * 1.1f; // 10% margin for edge objects
+  float cull_r2 = (half_w * half_w + half_h * half_h) * 1.1f;
 
-  // Read the perspective*lookat VP set by draw_world; tile transforms are layered on top.
   float base_pv[16]; gles2_get_mvp(base_pv);
 
-  // Draw the world tessellated 3x3, culling tiles that are entirely off-screen.
+  // Pre-compute VP matrices for visible tiles once.
+  // Draw order must be preserved across passes (rear stars → lensing → objects
+  // → front stars → front lensing → warp), so tiles are iterated per-pass
+  // rather than all passes per-tile.
+  float tile_vps[9][16];
+  int num_tiles = 0;
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
-      // Nearest distance from camera to tile rectangle (starfield tiles are
-      // centered on world origin, not on the player).
-      float smin_x = world.x()*x - position.x();
-      float smax_x = smin_x + world.x();
-      float smin_y = world.y()*y - position.y();
-      float smax_y = smin_y + world.y();
-      float snx = (smin_x > 0) ? smin_x : (smax_x < 0) ? -smax_x : 0;
-      float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
-      if (snx*snx + sny*sny > cull_r2) continue;
-
-      float tile_vp[16];
-      mat4_rotate_z(tile_vp, base_pv, direction);
-      mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
-      gles2_set_vp(tile_vp);
-      starfield->draw_rear(position);
-    }
-  }
-  // --- Invisible asteroid lensing: black asteroid polygon + shifted rear stars ---
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
-      float smin_x = world.x()*x - position.x();
-      float smax_x = smin_x + world.x();
-      float smin_y = world.y()*y - position.y();
-      float smax_y = smin_y + world.y();
-      float snx = (smin_x > 0) ? smin_x : (smax_x < 0) ? -smax_x : 0;
-      float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
-      if (snx*snx + sny*sny > cull_r2) continue;
-
-      float tile_vp[16];
-      mat4_rotate_z(tile_vp, base_pv, direction);
-      mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
-      gles2_set_vp(tile_vp);
-
-      for(list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
-        Asteroid const *a = *it;
-        if (!a->invisible || !a->alive) continue;
-
-        float ax = a->position.x();
-        float ay = a->position.y();
-        AsteroidDrawer::draw_invisible_mask(a, ax, ay);
-        starfield->draw_stars_near(ax, ay, a->radius);
-      }
+      float tx = world.x()*x - position.x();
+      float ty = world.y()*y - position.y();
+      float nx = (tx > 0) ? tx : (tx + world.x() < 0) ? -(tx + world.x()) : 0;
+      float ny = (ty > 0) ? ty : (ty + world.y() < 0) ? -(ty + world.y()) : 0;
+      if (nx*nx + ny*ny > cull_r2) continue;
+      mat4_rotate_z(tile_vps[num_tiles], base_pv, direction);
+      mat4_translate(tile_vps[num_tiles], tile_vps[num_tiles], tx, ty, 0.0f);
+      num_tiles++;
     }
   }
 
-  // Game objects: drawn directly each tile (no display list) so draw_batch
-  // can emit all asteroids in two draw calls per tile instead of one per asteroid.
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
-      // Nearest distance from camera to tile rect (objects span [0,world) per tile)
-      float tmin_x = world.x()*x - position.x();
-      float tmax_x = tmin_x + world.x();
-      float tmin_y = world.y()*y - position.y();
-      float tmax_y = tmin_y + world.y();
-      float tnx = (tmin_x > 0) ? tmin_x : (tmax_x < 0) ? -tmax_x : 0;
-      float tny = (tmin_y > 0) ? tmin_y : (tmax_y < 0) ? -tmax_y : 0;
-      if (tnx*tnx + tny*tny > cull_r2) continue;
-
-      float tile_vp[16];
-      mat4_rotate_z(tile_vp, base_pv, direction);
-      mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
-      gles2_set_vp(tile_vp);
-      draw_objects(direction);
-    }
-  }
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
-      float smin_x = world.x()*x - position.x();
-      float smax_x = smin_x + world.x();
-      float smin_y = world.y()*y - position.y();
-      float smax_y = smin_y + world.y();
-      float snx = (smin_x > 0) ? smin_x : (smax_x < 0) ? -smax_x : 0;
-      float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
-      if (snx*snx + sny*sny > cull_r2) continue;
-
-      float tile_vp[16];
-      mat4_rotate_z(tile_vp, base_pv, direction);
-      mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
-      gles2_set_vp(tile_vp);
-      starfield->draw_front(position);
-    }
-  }
-
-  // --- Front star lensing (same void + shift, applied after front stars) ---
-  for(int x = -1; x <= 1; x++) {
-    for(int y = -1; y <= 1; y++) {
-      float smin_x = world.x()*x - position.x();
-      float smax_x = smin_x + world.x();
-      float smin_y = world.y()*y - position.y();
-      float smax_y = smin_y + world.y();
-      float snx = (smin_x > 0) ? smin_x : (smax_x < 0) ? -smax_x : 0;
-      float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
-      if (snx*snx + sny*sny > cull_r2) continue;
-
-      float tile_vp[16];
-      mat4_rotate_z(tile_vp, base_pv, direction);
-      mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
-      gles2_set_vp(tile_vp);
-
-      for(list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
-        Asteroid const *a = *it;
-        if (!a->invisible || !a->alive) continue;
-
-        float ax = a->position.x();
-        float ay = a->position.y();
-        // No black mask here — draw_batch already renders the invisible asteroid
-        // fill behind visible asteroids. Drawing it again after game objects would
-        // overdraw visible asteroids on top of invisible ones.
-        starfield->draw_front_stars_near(ax, ay, a->radius);
-      }
-    }
-  }
-
-  // --- Warp pass: distort the contents of each invisible asteroid ---
-  // Check whether any invisible asteroids are present to avoid the capture cost.
+  // Pre-check for invisible asteroids to skip lensing/warp passes when absent.
   bool has_invisible = false;
   for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
     if ((*it)->invisible && (*it)->alive) { has_invisible = true; break; }
   }
 
+  // Pass 1: Rear starfields
+  for(int ti = 0; ti < num_tiles; ti++) {
+    gles2_set_vp(tile_vps[ti]);
+    starfield->draw_rear(position);
+  }
+
+  // Pass 2: Invisible asteroid lensing — black mask + shifted rear stars
   if (has_invisible) {
-    // Snapshot the current viewport (stars + game objects) into the warp texture.
+    for(int ti = 0; ti < num_tiles; ti++) {
+      gles2_set_vp(tile_vps[ti]);
+      for(list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
+        Asteroid const *a = *it;
+        if (!a->invisible || !a->alive) continue;
+        AsteroidDrawer::draw_invisible_mask(a, a->position.x(), a->position.y());
+        starfield->draw_stars_near(a->position.x(), a->position.y(), a->radius);
+      }
+    }
+  }
+
+  // Pass 3: Game objects
+  for(int ti = 0; ti < num_tiles; ti++) {
+    gles2_set_vp(tile_vps[ti]);
+    draw_objects(direction);
+  }
+
+  // Pass 4: Front starfields
+  for(int ti = 0; ti < num_tiles; ti++) {
+    gles2_set_vp(tile_vps[ti]);
+    starfield->draw_front(position);
+  }
+
+  // Pass 5: Front star lensing (no black mask — draw_batch already renders the
+  // invisible fill; repeating it here would overdraw visible objects on top)
+  if (has_invisible) {
+    for(int ti = 0; ti < num_tiles; ti++) {
+      gles2_set_vp(tile_vps[ti]);
+      for(list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
+        Asteroid const *a = *it;
+        if (!a->invisible || !a->alive) continue;
+        starfield->draw_front_stars_near(a->position.x(), a->position.y(), a->radius);
+      }
+    }
+  }
+
+  // Pass 6: Warp distortion — gravitational-lens effect over invisible asteroids
+  if (has_invisible) {
     GLint vp[4];
     glGetIntegerv(GL_VIEWPORT, vp);
     warp_pass_->capture(vp[0], vp[1], vp[2], vp[3]);
 
-    // Re-run the tile loop with the warp shader to overwrite each invisible
-    // asteroid's black fill with the gravitational-lens distortion.
-    for (int x = -1; x <= 1; x++) {
-      for (int y = -1; y <= 1; y++) {
-        float smin_x = world.x()*x - position.x();
-        float smax_x = smin_x + world.x();
-        float smin_y = world.y()*y - position.y();
-        float smax_y = smin_y + world.y();
-        float snx = (smin_x > 0) ? smin_x : (smax_x < 0) ? -smax_x : 0;
-        float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
-        if (snx*snx + sny*sny > cull_r2) continue;
-
-        float tile_vp[16];
-        mat4_rotate_z(tile_vp, base_pv, direction);
-        mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
-        gles2_set_vp(tile_vp);
-
-        for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
-          Asteroid const *a = *it;
-          if (!a->invisible || !a->alive) continue;
-          warp_pass_->draw(a, a->position.x(), a->position.y(), vp[0], vp[1], vp[2], vp[3]);
-        }
+    for(int ti = 0; ti < num_tiles; ti++) {
+      gles2_set_vp(tile_vps[ti]);
+      for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
+        Asteroid const *a = *it;
+        if (!a->invisible || !a->alive) continue;
+        warp_pass_->draw(a, a->position.x(), a->position.y(), vp[0], vp[1], vp[2], vp[3]);
       }
     }
     gles2_set_vp(base_pv);
   }
-
 }
 
 void GLGame::draw_map() const {
