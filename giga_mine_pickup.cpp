@@ -14,9 +14,7 @@ void GigaMinePickup::apply(Ship *ship) {
 }
 
 void GigaMinePickup::draw(float world_rotation) const {
-  glTranslatef(position.x(), position.y(), 0.0f);
-  glRotatef(-world_rotation, 0.0f, 0.0f, 1.0f);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-  glow_mesh.draw();
+  glow_mesh.draw_at(position.x(), position.y(), -world_rotation);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
