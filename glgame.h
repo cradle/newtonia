@@ -100,6 +100,7 @@ private:
 
   Mix_Chunk *tic_sound = NULL;
   Mix_Chunk *pickup_sound = NULL;
+  Mix_Chunk *warp_sound = NULL;
 
   Grid grid;
   GLStarfield *starfield;

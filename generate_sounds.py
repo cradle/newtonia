@@ -263,6 +263,27 @@ def make_asteroid_ting():
         samples.append(s * envelope * 0.85)
     return samples
 
+def make_warp():
+    """Teleporting asteroid warp: sci-fi shimmer with pitch sweep and spatial whoosh, 700ms."""
+    n = int(SAMPLE_RATE * 0.7)
+    rng = random.Random(61)
+    samples = []
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        # Rising frequency sweep from 300 Hz to 1800 Hz for an upward teleport feeling
+        sweep = 300 + 1500 * (i / n) ** 0.5
+        # Phase modulation on second harmonic for a shimmering, unstable quality
+        mod = 0.4 * math.sin(2 * math.pi * 18 * t)
+        tone  = math.sin(2 * math.pi * sweep * t + mod) * 0.45
+        tone += math.sin(2 * math.pi * sweep * 2 * t) * 0.20
+        # Noise whoosh that peaks in the middle then fades
+        whoosh_env = math.exp(-((t - 0.25) ** 2) / 0.02)
+        noise = (rng.random() * 2 - 1) * 0.30 * whoosh_env
+        # Overall envelope: fast attack, smooth decay
+        env = min(1.0, t / 0.015) * math.exp(-t * 4.0)
+        samples.append((tone + noise) * env * 0.85)
+    return samples
+
 def make_pickup():
     """Item pickup: cheerful rising chime, 200ms."""
     n = int(SAMPLE_RATE * 0.2)
@@ -387,6 +408,7 @@ if __name__ == '__main__':
         'giga_mine_explode.wav': make_giga_mine_explode,
         'ting.wav':              make_ting,
         'asteroid_ting.wav':     make_asteroid_ting,
+        'warp.wav':              make_warp,
     }
 
     for filename, fn in sounds.items():
