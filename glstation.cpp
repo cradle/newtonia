@@ -45,26 +45,38 @@ GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* ta
 
   {
     MeshBuilder mb;
-    // Black filled disc
+    // Black filled disc (centre vertex first for proper fan)
     mb.begin(GL_TRIANGLE_FAN);
     mb.color(0.0f, 0.0f, 0.0f);
+    mb.vertex(0.0f, 0.0f);
+    for (float i = 0.0f; i <= 360.0f; i += segment_size) {
+      float d = i * (float)M_PI / 180.0f;
+      mb.vertex(r*cosf(d), r*sinf(d));
+    }
+    mb.end();
+    // Outer ring circle
+    mb.begin(GL_LINE_LOOP);
+    mb.color(1.0f, 1.0f, 1.0f);
     for (float i = 0.0f; i < 360.0f; i += segment_size) {
       float d = i * (float)M_PI / 180.0f;
       mb.vertex(r*cosf(d), r*sinf(d));
     }
     mb.end();
-    // White spoke quads as GL_TRIANGLES
-    mb.begin(GL_TRIANGLES);
+    // Inner ring circle
+    mb.begin(GL_LINE_LOOP);
     mb.color(1.0f, 1.0f, 1.0f);
     for (float i = 0.0f; i < 360.0f; i += segment_size) {
-      float d0 = i * (float)M_PI / 180.0f;
-      float d1 = (i + segment_size) * (float)M_PI / 180.0f;
-      float ox0 = r *cosf(d0), oy0 = r *sinf(d0);
-      float ix0 = r2*cosf(d0), iy0 = r2*sinf(d0);
-      float ix1 = r2*cosf(d1), iy1 = r2*sinf(d1);
-      float ox1 = r *cosf(d1), oy1 = r *sinf(d1);
-      mb.vertex(ox0, oy0); mb.vertex(ix0, iy0); mb.vertex(ix1, iy1);
-      mb.vertex(ox0, oy0); mb.vertex(ix1, iy1); mb.vertex(ox1, oy1);
+      float d = i * (float)M_PI / 180.0f;
+      mb.vertex(r2*cosf(d), r2*sinf(d));
+    }
+    mb.end();
+    // Radial divider spokes
+    mb.begin(GL_LINES);
+    mb.color(1.0f, 1.0f, 1.0f);
+    for (float i = 0.0f; i < 360.0f; i += segment_size) {
+      float d = i * (float)M_PI / 180.0f;
+      mb.vertex(r *cosf(d), r *sinf(d));
+      mb.vertex(r2*cosf(d), r2*sinf(d));
     }
     mb.end();
     body_mesh.upload(mb);
@@ -134,7 +146,7 @@ void GLStation::draw(bool minimap) const {
   glTranslatef(position.x(), position.y(), 0);
 
   if(minimap && alive) {
-    map_body_mesh.draw_tinted(1.0f, 0.8f, 0.0f, 1.0f);
+    map_body_mesh.draw();
   } else if(alive) {
     glLineWidth(2.5f);
     glPushMatrix();
