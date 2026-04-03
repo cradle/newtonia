@@ -11,23 +11,18 @@
 #include "asteroid.h"
 #include "typer.h"
 
+// gl_compat.h pulls in GLUT (for window management) and gles2_compat.h
+// (for the VBO/VAO/shader shim that replaces all legacy GL calls).
+#include "gl_compat.h"
+
 #ifdef __APPLE__
-#include <GLUT/glut.h>
+// CGL is needed for VSync configuration only.
 #include <OpenGL/OpenGL.h>
-#else
-#ifdef _WIN32
-#include <windows.h>
-#endif
-#include <GL/glut.h>
-#include <GL/freeglut_std.h>
-#include <GL/freeglut_ext.h>
 #endif
 
 // Glut callbacks cannot be member functions. Need to pre-declare game object
 StateManager *game;
 
-bool ALLOW_BLUR = false;
-double blur_factor = 0.15;
 SDL_GameController *controllers[2] = {NULL, NULL};
 SDL_JoystickID controller_ids[2] = {-1, -1};
 bool ENABLE_AUDIO = true;
@@ -36,17 +31,9 @@ int last_render_time;
 void draw() {
   if (!game) return;
   int current_time = glutGet(GLUT_ELAPSED_TIME);
-  //cout << "fps: " << 1000.0 / (current_time - last_render_time) << endl;
   last_render_time = current_time;
   game->draw();
-  if(ALLOW_BLUR) {
-    glAccum(GL_MULT, blur_factor);
-    glAccum(GL_ACCUM, 1.0-blur_factor);
-    glAccum(GL_RETURN, 1.0);
-  }
   glutSwapBuffers();
-  //glutPostRedisplay();
-  //glFlush();
 }
 
 int old_x = 50;
@@ -65,8 +52,6 @@ void set_cursor_hidden(bool hide) {
   cursor_hidden = hide;
   if (hide) {
 #ifdef __APPLE__
-    // Show then hide resets the macOS cursor-hide reference count to a
-    // known state before applying the hide, making it reliable.
     glutSetCursor(GLUT_CURSOR_LEFT_ARROW);
 #endif
     glutSetCursor(GLUT_CURSOR_NONE);
@@ -77,20 +62,11 @@ void set_cursor_hidden(bool hide) {
 
 void keyboard(unsigned char key, int x, int y) {
   switch (key) {
-  case 'B':
-    blur_factor = (1+blur_factor) / 2.0;
-    cout << blur_factor << endl;
-    break;
-  case 'b':
-    blur_factor = blur_factor / 2.0;
-    cout << blur_factor << endl;
-    break;
   case '\r':
     if(glutGetModifiers() != GLUT_ACTIVE_ALT) {
       break;
     }
   case 'f':
-    // http://www.xmission.com/~nate/sgi/sgi-macosx.zip
     if (!is_fullscreen) {
       old_x = glutGet(GLUT_WINDOW_X);
       old_y = glutGet(GLUT_WINDOW_Y);
@@ -99,8 +75,6 @@ void keyboard(unsigned char key, int x, int y) {
       glutFullScreen();
       is_fullscreen = true;
 #ifdef __APPLE__
-      // macOS fullscreen animation resets cursor state after the resize fires.
-      // Wait for the animation to settle before hiding.
       glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
 #else
       set_cursor_hidden(true);
@@ -152,10 +126,6 @@ void hide_cursor_after_fullscreen(int) {
   }
 }
 
-// On macOS, GLUT uses NSTrackingArea for cursor management. When the mouse
-// enters a new tracking region the OS resets the cursor, undoing our hide.
-// Re-apply on every mouse move during fullscreen using the show-then-hide
-// trick to guarantee the reference count is in the right state.
 void mouse_passive(int x, int y) {
   if (!is_fullscreen) return;
   cursor_hidden = false;
@@ -199,7 +169,6 @@ void check_controller() {
 int last_tick_time;
 void tick() {
   int current_time = glutGet(GLUT_ELAPSED_TIME);
-  //cout << "tps: " << 1000.0 / (current_time - last_tick_time) << endl;
   int delta = current_time - last_tick_time;
   last_tick_time = current_time;
   check_controller();
@@ -219,9 +188,8 @@ void init_controllers_and_audio() {
   SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
   SDL_SetHint(SDL_HINT_GAMECONTROLLERCONFIG, "1");
   Uint32 SDL_INIT_FLAGS = SDL_INIT_GAMECONTROLLER;
-  // custom mappings SDL_HINT_GAMECONTROLLERCONFIG;
   if(ENABLE_AUDIO) {
-    SDL_INIT_FLAGS |= SDL_INIT_AUDIO; // this does not seem to work :S
+    SDL_INIT_FLAGS |= SDL_INIT_AUDIO;
   }
   if(SDL_Init(SDL_INIT_FLAGS) == 0) {
     if( ENABLE_AUDIO && Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 1024 ) < 0) {
@@ -263,12 +231,6 @@ int main(int argc, char* argv[]) {
   set_cursor_hidden(true);
 #endif
   init_controllers_and_audio();
-  // On macOS, Apple's GLUT handles Cmd+Q by calling exit() directly so
-  // glutMainLoop() never returns and ~StateManager() is never called.
-  // Register an atexit handler so the save fires regardless of how the
-  // process terminates.  game is nulled before delete below so that on
-  // platforms where glutMainLoop() does return (freeglut) the handler is
-  // a no-op and we avoid a use-after-free.
   atexit([]{ if (game) game->focus_lost(); });
   game = new StateManager();
   for(int i = 0; i < 2; i++) {
@@ -282,28 +244,36 @@ int main(int argc, char* argv[]) {
     }
   }
   StateManager *g = game;
-  game = nullptr;  // tell the atexit handler to skip (destructor handles it)
+  game = nullptr;
   delete g;
   Asteroid::free_sounds();
   Typer::cleanup();
+  gles2_shutdown();
   return EXIT_SUCCESS;
 }
 
 void init(int &argc, char* argv[], float width, float height) {
   glutInit(&argc, argv);
-  int DISPLAY_TYPE = GLUT_RGBA | GLUT_DOUBLE;
-  if(ALLOW_BLUR) {
-    DISPLAY_TYPE = DISPLAY_TYPE | GLUT_ACCUM;
-  }
-  glutInitDisplayMode(DISPLAY_TYPE);
+
+  // Request an OpenGL 3.3 Core Profile context.
+  // Legacy immediate-mode and display-list functions are not available in
+  // Core Profile; all rendering goes through gles2_compat (VBO/VAO/GLSL).
+#ifdef __APPLE__
+  // Apple's GLUT uses a dedicated flag.  The driver promotes this to the
+  // highest supported Core Profile version (up to 4.1 on macOS).
+  glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_3_2_CORE_PROFILE);
+#else
+  glutInitContextVersion(3, 3);
+  glutInitContextProfile(GLUT_CORE_PROFILE);
+  glutInitContextFlags(GLUT_FORWARD_COMPATIBLE);
+  glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
+#endif
+
   glutInitWindowSize(width, height);
   glutCreateWindow("Newtonia");
 
 #ifdef __APPLE__
-  // Enable VSync so glutSwapBuffers() blocks until the display's vertical
-  // blank. Without this, the idle loop runs uncapped and produces jank on
-  // external monitors (e.g. a 50 Hz display on M1) because rendered frames
-  // are not aligned to the screen's refresh cycle.
+  // VSync: block glutSwapBuffers() at the display's vertical blank.
   {
     CGLContextObj ctx = CGLGetCurrentContext();
     GLint swapInterval = 1;
@@ -311,18 +281,11 @@ void init(int &argc, char* argv[], float width, float height) {
   }
 #endif
 
-  //glEnable(GL_DEPTH_TEST);
-  //glDepthFunc(GL_LESS);
+  // Initialise the VBO/VAO/GLSL shim (compiles shaders, creates GPU buffers).
+  gles2_init();
+
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
-  glEnable(GL_LINE_SMOOTH);
-  glHint(GL_POINT_SMOOTH_HINT, GL_NICEST);
-  glEnable(GL_POINT_SMOOTH);
-  if(ALLOW_BLUR) {
-    glEnable(GL_ACCUM);
-    glClear(GL_ACCUM_BUFFER_BIT);
-  }
 
   glutDisplayFunc(draw);
   glutKeyboardFunc(keyboard);

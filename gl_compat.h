@@ -2,6 +2,15 @@
 
 // Unified OpenGL/GLES2 compatibility header.
 // Include this instead of platform-specific GLUT/OpenGL headers.
+//
+// On desktop (macOS/Linux/Windows):
+//   1. GLUT headers are included for window-management functions.
+//   2. gles2_compat.h is included to redirect all legacy GL calls
+//      (glBegin/glEnd, display lists, matrix stack, glPointSize, …)
+//      through our VBO + VAO + GLSL shim.
+//
+// On GLES2 (Android/iOS/Web):
+//   gles2_compat.h provides the full fixed-function emulation layer.
 
 #if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__)
 #include "gles2_compat.h"
@@ -13,8 +22,15 @@
 #  endif
 #else
 
+// Desktop: include GLUT first (provides window management + GL types),
+// then gles2_compat.h which adds the compat_ shim macros on top.
 #ifdef __APPLE__
 #define glutLeaveMainLoop() exit(0)
+// gl3.h defines __gl3_h_ (not __gl_h_), so GLUT's gl.h would still be
+// processed and emit a "both included" warning.  Manually define __gl_h_
+// after pulling in gl3.h to block GLUT from re-including gl.h at all.
+#include <OpenGL/gl3.h>
+#define __gl_h_
 #include <GLUT/glut.h>
 #else
 #ifdef _WIN32
@@ -25,7 +41,22 @@
 #include <GL/freeglut_std.h>
 #include <GL/freeglut_ext.h>
 #endif
+#ifdef __linux__
+// On Linux, GL 2.0+ functions are exported by libGL and can be declared as
+// regular extern symbols.  GL_GLEXT_PROTOTYPES enables those declarations in
+// <GL/glext.h>.  Must be defined before the first inclusion of glext.h.
+// On Windows/MinGW we skip this: glext.h would declare them as regular
+// functions which would conflict with our wglGetProcAddress pointer variables.
+#ifndef GL_GLEXT_PROTOTYPES
+#  define GL_GLEXT_PROTOTYPES
 #endif
+#include <GL/glext.h>
+#endif // __linux__
+#endif
+
+// Shim: redirect legacy GL calls to our VBO/VAO/shader implementation.
+// Must come after GLUT so GL types are already defined.
+#include "gles2_compat.h"
 
 #endif // __ANDROID__ || __IOS__ || __EMSCRIPTEN__
 
@@ -39,8 +70,7 @@ inline bool is_steam_gamemode() {
 }
 
 // Returns true when the primary input is touch (Android, iOS, or web with a
-// coarse pointer such as a touchscreen).  Use this instead of repeating the
-// platform-specific preprocessor / matchMedia boilerplate everywhere.
+// coarse pointer such as a touchscreen).
 inline bool is_touch_mode() {
 #if defined(__ANDROID__) || defined(__IOS__)
   return true;

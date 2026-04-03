@@ -35,8 +35,7 @@ jobs:
         run: |
           SRCS=$(find . -name "*.cpp" \
             -not -path "./android/*" \
-            -not -path "./.git/*" \
-            -not -name "gles2_compat.cpp")
+            -not -path "./.git/*")
           windres icon.rc -O coff -o icon.res
           g++ -O2 -Wall -std=c++11 -D_USE_MATH_DEFINES -DFREEGLUT_STATIC \
             $(pkg-config --cflags sdl2 SDL2_mixer freeglut) \

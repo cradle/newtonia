@@ -7,8 +7,8 @@
 #include "gl_compat.h"
 
 float Typer::colour[] = {0.0f,1.0f,0.0f};
-GLuint Typer::char_lists[256] = {};
-bool Typer::lists_initialized = false;
+Mesh* Typer::char_meshes[256] = {};
+bool Typer::meshes_initialized = false;
 const int Typer::original_window_width = 800;
 int Typer::window_width = Typer::original_window_width;
 float Typer::scaled_window_height = Typer::window_height;
@@ -98,7 +98,6 @@ void Typer::draw(float x, float y, const char * text, float size, int time) {
 void Typer::pre_draw(float x, float y, float size) {
   glPushMatrix();
   glLineWidth(1.1f * scale);
-  glColor3fv(colour);
   glTranslatef(x*scale,(y*scale-2*size*scale),0);
   glScalef(size*scale, size*scale, 0);
 }
@@ -113,7 +112,7 @@ void Typer::draw_life(float x, float y, const GLShip* ship, float size) {
   post_draw();
 }
 
-// Geometry constants shared between init_lists() and the animated-char fallback.
+// Geometry constants shared between init_meshes() and the animated-char fallback.
 // These match the local variables that were previously declared inside draw(char).
 static const float TQ  = 0.25f;        // quarter_size
 static const float TH  = 2.0f;         // height
@@ -124,391 +123,245 @@ static const float TW  = 1.0f;         // width
 static const float TMW = TW * 0.67f;   // mid_width         = 0.67
 static const float TC  = TW / 2.0f;    // center            = 0.5
 
-// Compile the vertex geometry for every supported character into GL display
-// lists so that draw(char) becomes pre_draw + glCallList + post_draw instead
-// of many individual glBegin/glEnd pairs.
-// The animated character (case '©') is excluded; its list entry stays 0.
-void Typer::init_lists() {
-  lists_initialized = true;
+// Upload the vertex geometry for every supported character into a GPU Mesh so
+// that draw(char) becomes pre_draw + draw_tinted + post_draw instead of many
+// individual glBegin/glEnd pairs.
+// The animated character (case '©') is excluded; its mesh pointer stays null.
+void Typer::init_meshes() {
+  meshes_initialized = true;
 
-  // Helper: allocate one list, start compiling it, record its id.
-  auto begin = [](unsigned char c) {
-    GLuint id = glGenLists(1);
-    char_lists[c] = id;
-    glNewList(id, GL_COMPILE);
+  // Helper: build a mesh for character c from a MeshBuilder.
+  auto upload = [](unsigned char c, MeshBuilder& mb) {
+    char_meshes[c] = new Mesh();
+    char_meshes[c]->upload(mb);
   };
 
-  begin('-');
-  glBegin(GL_LINES);
-  glVertex2f(0,TM); glVertex2f(TW,TM);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb;
+    mb.begin(GL_LINES); mb.color(1,1,1);
+    mb.vertex(0,TM); mb.vertex(TW,TM);
+    mb.end(); upload('-', mb); }
 
-  begin('.');
-  glPointSize(2.0f);
-  glBegin(GL_POINTS);
-  glVertex2f(TW*0.5f, TH*0.125f);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_POINTS); mb.color(1,1,1);
+    mb.vertex(TW*0.5f, TH*0.125f);
+    mb.end(); upload('.', mb); }
 
-  begin('+');
-  glBegin(GL_LINES);
-  glVertex2f(0,TM);  glVertex2f(TW,TM);
-  glVertex2f(TW*0.5f,1.75f); glVertex2f(TW*0.5f,0.25f);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
+    mb.vertex(0,TM); mb.vertex(TW,TM);
+    mb.vertex(TW*0.5f,1.75f); mb.vertex(TW*0.5f,0.25f);
+    mb.end(); upload('+', mb); }
 
-  begin('0');
-  glBegin(GL_LINE_LOOP);
-  glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,0); glVertex2f(0,0);
-  glEnd();
-  glBegin(GL_LINES);
-  glVertex2f(TW,TH); glVertex2f(0,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.color(1,1,1);
+    mb.begin(GL_LINE_LOOP); mb.vertex(0,TH); mb.vertex(TW,TH); mb.vertex(TW,0); mb.vertex(0,0); mb.end();
+    mb.begin(GL_LINES);     mb.vertex(TW,TH); mb.vertex(0,0); mb.end();
+    upload('0', mb); }
 
-  begin('1');
-  glBegin(GL_LINES);
-  glVertex2f(TMW,TH); glVertex2f(TMW,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
+    mb.vertex(TMW,TH); mb.vertex(TMW,0);
+    mb.end(); upload('1', mb); }
 
-  begin('2');
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,TM);
-  glVertex2f(0,TM); glVertex2f(0,0);   glVertex2f(TW,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(0,TH); mb.vertex(TW,TH); mb.vertex(TW,TM); mb.vertex(0,TM); mb.vertex(0,0); mb.vertex(TW,0);
+    mb.end(); upload('2', mb); }
 
-  begin('3');
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,0); glVertex2f(0,0);
-  glEnd();
-  glBegin(GL_LINES);
-  glVertex2f(0,TM); glVertex2f(TW,TM);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.color(1,1,1);
+    mb.begin(GL_LINE_STRIP); mb.vertex(0,TH); mb.vertex(TW,TH); mb.vertex(TW,0); mb.vertex(0,0); mb.end();
+    mb.begin(GL_LINES);      mb.vertex(0,TM); mb.vertex(TW,TM); mb.end();
+    upload('3', mb); }
 
-  begin('4');
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(0,TH); glVertex2f(0,TM); glVertex2f(TW,TM); glVertex2f(TW,TH);
-  glEnd();
-  glBegin(GL_LINES);
-  glVertex2f(TW,TM); glVertex2f(TW,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.color(1,1,1);
+    mb.begin(GL_LINE_STRIP); mb.vertex(0,TH); mb.vertex(0,TM); mb.vertex(TW,TM); mb.vertex(TW,TH); mb.end();
+    mb.begin(GL_LINES);      mb.vertex(TW,TM); mb.vertex(TW,0); mb.end();
+    upload('4', mb); }
 
-  begin('5');
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(TW,TH); glVertex2f(0,TH); glVertex2f(0,TM); glVertex2f(TW,TM);
-  glVertex2f(TW,0);  glVertex2f(0,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(TW,TH); mb.vertex(0,TH); mb.vertex(0,TM); mb.vertex(TW,TM); mb.vertex(TW,0); mb.vertex(0,0);
+    mb.end(); upload('5', mb); }
 
-  begin('6');
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(TW,TH); glVertex2f(0,TH); glVertex2f(0,0);  glVertex2f(TW,0);
-  glVertex2f(TW,TM); glVertex2f(0,TM);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(TW,TH); mb.vertex(0,TH); mb.vertex(0,0); mb.vertex(TW,0); mb.vertex(TW,TM); mb.vertex(0,TM);
+    mb.end(); upload('6', mb); }
 
-  begin('7');
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(0,TH); mb.vertex(TW,TH); mb.vertex(TW,0);
+    mb.end(); upload('7', mb); }
 
-  begin('8');
-  glBegin(GL_LINE_LOOP);
-  glVertex2f(TW,TH); glVertex2f(0,TH); glVertex2f(0,0); glVertex2f(TW,0);
-  glEnd();
-  glBegin(GL_LINES);
-  glVertex2f(0,TM); glVertex2f(TW,TM);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.color(1,1,1);
+    mb.begin(GL_LINE_LOOP); mb.vertex(TW,TH); mb.vertex(0,TH); mb.vertex(0,0); mb.vertex(TW,0); mb.end();
+    mb.begin(GL_LINES);     mb.vertex(0,TM); mb.vertex(TW,TM); mb.end();
+    upload('8', mb); }
 
-  begin('9');
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(0,0);   glVertex2f(TW,0);  glVertex2f(TW,TH);
-  glVertex2f(0,TH);  glVertex2f(0,TM);  glVertex2f(TW,TM);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(0,0); mb.vertex(TW,0); mb.vertex(TW,TH); mb.vertex(0,TH); mb.vertex(0,TM); mb.vertex(TW,TM);
+    mb.end(); upload('9', mb); }
 
-  // Letters — upper and lower case share the same display list.
-  char_lists['A'] = glGenLists(1);
-  char_lists['a'] = char_lists['A'];
-  glNewList(char_lists['A'], GL_COMPILE);
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(0,0); glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,0);
-  glEnd();
-  glBegin(GL_LINES);
-  glVertex2f(0,TM); glVertex2f(TW,TM);
-  glEnd();
-  glEndList();
+  // Letters — upper and lower case share the same Mesh pointer.
+  auto upload_ab = [&](unsigned char upper, unsigned char lower, MeshBuilder& mb) {
+    Mesh* m = new Mesh(); m->upload(mb);
+    char_meshes[upper] = char_meshes[lower] = m;
+  };
 
-  char_lists['B'] = glGenLists(1); char_lists['b'] = char_lists['B'];
-  glNewList(char_lists['B'], GL_COMPILE);
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(0,0); glVertex2f(0,TH); glVertex2f(TMW,TH); glVertex2f(TW,TMU);
-  glVertex2f(TW,TM); glVertex2f(0,TM);
-  glEnd();
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(TMW,TM); glVertex2f(TW,TML); glVertex2f(TW,0); glVertex2f(0,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.color(1,1,1);
+    mb.begin(GL_LINE_STRIP); mb.vertex(0,0); mb.vertex(0,TH); mb.vertex(TW,TH); mb.vertex(TW,0); mb.end();
+    mb.begin(GL_LINES);      mb.vertex(0,TM); mb.vertex(TW,TM); mb.end();
+    upload_ab('A','a',mb); }
 
-  char_lists['C'] = glGenLists(1); char_lists['c'] = char_lists['C'];
-  glNewList(char_lists['C'], GL_COMPILE);
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(TW,0); glVertex2f(0,0); glVertex2f(0,TH); glVertex2f(TW,TH);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.color(1,1,1);
+    mb.begin(GL_LINE_STRIP); mb.vertex(0,0); mb.vertex(0,TH); mb.vertex(TMW,TH); mb.vertex(TW,TMU); mb.vertex(TW,TM); mb.vertex(0,TM); mb.end();
+    mb.begin(GL_LINE_STRIP); mb.vertex(TMW,TM); mb.vertex(TW,TML); mb.vertex(TW,0); mb.vertex(0,0); mb.end();
+    upload_ab('B','b',mb); }
 
-  char_lists['D'] = glGenLists(1); char_lists['d'] = char_lists['D'];
-  glNewList(char_lists['D'], GL_COMPILE);
-  glBegin(GL_LINE_LOOP);
-  glVertex2f(0,0); glVertex2f(0,TH); glVertex2f(TMW,TH); glVertex2f(TW,TMU);
-  glVertex2f(TW,TM); glVertex2f(TW,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(TW,0); mb.vertex(0,0); mb.vertex(0,TH); mb.vertex(TW,TH);
+    mb.end(); upload_ab('C','c',mb); }
 
-  char_lists['E'] = glGenLists(1); char_lists['e'] = char_lists['E'];
-  glNewList(char_lists['E'], GL_COMPILE);
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(TW,TH); glVertex2f(0,TH); glVertex2f(0,0); glVertex2f(TW,0);
-  glEnd();
-  glBegin(GL_LINES);
-  glVertex2f(0,TM); glVertex2f(TMW,TM);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_LOOP); mb.color(1,1,1);
+    mb.vertex(0,0); mb.vertex(0,TH); mb.vertex(TMW,TH); mb.vertex(TW,TMU); mb.vertex(TW,TM); mb.vertex(TW,0);
+    mb.end(); upload_ab('D','d',mb); }
 
-  char_lists['F'] = glGenLists(1); char_lists['f'] = char_lists['F'];
-  glNewList(char_lists['F'], GL_COMPILE);
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(TW,TH); glVertex2f(0,TH); glVertex2f(0,0);
-  glEnd();
-  glBegin(GL_LINES);
-  glVertex2f(0,TM); glVertex2f(TW,TM);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.color(1,1,1);
+    mb.begin(GL_LINE_STRIP); mb.vertex(TW,TH); mb.vertex(0,TH); mb.vertex(0,0); mb.vertex(TW,0); mb.end();
+    mb.begin(GL_LINES);      mb.vertex(0,TM); mb.vertex(TMW,TM); mb.end();
+    upload_ab('E','e',mb); }
 
-  char_lists['G'] = glGenLists(1); char_lists['g'] = char_lists['G'];
-  glNewList(char_lists['G'], GL_COMPILE);
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(TW,TH); glVertex2f(0,TH); glVertex2f(0,0); glVertex2f(TW,0);
-  glVertex2f(TW,TM);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.color(1,1,1);
+    mb.begin(GL_LINE_STRIP); mb.vertex(TW,TH); mb.vertex(0,TH); mb.vertex(0,0); mb.end();
+    mb.begin(GL_LINES);      mb.vertex(0,TM); mb.vertex(TW,TM); mb.end();
+    upload_ab('F','f',mb); }
 
-  char_lists['H'] = glGenLists(1); char_lists['h'] = char_lists['H'];
-  glNewList(char_lists['H'], GL_COMPILE);
-  glBegin(GL_LINES);
-  glVertex2f(TW,TM); glVertex2f(0,TM);
-  glVertex2f(0,0);   glVertex2f(0,TH);
-  glVertex2f(TW,0);  glVertex2f(TW,TH);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(TW,TH); mb.vertex(0,TH); mb.vertex(0,0); mb.vertex(TW,0); mb.vertex(TW,TM);
+    mb.end(); upload_ab('G','g',mb); }
 
-  char_lists['I'] = glGenLists(1); char_lists['i'] = char_lists['I'];
-  glNewList(char_lists['I'], GL_COMPILE);
-  glBegin(GL_LINES);
-  glVertex2f(TC,TH); glVertex2f(TC,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
+    mb.vertex(TW,TM); mb.vertex(0,TM);
+    mb.vertex(0,0);   mb.vertex(0,TH);
+    mb.vertex(TW,0);  mb.vertex(TW,TH);
+    mb.end(); upload_ab('H','h',mb); }
 
-  char_lists['J'] = glGenLists(1); char_lists['j'] = char_lists['J'];
-  glNewList(char_lists['J'], GL_COMPILE);
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(TW,TH); glVertex2f(TW,0); glVertex2f(0,0); glVertex2f(0,TM);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
+    mb.vertex(TC,TH); mb.vertex(TC,0);
+    mb.end(); upload_ab('I','i',mb); }
 
-  char_lists['K'] = glGenLists(1); char_lists['k'] = char_lists['K'];
-  glNewList(char_lists['K'], GL_COMPILE);
-  glBegin(GL_LINES);
-  glVertex2f(0,0);  glVertex2f(0,TH);
-  glVertex2f(0,TM); glVertex2f(TW,TM);
-  glVertex2f(TW,TM);glVertex2f(TW,0);
-  glVertex2f(TMW,TM);glVertex2f(TW,TH);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(TW,TH); mb.vertex(TW,0); mb.vertex(0,0); mb.vertex(0,TM);
+    mb.end(); upload_ab('J','j',mb); }
 
-  char_lists['L'] = glGenLists(1); char_lists['l'] = char_lists['L'];
-  glNewList(char_lists['L'], GL_COMPILE);
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(0,TH); glVertex2f(0,0); glVertex2f(TW,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
+    mb.vertex(0,0);   mb.vertex(0,TH);
+    mb.vertex(0,TM);  mb.vertex(TW,TM);
+    mb.vertex(TW,TM); mb.vertex(TW,0);
+    mb.vertex(TMW,TM);mb.vertex(TW,TH);
+    mb.end(); upload_ab('K','k',mb); }
 
-  char_lists['M'] = glGenLists(1); char_lists['m'] = char_lists['M'];
-  glNewList(char_lists['M'], GL_COMPILE);
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(0,0); glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,0);
-  glEnd();
-  glBegin(GL_LINES);
-  glVertex2f(TC,TH); glVertex2f(TC,TM);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(0,TH); mb.vertex(0,0); mb.vertex(TW,0);
+    mb.end(); upload_ab('L','l',mb); }
 
-  char_lists['N'] = glGenLists(1); char_lists['n'] = char_lists['N'];
-  glNewList(char_lists['N'], GL_COMPILE);
-  glBegin(GL_LINES);
-  glVertex2f(0,0);   glVertex2f(0,TH);
-  glVertex2f(0,TH);  glVertex2f(TW,TM);
-  glVertex2f(TW,0);  glVertex2f(TW,TH);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.color(1,1,1);
+    mb.begin(GL_LINE_STRIP); mb.vertex(0,0); mb.vertex(0,TH); mb.vertex(TW,TH); mb.vertex(TW,0); mb.end();
+    mb.begin(GL_LINES);      mb.vertex(TC,TH); mb.vertex(TC,TM); mb.end();
+    upload_ab('M','m',mb); }
 
-  char_lists['O'] = glGenLists(1); char_lists['o'] = char_lists['O'];
-  glNewList(char_lists['O'], GL_COMPILE);
-  glBegin(GL_LINE_LOOP);
-  glVertex2f(0,0); glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
+    mb.vertex(0,0);  mb.vertex(0,TH);
+    mb.vertex(0,TH); mb.vertex(TW,TM);
+    mb.vertex(TW,0); mb.vertex(TW,TH);
+    mb.end(); upload_ab('N','n',mb); }
 
-  char_lists['P'] = glGenLists(1); char_lists['p'] = char_lists['P'];
-  glNewList(char_lists['P'], GL_COMPILE);
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(0,0); glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,TM);
-  glVertex2f(0,TM);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_LOOP); mb.color(1,1,1);
+    mb.vertex(0,0); mb.vertex(0,TH); mb.vertex(TW,TH); mb.vertex(TW,0);
+    mb.end(); upload_ab('O','o',mb); }
 
-  char_lists['Q'] = glGenLists(1); char_lists['q'] = char_lists['Q'];
-  glNewList(char_lists['Q'], GL_COMPILE);
-  glBegin(GL_LINE_LOOP);
-  glVertex2f(0,0); glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,TML);
-  glVertex2f(TC,0);
-  glEnd();
-  glBegin(GL_LINES);
-  glVertex2f(TC,TML); glVertex2f(TW,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(0,0); mb.vertex(0,TH); mb.vertex(TW,TH); mb.vertex(TW,TM); mb.vertex(0,TM);
+    mb.end(); upload_ab('P','p',mb); }
 
-  char_lists['R'] = glGenLists(1); char_lists['r'] = char_lists['R'];
-  glNewList(char_lists['R'], GL_COMPILE);
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(0,0); glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(TW,TM);
-  glVertex2f(0,TM);
-  glEnd();
-  glBegin(GL_LINES);
-  glVertex2f(TC,TM); glVertex2f(TW,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.color(1,1,1);
+    mb.begin(GL_LINE_LOOP); mb.vertex(0,0); mb.vertex(0,TH); mb.vertex(TW,TH); mb.vertex(TW,TML); mb.vertex(TC,0); mb.end();
+    mb.begin(GL_LINES);     mb.vertex(TC,TML); mb.vertex(TW,0); mb.end();
+    upload_ab('Q','q',mb); }
 
-  char_lists['S'] = glGenLists(1); char_lists['s'] = char_lists['S'];
-  glNewList(char_lists['S'], GL_COMPILE);
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(TW,TH); glVertex2f(0,TH); glVertex2f(0,TM); glVertex2f(TW,TM);
-  glVertex2f(TW,0);  glVertex2f(0,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.color(1,1,1);
+    mb.begin(GL_LINE_STRIP); mb.vertex(0,0); mb.vertex(0,TH); mb.vertex(TW,TH); mb.vertex(TW,TM); mb.vertex(0,TM); mb.end();
+    mb.begin(GL_LINES);      mb.vertex(TC,TM); mb.vertex(TW,0); mb.end();
+    upload_ab('R','r',mb); }
 
-  char_lists['T'] = glGenLists(1); char_lists['t'] = char_lists['T'];
-  glNewList(char_lists['T'], GL_COMPILE);
-  glBegin(GL_LINES);
-  glVertex2f(TC,TH); glVertex2f(TC,0);
-  glVertex2f(0,TH);  glVertex2f(TW,TH);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(TW,TH); mb.vertex(0,TH); mb.vertex(0,TM); mb.vertex(TW,TM); mb.vertex(TW,0); mb.vertex(0,0);
+    mb.end(); upload_ab('S','s',mb); }
 
-  char_lists['U'] = glGenLists(1); char_lists['u'] = char_lists['U'];
-  glNewList(char_lists['U'], GL_COMPILE);
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(TW,TH); glVertex2f(TW,0); glVertex2f(0,0); glVertex2f(0,TH);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
+    mb.vertex(TC,TH); mb.vertex(TC,0);
+    mb.vertex(0,TH);  mb.vertex(TW,TH);
+    mb.end(); upload_ab('T','t',mb); }
 
-  char_lists['V'] = glGenLists(1); char_lists['v'] = char_lists['V'];
-  glNewList(char_lists['V'], GL_COMPILE);
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(TW,TH); glVertex2f(TW,TML); glVertex2f(TC,0); glVertex2f(0,0);
-  glVertex2f(0,TH);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(TW,TH); mb.vertex(TW,0); mb.vertex(0,0); mb.vertex(0,TH);
+    mb.end(); upload_ab('U','u',mb); }
 
-  char_lists['W'] = glGenLists(1); char_lists['w'] = char_lists['W'];
-  glNewList(char_lists['W'], GL_COMPILE);
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(0,TH); glVertex2f(0,0); glVertex2f(TW,0); glVertex2f(TW,TH);
-  glEnd();
-  glBegin(GL_LINES);
-  glVertex2f(TC,TM); glVertex2f(TC,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(TW,TH); mb.vertex(TW,TML); mb.vertex(TC,0); mb.vertex(0,0); mb.vertex(0,TH);
+    mb.end(); upload_ab('V','v',mb); }
 
-  char_lists['X'] = glGenLists(1); char_lists['x'] = char_lists['X'];
-  glNewList(char_lists['X'], GL_COMPILE);
-  glBegin(GL_LINES);
-  glVertex2f(TW,TH); glVertex2f(0,0);
-  glVertex2f(0,TH);  glVertex2f(TW,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.color(1,1,1);
+    mb.begin(GL_LINE_STRIP); mb.vertex(0,TH); mb.vertex(0,0); mb.vertex(TW,0); mb.vertex(TW,TH); mb.end();
+    mb.begin(GL_LINES);      mb.vertex(TC,TM); mb.vertex(TC,0); mb.end();
+    upload_ab('W','w',mb); }
 
-  char_lists['Y'] = glGenLists(1); char_lists['y'] = char_lists['Y'];
-  glNewList(char_lists['Y'], GL_COMPILE);
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(0,TH); glVertex2f(0,TM); glVertex2f(TW,TM); glVertex2f(TW,TH);
-  glEnd();
-  glBegin(GL_LINES);
-  glVertex2f(TC,TM); glVertex2f(TC,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
+    mb.vertex(TW,TH); mb.vertex(0,0);
+    mb.vertex(0,TH);  mb.vertex(TW,0);
+    mb.end(); upload_ab('X','x',mb); }
 
-  char_lists['Z'] = glGenLists(1); char_lists['z'] = char_lists['Z'];
-  glNewList(char_lists['Z'], GL_COMPILE);
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(0,TH); glVertex2f(TW,TH); glVertex2f(0,0); glVertex2f(TW,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.color(1,1,1);
+    mb.begin(GL_LINE_STRIP); mb.vertex(0,TH); mb.vertex(0,TM); mb.vertex(TW,TM); mb.vertex(TW,TH); mb.end();
+    mb.begin(GL_LINES);      mb.vertex(TC,TM); mb.vertex(TC,0); mb.end();
+    upload_ab('Y','y',mb); }
 
-  begin('>');
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(0,TH*0.9f); glVertex2f(TW,TH/2.0f); glVertex2f(0,TH*0.1f);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(0,TH); mb.vertex(TW,TH); mb.vertex(0,0); mb.vertex(TW,0);
+    mb.end(); upload_ab('Z','z',mb); }
 
-  begin('<');
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(TW,TH*0.9f); glVertex2f(0,TH/2.0f); glVertex2f(TW,TH*0.1f);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(0,TH*0.9f); mb.vertex(TW,TH/2.0f); mb.vertex(0,TH*0.1f);
+    mb.end(); upload('>', mb); }
 
-  begin('/');
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(TW,TH); glVertex2f(0,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(TW,TH*0.9f); mb.vertex(0,TH/2.0f); mb.vertex(TW,TH*0.1f);
+    mb.end(); upload('<', mb); }
 
-  begin(',');
-  glBegin(GL_LINE_STRIP);
-  glVertex2f(TW/2.0f,TH/3.0f); glVertex2f(0,0);
-  glEnd();
-  glEndList();
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(TW,TH); mb.vertex(0,0);
+    mb.end(); upload('/', mb); }
+
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(TW/2.0f,TH/3.0f); mb.vertex(0,0);
+    mb.end(); upload(',', mb); }
 }
 
 void Typer::cleanup() {
-  if (!lists_initialized) return;
-  // Upper and lower case share the same list ID, so track freed IDs to avoid
-  // double-deleting the same GL display list.
-  std::set<GLuint> freed;
+  if (!meshes_initialized) return;
+  // Upper and lower case share the same Mesh pointer, so track freed pointers
+  // to avoid double-deleting.
+  std::set<Mesh*> freed;
   for (int i = 0; i < 256; i++) {
-    if (char_lists[i] != 0 && freed.find(char_lists[i]) == freed.end()) {
-      freed.insert(char_lists[i]);
-      glDeleteLists(char_lists[i], 1);
+    if (char_meshes[i] && freed.find(char_meshes[i]) == freed.end()) {
+      freed.insert(char_meshes[i]);
+      delete char_meshes[i];
     }
-    char_lists[i] = 0;
+    char_meshes[i] = nullptr;
   }
-  lists_initialized = false;
+  meshes_initialized = false;
 }
 
 void Typer::draw(float x, float y, char character, float size, int time) {
-  if (!lists_initialized) init_lists();
+  if (!meshes_initialized) init_meshes();
 
-  // Fast path: geometry is pre-compiled on the GPU.
-  if (char_lists[(unsigned char)character] != 0) {
+  // Fast path: geometry is pre-built on the GPU.
+  Mesh* m = char_meshes[(unsigned char)character];
+  if (m) {
     pre_draw(x, y, size);
-    glCallList(char_lists[(unsigned char)character]);
+    m->draw_tinted(colour[0], colour[1], colour[2], 1.0f);
     post_draw();
     return;
   }
@@ -516,6 +369,7 @@ void Typer::draw(float x, float y, char character, float size, int time) {
   // Fallback for characters with time-dependent geometry (the animated char).
   float segment_size = 360.0f / 7;
   pre_draw(x, y, size);
+  glColor3fv(colour);
   switch(character) {
     case '\xa9': {
       float d;

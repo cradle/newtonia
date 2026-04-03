@@ -9,8 +9,8 @@
 // visible gravitational-lens effect.
 //
 // Works on all targets:
-//   Desktop  – OpenGL 2.0 GLSL + glGetFloatv for the MVP
-//   GLES2    – same shader dialect; gles2_get_mvp() for the MVP
+//   Desktop  – OpenGL 3.3 Core GLSL 1.50; gles2_get_mvp() for the MVP
+//   GLES2    – GLSL ES 1.00;              gles2_get_mvp() for the MVP
 
 #include "gl_compat.h"
 #include "asteroid.h"
@@ -21,15 +21,9 @@ public:
     ~WarpPass();
 
     // Capture the current viewport into the internal scene texture.
-    // Call after the main scene (stars + game objects) is fully rendered
-    // but before the warp polygons are drawn.
     void capture(int vp_x, int vp_y, int vp_w, int vp_h);
 
     // Draw the warp distortion polygon for one invisible asteroid.
-    //   ax, ay  – asteroid world-space position in the same coordinate frame
-    //             that was active when the asteroid was drawn (i.e. tile-
-    //             translated camera-relative coords).
-    // The caller must have the same MVP matrices active as in the main pass.
     void draw(const Asteroid *a, float ax, float ay,
               int vp_x, int vp_y, int vp_w, int vp_h);
 
@@ -38,6 +32,10 @@ private:
 
     GLuint tex_;        // scene snapshot texture
     GLuint prog_;       // warp GLSL program
+    GLuint vbo_;        // vertex buffer for the asteroid polygon
+#ifdef DESKTOP_COMPAT_GL
+    GLuint vao_;        // vertex array object (required in GL 3.3 Core)
+#endif
 
     int tex_w_, tex_h_; // dimensions of the last captured texture
 

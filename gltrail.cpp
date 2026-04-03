@@ -1,6 +1,5 @@
 #include "gltrail.h"
 #include "ship.h"
-#include "particle.h"
 
 #include "gl_compat.h"
 
@@ -19,47 +18,58 @@ GLTrail::~GLTrail() {
 }
 
 void GLTrail::draw() {
-  glPointSize(point_size);
-  glBegin(GL_POINTS);
-  for(size_t i = 0; i < trail.size(); i++) {
-      glColor4f(1.0-ship->color[0], 1.0-ship->color[1], 1.0-ship->color[2], trail[i].aliveness());
-  	  glVertex2fv(trail[i].position);
+  if (trail.empty()) return;
+
+  float cr = 1.0f - ship->color[0];
+  float cg = 1.0f - ship->color[1];
+  float cb = 1.0f - ship->color[2];
+
+  MeshBuilder mb;
+  mb.begin(GL_POINTS);
+  for (const TrailPoint& p : trail) {
+    mb.color(cr, cg, cb, p.aliveness());
+    mb.vertex(p.x, p.y);
   }
-  glEnd();
+  mb.end();
+
+  glPointSize(point_size);
+  mesh_.upload(mb, GL_DYNAMIC_DRAW);
+  mesh_.draw();
 }
 
 void GLTrail::step(float delta) {
-  for(size_t i = 0; i < trail.size(); ) {
+  for (size_t i = 0; i < trail.size(); ) {
     trail[i].step(delta);
-    if(!trail[i].is_alive()) {
+    if (!trail[i].is_alive()) {
       trail[i] = std::move(trail.back());
       trail.pop_back();
     } else {
       ++i;
     }
   }
-  if(type & ALWAYS ||
-     (type & THRUSTING && ship->ship->thrusting) ||
-     (type & REVERSING && ship->ship->reversing) ||
-     (type & LEFT      && ship->ship->rotation_direction == Ship::LEFT) ||
-     (type & RIGHT     && ship->ship->rotation_direction == Ship::RIGHT)) {
-       int current_time = glutGet(GLUT_ELAPSED_TIME);
-       if(last_add_time + add_interval < current_time) {
-          add();
-          last_add_time = current_time;
-       }
-   }
+  if (type & ALWAYS ||
+      (type & THRUSTING && ship->ship->thrusting) ||
+      (type & REVERSING && ship->ship->reversing) ||
+      (type & LEFT      && ship->ship->rotation_direction == Ship::LEFT) ||
+      (type & RIGHT     && ship->ship->rotation_direction == Ship::RIGHT)) {
+    int current_time = glutGet(GLUT_ELAPSED_TIME);
+    if (last_add_time + add_interval < current_time) {
+      add();
+      last_add_time = current_time;
+    }
+  }
 }
 
 void GLTrail::add() {
-  Point velocity;
-  Point position;
-  Point direction;
-  //TODO: cross product or something?
-  position = ship->ship->tail() + ship->ship->facing * offset.y() + ship->ship->facing.perpendicular() * offset.x();
-  direction = ship->ship->facing*-1.0;
-  direction.rotate(rotation);
-  velocity = direction*speed + ship->ship->velocity;
-  velocity.rotate((rand() / (float)RAND_MAX) * deviation - deviation / 2.0);
-  trail.push_back(Particle(position, velocity, life));
+  Point pos = ship->ship->tail()
+            + ship->ship->facing * offset.y()
+            + ship->ship->facing.perpendicular() * offset.x();
+
+  Point dir = ship->ship->facing * -1.0f;
+  dir.rotate(rotation);
+
+  Point vel = dir * speed + ship->ship->velocity;
+  vel.rotate((rand() / (float)RAND_MAX) * deviation - deviation / 2.0f);
+
+  trail.emplace_back(pos.x(), pos.y(), vel.x(), vel.y(), life);
 }

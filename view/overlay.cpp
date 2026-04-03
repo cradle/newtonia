@@ -6,6 +6,7 @@
 #include "../touch_controls.h"
 
 #include "../gl_compat.h"
+#include "../mesh.h"
 #include <cstdio>
 #include <cmath>
 
@@ -34,11 +35,9 @@ void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
   int nx = glgame->num_x_viewports();
   int ny = glgame->num_y_viewports();
 
-  // Overlay half-extents in orthogonal coordinates
   float hw = (float)Typer::window_width / nx;
   float hh = (float)Typer::window_height / ny;
 
-  // Perspective visible half-extents at z=0, matching draw_perspective
   float fov_deg = (ny == 1) ? glship->view_angle() : glship->view_angle() * 0.75f;
   float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
   float aspect = ((float)glgame->window.x() / nx) / ((float)glgame->window.y() / ny);
@@ -47,7 +46,6 @@ void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
   float scale_x = hw / half_w;
   float scale_y = hh / half_h;
 
-  // View rotation matching draw_perspective
   float dir_deg = glship->rotate_view() ? glship->camera_facing() : 0.0f;
   float dir_rad = dir_deg * (float)M_PI / 180.0f;
   float cos_d = cosf(dir_rad);
@@ -55,9 +53,8 @@ void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
 
   Point ship_pos = glship->ship->position;
 
-  const float inset = 40.0f;
+  const float inset      = 40.0f;
   const float arrow_size = 48.0f;
-
   float edge_hw = hw - inset;
   float edge_hh = hh - inset;
 
@@ -65,60 +62,54 @@ void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
   for (auto it = glgame->objects->cbegin(); it != glgame->objects->cend(); ++it) {
     const Asteroid *a = *it;
     if (!a->alive || a->invincible) continue;
-
     Point closest = a->position.closest_to(ship_pos);
     float wdx = closest.x() - ship_pos.x();
     float wdy = closest.y() - ship_pos.y();
-
     float sx = (wdx * cos_d - wdy * sin_d) * scale_x;
     float sy = (wdx * sin_d + wdy * cos_d) * scale_y;
-
     float r_sx = a->effective_radius() * scale_x;
     float r_sy = a->effective_radius() * scale_y;
     if (sx - r_sx < hw && sx + r_sx > -hw && sy - r_sy < hh && sy + r_sy > -hh) return;
   }
 
-  glColor3f(1.0f, 1.0f, 1.0f);
+  static MeshBuilder mb;
+  static Mesh mesh;
+  mb.clear();
+  mb.begin(GL_TRIANGLES);
+  mb.color(1.0f, 1.0f, 1.0f, 1.0f);
 
   for (auto it = glgame->objects->cbegin(); it != glgame->objects->cend(); ++it) {
     const Asteroid *a = *it;
     if (!a->alive || a->invincible) continue;
 
-    // Find closest wrapped position to ship
     Point closest = a->position.closest_to(ship_pos);
     float wdx = closest.x() - ship_pos.x();
     float wdy = closest.y() - ship_pos.y();
-
-    // Rotate into screen space
     float sx = (wdx * cos_d - wdy * sin_d) * scale_x;
     float sy = (wdx * sin_d + wdy * cos_d) * scale_y;
-
-    // Skip if asteroid is fully or partially visible
     float r_sx = a->effective_radius() * scale_x;
     float r_sy = a->effective_radius() * scale_y;
     if (sx - r_sx < hw && sx + r_sx > -hw && sy - r_sy < hh && sy + r_sy > -hh) continue;
 
-    // Project direction onto screen edge with inset
     float tx = (fabsf(sx) > 1e-6f) ? edge_hw / fabsf(sx) : 1e9f;
     float ty = (fabsf(sy) > 1e-6f) ? edge_hh / fabsf(sy) : 1e9f;
-    float t = (tx < ty) ? tx : ty;
-
+    float t  = (tx < ty) ? tx : ty;
     float ax = fmaxf(fminf(sx * t, edge_hw), -edge_hw);
     float ay = fmaxf(fminf(sy * t, edge_hh), -edge_hh);
 
-    // Arrow angle pointing toward asteroid
-    float angle = atan2f(sy, sx);
+    float angle   = atan2f(sy, sx);
     float cos_a   = cosf(angle);
     float sin_a   = sinf(angle);
     float cos_a90 = cosf(angle + (float)M_PI / 2.0f);
     float sin_a90 = sinf(angle + (float)M_PI / 2.0f);
 
-    glBegin(GL_TRIANGLES);
-    glVertex2f(ax + cos_a * arrow_size,               ay + sin_a * arrow_size);
-    glVertex2f(ax + cos_a90 * (arrow_size * 0.5f),    ay + sin_a90 * (arrow_size * 0.5f));
-    glVertex2f(ax - cos_a90 * (arrow_size * 0.5f),    ay - sin_a90 * (arrow_size * 0.5f));
-    glEnd();
+    mb.vertex(ax + cos_a   * arrow_size,            ay + sin_a   * arrow_size);
+    mb.vertex(ax + cos_a90 * (arrow_size * 0.5f),   ay + sin_a90 * (arrow_size * 0.5f));
+    mb.vertex(ax - cos_a90 * (arrow_size * 0.5f),   ay - sin_a90 * (arrow_size * 0.5f));
   }
+  mb.end();
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
 }
 
 void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
@@ -153,7 +144,6 @@ void Overlay::god_mode(const GLGame *glgame, const GLShip *glship) {
 }
 
 void Overlay::score(const GLGame *glgame, const GLShip *glship) {
-  //FIX: Window encapsulation? Players size encapsulation?
   float vw = Typer::scaled_window_width / glgame->num_x_viewports();
   float vh = Typer::scaled_window_height / glgame->num_y_viewports();
   Typer::draw(vw - 40 - CORNER_INSET, vh - 20 - CORNER_INSET, glship->ship->score, 20);
@@ -166,7 +156,7 @@ void Overlay::score(const GLGame *glgame, const GLShip *glship) {
 void Overlay::level_cleared(const GLGame *glgame, const GLShip *glship) {
   if(glgame->running && glgame->level_cleared && (glship->ship->is_alive() || glship->ship->lives > 0)) {
     Typer::draw_centered(0, 150, "CLEARED", 50);
-    Typer::draw_centered(0, -60, (glgame->time_until_next_generation / 1000)+1, 20); // respawn AT 0
+    Typer::draw_centered(0, -60, (glgame->time_until_next_generation / 1000)+1, 20);
   }
 }
 
@@ -260,24 +250,29 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   }
 }
 
-// Draw a circle (outline or filled) in the current OpenGL orthogonal context.
-void Overlay::draw_circle(float cx, float cy, float r, int segs, bool filled) {
-  if(filled) {
-    glBegin(GL_TRIANGLE_FAN);
-    glVertex2f(cx, cy);
+void Overlay::draw_circle(float cx, float cy, float r, int segs, bool filled,
+                          float cr, float cg, float cb, float ca) {
+  static MeshBuilder mb;
+  static Mesh mesh;
+  mb.clear();
+  mb.color(cr, cg, cb, ca);
+  if (filled) {
+    mb.begin(GL_TRIANGLE_FAN);
+    mb.vertex(cx, cy);
   } else {
-    glBegin(GL_LINE_LOOP);
+    mb.begin(GL_LINE_LOOP);
   }
-  for(int i = 0; i <= segs; i++) {
+  for (int i = 0; i <= segs; i++) {
     float angle = 2.0f * (float)M_PI * (float)i / (float)segs;
-    glVertex2f(cx + r * cosf(angle), cy + r * sinf(angle));
+    mb.vertex(cx + r * cosf(angle), cy + r * sinf(angle));
   }
-  glEnd();
+  mb.end();
+  mesh.upload(mb, GL_DYNAMIC_DRAW);
+  mesh.draw();
 }
 
 void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
 #if defined(__ANDROID__) || defined(__IOS__)
-  // Only render for the primary (first) player.
   if(glgame->players->front() != glship) return;
 
   float pw = (float)Typer::window_width;
@@ -295,24 +290,15 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
   float jr  = sr(tc.joy_radius);
 
   if(tc.joy_active) {
-    // Active: draw outer ring at floating base position
     float bx = ox(tc.joy_cx);
     float by = oy(tc.joy_cy);
-    glColor4f(0.5f, 0.65f, 1.0f, 0.75f);
-    draw_circle(bx, by, jr, 32, false);
-
-    // Nub: note y is flipped (screen-down = overlay-up in the nub offset)
+    draw_circle(bx, by, jr, 32, false, 0.5f, 0.65f, 1.0f, 0.75f);
     float nx_off =  tc.joy_nx * jr;
-    float ny_off = -tc.joy_ny * jr;  // flip: screen y increases downward
-    glColor4f(0.7f, 0.85f, 1.0f, 0.90f);
-    draw_circle(bx + nx_off, by + ny_off, jr * 0.38f, 32, true);
+    float ny_off = -tc.joy_ny * jr;
+    draw_circle(bx + nx_off, by + ny_off, jr * 0.38f, 32, true, 0.7f, 0.85f, 1.0f, 0.90f);
   } else {
-    // Inactive: hint ring at home position
-    glColor4f(0.4f, 0.55f, 1.0f, 0.55f);
-    draw_circle(jox, joy, jr, 32, false);
-    // Small centre dot
-    glColor4f(0.4f, 0.55f, 1.0f, 0.40f);
-    draw_circle(jox, joy, jr * 0.25f, 20, true);
+    draw_circle(jox, joy, jr, 32, false, 0.4f, 0.55f, 1.0f, 0.55f);
+    draw_circle(jox, joy, jr * 0.25f, 20, true, 0.4f, 0.55f, 1.0f, 0.40f);
   }
 
   // ---- Shoot button ----
@@ -322,10 +308,8 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     float br = sr(tc.shoot_radius);
     float alpha_fill    = tc.shoot_pressed ? 0.55f : 0.25f;
     float alpha_outline = tc.shoot_pressed ? 0.95f : 0.70f;
-    glColor4f(1.0f, 0.35f, 0.35f, alpha_fill);
-    draw_circle(bx, by, br, 28, true);
-    glColor4f(1.0f, 0.35f, 0.35f, alpha_outline);
-    draw_circle(bx, by, br, 28, false);
+    draw_circle(bx, by, br, 28, true,  1.0f, 0.35f, 0.35f, alpha_fill);
+    draw_circle(bx, by, br, 28, false, 1.0f, 0.35f, 0.35f, alpha_outline);
   }
 
   // ---- Mine button ----
@@ -335,50 +319,58 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     float br = sr(tc.mine_radius);
     float alpha_fill    = tc.mine_pressed ? 0.55f : 0.25f;
     float alpha_outline = tc.mine_pressed ? 0.95f : 0.70f;
-    glColor4f(0.35f, 0.6f, 1.0f, alpha_fill);
-    draw_circle(bx, by, br, 28, true);
-    glColor4f(0.35f, 0.6f, 1.0f, alpha_outline);
-    draw_circle(bx, by, br, 28, false);
+    draw_circle(bx, by, br, 28, true,  0.35f, 0.6f, 1.0f, alpha_fill);
+    draw_circle(bx, by, br, 28, false, 0.35f, 0.6f, 1.0f, alpha_outline);
   }
 
-  // ---- Pause button: bottom-centre, circle with two vertical bars ----
+  // ---- Pause button ----
   {
     float bx = ox(tc.pause_cx);
     float by = oy(tc.pause_cy);
     float br = sr(tc.pause_radius);
     float alpha_fill    = tc.pause_active ? 0.35f : 0.08f;
     float alpha_outline = tc.pause_active ? 0.70f : 0.30f;
-    glColor4f(1.0f, 1.0f, 1.0f, alpha_fill);
-    draw_circle(bx, by, br, 32, true);
-    glColor4f(1.0f, 1.0f, 1.0f, alpha_outline);
-    draw_circle(bx, by, br, 32, false);
+    draw_circle(bx, by, br, 32, true,  1.0f, 1.0f, 1.0f, alpha_fill);
+    draw_circle(bx, by, br, 32, false, 1.0f, 1.0f, 1.0f, alpha_outline);
 
-    glColor4f(1.0f, 1.0f, 1.0f, alpha_outline);
-    if(glgame->running) {
-      // Two vertical bars (pause icon)
+    static MeshBuilder mb;
+    static Mesh mesh_icon;
+    mb.clear();
+    if (glgame->running) {
+      // Two vertical bars (pause icon) — GL_QUADS replaced with GL_TRIANGLES
       float bw  = br * 0.15f;
       float bh  = br * 0.38f;
       float sep = br * 0.20f;
-      glBegin(GL_QUADS);
-      glVertex2f(bx - sep - bw*2, by - bh);
-      glVertex2f(bx - sep,        by - bh);
-      glVertex2f(bx - sep,        by + bh);
-      glVertex2f(bx - sep - bw*2, by + bh);
-      glVertex2f(bx + sep,        by - bh);
-      glVertex2f(bx + sep + bw*2, by - bh);
-      glVertex2f(bx + sep + bw*2, by + bh);
-      glVertex2f(bx + sep,        by + bh);
-      glEnd();
+      mb.begin(GL_TRIANGLES);
+      mb.color(1.0f, 1.0f, 1.0f, alpha_outline);
+      // Left bar
+      mb.vertex(bx - sep - bw*2, by - bh);
+      mb.vertex(bx - sep,        by - bh);
+      mb.vertex(bx - sep,        by + bh);
+      mb.vertex(bx - sep - bw*2, by - bh);
+      mb.vertex(bx - sep,        by + bh);
+      mb.vertex(bx - sep - bw*2, by + bh);
+      // Right bar
+      mb.vertex(bx + sep,        by - bh);
+      mb.vertex(bx + sep + bw*2, by - bh);
+      mb.vertex(bx + sep + bw*2, by + bh);
+      mb.vertex(bx + sep,        by - bh);
+      mb.vertex(bx + sep + bw*2, by + bh);
+      mb.vertex(bx + sep,        by + bh);
+      mb.end();
     } else {
       // Right-pointing triangle (play/resume icon)
       float th = br * 0.45f;
       float tx = bx - br * 0.05f;
-      glBegin(GL_TRIANGLES);
-      glVertex2f(tx - th * 0.6f, by - th);
-      glVertex2f(tx + th,        by);
-      glVertex2f(tx - th * 0.6f, by + th);
-      glEnd();
+      mb.begin(GL_TRIANGLES);
+      mb.color(1.0f, 1.0f, 1.0f, alpha_outline);
+      mb.vertex(tx - th * 0.6f, by - th);
+      mb.vertex(tx + th,        by);
+      mb.vertex(tx - th * 0.6f, by + th);
+      mb.end();
     }
+    mesh_icon.upload(mb, GL_DYNAMIC_DRAW);
+    mesh_icon.draw();
   }
 #endif // __ANDROID__ || __IOS__
 }

@@ -1,13 +1,12 @@
 #include "missile_pickup.h"
 #include "ship.h"
 #include "gl_compat.h"
-#include <math.h>
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
 
 MissilePickup::MissilePickup(WrappedPoint pos) : Pickup(pos) {
+  float s = radius * 0.8f;
+  MeshBuilder mb;
+  build_glow_star(mb, 0.2f, 0.8f, 1.0f, s, s * 0.4f);
+  glow_mesh.upload(mb);
 }
 
 void MissilePickup::apply(Ship *ship) {
@@ -15,11 +14,9 @@ void MissilePickup::apply(Ship *ship) {
 }
 
 void MissilePickup::draw(float world_rotation) const {
-  float s = radius * 0.8f;
-  float outer = s;
-  float inner = s * 0.4f;
-
   glTranslatef(position.x(), position.y(), 0.0f);
   glRotatef(-world_rotation, 0.0f, 0.0f, 1.0f);
-  draw_glow_star(0.2f, 0.8f, 1.0f, outer, inner);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+  glow_mesh.draw();
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }

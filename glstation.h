@@ -3,6 +3,7 @@
 
 #include <list>
 #include "glship.h"
+#include "mesh.h"
 #include "object.h"
 #include "wrapped_point.h"
 #include "savegame.h"
@@ -28,7 +29,7 @@ public:
   int health;
 
 private:
-  unsigned int body, map_body;
+  Mesh body_mesh, map_body_mesh;
   static const int NUM_SEGMENTS = 30;
   float inner_rotation, outer_rotation, outer_rotation_speed, inner_rotation_speed;
 

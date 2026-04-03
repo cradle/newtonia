@@ -3,6 +3,7 @@
 #include "enemy.h"
 
 #include "gl_compat.h"
+#include "mesh.h"
 
 #include "follower.h"
 #include <list>
@@ -28,22 +29,27 @@ GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, flo
   color[0] = color[2] = 0.0;
   color[1] = 255/255.0;
 
-  body = glGenLists(1);
-  glNewList(body, GL_COMPILE);
-  glVertex2f( 0.0f, 1.0f);
-  glVertex2f(-0.8f,-0.9f);
-  glVertex2f(-0.0f,-1.3f);
-  glVertex2f( 0.8f,-0.9);
-  glEndList();
+  {
+    MeshBuilder mb;
+    mb.begin(GL_TRIANGLE_FAN);
+    mb.color(0.0f, 0.0f, 0.0f);
+    mb.vertex( 0.0f, 1.0f); mb.vertex(-0.8f,-0.9f);
+    mb.vertex(-0.0f,-1.3f); mb.vertex( 0.8f,-0.9f);
+    mb.end();
+    body_fill.upload(mb);
 
-  jets = glGenLists(1);
-  glNewList(jets, GL_COMPILE);
-  glEndList();
+    mb.clear();
+    mb.begin(GL_LINE_LOOP);
+    mb.color(color[0], color[1], color[2]);
+    mb.vertex( 0.0f, 1.0f); mb.vertex(-0.8f,-0.9f);
+    mb.vertex(-0.0f,-1.3f); mb.vertex( 0.8f,-0.9f);
+    mb.end();
+    body_outline.upload(mb);
+    // jets mesh stays empty — enemy has no thruster effect
+  }
 
   genForceShield();
 }
 
 GLEnemy::~GLEnemy() {
-  glDeleteLists(body, 1);
-  glDeleteLists(jets, 1);
 }
