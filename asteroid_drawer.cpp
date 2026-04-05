@@ -193,7 +193,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
     AsteroidVerts const &v = verts[ai];
     float r, g, b, a;
     if      (v.invisible)                          { r=0.0f; g=0.0f; b=0.0f; a=1.0f; }
-    else if (v.phasing && v.phased)                { r=0.1f; g=0.3f; b=0.6f; a=0.18f;}
+    else if (v.phasing && v.phased)                { r=0.5f; g=0.5f; b=0.5f; a=0.5f; }
     else if (v.phasing)                            { r=0.0f; g=0.0f; b=0.0f; a=1.0f; }
     else if (v.quantum && v.quantum_observed)      { r=0.15f;g=0.0f; b=0.35f;a=0.85f;}
     else if (v.quantum)                            { r=0.1f; g=0.0f; b=0.25f;a=0.6f; }
@@ -227,13 +227,13 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
     if (v.invisible) continue;
     float r, g, b, a;
     if (v.phasing && v.phased) {
-      // Ghost: translucent blue-white; brighter when about to re-solidify
+      // Ghost: invincible colours; brighter when about to re-solidify
       bool warning = (v.phase_timer < 400) && ((v.phase_timer % 200) < 100);
-      r=0.4f; g=0.7f; b=1.0f; a = warning ? 0.9f : 0.45f;
+      r=0.8f; g=0.8f; b=0.8f; a = warning ? 1.0f : 0.8f;
     } else if (v.phasing) {
-      // Solid: amber/orange tint; flashes when window is closing
+      // Solid: killable colours; flashes when window is closing
       bool warning = (v.phase_timer < 500) && ((v.phase_timer % 200) < 100);
-      r=1.0f; g = warning ? 0.4f : 0.75f; b=0.0f; a=1.0f;
+      r=1.0f; g=1.0f; b=1.0f; a = warning ? 0.4f : 1.0f;
     } else if (v.quantum && v.quantum_observed) { r=0.65f;g=0.1f; b=1.0f; a=1.0f; }
     else if (v.quantum)                         { r=0.5f; g=0.1f; b=0.8f; a=0.65f;}
     else if (v.teleporting)                     { r=1.0f; g=1.0f; b=1.0f; a=1.0f; }
