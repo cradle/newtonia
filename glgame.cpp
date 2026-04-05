@@ -728,23 +728,8 @@ void GLGame::tick(int delta) {
     while(oi != objects->end()) {
       if((*oi)->add_children(objects)) {
         if(!(*oi)->invincible) {
-          float roll = rand() / float(RAND_MAX);
-          if(roll < extra_life_drop_chance) {
-            pickups->push_back(new ExtraLife((*oi)->position));
-          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance) {
-            int weapon_index = rand() % 15;
-            pickups->push_back(new WeaponPickup((*oi)->position, weapon_index));
-          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance) {
-            pickups->push_back(new MinePickup((*oi)->position));
-          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance) {
-            pickups->push_back(new GigaMinePickup((*oi)->position));
-          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance) {
-            pickups->push_back(new MissilePickup((*oi)->position));
-          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance) {
-            pickups->push_back(new ShieldPickup((*oi)->position));
-          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance) {
-            pickups->push_back(new GodModePickup((*oi)->position));
-          }
+          // TESTING: always drop god mode
+          pickups->push_back(new GodModePickup((*oi)->position));
         }
         // Move to dead_objects so the collision grid no longer iterates this
         // asteroid while its debris particles are still fading out.
