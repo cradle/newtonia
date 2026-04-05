@@ -20,7 +20,7 @@ Mix_Chunk * Asteroid::asteroid_ting_sound = NULL;
 
 const int Asteroid::max_radius = Asteroid::radius_variation + Asteroid::minimum_radius;
 
-Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool teleporting, bool quantum, bool tough, bool armoured) : CompositeObject(), killed(false) {
+Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool teleporting, bool quantum, bool tough, bool armoured, bool phasing) : CompositeObject(), killed(false) {
   position = WrappedPoint();
   this->reflective = reflective;
   this->teleporting = teleporting;
@@ -35,6 +35,10 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   this->tough = tough;
   this->armoured = armoured;
   this->armour_angle = rand() / (float)RAND_MAX * 2.0f * (float)M_PI;
+  this->phasing = phasing;
+  this->phased = false;
+  // Stagger initial timers so a group doesn't all phase in sync.
+  this->phase_timer = 1500 + rand() % 1500;
   if(this->tough) {
     health = 5;
     // Pre-compute stable crack geometry (rotation-invariant: stored as t and perp fractions).
@@ -65,6 +69,8 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
     radius = rand() % 100 + 70; // 70–170: noticeably large
   } else if(quantum) {
     radius = rand() % 70 + 50;  // 50–120: medium-large
+  } else if(phasing) {
+    radius = rand() % 50 + 40;  // 40–90: medium-small, timing the window is the challenge
   } else if(invincible) {
     radius = rand()%radius_variation + minimum_radius;
   } else if(invisible) {
@@ -145,6 +151,9 @@ Save::Asteroid Asteroid::capture_state() const {
     s.elastic        = elastic;
     s.armoured       = armoured;
     s.armour_angle   = armour_angle;
+    s.phasing        = phasing;
+    s.phased         = phased;
+    s.phase_timer    = phase_timer;
     s.teleport_vulnerable  = teleport_vulnerable;
     s.teleport_angle       = teleport_angle;
     s.vulnerable_time_left = vulnerable_time_left;
@@ -182,6 +191,9 @@ void Asteroid::restore_state(const Save::Asteroid &s) {
     elastic        = s.elastic;
     armoured       = s.armoured;
     armour_angle   = s.armour_angle;
+    phasing        = s.phasing;
+    phased         = s.phased;
+    phase_timer    = s.phase_timer;
 
     teleport_vulnerable  = s.teleport_vulnerable;
     teleport_angle       = s.teleport_angle;
@@ -205,6 +217,14 @@ void Asteroid::step(int delta) {
   CompositeObject::step(delta);
   if(armoured) {
     armour_angle += rotation_speed * delta * (float)M_PI / 180.0f;
+  }
+  if(phasing) {
+    phase_timer -= delta;
+    if(phase_timer <= 0) {
+      phased = !phased;
+      // Ghost window: 1.2–1.8 s; solid window: 2.0–2.5 s.
+      phase_timer = phased ? (1200 + rand() % 600) : (2000 + rand() % 500);
+    }
   }
   if(teleporting && teleport_vulnerable) {
     vulnerable_time_left -= delta;
@@ -256,6 +276,9 @@ Asteroid::Asteroid(Asteroid const *mother) {
   tough = false;
   armoured = false;
   armour_angle = 0.0f;
+  phasing = mother->phasing;
+  phased = false;
+  phase_timer = 1500 + rand() % 1500;
   health = 1;
   killed = false;
   invincible = mother->invincible;
@@ -411,6 +434,18 @@ bool Asteroid::kill() {
           last_teleport_tick = now;
           Mix_PlayChannel(-1, thud_sound, 0);
         }
+      }
+    }
+    return false;
+  }
+  // Phasing asteroid in ghost state: bullets pass straight through.
+  if(phasing && phased && !killed) {
+    if(ting_sound != NULL) {
+      static Uint32 last_phase_ting = UINT32_MAX;
+      Uint32 now = SDL_GetTicks();
+      if(now - last_phase_ting >= 125) {
+        last_phase_ting = now;
+        Mix_PlayChannel(-1, ting_sound, 0);
       }
     }
     return false;

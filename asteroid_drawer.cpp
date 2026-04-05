@@ -123,6 +123,9 @@ struct AsteroidVerts {
   float crack_perp[5];
   bool armoured;
   float armour_angle;
+  bool phasing;
+  bool phased;
+  int  phase_timer;
 };
 
 void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
@@ -167,6 +170,9 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
     v.health              = a->health;
     v.armoured            = a->armoured;
     v.armour_angle        = a->armour_angle;
+    v.phasing             = a->phasing;
+    v.phased              = a->phased;
+    v.phase_timer         = a->phase_timer;
     for (int k = 0; k < 5; k++) {
       v.crack_vertex[k] = a->crack_vertex[k];
       v.crack_t[k]      = a->crack_t[k];
@@ -187,6 +193,8 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
     AsteroidVerts const &v = verts[ai];
     float r, g, b, a;
     if      (v.invisible)                          { r=0.0f; g=0.0f; b=0.0f; a=1.0f; }
+    else if (v.phasing && v.phased)                { r=0.5f; g=0.5f; b=0.5f; a=0.5f; }
+    else if (v.phasing)                            { r=0.0f; g=0.0f; b=0.0f; a=1.0f; }
     else if (v.quantum && v.quantum_observed)      { r=0.15f;g=0.0f; b=0.35f;a=0.85f;}
     else if (v.quantum)                            { r=0.1f; g=0.0f; b=0.25f;a=0.6f; }
     else if (v.teleporting || v.armoured)          { r=0.0f; g=0.0f; b=0.0f; a=1.0f; }
@@ -218,12 +226,20 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
     AsteroidVerts const &v = verts[ai];
     if (v.invisible) continue;
     float r, g, b, a;
-    if      (v.quantum && v.quantum_observed)  { r=0.65f;g=0.1f; b=1.0f; a=1.0f; }
-    else if (v.quantum)                        { r=0.5f; g=0.1f; b=0.8f; a=0.65f;}
-    else if (v.teleporting)                    { r=1.0f; g=1.0f; b=1.0f; a=1.0f; }
-    else if (v.reflective)                     { r=0.3f; g=0.9f; b=1.0f; a=0.9f; }
-    else if (v.invincible)                     { r=0.8f; g=0.8f; b=0.8f; a=0.8f; }
-    else                                       { r=1.0f; g=1.0f; b=1.0f; a=1.0f; }
+    if (v.phasing && v.phased) {
+      // Ghost: invincible colours; brighter when about to re-solidify
+      bool warning = (v.phase_timer < 400) && ((v.phase_timer % 200) < 100);
+      r=0.8f; g=0.8f; b=0.8f; a = warning ? 1.0f : 0.8f;
+    } else if (v.phasing) {
+      // Solid: killable colours; flashes when window is closing
+      bool warning = (v.phase_timer < 500) && ((v.phase_timer % 200) < 100);
+      r=1.0f; g=1.0f; b=1.0f; a = warning ? 0.4f : 1.0f;
+    } else if (v.quantum && v.quantum_observed) { r=0.65f;g=0.1f; b=1.0f; a=1.0f; }
+    else if (v.quantum)                         { r=0.5f; g=0.1f; b=0.8f; a=0.65f;}
+    else if (v.teleporting)                     { r=1.0f; g=1.0f; b=1.0f; a=1.0f; }
+    else if (v.reflective)                      { r=0.3f; g=0.9f; b=1.0f; a=0.9f; }
+    else if (v.invincible)                      { r=0.8f; g=0.8f; b=0.8f; a=0.8f; }
+    else                                        { r=1.0f; g=1.0f; b=1.0f; a=1.0f; }
     mb.color(r, g, b, a);
     for (int wi = 0; wi < (v.dx != 0 ? 2 : 1); wi++) {
       for (int wj = 0; wj < (v.dy != 0 ? 2 : 1); wj++) {
