@@ -175,12 +175,17 @@ class Ship : public CompositeObject {
     void safe_position(const Grid &grid, bool try_current = false);
 
     void play_rotating_sound(bool on);
+    void update_god_mode_music(int time_remaining);
+    void stop_god_mode_music();
     Mix_Chunk *boost_sound = NULL, *tic_sound = NULL, *tic_low_sound = NULL, *click_sound = NULL;
     Mix_Chunk *missile_explode_sound = NULL, *shield_hum_sound = NULL, *explode_sound = NULL;
     Mix_Chunk *giga_mine_explode_sound = NULL, *mine_explode_sound = NULL;
     Mix_Chunk *shoot_sound = NULL;
+    Mix_Chunk *god_mode_music_sound = NULL, *god_mode_music_warn_sound = NULL;
     int shield_hum_channel = -1;
     int boost_channel = -1;
+    int god_mode_music_channel = -1;
+    int god_mode_music_phase = 0;  // 0=off, 1=main, 2=warn
 
     list<Behaviour *> behaviours;
     list<Weapon::Base *> primary_weapons;
