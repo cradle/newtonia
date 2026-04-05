@@ -377,7 +377,7 @@ void GLGame::add_asteroids() {
   for(int i = 0; i < num_armoured; i++) {
     objects->push_back(new Asteroid(false, false, false, false, false, false, true));
   }
-  int num_phasing = (generation >= 8) ? (generation - 8) / 2 + 1 : 0;
+  int num_phasing = 1;
   for(int i = 0; i < num_phasing; i++) {
     objects->push_back(new Asteroid(false, false, false, false, false, false, false, true));
   }
