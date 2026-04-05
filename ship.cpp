@@ -91,6 +91,18 @@ Ship::Ship(const Grid &grid, bool has_friction) :
       std::cout << "Unable to load shoot.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
+  if(god_mode_music_sound == NULL) {
+    god_mode_music_sound = Mix_LoadWAV("audio/god_mode_music.wav");
+    if(god_mode_music_sound == NULL) {
+      std::cout << "Unable to load god_mode_music.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(god_mode_music_warn_sound == NULL) {
+    god_mode_music_warn_sound = Mix_LoadWAV("audio/god_mode_music_warn.wav");
+    if(god_mode_music_warn_sound == NULL) {
+      std::cout << "Unable to load god_mode_music_warn.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
 }
 
 void Ship::add_behaviour(Behaviour *b) {
@@ -153,6 +165,13 @@ Ship::~Ship() {
   }
   if(shoot_sound != NULL) {
     Mix_FreeChunk(shoot_sound);
+  }
+  stop_god_mode_music();
+  if(god_mode_music_sound != NULL) {
+    Mix_FreeChunk(god_mode_music_sound);
+  }
+  if(god_mode_music_warn_sound != NULL) {
+    Mix_FreeChunk(god_mode_music_warn_sound);
   }
 }
 
@@ -352,6 +371,8 @@ void Ship::add_god_mode(int duration_ms) {
     if(dynamic_cast<Weapon::GodMode*>(*it)) {
       (*it)->set_ammo(duration_ms);
       invincible = true;
+      god_mode_music_phase = 0;  // force phase re-evaluation so warn→main on re-pickup
+      update_god_mode_music(duration_ms);
       return;
     }
   }
@@ -359,6 +380,7 @@ void Ship::add_god_mode(int duration_ms) {
   if (primary != primary_weapons.end())
     (*primary)->shoot(false);
   primary = --primary_weapons.end();
+  update_god_mode_music(duration_ms);
 }
 
 int Ship::god_mode_time_remaining() const {
@@ -642,6 +664,7 @@ bool Ship::kill() {
       Mix_VolumeChunk(boost_sound, 0);
     }
     set_shield_hum(false);
+    stop_god_mode_music();
     if(explode_sound != NULL && sound_volume_scale > 0.0f) {
       Mix_PlayChannel(-1, explode_sound, 0);
     }
@@ -1125,6 +1148,34 @@ void Ship::set_shield_hum(bool on) {
   }
 }
 
+void Ship::stop_god_mode_music() {
+  if(god_mode_music_channel >= 0) {
+    Mix_HaltChannel(god_mode_music_channel);
+    god_mode_music_channel = -1;
+  }
+  god_mode_music_phase = 0;
+}
+
+void Ship::update_god_mode_music(int time_remaining) {
+  if(sound_volume_scale < 1.0f) return;
+  if(time_remaining <= 0) {
+    stop_god_mode_music();
+    return;
+  }
+  int target_phase = (time_remaining > 3000) ? 1 : 2;
+  if(target_phase == god_mode_music_phase) return;  // already correct, nothing to do
+  // Stop whatever is currently playing
+  if(god_mode_music_channel >= 0) {
+    Mix_HaltChannel(god_mode_music_channel);
+    god_mode_music_channel = -1;
+  }
+  Mix_Chunk *chunk = (target_phase == 1) ? god_mode_music_sound : god_mode_music_warn_sound;
+  if(chunk != NULL) {
+    god_mode_music_channel = Mix_PlayChannel(-1, chunk, -1);
+  }
+  god_mode_music_phase = target_phase;
+}
+
 float Ship::heading() const {
   //FIX: shouldn't have to calculate this each time
   return facing.direction();
@@ -1246,6 +1297,16 @@ void Ship::step(float delta, const Grid &grid) {
     for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
       if (!dynamic_cast<Weapon::Missile*>(*it))
         (*it)->step(delta);
+    }
+
+    // God mode music: update phase transitions and play rapid tic beeps in last second
+    int gm_time = god_mode_time_remaining();
+    update_god_mode_music(gm_time);
+    if(gm_time > 0 && gm_time <= 1000 && sound_volume_scale >= 1.0f && tic_sound != NULL) {
+      int prev_gm_time = gm_time + (int)delta;
+      if((prev_gm_time / 200) != (gm_time / 200)) {
+        Mix_PlayChannel(-1, tic_sound, 0);
+      }
     }
 
   } else if (lives > 0) {
