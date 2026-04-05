@@ -377,6 +377,10 @@ void GLGame::add_asteroids() {
   for(int i = 0; i < num_armoured; i++) {
     objects->push_back(new Asteroid(false, false, false, false, false, false, true));
   }
+  int num_phasing = (generation >= 8) ? (generation - 8) / 2 + 1 : 0;
+  for(int i = 0; i < num_phasing; i++) {
+    objects->push_back(new Asteroid(false, false, false, false, false, false, false, true));
+  }
 }
 
 void GLGame::toggle_pause() {
@@ -493,13 +497,13 @@ void GLGame::tick(int delta) {
       time_until_next_generation -= delta;
     } else {
       generation++;
-      if(generation == 9) {
+      if(generation == 10) {
         world += Point(3000, 3000);
       } else {
         world += Point(50, 50);
       }
       grid = Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2));
-      if(generation >= 9) {
+      if(generation >= 10) {
         if(station != NULL)
           delete station;
         station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
@@ -530,7 +534,7 @@ void GLGame::tick(int delta) {
         delete black_holes->back();
         black_holes->pop_back();
       }
-      if(generation >= 8)
+      if(generation >= 9)
         black_holes->push_back(new BlackHole(WrappedPoint(world.x() / 2.0f, world.y() / 2.0f)));
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {

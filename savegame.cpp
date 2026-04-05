@@ -114,7 +114,7 @@ static bool write_asteroid(FILE *f, const Save::Asteroid &a) {
     if (!wa(f, a.vertex_offsets)) return false;
     if (!wv(f, a.max_vertex_offset)) return false;
 
-    // Pack all type flags into one byte
+    // Pack type flags: byte 1 (original 8 types), byte 2 (newer types)
     uint8_t flags = 0;
     if (a.invincible)  flags |= (1 << 0);
     if (a.invisible)   flags |= (1 << 1);
@@ -125,6 +125,9 @@ static bool write_asteroid(FILE *f, const Save::Asteroid &a) {
     if (a.elastic)     flags |= (1 << 6);
     if (a.armoured)    flags |= (1 << 7);
     if (!wv(f, flags)) return false;
+    uint8_t flags2 = 0;
+    if (a.phasing) flags2 |= (1 << 0);
+    if (!wv(f, flags2)) return false;
 
     if (a.teleporting) {
         if (!wv(f, (uint8_t)a.teleport_vulnerable)) return false;
@@ -142,6 +145,10 @@ static bool write_asteroid(FILE *f, const Save::Asteroid &a) {
         if (!wa(f, a.crack_vertex)) return false;
         if (!wa(f, a.crack_t)) return false;
         if (!wa(f, a.crack_perp)) return false;
+    }
+    if (a.phasing) {
+        if (!wv(f, (uint8_t)a.phased)) return false;
+        if (!wv(f, (int32_t)a.phase_timer)) return false;
     }
     return true;
 }
@@ -166,6 +173,9 @@ static bool read_asteroid(FILE *f, Save::Asteroid &a) {
     a.tough       = (flags >> 5) & 1;
     a.elastic     = (flags >> 6) & 1;
     a.armoured    = (flags >> 7) & 1;
+    uint8_t flags2;
+    if (!rv(f, flags2)) return false;
+    a.phasing = (flags2 >> 0) & 1;
 
     if (a.teleporting) {
         uint8_t tv; int32_t vtl;
@@ -194,6 +204,15 @@ static bool read_asteroid(FILE *f, Save::Asteroid &a) {
     }
     if (a.tough) {
         if (!ra(f, a.crack_vertex) || !ra(f, a.crack_t) || !ra(f, a.crack_perp)) return false;
+    }
+    if (a.phasing) {
+        uint8_t ph; int32_t pt;
+        if (!rv(f, ph) || !rv(f, pt)) return false;
+        a.phased      = (bool)ph;
+        a.phase_timer = (int)pt;
+    } else {
+        a.phased      = false;
+        a.phase_timer = 0;
     }
 
     return true;
