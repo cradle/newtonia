@@ -54,9 +54,18 @@ bool Follower::compute_avoidance(float &avoidance_angle, float &avoidance_streng
 
     WrappedPoint apos = a->position;
     Point away = ship->position.closest_to(apos) - apos;
-    float weight = 1.0f / (dist * dist);  // inverse-square: close threats dominate, reducing cancellation
-    sum_x += away.normalized().x() * weight;
-    sum_y += away.normalized().y() * weight;
+
+    // Boost weight for asteroids closing fast relative to the ship.
+    // Closing speed = component of relative velocity toward the ship (positive = approaching).
+    Point rel_vel = a->velocity - ship->velocity;
+    Point away_n = away.normalized();
+    float closing = -(rel_vel.x() * away_n.x() + rel_vel.y() * away_n.y());  // positive when closing
+    if(closing < 0.0f) closing = 0.0f;
+    float speed_factor = 1.0f + closing * 0.5f;
+
+    float weight = speed_factor / (dist * dist);
+    sum_x += away_n.x() * weight;
+    sum_y += away_n.y() * weight;
   }
 
   Point composite(sum_x, sum_y);
@@ -98,18 +107,15 @@ void Follower::step(int delta) {
         ship->rotate_left(true);
         ship->rotate_right(false);
       }
-      // Only thrust once roughly facing the safe direction (within 90°).
-      // While still rotating toward it, stop thrusting — prevents driving into
-      // the obstacle during the turn.
-      bool aligned = (avoidance_angle < 90.0f || avoidance_angle > 270.0f);
-      if(aligned) {
-        float t = 1.0f - avoidance_strength;
-        if(t < 0.3f) t = 0.3f;
-        ship->thrust_analog = t;
-        ship->thrust(true);
-      } else {
-        ship->thrust(false);
-      }
+      // Thrust scales smoothly with alignment: full when facing the safe direction,
+      // zero when pointing directly away. Prevents driving into obstacles during a
+      // turn without causing the ship to stop dead when only slightly misaligned.
+      float signed_angle = avoidance_angle > 180.0f ? avoidance_angle - 360.0f : avoidance_angle;
+      float alignment = cosf(signed_angle * M_PI / 180.0f);
+      if(alignment < 0.0f) alignment = 0.0f;
+      float t = alignment * (1.0f - avoidance_strength);
+      ship->thrust_analog = t;
+      ship->thrust(t > 0.05f);
     } else if(target) {
       ship->thrust_analog = 1.0f;
       ship->thrust(true);
