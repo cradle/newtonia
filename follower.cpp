@@ -98,10 +98,18 @@ void Follower::step(int delta) {
         ship->rotate_left(true);
         ship->rotate_right(false);
       }
-      float t = 1.0f - avoidance_strength;
-      if(t < 0.3f) t = 0.3f;
-      ship->thrust_analog = t;
-      ship->thrust(true);
+      // Only thrust once roughly facing the safe direction (within 90°).
+      // While still rotating toward it, stop thrusting — prevents driving into
+      // the obstacle during the turn.
+      bool aligned = (avoidance_angle < 90.0f || avoidance_angle > 270.0f);
+      if(aligned) {
+        float t = 1.0f - avoidance_strength;
+        if(t < 0.3f) t = 0.3f;
+        ship->thrust_analog = t;
+        ship->thrust(true);
+      } else {
+        ship->thrust(false);
+      }
     } else if(target) {
       ship->thrust_analog = 1.0f;
       ship->thrust(true);
