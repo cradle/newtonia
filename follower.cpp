@@ -34,16 +34,14 @@ void Follower::common_init() {
 }
 
 bool Follower::compute_avoidance(float &avoidance_angle, float &avoidance_strength) {
-  // Avoidance range and FOV widen with difficulty so higher-level enemies navigate better.
+  // Avoidance range widens with difficulty so higher-level enemies detect obstacles sooner.
   float avoid_range = 250.0f + difficulty * 5.0f;
-  float fov = 50.0f + difficulty * 4.0f;
-  if(fov > 160.0f) fov = 160.0f;
 
   if(!asteroids) return false;
 
-  // Accumulate a repulsion vector from all nearby asteroids within the FOV cone.
+  // Accumulate a repulsion vector from all nearby asteroids.
   // Each asteroid contributes a vector pointing away from it, weighted by 1/dist
-  // (closer asteroids exert stronger repulsion).
+  // (closer asteroids exert stronger repulsion). Full 360° awareness — no FOV cone.
   float sum_x = 0.0f, sum_y = 0.0f;
 
   list<Object *>::iterator it;
@@ -55,13 +53,6 @@ bool Follower::compute_avoidance(float &avoidance_angle, float &avoidance_streng
     if(dist >= avoid_range) continue;
 
     WrappedPoint apos = a->position;
-    Point toward = (ship->position.closest_to(apos) - apos) * -1.0f;  // ship → asteroid
-    float angle_to = ship->heading() - toward.normalized().direction();
-    angle_to = fmod(angle_to, 360.0f);
-    if(angle_to > 180.0f)  angle_to -= 360.0f;
-    if(angle_to < -180.0f) angle_to += 360.0f;
-    if(fabs(angle_to) > fov) continue;
-
     Point away = ship->position.closest_to(apos) - apos;
     float weight = 1.0f / dist;
     sum_x += away.normalized().x() * weight;
