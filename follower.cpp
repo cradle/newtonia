@@ -112,11 +112,20 @@ void Follower::step(int delta) {
       // turn without causing the ship to stop dead when only slightly misaligned.
       float signed_angle = avoidance_angle > 180.0f ? avoidance_angle - 360.0f : avoidance_angle;
       float alignment = cosf(signed_angle * M_PI / 180.0f);
-      if(alignment < 0.0f) alignment = 0.0f;
-      float t = alignment * (1.0f - avoidance_strength);
-      ship->thrust_analog = t;
-      ship->thrust(t > 0.05f);
+      if(alignment >= 0.0f) {
+        float t = alignment * (1.0f - avoidance_strength);
+        ship->reverse(false);
+        ship->thrust_analog = t;
+        ship->thrust(t > 0.05f);
+      } else {
+        // Facing away from safe direction — reverse to back away from the obstacle.
+        float t = -alignment * avoidance_strength;
+        ship->thrust(false);
+        ship->reverse_analog = t;
+        ship->reverse(t > 0.05f);
+      }
     } else if(target) {
+      ship->reverse(false);
       ship->thrust_analog = 1.0f;
       ship->thrust(true);
       WrappedPoint target_point = target->position;
