@@ -37,33 +37,56 @@ bool Follower::compute_avoidance(float &avoidance_angle, float &avoidance_streng
   // Avoidance range widens with difficulty so higher-level enemies detect obstacles sooner.
   float avoid_range = 250.0f + difficulty * 5.0f;
 
+  // Trajectory scan: look further out to catch fast-moving side/rear threats.
+  static const float SCAN_RANGE    = 700.0f;  // broader initial filter (center-to-center)
+  static const float TIME_HORIZON  = 2500.0f; // ms to look ahead for collision courses
+  static const float DANGER_MARGIN = 80.0f;   // predicted miss distance to treat as threat
+
   if(!asteroids) return false;
 
-  // Accumulate a repulsion vector from all nearby asteroids.
-  // Each asteroid contributes a vector pointing away from it, weighted by 1/dist
-  // (closer asteroids exert stronger repulsion). Full 360° awareness — no FOV cone.
+  // Accumulate a repulsion vector from all nearby or on-course asteroids.
+  // Weight by 1/effective_dist² where effective_dist is the predicted closest approach
+  // distance for trajectory threats, or current surface distance otherwise.
   float sum_x = 0.0f, sum_y = 0.0f;
 
   list<Object *>::iterator it;
   for(it = asteroids->begin(); it != asteroids->end(); ++it) {
     Object *a = *it;
     if(!a->alive) continue;
-    float dist = ship->position.distance_to(a->position) - a->radius;
-    if(dist < 1.0f) dist = 1.0f;
-    if(dist >= avoid_range) continue;
 
     WrappedPoint apos = a->position;
-    Point away = ship->position.closest_to(apos) - apos;
+    Point away = ship->position.closest_to(apos) - apos;  // asteroid → ship
 
-    // Boost weight for asteroids closing fast relative to the ship.
-    // Closing speed = component of relative velocity toward the ship (positive = approaching).
-    Point rel_vel = a->velocity - ship->velocity;
+    float dist = away.magnitude() - a->radius;  // surface distance
+    if(dist < 1.0f) dist = 1.0f;
+    if(dist >= SCAN_RANGE) continue;
+
+    // Trajectory prediction: find time of closest approach and predicted miss distance.
+    // p = asteroid pos relative to ship = -away
+    // v = asteroid velocity relative to ship
+    // tca = -(p·v)/|v|² = (away·v)/|v|²
+    Point v = a->velocity - ship->velocity;
+    float rv2 = v.x()*v.x() + v.y()*v.y();
+    float effective_dist = dist;
+
+    if(rv2 > 0.001f) {
+      float tca = (away.x()*v.x() + away.y()*v.y()) / rv2;
+      if(tca > 0.0f && tca < TIME_HORIZON) {
+        // Position of asteroid relative to ship at closest approach: -away + v*tca
+        float cx = -away.x() + v.x()*tca;
+        float cy = -away.y() + v.y()*tca;
+        float miss = sqrtf(cx*cx + cy*cy) - a->radius;
+        if(miss < 1.0f) miss = 1.0f;
+        // Only override if asteroid will come dangerously close.
+        if(miss < DANGER_MARGIN)
+          effective_dist = miss;
+      }
+    }
+
+    if(effective_dist >= avoid_range) continue;
+
     Point away_n = away.normalized();
-    float closing = -(rel_vel.x() * away_n.x() + rel_vel.y() * away_n.y());  // positive when closing
-    if(closing < 0.0f) closing = 0.0f;
-    float speed_factor = 1.0f + closing * 0.5f;
-
-    float weight = speed_factor / (dist * dist);
+    float weight = 1.0f / (effective_dist * effective_dist);
     sum_x += away_n.x() * weight;
     sum_y += away_n.y() * weight;
   }
