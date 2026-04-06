@@ -78,8 +78,11 @@ bool Follower::compute_avoidance(float &avoidance_angle, float &avoidance_streng
         float miss = sqrtf(cx*cx + cy*cy) - a->radius;
         if(miss < 1.0f) miss = 1.0f;
         // Only override if asteroid will come dangerously close.
-        if(miss < DANGER_MARGIN)
-          effective_dist = miss;
+        // Scale urgency by how imminent the threat is: distant future = weak signal.
+        if(miss < DANGER_MARGIN) {
+          float urgency = 1.0f - (tca / TIME_HORIZON);  // 1.0 = now, 0.0 = at horizon
+          effective_dist = miss + (dist - miss) * (1.0f - urgency * urgency);
+        }
       }
     }
 
