@@ -54,22 +54,25 @@ bool Follower::compute_avoidance(float &avoidance_angle, float &avoidance_streng
 
     WrappedPoint apos = a->position;
     Point away = ship->position.closest_to(apos) - apos;
-    float weight = 1.0f / dist;
+    float weight = 1.0f / (dist * dist);  // inverse-square: close threats dominate, reducing cancellation
     sum_x += away.normalized().x() * weight;
     sum_y += away.normalized().y() * weight;
   }
 
-  if(sum_x == 0.0f && sum_y == 0.0f) return false;
-
   Point composite(sum_x, sum_y);
+  float raw = composite.magnitude();
+
+  // Ignore near-zero sums — they indicate balanced threats with no clear escape direction.
+  // Threshold equivalent to one asteroid at ~100 units distance.
+  if(raw < 0.0001f) return false;
+
   avoidance_angle = ship->heading() - composite.normalized().direction();
   avoidance_angle = fmod(avoidance_angle, 360.0f);
   if(avoidance_angle < 0.0f) avoidance_angle += 360.0f;
 
   // Normalise strength to 0–1 using a smooth asymptote.
-  // raw ~0.05 (one asteroid at ~20 units) → strength ~0.5.
-  float raw = composite.magnitude();
-  avoidance_strength = raw / (raw + 0.05f);
+  // raw ~0.0004 (one asteroid at ~50 units) → strength ~0.5.
+  avoidance_strength = raw / (raw + 0.0004f);
 
   return true;
 }
