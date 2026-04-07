@@ -71,8 +71,6 @@ private:
   void draw_world(GLShip *glship = NULL, bool primary = true) const;
   void draw_perspective(GLShip *glship) const;
   void setup_viewport(bool primary) const;
-  void setup_perspective(GLShip *glship) const;
-  void setup_orthogonal() const;
 
   static const int step_size = 16;
 

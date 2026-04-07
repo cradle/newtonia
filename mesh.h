@@ -82,10 +82,27 @@ public:
     void draw_tinted(float r, float g, float b, float a,
                      float point_size = 1.0f) const;
 
+    // Draw at world position (x,y) rotated by angle_deg around Z, without
+    // touching the shim matrix stack.  The current VP from gles2_get_mvp() is
+    // combined with the model transform using plain C math.
+    void draw_at(float x, float y, float angle_deg,
+                 float point_size = 1.0f) const;
+    void draw_tinted_at(float r, float g, float b, float a,
+                        float x, float y, float angle_deg,
+                        float point_size = 1.0f) const;
+
+    // Draw with an explicit 4x4 column-major model matrix combined with the
+    // current VP from gles2_get_mvp().
+    void draw_with_model(const float model[16], float point_size = 1.0f) const;
+    void draw_tinted_with_model(float r, float g, float b, float a,
+                                const float model[16],
+                                float point_size = 1.0f) const;
+
     bool empty() const { return groups_.empty(); }
 
 private:
     void draw_internal(float point_size) const;
+    void draw_with_mvp(const float mvp[16], float point_size) const;
 
     GLuint vbo_pos_;
     GLuint vbo_col_;

@@ -663,8 +663,23 @@ void gles2_shutdown() {
     s_lists.clear();
 }
 
+static float s_explicit_vp[16];
+static bool  s_has_explicit_vp = false;
+
+void gles2_set_vp(const float vp[16]) {
+    if (vp) {
+        memcpy(s_explicit_vp, vp, 16 * sizeof(float));
+        s_has_explicit_vp = true;
+    } else {
+        s_has_explicit_vp = false;
+    }
+}
+
 void gles2_get_mvp(float mvp[16]) {
-    get_mvp(mvp);
+    if (s_has_explicit_vp)
+        memcpy(mvp, s_explicit_vp, 16 * sizeof(float));
+    else
+        get_mvp(mvp);
 }
 
 // ---- Matrix stack ----

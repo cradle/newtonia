@@ -19,6 +19,7 @@
 #include <SDL.h>
 
 #include "gl_compat.h"
+#include "mat4.h"
 #include "mesh.h"
 
 #include <iostream>
@@ -376,6 +377,10 @@ void GLGame::add_asteroids() {
   for(int i = 0; i < num_armoured; i++) {
     objects->push_back(new Asteroid(false, false, false, false, false, false, true));
   }
+  int num_phasing = (generation >= 8) ? (generation - 8) / 2 + 1 : 0;
+  for(int i = 0; i < num_phasing; i++) {
+    objects->push_back(new Asteroid(false, false, false, false, false, false, false, true));
+  }
 }
 
 void GLGame::toggle_pause() {
@@ -492,13 +497,13 @@ void GLGame::tick(int delta) {
       time_until_next_generation -= delta;
     } else {
       generation++;
-      if(generation == 9) {
+      if(generation == 10) {
         world += Point(3000, 3000);
       } else {
         world += Point(50, 50);
       }
       grid = Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2));
-      if(generation >= 9) {
+      if(generation >= 10) {
         if(station != NULL)
           delete station;
         station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
@@ -529,7 +534,7 @@ void GLGame::tick(int delta) {
         delete black_holes->back();
         black_holes->pop_back();
       }
-      if(generation >= 8)
+      if(generation >= 9)
         black_holes->push_back(new BlackHole(WrappedPoint(world.x() / 2.0f, world.y() / 2.0f)));
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {
@@ -996,21 +1001,15 @@ void GLGame::draw_objects(float direction, bool minimap) const {
                              minimap ? world.x() : 0, minimap ? world.y() : 0);
 
   for(auto pi = pickups->begin(); pi != pickups->end(); pi++) {
-    glPushMatrix();
     (*pi)->draw(direction);
-    glPopMatrix();
   }
 
   std::list<GLShip*>::iterator o;
   for(o = players->begin(); o != players->end(); o++) {
-    glPushMatrix();
     (*o)->draw(minimap);
-    glPopMatrix();
   }
   for(o = enemies->begin(); o != enemies->end(); o++) {
-    glPushMatrix();
     (*o)->draw(minimap);
-    glPopMatrix();
   }
 
   if(station != NULL) station->draw(minimap);
@@ -1034,12 +1033,6 @@ void GLGame::draw(void) {
   }
 }
 
-void GLGame::setup_perspective(GLShip *glship) const {
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  gluPerspective(num_y_viewports() == 1 ? glship->view_angle() : glship->view_angle()*0.75, window.x()/num_x_viewports()/(window.y()/num_y_viewports()), 100.0f, 2000.0f);
-  glMatrixMode(GL_MODELVIEW);
-}
 
 int GLGame::num_x_viewports() const {
   return (players->size() == 0) ? 1 : (window.x() > window.y()) ? players->size() : 1;
@@ -1123,18 +1116,11 @@ bool GLGame::is_point_faced_by_any_player(Point p) const {
   return false;
 }
 
-void GLGame::setup_orthogonal() const {
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  gluOrtho2D(-window.x()/num_x_viewports(), window.x()/num_x_viewports(), -window.y()/num_y_viewports(), window.y()/num_y_viewports());
-  glMatrixMode(GL_MODELVIEW);
-}
 
 void GLGame::setup_viewport(bool primary) const {
   if(players->size() > 1 && window.x() <= window.y()) {
     primary = !primary; //HACK: Fix this
   }
-  glLoadIdentity();
   if(primary) {
     glViewport(0, 0, window.x()/num_x_viewports(), window.y()/num_y_viewports());
   } else {
@@ -1147,11 +1133,22 @@ void GLGame::setup_viewport(bool primary) const {
 }
 
 void GLGame::draw_world(GLShip *glship, bool primary) const {
-  setup_perspective(glship);
+  float nx = (float)num_x_viewports();
+  float ny = (float)num_y_viewports();
+  float fovy = (glship == NULL) ? 85.0f
+             : (ny == 1.0f) ? glship->view_angle()
+             : glship->view_angle() * 0.75f;
+  float aspect = (window.x() / nx) / (window.y() / ny);
+  float proj[16]; mat4_perspective(proj, fovy, aspect, 100.0f, 2000.0f);
+  float view[16]; mat4_lookat(view, 0.0f, 0.0f, 1000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+  float pv[16]; mat4_mul(pv, proj, view);
+  gles2_set_vp(pv);
   setup_viewport(primary);
-  gluLookAt(0.0f, 0.0f, 1000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f );
   draw_perspective(glship);
-  setup_orthogonal();
+
+  float ortho[16];
+  mat4_ortho(ortho, -window.x()/nx, window.x()/nx, -window.y()/ny, window.y()/ny, -1.0f, 1.0f);
+  gles2_set_vp(ortho);
   setup_viewport(primary);
   Overlay::draw(this, glship);
 }
@@ -1171,6 +1168,9 @@ void GLGame::draw_perspective(GLShip *glship) const {
   float half_w = half_h * aspect;
   float cull_r2 = (half_w * half_w + half_h * half_h) * 1.1f; // 10% margin for edge objects
 
+  // Read the perspective*lookat VP set by draw_world; tile transforms are layered on top.
+  float base_pv[16]; gles2_get_mvp(base_pv);
+
   // Draw the world tessellated 3x3, culling tiles that are entirely off-screen.
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
@@ -1184,12 +1184,11 @@ void GLGame::draw_perspective(GLShip *glship) const {
       float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
       if (snx*snx + sny*sny > cull_r2) continue;
 
-      glPushMatrix();
-      glRotatef(direction, 0.0f, 0.0f, 1.0f);
-      glTranslatef(world.x()*x, world.y()*y, 0.0f);
-      glTranslatef(-position.x(), -position.y(), 0.0f);
+      float tile_vp[16];
+      mat4_rotate_z(tile_vp, base_pv, direction);
+      mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+      gles2_set_vp(tile_vp);
       starfield->draw_rear(position);
-      glPopMatrix();
     }
   }
   // --- Invisible asteroid lensing: black asteroid polygon + shifted rear stars ---
@@ -1203,20 +1202,19 @@ void GLGame::draw_perspective(GLShip *glship) const {
       float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
       if (snx*snx + sny*sny > cull_r2) continue;
 
+      float tile_vp[16];
+      mat4_rotate_z(tile_vp, base_pv, direction);
+      mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+      gles2_set_vp(tile_vp);
+
       for(list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
         Asteroid const *a = *it;
         if (!a->invisible || !a->alive) continue;
 
         float ax = a->position.x();
         float ay = a->position.y();
-        glPushMatrix();
-        glRotatef(direction, 0.0f, 0.0f, 1.0f);
-        glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
-
         AsteroidDrawer::draw_invisible_mask(a, ax, ay);
         starfield->draw_stars_near(ax, ay, a->radius);
-
-        glPopMatrix();
       }
     }
   }
@@ -1230,15 +1228,15 @@ void GLGame::draw_perspective(GLShip *glship) const {
       float tmax_x = tmin_x + world.x();
       float tmin_y = world.y()*y - position.y();
       float tmax_y = tmin_y + world.y();
-      float nx = (tmin_x > 0) ? tmin_x : (tmax_x < 0) ? -tmax_x : 0;
-      float ny = (tmin_y > 0) ? tmin_y : (tmax_y < 0) ? -tmax_y : 0;
-      if (nx*nx + ny*ny > cull_r2) continue;
+      float tnx = (tmin_x > 0) ? tmin_x : (tmax_x < 0) ? -tmax_x : 0;
+      float tny = (tmin_y > 0) ? tmin_y : (tmax_y < 0) ? -tmax_y : 0;
+      if (tnx*tnx + tny*tny > cull_r2) continue;
 
-      glPushMatrix();
-      glRotatef(direction, 0.0f, 0.0f, 1.0f);
-      glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+      float tile_vp[16];
+      mat4_rotate_z(tile_vp, base_pv, direction);
+      mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+      gles2_set_vp(tile_vp);
       draw_objects(direction);
-      glPopMatrix();
     }
   }
   for(int x = -1; x <= 1; x++) {
@@ -1251,12 +1249,11 @@ void GLGame::draw_perspective(GLShip *glship) const {
       float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
       if (snx*snx + sny*sny > cull_r2) continue;
 
-      glPushMatrix();
-      glRotatef(direction, 0.0f, 0.0f, 1.0f);
-      glTranslatef(world.x()*x, world.y()*y, 0.0f);
-      glTranslatef(-position.x(), -position.y(), 0.0f);
+      float tile_vp[16];
+      mat4_rotate_z(tile_vp, base_pv, direction);
+      mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+      gles2_set_vp(tile_vp);
       starfield->draw_front(position);
-      glPopMatrix();
     }
   }
 
@@ -1271,22 +1268,21 @@ void GLGame::draw_perspective(GLShip *glship) const {
       float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
       if (snx*snx + sny*sny > cull_r2) continue;
 
+      float tile_vp[16];
+      mat4_rotate_z(tile_vp, base_pv, direction);
+      mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+      gles2_set_vp(tile_vp);
+
       for(list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
         Asteroid const *a = *it;
         if (!a->invisible || !a->alive) continue;
 
         float ax = a->position.x();
         float ay = a->position.y();
-        glPushMatrix();
-        glRotatef(direction, 0.0f, 0.0f, 1.0f);
-        glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
-
         // No black mask here — draw_batch already renders the invisible asteroid
         // fill behind visible asteroids. Drawing it again after game objects would
         // overdraw visible asteroids on top of invisible ones.
         starfield->draw_front_stars_near(ax, ay, a->radius);
-
-        glPopMatrix();
       }
     }
   }
@@ -1316,19 +1312,19 @@ void GLGame::draw_perspective(GLShip *glship) const {
         float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
         if (snx*snx + sny*sny > cull_r2) continue;
 
-        glPushMatrix();
-        glRotatef(direction, 0.0f, 0.0f, 1.0f);
-        glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+        float tile_vp[16];
+        mat4_rotate_z(tile_vp, base_pv, direction);
+        mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+        gles2_set_vp(tile_vp);
 
         for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
           Asteroid const *a = *it;
           if (!a->invisible || !a->alive) continue;
           warp_pass_->draw(a, a->position.x(), a->position.y(), vp[0], vp[1], vp[2], vp[3]);
         }
-
-        glPopMatrix();
       }
     }
+    gles2_set_vp(base_pv);
   }
 
 }
@@ -1341,11 +1337,10 @@ void GLGame::draw_map() const {
 
   if(players->size() > 1) {
     /* DRAW CENTER LINE */
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    gluOrtho2D(-window.x(), window.x(), -window.y(), window.y());
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+    float center_ortho[16];
+    mat4_ortho(center_ortho, -(float)window.x(), (float)window.x(),
+               -(float)window.y(), (float)window.y(), -1.0f, 1.0f);
+    gles2_set_vp(center_ortho);
     glViewport(0, 0, window.x(), window.y());
     {
       static MeshBuilder mb;
@@ -1367,11 +1362,11 @@ void GLGame::draw_map() const {
   }
 
   /* MINIMAP */
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  gluOrtho2D(0, world.x(), 0, world.y());
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
+  {
+    float minimap_ortho[16];
+    mat4_ortho(minimap_ortho, 0.0f, (float)world.x(), 0.0f, (float)world.y(), -1.0f, 1.0f);
+    gles2_set_vp(minimap_ortho);
+  }
   if (players->size() == 1) {
 #if defined(__ANDROID__) || defined(__IOS__)
     // Shift the minimap right of the virtual joystick so they don't overlap.
@@ -1400,9 +1395,7 @@ void GLGame::draw_map() const {
   }
 
   // Single draw pass for minimap; wrapping tiles are negligible at minimap scale.
-  glPushMatrix();
   draw_objects(0.0f, true);
-  glPopMatrix();
 
   /* LINE AROUND MINIMAP */
   {

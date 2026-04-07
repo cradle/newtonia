@@ -149,6 +149,10 @@ void gles2_shutdown();
 // Used by WarpPass on all platforms.
 void gles2_get_mvp(float mvp[16]);
 
+// Override the matrix returned by gles2_get_mvp(), bypassing the legacy matrix
+// stack.  Pass NULL to revert to the matrix-stack path.
+void gles2_set_vp(const float vp[16]);
+
 // Per-draw tint multiplied against vertex colour in the fragment shader.
 // Call gles2_set_tint(r,g,b,a) before drawing, reset to (1,1,1,1) afterwards.
 void gles2_set_tint(float r, float g, float b, float a);
