@@ -8,7 +8,7 @@ ANDROID_SRCS = android_main.cpp
 
 ifeq ($(UNAME), Darwin)
   LIBS = -framework GLUT -framework OpenGL $(SDL2_LIBS)
-  CFLAGS += -Wno-char-subscripts
+  CFLAGS += -DGL_SILENCE_DEPRECATION -Wno-char-subscripts
   ALL_SRCS := $(filter-out $(ANDROID_SRCS),$(wildcard *.cpp) $(wildcard */*.cpp))
 else
   LIBS = -lglut -lGL -lGLU $(SDL2_LIBS)
