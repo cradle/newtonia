@@ -12,7 +12,7 @@ jobs:
     runs-on: macos-latest   # arm64 (Apple Silicon)
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install arm64 dependencies
         run: brew install sdl2 mpg123
@@ -230,7 +230,7 @@ jobs:
 
       - name: Upload artifact (pre-notarization)
         if: ${{ secrets.APPLE_ID == '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: newtonia-macos-dev-unnotarized
           path: newtonia-macos-dev.zip
@@ -253,7 +253,7 @@ jobs:
 
       - name: Upload artifact (notarized)
         if: ${{ secrets.APPLE_ID != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: newtonia-macos-dev
           path: newtonia-macos-dev.zip
