@@ -51,7 +51,7 @@ jobs:
           chmod +x linux-amd64/butler
           linux-amd64/butler -V
 
-      - name: Push to itch.io
+      - name: Push to itch.io  # deploy
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_CREDENTIALS }}
         run: |
