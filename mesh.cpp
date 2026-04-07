@@ -184,21 +184,29 @@ void Mesh::draw_with_mvp(const float mvp[16], float point_size) const {
 #ifdef DESKTOP_COMPAT_GL
     glBindVertexArray(vao_);
 #else
-    // GLES2: manually bind attributes (no persistent VAO state).
-    glBindBuffer(GL_ARRAY_BUFFER, vbo_pos_);
+    // GLES2/WebGL: re-bind attribute pointers per group using a byte offset so
+    // that glDrawArrays is always called with first=0.  Safari's WebGL/Metal
+    // backend has a bug where glDrawArrays with a non-zero first parameter does
+    // not correctly advance into the VBO, causing every group beyond the first
+    // (vertex_start > 0) to render garbage or nothing.
     glEnableVertexAttribArray(p->attr_pos);
-    glVertexAttribPointer(p->attr_pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
-
-    glBindBuffer(GL_ARRAY_BUFFER, vbo_col_);
     glEnableVertexAttribArray(p->attr_col);
-    glVertexAttribPointer(p->attr_col, 4, GL_FLOAT, GL_FALSE, 0, 0);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
 #endif
 
     for (const MeshGroup& g : groups_) {
         glUniform1i(p->uni_ispt, g.mode == GL_POINTS ? 1 : 0);
+#ifdef DESKTOP_COMPAT_GL
         glDrawArrays(g.mode, g.vertex_start, g.vertex_count);
+#else
+        const uintptr_t pos_off = (uintptr_t)(g.vertex_start) * 3 * sizeof(float);
+        const uintptr_t col_off = (uintptr_t)(g.vertex_start) * 4 * sizeof(float);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_pos_);
+        glVertexAttribPointer(p->attr_pos, 3, GL_FLOAT, GL_FALSE, 0, (const void*)pos_off);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_col_);
+        glVertexAttribPointer(p->attr_col, 4, GL_FLOAT, GL_FALSE, 0, (const void*)col_off);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glDrawArrays(g.mode, 0, g.vertex_count);
+#endif
     }
 
 #ifndef DESKTOP_COMPAT_GL
