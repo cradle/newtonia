@@ -24,3 +24,5 @@ web/dist/
 ## Python
 __pycache__/
 *.pyc
+## Make
+*.d
