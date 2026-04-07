@@ -16,7 +16,7 @@ else
 endif
 
 OSX_LIBS = -framework GLUT -framework OpenGL $(SDL2_LIBS)
-OSX_CFLAGS = $(CFLAGS) -std=c++11 -arch i386 -arch ppc
+OSX_CFLAGS = $(CFLAGS) -std=c++11 -arch arm64 -arch x86_64
 COMPILE = $(CC) $(CFLAGS) -c
 OBJFILES := $(patsubst %.cpp,%.o,$(ALL_SRCS))
 
