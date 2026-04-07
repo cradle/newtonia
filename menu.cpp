@@ -215,6 +215,9 @@ void Menu::touch_tap(float nx, float ny) {
   if (!has_save_) return;
   // Left half = CONTINUE, right half = NEW GAME
   menu_selection = (nx >= 0.5f) ? 1 : 0;
+#ifdef __EMSCRIPTEN__
+  EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
+#endif
   confirm_selection(nullptr);
 }
 
