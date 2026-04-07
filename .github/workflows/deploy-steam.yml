@@ -35,8 +35,7 @@ jobs:
         run: |
           SRCS=$(find . -name "*.cpp" \
             -not -path "./android/*" \
-            -not -path "./.git/*" \
-            -not -name "gles2_compat.cpp")
+            -not -path "./.git/*")
           windres icon.rc -O coff -o icon.res
           g++ -O2 -std=c++11 -D_USE_MATH_DEFINES -DFREEGLUT_STATIC \
             $(pkg-config --cflags sdl2 SDL2_mixer freeglut) \
@@ -120,8 +119,7 @@ jobs:
         run: |
           find . -name "*.cpp" \
             -not -path "./android/*" \
-            -not -path "./.git/*" \
-            -not -name "gles2_compat.cpp" > srcs.txt
+            -not -path "./.git/*" > srcs.txt
 
       - name: Build arm64
         env:
@@ -149,6 +147,22 @@ jobs:
             -I/usr/local/include/SDL2 \
             -framework GLUT -framework OpenGL
 
+      - name: Import Developer ID certificate
+        env:
+          CERT_BASE64: ${{ secrets.DEVELOPER_ID_CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+        run: |
+          printf '%s' "$CERT_BASE64" | base64 -d > "$RUNNER_TEMP/cert.p12"
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          security create-keychain -p "" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security list-keychain -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"' | xargs) /Library/Keychains/System.keychain
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "" "$KEYCHAIN"
+
       - name: Create universal binary and bundle .app
         run: |
           lipo -create -output newtonia newtonia-arm64 newtonia-x86_64
@@ -156,6 +170,7 @@ jobs:
           mkdir -p Newtonia.app/Contents/{MacOS,Frameworks,Resources}
           cp newtonia Newtonia.app/Contents/MacOS/newtonia
           cp icon.icns Newtonia.app/Contents/Resources/icon.icns
+          cp -r audio Newtonia.app/Contents/Resources/audio
 
           FW="Newtonia.app/Contents/Frameworks"
           bundle() {
@@ -181,7 +196,8 @@ jobs:
                 fi
                 install_name_tool -id "@executable_path/../Frameworks/$name" "$dest"
                 bundle "$dest"
-                codesign --sign - --force "$dest"
+                codesign --sign "Developer ID Application" --force --timestamp \
+                  --options runtime "$dest"
               fi
               install_name_tool -change "$arm" "@executable_path/../Frameworks/$name" "$target" 2>/dev/null || true
               install_name_tool -change "$x86" "@executable_path/../Frameworks/$name" "$target" 2>/dev/null || true
@@ -195,7 +211,10 @@ jobs:
           }
 
           bundle Newtonia.app/Contents/MacOS/newtonia
-          codesign --sign - --force Newtonia.app/Contents/MacOS/newtonia
+          codesign --sign "Developer ID Application" --force --timestamp \
+            --options runtime \
+            --entitlements macos/EntitlementsDevID.plist \
+            Newtonia.app/Contents/MacOS/newtonia
 
           cat > Newtonia.app/Contents/Info.plist <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -214,11 +233,31 @@ jobs:
           </plist>
           PLIST
 
+      - name: Sign .app bundle
+        run: |
+          codesign --sign "Developer ID Application" --force --timestamp \
+            --options runtime \
+            --entitlements macos/EntitlementsDevID.plist \
+            Newtonia.app
+
+      - name: Notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_APP_SPECIFIC_PASSWORD }}
+        run: |
+          ditto -c -k --keepParent Newtonia.app newtonia-steam-macos.zip
+          xcrun notarytool submit newtonia-steam-macos.zip \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$NOTARY_PASSWORD" \
+            --wait
+          xcrun stapler staple Newtonia.app
+
       - name: Stage depot
         run: |
           mkdir -p steam_output/macos
           cp -r Newtonia.app steam_output/macos/
-          cp -r audio steam_output/macos/Newtonia.app/Contents/Resources/
 
       - uses: actions/upload-artifact@v4
         with:
@@ -227,6 +266,7 @@ jobs:
 
   build-linux:
     runs-on: ubuntu-22.04
+    container: registry.gitlab.steamos.cloud/steamrt/sniper/sdk:latest
 
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -236,13 +276,26 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libsdl2-dev \
+          apt-get update
+          apt-get install -y \
             freeglut3-dev \
             libgl1-mesa-dev \
             libglu1-mesa-dev \
-            cmake
+            cmake \
+            libudev-dev \
+            libasound2-dev \
+            libpulse-dev
+
+      - name: Build SDL2 from source
+        run: |
+          git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL.git SDL2_source
+          cmake -S SDL2_source -B SDL2_source/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSDL_SHARED=OFF \
+            -DSDL_STATIC=ON \
+            -DSDL_TESTS=OFF
+          cmake --build SDL2_source/build --parallel
+          cmake --install SDL2_source/build
 
       - name: Build SDL2_mixer (WAV + MP3 only)
         run: |
@@ -259,14 +312,14 @@ jobs:
             -DBUILD_SHARED_LIBS=OFF \
             -DSDL2MIXER_SAMPLES=OFF
           cmake --build SDL2_mixer/build --parallel
-          sudo cmake --install SDL2_mixer/build
+          cmake --install SDL2_mixer/build
 
       - name: Build
         run: |
           SRCS=$(find . -name "*.cpp" \
             -not -path "./android/*" \
             -not -path "./.git/*" \
-            -not -name "gles2_compat.cpp")
+            -not -path "./SDL2_source/*")
           g++ -O2 -Wall -std=c++11 \
             $(sdl2-config --cflags) -I/usr/local/include/SDL2 \
             -o newtonia $SRCS \

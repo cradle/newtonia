@@ -12,20 +12,22 @@ class Follower : public Behaviour {
 public:
   Follower(Ship *ship);
   Follower(Ship *ship, list<Object *> *targets);
-  Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids);
+  Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty = 0.0f);
   virtual ~Follower();
 
   virtual void step(int delta);
+  void lock_now();  // skip initial delay and acquire target immediately
 
 private:
   void common_init();
   void lock_step(int delta);
   void lock_nearest_target();
   void burst_shooting_step(int delta, float angle, const WrappedPoint &target_point);
-  bool compute_avoidance(float &avoidance_angle);
+  bool compute_avoidance(float &avoidance_angle, float &avoidance_strength);
 
   list<Object *> *targets;
   list<Object *> *asteroids;  // non-owning pointer
+  float difficulty;
   int time_until_next_lock, time_between_locks;
   int shoot_timer;
   Object *target;

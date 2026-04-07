@@ -4,7 +4,7 @@ SDL2_LIBS   := $(shell sdl2-config --libs) -lSDL2_mixer
 CFLAGS = -Wall -O3 -std=c++11 $(SDL2_CFLAGS)
 
 UNAME := $(shell uname)
-ANDROID_SRCS = gles2_compat.cpp android_main.cpp
+ANDROID_SRCS = android_main.cpp
 
 ifeq ($(UNAME), Darwin)
   LIBS = -framework GLUT -framework OpenGL $(SDL2_LIBS)
@@ -16,7 +16,7 @@ else
 endif
 
 OSX_LIBS = -framework GLUT -framework OpenGL $(SDL2_LIBS)
-OSX_CFLAGS = $(CFLAGS) -std=c++11 -arch i386 -arch ppc
+OSX_CFLAGS = $(CFLAGS) -std=c++11 -arch arm64 -arch x86_64
 COMPILE = $(CC) $(CFLAGS) -c
 OBJFILES := $(patsubst %.cpp,%.o,$(ALL_SRCS))
 

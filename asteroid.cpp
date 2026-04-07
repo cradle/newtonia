@@ -15,10 +15,12 @@ const int Asteroid::minimum_radius = 20;
 
 Mix_Chunk * Asteroid::explode_sound = NULL;
 Mix_Chunk * Asteroid::thud_sound = NULL;
+Mix_Chunk * Asteroid::ting_sound = NULL;
+Mix_Chunk * Asteroid::asteroid_ting_sound = NULL;
 
 const int Asteroid::max_radius = Asteroid::radius_variation + Asteroid::minimum_radius;
 
-Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool teleporting, bool quantum, bool elastic) : CompositeObject(), killed(false) {
+Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool teleporting, bool quantum, bool tough, bool armoured, bool phasing) : CompositeObject(), killed(false) {
   position = WrappedPoint();
   this->reflective = reflective;
   this->teleporting = teleporting;
@@ -29,8 +31,15 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   this->quantum = quantum;
   this->quantum_observed = true; // start in observed (collapsed) state
   this->quantum_base_speed = 0.0f; // set after velocity is computed below
-  this->elastic = elastic;
-  if(elastic) {
+  this->elastic = reflective; // reflective asteroids bounce off other elastic asteroids
+  this->tough = tough;
+  this->armoured = armoured;
+  this->armour_angle = rand() / (float)RAND_MAX * 2.0f * (float)M_PI;
+  this->phasing = phasing;
+  this->phased = false;
+  // Stagger initial timers so a group doesn't all phase in sync.
+  this->phase_timer = 1500 + rand() % 1500;
+  if(this->tough) {
     health = 5;
     // Pre-compute stable crack geometry (rotation-invariant: stored as t and perp fractions).
     // seg count mirrors the renderer so crack_vertex indices stay in range.
@@ -52,13 +61,16 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   }
   if(reflective) invincible = true;
   if(teleporting) invincible = false; // teleporting asteroids are killable when vulnerable
-  if(quantum) invincible = false;     // quantum asteroids start killable (observed state)
-  if(elastic) {
+  if(armoured) {
+    radius = rand() % 60 + 50;  // 50–110: medium, shield arc fits comfortably
+  } else if(tough) {
     radius = rand() % 70 + 60;  // 60–130: medium, noticeable heft
   } else if(teleporting) {
     radius = rand() % 100 + 70; // 70–170: noticeably large
   } else if(quantum) {
     radius = rand() % 70 + 50;  // 50–120: medium-large
+  } else if(phasing) {
+    radius = rand() % 50 + 40;  // 40–90: medium-small, timing the window is the challenge
   } else if(invincible) {
     radius = rand()%radius_variation + minimum_radius;
   } else if(invisible) {
@@ -76,7 +88,8 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   }
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
   if(quantum) quantum_base_speed = velocity.magnitude();
-  value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
+  value = std::min(100, std::max(1, (int)(1600.0f / (float)radius)));
+  if(quantum) value *= 2;
   for (int i = 0; i < 9; i++)
     vertex_offsets[i] = 0.7f + (rand() / (float)RAND_MAX) * 0.6f;
   max_vertex_offset = vertex_offsets[0];
@@ -102,10 +115,117 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
         //Mix_VolumeChunk(thud_sound, MIX_MAX_VOLUME/2); // Todo:  distance volume
     }
   }
+  if(ting_sound == NULL) {
+    ting_sound = Mix_LoadWAV("audio/ting.wav");
+    if(ting_sound == NULL) {
+        std::cout << "Unable to load ting.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(asteroid_ting_sound == NULL) {
+    asteroid_ting_sound = Mix_LoadWAV("audio/asteroid_ting.wav");
+    if(asteroid_ting_sound == NULL) {
+        std::cout << "Unable to load asteroid_ting.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+}
+
+Save::Asteroid Asteroid::capture_state() const {
+    Save::Asteroid s;
+    s.pos_x          = position.x();
+    s.pos_y          = position.y();
+    s.vel_x          = velocity.x();
+    s.vel_y          = velocity.y();
+    s.radius         = radius;
+    s.rotation       = rotation;
+    s.rotation_speed = rotation_speed;
+    s.value          = value;
+    s.health         = health;
+    for (int i = 0; i < 9; i++) s.vertex_offsets[i] = vertex_offsets[i];
+    s.max_vertex_offset = max_vertex_offset;
+    s.invincible     = invincible;
+    s.invisible      = invisible;
+    s.reflective     = reflective;
+    s.teleporting    = teleporting;
+    s.quantum        = quantum;
+    s.tough          = tough;
+    s.elastic        = elastic;
+    s.armoured       = armoured;
+    s.armour_angle   = armour_angle;
+    s.phasing        = phasing;
+    s.phased         = phased;
+    s.phase_timer    = phase_timer;
+    s.teleport_vulnerable  = teleport_vulnerable;
+    s.teleport_angle       = teleport_angle;
+    s.vulnerable_time_left = vulnerable_time_left;
+    s.quantum_observed     = quantum_observed;
+    s.quantum_base_speed   = quantum_base_speed;
+    for (int i = 0; i < 5; i++) {
+        s.crack_vertex[i] = crack_vertex[i];
+        s.crack_t[i]      = crack_t[i];
+        s.crack_perp[i]   = crack_perp[i];
+    }
+    return s;
+}
+
+void Asteroid::restore_state(const Save::Asteroid &s) {
+    // Position and motion
+    position       = WrappedPoint(s.pos_x, s.pos_y);
+    velocity       = Point(s.vel_x, s.vel_y);
+    radius         = s.radius;
+    rotation       = s.rotation;
+    rotation_speed = s.rotation_speed;
+    value          = s.value;
+    health         = s.health;
+
+    // Visual geometry (private — only settable from within Asteroid)
+    for (int i = 0; i < 9; i++) vertex_offsets[i] = s.vertex_offsets[i];
+    max_vertex_offset = s.max_vertex_offset;
+
+    // Type flags and associated state
+    invincible     = s.invincible;
+    invisible      = s.invisible;
+    reflective     = s.reflective;
+    teleporting    = s.teleporting;
+    quantum        = s.quantum;
+    tough          = s.tough;
+    elastic        = s.elastic;
+    armoured       = s.armoured;
+    armour_angle   = s.armour_angle;
+    phasing        = s.phasing;
+    phased         = s.phased;
+    phase_timer    = s.phase_timer;
+
+    teleport_vulnerable  = s.teleport_vulnerable;
+    teleport_angle       = s.teleport_angle;
+    vulnerable_time_left = s.vulnerable_time_left;
+    teleport_pending     = false;  // never mid-teleport at save time
+
+    quantum_observed     = s.quantum_observed;
+    quantum_base_speed   = s.quantum_base_speed;
+
+    for (int i = 0; i < 5; i++) {
+        crack_vertex[i] = s.crack_vertex[i];
+        crack_t[i]      = s.crack_t[i];
+        crack_perp[i]   = s.crack_perp[i];
+    }
+
+    // radius_squared must match radius
+    radius_squared = radius * radius;
 }
 
 void Asteroid::step(int delta) {
   CompositeObject::step(delta);
+  if(armoured) {
+    armour_angle += rotation_speed * delta * (float)M_PI / 180.0f;
+  }
+  if(phasing) {
+    phase_timer -= delta;
+    if(phase_timer <= 0) {
+      phased = !phased;
+      // Ghost window: 1.2–1.8 s; solid window: 2.0–2.5 s.
+      phase_timer = phased ? (1200 + rand() % 600) : (2000 + rand() % 500);
+    }
+  }
   if(teleporting && teleport_vulnerable) {
     vulnerable_time_left -= delta;
     if(vulnerable_time_left <= 0) {
@@ -123,8 +243,10 @@ Asteroid::~Asteroid() {
 }
 
 void Asteroid::free_sounds() {
-  if(explode_sound != NULL) { Mix_FreeChunk(explode_sound); explode_sound = NULL; }
-  if(thud_sound != NULL)    { Mix_FreeChunk(thud_sound);    thud_sound    = NULL; }
+  if(explode_sound != NULL)        { Mix_FreeChunk(explode_sound);        explode_sound        = NULL; }
+  if(thud_sound != NULL)           { Mix_FreeChunk(thud_sound);           thud_sound           = NULL; }
+  if(ting_sound != NULL)           { Mix_FreeChunk(ting_sound);           ting_sound           = NULL; }
+  if(asteroid_ting_sound != NULL)  { Mix_FreeChunk(asteroid_ting_sound);  asteroid_ting_sound  = NULL; }
 }
 
 Asteroid::Asteroid(Asteroid const *mother) {
@@ -132,8 +254,7 @@ Asteroid::Asteroid(Asteroid const *mother) {
   rotation_speed = (rand()%6-3)/radius;
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
   position = mother->position + velocity.normalized() * radius;
-  value = float(radius/(radius_variation + minimum_radius)) * 100.0f;
-  value += mother->value;
+  value = std::min(100, std::max(1, (int)(1600.0f / (float)radius)));
   for (int i = 0; i < 9; i++)
     vertex_offsets[i] = 0.7f + (rand() / (float)RAND_MAX) * 0.6f;
   max_vertex_offset = vertex_offsets[0];
@@ -141,19 +262,27 @@ Asteroid::Asteroid(Asteroid const *mother) {
     if (vertex_offsets[i] > max_vertex_offset) max_vertex_offset = vertex_offsets[i];
   children_added = false;
   invisible = false;
-  reflective = false;
+  reflective = mother->reflective;
   teleporting = false;
   teleport_vulnerable = false;
   teleport_pending = false;
   teleport_angle = 0.0f;
   vulnerable_time_left = 0;
-  quantum = false;
+  quantum = mother->quantum;
   quantum_observed = true;
-  quantum_base_speed = 0.0f;
-  elastic = false;
+  quantum_base_speed = quantum ? velocity.magnitude() : 0.0f;
+  if(quantum) value *= 2;
+  elastic = mother->elastic;
+  tough = false;
+  armoured = false;
+  armour_angle = 0.0f;
+  phasing = mother->phasing;
+  phased = false;
+  phase_timer = 1500 + rand() % 1500;
   health = 1;
+  killed = false;
+  invincible = mother->invincible;
   if(!invincible) {
-    killed = false;
     num_killable++;
   }
 }
@@ -309,8 +438,20 @@ bool Asteroid::kill() {
     }
     return false;
   }
-  // Elastic asteroid absorbs a hit without dying until health reaches 1.
-  if(elastic && health > 1) {
+  // Phasing asteroid in ghost state: bullets pass straight through.
+  if(phasing && phased && !killed) {
+    if(ting_sound != NULL) {
+      static Uint32 last_phase_ting = UINT32_MAX;
+      Uint32 now = SDL_GetTicks();
+      if(now - last_phase_ting >= 125) {
+        last_phase_ting = now;
+        Mix_PlayChannel(-1, ting_sound, 0);
+      }
+    }
+    return false;
+  }
+  // Tough asteroid absorbs a hit without dying until health reaches 1.
+  if(tough && health > 1) {
     health--;
     if(thud_sound != NULL) {
       static Uint32 last_elastic_thud = UINT32_MAX;
@@ -322,12 +463,21 @@ bool Asteroid::kill() {
     }
     return false;
   }
-  if(thud_sound != NULL && invincible) {
-    static Uint32 last_thud_tick = UINT32_MAX;
-    Uint32 now = SDL_GetTicks();
-    if(now - last_thud_tick >= 125) {
-      last_thud_tick = now;
-      Mix_PlayChannel(-1, thud_sound, 0);
+  if(invincible) {
+    if(reflective && ting_sound != NULL) {
+      static Uint32 last_ting_tick = UINT32_MAX;
+      Uint32 now = SDL_GetTicks();
+      if(now - last_ting_tick >= 125) {
+        last_ting_tick = now;
+        Mix_PlayChannel(-1, ting_sound, 0);
+      }
+    } else if(thud_sound != NULL) {
+      static Uint32 last_thud_tick = UINT32_MAX;
+      Uint32 now = SDL_GetTicks();
+      if(now - last_thud_tick >= 125) {
+        last_thud_tick = now;
+        Mix_PlayChannel(-1, thud_sound, 0);
+      }
     }
   }
   if(!invincible && !killed) {

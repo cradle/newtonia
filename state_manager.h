@@ -18,6 +18,8 @@ public:
   void tick(int delta);
   void resize(int x, int y);
   void touch_joystick(float nx, float ny);
+  void touch_tap(float nx, float ny);
+  bool back_pressed();
   void focus_lost();
   void focus_gained();
   void controller_added(SDL_GameController *ctrl);

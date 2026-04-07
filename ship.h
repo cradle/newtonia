@@ -7,6 +7,7 @@
 #include "weapon/missile.h"
 #include "grid.h"
 #include "black_hole.h"
+#include "savegame.h"
 #include <list>
 #include <vector>
 #include <SDL.h>
@@ -90,7 +91,7 @@ class Ship : public CompositeObject {
     //TODO: somehow get around this public for glstation
     void kill_stop();
 
-    std::vector<Particle> bullets, mines, giga_mines;
+    std::vector<Particle> bullets, mines, giga_mines, bullet_trails;
     std::vector<MissileShot> missiles;
     std::vector<Shockwave> shockwaves;
 
@@ -112,6 +113,10 @@ class Ship : public CompositeObject {
 
     //FIX: friends
     int time_left_invincible;
+    // Serialisation: capture/restore the full player state including weapons.
+    Save::Player capture_state() const;
+    void restore_state(const Save::Player &p, const Grid &grid);
+
     void add_behaviour(Behaviour *b);
     void disable_behaviours();
     void disable_weapons();
@@ -124,11 +129,16 @@ class Ship : public CompositeObject {
     void add_giga_mine_ammo(int amount);
     void add_missile_ammo(int amount);
     void add_shield_ammo(int amount);
+    void add_god_mode(int duration_ms = 10000);
+    int god_mode_time_remaining() const;
     void set_shield_hum(bool on);
     void set_missile_asteroids(std::list<Object*> *asteroids);
     void set_missile_ships(std::list<Object*> *ships);
     void set_black_holes(const std::list<BlackHole*> *bhs);
     WrappedPoint gun() const;
+    void mark_last_bullet_trail();
+    void mark_last_bullet_kills_invincible();
+    void fire_bullet_from_gun();
     bool kill();
 
   protected:
@@ -165,11 +175,17 @@ class Ship : public CompositeObject {
     void safe_position(const Grid &grid, bool try_current = false);
 
     void play_rotating_sound(bool on);
+    void update_god_mode_music(int time_remaining);
+    void stop_god_mode_music();
     Mix_Chunk *boost_sound = NULL, *tic_sound = NULL, *tic_low_sound = NULL, *click_sound = NULL;
     Mix_Chunk *missile_explode_sound = NULL, *shield_hum_sound = NULL, *explode_sound = NULL;
-    Mix_Chunk *giga_mine_explode_sound = NULL;
+    Mix_Chunk *giga_mine_explode_sound = NULL, *mine_explode_sound = NULL;
+    Mix_Chunk *shoot_sound = NULL;
+    Mix_Chunk *god_mode_music_sound = NULL, *god_mode_music_warn_sound = NULL;
     int shield_hum_channel = -1;
     int boost_channel = -1;
+    int god_mode_music_channel = -1;
+    int god_mode_music_phase = 0;  // 0=off, 1=main, 2=warn
 
     list<Behaviour *> behaviours;
     list<Weapon::Base *> primary_weapons;

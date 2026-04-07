@@ -3,6 +3,10 @@
 #include "gl_compat.h"
 
 ExtraLife::ExtraLife(WrappedPoint pos) : Pickup(pos) {
+  float s = radius * 0.8f;
+  MeshBuilder mb;
+  build_glow_heart(mb, 1.0f, 0.0f, 0.0f, s);
+  glow_mesh.upload(mb);
 }
 
 void ExtraLife::apply(Ship *ship) {
@@ -10,23 +14,8 @@ void ExtraLife::apply(Ship *ship) {
 }
 
 void ExtraLife::draw(float world_rotation) const {
-  float s = radius * 0.8f;
-
-  glTranslatef(position.x(), position.y(), 0.0f);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
   // Counter-rotate by the world rotation so the heart always appears upright
-  glRotatef(-world_rotation, 0.0f, 0.0f, 1.0f);
-  glLineWidth(1.8f);
-  glColor3f(1.0f, 0.0f, 0.0f);
-
-  // Angular heart: 8 vertices forming two bumps at top and a V-point at bottom
-  glBegin(GL_LINE_LOOP);
-    glVertex2f(    0.0f * s,  0.5f * s);  // center top dip
-    glVertex2f(    0.5f * s,  1.0f * s);  // right bump top
-    glVertex2f(    1.0f * s,  0.5f * s);  // right side
-    glVertex2f(    0.5f * s,  0.0f * s);  // right base
-    glVertex2f(    0.0f * s, -1.0f * s);  // bottom point
-    glVertex2f(   -0.5f * s,  0.0f * s);  // left base
-    glVertex2f(   -1.0f * s,  0.5f * s);  // left side
-    glVertex2f(   -0.5f * s,  1.0f * s);  // left bump top
-  glEnd();
+  glow_mesh.draw_at(position.x(), position.y(), -world_rotation);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }

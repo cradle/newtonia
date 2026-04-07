@@ -2,6 +2,7 @@
 #include "gltrail.h"
 
 #include "gl_compat.h"
+#include "mesh.h"
 
 #include <iostream>
 
@@ -19,60 +20,65 @@ GLCar::GLCar(const Grid &grid, bool has_friction) : GLShip(grid, has_friction) {
   color[1] = 69/255.0;
   color[2] = 0/255.0;
 
-  body = glGenLists(1);
-  glNewList(body, GL_COMPILE);
-  // glVertex2fv(point);
-  glVertex2f( 0.35f, 1.0f);
-  glVertex2f(-0.35f, 1.0f);
-  glVertex2f(-0.8f,-1.0f);
-  glVertex2f( 0.8f,-1.0);
-  glEndList();
+  {
+    MeshBuilder mb;
+    mb.begin(GL_TRIANGLE_FAN);
+    mb.color(0.0f, 0.0f, 0.0f);
+    mb.vertex( 0.35f, 1.0f); mb.vertex(-0.35f, 1.0f);
+    mb.vertex(-0.8f, -1.0f); mb.vertex( 0.8f,  -1.0f);
+    mb.end();
+    body_fill.upload(mb);
 
-  left_jet = glGenLists(1);
-  glNewList(left_jet, GL_COMPILE);
-  glColor3f( 1-color[0], 1-color[1], 1-color[2] );
-  glBegin(GL_TRIANGLES);
-    glVertex2f( 0.8f,-1.0f);
-    glVertex2f( 0.4f,-1.75f);
-    glVertex2f( 0.0f,-1.0f);
-  glEnd();
-  glEndList();
+    mb.clear();
+    mb.begin(GL_LINE_LOOP);
+    mb.color(color[0], color[1], color[2]);
+    mb.vertex( 0.35f, 1.0f); mb.vertex(-0.35f, 1.0f);
+    mb.vertex(-0.8f, -1.0f); mb.vertex( 0.8f,  -1.0f);
+    mb.end();
+    body_outline.upload(mb);
+  }
 
-  right_jet = glGenLists(1);
-  glNewList(right_jet, GL_COMPILE);
-  glColor3f( 1-color[0], 1-color[1], 1-color[2] );
-  glBegin(GL_TRIANGLES);
-    glVertex2f( 0.0f,-1.0f);
-    glVertex2f(-0.4f,-1.75f);
-    glVertex2f(-0.8f,-1.0f);
-  glEnd();
-  glEndList();
+  {
+    float rc = 1-color[0], gc = 1-color[1], bc = 1-color[2];
+    MeshBuilder mb;
+    mb.begin(GL_TRIANGLES);
+    mb.color(rc, gc, bc);
+    mb.vertex( 0.8f,-1.0f); mb.vertex( 0.4f,-1.75f); mb.vertex( 0.0f,-1.0f);
+    mb.end();
+    left_jet.upload(mb);
 
-  jets = glGenLists(1);
-  glNewList(jets, GL_COMPILE);
-  glCallList(left_jet);
-  glCallList(right_jet);
-  glEndList();
+    mb.clear();
+    mb.begin(GL_TRIANGLES);
+    mb.color(rc, gc, bc);
+    mb.vertex( 0.0f,-1.0f); mb.vertex(-0.4f,-1.75f); mb.vertex(-0.8f,-1.0f);
+    mb.end();
+    right_jet.upload(mb);
+
+    // combined jets mesh (both left and right)
+    mb.clear();
+    mb.begin(GL_TRIANGLES);
+    mb.color(rc, gc, bc);
+    mb.vertex( 0.8f,-1.0f); mb.vertex( 0.4f,-1.75f); mb.vertex( 0.0f,-1.0f);
+    mb.vertex( 0.0f,-1.0f); mb.vertex(-0.4f,-1.75f); mb.vertex(-0.8f,-1.0f);
+    mb.end();
+    jets.upload(mb);
+  }
 
   genForceShield();
   genRepulsor();
 }
 
 GLCar::~GLCar() {
-  glDeleteLists(body, 1);
-  glDeleteLists(left_jet, 1);
-  glDeleteLists(right_jet, 1);
-  glDeleteLists(jets, 1);
 }
 
 void GLCar::draw_ship(bool minimap) const {
   GLShip::draw_ship(minimap);
 
   if(!minimap) {
-  	if(ship->rotation_direction == Ship::LEFT) {
-      glCallList(left_jet);
+    if(ship->rotation_direction == Ship::LEFT) {
+      left_jet.draw();
     } else if (ship->rotation_direction == Ship::RIGHT) {
-      glCallList(right_jet);
-  	}
-	}
+      right_jet.draw();
+    }
+  }
 }

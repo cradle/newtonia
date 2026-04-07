@@ -3,11 +3,16 @@
 #include <cstdlib>
 
 #include "gl_compat.h"
+#include "mesh.h"
+#include "mat4.h"
 
 #include "ship.h"
 #include "glenemy.h"
 #include <list>
 #include <iostream>
+#include "savegame.h"
+#include "grid.h"
+#include "follower.h"
 // #include "follower.h"
 
 using namespace std;
@@ -28,6 +33,7 @@ GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* ta
   wave = difficulty = 0;
   lives = 1;
   health = 100;
+  alive = true;
 
   // behaviours.push_back(new Roamer(this));
 
@@ -35,48 +41,65 @@ GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* ta
   inner_rotation_speed = -0.0025;
   inner_rotation = outer_rotation = 0;
 
-  body = glGenLists(1);
-  glNewList(body, GL_COMPILE);
-  float r = radius, r2 = radius * 0.9, d;
-  glColor3f(0,0,0);
-  glBegin(GL_POLYGON);
-  float segment_size = 360.0/NUM_SEGMENTS;
-  for (int i = 0; i < 360; i+= segment_size) {
-    d = i*M_PI/180;
-    glVertex2f(r*cos(d),r*sin(d));
-  }
-  glEnd();
-  glColor3f(1,1,1);
-  for (int i = 0; i < 360; i+= segment_size) {
-    glBegin(GL_LINE_LOOP);
-    d = i*M_PI/180;
-    glVertex2f(r*cos(d),r*sin(d));
-    glVertex2f(r2*cos(d),r2*sin(d));
-    d = (i+segment_size)*M_PI/180;
-    glVertex2f(r2*cos(d),r2*sin(d));
-    glVertex2f(r*cos(d),r*sin(d));
-    glEnd();
-  }
-  glEndList();
+  float r = radius, r2 = radius * 0.9f;
+  float segment_size = 360.0f / NUM_SEGMENTS;
 
-  map_body = glGenLists(1);
-  glNewList(map_body, GL_COMPILE);
-  glColor3f(1,1,1);
-  glBegin(GL_POLYGON);
-  segment_size = 360.0/8;
-  for (int i = 0; i < 360; i+= segment_size) {
-    d = i*M_PI/180;
-    glVertex2f(r*cos(d),r*sin(d));
+  {
+    MeshBuilder mb;
+    // Black filled disc (centre vertex first for proper fan)
+    mb.begin(GL_TRIANGLE_FAN);
+    mb.color(0.0f, 0.0f, 0.0f);
+    mb.vertex(0.0f, 0.0f);
+    for (float i = 0.0f; i <= 360.0f; i += segment_size) {
+      float d = i * (float)M_PI / 180.0f;
+      mb.vertex(r*cosf(d), r*sinf(d));
+    }
+    mb.end();
+    // Outer ring circle
+    mb.begin(GL_LINE_LOOP);
+    mb.color(1.0f, 1.0f, 1.0f);
+    for (float i = 0.0f; i < 360.0f; i += segment_size) {
+      float d = i * (float)M_PI / 180.0f;
+      mb.vertex(r*cosf(d), r*sinf(d));
+    }
+    mb.end();
+    // Inner ring circle
+    mb.begin(GL_LINE_LOOP);
+    mb.color(1.0f, 1.0f, 1.0f);
+    for (float i = 0.0f; i < 360.0f; i += segment_size) {
+      float d = i * (float)M_PI / 180.0f;
+      mb.vertex(r2*cosf(d), r2*sinf(d));
+    }
+    mb.end();
+    // Radial divider spokes
+    mb.begin(GL_LINES);
+    mb.color(1.0f, 1.0f, 1.0f);
+    for (float i = 0.0f; i < 360.0f; i += segment_size) {
+      float d = i * (float)M_PI / 180.0f;
+      mb.vertex(r *cosf(d), r *sinf(d));
+      mb.vertex(r2*cosf(d), r2*sinf(d));
+    }
+    mb.end();
+    body_mesh.upload(mb);
   }
-  glEnd();
-  glEndList();
+
+  {
+    MeshBuilder mb;
+    mb.begin(GL_TRIANGLE_FAN);
+    mb.color(1.0f, 1.0f, 1.0f);
+    float mseg = 360.0f / 8;
+    for (float i = 0.0f; i < 360.0f; i += mseg) {
+      float d = i * (float)M_PI / 180.0f;
+      mb.vertex(r*cosf(d), r*sinf(d));
+    }
+    mb.end();
+    map_body_mesh.upload(mb);
+  }
 }
 
 GLStation::~GLStation() {
   // delete targets;
   // delete objects;
-  glDeleteLists(body, 1);
-  glDeleteLists(map_body, 1);
 }
 
 void GLStation::reset(bool was_killed) {
@@ -120,35 +143,100 @@ int GLStation::level() const {
 }
 
 void GLStation::draw(bool minimap) const {
-  glPushMatrix();
-  glTranslatef(position.x(), position.y(), 0);
+  float px = position.x(), py = position.y();
 
   if(minimap && alive) {
-    glColor3f(1.0f, 0.8f, 0.0f);
-    glCallList(map_body);
+    map_body_mesh.draw_at(px, py, 0.0f);
   } else if(alive) {
     glLineWidth(2.5f);
-    glPushMatrix();
-    glRotatef(outer_rotation,0,0,1);
-    glColor3f(0,0,0);
-    glCallList(body);
-    glColor3f(1,1,1);
-    glCallList(body);
-    glPopMatrix();
-    glRotatef(inner_rotation,0,0,1);
-    glScalef(0.8,0.8,1);
-    glCallList(body);
+    body_mesh.draw_at(px, py, outer_rotation);
+    // Inner ring: translate + rotate + scale(0.8)
+    float inner_model[16]; mat4_identity(inner_model);
+    mat4_translate(inner_model, inner_model, px, py, 0.0f);
+    mat4_rotate_z(inner_model, inner_model, inner_rotation);
+    mat4_scale(inner_model, inner_model, 0.8f, 0.8f, 1.0f);
+    body_mesh.draw_with_model(inner_model);
   }
-  glPopMatrix();
 
   if (!minimap && !debris.empty()) {
-    glPointSize(3.0f);
-    glBegin(GL_POINTS);
+    static MeshBuilder mb;
+    static Mesh mesh;
+    mb.clear();
+    mb.begin(GL_POINTS);
     for (const auto& d : debris) {
-      glColor4f(1.0f, 0.7f, 0.2f, d.aliveness());
-      glVertex2fv(d.position);
+      mb.color(1.0f, 0.7f, 0.2f, d.aliveness());
+      mb.vertex(d.position.x(), d.position.y());
     }
-    glEnd();
+    mb.end();
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw(3.0f);
+  }
+}
+
+Save::Station GLStation::capture_state() const {
+  Save::Station s;
+  s.present = true;
+  s.alive = alive;
+  s.lives = lives;
+  s.health = health;
+  s.pos_x = position.x();
+  s.pos_y = position.y();
+  s.vel_x = velocity.x();
+  s.vel_y = velocity.y();
+  s.inner_rotation = inner_rotation;
+  s.outer_rotation = outer_rotation;
+  s.wave = wave;
+  s.difficulty = difficulty;
+  s.ships_this_wave = ships_this_wave;
+  s.ships_left_to_deploy = ships_left_to_deploy;
+  s.time_until_next_ship = time_until_next_ship;
+  s.deploying = deploying;
+  s.redeploying = redeploying;
+  for (const auto *gs : *objects) {
+    Save::Enemy e;
+    e.pos_x = gs->ship->position.x();
+    e.pos_y = gs->ship->position.y();
+    e.vel_x = gs->ship->velocity.x();
+    e.vel_y = gs->ship->velocity.y();
+    e.facing_x = gs->ship->facing.x();
+    e.facing_y = gs->ship->facing.y();
+    e.thrust_force = gs->ship->thrust_force;
+    e.rotation_force = gs->ship->rotation_force;
+    e.value = gs->ship->value;
+    s.enemies.push_back(e);
+  }
+  return s;
+}
+
+void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
+  alive = s.alive;
+  lives = s.lives;
+  health = s.health;
+  position = WrappedPoint(s.pos_x, s.pos_y);
+  velocity = Point(s.vel_x, s.vel_y);
+  inner_rotation = s.inner_rotation;
+  outer_rotation = s.outer_rotation;
+  wave = s.wave;
+  difficulty = s.difficulty;
+  ships_this_wave = s.ships_this_wave;
+  ships_left_to_deploy = s.ships_left_to_deploy;
+  time_until_next_ship = (float)s.time_until_next_ship;
+  deploying = s.deploying;
+  redeploying = s.redeploying;
+  for (const auto &se : s.enemies) {
+    GLEnemy *ge = new GLEnemy(grid, se.pos_x, se.pos_y, targets, (float)difficulty, asteroids);
+    ge->ship->alive = true;
+    ge->ship->position = WrappedPoint(se.pos_x, se.pos_y);
+    ge->ship->velocity = Point(se.vel_x, se.vel_y);
+    ge->ship->facing = Point(se.facing_x, se.facing_y);
+    ge->ship->thrust_force = se.thrust_force;
+    ge->ship->rotation_force = se.rotation_force;
+    ge->ship->value = se.value;
+    objects->push_back(ge);
+    // Skip the initial 2.5s lock delay — enemy is already deployed at saved position
+    if (!ge->ship->behaviours.empty())
+      if (Follower *f = dynamic_cast<Follower*>(ge->ship->behaviours.front()))
+        f->lock_now();
   }
 }
 

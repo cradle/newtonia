@@ -97,17 +97,45 @@ def make_thud():
         samples.append(body + noise)
     return samples
 
+def make_mine_explode():
+    """Mine explosion: mid-weight boom with metallic clang and noise burst, 800ms."""
+    n = int(SAMPLE_RATE * 0.8)
+    rng = random.Random(53)
+    samples = []
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        attack = min(1.0, t / 0.003)
+        # Low boom
+        boom   = math.sin(2 * math.pi * 70  * t) * math.exp(-t * 6.0) * 0.75
+        # Metallic clang (high harmonics decay quickly)
+        clang  = math.sin(2 * math.pi * 420 * t) * math.exp(-t * 25.0) * 0.35
+        clang += math.sin(2 * math.pi * 780 * t) * math.exp(-t * 35.0) * 0.15
+        # Noise burst
+        noise  = (rng.random() * 2 - 1) * math.exp(-t * 14.0) * 0.65
+        # Trailing rumble
+        rumble = (rng.random() * 2 - 1) * math.exp(-t * 4.0) * 0.15
+        samples.append((boom + clang + noise + rumble) * attack)
+    return samples
+
+
 def make_missile_explode():
-    """Missile explosion: sharper burst than asteroid, 600ms."""
-    n = int(SAMPLE_RATE * 0.6)
+    """Missile impact explosion: sharp attack, deep boom, noise burst, trailing rumble, 1s."""
+    n = int(SAMPLE_RATE * 1.0)
     rng = random.Random(77)
     samples = []
     for i in range(n):
         t = i / SAMPLE_RATE
-        env = math.exp(-t * 7)
-        noise = (rng.random() * 2 - 1) * 0.6
-        thud  = math.sin(2 * math.pi * 80 * t) * 0.4 * math.exp(-t * 12)
-        samples.append((noise + thud) * env)
+        # Very sharp attack transient (2ms rise)
+        attack = min(1.0, t / 0.002)
+        # Low boom
+        boom   = math.sin(2 * math.pi * 55  * t) * math.exp(-t * 5.0) * 0.85
+        # Mid thud (decays faster)
+        thud   = math.sin(2 * math.pi * 120 * t) * math.exp(-t * 10.0) * 0.5
+        # Heavy noise burst at front
+        noise  = (rng.random() * 2 - 1) * math.exp(-t * 18.0) * 0.75
+        # Trailing rumble
+        rumble = (rng.random() * 2 - 1) * math.exp(-t * 3.5) * 0.18
+        samples.append((boom + thud + noise + rumble) * attack)
     return samples
 
 def make_missile_fly():
@@ -209,6 +237,53 @@ def make_giga_mine_explode():
     return samples
 
 
+def make_ting():
+    """Bullet hits reflective asteroid: sharp high metallic ping with inharmonic partials, 400ms."""
+    n = int(SAMPLE_RATE * 0.4)
+    samples = []
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        envelope = math.exp(-t * 12.0)
+        s  = 0.6 * math.sin(2 * math.pi * 2800 * t) * math.exp(-t * 10.0)
+        s += 0.3 * math.sin(2 * math.pi * 4600 * t) * math.exp(-t * 14.0)
+        s += 0.1 * math.sin(2 * math.pi * 7200 * t) * math.exp(-t * 18.0)
+        samples.append(s * envelope * 0.85)
+    return samples
+
+def make_asteroid_ting():
+    """Asteroid hits reflective asteroid: deeper resonant metallic clang, 600ms."""
+    n = int(SAMPLE_RATE * 0.6)
+    samples = []
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        envelope = math.exp(-t * 7.0)
+        s  = 0.55 * math.sin(2 * math.pi * 650  * t) * math.exp(-t * 5.0)
+        s += 0.30 * math.sin(2 * math.pi * 1060 * t) * math.exp(-t * 8.0)
+        s += 0.15 * math.sin(2 * math.pi * 1750 * t) * math.exp(-t * 12.0)
+        samples.append(s * envelope * 0.85)
+    return samples
+
+def make_warp():
+    """Teleporting asteroid warp: sci-fi shimmer with pitch sweep and spatial whoosh, 700ms."""
+    n = int(SAMPLE_RATE * 0.7)
+    rng = random.Random(61)
+    samples = []
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        # Rising frequency sweep from 300 Hz to 1800 Hz for an upward teleport feeling
+        sweep = 300 + 1500 * (i / n) ** 0.5
+        # Phase modulation on second harmonic for a shimmering, unstable quality
+        mod = 0.4 * math.sin(2 * math.pi * 18 * t)
+        tone  = math.sin(2 * math.pi * sweep * t + mod) * 0.45
+        tone += math.sin(2 * math.pi * sweep * 2 * t) * 0.20
+        # Noise whoosh that peaks in the middle then fades
+        whoosh_env = math.exp(-((t - 0.25) ** 2) / 0.02)
+        noise = (rng.random() * 2 - 1) * 0.30 * whoosh_env
+        # Overall envelope: fast attack, smooth decay
+        env = min(1.0, t / 0.015) * math.exp(-t * 4.0)
+        samples.append((tone + noise) * env * 0.85)
+    return samples
+
 def make_pickup():
     """Item pickup: cheerful rising chime, 200ms."""
     n = int(SAMPLE_RATE * 0.2)
@@ -220,6 +295,132 @@ def make_pickup():
         s  = math.sin(2 * math.pi * freq * t) * 0.6 * env
         s += math.sin(2 * math.pi * freq * 2 * t) * 0.2 * env
         samples.append(s)
+    return samples
+
+
+def make_god_mode_music():
+    """God mode: driving E-minor arpeggio + bass pulses + power lead, 4s (loopable)."""
+    dur = 4.0
+    n = int(SAMPLE_RATE * dur)
+    samples = [0.0] * n
+
+    # All frequencies are integers → phase completes exact cycles in 4s (48000*4 samples)
+    def add_synth(freq, start, length, vol=0.20):
+        s0 = int(start * SAMPLE_RATE)
+        s1 = min(n, int((start + length) * SAMPLE_RATE))
+        phase = 0.0
+        for i in range(s0, s1):
+            t = (i - s0) / SAMPLE_RATE
+            attack  = min(1.0, t / 0.008)
+            release = min(1.0, (length - t) / 0.015) if length > 0.015 else 1.0
+            env = attack * max(0.0, release)
+            phase += 2 * math.pi * freq / SAMPLE_RATE
+            s  = math.sin(phase) * 0.60 * env
+            s += math.sin(phase * 2) * 0.25 * env
+            s += math.sin(phase * 3) * 0.08 * env
+            samples[i] += s * vol
+
+    def add_bass(freq, start, vol=0.38):
+        length = 0.32
+        s0 = int(start * SAMPLE_RATE)
+        s1 = min(n, int((start + length) * SAMPLE_RATE))
+        phase = 0.0
+        for i in range(s0, s1):
+            t = (i - s0) / SAMPLE_RATE
+            env = min(1.0, t / 0.004) * math.exp(-t * 7.0)
+            phase += 2 * math.pi * freq / SAMPLE_RATE
+            s  = math.sin(phase) * 0.70 * env
+            s += math.sin(phase * 2) * 0.22 * env
+            samples[i] += s * vol
+
+    # E minor pentatonic arpeggios: E4=330, G4=392, B4=494, E5=660, B4, G4
+    arp = [330, 392, 494, 660, 494, 392]
+    # 32 notes over 4s → 0.125s each (160 BPM 16th notes)
+    step = 4.0 / 32
+    for i in range(32):
+        add_synth(arp[i % len(arp)], i * step, step * 0.88, 0.17)
+
+    # Bass pulses: E2=82 Hz / B1=62 Hz every 0.25s (16th note bass hits)
+    bass_pattern = [82, 82, 62, 82,  82, 82, 62, 82,
+                    82, 82, 62, 82,  82, 82, 62, 82]
+    for i, f in enumerate(bass_pattern):
+        add_bass(f, i * 0.25, 0.40)
+
+    # Power lead hitting key notes of the phrase (E4, G4, B4, E5)
+    lead = [
+        (660, 0.000, 0.110), (784, 0.125, 0.110), (660, 0.250, 0.110),
+        (784, 0.500, 0.110), (988, 0.625, 0.110), (784, 0.750, 0.230),
+        (660, 1.000, 0.110), (784, 1.125, 0.110), (660, 1.250, 0.110),
+        (988, 1.500, 0.230), (660, 1.750, 0.110),
+        (660, 2.000, 0.110), (784, 2.125, 0.110), (660, 2.250, 0.110),
+        (784, 2.500, 0.110), (988, 2.625, 0.110), (784, 2.750, 0.230),
+        (660, 3.000, 0.110), (784, 3.125, 0.110), (988, 3.250, 0.110),
+        (784, 3.500, 0.110), (660, 3.625, 0.110), (494, 3.750, 0.230),
+    ]
+    for f, start, length in lead:
+        add_synth(f, start, length, 0.21)
+
+    peak = max(abs(s) for s in samples)
+    if peak > 0:
+        samples = [s / peak * 0.85 for s in samples]
+    return samples
+
+
+def make_god_mode_music_warn():
+    """God mode warning: frantic octave-up version with tremolo, 2s (loopable) for last 3s."""
+    dur = 2.0
+    n = int(SAMPLE_RATE * dur)
+    samples = [0.0] * n
+
+    def add_synth(freq, start, length, vol=0.20):
+        s0 = int(start * SAMPLE_RATE)
+        s1 = min(n, int((start + length) * SAMPLE_RATE))
+        phase = 0.0
+        for i in range(s0, s1):
+            t = (i - s0) / SAMPLE_RATE
+            abs_t = start + t
+            # 16 Hz tremolo (16*2 = 32 complete cycles in 2s → seamless loop)
+            trem = 0.55 + 0.45 * math.sin(2 * math.pi * 16 * abs_t)
+            attack  = min(1.0, t / 0.005)
+            release = min(1.0, (length - t) / 0.008) if length > 0.008 else 1.0
+            env = attack * max(0.0, release) * trem
+            phase += 2 * math.pi * freq / SAMPLE_RATE
+            s  = math.sin(phase) * 0.60 * env
+            s += math.sin(phase * 2) * 0.25 * env
+            samples[i] += s * vol
+
+    def add_bass(freq, start, vol=0.38):
+        length = 0.16
+        s0 = int(start * SAMPLE_RATE)
+        s1 = min(n, int((start + length) * SAMPLE_RATE))
+        phase = 0.0
+        for i in range(s0, s1):
+            t = (i - s0) / SAMPLE_RATE
+            abs_t = start + t
+            # 12 Hz tremolo (12*2 = 24 complete cycles → seamless)
+            trem = 0.50 + 0.50 * math.sin(2 * math.pi * 12 * abs_t)
+            env = min(1.0, t / 0.003) * math.exp(-t * 12.0) * trem
+            phase += 2 * math.pi * freq / SAMPLE_RATE
+            s  = math.sin(phase) * 0.70 * env
+            s += math.sin(phase * 2) * 0.22 * env
+            samples[i] += s * vol
+
+    # One octave up: E5=660, G5=784, B5=988, E6=1320, B5, G5
+    arp = [660, 784, 988, 1320, 988, 784]
+    # 32 notes over 2s → 0.0625s each (double speed vs main)
+    step = 2.0 / 32
+    for i in range(32):
+        add_synth(arp[i % len(arp)], i * step, step * 0.85, 0.18)
+
+    # Faster bass: E3=164, B2=124 every 0.125s
+    bass_pattern = [164, 164, 124, 164,  164, 164, 124, 164,
+                    164, 164, 124, 164,  164, 164, 124, 164]
+    for i, f in enumerate(bass_pattern):
+        add_bass(f, i * 0.125, 0.36)
+
+    peak = max(abs(s) for s in samples)
+    if peak > 0:
+        samples = [s / peak * 0.85 for s in samples]
     return samples
 
 
@@ -321,6 +522,7 @@ if __name__ == '__main__':
         'mine.wav':            make_mine,
         'explode.wav':         make_explode,
         'thud.wav':            make_thud,
+        'mine_explode.wav':     make_mine_explode,
         'missile_explode.wav': make_missile_explode,
         'missile_fly.wav':     make_missile_fly,
         'tic.wav':             make_tic,
@@ -328,8 +530,13 @@ if __name__ == '__main__':
         'shield_hum.wav':      make_shield_hum,
         'boost.wav':           make_boost,
         'title.wav':           make_title,
+        'god_mode_music.wav':       make_god_mode_music,
+        'god_mode_music_warn.wav':  make_god_mode_music_warn,
         'pickup.wav':          make_pickup,
         'giga_mine_explode.wav': make_giga_mine_explode,
+        'ting.wav':              make_ting,
+        'asteroid_ting.wav':     make_asteroid_ting,
+        'warp.wav':              make_warp,
     }
 
     for filename, fn in sounds.items():

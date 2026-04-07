@@ -1,5 +1,6 @@
 #include "black_hole.h"
 #include "gl_compat.h"
+#include "mesh.h"
 #include <math.h>
 
 // Gravitational strength constant (G*M in game units).
@@ -16,6 +17,43 @@ BlackHole::BlackHole(WrappedPoint pos) {
   radius_squared = radius * radius;
   alive = true;
   invincible = true;  // cannot be shot/killed
+
+  const int segments = 32;
+  {
+    MeshBuilder mb;
+    mb.begin(GL_TRIANGLE_FAN);
+    mb.color(0.0f, 0.0f, 0.0f, 1.0f);
+    mb.vertex(0.0f, 0.0f);
+    for (int i = 0; i <= segments; i++) {
+      float a = i * 2.0f * (float)M_PI / segments;
+      mb.vertex(cosf(a) * radius * 8.0f, sinf(a) * radius * 8.0f);
+    }
+    mb.end();
+    mesh_fill.upload(mb);
+  }
+  {
+    MeshBuilder mb;
+    mb.begin(GL_TRIANGLE_FAN);
+    mb.color(0.0f, 0.0f, 0.0f, 1.0f);
+    mb.vertex(0.0f, 0.0f);
+    for (int i = 0; i <= segments; i++) {
+      float a = i * 2.0f * (float)M_PI / segments;
+      mb.vertex(cosf(a) * radius, sinf(a) * radius);
+    }
+    mb.end();
+    mesh_map_fill.upload(mb);
+  }
+  {
+    MeshBuilder mb;
+    mb.begin(GL_LINE_LOOP);
+    mb.color(0.6f, 0.3f, 1.0f, 1.0f);
+    for (int i = 0; i < segments; i++) {
+      float a = i * 2.0f * (float)M_PI / segments;
+      mb.vertex(cosf(a) * radius, sinf(a) * radius);
+    }
+    mb.end();
+    mesh_map_ring.upload(mb);
+  }
 }
 
 void BlackHole::step(int delta) {
@@ -55,43 +93,16 @@ bool BlackHole::apply_gravity(Object &other, int delta) const {
 }
 
 void BlackHole::draw(bool is_minimap) const {
-  const int segments = 32;
-
-  glPushMatrix();
-  glTranslatef(position.x(), position.y(), 0.0f);
+  float px = position.x(), py = position.y();
 
   if (is_minimap) {
-    // Simple filled black dot with a white ring on the minimap.
-    glColor3f(0.0f, 0.0f, 0.0f);
-    glBegin(GL_TRIANGLE_FAN);
-    glVertex2f(0.0f, 0.0f);
-    for (int i = 0; i <= segments; i++) {
-      float a = i * 2.0f * (float)M_PI / segments;
-      glVertex2f(cosf(a) * radius, sinf(a) * radius);
-    }
-    glEnd();
-    glColor3f(0.6f, 0.3f, 1.0f);
+    mesh_map_fill.draw_at(px, py, 0.0f);
     glLineWidth(1.0f);
-    glBegin(GL_LINE_LOOP);
-    for (int i = 0; i < segments; i++) {
-      float a = i * 2.0f * (float)M_PI / segments;
-      glVertex2f(cosf(a) * radius, sinf(a) * radius);
-    }
-    glEnd();
-    glPopMatrix();
+    mesh_map_ring.draw_at(px, py, 0.0f);
     return;
   }
 
   glDisable(GL_BLEND);
-  glColor3f(0.0f, 0.0f, 0.0f);
-  glBegin(GL_TRIANGLE_FAN);
-  glVertex2f(0.0f, 0.0f);
-  for (int i = 0; i <= segments; i++) {
-    float a = i * 2.0f * (float)M_PI / segments;
-    glVertex2f(cosf(a) * radius * 8.0f, sinf(a) * radius * 8.0f);
-  }
-  glEnd();
+  mesh_fill.draw_at(px, py, 0.0f);
   glEnable(GL_BLEND);
-
-  glPopMatrix();
 }

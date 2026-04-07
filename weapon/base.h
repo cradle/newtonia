@@ -15,6 +15,7 @@ namespace Weapon {
     virtual void shoot(bool on = true) = 0;
     virtual void step(int delta) = 0;
     bool is_shooting() const;
+    virtual bool is_automatic() const { return false; }
     bool is_unlimited() const;
     bool empty() const;
     int ammo() const;

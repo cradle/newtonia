@@ -11,6 +11,7 @@
 #include <list>
 
 #include "gl_compat.h"
+#include "mesh.h"
 
 class GLTrail;
 
@@ -22,6 +23,7 @@ public:
   virtual void input(unsigned char key, bool pressed = true);
   virtual void controller_input(SDL_Event event);
   virtual void controller_axis_input(SDL_Event event);
+  virtual void controller_touchpad_input(SDL_Event event);
   void touch_joystick_input(float nx, float ny);
   bool wasMyController(SDL_JoystickID id);
 
@@ -31,6 +33,7 @@ public:
   bool is_my_controller_id(SDL_JoystickID id) const;
   void genForceShield();
   void genRepulsor();
+  void genGodShield();
   void draw(bool minimap = false);
   void draw_body() const;
   void draw_keymap() const;
@@ -43,6 +46,7 @@ public:
   bool rotate_view() const;
   float camera_facing() const;
   float view_angle() const;
+  void snap_camera_to_heading();  // instantly align camera with ship heading (no interpolation)
 
   void collide_grid(Grid &grid, int delta);
   static void collide(GLShip* first, GLShip* second);
@@ -67,12 +71,21 @@ protected:
   float critical_temperature() const;
   float explode_temperature() const;
 
-  GLuint body, jets, repulsors, force_shield, force_shield_bg;
+  // body_fill: black polygon; body_outline: ship-coloured line loop.
+  Mesh body_fill, body_outline;
+  Mesh jets, repulsors, force_shield;
+  Mesh god_shield;     // yellow shield circle for god-mode invincibility
+  Mesh minimap_dot;    // single white vertex at origin, tinted per draw
+  Mesh missile_body;   // unit missile triangle (ship colour), per-missile matrix
 
   int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, next_secondary_key, boost_key, teleport_key, help_key;
 
   SDL_GameController *controller = NULL;
   SDL_JoystickID controller_instance_id = -1;
+  bool r2_shoot_active = false;
+  bool l2_shoot_active = false;
+  bool left_axis_x_active = false;
+  bool left_axis_y_active = false;
 
   bool rotating_view, show_help;
   float camera_rotation;

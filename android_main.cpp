@@ -80,12 +80,21 @@ static void finger_down(SDL_FingerID id, float x, float y) {
         return;
     }
 
-    // Pause zone: top-centre over the LEVEL text
+    // Pause button hit zone: top-right, below score/multiplier (larger than visual circle)
     if(!g_touch_controls.pause_active &&
-       tc_dist(px, py, g_touch_controls.pause_cx, g_touch_controls.pause_cy) <= g_touch_controls.pause_radius) {
+       tc_dist(px, py, g_touch_controls.pause_cx, g_touch_controls.pause_cy) <= g_touch_controls.pause_hit_radius) {
         g_touch_controls.pause_active = true;
         g_touch_controls.pause_finger = id;
-        s_game->keyboard('\r', 0, 0);  // allow menu start on same tap
+        s_game->keyboard('\r', 0, 0);
+        return;
+    }
+
+    // Centre-screen pause zone (large invisible area, avoids edges used by controls)
+    if(!g_touch_controls.pause_active &&
+       x >= 0.30f && x <= 0.70f && y >= 0.25f && y <= 0.75f) {
+        g_touch_controls.pause_active = true;
+        g_touch_controls.pause_finger = id;
+        s_game->keyboard('\r', 0, 0);
         return;
     }
 
@@ -123,7 +132,10 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     }
 }
 
-static void finger_up(SDL_FingerID id) {
+static void finger_up(SDL_FingerID id, float x, float y) {
+    // Forward tap position on finger-up so menu selections fire on release, not press
+    s_game->touch_tap(x, y);
+
     if(g_touch_controls.pause_active && g_touch_controls.pause_finger == id) {
         g_touch_controls.pause_active = false;
         s_game->keyboard_up('p', 0, 0);
@@ -167,6 +179,7 @@ static void finger_motion(SDL_FingerID id, float x, float y) {
 // ============================================================
 extern "C" int SDL_main(int argc, char *argv[]) {
     (void)argc; (void)argv;
+    s_running = true;  // reset in case process was kept alive after a previous quit
     srand(time(NULL));
 
     // Let SDL2 auto-select the best audio backend: AAudio on API 26+ (which
@@ -297,7 +310,10 @@ extern "C" int SDL_main(int argc, char *argv[]) {
             // Physical keyboard (Bluetooth keyboard, emulator, etc.)
             case SDL_KEYDOWN: {
                 SDL_Keycode k = e.key.keysym.sym;
-                if (k == SDLK_ESCAPE) { s_running = false; break; }
+                if (k == SDLK_AC_BACK || k == SDLK_ESCAPE) {
+                    if (!s_game->back_pressed()) s_running = false;
+                    break;
+                }
                 unsigned char key = (k < 128) ? (unsigned char)k : 0;
                 if (key) s_game->keyboard(key, 0, 0);
                 break;
@@ -315,7 +331,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                             e.tfinger.x, e.tfinger.y);
                 break;
             case SDL_FINGERUP:
-                finger_up(e.tfinger.fingerId);
+                finger_up(e.tfinger.fingerId, e.tfinger.x, e.tfinger.y);
                 break;
             case SDL_FINGERMOTION:
                 finger_motion(e.tfinger.fingerId,

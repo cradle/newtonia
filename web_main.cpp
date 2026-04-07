@@ -14,6 +14,7 @@
 #ifdef __EMSCRIPTEN__
 
 #include <emscripten.h>
+#include <emscripten/html5.h>
 #include <SDL.h>
 #include <SDL_mixer.h>
 
@@ -74,11 +75,19 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
 }
 
 static void finger_down(SDL_FingerID id, float x, float y) {
-    // Pause zone: top-centre over the LEVEL text (x in [0.35, 0.65], y < 0.15)
-    if(!s_pause_active && x >= 0.35f && x <= 0.65f && y < 0.15f) {
+    // Pause button: top-right, below score/multiplier
+    if(!s_pause_active && x >= 0.75f && y < 0.25f) {
         s_pause_active = true;
         s_pause_finger = id;
-        s_game->keyboard('\r', 0, 0);  // allow menu start on same tap
+        s_game->keyboard('\r', 0, 0);
+        return;
+    }
+
+    // Centre-screen pause zone (large invisible area, avoids edges used by controls)
+    if(!s_pause_active && x >= 0.30f && x <= 0.70f && y >= 0.25f && y <= 0.75f) {
+        s_pause_active = true;
+        s_pause_finger = id;
+        s_game->keyboard('\r', 0, 0);
         return;
     }
     if (s_finger_count >= MAX_FINGERS) return;
@@ -88,7 +97,10 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     s_game->keyboard(key, 0, 0);
 }
 
-static void finger_up(SDL_FingerID id) {
+static void finger_up(SDL_FingerID id, float x, float y) {
+    // Forward tap position on finger-up so menu selections fire on release, not press
+    s_game->touch_tap(x, y);
+
     if(s_pause_active && s_pause_finger == id) {
         s_pause_active = false;
         s_game->keyboard_up('p', 0, 0);
@@ -148,7 +160,7 @@ static void main_loop() {
             finger_down(e.tfinger.fingerId, e.tfinger.x, e.tfinger.y);
             break;
         case SDL_FINGERUP:
-            finger_up(e.tfinger.fingerId);
+            finger_up(e.tfinger.fingerId, e.tfinger.x, e.tfinger.y);
             break;
         case SDL_FINGERMOTION: {
             unsigned char new_key = touch_to_key(e.tfinger.x, e.tfinger.y);
@@ -213,6 +225,22 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_tap_start() {
 // Initialises the StateManager then releases the main loop gate.
 // EMSCRIPTEN_KEEPALIVE exports this so JS can call Module._web_on_idb_ready().
 extern "C" EMSCRIPTEN_KEEPALIVE void web_on_idb_ready() {
+    // By the time IDBFS sync completes the browser has finished its initial
+    // layout, so we can query the canvas's actual CSS display size.  This is
+    // more accurate than SDL_GetWindowSize() × DPR (which reflects the logical
+    // size passed to SDL_CreateWindow, not the CSS-constrained canvas area).
+    // Getting it right here prevents the 1–2× upscale blur that would otherwise
+    // persist until the first SDL_WINDOWEVENT_RESIZED (e.g. going fullscreen).
+    {
+        double css_w = 0, css_h = 0;
+        if (emscripten_get_element_css_size("#canvas", &css_w, &css_h) == EMSCRIPTEN_RESULT_SUCCESS
+                && css_w >= 1.0 && css_h >= 1.0) {
+            double dpr = emscripten_get_device_pixel_ratio();
+            s_w = (int)(css_w * dpr);
+            s_h = (int)(css_h * dpr);
+            SDL_SetWindowSize(s_window, s_w, s_h);
+        }
+    }
     s_game = new StateManager();
     s_game->resize(s_w, s_h);
     Typer::resize(s_w, s_h);
@@ -257,13 +285,24 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Scale the initial canvas to physical pixels using devicePixelRatio so
-    // the game renders at full device resolution instead of CSS pixel resolution.
+    // Scale the canvas to physical pixels based on its actual CSS layout size.
+    // SDL_GetWindowSize returns the SDL_CreateWindow size (800×600), not the CSS
+    // layout size determined by the browser — so we use emscripten_get_element_css_size
+    // to read the real canvas dimensions before the game initialises.
     {
         double dpr = emscripten_get_device_pixel_ratio();
-        SDL_GetWindowSize(s_window, &s_w, &s_h);
-        s_w = (int)(s_w * dpr);
-        s_h = (int)(s_h * dpr);
+        double cssW = 0, cssH = 0;
+        emscripten_get_element_css_size("#canvas", &cssW, &cssH);
+        if (cssW > 0 && cssH > 0) {
+            s_w = (int)(cssW * dpr);
+            s_h = (int)(cssH * dpr);
+        } else {
+            // CSS layout not ready yet — fall back to SDL size scaled by DPR.
+            SDL_GetWindowSize(s_window, &s_w, &s_h);
+            s_w = (int)(s_w * dpr);
+            s_h = (int)(s_h * dpr);
+        }
+        emscripten_set_canvas_element_size("#canvas", s_w, s_h);
         SDL_SetWindowSize(s_window, s_w, s_h);
     }
 

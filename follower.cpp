@@ -7,15 +7,15 @@
 #include <cmath>
 using namespace std;
 
-Follower::Follower(Ship *ship) : Behaviour(ship), asteroids(NULL) {
+Follower::Follower(Ship *ship) : Behaviour(ship), asteroids(NULL), difficulty(0.0f) {
   common_init();
 }
 
-Follower::Follower(Ship *ship, list<Object *> *targets) : Behaviour(ship), targets(targets), asteroids(NULL) {
+Follower::Follower(Ship *ship, list<Object *> *targets) : Behaviour(ship), targets(targets), asteroids(NULL), difficulty(0.0f) {
   common_init();
 }
 
-Follower::Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids) : Behaviour(ship), targets(targets), asteroids(asteroids) {
+Follower::Follower(Ship *ship, list<Object *> *targets, list<Object *> *asteroids, float difficulty) : Behaviour(ship), targets(targets), asteroids(asteroids), difficulty(difficulty) {
   common_init();
 }
 
@@ -33,43 +33,53 @@ void Follower::common_init() {
   done = false;
 }
 
-bool Follower::compute_avoidance(float &avoidance_angle) {
-  static const float AVOID_RANGE = 350.0f;
-  static const float FORWARD_FOV = 60.0f;  // only avoid asteroids within ±60° ahead
+bool Follower::compute_avoidance(float &avoidance_angle, float &avoidance_strength) {
+  // Avoidance range and FOV widen with difficulty so higher-level enemies navigate better.
+  float avoid_range = 250.0f + difficulty * 5.0f;
+  float fov = 50.0f + difficulty * 4.0f;
+  if(fov > 160.0f) fov = 160.0f;
 
   if(!asteroids) return false;
 
-  Object *closest = NULL;
-  float closest_dist = AVOID_RANGE;
+  // Accumulate a repulsion vector from all nearby asteroids within the FOV cone.
+  // Each asteroid contributes a vector pointing away from it, weighted by 1/dist
+  // (closer asteroids exert stronger repulsion).
+  float sum_x = 0.0f, sum_y = 0.0f;
 
   list<Object *>::iterator it;
   for(it = asteroids->begin(); it != asteroids->end(); ++it) {
     Object *a = *it;
     if(!a->alive) continue;
     float dist = ship->position.distance_to(a->position) - a->radius;
-    if(dist >= closest_dist) continue;
+    if(dist < 1.0f) dist = 1.0f;
+    if(dist >= avoid_range) continue;
 
-    // Check if asteroid is in the forward cone
     WrappedPoint apos = a->position;
     Point toward = (ship->position.closest_to(apos) - apos) * -1.0f;  // ship → asteroid
     float angle_to = ship->heading() - toward.normalized().direction();
     angle_to = fmod(angle_to, 360.0f);
     if(angle_to > 180.0f)  angle_to -= 360.0f;
     if(angle_to < -180.0f) angle_to += 360.0f;
-    if(fabs(angle_to) > FORWARD_FOV) continue;
+    if(fabs(angle_to) > fov) continue;
 
-    closest_dist = dist;
-    closest = a;
+    Point away = ship->position.closest_to(apos) - apos;
+    float weight = 1.0f / dist;
+    sum_x += away.normalized().x() * weight;
+    sum_y += away.normalized().y() * weight;
   }
 
-  if(!closest) return false;
+  if(sum_x == 0.0f && sum_y == 0.0f) return false;
 
-  // Vector from asteroid toward ship (direction to steer)
-  WrappedPoint roid_pos = closest->position;
-  Point away = ship->position.closest_to(roid_pos) - roid_pos;
-  avoidance_angle = ship->heading() - away.normalized().direction();
+  Point composite(sum_x, sum_y);
+  avoidance_angle = ship->heading() - composite.normalized().direction();
   avoidance_angle = fmod(avoidance_angle, 360.0f);
   if(avoidance_angle < 0.0f) avoidance_angle += 360.0f;
+
+  // Normalise strength to 0–1 using a smooth asymptote.
+  // raw ~0.05 (one asteroid at ~20 units) → strength ~0.5.
+  float raw = composite.magnitude();
+  avoidance_strength = raw / (raw + 0.05f);
+
   return true;
 }
 
@@ -77,36 +87,39 @@ void Follower::step(int delta) {
   if(ship->is_alive()) {
     lock_step(delta);
 
-    if(target) {
-      if (target->is_alive()) {
-        ship->thrust(true);
+    float avoidance_angle, avoidance_strength;
+    bool avoiding = compute_avoidance(avoidance_angle, avoidance_strength);
 
-        float avoidance_angle;
-        if(compute_avoidance(avoidance_angle)) {
-          // Steer away from asteroid, ignore target rotation this frame
-          if(avoidance_angle >= 0 && avoidance_angle < 180) {
-            ship->rotate_right(true);
-            ship->rotate_left(false);
-          } else {
-            ship->rotate_left(true);
-            ship->rotate_right(false);
-          }
-        } else {
-          WrappedPoint target_point = target->position;
-          float angle = (ship->heading() - (ship->position.closest_to(target_point) - target_point).normalized().direction());
-          angle = (angle < 0.0) ? (360.0 + angle) : angle;
-          if (angle >= 0 && angle < 180) {
-            ship->rotate_left(true);
-          } else {
-            ship->rotate_right(true);
-          }
-          burst_shooting_step(delta, angle, target_point);
-        }
+    if(target && !target->is_alive()) {
+      target = NULL;
+      time_until_next_lock = time_between_locks;
+      ship->rotate_right(false);
+    }
+
+    if(avoiding) {
+      if(avoidance_angle >= 0 && avoidance_angle < 180) {
+        ship->rotate_right(true);
+        ship->rotate_left(false);
       } else {
-        target = NULL;
-        time_until_next_lock = time_between_locks;
+        ship->rotate_left(true);
         ship->rotate_right(false);
       }
+      float t = 1.0f - avoidance_strength;
+      if(t < 0.3f) t = 0.3f;
+      ship->thrust_analog = t;
+      ship->thrust(true);
+    } else if(target) {
+      ship->thrust_analog = 1.0f;
+      ship->thrust(true);
+      WrappedPoint target_point = target->position;
+      float angle = (ship->heading() - (ship->position.closest_to(target_point) - target_point).normalized().direction());
+      angle = (angle < 0.0) ? (360.0 + angle) : angle;
+      if(angle >= 0 && angle < 180) {
+        ship->rotate_left(true);
+      } else {
+        ship->rotate_right(true);
+      }
+      burst_shooting_step(delta, angle, target_point);
     }
   }
 }
@@ -141,6 +154,11 @@ void Follower::lock_nearest_target() {
       }
     }
   }
+}
+
+void Follower::lock_now() {
+  time_until_next_lock = 0;
+  lock_nearest_target();
 }
 
 void Follower::lock_step(int delta) {

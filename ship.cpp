@@ -9,7 +9,10 @@
 #include "weapon/giga_mine.h"
 #include "weapon/missile.h"
 #include "weapon/shield.h"
+#include "weapon/god_mode.h"
+#include <algorithm>
 #include <math.h>
+#include <climits>
 #include <iostream>
 
 using namespace std;
@@ -21,6 +24,7 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   first_life = true;
   score = 0;
   kills = 0;
+  bullet_trails.reserve(256);
   position = WrappedPoint();
   safe_position(grid);
   init(!has_friction);
@@ -73,6 +77,30 @@ Ship::Ship(const Grid &grid, bool has_friction) :
     giga_mine_explode_sound = Mix_LoadWAV("audio/giga_mine_explode.wav");
     if(giga_mine_explode_sound == NULL) {
       std::cout << "Unable to load giga_mine_explode.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(mine_explode_sound == NULL) {
+    mine_explode_sound = Mix_LoadWAV("audio/mine_explode.wav");
+    if(mine_explode_sound == NULL) {
+      std::cout << "Unable to load mine_explode.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(shoot_sound == NULL) {
+    shoot_sound = Mix_LoadWAV("audio/shoot.wav");
+    if(shoot_sound == NULL) {
+      std::cout << "Unable to load shoot.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(god_mode_music_sound == NULL) {
+    god_mode_music_sound = Mix_LoadWAV("audio/god_mode_music.wav");
+    if(god_mode_music_sound == NULL) {
+      std::cout << "Unable to load god_mode_music.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(god_mode_music_warn_sound == NULL) {
+    god_mode_music_warn_sound = Mix_LoadWAV("audio/god_mode_music_warn.wav");
+    if(god_mode_music_warn_sound == NULL) {
+      std::cout << "Unable to load god_mode_music_warn.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
 }
@@ -132,9 +160,23 @@ Ship::~Ship() {
   if(giga_mine_explode_sound != NULL) {
     Mix_FreeChunk(giga_mine_explode_sound);
   }
+  if(mine_explode_sound != NULL) {
+    Mix_FreeChunk(mine_explode_sound);
+  }
+  if(shoot_sound != NULL) {
+    Mix_FreeChunk(shoot_sound);
+  }
+  stop_god_mode_music();
+  if(god_mode_music_sound != NULL) {
+    Mix_FreeChunk(god_mode_music_sound);
+  }
+  if(god_mode_music_warn_sound != NULL) {
+    Mix_FreeChunk(god_mode_music_warn_sound);
+  }
 }
 
 void Ship::next_weapon() {
+  if(god_mode_time_remaining() > 0) return;
   if(click_sound != NULL) {
     Mix_PlayChannel(-1, click_sound, 0);
   }
@@ -154,6 +196,7 @@ void Ship::next_weapon() {
 }
 
 void Ship::previous_weapon() {
+  if(god_mode_time_remaining() > 0) return;
   if(click_sound != NULL) {
     Mix_PlayChannel(-1, click_sound, 0);
   }
@@ -214,20 +257,28 @@ void Ship::add_weapon(int weapon_index) {
   if(weapon_index < 0 || weapon_index >= num_weapon_configs) return;
   const WeaponConfig &cfg = weapon_configs[weapon_index];
 
+  bool in_god_mode = god_mode_time_remaining() > 0;
+  bool auto_shooting = !primary_weapons.empty() && (*primary)->is_automatic() && (*primary)->is_shooting();
+
   for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
     Weapon::Default *w = dynamic_cast<Weapon::Default*>(*it);
     if(w && w->weapon_index() == weapon_index) {
       w->add_ammo(100);
-      (*primary)->shoot(false);
-      primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
-      primary = --primary_weapons.end();
+      if(!in_god_mode && !auto_shooting) {
+        (*primary)->shoot(false);
+        primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
+        primary = --primary_weapons.end();
+      }
       return;
     }
   }
 
   primary_weapons.push_back(new Weapon::Default(this, cfg.automatic, cfg.level, cfg.accuracy, cfg.time_between_shots, weapon_index));
-  (*primary)->shoot(false);
-  primary = --primary_weapons.end();
+  if(!in_god_mode && !auto_shooting) {
+    if (primary != primary_weapons.end())
+      (*primary)->shoot(false);
+    primary = --primary_weapons.end();
+  }
 }
 
 // Returns true if the player is currently holding the shield key.
@@ -314,6 +365,152 @@ void Ship::add_shield_ammo(int amount) {
   secondary = --secondary_weapons.end();
 }
 
+void Ship::add_god_mode(int duration_ms) {
+  set_shield_hum(false);
+  for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
+    if(dynamic_cast<Weapon::GodMode*>(*it)) {
+      (*it)->set_ammo(duration_ms);
+      invincible = true;
+      god_mode_music_phase = 0;  // force phase re-evaluation so warn→main on re-pickup
+      update_god_mode_music(duration_ms);
+      return;
+    }
+  }
+  primary_weapons.push_back(new Weapon::GodMode(this, duration_ms));
+  if (primary != primary_weapons.end())
+    (*primary)->shoot(false);
+  primary = --primary_weapons.end();
+  update_god_mode_music(duration_ms);
+}
+
+int Ship::god_mode_time_remaining() const {
+  for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
+    Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
+    if(gm) return gm->time_remaining();
+  }
+  return 0;
+}
+
+Save::Player Ship::capture_state() const {
+  Save::Player p;
+  p.score = score;
+  p.lives      = lives;
+  p.respawning = !alive;  // if mid-countdown, restore_state will consume the life via respawn(true)
+  p.kills           = kills;
+  p.kills_this_life = kills_this_life;
+  p.pos_x           = position.x();
+  p.pos_y           = position.y();
+  p.facing_x        = facing.x();
+  p.facing_y        = facing.y();
+  p.vel_x           = velocity.x();
+  p.vel_y           = velocity.y();
+
+  // Primary weapons
+  list<Weapon::Base*>::const_iterator cprimary = primary;
+  p.selected_primary_idx = 0;
+  int idx = 0;
+  for (auto it = primary_weapons.cbegin(); it != primary_weapons.cend(); ++it, ++idx) {
+    if (it == cprimary) p.selected_primary_idx = idx;
+    Save::WeaponEntry we;
+    Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
+    if (gm) {
+      we.kind         = Save::WeaponEntry::Kind::GodMode;
+      we.weapon_index = -1;
+      we.ammo         = gm->time_remaining();
+    } else {
+      Weapon::Default *dw = dynamic_cast<Weapon::Default*>(*it);
+      we.kind         = Save::WeaponEntry::Kind::Default;
+      we.weapon_index = dw ? dw->weapon_index() : -1;
+      we.ammo         = (*it)->ammo();
+    }
+    p.primary_weapons.push_back(we);
+  }
+
+  // Secondary weapons
+  list<Weapon::Base*>::const_iterator csecondary = secondary;
+  p.selected_secondary_idx = -1;
+  idx = 0;
+  for (auto it = secondary_weapons.cbegin(); it != secondary_weapons.cend(); ++it, ++idx) {
+    if (it == csecondary) p.selected_secondary_idx = idx;
+    Save::WeaponEntry we;
+    we.ammo         = (*it)->ammo();
+    we.weapon_index = -1;
+    if      (dynamic_cast<Weapon::Mine*>(*it))     we.kind = Save::WeaponEntry::Kind::Mine;
+    else if (dynamic_cast<Weapon::GigaMine*>(*it)) we.kind = Save::WeaponEntry::Kind::GigaMine;
+    else if (dynamic_cast<Weapon::Missile*>(*it))  we.kind = Save::WeaponEntry::Kind::Missile;
+    else if (dynamic_cast<Weapon::Shield*>(*it))   we.kind = Save::WeaponEntry::Kind::Shield;
+    else we.kind = Save::WeaponEntry::Kind::Mine; // fallback
+    p.secondary_weapons.push_back(we);
+  }
+
+  return p;
+}
+
+void Ship::restore_state(const Save::Player &p, const Grid &grid) {
+  score           = p.score;
+  lives           = p.lives;
+  kills           = p.kills;
+  kills_this_life = p.kills_this_life;
+  position        = WrappedPoint(p.pos_x, p.pos_y);
+  first_life      = true;  // tells respawn() to try the saved position first
+
+  disable_weapons();
+  primary   = primary_weapons.end();
+  secondary = secondary_weapons.end();
+
+  for (const auto &we : p.primary_weapons) {
+    if (we.kind == Save::WeaponEntry::Kind::GodMode) {
+      add_god_mode(we.ammo);
+    } else {
+      // Bypass add_weapon(): it rejects weapon_index==-1 (base weapon) and
+      // ignores saved ammo. Construct directly and restore ammo explicitly.
+      Weapon::Default *w;
+      if (we.weapon_index < 0 || we.weapon_index >= num_weapon_configs) {
+        w = new Weapon::Default(this);  // base weapon, unlimited ammo
+      } else {
+        const WeaponConfig &cfg = weapon_configs[we.weapon_index];
+        w = new Weapon::Default(this, cfg.automatic, cfg.level, cfg.accuracy,
+                                cfg.time_between_shots, we.weapon_index);
+        w->set_ammo(we.ammo);
+      }
+      primary_weapons.push_back(w);
+      primary = --primary_weapons.end();
+    }
+  }
+  if (!primary_weapons.empty()) {
+    int clamp = std::min(p.selected_primary_idx, (int)primary_weapons.size() - 1);
+    primary = primary_weapons.begin();
+    std::advance(primary, clamp);
+  }
+
+  for (const auto &we : p.secondary_weapons) {
+    switch (we.kind) {
+      case Save::WeaponEntry::Kind::Mine:     add_mine_ammo(we.ammo);     break;
+      case Save::WeaponEntry::Kind::GigaMine: add_giga_mine_ammo(we.ammo); break;
+      case Save::WeaponEntry::Kind::Missile:  add_missile_ammo(we.ammo);  break;
+      case Save::WeaponEntry::Kind::Shield:   add_shield_ammo(we.ammo);   break;
+      default: break;
+    }
+  }
+  if (p.selected_secondary_idx >= 0 && !secondary_weapons.empty()) {
+    int clamp = std::min(p.selected_secondary_idx, (int)secondary_weapons.size() - 1);
+    secondary = secondary_weapons.begin();
+    std::advance(secondary, clamp);
+  } else {
+    secondary = secondary_weapons.end();
+  }
+
+  // If the player was alive when saved, alive==false right now (Ship ctor default)
+  // but respawn() needs alive||lives>0 to proceed. Set alive=true so it passes
+  // even when lives==0 (e.g. last life, actively playing).
+  if (!p.respawning) alive = true;
+  respawn(grid, p.respawning);
+  // respawn()'s reset() zeroes velocity; restore after.
+  // facing is not touched by reset() but set here for clarity.
+  facing   = Point(p.facing_x, p.facing_y);
+  velocity = Point(p.vel_x, p.vel_y);
+}
+
 void Ship::set_missile_asteroids(std::list<Object*> *asteroids) {
   missile_asteroids = asteroids;
   for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
@@ -396,7 +593,7 @@ void Ship::respawn(const Grid &grid, bool was_killed) {
     reset(was_killed);
     safe_position(grid, try_current_position);
     invincible = true;
-    set_shield_hum(true);
+    if(god_mode_time_remaining() <= 0) set_shield_hum(true);
     detonate();
   }
 }
@@ -467,6 +664,7 @@ bool Ship::kill() {
       Mix_VolumeChunk(boost_sound, 0);
     }
     set_shield_hum(false);
+    stop_god_mode_music();
     if(explode_sound != NULL && sound_volume_scale > 0.0f) {
       Mix_PlayChannel(-1, explode_sound, 0);
     }
@@ -559,18 +757,54 @@ void Ship::collide_grid(Grid &grid, int delta) {
   if(alive) {
     object = grid.collide(*this);
     if(object != NULL) {
-      if(object->kill()) {
-        detonate();
+      if(god_mode_time_remaining() > 0) {
+        bool was_invincible = object->invincible;
+        object->invincible = false;
+        if(object->kill()) {
+          object->invincible = was_invincible;
+          if(was_invincible) Asteroid::num_killable++;
+          score += object->get_value() * multiplier() * (was_invincible ? 5 : 1);
+          kills_this_life += 1;
+          kills += 1;
+        } else {
+          object->invincible = was_invincible;
+        }
       } else {
-        explode(position, object->velocity);
-        // The hit object was invincible. If the ship is also invincible
-        // (shielded), neither side died — but we still need to check whether
-        // the ship is simultaneously touching a killable asteroid, because
-        // grid.collide() stops at the first hit and would have skipped it.
-        if(invincible) {
-          Object *killable = grid.collide(*this, 0.0f, true);
-          if(killable != NULL && killable->kill()) {
-            detonate();
+        // Check if this is an armoured asteroid hit on its armoured face.
+        // Use the same arc test as the bullet handler: approach direction vs armour_angle.
+        Asteroid *ast = dynamic_cast<Asteroid*>(object);
+        bool armour_blocked = false;
+        if(ast && ast->armoured) {
+          Point approach = (object->position - position).normalized();
+          float shield_dot = -(approach.x() * cosf(ast->armour_angle) +
+                                approach.y() * sinf(ast->armour_angle));
+          armour_blocked = (shield_dot > cosf(2.0f * (float)M_PI / 3.0f));
+        }
+
+        if(armour_blocked) {
+          // Armoured face: ship is destroyed but asteroid is unharmed.
+          explode(position, object->velocity);
+          if(Asteroid::ting_sound != NULL) {
+            static Uint32 last_armour_ting = UINT32_MAX;
+            Uint32 now = SDL_GetTicks();
+            if(now - last_armour_ting >= 125) {
+              last_armour_ting = now;
+              Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
+            }
+          }
+        } else if(object->kill()) {
+          detonate();
+        } else {
+          explode(position, object->velocity);
+          // The hit object was invincible. If the ship is also invincible
+          // (shielded), neither side died — but we still need to check whether
+          // the ship is simultaneously touching a killable asteroid, because
+          // grid.collide() stops at the first hit and would have skipped it.
+          if(invincible) {
+            Object *killable = grid.collide(*this, 0.0f, true);
+            if(killable != NULL && killable->kill()) {
+              detonate();
+            }
           }
         }
       }
@@ -582,6 +816,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
     object = grid.collide(mines[i], 50.0f);
     if(object != NULL && object->alive) {
       detonate(mines[i].position, mines[i].velocity, 50);
+      if(mine_explode_sound != NULL) Mix_PlayChannel(-1, mine_explode_sound, 0);
       mines[i] = std::move(mines.back());
       mines.pop_back();
     } else {
@@ -661,7 +896,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
     }
     if(object != NULL) {
       Asteroid *ast = dynamic_cast<Asteroid*>(object);
-      if(ast && ast->reflective) {
+      if(ast && (ast->reflective || (ast->phasing && ast->phased)) && !bullets[i].kills_invincible) {
         // Back-trace along the bullet's velocity to find where it crossed the surface.
         // The bullet is guaranteed to be inside the polygon here; stepping backward
         // by 1px increments finds the entry point in ~10 steps for typical bullet speeds.
@@ -692,9 +927,61 @@ void Ship::collide_grid(Grid &grid, int delta) {
         object->kill(); // plays thud sound
         bullets[i].world_bullet = true;
         ++i;
+      } else if (ast && ast->armoured && !bullets[i].kills_invincible) {
+        // Armoured asteroid: check if bullet hits the shielded face (±120° arc = 2/3 of shape).
+        // Bullet incoming direction dot shield normal > cos(120°) = -0.5 means shielded.
+        Point rel_vel = bullets[i].velocity - object->velocity;
+        Point rel_dir = rel_vel.normalized();
+        float shield_dot = -(rel_dir.x() * cosf(ast->armour_angle) +
+                             rel_dir.y() * sinf(ast->armour_angle));
+        if (shield_dot > -0.5f) {
+          // Hit the armoured face — reflect bullet, do NOT damage the asteroid
+          Point vel_norm = bullets[i].velocity.normalized();
+          float max_trace = ast->effective_radius() * 2.0f + 4.0f;
+          WrappedPoint entry = bullets[i].position;
+          for (float d = 1.0f; d <= max_trace; d += 1.0f) {
+            WrappedPoint test(bullets[i].position.x() - vel_norm.x() * d,
+                              bullets[i].position.y() - vel_norm.y() * d);
+            if (!ast->contains(test)) { entry = test; break; }
+          }
+          Point normal = ast->surface_normal(entry, rel_vel);
+          float dot = normal.x() * rel_vel.x() + normal.y() * rel_vel.y();
+          bullets[i].velocity = object->velocity + (rel_vel - normal * (2.0f * dot));
+          float push = rel_vel.magnitude() * 16.0f + 2.0f;
+          bullets[i].position = WrappedPoint(entry.x() + normal.x() * push,
+                                             entry.y() + normal.y() * push);
+          if (Asteroid::ting_sound != NULL) {
+            static Uint32 last_armour_ting = UINT32_MAX;
+            Uint32 now = SDL_GetTicks();
+            if (now - last_armour_ting >= 125) {
+              last_armour_ting = now;
+              Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
+            }
+          }
+          bullets[i].world_bullet = true;
+          ++i;
+        } else {
+          // Hit the unarmoured face — kill normally
+          if(object->kill()) {
+            score += object->get_value() * multiplier();
+            kills_this_life += 1;
+            kills += 1;
+          }
+          explode(bullets[i].position, object->velocity);
+          bullets[i] = std::move(bullets.back());
+          bullets.pop_back();
+        }
       } else {
+        bool was_invincible = object->invincible;
+        if(bullets[i].kills_invincible) {
+          object->invincible = false;
+          if(ast && ast->teleporting) ast->teleport_vulnerable = true;
+          if(ast && ast->tough) ast->health = 1;
+        }
         if(object->kill()) {
-          score += object->get_value() * multiplier();
+          object->invincible = was_invincible;
+          if(was_invincible) Asteroid::num_killable++;
+          score += object->get_value() * multiplier() * (was_invincible ? 5 : 1);
           kills_this_life += 1;
           kills += 1;
         }
@@ -756,6 +1043,7 @@ void Ship::collide(Ship *other) {
   for(size_t i = 0; i < mines.size(); ) {
     if(is_alive() && other->is_alive() && mines[i].collide(*other, 50.0)) {
       detonate(mines[i].position, mines[i].velocity);
+      if(mine_explode_sound != NULL) Mix_PlayChannel(-1, mine_explode_sound, 0);
       mines[i] = std::move(mines.back());
       mines.pop_back();
     } else {
@@ -860,6 +1148,34 @@ void Ship::set_shield_hum(bool on) {
   }
 }
 
+void Ship::stop_god_mode_music() {
+  if(god_mode_music_channel >= 0) {
+    Mix_HaltChannel(god_mode_music_channel);
+    god_mode_music_channel = -1;
+  }
+  god_mode_music_phase = 0;
+}
+
+void Ship::update_god_mode_music(int time_remaining) {
+  if(sound_volume_scale < 1.0f) return;
+  if(time_remaining <= 0) {
+    stop_god_mode_music();
+    return;
+  }
+  int target_phase = (time_remaining > 3000) ? 1 : 2;
+  if(target_phase == god_mode_music_phase) return;  // already correct, nothing to do
+  // Stop whatever is currently playing
+  if(god_mode_music_channel >= 0) {
+    Mix_HaltChannel(god_mode_music_channel);
+    god_mode_music_channel = -1;
+  }
+  Mix_Chunk *chunk = (target_phase == 1) ? god_mode_music_sound : god_mode_music_warn_sound;
+  if(chunk != NULL) {
+    god_mode_music_channel = Mix_PlayChannel(-1, chunk, -1);
+  }
+  god_mode_music_phase = target_phase;
+}
+
 float Ship::heading() const {
   //FIX: shouldn't have to calculate this each time
   return facing.direction();
@@ -908,6 +1224,26 @@ WrappedPoint Ship::gun() const {
   return WrappedPoint(position + (facing * height * 1.05));
 }
 
+void Ship::mark_last_bullet_trail() {
+  if(!bullets.empty())
+    bullets.back().has_trail = true;
+}
+
+void Ship::mark_last_bullet_kills_invincible() {
+  if(!bullets.empty())
+    bullets.back().kills_invincible = true;
+}
+
+void Ship::fire_bullet_from_gun() {
+  if(shoot_sound != NULL && sound_volume_scale > 0.0f) {
+    Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * sound_volume_scale));
+    Mix_PlayChannel(-1, shoot_sound, 0);
+  }
+  bullets.push_back(Particle(gun(), facing * 0.615f + velocity * 0.99f, 2000.0f));
+  mark_last_bullet_trail();
+  mark_last_bullet_kills_invincible();
+}
+
 WrappedPoint Ship::tail() const {
   return WrappedPoint(position - (facing * 15.0));
 }
@@ -933,7 +1269,7 @@ void Ship::step(float delta, const Grid &grid) {
   }
 
   if(is_alive()) {
-    if(invincible) {
+    if(invincible && god_mode_time_remaining() <= 0) {
       time_left_invincible -= delta;
       if(time_left_invincible < 0) {
         invincible = false;
@@ -941,10 +1277,36 @@ void Ship::step(float delta, const Grid &grid) {
       }
     }
 
-    (*primary)->step(delta);
+    for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ) {
+      (*it)->step(delta);
+      Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
+      if(gm && gm->empty()) {
+        auto next = it; ++next;
+        if(next == primary_weapons.end()) {
+          // God mode is always pushed to the back; return to the weapon before it
+          next = it;
+          if(next != primary_weapons.begin()) --next;
+        }
+        if(it == primary) primary = next;
+        delete *it;
+        it = primary_weapons.erase(it);
+      } else {
+        ++it;
+      }
+    }
     for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
       if (!dynamic_cast<Weapon::Missile*>(*it))
         (*it)->step(delta);
+    }
+
+    // God mode music: update phase transitions and play rapid tic beeps in last second
+    int gm_time = god_mode_time_remaining();
+    update_god_mode_music(gm_time);
+    if(gm_time > 0 && gm_time <= 1000 && sound_volume_scale >= 1.0f && tic_sound != NULL) {
+      int prev_gm_time = gm_time + (int)delta;
+      if((prev_gm_time / 200) != (gm_time / 200)) {
+        Mix_PlayChannel(-1, tic_sound, 0);
+      }
     }
 
   } else if (lives > 0) {
@@ -1002,6 +1364,24 @@ void Ship::step(float delta, const Grid &grid) {
     if(!bullets[i].is_alive()) {
       bullets[i] = std::move(bullets.back());
       bullets.pop_back();
+    } else {
+      if(bullets[i].has_trail) {
+        bullets[i].trail_timer -= delta;
+        if(bullets[i].trail_timer <= 0) {
+          bullets[i].trail_timer = 50;
+          Point spread((rand()%100-50)*0.0002f, (rand()%100-50)*0.0002f);
+          bullet_trails.push_back(Particle(bullets[i].position, spread, 200.0f));
+        }
+      }
+      ++i;
+    }
+  }
+
+  for(size_t i = 0; i < bullet_trails.size(); ) {
+    bullet_trails[i].step(delta);
+    if(!bullet_trails[i].is_alive()) {
+      bullet_trails[i] = std::move(bullet_trails.back());
+      bullet_trails.pop_back();
     } else {
       ++i;
     }

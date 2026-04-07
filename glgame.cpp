@@ -19,9 +19,18 @@
 #include <SDL.h>
 
 #include "gl_compat.h"
+#include "mat4.h"
+#include "mesh.h"
 
 #include <iostream>
 #include <list>
+
+static void set_player_keys(GLShip *gs, int player_index) {
+  if (player_index == 0)
+    gs->set_keys('a','d','w',' ','s','x','q','e','t', 128+GLUT_KEY_F1, 'c');
+  else
+    gs->set_keys('j','l','i','/','k',',','u','o','y', 128+GLUT_KEY_F8, '.');
+}
 
 const int GLGame::default_world_width = 2500;
 const int GLGame::default_world_height = 2500;
@@ -33,6 +42,7 @@ const float GLGame::mine_pickup_drop_chance = 0.0125f;
 const float GLGame::giga_mine_pickup_drop_chance = 0.005f;
 const float GLGame::missile_pickup_drop_chance = 0.0125f;
 const float GLGame::shield_pickup_drop_chance = 0.0125f;
+const float GLGame::god_mode_pickup_drop_chance = 0.0025f;
 
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
@@ -59,9 +69,7 @@ GLGame::GLGame(SDL_GameController *controller) :
 
 
   starfield = new GLStarfield(world);
-
-  rearstars = glGenLists(1);
-  frontstars = glGenLists(1);
+  warp_pass_ = new WarpPass();
 
   time_until_next_step = 0;
   num_frames = 0;
@@ -75,7 +83,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   if(controller != NULL) {
     object->set_controller(controller);
   } else {
-    object->set_keys('a','d','w',' ','s','x','q','e', 't', 128+GLUT_KEY_F1, 'c');
+    set_player_keys(object, 0);
   }
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
@@ -97,9 +105,17 @@ GLGame::GLGame(SDL_GameController *controller) :
       std::cout << "Unable to load pickup.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
+  if(warp_sound == NULL) {
+    warp_sound = Mix_LoadWAV("audio/warp.wav");
+    if(warp_sound == NULL) {
+      std::cout << "Unable to load warp.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
 }
 
 GLGame::~GLGame() {
+  save_progress();
+
   //TODO: Make erase, use boost::ptr_list? something better
   // std::erase(std::remove_if(v.begin(),v.end(),true), v.end());
   while(!players->empty()) {
@@ -143,8 +159,193 @@ GLGame::~GLGame() {
   if(pickup_sound != NULL) {
     Mix_FreeChunk(pickup_sound);
   }
-  glDeleteLists(rearstars, 1);
-  glDeleteLists(frontstars, 1);
+  if(warp_sound != NULL) {
+    Mix_FreeChunk(warp_sound);
+  }
+  delete warp_pass_;
+}
+
+GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
+  State(),
+  world(Point(save.world_x, save.world_y)),
+  generation(save.generation),
+  current_time(save.current_time),
+  running(true),
+  level_cleared(save.level_cleared),
+  friendly_fire(true),
+  debug_grid(false),
+  score_saved(false),
+  game_over_time(-1),
+  grid(Grid(Point(save.world_x, save.world_y),
+            Point(Asteroid::max_radius*2, Asteroid::max_radius*2))) {
+  time_between_steps = step_size;
+  time_until_next_generation = save.time_until_next_generation;
+
+  enemies = new std::list<GLShip*>;
+  players = new std::list<GLShip*>;
+  ship_objects = new std::list<Object*>;
+  objects = new std::list<Asteroid*>;
+  dead_objects = new std::list<Asteroid*>;
+  pickups = new std::list<Pickup*>;
+  black_holes = new std::list<BlackHole*>;
+
+  WrappedPoint::set_boundaries(world);
+
+  starfield = new GLStarfield(world);
+
+  time_until_next_step = 0;
+  num_frames = 0;
+
+  // Restore asteroids
+  Asteroid::num_killable = 0;
+  for (const auto &sa : save.asteroids) {
+    Asteroid *a = new Asteroid(sa.invincible, sa.invisible, sa.reflective,
+                               sa.teleporting, sa.quantum, sa.tough, sa.armoured);
+    a->restore_state(sa);
+    objects->push_back(a);
+  }
+  grid.update((std::list<Object*>*)objects);
+
+  // Restore pickups
+  for (const auto &sp : save.pickups) {
+    WrappedPoint pos(sp.pos_x, sp.pos_y);
+    switch (sp.type) {
+      case Save::PickupType::Weapon:   pickups->push_back(new WeaponPickup(pos, sp.weapon_index)); break;
+      case Save::PickupType::Mine:     pickups->push_back(new MinePickup(pos)); break;
+      case Save::PickupType::GigaMine: pickups->push_back(new GigaMinePickup(pos)); break;
+      case Save::PickupType::Missile:  pickups->push_back(new MissilePickup(pos)); break;
+      case Save::PickupType::Shield:   pickups->push_back(new ShieldPickup(pos)); break;
+      case Save::PickupType::GodMode:  pickups->push_back(new GodModePickup(pos)); break;
+      case Save::PickupType::ExtraLife: pickups->push_back(new ExtraLife(pos)); break;
+    }
+  }
+
+  // Restore black holes
+  for (const auto &sbh : save.black_holes) {
+    black_holes->push_back(new BlackHole(WrappedPoint(sbh.pos_x, sbh.pos_y)));
+  }
+
+  // Restore players — player 1 is GLShip, player 2+ is GLCar (matches add_player2)
+  for (const auto &sp : save.players) {
+    bool is_p1 = players->empty();
+    GLShip *gs = is_p1 ? new GLShip(grid, true) : new GLCar(grid, true);
+    if (controller != NULL && is_p1) {
+      gs->set_controller(controller);
+    } else {
+      set_player_keys(gs, is_p1 ? 0 : 1);
+    }
+    gs->ship->set_missile_asteroids((std::list<Object*>*)objects);
+    ship_objects->push_back(gs->ship);
+    gs->ship->set_missile_ships(ship_objects);
+    gs->ship->set_black_holes(black_holes);
+    gs->ship->restore_state(sp, grid);
+    gs->snap_camera_to_heading();
+    players->push_back(gs);
+  }
+
+  // Assign any already-connected controllers to players that don't have one yet
+  // (controller_added only fires for newly connected controllers, not pre-existing ones)
+  for (int i = 0; i < SDL_NumJoysticks(); i++) {
+    if (!SDL_IsGameController(i)) continue;
+    SDL_GameController *ctrl = SDL_GameControllerOpen(i);
+    if (!ctrl) continue;
+    controller_added(ctrl);
+  }
+
+  if (save.station.present) {
+    station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
+    station->restore_state(save.station, grid);
+  } else {
+    station = NULL;
+  }
+  warp_pass_ = new WarpPass();
+
+  if(tic_sound == NULL) {
+    tic_sound = Mix_LoadWAV("audio/tic.wav");
+    if(tic_sound == NULL) {
+      std::cout << "Unable to load tic.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(pickup_sound == NULL) {
+    pickup_sound = Mix_LoadWAV("audio/pickup.wav");
+    if(pickup_sound == NULL) {
+      std::cout << "Unable to load pickup.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(warp_sound == NULL) {
+    warp_sound = Mix_LoadWAV("audio/warp.wav");
+    if(warp_sound == NULL) {
+      std::cout << "Unable to load warp.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+}
+
+void GLGame::save_progress() {
+  if (score_saved) return;
+  for (auto* gs : *players) {
+    if (gs->ship->is_alive() || gs->ship->lives > 0) {
+      Save::save_game(build_save_data());
+      return;
+    }
+  }
+  // All players dead with no lives remaining — game over, delete any save
+  if (!save_deleted_) {
+    Save::delete_save();
+    save_deleted_ = true;
+  }
+}
+
+Save::GameState GLGame::build_save_data() const {
+  Save::GameState s;
+  s.generation                 = generation;
+  s.world_x                    = world.x();
+  s.world_y                    = world.y();
+  s.level_cleared              = level_cleared;
+  s.time_until_next_generation = time_until_next_generation;
+  s.current_time               = current_time;
+
+  for (auto* gs : *players)
+    s.players.push_back(gs->ship->capture_state());
+
+  for (auto* a : *objects)
+    s.asteroids.push_back(a->capture_state());
+
+  for (auto* p : *pickups) {
+    Save::Pickup sp;
+    sp.pos_x = p->position.x();
+    sp.pos_y = p->position.y();
+    sp.weapon_index = -1;
+    if (WeaponPickup *wp = dynamic_cast<WeaponPickup*>(p)) {
+      sp.type = Save::PickupType::Weapon;
+      sp.weapon_index = wp->get_weapon_index();
+    } else if (dynamic_cast<MinePickup*>(p)) {
+      sp.type = Save::PickupType::Mine;
+    } else if (dynamic_cast<GigaMinePickup*>(p)) {
+      sp.type = Save::PickupType::GigaMine;
+    } else if (dynamic_cast<MissilePickup*>(p)) {
+      sp.type = Save::PickupType::Missile;
+    } else if (dynamic_cast<ShieldPickup*>(p)) {
+      sp.type = Save::PickupType::Shield;
+    } else if (dynamic_cast<GodModePickup*>(p)) {
+      sp.type = Save::PickupType::GodMode;
+    } else if (dynamic_cast<ExtraLife*>(p)) {
+      sp.type = Save::PickupType::ExtraLife;
+    } else {
+      continue; // unknown pickup type, skip
+    }
+    s.pickups.push_back(sp);
+  }
+
+  for (auto* bh : *black_holes)
+    s.black_holes.push_back({bh->position.x(), bh->position.y()});
+
+  if (station) {
+    s.station = station->capture_state();
+  } else {
+    s.station.present = false;
+  }
+
+  return s;
 }
 
 void GLGame::add_asteroids() {
@@ -168,9 +369,17 @@ void GLGame::add_asteroids() {
   for(int i = 0; i < num_quantum; i++) {
     objects->push_back(new Asteroid(false, false, false, false, true));
   }
-  int num_elastic = (generation >= 6) ? (generation - 6) / 2 + 1 : 0;
-  for(int i = 0; i < num_elastic; i++) {
+  int num_tough = (generation >= 6) ? (generation - 6) / 2 + 1 : 0;
+  for(int i = 0; i < num_tough; i++) {
     objects->push_back(new Asteroid(false, false, false, false, false, true));
+  }
+  int num_armoured = (generation >= 7) ? (generation - 7) / 2 + 1 : 0;
+  for(int i = 0; i < num_armoured; i++) {
+    objects->push_back(new Asteroid(false, false, false, false, false, false, true));
+  }
+  int num_phasing = (generation >= 8) ? (generation - 8) / 2 + 1 : 0;
+  for(int i = 0; i < num_phasing; i++) {
+    objects->push_back(new Asteroid(false, false, false, false, false, false, false, true));
   }
 }
 
@@ -183,7 +392,14 @@ void GLGame::toggle_pause() {
   }
 }
 
+bool GLGame::back_pressed() {
+  save_progress();
+  request_state_change(new Menu());
+  return true;
+}
+
 void GLGame::focus_lost() {
+  save_progress();
   if(running) {
     toggle_pause();
     auto_paused = true;
@@ -281,13 +497,13 @@ void GLGame::tick(int delta) {
       time_until_next_generation -= delta;
     } else {
       generation++;
-      if(generation == 20) {
+      if(generation == 10) {
         world += Point(3000, 3000);
       } else {
         world += Point(50, 50);
       }
       grid = Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2));
-      if(generation >= 20) {
+      if(generation >= 10) {
         if(station != NULL)
           delete station;
         station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
@@ -318,13 +534,14 @@ void GLGame::tick(int delta) {
         delete black_holes->back();
         black_holes->pop_back();
       }
-      if(generation > 10)
+      if(generation >= 9)
         black_holes->push_back(new BlackHole(WrappedPoint(world.x() / 2.0f, world.y() / 2.0f)));
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {
         (*o)->ship->respawn(grid, false);
       }
       level_cleared = false;
+      save_progress();
     }
   }
 
@@ -429,6 +646,7 @@ void GLGame::tick(int delta) {
     // 2D elastic collision physics (mass ~ radius^2, conservation of momentum
     // and kinetic energy along the collision normal). Pairs are processed once
     // via inner iterator starting after outer to avoid double-application.
+    // Reflective asteroids carry elastic=true so they participate automatically.
     {
       std::list<Asteroid*>::iterator ai, bi;
       for(ai = objects->begin(); ai != objects->end(); ++ai) {
@@ -455,10 +673,19 @@ void GLGame::tick(int delta) {
           float nx = dx / dist;
           float ny = dy / dist;
 
-          // Relative velocity along normal (negative = approaching)
+          // Positional correction: always push apart to resolve overlap,
+          // including the case where children spawn inside each other.
+          float overlap = sum_r - dist;
+          float push = overlap * 0.5f + 0.5f;
+          a->position += Point(nx, ny) * push;
+          a->position.wrap();
+          b->position += Point(-nx, -ny) * push;
+          b->position.wrap();
+
+          // Velocity impulse: only when approaching (negative = approaching)
           float vrel_n = (a->velocity.x() - b->velocity.x()) * nx
                        + (a->velocity.y() - b->velocity.y()) * ny;
-          if(vrel_n >= 0.0f) continue; // already separating
+          if(vrel_n >= 0.0f) continue; // already separating, no impulse needed
 
           // Mass proportional to area (radius^2)
           float ma = a->radius * a->radius;
@@ -468,13 +695,23 @@ void GLGame::tick(int delta) {
           a->velocity = a->velocity + Point(nx, ny) * (impulse / ma);
           b->velocity = b->velocity - Point(nx, ny) * (impulse / mb);
 
-          // Positional correction: push apart to resolve overlap
-          float overlap = sum_r - dist;
-          float push = overlap * 0.5f + 0.5f;
-          a->position += Point(nx, ny) * push;
-          a->position.wrap();
-          b->position += Point(-nx, -ny) * push;
-          b->position.wrap();
+          // Play a deep metallic ting when an asteroid strikes a reflective one,
+          // but only if the collision is visible to any player.
+          if((a->reflective || b->reflective) && Asteroid::asteroid_ting_sound != NULL) {
+            Point contact(
+              (a->position.x() + b->position.x()) * 0.5f,
+              (a->position.y() + b->position.y()) * 0.5f);
+            float vol = sound_volume_for_point(contact);
+            if(vol > 0.0f) {
+              static Uint32 last_asteroid_ting_tick = UINT32_MAX;
+              Uint32 now = SDL_GetTicks();
+              if(now - last_asteroid_ting_tick >= 125) {
+                last_asteroid_ting_tick = now;
+                Mix_VolumeChunk(Asteroid::asteroid_ting_sound, (int)(MIX_MAX_VOLUME * vol));
+                Mix_PlayChannel(-1, Asteroid::asteroid_ting_sound, 0);
+              }
+            }
+          }
         }
       }
     }
@@ -505,6 +742,8 @@ void GLGame::tick(int delta) {
             pickups->push_back(new MissilePickup((*oi)->position));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance) {
             pickups->push_back(new ShieldPickup((*oi)->position));
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance) {
+            pickups->push_back(new GodModePickup((*oi)->position));
           }
         }
         // Move to dead_objects so the collision grid no longer iterates this
@@ -553,11 +792,13 @@ void GLGame::tick(int delta) {
       ast->vulnerable_time_left = 5000; // 5 seconds of vulnerability
       ast->teleport_pending = false;
       ast->teleport_angle = rand() / (float)RAND_MAX * 2.0f * (float)M_PI;
+      if(warp_sound != NULL)
+        Mix_PlayChannel(-1, warp_sound, 0);
     }
 
     // Update quantum asteroid observation state: collapse when any player looks at
-    // it (becomes killable, normal speed), enter superposition otherwise (invincible,
-    // 3x speed so it can sneak up on players who look away).
+    // it (normal speed), enter superposition otherwise (4x speed so it can sneak
+    // up on players who look away). Quantum asteroids are always killable.
     for(oi = objects->begin(); oi != objects->end(); ++oi) {
       Asteroid *ast = *oi;
       if(!ast->quantum) continue;
@@ -568,13 +809,11 @@ void GLGame::tick(int delta) {
       if(spd > 1e-6f) {
         Point dir = ast->velocity * (1.0f / spd);
         if(now_observed) {
-          // Collapse: slow to base speed, become killable
-          ast->invincible = false;
+          // Collapse: slow to base speed
           ast->velocity = dir * ast->quantum_base_speed;
         } else {
-          // Superposition: speed up 6x, become invincible
-          ast->invincible = true;
-          ast->velocity = dir * ast->quantum_base_speed * 6.0f;
+          // Superposition: speed up 4x
+          ast->velocity = dir * ast->quantum_base_speed * 4.0f;
         }
       }
     }
@@ -723,6 +962,30 @@ void GLGame::tick(int delta) {
     }
   }
 
+  /* Delete save on true game over */
+  if (score_saved && !save_deleted_) {
+    Save::delete_save();
+    save_deleted_ = true;
+  }
+
+  /* Save on death while lives remain (once per death window) */
+  if (!score_saved && !players->empty()) {
+    bool any_dead_with_lives = false;
+    bool any_dead_no_lives   = false;
+    for (auto* glship : *players) {
+      if (!glship->ship->is_alive()) {
+        if (glship->ship->lives > 0) any_dead_with_lives = true;
+        else                         any_dead_no_lives   = true;
+      }
+    }
+    if (any_dead_with_lives && !any_dead_no_lives && !save_written_this_death_) {
+      Save::save_game(build_save_data());
+      save_written_this_death_ = true;
+    }
+    if (!any_dead_with_lives)
+      save_written_this_death_ = false;
+  }
+
   /* Display FPS */
   //std::cout << (num_frames*1000 / current_time) << std::endl;
 }
@@ -738,21 +1001,15 @@ void GLGame::draw_objects(float direction, bool minimap) const {
                              minimap ? world.x() : 0, minimap ? world.y() : 0);
 
   for(auto pi = pickups->begin(); pi != pickups->end(); pi++) {
-    glPushMatrix();
     (*pi)->draw(direction);
-    glPopMatrix();
   }
 
   std::list<GLShip*>::iterator o;
   for(o = players->begin(); o != players->end(); o++) {
-    glPushMatrix();
     (*o)->draw(minimap);
-    glPopMatrix();
   }
   for(o = enemies->begin(); o != enemies->end(); o++) {
-    glPushMatrix();
     (*o)->draw(minimap);
-    glPopMatrix();
   }
 
   if(station != NULL) station->draw(minimap);
@@ -776,12 +1033,6 @@ void GLGame::draw(void) {
   }
 }
 
-void GLGame::setup_perspective(GLShip *glship) const {
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  gluPerspective(num_y_viewports() == 1 ? glship->view_angle() : glship->view_angle()*0.75, window.x()/num_x_viewports()/(window.y()/num_y_viewports()), 100.0f, 2000.0f);
-  glMatrixMode(GL_MODELVIEW);
-}
 
 int GLGame::num_x_viewports() const {
   return (players->size() == 0) ? 1 : (window.x() > window.y()) ? players->size() : 1;
@@ -803,6 +1054,38 @@ bool GLGame::is_visible_to_any_player(const Ship &ship) const {
     if(dist * dist <= cull_r2) return true;
   }
   return false;
+}
+
+bool GLGame::is_visible_to_any_player(Point p) const {
+  for(auto* glship : *players) {
+    if(!glship->ship->is_alive()) continue;
+    float fov_deg = glship->view_angle();
+    float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
+    float aspect = window.x() / (float)(window.y() / num_y_viewports());
+    float half_w = half_h * aspect;
+    float cull_r2 = (half_w * half_w + half_h * half_h) * 1.1f;
+    float dist = glship->ship->position.distance_to(p);
+    if(dist * dist <= cull_r2) return true;
+  }
+  return false;
+}
+
+float GLGame::sound_volume_for_point(Point p) const {
+  float best = 0.0f;
+  for(auto* glship : *players) {
+    if(!glship->ship->is_alive()) continue;
+    float fov_deg = glship->view_angle();
+    float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
+    float aspect = window.x() / (float)(window.y() / num_y_viewports());
+    float half_w = half_h * aspect;
+    float cull_r = sqrtf(half_w * half_w + half_h * half_h) * sqrtf(1.1f);
+    float dist = glship->ship->position.distance_to(p);
+    if(dist < cull_r) {
+      float v = 1.0f - dist / cull_r;
+      if(v > best) best = v;
+    }
+  }
+  return best;
 }
 
 bool GLGame::is_point_faced_by_any_player(Point p) const {
@@ -833,18 +1116,11 @@ bool GLGame::is_point_faced_by_any_player(Point p) const {
   return false;
 }
 
-void GLGame::setup_orthogonal() const {
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  gluOrtho2D(-window.x()/num_x_viewports(), window.x()/num_x_viewports(), -window.y()/num_y_viewports(), window.y()/num_y_viewports());
-  glMatrixMode(GL_MODELVIEW);
-}
 
 void GLGame::setup_viewport(bool primary) const {
   if(players->size() > 1 && window.x() <= window.y()) {
     primary = !primary; //HACK: Fix this
   }
-  glLoadIdentity();
   if(primary) {
     glViewport(0, 0, window.x()/num_x_viewports(), window.y()/num_y_viewports());
   } else {
@@ -857,11 +1133,22 @@ void GLGame::setup_viewport(bool primary) const {
 }
 
 void GLGame::draw_world(GLShip *glship, bool primary) const {
-  setup_perspective(glship);
+  float nx = (float)num_x_viewports();
+  float ny = (float)num_y_viewports();
+  float fovy = (glship == NULL) ? 85.0f
+             : (ny == 1.0f) ? glship->view_angle()
+             : glship->view_angle() * 0.75f;
+  float aspect = (window.x() / nx) / (window.y() / ny);
+  float proj[16]; mat4_perspective(proj, fovy, aspect, 100.0f, 2000.0f);
+  float view[16]; mat4_lookat(view, 0.0f, 0.0f, 1000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+  float pv[16]; mat4_mul(pv, proj, view);
+  gles2_set_vp(pv);
   setup_viewport(primary);
-  gluLookAt(0.0f, 0.0f, 1000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f );
   draw_perspective(glship);
-  setup_orthogonal();
+
+  float ortho[16];
+  mat4_ortho(ortho, -window.x()/nx, window.x()/nx, -window.y()/ny, window.y()/ny, -1.0f, 1.0f);
+  gles2_set_vp(ortho);
   setup_viewport(primary);
   Overlay::draw(this, glship);
 }
@@ -871,15 +1158,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
   Point position = (glship == NULL) ? Point(0,0) : glship->ship->position;
   float direction = (glship == NULL || !glship->rotate_view()) ? 0.0f : glship->camera_facing();
 
-  // Starfields are static per-frame, so compile once and replay 9 times.
-  glNewList(rearstars, GL_COMPILE);
-    glTranslatef(-position.x(), -position.y(), 0.0f);
-    starfield->draw_rear(position);
-  glEndList();
-  glNewList(frontstars, GL_COMPILE);
-    glTranslatef(-position.x(), -position.y(), 0.0f);
-    starfield->draw_front(position);
-  glEndList();
+  // Starfields are Mesh-based (GPU-resident), drawn directly in each tile.
 
   // Compute cull radius from actual viewport dimensions.
   // Camera is at z=1000; gluPerspective FOV is vertical.
@@ -888,6 +1167,9 @@ void GLGame::draw_perspective(GLShip *glship) const {
   float aspect = window.x() / (float)(window.y() / num_y_viewports());
   float half_w = half_h * aspect;
   float cull_r2 = (half_w * half_w + half_h * half_h) * 1.1f; // 10% margin for edge objects
+
+  // Read the perspective*lookat VP set by draw_world; tile transforms are layered on top.
+  float base_pv[16]; gles2_get_mvp(base_pv);
 
   // Draw the world tessellated 3x3, culling tiles that are entirely off-screen.
   for(int x = -1; x <= 1; x++) {
@@ -902,11 +1184,11 @@ void GLGame::draw_perspective(GLShip *glship) const {
       float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
       if (snx*snx + sny*sny > cull_r2) continue;
 
-      glPushMatrix();
-      glRotatef(direction, 0.0f, 0.0f, 1.0f);
-      glTranslatef(world.x()*x, world.y()*y, 0.0f);
-      glCallList(rearstars);
-      glPopMatrix();
+      float tile_vp[16];
+      mat4_rotate_z(tile_vp, base_pv, direction);
+      mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+      gles2_set_vp(tile_vp);
+      starfield->draw_rear(position);
     }
   }
   // --- Invisible asteroid lensing: black asteroid polygon + shifted rear stars ---
@@ -920,20 +1202,19 @@ void GLGame::draw_perspective(GLShip *glship) const {
       float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
       if (snx*snx + sny*sny > cull_r2) continue;
 
+      float tile_vp[16];
+      mat4_rotate_z(tile_vp, base_pv, direction);
+      mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+      gles2_set_vp(tile_vp);
+
       for(list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
         Asteroid const *a = *it;
         if (!a->invisible || !a->alive) continue;
 
         float ax = a->position.x();
         float ay = a->position.y();
-        glPushMatrix();
-        glRotatef(direction, 0.0f, 0.0f, 1.0f);
-        glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
-
         AsteroidDrawer::draw_invisible_mask(a, ax, ay);
         starfield->draw_stars_near(ax, ay, a->radius);
-
-        glPopMatrix();
       }
     }
   }
@@ -947,15 +1228,15 @@ void GLGame::draw_perspective(GLShip *glship) const {
       float tmax_x = tmin_x + world.x();
       float tmin_y = world.y()*y - position.y();
       float tmax_y = tmin_y + world.y();
-      float nx = (tmin_x > 0) ? tmin_x : (tmax_x < 0) ? -tmax_x : 0;
-      float ny = (tmin_y > 0) ? tmin_y : (tmax_y < 0) ? -tmax_y : 0;
-      if (nx*nx + ny*ny > cull_r2) continue;
+      float tnx = (tmin_x > 0) ? tmin_x : (tmax_x < 0) ? -tmax_x : 0;
+      float tny = (tmin_y > 0) ? tmin_y : (tmax_y < 0) ? -tmax_y : 0;
+      if (tnx*tnx + tny*tny > cull_r2) continue;
 
-      glPushMatrix();
-      glRotatef(direction, 0.0f, 0.0f, 1.0f);
-      glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+      float tile_vp[16];
+      mat4_rotate_z(tile_vp, base_pv, direction);
+      mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+      gles2_set_vp(tile_vp);
       draw_objects(direction);
-      glPopMatrix();
     }
   }
   for(int x = -1; x <= 1; x++) {
@@ -968,11 +1249,11 @@ void GLGame::draw_perspective(GLShip *glship) const {
       float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
       if (snx*snx + sny*sny > cull_r2) continue;
 
-      glPushMatrix();
-      glRotatef(direction, 0.0f, 0.0f, 1.0f);
-      glTranslatef(world.x()*x, world.y()*y, 0.0f);
-      glCallList(frontstars);
-      glPopMatrix();
+      float tile_vp[16];
+      mat4_rotate_z(tile_vp, base_pv, direction);
+      mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+      gles2_set_vp(tile_vp);
+      starfield->draw_front(position);
     }
   }
 
@@ -987,24 +1268,63 @@ void GLGame::draw_perspective(GLShip *glship) const {
       float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
       if (snx*snx + sny*sny > cull_r2) continue;
 
+      float tile_vp[16];
+      mat4_rotate_z(tile_vp, base_pv, direction);
+      mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+      gles2_set_vp(tile_vp);
+
       for(list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
         Asteroid const *a = *it;
         if (!a->invisible || !a->alive) continue;
 
         float ax = a->position.x();
         float ay = a->position.y();
-        glPushMatrix();
-        glRotatef(direction, 0.0f, 0.0f, 1.0f);
-        glTranslatef(world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
-
         // No black mask here — draw_batch already renders the invisible asteroid
         // fill behind visible asteroids. Drawing it again after game objects would
         // overdraw visible asteroids on top of invisible ones.
         starfield->draw_front_stars_near(ax, ay, a->radius);
-
-        glPopMatrix();
       }
     }
+  }
+
+  // --- Warp pass: distort the contents of each invisible asteroid ---
+  // Check whether any invisible asteroids are present to avoid the capture cost.
+  bool has_invisible = false;
+  for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
+    if ((*it)->invisible && (*it)->alive) { has_invisible = true; break; }
+  }
+
+  if (has_invisible) {
+    // Snapshot the current viewport (stars + game objects) into the warp texture.
+    GLint vp[4];
+    glGetIntegerv(GL_VIEWPORT, vp);
+    warp_pass_->capture(vp[0], vp[1], vp[2], vp[3]);
+
+    // Re-run the tile loop with the warp shader to overwrite each invisible
+    // asteroid's black fill with the gravitational-lens distortion.
+    for (int x = -1; x <= 1; x++) {
+      for (int y = -1; y <= 1; y++) {
+        float smin_x = world.x()*x - position.x();
+        float smax_x = smin_x + world.x();
+        float smin_y = world.y()*y - position.y();
+        float smax_y = smin_y + world.y();
+        float snx = (smin_x > 0) ? smin_x : (smax_x < 0) ? -smax_x : 0;
+        float sny = (smin_y > 0) ? smin_y : (smax_y < 0) ? -smax_y : 0;
+        if (snx*snx + sny*sny > cull_r2) continue;
+
+        float tile_vp[16];
+        mat4_rotate_z(tile_vp, base_pv, direction);
+        mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
+        gles2_set_vp(tile_vp);
+
+        for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
+          Asteroid const *a = *it;
+          if (!a->invisible || !a->alive) continue;
+          warp_pass_->draw(a, a->position.x(), a->position.y(), vp[0], vp[1], vp[2], vp[3]);
+        }
+      }
+    }
+    gles2_set_vp(base_pv);
   }
 
 }
@@ -1017,34 +1337,36 @@ void GLGame::draw_map() const {
 
   if(players->size() > 1) {
     /* DRAW CENTER LINE */
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    gluOrtho2D(-window.x(), window.x(), -window.y(), window.y());
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+    float center_ortho[16];
+    mat4_ortho(center_ortho, -(float)window.x(), (float)window.x(),
+               -(float)window.y(), (float)window.y(), -1.0f, 1.0f);
+    gles2_set_vp(center_ortho);
     glViewport(0, 0, window.x(), window.y());
-    glBegin(GL_LINES);
-    glColor4f(1,1,1,0.5);
-    if(window.x() < window.y()) {
-      glVertex2f(-window.x(),0);
-      glVertex2f(-minimap_size,0);
-      glVertex2f(minimap_size,0);
-      glVertex2f(window.x(),0);
-    } else {
-      glVertex2f(0,-window.y());
-      glVertex2f(0,-minimap_size);
-      glVertex2f(0, minimap_size);
-      glVertex2f(0, window.y());
+    {
+      static MeshBuilder mb;
+      static Mesh mesh;
+      mb.clear();
+      mb.begin(GL_LINES);
+      mb.color(1.0f, 1.0f, 1.0f, 0.5f);
+      if(window.x() < window.y()) {
+        mb.vertex(-window.x(), 0); mb.vertex(-minimap_size, 0);
+        mb.vertex(minimap_size, 0); mb.vertex(window.x(), 0);
+      } else {
+        mb.vertex(0, -window.y()); mb.vertex(0, -minimap_size);
+        mb.vertex(0, minimap_size); mb.vertex(0, window.y());
+      }
+      mb.end();
+      mesh.upload(mb, GL_DYNAMIC_DRAW);
+      mesh.draw();
     }
-    glEnd();
   }
 
   /* MINIMAP */
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  gluOrtho2D(0, world.x(), 0, world.y());
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
+  {
+    float minimap_ortho[16];
+    mat4_ortho(minimap_ortho, 0.0f, (float)world.x(), 0.0f, (float)world.y(), -1.0f, 1.0f);
+    gles2_set_vp(minimap_ortho);
+  }
   if (players->size() == 1) {
 #if defined(__ANDROID__) || defined(__IOS__)
     // Shift the minimap right of the virtual joystick so they don't overlap.
@@ -1058,27 +1380,36 @@ void GLGame::draw_map() const {
   }
 
   /* BLACK BOX OVER MINIMAP */
-  glColor4f(0.0f,0.0f,0.0f,0.8f);
-  glBegin(GL_POLYGON);
-    glVertex2i(  0, world.y());
-    glVertex2i(  world.x(), world.y());
-    glVertex2i(  world.x(), 0);
-    glVertex2i(  0, 0);
-  glEnd();
+  {
+    static MeshBuilder mb;
+    static Mesh mesh;
+    mb.clear();
+    mb.begin(GL_TRIANGLES);
+    mb.color(0.0f, 0.0f, 0.0f, 0.8f);
+    float wx = (float)world.x(), wy = (float)world.y();
+    mb.vertex(0, 0);    mb.vertex(wx, 0);  mb.vertex(wx, wy);
+    mb.vertex(0, 0);    mb.vertex(wx, wy); mb.vertex(0, wy);
+    mb.end();
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw();
+  }
 
   // Single draw pass for minimap; wrapping tiles are negligible at minimap scale.
-  glPushMatrix();
   draw_objects(0.0f, true);
-  glPopMatrix();
 
   /* LINE AROUND MINIMAP */
-  glColor3f(0.5f,0.5f,0.5f);
-  glBegin(GL_LINE_LOOP);
-    glVertex2i( 0, world.y());
-    glVertex2i(  world.x(), world.y());
-    glVertex2i(  world.x(),0);
-    glVertex2i( 0,0);
-  glEnd();
+  {
+    static MeshBuilder mb;
+    static Mesh mesh;
+    mb.clear();
+    mb.begin(GL_LINE_LOOP);
+    mb.color(0.5f, 0.5f, 0.5f, 1.0f);
+    float wx = (float)world.x(), wy = (float)world.y();
+    mb.vertex(0, 0); mb.vertex(wx, 0); mb.vertex(wx, wy); mb.vertex(0, wy);
+    mb.end();
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw();
+  }
 }
 
 void GLGame::controller(SDL_Event event) {
@@ -1108,7 +1439,23 @@ void GLGame::controller(SDL_Event event) {
           break;
         }
       }
-      if(!known_player && players->size() < 2) {
+      if(known_player) {
+        bool all_game_over = !players->empty();
+        for (auto* glship : *players) {
+          if (glship->ship->is_alive() || glship->ship->lives > 0) {
+            all_game_over = false;
+            break;
+          }
+        }
+        if (all_game_over) {
+          if (!(game_over_time >= 0 && current_time - game_over_time < 3000)) {
+            for (auto* glship : *players)
+              save_high_score(glship->ship->score);
+            request_state_change(new Menu());
+          }
+          return;
+        }
+      } else if(players->size() < 2) {
         SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(event.cbutton.which);
         if(ctrl) add_player2(ctrl);
       }
@@ -1118,6 +1465,26 @@ void GLGame::controller(SDL_Event event) {
       for (auto* glship : *players)
         save_high_score(glship->ship->score);
       request_state_change(new Menu());
+    }
+  }
+
+  if(event.type == SDL_CONTROLLERAXISMOTION &&
+     event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT &&
+     event.caxis.value > 8000) {
+    bool all_game_over = !players->empty();
+    for (auto* glship : *players) {
+      if (glship->ship->is_alive() || glship->ship->lives > 0) {
+        all_game_over = false;
+        break;
+      }
+    }
+    if (all_game_over) {
+      if (game_over_time >= 0 && current_time - game_over_time < 3000)
+        return;
+      for (auto* glship : *players)
+        save_high_score(glship->ship->score);
+      request_state_change(new Menu());
+      return;
     }
   }
 
@@ -1134,6 +1501,14 @@ void GLGame::controller(SDL_Event event) {
     std::list<GLShip*>::iterator object;
     for(object = players->begin(); object != players->end(); object++) {
       (*object)->controller_axis_input(event);
+    }
+  }
+  if(event.type == SDL_CONTROLLERTOUCHPADDOWN ||
+     event.type == SDL_CONTROLLERTOUCHPADMOTION ||
+     event.type == SDL_CONTROLLERTOUCHPADUP) {
+    std::list<GLShip*>::iterator object;
+    for(object = players->begin(); object != players->end(); object++) {
+      (*object)->controller_touchpad_input(event);
     }
   }
 }
@@ -1183,7 +1558,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     Ship* p1 = players->front()->ship;
     if(p1->is_alive() || p1->lives) {
       GLShip* object = new GLCar(grid, true);
-      object->set_keys('j','l','i','/','k',',','u','o','y',128+GLUT_KEY_F8, '.');
+      set_player_keys(object, 1);
       object->ship->set_missile_asteroids((std::list<Object*>*)objects);
       ship_objects->push_back(object->ship);
       for (auto *p : *players) p->ship->set_missile_ships(ship_objects);
@@ -1212,13 +1587,8 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
   if (key == 27) {
-    if (!running) {
-      toggle_pause();
-    } else {
-      for (auto* glship : *players)
-        save_high_score(glship->ship->score);
-      request_state_change(new Menu());
-    }
+    save_progress();
+    request_state_change(new Menu());
   }
 
   std::list<GLShip*>::iterator object;

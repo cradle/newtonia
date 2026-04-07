@@ -2,11 +2,32 @@
 #define GL_TRAIL_H
 
 #include "gl_compat.h"
+#include "mesh.h"
 
 #include "glship.h"
 #include <vector>
 
 class GLShip;
+
+// Compact per-point storage replacing the heavy Particle/Object hierarchy.
+// Stores only what the trail needs: world position, velocity, and lifetime.
+struct TrailPoint {
+  float x, y;
+  float vx, vy;
+  float time_left, ttl;
+
+  TrailPoint(float x, float y, float vx, float vy, float ttl)
+    : x(x), y(y), vx(vx), vy(vy), time_left(ttl), ttl(ttl) {}
+
+  void step(float delta) {
+    x += vx * delta;
+    y += vy * delta;
+    time_left -= delta;
+  }
+
+  bool is_alive() const { return time_left > 0.0f; }
+  float aliveness() const { return time_left / ttl; }
+};
 
 class GLTrail {
 public:
@@ -40,7 +61,8 @@ private:
   Point offset;
   float deviation, rotation, speed, life, point_size;
 
-  std::vector<Particle> trail;
+  std::vector<TrailPoint> trail;
+  Mesh mesh_;
 };
 
 #endif

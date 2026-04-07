@@ -13,9 +13,10 @@ namespace Weapon {
     Default(Ship *ship, bool automatic = false, int level = 0, float accuracy = 0.1f, int time_between_shots = 100, int weapon_index = -1);
     ~Default();
 
-    void shoot(bool on = true);
-    void step(int delta);
+    void shoot(bool on = true) override;
+    void step(int delta) override;
     int weapon_index() const { return _weapon_index; }
+    bool is_automatic() const override { return automatic; }
 
   private:
     void fire();

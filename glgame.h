@@ -2,8 +2,10 @@
 #define GL_GAME_H
 
 #include "state.h"
+#include "savegame.h"
 #include "glship.h"
 #include "point.h"
+#include "warp_pass.h"
 #include "grid.h"
 #include "glstarfield.h"
 #include "glstation.h"
@@ -16,6 +18,7 @@
 #include "giga_mine_pickup.h"
 #include "missile_pickup.h"
 #include "shield_pickup.h"
+#include "god_mode_pickup.h"
 #include <SDL.h>
 #include <list>
 
@@ -24,14 +27,15 @@ using namespace std;
 class GLGame : public State {
 public:
   GLGame(SDL_GameController *controller = NULL);
+  GLGame(const Save::GameState &save, SDL_GameController *controller = NULL);
   GLGame(GLGame const &other);
   virtual ~GLGame();
 
-  void draw();
-  void tick(int delta);
-  void keyboard(unsigned char key, int x, int y);
-  void keyboard_up(unsigned char key, int x, int y);
-  void controller(SDL_Event event);
+  void draw() override;
+  void tick(int delta) override;
+  void keyboard(unsigned char key, int x, int y) override;
+  void keyboard_up(unsigned char key, int x, int y) override;
+  void controller(SDL_Event event) override;
   void touch_joystick(float nx, float ny);
 
   friend class Overlay;
@@ -40,6 +44,7 @@ public:
 
   void focus_lost();
   void focus_gained();
+  bool back_pressed() override;
   void controller_added(SDL_GameController *ctrl);
   void controller_removed(SDL_JoystickID id);
 
@@ -51,19 +56,21 @@ public:
   int num_x_viewports() const;
   int num_y_viewports() const;
   bool is_visible_to_any_player(const Ship &ship) const;
+  bool is_visible_to_any_player(Point p) const;
+  float sound_volume_for_point(Point p) const;
   bool is_point_faced_by_any_player(Point p) const;
   bool has_free_controller() const;
 private:
   void add_asteroids();
   void add_player2(SDL_GameController *ctrl);
+  Save::GameState build_save_data() const;
+  void save_progress();   // save only when at least one player is alive or has lives
   void toggle_pause();
   void draw_map() const;
   void draw_objects(float direction = 0.0f, bool minimap = false) const;
   void draw_world(GLShip *glship = NULL, bool primary = true) const;
   void draw_perspective(GLShip *glship) const;
   void setup_viewport(bool primary) const;
-  void setup_perspective(GLShip *glship) const;
-  void setup_orthogonal() const;
 
   static const int step_size = 16;
 
@@ -74,6 +81,8 @@ private:
   int time_until_next_generation;
   bool running, level_cleared, friendly_fire, debug_grid, score_saved;
   bool auto_paused = false;
+  bool save_written_this_death_ = false;
+  bool save_deleted_ = false;
   int game_over_time;
 
   static const int default_world_width, default_world_height;
@@ -84,10 +93,12 @@ private:
   static const float giga_mine_pickup_drop_chance;
   static const float missile_pickup_drop_chance;
   static const float shield_pickup_drop_chance;
-  unsigned int frontstars, rearstars;
+  static const float god_mode_pickup_drop_chance;
+  mutable WarpPass *warp_pass_;
 
   Mix_Chunk *tic_sound = NULL;
   Mix_Chunk *pickup_sound = NULL;
+  Mix_Chunk *warp_sound = NULL;
 
   Grid grid;
   GLStarfield *starfield;

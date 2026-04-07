@@ -3,13 +3,14 @@
 
 #include "composite_object.h"
 #include "asteroid_drawer.h"
+#include "savegame.h"
 #include <cstdlib>
 #include <SDL.h>
 #include <SDL_mixer.h>
 
 class Asteroid : public CompositeObject {
 public:
-  Asteroid(bool invincible, bool invisible = false, bool reflective = false, bool teleporting = false, bool quantum = false, bool elastic = false);
+  Asteroid(bool invincible, bool invisible = false, bool reflective = false, bool teleporting = false, bool quantum = false, bool tough = false, bool armoured = false, bool phasing = false);
   Asteroid(Asteroid const *mother);
   virtual ~Asteroid();
 
@@ -22,12 +23,17 @@ public:
   bool segment_hit(Point a, Point b, float &t_hit) const;
 
   friend class AsteroidDrawer;
+  friend class WarpPass;
+
+  // Serialisation: each object captures and restores its own state.
+  Save::Asteroid capture_state() const;
+  void           restore_state(const Save::Asteroid &saved);
 
   static int num_killable;
 
   const static int max_radius;
 
-  static Mix_Chunk *explode_sound, *thud_sound;
+  static Mix_Chunk *explode_sound, *thud_sound, *ting_sound, *asteroid_ting_sound;
 
   static void free_sounds();
 
@@ -43,9 +49,16 @@ public:
   bool quantum_observed;    // true = currently observed by a player (collapsed, killable)
   float quantum_base_speed; // base speed magnitude for observation state transitions
 
-  bool elastic;             // true = elastic asteroid: bounces off all other asteroids
+  bool elastic;             // true = bounces off other elastic asteroids
+  bool tough;               // true = tough asteroid: absorbs 5 hits before dying
+  bool armoured;            // true = one face deflects bullets; rotating weak spot
+  float armour_angle;       // world-space angle (radians) the armour face points toward
 
-  int health;               // hits remaining (elastic: 5, others: 1)
+  bool phasing;             // true = cycles between solid and ghost states
+  bool phased;              // true = currently intangible (invincible to bullets)
+  int  phase_timer;         // ms remaining in current phase state
+
+  int health;               // hits remaining (tough: 5, others: 1)
   int crack_vertex[5];      // which polygon vertex each crack line starts from
   float crack_t[5];         // position along vertex→center (0.35–0.65)
   float crack_perp[5];      // perpendicular jitter as fraction of vertex distance (−0.35..0.35)

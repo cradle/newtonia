@@ -8,6 +8,7 @@ TouchControlsState g_touch_controls = {};
 
 void touch_controls_resize(int w, int h) {
     float minDim = (float)std::min(w, h);
+    float ts     = std::min((float)w / 800.0f, (float)h / 600.0f); // matches Typer scale
 
     // Joystick: bottom-left area
     g_touch_controls.joy_radius   = minDim * 0.20f;
@@ -32,10 +33,12 @@ void touch_controls_resize(int w, int h) {
     float mineEdge  = (float)w - g_touch_controls.mine_cx;
     g_touch_controls.btn_hit_radius = (halfGap < mineEdge) ? halfGap : mineEdge;
 
-    // Pause zone: top-centre over the LEVEL text
-    g_touch_controls.pause_cx     = (float)w * 0.5f;
-    g_touch_controls.pause_cy     = (float)h * 0.07f;
-    g_touch_controls.pause_radius = minDim * 0.10f;
+    // Pause button: top-right, below score and multiplier
+    float pr = minDim * 0.06f;
+    g_touch_controls.pause_cx         = (float)w - pr - 0.015f * (float)w;
+    g_touch_controls.pause_cy         = 160.0f * ts;
+    g_touch_controls.pause_radius     = pr;
+    g_touch_controls.pause_hit_radius = pr * 2.0f;
 }
 
 void touch_controls_reset(StateManager *game) {

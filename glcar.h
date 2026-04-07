@@ -2,6 +2,7 @@
 #define GL_CAR_H
 
 #include "glship.h"
+#include "mesh.h"
 #include "ship.h"
 
 class GLCar : public GLShip {
@@ -10,7 +11,7 @@ public:
   virtual ~GLCar();
 
 protected:
-  GLuint left_jet, right_jet;
+  Mesh left_jet, right_jet;
 
   void draw_ship(bool minimap) const;
 };
