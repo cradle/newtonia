@@ -138,7 +138,12 @@ void Typer::init_meshes() {
   meshes_initialized = true;
 
   // Helper: build a mesh for character c from a MeshBuilder.
+  // flatten_to_lines() merges multi-group line meshes into a single GL_LINES
+  // group, which avoids WebGL per-attribute state caching bugs on some
+  // drivers (Safari/Metal, Emscripten FULL_ES2) that elide the second
+  // glVertexAttribPointer call when its parameters match the first group's call.
   auto upload = [](unsigned char c, MeshBuilder& mb) {
+    mb.flatten_to_lines();
     char_meshes[c] = new Mesh();
     char_meshes[c]->upload(mb);
   };
@@ -203,6 +208,7 @@ void Typer::init_meshes() {
 
   // Letters — upper and lower case share the same Mesh pointer.
   auto upload_ab = [&](unsigned char upper, unsigned char lower, MeshBuilder& mb) {
+    mb.flatten_to_lines();
     Mesh* m = new Mesh(); m->upload(mb);
     char_meshes[upper] = char_meshes[lower] = m;
   };
@@ -404,6 +410,7 @@ void Typer::draw(float x, float y, char character, float size, int time) {
       }
       mb.end();
 
+      mb.flatten_to_lines();
       copyright_mesh.upload(mb, GL_STREAM_DRAW);
       copyright_mesh.draw();
       break;

@@ -54,6 +54,13 @@ public:
 
     void clear();
 
+    // Merge all GL_LINE_STRIP / GL_LINE_LOOP / GL_LINES groups into a single
+    // GL_LINES group.  This eliminates multi-group meshes so that draw_with_mvp()
+    // only ever needs one glVertexAttribPointer + glDrawArrays sequence.
+    // Groups using other primitive modes (e.g. GL_POINTS) are left unchanged;
+    // if any such groups exist the function returns without modifying anything.
+    void flatten_to_lines();
+
 private:
     std::vector<MeshGroup> groups_;
     std::vector<float>     pos_;  // 3 floats per vertex

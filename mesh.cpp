@@ -108,6 +108,66 @@ void MeshBuilder::clear() {
     in_group_ = false;
 }
 
+void MeshBuilder::flatten_to_lines() {
+    if (in_group_) end();
+    if (groups_.size() <= 1) return; // Already single-group — nothing to do.
+
+    // Only flatten if every group is a line primitive.  If any group uses a
+    // different mode (GL_POINTS, GL_TRIANGLES, …) bail out unchanged.
+    for (const MeshGroup& g : groups_) {
+        if (g.mode != GL_LINES && g.mode != GL_LINE_STRIP && g.mode != GL_LINE_LOOP)
+            return;
+    }
+
+    std::vector<float> new_pos, new_col;
+
+    for (const MeshGroup& g : groups_) {
+        const float* gp = pos_.data() + (size_t)g.vertex_start * 3;
+        const float* gc = col_.data() + (size_t)g.vertex_start * 4;
+        int n = g.vertex_count;
+
+        if (g.mode == GL_LINES) {
+            // Vertices are already in [start, end] pairs — copy verbatim.
+            new_pos.insert(new_pos.end(), gp,        gp + (size_t)n * 3);
+            new_col.insert(new_col.end(), gc,        gc + (size_t)n * 4);
+        } else if (g.mode == GL_LINE_STRIP) {
+            // n vertices → n-1 segments, each emitted as two GL_LINES vertices.
+            for (int i = 0; i < n - 1; ++i) {
+                new_pos.insert(new_pos.end(), gp + i*3,     gp + i*3 + 3);
+                new_col.insert(new_col.end(), gc + i*4,     gc + i*4 + 4);
+                new_pos.insert(new_pos.end(), gp + (i+1)*3, gp + (i+1)*3 + 3);
+                new_col.insert(new_col.end(), gc + (i+1)*4, gc + (i+1)*4 + 4);
+            }
+        } else { // GL_LINE_LOOP
+            // n vertices → n segments (last vertex connects back to first).
+            for (int i = 0; i < n; ++i) {
+                int j = (i + 1) % n;
+                new_pos.insert(new_pos.end(), gp + i*3, gp + i*3 + 3);
+                new_col.insert(new_col.end(), gc + i*4, gc + i*4 + 4);
+                new_pos.insert(new_pos.end(), gp + j*3, gp + j*3 + 3);
+                new_col.insert(new_col.end(), gc + j*4, gc + j*4 + 4);
+            }
+        }
+    }
+
+    // Replace the builder's data with the flattened GL_LINES content.
+    pos_ = std::move(new_pos);
+    col_ = std::move(new_col);
+    groups_.clear();
+
+    if (!pos_.empty()) {
+        MeshGroup g;
+        g.mode         = GL_LINES;
+        g.vertex_start = 0;
+        g.vertex_count = (int)(pos_.size() / 3);
+#ifndef DESKTOP_COMPAT_GL
+        g.vbo_pos = 0;
+        g.vbo_col = 0;
+#endif
+        groups_.push_back(g);
+    }
+}
+
 // ============================================================
 // Mesh
 // ============================================================
