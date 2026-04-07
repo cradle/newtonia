@@ -1,0 +1,58 @@
+name: Deploy Itch.io
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'itch.io channel (e.g. html5)'
+        required: true
+        default: 'html5'
+
+jobs:
+  deploy-itch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node (for tsc)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install TypeScript
+        run: npm install -g typescript
+
+      - name: Compile TypeScript UI
+        working-directory: web
+        run: tsc
+
+      - name: Install Emscripten SDK
+        run: |
+          git clone https://github.com/emscripten-core/emsdk.git ~/emsdk
+          ~/emsdk/emsdk install latest
+          ~/emsdk/emsdk activate latest
+
+      - name: Build WebAssembly
+        run: |
+          source ~/emsdk/emsdk_env.sh
+          emcc --version
+          make web
+
+      - name: Install butler
+        run: |
+          BUTLER_VERSION=$(curl -s https://api.github.com/repos/itchio/butler/releases/latest | jq -r .tag_name)
+          curl -L -o butler.zip "https://github.com/itchio/butler/releases/download/${BUTLER_VERSION}/butler-linux-amd64.zip"
+          unzip butler.zip
+          chmod +x linux-amd64/butler
+          linux-amd64/butler -V
+
+      - name: Push to itch.io
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_CREDENTIALS }}
+        run: |
+          CHANNEL="${{ github.event.inputs.channel || 'html5' }}"
+          linux-amd64/butler push web/dist ${{ secrets.ITCH_GAME }}:${CHANNEL} \
+            --userversion "${{ github.ref_name || github.sha }}"
