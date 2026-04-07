@@ -170,6 +170,7 @@ jobs:
           mkdir -p Newtonia.app/Contents/{MacOS,Frameworks,Resources}
           cp newtonia Newtonia.app/Contents/MacOS/newtonia
           cp icon.icns Newtonia.app/Contents/Resources/icon.icns
+          cp -r audio Newtonia.app/Contents/Resources/audio
 
           FW="Newtonia.app/Contents/Frameworks"
           bundle() {
@@ -257,7 +258,6 @@ jobs:
         run: |
           mkdir -p steam_output/macos
           cp -r Newtonia.app steam_output/macos/
-          cp -r audio steam_output/macos/Newtonia.app/Contents/Resources/
 
       - uses: actions/upload-artifact@v4
         with:
