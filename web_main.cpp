@@ -215,10 +215,13 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_touch_joystick(float nx, float ny) {
     if (s_game) s_game->touch_joystick(nx, ny);
 }
 
-// Called from the JS menu overlay on touchend.
-// Bypasses SDL keyboard handling (unreliable on mobile) and fires directly.
-extern "C" EMSCRIPTEN_KEEPALIVE void web_tap_start() {
-    if (s_game) s_game->keyboard_up('\r', 0, 0);
+// Called from the JS menu overlay on touchend with normalised [0,1] tap position.
+// touch_tap() handles the Continue/New Game split (when a save exists).
+// keyboard_up('\r') handles the no-save "tap to start" case (touch_tap is a no-op then).
+extern "C" EMSCRIPTEN_KEEPALIVE void web_menu_tap(float nx, float ny) {
+    if (!s_game) return;
+    s_game->touch_tap(nx, ny);
+    s_game->keyboard_up('\r', 0, 0);
 }
 
 // Called from JS after FS.syncfs(true) completes (IDBFS → memory).

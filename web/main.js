@@ -254,7 +254,11 @@
         menuOverlay.className = "menu-overlay";
         menuOverlay.addEventListener("touchend", (e) => {
             e.preventDefault();
-            Module._web_tap_start?.();
+            const t = e.changedTouches[0];
+            const r = canvas.getBoundingClientRect();
+            const nx = t ? (t.clientX - r.left) / r.width : 0.5;
+            const ny = t ? (t.clientY - r.top) / r.height : 0.5;
+            Module._web_menu_tap?.(nx, ny);
         }, { passive: false });
         container.appendChild(menuOverlay);
         _menuOverlay = menuOverlay;
