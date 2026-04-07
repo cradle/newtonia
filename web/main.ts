@@ -90,7 +90,7 @@ declare const Module: {
   // Extend Module type to include our exported C functions.
   type ModuleEx = typeof Module & {
     _web_touch_joystick?(nx: number, ny: number): void;
-    _web_tap_start?(): void;
+    _web_menu_tap?(nx: number, ny: number): void;
   };
 
   function callTouchJoystick(nx: number, ny: number): void {
@@ -295,7 +295,11 @@ declare const Module: {
     menuOverlay.className = "menu-overlay";
     menuOverlay.addEventListener("touchend", (e) => {
       e.preventDefault();
-      (Module as ModuleEx)._web_tap_start?.();
+      const t = e.changedTouches[0];
+      const r = canvas.getBoundingClientRect();
+      const nx = t ? (t.clientX - r.left) / r.width  : 0.5;
+      const ny = t ? (t.clientY - r.top)  / r.height : 0.5;
+      (Module as ModuleEx)._web_menu_tap?.(nx, ny);
     }, { passive: false });
     container.appendChild(menuOverlay);
     _menuOverlay = menuOverlay;
