@@ -92,6 +92,10 @@ void MeshBuilder::end() {
         g.mode         = cur_mode_;
         g.vertex_start = group_start_;
         g.vertex_count = count;
+#ifndef DESKTOP_COMPAT_GL
+        g.vbo_pos = 0;
+        g.vbo_col = 0;
+#endif
         groups_.push_back(g);
     }
     in_group_ = false;
@@ -119,6 +123,8 @@ Mesh::Mesh(Mesh&& o) noexcept
     o.vao_ = 0;
 #endif
     o.vertex_count_ = 0;
+    // groups_ was moved into this; the source now has an empty vector, which is
+    // correct — no per-group VBO IDs remain in o to double-delete.
 }
 
 Mesh::Mesh() : vbo_pos_(0), vbo_col_(0),
@@ -138,19 +144,32 @@ Mesh::~Mesh() {
     if (vbo_col_) glDeleteBuffers(1, &vbo_col_);
 #ifdef DESKTOP_COMPAT_GL
     if (vao_)     glDeleteVertexArrays(1, &vao_);
+#else
+    for (MeshGroup& g : groups_) {
+        if (g.vbo_pos) glDeleteBuffers(1, &g.vbo_pos);
+        if (g.vbo_col) glDeleteBuffers(1, &g.vbo_col);
+    }
 #endif
 }
 
 void Mesh::upload(const MeshBuilder& mb, GLenum usage) {
+    // Delete any existing per-group VBOs before replacing geometry.
+#ifndef DESKTOP_COMPAT_GL
+    for (MeshGroup& g : groups_) {
+        if (g.vbo_pos) glDeleteBuffers(1, &g.vbo_pos);
+        if (g.vbo_col) glDeleteBuffers(1, &g.vbo_col);
+    }
+#endif
+
     groups_       = mb.groups();
     vertex_count_ = mb.vertex_count();
     if (vertex_count_ == 0) return;
 
-    const GLCompatProg* p = gles2_program_info();
-
 #ifdef DESKTOP_COMPAT_GL
+    // Desktop: upload all vertices into two shared VBOs and record attribute
+    // state in the VAO.
+    const GLCompatProg* p = gles2_program_info();
     glBindVertexArray(vao_);
-#endif
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo_pos_);
     glBufferData(GL_ARRAY_BUFFER,
@@ -167,8 +186,31 @@ void Mesh::upload(const MeshBuilder& mb, GLenum usage) {
     glVertexAttribPointer(p->attr_col, 4, GL_FLOAT, GL_FALSE, 0, 0);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
-#ifdef DESKTOP_COMPAT_GL
     glBindVertexArray(0);
+#else
+    // GLES2/WebGL: give each group its own VBO pair so that glDrawArrays is
+    // always called with first=0 and glVertexAttribPointer always with offset 0.
+    // This avoids both the Safari/Metal non-zero-first bug and Emscripten's
+    // JS-side WebGL attribute-state cache becoming stale when many meshes are
+    // uploaded in sequence (e.g. Typer::init_meshes building ~60 char meshes).
+    for (MeshGroup& g : groups_) {
+        const float* pos_data = mb.positions().data() + (size_t)g.vertex_start * 3;
+        const float* col_data = mb.colours().data()   + (size_t)g.vertex_start * 4;
+
+        glGenBuffers(1, &g.vbo_pos);
+        glBindBuffer(GL_ARRAY_BUFFER, g.vbo_pos);
+        glBufferData(GL_ARRAY_BUFFER,
+                     (GLsizeiptr)((size_t)g.vertex_count * 3 * sizeof(float)),
+                     pos_data, usage);
+
+        glGenBuffers(1, &g.vbo_col);
+        glBindBuffer(GL_ARRAY_BUFFER, g.vbo_col);
+        glBufferData(GL_ARRAY_BUFFER,
+                     (GLsizeiptr)((size_t)g.vertex_count * 4 * sizeof(float)),
+                     col_data, usage);
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
 #endif
 }
 
@@ -184,11 +226,6 @@ void Mesh::draw_with_mvp(const float mvp[16], float point_size) const {
 #ifdef DESKTOP_COMPAT_GL
     glBindVertexArray(vao_);
 #else
-    // GLES2/WebGL: re-bind attribute pointers per group using a byte offset so
-    // that glDrawArrays is always called with first=0.  Safari's WebGL/Metal
-    // backend has a bug where glDrawArrays with a non-zero first parameter does
-    // not correctly advance into the VBO, causing every group beyond the first
-    // (vertex_start > 0) to render garbage or nothing.
     glEnableVertexAttribArray(p->attr_pos);
     glEnableVertexAttribArray(p->attr_col);
 #endif
@@ -198,12 +235,13 @@ void Mesh::draw_with_mvp(const float mvp[16], float point_size) const {
 #ifdef DESKTOP_COMPAT_GL
         glDrawArrays(g.mode, g.vertex_start, g.vertex_count);
 #else
-        const uintptr_t pos_off = (uintptr_t)(g.vertex_start) * 3 * sizeof(float);
-        const uintptr_t col_off = (uintptr_t)(g.vertex_start) * 4 * sizeof(float);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo_pos_);
-        glVertexAttribPointer(p->attr_pos, 3, GL_FLOAT, GL_FALSE, 0, (const void*)pos_off);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo_col_);
-        glVertexAttribPointer(p->attr_col, 4, GL_FLOAT, GL_FALSE, 0, (const void*)col_off);
+        // Bind each group's own VBO at offset 0.  This avoids both the
+        // Safari/Metal non-zero first= bug and stale Emscripten attribute-cache
+        // entries caused by uploading many meshes with shared VBOs.
+        glBindBuffer(GL_ARRAY_BUFFER, g.vbo_pos);
+        glVertexAttribPointer(p->attr_pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
+        glBindBuffer(GL_ARRAY_BUFFER, g.vbo_col);
+        glVertexAttribPointer(p->attr_col, 4, GL_FLOAT, GL_FALSE, 0, 0);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glDrawArrays(g.mode, 0, g.vertex_count);
 #endif

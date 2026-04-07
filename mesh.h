@@ -26,8 +26,15 @@
 
 struct MeshGroup {
     GLenum mode;
-    int    vertex_start;
+    int    vertex_start;   // byte offset into shared VBO (desktop/VAO path only)
     int    vertex_count;
+#ifndef DESKTOP_COMPAT_GL
+    // GLES2/WebGL: each group owns its own VBO pair so drawing always uses
+    // offset 0 and glDrawArrays first=0, avoiding Metal/ANGLE driver bugs with
+    // non-zero offsets.
+    GLuint vbo_pos;
+    GLuint vbo_col;
+#endif
 };
 
 class MeshBuilder {
