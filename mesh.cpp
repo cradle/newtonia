@@ -22,6 +22,7 @@
 #include "mesh.h"
 #include "gles2_compat.h"
 #include "mat4.h"
+#include <cmath>
 
 // Undefine the compat_ redirect macros so we can call real GL functions
 // directly in this translation unit.
@@ -168,6 +169,90 @@ void MeshBuilder::flatten_to_lines() {
     }
 }
 
+void MeshBuilder::thicken_lines(float half_width) {
+    if (in_group_) end();
+    if (groups_.empty()) return;
+
+    bool has_lines = false;
+    for (const MeshGroup& g : groups_)
+        if (g.mode == GL_LINES) { has_lines = true; break; }
+    if (!has_lines) return;
+
+    std::vector<MeshGroup> new_groups;
+    std::vector<float>     new_pos, new_col;
+
+    for (const MeshGroup& g : groups_) {
+        if (g.mode != GL_LINES) {
+            // Pass non-line groups through unchanged, fixing up vertex_start.
+            MeshGroup ng = g;
+            ng.vertex_start = (int)(new_pos.size() / 3);
+            new_groups.push_back(ng);
+            new_pos.insert(new_pos.end(),
+                           pos_.begin() + (size_t)g.vertex_start * 3,
+                           pos_.begin() + (size_t)g.vertex_start * 3 + (size_t)g.vertex_count * 3);
+            new_col.insert(new_col.end(),
+                           col_.begin() + (size_t)g.vertex_start * 4,
+                           col_.begin() + (size_t)g.vertex_start * 4 + (size_t)g.vertex_count * 4);
+            continue;
+        }
+
+        MeshGroup ng;
+        ng.mode         = GL_TRIANGLES;
+        ng.vertex_start = (int)(new_pos.size() / 3);
+        ng.vertex_count = 0;
+#ifndef DESKTOP_COMPAT_GL
+        ng.vbo_pos = 0;
+        ng.vbo_col = 0;
+#endif
+        const float* gp = pos_.data() + (size_t)g.vertex_start * 3;
+        const float* gc = col_.data() + (size_t)g.vertex_start * 4;
+
+        // Each GL_LINES segment is a consecutive (a, b) vertex pair.
+        for (int i = 0; i + 1 < g.vertex_count; i += 2) {
+            float ax = gp[i*3+0], ay = gp[i*3+1], az = gp[i*3+2];
+            float bx = gp[i*3+3], by = gp[i*3+4], bz = gp[i*3+5];
+
+            float dx = bx - ax, dy = by - ay;
+            float len = sqrtf(dx*dx + dy*dy);
+            if (len < 1e-6f) continue;
+
+            // Perpendicular unit vector scaled to half_width.
+            float px = -dy / len * half_width;
+            float py =  dx / len * half_width;
+
+            // Four quad corners (winding: CCW).
+            float qx[4] = { ax - px, ax + px, bx + px, bx - px };
+            float qy[4] = { ay - py, ay + py, by + py, by - py };
+            float qz[4] = { az,      az,      bz,      bz      };
+
+            const float* ca = gc + i * 4;
+            const float* cb = gc + (i + 1) * 4;
+
+            // Two triangles: (0,1,2) and (0,2,3).
+            const int tri[6] = { 0, 1, 2, 0, 2, 3 };
+            for (int t = 0; t < 6; t++) {
+                int vi = tri[t];
+                new_pos.push_back(qx[vi]);
+                new_pos.push_back(qy[vi]);
+                new_pos.push_back(qz[vi]);
+                const float* c = (vi < 2) ? ca : cb;
+                new_col.push_back(c[0]);
+                new_col.push_back(c[1]);
+                new_col.push_back(c[2]);
+                new_col.push_back(c[3]);
+                ng.vertex_count++;
+            }
+        }
+
+        if (ng.vertex_count > 0)
+            new_groups.push_back(ng);
+    }
+
+    groups_ = std::move(new_groups);
+    pos_    = std::move(new_pos);
+    col_    = std::move(new_col);
+}
+
 // ============================================================
 // Mesh
 // ============================================================
@@ -223,6 +308,21 @@ void Mesh::upload(const MeshBuilder& mb, GLenum usage) {
 
     groups_       = mb.groups();
     vertex_count_ = mb.vertex_count();
+
+    // Retain a CPU copy whenever any group is a line primitive so that
+    // draw_with_mvp() can feed gles2_draw_thick_lines_mvp() at draw time.
+    bool has_lines = false;
+    for (const MeshGroup& g : groups_)
+        if (g.mode == GL_LINES || g.mode == GL_LINE_STRIP || g.mode == GL_LINE_LOOP)
+            { has_lines = true; break; }
+    if (has_lines) {
+        cpu_pos_.assign(mb.positions().begin(), mb.positions().end());
+        cpu_col_.assign(mb.colours().begin(),   mb.colours().end());
+    } else {
+        cpu_pos_.clear();
+        cpu_col_.clear();
+    }
+
     if (vertex_count_ == 0) return;
 
 #ifdef DESKTOP_COMPAT_GL
@@ -295,6 +395,18 @@ void Mesh::draw_with_mvp(const float mvp[16], float point_size) const {
 #ifdef DESKTOP_COMPAT_GL
         glDrawArrays(g.mode, g.vertex_start, g.vertex_count);
 #else
+        // On GLES2/WebGL glLineWidth > 1 is ignored; use the screen-space quad
+        // emulation so line-mode meshes get the same thick rendering as the
+        // immediate-mode glBegin/glEnd path did before the VBO migration.
+        bool is_line = (g.mode == GL_LINES || g.mode == GL_LINE_STRIP ||
+                        g.mode == GL_LINE_LOOP);
+        if (is_line && !cpu_pos_.empty() && gles2_get_line_width() > 1.05f) {
+            gles2_draw_thick_lines_mvp(
+                cpu_pos_.data() + (size_t)g.vertex_start * 3,
+                cpu_col_.data() + (size_t)g.vertex_start * 4,
+                g.vertex_count, g.mode, mvp);
+            continue;
+        }
         // Bind each group's own VBO at offset 0.  This avoids both the
         // Safari/Metal non-zero first= bug and stale Emscripten attribute-cache
         // entries caused by uploading many meshes with shared VBOs.

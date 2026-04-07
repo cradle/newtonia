@@ -285,13 +285,24 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Scale the initial canvas to physical pixels using devicePixelRatio so
-    // the game renders at full device resolution instead of CSS pixel resolution.
+    // Scale the canvas to physical pixels based on its actual CSS layout size.
+    // SDL_GetWindowSize returns the SDL_CreateWindow size (800×600), not the CSS
+    // layout size determined by the browser — so we use emscripten_get_element_css_size
+    // to read the real canvas dimensions before the game initialises.
     {
         double dpr = emscripten_get_device_pixel_ratio();
-        SDL_GetWindowSize(s_window, &s_w, &s_h);
-        s_w = (int)(s_w * dpr);
-        s_h = (int)(s_h * dpr);
+        double cssW = 0, cssH = 0;
+        emscripten_get_element_css_size("#canvas", &cssW, &cssH);
+        if (cssW > 0 && cssH > 0) {
+            s_w = (int)(cssW * dpr);
+            s_h = (int)(cssH * dpr);
+        } else {
+            // CSS layout not ready yet — fall back to SDL size scaled by DPR.
+            SDL_GetWindowSize(s_window, &s_w, &s_h);
+            s_w = (int)(s_w * dpr);
+            s_h = (int)(s_h * dpr);
+        }
+        emscripten_set_canvas_element_size("#canvas", s_w, s_h);
         SDL_SetWindowSize(s_window, s_w, s_h);
     }
 

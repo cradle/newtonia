@@ -456,22 +456,27 @@ static std::vector<float>  s_pos;
 static std::vector<float>  s_col;
 
 // Emulate thick lines by expanding each segment to a screen-space quad.
-static void draw_thick_lines(const std::vector<Vertex>& verts, GLenum mode) {
+// in_mvp: explicit MVP to use (column-major float[16]).
+static void draw_thick_lines_impl(const std::vector<Vertex>& verts, GLenum mode,
+                                   const float in_mvp[16]) {
     size_t n = verts.size();
     if (n < 2) return;
 
-    mat4 mvp; get_mvp(mvp);
-
-    float hw = (float)s_viewport[2] * 0.5f;
-    float hh = (float)s_viewport[3] * 0.5f;
+    // Query the real GL viewport so thick-line width is correct even when
+    // s_viewport is stale (e.g. menu/title screen draws before the first
+    // GLGame::setup_viewport() call updates the cache).
+    GLint vp[4];
+    glGetIntegerv(GL_VIEWPORT, vp);
+    float hw = (float)vp[2] * 0.5f;
+    float hh = (float)vp[3] * 0.5f;
     if (hw < 1.0f || hh < 1.0f) return;
 
     float half_lw = s_line_width * 0.5f;
 
     auto project = [&](const Vertex& v, float& ox, float& oy) {
-        float cx = mvp[0]*v.x + mvp[4]*v.y + mvp[8]*v.z  + mvp[12];
-        float cy = mvp[1]*v.x + mvp[5]*v.y + mvp[9]*v.z  + mvp[13];
-        float cw = mvp[3]*v.x + mvp[7]*v.y + mvp[11]*v.z + mvp[15];
+        float cx = in_mvp[0]*v.x + in_mvp[4]*v.y + in_mvp[8]*v.z  + in_mvp[12];
+        float cy = in_mvp[1]*v.x + in_mvp[5]*v.y + in_mvp[9]*v.z  + in_mvp[13];
+        float cw = in_mvp[3]*v.x + in_mvp[7]*v.y + in_mvp[11]*v.z + in_mvp[15];
         if (fabsf(cw) < 1e-6f) cw = 1.0f;
         ox = cx / cw;
         oy = cy / cw;
@@ -550,6 +555,26 @@ static void draw_thick_lines(const std::vector<Vertex>& verts, GLenum mode) {
     glDisableVertexAttribArray(s_attr_pos);
     glDisableVertexAttribArray(s_attr_color);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+// Wrapper used by the immediate-mode path: reads MVP from the matrix stack.
+static void draw_thick_lines(const std::vector<Vertex>& verts, GLenum mode) {
+    mat4 mvp; get_mvp(mvp);
+    draw_thick_lines_impl(verts, mode, mvp);
+}
+
+// Public API for Mesh::draw_with_mvp(): thick-line expansion with an explicit MVP.
+// pos3/col4 are the Mesh's CPU-side vertex arrays; count is vertex count.
+float gles2_get_line_width() { return s_line_width; }
+
+void gles2_draw_thick_lines_mvp(const float* pos3, const float* col4,
+                                  int count, GLenum mode, const float in_mvp[16]) {
+    std::vector<Vertex> verts((size_t)count);
+    for (int i = 0; i < count; i++) {
+        verts[i] = { pos3[i*3], pos3[i*3+1], pos3[i*3+2],
+                     col4[i*4], col4[i*4+1], col4[i*4+2], col4[i*4+3] };
+    }
+    draw_thick_lines_impl(verts, mode, in_mvp);
 }
 
 static void flush_vertices() {

@@ -61,6 +61,15 @@ public:
     // if any such groups exist the function returns without modifying anything.
     void flatten_to_lines();
 
+    // Expand every GL_LINES group into a GL_TRIANGLES group of screen-aligned
+    // quads.  Each line segment (vertex pair) becomes two triangles whose
+    // perpendicular half-width is half_width in local coordinates.  Call after
+    // flatten_to_lines() so the input is a single GL_LINES group.  Non-line
+    // groups are left unchanged.  This pre-bakes thick-line rendering into the
+    // mesh geometry so that WebGL (which ignores glLineWidth > 1) and other
+    // GLES2 platforms produce visibly-thick strokes without per-frame CPU work.
+    void thicken_lines(float half_width);
+
 private:
     std::vector<MeshGroup> groups_;
     std::vector<float>     pos_;  // 3 floats per vertex
@@ -125,4 +134,10 @@ private:
 #endif
     std::vector<MeshGroup> groups_;
     int vertex_count_;
+
+    // CPU-side copy of vertex data retained for line-mode groups so that
+    // draw_with_mvp() can call gles2_draw_thick_lines_mvp() at draw time.
+    // Only populated when at least one group uses a line primitive mode.
+    std::vector<float> cpu_pos_;  // vertex_count * 3 floats (parallel to GPU data)
+    std::vector<float> cpu_col_;  // vertex_count * 4 floats
 };
