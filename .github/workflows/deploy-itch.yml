@@ -4,8 +4,6 @@ on:
   push:
     tags:
       - 'v*.*.*'
-    branches:
-      - claude/setup-itch-upload-BO1xa
   workflow_dispatch:
     inputs:
       channel:
@@ -51,7 +49,7 @@ jobs:
           chmod +x linux-amd64/butler
           linux-amd64/butler -V
 
-      - name: Push to itch.io  # deploy
+      - name: Push to itch.io
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_CREDENTIALS }}
         run: |
