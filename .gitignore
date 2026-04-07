@@ -24,3 +24,11 @@ web/dist/
 ## Python
 __pycache__/
 *.pyc
+## Make
+*.d
+## Node
+node_modules/
+package.json
+package-lock.json
+## Mac build
+Newtonia.app/
