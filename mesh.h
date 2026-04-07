@@ -26,8 +26,15 @@
 
 struct MeshGroup {
     GLenum mode;
-    int    vertex_start;
+    int    vertex_start;   // byte offset into shared VBO (desktop/VAO path only)
     int    vertex_count;
+#ifndef DESKTOP_COMPAT_GL
+    // GLES2/WebGL: each group owns its own VBO pair so drawing always uses
+    // offset 0 and glDrawArrays first=0, avoiding Metal/ANGLE driver bugs with
+    // non-zero offsets.
+    GLuint vbo_pos;
+    GLuint vbo_col;
+#endif
 };
 
 class MeshBuilder {
@@ -46,6 +53,22 @@ public:
     int                            vertex_count() const { return (int)(pos_.size() / 3); }
 
     void clear();
+
+    // Merge all GL_LINE_STRIP / GL_LINE_LOOP / GL_LINES groups into a single
+    // GL_LINES group.  This eliminates multi-group meshes so that draw_with_mvp()
+    // only ever needs one glVertexAttribPointer + glDrawArrays sequence.
+    // Groups using other primitive modes (e.g. GL_POINTS) are left unchanged;
+    // if any such groups exist the function returns without modifying anything.
+    void flatten_to_lines();
+
+    // Expand every GL_LINES group into a GL_TRIANGLES group of screen-aligned
+    // quads.  Each line segment (vertex pair) becomes two triangles whose
+    // perpendicular half-width is half_width in local coordinates.  Call after
+    // flatten_to_lines() so the input is a single GL_LINES group.  Non-line
+    // groups are left unchanged.  This pre-bakes thick-line rendering into the
+    // mesh geometry so that WebGL (which ignores glLineWidth > 1) and other
+    // GLES2 platforms produce visibly-thick strokes without per-frame CPU work.
+    void thicken_lines(float half_width);
 
 private:
     std::vector<MeshGroup> groups_;
@@ -111,4 +134,10 @@ private:
 #endif
     std::vector<MeshGroup> groups_;
     int vertex_count_;
+
+    // CPU-side copy of vertex data retained for line-mode groups so that
+    // draw_with_mvp() can call gles2_draw_thick_lines_mvp() at draw time.
+    // Only populated when at least one group uses a line primitive mode.
+    std::vector<float> cpu_pos_;  // vertex_count * 3 floats (parallel to GPU data)
+    std::vector<float> cpu_col_;  // vertex_count * 4 floats
 };

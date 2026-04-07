@@ -178,6 +178,17 @@ const GLCompatProg* gles2_program_info();
 void gles2_set_line_width(GLfloat width);
 void gles2_set_viewport(GLint x, GLint y, GLsizei w, GLsizei h);
 
+// Return the current emulated line width (set via glLineWidth / gles2_set_line_width).
+float gles2_get_line_width();
+
+// Expand a line-primitive vertex array into thick screen-space quads and draw
+// them as GL_TRIANGLES, using the provided explicit MVP.  Called from
+// Mesh::draw_with_mvp() to restore thick-line rendering for GPU-resident meshes
+// on platforms where glLineWidth > 1 is ignored (WebGL, Metal).
+// pos3: float[count*3]  col4: float[count*4]  mode: GL_LINES / GL_LINE_STRIP / GL_LINE_LOOP
+void gles2_draw_thick_lines_mvp(const float* pos3, const float* col4,
+                                  int count, GLenum mode, const float mvp[16]);
+
 // These macros intercept all call sites on every platform.
 #define glLineWidth(w)           gles2_set_line_width(w)
 #define glViewport(x,y,w,h)     gles2_set_viewport((x),(y),(w),(h))
