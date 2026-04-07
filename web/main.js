@@ -23,6 +23,7 @@
     });
     document.addEventListener("fullscreenchange", () => {
         fsBtn.title = document.fullscreenElement ? "Exit fullscreen" : "Fullscreen";
+        canvas.style.cursor = document.fullscreenElement ? "none" : "";
     });
     // ---- Mute ----
     // We use AudioContext.suspend/resume to silence all SDL2_mixer output.
