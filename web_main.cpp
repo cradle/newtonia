@@ -14,6 +14,7 @@
 #ifdef __EMSCRIPTEN__
 
 #include <emscripten.h>
+#include <emscripten/html5.h>
 #include <SDL.h>
 #include <SDL_mixer.h>
 
@@ -224,6 +225,22 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_tap_start() {
 // Initialises the StateManager then releases the main loop gate.
 // EMSCRIPTEN_KEEPALIVE exports this so JS can call Module._web_on_idb_ready().
 extern "C" EMSCRIPTEN_KEEPALIVE void web_on_idb_ready() {
+    // By the time IDBFS sync completes the browser has finished its initial
+    // layout, so we can query the canvas's actual CSS display size.  This is
+    // more accurate than SDL_GetWindowSize() × DPR (which reflects the logical
+    // size passed to SDL_CreateWindow, not the CSS-constrained canvas area).
+    // Getting it right here prevents the 1–2× upscale blur that would otherwise
+    // persist until the first SDL_WINDOWEVENT_RESIZED (e.g. going fullscreen).
+    {
+        double css_w = 0, css_h = 0;
+        if (emscripten_get_element_css_size("#canvas", &css_w, &css_h) == EMSCRIPTEN_RESULT_SUCCESS
+                && css_w >= 1.0 && css_h >= 1.0) {
+            double dpr = emscripten_get_device_pixel_ratio();
+            s_w = (int)(css_w * dpr);
+            s_h = (int)(css_h * dpr);
+            SDL_SetWindowSize(s_window, s_w, s_h);
+        }
+    }
     s_game = new StateManager();
     s_game->resize(s_w, s_h);
     Typer::resize(s_w, s_h);
