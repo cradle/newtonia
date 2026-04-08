@@ -128,11 +128,11 @@ jobs:
           clang++ -O2 -std=c++11 -arch arm64 \
             -mmacosx-version-min=12.0 \
             -DGL_SILENCE_DEPRECATION \
-            -o newtonia-arm64 $(cat srcs.txt) \
+            -o newtonia-arm64 $(cat srcs.txt) macos_window.mm \
             $(/opt/homebrew/bin/sdl2-config --cflags --libs) \
             -L/opt/homebrew/lib -lSDL2_mixer \
             -I/opt/homebrew/include/SDL2 \
-            -framework GLUT -framework OpenGL
+            -framework GLUT -framework OpenGL -framework AppKit
 
       - name: Build x86_64
         env:
@@ -141,11 +141,11 @@ jobs:
           clang++ -O2 -std=c++11 -arch x86_64 \
             -mmacosx-version-min=12.0 \
             -DGL_SILENCE_DEPRECATION \
-            -o newtonia-x86_64 $(cat srcs.txt) \
+            -o newtonia-x86_64 $(cat srcs.txt) macos_window.mm \
             $(/usr/local/bin/sdl2-config --cflags --libs) \
             -L/usr/local/lib -lSDL2_mixer \
             -I/usr/local/include/SDL2 \
-            -framework GLUT -framework OpenGL
+            -framework GLUT -framework OpenGL -framework AppKit
 
       - name: Import Developer ID certificate
         env:
