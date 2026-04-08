@@ -87,11 +87,11 @@ jobs:
           clang++ -O2 -Wall -std=c++11 -arch arm64 \
             -DGL_SILENCE_DEPRECATION \
             -mmacosx-version-min=12.0 \
-            -o newtonia-arm64 $(cat srcs.txt) \
+            -o newtonia-arm64 $(cat srcs.txt) macos_window.mm \
             $(/opt/homebrew/bin/sdl2-config --cflags --libs) \
             -L/opt/homebrew/lib -lSDL2_mixer \
             -I/opt/homebrew/include/SDL2 \
-            -framework GLUT -framework OpenGL
+            -framework GLUT -framework OpenGL -framework AppKit
           lipo -info newtonia-arm64
 
       - name: Build x86_64
@@ -101,11 +101,11 @@ jobs:
           clang++ -O2 -Wall -std=c++11 -arch x86_64 \
             -DGL_SILENCE_DEPRECATION \
             -mmacosx-version-min=12.0 \
-            -o newtonia-x86_64 $(cat srcs.txt) \
+            -o newtonia-x86_64 $(cat srcs.txt) macos_window.mm \
             $(/usr/local/bin/sdl2-config --cflags --libs) \
             -L/usr/local/lib -lSDL2_mixer \
             -I/usr/local/include/SDL2 \
-            -framework GLUT -framework OpenGL
+            -framework GLUT -framework OpenGL -framework AppKit
           lipo -info newtonia-x86_64
 
       - name: Create universal binary
