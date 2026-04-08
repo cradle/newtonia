@@ -314,6 +314,18 @@ static GLuint s_vbo_col   = 0;
 static GLuint s_vao       = 0;
 #endif
 
+// Separate shader for feathered (antialiased) line quads.
+// Vertices are already in NDC; aPos.z carries the feather coord (-1..+1).
+static GLuint s_line_prog      = 0;
+static GLint  s_line_attr_pos  = -1;
+static GLint  s_line_attr_col  = -1;
+static GLint  s_line_uni_tint    = -1;
+static GLint  s_line_uni_feather = -1;
+static float  s_tint[4]        = {1.0f, 1.0f, 1.0f, 1.0f};
+#ifdef DESKTOP_COMPAT_GL
+static GLuint s_line_vao       = 0;
+#endif
+
 // ---- Shader sources ----
 // Desktop uses GLSL 1.50 Core (in/out, explicit frag output).
 // GLES2 uses GLSL ES 1.00 (attribute/varying, gl_FragColor).
@@ -376,6 +388,61 @@ static const char *FRAG_SRC =
 
 #endif // DESKTOP_COMPAT_GL
 
+// ---- Line feather shader ----
+// Vertices arrive already in NDC (projection applied by CPU).
+// aPos.z is repurposed as a feather coordinate: -1 and +1 at the quad edges,
+// 0 at the centerline.  The fragment fades alpha from 1 (|edge|<=0.5) to 0
+// (|edge|==1) so the visible line width matches the hard-edged version while
+// the outer half-width forms a soft antialiased fringe.
+
+#ifdef DESKTOP_COMPAT_GL
+static const char *VERT_LINE_SRC =
+    "#version 150 core\n"
+    "in  vec3 aPos;\n"   // .xy = NDC position, .z = feather coord
+    "in  vec4 aCol;\n"
+    "out vec4  vCol;\n"
+    "out float vEdge;\n"
+    "void main(){\n"
+    "  gl_Position = vec4(aPos.xy, 0.0, 1.0);\n"
+    "  vCol  = aCol;\n"
+    "  vEdge = aPos.z;\n"
+    "}\n";
+
+static const char *FRAG_LINE_SRC =
+    "#version 150 core\n"
+    "in  vec4  vCol;\n"
+    "in  float vEdge;\n"        // screen-pixel distance from centerline
+    "uniform vec4  uTint;\n"
+    "uniform float uFeatherStart;\n"  // solid core half-width in pixels
+    "out vec4  fragColor;\n"
+    "void main(){\n"
+    "  float a = 1.0 - clamp(abs(vEdge) - uFeatherStart, 0.0, 1.0);\n"
+    "  fragColor = vCol * uTint * vec4(1.0, 1.0, 1.0, a);\n"
+    "}\n";
+#else
+static const char *VERT_LINE_SRC =
+    "attribute vec3 aPos;\n"
+    "attribute vec4 aCol;\n"
+    "varying vec4  vCol;\n"
+    "varying float vEdge;\n"
+    "void main(){\n"
+    "  gl_Position = vec4(aPos.xy, 0.0, 1.0);\n"
+    "  vCol  = aCol;\n"
+    "  vEdge = aPos.z;\n"
+    "}\n";
+
+static const char *FRAG_LINE_SRC =
+    "precision mediump float;\n"
+    "varying vec4  vCol;\n"
+    "varying float vEdge;\n"    // screen-pixel distance from centerline
+    "uniform vec4  uTint;\n"
+    "uniform float uFeatherStart;\n"  // solid core half-width in pixels
+    "void main(){\n"
+    "  float a = 1.0 - clamp(abs(vEdge) - uFeatherStart, 0.0, 1.0);\n"
+    "  gl_FragColor = vCol * uTint * vec4(1.0, 1.0, 1.0, a);\n"
+    "}\n";
+#endif // DESKTOP_COMPAT_GL
+
 static GLuint compile_shader(GLenum type, const char *src) {
     GLuint sh = glCreateShader(type);
     glShaderSource(sh, 1, &src, NULL);
@@ -426,6 +493,42 @@ static void init_shader() {
 
     glGenBuffers(1, &s_vbo_pos);
     glGenBuffers(1, &s_vbo_col);
+
+    // Line feather shader
+    GLuint lvs = compile_shader(GL_VERTEX_SHADER,   VERT_LINE_SRC);
+    GLuint lfs = compile_shader(GL_FRAGMENT_SHADER, FRAG_LINE_SRC);
+    s_line_prog = glCreateProgram();
+    glAttachShader(s_line_prog, lvs);
+    glAttachShader(s_line_prog, lfs);
+    glLinkProgram(s_line_prog);
+    glGetProgramiv(s_line_prog, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        char buf[512]; glGetProgramInfoLog(s_line_prog, sizeof(buf), NULL, buf);
+        SDL_Log("Line shader link error: %s", buf);
+    }
+    glDeleteShader(lvs);
+    glDeleteShader(lfs);
+
+    s_line_attr_pos = glGetAttribLocation (s_line_prog, "aPos");
+    s_line_attr_col = glGetAttribLocation (s_line_prog, "aCol");
+    s_line_uni_tint    = glGetUniformLocation(s_line_prog, "uTint");
+    s_line_uni_feather = glGetUniformLocation(s_line_prog, "uFeatherStart");
+    glUseProgram(s_line_prog);
+    glUniform4f(s_line_uni_tint, 1.0f, 1.0f, 1.0f, 1.0f);
+    glUniform1f(s_line_uni_feather, 0.0f);
+
+#ifdef DESKTOP_COMPAT_GL
+    glGenVertexArrays(1, &s_line_vao);
+    glBindVertexArray(s_line_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, s_vbo_pos);
+    glEnableVertexAttribArray(s_line_attr_pos);
+    glVertexAttribPointer(s_line_attr_pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, s_vbo_col);
+    glEnableVertexAttribArray(s_line_attr_col);
+    glVertexAttribPointer(s_line_attr_col, 4, GL_FLOAT, GL_FALSE, 0, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+#endif
 }
 
 // Build the combined MVP matrix (Projection * ModelView).
@@ -471,7 +574,11 @@ static void draw_thick_lines_impl(const std::vector<Vertex>& verts, GLenum mode,
     float hh = (float)vp[3] * 0.5f;
     if (hw < 1.0f || hh < 1.0f) return;
 
-    float half_lw = s_line_width * 0.5f;
+    // Solid core half-width in screen pixels.  The feather zone adds a fixed
+    // 1-pixel fringe beyond that, giving consistent AA regardless of width.
+    float solid_half_px = s_line_width * 0.1f;
+    float total_half_px = solid_half_px + 1.0f;
+    float half_lw       = total_half_px;   // pixels; formula divides by hw/hh
 
     auto project = [&](const Vertex& v, float& ox, float& oy) {
         float cx = in_mvp[0]*v.x + in_mvp[4]*v.y + in_mvp[8]*v.z  + in_mvp[12];
@@ -506,10 +613,10 @@ static void draw_thick_lines_impl(const std::vector<Vertex>& verts, GLenum mode,
         float py = ( dx / len) * half_lw / hh;
 
         Vertex c[4];
-        c[0] = va; c[0].x = ax - px; c[0].y = ay - py; c[0].z = 0.0f;
-        c[1] = va; c[1].x = ax + px; c[1].y = ay + py; c[1].z = 0.0f;
-        c[2] = vb; c[2].x = bx + px; c[2].y = by + py; c[2].z = 0.0f;
-        c[3] = vb; c[3].x = bx - px; c[3].y = by - py; c[3].z = 0.0f;
+        c[0] = va; c[0].x = ax - px; c[0].y = ay - py; c[0].z = -total_half_px;
+        c[1] = va; c[1].x = ax + px; c[1].y = ay + py; c[1].z =  total_half_px;
+        c[2] = vb; c[2].x = bx + px; c[2].y = by + py; c[2].z =  total_half_px;
+        c[3] = vb; c[3].x = bx - px; c[3].y = by - py; c[3].z = -total_half_px;
 
         s_thick_quads.push_back(c[0]); s_thick_quads.push_back(c[1]); s_thick_quads.push_back(c[2]);
         s_thick_quads.push_back(c[0]); s_thick_quads.push_back(c[2]); s_thick_quads.push_back(c[3]);
@@ -530,30 +637,27 @@ static void draw_thick_lines_impl(const std::vector<Vertex>& verts, GLenum mode,
         s_col[i*4+3] = s_thick_quads[i].a;
     }
 
-    glUseProgram(s_prog);
+    glUseProgram(s_line_prog);
+    glUniform4f(s_line_uni_tint,    s_tint[0], s_tint[1], s_tint[2], s_tint[3]);
+    glUniform1f(s_line_uni_feather, solid_half_px);
 #ifdef DESKTOP_COMPAT_GL
-    glBindVertexArray(s_vao);
+    glBindVertexArray(s_line_vao);
 #endif
-
-    mat4 identity; mat4_identity(identity);
-    glUniformMatrix4fv(s_uni_mvp, 1, GL_FALSE, identity);
-    glUniform1f(s_uni_ptsz, 1.0f);
-    glUniform1i(s_uni_ispt, 0);
 
     glBindBuffer(GL_ARRAY_BUFFER, s_vbo_pos);
     glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(n2*3*sizeof(float)), s_pos.data(), GL_STREAM_DRAW);
-    glEnableVertexAttribArray(s_attr_pos);
-    glVertexAttribPointer(s_attr_pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    glEnableVertexAttribArray(s_line_attr_pos);
+    glVertexAttribPointer(s_line_attr_pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
     glBindBuffer(GL_ARRAY_BUFFER, s_vbo_col);
     glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(n2*4*sizeof(float)), s_col.data(), GL_STREAM_DRAW);
-    glEnableVertexAttribArray(s_attr_color);
-    glVertexAttribPointer(s_attr_color, 4, GL_FLOAT, GL_FALSE, 0, 0);
+    glEnableVertexAttribArray(s_line_attr_col);
+    glVertexAttribPointer(s_line_attr_col, 4, GL_FLOAT, GL_FALSE, 0, 0);
 
     glDrawArrays(GL_TRIANGLES, 0, (GLsizei)n2);
 
-    glDisableVertexAttribArray(s_attr_pos);
-    glDisableVertexAttribArray(s_attr_color);
+    glDisableVertexAttribArray(s_line_attr_pos);
+    glDisableVertexAttribArray(s_line_attr_col);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
@@ -659,6 +763,7 @@ void gles2_init() {
 }
 
 void gles2_set_tint(float r, float g, float b, float a) {
+    s_tint[0] = r; s_tint[1] = g; s_tint[2] = b; s_tint[3] = a;
     glUseProgram(s_prog);
     glUniform4f(s_uni_tint, r, g, b, a);
 }
