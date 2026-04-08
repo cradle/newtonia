@@ -95,6 +95,7 @@ bool StateManager::back_pressed() {
 }
 
 void StateManager::focus_lost() {
+  key_states.clear();
   GLGame *game = dynamic_cast<GLGame*>(state);
   if(game) game->focus_lost();
 }

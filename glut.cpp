@@ -18,6 +18,7 @@
 #ifdef __APPLE__
 // CGL is needed for VSync configuration only.
 #include <OpenGL/OpenGL.h>
+extern "C" void activate_app_macos();
 #endif
 
 // Glut callbacks cannot be member functions. Need to pre-declare game object
@@ -126,6 +127,10 @@ void hide_cursor_after_fullscreen(int) {
   }
 }
 
+void activate_app_timer(int) {
+  activate_app_macos();
+}
+
 void mouse_passive(int x, int y) {
   if (!is_fullscreen) return;
   cursor_hidden = false;
@@ -227,6 +232,7 @@ int main(int argc, char* argv[]) {
   is_fullscreen = true;
 #ifdef __APPLE__
   glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
+  glutTimerFunc(0, activate_app_timer, 0);
 #else
   set_cursor_hidden(true);
 #endif

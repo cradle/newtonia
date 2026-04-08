@@ -7,7 +7,7 @@ UNAME := $(shell uname)
 ANDROID_SRCS = android_main.cpp
 
 ifeq ($(UNAME), Darwin)
-  LIBS = -framework GLUT -framework OpenGL $(SDL2_LIBS)
+  LIBS = -framework GLUT -framework OpenGL -framework AppKit $(SDL2_LIBS)
   CFLAGS += -DGL_SILENCE_DEPRECATION -Wno-char-subscripts
   ALL_SRCS := $(filter-out $(ANDROID_SRCS),$(wildcard *.cpp) $(wildcard */*.cpp))
 else
@@ -15,10 +15,13 @@ else
   ALL_SRCS := $(filter-out $(ANDROID_SRCS),$(wildcard *.cpp) $(wildcard */*.cpp))
 endif
 
-OSX_LIBS = -framework GLUT -framework OpenGL $(SDL2_LIBS)
+OSX_LIBS = -framework GLUT -framework OpenGL -framework AppKit $(SDL2_LIBS)
 OSX_CFLAGS = $(CFLAGS) -std=c++11 -arch arm64 -arch x86_64
 COMPILE = $(CC) $(CFLAGS) -c
 OBJFILES := $(patsubst %.cpp,%.o,$(ALL_SRCS))
+ifeq ($(UNAME), Darwin)
+  OBJFILES += macos_window.o
+endif
 
 all: newtonia
 
@@ -70,3 +73,6 @@ web-clean:
 
 %.o: %.cpp
 	$(COMPILE) -o $@ $<
+
+%.o: %.mm
+	$(CC) $(CFLAGS) -c -o $@ $<
