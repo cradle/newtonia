@@ -48,12 +48,15 @@ void draw() {
   game->draw();
   glutSwapBuffers();
 #ifdef __APPLE__
-  // Activate after the first rendered frame so the window is actually on screen
-  // when we request focus. Calling earlier (e.g. from a 0ms timer) fires before
-  // the window is visible, so macOS silently ignores the activation request.
+  // Activate after the first rendered frame so the window is on screen before
+  // we request focus (a 0ms timer fires before the window is visible).
+  // Also schedule a 500ms retry: the fullscreen transition animation may not
+  // have completed by the first frame, causing an intermittent miss.
+  // activate_app_macos() is a no-op once the app is already active.
   if (s_needs_activation) {
     s_needs_activation = false;
     activate_app_macos();
+    glutTimerFunc(500, activate_app_timer, 0);
   }
 #endif
 }
@@ -146,6 +149,10 @@ void hide_cursor_after_fullscreen(int) {
     cursor_hidden = false;
     set_cursor_hidden(true);
   }
+}
+
+void activate_app_timer(int) {
+  activate_app_macos(); // No-op if already active.
 }
 
 void mouse_passive(int x, int y) {

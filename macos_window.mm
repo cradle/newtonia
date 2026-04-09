@@ -7,6 +7,10 @@
 // input immediately on launch (needed when launched from Steam, which keeps
 // itself as the active app).
 extern "C" void activate_app_macos() {
+  if ([NSApp isActive]) return; // Already focused — nothing to do.
+  if ([NSApp mainWindow]) {
+    [[NSApp mainWindow] makeKeyAndOrderFront:nil];
+  }
   if (@available(macOS 14.0, *)) {
     [NSApp activate];
   } else {
