@@ -19,6 +19,13 @@
 // CGL is needed for VSync configuration only.
 #include <OpenGL/OpenGL.h>
 extern "C" void activate_app_macos();
+extern "C" void install_macos_focus_observer(void (*lost)(), void (*gained)());
+#endif
+
+#ifdef __linux__
+// GLX lets us retrieve the X11 Display/drawable so we can poll keyboard focus.
+#include <GL/glx.h>
+#include <X11/Xlib.h>
 #endif
 
 // Glut callbacks cannot be member functions. Need to pre-declare game object
@@ -136,7 +143,10 @@ void mouse_passive(int x, int y) {
   cursor_hidden = false;
   set_cursor_hidden(true);
 }
-#endif
+
+static void on_focus_lost()   { if (game) game->focus_lost(); }
+static void on_focus_gained() { if (game) game->focus_gained(); }
+#endif // __APPLE__
 
 
 void check_controller() {
@@ -166,16 +176,38 @@ void check_controller() {
           break;
         }
       }
-    } else if(e.type == SDL_WINDOWEVENT) {
-      if(e.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
-        game->focus_lost();
-      } else if(e.window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
-        game->focus_gained();
-      }
     }
     game->controller(e);
   }
 }
+
+#ifdef __linux__
+// Poll X11 keyboard focus and fire focus_lost/gained on the game when it
+// changes.  GLUT owns the window on desktop so SDL_WINDOWEVENT never fires;
+// querying X11 directly via the current GLX display/drawable is the only
+// portable way to detect focus transitions on Linux.
+static bool linux_has_focus = true;
+
+static void check_linux_focus() {
+  Display *dpy = glXGetCurrentDisplay();
+  if (!dpy) return;
+
+  Window focused;
+  int revert;
+  XGetInputFocus(dpy, &focused, &revert);
+
+  Window glut_win = (Window)glXGetCurrentDrawable();
+  bool has_focus = (focused == glut_win);
+
+  if (!has_focus && linux_has_focus) {
+    linux_has_focus = false;
+    if (game) game->focus_lost();
+  } else if (has_focus && !linux_has_focus) {
+    linux_has_focus = true;
+    if (game) game->focus_gained();
+  }
+}
+#endif // __linux__
 
 int last_tick_time;
 void tick() {
@@ -183,6 +215,9 @@ void tick() {
   int delta = current_time - last_tick_time;
   last_tick_time = current_time;
   check_controller();
+#ifdef __linux__
+  check_linux_focus();
+#endif
   game->tick(delta);
   glutPostRedisplay();
 }
@@ -248,6 +283,9 @@ int main(int argc, char* argv[]) {
   for(int i = 0; i < 2; i++) {
     if(controllers[i]) game->controller_added(controllers[i]);
   }
+#ifdef __APPLE__
+  install_macos_focus_observer(on_focus_lost, on_focus_gained);
+#endif
   resize(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT));
   glutMainLoop();
   for(int i = 0; i < 2; i++) {

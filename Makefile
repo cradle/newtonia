@@ -11,7 +11,7 @@ ifeq ($(UNAME), Darwin)
   CFLAGS += -DGL_SILENCE_DEPRECATION -Wno-char-subscripts
   ALL_SRCS := $(filter-out $(ANDROID_SRCS),$(wildcard *.cpp) $(wildcard */*.cpp))
 else
-  LIBS = -lglut -lGL -lGLU $(SDL2_LIBS)
+  LIBS = -lglut -lGL -lGLU -lX11 $(SDL2_LIBS)
   ALL_SRCS := $(filter-out $(ANDROID_SRCS),$(wildcard *.cpp) $(wildcard */*.cpp))
 endif
 
