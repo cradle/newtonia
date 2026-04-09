@@ -19,6 +19,7 @@
 // CGL is needed for VSync configuration only.
 #include <OpenGL/OpenGL.h>
 extern "C" void activate_app_macos();
+extern "C" void enable_game_mode_macos();
 extern "C" void install_macos_focus_observer(void (*lost)(), void (*gained)());
 #endif
 
@@ -310,6 +311,7 @@ int main(int argc, char* argv[]) {
   glutFullScreen();
   is_fullscreen = true;
 #ifdef __APPLE__
+  enable_game_mode_macos();
   glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
 #else
   set_cursor_hidden(true);
