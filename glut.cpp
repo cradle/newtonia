@@ -37,12 +37,25 @@ SDL_JoystickID controller_ids[2] = {-1, -1};
 bool ENABLE_AUDIO = true;
 
 int last_render_time;
+#ifdef __APPLE__
+static bool s_needs_activation = true;
+#endif
+
 void draw() {
   if (!game) return;
   int current_time = glutGet(GLUT_ELAPSED_TIME);
   last_render_time = current_time;
   game->draw();
   glutSwapBuffers();
+#ifdef __APPLE__
+  // Activate after the first rendered frame so the window is actually on screen
+  // when we request focus. Calling earlier (e.g. from a 0ms timer) fires before
+  // the window is visible, so macOS silently ignores the activation request.
+  if (s_needs_activation) {
+    s_needs_activation = false;
+    activate_app_macos();
+  }
+#endif
 }
 
 int old_x = 50;
@@ -133,10 +146,6 @@ void hide_cursor_after_fullscreen(int) {
     cursor_hidden = false;
     set_cursor_hidden(true);
   }
-}
-
-void activate_app_timer(int) {
-  activate_app_macos();
 }
 
 void mouse_passive(int x, int y) {
@@ -294,7 +303,6 @@ int main(int argc, char* argv[]) {
   is_fullscreen = true;
 #ifdef __APPLE__
   glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
-  glutTimerFunc(0, activate_app_timer, 0);
 #else
   set_cursor_hidden(true);
 #endif
