@@ -39,6 +39,7 @@ bool ENABLE_AUDIO = true;
 int last_render_time;
 #ifdef __APPLE__
 static bool s_needs_activation = true;
+void activate_app_timer(int);
 #endif
 
 void draw() {
@@ -70,7 +71,6 @@ bool cursor_hidden = false;
 
 #ifdef __APPLE__
 void hide_cursor_after_fullscreen(int);
-void activate_app_timer(int);
 #endif
 
 void set_cursor_hidden(bool hide) {
