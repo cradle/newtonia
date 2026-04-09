@@ -167,9 +167,10 @@ void Overlay::lives(const GLGame *glgame, const GLShip *glship) {
 
 void Overlay::weapons(const GLGame *glgame, const GLShip *glship) {
   float saved[16]; gles2_get_mvp(saved);
+  float s = Typer::scale;
   float vp[16]; mat4_translate(vp, saved,
-    -Typer::window_width/glgame->num_x_viewports()+CORNER_INSET,
-    Typer::window_height/glgame->num_y_viewports()-CORNER_INSET, 0.0f);
+    (-Typer::scaled_window_width/glgame->num_x_viewports()+CORNER_INSET) * s,
+    (Typer::scaled_window_height/glgame->num_y_viewports()-CORNER_INSET) * s, 0.0f);
   gles2_set_vp(vp);
   glship->draw_weapons();
   gles2_set_vp(saved);
