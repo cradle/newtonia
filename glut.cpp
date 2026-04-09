@@ -166,6 +166,12 @@ void check_controller() {
           break;
         }
       }
+    } else if(e.type == SDL_WINDOWEVENT) {
+      if(e.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+        game->focus_lost();
+      } else if(e.window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
+        game->focus_gained();
+      }
     }
     game->controller(e);
   }

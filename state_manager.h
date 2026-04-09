@@ -32,6 +32,7 @@ private:
   State *state;
 
   map<const char, bool> key_states;
+  bool focus_muted = false;
 };
 
 #endif
