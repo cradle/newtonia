@@ -27,6 +27,7 @@ extern "C" void install_macos_focus_observer(void (*lost)(), void (*gained)());
 #include <GL/glx.h>
 #include <X11/Xlib.h>
 #endif
+// On Windows, <windows.h> is already pulled in by gl_compat.h.
 
 // Glut callbacks cannot be member functions. Need to pre-declare game object
 StateManager *game;
@@ -209,6 +210,23 @@ static void check_linux_focus() {
 }
 #endif // __linux__
 
+#ifdef _WIN32
+// GetActiveWindow() returns our HWND when this thread's window has focus,
+// NULL when another application is in the foreground.
+static bool windows_has_focus = true;
+
+static void check_windows_focus() {
+  bool has_focus = (GetActiveWindow() != NULL);
+  if (!has_focus && windows_has_focus) {
+    windows_has_focus = false;
+    if (game) game->focus_lost();
+  } else if (has_focus && !windows_has_focus) {
+    windows_has_focus = true;
+    if (game) game->focus_gained();
+  }
+}
+#endif // _WIN32
+
 int last_tick_time;
 void tick() {
   int current_time = glutGet(GLUT_ELAPSED_TIME);
@@ -217,6 +235,9 @@ void tick() {
   check_controller();
 #ifdef __linux__
   check_linux_focus();
+#endif
+#ifdef _WIN32
+  check_windows_focus();
 #endif
   game->tick(delta);
   glutPostRedisplay();
