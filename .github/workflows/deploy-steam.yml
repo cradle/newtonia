@@ -319,12 +319,14 @@ jobs:
           SRCS=$(find . -name "*.cpp" \
             -not -path "./android/*" \
             -not -path "./.git/*" \
-            -not -path "./SDL2_source/*")
+            -not -path "./SDL2_source/*" \
+            -not -path "./SDL2_mixer/*")
           g++ -O2 -Wall -std=c++11 \
             $(sdl2-config --cflags) -I/usr/local/include/SDL2 \
             -o newtonia $SRCS \
             -lglut -lGL -lGLU \
-            -lSDL2_mixer $(sdl2-config --static-libs)
+            -lSDL2_mixer $(sdl2-config --static-libs) \
+            -lX11
 
       - name: Stage depot
         run: |
