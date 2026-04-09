@@ -70,6 +70,7 @@ bool cursor_hidden = false;
 
 #ifdef __APPLE__
 void hide_cursor_after_fullscreen(int);
+void activate_app_timer(int);
 #endif
 
 void set_cursor_hidden(bool hide) {
