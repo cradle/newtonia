@@ -47,6 +47,7 @@ public:
   float camera_facing() const;
   float view_angle() const;
   void snap_camera_to_heading();  // instantly align camera with ship heading (no interpolation)
+  void smooth_camera(int frame_delta);  // interpolate camera toward ship heading; call once per rendered frame
 
   void collide_grid(Grid &grid, int delta);
   static void collide(GLShip* first, GLShip* second);
