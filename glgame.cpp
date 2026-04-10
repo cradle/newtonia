@@ -14,6 +14,7 @@
 #include "object.h"
 #include "grid.h"
 #include "view/overlay.h"
+#include "typer.h"
 #include "touch_controls.h"
 #include <math.h>
 #include <SDL.h>
@@ -1152,11 +1153,19 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   setup_viewport(primary);
   draw_perspective(glship);
 
+  float osd_hw = window.x() / nx;
+  float osd_hh = window.y() / ny;
+  const float MAX_OSD_ASPECT = 16.0f / 9.0f;
+  float capped_hw = (osd_hw / osd_hh > MAX_OSD_ASPECT) ? osd_hh * MAX_OSD_ASPECT : osd_hw;
+
   float ortho[16];
-  mat4_ortho(ortho, -window.x()/nx, window.x()/nx, -window.y()/ny, window.y()/ny, -1.0f, 1.0f);
+  mat4_ortho(ortho, -osd_hw, osd_hw, -osd_hh, osd_hh, -1.0f, 1.0f);
   gles2_set_vp(ortho);
   setup_viewport(primary);
+  float saved_sw = Typer::scaled_window_width;
+  Typer::scaled_window_width = capped_hw / Typer::scale * nx;
   Overlay::draw(this, glship);
+  Typer::scaled_window_width = saved_sw;
 }
 
 void GLGame::draw_perspective(GLShip *glship) const {
