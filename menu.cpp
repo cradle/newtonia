@@ -93,9 +93,21 @@ void Menu::draw() {
   if (options_mode_) {
     Typer::draw_centered(0,   60, "OPTIONS", 30);
     Typer::draw_centered(0,  -40, "KEYBOARD SENSITIVITY", 18);
-    std::string sens = std::string("< ") + SENSITIVITY_LABELS[sensitivity_index_] + " >";
-    Typer::draw_centered(0, -130, sens.c_str(), 26);
-    Typer::draw_centered(0, -260, "< > TO CHANGE   ENTER TO BACK", 14);
+
+    // Numbered step indicators: 1  2  [3]  4  5
+    static const int step_x[] = {-160, -80, 0, 80, 160};
+    for (int i = 0; i < NUM_SENSITIVITY; i++) {
+      std::string label = (i == sensitivity_index_)
+        ? "[" + std::to_string(i + 1) + "]"
+        :       std::to_string(i + 1);
+      Typer::draw_centered(step_x[i], -115, label.c_str(), i == sensitivity_index_ ? 30 : 22);
+    }
+    // Current level name
+    Typer::draw_centered(0, -185, SENSITIVITY_LABELS[sensitivity_index_], 20);
+
+    // Navigation hints
+    Typer::draw_centered(0, -265, "A / D  TO CHANGE", 14);
+    Typer::draw_centered(0, -300, "ENTER OR ESC TO BACK", 14);
   } else if (has_save_) {
     if (is_touch_mode()) {
       // Side-by-side layout for touch: full left/right halves are tap targets
