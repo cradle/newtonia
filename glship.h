@@ -87,7 +87,7 @@ protected:
   bool left_axis_x_active = false;
   bool left_axis_y_active = false;
 
-  bool rotating_view, show_help;
+  bool rotating_view, show_help, last_input_was_controller;
   float camera_rotation;
   float camera_angle;
 
