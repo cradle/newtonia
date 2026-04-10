@@ -754,7 +754,7 @@ void GLShip::draw_weapons() const {
     char buf[16];
     snprintf(buf, sizeof(buf), "%d/10", ship->nova_charge);
     Typer::draw(x+10,  y-135, "NOVA", 10);
-    Typer::draw(x+130, y-135, buf,    10);
+    Typer::draw(x+110, y-135, buf,    10);
   }
 }
 
