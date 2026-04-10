@@ -43,6 +43,7 @@ const float GLGame::giga_mine_pickup_drop_chance = 0.005f;
 const float GLGame::missile_pickup_drop_chance = 0.0125f;
 const float GLGame::shield_pickup_drop_chance = 0.0125f;
 const float GLGame::god_mode_pickup_drop_chance = 0.0025f;
+const float GLGame::skill_pickup_drop_chance = 0.0125f;
 
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
@@ -217,6 +218,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
       case Save::PickupType::Shield:   pickups->push_back(new ShieldPickup(pos)); break;
       case Save::PickupType::GodMode:  pickups->push_back(new GodModePickup(pos)); break;
       case Save::PickupType::ExtraLife: pickups->push_back(new ExtraLife(pos)); break;
+      case Save::PickupType::Skill:     pickups->push_back(new SkillPickup(pos)); break;
     }
   }
 
@@ -330,6 +332,8 @@ Save::GameState GLGame::build_save_data() const {
       sp.type = Save::PickupType::GodMode;
     } else if (dynamic_cast<ExtraLife*>(p)) {
       sp.type = Save::PickupType::ExtraLife;
+    } else if (dynamic_cast<SkillPickup*>(p)) {
+      sp.type = Save::PickupType::Skill;
     } else {
       continue; // unknown pickup type, skip
     }
@@ -744,6 +748,8 @@ void GLGame::tick(int delta) {
             pickups->push_back(new ShieldPickup((*oi)->position));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance) {
             pickups->push_back(new GodModePickup((*oi)->position));
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance + skill_pickup_drop_chance) {
+            pickups->push_back(new SkillPickup((*oi)->position));
           }
         }
         // Move to dead_objects so the collision grid no longer iterates this

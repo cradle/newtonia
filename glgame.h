@@ -19,6 +19,7 @@
 #include "missile_pickup.h"
 #include "shield_pickup.h"
 #include "god_mode_pickup.h"
+#include "skill_pickup.h"
 #include <SDL.h>
 #include <list>
 
@@ -94,6 +95,7 @@ private:
   static const float missile_pickup_drop_chance;
   static const float shield_pickup_drop_chance;
   static const float god_mode_pickup_drop_chance;
+  static const float skill_pickup_drop_chance;
   mutable WarpPass *warp_pass_;
 
   Mix_Chunk *tic_sound = NULL;

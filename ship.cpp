@@ -10,6 +10,10 @@
 #include "weapon/missile.h"
 #include "weapon/shield.h"
 #include "weapon/god_mode.h"
+#include "weapon/nova.h"
+
+// Number of skill pickups required to earn one Nova Burst charge.
+static const int SKILL_THRESHOLD = 5;
 #include <algorithm>
 #include <math.h>
 #include <climits>
@@ -24,6 +28,7 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   first_life = true;
   score = 0;
   kills = 0;
+  skill_fragments = 0;
   bullet_trails.reserve(256);
   position = WrappedPoint();
   safe_position(grid);
@@ -383,6 +388,54 @@ void Ship::add_god_mode(int duration_ms) {
   update_god_mode_music(duration_ms);
 }
 
+void Ship::add_nova_ammo(int amount) {
+  for (auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    if (dynamic_cast<Weapon::Nova*>(*it)) {
+      (*it)->add_ammo(amount);
+      if (!shield_held(secondary_weapons, secondary)) {
+        (*secondary)->shoot(false);
+        secondary = it;
+      }
+      return;
+    }
+  }
+  Weapon::Nova *w = new Weapon::Nova(this);
+  w->set_ammo(amount);
+  secondary_weapons.push_back(w);
+  if (!shield_held(secondary_weapons, secondary))
+    secondary = --secondary_weapons.end();
+}
+
+void Ship::add_skill_fragment(int n) {
+  skill_fragments += n;
+  while (skill_fragments >= SKILL_THRESHOLD) {
+    skill_fragments -= SKILL_THRESHOLD;
+    add_nova_ammo(1);
+  }
+}
+
+void Ship::nova_detonate() {
+  if (giga_mine_explode_sound != NULL)
+    Mix_PlayChannel(-1, giga_mine_explode_sound, 0);
+
+  // Instantly kill all live, non-invincible asteroids for the screen-clear effect.
+  if (missile_asteroids) {
+    for (auto *obj : *missile_asteroids) {
+      if (!obj->alive || obj->invincible) continue;
+      if (obj->kill()) {
+        score += obj->get_value() * multiplier();
+        kills_this_life++;
+        kills++;
+      }
+    }
+  }
+
+  // Three expanding shockwave rings for a dramatic visual burst.
+  shockwaves.push_back(Shockwave(position,  700.0f,  700.0f /  600.0f,  600.0f));
+  shockwaves.push_back(Shockwave(position, 1300.0f, 1300.0f /  900.0f,  900.0f));
+  shockwaves.push_back(Shockwave(position, 2000.0f, 2000.0f / 1300.0f, 1300.0f));
+}
+
 int Ship::god_mode_time_remaining() const {
   for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
     Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
@@ -439,6 +492,7 @@ Save::Player Ship::capture_state() const {
     else if (dynamic_cast<Weapon::GigaMine*>(*it)) we.kind = Save::WeaponEntry::Kind::GigaMine;
     else if (dynamic_cast<Weapon::Missile*>(*it))  we.kind = Save::WeaponEntry::Kind::Missile;
     else if (dynamic_cast<Weapon::Shield*>(*it))   we.kind = Save::WeaponEntry::Kind::Shield;
+    else if (dynamic_cast<Weapon::Nova*>(*it))     we.kind = Save::WeaponEntry::Kind::Nova;
     else we.kind = Save::WeaponEntry::Kind::Mine; // fallback
     p.secondary_weapons.push_back(we);
   }
@@ -489,6 +543,7 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
       case Save::WeaponEntry::Kind::GigaMine: add_giga_mine_ammo(we.ammo); break;
       case Save::WeaponEntry::Kind::Missile:  add_missile_ammo(we.ammo);  break;
       case Save::WeaponEntry::Kind::Shield:   add_shield_ammo(we.ammo);   break;
+      case Save::WeaponEntry::Kind::Nova:     add_nova_ammo(we.ammo);     break;
       default: break;
     }
   }

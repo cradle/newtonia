@@ -74,6 +74,7 @@ class Ship : public CompositeObject {
     //TODO: make friends with glship
     int score;
     int lives, kills, kills_this_life;
+    int skill_fragments;  // accumulated toward next Nova charge (0 to SKILL_THRESHOLD-1)
     //TODO: Make this go away, it's wrong
     float radius_squared;
     bool thrusting, reversing, boosting;
@@ -131,6 +132,9 @@ class Ship : public CompositeObject {
     void add_shield_ammo(int amount);
     void add_god_mode(int duration_ms = 10000);
     int god_mode_time_remaining() const;
+    void add_nova_ammo(int amount);
+    void add_skill_fragment(int n);
+    void nova_detonate();
     void set_shield_hum(bool on);
     void set_missile_asteroids(std::list<Object*> *asteroids);
     void set_missile_ships(std::list<Object*> *ships);
