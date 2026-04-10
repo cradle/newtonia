@@ -6,6 +6,7 @@
 #include "weapon/base.h"
 #include "weapon/god_mode.h"
 #include "mat4.h"
+#include "options.h"
 #include <math.h>
 #include <SDL.h>
 
@@ -20,6 +21,7 @@ using namespace std;
 
 GLShip::GLShip(const Grid &grid, bool has_friction) : show_help(false) {
   //TODO: load config from file (colours too)
+  keyboard_sensitivity = g_options.keyboard_sensitivity;
   ship = new Ship(grid, has_friction);
   trails.push_back(new GLTrail(this, 0.01, Point(0,0), 0.3,0.0, GLTrail::THRUSTING, 2500.0));
   trails.push_back(new GLTrail(this, 0.5,Point(-4,17),-0.1, 0.9, GLTrail::REVERSING | GLTrail::RIGHT, 250.0));
@@ -491,8 +493,10 @@ void GLShip::input(unsigned char key, bool pressed) {
     return;
   }
   if (key == left_key) {
+    if (pressed) ship->rotation_scale = keyboard_sensitivity;
     ship->rotate_left(pressed);
   } else if (key == right_key) {
+    if (pressed) ship->rotation_scale = keyboard_sensitivity;
     ship->rotate_right(pressed);
   } else if (key == thrust_key) {
     ship->thrust(pressed);

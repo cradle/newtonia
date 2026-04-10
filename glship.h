@@ -79,6 +79,7 @@ protected:
   Mesh missile_body;   // unit missile triangle (ship colour), per-missile matrix
 
   int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, next_secondary_key, boost_key, teleport_key, help_key;
+  float keyboard_sensitivity = 1.0f;  // rotation speed multiplier for keyboard input
 
   SDL_GameController *controller = NULL;
   SDL_JoystickID controller_instance_id = -1;

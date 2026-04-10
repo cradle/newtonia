@@ -20,11 +20,16 @@ public:
 
 private:
   void confirm_selection(SDL_GameController *ctrl);
+  int  max_menu_items() const;
+  void open_options();
+  void close_options();
 
   int currentTime;
   int high_score;
   bool has_save_ = false;
-  int  menu_selection = 0;  // 0 = CONTINUE, 1 = NEW GAME (only relevant when has_save_)
+  int  menu_selection = 0;
+  bool options_mode_ = false;
+  int  sensitivity_index_ = 2;  // index into SENSITIVITY_VALUES; 2 = NORMAL (1.0x)
   WrappedPoint viewpoint;
   GLStarfield starfield;
   static const int default_world_width, default_world_height;
@@ -33,6 +38,8 @@ private:
   bool r2_active = false;
   bool left_stick_up_active = false;
   bool left_stick_down_active = false;
+  bool left_stick_left_active = false;
+  bool left_stick_right_active = false;
 };
 
 #endif
