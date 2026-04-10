@@ -1150,15 +1150,14 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   float osd_hw = window.x() / nx;
   float osd_hh = window.y() / ny;
   const float MAX_OSD_ASPECT = 16.0f / 9.0f;
-  if (osd_hw / osd_hh > MAX_OSD_ASPECT)
-    osd_hw = osd_hh * MAX_OSD_ASPECT;
+  float capped_hw = (osd_hw / osd_hh > MAX_OSD_ASPECT) ? osd_hh * MAX_OSD_ASPECT : osd_hw;
 
   float ortho[16];
   mat4_ortho(ortho, -osd_hw, osd_hw, -osd_hh, osd_hh, -1.0f, 1.0f);
   gles2_set_vp(ortho);
   setup_viewport(primary);
   float saved_sw = Typer::scaled_window_width;
-  Typer::scaled_window_width = osd_hw / Typer::scale * nx;
+  Typer::scaled_window_width = capped_hw / Typer::scale * nx;
   Overlay::draw(this, glship);
   Typer::scaled_window_width = saved_sw;
 }
