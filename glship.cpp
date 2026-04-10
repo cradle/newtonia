@@ -717,32 +717,75 @@ void GLShip::draw_keymap() const {
 }
 
 void GLShip::draw_weapons() const {
-  int x = 40;
-  int y = -20;
-  Typer::draw(x, y, "Weapons", 15);
-  Weapon::Base *weapon = *(ship->primary);
-  if(weapon != NULL && !ship->primary_weapons.empty()) {
-    Typer::draw(x+10,y-55,weapon->name(),10);
-    if(!weapon->is_unlimited()) {
-      if(weapon->ammo() == 0) {
-        Typer::draw(x+30+20*strlen(weapon->name()),y-55,"empty",10);
+  const int size = 10;
+  const int cw = size * 2;  // character width at this size
+
+  // Draw one weapon row:  [cycle_key] << [NAME] >>
+  //                                              [fire_key]  [ammo]
+  auto draw_weapon_row = [&](int row_y, Weapon::Base *weapon,
+                             int cycle_key_kb, SDL_GameControllerButton cycle_btn,
+                             int fire_key_kb,  SDL_GameControllerButton fire_btn) {
+    int cx = 10;
+
+    // cycle key
+    if (controller == NULL) {
+      Typer::draw(cx, row_y, (char)cycle_key_kb, size);
+    } else {
+      Typer::draw(cx, row_y, SDL_GameControllerGetStringForButton(cycle_btn), size);
+    }
+    cx += cw;
+
+    Typer::draw(cx, row_y, " << ", size);
+    cx += 4 * cw;
+
+    Typer::draw(cx, row_y, weapon->name(), size);
+    cx += (int)strlen(weapon->name()) * cw;
+
+    Typer::draw(cx, row_y, " >>", size);
+    cx += 3 * cw;
+
+    // fire key on the line below, aligned to the right edge of ">>"
+    int fire_y = row_y - 35;
+    if (controller == NULL) {
+      if (fire_key_kb == ' ') {
+        Typer::draw(cx - cw, fire_y, "SPC", size);
+        cx += 2 * cw;  // "SPC" is 3 chars but starts 1 char back
+      } else {
+        Typer::draw(cx - cw, fire_y, (char)fire_key_kb, size);
+      }
+    } else {
+      Typer::draw(cx - cw, fire_y, SDL_GameControllerGetStringForButton(fire_btn), size);
+    }
+
+    // ammo
+    if (!weapon->is_unlimited()) {
+      int ammo_x = cx + cw;
+      if (weapon->ammo() == 0) {
+        Typer::draw(ammo_x, fire_y, "empty", size);
       } else {
         int display_ammo = dynamic_cast<Weapon::GodMode*>(weapon) ? weapon->ammo()/1000 : weapon->ammo();
-        Typer::draw_lefted(x+50+20*strlen(weapon->name()),y-55,display_ammo,10);
+        Typer::draw_lefted(ammo_x + 2*cw, fire_y, display_ammo, size);
       }
     }
+  };
+
+  int y = -20;
+
+  if (!ship->primary_weapons.empty()) {
+    Weapon::Base *weapon = *(ship->primary);
+    if (weapon != NULL) {
+      draw_weapon_row(y, weapon,
+        next_weapon_key,   SDL_CONTROLLER_BUTTON_X,
+        shoot_key,         SDL_CONTROLLER_BUTTON_A);
+    }
   }
-  if(!ship->secondary_weapons.empty()) {
-    weapon = *(ship->secondary);
-    if(weapon != NULL) {
-      Typer::draw(x+10,y-95,weapon->name(),10);
-      if(!weapon->is_unlimited()) {
-        if(weapon->ammo() == 0) {
-          Typer::draw(x+30+20*strlen(weapon->name()),y-95,"empty",10);
-        } else {
-          Typer::draw_lefted(x+50+20*strlen(weapon->name()),y-95,weapon->ammo(),10);
-        }
-      }
+
+  if (!ship->secondary_weapons.empty()) {
+    Weapon::Base *weapon = *(ship->secondary);
+    if (weapon != NULL) {
+      draw_weapon_row(y - 80, weapon,
+        next_secondary_key, SDL_CONTROLLER_BUTTON_Y,
+        mine_key,           SDL_CONTROLLER_BUTTON_B);
     }
   }
 }
