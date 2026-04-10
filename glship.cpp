@@ -749,10 +749,10 @@ void GLShip::draw_weapons() const {
     }
   }
 
-  // Nova charge counter: shows charge progress and kill sub-progress toward next charge
+  // Nova charge counter: shows charge progress toward next bomb
   if(ship->nova_charge > 0 || ship->nova_kill_counter > 0) {
-    char buf[24];
-    snprintf(buf, sizeof(buf), "%d/10  %d/100", ship->nova_charge, ship->nova_kill_counter);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d/10", ship->nova_charge);
     Typer::draw(x+10,  y-135, "NOVA", 10);
     Typer::draw(x+110, y-135, buf,    10);
   }
