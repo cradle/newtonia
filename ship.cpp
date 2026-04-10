@@ -13,7 +13,7 @@
 #include "weapon/nova.h"
 
 // Number of skill pickups required to earn one Nova Burst charge.
-static const int SKILL_THRESHOLD = 5;
+static const int SKILL_THRESHOLD = 1;  // TODO: restore to 5 before shipping
 #include <algorithm>
 #include <math.h>
 #include <climits>
