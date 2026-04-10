@@ -95,7 +95,7 @@ void Menu::draw() {
     Typer::draw_centered(0,  -40, "KEYBOARD SENSITIVITY", 18);
 
     // Numbered step indicators: 1  2  [3]  4  5
-    static const int step_x[] = {-160, -80, 0, 80, 160};
+    static const int step_x[] = {-200, -100, 0, 100, 200};
     for (int i = 0; i < NUM_SENSITIVITY; i++) {
       std::string label = (i == sensitivity_index_)
         ? "[" + std::to_string(i + 1) + "]"
