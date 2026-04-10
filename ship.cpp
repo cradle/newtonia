@@ -902,8 +902,13 @@ void Ship::collide_grid(Grid &grid, int delta) {
       float dist = sw.is_nova
         ? obj->position.distance_to(WrappedPoint(sw.position.x(), sw.position.y()))
         : (obj->position - sw.position).magnitude();
-      // Kill objects swept by the ring (between prev_radius and current_radius)
-      if(dist <= sw.radius && dist > sw.prev_radius - obj->radius) {
+      // Nova: kill everything inside the expanding circle so children spawned
+      // behind the ring front are caught on the very next frame.
+      // Giga-mine: ring-sweep only (between prev_radius and current_radius).
+      bool in_kill_zone = sw.is_nova
+        ? dist <= sw.radius
+        : (dist <= sw.radius && dist > sw.prev_radius - obj->radius);
+      if(in_kill_zone) {
         if(obj->kill()) {
           score += obj->get_value() * multiplier();
           kills_this_life += 1;
