@@ -72,7 +72,7 @@ private:
   void draw_perspective(GLShip *glship) const;
   void setup_viewport(bool primary) const;
 
-  static const int step_size = 16;
+  static const int step_size = 8;
 
   Point world;
 
