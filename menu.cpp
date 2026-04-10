@@ -100,7 +100,7 @@ void Menu::draw() {
       std::string label = (i == sensitivity_index_)
         ? "[" + std::to_string(i + 1) + "]"
         :       std::to_string(i + 1);
-      Typer::draw_centered(step_x[i], -115, label.c_str(), i == sensitivity_index_ ? 30 : 22);
+      Typer::draw_centered(step_x[i], -115, label.c_str(), 22);
     }
     // Current level name
     Typer::draw_centered(0, -185, SENSITIVITY_LABELS[sensitivity_index_], 20);
