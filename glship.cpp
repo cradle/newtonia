@@ -155,16 +155,17 @@ void GLShip::collide(GLShip* first, GLShip* second) {
   Ship::collide(first->ship, second->ship);
 }
 
-void GLShip::step(int delta, const Grid &grid) {
-  ship->step(delta, grid);
-
+void GLShip::smooth_camera(int frame_delta) {
   float camera_rotation_delta = ship->heading() - camera_rotation;
   while(camera_rotation_delta < -90)
     camera_rotation_delta += 360;
   while(camera_rotation_delta > 270)
     camera_rotation_delta -= 360;
-  camera_rotation += camera_rotation_delta * delta * 0.004;
-  //std::cout << (ship->heading() - camera_rotation) << "\t" << camera_rotation << " " << ship->heading() << " " << delta << std::endl;
+  camera_rotation += camera_rotation_delta * frame_delta * 0.004;
+}
+
+void GLShip::step(int delta, const Grid &grid) {
+  ship->step(delta, grid);
 
   for(list<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
     (*i)->step(delta);
