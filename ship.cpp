@@ -27,6 +27,7 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   first_life = true;
   score = 0;
   kills = 0;
+  nova_charge = 0;
   bullet_trails.reserve(256);
   position = WrappedPoint();
   safe_position(grid);
@@ -384,6 +385,14 @@ void Ship::add_god_mode(int duration_ms) {
     (*primary)->shoot(false);
   primary = --primary_weapons.end();
   update_god_mode_music(duration_ms);
+}
+
+void Ship::add_nova_charge(int n) {
+  nova_charge += n;
+  if (nova_charge >= NOVA_MAX_AMMO) {
+    nova_charge = 0;
+    add_nova_ammo(1);
+  }
 }
 
 void Ship::add_nova_ammo(int amount) {
@@ -822,7 +831,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
           score += object->get_value() * multiplier() * (was_invincible ? 5 : 1);
           kills_this_life += 1;
           kills += 1;
-          add_nova_ammo(1);
+          add_nova_charge(1);
         } else {
           object->invincible = was_invincible;
         }
@@ -905,7 +914,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
           score += obj->get_value() * multiplier();
           kills_this_life += 1;
           kills += 1;
-          add_nova_ammo(1);
+          add_nova_charge(1);
         }
       }
     }
@@ -1024,7 +1033,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
             score += object->get_value() * multiplier();
             kills_this_life += 1;
             kills += 1;
-            add_nova_ammo(1);
+            add_nova_charge(1);
           }
           explode(bullets[i].position, object->velocity);
           bullets[i] = std::move(bullets.back());
@@ -1043,7 +1052,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
           score += object->get_value() * multiplier() * (was_invincible ? 5 : 1);
           kills_this_life += 1;
           kills += 1;
-          add_nova_ammo(1);
+          add_nova_charge(1);
         }
         explode(bullets[i].position, object->velocity);
         bullets[i] = std::move(bullets.back());
@@ -1073,7 +1082,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
         score += object->get_value() * multiplier();
         kills_this_life += 1;
         kills += 1;
-        add_nova_ammo(1);
+        add_nova_charge(1);
       }
       detonate(missiles[i].position, missiles[i].velocity, 25);
       if(missile_explode_sound != NULL) {

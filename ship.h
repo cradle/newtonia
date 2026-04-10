@@ -74,6 +74,7 @@ class Ship : public CompositeObject {
     //TODO: make friends with glship
     int score;
     int lives, kills, kills_this_life;
+    int nova_charge;  // kills accumulated toward next bomb (0–9)
     //TODO: Make this go away, it's wrong
     float radius_squared;
     bool thrusting, reversing, boosting;
@@ -131,6 +132,7 @@ class Ship : public CompositeObject {
     void add_shield_ammo(int amount);
     void add_god_mode(int duration_ms = 10000);
     int god_mode_time_remaining() const;
+    void add_nova_charge(int n);   // call on every asteroid kill
     void add_nova_ammo(int amount);
     void nova_detonate();
     int nova_ammo() const;

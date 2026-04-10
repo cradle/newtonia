@@ -735,7 +735,9 @@ void GLShip::draw_weapons() const {
   }
   if(!ship->secondary_weapons.empty()) {
     weapon = *(ship->secondary);
-    if(weapon != NULL && !dynamic_cast<Weapon::Nova*>(weapon)) {
+    // Hide Nova from the cycling slot when there's no bomb ready
+    Weapon::Nova *nova_w = dynamic_cast<Weapon::Nova*>(weapon);
+    if(weapon != NULL && (!nova_w || nova_w->ammo() > 0)) {
       Typer::draw(x+10,y-95,weapon->name(),10);
       if(!weapon->is_unlimited()) {
         if(weapon->ammo() == 0) {
@@ -747,11 +749,10 @@ void GLShip::draw_weapons() const {
     }
   }
 
-  // Nova charge counter — shown below other weapons while charging, same size as secondary
-  int nova = ship->nova_ammo();
-  if(nova > 0) {
+  // Nova charge counter: shows kill progress toward next bomb; resets when bomb granted
+  if(ship->nova_charge > 0) {
     char buf[16];
-    snprintf(buf, sizeof(buf), "%d/10", nova);
+    snprintf(buf, sizeof(buf), "%d/10", ship->nova_charge);
     Typer::draw(x+10,  y-135, "NOVA", 10);
     Typer::draw(x+130, y-135, buf,    10);
   }
