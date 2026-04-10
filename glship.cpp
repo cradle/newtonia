@@ -6,6 +6,7 @@
 #include "weapon/base.h"
 #include "weapon/god_mode.h"
 #include "mat4.h"
+#include "preferences.h"
 #include <math.h>
 #include <SDL.h>
 
@@ -25,7 +26,7 @@ GLShip::GLShip(const Grid &grid, bool has_friction) : show_help(false) {
   trails.push_back(new GLTrail(this, 0.5,Point(-4,17),-0.1, 0.9, GLTrail::REVERSING | GLTrail::RIGHT, 250.0));
   trails.push_back(new GLTrail(this, 0.5,Point( 4,17),-0.1,-0.9, GLTrail::REVERSING | GLTrail::LEFT, 250.0));
 
-  rotating_view = true;
+  rotating_view = g_prefs.rotate_view;
   camera_rotation = ship->heading();
 
   camera_angle = 85.0f;
@@ -514,6 +515,8 @@ void GLShip::input(unsigned char key, bool pressed) {
     ship->behaviours.push_back(new Teleport(ship));
   } else if (key == 'v' && pressed) {
     rotating_view = !rotating_view;
+    g_prefs.rotate_view = rotating_view;
+    save_preferences();
   }
 }
 

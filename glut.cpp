@@ -10,6 +10,7 @@
 #include "state_manager.h"
 #include "asteroid.h"
 #include "typer.h"
+#include "preferences.h"
 
 // gl_compat.h pulls in GLUT (for window management) and gles2_compat.h
 // (for the VBO/VAO/shader shim that replaces all legacy GL calls).
@@ -111,6 +112,8 @@ void keyboard(unsigned char key, int x, int y) {
       glutPositionWindow(old_x, old_y);
       glutReshapeWindow(old_width, old_height);
     }
+    g_prefs.fullscreen = is_fullscreen;
+    save_preferences();
     break;
   }
   game->keyboard(key, x, y);
@@ -306,14 +309,17 @@ void init(int &argc, char* argv[], float width, float height);
 
 int main(int argc, char* argv[]) {
   srand(time(NULL));
+  load_preferences();
   init(argc, argv, 800, 600);
-  glutFullScreen();
-  is_fullscreen = true;
+  if (g_prefs.fullscreen) {
+    glutFullScreen();
+    is_fullscreen = true;
 #ifdef __APPLE__
-  glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
+    glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
 #else
-  set_cursor_hidden(true);
+    set_cursor_hidden(true);
 #endif
+  }
   init_controllers_and_audio();
   atexit([]{ if (game) game->focus_lost(); });
   game = new StateManager();
