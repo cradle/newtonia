@@ -37,6 +37,8 @@ struct Player {
     std::vector<WeaponEntry> secondary_weapons;
     int selected_primary_idx;    // index into primary_weapons
     int selected_secondary_idx;  // -1 when secondary iterator == end()
+    int nova_charge;             // charge points toward next Nova bomb (0–9)
+    int nova_kill_counter;       // kill sub-count toward next charge point (0–99)
 };
 
 // ── Asteroid ─────────────────────────────────────────────────────────────────
@@ -124,7 +126,7 @@ struct Station {
 
 struct GameState {
     static constexpr uint32_t MAGIC   = 0x4E57544E;  // "NWTN"
-    static constexpr uint16_t VERSION = 8;
+    static constexpr uint16_t VERSION = 9;
 
     int   generation;
     float world_x, world_y;

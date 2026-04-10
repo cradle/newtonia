@@ -75,7 +75,8 @@ class Ship : public CompositeObject {
     //TODO: make friends with glship
     int score;
     int lives, kills, kills_this_life;
-    int nova_charge;  // kills accumulated toward next bomb (0–9)
+    int nova_charge;       // charge points accumulated toward next bomb (0–9)
+    int nova_kill_counter; // asteroid kills accumulated toward next charge point (0–99)
     //TODO: Make this go away, it's wrong
     float radius_squared;
     bool thrusting, reversing, boosting;

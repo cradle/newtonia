@@ -28,6 +28,7 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   score = 0;
   kills = 0;
   nova_charge = 0;
+  nova_kill_counter = 0;
   bullet_trails.reserve(256);
   position = WrappedPoint();
   safe_position(grid);
@@ -388,10 +389,14 @@ void Ship::add_god_mode(int duration_ms) {
 }
 
 void Ship::add_nova_charge(int n) {
-  nova_charge += n;
-  if (nova_charge >= NOVA_MAX_AMMO) {
-    nova_charge = 0;
-    add_nova_ammo(1);
+  nova_kill_counter += n;
+  while (nova_kill_counter >= 100) {
+    nova_kill_counter -= 100;
+    nova_charge += 1;
+    if (nova_charge >= NOVA_MAX_AMMO) {
+      nova_charge = 0;
+      add_nova_ammo(1);
+    }
   }
 }
 
@@ -457,6 +462,8 @@ Save::Player Ship::capture_state() const {
   p.facing_y        = facing.y();
   p.vel_x           = velocity.x();
   p.vel_y           = velocity.y();
+  p.nova_charge       = nova_charge;
+  p.nova_kill_counter = nova_kill_counter;
 
   // Primary weapons
   list<Weapon::Base*>::const_iterator cprimary = primary;
@@ -505,6 +512,8 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
   lives           = p.lives;
   kills           = p.kills;
   kills_this_life = p.kills_this_life;
+  nova_charge       = p.nova_charge;
+  nova_kill_counter = p.nova_kill_counter;
   position        = WrappedPoint(p.pos_x, p.pos_y);
   first_life      = true;  // tells respawn() to try the saved position first
 
@@ -687,6 +696,7 @@ void Ship::reset(bool was_killed) {
   temperature = 0.0;
   if(was_killed) {
     kills_this_life = 0;
+    // nova_charge and nova_kill_counter intentionally NOT reset here — persist through death
 
     // Remove all upgraded primary weapons, keeping only the base PEW PEW at the front
     auto it = primary_weapons.begin();
