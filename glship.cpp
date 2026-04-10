@@ -5,6 +5,7 @@
 #include "teleport.h"
 #include "weapon/base.h"
 #include "weapon/god_mode.h"
+#include "weapon/nova.h"
 #include "mat4.h"
 #include <math.h>
 #include <SDL.h>
@@ -744,6 +745,15 @@ void GLShip::draw_weapons() const {
         }
       }
     }
+  }
+
+  // Nova counter: always visible once earned, shown as X / 10 below other weapons
+  int nova = ship->nova_ammo();
+  if(nova > 0) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d / 10", nova);
+    Typer::draw(x+10, y-135, "NOVA", 10);
+    Typer::draw(x+10, y-160, buf, 14);
   }
 }
 

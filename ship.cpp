@@ -12,8 +12,7 @@
 #include "weapon/god_mode.h"
 #include "weapon/nova.h"
 
-// Number of skill pickups required to earn one Nova Burst charge.
-static const int SKILL_THRESHOLD = 1;  // TODO: restore to 5 before shipping
+static const int NOVA_MAX_AMMO = 10;
 #include <algorithm>
 #include <math.h>
 #include <climits>
@@ -28,7 +27,6 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   first_life = true;
   score = 0;
   kills = 0;
-  skill_fragments = 0;
   bullet_trails.reserve(256);
   position = WrappedPoint();
   safe_position(grid);
@@ -390,8 +388,11 @@ void Ship::add_god_mode(int duration_ms) {
 
 void Ship::add_nova_ammo(int amount) {
   for (auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
-    if (dynamic_cast<Weapon::Nova*>(*it)) {
-      (*it)->add_ammo(amount);
+    Weapon::Nova *nw = dynamic_cast<Weapon::Nova*>(*it);
+    if (nw) {
+      if (nw->ammo() >= NOVA_MAX_AMMO) return;  // already at cap
+      nw->add_ammo(amount);
+      if (nw->ammo() > NOVA_MAX_AMMO) nw->set_ammo(NOVA_MAX_AMMO);
       if (!shield_held(secondary_weapons, secondary)) {
         (*secondary)->shoot(false);
         secondary = it;
@@ -400,18 +401,18 @@ void Ship::add_nova_ammo(int amount) {
     }
   }
   Weapon::Nova *w = new Weapon::Nova(this);
-  w->set_ammo(amount);
+  w->set_ammo(std::min(amount, NOVA_MAX_AMMO));
   secondary_weapons.push_back(w);
   if (!shield_held(secondary_weapons, secondary))
     secondary = --secondary_weapons.end();
 }
 
-void Ship::add_skill_fragment(int n) {
-  skill_fragments += n;
-  while (skill_fragments >= SKILL_THRESHOLD) {
-    skill_fragments -= SKILL_THRESHOLD;
-    add_nova_ammo(1);
+int Ship::nova_ammo() const {
+  for (auto it = secondary_weapons.cbegin(); it != secondary_weapons.cend(); ++it) {
+    const Weapon::Nova *nw = dynamic_cast<const Weapon::Nova*>(*it);
+    if (nw) return nw->ammo();
   }
+  return 0;
 }
 
 void Ship::nova_detonate() {
@@ -821,6 +822,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
           score += object->get_value() * multiplier() * (was_invincible ? 5 : 1);
           kills_this_life += 1;
           kills += 1;
+          add_nova_ammo(1);
         } else {
           object->invincible = was_invincible;
         }
@@ -903,6 +905,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
           score += obj->get_value() * multiplier();
           kills_this_life += 1;
           kills += 1;
+          add_nova_ammo(1);
         }
       }
     }
@@ -1021,6 +1024,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
             score += object->get_value() * multiplier();
             kills_this_life += 1;
             kills += 1;
+            add_nova_ammo(1);
           }
           explode(bullets[i].position, object->velocity);
           bullets[i] = std::move(bullets.back());
@@ -1039,6 +1043,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
           score += object->get_value() * multiplier() * (was_invincible ? 5 : 1);
           kills_this_life += 1;
           kills += 1;
+          add_nova_ammo(1);
         }
         explode(bullets[i].position, object->velocity);
         bullets[i] = std::move(bullets.back());
@@ -1068,6 +1073,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
         score += object->get_value() * multiplier();
         kills_this_life += 1;
         kills += 1;
+        add_nova_ammo(1);
       }
       detonate(missiles[i].position, missiles[i].velocity, 25);
       if(missile_explode_sound != NULL) {
