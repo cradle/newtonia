@@ -1,5 +1,6 @@
 #include "glgame.h"
 #include "highscore.h"
+#include "preferences.h"
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -50,7 +51,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   current_time(0),
   running(true),
   level_cleared(false),
-  friendly_fire(true),
+  friendly_fire(g_prefs.friendly_fire),
   debug_grid(false),
   score_saved(false),
   game_over_time(-1),
@@ -172,7 +173,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   current_time(save.current_time),
   running(true),
   level_cleared(save.level_cleared),
-  friendly_fire(true),
+  friendly_fire(g_prefs.friendly_fire),
   debug_grid(false),
   score_saved(false),
   game_over_time(-1),
@@ -1545,6 +1546,8 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
 
   if (key == 'g') {
     friendly_fire = !friendly_fire;
+    g_prefs.friendly_fire = friendly_fire;
+    save_preferences();
   }
   if (key == 'b') {
     debug_grid = !debug_grid;
