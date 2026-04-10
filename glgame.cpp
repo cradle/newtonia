@@ -218,6 +218,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
       case Save::PickupType::Shield:   pickups->push_back(new ShieldPickup(pos)); break;
       case Save::PickupType::GodMode:  pickups->push_back(new GodModePickup(pos)); break;
       case Save::PickupType::ExtraLife: pickups->push_back(new ExtraLife(pos)); break;
+      case Save::PickupType::NovaCharge: pickups->push_back(new NovaChargePickup(pos)); break;
       default: break;
     }
   }
@@ -332,6 +333,8 @@ Save::GameState GLGame::build_save_data() const {
       sp.type = Save::PickupType::GodMode;
     } else if (dynamic_cast<ExtraLife*>(p)) {
       sp.type = Save::PickupType::ExtraLife;
+    } else if (dynamic_cast<NovaChargePickup*>(p)) {
+      sp.type = Save::PickupType::NovaCharge;
     } else {
       continue; // unknown pickup type, skip
     }
@@ -762,6 +765,15 @@ void GLGame::tick(int delta) {
       } else {
         oi++;
       }
+    }
+
+    // Spawn nova charge pickups earned this frame (every 100 asteroid kills per ship).
+    for(o = players->begin(); o != players->end(); o++) {
+      Ship *s = (*o)->ship;
+      for(const Point &pos : s->nova_drops_pending) {
+        pickups->push_back(new NovaChargePickup(WrappedPoint(pos.x(), pos.y())));
+      }
+      s->nova_drops_pending.clear();
     }
 
     // Handle teleporting asteroids: relocate in the direction of the arrow.

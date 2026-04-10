@@ -76,7 +76,8 @@ class Ship : public CompositeObject {
     int score;
     int lives, kills, kills_this_life;
     int nova_charge;       // charge points accumulated toward next bomb (0–9)
-    int nova_kill_counter; // asteroid kills accumulated toward next charge point (0–99)
+    int nova_kill_counter; // asteroid kills accumulated toward next charge pickup drop (0–99)
+    std::vector<Point> nova_drops_pending;  // pickup spawn positions; GLGame reads and clears each frame
     //TODO: Make this go away, it's wrong
     float radius_squared;
     bool thrusting, reversing, boosting;
@@ -180,6 +181,7 @@ class Ship : public CompositeObject {
 
   private:
     void safe_position(const Grid &grid, bool try_current = false);
+    void tally_nova_kill(const Point &pos);  // call on every asteroid kill; drops pickup every 100
 
     void play_rotating_sound(bool on);
     void update_god_mode_music(int time_remaining);

@@ -389,14 +389,18 @@ void Ship::add_god_mode(int duration_ms) {
 }
 
 void Ship::add_nova_charge(int n) {
-  nova_kill_counter += n;
-  while (nova_kill_counter >= 100) {
-    nova_kill_counter -= 100;
-    nova_charge += 1;
-    if (nova_charge >= NOVA_MAX_AMMO) {
-      nova_charge = 0;
-      add_nova_ammo(1);
-    }
+  nova_charge += n;
+  if (nova_charge >= NOVA_MAX_AMMO) {
+    nova_charge = 0;
+    add_nova_ammo(1);
+  }
+}
+
+void Ship::tally_nova_kill(const Point &pos) {
+  nova_kill_counter++;
+  if (nova_kill_counter >= 100) {
+    nova_kill_counter = 0;
+    nova_drops_pending.push_back(pos);
   }
 }
 
@@ -831,7 +835,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
           score += object->get_value() * multiplier() * (was_invincible ? 5 : 1);
           kills_this_life += 1;
           kills += 1;
-          add_nova_charge(1);
+          tally_nova_kill(object->position);
         } else {
           object->invincible = was_invincible;
         }
@@ -923,7 +927,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
           score += obj->get_value() * multiplier();
           kills_this_life += 1;
           kills += 1;
-          if(!sw.is_nova) add_nova_charge(1);  // no feedback from nova's own kills
+          if(!sw.is_nova) tally_nova_kill(obj->position);  // no feedback from nova's own kills
         }
       }
     }
@@ -1042,7 +1046,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
             score += object->get_value() * multiplier();
             kills_this_life += 1;
             kills += 1;
-            add_nova_charge(1);
+            tally_nova_kill(object->position);
           }
           explode(bullets[i].position, object->velocity);
           bullets[i] = std::move(bullets.back());
@@ -1061,7 +1065,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
           score += object->get_value() * multiplier() * (was_invincible ? 5 : 1);
           kills_this_life += 1;
           kills += 1;
-          add_nova_charge(1);
+          tally_nova_kill(object->position);
         }
         explode(bullets[i].position, object->velocity);
         bullets[i] = std::move(bullets.back());
@@ -1091,7 +1095,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
         score += object->get_value() * multiplier();
         kills_this_life += 1;
         kills += 1;
-        add_nova_charge(1);
+        tally_nova_kill(object->position);
       }
       detonate(missiles[i].position, missiles[i].velocity, 25);
       if(missile_explode_sound != NULL) {

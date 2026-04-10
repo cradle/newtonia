@@ -80,7 +80,7 @@ struct Asteroid {
 // ── Pickup ───────────────────────────────────────────────────────────────────
 
 enum class PickupType : uint8_t {
-    Weapon, Mine, GigaMine, Missile, Shield, GodMode, ExtraLife
+    Weapon, Mine, GigaMine, Missile, Shield, GodMode, ExtraLife, NovaCharge
 };
 
 struct Pickup {
