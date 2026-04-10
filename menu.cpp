@@ -84,18 +84,18 @@ void Menu::draw() {
   mat4_ortho(ortho, -window.x(), window.x(), -window.y(), window.y(), -1.0f, 1.0f);
   gles2_set_vp(ortho);
 
-  Typer::draw_centered(0, 200, "Newtonia", 80);
+  Typer::draw_centered(0, 320, "Newtonia", 80);
   if (high_score > 0 && !options_mode_) {
     Typer::draw_centered(0, -215, "HIGH SCORE", 14);
     Typer::draw_centered(0, -255, high_score, 18);
   }
 
   if (options_mode_) {
-    Typer::draw_centered(0,  100, "OPTIONS", 30);
-    Typer::draw_centered(0,   10, "KEYBOARD SENSITIVITY", 18);
+    Typer::draw_centered(0,   60, "OPTIONS", 30);
+    Typer::draw_centered(0,  -40, "KEYBOARD SENSITIVITY", 18);
     std::string sens = std::string("< ") + SENSITIVITY_LABELS[sensitivity_index_] + " >";
-    Typer::draw_centered(0,  -70, sens.c_str(), 26);
-    Typer::draw_centered(0, -200, "< > TO CHANGE   ENTER TO BACK", 14);
+    Typer::draw_centered(0, -130, sens.c_str(), 26);
+    Typer::draw_centered(0, -260, "< > TO CHANGE   ENTER TO BACK", 14);
   } else if (has_save_) {
     if (is_touch_mode()) {
       // Side-by-side layout for touch: full left/right halves are tap targets
