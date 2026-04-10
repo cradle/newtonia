@@ -350,6 +350,14 @@ void Typer::init_meshes() {
   { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
     mb.vertex(TW/2.0f,TH/3.0f); mb.vertex(0,0);
     mb.end(); upload(',', mb); }
+
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(TW*0.6f,TH); mb.vertex(0,TH); mb.vertex(0,0); mb.vertex(TW*0.6f,0);
+    mb.end(); upload('[', mb); }
+
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(TW*0.4f,TH); mb.vertex(TW,TH); mb.vertex(TW,0); mb.vertex(TW*0.4f,0);
+    mb.end(); upload(']', mb); }
 }
 
 void Typer::cleanup() {
