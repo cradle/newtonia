@@ -735,7 +735,7 @@ void GLShip::draw_weapons() const {
   }
   if(!ship->secondary_weapons.empty()) {
     weapon = *(ship->secondary);
-    if(weapon != NULL) {
+    if(weapon != NULL && !dynamic_cast<Weapon::Nova*>(weapon)) {
       Typer::draw(x+10,y-95,weapon->name(),10);
       if(!weapon->is_unlimited()) {
         if(weapon->ammo() == 0) {
@@ -747,13 +747,13 @@ void GLShip::draw_weapons() const {
     }
   }
 
-  // Nova counter: always visible once earned, shown as X / 10 below other weapons
+  // Nova charge counter — shown below other weapons while charging, same size as secondary
   int nova = ship->nova_ammo();
   if(nova > 0) {
     char buf[16];
     snprintf(buf, sizeof(buf), "%d / 10", nova);
     Typer::draw(x+10, y-135, "NOVA", 10);
-    Typer::draw(x+10, y-160, buf, 14);
+    Typer::draw(x+90, y-135, buf, 10);
   }
 }
 
