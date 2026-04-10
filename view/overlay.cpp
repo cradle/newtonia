@@ -36,7 +36,7 @@ void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
   int nx = glgame->num_x_viewports();
   int ny = glgame->num_y_viewports();
 
-  float hw = (float)Typer::window_width / nx;
+  float hw = Typer::scaled_window_width / nx * Typer::scale;
   float hh = (float)Typer::window_height / ny;
 
   float fov_deg = (ny == 1) ? glship->view_angle() : glship->view_angle() * 0.75f;
