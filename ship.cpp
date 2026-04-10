@@ -428,22 +428,12 @@ void Ship::nova_detonate() {
   if (giga_mine_explode_sound != NULL)
     Mix_PlayChannel(-1, giga_mine_explode_sound, 0);
 
-  // Instantly kill all live, non-invincible asteroids for the screen-clear effect.
-  if (missile_asteroids) {
-    for (auto *obj : *missile_asteroids) {
-      if (!obj->alive || obj->invincible) continue;
-      if (obj->kill()) {
-        score += obj->get_value() * multiplier();
-        kills_this_life++;
-        kills++;
-      }
-    }
-  }
-
-  // Three expanding shockwave rings for a dramatic visual burst.
-  shockwaves.push_back(Shockwave(position,  700.0f,  700.0f /  600.0f,  600.0f));
-  shockwaves.push_back(Shockwave(position, 1300.0f, 1300.0f /  900.0f,  900.0f));
-  shockwaves.push_back(Shockwave(position, 2000.0f, 2000.0f / 1300.0f, 1300.0f));
+  // Single nova shockwave: expands slowly enough (speed 1.5 u/ms) to catch children
+  // spawned by dying parents (min child radius 30 > 1.5*16 = 24 units/frame).
+  // max_radius covers the full wrapped world (half-diagonal ~1768 u) with margin.
+  const float max_r = 1850.0f;
+  const float speed = 1.5f;
+  shockwaves.push_back(Shockwave(position, max_r, speed, max_r / speed, true));
 }
 
 int Ship::god_mode_time_remaining() const {
@@ -907,14 +897,18 @@ void Ship::collide_grid(Grid &grid, int delta) {
     for(auto it = missile_asteroids->begin(); it != missile_asteroids->end(); ++it) {
       Object *obj = *it;
       if(!obj->alive || obj->invincible) continue;
-      float dist = (obj->position - sw.position).magnitude();
+      // Nova shockwaves use wrapped distance so the ring reaches across world edges.
+      // Regular (giga-mine) shockwaves use raw distance as before.
+      float dist = sw.is_nova
+        ? obj->position.distance_to(WrappedPoint(sw.position.x(), sw.position.y()))
+        : (obj->position - sw.position).magnitude();
       // Kill objects swept by the ring (between prev_radius and current_radius)
       if(dist <= sw.radius && dist > sw.prev_radius - obj->radius) {
         if(obj->kill()) {
           score += obj->get_value() * multiplier();
           kills_this_life += 1;
           kills += 1;
-          add_nova_charge(1);
+          if(!sw.is_nova) add_nova_charge(1);  // no feedback from nova's own kills
         }
       }
     }

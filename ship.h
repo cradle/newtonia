@@ -20,10 +20,11 @@ struct Shockwave {
   float max_radius;
   float speed;        // units per ms
   float time_left;   // ms
+  bool  is_nova;     // nova shockwaves: use wrapped distance, no nova-charge feedback
 
-  Shockwave(Point pos, float max_r, float spd, float duration)
+  Shockwave(Point pos, float max_r, float spd, float duration, bool nova = false)
     : position(pos), radius(0.0f), prev_radius(0.0f),
-      max_radius(max_r), speed(spd), time_left(duration) {}
+      max_radius(max_r), speed(spd), time_left(duration), is_nova(nova) {}
 
   bool alive() const { return time_left > 0.0f && radius < max_radius; }
 
