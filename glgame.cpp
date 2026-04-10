@@ -74,6 +74,7 @@ GLGame::GLGame(SDL_GameController *controller) :
 
   time_until_next_step = 0;
   num_frames = 0;
+  last_draw_time_ = SDL_GetTicks();
 
   generation = 0;
   Asteroid::num_killable = 0;
@@ -196,6 +197,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
 
   time_until_next_step = 0;
   num_frames = 0;
+  last_draw_time_ = SDL_GetTicks();
 
   // Restore asteroids
   Asteroid::num_killable = 0;
@@ -1017,7 +1019,10 @@ void GLGame::draw_objects(float direction, bool minimap) const {
 }
 
 void GLGame::draw(void) {
-  for(GLShip *gs : *players) gs->snap_camera_to_heading();
+  Uint32 now = SDL_GetTicks();
+  int frame_delta = (int)(now - last_draw_time_);
+  last_draw_time_ = now;
+  for(GLShip *gs : *players) gs->smooth_camera(frame_delta);
 
   glClear(GL_COLOR_BUFFER_BIT /*| GL_DEPTH_BUFFER_BIT*/);
 
