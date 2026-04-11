@@ -82,10 +82,9 @@ GLGame::GLGame(SDL_GameController *controller) :
   grid.update((std::list<Object *>*)objects);
 
   GLShip *object = new GLShip(grid, true);
+  set_player_keys(object, 0);
   if(controller != NULL) {
     object->set_controller(controller);
-  } else {
-    set_player_keys(object, 0);
   }
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
@@ -232,10 +231,9 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   for (const auto &sp : save.players) {
     bool is_p1 = players->empty();
     GLShip *gs = is_p1 ? new GLShip(grid, true) : new GLCar(grid, true);
+    set_player_keys(gs, is_p1 ? 0 : 1);
     if (controller != NULL && is_p1) {
       gs->set_controller(controller);
-    } else {
-      set_player_keys(gs, is_p1 ? 0 : 1);
     }
     gs->ship->set_missile_asteroids((std::list<Object*>*)objects);
     ship_objects->push_back(gs->ship);
