@@ -87,8 +87,12 @@ protected:
   bool l2_shoot_active = false;
   bool left_axis_x_active = false;
   bool left_axis_y_active = false;
+  bool kb_thrust = false;
+  bool kb_reverse = false;
+  bool kb_rotate_left = false;
+  bool kb_rotate_right = false;
 
-  bool rotating_view, show_help;
+  bool rotating_view, show_help, last_input_was_controller;
   float camera_rotation;
   float camera_angle;
 
