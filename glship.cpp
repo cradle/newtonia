@@ -608,7 +608,7 @@ void GLShip::draw_keymap() const {
   }
   int padding = 2.0f;
   int char_height = 5.0f;
-  float y_offset = 170.0f; // above minimap
+  float y_offset = last_input_was_controller ? 140.0f : 170.0f; // above minimap
   Typer::draw_centered(0, (num_controls+1.5)/2.0f * (size + padding) * char_height + y_offset, "- PLAYER -", size+2);
   float offset = -160.0f;
   int control_index = 0;
