@@ -149,6 +149,7 @@ void resize(int width, int height) {
   if (!is_fullscreen) {
     g_prefs.window_width  = width;
     g_prefs.window_height = height;
+    save_preferences();
   }
 #ifndef __APPLE__
   set_cursor_hidden(is_fullscreen);
