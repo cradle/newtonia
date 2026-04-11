@@ -1,6 +1,7 @@
 #include "preferences.h"
 #include <SDL.h>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
@@ -49,6 +50,13 @@ void load_preferences() {
             g_prefs.rotate_view = (val[0] == '1');
         else if (strcmp(key, "friendly_fire") == 0)
             g_prefs.friendly_fire = (val[0] == '1');
+        else if (strcmp(key, "window_width") == 0) {
+            int w = atoi(val);
+            if (w > 0) g_prefs.window_width = w;
+        } else if (strcmp(key, "window_height") == 0) {
+            int h = atoi(val);
+            if (h > 0) g_prefs.window_height = h;
+        }
     }
     fclose(f);
 }
@@ -60,9 +68,11 @@ void save_preferences() {
     FILE *f = fopen(fp.c_str(), "w");
     if (!f) return;
 
-    fprintf(f, "fullscreen=%d\n",    g_prefs.fullscreen    ? 1 : 0);
-    fprintf(f, "rotate_view=%d\n",  g_prefs.rotate_view   ? 1 : 0);
+    fprintf(f, "fullscreen=%d\n",     g_prefs.fullscreen    ? 1 : 0);
+    fprintf(f, "rotate_view=%d\n",   g_prefs.rotate_view   ? 1 : 0);
     fprintf(f, "friendly_fire=%d\n", g_prefs.friendly_fire ? 1 : 0);
+    fprintf(f, "window_width=%d\n",  g_prefs.window_width);
+    fprintf(f, "window_height=%d\n", g_prefs.window_height);
     fclose(f);
 
 #ifdef __EMSCRIPTEN__
