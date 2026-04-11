@@ -748,19 +748,15 @@ void GLShip::draw_weapons() const {
   };
 
   // Draw one weapon row:
-  //   << NAME >>  [ammo]
+  //   NAME  [ammo]
   //   FIRE [key]      NEXT [key]
   auto draw_weapon_row = [&](int row_y, Weapon::Base *weapon,
                              int cycle_key_kb, SDL_GameControllerButton cycle_btn,
                              int fire_key_kb,  SDL_GameControllerButton fire_btn) {
-    // Line 1: << NAME >>  ammo
+    // Line 1: NAME  ammo
     int cx = 10;
-    Typer::draw(cx, row_y, "<< ", size);
-    cx += 3 * cw;
     Typer::draw(cx, row_y, weapon->name(), size);
-    cx += (int)strlen(weapon->name()) * cw;
-    Typer::draw(cx, row_y, " >>", size);
-    cx += 4 * cw;  // >> + 1 space gap
+    cx += (int)strlen(weapon->name()) * cw + 2 * cw;  // name + gap
 
     if (!weapon->is_unlimited()) {
       if (weapon->ammo() == 0) {
