@@ -794,6 +794,8 @@ void GLShip::draw_weapons() const {
   };
 
   int y = -20;
+  Typer::draw(10, y, "Weapons", 15);
+  y -= 55;
 
   if (!ship->primary_weapons.empty()) {
     Weapon::Base *weapon = *(ship->primary);
