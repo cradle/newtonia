@@ -19,14 +19,17 @@ extern "C" void activate_app_macos() {
   if ([NSApp isActive]) return; // Window already on top and app already active.
   // Step 2: make our application the active (frontmost) application so that
   // keyboard and mouse events are directed to our window.
-  if (@available(macOS 14.0, *)) {
-    [NSApp activate];
-  } else {
+  //
+  // activateIgnoringOtherApps: is deprecated in macOS 14, but its
+  // replacement [NSApp activate] does not force-steal focus from the
+  // launching app on macOS 14/15 for non-sandboxed processes.  Steam keeps
+  // itself active for several seconds after launching a native Steam game,
+  // so we must use activateIgnoringOtherApps: (which still works on macOS
+  // 14/15 for non-sandboxed apps) to reliably take the window to front.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    [NSApp activateIgnoringOtherApps:YES];
+  [NSApp activateIgnoringOtherApps:YES];
 #pragma clang diagnostic pop
-  }
   // Step 3: now that the app is active, make each visible window the key
   // window so it receives keyboard events.
   for (NSWindow *w in [NSApp windows]) {

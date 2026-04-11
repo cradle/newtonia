@@ -40,6 +40,7 @@ bool ENABLE_AUDIO = true;
 int last_render_time;
 #ifdef __APPLE__
 static bool s_needs_activation = true;
+static int  s_activation_retries = 0;
 void activate_app_timer(int);
 #endif
 
@@ -52,18 +53,16 @@ void draw() {
 #ifdef __APPLE__
   // Activate after the first rendered frame so the window is on screen before
   // we request focus (a 0ms timer fires before the window is visible).
-  // Two retries cover both cases:
-  //  - 500 ms: fullscreen transition animation may not have finished yet.
-  //  - 1500 ms: Steam sometimes reclaims focus after ~1s when launching a
-  //             windowed app; the second retry re-asserts our window.
-  //  - 3000 ms: final safety net for machines where Steam grabs focus later.
-  // activate_app_macos() is a no-op once the app is already active.
+  // Retry every 200 ms for up to 5 s (25 attempts).  This covers both the
+  // fullscreen transition animation (~500 ms) and the native Steam "Now
+  // Playing" overlay, which holds focus for several seconds after launch.
+  // activate_app_macos() is a no-op once [NSApp isActive] is true, so the
+  // retries are cheap and stop stealing focus as soon as we have it.
   if (s_needs_activation) {
     s_needs_activation = false;
+    s_activation_retries = 0;
     activate_app_macos();
-    glutTimerFunc(500,  activate_app_timer, 0);
-    glutTimerFunc(1500, activate_app_timer, 0);
-    glutTimerFunc(3000, activate_app_timer, 0);
+    glutTimerFunc(200, activate_app_timer, 0);
   }
 #endif
 }
@@ -165,7 +164,10 @@ void hide_cursor_after_fullscreen(int) {
 }
 
 void activate_app_timer(int) {
-  activate_app_macos(); // No-op if already active.
+  activate_app_macos(); // No-op once [NSApp isActive].
+  if (++s_activation_retries < 25) { // 25 × 200 ms = 5 s total
+    glutTimerFunc(200, activate_app_timer, 0);
+  }
 }
 
 void mouse_passive(int x, int y) {
