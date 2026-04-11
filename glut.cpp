@@ -52,21 +52,24 @@ void draw() {
 #ifdef __APPLE__
   // Activate after the first rendered frame so the window is on screen before
   // we request focus (a 0ms timer fires before the window is visible).
-  // Also schedule a 500ms retry: the fullscreen transition animation may not
-  // have completed by the first frame, causing an intermittent miss.
+  // Two retries cover both cases:
+  //  - 500 ms: fullscreen transition animation may not have finished yet.
+  //  - 1500 ms: Steam sometimes reclaims focus after ~1s when launching a
+  //             windowed app; the second retry re-asserts our window.
   // activate_app_macos() is a no-op once the app is already active.
   if (s_needs_activation) {
     s_needs_activation = false;
     activate_app_macos();
-    glutTimerFunc(500, activate_app_timer, 0);
+    glutTimerFunc(500,  activate_app_timer, 0);
+    glutTimerFunc(1500, activate_app_timer, 0);
   }
 #endif
 }
 
 int old_x = 50;
 int old_y = 50;
-int old_width = 1280;
-int old_height = 720;
+int old_width = 800;
+int old_height = 600;
 bool is_fullscreen = false;
 bool cursor_hidden = false;
 
@@ -142,6 +145,10 @@ void special_up(int key, int x, int y) {
 void resize(int width, int height) {
   Typer::resize(width, height);
   if (game) game->resize(width, height);
+  if (!is_fullscreen) {
+    g_prefs.window_width  = width;
+    g_prefs.window_height = height;
+  }
 #ifndef __APPLE__
   set_cursor_hidden(is_fullscreen);
 #endif
@@ -310,7 +317,9 @@ void init(int &argc, char* argv[], float width, float height);
 int main(int argc, char* argv[]) {
   srand(time(NULL));
   load_preferences();
-  init(argc, argv, 800, 600);
+  old_width  = g_prefs.window_width;
+  old_height = g_prefs.window_height;
+  init(argc, argv, g_prefs.window_width, g_prefs.window_height);
   if (g_prefs.fullscreen) {
     glutFullScreen();
     is_fullscreen = true;
@@ -331,6 +340,7 @@ int main(int argc, char* argv[]) {
 #endif
   resize(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT));
   glutMainLoop();
+  save_preferences();
   for(int i = 0; i < 2; i++) {
     if(controllers[i] && SDL_GameControllerGetAttached(controllers[i])) {
       SDL_GameControllerClose(controllers[i]);

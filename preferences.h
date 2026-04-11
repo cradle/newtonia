@@ -8,6 +8,8 @@ struct Preferences {
     bool fullscreen     = true;   // desktop only; ignored on mobile/web
     bool rotate_view    = true;   // camera follows ship heading
     bool friendly_fire  = true;   // players damage each other
+    int  window_width   = 800;    // last windowed resolution (desktop only)
+    int  window_height  = 600;
 };
 
 // Populate g_prefs from disk.  Call once at startup (after the pref path is

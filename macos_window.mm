@@ -8,8 +8,12 @@
 // itself as the active app).
 extern "C" void activate_app_macos() {
   if ([NSApp isActive]) return; // Already focused — nothing to do.
-  if ([NSApp mainWindow]) {
-    [[NSApp mainWindow] makeKeyAndOrderFront:nil];
+  // Raise and key every visible window, not just mainWindow, so that a
+  // windowed GLUT window (which may not yet be registered as mainWindow)
+  // also comes to the front.
+  for (NSWindow *w in [NSApp windows]) {
+    if (![w isVisible]) continue;
+    [w makeKeyAndOrderFront:nil];
   }
   if (@available(macOS 14.0, *)) {
     [NSApp activate];
