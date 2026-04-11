@@ -22,6 +22,7 @@
 #include "state_manager.h"
 #include "typer.h"
 #include "asteroid.h"
+#include "preferences.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -244,6 +245,10 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_on_idb_ready() {
             SDL_SetWindowSize(s_window, s_w, s_h);
         }
     }
+    // IDBFS is now populated — load preferences before constructing the
+    // StateManager so GLShip constructors can read them (e.g. rotate_view).
+    load_preferences();
+
     s_game = new StateManager();
     s_game->resize(s_w, s_h);
     Typer::resize(s_w, s_h);
