@@ -226,7 +226,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
         Typer::draw_centered(0, Typer::window_height-10, glship->has_controller() ? "return to menu with start" : "return to menu with ESC", 8);
       }
     }
-    if(glship->controller == NULL && !is_touch_mode()) {
+    if(!glship->last_input_was_controller && !is_touch_mode()) {
       if(glship->show_help) {
         Typer::draw_centered(-1*Typer::scaled_window_width/2, Typer::scaled_window_height-10, "hide controls with F1", 8);
       } else if ((glgame->current_time)/12000 % 2) {
@@ -238,7 +238,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     if(glgame->friendly_fire) {
       Typer::draw_centered(0, vhb+30, "friendly fire on", 8);
     }
-    if(glship->controller == NULL && !is_touch_mode()) {
+    if(!glship->last_input_was_controller && !is_touch_mode()) {
       if(p1 == glship->ship) {
         if(glship->show_help) {
           Typer::draw_centered(0, vhb+60, "hide controls with F1", 8);
