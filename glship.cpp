@@ -740,52 +740,62 @@ void GLShip::draw_weapons() const {
   const int size = 10;
   const int cw = size * 2;  // character width at this size
 
-  // Draw one weapon row:  [cycle_key] << [NAME] >>
-  //                                              [fire_key]  [ammo]
+  // Returns the display string for a keyboard key.
+  auto key_str = [](int key, char buf[8]) -> const char * {
+    if (key == ' ') { buf[0]='S'; buf[1]='P'; buf[2]='C'; buf[3]='\0'; }
+    else            { buf[0]=(char)key; buf[1]='\0'; }
+    return buf;
+  };
+
+  // Draw one weapon row:
+  //   << NAME >>  [ammo]
+  //   FIRE [key]      NEXT [key]
   auto draw_weapon_row = [&](int row_y, Weapon::Base *weapon,
                              int cycle_key_kb, SDL_GameControllerButton cycle_btn,
                              int fire_key_kb,  SDL_GameControllerButton fire_btn) {
+    // Line 1: << NAME >>  ammo
     int cx = 10;
-
-    // cycle key
-    if (controller == NULL) {
-      Typer::draw(cx, row_y, (char)cycle_key_kb, size);
-    } else {
-      Typer::draw(cx, row_y, SDL_GameControllerGetStringForButton(cycle_btn), size);
-    }
-    cx += cw;
-
-    Typer::draw(cx, row_y, " << ", size);
-    cx += 4 * cw;
-
+    Typer::draw(cx, row_y, "<< ", size);
+    cx += 3 * cw;
     Typer::draw(cx, row_y, weapon->name(), size);
     cx += (int)strlen(weapon->name()) * cw;
-
     Typer::draw(cx, row_y, " >>", size);
-    cx += 3 * cw;
+    cx += 4 * cw;  // >> + 1 space gap
 
-    // fire key on the line below, aligned to the right edge of ">>"
-    int fire_y = row_y - 35;
-    if (controller == NULL) {
-      if (fire_key_kb == ' ') {
-        Typer::draw(cx - cw, fire_y, "SPC", size);
-        cx += 2 * cw;  // "SPC" is 3 chars but starts 1 char back
-      } else {
-        Typer::draw(cx - cw, fire_y, (char)fire_key_kb, size);
-      }
-    } else {
-      Typer::draw(cx - cw, fire_y, SDL_GameControllerGetStringForButton(fire_btn), size);
-    }
-
-    // ammo
     if (!weapon->is_unlimited()) {
-      int ammo_x = cx + cw;
       if (weapon->ammo() == 0) {
-        Typer::draw(ammo_x, fire_y, "empty", size);
+        Typer::draw(cx, row_y, "empty", size);
       } else {
         int display_ammo = dynamic_cast<Weapon::GodMode*>(weapon) ? weapon->ammo()/1000 : weapon->ammo();
-        Typer::draw_lefted(ammo_x + 2*cw, fire_y, display_ammo, size);
+        Typer::draw_lefted(cx + 2*cw, row_y, display_ammo, size);
       }
+    }
+
+    // Line 2: FIRE [key]      NEXT [key]
+    int bind_y = row_y - 35;
+    int bx = 10;
+
+    Typer::draw(bx, bind_y, "FIRE ", size);
+    bx += 5 * cw;
+    char buf[8];
+    if (last_input_was_controller) {
+      const char *s = SDL_GameControllerGetStringForButton(fire_btn);
+      Typer::draw(bx, bind_y, s, size);
+      bx += (int)strlen(s) * cw;
+    } else {
+      const char *s = key_str(fire_key_kb, buf);
+      Typer::draw(bx, bind_y, s, size);
+      bx += (int)strlen(s) * cw;
+    }
+
+    bx += 5 * cw;  // gap between FIRE and NEXT
+
+    Typer::draw(bx, bind_y, "NEXT ", size);
+    bx += 5 * cw;
+    if (last_input_was_controller) {
+      Typer::draw(bx, bind_y, SDL_GameControllerGetStringForButton(cycle_btn), size);
+    } else {
+      Typer::draw(bx, bind_y, key_str(cycle_key_kb, buf), size);
     }
   };
 
