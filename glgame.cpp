@@ -14,6 +14,7 @@
 #include "object.h"
 #include "grid.h"
 #include "view/overlay.h"
+#include "typer.h"
 #include "touch_controls.h"
 #include <math.h>
 #include <SDL.h>
@@ -73,6 +74,7 @@ GLGame::GLGame(SDL_GameController *controller) :
 
   time_until_next_step = 0;
   num_frames = 0;
+  last_draw_time_ = SDL_GetTicks();
 
   generation = 0;
   Asteroid::num_killable = 0;
@@ -195,6 +197,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
 
   time_until_next_step = 0;
   num_frames = 0;
+  last_draw_time_ = SDL_GetTicks();
 
   // Restore asteroids
   Asteroid::num_killable = 0;
@@ -1016,6 +1019,11 @@ void GLGame::draw_objects(float direction, bool minimap) const {
 }
 
 void GLGame::draw(void) {
+  Uint32 now = SDL_GetTicks();
+  int frame_delta = (int)(now - last_draw_time_);
+  last_draw_time_ = now;
+  for(GLShip *gs : *players) gs->smooth_camera(frame_delta);
+
   glClear(GL_COLOR_BUFFER_BIT /*| GL_DEPTH_BUFFER_BIT*/);
 
   if(players->size() == 0) {
@@ -1146,11 +1154,19 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   setup_viewport(primary);
   draw_perspective(glship);
 
+  float osd_hw = window.x() / nx;
+  float osd_hh = window.y() / ny;
+  const float MAX_OSD_ASPECT = 16.0f / 9.0f;
+  float capped_hw = (osd_hw / osd_hh > MAX_OSD_ASPECT) ? osd_hh * MAX_OSD_ASPECT : osd_hw;
+
   float ortho[16];
-  mat4_ortho(ortho, -window.x()/nx, window.x()/nx, -window.y()/ny, window.y()/ny, -1.0f, 1.0f);
+  mat4_ortho(ortho, -osd_hw, osd_hw, -osd_hh, osd_hh, -1.0f, 1.0f);
   gles2_set_vp(ortho);
   setup_viewport(primary);
+  float saved_sw = Typer::scaled_window_width;
+  Typer::scaled_window_width = capped_hw / Typer::scale * nx;
   Overlay::draw(this, glship);
+  Typer::scaled_window_width = saved_sw;
 }
 
 void GLGame::draw_perspective(GLShip *glship) const {

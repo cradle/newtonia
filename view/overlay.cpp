@@ -36,7 +36,11 @@ void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
   int nx = glgame->num_x_viewports();
   int ny = glgame->num_y_viewports();
 
-  float hw = (float)Typer::window_width / nx;
+  // hw_vis: full viewport half-width in ortho coords — used for world→screen scaling
+  // and on-screen visibility checks (asteroids visible anywhere on screen are excluded).
+  // hw: capped to 16:9 — used only for arrow placement so arrows stay in the OSD zone.
+  float hw_vis = (float)Typer::window_width / nx;
+  float hw     = Typer::scaled_window_width / nx * Typer::scale;
   float hh = (float)Typer::window_height / ny;
 
   float fov_deg = (ny == 1) ? glship->view_angle() : glship->view_angle() * 0.75f;
@@ -44,7 +48,7 @@ void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
   float aspect = ((float)glgame->window.x() / nx) / ((float)glgame->window.y() / ny);
   float half_w = half_h * aspect;
 
-  float scale_x = hw / half_w;
+  float scale_x = hw_vis / half_w;
   float scale_y = hh / half_h;
 
   float dir_deg = glship->rotate_view() ? glship->camera_facing() : 0.0f;
@@ -70,7 +74,7 @@ void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
     float sy = (wdx * sin_d + wdy * cos_d) * scale_y;
     float r_sx = a->effective_radius() * scale_x;
     float r_sy = a->effective_radius() * scale_y;
-    if (sx - r_sx < hw && sx + r_sx > -hw && sy - r_sy < hh && sy + r_sy > -hh) return;
+    if (sx - r_sx < hw_vis && sx + r_sx > -hw_vis && sy - r_sy < hh && sy + r_sy > -hh) return;
   }
 
   static MeshBuilder mb;
@@ -90,7 +94,7 @@ void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
     float sy = (wdx * sin_d + wdy * cos_d) * scale_y;
     float r_sx = a->effective_radius() * scale_x;
     float r_sy = a->effective_radius() * scale_y;
-    if (sx - r_sx < hw && sx + r_sx > -hw && sy - r_sy < hh && sy + r_sy > -hh) continue;
+    if (sx - r_sx < hw_vis && sx + r_sx > -hw_vis && sy - r_sy < hh && sy + r_sy > -hh) continue;
 
     float tx = (fabsf(sx) > 1e-6f) ? edge_hw / fabsf(sx) : 1e9f;
     float ty = (fabsf(sy) > 1e-6f) ? edge_hh / fabsf(sy) : 1e9f;
