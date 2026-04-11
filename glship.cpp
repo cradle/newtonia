@@ -767,32 +767,28 @@ void GLShip::draw_weapons() const {
       }
     }
 
-    // Line 2: FIRE [key]      NEXT [key]
+    // Line 2: FIRE [key]   NEXT [key]
+    // Fixed columns so both rows always line up:
+    //   col 0  = 10        "FIRE "   (5 chars)
+    //   col 1  = 110       fire key  (up to 3 chars, e.g. "SPC")
+    //   col 2  = 190       "NEXT "   (5 chars)
+    //   col 3  = 290       cycle key
+    const int col_fire      = 10;
+    const int col_fire_key  = col_fire + 5 * cw;   // 110
+    const int col_next      = col_fire_key + 4 * cw; // 190  (4-char slot for key)
+    const int col_next_key  = col_next + 5 * cw;   // 290
     int bind_y = row_y - 35;
-    int bx = 10;
-
-    Typer::draw(bx, bind_y, "FIRE ", size);
-    bx += 5 * cw;
     char buf[8];
-    if (last_input_was_controller) {
-      const char *s = SDL_GameControllerGetStringForButton(fire_btn);
-      Typer::draw(bx, bind_y, s, size);
-      bx += (int)strlen(s) * cw;
-    } else {
-      const char *s = key_str(fire_key_kb, buf);
-      Typer::draw(bx, bind_y, s, size);
-      bx += (int)strlen(s) * cw;
-    }
 
-    bx += 5 * cw;  // gap between FIRE and NEXT
+    Typer::draw(col_fire,     bind_y, "FIRE ", size);
+    Typer::draw(col_fire_key, bind_y,
+      last_input_was_controller ? SDL_GameControllerGetStringForButton(fire_btn)
+                                : key_str(fire_key_kb, buf), size);
 
-    Typer::draw(bx, bind_y, "NEXT ", size);
-    bx += 5 * cw;
-    if (last_input_was_controller) {
-      Typer::draw(bx, bind_y, SDL_GameControllerGetStringForButton(cycle_btn), size);
-    } else {
-      Typer::draw(bx, bind_y, key_str(cycle_key_kb, buf), size);
-    }
+    Typer::draw(col_next,     bind_y, "NEXT ", size);
+    Typer::draw(col_next_key, bind_y,
+      last_input_was_controller ? SDL_GameControllerGetStringForButton(cycle_btn)
+                                : key_str(cycle_key_kb, buf), size);
   };
 
   int y = -20;
