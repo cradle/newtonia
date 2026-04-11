@@ -56,12 +56,14 @@ void draw() {
   //  - 500 ms: fullscreen transition animation may not have finished yet.
   //  - 1500 ms: Steam sometimes reclaims focus after ~1s when launching a
   //             windowed app; the second retry re-asserts our window.
+  //  - 3000 ms: final safety net for machines where Steam grabs focus later.
   // activate_app_macos() is a no-op once the app is already active.
   if (s_needs_activation) {
     s_needs_activation = false;
     activate_app_macos();
     glutTimerFunc(500,  activate_app_timer, 0);
     glutTimerFunc(1500, activate_app_timer, 0);
+    glutTimerFunc(3000, activate_app_timer, 0);
   }
 #endif
 }

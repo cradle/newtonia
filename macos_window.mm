@@ -7,14 +7,18 @@
 // input immediately on launch (needed when launched from Steam, which keeps
 // itself as the active app).
 extern "C" void activate_app_macos() {
-  if ([NSApp isActive]) return; // Already focused — nothing to do.
-  // Raise and key every visible window, not just mainWindow, so that a
-  // windowed GLUT window (which may not yet be registered as mainWindow)
-  // also comes to the front.
+  // Step 1: unconditionally move every visible window above all other apps'
+  // windows.  orderFrontRegardless works across application boundaries — it
+  // raises our window above Steam's even while Steam is still the active
+  // application.  makeKeyAndOrderFront:nil would be a no-op here because it
+  // requires our app to already be frontmost.
   for (NSWindow *w in [NSApp windows]) {
     if (![w isVisible]) continue;
-    [w makeKeyAndOrderFront:nil];
+    [w orderFrontRegardless];
   }
+  if ([NSApp isActive]) return; // Window already on top and app already active.
+  // Step 2: make our application the active (frontmost) application so that
+  // keyboard and mouse events are directed to our window.
   if (@available(macOS 14.0, *)) {
     [NSApp activate];
   } else {
@@ -22,6 +26,12 @@ extern "C" void activate_app_macos() {
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     [NSApp activateIgnoringOtherApps:YES];
 #pragma clang diagnostic pop
+  }
+  // Step 3: now that the app is active, make each visible window the key
+  // window so it receives keyboard events.
+  for (NSWindow *w in [NSApp windows]) {
+    if (![w isVisible]) continue;
+    [w makeKeyAndOrderFront:nil];
   }
 }
 
