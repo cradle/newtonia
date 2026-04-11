@@ -46,7 +46,8 @@ public:
   bool rotate_view() const;
   float camera_facing() const;
   float view_angle() const;
-  void snap_camera_to_heading();  // instantly align camera with ship heading (no interpolation)
+  void snap_camera_to_heading();
+  void smooth_camera(int frame_delta);
 
   void collide_grid(Grid &grid, int delta);
   static void collide(GLShip* first, GLShip* second);
@@ -87,8 +88,12 @@ protected:
   bool l2_shoot_active = false;
   bool left_axis_x_active = false;
   bool left_axis_y_active = false;
+  bool kb_thrust = false;
+  bool kb_reverse = false;
+  bool kb_rotate_left = false;
+  bool kb_rotate_right = false;
 
-  bool rotating_view, show_help;
+  bool rotating_view, show_help, last_input_was_controller;
   float camera_rotation;
   float camera_angle;
 

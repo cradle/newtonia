@@ -74,6 +74,7 @@ GLGame::GLGame(SDL_GameController *controller) :
 
   time_until_next_step = 0;
   num_frames = 0;
+  last_draw_time_ = SDL_GetTicks();
 
   generation = 0;
   Asteroid::num_killable = 0;
@@ -81,10 +82,9 @@ GLGame::GLGame(SDL_GameController *controller) :
   grid.update((std::list<Object *>*)objects);
 
   GLShip *object = new GLShip(grid, true);
+  set_player_keys(object, 0);
   if(controller != NULL) {
     object->set_controller(controller);
-  } else {
-    set_player_keys(object, 0);
   }
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
@@ -196,6 +196,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
 
   time_until_next_step = 0;
   num_frames = 0;
+  last_draw_time_ = SDL_GetTicks();
 
   // Restore asteroids
   Asteroid::num_killable = 0;
@@ -230,10 +231,9 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   for (const auto &sp : save.players) {
     bool is_p1 = players->empty();
     GLShip *gs = is_p1 ? new GLShip(grid, true) : new GLCar(grid, true);
+    set_player_keys(gs, is_p1 ? 0 : 1);
     if (controller != NULL && is_p1) {
       gs->set_controller(controller);
-    } else {
-      set_player_keys(gs, is_p1 ? 0 : 1);
     }
     gs->ship->set_missile_asteroids((std::list<Object*>*)objects);
     ship_objects->push_back(gs->ship);
@@ -1017,6 +1017,11 @@ void GLGame::draw_objects(float direction, bool minimap) const {
 }
 
 void GLGame::draw(void) {
+  Uint32 now = SDL_GetTicks();
+  int frame_delta = (int)(now - last_draw_time_);
+  last_draw_time_ = now;
+  for(GLShip *gs : *players) gs->smooth_camera(frame_delta);
+
   glClear(GL_COLOR_BUFFER_BIT /*| GL_DEPTH_BUFFER_BIT*/);
 
   if(players->size() == 0) {
