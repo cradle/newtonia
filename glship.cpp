@@ -384,8 +384,8 @@ void GLShip::controller_axis_input(SDL_Event event) {
     } else {
       if (left_axis_x_active) {
         ship->rotation_scale = 1.0f;
-        ship->rotate_left(false);
-        ship->rotate_right(false);
+        if(!kb_rotate_left)  ship->rotate_left(false);
+        if(!kb_rotate_right) ship->rotate_right(false);
       }
       left_axis_x_active = false;
     }
@@ -410,8 +410,8 @@ void GLShip::controller_axis_input(SDL_Event event) {
       if (left_axis_y_active) {
         ship->thrust_analog  = 1.0f;
         ship->reverse_analog = 1.0f;
-        ship->thrust(false);
-        ship->reverse(false);
+        if(!kb_thrust)   ship->thrust(false);
+        if(!kb_reverse)  ship->reverse(false);
       }
       left_axis_y_active = false;
     }
@@ -493,6 +493,7 @@ void GLShip::controller_touchpad_input(SDL_Event event) {
 void GLShip::input(unsigned char key, bool pressed) {
   if (key == help_key && pressed) show_help = !show_help;
   if(!ship->is_alive()) {
+    kb_thrust = kb_reverse = kb_rotate_left = kb_rotate_right = false;
     if(key == shoot_key && ship->lives > 0 &&
        ship->time_until_respawn <= ship->respawn_time - 1000) {
       last_input_was_controller = false;
@@ -506,12 +507,16 @@ void GLShip::input(unsigned char key, bool pressed) {
     last_input_was_controller = false;
   }
   if (key == left_key) {
+    kb_rotate_left = pressed;
     ship->rotate_left(pressed);
   } else if (key == right_key) {
+    kb_rotate_right = pressed;
     ship->rotate_right(pressed);
   } else if (key == thrust_key) {
+    kb_thrust = pressed;
     ship->thrust(pressed);
   } else if (key == reverse_key) {
+    kb_reverse = pressed;
     ship->reverse(pressed);
   } else if (key == shoot_key) {
     ship->shoot(pressed);
