@@ -104,10 +104,6 @@ void Menu::draw() {
     }
     // Current level name
     Typer::draw_centered(0, -185, SENSITIVITY_LABELS[sensitivity_index_], 20);
-
-    // Navigation hints
-    Typer::draw_centered(0, -265, "A / D  TO CHANGE", 14);
-    Typer::draw_centered(0, -300, "ENTER OR ESC TO BACK", 14);
   } else if (has_save_) {
     if (is_touch_mode()) {
       // Side-by-side layout for touch: full left/right halves are tap targets
