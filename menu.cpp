@@ -66,7 +66,7 @@ void Menu::draw() {
   mat4_ortho(ortho, -window.x(), window.x(), -window.y(), window.y(), -1.0f, 1.0f);
   gles2_set_vp(ortho);
 
-  Typer::draw_centered(0, 200, "Newtonia", 80);
+  Typer::draw_centered(0, 280, "Newtonia", 80);
   if (high_score > 0) {
     Typer::draw_centered(0, -215, "HIGH SCORE", 14);
     Typer::draw_centered(0, -255, high_score, 18);
