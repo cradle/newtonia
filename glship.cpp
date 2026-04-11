@@ -750,7 +750,7 @@ void GLShip::draw_weapons() const {
   // Draw one weapon row:
   //   NAME  [ammo]
   //   FIRE [key]      NEXT [key]
-  auto draw_weapon_row = [&](int row_y, Weapon::Base *weapon,
+  auto draw_weapon_row = [&](int row_y, Weapon::Base *weapon, bool has_next,
                              int cycle_key_kb, SDL_GameControllerButton cycle_btn,
                              int fire_key_kb,  SDL_GameControllerButton fire_btn) {
     // Line 1: NAME  ammo
@@ -785,10 +785,12 @@ void GLShip::draw_weapons() const {
       last_input_was_controller ? SDL_GameControllerGetStringForButton(fire_btn)
                                 : key_str(fire_key_kb, buf), size);
 
-    Typer::draw(col_next,     bind_y, "NEXT ", size);
-    Typer::draw(col_next_key, bind_y,
-      last_input_was_controller ? SDL_GameControllerGetStringForButton(cycle_btn)
-                                : key_str(cycle_key_kb, buf), size);
+    if (has_next) {
+      Typer::draw(col_next,     bind_y, "NEXT ", size);
+      Typer::draw(col_next_key, bind_y,
+        last_input_was_controller ? SDL_GameControllerGetStringForButton(cycle_btn)
+                                  : key_str(cycle_key_kb, buf), size);
+    }
   };
 
   int y = -20;
@@ -796,7 +798,7 @@ void GLShip::draw_weapons() const {
   if (!ship->primary_weapons.empty()) {
     Weapon::Base *weapon = *(ship->primary);
     if (weapon != NULL) {
-      draw_weapon_row(y, weapon,
+      draw_weapon_row(y, weapon, ship->primary_weapons.size() > 1,
         next_weapon_key,   SDL_CONTROLLER_BUTTON_X,
         shoot_key,         SDL_CONTROLLER_BUTTON_A);
     }
@@ -805,7 +807,7 @@ void GLShip::draw_weapons() const {
   if (!ship->secondary_weapons.empty()) {
     Weapon::Base *weapon = *(ship->secondary);
     if (weapon != NULL) {
-      draw_weapon_row(y - 80, weapon,
+      draw_weapon_row(y - 80, weapon, ship->secondary_weapons.size() > 1,
         next_secondary_key, SDL_CONTROLLER_BUTTON_Y,
         mine_key,           SDL_CONTROLLER_BUTTON_B);
     }
