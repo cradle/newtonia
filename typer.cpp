@@ -153,6 +153,11 @@ void Typer::init_meshes() {
     mb.vertex(0,TM); mb.vertex(TW,TM);
     mb.end(); upload('-', mb); }
 
+  { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
+    mb.vertex(0,TH*0.65f); mb.vertex(TW,TH*0.65f);
+    mb.vertex(0,TH*0.35f); mb.vertex(TW,TH*0.35f);
+    mb.end(); upload('=', mb); }
+
   { MeshBuilder mb; mb.begin(GL_POINTS); mb.color(1,1,1);
     mb.vertex(TW*0.5f, TH*0.125f);
     mb.end(); upload('.', mb); }
