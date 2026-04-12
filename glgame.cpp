@@ -28,10 +28,10 @@
 #include <list>
 
 static void set_player_keys(GLShip *gs, int player_index) {
-  if (player_index == 0)
-    gs->set_keys('a','d','w',' ','s','x','q','e','t', 128+GLUT_KEY_F1, 'c');
-  else
-    gs->set_keys('j','l','i','/','k',',','u','o','y', 128+GLUT_KEY_F8, '.');
+  const PlayerKeys &k = (player_index == 0) ? g_prefs.p1_keys : g_prefs.p2_keys;
+  gs->set_keys(k.left, k.right, k.thrust, k.shoot, k.reverse, k.mine,
+               k.next_weapon, k.boost, k.teleport, k.help, k.next_secondary,
+               k.toggle_rotate_view);
 }
 
 const int GLGame::default_world_width = 2500;
@@ -1544,7 +1544,9 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
 }
 
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
-  if (key == 'n') {
+  const GeneralKeys &gk = g_prefs.general_keys;
+
+  if (key == (unsigned char)gk.skip_level) {
       level_cleared = true;
       time_until_next_generation = 0;
       while(!objects->empty()) {
@@ -1558,20 +1560,20 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       Asteroid::num_killable = 0;
   }
 
-  if (key == 'g') {
+  if (key == (unsigned char)gk.toggle_friendly_fire) {
     friendly_fire = !friendly_fire;
     g_prefs.friendly_fire = friendly_fire;
     save_preferences();
   }
-  if (key == 'b') {
+  if (key == (unsigned char)gk.toggle_debug_grid) {
     debug_grid = !debug_grid;
   }
-  if (key == '=' && time_between_steps > 1) time_between_steps--;
-  if (key == '-') time_between_steps++;
-  if (key == '0') time_between_steps = step_size;
-  if (key == 'p') toggle_pause();
+  if (key == (unsigned char)gk.time_speed_up && time_between_steps > 1) time_between_steps--;
+  if (key == (unsigned char)gk.time_slow_down) time_between_steps++;
+  if (key == (unsigned char)gk.time_reset) time_between_steps = step_size;
+  if (key == (unsigned char)gk.pause) toggle_pause();
 #if !defined(__ANDROID__) && !defined(__IOS__)
-  if (key == 13 && players->size() < 2) {
+  if (key == (unsigned char)gk.add_player2 && players->size() < 2) {
     Ship* p1 = players->front()->ship;
     if(p1->is_alive() || p1->lives) {
       GLShip* object = new GLCar(grid, true);
@@ -1584,9 +1586,9 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
 #endif
-  // On all platforms: any non-ESC key goes to menu when all players are game over,
+  // On all platforms: any non-menu key goes to menu when all players are game over,
   // with a short delay so the last shoot input doesn't immediately skip the game over screen.
-  if (key != 27) {
+  if (key != (unsigned char)gk.menu) {
     bool all_game_over = !players->empty();
     for (auto* glship : *players) {
       if (glship->ship->is_alive() || glship->ship->lives > 0) {
@@ -1603,7 +1605,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       return;
     }
   }
-  if (key == 27) {
+  if (key == (unsigned char)gk.menu) {
     save_progress();
     request_state_change(new Menu());
   }
