@@ -34,6 +34,7 @@ GLShip::GLShip(const Grid &grid, bool has_friction) : show_help(false), last_inp
 
   camera_angle = 85.0f;
   next_secondary_key = 0;
+  toggle_rotate_view_key = 0;
 
   color[0] = 72/255.0;
   color[1] = 118/255.0;
@@ -176,7 +177,7 @@ void GLShip::step(int delta, const Grid &grid) {
   }
 }
 
-void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, int mine, int next_weapon, int boost, int teleport, int help, int next_secondary) {
+void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, int mine, int next_weapon, int boost, int teleport, int help, int next_secondary, int toggle_rotate_view) {
   left_key = left;
   right_key = right;
   shoot_key = shoot;
@@ -188,6 +189,7 @@ void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, i
   boost_key = boost;
   help_key = help;
   next_secondary_key = next_secondary;
+  toggle_rotate_view_key = toggle_rotate_view;
 }
 
 void GLShip::set_controller(SDL_GameController *game_controller) {
@@ -508,7 +510,7 @@ void GLShip::input(unsigned char key, bool pressed) {
   if (key == left_key || key == right_key || key == thrust_key || key == reverse_key ||
       key == shoot_key || key == mine_key || key == boost_key || key == next_weapon_key ||
       key == next_secondary_key || key == teleport_key || key == help_key ||
-      key == (unsigned char)g_prefs.general_keys.toggle_rotate_view) {
+      key == (unsigned char)toggle_rotate_view_key) {
     last_input_was_controller = false;
   }
   if (key == left_key) {
@@ -537,7 +539,7 @@ void GLShip::input(unsigned char key, bool pressed) {
     ship->disable_behaviours();
   } else if (key == teleport_key && pressed) {
     ship->behaviours.push_back(new Teleport(ship));
-  } else if (key == (unsigned char)g_prefs.general_keys.toggle_rotate_view && pressed) {
+  } else if (key == (unsigned char)toggle_rotate_view_key && pressed) {
     rotating_view = !rotating_view;
     g_prefs.rotate_view = rotating_view;
     save_preferences();
@@ -633,13 +635,13 @@ static std::string key_label(int key) {
 
 void GLShip::draw_keymap() const {
   int size = 10;
-  int num_controls  = 9;
+  int num_controls  = 10;
   if(last_input_was_controller) {
     num_controls++;
   }
   int padding = 2.0f;
   int char_height = 5.0f;
-  float y_offset = last_input_was_controller ? 140.0f : 170.0f; // above minimap
+  float y_offset = last_input_was_controller ? 110.0f : 140.0f; // above minimap
   Typer::draw_centered(0, (num_controls+1.5)/2.0f * (size + padding) * char_height + y_offset, "- PLAYER -", size+2);
   float offset = -160.0f;
   int control_index = 0;
@@ -718,6 +720,13 @@ void GLShip::draw_keymap() const {
     Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER), size);
   }
   control_index++;
+  Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "ROTATE VIEW", size);
+  if(!last_input_was_controller) {
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, key_label(toggle_rotate_view_key).c_str(), size);
+  } else {
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "-", size);
+  }
+  control_index++;
 
   int common_offset = control_index+1;
   const GeneralKeys &gk = g_prefs.general_keys;
@@ -732,22 +741,20 @@ void GLShip::draw_keymap() const {
   Typer::draw(-offset, (num_controls-common_offset-2.5)/2.0f * (size + padding) * char_height + y_offset, key_label(gk.toggle_fullscreen).c_str(), size);
   Typer::draw(offset, (num_controls-common_offset-3.5)/2.0f * (size + padding) * char_height + y_offset, "FRIENDLY FIRE", size);
   Typer::draw(-offset, (num_controls-common_offset-3.5)/2.0f * (size + padding) * char_height + y_offset, key_label(gk.toggle_friendly_fire).c_str(), size);
-  Typer::draw(offset, (num_controls-common_offset-4.5)/2.0f * (size + padding) * char_height + y_offset, "ROTATE VIEW", size);
-  Typer::draw(-offset, (num_controls-common_offset-4.5)/2.0f * (size + padding) * char_height + y_offset, key_label(gk.toggle_rotate_view).c_str(), size);
-  Typer::draw(offset, (num_controls-common_offset-5.5)/2.0f * (size + padding) * char_height + y_offset, "HIDE THIS", size);
+  Typer::draw(offset, (num_controls-common_offset-4.5)/2.0f * (size + padding) * char_height + y_offset, "HIDE THIS", size);
   if(!last_input_was_controller) {
-    Typer::draw(-offset, (num_controls-common_offset-5.5)/2.0f * (size + padding) * char_height + y_offset, key_label(help_key).c_str(), size);
+    Typer::draw(-offset, (num_controls-common_offset-4.5)/2.0f * (size + padding) * char_height + y_offset, key_label(help_key).c_str(), size);
   } else {
-    Typer::draw(-offset, (num_controls-common_offset-5.5)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_GUIDE), size);
+    Typer::draw(-offset, (num_controls-common_offset-4.5)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_GUIDE), size);
   }
-  Typer::draw(offset, (num_controls-common_offset-6.5)/2.0f * (size + padding) * char_height + y_offset, "QUIT", size);
+  Typer::draw(offset, (num_controls-common_offset-5.5)/2.0f * (size + padding) * char_height + y_offset, "QUIT", size);
   if(!last_input_was_controller) {
-    Typer::draw(-offset, (num_controls-common_offset-6.5)/2.0f * (size + padding) * char_height + y_offset, key_label(gk.menu).c_str(), size);
+    Typer::draw(-offset, (num_controls-common_offset-5.5)/2.0f * (size + padding) * char_height + y_offset, key_label(gk.menu).c_str(), size);
   } else {
-    Typer::draw(-offset, (num_controls-common_offset-6.5)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_BACK), size);
+    Typer::draw(-offset, (num_controls-common_offset-5.5)/2.0f * (size + padding) * char_height + y_offset, SDL_GameControllerGetStringForButton(SDL_CONTROLLER_BUTTON_BACK), size);
   }
 
-  int cheat_offset = common_offset + 8;
+  int cheat_offset = common_offset + 7;
   Typer::draw_centered(0, (num_controls-cheat_offset-0.5)/2.0f * (size + padding) * char_height + y_offset, "- CHEATS -", size +2);
   Typer::draw(offset, (num_controls-cheat_offset-2)/2.0f * (size + padding) * char_height + y_offset, "SPEED UP", size);
   Typer::draw(-offset, (num_controls-cheat_offset-2)/2.0f * (size + padding) * char_height + y_offset, key_label(gk.time_speed_up).c_str(), size);

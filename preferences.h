@@ -9,17 +9,18 @@
 // 128 + GLUT_KEY_* (e.g. F1 = 129, F8 = 136, F11 = 139).
 
 struct PlayerKeys {
-    int left           = 'a';
-    int right          = 'd';
-    int thrust         = 'w';
-    int shoot          = ' ';
-    int reverse        = 's';
-    int mine           = 'x';
-    int next_weapon    = 'q';
-    int next_secondary = 'c';
-    int boost          = 'e';
-    int teleport       = 't';
-    int help           = 129; // F1  (128 + GLUT_KEY_F1)
+    int left               = 'a';
+    int right              = 'd';
+    int thrust             = 'w';
+    int shoot              = ' ';
+    int reverse            = 's';
+    int mine               = 'x';
+    int next_weapon        = 'q';
+    int next_secondary     = 'c';
+    int boost              = 'e';
+    int teleport           = 't';
+    int help               = 129; // F1  (128 + GLUT_KEY_F1)
+    int toggle_rotate_view = 'v'; // P1 default; P2 default is ';' (set in ctor)
 };
 
 struct GeneralKeys {
@@ -33,7 +34,6 @@ struct GeneralKeys {
     int time_slow_down       = '-';
     int time_reset           = '0';
     int toggle_fullscreen    = 'f';
-    int toggle_rotate_view   = 'v';
     int disable_behaviours   = 'q';
 };
 

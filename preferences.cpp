@@ -25,7 +25,8 @@ Preferences::Preferences() {
     p2_keys.next_secondary = '.';
     p2_keys.boost          = 'o';
     p2_keys.teleport       = 'y';
-    p2_keys.help           = 136; // F8  (128 + GLUT_KEY_F8)
+    p2_keys.help               = 136; // F8  (128 + GLUT_KEY_F8)
+    p2_keys.toggle_rotate_view = ';'; // right of L, within IJKL cluster
 }
 
 static const char* PREF_ORG  = "cc.gfm";
@@ -120,6 +121,7 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "p1_boost")          == 0) { g_prefs.p1_keys.boost          = ini_to_key(val);
     } else if (strcmp(key, "p1_teleport")       == 0) { g_prefs.p1_keys.teleport       = ini_to_key(val);
     } else if (strcmp(key, "p1_help")           == 0) { g_prefs.p1_keys.help           = ini_to_key(val);
+    } else if (strcmp(key, "p1_toggle_rotate_view") == 0) { g_prefs.p1_keys.toggle_rotate_view = ini_to_key(val);
 
     // Player 2 keybinds
     } else if (strcmp(key, "p2_left")           == 0) { g_prefs.p2_keys.left           = ini_to_key(val);
@@ -133,6 +135,7 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "p2_boost")          == 0) { g_prefs.p2_keys.boost          = ini_to_key(val);
     } else if (strcmp(key, "p2_teleport")       == 0) { g_prefs.p2_keys.teleport       = ini_to_key(val);
     } else if (strcmp(key, "p2_help")           == 0) { g_prefs.p2_keys.help           = ini_to_key(val);
+    } else if (strcmp(key, "p2_toggle_rotate_view") == 0) { g_prefs.p2_keys.toggle_rotate_view = ini_to_key(val);
 
     // General keybinds
     } else if (strcmp(key, "general_pause")                == 0) { g_prefs.general_keys.pause                = ini_to_key(val);
@@ -145,7 +148,6 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "general_time_slow_down")       == 0) { g_prefs.general_keys.time_slow_down       = ini_to_key(val);
     } else if (strcmp(key, "general_time_reset")           == 0) { g_prefs.general_keys.time_reset           = ini_to_key(val);
     } else if (strcmp(key, "general_toggle_fullscreen")    == 0) { g_prefs.general_keys.toggle_fullscreen    = ini_to_key(val);
-    } else if (strcmp(key, "general_toggle_rotate_view")   == 0) { g_prefs.general_keys.toggle_rotate_view   = ini_to_key(val);
     } else if (strcmp(key, "general_disable_behaviours")   == 0) { g_prefs.general_keys.disable_behaviours   = ini_to_key(val);
     }
     // Unknown keys are silently ignored so older files stay valid.
@@ -202,7 +204,8 @@ void save_preferences() {
     WRITE_KEY("p1_next_secondary", g_prefs.p1_keys.next_secondary);
     WRITE_KEY("p1_boost",          g_prefs.p1_keys.boost);
     WRITE_KEY("p1_teleport",       g_prefs.p1_keys.teleport);
-    WRITE_KEY("p1_help",           g_prefs.p1_keys.help);
+    WRITE_KEY("p1_help",               g_prefs.p1_keys.help);
+    WRITE_KEY("p1_toggle_rotate_view", g_prefs.p1_keys.toggle_rotate_view);
 
     // Player 2 keybinds
     WRITE_KEY("p2_left",           g_prefs.p2_keys.left);
@@ -215,7 +218,8 @@ void save_preferences() {
     WRITE_KEY("p2_next_secondary", g_prefs.p2_keys.next_secondary);
     WRITE_KEY("p2_boost",          g_prefs.p2_keys.boost);
     WRITE_KEY("p2_teleport",       g_prefs.p2_keys.teleport);
-    WRITE_KEY("p2_help",           g_prefs.p2_keys.help);
+    WRITE_KEY("p2_help",               g_prefs.p2_keys.help);
+    WRITE_KEY("p2_toggle_rotate_view", g_prefs.p2_keys.toggle_rotate_view);
 
     // General keybinds
     WRITE_KEY("general_pause",                g_prefs.general_keys.pause);
