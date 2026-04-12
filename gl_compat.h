@@ -69,6 +69,20 @@ inline bool is_steam_gamemode() {
 #endif
 }
 
+// Returns true when the macOS high-priority game activity is held.
+// On macOS 14+ (Sonoma) this also means the OS has activated Game Mode.
+// Always false on non-Apple platforms.
+#ifdef __APPLE__
+extern "C" int is_game_mode_active_macos();
+#endif
+inline bool is_game_mode_active() {
+#ifdef __APPLE__
+  return is_game_mode_active_macos() != 0;
+#else
+  return false;
+#endif
+}
+
 // Returns true when the primary input is touch (Android, iOS, or web with a
 // coarse pointer such as a touchscreen).
 inline bool is_touch_mode() {

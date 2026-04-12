@@ -2,6 +2,7 @@
 #ifdef __APPLE__
 
 #import <AppKit/AppKit.h>
+#import <Foundation/Foundation.h>
 
 // Force the application to the foreground so the window receives keyboard
 // input immediately on launch (needed when launched from Steam, which keeps
@@ -36,6 +37,30 @@ extern "C" void activate_app_macos() {
     if (![w isVisible]) continue;
     [w makeKeyAndOrderFront:nil];
   }
+}
+
+// --- macOS Game Mode / performance activity ---
+
+// Holds the NSProcessInfo activity token for the lifetime of the game.
+// Keeping it alive tells the OS to sustain high CPU/GPU priority and,
+// on macOS 14+ (Sonoma), activates Game Mode (reduced Bluetooth latency,
+// elevated scheduling priority).  NSAppSleepDisabled in Info.plist covers
+// App Nap suppression on older releases.
+static id<NSObject> s_game_activity = nil;
+
+extern "C" void enable_game_mode_macos() {
+  if (s_game_activity) return; // Already enabled.
+  NSActivityOptions opts =
+      NSActivityLatencyCritical |
+      NSActivityUserInitiated |
+      NSActivityIdleDisplaySleepDisabled;
+  s_game_activity = [[NSProcessInfo processInfo]
+      beginActivityWithOptions:opts
+                        reason:@"Game"];
+}
+
+extern "C" int is_game_mode_active_macos() {
+  return s_game_activity != nil ? 1 : 0;
 }
 
 // --- Focus tracking via NSApplication notifications ---
