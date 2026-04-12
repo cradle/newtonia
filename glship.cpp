@@ -322,9 +322,10 @@ void GLShip::controller_input(SDL_Event event) {
   }
   last_input_was_controller = true;
   bool pressed = event.cbutton.state == SDL_PRESSED;
-  if (event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE ||
-      event.cbutton.button == SDL_CONTROLLER_BUTTON_RIGHTSTICK) {
+  if (event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE) {
     show_help = pressed;
+  } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_RIGHTSTICK && pressed) {
+    show_help = !show_help;
   }
   if(!ship->is_alive()) {
     if(pressed && event.cbutton.button == SDL_CONTROLLER_BUTTON_A && ship->lives > 0 &&
@@ -650,13 +651,19 @@ void GLShip::draw_keymap() const {
   int control_index = 0;
 
   // Draw a controller button: circled glyph for single-char buttons (A/B/X/Y/…),
-  // plain text for multi-char ones (dpup, leftshoulder, …).
+  // L3/R3 labels for stick clicks, plain text for everything else.
   auto draw_btn = [&](float x, float y, SDL_GameControllerButton btn) {
-    const char *s = SDL_GameControllerGetStringForButton(btn);
-    if (strlen(s) == 1)
-      Typer::draw_button(x, y, s[0], size);
-    else
-      Typer::draw(x, y, s, size);
+    if (btn == SDL_CONTROLLER_BUTTON_LEFTSTICK)
+      Typer::draw(x, y, "L3", size);
+    else if (btn == SDL_CONTROLLER_BUTTON_RIGHTSTICK)
+      Typer::draw(x, y, "R3", size);
+    else {
+      const char *s = SDL_GameControllerGetStringForButton(btn);
+      if (strlen(s) == 1)
+        Typer::draw_button(x, y, s[0], size);
+      else
+        Typer::draw(x, y, s, size);
+    }
   };
 
   if(last_input_was_controller) {
