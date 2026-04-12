@@ -390,19 +390,30 @@ void Overlay::debug_info(const GLGame *glgame, const GLShip *glship) {
   // Only draw once — skip for the second player's viewport.
   if (glship->ship != glgame->players->front()->ship) return;
 
+  // Rolling FPS: count frames over ~500 ms windows so the reading reflects
+  // current performance rather than the lifetime average.
+  static Uint32 fps_window_start = 0;
+  static int    fps_window_frames = 0;
+  static int    fps_display = 0;
+  Uint32 now = SDL_GetTicks();
+  if (fps_window_start == 0) fps_window_start = now;
+  fps_window_frames++;
+  Uint32 elapsed = now - fps_window_start;
+  if (elapsed >= 500) {
+    fps_display = (int)(fps_window_frames * 1000u / elapsed);
+    fps_window_frames = 0;
+    fps_window_start  = now;
+  }
+
   float vw = Typer::scaled_window_width / glgame->num_x_viewports();
   float vh = Typer::scaled_window_height / glgame->num_y_viewports();
   float x  = -vw + CORNER_INSET;
-  float y  =  vh - 20 - CORNER_INSET;
+  float y  = -vh + CORNER_INSET + 80;  // bottom-left, above lives/temperature
   float sz = 7;
   float dy = sz * 12 + 4;
 
   char fps_buf[32];
-  if (glgame->current_time > 0)
-    snprintf(fps_buf, sizeof(fps_buf), "fps: %d",
-             glgame->num_frames * 1000 / glgame->current_time);
-  else
-    snprintf(fps_buf, sizeof(fps_buf), "fps: --");
+  snprintf(fps_buf, sizeof(fps_buf), "fps: %d", fps_display);
 
   Typer::draw(x, y,      is_game_mode_active() ? "game mode: on" : "game mode: off", sz);
   Typer::draw(x, y - dy, fps_buf, sz);
