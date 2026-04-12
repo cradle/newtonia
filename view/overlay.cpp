@@ -27,6 +27,7 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   paused(glgame, glship);
   touch_controls(glgame, glship);
   edge_indicators(glgame, glship);
+  if (glgame->debug_grid) debug_info(glgame, glship);
 }
 
 void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
@@ -383,4 +384,26 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     mesh_icon.draw();
   }
 #endif // __ANDROID__ || __IOS__
+}
+
+void Overlay::debug_info(const GLGame *glgame, const GLShip *glship) {
+  // Only draw once — skip for the second player's viewport.
+  if (glship->ship != glgame->players->front()->ship) return;
+
+  float vw = Typer::scaled_window_width / glgame->num_x_viewports();
+  float vh = Typer::scaled_window_height / glgame->num_y_viewports();
+  float x  = -vw + CORNER_INSET;
+  float y  =  vh - 20 - CORNER_INSET;
+  float sz = 7;
+  float dy = sz * 12 + 4;
+
+  char fps_buf[32];
+  if (glgame->current_time > 0)
+    snprintf(fps_buf, sizeof(fps_buf), "fps: %d",
+             glgame->num_frames * 1000 / glgame->current_time);
+  else
+    snprintf(fps_buf, sizeof(fps_buf), "fps: --");
+
+  Typer::draw(x, y,      is_game_mode_active() ? "game mode: on" : "game mode: off", sz);
+  Typer::draw(x, y - dy, fps_buf, sz);
 }

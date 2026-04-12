@@ -59,6 +59,10 @@ extern "C" void enable_game_mode_macos() {
                         reason:@"Game"];
 }
 
+extern "C" int is_game_mode_active_macos() {
+  return s_game_activity != nil ? 1 : 0;
+}
+
 // --- Focus tracking via NSApplication notifications ---
 
 static void (*s_focus_lost_cb)() = nullptr;
