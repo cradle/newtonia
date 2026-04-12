@@ -34,7 +34,6 @@ struct GeneralKeys {
     int time_slow_down       = '-';
     int time_reset           = '0';
     int toggle_fullscreen    = 'f';
-    int disable_behaviours   = 'q';
 };
 
 struct Preferences {

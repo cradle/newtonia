@@ -148,7 +148,6 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "general_time_slow_down")       == 0) { g_prefs.general_keys.time_slow_down       = ini_to_key(val);
     } else if (strcmp(key, "general_time_reset")           == 0) { g_prefs.general_keys.time_reset           = ini_to_key(val);
     } else if (strcmp(key, "general_toggle_fullscreen")    == 0) { g_prefs.general_keys.toggle_fullscreen    = ini_to_key(val);
-    } else if (strcmp(key, "general_disable_behaviours")   == 0) { g_prefs.general_keys.disable_behaviours   = ini_to_key(val);
     }
     // Unknown keys are silently ignored so older files stay valid.
 }
@@ -232,7 +231,6 @@ void save_preferences() {
     WRITE_KEY("general_time_slow_down",       g_prefs.general_keys.time_slow_down);
     WRITE_KEY("general_time_reset",           g_prefs.general_keys.time_reset);
     WRITE_KEY("general_toggle_fullscreen",    g_prefs.general_keys.toggle_fullscreen);
-    WRITE_KEY("general_disable_behaviours",   g_prefs.general_keys.disable_behaviours);
 
 #undef WRITE_KEY
 
