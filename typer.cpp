@@ -383,8 +383,11 @@ void Typer::draw_button(float x, float y, char c, float size) {
   circle_mesh.draw_tinted(colour[0], colour[1], colour[2], 1.0f);
   gles2_set_vp(saved);
 
-  // Draw letter centred horizontally in the slot (shift right by half a glyph width).
-  draw(x + size * 0.5f, y, c, size);
+  // Draw letter at 70% size, centred on the circle centre (x+size, y-size).
+  // draw(px, py, c, ls) places glyph with centre at (px + ls/2, py - ls),
+  // so px = circle_cx - ls/2, py = circle_cy + ls.
+  float ls = size * 0.7f;
+  draw(x + size - ls * 0.5f, y - size + ls, c, ls);
 }
 
 void Typer::cleanup() {
