@@ -654,9 +654,9 @@ void GLShip::draw_keymap() const {
   // L3/R3 labels for stick clicks, plain text for everything else.
   auto draw_btn = [&](float x, float y, SDL_GameControllerButton btn) {
     if (btn == SDL_CONTROLLER_BUTTON_LEFTSTICK)
-      Typer::draw(x, y, "L3", size);
+      Typer::draw(x, y, "Left Stick Button", size);
     else if (btn == SDL_CONTROLLER_BUTTON_RIGHTSTICK)
-      Typer::draw(x, y, "R3", size);
+      Typer::draw(x, y, "Right Stick Button", size);
     else {
       const char *s = SDL_GameControllerGetStringForButton(btn);
       if (strlen(s) == 1)
