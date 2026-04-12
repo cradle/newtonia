@@ -322,9 +322,7 @@ void GLShip::controller_input(SDL_Event event) {
   }
   last_input_was_controller = true;
   bool pressed = event.cbutton.state == SDL_PRESSED;
-  if (event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE) {
-    show_help = pressed;
-  } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_RIGHTSTICK && pressed) {
+  if (event.cbutton.button == SDL_CONTROLLER_BUTTON_RIGHTSTICK && pressed) {
     show_help = !show_help;
   }
   if(!ship->is_alive()) {
