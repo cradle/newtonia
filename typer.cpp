@@ -396,17 +396,19 @@ void Typer::draw(float x, float y, char character, float size, int time) {
       mb.vertex(TW*TQ*3, TMU);
       mb.end();
 
-      // Spinning circle: bake translate(0.5,TM) + scale(1,1.2) + rotate(time/-16)
-      // into vertex positions so no shim matrix calls are needed.
+      // Spinning circle: bake rotate(time/-16) + scale(1,1.2) + translate(0.5,TM)
+      // into vertex positions. The original GL code applied scale *after* rotate
+      // (GL matrix ops apply right-to-left to vertices), so we must do the same:
+      // rotate the unit circle point first, then scale Y, then translate.
       float angle_r = (float)(time / -16.0) * (float)M_PI / 180.0f;
       float cos_a = cosf(angle_r), sin_a = sinf(angle_r);
       mb.begin(GL_LINE_LOOP);
       for (float i = 0.0f; i < 360.0f; i += segment_size) {
         float d = i * (float)M_PI / 180.0f;
-        float lx = cosf(d);
-        float ly = sinf(d) * 1.2f;
-        mb.vertex(lx * cos_a - ly * sin_a + 0.5f,
-                  lx * sin_a + ly * cos_a + TM);
+        float lx = cosf(d), ly = sinf(d);
+        float rx = lx * cos_a - ly * sin_a;
+        float ry = lx * sin_a + ly * cos_a;
+        mb.vertex(rx + 0.5f, ry * 1.2f + TM);
       }
       mb.end();
 

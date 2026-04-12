@@ -14,6 +14,7 @@
 #include "touch_controls.h"
 #include "typer.h"
 #include "asteroid.h"
+#include "preferences.h"
 
 #include <iostream>
 #include <cmath>
@@ -290,6 +291,10 @@ extern "C" int SDL_main(int argc, char *argv[]) {
             if (controller) break;
         }
     }
+
+    // Load user preferences before creating the state machine so that GLShip
+    // constructors can read them (e.g. rotate_view).
+    load_preferences();
 
     // Create the game state machine
     s_game = new StateManager();
