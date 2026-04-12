@@ -352,6 +352,10 @@ void GLShip::controller_input(SDL_Event event) {
     ship->next_secondary_weapon();
   } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_RIGHTSHOULDER && pressed) {
     ship->behaviours.push_back(new Teleport(ship));
+  } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_LEFTSTICK && pressed) {
+    rotating_view = !rotating_view;
+    g_prefs.rotate_view = rotating_view;
+    save_preferences();
   }
 }
 
@@ -729,9 +733,11 @@ void GLShip::draw_keymap() const {
     draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
   }
   control_index++;
+  Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "ROTATE VIEW", size);
   if(!last_input_was_controller) {
-    Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "ROTATE VIEW", size);
     Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, key_label(toggle_rotate_view_key).c_str(), size);
+  } else {
+    draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_LEFTSTICK);
   }
   control_index++;
 
