@@ -333,7 +333,7 @@ int main(int argc, char* argv[]) {
 #endif
   }
   init_controllers_and_audio();
-  atexit([]{ if (game) game->focus_lost(); });
+  atexit([]{ save_preferences(); if (game) game->focus_lost(); });
   game = new StateManager();
   for(int i = 0; i < 2; i++) {
     if(controllers[i]) game->controller_added(controllers[i]);
