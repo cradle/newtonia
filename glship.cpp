@@ -816,32 +816,34 @@ void GLShip::draw_weapons() const {
       }
     }
 
-    // Line 2: FIRE [key]   NEXT [key]
-    // Fixed columns so both rows always line up:
-    //   col 0  = 10        "FIRE "   (5 chars)
-    //   col 1  = 110       fire key  (up to 3 chars, e.g. "SPC")
-    //   col 2  = 190       "NEXT "   (5 chars)
-    //   col 3  = 290       cycle key
-    const int col_fire      = 10;
-    const int col_fire_key  = col_fire + 5 * cw;   // 110
-    const int col_next      = col_fire_key + 4 * cw; // 190  (4-char slot for key)
-    const int col_next_key  = col_next + 5 * cw;   // 290
-    int bind_y = row_y - 35;
-    char buf[8];
+    // Line 2: FIRE [key]   NEXT [key]  — keyboard/controller only, not touch
+    if (!is_touch_mode()) {
+      // Fixed columns so both rows always line up:
+      //   col 0  = 10        "FIRE "   (5 chars)
+      //   col 1  = 110       fire key  (up to 3 chars, e.g. "SPC")
+      //   col 2  = 190       "NEXT "   (5 chars)
+      //   col 3  = 290       cycle key
+      const int col_fire      = 10;
+      const int col_fire_key  = col_fire + 5 * cw;   // 110
+      const int col_next      = col_fire_key + 4 * cw; // 190  (4-char slot for key)
+      const int col_next_key  = col_next + 5 * cw;   // 290
+      int bind_y = row_y - 35;
+      char buf[8];
 
-    Typer::draw(col_fire, bind_y, "FIRE ", size);
-    if (last_input_was_controller) {
-      Typer::draw_button(col_fire_key, bind_y, SDL_GameControllerGetStringForButton(fire_btn)[0], size);
-    } else {
-      Typer::draw(col_fire_key, bind_y, key_str(fire_key_kb, buf), size);
-    }
-
-    if (has_next) {
-      Typer::draw(col_next, bind_y, "NEXT ", size);
+      Typer::draw(col_fire, bind_y, "FIRE ", size);
       if (last_input_was_controller) {
-        Typer::draw_button(col_next_key, bind_y, SDL_GameControllerGetStringForButton(cycle_btn)[0], size);
+        Typer::draw_button(col_fire_key, bind_y, SDL_GameControllerGetStringForButton(fire_btn)[0], size);
       } else {
-        Typer::draw(col_next_key, bind_y, key_str(cycle_key_kb, buf), size);
+        Typer::draw(col_fire_key, bind_y, key_str(fire_key_kb, buf), size);
+      }
+
+      if (has_next) {
+        Typer::draw(col_next, bind_y, "NEXT ", size);
+        if (last_input_was_controller) {
+          Typer::draw_button(col_next_key, bind_y, SDL_GameControllerGetStringForButton(cycle_btn)[0], size);
+        } else {
+          Typer::draw(col_next_key, bind_y, key_str(cycle_key_kb, buf), size);
+        }
       }
     }
   };
@@ -862,7 +864,7 @@ void GLShip::draw_weapons() const {
   if (!ship->secondary_weapons.empty()) {
     Weapon::Base *weapon = *(ship->secondary);
     if (weapon != NULL) {
-      draw_weapon_row(y - 80, weapon, ship->secondary_weapons.size() > 1,
+      draw_weapon_row(y - (is_touch_mode() ? 45 : 80), weapon, ship->secondary_weapons.size() > 1,
         next_secondary_key, SDL_CONTROLLER_BUTTON_Y,
         mine_key,           SDL_CONTROLLER_BUTTON_B);
     }
