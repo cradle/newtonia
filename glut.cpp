@@ -92,12 +92,9 @@ void set_cursor_hidden(bool hide) {
 }
 
 void keyboard(unsigned char key, int x, int y) {
-  switch (key) {
-  case '\r':
-    if(glutGetModifiers() != GLUT_ACTIVE_ALT) {
-      break;
-    }
-  case 'f':
+  bool do_fullscreen = (key == (unsigned char)g_prefs.general_keys.toggle_fullscreen)
+    || (key == '\r' && glutGetModifiers() == GLUT_ACTIVE_ALT);
+  if (do_fullscreen) {
     if (!is_fullscreen) {
       old_x = glutGet(GLUT_WINDOW_X);
       old_y = glutGet(GLUT_WINDOW_Y);
@@ -118,7 +115,6 @@ void keyboard(unsigned char key, int x, int y) {
     }
     g_prefs.fullscreen = is_fullscreen;
     save_preferences();
-    break;
   }
   game->keyboard(key, x, y);
 }
@@ -135,7 +131,9 @@ void special(int key, int x, int y) {
 }
 
 void keyboard_up(unsigned char key, int x, int y) {
-  if(!(key == '\r' && glutGetModifiers() == GLUT_ACTIVE_ALT))
+  bool is_fullscreen_key = (key == (unsigned char)g_prefs.general_keys.toggle_fullscreen)
+    || (key == '\r' && glutGetModifiers() == GLUT_ACTIVE_ALT);
+  if (!is_fullscreen_key)
     game->keyboard_up(key, x, y);
 }
 
