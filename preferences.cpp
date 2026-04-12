@@ -232,7 +232,6 @@ void save_preferences() {
     WRITE_KEY("general_time_slow_down",       g_prefs.general_keys.time_slow_down);
     WRITE_KEY("general_time_reset",           g_prefs.general_keys.time_reset);
     WRITE_KEY("general_toggle_fullscreen",    g_prefs.general_keys.toggle_fullscreen);
-    WRITE_KEY("general_toggle_rotate_view",   g_prefs.general_keys.toggle_rotate_view);
     WRITE_KEY("general_disable_behaviours",   g_prefs.general_keys.disable_behaviours);
 
 #undef WRITE_KEY
