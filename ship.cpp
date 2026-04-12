@@ -442,7 +442,7 @@ void Ship::nova_detonate() {
   // Radius matches one viewport: camera sits at z=1000 with 85° FOV, giving
   // a half-height of tan(42.5°)*1000 ≈ 916 world units. Fixed in world-space
   // so it is independent of screen resolution.
-  const float max_r = 2000.0f;
+  const float max_r = 1500.0f;
   const float speed = 1.5f;
   shockwaves.push_back(Shockwave(position, max_r, speed, max_r / speed, true));
 }
