@@ -439,8 +439,10 @@ void Ship::nova_detonate() {
 
   // Single nova shockwave: expands slowly enough (speed 1.5 u/ms) to catch children
   // spawned by dying parents (min child radius 30 > 1.5*16 = 24 units/frame).
-  // max_radius covers the full wrapped world (half-diagonal ~1768 u) with margin.
-  const float max_r = 1850.0f;
+  // Radius matches one viewport: camera sits at z=1000 with 85° FOV, giving
+  // a half-height of tan(42.5°)*1000 ≈ 916 world units. Fixed in world-space
+  // so it is independent of screen resolution.
+  const float max_r = 916.0f;
   const float speed = 1.5f;
   shockwaves.push_back(Shockwave(position, max_r, speed, max_r / speed, true));
 }
