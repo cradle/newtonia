@@ -410,7 +410,7 @@ void Overlay::debug_info(const GLGame *glgame, const GLShip *glship) {
   float x  = -vw + CORNER_INSET;
   float y  = -vh + CORNER_INSET + 80;  // bottom-left, above lives/temperature
   float sz = 7;
-  float dy = sz * 2.5f;
+  float dy = sz * 2.5f + 4;
 
   char fps_buf[32];
   snprintf(fps_buf, sizeof(fps_buf), "fps: %d", fps_display);
