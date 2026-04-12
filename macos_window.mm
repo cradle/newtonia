@@ -7,17 +7,34 @@
 // input immediately on launch (needed when launched from Steam, which keeps
 // itself as the active app).
 extern "C" void activate_app_macos() {
-  if ([NSApp isActive]) return; // Already focused — nothing to do.
-  if ([NSApp mainWindow]) {
-    [[NSApp mainWindow] makeKeyAndOrderFront:nil];
+  // Step 1: unconditionally move every visible window above all other apps'
+  // windows.  orderFrontRegardless works across application boundaries — it
+  // raises our window above Steam's even while Steam is still the active
+  // application.  makeKeyAndOrderFront:nil would be a no-op here because it
+  // requires our app to already be frontmost.
+  for (NSWindow *w in [NSApp windows]) {
+    if (![w isVisible]) continue;
+    [w orderFrontRegardless];
   }
-  if (@available(macOS 14.0, *)) {
-    [NSApp activate];
-  } else {
+  if ([NSApp isActive]) return; // Window already on top and app already active.
+  // Step 2: make our application the active (frontmost) application so that
+  // keyboard and mouse events are directed to our window.
+  //
+  // activateIgnoringOtherApps: is deprecated in macOS 14, but its
+  // replacement [NSApp activate] does not force-steal focus from the
+  // launching app on macOS 14/15 for non-sandboxed processes.  Steam keeps
+  // itself active for several seconds after launching a native Steam game,
+  // so we must use activateIgnoringOtherApps: (which still works on macOS
+  // 14/15 for non-sandboxed apps) to reliably take the window to front.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    [NSApp activateIgnoringOtherApps:YES];
+  [NSApp activateIgnoringOtherApps:YES];
 #pragma clang diagnostic pop
+  // Step 3: now that the app is active, make each visible window the key
+  // window so it receives keyboard events.
+  for (NSWindow *w in [NSApp windows]) {
+    if (![w isVisible]) continue;
+    [w makeKeyAndOrderFront:nil];
   }
 }
 
