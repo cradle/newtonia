@@ -322,7 +322,8 @@ void GLShip::controller_input(SDL_Event event) {
   }
   last_input_was_controller = true;
   bool pressed = event.cbutton.state == SDL_PRESSED;
-  if (event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE) {
+  if (event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE ||
+      event.cbutton.button == SDL_CONTROLLER_BUTTON_RIGHTSTICK) {
     show_help = pressed;
   }
   if(!ship->is_alive()) {
@@ -758,7 +759,7 @@ void GLShip::draw_keymap() const {
   if(!last_input_was_controller) {
     Typer::draw(-offset, (num_controls-common_offset-4.5)/2.0f * (size + padding) * char_height + y_offset, key_label(help_key).c_str(), size);
   } else {
-    draw_btn(-offset, (num_controls-common_offset-4.5)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_GUIDE);
+    draw_btn(-offset, (num_controls-common_offset-4.5)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
   }
   Typer::draw(offset, (num_controls-common_offset-5.5)/2.0f * (size + padding) * char_height + y_offset, "QUIT", size);
   if(!last_input_was_controller) {
