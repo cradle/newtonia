@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cctype>
 #include <string>
 
 #ifdef __EMSCRIPTEN__
@@ -39,8 +40,59 @@ static std::string pref_filepath() {
     return fp;
 }
 
+// Serialise a key code to a human-readable INI value:
+//   printable ASCII  → the character itself (e.g. "a", "/", "=")
+//   space (32)       → "space"
+//   escape (27)      → "escape"
+//   return (13)      → "return"
+//   tab (9)          → "tab"
+//   F1–F12 (129–140) → "F1"–"F12"
+//   anything else    → decimal integer (fallback)
+static std::string key_to_ini(int key) {
+    switch (key) {
+        case ' ':  return "space";
+        case 27:   return "escape";
+        case 13:   return "return";
+        case 9:    return "tab";
+    }
+    if (key >= 129 && key <= 140) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "F%d", key - 128);
+        return buf;
+    }
+    if (key >= 33 && key < 127)
+        return std::string(1, (char)key);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d", key);
+    return buf;
+}
+
+// Parse an INI value back to a key code.  Case-insensitive for named keys.
+// Also accepts bare decimal integers so old files remain valid.
+static int ini_to_key(const char *val) {
+    if (!val || !val[0]) return 0;
+
+    if (SDL_strcasecmp(val, "space")  == 0) return ' ';
+    if (SDL_strcasecmp(val, "escape") == 0) return 27;
+    if (SDL_strcasecmp(val, "esc")    == 0) return 27;
+    if (SDL_strcasecmp(val, "return") == 0) return 13;
+    if (SDL_strcasecmp(val, "enter")  == 0) return 13;
+    if (SDL_strcasecmp(val, "tab")    == 0) return 9;
+
+    // F1–F12 (case-insensitive prefix 'f' or 'F')
+    if ((val[0] == 'F' || val[0] == 'f') && val[1] != '\0') {
+        int n = atoi(val + 1);
+        if (n >= 1 && n <= 12) return 128 + n;
+    }
+
+    // Single printable character
+    if (val[1] == '\0' && (unsigned char)val[0] >= 33 && (unsigned char)val[0] < 127)
+        return (unsigned char)val[0];
+
+    return 0;
+}
+
 // Parse a single key=value line from the INI file.
-// val is a decimal integer for keybind entries (key code 0–255).
 static void parse_line(const char *key, const char *val) {
     // Scalar preferences
     if (strcmp(key, "fullscreen") == 0) {
@@ -57,44 +109,44 @@ static void parse_line(const char *key, const char *val) {
         if (h > 0) g_prefs.window_height = h;
 
     // Player 1 keybinds
-    } else if (strcmp(key, "p1_left")           == 0) { g_prefs.p1_keys.left           = atoi(val);
-    } else if (strcmp(key, "p1_right")          == 0) { g_prefs.p1_keys.right          = atoi(val);
-    } else if (strcmp(key, "p1_thrust")         == 0) { g_prefs.p1_keys.thrust         = atoi(val);
-    } else if (strcmp(key, "p1_shoot")          == 0) { g_prefs.p1_keys.shoot          = atoi(val);
-    } else if (strcmp(key, "p1_reverse")        == 0) { g_prefs.p1_keys.reverse        = atoi(val);
-    } else if (strcmp(key, "p1_mine")           == 0) { g_prefs.p1_keys.mine           = atoi(val);
-    } else if (strcmp(key, "p1_next_weapon")    == 0) { g_prefs.p1_keys.next_weapon    = atoi(val);
-    } else if (strcmp(key, "p1_next_secondary") == 0) { g_prefs.p1_keys.next_secondary = atoi(val);
-    } else if (strcmp(key, "p1_boost")          == 0) { g_prefs.p1_keys.boost          = atoi(val);
-    } else if (strcmp(key, "p1_teleport")       == 0) { g_prefs.p1_keys.teleport       = atoi(val);
-    } else if (strcmp(key, "p1_help")           == 0) { g_prefs.p1_keys.help           = atoi(val);
+    } else if (strcmp(key, "p1_left")           == 0) { g_prefs.p1_keys.left           = ini_to_key(val);
+    } else if (strcmp(key, "p1_right")          == 0) { g_prefs.p1_keys.right          = ini_to_key(val);
+    } else if (strcmp(key, "p1_thrust")         == 0) { g_prefs.p1_keys.thrust         = ini_to_key(val);
+    } else if (strcmp(key, "p1_shoot")          == 0) { g_prefs.p1_keys.shoot          = ini_to_key(val);
+    } else if (strcmp(key, "p1_reverse")        == 0) { g_prefs.p1_keys.reverse        = ini_to_key(val);
+    } else if (strcmp(key, "p1_mine")           == 0) { g_prefs.p1_keys.mine           = ini_to_key(val);
+    } else if (strcmp(key, "p1_next_weapon")    == 0) { g_prefs.p1_keys.next_weapon    = ini_to_key(val);
+    } else if (strcmp(key, "p1_next_secondary") == 0) { g_prefs.p1_keys.next_secondary = ini_to_key(val);
+    } else if (strcmp(key, "p1_boost")          == 0) { g_prefs.p1_keys.boost          = ini_to_key(val);
+    } else if (strcmp(key, "p1_teleport")       == 0) { g_prefs.p1_keys.teleport       = ini_to_key(val);
+    } else if (strcmp(key, "p1_help")           == 0) { g_prefs.p1_keys.help           = ini_to_key(val);
 
     // Player 2 keybinds
-    } else if (strcmp(key, "p2_left")           == 0) { g_prefs.p2_keys.left           = atoi(val);
-    } else if (strcmp(key, "p2_right")          == 0) { g_prefs.p2_keys.right          = atoi(val);
-    } else if (strcmp(key, "p2_thrust")         == 0) { g_prefs.p2_keys.thrust         = atoi(val);
-    } else if (strcmp(key, "p2_shoot")          == 0) { g_prefs.p2_keys.shoot          = atoi(val);
-    } else if (strcmp(key, "p2_reverse")        == 0) { g_prefs.p2_keys.reverse        = atoi(val);
-    } else if (strcmp(key, "p2_mine")           == 0) { g_prefs.p2_keys.mine           = atoi(val);
-    } else if (strcmp(key, "p2_next_weapon")    == 0) { g_prefs.p2_keys.next_weapon    = atoi(val);
-    } else if (strcmp(key, "p2_next_secondary") == 0) { g_prefs.p2_keys.next_secondary = atoi(val);
-    } else if (strcmp(key, "p2_boost")          == 0) { g_prefs.p2_keys.boost          = atoi(val);
-    } else if (strcmp(key, "p2_teleport")       == 0) { g_prefs.p2_keys.teleport       = atoi(val);
-    } else if (strcmp(key, "p2_help")           == 0) { g_prefs.p2_keys.help           = atoi(val);
+    } else if (strcmp(key, "p2_left")           == 0) { g_prefs.p2_keys.left           = ini_to_key(val);
+    } else if (strcmp(key, "p2_right")          == 0) { g_prefs.p2_keys.right          = ini_to_key(val);
+    } else if (strcmp(key, "p2_thrust")         == 0) { g_prefs.p2_keys.thrust         = ini_to_key(val);
+    } else if (strcmp(key, "p2_shoot")          == 0) { g_prefs.p2_keys.shoot          = ini_to_key(val);
+    } else if (strcmp(key, "p2_reverse")        == 0) { g_prefs.p2_keys.reverse        = ini_to_key(val);
+    } else if (strcmp(key, "p2_mine")           == 0) { g_prefs.p2_keys.mine           = ini_to_key(val);
+    } else if (strcmp(key, "p2_next_weapon")    == 0) { g_prefs.p2_keys.next_weapon    = ini_to_key(val);
+    } else if (strcmp(key, "p2_next_secondary") == 0) { g_prefs.p2_keys.next_secondary = ini_to_key(val);
+    } else if (strcmp(key, "p2_boost")          == 0) { g_prefs.p2_keys.boost          = ini_to_key(val);
+    } else if (strcmp(key, "p2_teleport")       == 0) { g_prefs.p2_keys.teleport       = ini_to_key(val);
+    } else if (strcmp(key, "p2_help")           == 0) { g_prefs.p2_keys.help           = ini_to_key(val);
 
     // General keybinds
-    } else if (strcmp(key, "general_pause")                == 0) { g_prefs.general_keys.pause                = atoi(val);
-    } else if (strcmp(key, "general_menu")                 == 0) { g_prefs.general_keys.menu                 = atoi(val);
-    } else if (strcmp(key, "general_add_player2")          == 0) { g_prefs.general_keys.add_player2          = atoi(val);
-    } else if (strcmp(key, "general_toggle_friendly_fire") == 0) { g_prefs.general_keys.toggle_friendly_fire = atoi(val);
-    } else if (strcmp(key, "general_skip_level")           == 0) { g_prefs.general_keys.skip_level           = atoi(val);
-    } else if (strcmp(key, "general_toggle_debug_grid")    == 0) { g_prefs.general_keys.toggle_debug_grid    = atoi(val);
-    } else if (strcmp(key, "general_time_speed_up")        == 0) { g_prefs.general_keys.time_speed_up        = atoi(val);
-    } else if (strcmp(key, "general_time_slow_down")       == 0) { g_prefs.general_keys.time_slow_down       = atoi(val);
-    } else if (strcmp(key, "general_time_reset")           == 0) { g_prefs.general_keys.time_reset           = atoi(val);
-    } else if (strcmp(key, "general_toggle_fullscreen")    == 0) { g_prefs.general_keys.toggle_fullscreen    = atoi(val);
-    } else if (strcmp(key, "general_toggle_rotate_view")   == 0) { g_prefs.general_keys.toggle_rotate_view   = atoi(val);
-    } else if (strcmp(key, "general_disable_behaviours")   == 0) { g_prefs.general_keys.disable_behaviours   = atoi(val);
+    } else if (strcmp(key, "general_pause")                == 0) { g_prefs.general_keys.pause                = ini_to_key(val);
+    } else if (strcmp(key, "general_menu")                 == 0) { g_prefs.general_keys.menu                 = ini_to_key(val);
+    } else if (strcmp(key, "general_add_player2")          == 0) { g_prefs.general_keys.add_player2          = ini_to_key(val);
+    } else if (strcmp(key, "general_toggle_friendly_fire") == 0) { g_prefs.general_keys.toggle_friendly_fire = ini_to_key(val);
+    } else if (strcmp(key, "general_skip_level")           == 0) { g_prefs.general_keys.skip_level           = ini_to_key(val);
+    } else if (strcmp(key, "general_toggle_debug_grid")    == 0) { g_prefs.general_keys.toggle_debug_grid    = ini_to_key(val);
+    } else if (strcmp(key, "general_time_speed_up")        == 0) { g_prefs.general_keys.time_speed_up        = ini_to_key(val);
+    } else if (strcmp(key, "general_time_slow_down")       == 0) { g_prefs.general_keys.time_slow_down       = ini_to_key(val);
+    } else if (strcmp(key, "general_time_reset")           == 0) { g_prefs.general_keys.time_reset           = ini_to_key(val);
+    } else if (strcmp(key, "general_toggle_fullscreen")    == 0) { g_prefs.general_keys.toggle_fullscreen    = ini_to_key(val);
+    } else if (strcmp(key, "general_toggle_rotate_view")   == 0) { g_prefs.general_keys.toggle_rotate_view   = ini_to_key(val);
+    } else if (strcmp(key, "general_disable_behaviours")   == 0) { g_prefs.general_keys.disable_behaviours   = ini_to_key(val);
     }
     // Unknown keys are silently ignored so older files stay valid.
 }
@@ -137,45 +189,49 @@ void save_preferences() {
     fprintf(f, "window_width=%d\n",   g_prefs.window_width);
     fprintf(f, "window_height=%d\n",  g_prefs.window_height);
 
+#define WRITE_KEY(name, val) fprintf(f, name "=%s\n", key_to_ini(val).c_str())
+
     // Player 1 keybinds
-    fprintf(f, "p1_left=%d\n",           g_prefs.p1_keys.left);
-    fprintf(f, "p1_right=%d\n",          g_prefs.p1_keys.right);
-    fprintf(f, "p1_thrust=%d\n",         g_prefs.p1_keys.thrust);
-    fprintf(f, "p1_shoot=%d\n",          g_prefs.p1_keys.shoot);
-    fprintf(f, "p1_reverse=%d\n",        g_prefs.p1_keys.reverse);
-    fprintf(f, "p1_mine=%d\n",           g_prefs.p1_keys.mine);
-    fprintf(f, "p1_next_weapon=%d\n",    g_prefs.p1_keys.next_weapon);
-    fprintf(f, "p1_next_secondary=%d\n", g_prefs.p1_keys.next_secondary);
-    fprintf(f, "p1_boost=%d\n",          g_prefs.p1_keys.boost);
-    fprintf(f, "p1_teleport=%d\n",       g_prefs.p1_keys.teleport);
-    fprintf(f, "p1_help=%d\n",           g_prefs.p1_keys.help);
+    WRITE_KEY("p1_left",           g_prefs.p1_keys.left);
+    WRITE_KEY("p1_right",          g_prefs.p1_keys.right);
+    WRITE_KEY("p1_thrust",         g_prefs.p1_keys.thrust);
+    WRITE_KEY("p1_shoot",          g_prefs.p1_keys.shoot);
+    WRITE_KEY("p1_reverse",        g_prefs.p1_keys.reverse);
+    WRITE_KEY("p1_mine",           g_prefs.p1_keys.mine);
+    WRITE_KEY("p1_next_weapon",    g_prefs.p1_keys.next_weapon);
+    WRITE_KEY("p1_next_secondary", g_prefs.p1_keys.next_secondary);
+    WRITE_KEY("p1_boost",          g_prefs.p1_keys.boost);
+    WRITE_KEY("p1_teleport",       g_prefs.p1_keys.teleport);
+    WRITE_KEY("p1_help",           g_prefs.p1_keys.help);
 
     // Player 2 keybinds
-    fprintf(f, "p2_left=%d\n",           g_prefs.p2_keys.left);
-    fprintf(f, "p2_right=%d\n",          g_prefs.p2_keys.right);
-    fprintf(f, "p2_thrust=%d\n",         g_prefs.p2_keys.thrust);
-    fprintf(f, "p2_shoot=%d\n",          g_prefs.p2_keys.shoot);
-    fprintf(f, "p2_reverse=%d\n",        g_prefs.p2_keys.reverse);
-    fprintf(f, "p2_mine=%d\n",           g_prefs.p2_keys.mine);
-    fprintf(f, "p2_next_weapon=%d\n",    g_prefs.p2_keys.next_weapon);
-    fprintf(f, "p2_next_secondary=%d\n", g_prefs.p2_keys.next_secondary);
-    fprintf(f, "p2_boost=%d\n",          g_prefs.p2_keys.boost);
-    fprintf(f, "p2_teleport=%d\n",       g_prefs.p2_keys.teleport);
-    fprintf(f, "p2_help=%d\n",           g_prefs.p2_keys.help);
+    WRITE_KEY("p2_left",           g_prefs.p2_keys.left);
+    WRITE_KEY("p2_right",          g_prefs.p2_keys.right);
+    WRITE_KEY("p2_thrust",         g_prefs.p2_keys.thrust);
+    WRITE_KEY("p2_shoot",          g_prefs.p2_keys.shoot);
+    WRITE_KEY("p2_reverse",        g_prefs.p2_keys.reverse);
+    WRITE_KEY("p2_mine",           g_prefs.p2_keys.mine);
+    WRITE_KEY("p2_next_weapon",    g_prefs.p2_keys.next_weapon);
+    WRITE_KEY("p2_next_secondary", g_prefs.p2_keys.next_secondary);
+    WRITE_KEY("p2_boost",          g_prefs.p2_keys.boost);
+    WRITE_KEY("p2_teleport",       g_prefs.p2_keys.teleport);
+    WRITE_KEY("p2_help",           g_prefs.p2_keys.help);
 
     // General keybinds
-    fprintf(f, "general_pause=%d\n",                g_prefs.general_keys.pause);
-    fprintf(f, "general_menu=%d\n",                 g_prefs.general_keys.menu);
-    fprintf(f, "general_add_player2=%d\n",          g_prefs.general_keys.add_player2);
-    fprintf(f, "general_toggle_friendly_fire=%d\n", g_prefs.general_keys.toggle_friendly_fire);
-    fprintf(f, "general_skip_level=%d\n",           g_prefs.general_keys.skip_level);
-    fprintf(f, "general_toggle_debug_grid=%d\n",    g_prefs.general_keys.toggle_debug_grid);
-    fprintf(f, "general_time_speed_up=%d\n",        g_prefs.general_keys.time_speed_up);
-    fprintf(f, "general_time_slow_down=%d\n",       g_prefs.general_keys.time_slow_down);
-    fprintf(f, "general_time_reset=%d\n",           g_prefs.general_keys.time_reset);
-    fprintf(f, "general_toggle_fullscreen=%d\n",    g_prefs.general_keys.toggle_fullscreen);
-    fprintf(f, "general_toggle_rotate_view=%d\n",   g_prefs.general_keys.toggle_rotate_view);
-    fprintf(f, "general_disable_behaviours=%d\n",   g_prefs.general_keys.disable_behaviours);
+    WRITE_KEY("general_pause",                g_prefs.general_keys.pause);
+    WRITE_KEY("general_menu",                 g_prefs.general_keys.menu);
+    WRITE_KEY("general_add_player2",          g_prefs.general_keys.add_player2);
+    WRITE_KEY("general_toggle_friendly_fire", g_prefs.general_keys.toggle_friendly_fire);
+    WRITE_KEY("general_skip_level",           g_prefs.general_keys.skip_level);
+    WRITE_KEY("general_toggle_debug_grid",    g_prefs.general_keys.toggle_debug_grid);
+    WRITE_KEY("general_time_speed_up",        g_prefs.general_keys.time_speed_up);
+    WRITE_KEY("general_time_slow_down",       g_prefs.general_keys.time_slow_down);
+    WRITE_KEY("general_time_reset",           g_prefs.general_keys.time_reset);
+    WRITE_KEY("general_toggle_fullscreen",    g_prefs.general_keys.toggle_fullscreen);
+    WRITE_KEY("general_toggle_rotate_view",   g_prefs.general_keys.toggle_rotate_view);
+    WRITE_KEY("general_disable_behaviours",   g_prefs.general_keys.disable_behaviours);
+
+#undef WRITE_KEY
 
     fclose(f);
 
