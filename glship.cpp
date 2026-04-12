@@ -876,8 +876,8 @@ void GLShip::draw_weapons() const {
   if(ship->nova_charge > 0) {
     char buf[16];
     snprintf(buf, sizeof(buf), "%d/10", ship->nova_charge);
-    Typer::draw(10,  y - 165, "NOVA", 10);
-    Typer::draw(110, y - 165, buf,    10);
+    Typer::draw(10,  y - 160, "NOVA SHARD", 10);
+    Typer::draw(230, y - 160, buf,           10);
   }
 }
 
