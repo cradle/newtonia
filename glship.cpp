@@ -535,8 +535,6 @@ void GLShip::input(unsigned char key, bool pressed) {
     ship->next_weapon();
   } else if(key == next_secondary_key && pressed) {
     ship->next_secondary_weapon();
-  } else if (key == (unsigned char)g_prefs.general_keys.disable_behaviours && pressed) {
-    ship->disable_behaviours();
   } else if (key == teleport_key && pressed) {
     ship->behaviours.push_back(new Teleport(ship));
   } else if (key == (unsigned char)toggle_rotate_view_key && pressed) {
