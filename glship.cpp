@@ -808,16 +808,20 @@ void GLShip::draw_weapons() const {
     int bind_y = row_y - 35;
     char buf[8];
 
-    Typer::draw(col_fire,     bind_y, "FIRE ", size);
-    Typer::draw(col_fire_key, bind_y,
-      last_input_was_controller ? SDL_GameControllerGetStringForButton(fire_btn)
-                                : key_str(fire_key_kb, buf), size);
+    Typer::draw(col_fire, bind_y, "FIRE ", size);
+    if (last_input_was_controller) {
+      Typer::draw_button(col_fire_key, bind_y, SDL_GameControllerGetStringForButton(fire_btn)[0], size);
+    } else {
+      Typer::draw(col_fire_key, bind_y, key_str(fire_key_kb, buf), size);
+    }
 
     if (has_next) {
-      Typer::draw(col_next,     bind_y, "NEXT ", size);
-      Typer::draw(col_next_key, bind_y,
-        last_input_was_controller ? SDL_GameControllerGetStringForButton(cycle_btn)
-                                  : key_str(cycle_key_kb, buf), size);
+      Typer::draw(col_next, bind_y, "NEXT ", size);
+      if (last_input_was_controller) {
+        Typer::draw_button(col_next_key, bind_y, SDL_GameControllerGetStringForButton(cycle_btn)[0], size);
+      } else {
+        Typer::draw(col_next_key, bind_y, key_str(cycle_key_kb, buf), size);
+      }
     }
   };
 

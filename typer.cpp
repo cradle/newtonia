@@ -352,6 +352,41 @@ void Typer::init_meshes() {
     mb.end(); upload(',', mb); }
 }
 
+// Draw a single character inside a circle, mimicking a physical controller button.
+// The circle is centred on the character glyph; x/y/size use the same convention
+// as draw(char): x is the left edge of the character slot, y is the top baseline.
+void Typer::draw_button(float x, float y, char c, float size) {
+  static Mesh circle_mesh;
+  static bool circle_initialized = false;
+  if (!circle_initialized) {
+    circle_initialized = true;
+    MeshBuilder mb;
+    mb.begin(GL_LINE_LOOP); mb.color(1,1,1);
+    const int N = 20;
+    for (int i = 0; i < N; i++) {
+      float a = 2.0f * (float)M_PI * i / N;
+      mb.vertex(cosf(a), sinf(a));
+    }
+    mb.end();
+    circle_mesh.upload(mb);
+  }
+
+  // Character glyph occupies game-unit box: x to x+size (width), y-2*size to y (height).
+  // Centre of that box: (x+size, y-size).  Radius slightly larger than half-height (size).
+  float saved[16]; gles2_get_mvp(saved);
+  float r = size * 1.3f;
+  float circle_vp[16];
+  mat4_translate(circle_vp, saved, (x + size) * scale, (y - size) * scale, 0.0f);
+  mat4_scale(circle_vp, circle_vp, r * scale, r * scale, 1.0f);
+  gles2_set_vp(circle_vp);
+  glLineWidth(1.1f * scale);
+  circle_mesh.draw_tinted(colour[0], colour[1], colour[2], 1.0f);
+  gles2_set_vp(saved);
+
+  // Draw letter centred horizontally in the slot (shift right by half a glyph width).
+  draw(x + size * 0.5f, y, c, size);
+}
+
 void Typer::cleanup() {
   if (!meshes_initialized) return;
   // Upper and lower case share the same Mesh pointer, so track freed pointers
