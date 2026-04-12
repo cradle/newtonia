@@ -1,5 +1,6 @@
 #include "glgame.h"
 #include "highscore.h"
+#include "preferences.h"
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -27,10 +28,10 @@
 #include <list>
 
 static void set_player_keys(GLShip *gs, int player_index) {
-  if (player_index == 0)
-    gs->set_keys('a','d','w',' ','s','x','q','e','t', 128+GLUT_KEY_F1, 'c');
-  else
-    gs->set_keys('j','l','i','/','k',',','u','o','y', 128+GLUT_KEY_F8, '.');
+  const PlayerKeys &k = (player_index == 0) ? g_prefs.p1_keys : g_prefs.p2_keys;
+  gs->set_keys(k.left, k.right, k.thrust, k.shoot, k.reverse, k.mine,
+               k.next_weapon, k.boost, k.teleport, k.help, k.next_secondary,
+               k.toggle_rotate_view);
 }
 
 const int GLGame::default_world_width = 2500;
@@ -51,7 +52,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   current_time(0),
   running(true),
   level_cleared(false),
-  friendly_fire(true),
+  friendly_fire(g_prefs.friendly_fire),
   debug_grid(false),
   score_saved(false),
   game_over_time(-1),
@@ -74,6 +75,7 @@ GLGame::GLGame(SDL_GameController *controller) :
 
   time_until_next_step = 0;
   num_frames = 0;
+  last_draw_time_ = SDL_GetTicks();
 
   generation = 0;
   Asteroid::num_killable = 0;
@@ -81,10 +83,9 @@ GLGame::GLGame(SDL_GameController *controller) :
   grid.update((std::list<Object *>*)objects);
 
   GLShip *object = new GLShip(grid, true);
+  set_player_keys(object, 0);
   if(controller != NULL) {
     object->set_controller(controller);
-  } else {
-    set_player_keys(object, 0);
   }
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
@@ -173,7 +174,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   current_time(save.current_time),
   running(true),
   level_cleared(save.level_cleared),
-  friendly_fire(true),
+  friendly_fire(g_prefs.friendly_fire),
   debug_grid(false),
   score_saved(false),
   game_over_time(-1),
@@ -196,6 +197,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
 
   time_until_next_step = 0;
   num_frames = 0;
+  last_draw_time_ = SDL_GetTicks();
 
   // Restore asteroids
   Asteroid::num_killable = 0;
@@ -232,10 +234,9 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   for (const auto &sp : save.players) {
     bool is_p1 = players->empty();
     GLShip *gs = is_p1 ? new GLShip(grid, true) : new GLCar(grid, true);
+    set_player_keys(gs, is_p1 ? 0 : 1);
     if (controller != NULL && is_p1) {
       gs->set_controller(controller);
-    } else {
-      set_player_keys(gs, is_p1 ? 0 : 1);
     }
     gs->ship->set_missile_asteroids((std::list<Object*>*)objects);
     ship_objects->push_back(gs->ship);
@@ -1030,6 +1031,11 @@ void GLGame::draw_objects(float direction, bool minimap) const {
 }
 
 void GLGame::draw(void) {
+  Uint32 now = SDL_GetTicks();
+  int frame_delta = (int)(now - last_draw_time_);
+  last_draw_time_ = now;
+  for(GLShip *gs : *players) gs->smooth_camera(frame_delta);
+
   glClear(GL_COLOR_BUFFER_BIT /*| GL_DEPTH_BUFFER_BIT*/);
 
   if(players->size() == 0) {
@@ -1551,7 +1557,9 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
 }
 
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
-  if (key == 'n') {
+  const GeneralKeys &gk = g_prefs.general_keys;
+
+  if (key == (unsigned char)gk.skip_level) {
       level_cleared = true;
       time_until_next_generation = 0;
       while(!objects->empty()) {
@@ -1565,18 +1573,20 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       Asteroid::num_killable = 0;
   }
 
-  if (key == 'g') {
+  if (key == (unsigned char)gk.toggle_friendly_fire) {
     friendly_fire = !friendly_fire;
+    g_prefs.friendly_fire = friendly_fire;
+    save_preferences();
   }
-  if (key == 'b') {
+  if (key == (unsigned char)gk.toggle_debug_grid) {
     debug_grid = !debug_grid;
   }
-  if (key == '=' && time_between_steps > 1) time_between_steps--;
-  if (key == '-') time_between_steps++;
-  if (key == '0') time_between_steps = step_size;
-  if (key == 'p') toggle_pause();
+  if (key == (unsigned char)gk.time_speed_up && time_between_steps > 1) time_between_steps--;
+  if (key == (unsigned char)gk.time_slow_down) time_between_steps++;
+  if (key == (unsigned char)gk.time_reset) time_between_steps = step_size;
+  if (key == (unsigned char)gk.pause) toggle_pause();
 #if !defined(__ANDROID__) && !defined(__IOS__)
-  if (key == 13 && players->size() < 2) {
+  if (key == (unsigned char)gk.add_player2 && players->size() < 2) {
     Ship* p1 = players->front()->ship;
     if(p1->is_alive() || p1->lives) {
       GLShip* object = new GLCar(grid, true);
@@ -1589,9 +1599,9 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
 #endif
-  // On all platforms: any non-ESC key goes to menu when all players are game over,
+  // On all platforms: any non-menu key goes to menu when all players are game over,
   // with a short delay so the last shoot input doesn't immediately skip the game over screen.
-  if (key != 27) {
+  if (key != (unsigned char)gk.menu) {
     bool all_game_over = !players->empty();
     for (auto* glship : *players) {
       if (glship->ship->is_alive() || glship->ship->lives > 0) {
@@ -1608,7 +1618,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       return;
     }
   }
-  if (key == 27) {
+  if (key == (unsigned char)gk.menu) {
     save_progress();
     request_state_change(new Menu());
   }

@@ -153,6 +153,11 @@ void Typer::init_meshes() {
     mb.vertex(0,TM); mb.vertex(TW,TM);
     mb.end(); upload('-', mb); }
 
+  { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
+    mb.vertex(0,TH*0.65f); mb.vertex(TW,TH*0.65f);
+    mb.vertex(0,TH*0.35f); mb.vertex(TW,TH*0.35f);
+    mb.end(); upload('=', mb); }
+
   { MeshBuilder mb; mb.begin(GL_POINTS); mb.color(1,1,1);
     mb.vertex(TW*0.5f, TH*0.125f);
     mb.end(); upload('.', mb); }
@@ -352,6 +357,44 @@ void Typer::init_meshes() {
     mb.end(); upload(',', mb); }
 }
 
+// Draw a single character inside a circle, mimicking a physical controller button.
+// The circle is centred on the character glyph; x/y/size use the same convention
+// as draw(char): x is the left edge of the character slot, y is the top baseline.
+void Typer::draw_button(float x, float y, char c, float size) {
+  static Mesh circle_mesh;
+  static bool circle_initialized = false;
+  if (!circle_initialized) {
+    circle_initialized = true;
+    MeshBuilder mb;
+    mb.begin(GL_LINE_LOOP); mb.color(1,1,1);
+    const int N = 20;
+    for (int i = 0; i < N; i++) {
+      float a = 2.0f * (float)M_PI * i / N;
+      mb.vertex(cosf(a), sinf(a));
+    }
+    mb.end();
+    circle_mesh.upload(mb);
+  }
+
+  // Character glyph occupies game-unit box: x to x+size (width), y-2*size to y (height).
+  // Centre of that box: (x+size, y-size).  Radius slightly larger than half-height (size).
+  float saved[16]; gles2_get_mvp(saved);
+  float r = size * 1.3f;
+  float circle_vp[16];
+  mat4_translate(circle_vp, saved, (x + size) * scale, (y - size) * scale, 0.0f);
+  mat4_scale(circle_vp, circle_vp, r * scale, r * scale, 1.0f);
+  gles2_set_vp(circle_vp);
+  glLineWidth(1.1f * scale);
+  circle_mesh.draw_tinted(colour[0], colour[1], colour[2], 1.0f);
+  gles2_set_vp(saved);
+
+  // Draw letter at 70% size, centred on the circle centre (x+size, y-size).
+  // draw(px, py, c, ls) places glyph with centre at (px + ls/2, py - ls),
+  // so px = circle_cx - ls/2, py = circle_cy + ls.
+  float ls = size * 0.7f;
+  draw(x + size - ls * 0.5f, y - size + ls, c, ls);
+}
+
 void Typer::cleanup() {
   if (!meshes_initialized) return;
   // Upper and lower case share the same Mesh pointer, so track freed pointers
@@ -396,17 +439,19 @@ void Typer::draw(float x, float y, char character, float size, int time) {
       mb.vertex(TW*TQ*3, TMU);
       mb.end();
 
-      // Spinning circle: bake translate(0.5,TM) + scale(1,1.2) + rotate(time/-16)
-      // into vertex positions so no shim matrix calls are needed.
+      // Spinning circle: bake rotate(time/-16) + scale(1,1.2) + translate(0.5,TM)
+      // into vertex positions. The original GL code applied scale *after* rotate
+      // (GL matrix ops apply right-to-left to vertices), so we must do the same:
+      // rotate the unit circle point first, then scale Y, then translate.
       float angle_r = (float)(time / -16.0) * (float)M_PI / 180.0f;
       float cos_a = cosf(angle_r), sin_a = sinf(angle_r);
       mb.begin(GL_LINE_LOOP);
       for (float i = 0.0f; i < 360.0f; i += segment_size) {
         float d = i * (float)M_PI / 180.0f;
-        float lx = cosf(d);
-        float ly = sinf(d) * 1.2f;
-        mb.vertex(lx * cos_a - ly * sin_a + 0.5f,
-                  lx * sin_a + ly * cos_a + TM);
+        float lx = cosf(d), ly = sinf(d);
+        float rx = lx * cos_a - ly * sin_a;
+        float ry = lx * sin_a + ly * cos_a;
+        mb.vertex(rx + 0.5f, ry * 1.2f + TM);
       }
       mb.end();
 

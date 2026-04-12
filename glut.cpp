@@ -10,6 +10,7 @@
 #include "state_manager.h"
 #include "asteroid.h"
 #include "typer.h"
+#include "preferences.h"
 
 // gl_compat.h pulls in GLUT (for window management) and gles2_compat.h
 // (for the VBO/VAO/shader shim that replaces all legacy GL calls).
@@ -19,6 +20,7 @@
 // CGL is needed for VSync configuration only.
 #include <OpenGL/OpenGL.h>
 extern "C" void activate_app_macos();
+extern "C" void enable_game_mode_macos();
 extern "C" void install_macos_focus_observer(void (*lost)(), void (*gained)());
 #endif
 
@@ -39,6 +41,7 @@ bool ENABLE_AUDIO = true;
 int last_render_time;
 #ifdef __APPLE__
 static bool s_needs_activation = true;
+static int  s_activation_retries = 0;
 void activate_app_timer(int);
 #endif
 
@@ -51,21 +54,24 @@ void draw() {
 #ifdef __APPLE__
   // Activate after the first rendered frame so the window is on screen before
   // we request focus (a 0ms timer fires before the window is visible).
-  // Also schedule a 500ms retry: the fullscreen transition animation may not
-  // have completed by the first frame, causing an intermittent miss.
-  // activate_app_macos() is a no-op once the app is already active.
+  // Retry every 200 ms for up to 5 s (25 attempts).  This covers both the
+  // fullscreen transition animation (~500 ms) and the native Steam "Now
+  // Playing" overlay, which holds focus for several seconds after launch.
+  // activate_app_macos() is a no-op once [NSApp isActive] is true, so the
+  // retries are cheap and stop stealing focus as soon as we have it.
   if (s_needs_activation) {
     s_needs_activation = false;
+    s_activation_retries = 0;
     activate_app_macos();
-    glutTimerFunc(500, activate_app_timer, 0);
+    glutTimerFunc(200, activate_app_timer, 0);
   }
 #endif
 }
 
 int old_x = 50;
 int old_y = 50;
-int old_width = 1280;
-int old_height = 720;
+int old_width = 800;
+int old_height = 600;
 bool is_fullscreen = false;
 bool cursor_hidden = false;
 
@@ -87,12 +93,9 @@ void set_cursor_hidden(bool hide) {
 }
 
 void keyboard(unsigned char key, int x, int y) {
-  switch (key) {
-  case '\r':
-    if(glutGetModifiers() != GLUT_ACTIVE_ALT) {
-      break;
-    }
-  case 'f':
+  bool do_fullscreen = (key == (unsigned char)g_prefs.general_keys.toggle_fullscreen)
+    || (key == '\r' && glutGetModifiers() == GLUT_ACTIVE_ALT);
+  if (do_fullscreen) {
     if (!is_fullscreen) {
       old_x = glutGet(GLUT_WINDOW_X);
       old_y = glutGet(GLUT_WINDOW_Y);
@@ -111,7 +114,8 @@ void keyboard(unsigned char key, int x, int y) {
       glutPositionWindow(old_x, old_y);
       glutReshapeWindow(old_width, old_height);
     }
-    break;
+    g_prefs.fullscreen = is_fullscreen;
+    save_preferences();
   }
   game->keyboard(key, x, y);
 }
@@ -128,7 +132,9 @@ void special(int key, int x, int y) {
 }
 
 void keyboard_up(unsigned char key, int x, int y) {
-  if(!(key == '\r' && glutGetModifiers() == GLUT_ACTIVE_ALT))
+  bool is_fullscreen_key = (key == (unsigned char)g_prefs.general_keys.toggle_fullscreen)
+    || (key == '\r' && glutGetModifiers() == GLUT_ACTIVE_ALT);
+  if (!is_fullscreen_key)
     game->keyboard_up(key, x, y);
 }
 
@@ -139,6 +145,11 @@ void special_up(int key, int x, int y) {
 void resize(int width, int height) {
   Typer::resize(width, height);
   if (game) game->resize(width, height);
+  if (!is_fullscreen) {
+    g_prefs.window_width  = width;
+    g_prefs.window_height = height;
+    save_preferences();
+  }
 #ifndef __APPLE__
   set_cursor_hidden(is_fullscreen);
 #endif
@@ -153,7 +164,10 @@ void hide_cursor_after_fullscreen(int) {
 }
 
 void activate_app_timer(int) {
-  activate_app_macos(); // No-op if already active.
+  activate_app_macos(); // No-op once [NSApp isActive].
+  if (++s_activation_retries < 25) { // 25 × 200 ms = 5 s total
+    glutTimerFunc(200, activate_app_timer, 0);
+  }
 }
 
 void mouse_passive(int x, int y) {
@@ -306,16 +320,24 @@ void init(int &argc, char* argv[], float width, float height);
 
 int main(int argc, char* argv[]) {
   srand(time(NULL));
-  init(argc, argv, 800, 600);
-  glutFullScreen();
-  is_fullscreen = true;
+  load_preferences();
+  old_width  = g_prefs.window_width;
+  old_height = g_prefs.window_height;
+  init(argc, argv, g_prefs.window_width, g_prefs.window_height);
 #ifdef __APPLE__
-  glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
-#else
-  set_cursor_hidden(true);
+  enable_game_mode_macos();
 #endif
+  if (g_prefs.fullscreen) {
+    glutFullScreen();
+    is_fullscreen = true;
+#ifdef __APPLE__
+    glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
+#else
+    set_cursor_hidden(true);
+#endif
+  }
   init_controllers_and_audio();
-  atexit([]{ if (game) game->focus_lost(); });
+  atexit([]{ save_preferences(); if (game) game->focus_lost(); });
   game = new StateManager();
   for(int i = 0; i < 2; i++) {
     if(controllers[i]) game->controller_added(controllers[i]);
@@ -325,6 +347,7 @@ int main(int argc, char* argv[]) {
 #endif
   resize(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT));
   glutMainLoop();
+  save_preferences();
   for(int i = 0; i < 2; i++) {
     if(controllers[i] && SDL_GameControllerGetAttached(controllers[i])) {
       SDL_GameControllerClose(controllers[i]);
