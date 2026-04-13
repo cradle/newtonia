@@ -108,6 +108,9 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "window_height") == 0) {
         int h = atoi(val);
         if (h > 0) g_prefs.window_height = h;
+    } else if (strcmp(key, "keyboard_sensitivity") == 0) {
+        float v = (float)atof(val);
+        if (v >= 0.1f && v <= 5.0f) g_prefs.keyboard_sensitivity = v;
 
     // Player 1 keybinds
     } else if (strcmp(key, "p1_left")           == 0) { g_prefs.p1_keys.left           = ini_to_key(val);
@@ -184,11 +187,12 @@ void save_preferences() {
     if (!f) return;
 
     // Scalar preferences
-    fprintf(f, "fullscreen=%d\n",     g_prefs.fullscreen    ? 1 : 0);
-    fprintf(f, "rotate_view=%d\n",    g_prefs.rotate_view   ? 1 : 0);
-    fprintf(f, "friendly_fire=%d\n",  g_prefs.friendly_fire ? 1 : 0);
-    fprintf(f, "window_width=%d\n",   g_prefs.window_width);
-    fprintf(f, "window_height=%d\n",  g_prefs.window_height);
+    fprintf(f, "fullscreen=%d\n",              g_prefs.fullscreen    ? 1 : 0);
+    fprintf(f, "rotate_view=%d\n",             g_prefs.rotate_view   ? 1 : 0);
+    fprintf(f, "friendly_fire=%d\n",           g_prefs.friendly_fire ? 1 : 0);
+    fprintf(f, "window_width=%d\n",            g_prefs.window_width);
+    fprintf(f, "window_height=%d\n",           g_prefs.window_height);
+    fprintf(f, "keyboard_sensitivity=%.2f\n",  g_prefs.keyboard_sensitivity);
 
 #define WRITE_KEY(name, val) fprintf(f, name "=%s\n", key_to_ini(val).c_str())
 

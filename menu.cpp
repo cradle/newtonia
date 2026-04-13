@@ -3,7 +3,7 @@
 #include "glstarfield.h"
 #include "glgame.h"
 #include "menu.h"
-#include "options.h"
+#include "preferences.h"
 #include "gl_compat.h"
 #include "mat4.h"
 #include <iostream>
@@ -35,8 +35,7 @@ Menu::Menu() :
   menu_selection(0),
   viewpoint(Point(0,default_world_height/2)),
   starfield(GLStarfield(Point(default_world_width,default_world_height))) {
-  g_options = load_options();
-  sensitivity_index_ = sensitivity_index_for(g_options.keyboard_sensitivity);
+  sensitivity_index_ = sensitivity_index_for(g_prefs.keyboard_sensitivity);
 #ifdef __EMSCRIPTEN__
   EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
 #endif
@@ -332,8 +331,8 @@ void Menu::open_options() {
 }
 
 void Menu::close_options() {
-  g_options.keyboard_sensitivity = SENSITIVITY_VALUES[sensitivity_index_];
-  save_options(g_options);
+  g_prefs.keyboard_sensitivity = SENSITIVITY_VALUES[sensitivity_index_];
+  save_preferences();
   options_mode_ = false;
 }
 
