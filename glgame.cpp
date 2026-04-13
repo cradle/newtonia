@@ -588,18 +588,18 @@ void GLGame::tick(int delta) {
     }
 
     // Apply black-hole gravity to ships.
-    // Ships in god mode (invincible) receive half gravity so they can escape with normal thrust.
+    // Ships in god mode receive reduced gravity so they can escape with normal thrust.
     for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
       for(o = players->begin(); o != players->end(); o++) {
         if(!(*o)->ship->is_alive()) continue;
-        float scale = (*o)->ship->god_mode_time_remaining() > 0 ? 0.5f : 1.0f;
+        float scale = (*o)->ship->god_mode_time_remaining() > 0 ? 0.25f : 1.0f;
         if((*bhi)->apply_gravity(*(*o)->ship, step_size, scale)) {
           (*o)->ship->kill();
         }
       }
       for(o = enemies->begin(); o != enemies->end(); o++) {
         if(!(*o)->ship->is_alive()) continue;
-        float scale = (*o)->ship->god_mode_time_remaining() > 0 ? 0.5f : 1.0f;
+        float scale = (*o)->ship->god_mode_time_remaining() > 0 ? 0.25f : 1.0f;
         if((*bhi)->apply_gravity(*(*o)->ship, step_size, scale)) {
           (*o)->ship->kill();
         }
