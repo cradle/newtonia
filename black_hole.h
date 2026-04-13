@@ -19,7 +19,8 @@ public:
 
   // Apply gravitational acceleration to another object.
   // Returns true if the object crossed the event horizon (caller should kill it).
-  bool apply_gravity(Object &other, int delta) const;
+  // gravity_scale multiplies the applied force (e.g. 0.5 for half gravity).
+  bool apply_gravity(Object &other, int delta, float gravity_scale = 1.0f) const;
 
   static const float gravitational_strength;
   static const float influence_radius;
