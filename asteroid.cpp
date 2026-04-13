@@ -6,7 +6,7 @@
 
 using namespace std;
 
-const int Asteroid::max_speed = 5;
+const int Asteroid::max_speed = 3;
 const int Asteroid::max_rotation = 15;
 int Asteroid::num_killable = 0;
 
@@ -216,8 +216,8 @@ void Asteroid::restore_state(const Save::Asteroid &s) {
 void Asteroid::step(int delta) {
   CompositeObject::step(delta);
   float spd = velocity.magnitude();
-  if (spd > 3.0f)
-    velocity = velocity * (3.0f / spd);
+  if (spd > (float)max_speed)
+    velocity = velocity * ((float)max_speed / spd);
   if(armoured) {
     armour_angle += rotation_speed * delta * (float)M_PI / 180.0f;
   }
