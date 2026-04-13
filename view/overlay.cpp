@@ -27,6 +27,7 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   paused(glgame, glship);
   touch_controls(glgame, glship);
   edge_indicators(glgame, glship);
+  if (glgame->debug_grid) debug_info(glgame, glship);
 }
 
 void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
@@ -223,10 +224,10 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
             Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-10, "player 2 press enter to join", 8);
         }
       } else {
-        Typer::draw_centered(0, Typer::window_height-10, glship->has_controller() ? "return to menu with start" : "return to menu with ESC", 8);
+        Typer::draw_centered(0, Typer::scaled_window_height-10, glship->has_controller() ? "return to menu with start" : "return to menu with ESC", 8);
       }
     }
-    if(glship->controller == NULL && !is_touch_mode()) {
+    if(!glship->last_input_was_controller && !is_touch_mode()) {
       if(glship->show_help) {
         Typer::draw_centered(-1*Typer::scaled_window_width/2, Typer::scaled_window_height-10, "hide controls with F1", 8);
       } else if ((glgame->current_time)/12000 % 2) {
@@ -238,7 +239,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     if(glgame->friendly_fire) {
       Typer::draw_centered(0, vhb+30, "friendly fire on", 8);
     }
-    if(glship->controller == NULL && !is_touch_mode()) {
+    if(!glship->last_input_was_controller && !is_touch_mode()) {
       if(p1 == glship->ship) {
         if(glship->show_help) {
           Typer::draw_centered(0, vhb+60, "hide controls with F1", 8);
@@ -383,4 +384,37 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     mesh_icon.draw();
   }
 #endif // __ANDROID__ || __IOS__
+}
+
+void Overlay::debug_info(const GLGame *glgame, const GLShip *glship) {
+  // Only draw once — skip for the second player's viewport.
+  if (glship->ship != glgame->players->front()->ship) return;
+
+  // Rolling FPS: count frames over ~500 ms windows so the reading reflects
+  // current performance rather than the lifetime average.
+  static Uint32 fps_window_start = 0;
+  static int    fps_window_frames = 0;
+  static int    fps_display = 0;
+  Uint32 now = SDL_GetTicks();
+  if (fps_window_start == 0) fps_window_start = now;
+  fps_window_frames++;
+  Uint32 elapsed = now - fps_window_start;
+  if (elapsed >= 500) {
+    fps_display = (int)(fps_window_frames * 1000u / elapsed);
+    fps_window_frames = 0;
+    fps_window_start  = now;
+  }
+
+  float vw = Typer::scaled_window_width / glgame->num_x_viewports();
+  float vh = Typer::scaled_window_height / glgame->num_y_viewports();
+  float x  = -vw + CORNER_INSET;
+  float y  = -vh + CORNER_INSET + 80;  // bottom-left, above lives/temperature
+  float sz = 7;
+  float dy = sz * 2.5f + 4;
+
+  char fps_buf[32];
+  snprintf(fps_buf, sizeof(fps_buf), "fps: %d", fps_display);
+
+  Typer::draw(x, y,      is_game_mode_active() ? "game mode: on" : "game mode: off", sz);
+  Typer::draw(x, y - dy, fps_buf, sz);
 }

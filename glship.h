@@ -27,7 +27,7 @@ public:
   void touch_joystick_input(float nx, float ny);
   bool wasMyController(SDL_JoystickID id);
 
-  void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key, int teleport_key, int help_key, int next_secondary_key);
+  void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key, int teleport_key, int help_key, int next_secondary_key, int toggle_rotate_view_key);
   void set_controller(SDL_GameController *game_controller);
   bool has_controller() const;
   bool is_my_controller_id(SDL_JoystickID id) const;
@@ -79,7 +79,7 @@ protected:
   Mesh minimap_dot;    // single white vertex at origin, tinted per draw
   Mesh missile_body;   // unit missile triangle (ship colour), per-missile matrix
 
-  int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, next_secondary_key, boost_key, teleport_key, help_key;
+  int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, next_secondary_key, boost_key, teleport_key, help_key, toggle_rotate_view_key;
   float keyboard_sensitivity = 1.0f;  // rotation speed multiplier for keyboard input
 
   SDL_GameController *controller = NULL;
