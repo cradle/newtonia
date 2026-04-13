@@ -51,7 +51,7 @@
 		AB000049 /* shield_behaviour.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000049 /* shield_behaviour.cpp */; };
 		AB00004A /* god_mode_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00004A /* god_mode_pickup.cpp */; };
 		AB00004B /* god_mode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00004B /* god_mode.cpp */; };
-		AB000053 /* nova_charge_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000053 /* nova_charge_pickup.cpp */; };
+		AB000053 /* nova_charge_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000055 /* nova_charge_pickup.cpp */; };
 		AB000054 /* nova.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000054 /* nova.cpp */; };
 		AB00004C /* warp_pass.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00004C /* warp_pass.cpp */; };
 		AB00004D /* mesh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00004D /* mesh.cpp */; };
@@ -117,7 +117,7 @@
 		AA000049 /* shield_behaviour.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../shield_behaviour.cpp; sourceTree = SOURCE_ROOT; };
 		AA00004A /* god_mode_pickup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../god_mode_pickup.cpp; sourceTree = SOURCE_ROOT; };
 		AA00004B /* god_mode.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/god_mode.cpp; sourceTree = SOURCE_ROOT; };
-		AA000053 /* nova_charge_pickup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../nova_charge_pickup.cpp; sourceTree = SOURCE_ROOT; };
+		AA000055 /* nova_charge_pickup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../nova_charge_pickup.cpp; sourceTree = SOURCE_ROOT; };
 		AA000054 /* nova.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/nova.cpp; sourceTree = SOURCE_ROOT; };
 		AA00004C /* warp_pass.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../warp_pass.cpp; sourceTree = SOURCE_ROOT; };
 		AA00004D /* mesh.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../mesh.cpp; sourceTree = SOURCE_ROOT; };
@@ -224,7 +224,7 @@
 			AA000049 /* shield_behaviour.cpp */,
 			AA00004A /* god_mode_pickup.cpp */,
 			AA00004B /* god_mode.cpp */,
-			AA000053 /* nova_charge_pickup.cpp */,
+			AA000055 /* nova_charge_pickup.cpp */,
 			AA000054 /* nova.cpp */,
 			AA00004C /* warp_pass.cpp */,
 			AA00004D /* mesh.cpp */,
