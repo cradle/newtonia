@@ -102,15 +102,15 @@ void Menu::draw() {
   gles2_set_vp(ortho);
 
   if (options_mode_) {
-    Typer::draw_centered(0, 340, "OPTIONS", 36);
+    Typer::draw_centered(0, 340, "OPTIONS", 28);
 
     static const int step_x5[] = {-200, -100, 0, 100, 200};
     static const int step_x6[] = {-250, -150, -50, 50, 150, 250};
 
     // 4 rows: 0=P1 sens, 1=P1 smooth, 2=P2 sens, 3=P2 smooth
-    static const int label_y[] = { 230,  60, -110, -280};
-    static const int steps_y[] = { 165,  -5, -175, -345};
-    static const int name_y[]  = { 120, -50, -220, -390};
+    static const int label_y[] = { 240,  80, -80, -240};
+    static const int steps_y[] = { 195,  35, -125, -285};
+    static const int name_y[]  = { 150, -10, -170, -330};
     static const char* row_names[] = {
       "P1  SENSITIVITY", "P1  SMOOTHING",
       "P2  SENSITIVITY", "P2  SMOOTHING"
@@ -125,15 +125,15 @@ void Menu::draw() {
       const char* const *lbl = is_smooth ? SMOOTHING_LABELS : SENSITIVITY_LABELS;
 
       std::string heading = std::string(active_row_ == row ? "> " : "  ") + row_names[row];
-      Typer::draw_centered(0, label_y[row], heading.c_str(), 16);
+      Typer::draw_centered(0, label_y[row], heading.c_str(), 13);
 
       for (int i = 0; i < num_steps; i++) {
         std::string step = (i == cur_idx)
           ? "[" + std::to_string(i + 1) + "]"
           :       std::to_string(i + 1);
-        Typer::draw_centered(sx[i], steps_y[row], step.c_str(), 20);
+        Typer::draw_centered(sx[i], steps_y[row], step.c_str(), 16);
       }
-      Typer::draw_centered(0, name_y[row], lbl[cur_idx], 17);
+      Typer::draw_centered(0, name_y[row], lbl[cur_idx], 13);
     }
   } else {
     Typer::draw_centered(0, 320, "Newtonia", 80);
