@@ -95,11 +95,22 @@ bool StateManager::back_pressed() {
 }
 
 void StateManager::focus_lost() {
+  key_states.clear();
   GLGame *game = dynamic_cast<GLGame*>(state);
-  if(game) game->focus_lost();
+  if(game) {
+    game->focus_lost();
+  } else if(!focus_muted) {
+    Mix_PauseMusic();
+    focus_muted = true;
+  }
 }
 
 void StateManager::focus_gained() {
   GLGame *game = dynamic_cast<GLGame*>(state);
-  if(game) game->focus_gained();
+  if(game) {
+    game->focus_gained();
+  } else if(focus_muted) {
+    Mix_ResumeMusic();
+  }
+  focus_muted = false;
 }

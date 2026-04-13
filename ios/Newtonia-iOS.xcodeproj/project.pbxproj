@@ -51,9 +51,12 @@
 		AB000049 /* shield_behaviour.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000049 /* shield_behaviour.cpp */; };
 		AB00004A /* god_mode_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00004A /* god_mode_pickup.cpp */; };
 		AB00004B /* god_mode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00004B /* god_mode.cpp */; };
+		AB000053 /* nova_charge_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000053 /* nova_charge_pickup.cpp */; };
+		AB000054 /* nova.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000054 /* nova.cpp */; };
 		AB00004C /* warp_pass.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00004C /* warp_pass.cpp */; };
 		AB00004D /* mesh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00004D /* mesh.cpp */; };
 		AB00004E /* savegame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00004E /* savegame.cpp */; };
+		AB000052 /* preferences.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000052 /* preferences.cpp */; };
 		AB000030 /* OpenGLES.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000030 /* OpenGLES.framework */; };
 		AB000031 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000031 /* UIKit.framework */; };
 		AB000032 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000032 /* Foundation.framework */; };
@@ -114,10 +117,14 @@
 		AA000049 /* shield_behaviour.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../shield_behaviour.cpp; sourceTree = SOURCE_ROOT; };
 		AA00004A /* god_mode_pickup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../god_mode_pickup.cpp; sourceTree = SOURCE_ROOT; };
 		AA00004B /* god_mode.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/god_mode.cpp; sourceTree = SOURCE_ROOT; };
+		AA000053 /* nova_charge_pickup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../nova_charge_pickup.cpp; sourceTree = SOURCE_ROOT; };
+		AA000054 /* nova.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/nova.cpp; sourceTree = SOURCE_ROOT; };
 		AA00004C /* warp_pass.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../warp_pass.cpp; sourceTree = SOURCE_ROOT; };
 		AA00004D /* mesh.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../mesh.cpp; sourceTree = SOURCE_ROOT; };
 		AA00004E /* savegame.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../savegame.cpp; sourceTree = SOURCE_ROOT; };
 		AA00004F /* savegame.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../savegame.h; sourceTree = SOURCE_ROOT; };
+		AA000052 /* preferences.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../preferences.cpp; sourceTree = SOURCE_ROOT; };
+		AA000053 /* preferences.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../preferences.h; sourceTree = SOURCE_ROOT; };
 		AA000051 /* mesh.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../mesh.h; sourceTree = SOURCE_ROOT; };
 		AA000030 /* OpenGLES.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGLES.framework; path = System/Library/Frameworks/OpenGLES.framework; sourceTree = SDKROOT; };
 		AA000031 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
@@ -217,11 +224,15 @@
 			AA000049 /* shield_behaviour.cpp */,
 			AA00004A /* god_mode_pickup.cpp */,
 			AA00004B /* god_mode.cpp */,
+			AA000053 /* nova_charge_pickup.cpp */,
+			AA000054 /* nova.cpp */,
 			AA00004C /* warp_pass.cpp */,
 			AA00004D /* mesh.cpp */,
 			AA000051 /* mesh.h */,
 			AA00004E /* savegame.cpp */,
 			AA00004F /* savegame.h */,
+			AA000052 /* preferences.cpp */,
+			AA000053 /* preferences.h */,
 			);
 			name = Sources;
 			sourceTree = "<group>";
@@ -360,9 +371,12 @@
 			AB000049 /* shield_behaviour.cpp in Sources */,
 			AB00004A /* god_mode_pickup.cpp in Sources */,
 			AB00004B /* god_mode.cpp in Sources */,
+			AB000053 /* nova_charge_pickup.cpp in Sources */,
+			AB000054 /* nova.cpp in Sources */,
 			AB00004C /* warp_pass.cpp in Sources */,
 			AB00004D /* mesh.cpp in Sources */,
 			AB00004E /* savegame.cpp in Sources */,
+			AB000052 /* preferences.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

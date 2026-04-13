@@ -66,7 +66,7 @@ void Menu::draw() {
   mat4_ortho(ortho, -window.x(), window.x(), -window.y(), window.y(), -1.0f, 1.0f);
   gles2_set_vp(ortho);
 
-  Typer::draw_centered(0, 200, "Newtonia", 80);
+  Typer::draw_centered(0, 280, "Newtonia", 80);
   if (high_score > 0) {
     Typer::draw_centered(0, -215, "HIGH SCORE", 14);
     Typer::draw_centered(0, -255, high_score, 18);
@@ -171,15 +171,29 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 }
 
 void Menu::keyboard_up(unsigned char key, int x, int y) {
-#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__)
-  // Touch/mobile/web — touch_tap handles Continue/New Game when a save exists;
+#if defined(__ANDROID__) || defined(__IOS__)
+  // Touch/mobile — touch_tap handles Continue/New Game when a save exists;
   // suppress \r so a finger-down on the left (joystick) half doesn't immediately
   // confirm before the user lifts their finger.
   if (has_save_ && (key == '\r' || key == '\n')) return;
-#ifdef __EMSCRIPTEN__
-  EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
-#endif
   confirm_selection(nullptr);
+#elif defined(__EMSCRIPTEN__)
+  if (is_touch_mode()) {
+    // Touch web: same as mobile — touch_tap handles selection, suppress \r
+    if (has_save_ && (key == '\r' || key == '\n')) return;
+    EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
+    confirm_selection(nullptr);
+  } else {
+    // Keyboard web: w/s navigate, space/enter confirm
+    if (key == ' ' || key == '\r' || key == '\n') {
+      EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
+      confirm_selection(nullptr);
+    } else if (has_save_ && (key == 'w' || key == 'W')) {
+      menu_selection = 0;
+    } else if (has_save_ && (key == 's' || key == 'S')) {
+      menu_selection = 1;
+    }
+  }
 #else
   if (key == 27) {
     glutLeaveMainLoop();
@@ -201,6 +215,9 @@ void Menu::touch_tap(float nx, float ny) {
   if (!has_save_) return;
   // Left half = CONTINUE, right half = NEW GAME
   menu_selection = (nx >= 0.5f) ? 1 : 0;
+#ifdef __EMSCRIPTEN__
+  EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
+#endif
   confirm_selection(nullptr);
 }
 

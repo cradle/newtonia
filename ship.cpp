@@ -10,6 +10,9 @@
 #include "weapon/missile.h"
 #include "weapon/shield.h"
 #include "weapon/god_mode.h"
+#include "weapon/nova.h"
+
+static const int NOVA_MAX_AMMO = 10;
 #include <algorithm>
 #include <math.h>
 #include <climits>
@@ -24,6 +27,8 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   first_life = true;
   score = 0;
   kills = 0;
+  nova_charge = 0;
+  nova_kill_counter = 0;
   bullet_trails.reserve(256);
   position = WrappedPoint();
   safe_position(grid);
@@ -383,6 +388,65 @@ void Ship::add_god_mode(int duration_ms) {
   update_god_mode_music(duration_ms);
 }
 
+void Ship::add_nova_charge(int n) {
+  nova_charge += n;
+  if (nova_charge >= NOVA_MAX_AMMO) {
+    nova_charge = 0;
+    add_nova_ammo(1);
+  }
+}
+
+void Ship::tally_nova_kill(const Point &pos) {
+  nova_kill_counter++;
+  if (nova_kill_counter >= 100) {
+    nova_kill_counter = 0;
+    nova_drops_pending.push_back(pos);
+  }
+}
+
+void Ship::add_nova_ammo(int amount) {
+  for (auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    Weapon::Nova *nw = dynamic_cast<Weapon::Nova*>(*it);
+    if (nw) {
+      if (nw->ammo() >= NOVA_MAX_AMMO) return;  // already at cap
+      nw->add_ammo(amount);
+      if (nw->ammo() > NOVA_MAX_AMMO) nw->set_ammo(NOVA_MAX_AMMO);
+      if (!shield_held(secondary_weapons, secondary)) {
+        (*secondary)->shoot(false);
+        secondary = it;
+      }
+      return;
+    }
+  }
+  Weapon::Nova *w = new Weapon::Nova(this);
+  w->set_ammo(std::min(amount, NOVA_MAX_AMMO));
+  secondary_weapons.push_back(w);
+  if (!shield_held(secondary_weapons, secondary))
+    secondary = --secondary_weapons.end();
+}
+
+int Ship::nova_ammo() const {
+  for (auto it = secondary_weapons.cbegin(); it != secondary_weapons.cend(); ++it) {
+    const Weapon::Nova *nw = dynamic_cast<const Weapon::Nova*>(*it);
+    if (nw) return nw->ammo();
+  }
+  return 0;
+}
+
+void Ship::nova_detonate() {
+  if (giga_mine_explode_sound != NULL)
+    Mix_PlayChannel(-1, giga_mine_explode_sound, 0);
+
+  // Single nova shockwave: expands slowly enough (speed 1.5 u/ms) to catch children
+  // spawned by dying parents (min child radius 30 > 1.5*16 = 24 units/frame).
+  // Radius matches one viewport: camera sits at z=1000 with 85° FOV, giving
+  // a half-height of tan(42.5°)*1000 ≈ 916 world units. Fixed in world-space
+  // so it is independent of screen resolution.
+  const float max_r = 1500.0f;
+  const float speed = 1.5f;
+  shockwaves.push_back(Shockwave(position, max_r, speed, max_r / speed, true));
+}
+
 int Ship::god_mode_time_remaining() const {
   for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
     Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
@@ -404,6 +468,8 @@ Save::Player Ship::capture_state() const {
   p.facing_y        = facing.y();
   p.vel_x           = velocity.x();
   p.vel_y           = velocity.y();
+  p.nova_charge       = nova_charge;
+  p.nova_kill_counter = nova_kill_counter;
 
   // Primary weapons
   list<Weapon::Base*>::const_iterator cprimary = primary;
@@ -439,6 +505,7 @@ Save::Player Ship::capture_state() const {
     else if (dynamic_cast<Weapon::GigaMine*>(*it)) we.kind = Save::WeaponEntry::Kind::GigaMine;
     else if (dynamic_cast<Weapon::Missile*>(*it))  we.kind = Save::WeaponEntry::Kind::Missile;
     else if (dynamic_cast<Weapon::Shield*>(*it))   we.kind = Save::WeaponEntry::Kind::Shield;
+    else if (dynamic_cast<Weapon::Nova*>(*it))     we.kind = Save::WeaponEntry::Kind::Nova;
     else we.kind = Save::WeaponEntry::Kind::Mine; // fallback
     p.secondary_weapons.push_back(we);
   }
@@ -451,6 +518,8 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
   lives           = p.lives;
   kills           = p.kills;
   kills_this_life = p.kills_this_life;
+  nova_charge       = p.nova_charge;
+  nova_kill_counter = p.nova_kill_counter;
   position        = WrappedPoint(p.pos_x, p.pos_y);
   first_life      = true;  // tells respawn() to try the saved position first
 
@@ -489,6 +558,7 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
       case Save::WeaponEntry::Kind::GigaMine: add_giga_mine_ammo(we.ammo); break;
       case Save::WeaponEntry::Kind::Missile:  add_missile_ammo(we.ammo);  break;
       case Save::WeaponEntry::Kind::Shield:   add_shield_ammo(we.ammo);   break;
+      case Save::WeaponEntry::Kind::Nova:     add_nova_ammo(we.ammo);     break;
       default: break;
     }
   }
@@ -632,6 +702,8 @@ void Ship::reset(bool was_killed) {
   temperature = 0.0;
   if(was_killed) {
     kills_this_life = 0;
+    nova_charge = 0;
+    nova_kill_counter = 0;
 
     // Remove all upgraded primary weapons, keeping only the base PEW PEW at the front
     auto it = primary_weapons.begin();
@@ -766,6 +838,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
           score += object->get_value() * multiplier() * (was_invincible ? 5 : 1);
           kills_this_life += 1;
           kills += 1;
+          tally_nova_kill(object->position);
         } else {
           object->invincible = was_invincible;
         }
@@ -841,13 +914,23 @@ void Ship::collide_grid(Grid &grid, int delta) {
     for(auto it = missile_asteroids->begin(); it != missile_asteroids->end(); ++it) {
       Object *obj = *it;
       if(!obj->alive || obj->invincible) continue;
-      float dist = (obj->position - sw.position).magnitude();
-      // Kill objects swept by the ring (between prev_radius and current_radius)
-      if(dist <= sw.radius && dist > sw.prev_radius - obj->radius) {
+      // Nova shockwaves use wrapped distance so the ring reaches across world edges.
+      // Regular (giga-mine) shockwaves use raw distance as before.
+      float dist = sw.is_nova
+        ? obj->position.distance_to(WrappedPoint(sw.position.x(), sw.position.y()))
+        : (obj->position - sw.position).magnitude();
+      // Nova: kill everything inside the expanding circle so children spawned
+      // behind the ring front are caught on the very next frame.
+      // Giga-mine: ring-sweep only (between prev_radius and current_radius).
+      bool in_kill_zone = sw.is_nova
+        ? dist <= sw.radius
+        : (dist <= sw.radius && dist > sw.prev_radius - obj->radius);
+      if(in_kill_zone) {
         if(obj->kill()) {
           score += obj->get_value() * multiplier();
           kills_this_life += 1;
           kills += 1;
+          if(!sw.is_nova) tally_nova_kill(obj->position);  // no feedback from nova's own kills
         }
       }
     }
@@ -966,6 +1049,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
             score += object->get_value() * multiplier();
             kills_this_life += 1;
             kills += 1;
+            tally_nova_kill(object->position);
           }
           explode(bullets[i].position, object->velocity);
           bullets[i] = std::move(bullets.back());
@@ -984,6 +1068,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
           score += object->get_value() * multiplier() * (was_invincible ? 5 : 1);
           kills_this_life += 1;
           kills += 1;
+          tally_nova_kill(object->position);
         }
         explode(bullets[i].position, object->velocity);
         bullets[i] = std::move(bullets.back());
@@ -1013,6 +1098,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
         score += object->get_value() * multiplier();
         kills_this_life += 1;
         kills += 1;
+        tally_nova_kill(object->position);
       }
       detonate(missiles[i].position, missiles[i].velocity, 25);
       if(missile_explode_sound != NULL) {

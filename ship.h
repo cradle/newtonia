@@ -20,10 +20,11 @@ struct Shockwave {
   float max_radius;
   float speed;        // units per ms
   float time_left;   // ms
+  bool  is_nova;     // nova shockwaves: use wrapped distance, no nova-charge feedback
 
-  Shockwave(Point pos, float max_r, float spd, float duration)
+  Shockwave(Point pos, float max_r, float spd, float duration, bool nova = false)
     : position(pos), radius(0.0f), prev_radius(0.0f),
-      max_radius(max_r), speed(spd), time_left(duration) {}
+      max_radius(max_r), speed(spd), time_left(duration), is_nova(nova) {}
 
   bool alive() const { return time_left > 0.0f && radius < max_radius; }
 
@@ -74,6 +75,9 @@ class Ship : public CompositeObject {
     //TODO: make friends with glship
     int score;
     int lives, kills, kills_this_life;
+    int nova_charge;       // charge points accumulated toward next bomb (0–9)
+    int nova_kill_counter; // asteroid kills accumulated toward next charge pickup drop (0–99)
+    std::vector<Point> nova_drops_pending;  // pickup spawn positions; GLGame reads and clears each frame
     //TODO: Make this go away, it's wrong
     float radius_squared;
     bool thrusting, reversing, boosting;
@@ -131,6 +135,10 @@ class Ship : public CompositeObject {
     void add_shield_ammo(int amount);
     void add_god_mode(int duration_ms = 10000);
     int god_mode_time_remaining() const;
+    void add_nova_charge(int n);   // call on every asteroid kill
+    void add_nova_ammo(int amount);
+    void nova_detonate();
+    int nova_ammo() const;
     void set_shield_hum(bool on);
     void set_missile_asteroids(std::list<Object*> *asteroids);
     void set_missile_ships(std::list<Object*> *ships);
@@ -173,6 +181,7 @@ class Ship : public CompositeObject {
 
   private:
     void safe_position(const Grid &grid, bool try_current = false);
+    void tally_nova_kill(const Point &pos);  // call on every asteroid kill; drops pickup every 100
 
     void play_rotating_sound(bool on);
     void update_god_mode_music(int time_remaining);

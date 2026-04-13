@@ -72,6 +72,8 @@ static bool write_player(FILE *f, const Save::Player &p) {
         if (!write_weapon(f, w)) return false;
     if (!wv(f, (int32_t)p.selected_secondary_idx)) return false;
     if (!wv(f, p.respawning))                      return false;
+    if (!wv(f, (int32_t)p.nova_charge))            return false;
+    if (!wv(f, (int32_t)p.nova_kill_counter))      return false;
 
     return true;
 }
@@ -101,6 +103,10 @@ static bool read_player(FILE *f, Save::Player &p) {
     if (!rv(f, si)) return false;
     p.selected_secondary_idx = (int)si;
     if (!rv(f, p.respawning)) return false;
+    int32_t nova_charge = 0, nova_kill_counter = 0;
+    if (!rv(f, nova_charge) || !rv(f, nova_kill_counter)) return false;
+    p.nova_charge       = (int)nova_charge;
+    p.nova_kill_counter = (int)nova_kill_counter;
 
     return true;
 }

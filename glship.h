@@ -27,7 +27,7 @@ public:
   void touch_joystick_input(float nx, float ny);
   bool wasMyController(SDL_JoystickID id);
 
-  void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key, int teleport_key, int help_key, int next_secondary_key);
+  void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key, int teleport_key, int help_key, int next_secondary_key, int toggle_rotate_view_key);
   void set_controller(SDL_GameController *game_controller);
   bool has_controller() const;
   bool is_my_controller_id(SDL_JoystickID id) const;
@@ -46,7 +46,8 @@ public:
   bool rotate_view() const;
   float camera_facing() const;
   float view_angle() const;
-  void snap_camera_to_heading();  // instantly align camera with ship heading (no interpolation)
+  void snap_camera_to_heading();
+  void smooth_camera(int frame_delta);
 
   void collide_grid(Grid &grid, int delta);
   static void collide(GLShip* first, GLShip* second);
@@ -78,7 +79,7 @@ protected:
   Mesh minimap_dot;    // single white vertex at origin, tinted per draw
   Mesh missile_body;   // unit missile triangle (ship colour), per-missile matrix
 
-  int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, next_secondary_key, boost_key, teleport_key, help_key;
+  int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, next_secondary_key, boost_key, teleport_key, help_key, toggle_rotate_view_key;
 
   SDL_GameController *controller = NULL;
   SDL_JoystickID controller_instance_id = -1;
@@ -86,8 +87,12 @@ protected:
   bool l2_shoot_active = false;
   bool left_axis_x_active = false;
   bool left_axis_y_active = false;
+  bool kb_thrust = false;
+  bool kb_reverse = false;
+  bool kb_rotate_left = false;
+  bool kb_rotate_right = false;
 
-  bool rotating_view, show_help;
+  bool rotating_view, show_help, last_input_was_controller;
   float camera_rotation;
   float camera_angle;
 

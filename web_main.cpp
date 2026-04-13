@@ -14,6 +14,7 @@
 #ifdef __EMSCRIPTEN__
 
 #include <emscripten.h>
+#include <emscripten/html5.h>
 #include <SDL.h>
 #include <SDL_mixer.h>
 
@@ -21,6 +22,7 @@
 #include "state_manager.h"
 #include "typer.h"
 #include "asteroid.h"
+#include "preferences.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -214,16 +216,39 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_touch_joystick(float nx, float ny) {
     if (s_game) s_game->touch_joystick(nx, ny);
 }
 
-// Called from the JS menu overlay on touchend.
-// Bypasses SDL keyboard handling (unreliable on mobile) and fires directly.
-extern "C" EMSCRIPTEN_KEEPALIVE void web_tap_start() {
-    if (s_game) s_game->keyboard_up('\r', 0, 0);
+// Called from the JS menu overlay on touchend with normalised [0,1] tap position.
+// touch_tap() handles the Continue/New Game split (when a save exists).
+// keyboard_up('\r') handles the no-save "tap to start" case (touch_tap is a no-op then).
+extern "C" EMSCRIPTEN_KEEPALIVE void web_menu_tap(float nx, float ny) {
+    if (!s_game) return;
+    s_game->touch_tap(nx, ny);
+    s_game->keyboard_up('\r', 0, 0);
 }
 
 // Called from JS after FS.syncfs(true) completes (IDBFS → memory).
 // Initialises the StateManager then releases the main loop gate.
 // EMSCRIPTEN_KEEPALIVE exports this so JS can call Module._web_on_idb_ready().
 extern "C" EMSCRIPTEN_KEEPALIVE void web_on_idb_ready() {
+    // By the time IDBFS sync completes the browser has finished its initial
+    // layout, so we can query the canvas's actual CSS display size.  This is
+    // more accurate than SDL_GetWindowSize() × DPR (which reflects the logical
+    // size passed to SDL_CreateWindow, not the CSS-constrained canvas area).
+    // Getting it right here prevents the 1–2× upscale blur that would otherwise
+    // persist until the first SDL_WINDOWEVENT_RESIZED (e.g. going fullscreen).
+    {
+        double css_w = 0, css_h = 0;
+        if (emscripten_get_element_css_size("#canvas", &css_w, &css_h) == EMSCRIPTEN_RESULT_SUCCESS
+                && css_w >= 1.0 && css_h >= 1.0) {
+            double dpr = emscripten_get_device_pixel_ratio();
+            s_w = (int)(css_w * dpr);
+            s_h = (int)(css_h * dpr);
+            SDL_SetWindowSize(s_window, s_w, s_h);
+        }
+    }
+    // IDBFS is now populated — load preferences before constructing the
+    // StateManager so GLShip constructors can read them (e.g. rotate_view).
+    load_preferences();
+
     s_game = new StateManager();
     s_game->resize(s_w, s_h);
     Typer::resize(s_w, s_h);
@@ -268,13 +293,24 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Scale the initial canvas to physical pixels using devicePixelRatio so
-    // the game renders at full device resolution instead of CSS pixel resolution.
+    // Scale the canvas to physical pixels based on its actual CSS layout size.
+    // SDL_GetWindowSize returns the SDL_CreateWindow size (800×600), not the CSS
+    // layout size determined by the browser — so we use emscripten_get_element_css_size
+    // to read the real canvas dimensions before the game initialises.
     {
         double dpr = emscripten_get_device_pixel_ratio();
-        SDL_GetWindowSize(s_window, &s_w, &s_h);
-        s_w = (int)(s_w * dpr);
-        s_h = (int)(s_h * dpr);
+        double cssW = 0, cssH = 0;
+        emscripten_get_element_css_size("#canvas", &cssW, &cssH);
+        if (cssW > 0 && cssH > 0) {
+            s_w = (int)(cssW * dpr);
+            s_h = (int)(cssH * dpr);
+        } else {
+            // CSS layout not ready yet — fall back to SDL size scaled by DPR.
+            SDL_GetWindowSize(s_window, &s_w, &s_h);
+            s_w = (int)(s_w * dpr);
+            s_h = (int)(s_h * dpr);
+        }
+        emscripten_set_canvas_element_size("#canvas", s_w, s_h);
         SDL_SetWindowSize(s_window, s_w, s_h);
     }
 

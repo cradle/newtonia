@@ -64,7 +64,7 @@ bool BlackHole::is_removable() const {
   return false;  // permanent fixture
 }
 
-bool BlackHole::apply_gravity(Object &other, int delta) const {
+bool BlackHole::apply_gravity(Object &other, int delta, float gravity_scale) const {
   // Use closest wrapped copy of the black hole to handle world-edge wrap-around.
   Point bh_pos = position.closest_to(other.position);
   Point diff = bh_pos - other.position;
@@ -86,7 +86,7 @@ bool BlackHole::apply_gravity(Object &other, int delta) const {
   const float softening = radius * 2.0f;  // 80 units
   float soft_dist_sq = dist_sq < softening * softening ? softening * softening : dist_sq;
   float accel = gravitational_strength / soft_dist_sq * (float)delta;
-  Point force = diff.normalized() * accel;
+  Point force = diff.normalized() * accel * gravity_scale;
   other.velocity += force;
 
   return false;

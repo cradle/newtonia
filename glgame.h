@@ -19,6 +19,7 @@
 #include "missile_pickup.h"
 #include "shield_pickup.h"
 #include "god_mode_pickup.h"
+#include "nova_charge_pickup.h"
 #include <SDL.h>
 #include <list>
 
@@ -72,12 +73,13 @@ private:
   void draw_perspective(GLShip *glship) const;
   void setup_viewport(bool primary) const;
 
-  static const int step_size = 16;
+  static const int step_size = 8;
 
   Point world;
 
   int generation;
   int last_tick, time_until_next_step, num_frames, current_time, time_between_steps;
+  Uint32 last_draw_time_;
   int time_until_next_generation;
   bool running, level_cleared, friendly_fire, debug_grid, score_saved;
   bool auto_paused = false;
