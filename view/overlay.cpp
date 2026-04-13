@@ -417,4 +417,11 @@ void Overlay::debug_info(const GLGame *glgame, const GLShip *glship) {
 
   Typer::draw(x, y,      is_game_mode_active() ? "game mode: on" : "game mode: off", sz);
   Typer::draw(x, y - dy, fps_buf, sz);
+#ifdef STEAM_BUILD
+  std::string branch = get_steam_branch();
+  char branch_buf[64];
+  snprintf(branch_buf, sizeof(branch_buf), "branch: %s",
+           branch.empty() ? "default" : branch.c_str());
+  Typer::draw(x, y - dy * 2, branch_buf, sz);
+#endif
 }
