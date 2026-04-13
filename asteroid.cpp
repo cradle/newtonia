@@ -215,10 +215,9 @@ void Asteroid::restore_state(const Save::Asteroid &s) {
 
 void Asteroid::step(int delta) {
   CompositeObject::step(delta);
-  float speed_limit = (float)max_speed / radius;
   float spd = velocity.magnitude();
-  if (spd > speed_limit)
-    velocity = velocity * (speed_limit / spd);
+  if (spd > (float)max_speed)
+    velocity = velocity * ((float)max_speed / spd);
   if(armoured) {
     armour_angle += rotation_speed * delta * (float)M_PI / 180.0f;
   }
