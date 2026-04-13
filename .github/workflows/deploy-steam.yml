@@ -31,13 +31,12 @@ jobs:
             mingw-w64-x86_64-SDL2
             mingw-w64-x86_64-SDL2_mixer
 
-      - name: Extract Steamworks SDK
+      - name: Download Steamworks SDK
         shell: pwsh
         env:
-          STEAMWORKS_SDK_BASE64: ${{ secrets.STEAMWORKS_SDK_BASE64 }}
+          GH_TOKEN: ${{ secrets.STEAM_SDK_TOKEN }}
         run: |
-          $bytes = [System.Convert]::FromBase64String($env:STEAMWORKS_SDK_BASE64)
-          [System.IO.File]::WriteAllBytes('steamworks_sdk.zip', $bytes)
+          gh release download sdk-latest --repo cradle/assets --pattern steamworks_sdk.zip
           Expand-Archive -Path steamworks_sdk.zip -DestinationPath .
 
       - name: Generate MinGW import library for steam_api64
@@ -132,11 +131,11 @@ jobs:
           cp include/SDL_mixer.h /opt/homebrew/include/SDL2/SDL_mixer.h
           cp include/SDL_mixer.h /usr/local/include/SDL2/SDL_mixer.h
 
-      - name: Extract Steamworks SDK
+      - name: Download Steamworks SDK
         env:
-          STEAMWORKS_SDK_BASE64: ${{ secrets.STEAMWORKS_SDK_BASE64 }}
+          GH_TOKEN: ${{ secrets.STEAM_SDK_TOKEN }}
         run: |
-          printf '%s' "$STEAMWORKS_SDK_BASE64" | base64 -d > steamworks_sdk.zip
+          gh release download sdk-latest --repo cradle/assets --pattern steamworks_sdk.zip
           unzip -q steamworks_sdk.zip
           # Set the install name so the linker embeds the correct Frameworks path
           install_name_tool -id \
@@ -329,11 +328,11 @@ jobs:
             libpulse-dev \
             unzip
 
-      - name: Extract Steamworks SDK
+      - name: Download Steamworks SDK
         env:
-          STEAMWORKS_SDK_BASE64: ${{ secrets.STEAMWORKS_SDK_BASE64 }}
+          GH_TOKEN: ${{ secrets.STEAM_SDK_TOKEN }}
         run: |
-          printf '%s' "$STEAMWORKS_SDK_BASE64" | base64 -d > steamworks_sdk.zip
+          gh release download sdk-latest --repo cradle/assets --pattern steamworks_sdk.zip
           unzip -q steamworks_sdk.zip
 
       - name: Build SDL2 from source
