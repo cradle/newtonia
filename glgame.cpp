@@ -592,14 +592,14 @@ void GLGame::tick(int delta) {
     for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
       for(o = players->begin(); o != players->end(); o++) {
         if(!(*o)->ship->is_alive()) continue;
-        float scale = (*o)->ship->invincible ? 0.5f : 1.0f;
+        float scale = (*o)->ship->god_mode_time_remaining() > 0 ? 0.5f : 1.0f;
         if((*bhi)->apply_gravity(*(*o)->ship, step_size, scale)) {
           (*o)->ship->kill();
         }
       }
       for(o = enemies->begin(); o != enemies->end(); o++) {
         if(!(*o)->ship->is_alive()) continue;
-        float scale = (*o)->ship->invincible ? 0.5f : 1.0f;
+        float scale = (*o)->ship->god_mode_time_remaining() > 0 ? 0.5f : 1.0f;
         if((*bhi)->apply_gravity(*(*o)->ship, step_size, scale)) {
           (*o)->ship->kill();
         }
