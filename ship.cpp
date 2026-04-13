@@ -702,7 +702,8 @@ void Ship::reset(bool was_killed) {
   temperature = 0.0;
   if(was_killed) {
     kills_this_life = 0;
-    // nova_charge and nova_kill_counter intentionally NOT reset here — persist through death
+    nova_charge = 0;
+    nova_kill_counter = 0;
 
     // Remove all upgraded primary weapons, keeping only the base PEW PEW at the front
     auto it = primary_weapons.begin();
