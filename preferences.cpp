@@ -124,6 +124,9 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "p1_keyboard_sensitivity") == 0) {
         float v = (float)atof(val);
         if (v >= 0.1f && v <= 5.0f) g_prefs.p1_keys.keyboard_sensitivity = v;
+    } else if (strcmp(key, "p1_camera_smoothing") == 0) {
+        float v = (float)atof(val);
+        if (v >= 0.0f && v <= 0.1f) g_prefs.p1_keys.camera_smoothing = v;
 
     // Player 2 keybinds
     } else if (strcmp(key, "p2_left")           == 0) { g_prefs.p2_keys.left           = ini_to_key(val);
@@ -141,6 +144,9 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "p2_keyboard_sensitivity") == 0) {
         float v = (float)atof(val);
         if (v >= 0.1f && v <= 5.0f) g_prefs.p2_keys.keyboard_sensitivity = v;
+    } else if (strcmp(key, "p2_camera_smoothing") == 0) {
+        float v = (float)atof(val);
+        if (v >= 0.0f && v <= 0.1f) g_prefs.p2_keys.camera_smoothing = v;
 
     // General keybinds
     } else if (strcmp(key, "general_pause")                == 0) { g_prefs.general_keys.pause                = ini_to_key(val);
@@ -211,6 +217,7 @@ void save_preferences() {
     WRITE_KEY("p1_help",               g_prefs.p1_keys.help);
     WRITE_KEY("p1_toggle_rotate_view", g_prefs.p1_keys.toggle_rotate_view);
     fprintf(f, "p1_keyboard_sensitivity=%.2f\n", g_prefs.p1_keys.keyboard_sensitivity);
+    fprintf(f, "p1_camera_smoothing=%.4f\n",     g_prefs.p1_keys.camera_smoothing);
 
     // Player 2 keybinds
     WRITE_KEY("p2_left",           g_prefs.p2_keys.left);
@@ -226,6 +233,7 @@ void save_preferences() {
     WRITE_KEY("p2_help",               g_prefs.p2_keys.help);
     WRITE_KEY("p2_toggle_rotate_view", g_prefs.p2_keys.toggle_rotate_view);
     fprintf(f, "p2_keyboard_sensitivity=%.2f\n", g_prefs.p2_keys.keyboard_sensitivity);
+    fprintf(f, "p2_camera_smoothing=%.4f\n",     g_prefs.p2_keys.camera_smoothing);
 
     // General keybinds
     WRITE_KEY("general_pause",                g_prefs.general_keys.pause);

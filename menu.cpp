@@ -13,12 +13,27 @@ static const float SENSITIVITY_VALUES[] = {0.5f, 0.75f, 1.0f, 1.5f, 2.0f};
 static const char* SENSITIVITY_LABELS[] = {"SLOW", "LOW", "NORMAL", "HIGH", "MAX"};
 static const int NUM_SENSITIVITY = 5;
 
+static const float SMOOTHING_VALUES[] = {0.0f, 0.002f, 0.004f, 0.006f, 0.008f, 0.010f};
+static const char* SMOOTHING_LABELS[] = {"OFF", "LOW", "NORMAL", "HIGH", "HIGHER", "MAX"};
+static const int NUM_SMOOTHING = 6;
+
 static int sensitivity_index_for(float value) {
   int best = 2;
   float best_dist = 1e6f;
   for (int i = 0; i < NUM_SENSITIVITY; i++) {
     float d = value > SENSITIVITY_VALUES[i] ? value - SENSITIVITY_VALUES[i]
                                              : SENSITIVITY_VALUES[i] - value;
+    if (d < best_dist) { best_dist = d; best = i; }
+  }
+  return best;
+}
+
+static int smoothing_index_for(float value) {
+  int best = 2;
+  float best_dist = 1e6f;
+  for (int i = 0; i < NUM_SMOOTHING; i++) {
+    float d = value > SMOOTHING_VALUES[i] ? value - SMOOTHING_VALUES[i]
+                                           : SMOOTHING_VALUES[i] - value;
     if (d < best_dist) { best_dist = d; best = i; }
   }
   return best;
@@ -37,6 +52,8 @@ Menu::Menu() :
   starfield(GLStarfield(Point(default_world_width,default_world_height))) {
   sensitivity_index_[0] = sensitivity_index_for(g_prefs.p1_keys.keyboard_sensitivity);
   sensitivity_index_[1] = sensitivity_index_for(g_prefs.p2_keys.keyboard_sensitivity);
+  smoothing_index_[0]   = smoothing_index_for(g_prefs.p1_keys.camera_smoothing);
+  smoothing_index_[1]   = smoothing_index_for(g_prefs.p2_keys.camera_smoothing);
 #ifdef __EMSCRIPTEN__
   EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
 #endif
@@ -87,24 +104,36 @@ void Menu::draw() {
   if (options_mode_) {
     Typer::draw_centered(0, 340, "OPTIONS", 36);
 
-    static const int step_x[]  = {-200, -100, 0, 100, 200};
-    static const char* player_labels[] = {"PLAYER 1", "PLAYER 2"};
-    static const int row_y[]   = { 180,  -70};  // label y for each player row
-    static const int steps_y[] = { 100, -150};  // step indicators y
-    static const int name_y[]  = {  40, -210};  // level name y
+    static const int step_x5[] = {-200, -100, 0, 100, 200};
+    static const int step_x6[] = {-250, -150, -50, 50, 150, 250};
 
-    for (int p = 0; p < 2; p++) {
-      std::string heading = std::string(active_player_ == p ? "> " : "  ")
-                            + player_labels[p] + "  SENSITIVITY";
-      Typer::draw_centered(0, row_y[p], heading.c_str(), 18);
+    // 4 rows: 0=P1 sens, 1=P1 smooth, 2=P2 sens, 3=P2 smooth
+    static const int label_y[] = { 230,  60, -110, -280};
+    static const int steps_y[] = { 165,  -5, -175, -345};
+    static const int name_y[]  = { 120, -50, -220, -390};
+    static const char* row_names[] = {
+      "P1  SENSITIVITY", "P1  SMOOTHING",
+      "P2  SENSITIVITY", "P2  SMOOTHING"
+    };
 
-      for (int i = 0; i < NUM_SENSITIVITY; i++) {
-        std::string label = (i == sensitivity_index_[p])
+    for (int row = 0; row < 4; row++) {
+      int p          = row / 2;
+      bool is_smooth = (row % 2 == 1);
+      int  num_steps = is_smooth ? NUM_SMOOTHING    : NUM_SENSITIVITY;
+      const int *sx  = is_smooth ? step_x6          : step_x5;
+      int  cur_idx   = is_smooth ? smoothing_index_[p] : sensitivity_index_[p];
+      const char* const *lbl = is_smooth ? SMOOTHING_LABELS : SENSITIVITY_LABELS;
+
+      std::string heading = std::string(active_row_ == row ? "> " : "  ") + row_names[row];
+      Typer::draw_centered(0, label_y[row], heading.c_str(), 16);
+
+      for (int i = 0; i < num_steps; i++) {
+        std::string step = (i == cur_idx)
           ? "[" + std::to_string(i + 1) + "]"
           :       std::to_string(i + 1);
-        Typer::draw_centered(step_x[i], steps_y[p], label.c_str(), 22);
+        Typer::draw_centered(sx[i], steps_y[row], step.c_str(), 20);
       }
-      Typer::draw_centered(0, name_y[p], SENSITIVITY_LABELS[sensitivity_index_[p]], 20);
+      Typer::draw_centered(0, name_y[row], lbl[cur_idx], 17);
     }
   } else {
     Typer::draw_centered(0, 320, "Newtonia", 80);
@@ -184,13 +213,13 @@ void Menu::controller(SDL_Event event) {
   if (options_mode_) {
     if (event.type == SDL_CONTROLLERBUTTONDOWN) {
       if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
-        active_player_ = 0;
+        if (active_row_ > 0) active_row_--;
       } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
-        active_player_ = 1;
+        if (active_row_ < 3) active_row_++;
       } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_LEFT) {
-        if (sensitivity_index_[active_player_] > 0) sensitivity_index_[active_player_]--;
+        adjust_active_row(-1);
       } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_RIGHT) {
-        if (sensitivity_index_[active_player_] < NUM_SENSITIVITY - 1) sensitivity_index_[active_player_]++;
+        adjust_active_row(1);
       } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A ||
                  event.cbutton.button == SDL_CONTROLLER_BUTTON_B ||
                  event.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
@@ -201,17 +230,15 @@ void Menu::controller(SDL_Event event) {
       if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
         bool up   = event.caxis.value < -8000;
         bool down = event.caxis.value >  8000;
-        if (up   && !left_stick_up_active)   active_player_ = 0;
-        if (down && !left_stick_down_active)  active_player_ = 1;
+        if (up   && !left_stick_up_active   && active_row_ > 0) active_row_--;
+        if (down && !left_stick_down_active && active_row_ < 3) active_row_++;
         left_stick_up_active   = up;
         left_stick_down_active = down;
       } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) {
         bool l = event.caxis.value < -8000;
         bool r = event.caxis.value >  8000;
-        if (l && !left_stick_left_active && sensitivity_index_[active_player_] > 0)
-          sensitivity_index_[active_player_]--;
-        if (r && !left_stick_right_active && sensitivity_index_[active_player_] < NUM_SENSITIVITY - 1)
-          sensitivity_index_[active_player_]++;
+        if (l && !left_stick_left_active)  adjust_active_row(-1);
+        if (r && !left_stick_right_active) adjust_active_row(1);
         left_stick_left_active  = l;
         left_stick_right_active = r;
       }
@@ -271,13 +298,13 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
   // Options screen: platform-agnostic
   if (options_mode_) {
     if (key == 'w' || key == 'W') {
-      active_player_ = 0;
+      if (active_row_ > 0) active_row_--;
     } else if (key == 's' || key == 'S') {
-      active_player_ = 1;
+      if (active_row_ < 3) active_row_++;
     } else if (key == 'a' || key == 'A') {
-      if (sensitivity_index_[active_player_] > 0) sensitivity_index_[active_player_]--;
+      adjust_active_row(-1);
     } else if (key == 'd' || key == 'D') {
-      if (sensitivity_index_[active_player_] < NUM_SENSITIVITY - 1) sensitivity_index_[active_player_]++;
+      adjust_active_row(1);
     } else if (key == 27 || key == ' ' || key == '\r' || key == '\n') {
       close_options();
     }
@@ -360,9 +387,27 @@ void Menu::open_options() {
   options_mode_ = true;
 }
 
+void Menu::adjust_active_row(int delta) {
+  int p          = active_row_ / 2;
+  bool is_smooth = (active_row_ % 2 == 1);
+  if (is_smooth) {
+    int &idx = smoothing_index_[p];
+    idx += delta;
+    if (idx < 0)              idx = 0;
+    if (idx >= NUM_SMOOTHING) idx = NUM_SMOOTHING - 1;
+  } else {
+    int &idx = sensitivity_index_[p];
+    idx += delta;
+    if (idx < 0)               idx = 0;
+    if (idx >= NUM_SENSITIVITY) idx = NUM_SENSITIVITY - 1;
+  }
+}
+
 void Menu::close_options() {
   g_prefs.p1_keys.keyboard_sensitivity = SENSITIVITY_VALUES[sensitivity_index_[0]];
   g_prefs.p2_keys.keyboard_sensitivity = SENSITIVITY_VALUES[sensitivity_index_[1]];
+  g_prefs.p1_keys.camera_smoothing     = SMOOTHING_VALUES[smoothing_index_[0]];
+  g_prefs.p2_keys.camera_smoothing     = SMOOTHING_VALUES[smoothing_index_[1]];
   save_preferences();
   options_mode_ = false;
 }

@@ -22,6 +22,7 @@ struct PlayerKeys {
     int help               = 129; // F1  (128 + GLUT_KEY_F1)
     int toggle_rotate_view = 'v'; // P1 default; P2 default is ';' (set in ctor)
     float keyboard_sensitivity = 1.0f;  // rotation speed multiplier
+    float camera_smoothing     = 0.004f; // camera follow rate (0 = instant snap)
 };
 
 struct GeneralKeys {

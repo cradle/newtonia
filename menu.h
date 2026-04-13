@@ -23,6 +23,7 @@ private:
   int  max_menu_items() const;
   void open_options();
   void close_options();
+  void adjust_active_row(int delta);
 
   int currentTime;
   int high_score;
@@ -30,7 +31,8 @@ private:
   int  menu_selection = 0;
   bool options_mode_ = false;
   int  sensitivity_index_[2] = {2, 2};  // per-player index into SENSITIVITY_VALUES
-  int  active_player_ = 0;              // which player row A/D currently adjusts
+  int  smoothing_index_[2]   = {2, 2};  // per-player index into SMOOTHING_VALUES
+  int  active_row_ = 0;                 // 0=P1 sens, 1=P1 smooth, 2=P2 sens, 3=P2 smooth
   WrappedPoint viewpoint;
   GLStarfield starfield;
   static const int default_world_width, default_world_height;
