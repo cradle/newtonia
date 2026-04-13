@@ -84,25 +84,19 @@ void Menu::draw() {
   mat4_ortho(ortho, -window.x(), window.x(), -window.y(), window.y(), -1.0f, 1.0f);
   gles2_set_vp(ortho);
 
-  Typer::draw_centered(0, 320, "Newtonia", 80);
-  if (high_score > 0 && !options_mode_) {
-    Typer::draw_centered(0, -215, "HIGH SCORE", 14);
-    Typer::draw_centered(0, -255, high_score, 18);
-  }
-
   if (options_mode_) {
-    Typer::draw_centered(0, 60, "OPTIONS", 30);
+    Typer::draw_centered(0, 340, "OPTIONS", 36);
 
-    static const int step_x[] = {-200, -100, 0, 100, 200};
+    static const int step_x[]  = {-200, -100, 0, 100, 200};
     static const char* player_labels[] = {"PLAYER 1", "PLAYER 2"};
-    static const int row_y[]   = {-10, -145};  // label y for each player row
-    static const int steps_y[] = {-60, -195};  // step indicators y
-    static const int name_y[]  = {-105, -240}; // level name y
+    static const int row_y[]   = { 180,  -70};  // label y for each player row
+    static const int steps_y[] = { 100, -150};  // step indicators y
+    static const int name_y[]  = {  40, -210};  // level name y
 
     for (int p = 0; p < 2; p++) {
       std::string heading = std::string(active_player_ == p ? "> " : "  ")
                             + player_labels[p] + "  SENSITIVITY";
-      Typer::draw_centered(0, row_y[p], heading.c_str(), 16);
+      Typer::draw_centered(0, row_y[p], heading.c_str(), 18);
 
       for (int i = 0; i < NUM_SENSITIVITY; i++) {
         std::string label = (i == sensitivity_index_[p])
@@ -110,33 +104,43 @@ void Menu::draw() {
           :       std::to_string(i + 1);
         Typer::draw_centered(step_x[i], steps_y[p], label.c_str(), 22);
       }
-      Typer::draw_centered(0, name_y[p], SENSITIVITY_LABELS[sensitivity_index_[p]], 18);
-    }
-  } else if (has_save_) {
-    if (is_touch_mode()) {
-      // Side-by-side layout for touch: full left/right halves are tap targets
-      Typer::draw_centered(-Typer::scaled_window_width / 2, -50, "CONTINUE", 26);
-      Typer::draw_centered( Typer::scaled_window_width / 2, -50, "NEW GAME", 26);
-    } else {
-      // Stacked layout for keyboard/controller with selection indicator
-      std::string cont    = std::string(menu_selection == 0 ? "> " : "  ") + "CONTINUE";
-      std::string newgame = std::string(menu_selection == 1 ? "> " : "  ") + "NEW GAME";
-      std::string options = std::string(menu_selection == 2 ? "> " : "  ") + "OPTIONS";
-      Typer::draw_centered(0,  80, cont.c_str(),    22);
-      Typer::draw_centered(0,  -10, newgame.c_str(), 22);
-      Typer::draw_centered(0, -100, options.c_str(), 22);
+      Typer::draw_centered(0, name_y[p], SENSITIVITY_LABELS[sensitivity_index_[p]], 20);
     }
   } else {
-    if (is_touch_mode()) {
-      if ((currentTime/1400) % 2) {
-        Typer::draw_centered(0, -50, "tap to start", 18);
+    Typer::draw_centered(0, 320, "Newtonia", 80);
+    if (high_score > 0) {
+      Typer::draw_centered(0, -215, "HIGH SCORE", 14);
+      Typer::draw_centered(0, -255, high_score, 18);
+    }
+  }
+
+  if (!options_mode_) {
+    if (has_save_) {
+      if (is_touch_mode()) {
+        // Side-by-side layout for touch: full left/right halves are tap targets
+        Typer::draw_centered(-Typer::scaled_window_width / 2, -50, "CONTINUE", 26);
+        Typer::draw_centered( Typer::scaled_window_width / 2, -50, "NEW GAME", 26);
+      } else {
+        // Stacked layout for keyboard/controller with selection indicator
+        std::string cont    = std::string(menu_selection == 0 ? "> " : "  ") + "CONTINUE";
+        std::string newgame = std::string(menu_selection == 1 ? "> " : "  ") + "NEW GAME";
+        std::string options = std::string(menu_selection == 2 ? "> " : "  ") + "OPTIONS";
+        Typer::draw_centered(0,   80, cont.c_str(),    22);
+        Typer::draw_centered(0,  -10, newgame.c_str(), 22);
+        Typer::draw_centered(0, -100, options.c_str(), 22);
       }
     } else {
-      // Keyboard/controller: show NEW GAME and OPTIONS
-      std::string newgame = std::string(menu_selection == 0 ? "> " : "  ") + "NEW GAME";
-      std::string options = std::string(menu_selection == 1 ? "> " : "  ") + "OPTIONS";
-      Typer::draw_centered(0,  -10, newgame.c_str(), 22);
-      Typer::draw_centered(0, -100, options.c_str(), 22);
+      if (is_touch_mode()) {
+        if ((currentTime/1400) % 2) {
+          Typer::draw_centered(0, -50, "tap to start", 18);
+        }
+      } else {
+        // Keyboard/controller: show NEW GAME and OPTIONS
+        std::string newgame = std::string(menu_selection == 0 ? "> " : "  ") + "NEW GAME";
+        std::string options = std::string(menu_selection == 1 ? "> " : "  ") + "OPTIONS";
+        Typer::draw_centered(0,  -10, newgame.c_str(), 22);
+        Typer::draw_centered(0, -100, options.c_str(), 22);
+      }
     }
   }
   Typer::draw_centered(0, -420, "© 2008-2026 METONYMOUS", 13, currentTime);
