@@ -21,6 +21,7 @@ struct PlayerKeys {
     int teleport           = 't';
     int help               = 129; // F1  (128 + GLUT_KEY_F1)
     int toggle_rotate_view = 'v'; // P1 default; P2 default is ';' (set in ctor)
+    float keyboard_sensitivity = 1.0f;  // rotation speed multiplier
 };
 
 struct GeneralKeys {
@@ -42,8 +43,6 @@ struct Preferences {
     bool friendly_fire  = true;   // players damage each other
     int  window_width   = 800;    // last windowed resolution (desktop only)
     int  window_height  = 600;
-    float keyboard_sensitivity = 1.0f;  // rotation speed multiplier for keyboard input
-
     PlayerKeys  p1_keys;          // player 1 keyboard bindings (p1 defaults)
     PlayerKeys  p2_keys;          // player 2 keyboard bindings (p2 defaults set in ctor)
     GeneralKeys general_keys;

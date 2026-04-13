@@ -25,7 +25,6 @@ using namespace std;
 
 GLShip::GLShip(const Grid &grid, bool has_friction) : show_help(false), last_input_was_controller(false) {
   //TODO: load config from file (colours too)
-  keyboard_sensitivity = g_prefs.keyboard_sensitivity;
   ship = new Ship(grid, has_friction);
   trails.push_back(new GLTrail(this, 0.01, Point(0,0), 0.3,0.0, GLTrail::THRUSTING, 2500.0));
   trails.push_back(new GLTrail(this, 0.5,Point(-4,17),-0.1, 0.9, GLTrail::REVERSING | GLTrail::RIGHT, 250.0));

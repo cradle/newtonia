@@ -108,10 +108,6 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "window_height") == 0) {
         int h = atoi(val);
         if (h > 0) g_prefs.window_height = h;
-    } else if (strcmp(key, "keyboard_sensitivity") == 0) {
-        float v = (float)atof(val);
-        if (v >= 0.1f && v <= 5.0f) g_prefs.keyboard_sensitivity = v;
-
     // Player 1 keybinds
     } else if (strcmp(key, "p1_left")           == 0) { g_prefs.p1_keys.left           = ini_to_key(val);
     } else if (strcmp(key, "p1_right")          == 0) { g_prefs.p1_keys.right          = ini_to_key(val);
@@ -124,7 +120,10 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "p1_boost")          == 0) { g_prefs.p1_keys.boost          = ini_to_key(val);
     } else if (strcmp(key, "p1_teleport")       == 0) { g_prefs.p1_keys.teleport       = ini_to_key(val);
     } else if (strcmp(key, "p1_help")           == 0) { g_prefs.p1_keys.help           = ini_to_key(val);
-    } else if (strcmp(key, "p1_toggle_rotate_view") == 0) { g_prefs.p1_keys.toggle_rotate_view = ini_to_key(val);
+    } else if (strcmp(key, "p1_toggle_rotate_view")  == 0) { g_prefs.p1_keys.toggle_rotate_view = ini_to_key(val);
+    } else if (strcmp(key, "p1_keyboard_sensitivity") == 0) {
+        float v = (float)atof(val);
+        if (v >= 0.1f && v <= 5.0f) g_prefs.p1_keys.keyboard_sensitivity = v;
 
     // Player 2 keybinds
     } else if (strcmp(key, "p2_left")           == 0) { g_prefs.p2_keys.left           = ini_to_key(val);
@@ -138,7 +137,10 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "p2_boost")          == 0) { g_prefs.p2_keys.boost          = ini_to_key(val);
     } else if (strcmp(key, "p2_teleport")       == 0) { g_prefs.p2_keys.teleport       = ini_to_key(val);
     } else if (strcmp(key, "p2_help")           == 0) { g_prefs.p2_keys.help           = ini_to_key(val);
-    } else if (strcmp(key, "p2_toggle_rotate_view") == 0) { g_prefs.p2_keys.toggle_rotate_view = ini_to_key(val);
+    } else if (strcmp(key, "p2_toggle_rotate_view")  == 0) { g_prefs.p2_keys.toggle_rotate_view = ini_to_key(val);
+    } else if (strcmp(key, "p2_keyboard_sensitivity") == 0) {
+        float v = (float)atof(val);
+        if (v >= 0.1f && v <= 5.0f) g_prefs.p2_keys.keyboard_sensitivity = v;
 
     // General keybinds
     } else if (strcmp(key, "general_pause")                == 0) { g_prefs.general_keys.pause                = ini_to_key(val);
@@ -192,7 +194,6 @@ void save_preferences() {
     fprintf(f, "friendly_fire=%d\n",           g_prefs.friendly_fire ? 1 : 0);
     fprintf(f, "window_width=%d\n",            g_prefs.window_width);
     fprintf(f, "window_height=%d\n",           g_prefs.window_height);
-    fprintf(f, "keyboard_sensitivity=%.2f\n",  g_prefs.keyboard_sensitivity);
 
 #define WRITE_KEY(name, val) fprintf(f, name "=%s\n", key_to_ini(val).c_str())
 
@@ -209,6 +210,7 @@ void save_preferences() {
     WRITE_KEY("p1_teleport",       g_prefs.p1_keys.teleport);
     WRITE_KEY("p1_help",               g_prefs.p1_keys.help);
     WRITE_KEY("p1_toggle_rotate_view", g_prefs.p1_keys.toggle_rotate_view);
+    fprintf(f, "p1_keyboard_sensitivity=%.2f\n", g_prefs.p1_keys.keyboard_sensitivity);
 
     // Player 2 keybinds
     WRITE_KEY("p2_left",           g_prefs.p2_keys.left);
@@ -223,6 +225,7 @@ void save_preferences() {
     WRITE_KEY("p2_teleport",       g_prefs.p2_keys.teleport);
     WRITE_KEY("p2_help",               g_prefs.p2_keys.help);
     WRITE_KEY("p2_toggle_rotate_view", g_prefs.p2_keys.toggle_rotate_view);
+    fprintf(f, "p2_keyboard_sensitivity=%.2f\n", g_prefs.p2_keys.keyboard_sensitivity);
 
     // General keybinds
     WRITE_KEY("general_pause",                g_prefs.general_keys.pause);

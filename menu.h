@@ -29,7 +29,8 @@ private:
   bool has_save_ = false;
   int  menu_selection = 0;
   bool options_mode_ = false;
-  int  sensitivity_index_ = 2;  // index into SENSITIVITY_VALUES; 2 = NORMAL (1.0x)
+  int  sensitivity_index_[2] = {2, 2};  // per-player index into SENSITIVITY_VALUES
+  int  active_player_ = 0;              // which player row A/D currently adjusts
   WrappedPoint viewpoint;
   GLStarfield starfield;
   static const int default_world_width, default_world_height;

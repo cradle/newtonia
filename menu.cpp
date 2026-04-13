@@ -35,7 +35,8 @@ Menu::Menu() :
   menu_selection(0),
   viewpoint(Point(0,default_world_height/2)),
   starfield(GLStarfield(Point(default_world_width,default_world_height))) {
-  sensitivity_index_ = sensitivity_index_for(g_prefs.keyboard_sensitivity);
+  sensitivity_index_[0] = sensitivity_index_for(g_prefs.p1_keys.keyboard_sensitivity);
+  sensitivity_index_[1] = sensitivity_index_for(g_prefs.p2_keys.keyboard_sensitivity);
 #ifdef __EMSCRIPTEN__
   EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
 #endif
@@ -90,19 +91,27 @@ void Menu::draw() {
   }
 
   if (options_mode_) {
-    Typer::draw_centered(0,   60, "OPTIONS", 30);
-    Typer::draw_centered(0,  -40, "KEYBOARD SENSITIVITY", 18);
+    Typer::draw_centered(0, 60, "OPTIONS", 30);
 
-    // Numbered step indicators: 1  2  [3]  4  5
     static const int step_x[] = {-200, -100, 0, 100, 200};
-    for (int i = 0; i < NUM_SENSITIVITY; i++) {
-      std::string label = (i == sensitivity_index_)
-        ? "[" + std::to_string(i + 1) + "]"
-        :       std::to_string(i + 1);
-      Typer::draw_centered(step_x[i], -115, label.c_str(), 22);
+    static const char* player_labels[] = {"PLAYER 1", "PLAYER 2"};
+    static const int row_y[]   = {-10, -145};  // label y for each player row
+    static const int steps_y[] = {-60, -195};  // step indicators y
+    static const int name_y[]  = {-105, -240}; // level name y
+
+    for (int p = 0; p < 2; p++) {
+      std::string heading = std::string(active_player_ == p ? "> " : "  ")
+                            + player_labels[p] + "  SENSITIVITY";
+      Typer::draw_centered(0, row_y[p], heading.c_str(), 16);
+
+      for (int i = 0; i < NUM_SENSITIVITY; i++) {
+        std::string label = (i == sensitivity_index_[p])
+          ? "[" + std::to_string(i + 1) + "]"
+          :       std::to_string(i + 1);
+        Typer::draw_centered(step_x[i], steps_y[p], label.c_str(), 22);
+      }
+      Typer::draw_centered(0, name_y[p], SENSITIVITY_LABELS[sensitivity_index_[p]], 18);
     }
-    // Current level name
-    Typer::draw_centered(0, -185, SENSITIVITY_LABELS[sensitivity_index_], 20);
   } else if (has_save_) {
     if (is_touch_mode()) {
       // Side-by-side layout for touch: full left/right halves are tap targets
@@ -170,10 +179,14 @@ void Menu::tick(int delta) {
 void Menu::controller(SDL_Event event) {
   if (options_mode_) {
     if (event.type == SDL_CONTROLLERBUTTONDOWN) {
-      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_LEFT) {
-        if (sensitivity_index_ > 0) sensitivity_index_--;
+      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
+        active_player_ = 0;
+      } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
+        active_player_ = 1;
+      } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_LEFT) {
+        if (sensitivity_index_[active_player_] > 0) sensitivity_index_[active_player_]--;
       } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_RIGHT) {
-        if (sensitivity_index_ < NUM_SENSITIVITY - 1) sensitivity_index_++;
+        if (sensitivity_index_[active_player_] < NUM_SENSITIVITY - 1) sensitivity_index_[active_player_]++;
       } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A ||
                  event.cbutton.button == SDL_CONTROLLER_BUTTON_B ||
                  event.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
@@ -181,11 +194,20 @@ void Menu::controller(SDL_Event event) {
         close_options();
       }
     } else if (event.type == SDL_CONTROLLERAXISMOTION) {
-      if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) {
+      if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
+        bool up   = event.caxis.value < -8000;
+        bool down = event.caxis.value >  8000;
+        if (up   && !left_stick_up_active)   active_player_ = 0;
+        if (down && !left_stick_down_active)  active_player_ = 1;
+        left_stick_up_active   = up;
+        left_stick_down_active = down;
+      } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) {
         bool l = event.caxis.value < -8000;
         bool r = event.caxis.value >  8000;
-        if (l && !left_stick_left_active && sensitivity_index_ > 0) sensitivity_index_--;
-        if (r && !left_stick_right_active && sensitivity_index_ < NUM_SENSITIVITY - 1) sensitivity_index_++;
+        if (l && !left_stick_left_active && sensitivity_index_[active_player_] > 0)
+          sensitivity_index_[active_player_]--;
+        if (r && !left_stick_right_active && sensitivity_index_[active_player_] < NUM_SENSITIVITY - 1)
+          sensitivity_index_[active_player_]++;
         left_stick_left_active  = l;
         left_stick_right_active = r;
       }
@@ -244,10 +266,14 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 void Menu::keyboard_up(unsigned char key, int x, int y) {
   // Options screen: platform-agnostic
   if (options_mode_) {
-    if (key == 'a' || key == 'A') {
-      if (sensitivity_index_ > 0) sensitivity_index_--;
+    if (key == 'w' || key == 'W') {
+      active_player_ = 0;
+    } else if (key == 's' || key == 'S') {
+      active_player_ = 1;
+    } else if (key == 'a' || key == 'A') {
+      if (sensitivity_index_[active_player_] > 0) sensitivity_index_[active_player_]--;
     } else if (key == 'd' || key == 'D') {
-      if (sensitivity_index_ < NUM_SENSITIVITY - 1) sensitivity_index_++;
+      if (sensitivity_index_[active_player_] < NUM_SENSITIVITY - 1) sensitivity_index_[active_player_]++;
     } else if (key == 27 || key == ' ' || key == '\r' || key == '\n') {
       close_options();
     }
@@ -331,7 +357,8 @@ void Menu::open_options() {
 }
 
 void Menu::close_options() {
-  g_prefs.keyboard_sensitivity = SENSITIVITY_VALUES[sensitivity_index_];
+  g_prefs.p1_keys.keyboard_sensitivity = SENSITIVITY_VALUES[sensitivity_index_[0]];
+  g_prefs.p2_keys.keyboard_sensitivity = SENSITIVITY_VALUES[sensitivity_index_[1]];
   save_preferences();
   options_mode_ = false;
 }
