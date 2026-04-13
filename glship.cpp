@@ -167,7 +167,7 @@ void GLShip::smooth_camera(int frame_delta) {
     camera_rotation_delta += 360;
   while(camera_rotation_delta > 270)
     camera_rotation_delta -= 360;
-  camera_rotation += camera_rotation_delta * frame_delta * 0.004;
+  camera_rotation += camera_rotation_delta * frame_delta * 0.004f * keyboard_sensitivity;
 }
 
 void GLShip::step(int delta, const Grid &grid) {
