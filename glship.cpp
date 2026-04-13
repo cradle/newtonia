@@ -5,6 +5,7 @@
 #include "teleport.h"
 #include "weapon/base.h"
 #include "weapon/god_mode.h"
+#include "weapon/nova.h"
 #include "mat4.h"
 #include "preferences.h"
 #include <math.h>
@@ -863,11 +864,22 @@ void GLShip::draw_weapons() const {
 
   if (!ship->secondary_weapons.empty()) {
     Weapon::Base *weapon = *(ship->secondary);
-    if (weapon != NULL) {
+    // Hide Nova from the cycling slot when there's no bomb ready
+    Weapon::Nova *nova_w = dynamic_cast<Weapon::Nova*>(weapon);
+    if (weapon != NULL && (!nova_w || nova_w->ammo() > 0)) {
       draw_weapon_row(y - (is_touch_mode() ? 45 : 80), weapon, ship->secondary_weapons.size() > 1,
         next_secondary_key, SDL_CONTROLLER_BUTTON_Y,
         mine_key,           SDL_CONTROLLER_BUTTON_B);
     }
+  }
+
+  // Nova charge counter: shows charge progress toward next bomb
+  if(ship->nova_charge > 0) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d/10", ship->nova_charge);
+    int nova_y = y - (is_touch_mode() ? 90 : 160);
+    Typer::draw(10,  nova_y, "NOVA SHARD", 10);
+    Typer::draw(230, nova_y, buf,           10);
   }
 }
 
