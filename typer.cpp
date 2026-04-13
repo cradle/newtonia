@@ -469,7 +469,7 @@ void Typer::draw(float x, float y, char character, float size, int time) {
         q_init = true;
         { MeshBuilder mb; mb.color(1,1,1);
           mb.begin(GL_LINE_STRIP);
-          mb.vertex(0,TMU); mb.vertex(0,TH); mb.vertex(TW,TH); mb.vertex(TW,TMU); mb.vertex(TC,TM); mb.vertex(TC,TQ);
+          mb.vertex(0,TMU); mb.vertex(0,TH); mb.vertex(TW,TH); mb.vertex(TW,TM); mb.vertex(TC,TM); mb.vertex(TC,TQ);
           mb.end();
           mb.flatten_to_lines();
           q_arc.upload(mb);
