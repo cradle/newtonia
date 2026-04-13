@@ -31,24 +31,41 @@ jobs:
             mingw-w64-x86_64-SDL2
             mingw-w64-x86_64-SDL2_mixer
 
+      - name: Extract Steamworks SDK
+        shell: pwsh
+        env:
+          STEAMWORKS_SDK_BASE64: ${{ secrets.STEAMWORKS_SDK_BASE64 }}
+        run: |
+          $bytes = [System.Convert]::FromBase64String($env:STEAMWORKS_SDK_BASE64)
+          [System.IO.File]::WriteAllBytes('steamworks_sdk.zip', $bytes)
+          Expand-Archive -Path steamworks_sdk.zip -DestinationPath .
+
+      - name: Generate MinGW import library for steam_api64
+        run: |
+          cp sdk/redistributable_bin/win64/steam_api64.dll .
+          dlltool -D steam_api64.dll -l libsteam_api64.a
+
       - name: Build
         run: |
           SRCS=$(find . -name "*.cpp" \
             -not -path "./android/*" \
             -not -path "./.git/*")
           windres icon.rc -O coff -o icon.res
-          g++ -O2 -std=c++11 -D_USE_MATH_DEFINES -DFREEGLUT_STATIC \
+          g++ -O2 -std=c++11 -D_USE_MATH_DEFINES -DFREEGLUT_STATIC -DSTEAM_BUILD \
             $(pkg-config --cflags sdl2 SDL2_mixer freeglut) \
+            -I./sdk/public \
             -o newtonia.exe $SRCS icon.res \
             -static \
             $(pkg-config --libs --static sdl2 SDL2_mixer freeglut) \
-            -lopengl32 -lglu32
+            -lopengl32 -lglu32 \
+            -L. -lsteam_api64
 
       - name: Stage depot
         shell: bash
         run: |
           mkdir -p steam_output/windows
           cp newtonia.exe steam_output/windows/
+          cp steam_api64.dll steam_output/windows/
           cp -r audio steam_output/windows/
 
       - uses: actions/upload-artifact@v4
@@ -115,6 +132,17 @@ jobs:
           cp include/SDL_mixer.h /opt/homebrew/include/SDL2/SDL_mixer.h
           cp include/SDL_mixer.h /usr/local/include/SDL2/SDL_mixer.h
 
+      - name: Extract Steamworks SDK
+        env:
+          STEAMWORKS_SDK_BASE64: ${{ secrets.STEAMWORKS_SDK_BASE64 }}
+        run: |
+          printf '%s' "$STEAMWORKS_SDK_BASE64" | base64 -d > steamworks_sdk.zip
+          unzip -q steamworks_sdk.zip
+          # Set the install name so the linker embeds the correct Frameworks path
+          install_name_tool -id \
+            "@executable_path/../Frameworks/libsteam_api.dylib" \
+            sdk/redistributable_bin/osx/libsteam_api.dylib
+
       - name: Collect sources
         run: |
           find . -name "*.cpp" \
@@ -127,11 +155,13 @@ jobs:
         run: |
           clang++ -O2 -std=c++11 -arch arm64 \
             -mmacosx-version-min=12.0 \
-            -DGL_SILENCE_DEPRECATION \
+            -DGL_SILENCE_DEPRECATION -DSTEAM_BUILD \
+            -I./sdk/public \
             -o newtonia-arm64 $(cat srcs.txt) macos_window.mm \
             $(/opt/homebrew/bin/sdl2-config --cflags --libs) \
             -L/opt/homebrew/lib -lSDL2_mixer \
             -I/opt/homebrew/include/SDL2 \
+            -L./sdk/redistributable_bin/osx -lsteam_api \
             -framework GLUT -framework OpenGL -framework AppKit
 
       - name: Build x86_64
@@ -140,11 +170,13 @@ jobs:
         run: |
           clang++ -O2 -std=c++11 -arch x86_64 \
             -mmacosx-version-min=12.0 \
-            -DGL_SILENCE_DEPRECATION \
+            -DGL_SILENCE_DEPRECATION -DSTEAM_BUILD \
+            -I./sdk/public \
             -o newtonia-x86_64 $(cat srcs.txt) macos_window.mm \
             $(/usr/local/bin/sdl2-config --cflags --libs) \
             -L/usr/local/lib -lSDL2_mixer \
             -I/usr/local/include/SDL2 \
+            -L./sdk/redistributable_bin/osx -lsteam_api \
             -framework GLUT -framework OpenGL -framework AppKit
 
       - name: Import Developer ID certificate
@@ -211,6 +243,15 @@ jobs:
           }
 
           bundle Newtonia.app/Contents/MacOS/newtonia
+
+          # Bundle libsteam_api.dylib — it is already a universal binary and its
+          # install name was set to @executable_path/../Frameworks/... before
+          # linking, so the bundle() function skips it (@ prefix).  Copy and
+          # sign it explicitly here.
+          cp sdk/redistributable_bin/osx/libsteam_api.dylib "$FW/libsteam_api.dylib"
+          codesign --sign "Developer ID Application" --force --timestamp \
+            --options runtime "$FW/libsteam_api.dylib"
+
           codesign --sign "Developer ID Application" --force --timestamp \
             --options runtime \
             --entitlements macos/EntitlementsDevID.plist \
@@ -285,7 +326,15 @@ jobs:
             cmake \
             libudev-dev \
             libasound2-dev \
-            libpulse-dev
+            libpulse-dev \
+            unzip
+
+      - name: Extract Steamworks SDK
+        env:
+          STEAMWORKS_SDK_BASE64: ${{ secrets.STEAMWORKS_SDK_BASE64 }}
+        run: |
+          printf '%s' "$STEAMWORKS_SDK_BASE64" | base64 -d > steamworks_sdk.zip
+          unzip -q steamworks_sdk.zip
 
       - name: Build SDL2 from source
         run: |
@@ -323,16 +372,21 @@ jobs:
             -not -path "./SDL2_source/*" \
             -not -path "./SDL2_mixer/*")
           g++ -O2 -Wall -std=c++11 \
+            -DSTEAM_BUILD \
             $(sdl2-config --cflags) -I/usr/local/include/SDL2 \
+            -I./sdk/public \
             -o newtonia $SRCS \
             -lglut -lGL -lGLU \
             -lSDL2_mixer $(sdl2-config --static-libs) \
+            -L./sdk/redistributable_bin/linux64 -lsteam_api \
+            -Wl,-rpath,'$ORIGIN' \
             -lX11
 
       - name: Stage depot
         run: |
           mkdir -p steam_output/linux
           cp newtonia steam_output/linux/
+          cp sdk/redistributable_bin/linux64/libsteam_api.so steam_output/linux/
           cp -r audio steam_output/linux/
 
       - uses: actions/upload-artifact@v4
