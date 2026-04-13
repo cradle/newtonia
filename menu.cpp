@@ -149,12 +149,14 @@ void Menu::tick(int delta) {
 void Menu::controller(SDL_Event event) {
   if(event.type == SDL_CONTROLLERBUTTONDOWN) {
     if(event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
+#ifndef __EMSCRIPTEN__
       if (quit_confirm_) {
         quit_confirm_ = false;
       } else {
         quit_confirm_ = true;
         quit_selection_ = 0;
       }
+#endif
     } else if (quit_confirm_) {
       if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
         quit_selection_ = 0;
@@ -233,7 +235,7 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
     EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
     confirm_selection(nullptr);
   } else {
-    // Keyboard web: w/s navigate, space/enter confirm, ESC shows quit dialog
+    // Keyboard web: w/s navigate, space/enter confirm
     if (quit_confirm_) {
       if (key == 27) {
         quit_confirm_ = false;
@@ -252,9 +254,6 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
       if (key == ' ' || key == '\r' || key == '\n') {
         EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
         confirm_selection(nullptr);
-      } else if (key == 27) {
-        quit_confirm_ = true;
-        quit_selection_ = 0;
       } else if (has_save_ && (key == 'w' || key == 'W')) {
         menu_selection = 0;
       } else if (has_save_ && (key == 's' || key == 'S')) {
