@@ -224,7 +224,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
             Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-10, "player 2 press enter to join", 8);
         }
       } else {
-        Typer::draw_centered(0, Typer::window_height-10, glship->has_controller() ? "return to menu with start" : "return to menu with ESC", 8);
+        Typer::draw_centered(0, Typer::scaled_window_height-10, glship->has_controller() ? "return to menu with start" : "return to menu with ESC", 8);
       }
     }
     if(!glship->last_input_was_controller && !is_touch_mode()) {
