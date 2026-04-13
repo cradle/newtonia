@@ -17,11 +17,13 @@ endif
 
 OSX_LIBS = -framework GLUT -framework OpenGL -framework AppKit $(SDL2_LIBS)
 OSX_CFLAGS = $(CFLAGS) -std=c++11 -arch arm64 -arch x86_64
+CFLAGS += -MMD -MP
 COMPILE = $(CC) $(CFLAGS) -c
 OBJFILES := $(patsubst %.cpp,%.o,$(ALL_SRCS))
 ifeq ($(UNAME), Darwin)
   OBJFILES += macos_window.o
 endif
+DEPFILES := $(OBJFILES:.o=.d)
 
 all: newtonia
 
@@ -38,7 +40,7 @@ newtonia: $(OBJFILES)
 	$(CC) -o newtonia $(OBJFILES) $(LIBS)
 
 clean:
-	rm -rf $(OBJFILES) newtonia
+	rm -rf $(OBJFILES) $(DEPFILES) newtonia
 
 # ============================================================
 # Web / Emscripten target
@@ -70,6 +72,8 @@ web:
 
 web-clean:
 	rm -rf web/dist
+
+-include $(DEPFILES)
 
 %.o: %.cpp
 	$(COMPILE) -o $@ $<
