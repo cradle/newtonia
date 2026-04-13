@@ -398,7 +398,7 @@ void Ship::add_nova_charge(int n) {
 
 void Ship::tally_nova_kill(const Point &pos) {
   nova_kill_counter++;
-  if (nova_kill_counter >= 1) {  // TESTING: every kill drops a shard (normally 100)
+  if (nova_kill_counter >= 100) {
     nova_kill_counter = 0;
     nova_drops_pending.push_back(pos);
   }
