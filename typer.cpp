@@ -168,6 +168,15 @@ void Typer::init_meshes() {
     mb.end(); upload('+', mb); }
 
   { MeshBuilder mb; mb.color(1,1,1);
+    mb.begin(GL_LINE_STRIP);
+    mb.vertex(0,TH); mb.vertex(TW,TH); mb.vertex(TW,TMU); mb.vertex(TC,TM); mb.vertex(TC,TQ);
+    mb.end();
+    mb.begin(GL_POINTS);
+    mb.vertex(TC, 0);
+    mb.end();
+    upload('?', mb); }
+
+  { MeshBuilder mb; mb.color(1,1,1);
     mb.begin(GL_LINE_LOOP); mb.vertex(0,TH); mb.vertex(TW,TH); mb.vertex(TW,0); mb.vertex(0,0); mb.end();
     mb.begin(GL_LINES);     mb.vertex(TW,TH); mb.vertex(0,0); mb.end();
     upload('0', mb); }
