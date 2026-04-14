@@ -270,6 +270,7 @@ void tick() {
 #ifdef _WIN32
   check_windows_focus();
 #endif
+  steam_run_callbacks();
   game->tick(delta);
   glutPostRedisplay();
 }
@@ -320,6 +321,8 @@ void init(int &argc, char* argv[], float width, float height);
 
 int main(int argc, char* argv[]) {
   srand(time(NULL));
+  if (!steam_init())
+    std::cout << "Steam API unavailable (offline / direct-launch mode)" << std::endl;
   load_preferences();
   old_width  = g_prefs.window_width;
   old_height = g_prefs.window_height;
@@ -337,7 +340,7 @@ int main(int argc, char* argv[]) {
 #endif
   }
   init_controllers_and_audio();
-  atexit([]{ save_preferences(); if (game) game->focus_lost(); });
+  atexit([]{ save_preferences(); if (game) game->focus_lost(); steam_shutdown(); });
   game = new StateManager();
   for(int i = 0; i < 2; i++) {
     if(controllers[i]) game->controller_added(controllers[i]);

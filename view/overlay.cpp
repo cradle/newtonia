@@ -406,15 +406,26 @@ void Overlay::debug_info(const GLGame *glgame, const GLShip *glship) {
   }
 
   float vw = Typer::scaled_window_width / glgame->num_x_viewports();
-  float vh = Typer::scaled_window_height / glgame->num_y_viewports();
   float x  = -vw + CORNER_INSET;
-  float y  = -vh + CORNER_INSET + 80;  // bottom-left, above lives/temperature
   float sz = 7;
   float dy = sz * 2.5f + 4;
+  // Centre the stack vertically in the viewport.
+#ifdef STEAM_BUILD
+  float y = dy;        // 3 items at +dy, 0, -dy
+#else
+  float y = dy * 0.5f; // 2 items at +dy/2, -dy/2
+#endif
 
   char fps_buf[32];
   snprintf(fps_buf, sizeof(fps_buf), "fps: %d", fps_display);
 
   Typer::draw(x, y,      is_game_mode_active() ? "game mode: on" : "game mode: off", sz);
   Typer::draw(x, y - dy, fps_buf, sz);
+#ifdef STEAM_BUILD
+  std::string branch = get_steam_branch();
+  char branch_buf[64];
+  snprintf(branch_buf, sizeof(branch_buf), "branch: %s",
+           branch.empty() ? "default" : branch.c_str());
+  Typer::draw(x, y - dy * 2, branch_buf, sz);
+#endif
 }

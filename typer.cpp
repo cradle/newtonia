@@ -167,6 +167,7 @@ void Typer::init_meshes() {
     mb.vertex(TW*0.5f,1.75f); mb.vertex(TW*0.5f,0.25f);
     mb.end(); upload('+', mb); }
 
+
   { MeshBuilder mb; mb.color(1,1,1);
     mb.begin(GL_LINE_LOOP); mb.vertex(0,TH); mb.vertex(TW,TH); mb.vertex(TW,0); mb.vertex(0,0); mb.end();
     mb.begin(GL_LINES);     mb.vertex(TW,TH); mb.vertex(0,0); mb.end();
@@ -466,6 +467,30 @@ void Typer::draw(float x, float y, char character, float size, int time) {
       mb.flatten_to_lines();
       copyright_mesh.upload(mb, GL_STREAM_DRAW);
       copyright_mesh.draw();
+      break;
+    }
+    case '?': {
+      static Mesh q_arc;
+      static Mesh q_dot;
+      static bool q_init = false;
+      if (!q_init) {
+        q_init = true;
+        { MeshBuilder mb; mb.color(1,1,1);
+          mb.begin(GL_LINE_STRIP);
+          mb.vertex(0,TMU); mb.vertex(0,TH); mb.vertex(TW,TH); mb.vertex(TW,TM); mb.vertex(TC,TM); mb.vertex(TC,TQ);
+          mb.end();
+          mb.flatten_to_lines();
+          q_arc.upload(mb);
+        }
+        { MeshBuilder mb; mb.color(1,1,1);
+          mb.begin(GL_POINTS);
+          mb.vertex(TC, 0);
+          mb.end();
+          q_dot.upload(mb);
+        }
+      }
+      q_arc.draw_tinted(colour[0], colour[1], colour[2], 1.0f);
+      q_dot.draw_tinted(colour[0], colour[1], colour[2], 1.0f, 2.0f * scale);
       break;
     }
   }

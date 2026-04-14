@@ -43,6 +43,9 @@ private:
   bool left_stick_down_active = false;
   bool left_stick_left_active = false;
   bool left_stick_right_active = false;
+
+  bool quit_confirm_ = false;
+  int  quit_selection_ = 0;  // 0 = Yes, 1 = No
 };
 
 #endif
