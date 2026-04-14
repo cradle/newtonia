@@ -52,7 +52,8 @@ jobs:
         run: |
           SRCS=$(find . -name "*.cpp" \
             -not -path "./android/*" \
-            -not -path "./.git/*")
+            -not -path "./.git/*" \
+            -not -path "./sdk/*")
           windres icon.rc -O coff -o icon.res
           g++ -O2 -std=c++11 -D_USE_MATH_DEFINES -DFREEGLUT_STATIC -DSTEAM_BUILD \
             $(pkg-config --cflags sdl2 SDL2_mixer freeglut) \
@@ -158,7 +159,8 @@ jobs:
         run: |
           find . -name "*.cpp" \
             -not -path "./android/*" \
-            -not -path "./.git/*" > srcs.txt
+            -not -path "./.git/*" \
+            -not -path "./sdk/*" > srcs.txt
 
       - name: Build arm64
         env:
@@ -388,6 +390,7 @@ jobs:
           SRCS=$(find . -name "*.cpp" \
             -not -path "./android/*" \
             -not -path "./.git/*" \
+            -not -path "./sdk/*" \
             -not -path "./SDL2_source/*" \
             -not -path "./SDL2_mixer/*")
           g++ -O2 -Wall -std=c++11 \
