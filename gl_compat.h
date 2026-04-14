@@ -60,6 +60,16 @@
 
 #endif // __ANDROID__ || __IOS__ || __EMSCRIPTEN__
 
+// Steam SDK wrapper — init/shutdown/callbacks/branch detection.
+// Safe no-ops when STEAM_BUILD is not defined.
+#include "steam_build.h"
+
+// Returns the Steam beta branch name (e.g. "beta"), or empty string on the
+// default/public branch or on non-Steam builds.
+inline std::string get_steam_branch() {
+  return steam_get_branch();
+}
+
 // Returns true when running in Steam Game Mode (Steam Deck).
 inline bool is_steam_gamemode() {
 #if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__) || defined(__APPLE__)
