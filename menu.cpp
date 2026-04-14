@@ -13,9 +13,9 @@ static const float SENSITIVITY_VALUES[] = {0.5f, 0.75f, 1.0f, 1.5f, 2.0f};
 static const char* SENSITIVITY_LABELS[] = {"SLOW", "LOW", "NORMAL", "HIGH", "MAX"};
 static const int NUM_SENSITIVITY = 5;
 
-static const float SMOOTHING_VALUES[] = {0.0f, 0.002f, 0.004f, 0.006f, 0.008f, 0.010f};
-static const char* SMOOTHING_LABELS[] = {"OFF", "LOW", "NORMAL", "HIGH", "HIGHER", "MAX"};
-static const int NUM_SMOOTHING = 6;
+static const float SMOOTHING_VALUES[] = {0.0f, 0.004f, 0.006f, 0.008f, 0.010f};
+static const char* SMOOTHING_LABELS[] = {"OFF", "NORMAL", "HIGH", "HIGHER", "MAX"};
+static const int NUM_SMOOTHING = 5;
 
 static int sensitivity_index_for(float value) {
   int best = 2;
@@ -105,7 +105,6 @@ void Menu::draw() {
     Typer::draw_centered(0, 340, "OPTIONS", 28);
 
     static const int step_x5[] = {-200, -100, 0, 100, 200};
-    static const int step_x6[] = {-250, -150, -50, 50, 150, 250};
 
     // 4 rows: 0=P1 sens, 1=P1 smooth, 2=P2 sens, 3=P2 smooth
     static const int label_y[] = { 240,  80, -80, -240};
@@ -120,7 +119,7 @@ void Menu::draw() {
       int p          = row / 2;
       bool is_smooth = (row % 2 == 1);
       int  num_steps = is_smooth ? NUM_SMOOTHING    : NUM_SENSITIVITY;
-      const int *sx  = is_smooth ? step_x6          : step_x5;
+      const int *sx  = step_x5;
       int  cur_idx   = is_smooth ? smoothing_index_[p] : sensitivity_index_[p];
       const char* const *lbl = is_smooth ? SMOOTHING_LABELS : SENSITIVITY_LABELS;
 

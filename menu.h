@@ -31,7 +31,7 @@ private:
   int  menu_selection = 0;
   bool options_mode_ = false;
   int  sensitivity_index_[2] = {2, 2};  // per-player index into SENSITIVITY_VALUES
-  int  smoothing_index_[2]   = {2, 2};  // per-player index into SMOOTHING_VALUES
+  int  smoothing_index_[2]   = {1, 1};  // per-player index into SMOOTHING_VALUES (1=NORMAL=0.004)
   int  active_row_ = 0;                 // 0=P1 sens, 1=P1 smooth, 2=P2 sens, 3=P2 smooth
   WrappedPoint viewpoint;
   GLStarfield starfield;
