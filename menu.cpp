@@ -444,7 +444,13 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
   }
 #else
   if (attract_mode_) {
-    if (key == ' ' || key == '\r' || key == '\n') attract_mode_ = false;
+    if (key == ' ' || key == '\r' || key == '\n') {
+      attract_mode_ = false;
+    } else if (key == 27) {
+      attract_mode_ = false;
+      quit_confirm_ = true;
+      quit_selection_ = 0;
+    }
     return;
   }
   if (quit_confirm_) {
