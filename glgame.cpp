@@ -32,6 +32,8 @@ static void set_player_keys(GLShip *gs, int player_index) {
   gs->set_keys(k.left, k.right, k.thrust, k.shoot, k.reverse, k.mine,
                k.next_weapon, k.boost, k.teleport, k.help, k.next_secondary,
                k.toggle_rotate_view);
+  gs->set_keyboard_sensitivity(k.keyboard_sensitivity);
+  gs->set_camera_smoothing(k.camera_smoothing);
 }
 
 const int GLGame::default_world_width = 2500;

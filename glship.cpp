@@ -162,12 +162,17 @@ void GLShip::collide(GLShip* first, GLShip* second) {
 }
 
 void GLShip::smooth_camera(int frame_delta) {
-  float camera_rotation_delta = ship->heading() - camera_rotation;
-  while(camera_rotation_delta < -90)
+  float target = ship->heading();
+  if (camera_smoothing == 0.0f) {
+    camera_rotation = target;
+    return;
+  }
+  float camera_rotation_delta = target - camera_rotation;
+  while(camera_rotation_delta < -180)
     camera_rotation_delta += 360;
-  while(camera_rotation_delta > 270)
+  while(camera_rotation_delta > 180)
     camera_rotation_delta -= 360;
-  camera_rotation += camera_rotation_delta * frame_delta * 0.004;
+  camera_rotation += camera_rotation_delta * frame_delta * camera_smoothing;
 }
 
 void GLShip::step(int delta, const Grid &grid) {
@@ -519,9 +524,11 @@ void GLShip::input(unsigned char key, bool pressed) {
     last_input_was_controller = false;
   }
   if (key == left_key) {
+    if (pressed) ship->rotation_scale = keyboard_sensitivity;
     kb_rotate_left = pressed;
     ship->rotate_left(pressed);
   } else if (key == right_key) {
+    if (pressed) ship->rotation_scale = keyboard_sensitivity;
     kb_rotate_right = pressed;
     ship->rotate_right(pressed);
   } else if (key == thrust_key) {
