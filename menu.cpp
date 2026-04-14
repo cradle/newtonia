@@ -150,7 +150,7 @@ void Menu::draw() {
       for (int i = 0; i < nc; i++) {
         if (SDL_IsGameController(i)) { has_ctrl = true; break; }
       }
-      if ((currentTime / 1400) % 2) {
+      if (!((currentTime / 1400) % 2)) {
         Typer::draw_centered(0, -50, has_ctrl ? "press start" : "press enter", 18);
       }
     } else if (quit_confirm_) {
