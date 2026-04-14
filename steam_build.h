@@ -47,6 +47,8 @@ inline std::string steam_get_branch() {
 }
 
 // Returns true when in-progress / beta-only features should be shown.
+// Set NEWTONIA_BETA=1 in the environment to enable outside of Steam.
 inline bool is_beta_feature_enabled() {
+  if (SDL_getenv("NEWTONIA_BETA")) return true;
   return steam_get_branch() == "beta";
 }
