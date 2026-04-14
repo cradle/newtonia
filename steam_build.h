@@ -47,9 +47,6 @@ inline std::string steam_get_branch() {
 }
 
 // Returns true when in-progress / beta-only features should be shown.
-// To permanently enable beta features for a release build, change false → true.
 inline bool is_beta_feature_enabled() {
-  constexpr bool always_on = false;
-  if (always_on) return true;
   return steam_get_branch() == "beta";
 }
