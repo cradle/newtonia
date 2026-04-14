@@ -30,6 +30,7 @@ jobs:
             mingw-w64-x86_64-freeglut
             mingw-w64-x86_64-SDL2
             mingw-w64-x86_64-SDL2_mixer
+            mingw-w64-x86_64-tools-git
 
       - name: Download Steamworks SDK
         shell: pwsh
@@ -46,7 +47,8 @@ jobs:
       - name: Generate MinGW import library for steam_api64
         run: |
           cp sdk/redistributable_bin/win64/steam_api64.dll .
-          dlltool -D steam_api64.dll -l libsteam_api64.a
+          gendef steam_api64.dll
+          dlltool -D steam_api64.dll -d steam_api64.def -l libsteam_api64.a
 
       - name: Build
         run: |
