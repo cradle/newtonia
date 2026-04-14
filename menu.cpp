@@ -144,7 +144,16 @@ void Menu::draw() {
   }
 
   if (!options_mode_) {
-    if (quit_confirm_) {
+    if (attract_mode_ && !is_touch_mode()) {
+      bool has_ctrl = false;
+      int nc = SDL_NumJoysticks();
+      for (int i = 0; i < nc; i++) {
+        if (SDL_IsGameController(i)) { has_ctrl = true; break; }
+      }
+      if ((currentTime / 1400) % 2) {
+        Typer::draw_centered(0, -50, has_ctrl ? "press start" : "press enter", 18);
+      }
+    } else if (quit_confirm_) {
       Typer::draw_centered(0, 50, "Quit?", 30);
       if (is_touch_mode()) {
         Typer::draw_centered(-Typer::scaled_window_width / 2, -50, "Yes", 26);
@@ -209,6 +218,10 @@ void Menu::tick(int delta) {
       r2_pressed = true;
       if(!r2_active) {
         r2_active = true;
+        if (attract_mode_) {
+          attract_mode_ = false;
+          return;
+        }
         if (options_mode_) {
           close_options();
         } else if (quit_confirm_) {
@@ -269,6 +282,13 @@ void Menu::controller(SDL_Event event) {
 
   int n = max_menu_items();
   if (event.type == SDL_CONTROLLERBUTTONDOWN) {
+    if (attract_mode_) {
+      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A ||
+          event.cbutton.button == SDL_CONTROLLER_BUTTON_START) {
+        attract_mode_ = false;
+      }
+      return;
+    }
     if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
 #ifndef __EMSCRIPTEN__
       if (quit_confirm_) {
@@ -389,6 +409,10 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
     }
   } else {
     // Keyboard web: w/s navigate, space/enter confirm
+    if (attract_mode_) {
+      if (key == ' ' || key == '\r' || key == '\n') attract_mode_ = false;
+      return;
+    }
     if (quit_confirm_) {
       if (key == 27) {
         quit_confirm_ = false;
@@ -419,6 +443,10 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
     }
   }
 #else
+  if (attract_mode_) {
+    if (key == ' ' || key == '\r' || key == '\n') attract_mode_ = false;
+    return;
+  }
   if (quit_confirm_) {
     if (key == 27) {
       quit_confirm_ = false;

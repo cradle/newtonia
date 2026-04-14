@@ -46,6 +46,7 @@ private:
 
   bool quit_confirm_ = false;
   int  quit_selection_ = 0;  // 0 = Yes, 1 = No
+  bool attract_mode_ = true; // show flashing PRESS ENTER/START before menu on desktop
 };
 
 #endif
