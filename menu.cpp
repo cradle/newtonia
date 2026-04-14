@@ -217,7 +217,7 @@ void Menu::tick(int delta) {
           } else {
             quit_confirm_ = false;
           }
-        } else if (menu_selection == max_menu_items() - 1) {
+        } else if (is_beta_feature_enabled() && menu_selection == max_menu_items() - 1) {
           open_options();
         } else {
           confirm_selection(ctrl);
@@ -297,7 +297,7 @@ void Menu::controller(SDL_Event event) {
       if (menu_selection < n - 1) menu_selection++;
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
                event.cbutton.button == SDL_CONTROLLER_BUTTON_A) {
-      if (menu_selection == n - 1) {
+      if (is_beta_feature_enabled() && menu_selection == n - 1) {
         open_options();
       } else {
 #ifdef __EMSCRIPTEN__
@@ -317,7 +317,7 @@ void Menu::controller(SDL_Event event) {
           } else {
             quit_confirm_ = false;
           }
-        } else if (menu_selection == n - 1) {
+        } else if (is_beta_feature_enabled() && menu_selection == n - 1) {
           open_options();
         } else {
 #ifdef __EMSCRIPTEN__
@@ -371,7 +371,7 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
   // suppress \r so a finger-down on the left (joystick) half doesn't immediately
   // confirm before the user lifts their finger.
   if (has_save_ && (key == '\r' || key == '\n')) return;
-  if (menu_selection == n - 1) {
+  if (is_beta_feature_enabled() && menu_selection == n - 1) {
     open_options();
   } else {
     confirm_selection(nullptr);
@@ -381,7 +381,7 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
     // Touch web: same as mobile — touch_tap handles selection, suppress \r
     if (quit_confirm_) return;
     if (has_save_ && (key == '\r' || key == '\n')) return;
-    if (menu_selection == n - 1) {
+    if (is_beta_feature_enabled() && menu_selection == n - 1) {
       open_options();
     } else {
       EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
@@ -405,7 +405,7 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
       }
     } else {
       if (key == ' ' || key == '\r' || key == '\n') {
-        if (menu_selection == n - 1) {
+        if (is_beta_feature_enabled() && menu_selection == n - 1) {
           open_options();
         } else {
           EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
@@ -438,7 +438,7 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
       quit_confirm_ = true;
       quit_selection_ = 0;
     } else if (key == ' ' || key == '\r' || key == '\n') {
-      if (menu_selection == n - 1) {
+      if (is_beta_feature_enabled() && menu_selection == n - 1) {
         open_options();
       } else {
         confirm_selection(nullptr);
