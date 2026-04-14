@@ -6,6 +6,7 @@
 #include "preferences.h"
 #include "gl_compat.h"
 #include "mat4.h"
+#include "steam_build.h"
 #include <iostream>
 #include <string>
 
@@ -163,10 +164,12 @@ void Menu::draw() {
         // Stacked layout for keyboard/controller with selection indicator
         std::string cont    = std::string(menu_selection == 0 ? "> " : "  ") + "CONTINUE";
         std::string newgame = std::string(menu_selection == 1 ? "> " : "  ") + "NEW GAME";
-        std::string options = std::string(menu_selection == 2 ? "> " : "  ") + "OPTIONS";
         Typer::draw_centered(0,   80, cont.c_str(),    22);
         Typer::draw_centered(0,  -10, newgame.c_str(), 22);
-        Typer::draw_centered(0, -100, options.c_str(), 22);
+        if (is_beta_feature_enabled()) {
+          std::string options = std::string(menu_selection == 2 ? "> " : "  ") + "OPTIONS";
+          Typer::draw_centered(0, -100, options.c_str(), 22);
+        }
       }
     } else {
       if (is_touch_mode()) {
@@ -176,9 +179,11 @@ void Menu::draw() {
       } else {
         // Keyboard/controller: show NEW GAME and OPTIONS
         std::string newgame = std::string(menu_selection == 0 ? "> " : "  ") + "NEW GAME";
-        std::string options = std::string(menu_selection == 1 ? "> " : "  ") + "OPTIONS";
         Typer::draw_centered(0,  -10, newgame.c_str(), 22);
-        Typer::draw_centered(0, -100, options.c_str(), 22);
+        if (is_beta_feature_enabled()) {
+          std::string options = std::string(menu_selection == 1 ? "> " : "  ") + "OPTIONS";
+          Typer::draw_centered(0, -100, options.c_str(), 22);
+        }
       }
     }
   }
@@ -477,7 +482,9 @@ void Menu::touch_tap(float nx, float ny) {
 }
 
 int Menu::max_menu_items() const {
-  return has_save_ ? 3 : 2;
+  if (is_beta_feature_enabled())
+    return has_save_ ? 3 : 2;
+  return has_save_ ? 2 : 1;
 }
 
 void Menu::open_options() {
