@@ -1115,7 +1115,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
 void Ship::collide(Ship *other) {
   for(size_t i = 0; i < bullets.size(); ) {
     if(other->is_alive() && bullets[i].collide(*other)) {
-      other->kill();
+      other->kill_stop();
       kills_this_life += 1;
       kills += 1;
       score += other->value * multiplier();
@@ -1158,7 +1158,7 @@ void Ship::collide(Ship *other) {
 
   for(size_t i = 0; i < missiles.size(); ) {
     if(is_alive() && other->is_alive() && missiles[i].collide(*other, 5.0)) {
-      other->kill();
+      other->kill_stop();
       kills_this_life += 1;
       kills += 1;
       score += other->value * multiplier();
