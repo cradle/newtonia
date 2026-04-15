@@ -1082,7 +1082,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
   // World bullets (ricocheted off reflective asteroids) can kill their owner.
   for(size_t i = 0; i < bullets.size(); ) {
     if(bullets[i].world_bullet && is_alive() && bullets[i].collide(*this)) {
-      kill();
+      kill_stop();
       explode(bullets[i].position, bullets[i].velocity);
       bullets[i] = std::move(bullets.back());
       bullets.pop_back();
