@@ -455,6 +455,15 @@ int Ship::god_mode_time_remaining() const {
   return 0;
 }
 
+bool Ship::shield_active() const {
+  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    if(dynamic_cast<Weapon::Shield*>(*it)) {
+      return invincible && god_mode_time_remaining() == 0;
+    }
+  }
+  return false;
+}
+
 Save::Player Ship::capture_state() const {
   Save::Player p;
   p.score = score;
