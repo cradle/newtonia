@@ -596,7 +596,7 @@ void GLGame::tick(int delta) {
         if(!(*o)->ship->is_alive()) continue;
         float scale = (*o)->ship->god_mode_time_remaining() > 0 ? 0.25f : 1.0f;
         if((*bhi)->apply_gravity(*(*o)->ship, step_size, scale)) {
-          (*o)->ship->kill();
+          (*o)->ship->kill_stop();
         }
       }
       for(o = enemies->begin(); o != enemies->end(); o++) {
