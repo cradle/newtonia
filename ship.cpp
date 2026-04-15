@@ -1020,22 +1020,30 @@ void Ship::collide_grid(Grid &grid, int delta) {
         bullets[i].world_bullet = true;
         ++i;
       } else if (ast && ast->armoured && !bullets[i].kills_invincible) {
-        // Armoured asteroid: check if bullet hits the shielded face (±120° arc = 2/3 of shape).
-        // Bullet incoming direction dot shield normal > cos(120°) = -0.5 means shielded.
+        // Armoured asteroid: back-trace to the actual surface entry point, then
+        // test whether that point falls within the shielded arc (±120° from
+        // armour_angle).  This matches the renderer exactly — it also tests
+        // surface-point direction from center, not bullet approach direction.
+        // Using approach direction instead caused reflections on unshielded faces
+        // when the irregular polygon made the impact point and approach direction
+        // disagree about which arc they belonged to.
+        Point vel_norm = bullets[i].velocity.normalized();
+        float max_trace = ast->effective_radius() * 2.0f + 4.0f;
+        WrappedPoint entry = bullets[i].position;
+        for (float d = 1.0f; d <= max_trace; d += 1.0f) {
+          WrappedPoint test(bullets[i].position.x() - vel_norm.x() * d,
+                            bullets[i].position.y() - vel_norm.y() * d);
+          if (!ast->contains(test)) { entry = test; break; }
+        }
+        float ix = entry.x() - ast->position.x();
+        float iy = entry.y() - ast->position.y();
+        float im = sqrtf(ix * ix + iy * iy);
+        float shield_dot = (im > 1e-6f)
+          ? (ix * cosf(ast->armour_angle) + iy * sinf(ast->armour_angle)) / im
+          : -1.0f;
         Point rel_vel = bullets[i].velocity - object->velocity;
-        Point rel_dir = rel_vel.normalized();
-        float shield_dot = -(rel_dir.x() * cosf(ast->armour_angle) +
-                             rel_dir.y() * sinf(ast->armour_angle));
         if (shield_dot > -0.5f) {
           // Hit the armoured face — reflect bullet, do NOT damage the asteroid
-          Point vel_norm = bullets[i].velocity.normalized();
-          float max_trace = ast->effective_radius() * 2.0f + 4.0f;
-          WrappedPoint entry = bullets[i].position;
-          for (float d = 1.0f; d <= max_trace; d += 1.0f) {
-            WrappedPoint test(bullets[i].position.x() - vel_norm.x() * d,
-                              bullets[i].position.y() - vel_norm.y() * d);
-            if (!ast->contains(test)) { entry = test; break; }
-          }
           Point normal = ast->surface_normal(entry, rel_vel);
           float dot = normal.x() * rel_vel.x() + normal.y() * rel_vel.y();
           bullets[i].velocity = object->velocity + (rel_vel - normal * (2.0f * dot));
