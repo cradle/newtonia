@@ -357,29 +357,30 @@ Save::GameState GLGame::build_save_data() const {
 }
 
 void GLGame::add_asteroids() {
+  // DEBUG: force all asteroids to be armoured for shield-reflection testing
   while(Asteroid::num_killable < (default_num_asteroids + generation * extra_num_asteroids)) {
-    objects->push_back(new Asteroid(false));
-    if(generation > 0) objects->push_front(new Asteroid(true));
+    objects->push_back(new Asteroid(false, false, false, false, false, false, true));
+    if(generation > 0) objects->push_front(new Asteroid(true, false, false, false, false, false, true));
   }
   int num_invisible = (generation >= 4) ? (generation - 4) / 5 + 1 : 0;
   for(int i = 0; i < num_invisible; i++) {
-    objects->push_back(new Asteroid(false, true));
+    objects->push_back(new Asteroid(false, true, false, false, false, false, true));
   }
   int num_reflective = (generation >= 2) ? (generation - 2) / 2 + 1 : 0;
   for(int i = 0; i < num_reflective; i++) {
-    objects->push_front(new Asteroid(false, false, true));
+    objects->push_front(new Asteroid(false, false, true, false, false, false, true));
   }
   int num_teleporting = (generation >= 3) ? (generation - 3) / 2 + 1 : 0;
   for(int i = 0; i < num_teleporting; i++) {
-    objects->push_back(new Asteroid(false, false, false, true));
+    objects->push_back(new Asteroid(false, false, false, true, false, false, true));
   }
   int num_quantum = (generation >= 5) ? (generation - 5) / 3 + 1 : 0;
   for(int i = 0; i < num_quantum; i++) {
-    objects->push_back(new Asteroid(false, false, false, false, true));
+    objects->push_back(new Asteroid(false, false, false, false, true, false, true));
   }
   int num_tough = (generation >= 6) ? (generation - 6) / 2 + 1 : 0;
   for(int i = 0; i < num_tough; i++) {
-    objects->push_back(new Asteroid(false, false, false, false, false, true));
+    objects->push_back(new Asteroid(false, false, false, false, false, true, true));
   }
   int num_armoured = (generation >= 7) ? (generation - 7) / 2 + 1 : 0;
   for(int i = 0; i < num_armoured; i++) {
@@ -387,7 +388,7 @@ void GLGame::add_asteroids() {
   }
   int num_phasing = (generation >= 8) ? (generation - 8) / 2 + 1 : 0;
   for(int i = 0; i < num_phasing; i++) {
-    objects->push_back(new Asteroid(false, false, false, false, false, false, false, true));
+    objects->push_back(new Asteroid(false, false, false, false, false, false, true, true));
   }
 }
 
