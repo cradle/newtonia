@@ -135,6 +135,7 @@ class Ship : public CompositeObject {
     void add_shield_ammo(int amount);
     void add_god_mode(int duration_ms = 10000);
     int god_mode_time_remaining() const;
+    bool shield_active() const;
     void add_nova_charge(int n);   // call on every asteroid kill
     void add_nova_ammo(int amount);
     void nova_detonate();
