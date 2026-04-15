@@ -151,7 +151,7 @@ void Menu::draw() {
         if (SDL_IsGameController(i)) { has_ctrl = true; break; }
       }
       if (!((currentTime / 1400) % 2)) {
-        Typer::draw_centered(0, -50, has_ctrl ? "press start" : "press enter", 18);
+        Typer::draw_centered(0, (320 + (-215)) / 2, has_ctrl ? "press start" : "press enter", 18);
       }
     } else if (quit_confirm_) {
       Typer::draw_centered(0, 50, "Quit?", 30);
@@ -170,14 +170,17 @@ void Menu::draw() {
         Typer::draw_centered(-Typer::scaled_window_width / 2, -50, "CONTINUE", 26);
         Typer::draw_centered( Typer::scaled_window_width / 2, -50, "NEW GAME", 26);
       } else {
-        // Stacked layout for keyboard/controller with selection indicator
+        // Equally space items between title (320) and HIGH SCORE (-215)
+        const int top_y = 320, bot_y = -215;
+        int n = is_beta_feature_enabled() ? 3 : 2;
+        int gap = (top_y - bot_y) / (n + 1);
         std::string cont    = std::string(menu_selection == 0 ? "> " : "  ") + "CONTINUE";
         std::string newgame = std::string(menu_selection == 1 ? "> " : "  ") + "NEW GAME";
-        Typer::draw_centered(0,   80, cont.c_str(),    22);
-        Typer::draw_centered(0,  -10, newgame.c_str(), 22);
+        Typer::draw_centered(0, top_y - gap,     cont.c_str(),    22);
+        Typer::draw_centered(0, top_y - 2 * gap, newgame.c_str(), 22);
         if (is_beta_feature_enabled()) {
           std::string options = std::string(menu_selection == 2 ? "> " : "  ") + "OPTIONS";
-          Typer::draw_centered(0, -100, options.c_str(), 22);
+          Typer::draw_centered(0, top_y - 3 * gap, options.c_str(), 22);
         }
       }
     } else {
@@ -186,12 +189,15 @@ void Menu::draw() {
           Typer::draw_centered(0, -50, "tap to start", 18);
         }
       } else {
-        // Keyboard/controller: show NEW GAME and OPTIONS
+        // Equally space items between title (320) and HIGH SCORE (-215)
+        const int top_y = 320, bot_y = -215;
+        int n = is_beta_feature_enabled() ? 2 : 1;
+        int gap = (top_y - bot_y) / (n + 1);
         std::string newgame = std::string(menu_selection == 0 ? "> " : "  ") + "NEW GAME";
-        Typer::draw_centered(0,  -10, newgame.c_str(), 22);
+        Typer::draw_centered(0, top_y - gap, newgame.c_str(), 22);
         if (is_beta_feature_enabled()) {
           std::string options = std::string(menu_selection == 1 ? "> " : "  ") + "OPTIONS";
-          Typer::draw_centered(0, -100, options.c_str(), 22);
+          Typer::draw_centered(0, top_y - 2 * gap, options.c_str(), 22);
         }
       }
     }
