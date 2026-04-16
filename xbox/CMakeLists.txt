@@ -5,30 +5,26 @@ project(newtonia CXX)
 # GDK build for Newtonia — Xbox console and GDK Desktop (Windows PC)
 # ---------------------------------------------------------------
 #
-# Xbox Series X|S (from the repo root):
-#
-#   set GDK_PATH=C:\Program Files (x86)\Microsoft GDK\241000\GRDK
-#   cmake -B xbox/build -S xbox ^
-#     -DCMAKE_TOOLCHAIN_FILE="%GDK_PATH%\BuildFiles\CMake\GDKxPlatform.cmake" ^
-#     -DGDK_TOOLCHAIN_EDITION=241000 ^
-#     -A Gaming.Xbox.Scarlett.x64
-#   cmake --build xbox/build --config Release
-#
 # GDK Desktop — run on a Windows PC for rapid iteration (see xbox-dev.yml):
 #
-#   cmake -B xbox/build-desktop -S xbox ^
-#     -DCMAKE_TOOLCHAIN_FILE="%GDK_PATH%\BuildFiles\CMake\GDKxPlatform.cmake" ^
-#     -DGDK_TOOLCHAIN_EDITION=241000 ^
-#     -A Gaming.Desktop.x64
+#   cmake -B xbox/build-desktop -S xbox -A Gaming.Desktop.x64
 #   cmake --build xbox/build-desktop --config Release
 #
-# The GDK toolchain automatically defines:
+# Xbox Series X|S:
+#
+#   cmake -B xbox/build -S xbox -A Gaming.Xbox.Scarlett.x64
+#   cmake --build xbox/build --config Release
+#
+# No -DCMAKE_TOOLCHAIN_FILE is needed in GDK 2510+: the installer registers
+# Gaming.Desktop.x64 / Gaming.Xbox.Scarlett.x64 as VS2022 MSBuild platforms.
+#
+# The GDK MSBuild platform automatically defines:
 #   _GAMING_XBOX       (+ _GAMING_XBOX_SCARLETT) for Xbox targets
 #   _GAMING_DESKTOP    for the Desktop target
 # Both are handled by xbox_main.cpp; do not set them manually here.
 #
 # ANGLE (libEGL / libGLESv2) is bundled with the GDK and its import libs are
-# automatically on the linker search path once the toolchain is loaded.
+# automatically on the linker search path once the platform is loaded.
 # ---------------------------------------------------------------
 
 set(CMAKE_CXX_STANDARD 11)

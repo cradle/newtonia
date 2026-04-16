@@ -4,6 +4,9 @@ name: Xbox GDK Desktop
 # port are caught immediately — no Xbox hardware required.
 # The Gaming.Desktop.x64 platform uses the same GDK APIs and ANGLE path as
 # the Xbox console target, making it a fast, free iteration loop.
+#
+# In GDK 2510+ the CMake integration works via the VS2022 MSBuild platform
+# registration performed by the GDK installer — no separate toolchain file.
 
 on:
   push:
@@ -21,8 +24,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Cache the entire GDK directory. Key doesn't include a hardcoded edition
-      # so it survives winget upgrading the installed version.
       - name: Cache GDK
         id: cache-gdk
         uses: actions/cache@v4
@@ -39,14 +40,11 @@ jobs:
             --accept-source-agreements `
             --disable-interactivity
 
-      # The GDK installer registers GameDKLatest in the machine environment.
-      # Read it here so subsequent steps use the real install path regardless
-      # of which edition winget chose to install.
+      # Export GDK_ROOT and GDK_EDITION from the machine env var set by the
+      # installer. These are used by later steps (ANGLE DLL paths, etc.).
       - name: Locate GDK
         shell: pwsh
         run: |
-          # GameDKCoreLatest is what the installer actually sets (confirmed from logs).
-          # Fall back to GameDKLatest for older installer versions.
           $gdkLatest = [System.Environment]::GetEnvironmentVariable("GameDKCoreLatest", "Machine")
           if (-not $gdkLatest) {
             $gdkLatest = [System.Environment]::GetEnvironmentVariable("GameDKLatest", "Machine")
@@ -56,25 +54,19 @@ jobs:
             exit 1
           }
           $gdkLatest = $gdkLatest.TrimEnd('\')
-          Write-Host "GameDKCoreLatest = $gdkLatest"
-
-          Write-Host "`n=== Contents of edition directory (3 levels) ==="
-          Get-ChildItem $gdkLatest -Recurse -Depth 3 -ErrorAction SilentlyContinue |
-            Select-Object -ExpandProperty FullName | ForEach-Object { Write-Host $_ }
-
-          $gdkRoot = "$gdkLatest\GRDK"
-          $edition = Split-Path $gdkLatest -Leaf
-          Write-Host "`nGDK root : $gdkRoot"
-          Write-Host "Edition  : $edition"
+          $edition   = Split-Path $gdkLatest -Leaf
+          $gdkRoot   = "$gdkLatest\GRDK"
+          Write-Host "GDK root : $gdkRoot  (edition $edition)"
           echo "GDK_ROOT=$gdkRoot"    >> $env:GITHUB_ENV
           echo "GDK_EDITION=$edition" >> $env:GITHUB_ENV
 
+      # In GDK 2510+ there is no GDKxPlatform.cmake toolchain file.
+      # The installer registers Gaming.Desktop.x64 as a VS2022 MSBuild
+      # platform, so CMake picks it up via -A alone.
       - name: Configure (GDK Desktop)
         shell: pwsh
         run: |
           cmake -B xbox/build-desktop -S xbox `
-            -DCMAKE_TOOLCHAIN_FILE="$env:GDK_ROOT\BuildFiles\CMake\GDKxPlatform.cmake" `
-            -DGDK_TOOLCHAIN_EDITION=$env:GDK_EDITION `
             -A Gaming.Desktop.x64 `
             -DCMAKE_BUILD_TYPE=Release
 
