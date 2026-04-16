@@ -21,7 +21,8 @@
 // This block must come before the platform-specific GL headers below because
 // gl_compat.h includes <GL/glut.h> (which drags in <GL/gl.h>) before this
 // file, so GL types are already available.
-#if defined(_WIN32) && !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__)
+#if defined(_WIN32) && !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__) && \
+    !defined(_GAMING_XBOX) && !defined(_GAMING_DESKTOP)
 #  include <GL/glext.h>
 extern PFNGLCREATESHADERPROC             glCreateShader;
 extern PFNGLSHADERSOURCEPROC             glShaderSource;
@@ -54,13 +55,14 @@ extern PFNGLBINDVERTEXARRAYPROC          glBindVertexArray;
 extern PFNGLDELETEVERTEXARRAYSPROC       glDeleteVertexArrays;
 #endif // _WIN32
 
-#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__)
+#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__) || \
+    defined(_GAMING_XBOX) || defined(_GAMING_DESKTOP)
 // ---- GLES2 platform GL headers ----
 #  if defined(__ANDROID__)
 #    include <GLES2/gl2.h>
 #  elif defined(__IOS__)
 #    include <OpenGLES/ES2/gl.h>
-#  elif defined(__EMSCRIPTEN__)
+#  else  // Emscripten, GDK (ANGLE via EGL)
 #    include <SDL_opengles2.h>
 #  endif
 #else
