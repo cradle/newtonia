@@ -17,18 +17,18 @@ jobs:
 
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      GDK_EDITION: "241000"
-      GDK_ROOT: "C:\\Program Files (x86)\\Microsoft GDK\\241000\\GRDK"
 
     steps:
       - uses: actions/checkout@v4
 
+      # Cache the entire GDK directory. Key doesn't include a hardcoded edition
+      # so it survives winget upgrading the installed version.
       - name: Cache GDK
         id: cache-gdk
         uses: actions/cache@v4
         with:
-          path: C:\Program Files (x86)\Microsoft GDK\241000
-          key: gdk-241000
+          path: C:\Program Files (x86)\Microsoft GDK
+          key: gdk-Microsoft.Gaming.GDK
 
       - name: Install GDK
         if: steps.cache-gdk.outputs.cache-hit != 'true'
@@ -38,16 +38,36 @@ jobs:
             --accept-package-agreements `
             --accept-source-agreements `
             --disable-interactivity
-          $machine = [System.Environment]::GetEnvironmentVariable("Path","Machine")
-          $user    = [System.Environment]::GetEnvironmentVariable("Path","User")
-          echo "PATH=$machine;$user" >> $env:GITHUB_ENV
+
+      # The GDK installer registers GameDKLatest in the machine environment.
+      # Read it here so subsequent steps use the real install path regardless
+      # of which edition winget chose to install.
+      - name: Locate GDK
+        shell: pwsh
+        run: |
+          $gdkLatest = [System.Environment]::GetEnvironmentVariable("GameDKLatest", "Machine")
+          if (-not $gdkLatest) {
+            # Fallback: search for the toolchain file under the default root.
+            $f = Get-ChildItem "C:\Program Files (x86)\Microsoft GDK" `
+                   -Recurse -Filter "GDKxPlatform.cmake" -ErrorAction SilentlyContinue |
+                 Select-Object -First 1
+            if (-not $f) { Write-Error "GDK toolchain not found after install"; exit 1 }
+            # Path is <edition>\GRDK\BuildFiles\CMake\GDKxPlatform.cmake
+            $gdkLatest = $f.Directory.Parent.Parent.Parent.FullName
+          }
+          $gdkLatest = $gdkLatest.TrimEnd('\')
+          $edition   = Split-Path $gdkLatest -Leaf
+          $gdkRoot   = "$gdkLatest\GRDK"
+          Write-Host "GDK root : $gdkRoot"
+          Write-Host "Edition  : $edition"
+          echo "GDK_ROOT=$gdkRoot"    >> $env:GITHUB_ENV
+          echo "GDK_EDITION=$edition" >> $env:GITHUB_ENV
 
       - name: Configure (GDK Desktop)
         shell: pwsh
         run: |
-          $toolchain = "$env:GDK_ROOT\BuildFiles\CMake\GDKxPlatform.cmake"
           cmake -B xbox/build-desktop -S xbox `
-            -DCMAKE_TOOLCHAIN_FILE="$toolchain" `
+            -DCMAKE_TOOLCHAIN_FILE="$env:GDK_ROOT\BuildFiles\CMake\GDKxPlatform.cmake" `
             -DGDK_TOOLCHAIN_EDITION=$env:GDK_EDITION `
             -A Gaming.Desktop.x64 `
             -DCMAKE_BUILD_TYPE=Release
