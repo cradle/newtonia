@@ -138,37 +138,43 @@ jobs:
           echo "ANGLE_LIB_DIR=$($lib.Directory.FullName)" >> $env:GITHUB_ENV
           echo "ANGLE_BIN_DIR=$($dll.Directory.FullName)" >> $env:GITHUB_ENV
 
-      # MSBuild auto-imports Directory.Build.props from the project directory
-      # and every parent up to the drive root.  This includes CMake's internal
-      # VCTargetsPath.vcxproj probe.  We set every property and pseudo-env-var
-      # the _GdkEditionCheck target could possibly consult so the check passes
-      # regardless of which reading mechanism the installed targets file uses.
+      # Platform.targets checks:
+      #   Exists('$(XdkEditionRootVS2022)$(XdkEdition)\Platform.Edition.targets')
+      # Search the GDK tree for that file, derive both property values from its
+      # actual location, and write them to Directory.Build.props — which MSBuild
+      # auto-imports for every project in the tree, including CMake's probe.
       - name: Write GDK edition props
         shell: pwsh
         run: |
-          # $env:GDK_ROOT  = …\<edition>\GRDK  (no trailing slash)
-          # $env:GDK_EDITION = <edition number, e.g. 251002>
-          $edition    = $env:GDK_EDITION
-          $gdkRoot    = $env:GDK_ROOT            # …\GRDK
-          $editionDir = Split-Path $gdkRoot -Parent  # …\<edition>
+          $gdkRoot = $env:GDK_ROOT   # …\<edition>\GRDK  (no trailing slash)
+          $edition = $env:GDK_EDITION
+
+          $pet = Get-ChildItem $gdkRoot -Recurse -Filter "Platform.Edition.targets" `
+                   -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $pet) {
+            Write-Error "Platform.Edition.targets not found under $gdkRoot"
+            exit 1
+          }
+          Write-Host "Platform.Edition.targets : $($pet.FullName)"
+
+          # Derive the two MSBuild properties from the file's location:
+          #   XdkEdition           = name of the immediate parent directory
+          #   XdkEditionRootVS2022 = grandparent path + trailing backslash
+          $xdkEdition        = $pet.DirectoryName | Split-Path -Leaf
+          $xdkEditionRootVS2022 = ($pet.DirectoryName | Split-Path -Parent) + "\"
+          Write-Host "XdkEdition           = $xdkEdition"
+          Write-Host "XdkEditionRootVS2022 = $xdkEditionRootVS2022"
+
           @(
             '<?xml version="1.0" encoding="utf-8"?>',
             '<Project>',
             '  <PropertyGroup>',
-            # The edition number itself
-            "    <GdkEdition>$edition</GdkEdition>",
-            # Mirrors the machine env var that the GDK installer sets.
-            # Setting it here as an MSBuild property covers both $(GameDKLatest)
-            # property expansion and any GetEnvironmentVariable call that reads
-            # the process environment rather than the machine registry.
-            "    <GameDKLatest>$editionDir\</GameDKLatest>",
-            "    <GameDKCoreLatest>$editionDir\</GameDKCoreLatest>",
-            # BWOI (Build Without Installing) property: points to GRDK root.
-            "    <XdkEditionRootPath>$gdkRoot\</XdkEditionRootPath>",
+            "    <XdkEdition>$xdkEdition</XdkEdition>",
+            "    <XdkEditionRootVS2022>$xdkEditionRootVS2022</XdkEditionRootVS2022>",
             '  </PropertyGroup>',
             '</Project>'
           ) | Set-Content -Path "Directory.Build.props" -Encoding utf8
-          Write-Host "Directory.Build.props written:"
+          Write-Host "Directory.Build.props:"
           Get-Content "Directory.Build.props"
 
       - name: Configure (GDK Desktop)

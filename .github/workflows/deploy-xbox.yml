@@ -140,17 +140,37 @@ jobs:
           echo "ANGLE_BIN_DIR=$($dll.Directory.FullName)" >> $env:GITHUB_ENV
 
       # ---- Write GDK edition props ---------------------------------
+      # Platform.targets checks:
+      #   Exists('$(XdkEditionRootVS2022)$(XdkEdition)\Platform.Edition.targets')
+      # Search the GDK tree for that file and derive both values from its path.
       - name: Write GDK edition props
         shell: pwsh
         run: |
+          $gdkRoot = $env:GDK_ROOT
+
+          $pet = Get-ChildItem $gdkRoot -Recurse -Filter "Platform.Edition.targets" `
+                   -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $pet) {
+            Write-Error "Platform.Edition.targets not found under $gdkRoot"
+            exit 1
+          }
+          Write-Host "Platform.Edition.targets : $($pet.FullName)"
+
+          $xdkEdition           = $pet.DirectoryName | Split-Path -Leaf
+          $xdkEditionRootVS2022 = ($pet.DirectoryName | Split-Path -Parent) + "\"
+          Write-Host "XdkEdition           = $xdkEdition"
+          Write-Host "XdkEditionRootVS2022 = $xdkEditionRootVS2022"
+
           @(
             '<?xml version="1.0" encoding="utf-8"?>',
             '<Project>',
             '  <PropertyGroup>',
-            "    <GdkEdition>$env:GDK_EDITION</GdkEdition>",
+            "    <XdkEdition>$xdkEdition</XdkEdition>",
+            "    <XdkEditionRootVS2022>$xdkEditionRootVS2022</XdkEditionRootVS2022>",
             '  </PropertyGroup>',
             '</Project>'
           ) | Set-Content -Path "Directory.Build.props" -Encoding utf8
+          Get-Content "Directory.Build.props"
 
       # ---- Configure ------------------------------------------------
       - name: Configure (CMake + GDK)
