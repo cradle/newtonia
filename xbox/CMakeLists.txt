@@ -53,6 +53,10 @@ list(FILTER ALL_SRCS EXCLUDE REGEX "macos_window\\.mm$")
 # ---------------------------------------------------------------
 include(FetchContent)
 
+# Force static builds for both SDL2 and SDL2_mixer so their
+# INTERFACE_SDL2_SHARED properties agree and CMake doesn't error out.
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
 FetchContent_Declare(SDL2
     GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
     GIT_TAG        SDL2

@@ -69,22 +69,8 @@ jobs:
         run: |
           $gdkVS = "$env:GDK_ROOT\VS2022"
           $vsBase = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild"
-
-          Write-Host "=== GRDK\VS2022 contents ==="
-          Get-ChildItem $gdkVS -Recurse | Select-Object -ExpandProperty FullName |
-            ForEach-Object { Write-Host $_ }
-
-          Write-Host "`n=== VS2022 MSBuild platforms before copy ==="
-          Get-ChildItem "$vsBase\Microsoft\VC\v170\Platforms" -ErrorAction SilentlyContinue |
-            Select-Object -ExpandProperty Name | ForEach-Object { Write-Host $_ }
-
-          # flatDeployment\MSBuild mirrors the VS2022 MSBuild directory tree.
-          Write-Host "`nCopying GDK VS2022 platform files..."
+          # flatDeployment\MSBuild mirrors the VS2022 MSBuild directory tree exactly.
           Copy-Item -Recurse -Force "$gdkVS\flatDeployment\MSBuild\*" "$vsBase\"
-
-          Write-Host "`n=== VS2022 MSBuild platforms after copy ==="
-          Get-ChildItem "$vsBase\Microsoft\VC\v170\Platforms" -ErrorAction SilentlyContinue |
-            Select-Object -ExpandProperty Name | ForEach-Object { Write-Host $_ }
 
       - name: Configure (GDK Desktop)
         shell: pwsh
