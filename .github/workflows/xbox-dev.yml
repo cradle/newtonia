@@ -203,14 +203,18 @@ jobs:
           # GDK edition root also serves as GameDKLatest / DurangoXdkInstallPath.
           $gameDKLatest = $xdkEditionRootPath
 
-          # BWOI VCTargets paths: the GDK flatDeployment directory contains v170
-          # (VS2022) and v160 (VS2019) copies of the toolset props/targets.
-          # VCTargetsPath17/16 in Directory.Build.props (conditioned on Gaming.*
-          # platforms) tell GDK's Toolset.Edition.props where to find these files
-          # without relying on a full GDK installer having run.
-          $v17 = "${xdkEditionRootPath}GRDK\VS2022\flatDeployment\MSBuild\Microsoft\VC\v170\"
-          $v16 = "${xdkEditionRootPath}GRDK\VS2022\flatDeployment\MSBuild\Microsoft\VC\v160\"
+          # BWOI VCTargets paths must point to the MERGED directory that contains
+          # both the standard VS2022 VC targets AND the GDK Gaming platform files.
+          # "Register GDK VS2022 platform" copies the GDK flatDeployment into the
+          # VS2022 MSBuild tree, so after that step the VS2022 VCTargetsPath IS the
+          # merged directory.  Using the raw GDK flatDeployment path would redirect
+          # $(VCTargetsPath) there, and then Platform.Edition.props line 14's import
+          # of $(VCTargetsPath)\Platforms\x64\Platform.props would fail (not found).
+          $v17 = $env:VCTargetsPath   # set by "Export VCTargetsPath" step
+          # v160 sibling directory — GDK also ships VS2019 (v160) toolset files.
+          $v16 = $v17 -replace '\\v170\\', '\v160\'
           Write-Host "VCTargetsPath17 : $v17"
+          Write-Host "VCTargetsPath16 : $v16"
 
           # Scan the installed Windows SDK Include dirs for the highest version.
           # Used as WindowsTargetPlatformVersion — the actual build still needs the

@@ -185,8 +185,12 @@ jobs:
           $xdkEditionRootPath = (Split-Path $gdkRoot -Parent) + "\"
           Write-Host "XdkEditionRootPath   = $xdkEditionRootPath"
 
-          $v17 = "${xdkEditionRootPath}GRDK\VS2022\flatDeployment\MSBuild\Microsoft\VC\v170\"
-          $v16 = "${xdkEditionRootPath}GRDK\VS2022\flatDeployment\MSBuild\Microsoft\VC\v160\"
+          # VCTargetsPath17/16 must point to the merged VS2022+GDK directory, not
+          # the raw GDK flatDeployment — Platform.Edition.props imports
+          # $(VCTargetsPath)\Platforms\x64\Platform.props which only exists in
+          # the VS2022 tree.  The "Register GDK VS2022 platform" step merges them.
+          $v17 = $env:VCTargetsPath   # set by "Export VCTargetsPath" step
+          $v16 = $v17 -replace '\\v170\\', '\v160\'
 
           $wkInclude = "${env:ProgramFiles(x86)}\Windows Kits\10\Include"
           $winSDKVer = Get-ChildItem $wkInclude -Directory -ErrorAction SilentlyContinue |
