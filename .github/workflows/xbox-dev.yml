@@ -45,10 +45,26 @@ jobs:
       - name: Locate GDK
         shell: pwsh
         run: |
+          Write-Host "=== GDK-related machine env vars ==="
+          [System.Environment]::GetEnvironmentVariables("Machine").GetEnumerator() |
+            Where-Object { $_.Key -match "GDK|Gaming|GameDK" } |
+            ForEach-Object { Write-Host "$($_.Key) = $($_.Value)" }
+
+          Write-Host "`n=== Searching Program Files (x86) for GDKxPlatform.cmake ==="
+          Get-ChildItem "C:\Program Files (x86)" -Filter "Microsoft GDK" -ErrorAction SilentlyContinue |
+            ForEach-Object { Write-Host "Found dir: $($_.FullName)"; Get-ChildItem $_.FullName }
+
+          Write-Host "`n=== Searching Program Files for GDKxPlatform.cmake ==="
+          Get-ChildItem "C:\Program Files" -Filter "Microsoft GDK" -ErrorAction SilentlyContinue |
+            ForEach-Object { Write-Host "Found dir: $($_.FullName)"; Get-ChildItem $_.FullName }
+
+          Write-Host "`n=== winget list ==="
+          winget list --id Microsoft.Gaming.GDK 2>&1
+
           $gdkLatest = [System.Environment]::GetEnvironmentVariable("GameDKLatest", "Machine")
           if (-not $gdkLatest) {
-            # Fallback: search for the toolchain file under the default root.
-            $f = Get-ChildItem "C:\Program Files (x86)\Microsoft GDK" `
+            # Fallback: search for the toolchain file under both Program Files roots.
+            $f = Get-ChildItem "C:\Program Files (x86)\Microsoft GDK","C:\Program Files\Microsoft GDK" `
                    -Recurse -Filter "GDKxPlatform.cmake" -ErrorAction SilentlyContinue |
                  Select-Object -First 1
             if (-not $f) { Write-Error "GDK toolchain not found after install"; exit 1 }
