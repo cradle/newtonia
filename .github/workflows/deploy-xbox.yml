@@ -148,8 +148,12 @@ jobs:
         run: |
           $gdkRoot = $env:GDK_ROOT
 
+          # The GDK VS2022 flatDeployment contains both v160 (VS2019) and v170
+          # (VS2022) copies.  Filter to v170 so Toolset.props resolves correctly.
           $pet = Get-ChildItem "$gdkRoot\VS2022" -Recurse -Filter "Platform.Edition.targets" `
-                   -ErrorAction SilentlyContinue | Select-Object -First 1
+                   -ErrorAction SilentlyContinue |
+                   Where-Object { $_.FullName -match '[/\\]v170[/\\]' } |
+                   Select-Object -First 1
           if (-not $pet) {
             Write-Error "Platform.Edition.targets not found under $gdkRoot"
             exit 1
