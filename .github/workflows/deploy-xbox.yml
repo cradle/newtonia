@@ -98,6 +98,16 @@ jobs:
           # installer env var wasn't written to the machine registry.
           echo "GameDKLatest=$gdkLatest\"     >> $env:GITHUB_ENV
           echo "GameDKCoreLatest=$gdkLatest\" >> $env:GITHUB_ENV
+          # Also write to the machine-level registry entry.  Platform.targets
+          # reads via [System.Environment]::GetEnvironmentVariable('GameDKLatest',
+          # 'Machine') which reads the registry, not the process environment that
+          # GITHUB_ENV populates.  The runner has admin rights so this succeeds.
+          [System.Environment]::SetEnvironmentVariable(
+            "GameDKLatest",     "$gdkLatest\",
+            [System.EnvironmentVariableTarget]::Machine)
+          [System.Environment]::SetEnvironmentVariable(
+            "GameDKCoreLatest", "$gdkLatest\",
+            [System.EnvironmentVariableTarget]::Machine)
 
       - name: Register GDK VS2022 platform
         shell: pwsh
@@ -128,6 +138,19 @@ jobs:
           Write-Host "ANGLE DLL dir : $($dll.Directory.FullName)"
           echo "ANGLE_LIB_DIR=$($lib.Directory.FullName)" >> $env:GITHUB_ENV
           echo "ANGLE_BIN_DIR=$($dll.Directory.FullName)" >> $env:GITHUB_ENV
+
+      # ---- Write GDK edition props ---------------------------------
+      - name: Write GDK edition props
+        shell: pwsh
+        run: |
+          @(
+            '<?xml version="1.0" encoding="utf-8"?>',
+            '<Project>',
+            '  <PropertyGroup>',
+            "    <GdkEdition>$env:GDK_EDITION</GdkEdition>",
+            '  </PropertyGroup>',
+            '</Project>'
+          ) | Set-Content -Path "Directory.Build.props" -Encoding utf8
 
       # ---- Configure ------------------------------------------------
       - name: Configure (CMake + GDK)

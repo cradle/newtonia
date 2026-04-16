@@ -78,6 +78,16 @@ jobs:
           # installer env var wasn't written to the machine registry.
           echo "GameDKLatest=$gdkLatest\"     >> $env:GITHUB_ENV
           echo "GameDKCoreLatest=$gdkLatest\" >> $env:GITHUB_ENV
+          # Also write to the machine-level registry entry.  Platform.targets
+          # reads via [System.Environment]::GetEnvironmentVariable('GameDKLatest',
+          # 'Machine') which reads the registry, not the process environment that
+          # GITHUB_ENV populates.  The runner has admin rights so this succeeds.
+          [System.Environment]::SetEnvironmentVariable(
+            "GameDKLatest",     "$gdkLatest\",
+            [System.EnvironmentVariableTarget]::Machine)
+          [System.Environment]::SetEnvironmentVariable(
+            "GameDKCoreLatest", "$gdkLatest\",
+            [System.EnvironmentVariableTarget]::Machine)
 
       # The GDK installer may not have copied the platform files into the
       # VS2022 MSBuild directory (winget runs without interactive elevation).
@@ -113,6 +123,24 @@ jobs:
           Write-Host "ANGLE DLL dir : $($dll.Directory.FullName)"
           echo "ANGLE_LIB_DIR=$($lib.Directory.FullName)" >> $env:GITHUB_ENV
           echo "ANGLE_BIN_DIR=$($dll.Directory.FullName)" >> $env:GITHUB_ENV
+
+      # MSBuild auto-imports Directory.Build.props from the project directory
+      # and every parent up to the drive root.  This includes CMake's internal
+      # VCTargetsPath.vcxproj probe that runs before our project is configured.
+      # Writing GdkEdition here is the most reliable way to satisfy the
+      # _GdkEditionCheck target in Gaming.Desktop.x64\Platform.targets,
+      # covering all cases (fresh install, cache hit, missing registry key).
+      - name: Write GDK edition props
+        shell: pwsh
+        run: |
+          @(
+            '<?xml version="1.0" encoding="utf-8"?>',
+            '<Project>',
+            '  <PropertyGroup>',
+            "    <GdkEdition>$env:GDK_EDITION</GdkEdition>",
+            '  </PropertyGroup>',
+            '</Project>'
+          ) | Set-Content -Path "Directory.Build.props" -Encoding utf8
 
       - name: Configure (GDK Desktop)
         shell: pwsh
