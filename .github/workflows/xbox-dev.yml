@@ -72,12 +72,25 @@ jobs:
           # flatDeployment\MSBuild mirrors the VS2022 MSBuild directory tree exactly.
           Copy-Item -Recurse -Force "$gdkVS\flatDeployment\MSBuild\*" "$vsBase\"
 
+      - name: Locate ANGLE libs
+        shell: pwsh
+        run: |
+          $egl = Get-ChildItem "$env:GDK_ROOT" -Recurse -Filter "libEGL.lib" `
+                   -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $egl) {
+            Write-Error "libEGL.lib not found under $env:GDK_ROOT — ANGLE not installed"
+            exit 1
+          }
+          Write-Host "ANGLE lib dir: $($egl.Directory.FullName)"
+          echo "ANGLE_LIB_DIR=$($egl.Directory.FullName)" >> $env:GITHUB_ENV
+
       - name: Configure (GDK Desktop)
         shell: pwsh
         run: |
           cmake -B xbox/build-desktop -S xbox `
             -A Gaming.Desktop.x64 `
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release `
+            -DANGLE_LIB_DIR="$env:ANGLE_LIB_DIR"
 
       - name: Build
         shell: pwsh

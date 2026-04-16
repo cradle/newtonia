@@ -65,31 +65,49 @@ jobs:
       - name: Locate GDK
         shell: pwsh
         run: |
-          $gdkLatest = [System.Environment]::GetEnvironmentVariable("GameDKLatest", "Machine")
+          $gdkLatest = [System.Environment]::GetEnvironmentVariable("GameDKCoreLatest", "Machine")
           if (-not $gdkLatest) {
-            $f = Get-ChildItem "C:\Program Files (x86)\Microsoft GDK" `
-                   -Recurse -Filter "GDKxPlatform.cmake" -ErrorAction SilentlyContinue |
-                 Select-Object -First 1
-            if (-not $f) { Write-Error "GDK toolchain not found after install"; exit 1 }
-            $gdkLatest = $f.Directory.Parent.Parent.Parent.FullName
+            $gdkLatest = [System.Environment]::GetEnvironmentVariable("GameDKLatest", "Machine")
+          }
+          if (-not $gdkLatest) {
+            Write-Error "Neither GameDKCoreLatest nor GameDKLatest is set. GDK install may have failed."
+            exit 1
           }
           $gdkLatest = $gdkLatest.TrimEnd('\')
           $edition   = Split-Path $gdkLatest -Leaf
           $gdkRoot   = "$gdkLatest\GRDK"
-          Write-Host "GDK root : $gdkRoot"
-          Write-Host "Edition  : $edition"
+          Write-Host "GDK root : $gdkRoot  (edition $edition)"
           echo "GDK_ROOT=$gdkRoot"    >> $env:GITHUB_ENV
           echo "GDK_EDITION=$edition" >> $env:GITHUB_ENV
 
-      # ---- Configure with the GDK CMake toolchain --------------------
-      - name: Configure (CMake + GDK toolchain)
+      - name: Register GDK VS2022 platform
+        shell: pwsh
+        run: |
+          $gdkVS = "$env:GDK_ROOT\VS2022"
+          $vsBase = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild"
+          Copy-Item -Recurse -Force "$gdkVS\flatDeployment\MSBuild\*" "$vsBase\"
+
+      # ---- Locate ANGLE import libs ----------------------------------
+      - name: Locate ANGLE libs
+        shell: pwsh
+        run: |
+          $egl = Get-ChildItem "$env:GDK_ROOT" -Recurse -Filter "libEGL.lib" `
+                   -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $egl) {
+            Write-Error "libEGL.lib not found under $env:GDK_ROOT"
+            exit 1
+          }
+          Write-Host "ANGLE lib dir: $($egl.Directory.FullName)"
+          echo "ANGLE_LIB_DIR=$($egl.Directory.FullName)" >> $env:GITHUB_ENV
+
+      # ---- Configure ------------------------------------------------
+      - name: Configure (CMake + GDK)
         shell: pwsh
         run: |
           cmake -B xbox/build -S xbox `
-            -DCMAKE_TOOLCHAIN_FILE="$env:GDK_ROOT\BuildFiles\CMake\GDKxPlatform.cmake" `
-            -DGDK_TOOLCHAIN_EDITION=$env:GDK_EDITION `
             -A Gaming.Xbox.Scarlett.x64 `
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release `
+            -DANGLE_LIB_DIR="$env:ANGLE_LIB_DIR"
 
       - name: Build
         shell: pwsh

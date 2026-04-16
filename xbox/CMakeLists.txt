@@ -105,9 +105,30 @@ target_include_directories(newtonia PRIVATE
     ${CMAKE_SOURCE_DIR}/../view
 )
 
-# GDK ships ANGLE import libraries (libEGL.lib / libGLESv2.lib) and adds
-# their directory to CMAKE_LIBRARY_PATH via the toolchain file, so we can
-# link by bare name here.
+# ANGLE import libraries (libEGL.lib / libGLESv2.lib).
+# When using -A Gaming.Desktop.x64 / -A Gaming.Xbox.Scarlett.x64 without a
+# CMake toolchain file, the GDK MSBuild platform props add the ANGLE lib path
+# as an MSBuild AdditionalLibraryDirectories entry that CMake does not
+# automatically forward to the raw linker inputs it emits.
+# ANGLE_LIB_DIR is located at configure time by the CI workflow and passed
+# via -DANGLE_LIB_DIR=<path>; for local VS builds the platform props handle
+# it automatically.
+if(DEFINED ANGLE_LIB_DIR)
+    target_link_directories(newtonia PRIVATE "${ANGLE_LIB_DIR}")
+elseif(DEFINED ENV{GDK_ROOT})
+    # Local fallback: search the GDK gameKit lib tree for libEGL.lib.
+    file(TO_CMAKE_PATH "$ENV{GDK_ROOT}/gameKit/Lib" _gkit_lib)
+    file(GLOB_RECURSE _egl_candidates "${_gkit_lib}/libEGL.lib")
+    if(_egl_candidates)
+        list(GET _egl_candidates 0 _egl_lib)
+        get_filename_component(_angle_lib_dir "${_egl_lib}" DIRECTORY)
+        message(STATUS "ANGLE lib dir (auto): ${_angle_lib_dir}")
+        target_link_directories(newtonia PRIVATE "${_angle_lib_dir}")
+    else()
+        message(WARNING "libEGL.lib not found under ${_gkit_lib} — pass -DANGLE_LIB_DIR=<path>")
+    endif()
+endif()
+
 target_link_libraries(newtonia PRIVATE
     SDL2-static
     SDL2_mixer
