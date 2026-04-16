@@ -90,12 +90,14 @@ FetchContent_MakeAvailable(SDL2_mixer)
 add_executable(newtonia ${ALL_SRCS})
 
 target_compile_definitions(newtonia PRIVATE
-    # _USE_MATH_DEFINES is intentionally absent: SDL2's SDL_stdinc.h defines
-    # M_PI (and companions) unconditionally, so adding _USE_MATH_DEFINES causes
-    # a C4005 redefinition warning from corecrt_math_defines.h.
+    _USE_MATH_DEFINES  # M_PI etc. for files that include <math.h> before SDL headers
     # _GAMING_XBOX / _GAMING_DESKTOP are injected by the GDK toolchain;
     # do not set them here or the wrong entry point will be compiled on Desktop.
 )
+
+# SDL_stdinc.h unconditionally defines M_PI, so when _USE_MATH_DEFINES is also
+# set the Windows CRT re-defines it.  Suppress the resulting C4005 warning.
+target_compile_options(newtonia PRIVATE /wd4005)
 
 target_include_directories(newtonia PRIVATE
     ${CMAKE_SOURCE_DIR}/..          # repo root (all .h files)

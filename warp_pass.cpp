@@ -233,7 +233,7 @@ WarpPass::WarpPass()
       a_pos_(-1), u_mvp_(-1), u_tex_(-1),
       u_center_ndc_(-1), u_radius_ndc_(-1), u_time_(-1)
 {
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(_GAMING_XBOX) && !defined(_GAMING_DESKTOP)
     warp_load_gl_fns();
 #endif
 
