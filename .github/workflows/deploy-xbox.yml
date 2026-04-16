@@ -65,12 +65,24 @@ jobs:
       - name: Locate GDK
         shell: pwsh
         run: |
+          # 1. Try machine env vars set by the installer.
           $gdkLatest = [System.Environment]::GetEnvironmentVariable("GameDKCoreLatest", "Machine")
           if (-not $gdkLatest) {
             $gdkLatest = [System.Environment]::GetEnvironmentVariable("GameDKLatest", "Machine")
           }
+          # 2. Fallback: scan the default install path.
+          #    winget can return before the MSI finishes writing env vars, and
+          #    a cache-hit restore never sets them at all.
           if (-not $gdkLatest) {
-            Write-Error "Neither GameDKCoreLatest nor GameDKLatest is set. GDK install may have failed."
+            $gdkBase = "C:\Program Files (x86)\Microsoft GDK"
+            $found = Get-ChildItem $gdkBase -Directory -ErrorAction SilentlyContinue |
+                       Where-Object { $_.Name -match '^\d+$' } |
+                       Sort-Object Name -Descending |
+                       Select-Object -First 1
+            if ($found) { $gdkLatest = $found.FullName }
+          }
+          if (-not $gdkLatest) {
+            Write-Error "GDK not found: env vars unset and default path empty."
             exit 1
           }
           $gdkLatest = $gdkLatest.TrimEnd('\')
