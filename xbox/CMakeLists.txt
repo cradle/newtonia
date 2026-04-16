@@ -77,10 +77,6 @@ FetchContent_MakeAvailable(SDL2)
 # Fix: undefine __GDK__ for SDL2's own object files via MSVC /U so SDL2
 # uses its standard Win32 backend.  GDK Desktop is Win32-compatible, and
 # our xbox_main.cpp handles all GDK PLM lifecycle events directly.
-target_compile_options(SDL2-static PRIVATE /U__GDK__)
-if(TARGET SDL2main)
-    target_compile_options(SDL2main PRIVATE /U__GDK__)
-endif()
 
 # SDL2_mixer: WAV + MP3 only (mirrors every other platform build).
 FetchContent_Declare(SDL2_mixer
@@ -103,6 +99,9 @@ FetchContent_MakeAvailable(SDL2_mixer)
 # Executable
 # ---------------------------------------------------------------
 add_executable(newtonia ${ALL_SRCS})
+
+# SDL2 GDK _REAL stubs — see sdl_gdk_stubs.cpp for full rationale.
+target_sources(newtonia PRIVATE "${CMAKE_SOURCE_DIR}/sdl_gdk_stubs.cpp")
 
 target_compile_definitions(newtonia PRIVATE
     _USE_MATH_DEFINES  # M_PI etc. for files that include <math.h> before SDL headers
