@@ -45,36 +45,26 @@ jobs:
       - name: Locate GDK
         shell: pwsh
         run: |
-          Write-Host "=== GDK-related machine env vars ==="
-          [System.Environment]::GetEnvironmentVariables("Machine").GetEnumerator() |
-            Where-Object { $_.Key -match "GDK|Gaming|GameDK" } |
-            ForEach-Object { Write-Host "$($_.Key) = $($_.Value)" }
-
-          Write-Host "`n=== Searching Program Files (x86) for GDKxPlatform.cmake ==="
-          Get-ChildItem "C:\Program Files (x86)" -Filter "Microsoft GDK" -ErrorAction SilentlyContinue |
-            ForEach-Object { Write-Host "Found dir: $($_.FullName)"; Get-ChildItem $_.FullName }
-
-          Write-Host "`n=== Searching Program Files for GDKxPlatform.cmake ==="
-          Get-ChildItem "C:\Program Files" -Filter "Microsoft GDK" -ErrorAction SilentlyContinue |
-            ForEach-Object { Write-Host "Found dir: $($_.FullName)"; Get-ChildItem $_.FullName }
-
-          Write-Host "`n=== winget list ==="
-          winget list --id Microsoft.Gaming.GDK 2>&1
-
-          $gdkLatest = [System.Environment]::GetEnvironmentVariable("GameDKLatest", "Machine")
+          # GameDKCoreLatest is what the installer actually sets (confirmed from logs).
+          # Fall back to GameDKLatest for older installer versions.
+          $gdkLatest = [System.Environment]::GetEnvironmentVariable("GameDKCoreLatest", "Machine")
           if (-not $gdkLatest) {
-            # Fallback: search for the toolchain file under both Program Files roots.
-            $f = Get-ChildItem "C:\Program Files (x86)\Microsoft GDK","C:\Program Files\Microsoft GDK" `
-                   -Recurse -Filter "GDKxPlatform.cmake" -ErrorAction SilentlyContinue |
-                 Select-Object -First 1
-            if (-not $f) { Write-Error "GDK toolchain not found after install"; exit 1 }
-            # Path is <edition>\GRDK\BuildFiles\CMake\GDKxPlatform.cmake
-            $gdkLatest = $f.Directory.Parent.Parent.Parent.FullName
+            $gdkLatest = [System.Environment]::GetEnvironmentVariable("GameDKLatest", "Machine")
+          }
+          if (-not $gdkLatest) {
+            Write-Error "Neither GameDKCoreLatest nor GameDKLatest is set. GDK install may have failed."
+            exit 1
           }
           $gdkLatest = $gdkLatest.TrimEnd('\')
-          $edition   = Split-Path $gdkLatest -Leaf
-          $gdkRoot   = "$gdkLatest\GRDK"
-          Write-Host "GDK root : $gdkRoot"
+          Write-Host "GameDKCoreLatest = $gdkLatest"
+
+          Write-Host "`n=== Contents of edition directory (3 levels) ==="
+          Get-ChildItem $gdkLatest -Recurse -Depth 3 -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty FullName | ForEach-Object { Write-Host $_ }
+
+          $gdkRoot = "$gdkLatest\GRDK"
+          $edition = Split-Path $gdkLatest -Leaf
+          Write-Host "`nGDK root : $gdkRoot"
           Write-Host "Edition  : $edition"
           echo "GDK_ROOT=$gdkRoot"    >> $env:GITHUB_ENV
           echo "GDK_EDITION=$edition" >> $env:GITHUB_ENV
