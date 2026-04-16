@@ -1,0 +1,216 @@
+name: Deploy Xbox
+
+# Triggered manually or on a version tag (same convention as deploy-steam.yml).
+# Required GitHub secrets:
+#   XBOX_STORE_ID                  — 12-char Store ID from Partner Center
+#   XBOX_PARTNER_CENTER_TENANT_ID  — Azure AD tenant ID
+#   XBOX_PARTNER_CENTER_CLIENT_ID  — Azure AD app (service principal) client ID
+#   XBOX_PARTNER_CENTER_CLIENT_SECRET — service principal secret
+#
+# One-time Partner Center setup
+# ------------------------------
+# 1. Enrol in ID@Xbox at https://developer.microsoft.com/games
+# 2. Create the title in Partner Center and note the Store ID.
+# 3. In Azure Portal, create an App Registration (service principal).
+# 4. In Partner Center → Account settings → User management, add that app
+#    as a "Manager" for the title.
+# 5. Store the four values above as GitHub encrypted secrets.
+#
+# GDK version
+# -----------
+# GDK_EDITION below targets GDK 24.10 (October 2024).  Update the edition
+# string and the winget package ID together when upgrading.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      submission_notes:
+        description: 'Notes for this Partner Center submission'
+        required: false
+        default: ''
+
+jobs:
+  # ------------------------------------------------------------------ #
+  # 1. Build the Xbox package                                           #
+  # ------------------------------------------------------------------ #
+  build:
+    runs-on: windows-latest
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      GDK_EDITION: "241000"
+      # GDK installs here by default; update if your GDK edition differs.
+      GDK_ROOT: "C:\\Program Files (x86)\\Microsoft GDK\\241000\\GRDK"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---- Install the GDK via winget --------------------------------
+      # The GDK is a large (~3 GB) download; cache the install directory
+      # to avoid re-downloading on every run.
+      - name: Cache GDK installation
+        id: cache-gdk
+        uses: actions/cache@v4
+        with:
+          path: C:\Program Files (x86)\Microsoft GDK\241000
+          key: gdk-241000
+
+      - name: Install Microsoft GDK 24.10
+        if: steps.cache-gdk.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          winget install --id Microsoft.GDK.2410 -e `
+            --accept-package-agreements `
+            --accept-source-agreements `
+            --disable-interactivity
+          # Refresh PATH so subsequent steps see GDK tools.
+          $machine = [System.Environment]::GetEnvironmentVariable("Path","Machine")
+          $user    = [System.Environment]::GetEnvironmentVariable("Path","User")
+          echo "PATH=$machine;$user" >> $env:GITHUB_ENV
+
+      # ---- Configure with the GDK CMake toolchain --------------------
+      - name: Configure (CMake + GDK toolchain)
+        shell: pwsh
+        run: |
+          $toolchain = "$env:GDK_ROOT\BuildFiles\CMake\GDKxPlatform.cmake"
+          cmake -B xbox/build -S xbox `
+            -DCMAKE_TOOLCHAIN_FILE="$toolchain" `
+            -DGDK_TOOLCHAIN_EDITION=$env:GDK_EDITION `
+            -A Gaming.Xbox.Scarlett.x64 `
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build xbox/build --config Release --parallel
+
+      # ---- Assemble the layout directory for makepkg -----------------
+      - name: Stage layout
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path xbox_output\bin | Out-Null
+
+          # Executable
+          Copy-Item xbox\build\Release\newtonia.exe xbox_output\bin\
+
+          # ANGLE DLLs live next to the executable at runtime.
+          # The GDK ships them in the ANGLE redist directory.
+          $angle = "$env:GDK_ROOT\Redist\CommonAngle\bin"
+          if (Test-Path $angle) {
+            Copy-Item "$angle\libEGL.dll"    xbox_output\bin\
+            Copy-Item "$angle\libGLESv2.dll" xbox_output\bin\
+          } else {
+            Write-Warning "ANGLE redist not found at $angle — DLLs may be missing."
+          }
+
+          # Audio assets
+          Copy-Item -Recurse audio xbox_output\bin\audio
+
+          # Package manifest (must sit at the layout root)
+          Copy-Item xbox\MicrosoftGame.config xbox_output\
+
+          # Tile / splash image assets
+          if (Test-Path xbox\Assets) {
+            Copy-Item -Recurse xbox\Assets xbox_output\Assets
+          } else {
+            Write-Warning "xbox\Assets not found — add StoreLogo.png, Logo480x480.png, Logo150x150.png, SplashScreen.png before submitting."
+            New-Item -ItemType Directory -Force -Path xbox_output\Assets | Out-Null
+          }
+
+      # ---- Package with makepkg -------------------------------------
+      - name: Package (.xvc)
+        shell: pwsh
+        run: |
+          $makepkg = "$env:GDK_ROOT\bin\makepkg.exe"
+          New-Item -ItemType Directory -Force -Path packages | Out-Null
+          & $makepkg pack `
+            /f xbox\PackagingLayout.xml `
+            /d xbox_output `
+            /pd packages `
+            /pc    # include content ID in the package
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xbox-package
+          path: packages\*.xvc
+          retention-days: 14
+
+  # ------------------------------------------------------------------ #
+  # 2. Submit to Partner Center via StoreBroker                        #
+  # ------------------------------------------------------------------ #
+  submit:
+    needs: build
+    runs-on: windows-latest
+    # Gate on the "xbox-release" environment so a human can approve before
+    # the package is sent live.  Create this environment in:
+    # GitHub → Settings → Environments → New environment → xbox-release
+    environment: xbox-release
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: xbox-package
+          path: packages\
+
+      # StoreBroker is Microsoft's PowerShell module for Partner Center
+      # submission automation.
+      # https://github.com/microsoft/StoreBroker
+      - name: Install StoreBroker
+        shell: pwsh
+        run: |
+          Install-Module -Name StoreBroker -Force -Scope CurrentUser -AllowClobber
+
+      - name: Submit to Partner Center
+        shell: pwsh
+        env:
+          TENANT_ID:     ${{ secrets.XBOX_PARTNER_CENTER_TENANT_ID }}
+          CLIENT_ID:     ${{ secrets.XBOX_PARTNER_CENTER_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.XBOX_PARTNER_CENTER_CLIENT_SECRET }}
+          STORE_ID:      ${{ secrets.XBOX_STORE_ID }}
+          NOTES:         ${{ github.event.inputs.submission_notes || github.ref_name }}
+        run: |
+          # Authenticate the service principal with Partner Center.
+          $cred = [PSCredential]::new(
+            $env:CLIENT_ID,
+            (ConvertTo-SecureString $env:CLIENT_SECRET -AsPlainText -Force)
+          )
+          Set-StoreBrokerAuthentication `
+            -TenantId $env:TENANT_ID `
+            -Credential $cred
+
+          $pkg = (Get-ChildItem packages\*.xvc | Select-Object -First 1).FullName
+          if (-not $pkg) { Write-Error "No .xvc package found"; exit 1 }
+
+          Write-Host "Submitting $pkg to Store ID $env:STORE_ID"
+
+          # Create a new draft submission, upload the package, then commit.
+          # StoreBroker clones the last published submission as the base so
+          # metadata (description, screenshots, pricing) is preserved.
+          $sub = New-ApplicationSubmission -AppId $env:STORE_ID -Force
+          $subId = $sub.id
+
+          Set-ApplicationSubmissionPackage `
+            -AppId        $env:STORE_ID `
+            -SubmissionId $subId `
+            -PackagePath  $pkg
+
+          # Optionally record what triggered this submission.
+          if ($env:NOTES) {
+            Update-ApplicationSubmission `
+              -AppId        $env:STORE_ID `
+              -SubmissionId $subId `
+              -NotesForCertification $env:NOTES
+          }
+
+          Complete-ApplicationSubmission `
+            -AppId        $env:STORE_ID `
+            -SubmissionId $subId
+
+          Write-Host "Submission $subId committed. Monitor progress in Partner Center."
