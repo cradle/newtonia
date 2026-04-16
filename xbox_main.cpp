@@ -34,6 +34,14 @@
 #include <SDL.h>
 #include <SDL_mixer.h>
 
+// Direct GDK PLM headers — Xbox console only.
+// SDL2's Win32 backend does not hook GDK PLM, so we register suspend
+// acknowledgment callbacks directly to satisfy Xbox certification.
+#ifdef _GAMING_XBOX
+#  include <XSuspendResume.h>
+#  include <XTaskQueue.h>
+#endif
+
 // SDL2's WIN_PumpEvents calls GDK_DispatchTaskQueue() when __GDK__ is defined,
 // but the implementation lives in SDL2's GDK backend (SDL_gdk.cpp) which
 // CMake doesn't add when using the VS2022-platform approach.
@@ -56,6 +64,32 @@ static SDL_GLContext    s_gl_ctx     = nullptr;
 static int              s_w = 1920, s_h = 1080;
 static bool             s_running    = true;
 static bool             s_reset_tick = false; // discard delta after resume
+
+#ifdef _GAMING_XBOX
+// ---------------------------------------------------------------
+// GDK PLM (Process Lifetime Management) — Xbox certification
+// ---------------------------------------------------------------
+// SDL2 uses its Win32 backend (not its GDK backend) because the GDK MSBuild
+// platform is detected via VS2022 platform registration rather than a CMake
+// toolchain file.  The Win32 backend does not register GDK PLM callbacks, so
+// SDL_APP_WILLENTERBACKGROUND may not fire reliably for console PLM events.
+//
+// We register our own suspend callback directly with the GDK task queue.
+// XSuspendResumeAcknowledge() MUST be called within ~2 seconds of the OS
+// delivering the suspend notification, or the OS force-terminates the title —
+// a hard Xbox certification requirement.
+static XTaskQueueHandle            s_plm_queue = nullptr;
+static XTaskQueueRegistrationToken s_plm_token = {};
+
+static void CALLBACK plm_suspend_callback(void * /*ctx*/,
+                                           XSuspendResumeAcknowledgmentId ackId)
+{
+    if (s_game) s_game->focus_lost();
+    s_reset_tick = true;
+    // Acknowledge the suspend event to the OS before the 2-second deadline.
+    XSuspendResumeAcknowledge(ackId);
+}
+#endif // _GAMING_XBOX
 
 int main(int argc, char *argv[])
 {
@@ -149,6 +183,18 @@ int main(int argc, char *argv[])
 
     load_preferences();
 
+#ifdef _GAMING_XBOX
+    // Register the GDK PLM suspend callback.  XTaskQueueDispatchMode_ThreadPool
+    // lets the OS fire the callback on a thread-pool thread immediately when
+    // the PLM notification arrives, independent of the main-thread game loop.
+    if (SUCCEEDED(XTaskQueueCreate(XTaskQueueDispatchMode_ThreadPool,
+                                   XTaskQueueDispatchMode_Manual,
+                                   &s_plm_queue))) {
+        XSuspendResumeRegisterForSuspend(s_plm_queue, nullptr,
+                                         plm_suspend_callback, &s_plm_token);
+    }
+#endif
+
     s_game = new StateManager();
     s_game->resize(s_w, s_h);
     Typer::resize(s_w, s_h);
@@ -186,7 +232,12 @@ int main(int argc, char *argv[])
             // SDL_APP_WILLENTERBACKGROUND / SDL_APP_DIDENTERFOREGROUND map
             // directly onto the GDK PLM (Process Lifetime Management) events.
             case SDL_APP_WILLENTERBACKGROUND:
+#ifndef _GAMING_XBOX
+                // On Xbox the direct PLM callback (plm_suspend_callback above)
+                // handles suspension and sends XSuspendResumeAcknowledge().
+                // On Desktop this SDL event fires from Win32 focus loss; handle it.
                 s_game->focus_lost();
+#endif
                 break;
             case SDL_APP_DIDENTERFOREGROUND:
                 s_game->focus_gained();
@@ -247,6 +298,14 @@ int main(int argc, char *argv[])
     SDL_GL_DeleteContext(s_gl_ctx);
     SDL_DestroyWindow(s_window);
     SDL_Quit();
+
+#ifdef _GAMING_XBOX
+    if (s_plm_queue) {
+        XSuspendResumeUnregisterForSuspend(&s_plm_token);
+        XTaskQueueCloseHandle(s_plm_queue);
+    }
+#endif
+
     return 0;
 }
 

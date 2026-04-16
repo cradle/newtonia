@@ -31,6 +31,17 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ---------------------------------------------------------------
+# Static MSVC runtime — avoids VCRUNTIME140_APP.dll / MSVCP140_APP.dll
+# ---------------------------------------------------------------
+# The Gaming.Desktop.x64 MSBuild platform normally links the app-sandbox
+# CRT variant (_APP.dll), which is not part of the standard Visual C++
+# Redistributable and is therefore absent on machines without VS installed.
+# Using the static runtime (/MT) embeds the CRT directly in the binary.
+# This must be set before FetchContent so SDL2/SDL2_mixer use the same CRT.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+    CACHE STRING "" FORCE)
+
+# ---------------------------------------------------------------
 # Sources — collect from root, weapon/, and view/, then exclude
 # entry points that belong to other platforms.
 # ---------------------------------------------------------------
