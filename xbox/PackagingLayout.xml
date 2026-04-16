@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PackagingLayout.xml — consumed by the GDK makepkg tool.
+
+  Usage (from the workflow):
+    makepkg pack /f xbox\PackagingLayout.xml /d xbox_output /pd packages
+
+  xbox_output/ layout expected by this file
+  -----------------------------------------
+    xbox_output\
+      MicrosoftGame.config
+      Assets\                   (tile / splash images)
+      bin\
+        newtonia.exe
+        libEGL.dll
+        libGLESv2.dll
+        audio\                  (WAV + MP3 files)
+
+  The single "Launch" chunk contains everything; there is no streaming /
+  optional DLC content, so a flat single-chunk layout is sufficient.
+-->
+<PackagingLayout xmlns="http://schemas.microsoft.com/gdk/2020/packagelayout">
+
+  <PackageFamily ID="Newtonia_retail" TargetDeviceFamily="XboxOne">
+
+    <Package ID="Newtonia" Version="[version]">
+
+      <ChunkMap>
+        <Chunk ID="1000" Marker="Launch">
+
+          <!-- Game config (must sit at the layout root) -->
+          <FileGroup DestinationPath="\"
+                     SourcePath="\"
+                     IncludePattern="MicrosoftGame.config"/>
+
+          <!-- Store / shell image assets -->
+          <FileGroup DestinationPath="\Assets\"
+                     SourcePath="\Assets\"
+                     IncludePattern="*"/>
+
+          <!-- Executable and ANGLE DLLs -->
+          <FileGroup DestinationPath="\"
+                     SourcePath="\bin\"
+                     IncludePattern="*.exe;*.dll"/>
+
+          <!-- Audio assets -->
+          <FileGroup DestinationPath="\audio\"
+                     SourcePath="\bin\audio\"
+                     IncludePattern="*"/>
+
+        </Chunk>
+      </ChunkMap>
+
+    </Package>
+  </PackageFamily>
+
+</PackagingLayout>

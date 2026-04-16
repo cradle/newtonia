@@ -1,0 +1,280 @@
+name: Xbox GDK Desktop
+
+# Builds the GDK Desktop target on every push so compile errors in the Xbox
+# port are caught immediately — no Xbox hardware required.
+# The Gaming.Desktop.x64 platform uses the same GDK APIs and ANGLE path as
+# the Xbox console target, making it a fast, free iteration loop.
+#
+# In GDK 2510+ the CMake integration works via the VS2022 MSBuild platform
+# registration performed by the GDK installer — no separate toolchain file.
+
+on:
+  push:
+    branches: [master, main, 'claude/**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GDK
+        shell: pwsh
+        run: |
+          winget install -e --id Microsoft.Gaming.GDK `
+            --accept-package-agreements `
+            --accept-source-agreements `
+            --disable-interactivity
+
+      # Export GDK_ROOT and GDK_EDITION from the machine env var set by the
+      # installer. These are used by later steps (ANGLE DLL paths, etc.).
+      - name: Locate GDK
+        shell: pwsh
+        run: |
+          # 1. Try machine env vars set by the installer.
+          $gdkLatest = [System.Environment]::GetEnvironmentVariable("GameDKCoreLatest", "Machine")
+          if (-not $gdkLatest) {
+            $gdkLatest = [System.Environment]::GetEnvironmentVariable("GameDKLatest", "Machine")
+          }
+          # 2. Fallback: scan the default install path.
+          #    winget can return before the MSI finishes writing env vars.
+          if (-not $gdkLatest) {
+            $gdkBase = "C:\Program Files (x86)\Microsoft GDK"
+            $found = Get-ChildItem $gdkBase -Directory -ErrorAction SilentlyContinue |
+                       Where-Object { $_.Name -match '^\d+$' } |
+                       Sort-Object Name -Descending |
+                       Select-Object -First 1
+            if ($found) { $gdkLatest = $found.FullName }
+          }
+          if (-not $gdkLatest) {
+            Write-Error "GDK not found: env vars unset and default path empty."
+            exit 1
+          }
+          $gdkLatest = $gdkLatest.TrimEnd('\')
+          $edition   = Split-Path $gdkLatest -Leaf
+          $gdkRoot   = "$gdkLatest\GRDK"
+          Write-Host "GDK root : $gdkRoot  (edition $edition)"
+          echo "GDK_ROOT=$gdkRoot"    >> $env:GITHUB_ENV
+          echo "GDK_EDITION=$edition" >> $env:GITHUB_ENV
+          # Re-export as GameDKLatest (with trailing backslash, matching the
+          # installer convention) so MSBuild's Gaming.Desktop.x64 Platform.targets
+          # can resolve the edition number.  Without this, CMake fails with
+          # "Microsoft GDK Edition value set to ''" on any run where the
+          # installer env var wasn't written to the machine registry.
+          echo "GameDKLatest=$gdkLatest\"     >> $env:GITHUB_ENV
+          echo "GameDKCoreLatest=$gdkLatest\" >> $env:GITHUB_ENV
+          # Also write to the machine-level registry entry.  Platform.targets
+          # reads via [System.Environment]::GetEnvironmentVariable('GameDKLatest',
+          # 'Machine') which reads the registry, not the process environment that
+          # GITHUB_ENV populates.  The runner has admin rights so this succeeds.
+          [System.Environment]::SetEnvironmentVariable(
+            "GameDKLatest",     "$gdkLatest\",
+            [System.EnvironmentVariableTarget]::Machine)
+          [System.Environment]::SetEnvironmentVariable(
+            "GameDKCoreLatest", "$gdkLatest\",
+            [System.EnvironmentVariableTarget]::Machine)
+
+      # The GDK installer may not have copied the platform files into the
+      # VS2022 MSBuild directory (winget runs without interactive elevation).
+      # Do it explicitly here: copy GRDK/VS2022/* into VS2022's MSBuild tree
+      # so that Gaming.Desktop.x64 is recognised as a valid platform.
+      - name: Register GDK VS2022 platform
+        shell: pwsh
+        run: |
+          $gdkVS = "$env:GDK_ROOT\VS2022"
+          $vsBase = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild"
+          # flatDeployment\MSBuild mirrors the VS2022 MSBuild directory tree exactly.
+          Copy-Item -Recurse -Force "$gdkVS\flatDeployment\MSBuild\*" "$vsBase\"
+
+      # Export VCTargetsPath so CMake's VS generator uses it directly without
+      # running VCTargetsPath.vcxproj.  That probe fails for Gaming.Desktop.x64
+      # because the platform's props chain (Platform.props → Platform.Edition.props
+      # → Microsoft.Cpp.WindowsSDK.targets) requires properties that are only set
+      # by a full GDK installer and cannot all be supplied via Directory.Build.props.
+      # CMake checks for this env var first and short-circuits the probe when set.
+      - name: Export VCTargetsPath
+        shell: pwsh
+        run: |
+          $vcTargets = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VC\v170"
+          if (-not (Test-Path "$vcTargets\Microsoft.Cpp.Default.props")) {
+            # Fallback: ask vswhere for the VS installation root.
+            $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+            if (Test-Path $vswhere) {
+              $vsDir = & $vswhere -latest -property installationPath 2>$null
+              if ($vsDir) { $vcTargets = "$vsDir\MSBuild\Microsoft\VC\v170" }
+            }
+          }
+          if (-not (Test-Path "$vcTargets\Microsoft.Cpp.Default.props")) {
+            Write-Error "VCTargetsPath not found at $vcTargets"
+            exit 1
+          }
+          Write-Host "VCTargetsPath = $vcTargets\"
+          echo "VCTargetsPath=$vcTargets\" >> $env:GITHUB_ENV
+
+      # Print the _GdkEditionCheck target so we can see exactly which property
+      # or env var it reads.  The output is visible in the Actions log.
+      - name: Diagnose Platform.targets
+        shell: pwsh
+        run: |
+          $pt = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VC\v170\Platforms\Gaming.Desktop.x64\Platform.targets"
+          if (Test-Path $pt) {
+            Write-Host "=== First 60 lines of Platform.targets ==="
+            Get-Content $pt | Select-Object -First 60
+          } else {
+            Write-Host "Platform.targets not found at expected path"
+            Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VC\v170\Platforms\" -Recurse -Filter "Platform.targets" | ForEach-Object { Write-Host $_.FullName }
+          }
+
+      - name: Install ANGLE
+        shell: pwsh
+        run: |
+          # The GDK 2510 Desktop target does not bundle ANGLE.
+          # ANGLE.WindowsStore (Microsoft's NuGet package) ships both the import
+          # libs (.lib) and the redistributable DLLs for Win64 x64.
+          nuget install ANGLE.WindowsStore -ExcludeVersion `
+            -OutputDirectory "$env:RUNNER_TEMP\nuget" -NonInteractive
+          $pkg = "$env:RUNNER_TEMP\nuget\ANGLE.WindowsStore"
+
+          # The package layout may change between versions; search for the x64 files.
+          $lib = Get-ChildItem $pkg -Recurse -Filter "libEGL.lib" |
+                   Where-Object FullName -match 'x64' | Select-Object -First 1
+          $dll = Get-ChildItem $pkg -Recurse -Filter "libEGL.dll" |
+                   Where-Object FullName -match 'x64' | Select-Object -First 1
+          if (-not $lib) { Write-Error "libEGL.lib not found in ANGLE.WindowsStore package"; exit 1 }
+          if (-not $dll) { Write-Error "libEGL.dll not found in ANGLE.WindowsStore package"; exit 1 }
+
+          Write-Host "ANGLE lib dir : $($lib.Directory.FullName)"
+          Write-Host "ANGLE DLL dir : $($dll.Directory.FullName)"
+          echo "ANGLE_LIB_DIR=$($lib.Directory.FullName)" >> $env:GITHUB_ENV
+          echo "ANGLE_BIN_DIR=$($dll.Directory.FullName)" >> $env:GITHUB_ENV
+
+      # Platform.targets checks:
+      #   Exists('$(XdkEditionRootVS2022)$(XdkEdition)\Platform.Edition.targets')
+      # Search the GDK tree for that file, derive both property values from its
+      # actual location, and write them to Directory.Build.props — which MSBuild
+      # auto-imports for every project in the tree, including CMake's probe.
+      - name: Write GDK edition props
+        shell: pwsh
+        run: |
+          $gdkRoot = $env:GDK_ROOT   # …\<edition>\GRDK  (no trailing slash)
+          $edition = $env:GDK_EDITION
+
+          # The GDK VS2022 flatDeployment contains both v160 (VS2019) and v170
+          # (VS2022) copies.  Filter to v170 so Toolset.props resolves correctly.
+          $pet = Get-ChildItem "$gdkRoot\VS2022" -Recurse -Filter "Platform.Edition.targets" `
+                   -ErrorAction SilentlyContinue |
+                   Where-Object { $_.FullName -match '[/\\]v170[/\\]' } |
+                   Select-Object -First 1
+          if (-not $pet) {
+            Write-Error "Platform.Edition.targets not found under $gdkRoot"
+            exit 1
+          }
+          Write-Host "Platform.Edition.targets : $($pet.FullName)"
+
+          # Derive the two MSBuild properties from the file's location:
+          #   XdkEdition           = name of the immediate parent directory
+          #   XdkEditionRootVS2022 = grandparent path + trailing backslash
+          $xdkEdition        = $pet.DirectoryName | Split-Path -Leaf
+          $xdkEditionRootVS2022 = ($pet.DirectoryName | Split-Path -Parent) + "\"
+          Write-Host "XdkEdition           = $xdkEdition"
+          Write-Host "XdkEditionRootVS2022 = $xdkEditionRootVS2022"
+
+          # XdkEditionRootPath = edition root (parent of GRDK\), trailing slash.
+          # Platform.Edition.props uses it to form absolute paths like
+          # $(XdkEditionRootPath)GRDK\ExtensionLibraries\.
+          $xdkEditionRootPath = (Split-Path $gdkRoot -Parent) + "\"
+          Write-Host "XdkEditionRootPath   = $xdkEditionRootPath"
+
+          # GDK edition root also serves as GameDKLatest / DurangoXdkInstallPath.
+          $gameDKLatest = $xdkEditionRootPath
+
+          # BWOI VCTargets paths must point to the MERGED directory that contains
+          # both the standard VS2022 VC targets AND the GDK Gaming platform files.
+          # "Register GDK VS2022 platform" copies the GDK flatDeployment into the
+          # VS2022 MSBuild tree, so after that step the VS2022 VCTargetsPath IS the
+          # merged directory.  Using the raw GDK flatDeployment path would redirect
+          # $(VCTargetsPath) there, and then Platform.Edition.props line 14's import
+          # of $(VCTargetsPath)\Platforms\x64\Platform.props would fail (not found).
+          $v17 = $env:VCTargetsPath   # set by "Export VCTargetsPath" step
+          # v160 sibling directory — GDK also ships VS2019 (v160) toolset files.
+          $v16 = $v17 -replace '\\v170\\', '\v160\'
+          Write-Host "VCTargetsPath17 : $v17"
+          Write-Host "VCTargetsPath16 : $v16"
+
+          # Scan the installed Windows SDK Include dirs for the highest version.
+          # Used as WindowsTargetPlatformVersion — the actual build still needs the
+          # Windows SDK even though DisableInstalledVCTargetsUse bypasses the check.
+          $wkInclude = "${env:ProgramFiles(x86)}\Windows Kits\10\Include"
+          $winSDKVer = Get-ChildItem $wkInclude -Directory -ErrorAction SilentlyContinue |
+                         Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } |
+                         Sort-Object { [version]$_.Name } -Descending |
+                         Select-Object -First 1 -ExpandProperty Name
+          if (-not $winSDKVer) { $winSDKVer = "10.0.19041.0" }
+          Write-Host "Windows SDK version : $winSDKVer"
+
+          @(
+            '<?xml version="1.0" encoding="utf-8"?>',
+            '<Project>',
+            '  <!-- GDK edition identity — required by _GdkEditionCheck in Platform.targets  -->',
+            '  <!-- and by Platform.Edition.props (DurangoXdkInstallPath, GameDKLatest etc.). -->',
+            '  <!-- These are applied to both the probe and the actual build.                 -->',
+            '  <!-- DisableInstalledVCTargetsUse / VCTargetsPath17/16 are intentionally NOT   -->',
+            '  <!-- set here: they cause Microsoft.Cpp.ToolsetLocation.targets to re-import   -->',
+            '  <!-- Microsoft.cpp.targets (MSB4011) and the Build target to disappear in the  -->',
+            '  <!-- CMake VCTargetsPath probe (MSB4057). The probe is bypassed instead by     -->',
+            '  <!-- passing -DVCTargetsPath=... directly to cmake (see Configure step).       -->',
+            '  <PropertyGroup>',
+            "    <XdkEdition>$xdkEdition</XdkEdition>",
+            "    <XdkEditionRootVS2022>$xdkEditionRootVS2022</XdkEditionRootVS2022>",
+            "    <XdkEditionRootPath>$xdkEditionRootPath</XdkEditionRootPath>",
+            "    <GameDKLatest>$gameDKLatest</GameDKLatest>",
+            "    <GameDKCoreLatest>$gameDKLatest</GameDKCoreLatest>",
+            "    <DurangoXdkInstallPath>$xdkEditionRootPath</DurangoXdkInstallPath>",
+            "    <DurangoXdkInstallRoot>$xdkEditionRootPath</DurangoXdkInstallRoot>",
+            "    <WindowsTargetPlatformVersion>$winSDKVer</WindowsTargetPlatformVersion>",
+            '  </PropertyGroup>',
+            '</Project>'
+          ) | Set-Content -Path "Directory.Build.props" -Encoding utf8
+          Write-Host "Directory.Build.props:"
+          Get-Content "Directory.Build.props"
+
+      - name: Configure (GDK Desktop)
+        shell: pwsh
+        run: |
+          # Pass VCTargetsPath as a CMake cache variable (-D).  CMake's VS generator
+          # checks the CMake cache before running the VCTargetsPath.vcxproj probe, so
+          # this bypasses the probe entirely.  The env var alone (set by "Export
+          # VCTargetsPath") is not reliably honoured in CMake 3.31 for this purpose.
+          cmake -B xbox/build-desktop -S xbox `
+            -A Gaming.Desktop.x64 `
+            "-DVCTargetsPath=$env:VCTargetsPath" `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DANGLE_LIB_DIR="$env:ANGLE_LIB_DIR"
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build xbox/build-desktop --config Release --parallel
+
+      - name: Stage ANGLE DLLs
+        shell: pwsh
+        run: |
+          # Copy ANGLE DLLs next to the exe so the artifact is immediately runnable.
+          Copy-Item "$env:ANGLE_BIN_DIR\libEGL.dll"    xbox/build-desktop/Release/
+          Copy-Item "$env:ANGLE_BIN_DIR\libGLESv2.dll" xbox/build-desktop/Release/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: newtonia-gdk-desktop
+          path: |
+            xbox/build-desktop/Release/newtonia.exe
+            xbox/build-desktop/Release/libEGL.dll
+            xbox/build-desktop/Release/libGLESv2.dll
+            xbox/build-desktop/Release/audio/
+          retention-days: 7
