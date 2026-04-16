@@ -116,6 +116,23 @@ jobs:
           $vsBase = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild"
           Copy-Item -Recurse -Force "$gdkVS\flatDeployment\MSBuild\*" "$vsBase\"
 
+      - name: Export VCTargetsPath
+        shell: pwsh
+        run: |
+          $vcTargets = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VC\v170"
+          if (-not (Test-Path "$vcTargets\Microsoft.Cpp.Default.props")) {
+            $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+            if (Test-Path $vswhere) {
+              $vsDir = & $vswhere -latest -property installationPath 2>$null
+              if ($vsDir) { $vcTargets = "$vsDir\MSBuild\Microsoft\VC\v170" }
+            }
+          }
+          if (-not (Test-Path "$vcTargets\Microsoft.Cpp.Default.props")) {
+            Write-Error "VCTargetsPath not found at $vcTargets"; exit 1
+          }
+          Write-Host "VCTargetsPath = $vcTargets\"
+          echo "VCTargetsPath=$vcTargets\" >> $env:GITHUB_ENV
+
       # ---- Install ANGLE --------------------------------------------
       - name: Install ANGLE
         shell: pwsh

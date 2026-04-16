@@ -101,6 +101,31 @@ jobs:
           # flatDeployment\MSBuild mirrors the VS2022 MSBuild directory tree exactly.
           Copy-Item -Recurse -Force "$gdkVS\flatDeployment\MSBuild\*" "$vsBase\"
 
+      # Export VCTargetsPath so CMake's VS generator uses it directly without
+      # running VCTargetsPath.vcxproj.  That probe fails for Gaming.Desktop.x64
+      # because the platform's props chain (Platform.props → Platform.Edition.props
+      # → Microsoft.Cpp.WindowsSDK.targets) requires properties that are only set
+      # by a full GDK installer and cannot all be supplied via Directory.Build.props.
+      # CMake checks for this env var first and short-circuits the probe when set.
+      - name: Export VCTargetsPath
+        shell: pwsh
+        run: |
+          $vcTargets = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VC\v170"
+          if (-not (Test-Path "$vcTargets\Microsoft.Cpp.Default.props")) {
+            # Fallback: ask vswhere for the VS installation root.
+            $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+            if (Test-Path $vswhere) {
+              $vsDir = & $vswhere -latest -property installationPath 2>$null
+              if ($vsDir) { $vcTargets = "$vsDir\MSBuild\Microsoft\VC\v170" }
+            }
+          }
+          if (-not (Test-Path "$vcTargets\Microsoft.Cpp.Default.props")) {
+            Write-Error "VCTargetsPath not found at $vcTargets"
+            exit 1
+          }
+          Write-Host "VCTargetsPath = $vcTargets\"
+          echo "VCTargetsPath=$vcTargets\" >> $env:GITHUB_ENV
+
       # Print the _GdkEditionCheck target so we can see exactly which property
       # or env var it reads.  The output is visible in the Actions log.
       - name: Diagnose Platform.targets
