@@ -91,6 +91,13 @@ jobs:
           Write-Host "GDK root : $gdkRoot  (edition $edition)"
           echo "GDK_ROOT=$gdkRoot"    >> $env:GITHUB_ENV
           echo "GDK_EDITION=$edition" >> $env:GITHUB_ENV
+          # Re-export as GameDKLatest (with trailing backslash, matching the
+          # installer convention) so MSBuild's Gaming.Desktop.x64 Platform.targets
+          # can resolve the edition number.  Without this, CMake fails with
+          # "Microsoft GDK Edition value set to ''" on any run where the
+          # installer env var wasn't written to the machine registry.
+          echo "GameDKLatest=$gdkLatest\"     >> $env:GITHUB_ENV
+          echo "GameDKCoreLatest=$gdkLatest\" >> $env:GITHUB_ENV
 
       - name: Register GDK VS2022 platform
         shell: pwsh
