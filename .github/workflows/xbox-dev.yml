@@ -200,70 +200,57 @@ jobs:
           $xdkEditionRootPath = (Split-Path $gdkRoot -Parent) + "\"
           Write-Host "XdkEditionRootPath   = $xdkEditionRootPath"
 
-          # GameDKLatest / GameDKCoreLatest: same value as XdkEditionRootPath.
-          # Platform.Edition.props may derive XdkEditionRootPath from one of these
-          # — include them so every possible derivation path yields the right value.
+          # GDK edition root also serves as GameDKLatest / DurangoXdkInstallPath.
           $gameDKLatest = $xdkEditionRootPath
 
-          # Windows SDK version: Microsoft.Cpp.WindowsSDK.targets needs a fully-
-          # qualified build version (e.g. 10.0.22621.0); the shorthand "10.0" does
-          # not satisfy the Exists() check it performs on the SDK Include tree.
-          # Scan the installed SDK Include dirs and pick the highest version.
+          # BWOI VCTargets paths: the GDK flatDeployment directory contains v170
+          # (VS2022) and v160 (VS2019) copies of the toolset props/targets.
+          # VCTargetsPath17/16 in Directory.Build.props (conditioned on Gaming.*
+          # platforms) tell GDK's Toolset.Edition.props where to find these files
+          # without relying on a full GDK installer having run.
+          $v17 = "${xdkEditionRootPath}GRDK\VS2022\flatDeployment\MSBuild\Microsoft\VC\v170\"
+          $v16 = "${xdkEditionRootPath}GRDK\VS2022\flatDeployment\MSBuild\Microsoft\VC\v160\"
+          Write-Host "VCTargetsPath17 : $v17"
+
+          # Scan the installed Windows SDK Include dirs for the highest version.
+          # Used as WindowsTargetPlatformVersion — the actual build still needs the
+          # Windows SDK even though DisableInstalledVCTargetsUse bypasses the check.
           $wkInclude = "${env:ProgramFiles(x86)}\Windows Kits\10\Include"
           $winSDKVer = Get-ChildItem $wkInclude -Directory -ErrorAction SilentlyContinue |
                          Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } |
                          Sort-Object { [version]$_.Name } -Descending |
                          Select-Object -First 1 -ExpandProperty Name
-          if (-not $winSDKVer) { $winSDKVer = "10.0.19041.0" }   # VS2022 minimum
+          if (-not $winSDKVer) { $winSDKVer = "10.0.19041.0" }
           Write-Host "Windows SDK version : $winSDKVer"
-
-          # Print Platform.Edition.props so we can see exactly what it does at
-          # line 37 (the XdkEditionRootPath usage that is currently failing).
-          $pep = "${xdkEditionRootVS2022}${xdkEdition}\Platform.Edition.props"
-          if (Test-Path $pep) {
-            Write-Host "=== First 80 lines of Platform.Edition.props ($pep) ==="
-            Get-Content $pep | Select-Object -First 80
-          } else {
-            Write-Host "Platform.Edition.props not found at $pep"
-            # Try searching under the GDK root as a fallback.
-            Get-ChildItem "$gdkRoot\VS2022" -Recurse -Filter "Platform.Edition.props" `
-              -ErrorAction SilentlyContinue |
-              Where-Object { $_.FullName -match '[/\\]v170[/\\]' } |
-              ForEach-Object { Write-Host "Found: $($_.FullName)" }
-          }
 
           @(
             '<?xml version="1.0" encoding="utf-8"?>',
             '<Project>',
+            '  <!-- GDK edition identity — required by _GdkEditionCheck in Platform.targets. -->',
             '  <PropertyGroup>',
             "    <XdkEdition>$xdkEdition</XdkEdition>",
             "    <XdkEditionRootVS2022>$xdkEditionRootVS2022</XdkEditionRootVS2022>",
             "    <XdkEditionRootPath>$xdkEditionRootPath</XdkEditionRootPath>",
             "    <GameDKLatest>$gameDKLatest</GameDKLatest>",
             "    <GameDKCoreLatest>$gameDKLatest</GameDKCoreLatest>",
-            # DurangoXdkInstallPath is the root cause: Platform.Edition.props line 37
-            # builds Console_GRDKExtLibRoot as $(DurangoXdkInstallPath)GRDK\ExtensionLibraries\
-            # and calls GetDirectories() on it.  Without this the path is relative and fails.
-            # DurangoXdkInstallRoot is the same location used for Console_SdkRoot.
             "    <DurangoXdkInstallPath>$xdkEditionRootPath</DurangoXdkInstallPath>",
             "    <DurangoXdkInstallRoot>$xdkEditionRootPath</DurangoXdkInstallRoot>",
-            # WindowsTargetPlatformVersion: Microsoft.Cpp.WindowsSDK.targets checks
-            # Exists($(WindowsSdkDir)Include\$(WindowsTargetPlatformVersion)\um\windows.h).
-            # The shorthand "10.0" is not a real directory name; use the specific
-            # build-number version discovered above.
             "    <WindowsTargetPlatformVersion>$winSDKVer</WindowsTargetPlatformVersion>",
+            '  </PropertyGroup>',
+            '  <!-- BWOI overrides — applied only for Gaming.*x64 platforms. -->',
+            '  <!-- DisableInstalledVCTargetsUse=true bypasses the Windows SDK -->',
+            '  <!-- presence check in Microsoft.Cpp.WindowsSDK.targets (MSB8037). -->',
+            '  <!-- VCTargetsPath17/16 redirect GDK toolset imports to the GDK    -->',
+            '  <!-- flatDeployment directory rather than the VS2022 install tree.  -->',
+            '  <PropertyGroup Condition="$([System.Text.RegularExpressions.Regex]::IsMatch($(Platform), &apos;Gaming\..*\.x64&apos;))">',
+            '    <DisableInstalledVCTargetsUse>true</DisableInstalledVCTargetsUse>',
+            "    <VCTargetsPath17>$v17</VCTargetsPath17>",
+            "    <VCTargetsPath16>$v16</VCTargetsPath16>",
             '  </PropertyGroup>',
             '</Project>'
           ) | Set-Content -Path "Directory.Build.props" -Encoding utf8
           Write-Host "Directory.Build.props:"
           Get-Content "Directory.Build.props"
-
-          # Also export XdkEditionRootPath to the process environment so CMake
-          # (and the MSBuild VCTargetsPath probe it spawns) see it as an env var.
-          # MSBuild reads env vars as properties before any .props file runs, so
-          # a conditional re-set in Platform.Edition.props won't overwrite a
-          # non-empty env var if the condition is '$(XdkEditionRootPath)' == ''.
-          echo "XdkEditionRootPath=$xdkEditionRootPath" >> $env:GITHUB_ENV
 
       - name: Configure (GDK Desktop)
         shell: pwsh

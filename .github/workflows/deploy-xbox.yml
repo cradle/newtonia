@@ -185,6 +185,9 @@ jobs:
           $xdkEditionRootPath = (Split-Path $gdkRoot -Parent) + "\"
           Write-Host "XdkEditionRootPath   = $xdkEditionRootPath"
 
+          $v17 = "${xdkEditionRootPath}GRDK\VS2022\flatDeployment\MSBuild\Microsoft\VC\v170\"
+          $v16 = "${xdkEditionRootPath}GRDK\VS2022\flatDeployment\MSBuild\Microsoft\VC\v160\"
+
           $wkInclude = "${env:ProgramFiles(x86)}\Windows Kits\10\Include"
           $winSDKVer = Get-ChildItem $wkInclude -Directory -ErrorAction SilentlyContinue |
                          Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } |
@@ -202,12 +205,14 @@ jobs:
             "    <XdkEditionRootPath>$xdkEditionRootPath</XdkEditionRootPath>",
             "    <GameDKLatest>$xdkEditionRootPath</GameDKLatest>",
             "    <GameDKCoreLatest>$xdkEditionRootPath</GameDKCoreLatest>",
-            # DurangoXdkInstallPath: Platform.Edition.props builds Console_GRDKExtLibRoot
-            # as $(DurangoXdkInstallPath)GRDK\ExtensionLibraries\ and calls GetDirectories().
-            # Without this the path is relative (empty prefix) and fails.
             "    <DurangoXdkInstallPath>$xdkEditionRootPath</DurangoXdkInstallPath>",
             "    <DurangoXdkInstallRoot>$xdkEditionRootPath</DurangoXdkInstallRoot>",
             "    <WindowsTargetPlatformVersion>$winSDKVer</WindowsTargetPlatformVersion>",
+            '  </PropertyGroup>',
+            '  <PropertyGroup Condition="$([System.Text.RegularExpressions.Regex]::IsMatch($(Platform), &apos;Gaming\..*\.x64&apos;))">',
+            '    <DisableInstalledVCTargetsUse>true</DisableInstalledVCTargetsUse>',
+            "    <VCTargetsPath17>$v17</VCTargetsPath17>",
+            "    <VCTargetsPath16>$v16</VCTargetsPath16>",
             '  </PropertyGroup>',
             '</Project>'
           ) | Set-Content -Path "Directory.Build.props" -Encoding utf8
