@@ -24,7 +24,8 @@
                          // On macOS, gl_compat.h now includes gl3.h before GLUT.
 
 // Post-GL-header includes and Windows function loader.
-#if !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__)
+#if !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__) && \
+    !defined(_GAMING_XBOX) && !defined(_GAMING_DESKTOP)
 #  if defined(__linux__)
 #    include <GL/glext.h>
 
