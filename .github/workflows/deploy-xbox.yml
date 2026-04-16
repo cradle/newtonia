@@ -87,18 +87,40 @@ jobs:
           $vsBase = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild"
           Copy-Item -Recurse -Force "$gdkVS\flatDeployment\MSBuild\*" "$vsBase\"
 
-      # ---- Locate ANGLE import libs ----------------------------------
-      - name: Locate ANGLE libs
+      # ---- Generate ANGLE import libs --------------------------------
+      - name: Generate ANGLE import libs
         shell: pwsh
         run: |
-          $egl = Get-ChildItem "$env:GDK_ROOT" -Recurse -Filter "libEGL.lib" `
-                   -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $egl) {
-            Write-Error "libEGL.lib not found under $env:GDK_ROOT"
+          # The GDK ships libEGL.dll / libGLESv2.dll but no import libraries.
+          # Generate them from the DLLs using the MSVC tools on this runner.
+          $angleBin = "$env:GDK_ROOT\Redist\CommonAngle\bin"
+          if (-not (Test-Path "$angleBin\libEGL.dll")) {
+            Write-Error "libEGL.dll not found at $angleBin — check GDK install"
             exit 1
           }
-          Write-Host "ANGLE lib dir: $($egl.Directory.FullName)"
-          echo "ANGLE_LIB_DIR=$($egl.Directory.FullName)" >> $env:GITHUB_ENV
+          $outDir = "$env:RUNNER_TEMP\angle_importlibs"
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+
+          $libExe = Get-ChildItem `
+              "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC" `
+              -Filter lib.exe -Recurse -ErrorAction SilentlyContinue |
+              Where-Object FullName -match 'Hostx64\\x64' |
+              Select-Object -First 1 -ExpandProperty FullName
+          if (-not $libExe) { Write-Error "lib.exe not found in VS2022 toolset"; exit 1 }
+          $dumpbin = Join-Path (Split-Path $libExe) dumpbin.exe
+
+          foreach ($name in 'libEGL', 'libGLESv2') {
+            $exports = (& $dumpbin /exports "$angleBin\$name.dll") |
+                Select-String '^\s+\d+\s+[0-9A-Fa-f]+\s+[0-9A-Fa-f]+\s+(\S+)' |
+                ForEach-Object { $_.Matches[0].Groups[1].Value }
+            if (-not $exports) { Write-Error "No exports found in $name.dll"; exit 1 }
+            (@("LIBRARY $name", "EXPORTS") + $exports) |
+                Set-Content -Encoding ASCII "$outDir\$name.def"
+            & $libExe /nologo /def:"$outDir\$name.def" /out:"$outDir\$name.lib" /machine:x64
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Write-Host "Generated $name.lib  ($($exports.Count) exports)"
+          }
+          echo "ANGLE_LIB_DIR=$outDir" >> $env:GITHUB_ENV
 
       # ---- Configure ------------------------------------------------
       - name: Configure (CMake + GDK)
