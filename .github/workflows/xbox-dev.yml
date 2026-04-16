@@ -75,13 +75,18 @@ jobs:
       - name: Generate ANGLE import libs
         shell: pwsh
         run: |
-          # The GDK ships libEGL.dll / libGLESv2.dll but no import libraries.
-          # Generate them from the DLLs using the MSVC tools on this runner.
-          $angleBin = "$env:GDK_ROOT\Redist\CommonAngle\bin"
-          if (-not (Test-Path "$angleBin\libEGL.dll")) {
-            Write-Error "libEGL.dll not found at $angleBin — check GDK install"
+          # Search the full GDK installation tree for libEGL.dll.
+          # The DLL location varies across GDK editions; don't assume a fixed path.
+          $gdkInstall = "C:\Program Files (x86)\Microsoft GDK"
+          $eglFile = Get-ChildItem $gdkInstall -Recurse -Filter "libEGL.dll" `
+                       -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $eglFile) {
+            Write-Error "libEGL.dll not found anywhere under $gdkInstall — ANGLE may not be installed"
             exit 1
           }
+          $angleBin = $eglFile.Directory.FullName
+          Write-Host "ANGLE DLL dir: $angleBin"
+
           $outDir = "$env:RUNNER_TEMP\angle_importlibs"
           New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
@@ -104,7 +109,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             Write-Host "Generated $name.lib  ($($exports.Count) exports)"
           }
-          echo "ANGLE_LIB_DIR=$outDir" >> $env:GITHUB_ENV
+          echo "ANGLE_LIB_DIR=$outDir"  >> $env:GITHUB_ENV
+          echo "ANGLE_BIN_DIR=$angleBin" >> $env:GITHUB_ENV
 
       - name: Configure (GDK Desktop)
         shell: pwsh
