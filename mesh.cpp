@@ -1,7 +1,8 @@
 // Static GPU geometry — see mesh.h for documentation.
 
 // Desktop GL loading must happen before any GL header.
-#if !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__)
+#if !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__) && \
+    !defined(_GAMING_XBOX) && !defined(_GAMING_DESKTOP)
 #  if defined(__linux__)
 #    ifndef GL_GLEXT_PROTOTYPES
 #      define GL_GLEXT_PROTOTYPES

@@ -12,13 +12,14 @@
 // On GLES2 (Android/iOS/Web):
 //   gles2_compat.h provides the full fixed-function emulation layer.
 
-#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__)
+#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__) || \
+    defined(_GAMING_XBOX) || defined(_GAMING_DESKTOP)
 #include "gles2_compat.h"
 #  ifdef __EMSCRIPTEN__
 #    include <emscripten.h>
 #    define glutLeaveMainLoop() emscripten_cancel_main_loop()
 #  else
-#    define glutLeaveMainLoop() // no-op on Android / iOS
+#    define glutLeaveMainLoop() // no-op on Android / iOS / GDK
 #  endif
 #else
 
@@ -72,7 +73,8 @@ inline std::string get_steam_branch() {
 
 // Returns true when running in Steam Game Mode (Steam Deck).
 inline bool is_steam_gamemode() {
-#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__) || defined(__APPLE__)
+#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__) || defined(__APPLE__) || \
+    defined(_GAMING_XBOX) || defined(_GAMING_DESKTOP)
   return false;
 #else
   return getenv("SteamDeck") != nullptr;

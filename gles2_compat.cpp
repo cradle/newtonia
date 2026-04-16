@@ -4,7 +4,8 @@
 //
 // ---- Desktop platform GL loading ----
 // Must appear before any GL header so GL_GLEXT_PROTOTYPES is set first.
-#if !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__)
+#if !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__) && \
+    !defined(_GAMING_XBOX) && !defined(_GAMING_DESKTOP)
 #  if defined(__linux__)
 #    ifndef GL_GLEXT_PROTOTYPES
 #      define GL_GLEXT_PROTOTYPES
