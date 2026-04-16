@@ -173,6 +173,27 @@ jobs:
           # Platform.Edition.props uses it to form absolute paths like
           # $(XdkEditionRootPath)GRDK\ExtensionLibraries\.
           $xdkEditionRootPath = (Split-Path $gdkRoot -Parent) + "\"
+          Write-Host "XdkEditionRootPath   = $xdkEditionRootPath"
+
+          # GameDKLatest / GameDKCoreLatest: same value as XdkEditionRootPath.
+          # Platform.Edition.props may derive XdkEditionRootPath from one of these
+          # — include them so every possible derivation path yields the right value.
+          $gameDKLatest = $xdkEditionRootPath
+
+          # Print Platform.Edition.props so we can see exactly what it does at
+          # line 37 (the XdkEditionRootPath usage that is currently failing).
+          $pep = "${xdkEditionRootVS2022}${xdkEdition}\Platform.Edition.props"
+          if (Test-Path $pep) {
+            Write-Host "=== First 80 lines of Platform.Edition.props ($pep) ==="
+            Get-Content $pep | Select-Object -First 80
+          } else {
+            Write-Host "Platform.Edition.props not found at $pep"
+            # Try searching under the GDK root as a fallback.
+            Get-ChildItem "$gdkRoot\VS2022" -Recurse -Filter "Platform.Edition.props" `
+              -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -match '[/\\]v170[/\\]' } |
+              ForEach-Object { Write-Host "Found: $($_.FullName)" }
+          }
 
           @(
             '<?xml version="1.0" encoding="utf-8"?>',
@@ -181,11 +202,23 @@ jobs:
             "    <XdkEdition>$xdkEdition</XdkEdition>",
             "    <XdkEditionRootVS2022>$xdkEditionRootVS2022</XdkEditionRootVS2022>",
             "    <XdkEditionRootPath>$xdkEditionRootPath</XdkEditionRootPath>",
+            # GameDKLatest / GameDKCoreLatest: Platform.Edition.props may reset
+            # XdkEditionRootPath from $(GameDKLatest) after Directory.Build.props
+            # runs.  Setting them here means the re-derived value is also correct.
+            "    <GameDKLatest>$gameDKLatest</GameDKLatest>",
+            "    <GameDKCoreLatest>$gameDKLatest</GameDKCoreLatest>",
             '  </PropertyGroup>',
             '</Project>'
           ) | Set-Content -Path "Directory.Build.props" -Encoding utf8
           Write-Host "Directory.Build.props:"
           Get-Content "Directory.Build.props"
+
+          # Also export XdkEditionRootPath to the process environment so CMake
+          # (and the MSBuild VCTargetsPath probe it spawns) see it as an env var.
+          # MSBuild reads env vars as properties before any .props file runs, so
+          # a conditional re-set in Platform.Edition.props won't overwrite a
+          # non-empty env var if the condition is '$(XdkEditionRootPath)' == ''.
+          echo "XdkEditionRootPath=$xdkEditionRootPath" >> $env:GITHUB_ENV
 
       - name: Configure (GDK Desktop)
         shell: pwsh
