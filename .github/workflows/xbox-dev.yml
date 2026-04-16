@@ -210,6 +210,11 @@ jobs:
             # DurangoXdkInstallRoot is the same location used for Console_SdkRoot.
             "    <DurangoXdkInstallPath>$xdkEditionRootPath</DurangoXdkInstallPath>",
             "    <DurangoXdkInstallRoot>$xdkEditionRootPath</DurangoXdkInstallRoot>",
+            # WindowsTargetPlatformVersion: required by Microsoft.Cpp.WindowsSDK.targets
+            # (MSB8037).  The VCTargetsPath probe leaves this empty, which causes
+            # the format string in the error message to throw a FormatException.
+            # "10.0" resolves to the latest Windows SDK installed on the runner.
+            '    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>',
             '  </PropertyGroup>',
             '</Project>'
           ) | Set-Content -Path "Directory.Build.props" -Encoding utf8
