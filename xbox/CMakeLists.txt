@@ -65,6 +65,18 @@ FetchContent_Declare(SDL2
 set(SDL_SHARED  OFF CACHE BOOL "" FORCE)
 set(SDL_STATIC  ON  CACHE BOOL "" FORCE)
 set(SDL_TESTS   OFF CACHE BOOL "" FORCE)
+# Disable SDL2's dynamic-API jump table.  When building with the
+# Gaming.Desktop.x64 toolchain, __GDK__ is defined by MSBuild so
+# SDL_dynapi.c and SDL_windowsevents.c include GDK symbol references,
+# but SDL2's CMake doesn't add SDL_gdk.cpp (it doesn't detect GDK through
+# the VS2022-platform approach).  The mismatch causes LNK2019 on every
+# SDL_GDKxxx_REAL and GDK_DispatchTaskQueue symbol.
+# The dynamic API is only needed for ABI-stable DLL swap-out; a static
+# build has no use for it.
+set(SDL_DISABLE_DYNAPI ON CACHE BOOL "" FORCE)
+# Belt-and-suspenders: define the preprocessor symbol directly so it
+# also suppresses the GDK jump-table entries inside SDL_dynapi.c.
+add_compile_definitions(SDL_DYNAMIC_API=0)
 FetchContent_MakeAvailable(SDL2)
 
 # SDL2_mixer: WAV + MP3 only (mirrors every other platform build).

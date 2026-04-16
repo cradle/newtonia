@@ -25,8 +25,21 @@
 
 #if defined(_GAMING_XBOX) || defined(_GAMING_DESKTOP)
 
+// Prevent SDL_main.h from renaming main() to SDL_main().  We use the CRT
+// console entry point directly and call SDL_SetMainReady() ourselves.
+// Without this, the CRT startup looks for main() (which SDL renamed) and
+// the linker fails with "unresolved external symbol main".
+#define SDL_MAIN_HANDLED
+
 #include <SDL.h>
 #include <SDL_mixer.h>
+
+// SDL2's WIN_PumpEvents calls GDK_DispatchTaskQueue() when __GDK__ is defined,
+// but the implementation lives in SDL2's GDK backend (SDL_gdk.cpp) which
+// CMake doesn't add when using the VS2022-platform approach.
+// A no-op is safe: our event loop handles GDK PLM lifecycle events directly
+// via SDL_APP_WILLENTERBACKGROUND / SDL_APP_DIDENTERFOREGROUND.
+extern "C" void GDK_DispatchTaskQueue(void) {}
 
 #include "gles2_compat.h"
 #include "state_manager.h"
@@ -46,6 +59,10 @@ static bool             s_reset_tick = false; // discard delta after resume
 
 int main(int argc, char *argv[])
 {
+    // Required when SDL_MAIN_HANDLED is defined: tells SDL that the
+    // application has initialised itself and SDL_Init can proceed.
+    SDL_SetMainReady();
+
     (void)argc; (void)argv;
     srand((unsigned)time(NULL));
 
