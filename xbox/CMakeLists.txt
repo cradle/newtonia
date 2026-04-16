@@ -2,10 +2,10 @@ cmake_minimum_required(VERSION 3.21)
 project(newtonia CXX)
 
 # ---------------------------------------------------------------
-# Xbox GDK build for Newtonia
+# GDK build for Newtonia — Xbox console and GDK Desktop (Windows PC)
 # ---------------------------------------------------------------
 #
-# Invocation (from the repo root):
+# Xbox Series X|S (from the repo root):
 #
 #   set GDK_PATH=C:\Program Files (x86)\Microsoft GDK\241000\GRDK
 #   cmake -B xbox/build -S xbox ^
@@ -14,8 +14,18 @@ project(newtonia CXX)
 #     -A Gaming.Xbox.Scarlett.x64
 #   cmake --build xbox/build --config Release
 #
-# The GDK CMake toolchain sets _GAMING_XBOX (and _GAMING_XBOX_SCARLETT for
-# Scarlett targets) which gates xbox_main.cpp and excludes glut.cpp.
+# GDK Desktop — run on a Windows PC for rapid iteration (see xbox-dev.yml):
+#
+#   cmake -B xbox/build-desktop -S xbox ^
+#     -DCMAKE_TOOLCHAIN_FILE="%GDK_PATH%\BuildFiles\CMake\GDKxPlatform.cmake" ^
+#     -DGDK_TOOLCHAIN_EDITION=241000 ^
+#     -A Gaming.Desktop.x64
+#   cmake --build xbox/build-desktop --config Release
+#
+# The GDK toolchain automatically defines:
+#   _GAMING_XBOX       (+ _GAMING_XBOX_SCARLETT) for Xbox targets
+#   _GAMING_DESKTOP    for the Desktop target
+# Both are handled by xbox_main.cpp; do not set them manually here.
 #
 # ANGLE (libEGL / libGLESv2) is bundled with the GDK and its import libs are
 # automatically on the linker search path once the toolchain is loaded.
@@ -80,8 +90,9 @@ FetchContent_MakeAvailable(SDL2_mixer)
 add_executable(newtonia ${ALL_SRCS})
 
 target_compile_definitions(newtonia PRIVATE
-    _GAMING_XBOX       # gates xbox_main.cpp; also set by the GDK toolchain
     _USE_MATH_DEFINES  # M_PI etc. on MSVC
+    # _GAMING_XBOX / _GAMING_DESKTOP are injected by the GDK toolchain;
+    # do not set them here or the wrong entry point will be compiled on Desktop.
 )
 
 target_include_directories(newtonia PRIVATE

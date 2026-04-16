@@ -1,0 +1,66 @@
+name: Xbox GDK Desktop
+
+# Builds the GDK Desktop target on every push so compile errors in the Xbox
+# port are caught immediately — no Xbox hardware required.
+# The Gaming.Desktop.x64 platform uses the same GDK APIs and ANGLE path as
+# the Xbox console target, making it a fast, free iteration loop.
+
+on:
+  push:
+    branches: [master, main, 'claude/**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      GDK_EDITION: "241000"
+      GDK_ROOT: "C:\\Program Files (x86)\\Microsoft GDK\\241000\\GRDK"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache GDK installation
+        id: cache-gdk
+        uses: actions/cache@v4
+        with:
+          path: C:\Program Files (x86)\Microsoft GDK\241000
+          key: gdk-241000
+
+      - name: Install Microsoft GDK 24.10
+        if: steps.cache-gdk.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          winget install --id Microsoft.GDK.2410 -e `
+            --accept-package-agreements `
+            --accept-source-agreements `
+            --disable-interactivity
+          $machine = [System.Environment]::GetEnvironmentVariable("Path","Machine")
+          $user    = [System.Environment]::GetEnvironmentVariable("Path","User")
+          echo "PATH=$machine;$user" >> $env:GITHUB_ENV
+
+      - name: Configure (GDK Desktop)
+        shell: pwsh
+        run: |
+          $toolchain = "$env:GDK_ROOT\BuildFiles\CMake\GDKxPlatform.cmake"
+          cmake -B xbox/build-desktop -S xbox `
+            -DCMAKE_TOOLCHAIN_FILE="$toolchain" `
+            -DGDK_TOOLCHAIN_EDITION=$env:GDK_EDITION `
+            -A Gaming.Desktop.x64 `
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build xbox/build-desktop --config Release --parallel
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: newtonia-gdk-desktop
+          path: |
+            xbox/build-desktop/Release/newtonia.exe
+            xbox/build-desktop/Release/audio/
+          retention-days: 7

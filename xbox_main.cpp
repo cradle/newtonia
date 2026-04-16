@@ -1,4 +1,4 @@
-// Xbox (GDK) entry point.
+// GDK entry point — Xbox console (_GAMING_XBOX) and GDK Desktop (_GAMING_DESKTOP).
 //
 // Uses SDL2 with OpenGL ES 2.0 via ANGLE, which translates GLES calls to
 // Direct3D 11 — the same path used on Android / Web, avoiding a full graphics
@@ -8,18 +8,22 @@
 // Mirrors android_main.cpp: SDL2 event loop, SDL_GameController input,
 // focus-lost / focus-gained lifecycle events required by GDK certification.
 //
+// Platform differences
+// --------------------
+// _GAMING_XBOX    : fullscreen at native display resolution; no resize events.
+// _GAMING_DESKTOP : 1280×720 resizable window; handles SDL_WINDOWEVENT_RESIZED.
+//
 // Controller mapping
 // ------------------
 // The Xbox controller is fully handled by GLShip via StateManager::controller().
-// Keyboard fallbacks (WASD / Space / X) are still accepted in case a USB
-// keyboard is attached.
+// Keyboard fallbacks (WASD / Space / X) are also accepted (primary on Desktop).
 //
 // Save data
 // ---------
 // SDL_GetPrefPath() under the GDK returns a path inside the title's
 // LocalState storage, which is automatically persisted by the OS.
 
-#ifdef _GAMING_XBOX
+#if defined(_GAMING_XBOX) || defined(_GAMING_DESKTOP)
 
 #include <SDL.h>
 #include <SDL_mixer.h>
@@ -62,17 +66,33 @@ int main(int argc, char *argv[])
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE,   16);
 
+#ifdef _GAMING_XBOX
     // Xbox always renders fullscreen; query the display's native resolution.
-    SDL_DisplayMode dm;
-    if (SDL_GetCurrentDisplayMode(0, &dm) == 0 && dm.w > 0 && dm.h > 0) {
-        s_w = dm.w;
-        s_h = dm.h;
+    {
+        SDL_DisplayMode dm;
+        if (SDL_GetCurrentDisplayMode(0, &dm) == 0 && dm.w > 0 && dm.h > 0) {
+            s_w = dm.w;
+            s_h = dm.h;
+        }
     }
+#else
+    // Desktop: start at a sensible windowed size; the user can resize.
+    s_w = 1280;
+    s_h = 720;
+#endif
+
+    const Uint32 window_flags = SDL_WINDOW_OPENGL
+#ifdef _GAMING_XBOX
+        | SDL_WINDOW_FULLSCREEN
+#else
+        | SDL_WINDOW_RESIZABLE
+#endif
+        ;
 
     s_window = SDL_CreateWindow("Newtonia",
-                                SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+                                SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                 s_w, s_h,
-                                SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN);
+                                window_flags);
     if (!s_window) {
         SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());
         SDL_Quit();
@@ -163,6 +183,13 @@ int main(int argc, char *argv[])
                            e.window.event == SDL_WINDOWEVENT_RESTORED) {
                     s_game->focus_gained();
                     s_reset_tick = true;
+#ifndef _GAMING_XBOX
+                } else if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
+                    s_w = e.window.data1;
+                    s_h = e.window.data2;
+                    s_game->resize(s_w, s_h);
+                    Typer::resize(s_w, s_h);
+#endif
                 }
                 break;
 
@@ -206,4 +233,4 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-#endif // _GAMING_XBOX
+#endif // _GAMING_XBOX || _GAMING_DESKTOP
