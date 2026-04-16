@@ -148,7 +148,7 @@ jobs:
         run: |
           $gdkRoot = $env:GDK_ROOT
 
-          $pet = Get-ChildItem $gdkRoot -Recurse -Filter "Platform.Edition.targets" `
+          $pet = Get-ChildItem "$gdkRoot\VS2022" -Recurse -Filter "Platform.Edition.targets" `
                    -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $pet) {
             Write-Error "Platform.Edition.targets not found under $gdkRoot"
