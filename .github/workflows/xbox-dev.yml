@@ -180,6 +180,18 @@ jobs:
           # — include them so every possible derivation path yields the right value.
           $gameDKLatest = $xdkEditionRootPath
 
+          # Windows SDK version: Microsoft.Cpp.WindowsSDK.targets needs a fully-
+          # qualified build version (e.g. 10.0.22621.0); the shorthand "10.0" does
+          # not satisfy the Exists() check it performs on the SDK Include tree.
+          # Scan the installed SDK Include dirs and pick the highest version.
+          $wkInclude = "${env:ProgramFiles(x86)}\Windows Kits\10\Include"
+          $winSDKVer = Get-ChildItem $wkInclude -Directory -ErrorAction SilentlyContinue |
+                         Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } |
+                         Sort-Object { [version]$_.Name } -Descending |
+                         Select-Object -First 1 -ExpandProperty Name
+          if (-not $winSDKVer) { $winSDKVer = "10.0.19041.0" }   # VS2022 minimum
+          Write-Host "Windows SDK version : $winSDKVer"
+
           # Print Platform.Edition.props so we can see exactly what it does at
           # line 37 (the XdkEditionRootPath usage that is currently failing).
           $pep = "${xdkEditionRootVS2022}${xdkEdition}\Platform.Edition.props"
@@ -210,11 +222,11 @@ jobs:
             # DurangoXdkInstallRoot is the same location used for Console_SdkRoot.
             "    <DurangoXdkInstallPath>$xdkEditionRootPath</DurangoXdkInstallPath>",
             "    <DurangoXdkInstallRoot>$xdkEditionRootPath</DurangoXdkInstallRoot>",
-            # WindowsTargetPlatformVersion: required by Microsoft.Cpp.WindowsSDK.targets
-            # (MSB8037).  The VCTargetsPath probe leaves this empty, which causes
-            # the format string in the error message to throw a FormatException.
-            # "10.0" resolves to the latest Windows SDK installed on the runner.
-            '    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>',
+            # WindowsTargetPlatformVersion: Microsoft.Cpp.WindowsSDK.targets checks
+            # Exists($(WindowsSdkDir)Include\$(WindowsTargetPlatformVersion)\um\windows.h).
+            # The shorthand "10.0" is not a real directory name; use the specific
+            # build-number version discovered above.
+            "    <WindowsTargetPlatformVersion>$winSDKVer</WindowsTargetPlatformVersion>",
             '  </PropertyGroup>',
             '</Project>'
           ) | Set-Content -Path "Directory.Build.props" -Encoding utf8
