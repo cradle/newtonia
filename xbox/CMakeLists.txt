@@ -74,9 +74,6 @@ set(SDL_TESTS   OFF CACHE BOOL "" FORCE)
 # The dynamic API is only needed for ABI-stable DLL swap-out; a static
 # build has no use for it.
 set(SDL_DISABLE_DYNAPI ON CACHE BOOL "" FORCE)
-# Belt-and-suspenders: define the preprocessor symbol directly so it
-# also suppresses the GDK jump-table entries inside SDL_dynapi.c.
-add_compile_definitions(SDL_DYNAMIC_API=0)
 FetchContent_MakeAvailable(SDL2)
 
 # SDL2_mixer: WAV + MP3 only (mirrors every other platform build).
