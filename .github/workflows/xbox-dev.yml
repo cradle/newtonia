@@ -78,8 +78,9 @@ jobs:
           Get-ChildItem "$vsBase\Microsoft\VC\v170\Platforms" -ErrorAction SilentlyContinue |
             Select-Object -ExpandProperty Name | ForEach-Object { Write-Host $_ }
 
+          # flatDeployment\MSBuild mirrors the VS2022 MSBuild directory tree.
           Write-Host "`nCopying GDK VS2022 platform files..."
-          Copy-Item -Recurse -Force "$gdkVS\*" "$vsBase\"
+          Copy-Item -Recurse -Force "$gdkVS\flatDeployment\MSBuild\*" "$vsBase\"
 
           Write-Host "`n=== VS2022 MSBuild platforms after copy ==="
           Get-ChildItem "$vsBase\Microsoft\VC\v170\Platforms" -ErrorAction SilentlyContinue |
