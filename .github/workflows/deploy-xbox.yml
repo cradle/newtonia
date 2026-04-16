@@ -166,6 +166,7 @@ jobs:
           Write-Host "XdkEditionRootVS2022 = $xdkEditionRootVS2022"
 
           $xdkEditionRootPath = (Split-Path $gdkRoot -Parent) + "\"
+          Write-Host "XdkEditionRootPath   = $xdkEditionRootPath"
 
           @(
             '<?xml version="1.0" encoding="utf-8"?>',
@@ -174,6 +175,13 @@ jobs:
             "    <XdkEdition>$xdkEdition</XdkEdition>",
             "    <XdkEditionRootVS2022>$xdkEditionRootVS2022</XdkEditionRootVS2022>",
             "    <XdkEditionRootPath>$xdkEditionRootPath</XdkEditionRootPath>",
+            "    <GameDKLatest>$xdkEditionRootPath</GameDKLatest>",
+            "    <GameDKCoreLatest>$xdkEditionRootPath</GameDKCoreLatest>",
+            # DurangoXdkInstallPath: Platform.Edition.props builds Console_GRDKExtLibRoot
+            # as $(DurangoXdkInstallPath)GRDK\ExtensionLibraries\ and calls GetDirectories().
+            # Without this the path is relative (empty prefix) and fails.
+            "    <DurangoXdkInstallPath>$xdkEditionRootPath</DurangoXdkInstallPath>",
+            "    <DurangoXdkInstallRoot>$xdkEditionRootPath</DurangoXdkInstallRoot>",
             '  </PropertyGroup>',
             '</Project>'
           ) | Set-Content -Path "Directory.Build.props" -Encoding utf8

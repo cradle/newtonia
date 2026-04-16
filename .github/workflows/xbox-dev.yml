@@ -202,11 +202,14 @@ jobs:
             "    <XdkEdition>$xdkEdition</XdkEdition>",
             "    <XdkEditionRootVS2022>$xdkEditionRootVS2022</XdkEditionRootVS2022>",
             "    <XdkEditionRootPath>$xdkEditionRootPath</XdkEditionRootPath>",
-            # GameDKLatest / GameDKCoreLatest: Platform.Edition.props may reset
-            # XdkEditionRootPath from $(GameDKLatest) after Directory.Build.props
-            # runs.  Setting them here means the re-derived value is also correct.
             "    <GameDKLatest>$gameDKLatest</GameDKLatest>",
             "    <GameDKCoreLatest>$gameDKLatest</GameDKCoreLatest>",
+            # DurangoXdkInstallPath is the root cause: Platform.Edition.props line 37
+            # builds Console_GRDKExtLibRoot as $(DurangoXdkInstallPath)GRDK\ExtensionLibraries\
+            # and calls GetDirectories() on it.  Without this the path is relative and fails.
+            # DurangoXdkInstallRoot is the same location used for Console_SdkRoot.
+            "    <DurangoXdkInstallPath>$xdkEditionRootPath</DurangoXdkInstallPath>",
+            "    <DurangoXdkInstallRoot>$xdkEditionRootPath</DurangoXdkInstallRoot>",
             '  </PropertyGroup>',
             '</Project>'
           ) | Set-Content -Path "Directory.Build.props" -Encoding utf8
