@@ -213,11 +213,6 @@ jobs:
             "    <DurangoXdkInstallRoot>$xdkEditionRootPath</DurangoXdkInstallRoot>",
             "    <WindowsTargetPlatformVersion>$winSDKVer</WindowsTargetPlatformVersion>",
             '  </PropertyGroup>',
-            '  <PropertyGroup Condition="$([System.Text.RegularExpressions.Regex]::IsMatch($(Platform), &apos;Gaming\..*\.x64&apos;))">',
-            '    <DisableInstalledVCTargetsUse>true</DisableInstalledVCTargetsUse>',
-            "    <VCTargetsPath17>$v17</VCTargetsPath17>",
-            "    <VCTargetsPath16>$v16</VCTargetsPath16>",
-            '  </PropertyGroup>',
             '</Project>'
           ) | Set-Content -Path "Directory.Build.props" -Encoding utf8
           Get-Content "Directory.Build.props"
@@ -228,6 +223,7 @@ jobs:
         run: |
           cmake -B xbox/build -S xbox `
             -A Gaming.Xbox.Scarlett.x64 `
+            "-DVCTargetsPath=$env:VCTargetsPath" `
             -DCMAKE_BUILD_TYPE=Release `
             -DANGLE_LIB_DIR="$env:ANGLE_LIB_DIR"
 

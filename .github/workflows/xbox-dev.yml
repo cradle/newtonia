@@ -230,7 +230,14 @@ jobs:
           @(
             '<?xml version="1.0" encoding="utf-8"?>',
             '<Project>',
-            '  <!-- GDK edition identity — required by _GdkEditionCheck in Platform.targets. -->',
+            '  <!-- GDK edition identity — required by _GdkEditionCheck in Platform.targets  -->',
+            '  <!-- and by Platform.Edition.props (DurangoXdkInstallPath, GameDKLatest etc.). -->',
+            '  <!-- These are applied to both the probe and the actual build.                 -->',
+            '  <!-- DisableInstalledVCTargetsUse / VCTargetsPath17/16 are intentionally NOT   -->',
+            '  <!-- set here: they cause Microsoft.Cpp.ToolsetLocation.targets to re-import   -->',
+            '  <!-- Microsoft.cpp.targets (MSB4011) and the Build target to disappear in the  -->',
+            '  <!-- CMake VCTargetsPath probe (MSB4057). The probe is bypassed instead by     -->',
+            '  <!-- passing -DVCTargetsPath=... directly to cmake (see Configure step).       -->',
             '  <PropertyGroup>',
             "    <XdkEdition>$xdkEdition</XdkEdition>",
             "    <XdkEditionRootVS2022>$xdkEditionRootVS2022</XdkEditionRootVS2022>",
@@ -241,16 +248,6 @@ jobs:
             "    <DurangoXdkInstallRoot>$xdkEditionRootPath</DurangoXdkInstallRoot>",
             "    <WindowsTargetPlatformVersion>$winSDKVer</WindowsTargetPlatformVersion>",
             '  </PropertyGroup>',
-            '  <!-- BWOI overrides — applied only for Gaming.*x64 platforms. -->',
-            '  <!-- DisableInstalledVCTargetsUse=true bypasses the Windows SDK -->',
-            '  <!-- presence check in Microsoft.Cpp.WindowsSDK.targets (MSB8037). -->',
-            '  <!-- VCTargetsPath17/16 redirect GDK toolset imports to the GDK    -->',
-            '  <!-- flatDeployment directory rather than the VS2022 install tree.  -->',
-            '  <PropertyGroup Condition="$([System.Text.RegularExpressions.Regex]::IsMatch($(Platform), &apos;Gaming\..*\.x64&apos;))">',
-            '    <DisableInstalledVCTargetsUse>true</DisableInstalledVCTargetsUse>',
-            "    <VCTargetsPath17>$v17</VCTargetsPath17>",
-            "    <VCTargetsPath16>$v16</VCTargetsPath16>",
-            '  </PropertyGroup>',
             '</Project>'
           ) | Set-Content -Path "Directory.Build.props" -Encoding utf8
           Write-Host "Directory.Build.props:"
@@ -259,8 +256,13 @@ jobs:
       - name: Configure (GDK Desktop)
         shell: pwsh
         run: |
+          # Pass VCTargetsPath as a CMake cache variable (-D).  CMake's VS generator
+          # checks the CMake cache before running the VCTargetsPath.vcxproj probe, so
+          # this bypasses the probe entirely.  The env var alone (set by "Export
+          # VCTargetsPath") is not reliably honoured in CMake 3.31 for this purpose.
           cmake -B xbox/build-desktop -S xbox `
             -A Gaming.Desktop.x64 `
+            "-DVCTargetsPath=$env:VCTargetsPath" `
             -DCMAKE_BUILD_TYPE=Release `
             -DANGLE_LIB_DIR="$env:ANGLE_LIB_DIR"
 
