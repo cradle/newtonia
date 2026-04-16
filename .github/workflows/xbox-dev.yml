@@ -60,9 +60,31 @@ jobs:
           echo "GDK_ROOT=$gdkRoot"    >> $env:GITHUB_ENV
           echo "GDK_EDITION=$edition" >> $env:GITHUB_ENV
 
-      # In GDK 2510+ there is no GDKxPlatform.cmake toolchain file.
-      # The installer registers Gaming.Desktop.x64 as a VS2022 MSBuild
-      # platform, so CMake picks it up via -A alone.
+      # The GDK installer may not have copied the platform files into the
+      # VS2022 MSBuild directory (winget runs without interactive elevation).
+      # Do it explicitly here: copy GRDK/VS2022/* into VS2022's MSBuild tree
+      # so that Gaming.Desktop.x64 is recognised as a valid platform.
+      - name: Register GDK VS2022 platform
+        shell: pwsh
+        run: |
+          $gdkVS = "$env:GDK_ROOT\VS2022"
+          $vsBase = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild"
+
+          Write-Host "=== GRDK\VS2022 contents ==="
+          Get-ChildItem $gdkVS -Recurse | Select-Object -ExpandProperty FullName |
+            ForEach-Object { Write-Host $_ }
+
+          Write-Host "`n=== VS2022 MSBuild platforms before copy ==="
+          Get-ChildItem "$vsBase\Microsoft\VC\v170\Platforms" -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty Name | ForEach-Object { Write-Host $_ }
+
+          Write-Host "`nCopying GDK VS2022 platform files..."
+          Copy-Item -Recurse -Force "$gdkVS\*" "$vsBase\"
+
+          Write-Host "`n=== VS2022 MSBuild platforms after copy ==="
+          Get-ChildItem "$vsBase\Microsoft\VC\v170\Platforms" -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty Name | ForEach-Object { Write-Host $_ }
+
       - name: Configure (GDK Desktop)
         shell: pwsh
         run: |
