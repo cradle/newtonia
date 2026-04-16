@@ -2,7 +2,6 @@ name: Deploy Xbox
 
 # Triggered manually or on a version tag (same convention as deploy-steam.yml).
 # Required GitHub secrets:
-#   GDK_ASSET_TOKEN                — PAT with read access to cradle/assets (same repo as STEAM_SDK_TOKEN)
 #   XBOX_STORE_ID                  — 12-char Store ID from Partner Center
 #   XBOX_PARTNER_CENTER_TENANT_ID  — Azure AD tenant ID
 #   XBOX_PARTNER_CENTER_CLIENT_ID  — Azure AD app (service principal) client ID
@@ -19,9 +18,8 @@ name: Deploy Xbox
 #
 # GDK version
 # -----------
-# GDK_EDITION below targets GDK 24.10 (October 2024).  To upgrade, re-zip
-# the new GDK install directory and upload it to cradle/assets as
-# gdk_<edition>.zip, then update GDK_EDITION and the cache key here.
+# GDK_EDITION below targets GDK 24.10 (October 2024).  To upgrade, update
+# GDK_EDITION and the cache key to match the new edition number.
 
 on:
   push:
@@ -57,22 +55,17 @@ jobs:
           path: C:\Program Files (x86)\Microsoft GDK\241000
           key: gdk-241000
 
-      - name: Download GDK
+      - name: Install GDK
         if: steps.cache-gdk.outputs.cache-hit != 'true'
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GDK_ASSET_TOKEN }}
         run: |
-          $headers   = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json" }
-          $release   = Invoke-RestMethod -Uri "https://api.github.com/repos/cradle/assets/releases/tags/sdk-latest" -Headers $headers
-          $asset     = $release.assets | Where-Object { $_.name -eq "gdk_241000.zip" } | Select-Object -First 1
-          $dlHeaders = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/octet-stream" }
-          Invoke-WebRequest -Uri $asset.url -Headers $dlHeaders -OutFile gdk.zip
-          Expand-Archive -Path gdk.zip -DestinationPath "C:\Program Files (x86)\Microsoft GDK"
-
-      - name: Add GDK tools to PATH
-        shell: pwsh
-        run: echo "$env:GDK_ROOT\bin" >> $env:GITHUB_PATH
+          winget install -e --id Microsoft.Gaming.GDK `
+            --accept-package-agreements `
+            --accept-source-agreements `
+            --disable-interactivity
+          $machine = [System.Environment]::GetEnvironmentVariable("Path","Machine")
+          $user    = [System.Environment]::GetEnvironmentVariable("Path","User")
+          echo "PATH=$machine;$user" >> $env:GITHUB_ENV
 
       # ---- Configure with the GDK CMake toolchain --------------------
       - name: Configure (CMake + GDK toolchain)
