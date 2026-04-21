@@ -239,20 +239,30 @@ jobs:
             "    <DurangoXdkInstallRoot>$xdkEditionRootPath</DurangoXdkInstallRoot>",
             "    <WindowsTargetPlatformVersion>$winSDKVer</WindowsTargetPlatformVersion>",
             '  </PropertyGroup>',
-            '  <!-- Force static CRT (/MT) for all projects in the tree, including   -->',
-            '  <!-- SDL2/SDL2_mixer from FetchContent.  The GDK Gaming.Desktop.x64   -->',
-            '  <!-- platform props default to the app-local CRT (_APP.dll variants), -->',
-            '  <!-- which are not present in the standard VS redist.  Setting         -->',
-            '  <!-- RuntimeLibrary here in Directory.Build.props overrides the        -->',
-            '  <!-- per-project platform default before any target sees it.           -->',
+            '</Project>'
+          ) | Set-Content -Path "Directory.Build.props" -Encoding utf8
+          Write-Host "Directory.Build.props:"
+          Get-Content "Directory.Build.props"
+
+      # Directory.Build.targets is auto-imported AFTER all platform props
+      # (including the GDK's Platform.Edition.props which sets the app-local
+      # CRT default).  Setting RuntimeLibrary here therefore wins over the
+      # platform default.  Directory.Build.props is imported too early and
+      # gets overridden by the GDK platform chain.
+      - name: Write Directory.Build.targets
+        shell: pwsh
+        run: |
+          @(
+            '<?xml version="1.0" encoding="utf-8"?>',
+            '<Project>',
             '  <PropertyGroup>',
             '    <RuntimeLibrary Condition="''$(Configuration)''==''Debug''">MultiThreadedDebug</RuntimeLibrary>',
             '    <RuntimeLibrary Condition="''$(Configuration)''!=''Debug''">MultiThreaded</RuntimeLibrary>',
             '  </PropertyGroup>',
             '</Project>'
-          ) | Set-Content -Path "Directory.Build.props" -Encoding utf8
-          Write-Host "Directory.Build.props:"
-          Get-Content "Directory.Build.props"
+          ) | Set-Content -Path "Directory.Build.targets" -Encoding utf8
+          Write-Host "Directory.Build.targets:"
+          Get-Content "Directory.Build.targets"
 
       - name: Configure (GDK Desktop)
         shell: pwsh
