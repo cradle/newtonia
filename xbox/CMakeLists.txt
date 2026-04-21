@@ -1,4 +1,11 @@
 cmake_minimum_required(VERSION 3.21)
+
+# CMP0091 must be set before project() so that CMAKE_MSVC_RUNTIME_LIBRARY
+# is honoured by all targets (including FetchContent sub-projects).
+# Without NEW the old /MD flags from the GDK platform props take precedence
+# and produce MSVCP140_APP.dll / VCRUNTIME140_APP.dll runtime dependencies.
+cmake_policy(SET CMP0091 NEW)
+
 project(newtonia CXX)
 
 # ---------------------------------------------------------------
@@ -73,9 +80,12 @@ FetchContent_Declare(SDL2
     GIT_TAG        SDL2
     GIT_SHALLOW    TRUE
 )
-set(SDL_SHARED  OFF CACHE BOOL "" FORCE)
-set(SDL_STATIC  ON  CACHE BOOL "" FORCE)
-set(SDL_TESTS   OFF CACHE BOOL "" FORCE)
+set(SDL_SHARED           OFF CACHE BOOL "" FORCE)
+set(SDL_STATIC           ON  CACHE BOOL "" FORCE)
+set(SDL_TESTS            OFF CACHE BOOL "" FORCE)
+# Belt-and-suspenders: SDL2 has its own CRT flag independent of
+# CMAKE_MSVC_RUNTIME_LIBRARY; set both to guarantee /MT throughout.
+set(SDL_FORCE_STATIC_VCRT ON  CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(SDL2)
 
 # The Gaming.Desktop.x64 MSBuild platform defines __GDK__ for every
