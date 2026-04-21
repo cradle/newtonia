@@ -304,7 +304,7 @@ jobs:
           # Diagnostic confirmed they live in C:\Windows\SystemApps (UWP package
           # private copies) and C:\Windows\WinSxS (servicing store).  Search
           # those locations directly; filter out arm/x86 paths.
-          $crtDlls = @("MSVCP140_APP.dll", "VCRUNTIME140_APP.dll", "VCRUNTIME140_1_APP.dll")
+          $crtDlls = @("MSVCP140_APP.dll", "VCRUNTIME140_APP.dll")
           foreach ($dll in $crtDlls) {
             $found = Get-ChildItem "C:\Windows\SystemApps", "C:\Windows\WinSxS" `
                        -Recurse -Filter $dll -ErrorAction SilentlyContinue |
@@ -350,6 +350,5 @@ jobs:
             xbox/build-desktop/Release/libGLESv2.dll
             xbox/build-desktop/Release/MSVCP140_APP.dll
             xbox/build-desktop/Release/VCRUNTIME140_APP.dll
-            xbox/build-desktop/Release/VCRUNTIME140_1_APP.dll
             xbox/build-desktop/Release/audio/
           retention-days: 7
