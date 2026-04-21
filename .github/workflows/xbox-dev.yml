@@ -268,6 +268,31 @@ jobs:
           Copy-Item "$env:ANGLE_BIN_DIR\libEGL.dll"    xbox/build-desktop/Release/
           Copy-Item "$env:ANGLE_BIN_DIR\libGLESv2.dll" xbox/build-desktop/Release/
 
+      - name: Stage CRT DLLs
+        shell: pwsh
+        run: |
+          # GDK Desktop requires the app-local CRT variants (_APP.dll) even when
+          # the MSVC runtime is statically linked into the exe, because the GDK
+          # MSBuild platform can re-inject the dynamic dependency via its own props.
+          # Locate them from the VS redist tree and copy them next to the exe.
+          $vcRedist = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Redist\MSVC"
+          $vcVer = Get-ChildItem $vcRedist -Directory -ErrorAction SilentlyContinue |
+                     Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $vcVer) {
+            Write-Warning "VS redist directory not found at $vcRedist — skipping CRT staging"
+          } else {
+            $crtDir = "$($vcVer.FullName)\x64\Microsoft.VC143.CRT"
+            foreach ($dll in @("MSVCP140_APP.dll", "VCRUNTIME140_APP.dll", "VCRUNTIME140_1_APP.dll")) {
+              $src = "$crtDir\$dll"
+              if (Test-Path $src) {
+                Copy-Item $src xbox/build-desktop/Release/
+                Write-Host "Staged $dll"
+              } else {
+                Write-Warning "$dll not found at $src"
+              }
+            }
+          }
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -276,5 +301,8 @@ jobs:
             xbox/build-desktop/Release/newtonia.exe
             xbox/build-desktop/Release/libEGL.dll
             xbox/build-desktop/Release/libGLESv2.dll
+            xbox/build-desktop/Release/MSVCP140_APP.dll
+            xbox/build-desktop/Release/VCRUNTIME140_APP.dll
+            xbox/build-desktop/Release/VCRUNTIME140_1_APP.dll
             xbox/build-desktop/Release/audio/
           retention-days: 7
