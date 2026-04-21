@@ -290,6 +290,32 @@ jobs:
         shell: pwsh
         run: cmake --build xbox/build-desktop --config Release --parallel
 
+      - name: Diagnose DLL dependencies
+        shell: pwsh
+        run: |
+          # Show newtonia.exe's actual DLL imports.
+          $dumpbin = Get-ChildItem `
+            "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC" `
+            -Recurse -Filter dumpbin.exe -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if ($dumpbin) {
+            Write-Host "=== newtonia.exe imports ==="
+            & $dumpbin.FullName /dependents xbox\build-desktop\Release\newtonia.exe
+            Write-Host "`n=== libEGL.dll imports ==="
+            & $dumpbin.FullName /dependents xbox\build-desktop\Release\libEGL.dll
+          }
+          # Show all DLLs in the ANGLE.WindowsStore NuGet package (it may ship _APP DLLs).
+          Write-Host "`n=== ANGLE.WindowsStore NuGet DLLs ==="
+          Get-ChildItem "$env:RUNNER_TEMP\nuget\ANGLE.WindowsStore" -Recurse -Filter "*.dll" |
+            ForEach-Object { Write-Host $_.FullName }
+          # Find every *_APP.dll on the machine.
+          Write-Host "`n=== *_APP.dll on this runner ==="
+          Get-ChildItem C:\Windows, `
+            "C:\Program Files\Microsoft Visual Studio\2022\Enterprise", `
+            "C:\Program Files (x86)\Microsoft GDK" `
+            -Recurse -Filter "*_APP.dll" -ErrorAction SilentlyContinue |
+            ForEach-Object { Write-Host $_.FullName }
+
       - name: Stage DLLs
         shell: pwsh
         run: |
