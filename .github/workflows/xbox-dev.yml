@@ -327,27 +327,15 @@ jobs:
 
           # App-local CRT (_APP variants) must be bundled with GDK Desktop apps.
           # They are NOT in System32 on Windows Server (no Store/UWP runtime).
-          # Search in order: VS redist numeric version dirs (not the v143 alias
-          # which only holds the standard DLLs), then the GDK tree.
+          # Diagnostic confirmed they live in C:\Windows\SystemApps (UWP package
+          # private copies) and C:\Windows\WinSxS (servicing store).  Search
+          # those locations directly; filter out arm/x86 paths.
           $crtDlls = @("MSVCP140_APP.dll", "VCRUNTIME140_APP.dll", "VCRUNTIME140_1_APP.dll")
-          $vcRedist = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Redist\MSVC"
-          # Collect candidate search roots: numeric version dirs first, then GDK.
-          $searchRoots = @(
-            (Get-ChildItem $vcRedist -Directory -ErrorAction SilentlyContinue |
-               Where-Object { $_.Name -match '^\d+\.\d+' } |
-               Sort-Object Name -Descending |
-               Select-Object -ExpandProperty FullName),
-            "$env:GDK_ROOT\.."
-          ) | Where-Object { $_ -and (Test-Path $_) }
           foreach ($dll in $crtDlls) {
-            $found = $null
-            foreach ($root in $searchRoots) {
-              $found = Get-ChildItem $root -Recurse -Filter $dll `
-                         -ErrorAction SilentlyContinue |
-                         Where-Object { $_.FullName -notmatch '\\arm|\\x86\\' } |
-                         Select-Object -First 1
-              if ($found) { break }
-            }
+            $found = Get-ChildItem "C:\Windows\SystemApps", "C:\Windows\WinSxS" `
+                       -Recurse -Filter $dll -ErrorAction SilentlyContinue |
+                       Where-Object { $_.FullName -notmatch '\\arm|\\x86[/\\]' } |
+                       Select-Object -First 1
             if ($found) {
               Copy-Item $found.FullName $out
               Write-Host "Staged $dll from $($found.FullName)"
