@@ -246,8 +246,8 @@ jobs:
             '  <!-- RuntimeLibrary here in Directory.Build.props overrides the        -->',
             '  <!-- per-project platform default before any target sees it.           -->',
             '  <PropertyGroup>',
-            "    <RuntimeLibrary Condition=\"'`$(Configuration)'=='Debug'\">MultiThreadedDebug</RuntimeLibrary>",
-            "    <RuntimeLibrary Condition=\"'`$(Configuration)'!='Debug'\">MultiThreaded</RuntimeLibrary>",
+            '    <RuntimeLibrary Condition="''$(Configuration)''==''Debug''">MultiThreadedDebug</RuntimeLibrary>',
+            '    <RuntimeLibrary Condition="''$(Configuration)''!=''Debug''">MultiThreaded</RuntimeLibrary>',
             '  </PropertyGroup>',
             '</Project>'
           ) | Set-Content -Path "Directory.Build.props" -Encoding utf8
