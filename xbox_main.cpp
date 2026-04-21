@@ -57,6 +57,9 @@ extern "C" void GDK_DispatchTaskQueue(void) {}
 
 #include <cstdlib>
 #include <ctime>
+#ifdef _GAMING_DESKTOP
+#include <windows.h>
+#endif
 
 static StateManager    *s_game       = nullptr;
 static SDL_Window      *s_window     = nullptr;
@@ -105,7 +108,27 @@ int main(int argc, char *argv[])
     // unavailable on Xbox.
     SDL_SetHint(SDL_HINT_OPENGL_ES_DRIVER, "1");
 
+    // Route SDL log output to a file alongside the exe so errors are
+    // visible even when launched without a console (double-click / artifact).
+#ifdef _GAMING_DESKTOP
+    SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
+    {
+        char logPath[MAX_PATH];
+        GetModuleFileNameA(NULL, logPath, MAX_PATH);
+        char *slash = strrchr(logPath, '\\');
+        if (slash) strcpy(slash + 1, "newtonia.log");
+        FILE *logFile = fopen(logPath, "w");
+        if (logFile) {
+            SDL_LogSetOutputFunction([](void *fp, int /*cat*/, SDL_LogPriority /*pri*/, const char *msg) {
+                fprintf((FILE *)fp, "%s\n", msg);
+                fflush((FILE *)fp);
+            }, logFile);
+        }
+    }
+#endif
+
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", SDL_GetError(), NULL);
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         return 1;
     }
@@ -145,6 +168,7 @@ int main(int argc, char *argv[])
                                 s_w, s_h,
                                 window_flags);
     if (!s_window) {
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", SDL_GetError(), NULL);
         SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());
         SDL_Quit();
         return 1;
@@ -152,6 +176,7 @@ int main(int argc, char *argv[])
 
     s_gl_ctx = SDL_GL_CreateContext(s_window);
     if (!s_gl_ctx) {
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", SDL_GetError(), s_window);
         SDL_Log("SDL_GL_CreateContext failed: %s", SDL_GetError());
         SDL_DestroyWindow(s_window);
         SDL_Quit();
