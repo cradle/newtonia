@@ -255,10 +255,19 @@ jobs:
           @(
             '<?xml version="1.0" encoding="utf-8"?>',
             '<Project>',
+            '  <!-- Override RuntimeLibrary at both property and item-definition level -->',
+            '  <!-- so it wins regardless of whether Platform.Edition.targets sets it  -->',
+            '  <!-- via a PropertyGroup or an ItemDefinitionGroup.                     -->',
             '  <PropertyGroup>',
             '    <RuntimeLibrary Condition="''$(Configuration)''==''Debug''">MultiThreadedDebug</RuntimeLibrary>',
             '    <RuntimeLibrary Condition="''$(Configuration)''!=''Debug''">MultiThreaded</RuntimeLibrary>',
             '  </PropertyGroup>',
+            '  <ItemDefinitionGroup>',
+            '    <ClCompile>',
+            '      <RuntimeLibrary Condition="''$(Configuration)''==''Debug''">MultiThreadedDebug</RuntimeLibrary>',
+            '      <RuntimeLibrary Condition="''$(Configuration)''!=''Debug''">MultiThreaded</RuntimeLibrary>',
+            '    </ClCompile>',
+            '  </ItemDefinitionGroup>',
             '</Project>'
           ) | Set-Content -Path "Directory.Build.targets" -Encoding utf8
           Write-Host "Directory.Build.targets:"
@@ -290,28 +299,32 @@ jobs:
           Copy-Item "$env:ANGLE_BIN_DIR\libEGL.dll"    $out
           Copy-Item "$env:ANGLE_BIN_DIR\libGLESv2.dll" $out
 
-          # App-local CRT (_APP variants).  Platform.Edition.targets forces
-          # the GDK Desktop app-sandbox CRT at item-metadata level, which
-          # cannot be overridden by RuntimeLibrary property.  These DLLs are
-          # pre-installed by Windows (UWP support) and present in System32
-          # on Windows 10/11/Server 2022 runners; copy them into the artifact
-          # so the build is runnable on machines without VS.
+          # App-local CRT (_APP variants) must be bundled with GDK Desktop apps.
+          # They are NOT in System32 on Windows Server (no Store/UWP runtime).
+          # Search in order: VS redist numeric version dirs (not the v143 alias
+          # which only holds the standard DLLs), then the GDK tree.
           $crtDlls = @("MSVCP140_APP.dll", "VCRUNTIME140_APP.dll", "VCRUNTIME140_1_APP.dll")
+          $vcRedist = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Redist\MSVC"
+          # Collect candidate search roots: numeric version dirs first, then GDK.
+          $searchRoots = @(
+            (Get-ChildItem $vcRedist -Directory -ErrorAction SilentlyContinue |
+               Where-Object { $_.Name -match '^\d+\.\d+' } |
+               Sort-Object Name -Descending |
+               Select-Object -ExpandProperty FullName),
+            "$env:GDK_ROOT\.."
+          ) | Where-Object { $_ -and (Test-Path $_) }
           foreach ($dll in $crtDlls) {
-            # System32 is the canonical location on any Windows 10+ machine.
-            $src = "C:\Windows\System32\$dll"
-            if (-not (Test-Path $src)) {
-              # Fallback: recursive search under the GDK tree (GDK ships its
-              # own copy for packaging purposes).
-              $found = Get-ChildItem "$env:GDK_ROOT\.." -Recurse -Filter $dll `
+            $found = $null
+            foreach ($root in $searchRoots) {
+              $found = Get-ChildItem $root -Recurse -Filter $dll `
                          -ErrorAction SilentlyContinue |
                          Where-Object { $_.FullName -notmatch '\\arm|\\x86\\' } |
                          Select-Object -First 1
-              if ($found) { $src = $found.FullName }
+              if ($found) { break }
             }
-            if (Test-Path $src) {
-              Copy-Item $src $out
-              Write-Host "Staged $dll from $src"
+            if ($found) {
+              Copy-Item $found.FullName $out
+              Write-Host "Staged $dll from $($found.FullName)"
             } else {
               Write-Warning "$dll not found — artifact may not run on machines without VS"
             }
