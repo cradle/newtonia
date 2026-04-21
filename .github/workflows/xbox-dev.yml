@@ -117,21 +117,7 @@ jobs:
           Write-Host "VCTargetsPath = $vcTargets\"
           echo "VCTargetsPath=$vcTargets\" >> $env:GITHUB_ENV
 
-      # Print the _GdkEditionCheck target so we can see exactly which property
-      # or env var it reads.  The output is visible in the Actions log.
-      - name: Diagnose Platform.targets
-        shell: pwsh
-        run: |
-          $pt = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VC\v170\Platforms\Gaming.Desktop.x64\Platform.targets"
-          if (Test-Path $pt) {
-            Write-Host "=== First 60 lines of Platform.targets ==="
-            Get-Content $pt | Select-Object -First 60
-          } else {
-            Write-Host "Platform.targets not found at expected path"
-            Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VC\v170\Platforms\" -Recurse -Filter "Platform.targets" | ForEach-Object { Write-Host $_.FullName }
-          }
-
-      - name: Install ANGLE
+- name: Install ANGLE
         shell: pwsh
         run: |
           # The GDK 2510 Desktop target does not bundle ANGLE.
