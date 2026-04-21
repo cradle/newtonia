@@ -281,12 +281,41 @@ jobs:
         shell: pwsh
         run: cmake --build xbox/build-desktop --config Release --parallel
 
-      - name: Stage ANGLE DLLs
+      - name: Stage DLLs
         shell: pwsh
         run: |
-          # Copy ANGLE DLLs next to the exe so the artifact is immediately runnable.
-          Copy-Item "$env:ANGLE_BIN_DIR\libEGL.dll"    xbox/build-desktop/Release/
-          Copy-Item "$env:ANGLE_BIN_DIR\libGLESv2.dll" xbox/build-desktop/Release/
+          $out = "xbox/build-desktop/Release"
+
+          # ANGLE — from NuGet package located by Install ANGLE step.
+          Copy-Item "$env:ANGLE_BIN_DIR\libEGL.dll"    $out
+          Copy-Item "$env:ANGLE_BIN_DIR\libGLESv2.dll" $out
+
+          # App-local CRT (_APP variants).  Platform.Edition.targets forces
+          # the GDK Desktop app-sandbox CRT at item-metadata level, which
+          # cannot be overridden by RuntimeLibrary property.  These DLLs are
+          # pre-installed by Windows (UWP support) and present in System32
+          # on Windows 10/11/Server 2022 runners; copy them into the artifact
+          # so the build is runnable on machines without VS.
+          $crtDlls = @("MSVCP140_APP.dll", "VCRUNTIME140_APP.dll", "VCRUNTIME140_1_APP.dll")
+          foreach ($dll in $crtDlls) {
+            # System32 is the canonical location on any Windows 10+ machine.
+            $src = "C:\Windows\System32\$dll"
+            if (-not (Test-Path $src)) {
+              # Fallback: recursive search under the GDK tree (GDK ships its
+              # own copy for packaging purposes).
+              $found = Get-ChildItem "$env:GDK_ROOT\.." -Recurse -Filter $dll `
+                         -ErrorAction SilentlyContinue |
+                         Where-Object { $_.FullName -notmatch '\\arm|\\x86\\' } |
+                         Select-Object -First 1
+              if ($found) { $src = $found.FullName }
+            }
+            if (Test-Path $src) {
+              Copy-Item $src $out
+              Write-Host "Staged $dll from $src"
+            } else {
+              Write-Warning "$dll not found — artifact may not run on machines without VS"
+            }
+          }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -296,5 +325,8 @@ jobs:
             xbox/build-desktop/Release/newtonia.exe
             xbox/build-desktop/Release/libEGL.dll
             xbox/build-desktop/Release/libGLESv2.dll
+            xbox/build-desktop/Release/MSVCP140_APP.dll
+            xbox/build-desktop/Release/VCRUNTIME140_APP.dll
+            xbox/build-desktop/Release/VCRUNTIME140_1_APP.dll
             xbox/build-desktop/Release/audio/
           retention-days: 7
