@@ -117,7 +117,7 @@ jobs:
           Write-Host "VCTargetsPath = $vcTargets\"
           echo "VCTargetsPath=$vcTargets\" >> $env:GITHUB_ENV
 
-- name: Install ANGLE
+      - name: Install ANGLE
         shell: pwsh
         run: |
           # The GDK 2510 Desktop target does not bundle ANGLE.
