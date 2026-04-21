@@ -132,6 +132,7 @@ int main(int argc, char *argv[])
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         return 1;
     }
+    SDL_Log("SDL_Init OK");
 
     // Request an OpenGL ES 2.0 context through ANGLE / EGL.
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
@@ -173,6 +174,7 @@ int main(int argc, char *argv[])
         SDL_Quit();
         return 1;
     }
+    SDL_Log("Window created");
 
     s_gl_ctx = SDL_GL_CreateContext(s_window);
     if (!s_gl_ctx) {
@@ -182,10 +184,12 @@ int main(int argc, char *argv[])
         SDL_Quit();
         return 1;
     }
+    SDL_Log("GL context created");
 
     SDL_GL_SetSwapInterval(1); // vsync
 
     gles2_init();
+    SDL_Log("gles2_init OK");
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -207,6 +211,7 @@ int main(int argc, char *argv[])
     }
 
     load_preferences();
+    SDL_Log("Preferences loaded");
 
 #ifdef _GAMING_XBOX
     // Register the GDK PLM suspend callback.  XTaskQueueDispatchMode_ThreadPool
@@ -221,8 +226,10 @@ int main(int argc, char *argv[])
 #endif
 
     s_game = new StateManager();
+    SDL_Log("StateManager created");
     s_game->resize(s_w, s_h);
     Typer::resize(s_w, s_h);
+    SDL_Log("Entering main loop");
 
     Uint32 last_tick = SDL_GetTicks();
 
