@@ -24,7 +24,8 @@
                          // On macOS, gl_compat.h now includes gl3.h before GLUT.
 
 // Post-GL-header includes and Windows function loader.
-#if !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__)
+#if !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__) && \
+    !defined(_GAMING_XBOX) && !defined(_GAMING_DESKTOP)
 #  if defined(__linux__)
 #    include <GL/glext.h>
 
@@ -232,7 +233,7 @@ WarpPass::WarpPass()
       a_pos_(-1), u_mvp_(-1), u_tex_(-1),
       u_center_ndc_(-1), u_radius_ndc_(-1), u_time_(-1)
 {
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(_GAMING_XBOX) && !defined(_GAMING_DESKTOP)
     warp_load_gl_fns();
 #endif
 
