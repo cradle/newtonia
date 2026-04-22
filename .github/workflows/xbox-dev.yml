@@ -151,10 +151,31 @@ jobs:
           if (-not $lib) { Write-Error "libEGL.lib not found"; exit 1 }
           if (-not $dll) { Write-Error "libEGL.dll not found"; exit 1 }
 
+          # Find EGL headers (egl.h) — search near the lib, then the whole GDK tree,
+          # then the NuGet package root.
+          $hdr = Get-ChildItem $lib.Directory.FullName -Recurse `
+                   -Filter "egl.h" -ErrorAction SilentlyContinue |
+                   Select-Object -First 1
+          if (-not $hdr) {
+            $hdr = Get-ChildItem "$env:GDK_ROOT" -Recurse `
+                     -Filter "egl.h" -ErrorAction SilentlyContinue |
+                     Select-Object -First 1
+          }
+          if (-not $hdr) {
+            $hdr = Get-ChildItem "$env:RUNNER_TEMP\nuget" -Recurse `
+                     -Filter "egl.h" -ErrorAction SilentlyContinue |
+                     Select-Object -First 1
+          }
+          if (-not $hdr) { Write-Error "egl.h not found"; exit 1 }
+          # egl.h lives in an EGL/ subdirectory; the include root is its parent.
+          $angleInclude = $hdr.Directory.Parent.FullName
+          Write-Host "ANGLE include dir : $angleInclude"
+
           Write-Host "ANGLE lib dir : $($lib.Directory.FullName)"
           Write-Host "ANGLE DLL dir : $($dll.Directory.FullName)"
-          echo "ANGLE_LIB_DIR=$($lib.Directory.FullName)" >> $env:GITHUB_ENV
-          echo "ANGLE_BIN_DIR=$($dll.Directory.FullName)" >> $env:GITHUB_ENV
+          echo "ANGLE_LIB_DIR=$($lib.Directory.FullName)"     >> $env:GITHUB_ENV
+          echo "ANGLE_BIN_DIR=$($dll.Directory.FullName)"     >> $env:GITHUB_ENV
+          echo "ANGLE_INCLUDE_DIR=$angleInclude"              >> $env:GITHUB_ENV
 
       # Platform.targets checks:
       #   Exists('$(XdkEditionRootVS2022)$(XdkEdition)\Platform.Edition.targets')
@@ -286,7 +307,8 @@ jobs:
             -A Gaming.Desktop.x64 `
             "-DVCTargetsPath=$env:VCTargetsPath" `
             -DCMAKE_BUILD_TYPE=Release `
-            -DANGLE_LIB_DIR="$env:ANGLE_LIB_DIR"
+            -DANGLE_LIB_DIR="$env:ANGLE_LIB_DIR" `
+            -DANGLE_INCLUDE_DIR="$env:ANGLE_INCLUDE_DIR"
 
       - name: Build
         shell: pwsh

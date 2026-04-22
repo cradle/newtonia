@@ -141,6 +141,21 @@ target_include_directories(newtonia PRIVATE
     ${CMAKE_SOURCE_DIR}/../view
 )
 
+# ANGLE EGL/GLES2 headers — needed for the manual EGL context in xbox_main.cpp.
+# ANGLE_INCLUDE_DIR is the directory containing EGL/ and GLES2/ subdirectories;
+# set by the CI workflow from the GDK or ANGLE.WindowsStore NuGet package.
+if(DEFINED ANGLE_INCLUDE_DIR)
+    target_include_directories(newtonia PRIVATE "${ANGLE_INCLUDE_DIR}")
+elseif(DEFINED ENV{GDK_ROOT})
+    file(GLOB_RECURSE _egl_candidates "$ENV{GDK_ROOT}/gameKit/Include/egl.h")
+    if(_egl_candidates)
+        list(GET _egl_candidates 0 _egl_h)
+        get_filename_component(_egl_dir "${_egl_h}" DIRECTORY)
+        get_filename_component(_angle_inc "${_egl_dir}" DIRECTORY)
+        target_include_directories(newtonia PRIVATE "${_angle_inc}")
+    endif()
+endif()
+
 # ANGLE import libraries (libEGL.lib / libGLESv2.lib).
 # When using -A Gaming.Desktop.x64 / -A Gaming.Xbox.Scarlett.x64 without a
 # CMake toolchain file, the GDK MSBuild platform props add the ANGLE lib path
