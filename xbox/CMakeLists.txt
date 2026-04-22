@@ -135,6 +135,13 @@ target_compile_definitions(newtonia PRIVATE
 # set the Windows CRT re-defines it.  Suppress the resulting C4005 warning.
 target_compile_options(newtonia PRIVATE /wd4005)
 
+# Desktop: use the WINDOWS subsystem so no console window appears.
+# /ENTRY:mainCRTStartup keeps the standard CRT startup calling main()
+# instead of WinMain(), so SDL_SetMainReady() + main() work unchanged.
+if(CMAKE_GENERATOR_PLATFORM MATCHES "Desktop")
+    target_link_options(newtonia PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
+endif()
+
 target_include_directories(newtonia PRIVATE
     ${CMAKE_SOURCE_DIR}/..          # repo root (all .h files)
     ${CMAKE_SOURCE_DIR}/../weapon
