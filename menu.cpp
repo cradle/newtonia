@@ -498,6 +498,8 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
 bool Menu::back_pressed() {
   if (attract_mode_) {
     attract_mode_ = false;
+    quit_confirm_ = true;
+    quit_selection_ = 0;
     return true;
   }
   if (quit_confirm_) {
