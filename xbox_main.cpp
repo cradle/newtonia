@@ -13,11 +13,8 @@
 // _GAMING_XBOX    : fullscreen at native display resolution; no resize events.
 //                   Window surface via eglCreateWindowSurface; eglSwapBuffers.
 // _GAMING_DESKTOP : 1280×720 resizable window; handles SDL_WINDOWEVENT_RESIZED.
-//                   ANGLE.WindowsStore requires IInspectable* for window surfaces,
-//                   so we query ANGLE's D3D11 device (EGL_ANGLE_device_d3d),
-//                   create a DXGI swap chain for the HWND, and bind the swap
-//                   chain back buffer as an EGL pbuffer surface.  Present is done
-//                   via IDXGISwapChain::Present — zero CPU readback, real vsync.
+//                   eglCreateWindowSurface with the HWND; ANGLE handles Y-flip
+//                   and present internally.  eglSwapBuffers provides vsync.
 //
 // Controller mapping
 // ------------------
@@ -61,7 +58,6 @@ extern "C" void GDK_DispatchTaskQueue(void) {}
 // context is managed manually for _GAMING_DESKTOP rather than going
 // through SDL_GL_CreateContext.
 #include <EGL/egl.h>
-#include <EGL/eglext.h>
 
 #include "gles2_compat.h"
 #include "state_manager.h"
@@ -72,11 +68,6 @@ extern "C" void GDK_DispatchTaskQueue(void) {}
 #include <cstdlib>
 #include <ctime>
 #include <windows.h>
-
-#ifdef _GAMING_DESKTOP
-#include <d3d11.h>
-#include <dxgi.h>
-#endif
 
 static StateManager    *s_game       = nullptr;
 static SDL_Window      *s_window     = nullptr;
@@ -91,42 +82,10 @@ static EGLContext s_egl_context = EGL_NO_CONTEXT;
 static EGLConfig  s_egl_config  = nullptr; // saved for pbuffer recreation on resize
 
 #ifdef _GAMING_DESKTOP
-// D3D11 / DXGI presentation — ANGLE renders directly into the DXGI swap
-// chain's back-buffer texture; IDXGISwapChain::Present replaces the old
-// glReadPixels + GDI StretchDIBits path (zero GPU→CPU readback, real vsync).
-
-// ANGLE EGL extension tokens — define with guards in case the GDK headers
-// already provide them via EGL/eglext.h.
-#ifndef EGL_DEVICE_EXT
-#  define EGL_DEVICE_EXT          0x322C
-#endif
-#ifndef EGL_D3D11_DEVICE_ANGLE
-#  define EGL_D3D11_DEVICE_ANGLE  0x33A1
-#endif
-#ifndef EGL_D3D_TEXTURE_ANGLE
-#  define EGL_D3D_TEXTURE_ANGLE   0x33A3
-#endif
-// Tells ANGLE to render with Y inverted into the surface so the texture
-// lands in D3D11's top-down convention, ready for DXGI to present directly.
-// Without this, ANGLE stores pixels in OpenGL's bottom-up order and the
-// presented image is upside-down (and winding order is back-to-front).
-#ifndef EGL_SURFACE_ORIENTATION_ANGLE
-#  define EGL_SURFACE_ORIENTATION_ANGLE          0x33A8
-#endif
-#ifndef EGL_SURFACE_ORIENTATION_INVERT_Y_ANGLE
-#  define EGL_SURFACE_ORIENTATION_INVERT_Y_ANGLE 0x0002
-#endif
-
-static const EGLint k_orient_attribs[] = { EGL_SURFACE_ORIENTATION_ANGLE,
-                                           EGL_SURFACE_ORIENTATION_INVERT_Y_ANGLE,
-                                           EGL_NONE };
-
-static HWND             s_hwnd        = nullptr;
-static bool             s_fullscreen  = false;
-static int              s_pre_fs_w = 1280, s_pre_fs_h = 720;
-static int              s_pre_fs_x = 0,    s_pre_fs_y = 0;
-static IDXGISwapChain  *s_swap_chain  = nullptr;
-static ID3D11Texture2D *s_back_buffer = nullptr;
+static HWND s_hwnd       = nullptr;
+static bool s_fullscreen = false;
+static int  s_pre_fs_w = 1280, s_pre_fs_h = 720;
+static int  s_pre_fs_x = 0,    s_pre_fs_y = 0;
 
 static void toggle_fullscreen()
 {
@@ -145,50 +104,6 @@ static void toggle_fullscreen()
     }
     g_prefs.fullscreen = s_fullscreen;
     save_preferences();
-}
-
-// Unbind the EGL surface (flushing ANGLE's D3D11 commands), present via
-// DXGI (with vsync), then rebind for the next frame.
-static void present_dxgi()
-{
-    eglMakeCurrent(s_egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, s_egl_context);
-    s_swap_chain->Present(1, 0);
-    eglMakeCurrent(s_egl_display, s_egl_surface, s_egl_surface, s_egl_context);
-}
-
-// Release the EGL surface and D3D11 back-buffer reference, resize the swap
-// chain, then reacquire the back buffer and recreate the EGL surface.
-static bool resize_dxgi_surface()
-{
-    eglMakeCurrent(s_egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-    eglDestroySurface(s_egl_display, s_egl_surface);
-    s_egl_surface = EGL_NO_SURFACE;
-    s_back_buffer->Release();
-    s_back_buffer = nullptr;
-
-    HRESULT hr = s_swap_chain->ResizeBuffers(0, (UINT)s_w, (UINT)s_h,
-                                              DXGI_FORMAT_UNKNOWN, 0);
-    if (FAILED(hr)) {
-        SDL_Log("ResizeBuffers failed: 0x%x", (unsigned)hr);
-        return false;
-    }
-    hr = s_swap_chain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void **)&s_back_buffer);
-    if (FAILED(hr)) {
-        SDL_Log("GetBuffer (resize) failed: 0x%x", (unsigned)hr);
-        return false;
-    }
-    s_egl_surface = eglCreatePbufferFromClientBuffer(
-        s_egl_display, EGL_D3D_TEXTURE_ANGLE,
-        (EGLClientBuffer)s_back_buffer, s_egl_config, k_orient_attribs);
-    if (s_egl_surface == EGL_NO_SURFACE) {
-        SDL_Log("eglCreatePbufferFromClientBuffer (resize) failed: 0x%x", eglGetError());
-        return false;
-    }
-    if (!eglMakeCurrent(s_egl_display, s_egl_surface, s_egl_surface, s_egl_context)) {
-        SDL_Log("eglMakeCurrent (resize) failed: 0x%x", eglGetError());
-        return false;
-    }
-    return true;
 }
 #endif // _GAMING_DESKTOP
 
@@ -292,7 +207,7 @@ int main(int argc, char *argv[])
 #ifdef _GAMING_XBOX
         EGLNativeWindowType nativeWin = (EGLNativeWindowType)wm.info.win.window;
 #else
-        s_hwnd = (HWND)wm.info.win.window; // needed for GDI blit
+        s_hwnd = (HWND)wm.info.win.window;
 #endif
 
         s_egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -315,9 +230,6 @@ int main(int argc, char *argv[])
             EGL_GREEN_SIZE, 8,
             EGL_BLUE_SIZE,  8,
             EGL_DEPTH_SIZE, 16,
-#ifdef _GAMING_DESKTOP
-            EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-#endif
             EGL_NONE
         };
         EGLint num_configs = 0;
@@ -330,91 +242,19 @@ int main(int argc, char *argv[])
         }
         SDL_Log("eglChooseConfig OK");
 
-#ifdef _GAMING_XBOX
         SDL_Log("eglCreateWindowSurface...");
+#ifdef _GAMING_XBOX
         s_egl_surface = eglCreateWindowSurface(s_egl_display, s_egl_config, nativeWin, nullptr);
+#else
+        s_egl_surface = eglCreateWindowSurface(s_egl_display, s_egl_config,
+                                               (EGLNativeWindowType)s_hwnd, nullptr);
+#endif
         if (s_egl_surface == EGL_NO_SURFACE) {
             SDL_Log("eglCreateWindowSurface failed: 0x%x", eglGetError());
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", "eglCreateWindowSurface failed", s_window);
             SDL_DestroyWindow(s_window); SDL_Quit(); return 1;
         }
         SDL_Log("eglCreateWindowSurface OK");
-#else
-        // Query ANGLE's underlying D3D11 device so we can create a real DXGI
-        // swap chain and bind its back buffer as the EGL render target.
-        SDL_Log("Querying ANGLE D3D11 device...");
-        {
-            typedef EGLBoolean (EGLAPIENTRYP PFNQUERYDISPLAYATTRIB)(EGLDisplay, EGLint, EGLAttrib *);
-            typedef EGLBoolean (EGLAPIENTRYP PFNQUERYDEVICEATTRIB)(EGLDeviceEXT, EGLint, EGLAttrib *);
-            auto qDisp = (PFNQUERYDISPLAYATTRIB)eglGetProcAddress("eglQueryDisplayAttribEXT");
-            auto qDev  = (PFNQUERYDEVICEATTRIB) eglGetProcAddress("eglQueryDeviceAttribEXT");
-            if (!qDisp || !qDev) {
-                SDL_Log("EGL_ANGLE_device_d3d not available");
-                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia",
-                    "EGL_ANGLE_device_d3d extension missing", s_window);
-                SDL_DestroyWindow(s_window); SDL_Quit(); return 1;
-            }
-            EGLAttrib egl_device = 0, d3d11_ptr = 0;
-            qDisp(s_egl_display, EGL_DEVICE_EXT, &egl_device);
-            qDev((EGLDeviceEXT)egl_device, EGL_D3D11_DEVICE_ANGLE, &d3d11_ptr);
-            ID3D11Device *d3d11_dev = (ID3D11Device *)d3d11_ptr;
-            if (!d3d11_dev) {
-                SDL_Log("Failed to obtain D3D11 device from ANGLE");
-                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia",
-                    "ANGLE D3D11 device unavailable", s_window);
-                SDL_DestroyWindow(s_window); SDL_Quit(); return 1;
-            }
-            SDL_Log("Got ANGLE D3D11 device");
-
-            IDXGIDevice  *dxgi_dev = nullptr;
-            IDXGIAdapter *dxgi_adp = nullptr;
-            IDXGIFactory *dxgi_fac = nullptr;
-            d3d11_dev->QueryInterface(__uuidof(IDXGIDevice),  (void **)&dxgi_dev);
-            dxgi_dev->GetAdapter(&dxgi_adp);
-            dxgi_adp->GetParent(__uuidof(IDXGIFactory), (void **)&dxgi_fac);
-            dxgi_fac->MakeWindowAssociation(s_hwnd, DXGI_MWA_NO_ALT_ENTER);
-
-            DXGI_SWAP_CHAIN_DESC scd    = {};
-            scd.BufferCount             = 1;
-            scd.BufferDesc.Width        = (UINT)s_w;
-            scd.BufferDesc.Height       = (UINT)s_h;
-            scd.BufferDesc.Format       = DXGI_FORMAT_R8G8B8A8_UNORM;
-            scd.BufferUsage             = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-            scd.OutputWindow            = s_hwnd;
-            scd.SampleDesc.Count        = 1;
-            scd.Windowed                = TRUE;
-            scd.SwapEffect              = DXGI_SWAP_EFFECT_DISCARD;
-            HRESULT hr = dxgi_fac->CreateSwapChain(d3d11_dev, &scd, &s_swap_chain);
-            dxgi_fac->Release();
-            dxgi_adp->Release();
-            dxgi_dev->Release();
-            if (FAILED(hr)) {
-                SDL_Log("CreateSwapChain failed: 0x%x", (unsigned)hr);
-                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia",
-                    "CreateSwapChain failed", s_window);
-                SDL_DestroyWindow(s_window); SDL_Quit(); return 1;
-            }
-            SDL_Log("DXGI swap chain created");
-
-            hr = s_swap_chain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void **)&s_back_buffer);
-            if (FAILED(hr)) {
-                SDL_Log("GetBuffer failed: 0x%x", (unsigned)hr);
-                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia",
-                    "GetBuffer failed", s_window);
-                SDL_DestroyWindow(s_window); SDL_Quit(); return 1;
-            }
-            s_egl_surface = eglCreatePbufferFromClientBuffer(
-                s_egl_display, EGL_D3D_TEXTURE_ANGLE,
-                (EGLClientBuffer)s_back_buffer, s_egl_config, k_orient_attribs);
-        }
-        if (s_egl_surface == EGL_NO_SURFACE) {
-            SDL_Log("eglCreatePbufferFromClientBuffer(D3D11) failed: 0x%x", eglGetError());
-            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia",
-                "EGL D3D11 surface failed", s_window);
-            SDL_DestroyWindow(s_window); SDL_Quit(); return 1;
-        }
-        SDL_Log("EGL surface from D3D11 back buffer OK");
-#endif
 
         static const EGLint ctx_attribs[] = {
             EGL_CONTEXT_CLIENT_VERSION, 2,
@@ -435,9 +275,7 @@ int main(int argc, char *argv[])
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", "eglMakeCurrent failed", s_window);
             SDL_DestroyWindow(s_window); SDL_Quit(); return 1;
         }
-#ifdef _GAMING_XBOX
-        eglSwapInterval(s_egl_display, 1); // vsync
-#endif
+        eglSwapInterval(s_egl_display, 1); // vsync on both platforms
     }
     SDL_Log("EGL context active");
 
@@ -550,7 +388,6 @@ int main(int argc, char *argv[])
                     s_h = e.window.data2;
                     s_game->resize(s_w, s_h);
                     Typer::resize(s_w, s_h);
-                    resize_dxgi_surface();
 #endif
                 }
                 break;
@@ -575,11 +412,7 @@ int main(int argc, char *argv[])
         glClear(GL_COLOR_BUFFER_BIT);
         s_game->draw();
 
-#ifdef _GAMING_XBOX
         eglSwapBuffers(s_egl_display, s_egl_surface);
-#else
-        present_dxgi();
-#endif
     }
 
     delete s_game;
@@ -589,10 +422,6 @@ int main(int argc, char *argv[])
     Mix_CloseAudio();
     if (controller) SDL_GameControllerClose(controller);
 
-#ifdef _GAMING_DESKTOP
-    if (s_back_buffer) { s_back_buffer->Release(); s_back_buffer = nullptr; }
-    if (s_swap_chain)  { s_swap_chain->Release();  s_swap_chain  = nullptr; }
-#endif
     eglMakeCurrent(s_egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     eglDestroyContext(s_egl_display, s_egl_context);
     eglDestroySurface(s_egl_display, s_egl_surface);
