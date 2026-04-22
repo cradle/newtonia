@@ -168,8 +168,11 @@ int main(int argc, char *argv[])
     // crashes on load we can see it in the log separately from the window
     // creation itself.  SDL_CreateWindow(SDL_WINDOW_OPENGL) calls this
     // internally if not already done, which makes the crash silent.
+    // Pass "libEGL.dll" explicitly rather than relying on
+    // SDL_HINT_OPENGL_ES_DRIVER — the hint is not honoured by all SDL
+    // versions when using the VS2022 GDK platform build.
     SDL_Log("Loading EGL library...");
-    if (SDL_GL_LoadLibrary(NULL) != 0) {
+    if (SDL_GL_LoadLibrary("libEGL.dll") != 0) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", SDL_GetError(), NULL);
         SDL_Log("SDL_GL_LoadLibrary failed: %s", SDL_GetError());
         SDL_Quit();
@@ -178,11 +181,14 @@ int main(int argc, char *argv[])
     SDL_Log("EGL library loaded");
 #ifdef _GAMING_DESKTOP
     {
-        HMODULE eglMod = GetModuleHandleA("libEGL.dll");
-        if (eglMod) {
-            char eglPath[MAX_PATH] = {};
-            GetModuleFileNameA(eglMod, eglPath, MAX_PATH);
-            SDL_Log("libEGL.dll path: %s", eglPath);
+        const char *names[] = { "libEGL.dll", "libGLESv2.dll", "opengl32.dll", nullptr };
+        for (int i = 0; names[i]; i++) {
+            HMODULE h = GetModuleHandleA(names[i]);
+            if (h) {
+                char path[MAX_PATH] = {};
+                GetModuleFileNameA(h, path, MAX_PATH);
+                SDL_Log("  loaded: %s -> %s", names[i], path);
+            }
         }
     }
 #endif
