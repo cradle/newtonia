@@ -373,6 +373,7 @@ int main(int argc, char *argv[])
                 break;
 
             case SDL_KEYDOWN: {
+                if (e.key.repeat) break; // game tracks held state itself; ignore SDL repeats
                 SDL_Keycode k = e.key.keysym.sym;
                 if (k == SDLK_ESCAPE) {
                     if (!s_game->back_pressed()) s_running = false;
@@ -384,6 +385,7 @@ int main(int argc, char *argv[])
             }
             case SDL_KEYUP: {
                 SDL_Keycode k = e.key.keysym.sym;
+                if (k == SDLK_ESCAPE) break; // handled only via back_pressed() on keydown
                 unsigned char key = (k < 128) ? (unsigned char)k : 0;
                 if (key) s_game->keyboard_up(key, 0, 0);
                 break;
