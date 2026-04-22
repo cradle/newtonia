@@ -176,6 +176,16 @@ int main(int argc, char *argv[])
         return 1;
     }
     SDL_Log("EGL library loaded");
+#ifdef _GAMING_DESKTOP
+    {
+        HMODULE eglMod = GetModuleHandleA("libEGL.dll");
+        if (eglMod) {
+            char eglPath[MAX_PATH] = {};
+            GetModuleFileNameA(eglMod, eglPath, MAX_PATH);
+            SDL_Log("libEGL.dll path: %s", eglPath);
+        }
+    }
+#endif
 
     SDL_Log("Creating window (%dx%d)...", s_w, s_h);
     s_window = SDL_CreateWindow("Newtonia",
