@@ -117,23 +117,39 @@ jobs:
           Write-Host "VCTargetsPath = $vcTargets\"
           echo "VCTargetsPath=$vcTargets\" >> $env:GITHUB_ENV
 
-      - name: Install ANGLE
+      - name: Locate ANGLE
         shell: pwsh
         run: |
-          # The GDK 2510 Desktop target does not bundle ANGLE.
-          # ANGLE.WindowsStore (Microsoft's NuGet package) ships both the import
-          # libs (.lib) and the redistributable DLLs for Win64 x64.
-          nuget install ANGLE.WindowsStore -ExcludeVersion `
-            -OutputDirectory "$env:RUNNER_TEMP\nuget" -NonInteractive
-          $pkg = "$env:RUNNER_TEMP\nuget\ANGLE.WindowsStore"
+          # Prefer the GDK's own ANGLE over ANGLE.WindowsStore.
+          # ANGLE.WindowsStore is a UWP package that expects to run inside a
+          # Windows App Container; it crashes when loaded by a plain Win32
+          # process (which GDK Desktop is).  The GDK ships ANGLE built
+          # specifically for GDK Desktop and does not have this restriction.
+          $lib = Get-ChildItem "$env:GDK_ROOT\gameKit\Lib" -Recurse `
+                   -Filter "libEGL.lib" -ErrorAction SilentlyContinue |
+                   Where-Object { $_.FullName -match 'amd64|x64' } |
+                   Select-Object -First 1
+          $dll = Get-ChildItem "$env:GDK_ROOT" -Recurse `
+                   -Filter "libEGL.dll" -ErrorAction SilentlyContinue |
+                   Where-Object { $_.FullName -match 'amd64|x64' } |
+                   Select-Object -First 1
 
-          # The package layout may change between versions; search for the x64 files.
-          $lib = Get-ChildItem $pkg -Recurse -Filter "libEGL.lib" |
-                   Where-Object FullName -match 'x64' | Select-Object -First 1
-          $dll = Get-ChildItem $pkg -Recurse -Filter "libEGL.dll" |
-                   Where-Object FullName -match 'x64' | Select-Object -First 1
-          if (-not $lib) { Write-Error "libEGL.lib not found in ANGLE.WindowsStore package"; exit 1 }
-          if (-not $dll) { Write-Error "libEGL.dll not found in ANGLE.WindowsStore package"; exit 1 }
+          if ($lib -and $dll) {
+            Write-Host "Using GDK ANGLE"
+          } else {
+            # Fallback: ANGLE.WindowsStore NuGet package.
+            Write-Host "GDK ANGLE not found — falling back to ANGLE.WindowsStore NuGet"
+            nuget install ANGLE.WindowsStore -ExcludeVersion `
+              -OutputDirectory "$env:RUNNER_TEMP\nuget" -NonInteractive
+            $pkg = "$env:RUNNER_TEMP\nuget\ANGLE.WindowsStore"
+            $lib = Get-ChildItem $pkg -Recurse -Filter "libEGL.lib" |
+                     Where-Object FullName -match 'x64' | Select-Object -First 1
+            $dll = Get-ChildItem $pkg -Recurse -Filter "libEGL.dll" |
+                     Where-Object FullName -match 'x64' | Select-Object -First 1
+          }
+
+          if (-not $lib) { Write-Error "libEGL.lib not found"; exit 1 }
+          if (-not $dll) { Write-Error "libEGL.dll not found"; exit 1 }
 
           Write-Host "ANGLE lib dir : $($lib.Directory.FullName)"
           Write-Host "ANGLE DLL dir : $($dll.Directory.FullName)"
