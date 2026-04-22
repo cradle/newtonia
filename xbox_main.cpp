@@ -117,6 +117,10 @@ static EGLConfig  s_egl_config  = nullptr; // saved for pbuffer recreation on re
 #  define EGL_SURFACE_ORIENTATION_INVERT_Y_ANGLE 0x0002
 #endif
 
+static const EGLint k_orient_attribs[] = { EGL_SURFACE_ORIENTATION_ANGLE,
+                                           EGL_SURFACE_ORIENTATION_INVERT_Y_ANGLE,
+                                           EGL_NONE };
+
 static HWND             s_hwnd        = nullptr;
 static bool             s_fullscreen  = false;
 static int              s_pre_fs_w = 1280, s_pre_fs_h = 720;
@@ -173,12 +177,9 @@ static bool resize_dxgi_surface()
         SDL_Log("GetBuffer (resize) failed: 0x%x", (unsigned)hr);
         return false;
     }
-    static const EGLint orient_attribs[] = { EGL_SURFACE_ORIENTATION_ANGLE,
-                                             EGL_SURFACE_ORIENTATION_INVERT_Y_ANGLE,
-                                             EGL_NONE };
     s_egl_surface = eglCreatePbufferFromClientBuffer(
         s_egl_display, EGL_D3D_TEXTURE_ANGLE,
-        (EGLClientBuffer)s_back_buffer, s_egl_config, orient_attribs);
+        (EGLClientBuffer)s_back_buffer, s_egl_config, k_orient_attribs);
     if (s_egl_surface == EGL_NO_SURFACE) {
         SDL_Log("eglCreatePbufferFromClientBuffer (resize) failed: 0x%x", eglGetError());
         return false;
@@ -404,7 +405,7 @@ int main(int argc, char *argv[])
             }
             s_egl_surface = eglCreatePbufferFromClientBuffer(
                 s_egl_display, EGL_D3D_TEXTURE_ANGLE,
-                (EGLClientBuffer)s_back_buffer, s_egl_config, orient_attribs);
+                (EGLClientBuffer)s_back_buffer, s_egl_config, k_orient_attribs);
         }
         if (s_egl_surface == EGL_NO_SURFACE) {
             SDL_Log("eglCreatePbufferFromClientBuffer(D3D11) failed: 0x%x", eglGetError());
