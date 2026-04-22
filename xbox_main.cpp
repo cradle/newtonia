@@ -16,8 +16,7 @@
 //                   ANGLE.WindowsStore requires IInspectable* for window surfaces,
 //                   not a plain HWND, so we render into an EGL Pbuffer and blit
 //                   each frame with glReadPixels + GDI StretchDIBits.
-//                   biHeight is negative (top-down DIB) to match the top-down order
-//                   that ANGLE.WindowsStore returns from glReadPixels.
+//                   biHeight is positive (bottom-up DIB) matching glReadPixels row order.
 //
 // Controller mapping
 // ------------------
@@ -125,7 +124,7 @@ static void present_pbuffer()
     BITMAPINFO bmi = {};
     bmi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
     bmi.bmiHeader.biWidth       = s_w;
-    bmi.bmiHeader.biHeight      = -s_h; // negative = top-down DIB, matches ANGLE readback order
+    bmi.bmiHeader.biHeight      = s_h; // positive = bottom-up DIB, matches glReadPixels row order
     bmi.bmiHeader.biPlanes      = 1;
     bmi.bmiHeader.biBitCount    = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
