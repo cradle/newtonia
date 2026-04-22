@@ -91,8 +91,30 @@ static EGLConfig  s_egl_config  = nullptr; // saved for pbuffer recreation on re
 // GDI presentation helpers — ANGLE.WindowsStore's eglCreateWindowSurface
 // expects IInspectable* (WinRT), not a plain HWND, so we render into an EGL
 // Pbuffer and blit each frame with glReadPixels + StretchDIBits instead.
-static HWND s_hwnd = nullptr;
+static HWND s_hwnd       = nullptr;
+static bool s_fullscreen  = false;
+static int  s_pre_fs_w    = 1280, s_pre_fs_h = 720;
+static int  s_pre_fs_x    = 0,    s_pre_fs_y = 0;
 static std::vector<unsigned char> s_pixels;
+
+static void toggle_fullscreen()
+{
+    if (!s_fullscreen) {
+        SDL_GetWindowSize(s_window, &s_pre_fs_w, &s_pre_fs_h);
+        SDL_GetWindowPosition(s_window, &s_pre_fs_x, &s_pre_fs_y);
+        SDL_SetWindowFullscreen(s_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+        SDL_ShowCursor(SDL_DISABLE);
+        s_fullscreen = true;
+    } else {
+        SDL_SetWindowFullscreen(s_window, 0);
+        SDL_SetWindowSize(s_window, s_pre_fs_w, s_pre_fs_h);
+        SDL_SetWindowPosition(s_window, s_pre_fs_x, s_pre_fs_y);
+        SDL_ShowCursor(SDL_ENABLE);
+        s_fullscreen = false;
+    }
+    g_prefs.fullscreen = s_fullscreen;
+    save_preferences();
+}
 
 static void present_pbuffer()
 {
@@ -347,6 +369,14 @@ int main(int argc, char *argv[])
     load_preferences();
     SDL_Log("Preferences loaded");
 
+#ifndef _GAMING_XBOX
+    if (g_prefs.fullscreen) {
+        SDL_SetWindowFullscreen(s_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+        SDL_ShowCursor(SDL_DISABLE);
+        s_fullscreen = true;
+    }
+#endif
+
 #ifdef _GAMING_XBOX
     if (SUCCEEDED(XTaskQueueCreate(XTaskQueueDispatchMode_ThreadPool,
                                    XTaskQueueDispatchMode_Manual,
@@ -379,6 +409,12 @@ int main(int argc, char *argv[])
                     if (!s_game->back_pressed()) s_running = false;
                     break;
                 }
+#ifndef _GAMING_XBOX
+                if (k == g_prefs.general_keys.toggle_fullscreen) {
+                    toggle_fullscreen();
+                    // fall through — game also receives the key, matching glut.cpp
+                }
+#endif
                 unsigned char key = (k < 128) ? (unsigned char)k : 0;
                 if (key) s_game->keyboard(key, 0, 0);
                 break;
@@ -386,6 +422,9 @@ int main(int argc, char *argv[])
             case SDL_KEYUP: {
                 SDL_Keycode k = e.key.keysym.sym;
                 if (k == SDLK_ESCAPE) break; // handled only via back_pressed() on keydown
+#ifndef _GAMING_XBOX
+                if (k == g_prefs.general_keys.toggle_fullscreen) break; // not passed to game
+#endif
                 unsigned char key = (k < 128) ? (unsigned char)k : 0;
                 if (key) s_game->keyboard_up(key, 0, 0);
                 break;
