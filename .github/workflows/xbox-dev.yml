@@ -145,17 +145,25 @@ jobs:
           echo "ANGLE_LIB_DIR=$($lib.Directory.FullName)"  >> $env:GITHUB_ENV
           echo "ANGLE_INCLUDE_DIR=$angleInclude"           >> $env:GITHUB_ENV
 
-          # --- Runtime DLLs: Edge WebView2 (Win32-compatible ANGLE) ---
-          # Edge WebView2 is pre-installed on all GitHub-hosted Windows runners
-          # and ships a Win32 ANGLE build that accepts plain HWNDs.
-          $edgeDll = Get-ChildItem "C:\Windows\System32\Microsoft-Edge-WebView" `
-                       -Filter "libEGL.dll" -ErrorAction SilentlyContinue |
-                       Select-Object -First 1
-          if (-not $edgeDll) {
-            $edgeDll = Get-ChildItem "C:\Program Files (x86)\Microsoft\Edge" `
-                         -Recurse -Filter "libEGL.dll" -ErrorAction SilentlyContinue |
-                         Select-Object -First 1
-          }
+          # --- Runtime DLLs: find a standalone Win32 ANGLE build ---
+          # Edge WebView2 (System32) is a proxy DLL that requires the WebView2
+          # host process — eglGetDisplay fails when loaded standalone.
+          # Chrome and Edge browser ship a fully in-process ANGLE that accepts
+          # plain HWNDs.  Prefer Chrome, then Edge browser, then WebView2.
+          $angleDllCandidates = @(
+            (Get-ChildItem "C:\Program Files\Google\Chrome\Application" `
+               -Recurse -Filter "libEGL.dll" -ErrorAction SilentlyContinue |
+               Where-Object { $_.FullName -notmatch 'swiftshader' } |
+               Select-Object -First 1),
+            (Get-ChildItem "C:\Program Files (x86)\Microsoft\Edge\Application" `
+               -Recurse -Filter "libEGL.dll" -ErrorAction SilentlyContinue |
+               Where-Object { $_.FullName -notmatch 'swiftshader' } |
+               Select-Object -First 1),
+            (Get-ChildItem "C:\Windows\System32\Microsoft-Edge-WebView" `
+               -Filter "libEGL.dll" -ErrorAction SilentlyContinue |
+               Select-Object -First 1)
+          )
+          $edgeDll = $angleDllCandidates | Where-Object { $_ } | Select-Object -First 1
           if (-not $edgeDll) { Write-Error "Edge WebView2 libEGL.dll not found"; exit 1 }
           Write-Host "ANGLE DLL dir     : $($edgeDll.Directory.FullName)"
           echo "ANGLE_BIN_DIR=$($edgeDll.Directory.FullName)" >> $env:GITHUB_ENV
