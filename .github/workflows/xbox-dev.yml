@@ -120,66 +120,45 @@ jobs:
       - name: Locate ANGLE
         shell: pwsh
         run: |
-          # Prefer the GDK's own ANGLE over ANGLE.WindowsStore.
-          # ANGLE.WindowsStore expects an IInspectable* (WinRT) native window,
-          # not a Win32 HWND; eglCreateWindowSurface crashes when passed an HWND.
-          # The GDK ships Win32-compatible ANGLE DLLs designed for GDK Desktop.
-          # Search the entire Microsoft GDK install tree (not just GRDK subfolder)
-          # and without an amd64/x64 path filter that may exclude valid locations.
-          $gdkBase = "C:\Program Files (x86)\Microsoft GDK"
-          $lib = Get-ChildItem "$env:GDK_ROOT\gameKit\Lib" -Recurse `
-                   -Filter "libEGL.lib" -ErrorAction SilentlyContinue |
-                   Select-Object -First 1
-          $dll = Get-ChildItem $gdkBase -Recurse `
-                   -Filter "libEGL.dll" -ErrorAction SilentlyContinue |
-                   Select-Object -First 1
+          # The GDK does not redistribute ANGLE DLLs — its install tree has no
+          # libEGL.dll.  Strategy: use ANGLE.WindowsStore NuGet for the import
+          # lib (.lib) and headers only; for the runtime DLLs use the Edge
+          # WebView2 copy which is a plain Win32 ANGLE build that accepts HWNDs
+          # in eglCreateWindowSurface.  ANGLE.WindowsStore DLLs require a WinRT
+          # IInspectable* native window and crash when passed a Win32 HWND.
 
-          if ($lib -and $dll) {
-            Write-Host "Using GDK ANGLE"
-          } else {
-            Write-Host "GDK ANGLE not found (lib=$($lib -ne $null) dll=$($dll -ne $null))"
-            Write-Host "All libEGL.dll on runner:"
-            Get-ChildItem C:\, "$env:SystemRoot" -Recurse -Filter "libEGL.dll" `
-              -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
-            # Fallback: ANGLE.WindowsStore NuGet package.
-            Write-Host "Falling back to ANGLE.WindowsStore NuGet"
-            nuget install ANGLE.WindowsStore -ExcludeVersion `
-              -OutputDirectory "$env:RUNNER_TEMP\nuget" -NonInteractive
-            $pkg = "$env:RUNNER_TEMP\nuget\ANGLE.WindowsStore"
-            $lib = Get-ChildItem $pkg -Recurse -Filter "libEGL.lib" |
-                     Where-Object FullName -match 'x64' | Select-Object -First 1
-            $dll = Get-ChildItem $pkg -Recurse -Filter "libEGL.dll" |
-                     Where-Object FullName -match 'x64' | Select-Object -First 1
-          }
+          # --- Import lib + headers: ANGLE.WindowsStore NuGet ---
+          nuget install ANGLE.WindowsStore -ExcludeVersion `
+            -OutputDirectory "$env:RUNNER_TEMP\nuget" -NonInteractive
+          $pkg = "$env:RUNNER_TEMP\nuget\ANGLE.WindowsStore"
+          $lib = Get-ChildItem $pkg -Recurse -Filter "libEGL.lib" |
+                   Where-Object FullName -match 'x64' | Select-Object -First 1
+          if (-not $lib) { Write-Error "libEGL.lib not found in ANGLE.WindowsStore"; exit 1 }
 
-          if (-not $lib) { Write-Error "libEGL.lib not found"; exit 1 }
-          if (-not $dll) { Write-Error "libEGL.dll not found"; exit 1 }
-
-          # Find EGL headers (egl.h) — search near the lib, then the whole GDK tree,
-          # then the NuGet package root.
-          $hdr = Get-ChildItem $lib.Directory.FullName -Recurse `
-                   -Filter "egl.h" -ErrorAction SilentlyContinue |
+          $hdr = Get-ChildItem $pkg -Recurse -Filter "egl.h" |
                    Select-Object -First 1
-          if (-not $hdr) {
-            $hdr = Get-ChildItem "$env:GDK_ROOT" -Recurse `
-                     -Filter "egl.h" -ErrorAction SilentlyContinue |
-                     Select-Object -First 1
-          }
-          if (-not $hdr) {
-            $hdr = Get-ChildItem "$env:RUNNER_TEMP\nuget" -Recurse `
-                     -Filter "egl.h" -ErrorAction SilentlyContinue |
-                     Select-Object -First 1
-          }
-          if (-not $hdr) { Write-Error "egl.h not found"; exit 1 }
-          # egl.h lives in an EGL/ subdirectory; the include root is its parent.
+          if (-not $hdr) { Write-Error "egl.h not found in ANGLE.WindowsStore"; exit 1 }
           $angleInclude = $hdr.Directory.Parent.FullName
-          Write-Host "ANGLE include dir : $angleInclude"
 
-          Write-Host "ANGLE lib dir : $($lib.Directory.FullName)"
-          Write-Host "ANGLE DLL dir : $($dll.Directory.FullName)"
-          echo "ANGLE_LIB_DIR=$($lib.Directory.FullName)"     >> $env:GITHUB_ENV
-          echo "ANGLE_BIN_DIR=$($dll.Directory.FullName)"     >> $env:GITHUB_ENV
-          echo "ANGLE_INCLUDE_DIR=$angleInclude"              >> $env:GITHUB_ENV
+          Write-Host "ANGLE lib dir     : $($lib.Directory.FullName)"
+          Write-Host "ANGLE include dir : $angleInclude"
+          echo "ANGLE_LIB_DIR=$($lib.Directory.FullName)"  >> $env:GITHUB_ENV
+          echo "ANGLE_INCLUDE_DIR=$angleInclude"           >> $env:GITHUB_ENV
+
+          # --- Runtime DLLs: Edge WebView2 (Win32-compatible ANGLE) ---
+          # Edge WebView2 is pre-installed on all GitHub-hosted Windows runners
+          # and ships a Win32 ANGLE build that accepts plain HWNDs.
+          $edgeDll = Get-ChildItem "C:\Windows\System32\Microsoft-Edge-WebView" `
+                       -Filter "libEGL.dll" -ErrorAction SilentlyContinue |
+                       Select-Object -First 1
+          if (-not $edgeDll) {
+            $edgeDll = Get-ChildItem "C:\Program Files (x86)\Microsoft\Edge" `
+                         -Recurse -Filter "libEGL.dll" -ErrorAction SilentlyContinue |
+                         Select-Object -First 1
+          }
+          if (-not $edgeDll) { Write-Error "Edge WebView2 libEGL.dll not found"; exit 1 }
+          Write-Host "ANGLE DLL dir     : $($edgeDll.Directory.FullName)"
+          echo "ANGLE_BIN_DIR=$($edgeDll.Directory.FullName)" >> $env:GITHUB_ENV
 
       # Platform.targets checks:
       #   Exists('$(XdkEditionRootVS2022)$(XdkEdition)\Platform.Edition.targets')
