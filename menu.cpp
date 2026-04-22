@@ -58,7 +58,7 @@ Menu::Menu() :
 #ifdef __EMSCRIPTEN__
   EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
 #endif
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__IOS__)
   attract_mode_ = false;
 #endif
   if(music == NULL) {
