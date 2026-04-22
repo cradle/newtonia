@@ -200,31 +200,38 @@ int main(int argc, char *argv[])
         };
         EGLConfig egl_config = nullptr;
         EGLint num_configs = 0;
+        SDL_Log("eglChooseConfig...");
         eglChooseConfig(s_egl_display, cfg_attribs, &egl_config, 1, &num_configs);
         if (num_configs == 0) {
             SDL_Log("eglChooseConfig: no matching config (0x%x)", eglGetError());
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", "eglChooseConfig failed", s_window);
             SDL_DestroyWindow(s_window); SDL_Quit(); return 1;
         }
+        SDL_Log("eglChooseConfig OK");
 
+        SDL_Log("eglCreateWindowSurface...");
         s_egl_surface = eglCreateWindowSurface(s_egl_display, egl_config, nativeWin, nullptr);
         if (s_egl_surface == EGL_NO_SURFACE) {
             SDL_Log("eglCreateWindowSurface failed: 0x%x", eglGetError());
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", "eglCreateWindowSurface failed", s_window);
             SDL_DestroyWindow(s_window); SDL_Quit(); return 1;
         }
+        SDL_Log("eglCreateWindowSurface OK");
 
         static const EGLint ctx_attribs[] = {
             EGL_CONTEXT_CLIENT_VERSION, 2,
             EGL_NONE
         };
+        SDL_Log("eglCreateContext...");
         s_egl_context = eglCreateContext(s_egl_display, egl_config, EGL_NO_CONTEXT, ctx_attribs);
         if (s_egl_context == EGL_NO_CONTEXT) {
             SDL_Log("eglCreateContext failed: 0x%x", eglGetError());
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", "eglCreateContext failed", s_window);
             SDL_DestroyWindow(s_window); SDL_Quit(); return 1;
         }
+        SDL_Log("eglCreateContext OK");
 
+        SDL_Log("eglMakeCurrent...");
         if (!eglMakeCurrent(s_egl_display, s_egl_surface, s_egl_surface, s_egl_context)) {
             SDL_Log("eglMakeCurrent failed: 0x%x", eglGetError());
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", "eglMakeCurrent failed", s_window);
