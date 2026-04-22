@@ -164,6 +164,19 @@ int main(int argc, char *argv[])
 #endif
         ;
 
+    // Load EGL explicitly before window creation so that if libEGL.dll
+    // crashes on load we can see it in the log separately from the window
+    // creation itself.  SDL_CreateWindow(SDL_WINDOW_OPENGL) calls this
+    // internally if not already done, which makes the crash silent.
+    SDL_Log("Loading EGL library...");
+    if (SDL_GL_LoadLibrary(NULL) != 0) {
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", SDL_GetError(), NULL);
+        SDL_Log("SDL_GL_LoadLibrary failed: %s", SDL_GetError());
+        SDL_Quit();
+        return 1;
+    }
+    SDL_Log("EGL library loaded");
+
     SDL_Log("Creating window (%dx%d)...", s_w, s_h);
     s_window = SDL_CreateWindow("Newtonia",
                                 SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
