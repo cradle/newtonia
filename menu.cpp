@@ -58,6 +58,9 @@ Menu::Menu() :
 #ifdef __EMSCRIPTEN__
   EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
 #endif
+#ifdef __ANDROID__
+  attract_mode_ = false;
+#endif
   if(music == NULL) {
     music = Mix_LoadMUS("audio/title.wav");
     if(music == NULL) {
