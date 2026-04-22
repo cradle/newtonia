@@ -11,7 +11,12 @@
 // Platform differences
 // --------------------
 // _GAMING_XBOX    : fullscreen at native display resolution; no resize events.
+//                   Window surface via eglCreateWindowSurface; eglSwapBuffers.
 // _GAMING_DESKTOP : 1280×720 resizable window; handles SDL_WINDOWEVENT_RESIZED.
+//                   ANGLE.WindowsStore (the only in-process ANGLE available on
+//                   CI) requires IInspectable* native windows, not plain HWNDs.
+//                   Workaround: render into an EGL Pbuffer, then blit each frame
+//                   to the SDL window with glReadPixels + GDI StretchDIBits.
 //
 // Controller mapping
 // ------------------
@@ -66,6 +71,10 @@ extern "C" void GDK_DispatchTaskQueue(void) {}
 #include <ctime>
 #include <windows.h>
 
+#ifdef _GAMING_DESKTOP
+#include <vector>
+#endif
+
 static StateManager    *s_game       = nullptr;
 static SDL_Window      *s_window     = nullptr;
 static int              s_w = 1920, s_h = 1080;
@@ -76,6 +85,55 @@ static bool             s_reset_tick = false; // discard delta after resume
 static EGLDisplay s_egl_display = EGL_NO_DISPLAY;
 static EGLSurface s_egl_surface = EGL_NO_SURFACE;
 static EGLContext s_egl_context = EGL_NO_CONTEXT;
+static EGLConfig  s_egl_config  = nullptr; // saved for pbuffer recreation on resize
+
+#ifdef _GAMING_DESKTOP
+// GDI presentation helpers — ANGLE.WindowsStore's eglCreateWindowSurface
+// expects IInspectable* (WinRT), not a plain HWND, so we render into an EGL
+// Pbuffer and blit each frame with glReadPixels + StretchDIBits instead.
+static HWND s_hwnd = nullptr;
+static std::vector<unsigned char> s_pixels;
+
+static void present_pbuffer()
+{
+    glFinish();
+    glReadPixels(0, 0, s_w, s_h, GL_RGBA, GL_UNSIGNED_BYTE, s_pixels.data());
+    // OpenGL returns RGBA; GDI expects BGRA — swap R and B in-place.
+    unsigned char *p = s_pixels.data();
+    for (int i = 0; i < s_w * s_h; ++i, p += 4) {
+        unsigned char t = p[0]; p[0] = p[2]; p[2] = t;
+    }
+    BITMAPINFO bmi = {};
+    bmi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth       = s_w;
+    bmi.bmiHeader.biHeight      = s_h; // positive = bottom-up, matching glReadPixels
+    bmi.bmiHeader.biPlanes      = 1;
+    bmi.bmiHeader.biBitCount    = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+    HDC hdc = GetDC(s_hwnd);
+    StretchDIBits(hdc, 0, 0, s_w, s_h, 0, 0, s_w, s_h,
+                  s_pixels.data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
+    ReleaseDC(s_hwnd, hdc);
+}
+
+static bool recreate_pbuffer()
+{
+    eglMakeCurrent(s_egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    eglDestroySurface(s_egl_display, s_egl_surface);
+    const EGLint attribs[] = { EGL_WIDTH, s_w, EGL_HEIGHT, s_h, EGL_NONE };
+    s_egl_surface = eglCreatePbufferSurface(s_egl_display, s_egl_config, attribs);
+    if (s_egl_surface == EGL_NO_SURFACE) {
+        SDL_Log("eglCreatePbufferSurface (resize) failed: 0x%x", eglGetError());
+        return false;
+    }
+    if (!eglMakeCurrent(s_egl_display, s_egl_surface, s_egl_surface, s_egl_context)) {
+        SDL_Log("eglMakeCurrent (resize) failed: 0x%x", eglGetError());
+        return false;
+    }
+    s_pixels.resize((size_t)s_w * s_h * 4);
+    return true;
+}
+#endif // _GAMING_DESKTOP
 
 #ifdef _GAMING_XBOX
 // ---------------------------------------------------------------
@@ -174,7 +232,11 @@ int main(int argc, char *argv[])
         SDL_SysWMinfo wm;
         SDL_VERSION(&wm.version);
         SDL_GetWindowWMInfo(s_window, &wm);
+#ifdef _GAMING_XBOX
         EGLNativeWindowType nativeWin = (EGLNativeWindowType)wm.info.win.window;
+#else
+        s_hwnd = (HWND)wm.info.win.window; // needed for GDI blit
+#endif
 
         s_egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
         if (s_egl_display == EGL_NO_DISPLAY) {
@@ -196,12 +258,14 @@ int main(int argc, char *argv[])
             EGL_GREEN_SIZE, 8,
             EGL_BLUE_SIZE,  8,
             EGL_DEPTH_SIZE, 16,
+#ifdef _GAMING_DESKTOP
+            EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+#endif
             EGL_NONE
         };
-        EGLConfig egl_config = nullptr;
         EGLint num_configs = 0;
         SDL_Log("eglChooseConfig...");
-        eglChooseConfig(s_egl_display, cfg_attribs, &egl_config, 1, &num_configs);
+        eglChooseConfig(s_egl_display, cfg_attribs, &s_egl_config, 1, &num_configs);
         if (num_configs == 0) {
             SDL_Log("eglChooseConfig: no matching config (0x%x)", eglGetError());
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", "eglChooseConfig failed", s_window);
@@ -209,21 +273,36 @@ int main(int argc, char *argv[])
         }
         SDL_Log("eglChooseConfig OK");
 
+#ifdef _GAMING_XBOX
         SDL_Log("eglCreateWindowSurface...");
-        s_egl_surface = eglCreateWindowSurface(s_egl_display, egl_config, nativeWin, nullptr);
+        s_egl_surface = eglCreateWindowSurface(s_egl_display, s_egl_config, nativeWin, nullptr);
         if (s_egl_surface == EGL_NO_SURFACE) {
             SDL_Log("eglCreateWindowSurface failed: 0x%x", eglGetError());
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", "eglCreateWindowSurface failed", s_window);
             SDL_DestroyWindow(s_window); SDL_Quit(); return 1;
         }
         SDL_Log("eglCreateWindowSurface OK");
+#else
+        SDL_Log("eglCreatePbufferSurface...");
+        {
+            const EGLint pbuf_attribs[] = { EGL_WIDTH, s_w, EGL_HEIGHT, s_h, EGL_NONE };
+            s_egl_surface = eglCreatePbufferSurface(s_egl_display, s_egl_config, pbuf_attribs);
+        }
+        if (s_egl_surface == EGL_NO_SURFACE) {
+            SDL_Log("eglCreatePbufferSurface failed: 0x%x", eglGetError());
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", "eglCreatePbufferSurface failed", s_window);
+            SDL_DestroyWindow(s_window); SDL_Quit(); return 1;
+        }
+        SDL_Log("eglCreatePbufferSurface OK");
+        s_pixels.resize((size_t)s_w * s_h * 4);
+#endif
 
         static const EGLint ctx_attribs[] = {
             EGL_CONTEXT_CLIENT_VERSION, 2,
             EGL_NONE
         };
         SDL_Log("eglCreateContext...");
-        s_egl_context = eglCreateContext(s_egl_display, egl_config, EGL_NO_CONTEXT, ctx_attribs);
+        s_egl_context = eglCreateContext(s_egl_display, s_egl_config, EGL_NO_CONTEXT, ctx_attribs);
         if (s_egl_context == EGL_NO_CONTEXT) {
             SDL_Log("eglCreateContext failed: 0x%x", eglGetError());
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", "eglCreateContext failed", s_window);
@@ -237,7 +316,9 @@ int main(int argc, char *argv[])
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", "eglMakeCurrent failed", s_window);
             SDL_DestroyWindow(s_window); SDL_Quit(); return 1;
         }
+#ifdef _GAMING_XBOX
         eglSwapInterval(s_egl_display, 1); // vsync
+#endif
     }
     SDL_Log("EGL context active");
 
@@ -331,6 +412,7 @@ int main(int argc, char *argv[])
                     s_h = e.window.data2;
                     s_game->resize(s_w, s_h);
                     Typer::resize(s_w, s_h);
+                    recreate_pbuffer();
 #endif
                 }
                 break;
@@ -355,7 +437,11 @@ int main(int argc, char *argv[])
         glClear(GL_COLOR_BUFFER_BIT);
         s_game->draw();
 
+#ifdef _GAMING_XBOX
         eglSwapBuffers(s_egl_display, s_egl_surface);
+#else
+        present_pbuffer();
+#endif
     }
 
     delete s_game;

@@ -121,16 +121,20 @@ jobs:
         shell: pwsh
         run: |
           # The GDK does not redistribute ANGLE DLLs — its install tree has no
-          # libEGL.dll.  Strategy: use ANGLE.WindowsStore NuGet for the import
-          # lib (.lib) and headers only; for the runtime DLLs use the Edge
-          # WebView2 copy which is a plain Win32 ANGLE build that accepts HWNDs
-          # in eglCreateWindowSurface.  ANGLE.WindowsStore DLLs require a WinRT
-          # IInspectable* native window and crash when passed a Win32 HWND.
+          # libEGL.dll.  Use ANGLE.WindowsStore NuGet for everything: import
+          # libs, headers, and runtime DLLs.
+          #
+          # ANGLE.WindowsStore normally requires IInspectable* native windows
+          # (WinRT), not plain HWNDs, in eglCreateWindowSurface.  We avoid that
+          # restriction by using an EGL Pbuffer surface instead and blitting
+          # each frame to the SDL window with glReadPixels + GDI StretchDIBits.
+          # Pbuffer creation needs no native window handle at all, so
+          # ANGLE.WindowsStore works correctly here.
 
-          # --- Import lib + headers: ANGLE.WindowsStore NuGet ---
           nuget install ANGLE.WindowsStore -ExcludeVersion `
             -OutputDirectory "$env:RUNNER_TEMP\nuget" -NonInteractive
           $pkg = "$env:RUNNER_TEMP\nuget\ANGLE.WindowsStore"
+
           $lib = Get-ChildItem $pkg -Recurse -Filter "libEGL.lib" |
                    Where-Object FullName -match 'x64' | Select-Object -First 1
           if (-not $lib) { Write-Error "libEGL.lib not found in ANGLE.WindowsStore"; exit 1 }
@@ -140,33 +144,16 @@ jobs:
           if (-not $hdr) { Write-Error "egl.h not found in ANGLE.WindowsStore"; exit 1 }
           $angleInclude = $hdr.Directory.Parent.FullName
 
+          $dll = Get-ChildItem $pkg -Recurse -Filter "libEGL.dll" |
+                   Where-Object FullName -match 'x64' | Select-Object -First 1
+          if (-not $dll) { Write-Error "libEGL.dll not found in ANGLE.WindowsStore"; exit 1 }
+
           Write-Host "ANGLE lib dir     : $($lib.Directory.FullName)"
           Write-Host "ANGLE include dir : $angleInclude"
-          echo "ANGLE_LIB_DIR=$($lib.Directory.FullName)"  >> $env:GITHUB_ENV
-          echo "ANGLE_INCLUDE_DIR=$angleInclude"           >> $env:GITHUB_ENV
-
-          # --- Runtime DLLs: find a standalone Win32 ANGLE build ---
-          # Edge WebView2 (System32) is a proxy DLL that requires the WebView2
-          # host process — eglGetDisplay fails when loaded standalone.
-          # Chrome and Edge browser ship a fully in-process ANGLE that accepts
-          # plain HWNDs.  Prefer Chrome, then Edge browser, then WebView2.
-          $angleDllCandidates = @(
-            (Get-ChildItem "C:\Program Files\Google\Chrome\Application" `
-               -Recurse -Filter "libEGL.dll" -ErrorAction SilentlyContinue |
-               Where-Object { $_.FullName -notmatch 'swiftshader' } |
-               Select-Object -First 1),
-            (Get-ChildItem "C:\Program Files (x86)\Microsoft\Edge\Application" `
-               -Recurse -Filter "libEGL.dll" -ErrorAction SilentlyContinue |
-               Where-Object { $_.FullName -notmatch 'swiftshader' } |
-               Select-Object -First 1),
-            (Get-ChildItem "C:\Windows\System32\Microsoft-Edge-WebView" `
-               -Filter "libEGL.dll" -ErrorAction SilentlyContinue |
-               Select-Object -First 1)
-          )
-          $edgeDll = $angleDllCandidates | Where-Object { $_ } | Select-Object -First 1
-          if (-not $edgeDll) { Write-Error "Edge WebView2 libEGL.dll not found"; exit 1 }
-          Write-Host "ANGLE DLL dir     : $($edgeDll.Directory.FullName)"
-          echo "ANGLE_BIN_DIR=$($edgeDll.Directory.FullName)" >> $env:GITHUB_ENV
+          Write-Host "ANGLE bin dir     : $($dll.Directory.FullName)"
+          echo "ANGLE_LIB_DIR=$($lib.Directory.FullName)"     >> $env:GITHUB_ENV
+          echo "ANGLE_INCLUDE_DIR=$angleInclude"              >> $env:GITHUB_ENV
+          echo "ANGLE_BIN_DIR=$($dll.Directory.FullName)"     >> $env:GITHUB_ENV
 
       # Platform.targets checks:
       #   Exists('$(XdkEditionRootVS2022)$(XdkEdition)\Platform.Edition.targets')
