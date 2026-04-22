@@ -98,6 +98,7 @@ FetchContent_MakeAvailable(SDL2)
 # Fix: undefine __GDK__ for SDL2's own object files via MSVC /U so SDL2
 # uses its standard Win32 backend.  GDK Desktop is Win32-compatible, and
 # our xbox_main.cpp handles all GDK PLM lifecycle events directly.
+target_compile_options(SDL2-static PRIVATE /U__GDK__)
 
 # SDL2_mixer: WAV + MP3 only (mirrors every other platform build).
 FetchContent_Declare(SDL2_mixer

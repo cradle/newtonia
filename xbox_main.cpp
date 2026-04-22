@@ -164,6 +164,7 @@ int main(int argc, char *argv[])
 #endif
         ;
 
+    SDL_Log("Creating window (%dx%d)...", s_w, s_h);
     s_window = SDL_CreateWindow("Newtonia",
                                 SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                 s_w, s_h,
