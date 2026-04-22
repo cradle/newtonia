@@ -18,8 +18,10 @@
 #  ifdef __EMSCRIPTEN__
 #    include <emscripten.h>
 #    define glutLeaveMainLoop() emscripten_cancel_main_loop()
+#  elif defined(_GAMING_XBOX) || defined(_GAMING_DESKTOP)
+#    define glutLeaveMainLoop() exit(0)
 #  else
-#    define glutLeaveMainLoop() // no-op on Android / iOS / GDK
+#    define glutLeaveMainLoop() // no-op on Android / iOS
 #  endif
 #else
 
