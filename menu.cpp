@@ -65,7 +65,7 @@ Menu::Menu() :
   has_save_(Save::save_exists()),
   menu_selection(0),
   viewpoint(Point(0,default_world_height/2)),
-  starfield(GLStarfield(Point(default_world_width, default_world_height), star_density_scale())) {
+  starfield(new GLStarfield(Point(default_world_width, default_world_height), star_density_scale())) {
   sensitivity_index_[0] = sensitivity_index_for(g_prefs.p1_keys.keyboard_sensitivity);
   sensitivity_index_[1] = sensitivity_index_for(g_prefs.p2_keys.keyboard_sensitivity);
   smoothing_index_[0]   = smoothing_index_for(g_prefs.p1_keys.camera_smoothing);
@@ -88,6 +88,7 @@ Menu::Menu() :
 }
 
 Menu::~Menu() {
+  delete starfield;
   Mix_FreeMusic(music);
 }
 
@@ -103,18 +104,18 @@ void Menu::draw() {
   float vp[16];
   mat4_translate(vp, proj, -viewpoint.x(), -viewpoint.y(), 0.0f);
   gles2_set_vp(vp);
-  starfield.draw_front(viewpoint);
-  starfield.draw_rear(viewpoint);
+  starfield->draw_front(viewpoint);
+  starfield->draw_rear(viewpoint);
 
   mat4_translate(vp, proj, -viewpoint.x() + default_world_width, -viewpoint.y(), 0.0f);
   gles2_set_vp(vp);
-  starfield.draw_front(viewpoint);
-  starfield.draw_rear(viewpoint);
+  starfield->draw_front(viewpoint);
+  starfield->draw_rear(viewpoint);
 
   mat4_translate(vp, proj, -viewpoint.x() - default_world_width, -viewpoint.y(), 0.0f);
   gles2_set_vp(vp);
-  starfield.draw_front(viewpoint);
-  starfield.draw_rear(viewpoint);
+  starfield->draw_front(viewpoint);
+  starfield->draw_rear(viewpoint);
 
   // Ortho overlay for text (identity model — Typer applies its own transforms via pre_draw).
   float ortho[16];
@@ -604,8 +605,9 @@ void Menu::close_options() {
   g_prefs.p2_keys.camera_smoothing     = SMOOTHING_VALUES[smoothing_index_[1]];
   g_prefs.star_density                 = STAR_DENSITY_MULTIPLIERS[star_density_index_];
   save_preferences();
-  starfield = GLStarfield(Point(default_world_width, default_world_height),
-                          STAR_DENSITY_MULTIPLIERS[star_density_index_]);
+  delete starfield;
+  starfield = new GLStarfield(Point(default_world_width, default_world_height),
+                              STAR_DENSITY_MULTIPLIERS[star_density_index_]);
   options_mode_ = false;
 }
 

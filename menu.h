@@ -35,7 +35,7 @@ private:
   int  star_density_index_   = 5;       // index into STAR_DENSITY_MULTIPLIERS (5=full)
   int  active_row_ = 0;                 // 0=P1 sens, 1=P1 smooth, 2=P2 sens, 3=P2 smooth, 4=stars
   WrappedPoint viewpoint;
-  GLStarfield starfield;
+  GLStarfield *starfield;
   static const int default_world_width, default_world_height;
 
   Mix_Music *music = NULL;

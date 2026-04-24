@@ -13,7 +13,6 @@ public:
   GLStarfield(Point const size, float density_scale = 1.0f);
   virtual ~GLStarfield();
   GLStarfield(GLStarfield&&) = default;
-  GLStarfield& operator=(GLStarfield&&) = default;
 
   void draw_rear(Point const viewpoint) const;
   void draw_front(Point const viewpoint) const;
