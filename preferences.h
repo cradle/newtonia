@@ -39,17 +39,21 @@ struct GeneralKeys {
 };
 
 struct Preferences {
-    bool fullscreen     = true;   // desktop only; ignored on mobile/web
-    bool rotate_view    = true;   // camera follows ship heading
-    bool friendly_fire  = true;   // players damage each other
-    int  window_width   = 800;    // last windowed resolution (desktop only)
-    int  window_height  = 600;
+    bool fullscreen          = true;   // desktop only; ignored on mobile/web
+    bool rotate_view         = true;   // camera follows ship heading
+    bool friendly_fire       = true;   // players damage each other
+    int  window_width        = 800;    // last windowed resolution (desktop only)
+    int  window_height       = 600;
+    float star_density       = 1.0f;   // star-count multiplier; user-editable in INI
     PlayerKeys  p1_keys;          // player 1 keyboard bindings (p1 defaults)
     PlayerKeys  p2_keys;          // player 2 keyboard bindings (p2 defaults set in ctor)
     GeneralKeys general_keys;
 
     Preferences(); // sets p2_keys to player-2 defaults
 };
+
+// Returns the star-count multiplier from g_prefs (clamped to a safe range).
+float star_density_scale();
 
 // Populate g_prefs from disk.  Call once at startup (after the pref path is
 // available, i.e. after IDBFS sync on web).  Returns defaults when no file

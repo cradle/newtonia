@@ -14,8 +14,24 @@ make          # Build native executable: ./newtonia
 make clean    # Remove build artifacts
 ```
 
-Dependencies: SDL2 and SDL2_mixer must be installed (`brew install sdl2 sdl2_mixer` on macOS).
 Compiler: g++ with `-Wall -O3 -std=c++11`. Sources include root, `weapon/`, and `view/`.
+
+#### Linux dependencies
+```sh
+sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev freeglut3-dev
+```
+
+#### macOS dependencies
+```sh
+brew install sdl2 sdl2_mixer
+```
+GLUT ships with Xcode Command Line Tools (`xcode-select --install`).
+
+#### Syntax-check without a full build
+The pre-commit hook in `.claude/settings.json` runs this automatically on staged files:
+```sh
+g++ -std=c++11 -fsyntax-only -I. -I/usr/include/SDL2 <file.cpp>
+```
 
 ### macOS App Bundle
 ```sh

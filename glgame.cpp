@@ -72,7 +72,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   WrappedPoint::set_boundaries(world);
 
 
-  starfield = new GLStarfield(world);
+  starfield = new GLStarfield(world, star_density_scale());
   warp_pass_ = new WarpPass();
 
   time_until_next_step = 0;
@@ -195,7 +195,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
 
   WrappedPoint::set_boundaries(world);
 
-  starfield = new GLStarfield(world);
+  starfield = new GLStarfield(world, star_density_scale());
 
   time_until_next_step = 0;
   num_frames = 0;
@@ -520,7 +520,7 @@ void GLGame::tick(int delta) {
         station->reset();
       }
       delete starfield;
-      starfield = new GLStarfield(world);
+      starfield = new GLStarfield(world, star_density_scale());
       WrappedPoint::set_boundaries(world);
       while(!objects->empty()) {
         delete objects->back();

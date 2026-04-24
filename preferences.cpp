@@ -12,6 +12,12 @@
 
 Preferences g_prefs;
 
+float star_density_scale() {
+    float v = g_prefs.star_density;
+    if (v < 0.0f) v = 0.0f;
+    return v;
+}
+
 Preferences::Preferences() {
     // p1_keys and general_keys use their struct default member initializers.
     // Override p2_keys with player-2 defaults.
@@ -102,6 +108,9 @@ static void parse_line(const char *key, const char *val) {
         g_prefs.rotate_view = (val[0] == '1');
     } else if (strcmp(key, "friendly_fire") == 0) {
         g_prefs.friendly_fire = (val[0] == '1');
+    } else if (strcmp(key, "star_density") == 0) {
+        float v = (float)atof(val);
+        if (v >= 0.0f) g_prefs.star_density = v;
     } else if (strcmp(key, "window_width") == 0) {
         int w = atoi(val);
         if (w > 0) g_prefs.window_width = w;
@@ -195,9 +204,10 @@ void save_preferences() {
     if (!f) return;
 
     // Scalar preferences
-    fprintf(f, "fullscreen=%d\n",              g_prefs.fullscreen    ? 1 : 0);
-    fprintf(f, "rotate_view=%d\n",             g_prefs.rotate_view   ? 1 : 0);
-    fprintf(f, "friendly_fire=%d\n",           g_prefs.friendly_fire ? 1 : 0);
+    fprintf(f, "fullscreen=%d\n",              g_prefs.fullscreen         ? 1 : 0);
+    fprintf(f, "rotate_view=%d\n",             g_prefs.rotate_view        ? 1 : 0);
+    fprintf(f, "friendly_fire=%d\n",           g_prefs.friendly_fire      ? 1 : 0);
+    fprintf(f, "star_density=%.4f\n",           g_prefs.star_density);
     fprintf(f, "window_width=%d\n",            g_prefs.window_width);
     fprintf(f, "window_height=%d\n",           g_prefs.window_height);
 

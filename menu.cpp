@@ -18,12 +18,27 @@ static const float SMOOTHING_VALUES[] = {0.0f, 0.004f, 0.006f, 0.008f, 0.010f};
 static const char* SMOOTHING_LABELS[] = {"OFF", "NORMAL", "HIGH", "HIGHER", "MAX"};
 static const int NUM_SMOOTHING = 5;
 
+static const float STAR_DENSITY_MULTIPLIERS[] = {0.1f, 0.25f, 0.5f, 0.75f, 1.0f};
+static const char* STAR_DENSITY_LABELS[] = {"MINIMAL", "SPARSE", "MEDIUM", "MANY", "FULL"};
+static const int NUM_STAR_DENSITY = 5;
+
 static int sensitivity_index_for(float value) {
   int best = 2;
   float best_dist = 1e6f;
   for (int i = 0; i < NUM_SENSITIVITY; i++) {
     float d = value > SENSITIVITY_VALUES[i] ? value - SENSITIVITY_VALUES[i]
                                              : SENSITIVITY_VALUES[i] - value;
+    if (d < best_dist) { best_dist = d; best = i; }
+  }
+  return best;
+}
+
+static int star_density_index_for(float value) {
+  int best = NUM_STAR_DENSITY - 1;
+  float best_dist = 1e6f;
+  for (int i = 0; i < NUM_STAR_DENSITY; i++) {
+    float d = value > STAR_DENSITY_MULTIPLIERS[i] ? value - STAR_DENSITY_MULTIPLIERS[i]
+                                                   : STAR_DENSITY_MULTIPLIERS[i] - value;
     if (d < best_dist) { best_dist = d; best = i; }
   }
   return best;
@@ -50,11 +65,12 @@ Menu::Menu() :
   has_save_(Save::save_exists()),
   menu_selection(0),
   viewpoint(Point(0,default_world_height/2)),
-  starfield(GLStarfield(Point(default_world_width,default_world_height))) {
+  starfield(new GLStarfield(Point(default_world_width, default_world_height), star_density_scale())) {
   sensitivity_index_[0] = sensitivity_index_for(g_prefs.p1_keys.keyboard_sensitivity);
   sensitivity_index_[1] = sensitivity_index_for(g_prefs.p2_keys.keyboard_sensitivity);
   smoothing_index_[0]   = smoothing_index_for(g_prefs.p1_keys.camera_smoothing);
   smoothing_index_[1]   = smoothing_index_for(g_prefs.p2_keys.camera_smoothing);
+  star_density_index_   = star_density_index_for(g_prefs.star_density);
 #ifdef __EMSCRIPTEN__
   EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
 #endif
@@ -72,6 +88,7 @@ Menu::Menu() :
 }
 
 Menu::~Menu() {
+  delete starfield;
   Mix_FreeMusic(music);
 }
 
@@ -87,18 +104,18 @@ void Menu::draw() {
   float vp[16];
   mat4_translate(vp, proj, -viewpoint.x(), -viewpoint.y(), 0.0f);
   gles2_set_vp(vp);
-  starfield.draw_front(viewpoint);
-  starfield.draw_rear(viewpoint);
+  starfield->draw_front(viewpoint);
+  starfield->draw_rear(viewpoint);
 
   mat4_translate(vp, proj, -viewpoint.x() + default_world_width, -viewpoint.y(), 0.0f);
   gles2_set_vp(vp);
-  starfield.draw_front(viewpoint);
-  starfield.draw_rear(viewpoint);
+  starfield->draw_front(viewpoint);
+  starfield->draw_rear(viewpoint);
 
   mat4_translate(vp, proj, -viewpoint.x() - default_world_width, -viewpoint.y(), 0.0f);
   gles2_set_vp(vp);
-  starfield.draw_front(viewpoint);
-  starfield.draw_rear(viewpoint);
+  starfield->draw_front(viewpoint);
+  starfield->draw_rear(viewpoint);
 
   // Ortho overlay for text (identity model — Typer applies its own transforms via pre_draw).
   float ortho[16];
@@ -110,22 +127,37 @@ void Menu::draw() {
 
     static const int step_x5[] = {-200, -100, 0, 100, 200};
 
-    // 4 rows: 0=P1 sens, 1=P1 smooth, 2=P2 sens, 3=P2 smooth
-    static const int label_y[] = { 240,  80, -80, -240};
-    static const int steps_y[] = { 195,  35, -125, -285};
-    static const int name_y[]  = { 150, -10, -170, -330};
+    // 5 rows: 0=P1 sens, 1=P1 smooth, 2=P2 sens, 3=P2 smooth, 4=star density
+    // Row 0 at 240 (100-unit gap below OPTIONS header).
+    // 135-unit row spacing, 80-unit row height → 55-unit gap between groups.
+    static const int label_y[] = { 240,  105,  -30, -165, -300};
+    static const int steps_y[] = { 205,   70,  -65, -200, -335};
+    static const int name_y[]  = { 160,   25, -110, -245, -380};
     static const char* row_names[] = {
       "P1  SENSITIVITY", "P1  SMOOTHING",
-      "P2  SENSITIVITY", "P2  SMOOTHING"
+      "P2  SENSITIVITY", "P2  SMOOTHING",
+      "STAR  DENSITY"
     };
 
-    for (int row = 0; row < 4; row++) {
-      int p          = row / 2;
-      bool is_smooth = (row % 2 == 1);
-      int  num_steps = is_smooth ? NUM_SMOOTHING    : NUM_SENSITIVITY;
-      const int *sx  = step_x5;
-      int  cur_idx   = is_smooth ? smoothing_index_[p] : sensitivity_index_[p];
-      const char* const *lbl = is_smooth ? SMOOTHING_LABELS : SENSITIVITY_LABELS;
+    for (int row = 0; row < 5; row++) {
+      int num_steps;
+      const int *sx;
+      int cur_idx;
+      const char* const *lbl;
+
+      if (row == 4) {
+        num_steps = NUM_STAR_DENSITY;
+        sx        = step_x5;
+        cur_idx   = star_density_index_;
+        lbl       = STAR_DENSITY_LABELS;
+      } else {
+        int p          = row / 2;
+        bool is_smooth = (row % 2 == 1);
+        num_steps = is_smooth ? NUM_SMOOTHING    : NUM_SENSITIVITY;
+        sx        = step_x5;
+        cur_idx   = is_smooth ? smoothing_index_[p] : sensitivity_index_[p];
+        lbl       = is_smooth ? SMOOTHING_LABELS    : SENSITIVITY_LABELS;
+      }
 
       std::string heading = std::string(active_row_ == row ? "> " : "  ") + row_names[row];
       Typer::draw_centered(0, label_y[row], heading.c_str(), 13);
@@ -208,7 +240,8 @@ void Menu::draw() {
       }
     }
   }
-  Typer::draw_centered(0, -420, "© 2008-2026 METONYMOUS", 13, currentTime);
+  if (!options_mode_)
+    Typer::draw_centered(0, -420, "© 2008-2026 METONYMOUS", 13, currentTime);
 }
 
 void Menu::tick(int delta) {
@@ -261,7 +294,7 @@ void Menu::controller(SDL_Event event) {
       if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
         if (active_row_ > 0) active_row_--;
       } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
-        if (active_row_ < 3) active_row_++;
+        if (active_row_ < 4) active_row_++;
       } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_LEFT) {
         adjust_active_row(-1);
       } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_RIGHT) {
@@ -277,7 +310,7 @@ void Menu::controller(SDL_Event event) {
         bool up   = event.caxis.value < -8000;
         bool down = event.caxis.value >  8000;
         if (up   && !left_stick_up_active   && active_row_ > 0) active_row_--;
-        if (down && !left_stick_down_active && active_row_ < 3) active_row_++;
+        if (down && !left_stick_down_active && active_row_ < 4) active_row_++;
         left_stick_up_active   = up;
         left_stick_down_active = down;
       } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) {
@@ -384,7 +417,7 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
     if (key == 'w' || key == 'W') {
       if (active_row_ > 0) active_row_--;
     } else if (key == 's' || key == 'S') {
-      if (active_row_ < 3) active_row_++;
+      if (active_row_ < 4) active_row_++;
     } else if (key == 'a' || key == 'A') {
       adjust_active_row(-1);
     } else if (key == 'd' || key == 'D') {
@@ -546,6 +579,12 @@ void Menu::open_options() {
 }
 
 void Menu::adjust_active_row(int delta) {
+  if (active_row_ == 4) {
+    star_density_index_ += delta;
+    if (star_density_index_ < 0)                star_density_index_ = 0;
+    if (star_density_index_ >= NUM_STAR_DENSITY) star_density_index_ = NUM_STAR_DENSITY - 1;
+    return;
+  }
   int p          = active_row_ / 2;
   bool is_smooth = (active_row_ % 2 == 1);
   if (is_smooth) {
@@ -566,7 +605,11 @@ void Menu::close_options() {
   g_prefs.p2_keys.keyboard_sensitivity = SENSITIVITY_VALUES[sensitivity_index_[1]];
   g_prefs.p1_keys.camera_smoothing     = SMOOTHING_VALUES[smoothing_index_[0]];
   g_prefs.p2_keys.camera_smoothing     = SMOOTHING_VALUES[smoothing_index_[1]];
+  g_prefs.star_density                 = STAR_DENSITY_MULTIPLIERS[star_density_index_];
   save_preferences();
+  delete starfield;
+  starfield = new GLStarfield(Point(default_world_width, default_world_height),
+                              STAR_DENSITY_MULTIPLIERS[star_density_index_]);
   options_mode_ = false;
 }
 

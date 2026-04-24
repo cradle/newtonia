@@ -10,7 +10,7 @@
 
 class GLStarfield {
 public:
-  GLStarfield(Point const size);
+  GLStarfield(Point const size, float density_scale = 1.0f);
   virtual ~GLStarfield();
   GLStarfield(GLStarfield&&) = default;
 
