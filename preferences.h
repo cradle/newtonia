@@ -44,7 +44,7 @@ struct Preferences {
     bool friendly_fire       = true;   // players damage each other
     int  window_width        = 800;    // last windowed resolution (desktop only)
     int  window_height       = 600;
-    int  star_density_index  = 5;      // 0=minimal … 5=full (current default)
+    float star_density       = 1.0f;   // star-count multiplier; user-editable in INI
     PlayerKeys  p1_keys;          // player 1 keyboard bindings (p1 defaults)
     PlayerKeys  p2_keys;          // player 2 keyboard bindings (p2 defaults set in ctor)
     GeneralKeys general_keys;
@@ -52,7 +52,7 @@ struct Preferences {
     Preferences(); // sets p2_keys to player-2 defaults
 };
 
-// Maps star_density_index (0–5) to a star-count multiplier (0.1–1.0).
+// Returns the star-count multiplier from g_prefs (clamped to a safe range).
 float star_density_scale();
 
 // Populate g_prefs from disk.  Call once at startup (after the pref path is

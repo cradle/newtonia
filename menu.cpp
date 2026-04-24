@@ -33,6 +33,17 @@ static int sensitivity_index_for(float value) {
   return best;
 }
 
+static int star_density_index_for(float value) {
+  int best = NUM_STAR_DENSITY - 1;
+  float best_dist = 1e6f;
+  for (int i = 0; i < NUM_STAR_DENSITY; i++) {
+    float d = value > STAR_DENSITY_MULTIPLIERS[i] ? value - STAR_DENSITY_MULTIPLIERS[i]
+                                                   : STAR_DENSITY_MULTIPLIERS[i] - value;
+    if (d < best_dist) { best_dist = d; best = i; }
+  }
+  return best;
+}
+
 static int smoothing_index_for(float value) {
   int best = 2;
   float best_dist = 1e6f;
@@ -54,12 +65,12 @@ Menu::Menu() :
   has_save_(Save::save_exists()),
   menu_selection(0),
   viewpoint(Point(0,default_world_height/2)),
-  starfield(GLStarfield(Point(default_world_width,default_world_height), star_density_scale())) {
+  starfield(GLStarfield(Point(default_world_width, default_world_height), star_density_scale())) {
   sensitivity_index_[0] = sensitivity_index_for(g_prefs.p1_keys.keyboard_sensitivity);
   sensitivity_index_[1] = sensitivity_index_for(g_prefs.p2_keys.keyboard_sensitivity);
   smoothing_index_[0]   = smoothing_index_for(g_prefs.p1_keys.camera_smoothing);
   smoothing_index_[1]   = smoothing_index_for(g_prefs.p2_keys.camera_smoothing);
-  star_density_index_   = g_prefs.star_density_index;
+  star_density_index_   = star_density_index_for(g_prefs.star_density);
 #ifdef __EMSCRIPTEN__
   EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
 #endif
@@ -591,7 +602,7 @@ void Menu::close_options() {
   g_prefs.p2_keys.keyboard_sensitivity = SENSITIVITY_VALUES[sensitivity_index_[1]];
   g_prefs.p1_keys.camera_smoothing     = SMOOTHING_VALUES[smoothing_index_[0]];
   g_prefs.p2_keys.camera_smoothing     = SMOOTHING_VALUES[smoothing_index_[1]];
-  g_prefs.star_density_index           = star_density_index_;
+  g_prefs.star_density                 = STAR_DENSITY_MULTIPLIERS[star_density_index_];
   save_preferences();
   starfield = GLStarfield(Point(default_world_width, default_world_height),
                           STAR_DENSITY_MULTIPLIERS[star_density_index_]);

@@ -12,13 +12,11 @@
 
 Preferences g_prefs;
 
-static const float STAR_DENSITY_SCALES[] = {0.1f, 0.2f, 0.35f, 0.55f, 0.75f, 1.0f};
-
 float star_density_scale() {
-    int idx = g_prefs.star_density_index;
-    if (idx < 0) idx = 0;
-    if (idx > 5) idx = 5;
-    return STAR_DENSITY_SCALES[idx];
+    float v = g_prefs.star_density;
+    if (v < 0.0f) v = 0.0f;
+    if (v > 4.0f) v = 4.0f;
+    return v;
 }
 
 Preferences::Preferences() {
@@ -111,9 +109,9 @@ static void parse_line(const char *key, const char *val) {
         g_prefs.rotate_view = (val[0] == '1');
     } else if (strcmp(key, "friendly_fire") == 0) {
         g_prefs.friendly_fire = (val[0] == '1');
-    } else if (strcmp(key, "star_density_index") == 0) {
-        int v = atoi(val);
-        if (v >= 0 && v <= 5) g_prefs.star_density_index = v;
+    } else if (strcmp(key, "star_density") == 0) {
+        float v = (float)atof(val);
+        if (v >= 0.0f && v <= 4.0f) g_prefs.star_density = v;
     } else if (strcmp(key, "window_width") == 0) {
         int w = atoi(val);
         if (w > 0) g_prefs.window_width = w;
@@ -210,7 +208,7 @@ void save_preferences() {
     fprintf(f, "fullscreen=%d\n",              g_prefs.fullscreen         ? 1 : 0);
     fprintf(f, "rotate_view=%d\n",             g_prefs.rotate_view        ? 1 : 0);
     fprintf(f, "friendly_fire=%d\n",           g_prefs.friendly_fire      ? 1 : 0);
-    fprintf(f, "star_density_index=%d\n",      g_prefs.star_density_index);
+    fprintf(f, "star_density=%.4f\n",           g_prefs.star_density);
     fprintf(f, "window_width=%d\n",            g_prefs.window_width);
     fprintf(f, "window_height=%d\n",           g_prefs.window_height);
 
