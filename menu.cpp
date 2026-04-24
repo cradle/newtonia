@@ -240,7 +240,8 @@ void Menu::draw() {
       }
     }
   }
-  Typer::draw_centered(0, -420, "© 2008-2026 METONYMOUS", 13, currentTime);
+  if (!options_mode_)
+    Typer::draw_centered(0, -420, "© 2008-2026 METONYMOUS", 13, currentTime);
 }
 
 void Menu::tick(int delta) {
