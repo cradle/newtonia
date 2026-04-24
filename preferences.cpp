@@ -15,7 +15,6 @@ Preferences g_prefs;
 float star_density_scale() {
     float v = g_prefs.star_density;
     if (v < 0.0f) v = 0.0f;
-    if (v > 4.0f) v = 4.0f;
     return v;
 }
 
@@ -111,7 +110,7 @@ static void parse_line(const char *key, const char *val) {
         g_prefs.friendly_fire = (val[0] == '1');
     } else if (strcmp(key, "star_density") == 0) {
         float v = (float)atof(val);
-        if (v >= 0.0f && v <= 4.0f) g_prefs.star_density = v;
+        if (v >= 0.0f) g_prefs.star_density = v;
     } else if (strcmp(key, "window_width") == 0) {
         int w = atoi(val);
         if (w > 0) g_prefs.window_width = w;

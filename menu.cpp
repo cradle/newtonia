@@ -18,9 +18,9 @@ static const float SMOOTHING_VALUES[] = {0.0f, 0.004f, 0.006f, 0.008f, 0.010f};
 static const char* SMOOTHING_LABELS[] = {"OFF", "NORMAL", "HIGH", "HIGHER", "MAX"};
 static const int NUM_SMOOTHING = 5;
 
-static const float STAR_DENSITY_MULTIPLIERS[] = {0.1f, 0.2f, 0.35f, 0.55f, 0.75f, 1.0f};
-static const char* STAR_DENSITY_LABELS[] = {"MINIMAL", "SPARSE", "FEW", "MEDIUM", "MANY", "FULL"};
-static const int NUM_STAR_DENSITY = 6;
+static const float STAR_DENSITY_MULTIPLIERS[] = {0.1f, 0.25f, 0.5f, 0.75f, 1.0f};
+static const char* STAR_DENSITY_LABELS[] = {"MINIMAL", "SPARSE", "MEDIUM", "MANY", "FULL"};
+static const int NUM_STAR_DENSITY = 5;
 
 static int sensitivity_index_for(float value) {
   int best = 2;
@@ -126,12 +126,12 @@ void Menu::draw() {
     Typer::draw_centered(0, 340, "OPTIONS", 28);
 
     static const int step_x5[] = {-200, -100, 0, 100, 200};
-    static const int step_x6[] = {-250, -150, -50, 50, 150, 250};
 
     // 5 rows: 0=P1 sens, 1=P1 smooth, 2=P2 sens, 3=P2 smooth, 4=star density
-    static const int label_y[] = { 240,  120,    0, -120, -240};
-    static const int steps_y[] = { 200,   80,  -40, -160, -280};
-    static const int name_y[]  = { 165,   45,  -75, -195, -315};
+    // 140-unit row spacing keeps a 65-unit gap between each row's name and the next label
+    static const int label_y[] = { 280,  140,    0, -140, -280};
+    static const int steps_y[] = { 240,  100,  -40, -180, -320};
+    static const int name_y[]  = { 205,   65,  -75, -215, -355};
     static const char* row_names[] = {
       "P1  SENSITIVITY", "P1  SMOOTHING",
       "P2  SENSITIVITY", "P2  SMOOTHING",
@@ -146,7 +146,7 @@ void Menu::draw() {
 
       if (row == 4) {
         num_steps = NUM_STAR_DENSITY;
-        sx        = step_x6;
+        sx        = step_x5;
         cur_idx   = star_density_index_;
         lbl       = STAR_DENSITY_LABELS;
       } else {

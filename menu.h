@@ -32,7 +32,7 @@ private:
   bool options_mode_ = false;
   int  sensitivity_index_[2] = {2, 2};  // per-player index into SENSITIVITY_VALUES
   int  smoothing_index_[2]   = {1, 1};  // per-player index into SMOOTHING_VALUES (1=NORMAL=0.004)
-  int  star_density_index_   = 5;       // index into STAR_DENSITY_MULTIPLIERS (5=full)
+  int  star_density_index_   = 4;       // index into STAR_DENSITY_MULTIPLIERS (4=full)
   int  active_row_ = 0;                 // 0=P1 sens, 1=P1 smooth, 2=P2 sens, 3=P2 smooth, 4=stars
   WrappedPoint viewpoint;
   GLStarfield *starfield;
