@@ -131,8 +131,8 @@ void Menu::draw() {
     // Row 0 stays at 240 (100 below OPTIONS header, same as 4-row layout).
     // 130-unit spacing with 75-unit row height leaves a 55-unit gap between rows.
     static const int label_y[] = { 240,  110,  -20, -150, -280};
-    static const int steps_y[] = { 200,   70,  -60, -190, -320};
-    static const int name_y[]  = { 165,   35,  -95, -225, -355};
+    static const int steps_y[] = { 205,   75,  -55, -185, -315};
+    static const int name_y[]  = { 150,   20, -110, -240, -370};
     static const char* row_names[] = {
       "P1  SENSITIVITY", "P1  SMOOTHING",
       "P2  SENSITIVITY", "P2  SMOOTHING",
