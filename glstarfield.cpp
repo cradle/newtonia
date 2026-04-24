@@ -10,7 +10,7 @@ const int GLStarfield::NUM_REAR_LAYERS = 10;
 const int GLStarfield::NUM_FRONT_LAYERS = 5;
 const float GLStarfield::STAR_DENSITY = 0.000015;
 
-GLStarfield::GLStarfield(Point const size) {
+GLStarfield::GLStarfield(Point const size, float density_scale) {
   int total = NUM_REAR_LAYERS + 1 + NUM_FRONT_LAYERS;
   layer_meshes.resize(total);
 
@@ -19,7 +19,7 @@ GLStarfield::GLStarfield(Point const size) {
     MeshBuilder mb;
     mb.begin(GL_POINTS);
 
-    int num_stars = (int)(size.x()*size.y()*STAR_DENSITY);
+    int num_stars = (int)(size.x()*size.y()*STAR_DENSITY*density_scale);
     for(int j = 0; j < num_stars; j++) {
       red = rand()%100;
       green = red > 0 ? rand()%red : 0;
