@@ -128,11 +128,11 @@ void Menu::draw() {
     static const int step_x5[] = {-200, -100, 0, 100, 200};
 
     // 5 rows: 0=P1 sens, 1=P1 smooth, 2=P2 sens, 3=P2 smooth, 4=star density
-    // Row 0 stays at 240 (100 below OPTIONS header, same as 4-row layout).
-    // 130-unit spacing with 75-unit row height leaves a 55-unit gap between rows.
-    static const int label_y[] = { 240,  110,  -20, -150, -280};
-    static const int steps_y[] = { 205,   75,  -55, -185, -315};
-    static const int name_y[]  = { 150,   20, -110, -240, -370};
+    // Row 0 at 240 (100-unit gap below OPTIONS header).
+    // 135-unit row spacing, 80-unit row height → 55-unit gap between groups.
+    static const int label_y[] = { 240,  105,  -30, -165, -300};
+    static const int steps_y[] = { 205,   70,  -65, -200, -335};
+    static const int name_y[]  = { 160,   25, -110, -245, -380};
     static const char* row_names[] = {
       "P1  SENSITIVITY", "P1  SMOOTHING",
       "P2  SENSITIVITY", "P2  SMOOTHING",
