@@ -20,8 +20,10 @@
 #    define glutLeaveMainLoop() emscripten_cancel_main_loop()
 #  elif defined(_GAMING_XBOX) || defined(_GAMING_DESKTOP)
 #    define glutLeaveMainLoop() exit(0)
+#  elif defined(__ANDROID__)
+#    define glutLeaveMainLoop() exit(0)
 #  else
-#    define glutLeaveMainLoop() // no-op on Android / iOS
+#    define glutLeaveMainLoop() // no-op on iOS
 #  endif
 #else
 

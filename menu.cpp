@@ -58,6 +58,9 @@ Menu::Menu() :
 #ifdef __EMSCRIPTEN__
   EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
 #endif
+#if defined(__ANDROID__) || defined(__IOS__)
+  attract_mode_ = false;
+#endif
   if(music == NULL) {
     music = Mix_LoadMUS("audio/title.wav");
     if(music == NULL) {
@@ -498,6 +501,10 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
 bool Menu::back_pressed() {
   if (attract_mode_) {
     attract_mode_ = false;
+#if defined(_GAMING_XBOX) || defined(_GAMING_DESKTOP)
+    quit_confirm_ = true;
+    quit_selection_ = 0;
+#endif
     return true;
   }
   if (quit_confirm_) {
