@@ -505,13 +505,13 @@ void GLGame::tick(int delta) {
       time_until_next_generation -= delta;
     } else {
       generation++;
-      if(generation == 10) {
+      if(generation == 20) {
         world += Point(3000, 3000);
       } else {
         world += Point(50, 50);
       }
       grid = Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2));
-      if(generation >= 10) {
+      if(generation >= 20) {
         if(station != NULL)
           delete station;
         station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
@@ -542,7 +542,7 @@ void GLGame::tick(int delta) {
         delete black_holes->back();
         black_holes->pop_back();
       }
-      if(generation >= 9)
+      if(generation >= 19)
         black_holes->push_back(new BlackHole(WrappedPoint(world.x() / 2.0f, world.y() / 2.0f)));
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {
