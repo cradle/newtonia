@@ -542,7 +542,7 @@ void GLGame::tick(int delta) {
         delete black_holes->back();
         black_holes->pop_back();
       }
-      if(generation >= 19)
+      if(generation >= 9)
         black_holes->push_back(new BlackHole(WrappedPoint(world.x() / 2.0f, world.y() / 2.0f)));
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {
