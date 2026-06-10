@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Newtonia is a top-down 2D space shooter written in C++ using SDL2 and OpenGL. It supports single-player and two-player modes and targets multiple platforms: desktop (macOS, Linux, Windows), mobile (iOS, Android), web (WebAssembly), and Steam.
+Newtonia is a top-down 2D space shooter written in C++ using SDL2 and OpenGL. It supports single-player and two-player modes and targets multiple platforms: desktop (macOS, Linux, Windows), mobile (iOS, Android), web (WebAssembly), Xbox/GDK, and Steam.
 
 ## Build Commands
 
@@ -38,23 +38,35 @@ g++ -std=c++11 -fsyntax-only -I. -I/usr/include/SDL2 <file.cpp>
 make osx      # Build universal arm64+x86_64 .app bundle
 ```
 
+Signing entitlements live in `macos/` (`Entitlements.plist`, `EntitlementsDevID.plist`).
+
 ### Web (Emscripten)
 ```sh
 make web        # Build WebAssembly output to web/dist/
 make web-clean  # Remove web build artifacts
 ```
 
-Requires Emscripten (`emcc`) and TypeScript compiler (`tsc`) on PATH. Web build links `-lidbfs.js` for IndexedDB persistence and preloads audio assets.
+Requires Emscripten (`emcc`) and TypeScript compiler (`tsc`) on PATH. The web frontend is TypeScript: `tsc -p web/tsconfig.json` compiles `web/main.ts`; `web/shell.html` is the Emscripten shell file. The build links `-lidbfs.js` for IndexedDB persistence and preloads audio assets (`--preload-file audio@audio`). `web_main.cpp` mounts IDBFS asynchronously and only starts the game loop after `web_on_idb_ready()` fires from JS.
 
 ### Android
 ```sh
 cd android && ./gradlew assembleDebug
 ```
 
-SDL2 and SDL2_mixer are cloned from GitHub by the CMake build. Requires Android NDK 26.3.11579264 and CMake 3.22.1. The CMake target is `libnewtonia.so` (shared library). Source roots: `weapon/` and `view/` are included alongside root files.
+The native build uses the root `CMakeLists.txt` (a generic CMake build that globs all sources, excludes the desktop `glut.cpp` entry point, and clones SDL2/SDL2_mixer from GitHub). Requires Android NDK 26.3.11579264 and CMake 3.22.1 (set in `android/app/build.gradle`; compileSdk/targetSdk 35, minSdk 21; ABIs arm64-v8a, armeabi-v7a, x86_64). The CMake target is `libnewtonia.so` (shared library).
 
 ### iOS
 Open `ios/Newtonia-iOS.xcodeproj` in Xcode. For simulator builds see `ios/README.md`.
+
+### Xbox / GDK (Windows)
+```sh
+cmake -B xbox/build-desktop -S xbox -A Gaming.Desktop.x64
+```
+
+`xbox/CMakeLists.txt` builds for GDK Desktop (Gaming.Desktop.x64) and Xbox Series (Gaming.Xbox.Scarlett.x64) using the VS2022 MSBuild platform registration installed by GDK 2510+ — no separate toolchain file. Renders via OpenGL ES 2 through ANGLE (libEGL/libGLESv2 bundled with the GDK; located via `ANGLE_INCLUDE_DIR`/`ANGLE_LIB_DIR` or `GDK_ROOT`). Uses static MSVC runtime (`/MT`); `xbox/sdl_gdk_stubs.cpp` provides GDK PLM stub symbols; packaging config in `xbox/MicrosoftGame.config` and `xbox/PackagingLayout.xml`.
+
+### Sound assets
+`generate_sounds.py` procedurally generates the WAV files in `audio/`.
 
 ## Architecture
 
@@ -63,7 +75,8 @@ Open `ios/Newtonia-iOS.xcodeproj` in Xcode. For simulator builds see `ios/README
 The codebase separates **game logic** from **rendering** using a GL-prefixed wrapper pattern:
 
 - `Ship` / `Asteroid` / `Pickup` / `Enemy` — pure game logic (physics, health, state)
-- `GLShip` / `GLEnemy` / `GLCar` / `GLStarfield` / `GLStation` — rendering + input layer wrapping logic classes
+- `GLShip` / `GLEnemy` / `GLCar` / `GLStarfield` — rendering + input layer wrapping logic classes
+- `GLStation` — exception to the pattern: inherits `Ship` directly, combining logic and rendering in one class
 - `GLGame` — top-level in-game state, owns all GL* objects, drives the update/draw loop
 
 ### Platform Entry Points
@@ -74,6 +87,7 @@ The codebase separates **game logic** from **rendering** using a GL-prefixed wra
 | Android  | `android_main.cpp` (SDL2 event loop, multi-touch) |
 | iOS      | `ios/ios_main.mm` |
 | Web      | `web_main.cpp` (Emscripten loop, IDBFS persistence) |
+| Xbox/GDK | `xbox_main.cpp` (SDL2 event loop, ANGLE GLES2, GDK PLM lifecycle) |
 | macOS helper | `macos_window.mm` (window activation for Steam launch) |
 
 ### Object Inheritance
@@ -84,7 +98,8 @@ All game entities inherit from a common base:
 Object                          — position, velocity, radius, collision, step()
 └── CompositeObject             — owns child Objects (e.g. asteroid fragments)
     ├── Ship                    — player/enemy logic (weapons, health, behaviours)
-    │   └── Enemy               — AI-controlled ship (targeting, difficulty level)
+    │   ├── Enemy               — AI-controlled ship (targeting, difficulty level)
+    │   └── GLStation           — enemy station; deploys waves of GLEnemy ships
     └── Asteroid                — breakup mechanics, spawns children on death
 Pickup (: Object)               — collectible items dropped by asteroids
 BlackHole (: Object)            — stationary gravitational hazard
@@ -98,7 +113,18 @@ Particle (: Object)             — bullet/trail particle with TTL
 - `StateManager` owns the current `State` and dispatches input (keyboard, controller, touch, mouse)
 - Each frame: `state->tick()` (physics/logic), `state->draw()` (rendering)
 - Fixed timestep: `step_size = 8ms`; delta accumulates and runs discrete steps
-- World size: 2500×2500 units (set via `WrappedPoint::set_boundaries`)
+- World starts at 2500×2500 units (set via `WrappedPoint::set_boundaries`) and grows each generation
+
+### Level / Generation Progression
+
+When all killable asteroids are destroyed, a 5-second countdown (tick sounds) runs, then `generation` increments and the level rebuilds (`glgame.cpp`):
+
+- World grows by 50×50 per generation; at generation 20 it instead grows by 3000×3000
+- Asteroid count: `default_num_asteroids + generation * extra_num_asteroids`
+- Special asteroid types unlock by generation: reflective ≥ 2, teleporting ≥ 3, invisible ≥ 4, quantum ≥ 5, tough ≥ 6, armoured ≥ 7, phasing ≥ 8 (counts scale with generation)
+- Black hole spawns at world centre from generation ≥ 9
+- `GLStation` (enemy station) spawns from generation ≥ 20
+- Pickups are cleared, the starfield and grid are rebuilt, players respawn, and progress is auto-saved
 
 ## Key Systems
 
@@ -110,10 +136,9 @@ Particle (: Object)             — bullet/trail particle with TTL
 - Virtual: `touch_tap()`, `back_pressed()`, `resize()`
 - States call `request_state_change()` to transition
 
-Known states:
-- **Menu** (`menu.h/cpp`) — main menu, options screen (keybindings, sensitivity, camera), animated starfield, touch support
-- **GLGame** (`glgame.h/cpp`) — in-game; owns all game objects; handles asteroid spawning, pickup drops, two-player split-screen, pause, auto-save
-- Game over / high score states (managed by StateManager)
+There are two states:
+- **Menu** (`menu.h/cpp`) — main menu and options screen, animated starfield, touch support. Options (5 steps each): P1/P2 sensitivity (SLOW–MAX, 0.5–2.0), P1/P2 camera smoothing (OFF–MAX, 0.0–0.010), star density (MINIMAL–FULL, 0.1–1.0 multiplier)
+- **GLGame** (`glgame.h/cpp`) — in-game; owns all game objects; handles asteroid spawning, pickup drops, two-player split-screen, pause, auto-save. Game over transitions back to Menu (no separate game-over state)
 
 ### Weapon System
 
@@ -126,7 +151,7 @@ Known states:
 | `weapon/giga_mine` | Giga Mine | Larger blast than mine |
 | `weapon/missile` | Missile | Homing AI; `set_asteroids()` / `set_ship_targets()`; seeks via `query_segment()` |
 | `weapon/shield` | Shield | Energy barrier, limited ammo |
-| `weapon/god_mode` | God Mode | Timed invincibility; fires periodic shockwaves (150ms); plays special music |
+| `weapon/god_mode` | God Mode | Timed invincibility (10s); fires periodic shockwaves (150ms); plays special music with a warning phase in the final 3s |
 | `weapon/nova` | Nova | Secondary weapon; charges accumulate from asteroid kills (0–9); triggers `ship->nova_detonate()` |
 
 ### Pickup System
@@ -144,7 +169,7 @@ All inherit from `Pickup` base class (`pickup.h`). Each pickup implements `draw(
 | `nova_charge_pickup` | Nova Charge | +1 nova charge (auto-drops every 100 asteroid kills) |
 | `extra_life` | Extra Life | +1 life (heart shape) |
 
-**Drop chances** (per asteroid death): extra_life 0.3%, weapon 1.25%, mine 1.25%, giga_mine 0.5%, missile 1.25%, shield 1.25%, god_mode 0.25%.
+**Drop chances** (per asteroid death, constants in `glgame.cpp`): extra_life 0.3125%, weapon 1.25%, mine 1.25%, giga_mine 0.5%, missile 1.25%, shield 1.25%, god_mode 0.25%.
 
 ### Asteroid Special Types
 
@@ -159,7 +184,7 @@ Asteroids (`asteroid.h/cpp`) are 9-vertex irregular polygons with per-vertex rad
 | `quantum` | Collapses to solid when observed by a player |
 | `tough` | Requires 5 hits; shows crack lines during damage (`crack_vertex`, `crack_t`, `crack_perp`) |
 | `armoured` | One rotating face deflects bullets; `armor_angle` tracks the weak spot |
-| `elastic` | Bounces off other elastic asteroids |
+| `elastic` | Bounces off other elastic asteroids; not set independently — derived from `reflective` in the constructor |
 | `phasing` | Cycles between solid and intangible states (`phased`, `phase_timer`) |
 
 Serialization: `capture_state()` / `restore_state()` for save/load.
@@ -176,7 +201,7 @@ Serialization: `capture_state()` / `restore_state()` for save/load.
 
 ### Collision Detection
 
-**Grid** (`grid.h/cpp`) provides spatial partitioning. Objects register themselves each frame; `collide()` finds neighbors; `query_segment()` supports line queries (missile homing). Fixed-radius proximity checks via `Object::collide()`.
+**Grid** (`grid.h/cpp`) provides spatial partitioning. Objects register themselves each frame; `collide()` finds neighbors; `query_segment()` supports line queries (missile homing). Fixed-radius proximity checks via `Object::collide()`. `grid_debug.cpp` implements `Grid::draw_debug()`, a collision-grid overlay toggled in-game (default key `b`).
 
 ### Coordinate System
 
@@ -185,7 +210,7 @@ Serialization: `capture_state()` / `restore_state()` for save/load.
 
 ### Rendering
 
-**OpenGL compatibility** — `gl_compat.h` and `gles2_compat.h/cpp` abstract desktop OpenGL 3.3 Core vs OpenGL ES 2 (mobile/web). `gles2_compat` provides GLSL program wrappers, vertex/color buffers, and line-thickening for WebGL (which disallows `lineWidth > 1`).
+**OpenGL compatibility** — `gl_compat.h` and `gles2_compat.h/cpp` abstract desktop OpenGL 3.3 Core vs OpenGL ES 2 (mobile/web/Xbox). `gles2_compat` provides GLSL program wrappers, vertex/color buffers, and line-thickening for WebGL (which disallows `lineWidth > 1`).
 
 **Mesh system** (`mesh.h/cpp`) — GPU geometry with interleaved position/colour data. Builder API:
 ```cpp
@@ -201,7 +226,7 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 
 **Split-screen** — `GLGame` renders into multiple viewports for two-player mode. `view/overlay.cpp` handles all HUD elements: score, lives, weapons, temperature, level, respawn timer, keymap, god-mode indicator, touch controls, edge indicators, debug info.
 
-**Starfield** — `GLStarfield` (`glstarfield.h/cpp`): parallax background with layered star densities.
+**Starfield** — `GLStarfield` (`glstarfield.h/cpp`): parallax background with layered star densities; star count scales with the `star_density` preference (`star_density_scale()`).
 
 **AsteroidDrawer** (`asteroid_drawer.h/cpp`) — renders asteroids; animates crack lines on tough asteroids.
 
@@ -219,11 +244,13 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 
 `Enemy` (`enemy.h/cpp`) — inherits `Ship`; parameterized by `difficulty`; takes target and asteroid lists for the `Follower` behaviour.
 
-`GLShip` (`glship.h/cpp`) — rendering + input wrapper: keyboard, controller (SDL_GameController with analog sticks), touch joystick. Camera following with optional rotation (`toggle_rotate_view`). Smooth camera follow (configurable rate).
+`GLShip` (`glship.h/cpp`) — rendering + input wrapper: keyboard, controller (SDL_GameController with analog sticks), touch joystick. Camera following with optional rotation (`toggle_rotate_view`) and configurable smoothing rate (`camera_smoothing` preference; 0 = instant snap).
 
 `GLEnemy` (`glenemy.h/cpp`) — rendering wrapper for `Enemy`.
 
 `GLCar` (`glcar.h/cpp`) — alternative player ship model with left/right jets.
+
+`GLStation` (`glstation.h/cpp`) — inherits `Ship`; rotating ring station with `health` and per-wave difficulty that deploys waves of `GLEnemy` ships; `capture_state()` / `restore_state()` for save/load.
 
 ### Save / Load
 
@@ -232,18 +259,18 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 - `Player`: score, lives, kills, respawning flag, position, velocity, facing, weapons, nova state
 - `Asteroid`: position, velocity, radius, health, all special flags and transient state
 - `Pickup`: type, position, weapon_index
-- `BlackHole`, `Enemy`, `Station`: positional/state data
+- `BlackHole`, `Enemy`, `Station`: positional/state data (Station includes its deployed enemies)
 - `GameState`: generation, world size, level_cleared, players, all object lists
 
-Auto-save triggers on pause or player death if the player has lives or score remaining.
+Auto-save triggers on pause or player death if the player has lives or score remaining, and on level completion.
 
 **Preferences** (`preferences.h/cpp`) — INI file in SDL pref path; global `g_prefs` instance:
-- Per-player keyboard bindings (11 keys + 2 analog sensitivity settings); defaults: WASD + Space/X
-- General: pause (P), menu (Esc), add_player2 (Enter)
-- Display: fullscreen flag, window resolution
+- Per-player (`PlayerKeys`): 12 key bindings (left, right, thrust, shoot, reverse, mine, next_weapon, next_secondary, boost, teleport, help, toggle_rotate_view; defaults WASD + Space/X) plus `keyboard_sensitivity` and `camera_smoothing` floats
+- General (`GeneralKeys`): pause (P), menu (Esc), add_player2 (Enter), toggle_friendly_fire (G), skip_level (N), toggle_debug_grid (B), time_speed_up (=), time_slow_down (-), time_reset (0), toggle_fullscreen (F)
+- Display: `fullscreen` flag, `window_width`/`window_height`
 - Camera: `rotate_view` flag
-- Gameplay: `friendly_fire` flag
-- API: `load_preferences()`, `save_preferences()`
+- Gameplay: `friendly_fire` flag, `star_density` multiplier (user-editable float in the INI)
+- API: `load_preferences()`, `save_preferences()`; missing keys in old files are silently ignored
 
 **High Score** (`highscore.h`) — `load_high_score()` / `save_high_score(score)`.
 
@@ -256,7 +283,7 @@ Auto-save triggers on pause or player death if the player has lives or score rem
 
 ### Audio
 
-SDL_mixer; WAV files for effects, MP3 for music. All assets live in `audio/`. Mobile builds copy into the app bundle/assets. God Mode weapon plays special music with a warning phase.
+SDL_mixer; all assets are WAV files in `audio/` (generated by `generate_sounds.py`). Mobile builds copy them into the app bundle/assets. God Mode weapon plays special music with a warning phase in the final 3 seconds.
 
 ## CI/CD
 
@@ -270,6 +297,7 @@ GitHub Actions runs builds on every push to `master`, `main`, or `claude/*` bran
 | `.github/workflows/linux.yml` | Linux executable |
 | `.github/workflows/windows.yml` | Windows executable |
 | `.github/workflows/web.yml` | WebAssembly + GitHub Pages deploy (master/main only) |
+| `.github/workflows/xbox-dev.yml` | GDK Desktop (Gaming.Desktop.x64) build — catches Xbox-port compile errors without hardware |
 
 **Deployment workflows** (triggered manually):
 - `.github/workflows/deploy-steam.yml` — Steam (Windows/macOS/Linux via Steamworks SDK)
@@ -277,11 +305,13 @@ GitHub Actions runs builds on every push to `master`, `main`, or `claude/*` bran
 - `.github/workflows/deploy-android.yml` — Play Store
 - `.github/workflows/deploy-itch.yml` — Itch.io
 
+**Disabled workflows** — `.github/workflows/disabled/` holds inactive deployment workflows (`deploy-macos.yml`, `deploy-windows.yml`, `deploy-xbox.yml`); move a file back into `workflows/` to re-enable it.
+
 **Steam integration** — `steam_build.h` (constants/SDK), `steam/` contains Steamworks VDF config files (`app_build.vdf`, `depot_build_windows.vdf`, `depot_build_macos.vdf`, `depot_build_linux.vdf`).
 
 ## Conventions & Patterns
 
-1. **GL-prefix pattern** — Rendering wrappers (`GLShip`, `GLGame`, `GLEnemy`, `GLCar`) wrap pure logic classes. Never put rendering into logic classes.
+1. **GL-prefix pattern** — Rendering wrappers (`GLShip`, `GLGame`, `GLEnemy`, `GLCar`) wrap pure logic classes. Never put rendering into logic classes. (`GLStation` is the one existing exception — it inherits `Ship` directly.)
 2. **Weapon/pickup pairs** — Every weapon type has a corresponding `*_pickup` class at root level.
 3. **Behaviour pattern** — Abstract `Behaviour` base with `done` flag; `Ship` owns a list and runs them each frame.
 4. **State machine** — `StateManager` + `State` subclasses drive all top-level transitions.
