@@ -298,6 +298,7 @@ GitHub Actions runs builds on every push to `master`, `main`, or `claude/*` bran
 | `.github/workflows/windows.yml` | Windows executable |
 | `.github/workflows/web.yml` | WebAssembly + GitHub Pages deploy (master/main only) |
 | `.github/workflows/xbox-dev.yml` | GDK Desktop (Gaming.Desktop.x64) build — catches Xbox-port compile errors without hardware |
+| `.github/workflows/xbox-console-smoke.yml` | Compile-only check of the `_GAMING_XBOX` console paths with MSVC under `WINAPI_FAMILY_GAMES` (no GDKX/NDA material; GDK-only headers stubbed in `xbox/smoke_stubs/`) |
 
 **Deployment workflows** (triggered manually):
 - `.github/workflows/deploy-steam.yml` — Steam (Windows/macOS/Linux via Steamworks SDK)

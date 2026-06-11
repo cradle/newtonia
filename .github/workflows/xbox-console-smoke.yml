@@ -1,0 +1,116 @@
+name: Xbox Console Smoke
+
+# Compile-only smoke test of the Xbox CONSOLE (_GAMING_XBOX) code paths on a
+# stock hosted runner — no NDA material required.
+#
+# The real console toolchain (GDKX: Scarlett MSBuild platform, D3D12.X,
+# console libs) is only available to licensed ID@Xbox partners, so hosted
+# runners cannot do a true Gaming.Xbox.Scarlett.x64 build (see
+# xbox/PORT_PLAN.md Phase 5). What a hosted runner CAN do — the same trick
+# vcpkg's community Xbox triplets use — is compile against the Xbox Game OS
+# API partition with plain MSVC + Windows SDK (>= 22000):
+#
+#   /DWINAPI_FAMILY=WINAPI_FAMILY_GAMES
+#
+# That partition excludes GDI, D3D11, OpenGL, and other desktop-only Win32
+# APIs, so this job catches forbidden-API usage at compile time and keeps
+# the _GAMING_XBOX branches — which no other workflow compiles — building.
+#
+# What is real here: windows.h under the GAMES partition, SDL2/SDL2_mixer
+# headers, Khronos EGL headers, and every game source file.
+# What is stubbed: the two GDK-only headers used by xbox_main.cpp's PLM
+# block (xbox/smoke_stubs/ — see the warning comments there).
+# No link step: the console import libraries are GDKX-only.
+
+on:
+  push:
+    branches: [master, main, 'claude/**']
+  pull_request:
+  workflow_dispatch:
+
+env:
+  SDL2_VERSION: 2.30.9
+  SDL2_MIXER_VERSION: 2.8.0
+
+jobs:
+  compile-smoke:
+    runs-on: windows-latest
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Prebuilt VC development packages are used for their HEADERS only
+      # (compile-only job; SDL itself is not built and nothing is linked).
+      - name: Fetch SDL2 + SDL2_mixer headers
+        shell: pwsh
+        run: |
+          curl -sSfL -o sdl2.zip "https://github.com/libsdl-org/SDL/releases/download/release-$env:SDL2_VERSION/SDL2-devel-$env:SDL2_VERSION-VC.zip"
+          curl -sSfL -o mixer.zip "https://github.com/libsdl-org/SDL_mixer/releases/download/release-$env:SDL2_MIXER_VERSION/SDL2_mixer-devel-$env:SDL2_MIXER_VERSION-VC.zip"
+          Expand-Archive sdl2.zip  -DestinationPath "$env:RUNNER_TEMP\sdl"
+          Expand-Archive mixer.zip -DestinationPath "$env:RUNNER_TEMP\sdl"
+          $sdlInc   = "$env:RUNNER_TEMP\sdl\SDL2-$env:SDL2_VERSION\include"
+          $mixerInc = "$env:RUNNER_TEMP\sdl\SDL2_mixer-$env:SDL2_MIXER_VERSION\include"
+          if (-not (Test-Path "$sdlInc\SDL.h"))         { Write-Error "SDL.h not found at $sdlInc"; exit 1 }
+          if (-not (Test-Path "$mixerInc\SDL_mixer.h")) { Write-Error "SDL_mixer.h not found at $mixerInc"; exit 1 }
+          echo "SDL_INC=$sdlInc"     >> $env:GITHUB_ENV
+          echo "MIXER_INC=$mixerInc" >> $env:GITHUB_ENV
+
+      # Khronos EGL headers — the standard (non-ANGLE) headers, whose Win32
+      # branch types EGLNativeWindowType as HWND, matching how xbox_main.cpp
+      # uses it. Fetched from the KhronosGroup/EGL-Registry GitHub repo
+      # (registry.khronos.org rejects some CI fetches); these headers are
+      # effectively frozen, so tracking main is safe.
+      - name: Fetch EGL headers (Khronos EGL-Registry)
+        shell: pwsh
+        run: |
+          $base = "https://raw.githubusercontent.com/KhronosGroup/EGL-Registry/main/api"
+          $inc = "$env:RUNNER_TEMP\egl-include"
+          New-Item -ItemType Directory -Force -Path "$inc\EGL", "$inc\KHR" | Out-Null
+          curl -sSfL -o "$inc\EGL\egl.h"         "$base/EGL/egl.h"
+          curl -sSfL -o "$inc\EGL\eglplatform.h" "$base/EGL/eglplatform.h"
+          curl -sSfL -o "$inc\KHR\khrplatform.h" "$base/KHR/khrplatform.h"
+          echo "EGL_INC=$inc" >> $env:GITHUB_ENV
+
+      # Same source set as xbox/CMakeLists.txt: root + weapon/ + view/ minus
+      # other platforms' entry points, plus the SDL GDK stubs.
+      - name: Write compiler response file
+        shell: pwsh
+        run: |
+          $srcs = @()
+          $srcs += Get-ChildItem -Path . -Filter *.cpp -File |
+                     Where-Object { $_.Name -notin @('glut.cpp','android_main.cpp','web_main.cpp') }
+          $srcs += Get-ChildItem -Path weapon -Filter *.cpp -File
+          $srcs += Get-ChildItem -Path view   -Filter *.cpp -File
+          $srcs += Get-Item xbox\sdl_gdk_stubs.cpp
+
+          New-Item -ItemType Directory -Force -Path smoke_obj | Out-Null
+
+          $lines = @(
+            '/c', '/nologo', '/MP', '/W3', '/EHsc', '/std:c++14',
+            '/DWINAPI_FAMILY=WINAPI_FAMILY_GAMES',
+            '/D_GAMING_XBOX',
+            '/D_USE_MATH_DEFINES',
+            '/D_CRT_SECURE_NO_WARNINGS',
+            '/wd4005',                # M_PI redefinition (SDL_stdinc vs CRT), as in xbox/CMakeLists.txt
+            '/I.', '/Iweapon', '/Iview',
+            "/I$env:SDL_INC",
+            "/I$env:MIXER_INC",
+            "/I$env:EGL_INC",
+            '/Ixbox\smoke_stubs',
+            '/Fosmoke_obj\'
+          )
+          $lines += $srcs | ForEach-Object { $_.FullName }
+          $lines | Set-Content -Path smoke.rsp -Encoding ascii
+          Write-Host "Compiling $($srcs.Count) sources:"
+          Get-Content smoke.rsp
+
+      - name: Compile (WINAPI_FAMILY_GAMES + _GAMING_XBOX)
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath`) do set "VSDIR=%%i"
+          if not defined VSDIR (echo vswhere found no Visual Studio & exit /b 1)
+          call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat"
+          cl @smoke.rsp

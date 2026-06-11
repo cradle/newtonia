@@ -162,7 +162,13 @@ All in plain C++ behind small abstractions; testable on dev kit only.
    `XSuspendResumeAcknowledge`) completes within the time budget; handle
    resume timer reset (exists: `s_reset_tick`); handle constrained mode
    (Quick Resume) — treat like focus loss. Register for resume callbacks
-   too, not just suspend.
+   too, not just suspend. **Verify the API itself:** `XSuspendResume.h` /
+   `XSuspendResumeRegisterForSuspend` do not appear in public GDK docs, and
+   SDL's GDK backend uses `RegisterAppStateChangeNotification`
+   (`appnotify.h`) instead — the entry point's PLM block was written
+   without a compiler and must be checked against the real GDKX headers
+   (the console smoke workflow compiles it against stubs in
+   `xbox/smoke_stubs/` that mirror our assumptions, not the real API).
 2. **User identity:** add minimal `XUserAddAsync` sign-in at boot
    (silent default user), handle sign-out mid-game (pause + return to
    menu). Required by GDK cert even for offline titles.
@@ -188,10 +194,28 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 2. Fill in `MicrosoftGame.config` identity from Partner Center; align
    `TargetDeviceFamily` (Scarlett) across config + `PackagingLayout.xml`;
    bump `configVersion` if current GDK requires.
-3. CI: hosted runners cannot build Scarlett (GDKX is NDA). Either
-   (a) a self-hosted Windows runner with GDKX for a `xbox-console.yml`
-   compile job, or (b) keep console builds manual and rely on
-   `xbox-dev.yml` (Desktop) to catch shared-code breakage — start with (b).
+3. CI: there are four tiers of "Xbox build in CI", confirmed against
+   Microsoft's docs (public GDK README, BWOI docs, vcpkg Xbox triplets):
+   - **GDK Desktop on hosted runners** — works today (`xbox-dev.yml`); the
+     public winget GDK is PC-only (`Gaming.Desktop.x64`).
+   - **Console API-surface compile smoke on hosted runners** — works today
+     with zero NDA material (`xbox-console-smoke.yml`): plain MSVC +
+     Windows SDK ≥ 22000 compiling all sources with
+     `/DWINAPI_FAMILY=WINAPI_FAMILY_GAMES /D_GAMING_XBOX`. The Xbox Game OS
+     partition excludes GDI/D3D11/OpenGL desktop APIs, so this catches
+     forbidden-API usage and keeps the otherwise never-compiled
+     `_GAMING_XBOX` paths building. GDK-only headers are stubbed
+     (`xbox/smoke_stubs/`); no link step.
+   - **Full `Gaming.Xbox.Scarlett.x64` build** — requires the NDA GDKX
+     (ID@Xbox); the Scarlett MSBuild platform, D3D12.X, and console libs
+     are not in the public GDK, so stock hosted runners cannot do it.
+     Microsoft's "Build WithOut Installing" (BWOI) flow is designed for CI
+     agents (extracted GDK/GXDK + env vars). Recommended: self-hosted
+     Windows runner with GDKX. A hosted runner pulling extracted GDKX from
+     private storage is mechanically possible but needs an NDA-terms check
+     first — and this repo is public, so GDKX bytes must never reach logs,
+     caches, or artifacts.
+   - **Packaging/submission** — same GDKX constraint as above.
 4. Rework `deploy-xbox.yml` before re-enabling: keep the makepkg packaging
    job (run on the self-hosted runner), but verify the submission step —
    StoreBroker may not handle GDK `.xvc`; if not, replace with manual
@@ -226,7 +250,8 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 | 10 | `SaveStorage` abstraction + XGameSave impl (if cert requires) | `savegame.cpp`, `preferences.cpp`, `highscore.h`, new `xbox/gdk_storage.*` | 4 |
 | 11 | ✅ TV safe-area inset (`Overlay::SAFE_AREA_SCALE`, 90% on `_GAMING_XBOX`) | `view/overlay.h/cpp`, `glgame.cpp` (HUD ortho + minimap viewport), `menu.cpp` | 4 |
 | 12 | 🔶 Store assets + config identity + family alignment — placeholder art generated (`xbox/generate_assets.py` → `xbox/Assets/`) and `TargetDeviceFamily` aligned to Scarlett; identity/StoreId still TODO (needs Partner Center), real art still TODO | `xbox/Assets/`, `MicrosoftGame.config`, `PackagingLayout.xml` | 5 |
-| 13 | Self-hosted console CI job (optional) + deploy workflow rework | `.github/workflows/` | 5 |
+| 13 | Self-hosted console CI job (needs GDKX) + deploy workflow rework | `.github/workflows/` | 5 |
+| 14 | ✅ Console API-surface compile smoke on hosted runners (`WINAPI_FAMILY_GAMES` + `_GAMING_XBOX`, compile-only) | `.github/workflows/xbox-console-smoke.yml`, `xbox/smoke_stubs/` | 5 |
 
 ## 5. Sequencing and effort (single developer, rough)
 
