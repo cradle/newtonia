@@ -13,6 +13,12 @@
 
 const float Overlay::CORNER_INSET = 55.0f;
 
+#ifdef _GAMING_XBOX
+const float Overlay::SAFE_AREA_SCALE = 0.9f;
+#else
+const float Overlay::SAFE_AREA_SCALE = 1.0f;
+#endif
+
 void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   title_text(glgame, glship);
   level(glgame, glship);

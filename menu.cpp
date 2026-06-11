@@ -1,4 +1,5 @@
 #include "typer.h"
+#include "asset_path.h"
 #include "highscore.h"
 #include "glstarfield.h"
 #include "glgame.h"
@@ -7,6 +8,7 @@
 #include "gl_compat.h"
 #include "mat4.h"
 #include "steam_build.h"
+#include "view/overlay.h"
 #include <iostream>
 #include <string>
 
@@ -78,7 +80,7 @@ Menu::Menu() :
   attract_mode_ = false;
 #endif
   if(music == NULL) {
-    music = Mix_LoadMUS("audio/title.wav");
+    music = Mix_LoadMUS(asset_path("audio/title.wav").c_str());
     if(music == NULL) {
       std::cout << "Unable to load title.wav (" << Mix_GetError() << ")" << std::endl;
     } else {
@@ -118,8 +120,12 @@ void Menu::draw() {
   starfield->draw_rear(viewpoint);
 
   // Ortho overlay for text (identity model — Typer applies its own transforms via pre_draw).
+  // Extents are widened by SAFE_AREA_SCALE so menu text stays inside the
+  // TV title-safe region on Xbox (no-op elsewhere).
+  float menu_hw = window.x() / Overlay::SAFE_AREA_SCALE;
+  float menu_hh = window.y() / Overlay::SAFE_AREA_SCALE;
   float ortho[16];
-  mat4_ortho(ortho, -window.x(), window.x(), -window.y(), window.y(), -1.0f, 1.0f);
+  mat4_ortho(ortho, -menu_hw, menu_hw, -menu_hh, menu_hh, -1.0f, 1.0f);
   gles2_set_vp(ortho);
 
   if (options_mode_) {

@@ -219,12 +219,12 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 | 3 | Rendering spike + decision (ANGLE-GDKX vs native D3D12.X backend) | new `xbox/` backend or ANGLE fork | 2 |
 | 4 | Switch console SDL2 to official GDK build; drop `/U__GDK__` + stubs for console | `xbox/CMakeLists.txt`, `sdl_gdk_stubs.cpp` | 2 |
 | 5 | Rework `_GAMING_XBOX` present path per #3 | `xbox_main.cpp` | 3 |
-| 6 | `asset_path()` helper if package CWD ≠ exe dir | new small header + ~25 audio call sites (mechanical) | 3 |
+| 6 | ✅ `asset_path()` helper (SDL_GetBasePath prefix on GDK) | `asset_path.h` + 33 audio call sites | 3 |
 | 7 | WarpPass 4K performance (profile; optional internal-res scale) | `warp_pass.cpp` | 3 |
 | 8 | PLM resume registration + constrained mode | `xbox_main.cpp` | 4 |
 | 9 | XUser sign-in + sign-out handling | `xbox_main.cpp`, small `xbox/xbl_user.*` | 4 |
 | 10 | `SaveStorage` abstraction + XGameSave impl (if cert requires) | `savegame.cpp`, `preferences.cpp`, `highscore.h`, new `xbox/gdk_storage.*` | 4 |
-| 11 | TV safe-area inset for HUD | `view/overlay.cpp`, `typer.cpp` | 4 |
+| 11 | ✅ TV safe-area inset (`Overlay::SAFE_AREA_SCALE`, 90% on `_GAMING_XBOX`) | `view/overlay.h/cpp`, `glgame.cpp` (HUD ortho + minimap viewport), `menu.cpp` | 4 |
 | 12 | Store assets + config identity + family alignment | `xbox/Assets/`, `MicrosoftGame.config`, `PackagingLayout.xml` | 5 |
 | 13 | Self-hosted console CI job (optional) + deploy workflow rework | `.github/workflows/` | 5 |
 

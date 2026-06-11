@@ -1,4 +1,5 @@
 #include "shield.h"
+#include "../asset_path.h"
 #include "../ship.h"
 #include "../shield_behaviour.h"
 #include <iostream>
@@ -9,7 +10,7 @@ namespace Weapon {
     _ammo = 10;
     unlimited = false;
 
-    empty_sound = Mix_LoadWAV("audio/empty.wav");
+    empty_sound = Mix_LoadWAV(asset_path("audio/empty.wav").c_str());
     if(empty_sound == NULL) {
       std::cout << "Unable to load empty.wav (" << Mix_GetError() << ")" << std::endl;
     }

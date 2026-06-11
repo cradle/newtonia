@@ -1,4 +1,5 @@
 #include "asteroid.h"
+#include "asset_path.h"
 #include "wrapped_point.h"
 
 #include <list>
@@ -102,13 +103,13 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
     num_killable++;
   }
   if(explode_sound == NULL) {
-    explode_sound = Mix_LoadWAV("audio/explode.wav");
+    explode_sound = Mix_LoadWAV(asset_path("audio/explode.wav").c_str());
     if(explode_sound == NULL) {
       std::cout << "Unable to load explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(thud_sound == NULL) {
-    thud_sound = Mix_LoadWAV("audio/thud.wav");
+    thud_sound = Mix_LoadWAV(asset_path("audio/thud.wav").c_str());
     if(thud_sound == NULL) {
         std::cout << "Unable to load thud.wav (" << Mix_GetError() << ")" << std::endl;
     } else {
@@ -116,13 +117,13 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
     }
   }
   if(ting_sound == NULL) {
-    ting_sound = Mix_LoadWAV("audio/ting.wav");
+    ting_sound = Mix_LoadWAV(asset_path("audio/ting.wav").c_str());
     if(ting_sound == NULL) {
         std::cout << "Unable to load ting.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(asteroid_ting_sound == NULL) {
-    asteroid_ting_sound = Mix_LoadWAV("audio/asteroid_ting.wav");
+    asteroid_ting_sound = Mix_LoadWAV(asset_path("audio/asteroid_ting.wav").c_str());
     if(asteroid_ting_sound == NULL) {
         std::cout << "Unable to load asteroid_ting.wav (" << Mix_GetError() << ")" << std::endl;
     }
