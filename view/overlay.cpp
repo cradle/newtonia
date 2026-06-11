@@ -226,8 +226,11 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
         if(!is_touch_mode()) {
           if(glgame->has_free_controller())
             Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-10, "player 2 press start to join", 8);
+#ifndef _GAMING_XBOX
+          // Keyboard join hint — on Xbox the only join path is a second controller.
           else if(!is_steam_gamemode())
             Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-10, "player 2 press enter to join", 8);
+#endif
         }
       } else {
         Typer::draw_centered(0, Typer::scaled_window_height-10, glship->has_controller() ? "return to menu with start" : "return to menu with ESC", 8);
