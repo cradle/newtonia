@@ -2,8 +2,8 @@
 //
 // Uses SDL2 with OpenGL ES 2.0 via ANGLE, which translates GLES calls to
 // Direct3D 11 — the same path used on Android / Web, avoiding a full graphics
-// rewrite.  The GDK CMake toolchain (see xbox/CMakeLists.txt) links the ANGLE
-// libraries (libEGL / libGLESv2) that ship with the GDK.
+// rewrite.  The ANGLE libraries (libEGL / libGLESv2) come from the
+// ANGLE.WindowsStore NuGet package, not the GDK (see xbox/CMakeLists.txt).
 //
 // Mirrors android_main.cpp: SDL2 event loop, SDL_GameController input,
 // focus-lost / focus-gained lifecycle events required by GDK certification.

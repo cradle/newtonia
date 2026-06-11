@@ -214,8 +214,8 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 
 | # | Item | Files | Phase |
 |---|------|-------|-------|
-| 1 | Hide keyboard-only rows in help overlay on controller | `glship.cpp` (draw_keymap) | 1 |
-| 2 | Fix "ANGLE bundled with GDK" comment | `xbox/CMakeLists.txt` | 1 |
+| 1 | ✅ Hide keyboard-only rows in help overlay on controller | `glship.cpp` (draw_keymap) | 1 |
+| 2 | ✅ Fix "ANGLE bundled with GDK" comment | `xbox/CMakeLists.txt`, `xbox_main.cpp`, `CLAUDE.md` | 1 |
 | 3 | Rendering spike + decision (ANGLE-GDKX vs native D3D12.X backend) | new `xbox/` backend or ANGLE fork | 2 |
 | 4 | Switch console SDL2 to official GDK build; drop `/U__GDK__` + stubs for console | `xbox/CMakeLists.txt`, `sdl_gdk_stubs.cpp` | 2 |
 | 5 | Rework `_GAMING_XBOX` present path per #3 | `xbox_main.cpp` | 3 |

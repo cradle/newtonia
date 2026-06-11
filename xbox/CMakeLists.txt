@@ -30,8 +30,10 @@ project(newtonia CXX)
 #   _GAMING_DESKTOP    for the Desktop target
 # Both are handled by xbox_main.cpp; do not set them manually here.
 #
-# ANGLE (libEGL / libGLESv2) is bundled with the GDK and its import libs are
-# automatically on the linker search path once the platform is loaded.
+# ANGLE (libEGL / libGLESv2) is NOT bundled with the GDK.  CI fetches the
+# ANGLE.WindowsStore NuGet package and passes -DANGLE_INCLUDE_DIR /
+# -DANGLE_LIB_DIR (see xbox-dev.yml); local builds can set the same cache
+# variables, or set GDK_ROOT to enable the search fallbacks below.
 # ---------------------------------------------------------------
 
 set(CMAKE_CXX_STANDARD 11)
