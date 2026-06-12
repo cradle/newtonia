@@ -114,4 +114,5 @@ referencing `xbox/PORT_PLAN.md` Phase 1.
 
 | Date | Tester | Build (commit) | Result | Notes |
 |------|--------|----------------|--------|-------|
-|      |        |                |        |       |
+| 2026-06-12 | glenn | `cd63075` | ❌ A/D | Controller hot-plug dead: pad connected after launch detected ("press start") but no input. Pre-connected pad OK. → issue #287 |
+| 2026-06-12 | glenn | `130d89a` | ✅ A/D | Hot-plug fix confirmed (open-on-DEVICEADDED, issue #287 closed). Remaining sections not yet run. |
