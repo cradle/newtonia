@@ -76,8 +76,14 @@ Status: planning document. Companion to `xbox/CMakeLists.txt`, `xbox_main.cpp`,
 
 Blocking everything console-side; start immediately.
 
-1. Enrol in ID@Xbox (https://developer.microsoft.com/games). Approval can
-   take weeks.
+Status (2026-06): Partner Center developer account created (new free
+onboarding flow via storedeveloper.microsoft.com); ID@Xbox application
+submitted and concept accepted — **awaiting NDA / publishing agreements**.
+Console title creation in Partner Center, GDKX download, and dev-kit
+request all unlock once the agreements are signed.
+
+1. ✅ Enrol in ID@Xbox (https://developer.microsoft.com/games). Approval can
+   take weeks. (Applied; awaiting agreements.)
 2. On approval: Partner Center title creation → real `Identity/@Name`,
    `@Publisher`, `StoreId` for `MicrosoftGame.config`.
 3. Obtain GDKX access + request a dev kit loan.
@@ -92,6 +98,7 @@ The Desktop build compiles but is largely runtime-unvalidated.
 1. Manual test pass of the CI artifact on a Windows machine: boot, menu,
    options persistence, 1P/2P with pads, pause/focus loss, save/resume,
    fullscreen toggle, window resize, quit. Log via `newtonia.log`.
+   **Checklist: `xbox/DESKTOP_TEST_PASS.md`.**
 2. Fix whatever that pass shakes out (likely candidates: pbuffer blit
    performance at large window sizes — `glReadPixels` + `StretchDIBits` is
    CPU-bound; acceptable for a dev vehicle, document as Desktop-only).
