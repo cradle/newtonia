@@ -354,13 +354,25 @@ int main(int argc, char *argv[])
     // Open the first available game controller (the GDK exposes all connected
     // Xbox controllers as SDL_GameController devices).
     SDL_JoystickEventState(SDL_ENABLE);
+    SDL_GameControllerEventState(SDL_ENABLE);
     SDL_GameController *controller = nullptr;
+    // Controller diagnostics (issue #287): enumerate what SDL sees at boot so
+    // newtonia.log pinpoints whether detection, opening, or events fail.
+    SDL_Log("Joysticks at startup: %d", SDL_NumJoysticks());
     for (int i = 0; i < SDL_NumJoysticks(); i++) {
-        if (SDL_IsGameController(i)) {
+        const char *name = SDL_JoystickNameForIndex(i);
+        SDL_Log("  joystick %d: %s%s", i,
+                name ? name : "(unnamed)",
+                SDL_IsGameController(i) ? " [gamecontroller]" : " [NOT a gamecontroller]");
+        if (!controller && SDL_IsGameController(i)) {
             controller = SDL_GameControllerOpen(i);
-            if (controller) break;
+            if (controller)
+                SDL_Log("  opened controller %d: %s", i, SDL_GameControllerName(controller));
+            else
+                SDL_Log("  SDL_GameControllerOpen(%d) FAILED: %s", i, SDL_GetError());
         }
     }
+    if (!controller) SDL_Log("No controller opened at startup (hot-plug still active)");
 
     load_preferences();
     SDL_Log("Preferences loaded");
@@ -453,6 +465,27 @@ int main(int argc, char *argv[])
 #endif
                 }
                 break;
+
+            // Controller diagnostics (issue #287) — log device arrival and the
+            // first button press, then forward to the game like the default case.
+            case SDL_CONTROLLERDEVICEADDED:
+                SDL_Log("SDL_CONTROLLERDEVICEADDED (device index %d)", (int)e.cdevice.which);
+                s_game->controller(e);
+                break;
+            case SDL_CONTROLLERDEVICEREMOVED:
+                SDL_Log("SDL_CONTROLLERDEVICEREMOVED (instance %d)", (int)e.cdevice.which);
+                s_game->controller(e);
+                break;
+            case SDL_CONTROLLERBUTTONDOWN: {
+                static bool first_button_logged = false;
+                if (!first_button_logged) {
+                    SDL_Log("First SDL_CONTROLLERBUTTONDOWN (button %d) — controller events flowing",
+                            (int)e.cbutton.button);
+                    first_button_logged = true;
+                }
+                s_game->controller(e);
+                break;
+            }
 
             default:
                 s_game->controller(e);
