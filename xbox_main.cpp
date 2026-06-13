@@ -175,6 +175,16 @@ static void CALLBACK plm_suspend_callback(void * /*ctx*/,
 }
 #endif // _GAMING_XBOX
 
+// Map an SDL keycode to the game's key encoding. ASCII keys (< 128) pass
+// through; function keys F1..F12 become 129..140 (128 + GLUT_KEY_Fn), matching
+// how glut.cpp feeds them and what the bindings expect (e.g. help = F1 = 129).
+// Returns 0 for keys the game doesn't use. SDLK_F1..SDLK_F12 are contiguous.
+static unsigned char game_key_from_sdl(SDL_Keycode k)
+{
+    if (k >= SDLK_F1 && k <= SDLK_F12) return (unsigned char)(129 + (k - SDLK_F1));
+    return (k < 128) ? (unsigned char)k : 0;
+}
+
 int main(int argc, char *argv[])
 {
     SDL_SetMainReady();
@@ -440,7 +450,7 @@ int main(int argc, char *argv[])
                     // fall through — game also receives the key, matching glut.cpp
                 }
 #endif
-                unsigned char key = (k < 128) ? (unsigned char)k : 0;
+                unsigned char key = game_key_from_sdl(k);
                 if (key) s_game->keyboard(key, 0, 0);
                 break;
             }
@@ -450,7 +460,7 @@ int main(int argc, char *argv[])
 #ifndef _GAMING_XBOX
                 if (k == g_prefs.general_keys.toggle_fullscreen) break; // not passed to game
 #endif
-                unsigned char key = (k < 128) ? (unsigned char)k : 0;
+                unsigned char key = game_key_from_sdl(k);
                 if (key) s_game->keyboard_up(key, 0, 0);
                 break;
             }
