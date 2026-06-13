@@ -21,6 +21,13 @@ name: Xbox Console Smoke
 # What is stubbed: the two GDK-only headers used by xbox_main.cpp's PLM
 # block (xbox/smoke_stubs/ — see the warning comments there).
 # No link step: the console import libraries are GDKX-only.
+#
+# This is INTENTIONALLY NOT the Ninja/BWOI build used by xbox-dev.yml. It is a
+# fast, NDA-free, compile-only API check of the _GAMING_XBOX paths via a direct
+# `cl @smoke.rsp` invocation. It does not extract the GDK (the public ZIP has
+# only GRDK/PC headers, not the GXDK console headers this needs — hence the
+# stubs). The real console build (Ninja + GDKX on a self-hosted runner) lives
+# in .github/workflows/disabled/deploy-xbox.yml.
 
 on:
   push:
