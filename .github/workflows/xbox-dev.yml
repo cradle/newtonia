@@ -30,10 +30,12 @@ concurrency:
 
 jobs:
   build:
-    # windows-2022: its MSVC toolset (v143) matches the GDK's libs exactly.
-    # Now that the build is Ninja-based (no GDK MSBuild platform), windows-latest
-    # would also work — switch when windows-2022 is retired.
-    runs-on: windows-2022
+    # windows-latest: the Ninja build needs no GDK MSBuild platform and no
+    # specific VS version (the GDK is consumed as plain headers + ANGLE), so it
+    # is runner-agnostic and tracks the current image. Everything runner-
+    # specific is sourced self-contained: the GDK and the app-CRT DLLs come from
+    # the downloaded GDK ZIP, ANGLE from NuGet, MSVC/Ninja via vswhere + vcvars.
+    runs-on: windows-latest
     timeout-minutes: 30
 
     env:
