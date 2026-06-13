@@ -38,11 +38,7 @@ jobs:
   # 1. Build the Xbox package                                           #
   # ------------------------------------------------------------------ #
   build:
-    # Pinned to windows-2022: the GDK platform steps assume the Visual
-    # Studio 2022 MSBuild tree (v170). windows-latest rolled to VS2026 +
-    # CMake 4.x, which breaks the GDK Gaming.* platform registration — see
-    # xbox-dev.yml for the full rationale.
-    runs-on: windows-2022
+    runs-on: windows-latest
 
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
