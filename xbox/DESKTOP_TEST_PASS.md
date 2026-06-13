@@ -69,7 +69,14 @@ referencing `xbox/PORT_PLAN.md` Phase 1.
       minimap moves to center.
 - [ ] Both players controllable simultaneously; G toggles friendly fire
       (HUD indicator appears).
-- [ ] P2 leave/game-over returns to single viewport cleanly.
+- [ ] When one player is permanently out (dead, no lives), their viewport
+      stays on screen (by design — split-screen does NOT collapse to one);
+      the surviving player keeps playing in their half.
+- [ ] Disconnect the dead (game-over) player's controller: the surviving
+      player keeps playing, game does NOT pause (issue: dead-player
+      disconnect must not interrupt the survivor).
+- [ ] Disconnect a still-alive player's controller (or one mid-respawn):
+      game DOES auto-pause as normal.
 
 ## G. Window management
 
