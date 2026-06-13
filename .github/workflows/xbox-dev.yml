@@ -287,6 +287,16 @@ jobs:
           if (-not $winSDKVer) { $winSDKVer = "10.0.19041.0" }
           Write-Host "Windows SDK version : $winSDKVer"
 
+          # Also export as an environment variable. CMake's VCTargetsPath probe
+          # project (and any project) does not import our repo-root
+          # Directory.Build.props, but MSBuild seeds properties from environment
+          # variables — so this is how the GDK Gaming.Desktop platform's
+          # WindowsSDK.targets gets a non-empty WindowsTargetPlatformVersion.
+          # With a BWOI extract there is no SDK registry entry for it to fall
+          # back on (that only existed because the winget install registered it),
+          # which is why the probe failed with MSB8037 (empty SDK version).
+          echo "WindowsTargetPlatformVersion=$winSDKVer" >> $env:GITHUB_ENV
+
           @(
             '<?xml version="1.0" encoding="utf-8"?>',
             '<Project>',
