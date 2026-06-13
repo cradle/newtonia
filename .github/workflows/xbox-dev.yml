@@ -37,7 +37,31 @@ jobs:
       - name: Install GDK
         shell: pwsh
         run: |
-          winget install -e --id Microsoft.Gaming.GDK `
+          # windows-2022 ships the App Installer package but does NOT expose the
+          # `winget` PATH alias for the runner's service account, so calling
+          # `winget` directly fails with "term not recognized". Resolve the exe
+          # inside the package by full path; install App Installer if absent.
+          function Find-Winget {
+            (Get-ChildItem "C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe" `
+               -ErrorAction SilentlyContinue |
+               Sort-Object FullName -Descending | Select-Object -First 1).FullName
+          }
+          $winget = Find-Winget
+          if (-not $winget) {
+            Write-Host "winget not found in WindowsApps; installing App Installer + deps..."
+            $t = $env:RUNNER_TEMP
+            Invoke-WebRequest -UseBasicParsing -Uri "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx" -OutFile "$t\vclibs.appx"
+            Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.8.6/Microsoft.UI.Xaml.2.8.x64.appx" -OutFile "$t\uixaml.appx"
+            Invoke-WebRequest -UseBasicParsing -Uri "https://aka.ms/getwinget" -OutFile "$t\winget.msixbundle"
+            Add-AppxPackage "$t\vclibs.appx"
+            Add-AppxPackage "$t\uixaml.appx"
+            Add-AppxPackage "$t\winget.msixbundle"
+            $winget = Find-Winget
+          }
+          if (-not $winget) { Write-Error "Could not locate or install winget"; exit 1 }
+          Write-Host "Using winget: $winget"
+
+          & $winget install -e --id Microsoft.Gaming.GDK `
             --accept-package-agreements `
             --accept-source-agreements `
             --disable-interactivity
