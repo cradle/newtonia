@@ -14,6 +14,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Auto-cancel a superseded in-progress run on the same ref (the GDK extract +
+# build is long; no point running stale ones).
+concurrency:
+  group: xbox-dev-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     # windows-2022 (has VS2022 / v170 — windows-latest rolled to VS2026 which
@@ -30,6 +36,7 @@ jobs:
     # other builds (all shared code).
     runs-on: windows-2022
     continue-on-error: true
+    timeout-minutes: 30
 
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -48,32 +55,48 @@ jobs:
           # Microsoft's Xbox-GDK-Samples extractgdk.cmd. Pinned to GDK
           # 2604.2.7849; bump in lockstep with the winget manifest hash.
           $ErrorActionPreference = "Stop"
+          function ts($m) { Write-Host "[$(Get-Date -Format HH:mm:ss)] $m" }
           $ver = "2604.2.7849"
           $ed  = "260402"
           $url = "https://github.com/microsoft/GDK/releases/download/April-2026-Update-2-v$ver/GDK_$ver.zip"
           $sha = "DCF28E26EBF442E16FFF05AB869E37534ABD85111C8BFD22401905D647688ADB"
           $zip = "$env:RUNNER_TEMP\gdk.zip"
-          Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip
+          ts "downloading $url"
+          # curl.exe is much faster than Invoke-WebRequest for a 1.3 GB file.
+          & curl.exe -sSfL -o $zip $url
           if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $sha) {
             Write-Error "GDK zip SHA256 mismatch"; exit 1
           }
           $src = "$env:RUNNER_TEMP\gdksrc"
-          Expand-Archive -Path $zip -DestinationPath $src -Force
+          New-Item -ItemType Directory -Force -Path $src | Out-Null
+          ts "extracting zip with tar"
+          # bsdtar (native on windows-2022) is dramatically faster than
+          # PowerShell's Expand-Archive on a 1.3 GB / 60-entry archive.
+          & tar.exe -xf $zip -C $src
+          if ($LASTEXITCODE -ne 0) { Write-Error "tar extract failed"; exit 1 }
           $installers = Join-Path $src "Installers"
 
           # Extract to a short path to avoid MAX_PATH issues. C:\gdkx has no
           # spaces, so TARGETDIR needs no quoting; the MSI source path (which
           # has spaces) is passed as a single Start-Process argument element.
+          # Skip "Kits Configuration" (only configures the Windows SDK via custom
+          # actions — not needed for BWOI, and we delete the extracted Windows
+          # Kits below anyway).
           $extracted = "C:\gdkx"
           New-Item -ItemType Directory -Force -Path $extracted | Out-Null
-          Get-ChildItem $installers -Filter *.msi | ForEach-Object {
-            Write-Host "Extracting $($_.Name)"
+          Get-ChildItem $installers -Filter *.msi |
+            Where-Object { $_.Name -notlike "*Kits Configuration*" } | ForEach-Object {
+            $log = "$env:RUNNER_TEMP\msi_$($_.BaseName -replace '[^\w]','_').log"
+            ts "msiexec /a $($_.Name)"
             $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList `
-              @("/quiet","/a", $_.FullName, "TARGETDIR=$extracted")
+              @("/quiet","/a", $_.FullName, "TARGETDIR=$extracted","/l*v", $log)
+            ts "  -> exit $($p.ExitCode)"
             if ($p.ExitCode -ne 0) {
+              if (Test-Path $log) { Write-Host "--- $($_.Name) MSI log (tail) ---"; Get-Content $log -Tail 40 }
               Write-Error "msiexec /a failed for $($_.Name) (exit $($p.ExitCode))"; exit 1
             }
           }
+          ts "extraction done"
           # The extracted "Windows Kits" subset conflicts with the runner's real
           # SDK (extractgdk.cmd removes it for the same reason).
           Remove-Item -Recurse -Force "$extracted\Windows Kits" -ErrorAction SilentlyContinue
