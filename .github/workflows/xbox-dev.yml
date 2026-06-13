@@ -37,34 +37,32 @@ jobs:
       - name: Install GDK
         shell: pwsh
         run: |
-          # windows-2022 ships the App Installer package but does NOT expose the
-          # `winget` PATH alias for the runner's service account, so calling
-          # `winget` directly fails with "term not recognized". Resolve the exe
-          # inside the package by full path; install App Installer if absent.
-          function Find-Winget {
-            (Get-ChildItem "C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe" `
-               -ErrorAction SilentlyContinue |
-               Sort-Object FullName -Descending | Select-Object -First 1).FullName
+          # Install the public GDK directly from its release ZIP. The winget
+          # package Microsoft.Gaming.GDK just wraps this same PGDK.exe, and
+          # windows-2022 has no usable winget (no PATH alias, and Add-AppxPackage
+          # to bootstrap it needs Windows PowerShell 5.1), so bypass winget.
+          # Pinned to GDK 2604.2.7849 (April 2026 Update 2) to match the VS2022
+          # platform files the later registration steps expect; bump in lockstep
+          # with the winget manifest if the GDK is updated.
+          $ErrorActionPreference = "Stop"
+          $ver = "2604.2.7849"
+          $url = "https://github.com/microsoft/GDK/releases/download/April-2026-Update-2-v$ver/GDK_$ver.zip"
+          $sha = "DCF28E26EBF442E16FFF05AB869E37534ABD85111C8BFD22401905D647688ADB"
+          $zip = "$env:RUNNER_TEMP\gdk.zip"
+          Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip
+          $got = (Get-FileHash $zip -Algorithm SHA256).Hash
+          if ($got -ne $sha) { Write-Error "GDK zip SHA256 mismatch: got $got"; exit 1 }
+          $dir = "$env:RUNNER_TEMP\gdk"
+          Expand-Archive -Path $zip -DestinationPath $dir -Force
+          $pgdk = (Get-ChildItem $dir -Recurse -Filter PGDK.exe | Select-Object -First 1).FullName
+          if (-not $pgdk) { Write-Error "PGDK.exe not found in GDK zip"; exit 1 }
+          Write-Host "Installing GDK via $pgdk ..."
+          $p = Start-Process -FilePath $pgdk -ArgumentList "/quiet","/norestart" -Wait -PassThru
+          Write-Host "PGDK exit code: $($p.ExitCode)"
+          # 0 = success, 3010 = success/reboot-required.
+          if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {
+            Write-Error "GDK install failed (exit $($p.ExitCode))"; exit 1
           }
-          $winget = Find-Winget
-          if (-not $winget) {
-            Write-Host "winget not found in WindowsApps; installing App Installer + deps..."
-            $t = $env:RUNNER_TEMP
-            Invoke-WebRequest -UseBasicParsing -Uri "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx" -OutFile "$t\vclibs.appx"
-            Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.8.6/Microsoft.UI.Xaml.2.8.x64.appx" -OutFile "$t\uixaml.appx"
-            Invoke-WebRequest -UseBasicParsing -Uri "https://aka.ms/getwinget" -OutFile "$t\winget.msixbundle"
-            Add-AppxPackage "$t\vclibs.appx"
-            Add-AppxPackage "$t\uixaml.appx"
-            Add-AppxPackage "$t\winget.msixbundle"
-            $winget = Find-Winget
-          }
-          if (-not $winget) { Write-Error "Could not locate or install winget"; exit 1 }
-          Write-Host "Using winget: $winget"
-
-          & $winget install -e --id Microsoft.Gaming.GDK `
-            --accept-package-agreements `
-            --accept-source-agreements `
-            --disable-interactivity
 
       # Export GDK_ROOT and GDK_EDITION from the machine env var set by the
       # installer. These are used by later steps (ANGLE DLL paths, etc.).
