@@ -16,7 +16,17 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    # Pinned to windows-2022 (not windows-latest): every GDK step below
+    # assumes the Visual Studio 2022 MSBuild tree (v170 toolset, the
+    # "...\Visual Studio\2022\Enterprise\MSBuild" path, the GDK's VS2022
+    # flatDeployment platform files). When the windows-latest image rolled
+    # to Visual Studio 18 (2026) + CMake 4.x, CMake selected the VS2026
+    # generator while the GDK Gaming.Desktop.x64 platform was registered
+    # only into the VS2022 tree, so the VCTargetsPath probe failed with
+    # "BaseOutputPath/OutputPath property is not set ... Platform=
+    # 'Gaming.Desktop.x64'". GDK edition 260402 ships VS2022 platform files,
+    # so pin the toolchain the workflow was designed for.
+    runs-on: windows-2022
 
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
