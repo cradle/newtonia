@@ -449,7 +449,10 @@ void GLGame::controller_removed(SDL_JoystickID id) {
   for(auto* glship : *players) {
     if(glship->is_my_controller_id(id)) {
       glship->set_controller(NULL);
-      if(running) toggle_pause();
+      // Don't pause for a player who is already game over (dead, no lives):
+      // in two-player their disconnect must not interrupt the survivor.
+      bool player_game_over = !glship->ship->is_alive() && glship->ship->lives == 0;
+      if(running && !player_game_over) toggle_pause();
       return;
     }
   }
