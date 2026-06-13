@@ -25,17 +25,12 @@ jobs:
     # windows-2022 (has VS2022 / v170 — windows-latest rolled to VS2026 which
     # breaks the GDK's VS2022 MSBuild platform). The GDK is acquired via BWOI
     # (Build WithOut Installing): the install step extracts the GDK MSIs with
-    # `msiexec /a` instead of running the installer, which both avoids winget
-    # (absent on windows-2022) and skips the GamingServices Appx provisioning
-    # that fails 0x80070001 on hosted runners. The extracted GRDK tree is the
-    # same old-layout flatDeployment the rest of the steps already consume.
-    #
-    # Kept continue-on-error during BWOI bring-up so an iteration failure does
-    # not block the branch; remove once this is reliably green. Coverage is
-    # also provided by xbox-console-smoke.yml (the _GAMING_XBOX paths) and the
-    # other builds (all shared code).
+    # lessmsi instead of running the installer, which avoids winget (absent on
+    # windows-2022), the GamingServices Appx provisioning (fails 0x80070001),
+    # and the `msiexec /a` administrative extract (deadlocks ~30 min). The
+    # extracted GRDK tree is the same old-layout flatDeployment the rest of the
+    # steps already consume.
     runs-on: windows-2022
-    continue-on-error: true
     timeout-minutes: 30
 
     env:
@@ -355,13 +350,18 @@ jobs:
       - name: Configure (GDK Desktop)
         shell: pwsh
         run: |
-          # Pass VCTargetsPath as a CMake cache variable (-D).  CMake's VS generator
-          # checks the CMake cache before running the VCTargetsPath.vcxproj probe, so
-          # this bypasses the probe entirely.  The env var alone (set by "Export
-          # VCTargetsPath") is not reliably honoured in CMake 3.31 for this purpose.
+          # CMake 3.31 still runs the VCTargetsPath.vcxproj probe despite the
+          # -DVCTargetsPath bypass. The probe builds for Gaming.Desktop.x64, so
+          # the GDK platform's WindowsSDK.targets runs and needs a Windows SDK
+          # version; with a BWOI extract there is no SDK registry entry, so it
+          # came up empty (MSB8037). Pass CMAKE_SYSTEM_VERSION so CMake stamps
+          # WindowsTargetPlatformVersion into the generated projects (incl. the
+          # probe). $env:WindowsTargetPlatformVersion is set by "Write GDK
+          # edition props".
           cmake -B xbox/build-desktop -S xbox `
             -A Gaming.Desktop.x64 `
             "-DVCTargetsPath=$env:VCTargetsPath" `
+            "-DCMAKE_SYSTEM_VERSION=$env:WindowsTargetPlatformVersion" `
             -DCMAKE_BUILD_TYPE=Release `
             -DANGLE_LIB_DIR="$env:ANGLE_LIB_DIR" `
             -DANGLE_INCLUDE_DIR="$env:ANGLE_INCLUDE_DIR"
