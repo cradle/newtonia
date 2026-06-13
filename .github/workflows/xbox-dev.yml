@@ -57,8 +57,19 @@ jobs:
           $pgdk = (Get-ChildItem $dir -Recurse -Filter PGDK.exe | Select-Object -First 1).FullName
           if (-not $pgdk) { Write-Error "PGDK.exe not found in GDK zip"; exit 1 }
           Write-Host "Installing GDK via $pgdk ..."
-          $p = Start-Process -FilePath $pgdk -ArgumentList "/quiet","/norestart" -Wait -PassThru
+          $log = "$env:RUNNER_TEMP\gdk_install.log"
+          $p = Start-Process -FilePath $pgdk -ArgumentList "/quiet","/norestart","/log",$log -Wait -PassThru
           Write-Host "PGDK exit code: $($p.ExitCode)"
+          # Surface the Burn bootstrapper log so a payload/prereq failure is
+          # diagnosable without a blind retry.
+          if (Test-Path $log) {
+            Write-Host "--- GDK install log (tail) ---"
+            Get-Content $log -Tail 80
+          } else {
+            Write-Host "(no install log produced at $log)"
+            Get-ChildItem "$env:TEMP" -Filter "*.log" -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime -Descending | Select-Object -First 5 FullName
+          }
           # 0 = success, 3010 = success/reboot-required.
           if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {
             Write-Error "GDK install failed (exit $($p.ExitCode))"; exit 1
