@@ -151,21 +151,28 @@ jobs:
           Copy-Item "$env:ANGLE_BIN_DIR\libEGL.dll"    $out
           Copy-Item "$env:ANGLE_BIN_DIR\libGLESv2.dll" $out
 
-          # App-local CRT (_APP variants) required by the ANGLE DLLs. Not in
-          # System32 on machines without the Store/UWP runtime; they live in
-          # SystemApps (UWP package private copies) and WinSxS (servicing store).
-          $crtDlls = @("MSVCP140_APP.dll", "VCRUNTIME140_APP.dll", "VCRUNTIME140_1_APP.dll")
-          foreach ($dll in $crtDlls) {
-            $found = Get-ChildItem "C:\Windows\SystemApps", "C:\Windows\WinSxS" `
-                       -Recurse -Filter $dll -ErrorAction SilentlyContinue |
-                       Where-Object { $_.FullName -notmatch '\\arm|\\x86[/\\]' } |
-                       Select-Object -First 1
-            if ($found) {
-              Copy-Item $found.FullName $out
-              Write-Host "Staged $dll from $($found.FullName)"
-            } else {
-              Write-Warning "$dll not found — artifact may not run on machines without VS"
-            }
+          # App-container CRT (*_APP.dll) required by the ANGLE.WindowsStore
+          # DLLs. Source them from Microsoft.VCLibs.x64.14.00.appx (already in
+          # the GDK Installers folder we downloaded) — an appx is a zip, so
+          # bsdtar extracts it. This is self-contained and runner-independent;
+          # the DLLs are NOT reliably present in SystemApps/WinSxS across runner
+          # images (they were absent on windows-2022).
+          $vclibs = Get-ChildItem "$env:RUNNER_TEMP\gdksrc\Installers" `
+                      -Filter "Microsoft.VCLibs.x64.14.00.appx" -ErrorAction SilentlyContinue |
+                      Select-Object -First 1
+          if (-not $vclibs) { Write-Error "VCLibs appx not found in GDK Installers"; exit 1 }
+          $vcdir = "$env:RUNNER_TEMP\vclibs"
+          New-Item -ItemType Directory -Force -Path $vcdir | Out-Null
+          & tar.exe -xf $vclibs.FullName -C $vcdir
+          if ($LASTEXITCODE -ne 0) { Write-Error "failed to extract VCLibs appx"; exit 1 }
+          foreach ($dll in @("msvcp140_app.dll","vcruntime140_app.dll","vcruntime140_1_app.dll")) {
+            $f = Get-ChildItem $vcdir -Recurse -Filter $dll -ErrorAction SilentlyContinue |
+                   Select-Object -First 1
+            if (-not $f) { Write-Error "$dll not found in VCLibs appx"; exit 1 }
+            # Name with the uppercase _APP suffix the dependents import by.
+            $target = Join-Path $out (($dll -replace '_app\.dll$','_APP.dll'))
+            Copy-Item $f.FullName $target
+            Write-Host "Staged $(Split-Path $target -Leaf) from VCLibs appx"
           }
 
       - name: Upload artifact
