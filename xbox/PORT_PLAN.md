@@ -256,7 +256,7 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 | 9 | XUser sign-in + sign-out handling | `xbox_main.cpp`, small `xbox/xbl_user.*` | 4 |
 | 10 | `SaveStorage` abstraction + XGameSave impl (if cert requires) | `savegame.cpp`, `preferences.cpp`, `highscore.h`, new `xbox/gdk_storage.*` | 4 |
 | 11 | ✅ TV safe-area inset (`Overlay::SAFE_AREA_SCALE`, 90% on `_GAMING_XBOX`) | `view/overlay.h/cpp`, `glgame.cpp` (HUD ortho + minimap viewport), `menu.cpp` | 4 |
-| 12 | 🔶 Store assets + config identity + family alignment — placeholder art generated (`xbox/generate_assets.py` → `xbox/Assets/`) and `TargetDeviceFamily` aligned to Scarlett; identity/StoreId still TODO (needs Partner Center), real art still TODO | `xbox/Assets/`, `MicrosoftGame.config`, `PackagingLayout.xml` | 5 |
+| 12 | 🔶 Store assets + config identity + family alignment — placeholder art generated (`xbox/generate_assets.py` → `xbox/Assets/`), `TargetDeviceFamily` aligned to Scarlett, and identity prepped as greppable `__FILL_*__` placeholders with a fill-in checklist (`xbox/PARTNER_CENTER_VALUES.md`) + a deploy-workflow guard. Drop-in pending Partner Center; real art still TODO | `xbox/Assets/`, `MicrosoftGame.config`, `PackagingLayout.xml`, `xbox/PARTNER_CENTER_VALUES.md` | 5 |
 | 13 | Self-hosted console CI job (needs GDKX) + deploy workflow rework | `.github/workflows/` | 5 |
 | 14 | ✅ Console API-surface compile smoke on hosted runners (`WINAPI_FAMILY_GAMES` + `_GAMING_XBOX`, compile-only) | `.github/workflows/xbox-console-smoke.yml`, `xbox/smoke_stubs/` | 5 |
 

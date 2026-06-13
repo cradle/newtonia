@@ -7,6 +7,19 @@ name: Deploy Xbox
 #   XBOX_PARTNER_CENTER_CLIENT_ID  — Azure AD app (service principal) client ID
 #   XBOX_PARTNER_CENTER_CLIENT_SECRET — service principal secret
 #
+# Before this can run you must also fill the four __FILL_*__ placeholders in
+# xbox/MicrosoftGame.config. xbox/PARTNER_CENTER_VALUES.md is the single
+# checklist mapping every Partner Center value to its destination (config
+# field or secret). XBOX_STORE_ID must equal the StoreId in the config.
+#
+# NOTE: the build/package steps below still use the old winget + GDK MSBuild
+# platform approach, which is broken on current hosted runners (see the GDK
+# Desktop CI saga: VS2026 rollover, no winget, msiexec hang). Targeting the
+# console (Scarlett) also requires the NDA GDKX, which is not available on
+# hosted runners — this workflow needs a self-hosted GDKX runner and a
+# BWOI/Ninja rework (mirroring xbox-dev.yml) before it can build. It is kept
+# in disabled/ for that reason; this prep only covers the submission identity.
+#
 # One-time Partner Center setup
 # ------------------------------
 # 1. Enrol in ID@Xbox at https://developer.microsoft.com/games
@@ -15,6 +28,7 @@ name: Deploy Xbox
 # 4. In Partner Center → Account settings → User management, add that app
 #    as a "Manager" for the title.
 # 5. Store the four values above as GitHub encrypted secrets.
+# 6. Fill xbox/MicrosoftGame.config (see xbox/PARTNER_CENTER_VALUES.md).
 #
 # GDK version
 # -----------
@@ -45,6 +59,30 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate Partner Center identity is filled
+        shell: pwsh
+        run: |
+          # Fail fast if MicrosoftGame.config still has unfilled placeholders, so
+          # a placeholder package can never be built/submitted. See
+          # xbox/PARTNER_CENTER_VALUES.md.
+          $cfg = Get-Content xbox/MicrosoftGame.config -Raw
+          if ($cfg -match '__FILL_') {
+            $found = [regex]::Matches($cfg, '__FILL_[A-Z_]+__') |
+                       ForEach-Object { $_.Value } | Sort-Object -Unique
+            Write-Error "xbox/MicrosoftGame.config still has placeholders: $($found -join ', '). Fill them per xbox/PARTNER_CENTER_VALUES.md."
+            exit 1
+          }
+          if (-not "${{ secrets.XBOX_STORE_ID }}") {
+            Write-Error "XBOX_STORE_ID secret is not set (see xbox/PARTNER_CENTER_VALUES.md)."
+            exit 1
+          }
+          # StoreId in the config must match the submission secret.
+          if ($cfg -notmatch [regex]::Escape("<StoreId>${{ secrets.XBOX_STORE_ID }}</StoreId>")) {
+            Write-Error "StoreId in MicrosoftGame.config does not match the XBOX_STORE_ID secret."
+            exit 1
+          }
+          Write-Host "Partner Center identity OK."
 
       - name: Cache GDK
         id: cache-gdk
