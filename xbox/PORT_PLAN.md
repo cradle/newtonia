@@ -87,9 +87,9 @@ Partner Center, download GDKX, and request a dev kit.
 1. ✅ Enrol in ID@Xbox (https://developer.microsoft.com/games) — concept
    accepted, agreements/NDA signed.
 2. ⏳ Create the Newtonia title in Partner Center → real `Identity/@Name`,
-   `@Publisher`, `StoreId`. These drop straight into the prepared
-   `__FILL_*__` placeholders in `MicrosoftGame.config` (checklist:
-   `xbox/PARTNER_CENTER_VALUES.md`).
+   `@Publisher`, `StoreId`. Stored as GitHub secrets and injected into
+   `MicrosoftGame.config`'s `__FILL_*__` tokens at deploy time — nothing
+   identity-related is committed (checklist: `xbox/PARTNER_CENTER_VALUES.md`).
 3. ⏳ Download GDKX + request a dev kit loan (longest lead time — request
    first; GDKX download and the Phase 2 rendering spike can proceed while
    the kit ships).
@@ -211,9 +211,10 @@ All in plain C++ behind small abstractions; testable on dev kit only.
    `xbox/generate_assets.py` (StoreLogo 100×100, 150/480 tiles, 1920×1080
    splash). Replace with real art before submission.
 2. 🔶 `MicrosoftGame.config`: `TargetDeviceFamily` aligned to Scarlett across
-   config + `PackagingLayout.xml` ✅; identity prepped as `__FILL_*__`
-   placeholders with checklist `xbox/PARTNER_CENTER_VALUES.md` ✅ — drop in
-   the real values once the Partner Center title exists.
+   config + `PackagingLayout.xml` ✅; identity kept out of source as
+   `__FILL_*__` tokens injected from GitHub secrets at deploy time
+   (checklist `xbox/PARTNER_CENTER_VALUES.md`) ✅ — set the secrets once the
+   Partner Center title exists.
 3. CI: there are four tiers of "Xbox build in CI", confirmed against
    Microsoft's docs (public GDK README, BWOI docs, vcpkg Xbox triplets):
    - **GDK Desktop on hosted runners** — ✅ works (`xbox-dev.yml`). NOTE: the
@@ -277,7 +278,7 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 | 9 | XUser sign-in + sign-out handling | `xbox_main.cpp`, small `xbox/xbl_user.*` | 4 |
 | 10 | `SaveStorage` abstraction + XGameSave impl (if cert requires) | `savegame.cpp`, `preferences.cpp`, `highscore.h`, new `xbox/gdk_storage.*` | 4 |
 | 11 | ✅ TV safe-area inset (`Overlay::SAFE_AREA_SCALE`, 90% on `_GAMING_XBOX`) | `view/overlay.h/cpp`, `glgame.cpp` (HUD ortho + minimap viewport), `menu.cpp` | 4 |
-| 12 | 🔶 Store assets + config identity + family alignment — placeholder art generated (`xbox/generate_assets.py` → `xbox/Assets/`), `TargetDeviceFamily` aligned to Scarlett, and identity prepped as greppable `__FILL_*__` placeholders with a fill-in checklist (`xbox/PARTNER_CENTER_VALUES.md`) + a deploy-workflow guard. Drop-in pending Partner Center; real art still TODO | `xbox/Assets/`, `MicrosoftGame.config`, `PackagingLayout.xml`, `xbox/PARTNER_CENTER_VALUES.md` | 5 |
+| 12 | 🔶 Store assets + config identity + family alignment — placeholder art generated (`xbox/generate_assets.py` → `xbox/Assets/`), `TargetDeviceFamily` aligned to Scarlett, and identity kept out of source as `__FILL_*__` tokens injected from GitHub secrets at deploy time (checklist `xbox/PARTNER_CENTER_VALUES.md`; deploy workflow checks secrets + post-substitution). Set secrets once Partner Center title exists; real art still TODO | `xbox/Assets/`, `MicrosoftGame.config`, `PackagingLayout.xml`, `xbox/PARTNER_CENTER_VALUES.md`, `deploy-xbox.yml` | 5 |
 | 13 | Self-hosted console CI job (needs GDKX) + deploy workflow rework | `.github/workflows/` | 5 |
 | 14 | ✅ Console API-surface compile smoke on hosted runners (`WINAPI_FAMILY_GAMES` + `_GAMING_XBOX`, compile-only) | `.github/workflows/xbox-console-smoke.yml`, `xbox/smoke_stubs/` | 5 |
 

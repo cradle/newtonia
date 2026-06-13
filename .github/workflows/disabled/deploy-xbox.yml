@@ -1,16 +1,22 @@
 name: Deploy Xbox
 
 # Triggered manually or on a version tag (same convention as deploy-steam.yml).
-# Required GitHub secrets:
-#   XBOX_STORE_ID                  — 12-char Store ID from Partner Center
-#   XBOX_PARTNER_CENTER_TENANT_ID  — Azure AD tenant ID
-#   XBOX_PARTNER_CENTER_CLIENT_ID  — Azure AD app (service principal) client ID
-#   XBOX_PARTNER_CENTER_CLIENT_SECRET — service principal secret
+# Required GitHub secrets (nothing deployment-specific is committed — the
+# package identity is injected from these at Stage layout, same pattern as
+# Steam's app_build.vdf appid):
+#   Package identity (substituted into MicrosoftGame.config's __FILL_* tokens):
+#     XBOX_IDENTITY_NAME             — Package/Identity Name
+#     XBOX_IDENTITY_PUBLISHER        — Package/Identity Publisher (full CN=...)
+#     XBOX_PUBLISHER_DISPLAY_NAME    — publisher display name
+#     XBOX_STORE_ID                  — 12-char Store ID
+#   Submission (StoreBroker auth):
+#     XBOX_PARTNER_CENTER_TENANT_ID  — Azure AD tenant ID
+#     XBOX_PARTNER_CENTER_CLIENT_ID  — Azure AD app (service principal) client ID
+#     XBOX_PARTNER_CENTER_CLIENT_SECRET — service principal secret
 #
-# Before this can run you must also fill the four __FILL_*__ placeholders in
-# xbox/MicrosoftGame.config. xbox/PARTNER_CENTER_VALUES.md is the single
-# checklist mapping every Partner Center value to its destination (config
-# field or secret). XBOX_STORE_ID must equal the StoreId in the config.
+# xbox/PARTNER_CENTER_VALUES.md is the single checklist of these secrets and
+# where each comes from in Partner Center. The committed MicrosoftGame.config
+# keeps __FILL_* tokens, so the repo stays reusable with no identity in source.
 #
 # NOTE: the build/package steps below still use the old winget + GDK MSBuild
 # platform approach, which is broken on current hosted runners (see the GDK
@@ -27,8 +33,9 @@ name: Deploy Xbox
 # 3. In Azure Portal, create an App Registration (service principal).
 # 4. In Partner Center → Account settings → User management, add that app
 #    as a "Manager" for the title.
-# 5. Store the four values above as GitHub encrypted secrets.
-# 6. Fill xbox/MicrosoftGame.config (see xbox/PARTNER_CENTER_VALUES.md).
+# 5. Store all the secrets above as GitHub encrypted secrets
+#    (see xbox/PARTNER_CENTER_VALUES.md). No source edits are needed —
+#    the identity is injected from secrets at build time.
 #
 # GDK version
 # -----------
@@ -60,29 +67,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate Partner Center identity is filled
+      - name: Check required identity secrets
         shell: pwsh
+        env:
+          XBOX_IDENTITY_NAME:          ${{ secrets.XBOX_IDENTITY_NAME }}
+          XBOX_IDENTITY_PUBLISHER:     ${{ secrets.XBOX_IDENTITY_PUBLISHER }}
+          XBOX_PUBLISHER_DISPLAY_NAME: ${{ secrets.XBOX_PUBLISHER_DISPLAY_NAME }}
+          XBOX_STORE_ID:               ${{ secrets.XBOX_STORE_ID }}
         run: |
-          # Fail fast if MicrosoftGame.config still has unfilled placeholders, so
-          # a placeholder package can never be built/submitted. See
-          # xbox/PARTNER_CENTER_VALUES.md.
-          $cfg = Get-Content xbox/MicrosoftGame.config -Raw
-          if ($cfg -match '__FILL_') {
-            $found = [regex]::Matches($cfg, '__FILL_[A-Z_]+__') |
-                       ForEach-Object { $_.Value } | Sort-Object -Unique
-            Write-Error "xbox/MicrosoftGame.config still has placeholders: $($found -join ', '). Fill them per xbox/PARTNER_CENTER_VALUES.md."
+          # Identity comes entirely from secrets — nothing deployment-specific is
+          # committed (MicrosoftGame.config keeps __FILL_* tokens, substituted at
+          # Stage layout). Fail fast before the long build if any is missing.
+          # Read via env (not string interpolation) so values never hit the log.
+          $missing = @()
+          foreach ($n in 'XBOX_IDENTITY_NAME','XBOX_IDENTITY_PUBLISHER',
+                          'XBOX_PUBLISHER_DISPLAY_NAME','XBOX_STORE_ID') {
+            if (-not [Environment]::GetEnvironmentVariable($n)) { $missing += $n }
+          }
+          if ($missing) {
+            Write-Error "Missing required secret(s): $($missing -join ', '). See xbox/PARTNER_CENTER_VALUES.md."
             exit 1
           }
-          if (-not "${{ secrets.XBOX_STORE_ID }}") {
-            Write-Error "XBOX_STORE_ID secret is not set (see xbox/PARTNER_CENTER_VALUES.md)."
-            exit 1
-          }
-          # StoreId in the config must match the submission secret.
-          if ($cfg -notmatch [regex]::Escape("<StoreId>${{ secrets.XBOX_STORE_ID }}</StoreId>")) {
-            Write-Error "StoreId in MicrosoftGame.config does not match the XBOX_STORE_ID secret."
-            exit 1
-          }
-          Write-Host "Partner Center identity OK."
+          Write-Host "All identity secrets present."
 
       - name: Cache GDK
         id: cache-gdk
@@ -272,6 +278,11 @@ jobs:
       # ---- Assemble the layout directory for makepkg -----------------
       - name: Stage layout
         shell: pwsh
+        env:
+          XBOX_IDENTITY_NAME:          ${{ secrets.XBOX_IDENTITY_NAME }}
+          XBOX_IDENTITY_PUBLISHER:     ${{ secrets.XBOX_IDENTITY_PUBLISHER }}
+          XBOX_PUBLISHER_DISPLAY_NAME: ${{ secrets.XBOX_PUBLISHER_DISPLAY_NAME }}
+          XBOX_STORE_ID:               ${{ secrets.XBOX_STORE_ID }}
         run: |
           New-Item -ItemType Directory -Force -Path xbox_output\bin | Out-Null
 
@@ -290,8 +301,18 @@ jobs:
           # Audio assets
           Copy-Item -Recurse audio xbox_output\bin\audio
 
-          # Package manifest (must sit at the layout root)
-          Copy-Item xbox\MicrosoftGame.config xbox_output\
+          # Package manifest (must sit at the layout root). Identity is injected
+          # from secrets here so nothing deployment-specific lives in source —
+          # same pattern as Steam's app_build.vdf appid.
+          $cfg = Get-Content xbox\MicrosoftGame.config -Raw
+          $cfg = $cfg.Replace('__FILL_IDENTITY_NAME__',          $env:XBOX_IDENTITY_NAME)
+          $cfg = $cfg.Replace('__FILL_IDENTITY_PUBLISHER__',     $env:XBOX_IDENTITY_PUBLISHER)
+          $cfg = $cfg.Replace('__FILL_PUBLISHER_DISPLAY_NAME__', $env:XBOX_PUBLISHER_DISPLAY_NAME)
+          $cfg = $cfg.Replace('__FILL_STORE_ID__',               $env:XBOX_STORE_ID)
+          if ($cfg -match '__FILL_') {
+            Write-Error "Unsubstituted __FILL_ token remains in MicrosoftGame.config"; exit 1
+          }
+          Set-Content -Path xbox_output\MicrosoftGame.config -Value $cfg -Encoding utf8
 
           # Tile / splash image assets
           if (Test-Path xbox\Assets) {
