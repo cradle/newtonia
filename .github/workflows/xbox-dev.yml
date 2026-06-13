@@ -48,11 +48,13 @@ jobs:
         shell: pwsh
         run: |
           # Build WithOut Installing: download the public GDK release ZIP and
-          # administratively extract (msiexec /a) its MSIs. This lays down the
-          # GDK file tree WITHOUT running the installer — no winget needed, and
-          # the GamingServices.appxbundle (whose Appx provisioning fails on
-          # hosted runners with 0x80070001) is simply never processed. Mirrors
-          # Microsoft's Xbox-GDK-Samples extractgdk.cmd. Pinned to GDK
+          # extract its MSIs' files with lessmsi. lessmsi reads the MSI tables
+          # and cabs and writes the file tree directly — NO msiexec, so no
+          # installer, no winget, and none of the GDK installer's custom actions
+          # (the GamingServices Appx step that fails 0x80070001, and the
+          # `msiexec /a` administrative extract that DEADLOCKS for ~30 min on
+          # hosted runners). The extracted GRDK\VS2022\flatDeployment tree is
+          # the same old-layout the later steps already consume. Pinned to GDK
           # 2604.2.7849; bump in lockstep with the winget manifest hash.
           $ErrorActionPreference = "Stop"
           function ts($m) { Write-Host "[$(Get-Date -Format HH:mm:ss)] $m" }
@@ -76,38 +78,44 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Write-Error "tar extract failed"; exit 1 }
           $installers = Join-Path $src "Installers"
 
-          # Extract to a short path to avoid MAX_PATH issues. C:\gdkx has no
-          # spaces, so TARGETDIR needs no quoting; the MSI source path (which
-          # has spaces) is passed as a single Start-Process argument element.
-          # Skip "Kits Configuration" (only configures the Windows SDK via custom
-          # actions — not needed for BWOI, and we delete the extracted Windows
-          # Kits below anyway).
+          ts "installing lessmsi (chocolatey, preinstalled on the runner)"
+          & choco install lessmsi -y --no-progress --no-color | Out-Null
+          $lessmsi = "C:\ProgramData\chocolatey\bin\lessmsi.exe"
+          if (-not (Test-Path $lessmsi)) {
+            $lessmsi = (Get-Command lessmsi -ErrorAction SilentlyContinue).Source
+          }
+          if (-not $lessmsi) { Write-Error "lessmsi not found after choco install"; exit 1 }
+
+          # Extract to a short path to avoid MAX_PATH issues. Skip "Kits
+          # Configuration" (custom-action driven, only configures the Windows SDK
+          # — not needed, and we delete the extracted Windows Kits below).
           $extracted = "C:\gdkx"
           New-Item -ItemType Directory -Force -Path $extracted | Out-Null
           Get-ChildItem $installers -Filter *.msi |
             Where-Object { $_.Name -notlike "*Kits Configuration*" } | ForEach-Object {
-            $log = "$env:RUNNER_TEMP\msi_$($_.BaseName -replace '[^\w]','_').log"
-            ts "msiexec /a $($_.Name)"
-            $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList `
-              @("/quiet","/a", $_.FullName, "TARGETDIR=$extracted","/l*v", $log)
-            ts "  -> exit $($p.ExitCode)"
-            if ($p.ExitCode -ne 0) {
-              if (Test-Path $log) { Write-Host "--- $($_.Name) MSI log (tail) ---"; Get-Content $log -Tail 40 }
-              Write-Error "msiexec /a failed for $($_.Name) (exit $($p.ExitCode))"; exit 1
-            }
+            ts "lessmsi x $($_.Name)"
+            & $lessmsi x $_.FullName "$extracted\"
+            if ($LASTEXITCODE -ne 0) { Write-Error "lessmsi failed for $($_.Name)"; exit 1 }
           }
           ts "extraction done"
-          # The extracted "Windows Kits" subset conflicts with the runner's real
-          # SDK (extractgdk.cmd removes it for the same reason).
-          Remove-Item -Recurse -Force "$extracted\Windows Kits" -ErrorAction SilentlyContinue
 
-          $gdkLatest = "$extracted\Microsoft GDK\$ed"
-          if (-not (Test-Path "$gdkLatest\GRDK\VS2022\flatDeployment")) {
-            Write-Error "Extracted GDK missing GRDK\VS2022\flatDeployment under $gdkLatest"
-            Get-ChildItem "$extracted\Microsoft GDK" -Recurse -Depth 2 -ErrorAction SilentlyContinue |
+          # lessmsi nests the MSI tree under a SourceDir folder; locate the
+          # GRDK\VS2022\flatDeployment wherever it landed and derive the edition
+          # root from it (…\Microsoft GDK\<ed>).
+          $fd = Get-ChildItem $extracted -Recurse -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -like "*\Microsoft GDK\$ed\GRDK\VS2022\flatDeployment" } |
+            Select-Object -First 1
+          if (-not $fd) {
+            Write-Error "Extracted GDK missing GRDK\VS2022\flatDeployment"
+            Get-ChildItem $extracted -Recurse -Directory -Depth 4 -ErrorAction SilentlyContinue |
               Select-Object FullName | Format-Table -AutoSize
             exit 1
           }
+          # flatDeployment -> VS2022 -> GRDK -> <ed>
+          $gdkLatest = Split-Path (Split-Path (Split-Path $fd.FullName -Parent) -Parent) -Parent
+          # The extracted "Windows Kits" subset conflicts with the runner's real SDK.
+          Get-ChildItem $extracted -Recurse -Directory -Filter "Windows Kits" -ErrorAction SilentlyContinue |
+            ForEach-Object { Remove-Item -Recurse -Force $_.FullName -ErrorAction SilentlyContinue }
           Write-Host "Extracted GDK at $gdkLatest"
           echo "GDK_EXTRACTED=$gdkLatest" >> $env:GITHUB_ENV
 
