@@ -10,7 +10,8 @@ Status: planning document. Companion to `xbox/CMakeLists.txt`, `xbox_main.cpp`,
 
 | Area | State |
 |------|-------|
-| GDK Desktop build (`Gaming.Desktop.x64`) | Compiles in CI on every push (`xbox-dev.yml`); artifact includes exe + ANGLE DLLs + audio |
+| GDK Desktop build (`Gaming.Desktop.x64`) | Green in CI on every push (`xbox-dev.yml`), windows-latest. Builds with Ninja + MSVC + a BWOI lessmsi-extracted GDK (headers wired, `_GAMING_DESKTOP` defined) — avoids the GDK MSBuild platform + its VCTargetsPath probe. Artifact = exe + ANGLE DLLs + app-CRT DLLs (from VCLibs appx) + audio |
+| Console compile smoke | `xbox-console-smoke.yml` compiles all sources + the `_GAMING_XBOX` path under `WINAPI_FAMILY_GAMES` on a hosted runner (GDK headers stubbed); catches forbidden-API usage with no NDA material |
 | Entry point | `xbox_main.cpp` handles both `_GAMING_DESKTOP` and `_GAMING_XBOX`; SDL2 event loop, manual EGL/ANGLE context |
 | Controller-only operation | Complete. Menu/options fully navigable by pad (`menu.cpp:291-409`); all ship actions mapped (`glship.cpp:325-449`); pause = START, quit-to-menu = BACK, add player 2 = START (`glgame.cpp:1448-1562`); hot-plug + per-player assignment in `state_manager.cpp:37-60`; auto-pause on controller disconnect (`glgame.cpp:447-455`) |
 | Help overlay | Switches to controller glyphs automatically (`glship.cpp:646-794`) |
@@ -22,8 +23,10 @@ Status: planning document. Companion to `xbox/CMakeLists.txt`, `xbox_main.cpp`,
 
 ### Untested / known-wrong (the actual port work)
 
-1. **Every `_GAMING_XBOX` code path has never been compiled or run.** Only
-   the Desktop target builds in CI.
+1. **The `_GAMING_XBOX` code paths are now compiled (not run).** The console
+   compile-smoke job (`xbox-console-smoke.yml`) builds them under
+   `WINAPI_FAMILY_GAMES`; the Desktop target builds the `_GAMING_DESKTOP`
+   path. Neither runs on console hardware yet.
 2. **ANGLE on the console is an unvalidated assumption — the biggest risk.**
    `ANGLE.WindowsStore` (the NuGet the workflows use) is a 2017-era UWP/x64
    Windows binary built on desktop D3D11/DXGI. Xbox Series GDK titles must
@@ -76,24 +79,32 @@ Status: planning document. Companion to `xbox/CMakeLists.txt`, `xbox_main.cpp`,
 
 Blocking everything console-side; start immediately.
 
-Status (2026-06): Partner Center developer account created (new free
-onboarding flow via storedeveloper.microsoft.com); ID@Xbox application
-submitted and concept accepted — **awaiting NDA / publishing agreements**.
-Console title creation in Partner Center, GDKX download, and dev-kit
-request all unlock once the agreements are signed.
+Status (2026-06): Partner Center developer account created (free onboarding
+via storedeveloper.microsoft.com); ID@Xbox concept accepted; **publishing
+agreements / NDA signed**. Now unblocked: create the Newtonia title in
+Partner Center, download GDKX, and request a dev kit.
 
-1. ✅ Enrol in ID@Xbox (https://developer.microsoft.com/games). Approval can
-   take weeks. (Applied; awaiting agreements.)
-2. On approval: Partner Center title creation → real `Identity/@Name`,
-   `@Publisher`, `StoreId` for `MicrosoftGame.config`.
-3. Obtain GDKX access + request a dev kit loan.
+1. ✅ Enrol in ID@Xbox (https://developer.microsoft.com/games) — concept
+   accepted, agreements/NDA signed.
+2. ⏳ Create the Newtonia title in Partner Center → real `Identity/@Name`,
+   `@Publisher`, `StoreId`. These drop straight into the prepared
+   `__FILL_*__` placeholders in `MicrosoftGame.config` (checklist:
+   `xbox/PARTNER_CENTER_VALUES.md`).
+3. ⏳ Download GDKX + request a dev kit loan (longest lead time — request
+   first; GDKX download and the Phase 2 rendering spike can proceed while
+   the kit ships).
 4. Decide publisher display name, age ratings (IARC questionnaire), pricing.
 
 Exit criteria: GDKX installable on a dev machine; dev kit on the desk.
 
 ### Phase 1 — Harden GDK Desktop (no new hardware needed, start now)
 
-The Desktop build compiles but is largely runtime-unvalidated.
+Status (2026-06): the GDK Desktop CI build is **green and reliable** — it
+builds via Ninja + MSVC with a BWOI (lessmsi-extracted) GDK on
+windows-latest, sidestepping the GDK MSBuild platform's VCTargetsPath probe
+(see Phase 5). The artifact runs (controller hot-plug bug found and fixed,
+issue #287; pad/game-over disconnect handling fixed). Remaining: complete the
+manual test-pass checklist.
 
 1. Manual test pass of the CI artifact on a Windows machine: boot, menu,
    options persistence, 1P/2P with pads, pause/focus loss, save/resume,
@@ -102,9 +113,9 @@ The Desktop build compiles but is largely runtime-unvalidated.
 2. Fix whatever that pass shakes out (likely candidates: pbuffer blit
    performance at large window sizes — `glReadPixels` + `StretchDIBits` is
    CPU-bound; acceptable for a dev vehicle, document as Desktop-only).
-3. Polish: hide keyboard-only cheat rows (skip level, time controls, debug
+3. ✅ Polish: hide keyboard-only cheat rows (skip level, time controls, debug
    grid, fullscreen) from the help overlay when `last_input_was_controller`
-   (`glship.cpp:759-794`) — they're unreachable and confusing on pad.
+   — they're unreachable and confusing on pad. (Done; `glship.cpp`.)
 4. Verify suspend→resume→save integrity by minimising/restoring mid-game.
 
 Exit criteria: Desktop build is a trustworthy reference for "the game logic
@@ -196,15 +207,25 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 
 ### Phase 5 — Packaging, CI, store assets
 
-1. Create `xbox/Assets/`: StoreLogo 50×50? — follow current GDK spec sizes
-   (config comments list 50×50, 480×480, 150×150, 1920×1080 splash).
-2. Fill in `MicrosoftGame.config` identity from Partner Center; align
-   `TargetDeviceFamily` (Scarlett) across config + `PackagingLayout.xml`;
-   bump `configVersion` if current GDK requires.
+1. ✅ Create `xbox/Assets/` — placeholder art generated by
+   `xbox/generate_assets.py` (StoreLogo 100×100, 150/480 tiles, 1920×1080
+   splash). Replace with real art before submission.
+2. 🔶 `MicrosoftGame.config`: `TargetDeviceFamily` aligned to Scarlett across
+   config + `PackagingLayout.xml` ✅; identity prepped as `__FILL_*__`
+   placeholders with checklist `xbox/PARTNER_CENTER_VALUES.md` ✅ — drop in
+   the real values once the Partner Center title exists.
 3. CI: there are four tiers of "Xbox build in CI", confirmed against
    Microsoft's docs (public GDK README, BWOI docs, vcpkg Xbox triplets):
-   - **GDK Desktop on hosted runners** — works today (`xbox-dev.yml`); the
-     public winget GDK is PC-only (`Gaming.Desktop.x64`).
+   - **GDK Desktop on hosted runners** — ✅ works (`xbox-dev.yml`). NOTE: the
+     original winget + `-A Gaming.Desktop.x64` (MSBuild platform) approach
+     broke on 2026 hosted images (windows-latest → VS2026 breaks the GDK
+     VS2022 platform; windows-2022 has no winget and the GDK installer's
+     GamingServices Appx step / `msiexec /a` both hang). Now builds with
+     **Ninja + MSVC + a BWOI lessmsi-extracted GDK** (headers wired in,
+     `_GAMING_DESKTOP` defined), which avoids the MSBuild platform and its
+     unsolvable VCTargetsPath probe entirely. Runner-agnostic → runs on
+     windows-latest. This Ninja+BWOI structure is the basis for the console
+     (Scarlett) target.
    - **Console API-surface compile smoke on hosted runners** — works today
      with zero NDA material (`xbox-console-smoke.yml`): plain MSVC +
      Windows SDK ≥ 22000 compiling all sources with
