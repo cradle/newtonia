@@ -16,21 +16,19 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
-
-    # TEMPORARILY NON-BLOCKING (2026-06): GitHub's hosted Windows images broke
-    # this GDK toolchain and there is no clean hosted-runner fix right now —
-    #   * windows-latest rolled to Visual Studio 18 (2026); CMake then selects
-    #     the VS2026 generator while the GDK only registers its Gaming.* MSBuild
-    #     platform into the VS2022 tree, so the VCTargetsPath probe fails.
-    #   * windows-2022 still has VS2022 but no winget, and running the GDK
-    #     installer (PGDK.exe) directly fails 0x80070001 in its gaming-services
-    #     Appx provisioning step on that image.
-    # Not our code (the failure is at CMake configure, before any source builds);
-    # the _GAMING_XBOX paths are still compiled by xbox-console-smoke.yml and all
-    # shared code by the other builds. Keep running on every push so it
-    # auto-recovers when the image is fixed or the GDK supports VS2026; the
-    # proper fix is a BWOI (Build WithOut Installing) setup on windows-2022.
+    # windows-2022 (has VS2022 / v170 — windows-latest rolled to VS2026 which
+    # breaks the GDK's VS2022 MSBuild platform). The GDK is acquired via BWOI
+    # (Build WithOut Installing): the install step extracts the GDK MSIs with
+    # `msiexec /a` instead of running the installer, which both avoids winget
+    # (absent on windows-2022) and skips the GamingServices Appx provisioning
+    # that fails 0x80070001 on hosted runners. The extracted GRDK tree is the
+    # same old-layout flatDeployment the rest of the steps already consume.
+    #
+    # Kept continue-on-error during BWOI bring-up so an iteration failure does
+    # not block the branch; remove once this is reliably green. Coverage is
+    # also provided by xbox-console-smoke.yml (the _GAMING_XBOX paths) and the
+    # other builds (all shared code).
+    runs-on: windows-2022
     continue-on-error: true
 
     env:
@@ -39,39 +37,64 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install GDK
+      - name: Extract GDK (BWOI)
         shell: pwsh
         run: |
-          winget install -e --id Microsoft.Gaming.GDK `
-            --accept-package-agreements `
-            --accept-source-agreements `
-            --disable-interactivity
+          # Build WithOut Installing: download the public GDK release ZIP and
+          # administratively extract (msiexec /a) its MSIs. This lays down the
+          # GDK file tree WITHOUT running the installer — no winget needed, and
+          # the GamingServices.appxbundle (whose Appx provisioning fails on
+          # hosted runners with 0x80070001) is simply never processed. Mirrors
+          # Microsoft's Xbox-GDK-Samples extractgdk.cmd. Pinned to GDK
+          # 2604.2.7849; bump in lockstep with the winget manifest hash.
+          $ErrorActionPreference = "Stop"
+          $ver = "2604.2.7849"
+          $ed  = "260402"
+          $url = "https://github.com/microsoft/GDK/releases/download/April-2026-Update-2-v$ver/GDK_$ver.zip"
+          $sha = "DCF28E26EBF442E16FFF05AB869E37534ABD85111C8BFD22401905D647688ADB"
+          $zip = "$env:RUNNER_TEMP\gdk.zip"
+          Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $sha) {
+            Write-Error "GDK zip SHA256 mismatch"; exit 1
+          }
+          $src = "$env:RUNNER_TEMP\gdksrc"
+          Expand-Archive -Path $zip -DestinationPath $src -Force
+          $installers = Join-Path $src "Installers"
 
-      # Export GDK_ROOT and GDK_EDITION from the machine env var set by the
-      # installer. These are used by later steps (ANGLE DLL paths, etc.).
+          # Extract to a short path to avoid MAX_PATH issues. C:\gdkx has no
+          # spaces, so TARGETDIR needs no quoting; the MSI source path (which
+          # has spaces) is passed as a single Start-Process argument element.
+          $extracted = "C:\gdkx"
+          New-Item -ItemType Directory -Force -Path $extracted | Out-Null
+          Get-ChildItem $installers -Filter *.msi | ForEach-Object {
+            Write-Host "Extracting $($_.Name)"
+            $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList `
+              @("/quiet","/a", $_.FullName, "TARGETDIR=$extracted")
+            if ($p.ExitCode -ne 0) {
+              Write-Error "msiexec /a failed for $($_.Name) (exit $($p.ExitCode))"; exit 1
+            }
+          }
+          # The extracted "Windows Kits" subset conflicts with the runner's real
+          # SDK (extractgdk.cmd removes it for the same reason).
+          Remove-Item -Recurse -Force "$extracted\Windows Kits" -ErrorAction SilentlyContinue
+
+          $gdkLatest = "$extracted\Microsoft GDK\$ed"
+          if (-not (Test-Path "$gdkLatest\GRDK\VS2022\flatDeployment")) {
+            Write-Error "Extracted GDK missing GRDK\VS2022\flatDeployment under $gdkLatest"
+            Get-ChildItem "$extracted\Microsoft GDK" -Recurse -Depth 2 -ErrorAction SilentlyContinue |
+              Select-Object FullName | Format-Table -AutoSize
+            exit 1
+          }
+          Write-Host "Extracted GDK at $gdkLatest"
+          echo "GDK_EXTRACTED=$gdkLatest" >> $env:GITHUB_ENV
+
+      # Export GDK_ROOT / GDK_EDITION / GameDKLatest from the extracted tree.
+      # The extracted layout (…\Microsoft GDK\<ed>\GRDK\…) is identical to an
+      # installed GDK, so the remaining steps are unchanged.
       - name: Locate GDK
         shell: pwsh
         run: |
-          # 1. Try machine env vars set by the installer.
-          $gdkLatest = [System.Environment]::GetEnvironmentVariable("GameDKCoreLatest", "Machine")
-          if (-not $gdkLatest) {
-            $gdkLatest = [System.Environment]::GetEnvironmentVariable("GameDKLatest", "Machine")
-          }
-          # 2. Fallback: scan the default install path.
-          #    winget can return before the MSI finishes writing env vars.
-          if (-not $gdkLatest) {
-            $gdkBase = "C:\Program Files (x86)\Microsoft GDK"
-            $found = Get-ChildItem $gdkBase -Directory -ErrorAction SilentlyContinue |
-                       Where-Object { $_.Name -match '^\d+$' } |
-                       Sort-Object Name -Descending |
-                       Select-Object -First 1
-            if ($found) { $gdkLatest = $found.FullName }
-          }
-          if (-not $gdkLatest) {
-            Write-Error "GDK not found: env vars unset and default path empty."
-            exit 1
-          }
-          $gdkLatest = $gdkLatest.TrimEnd('\')
+          $gdkLatest = "$env:GDK_EXTRACTED".TrimEnd('\')
           $edition   = Split-Path $gdkLatest -Leaf
           $gdkRoot   = "$gdkLatest\GRDK"
           Write-Host "GDK root : $gdkRoot  (edition $edition)"
@@ -80,8 +103,7 @@ jobs:
           # Re-export as GameDKLatest (with trailing backslash, matching the
           # installer convention) so MSBuild's Gaming.Desktop.x64 Platform.targets
           # can resolve the edition number.  Without this, CMake fails with
-          # "Microsoft GDK Edition value set to ''" on any run where the
-          # installer env var wasn't written to the machine registry.
+          # "Microsoft GDK Edition value set to ''".
           echo "GameDKLatest=$gdkLatest\"     >> $env:GITHUB_ENV
           echo "GameDKCoreLatest=$gdkLatest\" >> $env:GITHUB_ENV
           # Also write to the machine-level registry entry.  Platform.targets
