@@ -144,10 +144,29 @@ jobs:
         shell: pwsh
         run: |
           # Ninja is single-config: the exe + post-build audio land directly in
-          # build-desktop/. Static CRT (/MT) means only the ANGLE DLLs are needed.
+          # build-desktop/. newtonia.exe is static CRT (/MT), but the ANGLE
+          # DLLs come from ANGLE.WindowsStore and depend on the app-container CRT
+          # (*_APP.dll), so those must be staged alongside them.
           $out = "xbox/build-desktop"
           Copy-Item "$env:ANGLE_BIN_DIR\libEGL.dll"    $out
           Copy-Item "$env:ANGLE_BIN_DIR\libGLESv2.dll" $out
+
+          # App-local CRT (_APP variants) required by the ANGLE DLLs. Not in
+          # System32 on machines without the Store/UWP runtime; they live in
+          # SystemApps (UWP package private copies) and WinSxS (servicing store).
+          $crtDlls = @("MSVCP140_APP.dll", "VCRUNTIME140_APP.dll", "VCRUNTIME140_1_APP.dll")
+          foreach ($dll in $crtDlls) {
+            $found = Get-ChildItem "C:\Windows\SystemApps", "C:\Windows\WinSxS" `
+                       -Recurse -Filter $dll -ErrorAction SilentlyContinue |
+                       Where-Object { $_.FullName -notmatch '\\arm|\\x86[/\\]' } |
+                       Select-Object -First 1
+            if ($found) {
+              Copy-Item $found.FullName $out
+              Write-Host "Staged $dll from $($found.FullName)"
+            } else {
+              Write-Warning "$dll not found — artifact may not run on machines without VS"
+            }
+          }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -157,5 +176,8 @@ jobs:
             xbox/build-desktop/newtonia.exe
             xbox/build-desktop/libEGL.dll
             xbox/build-desktop/libGLESv2.dll
+            xbox/build-desktop/MSVCP140_APP.dll
+            xbox/build-desktop/VCRUNTIME140_APP.dll
+            xbox/build-desktop/VCRUNTIME140_1_APP.dll
             xbox/build-desktop/audio/
           retention-days: 7
