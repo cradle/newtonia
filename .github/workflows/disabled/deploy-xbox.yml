@@ -1,11 +1,31 @@
 name: Deploy Xbox
 
 # Triggered manually or on a version tag (same convention as deploy-steam.yml).
-# Required GitHub secrets:
-#   XBOX_STORE_ID                  — 12-char Store ID from Partner Center
-#   XBOX_PARTNER_CENTER_TENANT_ID  — Azure AD tenant ID
-#   XBOX_PARTNER_CENTER_CLIENT_ID  — Azure AD app (service principal) client ID
-#   XBOX_PARTNER_CENTER_CLIENT_SECRET — service principal secret
+# Required GitHub secrets (nothing deployment-specific is committed — the
+# package identity is injected from these at Stage layout, same pattern as
+# Steam's app_build.vdf appid):
+#   Package identity (substituted into MicrosoftGame.config's __FILL_* tokens):
+#     XBOX_IDENTITY_NAME             — Package/Identity Name
+#     XBOX_IDENTITY_PUBLISHER        — Package/Identity Publisher (full CN=...)
+#     XBOX_PUBLISHER_DISPLAY_NAME    — publisher display name
+#     XBOX_STORE_ID                  — 12-char Store ID
+#   Submission (StoreBroker auth):
+#     XBOX_PARTNER_CENTER_TENANT_ID  — Azure AD tenant ID
+#     XBOX_PARTNER_CENTER_CLIENT_ID  — Azure AD app (service principal) client ID
+#     XBOX_PARTNER_CENTER_CLIENT_SECRET — service principal secret
+#
+# xbox/PARTNER_CENTER_VALUES.md is the single checklist of these secrets and
+# where each comes from in Partner Center. The committed MicrosoftGame.config
+# keeps __FILL_* tokens, so the repo stays reusable with no identity in source.
+#
+# STATUS: still disabled. The build now mirrors xbox-dev.yml's proven strategy
+# (Ninja + MSVC, no GDK MSBuild platform) and runs on a self-hosted GDKX runner
+# (console/Scarlett needs the NDA GDKX, unavailable on hosted runners). Two
+# pieces remain before it can produce a console package — both gated on a
+# GDKX/dev-kit bring-up (PORT_PLAN Phase 2/3): the console rendering backend
+# decision, and a Scarlett Ninja path in xbox/CMakeLists.txt. The Configure
+# step documents these and intentionally fails until they land. The identity,
+# secrets, packaging, and submission scaffolding are otherwise ready.
 #
 # One-time Partner Center setup
 # ------------------------------
@@ -14,13 +34,15 @@ name: Deploy Xbox
 # 3. In Azure Portal, create an App Registration (service principal).
 # 4. In Partner Center → Account settings → User management, add that app
 #    as a "Manager" for the title.
-# 5. Store the four values above as GitHub encrypted secrets.
+# 5. Store all the secrets above as GitHub encrypted secrets
+#    (see xbox/PARTNER_CENTER_VALUES.md). No source edits are needed —
+#    the identity is injected from secrets at build time.
 #
 # GDK version
 # -----------
-# The installed edition is discovered at runtime via the GameDKLatest
-# environment variable set by the GDK installer, so no hardcoded edition
-# number needs updating when winget upgrades the package.
+# The installed GDKX edition is discovered at runtime from the GameDKLatest
+# machine environment variable (set by the GDKX installer on the self-hosted
+# runner), so no hardcoded edition number needs updating.
 
 on:
   push:
@@ -38,7 +60,13 @@ jobs:
   # 1. Build the Xbox package                                           #
   # ------------------------------------------------------------------ #
   build:
-    runs-on: windows-latest
+    # Console (Scarlett) packaging requires the NDA GDKX, which CANNOT be
+    # installed on GitHub-hosted runners (the public GDK ZIP has only the GRDK
+    # PC platform; the Scarlett platform + D3D12.X are GDKX-only). Use a
+    # self-hosted Windows runner that already has GDKX + Visual Studio + Ninja
+    # installed, labelled "gdkx". The build mirrors xbox-dev.yml's strategy
+    # (Ninja + MSVC, no GDK MSBuild platform) — see the Configure step.
+    runs-on: [self-hosted, windows, gdkx]
 
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -46,92 +74,54 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache GDK
-        id: cache-gdk
-        uses: actions/cache@v4
-        with:
-          path: C:\Program Files (x86)\Microsoft GDK
-          key: gdk-Microsoft.Gaming.GDK
-
-      - name: Install GDK
-        if: steps.cache-gdk.outputs.cache-hit != 'true'
+      - name: Check required identity secrets
         shell: pwsh
+        env:
+          XBOX_IDENTITY_NAME:          ${{ secrets.XBOX_IDENTITY_NAME }}
+          XBOX_IDENTITY_PUBLISHER:     ${{ secrets.XBOX_IDENTITY_PUBLISHER }}
+          XBOX_PUBLISHER_DISPLAY_NAME: ${{ secrets.XBOX_PUBLISHER_DISPLAY_NAME }}
+          XBOX_STORE_ID:               ${{ secrets.XBOX_STORE_ID }}
         run: |
-          winget install -e --id Microsoft.Gaming.GDK `
-            --accept-package-agreements `
-            --accept-source-agreements `
-            --disable-interactivity
-
-      - name: Locate GDK
-        shell: pwsh
-        run: |
-          # 1. Try machine env vars set by the installer.
-          $gdkLatest = [System.Environment]::GetEnvironmentVariable("GameDKCoreLatest", "Machine")
-          if (-not $gdkLatest) {
-            $gdkLatest = [System.Environment]::GetEnvironmentVariable("GameDKLatest", "Machine")
+          # Identity comes entirely from secrets — nothing deployment-specific is
+          # committed (MicrosoftGame.config keeps __FILL_* tokens, substituted at
+          # Stage layout). Fail fast before the long build if any is missing.
+          # Read via env (not string interpolation) so values never hit the log.
+          $missing = @()
+          foreach ($n in 'XBOX_IDENTITY_NAME','XBOX_IDENTITY_PUBLISHER',
+                          'XBOX_PUBLISHER_DISPLAY_NAME','XBOX_STORE_ID') {
+            if (-not [Environment]::GetEnvironmentVariable($n)) { $missing += $n }
           }
-          # 2. Fallback: scan the default install path.
-          #    winget can return before the MSI finishes writing env vars, and
-          #    a cache-hit restore never sets them at all.
+          if ($missing) {
+            Write-Error "Missing required secret(s): $($missing -join ', '). See xbox/PARTNER_CENTER_VALUES.md."
+            exit 1
+          }
+          Write-Host "All identity secrets present."
+
+      - name: Locate GDKX
+        shell: pwsh
+        run: |
+          # Console build uses the GDKX (Xbox extensions) already installed on
+          # this self-hosted runner. GXDK provides the Scarlett platform that the
+          # public GRDK ZIP does not contain, so there is no winget install or
+          # BWOI download here — we just point the build at the installed edition.
+          $gdkLatest = [Environment]::GetEnvironmentVariable("GameDKLatest","Machine")
           if (-not $gdkLatest) {
-            $gdkBase = "C:\Program Files (x86)\Microsoft GDK"
-            $found = Get-ChildItem $gdkBase -Directory -ErrorAction SilentlyContinue |
+            $base = "C:\Program Files (x86)\Microsoft GDK"
+            $found = Get-ChildItem $base -Directory -ErrorAction SilentlyContinue |
                        Where-Object { $_.Name -match '^\d+$' } |
-                       Sort-Object Name -Descending |
-                       Select-Object -First 1
+                       Sort-Object Name -Descending | Select-Object -First 1
             if ($found) { $gdkLatest = $found.FullName }
           }
           if (-not $gdkLatest) {
-            Write-Error "GDK not found: env vars unset and default path empty."
+            Write-Error "GDKX not found on this runner. Install the GDK with Xbox extensions and label the runner 'gdkx'."
             exit 1
           }
           $gdkLatest = $gdkLatest.TrimEnd('\')
-          $edition   = Split-Path $gdkLatest -Leaf
-          $gdkRoot   = "$gdkLatest\GRDK"
-          Write-Host "GDK root : $gdkRoot  (edition $edition)"
-          echo "GDK_ROOT=$gdkRoot"    >> $env:GITHUB_ENV
-          echo "GDK_EDITION=$edition" >> $env:GITHUB_ENV
-          # Re-export as GameDKLatest (with trailing backslash, matching the
-          # installer convention) so MSBuild's Gaming.Desktop.x64 Platform.targets
-          # can resolve the edition number.  Without this, CMake fails with
-          # "Microsoft GDK Edition value set to ''" on any run where the
-          # installer env var wasn't written to the machine registry.
-          echo "GameDKLatest=$gdkLatest\"     >> $env:GITHUB_ENV
-          echo "GameDKCoreLatest=$gdkLatest\" >> $env:GITHUB_ENV
-          # Also write to the machine-level registry entry.  Platform.targets
-          # reads via [System.Environment]::GetEnvironmentVariable('GameDKLatest',
-          # 'Machine') which reads the registry, not the process environment that
-          # GITHUB_ENV populates.  The runner has admin rights so this succeeds.
-          [System.Environment]::SetEnvironmentVariable(
-            "GameDKLatest",     "$gdkLatest\",
-            [System.EnvironmentVariableTarget]::Machine)
-          [System.Environment]::SetEnvironmentVariable(
-            "GameDKCoreLatest", "$gdkLatest\",
-            [System.EnvironmentVariableTarget]::Machine)
-
-      - name: Register GDK VS2022 platform
-        shell: pwsh
-        run: |
-          $gdkVS = "$env:GDK_ROOT\VS2022"
-          $vsBase = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild"
-          Copy-Item -Recurse -Force "$gdkVS\flatDeployment\MSBuild\*" "$vsBase\"
-
-      - name: Export VCTargetsPath
-        shell: pwsh
-        run: |
-          $vcTargets = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VC\v170"
-          if (-not (Test-Path "$vcTargets\Microsoft.Cpp.Default.props")) {
-            $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-            if (Test-Path $vswhere) {
-              $vsDir = & $vswhere -latest -property installationPath 2>$null
-              if ($vsDir) { $vcTargets = "$vsDir\MSBuild\Microsoft\VC\v170" }
-            }
-          }
-          if (-not (Test-Path "$vcTargets\Microsoft.Cpp.Default.props")) {
-            Write-Error "VCTargetsPath not found at $vcTargets"; exit 1
-          }
-          Write-Host "VCTargetsPath = $vcTargets\"
-          echo "VCTargetsPath=$vcTargets\" >> $env:GITHUB_ENV
+          $ed = Split-Path $gdkLatest -Leaf
+          echo "GDK_EDITION=$ed"          >> $env:GITHUB_ENV
+          echo "GDK_LATEST=$gdkLatest"    >> $env:GITHUB_ENV
+          echo "GDK_ROOT=$gdkLatest\GRDK" >> $env:GITHUB_ENV   # makepkg lives under GRDK\bin
+          Write-Host "GDKX edition $ed at $gdkLatest"
 
       # ---- Install ANGLE --------------------------------------------
       - name: Install ANGLE
@@ -156,89 +146,47 @@ jobs:
           echo "ANGLE_LIB_DIR=$($lib.Directory.FullName)" >> $env:GITHUB_ENV
           echo "ANGLE_BIN_DIR=$($dll.Directory.FullName)" >> $env:GITHUB_ENV
 
-      # ---- Write GDK edition props ---------------------------------
-      # Platform.targets checks:
-      #   Exists('$(XdkEditionRootVS2022)$(XdkEdition)\Platform.Edition.targets')
-      # Search the GDK tree for that file and derive both values from its path.
-      - name: Write GDK edition props
-        shell: pwsh
+      # ---- Configure + Build (Ninja, Scarlett) ----------------------
+      - name: Configure + Build (Ninja, Scarlett)
+        shell: cmd
         run: |
-          $gdkRoot = $env:GDK_ROOT
-
-          # The GDK VS2022 flatDeployment contains both v160 (VS2019) and v170
-          # (VS2022) copies.  Filter to v170 so Toolset.props resolves correctly.
-          $pet = Get-ChildItem "$gdkRoot\VS2022" -Recurse -Filter "Platform.Edition.targets" `
-                   -ErrorAction SilentlyContinue |
-                   Where-Object { $_.FullName -match '[/\\]v170[/\\]' } |
-                   Select-Object -First 1
-          if (-not $pet) {
-            Write-Error "Platform.Edition.targets not found under $gdkRoot"
-            exit 1
-          }
-          Write-Host "Platform.Edition.targets : $($pet.FullName)"
-
-          $xdkEdition           = $pet.DirectoryName | Split-Path -Leaf
-          $xdkEditionRootVS2022 = ($pet.DirectoryName | Split-Path -Parent) + "\"
-          Write-Host "XdkEdition           = $xdkEdition"
-          Write-Host "XdkEditionRootVS2022 = $xdkEditionRootVS2022"
-
-          $xdkEditionRootPath = (Split-Path $gdkRoot -Parent) + "\"
-          Write-Host "XdkEditionRootPath   = $xdkEditionRootPath"
-
-          # VCTargetsPath17/16 must point to the merged VS2022+GDK directory, not
-          # the raw GDK flatDeployment — Platform.Edition.props imports
-          # $(VCTargetsPath)\Platforms\x64\Platform.props which only exists in
-          # the VS2022 tree.  The "Register GDK VS2022 platform" step merges them.
-          $v17 = $env:VCTargetsPath   # set by "Export VCTargetsPath" step
-          $v16 = $v17 -replace '\\v170\\', '\v160\'
-
-          $wkInclude = "${env:ProgramFiles(x86)}\Windows Kits\10\Include"
-          $winSDKVer = Get-ChildItem $wkInclude -Directory -ErrorAction SilentlyContinue |
-                         Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } |
-                         Sort-Object { [version]$_.Name } -Descending |
-                         Select-Object -First 1 -ExpandProperty Name
-          if (-not $winSDKVer) { $winSDKVer = "10.0.19041.0" }
-          Write-Host "Windows SDK version : $winSDKVer"
-
-          @(
-            '<?xml version="1.0" encoding="utf-8"?>',
-            '<Project>',
-            '  <PropertyGroup>',
-            "    <XdkEdition>$xdkEdition</XdkEdition>",
-            "    <XdkEditionRootVS2022>$xdkEditionRootVS2022</XdkEditionRootVS2022>",
-            "    <XdkEditionRootPath>$xdkEditionRootPath</XdkEditionRootPath>",
-            "    <GameDKLatest>$xdkEditionRootPath</GameDKLatest>",
-            "    <GameDKCoreLatest>$xdkEditionRootPath</GameDKCoreLatest>",
-            "    <DurangoXdkInstallPath>$xdkEditionRootPath</DurangoXdkInstallPath>",
-            "    <DurangoXdkInstallRoot>$xdkEditionRootPath</DurangoXdkInstallRoot>",
-            "    <WindowsTargetPlatformVersion>$winSDKVer</WindowsTargetPlatformVersion>",
-            '  </PropertyGroup>',
-            '</Project>'
-          ) | Set-Content -Path "Directory.Build.props" -Encoding utf8
-          Get-Content "Directory.Build.props"
-
-      # ---- Configure ------------------------------------------------
-      - name: Configure (CMake + GDK)
-        shell: pwsh
-        run: |
-          cmake -B xbox/build -S xbox `
-            -A Gaming.Xbox.Scarlett.x64 `
-            "-DVCTargetsPath=$env:VCTargetsPath" `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DANGLE_LIB_DIR="$env:ANGLE_LIB_DIR"
-
-      - name: Build
-        shell: pwsh
-        run: cmake --build xbox/build --config Release --parallel
+          rem Mirrors xbox-dev.yml's proven strategy: Ninja + MSVC, NO GDK
+          rem MSBuild platform (so no VCTargetsPath probe). The console target
+          rem differs from Desktop in two ways that are still open work:
+          rem
+          rem   TODO (PORT_PLAN Phase 2): resolve the console rendering backend.
+          rem     ANGLE.WindowsStore is desktop-D3D11; the Xbox GPU needs
+          rem     D3D12.X. Either build ANGLE against GDKX or add a native
+          rem     backend behind gles2_compat.
+          rem   TODO (PORT_PLAN Phase 3): add a Scarlett Ninja path to
+          rem     xbox/CMakeLists.txt mirroring the Desktop one — define
+          rem     _GAMING_XBOX, point includes/libs at the GXDK xbox/ tree
+          rem     (%GDK_LATEST%\<arch>), and link the console libs. Then:
+          rem
+          rem       call vcvars64.bat
+          rem       cmake -G Ninja -B xbox\build -S xbox ^
+          rem         -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl ^
+          rem         -DCMAKE_BUILD_TYPE=Release -DXBOX_SCARLETT=ON ^
+          rem         -DGDK_LATEST="%GDK_LATEST%" -DANGLE_LIB_DIR="%ANGLE_LIB_DIR%"
+          rem       cmake --build xbox\build
+          rem
+          rem Until that lands this workflow cannot produce a console binary.
+          echo Console (Scarlett) build is not implemented yet - see xbox/PORT_PLAN.md Phase 2/3
+          exit /b 1
 
       # ---- Assemble the layout directory for makepkg -----------------
       - name: Stage layout
         shell: pwsh
+        env:
+          XBOX_IDENTITY_NAME:          ${{ secrets.XBOX_IDENTITY_NAME }}
+          XBOX_IDENTITY_PUBLISHER:     ${{ secrets.XBOX_IDENTITY_PUBLISHER }}
+          XBOX_PUBLISHER_DISPLAY_NAME: ${{ secrets.XBOX_PUBLISHER_DISPLAY_NAME }}
+          XBOX_STORE_ID:               ${{ secrets.XBOX_STORE_ID }}
         run: |
           New-Item -ItemType Directory -Force -Path xbox_output\bin | Out-Null
 
-          # Executable
-          Copy-Item xbox\build\Release\newtonia.exe xbox_output\bin\
+          # Executable (Ninja is single-config — no Release\ subdir)
+          Copy-Item xbox\build\newtonia.exe xbox_output\bin\
 
           # ANGLE DLLs — copy from the directory found during "Generate ANGLE import libs".
           $angle = $env:ANGLE_BIN_DIR
@@ -252,8 +200,18 @@ jobs:
           # Audio assets
           Copy-Item -Recurse audio xbox_output\bin\audio
 
-          # Package manifest (must sit at the layout root)
-          Copy-Item xbox\MicrosoftGame.config xbox_output\
+          # Package manifest (must sit at the layout root). Identity is injected
+          # from secrets here so nothing deployment-specific lives in source —
+          # same pattern as Steam's app_build.vdf appid.
+          $cfg = Get-Content xbox\MicrosoftGame.config -Raw
+          $cfg = $cfg.Replace('__FILL_IDENTITY_NAME__',          $env:XBOX_IDENTITY_NAME)
+          $cfg = $cfg.Replace('__FILL_IDENTITY_PUBLISHER__',     $env:XBOX_IDENTITY_PUBLISHER)
+          $cfg = $cfg.Replace('__FILL_PUBLISHER_DISPLAY_NAME__', $env:XBOX_PUBLISHER_DISPLAY_NAME)
+          $cfg = $cfg.Replace('__FILL_STORE_ID__',               $env:XBOX_STORE_ID)
+          if ($cfg -match '__FILL_') {
+            Write-Error "Unsubstituted __FILL_ token remains in MicrosoftGame.config"; exit 1
+          }
+          Set-Content -Path xbox_output\MicrosoftGame.config -Value $cfg -Encoding utf8
 
           # Tile / splash image assets
           if (Test-Path xbox\Assets) {

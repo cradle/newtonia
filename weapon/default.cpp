@@ -1,4 +1,5 @@
 #include "default.h"
+#include "../asset_path.h"
 #include "../particle.h"
 #include "../point.h"
 #include "../ship.h"
@@ -47,13 +48,13 @@ namespace Weapon {
       if(!unlimited)
         _ammo = 100;
 
-      shoot_sound = Mix_LoadWAV("audio/shoot.wav");
+      shoot_sound = Mix_LoadWAV(asset_path("audio/shoot.wav").c_str());
       if(shoot_sound == NULL) {
         cout << "Unable to load shoot.wav (" << Mix_GetError() << ")" << endl;
       }
 
       if(!unlimited) {
-        empty_sound = Mix_LoadWAV("audio/empty.wav");
+        empty_sound = Mix_LoadWAV(asset_path("audio/empty.wav").c_str());
         if(empty_sound == NULL) {
           cout << "Unable to load empty.wav (" << Mix_GetError() << ")" << endl;
         }

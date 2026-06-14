@@ -2,8 +2,8 @@
 //
 // Uses SDL2 with OpenGL ES 2.0 via ANGLE, which translates GLES calls to
 // Direct3D 11 — the same path used on Android / Web, avoiding a full graphics
-// rewrite.  The GDK CMake toolchain (see xbox/CMakeLists.txt) links the ANGLE
-// libraries (libEGL / libGLESv2) that ship with the GDK.
+// rewrite.  The ANGLE libraries (libEGL / libGLESv2) come from the
+// ANGLE.WindowsStore NuGet package, not the GDK (see xbox/CMakeLists.txt).
 //
 // Mirrors android_main.cpp: SDL2 event loop, SDL_GameController input,
 // focus-lost / focus-gained lifecycle events required by GDK certification.
@@ -80,6 +80,12 @@ static SDL_Window      *s_window     = nullptr;
 static int              s_w = 1920, s_h = 1080;
 static bool             s_running    = true;
 static bool             s_reset_tick = false; // discard delta after resume
+
+// Up to two controllers (player 1 / player 2), mirroring glut.cpp.
+// SDL only delivers controller events for opened devices, so hot-plugged
+// pads must be opened here on SDL_CONTROLLERDEVICEADDED (issue #287).
+static SDL_GameController *s_controllers[2]    = { nullptr, nullptr };
+static SDL_JoystickID      s_controller_ids[2] = { -1, -1 };
 
 // EGL handles — used on both Desktop and Xbox.
 static EGLDisplay s_egl_display = EGL_NO_DISPLAY;
@@ -168,6 +174,16 @@ static void CALLBACK plm_suspend_callback(void * /*ctx*/,
     XSuspendResumeAcknowledge(ackId);
 }
 #endif // _GAMING_XBOX
+
+// Map an SDL keycode to the game's key encoding. ASCII keys (< 128) pass
+// through; function keys F1..F12 become 129..140 (128 + GLUT_KEY_Fn), matching
+// how glut.cpp feeds them and what the bindings expect (e.g. help = F1 = 129).
+// Returns 0 for keys the game doesn't use. SDLK_F1..SDLK_F12 are contiguous.
+static unsigned char game_key_from_sdl(SDL_Keycode k)
+{
+    if (k >= SDLK_F1 && k <= SDLK_F12) return (unsigned char)(129 + (k - SDLK_F1));
+    return (k < 128) ? (unsigned char)k : 0;
+}
 
 int main(int argc, char *argv[])
 {
@@ -351,16 +367,34 @@ int main(int argc, char *argv[])
         SDL_Log("Mix_OpenAudio failed: %s", Mix_GetError());
     Mix_AllocateChannels(32);
 
-    // Open the first available game controller (the GDK exposes all connected
-    // Xbox controllers as SDL_GameController devices).
+    // Open all (up to 2) game controllers present at startup; hot-plugged
+    // ones are opened by SDL_CONTROLLERDEVICEADDED in the event loop.
     SDL_JoystickEventState(SDL_ENABLE);
-    SDL_GameController *controller = nullptr;
+    SDL_GameControllerEventState(SDL_ENABLE);
+    // Controller diagnostics (issue #287): enumerate what SDL sees at boot so
+    // newtonia.log pinpoints whether detection, opening, or events fail.
+    SDL_Log("Joysticks at startup: %d", SDL_NumJoysticks());
     for (int i = 0; i < SDL_NumJoysticks(); i++) {
-        if (SDL_IsGameController(i)) {
-            controller = SDL_GameControllerOpen(i);
-            if (controller) break;
+        const char *name = SDL_JoystickNameForIndex(i);
+        SDL_Log("  joystick %d: %s%s", i,
+                name ? name : "(unnamed)",
+                SDL_IsGameController(i) ? " [gamecontroller]" : " [NOT a gamecontroller]");
+        if (!SDL_IsGameController(i)) continue;
+        for (int s = 0; s < 2; s++) {
+            if (s_controllers[s]) continue;
+            s_controllers[s] = SDL_GameControllerOpen(i);
+            if (s_controllers[s]) {
+                s_controller_ids[s] = SDL_JoystickInstanceID(
+                    SDL_GameControllerGetJoystick(s_controllers[s]));
+                SDL_Log("  opened controller %d as player %d: %s",
+                        i, s + 1, SDL_GameControllerName(s_controllers[s]));
+            } else {
+                SDL_Log("  SDL_GameControllerOpen(%d) FAILED: %s", i, SDL_GetError());
+            }
+            break;
         }
     }
+    if (!s_controllers[0]) SDL_Log("No controller opened at startup (hot-plug still active)");
 
     load_preferences();
     SDL_Log("Preferences loaded");
@@ -384,6 +418,11 @@ int main(int argc, char *argv[])
 
     s_game = new StateManager();
     SDL_Log("StateManager created");
+    // Register controllers opened before the StateManager existed (glut.cpp
+    // does the same); hot-plugged ones are registered by the event loop.
+    for (int i = 0; i < 2; i++) {
+        if (s_controllers[i]) s_game->controller_added(s_controllers[i]);
+    }
     s_game->resize(s_w, s_h);
     Typer::resize(s_w, s_h);
     SDL_Log("Entering main loop");
@@ -411,7 +450,7 @@ int main(int argc, char *argv[])
                     // fall through — game also receives the key, matching glut.cpp
                 }
 #endif
-                unsigned char key = (k < 128) ? (unsigned char)k : 0;
+                unsigned char key = game_key_from_sdl(k);
                 if (key) s_game->keyboard(key, 0, 0);
                 break;
             }
@@ -421,7 +460,7 @@ int main(int argc, char *argv[])
 #ifndef _GAMING_XBOX
                 if (k == g_prefs.general_keys.toggle_fullscreen) break; // not passed to game
 #endif
-                unsigned char key = (k < 128) ? (unsigned char)k : 0;
+                unsigned char key = game_key_from_sdl(k);
                 if (key) s_game->keyboard_up(key, 0, 0);
                 break;
             }
@@ -453,6 +492,59 @@ int main(int argc, char *argv[])
 #endif
                 }
                 break;
+
+            // Hot-plug (issue #287): SDL only delivers controller events for
+            // OPENED devices, so open into a free player slot here. SDL also
+            // queues DEVICEADDED for pads present at init — skip ones the
+            // startup scan already opened (same instance id).
+            case SDL_CONTROLLERDEVICEADDED: {
+                SDL_Log("SDL_CONTROLLERDEVICEADDED (device index %d)", (int)e.cdevice.which);
+                SDL_JoystickID add_id = SDL_JoystickGetDeviceInstanceID(e.cdevice.which);
+                if (add_id != s_controller_ids[0] && add_id != s_controller_ids[1]) {
+                    for (int i = 0; i < 2; i++) {
+                        if (s_controllers[i]) continue;
+                        s_controllers[i] = SDL_GameControllerOpen(e.cdevice.which);
+                        if (s_controllers[i]) {
+                            s_controller_ids[i] = SDL_JoystickInstanceID(
+                                SDL_GameControllerGetJoystick(s_controllers[i]));
+                            SDL_Log("Controller %d connected: %s",
+                                    i + 1, SDL_GameControllerName(s_controllers[i]));
+                            s_game->controller_added(s_controllers[i]);
+                        } else {
+                            SDL_Log("SDL_GameControllerOpen failed: %s", SDL_GetError());
+                        }
+                        break;
+                    }
+                }
+                s_game->controller(e);
+                break;
+            }
+            case SDL_CONTROLLERDEVICEREMOVED: {
+                SDL_JoystickID removed_id = (SDL_JoystickID)e.cdevice.which;
+                SDL_Log("SDL_CONTROLLERDEVICEREMOVED (instance %d)", (int)removed_id);
+                for (int i = 0; i < 2; i++) {
+                    if (s_controller_ids[i] == removed_id) {
+                        SDL_GameControllerClose(s_controllers[i]);
+                        s_controllers[i] = nullptr;
+                        s_controller_ids[i] = -1;
+                        SDL_Log("Controller %d disconnected", i + 1);
+                        s_game->controller_removed(removed_id);
+                        break;
+                    }
+                }
+                s_game->controller(e);
+                break;
+            }
+            case SDL_CONTROLLERBUTTONDOWN: {
+                static bool first_button_logged = false;
+                if (!first_button_logged) {
+                    SDL_Log("First SDL_CONTROLLERBUTTONDOWN (button %d) — controller events flowing",
+                            (int)e.cbutton.button);
+                    first_button_logged = true;
+                }
+                s_game->controller(e);
+                break;
+            }
 
             default:
                 s_game->controller(e);
@@ -486,7 +578,10 @@ int main(int argc, char *argv[])
     Typer::cleanup();
     gles2_shutdown();
     Mix_CloseAudio();
-    if (controller) SDL_GameControllerClose(controller);
+    for (int i = 0; i < 2; i++) {
+        if (s_controllers[i] && SDL_GameControllerGetAttached(s_controllers[i]))
+            SDL_GameControllerClose(s_controllers[i]);
+    }
 
     eglMakeCurrent(s_egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     eglDestroyContext(s_egl_display, s_egl_context);

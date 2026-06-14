@@ -757,40 +757,59 @@ void GLShip::draw_keymap() const {
 
   int common_offset = control_index+1;
   const GeneralKeys &gk = g_prefs.general_keys;
+  // Rows advance in steps of 1.0 below common_offset; keyboard-only rows
+  // (fullscreen, friendly fire, cheats) are skipped on controller so the
+  // list stays gap-free.
+  float row = common_offset + 1.5f;
+  auto row_y = [&]() { return (num_controls-row)/2.0f * (size + padding) * char_height + y_offset; };
   Typer::draw_centered(0, (num_controls-common_offset )/2.0f * (size + padding) * char_height + y_offset, "- GAME -", size +2);
-  Typer::draw(offset, (num_controls-common_offset-1.5)/2.0f * (size + padding) * char_height + y_offset, "PAUSE", size);
+  Typer::draw(offset, row_y(), "PAUSE", size);
   if(!last_input_was_controller) {
-    Typer::draw(-offset, (num_controls-common_offset-1.5)/2.0f * (size + padding) * char_height + y_offset, key_label(gk.pause).c_str(), size);
+    Typer::draw(-offset, row_y(), key_label(gk.pause).c_str(), size);
   } else {
-    draw_btn(-offset, (num_controls-common_offset-1.5)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_START);
+    draw_btn(-offset, row_y(), SDL_CONTROLLER_BUTTON_START);
   }
-  Typer::draw(offset, (num_controls-common_offset-2.5)/2.0f * (size + padding) * char_height + y_offset, "FULLSCREEN", size);
-  Typer::draw(-offset, (num_controls-common_offset-2.5)/2.0f * (size + padding) * char_height + y_offset, key_label(gk.toggle_fullscreen).c_str(), size);
-  Typer::draw(offset, (num_controls-common_offset-3.5)/2.0f * (size + padding) * char_height + y_offset, "FRIENDLY FIRE", size);
-  Typer::draw(-offset, (num_controls-common_offset-3.5)/2.0f * (size + padding) * char_height + y_offset, key_label(gk.toggle_friendly_fire).c_str(), size);
-  Typer::draw(offset, (num_controls-common_offset-4.5)/2.0f * (size + padding) * char_height + y_offset, "HIDE THIS", size);
+  row += 1.0f;
   if(!last_input_was_controller) {
-    Typer::draw(-offset, (num_controls-common_offset-4.5)/2.0f * (size + padding) * char_height + y_offset, key_label(help_key).c_str(), size);
-  } else {
-    draw_btn(-offset, (num_controls-common_offset-4.5)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+    Typer::draw(offset, row_y(), "FULLSCREEN", size);
+    Typer::draw(-offset, row_y(), key_label(gk.toggle_fullscreen).c_str(), size);
+    row += 1.0f;
+    Typer::draw(offset, row_y(), "FRIENDLY FIRE", size);
+    Typer::draw(-offset, row_y(), key_label(gk.toggle_friendly_fire).c_str(), size);
+    row += 1.0f;
   }
-  Typer::draw(offset, (num_controls-common_offset-5.5)/2.0f * (size + padding) * char_height + y_offset, "QUIT", size);
+  Typer::draw(offset, row_y(), "HIDE THIS", size);
   if(!last_input_was_controller) {
-    Typer::draw(-offset, (num_controls-common_offset-5.5)/2.0f * (size + padding) * char_height + y_offset, key_label(gk.menu).c_str(), size);
+    Typer::draw(-offset, row_y(), key_label(help_key).c_str(), size);
   } else {
-    draw_btn(-offset, (num_controls-common_offset-5.5)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_BACK);
+    draw_btn(-offset, row_y(), SDL_CONTROLLER_BUTTON_RIGHTSTICK);
   }
+  row += 1.0f;
+  Typer::draw(offset, row_y(), "QUIT", size);
+  if(!last_input_was_controller) {
+    Typer::draw(-offset, row_y(), key_label(gk.menu).c_str(), size);
+  } else {
+    draw_btn(-offset, row_y(), SDL_CONTROLLER_BUTTON_BACK);
+  }
+  row += 1.0f;
 
-  int cheat_offset = common_offset + 7;
-  Typer::draw_centered(0, (num_controls-cheat_offset-0.5)/2.0f * (size + padding) * char_height + y_offset, "- CHEATS -", size +2);
-  Typer::draw(offset, (num_controls-cheat_offset-2)/2.0f * (size + padding) * char_height + y_offset, "SPEED UP", size);
-  Typer::draw(-offset, (num_controls-cheat_offset-2)/2.0f * (size + padding) * char_height + y_offset, key_label(gk.time_speed_up).c_str(), size);
-  Typer::draw(offset, (num_controls-cheat_offset-3)/2.0f * (size + padding) * char_height + y_offset, "SLOW DOWN", size);
-  Typer::draw(-offset, (num_controls-cheat_offset-3)/2.0f * (size + padding) * char_height + y_offset, key_label(gk.time_slow_down).c_str(), size);
-  Typer::draw(offset, (num_controls-cheat_offset-4)/2.0f * (size + padding) * char_height + y_offset, "RESET SPEED", size);
-  Typer::draw(-offset, (num_controls-cheat_offset-4)/2.0f * (size + padding) * char_height + y_offset, key_label(gk.time_reset).c_str(), size);
-  Typer::draw(offset, (num_controls-cheat_offset-5)/2.0f * (size + padding) * char_height + y_offset, "SKIP LEVEL", size);
-  Typer::draw(-offset, (num_controls-cheat_offset-5)/2.0f * (size + padding) * char_height + y_offset, key_label(gk.skip_level).c_str(), size);
+  // Cheats are keyboard-only (see GLGame::keyboard_up) — hide on controller.
+  if(!last_input_was_controller) {
+    row += 1.0f;
+    Typer::draw_centered(0, row_y(), "- CHEATS -", size +2);
+    row += 1.5f;
+    Typer::draw(offset, row_y(), "SPEED UP", size);
+    Typer::draw(-offset, row_y(), key_label(gk.time_speed_up).c_str(), size);
+    row += 1.0f;
+    Typer::draw(offset, row_y(), "SLOW DOWN", size);
+    Typer::draw(-offset, row_y(), key_label(gk.time_slow_down).c_str(), size);
+    row += 1.0f;
+    Typer::draw(offset, row_y(), "RESET SPEED", size);
+    Typer::draw(-offset, row_y(), key_label(gk.time_reset).c_str(), size);
+    row += 1.0f;
+    Typer::draw(offset, row_y(), "SKIP LEVEL", size);
+    Typer::draw(-offset, row_y(), key_label(gk.skip_level).c_str(), size);
+  }
 }
 
 void GLShip::draw_weapons() const {

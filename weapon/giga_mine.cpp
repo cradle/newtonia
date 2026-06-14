@@ -1,4 +1,5 @@
 #include "giga_mine.h"
+#include "../asset_path.h"
 #include "../particle.h"
 #include "../ship.h"
 
@@ -9,12 +10,12 @@ namespace Weapon {
       _ammo = 1;
       unlimited = false;
 
-      mine_sound = Mix_LoadWAV("audio/mine.wav");
+      mine_sound = Mix_LoadWAV(asset_path("audio/mine.wav").c_str());
       if(mine_sound == NULL) {
         std::cout << "Unable to load mine.wav (" << Mix_GetError() << ")" << std::endl;
       }
 
-      empty_sound = Mix_LoadWAV("audio/empty.wav");
+      empty_sound = Mix_LoadWAV(asset_path("audio/empty.wav").c_str());
       if(empty_sound == NULL) {
         std::cout << "Unable to load empty.wav (" << Mix_GetError() << ")" << std::endl;
       }

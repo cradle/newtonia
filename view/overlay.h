@@ -7,6 +7,11 @@ class GLGame;
 class Overlay {
 public:
   static const float CORNER_INSET;
+  // Fraction of each viewport axis that UI may occupy. TVs can crop the
+  // outer ~5% per edge (overscan), and Xbox certification requires critical
+  // UI inside the title-safe region, so GDK builds shrink the HUD/menu
+  // projection to the central 90%. 1.0 everywhere else (no change).
+  static const float SAFE_AREA_SCALE;
   static void draw(const GLGame * glgame, const GLShip *glship);
 
 private:

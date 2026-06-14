@@ -1,4 +1,5 @@
 #include "ship.h"
+#include "asset_path.h"
 #include "point.h"
 #include "particle.h"
 #include "asteroid.h"
@@ -34,25 +35,25 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   safe_position(grid);
   init(!has_friction);
   if(tic_sound == NULL) {
-    tic_sound = Mix_LoadWAV("audio/tic.wav");
+    tic_sound = Mix_LoadWAV(asset_path("audio/tic.wav").c_str());
     if(tic_sound == NULL) {
       std::cout << "Unable to load tic.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(tic_low_sound == NULL) {
-    tic_low_sound = Mix_LoadWAV("audio/tic_low.wav");
+    tic_low_sound = Mix_LoadWAV(asset_path("audio/tic_low.wav").c_str());
     if(tic_low_sound == NULL) {
       std::cout << "Unable to load tic_low.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(click_sound == NULL) {
-    click_sound = Mix_LoadWAV("audio/click.wav");
+    click_sound = Mix_LoadWAV(asset_path("audio/click.wav").c_str());
     if(click_sound == NULL) {
       std::cout << "Unable to load click.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(boost_sound == NULL) {
-    boost_sound = Mix_LoadWAV("audio/boost.wav");
+    boost_sound = Mix_LoadWAV(asset_path("audio/boost.wav").c_str());
   }
   if(boost_sound != NULL) {
     Mix_VolumeChunk(boost_sound, 0);
@@ -61,49 +62,49 @@ Ship::Ship(const Grid &grid, bool has_friction) :
     std::cout << "Unable to load boost.wav (" << Mix_GetError() << ")" << std::endl;
   }
   if(missile_explode_sound == NULL) {
-    missile_explode_sound = Mix_LoadWAV("audio/missile_explode.wav");
+    missile_explode_sound = Mix_LoadWAV(asset_path("audio/missile_explode.wav").c_str());
     if(missile_explode_sound == NULL) {
       std::cout << "Unable to load missile_explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(shield_hum_sound == NULL) {
-    shield_hum_sound = Mix_LoadWAV("audio/shield_hum.wav");
+    shield_hum_sound = Mix_LoadWAV(asset_path("audio/shield_hum.wav").c_str());
   }
   if(shield_hum_sound == NULL) {
     std::cout << "Unable to load shield_hum.wav (" << Mix_GetError() << ")" << std::endl;
   }
   if(explode_sound == NULL) {
-    explode_sound = Mix_LoadWAV("audio/explode.wav");
+    explode_sound = Mix_LoadWAV(asset_path("audio/explode.wav").c_str());
     if(explode_sound == NULL) {
       std::cout << "Unable to load explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(giga_mine_explode_sound == NULL) {
-    giga_mine_explode_sound = Mix_LoadWAV("audio/giga_mine_explode.wav");
+    giga_mine_explode_sound = Mix_LoadWAV(asset_path("audio/giga_mine_explode.wav").c_str());
     if(giga_mine_explode_sound == NULL) {
       std::cout << "Unable to load giga_mine_explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(mine_explode_sound == NULL) {
-    mine_explode_sound = Mix_LoadWAV("audio/mine_explode.wav");
+    mine_explode_sound = Mix_LoadWAV(asset_path("audio/mine_explode.wav").c_str());
     if(mine_explode_sound == NULL) {
       std::cout << "Unable to load mine_explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(shoot_sound == NULL) {
-    shoot_sound = Mix_LoadWAV("audio/shoot.wav");
+    shoot_sound = Mix_LoadWAV(asset_path("audio/shoot.wav").c_str());
     if(shoot_sound == NULL) {
       std::cout << "Unable to load shoot.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(god_mode_music_sound == NULL) {
-    god_mode_music_sound = Mix_LoadWAV("audio/god_mode_music.wav");
+    god_mode_music_sound = Mix_LoadWAV(asset_path("audio/god_mode_music.wav").c_str());
     if(god_mode_music_sound == NULL) {
       std::cout << "Unable to load god_mode_music.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(god_mode_music_warn_sound == NULL) {
-    god_mode_music_warn_sound = Mix_LoadWAV("audio/god_mode_music_warn.wav");
+    god_mode_music_warn_sound = Mix_LoadWAV(asset_path("audio/god_mode_music_warn.wav").c_str());
     if(god_mode_music_warn_sound == NULL) {
       std::cout << "Unable to load god_mode_music_warn.wav (" << Mix_GetError() << ")" << std::endl;
     }

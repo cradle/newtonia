@@ -30,12 +30,39 @@ project(newtonia CXX)
 #   _GAMING_DESKTOP    for the Desktop target
 # Both are handled by xbox_main.cpp; do not set them manually here.
 #
-# ANGLE (libEGL / libGLESv2) is bundled with the GDK and its import libs are
-# automatically on the linker search path once the platform is loaded.
+# ANGLE (libEGL / libGLESv2) is NOT bundled with the GDK.  CI fetches the
+# ANGLE.WindowsStore NuGet package and passes -DANGLE_INCLUDE_DIR /
+# -DANGLE_LIB_DIR (see xbox-dev.yml); local builds can set the same cache
+# variables, or set GDK_ROOT to enable the search fallbacks below.
 # ---------------------------------------------------------------
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# ---------------------------------------------------------------
+# Build path: GDK MSBuild platform vs plain MSVC (Ninja)
+# ---------------------------------------------------------------
+# Two ways to build:
+#   * GDK platform : cmake -A Gaming.Desktop.x64  (VS generator)
+#   * Plain MSVC   : cmake -G Ninja               (CI canary; see xbox-dev.yml)
+#
+# CI uses the Ninja path. The VS-generator path needs CMake to discover
+# VCTargetsPath via an internally generated probe project that loads the GDK
+# platform's WindowsSDK check; under BWOI (no installer, no SDK registry entry)
+# that probe is unsolvable on hosted runners. Ninja invokes cl.exe directly —
+# no MSBuild platform, no VCTargets, no probe.
+#
+# The GDK is still fully set up in the Ninja build: GDK_INCLUDE_DIR is passed
+# from the BWOI-extracted GDK (…/Microsoft GDK/<ed>/windows/include) so the
+# game compiles against the real GDK headers, and _GAMING_DESKTOP is defined
+# (the MSBuild platform would otherwise inject it). This is the basis for the
+# console target — the Scarlett build is the same structure pointed at the
+# xbox/ tree with _GAMING_XBOX and the console libs.
+if(CMAKE_GENERATOR_PLATFORM MATCHES "Gaming")
+  set(GDK_PLATFORM_BUILD TRUE)
+else()
+  set(GDK_PLATFORM_BUILD FALSE)
+endif()
 
 # ---------------------------------------------------------------
 # Static MSVC runtime — avoids VCRUNTIME140_APP.dll / MSVCP140_APP.dll
@@ -77,7 +104,7 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(SDL2
     GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-    GIT_TAG        SDL2
+    GIT_TAG        release-2.30.9   # pinned: branch tip (SDL2) drifts between CI runs — see issue #287
     GIT_SHALLOW    TRUE
 )
 set(SDL_SHARED           OFF CACHE BOOL "" FORCE)
@@ -103,7 +130,7 @@ target_compile_options(SDL2-static PRIVATE /U__GDK__)
 # SDL2_mixer: WAV + MP3 only (mirrors every other platform build).
 FetchContent_Declare(SDL2_mixer
     GIT_REPOSITORY https://github.com/libsdl-org/SDL_mixer.git
-    GIT_TAG        SDL2
+    GIT_TAG        release-2.8.0   # pinned alongside SDL2
     GIT_SHALLOW    TRUE
 )
 set(SDL2MIXER_WAVPACK OFF CACHE BOOL "" FORCE)
@@ -127,9 +154,12 @@ target_sources(newtonia PRIVATE "${CMAKE_SOURCE_DIR}/sdl_gdk_stubs.cpp")
 
 target_compile_definitions(newtonia PRIVATE
     _USE_MATH_DEFINES  # M_PI etc. for files that include <math.h> before SDL headers
-    # _GAMING_XBOX / _GAMING_DESKTOP are injected by the GDK toolchain;
-    # do not set them here or the wrong entry point will be compiled on Desktop.
 )
+# On the GDK MSBuild platform _GAMING_DESKTOP is injected automatically; the
+# plain Ninja build must define it so the Desktop entry point compiles.
+if(NOT GDK_PLATFORM_BUILD)
+    target_compile_definitions(newtonia PRIVATE _GAMING_DESKTOP)
+endif()
 
 # SDL_stdinc.h unconditionally defines M_PI, so when _USE_MATH_DEFINES is also
 # set the Windows CRT re-defines it.  Suppress the resulting C4005 warning.
@@ -138,8 +168,20 @@ target_compile_options(newtonia PRIVATE /wd4005)
 # Desktop: use the WINDOWS subsystem so no console window appears.
 # /ENTRY:mainCRTStartup keeps the standard CRT startup calling main()
 # instead of WinMain(), so SDL_SetMainReady() + main() work unchanged.
-if(CMAKE_GENERATOR_PLATFORM MATCHES "Desktop")
+# Applies to both the GDK Desktop platform and the plain Ninja build.
+if(CMAKE_GENERATOR_PLATFORM MATCHES "Desktop" OR NOT GDK_PLATFORM_BUILD)
     target_link_options(newtonia PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
+endif()
+
+# Plain Ninja build: wire in the GDK headers (the MSBuild platform would do
+# this) so the game compiles against the real GDK, and link the Win32 libs the
+# Desktop present path (GDI StretchDIBits) and SDL rely on. GDK_INCLUDE_DIR is
+# passed by CI from the BWOI-extracted GDK.
+if(NOT GDK_PLATFORM_BUILD)
+    if(DEFINED GDK_INCLUDE_DIR)
+        target_include_directories(newtonia PRIVATE "${GDK_INCLUDE_DIR}")
+    endif()
+    target_link_libraries(newtonia PRIVATE gdi32 user32)
 endif()
 
 target_include_directories(newtonia PRIVATE

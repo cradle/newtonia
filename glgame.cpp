@@ -1,4 +1,5 @@
 #include "glgame.h"
+#include "asset_path.h"
 #include "highscore.h"
 #include "preferences.h"
 #ifdef __EMSCRIPTEN__
@@ -98,19 +99,19 @@ GLGame::GLGame(SDL_GameController *controller) :
   station = NULL;//new GLStation(enemies, players);
 
   if(tic_sound == NULL) {
-    tic_sound = Mix_LoadWAV("audio/tic.wav");
+    tic_sound = Mix_LoadWAV(asset_path("audio/tic.wav").c_str());
     if(tic_sound == NULL) {
       std::cout << "Unable to load tic.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(pickup_sound == NULL) {
-    pickup_sound = Mix_LoadWAV("audio/pickup.wav");
+    pickup_sound = Mix_LoadWAV(asset_path("audio/pickup.wav").c_str());
     if(pickup_sound == NULL) {
       std::cout << "Unable to load pickup.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(warp_sound == NULL) {
-    warp_sound = Mix_LoadWAV("audio/warp.wav");
+    warp_sound = Mix_LoadWAV(asset_path("audio/warp.wav").c_str());
     if(warp_sound == NULL) {
       std::cout << "Unable to load warp.wav (" << Mix_GetError() << ")" << std::endl;
     }
@@ -267,19 +268,19 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   warp_pass_ = new WarpPass();
 
   if(tic_sound == NULL) {
-    tic_sound = Mix_LoadWAV("audio/tic.wav");
+    tic_sound = Mix_LoadWAV(asset_path("audio/tic.wav").c_str());
     if(tic_sound == NULL) {
       std::cout << "Unable to load tic.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(pickup_sound == NULL) {
-    pickup_sound = Mix_LoadWAV("audio/pickup.wav");
+    pickup_sound = Mix_LoadWAV(asset_path("audio/pickup.wav").c_str());
     if(pickup_sound == NULL) {
       std::cout << "Unable to load pickup.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(warp_sound == NULL) {
-    warp_sound = Mix_LoadWAV("audio/warp.wav");
+    warp_sound = Mix_LoadWAV(asset_path("audio/warp.wav").c_str());
     if(warp_sound == NULL) {
       std::cout << "Unable to load warp.wav (" << Mix_GetError() << ")" << std::endl;
     }
@@ -448,7 +449,10 @@ void GLGame::controller_removed(SDL_JoystickID id) {
   for(auto* glship : *players) {
     if(glship->is_my_controller_id(id)) {
       glship->set_controller(NULL);
-      if(running) toggle_pause();
+      // Don't pause for a player who is already game over (dead, no lives):
+      // in two-player their disconnect must not interrupt the survivor.
+      bool player_game_over = !glship->ship->is_alive() && glship->ship->lives == 0;
+      if(running && !player_game_over) toggle_pause();
       return;
     }
   }
@@ -1176,8 +1180,12 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   const float MAX_OSD_ASPECT = 16.0f / 9.0f;
   float capped_hw = (osd_hw / osd_hh > MAX_OSD_ASPECT) ? osd_hh * MAX_OSD_ASPECT : osd_hw;
 
+  // Widening the ortho extents shrinks all HUD content uniformly into the
+  // title-safe region (no-op where SAFE_AREA_SCALE is 1.0).
+  float safe_hw = osd_hw / Overlay::SAFE_AREA_SCALE;
+  float safe_hh = osd_hh / Overlay::SAFE_AREA_SCALE;
   float ortho[16];
-  mat4_ortho(ortho, -osd_hw, osd_hw, -osd_hh, osd_hh, -1.0f, 1.0f);
+  mat4_ortho(ortho, -safe_hw, safe_hw, -safe_hh, safe_hh, -1.0f, 1.0f);
   gles2_set_vp(ortho);
   setup_viewport(primary);
   float saved_sw = Typer::scaled_window_width;
@@ -1407,7 +1415,11 @@ void GLGame::draw_map() const {
 #else
     int map_x = (int)Overlay::CORNER_INSET;
 #endif
-    glViewport(map_x, Overlay::CORNER_INSET, minimap_size, minimap_size);
+    // The minimap is positioned with a raw pixel viewport, so the safe-area
+    // margin must be added here in pixels (the HUD ortho trick can't reach it).
+    int safe_px_x = (int)(window.x() * (1.0f - Overlay::SAFE_AREA_SCALE) / 2.0f);
+    int safe_px_y = (int)(window.y() * (1.0f - Overlay::SAFE_AREA_SCALE) / 2.0f);
+    glViewport(map_x + safe_px_x, (int)Overlay::CORNER_INSET + safe_px_y, minimap_size, minimap_size);
   } else {
     glViewport(window.x()/2 - minimap_size/2, window.y()/2 - minimap_size/2, minimap_size, minimap_size);
   }

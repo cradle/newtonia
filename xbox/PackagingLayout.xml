@@ -21,7 +21,10 @@
 -->
 <PackagingLayout xmlns="http://schemas.microsoft.com/gdk/2020/packagelayout">
 
-  <PackageFamily ID="Newtonia_retail" TargetDeviceFamily="XboxOne">
+  <!-- Scarlett (Series X|S) only — must match the Executable's
+       TargetDeviceFamily in MicrosoftGame.config and the
+       Gaming.Xbox.Scarlett.x64 build target. -->
+  <PackageFamily ID="Newtonia_retail" TargetDeviceFamily="Scarlett">
 
     <Package ID="Newtonia" Version="[version]">
 
