@@ -1,0 +1,192 @@
+name: Xbox
+
+# Sole active workflow for the repo. Builds the Xbox/GDK Desktop target
+# (Gaming.Desktop.x64 code path) on a self-hosted Windows runner using the
+# Ninja generator + MSVC, against a locally-installed GDK.
+#
+# Why Ninja (not -A Gaming.Desktop.x64): the GDK's MSBuild platform integration
+# only registers into full Visual Studio editions, not Build Tools, so the
+# VS generator's VCTargetsPath probe is unsolvable here. Ninja invokes cl.exe
+# directly — no MSBuild platform, no VCTargets probe. See xbox/CMakeLists.txt
+# and the disabled .github/workflows/disabled/xbox-dev.yml for the rationale.
+#
+# Shell note: the scripted steps use `shell: powershell` (Windows PowerShell
+# 5.1, always present at a fixed System32 path) rather than pwsh, because a
+# self-hosted runner started as a Windows service inherits a boot-time PATH and
+# will not see tools installed later (pwsh, nuget). For the same reason the
+# ANGLE step bootstraps nuget.exe if it isn't already resolvable.
+#
+# Runner prerequisites (installed once on the host):
+#   * VS 2022 Build Tools — "Desktop development with C++" (MSVC v143, Win SDK,
+#     CMake + Ninja). vcvars64.bat is located via vswhere.
+#   * Microsoft GDK — installed so %GameDK% is set; the gameKit headers are
+#     auto-discovered below (edition number need not be hardcoded).
+#   * Internet access for the SDL2/SDL2_mixer FetchContent clone + NuGet.
+
+on:
+  # Feature branches build via their PR only (pull_request). push is limited to
+  # the mainline so merges still build without double-running open-PR branches.
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+# Auto-cancel a superseded in-progress run on the same ref.
+concurrency:
+  group: xbox-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # Must match the labels the self-hosted runner was registered with
+    # (config.cmd --labels self-hosted,windows,gdk).
+    runs-on: [self-hosted, windows, gdk]
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Locate GDK headers
+        shell: "powershell -ExecutionPolicy Bypass -NoProfile -Command \"& '{0}'\""
+        run: |
+          # The Ninja build compiles against the real GDK headers via
+          # GDK_INCLUDE_DIR. Find the gameKit include dir under %GameDK%
+          # (…\Microsoft GDK\<edition>\GRDK\gameKit\Include) by locating
+          # xgameruntime.h — robust to the installed edition number.
+          $ErrorActionPreference = "Stop"
+          if (-not $env:GameDK) { Write-Error "GameDK env var not set - is the GDK installed?"; exit 1 }
+          $hdr = Get-ChildItem $env:GameDK -Recurse -Filter "xgameruntime.h" -ErrorAction SilentlyContinue |
+                   Select-Object -First 1
+          if (-not $hdr) { Write-Error "xgameruntime.h not found under $env:GameDK"; exit 1 }
+          $inc = $hdr.Directory.FullName
+          Write-Host "GDK include dir: $inc"
+          # Append UTF-8 without BOM: Windows PowerShell's >> writes UTF-16,
+          # which corrupts GITHUB_ENV. Use .NET to control the encoding.
+          $enc = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::AppendAllText($env:GITHUB_ENV, "GDK_INCLUDE_DIR=$inc`r`n", $enc)
+
+      - name: Fetch ANGLE
+        shell: "powershell -ExecutionPolicy Bypass -NoProfile -Command \"& '{0}'\""
+        run: |
+          # ANGLE (libEGL / libGLESv2) — GLES2 -> D3D11 translation layer for
+          # our renderer. Not bundled with the GDK; pulled from the
+          # ANGLE.WindowsStore NuGet package (import libs, headers, DLLs).
+          $ErrorActionPreference = "Stop"
+          # Resolve nuget; bootstrap the standalone exe if the service PATH
+          # doesn't expose it.
+          $nuget = (Get-Command nuget.exe -ErrorAction SilentlyContinue).Source
+          if (-not $nuget) {
+            $nuget = "$env:RUNNER_TEMP\nuget.exe"
+            Write-Host "nuget not on PATH; downloading standalone nuget.exe"
+            Invoke-WebRequest "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" -OutFile $nuget
+          }
+          & $nuget install ANGLE.WindowsStore -ExcludeVersion `
+            -OutputDirectory "$env:RUNNER_TEMP\nuget" -NonInteractive
+          if ($LASTEXITCODE -ne 0) { Write-Error "nuget install ANGLE.WindowsStore failed"; exit 1 }
+          $pkg = "$env:RUNNER_TEMP\nuget\ANGLE.WindowsStore"
+          $lib = Get-ChildItem $pkg -Recurse -Filter "libEGL.lib" |
+                   Where-Object FullName -match 'x64' | Select-Object -First 1
+          if (-not $lib) { Write-Error "libEGL.lib not found in ANGLE.WindowsStore"; exit 1 }
+          $hdr = Get-ChildItem $pkg -Recurse -Filter "egl.h" | Select-Object -First 1
+          if (-not $hdr) { Write-Error "egl.h not found in ANGLE.WindowsStore"; exit 1 }
+          $angleInclude = $hdr.Directory.Parent.FullName
+          $dll = Get-ChildItem $pkg -Recurse -Filter "libEGL.dll" |
+                   Where-Object FullName -match 'x64' | Select-Object -First 1
+          if (-not $dll) { Write-Error "libEGL.dll not found in ANGLE.WindowsStore"; exit 1 }
+          $enc = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::AppendAllText($env:GITHUB_ENV, "ANGLE_LIB_DIR=$($lib.Directory.FullName)`r`n", $enc)
+          [System.IO.File]::AppendAllText($env:GITHUB_ENV, "ANGLE_INCLUDE_DIR=$angleInclude`r`n", $enc)
+          [System.IO.File]::AppendAllText($env:GITHUB_ENV, "ANGLE_BIN_DIR=$($dll.Directory.FullName)`r`n", $enc)
+
+      - name: Configure + Build (Ninja)
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath`) do set "VSDIR=%%i"
+          if not defined VSDIR (echo vswhere found no Visual Studio & exit /b 1)
+          call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
+          rem Ensure Ninja is on PATH (VS ships it under CommonExtensions).
+          set "PATH=%VSDIR%\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;%PATH%"
+          cmake -G Ninja -B xbox\build-desktop -S xbox ^
+            -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DGDK_INCLUDE_DIR="%GDK_INCLUDE_DIR%" ^
+            -DANGLE_LIB_DIR="%ANGLE_LIB_DIR%" ^
+            -DANGLE_INCLUDE_DIR="%ANGLE_INCLUDE_DIR%" || exit /b 1
+          cmake --build xbox\build-desktop || exit /b 1
+
+      - name: Stage runtime DLLs
+        shell: "powershell -ExecutionPolicy Bypass -NoProfile -Command \"& '{0}'\""
+        run: |
+          # Ninja is single-config: newtonia.exe + post-build audio land in
+          # build-desktop/. newtonia.exe is static CRT (/MT), but the ANGLE
+          # DLLs must sit next to it to run.
+          $ErrorActionPreference = "Stop"
+          $out = "xbox/build-desktop"
+          Copy-Item "$env:ANGLE_BIN_DIR\libEGL.dll"    $out
+          Copy-Item "$env:ANGLE_BIN_DIR\libGLESv2.dll" $out
+
+          # The ANGLE.WindowsStore DLLs import the app-container CRT (*_APP.dll),
+          # which is not part of the standard VC++ Redistributable. The
+          # Microsoft.VCRTForwarders.140 NuGet package ships *_app.dll forwarder
+          # DLLs that redirect those imports to the regular desktop CRT; stage
+          # the three ANGLE needs, named with the uppercase _APP suffix it
+          # imports by.
+          $nuget = (Get-Command nuget.exe -ErrorAction SilentlyContinue).Source
+          if (-not $nuget) {
+            $nuget = "$env:RUNNER_TEMP\nuget.exe"
+            if (-not (Test-Path $nuget)) {
+              Invoke-WebRequest -UseBasicParsing "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" -OutFile $nuget
+            }
+          }
+          & $nuget install Microsoft.VCRTForwarders.140 -ExcludeVersion `
+            -OutputDirectory "$env:RUNNER_TEMP\nuget" -NonInteractive
+          if ($LASTEXITCODE -ne 0) { Write-Error "nuget install Microsoft.VCRTForwarders.140 failed"; exit 1 }
+          $fwd = "$env:RUNNER_TEMP\nuget\Microsoft.VCRTForwarders.140"
+          foreach ($dll in @("msvcp140_app.dll","vcruntime140_app.dll","vcruntime140_1_app.dll")) {
+            $f = Get-ChildItem $fwd -Recurse -Filter $dll -ErrorAction SilentlyContinue |
+                   Where-Object { $_.FullName -match 'x64' -and $_.FullName -notmatch 'debug' } |
+                   Select-Object -First 1
+            if (-not $f) {
+              Write-Host "DLLs under ${fwd}:"
+              Get-ChildItem $fwd -Recurse -Filter *.dll | Select-Object -ExpandProperty FullName | Write-Host
+              Write-Error "$dll not found in Microsoft.VCRTForwarders.140"; exit 1
+            }
+            $target = Join-Path $out (($dll -replace '_app\.dll$','_APP.dll'))
+            Copy-Item $f.FullName $target
+            Write-Host "Staged $(Split-Path $target -Leaf)"
+          }
+
+          # The forwarders redirect to the desktop CRT; stage that too so the
+          # artifact runs on a clean machine. Sourced from the public VCLibs
+          # desktop framework package (an appx is a zip; tar.exe extracts it).
+          $appx = "$env:RUNNER_TEMP\vclibs.appx"
+          Invoke-WebRequest -UseBasicParsing "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx" -OutFile $appx
+          $vcdir = "$env:RUNNER_TEMP\vclibs"
+          Remove-Item $vcdir -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $vcdir | Out-Null
+          & tar.exe -xf $appx -C $vcdir
+          if ($LASTEXITCODE -ne 0) { Write-Error "failed to extract VCLibs appx"; exit 1 }
+          foreach ($dll in @("msvcp140.dll","vcruntime140.dll","vcruntime140_1.dll")) {
+            $f = Get-ChildItem $vcdir -Recurse -Filter $dll -ErrorAction SilentlyContinue |
+                   Select-Object -First 1
+            if (-not $f) { Write-Error "$dll not found in VCLibs appx"; exit 1 }
+            Copy-Item $f.FullName (Join-Path $out $dll)
+            Write-Host "Staged $dll"
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: newtonia-gdk-desktop
+          path: |
+            xbox/build-desktop/newtonia.exe
+            xbox/build-desktop/libEGL.dll
+            xbox/build-desktop/libGLESv2.dll
+            xbox/build-desktop/MSVCP140_APP.dll
+            xbox/build-desktop/VCRUNTIME140_APP.dll
+            xbox/build-desktop/VCRUNTIME140_1_APP.dll
+            xbox/build-desktop/msvcp140.dll
+            xbox/build-desktop/vcruntime140.dll
+            xbox/build-desktop/vcruntime140_1.dll
+            xbox/build-desktop/audio/
+          retention-days: 7
