@@ -94,6 +94,10 @@ Partner Center, download GDKX, and request a dev kit.
    first; GDKX download and the Phase 2 rendering spike can proceed while
    the kit ships).
 4. Decide publisher display name, age ratings (IARC questionnaire), pricing.
+5. ⏳ Stand up a **private repo** for GDKX-touching console work (NDA) — the
+   public repo keeps the game + all non-NDA work. Use a private mirror with
+   `upstream` tracking, not a submodule (the Xbox code is woven into shared
+   files). Recipe + public/private split: `xbox/PRIVATE_REPO.md`.
 
 Exit criteria: GDKX installable on a dev machine; dev kit on the desk.
 
