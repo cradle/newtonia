@@ -151,7 +151,8 @@ Exit criteria: a triangle (then the menu) rendering on the dev kit.
 
 ### Phase 3 — Console bring-up
 
-With rendering decided, make the full game run on the dev kit:
+With rendering decided, make the full game run on the dev kit.
+**Checklist: `xbox/CONSOLE_BRINGUP.md`** (mirrors the Desktop test pass).
 
 1. Entry point: rework the `_GAMING_XBOX` half of `xbox_main.cpp` to match
    the Phase 2 outcome (swap chain/present instead of `eglSwapBuffers` if
