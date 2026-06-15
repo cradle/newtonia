@@ -23,12 +23,17 @@ Status: planning document. Companion to `xbox/CMakeLists.txt`, `xbox_main.cpp`,
 
 ### Untested / known-wrong (the actual port work)
 
-1. **The `_GAMING_XBOX` console code paths run nowhere yet.** The hosted
-   console compile-smoke job (`xbox-console-smoke.yml`) that used to build them
-   under `WINAPI_FAMILY_GAMES` is now retired into `.github/workflows/disabled/`,
-   so live CI no longer compiles them — the self-hosted `xbox.yml` builds only
-   the Desktop / desktop-GL path. The console half stays a compile-time
-   reference until GDKX + a dev kit; nothing runs on console hardware.
+1. **The console *entry-point* specifics run nowhere on hardware yet.** Live CI
+   now covers the parts that matter without a dev kit: the self-hosted
+   `xbox.yml` builds the Desktop / desktop-GL path, and the hosted
+   `xbox-console-smoke.yml` compiles the renderer + shared game code against the
+   **Xbox Game OS API partition** (`WINAPI_FAMILY_GAMES`) on every PR, catching
+   forbidden-API leakage. That smoke deliberately compiles the **desktop-GL /
+   GLon12 renderer** (`_GAMING_DESKTOP` → `DESKTOP_COMPAT_GL`) — the decided
+   console path — not the abandoned ANGLE/GLES2 flow. What still runs nowhere:
+   the `_GAMING_XBOX` windowing/present/PLM specifics (manual EGL context today;
+   GLon12 surface + PLM/XUser later), which stay a compile-time reference until
+   GDKX + a dev kit. Nothing runs on console hardware.
 2. **The console rendering strategy is now decided, not open — Option A
    (GLon12).** The desktop half of the Phase 2 spike passed: the existing
    GL 3.3 core renderer runs through Mesa's real OpenGL→D3D12 (GLon12) path on a
@@ -268,9 +273,11 @@ All in plain C++ behind small abstractions; testable on dev kit only.
    `XSuspendResumeRegisterForSuspend` do not appear in public GDK docs, and
    SDL's GDK backend uses `RegisterAppStateChangeNotification`
    (`appnotify.h`) instead — the entry point's PLM block was written
-   without a compiler and must be checked against the real GDKX headers
-   (the console smoke workflow compiles it against stubs in
-   `xbox/smoke_stubs/` that mirror our assumptions, not the real API).
+   without a compiler and must be checked against the real GDKX headers. (The
+   `_GAMING_XBOX` PLM block is no longer exercised by any CI — the console
+   smoke now compiles the `_GAMING_DESKTOP` renderer path; the GDK-API stubs in
+   `xbox/smoke_stubs/`, which mirror our assumptions rather than the real API,
+   remain only as a reference for this GDKX-gated work.)
 2. **User identity:** add minimal `XUserAddAsync` sign-in at boot
    (silent default user), handle sign-out mid-game (pause + return to
    menu). Required by GDK cert even for offline titles.
@@ -311,14 +318,17 @@ All in plain C++ behind small abstractions; testable on dev kit only.
      unsolvable VCTargetsPath probe entirely. Runner-agnostic → runs on
      windows-latest. This Ninja+BWOI structure is the basis for the console
      (Scarlett) target.
-   - **Console API-surface compile smoke on hosted runners** — works today
+   - **Console API-surface compile smoke on hosted runners** — active today
      with zero NDA material (`xbox-console-smoke.yml`): plain MSVC +
      Windows SDK ≥ 22000 compiling all sources with
-     `/DWINAPI_FAMILY=WINAPI_FAMILY_GAMES /D_GAMING_XBOX`. The Xbox Game OS
-     partition excludes GDI/D3D11/OpenGL desktop APIs, so this catches
-     forbidden-API usage and keeps the otherwise never-compiled
-     `_GAMING_XBOX` paths building. GDK-only headers are stubbed
-     (`xbox/smoke_stubs/`); no link step.
+     `/DWINAPI_FAMILY=WINAPI_FAMILY_GAMES /D_GAMING_DESKTOP`. The Xbox Game OS
+     partition excludes GDI/D3D11/desktop-GL/WGL APIs, so this catches
+     forbidden-API usage in the **desktop-GL/GLon12 renderer** (the decided
+     console path) + shared game code on every PR. It defines `_GAMING_DESKTOP`
+     (→ `DESKTOP_COMPAT_GL`), **not** `_GAMING_XBOX`, so the abandoned
+     ANGLE/GLES2 flow and its EGL/PLM code go uncompiled; the GDK header stubs
+     (`xbox/smoke_stubs/`) are therefore unused while that path is dormant.
+     No link step.
    - **Full `Gaming.Xbox.Scarlett.x64` build** — requires the NDA GDKX
      (ID@Xbox); the Scarlett MSBuild platform, D3D12.X, and console libs
      are not in the public GDK, so stock hosted runners cannot do it.
@@ -366,7 +376,7 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 | 11 | ✅ TV safe-area inset (`Overlay::SAFE_AREA_SCALE`, 90% on `_GAMING_XBOX`) | `view/overlay.h/cpp`, `glgame.cpp` (HUD ortho + minimap viewport), `menu.cpp` | 4 |
 | 12 | 🔶 Store assets + config identity + family alignment — placeholder art generated (`xbox/generate_assets.py` → `xbox/Assets/`), `TargetDeviceFamily` aligned to Scarlett, and identity kept out of source as `__FILL_*__` tokens injected from GitHub secrets at deploy time (checklist `xbox/PARTNER_CENTER_VALUES.md`; deploy workflow checks secrets + post-substitution). Set secrets once Partner Center title exists; real art still TODO | `xbox/Assets/`, `MicrosoftGame.config`, `PackagingLayout.xml`, `xbox/PARTNER_CENTER_VALUES.md`, `deploy-xbox.yml` | 5 |
 | 13 | Self-hosted console CI job (needs GDKX) + deploy workflow rework | `.github/workflows/` | 5 |
-| 14 | ✅ Console API-surface compile smoke on hosted runners (`WINAPI_FAMILY_GAMES` + `_GAMING_XBOX`, compile-only) | `.github/workflows/xbox-console-smoke.yml`, `xbox/smoke_stubs/` | 5 |
+| 14 | ✅ Console API-surface compile smoke on hosted runners (`WINAPI_FAMILY_GAMES` + `_GAMING_DESKTOP`, compile-only — guards the desktop-GL/GLon12 renderer + shared code against the Game OS partition; ANGLE/GLES2 flow no longer compiled) | `.github/workflows/xbox-console-smoke.yml` | 5 |
 
 ## 5. Sequencing and effort (single developer, rough)
 
