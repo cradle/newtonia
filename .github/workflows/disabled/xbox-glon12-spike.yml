@@ -1,0 +1,100 @@
+# Newtonia GLon12 desktop rendering spike (Xbox port Phase 2, work-item 3a).
+#
+# GDKX-FREE. Runs on a stock hosted Windows runner with no GDK and no dev kit.
+# It builds glon12_probe and runs it against Mesa's *desktop* GLon12 build
+# (OpenGL-on-D3D12) to confirm GLon12 exposes the GL 3.3 core feature set and
+# GLSL-330 program Newtonia's renderer needs. See xbox/GLON12_SPIKE.md.
+#
+# DISABLED per the repo's single-active-workflow policy (only xbox.yml runs
+# automatically). To run this: move it into .github/workflows/ and dispatch it,
+# or just run xbox/glon12/run_spike.ps1 locally on any Windows box.
+
+name: Xbox GLon12 spike
+
+on:
+  workflow_dispatch:
+    inputs:
+      mesa_version:
+        description: "Mesa desktop build version (pal1000/mesa-dist-win release tag, e.g. 24.3.4)"
+        required: false
+        default: "24.3.4"
+
+jobs:
+  glon12-probe:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-SDL2
+
+      # Static link so the exe is self-contained and can sit next to the Mesa
+      # GLon12 DLLs (whose opengl32.dll the loader must resolve, not SDL's deps).
+      - name: Build glon12_probe
+        run: |
+          g++ -O2 -Wall -std=c++11 \
+            $(pkg-config --cflags sdl2) \
+            -o glon12_probe.exe xbox/glon12/glon12_probe.cpp \
+            -static \
+            $(pkg-config --libs --static sdl2) \
+            -lopengl32 -lgdi32
+
+      # Baseline: system GL (the runner's GL — likely Microsoft GDI / WARP).
+      - name: Probe — baseline (system GL)
+        run: |
+          ./glon12_probe.exe --hidden --frames 3 || true
+          echo "----- baseline log -----"
+          cat glon12_probe.log || true
+
+      # Fetch Mesa's desktop GLon12 DLLs (opengl32.dll + libgallium_wgl.dll +
+      # dxil.dll) from the pal1000/mesa-dist-win release and drop them beside
+      # the exe so its WGL context becomes a D3D12-backed GLon12 context.
+      - name: Fetch Mesa desktop GLon12
+        shell: pwsh
+        run: |
+          $ver = "${{ github.event.inputs.mesa_version }}"
+          if (-not $ver) { $ver = "24.3.4" }
+          $asset = "mesa3d-$ver-release-msvc.7z"
+          $url = "https://github.com/pal1000/mesa-dist-win/releases/download/$ver/$asset"
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile $asset
+          7z x $asset -omesa -y | Out-Null
+          # The "x64" set holds the 64-bit desktop DLLs.
+          $src = Join-Path (Get-Location) "mesa\x64"
+          if (-not (Test-Path $src)) { $src = Join-Path (Get-Location) "mesa" }
+          foreach ($d in @("opengl32.dll","libgallium_wgl.dll","dxil.dll")) {
+            $f = Get-ChildItem -Path $src -Recurse -Filter $d | Select-Object -First 1
+            if ($f) { Copy-Item $f.FullName (Join-Path (Get-Location) $d) -Force; Write-Host "staged $d" }
+            else    { Write-Warning "missing $d in Mesa archive" }
+          }
+
+      - name: Probe — GLon12 (D3D12)
+        shell: pwsh
+        env:
+          GALLIUM_DRIVER: d3d12   # force OpenGL-on-D3D12, not llvmpipe
+          MESA_LOG_LEVEL: info
+        run: |
+          ./glon12_probe.exe --hidden --frames 3
+          $code = $LASTEXITCODE
+          Write-Host "----- glon12 log -----"
+          Get-Content glon12_probe.log
+          exit $code
+
+      - name: Upload probe logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: glon12-probe-logs
+          path: glon12_probe.log
+          retention-days: 30

@@ -10,6 +10,9 @@ build
 ## Makefile
 *.o
 /newtonia
+## GLon12 spike
+glon12_probe.log
+glon12_probe.exe
 ## Glut (binaries)
 GL/
 ## SDL
