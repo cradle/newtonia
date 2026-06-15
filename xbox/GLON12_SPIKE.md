@@ -33,7 +33,7 @@ need GDKX (deferred — see "What this does NOT prove"):
 | `xbox/glon12/glon12_probe.cpp` | Standalone SDL2 + GL 3.3 core probe. Creates a real WGL context via `SDL_GL_CreateContext` (the console path — *not* ANGLE/EGL), loads the exact GL entry points the renderer needs (`COMPAT_GL_FNS` from `gles2_compat.cpp`), compiles/links a representative GLSL-330 program, draws a triangle, reads back a pixel to prove rasterisation, and reports PASS/FAIL. |
 | `xbox/glon12/CMakeLists.txt` | Builds the probe (finds an installed SDL2 or fetches the pinned one). |
 | `xbox/glon12/run_spike.ps1` | Windows: build + run baseline (system GL) and GLon12 runs, given `-MesaDir`. |
-| `.github/workflows/disabled/xbox-glon12-spike.yml` | Hosted-runner CI: build, fetch Mesa desktop GLon12, run under `GALLIUM_DRIVER=d3d12`. Disabled per the single-active-workflow policy; `workflow_dispatch` once moved into `workflows/`. |
+| `.github/workflows/windows-glon12.yml` | Hosted-runner CI: build, fetch Mesa desktop GLon12, run under `GALLIUM_DRIVER=d3d12`. Runs on the `claude/glon12-spike-**` branch and on manual dispatch (it does not join the automatic PR/push matrix — that stays the single `xbox.yml`). |
 
 The probe mirrors the **target console path** deliberately: SDL2 WGL +
 `SDL_GL_CreateContext`/`SDL_GL_SwapWindow` + GL 3.3 core, which is also
@@ -54,9 +54,10 @@ work-item #4 (switch the console SDL2 build off the ANGLE/EGL-pbuffer path).
 
 ### In CI
 
-Move `.github/workflows/disabled/xbox-glon12-spike.yml` into
-`.github/workflows/` and trigger it (Actions → "Xbox GLon12 spike" → Run). It
-fetches Mesa, runs both probes, and uploads `glon12_probe.log`.
+`.github/workflows/windows-glon12.yml` runs automatically on the
+`claude/glon12-spike-**` branch and can be triggered manually (Actions →
+"Windows GLon12 spike" → Run, with an optional Mesa version input). It fetches
+Mesa, runs the baseline + GLon12 probes, and uploads `glon12_probe.log`.
 
 ### Cross-platform sanity build
 

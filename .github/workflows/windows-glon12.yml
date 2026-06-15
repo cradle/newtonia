@@ -5,13 +5,16 @@
 # (OpenGL-on-D3D12) to confirm GLon12 exposes the GL 3.3 core feature set and
 # GLSL-330 program Newtonia's renderer needs. See xbox/GLON12_SPIKE.md.
 #
-# DISABLED per the repo's single-active-workflow policy (only xbox.yml runs
-# automatically). To run this: move it into .github/workflows/ and dispatch it,
-# or just run xbox/glon12/run_spike.ps1 locally on any Windows box.
+# This is a spike, not a shipping build: it only runs on its spike branch or on
+# manual dispatch, so it does not add to the automatic PR/push build matrix
+# (which stays the single self-hosted xbox.yml). Or run xbox/glon12/run_spike.ps1
+# locally on any Windows box.
 
-name: Xbox GLon12 spike
+name: Windows GLon12 spike
 
 on:
+  push:
+    branches: ['claude/glon12-spike-**']
   workflow_dispatch:
     inputs:
       mesa_version:
