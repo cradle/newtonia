@@ -192,21 +192,33 @@ int main(int argc, char *argv[])
         return 2;
     }
 
-    // Request a GL 3.3 core context — the renderer's target profile. This is
-    // the same request the console SDL2 WGL path will make.
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
-
     const int W = 640, H = 480;
     Uint32 flags = SDL_WINDOW_OPENGL | (hidden ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN);
-    SDL_Window *win = SDL_CreateWindow("Newtonia GLon12 probe",
-                                       SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                                       W, H, flags);
+
+    // Request a GL 3.3 core context — the renderer's target profile. This is
+    // the same request the console SDL2 WGL path will make. The depth-buffer
+    // size is the one pixel-format attribute drivers disagree on: Mesa's WGL
+    // exposes 24-bit depth, not 16, so a hard 16 request yields "no matching GL
+    // pixel format". Try a few depths so the probe works across drivers.
+    const int depth_candidates[] = { 24, 16, 0 };
+    SDL_Window *win = nullptr;
+    for (int di = 0; di < (int)(sizeof(depth_candidates)/sizeof(depth_candidates[0])); ++di) {
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, depth_candidates[di]);
+        win = SDL_CreateWindow("Newtonia GLon12 probe",
+                               SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                               W, H, flags);
+        if (win) {
+            logf("SDL_CreateWindow OK (depth request: %d)", depth_candidates[di]);
+            break;
+        }
+        logf("SDL_CreateWindow (depth %d) failed: %s", depth_candidates[di], SDL_GetError());
+    }
     if (!win) {
-        logf("FAIL: SDL_CreateWindow: %s", SDL_GetError());
+        logf("FAIL: SDL_CreateWindow: no usable GL pixel format on any depth");
         SDL_Quit();
         return 2;
     }

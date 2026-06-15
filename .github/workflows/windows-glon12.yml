@@ -97,27 +97,28 @@ jobs:
       # doesn't load at all (still GDI Generic 1.1).
       - name: Probe — GLon12 (D3D12, llvmpipe fallback)
         run: |
+          # The msys2 shell runs with -e; capture exit codes with || so a failed
+          # attempt does not abort the script before the fallback / log copy.
           cd glonrun
           echo "===== attempt: GALLIUM_DRIVER=d3d12 (GLon12) ====="
-          GALLIUM_DRIVER=d3d12 MESA_LOG_LEVEL=info ./glon12_probe.exe --hidden --frames 3
-          rc_d3d12=$?
-          cp glon12_probe.log ../glon12_d3d12.log
+          GALLIUM_DRIVER=d3d12 MESA_LOG_LEVEL=info ./glon12_probe.exe --hidden --frames 3 && rc_d3d12=0 || rc_d3d12=$?
+          cp glon12_probe.log ../glon12_d3d12.log || true
           echo "d3d12 attempt exit: $rc_d3d12"
           if [ "$rc_d3d12" -eq 0 ]; then
-            echo "GLon12 (D3D12) PASS"
+            echo "GLon12 (D3D12) PASS — the target console translation layer works headlessly."
             exit 0
           fi
-          echo "===== fallback: Mesa default driver (llvmpipe) ====="
-          MESA_LOG_LEVEL=info ./glon12_probe.exe --hidden --frames 3
-          rc_def=$?
-          cp glon12_probe.log ../glon12_default.log
-          echo "default-driver attempt exit: $rc_def"
+          echo "===== fallback: GALLIUM_DRIVER=llvmpipe (Mesa software GL) ====="
+          GALLIUM_DRIVER=llvmpipe MESA_LOG_LEVEL=info ./glon12_probe.exe --hidden --frames 3 && rc_def=0 || rc_def=$?
+          cp glon12_probe.log ../glon12_llvmpipe.log || true
+          echo "llvmpipe attempt exit: $rc_def"
           if [ "$rc_def" -eq 0 ]; then
-            echo "Mesa GL frontend PASS via llvmpipe (D3D12 backend unavailable on this runner)."
-            echo "NOTE: D3D12-backend confirmation needs a GPU runner or a local box — see xbox/GLON12_SPIKE.md."
+            echo "Mesa GL frontend PASS via llvmpipe (D3D12 backend unavailable on this GPU-less runner)."
+            echo "This confirms Mesa exposes our GL 3.3 core feature set; D3D12-backend confirmation"
+            echo "needs a GPU runner or a local box — see xbox/GLON12_SPIKE.md."
             exit 0
           fi
-          echo "FAIL: Mesa GLon12 GL did not load (still system/GDI Generic). See logs."
+          echo "FAIL: Mesa GL did not produce a working GL 3.3 context under either driver. See logs."
           exit 1
 
       - name: Upload probe logs
@@ -127,6 +128,6 @@ jobs:
           name: glon12-probe-logs
           path: |
             glon12_d3d12.log
-            glon12_default.log
+            glon12_llvmpipe.log
           retention-days: 30
           if-no-files-found: warn
