@@ -2,6 +2,66 @@
 // Translates the OpenGL 1.x fixed-function + display-list API used by game
 // code into modern VBO + VAO + GLSL draw calls on every platform.
 //
+// ---- GDK Desktop GL loading (SDL/WGL; hardware GL or GLon12) ----
+// The GDK Desktop target uses the desktop GL core renderer over SDL's WGL
+// backend (the same path the console will use through GLon12). GL 2.0+ entry
+// points are resolved at runtime via SDL_GL_GetProcAddress — works regardless
+// of whether opengl32.dll is the system driver or Mesa's GLon12. SDL ships its
+// own glext, so this compiles under MSVC (no <GL/glext.h> in its Windows SDK).
+#if defined(_GAMING_DESKTOP)
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <SDL.h>
+#  include <SDL_opengl.h>
+#  include <SDL_opengl_glext.h>
+#  undef near
+#  undef far
+#  define COMPAT_GL_FNS \
+       X(PFNGLCREATESHADERPROC,            glCreateShader           ) \
+       X(PFNGLSHADERSOURCEPROC,            glShaderSource           ) \
+       X(PFNGLCOMPILESHADERPROC,           glCompileShader          ) \
+       X(PFNGLGETSHADERIVPROC,             glGetShaderiv            ) \
+       X(PFNGLGETSHADERINFOLOGPROC,        glGetShaderInfoLog       ) \
+       X(PFNGLCREATEPROGRAMPROC,           glCreateProgram          ) \
+       X(PFNGLATTACHSHADERPROC,            glAttachShader           ) \
+       X(PFNGLLINKPROGRAMPROC,             glLinkProgram            ) \
+       X(PFNGLDELETESHADERPROC,            glDeleteShader           ) \
+       X(PFNGLDELETEPROGRAMPROC,           glDeleteProgram          ) \
+       X(PFNGLGETPROGRAMIVPROC,            glGetProgramiv           ) \
+       X(PFNGLGETPROGRAMINFOLOGPROC,       glGetProgramInfoLog      ) \
+       X(PFNGLGETATTRIBLOCATIONPROC,       glGetAttribLocation      ) \
+       X(PFNGLGETUNIFORMLOCATIONPROC,      glGetUniformLocation     ) \
+       X(PFNGLUSEPROGRAMPROC,              glUseProgram             ) \
+       X(PFNGLUNIFORM1IPROC,               glUniform1i              ) \
+       X(PFNGLUNIFORM1FPROC,               glUniform1f              ) \
+       X(PFNGLUNIFORM4FPROC,               glUniform4f              ) \
+       X(PFNGLUNIFORMMATRIX4FVPROC,        glUniformMatrix4fv       ) \
+       X(PFNGLGENBUFFERSPROC,              glGenBuffers             ) \
+       X(PFNGLBINDBUFFERPROC,              glBindBuffer             ) \
+       X(PFNGLBUFFERDATAPROC,              glBufferData             ) \
+       X(PFNGLDELETEBUFFERSPROC,           glDeleteBuffers          ) \
+       X(PFNGLENABLEVERTEXATTRIBARRAYPROC, glEnableVertexAttribArray) \
+       X(PFNGLDISABLEVERTEXATTRIBARRAYPROC,glDisableVertexAttribArray)\
+       X(PFNGLVERTEXATTRIBPOINTERPROC,     glVertexAttribPointer    ) \
+       X(PFNGLGENVERTEXARRAYSPROC,         glGenVertexArrays        ) \
+       X(PFNGLBINDVERTEXARRAYPROC,         glBindVertexArray        ) \
+       X(PFNGLDELETEVERTEXARRAYSPROC,      glDeleteVertexArrays     )
+
+#  define X(T, name) T name = NULL;
+     COMPAT_GL_FNS
+#  undef X
+
+     static void compat_load_gl_fns() {
+#      define X(T, name) name = (T)SDL_GL_GetProcAddress(#name);
+       COMPAT_GL_FNS
+#      undef X
+     }
+#endif // _GAMING_DESKTOP
+
 // ---- Desktop platform GL loading ----
 // Must appear before any GL header so GL_GLEXT_PROTOTYPES is set first.
 #if !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__) && \
@@ -1057,8 +1117,8 @@ static void replay_list(GLuint id) {
     }
 }
 
-// ---- GLUT timing stub (GLES2 / web only; desktop has the real glutGet) ----
-#ifndef DESKTOP_COMPAT_GL
+// ---- GLUT timing stub (platforms without a real GLUT, incl. GDK Desktop) ----
+#ifdef NEWTONIA_NO_GLUT
 int glutGet(GLenum query) {
     if (query == GLUT_ELAPSED_TIME)
         return (int)SDL_GetTicks();

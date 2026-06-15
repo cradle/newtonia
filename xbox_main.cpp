@@ -1,22 +1,29 @@
 // GDK entry point — Xbox console (_GAMING_XBOX) and GDK Desktop (_GAMING_DESKTOP).
 //
-// Uses SDL2 with OpenGL ES 2.0 via ANGLE, which translates GLES calls to
-// Direct3D 11 — the same path used on Android / Web, avoiding a full graphics
-// rewrite.  The ANGLE libraries (libEGL / libGLESv2) come from the
-// ANGLE.WindowsStore NuGet package, not the GDK (see xbox/CMakeLists.txt).
+// Console (_GAMING_XBOX): GLES2 via ANGLE (libEGL / libGLESv2 from the
+// ANGLE.WindowsStore NuGet), with a manually-managed EGL context — the same
+// GLES2 renderer path as Android / Web.
+//
+// GDK Desktop (_GAMING_DESKTOP): the desktop GL 3.3 core renderer over SDL's
+// WGL backend (SDL_GL_CreateContext). This is the path that reaches Mesa's
+// GLon12 (OpenGL-on-D3D12) — the console's intended renderer once GDKX is
+// available — so it needs neither ANGLE nor the GDK to build or run. See
+// xbox/PORT_PLAN.md (Option A) and xbox/GLON12_SPIKE.md.
 //
 // Mirrors android_main.cpp: SDL2 event loop, SDL_GameController input,
 // focus-lost / focus-gained lifecycle events required by GDK certification.
 //
 // Platform differences
 // --------------------
-// _GAMING_XBOX    : fullscreen at native display resolution; no resize events.
-//                   Window surface via eglCreateWindowSurface; eglSwapBuffers.
-// _GAMING_DESKTOP : 1280×720 resizable window; handles SDL_WINDOWEVENT_RESIZED.
-//                   ANGLE.WindowsStore requires IInspectable* for window surfaces,
-//                   not a plain HWND, so we render into an EGL Pbuffer and blit
-//                   each frame with glReadPixels + GDI StretchDIBits.
-//                   biHeight is positive (bottom-up DIB) matching glReadPixels row order.
+// _GAMING_XBOX    : GLES2 via ANGLE/EGL. Fullscreen at native display
+//                   resolution; window surface via eglCreateWindowSurface;
+//                   eglSwapBuffers. (Console GLon12 migration is GDKX-gated —
+//                   see xbox/PORT_PLAN.md.)
+// _GAMING_DESKTOP : desktop GL 3.3 core renderer over SDL's WGL backend
+//                   (SDL_GL_CreateContext / SDL_GL_SwapWindow). Resizable
+//                   window; renders directly to the window (no pbuffer/blit).
+//                   Runs on the system GL driver, or on Mesa GLon12 by placing
+//                   its DLLs next to the exe (xbox/GLON12_SPIKE.md).
 //
 // Controller mapping
 // ------------------
@@ -55,11 +62,14 @@
 // via SDL_APP_WILLENTERBACKGROUND / SDL_APP_DIDENTERFOREGROUND.
 extern "C" void GDK_DispatchTaskQueue(void) {}
 
-// EGL headers — provided by ANGLE (bundled with the GDK).
-// SDL2 compiled via FetchContent on Windows only knows WGL, so the EGL
-// context is managed manually for _GAMING_DESKTOP rather than going
-// through SDL_GL_CreateContext.
+// Console (_GAMING_XBOX) renders GLES2 through ANGLE, set up via a manual EGL
+// context (SDL2's Win32 backend only knows WGL). The GDK Desktop target instead
+// uses SDL's WGL backend with the desktop GL 3.3 core renderer (hardware GL, or
+// Mesa GLon12 by dropping its DLLs next to the exe) — no EGL there. See
+// xbox/GLON12_SPIKE.md / xbox/PORT_PLAN.md (Option A).
+#ifdef _GAMING_XBOX
 #include <EGL/egl.h>
+#endif
 
 #include "gles2_compat.h"
 #include "state_manager.h"
@@ -70,10 +80,6 @@ extern "C" void GDK_DispatchTaskQueue(void) {}
 #include <cstdlib>
 #include <ctime>
 #include <windows.h>
-
-#ifdef _GAMING_DESKTOP
-#include <vector>
-#endif
 
 static StateManager    *s_game       = nullptr;
 static SDL_Window      *s_window     = nullptr;
@@ -87,18 +93,18 @@ static bool             s_reset_tick = false; // discard delta after resume
 static SDL_GameController *s_controllers[2]    = { nullptr, nullptr };
 static SDL_JoystickID      s_controller_ids[2] = { -1, -1 };
 
-// EGL handles — used on both Desktop and Xbox.
+#ifdef _GAMING_XBOX
+// EGL/ANGLE handles — console only.
 static EGLDisplay s_egl_display = EGL_NO_DISPLAY;
 static EGLSurface s_egl_surface = EGL_NO_SURFACE;
 static EGLContext s_egl_context = EGL_NO_CONTEXT;
-static EGLConfig  s_egl_config  = nullptr; // saved for pbuffer recreation on resize
-
-#ifdef _GAMING_DESKTOP
-static HWND s_hwnd       = nullptr;
-static bool s_fullscreen = false;
-static int  s_pre_fs_w = 1280, s_pre_fs_h = 720;
-static int  s_pre_fs_x = 0,    s_pre_fs_y = 0;
-static std::vector<unsigned char> s_pixels;
+static EGLConfig  s_egl_config  = nullptr;
+#else
+// GDK Desktop: SDL-managed WGL context (desktop GL core, GLon12-capable).
+static SDL_GLContext s_glctx     = nullptr;
+static bool          s_fullscreen = false;
+static int           s_pre_fs_w = 1280, s_pre_fs_h = 720;
+static int           s_pre_fs_x = 0,    s_pre_fs_y = 0;
 
 static void toggle_fullscreen()
 {
@@ -118,46 +124,7 @@ static void toggle_fullscreen()
     g_prefs.fullscreen = s_fullscreen;
     save_preferences();
 }
-
-static void present_pbuffer()
-{
-    glReadPixels(0, 0, s_w, s_h, GL_RGBA, GL_UNSIGNED_BYTE, s_pixels.data());
-    // Swap R and B in-place: OpenGL returns RGBA, GDI expects BGRA.
-    unsigned char *p = s_pixels.data();
-    for (int i = 0; i < s_w * s_h; ++i, p += 4) {
-        unsigned char t = p[0]; p[0] = p[2]; p[2] = t;
-    }
-    BITMAPINFO bmi = {};
-    bmi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
-    bmi.bmiHeader.biWidth       = s_w;
-    bmi.bmiHeader.biHeight      = s_h; // positive = bottom-up DIB, matches glReadPixels row order
-    bmi.bmiHeader.biPlanes      = 1;
-    bmi.bmiHeader.biBitCount    = 32;
-    bmi.bmiHeader.biCompression = BI_RGB;
-    HDC hdc = GetDC(s_hwnd);
-    StretchDIBits(hdc, 0, 0, s_w, s_h, 0, 0, s_w, s_h,
-                  s_pixels.data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
-    ReleaseDC(s_hwnd, hdc);
-}
-
-static bool recreate_pbuffer()
-{
-    eglMakeCurrent(s_egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-    eglDestroySurface(s_egl_display, s_egl_surface);
-    const EGLint attribs[] = { EGL_WIDTH, s_w, EGL_HEIGHT, s_h, EGL_NONE };
-    s_egl_surface = eglCreatePbufferSurface(s_egl_display, s_egl_config, attribs);
-    if (s_egl_surface == EGL_NO_SURFACE) {
-        SDL_Log("eglCreatePbufferSurface (resize) failed: 0x%x", eglGetError());
-        return false;
-    }
-    if (!eglMakeCurrent(s_egl_display, s_egl_surface, s_egl_surface, s_egl_context)) {
-        SDL_Log("eglMakeCurrent (resize) failed: 0x%x", eglGetError());
-        return false;
-    }
-    s_pixels.resize((size_t)s_w * s_h * 4);
-    return true;
-}
-#endif // _GAMING_DESKTOP
+#endif
 
 #ifdef _GAMING_XBOX
 // ---------------------------------------------------------------
@@ -233,16 +200,24 @@ int main(int argc, char *argv[])
     s_h = 720;
 #endif
 
-    // Create window — no SDL_WINDOW_OPENGL.  The EGL context is created
-    // manually below using ANGLE directly; SDL2 compiled via FetchContent
-    // on Windows only supports WGL and would try to find wglGetProcAddress
-    // inside libEGL.dll, which fails.
+    // Console: no SDL_WINDOW_OPENGL — the EGL/ANGLE context is created manually
+    // below. Desktop: request a GL 3.3-capable core context up front so SDL's
+    // WGL backend selects a matching pixel format (the renderer is GLSL 150
+    // core); SDL_WINDOW_OPENGL lets SDL_GL_CreateContext drive WGL (this is the
+    // path that reaches GLon12 when its DLLs are present).
     SDL_Log("Creating window (%dx%d)...", s_w, s_h);
+#ifndef _GAMING_XBOX
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+#endif
     const Uint32 window_flags =
 #ifdef _GAMING_XBOX
         SDL_WINDOW_FULLSCREEN;
 #else
-        SDL_WINDOW_RESIZABLE;
+        SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL;
 #endif
 
     s_window = SDL_CreateWindow("Newtonia",
@@ -257,8 +232,28 @@ int main(int argc, char *argv[])
     }
     SDL_Log("Window created");
 
+#ifndef _GAMING_XBOX
     // ---------------------------------------------------------------
-    // EGL / ANGLE context — set up manually.
+    // GDK Desktop: SDL-managed WGL context + desktop GL core renderer.
+    // SDL_GL_CreateContext drives WGL, which resolves to the system GL driver
+    // or to Mesa's GLon12 (opengl32.dll) when its DLLs sit next to the exe.
+    // ---------------------------------------------------------------
+    {
+        s_glctx = SDL_GL_CreateContext(s_window);
+        if (!s_glctx) {
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", SDL_GetError(), s_window);
+            SDL_Log("SDL_GL_CreateContext failed: %s", SDL_GetError());
+            SDL_DestroyWindow(s_window); SDL_Quit(); return 1;
+        }
+        SDL_GL_MakeCurrent(s_window, s_glctx);
+        SDL_GL_SetSwapInterval(1); // vsync
+        SDL_Log("GL context: vendor=%s renderer=%s version=%s",
+                glGetString(GL_VENDOR), glGetString(GL_RENDERER), glGetString(GL_VERSION));
+    }
+    SDL_Log("SDL GL context active");
+#else
+    // ---------------------------------------------------------------
+    // Console: EGL / ANGLE context — set up manually.
     // SDL2 is used only for windowing and input; EGL is managed directly
     // so we control the GLES2 context regardless of SDL's GL backend.
     // ---------------------------------------------------------------
@@ -266,11 +261,7 @@ int main(int argc, char *argv[])
         SDL_SysWMinfo wm;
         SDL_VERSION(&wm.version);
         SDL_GetWindowWMInfo(s_window, &wm);
-#ifdef _GAMING_XBOX
         EGLNativeWindowType nativeWin = (EGLNativeWindowType)wm.info.win.window;
-#else
-        s_hwnd = (HWND)wm.info.win.window;
-#endif
 
         s_egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
         if (s_egl_display == EGL_NO_DISPLAY) {
@@ -292,9 +283,6 @@ int main(int argc, char *argv[])
             EGL_GREEN_SIZE, 8,
             EGL_BLUE_SIZE,  8,
             EGL_DEPTH_SIZE, 16,
-#ifdef _GAMING_DESKTOP
-            EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-#endif
             EGL_NONE
         };
         EGLint num_configs = 0;
@@ -307,7 +295,6 @@ int main(int argc, char *argv[])
         }
         SDL_Log("eglChooseConfig OK");
 
-#ifdef _GAMING_XBOX
         SDL_Log("eglCreateWindowSurface...");
         s_egl_surface = eglCreateWindowSurface(s_egl_display, s_egl_config, nativeWin, nullptr);
         if (s_egl_surface == EGL_NO_SURFACE) {
@@ -316,20 +303,6 @@ int main(int argc, char *argv[])
             SDL_DestroyWindow(s_window); SDL_Quit(); return 1;
         }
         SDL_Log("eglCreateWindowSurface OK");
-#else
-        SDL_Log("eglCreatePbufferSurface...");
-        {
-            const EGLint pbuf_attribs[] = { EGL_WIDTH, s_w, EGL_HEIGHT, s_h, EGL_NONE };
-            s_egl_surface = eglCreatePbufferSurface(s_egl_display, s_egl_config, pbuf_attribs);
-        }
-        if (s_egl_surface == EGL_NO_SURFACE) {
-            SDL_Log("eglCreatePbufferSurface failed: 0x%x", eglGetError());
-            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", "eglCreatePbufferSurface failed", s_window);
-            SDL_DestroyWindow(s_window); SDL_Quit(); return 1;
-        }
-        SDL_Log("eglCreatePbufferSurface OK");
-        s_pixels.resize((size_t)s_w * s_h * 4);
-#endif
 
         static const EGLint ctx_attribs[] = {
             EGL_CONTEXT_CLIENT_VERSION, 2,
@@ -350,11 +323,10 @@ int main(int argc, char *argv[])
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Newtonia", "eglMakeCurrent failed", s_window);
             SDL_DestroyWindow(s_window); SDL_Quit(); return 1;
         }
-#ifdef _GAMING_XBOX
         eglSwapInterval(s_egl_display, 1); // vsync
-#endif
     }
     SDL_Log("EGL context active");
+#endif // _GAMING_XBOX
 
     gles2_init();
     SDL_Log("gles2_init OK");
@@ -488,7 +460,8 @@ int main(int argc, char *argv[])
                     s_h = e.window.data2;
                     s_game->resize(s_w, s_h);
                     Typer::resize(s_w, s_h);
-                    recreate_pbuffer();
+                    // Real GL window: SDL resizes the default framebuffer; the
+                    // game's viewports are reset from s_w/s_h each frame.
 #endif
                 }
                 break;
@@ -569,7 +542,7 @@ int main(int argc, char *argv[])
 #ifdef _GAMING_XBOX
         eglSwapBuffers(s_egl_display, s_egl_surface);
 #else
-        present_pbuffer();
+        SDL_GL_SwapWindow(s_window);
 #endif
     }
 
@@ -583,10 +556,14 @@ int main(int argc, char *argv[])
             SDL_GameControllerClose(s_controllers[i]);
     }
 
+#ifdef _GAMING_XBOX
     eglMakeCurrent(s_egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     eglDestroyContext(s_egl_display, s_egl_context);
     eglDestroySurface(s_egl_display, s_egl_surface);
     eglTerminate(s_egl_display);
+#else
+    SDL_GL_DeleteContext(s_glctx);
+#endif
 
     SDL_DestroyWindow(s_window);
     SDL_Quit();

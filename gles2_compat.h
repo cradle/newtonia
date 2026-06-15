@@ -1,5 +1,15 @@
 #pragma once
 
+// Platforms with no GLUT implementation (mobile, web, GDK console + desktop).
+// They need the small GLUT constant / glutGet stubs further down even when they
+// compile the *desktop* GL core shim — the GDK Desktop target does exactly that
+// (desktop GL 3.3 core via SDL/WGL, but no GLUT). Kept separate from
+// DESKTOP_COMPAT_GL, which selects the renderer shim, not GLUT availability.
+#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__) || \
+    defined(_GAMING_XBOX) || defined(_GAMING_DESKTOP)
+#  define NEWTONIA_NO_GLUT 1
+#endif
+
 // OpenGL ES 2.0 / Desktop OpenGL compatibility shim.
 // On GLES2 (Android/iOS/Web): provides a subset of the OpenGL 1.x fixed-
 //   function API on top of GLES2 shaders + vertex arrays.
@@ -22,8 +32,25 @@
 // gl_compat.h includes <GL/glut.h> (which drags in <GL/gl.h>) before this
 // file, so GL types are already available.
 #if defined(_WIN32) && !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__) && \
-    !defined(_GAMING_XBOX) && !defined(_GAMING_DESKTOP)
-#  include <GL/glext.h>
+    !defined(_GAMING_XBOX)
+#  if defined(_GAMING_DESKTOP)
+     // GDK Desktop: desktop GL via SDL/WGL (hardware GL or GLon12). SDL ships its
+     // own glext, so this builds under MSVC, whose Windows SDK has no <GL/glext.h>.
+     // SDL pulls in <windows.h>; suppress its legacy near/far/min/max macros so
+     // they don't clobber identifiers here or in any TU that includes this header.
+#    ifndef WIN32_LEAN_AND_MEAN
+#      define WIN32_LEAN_AND_MEAN
+#    endif
+#    ifndef NOMINMAX
+#      define NOMINMAX
+#    endif
+#    include <SDL_opengl.h>
+#    include <SDL_opengl_glext.h>
+#    undef near
+#    undef far
+#  else
+#    include <GL/glext.h>
+#  endif
 extern PFNGLCREATESHADERPROC             glCreateShader;
 extern PFNGLSHADERSOURCEPROC             glShaderSource;
 extern PFNGLCOMPILESHADERPROC            glCompileShader;
@@ -55,20 +82,21 @@ extern PFNGLBINDVERTEXARRAYPROC          glBindVertexArray;
 extern PFNGLDELETEVERTEXARRAYSPROC       glDeleteVertexArrays;
 #endif // _WIN32
 
-#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__) || \
-    defined(_GAMING_XBOX) || defined(_GAMING_DESKTOP)
+#if defined(__ANDROID__) || defined(__IOS__) || defined(__EMSCRIPTEN__) || defined(_GAMING_XBOX)
 // ---- GLES2 platform GL headers ----
 #  if defined(__ANDROID__)
 #    include <GLES2/gl2.h>
 #  elif defined(__IOS__)
 #    include <OpenGLES/ES2/gl.h>
-#  else  // Emscripten, GDK (ANGLE via EGL)
+#  else  // Emscripten, GDK console (ANGLE via EGL)
 #    include <SDL_opengles2.h>
 #  endif
 #else
-// ---- Desktop: signal that we need the compat_ aliasing scheme ----
-// GL types (GLuint, GLenum, …) are already available from the GLUT/GL
-// headers included before this file (see gl_compat.h).
+// ---- Desktop GL core path: signal the compat_ aliasing scheme ----
+// Applies to the native desktop builds (GLUT) and the GDK Desktop target
+// (SDL/WGL, GLon12-capable). GL types (GLuint, GLenum, …) are already available
+// from the GL headers included before this file (GLUT on native desktop,
+// SDL_opengl.h on _GAMING_DESKTOP — see above and gl_compat.h).
 #  define DESKTOP_COMPAT_GL 1
 #endif
 
@@ -127,8 +155,9 @@ typedef double  GLclampd;
 #  define GL_COMPILE              0x1300
 #endif
 
-// GLUT stubs (used by GLES2 / web platforms only; desktop has the real GLUT).
-#ifndef DESKTOP_COMPAT_GL
+// GLUT stubs for platforms without a real GLUT (mobile, web, GDK — including
+// the GDK Desktop target, which uses the desktop GL shim but has no GLUT).
+#ifdef NEWTONIA_NO_GLUT
 #define GLUT_ELAPSED_TIME         700
 #define GLUT_VISIBLE              1
 #define GLUT_KEY_F1               1
@@ -138,6 +167,9 @@ typedef double  GLclampd;
 #define GLUT_ACTIVE_ALT           4
 #define GLUT_WINDOW_WIDTH         100
 #define GLUT_WINDOW_HEIGHT        101
+// glutGet stub (implemented in gles2_compat.cpp); the native desktop build uses
+// the real glutGet from <GL/glut.h> instead.
+int glutGet(GLenum query);
 #endif
 
 // ============================================================
@@ -331,8 +363,5 @@ void   glDeleteLists(GLuint list, GLsizei range);
 // ---- No-ops ----
 inline void glAccum(GLenum, GLfloat) {}
 inline void glClearAccum(GLfloat, GLfloat, GLfloat, GLfloat) {}
-
-// ---- GLUT timing stub (desktop has the real glutGet) ----
-int glutGet(GLenum query);
 
 #endif // DESKTOP_COMPAT_GL
