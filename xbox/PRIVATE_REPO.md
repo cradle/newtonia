@@ -14,8 +14,9 @@ GDKX (`xbox/smoke_stubs/`), and commits no SDK bytes.
 **Stays in the public repo (`cradle/newtonia`):**
 - The port plan, checklists, and this doc.
 - GDK **Desktop** CI (`xbox-dev.yml`, Ninja + BWOI of the *public* GDK).
-- Console **compile-smoke** (`xbox-console-smoke.yml`, `WINAPI_FAMILY_GAMES`,
-  GDKX headers stubbed).
+- Console API-partition **compile-smoke** (`xbox-console-smoke.yml`,
+  `WINAPI_FAMILY_GAMES` + `_GAMING_DESKTOP` — the desktop-GL/GLon12 renderer
+  checked against the Game OS partition; no GDKX, nothing stubbed).
 - The `_GAMING_XBOX` / `_GAMING_DESKTOP` code already in shared files
   (SDL/EGL/standard Win32 — not NDA).
 - Identity-via-secrets plumbing, the `deploy-xbox.yml` template.

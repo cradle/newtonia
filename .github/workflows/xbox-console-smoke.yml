@@ -1,7 +1,7 @@
 name: Xbox Console Smoke
 
-# Compile-only smoke test of the Xbox CONSOLE (_GAMING_XBOX) code paths on a
-# stock hosted runner — no NDA material required.
+# Compile-only smoke test of the game against the Xbox CONSOLE API partition,
+# on a stock hosted runner — no NDA material required.
 #
 # The real console toolchain (GDKX: Scarlett MSBuild platform, D3D12.X,
 # console libs) is only available to licensed ID@Xbox partners, so hosted
@@ -12,28 +12,46 @@ name: Xbox Console Smoke
 #
 #   /DWINAPI_FAMILY=WINAPI_FAMILY_GAMES
 #
-# That partition excludes GDI, D3D11, OpenGL, and other desktop-only Win32
-# APIs, so this job catches forbidden-API usage at compile time and keeps
-# the _GAMING_XBOX branches — which no other workflow compiles — building.
+# That partition excludes GDI, D3D11, desktop OpenGL/WGL, and other
+# desktop-only Win32 APIs, so this job catches forbidden-API usage at compile
+# time before it reaches a dev kit.
 #
-# What is real here: windows.h under the GAMES partition, SDL2/SDL2_mixer
-# headers, Khronos EGL headers, and every game source file.
-# What is stubbed: the two GDK-only headers used by xbox_main.cpp's PLM
-# block (xbox/smoke_stubs/ — see the warning comments there).
-# No link step: the console import libraries are GDKX-only.
+# Which renderer is compiled, and why _GAMING_DESKTOP (not _GAMING_XBOX):
+# ---------------------------------------------------------------------
+# The console's decided rendering path is Option A — GLon12 (Mesa
+# OpenGL-on-D3D12) driving the existing desktop GL 3.3 core renderer
+# (DESKTOP_COMPAT_GL), NOT GLES2-over-ANGLE. ANGLE was the old _GAMING_XBOX
+# placeholder and is being abandoned (xbox/PORT_PLAN.md §1, Option A). So this
+# smoke defines _GAMING_DESKTOP — which selects exactly that desktop-GL/GLon12
+# renderer — and compiles it under WINAPI_FAMILY_GAMES. The result: the
+# renderer + shared game code we actually intend to ship on console are checked
+# for console-API cleanliness on every PR, GDKX-free.
 #
-# This is INTENTIONALLY NOT the Ninja/BWOI build used by xbox-dev.yml. It is a
-# fast, NDA-free, compile-only API check of the _GAMING_XBOX paths via a direct
-# `cl @smoke.rsp` invocation. It does not extract the GDK (the public ZIP has
-# only GRDK/PC headers, not the GXDK console headers this needs — hence the
-# stubs). The real console build (Ninja + GDKX on a self-hosted runner) lives
-# in .github/workflows/disabled/deploy-xbox.yml.
+# This INTENTIONALLY no longer compiles the ANGLE flow: the EGL/GLES2 renderer
+# path, the manual EGL context, and the GDK PLM block in xbox_main.cpp are all
+# #ifdef _GAMING_XBOX and are not built here. They are an abandoned fallback and
+# will be reworked under GDKX (xbox/PORT_PLAN.md work-items #4/#5); the stubbed
+# GDK headers under xbox/smoke_stubs/ go unused while that path is dormant.
+#
+# What this does NOT cover: the console entry point's windowing/present
+# specifics (real surface creation, PLM, XUser) are _GAMING_XBOX + GDKX-gated
+# and rewritten in Phase 3/4 — not this job's concern. This is a compile-only
+# API-surface check (a direct `cl @smoke.rsp`, no link step — the console
+# import libraries are GDKX-only), not the real Scarlett build (Ninja + GDKX on
+# a self-hosted runner; see .github/workflows/disabled/deploy-xbox.yml). The
+# shipping Desktop/GLon12 build vehicle is the self-hosted xbox.yml.
 
 on:
+  # Mirror xbox.yml: feature branches build via their PR only; push limited to
+  # the mainline so merges still build without double-running open-PR branches.
   push:
-    branches: [master, main, 'claude/**']
+    branches: [master, main]
   pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: xbox-console-smoke-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   SDL2_VERSION: 2.30.9
@@ -65,24 +83,9 @@ jobs:
           echo "SDL_INC=$sdlInc"     >> $env:GITHUB_ENV
           echo "MIXER_INC=$mixerInc" >> $env:GITHUB_ENV
 
-      # Khronos EGL headers — the standard (non-ANGLE) headers, whose Win32
-      # branch types EGLNativeWindowType as HWND, matching how xbox_main.cpp
-      # uses it. Fetched from the KhronosGroup/EGL-Registry GitHub repo
-      # (registry.khronos.org rejects some CI fetches); these headers are
-      # effectively frozen, so tracking main is safe.
-      - name: Fetch EGL headers (Khronos EGL-Registry)
-        shell: pwsh
-        run: |
-          $base = "https://raw.githubusercontent.com/KhronosGroup/EGL-Registry/main/api"
-          $inc = "$env:RUNNER_TEMP\egl-include"
-          New-Item -ItemType Directory -Force -Path "$inc\EGL", "$inc\KHR" | Out-Null
-          curl -sSfL -o "$inc\EGL\egl.h"         "$base/EGL/egl.h"
-          curl -sSfL -o "$inc\EGL\eglplatform.h" "$base/EGL/eglplatform.h"
-          curl -sSfL -o "$inc\KHR\khrplatform.h" "$base/KHR/khrplatform.h"
-          echo "EGL_INC=$inc" >> $env:GITHUB_ENV
-
       # Same source set as xbox/CMakeLists.txt: root + weapon/ + view/ minus
-      # other platforms' entry points, plus the SDL GDK stubs.
+      # other platforms' entry points, plus the SDL GDK stubs. The desktop-GL
+      # renderer path needs no EGL/ANGLE headers (those are _GAMING_XBOX-only).
       - name: Write compiler response file
         shell: pwsh
         run: |
@@ -98,15 +101,13 @@ jobs:
           $lines = @(
             '/c', '/nologo', '/MP', '/W3', '/EHsc', '/std:c++14',
             '/DWINAPI_FAMILY=WINAPI_FAMILY_GAMES',
-            '/D_GAMING_XBOX',
+            '/D_GAMING_DESKTOP',      # selects the desktop-GL/GLon12 renderer (DESKTOP_COMPAT_GL), not ANGLE/GLES2
             '/D_USE_MATH_DEFINES',
             '/D_CRT_SECURE_NO_WARNINGS',
             '/wd4005',                # M_PI redefinition (SDL_stdinc vs CRT), as in xbox/CMakeLists.txt
             '/I.', '/Iweapon', '/Iview',
             "/I$env:SDL_INC",
             "/I$env:MIXER_INC",
-            "/I$env:EGL_INC",
-            '/Ixbox\smoke_stubs',
             '/Fosmoke_obj\'
           )
           $lines += $srcs | ForEach-Object { $_.FullName }
@@ -114,7 +115,7 @@ jobs:
           Write-Host "Compiling $($srcs.Count) sources:"
           Get-Content smoke.rsp
 
-      - name: Compile (WINAPI_FAMILY_GAMES + _GAMING_XBOX)
+      - name: Compile (WINAPI_FAMILY_GAMES + _GAMING_DESKTOP)
         shell: cmd
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath`) do set "VSDIR=%%i"
