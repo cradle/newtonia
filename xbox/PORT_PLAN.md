@@ -130,17 +130,37 @@ and GLES2 renderer are correct on Windows/ANGLE".
 Decide how GLES2 calls reach the console GPU. Timebox ~1–2 weeks of
 investigation before committing.
 
-- **Option A — GLon12 (Mesa OpenGL-on-D3D12) + the existing desktop-GL path.**
-  Microsoft added official GDK support for Mesa's `GLon12` mapping layer, and
-  real titles ship on Xbox through it (e.g. *Steel Assault*); SDL has matching
-  "build with OpenGL on Xbox" support. This is the Microsoft-blessed route for
-  OpenGL on the console. Key wrinkle for us: GLon12 exposes **desktop OpenGL**,
-  not GLES — but we already have a working desktop GL 3.3 core renderer
-  (`gl_compat.h`), so this could mean reusing the *desktop-GL* path on console
-  rather than the GLES2 one, potentially the lowest-effort route of all. Spike:
-  GLon12's supported GL version under `WINAPI_FAMILY_GAMES`, context/swap-chain
-  creation, and whether our GL 3.3 core feature set is fully covered. Still
-  needs GDKX (D3D12.x libs) to build and a dev kit to run.
+- **Option A — SDL2 WGL + GLon12 (Mesa OpenGL-on-D3D12) + the existing
+  desktop-GL path.** The Microsoft-blessed route for OpenGL on the console, and
+  proven in shipped titles (e.g. *Steel Assault*). How the stack fits together:
+    - **Runtime path:** `our GL calls → SDL2 WGL backend → opengl32.dll +
+      libgallium_wgl.dll (Mesa GLon12) → D3D12.x → GPU`. This replaces ANGLE's
+      `GLES2 → EGL → D3D11` stack entirely.
+    - **SDL side (already SDL2):** SDL's "build with OpenGL on Xbox" change is
+      on the SDL2 (`VisualC-GDK`) branch — exactly the SDL we use. It doesn't
+      translate anything itself; it makes the WGL video backend work on the
+      Game OS by remapping `GetDC()` (treats the `HWND` as the `HDC`), loading
+      the `wgl*` entry points via `SDL_LoadFunction()`, and supplying a
+      `PIXELFORMATDESCRIPTOR` the Xbox headers omit. Apps then use stock
+      `SDL_GL_CreateContext()` / `SDL_GL_SwapWindow()`. (Note: the SDL3 GLon12
+      path has a tracked context-creation regression, libsdl-org/SDL#11247 —
+      not our concern on SDL2.)
+    - **GLon12 side:** build Mesa with `-Dgallium-drivers=d3d12` for the Xbox
+      cross target and ship `opengl32.dll` + `libgallium_wgl.dll` next to the
+      exe (a redistribution/build chore, but supported). GLon12-for-Xbox needs
+      GDK support + a Microsoft agreement and does **not** work with the
+      PC-only GDK, so it's a GDKX/console-only path under the same NDA gate.
+    - **Our renderer side:** GLon12 exposes **desktop OpenGL**, not GLES — but
+      we already have a working desktop **GL 3.3 core** renderer (`gl_compat.h`),
+      so on console we'd compile that path instead of the GLES2 one, and drop
+      the manual EGL/ANGLE context in `xbox_main.cpp`'s `_GAMING_XBOX` half for
+      `SDL_GL_CreateContext` + `SDL_GL_SwapWindow`. Potentially the
+      lowest-effort route of all.
+    - **The spike's job:** confirm GLon12's exposed GL version under the Xbox
+      feature level covers our full GL 3.3 core feature set. This option merges
+      with work-item #4 (move the console build to SDL's official `VisualC-GDK`
+      build) — they are one task. Still needs GDKX (D3D12.x libs) to build and
+      a dev kit to run.
 - **Option B — compile ANGLE against GDKX D3D11.X/D3D12.** Keeps the GLES2
   renderer untouched. Unknown effort; **no official ANGLE build for Xbox
   consoles**, and ANGLE's D3D backends assume desktop DXGI swap chains. Lower
@@ -289,7 +309,7 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 | 1 | ✅ Hide keyboard-only rows in help overlay on controller | `glship.cpp` (draw_keymap) | 1 |
 | 2 | ✅ Fix "ANGLE bundled with GDK" comment | `xbox/CMakeLists.txt`, `xbox_main.cpp`, `CLAUDE.md` | 1 |
 | 3 | Rendering spike + decision (GLon12 + desktop-GL path vs ANGLE-GDKX vs native D3D12.X backend) | new `xbox/` backend, GLon12 link, or ANGLE fork | 2 |
-| 4 | Switch console SDL2 to official GDK build; drop `/U__GDK__` + stubs for console | `xbox/CMakeLists.txt`, `sdl_gdk_stubs.cpp` | 2 |
+| 4 | Switch console SDL2 to official `VisualC-GDK` build (enables the WGL+GLon12 path; merges with #3); drop `/U__GDK__` + stubs for console | `xbox/CMakeLists.txt`, `sdl_gdk_stubs.cpp` | 2 |
 | 5 | Rework `_GAMING_XBOX` present path per #3 | `xbox_main.cpp` | 3 |
 | 6 | ✅ `asset_path()` helper (SDL_GetBasePath prefix on GDK) | `asset_path.h` + 33 audio call sites | 3 |
 | 7 | WarpPass 4K performance (profile; optional internal-res scale) | `warp_pass.cpp` | 3 |
