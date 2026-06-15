@@ -210,7 +210,10 @@ the same GL-feature surface the console build will use — only the D3D12 backen
 
 Recommendation: spike A first (GLon12) — it is the supported path and may reuse
 the existing desktop-GL renderer with little code; plan around C as the safe
-fallback. B (ANGLE-fork) drops down the list. Either way, also switch the console
+fallback. **Update (2026-06): the GDKX-free half of the A spike passed** — the
+existing GL 3.3 core renderer runs through GLon12's real OpenGL→D3D12 path on a
+desktop GPU (`xbox/GLON12_SPIKE.md`), so A is reusing the desktop-GL renderer as
+hoped; only the console feature-level confirmation under GDKX is outstanding. B (ANGLE-fork) drops down the list. Either way, also switch the console
 SDL2 build from the `/U__GDK__` Win32 hack to SDL's official GDK build
 (VisualC-GDK / CMake with GDKX) for windowing, input, and audio, and delete
 `sdl_gdk_stubs.cpp` for the console target (keep it for Desktop if still
@@ -342,7 +345,7 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 | 1 | ✅ Hide keyboard-only rows in help overlay on controller | `glship.cpp` (draw_keymap) | 1 |
 | 2 | ✅ Fix "ANGLE bundled with GDK" comment | `xbox/CMakeLists.txt`, `xbox_main.cpp`, `CLAUDE.md` | 1 |
 | 3 | Rendering spike + decision (GLon12 + desktop-GL path vs ANGLE-GDKX vs native D3D12.X backend) | new `xbox/` backend, GLon12 link, or ANGLE fork | 2 |
-| 3a | 🔶 GDKX-free GLon12 desktop spike: GL-feature probe + triangle through Mesa desktop GLon12 (SDL2 WGL, GL 3.3 core). CI green (`windows-glon12.yml`): Mesa GLon12 stack loads, GL 3.3 core feature set confirmed (29/29 entry points, GLSL 4.50, triangle). D3D12 backend itself needs a GPU runner/dev box (no GPU on hosted runners) — pending | `xbox/glon12/`, `xbox/GLON12_SPIKE.md`, `.github/workflows/windows-glon12.yml` | 2 |
+| 3a | ✅ GDKX-free GLon12 desktop spike **done**: Newtonia's GL 3.3 core renderer runs through GLon12's real OpenGL→D3D12 path on desktop GPU (`D3D12 (NVIDIA RTX 5080)`, 29/29 entry points, GLSL ≥330, triangle). Hosted CI (`windows-glon12.yml`) confirms the same feature set via llvmpipe (no GPU). Only the Xbox Game OS feature level under GDKX remains | `xbox/glon12/`, `xbox/GLON12_SPIKE.md`, `.github/workflows/windows-glon12.yml` | 2 |
 | 4 | Switch console SDL2 to official `VisualC-GDK` build (enables the WGL+GLon12 path; merges with #3); drop `/U__GDK__` + stubs for console | `xbox/CMakeLists.txt`, `sdl_gdk_stubs.cpp` | 2 |
 | 5 | Rework `_GAMING_XBOX` present path per #3 | `xbox_main.cpp` | 3 |
 | 6 | ✅ `asset_path()` helper (SDL_GetBasePath prefix on GDK) | `asset_path.h` + 33 audio call sites | 3 |
