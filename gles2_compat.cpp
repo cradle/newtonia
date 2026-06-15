@@ -9,9 +9,17 @@
 // of whether opengl32.dll is the system driver or Mesa's GLon12. SDL ships its
 // own glext, so this compiles under MSVC (no <GL/glext.h> in its Windows SDK).
 #if defined(_GAMING_DESKTOP)
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
 #  include <SDL.h>
 #  include <SDL_opengl.h>
 #  include <SDL_opengl_glext.h>
+#  undef near
+#  undef far
 #  define COMPAT_GL_FNS \
        X(PFNGLCREATESHADERPROC,            glCreateShader           ) \
        X(PFNGLSHADERSOURCEPROC,            glShaderSource           ) \

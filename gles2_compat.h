@@ -36,8 +36,18 @@
 #  if defined(_GAMING_DESKTOP)
      // GDK Desktop: desktop GL via SDL/WGL (hardware GL or GLon12). SDL ships its
      // own glext, so this builds under MSVC, whose Windows SDK has no <GL/glext.h>.
+     // SDL pulls in <windows.h>; suppress its legacy near/far/min/max macros so
+     // they don't clobber identifiers here or in any TU that includes this header.
+#    ifndef WIN32_LEAN_AND_MEAN
+#      define WIN32_LEAN_AND_MEAN
+#    endif
+#    ifndef NOMINMAX
+#      define NOMINMAX
+#    endif
 #    include <SDL_opengl.h>
 #    include <SDL_opengl_glext.h>
+#    undef near
+#    undef far
 #  else
 #    include <GL/glext.h>
 #  endif
