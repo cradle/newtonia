@@ -30,12 +30,15 @@
 param(
     [string]$MesaDir = "",
     [string]$MesaVersion = "24.3.4",
-    [string]$BuildDir = "xbox/glon12/build",
+    [string]$BuildDir = "",
     [string]$Config = "Release"
 )
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
+# Anchor the build dir to the script location so it doesn't depend on the
+# directory you launched pwsh from.
+if (-not $BuildDir) { $BuildDir = Join-Path $root "build" }
 
 function Find-SevenZip {
     foreach ($c in @("7z", "7za")) {
@@ -67,13 +70,26 @@ function Invoke-Probe([string]$dir, [string]$label, [hashtable]$envVars) {
 }
 
 # ---- Build ----
+# cmake is a native command: PowerShell does NOT stop on its non-zero exit even
+# with $ErrorActionPreference=Stop, so check $LASTEXITCODE explicitly — otherwise
+# a configure/build failure is masked by a downstream "exe not found".
 Write-Host "== Configuring + building glon12_probe ==" -ForegroundColor Cyan
 cmake -B $BuildDir -S "$root"
+if ($LASTEXITCODE -ne 0) {
+    throw "cmake configure failed (exit $LASTEXITCODE). A C++ toolchain CMake can drive is required " +
+          "(install 'Desktop development with C++' via Visual Studio Build Tools), since SDL2 is built from source."
+}
 cmake --build $BuildDir --config $Config
+if ($LASTEXITCODE -ne 0) {
+    throw "cmake build failed (exit $LASTEXITCODE) — see the compiler/linker output above."
+}
 
 $exe = Get-ChildItem -Path $BuildDir -Recurse -Filter glon12_probe.exe |
        Select-Object -First 1 -ExpandProperty FullName
-if (-not $exe) { throw "glon12_probe.exe not found under $BuildDir" }
+if (-not $exe) {
+    throw "Build reported success but glon12_probe.exe was not found under $BuildDir. Contents: " +
+          ((Get-ChildItem -Path $BuildDir -Recurse -Filter *.exe | Select-Object -ExpandProperty FullName) -join ', ')
+}
 $exeDir = Split-Path -Parent $exe
 Write-Host "Built: $exe"
 

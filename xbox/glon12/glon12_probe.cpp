@@ -39,7 +39,74 @@
 #  undef near
 #  undef far
 #  include <GL/gl.h>
-#  include <GL/glext.h>
+#  if defined(_MSC_VER)
+     // The MSVC Windows SDK ships <GL/gl.h> (OpenGL 1.1) but NOT <GL/glext.h>,
+     // so define just the GL 2.0+ tokens, types, and entry-point signatures this
+     // probe uses. (MinGW's headers include glext.h, so this block is MSVC-only;
+     // gl.h here is 1.1, so nothing below collides.)
+#    include <cstddef>
+     typedef char      GLchar;
+     typedef ptrdiff_t GLsizeiptr;
+     typedef ptrdiff_t GLintptr;
+#    ifndef GL_MAJOR_VERSION
+#      define GL_MAJOR_VERSION            0x821B
+#    endif
+#    ifndef GL_MINOR_VERSION
+#      define GL_MINOR_VERSION            0x821C
+#    endif
+#    ifndef GL_SHADING_LANGUAGE_VERSION
+#      define GL_SHADING_LANGUAGE_VERSION 0x8B8C
+#    endif
+#    ifndef GL_VERTEX_SHADER
+#      define GL_VERTEX_SHADER            0x8B31
+#    endif
+#    ifndef GL_FRAGMENT_SHADER
+#      define GL_FRAGMENT_SHADER          0x8B30
+#    endif
+#    ifndef GL_COMPILE_STATUS
+#      define GL_COMPILE_STATUS           0x8B81
+#    endif
+#    ifndef GL_LINK_STATUS
+#      define GL_LINK_STATUS              0x8B82
+#    endif
+#    ifndef GL_ARRAY_BUFFER
+#      define GL_ARRAY_BUFFER             0x8892
+#    endif
+#    ifndef GL_STATIC_DRAW
+#      define GL_STATIC_DRAW              0x88E4
+#    endif
+     typedef GLuint (APIENTRY *PFNGLCREATESHADERPROC)(GLenum type);
+     typedef void   (APIENTRY *PFNGLSHADERSOURCEPROC)(GLuint, GLsizei, const GLchar *const *, const GLint *);
+     typedef void   (APIENTRY *PFNGLCOMPILESHADERPROC)(GLuint);
+     typedef void   (APIENTRY *PFNGLGETSHADERIVPROC)(GLuint, GLenum, GLint *);
+     typedef void   (APIENTRY *PFNGLGETSHADERINFOLOGPROC)(GLuint, GLsizei, GLsizei *, GLchar *);
+     typedef GLuint (APIENTRY *PFNGLCREATEPROGRAMPROC)(void);
+     typedef void   (APIENTRY *PFNGLATTACHSHADERPROC)(GLuint, GLuint);
+     typedef void   (APIENTRY *PFNGLLINKPROGRAMPROC)(GLuint);
+     typedef void   (APIENTRY *PFNGLDELETESHADERPROC)(GLuint);
+     typedef void   (APIENTRY *PFNGLDELETEPROGRAMPROC)(GLuint);
+     typedef void   (APIENTRY *PFNGLGETPROGRAMIVPROC)(GLuint, GLenum, GLint *);
+     typedef void   (APIENTRY *PFNGLGETPROGRAMINFOLOGPROC)(GLuint, GLsizei, GLsizei *, GLchar *);
+     typedef GLint  (APIENTRY *PFNGLGETATTRIBLOCATIONPROC)(GLuint, const GLchar *);
+     typedef GLint  (APIENTRY *PFNGLGETUNIFORMLOCATIONPROC)(GLuint, const GLchar *);
+     typedef void   (APIENTRY *PFNGLUSEPROGRAMPROC)(GLuint);
+     typedef void   (APIENTRY *PFNGLUNIFORM1IPROC)(GLint, GLint);
+     typedef void   (APIENTRY *PFNGLUNIFORM1FPROC)(GLint, GLfloat);
+     typedef void   (APIENTRY *PFNGLUNIFORM4FPROC)(GLint, GLfloat, GLfloat, GLfloat, GLfloat);
+     typedef void   (APIENTRY *PFNGLUNIFORMMATRIX4FVPROC)(GLint, GLsizei, GLboolean, const GLfloat *);
+     typedef void   (APIENTRY *PFNGLGENBUFFERSPROC)(GLsizei, GLuint *);
+     typedef void   (APIENTRY *PFNGLBINDBUFFERPROC)(GLenum, GLuint);
+     typedef void   (APIENTRY *PFNGLBUFFERDATAPROC)(GLenum, GLsizeiptr, const void *, GLenum);
+     typedef void   (APIENTRY *PFNGLDELETEBUFFERSPROC)(GLsizei, const GLuint *);
+     typedef void   (APIENTRY *PFNGLENABLEVERTEXATTRIBARRAYPROC)(GLuint);
+     typedef void   (APIENTRY *PFNGLDISABLEVERTEXATTRIBARRAYPROC)(GLuint);
+     typedef void   (APIENTRY *PFNGLVERTEXATTRIBPOINTERPROC)(GLuint, GLint, GLenum, GLboolean, GLsizei, const void *);
+     typedef void   (APIENTRY *PFNGLGENVERTEXARRAYSPROC)(GLsizei, GLuint *);
+     typedef void   (APIENTRY *PFNGLBINDVERTEXARRAYPROC)(GLuint);
+     typedef void   (APIENTRY *PFNGLDELETEVERTEXARRAYSPROC)(GLsizei, const GLuint *);
+#  else
+#    include <GL/glext.h>   // MinGW provides glext.h
+#  endif
 #elif defined(__APPLE__)
 #  include <OpenGL/gl3.h>
 #  include <OpenGL/gl3ext.h>
