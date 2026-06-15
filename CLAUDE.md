@@ -291,7 +291,7 @@ The project has been narrowed to a single active GitHub Actions workflow for the
 
 | Workflow | Output |
 |----------|--------|
-| `.github/workflows/xbox.yml` | Xbox/GDK Desktop build on a **self-hosted** Windows runner (`runs-on: [self-hosted, windows, gdk]`). Ninja + MSVC against a locally-installed GDK (gameKit headers auto-discovered from `%GameDK%`); ANGLE (and the VCRTForwarders CRT shim) fetched per-run via NuGet; CRT staged from the public VCLibs appx. Host prereqs: VS 2022 Build Tools (C++), the GDK, CMake/Ninja, and Git (FetchContent clones SDL2/SDL2_mixer). PowerShell steps run via Windows PowerShell with `-ExecutionPolicy Bypass`; NuGet is bootstrapped in-workflow if absent. Triggers on PRs and on pushes to `master`/`main` (feature branches build via their PR only, to avoid double runs). |
+| `.github/workflows/xbox.yml` | GDK Desktop build (SDL-WGL + desktop GL renderer, GLon12-capable) on a **self-hosted** Windows runner (`runs-on: [self-hosted, windows]`). Ninja + MSVC, no GDK and no ANGLE: `cmake -B xbox/build-desktop -S xbox` builds standalone against SDL2/SDL2_mixer (FetchContent) + `opengl32`, statically linked (`/MT`) so `newtonia.exe` has no extra runtime DLLs. Host prereqs: VS 2022 Build Tools (C++), CMake/Ninja, and Git. Triggers on PRs and on pushes to `master`/`main` (feature branches build via their PR only, to avoid double runs). |
 
 **Disabled workflows** — `.github/workflows/disabled/` holds all inactive workflows; move a file back into `.github/workflows/` to re-enable it:
 - Builds: `macos-dev.yml`, `android.yml`, `ios.yml`, `linux.yml`, `windows.yml`, `web.yml`
