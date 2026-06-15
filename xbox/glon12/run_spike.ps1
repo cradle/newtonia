@@ -52,21 +52,38 @@ function Find-SevenZip {
 }
 
 # Run the probe (headless) from $dir, with the given env vars set just for it.
-# Returns the process exit code.
-function Invoke-Probe([string]$dir, [string]$label, [hashtable]$envVars) {
+# Returns ONLY the process exit code. The probe's stdout is routed to the host
+# via Write-Host so it does not pollute the function's return value (a native
+# command's stdout otherwise becomes part of what the function returns). The
+# run's log is preserved under a tagged name because the next run overwrites
+# glon12_probe.log in the same directory.
+function Invoke-Probe([string]$dir, [string]$label, [string]$tag, [hashtable]$envVars) {
     Write-Host ""
     Write-Host "== probe: $label ==" -ForegroundColor Cyan
+    $code = $null
     Push-Location $dir
     try {
         foreach ($k in $envVars.Keys) { Set-Item "env:$k" $envVars[$k] }
-        & (Join-Path $dir "glon12_probe.exe") --hidden --frames 3
+        & (Join-Path $dir "glon12_probe.exe") --hidden --frames 3 2>&1 | ForEach-Object { Write-Host $_ }
         $code = $LASTEXITCODE
+        if (Test-Path "glon12_probe.log") {
+            Copy-Item "glon12_probe.log" (Join-Path $dir "glon12_$tag.log") -Force
+        }
     } finally {
         foreach ($k in $envVars.Keys) { Remove-Item "env:$k" -ErrorAction SilentlyContinue }
         Pop-Location
     }
     Write-Host "[$label] exit code: $code"
     return $code
+}
+
+# Pull the GL_RENDERER line out of a tagged probe log for the summary.
+function Get-Renderer([string]$log) {
+    if (Test-Path $log) {
+        $m = Select-String -Path $log -Pattern 'GL_RENDERER' | Select-Object -First 1
+        if ($m) { return ($m.Line -replace '^GL_RENDERER\s*:\s*', '') }
+    }
+    return "(no log)"
 }
 
 # ---- Build ----
@@ -126,24 +143,26 @@ Copy-Item $exe $runDir -Force
 
 # ---- Run ----
 # Baseline runs from the (Mesa-free) build output dir → system GL.
-$baseCode = Invoke-Probe $exeDir "baseline (system GL)" @{}
+$baseCode = Invoke-Probe $exeDir "baseline (system GL)" "baseline" @{}
 
-$d3d12Code = Invoke-Probe $runDir "GLon12 (GALLIUM_DRIVER=d3d12)" @{ GALLIUM_DRIVER = "d3d12"; MESA_LOG_LEVEL = "info" }
+$d3d12Code = Invoke-Probe $runDir "GLon12 (GALLIUM_DRIVER=d3d12)" "d3d12" @{ GALLIUM_DRIVER = "d3d12"; MESA_LOG_LEVEL = "info" }
 
 $llvmCode = $null
 if ($d3d12Code -ne 0) {
     Write-Warning "d3d12 backend did not produce a working context (often: no GPU / headless). Trying llvmpipe."
-    $llvmCode = Invoke-Probe $runDir "Mesa software (GALLIUM_DRIVER=llvmpipe)" @{ GALLIUM_DRIVER = "llvmpipe"; MESA_LOG_LEVEL = "info" }
+    $llvmCode = Invoke-Probe $runDir "Mesa software (GALLIUM_DRIVER=llvmpipe)" "llvmpipe" @{ GALLIUM_DRIVER = "llvmpipe"; MESA_LOG_LEVEL = "info" }
 }
 
 Write-Host ""
 Write-Host "== Summary ==" -ForegroundColor Green
-Write-Host ("baseline (system GL) exit : {0}" -f $baseCode)
-Write-Host ("GLon12 d3d12         exit : {0}" -f $d3d12Code)
-if ($null -ne $llvmCode) { Write-Host ("Mesa llvmpipe        exit : {0}" -f $llvmCode) }
-Write-Host "Per-run details: $runDir\glon12_probe.log (and $exeDir\glon12_probe.log for baseline)"
+Write-Host ("baseline (system GL) : exit {0}  [{1}]" -f $baseCode,  (Get-Renderer (Join-Path $exeDir 'glon12_baseline.log')))
+Write-Host ("GLon12 d3d12         : exit {0}  [{1}]" -f $d3d12Code, (Get-Renderer (Join-Path $runDir 'glon12_d3d12.log')))
+if ($null -ne $llvmCode) {
+    Write-Host ("Mesa llvmpipe        : exit {0}  [{1}]" -f $llvmCode, (Get-Renderer (Join-Path $runDir 'glon12_llvmpipe.log')))
+}
+Write-Host "Per-run logs: $runDir\glon12_d3d12.log (+ glon12_llvmpipe.log), $exeDir\glon12_baseline.log"
 if ($d3d12Code -eq 0) {
-    Write-Host "GLon12 (D3D12) PASS — the target console translation layer works here." -ForegroundColor Green
+    Write-Host "GLon12 (D3D12) PASS — the target console translation layer works on this machine." -ForegroundColor Green
 } elseif ($llvmCode -eq 0) {
     Write-Host "Mesa GL frontend PASS via llvmpipe; D3D12 backend unavailable on this machine." -ForegroundColor Yellow
 }
