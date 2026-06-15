@@ -59,7 +59,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: newtonia-gdk-desktop
+          name: newtonia-desktop
           path: |
             xbox/build-desktop/newtonia.exe
             xbox/build-desktop/audio/
