@@ -1,3 +1,12 @@
+# DISABLED — the spike concluded (see xbox/GLON12_SPIKE.md "Results log" and
+# "Full-game result"): GLon12 exposes GL 4.6 core / 29-29 entry points / GLSL
+# 330 and the full game boots and renders through it on real hardware
+# (D3D12, NVIDIA RTX 5080). `glon12-probe` has nothing left to prove, and
+# `build-desktop` duplicated xbox.yml's self-hosted `build` job (same
+# `cmake -B xbox/build-desktop -S xbox` MSVC compile), which already runs on
+# every PR. Kept here for reference / re-enable if the GDKX-era console probe
+# needs the same harness. Move back into .github/workflows/ to re-enable.
+#
 # Newtonia GLon12 desktop rendering spike (Xbox port Phase 2, work-items 3a/4a).
 #
 # GDKX-FREE. Runs on a stock hosted Windows runner with no GDK and no dev kit.

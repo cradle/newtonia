@@ -33,7 +33,7 @@ need GDKX (deferred — see "What this does NOT prove"):
 | `xbox/glon12/glon12_probe.cpp` | Standalone SDL2 + GL 3.3 core probe. Creates a real WGL context via `SDL_GL_CreateContext` (the console path — *not* ANGLE/EGL), loads the exact GL entry points the renderer needs (`COMPAT_GL_FNS` from `gles2_compat.cpp`), compiles/links a representative GLSL-330 program, draws a triangle, reads back a pixel to prove rasterisation, and reports PASS/FAIL. |
 | `xbox/glon12/CMakeLists.txt` | Builds the probe (finds an installed SDL2 or fetches the pinned one). |
 | `xbox/glon12/run_spike.ps1` | Windows: build + run baseline (system GL) and GLon12 runs, given `-MesaDir`. |
-| `.github/workflows/windows-glon12.yml` | Hosted-runner CI, two jobs: `glon12-probe` builds the standalone probe, fetches Mesa desktop GLon12, and runs it under `GALLIUM_DRIVER=d3d12`; `build-desktop` compiles the actual GDK Desktop target (`cmake -B xbox/build-desktop -S xbox`, no GDK/ANGLE) on `windows-latest` as an MSVC regression gate. Runs on branches matching `claude/*glon12*` and on manual dispatch (it does not join the automatic PR/push matrix — that stays the single `xbox.yml`). |
+| `.github/workflows/disabled/windows-glon12.yml` | Hosted-runner CI used during the spike (two jobs: `glon12-probe`, `build-desktop`). **Retired** now that the spike has concluded — see "Results log" below and the CI note in "In CI". Move back into `.github/workflows/` to re-enable. |
 
 The probe mirrors the **target console path** deliberately: SDL2 WGL +
 `SDL_GL_CreateContext`/`SDL_GL_SwapWindow` + GL 3.3 core, which is also
@@ -59,14 +59,14 @@ Already have the DLLs? Skip the download with
 
 ### In CI
 
-`.github/workflows/windows-glon12.yml` runs automatically on branches matching
-`claude/*glon12*` and can be triggered manually (Actions → "Windows GLon12
-spike" → Run, with an optional Mesa version input). Its `glon12-probe` job
-fetches Mesa, runs the baseline + GLon12 probes, and uploads `glon12_probe.log`.
-Its `build-desktop` job compiles the actual GDK Desktop target (the same
-`cmake -B xbox/build-desktop -S xbox` used below) on `windows-latest`, catching
-MSVC regressions in the SDL-WGL/GLon12 renderer path without needing GLon12's
-DLLs or a GPU.
+The hosted-CI harness (`windows-glon12.yml`) that ran the probe + a Desktop
+build during the spike has been retired (moved to
+`.github/workflows/disabled/`) — see "Results log" below for its conclusion.
+Its `build-desktop` job duplicated `xbox.yml`'s self-hosted `build` job (same
+`cmake -B xbox/build-desktop -S xbox` MSVC compile), which now runs on every
+PR and covers that regression. Move the file back into `.github/workflows/`
+(Actions → "Windows GLon12 spike" → Run, with an optional Mesa version input)
+if the GDKX-era console probe needs the same harness again.
 
 ### Cross-platform sanity build
 
