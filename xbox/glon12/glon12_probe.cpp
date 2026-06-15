@@ -230,10 +230,17 @@ int main(int argc, char *argv[])
     logf("GL_VERSION  : %s", version  ? version  : "(null)");
     logf("GL_SL_VER   : %s", glsl     ? glsl     : "(null)");
 
-    bool is_glon12 = renderer && (strstr(renderer, "D3D12") || strstr(renderer, "Direct3D12") ||
-                                  strstr(renderer, "d3d12"));
-    logf("Backend     : %s", is_glon12 ? "GLon12 (D3D12)" :
-                             "system/other GL (no GLon12 DLLs found alongside exe)");
+    bool is_d3d12 = renderer && (strstr(renderer, "D3D12") || strstr(renderer, "Direct3D12") ||
+                                 strstr(renderer, "d3d12"));
+    bool is_mesa  = (vendor   && strstr(vendor,   "Mesa")) ||
+                    (renderer && (strstr(renderer, "Mesa") || strstr(renderer, "llvmpipe") ||
+                                  strstr(renderer, "Gallium")));
+    const char *backend =
+        is_d3d12 ? "GLon12 (Mesa OpenGL-on-D3D12) — the target console translation layer" :
+        is_mesa  ? "Mesa software (llvmpipe) — Mesa loaded but the D3D12 backend is not active "
+                   "(expected on a GPU-less runner; still proves the GL frontend / feature set)" :
+                   "system/other GL — no Mesa GLon12 DLLs loaded (drop them next to the exe)";
+    logf("Backend     : %s", backend);
 
     int rc = 0;
 
