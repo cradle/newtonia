@@ -43,14 +43,19 @@ work-item #4 (switch the console SDL2 build off the ANGLE/EGL-pbuffer path).
 
 ### On any Windows box
 
-1. Get Mesa's desktop GLon12 DLLs — the "x64 desktop" set from a
-   [`pal1000/mesa-dist-win`](https://github.com/pal1000/mesa-dist-win/releases)
-   release contains `opengl32.dll`, `libgallium_wgl.dll`, `dxil.dll`.
-2. ```powershell
-   pwsh xbox/glon12/run_spike.ps1 -MesaDir C:\path\to\mesa\x64
-   ```
-   It builds the probe, runs it once against the system driver (baseline), then
-   again with the Mesa DLLs staged beside the exe and `GALLIUM_DRIVER=d3d12`.
+```powershell
+pwsh xbox/glon12/run_spike.ps1
+```
+
+That's the whole thing: it builds the probe, **downloads** Mesa's desktop GLon12
+build (needs 7-Zip — `winget install 7zip.7zip`), stages the full DLL set beside
+the exe, and runs baseline (system GL) → `GALLIUM_DRIVER=d3d12` → `llvmpipe`
+fallback. On a box **with a GPU** the d3d12 run exercises the real D3D12 backend
+(the pending results row); on a GPU-less box it falls back to llvmpipe.
+
+Already have the DLLs? Skip the download with
+`-MesaDir C:\path\to\mesa\x64`. Pick a different Mesa release with
+`-MesaVersion 24.x.y`.
 
 ### In CI
 
