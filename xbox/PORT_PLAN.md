@@ -125,10 +125,38 @@ manual test-pass checklist.
 Exit criteria: Desktop build is a trustworthy reference for "the game logic
 and GLES2 renderer are correct on Windows/ANGLE".
 
-### Phase 2 — Console rendering decision spike (needs GDKX)
+### Phase 2 — Console rendering decision spike
 
-Decide how GLES2 calls reach the console GPU. Timebox ~1–2 weeks of
+Decide how our GL calls reach the console GPU. Timebox ~1–2 weeks of
 investigation before committing.
+
+**What splits cleanly across the GDKX gate.** The dominant risk in this phase
+is "does GLon12 (Mesa OpenGL-on-D3D12) expose a GL version/feature set that
+covers our full GL 3.3 core renderer?" That question is answerable **today, with
+no GDKX and no dev kit**: Mesa ships a public *desktop* GLon12 build
+(`opengl32.dll` + `libgallium_wgl.dll` + `dxil.dll`) that translates desktop
+OpenGL to desktop D3D12. Dropping those DLLs next to a normal Windows build and
+running our renderer through them exercises the same Gallium d3d12 driver and
+the same GL-feature surface the console build will use — only the D3D12 backend
+(desktop DXGI vs `D3D12.x` Game OS) and the SDL windowing layer differ.
+
+- **GDKX-free (do now):**
+  - Confirm GLon12 exposes ≥ GL 3.3 core + GLSL 330 and resolves every GL entry
+    point our renderer calls (`COMPAT_GL_FNS` in `gles2_compat.cpp` + core 1.x).
+  - Confirm the renderer's GLSL 330 program compiles/links/draws through GLon12,
+    and that a frame actually rasterises (triangle → menu).
+  - Prototype the **SDL2 WGL path** the console will use (`SDL_GL_CreateContext`
+    + `SDL_GL_SwapWindow` against the desktop-GL renderer) instead of the current
+    ANGLE/EGL-pbuffer Desktop path — work-item #4 merged in.
+  - Tooling for the above: **`xbox/glon12/`** (`glon12_probe.cpp`, CMake, local
+    run scripts) and **`xbox/GLON12_SPIKE.md`** (results log + how to run).
+- **GDKX-required (deferred until dev kit + GDKX):**
+  - Build Mesa with `-Dgallium-drivers=d3d12` for the **Xbox cross target** and
+    ship `opengl32.dll` + `libgallium_wgl.dll` next to the exe (GLon12-for-Xbox
+    needs GDK support + a Microsoft agreement; does not work with the PC GDK).
+  - Confirm the **Xbox Game OS feature level** doesn't lower GLon12's exposed GL
+    version below what the desktop spike measured.
+  - Run the renderer on the dev kit (the real exit criterion below).
 
 - **Option A — SDL2 WGL + GLon12 (Mesa OpenGL-on-D3D12) + the existing
   desktop-GL path.** The Microsoft-blessed route for OpenGL on the console, and
@@ -156,11 +184,14 @@ investigation before committing.
       the manual EGL/ANGLE context in `xbox_main.cpp`'s `_GAMING_XBOX` half for
       `SDL_GL_CreateContext` + `SDL_GL_SwapWindow`. Potentially the
       lowest-effort route of all.
-    - **The spike's job:** confirm GLon12's exposed GL version under the Xbox
-      feature level covers our full GL 3.3 core feature set. This option merges
+    - **The spike's job:** confirm GLon12's exposed GL version covers our full
+      GL 3.3 core feature set. The bulk of this is GDKX-free — Mesa's desktop
+      GLon12 build runs the same Gallium d3d12 driver on a normal Windows box
+      (see `xbox/glon12/` + `xbox/GLON12_SPIKE.md`). Only re-confirming the
+      version under the **Xbox Game OS feature level**, building Mesa for the
+      Xbox cross target, and running on the dev kit need GDKX. This option merges
       with work-item #4 (move the console build to SDL's official `VisualC-GDK`
-      build) — they are one task. Still needs GDKX (D3D12.x libs) to build and
-      a dev kit to run.
+      build) — they are one task.
 - **Option B — compile ANGLE against GDKX D3D11.X/D3D12.** Keeps the GLES2
   renderer untouched. Unknown effort; **no official ANGLE build for Xbox
   consoles**, and ANGLE's D3D backends assume desktop DXGI swap chains. Lower
@@ -179,13 +210,18 @@ investigation before committing.
 
 Recommendation: spike A first (GLon12) — it is the supported path and may reuse
 the existing desktop-GL renderer with little code; plan around C as the safe
-fallback. B (ANGLE-fork) drops down the list. Either way, also switch the console
+fallback. **Update (2026-06): the GDKX-free half of the A spike passed** — the
+existing GL 3.3 core renderer runs through GLon12's real OpenGL→D3D12 path on a
+desktop GPU (`xbox/GLON12_SPIKE.md`), so A is reusing the desktop-GL renderer as
+hoped; only the console feature-level confirmation under GDKX is outstanding. B (ANGLE-fork) drops down the list. Either way, also switch the console
 SDL2 build from the `/U__GDK__` Win32 hack to SDL's official GDK build
 (VisualC-GDK / CMake with GDKX) for windowing, input, and audio, and delete
 `sdl_gdk_stubs.cpp` for the console target (keep it for Desktop if still
 needed).
 
-Exit criteria: a triangle (then the menu) rendering on the dev kit.
+Exit criteria: a triangle (then the menu) rendering on the dev kit. The
+GDKX-free milestone (same triangle + GL-feature probe through Mesa's desktop
+GLon12 on a Windows box / hosted CI) is the de-risking gate before that.
 
 ### Phase 3 — Console bring-up
 
@@ -309,6 +345,7 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 | 1 | ✅ Hide keyboard-only rows in help overlay on controller | `glship.cpp` (draw_keymap) | 1 |
 | 2 | ✅ Fix "ANGLE bundled with GDK" comment | `xbox/CMakeLists.txt`, `xbox_main.cpp`, `CLAUDE.md` | 1 |
 | 3 | Rendering spike + decision (GLon12 + desktop-GL path vs ANGLE-GDKX vs native D3D12.X backend) | new `xbox/` backend, GLon12 link, or ANGLE fork | 2 |
+| 3a | ✅ GDKX-free GLon12 desktop spike **done**: Newtonia's GL 3.3 core renderer runs through GLon12's real OpenGL→D3D12 path on desktop GPU (`D3D12 (NVIDIA RTX 5080)`, 29/29 entry points, GLSL ≥330, triangle). Hosted CI (`windows-glon12.yml`) confirms the same feature set via llvmpipe (no GPU). Only the Xbox Game OS feature level under GDKX remains | `xbox/glon12/`, `xbox/GLON12_SPIKE.md`, `.github/workflows/windows-glon12.yml` | 2 |
 | 4 | Switch console SDL2 to official `VisualC-GDK` build (enables the WGL+GLon12 path; merges with #3); drop `/U__GDK__` + stubs for console | `xbox/CMakeLists.txt`, `sdl_gdk_stubs.cpp` | 2 |
 | 5 | Rework `_GAMING_XBOX` present path per #3 | `xbox_main.cpp` | 3 |
 | 6 | ✅ `asset_path()` helper (SDL_GetBasePath prefix on GDK) | `asset_path.h` + 33 audio call sites | 3 |
