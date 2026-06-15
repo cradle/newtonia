@@ -33,7 +33,7 @@ need GDKX (deferred — see "What this does NOT prove"):
 | `xbox/glon12/glon12_probe.cpp` | Standalone SDL2 + GL 3.3 core probe. Creates a real WGL context via `SDL_GL_CreateContext` (the console path — *not* ANGLE/EGL), loads the exact GL entry points the renderer needs (`COMPAT_GL_FNS` from `gles2_compat.cpp`), compiles/links a representative GLSL-330 program, draws a triangle, reads back a pixel to prove rasterisation, and reports PASS/FAIL. |
 | `xbox/glon12/CMakeLists.txt` | Builds the probe (finds an installed SDL2 or fetches the pinned one). |
 | `xbox/glon12/run_spike.ps1` | Windows: build + run baseline (system GL) and GLon12 runs, given `-MesaDir`. |
-| `.github/workflows/windows-glon12.yml` | Hosted-runner CI: build, fetch Mesa desktop GLon12, run under `GALLIUM_DRIVER=d3d12`. Runs on the `claude/glon12-spike-**` branch and on manual dispatch (it does not join the automatic PR/push matrix — that stays the single `xbox.yml`). |
+| `.github/workflows/windows-glon12.yml` | Hosted-runner CI, two jobs: `glon12-probe` builds the standalone probe, fetches Mesa desktop GLon12, and runs it under `GALLIUM_DRIVER=d3d12`; `build-desktop` compiles the actual GDK Desktop target (`cmake -B xbox/build-desktop -S xbox`, no GDK/ANGLE) on `windows-latest` as an MSVC regression gate. Runs on branches matching `claude/*glon12*` and on manual dispatch (it does not join the automatic PR/push matrix — that stays the single `xbox.yml`). |
 
 The probe mirrors the **target console path** deliberately: SDL2 WGL +
 `SDL_GL_CreateContext`/`SDL_GL_SwapWindow` + GL 3.3 core, which is also
@@ -59,10 +59,14 @@ Already have the DLLs? Skip the download with
 
 ### In CI
 
-`.github/workflows/windows-glon12.yml` runs automatically on the
-`claude/glon12-spike-**` branch and can be triggered manually (Actions →
-"Windows GLon12 spike" → Run, with an optional Mesa version input). It fetches
-Mesa, runs the baseline + GLon12 probes, and uploads `glon12_probe.log`.
+`.github/workflows/windows-glon12.yml` runs automatically on branches matching
+`claude/*glon12*` and can be triggered manually (Actions → "Windows GLon12
+spike" → Run, with an optional Mesa version input). Its `glon12-probe` job
+fetches Mesa, runs the baseline + GLon12 probes, and uploads `glon12_probe.log`.
+Its `build-desktop` job compiles the actual GDK Desktop target (the same
+`cmake -B xbox/build-desktop -S xbox` used below) on `windows-latest`, catching
+MSVC regressions in the SDL-WGL/GLon12 renderer path without needing GLon12's
+DLLs or a GPU.
 
 ### Cross-platform sanity build
 
@@ -124,6 +128,21 @@ Run the resulting `newtonia.exe` and it uses your hardware GL. To run it through
 (`newtonia.log`, next to the exe) prints the active `GL_VENDOR`/`GL_RENDERER`.
 Console (`-A Gaming.Xbox.Scarlett.x64`) still builds the ANGLE/GLES2 path and is
 GDKX-gated.
+
+### Full-game result
+
+**Confirmed 2026-06-15** on Windows desktop + NVIDIA RTX 5080, Mesa 24.3.4
+GLon12 staged next to `newtonia.exe`, `GALLIUM_DRIVER=d3d12`. `newtonia.log`:
+
+```
+GL context: vendor=Microsoft Corporation renderer=D3D12 (NVIDIA GeForce RTX 5080) version=4.6 (Core Profile) Mesa 24.3.4 (git-1950a8b78c)
+```
+
+This is the actual game binary — not the standalone probe — booting, creating
+its real GL 3.3 core program/buffers, and rendering through GLon12's
+OpenGL→D3D12 translation. Combined with the probe result above, work-item 4a
+is fully validated on desktop; only the Xbox Game OS feature level under GDKX
+remains open.
 
 ## What this does NOT prove
 

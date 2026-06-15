@@ -1,20 +1,26 @@
-# Newtonia GLon12 desktop rendering spike (Xbox port Phase 2, work-item 3a).
+# Newtonia GLon12 desktop rendering spike (Xbox port Phase 2, work-items 3a/4a).
 #
 # GDKX-FREE. Runs on a stock hosted Windows runner with no GDK and no dev kit.
-# It builds glon12_probe and runs it against Mesa's *desktop* GLon12 build
-# (OpenGL-on-D3D12) to confirm GLon12 exposes the GL 3.3 core feature set and
-# GLSL-330 program Newtonia's renderer needs. See xbox/GLON12_SPIKE.md.
 #
-# This is a spike, not a shipping build: it only runs on its spike branch or on
-# manual dispatch, so it does not add to the automatic PR/push build matrix
-# (which stays the single self-hosted xbox.yml). Or run xbox/glon12/run_spike.ps1
-# locally on any Windows box.
+#   * glon12-probe — builds glon12_probe and runs it against Mesa's *desktop*
+#     GLon12 build (OpenGL-on-D3D12) to confirm GLon12 exposes the GL 3.3 core
+#     feature set and GLSL-330 program Newtonia's renderer needs.
+#   * build-desktop — compiles the actual GDK Desktop target (the SDL-WGL +
+#     desktop-GL renderer, GLon12-capable) via plain `cmake -S xbox`, no GDK or
+#     ANGLE needed, as an MSVC regression gate for that renderer path.
+#
+# See xbox/GLON12_SPIKE.md.
+#
+# This is a spike, not a shipping build: it only runs on branches matching
+# claude/*glon12* or on manual dispatch, so it does not add to the automatic
+# PR/push build matrix (which stays the single self-hosted xbox.yml). Or run
+# xbox/glon12/run_spike.ps1 locally on any Windows box.
 
 name: Windows GLon12 spike
 
 on:
   push:
-    branches: ['claude/glon12-spike-**']
+    branches: ['claude/*glon12*']
   workflow_dispatch:
     inputs:
       mesa_version:
@@ -131,3 +137,23 @@ jobs:
             glon12_llvmpipe.log
           retention-days: 30
           if-no-files-found: warn
+
+  # Compiles the real game (not the standalone probe) for the GDK Desktop
+  # target — the SDL-WGL + desktop-GL-core renderer (work-item 4a), which is
+  # GLon12-capable. No GDK, no ANGLE, no -A platform: plain MSVC + SDL2 fetched
+  # via FetchContent. This is a build-only regression gate (e.g. it would have
+  # caught the windows.h near/far macro collisions fixed for this renderer
+  # path); running the binary under GLon12 is the local xbox/glon12/run_spike.ps1
+  # / xbox/GLON12_SPIKE.md flow.
+  build-desktop:
+    name: Compile GDK Desktop target (SDL WGL + GLon12-capable renderer)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure (no GDK / ANGLE needed)
+        run: cmake -B xbox/build-desktop -S xbox
+
+      - name: Build
+        run: cmake --build xbox/build-desktop --config Release
