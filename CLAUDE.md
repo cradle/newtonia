@@ -97,7 +97,7 @@ The codebase separates **game logic** from **rendering** using a GL-prefixed wra
 | Android  | `android_main.cpp` (SDL2 event loop, multi-touch) |
 | iOS      | `ios/ios_main.mm` |
 | Web      | `web_main.cpp` (Emscripten loop, IDBFS persistence) |
-| Xbox/GDK | `xbox_main.cpp` (SDL2 event loop, ANGLE GLES2, GDK PLM lifecycle) |
+| Xbox/GDK | `xbox_main.cpp` (SDL2 event loop). Two halves: **GDK Desktop** (`_GAMING_DESKTOP`, active) creates a desktop GL 3.3 core context via `SDL_GL_CreateContext`/`SDL_GL_SwapWindow` (GLon12-capable); **Xbox console** (`_GAMING_XBOX`, GDKX-gated fallback) uses a manual EGL/ANGLE GLES2 context + GDK PLM lifecycle |
 | macOS helper | `macos_window.mm` (window activation for Steam launch) |
 
 ### Object Inheritance
