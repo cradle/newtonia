@@ -101,7 +101,10 @@ if ($LASTEXITCODE -ne 0) {
     throw "cmake build failed (exit $LASTEXITCODE) — see the compiler/linker output above."
 }
 
+# Exclude the glonrun staging dir: a previous run copies the exe there, and the
+# baseline must run the freshly-built CMake output from a Mesa-free directory.
 $exe = Get-ChildItem -Path $BuildDir -Recurse -Filter glon12_probe.exe |
+       Where-Object { $_.FullName -notmatch '[\\/]glonrun[\\/]' } |
        Select-Object -First 1 -ExpandProperty FullName
 if (-not $exe) {
     throw "Build reported success but glon12_probe.exe was not found under $BuildDir. Contents: " +
@@ -137,7 +140,9 @@ Write-Host "Mesa GLon12 DLL dir: $MesaDir"
 # resolve and the app-dir search loads Mesa rather than the system GL.
 $runDir = Join-Path $BuildDir "glonrun"
 New-Item -ItemType Directory -Force -Path $runDir | Out-Null
-Get-ChildItem $runDir -Filter *.dll -ErrorAction SilentlyContinue | Remove-Item -Force
+# Clear stale DLLs and the previously-staged exe so a re-run is clean.
+Remove-Item (Join-Path $runDir "*.dll") -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $runDir "glon12_probe.exe") -Force -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $MesaDir "*.dll") $runDir -Force
 Copy-Item $exe $runDir -Force
 
