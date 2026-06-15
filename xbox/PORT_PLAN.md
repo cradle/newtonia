@@ -342,7 +342,7 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 | 1 | ✅ Hide keyboard-only rows in help overlay on controller | `glship.cpp` (draw_keymap) | 1 |
 | 2 | ✅ Fix "ANGLE bundled with GDK" comment | `xbox/CMakeLists.txt`, `xbox_main.cpp`, `CLAUDE.md` | 1 |
 | 3 | Rendering spike + decision (GLon12 + desktop-GL path vs ANGLE-GDKX vs native D3D12.X backend) | new `xbox/` backend, GLon12 link, or ANGLE fork | 2 |
-| 3a | 🔶 GDKX-free GLon12 desktop spike: GL-feature probe + triangle through Mesa desktop GLon12 (SDL2 WGL, GL 3.3 core) | `xbox/glon12/` (`glon12_probe.cpp`, CMake, run scripts), `xbox/GLON12_SPIKE.md` | 2 |
+| 3a | 🔶 GDKX-free GLon12 desktop spike: GL-feature probe + triangle through Mesa desktop GLon12 (SDL2 WGL, GL 3.3 core). CI green (`windows-glon12.yml`): Mesa GLon12 stack loads, GL 3.3 core feature set confirmed (29/29 entry points, GLSL 4.50, triangle). D3D12 backend itself needs a GPU runner/dev box (no GPU on hosted runners) — pending | `xbox/glon12/`, `xbox/GLON12_SPIKE.md`, `.github/workflows/windows-glon12.yml` | 2 |
 | 4 | Switch console SDL2 to official `VisualC-GDK` build (enables the WGL+GLon12 path; merges with #3); drop `/U__GDK__` + stubs for console | `xbox/CMakeLists.txt`, `sdl_gdk_stubs.cpp` | 2 |
 | 5 | Rework `_GAMING_XBOX` present path per #3 | `xbox_main.cpp` | 3 |
 | 6 | ✅ `asset_path()` helper (SDL_GetBasePath prefix on GDK) | `asset_path.h` + 33 audio call sites | 3 |

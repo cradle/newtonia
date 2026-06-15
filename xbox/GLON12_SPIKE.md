@@ -81,14 +81,23 @@ through GLon12 rather than falling back to the system/llvmpipe driver.
 | Date | Host | Backend (GL_RENDERER) | GL / GLSL | Entry pts | Shader | Triangle | Result |
 |------|------|-----------------------|-----------|-----------|--------|----------|--------|
 | 2026-06-15 | Linux CI container | `llvmpipe (LLVM 20.1.2)` (Mesa Gallium, offscreen) | 4.5 / 4.50 | 29/29 | OK | OK | **PASS** (probe validation) |
-| _TODO_ | Windows + Mesa GLon12 | `D3D12 (...)` | _?_ | _?_ | _?_ | _?_ | _pending_ |
+| 2026-06-15 | Windows CI (`windows-latest`, GPU-less) + Mesa 24.3.4 GLon12 | `llvmpipe (LLVM 19.1.7)` (d3d12 attempt: no WGL pixel format) | 4.5 / 4.50 | 29/29 | OK | OK | **PASS** via llvmpipe |
+| _TODO_ | Windows + GPU (or dev box) — `GALLIUM_DRIVER=d3d12` | `D3D12 (...)` expected | _?_ | _?_ | _?_ | _?_ | _pending_ |
 | _TODO_ | Xbox dev kit (GDKX) | _?_ | _?_ | _?_ | _?_ | _?_ | _deferred_ |
 
-The Linux row validates the probe itself and is a useful early signal: it runs
-through the **same Mesa Gallium GL frontend** as the d3d12 driver, and that
-frontend already exposes our full feature set (29/29 entry points, GLSL ≥ 330,
-triangle rasterised). The d3d12 row replaces the software rasteriser with the
-D3D12 backend; the dev-kit row is the only one that needs GDKX.
+Reading the Windows CI run (`windows-glon12.yml`, run #3): Mesa's complete GLon12
+DLL set loaded, and the **GL 3.3 core feature set is confirmed** — `Mesa` vendor,
+GL 4.5 core / GLSL 4.50, all 29 required entry points resolved, the GLSL program
+compiled + linked, and the triangle rasterised. The `GALLIUM_DRIVER=d3d12`
+attempt could **not** create a WGL surface (`SDL_CreateWindow: No matching GL
+pixel format available` at depth 24/16/0): the D3D12 backend needs a real
+D3D12-capable adapter, and `windows-latest` has no GPU and no usable headless
+WARP-D3D12 WGL surface — so Mesa served GL through `llvmpipe` instead. Both
+drivers share the **same Gallium GL frontend**, so the feature-coverage question
+the spike exists to answer is settled; what remains is confirming the **D3D12
+backend specifically** drives that frontend, which needs a GPU runner / dev box
+(`GALLIUM_DRIVER=d3d12` row above) and then the console under GDKX (final row).
+Run `run_spike.ps1` on a machine with a GPU to fill the pending row.
 
 ## What this does NOT prove
 
