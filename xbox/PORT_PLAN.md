@@ -130,22 +130,36 @@ and GLES2 renderer are correct on Windows/ANGLE".
 Decide how GLES2 calls reach the console GPU. Timebox ~1–2 weeks of
 investigation before committing.
 
-- **Option A — compile ANGLE against GDKX D3D11.X/D3D12.** Keeps the
-  renderer untouched. Unknown effort; no official support, and ANGLE's D3D
-  backends assume desktop DXGI swap chains. Investigate first; abandon
-  quickly if swap-chain/device creation can't be adapted.
-- **Option B — native D3D12.X backend behind the existing abstraction.**
+- **Option A — GLon12 (Mesa OpenGL-on-D3D12) + the existing desktop-GL path.**
+  Microsoft added official GDK support for Mesa's `GLon12` mapping layer, and
+  real titles ship on Xbox through it (e.g. *Steel Assault*); SDL has matching
+  "build with OpenGL on Xbox" support. This is the Microsoft-blessed route for
+  OpenGL on the console. Key wrinkle for us: GLon12 exposes **desktop OpenGL**,
+  not GLES — but we already have a working desktop GL 3.3 core renderer
+  (`gl_compat.h`), so this could mean reusing the *desktop-GL* path on console
+  rather than the GLES2 one, potentially the lowest-effort route of all. Spike:
+  GLon12's supported GL version under `WINAPI_FAMILY_GAMES`, context/swap-chain
+  creation, and whether our GL 3.3 core feature set is fully covered. Still
+  needs GDKX (D3D12.x libs) to build and a dev kit to run.
+- **Option B — compile ANGLE against GDKX D3D11.X/D3D12.** Keeps the GLES2
+  renderer untouched. Unknown effort; **no official ANGLE build for Xbox
+  consoles**, and ANGLE's D3D backends assume desktop DXGI swap chains. Lower
+  priority than A now that GLon12 is the supported translation path; investigate
+  only if GLon12 can't cover our GL feature set, and abandon quickly if
+  swap-chain/device creation can't be adapted.
+- **Option C — native D3D12.X backend behind the existing abstraction.**
   The game's GPU usage is deliberately narrow: `gles2_compat` program/buffer
   wrappers, `Mesh` (interleaved pos+colour VBOs, lines/tris), `Typer`,
   `WarpPass` (render-to-texture + one post pass), no textures from disk, two
   shaders' worth of GLSL. Reimplementing that surface on D3D12.X is a
-  bounded job (rough order: 3–5 weeks) and removes the ANGLE dependency and
-  its DLL redistribution question entirely.
-- **Option C — SDL3 + its GPU API.** Largest churn (SDL2→SDL3 migration
-  across all platforms); only attractive if A and B both look bad.
+  bounded job (rough order: 3–5 weeks) and removes the ANGLE/GLon12 dependency
+  and its DLL redistribution question entirely.
+- **Option D — SDL3 + its GPU API.** Largest churn (SDL2→SDL3 migration
+  across all platforms); only attractive if A–C all look bad.
 
-Recommendation: spike A briefly because its payoff is "zero renderer work";
-plan around B as the realistic path. Either way, also switch the console
+Recommendation: spike A first (GLon12) — it is the supported path and may reuse
+the existing desktop-GL renderer with little code; plan around C as the safe
+fallback. B (ANGLE-fork) drops down the list. Either way, also switch the console
 SDL2 build from the `/U__GDK__` Win32 hack to SDL's official GDK build
 (VisualC-GDK / CMake with GDKX) for windowing, input, and audio, and delete
 `sdl_gdk_stubs.cpp` for the console target (keep it for Desktop if still
@@ -274,7 +288,7 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 |---|------|-------|-------|
 | 1 | ✅ Hide keyboard-only rows in help overlay on controller | `glship.cpp` (draw_keymap) | 1 |
 | 2 | ✅ Fix "ANGLE bundled with GDK" comment | `xbox/CMakeLists.txt`, `xbox_main.cpp`, `CLAUDE.md` | 1 |
-| 3 | Rendering spike + decision (ANGLE-GDKX vs native D3D12.X backend) | new `xbox/` backend or ANGLE fork | 2 |
+| 3 | Rendering spike + decision (GLon12 + desktop-GL path vs ANGLE-GDKX vs native D3D12.X backend) | new `xbox/` backend, GLon12 link, or ANGLE fork | 2 |
 | 4 | Switch console SDL2 to official GDK build; drop `/U__GDK__` + stubs for console | `xbox/CMakeLists.txt`, `sdl_gdk_stubs.cpp` | 2 |
 | 5 | Rework `_GAMING_XBOX` present path per #3 | `xbox_main.cpp` | 3 |
 | 6 | ✅ `asset_path()` helper (SDL_GetBasePath prefix on GDK) | `asset_path.h` + 33 audio call sites | 3 |
@@ -305,7 +319,8 @@ and the public-information half of Phase 2) is unblocked today.
 
 | Risk | Likelihood | Mitigation |
 |------|-----------|------------|
-| ANGLE unusable on console | High | Plan around Option B (native D3D12.X behind `gles2_compat`-shaped interface); game's GL surface is small |
+| ANGLE unusable on console | High | Expected — no official ANGLE Xbox build. Primary path is GLon12 (Mesa OpenGL-on-D3D12, officially GDK-supported) reusing the existing desktop-GL renderer; fallback is a native D3D12.X backend behind the `gles2_compat`-shaped interface (game's GL surface is small) |
+| GLon12 GL version/feature gaps under Game OS | Medium | Spike its supported GL version vs our GL 3.3 core usage early; native D3D12.X backend is the fallback |
 | SDL2 GDK console backend gaps | Medium | SDL 2.28+/SDL2-compat track record on Xbox is decent; SDL3 is the escape hatch |
 | Cert requires XGameSave | Medium | Storage seam is small (two path helpers); budgeted in Phase 4 |
 | StoreBroker can't submit .xvc | Medium | Manual Partner Center upload as fallback; submission is infrequent |
