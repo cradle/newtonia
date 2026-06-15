@@ -25,12 +25,22 @@
 
 // Post-GL-header includes and Windows function loader.
 #if !defined(__ANDROID__) && !defined(__IOS__) && !defined(__EMSCRIPTEN__) && \
-    !defined(_GAMING_XBOX) && !defined(_GAMING_DESKTOP)
+    !defined(_GAMING_XBOX)
 #  if defined(__linux__)
 #    include <GL/glext.h>
 
 #  elif defined(_WIN32)
-#    include <GL/glext.h>
+       // Windows desktop GL (native MinGW/MSVC, or GDK Desktop). GDK Desktop
+       // pulls glext from SDL (builds under MSVC, which lacks <GL/glext.h>) and
+       // loads entry points via SDL_GL_GetProcAddress (reaches GLon12); native
+       // desktop uses <GL/glext.h> + wglGetProcAddress.
+#    if defined(_GAMING_DESKTOP)
+#      include <SDL.h>
+#      include <SDL_opengl.h>
+#      include <SDL_opengl_glext.h>
+#    else
+#      include <GL/glext.h>
+#    endif
 
 #    define WARP_GL_FNS \
        X(PFNGLCREATESHADERPROC,             glCreateShader           ) \
@@ -69,7 +79,11 @@
 #    undef X
 
      static void warp_load_gl_fns() {
-#      define X(T, name) wp_##name = (T)wglGetProcAddress(#name);
+#      if defined(_GAMING_DESKTOP)
+#        define X(T, name) wp_##name = (T)SDL_GL_GetProcAddress(#name);
+#      else
+#        define X(T, name) wp_##name = (T)wglGetProcAddress(#name);
+#      endif
        WARP_GL_FNS
 #      undef X
      }
@@ -233,7 +247,7 @@ WarpPass::WarpPass()
       a_pos_(-1), u_mvp_(-1), u_tex_(-1),
       u_center_ndc_(-1), u_radius_ndc_(-1), u_time_(-1)
 {
-#if defined(_WIN32) && !defined(_GAMING_XBOX) && !defined(_GAMING_DESKTOP)
+#if defined(_WIN32) && !defined(_GAMING_XBOX)
     warp_load_gl_fns();
 #endif
 

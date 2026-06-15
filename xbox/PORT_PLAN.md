@@ -347,7 +347,8 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 | 3 | Rendering spike + decision (GLon12 + desktop-GL path vs ANGLE-GDKX vs native D3D12.X backend) | new `xbox/` backend, GLon12 link, or ANGLE fork | 2 |
 | 3a | ✅ GDKX-free GLon12 desktop spike **done**: Newtonia's GL 3.3 core renderer runs through GLon12's real OpenGL→D3D12 path on desktop GPU (`D3D12 (NVIDIA RTX 5080)`, 29/29 entry points, GLSL ≥330, triangle). Hosted CI (`windows-glon12.yml`) confirms the same feature set via llvmpipe (no GPU). Only the Xbox Game OS feature level under GDKX remains | `xbox/glon12/`, `xbox/GLON12_SPIKE.md`, `.github/workflows/windows-glon12.yml` | 2 |
 | 4 | Switch console SDL2 to official `VisualC-GDK` build (enables the WGL+GLon12 path; merges with #3); drop `/U__GDK__` + stubs for console | `xbox/CMakeLists.txt`, `sdl_gdk_stubs.cpp` | 2 |
-| 5 | Rework `_GAMING_XBOX` present path per #3 | `xbox_main.cpp` | 3 |
+| 4a | ✅ **Desktop** target moved to the SDL WGL + desktop-GL-core renderer (the GLon12-capable path), GDKX-free: `_GAMING_DESKTOP` now compiles the desktop GL shim (split `NEWTONIA_NO_GLUT` from `DESKTOP_COMPAT_GL`) and creates its context with `SDL_GL_CreateContext`/`SDL_GL_SwapWindow`; ANGLE/EGL + pbuffer→GDI blit dropped for Desktop (kept for console). Links only SDL2 + `opengl32`; builds without the GDK (`cmake -S xbox`). Console (#4/#5) stays ANGLE until GDKX | `gl_compat.h`, `gles2_compat.h/.cpp`, `xbox_main.cpp`, `xbox/CMakeLists.txt` | 2 |
+| 5 | Rework `_GAMING_XBOX` present path per #3 (console; GDKX-gated — Desktop equivalent done in 4a) | `xbox_main.cpp` | 3 |
 | 6 | ✅ `asset_path()` helper (SDL_GetBasePath prefix on GDK) | `asset_path.h` + 33 audio call sites | 3 |
 | 7 | WarpPass 4K performance (profile; optional internal-res scale) | `warp_pass.cpp` | 3 |
 | 8 | PLM resume registration + constrained mode | `xbox_main.cpp` | 4 |

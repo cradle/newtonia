@@ -30,10 +30,12 @@ project(newtonia CXX)
 #   _GAMING_DESKTOP    for the Desktop target
 # Both are handled by xbox_main.cpp; do not set them manually here.
 #
-# ANGLE (libEGL / libGLESv2) is NOT bundled with the GDK.  CI fetches the
-# ANGLE.WindowsStore NuGet package and passes -DANGLE_INCLUDE_DIR /
-# -DANGLE_LIB_DIR (see xbox-dev.yml); local builds can set the same cache
-# variables, or set GDK_ROOT to enable the search fallbacks below.
+# ANGLE (libEGL / libGLESv2) is used ONLY by the Xbox console target and is NOT
+# bundled with the GDK.  CI fetches the ANGLE.WindowsStore NuGet package and
+# passes -DANGLE_INCLUDE_DIR / -DANGLE_LIB_DIR (see xbox-dev.yml); local builds
+# can set the same cache variables, or set GDK_ROOT to enable the search
+# fallbacks below.  The Desktop target uses the desktop GL renderer over SDL/WGL
+# (GLon12-capable) and needs no ANGLE — see the renderer-target split below.
 # ---------------------------------------------------------------
 
 set(CMAKE_CXX_STANDARD 11)
@@ -62,6 +64,21 @@ if(CMAKE_GENERATOR_PLATFORM MATCHES "Gaming")
   set(GDK_PLATFORM_BUILD TRUE)
 else()
   set(GDK_PLATFORM_BUILD FALSE)
+endif()
+
+# ---------------------------------------------------------------
+# Renderer target: console (ANGLE/GLES2) vs Desktop (desktop GL / GLon12)
+# ---------------------------------------------------------------
+# The Xbox Series target (Gaming.Xbox.Scarlett.x64) renders GLES2 through ANGLE.
+# Every other configuration — the GDK Desktop platform, or the plain Ninja
+# canary — is the Desktop target, which uses the desktop GL 3.3 core renderer
+# over SDL's WGL backend (hardware GL, or Mesa GLon12 by dropping its DLLs next
+# to the exe; see xbox/GLON12_SPIKE.md). The Desktop target needs neither ANGLE
+# nor the GDK, so it builds with just SDL2 + opengl32.
+if(CMAKE_GENERATOR_PLATFORM MATCHES "Xbox")
+  set(NEWTONIA_XBOX_CONSOLE TRUE)
+else()
+  set(NEWTONIA_XBOX_CONSOLE FALSE)
 endif()
 
 # ---------------------------------------------------------------
@@ -190,51 +207,50 @@ target_include_directories(newtonia PRIVATE
     ${CMAKE_SOURCE_DIR}/../view
 )
 
-# ANGLE EGL/GLES2 headers — needed for the manual EGL context in xbox_main.cpp.
-# ANGLE_INCLUDE_DIR is the directory containing EGL/ and GLES2/ subdirectories;
-# set by the CI workflow from the GDK or ANGLE.WindowsStore NuGet package.
-if(DEFINED ANGLE_INCLUDE_DIR)
-    target_include_directories(newtonia PRIVATE "${ANGLE_INCLUDE_DIR}")
-elseif(DEFINED ENV{GDK_ROOT})
-    file(GLOB_RECURSE _egl_candidates "$ENV{GDK_ROOT}/gameKit/Include/egl.h")
-    if(_egl_candidates)
-        list(GET _egl_candidates 0 _egl_h)
-        get_filename_component(_egl_dir "${_egl_h}" DIRECTORY)
-        get_filename_component(_angle_inc "${_egl_dir}" DIRECTORY)
-        target_include_directories(newtonia PRIVATE "${_angle_inc}")
-    endif()
-endif()
+target_link_libraries(newtonia PRIVATE SDL2-static SDL2_mixer)
 
-# ANGLE import libraries (libEGL.lib / libGLESv2.lib).
-# When using -A Gaming.Desktop.x64 / -A Gaming.Xbox.Scarlett.x64 without a
-# CMake toolchain file, the GDK MSBuild platform props add the ANGLE lib path
-# as an MSBuild AdditionalLibraryDirectories entry that CMake does not
-# automatically forward to the raw linker inputs it emits.
-# ANGLE_LIB_DIR is located at configure time by the CI workflow and passed
-# via -DANGLE_LIB_DIR=<path>; for local VS builds the platform props handle
-# it automatically.
-if(DEFINED ANGLE_LIB_DIR)
-    target_link_directories(newtonia PRIVATE "${ANGLE_LIB_DIR}")
-elseif(DEFINED ENV{GDK_ROOT})
-    # Local fallback: search the GDK gameKit lib tree for libEGL.lib.
-    file(TO_CMAKE_PATH "$ENV{GDK_ROOT}/gameKit/Lib" _gkit_lib)
-    file(GLOB_RECURSE _egl_candidates "${_gkit_lib}/libEGL.lib")
-    if(_egl_candidates)
-        list(GET _egl_candidates 0 _egl_lib)
-        get_filename_component(_angle_lib_dir "${_egl_lib}" DIRECTORY)
-        message(STATUS "ANGLE lib dir (auto): ${_angle_lib_dir}")
-        target_link_directories(newtonia PRIVATE "${_angle_lib_dir}")
-    else()
-        message(WARNING "libEGL.lib not found under ${_gkit_lib} — pass -DANGLE_LIB_DIR=<path>")
+if(NEWTONIA_XBOX_CONSOLE)
+    # ---- Console: ANGLE GLES2 (libEGL / libGLESv2) ----
+    # ANGLE EGL/GLES2 headers — needed for the manual EGL context in xbox_main.cpp.
+    # ANGLE_INCLUDE_DIR is the directory containing EGL/ and GLES2/ subdirectories;
+    # set by the CI workflow from the GDK or ANGLE.WindowsStore NuGet package.
+    if(DEFINED ANGLE_INCLUDE_DIR)
+        target_include_directories(newtonia PRIVATE "${ANGLE_INCLUDE_DIR}")
+    elseif(DEFINED ENV{GDK_ROOT})
+        file(GLOB_RECURSE _egl_candidates "$ENV{GDK_ROOT}/gameKit/Include/egl.h")
+        if(_egl_candidates)
+            list(GET _egl_candidates 0 _egl_h)
+            get_filename_component(_egl_dir "${_egl_h}" DIRECTORY)
+            get_filename_component(_angle_inc "${_egl_dir}" DIRECTORY)
+            target_include_directories(newtonia PRIVATE "${_angle_inc}")
+        endif()
     endif()
-endif()
 
-target_link_libraries(newtonia PRIVATE
-    SDL2-static
-    SDL2_mixer
-    libEGL
-    libGLESv2
-)
+    # ANGLE import libraries (libEGL.lib / libGLESv2.lib).
+    # ANGLE_LIB_DIR is located at configure time by the CI workflow and passed
+    # via -DANGLE_LIB_DIR=<path>; for local VS builds the platform props handle it.
+    if(DEFINED ANGLE_LIB_DIR)
+        target_link_directories(newtonia PRIVATE "${ANGLE_LIB_DIR}")
+    elseif(DEFINED ENV{GDK_ROOT})
+        file(TO_CMAKE_PATH "$ENV{GDK_ROOT}/gameKit/Lib" _gkit_lib)
+        file(GLOB_RECURSE _egl_candidates "${_gkit_lib}/libEGL.lib")
+        if(_egl_candidates)
+            list(GET _egl_candidates 0 _egl_lib)
+            get_filename_component(_angle_lib_dir "${_egl_lib}" DIRECTORY)
+            message(STATUS "ANGLE lib dir (auto): ${_angle_lib_dir}")
+            target_link_directories(newtonia PRIVATE "${_angle_lib_dir}")
+        else()
+            message(WARNING "libEGL.lib not found under ${_gkit_lib} — pass -DANGLE_LIB_DIR=<path>")
+        endif()
+    endif()
+
+    target_link_libraries(newtonia PRIVATE libEGL libGLESv2)
+else()
+    # ---- Desktop: system OpenGL (GL 1.1 from opengl32; GL 2.0+ resolved at
+    # runtime via SDL_GL_GetProcAddress). Resolves to Mesa GLon12 when its
+    # opengl32.dll is staged next to the exe. No ANGLE, no GDK required. ----
+    target_link_libraries(newtonia PRIVATE opengl32)
+endif()
 
 # ---------------------------------------------------------------
 # Post-build: copy audio assets next to the executable so the

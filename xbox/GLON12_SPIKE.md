@@ -106,6 +106,25 @@ deferred row): desktop D3D12 and console `D3D12.x` could in principle expose
 different GL versions through GLon12. Re-run the equivalent probe on the dev kit
 to close it out.
 
+## Running the whole game through GLon12 (GDK Desktop target)
+
+The probe answers the feature-set question; to run the **actual game** through
+the same SDL-WGL + desktop-GL path (work-item 4a), the GDK **Desktop** target now
+uses that renderer instead of ANGLE — so it builds with just SDL2 + `opengl32`,
+no GDK and no ANGLE required:
+
+```powershell
+cmake -B xbox/build-desktop -S xbox        # default VS generator; no -A needed
+cmake --build xbox/build-desktop --config Release
+```
+
+Run the resulting `newtonia.exe` and it uses your hardware GL. To run it through
+**GLon12**, stage Mesa's desktop GLon12 DLLs next to the exe (the same set
+`run_spike.ps1` downloads) and set `GALLIUM_DRIVER=d3d12`. The boot log
+(`newtonia.log`, next to the exe) prints the active `GL_VENDOR`/`GL_RENDERER`.
+Console (`-A Gaming.Xbox.Scarlett.x64`) still builds the ANGLE/GLES2 path and is
+GDKX-gated.
+
 ## What this does NOT prove
 
 - **Xbox Game OS feature level.** The desktop d3d12 driver runs against desktop
