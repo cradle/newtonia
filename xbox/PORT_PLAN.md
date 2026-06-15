@@ -1,7 +1,7 @@
 # Xbox Port — Implementation Plan
 
 Status: planning document. Companion to `xbox/CMakeLists.txt`, `xbox_main.cpp`,
-`.github/workflows/xbox-dev.yml`, and the disabled
+`.github/workflows/xbox.yml`, `xbox/GLON12_SPIKE.md`, and the disabled
 `.github/workflows/disabled/deploy-xbox.yml`.
 
 ## 1. Where the port stands today
@@ -10,12 +10,12 @@ Status: planning document. Companion to `xbox/CMakeLists.txt`, `xbox_main.cpp`,
 
 | Area | State |
 |------|-------|
-| GDK Desktop build (`Gaming.Desktop.x64`) | Green in CI on every push (`xbox-dev.yml`), windows-latest. Builds with Ninja + MSVC + a BWOI lessmsi-extracted GDK (headers wired, `_GAMING_DESKTOP` defined) — avoids the GDK MSBuild platform + its VCTargetsPath probe. Artifact = exe + ANGLE DLLs + app-CRT DLLs (from VCLibs appx) + audio |
-| Console compile smoke | `xbox-console-smoke.yml` compiles all sources + the `_GAMING_XBOX` path under `WINAPI_FAMILY_GAMES` on a hosted runner (GDK headers stubbed); catches forbidden-API usage with no NDA material |
-| Entry point | `xbox_main.cpp` handles both `_GAMING_DESKTOP` and `_GAMING_XBOX`; SDL2 event loop, manual EGL/ANGLE context |
+| GDK Desktop build | Green on every PR via the **self-hosted** Windows runner (`xbox.yml`, `runs-on: [self-hosted, windows]`). Plain Ninja + MSVC, **no GDK and no ANGLE**: `cmake -B xbox/build-desktop -S xbox` builds standalone against SDL2/SDL2_mixer (FetchContent) + `opengl32`, statically linked (`/MT`) so the artifact is just `newtonia.exe` with no extra runtime DLLs. (The old hosted Ninja+BWOI-GDK / ANGLE-DLL `xbox-dev.yml` is retired into `.github/workflows/disabled/`.) |
+| Renderer (Desktop) — **GLon12-proven** | The Desktop target compiles the desktop **GL 3.3 core** renderer (split on `NEWTONIA_XBOX_CONSOLE`) over SDL's WGL backend (`SDL_GL_CreateContext` / `SDL_GL_SwapWindow`). The full `newtonia.exe` (not just the §2 probe) boots and runs through Mesa's GLon12 — `vendor=Microsoft Corporation renderer=D3D12 (NVIDIA GeForce RTX 5080) version=4.6 (Core Profile) Mesa 24.3.4` (`xbox/GLON12_SPIKE.md`). This is the Microsoft-supported OpenGL-on-console path (Option A), now de-risked end-to-end on a desktop GPU; only the Xbox Game OS feature-level re-confirmation under GDKX remains. |
+| Entry point | `xbox_main.cpp` handles both Desktop and console. Desktop creates its GL context with `SDL_GL_CreateContext` / `SDL_GL_SwapWindow`; the `_GAMING_XBOX` console half keeps the manual EGL/ANGLE context (GDKX-gated, untested on hardware). |
 | Controller-only operation | Complete. Menu/options fully navigable by pad (`menu.cpp:291-409`); all ship actions mapped (`glship.cpp:325-449`); pause = START, quit-to-menu = BACK, add player 2 = START (`glgame.cpp:1448-1562`); hot-plug + per-player assignment in `state_manager.cpp:37-60`; auto-pause on controller disconnect (`glgame.cpp:447-455`) |
 | Help overlay | Switches to controller glyphs automatically (`glship.cpp:646-794`) |
-| Rendering abstraction | Xbox/GDK takes the GLES2 path (`gl_compat.h:15-17`, `gles2_compat.h:58-73`) — same code as Android/iOS/Web, no desktop-GL leakage |
+| Rendering abstraction | Desktop takes the **desktop GL 3.3 core** path (`gl_compat.h`, the GLon12-capable route); the console target still takes the GLES2/ANGLE path (`gles2_compat.h`) — same code as Android/iOS/Web — until GDKX lands. Split on `NEWTONIA_XBOX_CONSOLE` |
 | Save / prefs / highscore | All via `SDL_GetPrefPath()` + `fopen` — maps to GDK LocalState; no hardcoded paths |
 | Audio | Relative `audio/` paths, staged next to exe by CMake post-build; 48 kHz mixer matches Xbox |
 | Suspend handling | `focus_lost()` saves progress + pauses (`glgame.cpp:409-416`); Xbox PLM suspend callback wired (`xbox_main.cpp:163-169`) |
@@ -23,23 +23,29 @@ Status: planning document. Companion to `xbox/CMakeLists.txt`, `xbox_main.cpp`,
 
 ### Untested / known-wrong (the actual port work)
 
-1. **The `_GAMING_XBOX` code paths are now compiled (not run).** The console
-   compile-smoke job (`xbox-console-smoke.yml`) builds them under
-   `WINAPI_FAMILY_GAMES`; the Desktop target builds the `_GAMING_DESKTOP`
-   path. Neither runs on console hardware yet.
-2. **ANGLE on the console is an unvalidated assumption — the biggest risk.**
-   `ANGLE.WindowsStore` (the NuGet the workflows use) is a 2017-era UWP/x64
-   Windows binary built on desktop D3D11/DXGI. Xbox Series GDK titles must
-   render through D3D12.X (or D3D11.X), whose headers/libs ship only in the
-   NDA "GDK with Xbox extensions" (GDKX). There is no official ANGLE build
-   for Xbox consoles. The console rendering strategy needs a decision spike
-   (§3, Phase 2).
-3. **SDL2 console windowing is unvalidated.** The build compiles SDL2 with
-   `/U__GDK__` so it uses its plain Win32 backend. That works on GDK Desktop
-   (Win32-compatible) but the console exposes a restricted API surface; SDL2's
-   official Xbox support (2.24+) goes through its `VisualC-GDK` projects and
-   requires GDKX. `xbox_main.cpp`'s console path also assumes
-   `SDL_GetWindowWMInfo` yields an HWND usable with `eglCreateWindowSurface`.
+1. **The `_GAMING_XBOX` console code paths run nowhere yet.** The hosted
+   console compile-smoke job (`xbox-console-smoke.yml`) that used to build them
+   under `WINAPI_FAMILY_GAMES` is now retired into `.github/workflows/disabled/`,
+   so live CI no longer compiles them — the self-hosted `xbox.yml` builds only
+   the Desktop / desktop-GL path. The console half stays a compile-time
+   reference until GDKX + a dev kit; nothing runs on console hardware.
+2. **The console rendering strategy is now decided, not open — Option A
+   (GLon12).** The desktop half of the Phase 2 spike passed: the existing
+   GL 3.3 core renderer runs through Mesa's real OpenGL→D3D12 (GLon12) path on a
+   desktop GPU (see the Proven table + `xbox/GLON12_SPIKE.md`), so ANGLE is no
+   longer the plan. The console target still *links* ANGLE as a leftover
+   placeholder, but the path forward is GLon12 + the desktop-GL renderer.
+   Outstanding, GDKX-gated: building Mesa's `d3d12` driver for the Xbox cross
+   target and re-confirming GLon12's exposed GL version under the **Xbox Game OS
+   feature level**. ANGLE-on-console — never officially built — drops to an
+   abandoned fallback.
+3. **SDL2 console windowing is unvalidated.** SDL's WGL backend is now proven
+   on **Desktop** (the GLon12 path uses `SDL_GL_CreateContext` /
+   `SDL_GL_SwapWindow` against a stock Win32 window), but the console exposes a
+   restricted API surface and needs SDL's official `VisualC-GDK` build (GDKX) —
+   work-item #4. The current console path still compiles SDL2 with `/U__GDK__`
+   (plain Win32 backend) and assumes `SDL_GetWindowWMInfo` yields a usable HWND;
+   that assumption is untested on a dev kit.
 4. **The public GDK does not include the Scarlett platform.** The winget
    `Microsoft.Gaming.GDK` package is the GRDK (Desktop only). The
    `Gaming.Xbox.Scarlett.x64` MSBuild platform, D3D12.X, and the console
@@ -56,11 +62,14 @@ Status: planning document. Companion to `xbox/CMakeLists.txt`, `xbox_main.cpp`,
    an appx/MSIX-era tool — whether it can submit GDK `.xvc` packages needs
    verification (console packages are normally uploaded via Partner Center /
    the game package upload flow).
-7. **No TV safe-area handling.** No safe-area inset exists anywhere in the
-   HUD (`view/overlay.cpp`, `Typer`). Xbox cert guidance requires critical UI
-   inside the title-safe region (~90% of the frame).
-8. **Doc bug:** `xbox/CMakeLists.txt:33-34` claims ANGLE is bundled with the
-   GDK; the workflows themselves note it is not. Fix the comment when touched.
+7. ~~**No TV safe-area handling.**~~ Resolved (work-item #11): a configurable
+   title-safe inset (`Overlay::SAFE_AREA_SCALE`, 90% on `_GAMING_XBOX`) now
+   applies across the HUD ortho + minimap viewport (`view/overlay.*`,
+   `glgame.cpp`) and the menu (`menu.cpp`). Still needs visual verification on a
+   real TV/dev kit.
+8. ~~**Doc bug:** `xbox/CMakeLists.txt` claims ANGLE is bundled with the GDK.~~
+   Fixed (work-item #2) across `xbox/CMakeLists.txt`, `xbox_main.cpp`, and
+   `CLAUDE.md`.
 
 ## 2. Target definition
 
