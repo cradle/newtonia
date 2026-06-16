@@ -2,7 +2,9 @@
 
 Status: planning document. Companion to `xbox/CMakeLists.txt`, `xbox_main.cpp`,
 `.github/workflows/xbox.yml`, `xbox/GLON12_SPIKE.md`, and the disabled
-`.github/workflows/disabled/deploy-xbox.yml`.
+`.github/workflows/disabled/deploy-xbox.yml`. GDKX-gated API work (Phases 3–4)
+tracks its symbol inventory in `xbox/GDKX_SYMBOLS.md` — the list to diff against
+the real SDK the moment GDKX is installed.
 
 ## 1. Where the port stands today
 
