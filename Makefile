@@ -64,11 +64,13 @@ WEB_FLAGS += --preload-file audio@audio
 
 .PHONY: web web-clean
 
+# Landing page (web/site/) is served at the root; the playable game lives at /play.
 web:
-	mkdir -p web/dist
+	mkdir -p web/dist/play
 	tsc -p web/tsconfig.json
-	$(EMCC) $(WEB_SRCS) $(WEB_FLAGS) -o web/dist/index.html
-	cp web/main.js web/dist/main.js
+	$(EMCC) $(WEB_SRCS) $(WEB_FLAGS) -o web/dist/play/index.html
+	cp web/main.js web/dist/play/main.js
+	cp web/site/index.html web/site/styles.css web/site/site.js web/site/icon.png web/dist/
 
 web-clean:
 	rm -rf web/dist

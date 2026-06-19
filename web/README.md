@@ -22,7 +22,25 @@ cd web && tsc && cd ..
 make web
 ```
 
-Output lands in `web/dist/`: `index.html`, `index.js`, `index.wasm`.
+Output lands in `web/dist/`:
+
+```
+web/dist/
+├── index.html        # marketing landing page (web/site/)
+├── styles.css
+├── site.js
+├── icon.png
+└── play/             # the playable WebAssembly game
+    ├── index.html
+    ├── index.js
+    ├── index.wasm
+    ├── index.data    # preloaded audio assets
+    └── main.js
+```
+
+The landing page (`web/site/`) is served at the site root; the game lives at
+`/play/`. Edit the landing page in `web/site/` — it is copied verbatim into
+`web/dist/` by `make web` (no build step required for the static HTML/CSS/JS).
 
 ## Run locally
 
@@ -33,7 +51,8 @@ Serve the output directory over HTTP:
 python3 -m http.server 8080 --directory web/dist
 ```
 
-Then open <http://localhost:8080> in your browser.
+Then open <http://localhost:8080> for the landing page, or
+<http://localhost:8080/play/> to jump straight into the game.
 
 ## Audio assets
 

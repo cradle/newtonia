@@ -1,0 +1,255 @@
+:root {
+  --bg: #05060d;
+  --fg: #e8ecff;
+  --muted: #8088a8;
+  --accent: #5aa0ff;
+  --accent-2: #a0cdff;
+  --danger: #ff5a5a;
+  --card: rgba(255, 255, 255, 0.04);
+  --border: rgba(120, 160, 255, 0.18);
+  --maxw: 1080px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+/* Animated starfield behind everything */
+#stars {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  display: block;
+}
+
+a { color: var(--accent-2); text-decoration: none; }
+
+/* ---- Nav ---- */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 1.4rem;
+  background: rgba(5, 6, 13, 0.72);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--fg);
+  font-family: monospace;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 1.4rem;
+  font-size: 0.9rem;
+}
+.nav-links a { color: var(--muted); transition: color 0.2s; }
+.nav-links a:hover { color: var(--fg); }
+
+.nav-cta {
+  padding: 0.35rem 0.9rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--accent-2) !important;
+}
+.nav-cta:hover { background: rgba(90, 160, 255, 0.15); }
+
+/* ---- Layout ---- */
+main { max-width: var(--maxw); margin: 0 auto; padding: 0 1.4rem; }
+
+.section { padding: 5rem 0; }
+.section h2 {
+  font-family: monospace;
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  letter-spacing: 0.1em;
+  margin-bottom: 2.2rem;
+  text-align: center;
+}
+
+/* ---- Hero ---- */
+.hero {
+  text-align: center;
+  padding: 5.5rem 0 4rem;
+}
+.hero-logo {
+  filter: drop-shadow(0 0 30px rgba(90, 160, 255, 0.45));
+  animation: float 6s ease-in-out infinite;
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.hero h1 {
+  font-family: monospace;
+  font-size: clamp(2.8rem, 10vw, 6rem);
+  letter-spacing: 0.18em;
+  margin: 1rem 0 0.4rem;
+  background: linear-gradient(180deg, #fff, var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.tagline {
+  font-size: clamp(1.1rem, 3vw, 1.5rem);
+  color: var(--accent-2);
+}
+.sub {
+  max-width: 38rem;
+  margin: 1rem auto 0;
+  color: var(--muted);
+}
+.cta-row {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 2.2rem;
+}
+.note { margin-top: 1rem; color: var(--muted); font-size: 0.85rem; }
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-block;
+  padding: 0.8rem 1.6rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  transition: transform 0.15s, box-shadow 0.2s, background 0.2s;
+}
+.btn:hover { transform: translateY(-2px); }
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), #3d7fe0);
+  color: #fff;
+  box-shadow: 0 6px 24px rgba(90, 160, 255, 0.35);
+}
+.btn-primary:hover { box-shadow: 0 10px 32px rgba(90, 160, 255, 0.5); }
+.btn-ghost {
+  border: 1px solid var(--border);
+  color: var(--fg);
+}
+.btn-ghost:hover { background: rgba(255, 255, 255, 0.05); }
+.btn-lg { font-size: 1.2rem; padding: 1rem 2.4rem; }
+
+/* ---- Features grid ---- */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.2rem;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.6rem;
+  transition: transform 0.2s, border-color 0.2s, background 0.2s;
+}
+.card:hover {
+  transform: translateY(-4px);
+  border-color: var(--accent);
+  background: rgba(90, 160, 255, 0.06);
+}
+.card h3 {
+  font-family: monospace;
+  color: var(--accent-2);
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.04em;
+}
+.card p { color: var(--muted); }
+
+/* ---- Platforms ---- */
+.platforms {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+.platform {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 1.4rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
+.platform-name {
+  font-family: monospace;
+  font-size: 1.2rem;
+  letter-spacing: 0.05em;
+}
+.platform-detail { color: var(--muted); font-size: 0.9rem; }
+.platform-primary {
+  border-color: var(--accent);
+  background: rgba(90, 160, 255, 0.08);
+}
+.platform-primary .platform-name { color: var(--accent-2); }
+a.platform { transition: transform 0.2s, box-shadow 0.2s; }
+a.platform:hover { transform: translateY(-4px); box-shadow: 0 8px 28px rgba(90, 160, 255, 0.3); }
+
+/* ---- Controls ---- */
+.controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 2rem;
+  max-width: 760px;
+  margin: 0 auto;
+}
+.ctrl-col h3 {
+  font-family: monospace;
+  color: var(--accent-2);
+  margin-bottom: 1rem;
+  letter-spacing: 0.05em;
+}
+.ctrl-col p { color: var(--muted); margin-bottom: 0.8rem; }
+.ctrl-col table { width: 100%; border-collapse: collapse; }
+.ctrl-col td { padding: 0.4rem 0; border-bottom: 1px solid var(--border); }
+.ctrl-col td:last-child { color: var(--muted); text-align: right; }
+kbd {
+  display: inline-block;
+  font-family: monospace;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.5rem;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+}
+
+/* ---- Final CTA ---- */
+.cta-final { text-align: center; }
+.cta-final h2 { margin-bottom: 1.6rem; }
+
+/* ---- Footer ---- */
+.footer {
+  text-align: center;
+  padding: 3rem 1.4rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+.footer p { margin: 0.2rem 0; }
+
+@media (max-width: 560px) {
+  .nav-links { gap: 0.9rem; }
+  .nav-links a:not(.nav-cta) { display: none; }
+}
