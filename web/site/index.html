@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Newtonia — a top-down space shooter</title>
+  <meta name="description" content="Newtonia is a fast, physics-driven top-down space shooter. Blast asteroids, dodge black holes, and survive endless generations — solo or two-player. Play free in your browser.">
+
+  <meta property="og:title" content="Newtonia">
+  <meta property="og:description" content="A fast, physics-driven top-down space shooter. Play free in your browser.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="icon.png">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <link rel="icon" type="image/png" href="icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <canvas id="stars" aria-hidden="true"></canvas>
+
+  <header class="nav">
+    <a class="brand" href="#top">
+      <img src="icon.png" alt="" width="32" height="32">
+      <span>NEWTONIA</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#platforms">Platforms</a>
+      <a href="#controls">Controls</a>
+      <a class="nav-cta" href="play/">Play</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <img class="hero-logo" src="icon.png" alt="Newtonia" width="120" height="120">
+      <h1 class="hero-title">
+        <svg class="wordmark" viewBox="-0.18 -0.18 15.36 2.36" role="img" aria-label="NEWTONIA" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="0.08" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="0" y1="2" x2="0" y2="0"/>
+          <line x1="0" y1="0" x2="1" y2="0.8"/>
+          <line x1="1" y1="2" x2="1" y2="0"/>
+          <line x1="3" y1="0" x2="2" y2="0"/>
+          <line x1="2" y1="0" x2="2" y2="2"/>
+          <line x1="2" y1="2" x2="3" y2="2"/>
+          <line x1="2" y1="0.8" x2="2.67" y2="0.8"/>
+          <line x1="4" y1="0" x2="4" y2="2"/>
+          <line x1="4" y1="2" x2="5" y2="2"/>
+          <line x1="5" y1="2" x2="5" y2="0"/>
+          <line x1="4.5" y1="0.8" x2="4.5" y2="2"/>
+          <line x1="6.5" y1="0" x2="6.5" y2="2"/>
+          <line x1="6" y1="0" x2="7" y2="0"/>
+          <line x1="8" y1="2" x2="8" y2="0"/>
+          <line x1="8" y1="0" x2="9" y2="0"/>
+          <line x1="9" y1="0" x2="9" y2="2"/>
+          <line x1="9" y1="2" x2="8" y2="2"/>
+          <line x1="10" y1="2" x2="10" y2="0"/>
+          <line x1="10" y1="0" x2="11" y2="0.8"/>
+          <line x1="11" y1="2" x2="11" y2="0"/>
+          <line x1="12.5" y1="0" x2="12.5" y2="2"/>
+          <line x1="14" y1="2" x2="14" y2="0"/>
+          <line x1="14" y1="0" x2="15" y2="0"/>
+          <line x1="15" y1="0" x2="15" y2="2"/>
+          <line x1="14" y1="0.8" x2="15" y2="0.8"/>
+        </svg>
+      </h1>
+      <p class="tagline">A fast, physics-driven top-down space shooter.</p>
+      <p class="sub">Newtonian thrust. Wrapping space. Asteroids that test your every move.
+        Survive endless generations — solo or two-player.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="play/">▶ Play in your browser</a>
+        <a class="btn btn-ghost" href="#platforms">Get it on your platform</a>
+      </div>
+      <p class="note">Free on web · No install · Runs on WebAssembly</p>
+    </section>
+
+    <section id="features" class="section">
+      <h2>Built for chaos</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>True momentum</h3>
+          <p>Real Newtonian flight — you carry your velocity. Master the thrust
+            and your trajectory, because space won't slow you down.</p>
+        </article>
+        <article class="card">
+          <h3>Asteroids with attitude</h3>
+          <p>Reflective, teleporting, invisible, quantum, tough, armoured, phasing.
+            Each level unlocks deadlier rock.</p>
+        </article>
+        <article class="card">
+          <h3>An arsenal</h3>
+          <p>Mines, giga-mines, homing missiles, shields, and God Mode invincibility.
+            Stack Nova charges and detonate the whole field.</p>
+        </article>
+        <article class="card">
+          <h3>Gravity hazards</h3>
+          <p>Black holes warp space and swallow anything that drifts too close.
+            From level 10, the centre is no longer safe.</p>
+        </article>
+        <article class="card">
+          <h3>Enemy stations</h3>
+          <p>Late-game stations deploy waves of hunting ships with escalating AI.
+            The galaxy stops being empty.</p>
+        </article>
+        <article class="card">
+          <h3>Two-player co-op</h3>
+          <p>Split-screen for two pilots. Friendly fire optional — bring a second
+            keyboard and find out who your friends are.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="platforms" class="section">
+      <h2>Play anywhere</h2>
+      <div class="platforms">
+        <a class="platform platform-primary" href="play/">
+          <span class="platform-name">Web</span>
+          <span class="platform-detail">Play instantly — nothing to install</span>
+        </a>
+        <a class="platform" href="https://apps.apple.com/au/app/newtonia/id6760685759" target="_blank" rel="noopener">
+          <span class="platform-name">iOS</span>
+          <span class="platform-detail">Download on the App Store — touch controls</span>
+        </a>
+        <a class="platform" href="mailto:admin@metonymous.com?subject=Newtonia%20Android%20beta%20access">
+          <span class="platform-name">Android</span>
+          <span class="platform-detail">Internal beta — email to request access</span>
+        </a>
+        <a class="platform" href="https://store.steampowered.com/app/4536720/Newtonia/" target="_blank" rel="noopener">
+          <span class="platform-name">Steam</span>
+          <span class="platform-detail">Windows · macOS · Linux · Steam Deck</span>
+        </a>
+      </div>
+    </section>
+
+    <section id="controls" class="section">
+      <h2>Controls</h2>
+      <div class="controls">
+        <div class="ctrl-col">
+          <h3>Keyboard</h3>
+          <table>
+            <tr><td><kbd>W</kbd></td><td>Thrust</td></tr>
+            <tr><td><kbd>S</kbd></td><td>Reverse</td></tr>
+            <tr><td><kbd>A</kbd> <kbd>D</kbd></td><td>Rotate</td></tr>
+            <tr><td><kbd>Space</kbd></td><td>Shoot</td></tr>
+            <tr><td><kbd>X</kbd></td><td>Deploy mine</td></tr>
+            <tr><td><kbd>Enter</kbd></td><td>Start / add player 2</td></tr>
+            <tr><td><kbd>F</kbd></td><td>Fullscreen</td></tr>
+          </table>
+        </div>
+        <div class="ctrl-col">
+          <h3>Touch &amp; gamepad</h3>
+          <p>On phones and tablets, an on-screen joystick and fire buttons appear
+            automatically — left thumb steers, right thumb shoots.</p>
+          <p>USB and Bluetooth game controllers are supported on desktop, with
+            analog stick aiming.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section cta-final">
+      <h2>Ready to fly?</h2>
+      <a class="btn btn-primary btn-lg" href="play/">▶ Launch Newtonia</a>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Newtonia — written in C++ with SDL2 &amp; OpenGL.</p>
+    <p>Built with WebAssembly. Runs in any modern browser.</p>
+  </footer>
+
+  <script src="site.js"></script>
+</body>
+</html>

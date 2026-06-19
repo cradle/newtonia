@@ -621,6 +621,11 @@ void Ship::init(bool no_friction) {
   max_temperature = 100.0;
   critical_temperature = max_temperature * 0.80;
   explode_temperature = max_temperature * 1.2;
+  // Heat mechanic is currently DISABLED: heat_rate and boost_heat are zeroed,
+  // so temperature never rises, overheating (explode_temperature) can never
+  // trigger, and the HUD gauge stays hidden (GLShip::draw_temperature* early-
+  // return when heat_rate <= 0). To re-enable, give heat_rate / boost_heat
+  // positive values; the gauge, warnings, and overheat-detonation come back.
   heat_rate = 0.000;
   retro_heat_rate = heat_rate * -reverse_force / thrust_force;
   cool_rate = retro_heat_rate * 0.9;
