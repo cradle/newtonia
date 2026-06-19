@@ -100,15 +100,18 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 1.4rem; }
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-10px); }
 }
-.hero h1 {
-  font-family: monospace;
-  font-size: clamp(2.8rem, 10vw, 6rem);
-  letter-spacing: 0.18em;
-  margin: 1rem 0 0.4rem;
-  background: linear-gradient(180deg, #fff, var(--accent));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+.hero-title {
+  margin: 1.2rem 0 0.6rem;
+  line-height: 0;
+}
+/* Wordmark drawn from the in-game vector font (typer.cpp glyph geometry). */
+.wordmark {
+  display: block;
+  width: min(640px, 82vw);
+  height: auto;
+  margin: 0 auto;
+  color: var(--accent-2);
+  filter: drop-shadow(0 0 16px rgba(47, 214, 116, 0.5));
 }
 .tagline {
   font-size: clamp(1.1rem, 3vw, 1.5rem);

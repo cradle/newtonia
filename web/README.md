@@ -89,7 +89,7 @@ Without them, `Mix_LoadWAV` returns NULL and audio is silently skipped — the g
 | `Space` | Shoot |
 | `X` | Deploy mine |
 | `Enter` | Start / confirm |
-| `F` | Toggle fullscreen (desktop) |
+| `F` | Toggle fullscreen |
 
 On touch devices, on-screen control zones appear automatically.
 
