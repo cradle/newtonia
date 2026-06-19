@@ -71,6 +71,7 @@ web:
 	$(EMCC) $(WEB_SRCS) $(WEB_FLAGS) -o web/dist/play/index.html
 	cp web/main.js web/dist/play/main.js
 	cp web/site/index.html web/site/styles.css web/site/site.js web/site/icon.png web/dist/
+	cp web/site/CNAME web/dist/CNAME
 
 web-clean:
 	rm -rf web/dist
