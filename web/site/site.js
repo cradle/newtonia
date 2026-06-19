@@ -45,7 +45,7 @@
       s.x -= s.speed * dt;
       if (s.x < -2) { s.x = w + 2; s.y = Math.random() * h; }
       ctx.globalAlpha = s.a;
-      ctx.fillStyle = s.r > 1.4 ? '#a0cdff' : '#ffffff';
+      ctx.fillStyle = s.r > 1.4 ? '#8effb8' : '#ffffff';
       ctx.beginPath();
       ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
       ctx.fill();
@@ -63,7 +63,7 @@
     for (var i = 0; i < stars.length; i++) {
       var s = stars[i];
       ctx.globalAlpha = s.a;
-      ctx.fillStyle = s.r > 1.4 ? '#a0cdff' : '#ffffff';
+      ctx.fillStyle = s.r > 1.4 ? '#8effb8' : '#ffffff';
       ctx.beginPath();
       ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
       ctx.fill();

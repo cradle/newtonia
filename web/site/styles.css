@@ -1,12 +1,12 @@
 :root {
-  --bg: #05060d;
-  --fg: #e8ecff;
-  --muted: #8088a8;
-  --accent: #5aa0ff;
-  --accent-2: #a0cdff;
+  --bg: #03100a;
+  --fg: #5cff8f;
+  --muted: #5f9e7a;
+  --accent: #2fd674;
+  --accent-2: #8effb8;
   --danger: #ff5a5a;
   --card: rgba(255, 255, 255, 0.04);
-  --border: rgba(120, 160, 255, 0.18);
+  --border: rgba(60, 200, 130, 0.18);
   --maxw: 1080px;
 }
 
@@ -43,7 +43,7 @@ a { color: var(--accent-2); text-decoration: none; }
   align-items: center;
   justify-content: space-between;
   padding: 0.8rem 1.4rem;
-  background: rgba(5, 6, 13, 0.72);
+  background: rgba(3, 16, 10, 0.72);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
 }
@@ -73,7 +73,7 @@ a { color: var(--accent-2); text-decoration: none; }
   border-radius: 6px;
   color: var(--accent-2) !important;
 }
-.nav-cta:hover { background: rgba(90, 160, 255, 0.15); }
+.nav-cta:hover { background: rgba(47, 214, 116, 0.15); }
 
 /* ---- Layout ---- */
 main { max-width: var(--maxw); margin: 0 auto; padding: 0 1.4rem; }
@@ -93,7 +93,7 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 1.4rem; }
   padding: 5.5rem 0 4rem;
 }
 .hero-logo {
-  filter: drop-shadow(0 0 30px rgba(90, 160, 255, 0.45));
+  filter: drop-shadow(0 0 30px rgba(47, 214, 116, 0.45));
   animation: float 6s ease-in-out infinite;
 }
 @keyframes float {
@@ -139,11 +139,11 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 1.4rem; }
 }
 .btn:hover { transform: translateY(-2px); }
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent), #3d7fe0);
+  background: linear-gradient(135deg, var(--accent), #16a44f);
   color: #fff;
-  box-shadow: 0 6px 24px rgba(90, 160, 255, 0.35);
+  box-shadow: 0 6px 24px rgba(47, 214, 116, 0.35);
 }
-.btn-primary:hover { box-shadow: 0 10px 32px rgba(90, 160, 255, 0.5); }
+.btn-primary:hover { box-shadow: 0 10px 32px rgba(47, 214, 116, 0.5); }
 .btn-ghost {
   border: 1px solid var(--border);
   color: var(--fg);
@@ -167,7 +167,7 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 1.4rem; }
 .card:hover {
   transform: translateY(-4px);
   border-color: var(--accent);
-  background: rgba(90, 160, 255, 0.06);
+  background: rgba(47, 214, 116, 0.06);
 }
 .card h3 {
   font-family: monospace;
@@ -200,11 +200,11 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 1.4rem; }
 .platform-detail { color: var(--muted); font-size: 0.9rem; }
 .platform-primary {
   border-color: var(--accent);
-  background: rgba(90, 160, 255, 0.08);
+  background: rgba(47, 214, 116, 0.08);
 }
 .platform-primary .platform-name { color: var(--accent-2); }
 a.platform { transition: transform 0.2s, box-shadow 0.2s; }
-a.platform:hover { transform: translateY(-4px); box-shadow: 0 8px 28px rgba(90, 160, 255, 0.3); }
+a.platform:hover { transform: translateY(-4px); box-shadow: 0 8px 28px rgba(47, 214, 116, 0.3); }
 
 /* ---- Controls ---- */
 .controls {
