@@ -13,7 +13,7 @@ declare const Module: {
   const muteBtn = document.getElementById("mute-btn") as HTMLButtonElement;
 
   // ---- Fullscreen ----
-  fsBtn.addEventListener("click", () => {
+  function toggleFullscreen() {
     if (!document.fullscreenElement) {
       const container = document.getElementById("game-container")!;
       container.requestFullscreen().catch(() => {
@@ -24,6 +24,20 @@ declare const Module: {
     } else {
       document.exitFullscreen();
       fsBtn.textContent = "⛶";
+    }
+  }
+
+  fsBtn.addEventListener("click", toggleFullscreen);
+
+  // The "F" key toggles fullscreen, matching the desktop builds. This must be
+  // handled here in a real DOM key event (a valid user gesture) rather than
+  // forwarded through the SDL event queue, which the browser rejects for
+  // requestFullscreen(). The game has no action bound to "f", so letting the
+  // event continue on to the canvas/SDL is harmless.
+  window.addEventListener("keydown", (e) => {
+    if ((e.key === "f" || e.key === "F") && !e.repeat &&
+        !e.ctrlKey && !e.metaKey && !e.altKey) {
+      toggleFullscreen();
     }
   });
 

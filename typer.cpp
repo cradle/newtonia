@@ -97,6 +97,7 @@ void Typer::draw(float x, float y, const char * text, float size, int time) {
 }
 
 static float s_saved_vp[16];
+static float s_saved_line_core_scale = 0.1f;
 
 void Typer::pre_draw(float x, float y, float size) {
   gles2_get_mvp(s_saved_vp);
@@ -107,10 +108,15 @@ void Typer::pre_draw(float x, float y, float size) {
   mat4_scale(char_vp, char_vp, sx, sy, 1.0f);
   gles2_set_vp(char_vp);
   glLineWidth(1.1f * scale);
+  // Keep text at the legacy thin core weight even on platforms (web) whose
+  // default core scale is thicker for game-world strokes.
+  s_saved_line_core_scale = gles2_get_line_core_scale();
+  gles2_set_line_core_scale(0.1f);
 }
 
 void Typer::post_draw() {
   gles2_set_vp(s_saved_vp);
+  gles2_set_line_core_scale(s_saved_line_core_scale);
 }
 
 void Typer::draw_life(float x, float y, const GLShip* ship, float size) {
@@ -394,7 +400,10 @@ void Typer::draw_button(float x, float y, char c, float size) {
   mat4_scale(circle_vp, circle_vp, r * scale, r * scale, 1.0f);
   gles2_set_vp(circle_vp);
   glLineWidth(1.1f * scale);
+  float saved_core = gles2_get_line_core_scale();
+  gles2_set_line_core_scale(0.1f);   // keep HUD button outline at legacy weight
   circle_mesh.draw_tinted(colour[0], colour[1], colour[2], 1.0f);
+  gles2_set_line_core_scale(saved_core);
   gles2_set_vp(saved);
 
   // Draw letter at 70% size, centred on the circle centre (x+size, y-size).

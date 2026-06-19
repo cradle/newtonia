@@ -215,6 +215,14 @@ void gles2_set_viewport(GLint x, GLint y, GLsizei w, GLsizei h);
 // Return the current emulated line width (set via glLineWidth / gles2_set_line_width).
 float gles2_get_line_width();
 
+// Fraction of the emulated line width used for the solid (fully-opaque) core;
+// the remainder is the antialiased feather.  Defaults to a per-platform value
+// (thicker strokes on web).  Callers that need a different stroke weight for a
+// subset of draws (e.g. Typer keeping text thin) can save the current value,
+// override it, then restore it.
+float gles2_get_line_core_scale();
+void  gles2_set_line_core_scale(float scale);
+
 // Expand a line-primitive vertex array into thick screen-space quads and draw
 // them as GL_TRIANGLES, using the provided explicit MVP.  Called from
 // Mesh::draw_with_mvp() to restore thick-line rendering for GPU-resident meshes
