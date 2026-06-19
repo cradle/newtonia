@@ -257,6 +257,15 @@ struct Vertex {
 static float         s_color[4]     = {1,1,1,1};
 static float         s_point_size   = 1.0f;
 static float         s_line_width   = 1.0f;
+// Fraction of the line width forming the solid core (see gles2_compat.h).
+// Web (WebGL) strokes read too thin at the legacy 0.1 factor, so default to the
+// conventional glLineWidth(w) == w-pixels semantics there; every other platform
+// keeps the original 0.1.  Typer overrides this to keep HUD text thin.
+#ifdef __EMSCRIPTEN__
+static float         s_line_core_scale = 0.5f;
+#else
+static float         s_line_core_scale = 0.1f;
+#endif
 static GLint         s_viewport[4]  = {0, 0, 800, 600};
 static bool          s_in_begin     = false;
 static GLenum        s_begin_mode   = GL_POINTS;
@@ -577,7 +586,9 @@ static void draw_thick_lines_impl(const std::vector<Vertex>& verts, GLenum mode,
 
     // Solid core half-width in screen pixels.  The feather zone adds a fixed
     // 1-pixel fringe beyond that, giving consistent AA regardless of width.
-    float solid_half_px = s_line_width * 0.1f;
+    // The core fraction is s_line_core_scale (see its definition for the
+    // per-platform default and why web differs).
+    float solid_half_px = s_line_width * s_line_core_scale;
     float total_half_px = solid_half_px + 1.0f;
     float half_lw       = total_half_px;   // pixels; formula divides by hw/hh
 
@@ -671,6 +682,9 @@ static void draw_thick_lines(const std::vector<Vertex>& verts, GLenum mode) {
 // Public API for Mesh::draw_with_mvp(): thick-line expansion with an explicit MVP.
 // pos3/col4 are the Mesh's CPU-side vertex arrays; count is vertex count.
 float gles2_get_line_width() { return s_line_width; }
+
+float gles2_get_line_core_scale()      { return s_line_core_scale; }
+void  gles2_set_line_core_scale(float s) { s_line_core_scale = s; }
 
 void gles2_draw_thick_lines_mvp(const float* pos3, const float* col4,
                                   int count, GLenum mode, const float in_mvp[16]) {
