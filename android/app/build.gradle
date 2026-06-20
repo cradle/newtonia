@@ -52,3 +52,17 @@ android {
         }
     }
 }
+
+dependencies {
+    // Firebase BoM pins compatible versions of all Firebase libraries.
+    implementation platform('com.google.firebase:firebase-bom:33.7.0')
+    // Google Analytics for Firebase (automatic events: first_open, session_start, etc.)
+    implementation 'com.google.firebase:firebase-analytics'
+}
+
+// Only apply the google-services plugin once the config file is present, so the
+// build (and CI) stays green before google-services.json has been added. Drop
+// the file from the Firebase console into android/app/ to activate analytics.
+if (file('google-services.json').exists()) {
+    apply plugin: 'com.google.gms.google-services'
+}

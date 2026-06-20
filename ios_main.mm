@@ -8,6 +8,14 @@
 #include <SDL.h>
 #include <SDL_mixer.h>
 
+// Google Analytics for Firebase. Compiled in only for Xcode device / App Store
+// builds (which link the Firebase SDK via Swift Package Manager and bundle
+// GoogleService-Info.plist). The CI simulator build does not define USE_FIREBASE,
+// so it stays free of the Firebase dependency. See FIREBASE_SETUP.md.
+#ifdef USE_FIREBASE
+@import FirebaseCore;
+#endif
+
 #include "gles2_compat.h"
 #include "state_manager.h"
 #include "touch_controls.h"
@@ -180,6 +188,13 @@ static void finger_motion(SDL_FingerID id, float x, float y) {
 extern "C" int SDL_main(int argc, char *argv[]) {
     (void)argc; (void)argv;
     srand(time(NULL));
+
+#ifdef USE_FIREBASE
+    // Initialise Firebase before anything else; reads GoogleService-Info.plist
+    // from the app bundle. Automatic events (first_open, session_start,
+    // user_engagement) are collected from here on.
+    [FIRApp configure];
+#endif
 
     // Lock orientation to landscape before any window is created
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");

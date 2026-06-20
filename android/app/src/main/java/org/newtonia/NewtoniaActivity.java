@@ -7,6 +7,9 @@ package org.newtonia;
 import android.content.Context;
 import android.media.AudioManager;
 import android.os.Bundle;
+import android.util.Log;
+
+import com.google.firebase.analytics.FirebaseAnalytics;
 
 import org.libsdl.app.SDLActivity;
 
@@ -28,6 +31,16 @@ public class NewtoniaActivity extends SDLActivity {
             String fpb = am.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER);
             if (sr  != null) sOptimalSampleRate      = Integer.parseInt(sr);
             if (fpb != null) sOptimalFramesPerBuffer = Integer.parseInt(fpb);
+        }
+
+        // Google Analytics for Firebase. Touching the instance ensures the SDK
+        // is initialised so automatic events (first_open, session_start,
+        // user_engagement) are collected. Guarded so the app still launches if
+        // google-services.json has not been added yet (Firebase not configured).
+        try {
+            FirebaseAnalytics.getInstance(this);
+        } catch (Exception e) {
+            Log.w("Newtonia", "Firebase Analytics not configured: " + e.getMessage());
         }
     }
 
