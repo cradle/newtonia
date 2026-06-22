@@ -33,7 +33,7 @@ need GDKX (deferred — see "What this does NOT prove"):
 | `xbox/glon12/glon12_probe.cpp` | Standalone SDL2 + GL 3.3 core probe. Creates a real WGL context via `SDL_GL_CreateContext` (the console path — *not* ANGLE/EGL), loads the exact GL entry points the renderer needs (`COMPAT_GL_FNS` from `gles2_compat.cpp`), compiles/links a representative GLSL-330 program, draws a triangle, reads back a pixel to prove rasterisation, and reports PASS/FAIL. |
 | `xbox/glon12/CMakeLists.txt` | Builds the probe (finds an installed SDL2 or fetches the pinned one). |
 | `xbox/glon12/run_spike.ps1` | Windows: build + run baseline (system GL) and GLon12 runs, given `-MesaDir`. |
-| `.github/workflows/disabled/windows-glon12.yml` | Hosted-runner CI used during the spike (two jobs: `glon12-probe`, `build-desktop`). **Retired** now that the spike has concluded — see "Results log" below and the CI note in "In CI". Move back into `.github/workflows/` to re-enable. |
+| `.github/workflows/disabled/windows-glon12-spike.yml` | Hosted-runner CI used during the spike (two jobs: `glon12-probe`, `build-desktop`). **Retired** now that the spike has concluded — see "Results log" below and the CI note in "In CI". Move back into `.github/workflows/` to re-enable. (The active hosted GLon12 workflow now lives at `.github/workflows/windows-glon12.yml`.) |
 
 The probe mirrors the **target console path** deliberately: SDL2 WGL +
 `SDL_GL_CreateContext`/`SDL_GL_SwapWindow` + GL 3.3 core, which is also
@@ -59,7 +59,7 @@ Already have the DLLs? Skip the download with
 
 ### In CI
 
-The hosted-CI harness (`windows-glon12.yml`) that ran the probe + a Desktop
+The hosted-CI harness (`windows-glon12-spike.yml`) that ran the probe + a Desktop
 build during the spike has been retired (moved to
 `.github/workflows/disabled/`) — see "Results log" below for its conclusion.
 Its `build-desktop` job duplicated `xbox.yml`'s self-hosted `build` job (same
@@ -99,7 +99,7 @@ through GLon12 rather than falling back to the system/llvmpipe driver.
 5080)`, GL ≥ 3.3 core, all 29 required entry points resolved, GLSL program
 compiled + linked, triangle rasterised — i.e. Newtonia's GL 3.3 core renderer
 runs through **GLon12's actual OpenGL→D3D12 translation path**, not just the
-software fallback. The earlier hosted-CI run (`windows-glon12.yml`, run #3)
+software fallback. The earlier hosted-CI run (`windows-glon12-spike.yml`, run #3)
 confirmed the same feature set via `llvmpipe` because `windows-latest` has no GPU
 and no usable headless WARP-D3D12 WGL surface (`SDL_CreateWindow: No matching GL
 pixel format available`); both drivers share the same Gallium GL frontend, so CI
