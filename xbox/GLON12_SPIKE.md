@@ -15,7 +15,9 @@ path. The biggest open risk is:
 > link, and rasterise through it?
 
 Most of that is answerable **without GDKX**. Mesa ships a *desktop* GLon12 build
-(`opengl32.dll` + `libgallium_wgl.dll` + `dxil.dll`) that runs the same Gallium
+(`opengl32.dll` + `libglapi.dll` + `libgallium_wgl.dll` + `dxil.dll` — the
+`windows-glon12.yml` trimmed-artifact guard confirms the game maps exactly this
+set) that runs the same Gallium
 `d3d12` driver on a normal Windows PC. Dropping those DLLs next to a desktop GL
 program makes its WGL context a D3D12-backed GLon12 context, exercising the same
 GL frontend + d3d12 driver the console will use. Only three things genuinely

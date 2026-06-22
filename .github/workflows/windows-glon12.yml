@@ -96,7 +96,7 @@ jobs:
           # DLLs we publish in the artifact. The trimmed-artifact check below
           # asserts the running game maps nothing else out of the exe dir, so
           # this list and the upload step's `path:` must stay in sync.
-          $keptDlls = @("opengl32.dll", "libgallium_wgl.dll", "dxil.dll")
+          $keptDlls = @("opengl32.dll", "libglapi.dll", "libgallium_wgl.dll", "dxil.dll")
           $exeDirFull = (Resolve-Path $exeDir).Path
 
           function Invoke-Game([string]$driver, [int]$seconds) {
@@ -180,17 +180,20 @@ jobs:
           name: newtonia-windows-glon12
           # The smoke step stages Mesa's FULL DLL set next to the exe (so a
           # missing sibling can't silently drop opengl32.dll back to the system
-          # GDI GL), but the desktop GLon12 runtime is only three of them:
-          # opengl32.dll (WGL/ICD frontend) + libgallium_wgl.dll (the d3d12 +
-          # llvmpipe megadriver) + dxil.dll (DXIL shader signing for the d3d12
-          # backend). See xbox/GLON12_SPIKE.md. Everything else Mesa ships
-          # (osmesa, pipe_swrast, d3d10warp, vulkan_lvp/dzn, the OpenCL/VA video
-          # stack, GLES/EGL) is unused by the game's desktop-WGL GL path — so
-          # publish just the load-bearing set instead of ~470 MB of dead weight.
+          # GDI GL), but the desktop GLon12 runtime is only four of them:
+          # opengl32.dll (WGL/ICD frontend) + libglapi.dll (GL API dispatch
+          # shim) + libgallium_wgl.dll (the d3d12 + llvmpipe megadriver) +
+          # dxil.dll (DXIL shader signing for the d3d12 backend). The trimmed-
+          # artifact guard in the smoke step verifies this exact set against the
+          # game's actually-mapped modules. Everything else Mesa ships (osmesa,
+          # pipe_swrast, d3d10warp, vulkan_lvp/dzn, the OpenCL/VA video stack,
+          # GLES/EGL) is unused by the game's desktop-WGL GL path — so publish
+          # just the load-bearing set instead of ~470 MB of dead weight.
           path: |
             xbox/build-desktop/Release/newtonia.exe
             xbox/build-desktop/Release/audio/
             xbox/build-desktop/Release/opengl32.dll
+            xbox/build-desktop/Release/libglapi.dll
             xbox/build-desktop/Release/libgallium_wgl.dll
             xbox/build-desktop/Release/dxil.dll
           retention-days: 7
