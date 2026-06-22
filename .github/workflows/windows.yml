@@ -1,0 +1,142 @@
+name: Windows
+
+# Hosted-runner sibling of xbox.yml. Where xbox.yml builds the GDK Desktop
+# target (the SDL-WGL + desktop GL 3.3 core renderer, GLon12-capable) on a
+# self-hosted Ninja/MSVC runner, this builds the SAME target on a stock
+# `windows-latest` runner — no self-hosted box, no GDK, no ANGLE — and then
+# actually runs the game through Mesa's desktop GLon12 (OpenGL-on-D3D12) to
+# prove the GLon12 path works end-to-end on a GitHub runner.
+#
+# Build: the default VS 2022 generator (preinstalled on windows-latest) drives
+# the plain Desktop target — `cmake -B xbox/build-desktop -S xbox` builds
+# standalone against SDL2/SDL2_mixer (FetchContent) + opengl32, statically
+# linked (/MT). No vcvars/Ninja bootstrapping needed (cf. xbox.yml), so output
+# lands under build-desktop/Release/.
+#
+# GLon12 smoke: drop Mesa's desktop GLon12 DLL set next to newtonia.exe and
+# launch it. The game's WGL opengl32 then resolves to GLon12, and it logs the
+# active GL_VENDOR/GL_RENDERER to newtonia.log. The hosted runner has no GPU,
+# so the d3d12 backend can't get a WGL pixel format (see xbox/GLON12_SPIKE.md);
+# llvmpipe shares the same Gallium GL frontend and is the proven hosted path,
+# so we try d3d12 first and fall back to llvmpipe. A Mesa GL context in the log
+# means the real game booted and rendered through the GLon12 GL stack.
+
+on:
+  # Match xbox.yml's trigger convention: feature branches build via their PR;
+  # push is limited to mainline so merges build without double-running PRs.
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      mesa_version:
+        description: "Mesa desktop GLon12 build version (pal1000/mesa-dist-win release tag, e.g. 24.3.4)"
+        required: false
+        default: "24.3.4"
+
+# Auto-cancel a superseded in-progress run on the same ref.
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure + Build (GDK Desktop / GLon12-capable renderer)
+        shell: pwsh
+        run: |
+          # Default VS generator: SDL2 is built from source, so MSVC ("Desktop
+          # development with C++", preinstalled) is all that's needed. cmake is
+          # a native command — check $LASTEXITCODE so a failure isn't masked.
+          cmake -B xbox/build-desktop -S xbox
+          if ($LASTEXITCODE -ne 0) { throw "cmake configure failed ($LASTEXITCODE)" }
+          cmake --build xbox/build-desktop --config Release
+          if ($LASTEXITCODE -ne 0) { throw "cmake build failed ($LASTEXITCODE)" }
+
+      - name: Run the game through Mesa GLon12 (smoke)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $ver = "${{ github.event.inputs.mesa_version }}"
+          if (-not $ver) { $ver = "24.3.4" }
+
+          $exeDir = "xbox/build-desktop/Release"
+          $exe    = Join-Path $exeDir "newtonia.exe"
+          if (-not (Test-Path $exe)) { throw "newtonia.exe not found at $exe" }
+
+          # --- Fetch Mesa's desktop GLon12 build (OpenGL-on-D3D12) ---
+          $asset = "mesa3d-$ver-release-msvc.7z"
+          $url   = "https://github.com/pal1000/mesa-dist-win/releases/download/$ver/$asset"
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile $asset
+          7z x $asset -omesa -y | Out-Null
+          $gl = Get-ChildItem -Path mesa -Recurse -Filter opengl32.dll | Select-Object -First 1
+          if (-not $gl) { throw "opengl32.dll not found in $asset" }
+          $mesaDir = $gl.Directory.FullName
+          Write-Host "Mesa x64 GLon12 DLL dir: $mesaDir"
+
+          # Stage the FULL Mesa DLL set next to the exe: opengl32.dll has sibling
+          # deps (libgallium_wgl.dll, dxil.dll, ...); copying only some makes its
+          # LoadLibrary fall back to the system GDI GL. App-dir search then
+          # resolves Mesa's opengl32.dll rather than System32's.
+          Copy-Item (Join-Path $mesaDir "*.dll") $exeDir -Force
+
+          # The game has no headless-exit flag, so launch it, give it time to
+          # create its GL context + log it, then kill it. Audio device is absent
+          # on hosted runners — dummy driver avoids an SDL_Init failure.
+          $env:SDL_AUDIODRIVER = "dummy"
+          $env:MESA_LOG_LEVEL  = "info"
+          $log = Join-Path $exeDir "newtonia.log"
+
+          function Invoke-Game([string]$driver, [int]$seconds) {
+            Remove-Item $log -Force -ErrorAction SilentlyContinue
+            $env:GALLIUM_DRIVER = $driver
+            Write-Host "== Launching newtonia.exe (GALLIUM_DRIVER=$driver) =="
+            $p = Start-Process -FilePath (Resolve-Path $exe) -WorkingDirectory $exeDir -PassThru
+            Start-Sleep -Seconds $seconds
+            if (-not $p.HasExited) {
+              Stop-Process -Id $p.Id -Force
+              Write-Host "Killed after ${seconds}s (game runs an interactive loop with no headless exit)."
+            } else {
+              Write-Host "Process exited on its own (code $($p.ExitCode))."
+            }
+            if (Test-Path $log) {
+              Write-Host "----- newtonia.log -----"
+              Get-Content $log
+            } else {
+              Write-Host "No newtonia.log produced."
+            }
+          }
+
+          function Test-MesaContext {
+            (Test-Path $log) -and (Select-String -Path $log -Pattern 'GL context:.*Mesa' -Quiet)
+          }
+
+          Invoke-Game "d3d12" 15
+          if (-not (Test-MesaContext)) {
+            Write-Warning "d3d12 backend did not yield a Mesa GL context (expected on a GPU-less hosted runner). Retrying with llvmpipe."
+            Invoke-Game "llvmpipe" 15
+          }
+
+          if (Test-MesaContext) {
+            $line = (Select-String -Path $log -Pattern 'GL context:' | Select-Object -First 1).Line
+            Write-Host "GLon12 smoke PASS — the game booted and created a Mesa GL context through the WGL path:"
+            Write-Host "  $line"
+          } else {
+            throw "Game did not create a Mesa GL context under d3d12 or llvmpipe. See newtonia.log above."
+          }
+
+      - name: Upload artifact (newtonia + audio + staged GLon12 DLLs)
+        uses: actions/upload-artifact@v4
+        with:
+          name: newtonia-windows-glon12
+          path: |
+            xbox/build-desktop/Release/newtonia.exe
+            xbox/build-desktop/Release/audio/
+            xbox/build-desktop/Release/*.dll
+          retention-days: 7
