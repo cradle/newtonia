@@ -26,19 +26,20 @@ things genuinely need GDKX (deferred — see "What this does NOT prove"):
    version below what the desktop spike measures.
 3. Running on the **dev kit**.
 
-> **Note on the DLL count.** Early spike notes (and memory) put the minimal set
-> at *two* — `opengl32.dll` + `libgallium_wgl.dll`. That's plausible because the
-> exact closure is **Mesa-build-dependent**: some Mesa builds statically fold the
-> GL API dispatch (`glapi`) into the megadriver, so `libglapi.dll` isn't a
-> separate file at all, and `dxil.dll` only loads on the `d3d12` backend (not
-> `llvmpipe`), so a software-fallback run never pulls it in. On the build we
-> actually ship against (`mesa-dist-win` 24.3.4), `libglapi.dll` *is* a separate
-> dependency the game maps, so the desktop closure is four DLLs. Rather than hard-
-> code a remembered number, `windows-glon12.yml`'s trimmed-artifact guard launches
-> the real game and asserts the set of DLLs it maps from the exe dir — so the
-> published bundle tracks whatever the pinned Mesa version actually needs, and a
-> version bump that changes the closure fails CI by name instead of silently
-> shipping a broken artifact.
+> **Note on the DLL count.** The **spike probe** (`glon12_probe.cpp`) ran with
+> just *two* DLLs — `opengl32.dll` + `libgallium_wgl.dll` — and that's the right
+> number for it. The closure is both **build- and workload-dependent**:
+> `dxil.dll` only loads on the `d3d12` backend (a `llvmpipe` software run never
+> pulls it in), and `libglapi.dll` (the GL API dispatch shim) is loaded on demand
+> by GL paths the probe's single textured triangle never exercises — whereas the
+> **full game** does map it. So on the same `mesa-dist-win` 24.3.4 drop the probe
+> needs two but `newtonia.exe`'s real closure is four (three under llvmpipe). That
+> gap is exactly why `windows-glon12.yml`'s trimmed-artifact guard launches the
+> **actual game** and asserts the DLLs *it* maps, rather than reusing the probe's
+> smaller set or hard-coding a number: the published bundle tracks what the
+> shipping binary needs, and a Mesa bump that shifts the closure fails CI by name
+> instead of silently shipping a broken artifact. (`run_spike.ps1` itself stages
+> the full Mesa set, so it never depended on knowing the minimal subset.)
 
 ## What's here
 
