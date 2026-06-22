@@ -131,12 +131,23 @@ jobs:
             throw "Game did not create a Mesa GL context under d3d12 or llvmpipe. See newtonia.log above."
           }
 
-      - name: Upload artifact (newtonia + audio + staged GLon12 DLLs)
+      - name: Upload artifact (newtonia + audio + GLon12 DLLs)
         uses: actions/upload-artifact@v4
         with:
           name: newtonia-windows-glon12
+          # The smoke step stages Mesa's FULL DLL set next to the exe (so a
+          # missing sibling can't silently drop opengl32.dll back to the system
+          # GDI GL), but the desktop GLon12 runtime is only three of them:
+          # opengl32.dll (WGL/ICD frontend) + libgallium_wgl.dll (the d3d12 +
+          # llvmpipe megadriver) + dxil.dll (DXIL shader signing for the d3d12
+          # backend). See xbox/GLON12_SPIKE.md. Everything else Mesa ships
+          # (osmesa, pipe_swrast, d3d10warp, vulkan_lvp/dzn, the OpenCL/VA video
+          # stack, GLES/EGL) is unused by the game's desktop-WGL GL path — so
+          # publish just the load-bearing set instead of ~470 MB of dead weight.
           path: |
             xbox/build-desktop/Release/newtonia.exe
             xbox/build-desktop/Release/audio/
-            xbox/build-desktop/Release/*.dll
+            xbox/build-desktop/Release/opengl32.dll
+            xbox/build-desktop/Release/libgallium_wgl.dll
+            xbox/build-desktop/Release/dxil.dll
           retention-days: 7
