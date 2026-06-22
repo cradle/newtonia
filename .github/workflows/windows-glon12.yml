@@ -93,13 +93,34 @@ jobs:
           $env:MESA_LOG_LEVEL  = "info"
           $log = Join-Path $exeDir "newtonia.log"
 
+          # DLLs we publish in the artifact. The trimmed-artifact check below
+          # asserts the running game maps nothing else out of the exe dir, so
+          # this list and the upload step's `path:` must stay in sync.
+          $keptDlls = @("opengl32.dll", "libgallium_wgl.dll", "dxil.dll")
+          $exeDirFull = (Resolve-Path $exeDir).Path
+
           function Invoke-Game([string]$driver, [int]$seconds) {
             Remove-Item $log -Force -ErrorAction SilentlyContinue
             $env:GALLIUM_DRIVER = $driver
             Write-Host "== Launching newtonia.exe (GALLIUM_DRIVER=$driver) =="
             $p = Start-Process -FilePath (Resolve-Path $exe) -WorkingDirectory $exeDir -PassThru
             Start-Sleep -Seconds $seconds
+            # Snapshot the modules mapped from the exe dir WHILE the process is
+            # alive (the handle is gone once it exits/is killed). The full Mesa
+            # set is staged on disk, but only the DLLs the GL path actually
+            # pulls in show up here — that's what the artifact must carry.
+            $script:LastExeDirModules = $null
             if (-not $p.HasExited) {
+              try {
+                $p.Refresh()
+                $script:LastExeDirModules = @(
+                  $p.Modules |
+                    Where-Object { $_.FileName -like "$exeDirFull*" } |
+                    ForEach-Object { (Split-Path $_.FileName -Leaf).ToLower() }
+                )
+              } catch {
+                Write-Warning "Could not enumerate process modules: $_"
+              }
               Stop-Process -Id $p.Id -Force
               Write-Host "Killed after ${seconds}s (game runs an interactive loop with no headless exit)."
             } else {
@@ -129,6 +150,28 @@ jobs:
             Write-Host "  $line"
           } else {
             throw "Game did not create a Mesa GL context under d3d12 or llvmpipe. See newtonia.log above."
+          }
+
+          # --- Trimmed-artifact check ---
+          # Confirm the run mapped nothing out of the exe dir beyond newtonia.exe
+          # + the kept GLon12 DLLs. Anything else means the full Mesa set staged
+          # for the smoke is hiding a real dependency the trimmed upload would
+          # drop — fail loudly with the offending names so the artifact `path:`
+          # (and $keptDlls above) can be widened. NB: a GPU-less hosted runner
+          # exercises the llvmpipe closure; the d3d12 closure (which also needs
+          # dxil.dll) is only fully exercised on a real GPU.
+          $allowed = @("newtonia.exe") + $keptDlls
+          if ($null -ne $script:LastExeDirModules) {
+            Write-Host "Mapped from exe dir: $($script:LastExeDirModules -join ', ')"
+            $unexpected = $script:LastExeDirModules | Where-Object { $allowed -notcontains $_ }
+            if ($unexpected) {
+              throw ("Trimmed-artifact check FAILED — the game loaded DLLs from the exe dir " +
+                     "that the upload step drops: $($unexpected -join ', '). Add them to the " +
+                     "artifact 'path:' and to `$keptDlls so the published bundle stays runnable.")
+            }
+            Write-Host "Trimmed-artifact check PASS — only newtonia.exe + the kept GLon12 DLLs were mapped."
+          } else {
+            Write-Warning "Trimmed-artifact check SKIPPED — process module list was unavailable."
           }
 
       - name: Upload artifact (newtonia + audio + GLon12 DLLs)
