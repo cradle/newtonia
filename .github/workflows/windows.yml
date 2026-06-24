@@ -45,32 +45,34 @@ jobs:
             $(pkg-config --libs --static sdl2 SDL2_mixer freeglut) \
             -lopengl32 -lglu32
 
-      # Sign the executable with Azure Trusted Signing ($10/mo, no USB token).
-      # One-time Azure setup:
-      #   1. Register Microsoft.CodeSigning resource provider in your subscription
-      #   2. Create a Trusted Signing account (Basic plan) and verify your identity
-      #   3. Create a Certificate Profile and note the profile name
-      #   4. Create an App Registration in Entra ID, generate a client secret,
-      #      and assign it the "Trusted Signing Certificate Profile Signer" role
-      #   5. Store these GitHub secrets:
-      #        AZURE_TENANT_ID      — Entra ID directory (tenant) ID
-      #        AZURE_CLIENT_ID      — App Registration application (client) ID
-      #        AZURE_CLIENT_SECRET  — App Registration client secret value
-      # Without these secrets the signing step is skipped (e.g. on fork PRs).
+      # Sign the executable with a code signing certificate.
+      # To set up:
+      #   1. Buy an OV code signing cert (e.g. SSL.com, Sectigo, Certum)
+      #   2. Export or download the .pfx file
+      #   3. base64 -w0 CodeSigning.pfx → store as WINDOWS_CERTIFICATE_BASE64 secret
+      #   4. Store the certificate password as WINDOWS_CERTIFICATE_PASSWORD secret
+      # Without these secrets the signing steps are skipped (e.g. on fork PRs).
+      - name: Decode signing certificate
+        if: ${{ env.WINDOWS_CERTIFICATE_BASE64 != '' }}
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+        run: |
+          $certBytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64)
+          [IO.File]::WriteAllBytes("cert.pfx", $certBytes)
+
       - name: Sign executable
-        if: ${{ secrets.AZURE_TENANT_ID != '' }}
-        uses: azure/trusted-signing-action@v0.5.0
-        with:
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-          endpoint: https://eus.codesigning.azure.net/
-          signing-account-name: newtonia
-          certificate-profile-name: newtonia
-          files: newtonia.exe
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
+        if: ${{ env.WINDOWS_CERTIFICATE_BASE64 != '' }}
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" `
+            -Recurse -Filter signtool.exe | Select-Object -Last 1).FullName
+          & $signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com `
+            /f cert.pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD newtonia.exe
+          Remove-Item cert.pfx
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
