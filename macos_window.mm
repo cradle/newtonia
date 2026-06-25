@@ -3,6 +3,7 @@
 
 #import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
+#include <sys/sysctl.h>
 
 // Force the application to the foreground so the window receives keyboard
 // input immediately on launch (needed when launched from Steam, which keeps
@@ -39,6 +40,31 @@ extern "C" void activate_app_macos() {
   }
 }
 
+// --- Native fullscreen (true fullscreen Space) ---
+
+// Enter or leave a real macOS fullscreen Space, as opposed to GLUT's
+// glutFullScreen() which only resizes the window to cover the screen.
+// A true fullscreen Space (NSWindowStyleMaskFullScreen) is what lets macOS
+// 14+ engage Game Mode.  Idempotent: only toggles when the current state
+// differs from what's requested.
+extern "C" void set_native_fullscreen_macos(int want_fullscreen) {
+  NSWindow *win = [NSApp mainWindow];
+  if (!win) {
+    for (NSWindow *w in [NSApp windows]) {
+      if ([w isVisible]) { win = w; break; }
+    }
+  }
+  if (!win) return;
+  // Apple's GLUT does not mark its window as fullscreen-capable, so
+  // toggleFullScreen: would otherwise be a no-op.
+  [win setCollectionBehavior:[win collectionBehavior] |
+                             NSWindowCollectionBehaviorFullScreenPrimary];
+  BOOL is_fs = ([win styleMask] & NSWindowStyleMaskFullScreen) != 0;
+  if ((want_fullscreen != 0) != is_fs) {
+    [win toggleFullScreen:nil];
+  }
+}
+
 // --- macOS Game Mode / performance activity ---
 
 // Holds the NSProcessInfo activity token for the lifetime of the game.
@@ -61,6 +87,59 @@ extern "C" void enable_game_mode_macos() {
 
 extern "C" int is_game_mode_active_macos() {
   return s_game_activity != nil ? 1 : 0;
+}
+
+// Reports how close we are to OS-level Game Mode being active:
+//   0 = off     — no high-priority activity assertion is held at all.
+//   1 = ready   — the assertion is held, but a precondition the OS requires
+//                 for Game Mode is not met (pre-Sonoma, app not frontmost,
+//                 or window not fullscreen), so Game Mode is NOT active.
+//   2 = on      — assertion held AND every precondition met, so on macOS 14+
+//                 the OS should have engaged Game Mode.
+//
+// Apple exposes no public API to read the OS Game Mode flag directly, so we
+// report whether its documented preconditions are satisfied rather than the
+// flag itself.
+// Game Mode requires a Mac with Apple silicon; it is unavailable on Intel.
+static bool macos_is_apple_silicon() {
+  int val = 0;
+  size_t len = sizeof(val);
+  if (sysctlbyname("hw.optional.arm64", &val, &len, NULL, 0) != 0) return false;
+  return val != 0;
+}
+
+// The OS only treats the app as a game when its bundle declares the games
+// category.  Returns false when run as a bare binary (no Info.plist).
+static bool macos_categorized_as_game() {
+  id cat = [[NSBundle mainBundle]
+      objectForInfoDictionaryKey:@"LSApplicationCategoryType"];
+  return [cat isKindOfClass:[NSString class]] &&
+         [(NSString *)cat isEqualToString:@"public.app-category.games"];
+}
+
+extern "C" int macos_game_mode_status() {
+  if (!s_game_activity) return 0; // No performance assertion held.
+
+  if (@available(macOS 14.0, *)) {
+    // Game Mode is Apple-silicon only and only applies to apps the OS
+    // recognizes as games (via the bundle's games category).
+    if (!macos_is_apple_silicon()) return 1;
+    if (!macos_categorized_as_game()) return 1;
+    // ...and only for the frontmost app...
+    if (![NSApp isActive]) return 1;
+    // ...running in a true fullscreen Space.  Only NSWindowStyleMaskFullScreen
+    // counts: a window merely resized to cover the screen (as GLUT's
+    // glutFullScreen() does) is borderless-windowed fullscreen, which does
+    // NOT trigger Game Mode.
+    BOOL fullscreen = NO;
+    for (NSWindow *w in [NSApp windows]) {
+      if (![w isVisible]) continue;
+      if ([w styleMask] & NSWindowStyleMaskFullScreen) { fullscreen = YES; break; }
+    }
+    if (!fullscreen) return 1;
+    return 2;
+  }
+  return 1; // Pre-Sonoma: activity held, but the OS has no Game Mode.
 }
 
 // --- Focus tracking via NSApplication notifications ---
