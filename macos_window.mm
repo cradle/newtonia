@@ -3,6 +3,7 @@
 
 #import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
+#include <sys/sysctl.h>
 
 // Force the application to the foreground so the window receives keyboard
 // input immediately on launch (needed when launched from Steam, which keeps
@@ -99,11 +100,32 @@ extern "C" int is_game_mode_active_macos() {
 // Apple exposes no public API to read the OS Game Mode flag directly, so we
 // report whether its documented preconditions are satisfied rather than the
 // flag itself.
+// Game Mode requires a Mac with Apple silicon; it is unavailable on Intel.
+static bool macos_is_apple_silicon() {
+  int val = 0;
+  size_t len = sizeof(val);
+  if (sysctlbyname("hw.optional.arm64", &val, &len, NULL, 0) != 0) return false;
+  return val != 0;
+}
+
+// The OS only treats the app as a game when its bundle declares the games
+// category.  Returns false when run as a bare binary (no Info.plist).
+static bool macos_categorized_as_game() {
+  id cat = [[NSBundle mainBundle]
+      objectForInfoDictionaryKey:@"LSApplicationCategoryType"];
+  return [cat isKindOfClass:[NSString class]] &&
+         [(NSString *)cat isEqualToString:@"public.app-category.games"];
+}
+
 extern "C" int macos_game_mode_status() {
   if (!s_game_activity) return 0; // No performance assertion held.
 
   if (@available(macOS 14.0, *)) {
-    // Game Mode only engages for the frontmost app...
+    // Game Mode is Apple-silicon only and only applies to apps the OS
+    // recognizes as games (via the bundle's games category).
+    if (!macos_is_apple_silicon()) return 1;
+    if (!macos_categorized_as_game()) return 1;
+    // ...and only for the frontmost app...
     if (![NSApp isActive]) return 1;
     // ...running in a true fullscreen Space.  Only NSWindowStyleMaskFullScreen
     // counts: a window merely resized to cover the screen (as GLUT's
