@@ -85,12 +85,29 @@ inline bool is_steam_gamemode() {
 #endif
 }
 
-// Returns true when the macOS high-priority game activity is held.
-// On macOS 14+ (Sonoma) this also means the OS has activated Game Mode.
-// Always false on non-Apple platforms.
+// Reflects how close the build is to OS-level Game Mode being active.
+//   Off   — no high-priority activity assertion is held.
+//   Ready — the assertion is held but an OS precondition is unmet (pre-Sonoma,
+//           app not frontmost, or not fullscreen), so Game Mode is NOT active.
+//   On    — assertion held and every precondition met; on macOS 14+ the OS
+//           should have engaged Game Mode.
+// Always Off on non-Apple platforms.
+enum class GameModeStatus { Off = 0, Ready = 1, On = 2 };
+
 #if defined(__APPLE__) && !defined(__IOS__)
 extern "C" int is_game_mode_active_macos();
+extern "C" int macos_game_mode_status();
 #endif
+
+inline GameModeStatus game_mode_status() {
+#if defined(__APPLE__) && !defined(__IOS__)
+  return static_cast<GameModeStatus>(macos_game_mode_status());
+#else
+  return GameModeStatus::Off;
+#endif
+}
+
+// Returns true when the macOS high-priority game activity is held.
 inline bool is_game_mode_active() {
 #if defined(__APPLE__) && !defined(__IOS__)
   return is_game_mode_active_macos() != 0;

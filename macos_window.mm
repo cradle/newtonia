@@ -63,6 +63,40 @@ extern "C" int is_game_mode_active_macos() {
   return s_game_activity != nil ? 1 : 0;
 }
 
+// Reports how close we are to OS-level Game Mode being active:
+//   0 = off     — no high-priority activity assertion is held at all.
+//   1 = ready   — the assertion is held, but a precondition the OS requires
+//                 for Game Mode is not met (pre-Sonoma, app not frontmost,
+//                 or window not fullscreen), so Game Mode is NOT active.
+//   2 = on      — assertion held AND every precondition met, so on macOS 14+
+//                 the OS should have engaged Game Mode.
+//
+// Apple exposes no public API to read the OS Game Mode flag directly, so we
+// report whether its documented preconditions are satisfied rather than the
+// flag itself.
+extern "C" int macos_game_mode_status() {
+  if (!s_game_activity) return 0; // No performance assertion held.
+
+  if (@available(macOS 14.0, *)) {
+    // Game Mode only engages for the frontmost app...
+    if (![NSApp isActive]) return 1;
+    // ...running fullscreen.  GLUT's glutFullScreen() merely resizes the
+    // window to the screen bounds rather than entering a fullscreen Space,
+    // so accept either the native fullscreen style mask or a window whose
+    // frame covers its entire screen.
+    BOOL fullscreen = NO;
+    for (NSWindow *w in [NSApp windows]) {
+      if (![w isVisible]) continue;
+      if ([w styleMask] & NSWindowStyleMaskFullScreen) { fullscreen = YES; break; }
+      NSScreen *scr = [w screen];
+      if (scr && NSEqualRects([w frame], [scr frame])) { fullscreen = YES; break; }
+    }
+    if (!fullscreen) return 1;
+    return 2;
+  }
+  return 1; // Pre-Sonoma: activity held, but the OS has no Game Mode.
+}
+
 // --- Focus tracking via NSApplication notifications ---
 
 static void (*s_focus_lost_cb)() = nullptr;

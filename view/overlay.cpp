@@ -428,7 +428,13 @@ void Overlay::debug_info(const GLGame *glgame, const GLShip *glship) {
   char fps_buf[32];
   snprintf(fps_buf, sizeof(fps_buf), "fps: %d", fps_display);
 
-  Typer::draw(x, y,      is_game_mode_active() ? "game mode: on" : "game mode: off", sz);
+  const char *gm_str = "game mode: off";
+  switch (game_mode_status()) {
+    case GameModeStatus::On:    gm_str = "game mode: on";    break;
+    case GameModeStatus::Ready: gm_str = "game mode: ready"; break;
+    case GameModeStatus::Off:   gm_str = "game mode: off";   break;
+  }
+  Typer::draw(x, y,      gm_str, sz);
   Typer::draw(x, y - dy, fps_buf, sz);
 #ifdef STEAM_BUILD
   std::string branch = get_steam_branch();
