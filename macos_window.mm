@@ -39,6 +39,31 @@ extern "C" void activate_app_macos() {
   }
 }
 
+// --- Native fullscreen (true fullscreen Space) ---
+
+// Enter or leave a real macOS fullscreen Space, as opposed to GLUT's
+// glutFullScreen() which only resizes the window to cover the screen.
+// A true fullscreen Space (NSWindowStyleMaskFullScreen) is what lets macOS
+// 14+ engage Game Mode.  Idempotent: only toggles when the current state
+// differs from what's requested.
+extern "C" void set_native_fullscreen_macos(int want_fullscreen) {
+  NSWindow *win = [NSApp mainWindow];
+  if (!win) {
+    for (NSWindow *w in [NSApp windows]) {
+      if ([w isVisible]) { win = w; break; }
+    }
+  }
+  if (!win) return;
+  // Apple's GLUT does not mark its window as fullscreen-capable, so
+  // toggleFullScreen: would otherwise be a no-op.
+  [win setCollectionBehavior:[win collectionBehavior] |
+                             NSWindowCollectionBehaviorFullScreenPrimary];
+  BOOL is_fs = ([win styleMask] & NSWindowStyleMaskFullScreen) != 0;
+  if ((want_fullscreen != 0) != is_fs) {
+    [win toggleFullScreen:nil];
+  }
+}
+
 // --- macOS Game Mode / performance activity ---
 
 // Holds the NSProcessInfo activity token for the lifetime of the game.
@@ -80,16 +105,14 @@ extern "C" int macos_game_mode_status() {
   if (@available(macOS 14.0, *)) {
     // Game Mode only engages for the frontmost app...
     if (![NSApp isActive]) return 1;
-    // ...running fullscreen.  GLUT's glutFullScreen() merely resizes the
-    // window to the screen bounds rather than entering a fullscreen Space,
-    // so accept either the native fullscreen style mask or a window whose
-    // frame covers its entire screen.
+    // ...running in a true fullscreen Space.  Only NSWindowStyleMaskFullScreen
+    // counts: a window merely resized to cover the screen (as GLUT's
+    // glutFullScreen() does) is borderless-windowed fullscreen, which does
+    // NOT trigger Game Mode.
     BOOL fullscreen = NO;
     for (NSWindow *w in [NSApp windows]) {
       if (![w isVisible]) continue;
       if ([w styleMask] & NSWindowStyleMaskFullScreen) { fullscreen = YES; break; }
-      NSScreen *scr = [w screen];
-      if (scr && NSEqualRects([w frame], [scr frame])) { fullscreen = YES; break; }
     }
     if (!fullscreen) return 1;
     return 2;
