@@ -141,6 +141,13 @@ struct MiniStation {
 struct GameState {
     static constexpr uint32_t MAGIC   = 0x4E57544E;  // "NWTN"
     static constexpr uint16_t VERSION = 10;
+    // Oldest save format we can still read. Saves from MIN_VERSION..VERSION all
+    // load; anything older (or from a newer build) is ignored. To keep old saves
+    // working across a version bump, only ever APPEND new fields at the end of
+    // the file and read them back gated on `version >= N` (see load_game). That
+    // way an older save simply stops short and the new fields take their
+    // defaults. Loading then re-saving silently upgrades the file to VERSION.
+    static constexpr uint16_t MIN_VERSION = 9;
 
     int   generation;
     float world_x, world_y;

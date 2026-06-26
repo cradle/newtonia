@@ -341,7 +341,8 @@ bool Save::save_exists() {
     uint16_t version = 0;
     bool ok = rv(f, magic) && rv(f, version)
               && magic   == GameState::MAGIC
-              && version == GameState::VERSION;
+              && version >= GameState::MIN_VERSION
+              && version <= GameState::VERSION;
     fclose(f);
     return ok;
 }
@@ -407,9 +408,11 @@ bool Save::load_game(Save::GameState &s) {
 
     bool ok = true;
 
-    // Validate header
-    uint32_t magic;   if (!rv(f, magic)   || magic   != GameState::MAGIC)   { fclose(f); return false; }
-    uint16_t version; if (!rv(f, version) || version != GameState::VERSION)  { fclose(f); return false; }
+    // Validate header. Accept any format from MIN_VERSION up to the current
+    // VERSION; fields added in newer versions are read back conditionally below.
+    uint32_t magic;   if (!rv(f, magic)   || magic != GameState::MAGIC) { fclose(f); return false; }
+    uint16_t version; if (!rv(f, version) || version < GameState::MIN_VERSION
+                                          || version > GameState::VERSION) { fclose(f); return false; }
 
     int32_t  ival = 0;
     uint8_t  bval = 0;
@@ -440,7 +443,13 @@ bool Save::load_game(Save::GameState &s) {
         ok = ok && rv(f, bh.pos_x) && rv(f, bh.pos_y);
 
     ok = ok && read_station(f, s.station);
-    ok = ok && read_mini_station(f, s.mini_station);
+
+    // Mini-station was added in v10; older saves end before it.
+    if (version >= 10) {
+        ok = ok && read_mini_station(f, s.mini_station);
+    } else {
+        s.mini_station.present = false;
+    }
 
     fclose(f);
     return ok;
