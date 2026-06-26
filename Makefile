@@ -32,6 +32,7 @@ osx: $(OBJFILES)
 	mkdir -p Newtonia.app/Contents/MacOS
 	mkdir -p Newtonia.app/Contents/Resources
 	cp newtonia Newtonia.app/Contents/MacOS/Newtonia
+	rm -rf Newtonia.app/Contents/Resources/audio
 	cp -r audio Newtonia.app/Contents/Resources/audio
 	cp icon.icns Newtonia.app/Contents/Resources/icon.icns
 	sed 's/$${EXECUTABLE_NAME}/Newtonia/g' Newtonia-Info.plist > Newtonia.app/Contents/Info.plist
