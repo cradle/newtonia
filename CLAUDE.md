@@ -264,13 +264,16 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 
 ### Save / Load
 
-**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 9:
+**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 10:
 - `WeaponEntry`: kind, weapon_index, ammo
 - `Player`: score, lives, kills, respawning flag, position, velocity, facing, weapons, nova state
 - `Asteroid`: position, velocity, radius, health, all special flags and transient state
 - `Pickup`: type, position, weapon_index
 - `BlackHole`, `Enemy`, `Station`: positional/state data (Station includes its deployed enemies)
+- `MiniStation`: present flag, alive, position, drift velocity, rotations, shot timer
 - `GameState`: generation, world size, level_cleared, players, all object lists
+
+**Backward compatibility:** `GameState::MIN_VERSION..VERSION` all load; older or newer files are ignored. New fields are only ever **appended at the end** and read back gated on `version >= N`, so an older save stops short and the new fields take their defaults (e.g. v9 saves load with no mini-station). Loading then re-saving upgrades the file to the current `VERSION`. Keep this convention when bumping the version so existing saves survive.
 
 Auto-save triggers on pause or player death if the player has lives or score remaining, and on level completion.
 

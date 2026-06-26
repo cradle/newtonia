@@ -3,8 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Google Analytics (GA4) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-03BDC6CK12"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-03BDC6CK12');
+  </script>
+
   <title>Newtonia — a top-down space shooter</title>
-  <meta name="description" content="Newtonia is a fast, physics-driven top-down space shooter. Blast asteroids, dodge black holes, and survive endless generations — solo or two-player. Play free in your browser.">
+  <meta name="description" content="Newtonia is a fast, physics-driven top-down space shooter. Blast asteroids, dodge black holes, and survive unlimited levels — solo or co-op. Play free in your browser.">
 
   <meta property="og:title" content="Newtonia">
   <meta property="og:description" content="A fast, physics-driven top-down space shooter. Play free in your browser.">
@@ -65,10 +75,11 @@
       </h1>
       <p class="tagline">A fast, physics-driven top-down space shooter.</p>
       <p class="sub">Newtonian thrust. Wrapping space. Asteroids that test your every move.
-        Survive endless generations — solo or two-player.</p>
+        Prove your worth with a Newtonian high score. Survive unlimited levels, with
+        increasing challenge, either solo or co-op.</p>
       <div class="cta-row">
         <a class="btn btn-primary" href="play/">▶ Play in your browser</a>
-        <a class="btn btn-ghost" href="#platforms">Get it on your platform</a>
+        <a class="btn btn-ghost" href="#platforms">Play on your platform</a>
       </div>
       <p class="note">Free on web · No install · Runs on WebAssembly</p>
     </section>
@@ -77,52 +88,53 @@
       <h2>Built for chaos</h2>
       <div class="grid">
         <article class="card">
-          <h3>True momentum</h3>
-          <p>Real Newtonian flight — you carry your velocity. Master the thrust
-            and your trajectory, because space won't slow you down.</p>
+          <h3>Newtonian Physics</h3>
+          <p>Real newtonian physics. Combine space friction with thrust and momentum.
+            Every moment you make could result in your death.</p>
         </article>
         <article class="card">
-          <h3>Asteroids with attitude</h3>
-          <p>Reflective, teleporting, invisible, quantum, tough, armoured, phasing.
-            Each level unlocks deadlier rock.</p>
+          <h3>An Assortment of Asteroids</h3>
+          <p>Face the challenge of unique asteroids every level. Reflective, teleporting,
+            invisible, quantum, tough, armoured and phasing. Every level poses new
+            challenges.</p>
         </article>
         <article class="card">
-          <h3>An arsenal</h3>
+          <h3>Numerous Weapons</h3>
           <p>Mines, giga-mines, homing missiles, shields, and God Mode invincibility.
-            Stack Nova charges and detonate the whole field.</p>
+            Stack nova charges on your kill streak, and wipe the whole screen of enemies.</p>
         </article>
         <article class="card">
           <h3>Gravity hazards</h3>
           <p>Black holes warp space and swallow anything that drifts too close.
-            From level 10, the centre is no longer safe.</p>
+            From level 10, gravity wells make killing even simple asteroids a challenge.</p>
         </article>
         <article class="card">
           <h3>Enemy stations</h3>
           <p>Late-game stations deploy waves of hunting ships with escalating AI.
-            The galaxy stops being empty.</p>
+            No pilots have ever been this far. Prove your worth by completing more than 20 levels.</p>
         </article>
         <article class="card">
-          <h3>Two-player co-op</h3>
-          <p>Split-screen for two pilots. Friendly fire optional — bring a second
-            keyboard and find out who your friends are.</p>
+          <h3>Two Player Split-Screen</h3>
+          <p>Split screen for two pilots. Toggle friendly fire for maximum carnage.
+            Bring a second keyboard or controller and prove your skill to your friends.</p>
         </article>
       </div>
     </section>
 
     <section id="platforms" class="section">
-      <h2>Play anywhere</h2>
+      <h2>Play instantly. There is nothing to install on web.</h2>
       <div class="platforms">
         <a class="platform platform-primary" href="play/">
           <span class="platform-name">Web</span>
-          <span class="platform-detail">Play instantly — nothing to install</span>
+          <span class="platform-detail">Play instantly. There is nothing to install</span>
         </a>
         <a class="platform" href="https://apps.apple.com/au/app/newtonia/id6760685759" target="_blank" rel="noopener">
           <span class="platform-name">iOS</span>
-          <span class="platform-detail">Download on the App Store — touch controls</span>
+          <span class="platform-detail">Download on the App Store. Harness touch controls.</span>
         </a>
         <a class="platform" href="mailto:admin@metonymous.com?subject=Newtonia%20Android%20beta%20access">
           <span class="platform-name">Android</span>
-          <span class="platform-detail">Internal beta — email to request access</span>
+          <span class="platform-detail">Join the Internal Beta, email us for access.</span>
         </a>
         <a class="platform" href="https://store.steampowered.com/app/4536720/Newtonia/" target="_blank" rel="noopener">
           <span class="platform-name">Steam</span>
@@ -141,7 +153,7 @@
             <tr><td><kbd>S</kbd></td><td>Reverse</td></tr>
             <tr><td><kbd>A</kbd> <kbd>D</kbd></td><td>Rotate</td></tr>
             <tr><td><kbd>Space</kbd></td><td>Shoot</td></tr>
-            <tr><td><kbd>X</kbd></td><td>Deploy mine</td></tr>
+            <tr><td><kbd>X</kbd></td><td>Secondary weapon</td></tr>
             <tr><td><kbd>Enter</kbd></td><td>Start / add player 2</td></tr>
             <tr><td><kbd>F</kbd></td><td>Fullscreen</td></tr>
           </table>

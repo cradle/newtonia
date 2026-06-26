@@ -70,6 +70,7 @@ class Ship : public CompositeObject {
     static void collide(Ship *first, Ship *second);
     // bool collide_object(Object *other);
     void collide_grid(Grid &grid, int delta);
+    void collide_bullets_with_asteroids(const Grid &grid, int delta);
     void collide(Ship *other);
 
     //TODO: make friends with glship
@@ -151,6 +152,10 @@ class Ship : public CompositeObject {
     bool kill();
 
   protected:
+
+    // Stop the looping engine/boost sound. Ships that never thrust (e.g. the
+    // roaming mini-station) call this so they don't hold an idle hum channel.
+    void mute_engine();
 
     void lay_mine();
     void respawn(const Grid &grid, bool was_killed = true);

@@ -21,6 +21,7 @@
 #include <OpenGL/OpenGL.h>
 extern "C" void activate_app_macos();
 extern "C" void enable_game_mode_macos();
+extern "C" void set_native_fullscreen_macos(int want_fullscreen);
 extern "C" void install_macos_focus_observer(void (*lost)(), void (*gained)());
 #endif
 
@@ -42,7 +43,13 @@ int last_render_time;
 #ifdef __APPLE__
 static bool s_needs_activation = true;
 static int  s_activation_retries = 0;
+// Set when the game launches with fullscreen saved in preferences.  We defer
+// the native-fullscreen transition until the window is on screen (handled in
+// draw()), since toggleFullScreen: is unreliable before the app has finished
+// launching.
+static bool s_needs_fullscreen = false;
 void activate_app_timer(int);
+void hide_cursor_after_fullscreen(int);
 #endif
 
 void draw() {
@@ -64,6 +71,12 @@ void draw() {
     s_activation_retries = 0;
     activate_app_macos();
     glutTimerFunc(200, activate_app_timer, 0);
+  }
+  // Enter the fullscreen Space once the window is actually on screen.
+  if (s_needs_fullscreen) {
+    s_needs_fullscreen = false;
+    set_native_fullscreen_macos(1);
+    glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
   }
 #endif
 }
@@ -101,18 +114,25 @@ void keyboard(unsigned char key, int x, int y) {
       old_y = glutGet(GLUT_WINDOW_Y);
       old_width = glutGet(GLUT_WINDOW_WIDTH);
       old_height = glutGet(GLUT_WINDOW_HEIGHT);
-      glutFullScreen();
       is_fullscreen = true;
 #ifdef __APPLE__
+      // Use a real fullscreen Space so macOS 14+ can engage Game Mode.
+      set_native_fullscreen_macos(1);
       glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
 #else
+      glutFullScreen();
       set_cursor_hidden(true);
 #endif
     } else {
       is_fullscreen = false;
       set_cursor_hidden(false);
+#ifdef __APPLE__
+      // Leaving the fullscreen Space restores the previous window frame.
+      set_native_fullscreen_macos(0);
+#else
       glutPositionWindow(old_x, old_y);
       glutReshapeWindow(old_width, old_height);
+#endif
     }
     g_prefs.fullscreen = is_fullscreen;
     save_preferences();
@@ -331,11 +351,14 @@ int main(int argc, char* argv[]) {
   enable_game_mode_macos();
 #endif
   if (g_prefs.fullscreen) {
-    glutFullScreen();
     is_fullscreen = true;
 #ifdef __APPLE__
-    glutTimerFunc(300, hide_cursor_after_fullscreen, 0);
+    // Defer the native fullscreen transition until the window is on screen
+    // (handled in draw()); toggleFullScreen: is unreliable before launch
+    // finishes.  The cursor is hidden once that transition completes.
+    s_needs_fullscreen = true;
 #else
+    glutFullScreen();
     set_cursor_hidden(true);
 #endif
   }

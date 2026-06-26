@@ -87,7 +87,7 @@ Without them, `Mix_LoadWAV` returns NULL and audio is silently skipped — the g
 | `S` | Reverse |
 | `A` / `D` | Rotate |
 | `Space` | Shoot |
-| `X` | Deploy mine |
+| `X` | Secondary weapon |
 | `Enter` | Start / confirm |
 | `F` | Toggle fullscreen |
 

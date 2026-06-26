@@ -267,6 +267,38 @@ jobs:
           codesign --sign "Developer ID Application" --force --timestamp \
             --options runtime "$FW/libsteam_api.dylib"
 
+          # Bundle libSDL3 — Homebrew's "sdl2" is now sdl2-compat, an SDL2 API
+          # shim that loads SDL3 at runtime via dlopen and aborts if it can't
+          # find it ("Failed loading SDL3 library").  Because that load is a
+          # dlopen, not a linked dependency, the bundle() walk above never sees
+          # SDL3, so copy it in explicitly.  sdl2-compat's first macOS search
+          # candidate is @loader_path/libSDL3.dylib — i.e. next to libSDL2 in
+          # Frameworks — so the file must be named exactly libSDL3.dylib.
+          find_sdl3() {
+            for n in libSDL3.0.dylib libSDL3.dylib; do
+              if [ -f "$1/lib/$n" ]; then echo "$1/lib/$n"; return 0; fi
+            done
+            return 1
+          }
+          SDL3_ARM=$(find_sdl3 /opt/homebrew || true)
+          SDL3_X86=$(find_sdl3 /usr/local   || true)
+          if [ -n "$SDL3_ARM" ] && [ -n "$SDL3_X86" ]; then
+            lipo -create "$SDL3_ARM" "$SDL3_X86" -output "$FW/libSDL3.dylib"
+          elif [ -n "$SDL3_ARM" ]; then
+            cp "$SDL3_ARM" "$FW/libSDL3.dylib"
+          elif [ -n "$SDL3_X86" ]; then
+            cp "$SDL3_X86" "$FW/libSDL3.dylib"
+          else
+            echo "ERROR: libSDL3 not found in Homebrew prefixes" >&2
+            exit 1
+          fi
+          install_name_tool -id "@loader_path/libSDL3.dylib" "$FW/libSDL3.dylib"
+          # Pull in any non-system libraries SDL3 itself links, then sign it
+          # with the same identity so library validation accepts the dlopen.
+          bundle "$FW/libSDL3.dylib"
+          codesign --sign "Developer ID Application" --force --timestamp \
+            --options runtime "$FW/libSDL3.dylib"
+
           codesign --sign "Developer ID Application" --force --timestamp \
             --options runtime \
             --entitlements macos/EntitlementsDevID.plist \

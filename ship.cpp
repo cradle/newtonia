@@ -111,6 +111,13 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   }
 }
 
+void Ship::mute_engine() {
+  if(boost_channel >= 0) {
+    Mix_HaltChannel(boost_channel);
+    boost_channel = -1;
+  }
+}
+
 void Ship::add_behaviour(Behaviour *b) {
   behaviours.push_back(b);
 }
@@ -951,6 +958,48 @@ void Ship::collide_grid(Grid &grid, int delta) {
     }
   }
 
+  collide_bullets_with_asteroids(grid, delta);
+
+  // World bullets (ricocheted off reflective asteroids) can kill their owner.
+  for(size_t i = 0; i < bullets.size(); ) {
+    if(bullets[i].world_bullet && is_alive() && bullets[i].collide(*this)) {
+      kill_stop();
+      explode(bullets[i].position, bullets[i].velocity);
+      bullets[i] = std::move(bullets.back());
+      bullets.pop_back();
+    } else {
+      ++i;
+    }
+  }
+
+  for(size_t i = 0; i < missiles.size(); ) {
+    object = grid.collide(missiles[i], 5.0f);
+    if(object != NULL && object->alive) {
+      if(object->kill()) {
+        score += object->get_value() * multiplier();
+        kills_this_life += 1;
+        kills += 1;
+        tally_nova_kill(object->position);
+      }
+      detonate(missiles[i].position, missiles[i].velocity, 25);
+      if(missile_explode_sound != NULL) {
+        Mix_PlayChannel(-1, missile_explode_sound, 0);
+      }
+      missiles[i] = std::move(missiles.back());
+      missiles.pop_back();
+    } else {
+      ++i;
+    }
+  }
+}
+
+// Bullet-vs-asteroid collision, factored out so non-player Ships (e.g. the
+// roaming mini-station) can reuse the exact same bullet behaviour against
+// asteroids — reflective ricochets, armoured deflection, swept hit tests and
+// all. Score is added to this ship's own counter; for non-player ships that
+// counter is simply never displayed, so no points reach the players.
+void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
+  Object *object;
   vector<Object *> sweep_candidates;
   for(size_t i = 0; i < bullets.size(); ) {
     // Swept collision via segment-polygon intersection: test the bullet's
@@ -1097,38 +1146,6 @@ void Ship::collide_grid(Grid &grid, int delta) {
         bullets[i] = std::move(bullets.back());
         bullets.pop_back();
       }
-    } else {
-      ++i;
-    }
-  }
-
-  // World bullets (ricocheted off reflective asteroids) can kill their owner.
-  for(size_t i = 0; i < bullets.size(); ) {
-    if(bullets[i].world_bullet && is_alive() && bullets[i].collide(*this)) {
-      kill_stop();
-      explode(bullets[i].position, bullets[i].velocity);
-      bullets[i] = std::move(bullets.back());
-      bullets.pop_back();
-    } else {
-      ++i;
-    }
-  }
-
-  for(size_t i = 0; i < missiles.size(); ) {
-    object = grid.collide(missiles[i], 5.0f);
-    if(object != NULL && object->alive) {
-      if(object->kill()) {
-        score += object->get_value() * multiplier();
-        kills_this_life += 1;
-        kills += 1;
-        tally_nova_kill(object->position);
-      }
-      detonate(missiles[i].position, missiles[i].velocity, 25);
-      if(missile_explode_sound != NULL) {
-        Mix_PlayChannel(-1, missile_explode_sound, 0);
-      }
-      missiles[i] = std::move(missiles.back());
-      missiles.pop_back();
     } else {
       ++i;
     }
