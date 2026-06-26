@@ -18,14 +18,15 @@ name: Deploy Xbox
 # where each comes from in Partner Center. The committed MicrosoftGame.config
 # keeps __FILL_* tokens, so the repo stays reusable with no identity in source.
 #
-# STATUS: still disabled. The build now mirrors xbox-dev.yml's proven strategy
-# (Ninja + MSVC, no GDK MSBuild platform) and runs on a self-hosted GDKX runner
-# (console/Scarlett needs the NDA GDKX, unavailable on hosted runners). Two
-# pieces remain before it can produce a console package — both gated on a
-# GDKX/dev-kit bring-up (PORT_PLAN Phase 2/3): the console rendering backend
-# decision, and a Scarlett Ninja path in xbox/CMakeLists.txt. The Configure
-# step documents these and intentionally fails until they land. The identity,
-# secrets, packaging, and submission scaffolding are otherwise ready.
+# STATUS: still disabled — needs a self-hosted GDKX runner (label "gdkx") and a
+# dev kit to validate. The build now configures + builds the DECIDED console
+# path: the Scarlett GLon12 target (xbox/CMakeLists.txt -DXBOX_SCARLETT=ON →
+# _GAMING_DESKTOP + NEWTONIA_GDK_CONSOLE, the desktop-GL renderer through Mesa's
+# GLon12, same code the GDK Desktop build and xbox-console-smoke.yml exercise).
+# Remaining GXDK-gated pieces (PORT_PLAN Phase 2/3, marked TODO in the steps):
+# the SDL VisualC-GDK backend (work-item #4) and a Mesa-for-Xbox GLon12 build
+# (opengl32/libgallium_wgl). Identity, secrets, packaging, and submission
+# scaffolding are ready; flip the runner + provide the GLon12 redist to use it.
 #
 # One-time Partner Center setup
 # ------------------------------
@@ -121,58 +122,51 @@ jobs:
           echo "GDK_EDITION=$ed"          >> $env:GITHUB_ENV
           echo "GDK_LATEST=$gdkLatest"    >> $env:GITHUB_ENV
           echo "GDK_ROOT=$gdkLatest\GRDK" >> $env:GITHUB_ENV   # makepkg lives under GRDK\bin
+          # GXDK header/lib dirs for the Scarlett GLon12 build. TODO(GXDK):
+          # confirm these subpaths against the installed edition's layout.
+          echo "GRDK_INCLUDE=$gdkLatest\GRDK\GameKit\Include"               >> $env:GITHUB_ENV
+          echo "GXDK_INCLUDE=$gdkLatest\GXDK\GameKit\Include"               >> $env:GITHUB_ENV
+          echo "GXDK_LIBDIR=$gdkLatest\GXDK\GameKit\Lib\amd64\Scarlett"     >> $env:GITHUB_ENV
           Write-Host "GDKX edition $ed at $gdkLatest"
 
-      # ---- Install ANGLE --------------------------------------------
-      - name: Install ANGLE
+      # ---- Locate the Xbox GLon12 redist ----------------------------
+      - name: Locate GLon12 redist
         shell: pwsh
         run: |
-          # The GDK does not bundle ANGLE for the Desktop/Scarlett targets.
-          # ANGLE.WindowsStore (Microsoft NuGet package) ships the import libs
-          # and redistributable DLLs for Win64 x64.
-          nuget install ANGLE.WindowsStore -ExcludeVersion `
-            -OutputDirectory "$env:RUNNER_TEMP\nuget" -NonInteractive
-          $pkg = "$env:RUNNER_TEMP\nuget\ANGLE.WindowsStore"
+          # Decided renderer: Mesa GLon12 (OpenGL-on-D3D12) built for the Xbox
+          # cross target. The runner must provide opengl32.dll + .lib and
+          # libgallium_wgl.dll (set NEWTONIA_GLON12_DIR on the runner).
+          # TODO(GXDK Phase 2): building Mesa's d3d12 driver for Xbox is gated on
+          # GXDK + a Microsoft agreement — see xbox/PORT_PLAN.md / GLON12_SPIKE.md.
+          $dir = $env:NEWTONIA_GLON12_DIR
+          if (-not $dir -or -not (Test-Path "$dir\opengl32.lib")) {
+            Write-Error "Xbox GLon12 redist not found. Set NEWTONIA_GLON12_DIR on the runner (opengl32.dll/.lib, libgallium_wgl.dll). See xbox/PORT_PLAN.md Phase 2."
+            exit 1
+          }
+          echo "GLON12_DIR=$dir" >> $env:GITHUB_ENV
+          Write-Host "GLon12 redist: $dir"
 
-          $lib = Get-ChildItem $pkg -Recurse -Filter "libEGL.lib" |
-                   Where-Object FullName -match 'x64' | Select-Object -First 1
-          $dll = Get-ChildItem $pkg -Recurse -Filter "libEGL.dll" |
-                   Where-Object FullName -match 'x64' | Select-Object -First 1
-          if (-not $lib) { Write-Error "libEGL.lib not found in ANGLE.WindowsStore package"; exit 1 }
-          if (-not $dll) { Write-Error "libEGL.dll not found in ANGLE.WindowsStore package"; exit 1 }
-
-          Write-Host "ANGLE lib dir : $($lib.Directory.FullName)"
-          Write-Host "ANGLE DLL dir : $($dll.Directory.FullName)"
-          echo "ANGLE_LIB_DIR=$($lib.Directory.FullName)" >> $env:GITHUB_ENV
-          echo "ANGLE_BIN_DIR=$($dll.Directory.FullName)" >> $env:GITHUB_ENV
-
-      # ---- Configure + Build (Ninja, Scarlett) ----------------------
-      - name: Configure + Build (Ninja, Scarlett)
+      # ---- Configure + Build (Ninja, Scarlett GLon12) ---------------
+      - name: Configure + Build (Ninja, Scarlett GLon12)
         shell: cmd
         run: |
-          rem Mirrors xbox-dev.yml's proven strategy: Ninja + MSVC, NO GDK
-          rem MSBuild platform (so no VCTargetsPath probe). The console target
-          rem differs from Desktop in two ways that are still open work:
-          rem
-          rem   TODO (PORT_PLAN Phase 2): resolve the console rendering backend.
-          rem     ANGLE.WindowsStore is desktop-D3D11; the Xbox GPU needs
-          rem     D3D12.X. Either build ANGLE against GDKX or add a native
-          rem     backend behind gles2_compat.
-          rem   TODO (PORT_PLAN Phase 3): add a Scarlett Ninja path to
-          rem     xbox/CMakeLists.txt mirroring the Desktop one — define
-          rem     _GAMING_XBOX, point includes/libs at the GXDK xbox/ tree
-          rem     (%GDK_LATEST%\<arch>), and link the console libs. Then:
-          rem
-          rem       call vcvars64.bat
-          rem       cmake -G Ninja -B xbox\build -S xbox ^
-          rem         -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl ^
-          rem         -DCMAKE_BUILD_TYPE=Release -DXBOX_SCARLETT=ON ^
-          rem         -DGDK_LATEST="%GDK_LATEST%" -DANGLE_LIB_DIR="%ANGLE_LIB_DIR%"
-          rem       cmake --build xbox\build
-          rem
-          rem Until that lands this workflow cannot produce a console binary.
-          echo Console (Scarlett) build is not implemented yet - see xbox/PORT_PLAN.md Phase 2/3
-          exit /b 1
+          rem Decided console path: the desktop-GL renderer built for Scarlett
+          rem through Mesa GLon12 (xbox/CMakeLists.txt XBOX_SCARLETT block ->
+          rem _GAMING_DESKTOP + NEWTONIA_GDK_CONSOLE + WINAPI_FAMILY_GAMES).
+          rem Mirrors xbox-dev.yml: Ninja + MSVC, NO GDK MSBuild platform.
+          rem TODO(GXDK work-item #4): switch SDL2 to its official VisualC-GDK
+          rem build for real console windowing/input (the current /U__GDK__ Win32
+          rem hack is unvalidated on a kit). See xbox/PORT_PLAN.md Phase 2.
+          call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" || ^
+          call "%ProgramFiles(x86)%\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+          cmake -G Ninja -B xbox\build -S xbox ^
+            -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl ^
+            -DCMAKE_BUILD_TYPE=Release -DXBOX_SCARLETT=ON ^
+            -DGDK_INCLUDE_DIR="%GRDK_INCLUDE%" ^
+            -DGXDK_INCLUDE_DIR="%GXDK_INCLUDE%" ^
+            -DGXDK_LIB_DIR="%GXDK_LIBDIR%" ^
+            -DGLON12_LIB="%GLON12_DIR%\opengl32.lib" || exit /b 1
+          cmake --build xbox\build || exit /b 1
 
       # ---- Assemble the layout directory for makepkg -----------------
       - name: Stage layout
@@ -188,13 +182,13 @@ jobs:
           # Executable (Ninja is single-config — no Release\ subdir)
           Copy-Item xbox\build\newtonia.exe xbox_output\bin\
 
-          # ANGLE DLLs — copy from the directory found during "Generate ANGLE import libs".
-          $angle = $env:ANGLE_BIN_DIR
-          if ($angle -and (Test-Path "$angle\libEGL.dll")) {
-            Copy-Item "$angle\libEGL.dll"    xbox_output\bin\
-            Copy-Item "$angle\libGLESv2.dll" xbox_output\bin\
-          } else {
-            Write-Warning "ANGLE DLLs not found at $angle — they may be missing from the package."
+          # GLon12 redist DLLs (decided renderer) — opengl32.dll + Gallium WGL
+          # frontend (+ dxil.dll if the Mesa build needs it).
+          $glon12 = $env:GLON12_DIR
+          foreach ($dll in 'opengl32.dll','libgallium_wgl.dll','dxil.dll') {
+            $src = Join-Path $glon12 $dll
+            if (Test-Path $src) { Copy-Item $src xbox_output\bin\ }
+            elseif ($dll -ne 'dxil.dll') { Write-Warning "GLon12 DLL missing: $src" }
           }
 
           # Audio assets

@@ -14,32 +14,58 @@ project(newtonia CXX)
 #
 # GDK Desktop — run on a Windows PC for rapid iteration (see xbox-dev.yml):
 #
-#   cmake -B xbox/build-desktop -S xbox -A Gaming.Desktop.x64
+#   cmake -B xbox/build-desktop -S xbox            # plain Ninja (CI canary)
 #   cmake --build xbox/build-desktop --config Release
 #
-# Xbox Series X|S:
+# Xbox Series X|S — DECIDED console path: GLon12 (desktop-GL renderer over SDL's
+# WGL backend, the same renderer as Desktop) built for the Scarlett console via
+# Ninja + the NDA GXDK (no GDK MSBuild platform — mirrors the Desktop Ninja
+# canary, see the VCTargetsPath note below). Needs a GXDK runner:
+#
+#   cmake -G Ninja -B xbox/build -S xbox -DXBOX_SCARLETT=ON \
+#         -DCMAKE_BUILD_TYPE=Release \
+#         -DGDK_INCLUDE_DIR=<...\GRDK\...\include> \
+#         -DGXDK_INCLUDE_DIR=<...\GXDK\...\gameKit\Include> \
+#         -DGXDK_LIB_DIR=<...\GXDK\...\Scarlett\lib> \
+#         -DGLON12_LIB=<...\opengl32.lib for the Xbox GLon12 build>
+#   cmake --build xbox/build
+#   # then: xbox/build_console_package.ps1  (makepkg -> .xvc)
+#
+# This compiles xbox_main.cpp's mode 2 (_GAMING_DESKTOP + NEWTONIA_GDK_CONSOLE,
+# WINAPI_FAMILY_GAMES) — the desktop-GL renderer + SDL_GL present path with
+# console-only fullscreen/PLM/safe-area layered on top. GLon12's opengl32.dll +
+# libgallium_wgl.dll ship in the package (see xbox/PackagingLayout.xml).
+#
+# Xbox Series X|S — ABANDONED ANGLE fallback (GLES2 via ANGLE, GDKX MSBuild
+# platform). Kept for reference only; not the canonical path:
 #
 #   cmake -B xbox/build -S xbox -A Gaming.Xbox.Scarlett.x64
 #   cmake --build xbox/build --config Release
 #
-# No -DCMAKE_TOOLCHAIN_FILE is needed in GDK 2510+: the installer registers
-# Gaming.Desktop.x64 / Gaming.Xbox.Scarlett.x64 as VS2022 MSBuild platforms.
-#
 # The GDK MSBuild platform automatically defines:
-#   _GAMING_XBOX       (+ _GAMING_XBOX_SCARLETT) for Xbox targets
+#   _GAMING_XBOX       (+ _GAMING_XBOX_SCARLETT) for Xbox targets (ANGLE path)
 #   _GAMING_DESKTOP    for the Desktop target
-# Both are handled by xbox_main.cpp; do not set them manually here.
+# Both are handled by xbox_main.cpp; do not set them manually here. The Ninja
+# Scarlett path above instead defines _GAMING_DESKTOP + NEWTONIA_GDK_CONSOLE
+# explicitly (see the XBOX_SCARLETT block below).
 #
-# ANGLE (libEGL / libGLESv2) is used ONLY by the Xbox console target and is NOT
-# bundled with the GDK.  CI fetches the ANGLE.WindowsStore NuGet package and
-# passes -DANGLE_INCLUDE_DIR / -DANGLE_LIB_DIR (see xbox-dev.yml); local builds
-# can set the same cache variables, or set GDK_ROOT to enable the search
-# fallbacks below.  The Desktop target uses the desktop GL renderer over SDL/WGL
-# (GLon12-capable) and needs no ANGLE — see the renderer-target split below.
+# ANGLE (libEGL / libGLESv2) is used ONLY by the abandoned Xbox ANGLE target and
+# is NOT bundled with the GDK.  CI fetches the ANGLE.WindowsStore NuGet package
+# and passes -DANGLE_INCLUDE_DIR / -DANGLE_LIB_DIR (see xbox-dev.yml); local
+# builds can set the same cache variables, or set GDK_ROOT to enable the search
+# fallbacks below.  Both the Desktop target and the decided GLon12 console target
+# use the desktop GL renderer over SDL/WGL and need no ANGLE — see the
+# renderer-target split below.
 # ---------------------------------------------------------------
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Decided Xbox Series console path: GLon12 desktop-GL renderer built for
+# Scarlett via Ninja + GXDK (not the ANGLE MSBuild platform). See the header
+# comment above and xbox/PORT_PLAN.md Option A. Requires the NDA GXDK, so it is
+# OFF by default and only switched on by the GXDK runner / build script.
+option(XBOX_SCARLETT "Build the Xbox Series (Scarlett) GLon12 console package target (requires GXDK)" OFF)
 
 # ---------------------------------------------------------------
 # Build path: GDK MSBuild platform vs plain MSVC (Ninja)
@@ -178,6 +204,26 @@ if(NOT GDK_PLATFORM_BUILD)
     target_compile_definitions(newtonia PRIVATE _GAMING_DESKTOP)
 endif()
 
+# Decided Scarlett console (GLon12): the renderer + present path are exactly the
+# _GAMING_DESKTOP path, so we reuse it and add NEWTONIA_GDK_CONSOLE for the
+# console-only runtime bits (native-res fullscreen, GDK PLM, TV safe area), plus
+# the Game OS API partition so forbidden desktop-only APIs are caught at compile
+# time (same partition the xbox-console-smoke workflow uses).
+if(XBOX_SCARLETT)
+    target_compile_definitions(newtonia PRIVATE
+        NEWTONIA_GDK_CONSOLE
+        WINAPI_FAMILY=WINAPI_FAMILY_GAMES
+    )
+    # GXDK (Xbox extensions) headers: D3D12.x, XSuspendResume.h, XTaskQueue.h,
+    # xgameplatform umbrella. Provided by the GXDK runner; not in the public GRDK.
+    if(DEFINED GXDK_INCLUDE_DIR)
+        target_include_directories(newtonia PRIVATE "${GXDK_INCLUDE_DIR}")
+    else()
+        message(WARNING "XBOX_SCARLETT: GXDK_INCLUDE_DIR not set — XSuspendResume.h/"
+                        "XTaskQueue.h (GXDK) will not be found. Pass -DGXDK_INCLUDE_DIR=<...>.")
+    endif()
+endif()
+
 # SDL_stdinc.h unconditionally defines M_PI, so when _USE_MATH_DEFINES is also
 # set the Windows CRT re-defines it.  Suppress the resulting C4005 warning.
 target_compile_options(newtonia PRIVATE /wd4005)
@@ -198,7 +244,27 @@ if(NOT GDK_PLATFORM_BUILD)
     if(DEFINED GDK_INCLUDE_DIR)
         target_include_directories(newtonia PRIVATE "${GDK_INCLUDE_DIR}")
     endif()
-    target_link_libraries(newtonia PRIVATE gdi32 user32)
+    if(XBOX_SCARLETT)
+        # Game OS API partition: gdi32/user32 are forbidden (and WINAPI_FAMILY_GAMES
+        # hides them). Link the GXDK umbrella (xgameplatform.lib) + Gaming Runtime
+        # (xgameruntime.lib) instead of the default Win32 libs.
+        if(DEFINED GXDK_LIB_DIR)
+            target_link_directories(newtonia PRIVATE "${GXDK_LIB_DIR}")
+        else()
+            message(WARNING "XBOX_SCARLETT: GXDK_LIB_DIR not set — xgameplatform.lib "
+                            "will not be found. Pass -DGXDK_LIB_DIR=<...\\Scarlett\\lib>.")
+        endif()
+        target_link_libraries(newtonia PRIVATE xgameplatform xgameruntime)
+        # TODO(GXDK, dev kit): the canonical Game OS link line is the GDK template's
+        # /NODEFAULTLIB + an explicit lib set (xgameplatform, xgameruntime, the
+        # static /MT CRT: libcmt/libvcruntime/libucrt, pixevt, d3d12_x). The exact
+        # set must be confirmed against the installed GXDK before enabling
+        # /NODEFAULTLIB — a bare /NODEFAULTLIB drops the CRT and fails the link.
+        # Until then we rely on the default resolution (caught at link on a kit).
+    else()
+        # Desktop Ninja canary: SDL + the windowed present path use these.
+        target_link_libraries(newtonia PRIVATE gdi32 user32)
+    endif()
 endif()
 
 target_include_directories(newtonia PRIVATE
@@ -245,6 +311,18 @@ if(NEWTONIA_XBOX_CONSOLE)
     endif()
 
     target_link_libraries(newtonia PRIVATE libEGL libGLESv2)
+elseif(XBOX_SCARLETT)
+    # ---- Decided console path: Mesa GLon12 built for the Xbox cross target.
+    # GL 1.1 base entry points link against GLon12's opengl32 import lib; GL 2.0+
+    # is resolved at runtime via SDL_GL_GetProcAddress (same as Desktop). The
+    # matching opengl32.dll + libgallium_wgl.dll ship in the package. Building
+    # Mesa's d3d12 driver for Xbox is GXDK-gated — see xbox/PORT_PLAN.md Phase 2. ----
+    if(DEFINED GLON12_LIB)
+        target_link_libraries(newtonia PRIVATE "${GLON12_LIB}")
+    else()
+        message(WARNING "XBOX_SCARLETT: GLON12_LIB not set — the Xbox GLon12 opengl32 "
+                        "import lib resolves GL 1.1 entry points. Pass -DGLON12_LIB=<...\\opengl32.lib>.")
+    endif()
 else()
     # ---- Desktop: system OpenGL (GL 1.1 from opengl32; GL 2.0+ resolved at
     # runtime via SDL_GL_GetProcAddress). Resolves to Mesa GLon12 when its

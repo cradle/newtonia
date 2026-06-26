@@ -13,7 +13,10 @@
 
 const float Overlay::CORNER_INSET = 55.0f;
 
-#ifdef _GAMING_XBOX
+// TV title-safe inset applies to any console output (the abandoned ANGLE
+// console path, _GAMING_XBOX, and the decided GLon12 desktop-GL console path,
+// NEWTONIA_GDK_CONSOLE).
+#if defined(_GAMING_XBOX) || defined(NEWTONIA_GDK_CONSOLE)
 const float Overlay::SAFE_AREA_SCALE = 0.9f;
 #else
 const float Overlay::SAFE_AREA_SCALE = 1.0f;
@@ -226,8 +229,8 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
         if(!is_touch_mode()) {
           if(glgame->has_free_controller())
             Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-10, "player 2 press start to join", 8);
-#ifndef _GAMING_XBOX
-          // Keyboard join hint — on Xbox the only join path is a second controller.
+#if !defined(_GAMING_XBOX) && !defined(NEWTONIA_GDK_CONSOLE)
+          // Keyboard join hint — on console the only join path is a second controller.
           else if(!is_steam_gamemode())
             Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-10, "player 2 press enter to join", 8);
 #endif

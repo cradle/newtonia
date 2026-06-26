@@ -64,16 +64,23 @@ Open `ios/Newtonia-iOS.xcodeproj` in Xcode. For simulator builds see `ios/README
 cmake -B xbox/build-desktop -S xbox        # add -G Ninja to match CI exactly
 cmake --build xbox/build-desktop --config Release
 
-# Xbox Series console — requires the NDA GDKX (Scarlett MSBuild platform):
+# Xbox Series console — GLon12 (decided path): Ninja + NDA GXDK, no -A.
+cmake -G Ninja -B xbox/build -S xbox -DXBOX_SCARLETT=ON \
+  -DGXDK_INCLUDE_DIR=... -DGXDK_LIB_DIR=... -DGLON12_LIB=...\opengl32.lib
+cmake --build xbox/build
+# then package: xbox/build_console_package.ps1  (makepkg -> .xvc)
+
+# Xbox Series console — ANGLE fallback (abandoned, GDKX MSBuild platform):
 cmake -B xbox/build -S xbox -A Gaming.Xbox.Scarlett.x64
 ```
 
-`xbox/CMakeLists.txt` builds **two renderer targets**, split on `NEWTONIA_XBOX_CONSOLE` (derived from the generator platform — true only for `-A Gaming.Xbox.*`):
+`xbox/CMakeLists.txt` builds **three modes**; `xbox_main.cpp` documents them:
 
-- **GDK Desktop** (default — any configure *without* `-A Gaming.Xbox.*`, including the plain Ninja CI build): the **desktop GL 3.3 core renderer over SDL's WGL backend** (`SDL_GL_CreateContext`/`SDL_GL_SwapWindow`) — the GLon12-capable path (Option A). Needs neither ANGLE nor the GDK and links only SDL2 + `opengl32`, so it builds standalone with `cmake -B xbox/build-desktop -S xbox`. Drop Mesa's GLon12 `opengl32.dll` next to the exe to run the whole game through OpenGL-on-D3D12 (see `xbox/GLON12_SPIKE.md`). This is the active CI path (`xbox.yml`, self-hosted Ninja + MSVC). (A `-A Gaming.Desktop.x64` GDK-platform build of the same target is also possible but needs the GDK installed; it is not the canonical/CI path.)
-- **Xbox Series console** (`-A Gaming.Xbox.Scarlett.x64`, GDKX-gated): currently renders OpenGL ES 2 through ANGLE (libEGL/libGLESv2 from the ANGLE.WindowsStore NuGet — not bundled with the GDK; located via `ANGLE_INCLUDE_DIR`/`ANGLE_LIB_DIR` or `GDK_ROOT`) with a manual EGL context in `xbox_main.cpp`. **This ANGLE path is an abandoned fallback** — the decided console renderer is GLon12 + the desktop-GL path above (`xbox/PORT_PLAN.md` Option A); the migration is GDKX-gated. The GDK Scarlett platform comes from GDK 2510+ (no separate toolchain file).
+- **GDK Desktop** (default — any configure *without* `-A Gaming.Xbox.*` and without `-DXBOX_SCARLETT`, including the plain Ninja CI build): the **desktop GL 3.3 core renderer over SDL's WGL backend** (`SDL_GL_CreateContext`/`SDL_GL_SwapWindow`) — the GLon12-capable path (Option A), `_GAMING_DESKTOP`. Needs neither ANGLE nor the GDK; links SDL2 + `opengl32`. Drop Mesa's GLon12 `opengl32.dll` next to the exe to run the whole game through OpenGL-on-D3D12 (`xbox/GLON12_SPIKE.md`). Active CI path (`xbox.yml`).
+- **Xbox Series console — GLon12** (`-DXBOX_SCARLETT=ON`, Ninja + GXDK — **the decided console path**): reuses the *same* desktop-GL renderer + SDL_GL present path as GDK Desktop (`_GAMING_DESKTOP`), adding console-only runtime bits (native-res fullscreen, GDK PLM lifecycle, TV title-safe inset) under `NEWTONIA_GDK_CONSOLE`, compiled against the Game OS API partition (`WINAPI_FAMILY_GAMES`). Links `xgameplatform.lib`/`xgameruntime.lib` + the Xbox GLon12 `opengl32` import lib (`/NODEFAULTLIB`). Packages via `xbox/build_console_package.ps1` / `deploy-xbox.yml` → `.xvc`. GXDK-gated TODOs: a Mesa-for-Xbox GLon12 redist and SDL's `VisualC-GDK` backend.
+- **Xbox Series console — ANGLE** (`-A Gaming.Xbox.Scarlett.x64`, `NEWTONIA_XBOX_CONSOLE`/`_GAMING_XBOX`): OpenGL ES 2 through ANGLE (libEGL/libGLESv2 from the ANGLE.WindowsStore NuGet) with a manual EGL context. **Abandoned fallback**, kept compiling for reference only.
 
-See `xbox/PORT_PLAN.md` for the full port plan. Uses static MSVC runtime (`/MT`); `xbox/sdl_gdk_stubs.cpp` provides GDK PLM stub symbols; packaging config in `xbox/MicrosoftGame.config` and `xbox/PackagingLayout.xml`.
+Pre-approval hardware testing now goes **package → publish to Partner Center sandbox → install on a retail console via the Xbox app** (2026 onboarding change; see `xbox/PORT_PLAN.md` §0). See `xbox/PORT_PLAN.md` for the full port plan. Uses static MSVC runtime (`/MT`); `xbox/sdl_gdk_stubs.cpp` provides GDK PLM stub symbols; packaging config in `xbox/MicrosoftGame.config` and `xbox/PackagingLayout.xml`.
 
 ### Sound assets
 `generate_sounds.py` procedurally generates the WAV files in `audio/`.

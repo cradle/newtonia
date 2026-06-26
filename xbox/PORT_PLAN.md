@@ -6,6 +6,67 @@ Status: planning document. Companion to `xbox/CMakeLists.txt`, `xbox_main.cpp`,
 tracks its symbol inventory in `xbox/GDKX_SYMBOLS.md` — the list to diff against
 the real SDK the moment GDKX is installed.
 
+## 0. 2026 onboarding/distribution update (changes the Phase 0/5/6 picture)
+
+Microsoft's GDC 2026 / April 2026 overhaul materially loosened the gates this
+plan was written against. Confirmed from Microsoft developer docs (see sources
+below):
+
+- **The GDK is public.** Docs, samples, and the GDK itself are now publicly
+  available (installable via `winget`); no NDA to *read* the docs or build the
+  GRDK (Desktop) side. The **GXDK** (Xbox console extension — Scarlett platform,
+  D3D12.x, `xb*` tools, `xgameplatform.lib`) is still distributed to enrolled
+  developers and **must never reach this public repo's CI** (logs, caches,
+  artifacts).
+- **Modular onboarding.** Capabilities unlock step-by-step instead of all at
+  concept approval. Account creation + verification already grants Partner
+  Center, sandboxes, and Xbox services — matching the "Limited GDK capabilities"
+  tier on the Partner Center GDK page (Seller ID 94966010).
+- **The sandbox is real retail distribution.** Per Microsoft: the development
+  sandbox is "real distribution through real Xbox infrastructure, scoped to your
+  team… your game gets a real store page in the Xbox app; your testers install
+  and update it the same way players will." So a packaged build can be published
+  to our sandbox and **installed on a real retail console** (via the Xbox app,
+  scoped to the account) *before* full concept approval — a hardware test path
+  that doesn't need a loaned dev kit. This supersedes the old "retail Dev Mode
+  runs UWP only / hardware needs an ID@Xbox dev kit" assumption in §1 item 5.
+- **Foundation Mode (April 15 2026).** Free PlayFab backend (matchmaking,
+  cross-saves, leaderboards) for titles committed to shipping on Xbox. Not used
+  by v1 (offline only) but available now.
+
+What did **not** change: producing the console binary still needs the GXDK
+(Scarlett platform + D3D12.x/GLon12 link), and putting a *retail console into
+direct dev-mode F5 deploy* is still NDA-gated. The achievable pre-approval path
+is **package → publish to sandbox → install on console**, which is exactly what
+the new GLon12 console package build (below) feeds.
+
+Sources: GDC 2026 "What's Changed in Xbox Development"
+(developer.microsoft.com/games/articles/2026/03/…); Xbox Game Dev Update
+Spring '26 (…/2026/04/…); GDK intro + change-dev-kit-mode docs (learn.microsoft.com).
+
+### Console package build (this branch)
+
+The Scarlett **GLon12 console package** path is now wired end-to-end as
+infrastructure (the renderer/present code is the proven `_GAMING_DESKTOP` path;
+only the GXDK link + dev-kit run remain):
+
+- `xbox/CMakeLists.txt` — `-DXBOX_SCARLETT=ON` Ninja path: compiles the
+  desktop-GL renderer for Scarlett as `_GAMING_DESKTOP + NEWTONIA_GDK_CONSOLE +
+  WINAPI_FAMILY_GAMES`, links `xgameplatform.lib`/`xgameruntime.lib` + the Xbox
+  GLon12 `opengl32` import lib (`/NODEFAULTLIB`), no `gdi32`/`user32`/`opengl32`.
+- `xbox_main.cpp` — mode 2: reuses the SDL_GL present path, layering native-res
+  fullscreen + GDK PLM + TV safe-area under `NEWTONIA_GDK_CONSOLE`. The ANGLE
+  path (`_GAMING_XBOX`) is preserved only as the abandoned fallback.
+- `xbox/build_console_package.ps1` — hand-run configure → build → stage →
+  `makepkg` → `.xvc` on a GXDK machine.
+- `.github/workflows/disabled/deploy-xbox.yml` — same pipeline for a self-hosted
+  `gdkx` runner (replaces the old `exit /b 1` stub), staging the GLon12 DLLs.
+
+Still GXDK-gated (cannot run on this repo's CI / on Linux): a Mesa-for-Xbox
+GLon12 build (`opengl32.dll`/`libgallium_wgl.dll` + import lib) and SDL's
+official `VisualC-GDK` backend (work-item #4). Both are marked TODO in the
+build files.
+
 ## 1. Where the port stands today
 
 ### Proven (builds in CI, code reviewed)
@@ -59,9 +120,12 @@ the real SDK the moment GDKX is installed.
    toolchain come with GDKX, which is NDA-distributed to ID@Xbox members and
    must not be uploaded to public CI runners. The disabled `deploy-xbox.yml`
    as written (Scarlett configure on a hosted runner) cannot work.
-5. **Hardware access required.** Retail-console Developer Mode runs UWP apps
-   only; GDK packages need an ID@Xbox dev kit. There is no way to runtime-test
-   the console build before Phase 0 completes.
+5. **Hardware access — eased by the 2026 sandbox path (§0).** The old
+   assumption ("retail Dev Mode runs UWP only; GDK packages need a loaned dev
+   kit") is superseded: a packaged build can be **published to the team sandbox
+   and installed on a retail console via the Xbox app** before concept approval.
+   Producing the package still needs the GXDK; direct dev-mode F5 deploy to a
+   retail console remains NDA-gated.
 6. **Packaging details incomplete.** ~~`TargetDeviceFamily` mismatch~~ (now
    aligned to Scarlett) and ~~missing `xbox/Assets/`~~ (placeholder art
    generated by `xbox/generate_assets.py`) are resolved; identity/StoreId
@@ -369,7 +433,8 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 | 3a | ✅ GDKX-free GLon12 desktop spike **done**: Newtonia's GL 3.3 core renderer runs through GLon12's real OpenGL→D3D12 path on desktop GPU (`D3D12 (NVIDIA RTX 5080)`, 29/29 entry points, GLSL ≥330, triangle). Hosted-CI confirmation via llvmpipe is recorded in `xbox/GLON12_SPIKE.md`; that harness (`windows-glon12-spike.yml`) is now retired/disabled since the result is conclusive. Only the Xbox Game OS feature level under GDKX remains | `xbox/glon12/`, `xbox/GLON12_SPIKE.md` | 2 |
 | 4 | Switch console SDL2 to official `VisualC-GDK` build (enables the WGL+GLon12 path; merges with #3); drop `/U__GDK__` + stubs for console | `xbox/CMakeLists.txt`, `sdl_gdk_stubs.cpp` | 2 |
 | 4a | ✅ **Desktop** target moved to the SDL WGL + desktop-GL-core renderer (the GLon12-capable path), GDKX-free: `_GAMING_DESKTOP` now compiles the desktop GL shim (split `NEWTONIA_NO_GLUT` from `DESKTOP_COMPAT_GL`) and creates its context with `SDL_GL_CreateContext`/`SDL_GL_SwapWindow`; ANGLE/EGL + pbuffer→GDI blit dropped for Desktop (kept for console). Links only SDL2 + `opengl32`; builds without the GDK (`cmake -S xbox`). **Full-game GLon12 confirmed**: the actual `newtonia.exe` (not just the probe) boots through GLon12/D3D12 — `GL context: vendor=Microsoft Corporation renderer=D3D12 (NVIDIA GeForce RTX 5080) version=4.6 (Core Profile) Mesa 24.3.4` (see `xbox/GLON12_SPIKE.md`). The self-hosted `xbox.yml` compiles this target on every PR as a regression gate. Console (#4/#5) stays ANGLE until GDKX | `gl_compat.h`, `gles2_compat.h/.cpp`, `xbox_main.cpp`, `xbox/CMakeLists.txt` | 2 |
-| 5 | Rework `_GAMING_XBOX` present path per #3 (console; GDKX-gated — Desktop equivalent done in 4a) | `xbox_main.cpp` | 3 |
+| 5 | ✅ Console present path = the GLon12 decision: added mode 2 (`_GAMING_DESKTOP` + `NEWTONIA_GDK_CONSOLE`) reusing the SDL_GL present path with native-res fullscreen + PLM + safe-area layered on; ANGLE `_GAMING_XBOX` kept as abandoned fallback. GXDK link still gated | `xbox_main.cpp`, `view/overlay.cpp` | 3 |
+| 5b | 🔶 Scarlett **GLon12 console package** build wired: `-DXBOX_SCARLETT=ON` CMake path (xgameplatform + GLon12 link, Game OS partition), `xbox/build_console_package.ps1`, and a real configure→build→makepkg `deploy-xbox.yml`. GXDK-gated bits (Mesa-for-Xbox GLon12 redist, SDL VisualC-GDK) remain TODO | `xbox/CMakeLists.txt`, `xbox/build_console_package.ps1`, `xbox/PackagingLayout.xml`, `deploy-xbox.yml` | 5 |
 | 6 | ✅ `asset_path()` helper (SDL_GetBasePath prefix on GDK) | `asset_path.h` + 33 audio call sites | 3 |
 | 7 | WarpPass 4K performance (profile; optional internal-res scale) | `warp_pass.cpp` | 3 |
 | 8 | PLM resume registration + constrained mode | `xbox_main.cpp` | 4 |

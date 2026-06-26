@@ -12,9 +12,13 @@
       Assets\                   (tile / splash images)
       bin\
         newtonia.exe
-        libEGL.dll
-        libGLESv2.dll
+        opengl32.dll            (Mesa GLon12 — decided console renderer)
+        libgallium_wgl.dll      (Mesa GLon12 Gallium WGL frontend)
+        dxil.dll                (DXIL shader signing for GLon12, if required)
         audio\                  (WAV + MP3 files)
+
+  (Abandoned ANGLE fallback shipped libEGL.dll / libGLESv2.dll here instead;
+   the GLon12 path above is the decided renderer — see xbox/PORT_PLAN.md.)
 
   The single "Launch" chunk contains everything; there is no streaming /
   optional DLC content, so a flat single-chunk layout is sufficient.
@@ -41,7 +45,8 @@
                      SourcePath="\Assets\"
                      IncludePattern="*"/>
 
-          <!-- Executable and ANGLE DLLs -->
+          <!-- Executable + renderer DLLs (Mesa GLon12: opengl32.dll,
+               libgallium_wgl.dll, dxil.dll — the decided console renderer) -->
           <FileGroup DestinationPath="\"
                      SourcePath="\bin\"
                      IncludePattern="*.exe;*.dll"/>
