@@ -1,14 +1,23 @@
-// GDK entry point — Xbox console (_GAMING_XBOX) and GDK Desktop (_GAMING_DESKTOP).
+// GDK entry point — three build modes:
 //
-// Console (_GAMING_XBOX): GLES2 via ANGLE (libEGL / libGLESv2 from the
-// ANGLE.WindowsStore NuGet), with a manually-managed EGL context — the same
-// GLES2 renderer path as Android / Web.
+//   1. GDK Desktop (_GAMING_DESKTOP, no NEWTONIA_GDK_CONSOLE): the desktop GL
+//      3.3 core renderer over SDL's WGL backend (SDL_GL_CreateContext). Reaches
+//      Mesa's GLon12 (OpenGL-on-D3D12) by dropping its DLLs next to the exe.
+//      The PC test vehicle / CI canary. Needs neither ANGLE nor the GDK.
 //
-// GDK Desktop (_GAMING_DESKTOP): the desktop GL 3.3 core renderer over SDL's
-// WGL backend (SDL_GL_CreateContext). This is the path that reaches Mesa's
-// GLon12 (OpenGL-on-D3D12) — the console's intended renderer once GDKX is
-// available — so it needs neither ANGLE nor the GDK to build or run. See
-// xbox/PORT_PLAN.md (Option A) and xbox/GLON12_SPIKE.md.
+//   2. Xbox console — GLon12 (_GAMING_DESKTOP + NEWTONIA_GDK_CONSOLE): the
+//      DECIDED console path (xbox/PORT_PLAN.md Option A). Reuses mode 1's
+//      desktop-GL renderer and SDL_GL present path verbatim — GLon12 exposes
+//      desktop OpenGL, not GLES — and layers console-only runtime behaviour on
+//      top: native-resolution fullscreen, GDK PLM (suspend/resume) lifecycle,
+//      and the TV title-safe inset. Built for Gaming.Xbox.Scarlett against the
+//      Game OS API partition (WINAPI_FAMILY_GAMES); GLon12's opengl32.dll +
+//      libgallium_wgl.dll ship in the package. GXDK-gated (link + dev kit).
+//
+//   3. Xbox console — ANGLE (_GAMING_XBOX): the ABANDONED fallback. GLES2 via
+//      ANGLE (libEGL / libGLESv2) with a manual EGL context — the same GLES2
+//      renderer path as Android / Web. Kept compiling as a reference only; the
+//      decided path is mode 2. See xbox/PORT_PLAN.md / xbox/GLON12_SPIKE.md.
 //
 // Mirrors android_main.cpp: SDL2 event loop, SDL_GameController input,
 // focus-lost / focus-gained lifecycle events required by GDK certification.
@@ -47,10 +56,12 @@
 #include <SDL_mixer.h>
 #include <SDL_syswm.h>   // SDL_GetWindowWMInfo / HWND
 
-// Direct GDK PLM headers — Xbox console only.
-// SDL2's Win32 backend does not hook GDK PLM, so we register suspend
-// acknowledgment callbacks directly to satisfy Xbox certification.
-#ifdef _GAMING_XBOX
+// Direct GDK PLM headers — both Xbox console modes (ANGLE _GAMING_XBOX and the
+// decided GLon12 NEWTONIA_GDK_CONSOLE). SDL2's Win32 backend does not hook GDK
+// PLM, so we register suspend acknowledgment callbacks directly to satisfy Xbox
+// certification. GXDK-only headers — the GDK Desktop build (mode 1) and the
+// hosted console-API smoke do NOT define these macros, so they stay GXDK-free.
+#if defined(_GAMING_XBOX) || defined(NEWTONIA_GDK_CONSOLE)
 #  include <XSuspendResume.h>
 #  include <XTaskQueue.h>
 #endif
@@ -126,7 +137,7 @@ static void toggle_fullscreen()
 }
 #endif
 
-#ifdef _GAMING_XBOX
+#if defined(_GAMING_XBOX) || defined(NEWTONIA_GDK_CONSOLE)
 // ---------------------------------------------------------------
 // GDK PLM (Process Lifetime Management) — Xbox certification
 // ---------------------------------------------------------------
@@ -140,7 +151,7 @@ static void CALLBACK plm_suspend_callback(void * /*ctx*/,
     s_reset_tick = true;
     XSuspendResumeAcknowledge(ackId);
 }
-#endif // _GAMING_XBOX
+#endif // _GAMING_XBOX || NEWTONIA_GDK_CONSOLE
 
 // Map an SDL keycode to the game's key encoding. ASCII keys (< 128) pass
 // through; function keys F1..F12 become 129..140 (128 + GLUT_KEY_Fn), matching
@@ -159,9 +170,10 @@ int main(int argc, char *argv[])
     (void)argc; (void)argv;
     srand((unsigned)time(NULL));
 
-    // Route SDL log output to a file alongside the exe so errors are
-    // visible when launched without a console.
-#ifdef _GAMING_DESKTOP
+    // Route SDL log output to a file alongside the exe so errors are visible
+    // when launched without a console. Desktop only — the console install dir is
+    // read-only; on console, view SDL_Log via the GDK debugger (CONSOLE_BRINGUP).
+#if defined(_GAMING_DESKTOP) && !defined(NEWTONIA_GDK_CONSOLE)
     SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
     {
         char logPath[MAX_PATH];
@@ -185,7 +197,7 @@ int main(int argc, char *argv[])
     }
     SDL_Log("SDL_Init OK");
 
-#ifdef _GAMING_XBOX
+#if defined(_GAMING_XBOX) || defined(NEWTONIA_GDK_CONSOLE)
     // Xbox always renders fullscreen; query the display's native resolution.
     {
         SDL_DisplayMode dm;
@@ -214,8 +226,12 @@ int main(int argc, char *argv[])
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 #endif
     const Uint32 window_flags =
-#ifdef _GAMING_XBOX
+#if defined(_GAMING_XBOX)
+        // ANGLE console: EGL owns the surface, so no SDL_WINDOW_OPENGL.
         SDL_WINDOW_FULLSCREEN;
+#elif defined(NEWTONIA_GDK_CONSOLE)
+        // GLon12 console: fullscreen, but SDL drives the WGL context.
+        SDL_WINDOW_FULLSCREEN | SDL_WINDOW_OPENGL;
 #else
         SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL;
 #endif
@@ -371,7 +387,8 @@ int main(int argc, char *argv[])
     load_preferences();
     SDL_Log("Preferences loaded");
 
-#ifndef _GAMING_XBOX
+#if !defined(_GAMING_XBOX) && !defined(NEWTONIA_GDK_CONSOLE)
+    // Windowed-fullscreen pref is Desktop-only; console is always native fullscreen.
     if (g_prefs.fullscreen) {
         SDL_SetWindowFullscreen(s_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
         SDL_ShowCursor(SDL_DISABLE);
@@ -379,7 +396,7 @@ int main(int argc, char *argv[])
     }
 #endif
 
-#ifdef _GAMING_XBOX
+#if defined(_GAMING_XBOX) || defined(NEWTONIA_GDK_CONSOLE)
     if (SUCCEEDED(XTaskQueueCreate(XTaskQueueDispatchMode_ThreadPool,
                                    XTaskQueueDispatchMode_Manual,
                                    &s_plm_queue))) {
@@ -438,7 +455,8 @@ int main(int argc, char *argv[])
             }
 
             case SDL_APP_WILLENTERBACKGROUND:
-#ifndef _GAMING_XBOX
+#if !defined(_GAMING_XBOX) && !defined(NEWTONIA_GDK_CONSOLE)
+                // On console, suspend is handled by the PLM callback instead.
                 s_game->focus_lost();
 #endif
                 break;
@@ -568,7 +586,7 @@ int main(int argc, char *argv[])
     SDL_DestroyWindow(s_window);
     SDL_Quit();
 
-#ifdef _GAMING_XBOX
+#if defined(_GAMING_XBOX) || defined(NEWTONIA_GDK_CONSOLE)
     if (s_plm_queue) {
         XSuspendResumeUnregisterForSuspend(&s_plm_token);
         XTaskQueueCloseHandle(s_plm_queue);

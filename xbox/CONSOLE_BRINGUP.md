@@ -1,20 +1,28 @@
 # Console bring-up — Phase 3 checklist
 
-Validates Newtonia running on an **Xbox Series X|S** target (a dev kit, or a
-retail console in GDK Developer Mode). Companion to `DESKTOP_TEST_PASS.md`
-(which covers the GDK *Desktop* canary) and `PORT_PLAN.md` Phase 3.
+Validates Newtonia running on an **Xbox Series X|S** target: a dev kit, a retail
+console in GDK Developer Mode, **or** a retail console that installed the package
+from your Partner Center sandbox via the Xbox app (the 2026 path — see
+`PORT_PLAN.md` §0). Companion to `DESKTOP_TEST_PASS.md` (the GDK *Desktop*
+canary) and `PORT_PLAN.md` Phase 3.
 
 ## Prerequisites
 
-- [ ] GDKX installed on the build machine (NDA; from your ID@Xbox account).
-- [ ] A console target: retail Series X|S in Developer Mode **or** a dev kit,
-      activated/registered to your ID@Xbox account.
-- [ ] **Phase 2 rendering decision made** — the console build must produce a
-      binary that can actually present to the Xbox GPU. ANGLE.WindowsStore is
-      desktop-D3D11; the console needs D3D12.X. Section B is where this is
-      proven, so don't expect a picture until Phase 2 lands.
-- [ ] A Scarlett build path in `xbox/CMakeLists.txt` (Ninja, `_GAMING_XBOX`,
-      GXDK `xbox/` includes+libs) — see `deploy-xbox.yml` Configure TODO.
+- [ ] GXDK installed on the build machine (from your enrolled developer account).
+- [ ] A console target: retail Series X|S (Developer Mode or sandbox install)
+      **or** a dev kit, registered to your developer account.
+- [x] **Rendering decided — GLon12** (`PORT_PLAN.md` Option A). The console build
+      is the desktop-GL renderer through Mesa GLon12 (OpenGL→D3D12), reusing the
+      `_GAMING_DESKTOP` path verbatim. Section B still proves it presents on the
+      console GPU, but the renderer is no longer an open question.
+- [x] **Scarlett build path exists** in `xbox/CMakeLists.txt`
+      (`-DXBOX_SCARLETT=ON` → `_GAMING_DESKTOP` + `NEWTONIA_GDK_CONSOLE`,
+      GXDK includes/libs + the GLon12 import lib). Build it with
+      `xbox/build_console_package.ps1` or `deploy-xbox.yml`.
+- [ ] **GXDK-gated TODOs before a picture appears:** a Mesa-for-Xbox GLon12
+      redist (`opengl32.dll`/`libgallium_wgl.dll` + import lib, set via
+      `NEWTONIA_GLON12_DIR`/`-DGLON12_LIB`) and SDL's official `VisualC-GDK`
+      backend (work-item #4). See `PORT_PLAN.md` Phase 2.
 
 Capturing output on console (there is no `newtonia.log` like Desktop):
 view `SDL_Log`/`OutputDebugString` via the GDK debugger (Visual Studio GDK
