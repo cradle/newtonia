@@ -2,6 +2,7 @@
 #define GL_MINI_STATION_H
 
 #include <list>
+#include <SDL_mixer.h>
 #include "glship.h"
 #include "mesh.h"
 #include "object.h"
@@ -44,6 +45,9 @@ private:
   float time_until_next_shot;
   static const float SHOOT_INTERVAL;   // ms between shots
   static const float DRIFT_SPEED;      // world units per ms
+
+  Mix_Chunk *explode_sound;
+  Mix_Chunk *shoot_sound;
 };
 
 #endif

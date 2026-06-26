@@ -78,6 +78,30 @@ def make_explode():
         samples.append((noise * 0.5 + thud * 0.3 + crunch * 0.2) * env)
     return samples
 
+def make_station_explode():
+    """Mini-station destruction: deep boom with tearing metal and debris, 1.4s."""
+    n = int(SAMPLE_RATE * 1.4)
+    rng = random.Random(2024)
+    samples = []
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        # Sharp attack then a long-ish decay for a weighty blast.
+        attack = min(1.0, t / 0.004)
+        env = attack * math.exp(-t * 3.2)
+        # Sub/low boom for the body of the explosion.
+        sub  = math.sin(2 * math.pi * 40  * t) * math.exp(-t * 3.5) * 0.8
+        boom = math.sin(2 * math.pi * 80  * t) * math.exp(-t * 5.0) * 0.5
+        # Inharmonic metallic partials — the ring structure tearing apart.
+        metal  = math.sin(2 * math.pi * 430  * t) * math.exp(-t * 6.0) * 0.22
+        metal += math.sin(2 * math.pi * 723  * t) * math.exp(-t * 7.5) * 0.16
+        metal += math.sin(2 * math.pi * 1310 * t) * math.exp(-t * 9.0) * 0.10
+        # Initial noise burst (the blast front).
+        noise = (rng.random() * 2 - 1) * math.exp(-t * 9.0) * 0.5
+        # Trailing debris/rumble that lingers after the boom.
+        debris = (rng.random() * 2 - 1) * math.exp(-t * 2.0) * 0.14
+        samples.append((sub + boom + metal + noise + debris) * env)
+    return samples
+
 def make_thud():
     """Bullet hits invincible asteroid: low woody knock, 600ms."""
     n = int(SAMPLE_RATE * 0.60)
@@ -534,6 +558,7 @@ if __name__ == '__main__':
         'god_mode_music_warn.wav':  make_god_mode_music_warn,
         'pickup.wav':          make_pickup,
         'giga_mine_explode.wav': make_giga_mine_explode,
+        'station_explode.wav':   make_station_explode,
         'ting.wav':              make_ting,
         'asteroid_ting.wav':     make_asteroid_ting,
         'warp.wav':              make_warp,

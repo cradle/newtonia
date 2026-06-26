@@ -8,6 +8,8 @@
 #include "particle.h"
 #include "ship.h"
 #include "grid.h"
+#include "asset_path.h"
+#include <iostream>
 
 using namespace std;
 
@@ -34,6 +36,15 @@ GLMiniStation::GLMiniStation(const Grid &grid, list<GLShip*>* players, list<Obje
   outer_rotation_speed = 0.01f;
   inner_rotation_speed = -0.0025f;
   inner_rotation = outer_rotation = 0.0f;
+
+  explode_sound = Mix_LoadWAV(asset_path("audio/station_explode.wav").c_str());
+  if (explode_sound == NULL) {
+    std::cout << "Unable to load station_explode.wav (" << Mix_GetError() << ")" << std::endl;
+  }
+  shoot_sound = Mix_LoadWAV(asset_path("audio/shoot.wav").c_str());
+  if (shoot_sound == NULL) {
+    std::cout << "Unable to load shoot.wav (" << Mix_GetError() << ")" << std::endl;
+  }
 
   float r = radius, r2 = radius * 0.9f;
   float segment_size = 360.0f / NUM_SEGMENTS;
@@ -92,12 +103,18 @@ GLMiniStation::GLMiniStation(const Grid &grid, list<GLShip*>* players, list<Obje
 }
 
 GLMiniStation::~GLMiniStation() {
+  if (explode_sound != NULL)
+    Mix_FreeChunk(explode_sound);
+  if (shoot_sound != NULL)
+    Mix_FreeChunk(shoot_sound);
 }
 
 void GLMiniStation::destroy() {
   if (!alive) return;
   alive = false;
   lives = 0;
+  if (explode_sound != NULL)
+    Mix_PlayChannel(-1, explode_sound, 0);
   // Radial debris burst sized to the station's radius.
   int count = 120;
   debris.reserve(debris.size() + count);
@@ -169,6 +186,9 @@ void GLMiniStation::fire_at_nearest_player() {
   WrappedPoint muzzle(position.x() + dir.x() * (radius + 5.0f),
                       position.y() + dir.y() * (radius + 5.0f));
   bullets.push_back(Particle(muzzle, dir * 0.615f + velocity * 0.99f, 2000.0f));
+
+  if (shoot_sound != NULL)
+    Mix_PlayChannel(-1, shoot_sound, 0);
 }
 
 void GLMiniStation::step(float delta, const Grid &grid) {
