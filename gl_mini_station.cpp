@@ -13,7 +13,7 @@
 
 using namespace std;
 
-const float GLMiniStation::SHOOT_INTERVAL = 5000.0f;  // fire every 5 seconds
+const float GLMiniStation::SHOOT_INTERVAL = 3000.0f;  // fire every 3 seconds
 const float GLMiniStation::DRIFT_SPEED    = 0.12f;    // steady cruise speed
 
 GLMiniStation::GLMiniStation(const Grid &grid, list<GLShip*>* players, list<Object*>* /*asteroids*/)
@@ -33,14 +33,14 @@ GLMiniStation::GLMiniStation(const Grid &grid, list<GLShip*>* players, list<Obje
   time_until_respawn = 0;
   time_until_next_shot = SHOOT_INTERVAL;
 
+  // The station drifts but never thrusts, so silence the idle engine hum that
+  // Ship's constructor starts on a looping channel.
+  mute_engine();
+
   outer_rotation_speed = 0.01f;
   inner_rotation_speed = -0.0025f;
   inner_rotation = outer_rotation = 0.0f;
 
-  explode_sound = Mix_LoadWAV(asset_path("audio/station_explode.wav").c_str());
-  if (explode_sound == NULL) {
-    std::cout << "Unable to load station_explode.wav (" << Mix_GetError() << ")" << std::endl;
-  }
   shoot_sound = Mix_LoadWAV(asset_path("audio/shoot.wav").c_str());
   if (shoot_sound == NULL) {
     std::cout << "Unable to load shoot.wav (" << Mix_GetError() << ")" << std::endl;
@@ -103,8 +103,6 @@ GLMiniStation::GLMiniStation(const Grid &grid, list<GLShip*>* players, list<Obje
 }
 
 GLMiniStation::~GLMiniStation() {
-  if (explode_sound != NULL)
-    Mix_FreeChunk(explode_sound);
   if (shoot_sound != NULL)
     Mix_FreeChunk(shoot_sound);
 }
@@ -113,8 +111,8 @@ void GLMiniStation::destroy() {
   if (!alive) return;
   alive = false;
   lives = 0;
-  if (explode_sound != NULL)
-    Mix_PlayChannel(-1, explode_sound, 0);
+  // The destruction sound is owned and played by GLGame (so the chunk safely
+  // outlives this object, which is deleted once its debris has faded).
   // Radial debris burst sized to the station's radius.
   int count = 120;
   debris.reserve(debris.size() + count);

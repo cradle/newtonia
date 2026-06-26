@@ -111,6 +111,13 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   }
 }
 
+void Ship::mute_engine() {
+  if(boost_channel >= 0) {
+    Mix_HaltChannel(boost_channel);
+    boost_channel = -1;
+  }
+}
+
 void Ship::add_behaviour(Behaviour *b) {
   behaviours.push_back(b);
 }

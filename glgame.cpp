@@ -117,6 +117,12 @@ GLGame::GLGame(SDL_GameController *controller) :
       std::cout << "Unable to load warp.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
+  if(station_explode_sound == NULL) {
+    station_explode_sound = Mix_LoadWAV(asset_path("audio/station_explode.wav").c_str());
+    if(station_explode_sound == NULL) {
+      std::cout << "Unable to load station_explode.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
 }
 
 GLGame::~GLGame() {
@@ -169,6 +175,9 @@ GLGame::~GLGame() {
   }
   if(warp_sound != NULL) {
     Mix_FreeChunk(warp_sound);
+  }
+  if(station_explode_sound != NULL) {
+    Mix_FreeChunk(station_explode_sound);
   }
   delete warp_pass_;
 }
@@ -296,6 +305,12 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     warp_sound = Mix_LoadWAV(asset_path("audio/warp.wav").c_str());
     if(warp_sound == NULL) {
       std::cout << "Unable to load warp.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(station_explode_sound == NULL) {
+    station_explode_sound = Mix_LoadWAV(asset_path("audio/station_explode.wav").c_str());
+    if(station_explode_sound == NULL) {
+      std::cout << "Unable to load station_explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
 }
@@ -1000,6 +1015,11 @@ void GLGame::tick(int delta) {
             ++i;
           }
         }
+      }
+      // The station was alive when this block started; if a player just
+      // destroyed it, play the destruction sound once.
+      if (!mini_station->is_alive() && station_explode_sound != NULL) {
+        Mix_PlayChannel(-1, station_explode_sound, 0);
       }
     }
 

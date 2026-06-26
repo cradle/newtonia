@@ -46,7 +46,6 @@ private:
   static const float SHOOT_INTERVAL;   // ms between shots
   static const float DRIFT_SPEED;      // world units per ms
 
-  Mix_Chunk *explode_sound;
   Mix_Chunk *shoot_sound;
 };
 

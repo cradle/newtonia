@@ -153,6 +153,10 @@ class Ship : public CompositeObject {
 
   protected:
 
+    // Stop the looping engine/boost sound. Ships that never thrust (e.g. the
+    // roaming mini-station) call this so they don't hold an idle hum channel.
+    void mute_engine();
+
     void lay_mine();
     void respawn(const Grid &grid, bool was_killed = true);
     void init(bool no_friction);
