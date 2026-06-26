@@ -423,6 +423,29 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 3. Partner Center submission via `deploy-xbox.yml` (or manual upload),
    age ratings, store listing, screenshots.
 
+### Phase 7 — Xbox Play Anywhere (post-launch goal)
+
+Buy-once, play-on-both: a single purchase grants entitlement on both Xbox
+console and Windows PC (via the Xbox app / Microsoft Store), with cloud-roaming
+saves so progress carries across devices.
+
+Requirements (ref: https://developer.microsoft.com/en-us/games/resources/xbox-play-anywhere/):
+
+1. Publish both the **Windows Desktop** and **Xbox Console** SKUs under the same
+   Partner Center product (same Title ID). Cross-entitlement is automatic once
+   both are published.
+2. Use `XGameSaveFiles` (or another XR-052-compliant save mechanism) with the
+   same Title ID and XUID so saves roam between devices. This is the same
+   `XGameSave` work in item 10 — Play Anywhere doesn't add new code, just
+   requires saves to be cloud-roaming (not local-only `SDL_GetPrefPath`).
+3. Verify the shared save format works across both builds (same `savegame.cpp`
+   binary format, magic "NWTN" v9 — already shared).
+4. Partner Center configuration: enable Xbox Play Anywhere for the product.
+
+Newtonia is well-positioned: both targets share the same codebase, renderer,
+and save format. The only code gap is the `XGameSave` migration (item 10,
+Phase 4). The rest is Partner Center configuration.
+
 ## 4. Concrete code work-item list
 
 | # | Item | Files | Phase |
@@ -444,6 +467,7 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 | 12 | 🔶 Store assets + config identity + family alignment — placeholder art generated (`xbox/generate_assets.py` → `xbox/Assets/`), `TargetDeviceFamily` aligned to Scarlett, and identity kept out of source as `__FILL_*__` tokens injected from GitHub secrets at deploy time (checklist `xbox/PARTNER_CENTER_VALUES.md`; deploy workflow checks secrets + post-substitution). Set secrets once Partner Center title exists; real art still TODO | `xbox/Assets/`, `MicrosoftGame.config`, `PackagingLayout.xml`, `xbox/PARTNER_CENTER_VALUES.md`, `deploy-xbox.yml` | 5 |
 | 13 | Self-hosted console CI job (needs GDKX) + deploy workflow rework | `.github/workflows/` | 5 |
 | 14 | ✅ Console API-surface compile smoke on hosted runners (`WINAPI_FAMILY_GAMES` + `_GAMING_DESKTOP`, compile-only — guards the desktop-GL/GLon12 renderer + shared code against the Game OS partition; ANGLE/GLES2 flow no longer compiled) | `.github/workflows/xbox-console-smoke.yml` | 5 |
+| 15 | ⏳ **Xbox Play Anywhere** — publish both Windows Desktop + Xbox Console SKUs under the same Title ID; migrate saves to `XGameSaveFiles` (XR-052) so progress roams across devices; enable Play Anywhere in Partner Center. Code dep: item 10 (`XGameSave`). No new renderer/game code needed | Partner Center config, `savegame.cpp`, `xbox/gdk_storage.*` | 7 |
 
 ## 5. Sequencing and effort (single developer, rough)
 
