@@ -953,13 +953,26 @@ void GLGame::tick(int delta) {
       }
     }
 
-    /* COLLIDE PLAYER SHOTS WITH MINI-STATION */
-    // The roaming mini-station dies to a single player shot and rewards a flat
-    // bounty. It passes straight through asteroids, so only player bullets and
-    // missiles can destroy it.
+    /* COLLIDE PLAYERS AND PLAYER SHOTS WITH MINI-STATION */
+    // The roaming mini-station dies to a single player shot or to a ram, and
+    // rewards a flat bounty. It passes straight through asteroids, so only
+    // players and their bullets/missiles interact with it. Ramming destroys
+    // both the player and the station, unless the player is invincible, in
+    // which case only the station is destroyed.
     if (mini_station != NULL && mini_station->is_alive()) {
       for (o = players->begin(); o != players->end() && mini_station->is_alive(); o++) {
         Ship* s = (*o)->ship;
+        // Body collision (ram)
+        if (s->is_alive() && mini_station->Object::collide(*s)) {
+          s->explode(s->position, mini_station->velocity);
+          if (!s->invincible) {
+            s->kill_stop();
+            s->detonate();
+          }
+          s->score += GLMiniStation::REWARD;
+          mini_station->destroy();
+          break;
+        }
         for (size_t i = 0; i < s->bullets.size(); ) {
           if (mini_station->Object::collide(s->bullets[i])) {
             s->explode(s->bullets[i].position, mini_station->velocity);
