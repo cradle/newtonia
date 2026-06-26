@@ -122,11 +122,25 @@ struct Station {
     std::vector<Enemy> enemies;
 };
 
+// ── Mini-station ─────────────────────────────────────────────────────────────
+// The small roaming station that appears once the black hole has been
+// introduced. It drifts at a constant velocity (its single random direction)
+// and fires at the nearest player on a fixed timer.
+
+struct MiniStation {
+    bool  present;          // false = no mini-station in this save
+    bool  alive;
+    float pos_x, pos_y;
+    float vel_x, vel_y;     // constant drift velocity == direction it flies
+    float inner_rotation, outer_rotation;
+    float time_until_next_shot;
+};
+
 // ── Top-level game state ─────────────────────────────────────────────────────
 
 struct GameState {
     static constexpr uint32_t MAGIC   = 0x4E57544E;  // "NWTN"
-    static constexpr uint16_t VERSION = 9;
+    static constexpr uint16_t VERSION = 10;
 
     int   generation;
     float world_x, world_y;
@@ -139,6 +153,7 @@ struct GameState {
     std::vector<Pickup>    pickups;
     std::vector<BlackHole> black_holes;
     Station                station;
+    MiniStation            mini_station;
 };
 
 // ── API ───────────────────────────────────────────────────────────────────────

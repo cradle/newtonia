@@ -9,6 +9,7 @@
 #include "grid.h"
 #include "glstarfield.h"
 #include "glstation.h"
+#include "gl_mini_station.h"
 #include "asteroid.h"
 #include "black_hole.h"
 #include "pickup.h"
@@ -105,6 +106,7 @@ private:
   Grid grid;
   GLStarfield *starfield;
   GLStation *station;
+  GLMiniStation *mini_station;
   list<GLShip*> *enemies, *players;
   list<Object*> *ship_objects;  // Ship* (as Object*) for missile homing
 };

@@ -304,6 +304,32 @@ static bool read_station(FILE *f, Save::Station &s) {
     return true;
 }
 
+static bool write_mini_station(FILE *f, const Save::MiniStation &s) {
+    if (!wv(f, (uint8_t)s.present)) return false;
+    if (!s.present) return true;
+    if (!wv(f, (uint8_t)s.alive)) return false;
+    if (!wv(f, s.pos_x) || !wv(f, s.pos_y)) return false;
+    if (!wv(f, s.vel_x) || !wv(f, s.vel_y)) return false;
+    if (!wv(f, s.inner_rotation) || !wv(f, s.outer_rotation)) return false;
+    if (!wv(f, s.time_until_next_shot)) return false;
+    return true;
+}
+
+static bool read_mini_station(FILE *f, Save::MiniStation &s) {
+    uint8_t present = 0;
+    if (!rv(f, present)) return false;
+    s.present = (bool)present;
+    if (!s.present) return true;
+    uint8_t alive = 0;
+    if (!rv(f, alive)) return false;
+    s.alive = (bool)alive;
+    if (!rv(f, s.pos_x) || !rv(f, s.pos_y)) return false;
+    if (!rv(f, s.vel_x) || !rv(f, s.vel_y)) return false;
+    if (!rv(f, s.inner_rotation) || !rv(f, s.outer_rotation)) return false;
+    if (!rv(f, s.time_until_next_shot)) return false;
+    return true;
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 bool Save::save_exists() {
@@ -357,6 +383,7 @@ bool Save::save_game(const Save::GameState &s) {
     for (const auto &bh : s.black_holes) ok = ok && wv(f, bh.pos_x) && wv(f, bh.pos_y);
 
     ok = ok && write_station(f, s.station);
+    ok = ok && write_mini_station(f, s.mini_station);
 
     fclose(f);
 
@@ -413,6 +440,7 @@ bool Save::load_game(Save::GameState &s) {
         ok = ok && rv(f, bh.pos_x) && rv(f, bh.pos_y);
 
     ok = ok && read_station(f, s.station);
+    ok = ok && read_mini_station(f, s.mini_station);
 
     fclose(f);
     return ok;

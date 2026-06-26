@@ -70,6 +70,7 @@ class Ship : public CompositeObject {
     static void collide(Ship *first, Ship *second);
     // bool collide_object(Object *other);
     void collide_grid(Grid &grid, int delta);
+    void collide_bullets_with_asteroids(const Grid &grid, int delta);
     void collide(Ship *other);
 
     //TODO: make friends with glship
