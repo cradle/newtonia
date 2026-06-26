@@ -122,11 +122,32 @@ struct Station {
     std::vector<Enemy> enemies;
 };
 
+// ── Mini-station ─────────────────────────────────────────────────────────────
+// The small roaming station that appears once the black hole has been
+// introduced. It drifts at a constant velocity (its single random direction)
+// and fires at the nearest player on a fixed timer.
+
+struct MiniStation {
+    bool  present;          // false = no mini-station in this save
+    bool  alive;
+    float pos_x, pos_y;
+    float vel_x, vel_y;     // constant drift velocity == direction it flies
+    float inner_rotation, outer_rotation;
+    float time_until_next_shot;
+};
+
 // ── Top-level game state ─────────────────────────────────────────────────────
 
 struct GameState {
     static constexpr uint32_t MAGIC   = 0x4E57544E;  // "NWTN"
-    static constexpr uint16_t VERSION = 9;
+    static constexpr uint16_t VERSION = 10;
+    // Oldest save format we can still read. Saves from MIN_VERSION..VERSION all
+    // load; anything older (or from a newer build) is ignored. To keep old saves
+    // working across a version bump, only ever APPEND new fields at the end of
+    // the file and read them back gated on `version >= N` (see load_game). That
+    // way an older save simply stops short and the new fields take their
+    // defaults. Loading then re-saving silently upgrades the file to VERSION.
+    static constexpr uint16_t MIN_VERSION = 9;
 
     int   generation;
     float world_x, world_y;
@@ -139,6 +160,7 @@ struct GameState {
     std::vector<Pickup>    pickups;
     std::vector<BlackHole> black_holes;
     Station                station;
+    MiniStation            mini_station;
 };
 
 // ── API ───────────────────────────────────────────────────────────────────────

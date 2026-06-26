@@ -97,6 +97,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   players->push_back(object);
 
   station = NULL;//new GLStation(enemies, players);
+  mini_station = NULL;
 
   if(tic_sound == NULL) {
     tic_sound = Mix_LoadWAV(asset_path("audio/tic.wav").c_str());
@@ -114,6 +115,12 @@ GLGame::GLGame(SDL_GameController *controller) :
     warp_sound = Mix_LoadWAV(asset_path("audio/warp.wav").c_str());
     if(warp_sound == NULL) {
       std::cout << "Unable to load warp.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(station_explode_sound == NULL) {
+    station_explode_sound = Mix_LoadWAV(asset_path("audio/station_explode.wav").c_str());
+    if(station_explode_sound == NULL) {
+      std::cout << "Unable to load station_explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
 }
@@ -157,6 +164,8 @@ GLGame::~GLGame() {
   delete starfield;
   if(station != NULL)
     delete station;
+  if(mini_station != NULL)
+    delete mini_station;
 
   if(tic_sound != NULL) {
     Mix_FreeChunk(tic_sound);
@@ -166,6 +175,9 @@ GLGame::~GLGame() {
   }
   if(warp_sound != NULL) {
     Mix_FreeChunk(warp_sound);
+  }
+  if(station_explode_sound != NULL) {
+    Mix_FreeChunk(station_explode_sound);
   }
   delete warp_pass_;
 }
@@ -265,6 +277,16 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   } else {
     station = NULL;
   }
+
+  // Restore the roaming mini-station (position + drift direction) exactly as it
+  // was saved. If it had already been destroyed there is none to restore — the
+  // next generation will spawn a fresh one as usual.
+  if (save.mini_station.present && save.mini_station.alive) {
+    mini_station = new GLMiniStation(grid, players, (std::list<Object*>*)objects);
+    mini_station->restore_state(save.mini_station);
+  } else {
+    mini_station = NULL;
+  }
   warp_pass_ = new WarpPass();
 
   if(tic_sound == NULL) {
@@ -283,6 +305,12 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     warp_sound = Mix_LoadWAV(asset_path("audio/warp.wav").c_str());
     if(warp_sound == NULL) {
       std::cout << "Unable to load warp.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(station_explode_sound == NULL) {
+    station_explode_sound = Mix_LoadWAV(asset_path("audio/station_explode.wav").c_str());
+    if(station_explode_sound == NULL) {
+      std::cout << "Unable to load station_explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
 }
@@ -352,6 +380,12 @@ Save::GameState GLGame::build_save_data() const {
     s.station = station->capture_state();
   } else {
     s.station.present = false;
+  }
+
+  if (mini_station) {
+    s.mini_station = mini_station->capture_state();
+  } else {
+    s.mini_station.present = false;
   }
 
   return s;
@@ -537,6 +571,15 @@ void GLGame::tick(int delta) {
       Asteroid::num_killable = 0;
       add_asteroids();
       grid.update((std::list<Object *>*)objects);
+      // From the level after the black hole appears (generation 9), spawn a
+      // small roaming station with a fresh random heading each generation.
+      // Created here, after the new world bounds and asteroids are in place, so
+      // it gets a valid random starting position inside the new world.
+      if(generation >= 10) {
+        if(mini_station != NULL)
+          delete mini_station;
+        mini_station = new GLMiniStation(grid, players, (std::list<Object*>*)objects);
+      }
       while(!pickups->empty()) {
         delete pickups->back();
         pickups->pop_back();
@@ -563,6 +606,10 @@ void GLGame::tick(int delta) {
 
     if(station != NULL) {
       station->step(step_size, grid);
+    }
+
+    if(mini_station != NULL) {
+      mini_station->step(step_size, grid);
     }
 
     // Step black holes (visual animation only).
@@ -921,6 +968,67 @@ void GLGame::tick(int delta) {
       }
     }
 
+    /* COLLIDE PLAYERS AND PLAYER SHOTS WITH MINI-STATION */
+    // The roaming mini-station dies to a single player shot or to a ram, and
+    // rewards a flat bounty. It passes straight through asteroids, so only
+    // players and their bullets/missiles interact with it. Ramming destroys
+    // both the player and the station, unless the player is invincible, in
+    // which case only the station is destroyed.
+    if (mini_station != NULL && mini_station->is_alive()) {
+      for (o = players->begin(); o != players->end() && mini_station->is_alive(); o++) {
+        Ship* s = (*o)->ship;
+        // Body collision (ram)
+        if (s->is_alive() && mini_station->Object::collide(*s)) {
+          s->explode(s->position, mini_station->velocity);
+          if (!s->invincible) {
+            s->kill_stop();
+            s->detonate();
+          }
+          s->score += GLMiniStation::REWARD;
+          mini_station->destroy();
+          break;
+        }
+        for (size_t i = 0; i < s->bullets.size(); ) {
+          if (mini_station->Object::collide(s->bullets[i])) {
+            s->explode(s->bullets[i].position, mini_station->velocity);
+            s->bullets[i] = std::move(s->bullets.back());
+            s->bullets.pop_back();
+            s->score += GLMiniStation::REWARD;
+            mini_station->destroy();
+            break;
+          } else {
+            ++i;
+          }
+        }
+        if (!mini_station->is_alive()) break;
+        for (size_t i = 0; i < s->missiles.size(); ) {
+          if (mini_station->Object::collide(s->missiles[i])) {
+            s->detonate(s->missiles[i].position, s->missiles[i].velocity, 25);
+            if (s->missile_explode_sound != NULL)
+              Mix_PlayChannel(-1, s->missile_explode_sound, 0);
+            s->missiles[i] = std::move(s->missiles.back());
+            s->missiles.pop_back();
+            s->score += GLMiniStation::REWARD;
+            mini_station->destroy();
+            break;
+          } else {
+            ++i;
+          }
+        }
+      }
+      // The station was alive when this block started; if a player just
+      // destroyed it, play the destruction sound once.
+      if (!mini_station->is_alive() && station_explode_sound != NULL) {
+        Mix_PlayChannel(-1, station_explode_sound, 0);
+      }
+    }
+
+    // Remove the mini-station once destroyed and its debris/bullets have faded.
+    if (mini_station != NULL && mini_station->is_removable()) {
+      delete mini_station;
+      mini_station = NULL;
+    }
+
     o = enemies->begin();
     while(o != enemies->end()) {
       if((*o)->is_removable()) {
@@ -1037,6 +1145,7 @@ void GLGame::draw_objects(float direction, bool minimap) const {
   }
 
   if(station != NULL) station->draw(minimap);
+  if(mini_station != NULL) mini_station->draw(minimap);
 }
 
 void GLGame::draw(void) {
