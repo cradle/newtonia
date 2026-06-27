@@ -144,14 +144,24 @@ build files.
 
 ## 2. Target definition
 
-- **Primary target:** Xbox Series X|S (`Gaming.Xbox.Scarlett.x64`), single
-  package. Xbox One support is a non-goal unless ID@Xbox requires it (the
-  game is light enough that an XboxOne-family package is feasible later).
-- **GDK Desktop** stays as the free CI canary and PC test vehicle, not a
-  shipping target (Steam covers Windows).
+This repo builds **both SKUs of the Xbox Play Anywhere product** — the Xbox
+Series console build and the Windows Desktop build — under one Partner Center
+Title ID, so a single purchase entitles the player on both and saves roam
+across them. Both are shipping targets here.
+
+- **Xbox Series X|S** (`Gaming.Xbox.Scarlett.x64`), single package. Xbox One
+  support is a non-goal unless ID@Xbox requires it (the game is light enough
+  that an XboxOne-family package is feasible later).
+- **Windows Desktop** (GDK Desktop / `Gaming.Desktop.x64`) — the **shipping
+  Windows Play Anywhere SKU**, distributed via the Microsoft Store / Xbox app.
+  This is the same build the self-hosted `xbox.yml` exercises on every PR; it is
+  no longer just a CI canary. (Steam remains a *separate*, non-Store Windows
+  distribution of the same game — unaffected by Play Anywhere, which is a
+  Microsoft Store entitlement.)
 - **Features:** offline 1–2 player couch play, exactly as on desktop. No
   Xbox Live multiplayer, achievements, or leaderboards in v1. Sign-in and
-  save handling only to the extent certification requires.
+  save handling only to the extent certification requires. Cloud-roaming saves
+  (the `SaveStorage` Roaming category) are required for Play Anywhere (XR-052).
 
 ## 3. Phases
 
@@ -435,7 +445,7 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 3. Partner Center submission via `deploy-xbox.yml` (or manual upload),
    age ratings, store listing, screenshots.
 
-### Phase 7 — Xbox Play Anywhere (post-launch goal)
+### Phase 7 — Xbox Play Anywhere (the product goal; final config sequenced last)
 
 Buy-once, play-on-both: a single purchase grants entitlement on both Xbox
 console and Windows PC (via the Xbox app / Microsoft Store), with cloud-roaming
