@@ -82,24 +82,38 @@ even for an offline title. No code yet — planned new file `xbox/xbl_user.*`.
 | `XAsyncBlock` | `XAsync.h` | async plumbing for `XUserAddAsync` (ties to the task queue from §1) | 🔧 |
 | `XAsyncGetStatus` / completion routine | `XAsync.h` | drive the async result | 🔧 |
 
-## 4. Save storage — XGameSave / Connected Storage (Phase 4.3, work-item #10)
+## 4. Save storage — XGameSaveFiles (Phase 4.3, work-item #10; also Phase 7)
 
-**Conditional**: only needed if LocalState/PLS persistence fails cert for user
-save data. Today all saves go through `SDL_GetPrefPath()` + `fopen`
-(`savegame.cpp`, `preferences.cpp`, `highscore.h`). If required, add a
-`SaveStorage` seam (new `xbox/gdk_storage.*`) keyed to the signed-in `XUser`.
+**Seam already built (GDKX-free):** all persisted paths now resolve through
+`SaveStorage::path_for(Category, file)` in `save_storage.h/.cpp`, splitting
+Roaming (savegame.dat, highscore.dat) from Local (preferences.ini). Off-console
+both resolve to `SDL_GetPrefPath()` — unchanged behaviour. The GDK roaming
+backend is a `NEWTONIA_XGAMESAVE`-gated block in `save_storage.cpp`, compiled
+nowhere until GDKX lands.
 
-| Symbol | Header (assumed) | Status |
-|--------|------------------|--------|
-| `XGameSaveInitializeProvider` | `XGameSave.h` | 🔧 conditional |
-| `XGameSaveCreateContainer` | `XGameSave.h` | 🔧 conditional |
-| `XGameSaveCreateUpdate` / `XGameSaveSubmitUpdate` | `XGameSave.h` | 🔧 conditional (write) |
-| `XGameSaveReadBlobData` | `XGameSave.h` | 🔧 conditional (read) |
-| `XGameSaveCloseProvider` | `XGameSave.h` | 🔧 conditional |
-| `XGameSaveProviderHandle` / `XGameSaveContainerHandle` | `XGameSave.h` | 🔧 conditional |
+The intended API is **`XGameSaveFiles`** (the folder/filesystem API), **not** the
+lower-level `XGameSave` blob-container API: `XGameSaveFiles` hands back a real
+folder that the platform roams across devices (the XR-052 / Play Anywhere
+requirement), so we just `fopen` into it and the existing streaming I/O in
+`savegame.cpp`/`highscore.cpp` is untouched. Keyed to the signed-in `XUser`
+(§3, work-item #9).
+
+| Symbol | Header (assumed) | Our intended use | Status |
+|--------|------------------|------------------|--------|
+| `XGameSaveFilesGetFolderWithUiAsync` | `XGameSaveFiles.h` | start resolving the roaming folder for the signed-in `XUserHandle` | 🔧 |
+| `XGameSaveFilesGetFolderWithUiResult` | `XGameSaveFiles.h` | read the resolved folder path on async completion | 🔧 |
+| `XGameSaveFilesGetFolderWithUiResultSize` | `XGameSaveFiles.h` | size the buffer for the result (if the API is two-call) | 🔧 |
+| `XAsyncBlock` | `XAsync.h` | async plumbing (shares the §3 task queue) | 🔧 |
+
+Open questions for the seam's `xgamesave_folder()`: (a) is the folder lookup
+one-call or size-then-read; (b) does it need the title's SCID/config name;
+(c) confirm writes into the folder roam without an explicit commit.
 
 First decision (before any of the above): **does LocalState survive a full
-console reboot and pass cert?** (`CONSOLE_BRINGUP.md` §E). If yes, skip §4 entirely.
+console reboot and pass cert?** (`CONSOLE_BRINGUP.md` §E). If LocalState passes
+cert *and* roams for Play Anywhere, the Roaming backend may not be needed — but
+Play Anywhere (Phase 7) wants cloud-roaming saves regardless, so the
+`XGameSaveFiles` body is the likely endgame either way.
 
 ## 5. TV safe area / display (Phase 4.4, work-item #11 — logic done, API optional)
 
@@ -176,7 +190,7 @@ work as assumed in `deploy-xbox.yml` (disabled) and `CONSOLE_BRINGUP.md`:
 | PLM (§1) | `xbox_main.cpp`, delete `xbox/smoke_stubs/*` for real build |
 | Runtime init (§2) | `xbox_main.cpp` (new init/shutdown calls) |
 | User (§3) | new `xbox/xbl_user.*`, `xbox_main.cpp` |
-| Save (§4) | new `xbox/gdk_storage.*`, `savegame.cpp`, `preferences.cpp`, `highscore.h` |
+| Save (§4) | `save_storage.h/.cpp` (seam built; fill `NEWTONIA_XGAMESAVE` body), `savegame.cpp`, `highscore.cpp`, `preferences.cpp` |
 | Safe area (§5) | `view/overlay.*` (logic already in place) |
 | SDL glue (§6) | `sdl_gdk_stubs.cpp` (delete for console), `xbox/CMakeLists.txt` |
 | Renderer (§7) | `xbox_main.cpp` `_GAMING_XBOX` present path, `xbox/CMakeLists.txt` |

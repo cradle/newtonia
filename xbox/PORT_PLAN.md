@@ -160,19 +160,26 @@ build files.
 Blocking everything console-side; start immediately.
 
 Status (2026-06): Partner Center developer account created (free onboarding
-via storedeveloper.microsoft.com); ID@Xbox concept accepted; **publishing
-agreements / NDA signed**. Now unblocked: create the Newtonia title in
-Partner Center, download GDKX, and request a dev kit.
+via storedeveloper.microsoft.com); ID@Xbox concept **accepted**, but the
+**publishing agreements / NDA are NOT yet signed**. That gate still blocks
+everything GXDK-side: GDKX download, the console (Scarlett) binary, a dev kit
+loan, and the sandbox-package hardware path all wait on the NDA. Unblocked
+*now* (no NDA needed): create the Newtonia title in Partner Center and set the
+identity secrets; everything else in this plan that the table at §1 marks as
+GDKX-free (Desktop/GLon12 build, console-API compile smoke, the GDKX-free
+SaveStorage seam).
 
-1. ✅ Enrol in ID@Xbox (https://developer.microsoft.com/games) — concept
-   accepted, agreements/NDA signed.
+1. 🔶 Enrol in ID@Xbox (https://developer.microsoft.com/games) — concept
+   accepted; **publishing agreements / NDA still pending** (the GXDK gate).
 2. ⏳ Create the Newtonia title in Partner Center → real `Identity/@Name`,
    `@Publisher`, `StoreId`. Stored as GitHub secrets and injected into
    `MicrosoftGame.config`'s `__FILL_*__` tokens at deploy time — nothing
    identity-related is committed (checklist: `xbox/PARTNER_CENTER_VALUES.md`).
-3. ⏳ Download GDKX + request a dev kit loan (longest lead time — request
-   first; GDKX download and the Phase 2 rendering spike can proceed while
-   the kit ships).
+3. ⛔ Download GDKX + request a dev kit loan — **blocked on the NDA (item 1)**;
+   GDKX is distributed only to enrolled developers under the signed agreements.
+   Request the kit the moment the NDA clears (longest lead time). The Phase 2
+   rendering spike's GDKX-free half is already done (`xbox/GLON12_SPIKE.md`), so
+   nothing else waits on this.
 4. Decide publisher display name, age ratings (IARC questionnaire), pricing.
 5. ⏳ Stand up a **private repo** for GDKX-touching console work (NDA) — the
    public repo keeps the game + all non-NDA work. Use a private mirror with
@@ -348,11 +355,16 @@ All in plain C++ behind small abstractions; testable on dev kit only.
    (silent default user), handle sign-out mid-game (pause + return to
    menu). Required by GDK cert even for offline titles.
 3. **Saves:** evaluate whether LocalState/PLS persistence passes cert for
-   user save data or whether `XGameSave` (Connected Storage) is required.
-   If required: add a `SaveStorage` abstraction over the existing
-   `savegame.cpp` / `preferences.cpp` / highscore `fopen` calls (they
-   already funnel through two path helpers, so this is a small seam), with
-   the XGameSave implementation keyed to the signed-in XUser.
+   user save data or whether a cloud-roaming store is required. The
+   `SaveStorage` seam is now in place (`save_storage.h/.cpp`): all persisted
+   paths resolve through `SaveStorage::path_for(Category, file)`, with Roaming
+   (savegame.dat, highscore.dat) split from Local (preferences.ini). Off-console
+   both resolve to `SDL_GetPrefPath()` (unchanged). The GDK roaming impl —
+   `XGameSaveFiles` keyed to the signed-in XUser (also the XR-052 / Play Anywhere
+   requirement, Phase 7) — is the `NEWTONIA_XGAMESAVE`-gated block in
+   `save_storage.cpp`, waiting on GDKX + sign-in (#9). Because XGameSaveFiles
+   returns a real folder, only path resolution changes; the save/load code is
+   untouched.
 4. **TV safe area:** add a safe-area inset (configurable, default 90%) to
    HUD layout in `view/overlay.cpp` / `Typer::resize`, enabled on
    `_GAMING_XBOX`. Use `XDisplay`/title-safe queries if available, else a
@@ -436,15 +448,18 @@ Requirements (ref: https://developer.microsoft.com/en-us/games/resources/xbox-pl
    both are published.
 2. Use `XGameSaveFiles` (or another XR-052-compliant save mechanism) with the
    same Title ID and XUID so saves roam between devices. This is the same
-   `XGameSave` work in item 10 — Play Anywhere doesn't add new code, just
-   requires saves to be cloud-roaming (not local-only `SDL_GetPrefPath`).
+   roaming work as item 10 — the `SaveStorage` seam (`save_storage.h/.cpp`)
+   already routes the Roaming category (savegame.dat, highscore.dat) through a
+   single call; only its `NEWTONIA_XGAMESAVE`-gated `XGameSaveFiles` body needs
+   filling in (GDKX + sign-in). Preferences stay Local, exactly as on desktop.
 3. Verify the shared save format works across both builds (same `savegame.cpp`
-   binary format, magic "NWTN" v9 — already shared).
+   binary format, magic "NWTN" v10 — already shared).
 4. Partner Center configuration: enable Xbox Play Anywhere for the product.
 
 Newtonia is well-positioned: both targets share the same codebase, renderer,
-and save format. The only code gap is the `XGameSave` migration (item 10,
-Phase 4). The rest is Partner Center configuration.
+and save format, and the Roaming/Local storage seam is already in place. The
+only code gap is filling in the `XGameSaveFiles` body behind `SaveStorage`
+(item 10, Phase 4). The rest is Partner Center configuration.
 
 ## 4. Concrete code work-item list
 
@@ -462,7 +477,7 @@ Phase 4). The rest is Partner Center configuration.
 | 7 | WarpPass 4K performance (profile; optional internal-res scale) | `warp_pass.cpp` | 3 |
 | 8 | PLM resume registration + constrained mode | `xbox_main.cpp` | 4 |
 | 9 | XUser sign-in + sign-out handling | `xbox_main.cpp`, small `xbox/xbl_user.*` | 4 |
-| 10 | `SaveStorage` abstraction + XGameSave impl (if cert requires) | `savegame.cpp`, `preferences.cpp`, `highscore.h`, new `xbox/gdk_storage.*` | 4 |
+| 10 | 🔶 `SaveStorage` seam **done (GDKX-free)**: `save_storage.h/.cpp` resolves every persisted path through one `SaveStorage::path_for(Category, file)` call, splitting Roaming (savegame.dat, highscore.dat) from Local (preferences.ini) to match `steam/CLOUD.md`; `savegame.cpp`/`highscore.cpp`/`preferences.cpp` refactored onto it with identical on-disk behaviour off-console. The GDK `XGameSaveFiles` roaming impl is a stubbed, `NEWTONIA_XGAMESAVE`-gated block in `save_storage.cpp` (compiled nowhere yet) — drops in once GDKX + sign-in (#9) land; the seam is path-only since XGameSaveFiles returns a folder. | `save_storage.h/.cpp`, `savegame.cpp`, `highscore.cpp`, `preferences.cpp` | 4 |
 | 11 | ✅ TV safe-area inset (`Overlay::SAFE_AREA_SCALE`, 90% on `_GAMING_XBOX`) | `view/overlay.h/cpp`, `glgame.cpp` (HUD ortho + minimap viewport), `menu.cpp` | 4 |
 | 12 | 🔶 Store assets + config identity + family alignment — placeholder art generated (`xbox/generate_assets.py` → `xbox/Assets/`), `TargetDeviceFamily` aligned to Scarlett, and identity kept out of source as `__FILL_*__` tokens injected from GitHub secrets at deploy time (checklist `xbox/PARTNER_CENTER_VALUES.md`; deploy workflow checks secrets + post-substitution). Set secrets once Partner Center title exists; real art still TODO | `xbox/Assets/`, `MicrosoftGame.config`, `PackagingLayout.xml`, `xbox/PARTNER_CENTER_VALUES.md`, `deploy-xbox.yml` | 5 |
 | 13 | Self-hosted console CI job (needs GDKX) + deploy workflow rework | `.github/workflows/` | 5 |

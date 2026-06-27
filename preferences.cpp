@@ -1,4 +1,5 @@
 #include "preferences.h"
+#include "save_storage.h"
 #include <SDL.h>
 #include <cstdio>
 #include <cstdlib>
@@ -35,16 +36,13 @@ Preferences::Preferences() {
     p2_keys.toggle_rotate_view = ';'; // right of L, within IJKL cluster
 }
 
-static const char* PREF_ORG  = "cc.gfm";
-static const char* PREF_APP  = "newtonia";
 static const char* PREF_FILE = "preferences.ini";
 
+// Preferences are Local data: display/window size and key bindings are
+// machine-specific and must NOT roam across devices (see save_storage.cpp and
+// steam/CLOUD.md — Steam Cloud syncs only savegame.dat + highscore.dat).
 static std::string pref_filepath() {
-    char *path = SDL_GetPrefPath(PREF_ORG, PREF_APP);
-    if (!path) return "";
-    std::string fp = std::string(path) + PREF_FILE;
-    SDL_free(path);
-    return fp;
+    return SaveStorage::path_for(SaveStorage::Category::Local, PREF_FILE);
 }
 
 // Serialise a key code to a human-readable INI value:

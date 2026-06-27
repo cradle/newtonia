@@ -37,6 +37,31 @@ substitution, so a missing value can never ship a placeholder package.
 submission — sizes are listed in `xbox/MicrosoftGame.config`. (Art is the
 same for every deployment, so it's committed, not a secret.)
 
+## Xbox Play Anywhere (config-only — no secret, no code)
+
+Play Anywhere is buy-once-play-on-both: one purchase entitles the player on both
+Xbox console and Windows PC, with cloud-roaming saves. It is enabled entirely in
+Partner Center — no extra build artifact — once both SKUs exist:
+
+1. **One product, one Title ID.** Publish the **Windows Desktop** SKU and the
+   **Xbox Console** SKU under the *same* Partner Center product. Cross-entitlement
+   is automatic when both ship under one Title ID. (The four identity secrets
+   above describe that single product; Play Anywhere does not add new secrets.)
+2. **Enable Play Anywhere** on the product (Partner Center product setup) once
+   both SKUs are present.
+3. **Cloud-roaming saves are a hard requirement (XR-052).** Local-only
+   `SDL_GetPrefPath` saves do not satisfy it. The game side is already seamed:
+   `save_storage.*` routes the Roaming category (savegame.dat, highscore.dat)
+   through one call whose GDK body is `XGameSaveFiles` (PORT_PLAN work-item #10).
+   Preferences stay machine-local and intentionally do **not** roam.
+4. Verify the binary save format loads on both builds — it is the same
+   `savegame.cpp` format (magic "NWTN", version 10), already shared.
+
+This is all **NDA-free**: it is Partner Center configuration plus the
+already-merged storage seam. The only blocked piece is the Xbox Console SKU
+binary itself, which needs the GXDK (NDA). The Windows Desktop SKU and all the
+config above can be staged now.
+
 ## Not ready yet
 
 `deploy-xbox.yml` still uses the old winget + GDK MSBuild-platform build,
