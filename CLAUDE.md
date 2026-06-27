@@ -314,7 +314,7 @@ Three active GitHub Actions workflows drive the automatic PR/push checks — the
 - `windows-glon12-spike.yml` — the GDKX-free GLon12 desktop rendering spike (`xbox/GLON12_SPIKE.md`, work-items 3a/4a). Concluded: GLon12 covers our GL 3.3 core feature set and the full game runs through it on real hardware (results recorded in `xbox/GLON12_SPIKE.md`); its `build-desktop` job duplicated `xbox.yml`'s self-hosted build, which now covers that ground on every PR. Superseded by the active `windows-glon12.yml`, which folds the full-game GLon12 run into a hosted PR build
 - Deployment: `deploy-steam.yml`, `deploy-ios.yml`, `deploy-android.yml`, `deploy-itch.yml`, `deploy-macos.yml`, `deploy-windows.yml`, `deploy-xbox.yml`
 
-**Steam integration** — `steam_build.h` (constants/SDK), `steam/` contains Steamworks VDF config files (`app_build.vdf`, `depot_build_windows.vdf`, `depot_build_macos.vdf`, `depot_build_linux.vdf`).
+**Steam integration** — `steam_build.h` (constants/SDK), `steam/` contains Steamworks VDF config files (`app_build.vdf`, `depot_build_windows.vdf`, `depot_build_macos.vdf`, `depot_build_linux.vdf`). **Cloud saves** use Steam Auto-Cloud (partner-site config, no game code) — see `steam/CLOUD.md`: only `savegame.dat` and `highscore.dat` from the SDL pref dir are synced; `preferences.ini` stays machine-local (it holds per-system display/window settings).
 
 ## Conventions & Patterns
 
