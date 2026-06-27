@@ -271,6 +271,18 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 
 ### Save / Load
 
+**Storage seam** (`save_storage.h/cpp`) — every persisted file resolves its path
+through `SaveStorage::path_for(Category, filename)`. Two categories:
+**`Roaming`** (savegame.dat, highscore.dat — should follow the player across
+devices) and **`Local`** (preferences.ini — machine-specific display/window/key
+settings that must not roam). Off-console both resolve to the same
+`SDL_GetPrefPath("cc.gfm","newtonia")` directory (roaming handled out-of-process
+by Steam Auto-Cloud; see `steam/CLOUD.md`). The Xbox GDK roaming backend
+(`XGameSaveFiles` keyed to the signed-in XUser, for Xbox Play Anywhere / XR-052)
+is a `NEWTONIA_XGAMESAVE`-gated block in `save_storage.cpp`, compiled only once
+GDKX is installed — the seam is path-only because XGameSaveFiles returns a folder
+to `fopen` into. See `xbox/PORT_PLAN.md` work-item #10.
+
 **Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 10:
 - `WeaponEntry`: kind, weapon_index, ammo
 - `Player`: score, lives, kills, respawning flag, position, velocity, facing, weapons, nova state
@@ -284,7 +296,7 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 
 Auto-save triggers on pause or player death if the player has lives or score remaining, and on level completion.
 
-**Preferences** (`preferences.h/cpp`) — INI file in SDL pref path; global `g_prefs` instance:
+**Preferences** (`preferences.h/cpp`) — INI file via the `Local` storage category (`save_storage.*`); global `g_prefs` instance:
 - Per-player (`PlayerKeys`): 12 key bindings (left, right, thrust, shoot, reverse, mine, next_weapon, next_secondary, boost, teleport, help, toggle_rotate_view; defaults WASD + Space/X) plus `keyboard_sensitivity` and `camera_smoothing` floats
 - General (`GeneralKeys`): pause (P), menu (Esc), add_player2 (Enter), toggle_friendly_fire (G), skip_level (N), toggle_debug_grid (B), time_speed_up (=), time_slow_down (-), time_reset (0), toggle_fullscreen (F)
 - Display: `fullscreen` flag, `window_width`/`window_height`

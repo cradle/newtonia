@@ -1,5 +1,5 @@
 #include "highscore.h"
-#include <SDL.h>
+#include "save_storage.h"
 #include <string>
 #include <cstdio>
 
@@ -7,15 +7,17 @@
 #include <emscripten.h>
 #endif
 
-static const char* HS_ORG  = "cc.gfm";
-static const char* HS_APP  = "newtonia";
 static const char* HS_FILE = "highscore.dat";
 
+// The high score is Roaming data — it follows the player across devices
+// alongside the savegame (see save_storage.cpp).
+static std::string highscore_path() {
+  return SaveStorage::path_for(SaveStorage::Category::Roaming, HS_FILE);
+}
+
 int load_high_score() {
-  char *path = SDL_GetPrefPath(HS_ORG, HS_APP);
-  if (!path) return 0;
-  std::string filepath = std::string(path) + HS_FILE;
-  SDL_free(path);
+  std::string filepath = highscore_path();
+  if (filepath.empty()) return 0;
   int score = 0;
   FILE *f = fopen(filepath.c_str(), "rb");
   if (f) { fread(&score, sizeof(int), 1, f); fclose(f); }
@@ -24,10 +26,8 @@ int load_high_score() {
 
 void save_high_score(int score) {
   if (score <= load_high_score()) return;
-  char *path = SDL_GetPrefPath(HS_ORG, HS_APP);
-  if (!path) return;
-  std::string filepath = std::string(path) + HS_FILE;
-  SDL_free(path);
+  std::string filepath = highscore_path();
+  if (filepath.empty()) return;
   FILE *f = fopen(filepath.c_str(), "wb");
   if (f) {
     fwrite(&score, sizeof(int), 1, f);

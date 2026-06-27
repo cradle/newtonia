@@ -1,5 +1,5 @@
 #include "savegame.h"
-#include <SDL.h>
+#include "save_storage.h"
 #include <cstdio>
 #include <string>
 
@@ -7,18 +7,15 @@
 #include <emscripten.h>
 #endif
 
-static const char *SG_ORG  = "cc.gfm";
-static const char *SG_APP  = "newtonia";
 static const char *SG_FILE = "savegame.dat";
 
 // ── Path helper ──────────────────────────────────────────────────────────────
+// In-progress game state is Roaming data: it should follow the player across
+// devices (Steam Auto-Cloud today; Xbox Play Anywhere via XGameSaveFiles once
+// the GDK backend lands — see save_storage.cpp).
 
 static std::string save_path() {
-    char *dir = SDL_GetPrefPath(SG_ORG, SG_APP);
-    if (!dir) return "";
-    std::string path = std::string(dir) + SG_FILE;
-    SDL_free(dir);
-    return path;
+    return SaveStorage::path_for(SaveStorage::Category::Roaming, SG_FILE);
 }
 
 // ── Low-level I/O helpers ────────────────────────────────────────────────────
