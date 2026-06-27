@@ -156,8 +156,9 @@ across them. Both are shipping targets here.
   Windows Play Anywhere SKU**, distributed via the Microsoft Store / Xbox app.
   This is the same build the self-hosted `xbox.yml` exercises on every PR; it is
   no longer just a CI canary. (Steam remains a *separate*, non-Store Windows
-  distribution of the same game — unaffected by Play Anywhere, which is a
-  Microsoft Store entitlement.)
+  distribution of the same game; its build and deploy stay in the
+  `cradle/newtonia` repo's Actions — **this repo's CI/CD ships only the Windows
+  and Xbox Play Anywhere SKUs**, Steam is handled upstream.)
 - **Features:** offline 1–2 player couch play, exactly as on desktop. No
   Xbox Live multiplayer, achievements, or leaderboards in v1. Sign-in and
   save handling only to the extent certification requires. Cloud-roaming saves
