@@ -83,6 +83,7 @@ private:
   Point intro_focus() const;
 
   enum IntroKind { INTRO_ASTEROID, INTRO_BLACK_HOLE, INTRO_MINI_STATION, INTRO_STATION };
+  static const int intro_auto_start_ms = 5000;  // auto-start if nothing pressed
   bool intro_active = false;
   IntroKind intro_kind = INTRO_ASTEROID;
   int intro_time = 0;        // ms since the intro appeared (drives flash + spin)

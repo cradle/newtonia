@@ -562,10 +562,13 @@ void GLGame::draw_intro() const {
   float ortho[16];
   mat4_ortho(ortho, -hw, hw, -hh, hh, -1.0f, 1.0f);
   gles2_set_vp(ortho);
+  // Typer multiplies coordinates by Typer::scale (800x600 virtual space), so
+  // convert the ortho half-height into Typer units to place text on screen.
+  float top = hh / Typer::scale;
   if ((intro_time / 700) % 2 == 0) {
-    Typer::draw_centered(0, hh * 0.72f, "PRESS FIRE TO START", 20);
+    Typer::draw_centered(0, top * 0.75f, "PRESS FIRE TO START", 20);
   }
-  Typer::draw_centered(0, -hh * 0.5f, intro_name, 26);
+  Typer::draw_centered(0, -top * 0.5f, intro_name, 26);
 }
 
 void GLGame::toggle_pause() {
@@ -747,6 +750,10 @@ void GLGame::tick(int delta) {
     // The world is frozen: give back the delta so no catch-up steps run on dismissal.
     time_until_next_step += delta;
     intro_time += delta;
+    if (intro_time >= intro_auto_start_ms) {
+      dismiss_intro();
+      return;
+    }
     intro_step_accum += delta;
     while (intro_step_accum >= step_size) {
       if (intro_asteroid != NULL) intro_asteroid->step(step_size);
