@@ -125,6 +125,7 @@ When all killable asteroids are destroyed, a 5-second countdown (tick sounds) ru
 - Black hole spawns at world centre from generation ≥ 9
 - `GLStation` (enemy station) spawns from generation ≥ 20
 - Pickups are cleared, the starfield and grid are rebuilt, players respawn, and progress is auto-saved
+- If the new generation introduces a new object type (asteroid specials at 1–8, black hole at 9, mini-station at 10, station at 20), an intro screen freezes the world and shows the object spinning centre-screen with its name and a flashing "PRESS FIRE TO START"; any player's shoot input (key, controller A/right trigger, touch) dismisses it (`maybe_start_intro()` / `draw_intro()` in `glgame.cpp`; not persisted in saves)
 
 ## Key Systems
 

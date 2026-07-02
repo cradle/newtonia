@@ -162,6 +162,8 @@ GLGame::~GLGame() {
   }
   delete black_holes;
   delete starfield;
+  if(intro_asteroid != NULL)
+    delete intro_asteroid;
   if(station != NULL)
     delete station;
   if(mini_station != NULL)
@@ -426,6 +428,140 @@ void GLGame::add_asteroids() {
   }
 }
 
+void GLGame::maybe_start_intro() {
+  intro_name = NULL;
+  switch (generation) {
+    case 1:  intro_asteroid = new Asteroid(true);
+             intro_name = "INVINCIBLE";  break;
+    case 2:  intro_asteroid = new Asteroid(false, false, true);
+             intro_name = "REFLECTIVE";  break;
+    case 3:  intro_asteroid = new Asteroid(false, false, false, true);
+             intro_name = "TELEPORTING"; break;
+    case 4:  intro_asteroid = new Asteroid(false, true);
+             intro_name = "INVISIBLE";   break;
+    case 5:  intro_asteroid = new Asteroid(false, false, false, false, true);
+             intro_name = "QUANTUM";     break;
+    case 6:  intro_asteroid = new Asteroid(false, false, false, false, false, true);
+             intro_name = "TOUGH";       break;
+    case 7:  intro_asteroid = new Asteroid(false, false, false, false, false, false, true);
+             intro_name = "ARMOURED";    break;
+    case 8:  intro_asteroid = new Asteroid(false, false, false, false, false, false, false, true);
+             intro_name = "PHASING";     break;
+    case 9:  if (!black_holes->empty()) intro_name = "BLACK HOLE";    break;
+    case 10: if (mini_station != NULL)  intro_name = "MINI STATION";  break;
+    case 20: if (station != NULL)       intro_name = "ENEMY STATION"; break;
+    default: return;
+  }
+  if (intro_name == NULL) return;
+
+  if (intro_asteroid != NULL) {
+    intro_kind = INTRO_ASTEROID;
+    // Park the display asteroid at the world centre so the fixed intro camera
+    // (which looks at the focus point) keeps it centre-screen while it spins.
+    intro_asteroid->position = WrappedPoint(world.x() / 2.0f, world.y() / 2.0f);
+    intro_asteroid->velocity = Point(0, 0);
+  } else if (generation == 9) {
+    intro_kind = INTRO_BLACK_HOLE;
+  } else if (generation == 10) {
+    intro_kind = INTRO_MINI_STATION;
+  } else {
+    intro_kind = INTRO_STATION;
+  }
+  intro_active = true;
+  intro_time = 0;
+  intro_step_accum = 0;
+}
+
+void GLGame::dismiss_intro() {
+  if (!intro_active) return;
+  intro_active = false;
+  if (intro_asteroid != NULL) {
+    delete intro_asteroid;
+    intro_asteroid = NULL;
+  }
+}
+
+Point GLGame::intro_focus() const {
+  switch (intro_kind) {
+    case INTRO_BLACK_HOLE:   return black_holes->front()->position;
+    case INTRO_MINI_STATION: return mini_station->position;
+    case INTRO_STATION:      return station->position;
+    case INTRO_ASTEROID:
+    default:                 return intro_asteroid->position;
+  }
+}
+
+void GLGame::draw_intro() const {
+  glViewport(0, 0, window.x(), window.y());
+
+  Point focus = intro_focus();
+  float proj[16]; mat4_perspective(proj, 85.0f, window.x() / (float)window.y(), 100.0f, 2000.0f);
+  float view[16]; mat4_lookat(view, 0.0f, 0.0f, 1000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+  float pv[16]; mat4_mul(pv, proj, view);
+
+  // Starfield backdrop, tiled 3x3 around the focus point like draw_perspective
+  // (the focus object can sit near a world edge).
+  for (int x = -1; x <= 1; x++) {
+    for (int y = -1; y <= 1; y++) {
+      float tile_vp[16];
+      mat4_translate(tile_vp, pv, world.x()*x - focus.x(), world.y()*y - focus.y(), 0.0f);
+      gles2_set_vp(tile_vp);
+      starfield->draw_rear(focus);
+    }
+  }
+
+  float center_vp[16];
+  mat4_translate(center_vp, pv, -focus.x(), -focus.y(), 0.0f);
+  gles2_set_vp(center_vp);
+
+  bool invisible_intro = (intro_kind == INTRO_ASTEROID && intro_asteroid->invisible);
+  if (invisible_intro) {
+    AsteroidDrawer::draw_invisible_mask(intro_asteroid, focus.x(), focus.y());
+    starfield->draw_stars_near(focus.x(), focus.y(), intro_asteroid->radius);
+  }
+
+  switch (intro_kind) {
+    case INTRO_ASTEROID: {
+      list<Asteroid*> one, none;
+      one.push_back(intro_asteroid);
+      AsteroidDrawer::draw_batch(&one, &none, 0.0f, false);
+      break;
+    }
+    case INTRO_BLACK_HOLE:   black_holes->front()->draw(false); break;
+    case INTRO_MINI_STATION: mini_station->draw(false);         break;
+    case INTRO_STATION:      station->draw(false);              break;
+  }
+
+  for (int x = -1; x <= 1; x++) {
+    for (int y = -1; y <= 1; y++) {
+      float tile_vp[16];
+      mat4_translate(tile_vp, pv, world.x()*x - focus.x(), world.y()*y - focus.y(), 0.0f);
+      gles2_set_vp(tile_vp);
+      starfield->draw_front(focus);
+    }
+  }
+
+  if (invisible_intro) {
+    gles2_set_vp(center_vp);
+    starfield->draw_front_stars_near(focus.x(), focus.y(), intro_asteroid->radius);
+    GLint vp[4];
+    glGetIntegerv(GL_VIEWPORT, vp);
+    warp_pass_->capture(vp[0], vp[1], vp[2], vp[3]);
+    warp_pass_->draw(intro_asteroid, focus.x(), focus.y(), vp[0], vp[1], vp[2], vp[3]);
+  }
+
+  // Text overlay: flashing prompt at the top, object name below the object.
+  float hw = window.x() / Overlay::SAFE_AREA_SCALE;
+  float hh = window.y() / Overlay::SAFE_AREA_SCALE;
+  float ortho[16];
+  mat4_ortho(ortho, -hw, hw, -hh, hh, -1.0f, 1.0f);
+  gles2_set_vp(ortho);
+  if ((intro_time / 700) % 2 == 0) {
+    Typer::draw_centered(0, hh * 0.72f, "PRESS FIRE TO START", 20);
+  }
+  Typer::draw_centered(0, -hh * 0.5f, intro_name, 26);
+}
+
 void GLGame::toggle_pause() {
   running = !running;
   if (running) {
@@ -597,7 +733,25 @@ void GLGame::tick(int delta) {
       }
       level_cleared = false;
       save_progress();
+      maybe_start_intro();
     }
+  }
+
+  if (intro_active) {
+    // The world is frozen: give back the delta so no catch-up steps run on dismissal.
+    time_until_next_step += delta;
+    intro_time += delta;
+    intro_step_accum += delta;
+    while (intro_step_accum >= step_size) {
+      if (intro_asteroid != NULL) intro_asteroid->step(step_size);
+      if (intro_kind == INTRO_BLACK_HOLE) {
+        for (auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++)
+          (*bhi)->step(step_size);
+      }
+      intro_step_accum -= step_size;
+    }
+    last_tick += delta;
+    return;
   }
 
   std::list<GLShip*>::iterator o, o2;
@@ -1156,6 +1310,11 @@ void GLGame::draw(void) {
 
   glClear(GL_COLOR_BUFFER_BIT /*| GL_DEPTH_BUFFER_BIT*/);
 
+  if(intro_active) {
+    draw_intro();
+    return;
+  }
+
   if(players->size() == 0) {
     draw_world();
   }
@@ -1567,6 +1726,18 @@ void GLGame::draw_map() const {
 }
 
 void GLGame::controller(SDL_Event event) {
+  if(intro_active) {
+    if(intro_time >= 300 &&
+       ((event.type == SDL_CONTROLLERBUTTONDOWN &&
+         event.cbutton.button == SDL_CONTROLLER_BUTTON_A) ||
+        (event.type == SDL_CONTROLLERAXISMOTION &&
+         event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT &&
+         event.caxis.value > 8000))) {
+      dismiss_intro();
+    }
+    return;
+  }
+
   if(event.cbutton.type == SDL_CONTROLLERBUTTONDOWN) {
     if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) {
       bool known_player = false;
@@ -1682,6 +1853,10 @@ void GLGame::controller(SDL_Event event) {
   }
 }
 
+void GLGame::touch_tap(float nx, float ny) {
+  if(intro_active && intro_time >= 300) dismiss_intro();
+}
+
 void GLGame::touch_joystick(float nx, float ny) {
   if(!running || players->empty()) return;
   players->front()->touch_joystick_input(nx, ny);
@@ -1691,6 +1866,17 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
   if (!running)
     return;
 
+  if (intro_active) {
+    // Small delay so a shoot key held over the level transition doesn't
+    // dismiss the intro before it is seen.
+    if (intro_time >= 300 &&
+        (key == (unsigned char)g_prefs.p1_keys.shoot ||
+         key == (unsigned char)g_prefs.p2_keys.shoot)) {
+      dismiss_intro();
+    }
+    return;
+  }
+
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
     (*object)->input(key);
@@ -1699,6 +1885,15 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
 
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
   const GeneralKeys &gk = g_prefs.general_keys;
+
+  if (intro_active) {
+    // Only the menu key acts while the intro is up; shoot (on key down) starts.
+    if (key == (unsigned char)gk.menu) {
+      save_progress();
+      request_state_change(new Menu());
+    }
+    return;
+  }
 
   if (key == (unsigned char)gk.skip_level) {
       level_cleared = true;
