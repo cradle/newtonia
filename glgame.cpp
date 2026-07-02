@@ -99,10 +99,6 @@ GLGame::GLGame(SDL_GameController *controller) :
   station = NULL;//new GLStation(enemies, players);
   mini_station = NULL;
 
-  // A brand-new game's first level introduces the basic asteroid itself.
-  // (The save-restoring constructor never shows an intro: nothing is new.)
-  maybe_start_intro();
-
   if(tic_sound == NULL) {
     tic_sound = Mix_LoadWAV(asset_path("audio/tic.wav").c_str());
     if(tic_sound == NULL) {
@@ -435,8 +431,6 @@ void GLGame::add_asteroids() {
 void GLGame::maybe_start_intro() {
   intro_name = NULL;
   switch (generation) {
-    case 0:  intro_asteroid = new Asteroid(false);
-             intro_name = "ASTEROID";    break;
     case 1:  intro_asteroid = new Asteroid(true);
              intro_name = "INVINCIBLE";  break;
     case 2:  intro_asteroid = new Asteroid(false, false, true);
