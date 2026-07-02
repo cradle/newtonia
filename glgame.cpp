@@ -476,11 +476,15 @@ void GLGame::maybe_start_intro() {
   intro_active = true;
   intro_time = 0;
   intro_step_accum = 0;
+  // Silence looping effects (e.g. the respawn shield hum) while the intro is
+  // up; the world is frozen so their sources are frozen too.
+  Mix_Pause(-1);
 }
 
 void GLGame::dismiss_intro() {
   if (!intro_active) return;
   intro_active = false;
+  Mix_Resume(-1);
   if (intro_asteroid != NULL) {
     delete intro_asteroid;
     intro_asteroid = NULL;
@@ -574,13 +578,15 @@ void GLGame::draw_intro() const {
 void GLGame::toggle_pause() {
   running = !running;
   if (running) {
-    Mix_Resume(-1);
+    // Channels stay paused while the intro is showing (dismiss_intro resumes).
+    if (!intro_active) Mix_Resume(-1);
   } else {
     Mix_Pause(-1);
   }
 }
 
 bool GLGame::back_pressed() {
+  dismiss_intro();  // release paused sound channels before leaving
   save_progress();
   request_state_change(new Menu());
   return true;
@@ -1902,6 +1908,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (intro_active) {
     // Only the menu key acts while the intro is up; shoot (on key down) starts.
     if (key == (unsigned char)gk.menu) {
+      dismiss_intro();
       save_progress();
       request_state_change(new Menu());
     }
