@@ -564,7 +564,8 @@ void GLGame::draw_intro() const {
   // convert the ortho half-height into Typer units to place text on screen.
   float top = hh / Typer::scale;
   if ((intro_time / 700) % 2 == 0) {
-    Typer::draw_centered(0, top * 0.75f, "PRESS FIRE TO START", 20);
+    Typer::draw_centered(0, top * 0.75f,
+                         is_touch_mode() ? "TAP TO START" : "PRESS FIRE TO START", 20);
   }
   Typer::draw_centered(0, -top * 0.5f, intro_name, 26);
 }
