@@ -90,6 +90,7 @@ private:
   int intro_step_accum = 0;  // accumulates delta into fixed steps for the spin
   Asteroid *intro_asteroid = NULL;  // display-only; never enters objects/grid
   const char *intro_name = NULL;
+  int intro_music_channel = -1;  // looping intro tune; halted on dismissal
 
   static const int step_size = 8;
 
@@ -120,6 +121,7 @@ private:
   Mix_Chunk *pickup_sound = NULL;
   Mix_Chunk *warp_sound = NULL;
   Mix_Chunk *station_explode_sound = NULL;
+  Mix_Chunk *intro_music_sound = NULL;
 
   Grid grid;
   GLStarfield *starfield;

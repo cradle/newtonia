@@ -534,6 +534,84 @@ def make_title():
     return samples
 
 
+def make_intro():
+    """New-threat intro music: same palette as the title theme (A-minor lead
+    with vibrato over pad chords and bass) but shorter and more expectant —
+    a rising herald phrase that hangs on a question, 4s (loopable)."""
+    dur = 4.0
+    n = int(SAMPLE_RATE * dur)
+    samples = [0.0] * n
+
+    note_freqs = {
+        'E3': 164.81, 'G3': 196.00, 'A3': 220.00, 'B3': 246.94,
+        'C4': 261.63, 'E4': 329.63, 'G4': 392.00,
+        'A4': 440.00, 'B4': 493.88, 'C5': 523.25,
+    }
+
+    def add_note(freq, start, length, vol=0.22, vibrato=True):
+        """Lead synth: 3 harmonics + optional vibrato for a warm, expressive tone."""
+        s0 = int(start * SAMPLE_RATE)
+        s1 = min(n, int((start + length) * SAMPLE_RATE))
+        phase = 0.0
+        for i in range(s0, s1):
+            t = (i - s0) / SAMPLE_RATE
+            attack  = min(1.0, t / 0.04)
+            release = min(1.0, (length - t) / 0.10) if length > 0.10 else 1.0
+            env = attack * max(0.0, release)
+            vib = (1.0 + 0.012 * math.sin(2 * math.pi * 5.5 * t)) if vibrato else 1.0
+            phase += 2 * math.pi * freq * vib / SAMPLE_RATE
+            s  = math.sin(phase)         * 0.55 * env
+            s += math.sin(phase * 2)     * 0.25 * env
+            s += math.sin(phase * 3)     * 0.10 * env
+            samples[i] += s * vol
+
+    def add_pad(freq, start, length, vol=0.09):
+        """Soft pad: slow attack/release, two harmonics for an airy chord texture."""
+        s0 = int(start * SAMPLE_RATE)
+        s1 = min(n, int((start + length) * SAMPLE_RATE))
+        for i in range(s0, s1):
+            t = (i - s0) / SAMPLE_RATE
+            attack  = min(1.0, t / 0.18)
+            release = min(1.0, (length - t) / 0.28) if length > 0.28 else 1.0
+            env = attack * max(0.0, release)
+            s  = math.sin(2 * math.pi * freq * t)     * 0.60 * env
+            s += math.sin(2 * math.pi * freq * 2 * t) * 0.20 * env
+            samples[i] += s * vol
+
+    # Rising, expectant melody: climbs from A4 to C5 then falls away unresolved,
+    # so the loop keeps asking the same question until the player fires.
+    melody = [
+        ('A4', 0.00, 0.40), ('E4', 0.50, 0.40),
+        ('A4', 1.00, 0.40), ('B4', 1.50, 0.40),
+        ('C5', 2.00, 0.70), ('B4', 2.75, 0.40),
+        ('G4', 3.25, 0.28), ('E4', 3.58, 0.30),
+    ]
+
+    # One sustained bass note per 2s phrase
+    bass = [
+        ('A3', 0.0, 1.85),
+        ('E3', 2.0, 1.85),
+    ]
+
+    # Pad chords: Am | Em (one per phrase)
+    pad_notes = [
+        ('A3', 0.0, 2.0), ('C4', 0.0, 2.0), ('E4', 0.0, 2.0),   # Am
+        ('E3', 2.0, 2.0), ('G3', 2.0, 2.0), ('B3', 2.0, 2.0),   # Em
+    ]
+
+    for note, start, length in melody:
+        add_note(note_freqs[note], start, length, 0.25)
+    for note, start, length in bass:
+        add_note(note_freqs[note], start, length, 0.22, vibrato=False)
+    for note, start, length in pad_notes:
+        add_pad(note_freqs[note], start, length, 0.09)
+
+    peak = max(abs(s) for s in samples)
+    if peak > 0:
+        samples = [s / peak * 0.85 for s in samples]
+    return samples
+
+
 if __name__ == '__main__':
     repo_root = os.path.dirname(os.path.abspath(__file__))
     os.makedirs(os.path.join(repo_root, 'audio'), exist_ok=True)
@@ -554,6 +632,7 @@ if __name__ == '__main__':
         'shield_hum.wav':      make_shield_hum,
         'boost.wav':           make_boost,
         'title.wav':           make_title,
+        'intro.wav':           make_intro,
         'god_mode_music.wav':       make_god_mode_music,
         'god_mode_music_warn.wav':  make_god_mode_music_warn,
         'pickup.wav':          make_pickup,
