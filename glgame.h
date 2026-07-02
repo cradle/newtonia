@@ -122,6 +122,8 @@ private:
   Mix_Chunk *warp_sound = NULL;
   Mix_Chunk *station_explode_sound = NULL;
   Mix_Chunk *intro_music_sound = NULL;
+  Mix_Chunk *pause_music_sound = NULL;
+  int pause_music_channel = -1;  // looping pause tune; halted on unpause
 
   Grid grid;
   GLStarfield *starfield;

@@ -129,6 +129,12 @@ GLGame::GLGame(SDL_GameController *controller) :
       std::cout << "Unable to load intro.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
+  if(pause_music_sound == NULL) {
+    pause_music_sound = Mix_LoadWAV(asset_path("audio/pause.wav").c_str());
+    if(pause_music_sound == NULL) {
+      std::cout << "Unable to load pause.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
 }
 
 GLGame::~GLGame() {
@@ -192,6 +198,12 @@ GLGame::~GLGame() {
   }
   if(intro_music_sound != NULL) {
     Mix_FreeChunk(intro_music_sound);
+  }
+  if(pause_music_channel >= 0) {
+    Mix_HaltChannel(pause_music_channel);
+  }
+  if(pause_music_sound != NULL) {
+    Mix_FreeChunk(pause_music_sound);
   }
   delete warp_pass_;
 }
@@ -331,6 +343,12 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     intro_music_sound = Mix_LoadWAV(asset_path("audio/intro.wav").c_str());
     if(intro_music_sound == NULL) {
       std::cout << "Unable to load intro.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(pause_music_sound == NULL) {
+    pause_music_sound = Mix_LoadWAV(asset_path("audio/pause.wav").c_str());
+    if(pause_music_sound == NULL) {
+      std::cout << "Unable to load pause.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
 }
@@ -599,6 +617,10 @@ void GLGame::draw_intro() const {
 void GLGame::toggle_pause() {
   running = !running;
   if (running) {
+    if (pause_music_channel >= 0) {
+      Mix_HaltChannel(pause_music_channel);
+      pause_music_channel = -1;
+    }
     // Channels stay paused while the intro is showing (dismiss_intro resumes),
     // but the intro tune itself plays through the freeze.
     if (!intro_active) {
@@ -607,7 +629,11 @@ void GLGame::toggle_pause() {
       Mix_Resume(intro_music_channel);
     }
   } else {
+    // The pause tune starts after the pause so its own channel keeps playing.
     Mix_Pause(-1);
+    if (pause_music_sound != NULL) {
+      pause_music_channel = Mix_PlayChannel(-1, pause_music_sound, -1);
+    }
   }
 }
 
@@ -624,6 +650,8 @@ void GLGame::focus_lost() {
     toggle_pause();
     auto_paused = true;
   }
+  // Everything goes silent while the window is unfocused, pause tune included.
+  if(pause_music_channel >= 0) Mix_Pause(pause_music_channel);
   Mix_PauseMusic();
 }
 
@@ -688,6 +716,9 @@ void GLGame::focus_gained() {
   if(auto_paused) {
     toggle_pause();
     auto_paused = false;
+  } else if(pause_music_channel >= 0) {
+    // Manually paused before the focus loss: bring the pause tune back.
+    Mix_Resume(pause_music_channel);
   }
 }
 

@@ -612,6 +612,102 @@ def make_intro():
     return samples
 
 
+def make_pause():
+    """Pause screen music: longer, mellower companion to the title theme —
+    A-minor lead with vibrato over pad chords and bass, plus a soft
+    music-box arpeggio to carry the longer form, 16s (loopable)."""
+    dur = 16.0
+    n = int(SAMPLE_RATE * dur)
+    samples = [0.0] * n
+
+    note_freqs = {
+        'C3': 130.81, 'D3': 146.83, 'E3': 164.81, 'F3': 174.61,
+        'G3': 196.00, 'A3': 220.00, 'B3': 246.94,
+        'C4': 261.63, 'D4': 293.66, 'E4': 329.63, 'F4': 349.23,
+        'G4': 392.00, 'A4': 440.00, 'B4': 493.88,
+        'C5': 523.25,
+    }
+
+    def add_note(freq, start, length, vol=0.22, vibrato=True):
+        """Lead synth: 3 harmonics + optional vibrato for a warm, expressive tone."""
+        s0 = int(start * SAMPLE_RATE)
+        s1 = min(n, int((start + length) * SAMPLE_RATE))
+        phase = 0.0
+        for i in range(s0, s1):
+            t = (i - s0) / SAMPLE_RATE
+            attack  = min(1.0, t / 0.04)
+            release = min(1.0, (length - t) / 0.10) if length > 0.10 else 1.0
+            env = attack * max(0.0, release)
+            vib = (1.0 + 0.012 * math.sin(2 * math.pi * 5.5 * t)) if vibrato else 1.0
+            phase += 2 * math.pi * freq * vib / SAMPLE_RATE
+            s  = math.sin(phase)         * 0.55 * env
+            s += math.sin(phase * 2)     * 0.25 * env
+            s += math.sin(phase * 3)     * 0.10 * env
+            samples[i] += s * vol
+
+    def add_pad(freq, start, length, vol=0.09):
+        """Soft pad: slow attack/release, two harmonics for an airy chord texture."""
+        s0 = int(start * SAMPLE_RATE)
+        s1 = min(n, int((start + length) * SAMPLE_RATE))
+        for i in range(s0, s1):
+            t = (i - s0) / SAMPLE_RATE
+            attack  = min(1.0, t / 0.18)
+            release = min(1.0, (length - t) / 0.28) if length > 0.28 else 1.0
+            env = attack * max(0.0, release)
+            s  = math.sin(2 * math.pi * freq * t)     * 0.60 * env
+            s += math.sin(2 * math.pi * freq * 2 * t) * 0.20 * env
+            samples[i] += s * vol
+
+    # One chord per 2s bar: Am F C/G G | Am F Dm Em — wanders further than
+    # the title's progression, then Em leads back to Am for the loop.
+    chords = [
+        ('A3', 'C4', 'E4'),   # Am
+        ('F3', 'A3', 'C4'),   # F
+        ('G3', 'C4', 'E4'),   # C (second inversion)
+        ('G3', 'B3', 'D4'),   # G
+        ('A3', 'C4', 'E4'),   # Am
+        ('F3', 'A3', 'C4'),   # F
+        ('D3', 'F3', 'A3'),   # Dm
+        ('E3', 'G3', 'B3'),   # Em
+    ]
+
+    # Sustained bass root per bar
+    bass = ['A3', 'F3', 'C3', 'G3', 'A3', 'F3', 'D3', 'E3']
+
+    # Relaxed melody: one gentle phrase per bar, ending on B4 so the loop
+    # resolves back onto the opening E4.
+    melody = [
+        ('E4',  0.00, 0.90), ('A4',  1.00, 0.45), ('B4',  1.50, 0.45),
+        ('C5',  2.00, 0.90), ('A4',  3.00, 0.45), ('G4',  3.50, 0.45),
+        ('G4',  4.00, 0.90), ('E4',  5.00, 0.45), ('F4',  5.50, 0.45),
+        ('D4',  6.00, 0.90), ('G4',  7.00, 0.90),
+        ('A4',  8.00, 0.90), ('C5',  9.00, 0.45), ('B4',  9.50, 0.45),
+        ('A4', 10.00, 0.90), ('F4', 11.00, 0.45), ('G4', 11.50, 0.45),
+        ('F4', 12.00, 0.90), ('E4', 13.00, 0.45), ('D4', 13.50, 0.45),
+        ('E4', 14.00, 0.90), ('G4', 15.00, 0.45), ('B4', 15.50, 0.40),
+    ]
+
+    for note, start, length in melody:
+        add_note(note_freqs[note], start, length, 0.24)
+    for bar, note in enumerate(bass):
+        add_note(note_freqs[note], bar * 2.0, 1.85, 0.20, vibrato=False)
+    for bar, chord in enumerate(chords):
+        for note in chord:
+            add_pad(note_freqs[note], bar * 2.0, 2.0, 0.08)
+    # Music-box arpeggio: four soft plucks per bar, an octave above the pad
+    # chord, keeping the long form moving without breaking the calm.
+    for bar, chord in enumerate(chords):
+        order = (0, 1, 2, 1)
+        for k in range(4):
+            freq = note_freqs[chord[order[k]]] * 2
+            add_note(freq, bar * 2.0 + k * 0.5, 0.28, 0.06, vibrato=False)
+
+    peak = max(abs(s) for s in samples)
+    if peak > 0:
+        samples = [s / peak * 0.85 for s in samples]
+    return samples
+
+
 if __name__ == '__main__':
     repo_root = os.path.dirname(os.path.abspath(__file__))
     os.makedirs(os.path.join(repo_root, 'audio'), exist_ok=True)
@@ -633,6 +729,7 @@ if __name__ == '__main__':
         'boost.wav':           make_boost,
         'title.wav':           make_title,
         'intro.wav':           make_intro,
+        'pause.wav':           make_pause,
         'god_mode_music.wav':       make_god_mode_music,
         'god_mode_music_warn.wav':  make_god_mode_music_warn,
         'pickup.wav':          make_pickup,
