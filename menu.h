@@ -47,6 +47,8 @@ private:
 
   bool quit_confirm_ = false;
   int  quit_selection_ = 0;  // 0 = Yes, 1 = No
+  bool new_confirm_ = false; // confirm NEW GAME when it would overwrite a save
+  int  new_selection_ = 1;   // 0 = Yes, 1 = No — No is the safe default
   bool attract_mode_ = true; // show flashing PRESS ENTER/START before menu on desktop
 };
 

@@ -208,6 +208,17 @@ void Menu::draw() {
         Typer::draw_centered(0,  -40, yes_str.c_str(), 22);
         Typer::draw_centered(0, -110, no_str.c_str(),  22);
       }
+    } else if (new_confirm_) {
+      Typer::draw_centered(0, 50, "New game?", 30);
+      if (is_touch_mode()) {
+        Typer::draw_centered(-Typer::scaled_window_width / 2, -50, "YES", 26);
+        Typer::draw_centered( Typer::scaled_window_width / 2, -50, "NO",  26);
+      } else {
+        std::string yes_str = std::string(new_selection_ == 0 ? "> " : "  ") + "YES";
+        std::string no_str  = std::string(new_selection_ == 1 ? "> " : "  ") + "NO";
+        Typer::draw_centered(0,  -40, yes_str.c_str(), 22);
+        Typer::draw_centered(0, -110, no_str.c_str(),  22);
+      }
     } else if (has_save_) {
       if (is_touch_mode()) {
         // Side-by-side layout for touch: full left/right halves are tap targets
@@ -281,6 +292,12 @@ void Menu::tick(int delta) {
           } else {
             quit_confirm_ = false;
           }
+        } else if (new_confirm_) {
+          if (new_selection_ == 0) {
+            confirm_selection(ctrl);
+          } else {
+            new_confirm_ = false;
+          }
         } else if (is_beta_feature_enabled() && menu_selection == max_menu_items() - 1) {
           open_options();
         } else {
@@ -341,6 +358,10 @@ void Menu::controller(SDL_Event event) {
       return;
     }
     if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
+      if (new_confirm_) {
+        new_confirm_ = false; // dismiss = No
+        return;
+      }
 #ifndef __EMSCRIPTEN__
       if (quit_confirm_) {
         quit_confirm_ = false;
@@ -362,6 +383,21 @@ void Menu::controller(SDL_Event event) {
           quit_confirm_ = false;
         }
       }
+    } else if (new_confirm_) {
+      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
+        new_selection_ = 0;
+      } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
+        new_selection_ = 1;
+      } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
+                 event.cbutton.button == SDL_CONTROLLER_BUTTON_A) {
+        if (new_selection_ == 0) {
+          confirm_selection(SDL_GameControllerFromInstanceID(event.cbutton.which));
+        } else {
+          new_confirm_ = false;
+        }
+      } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_B) {
+        new_confirm_ = false;
+      }
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
       if (menu_selection > 0) menu_selection--;
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
@@ -371,9 +407,6 @@ void Menu::controller(SDL_Event event) {
       if (is_beta_feature_enabled() && menu_selection == n - 1) {
         open_options();
       } else {
-#ifdef __EMSCRIPTEN__
-        EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
-#endif
         confirm_selection(SDL_GameControllerFromInstanceID(event.cbutton.which));
       }
     }
@@ -388,12 +421,15 @@ void Menu::controller(SDL_Event event) {
           } else {
             quit_confirm_ = false;
           }
+        } else if (new_confirm_) {
+          if (new_selection_ == 0) {
+            confirm_selection(SDL_GameControllerFromInstanceID(event.caxis.which));
+          } else {
+            new_confirm_ = false;
+          }
         } else if (is_beta_feature_enabled() && menu_selection == n - 1) {
           open_options();
         } else {
-#ifdef __EMSCRIPTEN__
-          EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
-#endif
           confirm_selection(SDL_GameControllerFromInstanceID(event.caxis.which));
         }
       }
@@ -404,6 +440,9 @@ void Menu::controller(SDL_Event event) {
       if (quit_confirm_) {
         if (up   && !left_stick_up_active)   quit_selection_ = 0;
         if (down && !left_stick_down_active) quit_selection_ = 1;
+      } else if (new_confirm_) {
+        if (up   && !left_stick_up_active)   new_selection_ = 0;
+        if (down && !left_stick_down_active) new_selection_ = 1;
       } else {
         if (up   && !left_stick_up_active   && menu_selection > 0)     menu_selection--;
         if (down && !left_stick_down_active && menu_selection < n - 1) menu_selection++;
@@ -438,10 +477,12 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
 
 #if defined(__ANDROID__) || defined(__IOS__)
   // Touch/mobile — touch_tap and back_pressed() handle interaction.
-  if (quit_confirm_) return;
-  // suppress \r so a finger-down on the left (joystick) half doesn't immediately
-  // confirm before the user lifts their finger.
-  if (has_save_ && (key == '\r' || key == '\n')) return;
+  if (quit_confirm_ || new_confirm_) return;
+  // With a save present touch_tap does all selection; ignore the keys the
+  // touch zones synthesize (\r, space, x, p) — acting on them here would
+  // double-handle the tap that touch_tap already processed (e.g. re-opening
+  // the new-game confirm right after its NO was tapped).
+  if (has_save_) return;
   if (is_beta_feature_enabled() && menu_selection == n - 1) {
     open_options();
   } else {
@@ -450,12 +491,11 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
 #elif defined(__EMSCRIPTEN__)
   if (is_touch_mode()) {
     // Touch web: same as mobile — touch_tap handles selection, suppress \r
-    if (quit_confirm_) return;
+    if (quit_confirm_ || new_confirm_) return;
     if (has_save_ && (key == '\r' || key == '\n')) return;
     if (is_beta_feature_enabled() && menu_selection == n - 1) {
       open_options();
     } else {
-      EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
       confirm_selection(nullptr);
     }
   } else {
@@ -478,12 +518,25 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
       } else if (key == 's' || key == 'S') {
         quit_selection_ = 1;
       }
+    } else if (new_confirm_) {
+      if (key == 27) {
+        new_confirm_ = false;
+      } else if (key == ' ' || key == '\r' || key == '\n') {
+        if (new_selection_ == 0) {
+          confirm_selection(nullptr);
+        } else {
+          new_confirm_ = false;
+        }
+      } else if (key == 'w' || key == 'W') {
+        new_selection_ = 0;
+      } else if (key == 's' || key == 'S') {
+        new_selection_ = 1;
+      }
     } else {
       if (key == ' ' || key == '\r' || key == '\n') {
         if (is_beta_feature_enabled() && menu_selection == n - 1) {
           open_options();
         } else {
-          EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
           confirm_selection(nullptr);
         }
       } else if (key == 'w' || key == 'W') {
@@ -518,6 +571,20 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
     } else if (key == 's' || key == 'S') {
       quit_selection_ = 1;
     }
+  } else if (new_confirm_) {
+    if (key == 27) {
+      new_confirm_ = false;
+    } else if (key == ' ' || key == '\r' || key == '\n') {
+      if (new_selection_ == 0) {
+        confirm_selection(nullptr);
+      } else {
+        new_confirm_ = false;
+      }
+    } else if (key == 'w' || key == 'W') {
+      new_selection_ = 0;
+    } else if (key == 's' || key == 'S') {
+      new_selection_ = 1;
+    }
   } else {
     if (key == 27) {
       quit_confirm_ = true;
@@ -546,6 +613,10 @@ bool Menu::back_pressed() {
 #endif
     return true;
   }
+  if (new_confirm_) {
+    new_confirm_ = false; // dismiss = No, keep the save
+    return true;
+  }
   if (quit_confirm_) {
     quit_confirm_ = false; // dismiss = No
     return true;
@@ -565,12 +636,18 @@ void Menu::touch_tap(float nx, float ny) {
     }
     return;
   }
+  if (new_confirm_) {
+    // Left half = YES (wipe save, start fresh), right half = NO (keep save)
+    if (nx < 0.5f) {
+      confirm_selection(nullptr);
+    } else {
+      new_confirm_ = false;
+    }
+    return;
+  }
   if (!has_save_) return;
   // Left half = CONTINUE, right half = NEW GAME
   menu_selection = (nx >= 0.5f) ? 1 : 0;
-#ifdef __EMSCRIPTEN__
-  EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
-#endif
   confirm_selection(nullptr);
 }
 
@@ -623,11 +700,25 @@ void Menu::confirm_selection(SDL_GameController *ctrl) {
   if (has_save_ && menu_selection == 0) {
     Save::GameState s;
     if (Save::load_game(s)) {
+#ifdef __EMSCRIPTEN__
+      EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
+#endif
       request_state_change(new GLGame(s, ctrl));
       return;
     }
     // Corrupt or missing save — fall through to new game
     has_save_ = false;
   }
+  // Starting fresh would wipe the existing save — ask first. The YES action
+  // re-enters with new_confirm_ set and proceeds.
+  if (has_save_ && !new_confirm_) {
+    new_confirm_ = true;
+    new_selection_ = 1;  // default to NO
+    return;
+  }
+  new_confirm_ = false;
+#ifdef __EMSCRIPTEN__
+  EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
+#endif
   request_state_change(new GLGame(ctrl));
 }
