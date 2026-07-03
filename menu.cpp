@@ -355,6 +355,13 @@ void Menu::controller(SDL_Event event) {
           event.cbutton.button == SDL_CONTROLLER_BUTTON_START) {
         attract_mode_ = false;
       }
+#ifndef __EMSCRIPTEN__
+      else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
+        attract_mode_ = false;
+        quit_confirm_ = true;
+        quit_selection_ = 0;
+      }
+#endif
       return;
     }
     if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
