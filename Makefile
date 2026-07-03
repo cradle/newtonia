@@ -52,12 +52,16 @@ EMCC = emcc
 WEB_EXCL = glut.cpp android_main.cpp
 WEB_SRCS := $(filter-out $(WEB_EXCL), $(wildcard *.cpp) $(wildcard */*.cpp))
 
+# GROWABLE_ARRAYBUFFERS (default-on since emscripten 6.0.2) breaks Firefox:
+# its TextDecoder rejects views over resizable ArrayBuffers, crashing
+# UTF8ToString at startup. Requires emcc >= 4.0.12 to recognise the setting.
 WEB_FLAGS = -std=c++11 -O2 \
             -s USE_SDL=2 \
             -s USE_SDL_MIXER=2 \
             -s SDL2_MIXER_FORMATS='["wav","mp3"]' \
             -s FULL_ES2=1 \
             -s ALLOW_MEMORY_GROWTH=1 \
+            -s GROWABLE_ARRAYBUFFERS=0 \
             -lidbfs.js \
             --shell-file web/shell.html
 

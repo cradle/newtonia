@@ -33,13 +33,14 @@ jobs:
         working-directory: web
         run: tsc
 
-      # Pinned: emscripten 6.0.2 defaults GROWABLE_ARRAYBUFFERS=1, which breaks
-      # UTF8ToString in Firefox (TextDecoder rejects resizable ArrayBuffer views).
+      # Pinned so emsdk updates can't silently change the deployed build;
+      # bump deliberately. (GROWABLE_ARRAYBUFFERS, default-on since 6.0.2,
+      # is disabled in the Makefile's WEB_FLAGS — it breaks Firefox.)
       - name: Install Emscripten SDK
         run: |
           git clone https://github.com/emscripten-core/emsdk.git ~/emsdk
-          ~/emsdk/emsdk install 6.0.1
-          ~/emsdk/emsdk activate 6.0.1
+          ~/emsdk/emsdk install 6.0.2
+          ~/emsdk/emsdk activate 6.0.2
 
       - name: Build WebAssembly
         run: |
