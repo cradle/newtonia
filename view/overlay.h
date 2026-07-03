@@ -13,6 +13,10 @@ public:
   // projection to the central 90%. 1.0 everywhere else (no change).
   static const float SAFE_AREA_SCALE;
   static void draw(const GLGame * glgame, const GLShip *glship);
+  // Touch OSD (joystick, fire/mine, pause) — public so the intro screen can
+  // draw it too; no-op off Android/iOS. Needs a full-window ortho of
+  // ±window extents to be current.
+  static void touch_controls(const GLGame *glgame, const GLShip *glship);
 
 private:
   static void score(const GLGame *glgame, const GLShip *glship);
@@ -26,7 +30,6 @@ private:
   static void paused(const GLGame *glgame, const GLShip *glship);
   static void level(const GLGame *glgame, const GLShip *glship);
   static void god_mode(const GLGame *glgame, const GLShip *glship);
-  static void touch_controls(const GLGame *glgame, const GLShip *glship);
   static void edge_indicators(const GLGame *glgame, const GLShip *glship);
   static void debug_info(const GLGame *glgame, const GLShip *glship);
   static void draw_circle(float cx, float cy, float r, int segs, bool filled,

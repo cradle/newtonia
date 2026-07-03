@@ -225,13 +225,25 @@
     </div>
 
     <div id="controls-bar">
-      <a class="ctrl-btn" href="../" title="Back to site" style="text-decoration:none">&#x2190; newtonia</a>
+      <a class="ctrl-btn" id="site-link" href="https://newtonia.metonymous.com" title="Back to site" style="text-decoration:none">&#x2190; newtonia</a>
       <button class="ctrl-btn" id="fullscreen-btn" title="Fullscreen">&#x26F6;</button>
       <button class="ctrl-btn" id="mute-btn" title="Mute">&#x1F50A;</button>
     </div>
 
     <div id="touch-controls"></div>
   </div>
+
+  <script>
+    // When embedded off-domain (e.g. the itch.io iframe), open the site link
+    // in a new tab instead of navigating the game's iframe.
+    (function() {
+      if (location.hostname !== 'newtonia.metonymous.com') {
+        var link = document.getElementById('site-link');
+        link.target = '_blank';
+        link.rel = 'noopener';
+      }
+    })();
+  </script>
 
   <script>
     // Intercept AudioContext construction so we can capture the instance used

@@ -74,6 +74,23 @@ private:
   void draw_perspective(GLShip *glship) const;
   void setup_viewport(bool primary) const;
 
+  // Between-level intro screen shown when a generation introduces a new
+  // object type: the object spins centre-screen until a player presses shoot.
+  void maybe_start_intro();
+  void dismiss_intro();
+  void draw_intro() const;
+  Point intro_focus() const;
+
+  enum IntroKind { INTRO_ASTEROID, INTRO_BLACK_HOLE, INTRO_MINI_STATION, INTRO_STATION };
+  static const int intro_auto_start_ms = 5000;  // auto-start if nothing pressed
+  bool intro_active = false;
+  IntroKind intro_kind = INTRO_ASTEROID;
+  int intro_time = 0;        // ms since the intro appeared (drives flash + spin)
+  int intro_step_accum = 0;  // accumulates delta into fixed steps for the spin
+  Asteroid *intro_asteroid = NULL;  // display-only; never enters objects/grid
+  const char *intro_name = NULL;
+  int intro_music_channel = -1;  // looping intro tune; halted on dismissal
+
   static const int step_size = 8;
 
   Point world;
@@ -103,6 +120,9 @@ private:
   Mix_Chunk *pickup_sound = NULL;
   Mix_Chunk *warp_sound = NULL;
   Mix_Chunk *station_explode_sound = NULL;
+  Mix_Chunk *intro_music_sound = NULL;
+  Mix_Chunk *pause_music_sound = NULL;
+  int pause_music_channel = -1;  // looping pause tune; halted on unpause
 
   Grid grid;
   GLStarfield *starfield;

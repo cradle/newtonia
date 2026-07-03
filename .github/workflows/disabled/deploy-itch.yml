@@ -54,5 +54,7 @@ jobs:
           BUTLER_API_KEY: ${{ secrets.BUTLER_CREDENTIALS }}
         run: |
           CHANNEL="${{ github.event.inputs.channel || 'html5' }}"
-          linux-amd64/butler push web/dist ${{ secrets.ITCH_GAME }}:${CHANNEL} \
+          # Upload only the playable game (web/dist/play), not the landing
+          # page that web/dist serves at the root of the GitHub Pages site.
+          linux-amd64/butler push web/dist/play ${{ secrets.ITCH_GAME }}:${CHANNEL} \
             --userversion "${{ github.ref_name || github.sha }}"
