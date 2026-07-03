@@ -58,6 +58,7 @@
 		AB00004E /* savegame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00004E /* savegame.cpp */; };
 		AB000052 /* preferences.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000052 /* preferences.cpp */; };
 		AB000056 /* gl_mini_station.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000056 /* gl_mini_station.cpp */; };
+		AB000058 /* intro.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000058 /* intro.cpp */; };
 		AB000030 /* OpenGLES.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000030 /* OpenGLES.framework */; };
 		AB000031 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000031 /* UIKit.framework */; };
 		AB000032 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000032 /* Foundation.framework */; };
@@ -128,6 +129,8 @@
 		AA000053 /* preferences.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../preferences.h; sourceTree = SOURCE_ROOT; };
 		AA000056 /* gl_mini_station.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../gl_mini_station.cpp; sourceTree = SOURCE_ROOT; };
 		AA000057 /* gl_mini_station.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../gl_mini_station.h; sourceTree = SOURCE_ROOT; };
+		AA000058 /* intro.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../intro.cpp; sourceTree = SOURCE_ROOT; };
+		AA000059 /* intro.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../intro.h; sourceTree = SOURCE_ROOT; };
 		AA000051 /* mesh.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../mesh.h; sourceTree = SOURCE_ROOT; };
 		AA000030 /* OpenGLES.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGLES.framework; path = System/Library/Frameworks/OpenGLES.framework; sourceTree = SDKROOT; };
 		AA000031 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
@@ -238,6 +241,8 @@
 			AA000053 /* preferences.h */,
 			AA000056 /* gl_mini_station.cpp */,
 			AA000057 /* gl_mini_station.h */,
+			AA000058 /* intro.cpp */,
+			AA000059 /* intro.h */,
 			);
 			name = Sources;
 			sourceTree = "<group>";
@@ -383,6 +388,7 @@
 			AB00004E /* savegame.cpp in Sources */,
 			AB000052 /* preferences.cpp in Sources */,
 			AB000056 /* gl_mini_station.cpp in Sources */,
+			AB000058 /* intro.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

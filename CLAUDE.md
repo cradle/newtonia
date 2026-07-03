@@ -33,6 +33,61 @@ The pre-commit hook in `.claude/settings.json` runs this automatically on staged
 g++ -std=c++11 -fsyntax-only -I. -I/usr/include/SDL2 <file.cpp>
 ```
 
+#### Headless runtime testing & debugging (Linux, no display)
+A clean build is not proof that gameplay flows work — state transitions, input
+handling, and object lifetimes (double-delete, use-after-free across state
+swaps) only fail at runtime. The game runs fine under Xvfb with software GL,
+so it can be driven end-to-end with synthesized input and screenshotted:
+
+```sh
+sudo apt-get install -y xvfb xdotool x11-apps imagemagick gdb
+```
+
+**Pattern** — write a driver script that launches the game, sends keys, and
+checks liveness after every step, then run it under `xvfb-run`:
+```sh
+export SDL_AUDIODRIVER=dummy       # no sound device in the container
+./newtonia > game.log 2>&1 &  PID=$!
+sleep 3
+W=$(xdotool search --name . | tail -1)          # the game window id
+xdotool key --window $W Return                  # dismiss attract screen
+xdotool key --window $W Return                  # select NEW GAME
+xdotool key --window $W n                       # skip level (see gotcha below)
+kill -0 $PID || { wait $PID; echo "CRASHED status=$?"; }   # 139 = SIGSEGV
+xwd -id $W -out shot.xwd && convert shot.xwd shot.png      # screenshot
+```
+```sh
+xvfb-run -a -s "-screen 0 1280x800x24" ./drive.sh
+```
+Insert a `kill -0 $PID` liveness check plus screenshot after **each** input so
+a crash is pinpointed to the step that caused it. Inspect the PNGs to confirm
+the right screen is showing (menu vs game vs intro), not just that the process
+survived.
+
+**Backtrace on crash** — rebuild with symbols (override `CFLAGS`, keeping the
+SDL flags and `-MMD -MP`) and run the same driver with the game wrapped in
+batch-mode gdb:
+```sh
+make clean && make -j CFLAGS="-Wall -g -O0 -std=c++11 $(sdl2-config --cflags) -MMD -MP"
+gdb -batch -ex run -ex "bt 20" --args ./newtonia > gdb.log 2>&1 &
+# ...send the same xdotool keys, then read gdb.log for the stack trace
+```
+
+**Gotchas learned the hard way:**
+- Screenshot the game window with `xwd -id $W` + `convert`; `import -window
+  root` captures black under Xvfb once the GL window is gone (and a black
+  root capture usually means the game already crashed).
+- The skip-level key (`n`) sets `time_until_next_generation = 0`, so the next
+  generation (and its intro screen) starts **immediately** — there is no 5 s
+  tick countdown like a normally cleared level. Time waits in driver scripts
+  accordingly.
+- `kill $PID; wait $PID` reports 143 (SIGTERM) for a healthy shutdown; 139
+  means the game segfaulted on its own.
+- `xdotool` prints `XGetInputFocus returned the focused window of 1` warnings
+  under Xvfb; they are harmless — filter with `grep -v XGetInputFocus`.
+- Give the driver a hard `timeout` and log to a file; a hung X client can
+  otherwise keep `xvfb-run` alive forever.
+
 ### macOS App Bundle
 ```sh
 make osx      # Build universal arm64+x86_64 .app bundle
@@ -47,6 +102,8 @@ make web-clean  # Remove web build artifacts
 ```
 
 Requires Emscripten (`emcc`) and TypeScript compiler (`tsc`) on PATH. The web frontend is TypeScript: `tsc -p web/tsconfig.json` compiles `web/main.ts`; `web/shell.html` is the Emscripten shell file. The build links `-lidbfs.js` for IndexedDB persistence and preloads audio assets (`--preload-file audio@audio`). `web_main.cpp` mounts IDBFS asynchronously and only starts the game loop after `web_on_idb_ready()` fires from JS.
+
+Output layout (see `web/README.md`): the marketing landing page (`web/site/`, including the GitHub Pages `CNAME`) is copied to the `web/dist/` root; the playable game builds into `web/dist/play/`. The shell's "back to site" link points at https://newtonia.metonymous.com and opens in a new tab when embedded off-domain (e.g. the itch.io iframe). The build sets `-s GROWABLE_ARRAYBUFFERS=0` explicitly — the emscripten 6.0.2 default-on setting breaks Firefox (its TextDecoder rejects views over resizable ArrayBuffers).
 
 ### Android
 ```sh
@@ -93,7 +150,7 @@ The codebase separates **game logic** from **rendering** using a GL-prefixed wra
 
 - `Ship` / `Asteroid` / `Pickup` / `Enemy` — pure game logic (physics, health, state)
 - `GLShip` / `GLEnemy` / `GLCar` / `GLStarfield` — rendering + input layer wrapping logic classes
-- `GLStation` — exception to the pattern: inherits `Ship` directly, combining logic and rendering in one class
+- `GLStation` / `GLMiniStation` — exceptions to the pattern: inherit `Ship` directly, combining logic and rendering in one class
 - `GLGame` — top-level in-game state, owns all GL* objects, drives the update/draw loop
 
 ### Platform Entry Points
@@ -116,7 +173,8 @@ Object                          — position, velocity, radius, collision, step(
 └── CompositeObject             — owns child Objects (e.g. asteroid fragments)
     ├── Ship                    — player/enemy logic (weapons, health, behaviours)
     │   ├── Enemy               — AI-controlled ship (targeting, difficulty level)
-    │   └── GLStation           — enemy station; deploys waves of GLEnemy ships
+    │   ├── GLStation           — enemy station; deploys waves of GLEnemy ships
+    │   └── GLMiniStation       — small drifting station; fires at nearest player
     └── Asteroid                — breakup mechanics, spawns children on death
 Pickup (: Object)               — collectible items dropped by asteroids
 BlackHole (: Object)            — stationary gravitational hazard
@@ -140,9 +198,10 @@ When all killable asteroids are destroyed, a 5-second countdown (tick sounds) ru
 - Asteroid count: `default_num_asteroids + generation * extra_num_asteroids`
 - Special asteroid types unlock by generation: reflective ≥ 2, teleporting ≥ 3, invisible ≥ 4, quantum ≥ 5, tough ≥ 6, armoured ≥ 7, phasing ≥ 8 (counts scale with generation)
 - Black hole spawns at world centre from generation ≥ 9
+- `GLMiniStation` (mini-station) spawns from generation ≥ 10
 - `GLStation` (enemy station) spawns from generation ≥ 20
 - Pickups are cleared, the starfield and grid are rebuilt, players respawn, and progress is auto-saved
-- Every level that introduces a new object type gets an intro screen (asteroid specials at 1–8, black hole at 9, mini-station at 10, station at 20; a new game starts straight into play): the world freezes and the object spins centre-screen with its name and a flashing "PRESS FIRE TO START" ("TAP FIRE TO START" in touch mode); any player's shoot input (key, controller A/right trigger, the touch fire button — not a tap anywhere) dismisses it, and the touch OSD is drawn on the intro so the fire button is findable, or it auto-starts after 5 s (`intro_auto_start_ms`) with no input (`maybe_start_intro()` / `draw_intro()` in `glgame.cpp`; not persisted in saves — resuming a save never re-shows one); a looping title-style tune (`audio/intro.wav`) plays on its own channel while other sound channels stay paused, halted on dismissal
+- Every level that introduces a new object type gets an intro screen — the `Intro` state (`intro.h/cpp`; asteroid specials at 1–8, black hole at 9, mini-station at 10, station at 20; a new game starts straight into play): the world freezes and the object spins centre-screen with its name and a flashing "PRESS FIRE TO START" ("TAP FIRE TO START" in touch mode); any player's shoot input (key, controller A/right trigger, the touch fire button — not a tap anywhere) dismisses it, and the touch OSD is drawn on the intro so the fire button is findable, or it auto-starts after 5 s (`Intro::auto_start_ms`) with no input (`GLGame::maybe_start_intro()` decides whether one is due and hands the game to a new `Intro`; not persisted in saves — resuming a save never re-shows one); a looping title-style tune (`audio/intro.wav`) plays on its own channel while other sound channels stay paused, halted on dismissal
 
 ## Key Systems
 
@@ -152,11 +211,12 @@ When all killable asteroids are destroyed, a 5-second countdown (tick sounds) ru
 
 - Pure virtual: `draw()`, `keyboard()`, `keyboard_up()`, `controller()`, `tick()`
 - Virtual: `touch_tap()`, `back_pressed()`, `resize()`
-- States call `request_state_change()` to transition
+- States call `request_state_change()` to transition. `request_state_change(next, true)` transfers ownership of the outgoing state to the next one — the `StateManager` skips its usual `delete` — and `clear_state_change()` resets a stale transition when such a state is later reinstalled
 
-There are two states:
-- **Menu** (`menu.h/cpp`) — main menu and options screen, animated starfield, touch support. Selecting NEW GAME while a save exists shows a "New game?" YES/NO confirmation (NO is the default; keyboard/controller stack YES above NO, touch puts YES on the left half and NO on the right). Options (5 steps each): P1/P2 sensitivity (SLOW–MAX, 0.5–2.0), P1/P2 camera smoothing (OFF–MAX, 0.0–0.010), star density (MINIMAL–FULL, 0.1–1.0 multiplier)
+There are three states:
+- **Menu** (`menu.h/cpp`) — main menu and options screen, animated starfield, touch support. On non-touch platforms it opens on an attract screen (flashing "PRESS ENTER/START") dismissed by Enter/Space/controller Start. Esc or controller Back opens a quit confirmation (compiled out on web with `__EMSCRIPTEN__`; Android/Xbox reach it via `back_pressed()`). Selecting NEW GAME while a save exists shows a "New game?" YES/NO confirmation (NO is the default; keyboard/controller stack YES above NO, touch puts YES on the left half and NO on the right). Options (5 steps each): P1/P2 sensitivity (SLOW–MAX, 0.5–2.0), P1/P2 camera smoothing (OFF–MAX, 0.0–0.010), star density (MINIMAL–FULL, 0.1–1.0 multiplier)
 - **GLGame** (`glgame.h/cpp`) — in-game; owns all game objects; handles asteroid spawning, pickup drops, two-player split-screen, pause, auto-save. Game over transitions back to Menu (no separate game-over state)
+- **Intro** (`intro.h/cpp`) — between-level new-object intro screen. `GLGame::maybe_start_intro()` hands the game to a new `Intro` via ownership transfer; the intro (a `friend` of `GLGame`) draws the frozen world's starfield with the new object spinning centre-screen, and on fire/auto-start hands the game back (`request_state_change(game)`), or deletes it (auto-saving) when leaving to the Menu. `StateManager` forwards focus and controller hot-plug events to it alongside the `GLGame` case
 
 ### Weapon System
 
@@ -270,6 +330,8 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 
 `GLStation` (`glstation.h/cpp`) — inherits `Ship`; rotating ring station with `health` and per-wave difficulty that deploys waves of `GLEnemy` ships; `capture_state()` / `restore_state()` for save/load.
 
+`GLMiniStation` (`gl_mini_station.h/cpp`) — inherits `Ship`; small station that drifts in one random direction, passes through asteroids, and periodically fires at the nearest player (its bullets destroy asteroids but award nothing). Dies to a single player shot for a fixed reward (`REWARD = 1000`, awarded in `GLGame`); `capture_state()` / `restore_state()` for save/load.
+
 ### Save / Load
 
 **Storage seam** (`save_storage.h/cpp`) — every persisted file resolves its path
@@ -332,13 +394,13 @@ Three active GitHub Actions workflows drive the automatic PR/push checks — the
 - Builds: `macos-dev.yml`, `android.yml`, `ios.yml`, `linux.yml`, `windows.yml`, `web.yml`
 - Xbox (hosted-runner): `xbox-dev.yml` (GDK Desktop / Gaming.Desktop.x64 canary) — reference for the GDK/ANGLE setup; superseded for the build matrix by the self-hosted `xbox.yml`
 - `windows-glon12-spike.yml` — the GDKX-free GLon12 desktop rendering spike (`xbox/GLON12_SPIKE.md`, work-items 3a/4a). Concluded: GLon12 covers our GL 3.3 core feature set and the full game runs through it on real hardware (results recorded in `xbox/GLON12_SPIKE.md`); its `build-desktop` job duplicated `xbox.yml`'s self-hosted build, which now covers that ground on every PR. Superseded by the active `windows-glon12.yml`, which folds the full-game GLon12 run into a hosted PR build
-- Deployment: `deploy-steam.yml`, `deploy-ios.yml`, `deploy-android.yml`, `deploy-itch.yml`, `deploy-macos.yml`, `deploy-windows.yml`, `deploy-xbox.yml`
+- Deployment: `deploy-steam.yml` (Steam, Windows/macOS/Linux via Steamworks SDK), `deploy-ios.yml` (TestFlight), `deploy-android.yml` (Play Store), `deploy-itch.yml` (Itch.io — pushes only the playable game `web/dist/play`, not the landing page), `deploy-macos.yml`, `deploy-windows.yml`, `deploy-xbox.yml`
 
 **Steam integration** — `steam_build.h` (constants/SDK), `steam/` contains Steamworks VDF config files (`app_build.vdf`, `depot_build_windows.vdf`, `depot_build_macos.vdf`, `depot_build_linux.vdf`). **Cloud saves** use Steam Auto-Cloud (partner-site config, no game code) — see `steam/CLOUD.md`: only `savegame.dat` and `highscore.dat` from the SDL pref dir are synced; `preferences.ini` stays machine-local (it holds per-system display/window settings).
 
 ## Conventions & Patterns
 
-1. **GL-prefix pattern** — Rendering wrappers (`GLShip`, `GLGame`, `GLEnemy`, `GLCar`) wrap pure logic classes. Never put rendering into logic classes. (`GLStation` is the one existing exception — it inherits `Ship` directly.)
+1. **GL-prefix pattern** — Rendering wrappers (`GLShip`, `GLGame`, `GLEnemy`, `GLCar`) wrap pure logic classes. Never put rendering into logic classes. (`GLStation` and `GLMiniStation` are the existing exceptions — they inherit `Ship` directly.)
 2. **Weapon/pickup pairs** — Every weapon type has a corresponding `*_pickup` class at root level.
 3. **Behaviour pattern** — Abstract `Behaviour` base with `done` flag; `Ship` owns a list and runs them each frame.
 4. **State machine** — `StateManager` + `State` subclasses drive all top-level transitions.

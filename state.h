@@ -20,18 +20,29 @@ public:
   virtual void tick(int delta) = 0;
   bool is_finished();
   State* get_next_state();
+  // True when this state's ownership passed to the next state — the
+  // StateManager must not delete it on transition (see Intro, which adopts
+  // the GLGame it interrupts and later hands it back).
+  bool ownership_transferred();
+  // Reset a completed transition so a previously-run state can be
+  // reinstalled as the current state (a game handed back by an intro still
+  // carries the finished flag from when it requested the intro).
+  void clear_state_change();
 
   virtual void touch_tap(float nx, float ny) {}
   virtual bool back_pressed() { return false; } // true = handled, false = quit app
   virtual void resize(int width, int height);
 
 protected:
-  void request_state_change(State* next_state);
+  // transfer_ownership: the next state takes ownership of this one instead
+  // of the StateManager deleting it on transition.
+  void request_state_change(State* next_state, bool transfer_ownership = false);
   Point window;
 
 private:
   bool finished;
   State* next_state;
+  bool ownership_transferred_;
 };
 
 #endif
