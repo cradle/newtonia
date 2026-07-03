@@ -1,5 +1,6 @@
 #include "state_manager.h"
 #include "glgame.h"
+#include "intro.h"
 #include "menu.h"
 
 StateManager::StateManager() {
@@ -45,6 +46,8 @@ void StateManager::controller_added(SDL_GameController *ctrl) {
   }
   GLGame *game = dynamic_cast<GLGame*>(state);
   if(game) game->controller_added(ctrl);
+  Intro *intro = dynamic_cast<Intro*>(state);
+  if(intro) intro->controller_added(ctrl);
 }
 
 void StateManager::controller_removed(SDL_JoystickID id) {
@@ -57,13 +60,21 @@ void StateManager::controller_removed(SDL_JoystickID id) {
   }
   GLGame *game = dynamic_cast<GLGame*>(state);
   if(game) game->controller_removed(id);
+  Intro *intro = dynamic_cast<Intro*>(state);
+  if(intro) intro->controller_removed(id);
 }
 
 void StateManager::tick(int delta) {
   if(state->is_finished()) {
     State* next_state = state->get_next_state();
+    // A state handed back to the manager (the game returning from an intro)
+    // still carries the transition it requested; clear it before reinstalling.
+    next_state->clear_state_change();
     next_state->resize(window.x(), window.y());
-    delete state;
+    // A finished state whose ownership moved to the next state (the game
+    // adopted by an intro) must survive the transition.
+    if(!state->ownership_transferred())
+      delete state;
     state = next_state;
     GLGame *game = dynamic_cast<GLGame*>(state);
     if(game) {
@@ -97,8 +108,11 @@ bool StateManager::back_pressed() {
 void StateManager::focus_lost() {
   key_states.clear();
   GLGame *game = dynamic_cast<GLGame*>(state);
+  Intro *intro = dynamic_cast<Intro*>(state);
   if(game) {
     game->focus_lost();
+  } else if(intro) {
+    intro->focus_lost();
   } else if(!focus_muted) {
     Mix_PauseMusic();
     focus_muted = true;
@@ -107,8 +121,11 @@ void StateManager::focus_lost() {
 
 void StateManager::focus_gained() {
   GLGame *game = dynamic_cast<GLGame*>(state);
+  Intro *intro = dynamic_cast<Intro*>(state);
   if(game) {
     game->focus_gained();
+  } else if(intro) {
+    intro->focus_gained();
   } else if(focus_muted) {
     Mix_ResumeMusic();
   }
