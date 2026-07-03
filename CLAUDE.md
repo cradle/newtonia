@@ -48,6 +48,8 @@ make web-clean  # Remove web build artifacts
 
 Requires Emscripten (`emcc`) and TypeScript compiler (`tsc`) on PATH. The web frontend is TypeScript: `tsc -p web/tsconfig.json` compiles `web/main.ts`; `web/shell.html` is the Emscripten shell file. The build links `-lidbfs.js` for IndexedDB persistence and preloads audio assets (`--preload-file audio@audio`). `web_main.cpp` mounts IDBFS asynchronously and only starts the game loop after `web_on_idb_ready()` fires from JS.
 
+Output layout (see `web/README.md`): the marketing landing page (`web/site/`, including the GitHub Pages `CNAME`) is copied to the `web/dist/` root; the playable game builds into `web/dist/play/`. The shell's "back to site" link points at https://newtonia.metonymous.com and opens in a new tab when embedded off-domain (e.g. the itch.io iframe). The build sets `-s GROWABLE_ARRAYBUFFERS=0` explicitly — the emscripten 6.0.2 default-on setting breaks Firefox (its TextDecoder rejects views over resizable ArrayBuffers).
+
 ### Android
 ```sh
 cd android && ./gradlew assembleDebug
@@ -76,7 +78,7 @@ The codebase separates **game logic** from **rendering** using a GL-prefixed wra
 
 - `Ship` / `Asteroid` / `Pickup` / `Enemy` — pure game logic (physics, health, state)
 - `GLShip` / `GLEnemy` / `GLCar` / `GLStarfield` — rendering + input layer wrapping logic classes
-- `GLStation` — exception to the pattern: inherits `Ship` directly, combining logic and rendering in one class
+- `GLStation` / `GLMiniStation` — exceptions to the pattern: inherit `Ship` directly, combining logic and rendering in one class
 - `GLGame` — top-level in-game state, owns all GL* objects, drives the update/draw loop
 
 ### Platform Entry Points
@@ -99,7 +101,8 @@ Object                          — position, velocity, radius, collision, step(
 └── CompositeObject             — owns child Objects (e.g. asteroid fragments)
     ├── Ship                    — player/enemy logic (weapons, health, behaviours)
     │   ├── Enemy               — AI-controlled ship (targeting, difficulty level)
-    │   └── GLStation           — enemy station; deploys waves of GLEnemy ships
+    │   ├── GLStation           — enemy station; deploys waves of GLEnemy ships
+    │   └── GLMiniStation       — small drifting station; fires at nearest player
     └── Asteroid                — breakup mechanics, spawns children on death
 Pickup (: Object)               — collectible items dropped by asteroids
 BlackHole (: Object)            — stationary gravitational hazard
@@ -123,6 +126,7 @@ When all killable asteroids are destroyed, a 5-second countdown (tick sounds) ru
 - Asteroid count: `default_num_asteroids + generation * extra_num_asteroids`
 - Special asteroid types unlock by generation: reflective ≥ 2, teleporting ≥ 3, invisible ≥ 4, quantum ≥ 5, tough ≥ 6, armoured ≥ 7, phasing ≥ 8 (counts scale with generation)
 - Black hole spawns at world centre from generation ≥ 9
+- `GLMiniStation` (mini-station) spawns from generation ≥ 10
 - `GLStation` (enemy station) spawns from generation ≥ 20
 - Pickups are cleared, the starfield and grid are rebuilt, players respawn, and progress is auto-saved
 - Every level that introduces a new object type gets an intro screen (asteroid specials at 1–8, black hole at 9, mini-station at 10, station at 20; a new game starts straight into play): the world freezes and the object spins centre-screen with its name and a flashing "PRESS FIRE TO START" ("TAP FIRE TO START" in touch mode); any player's shoot input (key, controller A/right trigger, the touch fire button — not a tap anywhere) dismisses it, and the touch OSD is drawn on the intro so the fire button is findable, or it auto-starts after 5 s (`intro_auto_start_ms`) with no input (`maybe_start_intro()` / `draw_intro()` in `glgame.cpp`; not persisted in saves — resuming a save never re-shows one); a looping title-style tune (`audio/intro.wav`) plays on its own channel while other sound channels stay paused, halted on dismissal
@@ -138,7 +142,7 @@ When all killable asteroids are destroyed, a 5-second countdown (tick sounds) ru
 - States call `request_state_change()` to transition
 
 There are two states:
-- **Menu** (`menu.h/cpp`) — main menu and options screen, animated starfield, touch support. Selecting NEW GAME while a save exists shows a "New game?" YES/NO confirmation (NO is the default; keyboard/controller stack YES above NO, touch puts YES on the left half and NO on the right). Options (5 steps each): P1/P2 sensitivity (SLOW–MAX, 0.5–2.0), P1/P2 camera smoothing (OFF–MAX, 0.0–0.010), star density (MINIMAL–FULL, 0.1–1.0 multiplier)
+- **Menu** (`menu.h/cpp`) — main menu and options screen, animated starfield, touch support. On non-touch platforms it opens on an attract screen (flashing "PRESS ENTER/START") dismissed by Enter/Space/controller Start. Esc or controller Back opens a quit confirmation (compiled out on web with `__EMSCRIPTEN__`; Android/Xbox reach it via `back_pressed()`). Selecting NEW GAME while a save exists shows a "New game?" YES/NO confirmation (NO is the default; keyboard/controller stack YES above NO, touch puts YES on the left half and NO on the right). Options (5 steps each): P1/P2 sensitivity (SLOW–MAX, 0.5–2.0), P1/P2 camera smoothing (OFF–MAX, 0.0–0.010), star density (MINIMAL–FULL, 0.1–1.0 multiplier)
 - **GLGame** (`glgame.h/cpp`) — in-game; owns all game objects; handles asteroid spawning, pickup drops, two-player split-screen, pause, auto-save. Game over transitions back to Menu (no separate game-over state)
 
 ### Weapon System
@@ -253,6 +257,8 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 
 `GLStation` (`glstation.h/cpp`) — inherits `Ship`; rotating ring station with `health` and per-wave difficulty that deploys waves of `GLEnemy` ships; `capture_state()` / `restore_state()` for save/load.
 
+`GLMiniStation` (`gl_mini_station.h/cpp`) — inherits `Ship`; small station that drifts in one random direction, passes through asteroids, and periodically fires at the nearest player (its bullets destroy asteroids but award nothing). Dies to a single player shot for a fixed reward (`REWARD = 1000`, awarded in `GLGame`); `capture_state()` / `restore_state()` for save/load.
+
 ### Save / Load
 
 **Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 10:
@@ -308,7 +314,7 @@ GitHub Actions runs builds on every push to `master`, `main`, or `claude/*` bran
 - `.github/workflows/deploy-steam.yml` — Steam (Windows/macOS/Linux via Steamworks SDK)
 - `.github/workflows/deploy-ios.yml` — TestFlight
 - `.github/workflows/deploy-android.yml` — Play Store
-- `.github/workflows/deploy-itch.yml` — Itch.io
+- `.github/workflows/deploy-itch.yml` — Itch.io (pushes only the playable game `web/dist/play`, not the landing page)
 
 **Disabled workflows** — `.github/workflows/disabled/` holds inactive deployment workflows (`deploy-macos.yml`, `deploy-windows.yml`, `deploy-xbox.yml`); move a file back into `workflows/` to re-enable it.
 
@@ -316,7 +322,7 @@ GitHub Actions runs builds on every push to `master`, `main`, or `claude/*` bran
 
 ## Conventions & Patterns
 
-1. **GL-prefix pattern** — Rendering wrappers (`GLShip`, `GLGame`, `GLEnemy`, `GLCar`) wrap pure logic classes. Never put rendering into logic classes. (`GLStation` is the one existing exception — it inherits `Ship` directly.)
+1. **GL-prefix pattern** — Rendering wrappers (`GLShip`, `GLGame`, `GLEnemy`, `GLCar`) wrap pure logic classes. Never put rendering into logic classes. (`GLStation` and `GLMiniStation` are the existing exceptions — they inherit `Ship` directly.)
 2. **Weapon/pickup pairs** — Every weapon type has a corresponding `*_pickup` class at root level.
 3. **Behaviour pattern** — Abstract `Behaviour` base with `done` flag; `Ship` owns a list and runs them each frame.
 4. **State machine** — `StateManager` + `State` subclasses drive all top-level transitions.
