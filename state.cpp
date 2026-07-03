@@ -1,6 +1,6 @@
 #include "state.h"
 
-State::State() : finished(false) {}
+State::State() : finished(false), next_state(NULL), ownership_transferred_(false) {}
 
 void State::resize(int x, int y) {
   window = Point(x, y);
@@ -16,8 +16,19 @@ State* State::get_next_state() {
   return next_state;
 }
 
-void State::request_state_change(State* next) {
+bool State::ownership_transferred() {
+  return ownership_transferred_;
+}
+
+void State::clear_state_change() {
+  finished = false;
+  next_state = NULL;
+  ownership_transferred_ = false;
+}
+
+void State::request_state_change(State* next, bool transfer_ownership) {
   next_state = next;
+  ownership_transferred_ = transfer_ownership;
   finished = true;
 }
 
