@@ -125,7 +125,7 @@ When all killable asteroids are destroyed, a 5-second countdown (tick sounds) ru
 - Black hole spawns at world centre from generation ≥ 9
 - `GLStation` (enemy station) spawns from generation ≥ 20
 - Pickups are cleared, the starfield and grid are rebuilt, players respawn, and progress is auto-saved
-- Every level that introduces a new object type gets an intro screen (asteroid specials at 1–8, black hole at 9, mini-station at 10, station at 20; a new game starts straight into play): the world freezes and the object spins centre-screen with its name and a flashing "PRESS FIRE TO START" ("TAP TO START" in touch mode); any player's shoot input (key, controller A/right trigger, touch) dismisses it, or it auto-starts after 5 s (`intro_auto_start_ms`) with no input (`maybe_start_intro()` / `draw_intro()` in `glgame.cpp`; not persisted in saves — resuming a save never re-shows one); a looping title-style tune (`audio/intro.wav`) plays on its own channel while other sound channels stay paused, halted on dismissal
+- Every level that introduces a new object type gets an intro screen (asteroid specials at 1–8, black hole at 9, mini-station at 10, station at 20; a new game starts straight into play): the world freezes and the object spins centre-screen with its name and a flashing "PRESS FIRE TO START" ("TAP FIRE TO START" in touch mode); any player's shoot input (key, controller A/right trigger, the touch fire button — not a tap anywhere) dismisses it, and the touch OSD is drawn on the intro so the fire button is findable, or it auto-starts after 5 s (`intro_auto_start_ms`) with no input (`maybe_start_intro()` / `draw_intro()` in `glgame.cpp`; not persisted in saves — resuming a save never re-shows one); a looping title-style tune (`audio/intro.wav`) plays on its own channel while other sound channels stay paused, halted on dismissal
 
 ## Key Systems
 
@@ -138,7 +138,7 @@ When all killable asteroids are destroyed, a 5-second countdown (tick sounds) ru
 - States call `request_state_change()` to transition
 
 There are two states:
-- **Menu** (`menu.h/cpp`) — main menu and options screen, animated starfield, touch support. Options (5 steps each): P1/P2 sensitivity (SLOW–MAX, 0.5–2.0), P1/P2 camera smoothing (OFF–MAX, 0.0–0.010), star density (MINIMAL–FULL, 0.1–1.0 multiplier)
+- **Menu** (`menu.h/cpp`) — main menu and options screen, animated starfield, touch support. Selecting NEW GAME while a save exists shows a "New game?" YES/NO confirmation (NO is the default; keyboard/controller stack YES above NO, touch puts YES on the left half and NO on the right). Options (5 steps each): P1/P2 sensitivity (SLOW–MAX, 0.5–2.0), P1/P2 camera smoothing (OFF–MAX, 0.0–0.010), star density (MINIMAL–FULL, 0.1–1.0 multiplier)
 - **GLGame** (`glgame.h/cpp`) — in-game; owns all game objects; handles asteroid spawning, pickup drops, two-player split-screen, pause, auto-save. Game over transitions back to Menu (no separate game-over state)
 
 ### Weapon System
