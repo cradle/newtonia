@@ -604,6 +604,10 @@ void GLGame::draw_intro() const {
   float ortho[16];
   mat4_ortho(ortho, -hw, hw, -hh, hh, -1.0f, 1.0f);
   gles2_set_vp(ortho);
+  // Touch OSD stays visible so the player can find the fire button that
+  // dismisses the intro (no-op off Android/iOS).
+  if (!players->empty())
+    Overlay::touch_controls(this, players->front());
   // Typer multiplies coordinates by Typer::scale (800x600 virtual space), so
   // convert the ortho half-height into Typer units to place text on screen.
   float top = hh / Typer::scale;
