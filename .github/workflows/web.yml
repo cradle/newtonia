@@ -33,14 +33,11 @@ jobs:
         working-directory: web
         run: tsc
 
-      # Pinned so emsdk updates can't silently change the deployed build;
-      # bump deliberately. (GROWABLE_ARRAYBUFFERS, default-on since 6.0.2,
-      # is disabled in the Makefile's WEB_FLAGS — it breaks Firefox.)
       - name: Install Emscripten SDK
         run: |
           git clone https://github.com/emscripten-core/emsdk.git ~/emsdk
-          ~/emsdk/emsdk install 6.0.2
-          ~/emsdk/emsdk activate 6.0.2
+          ~/emsdk/emsdk install latest
+          ~/emsdk/emsdk activate latest
 
       - name: Build WebAssembly
         run: |
