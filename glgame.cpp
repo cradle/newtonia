@@ -609,7 +609,7 @@ void GLGame::draw_intro() const {
   float top = hh / Typer::scale;
   if ((intro_time / 700) % 2 == 0) {
     Typer::draw_centered(0, top * 0.75f,
-                         is_touch_mode() ? "TAP TO START" : "PRESS FIRE TO START", 20);
+                         is_touch_mode() ? "TAP FIRE TO START" : "PRESS FIRE TO START", 20);
   }
   Typer::draw_centered(0, -top * 0.5f, intro_name, 26);
 }
@@ -1927,10 +1927,6 @@ void GLGame::controller(SDL_Event event) {
       (*object)->controller_touchpad_input(event);
     }
   }
-}
-
-void GLGame::touch_tap(float nx, float ny) {
-  if(intro_active && intro_time >= 300) dismiss_intro();
 }
 
 void GLGame::touch_joystick(float nx, float ny) {
