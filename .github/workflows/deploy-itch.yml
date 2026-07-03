@@ -29,11 +29,13 @@ jobs:
         working-directory: web
         run: tsc
 
+      # Pinned: emscripten 6.0.2 defaults GROWABLE_ARRAYBUFFERS=1, which breaks
+      # UTF8ToString in Firefox (TextDecoder rejects resizable ArrayBuffer views).
       - name: Install Emscripten SDK
         run: |
           git clone https://github.com/emscripten-core/emsdk.git ~/emsdk
-          ~/emsdk/emsdk install latest
-          ~/emsdk/emsdk activate latest
+          ~/emsdk/emsdk install 6.0.1
+          ~/emsdk/emsdk activate 6.0.1
 
       - name: Build WebAssembly
         run: |
@@ -54,5 +56,7 @@ jobs:
           BUTLER_API_KEY: ${{ secrets.BUTLER_CREDENTIALS }}
         run: |
           CHANNEL="${{ github.event.inputs.channel || 'html5' }}"
-          linux-amd64/butler push web/dist ${{ secrets.ITCH_GAME }}:${CHANNEL} \
+          # Upload only the playable game (web/dist/play), not the landing
+          # page that web/dist serves at the root of the GitHub Pages site.
+          linux-amd64/butler push web/dist/play ${{ secrets.ITCH_GAME }}:${CHANNEL} \
             --userversion "${{ github.ref_name || github.sha }}"
