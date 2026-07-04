@@ -4,6 +4,8 @@
 #include "glstarfield.h"
 #include "glgame.h"
 #include "menu.h"
+#include "net_lobby.h"
+#include "net_transport.h"
 #include "preferences.h"
 #include "gl_compat.h"
 #include "mat4.h"
@@ -227,15 +229,16 @@ void Menu::draw() {
       } else {
         // Equally space item blocks between title_bot=160 and scores_top=-215
         const int sz = 22, h = 2 * sz;
-        int n = is_beta_feature_enabled() ? 3 : 2;
+        std::vector<std::string> rows;
+        rows.push_back("CONTINUE");
+        rows.push_back("NEW GAME");
+        if (show_online_row()) rows.push_back("ONLINE");
+        if (is_beta_feature_enabled()) rows.push_back("OPTIONS");
+        int n = (int)rows.size();
         int gap = (160 - (-215) - n * h) / (n + 1);
-        std::string cont    = std::string(menu_selection == 0 ? "> " : "  ") + "CONTINUE";
-        std::string newgame = std::string(menu_selection == 1 ? "> " : "  ") + "NEW GAME";
-        Typer::draw_centered(0, 160 - gap,           cont.c_str(),    sz);
-        Typer::draw_centered(0, 160 - 2*gap - h,     newgame.c_str(), sz);
-        if (is_beta_feature_enabled()) {
-          std::string options = std::string(menu_selection == 2 ? "> " : "  ") + "OPTIONS";
-          Typer::draw_centered(0, 160 - 3*gap - 2*h, options.c_str(), sz);
+        for (int i = 0; i < n; i++) {
+          std::string row = std::string(menu_selection == i ? "> " : "  ") + rows[i];
+          Typer::draw_centered(0, 160 - (i + 1) * gap - i * h, row.c_str(), sz);
         }
       }
     } else {
@@ -246,13 +249,15 @@ void Menu::draw() {
       } else {
         // Equally space item blocks between title_bot=160 and scores_top=-215
         const int sz = 22, h = 2 * sz;
-        int n = is_beta_feature_enabled() ? 2 : 1;
+        std::vector<std::string> rows;
+        rows.push_back("NEW GAME");
+        if (show_online_row()) rows.push_back("ONLINE");
+        if (is_beta_feature_enabled()) rows.push_back("OPTIONS");
+        int n = (int)rows.size();
         int gap = (160 - (-215) - n * h) / (n + 1);
-        std::string newgame = std::string(menu_selection == 0 ? "> " : "  ") + "NEW GAME";
-        Typer::draw_centered(0, 160 - gap, newgame.c_str(), sz);
-        if (is_beta_feature_enabled()) {
-          std::string options = std::string(menu_selection == 1 ? "> " : "  ") + "OPTIONS";
-          Typer::draw_centered(0, 160 - 2*gap - h, options.c_str(), sz);
+        for (int i = 0; i < n; i++) {
+          std::string row = std::string(menu_selection == i ? "> " : "  ") + rows[i];
+          Typer::draw_centered(0, 160 - (i + 1) * gap - i * h, row.c_str(), sz);
         }
       }
     }
@@ -659,9 +664,19 @@ void Menu::touch_tap(float nx, float ny) {
 }
 
 int Menu::max_menu_items() const {
-  if (is_beta_feature_enabled())
-    return has_save_ ? 3 : 2;
-  return has_save_ ? 2 : 1;
+  int n = has_save_ ? 2 : 1;
+  if (show_online_row()) n++;
+  if (is_beta_feature_enabled()) n++;
+  return n;
+}
+
+bool Menu::show_online_row() const {
+  return net_available() && !is_touch_mode();
+}
+
+int Menu::online_row_index() const {
+  if (!show_online_row()) return -1;
+  return has_save_ ? 2 : 1;  // directly after NEW GAME
 }
 
 void Menu::open_options() {
@@ -704,6 +719,10 @@ void Menu::close_options() {
 }
 
 void Menu::confirm_selection(SDL_GameController *ctrl) {
+  if (menu_selection == online_row_index()) {
+    request_state_change(new NetLobby());
+    return;
+  }
   if (has_save_ && menu_selection == 0) {
     Save::GameState s;
     if (Save::load_game(s)) {

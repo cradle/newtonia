@@ -21,6 +21,10 @@ public:
 private:
   void confirm_selection(SDL_GameController *ctrl);
   int  max_menu_items() const;
+  // ONLINE row (netplay lobby): only on builds with a net backend, and not
+  // in touch mode (Milestone 1 lobby is keyboard/controller only).
+  bool show_online_row() const;
+  int  online_row_index() const;  // -1 when the row is hidden
   void open_options();
   void close_options();
   void adjust_active_row(int delta);
