@@ -218,6 +218,18 @@ void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
   }
 }
 
+
+// Human-readable name of a bound key for HUD hints (F-keys arrive as
+// 128 + GLUT function-key code; everything else is the character itself).
+static void key_hint(int key, char *out, size_t n, const char *verb) {
+  if (key > 128 && key <= 128 + 12)
+    snprintf(out, n, "%s controls with F%d", verb, key - 128);
+  else if (key >= 33 && key <= 126)
+    snprintf(out, n, "%s controls with %c", verb, (char)key);
+  else
+    snprintf(out, n, "%s controls with F1", verb);
+}
+
 void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   Ship* p1 = glgame->players->front()->ship;
   if(glgame->players->size() < 2) {
@@ -237,10 +249,13 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
       }
     }
     if(!glship->last_input_was_controller && !is_touch_mode()) {
+      char hint[48];
       if(glship->show_help) {
-        Typer::draw_centered(-1*Typer::scaled_window_width/2, Typer::scaled_window_height-10, "hide controls with F1", 8);
+        key_hint(glship->help_key, hint, sizeof(hint), "hide");
+        Typer::draw_centered(-1*Typer::scaled_window_width/2, Typer::scaled_window_height-10, hint, 8);
       } else if ((glgame->current_time)/12000 % 2) {
-        Typer::draw_centered(-1*Typer::scaled_window_width/2, Typer::scaled_window_height-10, "show controls with F1", 8);
+        key_hint(glship->help_key, hint, sizeof(hint), "show");
+        Typer::draw_centered(-1*Typer::scaled_window_width/2, Typer::scaled_window_height-10, hint, 8);
       }
     }
   } else {
@@ -248,19 +263,16 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     if(glgame->friendly_fire) {
       Typer::draw_centered(0, vhb+30, "friendly fire on", 8);
     }
+    // Label the key this ship actually has bound — online the client's
+    // local ship is player 2 in the list but plays with player-1 keys.
     if(!glship->last_input_was_controller && !is_touch_mode()) {
-      if(p1 == glship->ship) {
-        if(glship->show_help) {
-          Typer::draw_centered(0, vhb+60, "hide controls with F1", 8);
-        } else if ((glgame->current_time)/12000 % 2) {
-          Typer::draw_centered(0, vhb+60, "show controls with F1", 8);
-        }
-      } else {
-        if(glship->show_help) {
-          Typer::draw_centered(0, vhb+60, "hide controls with F8", 8);
-        } else if ((glgame->current_time)/12000 % 2) {
-          Typer::draw_centered(0, vhb+60, "show controls with F8", 8);
-        }
+      char hint[48];
+      if(glship->show_help) {
+        key_hint(glship->help_key, hint, sizeof(hint), "hide");
+        Typer::draw_centered(0, vhb+60, hint, 8);
+      } else if ((glgame->current_time)/12000 % 2) {
+        key_hint(glship->help_key, hint, sizeof(hint), "show");
+        Typer::draw_centered(0, vhb+60, hint, 8);
       }
     }
   }
