@@ -16,9 +16,9 @@ else
 endif
 
 # Optional native netplay backend (macOS/Linux) — see NETPLAY.md.
-#   macOS: brew install libdatachannel
-#          make NETPLAY=1 NETPLAY_PREFIX=$(brew --prefix)
-#   Linux: build/install libdatachannel, then make NETPLAY=1 [NETPLAY_PREFIX=...]
+# libdatachannel is not packaged by Homebrew; build it from source first:
+#   ./build_netplay_deps.sh
+#   make NETPLAY=1 NETPLAY_PREFIX=$PWD/netplay-libs
 # Defines NEWTONIA_NET_RTC (activates net_transport_rtc.cpp and the menu's
 # ONLINE row) and links the libdatachannel C API.
 ifeq ($(NETPLAY),1)

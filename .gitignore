@@ -32,3 +32,4 @@ package.json
 package-lock.json
 ## Mac build
 Newtonia.app/
+netplay-libs/
