@@ -44,6 +44,19 @@ set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
 set(ENABLE_TESTING  OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(MbedTLS)
 
+# libdatachannel consumes MbedTLS as the imported-style targets its
+# FindMbedTLS.cmake would create (MbedTLS::MbedTLS etc.), but skips the
+# find_package entirely when MbedTLS::MbedTLS already exists
+# (CMakeLists.txt:428 in v0.24.5). The FetchContent MbedTLS build only
+# defines the plain mbedtls/mbedx509/mbedcrypto targets, so alias them —
+# without this, its find module searches the system, finds nothing on a
+# clean runner, and configuration fails.
+if(NOT TARGET MbedTLS::MbedTLS)
+  add_library(MbedTLS::MbedTLS    ALIAS mbedtls)
+  add_library(MbedTLS::MbedX509   ALIAS mbedx509)
+  add_library(MbedTLS::MbedCrypto ALIAS mbedcrypto)
+endif()
+
 FetchContent_Declare(libdatachannel
     GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
     GIT_TAG        v0.24.5
