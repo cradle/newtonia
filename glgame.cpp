@@ -1269,11 +1269,13 @@ void GLGame::net_apply_extras(Save::Stream &in, const Save::GameState &s) {
     ship->temperature = ex.temperature;
     ship->time_until_respawn = ex.time_until_respawn;
     ship->time_left_invincible = ex.time_left_invincible;
-    // restore_state -> respawn() force-sets invincible=true every snapshot;
-    // reflect the authoritative state instead or the shield ring flickers
-    // at 10 Hz on every ship.
+    // restore_state -> respawn() force-sets invincible=true (and restarts
+    // the shield hum) every snapshot; reflect the authoritative state
+    // instead or the shield ring flickers and the hum plays constantly.
     ship->invincible = ex.time_left_invincible > 0 || ex.god_ms > 0 ||
                        ex.shield != 0;
+    ship->set_shield_hum(ship->is_alive() && ship->invincible &&
+                         ex.god_ms <= 0);
     // god-mode / shield presentation on the client is a Milestone-1 cut
     // (both still function — the host simulates them; only their local
     // visual/audio flourishes are missing).
