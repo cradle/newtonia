@@ -1,5 +1,8 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <utility>
 #include <vector>
 
 // Binary save/load for a complete in-progress game.
@@ -163,11 +166,53 @@ struct GameState {
     MiniStation            mini_station;
 };
 
+// ── Streams ──────────────────────────────────────────────────────────────────
+// Byte-sink/source abstraction so the same serialization code drives both the
+// save file and in-memory netplay snapshots (see NETPLAY.md). Both methods
+// return false on failure so serialization can short-circuit with &&.
+
+class Stream {
+public:
+    virtual ~Stream() {}
+    virtual bool write(const void *data, size_t size) = 0;
+    virtual bool read(void *data, size_t size) = 0;
+};
+
+class FileStream : public Stream {
+public:
+    explicit FileStream(std::FILE *file) : f(file) {}
+    bool write(const void *data, size_t size) override;
+    bool read(void *data, size_t size) override;
+private:
+    std::FILE *f;
+};
+
+class MemStream : public Stream {
+public:
+    MemStream() : pos(0) {}  // empty sink: write, then take data()
+    explicit MemStream(std::vector<uint8_t> bytes)  // source: read from bytes
+        : buf(std::move(bytes)), pos(0) {}
+    bool write(const void *data, size_t size) override;
+    bool read(void *data, size_t size) override;
+    const std::vector<uint8_t> &data() const { return buf; }
+private:
+    std::vector<uint8_t> buf;
+    size_t pos;
+};
+
 // ── API ───────────────────────────────────────────────────────────────────────
 
 bool save_exists();
 bool save_game(const GameState &state);  // returns false on I/O error
 bool load_game(GameState &state);        // returns false if absent or format mismatch
 void delete_save();
+
+// Header-less body serialization: save_game/load_game wrap these with the
+// MAGIC/VERSION header and the save file's path; netplay snapshots call them
+// directly on a MemStream. deserialize_game takes the format version the
+// bytes were written with (current VERSION when omitted).
+bool serialize_game(Stream &out, const GameState &state);
+bool deserialize_game(Stream &in, GameState &state,
+                      uint16_t version = GameState::VERSION);
 
 } // namespace Save
