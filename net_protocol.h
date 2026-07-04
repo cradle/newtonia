@@ -20,7 +20,8 @@
 
 namespace Net {
 
-const uint8_t PROTO_VERSION = 1;
+// 2: per-ship warp count appended to the snapshot NetExtras ship record.
+const uint8_t PROTO_VERSION = 2;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check

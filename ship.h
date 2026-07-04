@@ -124,6 +124,11 @@ class Ship : public CompositeObject {
     // applies the deltas). Meaningless offline. See NETPLAY.md.
     uint8_t net_boost_count = 0, net_next_weapon_count = 0,
             net_next_secondary_count = 0, net_teleport_count = 0;
+    // Netplay: bumped whenever the simulation moves this ship
+    // discontinuously (respawn, teleport). Travels in the host's snapshot
+    // extras; a change tells the client the new pose is absolute — snap to
+    // it instead of blending the prediction correction. See NETPLAY.md.
+    uint8_t net_warp_count = 0;
 
     // Serialisation: capture/restore the full player state including weapons.
     Save::Player capture_state() const;

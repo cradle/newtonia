@@ -750,6 +750,7 @@ void nx_write_ship(Save::Stream &out, const Ship &s) {
   nx_write(out, (int32_t)s.time_left_invincible);
   nx_write(out, (int32_t)s.god_mode_time_remaining());
   nx_write(out, (uint8_t)s.shield_active());
+  nx_write(out, s.net_warp_count);
 
   nx_write(out, (uint16_t)s.bullets.size());
   for (const Particle &p : s.bullets) nx_write_projectile(out, p);
@@ -908,6 +909,7 @@ struct NetShipExtras {
   int32_t time_left_invincible;
   int32_t god_ms;
   uint8_t shield;
+  uint8_t warp_count;  // pose-is-absolute signal — see Ship::net_warp_count
 };
 
 bool nx_read_projectiles(Save::Stream &in, Ship &s) {
@@ -1194,10 +1196,26 @@ void GLGame::net_apply_extras(Save::Stream &in, const Save::GameState &s) {
     NetShipExtras ex;
     if (!nx_read(in, ex.alive) || !nx_read(in, ex.temperature) ||
         !nx_read(in, ex.time_until_respawn) || !nx_read(in, ex.time_left_invincible) ||
-        !nx_read(in, ex.god_ms) || !nx_read(in, ex.shield))
+        !nx_read(in, ex.god_ms) || !nx_read(in, ex.shield) ||
+        !nx_read(in, ex.warp_count))
       return;
     if (it == players->end()) return;
     Ship *ship = (*it)->ship;
+
+    // The host moved this ship discontinuously (respawn, teleport, new-level
+    // spawn) since the last snapshot: the pose is absolute. For the local
+    // ship that overrides net_apply_state's prediction blend, which would
+    // otherwise slide the ship across the world to the new position.
+    if (*it == players->back() && i < s.players.size()) {
+      if (net_have_warp_ && ex.warp_count != net_prev_warp_ && ex.alive) {
+        ship->position = WrappedPoint(s.players[i].pos_x, s.players[i].pos_y);
+        ship->velocity = Point(s.players[i].vel_x, s.players[i].vel_y);
+        ship->facing = Point(s.players[i].facing_x, s.players[i].facing_y);
+        printf("net: warp snap (count %u)\n", (unsigned)ex.warp_count);
+      }
+      net_prev_warp_ = ex.warp_count;
+      net_have_warp_ = true;
+    }
 
     if (!ex.alive && ship->is_alive()) {
       // Host says this ship died: explode locally too.

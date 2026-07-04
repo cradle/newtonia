@@ -4,6 +4,7 @@
 
 void Teleport::step(int delta) {
   ship->explode();
+  ship->net_warp_count++;  // discontinuous move — netplay clients must not blend
   ship->position = WrappedPoint();
   ship->explode(ship->position, Point());
   if(ship->time_left_invincible < 1000) {

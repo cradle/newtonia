@@ -672,6 +672,7 @@ float Ship::temperature_ratio() {
 
 void Ship::respawn(const Grid &grid, bool was_killed) {
   if(alive || lives > 0) {
+    net_warp_count++;  // discontinuous move — netplay clients must not blend
     bool try_current_position = first_life;
     if(first_life) {
       first_life = false;

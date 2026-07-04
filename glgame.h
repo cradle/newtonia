@@ -129,6 +129,8 @@ private:
           net_prev_respawn_ = 0, net_prev_shoot_press_ = 0,
           net_prev_secondary_press_ = 0;
   uint32_t net_input_seq_ = 0;    // client: outgoing INPUT sequence
+  uint8_t net_prev_warp_ = 0;     // client: last seen local-ship warp count
+  bool net_have_warp_ = false;    // first snapshot baselines the count
   Net::SnapshotAssembler *net_assembler_ = nullptr;  // client chunk reassembly
 
   // Phase 8 polish (see NETPLAY.md)
