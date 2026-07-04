@@ -37,6 +37,14 @@ include(FetchContent)
 
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
+# libdatachannel's MbedTLS DTLS transport unconditionally uses the
+# DTLS-SRTP API (even with NO_MEDIA), which the default MbedTLS config
+# compiles out. Enable it via a user config applied to the whole build
+# tree, so MbedTLS itself and every consumer including its headers see
+# the same configuration.
+add_compile_definitions(
+    "MBEDTLS_USER_CONFIG_FILE=\"${CMAKE_CURRENT_SOURCE_DIR}/mbedtls_user_config.h\"")
+
 # MbedTLS first so libdatachannel (USE_MBEDTLS) resolves the MbedTLS::*
 # targets from this build instead of find_package'ing the system.
 # Pins verified via git ls-remote 2026-07-04 (see NETPLAY.md).
