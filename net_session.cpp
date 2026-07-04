@@ -128,6 +128,8 @@ void encode_input(std::vector<uint8_t> &out, const InputState &in,
   put_u8(out, in.next_secondary_count);
   put_u8(out, in.teleport_count);
   put_u8(out, in.respawn_count);
+  put_u8(out, in.shoot_press_count);
+  put_u8(out, in.secondary_press_count);
   put_f32(out, in.analog_rotation);
   put_f32(out, in.analog_thrust);
   put_f32(out, in.analog_reverse);
@@ -141,6 +143,8 @@ bool decode_input(Reader &r, InputState &out) {
   out.next_secondary_count = r.u8();
   out.teleport_count = r.u8();
   out.respawn_count = r.u8();
+  out.shoot_press_count = r.u8();
+  out.secondary_press_count = r.u8();
   out.analog_rotation = r.f32();
   out.analog_thrust = r.f32();
   out.analog_reverse = r.f32();

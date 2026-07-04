@@ -55,6 +55,8 @@ struct InputState {
   uint8_t next_secondary_count;
   uint8_t teleport_count;
   uint8_t respawn_count;   // respawn-tap while dead
+  uint8_t shoot_press_count;      // fire-key presses (semi-auto edges)
+  uint8_t secondary_press_count;  // secondary-key presses
   float analog_rotation;   // rotation_scale (0..1; 1 = keyboard)
   float analog_thrust;     // thrust_analog
   float analog_reverse;    // reverse_analog
@@ -62,6 +64,7 @@ struct InputState {
   InputState()
       : seq(0), held(0), boost_count(0), next_weapon_count(0),
         next_secondary_count(0), teleport_count(0), respawn_count(0),
+        shoot_press_count(0), secondary_press_count(0),
         analog_rotation(1.0f), analog_thrust(1.0f), analog_reverse(1.0f) {}
 };
 

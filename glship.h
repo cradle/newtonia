@@ -58,6 +58,8 @@ public:
   uint8_t net_respawn_count = 0;   // wrapping respawn-tap (shoot while dead)
   bool net_shoot_held = false;
   bool net_secondary_held = false;
+  uint8_t net_shoot_press_count = 0;      // wrapping, one per key press
+  uint8_t net_secondary_press_count = 0;
 
   void collide_grid(Grid &grid, int delta);
   static void collide(GLShip* first, GLShip* second);

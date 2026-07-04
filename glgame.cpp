@@ -144,6 +144,10 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
 
 GLGame::~GLGame() {
   save_progress();
+  // Leaving an online game: tell the peer (best effort — a hard close is
+  // also detected via the channel-close path).
+  if (net_session_ && !net_connection_lost_)
+    net_send_event(Net::EV_BYE);
   delete net_session_;  // closes + deletes the transport
   delete net_assembler_;
 
@@ -497,8 +501,12 @@ void GLGame::maybe_start_intro() {
   request_state_change(new Intro(this, kind, name, display), true);
 }
 
-void GLGame::toggle_pause() {
+void GLGame::toggle_pause(bool broadcast) {
   running = !running;
+  // Online, pausing is shared state: tell the peer (unless this call IS
+  // the peer's event being applied).
+  if (broadcast && net_mode_ != NetOff && net_session_ && !net_connection_lost_)
+    net_send_event(running ? Net::EV_RESUME : Net::EV_PAUSE);
   if (running) {
     if (pause_music_channel >= 0) {
       Mix_HaltChannel(pause_music_channel);
@@ -612,7 +620,13 @@ void GLGame::net_host_poll() {
     Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
     Net::Header h;
     if (!Net::read_header(r, h)) continue;
-    if (h.msg_type != Net::MSG_INPUT) continue;  // events arrive in Phase 8
+    if (h.msg_type == Net::MSG_EVENT) {
+      uint8_t code = r.u8();
+      uint32_t arg = r.remaining() >= 4 ? r.u32() : 0;
+      if (r.ok) net_handle_event(code, arg);
+      continue;
+    }
+    if (h.msg_type != Net::MSG_INPUT) continue;
 
     Net::InputState in;
     if (!Net::decode_input(r, in)) continue;
@@ -621,6 +635,8 @@ void GLGame::net_host_poll() {
     if (net_have_input_ && (int32_t)(in.seq - net_last_input_seq_) <= 0)
       continue;
     net_last_input_seq_ = in.seq;
+    net_last_input_time_ = current_time;
+    net_input_zeroed_ = false;
     if (!remote) continue;
 
     if (!net_have_input_) {
@@ -632,6 +648,8 @@ void GLGame::net_host_poll() {
       net_prev_next_secondary_ = in.next_secondary_count;
       net_prev_teleport_ = in.teleport_count;
       net_prev_respawn_ = in.respawn_count;
+      net_prev_shoot_press_ = in.shoot_press_count;
+      net_prev_secondary_press_ = in.secondary_press_count;
     }
 
     // One-shot deltas; capped so a rejoining/wrapped counter can't burst.
@@ -641,6 +659,11 @@ void GLGame::net_host_poll() {
         (uint8_t)(in.next_secondary_count - net_prev_next_secondary_);
     uint8_t teleports = (uint8_t)(in.teleport_count - net_prev_teleport_);
     uint8_t respawns = (uint8_t)(in.respawn_count - net_prev_respawn_);
+    uint8_t shot_presses = (uint8_t)(in.shoot_press_count - net_prev_shoot_press_);
+    uint8_t sec_presses =
+        (uint8_t)(in.secondary_press_count - net_prev_secondary_press_);
+    net_prev_shoot_press_ = in.shoot_press_count;
+    net_prev_secondary_press_ = in.secondary_press_count;
     net_prev_boost_ = in.boost_count;
     net_prev_next_weapon_ = in.next_weapon_count;
     net_prev_next_secondary_ = in.next_secondary_count;
@@ -663,8 +686,19 @@ void GLGame::net_host_poll() {
     remote->rotate_right((in.held & Net::IN_RIGHT) != 0);
     remote->thrust((in.held & Net::IN_THRUST) != 0);
     remote->reverse((in.held & Net::IN_REVERSE) != 0);
-    remote->shoot((in.held & Net::IN_SHOOT) != 0);
-    remote->fire_secondary((in.held & Net::IN_SECONDARY) != 0);
+    // Trigger rule: a new press arms the weapon; releasing disarms it; a
+    // held key with no new press leaves the weapon alone. Semi-automatics
+    // (which disarm themselves after each shot) thus fire once per press,
+    // automatics keep firing while held, and hold-style weapons like the
+    // shield stay active — all without inspecting the weapon type.
+    if (shot_presses)
+      remote->shoot(true);
+    else if (!(in.held & Net::IN_SHOOT))
+      remote->shoot(false);
+    if (sec_presses)
+      remote->fire_secondary(true);
+    else if (!(in.held & Net::IN_SECONDARY))
+      remote->fire_secondary(false);
 
     if (boosts > 4) boosts = 4;
     if (weapons > 4) weapons = 4;
@@ -674,6 +708,19 @@ void GLGame::net_host_poll() {
     while (weapons--) remote->next_weapon();
     while (secondaries--) remote->next_secondary_weapon();
     while (teleports--) remote->add_behaviour(new Teleport(remote));
+  }
+
+  // Dead-man switch: no INPUT for 1 s (loss burst, hung tab) — release the
+  // remote ship's held actions instead of letting it fly into a wall.
+  if (remote && net_have_input_ && !net_input_zeroed_ &&
+      current_time - net_last_input_time_ > 1000) {
+    net_input_zeroed_ = true;
+    remote->rotate_left(false);
+    remote->rotate_right(false);
+    remote->thrust(false);
+    remote->reverse(false);
+    remote->shoot(false);
+    remote->fire_secondary(false);
   }
 }
 
@@ -749,6 +796,81 @@ void GLGame::net_host_send_snapshot(int delta) {
 
   Net::send_snapshot(net_session_->transport(), ++net_snapshot_id_,
                      payload.data(), 1);
+}
+
+void GLGame::net_send_event(uint8_t code, uint32_t arg) {
+  std::vector<uint8_t> msg;
+  Net::put_header(msg, Net::MSG_EVENT, net_mode_ == NetHost ? 1 : 2);
+  Net::put_u8(msg, code);
+  Net::put_u32(msg, arg);
+  net_session_->transport()->send_reliable(&msg[0], msg.size());
+}
+
+void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
+  switch (code) {
+    case Net::EV_PAUSE:
+      if (running) toggle_pause(false);
+      break;
+    case Net::EV_RESUME:
+      if (!running) toggle_pause(false);
+      break;
+    case Net::EV_GENERATION_START:
+      // The world rebuild itself rides the next snapshot (client side);
+      // the event just drives the banner.
+      net_set_generation_banner((int)arg);
+      break;
+    case Net::EV_BYE:
+      net_connection_lost_ = true;
+      break;
+    default:
+      break;
+  }
+}
+
+void GLGame::net_set_generation_banner(int gen) {
+  const char *name = NULL;
+  switch (gen) {
+    case 1:  name = "INVINCIBLE";    break;
+    case 2:  name = "REFLECTIVE";    break;
+    case 3:  name = "TELEPORTING";   break;
+    case 4:  name = "INVISIBLE";     break;
+    case 5:  name = "QUANTUM";       break;
+    case 6:  name = "TOUGH";         break;
+    case 7:  name = "ARMOURED";      break;
+    case 8:  name = "PHASING";       break;
+    case 9:  name = "BLACK HOLE";    break;
+    case 10: name = "MINI STATION";  break;
+    case 20: name = "ENEMY STATION"; break;
+    default: break;
+  }
+  char buf[64];
+  if (name)
+    snprintf(buf, sizeof(buf), "LEVEL %d - NEW %s", gen + 1, name);
+  else
+    snprintf(buf, sizeof(buf), "LEVEL %d", gen + 1);
+  net_banner_text_ = buf;
+  net_banner_ms_ = 2000;
+}
+
+// Full-screen text layered over the online game view: the 2 s generation
+// banner (replaces the offline Intro state) and the CONNECTION LOST card.
+void GLGame::draw_net_overlays() const {
+  if (net_banner_ms_ <= 0 && !net_connection_lost_) return;
+
+  glViewport(0, 0, window.x(), window.y());
+  float hw = window.x() / Overlay::SAFE_AREA_SCALE;
+  float hh = window.y() / Overlay::SAFE_AREA_SCALE;
+  float ortho[16];
+  mat4_ortho(ortho, -hw, hw, -hh, hh, -1.0f, 1.0f);
+  gles2_set_vp(ortho);
+
+  if (net_connection_lost_) {
+    Typer::draw_centered(0, 60, "CONNECTION LOST", 34);
+    if ((current_time / 700) % 2 == 0)
+      Typer::draw_centered(0, -80, "PRESS FIRE FOR MENU", 16);
+  } else if (net_banner_ms_ > 0) {
+    Typer::draw_centered(0, hh * 0.55f, net_banner_text_.c_str(), 22);
+  }
 }
 
 // ---- client side ---------------------------------------------------------
@@ -846,14 +968,10 @@ bool nx_read_projectiles(Save::Stream &in, Ship &s) {
 void GLGame::tick_net_client(int delta) {
   current_time += delta;
 
-  net_client_poll();
-
-  if (net_session_->transport()->failed()) {
-    // Proper CONNECTION LOST UX lands in Phase 8; return to the menu for
-    // now (all save paths are gated off online).
-    request_state_change(new Menu());
-    return;
-  }
+  if (!net_connection_lost_) net_client_poll();
+  if (net_session_->transport()->failed()) net_connection_lost_ = true;
+  if (net_connection_lost_) return;  // frozen; draw shows CONNECTION LOST
+  if (net_banner_ms_ > 0) net_banner_ms_ -= delta;
 
   if (!running) {
     last_tick += delta;
@@ -909,6 +1027,8 @@ void GLGame::net_client_send_input() {
   in.next_secondary_count = s->net_next_secondary_count;
   in.teleport_count = s->net_teleport_count;
   in.respawn_count = local->net_respawn_count;
+  in.shoot_press_count = local->net_shoot_press_count;
+  in.secondary_press_count = local->net_secondary_press_count;
   in.analog_rotation = s->rotation_scale;
   in.analog_thrust = s->thrust_analog;
   in.analog_reverse = s->reverse_analog;
@@ -925,7 +1045,13 @@ void GLGame::net_client_poll() {
     Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
     Net::Header h;
     if (!Net::read_header(r, h)) continue;
-    if (h.msg_type != Net::MSG_SNAPSHOT_CHUNK) continue;  // events: Phase 8
+    if (h.msg_type == Net::MSG_EVENT) {
+      uint8_t code = r.u8();
+      uint32_t arg = r.remaining() >= 4 ? r.u32() : 0;
+      if (r.ok) net_handle_event(code, arg);
+      continue;
+    }
+    if (h.msg_type != Net::MSG_SNAPSHOT_CHUNK) continue;
     if (!net_assembler_->add_chunk(r)) continue;
 
     Save::MemStream in(net_assembler_->payload());
@@ -976,8 +1102,10 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     bool held_right = ship->rotation_direction == Ship::RIGHT;
     bool held_thrust = ship->thrusting;
     bool held_reverse = ship->reversing;
-    bool held_shoot = (*it)->net_shoot_held;
-    bool held_secondary = (*it)->net_secondary_held;
+    bool armed_shoot = !ship->primary_weapons.empty() &&
+                       (*ship->primary)->is_shooting();
+    bool armed_secondary = ship->secondary != ship->secondary_weapons.end() &&
+                           (*ship->secondary)->is_shooting();
     float analog_rot = ship->rotation_scale;
     float analog_thrust = ship->thrust_analog;
     float analog_reverse = ship->reverse_analog;
@@ -996,8 +1124,8 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       ship->rotate_right(held_right);
       ship->thrust(held_thrust);
       ship->reverse(held_reverse);
-      ship->shoot(held_shoot);
-      ship->fire_secondary(held_secondary);
+      ship->shoot(armed_shoot);
+      ship->fire_secondary(armed_secondary);
       ship->rotation_scale = analog_rot;
       ship->thrust_analog = analog_thrust;
       ship->reverse_analog = analog_reverse;
@@ -1151,13 +1279,19 @@ void GLGame::tick(int delta) {
   }
   current_time += delta;
 
+  // Online host: poll the peer before the pause gate — their RESUME (or a
+  // dead transport) must be noticed even while paused.
+  if (net_mode_ == NetHost) {
+    if (!net_connection_lost_) net_host_poll();
+    if (net_session_->transport()->failed()) net_connection_lost_ = true;
+    if (net_connection_lost_) return;  // frozen; draw shows CONNECTION LOST
+    if (net_banner_ms_ > 0) net_banner_ms_ -= delta;
+  }
+
   if (!running) {
     last_tick += delta;
     return;
   }
-
-  // Online host: apply the peer's queued INPUT messages before stepping.
-  if (net_mode_ == NetHost) net_host_poll();
 
   time_until_next_step -= delta;
 
@@ -1231,6 +1365,10 @@ void GLGame::tick(int delta) {
       level_cleared = false;
       save_progress();
       maybe_start_intro();
+      if (net_mode_ == NetHost) {
+        net_set_generation_banner(generation);
+        net_send_event(Net::EV_GENERATION_START, (uint32_t)generation);
+      }
       if (is_finished()) {
         // Handing off to an intro: freeze here and give back the delta so no
         // catch-up steps (or their sounds, just muted by the intro) run.
@@ -1809,6 +1947,7 @@ void GLGame::draw(void) {
     draw_world(net_mode_ == NetClient ? players->back() : players->front(),
                true);
     draw_map();
+    draw_net_overlays();
   }
   else {
     if(players->size() > 0) {
@@ -2220,6 +2359,11 @@ void GLGame::draw_map() const {
 }
 
 void GLGame::controller(SDL_Event event) {
+  if (net_connection_lost_) {
+    if (event.type == SDL_CONTROLLERBUTTONDOWN)
+      request_state_change(new Menu());
+    return;
+  }
   if(event.cbutton.type == SDL_CONTROLLERBUTTONDOWN) {
     if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) {
       bool known_player = false;
@@ -2352,6 +2496,11 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
 
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
   const GeneralKeys &gk = g_prefs.general_keys;
+
+  if (net_connection_lost_) {
+    request_state_change(new Menu());
+    return;
+  }
 
   // Host-only / debug keys are ignored on the online client — it never
   // mutates world state locally (the host's snapshots are authoritative).

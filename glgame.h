@@ -85,7 +85,8 @@ private:
   void add_player2(SDL_GameController *ctrl);
   Save::GameState build_save_data() const;
   void save_progress();   // save only when at least one player is alive or has lives
-  void toggle_pause();
+  void toggle_pause(bool broadcast = true);  // broadcast=false: applying a
+                                             // peer's PAUSE/RESUME event
   void draw_map() const;
   void draw_objects(float direction = 0.0f, bool minimap = false) const;
   void draw_world(GLShip *glship = NULL, bool primary = true) const;
@@ -125,9 +126,21 @@ private:
   bool net_have_input_ = false;   // first INPUT initialises the counters
   uint8_t net_prev_boost_ = 0, net_prev_next_weapon_ = 0,
           net_prev_next_secondary_ = 0, net_prev_teleport_ = 0,
-          net_prev_respawn_ = 0;
+          net_prev_respawn_ = 0, net_prev_shoot_press_ = 0,
+          net_prev_secondary_press_ = 0;
   uint32_t net_input_seq_ = 0;    // client: outgoing INPUT sequence
   Net::SnapshotAssembler *net_assembler_ = nullptr;  // client chunk reassembly
+
+  // Phase 8 polish (see NETPLAY.md)
+  void net_send_event(uint8_t code, uint32_t arg = 0);
+  void net_handle_event(uint8_t code, uint32_t arg);
+  void net_set_generation_banner(int gen);
+  void draw_net_overlays() const;   // banner / CONNECTION LOST
+  bool net_connection_lost_ = false;
+  int net_banner_ms_ = 0;
+  std::string net_banner_text_;
+  int net_last_input_time_ = 0;     // host: dead-man switch (1 s)
+  bool net_input_zeroed_ = false;
 
   static const int step_size = 8;
 
