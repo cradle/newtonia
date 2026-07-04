@@ -8,8 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-// Placeholder until M2-3 deploys the production worker (signal/README.md).
-static const char *SIGNAL_URL_DEFAULT = "wss://newtonia-signal.example.workers.dev/ws";
+// Glenn's production worker (deployed 2026-07-04 — signal/README.md).
+static const char *SIGNAL_URL_DEFAULT = "wss://newtonia-signal.gfmcc.workers.dev/ws";
 
 #ifdef __EMSCRIPTEN__
 std::string net_signal_url_web_override();  // net_signal_web.cpp
