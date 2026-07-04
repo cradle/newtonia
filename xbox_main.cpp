@@ -67,6 +67,7 @@ extern "C" void GDK_DispatchTaskQueue(void) {}
 #include "asteroid.h"
 #include "preferences.h"
 #include "net_transport.h"
+#include "net_signal.h"
 
 #include <cstdlib>
 #include <ctime>
@@ -221,6 +222,15 @@ int main(int argc, char *argv[])
             SDL_Log("NEWTONIA_NET_SELFTEST: running loopback self-test...");
             bool ok = net_selftest();
             SDL_Log(ok ? "NET SELFTEST PASS" : "NET SELFTEST FAIL");
+            return ok ? 0 : 1;
+        }
+        // M2 room-code relay self-test (needs a live signal server:
+        // wrangler dev locally, or NEWTONIA_SIGNAL_URL to point elsewhere).
+        const char *ss = SDL_getenv("NEWTONIA_SIGNAL_SELFTEST");
+        if (ss && ss[0] == '1' && ss[1] == '\0') {
+            SDL_Log("NEWTONIA_SIGNAL_SELFTEST: running relay self-test...");
+            bool ok = net_signal_selftest();
+            SDL_Log(ok ? "SIGNAL SELFTEST PASS" : "SIGNAL SELFTEST FAIL");
             return ok ? 0 : 1;
         }
     }

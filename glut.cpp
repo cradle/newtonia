@@ -12,6 +12,7 @@
 #include "typer.h"
 #include "preferences.h"
 #include "net_transport.h"
+#include "net_signal.h"
 
 // gl_compat.h pulls in GLUT (for window management) and gles2_compat.h
 // (for the VBO/VAO/shader shim that replaces all legacy GL calls).
@@ -356,6 +357,15 @@ int main(int argc, char* argv[]) {
       std::cout << "NEWTONIA_NET_SELFTEST: running loopback self-test..." << std::endl;
       bool ok = net_selftest();
       std::cout << (ok ? "NET SELFTEST PASS" : "NET SELFTEST FAIL") << std::endl;
+      return ok ? 0 : 1;
+    }
+    // Same idea for the M2 room-code relay (needs a live signal server:
+    // wrangler dev locally, or NEWTONIA_SIGNAL_URL to point elsewhere).
+    const char *ss = SDL_getenv("NEWTONIA_SIGNAL_SELFTEST");
+    if (ss && ss[0] == '1' && ss[1] == '\0') {
+      std::cout << "NEWTONIA_SIGNAL_SELFTEST: running relay self-test..." << std::endl;
+      bool ok = net_signal_selftest();
+      std::cout << (ok ? "SIGNAL SELFTEST PASS" : "SIGNAL SELFTEST FAIL") << std::endl;
       return ok ? 0 : 1;
     }
   }
