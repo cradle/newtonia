@@ -1113,12 +1113,25 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     ship->restore_state(s.players[i], grid);
 
     if (is_local && was_alive && ship->is_alive()) {
+      // A correction beyond any plausible prediction error means the host
+      // moved the ship discontinuously — teleport, respawn, new-level spawn.
+      // Snap to the authoritative pose (already set by restore_state,
+      // facing included; the old aim is meaningless after a jump) instead
+      // of visibly sliding there over several snapshots.
+      const float snap_dist = 250.0f;
       Point snap = ship->position.closest_to(old_pos);
-      ship->position = WrappedPoint(old_pos.x() + (snap.x() - old_pos.x()) * 0.35f,
-                                    old_pos.y() + (snap.y() - old_pos.y()) * 0.35f);
-      ship->position.wrap();
-      ship->velocity = old_vel + (ship->velocity - old_vel) * 0.35f;
-      ship->facing = old_facing;  // aim stays fully local
+      float cx = snap.x() - old_pos.x();
+      float cy = snap.y() - old_pos.y();
+      if (cx * cx + cy * cy < snap_dist * snap_dist) {
+        ship->position = WrappedPoint(old_pos.x() + cx * 0.35f,
+                                      old_pos.y() + cy * 0.35f);
+        ship->position.wrap();
+        ship->velocity = old_vel + (ship->velocity - old_vel) * 0.35f;
+        ship->facing = old_facing;  // aim stays fully local
+      } else {
+        printf("net: local ship snapped %.0f units (teleport/respawn/new level)\n",
+               sqrtf(cx * cx + cy * cy));
+      }
 
       ship->rotate_left(held_left);
       ship->rotate_right(held_right);
