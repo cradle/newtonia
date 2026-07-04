@@ -477,7 +477,6 @@ void NetLobby::draw() {
       Typer::draw_centered(0, 20, slots.c_str(), 48);
       y = -100;
       lines.push_back("TYPE THE CODE YOUR HOST SEES");
-      lines.push_back("ENTER - JOIN THE ROOM");
       break;
     }
     case RoomJoining:
@@ -567,6 +566,8 @@ void NetLobby::code_entry_key(unsigned char key) {
     char c = (char)key;
     if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
     code_entry_ += c;
+    // Codes are fixed-length: join the moment the last slot fills.
+    if (code_entry_.size() == (size_t)NET_ROOM_CODE_LEN) confirm();
   }
 }
 

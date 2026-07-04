@@ -140,6 +140,13 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
   : GLGame(controller) {
   net_mode_ = NetHost;
   net_session_ = session;
+  // A fresh game's player 1 starts dead (offline you wait out the initial
+  // countdown or tap fire). Online the host just finished the lobby, so
+  // start alive — and without this the client's bootstrap snapshot catches
+  // the corpse mid-countdown: the restore resurrects the ghost, the first
+  // extras kill it again, and the joiner watches player 1 "die" at start.
+  players->front()->ship->respawn(grid, false);
+  players->front()->ship->bullets.clear();  // no lethal spawn-flash debris
   add_remote_player();
 }
 
