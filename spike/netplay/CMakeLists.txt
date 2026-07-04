@@ -27,6 +27,12 @@ project(netplay_spike C CXX)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
     CACHE STRING "" FORCE)
 
+# Nothing here is ever installed. This also sidesteps a generate-time
+# failure: libdatachannel's install(EXPORT LibDataChannelTargets) refuses
+# to export targets that link the in-tree FetchContent mbedtls target,
+# since that target is not in its export set.
+set(CMAKE_SKIP_INSTALL_RULES ON)
+
 include(FetchContent)
 
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
