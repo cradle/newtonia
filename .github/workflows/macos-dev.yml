@@ -111,6 +111,23 @@ jobs:
       - name: Create universal binary
         run: lipo -create -output newtonia newtonia-arm64 newtonia-x86_64
 
+      - name: Netplay build + loopback self-test (arm64, brew libdatachannel)
+        run: |
+          # Verifies the documented Mac netplay recipe (NETPLAY.md):
+          #   brew install libdatachannel
+          #   make NETPLAY=1 NETPLAY_PREFIX=$(brew --prefix)
+          # then runs the in-process WebRTC loopback self-test headlessly.
+          # The Makefile writes ./newtonia — stash the universal binary the
+          # bundling steps below need, and restore it afterwards.
+          mv newtonia newtonia-universal
+          brew install libdatachannel
+          make clean
+          make -j3 NETPLAY=1 NETPLAY_PREFIX=$(brew --prefix)
+          otool -L ./newtonia | grep -q libdatachannel
+          NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia
+          make clean
+          mv newtonia-universal newtonia
+
       - name: Import Developer ID certificate
         env:
           CERT_BASE64: ${{ secrets.DEVELOPER_ID_CERT_BASE64 }}

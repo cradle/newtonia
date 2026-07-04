@@ -11,6 +11,7 @@
 #include "asteroid.h"
 #include "typer.h"
 #include "preferences.h"
+#include "net_transport.h"
 
 // gl_compat.h pulls in GLUT (for window management) and gles2_compat.h
 // (for the VBO/VAO/shader shim that replaces all legacy GL calls).
@@ -346,6 +347,19 @@ void init(int &argc, char* argv[], float width, float height);
 
 int main(int argc, char* argv[]) {
   srand(time(NULL));
+#ifdef NEWTONIA_NET_RTC
+  // Hidden CI/debug hook (same as xbox_main.cpp): run the netplay loopback
+  // self-test and exit. Works headless — no window or GL is created.
+  {
+    const char *st = SDL_getenv("NEWTONIA_NET_SELFTEST");
+    if (st && st[0] == '1' && st[1] == '\0') {
+      std::cout << "NEWTONIA_NET_SELFTEST: running loopback self-test..." << std::endl;
+      bool ok = net_selftest();
+      std::cout << (ok ? "NET SELFTEST PASS" : "NET SELFTEST FAIL") << std::endl;
+      return ok ? 0 : 1;
+    }
+  }
+#endif
   if (!steam_init())
     std::cout << "Steam API unavailable (offline / direct-launch mode)" << std::endl;
   load_preferences();
