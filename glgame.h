@@ -27,6 +27,7 @@
 using namespace std;
 
 class NetSession;
+namespace Net { class SnapshotAssembler; }
 
 class GLGame : public State {
 public:
@@ -34,8 +35,13 @@ public:
   GLGame(const Save::GameState &save, SDL_GameController *controller = NULL);
   // Online host: adopts the Ready session from the lobby; the remote peer
   // drives player 2 via INPUT messages and receives 10 Hz snapshots.
-  // (The client-side constructor arrives with Phase 7 — see NETPLAY.md.)
   GLGame(NetSession *session, SDL_GameController *controller);
+  // Online client: bootstrapped by the lobby from the first complete
+  // snapshot (the save-restore constructor rebuilds the world; the lobby
+  // then feeds the snapshot's NetExtras through net_apply_extras). This
+  // machine's player is the LAST in the list; player 1 is the remote host.
+  GLGame(const Save::GameState &snapshot, NetSession *session,
+         SDL_GameController *controller);
   GLGame(GLGame const &other);
   virtual ~GLGame();
 
@@ -99,6 +105,18 @@ private:
   void net_host_poll();           // apply queued INPUT messages
   void net_host_send_snapshot(int delta);  // 10 Hz world broadcast
 
+  // Client side: visual/kinematic tick (no kills/drops/generation logic),
+  // snapshot consumption, prediction correction and INPUT sending.
+  void tick_net_client(int delta);
+  void net_client_poll();
+  void net_client_send_input();
+  void net_apply_state(const Save::GameState &s);
+  void net_apply_extras(Save::Stream &in, const Save::GameState &s);
+
+  // The lobby bootstraps the client game (constructor + first snapshot's
+  // NetExtras) before handing over the state.
+  friend class NetLobby;
+
   NetMode net_mode_ = NetOff;
   NetSession *net_session_ = nullptr;  // owned when net_mode_ != NetOff
   int net_snapshot_timer_ = 0;
@@ -108,6 +126,8 @@ private:
   uint8_t net_prev_boost_ = 0, net_prev_next_weapon_ = 0,
           net_prev_next_secondary_ = 0, net_prev_teleport_ = 0,
           net_prev_respawn_ = 0;
+  uint32_t net_input_seq_ = 0;    // client: outgoing INPUT sequence
+  Net::SnapshotAssembler *net_assembler_ = nullptr;  // client chunk reassembly
 
   static const int step_size = 8;
 

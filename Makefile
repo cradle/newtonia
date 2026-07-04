@@ -15,6 +15,21 @@ else
   ALL_SRCS := $(filter-out $(ANDROID_SRCS),$(wildcard *.cpp) $(wildcard */*.cpp))
 endif
 
+# Optional native netplay backend (macOS/Linux) — see NETPLAY.md.
+#   macOS: brew install libdatachannel
+#          make NETPLAY=1 NETPLAY_PREFIX=$(brew --prefix)
+#   Linux: build/install libdatachannel, then make NETPLAY=1 [NETPLAY_PREFIX=...]
+# Defines NEWTONIA_NET_RTC (activates net_transport_rtc.cpp and the menu's
+# ONLINE row) and links the libdatachannel C API.
+ifeq ($(NETPLAY),1)
+  CFLAGS += -DNEWTONIA_NET_RTC
+  LIBS += -ldatachannel
+  ifneq ($(NETPLAY_PREFIX),)
+    CFLAGS += -I$(NETPLAY_PREFIX)/include
+    LIBS += -L$(NETPLAY_PREFIX)/lib -Wl,-rpath,$(NETPLAY_PREFIX)/lib
+  endif
+endif
+
 OSX_LIBS = -framework GLUT -framework OpenGL -framework AppKit $(SDL2_LIBS)
 OSX_CFLAGS = $(CFLAGS) -std=c++11 -arch arm64 -arch x86_64
 CFLAGS += -MMD -MP

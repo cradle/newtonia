@@ -310,6 +310,11 @@ void init_controllers_and_audio() {
   if(ENABLE_AUDIO) {
     SDL_INIT_FLAGS |= SDL_INIT_AUDIO;
   }
+#ifdef NEWTONIA_NET_RTC
+  // The netplay lobby's clipboard signaling uses SDL's clipboard API, which
+  // lives in the video subsystem (GLUT still owns the actual window).
+  SDL_INIT_FLAGS |= SDL_INIT_VIDEO;
+#endif
   if(SDL_Init(SDL_INIT_FLAGS) == 0) {
     if( ENABLE_AUDIO && Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 1024 ) < 0) {
       std::cout << "Unable to open audio device" << std::endl;

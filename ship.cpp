@@ -189,6 +189,7 @@ Ship::~Ship() {
 }
 
 void Ship::next_weapon() {
+  net_next_weapon_count++;
   if(god_mode_time_remaining() > 0) return;
   if(click_sound != NULL) {
     Mix_PlayChannel(-1, click_sound, 0);
@@ -227,6 +228,7 @@ void Ship::previous_weapon() {
 }
 
 void Ship::next_secondary_weapon() {
+  net_next_secondary_count++;
   if(secondary_weapons.empty()) return;
   if(click_sound != NULL) {
     Mix_PlayChannel(-1, click_sound, 0);
@@ -814,6 +816,7 @@ void Ship::reverse(bool on) {
 }
 
 void Ship::boost() {
+  net_boost_count++;
   boosting = true;
 }
 

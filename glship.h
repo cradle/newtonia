@@ -51,6 +51,10 @@ public:
   void snap_camera_to_heading();
   void smooth_camera(int frame_delta);
 
+  // Netplay: wrapping respawn-tap counter (shoot while dead) sampled by the
+  // online client into INPUT messages. Meaningless offline. See NETPLAY.md.
+  uint8_t net_respawn_count = 0;
+
   void collide_grid(Grid &grid, int delta);
   static void collide(GLShip* first, GLShip* second);
   Ship *ship;

@@ -30,6 +30,7 @@
 
 #include <iostream>
 #include <list>
+#include <map>
 
 static void set_player_keys(GLShip *gs, int player_index) {
   const PlayerKeys &k = (player_index == 0) ? g_prefs.p1_keys : g_prefs.p2_keys;
@@ -144,6 +145,7 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
 GLGame::~GLGame() {
   save_progress();
   delete net_session_;  // closes + deletes the transport
+  delete net_assembler_;
 
   //TODO: Make erase, use boost::ptr_list? something better
   // std::erase(std::remove_if(v.begin(),v.end(),true), v.end());
@@ -749,6 +751,368 @@ void GLGame::net_host_send_snapshot(int delta) {
                      payload.data(), 1);
 }
 
+// ---- client side ---------------------------------------------------------
+
+GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
+               SDL_GameController *controller)
+  : GLGame(snapshot, (SDL_GameController *)NULL) {
+  net_mode_ = NetClient;
+  net_session_ = session;
+  net_assembler_ = new Net::SnapshotAssembler();
+
+  // The save-restore base constructor bound player-1 keys to the FIRST ship,
+  // but on the client the local player is the LAST one; the first is the
+  // remote host's ship. Strip the ghost's bindings and give the local ship
+  // this machine's player-1 controls.
+  if (players->size() >= 2) {
+    GLShip *remote = players->front();
+    remote->set_keys(-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1);
+    remote->set_controller(NULL);
+    GLShip *local = players->back();
+    set_player_keys(local, 0);
+    if (controller) local->set_controller(controller);
+  }
+}
+
+namespace {
+
+template <typename T>
+bool nx_read(Save::Stream &in, T &v) { return in.read(&v, sizeof(T)); }
+
+struct NetShipExtras {
+  uint8_t alive;
+  float temperature;
+  int32_t time_until_respawn;
+  int32_t time_left_invincible;
+  int32_t god_ms;
+  uint8_t shield;
+};
+
+bool nx_read_projectiles(Save::Stream &in, Ship &s) {
+  uint16_t n = 0;
+  float x, y, vx, vy;
+
+  if (!nx_read(in, n)) return false;
+  s.bullets.clear();
+  for (int i = 0; i < n; i++) {
+    if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
+    s.bullets.push_back(Particle(Point(x, y), Point(vx, vy), 2000.0f));
+  }
+
+  if (!nx_read(in, n)) return false;
+  s.mines.clear();
+  for (int i = 0; i < n; i++) {
+    if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
+    s.mines.push_back(Particle(Point(x, y), Point(vx, vy), 60000.0f));
+  }
+
+  if (!nx_read(in, n)) return false;
+  s.giga_mines.clear();
+  for (int i = 0; i < n; i++) {
+    if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
+    s.giga_mines.push_back(Particle(Point(x, y), Point(vx, vy), 60000.0f));
+  }
+
+  if (!nx_read(in, n)) return false;
+  s.missiles.clear();
+  for (int i = 0; i < n; i++) {
+    float fx, fy, time_left;
+    if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy) ||
+        !nx_read(in, fx) || !nx_read(in, fy) || !nx_read(in, time_left)) return false;
+    MissileShot m(WrappedPoint(x, y), Point(fx, fy), Point(0, 0));
+    m.velocity = Point(vx, vy);
+    m.time_left = time_left;
+    s.missiles.push_back(m);
+  }
+
+  if (!nx_read(in, n)) return false;
+  s.shockwaves.clear();
+  for (int i = 0; i < n; i++) {
+    float px, py, radius, max_radius, speed, time_left;
+    uint8_t is_nova;
+    if (!nx_read(in, px) || !nx_read(in, py) || !nx_read(in, radius) ||
+        !nx_read(in, max_radius) || !nx_read(in, speed) ||
+        !nx_read(in, time_left) || !nx_read(in, is_nova)) return false;
+    Shockwave w(Point(px, py), max_radius, speed, time_left, is_nova != 0);
+    w.radius = radius;
+    w.prev_radius = radius;
+    s.shockwaves.push_back(w);
+  }
+  return true;
+}
+
+}  // namespace
+
+void GLGame::tick_net_client(int delta) {
+  current_time += delta;
+
+  net_client_poll();
+
+  if (net_session_->transport()->failed()) {
+    // Proper CONNECTION LOST UX lands in Phase 8; return to the menu for
+    // now (all save paths are gated off online).
+    request_state_change(new Menu());
+    return;
+  }
+
+  if (!running) {
+    last_tick += delta;
+    return;
+  }
+
+  time_until_next_step -= delta;
+  while (time_until_next_step <= 0) {
+    // Visual/kinematic stepping only: motion, particles, trails, timers.
+    // No collisions, kills, drops or generation logic — the host simulates
+    // and its snapshots overwrite this extrapolation at 10 Hz.
+    for (auto *bh : *black_holes) bh->step(step_size);
+    for (auto *a : *objects) a->step(step_size);
+    for (auto *a : *dead_objects) a->step(step_size);
+    for (auto *p : *pickups) p->step(step_size);
+    for (auto *gs : *players) gs->step(step_size, grid);
+    grid.update((std::list<Object *> *)objects);
+
+    net_client_send_input();
+    time_until_next_step += time_between_steps;
+  }
+
+  auto oi = dead_objects->begin();
+  while (oi != dead_objects->end()) {
+    if ((*oi)->is_removable()) {
+      delete *oi;
+      oi = dead_objects->erase(oi);
+    } else {
+      oi++;
+    }
+  }
+}
+
+void GLGame::net_client_send_input() {
+  GLShip *local = players->back();
+  Ship *s = local->ship;
+
+  Net::InputState in;
+  in.seq = ++net_input_seq_;
+  uint16_t held = 0;
+  if (s->rotation_direction == Ship::LEFT) held |= Net::IN_LEFT;
+  if (s->rotation_direction == Ship::RIGHT) held |= Net::IN_RIGHT;
+  if (s->thrusting) held |= Net::IN_THRUST;
+  if (s->reversing) held |= Net::IN_REVERSE;
+  if (!s->primary_weapons.empty() && (*s->primary)->is_shooting())
+    held |= Net::IN_SHOOT;
+  if (s->secondary != s->secondary_weapons.end() && (*s->secondary)->is_shooting())
+    held |= Net::IN_SECONDARY;
+  in.held = held;
+  in.boost_count = s->net_boost_count;
+  in.next_weapon_count = s->net_next_weapon_count;
+  in.next_secondary_count = s->net_next_secondary_count;
+  in.teleport_count = s->net_teleport_count;
+  in.respawn_count = local->net_respawn_count;
+  in.analog_rotation = s->rotation_scale;
+  in.analog_thrust = s->thrust_analog;
+  in.analog_reverse = s->reverse_analog;
+
+  std::vector<uint8_t> msg;
+  Net::encode_input(msg, in, 2);
+  net_session_->transport()->send_unreliable(&msg[0], msg.size());
+}
+
+void GLGame::net_client_poll() {
+  NetTransport *t = net_session_->transport();
+  std::vector<unsigned char> msg;
+  while (t->poll(msg)) {
+    Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
+    Net::Header h;
+    if (!Net::read_header(r, h)) continue;
+    if (h.msg_type != Net::MSG_SNAPSHOT_CHUNK) continue;  // events: Phase 8
+    if (!net_assembler_->add_chunk(r)) continue;
+
+    Save::MemStream in(net_assembler_->payload());
+    Save::GameState s;
+    if (!Save::deserialize_game(in, s)) continue;
+    net_apply_state(s);
+    net_apply_extras(in, s);
+  }
+}
+
+void GLGame::net_apply_state(const Save::GameState &s) {
+  // Generation rollover: the world grew — rebuild boundaries, grid and
+  // starfield, drop every stale object (mirrors the host's rollover block;
+  // the snapshot then repopulates everything below).
+  if (s.world_x != world.x() || s.world_y != world.y()) {
+    world = Point(s.world_x, s.world_y);
+    grid = Grid(world, Point(Asteroid::max_radius * 2, Asteroid::max_radius * 2));
+    WrappedPoint::set_boundaries(world);
+    delete starfield;
+    starfield = new GLStarfield(world, star_density_scale());
+    while (!objects->empty()) { delete objects->back(); objects->pop_back(); }
+    while (!dead_objects->empty()) { delete dead_objects->back(); dead_objects->pop_back(); }
+    Asteroid::num_killable = 0;
+  }
+
+  generation = s.generation;
+  level_cleared = s.level_cleared;
+  time_until_next_generation = s.time_until_next_generation;
+  current_time = s.current_time;
+
+  // Players: the remote host ship snaps to the snapshot; the local ship
+  // takes stats/weapons but blends its predicted pose toward the host's
+  // authoritative one (~0.35 per snapshot) so corrections don't jerk.
+  auto it = players->begin();
+  for (size_t i = 0; i < s.players.size() && it != players->end(); i++, ++it) {
+    Ship *ship = (*it)->ship;
+    bool is_local = (*it == players->back());
+
+    WrappedPoint old_pos = ship->position;
+    Point old_vel = ship->velocity;
+    Point old_facing = ship->facing;
+    bool was_alive = ship->is_alive();
+    uint16_t held_shoot = !ship->primary_weapons.empty() &&
+                          (*ship->primary)->is_shooting();
+    uint16_t held_secondary = ship->secondary != ship->secondary_weapons.end() &&
+                              (*ship->secondary)->is_shooting();
+
+    ship->restore_state(s.players[i], grid);
+
+    if (is_local && was_alive && ship->is_alive()) {
+      Point snap = ship->position.closest_to(old_pos);
+      ship->position = WrappedPoint(old_pos.x() + (snap.x() - old_pos.x()) * 0.35f,
+                                    old_pos.y() + (snap.y() - old_pos.y()) * 0.35f);
+      ship->position.wrap();
+      ship->velocity = old_vel + (ship->velocity - old_vel) * 0.35f;
+      ship->facing = old_facing;  // aim stays fully local
+      // restore_state rebuilt the weapons, dropping held triggers — reapply
+      // so a held fire button keeps firing (and keeps being sampled).
+      ship->shoot(held_shoot != 0);
+      ship->fire_secondary(held_secondary != 0);
+    }
+  }
+
+  // Pickups: rebuilt wholesale each snapshot.
+  while (!pickups->empty()) { delete pickups->back(); pickups->pop_back(); }
+  for (const auto &sp : s.pickups) {
+    WrappedPoint pos(sp.pos_x, sp.pos_y);
+    switch (sp.type) {
+      case Save::PickupType::Weapon:   pickups->push_back(new WeaponPickup(pos, sp.weapon_index)); break;
+      case Save::PickupType::Mine:     pickups->push_back(new MinePickup(pos)); break;
+      case Save::PickupType::GigaMine: pickups->push_back(new GigaMinePickup(pos)); break;
+      case Save::PickupType::Missile:  pickups->push_back(new MissilePickup(pos)); break;
+      case Save::PickupType::Shield:   pickups->push_back(new ShieldPickup(pos)); break;
+      case Save::PickupType::GodMode:  pickups->push_back(new GodModePickup(pos)); break;
+      case Save::PickupType::ExtraLife: pickups->push_back(new ExtraLife(pos)); break;
+      case Save::PickupType::NovaCharge: pickups->push_back(new NovaChargePickup(pos)); break;
+      default: break;
+    }
+  }
+
+  // Black holes: cheap wholesale rebuild (0 or 1 in practice).
+  while (!black_holes->empty()) { delete black_holes->back(); black_holes->pop_back(); }
+  for (const auto &sbh : s.black_holes)
+    black_holes->push_back(new BlackHole(WrappedPoint(sbh.pos_x, sbh.pos_y)));
+
+  // Stations restore in place; created/destroyed on presence transitions.
+  if (s.station.present) {
+    if (!station)
+      station = new GLStation(grid, enemies, players, (std::list<Object *> *)objects);
+    station->restore_state(s.station, grid);
+  } else if (station) {
+    delete station;
+    station = NULL;
+  }
+  if (s.mini_station.present && s.mini_station.alive) {
+    if (!mini_station)
+      mini_station = new GLMiniStation(grid, players, (std::list<Object *> *)objects);
+    mini_station->restore_state(s.mini_station);
+  } else if (mini_station) {
+    delete mini_station;
+    mini_station = NULL;
+  }
+}
+
+void GLGame::net_apply_extras(Save::Stream &in, const Save::GameState &s) {
+  uint32_t nplayers = 0;
+  if (!nx_read(in, nplayers)) return;
+  auto it = players->begin();
+  for (uint32_t i = 0; i < nplayers; i++) {
+    NetShipExtras ex;
+    if (!nx_read(in, ex.alive) || !nx_read(in, ex.temperature) ||
+        !nx_read(in, ex.time_until_respawn) || !nx_read(in, ex.time_left_invincible) ||
+        !nx_read(in, ex.god_ms) || !nx_read(in, ex.shield))
+      return;
+    if (it == players->end()) return;
+    Ship *ship = (*it)->ship;
+
+    if (!ex.alive && ship->is_alive()) {
+      // Host says this ship died: explode locally too.
+      ship->kill_stop();
+      ship->detonate();
+    } else if (ex.alive && !ship->is_alive() && i < s.players.size()) {
+      // Host respawned it: bring it back at the authoritative position.
+      ship->respawn(grid, false);
+      ship->position = WrappedPoint(s.players[i].pos_x, s.players[i].pos_y);
+      ship->velocity = Point(s.players[i].vel_x, s.players[i].vel_y);
+    }
+    ship->temperature = ex.temperature;
+    ship->time_until_respawn = ex.time_until_respawn;
+    ship->time_left_invincible = ex.time_left_invincible;
+    // god-mode / shield presentation on the client is a Milestone-1 cut
+    // (both still function — the host simulates them; only their local
+    // visual/audio flourishes are missing).
+
+    if (!nx_read_projectiles(in, *ship)) return;
+    ++it;
+  }
+
+  // Asteroids: match by net_id; new ids construct + restore, missing ids
+  // play the standard death visual so host-side kills still explode here.
+  uint32_t n_ids = 0;
+  if (!nx_read(in, n_ids)) return;
+  std::vector<uint32_t> ids(n_ids);
+  for (uint32_t i = 0; i < n_ids; i++)
+    if (!nx_read(in, ids[i])) return;
+  if (n_ids != s.asteroids.size()) return;  // malformed snapshot
+
+  std::map<uint32_t, Asteroid *> by_id;
+  for (auto *a : *objects) by_id[a->net_id] = a;
+
+  for (uint32_t i = 0; i < n_ids; i++) {
+    const Save::Asteroid &sa = s.asteroids[i];
+    std::map<uint32_t, Asteroid *>::iterator found = by_id.find(ids[i]);
+    if (found != by_id.end()) {
+      found->second->restore_state(sa);
+      by_id.erase(found);
+    } else {
+      Asteroid *a = new Asteroid(sa.invincible, sa.invisible, sa.reflective,
+                                 sa.teleporting, sa.quantum, sa.tough,
+                                 sa.armoured, sa.phasing);
+      a->restore_state(sa);
+      a->net_id = ids[i];
+      objects->push_back(a);
+    }
+  }
+
+  // Anything left in the map no longer exists on the host — kill it here
+  // for the debris, then let dead_objects fade it out.
+  if (!by_id.empty()) {
+    auto oi = objects->begin();
+    while (oi != objects->end()) {
+      if (by_id.find((*oi)->net_id) == by_id.end() || by_id[(*oi)->net_id] != *oi) {
+        ++oi;
+        continue;
+      }
+      (*oi)->kill();
+      if (!(*oi)->is_removable()) {
+        dead_objects->push_back(*oi);
+      } else {
+        delete *oi;
+      }
+      oi = objects->erase(oi);
+    }
+  }
+
+  grid.update((std::list<Object *> *)objects);
+}
+
 void GLGame::focus_gained() {
   Mix_ResumeMusic();
   if(auto_paused) {
@@ -765,6 +1129,10 @@ bool GLGame::cleared() const {
 }
 
 void GLGame::tick(int delta) {
+  if (net_mode_ == NetClient) {
+    tick_net_client(delta);
+    return;
+  }
   current_time += delta;
 
   if (!running) {
@@ -1969,7 +2337,11 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
   const GeneralKeys &gk = g_prefs.general_keys;
 
-  if (key == (unsigned char)gk.skip_level) {
+  // Host-only / debug keys are ignored on the online client — it never
+  // mutates world state locally (the host's snapshots are authoritative).
+  bool host_keys = net_mode_ != NetClient;
+
+  if (host_keys && key == (unsigned char)gk.skip_level) {
       level_cleared = true;
       time_until_next_generation = 0;
       while(!objects->empty()) {
@@ -1983,7 +2355,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       Asteroid::num_killable = 0;
   }
 
-  if (key == (unsigned char)gk.toggle_friendly_fire) {
+  if (host_keys && key == (unsigned char)gk.toggle_friendly_fire) {
     friendly_fire = !friendly_fire;
     g_prefs.friendly_fire = friendly_fire;
     save_preferences();
@@ -1991,9 +2363,9 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == (unsigned char)gk.toggle_debug_grid) {
     debug_grid = !debug_grid;
   }
-  if (key == (unsigned char)gk.time_speed_up && time_between_steps > 1) time_between_steps--;
-  if (key == (unsigned char)gk.time_slow_down) time_between_steps++;
-  if (key == (unsigned char)gk.time_reset) time_between_steps = step_size;
+  if (host_keys && key == (unsigned char)gk.time_speed_up && time_between_steps > 1) time_between_steps--;
+  if (host_keys && key == (unsigned char)gk.time_slow_down) time_between_steps++;
+  if (host_keys && key == (unsigned char)gk.time_reset) time_between_steps = step_size;
   if (key == (unsigned char)gk.pause) toggle_pause();
 #if !defined(__ANDROID__) && !defined(__IOS__)
   if (key == (unsigned char)gk.add_player2 && players->size() < 2 && net_mode_ == NetOff) {

@@ -204,11 +204,28 @@ void NetLobby::tick(int delta) {
 
     case Connected: {
       session_->update(delta);
-      // The host is already in-game streaming snapshots; drain and discard
-      // them so the inbox doesn't grow while this screen waits (the client
-      // game state that consumes them arrives in Phase 7).
+      // The host is already in-game streaming snapshots. The first complete
+      // one bootstraps the client game: the save-restore constructor
+      // rebuilds the world, then the snapshot's NetExtras are applied.
       std::vector<unsigned char> msg;
-      while (session_->transport() && session_->transport()->poll(msg)) {}
+      while (session_->transport() && session_->transport()->poll(msg)) {
+        Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
+        Net::Header h;
+        if (!Net::read_header(r, h)) continue;
+        if (h.msg_type != Net::MSG_SNAPSHOT_CHUNK) continue;
+        if (!assembler_.add_chunk(r)) continue;
+
+        Save::MemStream in(assembler_.payload());
+        Save::GameState s;
+        if (!Save::deserialize_game(in, s)) continue;
+
+        NetSession *session = session_;
+        session_ = nullptr;
+        GLGame *game = new GLGame(s, session, (SDL_GameController *)0);
+        game->net_apply_extras(in, s);
+        request_state_change(game);
+        return;
+      }
       if (session_->phase() == NetSession::Failed ||
           (session_->transport() && session_->transport()->failed())) {
         set_status("CONNECTION LOST");
@@ -296,12 +313,12 @@ void NetLobby::draw() {
       }
       break;
     case Connected:
-      // Only the joiner sees this screen — the host goes straight in-game.
+      // Only the joiner sees this screen, and only for the moment between
+      // the handshake and the first world snapshot arriving.
       lines.push_back("CONNECTED!");
       lines.push_back("YOU ARE PLAYER 2");
       lines.push_back("");
-      lines.push_back("THE HOST IS IN THE GAME");
-      lines.push_back("YOUR VIEW ARRIVES IN A LATER PHASE (7)");
+      if (blink) lines.push_back("WAITING FOR THE HOST'S WORLD...");
       break;
     case LobbyFailed:
       lines.push_back("SOMETHING WENT WRONG");

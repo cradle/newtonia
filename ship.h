@@ -118,6 +118,13 @@ class Ship : public CompositeObject {
 
     //FIX: friends
     int time_left_invincible;
+
+    // Netplay: wrapping one-shot counters bumped by the action methods below;
+    // the online client samples them each tick into INPUT messages (the host
+    // applies the deltas). Meaningless offline. See NETPLAY.md.
+    uint8_t net_boost_count = 0, net_next_weapon_count = 0,
+            net_next_secondary_count = 0, net_teleport_count = 0;
+
     // Serialisation: capture/restore the full player state including weapons.
     Save::Player capture_state() const;
     void restore_state(const Save::Player &p, const Grid &grid);

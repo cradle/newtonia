@@ -19,6 +19,7 @@
 
 #include <string>
 
+#include "net_session.h"
 #include "state.h"
 
 class NetSession;
@@ -66,6 +67,7 @@ private:
   bool paste_pending_;
   std::string paste_buffer_;
   int connect_wait_ms_;  // time in WaitConnect, for the no-relay timeout
+  Net::SnapshotAssembler assembler_;  // joiner: reassembles snapshot #1
 
   std::string status_;  // transient hint / error line
   int status_ms_;

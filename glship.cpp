@@ -334,6 +334,7 @@ void GLShip::controller_input(SDL_Event event) {
   if(!ship->is_alive()) {
     if(pressed && event.cbutton.button == SDL_CONTROLLER_BUTTON_A && ship->lives > 0 &&
        ship->time_until_respawn <= ship->respawn_time - 1000) {
+      net_respawn_count++;
       ship->time_until_respawn = 0;
     }
     return;
@@ -357,6 +358,7 @@ void GLShip::controller_input(SDL_Event event) {
   } else if(event.cbutton.button == SDL_CONTROLLER_BUTTON_Y && pressed) {
     ship->next_secondary_weapon();
   } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_RIGHTSHOULDER && pressed) {
+    ship->net_teleport_count++;
     ship->behaviours.push_back(new Teleport(ship));
   } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_LEFTSTICK && pressed) {
     rotating_view = !rotating_view;
@@ -374,7 +376,8 @@ void GLShip::controller_axis_input(SDL_Event event) {
       bool pressed = event.caxis.value > 8000;
       if(pressed && !r2_shoot_active && ship->lives > 0 &&
          ship->time_until_respawn <= ship->respawn_time - 1000) {
-        ship->time_until_respawn = 0;
+        net_respawn_count++;
+      ship->time_until_respawn = 0;
       }
       r2_shoot_active = pressed;
     }
@@ -513,6 +516,7 @@ void GLShip::input(unsigned char key, bool pressed) {
     if(key == shoot_key && ship->lives > 0 &&
        ship->time_until_respawn <= ship->respawn_time - 1000) {
       last_input_was_controller = false;
+      net_respawn_count++;
       ship->time_until_respawn = 0;
     }
     return;
@@ -548,6 +552,7 @@ void GLShip::input(unsigned char key, bool pressed) {
   } else if(key == next_secondary_key && pressed) {
     ship->next_secondary_weapon();
   } else if (key == teleport_key && pressed) {
+    ship->net_teleport_count++;
     ship->behaviours.push_back(new Teleport(ship));
   } else if (key == (unsigned char)toggle_rotate_view_key && pressed) {
     rotating_view = !rotating_view;
