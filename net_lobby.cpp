@@ -9,6 +9,7 @@
 #include "mat4.h"
 #include "menu.h"
 #include "net_session.h"
+#include "net_signal.h"
 #include "net_transport.h"
 #include "preferences.h"
 #include "typer.h"
@@ -23,6 +24,10 @@ const int STATUS_SHOW_MS = 4000;
 // window they are almost certainly behind symmetric NATs (no relay yet).
 const int CONNECT_TIMEOUT_MS = 25000;
 
+// No word from the signal server in this window (room creation / join
+// acknowledgement) — treat it as unreachable and use the manual flow.
+const int SIGNAL_TIMEOUT_MS = 12000;
+
 }  // namespace
 
 NetLobby::NetLobby()
@@ -31,6 +36,10 @@ NetLobby::NetLobby()
       hosting_(false),
       transport_(nullptr),
       session_(nullptr),
+      signal_(nullptr),
+      offer_sent_(false),
+      answer_sent_(false),
+      signal_wait_ms_(0),
       paste_pending_(false),
       connect_wait_ms_(0),
       status_ms_(0),
@@ -43,6 +52,10 @@ NetLobby::~NetLobby() {
   if (!session_ && transport_) {
     transport_->close();
     delete transport_;
+  }
+  if (signal_) {
+    signal_->close();
+    delete signal_;
   }
 }
 
@@ -59,6 +72,16 @@ void NetLobby::reset_to_choose() {
     delete transport_;
     transport_ = nullptr;
   }
+  if (signal_) {
+    signal_->close();
+    delete signal_;
+    signal_ = nullptr;
+  }
+  room_code_.clear();
+  code_entry_.clear();
+  offer_sent_ = false;
+  answer_sent_ = false;
+  signal_wait_ms_ = 0;
   paste_pending_ = false;
   connect_wait_ms_ = 0;
   screen_ = Choose;
@@ -77,15 +100,48 @@ void NetLobby::confirm() {
       screen_ = LobbyFailed;
       return;
     }
+    signal_ = NetSignal::create();
     if (hosting_) {
       transport_->start_host();
-      screen_ = HostGathering;
+      if (signal_) {
+        signal_->connect_host(net_signal_url());
+        signal_wait_ms_ = 0;
+        screen_ = RoomHost;
+      } else {
+        screen_ = HostGathering;
+      }
     } else {
-      screen_ = JoinWaitOffer;
+      if (signal_) {
+        screen_ = CodeEntry;
+      } else {
+        screen_ = JoinWaitOffer;
+      }
+    }
+  } else if (screen_ == CodeEntry) {
+    if (code_entry_.size() == (size_t)NET_ROOM_CODE_LEN) {
+      signal_->connect_join(net_signal_url(), code_entry_);
+      signal_wait_ms_ = 0;
+      screen_ = RoomJoining;
+    } else {
+      set_status("THE CODE IS 4 LETTERS");
     }
   } else if (screen_ == LobbyFailed) {
     reset_to_choose();
   }
+}
+
+// The signal server never answered (or refused the room): keep the pair
+// playable through the Milestone 1 clipboard flow.
+void NetLobby::fall_back_to_manual(const char *why) {
+  printf("[lobby] manual fallback: %s\n", why);
+  fflush(stdout);
+  if (signal_) {
+    signal_->close();
+    delete signal_;
+    signal_ = nullptr;
+  }
+  set_status("NO ROOM SERVER - USING MANUAL CODES");
+  screen_ = hosting_ ? HostGathering : JoinWaitOffer;
 }
 
 void NetLobby::start_paste() {
@@ -143,11 +199,106 @@ void NetLobby::copy_local_description() {
   set_status("COPIED TO CLIPBOARD");
 }
 
+// Drives the room-code flow: pushes our SDP into the room when ready and
+// reacts to relay events. No-op in the manual fallback (signal_ == null).
+void NetLobby::pump_signal(int delta) {
+  if (!signal_) return;
+
+  // Host: the offer goes to the room the moment gathering yields it; the
+  // worker replays it to a joiner arriving later.
+  if (hosting_ && !offer_sent_ && !room_code_.empty() && transport_ &&
+      transport_->local_description_ready()) {
+    signal_->send_offer(transport_->local_description());
+    offer_sent_ = true;
+    printf("[lobby] offer sent to room %s\n", room_code_.c_str());
+    fflush(stdout);
+  }
+
+  // Joiner: answer ready -> push it and start waiting on the transport.
+  if (!hosting_ && !answer_sent_ && screen_ == RoomJoining && transport_ &&
+      transport_->local_description_ready()) {
+    signal_->send_answer(transport_->local_description());
+    answer_sent_ = true;
+    printf("[lobby] answer sent to room %s\n", room_code_.c_str());
+    fflush(stdout);
+    session_ = new NetSession(transport_, NetSession::ClientRole);
+    transport_ = nullptr;
+    connect_wait_ms_ = 0;
+    screen_ = WaitConnect;
+  }
+
+  NetSignal::Event ev;
+  while (signal_->poll(ev)) {
+    switch (ev.kind) {
+      case NetSignal::Event::Room:
+        room_code_ = ev.text;
+        printf("[lobby] room %s\n", room_code_.c_str());
+        fflush(stdout);
+        break;
+      case NetSignal::Event::Joined:
+        room_code_ = code_entry_;  // acked — also disarms the timeout below
+        set_status("ROOM FOUND - WAITING FOR THE HOST");
+        break;
+      case NetSignal::Event::PeerJoin:
+        set_status("PLAYER 2 IS CONNECTING...");
+        break;
+      case NetSignal::Event::PeerLeave:
+        set_status("PLAYER 2 LEFT THE ROOM");
+        break;
+      case NetSignal::Event::Offer:
+        // Live relay: both ends are online, so the full offer applies and
+        // ICE starts on both sides at once (no strip_ice_candidates — that
+        // trick belongs to the clipboard flow's human-latency gap).
+        if (!hosting_ && screen_ == RoomJoining && transport_)
+          transport_->start_join(ev.text);
+        break;
+      case NetSignal::Event::Answer:
+        if (hosting_ && transport_) {
+          transport_->set_remote_answer(ev.text);
+          session_ = new NetSession(transport_, NetSession::HostRole);
+          transport_ = nullptr;
+          connect_wait_ms_ = 0;
+          screen_ = WaitConnect;
+        }
+        break;
+      case NetSignal::Event::Error:
+        if (screen_ == RoomJoining || screen_ == CodeEntry) {
+          if (ev.text == "no-such-room") set_status("NO ROOM WITH THAT CODE");
+          else if (ev.text == "room-full") set_status("THAT ROOM IS FULL");
+          else set_status("THE ROOM HAS EXPIRED");
+          room_code_.clear();
+          code_entry_.clear();
+          answer_sent_ = false;
+          screen_ = CodeEntry;
+        } else if (screen_ == RoomHost) {
+          fall_back_to_manual(ev.text.c_str());
+        }
+        break;
+      case NetSignal::Event::Closed:
+        if (screen_ == RoomHost && room_code_.empty())
+          fall_back_to_manual("socket closed before room");
+        else if (screen_ == RoomJoining && room_code_.empty())
+          fall_back_to_manual("socket closed while joining");
+        // Later screens no longer need the relay; ignore.
+        break;
+    }
+  }
+
+  // Server never answered at all: don't strand the player.
+  if ((screen_ == RoomHost || screen_ == RoomJoining) && room_code_.empty()) {
+    signal_wait_ms_ += delta;
+    if (signal_wait_ms_ > SIGNAL_TIMEOUT_MS)
+      fall_back_to_manual("signal server timeout");
+  }
+}
+
 void NetLobby::tick(int delta) {
   currentTime += delta;
   viewpoint += Point(1, 0) * (0.025 * delta);
   if (viewpoint.x() > WORLD_W) viewpoint += Point(-WORLD_W, 0);
   if (status_ms_ > 0) status_ms_ -= delta;
+
+  pump_signal(delta);
 
   // Async clipboard read completion (web; immediate on native).
   if (paste_pending_ && net_clipboard_read_poll(paste_buffer_)) {
@@ -299,10 +450,40 @@ void NetLobby::draw() {
       Typer::draw_centered(0, -40, join.c_str(), 26);
       lines.push_back("");
       y = -160;
-      lines.push_back("HOST MAKES AN INVITE CODE");
-      lines.push_back("JOIN PASTES ONE FROM A FRIEND");
+      lines.push_back("HOST MAKES A ROOM CODE");
+      lines.push_back("JOIN ENTERS A FRIEND'S CODE");
       break;
     }
+    case RoomHost:
+      if (room_code_.empty()) {
+        lines.push_back("CREATING A ROOM");
+        if (blink) lines.push_back("PLEASE WAIT...");
+      } else {
+        lines.push_back("ROOM CODE");
+        Typer::draw_centered(0, 20, room_code_.c_str(), 48);
+        y = -100;
+        lines.push_back("TELL YOUR FRIEND THE CODE");
+        lines.push_back("");
+        if (blink) lines.push_back("WAITING FOR PLAYER 2...");
+      }
+      break;
+    case CodeEntry: {
+      lines.push_back("ENTER THE ROOM CODE");
+      std::string slots;
+      for (int i = 0; i < NET_ROOM_CODE_LEN; i++) {
+        slots += (size_t)i < code_entry_.size() ? code_entry_[i] : '-';
+        if (i + 1 < NET_ROOM_CODE_LEN) slots += ' ';
+      }
+      Typer::draw_centered(0, 20, slots.c_str(), 48);
+      y = -100;
+      lines.push_back("TYPE THE CODE YOUR HOST SEES");
+      lines.push_back("ENTER - JOIN THE ROOM");
+      break;
+    }
+    case RoomJoining:
+      lines.push_back("JOINING THE ROOM");
+      if (blink) lines.push_back("PLEASE WAIT...");
+      break;
     case HostGathering:
       lines.push_back("PREPARING YOUR INVITE CODE");
       if (blink) lines.push_back("PLEASE WAIT...");
@@ -328,6 +509,10 @@ void NetLobby::draw() {
         char waited[48];
         snprintf(waited, sizeof(waited), "CONNECTING... %d", connect_wait_ms_ / 1000);
         lines.push_back(waited);
+      } else if (signal_) {
+        // Room flow: everything is automatic from here.
+        lines.push_back("FOUND THE HOST");
+        if (blink) lines.push_back("CONNECTING...");
       } else {
         lines.push_back("REPLY CODE COPIED TO CLIPBOARD");
         lines.push_back("SEND IT BACK TO THE HOST");
@@ -365,11 +550,35 @@ void NetLobby::draw() {
 
 void NetLobby::keyboard(unsigned char key, int x, int y) {}
 
+// Room-code typing: letters/digits from the code alphabet, backspace,
+// Enter to submit. Runs INSTEAD of the shortcut keys — V, C, W and S are
+// all valid code characters.
+void NetLobby::code_entry_key(unsigned char key) {
+  if (key == '\r' || key == '\n') {
+    confirm();
+    return;
+  }
+  if (key == 8 || key == 127) {  // backspace / delete
+    if (!code_entry_.empty()) code_entry_.erase(code_entry_.size() - 1);
+    return;
+  }
+  if (code_entry_.size() < (size_t)NET_ROOM_CODE_LEN &&
+      net_room_code_char_ok((char)key)) {
+    char c = (char)key;
+    if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+    code_entry_ += c;
+  }
+}
+
 void NetLobby::keyboard_up(unsigned char key, int x, int y) {
   (void)x;
   (void)y;
   if (key == 27) {
     leave_to_menu();
+    return;
+  }
+  if (screen_ == CodeEntry) {
+    code_entry_key(key);
     return;
   }
   switch (key) {

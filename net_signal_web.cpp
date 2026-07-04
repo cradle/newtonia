@@ -12,6 +12,31 @@
 
 EM_JS_DEPS(nwsig_deps, "$UTF8ToString,$stringToUTF8,$lengthBytesUTF8");
 
+// Signal-server override for the web build (no env vars in a browser):
+// Module.NWTN_SIGNAL_URL, or ?signal=... in the page URL. Returns a
+// malloc'd string ("" = use the baked default); caller frees.
+EM_JS(char *, nwsig_url_override, (), {
+  var url = "";
+  try {
+    if (Module.NWTN_SIGNAL_URL) url = Module.NWTN_SIGNAL_URL;
+    else {
+      var q = new URLSearchParams(location.search).get('signal');
+      if (q) url = q;
+    }
+  } catch (e) {}
+  var n = lengthBytesUTF8(url) + 1;
+  var p = _malloc(n);
+  stringToUTF8(url, p, n);
+  return p;
+});
+
+std::string net_signal_url_web_override() {
+  char *p = nwsig_url_override();
+  std::string url(p);
+  free(p);
+  return url;
+}
+
 EM_JS(int, nwsig_open, (const char *url), {
   var S = Module.__nwsig || (Module.__nwsig = { next: 1, conns: {} });
   var h = S.next++;
