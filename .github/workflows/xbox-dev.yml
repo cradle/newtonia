@@ -177,6 +177,25 @@ jobs:
             Write-Host "Staged $(Split-Path $target -Leaf) from VCLibs appx"
           }
 
+      - name: Netplay loopback self-test
+        shell: pwsh
+        run: |
+          # NEWTONIA_NET_SELFTEST=1 makes newtonia.exe run an in-process
+          # WebRTC loopback (host+join over the public NetTransport API,
+          # echo on both channels) and exit 0/1 before any window or GL
+          # init — headless-safe. The ANGLE DLLs staged above are still
+          # required: they are in the import table. Log lands next to the
+          # exe (see xbox_main.cpp).
+          $env:NEWTONIA_NET_SELFTEST = "1"
+          $exe = Join-Path (Get-Location) "xbox\build-desktop\newtonia.exe"
+          $p = Start-Process -FilePath $exe `
+                 -WorkingDirectory "xbox\build-desktop" -Wait -PassThru
+          Get-Content "xbox\build-desktop\newtonia.log" -ErrorAction SilentlyContinue
+          if ($p.ExitCode -ne 0) {
+            Write-Error "netplay self-test failed (exit $($p.ExitCode))"
+            exit 1
+          }
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

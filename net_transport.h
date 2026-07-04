@@ -53,6 +53,13 @@ public:
   static NetTransport* create();
 };
 
+// In-process loopback self-test: two transports host/join each other
+// through the public API above and exchange messages on both channels.
+// Returns true on PASS; false immediately where no backend exists. Wired
+// to the NEWTONIA_NET_SELFTEST=1 environment hook in xbox_main.cpp and
+// run by CI — blocks for up to ~90 s, never call it during gameplay.
+bool net_selftest();
+
 // Compile-time gate for netplay UI (the menu's ONLINE row).
 inline bool net_available() {
 #if defined(NEWTONIA_NET_RTC) || defined(__EMSCRIPTEN__)

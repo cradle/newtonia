@@ -66,6 +66,7 @@ extern "C" void GDK_DispatchTaskQueue(void) {}
 #include "typer.h"
 #include "asteroid.h"
 #include "preferences.h"
+#include "net_transport.h"
 
 #include <cstdlib>
 #include <ctime>
@@ -207,6 +208,20 @@ int main(int argc, char *argv[])
                 fprintf((FILE *)fp, "%s\n", msg);
                 fflush((FILE *)fp);
             }, logFile);
+        }
+    }
+#endif
+
+#ifdef NEWTONIA_NET_RTC
+    // Hidden CI/debug hook: run the netplay loopback self-test and exit.
+    // Placed before SDL_Init so it works headless (no display needed).
+    {
+        const char *st = SDL_getenv("NEWTONIA_NET_SELFTEST");
+        if (st && st[0] == '1' && st[1] == '\0') {
+            SDL_Log("NEWTONIA_NET_SELFTEST: running loopback self-test...");
+            bool ok = net_selftest();
+            SDL_Log(ok ? "NET SELFTEST PASS" : "NET SELFTEST FAIL");
+            return ok ? 0 : 1;
         }
     }
 #endif

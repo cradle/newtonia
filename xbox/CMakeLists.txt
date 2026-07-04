@@ -145,6 +145,63 @@ set(SDL2MIXER_SAMPLES OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(SDL2_mixer)
 
 # ---------------------------------------------------------------
+# Online netplay backend — libdatachannel over WebRTC DataChannels.
+# See NETPLAY.md. The whole recipe below (pins + three interop fixes)
+# was proven by the Phase 0 spike (spike/netplay, netplay-spike.yml).
+# ---------------------------------------------------------------
+option(NEWTONIA_NET "Enable the online netplay backend (libdatachannel)" ON)
+
+# Milestone 1 is Windows-only: console builds keep the seam disabled.
+if(CMAKE_GENERATOR_PLATFORM MATCHES "Gaming\\.Xbox")
+    set(NEWTONIA_NET OFF)
+endif()
+
+if(NEWTONIA_NET)
+    # Nothing in this project is installed; skipping install rules also
+    # sidesteps libdatachannel's install(EXPORT) failing because the
+    # in-tree FetchContent mbedtls target is in no export set.
+    set(CMAKE_SKIP_INSTALL_RULES ON)
+
+    # libdatachannel's MbedTLS DTLS transport uses the DTLS-SRTP API even
+    # with NO_MEDIA, and MbedTLS's default config compiles that API out.
+    # The user config defines MBEDTLS_SSL_DTLS_SRTP for every TU in this
+    # directory tree so the library and its consumers agree.
+    add_compile_definitions(
+        "MBEDTLS_USER_CONFIG_FILE=\"${CMAKE_SOURCE_DIR}/mbedtls_user_config.h\"")
+
+    # Pins verified via ls-remote and the spike (see NETPLAY.md). No
+    # GIT_SHALLOW: tags + submodules resolve unreliably when shallow, and
+    # libdatachannel vendors libjuice/usrsctp/plog as submodules.
+    FetchContent_Declare(MbedTLS
+        GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
+        GIT_TAG        v3.6.6
+    )
+    set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+    set(ENABLE_TESTING  OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(MbedTLS)
+
+    # libdatachannel skips its find_package(MbedTLS) — which would search
+    # the (empty) system — when an MbedTLS::MbedTLS target already exists,
+    # so alias the in-tree targets to the imported-style names it links.
+    if(NOT TARGET MbedTLS::MbedTLS)
+        add_library(MbedTLS::MbedTLS    ALIAS mbedtls)
+        add_library(MbedTLS::MbedX509   ALIAS mbedx509)
+        add_library(MbedTLS::MbedCrypto ALIAS mbedcrypto)
+    endif()
+
+    FetchContent_Declare(libdatachannel
+        GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
+        GIT_TAG        v0.24.5
+    )
+    set(USE_MBEDTLS  ON  CACHE BOOL "" FORCE)
+    set(NO_MEDIA     ON  CACHE BOOL "" FORCE)
+    set(NO_WEBSOCKET ON  CACHE BOOL "" FORCE)
+    set(NO_EXAMPLES  ON  CACHE BOOL "" FORCE)
+    set(NO_TESTS     ON  CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(libdatachannel)
+endif()
+
+# ---------------------------------------------------------------
 # Executable
 # ---------------------------------------------------------------
 add_executable(newtonia ${ALL_SRCS})
@@ -155,6 +212,13 @@ target_sources(newtonia PRIVATE "${CMAKE_SOURCE_DIR}/sdl_gdk_stubs.cpp")
 target_compile_definitions(newtonia PRIVATE
     _USE_MATH_DEFINES  # M_PI etc. for files that include <math.h> before SDL headers
 )
+
+if(NEWTONIA_NET)
+    # Activates net_transport_rtc.cpp (an empty TU everywhere else) and
+    # net_available(); see net_transport.h.
+    target_compile_definitions(newtonia PRIVATE NEWTONIA_NET_RTC)
+    target_link_libraries(newtonia PRIVATE LibDataChannel::LibDataChannelStatic)
+endif()
 # On the GDK MSBuild platform _GAMING_DESKTOP is injected automatically; the
 # plain Ninja build must define it so the Desktop entry point compiles.
 if(NOT GDK_PLATFORM_BUILD)
