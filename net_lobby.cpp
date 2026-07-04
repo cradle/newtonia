@@ -1,5 +1,6 @@
 #include "net_lobby.h"
 
+#include <cstdio>
 #include <vector>
 
 #include "gl_compat.h"
@@ -97,6 +98,9 @@ void NetLobby::start_paste() {
 void NetLobby::handle_paste(const std::string &blob) {
   std::string sdp;
   char kind = Net::decode_signal(blob, sdp);
+  printf("[lobby] pasted %d chars, kind=%c, screen=%d\n",
+         (int)blob.size(), kind ? kind : '?', (int)screen_);
+  fflush(stdout);
   if (screen_ == JoinWaitOffer) {
     if (kind == 'O') {
       transport_->start_join(sdp);
@@ -128,7 +132,11 @@ void NetLobby::copy_local_description() {
   else if (transport_)
     sdp = transport_->local_description();
   if (sdp.empty()) return;
-  net_clipboard_write(Net::encode_signal(hosting_, sdp));
+  std::string blob = Net::encode_signal(hosting_, sdp);
+  net_clipboard_write(blob);
+  printf("[lobby] copied %s code to clipboard (%d chars)\n",
+         hosting_ ? "invite" : "reply", (int)blob.size());
+  fflush(stdout);
   set_status("COPIED TO CLIPBOARD");
 }
 
@@ -149,6 +157,8 @@ void NetLobby::tick(int delta) {
   }
 
   if (transport_ && transport_->failed() && screen_ != LobbyFailed) {
+    printf("[lobby] transport failed during signaling\n");
+    fflush(stdout);
     set_status("CONNECTION FAILED");
     screen_ = LobbyFailed;
     return;
@@ -196,6 +206,10 @@ void NetLobby::tick(int delta) {
         screen_ = LobbyFailed;
       } else if (p == NetSession::Failed ||
                  connect_wait_ms_ > CONNECT_TIMEOUT_MS) {
+        printf("[lobby] connect failed: session_phase=%d waited=%d ms transport_failed=%d\n",
+               (int)p, connect_wait_ms_,
+               session_->transport() ? (int)session_->transport()->failed() : -1);
+        fflush(stdout);
         set_status("COULD NOT CONNECT - NETWORK MAY NEED A RELAY (M2)");
         screen_ = LobbyFailed;
       }
@@ -285,10 +299,10 @@ void NetLobby::draw() {
       if (blink) lines.push_back("PLEASE WAIT...");
       break;
     case HostWaitAnswer:
-      lines.push_back("INVITE CODE COPIED TO CLIPBOARD");
-      lines.push_back("SEND IT TO YOUR FRIEND");
+      lines.push_back("1. INVITE CODE COPIED - SEND IT TO YOUR FRIEND");
+      lines.push_back("2. THEY JOIN AND SEND YOU A REPLY CODE");
+      lines.push_back("3. COPY THE REPLY, THEN PRESS V HERE");
       lines.push_back("");
-      lines.push_back("V - PASTE THEIR REPLY CODE");
       lines.push_back("C - COPY THE INVITE AGAIN");
       break;
     case JoinWaitOffer:
@@ -302,7 +316,9 @@ void NetLobby::draw() {
       break;
     case WaitConnect:
       if (hosting_) {
-        lines.push_back("CONNECTING...");
+        char waited[48];
+        snprintf(waited, sizeof(waited), "CONNECTING... %d", connect_wait_ms_ / 1000);
+        lines.push_back(waited);
       } else {
         lines.push_back("REPLY CODE COPIED TO CLIPBOARD");
         lines.push_back("SEND IT BACK TO THE HOST");
