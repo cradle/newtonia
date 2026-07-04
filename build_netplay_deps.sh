@@ -28,7 +28,7 @@ fi
 echo "== building"
 cmake -B "$SRC/build" -S "$SRC" \
   -DCMAKE_BUILD_TYPE=Release \
-  -DNO_MEDIA=ON -DNO_WEBSOCKET=ON -DNO_EXAMPLES=ON -DNO_TESTS=ON \
+  -DNO_MEDIA=ON -DNO_WEBSOCKET=OFF -DNO_EXAMPLES=ON -DNO_TESTS=ON \
   -DCMAKE_INSTALL_PREFIX="$PREFIX" \
   "${EXTRA[@]}"
 cmake --build "$SRC/build" -j"$(getconf _NPROCESSORS_ONLN)"

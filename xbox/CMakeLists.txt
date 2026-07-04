@@ -195,7 +195,9 @@ if(NEWTONIA_NET)
     )
     set(USE_MBEDTLS  ON  CACHE BOOL "" FORCE)
     set(NO_MEDIA     ON  CACHE BOOL "" FORCE)
-    set(NO_WEBSOCKET ON  CACHE BOOL "" FORCE)
+    # WebSocket client stays ON since M2: it carries the room-code
+    # signaling to the Cloudflare worker (see NETPLAY.md Milestone 2).
+    set(NO_WEBSOCKET OFF CACHE BOOL "" FORCE)
     set(NO_EXAMPLES  ON  CACHE BOOL "" FORCE)
     set(NO_TESTS     ON  CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(libdatachannel)

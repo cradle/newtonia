@@ -24,6 +24,28 @@ Working doc for the netplay effort. The full approved plan is reproduced in the 
 - [x] **Phase 7 — client side (the milestone)**: `tick_net_client()` (visual/kinematic stepping only), snapshot apply (net-id map, death debris for missing ids, generation rebuild via rollover-block clone, local-ship blend), INPUT send per tick, client bootstrap via existing `GLGame(const Save::GameState&,…)` from snapshot #1. **Landed fac5a77; TWO MACHINES PLAY CO-OP** — verified native↔native (two instances under Xvfb through the real lobby + X11 clipboard; both in-game, joiner input moves its ship across the host's world) AND web↔web (Playwright two tabs, same flow). Bonus: `make NETPLAY=1 NETPLAY_PREFIX=$(brew --prefix)` enables the native backend on macOS/Linux via installed libdatachannel (the Makefile-netplay stretch goal).
 - [x] **Phase 8 — polish**: pause propagation, disconnect UX ("CONNECTION LOST"), generation banner, 1 s input dead-man switch, REJECT UX, native↔web cross-play checklist. **Landed 1a644cf** — pause syncs via EV_PAUSE/EV_RESUME (host polls before its pause gate so remote RESUME lands while paused), CONNECTION LOST freeze+card on transport failure or EV_BYE, 2 s "LEVEL N - NEW X" banner via EV_GENERATION_START, dead-man releases held actions after 1 s of input silence, REJECT UX was in since Phase 5. **Native↔web cross-play VERIFIED**: native host (Xvfb) + headless-Chromium web client through the real lobby with the clipboard bridged via xclip — connected, played, both transports healthy (scratchpad `pwtest/cross_test.js`).
 
+## Milestone 2 — room codes, signaling, rejoin, TURN, delta snapshots
+
+### M2 decisions (locked with Glenn 2026-07-04)
+
+- **Signaling host**: Cloudflare Worker + Durable Objects (Glenn's account; free tier). Code lives in `signal/` (worker + wrangler config); Glenn deploys with `wrangler deploy`; local dev/e2e uses `wrangler dev` (miniflare — no account needed). Default endpoint baked into the build, overridable via `signal_url` in the preferences INI.
+- **Native WS client**: libdatachannel's built-in WebSocket (`rtcCreateWebSocket`) — flip `NO_WEBSOCKET=OFF` in `build_netplay_deps.sh` and `xbox/CMakeLists.txt` (TLS via the existing MbedTLS). Web: browser `WebSocket` in the EM_JS glue.
+- **Room codes**: 4 chars, server-assigned, from a 30-char unambiguous alphabet (no 0/O/1/I), case-insensitive entry, ~2 h TTL.
+- **Signal protocol**: JSON text frames — `{t:"create"}` → `{t:"room",code}`; `{t:"join",code}`; relay `{t:"offer"|"answer",sdp}`; `{t:"peer",ev}` notifications; `{t:"err",reason}`. SDP stays **non-trickle** (the 8 s gathering fallback bounds code latency); trickle is a later optimization now that a live channel exists.
+- **Clipboard flow stays** as the fallback path when the signal server is unreachable.
+- **Rejoin**: the room outlives the client — on client loss the host keeps playing and reopens the room slot; a rejoining client is just a fresh join (any snapshot bootstraps it).
+- **TURN**: Worker endpoint mints short-lived Cloudflare Calls TURN credentials; both backends add them to the ICE config.
+
+### M2 phase status
+
+- [x] **M2-0 — spike**: `signal/` Worker (Durable Object room, WS relay) running under `wrangler dev`; native deps rebuilt with WebSocket ON; C-API WebSocket echo against the local worker; web-page WS echo. Housekeeping: retire `spike/netplay/` + `netplay-spike.yml` (superseded since Phase 2). **DONE** — relay verified twice over: node WS client (scratchpad `signal_test.js`: code mint, lowercase join, offer replay to late/re-joiners, answer relay, room-full, leave→slot-reopen, no-such-room) and libdatachannel `rtcCreateWebSocket` C spike (room→join→offer relay). `wrangler dev --local` works in the dev container (miniflare; `NO_PROXY=127.0.0.1` for clients). `build_netplay_deps.sh` now builds with `NO_WEBSOCKET=OFF`; game rebuilds and NET SELFTEST still PASS against the WS-enabled lib. (Web-page WS echo deferred to M2-1's web backend — browser WebSocket is not a risk item.)
+- [ ] **M2-1 — NetSignal seam**: `net_signal.h/.cpp` interface + native (rtcWebSocket) and web (EM_JS WebSocket) backends; JSON codec; self-test hook.
+- [ ] **M2-2 — lobby rooms**: HOST shows "ROOM CODE ABCD"; JOIN gets a 4-char entry screen; automatic offer/answer through the room; e2e vs local relay (Xvfb native, Playwright web).
+- [ ] **M2-3 — deploy**: Glenn runs `wrangler deploy`; bake the production URL; cross-machine + cross-play verification over the real internet.
+- [ ] **M2-4 — rejoin**: host reopens the room on client loss; client rejoin flow; verified mid-game drop/reconnect.
+- [ ] **M2-5 — TURN**: credentials endpoint + ICE config plumbing in both backends.
+- [ ] **M2-6 — delta snapshots**: keyframe + per-object delta encoding, bandwidth counters, late-game measurements.
+
 ## Protocol quick-ref
 
 Header: `uint8 proto_ver(=1) | uint8 msg_type | uint8 player_id | uint8 reserved`, little-endian, explicit byte packing.
