@@ -31,6 +31,13 @@ public:
 
   static int num_killable;
 
+  // Netplay identity: unique per asteroid, assigned from a counter in every
+  // constructor. The host's values travel in snapshot NetExtras so the
+  // client can match asteroids across snapshots (it overwrites its local
+  // ids with the host's when applying). See NETPLAY.md.
+  uint32_t net_id;
+  static uint32_t next_net_id;
+
   const static int max_radius;
 
   static Mix_Chunk *explode_sound, *thud_sound, *ting_sound, *asteroid_ting_sound;

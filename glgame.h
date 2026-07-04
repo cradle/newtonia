@@ -26,10 +26,16 @@
 
 using namespace std;
 
+class NetSession;
+
 class GLGame : public State {
 public:
   GLGame(SDL_GameController *controller = NULL);
   GLGame(const Save::GameState &save, SDL_GameController *controller = NULL);
+  // Online host: adopts the Ready session from the lobby; the remote peer
+  // drives player 2 via INPUT messages and receives 10 Hz snapshots.
+  // (The client-side constructor arrives with Phase 7 — see NETPLAY.md.)
+  GLGame(NetSession *session, SDL_GameController *controller);
   GLGame(GLGame const &other);
   virtual ~GLGame();
 
@@ -60,6 +66,9 @@ public:
 
   int num_x_viewports() const;
   int num_y_viewports() const;
+  // Two local players share this machine's screen; online each machine
+  // draws only its own full-screen view even though players->size() == 2.
+  bool split_screen() const { return net_mode_ == NetOff && players->size() > 1; }
   bool is_visible_to_any_player(const Ship &ship) const;
   bool is_visible_to_any_player(Point p) const;
   float sound_volume_for_point(Point p) const;
@@ -81,6 +90,24 @@ private:
   // freshly-created Intro state (intro.h/cpp) that shows the object
   // spinning centre-screen until a player presses shoot.
   void maybe_start_intro();
+
+  // ---- netplay (see NETPLAY.md) ----
+  // All no-ops when net_mode_ == NetOff. Online, every local-save path is
+  // hard-gated off so online play can never clobber the solo save.
+  enum NetMode { NetOff, NetHost, NetClient };
+  void add_remote_player();       // player 2 without local input bindings
+  void net_host_poll();           // apply queued INPUT messages
+  void net_host_send_snapshot(int delta);  // 10 Hz world broadcast
+
+  NetMode net_mode_ = NetOff;
+  NetSession *net_session_ = nullptr;  // owned when net_mode_ != NetOff
+  int net_snapshot_timer_ = 0;
+  uint32_t net_snapshot_id_ = 0;
+  uint32_t net_last_input_seq_ = 0;
+  bool net_have_input_ = false;   // first INPUT initialises the counters
+  uint8_t net_prev_boost_ = 0, net_prev_next_weapon_ = 0,
+          net_prev_next_secondary_ = 0, net_prev_teleport_ = 0,
+          net_prev_respawn_ = 0;
 
   static const int step_size = 8;
 

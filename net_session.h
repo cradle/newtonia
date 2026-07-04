@@ -11,7 +11,9 @@
 #include <stdint.h>
 
 #include <string>
+#include <vector>
 
+#include "net_protocol.h"
 #include "net_transport.h"
 
 namespace Net {
@@ -30,6 +32,66 @@ std::string encode_signal(bool is_offer, const std::string &sdp);
 // Returns 'O' (offer) or 'A' (answer) with the SDP in sdp_out, or 0 when
 // the blob isn't ours / is corrupted.
 char decode_signal(const std::string &blob, std::string &sdp_out);
+
+// ---- INPUT messages -----------------------------------------------------
+// Client -> host, unreliable, one per 8 ms tick. Held actions travel as a
+// bitmask; one-shot actions as wrapping counters so a lost packet can
+// neither drop nor double-fire them (the host applies the counter delta).
+
+struct InputState {
+  uint32_t seq;            // host ignores stale sequence numbers
+  uint16_t held;           // InputBit mask
+  uint8_t boost_count;     // wrapping one-shot counters
+  uint8_t next_weapon_count;
+  uint8_t next_secondary_count;
+  uint8_t teleport_count;
+  uint8_t respawn_count;   // respawn-tap while dead
+  float analog_rotation;   // rotation_scale (0..1; 1 = keyboard)
+  float analog_thrust;     // thrust_analog
+  float analog_reverse;    // reverse_analog
+
+  InputState()
+      : seq(0), held(0), boost_count(0), next_weapon_count(0),
+        next_secondary_count(0), teleport_count(0), respawn_count(0),
+        analog_rotation(1.0f), analog_thrust(1.0f), analog_reverse(1.0f) {}
+};
+
+// Appends the complete MSG_INPUT message (header included).
+void encode_input(std::vector<uint8_t> &out, const InputState &in,
+                  uint8_t player_id);
+// Reads the body after the header; false on short/corrupt message.
+bool decode_input(Reader &r, InputState &out);
+
+// ---- snapshot chunking --------------------------------------------------
+// SNAPSHOT_CHUNK body: u32 snap_id | u16 index | u16 count | bytes.
+// 15 KB chunks stay comfortably under browser DataChannel message limits.
+
+const size_t SNAPSHOT_CHUNK_BYTES = 15 * 1024;
+
+// Splits payload into chunks and sends them on the reliable channel.
+void send_snapshot(NetTransport *t, uint32_t snap_id,
+                   const std::vector<uint8_t> &payload, uint8_t player_id);
+
+// Client-side reassembly. Chunks arrive in order (reliable channel); a new
+// snap_id abandons any half-built predecessor.
+class SnapshotAssembler {
+ public:
+  SnapshotAssembler() : snap_id_(0), expect_index_(0), count_(0) {}
+
+  // Feed one SNAPSHOT_CHUNK body (reader positioned after the header).
+  // Returns true when this chunk completed a snapshot; fetch it with
+  // take_payload() before feeding more.
+  bool add_chunk(Reader &r);
+
+  uint32_t snap_id() const { return snap_id_; }
+  std::vector<uint8_t> &payload() { return payload_; }
+
+ private:
+  uint32_t snap_id_;
+  uint16_t expect_index_;
+  uint16_t count_;
+  std::vector<uint8_t> payload_;
+};
 
 }  // namespace Net
 

@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "gl_compat.h"
+#include "glgame.h"
 #include "glstarfield.h"
 #include "mat4.h"
 #include "menu.h"
@@ -179,6 +180,14 @@ void NetLobby::tick(int delta) {
       session_->update(delta);
       NetSession::Phase p = session_->phase();
       if (p == NetSession::Ready) {
+        if (session_->role() == NetSession::HostRole) {
+          // Host starts the game immediately; the session (and transport)
+          // move into the GLGame, which streams snapshots to the peer.
+          NetSession *session = session_;
+          session_ = nullptr;
+          request_state_change(new GLGame(session, (SDL_GameController *)0));
+          return;
+        }
         screen_ = Connected;
       } else if (p == NetSession::Rejected) {
         set_status(session_->reject_reason() == NetSession::RejectVersionMismatch
@@ -193,13 +202,20 @@ void NetLobby::tick(int delta) {
       break;
     }
 
-    case Connected:
+    case Connected: {
       session_->update(delta);
-      if (session_->phase() == NetSession::Failed) {
+      // The host is already in-game streaming snapshots; drain and discard
+      // them so the inbox doesn't grow while this screen waits (the client
+      // game state that consumes them arrives in Phase 7).
+      std::vector<unsigned char> msg;
+      while (session_->transport() && session_->transport()->poll(msg)) {}
+      if (session_->phase() == NetSession::Failed ||
+          (session_->transport() && session_->transport()->failed())) {
         set_status("CONNECTION LOST");
         screen_ = LobbyFailed;
       }
       break;
+    }
 
     default:
       break;
@@ -280,12 +296,12 @@ void NetLobby::draw() {
       }
       break;
     case Connected:
+      // Only the joiner sees this screen — the host goes straight in-game.
       lines.push_back("CONNECTED!");
-      lines.push_back(session_ && session_->player_id() == 1
-                          ? "YOU ARE PLAYER 1 (HOST)"
-                          : "YOU ARE PLAYER 2");
+      lines.push_back("YOU ARE PLAYER 2");
       lines.push_back("");
-      lines.push_back("ONLINE PLAY ARRIVES IN A LATER PHASE");
+      lines.push_back("THE HOST IS IN THE GAME");
+      lines.push_back("YOUR VIEW ARRIVES IN A LATER PHASE (7)");
       break;
     case LobbyFailed:
       lines.push_back("SOMETHING WENT WRONG");

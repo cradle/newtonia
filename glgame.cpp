@@ -19,6 +19,8 @@
 #include "view/overlay.h"
 #include "typer.h"
 #include "touch_controls.h"
+#include "net_session.h"
+#include "teleport.h"
 #include <math.h>
 #include <SDL.h>
 
@@ -132,8 +134,16 @@ GLGame::GLGame(SDL_GameController *controller) :
   }
 }
 
+GLGame::GLGame(NetSession *session, SDL_GameController *controller)
+  : GLGame(controller) {
+  net_mode_ = NetHost;
+  net_session_ = session;
+  add_remote_player();
+}
+
 GLGame::~GLGame() {
   save_progress();
+  delete net_session_;  // closes + deletes the transport
 
   //TODO: Make erase, use boost::ptr_list? something better
   // std::erase(std::remove_if(v.begin(),v.end(),true), v.end());
@@ -335,6 +345,10 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
 }
 
 void GLGame::save_progress() {
+  // Online play never touches the local solo save (see NETPLAY.md): the
+  // hosted world is not the solo game, and the game-over delete below
+  // would otherwise wipe real progress.
+  if (net_mode_ != NetOff) return;
   if (score_saved) return;
   for (auto* gs : *players) {
     if (gs->ship->is_alive() || gs->ship->lives > 0) {
@@ -446,6 +460,9 @@ void GLGame::add_asteroids() {
 }
 
 void GLGame::maybe_start_intro() {
+  // No Intro states online: both machines must keep ticking in lockstep
+  // with the snapshot stream (a 2 s banner replaces them — Phase 8).
+  if (net_mode_ != NetOff) return;
   const char *name = NULL;
   Asteroid *display = NULL;
   Intro::Kind kind = Intro::ASTEROID;
@@ -503,7 +520,9 @@ bool GLGame::back_pressed() {
 
 void GLGame::focus_lost() {
   save_progress();
-  if(running) {
+  // Online the sim must keep running while unfocused — the peer's game
+  // doesn't stop. Sound still mutes below.
+  if(running && net_mode_ == NetOff) {
     toggle_pause();
     auto_paused = true;
   }
@@ -555,6 +574,7 @@ void GLGame::controller_removed(SDL_JoystickID id) {
 }
 
 void GLGame::add_player2(SDL_GameController *ctrl) {
+  if(net_mode_ != NetOff) return;  // player 2 is the remote peer online
   if(players->size() >= 2) return;
   Ship* p1 = players->front()->ship;
   if(!p1->is_alive() && !p1->lives) return;
@@ -566,6 +586,167 @@ void GLGame::add_player2(SDL_GameController *ctrl) {
   object->ship->set_missile_ships(ship_objects);
   object->ship->set_black_holes(black_holes);
   players->push_back(object);
+}
+
+// Player 2 for online play: same wiring as add_player2 but with no local
+// controller or key bindings — the peer drives it via INPUT messages.
+void GLGame::add_remote_player() {
+  if(players->size() >= 2) return;
+  GLShip* object = new GLCar(grid, true);
+  object->ship->set_missile_asteroids((std::list<Object*>*)objects);
+  ship_objects->push_back(object->ship);
+  for(auto *p : *players) p->ship->set_missile_ships(ship_objects);
+  object->ship->set_missile_ships(ship_objects);
+  object->ship->set_black_holes(black_holes);
+  players->push_back(object);
+}
+
+void GLGame::net_host_poll() {
+  NetTransport *t = net_session_->transport();
+  Ship *remote = players->size() >= 2 ? players->back()->ship : NULL;
+
+  std::vector<unsigned char> msg;
+  while (t->poll(msg)) {
+    Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
+    Net::Header h;
+    if (!Net::read_header(r, h)) continue;
+    if (h.msg_type != Net::MSG_INPUT) continue;  // events arrive in Phase 8
+
+    Net::InputState in;
+    if (!Net::decode_input(r, in)) continue;
+    // Unreliable channel: drop stale/reordered packets (signed distance
+    // handles seq wrap).
+    if (net_have_input_ && (int32_t)(in.seq - net_last_input_seq_) <= 0)
+      continue;
+    net_last_input_seq_ = in.seq;
+    if (!remote) continue;
+
+    if (!net_have_input_) {
+      // First INPUT: baseline the one-shot counters instead of firing
+      // whatever the client accumulated before we were listening.
+      net_have_input_ = true;
+      net_prev_boost_ = in.boost_count;
+      net_prev_next_weapon_ = in.next_weapon_count;
+      net_prev_next_secondary_ = in.next_secondary_count;
+      net_prev_teleport_ = in.teleport_count;
+      net_prev_respawn_ = in.respawn_count;
+    }
+
+    // One-shot deltas; capped so a rejoining/wrapped counter can't burst.
+    uint8_t boosts = (uint8_t)(in.boost_count - net_prev_boost_);
+    uint8_t weapons = (uint8_t)(in.next_weapon_count - net_prev_next_weapon_);
+    uint8_t secondaries =
+        (uint8_t)(in.next_secondary_count - net_prev_next_secondary_);
+    uint8_t teleports = (uint8_t)(in.teleport_count - net_prev_teleport_);
+    uint8_t respawns = (uint8_t)(in.respawn_count - net_prev_respawn_);
+    net_prev_boost_ = in.boost_count;
+    net_prev_next_weapon_ = in.next_weapon_count;
+    net_prev_next_secondary_ = in.next_secondary_count;
+    net_prev_teleport_ = in.teleport_count;
+    net_prev_respawn_ = in.respawn_count;
+
+    if (!remote->is_alive()) {
+      // Mirror the local respawn-tap rule (GLShip::input): a shoot tap
+      // while dead, after a short grace period, skips the countdown.
+      if (respawns && remote->lives > 0 &&
+          remote->time_until_respawn <= remote->respawn_time - 1000)
+        remote->time_until_respawn = 0;
+      continue;
+    }
+
+    remote->rotation_scale = in.analog_rotation;
+    remote->thrust_analog = in.analog_thrust;
+    remote->reverse_analog = in.analog_reverse;
+    remote->rotate_left((in.held & Net::IN_LEFT) != 0);
+    remote->rotate_right((in.held & Net::IN_RIGHT) != 0);
+    remote->thrust((in.held & Net::IN_THRUST) != 0);
+    remote->reverse((in.held & Net::IN_REVERSE) != 0);
+    remote->shoot((in.held & Net::IN_SHOOT) != 0);
+    remote->fire_secondary((in.held & Net::IN_SECONDARY) != 0);
+
+    if (boosts > 4) boosts = 4;
+    if (weapons > 4) weapons = 4;
+    if (secondaries > 4) secondaries = 4;
+    if (teleports > 4) teleports = 4;
+    while (boosts--) remote->boost();
+    while (weapons--) remote->next_weapon();
+    while (secondaries--) remote->next_secondary_weapon();
+    while (teleports--) remote->add_behaviour(new Teleport(remote));
+  }
+}
+
+// ---- snapshot NetExtras -------------------------------------------------
+// Appended after the serialize_game body: per-ship transients the save
+// format deliberately omits, the public projectile vectors, and the
+// asteroid net_id array (same iteration order as build_save_data). Raw
+// native-endian writes, matching the savegame body it rides with (every
+// supported platform is little-endian).
+
+namespace {
+
+template <typename T>
+void nx_write(Save::Stream &out, const T &v) { out.write(&v, sizeof(T)); }
+
+void nx_write_projectile(Save::Stream &out, const Object &o) {
+  nx_write(out, o.position.x());
+  nx_write(out, o.position.y());
+  nx_write(out, o.velocity.x());
+  nx_write(out, o.velocity.y());
+}
+
+void nx_write_ship(Save::Stream &out, const Ship &s) {
+  nx_write(out, (uint8_t)s.is_alive());
+  nx_write(out, s.temperature);
+  nx_write(out, (int32_t)s.time_until_respawn);
+  nx_write(out, (int32_t)s.time_left_invincible);
+  nx_write(out, (int32_t)s.god_mode_time_remaining());
+  nx_write(out, (uint8_t)s.shield_active());
+
+  nx_write(out, (uint16_t)s.bullets.size());
+  for (const Particle &p : s.bullets) nx_write_projectile(out, p);
+  nx_write(out, (uint16_t)s.mines.size());
+  for (const Particle &p : s.mines) nx_write_projectile(out, p);
+  nx_write(out, (uint16_t)s.giga_mines.size());
+  for (const Particle &p : s.giga_mines) nx_write_projectile(out, p);
+
+  nx_write(out, (uint16_t)s.missiles.size());
+  for (const MissileShot &m : s.missiles) {
+    nx_write_projectile(out, m);
+    nx_write(out, m.facing.x());
+    nx_write(out, m.facing.y());
+    nx_write(out, m.time_left);
+  }
+
+  nx_write(out, (uint16_t)s.shockwaves.size());
+  for (const Shockwave &w : s.shockwaves) {
+    nx_write(out, w.position.x());
+    nx_write(out, w.position.y());
+    nx_write(out, w.radius);
+    nx_write(out, w.max_radius);
+    nx_write(out, w.speed);
+    nx_write(out, w.time_left);
+    nx_write(out, (uint8_t)w.is_nova);
+  }
+}
+
+}  // namespace
+
+void GLGame::net_host_send_snapshot(int delta) {
+  net_snapshot_timer_ += delta;
+  if (net_snapshot_timer_ < 100) return;
+  net_snapshot_timer_ = 0;
+
+  Save::MemStream payload;
+  Save::serialize_game(payload, build_save_data());
+
+  nx_write(payload, (uint32_t)players->size());
+  for (auto *gs : *players) nx_write_ship(payload, *gs->ship);
+
+  nx_write(payload, (uint32_t)objects->size());
+  for (auto *a : *objects) nx_write(payload, a->net_id);
+
+  Net::send_snapshot(net_session_->transport(), ++net_snapshot_id_,
+                     payload.data(), 1);
 }
 
 void GLGame::focus_gained() {
@@ -590,6 +771,9 @@ void GLGame::tick(int delta) {
     last_tick += delta;
     return;
   }
+
+  // Online host: apply the peer's queued INPUT messages before stepping.
+  if (net_mode_ == NetHost) net_host_poll();
 
   time_until_next_step -= delta;
 
@@ -1168,13 +1352,13 @@ void GLGame::tick(int delta) {
   }
 
   /* Delete save on true game over */
-  if (score_saved && !save_deleted_) {
+  if (score_saved && !save_deleted_ && net_mode_ == NetOff) {
     Save::delete_save();
     save_deleted_ = true;
   }
 
   /* Save on death while lives remain (once per death window) */
-  if (!score_saved && !players->empty()) {
+  if (!score_saved && net_mode_ == NetOff && !players->empty()) {
     bool any_dead_with_lives = false;
     bool any_dead_no_lives   = false;
     for (auto* glship : *players) {
@@ -1190,6 +1374,9 @@ void GLGame::tick(int delta) {
     if (!any_dead_with_lives)
       save_written_this_death_ = false;
   }
+
+  // Online host: broadcast the world at 10 Hz once everything has stepped.
+  if (net_mode_ == NetHost) net_host_send_snapshot(delta);
 
   /* Display FPS */
   //std::cout << (num_frames*1000 / current_time) << std::endl;
@@ -1232,6 +1419,13 @@ void GLGame::draw(void) {
   if(players->size() == 0) {
     draw_world();
   }
+  else if(net_mode_ != NetOff) {
+    // Online: one full-screen view following the local player (host =
+    // front of the list, client = back). The peer draws their own view.
+    draw_world(net_mode_ == NetClient ? players->back() : players->front(),
+               true);
+    draw_map();
+  }
   else {
     if(players->size() > 0) {
       draw_world(players->front(), true);
@@ -1246,10 +1440,12 @@ void GLGame::draw(void) {
 
 
 int GLGame::num_x_viewports() const {
+  if (net_mode_ != NetOff) return 1;
   return (players->size() == 0) ? 1 : (window.x() > window.y()) ? players->size() : 1;
 }
 
 int GLGame::num_y_viewports() const {
+  if (net_mode_ != NetOff) return 1;
   return (players->size() == 0) ? 1 : (window.x() > window.y()) ? 1 : players->size();
 }
 
@@ -1329,7 +1525,7 @@ bool GLGame::is_point_faced_by_any_player(Point p) const {
 
 
 void GLGame::setup_viewport(bool primary) const {
-  if(players->size() > 1 && window.x() <= window.y()) {
+  if(split_screen() && window.x() <= window.y()) {
     primary = !primary; //HACK: Fix this
   }
   if(primary) {
@@ -1558,7 +1754,7 @@ void GLGame::draw_map() const {
 #endif
   float minimap_size = num_y_viewports() == 2 ? window.y()/6 : window.y()/4;
 
-  if(players->size() > 1) {
+  if(split_screen()) {
     /* DRAW CENTER LINE */
     float center_ortho[16];
     mat4_ortho(center_ortho, -(float)window.x(), (float)window.x(),
@@ -1590,7 +1786,7 @@ void GLGame::draw_map() const {
     mat4_ortho(minimap_ortho, 0.0f, (float)world.x(), 0.0f, (float)world.y(), -1.0f, 1.0f);
     gles2_set_vp(minimap_ortho);
   }
-  if (players->size() == 1) {
+  if (!split_screen()) {
 #if defined(__ANDROID__) || defined(__IOS__)
     // Shift the minimap right of the virtual joystick so they don't overlap.
     int map_x = (int)(g_touch_controls.joy_hint_cx + g_touch_controls.joy_radius + Overlay::CORNER_INSET);
@@ -1666,7 +1862,7 @@ void GLGame::controller(SDL_Event event) {
         } else {
           toggle_pause();
         }
-      } else if(players->size() < 2) {
+      } else if(players->size() < 2 && net_mode_ == NetOff) {
         SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(event.cbutton.which);
         if(ctrl) add_player2(ctrl);
       }
@@ -1697,7 +1893,7 @@ void GLGame::controller(SDL_Event event) {
           }
           return;
         }
-      } else if(players->size() < 2) {
+      } else if(players->size() < 2 && net_mode_ == NetOff) {
         SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(event.cbutton.which);
         if(ctrl) add_player2(ctrl);
       }
@@ -1800,7 +1996,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == (unsigned char)gk.time_reset) time_between_steps = step_size;
   if (key == (unsigned char)gk.pause) toggle_pause();
 #if !defined(__ANDROID__) && !defined(__IOS__)
-  if (key == (unsigned char)gk.add_player2 && players->size() < 2) {
+  if (key == (unsigned char)gk.add_player2 && players->size() < 2 && net_mode_ == NetOff) {
     Ship* p1 = players->front()->ship;
     if(p1->is_alive() || p1->lives) {
       GLShip* object = new GLCar(grid, true);

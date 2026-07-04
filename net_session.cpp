@@ -101,6 +101,90 @@ char decode_signal(const std::string &blob, std::string &sdp_out) {
   return kind;
 }
 
+// ---- INPUT messages -----------------------------------------------------
+
+void encode_input(std::vector<uint8_t> &out, const InputState &in,
+                  uint8_t player_id) {
+  put_header(out, MSG_INPUT, player_id);
+  put_u32(out, in.seq);
+  put_u16(out, in.held);
+  put_u8(out, in.boost_count);
+  put_u8(out, in.next_weapon_count);
+  put_u8(out, in.next_secondary_count);
+  put_u8(out, in.teleport_count);
+  put_u8(out, in.respawn_count);
+  put_f32(out, in.analog_rotation);
+  put_f32(out, in.analog_thrust);
+  put_f32(out, in.analog_reverse);
+}
+
+bool decode_input(Reader &r, InputState &out) {
+  out.seq = r.u32();
+  out.held = r.u16();
+  out.boost_count = r.u8();
+  out.next_weapon_count = r.u8();
+  out.next_secondary_count = r.u8();
+  out.teleport_count = r.u8();
+  out.respawn_count = r.u8();
+  out.analog_rotation = r.f32();
+  out.analog_thrust = r.f32();
+  out.analog_reverse = r.f32();
+  return r.ok;
+}
+
+// ---- snapshot chunking --------------------------------------------------
+
+void send_snapshot(NetTransport *t, uint32_t snap_id,
+                   const std::vector<uint8_t> &payload, uint8_t player_id) {
+  size_t count = (payload.size() + SNAPSHOT_CHUNK_BYTES - 1) / SNAPSHOT_CHUNK_BYTES;
+  if (count == 0) count = 1;  // an empty snapshot still sends one chunk
+  for (size_t i = 0; i < count; i++) {
+    size_t begin = i * SNAPSHOT_CHUNK_BYTES;
+    size_t size = payload.size() - begin;
+    if (size > SNAPSHOT_CHUNK_BYTES) size = SNAPSHOT_CHUNK_BYTES;
+    std::vector<uint8_t> msg;
+    msg.reserve(HEADER_SIZE + 8 + size);
+    put_header(msg, MSG_SNAPSHOT_CHUNK, player_id);
+    put_u32(msg, snap_id);
+    put_u16(msg, (uint16_t)i);
+    put_u16(msg, (uint16_t)count);
+    if (size) put_bytes(msg, &payload[begin], size);
+    t->send_reliable(&msg[0], msg.size());
+  }
+}
+
+bool SnapshotAssembler::add_chunk(Reader &r) {
+  uint32_t snap_id = r.u32();
+  uint16_t index = r.u16();
+  uint16_t count = r.u16();
+  if (!r.ok || count == 0) return false;
+
+  if (index == 0) {
+    // Start of a snapshot; abandons any half-assembled predecessor.
+    snap_id_ = snap_id;
+    expect_index_ = 0;
+    count_ = count;
+    payload_.clear();
+  } else if (snap_id != snap_id_ || index != expect_index_ ||
+             count != count_) {
+    // Not the chunk we were waiting for — drop the partial snapshot and
+    // wait for the next index-0 chunk.
+    count_ = 0;
+    return false;
+  }
+  if (count_ == 0) return false;
+
+  size_t n = r.remaining();
+  if (n) {
+    const uint8_t *bytes = r.bytes(n);
+    payload_.insert(payload_.end(), bytes, bytes + n);
+  }
+  expect_index_++;
+  if (expect_index_ < count_) return false;
+  count_ = 0;  // complete — reset for the next snapshot
+  return true;
+}
+
 }  // namespace Net
 
 // ---- handshake ----------------------------------------------------------

@@ -10,6 +10,7 @@ using namespace std;
 const int Asteroid::max_speed = 3;
 const int Asteroid::max_rotation = 15;
 int Asteroid::num_killable = 0;
+uint32_t Asteroid::next_net_id = 0;
 
 const int Asteroid::radius_variation = 220;
 const int Asteroid::minimum_radius = 20;
@@ -22,6 +23,7 @@ Mix_Chunk * Asteroid::asteroid_ting_sound = NULL;
 const int Asteroid::max_radius = Asteroid::radius_variation + Asteroid::minimum_radius;
 
 Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool teleporting, bool quantum, bool tough, bool armoured, bool phasing) : CompositeObject(), killed(false) {
+  net_id = ++next_net_id;
   position = WrappedPoint();
   this->reflective = reflective;
   this->teleporting = teleporting;
@@ -254,6 +256,7 @@ void Asteroid::free_sounds() {
 }
 
 Asteroid::Asteroid(Asteroid const *mother) {
+  net_id = ++next_net_id;
   radius = mother->radius/2.0f;
   rotation_speed = (rand()%6-3)/radius;
   velocity = Point(rand()-RAND_MAX/2, rand()-RAND_MAX/2).normalized()*max_speed/radius;
