@@ -55,6 +55,8 @@ WEB_SRCS := $(filter-out $(WEB_EXCL), $(wildcard *.cpp) $(wildcard */*.cpp))
 # GROWABLE_ARRAYBUFFERS (default-on since emscripten 6.0.2) breaks Firefox:
 # its TextDecoder rejects views over resizable ArrayBuffers, crashing
 # UTF8ToString at startup. Requires emcc >= 4.0.12 to recognise the setting.
+# ccall is used by the netplay test hooks (nwtest_* in net_transport_web.cpp)
+# to pass SDP strings from JS; harmless to production pages.
 WEB_FLAGS = -std=c++11 -O2 \
             -s USE_SDL=2 \
             -s USE_SDL_MIXER=2 \
@@ -62,6 +64,7 @@ WEB_FLAGS = -std=c++11 -O2 \
             -s FULL_ES2=1 \
             -s ALLOW_MEMORY_GROWTH=1 \
             -s GROWABLE_ARRAYBUFFERS=0 \
+            -s EXPORTED_RUNTIME_METHODS='["ccall"]' \
             -lidbfs.js \
             --shell-file web/shell.html
 

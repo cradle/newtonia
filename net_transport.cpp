@@ -20,10 +20,32 @@ NetTransport* NetTransport::create() {
 #endif
 }
 
+#ifndef __EMSCRIPTEN__
+
+// Native clipboard is synchronous — the web versions (net_transport_web.cpp)
+// are the reason this is an async-shaped three-call API.
+#include <SDL.h>
+
+void net_clipboard_write(const std::string& text) {
+  SDL_SetClipboardText(text.c_str());
+}
+
+void net_clipboard_read_start() {}
+
+bool net_clipboard_read_poll(std::string& out) {
+  char* text = SDL_GetClipboardText();
+  out = text ? text : "";
+  SDL_free(text);
+  return true;
+}
+
+#endif /* !__EMSCRIPTEN__ */
+
 #ifndef NEWTONIA_NET_RTC
 
 // No native backend: nothing to test. (The web backend cannot loopback
-// in-process — two browser tabs are its test, see NETPLAY.md Phase 3.)
+// in-process — the single-threaded browser can't block on its own event
+// loop; the nwtest_* hooks in net_transport_web.cpp are its equivalent.)
 bool net_selftest() { return false; }
 
 #else

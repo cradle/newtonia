@@ -53,6 +53,16 @@ public:
   static NetTransport* create();
 };
 
+// Clipboard for the lobby's copy-paste signaling, uniform across the sync
+// native path (SDL clipboard: read_start is a no-op, read_poll completes
+// immediately) and the async web path (navigator.clipboard: start the
+// read inside a key-press gesture or the browser denies it, then poll
+// each frame). read_poll returns false while pending; on completion it
+// returns true with the text in out (empty = denied/nothing to paste).
+void net_clipboard_write(const std::string& text);
+void net_clipboard_read_start();
+bool net_clipboard_read_poll(std::string& out);
+
 // In-process loopback self-test: two transports host/join each other
 // through the public API above and exchange messages on both channels.
 // Returns true on PASS; false immediately where no backend exists. Wired

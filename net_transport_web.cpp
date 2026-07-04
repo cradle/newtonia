@@ -2,16 +2,387 @@
 // Module.__nwnet object, polled from the main thread (same poll-style
 // pattern as web_on_idb_ready in web_main.cpp). Compiled only under
 // Emscripten; every other build sees an empty translation unit.
+//
+// All state and logic live in JS (Module.__nwnet, installed once by
+// nw_init) keyed by integer handles, so multiple transports coexist just
+// like the native backend, and the glue can be driven straight from the
+// browser console / tests. The C++ side is thin EM_JS wrappers plus the
+// WebTransport class mapping the NetTransport interface onto them.
+//
+// The browser is single-threaded: WebRTC events land on the same event
+// loop the game runs on, so unlike the native backend no locking is
+// needed — "callbacks" here are JS promise resolutions that only touch
+// the __nwnet state, which C++ reads via the poll-style wrappers between
+// frames.
 
 #ifdef __EMSCRIPTEN__
 
 #include "net_transport.h"
 
-// Phase 1 stub — the real backend (EM_JS peer connection, "rel"/"unrel"
-// channels, inbox array, gesture-gated clipboard helpers) lands in
-// Phase 3; see NETPLAY.md.
-NetTransport* create_web_transport() {
-  return nullptr;
+#include <emscripten.h>
+
+#include <vector>
+
+EM_JS_DEPS(nwnet_deps, "$UTF8ToString,$stringToUTF8,$lengthBytesUTF8");
+
+// clang-format off
+EM_JS(void, nw_init, (), {
+  if (Module.__nwnet) return;
+  var N = {
+    conns: {},
+    next: 1,
+    clipPending: false,
+    clipText: null,
+
+    create: function() {
+      var h = N.next++;
+      N.conns[h] = { pc: null, rel: null, unrel: null, inbox: [],
+                     localDesc: null, failed: false,
+                     relOpen: false, unrelOpen: false };
+      return h;
+    },
+
+    _chan: function(c, ch, isRel) {
+      ch.binaryType = 'arraybuffer';
+      ch.onopen = function() {
+        if (isRel) c.relOpen = true; else c.unrelOpen = true;
+      };
+      ch.onclose = function() {
+        // A channel closing mid-session means the peer is gone.
+        if (c.relOpen || c.unrelOpen) c.failed = true;
+      };
+      ch.onmessage = function(ev) {
+        c.inbox.push(new Uint8Array(ev.data));
+      };
+      if (isRel) c.rel = ch; else c.unrel = ch;
+    },
+
+    _pc: function(c) {
+      var pc = new RTCPeerConnection(
+          { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      pc.onicegatheringstatechange = function() {
+        // Non-trickle: expose the SDP once every candidate is in it.
+        if (pc.iceGatheringState === 'complete' && pc.localDescription &&
+            c.localDesc === null)
+          c.localDesc = pc.localDescription.sdp;
+      };
+      pc.onconnectionstatechange = function() {
+        var s = pc.connectionState;
+        if (s === 'failed' || s === 'disconnected' || s === 'closed')
+          c.failed = true;
+      };
+      pc.ondatachannel = function(ev) {
+        N._chan(c, ev.channel, ev.channel.label === 'rel');
+      };
+      c.pc = pc;
+      return pc;
+    },
+
+    // Gathering can stall for a long time (slow/unreachable STUN, odd
+    // interfaces) and browsers may then never report 'complete'. The SDP
+    // snapshot already embeds every candidate gathered so far, so after
+    // this grace period take what we have rather than hanging the lobby.
+    descTimeoutMs: 8000,
+    _armDescTimeout: function(c) {
+      setTimeout(function() {
+        if (c.localDesc === null && c.pc && c.pc.localDescription)
+          c.localDesc = c.pc.localDescription.sdp;
+      }, N.descTimeoutMs);
+    },
+
+    startHost: function(h) {
+      var c = N.conns[h]; if (!c) return;
+      var pc = N._pc(c);
+      N._chan(c, pc.createDataChannel('rel'), true);
+      N._chan(c, pc.createDataChannel('unrel',
+                                      { ordered: false, maxRetransmits: 0 }),
+              false);
+      pc.createOffer()
+        .then(function(o) { return pc.setLocalDescription(o); })
+        .then(function() { N._armDescTimeout(c); })
+        .catch(function() { c.failed = true; });
+    },
+
+    startJoin: function(h, offerSdp) {
+      var c = N.conns[h]; if (!c) return;
+      var pc = N._pc(c);
+      pc.setRemoteDescription({ type: 'offer', sdp: offerSdp })
+        .then(function() { return pc.createAnswer(); })
+        .then(function(a) { return pc.setLocalDescription(a); })
+        .then(function() { N._armDescTimeout(c); })
+        .catch(function() { c.failed = true; });
+    },
+
+    setAnswer: function(h, sdp) {
+      var c = N.conns[h]; if (!c || !c.pc) return;
+      c.pc.setRemoteDescription({ type: 'answer', sdp: sdp })
+        .catch(function() { c.failed = true; });
+    },
+
+    send: function(h, rel, bytes) {
+      var c = N.conns[h]; if (!c) return;
+      var ch = rel ? c.rel : c.unrel;
+      if (ch && ch.readyState === 'open') {
+        try { ch.send(bytes); } catch (e) {}
+      }
+    },
+
+    close: function(h) {
+      var c = N.conns[h]; if (!c) return;
+      // Clear the open flags first so the onclose handlers don't read a
+      // deliberate shutdown as a peer failure.
+      c.relOpen = false; c.unrelOpen = false;
+      try { if (c.rel) c.rel.close(); } catch (e) {}
+      try { if (c.unrel) c.unrel.close(); } catch (e) {}
+      try { if (c.pc) c.pc.close(); } catch (e) {}
+      delete N.conns[h];
+    },
+
+    clipWrite: function(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText)
+        navigator.clipboard.writeText(text).catch(function() {});
+    },
+
+    clipReadStart: function() {
+      N.clipText = null;
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        N.clipPending = true;
+        navigator.clipboard.readText().then(
+            function(t) { N.clipText = t; N.clipPending = false; },
+            function() { N.clipText = null; N.clipPending = false; });
+      } else {
+        N.clipPending = false;
+      }
+    }
+  };
+  Module.__nwnet = N;
+});
+
+EM_JS(int, nw_create, (), { return Module.__nwnet.create(); });
+EM_JS(void, nw_start_host, (int h), { Module.__nwnet.startHost(h); });
+EM_JS(void, nw_start_join, (int h, const char *offer),
+      { Module.__nwnet.startJoin(h, UTF8ToString(offer)); });
+EM_JS(int, nw_desc_ready, (int h), {
+  var c = Module.__nwnet.conns[h];
+  return (c && c.localDesc !== null) ? 1 : 0;
+});
+EM_JS(int, nw_desc_len, (int h), {
+  var c = Module.__nwnet.conns[h];
+  return (c && c.localDesc !== null) ? lengthBytesUTF8(c.localDesc) : 0;
+});
+EM_JS(void, nw_desc_copy, (int h, char *buf, int len), {
+  var c = Module.__nwnet.conns[h];
+  if (c && c.localDesc !== null) stringToUTF8(c.localDesc, buf, len);
+});
+EM_JS(void, nw_set_answer, (int h, const char *sdp),
+      { Module.__nwnet.setAnswer(h, UTF8ToString(sdp)); });
+EM_JS(int, nw_connected, (int h), {
+  var c = Module.__nwnet.conns[h];
+  return (c && c.relOpen && c.unrelOpen) ? 1 : 0;
+});
+EM_JS(int, nw_failed, (int h), {
+  var c = Module.__nwnet.conns[h];
+  return (c && c.failed) ? 1 : 0;
+});
+EM_JS(void, nw_send, (int h, int rel, const void *data, int size), {
+  // slice() copies out of the wasm heap so the channel never holds a view
+  // over memory the game is about to reuse.
+  Module.__nwnet.send(h, rel, HEAPU8.slice(data, data + size));
+});
+EM_JS(int, nw_poll_size, (int h), {
+  var c = Module.__nwnet.conns[h];
+  return (c && c.inbox.length) ? c.inbox[0].length : -1;
+});
+EM_JS(void, nw_poll_take, (int h, void *buf), {
+  var c = Module.__nwnet.conns[h];
+  if (c && c.inbox.length) HEAPU8.set(c.inbox.shift(), buf);
+});
+EM_JS(void, nw_close, (int h), { Module.__nwnet.close(h); });
+
+EM_JS(void, nw_clip_write, (const char *text),
+      { Module.__nwnet.clipWrite(UTF8ToString(text)); });
+EM_JS(void, nw_clip_read_start, (), { Module.__nwnet.clipReadStart(); });
+EM_JS(int, nw_clip_pending, (), {
+  return Module.__nwnet.clipPending ? 1 : 0;
+});
+EM_JS(int, nw_clip_len, (), {
+  var t = Module.__nwnet.clipText;
+  return t === null ? -1 : lengthBytesUTF8(t);
+});
+EM_JS(void, nw_clip_copy, (char *buf, int len), {
+  var t = Module.__nwnet.clipText;
+  if (t !== null) stringToUTF8(t, buf, len);
+  Module.__nwnet.clipText = null;
+});
+// clang-format on
+
+class WebTransport : public NetTransport {
+public:
+  WebTransport() {
+    nw_init();
+    handle_ = nw_create();
+  }
+
+  ~WebTransport() { close(); }
+
+  void start_host() override { nw_start_host(handle_); }
+
+  void start_join(const std::string &remote_offer) override {
+    nw_start_join(handle_, remote_offer.c_str());
+  }
+
+  bool local_description_ready() const override {
+    return nw_desc_ready(handle_) != 0;
+  }
+
+  std::string local_description() const override {
+    int len = nw_desc_len(handle_);
+    if (len <= 0) return std::string();
+    std::vector<char> buf(len + 1);
+    nw_desc_copy(handle_, &buf[0], len + 1);
+    return std::string(&buf[0]);
+  }
+
+  void set_remote_answer(const std::string &remote_answer) override {
+    nw_set_answer(handle_, remote_answer.c_str());
+  }
+
+  bool connected() const override { return nw_connected(handle_) != 0; }
+  bool failed() const override { return nw_failed(handle_) != 0; }
+
+  void send_reliable(const void *data, size_t size) override {
+    nw_send(handle_, 1, data, (int)size);
+  }
+
+  void send_unreliable(const void *data, size_t size) override {
+    nw_send(handle_, 0, data, (int)size);
+  }
+
+  bool poll(std::vector<unsigned char> &out) override {
+    int size = nw_poll_size(handle_);
+    if (size < 0) return false;
+    out.resize(size);
+    nw_poll_take(handle_, out.empty() ? (void *)0 : &out[0]);
+    return true;
+  }
+
+  void close() override {
+    if (handle_ > 0) {
+      nw_close(handle_);
+      handle_ = 0;
+    }
+  }
+
+private:
+  int handle_;
+};
+
+NetTransport *create_web_transport() {
+  return new WebTransport();
 }
+
+// ---- clipboard helpers (async navigator.clipboard) ---------------------
+// The read must be started inside a user gesture (the lobby's V-key
+// handler) or the browser denies it; completion is polled per frame.
+
+void net_clipboard_write(const std::string &text) {
+  nw_init();
+  nw_clip_write(text.c_str());
+}
+
+void net_clipboard_read_start() {
+  nw_init();
+  nw_clip_read_start();
+}
+
+bool net_clipboard_read_poll(std::string &out) {
+  if (nw_clip_pending() != 0) return false;
+  int len = nw_clip_len();
+  if (len < 0) {
+    out.clear();  // denied / nothing read
+  } else {
+    std::vector<char> buf(len + 1);
+    nw_clip_copy(&buf[0], len + 1);
+    out.assign(&buf[0]);
+  }
+  return true;
+}
+
+// ---- browser-console / automated test hooks ----------------------------
+// The web equivalent of NEWTONIA_NET_SELFTEST: a blocking loopback is
+// impossible on the single-threaded web main thread, so instead these
+// export one driveable transport per page. Two tabs (or a Playwright
+// test) call them to handshake and exchange bytes through the full C++
+// WebTransport path. Example (page A hosts, page B joins):
+//   A: Module._nwtest_create(); Module._nwtest_host();
+//      ...wait Module._nwtest_desc_ready()...
+//      offer = Module.ccall('nwtest_desc', 'string', [], [])
+//   B: Module._nwtest_create();
+//      Module.ccall('nwtest_join', null, ['string'], [offer])
+//      ...wait desc_ready, pass answer back to A...
+//   A: Module.ccall('nwtest_answer', null, ['string'], [answer])
+//   both: wait Module._nwtest_connected(), then _nwtest_send/_nwtest_poll3.
+
+static NetTransport *s_test_transport = 0;
+
+extern "C" {
+
+EMSCRIPTEN_KEEPALIVE void nwtest_create() {
+  delete s_test_transport;
+  s_test_transport = NetTransport::create();
+}
+
+EMSCRIPTEN_KEEPALIVE void nwtest_host() {
+  if (s_test_transport) s_test_transport->start_host();
+}
+
+EMSCRIPTEN_KEEPALIVE void nwtest_join(const char *offer) {
+  if (s_test_transport) s_test_transport->start_join(offer);
+}
+
+EMSCRIPTEN_KEEPALIVE int nwtest_desc_ready() {
+  return s_test_transport && s_test_transport->local_description_ready();
+}
+
+EMSCRIPTEN_KEEPALIVE const char *nwtest_desc() {
+  static std::string desc;
+  desc = s_test_transport ? s_test_transport->local_description()
+                          : std::string();
+  return desc.c_str();
+}
+
+EMSCRIPTEN_KEEPALIVE void nwtest_answer(const char *answer) {
+  if (s_test_transport) s_test_transport->set_remote_answer(answer);
+}
+
+EMSCRIPTEN_KEEPALIVE int nwtest_connected() {
+  return s_test_transport && s_test_transport->connected();
+}
+
+EMSCRIPTEN_KEEPALIVE int nwtest_failed() {
+  return s_test_transport && s_test_transport->failed();
+}
+
+// Sends a 3-byte message (a, b, c); rel selects the channel.
+EMSCRIPTEN_KEEPALIVE void nwtest_send(int rel, int a, int b, int c) {
+  if (!s_test_transport) return;
+  unsigned char msg[3] = {(unsigned char)a, (unsigned char)b,
+                          (unsigned char)c};
+  if (rel)
+    s_test_transport->send_reliable(msg, sizeof(msg));
+  else
+    s_test_transport->send_unreliable(msg, sizeof(msg));
+}
+
+// Pops one 3-byte message and returns it packed as a<<16|b<<8|c, or -1
+// when nothing is pending (or the message isn't 3 bytes).
+EMSCRIPTEN_KEEPALIVE int nwtest_poll3() {
+  if (!s_test_transport) return -1;
+  std::vector<unsigned char> msg;
+  if (!s_test_transport->poll(msg) || msg.size() != 3) return -1;
+  return ((int)msg[0] << 16) | ((int)msg[1] << 8) | (int)msg[2];
+}
+
+}  // extern "C"
 
 #endif /* __EMSCRIPTEN__ */
