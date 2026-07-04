@@ -6,6 +6,7 @@
 #include <emscripten.h>
 #endif
 #include "glship.h"
+#include "weapon/default.h"
 #include "glcar.h"
 #include "glstarfield.h"
 #include "wrapped_point.h"
@@ -1130,6 +1131,15 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     bool held_reverse = ship->reversing;
     bool armed_shoot = !ship->primary_weapons.empty() &&
                        (*ship->primary)->is_shooting();
+    // Fire cooldown of the selected primary: the restore rebuilds the
+    // weapon list with fresh objects, and a fresh weapon fires the instant
+    // it is re-armed — an extra shot (and shoot sound) every snapshot
+    // while the trigger is held.
+    int shot_cooldown = 0;
+    if (!ship->primary_weapons.empty()) {
+      Weapon::Default *dw = dynamic_cast<Weapon::Default *>(*ship->primary);
+      if (dw) shot_cooldown = dw->cooldown();
+    }
     bool armed_secondary = ship->secondary != ship->secondary_weapons.end() &&
                            (*ship->secondary)->is_shooting();
     float analog_rot = ship->rotation_scale;
@@ -1172,6 +1182,10 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       ship->reverse(held_reverse);
       ship->shoot(armed_shoot);
       ship->fire_secondary(armed_secondary);
+      if (shot_cooldown > 0 && !ship->primary_weapons.empty()) {
+        Weapon::Default *dw = dynamic_cast<Weapon::Default *>(*ship->primary);
+        if (dw) dw->set_cooldown(shot_cooldown);
+      }
       ship->rotation_scale = analog_rot;
       ship->thrust_analog = analog_thrust;
       ship->reverse_analog = analog_reverse;

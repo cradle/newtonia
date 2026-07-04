@@ -17,6 +17,11 @@ namespace Weapon {
     void step(int delta) override;
     int weapon_index() const { return _weapon_index; }
     bool is_automatic() const override { return automatic; }
+    // Netplay: the client's snapshot restore rebuilds the weapon list; the
+    // fire cooldown must survive the swap or a held trigger fires an extra
+    // shot on every snapshot (a fresh weapon starts ready to fire).
+    int cooldown() const { return time_until_next_shot; }
+    void set_cooldown(int ms) { time_until_next_shot = ms; }
 
   private:
     void fire();
