@@ -33,6 +33,15 @@ std::string encode_signal(bool is_offer, const std::string &sdp);
 // the blob isn't ours / is corrupted.
 char decode_signal(const std::string &blob, std::string &sdp_out);
 
+// Removes a=candidate / a=end-of-candidates lines. The joiner applies this
+// to the pasted offer: with no candidate pairs to check, its ICE agent has
+// nothing to time out on while the humans ferry the reply code back (which
+// can take minutes — far past ICE's ~10 s give-up). The host gets the
+// joiner's full candidates in the reply and initiates every connectivity
+// check the moment it is pasted; the joiner then answers via peer-reflexive
+// discovery, so the failure clock only starts once both sides are ready.
+std::string strip_ice_candidates(const std::string &sdp);
+
 // ---- INPUT messages -----------------------------------------------------
 // Client -> host, unreliable, one per 8 ms tick. Held actions travel as a
 // bitmask; one-shot actions as wrapping counters so a lost packet can

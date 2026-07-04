@@ -103,7 +103,10 @@ void NetLobby::handle_paste(const std::string &blob) {
   fflush(stdout);
   if (screen_ == JoinWaitOffer) {
     if (kind == 'O') {
-      transport_->start_join(sdp);
+      // Candidate-free offer: keeps the joiner's ICE idle (nothing to time
+      // out on) until the host pastes the reply and starts the checks —
+      // see Net::strip_ice_candidates.
+      transport_->start_join(Net::strip_ice_candidates(sdp));
       screen_ = JoinGathering;
     } else if (kind == 'A') {
       set_status("THAT IS AN ANSWER - PASTE THE HOST'S OFFER");

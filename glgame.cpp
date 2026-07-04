@@ -898,10 +898,11 @@ void GLGame::net_client_send_input() {
   if (s->rotation_direction == Ship::RIGHT) held |= Net::IN_RIGHT;
   if (s->thrusting) held |= Net::IN_THRUST;
   if (s->reversing) held |= Net::IN_REVERSE;
-  if (!s->primary_weapons.empty() && (*s->primary)->is_shooting())
-    held |= Net::IN_SHOOT;
-  if (s->secondary != s->secondary_weapons.end() && (*s->secondary)->is_shooting())
-    held |= Net::IN_SECONDARY;
+  // Fire triggers come from key intent (GLShip), not the weapon: a
+  // semi-automatic weapon clears its own trigger after every shot, which
+  // would read as "not shooting" in almost every INPUT message.
+  if (local->net_shoot_held) held |= Net::IN_SHOOT;
+  if (local->net_secondary_held) held |= Net::IN_SECONDARY;
   in.held = held;
   in.boost_count = s->net_boost_count;
   in.next_weapon_count = s->net_next_weapon_count;
@@ -975,10 +976,8 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     bool held_right = ship->rotation_direction == Ship::RIGHT;
     bool held_thrust = ship->thrusting;
     bool held_reverse = ship->reversing;
-    bool held_shoot = !ship->primary_weapons.empty() &&
-                      (*ship->primary)->is_shooting();
-    bool held_secondary = ship->secondary != ship->secondary_weapons.end() &&
-                          (*ship->secondary)->is_shooting();
+    bool held_shoot = (*it)->net_shoot_held;
+    bool held_secondary = (*it)->net_secondary_held;
     float analog_rot = ship->rotation_scale;
     float analog_thrust = ship->thrust_analog;
     float analog_reverse = ship->reverse_analog;

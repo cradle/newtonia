@@ -101,6 +101,21 @@ char decode_signal(const std::string &blob, std::string &sdp_out) {
   return kind;
 }
 
+std::string strip_ice_candidates(const std::string &sdp) {
+  std::string out;
+  out.reserve(sdp.size());
+  size_t pos = 0;
+  while (pos < sdp.size()) {
+    size_t eol = sdp.find('\n', pos);
+    size_t next = (eol == std::string::npos) ? sdp.size() : eol + 1;
+    if (sdp.compare(pos, 12, "a=candidate:") != 0 &&
+        sdp.compare(pos, 20, "a=end-of-candidates") != 0)
+      out.append(sdp, pos, next - pos);
+    pos = next;
+  }
+  return out;
+}
+
 // ---- INPUT messages -----------------------------------------------------
 
 void encode_input(std::vector<uint8_t> &out, const InputState &in,

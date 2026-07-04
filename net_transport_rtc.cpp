@@ -145,8 +145,11 @@ private:
 
   static void RTC_API on_state_change(int, rtcState state, void *ptr) {
     RtcTransport *self = (RtcTransport *)ptr;
-    if (state == RTC_FAILED || state == RTC_DISCONNECTED ||
-        state == RTC_CLOSED)
+    // DISCONNECTED is deliberately not fatal: it is transient per the
+    // WebRTC spec and fires spuriously during slow ICE (e.g. while STUN
+    // requests are still timing out). True losses surface as FAILED, a
+    // channel close, or the Phase 8 dead-man switch.
+    if (state == RTC_FAILED || state == RTC_CLOSED)
       self->failed_ = true;
   }
 

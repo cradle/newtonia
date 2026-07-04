@@ -348,8 +348,10 @@ void GLShip::controller_input(SDL_Event event) {
   } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
     ship->reverse(pressed);
   } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A) {
+    net_shoot_held = pressed;
     ship->shoot(pressed);
   } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_B) {
+    net_secondary_held = pressed;
     ship->fire_secondary(pressed);
   } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_LEFTSHOULDER && pressed) {
     ship->boost();
@@ -439,14 +441,16 @@ void GLShip::controller_axis_input(SDL_Event event) {
     if(pressed != r2_shoot_active) {
       if(pressed) last_input_was_controller = true;
       r2_shoot_active = pressed;
-      ship->shoot(pressed);
+      net_shoot_held = pressed;
+    ship->shoot(pressed);
     }
   } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERLEFT) {
     bool pressed = event.caxis.value > 8000;
     if(pressed != l2_shoot_active) {
       if(pressed) last_input_was_controller = true;
       l2_shoot_active = pressed;
-      ship->fire_secondary(pressed);
+      net_secondary_held = pressed;
+    ship->fire_secondary(pressed);
     }
   }
 }
@@ -542,8 +546,10 @@ void GLShip::input(unsigned char key, bool pressed) {
     kb_reverse = pressed;
     ship->reverse(pressed);
   } else if (key == shoot_key) {
+    net_shoot_held = pressed;
     ship->shoot(pressed);
   } else if (key == mine_key) {
+    net_secondary_held = pressed;
     ship->fire_secondary(pressed);
   } else if (key == boost_key && pressed) {
     ship->boost();

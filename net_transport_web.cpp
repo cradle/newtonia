@@ -67,8 +67,10 @@ EM_JS(void, nw_init, (), {
           c.localDesc = pc.localDescription.sdp;
       };
       pc.onconnectionstatechange = function() {
+        // 'disconnected' is transient per spec and can recover; only
+        // 'failed'/'closed' are fatal (plus channel onclose below).
         var s = pc.connectionState;
-        if (s === 'failed' || s === 'disconnected' || s === 'closed')
+        if (s === 'failed' || s === 'closed')
           c.failed = true;
       };
       pc.ondatachannel = function(ev) {

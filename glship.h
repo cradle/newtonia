@@ -51,9 +51,13 @@ public:
   void snap_camera_to_heading();
   void smooth_camera(int frame_delta);
 
-  // Netplay: wrapping respawn-tap counter (shoot while dead) sampled by the
-  // online client into INPUT messages. Meaningless offline. See NETPLAY.md.
-  uint8_t net_respawn_count = 0;
+  // Netplay: input-intent mirrors sampled by the online client into INPUT
+  // messages. The fire triggers must be tracked here (key intent) rather
+  // than read from the weapon, because semi-automatic weapons clear their
+  // own trigger after each shot. Meaningless offline. See NETPLAY.md.
+  uint8_t net_respawn_count = 0;   // wrapping respawn-tap (shoot while dead)
+  bool net_shoot_held = false;
+  bool net_secondary_held = false;
 
   void collide_grid(Grid &grid, int delta);
   static void collide(GLShip* first, GLShip* second);
