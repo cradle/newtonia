@@ -27,7 +27,10 @@ std::string net_signal_url() {
 
 bool net_room_code_char_ok(char c) {
   if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
-  if (c == '0' || c == 'O' || c == '1' || c == 'I') return false;
+  // No 0/O/1/I (confusable). No F: the desktop build toggles fullscreen on
+  // F at the window layer, before the lobby's code entry ever sees it —
+  // so codes simply never contain one (keep in sync with signal/src/worker.js).
+  if (c == '0' || c == 'O' || c == '1' || c == 'I' || c == 'F') return false;
   return (c >= 'A' && c <= 'Z') || (c >= '2' && c <= '9');
 }
 

@@ -615,6 +615,18 @@ void GLGame::add_remote_player() {
   // remote player just finished the whole lobby flow — bring them up
   // alive immediately, with the usual spawn-invincibility window.
   object->ship->respawn(grid, false);
+  // Keep the join spawn clear of player 1: safe_position() only avoids
+  // asteroids, and a nearby (or overlapping) spawn is lethal with
+  // friendly fire on — respawn's detonate() flash is made of real
+  // bullets, and body overlap kills outright.
+  Ship *p1_ship = players->front()->ship;
+  for (int tries = 0; tries < 32; tries++) {
+    Point near = object->ship->position.closest_to(p1_ship->position);
+    if ((near - p1_ship->position).magnitude() > 400.0f) break;
+    object->ship->position = WrappedPoint();
+    object->ship->safe_position(grid, false);
+  }
+  object->ship->bullets.clear();  // drop the lethal spawn-flash debris
 }
 
 void GLGame::net_host_poll() {
