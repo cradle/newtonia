@@ -208,7 +208,13 @@ void NetLobby::tick(int delta) {
                        : "HOST REFUSED THE CONNECTION");
         screen_ = LobbyFailed;
       } else if (p == NetSession::Failed ||
-                 connect_wait_ms_ > CONNECT_TIMEOUT_MS) {
+                 (session_->role() == NetSession::HostRole &&
+                  connect_wait_ms_ > CONNECT_TIMEOUT_MS)) {
+        // Only the host runs the clock here: it pasted the reply, so the
+        // connection either establishes within seconds or never will. The
+        // JOINER's wait includes the humans ferrying the reply code to the
+        // host — minutes, not seconds — so it waits until the transport
+        // actually fails (or the player backs out).
         printf("[lobby] connect failed: session_phase=%d waited=%d ms transport_failed=%d\n",
                (int)p, connect_wait_ms_,
                session_->transport() ? (int)session_->transport()->failed() : -1);

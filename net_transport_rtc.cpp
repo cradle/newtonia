@@ -18,6 +18,7 @@
 
 #include <rtc/rtc.h>
 
+#include <chrono>
 #include <atomic>
 #include <cstring>
 #include <deque>
@@ -57,6 +58,8 @@ public:
     }
     adopt_channel(dc_rel_, true);
     adopt_channel(dc_unrel_, false);
+    gather_start_ = std::chrono::steady_clock::now();
+    gather_started_ = true;
   }
 
   void start_join(const std::string &remote_offer) override {
@@ -64,11 +67,35 @@ public:
     if (pc_ < 0) return;
     // The answer is generated automatically; channels arrive through
     // on_data_channel once the connection establishes.
-    if (rtcSetRemoteDescription(pc_, remote_offer.c_str(), "offer") < 0)
+    if (rtcSetRemoteDescription(pc_, remote_offer.c_str(), "offer") < 0) {
       failed_ = true;
+      return;
+    }
+    gather_start_ = std::chrono::steady_clock::now();
+    gather_started_ = true;
   }
 
-  bool local_description_ready() const override { return desc_ready_; }
+  bool local_description_ready() const override {
+    if (desc_ready_) return true;
+    // Mirror of the web backend's descTimeoutMs fallback: slow or filtered
+    // STUN (e.g. a Windows firewall quietly eating UDP) can stall gathering
+    // for tens of seconds before it reports complete. After 8 s, snapshot
+    // the SDP with whatever candidates exist — host candidates gather
+    // instantly and are enough for LAN/same-machine play; the completed
+    // description still replaces this one if gathering finishes later.
+    if (gather_started_ && pc_ >= 0 &&
+        std::chrono::steady_clock::now() - gather_start_ >
+            std::chrono::seconds(8)) {
+      char buffer[8192];
+      int size = rtcGetLocalDescription(pc_, buffer, (int)sizeof(buffer));
+      if (size > 0) {
+        std::lock_guard<std::mutex> lock(desc_mutex_);
+        local_desc_.assign(buffer);
+        desc_ready_ = true;
+      }
+    }
+    return desc_ready_;
+  }
 
   std::string local_description() const override {
     std::lock_guard<std::mutex> lock(desc_mutex_);
@@ -139,6 +166,12 @@ private:
     rtcSetOpenCallback(dc, &RtcTransport::on_channel_open);
     rtcSetClosedCallback(dc, &RtcTransport::on_channel_closed);
     rtcSetMessageCallback(dc, &RtcTransport::on_message);
+    // The open event may have fired before the callback was attached (the
+    // join side adopts channels from on_data_channel, which can lose that
+    // race) — rtcSetOpenCallback does not retro-fire, so check directly.
+    if (rtcIsOpen(dc)) {
+      if (reliable) rel_open_ = true; else unrel_open_ = true;
+    }
   }
 
   // --- libdatachannel worker-thread callbacks: enqueue/flag only --------
@@ -206,11 +239,14 @@ private:
   int dc_rel_, dc_unrel_;
 
   std::atomic<bool> rel_open_, unrel_open_;
-  std::atomic<bool> desc_ready_, failed_;
+  mutable std::atomic<bool> desc_ready_;
+  std::atomic<bool> failed_;
   bool closed_;
+  bool gather_started_ = false;
+  std::chrono::steady_clock::time_point gather_start_;
 
   mutable std::mutex desc_mutex_;
-  std::string local_desc_;
+  mutable std::string local_desc_;
 
   std::mutex inbox_mutex_;
   std::deque<std::vector<unsigned char> > inbox_;

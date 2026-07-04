@@ -671,6 +671,11 @@ void GLGame::net_host_poll() {
     net_prev_respawn_ = in.respawn_count;
 
     if (!remote->is_alive()) {
+      // Dead ships take no control input, same as the local player. Keys
+      // still held at death stay suppressed through the respawn until the
+      // player releases and re-presses them — respawn's reset() gives the
+      // local player exactly that restriction.
+      net_held_suppress_ = 0xffff;
       // Mirror the local respawn-tap rule (GLShip::input): a shoot tap
       // while dead, after a short grace period, skips the countdown.
       if (respawns && remote->lives > 0 &&
@@ -679,13 +684,20 @@ void GLGame::net_host_poll() {
       continue;
     }
 
+    // A suppressed bit (set at each level transition) stays ignored while
+    // continuously held and expires the first time the client reports it
+    // released — the remote player re-presses each key exactly like the
+    // local player does after respawn's reset().
+    net_held_suppress_ &= in.held;
+    uint16_t held = in.held & (uint16_t)~net_held_suppress_;
+
     remote->rotation_scale = in.analog_rotation;
     remote->thrust_analog = in.analog_thrust;
     remote->reverse_analog = in.analog_reverse;
-    remote->rotate_left((in.held & Net::IN_LEFT) != 0);
-    remote->rotate_right((in.held & Net::IN_RIGHT) != 0);
-    remote->thrust((in.held & Net::IN_THRUST) != 0);
-    remote->reverse((in.held & Net::IN_REVERSE) != 0);
+    remote->rotate_left((held & Net::IN_LEFT) != 0);
+    remote->rotate_right((held & Net::IN_RIGHT) != 0);
+    remote->thrust((held & Net::IN_THRUST) != 0);
+    remote->reverse((held & Net::IN_REVERSE) != 0);
     // Trigger rule: a new press arms the weapon; releasing disarms it; a
     // held key with no new press leaves the weapon alone. Semi-automatics
     // (which disarm themselves after each shot) thus fire once per press,
@@ -693,11 +705,11 @@ void GLGame::net_host_poll() {
     // shield stay active — all without inspecting the weapon type.
     if (shot_presses)
       remote->shoot(true);
-    else if (!(in.held & Net::IN_SHOOT))
+    else if (!(held & Net::IN_SHOOT))
       remote->shoot(false);
     if (sec_presses)
       remote->fire_secondary(true);
-    else if (!(in.held & Net::IN_SECONDARY))
+    else if (!(held & Net::IN_SECONDARY))
       remote->fire_secondary(false);
 
     if (boosts > 4) boosts = 4;
@@ -1068,7 +1080,8 @@ void GLGame::net_apply_state(const Save::GameState &s) {
   // Generation rollover: the world grew — rebuild boundaries, grid and
   // starfield, drop every stale object (mirrors the host's rollover block;
   // the snapshot then repopulates everything below).
-  if (s.world_x != world.x() || s.world_y != world.y()) {
+  const bool world_rebuilt = s.world_x != world.x() || s.world_y != world.y();
+  if (world_rebuilt) {
     world = Point(s.world_x, s.world_y);
     grid = Grid(world, Point(Asteroid::max_radius * 2, Asteroid::max_radius * 2));
     WrappedPoint::set_boundaries(world);
@@ -1092,6 +1105,17 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     Ship *ship = (*it)->ship;
     bool is_local = (*it == players->back());
 
+    // Mid-respawn on the host: skip the full restore — restore_state runs
+    // respawn(), which would resurrect the corpse (burning a life) every
+    // snapshot until the host's countdown ends. Track the HUD scalars; the
+    // extras' alive-transition brings the ship back for real.
+    if (s.players[i].respawning) {
+      ship->score = s.players[i].score;
+      ship->lives = s.players[i].lives;
+      ship->kills = s.players[i].kills;
+      continue;
+    }
+
     WrappedPoint old_pos = ship->position;
     Point old_vel = ship->velocity;
     Point old_facing = ship->facing;
@@ -1113,13 +1137,20 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     float analog_reverse = ship->reverse_analog;
 
     ship->restore_state(s.players[i], grid);
+    // restore_state -> respawn() -> safe_position() relocates the ship to a
+    // RANDOM spot whenever the restored position is within 50 units of an
+    // asteroid. Right for loading a solo save into a freshly-built world;
+    // wrong 10x/s against live snapshots — the host's position is the truth
+    // however close to a rock it is. Pin the authoritative position back.
+    ship->position = WrappedPoint(s.players[i].pos_x, s.players[i].pos_y);
 
-    if (is_local && was_alive && ship->is_alive()) {
+    if (is_local && was_alive && ship->is_alive() && !world_rebuilt) {
       // A correction beyond any plausible prediction error means the host
       // moved the ship discontinuously — teleport, respawn, new-level spawn.
       // Snap to the authoritative pose (already set by restore_state,
       // facing included; the old aim is meaningless after a jump) instead
-      // of visibly sliding there over several snapshots.
+      // of visibly sliding there over several snapshots. The primary signal
+      // is the explicit warp count in the extras; this is the backstop.
       const float snap_dist = 250.0f;
       Point snap = ship->position.closest_to(old_pos);
       float cx = snap.x() - old_pos.x();
@@ -1144,6 +1175,14 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       ship->rotation_scale = analog_rot;
       ship->thrust_analog = analog_thrust;
       ship->reverse_analog = analog_reverse;
+    } else if (is_local && world_rebuilt) {
+      // Level transition: keep the authoritative new-level pose and do NOT
+      // re-apply the held state — the host cleared the remote ship's
+      // controls (and suppresses our held INPUT bits until re-press), so
+      // the local prediction starts the level with controls released too,
+      // exactly like the host's own player.
+      (*it)->net_shoot_held = false;
+      (*it)->net_secondary_held = false;
     }
   }
 
@@ -1230,6 +1269,11 @@ void GLGame::net_apply_extras(Save::Stream &in, const Save::GameState &s) {
     ship->temperature = ex.temperature;
     ship->time_until_respawn = ex.time_until_respawn;
     ship->time_left_invincible = ex.time_left_invincible;
+    // restore_state -> respawn() force-sets invincible=true every snapshot;
+    // reflect the authoritative state instead or the shield ring flickers
+    // at 10 Hz on every ship.
+    ship->invincible = ex.time_left_invincible > 0 || ex.god_ms > 0 ||
+                       ex.shield != 0;
     // god-mode / shield presentation on the client is a Milestone-1 cut
     // (both still function — the host simulates them; only their local
     // visual/audio flourishes are missing).
@@ -1399,6 +1443,10 @@ void GLGame::tick(int delta) {
       if (net_mode_ == NetHost) {
         net_set_generation_banner(generation);
         net_send_event(Net::EV_GENERATION_START, (uint32_t)generation);
+        // Same restriction as the local player: respawn's reset() cleared
+        // the remote ship's controls; don't let the still-held INPUT bits
+        // re-arm them 8 ms later — each key must be released and re-pressed.
+        net_held_suppress_ = 0xffff;
       }
       if (is_finished()) {
         // Handing off to an intro: freeze here and give back the delta so no

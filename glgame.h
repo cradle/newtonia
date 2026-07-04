@@ -131,6 +131,11 @@ private:
   uint32_t net_input_seq_ = 0;    // client: outgoing INPUT sequence
   uint8_t net_prev_warp_ = 0;     // client: last seen local-ship warp count
   bool net_have_warp_ = false;    // first snapshot baselines the count
+  // Host: held INPUT bits ignored until the client releases the key once.
+  // Set to all-ones at each level transition so the remote player starts
+  // the new level with controls cleared — exactly like the local player,
+  // whose respawn reset() also drops held keys until re-pressed.
+  uint16_t net_held_suppress_ = 0;
   Net::SnapshotAssembler *net_assembler_ = nullptr;  // client chunk reassembly
 
   // Phase 8 polish (see NETPLAY.md)
