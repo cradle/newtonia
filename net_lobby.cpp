@@ -347,9 +347,16 @@ void NetLobby::tick(int delta) {
         if (session_->role() == NetSession::HostRole) {
           // Host starts the game immediately; the session (and transport)
           // move into the GLGame, which streams snapshots to the peer.
+          // In the room flow the signal connection moves too, keeping the
+          // room open all game so the peer can rejoin (M2-4).
           NetSession *session = session_;
           session_ = nullptr;
-          request_state_change(new GLGame(session, (SDL_GameController *)0));
+          GLGame *game = new GLGame(session, (SDL_GameController *)0);
+          if (signal_) {
+            game->net_adopt_signal(signal_, room_code_);
+            signal_ = nullptr;
+          }
+          request_state_change(game);
           return;
         }
         screen_ = Connected;

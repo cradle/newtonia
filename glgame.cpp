@@ -7,6 +7,8 @@
 #endif
 #include "glship.h"
 #include "weapon/default.h"
+#include "net_signal.h"
+#include "net_transport.h"
 #include "glcar.h"
 #include "glstarfield.h"
 #include "wrapped_point.h"
@@ -158,6 +160,14 @@ GLGame::~GLGame() {
     net_send_event(Net::EV_BYE);
   delete net_session_;  // closes + deletes the transport
   delete net_assembler_;
+  if (net_signal_) {    // closes the room; a later rejoin gets no-such-room
+    net_signal_->close();
+    delete net_signal_;
+  }
+  if (net_rehost_) {
+    net_rehost_->close();
+    delete net_rehost_;
+  }
 
   //TODO: Make erase, use boost::ptr_list? something better
   // std::erase(std::remove_if(v.begin(),v.end(),true), v.end());
@@ -761,6 +771,90 @@ void GLGame::net_host_poll() {
   }
 }
 
+void GLGame::net_adopt_signal(NetSignal *signal, const std::string &room_code) {
+  net_signal_ = signal;
+  net_room_code_ = room_code;
+}
+
+// Client gone but the room is still open: keep simulating solo, offer a
+// fresh transport through the room, and resume when the peer rejoins
+// (a rejoin is a plain JOIN on their side — full snapshot bootstrap).
+void GLGame::net_host_rejoin_poll(int delta) {
+  Ship *remote = players->size() >= 2 ? players->back()->ship : NULL;
+
+  // Runs once per loss: only while there is no live rehost offer AND no
+  // session other than the dead one (a fresh session created from a
+  // rejoin answer is Handshaking on a HEALTHY transport — leave it be).
+  if (!net_rehost_ &&
+      (!net_session_ || net_session_->transport()->failed())) {
+    // First tick after the loss: park the remote ship (frozen respawn
+    // timer so it can't bleed lives to drifting asteroids) and re-host.
+    if (remote) {
+      if (remote->is_alive()) remote->kill_stop();
+      remote->time_until_respawn = 1 << 29;
+    }
+    delete net_session_;
+    net_session_ = nullptr;
+    net_rehost_ = NetTransport::create();
+    net_rehost_offer_sent_ = false;
+    if (net_rehost_) net_rehost_->start_host();
+    printf("net: player 2 lost - room %s reopened for rejoin\n",
+           net_room_code_.c_str());
+    fflush(stdout);
+  }
+
+  if (net_rehost_ && !net_rehost_offer_sent_ &&
+      net_rehost_->local_description_ready()) {
+    net_signal_->send_offer(net_rehost_->local_description());
+    net_rehost_offer_sent_ = true;
+  }
+
+  NetSignal::Event ev;
+  while (net_signal_->poll(ev)) {
+    if (ev.kind == NetSignal::Event::Answer && net_rehost_) {
+      net_rehost_->set_remote_answer(ev.text);
+      net_session_ = new NetSession(net_rehost_, NetSession::HostRole);
+      net_rehost_ = nullptr;
+    } else if (ev.kind == NetSignal::Event::Closed) {
+      // Signal server gone: no rejoin possible — fall back to the plain
+      // CONNECTION LOST freeze.
+      net_signal_->close();
+      delete net_signal_;
+      net_signal_ = nullptr;
+      return;
+    }
+  }
+
+  // Fresh session handshaking (HELLO/WELCOME) over the new transport.
+  if (net_session_) {
+    net_session_->update(delta);
+    if (net_session_->phase() == NetSession::Ready) {
+      net_connection_lost_ = false;
+      net_have_input_ = false;      // re-baseline the one-shot counters
+      net_input_zeroed_ = false;
+      net_held_suppress_ = 0xffff;  // fresh presses required, like a spawn
+      net_last_input_time_ = current_time;
+      if (remote) {
+        // Unpark directly — the step-countdown respawn would charge a life.
+        remote->respawn(grid, false);
+        remote->bullets.clear();  // no lethal spawn-flash debris
+      }
+      net_set_generation_banner(generation);
+      net_banner_text_ = "PLAYER 2 RECONNECTED";
+      printf("net: player 2 rejoined\n");
+      fflush(stdout);
+    } else if (net_session_->phase() == NetSession::Failed ||
+               net_session_->phase() == NetSession::Rejected) {
+      // Bad handshake (wrong build?): drop it and re-offer for another try.
+      delete net_session_;
+      net_session_ = nullptr;
+      net_rehost_ = NetTransport::create();
+      net_rehost_offer_sent_ = false;
+      if (net_rehost_) net_rehost_->start_host();
+    }
+  }
+}
+
 // ---- snapshot NetExtras -------------------------------------------------
 // Appended after the serialize_game body: per-ship transients the save
 // format deliberately omits, the public projectile vectors, and the
@@ -819,6 +913,7 @@ void nx_write_ship(Save::Stream &out, const Ship &s) {
 }  // namespace
 
 void GLGame::net_host_send_snapshot(int delta) {
+  if (!net_session_ || net_connection_lost_) return;  // mid-rejoin
   net_snapshot_timer_ += delta;
   if (net_snapshot_timer_ < 100) return;
   net_snapshot_timer_ = 0;
@@ -902,7 +997,13 @@ void GLGame::draw_net_overlays() const {
   mat4_ortho(ortho, -hw, hw, -hh, hh, -1.0f, 1.0f);
   gles2_set_vp(ortho);
 
-  if (net_connection_lost_) {
+  if (net_connection_lost_ && net_mode_ == NetHost && net_signal_) {
+    // Rejoinable loss: the game continues — a quiet notice, not a card.
+    Typer::draw_centered(0, hh * 0.72f, "PLAYER 2 DISCONNECTED", 16);
+    std::string room = "ROOM " + net_room_code_ + " OPEN - THEY CAN REJOIN";
+    if ((current_time / 700) % 2 == 0)
+      Typer::draw_centered(0, hh * 0.72f - 40, room.c_str(), 12);
+  } else if (net_connection_lost_) {
     Typer::draw_centered(0, 60, "CONNECTION LOST", 34);
     if ((current_time / 700) % 2 == 0)
       Typer::draw_centered(0, -80, "PRESS FIRE FOR MENU", 16);
@@ -1398,8 +1499,14 @@ void GLGame::tick(int delta) {
   // dead transport) must be noticed even while paused.
   if (net_mode_ == NetHost) {
     if (!net_connection_lost_) net_host_poll();
-    if (net_session_->transport()->failed()) net_connection_lost_ = true;
-    if (net_connection_lost_) return;  // frozen; draw shows CONNECTION LOST
+    if (net_session_ && net_session_->transport()->failed())
+      net_connection_lost_ = true;
+    if (net_connection_lost_) {
+      if (net_signal_)
+        net_host_rejoin_poll(delta);  // room open: play on, await rejoin
+      else
+        return;  // frozen; draw shows CONNECTION LOST
+    }
     if (net_banner_ms_ > 0) net_banner_ms_ -= delta;
   }
 
@@ -2478,7 +2585,7 @@ void GLGame::draw_map() const {
 }
 
 void GLGame::controller(SDL_Event event) {
-  if (net_connection_lost_) {
+  if (net_connection_lost_ && !(net_mode_ == NetHost && net_signal_)) {
     if (event.type == SDL_CONTROLLERBUTTONDOWN)
       request_state_change(new Menu());
     return;
@@ -2616,7 +2723,7 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
   const GeneralKeys &gk = g_prefs.general_keys;
 
-  if (net_connection_lost_) {
+  if (net_connection_lost_ && !(net_mode_ == NetHost && net_signal_)) {
     request_state_change(new Menu());
     return;
   }

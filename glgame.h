@@ -27,6 +27,8 @@
 using namespace std;
 
 class NetSession;
+class NetSignal;
+class NetTransport;
 namespace Net { class SnapshotAssembler; }
 
 class GLGame : public State {
@@ -148,6 +150,19 @@ private:
   std::string net_banner_text_;
   int net_last_input_time_ = 0;     // host: dead-man switch (1 s)
   bool net_input_zeroed_ = false;
+
+  // ---- M2-4 rejoin (host only; see NETPLAY.md) ----
+  // The lobby's signal connection moves in here so the room stays open
+  // for the whole session; on client loss the host keeps playing solo,
+  // parks the remote ship, and offers a fresh transport through the room.
+public:
+  void net_adopt_signal(NetSignal *signal, const std::string &room_code);
+private:
+  void net_host_rejoin_poll(int delta);
+  NetSignal *net_signal_ = nullptr;     // owned; null in the manual flow
+  std::string net_room_code_;
+  NetTransport *net_rehost_ = nullptr;  // owned until handed to a session
+  bool net_rehost_offer_sent_ = false;
 
   static const int step_size = 8;
 
