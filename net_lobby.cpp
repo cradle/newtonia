@@ -282,7 +282,7 @@ void NetLobby::draw() {
     case Connected:
       lines.push_back("CONNECTED!");
       lines.push_back(session_ && session_->player_id() == 1
-                          ? "YOU ARE PLAYER 1 - THE HOST"
+                          ? "YOU ARE PLAYER 1 (HOST)"
                           : "YOU ARE PLAYER 2");
       lines.push_back("");
       lines.push_back("ONLINE PLAY ARRIVES IN A LATER PHASE");

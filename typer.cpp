@@ -173,6 +173,21 @@ void Typer::init_meshes() {
     mb.vertex(TW*0.5f,1.75f); mb.vertex(TW*0.5f,0.25f);
     mb.end(); upload('+', mb); }
 
+  // Parentheses: five segments tracing a rough semicircle at full height.
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    for (int i = 0; i <= 5; i++) {
+      float a = (float)M_PI * (0.5f + i / 5.0f);  // 90° (top) → 270° (bottom)
+      mb.vertex(TW*0.65f + TW*0.35f*cosf(a), TH*0.5f + TH*0.5f*sinf(a));
+    }
+    mb.end(); upload('(', mb); }
+
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    for (int i = 0; i <= 5; i++) {
+      float a = (float)M_PI * (0.5f + i / 5.0f);
+      mb.vertex(TW*0.35f - TW*0.35f*cosf(a), TH*0.5f + TH*0.5f*sinf(a));
+    }
+    mb.end(); upload(')', mb); }
+
 
   { MeshBuilder mb; mb.color(1,1,1);
     mb.begin(GL_LINE_LOOP); mb.vertex(0,TH); mb.vertex(TW,TH); mb.vertex(TW,0); mb.vertex(0,0); mb.end();
