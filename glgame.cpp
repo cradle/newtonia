@@ -967,10 +967,21 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     Point old_vel = ship->velocity;
     Point old_facing = ship->facing;
     bool was_alive = ship->is_alive();
-    uint16_t held_shoot = !ship->primary_weapons.empty() &&
-                          (*ship->primary)->is_shooting();
-    uint16_t held_secondary = ship->secondary != ship->secondary_weapons.end() &&
-                              (*ship->secondary)->is_shooting();
+    // restore_state runs respawn()/reset(), which clears every held input
+    // flag — and keys only re-assert them on the next key-DOWN event. The
+    // whole held state must be captured and re-applied for the local ship,
+    // or held keys die ~100 ms after each press (10 Hz snapshots).
+    bool held_left = ship->rotation_direction == Ship::LEFT;
+    bool held_right = ship->rotation_direction == Ship::RIGHT;
+    bool held_thrust = ship->thrusting;
+    bool held_reverse = ship->reversing;
+    bool held_shoot = !ship->primary_weapons.empty() &&
+                      (*ship->primary)->is_shooting();
+    bool held_secondary = ship->secondary != ship->secondary_weapons.end() &&
+                          (*ship->secondary)->is_shooting();
+    float analog_rot = ship->rotation_scale;
+    float analog_thrust = ship->thrust_analog;
+    float analog_reverse = ship->reverse_analog;
 
     ship->restore_state(s.players[i], grid);
 
@@ -981,10 +992,16 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       ship->position.wrap();
       ship->velocity = old_vel + (ship->velocity - old_vel) * 0.35f;
       ship->facing = old_facing;  // aim stays fully local
-      // restore_state rebuilt the weapons, dropping held triggers — reapply
-      // so a held fire button keeps firing (and keeps being sampled).
-      ship->shoot(held_shoot != 0);
-      ship->fire_secondary(held_secondary != 0);
+
+      ship->rotate_left(held_left);
+      ship->rotate_right(held_right);
+      ship->thrust(held_thrust);
+      ship->reverse(held_reverse);
+      ship->shoot(held_shoot);
+      ship->fire_secondary(held_secondary);
+      ship->rotation_scale = analog_rot;
+      ship->thrust_analog = analog_thrust;
+      ship->reverse_analog = analog_reverse;
     }
   }
 
