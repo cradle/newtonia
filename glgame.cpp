@@ -610,6 +610,11 @@ void GLGame::add_remote_player() {
   object->ship->set_missile_ships(ship_objects);
   object->ship->set_black_holes(black_holes);
   players->push_back(object);
+  // The Ship constructor creates ships dead (offline player 2 waits out
+  // the respawn countdown after pressing Enter to join mid-game). The
+  // remote player just finished the whole lobby flow — bring them up
+  // alive immediately, with the usual spawn-invincibility window.
+  object->ship->respawn(grid, false);
 }
 
 void GLGame::net_host_poll() {
