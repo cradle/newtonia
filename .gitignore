@@ -10,6 +10,8 @@ build
 ## Makefile
 *.o
 /newtonia
+/newtonia-arm64
+/newtonia-x86_64
 ## Glut (binaries)
 GL/
 ## SDL
