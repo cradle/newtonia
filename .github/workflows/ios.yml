@@ -185,8 +185,11 @@ jobs:
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" Newtonia.app
+          # macOS runners have no GNU `timeout`; perl's alarm is the
+          # portable equivalent (SIGALRM kills the launch after 180s).
           SIMCTL_CHILD_NEWTONIA_NET_SELFTEST=1 SIMCTL_CHILD_SDL_AUDIODRIVER=dummy \
-            timeout 180 xcrun simctl launch --console-pty "$UDID" cc.gfm.Newtonia \
+            perl -e 'alarm shift; exec @ARGV' 180 \
+            xcrun simctl launch --console-pty "$UDID" cc.gfm.Newtonia \
             | tee selftest.log || true
           grep -q "NET SELFTEST PASS" selftest.log
 
