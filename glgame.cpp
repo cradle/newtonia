@@ -1075,6 +1075,9 @@ bool GLGame::net_send_delta() {
 }
 
 void GLGame::net_send_event(uint8_t code, uint32_t arg) {
+  // While the joiner is disconnected (rejoinable loss) the host plays on
+  // with no session at all — level completion and pause still fire events.
+  if (!net_session_) return;
   std::vector<uint8_t> msg;
   Net::put_header(msg, Net::MSG_EVENT, net_mode_ == NetHost ? 1 : 2);
   Net::put_u8(msg, code);
