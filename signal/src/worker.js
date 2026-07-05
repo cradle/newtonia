@@ -355,6 +355,14 @@ export class Room {
   from_host(m) {
     let msg;
     try { msg = JSON.parse(m.data); } catch (e) { return; }
+    // Deliberate host teardown (quit to menu, game over): the room dies
+    // NOW — no reclaim grace, no joiners left waiting on a host that told
+    // us it isn't coming back. Crashes send nothing, so grace still
+    // covers real drops.
+    if (msg.t === "close") {
+      this.expire();
+      return;
+    }
     if (msg.t === "offer" && typeof msg.sdp === "string" &&
         msg.sdp.length <= MAX_SDP_LEN) {
       this.offer = msg.sdp; // kept for a joiner (or rejoiner) arriving later

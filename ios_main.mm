@@ -196,6 +196,11 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         return 1;
     }
 
+    // SDL2 starts with text input ACTIVE by default; the key-event guards
+    // gated on SDL_IsTextInputActive() would otherwise swallow printable
+    // keys forever. Only the lobby's code entry turns it back on.
+    SDL_StopTextInput();
+
 #ifdef NEWTONIA_NET_RTC
     // Headless netplay self-tests (mirrors xbox_main.cpp) — CI boots the
     // Simulator and launches with these env vars via SIMCTL_CHILD_*.

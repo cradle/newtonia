@@ -243,6 +243,12 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         return 1;
     }
+
+    // SDL2 starts with text input ACTIVE by default; anything gated on
+    // SDL_IsTextInputActive() (the finger_down key-synthesis guard) would
+    // otherwise be stuck on forever. Only the lobby's code entry turns it
+    // back on, via SDL_StartTextInput.
+    SDL_StopTextInput();
     SDL_Log("Audio driver in use: %s", SDL_GetCurrentAudioDriver());
 
     // Request OpenGL ES 2.0 context

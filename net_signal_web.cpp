@@ -130,6 +130,8 @@ public:
                "\",\"cand\":\"" + NetSig::json_escape(cand) + "\"}");
   }
 
+  void send_close() override { send_frame("{\"t\":\"close\"}"); }
+
   bool poll(Event &ev) override {
     if (!handle_) return false;
     char *frame;

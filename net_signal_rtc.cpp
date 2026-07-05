@@ -56,6 +56,8 @@ public:
                "\",\"cand\":\"" + NetSig::json_escape(cand) + "\"}");
   }
 
+  void send_close() override { send_frame("{\"t\":\"close\"}"); }
+
   bool poll(Event &ev) override {
     {
       std::lock_guard<std::mutex> lock(mutex_);

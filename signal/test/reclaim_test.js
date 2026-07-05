@@ -123,6 +123,18 @@ function check(name, cond) {
         c3.t === "cand" && c3.cand === "candidate:h2" &&
         c4.t === "cand" && c4.cand === "candidate:h3");
 
+  // 10. Deliberate host close: the room dies NOW — the waiting joiner is
+  //     told, no grace window, and the code is immediately unjoinable.
+  host3.send(JSON.stringify({ t: "close" }));
+  const byebye = await join3._recv();
+  check("joiner told on host close", byebye.t === "err" && byebye.reason === "expired");
+  await t(300);
+  const join4 = await connect(`?role=join&code=${code}`);
+  const j4 = await join4._recv();
+  check("closed room rejects join (no grace)",
+        j4.t === "err" && j4.reason === "no-such-room");
+  join4.close?.();
+
   host3.close(); join3.close(); squat.close?.();
   console.log(failures ? `\n${failures} FAILURES` : "\nRECLAIM-TEST-OK");
   process.exit(failures ? 1 : 0);

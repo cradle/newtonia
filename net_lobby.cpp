@@ -133,6 +133,9 @@ void NetLobby::reset_to_choose() {
 
 void NetLobby::leave_to_menu() {
   code_entry_keyboard(false);
+  // Host abandoning the room: kill it at the relay now, or its code stays
+  // claimable-but-hostless for the whole reclaim grace window.
+  if (hosting_ && signal_) signal_->send_close();
   request_state_change(new Menu());
 }
 
@@ -433,6 +436,21 @@ void NetLobby::tick(int delta) {
         signal_->send_cand(c.substr(0, nl), c.substr(nl + 1));
       }
     }
+  }
+
+  // A joined room whose host never offers (host quit for good — its close
+  // frame was lost, or an old relay build without close support): fail
+  // out instead of sitting on "JOINING THE ROOM" forever. Rejoin mode has
+  // its own budget; a hostless-grace wait there is legitimate.
+  if (!hosting_ && screen_ == RoomJoining && !rejoin_mode_) {
+    join_wait_ms_ += delta;
+    if (join_wait_ms_ > 45000) {
+      join_wait_ms_ = 0;
+      set_status("THE HOST IS NOT RESPONDING");
+      screen_ = LobbyFailed;
+    }
+  } else {
+    join_wait_ms_ = 0;
   }
 
   // Auto-rejoin retry loop (see schedule_rejoin_retry).

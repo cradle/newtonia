@@ -58,6 +58,10 @@ public:
   virtual void send_answer(const std::string &sdp) = 0;
   // Trickle ICE (M3-2b): one gathered candidate, relayed to the peer.
   virtual void send_cand(const std::string &mid, const std::string &cand) = 0;
+  // Host only, deliberate teardown (quit to menu, game over): tells the
+  // relay to kill the room NOW instead of holding the reclaim grace open
+  // for a host that isn't coming back.
+  virtual void send_close() = 0;
 
   // Pops one event (main thread only); false when nothing is pending.
   virtual bool poll(Event &ev) = 0;

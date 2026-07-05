@@ -161,7 +161,13 @@ GLGame::~GLGame() {
     net_send_event(Net::EV_BYE);
   delete net_session_;  // closes + deletes the transport
   delete net_assembler_;
-  if (net_signal_) {    // closes the room; a later rejoin gets no-such-room
+  // Deliberate host teardown (quit to menu, game over): tell the relay to
+  // kill the room NOW. A bare socket close would start the 2-minute
+  // reclaim grace, leaving joiners — including this very player rejoining
+  // their own code — waiting forever on "JOINING THE ROOM". A crash sends
+  // nothing, so the grace window still covers real host drops.
+  if (net_signal_) {
+    net_signal_->send_close();
     net_signal_->close();
     delete net_signal_;
   }
