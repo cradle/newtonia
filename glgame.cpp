@@ -838,6 +838,7 @@ void GLGame::net_host_rejoin_poll(int delta) {
       net_have_input_ = false;      // re-baseline the one-shot counters
       net_input_zeroed_ = false;
       net_held_suppress_ = 0xffff;  // fresh presses required, like a spawn
+      net_force_keyframe_ = true;   // rejoined client starts from a keyframe
       net_last_input_time_ = current_time;
       if (remote) {
         // Unpark directly — the step-countdown respawn would charge a life.
@@ -920,12 +921,25 @@ void nx_write_ship(Save::Stream &out, const Ship &s) {
 
 }  // namespace
 
+// One state byte per asteroid in delta records: the transient flags a
+// client cannot extrapolate (motion and rotation it can — see NETPLAY.md).
+static uint8_t ast_state_byte(const Asteroid *a) {
+  return (uint8_t)((a->phased ? 1 : 0) | (a->teleport_vulnerable ? 2 : 0) |
+                   (a->teleport_pending ? 4 : 0) |
+                   (a->quantum_observed ? 8 : 0));
+}
+
 void GLGame::net_host_send_snapshot(int delta) {
   if (!net_session_ || net_connection_lost_) return;  // mid-rejoin
   net_snapshot_timer_ += delta;
   if (net_snapshot_timer_ < 100) return;
   net_snapshot_timer_ = 0;
 
+  bool keyframe = net_force_keyframe_ || (net_slot_ % 10 == 0);
+  net_slot_++;
+  if (!keyframe && net_send_delta()) return;
+
+  // KEYFRAME: the full snapshot, exactly as Milestone 1 sent every slot.
   Save::MemStream payload;
   Save::serialize_game(payload, build_save_data());
 
@@ -937,15 +951,126 @@ void GLGame::net_host_send_snapshot(int delta) {
 
   Net::send_snapshot(net_session_->transport(), ++net_snapshot_id_,
                      payload.data(), 1);
+  net_force_keyframe_ = false;
+
+  // The keyframe is the client's new baseline: deltas from here describe
+  // changes against it (reliable ordered channel — no acks needed).
+  net_known_.clear();
+  for (auto *a : *objects) {
+    NetAstBase b;
+    b.px = a->position.x(); b.py = a->position.y();
+    b.vx = a->velocity.x(); b.vy = a->velocity.y();
+    b.health = (uint8_t)a->health;
+    b.state = ast_state_byte(a);
+    b.t = current_time;
+    net_known_[a->net_id] = b;
+  }
+
   // Bandwidth telemetry (M2-6): a line every 10 s of play at 10 Hz.
   net_bytes_sent_ += payload.data().size();
-  if (net_snapshot_id_ % 100 == 0) {
-    printf("net: snapshot #%u gen=%d asteroids=%d bytes=%d avg10s=%.1f KB/s\n",
-           net_snapshot_id_, generation, (int)objects->size(),
+  if (net_slot_ % 100 == 0) {
+    printf("net: slot #%d gen=%d asteroids=%d key_bytes=%d avg10s=%.1f KB/s\n",
+           net_slot_, generation, (int)objects->size(),
            (int)payload.data().size(), net_bytes_sent_ / 10240.0f);
     fflush(stdout);
     net_bytes_sent_ = 0;
   }
+}
+
+bool GLGame::net_send_delta() {
+  // Everything except asteroids rides wholesale — it is small and reuses
+  // the entire keyframe apply path on the client.
+  Save::GameState s = build_save_data();
+  s.asteroids.clear();
+  Save::MemStream payload;
+  Save::serialize_game(payload, s);
+
+  nx_write(payload, (uint32_t)players->size());
+  for (auto *gs : *players) nx_write_ship(payload, *gs->ship);
+
+  // Asteroids: new since the last keyframe/delta, changed beyond what the
+  // client can extrapolate, or gone.
+  std::vector<Asteroid *> fresh, dyn;
+  for (auto *a : *objects) {
+    std::map<uint32_t, NetAstBase>::iterator f = net_known_.find(a->net_id);
+    if (f == net_known_.end()) {
+      fresh.push_back(a);
+      continue;
+    }
+    const NetAstBase &b = f->second;
+    float dt = (float)(current_time - b.t);
+    float pred_x = b.px + b.vx * dt, pred_y = b.py + b.vy * dt;
+    bool dirty =
+        fabsf(a->velocity.x() - b.vx) > 0.01f ||
+        fabsf(a->velocity.y() - b.vy) > 0.01f ||
+        (uint8_t)a->health != b.health || ast_state_byte(a) != b.state ||
+        fabsf(a->position.x() - pred_x) > 50.0f ||
+        fabsf(a->position.y() - pred_y) > 50.0f;
+    if (dirty) dyn.push_back(a);
+  }
+  std::vector<uint32_t> removed;
+  for (std::map<uint32_t, NetAstBase>::iterator it = net_known_.begin();
+       it != net_known_.end(); ++it) {
+    bool present = false;
+    for (auto *a : *objects) if (a->net_id == it->first) { present = true; break; }
+    if (!present) removed.push_back(it->first);
+  }
+
+  nx_write(payload, (uint16_t)fresh.size());
+  for (size_t i = 0; i < fresh.size(); i++) {
+    nx_write(payload, fresh[i]->net_id);
+    Save::write_asteroid(payload, fresh[i]->capture_state());
+  }
+  nx_write(payload, (uint16_t)dyn.size());
+  for (size_t i = 0; i < dyn.size(); i++) {
+    Asteroid *a = dyn[i];
+    nx_write(payload, a->net_id);
+    nx_write(payload, a->position.x());
+    nx_write(payload, a->position.y());
+    nx_write(payload, a->velocity.x());
+    nx_write(payload, a->velocity.y());
+    nx_write(payload, (uint8_t)a->health);
+    nx_write(payload, ast_state_byte(a));
+  }
+  nx_write(payload, (uint16_t)removed.size());
+  for (size_t i = 0; i < removed.size(); i++) nx_write(payload, removed[i]);
+
+  // Rare escape hatch: a delta bigger than one snapshot chunk (mass
+  // change) is not worth the format — send a keyframe this slot instead.
+  if (payload.data().size() > Net::SNAPSHOT_CHUNK_BYTES) return false;
+
+  std::vector<uint8_t> msg;
+  msg.reserve(Net::HEADER_SIZE + 4 + payload.data().size());
+  Net::put_header(msg, Net::MSG_DELTA, 1);
+  Net::put_u32(msg, ++net_snapshot_id_);
+  Net::put_bytes(msg, &payload.data()[0], payload.data().size());
+  net_session_->transport()->send_reliable(&msg[0], msg.size());
+
+  // Only now (the send is committed) does the baseline move.
+  for (size_t i = 0; i < removed.size(); i++) net_known_.erase(removed[i]);
+  std::vector<Asteroid *> *sent[2] = { &fresh, &dyn };
+  for (int k = 0; k < 2; k++)
+    for (size_t i = 0; i < sent[k]->size(); i++) {
+      Asteroid *a = (*sent[k])[i];
+      NetAstBase b;
+      b.px = a->position.x(); b.py = a->position.y();
+      b.vx = a->velocity.x(); b.vy = a->velocity.y();
+      b.health = (uint8_t)a->health;
+      b.state = ast_state_byte(a);
+      b.t = current_time;
+      net_known_[a->net_id] = b;
+    }
+
+  net_bytes_sent_ += msg.size();
+  if (net_slot_ % 100 == 0) {
+    printf("net: slot #%d gen=%d asteroids=%d delta_bytes=%d (new %d dyn %d rm %d) avg10s=%.1f KB/s\n",
+           net_slot_, generation, (int)objects->size(), (int)msg.size(),
+           (int)fresh.size(), (int)dyn.size(), (int)removed.size(),
+           net_bytes_sent_ / 10240.0f);
+    fflush(stdout);
+    net_bytes_sent_ = 0;
+  }
+  return true;
 }
 
 void GLGame::net_send_event(uint8_t code, uint32_t arg) {
@@ -1142,6 +1267,11 @@ void GLGame::tick_net_client(int delta) {
     // and its snapshots overwrite this extrapolation at 10 Hz.
     for (auto *bh : *black_holes) bh->step(step_size);
     for (auto *a : *objects) a->step(step_size);
+    // Mirror the host's asteroid gravity so drift between 1 Hz keyframes
+    // stays small — otherwise every asteroid near a hole goes stale.
+    for (auto *bh : *black_holes)
+      for (auto *a : *objects)
+        if (!a->invincible) bh->apply_gravity(*a, step_size);
     for (auto *a : *dead_objects) a->step(step_size);
     for (auto *p : *pickups) p->step(step_size);
     for (auto *gs : *players) gs->step(step_size, grid);
@@ -1208,6 +1338,24 @@ void GLGame::net_client_poll() {
       if (r.ok) net_handle_event(code, arg);
       continue;
     }
+    if (h.msg_type == Net::MSG_DELTA) {
+      (void)r.u32();  // snap id (monotonic with keyframes; informational)
+      size_t n = r.remaining();
+      const uint8_t *body = r.bytes(n);
+      if (!body) continue;
+      std::vector<uint8_t> buf(body, body + n);
+      Save::MemStream in(buf);
+      Save::GameState s;
+      if (!Save::deserialize_game(in, s)) continue;
+      if (!net_state_sane(s)) continue;
+      // The mini state carries everything but asteroids (its asteroid
+      // vector is empty by construction, so the wholesale sections apply
+      // exactly like a keyframe); asteroids follow as delta records.
+      net_apply_state(s);
+      if (!net_apply_ship_extras(in, s)) continue;
+      net_apply_delta_asteroids(in);
+      continue;
+    }
     if (h.msg_type != Net::MSG_SNAPSHOT_CHUNK) continue;
     if (!net_assembler_->add_chunk(r)) continue;
 
@@ -1217,6 +1365,71 @@ void GLGame::net_client_poll() {
     if (!net_state_sane(s)) continue;  // reject a hostile/corrupt snapshot
     net_apply_state(s);
     net_apply_extras(in, s);
+  }
+}
+
+void GLGame::net_apply_delta_asteroids(Save::Stream &in) {
+  std::map<uint32_t, Asteroid *> by_id;
+  for (auto *a : *objects) by_id[a->net_id] = a;
+
+  uint16_t n_new = 0;
+  if (!nx_read(in, n_new)) return;
+  if (n_new > 512) return;  // hostile/corrupt
+  for (int i = 0; i < n_new; i++) {
+    uint32_t id = 0;
+    Save::Asteroid sa;
+    if (!nx_read(in, id) || !Save::read_asteroid(in, sa)) return;
+    if (by_id.find(id) != by_id.end()) continue;  // already known
+    Asteroid *a = new Asteroid(sa.invincible, sa.invisible, sa.reflective,
+                               sa.teleporting, sa.quantum, sa.tough,
+                               sa.armoured, sa.phasing);
+    a->restore_state(sa);
+    a->net_id = id;
+    objects->push_back(a);
+    by_id[id] = a;
+  }
+
+  uint16_t n_dyn = 0;
+  if (!nx_read(in, n_dyn)) return;
+  if (n_dyn > 5000) return;
+  for (int i = 0; i < n_dyn; i++) {
+    uint32_t id = 0;
+    float px, py, vx, vy;
+    uint8_t health, state;
+    if (!nx_read(in, id) || !nx_read(in, px) || !nx_read(in, py) ||
+        !nx_read(in, vx) || !nx_read(in, vy) || !nx_read(in, health) ||
+        !nx_read(in, state))
+      return;
+    std::map<uint32_t, Asteroid *>::iterator f = by_id.find(id);
+    if (f == by_id.end()) continue;  // unknown id — next keyframe reconciles
+    Asteroid *a = f->second;
+    a->position = WrappedPoint(px, py);
+    a->velocity = Point(vx, vy);
+    a->health = health;
+    a->phased = (state & 1) != 0;
+    a->teleport_vulnerable = (state & 2) != 0;
+    a->teleport_pending = (state & 4) != 0;
+    a->quantum_observed = (state & 8) != 0;
+  }
+
+  uint16_t n_rm = 0;
+  if (!nx_read(in, n_rm)) return;
+  if (n_rm > 5000) return;
+  for (int i = 0; i < n_rm; i++) {
+    uint32_t id = 0;
+    if (!nx_read(in, id)) return;
+    std::map<uint32_t, Asteroid *>::iterator f = by_id.find(id);
+    if (f == by_id.end()) continue;
+    Asteroid *a = f->second;
+    for (auto oi = objects->begin(); oi != objects->end(); ++oi) {
+      if (*oi != a) continue;
+      a->kill();
+      if (!a->is_removable()) dead_objects->push_back(a);
+      else delete a;
+      objects->erase(oi);
+      break;
+    }
+    by_id.erase(f);
   }
 }
 
@@ -1385,8 +1598,13 @@ void GLGame::net_apply_state(const Save::GameState &s) {
 }
 
 void GLGame::net_apply_extras(Save::Stream &in, const Save::GameState &s) {
+  if (!net_apply_ship_extras(in, s)) return;
+  net_apply_keyframe_asteroid_ids(in, s);
+}
+
+bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s) {
   uint32_t nplayers = 0;
-  if (!nx_read(in, nplayers)) return;
+  if (!nx_read(in, nplayers)) return false;
   auto it = players->begin();
   for (uint32_t i = 0; i < nplayers; i++) {
     NetShipExtras ex;
@@ -1394,8 +1612,8 @@ void GLGame::net_apply_extras(Save::Stream &in, const Save::GameState &s) {
         !nx_read(in, ex.time_until_respawn) || !nx_read(in, ex.time_left_invincible) ||
         !nx_read(in, ex.god_ms) || !nx_read(in, ex.shield) ||
         !nx_read(in, ex.warp_count))
-      return;
-    if (it == players->end()) return;
+      return false;
+    if (it == players->end()) return false;
     Ship *ship = (*it)->ship;
 
     // The host moved this ship discontinuously (respawn, teleport, new-level
@@ -1437,10 +1655,14 @@ void GLGame::net_apply_extras(Save::Stream &in, const Save::GameState &s) {
     // (both still function — the host simulates them; only their local
     // visual/audio flourishes are missing).
 
-    if (!nx_read_projectiles(in, *ship)) return;
+    if (!nx_read_projectiles(in, *ship)) return false;
     ++it;
   }
+  return true;
+}
 
+void GLGame::net_apply_keyframe_asteroid_ids(Save::Stream &in,
+                                             const Save::GameState &s) {
   // Asteroids: match by net_id; new ids construct + restore, missing ids
   // play the standard death visual so host-side kills still explode here.
   uint32_t n_ids = 0;
@@ -1612,6 +1834,8 @@ void GLGame::tick(int delta) {
         // the remote ship's controls; don't let the still-held INPUT bits
         // re-arm them 8 ms later — each key must be released and re-pressed.
         net_held_suppress_ = 0xffff;
+        // The world was rebuilt: deltas would reference dead ids.
+        net_force_keyframe_ = true;
       }
       if (is_finished()) {
         // Handing off to an intro: freeze here and give back the delta so no

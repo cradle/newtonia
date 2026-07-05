@@ -23,6 +23,7 @@
 #include "nova_charge_pickup.h"
 #include <SDL.h>
 #include <list>
+#include <map>
 #include <vector>
 #include <string>
 
@@ -117,6 +118,13 @@ private:
   void net_client_send_input();
   void net_apply_state(const Save::GameState &s);
   void net_apply_extras(Save::Stream &in, const Save::GameState &s);
+  // Delta protocol (M2-6): the ship half of the extras is shared between
+  // keyframes and deltas; asteroids arrive as new/dynamic/removed records.
+  bool net_apply_ship_extras(Save::Stream &in, const Save::GameState &s);
+  void net_apply_keyframe_asteroid_ids(Save::Stream &in,
+                                       const Save::GameState &s);
+  void net_apply_delta_asteroids(Save::Stream &in);
+  bool net_send_delta();          // false: too big / not possible -> keyframe
 
   // The lobby bootstraps the client game (constructor + first snapshot's
   // NetExtras) before handing over the state.
@@ -168,6 +176,17 @@ private:
   NetTransport *net_rehost_ = nullptr;  // owned until handed to a session
   bool net_rehost_offer_sent_ = false;
   long net_bytes_sent_ = 0;             // M2-6 bandwidth telemetry window
+
+  // M2-6 delta snapshots: what the client is known to have (reliable
+  // ordered channel = no acks needed). Reset at every keyframe.
+  struct NetAstBase {
+    float px, py, vx, vy;
+    uint8_t health, state;
+    int t;  // current_time when last sent, for the drift check
+  };
+  std::map<uint32_t, NetAstBase> net_known_;
+  int net_slot_ = 0;                    // snapshot slot; every 10th = keyframe
+  bool net_force_keyframe_ = true;      // first send / rejoin / new level
 
   static const int step_size = 8;
 

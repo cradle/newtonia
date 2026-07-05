@@ -21,14 +21,16 @@
 namespace Net {
 
 // 2: per-ship warp count appended to the snapshot NetExtras ship record.
-const uint8_t PROTO_VERSION = 2;
+// 3: MSG_DELTA between 1 Hz keyframes (see NETPLAY.md M2-6).
+const uint8_t PROTO_VERSION = 3;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check
   MSG_WELCOME = 2,         // H->C rel: assigned player_id, timing constants
   MSG_REJECT = 3,          // H->C rel: version/build mismatch, lobby full
   MSG_INPUT = 4,           // C->H unrel: per-tick input state
-  MSG_SNAPSHOT_CHUNK = 5,  // H->C rel: chunked world snapshot, 10 Hz
+  MSG_SNAPSHOT_CHUNK = 5,  // H->C rel: chunked KEYFRAME snapshot, 1 Hz
+  MSG_DELTA = 7,           // H->C rel: between-keyframe delta, 10 Hz
   MSG_EVENT = 6,           // both ways, rel: EventCode below
 };
 

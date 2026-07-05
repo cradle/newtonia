@@ -211,6 +211,14 @@ void delete_save();
 // MAGIC/VERSION header and the save file's path; netplay snapshots call them
 // directly on a MemStream. deserialize_game takes the format version the
 // bytes were written with (current VERSION when omitted).
+// Per-struct serializers, exposed for the netplay delta protocol
+// (NETPLAY.md M2-6): deltas carry individual players and new asteroids
+// in exactly the save format.
+bool write_player(Stream &f, const Player &p);
+bool read_player(Stream &f, Player &p);
+bool write_asteroid(Stream &f, const Asteroid &a);
+bool read_asteroid(Stream &f, Asteroid &a);
+
 bool serialize_game(Stream &out, const GameState &state);
 bool deserialize_game(Stream &in, GameState &state,
                       uint16_t version = GameState::VERSION);

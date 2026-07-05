@@ -76,7 +76,7 @@ static bool read_weapon(Save::Stream &f, Save::WeaponEntry &w) {
     return true;
 }
 
-static bool write_player(Save::Stream &f, const Save::Player &p) {
+bool Save::write_player(Save::Stream &f, const Save::Player &p) {
     if (!wv(f, (int32_t)p.score))           return false;
     if (!wv(f, (int32_t)p.lives))           return false;
     if (!wv(f, (int32_t)p.kills))           return false;
@@ -103,7 +103,7 @@ static bool write_player(Save::Stream &f, const Save::Player &p) {
     return true;
 }
 
-static bool read_player(Save::Stream &f, Save::Player &p) {
+bool Save::read_player(Save::Stream &f, Save::Player &p) {
     int32_t score = 0, lives = 0, kills = 0, kills_this_life = 0;
     if (!rv(f, score) || !rv(f, lives) || !rv(f, kills) || !rv(f, kills_this_life)) return false;
     p.score = score; p.lives = lives; p.kills = kills; p.kills_this_life = kills_this_life;
@@ -136,7 +136,7 @@ static bool read_player(Save::Stream &f, Save::Player &p) {
     return true;
 }
 
-static bool write_asteroid(Save::Stream &f, const Save::Asteroid &a) {
+bool Save::write_asteroid(Save::Stream &f, const Save::Asteroid &a) {
     if (!wv(f, a.pos_x) || !wv(f, a.pos_y)) return false;
     if (!wv(f, a.vel_x) || !wv(f, a.vel_y)) return false;
     if (!wv(f, a.radius) || !wv(f, a.rotation) || !wv(f, a.rotation_speed)) return false;
@@ -184,7 +184,7 @@ static bool write_asteroid(Save::Stream &f, const Save::Asteroid &a) {
     return true;
 }
 
-static bool read_asteroid(Save::Stream &f, Save::Asteroid &a) {
+bool Save::read_asteroid(Save::Stream &f, Save::Asteroid &a) {
     if (!rv(f, a.pos_x) || !rv(f, a.pos_y)) return false;
     if (!rv(f, a.vel_x) || !rv(f, a.vel_y)) return false;
     if (!rv(f, a.radius) || !rv(f, a.rotation) || !rv(f, a.rotation_speed)) return false;

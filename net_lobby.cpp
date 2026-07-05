@@ -285,14 +285,19 @@ void NetLobby::pump_signal(int delta) {
           answer_sent_ = false;
           screen_ = CodeEntry;
         } else if (screen_ == RoomHost) {
+          // fall_back_to_manual deletes signal_ — the poll loop must stop.
           fall_back_to_manual(ev.text.c_str());
+          return;
         }
         break;
       case NetSignal::Event::Closed:
-        if (screen_ == RoomHost && room_code_.empty())
+        if (screen_ == RoomHost && room_code_.empty()) {
           fall_back_to_manual("socket closed before room");
-        else if (screen_ == RoomJoining && room_code_.empty())
+          return;
+        } else if (screen_ == RoomJoining && room_code_.empty()) {
           fall_back_to_manual("socket closed while joining");
+          return;
+        }
         // Later screens no longer need the relay; ignore.
         break;
     }
