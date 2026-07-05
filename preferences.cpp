@@ -111,6 +111,8 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "star_density") == 0) {
         float v = (float)atof(val);
         if (v >= 0.0f) g_prefs.star_density = v;
+    } else if (strcmp(key, "signal_url") == 0) {
+        g_prefs.signal_url = val;
     } else if (strcmp(key, "window_width") == 0) {
         int w = atoi(val);
         if (w > 0) g_prefs.window_width = w;
@@ -208,6 +210,8 @@ void save_preferences() {
     fprintf(f, "rotate_view=%d\n",             g_prefs.rotate_view        ? 1 : 0);
     fprintf(f, "friendly_fire=%d\n",           g_prefs.friendly_fire      ? 1 : 0);
     fprintf(f, "star_density=%.4f\n",           g_prefs.star_density);
+    if (!g_prefs.signal_url.empty())
+        fprintf(f, "signal_url=%s\n",             g_prefs.signal_url.c_str());
     fprintf(f, "window_width=%d\n",            g_prefs.window_width);
     fprintf(f, "window_height=%d\n",           g_prefs.window_height);
 

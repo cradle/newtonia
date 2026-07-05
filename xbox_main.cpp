@@ -227,7 +227,10 @@ int main(int argc, char *argv[])
         // M2 room-code relay self-test (needs a live signal server:
         // wrangler dev locally, or NEWTONIA_SIGNAL_URL to point elsewhere).
         const char *ss = SDL_getenv("NEWTONIA_SIGNAL_SELFTEST");
+        // (load_preferences runs later in normal startup; the selftest
+        // resolves the relay URL now, so honour the INI override here.)
         if (ss && ss[0] == '1' && ss[1] == '\0') {
+            load_preferences();
             SDL_Log("NEWTONIA_SIGNAL_SELFTEST: running relay self-test...");
             bool ok = net_signal_selftest();
             SDL_Log(ok ? "SIGNAL SELFTEST PASS" : "SIGNAL SELFTEST FAIL");

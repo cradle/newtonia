@@ -4,6 +4,7 @@
 // net_signal_web.cpp).
 
 #include "net_signal.h"
+#include "preferences.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +23,9 @@ std::string net_signal_url() {
 #endif
   const char *env = getenv("NEWTONIA_SIGNAL_URL");
   if (env && env[0]) return env;
+  // M2 decision: the baked default is overridable via `signal_url` in the
+  // preferences INI (self-hosted relays; the env var stays the dev override).
+  if (!g_prefs.signal_url.empty()) return g_prefs.signal_url;
   return SIGNAL_URL_DEFAULT;
 }
 

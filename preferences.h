@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 // User preferences persisted to an INI file in the SDL pref path.
 // Each setting has a sensible default; missing keys in the file are silently
 // ignored so old preference files remain valid after new settings are added.
@@ -45,6 +47,7 @@ struct Preferences {
     int  window_width        = 800;    // last windowed resolution (desktop only)
     int  window_height       = 600;
     float star_density       = 1.0f;   // star-count multiplier; user-editable in INI
+    std::string signal_url;            // netplay room server override (empty = baked default)
     PlayerKeys  p1_keys;          // player 1 keyboard bindings (p1 defaults)
     PlayerKeys  p2_keys;          // player 2 keyboard bindings (p2 defaults set in ctor)
     GeneralKeys general_keys;

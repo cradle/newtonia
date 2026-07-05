@@ -360,9 +360,11 @@ int main(int argc, char* argv[]) {
       return ok ? 0 : 1;
     }
     // Same idea for the M2 room-code relay (needs a live signal server:
-    // wrangler dev locally, or NEWTONIA_SIGNAL_URL to point elsewhere).
+    // wrangler dev locally, or NEWTONIA_SIGNAL_URL / the preferences INI's
+    // signal_url to point elsewhere).
     const char *ss = SDL_getenv("NEWTONIA_SIGNAL_SELFTEST");
     if (ss && ss[0] == '1' && ss[1] == '\0') {
+      load_preferences();  // net_signal_url() honours the INI override
       std::cout << "NEWTONIA_SIGNAL_SELFTEST: running relay self-test..." << std::endl;
       bool ok = net_signal_selftest();
       std::cout << (ok ? "SIGNAL SELFTEST PASS" : "SIGNAL SELFTEST FAIL") << std::endl;
