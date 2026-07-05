@@ -1182,10 +1182,11 @@ void GLGame::draw_net_overlays() const {
 
   if (net_connection_lost_ && net_mode_ == NetHost && net_signal_) {
     // Rejoinable loss: the game continues — a quiet notice, not a card.
+    // The room line stays steady (no blink): the host may be reading the
+    // code out to the other player.
     Typer::draw_centered(0, vh * 0.72f, "PLAYER 2 DISCONNECTED", 16);
     std::string room = "ROOM " + net_room_code_ + " OPEN - THEY CAN REJOIN";
-    if ((current_time / 700) % 2 == 0)
-      Typer::draw_centered(0, vh * 0.72f - 40, room.c_str(), 12);
+    Typer::draw_centered(0, vh * 0.72f - 40, room.c_str(), 12);
   } else if (net_connection_lost_) {
     Typer::draw_centered(0, 60, "CONNECTION LOST", 34);
     if ((current_time / 700) % 2 == 0)
