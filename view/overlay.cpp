@@ -260,8 +260,12 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     }
   } else {
     float vhb = -Typer::scaled_window_height/glgame->num_y_viewports();
+    // Keep these clear of the bottom edge: Typer glyphs extend ~2x the
+    // size below their anchor, so a small offset puts the text on the
+    // title-safe boundary (an Xbox-compliance problem, and clipped-looking
+    // on desktop where the safe area IS the screen edge).
     if(glgame->friendly_fire) {
-      Typer::draw_centered(0, vhb+30, "friendly fire on", 8);
+      Typer::draw_centered(0, vhb+55, "friendly fire on", 8);
     }
     // Label the key this ship actually has bound — online the client's
     // local ship is player 2 in the list but plays with player-1 keys.
@@ -269,10 +273,10 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
       char hint[48];
       if(glship->show_help) {
         key_hint(glship->help_key, hint, sizeof(hint), "hide");
-        Typer::draw_centered(0, vhb+60, hint, 8);
+        Typer::draw_centered(0, vhb+85, hint, 8);
       } else if ((glgame->current_time)/12000 % 2) {
         key_hint(glship->help_key, hint, sizeof(hint), "show");
-        Typer::draw_centered(0, vhb+60, hint, 8);
+        Typer::draw_centered(0, vhb+85, hint, 8);
       }
     }
   }
