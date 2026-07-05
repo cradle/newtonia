@@ -69,6 +69,7 @@ private:
   void fall_back_to_manual(const char *why);
   void code_entry_key(unsigned char key);
   void schedule_rejoin_retry(const char *why, int delay_ms);
+  void retry_join();  // abandon current attempt -> empty join screen
 public:
   // M3-1 auto-rejoin: skip Choose and join the known room immediately.
   explicit NetLobby(const std::string &rejoin_code);

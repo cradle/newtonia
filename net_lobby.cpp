@@ -198,17 +198,25 @@ void NetLobby::confirm() {
   } else if (screen_ == LobbyFailed) {
     // TRY AGAIN after a failed JOIN goes straight back to an empty join
     // screen; only a failed HOST attempt returns to the chooser.
-    bool was_joining = !hosting_ || rejoin_mode_;
-    reset_to_choose();
-    if (was_joining) {
-      selection_ = 1;
-      confirm();  // -> CodeEntry with fresh transport/signal
-      // The code that just failed is likely still on the clipboard —
-      // don't auto-join it again; the player types (or re-pastes) anew.
-      code_clip_pending_ = false;
-      code_entry_.clear();
+    if (!hosting_ || rejoin_mode_) {
+      retry_join();
+    } else {
+      reset_to_choose();
     }
   }
+}
+
+// Abandon the current attempt and land on an EMPTY join screen with a
+// fresh transport/signal. Used by TRY AGAIN and the joining-screen
+// CANCEL band.
+void NetLobby::retry_join() {
+  reset_to_choose();
+  selection_ = 1;
+  confirm();  // -> CodeEntry
+  // The code that just failed (or is being cancelled) is likely still on
+  // the clipboard — don't auto-join it again.
+  code_clip_pending_ = false;
+  code_entry_.clear();
 }
 
 // The signal server never answered (or refused the room): keep the pair
@@ -833,6 +841,13 @@ void NetLobby::draw() {
       Typer::draw_centered(0, y - (int)i * line, lines[i].c_str(), sz);
   }
 
+  // Joiner waiting screens: a CANCEL band (touch) above the return band —
+  // the join can be abandoned at any time back to an empty code entry.
+  if (is_touch_mode() && !hosting_ &&
+      (screen_ == RoomJoining || screen_ == Connected ||
+       (screen_ == WaitConnect && signal_)))
+    Typer::draw_centered(0, -280, "CANCEL", 22);
+
   if (status_ms_ > 0 && !status_.empty()) {
     // Touch code entry: the usual status spot is behind the soft
     // keyboard; tuck it under the hint line instead.
@@ -964,6 +979,14 @@ void NetLobby::touch_tap(float nx, float ny) {
   float vy = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
   if (vy < -370.0f) {
     leave_to_menu();
+    return;
+  }
+  // CANCEL band on the joiner waiting screens (drawn at y=-280).
+  if (!hosting_ &&
+      (screen_ == RoomJoining || screen_ == Connected ||
+       (screen_ == WaitConnect && signal_)) &&
+      vy <= -230.0f) {
+    retry_join();
     return;
   }
   switch (screen_) {
