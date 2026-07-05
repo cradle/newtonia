@@ -149,6 +149,7 @@ private:
   // whose respawn reset() also drops held keys until re-pressed.
   uint16_t net_held_suppress_ = 0;
   Net::SnapshotAssembler *net_assembler_ = nullptr;  // client chunk reassembly
+  bool net_ids_adopted_ = false;  // client: bootstrap id adoption ran
 
   // Phase 8 polish (see NETPLAY.md)
   void net_send_event(uint8_t code, uint32_t arg = 0);

@@ -1671,6 +1671,24 @@ void GLGame::net_apply_keyframe_asteroid_ids(Save::Stream &in,
   // play the standard death visual so host-side kills still explode here.
   uint32_t n_ids = 0;
   if (!nx_read(in, n_ids)) return;
+
+  // Bootstrap: the constructor just built these asteroids from this very
+  // snapshot, in the same order as this id array — adopt the host ids in
+  // place. The old path replaced every asteroid and killed the originals,
+  // which flashed their score values (debris) for a second on every join.
+  if (!net_ids_adopted_) {
+    net_ids_adopted_ = true;
+    if (n_ids == objects->size() && n_ids == s.asteroids.size()) {
+      size_t i = 0;
+      std::vector<uint32_t> ids_tmp(n_ids);
+      for (uint32_t k = 0; k < n_ids; k++)
+        if (!nx_read(in, ids_tmp[k])) return;
+      for (auto *a : *objects) a->net_id = ids_tmp[i++];
+      printf("net: bootstrap adopted %u asteroid ids\n", n_ids);
+      fflush(stdout);
+      return;
+    }
+  }
   std::vector<uint32_t> ids(n_ids);
   for (uint32_t i = 0; i < n_ids; i++)
     if (!nx_read(in, ids[i])) return;
