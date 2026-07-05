@@ -126,6 +126,18 @@ jobs:
           otool -L ./newtonia | grep -q libdatachannel
           NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia
           make clean
+
+          # Universal netplay bundle: fat deps (MbedTLS — Homebrew OpenSSL
+          # is single-arch), `make osx NETPLAY=1`, both architectures
+          # asserted, self-test run from inside the bundle so the embedded
+          # Frameworks/libdatachannel.dylib is what actually loads.
+          ./build_netplay_deps.sh --universal netplay-libs-uni
+          make osx NETPLAY=1 NETPLAY_PREFIX=$PWD/netplay-libs-uni
+          lipo -info newtonia | grep arm64 | grep -q x86_64
+          lipo -info Newtonia.app/Contents/Frameworks/libdatachannel.*.dylib | grep arm64 | grep -q x86_64
+          NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./Newtonia.app/Contents/MacOS/Newtonia
+          rm -rf Newtonia.app newtonia-arm64 newtonia-x86_64
+          make clean
           mv newtonia-universal newtonia
 
       - name: Import Developer ID certificate

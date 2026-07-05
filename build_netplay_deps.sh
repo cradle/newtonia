@@ -5,12 +5,25 @@
 #   ./build_netplay_deps.sh              # installs into ./netplay-libs
 #   make NETPLAY=1 NETPLAY_PREFIX=$PWD/netplay-libs
 #
+# macOS universal (arm64 + x86_64, for `make osx NETPLAY=1`):
+#   ./build_netplay_deps.sh --universal   # installs into ./netplay-libs
+# Universal builds use MbedTLS (built here, fat) instead of Homebrew's
+# OpenSSL, which only ships the machine's own architecture.
+#
 # Requirements: git, cmake (brew install cmake), and OpenSSL headers
 # (macOS: brew install openssl@3 — auto-detected below; Linux: libssl-dev).
 set -e
 
+UNIVERSAL=0
+if [ "${1:-}" = "--universal" ]; then
+  UNIVERSAL=1
+  shift
+fi
+
+ROOT="$PWD"
 PREFIX="${1:-$PWD/netplay-libs}"
-TAG=v0.24.5   # keep in lockstep with xbox/CMakeLists.txt (see NETPLAY.md)
+TAG=v0.24.5           # keep in lockstep with xbox/CMakeLists.txt (see NETPLAY.md)
+MBEDTLS_TAG=v3.6.6    # same pin as the Windows FetchContent build
 
 SRC="$(mktemp -d)/libdatachannel"
 echo "== cloning libdatachannel $TAG"
@@ -18,16 +31,45 @@ git clone --branch "$TAG" --depth 1 --recurse-submodules --shallow-submodules \
   https://github.com/paullouisageneau/libdatachannel.git "$SRC"
 
 EXTRA=()
-# Pin the target arch to the running machine: an Intel-homebrew cmake or a
-# Rosetta terminal otherwise builds an x86_64 dylib on Apple Silicon, and
-# the game link fails with "undefined symbols for architecture arm64".
-if [ "$(uname)" = "Darwin" ]; then
-  EXTRA+=("-DCMAKE_OSX_ARCHITECTURES=$(uname -m)")
-fi
-if command -v brew > /dev/null 2>&1; then
-  # Homebrew's OpenSSL is keg-only; point CMake at it explicitly.
-  if brew --prefix openssl@3 > /dev/null 2>&1; then
-    EXTRA+=("-DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)")
+if [ "$UNIVERSAL" = "1" ]; then
+  [ "$(uname)" = "Darwin" ] || { echo "--universal is macOS-only"; exit 1; }
+  ARCHS="arm64;x86_64"
+  # MbedTLS needs the DTLS-SRTP API compiled in for libdatachannel even
+  # with NO_MEDIA (the same fix as the Windows build) — the user config
+  # header defines MBEDTLS_SSL_DTLS_SRTP for library and consumer alike.
+  UCFG="-DMBEDTLS_USER_CONFIG_FILE=\"$ROOT/xbox/mbedtls_user_config.h\""
+
+  MTLS="$(dirname "$SRC")/mbedtls"
+  echo "== cloning mbedtls $MBEDTLS_TAG"
+  git clone --branch "$MBEDTLS_TAG" --depth 1 --recurse-submodules --shallow-submodules \
+    https://github.com/Mbed-TLS/mbedtls.git "$MTLS"
+  echo "== building mbedtls (universal)"
+  cmake -B "$MTLS/build" -S "$MTLS" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_OSX_ARCHITECTURES="$ARCHS" \
+    -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF \
+    -DCMAKE_C_FLAGS="$UCFG" \
+    -DCMAKE_INSTALL_PREFIX="$PREFIX"
+  cmake --build "$MTLS/build" -j"$(getconf _NPROCESSORS_ONLN)"
+  cmake --install "$MTLS/build"
+
+  EXTRA+=("-DCMAKE_OSX_ARCHITECTURES=$ARCHS"
+          "-DUSE_MBEDTLS=ON"
+          "-DCMAKE_PREFIX_PATH=$PREFIX"
+          "-DCMAKE_C_FLAGS=$UCFG"
+          "-DCMAKE_CXX_FLAGS=$UCFG")
+else
+  # Pin the target arch to the running machine: an Intel-homebrew cmake or a
+  # Rosetta terminal otherwise builds an x86_64 dylib on Apple Silicon, and
+  # the game link fails with "undefined symbols for architecture arm64".
+  if [ "$(uname)" = "Darwin" ]; then
+    EXTRA+=("-DCMAKE_OSX_ARCHITECTURES=$(uname -m)")
+  fi
+  if command -v brew > /dev/null 2>&1; then
+    # Homebrew's OpenSSL is keg-only; point CMake at it explicitly.
+    if brew --prefix openssl@3 > /dev/null 2>&1; then
+      EXTRA+=("-DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)")
+    fi
   fi
 fi
 

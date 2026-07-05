@@ -30,8 +30,6 @@ ifeq ($(NETPLAY),1)
   endif
 endif
 
-OSX_LIBS = -framework GLUT -framework OpenGL -framework AppKit $(SDL2_LIBS)
-OSX_CFLAGS = $(CFLAGS) -std=c++11 -arch arm64 -arch x86_64
 CFLAGS += -MMD -MP
 COMPILE = $(CC) $(CFLAGS) -c
 OBJFILES := $(patsubst %.cpp,%.o,$(ALL_SRCS))
@@ -54,8 +52,36 @@ flavor.stamp: FORCE
 	@[ "`cat flavor.stamp 2>/dev/null`" = "$(FLAVOR)" ] || echo "$(FLAVOR)" > flavor.stamp
 $(OBJFILES): flavor.stamp
 
-osx: $(OBJFILES)
-	CFLAGS="$(OSX_CFLAGS)" $(CC) -o newtonia $(OBJFILES) $(OSX_LIBS)
+# --- macOS universal bundle ----------------------------------------------
+# Two whole-program compiles (arm64 + x86_64) lipo'd together, mirroring
+# the CI recipe. The x86_64 half links against the Rosetta Homebrew tree
+# (/usr/local) — install it plus sdl2/sdl2_mixer there for local universal
+# builds. With NETPLAY=1 the prefix must hold a UNIVERSAL libdatachannel:
+#   ./build_netplay_deps.sh --universal
+# and the dylib is embedded in the bundle at Contents/Frameworks.
+OSX_SDL_ARM ?= /opt/homebrew
+OSX_SDL_X86 ?= /usr/local
+OSX_MIN = -mmacosx-version-min=12.0
+ifeq ($(NETPLAY),1)
+  OSX_NET_CFLAGS = -DNEWTONIA_NET_RTC -I$(NETPLAY_PREFIX)/include
+  OSX_NET_LIBS = -L$(NETPLAY_PREFIX)/lib -ldatachannel \
+                 -Wl,-rpath,@executable_path/../Frameworks \
+                 -Wl,-rpath,$(NETPLAY_PREFIX)/lib
+endif
+
+newtonia-arm64: OSX_SDL = $(OSX_SDL_ARM)
+newtonia-x86_64: OSX_SDL = $(OSX_SDL_X86)
+newtonia-arm64 newtonia-x86_64: FORCE
+	$(CC) -O3 -Wall -std=c++11 -arch $(patsubst newtonia-%,%,$@) $(OSX_MIN) \
+	  -DGL_SILENCE_DEPRECATION -Wno-char-subscripts $(OSX_NET_CFLAGS) \
+	  -I$(OSX_SDL)/include/SDL2 -D_THREAD_SAFE \
+	  -o $@ $(ALL_SRCS) macos_window.mm \
+	  -L$(OSX_SDL)/lib -lSDL2 -lSDL2_mixer $(OSX_NET_LIBS) \
+	  -framework GLUT -framework OpenGL -framework AppKit
+
+osx: newtonia-arm64 newtonia-x86_64
+	lipo -create -output newtonia newtonia-arm64 newtonia-x86_64
+	lipo -info newtonia
 	mkdir -p Newtonia.app/Contents/MacOS
 	mkdir -p Newtonia.app/Contents/Resources
 	cp newtonia Newtonia.app/Contents/MacOS/Newtonia
@@ -63,12 +89,16 @@ osx: $(OBJFILES)
 	cp -r audio Newtonia.app/Contents/Resources/audio
 	cp icon.icns Newtonia.app/Contents/Resources/icon.icns
 	sed 's/$${EXECUTABLE_NAME}/Newtonia/g' Newtonia-Info.plist > Newtonia.app/Contents/Info.plist
+ifeq ($(NETPLAY),1)
+	mkdir -p Newtonia.app/Contents/Frameworks
+	cp $(NETPLAY_PREFIX)/lib/libdatachannel.*.dylib Newtonia.app/Contents/Frameworks/
+endif
 
 newtonia: $(OBJFILES)
 	$(CC) -o newtonia $(OBJFILES) $(LIBS)
 
 clean:
-	rm -rf $(OBJFILES) $(DEPFILES) newtonia flavor.stamp
+	rm -rf $(OBJFILES) $(DEPFILES) newtonia newtonia-arm64 newtonia-x86_64 flavor.stamp
 
 # ============================================================
 # Web / Emscripten target
