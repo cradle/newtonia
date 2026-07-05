@@ -74,7 +74,17 @@ public:
 private:
   void open(const std::string &full_url) {
     close();
-    ws_ = rtcCreateWebSocket(full_url.c_str());
+    // TLS verification must be disabled explicitly: libdatachannel cannot
+    // reach any OS trust store through MbedTLS (the wss:// handshake to the
+    // relay fails instantly with VERIFY_REQUIRED and no CA), and upstream
+    // already hard-disables verification on Windows for the same reason.
+    // The C API has no CA-file field, so this matches that behaviour on
+    // every platform. Game-channel security is unaffected — the WebRTC
+    // DTLS handshake authenticates via SDP fingerprints, not this socket.
+    rtcWsConfiguration cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.disableTlsVerification = true;
+    ws_ = rtcCreateWebSocketEx(full_url.c_str(), &cfg);
     if (ws_ < 0) {
       closed_flag_ = true;
       return;
