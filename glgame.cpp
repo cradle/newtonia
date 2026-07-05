@@ -1140,18 +1140,25 @@ void GLGame::draw_net_overlays() const {
   mat4_ortho(ortho, -hw, hw, -hh, hh, -1.0f, 1.0f);
   gles2_set_vp(ortho);
 
+  // Typer scales all coordinates by Typer::scale (the 800x600-based virtual
+  // HUD space every Overlay position lives in) — pixel-derived positions
+  // like hh*0.72 only line up when the window happens to be near 800x600
+  // and drift offscreen in fullscreen. Position in virtual units instead;
+  // vh is the virtual half-height (the top of the title-safe area).
+  float vh = Typer::scaled_window_height;
+
   if (net_connection_lost_ && net_mode_ == NetHost && net_signal_) {
     // Rejoinable loss: the game continues — a quiet notice, not a card.
-    Typer::draw_centered(0, hh * 0.72f, "PLAYER 2 DISCONNECTED", 16);
+    Typer::draw_centered(0, vh * 0.72f, "PLAYER 2 DISCONNECTED", 16);
     std::string room = "ROOM " + net_room_code_ + " OPEN - THEY CAN REJOIN";
     if ((current_time / 700) % 2 == 0)
-      Typer::draw_centered(0, hh * 0.72f - 40, room.c_str(), 12);
+      Typer::draw_centered(0, vh * 0.72f - 40, room.c_str(), 12);
   } else if (net_connection_lost_) {
     Typer::draw_centered(0, 60, "CONNECTION LOST", 34);
     if ((current_time / 700) % 2 == 0)
       Typer::draw_centered(0, -80, "PRESS FIRE FOR MENU", 16);
   } else if (net_banner_ms_ > 0) {
-    Typer::draw_centered(0, hh * 0.55f, net_banner_text_.c_str(), 22);
+    Typer::draw_centered(0, vh * 0.55f, net_banner_text_.c_str(), 22);
   }
 }
 
