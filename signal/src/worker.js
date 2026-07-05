@@ -15,7 +15,7 @@
 // reopens when the joiner disconnects (Milestone 2 rejoin); the room dies
 // when the host disconnects or after ROOM_TTL_MS.
 
-const CODE_ALPHABET = "ABCDEGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I (confusable) or F (game fullscreen key)
+const CODE_ALPHABET = "ABCDEGHJKLMNPQRTUVWXYZ2346789"; // no 0/O/1/I/5/S (confusable in the game font) or F (game fullscreen key)
 const CODE_LEN = 5;
 const ROOM_TTL_MS = 2 * 60 * 60 * 1000;
 

@@ -64,8 +64,8 @@ public:
 std::string net_signal_url();
 
 // The room code alphabet (shared with signal/src/worker.js): 5 chars,
-// no 0/O/1/I (confusable) or F (fullscreen key). Used by the lobby's
-// code-entry screen.
+// no 0/O/1/I/5/S (confusable in the game font) or F (fullscreen key).
+// Used by the lobby's code-entry screen.
 bool net_room_code_char_ok(char c);
 const int NET_ROOM_CODE_LEN = 5;
 
