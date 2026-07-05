@@ -40,6 +40,9 @@ ifeq ($(UNAME), Darwin)
 endif
 DEPFILES := $(OBJFILES:.o=.d)
 
+
+all: newtonia
+
 # Flavor stamp: the netplay seam files compile to EMPTY translation units
 # without NEWTONIA_NET_RTC, so switching NETPLAY on or off between builds
 # must rebuild everything — otherwise stale objects from the other flavor
@@ -50,8 +53,6 @@ FORCE: ;
 flavor.stamp: FORCE
 	@[ "`cat flavor.stamp 2>/dev/null`" = "$(FLAVOR)" ] || echo "$(FLAVOR)" > flavor.stamp
 $(OBJFILES): flavor.stamp
-
-all: newtonia
 
 osx: $(OBJFILES)
 	CFLAGS="$(OSX_CFLAGS)" $(CC) -o newtonia $(OBJFILES) $(OSX_LIBS)
