@@ -767,8 +767,12 @@ void NetLobby::draw() {
       Typer::draw_centered(0, y - (int)i * line, lines[i].c_str(), sz);
   }
 
-  if (status_ms_ > 0 && !status_.empty())
-    Typer::draw_centered(0, -320, status_.c_str(), 15);
+  if (status_ms_ > 0 && !status_.empty()) {
+    // Touch code entry: the usual status spot is behind the soft
+    // keyboard; tuck it under the hint line instead.
+    int sy = (is_touch_mode() && screen_ == CodeEntry) ? 20 : -320;
+    Typer::draw_centered(0, sy, status_.c_str(), 15);
+  }
 
   // Touch: the bottom strip is a tap zone (see touch_tap), so label it as
   // an action rather than a key hint.
@@ -793,7 +797,7 @@ void NetLobby::keyboard(unsigned char key, int x, int y) {
 }
 
 // Room-code typing: letters/digits from the code alphabet, backspace,
-// Enter to submit. Runs INSTEAD of the shortcut keys — V, C, W and S are
+// Enter to submit. Runs INSTEAD of the shortcut keys — V, C and W are
 // all valid code characters.
 void NetLobby::code_entry_key(unsigned char key) {
   if (key == '\r' || key == '\n') {
@@ -804,6 +808,8 @@ void NetLobby::code_entry_key(unsigned char key) {
     if (!code_entry_.empty()) code_entry_.erase(code_entry_.size() - 1);
     return;
   }
+  bool alnum = (key >= 'a' && key <= 'z') || (key >= 'A' && key <= 'Z') ||
+               (key >= '0' && key <= '9');
   if (code_entry_.size() < (size_t)NET_ROOM_CODE_LEN &&
       net_room_code_char_ok((char)key)) {
     char c = (char)key;
@@ -811,6 +817,11 @@ void NetLobby::code_entry_key(unsigned char key) {
     code_entry_ += c;
     // Codes are fixed-length: join the moment the last slot fills.
     if (code_entry_.size() == (size_t)NET_ROOM_CODE_LEN) confirm();
+  } else if (alnum && code_entry_.size() < (size_t)NET_ROOM_CODE_LEN) {
+    // Deliberately absent from the code alphabet: 0/O, 1/I and 5/S are
+    // confusable in the game font, F is the fullscreen key. Say so
+    // instead of silently eating the keystroke.
+    set_status("CODES NEVER USE 0 O 1 I 5 S OR F");
   }
 }
 
