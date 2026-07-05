@@ -32,6 +32,7 @@ public:
       Answer,     // text = answer SDP (host)
       PeerJoin,   // a joiner entered the room (host)
       PeerLeave,  // the joiner left the room (host)
+      Ice,        // text = "urls\nusername\ncredential" (one per server)
       Error,      // text = reason ("no-such-room", "room-full", "expired")
       Closed,     // socket closed / connect failed
     };

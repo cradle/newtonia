@@ -121,6 +121,15 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
   ev.text.clear();
   if (t == "room")   { ev.kind = NetSignal::Event::Room;   return json_field(frame, "code", ev.text); }
   if (t == "joined") { ev.kind = NetSignal::Event::Joined; return true; }
+  if (t == "ice") {
+    std::string u, n, p;
+    if (!json_field(frame, "urls", u)) return false;
+    json_field(frame, "username", n);
+    json_field(frame, "credential", p);
+    ev.kind = NetSignal::Event::Ice;
+    ev.text = u + "\n" + n + "\n" + p;
+    return true;
+  }
   if (t == "offer")  { ev.kind = NetSignal::Event::Offer;  return json_field(frame, "sdp", ev.text); }
   if (t == "answer") { ev.kind = NetSignal::Event::Answer; return json_field(frame, "sdp", ev.text); }
   if (t == "err")    { ev.kind = NetSignal::Event::Error;  json_field(frame, "reason", ev.text); return true; }

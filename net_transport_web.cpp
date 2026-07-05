@@ -18,6 +18,7 @@
 #ifdef __EMSCRIPTEN__
 
 #include "net_transport.h"
+#include "net_signal.h"
 
 #include <emscripten.h>
 
@@ -58,8 +59,9 @@ EM_JS(void, nw_init, (), {
     },
 
     _pc: function(c) {
-      var pc = new RTCPeerConnection(
-          { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      var servers = [{ urls: 'stun:stun.l.google.com:19302' }];
+      if (Module.__nwice) servers = servers.concat(Module.__nwice);
+      var pc = new RTCPeerConnection({ iceServers: servers });
       pc.onicegatheringstatechange = function() {
         // Non-trickle: expose the SDP once every candidate is in it.
         if (pc.iceGatheringState === 'complete' && pc.localDescription &&
@@ -218,7 +220,35 @@ EM_JS(void, nw_clip_copy, (char *buf, int len), {
 });
 // clang-format on
 
+EM_JS(void, nwnet_set_ice, (const char *json), {
+  try { Module.__nwice = JSON.parse(UTF8ToString(json)); } catch (e) {}
+});
+
 class WebTransport : public NetTransport {
+public:
+  // Triples "urls\nuser\ncred" -> RTCIceServer objects, applied to every
+  // peer connection created after this call (Module.__nwice).
+  void set_ice_servers(const std::vector<std::string> &servers) override {
+    std::string json = "[";
+    for (size_t i = 0; i < servers.size(); i++) {
+      const std::string &s = servers[i];
+      size_t a = s.find('\n');
+      size_t b = a == std::string::npos ? a : s.find('\n', a + 1);
+      std::string urls = s.substr(0, a);
+      std::string user = a == std::string::npos ? "" :
+          s.substr(a + 1, b == std::string::npos ? std::string::npos : b - a - 1);
+      std::string cred = b == std::string::npos ? "" : s.substr(b + 1);
+      if (i) json += ",";
+      json += "{\"urls\":\"" + NetSig::json_escape(urls) + "\"";
+      if (!user.empty())
+        json += ",\"username\":\"" + NetSig::json_escape(user) +
+                "\",\"credential\":\"" + NetSig::json_escape(cred) + "\"";
+      json += "}";
+    }
+    json += "]";
+    nwnet_set_ice(json.c_str());
+  }
+
 public:
   WebTransport() {
     nw_init();

@@ -30,6 +30,29 @@ const char *STUN_SERVER = "stun:stun.l.google.com:19302";
 
 class RtcTransport : public NetTransport {
 public:
+  void set_ice_servers(const std::vector<std::string> &servers) override {
+    // Each entry is "urls\nusername\ncredential" (Cloudflare Calls TURN via
+    // the signal relay). libdatachannel takes credentials embedded in the
+    // URL: turn:USER:PASS@host:port?transport=udp
+    ice_extra_.clear();
+    for (size_t i = 0; i < servers.size(); i++) {
+      const std::string &s = servers[i];
+      size_t a = s.find('\n');
+      if (a == std::string::npos) { ice_extra_.push_back(s); continue; }
+      size_t b = s.find('\n', a + 1);
+      std::string urls = s.substr(0, a);
+      std::string user = s.substr(a + 1, b == std::string::npos ? std::string::npos : b - a - 1);
+      std::string cred = b == std::string::npos ? "" : s.substr(b + 1);
+      size_t scheme = urls.find(':');
+      if (scheme == std::string::npos || user.empty()) {
+        ice_extra_.push_back(urls);
+      } else {
+        ice_extra_.push_back(urls.substr(0, scheme + 1) + user + ":" + cred +
+                             "@" + urls.substr(scheme + 1));
+      }
+    }
+  }
+
   RtcTransport()
       : pc_(-1), dc_rel_(-1), dc_unrel_(-1),
         rel_open_(false), unrel_open_(false),
@@ -143,8 +166,12 @@ private:
   void open_peer() {
     rtcConfiguration config;
     std::memset(&config, 0, sizeof(config));
-    config.iceServers = &STUN_SERVER;
-    config.iceServersCount = 1;
+    ice_ptrs_.clear();
+    ice_ptrs_.push_back(STUN_SERVER);
+    for (size_t i = 0; i < ice_extra_.size(); i++)
+      ice_ptrs_.push_back(ice_extra_[i].c_str());
+    config.iceServers = &ice_ptrs_[0];
+    config.iceServersCount = (int)ice_ptrs_.size();
 
     pc_ = rtcCreatePeerConnection(&config);
     if (pc_ < 0) {
@@ -237,6 +264,8 @@ private:
 
   int pc_;
   int dc_rel_, dc_unrel_;
+  std::vector<std::string> ice_extra_;   // composed turn: URLs
+  std::vector<const char *> ice_ptrs_;
 
   std::atomic<bool> rel_open_, unrel_open_;
   mutable std::atomic<bool> desc_ready_;

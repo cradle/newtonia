@@ -27,6 +27,14 @@ class NetTransport {
 public:
   virtual ~NetTransport() {}
 
+  // Extra ICE servers (TURN) for this connection, as "urls\nuser\ncred"
+  // triples from the signal relay. Must be called BEFORE start_host()/
+  // start_join() — the peer connection is configured at creation. Default
+  // no-op: backends without TURN support just stay STUN-only.
+  virtual void set_ice_servers(const std::vector<std::string>& servers) {
+    (void)servers;
+  }
+
   virtual void start_host() = 0;
   virtual void start_join(const std::string& remote_offer) = 0;
 

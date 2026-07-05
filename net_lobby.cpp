@@ -102,12 +102,14 @@ void NetLobby::confirm() {
     }
     signal_ = NetSignal::create();
     if (hosting_) {
-      transport_->start_host();
       if (signal_) {
+        // start_host() waits for the Room frame: the relay sends the TURN
+        // credentials first, and ICE servers bind at pc creation.
         signal_->connect_host(net_signal_url());
         signal_wait_ms_ = 0;
         screen_ = RoomHost;
       } else {
+        transport_->start_host();
         screen_ = HostGathering;
       }
     } else {
@@ -141,6 +143,7 @@ void NetLobby::fall_back_to_manual(const char *why) {
     signal_ = nullptr;
   }
   set_status("NO ROOM SERVER - USING MANUAL CODES");
+  if (hosting_ && transport_) transport_->start_host();  // was deferred
   screen_ = hosting_ ? HostGathering : JoinWaitOffer;
 }
 
@@ -230,10 +233,18 @@ void NetLobby::pump_signal(int delta) {
   NetSignal::Event ev;
   while (signal_->poll(ev)) {
     switch (ev.kind) {
+      case NetSignal::Event::Ice:
+        ice_servers_.push_back(ev.text);
+        break;
       case NetSignal::Event::Room:
         room_code_ = ev.text;
-        printf("[lobby] room %s\n", room_code_.c_str());
+        printf("[lobby] room %s (%d turn servers)\n", room_code_.c_str(),
+               (int)ice_servers_.size());
         fflush(stdout);
+        if (transport_) {
+          transport_->set_ice_servers(ice_servers_);
+          transport_->start_host();  // deferred from confirm()
+        }
         break;
       case NetSignal::Event::Joined:
         room_code_ = code_entry_;  // acked — also disarms the timeout below
@@ -249,8 +260,10 @@ void NetLobby::pump_signal(int delta) {
         // Live relay: both ends are online, so the full offer applies and
         // ICE starts on both sides at once (no strip_ice_candidates — that
         // trick belongs to the clipboard flow's human-latency gap).
-        if (!hosting_ && screen_ == RoomJoining && transport_)
+        if (!hosting_ && screen_ == RoomJoining && transport_) {
+          transport_->set_ice_servers(ice_servers_);
           transport_->start_join(ev.text);
+        }
         break;
       case NetSignal::Event::Answer:
         if (hosting_ && transport_) {
@@ -353,7 +366,7 @@ void NetLobby::tick(int delta) {
           session_ = nullptr;
           GLGame *game = new GLGame(session, (SDL_GameController *)0);
           if (signal_) {
-            game->net_adopt_signal(signal_, room_code_);
+            game->net_adopt_signal(signal_, room_code_, ice_servers_);
             signal_ = nullptr;
           }
           request_state_change(game);

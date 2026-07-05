@@ -21,6 +21,7 @@
 #include <SDL.h>
 
 #include <string>
+#include <vector>
 
 #include "net_session.h"
 #include "state.h"
@@ -75,6 +76,7 @@ private:
   NetSession *session_;      // owned
   NetSignal *signal_;        // owned; null in manual fallback
   std::string room_code_;    // host: assigned code
+  std::vector<std::string> ice_servers_;  // TURN triples from the relay
   std::string code_entry_;   // joiner: code being typed
   bool offer_sent_;          // host: offer pushed to the room
   bool answer_sent_;         // joiner: answer pushed to the room

@@ -26,6 +26,35 @@ function random_code() {
   return code;
 }
 
+// Short-lived Cloudflare Calls TURN credentials, minted per connection.
+// Configured via secrets (wrangler secret put TURN_KEY_ID / TURN_API_TOKEN);
+// without them this returns [] and the game stays STUN-only.
+async function turn_ice_servers(env) {
+  if (!env.TURN_KEY_ID || !env.TURN_API_TOKEN) return [];
+  try {
+    const resp = await fetch(
+        `https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${env.TURN_API_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ ttl: 2 * 60 * 60 }),
+        });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    const s = data.iceServers;
+    if (!s || !s.urls) return [];
+    const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+    return urls.map((u) => ({
+      urls: u, username: s.username, credential: s.credential,
+    }));
+  } catch (e) {
+    return [];
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -34,6 +63,9 @@ export default {
     if (request.headers.get("Upgrade") !== "websocket")
       return new Response("expected websocket", { status: 426 });
 
+    // Minted here (the worker, not the Room DO — DOs shouldn't hold the
+    // secrets) and passed along as one flat frame per server.
+    const ice = await turn_ice_servers(env);
     const role = url.searchParams.get("role");
     if (role === "host") {
       // Mint an unused code: a fresh Room accepts a host only if it has
@@ -42,7 +74,7 @@ export default {
         const code = random_code();
         const room = env.ROOMS.get(env.ROOMS.idFromName(code));
         const resp = await room.fetch(
-            new Request(`https://room/host?code=${code}`, request));
+            new Request(`https://room/host?code=${code}&ice=${encodeURIComponent(JSON.stringify(ice))}`, request));
         if (resp.status !== 409) return resp;
       }
       return new Response("no free room codes", { status: 503 });
@@ -54,7 +86,8 @@ export default {
           [...code].some((c) => !CODE_ALPHABET.includes(c)))
         return new Response("bad code", { status: 400 });
       const room = env.ROOMS.get(env.ROOMS.idFromName(code));
-      return room.fetch(new Request(`https://room/join?code=${code}`, request));
+      return room.fetch(new Request(
+          `https://room/join?code=${code}&ice=${encodeURIComponent(JSON.stringify(ice))}`, request));
     }
 
     return new Response("bad role", { status: 400 });
@@ -73,6 +106,8 @@ export class Room {
   async fetch(request) {
     const url = new URL(request.url);
     const code = url.searchParams.get("code");
+    let ice = [];
+    try { ice = JSON.parse(url.searchParams.get("ice") || "[]"); } catch (e) {}
     const now = Date.now();
 
     if (this.host && now - this.created > ROOM_TTL_MS) this.expire();
@@ -80,7 +115,7 @@ export class Room {
     if (url.pathname === "/host") {
       if (this.host) return new Response("room in use", { status: 409 });
       const pair = new WebSocketPair();
-      this.accept_host(pair[1], code, now);
+      this.accept_host(pair[1], code, now, ice);
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
 
@@ -88,7 +123,7 @@ export class Room {
       if (!this.host) return this.reject_ws("no-such-room");
       if (this.joiner) return this.reject_ws("room-full");
       const pair = new WebSocketPair();
-      this.accept_joiner(pair[1]);
+      this.accept_joiner(pair[1], ice);
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
 
@@ -105,11 +140,19 @@ export class Room {
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
 
-  accept_host(ws, code, now) {
+  send_ice(ws, ice) {
+    // One flat frame per server: the game's JSON parser is flat-object only.
+    for (const s of ice)
+      ws.send(JSON.stringify({ t: "ice", urls: s.urls,
+                               username: s.username, credential: s.credential }));
+  }
+
+  accept_host(ws, code, now, ice) {
     ws.accept();
     this.host = ws;
     this.offer = null;
     this.created = now;
+    this.send_ice(ws, ice);
     ws.send(JSON.stringify({ t: "room", code }));
     ws.addEventListener("message", (m) => this.from_host(m));
     const drop = () => this.expire();
@@ -117,9 +160,10 @@ export class Room {
     ws.addEventListener("error", drop);
   }
 
-  accept_joiner(ws) {
+  accept_joiner(ws, ice) {
     ws.accept();
     this.joiner = ws;
+    this.send_ice(ws, ice);
     ws.send(JSON.stringify({ t: "joined" }));
     if (this.host) this.host.send(JSON.stringify({ t: "peer", ev: "join" }));
     if (this.offer) ws.send(JSON.stringify({ t: "offer", sdp: this.offer }));

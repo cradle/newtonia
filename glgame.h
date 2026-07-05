@@ -23,6 +23,8 @@
 #include "nova_charge_pickup.h"
 #include <SDL.h>
 #include <list>
+#include <vector>
+#include <string>
 
 using namespace std;
 
@@ -156,11 +158,13 @@ private:
   // for the whole session; on client loss the host keeps playing solo,
   // parks the remote ship, and offers a fresh transport through the room.
 public:
-  void net_adopt_signal(NetSignal *signal, const std::string &room_code);
+  void net_adopt_signal(NetSignal *signal, const std::string &room_code,
+                        const std::vector<std::string> &ice_servers);
 private:
   void net_host_rejoin_poll(int delta);
   NetSignal *net_signal_ = nullptr;     // owned; null in the manual flow
   std::string net_room_code_;
+  std::vector<std::string> net_ice_;  // TURN triples for rejoin re-hosts
   NetTransport *net_rehost_ = nullptr;  // owned until handed to a session
   bool net_rehost_offer_sent_ = false;
 

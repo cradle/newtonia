@@ -771,9 +771,11 @@ void GLGame::net_host_poll() {
   }
 }
 
-void GLGame::net_adopt_signal(NetSignal *signal, const std::string &room_code) {
+void GLGame::net_adopt_signal(NetSignal *signal, const std::string &room_code,
+                              const std::vector<std::string> &ice_servers) {
   net_signal_ = signal;
   net_room_code_ = room_code;
+  net_ice_ = ice_servers;
 }
 
 // Client gone but the room is still open: keep simulating solo, offer a
@@ -797,7 +799,10 @@ void GLGame::net_host_rejoin_poll(int delta) {
     net_session_ = nullptr;
     net_rehost_ = NetTransport::create();
     net_rehost_offer_sent_ = false;
-    if (net_rehost_) net_rehost_->start_host();
+    if (net_rehost_) {
+      net_rehost_->set_ice_servers(net_ice_);
+      net_rehost_->start_host();
+    }
     printf("net: player 2 lost - room %s reopened for rejoin\n",
            net_room_code_.c_str());
     fflush(stdout);
@@ -850,7 +855,10 @@ void GLGame::net_host_rejoin_poll(int delta) {
       net_session_ = nullptr;
       net_rehost_ = NetTransport::create();
       net_rehost_offer_sent_ = false;
-      if (net_rehost_) net_rehost_->start_host();
+      if (net_rehost_) {
+        net_rehost_->set_ice_servers(net_ice_);
+        net_rehost_->start_host();
+      }
     }
   }
 }
