@@ -91,6 +91,8 @@ public:
   bool is_visible_to_any_player(const Ship &ship) const;
   bool is_visible_to_any_player(Point p) const;
   float sound_volume_for_point(Point p) const;
+  // Online: attenuation with the LOCAL player as the only listener.
+  float net_listener_volume(Point p) const;
   bool is_point_faced_by_any_player(Point p) const;
   bool has_free_controller() const;
 private:

@@ -61,6 +61,10 @@ enum EventCode {
   // dying; arg = player index (1=host,2=client) | 0x100 when the
   // armoured-face ting applies.
   EV_SHIP_IMPACT = 11,
+  // The host player fired their gun — the client plays it attenuated by
+  // distance to its own ship (the client's shots are local, and the
+  // host simulates the client's weapon itself).
+  EV_REMOTE_SHOT = 12,
 };
 
 // Packs a world position into an event arg (two int16s). World sizes

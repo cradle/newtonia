@@ -1303,6 +1303,18 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
         Mix_PlayChannel(-1, Asteroid::asteroid_ting_sound, 0);
       }
       break;
+    case Net::EV_REMOTE_SHOT: {
+      // The host player's gun, attenuated by distance to our ship. Our
+      // own shots play locally; this event only ever describes P1.
+      if (players->empty()) break;
+      Ship *shooter = players->front()->ship;
+      float vol = net_listener_volume(shooter->position);
+      if (vol > 0.0f && shooter->shoot_sound) {
+        Mix_VolumeChunk(shooter->shoot_sound, (int)(MIX_MAX_VOLUME * vol));
+        Mix_PlayChannel(-1, shooter->shoot_sound, 0);
+      }
+      break;
+    }
     case Net::EV_SHIP_IMPACT: {
       // Non-fatal ship-vs-asteroid bounce: debris spray on that ship
       // (explode() fills the object's own debris, which is never
@@ -1575,6 +1587,12 @@ void GLGame::tick_net_client(int delta) {
   // kill() calls queued (ghost removals) is noise — drop it.
   Asteroid::net_impacts.clear();
   Ship::net_ship_impacts.clear();
+  Ship::net_shots.clear();
+  // Remote (host) ship: attenuate its self-played sounds (death
+  // explosion, god-mode tics) by distance to the local ship.
+  if (players->size() >= 2)
+    players->front()->ship->sound_volume_scale =
+        net_listener_volume(players->front()->ship->position);
 
   if (!net_connection_lost_) net_client_poll();
   if (net_session_->transport()->failed()) net_connection_lost_ = true;
@@ -2831,6 +2849,10 @@ void GLGame::tick(int delta) {
   if (net_mode_ == NetHost && players->size() >= 2) {
     Ship *remote = players->back()->ship;
     remote->set_shield_hum(false);
+    // The sim plays the remote player's own sounds (gun etc.) like a
+    // split-screen partner's — full volume. Online the only listener
+    // here is the local player: attenuate by distance.
+    remote->sound_volume_scale = net_listener_volume(remote->position);
     // While parked for rejoin, re-assert the shield every tick: level
     // rebuilds respawn all players with the normal 1.5 s window, which
     // would otherwise expire and leave the pilotless hull killable.
@@ -2857,9 +2879,15 @@ void GLGame::tick(int delta) {
       if (idx)
         net_send_event(Net::EV_SHIP_IMPACT, idx | (si.ting ? 0x100u : 0u));
     }
+    // Only the HOST player's shots go over: the client fires its own
+    // weapon locally, and the host simulates the client's shots too.
+    for (const Ship *shooter : Ship::net_shots)
+      if (!players->empty() && players->front()->ship == shooter)
+        net_send_event(Net::EV_REMOTE_SHOT, 1);
   }
   Asteroid::net_impacts.clear();
   Ship::net_ship_impacts.clear();
+  Ship::net_shots.clear();
 
   // Online host: broadcast the world at 10 Hz once everything has stepped.
   if (net_mode_ == NetHost) net_host_send_snapshot(delta);
@@ -2961,6 +2989,22 @@ bool GLGame::is_visible_to_any_player(Point p) const {
     if(dist * dist <= cull_r2) return true;
   }
   return false;
+}
+
+// Online: the only listener is the local player. The split-screen
+// variant below treats EVERY player as a listener, which puts the remote
+// ship at distance zero from its own sounds.
+float GLGame::net_listener_volume(Point p) const {
+  GLShip *me = local_player();
+  if (!me || !me->ship->is_alive()) return 0.0f;
+  float fov_deg = me->view_angle();
+  float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
+  float aspect = window.x() / (float)window.y();
+  float half_w = half_h * aspect;
+  float cull_r = sqrtf(half_w * half_w + half_h * half_h) * sqrtf(1.1f);
+  float dist = me->ship->position.distance_to(p);
+  if (dist >= cull_r) return 0.0f;
+  return 1.0f - dist / cull_r;
 }
 
 float GLGame::sound_volume_for_point(Point p) const {

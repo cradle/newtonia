@@ -17,6 +17,7 @@ static const int NOVA_MAX_AMMO = 10;
 
 bool Ship::net_quiet_respawn = false;
 std::vector<Ship::NetShipImpact> Ship::net_ship_impacts;
+std::vector<const Ship*> Ship::net_shots;
 #include <algorithm>
 #include <math.h>
 #include <climits>
@@ -1437,6 +1438,7 @@ void Ship::fire_bullet_from_gun() {
     Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * sound_volume_scale));
     Mix_PlayChannel(-1, shoot_sound, 0);
   }
+  net_shots.push_back(this);  // net host relays its player's shots
   bullets.push_back(Particle(gun(), facing * 0.615f + velocity * 0.99f, 2000.0f));
   mark_last_bullet_trail();
   mark_last_bullet_kills_invincible();
