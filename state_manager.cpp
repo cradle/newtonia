@@ -2,6 +2,7 @@
 #include "glgame.h"
 #include "intro.h"
 #include "menu.h"
+#include "net_lobby.h"
 
 StateManager::StateManager() {
   state = new Menu();
@@ -99,6 +100,12 @@ void StateManager::touch_joystick(float nx, float ny) {
 
 void StateManager::touch_tap(float nx, float ny) {
   state->touch_tap(nx, ny);
+}
+
+bool StateManager::wants_background_ticks() {
+  GLGame *game = dynamic_cast<GLGame*>(state);
+  if (game) return game->net_active();
+  return dynamic_cast<NetLobby*>(state) != NULL;
 }
 
 bool StateManager::back_pressed() {

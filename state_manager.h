@@ -19,6 +19,9 @@ public:
   void resize(int x, int y);
   void touch_joystick(float nx, float ny);
   void touch_tap(float nx, float ny);
+  // True while an online session (in-game or lobby) needs the loop to
+  // keep ticking even when the browser tab is hidden (web build).
+  bool wants_background_ticks();
   bool back_pressed();
   void focus_lost();
   void focus_gained();

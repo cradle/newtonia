@@ -225,6 +225,23 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_menu_tap(float nx, float ny) {
     s_game->keyboard_up('\r', 0, 0);
 }
 
+// Background heartbeat for online sessions: hidden/occluded tabs stop
+// requestAnimationFrame entirely, so the main loop starves and snapshots
+// apply in rare bursts (host stops simulating; the peer's game stalls).
+// A plain interval keeps ticking at the browser's clamped background rate
+// (~1 Hz — pages with a live WebRTC connection are exempt from Chrome's
+// harsher 1-per-minute throttling). Solo play intentionally stays frozen
+// while hidden, like a pause.
+extern "C" EMSCRIPTEN_KEEPALIVE void web_background_tick() {
+    if (!s_idb_ready || !s_game) return;
+    if (!s_game->wants_background_ticks()) return;
+    // Cap the catch-up burst: if the browser throttled us harder than
+    // expected, don't try to simulate a minute of world time in one call.
+    Uint32 now = SDL_GetTicks();
+    if (now - s_last_tick > 2000) s_last_tick = now - 2000;
+    main_loop();
+}
+
 // Called from JS after FS.syncfs(true) completes (IDBFS → memory).
 // Initialises the StateManager then releases the main loop gate.
 // EMSCRIPTEN_KEEPALIVE exports this so JS can call Module._web_on_idb_ready().
@@ -363,6 +380,16 @@ int main(int argc, char *argv[]) {
         // No pref path — initialise without persistence.
         web_on_idb_ready();
     }
+
+    // Background heartbeat: rAF stops in hidden tabs, so an interval pumps
+    // web_background_tick() instead (it no-ops unless an online session or
+    // lobby is active — see wants_background_ticks). 500 ms nominal; the
+    // browser clamps it to ~1 s while hidden.
+    EM_ASM({
+        setInterval(function() {
+            if (document.hidden) Module._web_background_tick();
+        }, 500);
+    });
 
     // emscripten_set_main_loop stays in main() so the WebGL context is never
     // torn down.  The loop returns early until s_idb_ready is set.

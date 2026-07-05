@@ -84,6 +84,9 @@ public:
   // Two local players share this machine's screen; online each machine
   // draws only its own full-screen view even though players->size() == 2.
   bool split_screen() const { return net_mode_ == NetOff && players->size() > 1; }
+  // Online game in progress (host or client) — the web build keeps a
+  // hidden tab ticking only for these (see web_background_tick).
+  bool net_active() const { return net_mode_ != NetOff; }
   bool is_visible_to_any_player(const Ship &ship) const;
   bool is_visible_to_any_player(Point p) const;
   float sound_volume_for_point(Point p) const;
