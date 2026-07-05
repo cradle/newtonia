@@ -63,10 +63,11 @@ public:
 // baked-in production worker (placeholder until M2-3 deploys it).
 std::string net_signal_url();
 
-// The room code alphabet (shared with signal/src/worker.js): 4 chars,
-// no 0/O/1/I. Used by the lobby's code-entry screen.
+// The room code alphabet (shared with signal/src/worker.js): 5 chars,
+// no 0/O/1/I (confusable) or F (fullscreen key). Used by the lobby's
+// code-entry screen.
 bool net_room_code_char_ok(char c);
-const int NET_ROOM_CODE_LEN = 4;
+const int NET_ROOM_CODE_LEN = 5;
 
 // ---- tiny JSON helpers (shared by both backends) ------------------------
 // Only what the signal protocol needs: escape a string value for

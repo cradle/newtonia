@@ -4,7 +4,7 @@
 //
 // Wire protocol (JSON text frames, all fields lowercase):
 //   host  -> /ws?role=host            {t:"room", code}        assigned code
-//   join  -> /ws?role=join&code=ABCD  {t:"joined"}             or {t:"err",reason}
+//   join  -> /ws?role=join&code=ABCDE {t:"joined"}             or {t:"err",reason}
 //   host  -> {t:"offer", sdp}         relayed to the joiner (also replayed to
 //                                     a joiner who arrives after the offer)
 //   join  -> {t:"answer", sdp}        relayed to the host
@@ -16,7 +16,7 @@
 // when the host disconnects or after ROOM_TTL_MS.
 
 const CODE_ALPHABET = "ABCDEGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I (confusable) or F (game fullscreen key)
-const CODE_LEN = 4;
+const CODE_LEN = 5;
 const ROOM_TTL_MS = 2 * 60 * 60 * 1000;
 
 // Per-IP rate limits (fixed window). Host-creates farm rooms + TURN

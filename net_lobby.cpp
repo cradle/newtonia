@@ -125,7 +125,7 @@ void NetLobby::confirm() {
       signal_wait_ms_ = 0;
       screen_ = RoomJoining;
     } else {
-      set_status("THE CODE IS 4 LETTERS");
+      set_status("THE CODE IS 5 LETTERS");
     }
   } else if (screen_ == LobbyFailed) {
     reset_to_choose();
