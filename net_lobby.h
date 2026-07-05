@@ -67,6 +67,7 @@ private:
   void pump_signal(int delta);
   void fall_back_to_manual(const char *why);
   void code_entry_key(unsigned char key);
+  void schedule_rejoin_retry(const char *why, int delay_ms);
 public:
   // M3-1 auto-rejoin: skip Choose and join the known room immediately.
   explicit NetLobby(const std::string &rejoin_code);
@@ -90,6 +91,12 @@ private:
   bool paste_pending_;
   std::string paste_buffer_;
   bool code_clip_pending_;   // CodeEntry: auto-join poll of the clipboard
+  // M3-1 auto-rejoin retries: a mobile client's own network is often still
+  // down when the rejoin fires; retry the relay instead of falling back
+  // to the manual screen, within a budget matching the room grace window.
+  bool rejoin_mode_;
+  int rejoin_retry_ms_;      // >0: next attempt countdown
+  int rejoin_budget_ms_;     // total time before giving up
   int connect_wait_ms_;  // time in WaitConnect, for the no-relay timeout
   Net::SnapshotAssembler assembler_;  // joiner: reassembles snapshot #1
 

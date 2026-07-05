@@ -42,6 +42,9 @@ NetLobby::NetLobby()
       signal_wait_ms_(0),
       paste_pending_(false),
       code_clip_pending_(false),
+      rejoin_mode_(false),
+      rejoin_retry_ms_(0),
+      rejoin_budget_ms_(0),
       connect_wait_ms_(0),
       status_ms_(0),
       currentTime(0),
@@ -58,10 +61,23 @@ NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
     return;
   }
   code_entry_ = rejoin_code;
+  rejoin_mode_ = true;
+  rejoin_budget_ms_ = 90000;  // ~ the room's reclaim grace window
   signal_->connect_join(net_signal_url(), code_entry_);
   signal_wait_ms_ = 0;
   screen_ = RoomJoining;
   set_status("RECONNECTING...");
+}
+
+// A rejoin attempt failed in a retryable way (network still down, relay
+// briefly unreachable): stay on the joining screen and try again.
+void NetLobby::schedule_rejoin_retry(const char *why, int delay_ms) {
+  printf("[lobby] rejoin retry in %d ms (%s)\n", delay_ms, why);
+  fflush(stdout);
+  set_status("RECONNECTING...");
+  screen_ = RoomJoining;
+  signal_wait_ms_ = 0;
+  if (rejoin_retry_ms_ <= 0) rejoin_retry_ms_ = delay_ms;
 }
 
 NetLobby::~NetLobby() {
@@ -303,6 +319,17 @@ void NetLobby::pump_signal(int delta) {
         }
         break;
       case NetSignal::Event::Error:
+        if (rejoin_mode_ && (screen_ == RoomJoining || screen_ == CodeEntry)) {
+          if (ev.text == "rate-limited") {
+            schedule_rejoin_retry("rate-limited", 15000);
+          } else {
+            // no-such-room / expired / room-full: the room is genuinely
+            // gone (host quit or grace elapsed) — retrying cannot help.
+            set_status("THE ROOM IS GONE - HOST A NEW ONE");
+            screen_ = LobbyFailed;
+          }
+          break;
+        }
         if (screen_ == RoomJoining || screen_ == CodeEntry) {
           if (ev.text == "no-such-room") set_status("NO ROOM WITH THAT CODE");
           else if (ev.text == "room-full") set_status("THAT ROOM IS FULL");
@@ -323,6 +350,10 @@ void NetLobby::pump_signal(int delta) {
           fall_back_to_manual("socket closed before room");
           return;
         } else if (screen_ == RoomJoining && room_code_.empty()) {
+          if (rejoin_mode_) {
+            schedule_rejoin_retry("socket closed", 5000);
+            break;
+          }
           fall_back_to_manual("socket closed while joining");
           return;
         }
@@ -332,10 +363,13 @@ void NetLobby::pump_signal(int delta) {
   }
 
   // Server never answered at all: don't strand the player.
-  if ((screen_ == RoomHost || screen_ == RoomJoining) && room_code_.empty()) {
+  if ((screen_ == RoomHost || screen_ == RoomJoining) && room_code_.empty() &&
+      rejoin_retry_ms_ <= 0) {
     signal_wait_ms_ += delta;
-    if (signal_wait_ms_ > SIGNAL_TIMEOUT_MS)
-      fall_back_to_manual("signal server timeout");
+    if (signal_wait_ms_ > SIGNAL_TIMEOUT_MS) {
+      if (rejoin_mode_) schedule_rejoin_retry("signal timeout", 1000);
+      else fall_back_to_manual("signal server timeout");
+    }
   }
 }
 
@@ -346,6 +380,32 @@ void NetLobby::tick(int delta) {
   if (status_ms_ > 0) status_ms_ -= delta;
 
   pump_signal(delta);
+
+  // Auto-rejoin retry loop (see schedule_rejoin_retry).
+  if (rejoin_mode_ && rejoin_retry_ms_ > 0 && !session_) {
+    rejoin_budget_ms_ -= delta;
+    rejoin_retry_ms_ -= delta;
+    if (rejoin_budget_ms_ <= 0) {
+      rejoin_retry_ms_ = 0;
+      set_status("COULD NOT RECONNECT");
+      screen_ = LobbyFailed;
+    } else if (rejoin_retry_ms_ <= 0) {
+      rejoin_retry_ms_ = 0;
+      // A fresh virgin transport: an earlier attempt may have consumed an
+      // offer, and the relay sends fresh TURN creds with each join.
+      if (transport_) {
+        transport_->close();
+        delete transport_;
+      }
+      transport_ = NetTransport::create();
+      ice_servers_.clear();
+      answer_sent_ = false;
+      signal_wait_ms_ = 0;
+      printf("[lobby] rejoin retry: joining room %s\n", code_entry_.c_str());
+      fflush(stdout);
+      signal_->connect_join(net_signal_url(), code_entry_);
+    }
+  }
 
   // JOIN convenience: a valid 5-letter code on the clipboard (the host
   // auto-copies theirs) is entered and joined without typing. Anything
