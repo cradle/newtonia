@@ -7,6 +7,7 @@
 
 #include <SDL.h>
 #include <SDL_mixer.h>
+#import <UIKit/UIKit.h>
 
 #include "gles2_compat.h"
 #include "state_manager.h"
@@ -130,6 +131,24 @@ static void finger_down(SDL_FingerID id, float x, float y) {
         }
         // Touches that don't hit a button are silently ignored.
     }
+}
+
+// OS share sheet (see net_transport.h seam).
+bool net_share_available() { return true; }
+void net_share_text(const std::string &text) {
+    NSString *ns = [NSString stringWithUTF8String:text.c_str()];
+    UIActivityViewController *avc =
+        [[UIActivityViewController alloc] initWithActivityItems:@[ ns ]
+                                          applicationActivities:nil];
+    UIWindow *win = [UIApplication sharedApplication].keyWindow;
+    UIViewController *root = win.rootViewController;
+    if (!root) return;
+    // iPad requires a popover anchor.
+    avc.popoverPresentationController.sourceView = root.view;
+    avc.popoverPresentationController.sourceRect =
+        CGRectMake(root.view.bounds.size.width / 2,
+                   root.view.bounds.size.height / 2, 1, 1);
+    [root presentViewController:avc animated:YES completion:nil];
 }
 
 static void finger_up(SDL_FingerID id, float x, float y) {
@@ -270,6 +289,12 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                 break;
 
             // Physical keyboard (Bluetooth keyboard, etc.)
+            case SDL_TEXTINPUT: {
+                for (const char *c = e.text.text; *c; ++c)
+                    if ((unsigned char)*c < 128)
+                        s_game->keyboard((unsigned char)*c, 0, 0);
+                break;
+            }
             case SDL_KEYDOWN: {
                 SDL_Keycode k = e.key.keysym.sym;
                 if (k == SDLK_ESCAPE) { s_running = false; break; }

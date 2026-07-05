@@ -42,6 +42,7 @@ NetLobby::NetLobby()
       signal_wait_ms_(0),
       paste_pending_(false),
       code_clip_pending_(false),
+      code_clip_retry_ms_(0),
       rejoin_mode_(false),
       rejoin_retry_ms_(0),
       rejoin_budget_ms_(0),
@@ -67,6 +68,14 @@ NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
   signal_wait_ms_ = 0;
   screen_ = RoomJoining;
   set_status("RECONNECTING...");
+}
+
+// The soft keyboard drives CodeEntry on touch platforms; the existing
+// keyboard() path receives its characters via SDL_TEXTINPUT.
+static void code_entry_keyboard(bool open) {
+  if (!is_touch_mode()) return;
+  if (open) SDL_StartTextInput();
+  else SDL_StopTextInput();
 }
 
 // A rejoin attempt failed in a retryable way (network still down, relay
@@ -121,6 +130,7 @@ void NetLobby::reset_to_choose() {
 }
 
 void NetLobby::leave_to_menu() {
+  code_entry_keyboard(false);
   request_state_change(new Menu());
 }
 
@@ -148,6 +158,7 @@ void NetLobby::confirm() {
     } else {
       if (signal_) {
         screen_ = CodeEntry;
+        code_entry_keyboard(true);
         // If the clipboard already holds the friend's code (the host side
         // auto-copies it), prefill and join without any typing. Started
         // here so the web backend's read stays inside the user gesture.
@@ -159,6 +170,7 @@ void NetLobby::confirm() {
     }
   } else if (screen_ == CodeEntry) {
     if (code_entry_.size() == (size_t)NET_ROOM_CODE_LEN) {
+      code_entry_keyboard(false);
       signal_->connect_join(net_signal_url(), code_entry_);
       signal_wait_ms_ = 0;
       screen_ = RoomJoining;
@@ -339,6 +351,7 @@ void NetLobby::pump_signal(int delta) {
           code_entry_.clear();
           answer_sent_ = false;
           screen_ = CodeEntry;
+          code_entry_keyboard(true);
         } else if (screen_ == RoomHost) {
           // fall_back_to_manual deletes signal_ — the poll loop must stop.
           fall_back_to_manual(ev.text.c_str());
@@ -414,20 +427,29 @@ void NetLobby::tick(int delta) {
   if (code_clip_pending_) {
     std::string clip;
     if (net_clipboard_read_poll(clip)) {
-      code_clip_pending_ = false;
-      std::string code;
-      for (size_t i = 0; i < clip.size(); i++) {
-        char c = clip[i];
-        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') continue;
-        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
-        code += c;
-      }
-      bool ok = code.size() == (size_t)NET_ROOM_CODE_LEN;
-      for (size_t i = 0; ok && i < code.size(); i++)
-        ok = net_room_code_char_ok(code[i]);
-      if (ok && code_entry_.empty()) {
-        code_entry_ = code;
-        confirm();
+      // Android 10+ only serves the clipboard to the FOCUSED window; right
+      // after entering the screen the read can come back empty. Retry
+      // briefly on touch platforms before concluding it is really empty.
+      if (clip.empty() && is_touch_mode() && code_clip_retry_ms_ < 2000) {
+        code_clip_retry_ms_ += delta;
+        net_clipboard_read_start();  // poll again next tick
+      } else {
+        code_clip_pending_ = false;
+        code_clip_retry_ms_ = 0;
+        std::string code;
+        for (size_t i = 0; i < clip.size(); i++) {
+          char c = clip[i];
+          if (c == ' ' || c == '\t' || c == '\r' || c == '\n') continue;
+          if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+          code += c;
+        }
+        bool ok = code.size() == (size_t)NET_ROOM_CODE_LEN;
+        for (size_t i = 0; ok && i < code.size(); i++)
+          ok = net_room_code_char_ok(code[i]);
+        if (ok && code_entry_.empty()) {
+          code_entry_ = code;
+          confirm();
+        }
       }
     }
   }
@@ -605,7 +627,10 @@ void NetLobby::draw() {
         Typer::draw_centered(0, 20, room_code_.c_str(), 48);
         y = -100;
         lines.push_back("TELL YOUR FRIEND THE CODE");
-        lines.push_back("IT IS ON YOUR CLIPBOARD");
+        if (is_touch_mode() && net_share_available())
+          lines.push_back("TAP HERE TO SHARE IT");
+        else
+          lines.push_back("IT IS ON YOUR CLIPBOARD");
         lines.push_back("");
         if (blink) lines.push_back("WAITING FOR PLAYER 2...");
       }
@@ -776,6 +801,29 @@ void NetLobby::controller(SDL_Event event) {
       break;
     default:
       break;
+  }
+}
+
+void NetLobby::touch_tap(float nx, float ny) {
+  switch (screen_) {
+    case Choose:
+      // Upper band = HOST, lower band = JOIN (mirrors the drawn rows).
+      selection_ = (ny < 0.5f) ? 0 : 1;
+      confirm();
+      break;
+    case CodeEntry:
+      code_entry_keyboard(true);  // re-summon a dismissed soft keyboard
+      break;
+    case RoomHost:
+      // Bottom band: hand the code to the OS share sheet.
+      if (ny >= 0.72f && !room_code_.empty() && net_share_available())
+        net_share_text("Join my Newtonia game! Room code: " + room_code_);
+      break;
+    case LobbyFailed:
+      confirm();  // same as ENTER: back to the choose screen
+      break;
+    default:
+      break;  // waiting screens have nothing to tap
   }
 }
 

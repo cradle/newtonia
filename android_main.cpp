@@ -133,6 +133,49 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     }
 }
 
+// OS share sheet via ACTION_SEND chooser (see net_transport.h seam).
+bool net_share_available() { return true; }
+void net_share_text(const std::string &text) {
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (!env || !activity) return;
+
+    jclass intent_cls = env->FindClass("android/content/Intent");
+    jstring action = env->NewStringUTF("android.intent.action.SEND");
+    jobject intent = env->NewObject(
+        intent_cls, env->GetMethodID(intent_cls, "<init>", "(Ljava/lang/String;)V"),
+        action);
+    jstring mime = env->NewStringUTF("text/plain");
+    env->CallObjectMethod(
+        intent, env->GetMethodID(intent_cls, "setType",
+                                 "(Ljava/lang/String;)Landroid/content/Intent;"),
+        mime);
+    jstring extra_key = env->NewStringUTF("android.intent.extra.TEXT");
+    jstring extra_val = env->NewStringUTF(text.c_str());
+    env->CallObjectMethod(
+        intent, env->GetMethodID(intent_cls, "putExtra",
+            "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;"),
+        extra_key, extra_val);
+
+    jstring title = env->NewStringUTF("Share room code");
+    jobject chooser = env->CallStaticObjectMethod(
+        intent_cls, env->GetStaticMethodID(intent_cls, "createChooser",
+            "(Landroid/content/Intent;Ljava/lang/CharSequence;)Landroid/content/Intent;"),
+        intent, title);
+
+    jclass activity_cls = env->GetObjectClass(activity);
+    env->CallVoidMethod(
+        activity, env->GetMethodID(activity_cls, "startActivity",
+                                   "(Landroid/content/Intent;)V"),
+        chooser);
+
+    env->DeleteLocalRef(intent_cls); env->DeleteLocalRef(action);
+    env->DeleteLocalRef(intent);     env->DeleteLocalRef(mime);
+    env->DeleteLocalRef(extra_key);  env->DeleteLocalRef(extra_val);
+    env->DeleteLocalRef(title);      env->DeleteLocalRef(chooser);
+    env->DeleteLocalRef(activity_cls); env->DeleteLocalRef(activity);
+}
+
 static void finger_up(SDL_FingerID id, float x, float y) {
     // Forward tap position on finger-up so menu selections fire on release, not press
     s_game->touch_tap(x, y);
@@ -313,6 +356,14 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                 break;
 
             // Physical keyboard (Bluetooth keyboard, emulator, etc.)
+            case SDL_TEXTINPUT: {
+                // Soft-keyboard characters (lobby code entry) ride the
+                // normal keyboard path one char at a time.
+                for (const char *c = e.text.text; *c; ++c)
+                    if ((unsigned char)*c < 128)
+                        s_game->keyboard((unsigned char)*c, 0, 0);
+                break;
+            }
             case SDL_KEYDOWN: {
                 SDL_Keycode k = e.key.keysym.sym;
                 if (k == SDLK_AC_BACK || k == SDLK_ESCAPE) {

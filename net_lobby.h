@@ -41,6 +41,7 @@ public:
   void controller(SDL_Event event) override;
   void tick(int delta) override;
   bool back_pressed() override;
+  void touch_tap(float nx, float ny) override;
 
 private:
   enum Screen {
@@ -91,6 +92,7 @@ private:
   bool paste_pending_;
   std::string paste_buffer_;
   bool code_clip_pending_;   // CodeEntry: auto-join poll of the clipboard
+  int code_clip_retry_ms_;   // Android 10 focus-gated reads: brief retry
   // M3-1 auto-rejoin retries: a mobile client's own network is often still
   // down when the rejoin fires; retry the relay instead of falling back
   // to the manual screen, within a budget matching the room grace window.

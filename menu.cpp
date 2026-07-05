@@ -226,6 +226,8 @@ void Menu::draw() {
         // Side-by-side layout for touch: full left/right halves are tap targets
         Typer::draw_centered(-Typer::scaled_window_width / 2, -50, "CONTINUE", 26);
         Typer::draw_centered( Typer::scaled_window_width / 2, -50, "NEW GAME", 26);
+        if (show_online_row())
+          Typer::draw_centered(0, -170, "ONLINE", 22);  // full-width lower band
       } else {
         // Equally space item blocks between title_bot=160 and scores_top=-215
         const int sz = 22, h = 2 * sz;
@@ -246,6 +248,8 @@ void Menu::draw() {
         if ((currentTime/1400) % 2) {
           Typer::draw_centered(0, -50, "tap to start", 18);
         }
+        if (show_online_row())
+          Typer::draw_centered(0, -170, "ONLINE", 22);  // full-width lower band
       } else {
         // Equally space item blocks between title_bot=160 and scores_top=-215
         const int sz = 22, h = 2 * sz;
@@ -657,7 +661,17 @@ void Menu::touch_tap(float nx, float ny) {
     }
     return;
   }
-  if (!has_save_) return;
+  // Full-width band in the lower third = ONLINE (drawn at y=-170).
+  if (show_online_row() && ny >= 0.58f) {
+    request_state_change(new NetLobby());
+    return;
+  }
+  if (!has_save_) {
+    // No save: any main-area tap starts a new game ("tap to start").
+    menu_selection = 0;
+    confirm_selection(nullptr);
+    return;
+  }
   // Left half = CONTINUE, right half = NEW GAME
   menu_selection = (nx >= 0.5f) ? 1 : 0;
   confirm_selection(nullptr);
@@ -671,7 +685,7 @@ int Menu::max_menu_items() const {
 }
 
 bool Menu::show_online_row() const {
-  return net_available() && !is_touch_mode();
+  return net_available();
 }
 
 int Menu::online_row_index() const {

@@ -26,6 +26,14 @@ NetTransport* NetTransport::create() {
 // are the reason this is an async-shaped three-call API.
 #include <SDL.h>
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+#if !defined(__ANDROID__) && !(defined(__APPLE__) && TARGET_OS_IPHONE)
+void net_share_text(const std::string&) {}
+bool net_share_available() { return false; }
+#endif
+
 void net_clipboard_write(const std::string& text) {
   SDL_SetClipboardText(text.c_str());
 }

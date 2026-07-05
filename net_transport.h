@@ -71,6 +71,12 @@ void net_clipboard_write(const std::string& text);
 void net_clipboard_read_start();
 bool net_clipboard_read_poll(std::string& out);
 
+// OS share sheet (M3-2): Android ACTION_SEND / iOS UIActivityViewController.
+// No-ops (available()==false) everywhere else — the lobby falls back to the
+// clipboard hint. Implemented in android_main.cpp / ios_main.mm.
+void net_share_text(const std::string& text);
+bool net_share_available();
+
 // In-process loopback self-test: two transports host/join each other
 // through the public API above and exchange messages on both channels.
 // Returns true on PASS; false immediately where no backend exists. Wired
