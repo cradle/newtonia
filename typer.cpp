@@ -87,12 +87,20 @@ void Typer::draw_lives(float x, float y, const GLShip *ship, float size, int tim
 }
 
 void Typer::draw_centered(float x, float y, const char * text, float size, int time) {
-  draw(x-size*(strlen(text)+0.5)+size, y, text, size, time);
+  // The font has no apostrophe glyph; draw() skips them entirely, so the
+  // centering width must not count them either.
+  size_t n = 0;
+  for (const char *c = text; *c; c++)
+    if (*c != '\'') n++;
+  draw(x-size*(n+0.5)+size, y, text, size, time);
 }
 
 void Typer::draw(float x, float y, const char * text, float size, int time) {
+  unsigned int col = 0;
   for(unsigned int i = 0; i < strlen(text); i++) {
-    draw(x+i*size*2, y, text[i], size, time);
+    if (text[i] == '\'') continue;  // no apostrophe glyph — skip, no gap
+    draw(x+col*size*2, y, text[i], size, time);
+    col++;
   }
 }
 
