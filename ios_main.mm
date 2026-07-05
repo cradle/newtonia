@@ -7,7 +7,6 @@
 
 #include <SDL.h>
 #include <SDL_mixer.h>
-#import <UIKit/UIKit.h>
 
 #include "gles2_compat.h"
 #include "state_manager.h"
@@ -133,23 +132,9 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     }
 }
 
-// OS share sheet (see net_transport.h seam).
-bool net_share_available() { return true; }
-void net_share_text(const std::string &text) {
-    NSString *ns = [NSString stringWithUTF8String:text.c_str()];
-    UIActivityViewController *avc =
-        [[UIActivityViewController alloc] initWithActivityItems:@[ ns ]
-                                          applicationActivities:nil];
-    UIWindow *win = [UIApplication sharedApplication].keyWindow;
-    UIViewController *root = win.rootViewController;
-    if (!root) return;
-    // iPad requires a popover anchor.
-    avc.popoverPresentationController.sourceView = root.view;
-    avc.popoverPresentationController.sourceRect =
-        CGRectMake(root.view.bounds.size.width / 2,
-                   root.view.bounds.size.height / 2, 1, 1);
-    [root presentViewController:avc animated:YES completion:nil];
-}
+// The OS share sheet lives in ios_share.mm: UIKit's MacTypes.h defines a
+// global `struct Point` that collides with the game's `class Point`, so
+// this TU (which includes game headers) must not import UIKit.
 
 static void finger_up(SDL_FingerID id, float x, float y) {
     // Forward tap position on finger-up so menu selections fire on release, not press

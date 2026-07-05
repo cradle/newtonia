@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		AB000001 /* ios_main.mm in Sources */ = {isa = PBXBuildFile; fileRef = AA000001 /* ios_main.mm */; };
+		AB000099 /* ios_share.mm in Sources */ = {isa = PBXBuildFile; fileRef = AA000099 /* ios_share.mm */; };
 		AB000002 /* asteroid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000002 /* asteroid.cpp */; };
 		AB000003 /* asteroid_drawer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000003 /* asteroid_drawer.cpp */; };
 		AB000004 /* composite_object.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000004 /* composite_object.cpp */; };
@@ -76,6 +77,7 @@
 
 /* Begin PBXFileReference section */
 		AA000001 /* ios_main.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = ../ios_main.mm; sourceTree = SOURCE_ROOT; };
+		AA000099 /* ios_share.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = ../ios_share.mm; sourceTree = SOURCE_ROOT; };
 		AA000002 /* asteroid.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../asteroid.cpp; sourceTree = SOURCE_ROOT; };
 		AA000003 /* asteroid_drawer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../asteroid_drawer.cpp; sourceTree = SOURCE_ROOT; };
 		AA000004 /* composite_object.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../composite_object.cpp; sourceTree = SOURCE_ROOT; };
@@ -187,6 +189,7 @@
 			isa = PBXGroup;
 			children = (
 				AA000001 /* ios_main.mm */,
+				AA000099 /* ios_share.mm */,
 				AA000002 /* asteroid.cpp */,
 				AA000003 /* asteroid_drawer.cpp */,
 				AA000004 /* composite_object.cpp */,
@@ -338,6 +341,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AB000001 /* ios_main.mm in Sources */,
+				AB000099 /* ios_share.mm in Sources */,
 				AB000002 /* asteroid.cpp in Sources */,
 				AB000003 /* asteroid_drawer.cpp in Sources */,
 				AB000004 /* composite_object.cpp in Sources */,
