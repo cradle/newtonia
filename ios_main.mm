@@ -9,6 +9,8 @@
 #include <SDL_mixer.h>
 
 #include "gles2_compat.h"
+#include "net_signal.h"
+#include "net_transport.h"
 #include "state_manager.h"
 #include "touch_controls.h"
 #include "typer.h"
@@ -193,6 +195,28 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         return 1;
     }
+
+#ifdef NEWTONIA_NET_RTC
+    // Headless netplay self-tests (mirrors xbox_main.cpp) — CI boots the
+    // Simulator and launches with these env vars via SIMCTL_CHILD_*.
+    {
+        const char *st = SDL_getenv("NEWTONIA_NET_SELFTEST");
+        if (st && st[0] == '1' && st[1] == '\0') {
+            SDL_Log("NEWTONIA_NET_SELFTEST: running loopback self-test...");
+            bool ok = net_selftest();
+            SDL_Log(ok ? "NET SELFTEST PASS" : "NET SELFTEST FAIL");
+            return ok ? 0 : 1;
+        }
+        const char *ss = SDL_getenv("NEWTONIA_SIGNAL_SELFTEST");
+        if (ss && ss[0] == '1' && ss[1] == '\0') {
+            load_preferences();  // signal_url INI override applies here too
+            SDL_Log("NEWTONIA_SIGNAL_SELFTEST: running relay self-test...");
+            bool ok = net_signal_selftest();
+            SDL_Log(ok ? "SIGNAL SELFTEST PASS" : "SIGNAL SELFTEST FAIL");
+            return ok ? 0 : 1;
+        }
+    }
+#endif
 
     // Request OpenGL ES 2.0 context
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
