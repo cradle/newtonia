@@ -1437,6 +1437,17 @@ void GLGame::tick_net_client(int delta) {
         if (!a->invincible) bh->apply_gravity(*a, step_size);
     for (auto *a : *dead_objects) a->step(step_size);
     for (auto *p : *pickups) p->step(step_size);
+    // The HOST owns respawns. Ship::step self-respawns when the local
+    // countdown crosses zero — at a RANDOM position (and charging a
+    // life), racing the authoritative snapshot by tick skew; the ghost
+    // then stood at the random spot until the host's real spawn arrived.
+    // Hold the countdown just above zero; the snapshot's alive-transition
+    // resurrects the ship at the host's spawn position.
+    for (auto *gs : *players) {
+      Ship *sh = gs->ship;
+      if (!sh->is_alive() && sh->time_until_respawn <= (int)step_size)
+        sh->time_until_respawn = step_size + 1;
+    }
     for (auto *gs : *players) gs->step(step_size, grid);
     grid.update((std::list<Object *> *)objects);
 
@@ -1809,6 +1820,11 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s) {
       ship->respawn(grid, false);
       ship->position = WrappedPoint(s.players[i].pos_x, s.players[i].pos_y);
       ship->velocity = Point(s.players[i].vel_x, s.players[i].vel_y);
+      // respawn() fired its spawn flash at an interim random position
+      // (the authoritative one is only pinned above, after the fact);
+      // re-fire it where the ship actually spawned.
+      ship->bullets.clear();
+      ship->detonate();
     }
     ship->temperature = ex.temperature;
     ship->time_until_respawn = ex.time_until_respawn;
