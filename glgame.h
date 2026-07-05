@@ -167,6 +167,7 @@ private:
   std::vector<std::string> net_ice_;  // TURN triples for rejoin re-hosts
   NetTransport *net_rehost_ = nullptr;  // owned until handed to a session
   bool net_rehost_offer_sent_ = false;
+  long net_bytes_sent_ = 0;             // M2-6 bandwidth telemetry window
 
   static const int step_size = 8;
 

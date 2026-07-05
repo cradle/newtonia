@@ -937,6 +937,15 @@ void GLGame::net_host_send_snapshot(int delta) {
 
   Net::send_snapshot(net_session_->transport(), ++net_snapshot_id_,
                      payload.data(), 1);
+  // Bandwidth telemetry (M2-6): a line every 10 s of play at 10 Hz.
+  net_bytes_sent_ += payload.data().size();
+  if (net_snapshot_id_ % 100 == 0) {
+    printf("net: snapshot #%u gen=%d asteroids=%d bytes=%d avg10s=%.1f KB/s\n",
+           net_snapshot_id_, generation, (int)objects->size(),
+           (int)payload.data().size(), net_bytes_sent_ / 10240.0f);
+    fflush(stdout);
+    net_bytes_sent_ = 0;
+  }
 }
 
 void GLGame::net_send_event(uint8_t code, uint32_t arg) {
