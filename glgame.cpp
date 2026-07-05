@@ -1661,7 +1661,11 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s) {
     // instead or the shield ring flickers and the hum plays constantly.
     ship->invincible = ex.time_left_invincible > 0 || ex.god_ms > 0 ||
                        ex.shield != 0;
-    ship->set_shield_hum(ship->is_alive() && ship->invincible &&
+    // The hum is a personal cue: only the LOCAL ship (last in the list on
+    // the client) gets it. The remote host's ship respawning far away
+    // otherwise plays short full-volume hums that sound random.
+    bool local_ship = (i + 1 == nplayers);
+    ship->set_shield_hum(local_ship && ship->is_alive() && ship->invincible &&
                          ex.god_ms <= 0);
     // god-mode / shield presentation on the client is a Milestone-1 cut
     // (both still function — the host simulates them; only their local
@@ -2396,6 +2400,14 @@ void GLGame::tick(int delta) {
     if (!any_dead_with_lives)
       save_written_this_death_ = false;
   }
+
+  // Online, the shield hum is a personal cue (your invincibility window /
+  // shield). The remote player's ship respawns hum through Ship::respawn
+  // exactly like a local split-screen partner's would — but online that
+  // ship is usually a world away on someone else's screen, so the short
+  // full-volume hum at every remote respawn just sounds random. Mute it.
+  if (net_mode_ == NetHost && players->size() >= 2)
+    players->back()->ship->set_shield_hum(false);
 
   // Online host: broadcast the world at 10 Hz once everything has stepped.
   if (net_mode_ == NetHost) net_host_send_snapshot(delta);
