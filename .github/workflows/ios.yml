@@ -67,6 +67,41 @@ jobs:
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO
           cmake --build SDL2_mixer/build-ios-sim --config Release
 
+      - name: Build MbedTLS + libdatachannel for iOS Simulator (netplay)
+        run: |
+          # Same pins and DTLS-SRTP user config as every other platform
+          # (see NETPLAY.md). Quotes must survive shell->CMake->compiler,
+          # hence the backslash escaping (same trick as build_netplay_deps.sh).
+          UCFG="-DMBEDTLS_USER_CONFIG_FILE=\\\"$(pwd)/newtonia/xbox/mbedtls_user_config.h\\\""
+          git clone --branch v3.6.6 --depth 1 --recurse-submodules --shallow-submodules \
+            https://github.com/Mbed-TLS/mbedtls.git mbedtls
+          cmake -S mbedtls -B mbedtls/build-ios-sim \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF \
+            -DCMAKE_C_FLAGS="$UCFG" \
+            -DCMAKE_INSTALL_PREFIX=$(pwd)/netlibs
+          cmake --build mbedtls/build-ios-sim -j3
+          cmake --install mbedtls/build-ios-sim
+
+          git clone --branch v0.24.5 --depth 1 --recurse-submodules --shallow-submodules \
+            https://github.com/paullouisageneau/libdatachannel.git libdatachannel
+          cmake -S libdatachannel -B libdatachannel/build-ios-sim \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DUSE_MBEDTLS=ON -DNO_MEDIA=ON -DNO_WEBSOCKET=OFF \
+            -DNO_EXAMPLES=ON -DNO_TESTS=ON \
+            -DCMAKE_PREFIX_PATH=$(pwd)/netlibs \
+            -DCMAKE_C_FLAGS="$UCFG" -DCMAKE_CXX_FLAGS="$UCFG"
+          cmake --build libdatachannel/build-ios-sim -j3 --target datachannel-static
+
       - name: Collect game sources
         run: |
           find newtonia -name "*.cpp" \
@@ -95,7 +130,9 @@ jobs:
             objname=$(echo "$src" | tr '/' '_' | sed -E 's/\.(cpp|mm)$/.o/')
             clang++ $SIM_FLAGS -std=c++11 -O2 \
               -D__IOS__=1 \
+              -DNEWTONIA_NET_RTC \
               -Inewtonia -Inewtonia/view -Inewtonia/weapon \
+              -I libdatachannel/include \
               -I SDL2/include \
               -I SDL2_mixer/include \
               -c "newtonia/$src" -o "obj/$objname"
@@ -106,6 +143,11 @@ jobs:
             echo "Error: no object files compiled" >&2; exit 1
           fi
 
+          # Netplay static archives: libdatachannel + its vendored deps +
+          # MbedTLS (ld64 resolves across archives regardless of order).
+          NETLIBS=$(find libdatachannel/build-ios-sim netlibs/lib -name "*.a" | sort -u)
+          echo "netplay archives:"; echo "$NETLIBS"
+
           mkdir -p Newtonia.app
           clang++ $SIM_FLAGS \
             -o Newtonia.app/Newtonia \
@@ -113,6 +155,7 @@ jobs:
             "$SDL2MAIN_LIB" \
             "$SDL2_LIB" \
             "$SDL2MIX_LIB" \
+            $NETLIBS \
             -framework OpenGLES \
             -framework UIKit \
             -framework Foundation \
