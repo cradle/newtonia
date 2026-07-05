@@ -20,12 +20,9 @@ NetTransport* NetTransport::create() {
 #endif
 }
 
-#ifndef __EMSCRIPTEN__
-
-// Native clipboard is synchronous — the web versions (net_transport_web.cpp)
-// are the reason this is an async-shaped three-call API.
-#include <SDL.h>
-
+// Share-sheet seam: real implementations live in android_main.cpp and
+// ios_share.mm; every other platform (desktop AND web — the lobby falls
+// back to its clipboard wording) gets these no-ops.
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #endif
@@ -33,6 +30,12 @@ NetTransport* NetTransport::create() {
 void net_share_text(const std::string&) {}
 bool net_share_available() { return false; }
 #endif
+
+#ifndef __EMSCRIPTEN__
+
+// Native clipboard is synchronous — the web versions (net_transport_web.cpp)
+// are the reason this is an async-shaped three-call API.
+#include <SDL.h>
 
 void net_clipboard_write(const std::string& text) {
   SDL_SetClipboardText(text.c_str());
