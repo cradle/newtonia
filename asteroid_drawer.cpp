@@ -447,6 +447,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
     float tile_vp[16]; gles2_get_mvp(tile_vp);
     for (list<Asteroid*>::const_iterator it = dead_objects->begin(); it != dead_objects->end(); ++it) {
       Asteroid const *a = *it;
+      if (a->is_alive()) continue;  // score values belong to dead asteroids only
       float val_vp[16];
       mat4_translate(val_vp, tile_vp, a->position.x(), a->position.y(), 0.0f);
       mat4_rotate_z(val_vp, val_vp, -direction);

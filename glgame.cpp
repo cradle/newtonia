@@ -1424,7 +1424,11 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in) {
     for (auto oi = objects->begin(); oi != objects->end(); ++oi) {
       if (*oi != a) continue;
       a->kill();
-      if (!a->is_removable()) dead_objects->push_back(a);
+      // kill() is a no-op on invincible asteroids: an id the host dropped
+      // is a stale ghost either way, and an ALIVE ghost in dead_objects
+      // renders forever (with its score value on top). Only truly dead
+      // ones stay for their debris.
+      if (!a->is_alive() && !a->is_removable()) dead_objects->push_back(a);
       else delete a;
       objects->erase(oi);
       break;
@@ -1701,7 +1705,9 @@ void GLGame::net_apply_keyframe_asteroid_ids(Save::Stream &in,
         continue;
       }
       (*oi)->kill();
-      if (!(*oi)->is_removable()) {
+      // See the delta removal path: invincible asteroids survive kill();
+      // an alive ghost must not linger in dead_objects.
+      if (!(*oi)->is_alive() && !(*oi)->is_removable()) {
         dead_objects->push_back(*oi);
       } else {
         delete *oi;
