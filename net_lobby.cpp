@@ -29,6 +29,11 @@ const int CONNECT_TIMEOUT_MS = 25000;
 // acknowledgement) — treat it as unreachable and use the manual flow.
 const int SIGNAL_TIMEOUT_MS = 12000;
 
+// The last room code THIS instance hosted (in-memory only). The host
+// auto-copies its code to the clipboard, so after quitting a game the
+// JOIN screen would otherwise auto-join the player's own dead room.
+static std::string s_last_hosted_code;
+
 }  // namespace
 
 NetLobby::NetLobby()
@@ -314,6 +319,7 @@ void NetLobby::pump_signal(int delta) {
       case NetSignal::Event::Room:
         room_code_ = ev.text;
         room_token_ = ev.text2;  // reclaim proof, handed to the game
+        s_last_hosted_code = room_code_;  // never auto-join our own room
         net_clipboard_write(room_code_);  // ready to paste to the friend
         printf("[lobby] room %s (%d turn servers)\n", room_code_.c_str(),
                (int)ice_servers_.size());
@@ -506,6 +512,10 @@ void NetLobby::tick(int delta) {
         bool ok = code.size() == (size_t)NET_ROOM_CODE_LEN;
         for (size_t i = 0; ok && i < code.size(); i++)
           ok = net_room_code_char_ok(code[i]);
+        // Never auto-join a room this instance hosted itself — that's our
+        // own (likely dead) code still sitting on the clipboard. Typing
+        // it manually still works if someone really means it.
+        if (ok && code == s_last_hosted_code) ok = false;
         if (ok && code_entry_.empty()) {
           code_entry_ = code;
           confirm();
@@ -794,7 +804,7 @@ void NetLobby::draw() {
     case LobbyFailed:
       lines.push_back("SOMETHING WENT WRONG");
       lines.push_back("");
-      lines.push_back("ENTER - TRY AGAIN");
+      lines.push_back(is_touch_mode() ? "TAP TO TRY AGAIN" : "ENTER - TRY AGAIN");
       break;
   }
 

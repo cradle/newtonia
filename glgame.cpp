@@ -1271,10 +1271,14 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
     case Net::EV_ROID_THUD:
       // Host-side bullet impacts the client can't simulate. The host
       // rate-limits these to one per 125 ms; play them straight.
+      printf("net: roid impact thud\n");
+      fflush(stdout);
       if (Asteroid::thud_sound)
         Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
       break;
     case Net::EV_ROID_TING:
+      printf("net: roid impact ting\n");
+      fflush(stdout);
       if (Asteroid::ting_sound)
         Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
       break;
@@ -2704,9 +2708,12 @@ void GLGame::tick(int delta) {
   // can't simulate those collisions, so the host forwards them as events.
   // Cleared every tick in every mode so the queue can't grow in solo play.
   if (net_mode_ == NetHost && net_session_ && !net_connection_lost_) {
-    for (uint8_t k : Asteroid::net_impacts)
+    for (uint8_t k : Asteroid::net_impacts) {
+      printf("net: impact ev out %u\n", (unsigned)k);
+      fflush(stdout);
       net_send_event(k == Asteroid::IMPACT_TING ? Net::EV_ROID_TING
                                                 : Net::EV_ROID_THUD);
+    }
   }
   Asteroid::net_impacts.clear();
 
