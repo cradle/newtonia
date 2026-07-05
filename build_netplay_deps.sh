@@ -37,7 +37,10 @@ if [ "$UNIVERSAL" = "1" ]; then
   # MbedTLS needs the DTLS-SRTP API compiled in for libdatachannel even
   # with NO_MEDIA (the same fix as the Windows build) — the user config
   # header defines MBEDTLS_SSL_DTLS_SRTP for library and consumer alike.
-  UCFG="-DMBEDTLS_USER_CONFIG_FILE=\"$ROOT/xbox/mbedtls_user_config.h\""
+  # The quotes must survive shell -> CMake -> make -> shell -> compiler,
+  # so they are backslash-escaped here: the generated compile line then
+  # carries \"...\" and the compiler sees a proper "filename" token.
+  UCFG="-DMBEDTLS_USER_CONFIG_FILE=\\\"$ROOT/xbox/mbedtls_user_config.h\\\""
 
   MTLS="$(dirname "$SRC")/mbedtls"
   echo "== cloning mbedtls $MBEDTLS_TAG"

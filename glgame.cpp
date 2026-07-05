@@ -638,8 +638,9 @@ void GLGame::add_remote_player() {
   // bullets, and body overlap kills outright.
   Ship *p1_ship = players->front()->ship;
   for (int tries = 0; tries < 32; tries++) {
-    Point near = object->ship->position.closest_to(p1_ship->position);
-    if ((near - p1_ship->position).magnitude() > 400.0f) break;
+    // ("near" is a reserved legacy macro in the Windows headers)
+    Point nearest = object->ship->position.closest_to(p1_ship->position);
+    if ((nearest - p1_ship->position).magnitude() > 400.0f) break;
     object->ship->position = WrappedPoint();
     object->ship->safe_position(grid, false);
   }
