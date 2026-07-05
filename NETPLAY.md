@@ -63,6 +63,17 @@ Scope decisions (Glenn 2026-07-05): **Xbox netplay is DEFERRED to a future miles
 
 Explicitly NOT needing new design (checked 2026-07-05): NAT/cellular (TURN covers CGNAT), late-game bandwidth on mobile data (~33 KB/s after delta snapshots), touch input plumbing (the touch joystick's analog values already ride MSG_INPUT), and app-store version skew (the PROTO_VERSION mismatch REJECT is already clean).
 
+## Future milestone — host process-death resume (direction + implementation plan)
+
+M3-1's reclaim token lives only in the host's memory: backgrounding/wifi blips are covered, but if the OS KILLS the host app (mobile memory pressure, crash) the token — and the world state — die with it. Resuming the room without its world is useless, so this feature is really "resume the whole hosted session", and it stays a future milestone until playtesting shows process death actually bites. Plan when it does:
+
+1. **Persist the session ticket**: on every online auto-save moment (level clear, pause, client join/leave), write `{room_code, token, timestamp, PROTO_VERSION}` to a `netplay_resume` blob in the SDL pref path — alongside, not inside, the solo save.
+2. **Online world save slot**: lift the `net_mode_` save gate for a dedicated `online_savegame.dat` written at the same moments (the existing serialize path works verbatim — it already feeds snapshots). The solo `savegame.dat` stays hard-gated; the two never mix.
+3. **Worker: longer reclaim window for this case only if needed** — grace is in-memory in the Room DO and free to extend, but 2 min likely suffices for an app relaunch; measure first. No protocol change: reclaim is the same `role=host&code&token` call.
+4. **Resume UX**: at menu boot, if a `netplay_resume` ticket exists, is younger than the grace window, and versions match → show "RESUME HOSTING ROOM XXXXX"; picking it loads `online_savegame.dat`, reclaims the room, re-hosts a transport, and waits for the client's rejoin (their auto-rejoin retries make this meet in the middle). Decline or expiry deletes both files.
+5. **Cleanup rules**: ticket + online save deleted on clean session end (game over, BYE, returning to menu) so stale resumes never haunt the menu.
+6. **Verification**: extend the M3-1 e2e — SIGKILL the HOST mid-game, relaunch within grace, drive the resume row, assert the client's auto-rejoin reconnects and score/lives/generation survive via the online save.
+
 ## Protocol quick-ref
 
 Header: `uint8 proto_ver(=1) | uint8 msg_type | uint8 player_id | uint8 reserved`, little-endian, explicit byte packing.
