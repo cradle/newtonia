@@ -78,6 +78,7 @@ jobs:
             | sed 's|^newtonia/||' \
             > srcs.txt
           echo "ios_main.mm" >> srcs.txt
+          echo "ios_share.mm" >> srcs.txt
           echo "Sources to compile:"
           cat srcs.txt
 
