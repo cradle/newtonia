@@ -45,6 +45,7 @@ cmake -S "$SRC/libdatachannel" -B "$SRC/libdatachannel/build" "${IOSFLAGS[@]}" \
   -DUSE_MBEDTLS=ON -DNO_MEDIA=ON -DNO_WEBSOCKET=OFF \
   -DNO_EXAMPLES=ON -DNO_TESTS=ON \
   -DCMAKE_PREFIX_PATH="$PREFIX" \
+  -DCMAKE_FIND_ROOT_PATH="$PREFIX" \
   -DCMAKE_C_FLAGS="$UCFG" -DCMAKE_CXX_FLAGS="$UCFG"
 cmake --build "$SRC/libdatachannel/build" -j"$(sysctl -n hw.logicalcpu)" \
   --target datachannel-static
