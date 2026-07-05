@@ -790,11 +790,26 @@ void GLGame::net_host_rejoin_poll(int delta) {
   // rejoin answer is Handshaking on a HEALTHY transport — leave it be).
   if (!net_rehost_ &&
       (!net_session_ || net_session_->transport()->failed())) {
-    // First tick after the loss: park the remote ship (frozen respawn
-    // timer so it can't bleed lives to drifting asteroids) and re-host.
+    // First tick after the loss: park the remote ship and re-host. An
+    // alive ship stays visible where it stood, motionless with the
+    // shield up (invincible), until its owner rejoins; a dead one keeps
+    // its corpse frozen (no respawn countdown bleeding lives into
+    // drifting asteroids). Held inputs are cleared in case the dead-man
+    // switch hadn't zeroed them yet.
     if (remote) {
-      if (remote->is_alive()) remote->kill_stop();
-      remote->time_until_respawn = 1 << 29;
+      if (remote->is_alive()) {
+        remote->velocity = Point(0, 0);
+        remote->invincible = true;
+        remote->time_left_invincible = 1 << 29;
+        remote->rotate_left(false);
+        remote->rotate_right(false);
+        remote->thrust(false);
+        remote->reverse(false);
+        remote->shoot(false);
+        remote->fire_secondary(false);
+      } else {
+        remote->time_until_respawn = 1 << 29;
+      }
     }
     delete net_session_;
     net_session_ = nullptr;
@@ -842,8 +857,14 @@ void GLGame::net_host_rejoin_poll(int delta) {
       net_force_keyframe_ = true;   // rejoined client starts from a keyframe
       net_last_input_time_ = current_time;
       if (remote) {
-        // Unpark directly — the step-countdown respawn would charge a life.
-        remote->respawn(grid, false);
+        if (remote->is_alive()) {
+          // Shield-parked hull: drop the parked shield to the normal
+          // respawn grace window and resume in place.
+          remote->time_left_invincible = 1500;
+        } else {
+          // Unpark directly — the step-countdown respawn would charge a life.
+          remote->respawn(grid, false);
+        }
         remote->bullets.clear();  // no lethal spawn-flash debris
       }
       net_set_generation_banner(generation);
@@ -2409,8 +2430,17 @@ void GLGame::tick(int delta) {
   // exactly like a local split-screen partner's would — but online that
   // ship is usually a world away on someone else's screen, so the short
   // full-volume hum at every remote respawn just sounds random. Mute it.
-  if (net_mode_ == NetHost && players->size() >= 2)
-    players->back()->ship->set_shield_hum(false);
+  if (net_mode_ == NetHost && players->size() >= 2) {
+    Ship *remote = players->back()->ship;
+    remote->set_shield_hum(false);
+    // While parked for rejoin, re-assert the shield every tick: level
+    // rebuilds respawn all players with the normal 1.5 s window, which
+    // would otherwise expire and leave the pilotless hull killable.
+    if (net_connection_lost_ && net_signal_ && remote->is_alive()) {
+      remote->invincible = true;
+      remote->time_left_invincible = 1 << 29;
+    }
+  }
 
   // Online host: broadcast the world at 10 Hz once everything has stepped.
   if (net_mode_ == NetHost) net_host_send_snapshot(delta);
