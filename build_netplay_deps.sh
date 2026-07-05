@@ -18,6 +18,12 @@ git clone --branch "$TAG" --depth 1 --recurse-submodules --shallow-submodules \
   https://github.com/paullouisageneau/libdatachannel.git "$SRC"
 
 EXTRA=()
+# Pin the target arch to the running machine: an Intel-homebrew cmake or a
+# Rosetta terminal otherwise builds an x86_64 dylib on Apple Silicon, and
+# the game link fails with "undefined symbols for architecture arm64".
+if [ "$(uname)" = "Darwin" ]; then
+  EXTRA+=("-DCMAKE_OSX_ARCHITECTURES=$(uname -m)")
+fi
 if command -v brew > /dev/null 2>&1; then
   # Homebrew's OpenSSL is keg-only; point CMake at it explicitly.
   if brew --prefix openssl@3 > /dev/null 2>&1; then
