@@ -1315,6 +1315,27 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
       }
       break;
     }
+    case Net::EV_WORLD_SHOT:
+    case Net::EV_WORLD_BOOM:
+    case Net::EV_STATION_BOOM: {
+      // Host-simulated world actors (enemies, mini-station): play the
+      // cue attenuated by distance from our ship to the packed position.
+      // Chunks are per-instance and every play site sets volume first,
+      // so borrowing the local ship's is safe.
+      float wx, wy;
+      Net::unpack_pos(arg, wx, wy);
+      float vol = net_listener_volume(Point(wx, wy));
+      if (vol <= 0.0f || players->empty()) break;
+      Mix_Chunk *snd = NULL;
+      if (code == Net::EV_WORLD_SHOT) snd = local_player()->ship->shoot_sound;
+      else if (code == Net::EV_WORLD_BOOM) snd = local_player()->ship->explode_sound;
+      else snd = station_explode_sound;
+      if (snd) {
+        Mix_VolumeChunk(snd, (int)(MIX_MAX_VOLUME * vol));
+        Mix_PlayChannel(-1, snd, 0);
+      }
+      break;
+    }
     case Net::EV_SHIP_IMPACT: {
       // Non-fatal ship-vs-asteroid bounce: debris spray on that ship
       // (explode() fills the object's own debris, which is never
@@ -1588,6 +1609,7 @@ void GLGame::tick_net_client(int delta) {
   Asteroid::net_impacts.clear();
   Ship::net_ship_impacts.clear();
   Ship::net_shots.clear();
+  Ship::net_booms.clear();
   // Remote (host) ship: attenuate its self-played sounds (death
   // explosion, god-mode tics) by distance to the local ship.
   if (players->size() >= 2)
@@ -2330,6 +2352,12 @@ void GLGame::tick(int delta) {
     }
 
     if(mini_station != NULL) {
+      // Attenuate its shot sound: nearest player (solo/split), or the
+      // local player only when hosting online.
+      mini_station->sound_volume_scale =
+          net_mode_ != NetOff
+              ? net_listener_volume(mini_station->position)
+              : sound_volume_for_point(mini_station->position);
       mini_station->step(step_size, grid);
     }
 
@@ -2406,7 +2434,12 @@ void GLGame::tick(int delta) {
 
     for(o = enemies->begin(); o != enemies->end(); o++) {
       Ship* s = (*o)->ship;
-      s->sound_volume_scale = is_visible_to_any_player(*s) ? 0.5f : 0.0f;
+      // Online host: attenuate by distance to the LOCAL player — the
+      // visibility test counts the remote player's view too, which
+      // plays full-volume shots from someone else's dogfight.
+      s->sound_volume_scale = net_mode_ != NetOff
+          ? 0.5f * net_listener_volume(s->position)
+          : (is_visible_to_any_player(*s) ? 0.5f : 0.0f);
       (*o)->step(step_size, grid);
       // Re-apply boost volume after step since thrust() inside may have reset it
       if(s->boost_sound != NULL) {
@@ -2679,6 +2712,8 @@ void GLGame::tick(int delta) {
             s->explode(bpos, reflected.normalized() * station->velocity.magnitude());
             if (Asteroid::thud_sound != NULL)
               Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+            // Station-hull deflection: same thud cue for the net client.
+            net_send_event(Net::EV_ROID_THUD, Net::pack_pos(bpos.x(), bpos.y()));
             station->hit();
             s->bullets[i] = std::move(s->bullets.back());
             s->bullets.pop_back();
@@ -2739,9 +2774,19 @@ void GLGame::tick(int delta) {
         }
       }
       // The station was alive when this block started; if a player just
-      // destroyed it, play the destruction sound once.
-      if (!mini_station->is_alive() && station_explode_sound != NULL) {
-        Mix_PlayChannel(-1, station_explode_sound, 0);
+      // destroyed it, play the destruction sound once — attenuated by
+      // listener distance, and relayed to the net client.
+      if (!mini_station->is_alive()) {
+        float vol = net_mode_ != NetOff
+                        ? net_listener_volume(mini_station->position)
+                        : sound_volume_for_point(mini_station->position);
+        if (station_explode_sound != NULL && vol > 0.0f) {
+          Mix_VolumeChunk(station_explode_sound, (int)(MIX_MAX_VOLUME * vol));
+          Mix_PlayChannel(-1, station_explode_sound, 0);
+        }
+        net_send_event(Net::EV_STATION_BOOM,
+                       Net::pack_pos(mini_station->position.x(),
+                                     mini_station->position.y()));
       }
     }
 
@@ -2879,15 +2924,31 @@ void GLGame::tick(int delta) {
       if (idx)
         net_send_event(Net::EV_SHIP_IMPACT, idx | (si.ting ? 0x100u : 0u));
     }
-    // Only the HOST player's shots go over: the client fires its own
-    // weapon locally, and the host simulates the client's shots too.
-    for (const Ship *shooter : Ship::net_shots)
-      if (!players->empty() && players->front()->ship == shooter)
+    // Shots: the HOST player's go over as EV_REMOTE_SHOT (the client
+    // fires its own weapon locally, and the host simulates the client's
+    // shots too — neither is relayed). World actors' (enemies, the
+    // mini-station) go over with their position for attenuation.
+    Ship *p1 = players->empty() ? NULL : players->front()->ship;
+    Ship *p2 = players->size() >= 2 ? players->back()->ship : NULL;
+    for (const Ship *shooter : Ship::net_shots) {
+      if (shooter == p1)
         net_send_event(Net::EV_REMOTE_SHOT, 1);
+      else if (shooter != p2)
+        net_send_event(Net::EV_WORLD_SHOT,
+                       Net::pack_pos(shooter->position.x(),
+                                     shooter->position.y()));
+    }
+    // Deaths: player explosions already reach the client through the
+    // snapshot extras; world actors' need the event.
+    for (const Ship *boom : Ship::net_booms)
+      if (boom != p1 && boom != p2)
+        net_send_event(Net::EV_WORLD_BOOM,
+                       Net::pack_pos(boom->position.x(), boom->position.y()));
   }
   Asteroid::net_impacts.clear();
   Ship::net_ship_impacts.clear();
   Ship::net_shots.clear();
+  Ship::net_booms.clear();
 
   // Online host: broadcast the world at 10 Hz once everything has stepped.
   if (net_mode_ == NetHost) net_host_send_snapshot(delta);

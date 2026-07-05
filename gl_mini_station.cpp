@@ -185,8 +185,13 @@ void GLMiniStation::fire_at_nearest_player() {
                       position.y() + dir.y() * (radius + 5.0f));
   bullets.push_back(Particle(muzzle, dir * 0.615f + velocity * 0.99f, 2000.0f));
 
-  if (shoot_sound != NULL)
+  if (shoot_sound != NULL && sound_volume_scale > 0.0f) {
+    // sound_volume_scale is set per tick by GLGame: distance to the
+    // nearest player (solo) or to the local player (online host).
+    Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * sound_volume_scale));
     Mix_PlayChannel(-1, shoot_sound, 0);
+  }
+  net_shots.push_back(this);  // net host relays as EV_WORLD_SHOT
 }
 
 void GLMiniStation::step(float delta, const Grid &grid) {

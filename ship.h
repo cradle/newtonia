@@ -179,8 +179,13 @@ class Ship : public CompositeObject {
     struct NetShipImpact { const Ship *ship; bool ting; };
     static std::vector<NetShipImpact> net_ship_impacts;
     // Host outbox: gunshots (fire_bullet_from_gun). The net host relays
-    // its own player's shots to the client as EV_REMOTE_SHOT.
+    // its own player's shots as EV_REMOTE_SHOT and world actors'
+    // (enemies, mini-station) as EV_WORLD_SHOT.
     static std::vector<const Ship*> net_shots;
+    // Host outbox: ship-class death explosions (kill()). Relayed as
+    // EV_WORLD_BOOM for non-player ships; player deaths already reach
+    // the client through the snapshot extras.
+    static std::vector<const Ship*> net_booms;
     void set_missile_asteroids(std::list<Object*> *asteroids);
     void set_missile_ships(std::list<Object*> *ships);
     void set_black_holes(const std::list<BlackHole*> *bhs);

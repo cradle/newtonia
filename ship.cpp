@@ -18,6 +18,7 @@ static const int NOVA_MAX_AMMO = 10;
 bool Ship::net_quiet_respawn = false;
 std::vector<Ship::NetShipImpact> Ship::net_ship_impacts;
 std::vector<const Ship*> Ship::net_shots;
+std::vector<const Ship*> Ship::net_booms;
 #include <algorithm>
 #include <math.h>
 #include <climits>
@@ -778,8 +779,14 @@ bool Ship::kill() {
     set_shield_hum(false);
     stop_god_mode_music();
     if(explode_sound != NULL && sound_volume_scale > 0.0f) {
+      // Every play site sets the chunk volume first: online, the net
+      // event handler reuses this per-instance chunk at other volumes.
+      Mix_VolumeChunk(explode_sound,
+                      (int)(MIX_MAX_VOLUME *
+                            (sound_volume_scale > 1.0f ? 1.0f : sound_volume_scale)));
       Mix_PlayChannel(-1, explode_sound, 0);
     }
+    net_booms.push_back(this);  // net host relays world actors' deaths
     return true;
   }
   return false;

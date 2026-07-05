@@ -65,6 +65,12 @@ enum EventCode {
   // distance to its own ship (the client's shots are local, and the
   // host simulates the client's weapon itself).
   EV_REMOTE_SHOT = 12,
+  // Host-simulated world actors (enemies, mini-station): a gunshot / a
+  // ship-class explosion / the big station explosion, at a packed
+  // position — the client plays them attenuated by listener distance.
+  EV_WORLD_SHOT = 13,
+  EV_WORLD_BOOM = 14,
+  EV_STATION_BOOM = 15,
 };
 
 // Packs a world position into an event arg (two int16s). World sizes
