@@ -240,6 +240,13 @@ void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
   }
 }
 
+void GLStation::net_client_step(float delta) {
+  Object::step(delta);
+  if (!alive) return;
+  outer_rotation += outer_rotation_speed * delta;
+  inner_rotation += inner_rotation_speed * delta;
+}
+
 void GLStation::step(float delta, const Grid &grid) {
   Ship::step(delta, grid);
   if (!alive) return;

@@ -27,7 +27,9 @@ namespace Net {
 //    the peer can run the remote ship's exhaust-trail emitters.
 // 6: mini-station bullet section appended after the per-ship extras
 //    (its Save record carries no bullets — the client saw none).
-const uint8_t PROTO_VERSION = 6;
+// 7: gen-20 station enemies' bullet section appended after the
+//    mini-station's, in enemies-list order.
+const uint8_t PROTO_VERSION = 7;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check

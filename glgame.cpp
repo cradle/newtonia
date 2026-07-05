@@ -1097,6 +1097,17 @@ void nx_write_mini_station_bullets(Save::Stream &out, const GLMiniStation *ms) {
     for (uint16_t i = 0; i < n; i++) nx_write_projectile(out, ms->bullets[i]);
 }
 
+// v7: the gen-20 station's deployed enemies' shots, in enemies-list order
+// (the client rebuilds its enemies from the station record in the same
+// order every apply).
+void nx_write_enemy_bullets(Save::Stream &out, const std::list<GLShip *> *enemies) {
+  nx_write(out, (uint16_t)enemies->size());
+  for (auto *e : *enemies) {
+    nx_write(out, (uint16_t)e->ship->bullets.size());
+    for (const Particle &b : e->ship->bullets) nx_write_projectile(out, b);
+  }
+}
+
 }  // namespace
 
 // One state byte per asteroid in delta records: the transient flags a
@@ -1124,6 +1135,7 @@ void GLGame::net_host_send_snapshot(int delta) {
   nx_write(payload, (uint32_t)players->size());
   for (auto *gs : *players) nx_write_ship(payload, *gs->ship);
   nx_write_mini_station_bullets(payload, mini_station);
+  nx_write_enemy_bullets(payload, enemies);
 
   nx_write(payload, (uint32_t)objects->size());
   for (auto *a : *objects) nx_write(payload, a->net_id);
@@ -1167,6 +1179,7 @@ bool GLGame::net_send_delta() {
   nx_write(payload, (uint32_t)players->size());
   for (auto *gs : *players) nx_write_ship(payload, *gs->ship);
   nx_write_mini_station_bullets(payload, mini_station);
+  nx_write_enemy_bullets(payload, enemies);
 
   // Asteroids: new since the last keyframe/delta, changed beyond what the
   // client can extrapolate, or gone.
@@ -1682,6 +1695,13 @@ void GLGame::tick_net_client(int delta) {
     // Mini-station: drift/spin/bullets extrapolate between snapshots —
     // without this it visibly teleported at the 10 Hz apply rate.
     if (mini_station) mini_station->net_client_step(step_size);
+    // Gen-20 station + its enemies: kinematic-only extrapolation (no AI,
+    // no firing — the host owns those, the snapshot reconciles).
+    if (station) station->net_client_step(step_size);
+    for (auto *e : *enemies) {
+      e->ship->Object::step(step_size);
+      for (auto &b : e->ship->bullets) b.step(step_size);
+    }
     grid.update((std::list<Object *> *)objects);
 
     net_client_send_input();
@@ -2005,11 +2025,16 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     black_holes->push_back(new BlackHole(WrappedPoint(sbh.pos_x, sbh.pos_y)));
 
   // Stations restore in place; created/destroyed on presence transitions.
+  // restore_state APPENDS its deployed enemies (save-load semantics) — at
+  // the 10 Hz apply rate that accumulated hundreds of ships and hung the
+  // game. All enemies are station-owned: wholesale rebuild each apply.
   if (s.station.present) {
     if (!station)
       station = new GLStation(grid, enemies, players, (std::list<Object *> *)objects);
+    while (!enemies->empty()) { delete enemies->back(); enemies->pop_back(); }
     station->restore_state(s.station, grid);
   } else if (station) {
+    while (!enemies->empty()) { delete enemies->back(); enemies->pop_back(); }
     delete station;
     station = NULL;
   }
@@ -2121,6 +2146,30 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s) {
     ms_bullets.push_back(Particle(Point(x, y), Point(vx, vy), 2000.0f));
   }
   if (mini_station) mini_station->bullets.swap(ms_bullets);
+
+  // v7: station enemies' bullets, in the same order the station restore
+  // just rebuilt the enemies list.
+  uint16_t n_en = 0;
+  if (!nx_read(in, n_en)) return false;
+  if (n_en > 256) return false;  // hostile/corrupt
+  auto ei = enemies->begin();
+  for (int e = 0; e < n_en; e++) {
+    uint16_t nb = 0;
+    if (!nx_read(in, nb)) return false;
+    if (nb > 512) return false;
+    std::vector<Particle> ebs;
+    for (int i = 0; i < nb; i++) {
+      float x, y, vx, vy;
+      if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) ||
+          !nx_read(in, vy))
+        return false;
+      ebs.push_back(Particle(Point(x, y), Point(vx, vy), 2000.0f));
+    }
+    if (ei != enemies->end()) {
+      (*ei)->ship->bullets.swap(ebs);
+      ++ei;
+    }
+  }
   return true;
 }
 
