@@ -370,12 +370,19 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                     if (!s_game->back_pressed()) s_running = false;
                     break;
                 }
+                // While the soft keyboard is up, printable characters
+                // arrive via SDL_TEXTINPUT — SDL also synthesizes key
+                // events for committed IME text, so forwarding both
+                // would type every character twice. Control keys
+                // (backspace, enter) only arrive here, keep them.
+                if (SDL_IsTextInputActive() && k >= 32 && k < 127) break;
                 unsigned char key = (k < 128) ? (unsigned char)k : 0;
                 if (key) s_game->keyboard(key, 0, 0);
                 break;
             }
             case SDL_KEYUP: {
                 SDL_Keycode k = e.key.keysym.sym;
+                if (SDL_IsTextInputActive() && k >= 32 && k < 127) break;
                 unsigned char key = (k < 128) ? (unsigned char)k : 0;
                 if (key) s_game->keyboard_up(key, 0, 0);
                 break;

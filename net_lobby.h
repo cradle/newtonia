@@ -104,6 +104,9 @@ private:
 
   std::string status_;  // transient hint / error line
   int status_ms_;
+  // RoomHost: virtual y of the "TAP HERE TO SHARE IT" line as last drawn;
+  // touch_tap() centres the share tap band on it. 0 = line not shown.
+  int share_line_y_ = 0;
 
   int currentTime;
   WrappedPoint viewpoint;

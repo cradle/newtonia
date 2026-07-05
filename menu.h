@@ -2,6 +2,7 @@
 #define MENU_H
 
 #include <SDL.h>
+#include <vector>
 #include "state.h"
 #include "savegame.h"
 
@@ -21,10 +22,17 @@ public:
 private:
   void confirm_selection(SDL_GameController *ctrl);
   int  max_menu_items() const;
-  // ONLINE row (netplay lobby): only on builds with a net backend, and not
-  // in touch mode (Milestone 1 lobby is keyboard/controller only).
+  // ONLINE row (netplay lobby): only on builds with a net backend.
   bool show_online_row() const;
   int  online_row_index() const;  // -1 when the row is hidden
+  // OPTIONS row: beta-only, and keyboard/controller-only (the options
+  // screen has no touch interaction).
+  bool show_options_row() const;
+  // Shared vertical row layout for the main menu (desktop cursor rows and
+  // touch tap targets use the same geometry).
+  static int menu_row_size();
+  void draw_menu_rows(const std::vector<std::string> &rows);
+  int  menu_row_at(float ny) const;  // -1 when the tap misses every row
   void open_options();
   void close_options();
   void adjust_active_row(int delta);
@@ -53,7 +61,7 @@ private:
   int  quit_selection_ = 0;  // 0 = Yes, 1 = No
   bool new_confirm_ = false; // confirm NEW GAME when it would overwrite a save
   int  new_selection_ = 1;   // 0 = Yes, 1 = No — No is the safe default
-  bool attract_mode_ = true; // show flashing PRESS ENTER/START before menu on desktop
+  bool attract_mode_ = true; // flashing PRESS ENTER/START (TAP TO START on touch) before the menu
 };
 
 #endif

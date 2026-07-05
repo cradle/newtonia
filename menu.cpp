@@ -78,9 +78,6 @@ Menu::Menu() :
 #ifdef __EMSCRIPTEN__
   EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
 #endif
-#if defined(__ANDROID__) || defined(__IOS__)
-  attract_mode_ = false;
-#endif
   if(music == NULL) {
     music = Mix_LoadMUS(asset_path("audio/title.wav").c_str());
     if(music == NULL) {
@@ -187,17 +184,21 @@ void Menu::draw() {
   }
 
   if (!options_mode_) {
-    if (attract_mode_ && !is_touch_mode()) {
-      bool has_ctrl = false;
-      int nc = SDL_NumJoysticks();
-      for (int i = 0; i < nc; i++) {
-        if (SDL_IsGameController(i)) { has_ctrl = true; break; }
-      }
+    if (attract_mode_) {
       if (!((currentTime / 1400) % 2)) {
         // title_bot=160 (320-2*80), scores_top=-215; center single item in that gap
         const int sz = 18, h = 2 * sz;
         int gap = (160 - (-215) - h) / 2;
-        Typer::draw_centered(0, 160 - gap, has_ctrl ? "press start" : "press enter", sz);
+        if (is_touch_mode()) {
+          Typer::draw_centered(0, 160 - gap, "tap to start", sz);
+        } else {
+          bool has_ctrl = false;
+          int nc = SDL_NumJoysticks();
+          for (int i = 0; i < nc; i++) {
+            if (SDL_IsGameController(i)) { has_ctrl = true; break; }
+          }
+          Typer::draw_centered(0, 160 - gap, has_ctrl ? "press start" : "press enter", sz);
+        }
       }
     } else if (quit_confirm_) {
       Typer::draw_centered(0, 50, "Quit?", 30);
@@ -222,48 +223,18 @@ void Menu::draw() {
         Typer::draw_centered(0, -110, no_str.c_str(),  22);
       }
     } else if (has_save_) {
-      if (is_touch_mode()) {
-        // Side-by-side layout for touch: full left/right halves are tap targets
-        Typer::draw_centered(-Typer::scaled_window_width / 2, -50, "CONTINUE", 26);
-        Typer::draw_centered( Typer::scaled_window_width / 2, -50, "NEW GAME", 26);
-        if (show_online_row())
-          Typer::draw_centered(0, -170, "ONLINE", 22);  // full-width lower band
-      } else {
-        // Equally space item blocks between title_bot=160 and scores_top=-215
-        const int sz = 22, h = 2 * sz;
-        std::vector<std::string> rows;
-        rows.push_back("CONTINUE");
-        rows.push_back("NEW GAME");
-        if (show_online_row()) rows.push_back("ONLINE");
-        if (is_beta_feature_enabled()) rows.push_back("OPTIONS");
-        int n = (int)rows.size();
-        int gap = (160 - (-215) - n * h) / (n + 1);
-        for (int i = 0; i < n; i++) {
-          std::string row = std::string(menu_selection == i ? "> " : "  ") + rows[i];
-          Typer::draw_centered(0, 160 - (i + 1) * gap - i * h, row.c_str(), sz);
-        }
-      }
+      std::vector<std::string> rows;
+      rows.push_back("CONTINUE");
+      rows.push_back("NEW GAME");
+      if (show_online_row()) rows.push_back("ONLINE");
+      if (show_options_row()) rows.push_back("OPTIONS");
+      draw_menu_rows(rows);
     } else {
-      if (is_touch_mode()) {
-        if ((currentTime/1400) % 2) {
-          Typer::draw_centered(0, -50, "tap to start", 18);
-        }
-        if (show_online_row())
-          Typer::draw_centered(0, -170, "ONLINE", 22);  // full-width lower band
-      } else {
-        // Equally space item blocks between title_bot=160 and scores_top=-215
-        const int sz = 22, h = 2 * sz;
-        std::vector<std::string> rows;
-        rows.push_back("NEW GAME");
-        if (show_online_row()) rows.push_back("ONLINE");
-        if (is_beta_feature_enabled()) rows.push_back("OPTIONS");
-        int n = (int)rows.size();
-        int gap = (160 - (-215) - n * h) / (n + 1);
-        for (int i = 0; i < n; i++) {
-          std::string row = std::string(menu_selection == i ? "> " : "  ") + rows[i];
-          Typer::draw_centered(0, 160 - (i + 1) * gap - i * h, row.c_str(), sz);
-        }
-      }
+      std::vector<std::string> rows;
+      rows.push_back("NEW GAME");
+      if (show_online_row()) rows.push_back("ONLINE");
+      if (show_options_row()) rows.push_back("OPTIONS");
+      draw_menu_rows(rows);
     }
   }
   if (!options_mode_)
@@ -307,7 +278,7 @@ void Menu::tick(int delta) {
           } else {
             new_confirm_ = false;
           }
-        } else if (is_beta_feature_enabled() && menu_selection == max_menu_items() - 1) {
+        } else if (show_options_row() && menu_selection == max_menu_items() - 1) {
           open_options();
         } else {
           confirm_selection(ctrl);
@@ -420,7 +391,7 @@ void Menu::controller(SDL_Event event) {
       if (menu_selection < n - 1) menu_selection++;
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
                event.cbutton.button == SDL_CONTROLLER_BUTTON_A) {
-      if (is_beta_feature_enabled() && menu_selection == n - 1) {
+      if (show_options_row() && menu_selection == n - 1) {
         open_options();
       } else {
         confirm_selection(SDL_GameControllerFromInstanceID(event.cbutton.which));
@@ -443,7 +414,7 @@ void Menu::controller(SDL_Event event) {
           } else {
             new_confirm_ = false;
           }
-        } else if (is_beta_feature_enabled() && menu_selection == n - 1) {
+        } else if (show_options_row() && menu_selection == n - 1) {
           open_options();
         } else {
           confirm_selection(SDL_GameControllerFromInstanceID(event.caxis.which));
@@ -492,28 +463,18 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
   int n = max_menu_items();
 
 #if defined(__ANDROID__) || defined(__IOS__)
-  // Touch/mobile — touch_tap and back_pressed() handle interaction.
-  if (quit_confirm_ || new_confirm_) return;
-  // With a save present touch_tap does all selection; ignore the keys the
-  // touch zones synthesize (\r, space, x, p) — acting on them here would
-  // double-handle the tap that touch_tap already processed (e.g. re-opening
-  // the new-game confirm right after its NO was tapped).
-  if (has_save_) return;
-  if (is_beta_feature_enabled() && menu_selection == n - 1) {
-    open_options();
-  } else {
-    confirm_selection(nullptr);
-  }
+  // Touch/mobile — touch_tap and back_pressed() handle ALL interaction
+  // (attract dismissal, row selection, confirms). The keys arriving here
+  // are only the ones the touch zones synthesize (\r, space, x, p);
+  // acting on them would double-handle the tap touch_tap already did.
+  (void)n;
+  (void)key;
+  return;
 #elif defined(__EMSCRIPTEN__)
   if (is_touch_mode()) {
-    // Touch web: same as mobile — touch_tap handles selection, suppress \r
-    if (quit_confirm_ || new_confirm_) return;
-    if (has_save_ && (key == '\r' || key == '\n')) return;
-    if (is_beta_feature_enabled() && menu_selection == n - 1) {
-      open_options();
-    } else {
-      confirm_selection(nullptr);
-    }
+    // Touch web: same as mobile — touch_tap owns all interaction and
+    // web_menu_tap() synthesizes a stray keyboard_up('\r') per tap.
+    return;
   } else {
     // Keyboard web: w/s navigate, space/enter confirm
     if (attract_mode_) {
@@ -550,7 +511,7 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
       }
     } else {
       if (key == ' ' || key == '\r' || key == '\n') {
-        if (is_beta_feature_enabled() && menu_selection == n - 1) {
+        if (show_options_row() && menu_selection == n - 1) {
           open_options();
         } else {
           confirm_selection(nullptr);
@@ -606,7 +567,7 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
       quit_confirm_ = true;
       quit_selection_ = 0;
     } else if (key == ' ' || key == '\r' || key == '\n') {
-      if (is_beta_feature_enabled() && menu_selection == n - 1) {
+      if (show_options_row() && menu_selection == n - 1) {
         open_options();
       } else {
         confirm_selection(nullptr);
@@ -643,6 +604,11 @@ bool Menu::back_pressed() {
 }
 
 void Menu::touch_tap(float nx, float ny) {
+  if (attract_mode_) {
+    attract_mode_ = false;  // any tap dismisses the attract screen
+    return;
+  }
+  if (options_mode_) return;  // options is keyboard/controller-only
   if (quit_confirm_) {
     // Left half = Yes (quit), right half = No (dismiss)
     if (nx < 0.5f) {
@@ -661,31 +627,62 @@ void Menu::touch_tap(float nx, float ny) {
     }
     return;
   }
-  // Full-width band in the lower third = ONLINE (drawn at y=-170).
-  if (show_online_row() && ny >= 0.58f) {
-    request_state_change(new NetLobby());
+  // Rows are laid out like the desktop menu; hit-test the tapped row.
+  int row = menu_row_at(ny);
+  if (row < 0) return;
+  menu_selection = row;
+  if (show_options_row() && row == max_menu_items() - 1) {
+    open_options();
     return;
   }
-  if (!has_save_) {
-    // No save: any main-area tap starts a new game ("tap to start").
-    menu_selection = 0;
-    confirm_selection(nullptr);
-    return;
-  }
-  // Left half = CONTINUE, right half = NEW GAME
-  menu_selection = (nx >= 0.5f) ? 1 : 0;
   confirm_selection(nullptr);
 }
 
 int Menu::max_menu_items() const {
   int n = has_save_ ? 2 : 1;
   if (show_online_row()) n++;
-  if (is_beta_feature_enabled()) n++;
+  if (show_options_row()) n++;
   return n;
 }
 
 bool Menu::show_online_row() const {
   return net_available();
+}
+
+bool Menu::show_options_row() const {
+  return is_beta_feature_enabled() && !is_touch_mode();
+}
+
+int Menu::menu_row_size() { return is_touch_mode() ? 26 : 22; }
+
+// Equally space item blocks between title_bot=160 and scores_top=-215.
+// Touch draws bigger glyphs and no selection cursor; menu_row_at() mirrors
+// this exact geometry so taps land on what is drawn.
+void Menu::draw_menu_rows(const std::vector<std::string> &rows) {
+  const int sz = menu_row_size(), h = 2 * sz;
+  int n = (int)rows.size();
+  int gap = (160 - (-215) - n * h) / (n + 1);
+  for (int i = 0; i < n; i++) {
+    std::string row = rows[i];
+    if (!is_touch_mode())
+      row = std::string(menu_selection == i ? "> " : "  ") + row;
+    Typer::draw_centered(0, 160 - (i + 1) * gap - i * h, row.c_str(), sz);
+  }
+}
+
+int Menu::menu_row_at(float ny) const {
+  const int sz = menu_row_size(), h = 2 * sz;
+  int n = max_menu_items();
+  int gap = (160 - (-215) - n * h) / (n + 1);
+  // The menu ortho maps normalized tap y (0=top, 1=bottom) linearly onto
+  // Typer virtual y in [+scaled_window_height, -scaled_window_height].
+  float y = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
+  // Slot i covers its glyph block plus half a gap either side, so the
+  // whole menu band is contiguous finger targets with no dead zones.
+  float t = (160.0f - y) - gap * 0.5f;
+  if (t < 0) return -1;
+  int i = (int)(t / (gap + h));
+  return i < n ? i : -1;
 }
 
 int Menu::online_row_index() const {

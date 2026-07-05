@@ -1,5 +1,6 @@
 #include "net_lobby.h"
 
+#include <cmath>
 #include <cstdio>
 #include <vector>
 
@@ -660,6 +661,7 @@ void NetLobby::draw() {
       break;
     }
     case RoomHost:
+      share_line_y_ = 0;
       if (room_code_.empty()) {
         lines.push_back("CREATING A ROOM");
         if (blink) lines.push_back("PLEASE WAIT...");
@@ -668,24 +670,36 @@ void NetLobby::draw() {
         Typer::draw_centered(0, 20, room_code_.c_str(), 48);
         y = -100;
         lines.push_back("TELL YOUR FRIEND THE CODE");
-        if (is_touch_mode() && net_share_available())
+        if (is_touch_mode() && net_share_available()) {
+          // Remember where this line lands so the tap band sits on it.
+          share_line_y_ = y - (int)lines.size() * line;
           lines.push_back("TAP HERE TO SHARE IT");
-        else
+        } else {
           lines.push_back("IT IS ON YOUR CLIPBOARD");
+        }
         lines.push_back("");
         if (blink) lines.push_back("WAITING FOR PLAYER 2...");
       }
       break;
     case CodeEntry: {
-      lines.push_back("ENTER THE ROOM CODE");
       std::string slots;
       for (int i = 0; i < NET_ROOM_CODE_LEN; i++) {
         slots += (size_t)i < code_entry_.size() ? code_entry_[i] : '-';
         if (i + 1 < NET_ROOM_CODE_LEN) slots += ' ';
       }
-      Typer::draw_centered(0, 20, slots.c_str(), 48);
-      y = -100;
-      lines.push_back("TYPE THE CODE YOUR HOST SEES");
+      if (is_touch_mode()) {
+        // The soft keyboard covers the lower half of the screen — keep
+        // the heading and the typed code in the top half.
+        Typer::draw_centered(0, 230, "ENTER THE ROOM CODE", sz);
+        Typer::draw_centered(0, 140, slots.c_str(), 48);
+        y = 30;
+        lines.push_back("TYPE THE CODE YOUR HOST SEES");
+      } else {
+        lines.push_back("ENTER THE ROOM CODE");
+        Typer::draw_centered(0, 20, slots.c_str(), 48);
+        y = -100;
+        lines.push_back("TYPE THE CODE YOUR HOST SEES");
+      }
       break;
     }
     case RoomJoining:
@@ -756,7 +770,20 @@ void NetLobby::draw() {
   Typer::draw_centered(0, -420, "ESC - BACK TO MENU", 13, currentTime);
 }
 
-void NetLobby::keyboard(unsigned char key, int x, int y) {}
+void NetLobby::keyboard(unsigned char key, int x, int y) {
+  (void)x;
+  (void)y;
+  // Code entry happens on key-down: this is where real characters arrive
+  // on every platform (GLUT char events, SDL_TEXTINPUT on mobile). The
+  // key-up path must NOT also feed the code field — Android's touch layer
+  // synthesizes key-ups ('p' from the pause zone, '\r' from taps) that
+  // would otherwise leak stray characters into it.
+  if (screen_ != CodeEntry) return;
+  // Touch synthesizes '\r' on finger-down too, and a full code auto-joins,
+  // so Enter is meaningless there — it would only flash the length hint.
+  if (is_touch_mode() && (key == '\r' || key == '\n')) return;
+  code_entry_key(key);
+}
 
 // Room-code typing: letters/digits from the code alphabet, backspace,
 // Enter to submit. Runs INSTEAD of the shortcut keys — V, C, W and S are
@@ -787,10 +814,13 @@ void NetLobby::keyboard_up(unsigned char key, int x, int y) {
     leave_to_menu();
     return;
   }
-  if (screen_ == CodeEntry) {
-    code_entry_key(key);
-    return;
-  }
+  // Touch platforms synthesize key-ups from finger zones ('p', '\r', ' ',
+  // 'x'); touch_tap() owns all lobby interaction there, so acting on keys
+  // here would double-handle taps (and corrupt the code field).
+  if (is_touch_mode()) return;
+  // Code characters are consumed on key-down in keyboard(); swallowing
+  // them here keeps V/C/W/S shortcuts from also firing while typing.
+  if (screen_ == CodeEntry) return;
   switch (key) {
     case 'w':
     case 'W':
@@ -855,11 +885,16 @@ void NetLobby::touch_tap(float nx, float ny) {
     case CodeEntry:
       code_entry_keyboard(true);  // re-summon a dismissed soft keyboard
       break;
-    case RoomHost:
-      // Bottom band: hand the code to the OS share sheet.
-      if (ny >= 0.72f && !room_code_.empty() && net_share_available())
+    case RoomHost: {
+      // Share band centred on the drawn "TAP HERE TO SHARE IT" line
+      // (share_line_y_, recorded by draw(); glyphs extend ~2*sz below it),
+      // padded to a finger-friendly height.
+      float y = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
+      if (share_line_y_ != 0 && fabsf(y - (share_line_y_ - 18.0f)) <= 60.0f &&
+          !room_code_.empty() && net_share_available())
         net_share_text("Join my Newtonia game! Room code: " + room_code_);
       break;
+    }
     case LobbyFailed:
       confirm();  // same as ENTER: back to the choose screen
       break;

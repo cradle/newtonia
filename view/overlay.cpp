@@ -311,7 +311,9 @@ void Overlay::draw_circle(float cx, float cy, float r, int segs, bool filled,
 
 void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
 #if defined(__ANDROID__) || defined(__IOS__)
-  if(glgame->players->front() != glship) return;
+  // Only the locally-controlled ship's viewport gets the OSD (on a net
+  // client that is the LAST player, not the first).
+  if(glgame->local_player() != glship) return;
 
   float pw = (float)Typer::window_width;
   float ph = (float)Typer::window_height;

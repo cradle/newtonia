@@ -56,6 +56,10 @@ public:
   void keyboard_up(unsigned char key, int x, int y) override;
   void controller(SDL_Event event) override;
   void touch_joystick(float nx, float ny);
+  // The ship this machine's player controls: the first one, except on a
+  // net client where the first ship is the remote host's and the local
+  // player is the last. Touch input and the touch OSD key off this.
+  GLShip *local_player() const;
 
   friend class Overlay;
   // The between-level intro state adopts the game while it runs (drawing the

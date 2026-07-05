@@ -1045,6 +1045,14 @@ void nx_write_ship(Save::Stream &out, const Ship &s) {
   nx_write(out, (int32_t)s.god_mode_time_remaining());
   nx_write(out, (uint8_t)s.shield_active());
   nx_write(out, s.net_warp_count);
+  // Movement flags so the peer can run this ship's exhaust-trail
+  // emitters: bit0 thrust, bit1 reverse, bits 2-3 rotation (1=L, 2=R).
+  uint8_t move = (uint8_t)((s.thrusting ? 1 : 0) | (s.reversing ? 2 : 0) |
+                           ((s.rotation_direction == Ship::LEFT    ? 1
+                             : s.rotation_direction == Ship::RIGHT ? 2
+                                                                   : 0)
+                            << 2));
+  nx_write(out, move);
 
   nx_write(out, (uint16_t)s.bullets.size());
   for (const Particle &p : s.bullets) nx_write_projectile(out, p);
@@ -1360,6 +1368,7 @@ struct NetShipExtras {
   int32_t god_ms;
   uint8_t shield;
   uint8_t warp_count;  // pose-is-absolute signal — see Ship::net_warp_count
+  uint8_t move_flags;  // bit0 thrust, bit1 reverse, bits 2-3 rotation (1=L, 2=R)
 };
 
 bool nx_read_projectiles(Save::Stream &in, Ship &s) {
@@ -1814,7 +1823,7 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s) {
     if (!nx_read(in, ex.alive) || !nx_read(in, ex.temperature) ||
         !nx_read(in, ex.time_until_respawn) || !nx_read(in, ex.time_left_invincible) ||
         !nx_read(in, ex.god_ms) || !nx_read(in, ex.shield) ||
-        !nx_read(in, ex.warp_count))
+        !nx_read(in, ex.warp_count) || !nx_read(in, ex.move_flags))
       return false;
     if (it == players->end()) return false;
     Ship *ship = (*it)->ship;
@@ -1863,6 +1872,18 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s) {
     bool local_ship = (i + 1 == nplayers);
     ship->set_shield_hum(local_ship && ship->is_alive() && ship->invincible &&
                          ex.god_ms <= 0);
+    // Movement flags drive the remote ship's exhaust-trail emitters (the
+    // restore cleared them). Raw flag writes: Ship::thrust()/reverse()
+    // touch the shared boost-sound volume, which belongs to local input.
+    // The local ship keeps its own input-driven flags.
+    if (!local_ship) {
+      ship->thrusting = (ex.move_flags & 1) != 0;
+      ship->reversing = (ex.move_flags & 2) != 0;
+      int rot = (ex.move_flags >> 2) & 3;
+      ship->rotation_direction = rot == 1   ? Ship::LEFT
+                                 : rot == 2 ? Ship::RIGHT
+                                            : Ship::NONE;
+    }
     // god-mode / shield presentation on the client is a Milestone-1 cut
     // (both still function — the host simulates them; only their local
     // visual/audio flourishes are missing).
@@ -2699,8 +2720,7 @@ void GLGame::draw(void) {
   else if(net_mode_ != NetOff) {
     // Online: one full-screen view following the local player (host =
     // front of the list, client = back). The peer draws their own view.
-    draw_world(net_mode_ == NetClient ? players->back() : players->front(),
-               true);
+    draw_world(local_player(), true);
     draw_map();
     draw_net_overlays();
   }
@@ -3234,9 +3254,14 @@ void GLGame::controller(SDL_Event event) {
   }
 }
 
+GLShip *GLGame::local_player() const {
+  if (players->empty()) return NULL;
+  return net_mode_ == NetClient ? players->back() : players->front();
+}
+
 void GLGame::touch_joystick(float nx, float ny) {
   if(!running || players->empty()) return;
-  players->front()->touch_joystick_input(nx, ny);
+  local_player()->touch_joystick_input(nx, ny);
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
