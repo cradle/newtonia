@@ -41,6 +41,7 @@ NetLobby::NetLobby()
       answer_sent_(false),
       signal_wait_ms_(0),
       paste_pending_(false),
+      code_clip_pending_(false),
       connect_wait_ms_(0),
       status_ms_(0),
       currentTime(0),
@@ -115,6 +116,11 @@ void NetLobby::confirm() {
     } else {
       if (signal_) {
         screen_ = CodeEntry;
+        // If the clipboard already holds the friend's code (the host side
+        // auto-copies it), prefill and join without any typing. Started
+        // here so the web backend's read stays inside the user gesture.
+        code_clip_pending_ = true;
+        net_clipboard_read_start();
       } else {
         screen_ = JoinWaitOffer;
       }
@@ -238,6 +244,7 @@ void NetLobby::pump_signal(int delta) {
         break;
       case NetSignal::Event::Room:
         room_code_ = ev.text;
+        net_clipboard_write(room_code_);  // ready to paste to the friend
         printf("[lobby] room %s (%d turn servers)\n", room_code_.c_str(),
                (int)ice_servers_.size());
         fflush(stdout);
@@ -318,6 +325,31 @@ void NetLobby::tick(int delta) {
   if (status_ms_ > 0) status_ms_ -= delta;
 
   pump_signal(delta);
+
+  // JOIN convenience: a valid 5-letter code on the clipboard (the host
+  // auto-copies theirs) is entered and joined without typing. Anything
+  // else on the clipboard is silently ignored.
+  if (code_clip_pending_ && screen_ != CodeEntry) code_clip_pending_ = false;
+  if (code_clip_pending_) {
+    std::string clip;
+    if (net_clipboard_read_poll(clip)) {
+      code_clip_pending_ = false;
+      std::string code;
+      for (size_t i = 0; i < clip.size(); i++) {
+        char c = clip[i];
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') continue;
+        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+        code += c;
+      }
+      bool ok = code.size() == (size_t)NET_ROOM_CODE_LEN;
+      for (size_t i = 0; ok && i < code.size(); i++)
+        ok = net_room_code_char_ok(code[i]);
+      if (ok && code_entry_.empty()) {
+        code_entry_ = code;
+        confirm();
+      }
+    }
+  }
 
   // Async clipboard read completion (web; immediate on native).
   if (paste_pending_ && net_clipboard_read_poll(paste_buffer_)) {
@@ -490,6 +522,7 @@ void NetLobby::draw() {
         Typer::draw_centered(0, 20, room_code_.c_str(), 48);
         y = -100;
         lines.push_back("TELL YOUR FRIEND THE CODE");
+        lines.push_back("IT IS ON YOUR CLIPBOARD");
         lines.push_back("");
         if (blink) lines.push_back("WAITING FOR PLAYER 2...");
       }

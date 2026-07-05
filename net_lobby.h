@@ -84,6 +84,7 @@ private:
 
   bool paste_pending_;
   std::string paste_buffer_;
+  bool code_clip_pending_;   // CodeEntry: auto-join poll of the clipboard
   int connect_wait_ms_;  // time in WaitConnect, for the no-relay timeout
   Net::SnapshotAssembler assembler_;  // joiner: reassembles snapshot #1
 
