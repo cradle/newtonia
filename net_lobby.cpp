@@ -641,7 +641,9 @@ void NetLobby::draw() {
   mat4_ortho(ortho, -hw, hw, -hh, hh, -1.0f, 1.0f);
   gles2_set_vp(ortho);
 
-  Typer::draw_centered(0, 320, "ONLINE CO-OP", 40);
+  // Touch: hoist the header toward the top edge — the soft keyboard eats
+  // the bottom half on the code-entry screen, so vertical space is scarce.
+  Typer::draw_centered(0, is_touch_mode() ? 480 : 320, "ONLINE CO-OP", 40);
 
   const int sz = 18, line = 52;
   int y = 120;
@@ -688,11 +690,12 @@ void NetLobby::draw() {
         if (i + 1 < NET_ROOM_CODE_LEN) slots += ' ';
       }
       if (is_touch_mode()) {
-        // The soft keyboard covers the lower half of the screen — keep
-        // the heading and the typed code in the top half.
-        Typer::draw_centered(0, 230, "ENTER THE ROOM CODE", sz);
-        Typer::draw_centered(0, 140, slots.c_str(), 48);
-        y = 30;
+        // The soft keyboard covers the lower half of the screen — stack
+        // the heading, code and hint in the top half under the hoisted
+        // header, with generous spacing.
+        Typer::draw_centered(0, 360, "ENTER THE ROOM CODE", sz);
+        Typer::draw_centered(0, 230, slots.c_str(), 48);
+        y = 80;
         lines.push_back("TYPE THE CODE YOUR HOST SEES");
       } else {
         lines.push_back("ENTER THE ROOM CODE");
@@ -767,7 +770,11 @@ void NetLobby::draw() {
   if (status_ms_ > 0 && !status_.empty())
     Typer::draw_centered(0, -320, status_.c_str(), 15);
 
-  Typer::draw_centered(0, -420, "ESC - BACK TO MENU", 13, currentTime);
+  // Touch: the bottom strip is a tap zone (see touch_tap), so label it as
+  // an action rather than a key hint.
+  Typer::draw_centered(0, -420,
+                       is_touch_mode() ? "RETURN TO MENU" : "ESC - BACK TO MENU",
+                       13, currentTime);
 }
 
 void NetLobby::keyboard(unsigned char key, int x, int y) {
@@ -876,6 +883,12 @@ void NetLobby::controller(SDL_Event event) {
 }
 
 void NetLobby::touch_tap(float nx, float ny) {
+  // Bottom strip on every screen = RETURN TO MENU (drawn at y=-420).
+  float vy = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
+  if (vy < -370.0f) {
+    leave_to_menu();
+    return;
+  }
   switch (screen_) {
     case Choose:
       // Upper band = HOST, lower band = JOIN (mirrors the drawn rows).
@@ -885,16 +898,14 @@ void NetLobby::touch_tap(float nx, float ny) {
     case CodeEntry:
       code_entry_keyboard(true);  // re-summon a dismissed soft keyboard
       break;
-    case RoomHost: {
+    case RoomHost:
       // Share band centred on the drawn "TAP HERE TO SHARE IT" line
       // (share_line_y_, recorded by draw(); glyphs extend ~2*sz below it),
       // padded to a finger-friendly height.
-      float y = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
-      if (share_line_y_ != 0 && fabsf(y - (share_line_y_ - 18.0f)) <= 60.0f &&
+      if (share_line_y_ != 0 && fabsf(vy - (share_line_y_ - 18.0f)) <= 60.0f &&
           !room_code_.empty() && net_share_available())
         net_share_text("Join my Newtonia game! Room code: " + room_code_);
       break;
-    }
     case LobbyFailed:
       confirm();  // same as ENTER: back to the choose screen
       break;

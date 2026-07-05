@@ -72,6 +72,12 @@ static void update_joystick_nub(float px, float py) {
 // ---- Finger event handlers ----
 
 static void finger_down(SDL_FingerID id, float x, float y) {
+    // Soft keyboard up (lobby code entry): taps must not synthesize game
+    // keys — '\r', 'x', 'n' would leak into the code field (X and N are
+    // code-alphabet letters) or arm the pause zone. touch_tap on release
+    // still fires, which is all the lobby needs (re-summon keyboard etc).
+    if (SDL_IsTextInputActive()) return;
+
     float px = x * (float)s_w;
     float py = y * (float)s_h;
 
@@ -355,34 +361,28 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                 s_running = false;
                 break;
 
-            // Physical keyboard (Bluetooth keyboard, emulator, etc.)
-            case SDL_TEXTINPUT: {
-                // Soft-keyboard characters (lobby code entry) ride the
-                // normal keyboard path one char at a time.
-                for (const char *c = e.text.text; *c; ++c)
-                    if ((unsigned char)*c < 128)
-                        s_game->keyboard((unsigned char)*c, 0, 0);
+            // Keyboard: key events are the ONE source of typed characters.
+            // Soft keyboards deliver text two ways — commitText (which SDL
+            // turns into synthesized KEYDOWN/KEYUP per char *and* an
+            // SDL_TEXTINPUT) and real IME KeyEvents (KEYDOWN/KEYUP only, no
+            // TEXTINPUT). GBoard mixes both, so feeding from TEXTINPUT
+            // drops the KeyEvent-delivered letters, and feeding from both
+            // doubles the commitText ones. KEYDOWN fires exactly once per
+            // character on every path (and covers Bluetooth keyboards).
+            case SDL_TEXTINPUT:
                 break;
-            }
             case SDL_KEYDOWN: {
                 SDL_Keycode k = e.key.keysym.sym;
                 if (k == SDLK_AC_BACK || k == SDLK_ESCAPE) {
                     if (!s_game->back_pressed()) s_running = false;
                     break;
                 }
-                // While the soft keyboard is up, printable characters
-                // arrive via SDL_TEXTINPUT — SDL also synthesizes key
-                // events for committed IME text, so forwarding both
-                // would type every character twice. Control keys
-                // (backspace, enter) only arrive here, keep them.
-                if (SDL_IsTextInputActive() && k >= 32 && k < 127) break;
                 unsigned char key = (k < 128) ? (unsigned char)k : 0;
                 if (key) s_game->keyboard(key, 0, 0);
                 break;
             }
             case SDL_KEYUP: {
                 SDL_Keycode k = e.key.keysym.sym;
-                if (SDL_IsTextInputActive() && k >= 32 && k < 127) break;
                 unsigned char key = (k < 128) ? (unsigned char)k : 0;
                 if (key) s_game->keyboard_up(key, 0, 0);
                 break;
