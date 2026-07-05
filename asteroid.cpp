@@ -11,6 +11,7 @@ const int Asteroid::max_speed = 3;
 const int Asteroid::max_rotation = 15;
 int Asteroid::num_killable = 0;
 uint32_t Asteroid::next_net_id = 0;
+std::vector<uint8_t> Asteroid::net_impacts;
 
 const int Asteroid::radius_variation = 220;
 const int Asteroid::minimum_radius = 20;
@@ -440,6 +441,7 @@ bool Asteroid::kill() {
         if(now - last_teleport_tick >= 125) {
           last_teleport_tick = now;
           Mix_PlayChannel(-1, thud_sound, 0);
+          net_impacts.push_back(IMPACT_THUD);
         }
       }
     }
@@ -453,6 +455,7 @@ bool Asteroid::kill() {
       if(now - last_phase_ting >= 125) {
         last_phase_ting = now;
         Mix_PlayChannel(-1, ting_sound, 0);
+        net_impacts.push_back(IMPACT_TING);
       }
     }
     return false;
@@ -466,6 +469,7 @@ bool Asteroid::kill() {
       if(now - last_elastic_thud >= 125) {
         last_elastic_thud = now;
         Mix_PlayChannel(-1, thud_sound, 0);
+        net_impacts.push_back(IMPACT_THUD);
       }
     }
     return false;
@@ -477,6 +481,7 @@ bool Asteroid::kill() {
       if(now - last_ting_tick >= 125) {
         last_ting_tick = now;
         Mix_PlayChannel(-1, ting_sound, 0);
+        net_impacts.push_back(IMPACT_TING);
       }
     } else if(thud_sound != NULL) {
       static Uint32 last_thud_tick = UINT32_MAX;
@@ -484,6 +489,7 @@ bool Asteroid::kill() {
       if(now - last_thud_tick >= 125) {
         last_thud_tick = now;
         Mix_PlayChannel(-1, thud_sound, 0);
+        net_impacts.push_back(IMPACT_THUD);
       }
     }
   }
@@ -503,16 +509,19 @@ bool Asteroid::add_children(list<Asteroid*> *roids) {
     roids->push_back(new Asteroid(this));
     roids->push_back(new Asteroid(this));
   }
-  if(explode_sound != NULL) {
-    // Play at most once per millisecond tick: multiple asteroids dying in the
-    // same frame would stack identical waveforms and clip the audio output.
-    static Uint32 last_explode_tick = UINT32_MAX;
-    Uint32 now = SDL_GetTicks();
-    if(now != last_explode_tick) {
-      last_explode_tick = now;
-      Mix_PlayChannel(-1, explode_sound, 0);
-    }
-  }
+  play_explode_sound();
   velocity = velocity / 8;
   return true;
+}
+
+void Asteroid::play_explode_sound() {
+  if(explode_sound == NULL) return;
+  // Play at most once per millisecond tick: multiple asteroids dying in the
+  // same frame would stack identical waveforms and clip the audio output.
+  static Uint32 last_explode_tick = UINT32_MAX;
+  Uint32 now = SDL_GetTicks();
+  if(now != last_explode_tick) {
+    last_explode_tick = now;
+    Mix_PlayChannel(-1, explode_sound, 0);
+  }
 }

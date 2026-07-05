@@ -178,8 +178,11 @@ void Menu::draw() {
   } else {
     Typer::draw_centered(0, 320, "Newtonia", 80);
     if (high_score > 0) {
-      Typer::draw_centered(0, -215, "HIGH SCORE", 14);
-      Typer::draw_centered(0, -255, high_score, 18);
+      // Touch: the menu rows spread over a taller band (bigger finger
+      // targets), so the score block sits lower, above the copyright.
+      int hs_y = is_touch_mode() ? -330 : -215;
+      Typer::draw_centered(0, hs_y, "HIGH SCORE", 14);
+      Typer::draw_centered(0, hs_y - 40, high_score, 18);
     }
   }
 
@@ -655,13 +658,18 @@ bool Menu::show_options_row() const {
 
 int Menu::menu_row_size() { return is_touch_mode() ? 26 : 22; }
 
-// Equally space item blocks between title_bot=160 and scores_top=-215.
+// Bottom of the menu-row band: desktop packs rows above the high-score
+// block; touch spreads them over a taller band (they're finger targets)
+// and the score block moves down to make room.
+static int menu_rows_bottom() { return is_touch_mode() ? -300 : -215; }
+
+// Equally space item blocks between title_bot=160 and menu_rows_bottom().
 // Touch draws bigger glyphs and no selection cursor; menu_row_at() mirrors
 // this exact geometry so taps land on what is drawn.
 void Menu::draw_menu_rows(const std::vector<std::string> &rows) {
   const int sz = menu_row_size(), h = 2 * sz;
   int n = (int)rows.size();
-  int gap = (160 - (-215) - n * h) / (n + 1);
+  int gap = (160 - menu_rows_bottom() - n * h) / (n + 1);
   for (int i = 0; i < n; i++) {
     std::string row = rows[i];
     if (!is_touch_mode())
@@ -673,7 +681,7 @@ void Menu::draw_menu_rows(const std::vector<std::string> &rows) {
 int Menu::menu_row_at(float ny) const {
   const int sz = menu_row_size(), h = 2 * sz;
   int n = max_menu_items();
-  int gap = (160 - (-215) - n * h) / (n + 1);
+  int gap = (160 - menu_rows_bottom() - n * h) / (n + 1);
   // The menu ortho maps normalized tap y (0=top, 1=bottom) linearly onto
   // Typer virtual y in [+scaled_window_height, -scaled_window_height].
   float y = (1.0f - 2.0f * ny) * Typer::scaled_window_height;

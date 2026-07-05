@@ -43,6 +43,11 @@ enum EventCode {
   EV_GENERATION_START = 3,  // + uint32 generation
   EV_GAME_OVER = 4,
   EV_BYE = 5,
+  // Host->client impact cues the client can't simulate (bullet hits on
+  // invincible/tough asteroids and reflective/phasing deflections). The
+  // host already rate-limits them to one per 125 ms.
+  EV_ROID_THUD = 6,
+  EV_ROID_TING = 7,
 };
 
 // MSG_INPUT held-button bitmask (uint16). One-shot actions (boost,

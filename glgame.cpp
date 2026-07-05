@@ -1268,6 +1268,16 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
     case Net::EV_BYE:
       net_connection_lost_ = true;
       break;
+    case Net::EV_ROID_THUD:
+      // Host-side bullet impacts the client can't simulate. The host
+      // rate-limits these to one per 125 ms; play them straight.
+      if (Asteroid::thud_sound)
+        Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+      break;
+    case Net::EV_ROID_TING:
+      if (Asteroid::ting_sound)
+        Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
+      break;
     default:
       break;
   }
@@ -1434,6 +1444,9 @@ bool nx_read_projectiles(Save::Stream &in, Ship &s) {
 
 void GLGame::tick_net_client(int delta) {
   current_time += delta;
+  // Impact cues come from the host as events here; anything the local
+  // kill() calls queued (ghost removals) is noise — drop it.
+  Asteroid::net_impacts.clear();
 
   if (!net_connection_lost_) net_client_poll();
   if (net_session_->transport()->failed()) net_connection_lost_ = true;
@@ -1642,8 +1655,13 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in) {
       // is a stale ghost either way, and an ALIVE ghost in dead_objects
       // renders forever (with its score value on top). Only truly dead
       // ones stay for their debris.
-      if (!a->is_alive() && !a->is_removable()) dead_objects->push_back(a);
-      else delete a;
+      if (!a->is_alive() && !a->is_removable()) {
+        // Real death: explosion audio (add_children is host-only).
+        Asteroid::play_explode_sound();
+        dead_objects->push_back(a);
+      } else {
+        delete a;
+      }
       objects->erase(oi);
       break;
     }
@@ -1961,6 +1979,9 @@ void GLGame::net_apply_keyframe_asteroid_ids(Save::Stream &in,
       // See the delta removal path: invincible asteroids survive kill();
       // an alive ghost must not linger in dead_objects.
       if (!(*oi)->is_alive() && !(*oi)->is_removable()) {
+        // A real host-side death: the sound lives in add_children(),
+        // which only the host runs — play it with the debris here.
+        Asteroid::play_explode_sound();
         dead_objects->push_back(*oi);
       } else {
         delete *oi;
@@ -2678,6 +2699,16 @@ void GLGame::tick(int delta) {
       remote->time_left_invincible = 1 << 29;
     }
   }
+
+  // Bullet-impact cues queued by Asteroid::kill() (thud/ting): the client
+  // can't simulate those collisions, so the host forwards them as events.
+  // Cleared every tick in every mode so the queue can't grow in solo play.
+  if (net_mode_ == NetHost && net_session_ && !net_connection_lost_) {
+    for (uint8_t k : Asteroid::net_impacts)
+      net_send_event(k == Asteroid::IMPACT_TING ? Net::EV_ROID_TING
+                                                : Net::EV_ROID_THUD);
+  }
+  Asteroid::net_impacts.clear();
 
   // Online host: broadcast the world at 10 Hz once everything has stepped.
   if (net_mode_ == NetHost) net_host_send_snapshot(delta);
