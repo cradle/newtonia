@@ -695,18 +695,26 @@ void NetLobby::draw() {
       if (room_code_.empty()) {
         lines.push_back("CREATING A ROOM");
         if (blink) lines.push_back("PLEASE WAIT...");
+      } else if (is_touch_mode()) {
+        // Spread over the full height under the hoisted header — the
+        // default stack hugs the lower half of a phone screen.
+        Typer::draw_centered(0, 340, "ROOM CODE", sz);
+        Typer::draw_centered(0, 220, room_code_.c_str(), 48);
+        Typer::draw_centered(0, 40, "TELL YOUR FRIEND THE CODE", sz);
+        if (net_share_available()) {
+          share_line_y_ = -80;  // tap band centres on this line
+          Typer::draw_centered(0, share_line_y_, "TAP HERE TO SHARE IT", sz);
+        } else {
+          Typer::draw_centered(0, -80, "IT IS ON YOUR CLIPBOARD", sz);
+        }
+        if (blink)
+          Typer::draw_centered(0, -220, "WAITING FOR PLAYER 2...", sz);
       } else {
         lines.push_back("ROOM CODE");
         Typer::draw_centered(0, 20, room_code_.c_str(), 48);
         y = -100;
         lines.push_back("TELL YOUR FRIEND THE CODE");
-        if (is_touch_mode() && net_share_available()) {
-          // Remember where this line lands so the tap band sits on it.
-          share_line_y_ = y - (int)lines.size() * line;
-          lines.push_back("TAP HERE TO SHARE IT");
-        } else {
-          lines.push_back("IT IS ON YOUR CLIPBOARD");
-        }
+        lines.push_back("IT IS ON YOUR CLIPBOARD");
         lines.push_back("");
         if (blink) lines.push_back("WAITING FOR PLAYER 2...");
       }
