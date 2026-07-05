@@ -77,7 +77,7 @@ endif
 
 newtonia-arm64: OSX_SDL = $(OSX_SDL_ARM)
 newtonia-x86_64: OSX_SDL = $(OSX_SDL_X86)
-newtonia-arm64 newtonia-x86_64: FORCE
+newtonia-arm64 newtonia-x86_64: osx-netplay-check FORCE
 	$(CC) -O3 -Wall -std=c++11 -arch $(patsubst newtonia-%,%,$@) $(OSX_MIN) \
 	  -DGL_SILENCE_DEPRECATION -Wno-char-subscripts $(OSX_NET_CFLAGS) \
 	  -I$(OSX_SDL)/include/SDL2 -D_THREAD_SAFE \
@@ -85,7 +85,20 @@ newtonia-arm64 newtonia-x86_64: FORCE
 	  -L$(OSX_SDL)/lib -lSDL2 -lSDL2_mixer $(OSX_NET_LIBS) \
 	  -framework GLUT -framework OpenGL -framework AppKit
 
-osx: newtonia-arm64 newtonia-x86_64
+# A thin (single-arch) libdatachannel from a plain `./build_netplay_deps.sh`
+# run fails the x86_64 link with pages of undefined _rtc* symbols; catch it
+# up front instead.
+.PHONY: osx-netplay-check
+osx-netplay-check:
+ifeq ($(NETPLAY),1)
+	@lipo -info $(NETPLAY_PREFIX)/lib/libdatachannel.dylib | grep -q x86_64 && \
+	 lipo -info $(NETPLAY_PREFIX)/lib/libdatachannel.dylib | grep -q arm64 || { \
+	  echo "error: $(NETPLAY_PREFIX)/lib/libdatachannel.dylib is not universal —" ; \
+	  echo "       rebuild the deps with: ./build_netplay_deps.sh --universal" ; \
+	  exit 1 ; }
+endif
+
+osx: osx-netplay-check newtonia-arm64 newtonia-x86_64
 	lipo -create -output newtonia newtonia-arm64 newtonia-x86_64
 	lipo -info newtonia
 	mkdir -p Newtonia.app/Contents/MacOS
