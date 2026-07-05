@@ -770,10 +770,12 @@ bool Ship::kill() {
   return false;
 }
 
-void Ship::kill_stop() {
+bool Ship::kill_stop() {
   if(kill()) {
     velocity.zero();
+    return true;
   }
+  return false;
 }
 
 bool Ship::is_removable() const {
@@ -1159,10 +1161,13 @@ void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
 void Ship::collide(Ship *other) {
   for(size_t i = 0; i < bullets.size(); ) {
     if(other->is_alive() && bullets[i].collide(*other)) {
-      other->kill_stop();
-      kills_this_life += 1;
-      kills += 1;
-      score += other->value * multiplier();
+      // No kill, no score: shots absorbed by a shield/invincibility (e.g.
+      // a disconnected player's parked ship) must not award anything.
+      if(other->kill_stop()) {
+        kills_this_life += 1;
+        kills += 1;
+        score += other->value * multiplier();
+      }
       bullets[i] = std::move(bullets.back());
       bullets.pop_back();
     } else {
@@ -1202,10 +1207,11 @@ void Ship::collide(Ship *other) {
 
   for(size_t i = 0; i < missiles.size(); ) {
     if(is_alive() && other->is_alive() && missiles[i].collide(*other, 5.0)) {
-      other->kill_stop();
-      kills_this_life += 1;
-      kills += 1;
-      score += other->value * multiplier();
+      if(other->kill_stop()) {  // no score for a shielded/invincible target
+        kills_this_life += 1;
+        kills += 1;
+        score += other->value * multiplier();
+      }
       detonate(missiles[i].position, missiles[i].velocity, 25);
       if(missile_explode_sound != NULL) {
         Mix_PlayChannel(-1, missile_explode_sound, 0);

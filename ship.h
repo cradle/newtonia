@@ -94,7 +94,8 @@ class Ship : public CompositeObject {
     Point facing;
 
     //TODO: somehow get around this public for glstation
-    void kill_stop();
+    // Returns whether the ship actually died (false = shield/invincible).
+    bool kill_stop();
 
     std::vector<Particle> bullets, mines, giga_mines, bullet_trails;
     std::vector<MissileShot> missiles;
