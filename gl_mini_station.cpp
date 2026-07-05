@@ -194,6 +194,16 @@ void GLMiniStation::fire_at_nearest_player() {
   net_shots.push_back(this);  // net host relays as EV_WORLD_SHOT
 }
 
+void GLMiniStation::net_client_step(float delta) {
+  // Constant drift + spins extrapolate perfectly; the 10 Hz restore only
+  // corrects tiny error. Bullets fly like any particle. No firing and no
+  // collisions — the host simulates those and the snapshot reconciles.
+  Object::step(delta);
+  outer_rotation += outer_rotation_speed * delta;
+  inner_rotation += inner_rotation_speed * delta;
+  for (auto &b : bullets) b.step(delta);
+}
+
 void GLMiniStation::step(float delta, const Grid &grid) {
   Ship::step(delta, grid);
 

@@ -1088,6 +1088,15 @@ void nx_write_ship(Save::Stream &out, const Ship &s) {
   }
 }
 
+// v6: the mini-station's shots — its Save record carries none, so the
+// client faced invisible (and lethal-looking) fire at generation 10+.
+void nx_write_mini_station_bullets(Save::Stream &out, const GLMiniStation *ms) {
+  uint16_t n = (ms && ms->is_alive()) ? (uint16_t)ms->bullets.size() : 0;
+  nx_write(out, n);
+  if (ms)
+    for (uint16_t i = 0; i < n; i++) nx_write_projectile(out, ms->bullets[i]);
+}
+
 }  // namespace
 
 // One state byte per asteroid in delta records: the transient flags a
@@ -1114,6 +1123,7 @@ void GLGame::net_host_send_snapshot(int delta) {
 
   nx_write(payload, (uint32_t)players->size());
   for (auto *gs : *players) nx_write_ship(payload, *gs->ship);
+  nx_write_mini_station_bullets(payload, mini_station);
 
   nx_write(payload, (uint32_t)objects->size());
   for (auto *a : *objects) nx_write(payload, a->net_id);
@@ -1156,6 +1166,7 @@ bool GLGame::net_send_delta() {
 
   nx_write(payload, (uint32_t)players->size());
   for (auto *gs : *players) nx_write_ship(payload, *gs->ship);
+  nx_write_mini_station_bullets(payload, mini_station);
 
   // Asteroids: new since the last keyframe/delta, changed beyond what the
   // client can extrapolate, or gone.
@@ -1668,6 +1679,9 @@ void GLGame::tick_net_client(int delta) {
         sh->time_until_respawn = step_size + 1;
     }
     for (auto *gs : *players) gs->step(step_size, grid);
+    // Mini-station: drift/spin/bullets extrapolate between snapshots —
+    // without this it visibly teleported at the 10 Hz apply rate.
+    if (mini_station) mini_station->net_client_step(step_size);
     grid.update((std::list<Object *> *)objects);
 
     net_client_send_input();
@@ -2092,6 +2106,21 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s) {
       return false;
     ++it;
   }
+
+  // v6: mini-station bullets (see nx_write_mini_station_bullets). The
+  // state apply ran first, so mini_station reflects host presence.
+  uint16_t n_ms = 0;
+  if (!nx_read(in, n_ms)) return false;
+  if (n_ms > 512) return false;  // hostile/corrupt
+  std::vector<Particle> ms_bullets;
+  for (int i = 0; i < n_ms; i++) {
+    float x, y, vx, vy;
+    if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) ||
+        !nx_read(in, vy))
+      return false;
+    ms_bullets.push_back(Particle(Point(x, y), Point(vx, vy), 2000.0f));
+  }
+  if (mini_station) mini_station->bullets.swap(ms_bullets);
   return true;
 }
 

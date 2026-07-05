@@ -25,7 +25,9 @@ namespace Net {
 // 4: client-authoritative aim — facing vector appended to MSG_INPUT.
 // 5: move_flags (thrust/reverse/rotation) appended to the ship extras so
 //    the peer can run the remote ship's exhaust-trail emitters.
-const uint8_t PROTO_VERSION = 5;
+// 6: mini-station bullet section appended after the per-ship extras
+//    (its Save record carries no bullets — the client saw none).
+const uint8_t PROTO_VERSION = 6;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check

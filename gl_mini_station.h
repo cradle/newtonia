@@ -25,6 +25,9 @@ public:
 
   void draw(bool minimap = false) const;
   void step(float delta, const Grid &grid);
+  // Net client: motion only (drift, ring spin, bullet flight) between
+  // snapshot applies — no firing, no collisions; the host owns those.
+  void net_client_step(float delta);
   void destroy();   // kill in one hit, scatter debris
 
   Save::MiniStation capture_state() const;
