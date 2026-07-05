@@ -670,14 +670,24 @@ void NetLobby::draw() {
 
   switch (screen_) {
     case Choose: {
-      std::string host = std::string(selection_ == 0 ? "> " : "  ") + "HOST";
-      std::string join = std::string(selection_ == 1 ? "> " : "  ") + "JOIN";
-      Typer::draw_centered(0, 60, host.c_str(), 26);
-      Typer::draw_centered(0, -40, join.c_str(), 26);
-      lines.push_back("");
-      y = -160;
-      lines.push_back("HOST MAKES A ROOM CODE");
-      lines.push_back("JOIN ENTERS A FRIEND'S CODE");
+      if (is_touch_mode()) {
+        // The tap targets are the screen halves (see touch_tap): spread
+        // the labels apart and skip the "> " cursor — a desktop cue.
+        Typer::draw_centered(0, 180, "HOST", 30);
+        Typer::draw_centered(0, -120, "JOIN", 30);
+        y = -280;
+        lines.push_back("HOST MAKES A ROOM CODE");
+        lines.push_back("JOIN ENTERS A FRIEND'S CODE");
+      } else {
+        std::string host = std::string(selection_ == 0 ? "> " : "  ") + "HOST";
+        std::string join = std::string(selection_ == 1 ? "> " : "  ") + "JOIN";
+        Typer::draw_centered(0, 60, host.c_str(), 26);
+        Typer::draw_centered(0, -40, join.c_str(), 26);
+        lines.push_back("");
+        y = -160;
+        lines.push_back("HOST MAKES A ROOM CODE");
+        lines.push_back("JOIN ENTERS A FRIEND'S CODE");
+      }
       break;
     }
     case RoomHost:
