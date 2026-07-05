@@ -892,6 +892,7 @@ void GLGame::net_host_rejoin_poll(int delta) {
     net_rehost_offer_sent_ = false;
     if (net_rehost_) {
       net_rehost_->set_ice_servers(net_ice_);
+      net_rehost_->set_trickle(true);  // the room relay carries candidates
       net_rehost_->start_host();
     }
     printf("net: player 2 lost - room %s reopened for rejoin\n",
@@ -920,12 +921,33 @@ void GLGame::net_host_rejoin_poll(int delta) {
     net_rehost_offer_sent_ = true;
   }
 
+  // Trickle ICE (M3-2b): stream the rehost transport's candidates to the
+  // rejoining client through the room — only once the offer is out (a
+  // candidate arriving before it gets wiped with the relay's stale-cand
+  // buffer when the offer lands).
+  if (net_signal_retry_ms_ <= 0 && (net_rehost_offer_sent_ || net_session_)) {
+    NetTransport *t =
+        net_rehost_ ? net_rehost_
+                    : (net_session_ ? net_session_->transport() : nullptr);
+    std::string c;
+    while (t && t->poll_local_candidate(c)) {
+      size_t nl = c.find('\n');
+      if (nl != std::string::npos)
+        net_signal_->send_cand(c.substr(0, nl), c.substr(nl + 1));
+    }
+  }
+
   NetSignal::Event ev;
   while (net_signal_->poll(ev)) {
     if (ev.kind == NetSignal::Event::Answer && net_rehost_) {
       net_rehost_->set_remote_answer(ev.text);
       net_session_ = new NetSession(net_rehost_, NetSession::HostRole);
       net_rehost_ = nullptr;
+    } else if (ev.kind == NetSignal::Event::Cand) {
+      NetTransport *t =
+          net_rehost_ ? net_rehost_
+                      : (net_session_ ? net_session_->transport() : nullptr);
+      if (t) t->add_remote_candidate(ev.text2, ev.text);
     } else if (ev.kind == NetSignal::Event::Ice) {
       net_ice_.push_back(ev.text);
       if (net_rehost_) net_rehost_->set_ice_servers(net_ice_);
@@ -986,6 +1008,7 @@ void GLGame::net_host_rejoin_poll(int delta) {
       delete net_session_;
       net_session_ = nullptr;
       net_rehost_ = NetTransport::create();
+      if (net_rehost_) net_rehost_->set_trickle(true);
       net_rehost_offer_sent_ = false;
       if (net_rehost_) {
         net_rehost_->set_ice_servers(net_ice_);

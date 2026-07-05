@@ -39,7 +39,8 @@ EM_JS(void, nw_init, (), {
       var h = N.next++;
       N.conns[h] = { pc: null, rel: null, unrel: null, inbox: [],
                      localDesc: null, failed: false,
-                     relOpen: false, unrelOpen: false };
+                     relOpen: false, unrelOpen: false,
+                     trickle: false, cands: [] };
       return h;
     },
 
@@ -64,9 +65,15 @@ EM_JS(void, nw_init, (), {
       var pc = new RTCPeerConnection({ iceServers: servers });
       pc.onicegatheringstatechange = function() {
         // Non-trickle: expose the SDP once every candidate is in it.
-        if (pc.iceGatheringState === 'complete' && pc.localDescription &&
-            c.localDesc === null)
+        if (!c.trickle && pc.iceGatheringState === 'complete' &&
+            pc.localDescription && c.localDesc === null)
           c.localDesc = pc.localDescription.sdp;
+      };
+      pc.onicecandidate = function(ev) {
+        // Trickle (M3-2b): stream each candidate to C++ as gathered.
+        if (c.trickle && ev.candidate && ev.candidate.candidate)
+          c.cands.push((ev.candidate.sdpMid || '0') + '\n' +
+                       ev.candidate.candidate);
       };
       pc.onconnectionstatechange = function() {
         // 'disconnected' is transient per spec and can recover; only
@@ -103,7 +110,11 @@ EM_JS(void, nw_init, (), {
               false);
       pc.createOffer()
         .then(function(o) { return pc.setLocalDescription(o); })
-        .then(function() { N._armDescTimeout(c); })
+        .then(function() {
+          // Trickle: the SDP is usable immediately, candidates follow.
+          if (c.trickle) c.localDesc = pc.localDescription.sdp;
+          else N._armDescTimeout(c);
+        })
         .catch(function() { c.failed = true; });
     },
 
@@ -113,8 +124,17 @@ EM_JS(void, nw_init, (), {
       pc.setRemoteDescription({ type: 'offer', sdp: offerSdp })
         .then(function() { return pc.createAnswer(); })
         .then(function(a) { return pc.setLocalDescription(a); })
-        .then(function() { N._armDescTimeout(c); })
+        .then(function() {
+          if (c.trickle) c.localDesc = pc.localDescription.sdp;
+          else N._armDescTimeout(c);
+        })
         .catch(function() { c.failed = true; });
+    },
+
+    addCand: function(h, mid, cand) {
+      var c = N.conns[h]; if (!c || !c.pc) return;
+      c.pc.addIceCandidate({ sdpMid: mid, candidate: cand })
+        .catch(function() {});  // late/duplicate candidates are harmless
     },
 
     setAnswer: function(h, sdp) {
@@ -203,6 +223,23 @@ EM_JS(void, nw_poll_take, (int h, void *buf), {
 });
 EM_JS(void, nw_close, (int h), { Module.__nwnet.close(h); });
 
+// ---- trickle ICE (M3-2b) --------------------------------------------------
+EM_JS(void, nw_set_trickle, (int h, int on), {
+  var c = Module.__nwnet.conns[h];
+  if (c) c.trickle = !!on;
+});
+EM_JS(int, nw_cand_len, (int h), {
+  var c = Module.__nwnet.conns[h];
+  return (c && c.cands.length) ? lengthBytesUTF8(c.cands[0]) : -1;
+});
+EM_JS(void, nw_cand_take, (int h, char *buf, int len), {
+  var c = Module.__nwnet.conns[h];
+  if (c && c.cands.length) stringToUTF8(c.cands.shift(), buf, len);
+});
+EM_JS(void, nw_add_cand, (int h, const char *mid, const char *cand), {
+  Module.__nwnet.addCand(h, UTF8ToString(mid), UTF8ToString(cand));
+});
+
 EM_JS(void, nw_clip_write, (const char *text),
       { Module.__nwnet.clipWrite(UTF8ToString(text)); });
 EM_JS(void, nw_clip_read_start, (), { Module.__nwnet.clipReadStart(); });
@@ -277,6 +314,23 @@ public:
 
   void set_remote_answer(const std::string &remote_answer) override {
     nw_set_answer(handle_, remote_answer.c_str());
+  }
+
+  // ---- trickle ICE (M3-2b) ----
+  void set_trickle(bool on) override { nw_set_trickle(handle_, on ? 1 : 0); }
+
+  bool poll_local_candidate(std::string &out) override {
+    int len = nw_cand_len(handle_);
+    if (len < 0) return false;
+    std::vector<char> buf(len + 1);
+    nw_cand_take(handle_, &buf[0], len + 1);
+    out.assign(&buf[0]);
+    return true;
+  }
+
+  void add_remote_candidate(const std::string &mid,
+                            const std::string &cand) override {
+    nw_add_cand(handle_, mid.c_str(), cand.c_str());
   }
 
   bool connected() const override { return nw_connected(handle_) != 0; }

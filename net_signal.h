@@ -33,6 +33,7 @@ public:
       PeerJoin,   // a joiner entered the room (host)
       PeerLeave,  // the joiner left the room (host)
       Ice,        // text = "urls\nusername\ncredential" (one per server)
+      Cand,       // trickle ICE: text = candidate line, text2 = mid
       Error,      // text = reason ("no-such-room", "room-full", "expired")
       Closed,     // socket closed / connect failed
     };
@@ -55,6 +56,8 @@ public:
 
   virtual void send_offer(const std::string &sdp) = 0;
   virtual void send_answer(const std::string &sdp) = 0;
+  // Trickle ICE (M3-2b): one gathered candidate, relayed to the peer.
+  virtual void send_cand(const std::string &mid, const std::string &cand) = 0;
 
   // Pops one event (main thread only); false when nothing is pending.
   virtual bool poll(Event &ev) = 0;

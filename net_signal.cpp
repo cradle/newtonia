@@ -141,6 +141,11 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
     ev.text = u + "\n" + n + "\n" + p;
     return true;
   }
+  if (t == "cand") {
+    ev.kind = NetSignal::Event::Cand;
+    json_field(frame, "mid", ev.text2);
+    return json_field(frame, "cand", ev.text);
+  }
   if (t == "offer")  { ev.kind = NetSignal::Event::Offer;  return json_field(frame, "sdp", ev.text); }
   if (t == "answer") { ev.kind = NetSignal::Event::Answer; return json_field(frame, "sdp", ev.text); }
   if (t == "err")    { ev.kind = NetSignal::Event::Error;  json_field(frame, "reason", ev.text); return true; }

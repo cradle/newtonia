@@ -33,6 +33,10 @@ const JOIN_LIMIT = 30;
 // SDP frames are relayed verbatim into DO memory; cap them so a peer can't
 // pin unbounded memory or flood the relay. Oversized frames are dropped.
 const MAX_SDP_LEN = 16384;
+// Trickle ICE candidate lines (M3-2b): one line each, and a session
+// produces a handful — the caps bound a flooding peer.
+const MAX_CAND_LEN = 512;
+const MAX_CANDS = 32;
 
 function random_code() {
   const bytes = crypto.getRandomValues(new Uint8Array(CODE_LEN));
@@ -199,6 +203,7 @@ export class Room {
     this.host = null;    // WebSocket
     this.joiner = null;  // WebSocket
     this.offer = null;   // last offer SDP, replayed to late joiners
+    this.host_cands = []; // trickle candidates buffered alongside the offer
     this.created = 0;
     this.host_token = null;   // reclaim proof, minted at creation
     this.host_lost_at = 0;    // grace window start (0 = host connected)
@@ -287,6 +292,7 @@ export class Room {
     ws.accept();
     this.host = ws;
     this.offer = null;
+    this.host_cands = [];
     this.created = now;
     this.host_token = crypto.randomUUID();
     this.host_lost_at = 0;
@@ -304,6 +310,7 @@ export class Room {
     ws.accept();
     this.host = ws;
     this.offer = null;
+    this.host_cands = [];
     this.host_lost_at = 0;
     this.send_ice(ws, ice);
     ws.send(JSON.stringify({ t: "room", code, token: this.host_token }));
@@ -322,6 +329,7 @@ export class Room {
     if (this.host !== ws) return;
     this.host = null;
     this.offer = null;
+    this.host_cands = [];
     this.host_lost_at = Date.now();
     if (this.joiner)
       this.joiner.send(JSON.stringify({ t: "peer", ev: "host-lost" }));
@@ -333,7 +341,11 @@ export class Room {
     this.send_ice(ws, ice);
     ws.send(JSON.stringify({ t: "joined" }));
     if (this.host) this.host.send(JSON.stringify({ t: "peer", ev: "join" }));
-    if (this.offer) ws.send(JSON.stringify({ t: "offer", sdp: this.offer }));
+    if (this.offer) {
+      ws.send(JSON.stringify({ t: "offer", sdp: this.offer }));
+      // Trickle: candidates the host gathered before this joiner arrived.
+      for (const c of this.host_cands) ws.send(JSON.stringify(c));
+    }
     ws.addEventListener("message", (m) => this.from_joiner(m));
     const drop = () => this.drop_joiner(ws);
     ws.addEventListener("close", drop);
@@ -346,7 +358,16 @@ export class Room {
     if (msg.t === "offer" && typeof msg.sdp === "string" &&
         msg.sdp.length <= MAX_SDP_LEN) {
       this.offer = msg.sdp; // kept for a joiner (or rejoiner) arriving later
+      this.host_cands = []; // fresh offer = fresh transport = old cands stale
       if (this.joiner) this.joiner.send(JSON.stringify(msg));
+    }
+    // Trickle ICE (M3-2b): relay candidates; buffer the host's so a joiner
+    // arriving mid-gather gets them replayed right after the offer.
+    if (msg.t === "cand" && typeof msg.cand === "string" &&
+        msg.cand.length <= MAX_CAND_LEN) {
+      const frame = { t: "cand", mid: String(msg.mid || "0"), cand: msg.cand };
+      if (this.host_cands.length < MAX_CANDS) this.host_cands.push(frame);
+      if (this.joiner) this.joiner.send(JSON.stringify(frame));
     }
   }
 
@@ -356,6 +377,14 @@ export class Room {
     if (msg.t === "answer" && typeof msg.sdp === "string" &&
         msg.sdp.length <= MAX_SDP_LEN) {
       if (this.host) this.host.send(JSON.stringify(msg));
+    }
+    if (msg.t === "cand" && typeof msg.cand === "string" &&
+        msg.cand.length <= MAX_CAND_LEN) {
+      // No buffering: the host is connected whenever a joiner exists (or
+      // in grace, when its dead transport couldn't use them anyway).
+      if (this.host)
+        this.host.send(JSON.stringify(
+            { t: "cand", mid: String(msg.mid || "0"), cand: msg.cand }));
     }
   }
 
@@ -367,6 +396,7 @@ export class Room {
     // host re-offers on peer-leave (lobby) or on its rejoin flow (game),
     // and that fresh offer is stored and replayed instead.
     this.offer = null;
+    this.host_cands = [];
     if (this.host) this.host.send(JSON.stringify({ t: "peer", ev: "leave" }));
   }
 
@@ -379,6 +409,7 @@ export class Room {
     this.host = null;
     this.joiner = null;
     this.offer = null;
+    this.host_cands = [];
     this.host_token = null;
     this.host_lost_at = 0;
   }

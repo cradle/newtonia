@@ -64,6 +64,7 @@ NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
   code_entry_ = rejoin_code;
   rejoin_mode_ = true;
   rejoin_budget_ms_ = 90000;  // ~ the room's reclaim grace window
+  transport_->set_trickle(true);  // room flow: live relay carries candidates
   signal_->connect_join(net_signal_url(), code_entry_);
   signal_wait_ms_ = 0;
   screen_ = RoomJoining;
@@ -144,6 +145,11 @@ void NetLobby::confirm() {
       return;
     }
     signal_ = NetSignal::create();
+    // Room flow trickles ICE (M3-2b): the relay carries candidates, so the
+    // SDP goes out the moment it exists instead of after gathering. The
+    // manual clipboard flow keeps the full non-trickle blob (and
+    // fall_back_to_manual() flips this off again before any start_*).
+    if (signal_) transport_->set_trickle(true);
     if (hosting_) {
       if (signal_) {
         // start_host() waits for the Room frame: the relay sends the TURN
@@ -193,6 +199,10 @@ void NetLobby::fall_back_to_manual(const char *why) {
     signal_ = nullptr;
   }
   set_status("NO ROOM SERVER - USING MANUAL CODES");
+  // The clipboard blob must carry every candidate: back to non-trickle
+  // (always before start_* — the host deferred its start to the Room
+  // frame that never came, the joiner starts at paste time).
+  if (transport_) transport_->set_trickle(false);
   if (hosting_ && transport_) transport_->start_host();  // was deferred
   screen_ = hosting_ ? HostGathering : JoinWaitOffer;
 }
@@ -286,6 +296,17 @@ void NetLobby::pump_signal(int delta) {
       case NetSignal::Event::Ice:
         ice_servers_.push_back(ev.text);
         break;
+      case NetSignal::Event::Cand: {
+        // Trickle ICE: feed the peer's candidate into whichever transport
+        // is live (the lobby's own, or the session's after hand-off).
+        NetTransport *t =
+            transport_ ? transport_ : (session_ ? session_->transport() : nullptr);
+        printf("[lobby] cand in (%s): %s\n", t ? "applied" : "DROPPED",
+               ev.text.substr(0, 40).c_str());
+        fflush(stdout);
+        if (t) t->add_remote_candidate(ev.text2, ev.text);
+        break;
+      }
       case NetSignal::Event::Room:
         room_code_ = ev.text;
         room_token_ = ev.text2;  // reclaim proof, handed to the game
@@ -394,6 +415,25 @@ void NetLobby::tick(int delta) {
 
   pump_signal(delta);
 
+  // Trickle ICE (M3-2b): relay candidates our transport gathers to the
+  // peer as they appear ("mid\ncand" strings from the backend). Only after
+  // our SDP has gone out: a candidate sent BEFORE its offer is buffered by
+  // the relay and then wiped when the offer arrives (fresh-offer rule) —
+  // and candidates can be gathered before the description is ready.
+  if (signal_ && (hosting_ ? offer_sent_ : answer_sent_)) {
+    NetTransport *t =
+        transport_ ? transport_ : (session_ ? session_->transport() : nullptr);
+    std::string c;
+    while (t && t->poll_local_candidate(c)) {
+      size_t nl = c.find('\n');
+      if (nl != std::string::npos) {
+        printf("[lobby] cand out: %s\n", c.substr(nl + 1, 40).c_str());
+        fflush(stdout);
+        signal_->send_cand(c.substr(0, nl), c.substr(nl + 1));
+      }
+    }
+  }
+
   // Auto-rejoin retry loop (see schedule_rejoin_retry).
   if (rejoin_mode_ && rejoin_retry_ms_ > 0 && !session_) {
     rejoin_budget_ms_ -= delta;
@@ -411,6 +451,7 @@ void NetLobby::tick(int delta) {
         delete transport_;
       }
       transport_ = NetTransport::create();
+      if (transport_) transport_->set_trickle(true);
       ice_servers_.clear();
       answer_sent_ = false;
       signal_wait_ms_ = 0;

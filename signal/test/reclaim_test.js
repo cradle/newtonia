@@ -92,7 +92,38 @@ function check(name, cond) {
   const hb2 = await join2._recv();
   check("waiting joiner sees host-back", hb2.t === "peer" && hb2.ev === "host-back");
 
-  host3.close(); join2.close(); squat.close?.();
+  // 9. Trickle ICE (M3-2b): candidates relay both ways, and the host's
+  //    are buffered for a joiner arriving after the offer.
+  host3.send(JSON.stringify({ t: "offer", sdp: "trickle-offer" }));
+  await join2._recv(); // the offer relayed live
+  host3.send(JSON.stringify({ t: "cand", mid: "0", cand: "candidate:h1" }));
+  const c1 = await join2._recv();
+  check("host cand relayed live", c1.t === "cand" && c1.cand === "candidate:h1");
+  join2.send(JSON.stringify({ t: "cand", mid: "0", cand: "candidate:j1" }));
+  const c2 = await host3._recv();
+  check("joiner cand relayed", c2.t === "cand" && c2.cand === "candidate:j1");
+
+  join2.close();
+  await host3._recv(); // peer leave
+  await t(300);
+  // Candidates sent with no joiner present are buffered with the offer...
+  host3.send(JSON.stringify({ t: "offer", sdp: "trickle-offer-2" }));
+  host3.send(JSON.stringify({ t: "cand", mid: "0", cand: "candidate:h2" }));
+  host3.send(JSON.stringify({ t: "cand", mid: "0", cand: "candidate:h3" }));
+  await t(300);
+  // ...and replayed to a late joiner right after the offer, in order.
+  const join3 = await connect(`?role=join&code=${code}`);
+  const j3 = await join3._recv();
+  check("late joiner accepted", j3.t === "joined");
+  const off3 = await join3._recv();
+  check("offer replayed", off3.t === "offer" && off3.sdp === "trickle-offer-2");
+  const c3 = await join3._recv();
+  const c4 = await join3._recv();
+  check("buffered cands replayed in order",
+        c3.t === "cand" && c3.cand === "candidate:h2" &&
+        c4.t === "cand" && c4.cand === "candidate:h3");
+
+  host3.close(); join3.close(); squat.close?.();
   console.log(failures ? `\n${failures} FAILURES` : "\nRECLAIM-TEST-OK");
   process.exit(failures ? 1 : 0);
 })().catch((e) => { console.error("test crashed:", e); process.exit(1); });

@@ -98,6 +98,23 @@ public:
     gather_started_ = true;
   }
 
+  // ---- trickle ICE (M3-2b) ----
+  void set_trickle(bool on) override { trickle_ = on; }
+
+  bool poll_local_candidate(std::string &out) override {
+    std::lock_guard<std::mutex> lock(cand_mutex_);
+    if (cand_out_.empty()) return false;
+    out = cand_out_.front();
+    cand_out_.pop_front();
+    return true;
+  }
+
+  void add_remote_candidate(const std::string &mid,
+                            const std::string &cand) override {
+    if (pc_ < 0) return;
+    rtcAddRemoteCandidate(pc_, cand.c_str(), mid.c_str());
+  }
+
   bool local_description_ready() const override {
     if (desc_ready_) return true;
     // Mirror of the web backend's descTimeoutMs fallback: slow or filtered
@@ -182,6 +199,29 @@ private:
     rtcSetStateChangeCallback(pc_, &RtcTransport::on_state_change);
     rtcSetGatheringStateChangeCallback(pc_, &RtcTransport::on_gathering_state);
     rtcSetDataChannelCallback(pc_, &RtcTransport::on_data_channel);
+    if (trickle_) {
+      // Trickle (M3-2b): the SDP is usable the moment it exists — no
+      // gathering wait; candidates stream separately via the signal relay.
+      rtcSetLocalDescriptionCallback(pc_, &RtcTransport::on_local_description);
+      rtcSetLocalCandidateCallback(pc_, &RtcTransport::on_local_candidate);
+    }
+  }
+
+  static void RTC_API on_local_description(int, const char *sdp, const char *,
+                                           void *ptr) {
+    RtcTransport *self = (RtcTransport *)ptr;
+    if (!sdp) return;
+    std::lock_guard<std::mutex> lock(self->desc_mutex_);
+    self->local_desc_.assign(sdp);
+    self->desc_ready_ = true;
+  }
+
+  static void RTC_API on_local_candidate(int, const char *cand,
+                                         const char *mid, void *ptr) {
+    RtcTransport *self = (RtcTransport *)ptr;
+    if (!cand || !cand[0]) return;  // end-of-candidates marker
+    std::lock_guard<std::mutex> lock(self->cand_mutex_);
+    self->cand_out_.push_back(std::string(mid ? mid : "0") + "\n" + cand);
   }
 
   // Wire a channel (created locally or received remotely) into this
@@ -269,6 +309,9 @@ private:
 
   std::atomic<bool> rel_open_, unrel_open_;
   mutable std::atomic<bool> desc_ready_;
+  bool trickle_ = false;
+  std::mutex cand_mutex_;
+  std::deque<std::string> cand_out_;  // gathered local candidates, "mid\ncand"
   std::atomic<bool> failed_;
   bool closed_;
   bool gather_started_ = false;

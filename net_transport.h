@@ -44,6 +44,26 @@ public:
   virtual std::string local_description() const = 0;
   virtual void set_remote_answer(const std::string& remote_answer) = 0;
 
+  // ---- trickle ICE (M3-2b; room-code flow only) --------------------------
+  // Call BEFORE start_host()/start_join(). In trickle mode
+  // local_description_ready() flips as soon as the SDP exists (no
+  // candidates embedded — no gathering wait); candidates stream out via
+  // poll_local_candidate() and in via add_remote_candidate(), relayed as
+  // {t:"cand"} frames by the signal worker. The manual clipboard flow
+  // stays non-trickle (no live channel to carry candidates). Default
+  // no-ops keep backends without trickle on the non-trickle path.
+  virtual void set_trickle(bool on) { (void)on; }
+  // Pops one gathered local candidate ("mid\ncandidate"); false = none.
+  virtual bool poll_local_candidate(std::string& out) {
+    (void)out;
+    return false;
+  }
+  virtual void add_remote_candidate(const std::string& mid,
+                                    const std::string& cand) {
+    (void)mid;
+    (void)cand;
+  }
+
   virtual bool connected() const = 0;
   virtual bool failed() const = 0;
 
