@@ -17,17 +17,23 @@ endif
 
 # Optional native netplay backend (macOS/Linux) — see NETPLAY.md.
 # libdatachannel is not packaged by Homebrew; build it from source first:
-#   ./build_netplay_deps.sh
-#   make NETPLAY=1 NETPLAY_PREFIX=$PWD/netplay-libs
-# Defines NEWTONIA_NET_RTC (activates net_transport_rtc.cpp and the menu's
-# ONLINE row) and links the libdatachannel C API.
+#   ./build_netplay_deps.sh              (--universal for `make osx`)
+#   make NETPLAY=1
+# NETPLAY_PREFIX defaults to the script's install dir (./netplay-libs);
+# pass it only for a prefix elsewhere. Defines NEWTONIA_NET_RTC (activates
+# net_transport_rtc.cpp and the menu's ONLINE row) and links the
+# libdatachannel C API.
 ifeq ($(NETPLAY),1)
-  CFLAGS += -DNEWTONIA_NET_RTC
-  LIBS += -ldatachannel
-  ifneq ($(NETPLAY_PREFIX),)
-    CFLAGS += -I$(NETPLAY_PREFIX)/include
-    LIBS += -L$(NETPLAY_PREFIX)/lib -Wl,-rpath,$(NETPLAY_PREFIX)/lib
+  NETPLAY_PREFIX ?= $(CURDIR)/netplay-libs
+  ifeq ($(filter clean web-clean,$(MAKECMDGOALS)),)
+    ifeq ($(wildcard $(NETPLAY_PREFIX)/include/rtc/rtc.h),)
+      $(error NETPLAY=1 but $(NETPLAY_PREFIX)/include/rtc/rtc.h is missing — \
+run ./build_netplay_deps.sh first (--universal for `make osx`), or point \
+NETPLAY_PREFIX at an existing install)
+    endif
   endif
+  CFLAGS += -DNEWTONIA_NET_RTC -I$(NETPLAY_PREFIX)/include
+  LIBS += -L$(NETPLAY_PREFIX)/lib -ldatachannel -Wl,-rpath,$(NETPLAY_PREFIX)/lib
 endif
 
 CFLAGS += -MMD -MP
