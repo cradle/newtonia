@@ -48,6 +48,10 @@ enum EventCode {
   // host already rate-limits them to one per 125 ms.
   EV_ROID_THUD = 6,
   EV_ROID_TING = 7,
+  // More host-simulated audio cues: the level-clear countdown tick
+  // (1/s) and a pickup being collected.
+  EV_LEVEL_TIC = 8,
+  EV_PICKUP = 9,
 };
 
 // MSG_INPUT held-button bitmask (uint16). One-shot actions (boost,

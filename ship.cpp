@@ -14,6 +14,8 @@
 #include "weapon/nova.h"
 
 static const int NOVA_MAX_AMMO = 10;
+
+bool Ship::net_quiet_respawn = false;
 #include <algorithm>
 #include <math.h>
 #include <climits>
@@ -688,7 +690,9 @@ void Ship::respawn(const Grid &grid, bool was_killed) {
     reset(was_killed);
     safe_position(grid, try_current_position);
     invincible = true;
-    if(god_mode_time_remaining() <= 0) set_shield_hum(true);
+    // Net client: snapshot restores run through here 10x/s — the hum is
+    // driven exclusively by the snapshot extras there (see net_quiet_respawn).
+    if(god_mode_time_remaining() <= 0 && !net_quiet_respawn) set_shield_hum(true);
     detonate();
   }
 }
@@ -1271,6 +1275,12 @@ void Ship::fire_secondary(bool on) {
   } else {
     (*secondary)->shoot(on);
   }
+}
+
+void Ship::net_missile_exploded(const Point &pos, const Point &vel) {
+  detonate(pos, vel, 25);
+  if(missile_explode_sound != NULL)
+    Mix_PlayChannel(-1, missile_explode_sound, 0);
 }
 
 void Ship::set_shield_hum(bool on) {

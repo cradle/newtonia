@@ -155,6 +155,14 @@ class Ship : public CompositeObject {
     void nova_detonate();
     int nova_ammo() const;
     void set_shield_hum(bool on);
+    // Net client: respawn() runs inside every snapshot restore (10 Hz),
+    // and its hum start-then-halt leaked audible blips. With this set the
+    // hum is started ONLY by explicit set_shield_hum calls (the snapshot
+    // extras decide), never by respawn itself.
+    static bool net_quiet_respawn;
+    // Net client: a replicated missile vanished mid-flight — the host saw
+    // it hit something. Debris + explosion sound at its last position.
+    void net_missile_exploded(const Point &pos, const Point &vel);
     void set_missile_asteroids(std::list<Object*> *asteroids);
     void set_missile_ships(std::list<Object*> *ships);
     void set_black_holes(const std::list<BlackHole*> *bhs);

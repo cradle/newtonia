@@ -155,6 +155,7 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
 
 GLGame::~GLGame() {
   save_progress();
+  if (net_mode_ == NetClient) Ship::net_quiet_respawn = false;
   // Leaving an online game: tell the peer (best effort — a hard close is
   // also detected via the channel-close path).
   if (net_session_ && !net_connection_lost_)
@@ -1271,16 +1272,20 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
     case Net::EV_ROID_THUD:
       // Host-side bullet impacts the client can't simulate. The host
       // rate-limits these to one per 125 ms; play them straight.
-      printf("net: roid impact thud\n");
-      fflush(stdout);
       if (Asteroid::thud_sound)
         Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
       break;
     case Net::EV_ROID_TING:
-      printf("net: roid impact ting\n");
-      fflush(stdout);
       if (Asteroid::ting_sound)
         Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
+      break;
+    case Net::EV_LEVEL_TIC:
+      if (tic_sound)
+        Mix_PlayChannel(-1, tic_sound, 0);
+      break;
+    case Net::EV_PICKUP:
+      if (pickup_sound)
+        Mix_PlayChannel(-1, pickup_sound, 0);
       break;
     default:
       break;
@@ -1360,6 +1365,10 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
   net_mode_ = NetClient;
   net_session_ = session;
   net_assembler_ = new Net::SnapshotAssembler();
+  // Snapshot restores call Ship::respawn 10x/s; without this its hum
+  // start-then-halt leaks random audible blips. The snapshot extras are
+  // the only hum authority on a client.
+  Ship::net_quiet_respawn = true;
 
   // The save-restore base constructor bound player-1 keys to the FIRST ship,
   // but on the client the local player is the LAST one; the first is the
@@ -1417,7 +1426,12 @@ bool nx_read_projectiles(Save::Stream &in, Ship &s) {
   }
 
   if (!nx_read(in, n)) return false;
-  s.missiles.clear();
+  // Missiles carry local presentation state the wire doesn't (trail,
+  // thrust ramp): wholesale replacement wiped it 10x/s, so replicated
+  // missiles looked like they teleported. Adopt it from the nearest
+  // previous missile instead.
+  std::vector<MissileShot> old_missiles;
+  old_missiles.swap(s.missiles);
   for (int i = 0; i < n; i++) {
     float fx, fy, time_left;
     if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy) ||
@@ -1425,7 +1439,25 @@ bool nx_read_projectiles(Save::Stream &in, Ship &s) {
     MissileShot m(WrappedPoint(x, y), Point(fx, fy), Point(0, 0));
     m.velocity = Point(vx, vy);
     m.time_left = time_left;
+    int best = -1;
+    float best_d = 150.0f;  // a missile moves well under this per delta
+    for (size_t j = 0; j < old_missiles.size(); j++) {
+      float d = old_missiles[j].position.distance_to(m.position);
+      if (d < best_d) { best_d = d; best = (int)j; }
+    }
+    if (best >= 0) {
+      m.trail = std::move(old_missiles[best].trail);
+      m.thrust = old_missiles[best].thrust;
+      old_missiles.erase(old_missiles.begin() + best);
+    }
     s.missiles.push_back(m);
+  }
+  // A missile that vanished with life remaining exploded on the host
+  // (collision) — the expiry case detonates locally in Ship::step. Play
+  // the explosion here since the client never simulates the impact.
+  for (auto &om : old_missiles) {
+    if (om.time_left > 300.0f)
+      s.net_missile_exploded(om.position, om.velocity);
   }
 
   if (!nx_read(in, n)) return false;
@@ -2090,6 +2122,7 @@ void GLGame::tick(int delta) {
         if(tic_sound != NULL) {
           Mix_PlayChannel(-1, tic_sound, 0);
         }
+        net_send_event(Net::EV_LEVEL_TIC);  // the client mirrors the countdown
       }
       time_until_next_generation -= delta;
     } else {
@@ -2624,6 +2657,7 @@ void GLGame::tick(int delta) {
           (*pi)->apply((*o)->ship);
           if(pickup_sound != NULL)
             Mix_PlayChannel(-1, pickup_sound, 0);
+          net_send_event(Net::EV_PICKUP);  // collection cue for the client
         }
       }
     }
@@ -2708,12 +2742,9 @@ void GLGame::tick(int delta) {
   // can't simulate those collisions, so the host forwards them as events.
   // Cleared every tick in every mode so the queue can't grow in solo play.
   if (net_mode_ == NetHost && net_session_ && !net_connection_lost_) {
-    for (uint8_t k : Asteroid::net_impacts) {
-      printf("net: impact ev out %u\n", (unsigned)k);
-      fflush(stdout);
+    for (uint8_t k : Asteroid::net_impacts)
       net_send_event(k == Asteroid::IMPACT_TING ? Net::EV_ROID_TING
                                                 : Net::EV_ROID_THUD);
-    }
   }
   Asteroid::net_impacts.clear();
 
