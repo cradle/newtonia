@@ -180,10 +180,17 @@ bool SnapshotAssembler::add_chunk(Reader &r) {
 
   if (index == 0) {
     // Start of a snapshot; abandons any half-assembled predecessor.
+    // Reject up front any count that would let the host force an oversized
+    // allocation — genuine snapshots are far under SNAPSHOT_MAX_BYTES.
+    if ((size_t)count * SNAPSHOT_CHUNK_BYTES > SNAPSHOT_MAX_BYTES) {
+      count_ = 0;
+      return false;
+    }
     snap_id_ = snap_id;
     expect_index_ = 0;
     count_ = count;
     payload_.clear();
+    payload_.reserve((size_t)count * SNAPSHOT_CHUNK_BYTES);
   } else if (snap_id != snap_id_ || index != expect_index_ ||
              count != count_) {
     // Not the chunk we were waiting for — drop the partial snapshot and
@@ -205,6 +212,23 @@ bool SnapshotAssembler::add_chunk(Reader &r) {
 }
 
 }  // namespace Net
+
+// ---- deserialized-state sanity gate -------------------------------------
+
+bool net_state_sane(const Save::GameState &s) {
+  if (s.world_x < 500.0f || s.world_x > 200000.0f) return false;
+  if (s.world_y < 500.0f || s.world_y > 200000.0f) return false;
+  if (s.players.size() < 1 || s.players.size() > 2) return false;
+  if (s.asteroids.size() > 5000) return false;
+  if (s.pickups.size() > 500) return false;
+  if (s.black_holes.size() > 16) return false;
+  if (s.station.enemies.size() > 64) return false;
+  for (size_t i = 0; i < s.players.size(); i++) {
+    if (s.players[i].primary_weapons.size() > 64) return false;
+    if (s.players[i].secondary_weapons.size() > 64) return false;
+  }
+  return true;
+}
 
 // ---- handshake ----------------------------------------------------------
 

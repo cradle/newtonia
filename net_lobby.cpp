@@ -278,6 +278,7 @@ void NetLobby::pump_signal(int delta) {
         if (screen_ == RoomJoining || screen_ == CodeEntry) {
           if (ev.text == "no-such-room") set_status("NO ROOM WITH THAT CODE");
           else if (ev.text == "room-full") set_status("THAT ROOM IS FULL");
+          else if (ev.text == "rate-limited") set_status("TOO MANY TRIES - WAIT A MINUTE");
           else set_status("THE ROOM HAS EXPIRED");
           room_code_.clear();
           code_entry_.clear();
@@ -412,6 +413,7 @@ void NetLobby::tick(int delta) {
         Save::MemStream in(assembler_.payload());
         Save::GameState s;
         if (!Save::deserialize_game(in, s)) continue;
+        if (!net_state_sane(s)) continue;  // wait for a sane snapshot
 
         NetSession *session = session_;
         session_ = nullptr;

@@ -80,6 +80,11 @@ bool decode_input(Reader &r, InputState &out);
 
 const size_t SNAPSHOT_CHUNK_BYTES = 15 * 1024;
 
+// Upper bound on a reassembled snapshot. Real snapshots run well under 1 MB;
+// this caps the memory a malicious host can force the client to allocate
+// (up to 65535 chunks would otherwise be ~1 GB).
+const size_t SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024;
+
 // Splits payload into chunks and sends them on the reliable channel.
 void send_snapshot(NetTransport *t, uint32_t snap_id,
                    const std::vector<uint8_t> &payload, uint8_t player_id);
@@ -106,6 +111,16 @@ class SnapshotAssembler {
 };
 
 }  // namespace Net
+
+namespace Save { struct GameState; }
+
+// Sanity gate for a GameState deserialized from a host snapshot. The
+// deserializer trusts its input (it was written for local save files), so
+// the network paths screen the result here before applying it: a malicious
+// host could otherwise send absurd world dimensions (Grid allocation blowup)
+// or oversized entity vectors. Returns false when any field is out of the
+// range a genuine snapshot stays within.
+bool net_state_sane(const Save::GameState &s);
 
 // ---- session ------------------------------------------------------------
 // Owns the transport once signaling hands it over. update() pumps the

@@ -1205,6 +1205,7 @@ void GLGame::net_client_poll() {
     Save::MemStream in(net_assembler_->payload());
     Save::GameState s;
     if (!Save::deserialize_game(in, s)) continue;
+    if (!net_state_sane(s)) continue;  // reject a hostile/corrupt snapshot
     net_apply_state(s);
     net_apply_extras(in, s);
   }
