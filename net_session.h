@@ -60,12 +60,19 @@ struct InputState {
   float analog_rotation;   // rotation_scale (0..1; 1 = keyboard)
   float analog_thrust;     // thrust_analog
   float analog_reverse;    // reverse_analog
+  // Client-authoritative aim (v4): the exact facing the client's screen
+  // shows — rotation inertia, analog rate and sensitivity included. The
+  // rotate held-bits only extrapolate between INPUT arrivals. (0,0) =
+  // no aim data; the host ignores it.
+  float facing_x;
+  float facing_y;
 
   InputState()
       : seq(0), held(0), boost_count(0), next_weapon_count(0),
         next_secondary_count(0), teleport_count(0), respawn_count(0),
         shoot_press_count(0), secondary_press_count(0),
-        analog_rotation(1.0f), analog_thrust(1.0f), analog_reverse(1.0f) {}
+        analog_rotation(1.0f), analog_thrust(1.0f), analog_reverse(1.0f),
+        facing_x(0.0f), facing_y(0.0f) {}
 };
 
 // Appends the complete MSG_INPUT message (header included).

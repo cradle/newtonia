@@ -133,6 +133,8 @@ void encode_input(std::vector<uint8_t> &out, const InputState &in,
   put_f32(out, in.analog_rotation);
   put_f32(out, in.analog_thrust);
   put_f32(out, in.analog_reverse);
+  put_f32(out, in.facing_x);
+  put_f32(out, in.facing_y);
 }
 
 bool decode_input(Reader &r, InputState &out) {
@@ -148,6 +150,8 @@ bool decode_input(Reader &r, InputState &out) {
   out.analog_rotation = r.f32();
   out.analog_thrust = r.f32();
   out.analog_reverse = r.f32();
+  out.facing_x = r.f32();
+  out.facing_y = r.f32();
   return r.ok;
 }
 

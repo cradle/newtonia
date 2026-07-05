@@ -22,7 +22,8 @@ namespace Net {
 
 // 2: per-ship warp count appended to the snapshot NetExtras ship record.
 // 3: MSG_DELTA between 1 Hz keyframes (see NETPLAY.md M2-6).
-const uint8_t PROTO_VERSION = 3;
+// 4: client-authoritative aim — facing vector appended to MSG_INPUT.
+const uint8_t PROTO_VERSION = 4;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check

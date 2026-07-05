@@ -730,6 +730,15 @@ void GLGame::net_host_poll() {
     remote->rotation_scale = in.analog_rotation;
     remote->thrust_analog = in.analog_thrust;
     remote->reverse_analog = in.analog_reverse;
+    // Aim is client-authoritative: adopt the exact facing the client's
+    // screen shows (rotation inertia, analog rate and sensitivity all
+    // included) — the client's local aim is never snapshot-corrected, so
+    // reconstructing rotation host-side from the on/off bits drifted and
+    // bullets left the nose at a visibly wrong angle. The held rotate
+    // bits below still extrapolate between INPUT arrivals.
+    float fmag = sqrtf(in.facing_x * in.facing_x + in.facing_y * in.facing_y);
+    if (fmag > 0.5f && fmag < 2.0f)
+      remote->facing = Point(in.facing_x / fmag, in.facing_y / fmag);
     remote->rotate_left((held & Net::IN_LEFT) != 0);
     remote->rotate_right((held & Net::IN_RIGHT) != 0);
     remote->thrust((held & Net::IN_THRUST) != 0);
@@ -1351,6 +1360,8 @@ void GLGame::net_client_send_input() {
   in.analog_rotation = s->rotation_scale;
   in.analog_thrust = s->thrust_analog;
   in.analog_reverse = s->reverse_analog;
+  in.facing_x = s->facing.x();
+  in.facing_y = s->facing.y();
 
   std::vector<uint8_t> msg;
   Net::encode_input(msg, in, 2);
