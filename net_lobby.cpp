@@ -48,6 +48,22 @@ NetLobby::NetLobby()
       viewpoint(Point(0, WORLD_H / 2)),
       starfield(new GLStarfield(Point(WORLD_W, WORLD_H), star_density_scale())) {}
 
+NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
+  hosting_ = false;
+  transport_ = NetTransport::create();
+  signal_ = NetSignal::create();
+  if (!transport_ || !signal_) {
+    set_status("NETPLAY NOT AVAILABLE ON THIS BUILD");
+    screen_ = LobbyFailed;
+    return;
+  }
+  code_entry_ = rejoin_code;
+  signal_->connect_join(net_signal_url(), code_entry_);
+  signal_wait_ms_ = 0;
+  screen_ = RoomJoining;
+  set_status("RECONNECTING...");
+}
+
 NetLobby::~NetLobby() {
   delete session_;  // closes + deletes the transport it owns
   if (!session_ && transport_) {
@@ -244,6 +260,7 @@ void NetLobby::pump_signal(int delta) {
         break;
       case NetSignal::Event::Room:
         room_code_ = ev.text;
+        room_token_ = ev.text2;  // reclaim proof, handed to the game
         net_clipboard_write(room_code_);  // ready to paste to the friend
         printf("[lobby] room %s (%d turn servers)\n", room_code_.c_str(),
                (int)ice_servers_.size());
@@ -262,6 +279,10 @@ void NetLobby::pump_signal(int delta) {
         break;
       case NetSignal::Event::PeerLeave:
         set_status("PLAYER 2 LEFT THE ROOM");
+        // The room drops its stored offer with the joiner; put ours back
+        // so the next joiner gets it replayed.
+        if (hosting_ && transport_ && transport_->local_description_ready())
+          signal_->send_offer(transport_->local_description());
         break;
       case NetSignal::Event::Offer:
         // Live relay: both ends are online, so the full offer applies and
@@ -404,7 +425,8 @@ void NetLobby::tick(int delta) {
           session_ = nullptr;
           GLGame *game = new GLGame(session, (SDL_GameController *)0);
           if (signal_) {
-            game->net_adopt_signal(signal_, room_code_, ice_servers_);
+            game->net_adopt_signal(signal_, room_code_, ice_servers_,
+                                   room_token_);
             signal_ = nullptr;
           }
           request_state_change(game);
@@ -455,6 +477,7 @@ void NetLobby::tick(int delta) {
         NetSession *session = session_;
         session_ = nullptr;
         GLGame *game = new GLGame(s, session, (SDL_GameController *)0);
+        game->net_room_code_ = room_code_;  // enables client auto-rejoin
         game->net_apply_extras(in, s);
         request_state_change(game);
         return;

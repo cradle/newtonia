@@ -121,7 +121,12 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
   std::string t;
   if (!json_field(frame, "t", t)) return false;
   ev.text.clear();
-  if (t == "room")   { ev.kind = NetSignal::Event::Room;   return json_field(frame, "code", ev.text); }
+  ev.text2.clear();
+  if (t == "room") {
+    ev.kind = NetSignal::Event::Room;
+    json_field(frame, "token", ev.text2);  // reclaim token (M3-1)
+    return json_field(frame, "code", ev.text);
+  }
   if (t == "joined") { ev.kind = NetSignal::Event::Joined; return true; }
   if (t == "ice") {
     std::string u, n, p;
@@ -138,8 +143,9 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
   if (t == "peer") {
     std::string e;
     if (!json_field(frame, "ev", e)) return false;
-    ev.kind = (e == "join") ? NetSignal::Event::PeerJoin : NetSignal::Event::PeerLeave;
-    return true;
+    if (e == "join") { ev.kind = NetSignal::Event::PeerJoin; return true; }
+    if (e == "leave" || e == "host-lost") { ev.kind = NetSignal::Event::PeerLeave; return true; }
+    return false;  // unknown peer events (e.g. host-back) are skipped
   }
   return false;
 }

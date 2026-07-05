@@ -26,7 +26,7 @@ class NetSignal {
 public:
   struct Event {
     enum Kind {
-      Room,       // text = assigned room code (host)
+      Room,       // text = room code, text2 = reclaim token (host)
       Joined,     // join accepted (joiner)
       Offer,      // text = offer SDP (joiner)
       Answer,     // text = answer SDP (host)
@@ -38,11 +38,18 @@ public:
     };
     Kind kind;
     std::string text;
+    std::string text2;  // secondary field (Room: the reclaim token)
   };
 
   virtual ~NetSignal() {}
 
   virtual void connect_host(const std::string &url) = 0;
+  // M3-1 host reclaim: reattach to an existing room after a signal drop,
+  // proving ownership with the token from the original Room frame. The
+  // worker replies with the same Room frame; the host then re-offers.
+  virtual void connect_host_reclaim(const std::string &url,
+                                    const std::string &code,
+                                    const std::string &token) = 0;
   virtual void connect_join(const std::string &url,
                             const std::string &code) = 0;
 

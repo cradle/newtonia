@@ -14,6 +14,7 @@
 #include "wrapped_point.h"
 #include "intro.h"
 #include "menu.h"
+#include "net_lobby.h"
 #include "state.h"
 #include "asteroid.h"
 #include "asteroid_drawer.h"
@@ -782,10 +783,75 @@ void GLGame::net_host_poll() {
 }
 
 void GLGame::net_adopt_signal(NetSignal *signal, const std::string &room_code,
-                              const std::vector<std::string> &ice_servers) {
+                              const std::vector<std::string> &ice_servers,
+                              const std::string &room_token) {
   net_signal_ = signal;
   net_room_code_ = room_code;
+  net_room_token_ = room_token;
   net_ice_ = ice_servers;
+}
+
+// M3-1 mobile lifecycle: the relay socket can drop while the game is fine
+// (host app backgrounded, wifi blip). Reclaim the room with the token so
+// later rejoins stay possible, and treat a peer-join notification as
+// instant client-loss detection — the client would not be rejoining the
+// room if its transport were alive (ICE takes ~10 s to say so).
+void GLGame::net_host_signal_maintain(int delta) {
+  if (net_signal_retry_ms_ > 0) {
+    net_signal_retry_ms_ -= delta;
+    if (net_signal_retry_ms_ <= 0) {
+      net_signal_retry_ms_ = 0;
+      net_ice_.clear();  // fresh TURN creds ride the reclaim reply
+      net_signal_->connect_host_reclaim(net_signal_url(), net_room_code_,
+                                        net_room_token_);
+      printf("net: reclaiming room %s\n", net_room_code_.c_str());
+      fflush(stdout);
+    }
+  }
+
+  NetSignal::Event ev;
+  while (net_signal_->poll(ev)) {
+    switch (ev.kind) {
+      case NetSignal::Event::Ice:
+        net_ice_.push_back(ev.text);
+        break;
+      case NetSignal::Event::Room:
+        printf("net: room %s reclaimed\n", net_room_code_.c_str());
+        fflush(stdout);
+        break;
+      case NetSignal::Event::Closed:
+        if (net_room_token_.empty()) {
+          // Pre-token relay: no reclaim protocol — drop the signal (the
+          // old behaviour; rejoin stops being possible).
+          net_signal_->close();
+          delete net_signal_;
+          net_signal_ = nullptr;
+          return;
+        }
+        if (net_signal_retry_ms_ <= 0) net_signal_retry_ms_ = 3000;
+        break;
+      case NetSignal::Event::Error:
+        // no-such-room / expired on reclaim: the room is gone for good.
+        printf("net: room %s lost (%s)\n", net_room_code_.c_str(),
+               ev.text.c_str());
+        fflush(stdout);
+        net_signal_->close();
+        delete net_signal_;
+        net_signal_ = nullptr;
+        return;
+      case NetSignal::Event::PeerJoin:
+        // The client re-entered the room: its transport is dead even if
+        // ours has not noticed yet. Enter the rejoin flow immediately.
+        printf("net: peer rejoined the room - fast loss detect\n");
+        fflush(stdout);
+        delete net_session_;
+        net_session_ = nullptr;
+        net_connection_lost_ = true;
+        return;  // net_host_rejoin_poll owns the signal from here
+      default:
+        break;
+    }
+  }
 }
 
 // Client gone but the room is still open: keep simulating solo, offer a
@@ -833,7 +899,22 @@ void GLGame::net_host_rejoin_poll(int delta) {
     fflush(stdout);
   }
 
-  if (net_rehost_ && !net_rehost_offer_sent_ &&
+  // Signal socket dropped mid-rejoin: reclaim the room (M3-1) with the
+  // same countdown the healthy path uses; the offer re-sends once the
+  // reclaimed Room frame arrives.
+  if (net_signal_retry_ms_ > 0) {
+    net_signal_retry_ms_ -= delta;
+    if (net_signal_retry_ms_ <= 0) {
+      net_signal_retry_ms_ = 0;
+      net_ice_.clear();
+      net_signal_->connect_host_reclaim(net_signal_url(), net_room_code_,
+                                        net_room_token_);
+      printf("net: reclaiming room %s (mid-rejoin)\n", net_room_code_.c_str());
+      fflush(stdout);
+    }
+  }
+
+  if (net_rehost_ && !net_rehost_offer_sent_ && net_signal_retry_ms_ <= 0 &&
       net_rehost_->local_description_ready()) {
     net_signal_->send_offer(net_rehost_->local_description());
     net_rehost_offer_sent_ = true;
@@ -845,9 +926,28 @@ void GLGame::net_host_rejoin_poll(int delta) {
       net_rehost_->set_remote_answer(ev.text);
       net_session_ = new NetSession(net_rehost_, NetSession::HostRole);
       net_rehost_ = nullptr;
+    } else if (ev.kind == NetSignal::Event::Ice) {
+      net_ice_.push_back(ev.text);
+      if (net_rehost_) net_rehost_->set_ice_servers(net_ice_);
+    } else if (ev.kind == NetSignal::Event::Room) {
+      // Reclaimed mid-rejoin: the room's stored offer died with the old
+      // socket — resend the current one.
+      printf("net: room %s reclaimed (mid-rejoin)\n", net_room_code_.c_str());
+      fflush(stdout);
+      net_rehost_offer_sent_ = false;
     } else if (ev.kind == NetSignal::Event::Closed) {
-      // Signal server gone: no rejoin possible — fall back to the plain
-      // CONNECTION LOST freeze.
+      if (net_room_token_.empty()) {
+        // Pre-token relay: no reclaim possible — the old freeze fallback.
+        net_signal_->close();
+        delete net_signal_;
+        net_signal_ = nullptr;
+        return;
+      }
+      if (net_signal_retry_ms_ <= 0) net_signal_retry_ms_ = 3000;
+    } else if (ev.kind == NetSignal::Event::Error) {
+      printf("net: room %s lost (%s)\n", net_room_code_.c_str(),
+             ev.text.c_str());
+      fflush(stdout);
       net_signal_->close();
       delete net_signal_;
       net_signal_ = nullptr;
@@ -1187,6 +1287,11 @@ void GLGame::draw_net_overlays() const {
     Typer::draw_centered(0, vh * 0.72f, "PLAYER 2 DISCONNECTED", 16);
     std::string room = "ROOM " + net_room_code_ + " OPEN - THEY CAN REJOIN";
     Typer::draw_centered(0, vh * 0.72f - 40, room.c_str(), 12);
+  } else if (net_connection_lost_ && net_mode_ == NetClient &&
+             !net_room_code_.empty()) {
+    Typer::draw_centered(0, 60, "CONNECTION LOST", 34);
+    if ((current_time / 700) % 2 == 0)
+      Typer::draw_centered(0, -80, "REJOINING...", 16);
   } else if (net_connection_lost_) {
     Typer::draw_centered(0, 60, "CONNECTION LOST", 34);
     if ((current_time / 700) % 2 == 0)
@@ -1294,7 +1399,23 @@ void GLGame::tick_net_client(int delta) {
 
   if (!net_connection_lost_) net_client_poll();
   if (net_session_->transport()->failed()) net_connection_lost_ = true;
-  if (net_connection_lost_) return;  // frozen; draw shows CONNECTION LOST
+  if (net_connection_lost_) {
+    // M3-1 auto-rejoin: with a room code the loss is recoverable — hand
+    // the game back to a fresh auto-joining lobby (full keyframe
+    // bootstrap, the same path as a manual rejoin). Any key/button still
+    // exits to the menu via the input handlers.
+    if (!net_room_code_.empty()) {
+      if (net_client_rejoin_ms_ <= 0) net_client_rejoin_ms_ = 1500;
+      net_client_rejoin_ms_ -= delta;
+      if (net_client_rejoin_ms_ <= 0) {
+        printf("net: auto-rejoining room %s\n", net_room_code_.c_str());
+        fflush(stdout);
+        request_state_change(new NetLobby(net_room_code_));
+        net_room_code_.clear();  // fire once
+      }
+    }
+    return;  // frozen; draw shows the reconnect notice
+  }
   if (net_banner_ms_ > 0) net_banner_ms_ -= delta;
 
   if (!running) {
@@ -1786,6 +1907,11 @@ void GLGame::net_apply_keyframe_asteroid_ids(Save::Stream &in,
 }
 
 void GLGame::focus_gained() {
+  // M3-1: returning to a disconnected client (mobile resume) rejoins at
+  // once instead of waiting out the countdown.
+  if (net_mode_ == NetClient && net_connection_lost_ &&
+      net_client_rejoin_ms_ > 300)
+    net_client_rejoin_ms_ = 300;
   Mix_ResumeMusic();
   if(auto_paused) {
     toggle_pause();
@@ -1810,9 +1936,42 @@ void GLGame::tick(int delta) {
   // Online host: poll the peer before the pause gate — their RESUME (or a
   // dead transport) must be noticed even while paused.
   if (net_mode_ == NetHost) {
+    // M3-1 e2e hooks: sever the transport / relay socket on a timer so the
+    // recovery paths can be driven without killing either process. Inert
+    // without the env vars.
+    static int test_drop_transport = -2, test_drop_signal = -2;
+    if (test_drop_transport == -2) {
+      const char *e = getenv("NEWTONIA_NET_TEST_DROP_TRANSPORT_MS");
+      test_drop_transport = e ? atoi(e) : -1;
+    }
+    if (test_drop_signal == -2) {
+      const char *e = getenv("NEWTONIA_NET_TEST_DROP_SIGNAL_MS");
+      test_drop_signal = e ? atoi(e) : -1;
+    }
+    if (test_drop_transport > 0 && net_session_) {
+      test_drop_transport -= delta;
+      if (test_drop_transport <= 0) {
+        test_drop_transport = -1;
+        printf("net: TEST dropping transport\n");
+        fflush(stdout);
+        net_session_->transport()->close();
+      }
+    }
+    if (test_drop_signal > 0 && net_signal_) {
+      test_drop_signal -= delta;
+      if (test_drop_signal <= 0) {
+        test_drop_signal = -1;
+        printf("net: TEST dropping signal socket\n");
+        fflush(stdout);
+        net_signal_->close();          // local close emits no Closed event;
+        net_signal_retry_ms_ = 700;    // a real drop arrives as Event::Closed
+      }
+    }
+
     if (!net_connection_lost_) net_host_poll();
     if (net_session_ && net_session_->transport()->failed())
       net_connection_lost_ = true;
+    if (net_signal_ && !net_connection_lost_) net_host_signal_maintain(delta);
     if (net_connection_lost_) {
       if (net_signal_)
         net_host_rejoin_poll(delta);  // room open: play on, await rejoin

@@ -28,6 +28,11 @@ public:
     open(url + "?role=host");
   }
 
+  void connect_host_reclaim(const std::string &url, const std::string &code,
+                            const std::string &token) override {
+    open(url + "?role=host&code=" + code + "&token=" + token);
+  }
+
   void connect_join(const std::string &url, const std::string &code) override {
     std::string upper;
     for (size_t i = 0; i < code.size(); i++) {

@@ -67,6 +67,10 @@ private:
   void pump_signal(int delta);
   void fall_back_to_manual(const char *why);
   void code_entry_key(unsigned char key);
+public:
+  // M3-1 auto-rejoin: skip Choose and join the known room immediately.
+  explicit NetLobby(const std::string &rejoin_code);
+private:
 
   Screen screen_;
   int selection_;  // Choose: 0 = HOST, 1 = JOIN
@@ -76,6 +80,7 @@ private:
   NetSession *session_;      // owned
   NetSignal *signal_;        // owned; null in manual fallback
   std::string room_code_;    // host: assigned code
+  std::string room_token_;   // host: reclaim proof (M3-1)
   std::vector<std::string> ice_servers_;  // TURN triples from the relay
   std::string code_entry_;   // joiner: code being typed
   bool offer_sent_;          // host: offer pushed to the room

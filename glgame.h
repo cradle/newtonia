@@ -168,11 +168,19 @@ private:
   // parks the remote ship, and offers a fresh transport through the room.
 public:
   void net_adopt_signal(NetSignal *signal, const std::string &room_code,
-                        const std::vector<std::string> &ice_servers);
+                        const std::vector<std::string> &ice_servers,
+                        const std::string &room_token);
 private:
   void net_host_rejoin_poll(int delta);
+  // M3-1: relay-socket upkeep while the CLIENT is healthy — detects a
+  // dropped signal socket, reclaims the room with the token, and
+  // fast-detects client loss from the room's peer-join notification.
+  void net_host_signal_maintain(int delta);
   NetSignal *net_signal_ = nullptr;     // owned; null in the manual flow
   std::string net_room_code_;
+  std::string net_room_token_;        // proves room ownership on reclaim
+  int net_signal_retry_ms_ = 0;       // >0: reclaim attempt countdown
+  int net_client_rejoin_ms_ = 0;      // client: auto-rejoin countdown
   std::vector<std::string> net_ice_;  // TURN triples for rejoin re-hosts
   NetTransport *net_rehost_ = nullptr;  // owned until handed to a session
   bool net_rehost_offer_sent_ = false;

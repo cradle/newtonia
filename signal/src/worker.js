@@ -22,6 +22,11 @@ const ROOM_TTL_MS = 2 * 60 * 60 * 1000;
 // Per-IP rate limits (fixed window). Host-creates farm rooms + TURN
 // credentials; join-attempts can brute-force the 4-letter code space.
 const RATE_WINDOW_MS = 10 * 60 * 1000;
+
+// M3-1: when the HOST's socket drops (mobile app backgrounded, wifi blip)
+// the room survives for a grace period instead of dying; the host reclaims
+// its slot with the token minted at room creation.
+const HOST_GRACE_MS = 2 * 60 * 1000;
 const HOST_LIMIT = 10;
 const JOIN_LIMIT = 30;
 
@@ -112,6 +117,19 @@ export default {
       // authorization for this host attempt — immediately before we claim a
       // code. Missing TURN secrets still yield [] (STUN-only), unchanged.
       const ice = await turn_ice_servers(env);
+      // Host RECLAIM (M3-1): a disconnected host returning within the
+      // grace window proves ownership with the token from its room frame.
+      const token = url.searchParams.get("token");
+      if (token) {
+        const code = (url.searchParams.get("code") || "").toUpperCase();
+        if (code.length !== CODE_LEN ||
+            [...code].some((c) => !CODE_ALPHABET.includes(c)))
+          return new Response("bad code", { status: 400 });
+        const room = env.ROOMS.get(env.ROOMS.idFromName(code));
+        return room.fetch(new Request(
+            `https://room/reclaim?code=${code}&token=${encodeURIComponent(token)}&ice=${encodeURIComponent(JSON.stringify(ice))}`,
+            request));
+      }
       // Mint an unused code: a fresh Room accepts a host only if it has
       // none; collisions (live room with that code) refuse and we retry.
       for (let attempt = 0; attempt < 8; attempt++) {
@@ -182,6 +200,19 @@ export class Room {
     this.joiner = null;  // WebSocket
     this.offer = null;   // last offer SDP, replayed to late joiners
     this.created = 0;
+    this.host_token = null;   // reclaim proof, minted at creation
+    this.host_lost_at = 0;    // grace window start (0 = host connected)
+  }
+
+  // The room is "held" while a disconnected host may still reclaim it.
+  in_grace(now) {
+    return !this.host && this.host_token &&
+           this.host_lost_at && now - this.host_lost_at <= HOST_GRACE_MS;
+  }
+
+  // A live room = host connected, or host within its reclaim grace.
+  alive(now) {
+    return !!this.host || this.in_grace(now);
   }
 
   async fetch(request) {
@@ -191,7 +222,9 @@ export class Room {
     try { ice = JSON.parse(url.searchParams.get("ice") || "[]"); } catch (e) {}
     const now = Date.now();
 
-    if (this.host && now - this.created > ROOM_TTL_MS) this.expire();
+    if (this.alive(now) && now - this.created > ROOM_TTL_MS) this.expire();
+    // Grace elapsed with no reclaim: the room is finished.
+    if (!this.host && this.host_token && !this.in_grace(now)) this.expire();
 
     if (url.pathname === "/exists") {
       // Worker's pre-mint probe: is there an open slot worth minting for?
@@ -201,14 +234,29 @@ export class Room {
     }
 
     if (url.pathname === "/host") {
-      if (this.host) return new Response("room in use", { status: 409 });
+      // In-grace rooms still own their code — a fresh host must not
+      // squat a room whose original host may return.
+      if (this.host || this.in_grace(now))
+        return new Response("room in use", { status: 409 });
       const pair = new WebSocketPair();
       this.accept_host(pair[1], code, now, ice);
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
 
+    if (url.pathname === "/reclaim") {
+      const token = url.searchParams.get("token");
+      if (this.host) return this.reject_ws("room-in-use");
+      if (!this.host_token || token !== this.host_token || !this.in_grace(now))
+        return this.reject_ws("no-such-room");
+      const pair = new WebSocketPair();
+      this.reclaim_host(pair[1], code, ice);
+      return new Response(null, { status: 101, webSocket: pair[0] });
+    }
+
     if (url.pathname === "/join") {
-      if (!this.host) return this.reject_ws("no-such-room");
+      // Joining is allowed while the host is in grace too: the joiner
+      // waits and the reclaimed host's fresh offer is relayed on arrival.
+      if (!this.alive(now)) return this.reject_ws("no-such-room");
       if (this.joiner) return this.reject_ws("room-full");
       const pair = new WebSocketPair();
       this.accept_joiner(pair[1], ice);
@@ -240,12 +288,43 @@ export class Room {
     this.host = ws;
     this.offer = null;
     this.created = now;
+    this.host_token = crypto.randomUUID();
+    this.host_lost_at = 0;
     this.send_ice(ws, ice);
-    ws.send(JSON.stringify({ t: "room", code }));
+    ws.send(JSON.stringify({ t: "room", code, token: this.host_token }));
     ws.addEventListener("message", (m) => this.from_host(m));
-    const drop = () => this.expire();
+    const drop = () => this.drop_host(ws);
     ws.addEventListener("close", drop);
     ws.addEventListener("error", drop);
+  }
+
+  // Reclaim: same room, same token, fresh socket. The old offer is stale
+  // (its transport died with the old socket); the host re-offers.
+  reclaim_host(ws, code, ice) {
+    ws.accept();
+    this.host = ws;
+    this.offer = null;
+    this.host_lost_at = 0;
+    this.send_ice(ws, ice);
+    ws.send(JSON.stringify({ t: "room", code, token: this.host_token }));
+    ws.addEventListener("message", (m) => this.from_host(m));
+    const drop = () => this.drop_host(ws);
+    ws.addEventListener("close", drop);
+    ws.addEventListener("error", drop);
+    if (this.joiner)
+      this.joiner.send(JSON.stringify({ t: "peer", ev: "host-back" }));
+  }
+
+  // Host socket gone: start the reclaim grace window instead of killing
+  // the room. The stale-socket guard matters: a reclaimed host's OLD
+  // socket may emit its close event after the new one attached.
+  drop_host(ws) {
+    if (this.host !== ws) return;
+    this.host = null;
+    this.offer = null;
+    this.host_lost_at = Date.now();
+    if (this.joiner)
+      this.joiner.send(JSON.stringify({ t: "peer", ev: "host-lost" }));
   }
 
   accept_joiner(ws, ice) {
@@ -256,7 +335,7 @@ export class Room {
     if (this.host) this.host.send(JSON.stringify({ t: "peer", ev: "join" }));
     if (this.offer) ws.send(JSON.stringify({ t: "offer", sdp: this.offer }));
     ws.addEventListener("message", (m) => this.from_joiner(m));
-    const drop = () => this.drop_joiner();
+    const drop = () => this.drop_joiner(ws);
     ws.addEventListener("close", drop);
     ws.addEventListener("error", drop);
   }
@@ -280,8 +359,14 @@ export class Room {
     }
   }
 
-  drop_joiner() {
+  drop_joiner(ws) {
+    if (this.joiner !== ws) return;
     this.joiner = null;
+    // The stored offer likely belongs to a transport that joiner was
+    // party to; replaying it to a REjoiner dead-ends the handshake. The
+    // host re-offers on peer-leave (lobby) or on its rejoin flow (game),
+    // and that fresh offer is stored and replayed instead.
+    this.offer = null;
     if (this.host) this.host.send(JSON.stringify({ t: "peer", ev: "leave" }));
   }
 
@@ -294,5 +379,7 @@ export class Room {
     this.host = null;
     this.joiner = null;
     this.offer = null;
+    this.host_token = null;
+    this.host_lost_at = 0;
   }
 }
