@@ -246,7 +246,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
             Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-40, "player 2 press enter to join", 8);
 #endif
         }
-      } else {
+      } else if(!is_touch_mode()) {
         Typer::draw_centered(0, Typer::scaled_window_height-40, glship->has_controller() ? "return to menu with start" : "return to menu with ESC", 8);
       }
     }
@@ -285,6 +285,17 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   if(!glgame->running && glship->show_help) {
     const char* unpause = glship->has_controller() ? "press start to resume" : "press p to resume";
     Typer::draw_centered(0, Typer::scaled_window_height/glgame->num_y_viewports()-80, unpause, 8);
+  }
+
+  // Touch: GAME OVER exit affordance — the bottom strip is a tap band
+  // (GLGame::touch_tap), same placement as the lobby's return band.
+  if(is_touch_mode()) {
+    bool all_over = !glgame->players->empty();
+    for(auto* gs : *glgame->players) {
+      if(gs->ship->is_alive() || gs->ship->lives > 0) { all_over = false; break; }
+    }
+    if(all_over)
+      Typer::draw_centered(0, -420, "RETURN TO MENU", 13, glgame->current_time);
   }
 }
 

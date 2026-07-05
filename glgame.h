@@ -55,6 +55,7 @@ public:
   void keyboard(unsigned char key, int x, int y) override;
   void keyboard_up(unsigned char key, int x, int y) override;
   void controller(SDL_Event event) override;
+  void touch_tap(float nx, float ny) override;
   void touch_joystick(float nx, float ny);
   // The ship this machine's player controls: the first one, except on a
   // net client where the first ship is the remote host's and the local
@@ -150,6 +151,9 @@ private:
   uint32_t net_input_seq_ = 0;    // client: outgoing INPUT sequence
   uint8_t net_prev_warp_ = 0;     // client: last seen local-ship warp count
   bool net_have_warp_ = false;    // first snapshot baselines the count
+  // Client: last net_apply_state was a generation rollover — suppress the
+  // vanished-projectile explosion cues for that apply (it's a rebuild).
+  bool net_world_rebuilt_last_apply_ = false;
   // Host: held INPUT bits ignored until the client releases the key once.
   // Set to all-ones at each level transition so the remote player starts
   // the new level with controls cleared — exactly like the local player,
@@ -161,6 +165,7 @@ private:
   // Phase 8 polish (see NETPLAY.md)
   void net_send_event(uint8_t code, uint32_t arg = 0);
   void net_handle_event(uint8_t code, uint32_t arg);
+  void net_spark_asteroid_at(float x, float y);
   void net_set_generation_banner(int gen);
   void draw_net_overlays() const;   // banner / CONNECTION LOST
   bool net_connection_lost_ = false;

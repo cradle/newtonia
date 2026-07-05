@@ -207,6 +207,7 @@ export class Room {
     this.created = 0;
     this.host_token = null;   // reclaim proof, minted at creation
     this.host_lost_at = 0;    // grace window start (0 = host connected)
+    this.closed = false;      // host sent {t:"close"} — deliberate shutdown
   }
 
   // The room is "held" while a disconnected host may still reclaim it.
@@ -261,7 +262,8 @@ export class Room {
     if (url.pathname === "/join") {
       // Joining is allowed while the host is in grace too: the joiner
       // waits and the reclaimed host's fresh offer is relayed on arrival.
-      if (!this.alive(now)) return this.reject_ws("no-such-room");
+      if (!this.alive(now))
+        return this.reject_ws(this.closed ? "host-closed" : "no-such-room");
       if (this.joiner) return this.reject_ws("room-full");
       const pair = new WebSocketPair();
       this.accept_joiner(pair[1], ice);
@@ -296,6 +298,7 @@ export class Room {
     this.created = now;
     this.host_token = crypto.randomUUID();
     this.host_lost_at = 0;
+    this.closed = false;  // a fresh host reopens a deliberately-closed code
     this.send_ice(ws, ice);
     ws.send(JSON.stringify({ t: "room", code, token: this.host_token }));
     ws.addEventListener("message", (m) => this.from_host(m));
@@ -360,7 +363,8 @@ export class Room {
     // us it isn't coming back. Crashes send nothing, so grace still
     // covers real drops.
     if (msg.t === "close") {
-      this.expire();
+      this.closed = true;  // joins now get "host-closed", not "no-such-room"
+      this.expire("host-closed");
       return;
     }
     if (msg.t === "offer" && typeof msg.sdp === "string" &&
@@ -408,8 +412,8 @@ export class Room {
     if (this.host) this.host.send(JSON.stringify({ t: "peer", ev: "leave" }));
   }
 
-  expire() {
-    const bye = JSON.stringify({ t: "err", reason: "expired" });
+  expire(reason) {
+    const bye = JSON.stringify({ t: "err", reason: reason || "expired" });
     for (const ws of [this.host, this.joiner]) {
       if (!ws) continue;
       try { ws.send(bye); ws.close(1000); } catch (e) {}

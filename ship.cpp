@@ -16,6 +16,7 @@
 static const int NOVA_MAX_AMMO = 10;
 
 bool Ship::net_quiet_respawn = false;
+std::vector<Ship::NetShipImpact> Ship::net_ship_impacts;
 #include <algorithm>
 #include <math.h>
 #include <climits>
@@ -91,6 +92,12 @@ Ship::Ship(const Grid &grid, bool has_friction) :
     mine_explode_sound = Mix_LoadWAV(asset_path("audio/mine_explode.wav").c_str());
     if(mine_explode_sound == NULL) {
       std::cout << "Unable to load mine_explode.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(missile_fly_sound == NULL) {
+    missile_fly_sound = Mix_LoadWAV(asset_path("audio/missile_fly.wav").c_str());
+    if(missile_fly_sound == NULL) {
+      std::cout << "Unable to load missile_fly.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(shoot_sound == NULL) {
@@ -177,6 +184,9 @@ Ship::~Ship() {
   }
   if(mine_explode_sound != NULL) {
     Mix_FreeChunk(mine_explode_sound);
+  }
+  if(missile_fly_sound != NULL) {
+    Mix_FreeChunk(missile_fly_sound);
   }
   if(shoot_sound != NULL) {
     Mix_FreeChunk(shoot_sound);
@@ -889,6 +899,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
         if(armour_blocked) {
           // Armoured face: ship is destroyed but asteroid is unharmed.
           explode(position, object->velocity);
+          net_ship_impacts.push_back({this, true});
           if(Asteroid::ting_sound != NULL) {
             static Uint32 last_armour_ting = UINT32_MAX;
             Uint32 now = SDL_GetTicks();
@@ -901,6 +912,17 @@ void Ship::collide_grid(Grid &grid, int delta) {
           detonate();
         } else {
           explode(position, object->velocity);
+          {
+            // Non-fatal bounce (shielded/invincible contact): queue the
+            // impact for the net client, rate-limited — contact persists
+            // across many 8 ms steps and would flood the channel.
+            static Uint32 last_net_ship_impact = UINT32_MAX;
+            Uint32 now_imp = SDL_GetTicks();
+            if(now_imp - last_net_ship_impact >= 125) {
+              last_net_ship_impact = now_imp;
+              net_ship_impacts.push_back({this, false});
+            }
+          }
           // The hit object was invincible. If the ship is also invincible
           // (shielded), neither side died — but we still need to check whether
           // the ship is simultaneously touching a killable asteroid, because
@@ -1121,6 +1143,11 @@ void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
             if (now - last_armour_ting >= 125) {
               last_armour_ting = now;
               Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
+              // Armoured-face deflection never reaches Asteroid::kill(),
+              // so queue the net impact cue here.
+              Asteroid::net_impacts.push_back(
+                  {Asteroid::IMPACT_TING, bullets[i].position.x(),
+                   bullets[i].position.y()});
             }
           }
           bullets[i].world_bullet = true;
@@ -1281,6 +1308,31 @@ void Ship::net_missile_exploded(const Point &pos, const Point &vel) {
   detonate(pos, vel, 25);
   if(missile_explode_sound != NULL)
     Mix_PlayChannel(-1, missile_explode_sound, 0);
+}
+
+void Ship::net_mine_exploded(const Point &pos, const Point &vel) {
+  detonate(pos, vel, 50);
+  if(mine_explode_sound != NULL)
+    Mix_PlayChannel(-1, mine_explode_sound, 0);
+}
+
+void Ship::net_giga_mine_exploded(const Point &pos) {
+  // Mirrors giga_detonate's presentation (sound + shockwave ring); the
+  // host's real shockwave also arrives via the snapshot a beat later and
+  // replaces this one harmlessly.
+  giga_detonate(pos);
+}
+
+void Ship::net_nova_arrived() {
+  if(giga_mine_explode_sound != NULL)
+    Mix_PlayChannel(-1, giga_mine_explode_sound, 0);
+}
+
+std::shared_ptr<int> Ship::net_start_missile_fly_loop() {
+  if(missile_fly_sound == NULL) return nullptr;
+  int ch = Mix_PlayChannel(-1, missile_fly_sound, -1);
+  if(ch == -1) return nullptr;
+  return std::shared_ptr<int>(new int(ch), [](int *p) { Mix_HaltChannel(*p); delete p; });
 }
 
 void Ship::set_shield_hum(bool on) {

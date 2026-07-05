@@ -163,6 +163,21 @@ class Ship : public CompositeObject {
     // Net client: a replicated missile vanished mid-flight — the host saw
     // it hit something. Debris + explosion sound at its last position.
     void net_missile_exploded(const Point &pos, const Point &vel);
+    // Same for mines / giga mines that vanish from the snapshot early.
+    void net_mine_exploded(const Point &pos, const Point &vel);
+    void net_giga_mine_exploded(const Point &pos);
+    // A nova shockwave appeared in the snapshot: play its boom (the wave
+    // itself is replicated; only the audio was host-side).
+    void net_nova_arrived();
+    // Start the looping missile-fly sound for replicated missiles (the
+    // weapon starts it for locally-fired ones); the handle halts the
+    // channel when the last missile holding it is destroyed.
+    std::shared_ptr<int> net_start_missile_fly_loop();
+    // Host outbox: non-fatal ship-vs-asteroid impacts (debris/ting fire
+    // inside collide_grid, which the client never runs). The net host
+    // drains this into EV_SHIP_IMPACT; everyone else clears it per tick.
+    struct NetShipImpact { const Ship *ship; bool ting; };
+    static std::vector<NetShipImpact> net_ship_impacts;
     void set_missile_asteroids(std::list<Object*> *asteroids);
     void set_missile_ships(std::list<Object*> *ships);
     void set_black_holes(const std::list<BlackHole*> *bhs);
@@ -216,6 +231,7 @@ class Ship : public CompositeObject {
     Mix_Chunk *boost_sound = NULL, *tic_sound = NULL, *tic_low_sound = NULL, *click_sound = NULL;
     Mix_Chunk *missile_explode_sound = NULL, *shield_hum_sound = NULL, *explode_sound = NULL;
     Mix_Chunk *giga_mine_explode_sound = NULL, *mine_explode_sound = NULL;
+    Mix_Chunk *missile_fly_sound = NULL;  // loop for replicated missiles (net client)
     Mix_Chunk *shoot_sound = NULL;
     Mix_Chunk *god_mode_music_sound = NULL, *god_mode_music_warn_sound = NULL;
     int shield_hum_channel = -1;

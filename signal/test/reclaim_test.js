@@ -127,12 +127,13 @@ function check(name, cond) {
   //     told, no grace window, and the code is immediately unjoinable.
   host3.send(JSON.stringify({ t: "close" }));
   const byebye = await join3._recv();
-  check("joiner told on host close", byebye.t === "err" && byebye.reason === "expired");
+  check("joiner told on host close",
+        byebye.t === "err" && byebye.reason === "host-closed");
   await t(300);
   const join4 = await connect(`?role=join&code=${code}`);
   const j4 = await join4._recv();
-  check("closed room rejects join (no grace)",
-        j4.t === "err" && j4.reason === "no-such-room");
+  check("closed room rejects join with host-closed (no grace)",
+        j4.t === "err" && j4.reason === "host-closed");
   join4.close?.();
 
   host3.close(); join3.close(); squat.close?.();

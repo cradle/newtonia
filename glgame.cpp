@@ -1270,15 +1270,22 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
       net_connection_lost_ = true;
       break;
     case Net::EV_ROID_THUD:
+    case Net::EV_ROID_TING: {
       // Host-side bullet impacts the client can't simulate. The host
-      // rate-limits these to one per 125 ms; play them straight.
-      if (Asteroid::thud_sound)
-        Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+      // rate-limits these to one per 125 ms; play them straight, and
+      // spark the asteroid that was hit (arg carries the position).
+      Mix_Chunk *snd = code == Net::EV_ROID_TING ? Asteroid::ting_sound
+                                                 : Asteroid::thud_sound;
+      if (snd) Mix_PlayChannel(-1, snd, 0);
+      if (SDL_getenv("NEWTONIA_NET_DEBUG")) {  // e2e drivers grep for this
+        printf("net: roid impact\n");
+        fflush(stdout);
+      }
+      float ix, iy;
+      Net::unpack_pos(arg, ix, iy);
+      net_spark_asteroid_at(ix, iy);
       break;
-    case Net::EV_ROID_TING:
-      if (Asteroid::ting_sound)
-        Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
-      break;
+    }
     case Net::EV_LEVEL_TIC:
       if (tic_sound)
         Mix_PlayChannel(-1, tic_sound, 0);
@@ -1287,9 +1294,47 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
       if (pickup_sound)
         Mix_PlayChannel(-1, pickup_sound, 0);
       break;
+    case Net::EV_ROID_BOUNCE:
+      // Asteroid-vs-reflective bounce; arg is the volume the host
+      // computed for the nearest player.
+      if (Asteroid::asteroid_ting_sound) {
+        Mix_VolumeChunk(Asteroid::asteroid_ting_sound,
+                        (int)(arg & 0xff) * MIX_MAX_VOLUME / 255);
+        Mix_PlayChannel(-1, Asteroid::asteroid_ting_sound, 0);
+      }
+      break;
+    case Net::EV_SHIP_IMPACT: {
+      // Non-fatal ship-vs-asteroid bounce: debris spray on that ship
+      // (explode() fills the object's own debris, which is never
+      // serialized — hence invisible on the client until now).
+      int idx = (int)(arg & 0xff);
+      GLShip *gs = NULL;
+      if (idx == 1 && !players->empty()) gs = players->front();
+      else if (idx == 2 && players->size() >= 2) gs = players->back();
+      if (gs && gs->ship->is_alive()) {
+        gs->ship->explode(gs->ship->position, gs->ship->velocity * 0.25f);
+        if ((arg & 0x100) && Asteroid::ting_sound)
+          Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
+      }
+      break;
+    }
     default:
       break;
   }
+}
+
+// Client: debris spray on the asteroid nearest an impact position (the
+// impact events carry where, not which — ids would cost more bytes than
+// a proximity match is worth at these rates).
+void GLGame::net_spark_asteroid_at(float x, float y) {
+  WrappedPoint p(x, y);
+  Asteroid *best = NULL;
+  float best_d = 1e9f;
+  for (auto *a : *objects) {
+    float d = a->position.distance_to(p) - a->radius;
+    if (d < best_d) { best_d = d; best = a; }
+  }
+  if (best && best_d < 80.0f) best->explode();
 }
 
 void GLGame::net_set_generation_banner(int gen) {
@@ -1400,7 +1445,9 @@ struct NetShipExtras {
   uint8_t move_flags;  // bit0 thrust, bit1 reverse, bits 2-3 rotation (1=L, 2=R)
 };
 
-bool nx_read_projectiles(Save::Stream &in, Ship &s) {
+// quiet: suppress vanish explosions for this apply (level rollover wipes
+// every projectile at once — that's a rebuild, not a barrage of booms).
+bool nx_read_projectiles(Save::Stream &in, Ship &s, bool quiet) {
   uint16_t n = 0;
   float x, y, vx, vy;
 
@@ -1412,18 +1459,39 @@ bool nx_read_projectiles(Save::Stream &in, Ship &s) {
   }
 
   if (!nx_read(in, n)) return false;
-  s.mines.clear();
+  // Mines that disappear from the snapshot were detonated by the host
+  // (proximity) — play the explosion here. Position-match against the
+  // incoming set; mines barely drift, so 100 units is generous.
+  std::vector<Particle> old_mines;
+  old_mines.swap(s.mines);
   for (int i = 0; i < n; i++) {
     if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
     s.mines.push_back(Particle(Point(x, y), Point(vx, vy), 60000.0f));
+    for (size_t j = 0; j < old_mines.size(); j++) {
+      if (old_mines[j].position.distance_to(WrappedPoint(x, y)) < 100.0f) {
+        old_mines.erase(old_mines.begin() + j);
+        break;
+      }
+    }
   }
+  if (!quiet)
+    for (auto &om : old_mines) s.net_mine_exploded(om.position, om.velocity);
 
   if (!nx_read(in, n)) return false;
-  s.giga_mines.clear();
+  std::vector<Particle> old_gigas;
+  old_gigas.swap(s.giga_mines);
   for (int i = 0; i < n; i++) {
     if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
     s.giga_mines.push_back(Particle(Point(x, y), Point(vx, vy), 60000.0f));
+    for (size_t j = 0; j < old_gigas.size(); j++) {
+      if (old_gigas[j].position.distance_to(WrappedPoint(x, y)) < 100.0f) {
+        old_gigas.erase(old_gigas.begin() + j);
+        break;
+      }
+    }
   }
+  if (!quiet)
+    for (auto &og : old_gigas) s.net_giga_mine_exploded(og.position);
 
   if (!nx_read(in, n)) return false;
   // Missiles carry local presentation state the wire doesn't (trail,
@@ -1448,6 +1516,7 @@ bool nx_read_projectiles(Save::Stream &in, Ship &s) {
     if (best >= 0) {
       m.trail = std::move(old_missiles[best].trail);
       m.thrust = old_missiles[best].thrust;
+      m.sound_handle = old_missiles[best].sound_handle;
       old_missiles.erase(old_missiles.begin() + best);
     }
     s.missiles.push_back(m);
@@ -1456,12 +1525,30 @@ bool nx_read_projectiles(Save::Stream &in, Ship &s) {
   // (collision) — the expiry case detonates locally in Ship::step. Play
   // the explosion here since the client never simulates the impact.
   for (auto &om : old_missiles) {
-    if (om.time_left > 300.0f)
+    if (!quiet && om.time_left > 300.0f)
       s.net_missile_exploded(om.position, om.velocity);
+  }
+  // Fly loop: locally-fired missiles get it from the weapon; replicated
+  // ones share one channel per ship, kept alive via the adopted handles
+  // and halted automatically when the last holder is destroyed.
+  {
+    std::shared_ptr<int> fly;
+    for (auto &m : s.missiles)
+      if (m.sound_handle) { fly = m.sound_handle; break; }
+    for (auto &m : s.missiles) {
+      if (!m.sound_handle) {
+        if (!fly) fly = s.net_start_missile_fly_loop();
+        m.sound_handle = fly;
+      }
+    }
   }
 
   if (!nx_read(in, n)) return false;
+  size_t old_novas = 0;
+  for (const Shockwave &w : s.shockwaves)
+    if (w.is_nova) old_novas++;
   s.shockwaves.clear();
+  size_t new_novas = 0;
   for (int i = 0; i < n; i++) {
     float px, py, radius, max_radius, speed, time_left;
     uint8_t is_nova;
@@ -1472,7 +1559,11 @@ bool nx_read_projectiles(Save::Stream &in, Ship &s) {
     w.radius = radius;
     w.prev_radius = radius;
     s.shockwaves.push_back(w);
+    if (is_nova) new_novas++;
   }
+  // A nova wave the client hasn't seen yet: the wave itself replicates,
+  // only its boom was host-side.
+  if (!quiet && new_novas > old_novas) s.net_nova_arrived();
   return true;
 }
 
@@ -1483,6 +1574,7 @@ void GLGame::tick_net_client(int delta) {
   // Impact cues come from the host as events here; anything the local
   // kill() calls queued (ghost removals) is noise — drop it.
   Asteroid::net_impacts.clear();
+  Ship::net_ship_impacts.clear();
 
   if (!net_connection_lost_) net_client_poll();
   if (net_session_->transport()->failed()) net_connection_lost_ = true;
@@ -1666,6 +1758,9 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in) {
     std::map<uint32_t, Asteroid *>::iterator f = by_id.find(id);
     if (f == by_id.end()) continue;  // unknown id — next keyframe reconciles
     Asteroid *a = f->second;
+    // Teleporting asteroid relocated on the host this instant (the
+    // vulnerable window opens on arrival): play the warp locally.
+    bool was_vulnerable = a->teleport_vulnerable;
     a->position = WrappedPoint(px, py);
     a->velocity = Point(vx, vy);
     a->health = health;
@@ -1673,6 +1768,10 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in) {
     a->teleport_vulnerable = (state & 2) != 0;
     a->teleport_pending = (state & 4) != 0;
     a->quantum_observed = (state & 8) != 0;
+    if (!was_vulnerable && a->teleport_vulnerable) {
+      a->explode();  // arrival debris, as the host's relocation shows
+      if (warp_sound) Mix_PlayChannel(-1, warp_sound, 0);
+    }
   }
 
   uint16_t n_rm = 0;
@@ -1710,6 +1809,7 @@ void GLGame::net_apply_state(const Save::GameState &s) {
   // starfield, drop every stale object (mirrors the host's rollover block;
   // the snapshot then repopulates everything below).
   const bool world_rebuilt = s.world_x != world.x() || s.world_y != world.y();
+  net_world_rebuilt_last_apply_ = world_rebuilt;
   if (world_rebuilt) {
     world = Point(s.world_x, s.world_y);
     grid = Grid(world, Point(Asteroid::max_radius * 2, Asteroid::max_radius * 2));
@@ -1948,7 +2048,8 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s) {
     // (both still function — the host simulates them; only their local
     // visual/audio flourishes are missing).
 
-    if (!nx_read_projectiles(in, *ship)) return false;
+    if (!nx_read_projectiles(in, *ship, net_world_rebuilt_last_apply_))
+      return false;
     ++it;
   }
   return true;
@@ -2373,6 +2474,7 @@ void GLGame::tick(int delta) {
                 last_asteroid_ting_tick = now;
                 Mix_VolumeChunk(Asteroid::asteroid_ting_sound, (int)(MIX_MAX_VOLUME * vol));
                 Mix_PlayChannel(-1, Asteroid::asteroid_ting_sound, 0);
+                net_send_event(Net::EV_ROID_BOUNCE, (uint32_t)(vol * 255.0f));
               }
             }
           }
@@ -2742,11 +2844,22 @@ void GLGame::tick(int delta) {
   // can't simulate those collisions, so the host forwards them as events.
   // Cleared every tick in every mode so the queue can't grow in solo play.
   if (net_mode_ == NetHost && net_session_ && !net_connection_lost_) {
-    for (uint8_t k : Asteroid::net_impacts)
-      net_send_event(k == Asteroid::IMPACT_TING ? Net::EV_ROID_TING
-                                                : Net::EV_ROID_THUD);
+    for (const Asteroid::NetImpact &im : Asteroid::net_impacts)
+      net_send_event(im.kind == Asteroid::IMPACT_TING ? Net::EV_ROID_TING
+                                                      : Net::EV_ROID_THUD,
+                     Net::pack_pos(im.x, im.y));
+    // Non-fatal ship-vs-asteroid bounces (debris + armour ting). Enemy
+    // ships collide through the same code; only player ships are sent.
+    for (const Ship::NetShipImpact &si : Ship::net_ship_impacts) {
+      uint32_t idx = 0;
+      if (!players->empty() && players->front()->ship == si.ship) idx = 1;
+      else if (players->size() >= 2 && players->back()->ship == si.ship) idx = 2;
+      if (idx)
+        net_send_event(Net::EV_SHIP_IMPACT, idx | (si.ting ? 0x100u : 0u));
+    }
   }
   Asteroid::net_impacts.clear();
+  Ship::net_ship_impacts.clear();
 
   // Online host: broadcast the world at 10 Hz once everything has stepped.
   if (net_mode_ == NetHost) net_host_send_snapshot(delta);
@@ -3327,6 +3440,28 @@ void GLGame::controller(SDL_Event event) {
       (*object)->controller_touchpad_input(event);
     }
   }
+}
+
+void GLGame::touch_tap(float nx, float ny) {
+  (void)nx;
+  if (!is_touch_mode()) return;
+  // GAME OVER: the bottom strip is the RETURN TO MENU band the overlay
+  // labels (same geometry as the lobby's). The 3 s grace mirrors the
+  // key/controller exits so a frantic last-second tap can't skip past.
+  bool all_game_over = !players->empty();
+  for (auto *glship : *players) {
+    if (glship->ship->is_alive() || glship->ship->lives > 0) {
+      all_game_over = false;
+      break;
+    }
+  }
+  if (!all_game_over) return;
+  if (game_over_time >= 0 && current_time - game_over_time < 3000) return;
+  float vy = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
+  if (vy > -370.0f) return;
+  for (auto *glship : *players)
+    save_high_score(glship->ship->score);
+  request_state_change(new Menu());
 }
 
 GLShip *GLGame::local_player() const {

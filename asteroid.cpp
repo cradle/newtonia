@@ -11,7 +11,7 @@ const int Asteroid::max_speed = 3;
 const int Asteroid::max_rotation = 15;
 int Asteroid::num_killable = 0;
 uint32_t Asteroid::next_net_id = 0;
-std::vector<uint8_t> Asteroid::net_impacts;
+std::vector<Asteroid::NetImpact> Asteroid::net_impacts;
 
 const int Asteroid::radius_variation = 220;
 const int Asteroid::minimum_radius = 20;
@@ -441,7 +441,7 @@ bool Asteroid::kill() {
         if(now - last_teleport_tick >= 125) {
           last_teleport_tick = now;
           Mix_PlayChannel(-1, thud_sound, 0);
-          net_impacts.push_back(IMPACT_THUD);
+          net_impacts.push_back({IMPACT_THUD, position.x(), position.y()});
         }
       }
     }
@@ -455,7 +455,7 @@ bool Asteroid::kill() {
       if(now - last_phase_ting >= 125) {
         last_phase_ting = now;
         Mix_PlayChannel(-1, ting_sound, 0);
-        net_impacts.push_back(IMPACT_TING);
+        net_impacts.push_back({IMPACT_TING, position.x(), position.y()});
       }
     }
     return false;
@@ -469,7 +469,7 @@ bool Asteroid::kill() {
       if(now - last_elastic_thud >= 125) {
         last_elastic_thud = now;
         Mix_PlayChannel(-1, thud_sound, 0);
-        net_impacts.push_back(IMPACT_THUD);
+        net_impacts.push_back({IMPACT_THUD, position.x(), position.y()});
       }
     }
     return false;
@@ -481,7 +481,7 @@ bool Asteroid::kill() {
       if(now - last_ting_tick >= 125) {
         last_ting_tick = now;
         Mix_PlayChannel(-1, ting_sound, 0);
-        net_impacts.push_back(IMPACT_TING);
+        net_impacts.push_back({IMPACT_TING, position.x(), position.y()});
       }
     } else if(thud_sound != NULL) {
       static Uint32 last_thud_tick = UINT32_MAX;
@@ -489,7 +489,7 @@ bool Asteroid::kill() {
       if(now - last_thud_tick >= 125) {
         last_thud_tick = now;
         Mix_PlayChannel(-1, thud_sound, 0);
-        net_impacts.push_back(IMPACT_THUD);
+        net_impacts.push_back({IMPACT_THUD, position.x(), position.y()});
       }
     }
   }

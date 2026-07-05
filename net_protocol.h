@@ -45,14 +45,33 @@ enum EventCode {
   EV_BYE = 5,
   // Host->client impact cues the client can't simulate (bullet hits on
   // invincible/tough asteroids and reflective/phasing deflections). The
-  // host already rate-limits them to one per 125 ms.
+  // host already rate-limits them to one per 125 ms. arg packs the
+  // impact position as two int16s (x<<16 | y) so the client can spawn
+  // the spark at the right spot.
   EV_ROID_THUD = 6,
   EV_ROID_TING = 7,
   // More host-simulated audio cues: the level-clear countdown tick
   // (1/s) and a pickup being collected.
   EV_LEVEL_TIC = 8,
   EV_PICKUP = 9,
+  // Asteroid-vs-reflective-asteroid bounce; arg = volume 0..255 as the
+  // host computed it (distance to the nearest player).
+  EV_ROID_BOUNCE = 10,
+  // A player ship bounced off (or was rammed by) an asteroid without
+  // dying; arg = player index (1=host,2=client) | 0x100 when the
+  // armoured-face ting applies.
+  EV_SHIP_IMPACT = 11,
 };
+
+// Packs a world position into an event arg (two int16s). World sizes
+// stay far inside +/-32k for any realistic generation count.
+inline uint32_t pack_pos(float x, float y) {
+  return ((uint32_t)(uint16_t)(int16_t)x << 16) | (uint32_t)(uint16_t)(int16_t)y;
+}
+inline void unpack_pos(uint32_t arg, float &x, float &y) {
+  x = (float)(int16_t)(uint16_t)(arg >> 16);
+  y = (float)(int16_t)(uint16_t)(arg & 0xffff);
+}
 
 // MSG_INPUT held-button bitmask (uint16). One-shot actions (boost,
 // next_weapon, next_secondary, teleport, respawn tap) travel as wrapping

@@ -47,13 +47,15 @@ public:
   // the net client's removal paths, which never run add_children.
   static void play_explode_sound();
 
-  // Bullet-impact sounds played inside kill() (thud on invincible/tough,
-  // ting on reflective/phasing) fire host-side only online — the client
-  // never simulates those collisions. kill() queues each one it actually
-  // plays here; the net host drains the queue into events, everyone else
-  // just clears it each tick (GLGame::tick).
+  // Bullet-impact sounds/sparks played inside kill() (thud on
+  // invincible/tough, ting on reflective/phasing) fire host-side only
+  // online — the client never simulates those collisions. kill() queues
+  // each one it actually plays here (with the impact position so the
+  // client can spawn the spark too); the net host drains the queue into
+  // events, everyone else just clears it each tick (GLGame::tick).
   enum NetImpactKind { IMPACT_THUD = 0, IMPACT_TING = 1 };
-  static std::vector<uint8_t> net_impacts;
+  struct NetImpact { uint8_t kind; float x, y; };
+  static std::vector<NetImpact> net_impacts;
 
   static void free_sounds();
 

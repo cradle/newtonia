@@ -114,6 +114,7 @@ void NetLobby::set_status(const char *text) {
 }
 
 void NetLobby::reset_to_choose() {
+  fail_headline_ = "SOMETHING WENT WRONG";
   delete session_;
   session_ = nullptr;
   if (transport_) {
@@ -365,6 +366,11 @@ void NetLobby::pump_signal(int delta) {
         if (rejoin_mode_ && (screen_ == RoomJoining || screen_ == CodeEntry)) {
           if (ev.text == "rate-limited") {
             schedule_rejoin_retry("rate-limited", 15000);
+          } else if (ev.text == "host-closed") {
+            // The host deliberately shut the room down — say so.
+            fail_headline_ = "SERVER SHUT DOWN";
+            set_status("THE HOST ENDED THE GAME");
+            screen_ = LobbyFailed;
           } else {
             // no-such-room / expired / room-full: the room is genuinely
             // gone (host quit or grace elapsed) — retrying cannot help.
@@ -377,6 +383,7 @@ void NetLobby::pump_signal(int delta) {
           if (ev.text == "no-such-room") set_status("NO ROOM WITH THAT CODE");
           else if (ev.text == "room-full") set_status("THAT ROOM IS FULL");
           else if (ev.text == "rate-limited") set_status("TOO MANY TRIES - WAIT A MINUTE");
+          else if (ev.text == "host-closed") set_status("THAT SERVER WAS SHUT DOWN");
           else set_status("THE ROOM HAS EXPIRED");
           room_code_.clear();
           code_entry_.clear();
@@ -802,7 +809,7 @@ void NetLobby::draw() {
       if (blink) lines.push_back("WAITING FOR THE HOST'S WORLD...");
       break;
     case LobbyFailed:
-      lines.push_back("SOMETHING WENT WRONG");
+      lines.push_back(fail_headline_);
       lines.push_back("");
       lines.push_back(is_touch_mode() ? "TAP TO TRY AGAIN" : "ENTER - TRY AGAIN");
       break;
