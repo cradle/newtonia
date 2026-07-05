@@ -40,6 +40,17 @@ ifeq ($(UNAME), Darwin)
 endif
 DEPFILES := $(OBJFILES:.o=.d)
 
+# Flavor stamp: the netplay seam files compile to EMPTY translation units
+# without NEWTONIA_NET_RTC, so switching NETPLAY on or off between builds
+# must rebuild everything — otherwise stale objects from the other flavor
+# link against the wrong library set ("undefined symbols: _rtcCreate...").
+FLAVOR := netplay-$(if $(filter 1,$(NETPLAY)),on,off)
+.PHONY: FORCE
+FORCE: ;
+flavor.stamp: FORCE
+	@[ "`cat flavor.stamp 2>/dev/null`" = "$(FLAVOR)" ] || echo "$(FLAVOR)" > flavor.stamp
+$(OBJFILES): flavor.stamp
+
 all: newtonia
 
 osx: $(OBJFILES)
@@ -56,7 +67,7 @@ newtonia: $(OBJFILES)
 	$(CC) -o newtonia $(OBJFILES) $(LIBS)
 
 clean:
-	rm -rf $(OBJFILES) $(DEPFILES) newtonia
+	rm -rf $(OBJFILES) $(DEPFILES) newtonia flavor.stamp
 
 # ============================================================
 # Web / Emscripten target

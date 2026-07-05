@@ -33,3 +33,4 @@ package-lock.json
 ## Mac build
 Newtonia.app/
 netplay-libs/
+flavor.stamp
