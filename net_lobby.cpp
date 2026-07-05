@@ -134,6 +134,8 @@ void NetLobby::reset_to_choose() {
   signal_wait_ms_ = 0;
   paste_pending_ = false;
   connect_wait_ms_ = 0;
+  rejoin_mode_ = false;  // a manual retry is a fresh join, not a rejoin
+  rejoin_retry_ms_ = 0;
   screen_ = Choose;
 }
 
@@ -194,7 +196,18 @@ void NetLobby::confirm() {
       set_status("THE CODE IS 5 LETTERS");
     }
   } else if (screen_ == LobbyFailed) {
+    // TRY AGAIN after a failed JOIN goes straight back to an empty join
+    // screen; only a failed HOST attempt returns to the chooser.
+    bool was_joining = !hosting_ || rejoin_mode_;
     reset_to_choose();
+    if (was_joining) {
+      selection_ = 1;
+      confirm();  // -> CodeEntry with fresh transport/signal
+      // The code that just failed is likely still on the clipboard —
+      // don't auto-join it again; the player types (or re-pastes) anew.
+      code_clip_pending_ = false;
+      code_entry_.clear();
+    }
   }
 }
 
