@@ -90,7 +90,12 @@ NetLobby::NetLobby()
       starfield(new GLStarfield(Point(WORLD_W, WORLD_H), star_density_scale())) {
   // A controller plugged in before the lobby opened (Steam Deck: always)
   // gets the picker/hints immediately, not only after the first press.
+  // Not on web: browsers report phantom gamepad slots (Chrome's
+  // getGamepads() is four nulls with nothing connected), so SDL
+  // over-counts there — a real pad reveals the picker on its first input.
+#ifndef __EMSCRIPTEN__
   controller_seen_ = SDL_NumJoysticks() > 0;
+#endif
 }
 
 NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
