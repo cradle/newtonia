@@ -112,9 +112,6 @@ private:
   // LobbyFailed headline; "SERVER SHUT DOWN" when the host deliberately
   // closed the room (worker err "host-closed").
   std::string fail_headline_ = "SOMETHING WENT WRONG";
-  // RoomHost: virtual y of the "TAP HERE TO SHARE IT" line as last drawn;
-  // touch_tap() centres the share tap band on it. 0 = line not shown.
-  int share_line_y_ = 0;
   // Joiner: time on the RoomJoining screen. A room can be joined while
   // hostless (reclaim grace) — if no host ever offers, fail instead of
   // showing "JOINING THE ROOM" forever.

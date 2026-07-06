@@ -22,6 +22,7 @@
 #include "god_mode_pickup.h"
 #include "nova_charge_pickup.h"
 #include "net_signal.h"
+#include "view/tap_band.h"
 #include <SDL.h>
 #include <list>
 #include <map>
@@ -106,6 +107,10 @@ private:
                                              // peer's PAUSE/RESUME event
   void host_toggle_friendly_fire();  // G key / HUD-text tap; announces the
                                      // room rule online (EV_FRIENDLY_FIRE)
+  // The "friendly fire on/off" HUD line doubles as the touch toggle
+  // region — one definition for the drawn text (Overlay) and the tap
+  // hit-test (touch_tap); see view/tap_band.h.
+  TapBand ff_toggle_band() const;
   void draw_map() const;
   void draw_objects(float direction = 0.0f, bool minimap = false) const;
   void draw_world(GLShip *glship = NULL, bool primary = true) const;

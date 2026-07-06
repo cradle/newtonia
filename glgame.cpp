@@ -3673,14 +3673,22 @@ void GLGame::controller(SDL_Event event) {
   }
 }
 
+// The friendly-fire toggle band hugs the viewport bottom, kept to the
+// centre third: the OSD shoot/mine hit circles reach into the bottom
+// strip on the right, and the floating joystick can release on the left.
+TapBand GLGame::ff_toggle_band() const {
+  float vhb = -Typer::scaled_window_height / num_y_viewports();
+  return TapBand(0.5f, vhb + 55, 8, 45.0f, false, /*to_bottom=*/true,
+                 0.38f, 0.62f);
+}
+
 void GLGame::touch_tap(float nx, float ny) {
   if (!is_touch_mode()) return;
-  // The bottom strip is the RETURN TO MENU band the overlay labels (same
-  // geometry as the lobby's). It exits to the menu from every state that
-  // has no other touch exit: GAME OVER, the pause screen, and — online —
-  // a local ship that's fully out while the peer plays on.
-  float vy = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
-  if (vy > -370.0f) return;
+  // The bottom strip is the RETURN TO MENU band the overlay labels (the
+  // shared TapBand). It exits to the menu from every state that has no
+  // other touch exit: GAME OVER, the pause screen, and — online — a
+  // local ship that's fully out while the peer plays on.
+  if (!TapBand::return_to_menu.contains(nx, ny)) return;
   bool all_game_over = !players->empty();
   for (auto *glship : *players) {
     if (glship->ship->is_alive() || glship->ship->lives > 0) {
@@ -3705,13 +3713,10 @@ void GLGame::touch_tap(float nx, float ny) {
     request_state_change(new Menu());
     return;
   }
-  // Mid-play, the "friendly fire on/off" HUD text (two-player only, drawn
-  // at vhb+55 = -545 in the single online viewport) is a toggle region —
-  // host only, mirroring the G key. Kept to the centre third: the OSD
-  // shoot/mine hit circles reach into the bottom strip on the right, and
-  // the floating joystick can release on the left.
+  // Mid-play, the "friendly fire on/off" HUD text (two-player only) is a
+  // toggle region — host only, mirroring the G key.
   if (players->size() >= 2 && net_mode_ != NetClient &&
-      nx >= 0.38f && nx <= 0.62f && vy <= -500.0f)
+      ff_toggle_band().contains(nx, ny))
     host_toggle_friendly_fire();
 }
 

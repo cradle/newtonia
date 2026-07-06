@@ -48,6 +48,7 @@
 		AB00001E /* weapon_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00001E /* weapon_pickup.cpp */; };
 		AB00001F /* wrapped_point.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00001F /* wrapped_point.cpp */; };
 		AB000020 /* overlay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000020 /* overlay.cpp */; };
+		AB000068 /* tap_band.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000068 /* tap_band.cpp */; };
 		AB000021 /* default.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000021 /* default.cpp */; };
 		AB000022 /* mine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000022 /* mine.cpp */; };
 		AB000042 /* missile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000042 /* missile.cpp */; };
@@ -125,6 +126,7 @@
 		AA00001E /* weapon_pickup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon_pickup.cpp; sourceTree = SOURCE_ROOT; };
 		AA00001F /* wrapped_point.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../wrapped_point.cpp; sourceTree = SOURCE_ROOT; };
 		AA000020 /* overlay.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../view/overlay.cpp; sourceTree = SOURCE_ROOT; };
+		AA000068 /* tap_band.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../view/tap_band.cpp; sourceTree = SOURCE_ROOT; };
 		AA000021 /* default.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/default.cpp; sourceTree = SOURCE_ROOT; };
 		AA000022 /* mine.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/mine.cpp; sourceTree = SOURCE_ROOT; };
 		AA000042 /* missile.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/missile.cpp; sourceTree = SOURCE_ROOT; };
@@ -245,6 +247,7 @@
 				AA00001E /* weapon_pickup.cpp */,
 				AA00001F /* wrapped_point.cpp */,
 				AA000020 /* overlay.cpp */,
+				AA000068 /* tap_band.cpp */,
 				AA000021 /* default.cpp */,
 				AA000022 /* mine.cpp */,
 				AA000042 /* missile.cpp */,
@@ -405,6 +408,7 @@
 				AB00001E /* weapon_pickup.cpp in Sources */,
 				AB00001F /* wrapped_point.cpp in Sources */,
 				AB000020 /* overlay.cpp in Sources */,
+				AB000068 /* tap_band.cpp in Sources */,
 				AB000021 /* default.cpp in Sources */,
 				AB000022 /* mine.cpp in Sources */,
 				AB000042 /* missile.cpp in Sources */,

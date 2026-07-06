@@ -15,6 +15,7 @@
 #include "preferences.h"
 #include "typer.h"
 #include "view/overlay.h"
+#include "view/tap_band.h"
 
 namespace {
 
@@ -34,6 +35,15 @@ const int SIGNAL_TIMEOUT_MS = 12000;
 // JOIN screen would otherwise auto-join the player's own dead room.
 static std::string s_last_hosted_code;
 static std::string s_dead_code;  // room confirmed dead (host BYE / relay says gone)
+
+// Lobby tap bands — one definition each for the drawn label AND the
+// touch hit-test (view/tap_band.h). The bottom RETURN TO MENU strip is
+// the shared TapBand::return_to_menu.
+// CodeEntry: the soft keyboard buries the bottom exit strip, so the way
+// out lives top-right beside the hoisted header.
+const TapBand kBackBand(0.85f, 480, 22, 6.0f, /*to_top=*/true, false, 0.72f);
+// RoomHost: the "TAP HERE TO SHARE IT" line, padded to finger height.
+const TapBand kShareBand(0.5f, -80, 18, 42.0f);
 
 }  // namespace
 
@@ -746,7 +756,6 @@ void NetLobby::draw() {
       break;
     }
     case RoomHost:
-      share_line_y_ = 0;
       if (room_code_.empty()) {
         lines.push_back("CREATING A ROOM");
         if (blink) lines.push_back("PLEASE WAIT...");
@@ -757,8 +766,7 @@ void NetLobby::draw() {
         Typer::draw_centered(0, 220, room_code_.c_str(), 48);
         Typer::draw_centered(0, 40, "TELL YOUR FRIEND THE CODE", sz);
         if (net_share_available()) {
-          share_line_y_ = -80;  // tap band centres on this line
-          Typer::draw_centered(0, share_line_y_, "TAP HERE TO SHARE IT", sz);
+          kShareBand.draw("TAP HERE TO SHARE IT");
         } else {
           Typer::draw_centered(0, -80, "IT IS ON YOUR CLIPBOARD", sz);
         }
@@ -787,7 +795,7 @@ void NetLobby::draw() {
         // bottom is under the keyboard here, so the exit lives in the TOP
         // RIGHT instead (see touch_tap) — the centre of the top strip is
         // the ONLINE CO-OP header.
-        Typer::draw_centered(Typer::scaled_window_width * 0.7f, 480, "BACK", 22);
+        kBackBand.draw("BACK");
         Typer::draw_centered(0, 360, "ENTER THE ROOM CODE", sz);
         Typer::draw_centered(0, 230, slots.c_str(), 48);
         y = 80;
@@ -892,9 +900,8 @@ void NetLobby::draw() {
 
   // Touch: the bottom strip is a tap zone (see touch_tap), so label it as
   // an action rather than a key hint.
-  Typer::draw_centered(0, -420,
-                       is_touch_mode() ? "RETURN TO MENU" : "ESC - BACK TO MENU",
-                       13, currentTime);
+  TapBand::return_to_menu.draw(
+      is_touch_mode() ? "RETURN TO MENU" : "ESC - BACK TO MENU", currentTime);
 }
 
 void NetLobby::keyboard(unsigned char key, int x, int y) {
@@ -1010,9 +1017,8 @@ void NetLobby::controller(SDL_Event event) {
 }
 
 void NetLobby::touch_tap(float nx, float ny) {
-  // Bottom strip on every screen = RETURN TO MENU (drawn at y=-420).
-  float vy = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
-  if (vy < -370.0f) {
+  // Bottom strip on every screen = RETURN TO MENU.
+  if (TapBand::return_to_menu.contains(nx, ny)) {
     leave_to_menu();
     return;
   }
@@ -1023,21 +1029,18 @@ void NetLobby::touch_tap(float nx, float ny) {
       confirm();
       break;
     case CodeEntry:
-      // Top-right = BACK (drawn beside the header at y=480): the usual
-      // bottom exit band is physically under the soft keyboard, so this
-      // is the only reachable way out of code entry on touch.
-      if (vy >= 430.0f && nx >= 0.72f) {
+      // Top-right = BACK: the usual bottom exit band is physically under
+      // the soft keyboard, so this is the only reachable way out of code
+      // entry on touch.
+      if (kBackBand.contains(nx, ny)) {
         leave_to_menu();
         return;
       }
       code_entry_keyboard(true);  // re-summon a dismissed soft keyboard
       break;
     case RoomHost:
-      // Share band centred on the drawn "TAP HERE TO SHARE IT" line
-      // (share_line_y_, recorded by draw(); glyphs extend ~2*sz below it),
-      // padded to a finger-friendly height.
-      if (share_line_y_ != 0 && fabsf(vy - (share_line_y_ - 18.0f)) <= 60.0f &&
-          !room_code_.empty() && net_share_available())
+      if (kShareBand.contains(nx, ny) && !room_code_.empty() &&
+          net_share_available())
         net_share_text("Join my Newtonia game! Room code: " + room_code_);
       break;
     case LobbyFailed:

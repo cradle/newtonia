@@ -1,4 +1,5 @@
 #include "overlay.h"
+#include "tap_band.h"
 #include "../glship.h"
 #include "../glgame.h"
 #include "../typer.h"
@@ -318,11 +319,12 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     // title-safe boundary (an Xbox-compliance problem, and clipped-looking
     // on desktop where the safe area IS the screen edge).
     if(glgame->friendly_fire) {
-      Typer::draw_centered(0, vhb+55, "friendly fire on", 8);
+      glgame->ff_toggle_band().draw("friendly fire on");
     } else if(is_touch_mode()) {
-      // Touch: the text doubles as the toggle region (GLGame::touch_tap),
-      // so the OFF state must be visible too or it can't be turned back on.
-      Typer::draw_centered(0, vhb+55, "friendly fire off", 8);
+      // Touch: the text doubles as the toggle region (GLGame::touch_tap
+      // hit-tests the same band), so the OFF state must be visible too or
+      // it can't be turned back on.
+      glgame->ff_toggle_band().draw("friendly fire off");
     }
     // Label the key this ship actually has bound — online the client's
     // local ship is player 2 in the list but plays with player-1 keys.
@@ -355,7 +357,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     bool local_over = glgame->net_active() && local &&
                       !local->ship->is_alive() && local->ship->lives <= 0;
     if(all_over || !glgame->running || local_over)
-      Typer::draw_centered(0, -420, "RETURN TO MENU", 13, glgame->current_time);
+      TapBand::return_to_menu.draw("RETURN TO MENU", glgame->current_time);
   }
 }
 
