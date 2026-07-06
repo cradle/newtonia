@@ -803,7 +803,13 @@ void Ship::reset(bool was_killed) {
   bullets.clear();
   missiles.clear();
   shockwaves.clear();
-  debris.clear();
+  // Debris is pure presentation and is never serialized. On a net client
+  // reset() runs inside EVERY 10 Hz snapshot restore (restore_state →
+  // respawn), so clearing it there cut every impact spray to <100 ms —
+  // debris froze at the impact site and vanished. The projectile vectors
+  // above are refilled by the snapshot extras right after; debris has no
+  // such source, so the client keeps it for its natural lifetime.
+  if (!net_quiet_respawn) debris.clear();
   rotation_direction = NONE;
   still_rotating_left = false;
   still_rotating_right = false;
