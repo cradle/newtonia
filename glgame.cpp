@@ -155,6 +155,11 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
   players->front()->ship->respawn(grid, false);
   players->front()->ship->bullets.clear();  // no lethal spawn-flash debris
   add_remote_player();
+  // Co-op scoring parity: the initial hull costs a life, so each co-op
+  // player fields the same total ship count as a solo run — otherwise a
+  // pair banks two free hulls and the high scores aren't comparable.
+  // Host-authoritative; the client mirrors lives via the snapshots.
+  for (auto *gs : *players) gs->ship->lives -= 1;
   // The host's friendly-fire preference is the room rule; the client's HUD
   // shows its own preference until told otherwise.
   net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
