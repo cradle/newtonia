@@ -223,9 +223,14 @@ jobs:
             -framework GLUT -framework OpenGL -framework AppKit
 
       # In-process WebRTC loopback — runs before any window/GL is created,
-      # resolving libdatachannel via the netplay-libs rpath.
+      # resolving libdatachannel via the netplay-libs rpath. libsteam_api's
+      # install name was rewritten to @executable_path/../Frameworks for the
+      # bundle, so stage it there relative to the raw binary or dyld aborts
+      # the launch before main().
       - name: Netplay loopback self-test (arm64)
         run: |
+          mkdir -p ../Frameworks
+          cp sdk/redistributable_bin/osx/libsteam_api.dylib ../Frameworks/
           NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia-arm64 | tee selftest.log
           grep -q "NET SELFTEST PASS" selftest.log
 
@@ -514,9 +519,12 @@ jobs:
             -lX11
 
       # In-process WebRTC loopback — runs before any window/GL is created,
-      # so it works headless inside the container.
+      # so it works headless inside the container. libsteam_api.so resolves
+      # via the $ORIGIN rpath (depot layout), so put it next to the binary
+      # or the loader fails before main().
       - name: Netplay loopback self-test
         run: |
+          cp sdk/redistributable_bin/linux64/libsteam_api.so .
           NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia | tee selftest.log
           grep -q "NET SELFTEST PASS" selftest.log
 
