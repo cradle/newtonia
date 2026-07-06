@@ -9,6 +9,14 @@
 /* Begin PBXBuildFile section */
 		AB000001 /* ios_main.mm in Sources */ = {isa = PBXBuildFile; fileRef = AA000001 /* ios_main.mm */; };
 		AB000099 /* ios_share.mm in Sources */ = {isa = PBXBuildFile; fileRef = AA000099 /* ios_share.mm */; };
+		AB000060 /* net_lobby.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000060 /* net_lobby.cpp */; };
+		AB000061 /* net_session.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000061 /* net_session.cpp */; };
+		AB000062 /* net_signal.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000062 /* net_signal.cpp */; };
+		AB000063 /* net_signal_rtc.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000063 /* net_signal_rtc.cpp */; };
+		AB000064 /* net_signal_web.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000064 /* net_signal_web.cpp */; };
+		AB000065 /* net_transport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000065 /* net_transport.cpp */; };
+		AB000066 /* net_transport_rtc.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000066 /* net_transport_rtc.cpp */; };
+		AB000067 /* net_transport_web.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000067 /* net_transport_web.cpp */; };
 		AB000002 /* asteroid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000002 /* asteroid.cpp */; };
 		AB000003 /* asteroid_drawer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000003 /* asteroid_drawer.cpp */; };
 		AB000004 /* composite_object.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000004 /* composite_object.cpp */; };
@@ -78,6 +86,14 @@
 /* Begin PBXFileReference section */
 		AA000001 /* ios_main.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = ../ios_main.mm; sourceTree = SOURCE_ROOT; };
 		AA000099 /* ios_share.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = ../ios_share.mm; sourceTree = SOURCE_ROOT; };
+		AA000060 /* net_lobby.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../net_lobby.cpp; sourceTree = SOURCE_ROOT; };
+		AA000061 /* net_session.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../net_session.cpp; sourceTree = SOURCE_ROOT; };
+		AA000062 /* net_signal.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../net_signal.cpp; sourceTree = SOURCE_ROOT; };
+		AA000063 /* net_signal_rtc.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../net_signal_rtc.cpp; sourceTree = SOURCE_ROOT; };
+		AA000064 /* net_signal_web.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../net_signal_web.cpp; sourceTree = SOURCE_ROOT; };
+		AA000065 /* net_transport.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../net_transport.cpp; sourceTree = SOURCE_ROOT; };
+		AA000066 /* net_transport_rtc.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../net_transport_rtc.cpp; sourceTree = SOURCE_ROOT; };
+		AA000067 /* net_transport_web.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../net_transport_web.cpp; sourceTree = SOURCE_ROOT; };
 		AA000002 /* asteroid.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../asteroid.cpp; sourceTree = SOURCE_ROOT; };
 		AA000003 /* asteroid_drawer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../asteroid_drawer.cpp; sourceTree = SOURCE_ROOT; };
 		AA000004 /* composite_object.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../composite_object.cpp; sourceTree = SOURCE_ROOT; };
@@ -209,6 +225,14 @@
 				AA000012 /* highscore.cpp */,
 				AA000013 /* menu.cpp */,
 				AA000014 /* mine_pickup.cpp */,
+				AA000060 /* net_lobby.cpp */,
+				AA000061 /* net_session.cpp */,
+				AA000062 /* net_signal.cpp */,
+				AA000063 /* net_signal_rtc.cpp */,
+				AA000064 /* net_signal_web.cpp */,
+				AA000065 /* net_transport.cpp */,
+				AA000066 /* net_transport_rtc.cpp */,
+				AA000067 /* net_transport_web.cpp */,
 				AA000015 /* object.cpp */,
 				AA000016 /* particle.cpp */,
 				AA000017 /* point.cpp */,
@@ -361,6 +385,14 @@
 				AB000012 /* highscore.cpp in Sources */,
 				AB000013 /* menu.cpp in Sources */,
 				AB000014 /* mine_pickup.cpp in Sources */,
+				AB000060 /* net_lobby.cpp in Sources */,
+				AB000061 /* net_session.cpp in Sources */,
+				AB000062 /* net_signal.cpp in Sources */,
+				AB000063 /* net_signal_rtc.cpp in Sources */,
+				AB000064 /* net_signal_web.cpp in Sources */,
+				AB000065 /* net_transport.cpp in Sources */,
+				AB000066 /* net_transport_rtc.cpp in Sources */,
+				AB000067 /* net_transport_web.cpp in Sources */,
 				AB000015 /* object.cpp in Sources */,
 				AB000016 /* particle.cpp in Sources */,
 				AB000017 /* point.cpp in Sources */,
@@ -436,6 +468,7 @@
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"__IOS__=1",
 					"DEBUG=1",
+					"$(NEWTONIA_NET_DEFINE)",
 					"$(inherited)",
 				);
 				HEADER_SEARCH_PATHS = (
@@ -444,6 +477,7 @@
 					"$(SRCROOT)/../weapon",
 					"$(SDL2_HEADER_PATH)",
 					"$(SDL2_MIXER_HEADER_PATH)",
+					"$(NEWTONIA_NET_HEADER_PATH)",
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
@@ -469,6 +503,7 @@
 				GCC_OPTIMIZATION_LEVEL = 3;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"__IOS__=1",
+					"$(NEWTONIA_NET_DEFINE)",
 					"$(inherited)",
 				);
 				HEADER_SEARCH_PATHS = (
@@ -477,6 +512,7 @@
 					"$(SRCROOT)/../weapon",
 					"$(SDL2_HEADER_PATH)",
 					"$(SDL2_MIXER_HEADER_PATH)",
+					"$(NEWTONIA_NET_HEADER_PATH)",
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;

@@ -202,6 +202,32 @@ jobs:
             | tee sigtest.log || true
           grep -q "SIGNAL SELFTEST PASS" sigtest.log
 
+      # Deploy-parity gate: deploy-ios.yml builds through the Xcode PROJECT
+      # (not the hand-rolled compile above), passing the netplay define,
+      # header path and static archives as build settings. Build the same
+      # project against the simulator SDK here so a pbxproj or build-setting
+      # regression is caught on push instead of at TestFlight deploy time.
+      - name: Xcode project netplay compile gate (deploy-ios parity)
+        run: |
+          SDL2_LIB=$(find "$(pwd)/SDL2/build-ios-sim" -name "libSDL2.a" | head -1)
+          SDL2MAIN_LIB=$(find "$(pwd)/SDL2/build-ios-sim" -name "libSDL2main.a" | head -1)
+          SDL2MIX_LIB=$(find "$(pwd)/SDL2_mixer/build-ios-sim" -name "libSDL2_mixer.a" | head -1)
+          NETLIBS=$(find libdatachannel/build-ios-sim netlibs/lib -name "*.a" | sort -u | tr '\n' ' ')
+          OTHER_LD="-ObjC $SDL2MAIN_LIB $SDL2_LIB $SDL2MIX_LIB $NETLIBS"
+          xcodebuild build \
+            -project newtonia/ios/Newtonia-iOS.xcodeproj \
+            -scheme Newtonia \
+            -sdk iphonesimulator \
+            -configuration Release \
+            -destination 'generic/platform=iOS Simulator' \
+            ARCHS=arm64 \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            "SDL2_HEADER_PATH=$(pwd)/SDL2/include" \
+            "SDL2_MIXER_HEADER_PATH=$(pwd)/SDL2_mixer/include" \
+            "NEWTONIA_NET_DEFINE=NEWTONIA_NET_RTC=1" \
+            "NEWTONIA_NET_HEADER_PATH=$(pwd)/libdatachannel/include" \
+            "OTHER_LDFLAGS=$OTHER_LD"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:

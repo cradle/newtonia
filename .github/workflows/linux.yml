@@ -24,6 +24,7 @@ jobs:
             freeglut3-dev \
             libgl1-mesa-dev \
             libglu1-mesa-dev \
+            libssl-dev \
             cmake
 
       - name: Build SDL2_mixer (WAV + MP3 only)
@@ -43,21 +44,41 @@ jobs:
           cmake --build SDL2_mixer/build --parallel
           sudo cmake --install SDL2_mixer/build
 
+      # Netplay (NETPLAY.md): the documented Linux recipe — libdatachannel
+      # from source into ./netplay-libs (clone happens in a temp dir; the
+      # prefix holds only headers and libs, so the source find below is safe).
+      - name: Build libdatachannel (netplay)
+        run: ./build_netplay_deps.sh
+
       - name: Build
         run: |
           SRCS=$(find . -name "*.cpp" \
             -not -path "./android/*" \
             -not -path "./.git/*")
           g++ -O2 -Wall -std=c++11 \
+            -DNEWTONIA_NET_RTC -I./netplay-libs/include \
             $(sdl2-config --cflags) -I/usr/local/include/SDL2 \
             -o newtonia $SRCS \
             -lglut -lGL -lGLU \
-            -lSDL2_mixer $(sdl2-config --static-libs)
+            -lSDL2_mixer $(sdl2-config --static-libs) \
+            -L./netplay-libs/lib -ldatachannel \
+            -Wl,-rpath,'$ORIGIN' -Wl,-rpath,"$PWD/netplay-libs/lib"
+
+      # In-process WebRTC loopback — runs before any window/GL is created
+      # (glut.cpp), so no display is needed.
+      - name: Netplay loopback self-test
+        run: |
+          NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia | tee selftest.log
+          grep -q "NET SELFTEST PASS" selftest.log
 
       - name: Bundle
         run: |
           mkdir -p dist
           cp newtonia dist/
+          # Ship the shared lib under the exact SONAME the binary asks for;
+          # rpath $ORIGIN finds it next to the executable.
+          soname=$(objdump -p newtonia | awk '/NEEDED.*datachannel/{print $2}')
+          cp -L "netplay-libs/lib/$soname" dist/
           cp -r audio dist/
 
       - name: Upload artifact

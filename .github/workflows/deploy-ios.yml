@@ -78,6 +78,42 @@ jobs:
             -DCMAKE_CXX_FLAGS="-DGLES_SILENCE_DEPRECATION"
           cmake --build SDL2_mixer/build-ios --config Release
 
+      # Netplay (NETPLAY.md): MbedTLS + libdatachannel static for the arm64
+      # DEVICE — the same pins and recipe ios.yml gates for the simulator on
+      # every push, with iphoneos in place of iphonesimulator.
+      - name: Build MbedTLS + libdatachannel for iOS (netplay)
+        run: |
+          UCFG="-DMBEDTLS_USER_CONFIG_FILE=\\\"$(pwd)/newtonia/xbox/mbedtls_user_config.h\\\""
+          git clone --branch v3.6.6 --depth 1 --recurse-submodules --shallow-submodules \
+            https://github.com/Mbed-TLS/mbedtls.git mbedtls
+          cmake -S mbedtls -B mbedtls/build-ios \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF \
+            -DCMAKE_C_FLAGS="$UCFG" \
+            -DCMAKE_INSTALL_PREFIX=$(pwd)/netlibs
+          cmake --build mbedtls/build-ios -j3
+          cmake --install mbedtls/build-ios
+
+          git clone --branch v0.24.5 --depth 1 --recurse-submodules --shallow-submodules \
+            https://github.com/paullouisageneau/libdatachannel.git libdatachannel
+          cmake -S libdatachannel -B libdatachannel/build-ios \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DUSE_MBEDTLS=ON -DNO_MEDIA=ON -DNO_WEBSOCKET=OFF \
+            -DNO_EXAMPLES=ON -DNO_TESTS=ON \
+            -DCMAKE_PREFIX_PATH=$(pwd)/netlibs \
+            -DCMAKE_FIND_ROOT_PATH=$(pwd)/netlibs \
+            -DCMAKE_C_FLAGS="$UCFG" -DCMAKE_CXX_FLAGS="$UCFG"
+          cmake --build libdatachannel/build-ios -j3 --target datachannel-static
+
       # Import the Apple Distribution certificate and provisioning profile.
       # One-time setup required:
       #   1. In Apple Developer Portal, create an App ID for cc.gfm.Newtonia
@@ -166,8 +202,14 @@ jobs:
           SDL2_LIB=$(find "$(pwd)/SDL2/build-ios" -name "libSDL2.a" | head -1)
           SDL2MAIN_LIB=$(find "$(pwd)/SDL2/build-ios" -name "libSDL2main.a" | head -1)
           SDL2MIX_LIB=$(find "$(pwd)/SDL2_mixer/build-ios" -name "libSDL2_mixer.a" | head -1)
-          OTHER_LD="-ObjC $SDL2MAIN_LIB $SDL2_LIB $SDL2MIX_LIB"
+          # Netplay static archives: libdatachannel + its vendored deps +
+          # MbedTLS (ld64 resolves across archives regardless of order).
+          NETLIBS=$(find libdatachannel/build-ios netlibs/lib -name "*.a" | sort -u | tr '\n' ' ')
+          OTHER_LD="-ObjC $SDL2MAIN_LIB $SDL2_LIB $SDL2MIX_LIB $NETLIBS"
 
+          # NEWTONIA_NET_DEFINE / NEWTONIA_NET_HEADER_PATH are referenced by
+          # the project's GCC_PREPROCESSOR_DEFINITIONS / HEADER_SEARCH_PATHS
+          # (empty when unset, so plain Xcode builds are unaffected).
           xcodebuild archive \
             -project newtonia/ios/Newtonia-iOS.xcodeproj \
             -scheme Newtonia \
@@ -176,6 +218,8 @@ jobs:
             -archivePath Newtonia.xcarchive \
             "SDL2_HEADER_PATH=$(pwd)/SDL2/include" \
             "SDL2_MIXER_HEADER_PATH=$(pwd)/SDL2_mixer/include" \
+            "NEWTONIA_NET_DEFINE=NEWTONIA_NET_RTC=1" \
+            "NEWTONIA_NET_HEADER_PATH=$(pwd)/libdatachannel/include" \
             "OTHER_LDFLAGS=$OTHER_LD" \
             "CODE_SIGN_ENTITLEMENTS=$(pwd)/entitlements-final.plist" \
             DEVELOPMENT_TEAM="$TEAM_ID" \

@@ -360,17 +360,19 @@ GitHub Actions runs builds on every push to `master`, `main`, or `claude/*` bran
 | `.github/workflows/macos-dev.yml` | Universal arm64+x86_64 binary |
 | `.github/workflows/android.yml` | Debug APK |
 | `.github/workflows/ios.yml` | iOS simulator build |
-| `.github/workflows/linux.yml` | Linux executable |
-| `.github/workflows/windows.yml` | Windows executable |
+| `.github/workflows/linux.yml` | Linux executable (netplay + headless loopback self-test) |
+| `.github/workflows/windows.yml` | Windows executable (netplay: MinGW-static libdatachannel + self-test — the compile gate for deploy-steam's Windows build) |
 | `.github/workflows/web.yml` | WebAssembly + GitHub Pages deploy (master/main only) |
 | `.github/workflows/xbox-dev.yml` | GDK Desktop (Gaming.Desktop.x64) build — catches Xbox-port compile errors without hardware |
 | `.github/workflows/xbox-console-smoke.yml` | Compile-only check of the `_GAMING_XBOX` console paths with MSVC under `WINAPI_FAMILY_GAMES` (no GDKX/NDA material; GDK-only headers stubbed in `xbox/smoke_stubs/`) |
 
 **Deployment workflows** (triggered manually):
-- `.github/workflows/deploy-steam.yml` — Steam (Windows/macOS/Linux via Steamworks SDK)
+- `.github/workflows/deploy-steam.yml` — Steam (Windows/macOS/Linux via Steamworks SDK); manual dispatch defaults to the `netplay` test branch, tag pushes go to `beta`
 - `.github/workflows/deploy-ios.yml` — TestFlight
 - `.github/workflows/deploy-android.yml` — Play Store
 - `.github/workflows/deploy-itch.yml` — Itch.io (pushes only the playable game `web/dist/play`, not the landing page)
+
+All deploy artifacts build with netplay (NETPLAY.md M3-5): web/Android have it inherently (Emscripten backend is unconditional; root CMakeLists defaults `NEWTONIA_NET=ON`), deploy-ios feeds the device libdatachannel build through the pbxproj's `NEWTONIA_NET_DEFINE`/`NEWTONIA_NET_HEADER_PATH` vars, and deploy-steam builds libdatachannel per platform. Each native deploy job runs the headless `NEWTONIA_NET_SELFTEST` loopback as a gate; the dev workflows above prove the same recipes on every push.
 
 **Disabled workflows** — `.github/workflows/disabled/` holds inactive deployment workflows (`deploy-macos.yml`, `deploy-windows.yml`, `deploy-xbox.yml`); move a file back into `workflows/` to re-enable it.
 
