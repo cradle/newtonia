@@ -105,6 +105,10 @@ private:
   bool paste_pending_;
   std::string paste_buffer_;
   bool code_clip_pending_;   // CodeEntry: auto-join poll of the clipboard
+  // The pending read is an explicit paste (controller X): user intent,
+  // so the own-room auto-join guards don't apply, and an empty/invalid
+  // clipboard gets told off instead of silently ignored.
+  bool code_clip_explicit_ = false;
   int code_clip_retry_ms_;   // Android 10 focus-gated reads: brief retry
   // M3-1 auto-rejoin retries: a mobile client's own network is often still
   // down when the rejoin fires; retry the relay instead of falling back

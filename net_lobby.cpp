@@ -636,10 +636,13 @@ void NetLobby::tick(int delta) {
         bool ok = code.size() == (size_t)NET_ROOM_CODE_LEN;
         for (size_t i = 0; ok && i < code.size(); i++)
           ok = net_room_code_char_ok(code[i]);
+        if (code_clip_explicit_ && !ok)
+          set_status("NO ROOM CODE ON THE CLIPBOARD");
         // Never auto-join a room THIS process hosted (it closed the room
-        // when it left) or one confirmed dead. Typing a code manually
-        // always works if someone really means it.
-        if (ok && (code == s_last_hosted_code || code == s_dead_code))
+        // when it left) or one confirmed dead. An EXPLICIT paste (the
+        // controller X hint) is user intent, like typing — no guards.
+        if (ok && !code_clip_explicit_ &&
+            (code == s_last_hosted_code || code == s_dead_code))
           ok = false;
         // A code matching only the PERSISTED last-hosted pref is
         // ambiguous: another live instance on this machine hosting right
@@ -647,7 +650,9 @@ void NetLobby::tick(int delta) {
         // box), or our own kill-orphaned room idling in its reclaim
         // grace. Probe it: join, but give up fast if no host offers —
         // a live room answers in seconds, the orphan never does.
-        own_room_probe_ = ok && code == g_prefs.last_hosted_code;
+        own_room_probe_ =
+            ok && !code_clip_explicit_ && code == g_prefs.last_hosted_code;
+        code_clip_explicit_ = false;
         if (ok && code_entry_.empty()) {
           code_entry_ = code;
           confirm();
@@ -1129,7 +1134,17 @@ void NetLobby::controller(SDL_Event event) {
         controller_confirm();
         break;
       case SDL_CONTROLLER_BUTTON_X:
-        start_paste();
+        // CodeEntry advertises X - PASTE: re-run the clipboard CODE read
+        // as an explicit paste. start_paste() is the manual flow's SDP
+        // blob path and ignores a bare room code.
+        if (screen_ == CodeEntry) {
+          code_entry_.clear();  // the pasted code replaces partial typing
+          code_clip_explicit_ = true;
+          code_clip_pending_ = true;
+          net_clipboard_read_start();
+        } else {
+          start_paste();
+        }
         break;
       case SDL_CONTROLLER_BUTTON_Y:
         copy_local_description();
