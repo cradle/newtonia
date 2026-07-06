@@ -134,6 +134,9 @@ class Ship : public CompositeObject {
     // Serialisation: capture/restore the full player state including weapons.
     Save::Player capture_state() const;
     void restore_state(const Save::Player &p, const Grid &grid);
+    // Netplay fast path: true when the live roster matches the snapshot's,
+    // so restore_state can update ammo/selection in place, no rebuild.
+    bool net_weapons_roster_matches(const Save::Player &p) const;
 
     void add_behaviour(Behaviour *b);
     void disable_behaviours();

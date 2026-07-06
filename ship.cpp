@@ -546,6 +546,40 @@ Save::Player Ship::capture_state() const {
   return p;
 }
 
+// Classify a live secondary weapon into its Save kind (mirrors the
+// capture_state dispatch), for the roster-match fast path.
+static Save::WeaponEntry::Kind secondary_kind(Weapon::Base *w) {
+  if      (dynamic_cast<Weapon::Mine*>(w))     return Save::WeaponEntry::Kind::Mine;
+  else if (dynamic_cast<Weapon::GigaMine*>(w)) return Save::WeaponEntry::Kind::GigaMine;
+  else if (dynamic_cast<Weapon::Missile*>(w))  return Save::WeaponEntry::Kind::Missile;
+  else if (dynamic_cast<Weapon::Shield*>(w))   return Save::WeaponEntry::Kind::Shield;
+  else if (dynamic_cast<Weapon::Nova*>(w))     return Save::WeaponEntry::Kind::Nova;
+  return Save::WeaponEntry::Kind::Mine;  // capture_state's fallback
+}
+
+// True when the live weapon roster matches the snapshot's (so restore only
+// needs ammo/selection, not a rebuild). Conservative: any GodMode weapon
+// (its ammo is a live countdown with music/warning state) forces the slow
+// path, as does any count or kind/index divergence.
+bool Ship::net_weapons_roster_matches(const Save::Player &p) const {
+  if (primary_weapons.size() != p.primary_weapons.size()) return false;
+  if (secondary_weapons.size() != p.secondary_weapons.size()) return false;
+  auto pit = primary_weapons.begin();
+  for (const auto &we : p.primary_weapons) {
+    if (we.kind == Save::WeaponEntry::Kind::GodMode) return false;
+    Weapon::Default *dw = dynamic_cast<Weapon::Default*>(*pit);
+    if (!dw) return false;  // a live GodMode (or other) where a Default is expected
+    if (dw->weapon_index() != we.weapon_index) return false;
+    ++pit;
+  }
+  auto sit = secondary_weapons.begin();
+  for (const auto &we : p.secondary_weapons) {
+    if (secondary_kind(*sit) != we.kind) return false;
+    ++sit;
+  }
+  return true;
+}
+
 void Ship::restore_state(const Save::Player &p, const Grid &grid) {
   score           = p.score;
   lives           = p.lives;
@@ -555,6 +589,38 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
   nova_kill_counter = p.nova_kill_counter;
   position        = WrappedPoint(p.pos_x, p.pos_y);
   first_life      = true;  // tells respawn() to try the saved position first
+
+  // Fast path (netplay applies this 10x/s): when the weapon ROSTER is
+  // unchanged — same counts, same primary weapon_indices, same secondary
+  // kinds, and no timed GodMode weapon (its state is fiddly) — the incoming
+  // snapshot differs only in ammo and selection. Update those in place
+  // instead of deleting and re-newing the whole arsenal. A roster change
+  // (weapon picked up, ammo hit zero and removed) falls through to the
+  // rebuild below.
+  if (net_weapons_roster_matches(p)) {
+    auto pit = primary_weapons.begin();
+    for (const auto &we : p.primary_weapons) { (*pit)->set_ammo(we.ammo); ++pit; }
+    auto sit = secondary_weapons.begin();
+    for (const auto &we : p.secondary_weapons) { (*sit)->set_ammo(we.ammo); ++sit; }
+
+    primary = primary_weapons.begin();
+    if (!primary_weapons.empty())
+      std::advance(primary, std::min(p.selected_primary_idx,
+                                     (int)primary_weapons.size() - 1));
+    if (p.selected_secondary_idx >= 0 && !secondary_weapons.empty()) {
+      secondary = secondary_weapons.begin();
+      std::advance(secondary, std::min(p.selected_secondary_idx,
+                                       (int)secondary_weapons.size() - 1));
+    } else {
+      secondary = secondary_weapons.end();
+    }
+
+    if (!p.respawning) alive = true;
+    respawn(grid, p.respawning);
+    facing   = Point(p.facing_x, p.facing_y);
+    velocity = Point(p.vel_x, p.vel_y);
+    return;
+  }
 
   disable_weapons();
   primary   = primary_weapons.end();

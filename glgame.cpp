@@ -35,6 +35,8 @@
 #include <iostream>
 #include <list>
 #include <map>
+#include <set>
+#include <unordered_map>
 
 static void set_player_keys(GLShip *gs, int player_index) {
   const PlayerKeys &k = (player_index == 0) ? g_prefs.p1_keys : g_prefs.p2_keys;
@@ -402,7 +404,7 @@ void GLGame::save_progress() {
   }
 }
 
-Save::GameState GLGame::build_save_data() const {
+Save::GameState GLGame::build_save_data(bool include_asteroids) const {
   Save::GameState s;
   s.generation                 = generation;
   s.world_x                    = world.x();
@@ -414,8 +416,12 @@ Save::GameState GLGame::build_save_data() const {
   for (auto* gs : *players)
     s.players.push_back(gs->ship->capture_state());
 
-  for (auto* a : *objects)
-    s.asteroids.push_back(a->capture_state());
+  // The delta path sends asteroids itself (fresh/dirty/removed diff) and
+  // discards this list, so capturing every asteroid here — ~200 bytes each
+  // via capture_state, 9x/s — is pure waste on that path.
+  if (include_asteroids)
+    for (auto* a : *objects)
+      s.asteroids.push_back(a->capture_state());
 
   for (auto* p : *pickups) {
     Save::Pickup sp;
@@ -1193,9 +1199,9 @@ void GLGame::net_host_send_snapshot(int delta) {
 
 bool GLGame::net_send_delta() {
   // Everything except asteroids rides wholesale — it is small and reuses
-  // the entire keyframe apply path on the client.
-  Save::GameState s = build_save_data();
-  s.asteroids.clear();
+  // the entire keyframe apply path on the client. Asteroids are diffed
+  // below, so skip capturing them into s.
+  Save::GameState s = build_save_data(false);
   Save::MemStream payload;
   Save::serialize_game(payload, s);
 
@@ -1205,9 +1211,13 @@ bool GLGame::net_send_delta() {
   nx_write_enemy_bullets(payload, enemies);
 
   // Asteroids: new since the last keyframe/delta, changed beyond what the
-  // client can extrapolate, or gone.
+  // client can extrapolate, or gone. Record every live id in this single
+  // pass so the removed set is the known ids NOT seen — the old nested
+  // "for each known, scan all objects" was O(N^2) at 9x/s.
   std::vector<Asteroid *> fresh, dyn;
+  std::set<uint32_t> present_ids;
   for (auto *a : *objects) {
+    present_ids.insert(a->net_id);
     std::map<uint32_t, NetAstBase>::iterator f = net_known_.find(a->net_id);
     if (f == net_known_.end()) {
       fresh.push_back(a);
@@ -1226,11 +1236,9 @@ bool GLGame::net_send_delta() {
   }
   std::vector<uint32_t> removed;
   for (std::map<uint32_t, NetAstBase>::iterator it = net_known_.begin();
-       it != net_known_.end(); ++it) {
-    bool present = false;
-    for (auto *a : *objects) if (a->net_id == it->first) { present = true; break; }
-    if (!present) removed.push_back(it->first);
-  }
+       it != net_known_.end(); ++it)
+    if (present_ids.find(it->first) == present_ids.end())
+      removed.push_back(it->first);
 
   nx_write(payload, (uint16_t)fresh.size());
   for (size_t i = 0; i < fresh.size(); i++) {
@@ -1828,7 +1836,10 @@ void GLGame::net_client_poll() {
 }
 
 void GLGame::net_apply_delta_asteroids(Save::Stream &in) {
-  std::map<uint32_t, Asteroid *> by_id;
+  // unordered_map + reserve: one bucket allocation and no tree balancing,
+  // vs std::map's per-node red-black inserts, on this 10x/s lookup build.
+  std::unordered_map<uint32_t, Asteroid *> by_id;
+  by_id.reserve(objects->size() * 2);
   for (auto *a : *objects) by_id[a->net_id] = a;
 
   uint16_t n_new = 0;
@@ -1859,7 +1870,7 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in) {
         !nx_read(in, vx) || !nx_read(in, vy) || !nx_read(in, health) ||
         !nx_read(in, state))
       return;
-    std::map<uint32_t, Asteroid *>::iterator f = by_id.find(id);
+    std::unordered_map<uint32_t, Asteroid *>::iterator f = by_id.find(id);
     if (f == by_id.end()) continue;  // unknown id — next keyframe reconciles
     Asteroid *a = f->second;
     // Teleporting asteroid relocated on the host this instant (the
@@ -1884,7 +1895,7 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in) {
   for (int i = 0; i < n_rm; i++) {
     uint32_t id = 0;
     if (!nx_read(in, id)) return;
-    std::map<uint32_t, Asteroid *>::iterator f = by_id.find(id);
+    std::unordered_map<uint32_t, Asteroid *>::iterator f = by_id.find(id);
     if (f == by_id.end()) continue;
     Asteroid *a = f->second;
     for (auto oi = objects->begin(); oi != objects->end(); ++oi) {
@@ -2032,20 +2043,36 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     }
   }
 
-  // Pickups: rebuilt wholesale each snapshot.
-  while (!pickups->empty()) { delete pickups->back(); pickups->pop_back(); }
-  for (const auto &sp : s.pickups) {
-    WrappedPoint pos(sp.pos_x, sp.pos_y);
-    switch (sp.type) {
-      case Save::PickupType::Weapon:   pickups->push_back(new WeaponPickup(pos, sp.weapon_index)); break;
-      case Save::PickupType::Mine:     pickups->push_back(new MinePickup(pos)); break;
-      case Save::PickupType::GigaMine: pickups->push_back(new GigaMinePickup(pos)); break;
-      case Save::PickupType::Missile:  pickups->push_back(new MissilePickup(pos)); break;
-      case Save::PickupType::Shield:   pickups->push_back(new ShieldPickup(pos)); break;
-      case Save::PickupType::GodMode:  pickups->push_back(new GodModePickup(pos)); break;
-      case Save::PickupType::ExtraLife: pickups->push_back(new ExtraLife(pos)); break;
-      case Save::PickupType::NovaCharge: pickups->push_back(new NovaChargePickup(pos)); break;
-      default: break;
+  // Pickups: the set changes only when one drops or is collected (seconds
+  // apart), but this applies 10x/s. Pickups are stationary and the host
+  // sends them in a stable order, so a matching count with matching
+  // positions means the set is unchanged — skip the delete/new storm. Any
+  // divergence (a type swap at the same spot, astronomically unlikely) is
+  // reconciled by the next 1 Hz keyframe.
+  bool pickups_same = pickups->size() == s.pickups.size();
+  if (pickups_same) {
+    size_t i = 0;
+    for (auto *p : *pickups) {
+      const Save::Pickup &sp = s.pickups[i++];
+      if (fabsf(p->position.x() - sp.pos_x) > 0.5f ||
+          fabsf(p->position.y() - sp.pos_y) > 0.5f) { pickups_same = false; break; }
+    }
+  }
+  if (!pickups_same) {
+    while (!pickups->empty()) { delete pickups->back(); pickups->pop_back(); }
+    for (const auto &sp : s.pickups) {
+      WrappedPoint pos(sp.pos_x, sp.pos_y);
+      switch (sp.type) {
+        case Save::PickupType::Weapon:   pickups->push_back(new WeaponPickup(pos, sp.weapon_index)); break;
+        case Save::PickupType::Mine:     pickups->push_back(new MinePickup(pos)); break;
+        case Save::PickupType::GigaMine: pickups->push_back(new GigaMinePickup(pos)); break;
+        case Save::PickupType::Missile:  pickups->push_back(new MissilePickup(pos)); break;
+        case Save::PickupType::Shield:   pickups->push_back(new ShieldPickup(pos)); break;
+        case Save::PickupType::GodMode:  pickups->push_back(new GodModePickup(pos)); break;
+        case Save::PickupType::ExtraLife: pickups->push_back(new ExtraLife(pos)); break;
+        case Save::PickupType::NovaCharge: pickups->push_back(new NovaChargePickup(pos)); break;
+        default: break;
+      }
     }
   }
 
@@ -2233,12 +2260,13 @@ void GLGame::net_apply_keyframe_asteroid_ids(Save::Stream &in,
   for (uint32_t i = 0; i < n_ids; i++)
     if (!nx_read(in, ids[i])) return;
 
-  std::map<uint32_t, Asteroid *> by_id;
+  std::unordered_map<uint32_t, Asteroid *> by_id;
+  by_id.reserve(objects->size() * 2);
   for (auto *a : *objects) by_id[a->net_id] = a;
 
   for (uint32_t i = 0; i < n_ids; i++) {
     const Save::Asteroid &sa = s.asteroids[i];
-    std::map<uint32_t, Asteroid *>::iterator found = by_id.find(ids[i]);
+    std::unordered_map<uint32_t, Asteroid *>::iterator found = by_id.find(ids[i]);
     if (found != by_id.end()) {
       found->second->restore_state(sa);
       by_id.erase(found);

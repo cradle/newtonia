@@ -98,7 +98,9 @@ public:
 private:
   void add_asteroids();
   void add_player2(SDL_GameController *ctrl);
-  Save::GameState build_save_data() const;
+  // include_asteroids=false skips capturing the asteroid list (the delta
+  // path diffs asteroids itself and would otherwise discard the capture).
+  Save::GameState build_save_data(bool include_asteroids = true) const;
   void save_progress();   // save only when at least one player is alive or has lives
   void toggle_pause(bool broadcast = true);  // broadcast=false: applying a
                                              // peer's PAUSE/RESUME event
