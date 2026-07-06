@@ -212,7 +212,9 @@ jobs:
           SDL2_LIB=$(find "$(pwd)/SDL2/build-ios-sim" -name "libSDL2.a" | head -1)
           SDL2MAIN_LIB=$(find "$(pwd)/SDL2/build-ios-sim" -name "libSDL2main.a" | head -1)
           SDL2MIX_LIB=$(find "$(pwd)/SDL2_mixer/build-ios-sim" -name "libSDL2_mixer.a" | head -1)
-          NETLIBS=$(find libdatachannel/build-ios-sim netlibs/lib -name "*.a" | sort -u | tr '\n' ' ')
+          # Absolute paths: xcodebuild links with cwd at the PROJECT dir
+          # (newtonia/ios), so relative archive paths don't resolve.
+          NETLIBS=$(find "$(pwd)/libdatachannel/build-ios-sim" "$(pwd)/netlibs/lib" -name "*.a" | sort -u | tr '\n' ' ')
           OTHER_LD="-ObjC $SDL2MAIN_LIB $SDL2_LIB $SDL2MIX_LIB $NETLIBS"
           xcodebuild build \
             -project newtonia/ios/Newtonia-iOS.xcodeproj \
