@@ -717,6 +717,11 @@ void GLGame::net_host_poll() {
       net_prev_respawn_ = in.respawn_count;
       net_prev_shoot_press_ = in.shoot_press_count;
       net_prev_secondary_press_ = in.secondary_press_count;
+      // The first INPUT proves the client's game is up: if we are
+      // paused (auto-paused on its disconnect, or by hand), share the
+      // pause state now — an event sent while it was still in the lobby
+      // would have been dropped.
+      if (!running) net_send_event(Net::EV_PAUSE);
     }
 
     // One-shot deltas; capped so a rejoining/wrapped counter can't burst.
@@ -950,6 +955,13 @@ void GLGame::net_host_rejoin_poll(int delta) {
     }
     NET_LOG("net: player 2 lost - room %s reopened for rejoin\n",
            net_room_code_.c_str());
+    // Pause rather than playing on solo: waiting is the sensible default
+    // while the room is open for a rejoin (the pause key still resumes a
+    // solo session by hand). No broadcast — there is no peer to tell.
+    if (running) {
+      toggle_pause(false);
+      NET_LOG("net: paused awaiting rejoin\n");
+    }
   }
 
   // Signal socket dropped mid-rejoin: reclaim the room (M3-1) with the
@@ -1014,8 +1026,14 @@ void GLGame::net_host_rejoin_poll(int delta) {
       if (remote) {
         if (remote->is_alive()) {
           // Shield-parked hull: drop the parked shield to the normal
-          // respawn grace window and resume in place.
+          // respawn grace window and resume in place — unless an
+          // asteroid drifted onto the hull while its owner was away, in
+          // which case resume at a clear spot instead of inside the
+          // rock (try_current keeps the parked position when safe; the
+          // rejoiner bootstraps from the next keyframe, so any move is
+          // adopted as its baseline pose).
           remote->time_left_invincible = 1500;
+          remote->safe_position(grid, true);
         } else {
           // Unpark directly — the step-countdown respawn would charge a life.
           remote->respawn(grid, false);
@@ -1027,6 +1045,15 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // Re-sync the room rule — the rejoiner may be a fresh app launch
       // whose HUD reset to its own preference.
       net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
+      // Host paused (auto-paused on the disconnect, or by hand): the
+      // paused tick never reaches the 10 Hz send, so push the keyframe
+      // NOW — the rejoiner's lobby is waiting on it to bootstrap the
+      // world. The EV_PAUSE follows on the client's first INPUT, once
+      // it provably exists (the lobby does not consume events).
+      if (!running) {
+        net_snapshot_timer_ = 100;
+        net_host_send_snapshot(0);
+      }
       NET_LOG("net: player 2 rejoined\n");
     } else if (net_session_->phase() == NetSession::Failed ||
                net_session_->phase() == NetSession::Rejected) {

@@ -50,8 +50,16 @@ echo "== waiting for rejoin"; sleep 18
 alive $PA host; alive $PB joiner2
 shot $A rejoin-host-resumed; shot $B rejoin-joiner-resumed
 
+# The host auto-pauses on the loss and stays paused through the rejoin;
+# unpause from the host and verify both sides play on.
+echo "== resume from host after paused rejoin"
+key $A p; sleep 2
+xdotool keydown --window $B w; sleep 2; xdotool keyup --window $B w
+alive $PA host; alive $PB joiner2
+
 kill $PA $PB 2>/dev/null; wait $PA $PB 2>/dev/null
 assert_clean "$OUT/host.log" "$OUT/joiner1.log" "$OUT/joiner2.log"
 grep -aq "player 2 lost" "$OUT/host.log" || { echo "NO PARK MARKER"; exit 1; }
+grep -aq "paused awaiting rejoin" "$OUT/host.log" || { echo "NO AUTO-PAUSE"; exit 1; }
 grep -aq "player 2 rejoined" "$OUT/host.log" || { echo "REJOIN-E2E-FAIL"; exit 1; }
 echo "REJOIN-E2E-OK"
