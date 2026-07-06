@@ -773,7 +773,10 @@ void NetLobby::draw() {
       if (is_touch_mode()) {
         // The soft keyboard covers the lower half of the screen — stack
         // the heading, code and hint in the top half under the hoisted
-        // header, with generous spacing.
+        // header, with generous spacing. The RETURN TO MENU band at the
+        // bottom is under the keyboard here, so the exit lives in the
+        // top strip instead (see touch_tap).
+        Typer::draw_centered(0, 480, "CANCEL", 22);
         Typer::draw_centered(0, 360, "ENTER THE ROOM CODE", sz);
         Typer::draw_centered(0, 230, slots.c_str(), 48);
         y = 80;
@@ -1003,6 +1006,13 @@ void NetLobby::touch_tap(float nx, float ny) {
       confirm();
       break;
     case CodeEntry:
+      // Top strip = CANCEL (drawn at y=480): the usual bottom exit band
+      // is physically under the soft keyboard, so this is the only
+      // reachable way out of code entry on touch.
+      if (vy >= 430.0f) {
+        leave_to_menu();
+        return;
+      }
       code_entry_keyboard(true);  // re-summon a dismissed soft keyboard
       break;
     case RoomHost:
