@@ -172,6 +172,10 @@ class Ship : public CompositeObject {
     // A nova shockwave appeared in the snapshot: play its boom (the wave
     // itself is replicated; only the audio was host-side).
     void net_nova_arrived();
+    // Net client: locally-detected cosmetic bullet-vs-asteroid impacts
+    // (debris + thud/ting) for asteroids a plain bullet cannot kill —
+    // replaces the host's EV_ROID_THUD/TING impact events (PROTO 10).
+    void net_cosmetic_impacts(const Grid &grid);
     // Start the looping missile-fly sound for replicated missiles (the
     // weapon starts it for locally-fired ones); the handle halts the
     // channel when the last missile holding it is destroyed.

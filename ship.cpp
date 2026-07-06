@@ -12,6 +12,7 @@
 #include "weapon/shield.h"
 #include "weapon/god_mode.h"
 #include "weapon/nova.h"
+#include "net_protocol.h"  // NET_LOG
 
 static const int NOVA_MAX_AMMO = 10;
 
@@ -1217,11 +1218,6 @@ void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
             if (now - last_armour_ting >= 125) {
               last_armour_ting = now;
               Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
-              // Armoured-face deflection never reaches Asteroid::kill(),
-              // so queue the net impact cue here.
-              Asteroid::net_impacts.push_back(
-                  {Asteroid::IMPACT_TING, bullets[i].position.x(),
-                   bullets[i].position.y()});
             }
           }
           bullets[i].world_bullet = true;
@@ -1375,6 +1371,61 @@ void Ship::fire_secondary(bool on) {
     secondary = secondary_weapons.empty() ? secondary_weapons.end() : next;
   } else {
     (*secondary)->shoot(on);
+  }
+}
+
+// Net client: cosmetic bullet-vs-asteroid impacts, detected locally
+// against the replicated state. The client never runs
+// collide_bullets_with_asteroids (the host owns the world), so bullets
+// flying into asteroids that survive a plain bullet showed neither
+// debris nor a thud/ting — and shipping every impact as a host event
+// costs bandwidth for a purely visual cue. Only un-killable cases spark
+// here: a killable asteroid's death explosion arrives via the snapshot,
+// and doubling it would flash twice. The host's copy of this bullet is
+// reflected or consumed authoritatively; this copy just gets one spray
+// (net_sparked) until the next snapshot correction replaces it.
+void Ship::net_cosmetic_impacts(const Grid &grid) {
+  for (auto &b : bullets) {
+    if (b.net_sparked || b.kills_invincible) continue;
+    Object *o = grid.collide(b);
+    if (o == NULL) continue;
+    Asteroid *ast = dynamic_cast<Asteroid *>(o);
+    if (ast == NULL) continue;
+    bool ting;
+    if (ast->reflective || (ast->phasing && ast->phased)) {
+      ting = true;  // bullet bounces off / passes through
+    } else if (ast->armoured) {
+      // Shielded arc only (same ±120° test as the host's collide code,
+      // sans the entry back-trace — cosmetic precision is enough): an
+      // unshielded hit kills, and that explosion is replicated.
+      float ix = b.position.x() - ast->position.x();
+      float iy = b.position.y() - ast->position.y();
+      float im = sqrtf(ix * ix + iy * iy);
+      float shield_dot =
+          (im > 1e-6f)
+              ? (ix * cosf(ast->armour_angle) + iy * sinf(ast->armour_angle)) / im
+              : -1.0f;
+      if (shield_dot <= -0.5f) continue;
+      ting = true;
+    } else if (ast->invincible || (ast->tough && ast->health > 1) ||
+               (ast->teleporting && !ast->teleport_vulnerable)) {
+      ting = false;  // thud: absorbed (or the asteroid teleports away)
+    } else {
+      continue;  // plain killable asteroid: the host's kill replicates
+    }
+    b.net_sparked = true;
+    explode(b.position, o->velocity);
+    Mix_Chunk *snd = ting ? Asteroid::ting_sound : Asteroid::thud_sound;
+    if (snd != NULL) {
+      // Same 125 ms cue rate limit the host-side impact sites use.
+      static Uint32 last_cosmetic_cue = UINT32_MAX;
+      Uint32 now = SDL_GetTicks();
+      if (now - last_cosmetic_cue >= 125) {
+        last_cosmetic_cue = now;
+        Mix_PlayChannel(-1, snd, 0);
+      }
+    }
+    NET_LOG("net: cosmetic impact %s\n", ting ? "ting" : "thud");
   }
 }
 

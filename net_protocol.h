@@ -49,7 +49,10 @@ namespace Net {
 //    (its Save record carries no bullets — the client saw none).
 // 7: gen-20 station enemies' bullet section appended after the
 //    mini-station's, in enemies-list order.
-const uint8_t PROTO_VERSION = 9;
+// 10: bullet-vs-asteroid impact cues are client-side cosmetic
+//     (Ship::net_cosmetic_impacts); the host no longer sends EV_ROID_*
+//     for them — a mixed pairing would double or drop those cues.
+const uint8_t PROTO_VERSION = 10;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check
@@ -67,11 +70,11 @@ enum EventCode {
   EV_GENERATION_START = 3,  // + uint32 generation
   EV_GAME_OVER = 4,
   EV_BYE = 5,
-  // Host->client impact cues the client can't simulate (bullet hits on
-  // invincible/tough asteroids and reflective/phasing deflections). The
-  // host already rate-limits them to one per 125 ms. arg packs the
-  // impact position as two int16s (x<<16 | y) so the client can spawn
-  // the spark at the right spot.
+  // Impact thud with a packed position (pack_pos). Since PROTO 10 the
+  // bullet-vs-asteroid impact cues are client-side cosmetic
+  // (Ship::net_cosmetic_impacts) and only the gen-20 station-hull
+  // deflection still sends this; EV_ROID_TING is retired (kept for
+  // numbering).
   EV_ROID_THUD = 6,
   EV_ROID_TING = 7,
   // More host-simulated audio cues: the level-clear countdown tick

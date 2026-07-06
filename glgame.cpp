@@ -1304,7 +1304,6 @@ void GLGame::host_toggle_friendly_fire() {
 // dereference freed ships. Clearing at construction guarantees each game
 // starts from empty regardless of how the previous one ended.
 void GLGame::net_clear_event_outboxes() {
-  Asteroid::net_impacts.clear();
   Ship::net_ship_impacts.clear();
   Ship::net_shots.clear();
   Ship::net_booms.clear();
@@ -1364,9 +1363,10 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
     }
     case Net::EV_ROID_THUD:
     case Net::EV_ROID_TING: {
-      // Host-side bullet impacts the client can't simulate. The host
-      // rate-limits these to one per 125 ms; play them straight, and
-      // spark the asteroid that was hit (arg carries the position).
+      // Since PROTO 10 only the gen-20 station-hull deflection sends
+      // THUD (asteroid impacts are client-side cosmetic — see
+      // Ship::net_cosmetic_impacts); TING is retired but kept decodable.
+      // Play the cue and spark any asteroid near the packed position.
       Mix_Chunk *snd = code == Net::EV_ROID_TING ? Asteroid::ting_sound
                                                  : Asteroid::thud_sound;
       if (snd) Mix_PlayChannel(-1, snd, 0);
@@ -1656,9 +1656,9 @@ bool nx_read_projectiles(Save::Stream &in, Ship &s, bool quiet) {
 
 void GLGame::tick_net_client(int delta) {
   current_time += delta;
-  // Impact cues come from the host as events here; anything the local
-  // kill() calls queued (ghost removals) is noise — drop it.
-  Asteroid::net_impacts.clear();
+  // Anything the local kill() calls queued (ghost removals) is noise —
+  // drop it; the host relays the real cues (or the client detects the
+  // cosmetic ones itself).
   Ship::net_ship_impacts.clear();
   Ship::net_shots.clear();
   Ship::net_booms.clear();
@@ -1730,6 +1730,10 @@ void GLGame::tick_net_client(int delta) {
       for (auto &b : e->ship->bullets) b.step(step_size);
     }
     grid.update((std::list<Object *> *)objects);
+    // Cosmetic bullet-vs-asteroid impacts (debris + thud/ting for
+    // asteroids a bullet can't kill), detected locally against the fresh
+    // grid — replaces the host's EV_ROID impact events (PROTO 10).
+    for (auto *gs : *players) gs->ship->net_cosmetic_impacts(grid);
 
     net_client_send_input();
     time_until_next_step += time_between_steps;
@@ -3032,14 +3036,10 @@ void GLGame::tick(int delta) {
     }
   }
 
-  // Bullet-impact cues queued by Asteroid::kill() (thud/ting): the client
-  // can't simulate those collisions, so the host forwards them as events.
-  // Cleared every tick in every mode so the queue can't grow in solo play.
+  // (Bullet-vs-asteroid impact cues used to be forwarded here as
+  // EV_ROID_THUD/TING events; since PROTO 10 the client detects those
+  // cosmetics locally — Ship::net_cosmetic_impacts.)
   if (net_mode_ == NetHost && net_session_ && !net_connection_lost_) {
-    for (const Asteroid::NetImpact &im : Asteroid::net_impacts)
-      net_send_event(im.kind == Asteroid::IMPACT_TING ? Net::EV_ROID_TING
-                                                      : Net::EV_ROID_THUD,
-                     Net::pack_pos(im.x, im.y, world.x(), world.y()));
     // Non-fatal ship-vs-asteroid bounces (debris + armour ting). Enemy
     // ships collide through the same code; only player ships are sent.
     for (const Ship::NetShipImpact &si : Ship::net_ship_impacts) {
@@ -3071,7 +3071,6 @@ void GLGame::tick(int delta) {
         net_send_event(Net::EV_WORLD_BOOM,
                        Net::pack_pos(boom->position.x(), boom->position.y(), world.x(), world.y()));
   }
-  Asteroid::net_impacts.clear();
   Ship::net_ship_impacts.clear();
   Ship::net_shots.clear();
   Ship::net_booms.clear();

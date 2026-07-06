@@ -25,6 +25,11 @@ private:
   bool has_trail = false;
   bool kills_invincible = false;
   int trail_timer = 0;
+  // Net client: this bullet already sprayed its cosmetic asteroid-impact
+  // debris (Ship::net_cosmetic_impacts) — a replicated copy crossing an
+  // asteroid between snapshot corrections must not strobe. Transient;
+  // never serialized (rebuilt copies default to false).
+  bool net_sparked = false;
 };
 
 #endif /* PARTICLE_H */
