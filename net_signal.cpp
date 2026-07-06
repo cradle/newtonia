@@ -4,6 +4,7 @@
 // net_signal_web.cpp).
 
 #include "net_signal.h"
+#include "net_protocol.h"
 #include "preferences.h"
 
 #include <stdio.h>
@@ -122,6 +123,16 @@ bool json_field(const std::string &json, const char *key, std::string &out) {
   return unescape_into(json, begin, i, out);
 }
 
+std::string offer_frame(const std::string &sdp) {
+  return "{\"t\":\"offer\",\"pv\":\"" + std::to_string(Net::PROTO_VERSION) +
+         "\",\"sdp\":\"" + json_escape(sdp) + "\"}";
+}
+
+std::string answer_frame(const std::string &sdp) {
+  return "{\"t\":\"answer\",\"pv\":\"" + std::to_string(Net::PROTO_VERSION) +
+         "\",\"sdp\":\"" + json_escape(sdp) + "\"}";
+}
+
 bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
   std::string t;
   if (!json_field(frame, "t", t)) return false;
@@ -147,8 +158,16 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
     json_field(frame, "mid", ev.text2);
     return json_field(frame, "cand", ev.text);
   }
-  if (t == "offer")  { ev.kind = NetSignal::Event::Offer;  return json_field(frame, "sdp", ev.text); }
-  if (t == "answer") { ev.kind = NetSignal::Event::Answer; return json_field(frame, "sdp", ev.text); }
+  if (t == "offer") {
+    ev.kind = NetSignal::Event::Offer;
+    json_field(frame, "pv", ev.text2);  // peer PROTO_VERSION; empty = old build
+    return json_field(frame, "sdp", ev.text);
+  }
+  if (t == "answer") {
+    ev.kind = NetSignal::Event::Answer;
+    json_field(frame, "pv", ev.text2);
+    return json_field(frame, "sdp", ev.text);
+  }
   if (t == "err")    { ev.kind = NetSignal::Event::Error;  json_field(frame, "reason", ev.text); return true; }
   if (t == "peer") {
     std::string e;

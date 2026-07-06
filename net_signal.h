@@ -89,6 +89,13 @@ const int NET_ROOM_CODE_LEN = 5;
 // embedding, and pull one string field out of a flat JSON object frame.
 namespace NetSig {
 std::string json_escape(const std::string &s);
+// Offer/answer frames stamped with the sender's PROTO_VERSION ("pv", a
+// string) so the peer fails fast on a mismatch BEFORE ICE starts —
+// covers old builds whose connection recipe differs (the transports
+// never connect, so the session-level HELLO check can't run). Old
+// builds don't send the field; its absence identifies them.
+std::string offer_frame(const std::string &sdp);
+std::string answer_frame(const std::string &sdp);
 // Extracts "key":"value" from a one-level object; false if absent.
 bool json_field(const std::string &json, const char *key, std::string &out);
 // Parses one raw frame from the worker into an Event; false = unknown.

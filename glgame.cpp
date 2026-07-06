@@ -1002,6 +1002,13 @@ void GLGame::net_host_rejoin_poll(int delta) {
     if (common == NetSigDropped) return;
     if (common == NetSigHandled) continue;
     if (ev.kind == NetSignal::Event::Answer && net_rehost_) {
+      // Version gate, as in the lobby: a rejoiner on a different build
+      // can't bootstrap — ignore its answer and keep the offer open.
+      if (ev.text2 != std::to_string((int)Net::PROTO_VERSION)) {
+        NET_LOG("net: rejoin answer pv '%s' != ours %d - ignored\n",
+               ev.text2.c_str(), (int)Net::PROTO_VERSION);
+        continue;
+      }
       net_rehost_->set_remote_answer(ev.text);
       net_session_ = new NetSession(net_rehost_, NetSession::HostRole);
       net_rehost_ = nullptr;

@@ -451,6 +451,18 @@ void NetLobby::pump_signal(int delta) {
         // ICE starts on both sides at once (no strip_ice_candidates — that
         // trick belongs to the clipboard flow's human-latency gap).
         if (!hosting_ && screen_ == RoomJoining && transport_) {
+          // Version gate BEFORE ICE: an old build's connection recipe
+          // may differ (pre-trickle SDP, no TURN), so the transports
+          // would never connect and the session-level HELLO check could
+          // never run — the player would just see an ICE timeout. The
+          // offer carries the host's PROTO_VERSION (empty = old build).
+          if (ev.text2 != std::to_string((int)Net::PROTO_VERSION)) {
+            NET_LOG("[lobby] offer pv '%s' != ours %d - version mismatch\n",
+                   ev.text2.c_str(), (int)Net::PROTO_VERSION);
+            set_status("VERSION MISMATCH - UPDATE BOTH GAMES");
+            screen_ = LobbyFailed;
+            break;
+          }
           NET_LOG("[lobby] joining with %d turn servers\n",
                  (int)ice_servers_.size());
           transport_->set_ice_servers(ice_servers_);
@@ -459,6 +471,15 @@ void NetLobby::pump_signal(int delta) {
         break;
       case NetSignal::Event::Answer:
         if (hosting_ && transport_) {
+          // Version gate (see the Offer case): discard a mismatched
+          // answer and keep the room open — the outdated joiner fails
+          // on its own side (its 45 s timeout, or its own pv check).
+          if (ev.text2 != std::to_string((int)Net::PROTO_VERSION)) {
+            NET_LOG("[lobby] answer pv '%s' != ours %d - ignored\n",
+                   ev.text2.c_str(), (int)Net::PROTO_VERSION);
+            set_status("PLAYER 2 HAS A DIFFERENT VERSION");
+            break;
+          }
           transport_->set_remote_answer(ev.text);
           session_ = new NetSession(transport_, NetSession::HostRole);
           transport_ = nullptr;

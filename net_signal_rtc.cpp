@@ -44,11 +44,11 @@ public:
   }
 
   void send_offer(const std::string &sdp) override {
-    send_frame("{\"t\":\"offer\",\"sdp\":\"" + NetSig::json_escape(sdp) + "\"}");
+    send_frame(NetSig::offer_frame(sdp));
   }
 
   void send_answer(const std::string &sdp) override {
-    send_frame("{\"t\":\"answer\",\"sdp\":\"" + NetSig::json_escape(sdp) + "\"}");
+    send_frame(NetSig::answer_frame(sdp));
   }
 
   void send_cand(const std::string &mid, const std::string &cand) override {

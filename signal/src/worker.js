@@ -354,6 +354,7 @@ export class Room {
   async reclaim_host(ws, code, ice) {
     this.state.acceptWebSocket(ws, ["host"]);
     this.r.offer = null;
+    this.r.offer_pv = null;
     this.r.host_cands = [];
     this.r.host_lost_at = 0;
     await this.save();
@@ -370,7 +371,9 @@ export class Room {
     const h = this.hostWs();
     if (h) this.safeSend(h, { t: "peer", ev: "join" });
     if (this.r.offer) {
-      this.safeSend(ws, { t: "offer", sdp: this.r.offer });
+      const replay = { t: "offer", sdp: this.r.offer };
+      if (this.r.offer_pv) replay.pv = this.r.offer_pv;
+      this.safeSend(ws, replay);
       // Trickle: candidates the host gathered before this joiner arrived.
       for (const c of this.r.host_cands) this.safeSend(ws, c);
     }
@@ -405,6 +408,11 @@ export class Room {
     if (msg.t === "offer" && typeof msg.sdp === "string" &&
         msg.sdp.length <= MAX_SDP_LEN) {
       this.r.offer = msg.sdp; // kept for a joiner (or rejoiner) arriving later
+      // Version stamp (pv): stored with the offer so the replay to a
+      // late-arriving joiner carries it too — the game fails fast on a
+      // mismatch before ICE. Old games send no pv.
+      this.r.offer_pv =
+        typeof msg.pv === "string" && msg.pv.length <= 8 ? msg.pv : null;
       this.r.host_cands = []; // fresh offer = fresh transport = old cands stale
       await this.save();
       const j = this.joinerWs();
@@ -450,6 +458,7 @@ export class Room {
     if (this.r.host_lost_at && !this.hostWs()) return;   // already in grace
     if (this.state.getWebSockets("host").some((w) => w !== ws)) return; // superseded
     this.r.offer = null;
+    this.r.offer_pv = null;
     this.r.host_cands = [];
     this.r.host_lost_at = Date.now();
     await this.save();
@@ -465,6 +474,7 @@ export class Room {
     // host re-offers on peer-leave (lobby) or on its rejoin flow (game),
     // and that fresh offer is stored and replayed instead.
     this.r.offer = null;
+    this.r.offer_pv = null;
     this.r.host_cands = [];
     await this.save();
     const h = this.hostWs();
