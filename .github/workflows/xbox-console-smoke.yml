@@ -76,9 +76,17 @@ jobs:
           $base = "https://raw.githubusercontent.com/KhronosGroup/EGL-Registry/main/api"
           $inc = "$env:RUNNER_TEMP\egl-include"
           New-Item -ItemType Directory -Force -Path "$inc\EGL", "$inc\KHR" | Out-Null
-          curl -sSfL -o "$inc\EGL\egl.h"         "$base/EGL/egl.h"
-          curl -sSfL -o "$inc\EGL\eglplatform.h" "$base/EGL/eglplatform.h"
-          curl -sSfL -o "$inc\KHR\khrplatform.h" "$base/KHR/khrplatform.h"
+          # Retry + verify: a flaky raw.githubusercontent fetch once left
+          # egl.h missing with this step green, surfacing later as a
+          # baffling C1083 in the compile step.
+          curl -sSfL --retry 3 --retry-all-errors -o "$inc\EGL\egl.h"         "$base/EGL/egl.h"
+          curl -sSfL --retry 3 --retry-all-errors -o "$inc\EGL\eglplatform.h" "$base/EGL/eglplatform.h"
+          curl -sSfL --retry 3 --retry-all-errors -o "$inc\KHR\khrplatform.h" "$base/KHR/khrplatform.h"
+          foreach ($f in "EGL\egl.h", "EGL\eglplatform.h", "KHR\khrplatform.h") {
+            if (-not (Test-Path "$inc\$f") -or (Get-Item "$inc\$f").Length -lt 1000) {
+              Write-Error "EGL header fetch produced no usable $f"; exit 1
+            }
+          }
           echo "EGL_INC=$inc" >> $env:GITHUB_ENV
 
       # Same source set as xbox/CMakeLists.txt: root + weapon/ + view/ minus
