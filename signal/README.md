@@ -33,3 +33,31 @@ in `net_signal.h`.
 - `GET /ws?role=join&code=ABCD` — WebSocket; `{t:"joined"}` or `{t:"err",...}`
 - Host sends `{t:"offer",sdp}`; joiner sends `{t:"answer",sdp}`; the room
   relays each to the other side and replays the offer to late (re)joiners.
+
+## Cost / abuse notes
+
+The paid resources are the Worker/DO invocations and TURN relay bandwidth
+(Cloudflare Calls). Defenses in `worker.js`:
+
+- **Per-IP rate limits** (`Limiter` DO, fixed 10-min window): 10 host /
+  30 join attempts. Keyed on the IP collapsed to its **/64** for IPv6
+  (`rate_key`) so a v6 user can't rotate host bits to bypass the cap.
+- **TURN credentials** are minted only on a rate-limited host attempt, or
+  a join to an actually-open room, with a **15-minute TTL** — long enough
+  for ICE setup, short enough that a harvested credential is nearly
+  worthless as free relay bandwidth.
+- **Relay content is length-capped** (SDP 16 KB, candidate 512 B, ≤32
+  buffered) so a peer can't pin unbounded DO memory.
+- **WebSocket Hibernation API**: after the handshake the signaling socket
+  is idle for the whole game session (traffic is peer-to-peer), so the DO
+  evicts between messages and stops billing wall-clock for held sockets.
+  Room state lives in DO storage; sockets recover by tag. A storage alarm
+  frees abandoned rooms after the grace window.
+
+Set a **Workers usage cap** in the Cloudflare dashboard as a final
+backstop against a runaway bill.
+
+## Tests
+
+- `node test/reclaim_test.js` — protocol test (needs `wrangler dev` on :8787).
+- `node test/rate_key_test.mjs` — `rate_key` /64-collapse unit test.

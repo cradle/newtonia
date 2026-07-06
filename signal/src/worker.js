@@ -219,29 +219,41 @@ export class Limiter {
   }
 }
 
+// One Durable Object per room code. Uses the WebSocket HIBERNATION API:
+// after the handshake burst the signaling socket sits idle for the whole
+// game session (traffic is peer-to-peer over WebRTC), so the DO evicts
+// between messages and stops billing wall-clock for idle held sockets.
+//
+// Because the DO can be evicted, in-memory fields don't survive — room
+// state (offer/token/grace/closed) lives in DO storage (this.r, loaded in
+// the constructor), and the host/joiner sockets are recovered by tag via
+// getWebSockets(). Timers are a single storage alarm (grace/TTL cleanup);
+// correctness still rides the lazy expiry checks in fetch().
 export class Room {
   constructor(state) {
     this.state = state;
-    this.host = null;    // WebSocket
-    this.joiner = null;  // WebSocket
-    this.offer = null;   // last offer SDP, replayed to late joiners
-    this.host_cands = []; // trickle candidates buffered alongside the offer
-    this.created = 0;
-    this.host_token = null;   // reclaim proof, minted at creation
-    this.host_lost_at = 0;    // grace window start (0 = host connected)
-    this.closed = false;      // host sent {t:"close"} — deliberate shutdown
+    this.r = { offer: null, host_cands: [], host_token: null,
+               host_lost_at: 0, created: 0, closed: false };
+    state.blockConcurrencyWhile(async () => {
+      const stored = await state.storage.get("room");
+      if (stored) this.r = stored;
+    });
   }
+
+  async save() { await this.state.storage.put("room", this.r); }
+
+  // Live sockets by tag (hibernation-safe — survives DO eviction).
+  hostWs()   { return this.state.getWebSockets("host")[0]   || null; }
+  joinerWs() { return this.state.getWebSockets("joiner")[0] || null; }
+
+  safeSend(ws, obj) { try { ws.send(JSON.stringify(obj)); } catch (e) {} }
 
   // The room is "held" while a disconnected host may still reclaim it.
   in_grace(now) {
-    return !this.host && this.host_token &&
-           this.host_lost_at && now - this.host_lost_at <= HOST_GRACE_MS;
+    return !this.hostWs() && this.r.host_token &&
+           this.r.host_lost_at && now - this.r.host_lost_at <= HOST_GRACE_MS;
   }
-
-  // A live room = host connected, or host within its reclaim grace.
-  alive(now) {
-    return !!this.host || this.in_grace(now);
-  }
+  alive(now) { return !!this.hostWs() || this.in_grace(now); }
 
   async fetch(request) {
     const url = new URL(request.url);
@@ -250,34 +262,36 @@ export class Room {
     try { ice = JSON.parse(url.searchParams.get("ice") || "[]"); } catch (e) {}
     const now = Date.now();
 
-    if (this.alive(now) && now - this.created > ROOM_TTL_MS) this.expire();
+    if (this.alive(now) && this.r.created && now - this.r.created > ROOM_TTL_MS)
+      await this.expire();
     // Grace elapsed with no reclaim: the room is finished.
-    if (!this.host && this.host_token && !this.in_grace(now)) this.expire();
+    if (!this.hostWs() && this.r.host_token && !this.in_grace(now))
+      await this.expire();
 
     if (url.pathname === "/exists") {
       // Worker's pre-mint probe: is there an open slot worth minting for?
       return new Response(
-          JSON.stringify({ host: !!this.host, joiner: !!this.joiner }),
+          JSON.stringify({ host: !!this.hostWs(), joiner: !!this.joinerWs() }),
           { headers: { "Content-Type": "application/json" } });
     }
 
     if (url.pathname === "/host") {
       // In-grace rooms still own their code — a fresh host must not
       // squat a room whose original host may return.
-      if (this.host || this.in_grace(now))
+      if (this.hostWs() || this.in_grace(now))
         return new Response("room in use", { status: 409 });
       const pair = new WebSocketPair();
-      this.accept_host(pair[1], code, now, ice);
+      await this.accept_host(pair[1], code, now, ice);
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
 
     if (url.pathname === "/reclaim") {
       const token = url.searchParams.get("token");
-      if (this.host) return this.reject_ws("room-in-use");
-      if (!this.host_token || token !== this.host_token || !this.in_grace(now))
+      if (this.hostWs()) return this.reject_ws("room-in-use");
+      if (!this.r.host_token || token !== this.r.host_token || !this.in_grace(now))
         return this.reject_ws("no-such-room");
       const pair = new WebSocketPair();
-      this.reclaim_host(pair[1], code, ice);
+      await this.reclaim_host(pair[1], code, ice);
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
 
@@ -285,10 +299,10 @@ export class Room {
       // Joining is allowed while the host is in grace too: the joiner
       // waits and the reclaimed host's fresh offer is relayed on arrival.
       if (!this.alive(now))
-        return this.reject_ws(this.closed ? "host-closed" : "no-such-room");
-      if (this.joiner) return this.reject_ws("room-full");
+        return this.reject_ws(this.r.closed ? "host-closed" : "no-such-room");
+      if (this.joinerWs()) return this.reject_ws("room-full");
       const pair = new WebSocketPair();
-      this.accept_joiner(pair[1], ice);
+      await this.accept_joiner(pair[1], ice);
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
 
@@ -296,7 +310,7 @@ export class Room {
   }
 
   // Refusals still complete the WS upgrade so the client gets a readable
-  // {t:"err"} frame instead of an opaque HTTP error it may not surface.
+  // {t:"err"} frame. Ephemeral socket, closed at once — not hibernated.
   reject_ws(reason) {
     const pair = new WebSocketPair();
     pair[1].accept();
@@ -308,143 +322,167 @@ export class Room {
   send_ice(ws, ice) {
     // One flat frame per server: the game's JSON parser is flat-object only.
     for (const s of ice)
-      ws.send(JSON.stringify({ t: "ice", urls: s.urls,
-                               username: s.username, credential: s.credential }));
+      this.safeSend(ws, { t: "ice", urls: s.urls,
+                          username: s.username, credential: s.credential });
   }
 
-  accept_host(ws, code, now, ice) {
-    ws.accept();
-    this.host = ws;
-    this.offer = null;
-    this.host_cands = [];
-    this.created = now;
-    this.host_token = crypto.randomUUID();
-    this.host_lost_at = 0;
-    this.closed = false;  // a fresh host reopens a deliberately-closed code
+  async accept_host(ws, code, now, ice) {
+    this.state.acceptWebSocket(ws, ["host"]);
+    this.r = { offer: null, host_cands: [], host_token: crypto.randomUUID(),
+               host_lost_at: 0, created: now, closed: false };
+    await this.save();
+    await this.state.storage.setAlarm(now + ROOM_TTL_MS);
     this.send_ice(ws, ice);
-    ws.send(JSON.stringify({ t: "room", code, token: this.host_token }));
-    ws.addEventListener("message", (m) => this.from_host(m));
-    const drop = () => this.drop_host(ws);
-    ws.addEventListener("close", drop);
-    ws.addEventListener("error", drop);
+    this.safeSend(ws, { t: "room", code, token: this.r.host_token });
   }
 
   // Reclaim: same room, same token, fresh socket. The old offer is stale
   // (its transport died with the old socket); the host re-offers.
-  reclaim_host(ws, code, ice) {
-    ws.accept();
-    this.host = ws;
-    this.offer = null;
-    this.host_cands = [];
-    this.host_lost_at = 0;
+  async reclaim_host(ws, code, ice) {
+    this.state.acceptWebSocket(ws, ["host"]);
+    this.r.offer = null;
+    this.r.host_cands = [];
+    this.r.host_lost_at = 0;
+    await this.save();
     this.send_ice(ws, ice);
-    ws.send(JSON.stringify({ t: "room", code, token: this.host_token }));
-    ws.addEventListener("message", (m) => this.from_host(m));
-    const drop = () => this.drop_host(ws);
-    ws.addEventListener("close", drop);
-    ws.addEventListener("error", drop);
-    if (this.joiner)
-      this.joiner.send(JSON.stringify({ t: "peer", ev: "host-back" }));
+    this.safeSend(ws, { t: "room", code, token: this.r.host_token });
+    const j = this.joinerWs();
+    if (j) this.safeSend(j, { t: "peer", ev: "host-back" });
   }
 
-  // Host socket gone: start the reclaim grace window instead of killing
-  // the room. The stale-socket guard matters: a reclaimed host's OLD
-  // socket may emit its close event after the new one attached.
-  drop_host(ws) {
-    if (this.host !== ws) return;
-    this.host = null;
-    this.offer = null;
-    this.host_cands = [];
-    this.host_lost_at = Date.now();
-    if (this.joiner)
-      this.joiner.send(JSON.stringify({ t: "peer", ev: "host-lost" }));
-  }
-
-  accept_joiner(ws, ice) {
-    ws.accept();
-    this.joiner = ws;
+  async accept_joiner(ws, ice) {
+    this.state.acceptWebSocket(ws, ["joiner"]);
     this.send_ice(ws, ice);
-    ws.send(JSON.stringify({ t: "joined" }));
-    if (this.host) this.host.send(JSON.stringify({ t: "peer", ev: "join" }));
-    if (this.offer) {
-      ws.send(JSON.stringify({ t: "offer", sdp: this.offer }));
+    this.safeSend(ws, { t: "joined" });
+    const h = this.hostWs();
+    if (h) this.safeSend(h, { t: "peer", ev: "join" });
+    if (this.r.offer) {
+      this.safeSend(ws, { t: "offer", sdp: this.r.offer });
       // Trickle: candidates the host gathered before this joiner arrived.
-      for (const c of this.host_cands) ws.send(JSON.stringify(c));
+      for (const c of this.r.host_cands) this.safeSend(ws, c);
     }
-    ws.addEventListener("message", (m) => this.from_joiner(m));
-    const drop = () => this.drop_joiner(ws);
-    ws.addEventListener("close", drop);
-    ws.addEventListener("error", drop);
   }
 
-  from_host(m) {
+  // ---- hibernation event handlers ----------------------------------------
+
+  async webSocketMessage(ws, message) {
+    if (typeof message !== "string") return;  // frames are JSON text
     let msg;
-    try { msg = JSON.parse(m.data); } catch (e) { return; }
+    try { msg = JSON.parse(message); } catch (e) { return; }
+    const tags = this.state.getTags(ws);
+    if (tags.includes("host")) await this.from_host(msg);
+    else if (tags.includes("joiner")) await this.from_joiner(msg);
+  }
+
+  async webSocketClose(ws) { await this.drop(ws); }
+  async webSocketError(ws) { await this.drop(ws); }
+
+  async drop(ws) {
+    const tags = this.state.getTags(ws);
+    if (tags.includes("host")) await this.drop_host(ws);
+    else if (tags.includes("joiner")) await this.drop_joiner(ws);
+  }
+
+  async from_host(msg) {
     // Deliberate host teardown (quit to menu, game over): the room dies
     // NOW — no reclaim grace, no joiners left waiting on a host that told
     // us it isn't coming back. Crashes send nothing, so grace still
     // covers real drops.
-    if (msg.t === "close") {
-      this.closed = true;  // joins now get "host-closed", not "no-such-room"
-      this.expire("host-closed");
-      return;
-    }
+    if (msg.t === "close") { await this.expire("host-closed"); return; }
     if (msg.t === "offer" && typeof msg.sdp === "string" &&
         msg.sdp.length <= MAX_SDP_LEN) {
-      this.offer = msg.sdp; // kept for a joiner (or rejoiner) arriving later
-      this.host_cands = []; // fresh offer = fresh transport = old cands stale
-      if (this.joiner) this.joiner.send(JSON.stringify(msg));
+      this.r.offer = msg.sdp; // kept for a joiner (or rejoiner) arriving later
+      this.r.host_cands = []; // fresh offer = fresh transport = old cands stale
+      await this.save();
+      const j = this.joinerWs();
+      if (j) this.safeSend(j, msg);
     }
     // Trickle ICE (M3-2b): relay candidates; buffer the host's so a joiner
     // arriving mid-gather gets them replayed right after the offer.
     if (msg.t === "cand" && typeof msg.cand === "string" &&
         msg.cand.length <= MAX_CAND_LEN) {
       const frame = { t: "cand", mid: String(msg.mid || "0"), cand: msg.cand };
-      if (this.host_cands.length < MAX_CANDS) this.host_cands.push(frame);
-      if (this.joiner) this.joiner.send(JSON.stringify(frame));
+      if (this.r.host_cands.length < MAX_CANDS) {
+        this.r.host_cands.push(frame);
+        await this.save();
+      }
+      const j = this.joinerWs();
+      if (j) this.safeSend(j, frame);
     }
   }
 
-  from_joiner(m) {
-    let msg;
-    try { msg = JSON.parse(m.data); } catch (e) { return; }
+  async from_joiner(msg) {
     if (msg.t === "answer" && typeof msg.sdp === "string" &&
         msg.sdp.length <= MAX_SDP_LEN) {
-      if (this.host) this.host.send(JSON.stringify(msg));
+      const h = this.hostWs();
+      if (h) this.safeSend(h, msg);
     }
     if (msg.t === "cand" && typeof msg.cand === "string" &&
         msg.cand.length <= MAX_CAND_LEN) {
       // No buffering: the host is connected whenever a joiner exists (or
       // in grace, when its dead transport couldn't use them anyway).
-      if (this.host)
-        this.host.send(JSON.stringify(
-            { t: "cand", mid: String(msg.mid || "0"), cand: msg.cand }));
+      const h = this.hostWs();
+      if (h) this.safeSend(h, { t: "cand", mid: String(msg.mid || "0"), cand: msg.cand });
     }
   }
 
-  drop_joiner(ws) {
-    if (this.joiner !== ws) return;
-    this.joiner = null;
+  // Host socket gone: start the reclaim grace window instead of killing
+  // the room. Idempotent — webSocketError then webSocketClose may both fire.
+  async drop_host(ws) {
+    if (this.r.host_lost_at && !this.hostWs()) return;   // already in grace
+    if (this.state.getWebSockets("host").some((w) => w !== ws)) return; // superseded
+    this.r.offer = null;
+    this.r.host_cands = [];
+    this.r.host_lost_at = Date.now();
+    await this.save();
+    await this.state.storage.setAlarm(this.r.host_lost_at + HOST_GRACE_MS);
+    const j = this.joinerWs();
+    if (j) this.safeSend(j, { t: "peer", ev: "host-lost" });
+  }
+
+  async drop_joiner(ws) {
+    if (this.state.getWebSockets("joiner").some((w) => w !== ws)) return;
     // The stored offer likely belongs to a transport that joiner was
     // party to; replaying it to a REjoiner dead-ends the handshake. The
     // host re-offers on peer-leave (lobby) or on its rejoin flow (game),
     // and that fresh offer is stored and replayed instead.
-    this.offer = null;
-    this.host_cands = [];
-    if (this.host) this.host.send(JSON.stringify({ t: "peer", ev: "leave" }));
+    this.r.offer = null;
+    this.r.host_cands = [];
+    await this.save();
+    const h = this.hostWs();
+    if (h) this.safeSend(h, { t: "peer", ev: "leave" });
   }
 
-  expire(reason) {
+  // Close all sockets and reset room state. A host-close leaves a "closed"
+  // tombstone so a rejoiner learns the host left (until the cleanup alarm
+  // frees the code); other expiries reset to a plain dead room.
+  async expire(reason) {
     const bye = JSON.stringify({ t: "err", reason: reason || "expired" });
-    for (const ws of [this.host, this.joiner]) {
-      if (!ws) continue;
+    for (const ws of this.state.getWebSockets()) {
       try { ws.send(bye); ws.close(1000); } catch (e) {}
     }
-    this.host = null;
-    this.joiner = null;
-    this.offer = null;
-    this.host_cands = [];
-    this.host_token = null;
-    this.host_lost_at = 0;
+    this.r = { offer: null, host_cands: [], host_token: null,
+               host_lost_at: 0, created: 0, closed: reason === "host-closed" };
+    await this.save();
+    await this.state.storage.setAlarm(Date.now() + HOST_GRACE_MS);
+  }
+
+  // Storage-alarm backstop: proactively free abandoned rooms (grace/TTL
+  // elapsed, or a host-closed tombstone past its window) so their DO
+  // storage doesn't linger. Lazy expiry in fetch() covers correctness;
+  // this is just cleanup, and re-arms while the room is still live.
+  async alarm() {
+    const now = Date.now();
+    if (this.alive(now)) {
+      if (this.r.created)
+        await this.state.storage.setAlarm(this.r.created + ROOM_TTL_MS);
+      return;
+    }
+    for (const ws of this.state.getWebSockets()) {
+      try { ws.send(JSON.stringify({ t: "err", reason: "expired" })); ws.close(1000); } catch (e) {}
+    }
+    this.r = { offer: null, host_cands: [], host_token: null,
+               host_lost_at: 0, created: 0, closed: false };
+    await this.state.storage.deleteAll();
   }
 }
