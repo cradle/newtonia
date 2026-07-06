@@ -410,17 +410,22 @@ export class Room {
       const j = this.joinerWs();
       if (j) this.safeSend(j, msg);
     }
-    // Trickle ICE (M3-2b): relay candidates; buffer the host's so a joiner
-    // arriving mid-gather gets them replayed right after the offer.
+    // Trickle ICE (M3-2b): relay candidates. Only BUFFER (persist) them
+    // when there's no joiner yet — the buffer exists solely to replay to a
+    // joiner arriving mid-gather, so once a joiner is present each
+    // candidate is relayed live and persisting it is pure cost (it was
+    // re-serializing the whole room record, offer SDP included, per
+    // candidate). Candidates after the joiner arrives don't touch storage.
     if (msg.t === "cand" && typeof msg.cand === "string" &&
         msg.cand.length <= MAX_CAND_LEN) {
       const frame = { t: "cand", mid: String(msg.mid || "0"), cand: msg.cand };
-      if (this.r.host_cands.length < MAX_CANDS) {
+      const j = this.joinerWs();
+      if (j) {
+        this.safeSend(j, frame);
+      } else if (this.r.host_cands.length < MAX_CANDS) {
         this.r.host_cands.push(frame);
         await this.save();
       }
-      const j = this.joinerWs();
-      if (j) this.safeSend(j, frame);
     }
   }
 
