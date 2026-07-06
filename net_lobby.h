@@ -66,7 +66,8 @@ private:
   void copy_local_description();
   void reset_to_choose();
   void leave_to_menu();
-  void set_status(const char *text);
+  // show_ms <= 0 = the default 4 s; known-error advisories pass longer.
+  void set_status(const char *text, int show_ms = -1);
   void pump_signal(int delta);
   void fall_back_to_manual(const char *why);
   void code_entry_key(unsigned char key);

@@ -189,9 +189,9 @@ NetLobby::~NetLobby() {
   delete starfield;  // owned; heap + GPU buffers leak per lobby visit otherwise
 }
 
-void NetLobby::set_status(const char *text) {
+void NetLobby::set_status(const char *text, int show_ms) {
   status_ = text;
-  status_ms_ = STATUS_SHOW_MS;
+  status_ms_ = show_ms > 0 ? show_ms : STATUS_SHOW_MS;
 }
 
 void NetLobby::reset_to_choose() {
@@ -459,7 +459,8 @@ void NetLobby::pump_signal(int delta) {
           if (ev.text2 != std::to_string((int)Net::PROTO_VERSION)) {
             NET_LOG("[lobby] offer pv '%s' != ours %d - version mismatch\n",
                    ev.text2.c_str(), (int)Net::PROTO_VERSION);
-            set_status("VERSION MISMATCH - UPDATE BOTH GAMES");
+            fail_headline_ = "VERSION MISMATCH";
+            set_status("UPDATE BOTH GAMES", 2 * STATUS_SHOW_MS);
             screen_ = LobbyFailed;
             break;
           }
@@ -592,8 +593,9 @@ void NetLobby::tick(int delta) {
     int limit = own_room_probe_ ? 8000 : 45000;
     if (join_wait_ms_ > limit) {
       join_wait_ms_ = 0;
-      set_status(own_room_probe_ ? "THAT LOOKS LIKE YOUR OWN OLD ROOM"
-                                 : "THE HOST IS NOT RESPONDING");
+      fail_headline_ = own_room_probe_ ? "NO ONE IS HOSTING THAT ROOM"
+                                       : "THE HOST IS NOT RESPONDING";
+      if (own_room_probe_) set_status("THAT LOOKS LIKE YOUR OWN OLD ROOM");
       own_room_probe_ = false;
       screen_ = LobbyFailed;
     }
@@ -749,9 +751,12 @@ void NetLobby::tick(int delta) {
         }
         screen_ = Connected;
       } else if (p == NetSession::Rejected) {
-        set_status(session_->reject_reason() == NetSession::RejectVersionMismatch
-                       ? "VERSION MISMATCH - UPDATE BOTH GAMES"
-                       : "HOST REFUSED THE CONNECTION");
+        if (session_->reject_reason() == NetSession::RejectVersionMismatch) {
+          fail_headline_ = "VERSION MISMATCH";
+          set_status("UPDATE BOTH GAMES", 2 * STATUS_SHOW_MS);
+        } else {
+          fail_headline_ = "HOST REFUSED THE CONNECTION";
+        }
         screen_ = LobbyFailed;
       } else if (p == NetSession::Failed ||
                  (session_->role() == NetSession::HostRole &&
@@ -764,7 +769,8 @@ void NetLobby::tick(int delta) {
         NET_LOG("[lobby] connect failed: session_phase=%d waited=%d ms transport_failed=%d\n",
                (int)p, connect_wait_ms_,
                session_->transport() ? (int)session_->transport()->failed() : -1);
-        set_status("COULD NOT CONNECT - A FIREWALL MAY BE BLOCKING THE GAME");
+        fail_headline_ = "COULD NOT CONNECT";
+        set_status("A FIREWALL MAY BE BLOCKING THE GAME", 2 * STATUS_SHOW_MS);
         screen_ = LobbyFailed;
       }
       break;
