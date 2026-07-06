@@ -895,8 +895,16 @@ void NetLobby::draw() {
 
   if (status_ms_ > 0 && !status_.empty()) {
     // Touch code entry: the usual status spot is behind the soft
-    // keyboard; tuck it under the hint line instead.
-    int sy = (is_touch_mode() && screen_ == CodeEntry) ? 20 : -320;
+    // keyboard; tuck it under the hint line instead. On the joiner
+    // waiting screens the CANCEL band's glyphs (size 22 at -280) reach
+    // the usual -320 spot, so the status sits above the band there.
+    int sy = -320;
+    if (is_touch_mode() && screen_ == CodeEntry)
+      sy = 20;
+    else if (is_touch_mode() && !hosting_ &&
+             (screen_ == RoomJoining || screen_ == Connected ||
+              (screen_ == WaitConnect && signal_)))
+      sy = -200;
     Typer::draw_centered(0, sy, status_.c_str(), 15);
   }
 
