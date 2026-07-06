@@ -34,6 +34,11 @@ g++ -std=c++11 -fsyntax-only -I. -I/usr/include/SDL2 <file.cpp>
 ```
 
 #### Headless runtime testing & debugging (Linux, no display)
+**See TESTING.md for the full test inventory** — build gates, in-binary
+selftests (`NEWTONIA_NET_SELFTEST`), signal-worker tests, the committed
+netplay e2e drivers (`test/e2e/`), and the `STEAM_BUILD` stub check. This
+section documents the underlying driver technique those drivers use.
+
 A clean build is not proof that gameplay flows work — state transitions, input
 handling, and object lifetimes (double-delete, use-after-free across state
 swaps) only fail at runtime. The game runs fine under Xvfb with software GL,

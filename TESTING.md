@@ -1,0 +1,125 @@
+# Testing Newtonia
+
+Every test layer in the project, cheapest first. CLAUDE.md documents the
+general headless-driver technique (Xvfb + xdotool + gdb); this file is the
+inventory of what exists and how to run it.
+
+## 1. Build gates
+
+```sh
+# Syntax-check one file without a full build (the pre-commit hook does this)
+g++ -std=c++11 -fsyntax-only -I. -I/usr/include/SDL2 <file.cpp>
+
+# Full builds — switching NETPLAY on/off needs a clean (objects don't mix)
+make -j                                   # stub-net build
+make clean && make -j NETPLAY=1           # netplay build (needs ./build_netplay_deps.sh once)
+```
+
+### STEAM_BUILD syntax gate (no SDK needed)
+
+`STEAM_BUILD` code only compiles in the tag-triggered deploy-steam workflow,
+so a typo in `steam_build.h` or its callers would otherwise surface at
+release time. `test/steam_stub/` carries a minimal `steam/steam_api.h` with
+signatures copied verbatim from the real SDK; syntax-check any file that
+touches the Steam API against it:
+
+```sh
+g++ -std=c++11 -fsyntax-only -DSTEAM_BUILD -Itest/steam_stub -I. -I/usr/include/SDL2 net_lobby.cpp menu.cpp
+```
+
+When adding a Steamworks call: verify the signature against the SDK docs /
+headers first, add it to the stub, then use it in game code.
+
+## 2. In-binary selftests (headless, no display needed beyond Xvfb)
+
+```sh
+# WebRTC loopback: two transports in-process, offer/answer, reliable +
+# unreliable round trip. No relay needed. This is the gate every native
+# deploy job runs.
+NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy xvfb-run -a ./newtonia
+# -> "NET SELFTEST PASS" and exit
+
+# Signal relay round trip: host+join sockets, room code, offer/answer
+# relay against whatever NEWTONIA_SIGNAL_URL points at (default: the
+# production worker; point it at a local wrangler dev to stay offline).
+NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy xvfb-run -a ./newtonia
+```
+
+## 3. Signal worker tests (node, no game build)
+
+The worker (`signal/`) has its own tests — see `signal/README.md`:
+
+```sh
+cd signal
+npx wrangler dev --local --port 8787 &   # local relay (also used by the e2e drivers)
+node test/reclaim_test.js                # M3-1 protocol: token + grace + reclaim (24 checks)
+node test/rate_key_test.mjs              # rate_key /64-collapse unit test
+```
+
+## 4. End-to-end drivers (`test/e2e/`)
+
+Two-instance gameplay regressions under Xvfb: real windows, real input via
+xdotool, real relay, assertions greped from `NEWTONIA_NET_DEBUG=1` logs.
+
+```sh
+sudo apt-get install -y xvfb xdotool x11-apps imagemagick   # once
+cd signal && npx wrangler dev --local --port 8787 &         # relay
+make clean && make -j NETPLAY=1                             # netplay build
+
+test/e2e/room.sh     # connect via room code, 3 level skips, both fire 8s
+test/e2e/rejoin.sh   # SIGKILL joiner mid-game -> rejoin with same code
+```
+
+Each driver re-execs itself under `xvfb-run` when `DISPLAY` is unset, prints
+`ROOM-E2E-OK` / `REJOIN-E2E-OK` on success, and exits non-zero on any
+failure. Logs and screenshots land in a fresh temp dir (printed at start;
+override with `NEWTONIA_TEST_OUT`). `XDG_DATA_HOME` is pointed into that dir
+so the drivers never touch your real savegame or preferences.
+
+### Writing a new driver
+
+Source `test/e2e/lib.sh` and follow the room.sh shape. The load-bearing
+rules (hard-won; the rest are in CLAUDE.md's headless-testing section):
+
+- **Liveness after every input** (`alive $PID name`) — that is what
+  pinpoints a crash to the step that caused it.
+- **Assert on log markers, not on the driver reaching its last line** — a
+  hung X client can get the tail of the script killed by the outer timeout
+  while the run itself succeeded. Useful markers (`NEWTONIA_NET_DEBUG=1`):
+  `[lobby] room <CODE>` (host room created), `bootstrap adopted` (joiner
+  world up), `net: player 2 lost` / `net: player 2 rejoined` (rejoin flow),
+  and `assert_clean` for the crash/corruption grep.
+- **Menu navigation assumes fresh prefs** (lib.sh guarantees this): attract
+  `Return`, then rows are NEW GAME / ONLINE — `s`,`Return` opens the lobby.
+  A save file would add CONTINUE and shift the rows.
+- **Skip-level (`n`) starts the next generation immediately** — no 5 s
+  countdown; time your sleeps accordingly.
+- Wrap ad-hoc runs in a hard `timeout` — a hung client can keep `xvfb-run`
+  alive forever.
+
+## 5. What CI runs where
+
+| Gate | Where |
+|------|-------|
+| Native build + `NEWTONIA_NET_SELFTEST` loopback | linux.yml, windows.yml on every push; every native deploy job |
+| Xcode project compile with netplay vars (pbxproj regressions) | ios.yml |
+| Web/Emscripten compile (only web-code gate — no emcc in dev containers) | web.yml |
+| Xbox compile paths | xbox-dev.yml, xbox-console-smoke.yml |
+| Worker deploy | manual `npx wrangler deploy` (see signal/README.md) |
+
+The e2e drivers are currently run locally/by-agent, not in CI (wrangler dev
++ Xvfb in Actions is possible if flakiness proves acceptable).
+
+## 6. Hardware-only checks
+
+Things no headless rig covers — verify on device after a `netplay-v*` tag:
+
+- **Steam Deck**: floating keyboard pops on CodeEntry (Steam build only),
+  stick feel in lobby/menu, picker as fallback.
+- **iOS**: soft keyboard code entry, share sheet, background/resume rejoin.
+- **Android**: back button paths, soft keyboard, background/resume rejoin.
+- **Cross-play**: browser <-> native against the production relay and TURN
+  (the local relay hands out no TURN credentials).
+- Controller navigation generally — synthetic controller events can't be
+  injected under Xvfb, so lobby/menu pad handling is verified by pattern
+  (mirrors of proven menu code) plus on-device feel.
