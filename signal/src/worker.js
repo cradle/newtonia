@@ -38,6 +38,23 @@ const MAX_SDP_LEN = 16384;
 const MAX_CAND_LEN = 512;
 const MAX_CANDS = 32;
 
+// Rate-limit key from the client IP. IPv6 users get a whole /64 (or more)
+// to rotate through for free, which would bypass a per-address limit — so
+// collapse v6 to its /64 prefix; v4 addresses key whole. Exported for the
+// unit test.
+export function rate_key(ip) {
+  if (ip.includes(":")) {
+    // Expand :: then keep the first 4 hextets (the routable /64).
+    const parts = ip.split("::");
+    let head = parts[0] ? parts[0].split(":") : [];
+    let tail = parts.length > 1 && parts[1] ? parts[1].split(":") : [];
+    const fill = 8 - head.length - tail.length;
+    const full = head.concat(Array(Math.max(0, fill)).fill("0"), tail);
+    return "v6:" + full.slice(0, 4).join(":");
+  }
+  return "v4:" + ip;
+}
+
 function random_code() {
   const bytes = crypto.getRandomValues(new Uint8Array(CODE_LEN));
   let code = "";
@@ -59,7 +76,10 @@ async function turn_ice_servers(env) {
             Authorization: `Bearer ${env.TURN_API_TOKEN}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ ttl: 2 * 60 * 60 }),
+          // Short TTL: ICE only needs the credential during connection
+          // setup (an established relay allocation outlives it). Keeps a
+          // harvested credential nearly worthless as free relay bandwidth.
+          body: JSON.stringify({ ttl: 15 * 60 }),
         });
     if (!resp.ok) return [];
     const data = await resp.json();
@@ -111,29 +131,31 @@ export default {
 
     // CF-Connecting-IP may be absent under miniflare (wrangler dev --local);
     // a fixed fallback key still lets the limiter exercise end to end.
-    const ip = request.headers.get("CF-Connecting-IP") || "local";
+    const ip = rate_key(request.headers.get("CF-Connecting-IP") || "local");
     const role = url.searchParams.get("role");
 
     if (role === "host") {
       if (!(await within_limit(env, ip, "host")))
         return reject_ws(request, "rate-limited");
-      // TURN credentials are minted only now — passing the limiter is the
-      // authorization for this host attempt — immediately before we claim a
-      // code. Missing TURN secrets still yield [] (STUN-only), unchanged.
-      const ice = await turn_ice_servers(env);
       // Host RECLAIM (M3-1): a disconnected host returning within the
       // grace window proves ownership with the token from its room frame.
+      // Validate the code shape BEFORE minting TURN — a garbage reclaim
+      // shouldn't cost a credential.
       const token = url.searchParams.get("token");
       if (token) {
         const code = (url.searchParams.get("code") || "").toUpperCase();
         if (code.length !== CODE_LEN ||
             [...code].some((c) => !CODE_ALPHABET.includes(c)))
           return new Response("bad code", { status: 400 });
+        const ice = await turn_ice_servers(env);
         const room = env.ROOMS.get(env.ROOMS.idFromName(code));
         return room.fetch(new Request(
             `https://room/reclaim?code=${code}&token=${encodeURIComponent(token)}&ice=${encodeURIComponent(JSON.stringify(ice))}`,
             request));
       }
+      // Fresh host: passing the limiter is the authorization for this
+      // attempt. Missing TURN secrets still yield [] (STUN-only).
+      const ice = await turn_ice_servers(env);
       // Mint an unused code: a fresh Room accepts a host only if it has
       // none; collisions (live room with that code) refuse and we retry.
       for (let attempt = 0; attempt < 8; attempt++) {
