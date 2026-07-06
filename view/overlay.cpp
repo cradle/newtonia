@@ -62,8 +62,11 @@ void Overlay::net_overlays(const GLGame *glgame) {
                          glgame->net_peer_bye_ ? "THE HOST LEFT THE GAME"
                                                : "CONNECTION LOST",
                          glgame->net_peer_bye_ ? 22 : 34);
+    // y=-130: clear of the pause overlay's sub-lines ("press p to
+    // resume" at -40, "press esc..." at -70, glyphs reaching ~-86) —
+    // the game auto-pauses on a disconnect, so both stacks show at once.
     if ((now / 700) % 2 == 0)
-      Typer::draw_centered(0, -80,
+      Typer::draw_centered(0, -130,
                            is_touch_mode() ? "TAP FIRE FOR MENU"
                                            : "PRESS FIRE FOR MENU", 16);
   } else if (glgame->net_banner_ms_ > 0) {
