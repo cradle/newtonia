@@ -886,12 +886,9 @@ void NetLobby::draw() {
       Typer::draw_centered(0, y - (int)i * line, lines[i].c_str(), sz);
   }
 
-  // Joiner waiting screens: a CANCEL band (touch) above the return band —
-  // the join can be abandoned at any time back to an empty code entry.
-  if (is_touch_mode() && !hosting_ &&
-      (screen_ == RoomJoining || screen_ == Connected ||
-       (screen_ == WaitConnect && signal_)))
-    Typer::draw_centered(0, -280, "CANCEL", 22);
+  // (The joiner waiting screens used to add a CANCEL band above the
+  // return band; both exits stacked read as clutter — RETURN TO MENU is
+  // the one universal exit, and an empty join screen is two taps away.)
 
   // The rejoin wait's persistent heading + countdown already say
   // everything the transient status could ("RECONNECTING...", "ROOM
@@ -900,16 +897,8 @@ void NetLobby::draw() {
   bool status_redundant = rejoin_mode_ && screen_ == RoomJoining;
   if (status_ms_ > 0 && !status_.empty() && !status_redundant) {
     // Touch code entry: the usual status spot is behind the soft
-    // keyboard; tuck it under the hint line instead. On the joiner
-    // waiting screens the CANCEL band's glyphs (size 22 at -280) reach
-    // the usual -320 spot, so the status sits above the band there.
-    int sy = -320;
-    if (is_touch_mode() && screen_ == CodeEntry)
-      sy = 20;
-    else if (is_touch_mode() && !hosting_ &&
-             (screen_ == RoomJoining || screen_ == Connected ||
-              (screen_ == WaitConnect && signal_)))
-      sy = -200;
+    // keyboard; tuck it under the hint line instead.
+    int sy = (is_touch_mode() && screen_ == CodeEntry) ? 20 : -320;
     Typer::draw_centered(0, sy, status_.c_str(), 15);
   }
 
@@ -1037,14 +1026,6 @@ void NetLobby::touch_tap(float nx, float ny) {
   float vy = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
   if (vy < -370.0f) {
     leave_to_menu();
-    return;
-  }
-  // CANCEL band on the joiner waiting screens (drawn at y=-280).
-  if (!hosting_ &&
-      (screen_ == RoomJoining || screen_ == Connected ||
-       (screen_ == WaitConnect && signal_)) &&
-      vy <= -230.0f) {
-    retry_join();
     return;
   }
   switch (screen_) {
