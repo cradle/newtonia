@@ -124,6 +124,10 @@ private:
   // hostless (reclaim grace) — if no host ever offers, fail instead of
   // showing "JOINING THE ROOM" forever.
   int join_wait_ms_ = 0;
+  // The clipboard auto-join is probing a code that matches the persisted
+  // last-hosted pref: maybe a live sibling instance on this machine,
+  // maybe our own kill-orphaned room — the no-offer timeout is short.
+  bool own_room_probe_ = false;
 
   // Controller state: left-stick / right-trigger edge detection (the
   // menu's pattern) and the CodeEntry picker selection.

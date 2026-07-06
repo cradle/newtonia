@@ -559,13 +559,20 @@ void NetLobby::tick(int delta) {
   // its own budget; a hostless-grace wait there is legitimate.
   if (!hosting_ && screen_ == RoomJoining && !rejoin_mode_) {
     join_wait_ms_ += delta;
-    if (join_wait_ms_ > 45000) {
+    // Probing a maybe-our-own room (see the clipboard auto-join): a live
+    // host answers in seconds, so a short window is enough — the long
+    // one would be the old 45 s zombie-room hang.
+    int limit = own_room_probe_ ? 8000 : 45000;
+    if (join_wait_ms_ > limit) {
       join_wait_ms_ = 0;
-      set_status("THE HOST IS NOT RESPONDING");
+      set_status(own_room_probe_ ? "THAT LOOKS LIKE YOUR OWN OLD ROOM"
+                                 : "THE HOST IS NOT RESPONDING");
+      own_room_probe_ = false;
       screen_ = LobbyFailed;
     }
   } else {
     join_wait_ms_ = 0;
+    own_room_probe_ = false;
   }
 
   // Auto-rejoin retry loop (see schedule_rejoin_retry). The budget ticks
@@ -629,13 +636,18 @@ void NetLobby::tick(int delta) {
         bool ok = code.size() == (size_t)NET_ROOM_CODE_LEN;
         for (size_t i = 0; ok && i < code.size(); i++)
           ok = net_room_code_char_ok(code[i]);
-        // Never auto-join a room this install hosted itself — that's our
-        // own (likely dead) code still sitting on the clipboard. Typing
-        // it manually still works if someone really means it. The pref
-        // copy survives an app kill/relaunch (the static doesn't).
-        if (ok && (code == s_last_hosted_code ||
-                   code == g_prefs.last_hosted_code ||
-                   code == s_dead_code)) ok = false;
+        // Never auto-join a room THIS process hosted (it closed the room
+        // when it left) or one confirmed dead. Typing a code manually
+        // always works if someone really means it.
+        if (ok && (code == s_last_hosted_code || code == s_dead_code))
+          ok = false;
+        // A code matching only the PERSISTED last-hosted pref is
+        // ambiguous: another live instance on this machine hosting right
+        // now (the prefs INI is shared — mac host + mac client on one
+        // box), or our own kill-orphaned room idling in its reclaim
+        // grace. Probe it: join, but give up fast if no host offers —
+        // a live room answers in seconds, the orphan never does.
+        own_room_probe_ = ok && code == g_prefs.last_hosted_code;
         if (ok && code_entry_.empty()) {
           code_entry_ = code;
           confirm();
