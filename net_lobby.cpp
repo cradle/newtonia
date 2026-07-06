@@ -1103,7 +1103,12 @@ void NetLobby::controller_confirm() {
 }
 
 void NetLobby::controller(SDL_Event event) {
-  controller_seen_ = true;
+  // Only real controller events prove a pad: platform loops (web_main's
+  // default case in particular) forward OTHER unhandled event types
+  // through here too, and those must not summon the picker.
+  if (event.type == SDL_CONTROLLERBUTTONDOWN ||
+      event.type == SDL_CONTROLLERAXISMOTION)
+    controller_seen_ = true;
   if (event.type == SDL_CONTROLLERBUTTONDOWN) {
     switch (event.cbutton.button) {
       case SDL_CONTROLLER_BUTTON_DPAD_UP:
