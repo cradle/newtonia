@@ -177,7 +177,7 @@ jobs:
           cp -r newtonia/audio Newtonia.app/audio
           zip -r Newtonia-iOS-Simulator.zip Newtonia.app
 
-      - name: Run netplay loopback self-test in the Simulator
+      - name: Run netplay loopback + signal self-tests in the Simulator
         run: |
           UDID=$(xcrun simctl list devices available -j \
             | python3 -c "import json,sys; ds=json.load(sys.stdin)['devices']; print(next(d['udid'] for v in ds.values() for d in v if 'iPhone' in d['name']))")
@@ -192,6 +192,15 @@ jobs:
             xcrun simctl launch --console-pty "$UDID" cc.gfm.Newtonia \
             | tee selftest.log || true
           grep -q "NET SELFTEST PASS" selftest.log
+
+          # Signal self-test: wss + TLS + a full room round-trip against the
+          # PRODUCTION relay, from inside the iOS runtime (one short-lived
+          # room per CI run; the relay's TTL cleans it up).
+          SIMCTL_CHILD_NEWTONIA_SIGNAL_SELFTEST=1 SIMCTL_CHILD_SDL_AUDIODRIVER=dummy \
+            perl -e 'alarm shift; exec @ARGV' 120 \
+            xcrun simctl launch --console-pty "$UDID" cc.gfm.Newtonia \
+            | tee sigtest.log || true
+          grep -q "SIGNAL SELFTEST PASS" sigtest.log
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
