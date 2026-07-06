@@ -828,8 +828,7 @@ void GLGame::net_host_signal_maintain(int delta) {
       net_ice_.clear();  // fresh TURN creds ride the reclaim reply
       net_signal_->connect_host_reclaim(net_signal_url(), net_room_code_,
                                         net_room_token_);
-      printf("net: reclaiming room %s\n", net_room_code_.c_str());
-      fflush(stdout);
+      NET_LOG("net: reclaiming room %s\n", net_room_code_.c_str());
     }
   }
 
@@ -840,8 +839,7 @@ void GLGame::net_host_signal_maintain(int delta) {
         net_ice_.push_back(ev.text);
         break;
       case NetSignal::Event::Room:
-        printf("net: room %s reclaimed\n", net_room_code_.c_str());
-        fflush(stdout);
+        NET_LOG("net: room %s reclaimed\n", net_room_code_.c_str());
         break;
       case NetSignal::Event::Closed:
         if (net_room_token_.empty()) {
@@ -863,9 +861,8 @@ void GLGame::net_host_signal_maintain(int delta) {
           break;
         }
         // no-such-room / expired on reclaim: the room is gone for good.
-        printf("net: room %s lost (%s)\n", net_room_code_.c_str(),
+        NET_LOG("net: room %s lost (%s)\n", net_room_code_.c_str(),
                ev.text.c_str());
-        fflush(stdout);
         net_signal_->close();
         delete net_signal_;
         net_signal_ = nullptr;
@@ -873,8 +870,7 @@ void GLGame::net_host_signal_maintain(int delta) {
       case NetSignal::Event::PeerJoin:
         // The client re-entered the room: its transport is dead even if
         // ours has not noticed yet. Enter the rejoin flow immediately.
-        printf("net: peer rejoined the room - fast loss detect\n");
-        fflush(stdout);
+        NET_LOG("net: peer rejoined the room - fast loss detect\n");
         delete net_session_;
         net_session_ = nullptr;
         net_connection_lost_ = true;
@@ -926,9 +922,8 @@ void GLGame::net_host_rejoin_poll(int delta) {
       net_rehost_->set_trickle(true);  // the room relay carries candidates
       net_rehost_->start_host();
     }
-    printf("net: player 2 lost - room %s reopened for rejoin\n",
+    NET_LOG("net: player 2 lost - room %s reopened for rejoin\n",
            net_room_code_.c_str());
-    fflush(stdout);
   }
 
   // Signal socket dropped mid-rejoin: reclaim the room (M3-1) with the
@@ -941,8 +936,7 @@ void GLGame::net_host_rejoin_poll(int delta) {
       net_ice_.clear();
       net_signal_->connect_host_reclaim(net_signal_url(), net_room_code_,
                                         net_room_token_);
-      printf("net: reclaiming room %s (mid-rejoin)\n", net_room_code_.c_str());
-      fflush(stdout);
+      NET_LOG("net: reclaiming room %s (mid-rejoin)\n", net_room_code_.c_str());
     }
   }
 
@@ -985,8 +979,7 @@ void GLGame::net_host_rejoin_poll(int delta) {
     } else if (ev.kind == NetSignal::Event::Room) {
       // Reclaimed mid-rejoin: the room's stored offer died with the old
       // socket — resend the current one.
-      printf("net: room %s reclaimed (mid-rejoin)\n", net_room_code_.c_str());
-      fflush(stdout);
+      NET_LOG("net: room %s reclaimed (mid-rejoin)\n", net_room_code_.c_str());
       net_rehost_offer_sent_ = false;
     } else if (ev.kind == NetSignal::Event::Closed) {
       if (net_room_token_.empty()) {
@@ -1004,9 +997,8 @@ void GLGame::net_host_rejoin_poll(int delta) {
         net_signal_retry_ms_ = 15000;
         continue;
       }
-      printf("net: room %s lost (%s)\n", net_room_code_.c_str(),
+      NET_LOG("net: room %s lost (%s)\n", net_room_code_.c_str(),
              ev.text.c_str());
-      fflush(stdout);
       net_signal_->close();
       delete net_signal_;
       net_signal_ = nullptr;
@@ -1040,8 +1032,7 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // Re-sync the room rule — the rejoiner may be a fresh app launch
       // whose HUD reset to its own preference.
       net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
-      printf("net: player 2 rejoined\n");
-      fflush(stdout);
+      NET_LOG("net: player 2 rejoined\n");
     } else if (net_session_->phase() == NetSession::Failed ||
                net_session_->phase() == NetSession::Rejected) {
       // Bad handshake (wrong build?): drop it and re-offer for another try.
@@ -1193,10 +1184,9 @@ void GLGame::net_host_send_snapshot(int delta) {
   // Bandwidth telemetry (M2-6): a line every 10 s of play at 10 Hz.
   net_bytes_sent_ += payload.data().size();
   if (net_slot_ % 100 == 0) {
-    printf("net: slot #%d gen=%d asteroids=%d key_bytes=%d avg10s=%.1f KB/s\n",
+    NET_LOG("net: slot #%d gen=%d asteroids=%d key_bytes=%d avg10s=%.1f KB/s\n",
            net_slot_, generation, (int)objects->size(),
            (int)payload.data().size(), net_bytes_sent_ / 10240.0f);
-    fflush(stdout);
     net_bytes_sent_ = 0;
   }
 }
@@ -1289,11 +1279,10 @@ bool GLGame::net_send_delta() {
 
   net_bytes_sent_ += msg.size();
   if (net_slot_ % 100 == 0) {
-    printf("net: slot #%d gen=%d asteroids=%d delta_bytes=%d (new %d dyn %d rm %d) avg10s=%.1f KB/s\n",
+    NET_LOG("net: slot #%d gen=%d asteroids=%d delta_bytes=%d (new %d dyn %d rm %d) avg10s=%.1f KB/s\n",
            net_slot_, generation, (int)objects->size(), (int)msg.size(),
            (int)fresh.size(), (int)dyn.size(), (int)removed.size(),
            net_bytes_sent_ / 10240.0f);
-    fflush(stdout);
     net_bytes_sent_ = 0;
   }
   return true;
@@ -1361,10 +1350,7 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
         net_peer_bye_ = true;
         NetLobby::mark_room_dead(net_room_code_);
         net_room_code_.clear();
-        if (SDL_getenv("NEWTONIA_NET_DEBUG")) {  // e2e drivers grep for this
-          printf("net: host bye - no rejoin\n");
-          fflush(stdout);
-        }
+        NET_LOG("net: host bye - no rejoin\n");
       }
       break;
     case Net::EV_FRIENDLY_FIRE: {
@@ -1376,10 +1362,7 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
         net_banner_ms_ = 2000;
       }
       friendly_fire = on;
-      if (SDL_getenv("NEWTONIA_NET_DEBUG")) {  // e2e drivers grep for this
-        printf("net: friendly fire %s\n", on ? "on" : "off");
-        fflush(stdout);
-      }
+      NET_LOG("net: friendly fire %s\n", on ? "on" : "off");
       break;
     }
     case Net::EV_ROID_THUD:
@@ -1390,10 +1373,7 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
       Mix_Chunk *snd = code == Net::EV_ROID_TING ? Asteroid::ting_sound
                                                  : Asteroid::thud_sound;
       if (snd) Mix_PlayChannel(-1, snd, 0);
-      if (SDL_getenv("NEWTONIA_NET_DEBUG")) {  // e2e drivers grep for this
-        printf("net: roid impact\n");
-        fflush(stdout);
-      }
+      NET_LOG("net: roid impact\n");
       float ix, iy;
       Net::unpack_pos(arg, ix, iy, world.x(), world.y());
       net_spark_asteroid_at(ix, iy);
@@ -1745,8 +1725,7 @@ void GLGame::tick_net_client(int delta) {
       if (net_client_rejoin_ms_ <= 0) net_client_rejoin_ms_ = 1500;
       net_client_rejoin_ms_ -= delta;
       if (net_client_rejoin_ms_ <= 0) {
-        printf("net: auto-rejoining room %s\n", net_room_code_.c_str());
-        fflush(stdout);
+        NET_LOG("net: auto-rejoining room %s\n", net_room_code_.c_str());
         request_state_change(new NetLobby(net_room_code_));
         net_room_code_.clear();  // fire once
       }
@@ -2068,7 +2047,7 @@ void GLGame::net_apply_state(const Save::GameState &s) {
         ship->velocity = old_vel + (ship->velocity - old_vel) * 0.35f;
         ship->facing = old_facing;  // aim stays fully local
       } else {
-        printf("net: local ship snapped %.0f units (teleport/respawn/new level)\n",
+        NET_LOG("net: local ship snapped %.0f units (teleport/respawn/new level)\n",
                sqrtf(cx * cx + cy * cy));
       }
 
@@ -2170,7 +2149,7 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s) {
         ship->position = WrappedPoint(s.players[i].pos_x, s.players[i].pos_y);
         ship->velocity = Point(s.players[i].vel_x, s.players[i].vel_y);
         ship->facing = Point(s.players[i].facing_x, s.players[i].facing_y);
-        printf("net: warp snap (count %u)\n", (unsigned)ex.warp_count);
+        NET_LOG("net: warp snap (count %u)\n", (unsigned)ex.warp_count);
       }
       net_prev_warp_ = ex.warp_count;
       net_have_warp_ = true;
@@ -2286,8 +2265,7 @@ void GLGame::net_apply_keyframe_asteroid_ids(Save::Stream &in,
       for (uint32_t k = 0; k < n_ids; k++)
         if (!nx_read(in, ids_tmp[k])) return;
       for (auto *a : *objects) a->net_id = ids_tmp[i++];
-      printf("net: bootstrap adopted %u asteroid ids\n", n_ids);
-      fflush(stdout);
+      NET_LOG("net: bootstrap adopted %u asteroid ids\n", n_ids);
       return;
     }
   }
@@ -2390,8 +2368,7 @@ void GLGame::tick(int delta) {
       test_drop_transport -= delta;
       if (test_drop_transport <= 0) {
         test_drop_transport = -1;
-        printf("net: TEST dropping transport\n");
-        fflush(stdout);
+        NET_LOG("net: TEST dropping transport\n");
         net_session_->transport()->close();
       }
     }
@@ -2399,8 +2376,7 @@ void GLGame::tick(int delta) {
       test_drop_signal -= delta;
       if (test_drop_signal <= 0) {
         test_drop_signal = -1;
-        printf("net: TEST dropping signal socket\n");
-        fflush(stdout);
+        NET_LOG("net: TEST dropping signal socket\n");
         net_signal_->close();          // local close emits no Closed event;
         net_signal_retry_ms_ = 700;    // a real drop arrives as Event::Closed
       }

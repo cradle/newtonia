@@ -15,8 +15,28 @@
 #include <stdint.h>
 
 #include <cstddef>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
+
+namespace Net {
+
+// Netplay diagnostics are opt-in via NEWTONIA_NET_DEBUG=1 (the e2e drivers
+// set it): a shipped online session should not spew stdout — candidate
+// bursts alone are dozens of lines a second. NET_LOG gates every net/lobby
+// print behind one cached env check; user-facing text goes through Typer,
+// never printf, so nothing here is ever needed in a release build.
+inline bool net_debug_enabled() {
+  static int on = -1;
+  if (on < 0) { const char *e = std::getenv("NEWTONIA_NET_DEBUG"); on = (e && e[0]) ? 1 : 0; }
+  return on != 0;
+}
+
+}  // namespace Net
+
+#define NET_LOG(...) \
+  do { if (::Net::net_debug_enabled()) { std::printf(__VA_ARGS__); std::fflush(stdout); } } while (0)
 
 namespace Net {
 

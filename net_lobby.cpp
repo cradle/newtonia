@@ -94,8 +94,7 @@ static void code_entry_keyboard(bool open) {
 // A rejoin attempt failed in a retryable way (network still down, relay
 // briefly unreachable): stay on the joining screen and try again.
 void NetLobby::schedule_rejoin_retry(const char *why, int delay_ms) {
-  printf("[lobby] rejoin retry in %d ms (%s)\n", delay_ms, why);
-  fflush(stdout);
+  NET_LOG("[lobby] rejoin retry in %d ms (%s)\n", delay_ms, why);
   set_status("RECONNECTING...");
   screen_ = RoomJoining;
   signal_wait_ms_ = 0;
@@ -229,8 +228,7 @@ void NetLobby::retry_join() {
 // The signal server never answered (or refused the room): keep the pair
 // playable through the Milestone 1 clipboard flow.
 void NetLobby::fall_back_to_manual(const char *why) {
-  printf("[lobby] manual fallback: %s\n", why);
-  fflush(stdout);
+  NET_LOG("[lobby] manual fallback: %s\n", why);
   if (signal_) {
     signal_->close();
     delete signal_;
@@ -255,9 +253,8 @@ void NetLobby::start_paste() {
 void NetLobby::handle_paste(const std::string &blob) {
   std::string sdp;
   char kind = Net::decode_signal(blob, sdp);
-  printf("[lobby] pasted %d chars, kind=%c, screen=%d\n",
+  NET_LOG("[lobby] pasted %d chars, kind=%c, screen=%d\n",
          (int)blob.size(), kind ? kind : '?', (int)screen_);
-  fflush(stdout);
   if (screen_ == JoinWaitOffer) {
     if (kind == 'O') {
       // Candidate-free offer: keeps the joiner's ICE idle (nothing to time
@@ -294,9 +291,8 @@ void NetLobby::copy_local_description() {
   if (sdp.empty()) return;
   std::string blob = Net::encode_signal(hosting_, sdp);
   net_clipboard_write(blob);
-  printf("[lobby] copied %s code to clipboard (%d chars)\n",
+  NET_LOG("[lobby] copied %s code to clipboard (%d chars)\n",
          hosting_ ? "invite" : "reply", (int)blob.size());
-  fflush(stdout);
   set_status("COPIED TO CLIPBOARD");
 }
 
@@ -311,8 +307,7 @@ void NetLobby::pump_signal(int delta) {
       transport_->local_description_ready()) {
     signal_->send_offer(transport_->local_description());
     offer_sent_ = true;
-    printf("[lobby] offer sent to room %s\n", room_code_.c_str());
-    fflush(stdout);
+    NET_LOG("[lobby] offer sent to room %s\n", room_code_.c_str());
   }
 
   // Joiner: answer ready -> push it and start waiting on the transport.
@@ -320,8 +315,7 @@ void NetLobby::pump_signal(int delta) {
       transport_->local_description_ready()) {
     signal_->send_answer(transport_->local_description());
     answer_sent_ = true;
-    printf("[lobby] answer sent to room %s\n", room_code_.c_str());
-    fflush(stdout);
+    NET_LOG("[lobby] answer sent to room %s\n", room_code_.c_str());
     session_ = new NetSession(transport_, NetSession::ClientRole);
     transport_ = nullptr;
     connect_wait_ms_ = 0;
@@ -339,9 +333,8 @@ void NetLobby::pump_signal(int delta) {
         // is live (the lobby's own, or the session's after hand-off).
         NetTransport *t =
             transport_ ? transport_ : (session_ ? session_->transport() : nullptr);
-        printf("[lobby] cand in (%s): %s\n", t ? "applied" : "DROPPED",
+        NET_LOG("[lobby] cand in (%s): %s\n", t ? "applied" : "DROPPED",
                ev.text.substr(0, 40).c_str());
-        fflush(stdout);
         if (t) t->add_remote_candidate(ev.text2, ev.text);
         break;
       }
@@ -355,9 +348,8 @@ void NetLobby::pump_signal(int delta) {
         g_prefs.last_hosted_code = room_code_;
         save_preferences();
         net_clipboard_write(room_code_);  // ready to paste to the friend
-        printf("[lobby] room %s (%d turn servers)\n", room_code_.c_str(),
+        NET_LOG("[lobby] room %s (%d turn servers)\n", room_code_.c_str(),
                (int)ice_servers_.size());
-        fflush(stdout);
         if (transport_) {
           transport_->set_ice_servers(ice_servers_);
           transport_->start_host();  // deferred from confirm()
@@ -482,8 +474,7 @@ void NetLobby::tick(int delta) {
     while (t && t->poll_local_candidate(c)) {
       size_t nl = c.find('\n');
       if (nl != std::string::npos) {
-        printf("[lobby] cand out: %s\n", c.substr(nl + 1, 40).c_str());
-        fflush(stdout);
+        NET_LOG("[lobby] cand out: %s\n", c.substr(nl + 1, 40).c_str());
         signal_->send_cand(c.substr(0, nl), c.substr(nl + 1));
       }
     }
@@ -515,8 +506,7 @@ void NetLobby::tick(int delta) {
       fail_headline_ = "THE HOST DID NOT COME BACK";
       set_status("COULD NOT RECONNECT");
       screen_ = LobbyFailed;
-      printf("[lobby] rejoin gave up (budget expired)\n");
-      fflush(stdout);
+      NET_LOG("[lobby] rejoin gave up (budget expired)\n");
     } else if (rejoin_retry_ms_ > 0) {
       // A retry is scheduled (schedule_rejoin_retry); fire it when the
       // countdown crosses zero — never while an attempt is in flight.
@@ -534,8 +524,7 @@ void NetLobby::tick(int delta) {
         ice_servers_.clear();
         answer_sent_ = false;
         signal_wait_ms_ = 0;
-        printf("[lobby] rejoin retry: joining room %s\n", code_entry_.c_str());
-        fflush(stdout);
+        NET_LOG("[lobby] rejoin retry: joining room %s\n", code_entry_.c_str());
         signal_->connect_join(net_signal_url(), code_entry_);
       }
     }
@@ -593,8 +582,7 @@ void NetLobby::tick(int delta) {
   }
 
   if (transport_ && transport_->failed() && screen_ != LobbyFailed) {
-    printf("[lobby] transport failed during signaling\n");
-    fflush(stdout);
+    NET_LOG("[lobby] transport failed during signaling\n");
     set_status("CONNECTION FAILED");
     screen_ = LobbyFailed;
     return;
@@ -656,10 +644,9 @@ void NetLobby::tick(int delta) {
         // JOINER's wait includes the humans ferrying the reply code to the
         // host — minutes, not seconds — so it waits until the transport
         // actually fails (or the player backs out).
-        printf("[lobby] connect failed: session_phase=%d waited=%d ms transport_failed=%d\n",
+        NET_LOG("[lobby] connect failed: session_phase=%d waited=%d ms transport_failed=%d\n",
                (int)p, connect_wait_ms_,
                session_->transport() ? (int)session_->transport()->failed() : -1);
-        fflush(stdout);
         set_status("COULD NOT CONNECT - NETWORK MAY NEED A RELAY (M2)");
         screen_ = LobbyFailed;
       }
