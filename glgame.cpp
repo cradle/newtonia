@@ -1909,6 +1909,13 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in) {
     a->teleport_pending = (state & 4) != 0;
     a->quantum_observed = (state & 8) != 0;
     if (!was_vulnerable && a->teleport_vulnerable) {
+      // The delta carries only the flag, not the timer — without this
+      // the client's own Asteroid::step sees vulnerable_time_left <= 0
+      // on the very next step and snaps the indicator straight back to
+      // the triangle. Mirror the host's window (glgame relocation sets
+      // 5000); both clocks started within one snapshot interval, and
+      // the host's clear ships as a state-byte delta anyway.
+      a->vulnerable_time_left = 5000;
       a->explode();  // arrival debris, as the host's relocation shows
       if (warp_sound) Mix_PlayChannel(-1, warp_sound, 0);
     }
