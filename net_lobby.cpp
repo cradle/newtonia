@@ -112,6 +112,7 @@ NetLobby::~NetLobby() {
     signal_->close();
     delete signal_;
   }
+  delete starfield;  // owned; heap + GPU buffers leak per lobby visit otherwise
 }
 
 void NetLobby::set_status(const char *text) {

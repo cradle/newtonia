@@ -1,5 +1,6 @@
 #include "net_session.h"
 
+#include <cmath>
 #include <vector>
 
 #include "net_protocol.h"
@@ -220,6 +221,11 @@ bool SnapshotAssembler::add_chunk(Reader &r) {
 // ---- deserialized-state sanity gate -------------------------------------
 
 bool net_state_sane(const Save::GameState &s) {
+  // NaN/Inf must be rejected explicitly: every comparison against a NaN is
+  // false, so a NaN world dimension would slip past the range checks below
+  // and reach Grid()/WrappedPoint::set_boundaries(), where ceil(NaN/..) is
+  // UB and rand()%0 faults.
+  if (!std::isfinite(s.world_x) || !std::isfinite(s.world_y)) return false;
   if (s.world_x < 500.0f || s.world_x > 200000.0f) return false;
   if (s.world_y < 500.0f || s.world_y > 200000.0f) return false;
   if (s.players.size() < 1 || s.players.size() > 2) return false;

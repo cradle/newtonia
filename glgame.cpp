@@ -78,6 +78,8 @@ GLGame::GLGame(SDL_GameController *controller) :
   pickups = new std::list<Pickup*>;
   black_holes = new std::list<BlackHole*>;
 
+  net_clear_event_outboxes();
+
   WrappedPoint::set_boundaries(world);
 
 
@@ -263,6 +265,8 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   dead_objects = new std::list<Asteroid*>;
   pickups = new std::list<Pickup*>;
   black_holes = new std::list<BlackHole*>;
+
+  net_clear_event_outboxes();
 
   WrappedPoint::set_boundaries(world);
 
@@ -572,6 +576,16 @@ void GLGame::focus_lost() {
 
 void GLGame::controller_added(SDL_GameController *ctrl) {
   SDL_JoystickID id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(ctrl));
+  // Online, the only ship this machine controls is the local player;
+  // players->front() is the remote host's ghost on a client (and the
+  // remote client's ghost on a host), so binding "the first ship without
+  // a controller" would hand the pad to a ship this machine can't drive.
+  if (net_mode_ != NetOff) {
+    GLShip *local = local_player();
+    if (local && !local->is_my_controller_id(id) && !local->has_controller())
+      local->set_controller(ctrl);
+    return;
+  }
   // Skip if any player already has this controller
   for(auto* glship : *players) {
     if(glship->is_my_controller_id(id)) return;
@@ -841,6 +855,13 @@ void GLGame::net_host_signal_maintain(int delta) {
         if (net_signal_retry_ms_ <= 0) net_signal_retry_ms_ = 3000;
         break;
       case NetSignal::Event::Error:
+        // rate-limited: the room is still ours (2h TTL, valid token) — the
+        // per-IP host limiter just throttled this reclaim. Back off and
+        // retry rather than abandoning a live room, same as the joiner.
+        if (ev.text == "rate-limited") {
+          net_signal_retry_ms_ = 15000;
+          break;
+        }
         // no-such-room / expired on reclaim: the room is gone for good.
         printf("net: room %s lost (%s)\n", net_room_code_.c_str(),
                ev.text.c_str());
@@ -977,6 +998,12 @@ void GLGame::net_host_rejoin_poll(int delta) {
       }
       if (net_signal_retry_ms_ <= 0) net_signal_retry_ms_ = 3000;
     } else if (ev.kind == NetSignal::Event::Error) {
+      // rate-limited: back off and retry, the room is still ours (mirror
+      // of the healthy-path handler).
+      if (ev.text == "rate-limited") {
+        net_signal_retry_ms_ = 15000;
+        continue;
+      }
       printf("net: room %s lost (%s)\n", net_room_code_.c_str(),
              ev.text.c_str());
       fflush(stdout);
@@ -1283,6 +1310,20 @@ void GLGame::host_toggle_friendly_fire() {
   net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
 }
 
+// The host event outboxes are process-wide statics holding raw Ship*/
+// positions queued during a tick and drained at its end. They must not
+// carry entries across GLGame instances: a client game populates them
+// (its local ship pushes to net_shots on every shot), and if that game is
+// deleted before the entries are drained, a later host game's drain would
+// dereference freed ships. Clearing at construction guarantees each game
+// starts from empty regardless of how the previous one ended.
+void GLGame::net_clear_event_outboxes() {
+  Asteroid::net_impacts.clear();
+  Ship::net_ship_impacts.clear();
+  Ship::net_shots.clear();
+  Ship::net_booms.clear();
+}
+
 void GLGame::net_send_event(uint8_t code, uint32_t arg) {
   // While the joiner is disconnected (rejoinable loss) the host plays on
   // with no session at all — level completion and pause still fire events.
@@ -1354,7 +1395,7 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
         fflush(stdout);
       }
       float ix, iy;
-      Net::unpack_pos(arg, ix, iy);
+      Net::unpack_pos(arg, ix, iy, world.x(), world.y());
       net_spark_asteroid_at(ix, iy);
       break;
     }
@@ -1395,7 +1436,7 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
       // Chunks are per-instance and every play site sets volume first,
       // so borrowing the local ship's is safe.
       float wx, wy;
-      Net::unpack_pos(arg, wx, wy);
+      Net::unpack_pos(arg, wx, wy, world.x(), world.y());
       float vol = net_listener_volume(Point(wx, wy));
       if (vol <= 0.0f || players->empty()) break;
       Mix_Chunk *snd = NULL;
@@ -2250,10 +2291,12 @@ void GLGame::net_apply_keyframe_asteroid_ids(Save::Stream &in,
       return;
     }
   }
+  // Check the count BEFORE allocating: s.asteroids is already bounded by
+  // the deserializer, so a hostile n_ids can't force a huge vector here.
+  if (n_ids != s.asteroids.size()) return;  // malformed snapshot
   std::vector<uint32_t> ids(n_ids);
   for (uint32_t i = 0; i < n_ids; i++)
     if (!nx_read(in, ids[i])) return;
-  if (n_ids != s.asteroids.size()) return;  // malformed snapshot
 
   std::map<uint32_t, Asteroid *> by_id;
   for (auto *a : *objects) by_id[a->net_id] = a;
@@ -2844,7 +2887,7 @@ void GLGame::tick(int delta) {
             if (Asteroid::thud_sound != NULL)
               Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
             // Station-hull deflection: same thud cue for the net client.
-            net_send_event(Net::EV_ROID_THUD, Net::pack_pos(bpos.x(), bpos.y()));
+            net_send_event(Net::EV_ROID_THUD, Net::pack_pos(bpos.x(), bpos.y(), world.x(), world.y()));
             station->hit();
             s->bullets[i] = std::move(s->bullets.back());
             s->bullets.pop_back();
@@ -2917,7 +2960,8 @@ void GLGame::tick(int delta) {
         }
         net_send_event(Net::EV_STATION_BOOM,
                        Net::pack_pos(mini_station->position.x(),
-                                     mini_station->position.y()));
+                                     mini_station->position.y(),
+                                     world.x(), world.y()));
       }
     }
 
@@ -3045,7 +3089,7 @@ void GLGame::tick(int delta) {
     for (const Asteroid::NetImpact &im : Asteroid::net_impacts)
       net_send_event(im.kind == Asteroid::IMPACT_TING ? Net::EV_ROID_TING
                                                       : Net::EV_ROID_THUD,
-                     Net::pack_pos(im.x, im.y));
+                     Net::pack_pos(im.x, im.y, world.x(), world.y()));
     // Non-fatal ship-vs-asteroid bounces (debris + armour ting). Enemy
     // ships collide through the same code; only player ships are sent.
     for (const Ship::NetShipImpact &si : Ship::net_ship_impacts) {
@@ -3067,14 +3111,15 @@ void GLGame::tick(int delta) {
       else if (shooter != p2)
         net_send_event(Net::EV_WORLD_SHOT,
                        Net::pack_pos(shooter->position.x(),
-                                     shooter->position.y()));
+                                     shooter->position.y(),
+                                     world.x(), world.y()));
     }
     // Deaths: player explosions already reach the client through the
     // snapshot extras; world actors' need the event.
     for (const Ship *boom : Ship::net_booms)
       if (boom != p1 && boom != p2)
         net_send_event(Net::EV_WORLD_BOOM,
-                       Net::pack_pos(boom->position.x(), boom->position.y()));
+                       Net::pack_pos(boom->position.x(), boom->position.y(), world.x(), world.y()));
   }
   Asteroid::net_impacts.clear();
   Ship::net_ship_impacts.clear();

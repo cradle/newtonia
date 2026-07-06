@@ -55,6 +55,14 @@ static bool wv(Save::Stream &f, const T &v) { return f.write(&v, sizeof(T)); }
 template<typename T>
 static bool rv(Save::Stream &f, T &v)       { return f.read(&v, sizeof(T)); }
 
+// Read a container count and reject it if it exceeds a sane maximum, so a
+// hostile/corrupt netplay snapshot can't force a huge resize() before
+// net_state_sane() gets a chance to run. Returns false (kills the parse)
+// on a read failure or an out-of-range count.
+static bool read_count(Save::Stream &f, uint32_t &cnt, uint32_t max_allowed) {
+    return rv(f, cnt) && cnt <= max_allowed;
+}
+
 template<typename T, int N>
 static bool wa(Save::Stream &f, const T (&a)[N]) { return f.write(a, sizeof(T) * N); }
 
@@ -322,7 +330,7 @@ static bool read_station(Save::Stream &f, Save::Station &s) {
     if (!rv(f, deploying) || !rv(f, redeploying)) return false;
     s.deploying = (bool)deploying; s.redeploying = (bool)redeploying;
     uint32_t cnt = 0;
-    if (!rv(f, cnt)) return false;
+    if (!read_count(f, cnt, 64)) return false;  // net_state_sane bound
     s.enemies.resize(cnt);
     for (auto &e : s.enemies)
         if (!read_enemy(f, e)) return false;
@@ -403,19 +411,29 @@ bool Save::deserialize_game(Save::Stream &f, Save::GameState &s, uint16_t versio
 
     uint32_t cnt = 0;
 
-    ok = ok && rv(f, cnt);
+    // Bound every count BEFORE resizing: this stream may be a hostile or
+    // corrupt netplay snapshot, and net_state_sane() only runs after the
+    // whole state deserializes — a raw resize(0xFFFFFFFF) would bad_alloc
+    // and terminate first. The caps match net_state_sane()'s limits (a
+    // legitimate save never approaches them), so a count past them was
+    // going to be rejected anyway.
+    ok = ok && read_count(f, cnt, 2);
+    if (!ok) return false;
     s.players.resize(cnt);
     for (auto &p : s.players) ok = ok && read_player(f, p);
 
-    ok = ok && rv(f, cnt);
+    ok = ok && read_count(f, cnt, 5000);
+    if (!ok) return false;
     s.asteroids.resize(cnt);
     for (auto &a : s.asteroids) ok = ok && read_asteroid(f, a);
 
-    ok = ok && rv(f, cnt);
+    ok = ok && read_count(f, cnt, 500);
+    if (!ok) return false;
     s.pickups.resize(cnt);
     for (auto &p : s.pickups) ok = ok && read_pickup(f, p);
 
-    ok = ok && rv(f, cnt);
+    ok = ok && read_count(f, cnt, 16);
+    if (!ok) return false;
     s.black_holes.resize(cnt);
     for (auto &bh : s.black_holes)
         ok = ok && rv(f, bh.pos_x) && rv(f, bh.pos_y);

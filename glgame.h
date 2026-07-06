@@ -167,6 +167,7 @@ private:
   bool net_ids_adopted_ = false;  // client: bootstrap id adoption ran
 
   // Phase 8 polish (see NETPLAY.md)
+  static void net_clear_event_outboxes();  // reset the static host outboxes
   void net_send_event(uint8_t code, uint32_t arg = 0);
   void net_handle_event(uint8_t code, uint32_t arg);
   void net_spark_asteroid_at(float x, float y);

@@ -193,6 +193,12 @@ Save::Station GLStation::capture_state() const {
   s.deploying = deploying;
   s.redeploying = redeploying;
   for (const auto *gs : *objects) {
+    // Skip enemies that are dead but not yet pruned (the host keeps them a
+    // couple of seconds for debris). Serializing them would make the
+    // client — which wholesale-rebuilds this list from the record 10x/s —
+    // resurrect a killed enemy for that whole window; its death visual
+    // already replicates via EV_WORLD_BOOM.
+    if (!gs->ship->is_alive()) continue;
     Save::Enemy e;
     e.pos_x = gs->ship->position.x();
     e.pos_y = gs->ship->position.y();

@@ -29,7 +29,7 @@ namespace Net {
 //    (its Save record carries no bullets — the client saw none).
 // 7: gen-20 station enemies' bullet section appended after the
 //    mini-station's, in enemies-list order.
-const uint8_t PROTO_VERSION = 8;
+const uint8_t PROTO_VERSION = 9;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check
@@ -82,14 +82,26 @@ enum EventCode {
   EV_FRIENDLY_FIRE = 16,
 };
 
-// Packs a world position into an event arg (two int16s). World sizes
-// stay far inside +/-32k for any realistic generation count.
-inline uint32_t pack_pos(float x, float y) {
-  return ((uint32_t)(uint16_t)(int16_t)x << 16) | (uint32_t)(uint16_t)(int16_t)y;
+// Packs a world position into an event arg as two uint16 FRACTIONS of the
+// world extent (0..65535 across 0..world_w/h). Raw int16 coordinates
+// overflowed once the world grew past 32k (~generation 30, +3000/gen from
+// gen 20); fractions always fit and the resolution (world/65535) stays
+// sub-unit for small worlds and a few units for huge ones — fine for the
+// audio-attenuation and impact-spark cues these positions drive. Both
+// peers share the world size, so the fraction round-trips.
+inline uint32_t pack_pos(float x, float y, float world_w, float world_h) {
+  float fx = world_w > 0.0f ? x / world_w : 0.0f;
+  float fy = world_h > 0.0f ? y / world_h : 0.0f;
+  if (fx < 0.0f) fx = 0.0f; else if (fx > 1.0f) fx = 1.0f;
+  if (fy < 0.0f) fy = 0.0f; else if (fy > 1.0f) fy = 1.0f;
+  uint32_t ux = (uint32_t)(fx * 65535.0f + 0.5f);
+  uint32_t uy = (uint32_t)(fy * 65535.0f + 0.5f);
+  return (ux << 16) | uy;
 }
-inline void unpack_pos(uint32_t arg, float &x, float &y) {
-  x = (float)(int16_t)(uint16_t)(arg >> 16);
-  y = (float)(int16_t)(uint16_t)(arg & 0xffff);
+inline void unpack_pos(uint32_t arg, float &x, float &y,
+                       float world_w, float world_h) {
+  x = (float)(arg >> 16)    / 65535.0f * world_w;
+  y = (float)(arg & 0xffff) / 65535.0f * world_h;
 }
 
 // MSG_INPUT held-button bitmask (uint16). One-shot actions (boost,
