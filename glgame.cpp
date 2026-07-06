@@ -821,58 +821,78 @@ void GLGame::net_adopt_signal(NetSignal *signal, const std::string &room_code,
   net_ice_ = ice_servers;
 }
 
+// M3-1 reclaim countdown, shared by both host signal loops: the relay
+// socket dropped, so count down and reattach to the room with the token.
+void GLGame::net_host_signal_reclaim_tick(int delta) {
+  if (net_signal_retry_ms_ <= 0) return;
+  net_signal_retry_ms_ -= delta;
+  if (net_signal_retry_ms_ > 0) return;
+  net_signal_retry_ms_ = 0;
+  net_ice_.clear();  // fresh TURN creds ride the reclaim reply
+  net_signal_->connect_host_reclaim(net_signal_url(), net_room_code_,
+                                    net_room_token_);
+  NET_LOG("net: reclaiming room %s\n", net_room_code_.c_str());
+}
+
+// Signal events both host loops must treat identically: TURN creds,
+// socket drop (schedule a reclaim, or give up on the pre-token relay),
+// and relay errors (back off when rate-limited, drop the room when it
+// is gone for good).
+GLGame::NetSignalEventResult
+GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
+  switch (ev.kind) {
+    case NetSignal::Event::Ice:
+      net_ice_.push_back(ev.text);
+      if (net_rehost_) net_rehost_->set_ice_servers(net_ice_);
+      return NetSigHandled;
+    case NetSignal::Event::Closed:
+      if (net_room_token_.empty()) {
+        // Pre-token relay: no reclaim protocol — drop the signal (the
+        // old behaviour; rejoin stops being possible).
+        net_signal_->close();
+        delete net_signal_;
+        net_signal_ = nullptr;
+        return NetSigDropped;
+      }
+      if (net_signal_retry_ms_ <= 0) net_signal_retry_ms_ = 3000;
+      return NetSigHandled;
+    case NetSignal::Event::Error:
+      // rate-limited: the room is still ours (2h TTL, valid token) — the
+      // per-IP host limiter just throttled this reclaim. Back off and
+      // retry rather than abandoning a live room, same as the joiner.
+      if (ev.text == "rate-limited") {
+        net_signal_retry_ms_ = 15000;
+        return NetSigHandled;
+      }
+      // no-such-room / expired on reclaim: the room is gone for good.
+      NET_LOG("net: room %s lost (%s)\n", net_room_code_.c_str(),
+             ev.text.c_str());
+      net_signal_->close();
+      delete net_signal_;
+      net_signal_ = nullptr;
+      return NetSigDropped;
+    default:
+      return NetSigUnhandled;
+  }
+}
+
 // M3-1 mobile lifecycle: the relay socket can drop while the game is fine
 // (host app backgrounded, wifi blip). Reclaim the room with the token so
 // later rejoins stay possible, and treat a peer-join notification as
 // instant client-loss detection — the client would not be rejoining the
 // room if its transport were alive (ICE takes ~10 s to say so).
 void GLGame::net_host_signal_maintain(int delta) {
-  if (net_signal_retry_ms_ > 0) {
-    net_signal_retry_ms_ -= delta;
-    if (net_signal_retry_ms_ <= 0) {
-      net_signal_retry_ms_ = 0;
-      net_ice_.clear();  // fresh TURN creds ride the reclaim reply
-      net_signal_->connect_host_reclaim(net_signal_url(), net_room_code_,
-                                        net_room_token_);
-      NET_LOG("net: reclaiming room %s\n", net_room_code_.c_str());
-    }
-  }
+  net_host_signal_reclaim_tick(delta);
 
   NetSignal::Event ev;
   while (net_signal_->poll(ev)) {
+    NetSignalEventResult common = net_host_signal_common_event(ev);
+    if (common == NetSigDropped) return;
+    if (common == NetSigHandled) continue;
     switch (ev.kind) {
-      case NetSignal::Event::Ice:
-        net_ice_.push_back(ev.text);
-        break;
       case NetSignal::Event::Room:
         NET_LOG("net: room %s reclaimed\n", net_room_code_.c_str());
         break;
-      case NetSignal::Event::Closed:
-        if (net_room_token_.empty()) {
-          // Pre-token relay: no reclaim protocol — drop the signal (the
-          // old behaviour; rejoin stops being possible).
-          net_signal_->close();
-          delete net_signal_;
-          net_signal_ = nullptr;
-          return;
-        }
-        if (net_signal_retry_ms_ <= 0) net_signal_retry_ms_ = 3000;
-        break;
-      case NetSignal::Event::Error:
-        // rate-limited: the room is still ours (2h TTL, valid token) — the
-        // per-IP host limiter just throttled this reclaim. Back off and
-        // retry rather than abandoning a live room, same as the joiner.
-        if (ev.text == "rate-limited") {
-          net_signal_retry_ms_ = 15000;
-          break;
-        }
-        // no-such-room / expired on reclaim: the room is gone for good.
-        NET_LOG("net: room %s lost (%s)\n", net_room_code_.c_str(),
-               ev.text.c_str());
-        net_signal_->close();
-        delete net_signal_;
-        net_signal_ = nullptr;
-        return;
       case NetSignal::Event::PeerJoin:
         // The client re-entered the room: its transport is dead even if
         // ours has not noticed yet. Enter the rejoin flow immediately.
@@ -935,16 +955,7 @@ void GLGame::net_host_rejoin_poll(int delta) {
   // Signal socket dropped mid-rejoin: reclaim the room (M3-1) with the
   // same countdown the healthy path uses; the offer re-sends once the
   // reclaimed Room frame arrives.
-  if (net_signal_retry_ms_ > 0) {
-    net_signal_retry_ms_ -= delta;
-    if (net_signal_retry_ms_ <= 0) {
-      net_signal_retry_ms_ = 0;
-      net_ice_.clear();
-      net_signal_->connect_host_reclaim(net_signal_url(), net_room_code_,
-                                        net_room_token_);
-      NET_LOG("net: reclaiming room %s (mid-rejoin)\n", net_room_code_.c_str());
-    }
-  }
+  net_host_signal_reclaim_tick(delta);
 
   if (net_rehost_ && !net_rehost_offer_sent_ && net_signal_retry_ms_ <= 0 &&
       net_rehost_->local_description_ready()) {
@@ -970,6 +981,9 @@ void GLGame::net_host_rejoin_poll(int delta) {
 
   NetSignal::Event ev;
   while (net_signal_->poll(ev)) {
+    NetSignalEventResult common = net_host_signal_common_event(ev);
+    if (common == NetSigDropped) return;
+    if (common == NetSigHandled) continue;
     if (ev.kind == NetSignal::Event::Answer && net_rehost_) {
       net_rehost_->set_remote_answer(ev.text);
       net_session_ = new NetSession(net_rehost_, NetSession::HostRole);
@@ -979,36 +993,11 @@ void GLGame::net_host_rejoin_poll(int delta) {
           net_rehost_ ? net_rehost_
                       : (net_session_ ? net_session_->transport() : nullptr);
       if (t) t->add_remote_candidate(ev.text2, ev.text);
-    } else if (ev.kind == NetSignal::Event::Ice) {
-      net_ice_.push_back(ev.text);
-      if (net_rehost_) net_rehost_->set_ice_servers(net_ice_);
     } else if (ev.kind == NetSignal::Event::Room) {
       // Reclaimed mid-rejoin: the room's stored offer died with the old
       // socket — resend the current one.
       NET_LOG("net: room %s reclaimed (mid-rejoin)\n", net_room_code_.c_str());
       net_rehost_offer_sent_ = false;
-    } else if (ev.kind == NetSignal::Event::Closed) {
-      if (net_room_token_.empty()) {
-        // Pre-token relay: no reclaim possible — the old freeze fallback.
-        net_signal_->close();
-        delete net_signal_;
-        net_signal_ = nullptr;
-        return;
-      }
-      if (net_signal_retry_ms_ <= 0) net_signal_retry_ms_ = 3000;
-    } else if (ev.kind == NetSignal::Event::Error) {
-      // rate-limited: back off and retry, the room is still ours (mirror
-      // of the healthy-path handler).
-      if (ev.text == "rate-limited") {
-        net_signal_retry_ms_ = 15000;
-        continue;
-      }
-      NET_LOG("net: room %s lost (%s)\n", net_room_code_.c_str(),
-             ev.text.c_str());
-      net_signal_->close();
-      delete net_signal_;
-      net_signal_ = nullptr;
-      return;
     }
   }
 

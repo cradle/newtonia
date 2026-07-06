@@ -21,6 +21,7 @@
 #include "shield_pickup.h"
 #include "god_mode_pickup.h"
 #include "nova_charge_pickup.h"
+#include "net_signal.h"
 #include <SDL.h>
 #include <list>
 #include <map>
@@ -30,7 +31,6 @@
 using namespace std;
 
 class NetSession;
-class NetSignal;
 class NetTransport;
 namespace Net { class SnapshotAssembler; }
 
@@ -195,6 +195,15 @@ private:
   // dropped signal socket, reclaims the room with the token, and
   // fast-detects client loss from the room's peer-join notification.
   void net_host_signal_maintain(int delta);
+  // Shared plumbing between the two loops above: the M3-1 reclaim
+  // countdown, and the signal events both must treat identically.
+  void net_host_signal_reclaim_tick(int delta);
+  enum NetSignalEventResult {
+    NetSigUnhandled,  // not a common event — the caller's loop handles it
+    NetSigHandled,    // consumed; keep polling
+    NetSigDropped,    // net_signal_ was deleted; the caller must return
+  };
+  NetSignalEventResult net_host_signal_common_event(const NetSignal::Event &ev);
   NetSignal *net_signal_ = nullptr;     // owned; null in the manual flow
   std::string net_room_code_;
   std::string net_room_token_;        // proves room ownership on reclaim
