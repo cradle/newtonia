@@ -54,7 +54,11 @@ cd signal
 npx wrangler dev --local --port 8787 &   # local relay (also used by the e2e drivers)
 node test/reclaim_test.js                # M3-1 protocol: token + grace + reclaim (24 checks)
 node test/rate_key_test.mjs              # rate_key /64-collapse unit test
+node test/pv_replay_test.mjs             # stored-offer replay keeps the version stamp
 ```
+
+`SIGNAL_WS=wss://... node test/pv_replay_test.mjs` points a test at another
+relay (e.g. production after a worker deploy).
 
 ## 4. End-to-end drivers (`test/e2e/`)
 
@@ -67,7 +71,10 @@ cd signal && npx wrangler dev --local --port 8787 &         # relay
 make clean && make -j NETPLAY=1                             # netplay build
 
 test/e2e/room.sh     # connect via room code, 3 level skips, both fire 8s
-test/e2e/rejoin.sh   # SIGKILL joiner mid-game -> rejoin with same code
+test/e2e/rejoin.sh   # SIGKILL joiner mid-game -> auto-pause -> rejoin -> resume
+test/e2e/impacts.sh  # gen-3 spin-and-fire: joiner detects cosmetic impacts locally
+test/e2e/ownroom.sh  # shared-prefs auto-join probe (mac host+client on one box)
+test/e2e/mismatch.sh # fake pv-less old host (node) -> instant VERSION MISMATCH
 ```
 
 Each driver re-execs itself under `xvfb-run` when `DISPLAY` is unset, prints
