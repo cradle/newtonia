@@ -366,8 +366,8 @@ GitHub Actions runs builds on every push to `master`, `main`, or `claude/*` bran
 | `.github/workflows/xbox-dev.yml` | GDK Desktop (Gaming.Desktop.x64) build — catches Xbox-port compile errors without hardware |
 | `.github/workflows/xbox-console-smoke.yml` | Compile-only check of the `_GAMING_XBOX` console paths with MSVC under `WINAPI_FAMILY_GAMES` (no GDKX/NDA material; GDK-only headers stubbed in `xbox/smoke_stubs/`) |
 
-**Deployment workflows** (triggered manually):
-- `.github/workflows/deploy-steam.yml` — Steam (Windows/macOS/Linux via Steamworks SDK); manual dispatch defaults to the `netplay` test branch, tag pushes go to `beta`
+**Deployment workflows** (triggered by version tags or manual dispatch). Two tag namespaces: `v*.*.*` is the normal release pipeline; `netplay-v*` is a netplay test release routed to test channels (Steam `netplay` branch, itch `html5-netplay` channel; TestFlight/Play-internal are test tracks either way). The globs can't overlap, so netplay tags never touch the normal pipeline:
+- `.github/workflows/deploy-steam.yml` — Steam (Windows/macOS/Linux via Steamworks SDK); manual dispatch defaults to the `netplay` test branch, `v*.*.*` tags go to `beta`, `netplay-v*` tags to `netplay`
 - `.github/workflows/deploy-ios.yml` — TestFlight
 - `.github/workflows/deploy-android.yml` — Play Store
 - `.github/workflows/deploy-itch.yml` — Itch.io (pushes only the playable game `web/dist/play`, not the landing page)

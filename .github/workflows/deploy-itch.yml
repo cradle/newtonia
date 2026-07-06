@@ -1,13 +1,17 @@
 name: Deploy Itch.io
 
+# v*.*.* tags push the public html5 channel; netplay-v* tags (netplay test
+# releases) push a separate html5-netplay channel so the public game is
+# untouched.
 on:
   push:
     tags:
       - 'v*.*.*'
+      - 'netplay-v*'
   workflow_dispatch:
     inputs:
       channel:
-        description: 'itch.io channel (e.g. html5)'
+        description: 'itch.io channel (e.g. html5, html5-netplay)'
         required: true
         default: 'html5'
 
@@ -53,7 +57,13 @@ jobs:
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_CREDENTIALS }}
         run: |
-          CHANNEL="${{ github.event.inputs.channel || 'html5' }}"
+          CHANNEL="${{ github.event.inputs.channel }}"
+          if [ -z "$CHANNEL" ]; then
+            case "${{ github.ref_name }}" in
+              netplay-*) CHANNEL=html5-netplay ;;
+              *)         CHANNEL=html5 ;;
+            esac
+          fi
           # Upload only the playable game (web/dist/play), not the landing
           # page that web/dist serves at the root of the GitHub Pages site.
           linux-amd64/butler push web/dist/play ${{ secrets.ITCH_GAME }}:${CHANNEL} \

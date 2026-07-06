@@ -1,9 +1,13 @@
 name: Deploy Steam
 
+# Two tag namespaces (globs can't overlap: v*.*.* never matches netplay-*):
+#   v*.*.*       — normal release pipeline, deploys to the 'beta' branch
+#   netplay-v*   — netplay test release, deploys to the 'netplay' branch
 on:
   push:
     tags:
       - 'v*.*.*'
+      - 'netplay-v*'
   workflow_dispatch:
     inputs:
       branch:
@@ -564,4 +568,4 @@ jobs:
           depot1Path: windows
           depot2Path: macos
           depot3Path: linux
-          releaseBranch: ${{ github.event.inputs.branch || 'beta' }}
+          releaseBranch: ${{ github.event.inputs.branch || (startsWith(github.ref_name, 'netplay-') && 'netplay' || 'beta') }}

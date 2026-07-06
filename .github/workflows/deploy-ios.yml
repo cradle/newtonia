@@ -2,11 +2,14 @@ name: Deploy iOS (TestFlight / App Store)
 
 # Triggered by pushing a version tag, e.g.:
 #   git tag v1.0.0 && git push --tags
+# netplay-v* tags (netplay test releases) also deploy — TestFlight is
+# already a test channel, so no routing difference.
 # Or manually from the Actions tab.
 on:
   push:
     tags:
       - 'v*.*.*'
+      - 'netplay-v*'
     branches:
       - claude/fix-ios-xcode-beta-uoUHc
   workflow_dispatch:
@@ -172,7 +175,8 @@ jobs:
       - name: Set version numbers
         run: |
           TAG_VERSION="${{ github.ref_name }}"
-          SHORT_VERSION="${TAG_VERSION#v}"
+          SHORT_VERSION="${TAG_VERSION#netplay-}"
+          SHORT_VERSION="${SHORT_VERSION#v}"
           # Fall back to 1.0 if not triggered by a version tag
           if ! echo "$SHORT_VERSION" | grep -qE '^[0-9]+(\.[0-9]+){0,2}$'; then
             SHORT_VERSION="1.0"
