@@ -214,8 +214,12 @@ jobs:
           SDL2MIX_LIB=$(find "$(pwd)/SDL2_mixer/build-ios-sim" -name "libSDL2_mixer.a" | head -1)
           # Absolute paths: xcodebuild links with cwd at the PROJECT dir
           # (newtonia/ios), so relative archive paths don't resolve.
+          # CoreBluetooth: this workflow's simulator SDL2 is built WITH
+          # hidapi (unlike deploy-ios's device SDL2, -DSDL_HIDAPI=OFF), and
+          # SDL's BLE hidapi needs it — the project's framework list doesn't
+          # carry it, same as the hand-rolled link above adds it explicitly.
           NETLIBS=$(find "$(pwd)/libdatachannel/build-ios-sim" "$(pwd)/netlibs/lib" -name "*.a" | sort -u | tr '\n' ' ')
-          OTHER_LD="-ObjC $SDL2MAIN_LIB $SDL2_LIB $SDL2MIX_LIB $NETLIBS"
+          OTHER_LD="-ObjC $SDL2MAIN_LIB $SDL2_LIB $SDL2MIX_LIB $NETLIBS -framework CoreBluetooth"
           xcodebuild build \
             -project newtonia/ios/Newtonia-iOS.xcodeproj \
             -scheme Newtonia \
