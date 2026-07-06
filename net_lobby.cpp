@@ -451,6 +451,8 @@ void NetLobby::pump_signal(int delta) {
         // ICE starts on both sides at once (no strip_ice_candidates — that
         // trick belongs to the clipboard flow's human-latency gap).
         if (!hosting_ && screen_ == RoomJoining && transport_) {
+          NET_LOG("[lobby] joining with %d turn servers\n",
+                 (int)ice_servers_.size());
           transport_->set_ice_servers(ice_servers_);
           transport_->start_join(ev.text);
         }
@@ -741,7 +743,7 @@ void NetLobby::tick(int delta) {
         NET_LOG("[lobby] connect failed: session_phase=%d waited=%d ms transport_failed=%d\n",
                (int)p, connect_wait_ms_,
                session_->transport() ? (int)session_->transport()->failed() : -1);
-        set_status("COULD NOT CONNECT - NETWORK MAY NEED A RELAY (M2)");
+        set_status("COULD NOT CONNECT - A FIREWALL MAY BE BLOCKING THE GAME");
         screen_ = LobbyFailed;
       }
       break;
