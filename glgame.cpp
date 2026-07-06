@@ -1511,7 +1511,7 @@ void GLGame::net_set_generation_banner(int gen) {
   }
   char buf[64];
   if (name)
-    snprintf(buf, sizeof(buf), "LEVEL %d - NEW %s", gen + 1, name);
+    snprintf(buf, sizeof(buf), "LEVEL %d - %s", gen + 1, name);
   else
     snprintf(buf, sizeof(buf), "LEVEL %d", gen + 1);
   net_banner_text_ = buf;
