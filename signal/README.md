@@ -56,10 +56,31 @@ The paid resources are the Worker/DO invocations and TURN relay bandwidth
 
 There is **no hard monthly spend cap** on paid Workers — the backstops are:
 `[limits] cpu_ms` in wrangler.toml (set, 50 ms/invocation), **Billing →
-Notifications** usage alerts in the dashboard, and the manual kill
-switches: disable the worker (the game degrades to the manual clipboard
-code flow) and delete the Calls TURN key (revokes all outstanding TURN
-credentials instantly).
+Notifications** usage alerts in the dashboard, and the manual kill switches
+below.
+
+### Kill switches (CLI, no redeploy)
+
+Two runtime flags, toggled with `wrangler secret` — they take effect on the
+next request, and `secret delete` restores service. No `wrangler deploy`
+needed.
+
+```sh
+# Master off — refuse all rooms. Hosts drop to the manual clipboard code
+# flow (fall_back_to_manual), so friends can still play; no TURN is minted.
+npx wrangler secret put DISABLED     # value is ignored; type anything
+npx wrangler secret delete DISABLED  # back online
+
+# TURN off — cut the metered relay bandwidth (the per-GB cost); signaling
+# keeps working and the game silently continues STUN-only.
+npx wrangler secret put TURN_OFF
+npx wrangler secret delete TURN_OFF
+```
+
+Bluntest option, if you'd rather remove the worker entirely: `npx wrangler
+delete` (clients hit the 12 s signal timeout, then fall back to manual
+codes). The Calls TURN key can also be rolled/deleted in the dashboard,
+which revokes every outstanding credential instantly.
 
 ## Tests
 

@@ -66,6 +66,9 @@ function random_code() {
 // Configured via secrets (wrangler secret put TURN_KEY_ID / TURN_API_TOKEN);
 // without them this returns [] and the game stays STUN-only.
 async function turn_ice_servers(env) {
+  // TURN kill switch: `wrangler secret put TURN_OFF` cuts the metered relay
+  // bandwidth (STUN-only) while signaling keeps working. Delete to restore.
+  if (env.TURN_OFF) return [];
   if (!env.TURN_KEY_ID || !env.TURN_API_TOKEN) return [];
   try {
     const resp = await fetch(
@@ -133,6 +136,16 @@ export default {
     // a fixed fallback key still lets the limiter exercise end to end.
     const ip = rate_key(request.headers.get("CF-Connecting-IP") || "local");
     const role = url.searchParams.get("role");
+
+    // Master kill switch: `wrangler secret put DISABLED` (any value) refuses
+    // all rooms without a redeploy; `wrangler secret delete DISABLED` restores.
+    // A refused host gets an error frame and drops to the manual clipboard
+    // code flow (net_lobby fall_back_to_manual), so friends can still play.
+    // No TURN is minted on a refused request. Checked before the limiter and
+    // before turn_ice_servers so a disabled worker mints nothing and spends
+    // no Limiter-DO round-trips.
+    if (env.DISABLED)
+      return reject_ws(request, role === "join" ? "no-such-room" : "disabled");
 
     if (role === "host") {
       if (!(await within_limit(env, ip, "host")))
