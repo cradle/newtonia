@@ -893,7 +893,12 @@ void NetLobby::draw() {
        (screen_ == WaitConnect && signal_)))
     Typer::draw_centered(0, -280, "CANCEL", 22);
 
-  if (status_ms_ > 0 && !status_.empty()) {
+  // The rejoin wait's persistent heading + countdown already say
+  // everything the transient status could ("RECONNECTING...", "ROOM
+  // FOUND..."); two WAITING lines just read as clutter. Errors go to
+  // LobbyFailed, so nothing informative is lost.
+  bool status_redundant = rejoin_mode_ && screen_ == RoomJoining;
+  if (status_ms_ > 0 && !status_.empty() && !status_redundant) {
     // Touch code entry: the usual status spot is behind the soft
     // keyboard; tuck it under the hint line instead. On the joiner
     // waiting screens the CANCEL band's glyphs (size 22 at -280) reach
