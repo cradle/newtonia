@@ -54,8 +54,12 @@ The paid resources are the Worker/DO invocations and TURN relay bandwidth
   Room state lives in DO storage; sockets recover by tag. A storage alarm
   frees abandoned rooms after the grace window.
 
-Set a **Workers usage cap** in the Cloudflare dashboard as a final
-backstop against a runaway bill.
+There is **no hard monthly spend cap** on paid Workers — the backstops are:
+`[limits] cpu_ms` in wrangler.toml (set, 50 ms/invocation), **Billing →
+Notifications** usage alerts in the dashboard, and the manual kill
+switches: disable the worker (the game degrades to the manual clipboard
+code flow) and delete the Calls TURN key (revokes all outstanding TURN
+credentials instantly).
 
 ## Tests
 
