@@ -29,7 +29,7 @@ namespace Net {
 //    (its Save record carries no bullets — the client saw none).
 // 7: gen-20 station enemies' bullet section appended after the
 //    mini-station's, in enemies-list order.
-const uint8_t PROTO_VERSION = 7;
+const uint8_t PROTO_VERSION = 8;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check
@@ -75,6 +75,11 @@ enum EventCode {
   EV_WORLD_SHOT = 13,
   EV_WORLD_BOOM = 14,
   EV_STATION_BOOM = 15,
+  // Friendly fire is a HOST preference but a room-wide rule: sent at
+  // client bootstrap (join and rejoin) and on every host toggle; arg is
+  // 0/1. The client adopts it for its HUD only — its own saved
+  // preference is never touched.
+  EV_FRIENDLY_FIRE = 16,
 };
 
 // Packs a world position into an event arg (two int16s). World sizes

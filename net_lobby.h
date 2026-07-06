@@ -73,6 +73,10 @@ private:
 public:
   // M3-1 auto-rejoin: skip Choose and join the known room immediately.
   explicit NetLobby(const std::string &rejoin_code);
+  // A room known to be dead (host said BYE, or the relay reported it
+  // closed/gone): the clipboard auto-join refuses it for the rest of this
+  // run — typing it manually still works.
+  static void mark_room_dead(const std::string &code);
 private:
 
   Screen screen_;

@@ -33,8 +33,11 @@ const int SIGNAL_TIMEOUT_MS = 12000;
 // auto-copies its code to the clipboard, so after quitting a game the
 // JOIN screen would otherwise auto-join the player's own dead room.
 static std::string s_last_hosted_code;
+static std::string s_dead_code;  // room confirmed dead (host BYE / relay says gone)
 
 }  // namespace
+
+void NetLobby::mark_room_dead(const std::string &code) { s_dead_code = code; }
 
 NetLobby::NetLobby()
     : screen_(Choose),
@@ -394,12 +397,14 @@ void NetLobby::pump_signal(int delta) {
             schedule_rejoin_retry("rate-limited", 15000);
           } else if (ev.text == "host-closed") {
             // The host deliberately shut the room down — say so.
+            mark_room_dead(code_entry_);
             fail_headline_ = "SERVER SHUT DOWN";
             set_status("THE HOST ENDED THE GAME");
             screen_ = LobbyFailed;
           } else {
             // no-such-room / expired / room-full: the room is genuinely
             // gone (host quit or grace elapsed) — retrying cannot help.
+            mark_room_dead(code_entry_);
             set_status("THE ROOM IS GONE - HOST A NEW ONE");
             screen_ = LobbyFailed;
           }
@@ -411,6 +416,9 @@ void NetLobby::pump_signal(int delta) {
           else if (ev.text == "rate-limited") set_status("TOO MANY TRIES - WAIT A MINUTE");
           else if (ev.text == "host-closed") set_status("THAT SERVER WAS SHUT DOWN");
           else set_status("THE ROOM HAS EXPIRED");
+          // Any of these except rate-limited means the code is dead — stop
+          // the clipboard auto-join from walking back into it.
+          if (ev.text != "rate-limited") mark_room_dead(code_entry_);
           room_code_.clear();
           code_entry_.clear();
           answer_sent_ = false;
@@ -550,7 +558,8 @@ void NetLobby::tick(int delta) {
         // it manually still works if someone really means it. The pref
         // copy survives an app kill/relaunch (the static doesn't).
         if (ok && (code == s_last_hosted_code ||
-                   code == g_prefs.last_hosted_code)) ok = false;
+                   code == g_prefs.last_hosted_code ||
+                   code == s_dead_code)) ok = false;
         if (ok && code_entry_.empty()) {
           code_entry_ = code;
           confirm();

@@ -268,6 +268,10 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     // on desktop where the safe area IS the screen edge).
     if(glgame->friendly_fire) {
       Typer::draw_centered(0, vhb+55, "friendly fire on", 8);
+    } else if(is_touch_mode()) {
+      // Touch: the text doubles as the toggle region (GLGame::touch_tap),
+      // so the OFF state must be visible too or it can't be turned back on.
+      Typer::draw_centered(0, vhb+55, "friendly fire off", 8);
     }
     // Label the key this ship actually has bound — online the client's
     // local ship is player 2 in the list but plays with player-1 keys.

@@ -102,6 +102,8 @@ private:
   void save_progress();   // save only when at least one player is alive or has lives
   void toggle_pause(bool broadcast = true);  // broadcast=false: applying a
                                              // peer's PAUSE/RESUME event
+  void host_toggle_friendly_fire();  // G key / HUD-text tap; announces the
+                                     // room rule online (EV_FRIENDLY_FIRE)
   void draw_map() const;
   void draw_objects(float direction = 0.0f, bool minimap = false) const;
   void draw_world(GLShip *glship = NULL, bool primary = true) const;
@@ -171,6 +173,7 @@ private:
   void net_set_generation_banner(int gen);
   void draw_net_overlays() const;   // banner / CONNECTION LOST
   bool net_connection_lost_ = false;
+  bool net_peer_bye_ = false;  // client: the host said BYE — no auto-rejoin
   int net_banner_ms_ = 0;
   std::string net_banner_text_;
   int net_last_input_time_ = 0;     // host: dead-man switch (1 s)

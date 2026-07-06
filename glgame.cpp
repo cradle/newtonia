@@ -151,6 +151,9 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
   players->front()->ship->respawn(grid, false);
   players->front()->ship->bullets.clear();  // no lethal spawn-flash debris
   add_remote_player();
+  // The host's friendly-fire preference is the room rule; the client's HUD
+  // shows its own preference until told otherwise.
+  net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
 }
 
 GLGame::~GLGame() {
@@ -1007,6 +1010,9 @@ void GLGame::net_host_rejoin_poll(int delta) {
       }
       net_set_generation_banner(generation);
       net_banner_text_ = "PLAYER 2 RECONNECTED";
+      // Re-sync the room rule — the rejoiner may be a fresh app launch
+      // whose HUD reset to its own preference.
+      net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
       printf("net: player 2 rejoined\n");
       fflush(stdout);
     } else if (net_session_->phase() == NetSession::Failed ||
@@ -1266,6 +1272,17 @@ bool GLGame::net_send_delta() {
   return true;
 }
 
+// Host-side toggle (G key, or the touch region on the HUD text). The
+// flip persists as the host's own preference and — online — is announced
+// as the room rule. The client never reaches this (host_keys / the
+// net_mode_ guard in touch_tap).
+void GLGame::host_toggle_friendly_fire() {
+  friendly_fire = !friendly_fire;
+  g_prefs.friendly_fire = friendly_fire;
+  save_preferences();
+  net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
+}
+
 void GLGame::net_send_event(uint8_t code, uint32_t arg) {
   // While the joiner is disconnected (rejoinable loss) the host plays on
   // with no session at all — level completion and pause still fire events.
@@ -1292,7 +1309,38 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
       break;
     case Net::EV_BYE:
       net_connection_lost_ = true;
+      // A BYE is a DELIBERATE goodbye, not a dropped link. The client must
+      // not auto-rejoin a room whose host said it isn't coming back (the
+      // relay may still hold it in reclaim grace if the host's signal
+      // socket was already dead — joins would be admitted and wait
+      // forever). Clearing the code disables the rejoin path and flips the
+      // card to its exit variant; the lobby's clipboard auto-join refuses
+      // the dead code too.
+      if (net_mode_ == NetClient && !net_room_code_.empty()) {
+        net_peer_bye_ = true;
+        NetLobby::mark_room_dead(net_room_code_);
+        net_room_code_.clear();
+        if (SDL_getenv("NEWTONIA_NET_DEBUG")) {  // e2e drivers grep for this
+          printf("net: host bye - no rejoin\n");
+          fflush(stdout);
+        }
+      }
       break;
+    case Net::EV_FRIENDLY_FIRE: {
+      // The host's preference is the room rule; adopt it for the HUD only
+      // (damage runs in the host sim). g_prefs stays the player's own.
+      bool on = arg != 0;
+      if (on != friendly_fire) {
+        net_banner_text_ = on ? "FRIENDLY FIRE ON" : "FRIENDLY FIRE OFF";
+        net_banner_ms_ = 2000;
+      }
+      friendly_fire = on;
+      if (SDL_getenv("NEWTONIA_NET_DEBUG")) {  // e2e drivers grep for this
+        printf("net: friendly fire %s\n", on ? "on" : "off");
+        fflush(stdout);
+      }
+      break;
+    }
     case Net::EV_ROID_THUD:
     case Net::EV_ROID_TING: {
       // Host-side bullet impacts the client can't simulate. The host
@@ -1451,9 +1499,13 @@ void GLGame::draw_net_overlays() const {
     if ((current_time / 700) % 2 == 0)
       Typer::draw_centered(0, -80, "REJOINING...", 16);
   } else if (net_connection_lost_) {
-    Typer::draw_centered(0, 60, "CONNECTION LOST", 34);
+    Typer::draw_centered(0, 60,
+                         net_peer_bye_ ? "THE HOST LEFT THE GAME"
+                                       : "CONNECTION LOST", net_peer_bye_ ? 22 : 34);
     if ((current_time / 700) % 2 == 0)
-      Typer::draw_centered(0, -80, "PRESS FIRE FOR MENU", 16);
+      Typer::draw_centered(0, -80,
+                           is_touch_mode() ? "TAP FIRE FOR MENU"
+                                           : "PRESS FIRE FOR MENU", 16);
   } else if (net_banner_ms_ > 0) {
     Typer::draw_centered(0, vh * 0.55f, net_banner_text_.c_str(), 22);
   }
@@ -3626,7 +3678,6 @@ void GLGame::controller(SDL_Event event) {
 }
 
 void GLGame::touch_tap(float nx, float ny) {
-  (void)nx;
   if (!is_touch_mode()) return;
   // The bottom strip is the RETURN TO MENU band the overlay labels (same
   // geometry as the lobby's). It exits to the menu from every state that
@@ -3656,7 +3707,16 @@ void GLGame::touch_tap(float nx, float ny) {
   if (!running || local_over) {
     save_progress();
     request_state_change(new Menu());
+    return;
   }
+  // Mid-play, the "friendly fire on/off" HUD text (two-player only, drawn
+  // at vhb+55 = -545 in the single online viewport) is a toggle region —
+  // host only, mirroring the G key. Kept to the centre third: the OSD
+  // shoot/mine hit circles reach into the bottom strip on the right, and
+  // the floating joystick can release on the left.
+  if (players->size() >= 2 && net_mode_ != NetClient &&
+      nx >= 0.38f && nx <= 0.62f && vy <= -500.0f)
+    host_toggle_friendly_fire();
 }
 
 GLShip *GLGame::local_player() const {
@@ -3705,11 +3765,8 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       Asteroid::num_killable = 0;
   }
 
-  if (host_keys && key == (unsigned char)gk.toggle_friendly_fire) {
-    friendly_fire = !friendly_fire;
-    g_prefs.friendly_fire = friendly_fire;
-    save_preferences();
-  }
+  if (host_keys && key == (unsigned char)gk.toggle_friendly_fire)
+    host_toggle_friendly_fire();
   if (key == (unsigned char)gk.toggle_debug_grid) {
     debug_grid = !debug_grid;
   }
