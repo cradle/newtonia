@@ -14,6 +14,7 @@
 #include "net_signal.h"
 #include "net_transport.h"
 #include "preferences.h"
+#include "steam_build.h"
 #include "typer.h"
 #include "view/overlay.h"
 #include "view/tap_band.h"
@@ -127,11 +128,29 @@ void NetLobby::draw_picker() {
 }
 
 // The soft keyboard drives CodeEntry on touch platforms; the existing
-// keyboard() path receives its characters via SDL_TEXTINPUT.
+// keyboard() path receives its characters via SDL_TEXTINPUT. On Steam
+// Deck the Steamworks floating keyboard plays the same role — it types
+// plain key events into the game, summoned/dismissed on the same edges.
+// Where neither exists this is a no-op and the controller picker or a
+// physical keyboard carries code entry.
 static void code_entry_keyboard(bool open) {
-  if (!is_touch_mode()) return;
-  if (open) SDL_StartTextInput();
-  else SDL_StopTextInput();
+  if (is_touch_mode()) {
+    if (open) SDL_StartTextInput();
+    else SDL_StopTextInput();
+    return;
+  }
+  if (open) {
+    // The code slots (virtual y 20 down to -76, size-48 glyphs, centre
+    // half-width) as a window-pixel rect, so the keyboard docks clear
+    // of what the player is typing into.
+    float H = Typer::scaled_window_height;
+    int top = (int)((1.0f - 20.0f / H) * Typer::window_height * 0.5f);
+    int height = (int)((96.0f / H) * Typer::window_height * 0.5f);
+    steam_show_floating_keyboard(Typer::window_width / 4, top,
+                                 Typer::window_width / 2, height);
+  } else {
+    steam_dismiss_floating_keyboard();
+  }
 }
 
 // A rejoin attempt failed in a retryable way (network still down, relay
