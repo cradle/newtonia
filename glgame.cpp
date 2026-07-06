@@ -1499,7 +1499,9 @@ void GLGame::draw_net_overlays() const {
     if ((current_time / 700) % 2 == 0)
       Typer::draw_centered(0, -80, "REJOINING...", 16);
   } else if (net_connection_lost_) {
-    Typer::draw_centered(0, 60,
+    // y=160, not 60: the pause overlay's "Paused" sits at y=30 and both
+    // show when the host leaves a paused game.
+    Typer::draw_centered(0, 160,
                          net_peer_bye_ ? "THE HOST LEFT THE GAME"
                                        : "CONNECTION LOST", net_peer_bye_ ? 22 : 34);
     if ((current_time / 700) % 2 == 0)
