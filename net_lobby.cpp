@@ -143,12 +143,14 @@ void NetLobby::draw_picker() {
 // Deck the Steamworks floating keyboard plays the same role — it types
 // plain key events into the game, summoned/dismissed on the same edges.
 // Where neither exists this is a no-op and the controller picker or a
-// physical keyboard carries code entry.
-static void code_entry_keyboard(bool open) {
+// physical keyboard carries code entry. Returns true when the floating
+// keyboard actually came up (Deck) — the caller hides the picker under
+// it (floating_kb_up_).
+static bool code_entry_keyboard(bool open) {
   if (is_touch_mode()) {
     if (open) SDL_StartTextInput();
     else SDL_StopTextInput();
-    return;
+    return false;
   }
   if (open) {
     // The code slots (virtual y 120 down to 24, size-48 glyphs, centre
@@ -157,11 +159,11 @@ static void code_entry_keyboard(bool open) {
     float H = Typer::scaled_window_height;
     int top = (int)((1.0f - 120.0f / H) * Typer::window_height * 0.5f);
     int height = (int)((96.0f / H) * Typer::window_height * 0.5f);
-    steam_show_floating_keyboard(Typer::window_width / 4, top,
-                                 Typer::window_width / 2, height);
-  } else {
-    steam_dismiss_floating_keyboard();
+    return steam_show_floating_keyboard(Typer::window_width / 4, top,
+                                        Typer::window_width / 2, height);
   }
+  steam_dismiss_floating_keyboard();
+  return false;
 }
 
 // A rejoin attempt failed in a retryable way (network still down, relay
@@ -220,6 +222,7 @@ void NetLobby::reset_to_choose() {
 
 void NetLobby::leave_to_menu() {
   code_entry_keyboard(false);
+  floating_kb_up_ = false;
   // Host abandoning the room: kill it at the relay now, or its code stays
   // claimable-but-hostless for the whole reclaim grace window.
   if (hosting_ && signal_) signal_->send_close();
@@ -255,7 +258,7 @@ void NetLobby::confirm() {
     } else {
       if (signal_) {
         screen_ = CodeEntry;
-        code_entry_keyboard(true);
+        floating_kb_up_ = code_entry_keyboard(true);
         // If the clipboard already holds the friend's code (the host side
         // auto-copies it), prefill and join without any typing. Started
         // here so the web backend's read stays inside the user gesture.
@@ -268,6 +271,7 @@ void NetLobby::confirm() {
   } else if (screen_ == CodeEntry) {
     if (code_entry_.size() == (size_t)NET_ROOM_CODE_LEN) {
       code_entry_keyboard(false);
+      floating_kb_up_ = false;
       signal_->connect_join(net_signal_url(), code_entry_);
       signal_wait_ms_ = 0;
       screen_ = RoomJoining;
@@ -492,7 +496,7 @@ void NetLobby::pump_signal(int delta) {
           code_entry_.clear();
           answer_sent_ = false;
           screen_ = CodeEntry;
-          code_entry_keyboard(true);
+          floating_kb_up_ = code_entry_keyboard(true);
         } else if (screen_ == RoomHost) {
           // fall_back_to_manual deletes signal_ — the poll loop must stop.
           fall_back_to_manual(ev.text.c_str());
@@ -887,11 +891,13 @@ void NetLobby::draw() {
         Typer::draw_centered(0, 200, "ENTER THE ROOM CODE", sz);
         Typer::draw_centered(0, 120, slots.c_str(), 48);
         y = -20;
-        if (controller_seen_) {
+        if (controller_seen_ && !floating_kb_up_) {
           // Controller flow: button hints replace the keyboard hint,
-          // picker grid below (the floating keyboard may cover the grid
-          // — with it up, the keyboard IS the input). A physical
-          // keyboard still types into the field regardless.
+          // picker grid below. Hidden while the Deck's floating
+          // keyboard is up — the keyboard IS the input then, and it
+          // types plain key events; the first controller event that
+          // reaches us proves it was dismissed (it consumes controller
+          // input while showing) and brings the picker back.
           lines.push_back("A - TYPE   B - DELETE   X - PASTE");
           draw_picker();
         } else {
@@ -1112,8 +1118,13 @@ void NetLobby::controller(SDL_Event event) {
   // default case in particular) forward OTHER unhandled event types
   // through here too, and those must not summon the picker.
   if (event.type == SDL_CONTROLLERBUTTONDOWN ||
-      event.type == SDL_CONTROLLERAXISMOTION)
+      event.type == SDL_CONTROLLERAXISMOTION) {
     controller_seen_ = true;
+    // The Deck's floating keyboard consumes controller input while it
+    // is showing — an event reaching us means it has been dismissed, so
+    // the picker may come back.
+    floating_kb_up_ = false;
+  }
   if (event.type == SDL_CONTROLLERBUTTONDOWN) {
     switch (event.cbutton.button) {
       case SDL_CONTROLLER_BUTTON_DPAD_UP:
@@ -1221,7 +1232,8 @@ void NetLobby::touch_tap(float nx, float ny) {
         leave_to_menu();
         return;
       }
-      code_entry_keyboard(true);  // re-summon a dismissed soft keyboard
+      // Re-summon a dismissed soft keyboard (touch; no-op elsewhere).
+      floating_kb_up_ = code_entry_keyboard(true);
       break;
     case RoomHost:
       if (kShareBand.contains(nx, ny) && !room_code_.empty() &&

@@ -139,6 +139,10 @@ private:
   bool stick_left_ = false, stick_right_ = false;
   bool rt_active_ = false;
   bool controller_seen_ = false;  // draws the picker + button hints
+  // The Deck's floating keyboard is showing: hide the picker under it.
+  // Cleared when a controller event reaches us (the keyboard consumes
+  // controller input while up, so an event proves it was dismissed).
+  bool floating_kb_up_ = false;
   int picker_index_ = 0;
 
   int currentTime;
