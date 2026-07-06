@@ -2,11 +2,12 @@ name = "newtonia-signal"
 main = "src/worker.js"
 compatibility_date = "2026-06-01"
 
-# Denial-of-wallet guard: every handler here is a few JSON parses and a
-# relay send — 50 ms of CPU is an order of magnitude of headroom. Bounds
-# the worst-case CPU billing per invocation (the platform cap is 30 s).
-[limits]
-cpu_ms = 50
+# NOTE: no [limits] cpu_ms block — per-script CPU limits are a PAID-plan
+# feature and the Free plan rejects the deploy outright (API error
+# 100328). Free-plan workers are platform-capped at 10 ms CPU per
+# invocation anyway, which is a tighter denial-of-wallet bound than the
+# 50 ms this used to request. If the account moves to a paid plan,
+# restore:  [limits]  cpu_ms = 50
 
 [[durable_objects.bindings]]
 name = "ROOMS"
