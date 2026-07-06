@@ -8,6 +8,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 // Glenn's production worker (deployed 2026-07-04 — signal/README.md).
 static const char *SIGNAL_URL_DEFAULT = "wss://newtonia-signal.gfmcc.workers.dev/ws";
@@ -29,15 +30,15 @@ std::string net_signal_url() {
   return SIGNAL_URL_DEFAULT;
 }
 
+// No 0/O/1/I/5/S (confusable in the game font). No F: the desktop build
+// toggles fullscreen on F at the window layer, before the lobby's code
+// entry ever sees it — so codes simply never contain one (keep in sync
+// with CODE_ALPHABET in signal/src/worker.js).
+const char *NET_ROOM_CODE_ALPHABET = "ABCDEGHJKLMNPQRTUVWXYZ2346789";
+
 bool net_room_code_char_ok(char c) {
   if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
-  // No 0/O/1/I/5/S (confusable in the game font). No F: the desktop build
-  // toggles fullscreen on F at the window layer, before the lobby's code
-  // entry ever sees it — so codes simply never contain one (keep in sync
-  // with signal/src/worker.js).
-  if (c == '0' || c == 'O' || c == '1' || c == 'I' || c == '5' ||
-      c == 'S' || c == 'F') return false;
-  return (c >= 'A' && c <= 'Z') || (c >= '2' && c <= '9');
+  return c != '\0' && strchr(NET_ROOM_CODE_ALPHABET, c) != NULL;
 }
 
 namespace NetSig {

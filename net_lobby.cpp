@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <vector>
 
 #include "gl_compat.h"
@@ -45,6 +46,16 @@ const TapBand kBackBand(0.85f, 480, 22, 6.0f, /*to_top=*/true, false, 0.72f);
 // RoomHost: the "TAP HERE TO SHARE IT" line, padded to finger height.
 const TapBand kShareBand(0.5f, -80, 18, 42.0f);
 
+// CodeEntry controller picker: the code alphabet as a grid under the
+// code slots (desktop layout — touch uses the soft keyboard instead).
+// Two rows sit between the button-hint line (glyphs reach ~-188) and the
+// transient status line at -320 (selected cells grow to size 22 → 44
+// tall, so the second row bottoms out around -311).
+const int PICKER_COLS = 15;
+const float PICKER_TOP_Y = -215.0f;
+const float PICKER_ROW_H = 52.0f;
+const float PICKER_CELL_W = 45.0f;
+
 }  // namespace
 
 void NetLobby::mark_room_dead(const std::string &code) { s_dead_code = code; }
@@ -69,7 +80,11 @@ NetLobby::NetLobby()
       status_ms_(0),
       currentTime(0),
       viewpoint(Point(0, WORLD_H / 2)),
-      starfield(new GLStarfield(Point(WORLD_W, WORLD_H), star_density_scale())) {}
+      starfield(new GLStarfield(Point(WORLD_W, WORLD_H), star_density_scale())) {
+  // A controller plugged in before the lobby opened (Steam Deck: always)
+  // gets the picker/hints immediately, not only after the first press.
+  controller_seen_ = SDL_NumJoysticks() > 0;
+}
 
 NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
   hosting_ = false;
@@ -91,6 +106,24 @@ NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
   signal_wait_ms_ = 0;
   screen_ = RoomJoining;
   set_status("RECONNECTING...");
+}
+
+// CodeEntry character picker for controllers: the code alphabet drawn as
+// a grid under the code slots, current cell enlarged. Doubles as visible
+// documentation of which characters codes can contain. Each row centres
+// itself (the last row is short).
+void NetLobby::draw_picker() {
+  const int n = (int)strlen(NET_ROOM_CODE_ALPHABET);
+  for (int i = 0; i < n; i++) {
+    int row = i / PICKER_COLS, col = i % PICKER_COLS;
+    int row_start = row * PICKER_COLS;
+    int cols_in_row = (n - row_start < PICKER_COLS) ? n - row_start
+                                                    : PICKER_COLS;
+    float x = (col - (cols_in_row - 1) * 0.5f) * PICKER_CELL_W;
+    float y = PICKER_TOP_Y - row * PICKER_ROW_H;
+    char s[2] = {NET_ROOM_CODE_ALPHABET[i], '\0'};
+    Typer::draw_centered(x, y, s, i == picker_index_ ? 22 : 13);
+  }
 }
 
 // The soft keyboard drives CodeEntry on touch platforms; the existing
@@ -804,7 +837,15 @@ void NetLobby::draw() {
         lines.push_back("ENTER THE ROOM CODE");
         Typer::draw_centered(0, 20, slots.c_str(), 48);
         y = -100;
-        lines.push_back("TYPE THE CODE YOUR HOST SEES");
+        if (controller_seen_) {
+          // Controller flow (Steam Deck: no touch, no soft keyboard):
+          // button hints replace the keyboard hint, picker grid below.
+          // A physical keyboard still types into the field regardless.
+          lines.push_back("A - TYPE   B - DELETE   X - PASTE");
+          draw_picker();
+        } else {
+          lines.push_back("TYPE THE CODE YOUR HOST SEES");
+        }
       }
       break;
     }
@@ -989,30 +1030,104 @@ void NetLobby::keyboard_up(unsigned char key, int x, int y) {
   }
 }
 
+// Wraps the picker selection through the alphabet: dx walks the strip
+// (wrapping row to row), dy jumps a row keeping the column.
+void NetLobby::picker_move(int dx, int dy) {
+  int n = (int)strlen(NET_ROOM_CODE_ALPHABET);
+  if (dx) picker_index_ = (picker_index_ + dx + n) % n;
+  if (dy) {
+    int rows = (n + PICKER_COLS - 1) / PICKER_COLS;
+    int row = (picker_index_ / PICKER_COLS + dy + rows) % rows;
+    picker_index_ = row * PICKER_COLS + picker_index_ % PICKER_COLS;
+    if (picker_index_ >= n) picker_index_ = n - 1;  // short last row
+  }
+}
+
+// A / right trigger: on CodeEntry it types the picker's character (the
+// join fires automatically when the last slot fills, same as typing);
+// everywhere else it is ENTER.
+void NetLobby::controller_confirm() {
+  // Touch platforms never draw the picker (the soft keyboard owns code
+  // entry there), so a paired controller must not type from it blind.
+  if (screen_ == CodeEntry && !is_touch_mode()) {
+    code_entry_key((unsigned char)NET_ROOM_CODE_ALPHABET[picker_index_]);
+    return;
+  }
+  confirm();
+}
+
 void NetLobby::controller(SDL_Event event) {
-  if (event.type != SDL_CONTROLLERBUTTONDOWN) return;
-  switch (event.cbutton.button) {
-    case SDL_CONTROLLER_BUTTON_DPAD_UP:
-      if (screen_ == Choose && selection_ > 0) selection_--;
-      break;
-    case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
-      if (screen_ == Choose && selection_ < 1) selection_++;
-      break;
-    case SDL_CONTROLLER_BUTTON_A:
-      confirm();
-      break;
-    case SDL_CONTROLLER_BUTTON_X:
-      start_paste();
-      break;
-    case SDL_CONTROLLER_BUTTON_Y:
-      copy_local_description();
-      break;
-    case SDL_CONTROLLER_BUTTON_B:
-    case SDL_CONTROLLER_BUTTON_BACK:
-      leave_to_menu();
-      break;
-    default:
-      break;
+  controller_seen_ = true;
+  if (event.type == SDL_CONTROLLERBUTTONDOWN) {
+    switch (event.cbutton.button) {
+      case SDL_CONTROLLER_BUTTON_DPAD_UP:
+        if (screen_ == CodeEntry) picker_move(0, -1);
+        else if (screen_ == Choose && selection_ > 0) selection_--;
+        break;
+      case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+        if (screen_ == CodeEntry) picker_move(0, 1);
+        else if (screen_ == Choose && selection_ < 1) selection_++;
+        break;
+      case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+        if (screen_ == CodeEntry) picker_move(-1, 0);
+        break;
+      case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+        if (screen_ == CodeEntry) picker_move(1, 0);
+        break;
+      case SDL_CONTROLLER_BUTTON_A:
+        controller_confirm();
+        break;
+      case SDL_CONTROLLER_BUTTON_X:
+        start_paste();
+        break;
+      case SDL_CONTROLLER_BUTTON_Y:
+        copy_local_description();
+        break;
+      case SDL_CONTROLLER_BUTTON_B:
+        // Console convention: B deletes while there is something to
+        // delete, and only backs out of an empty code field (non-touch
+        // only — the soft keyboard owns code entry on touch).
+        if (screen_ == CodeEntry && !is_touch_mode() &&
+            !code_entry_.empty()) {
+          code_entry_key(8);
+          break;
+        }
+        leave_to_menu();
+        break;
+      case SDL_CONTROLLER_BUTTON_BACK:
+        leave_to_menu();
+        break;
+      default:
+        break;
+    }
+    return;
+  }
+  if (event.type != SDL_CONTROLLERAXISMOTION) return;
+  // Left stick mirrors the d-pad and the right trigger mirrors A (it is
+  // the in-game fire button, so it is what a Steam Deck player reaches
+  // for). Edge-detected against ±8000, the menu's pattern.
+  if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
+    bool up = event.caxis.value < -8000, down = event.caxis.value > 8000;
+    if (up && !stick_up_) {
+      if (screen_ == CodeEntry) picker_move(0, -1);
+      else if (screen_ == Choose && selection_ > 0) selection_--;
+    }
+    if (down && !stick_down_) {
+      if (screen_ == CodeEntry) picker_move(0, 1);
+      else if (screen_ == Choose && selection_ < 1) selection_++;
+    }
+    stick_up_ = up;
+    stick_down_ = down;
+  } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) {
+    bool l = event.caxis.value < -8000, r = event.caxis.value > 8000;
+    if (l && !stick_left_ && screen_ == CodeEntry) picker_move(-1, 0);
+    if (r && !stick_right_ && screen_ == CodeEntry) picker_move(1, 0);
+    stick_left_ = l;
+    stick_right_ = r;
+  } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) {
+    bool pressed = event.caxis.value > 8000;
+    if (pressed && !rt_active_) controller_confirm();
+    rt_active_ = pressed;
   }
 }
 

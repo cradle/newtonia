@@ -15,8 +15,10 @@
 //
 // Once the transport connects, NetSession runs HELLO/WELCOME; the host
 // enters GLGame immediately and the joiner bootstraps from snapshot #1.
-// Keyboard and controller (code entry is keyboard-only) — the menu hides
-// ONLINE in touch mode.
+// Keyboard and controller throughout — code entry types on a keyboard or
+// walks an on-screen character picker with a controller (Steam Deck has
+// neither touch nor a soft keyboard in game mode). The menu hides ONLINE
+// in touch mode.
 
 #include <SDL.h>
 
@@ -70,6 +72,12 @@ private:
   void code_entry_key(unsigned char key);
   void schedule_rejoin_retry(const char *why, int delay_ms);
   void retry_join();  // abandon current attempt -> empty join screen
+  // Controller support (Steam Deck / gamepad-only setups): CodeEntry
+  // shows a character-picker grid of the code alphabet once a controller
+  // is seen — d-pad/stick moves, A or right trigger types, B deletes.
+  void picker_move(int dx, int dy);
+  void controller_confirm();  // A / right trigger
+  void draw_picker();
 public:
   // M3-1 auto-rejoin: skip Choose and join the known room immediately.
   explicit NetLobby(const std::string &rejoin_code);
@@ -116,6 +124,14 @@ private:
   // hostless (reclaim grace) — if no host ever offers, fail instead of
   // showing "JOINING THE ROOM" forever.
   int join_wait_ms_ = 0;
+
+  // Controller state: left-stick / right-trigger edge detection (the
+  // menu's pattern) and the CodeEntry picker selection.
+  bool stick_up_ = false, stick_down_ = false;
+  bool stick_left_ = false, stick_right_ = false;
+  bool rt_active_ = false;
+  bool controller_seen_ = false;  // draws the picker + button hints
+  int picker_index_ = 0;
 
   int currentTime;
   WrappedPoint viewpoint;
