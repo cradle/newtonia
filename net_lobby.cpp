@@ -49,11 +49,11 @@ const TapBand kShareBand(0.5f, -80, 18, 42.0f);
 
 // CodeEntry controller picker: the code alphabet as a grid under the
 // code slots (desktop layout — touch uses the soft keyboard instead).
-// Two rows sit between the button-hint line (glyphs reach ~-188) and the
-// transient status line at -320 (selected cells grow to size 22 → 44
-// tall, so the second row bottoms out around -311).
+// Two rows sit between the button-hint line at -20 (glyphs reach ~-56)
+// and the transient status line at -320 (selected cells grow to size 22
+// → 44 tall, so the second row bottoms out around -226).
 const int PICKER_COLS = 15;
-const float PICKER_TOP_Y = -215.0f;
+const float PICKER_TOP_Y = -130.0f;
 const float PICKER_ROW_H = 52.0f;
 const float PICKER_CELL_W = 45.0f;
 
@@ -140,11 +140,11 @@ static void code_entry_keyboard(bool open) {
     return;
   }
   if (open) {
-    // The code slots (virtual y 20 down to -76, size-48 glyphs, centre
+    // The code slots (virtual y 120 down to 24, size-48 glyphs, centre
     // half-width) as a window-pixel rect, so the keyboard docks clear
     // of what the player is typing into.
     float H = Typer::scaled_window_height;
-    int top = (int)((1.0f - 20.0f / H) * Typer::window_height * 0.5f);
+    int top = (int)((1.0f - 120.0f / H) * Typer::window_height * 0.5f);
     int height = (int)((96.0f / H) * Typer::window_height * 0.5f);
     steam_show_floating_keyboard(Typer::window_width / 4, top,
                                  Typer::window_width / 2, height);
@@ -853,13 +853,17 @@ void NetLobby::draw() {
         y = 80;
         lines.push_back("TYPE THE CODE YOUR HOST SEES");
       } else {
-        lines.push_back("ENTER THE ROOM CODE");
-        Typer::draw_centered(0, 20, slots.c_str(), 48);
-        y = -100;
+        // Heading + code live in the top half: the Steam Deck's floating
+        // keyboard docks over the bottom half of the screen (same reason
+        // the touch layout hoists them above the soft keyboard).
+        Typer::draw_centered(0, 200, "ENTER THE ROOM CODE", sz);
+        Typer::draw_centered(0, 120, slots.c_str(), 48);
+        y = -20;
         if (controller_seen_) {
-          // Controller flow (Steam Deck: no touch, no soft keyboard):
-          // button hints replace the keyboard hint, picker grid below.
-          // A physical keyboard still types into the field regardless.
+          // Controller flow: button hints replace the keyboard hint,
+          // picker grid below (the floating keyboard may cover the grid
+          // — with it up, the keyboard IS the input). A physical
+          // keyboard still types into the field regardless.
           lines.push_back("A - TYPE   B - DELETE   X - PASTE");
           draw_picker();
         } else {
