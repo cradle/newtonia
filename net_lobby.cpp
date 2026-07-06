@@ -57,6 +57,12 @@ const float PICKER_TOP_Y = -130.0f;
 const float PICKER_ROW_H = 52.0f;
 const float PICKER_CELL_W = 45.0f;
 
+// Stick navigation hysteresis: a move arms at half deflection and only
+// re-arms once the stick falls back under a quarter — a light nudge does
+// nothing, and wobble around a single threshold can't re-trigger (a
+// plain ±8000 edge felt twitchy on a real gamepad).
+const int STICK_ON = 16000, STICK_OFF = 8000;
+
 }  // namespace
 
 void NetLobby::mark_room_dead(const std::string &code) { s_dead_code = code; }
@@ -1128,9 +1134,10 @@ void NetLobby::controller(SDL_Event event) {
   if (event.type != SDL_CONTROLLERAXISMOTION) return;
   // Left stick mirrors the d-pad and the right trigger mirrors A (it is
   // the in-game fire button, so it is what a Steam Deck player reaches
-  // for). Edge-detected against ±8000, the menu's pattern.
+  // for). Each direction arms at STICK_ON and releases at STICK_OFF.
   if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
-    bool up = event.caxis.value < -8000, down = event.caxis.value > 8000;
+    bool up = event.caxis.value < -(stick_up_ ? STICK_OFF : STICK_ON);
+    bool down = event.caxis.value > (stick_down_ ? STICK_OFF : STICK_ON);
     if (up && !stick_up_) {
       if (screen_ == CodeEntry) picker_move(0, -1);
       else if (screen_ == Choose && selection_ > 0) selection_--;
@@ -1142,12 +1149,15 @@ void NetLobby::controller(SDL_Event event) {
     stick_up_ = up;
     stick_down_ = down;
   } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) {
-    bool l = event.caxis.value < -8000, r = event.caxis.value > 8000;
+    bool l = event.caxis.value < -(stick_left_ ? STICK_OFF : STICK_ON);
+    bool r = event.caxis.value > (stick_right_ ? STICK_OFF : STICK_ON);
     if (l && !stick_left_ && screen_ == CodeEntry) picker_move(-1, 0);
     if (r && !stick_right_ && screen_ == CodeEntry) picker_move(1, 0);
     stick_left_ = l;
     stick_right_ = r;
   } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) {
+    // Plain ±8000 edge like the menu's RT confirm: triggers spring fully
+    // back to zero, so they don't hover near a threshold like a stick.
     bool pressed = event.caxis.value > 8000;
     if (pressed && !rt_active_) controller_confirm();
     rt_active_ = pressed;
