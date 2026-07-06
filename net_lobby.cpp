@@ -72,7 +72,10 @@ NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
   }
   code_entry_ = rejoin_code;
   rejoin_mode_ = true;
-  rejoin_budget_ms_ = 90000;  // ~ the room's reclaim grace window
+  // A backgrounded host that hasn't resumed within a minute usually isn't
+  // coming back soon (the room's reclaim grace is 2 min, but waiting it
+  // out reads as a hang — the joiner can TRY AGAIN from the fail screen).
+  rejoin_budget_ms_ = 60000;
   transport_->set_trickle(true);  // room flow: live relay carries candidates
   signal_->connect_join(net_signal_url(), code_entry_);
   signal_wait_ms_ = 0;
@@ -500,30 +503,40 @@ void NetLobby::tick(int delta) {
     join_wait_ms_ = 0;
   }
 
-  // Auto-rejoin retry loop (see schedule_rejoin_retry).
-  if (rejoin_mode_ && rejoin_retry_ms_ > 0 && !session_) {
+  // Auto-rejoin retry loop (see schedule_rejoin_retry). The budget ticks
+  // the WHOLE time we're hostless — not just between retries — so the
+  // countdown the joiner sees is honest and the total wait is bounded
+  // even while an attempt is in flight.
+  if (rejoin_mode_ && !session_ && screen_ != LobbyFailed) {
     rejoin_budget_ms_ -= delta;
-    rejoin_retry_ms_ -= delta;
     if (rejoin_budget_ms_ <= 0) {
       rejoin_retry_ms_ = 0;
+      fail_headline_ = "THE HOST DID NOT COME BACK";
       set_status("COULD NOT RECONNECT");
       screen_ = LobbyFailed;
-    } else if (rejoin_retry_ms_ <= 0) {
-      rejoin_retry_ms_ = 0;
-      // A fresh virgin transport: an earlier attempt may have consumed an
-      // offer, and the relay sends fresh TURN creds with each join.
-      if (transport_) {
-        transport_->close();
-        delete transport_;
-      }
-      transport_ = NetTransport::create();
-      if (transport_) transport_->set_trickle(true);
-      ice_servers_.clear();
-      answer_sent_ = false;
-      signal_wait_ms_ = 0;
-      printf("[lobby] rejoin retry: joining room %s\n", code_entry_.c_str());
+      printf("[lobby] rejoin gave up (budget expired)\n");
       fflush(stdout);
-      signal_->connect_join(net_signal_url(), code_entry_);
+    } else if (rejoin_retry_ms_ > 0) {
+      // A retry is scheduled (schedule_rejoin_retry); fire it when the
+      // countdown crosses zero — never while an attempt is in flight.
+      rejoin_retry_ms_ -= delta;
+      if (rejoin_retry_ms_ <= 0) {
+        rejoin_retry_ms_ = 0;
+        // A fresh virgin transport: an earlier attempt may have consumed an
+        // offer, and the relay sends fresh TURN creds with each join.
+        if (transport_) {
+          transport_->close();
+          delete transport_;
+        }
+        transport_ = NetTransport::create();
+        if (transport_) transport_->set_trickle(true);
+        ice_servers_.clear();
+        answer_sent_ = false;
+        signal_wait_ms_ = 0;
+        printf("[lobby] rejoin retry: joining room %s\n", code_entry_.c_str());
+        fflush(stdout);
+        signal_->connect_join(net_signal_url(), code_entry_);
+      }
     }
   }
 
@@ -800,8 +813,20 @@ void NetLobby::draw() {
       break;
     }
     case RoomJoining:
-      lines.push_back("JOINING THE ROOM");
-      if (blink) lines.push_back("PLEASE WAIT...");
+      if (rejoin_mode_) {
+        // Honest about what's happening: the room survives the host's
+        // socket for the reclaim grace window and we're waiting to see if
+        // the host resumes — this is not a stuck join. The countdown is
+        // the rejoin budget (ticks continuously; see the retry loop).
+        lines.push_back("WAITING FOR THE HOST TO COME BACK");
+        char left[40];
+        snprintf(left, sizeof(left), "GIVING UP IN %d",
+                 rejoin_budget_ms_ > 0 ? rejoin_budget_ms_ / 1000 + 1 : 0);
+        lines.push_back(left);
+      } else {
+        lines.push_back("JOINING THE ROOM");
+        if (blink) lines.push_back("PLEASE WAIT...");
+      }
       break;
     case HostGathering:
       lines.push_back("PREPARING YOUR INVITE CODE");
