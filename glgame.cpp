@@ -1453,14 +1453,15 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
 // impact events carry where, not which — ids would cost more bytes than
 // a proximity match is worth at these rates).
 void GLGame::net_spark_asteroid_at(float x, float y) {
-  WrappedPoint p(x, y);
-  Asteroid *best = NULL;
-  float best_d = 1e9f;
-  for (auto *a : *objects) {
-    float d = a->position.distance_to(p) - a->radius;
-    if (d < best_d) { best_d = d; best = a; }
-  }
-  if (best && best_d < 80.0f) best->explode();
+  // Point-probe the grid (the client refreshes it each tick) rather than
+  // scanning every asteroid — CLAUDE.md: use Grid for spatial queries. A
+  // zero-radius probe with proximity 80 matches the old center-distance <
+  // asteroid.radius + 80 test; the grid holds only asteroids, so the cast
+  // is safe.
+  Object probe(WrappedPoint(x, y), Point(0, 0));
+  probe.radius = 0.0f;
+  Object *hit = grid.collide(probe, 80.0f);
+  if (hit) static_cast<Asteroid *>(hit)->explode();
 }
 
 void GLGame::net_set_generation_banner(int gen) {
@@ -1488,50 +1489,6 @@ void GLGame::net_set_generation_banner(int gen) {
   net_banner_ms_ = 2000;
 }
 
-// Full-screen text layered over the online game view: the 2 s generation
-// banner (replaces the offline Intro state) and the CONNECTION LOST card.
-void GLGame::draw_net_overlays() const {
-  if (net_banner_ms_ <= 0 && !net_connection_lost_) return;
-
-  glViewport(0, 0, window.x(), window.y());
-  float hw = window.x() / Overlay::SAFE_AREA_SCALE;
-  float hh = window.y() / Overlay::SAFE_AREA_SCALE;
-  float ortho[16];
-  mat4_ortho(ortho, -hw, hw, -hh, hh, -1.0f, 1.0f);
-  gles2_set_vp(ortho);
-
-  // Typer scales all coordinates by Typer::scale (the 800x600-based virtual
-  // HUD space every Overlay position lives in) — pixel-derived positions
-  // like hh*0.72 only line up when the window happens to be near 800x600
-  // and drift offscreen in fullscreen. Position in virtual units instead;
-  // vh is the virtual half-height (the top of the title-safe area).
-  float vh = Typer::scaled_window_height;
-
-  if (net_connection_lost_ && net_mode_ == NetHost && net_signal_) {
-    // Rejoinable loss: the game continues — a quiet notice, not a card.
-    // Just the room code, steady (no blink): the host may be reading it
-    // out to the other player.
-    std::string room = "ROOM " + net_room_code_;
-    Typer::draw_centered(0, vh * 0.72f, room.c_str(), 18);
-  } else if (net_connection_lost_ && net_mode_ == NetClient &&
-             !net_room_code_.empty()) {
-    Typer::draw_centered(0, 60, "CONNECTION LOST", 34);
-    if ((current_time / 700) % 2 == 0)
-      Typer::draw_centered(0, -80, "REJOINING...", 16);
-  } else if (net_connection_lost_) {
-    // y=160, not 60: the pause overlay's "Paused" sits at y=30 and both
-    // show when the host leaves a paused game.
-    Typer::draw_centered(0, 160,
-                         net_peer_bye_ ? "THE HOST LEFT THE GAME"
-                                       : "CONNECTION LOST", net_peer_bye_ ? 22 : 34);
-    if ((current_time / 700) % 2 == 0)
-      Typer::draw_centered(0, -80,
-                           is_touch_mode() ? "TAP FIRE FOR MENU"
-                                           : "PRESS FIRE FOR MENU", 16);
-  } else if (net_banner_ms_ > 0) {
-    Typer::draw_centered(0, vh * 0.55f, net_banner_text_.c_str(), 22);
-  }
-}
 
 // ---- client side ---------------------------------------------------------
 
@@ -3151,7 +3108,7 @@ void GLGame::draw(void) {
     // front of the list, client = back). The peer draws their own view.
     draw_world(local_player(), true);
     draw_map();
-    draw_net_overlays();
+    Overlay::net_overlays(this);
   }
   else {
     if(players->size() > 0) {

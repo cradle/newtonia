@@ -19,6 +19,57 @@ const float Overlay::SAFE_AREA_SCALE = 0.9f;
 const float Overlay::SAFE_AREA_SCALE = 1.0f;
 #endif
 
+// Full-screen text layered over the online game view (one full-screen
+// pass, not per-viewport): the 2 s generation banner (replaces the offline
+// Intro state) and the CONNECTION LOST / rejoin card. Overlay is a friend
+// of GLGame, so it reads the net_* state directly.
+void Overlay::net_overlays(const GLGame *glgame) {
+  if (glgame->net_banner_ms_ <= 0 && !glgame->net_connection_lost_) return;
+
+  glViewport(0, 0, glgame->window.x(), glgame->window.y());
+  float hw = glgame->window.x() / Overlay::SAFE_AREA_SCALE;
+  float hh = glgame->window.y() / Overlay::SAFE_AREA_SCALE;
+  float ortho[16];
+  mat4_ortho(ortho, -hw, hw, -hh, hh, -1.0f, 1.0f);
+  gles2_set_vp(ortho);
+
+  // Typer scales all coordinates by Typer::scale (the 800x600-based virtual
+  // HUD space every Overlay position lives in) — pixel-derived positions
+  // like hh*0.72 only line up when the window happens to be near 800x600
+  // and drift offscreen in fullscreen. Position in virtual units instead;
+  // vh is the virtual half-height (the top of the title-safe area).
+  float vh = Typer::scaled_window_height;
+  int now = glgame->current_time;
+
+  if (glgame->net_connection_lost_ && glgame->net_mode_ == GLGame::NetHost &&
+      glgame->net_signal_) {
+    // Rejoinable loss: the game continues — a quiet notice, not a card.
+    // Just the room code, steady (no blink): the host may be reading it
+    // out to the other player.
+    std::string room = "ROOM " + glgame->net_room_code_;
+    Typer::draw_centered(0, vh * 0.72f, room.c_str(), 18);
+  } else if (glgame->net_connection_lost_ &&
+             glgame->net_mode_ == GLGame::NetClient &&
+             !glgame->net_room_code_.empty()) {
+    Typer::draw_centered(0, 60, "CONNECTION LOST", 34);
+    if ((now / 700) % 2 == 0)
+      Typer::draw_centered(0, -80, "REJOINING...", 16);
+  } else if (glgame->net_connection_lost_) {
+    // y=160, not 60: the pause overlay's "Paused" sits at y=30 and both
+    // show when the host leaves a paused game.
+    Typer::draw_centered(0, 160,
+                         glgame->net_peer_bye_ ? "THE HOST LEFT THE GAME"
+                                               : "CONNECTION LOST",
+                         glgame->net_peer_bye_ ? 22 : 34);
+    if ((now / 700) % 2 == 0)
+      Typer::draw_centered(0, -80,
+                           is_touch_mode() ? "TAP FIRE FOR MENU"
+                                           : "PRESS FIRE FOR MENU", 16);
+  } else if (glgame->net_banner_ms_ > 0) {
+    Typer::draw_centered(0, vh * 0.55f, glgame->net_banner_text_.c_str(), 22);
+  }
+}
+
 void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   title_text(glgame, glship);
   level(glgame, glship);

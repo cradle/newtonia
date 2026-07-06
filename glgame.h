@@ -172,7 +172,6 @@ private:
   void net_handle_event(uint8_t code, uint32_t arg);
   void net_spark_asteroid_at(float x, float y);
   void net_set_generation_banner(int gen);
-  void draw_net_overlays() const;   // banner / CONNECTION LOST
   bool net_connection_lost_ = false;
   bool net_peer_bye_ = false;  // client: the host said BYE — no auto-rejoin
   int net_banner_ms_ = 0;
