@@ -113,6 +113,8 @@ static void parse_line(const char *key, const char *val) {
         if (v >= 0.0f) g_prefs.star_density = v;
     } else if (strcmp(key, "signal_url") == 0) {
         g_prefs.signal_url = val;
+    } else if (strcmp(key, "last_hosted_code") == 0) {
+        g_prefs.last_hosted_code = val;
     } else if (strcmp(key, "window_width") == 0) {
         int w = atoi(val);
         if (w > 0) g_prefs.window_width = w;
@@ -212,6 +214,8 @@ void save_preferences() {
     fprintf(f, "star_density=%.4f\n",           g_prefs.star_density);
     if (!g_prefs.signal_url.empty())
         fprintf(f, "signal_url=%s\n",             g_prefs.signal_url.c_str());
+    if (!g_prefs.last_hosted_code.empty())
+        fprintf(f, "last_hosted_code=%s\n",       g_prefs.last_hosted_code.c_str());
     fprintf(f, "window_width=%d\n",            g_prefs.window_width);
     fprintf(f, "window_height=%d\n",           g_prefs.window_height);
 

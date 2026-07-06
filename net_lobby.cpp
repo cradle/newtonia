@@ -342,6 +342,11 @@ void NetLobby::pump_signal(int delta) {
         room_code_ = ev.text;
         room_token_ = ev.text2;  // reclaim proof, handed to the game
         s_last_hosted_code = room_code_;  // never auto-join our own room
+        // Persist it too: a killed-and-relaunched app loses the static, and
+        // its own code is still on the clipboard — the auto-join would walk
+        // the ex-host straight into its own dead room.
+        g_prefs.last_hosted_code = room_code_;
+        save_preferences();
         net_clipboard_write(room_code_);  // ready to paste to the friend
         printf("[lobby] room %s (%d turn servers)\n", room_code_.c_str(),
                (int)ice_servers_.size());
@@ -540,10 +545,12 @@ void NetLobby::tick(int delta) {
         bool ok = code.size() == (size_t)NET_ROOM_CODE_LEN;
         for (size_t i = 0; ok && i < code.size(); i++)
           ok = net_room_code_char_ok(code[i]);
-        // Never auto-join a room this instance hosted itself — that's our
+        // Never auto-join a room this install hosted itself — that's our
         // own (likely dead) code still sitting on the clipboard. Typing
-        // it manually still works if someone really means it.
-        if (ok && code == s_last_hosted_code) ok = false;
+        // it manually still works if someone really means it. The pref
+        // copy survives an app kill/relaunch (the static doesn't).
+        if (ok && (code == s_last_hosted_code ||
+                   code == g_prefs.last_hosted_code)) ok = false;
         if (ok && code_entry_.empty()) {
           code_entry_ = code;
           confirm();

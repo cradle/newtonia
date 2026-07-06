@@ -287,14 +287,19 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     Typer::draw_centered(0, Typer::scaled_window_height/glgame->num_y_viewports()-80, unpause, 8);
   }
 
-  // Touch: GAME OVER exit affordance — the bottom strip is a tap band
-  // (GLGame::touch_tap), same placement as the lobby's return band.
+  // Touch: exit affordance — the bottom strip is a tap band
+  // (GLGame::touch_tap), same placement as the lobby's return band. Shown
+  // at GAME OVER, on the pause screen, and — online — when the LOCAL ship
+  // is fully out while the peer plays on (all-over never fires there).
   if(is_touch_mode()) {
     bool all_over = !glgame->players->empty();
     for(auto* gs : *glgame->players) {
       if(gs->ship->is_alive() || gs->ship->lives > 0) { all_over = false; break; }
     }
-    if(all_over)
+    const GLShip* local = glgame->local_player();
+    bool local_over = glgame->net_active() && local &&
+                      !local->ship->is_alive() && local->ship->lives <= 0;
+    if(all_over || !glgame->running || local_over)
       Typer::draw_centered(0, -420, "RETURN TO MENU", 13, glgame->current_time);
   }
 }

@@ -48,6 +48,10 @@ struct Preferences {
     int  window_height       = 600;
     float star_density       = 1.0f;   // star-count multiplier; user-editable in INI
     std::string signal_url;            // netplay room server override (empty = baked default)
+    std::string last_hosted_code;      // last room code this install hosted — the
+                                       // lobby's clipboard auto-join refuses it, so a
+                                       // killed-and-relaunched host can't walk into its
+                                       // own dead room (typing it manually still works)
     PlayerKeys  p1_keys;          // player 1 keyboard bindings (p1 defaults)
     PlayerKeys  p2_keys;          // player 2 keyboard bindings (p2 defaults set in ctor)
     GeneralKeys general_keys;

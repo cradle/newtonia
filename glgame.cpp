@@ -3628,9 +3628,12 @@ void GLGame::controller(SDL_Event event) {
 void GLGame::touch_tap(float nx, float ny) {
   (void)nx;
   if (!is_touch_mode()) return;
-  // GAME OVER: the bottom strip is the RETURN TO MENU band the overlay
-  // labels (same geometry as the lobby's). The 3 s grace mirrors the
-  // key/controller exits so a frantic last-second tap can't skip past.
+  // The bottom strip is the RETURN TO MENU band the overlay labels (same
+  // geometry as the lobby's). It exits to the menu from every state that
+  // has no other touch exit: GAME OVER, the pause screen, and — online —
+  // a local ship that's fully out while the peer plays on.
+  float vy = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
+  if (vy > -370.0f) return;
   bool all_game_over = !players->empty();
   for (auto *glship : *players) {
     if (glship->ship->is_alive() || glship->ship->lives > 0) {
@@ -3638,13 +3641,22 @@ void GLGame::touch_tap(float nx, float ny) {
       break;
     }
   }
-  if (!all_game_over) return;
-  if (game_over_time >= 0 && current_time - game_over_time < 3000) return;
-  float vy = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
-  if (vy > -370.0f) return;
-  for (auto *glship : *players)
-    save_high_score(glship->ship->score);
-  request_state_change(new Menu());
+  if (all_game_over) {
+    // The 3 s grace mirrors the key/controller exits so a frantic
+    // last-second tap can't skip past the game over screen.
+    if (game_over_time >= 0 && current_time - game_over_time < 3000) return;
+    for (auto *glship : *players)
+      save_high_score(glship->ship->score);
+    request_state_change(new Menu());
+    return;
+  }
+  GLShip *local = local_player();
+  bool local_over = net_mode_ != NetOff && local &&
+                    !local->ship->is_alive() && local->ship->lives <= 0;
+  if (!running || local_over) {
+    save_progress();
+    request_state_change(new Menu());
+  }
 }
 
 GLShip *GLGame::local_player() const {
