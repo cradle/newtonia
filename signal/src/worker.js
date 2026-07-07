@@ -79,10 +79,19 @@ async function turn_ice_servers(env) {
             Authorization: `Bearer ${env.TURN_API_TOKEN}`,
             "Content-Type": "application/json",
           },
-          // Short TTL: ICE only needs the credential during connection
-          // setup (an established relay allocation outlives it). Keeps a
-          // harvested credential nearly worthless as free relay bandwidth.
-          body: JSON.stringify({ ttl: 15 * 60 }),
+          // TTL must OUTLIVE the session, not just connection setup: TURN
+          // allocations stay alive through periodic Refresh requests, and
+          // refreshes authenticate with this credential — when it expires,
+          // a relayed session dies within one allocation lifetime
+          // (~15-25 min at the old 15-min TTL; the auto-pause/rejoin
+          // machinery healed it, but as a mystery hiccup for exactly the
+          // players on the worst networks). Neither peer can renew
+          // mid-session: libdatachannel has no ICE restart, so renewal
+          // would mean a full make-before-break transport swap. 4 h
+          // covers any plausible sitting; the harvested-credential risk
+          // this lengthens is already bounded by per-IP mint rate limits
+          // (and an issuance budget, when added). Cloudflare's cap: 48 h.
+          body: JSON.stringify({ ttl: 4 * 60 * 60 }),
         });
     if (!resp.ok) return [];
     const data = await resp.json();
