@@ -722,10 +722,13 @@ void GLGame::elastic_asteroid_collisions(bool announce) {
       float nx = dx / dist;
       float ny = dy / dist;
 
-      // Positional correction: always push apart to resolve overlap,
-      // including the case where children spawn inside each other.
+      // Positional correction: push apart to resolve overlap, including
+      // children spawning inside each other. Proportional ONLY — a flat
+      // +0.5/tick bias made host and client (which mirrors this pass)
+      // diverge at up to ~60 units/s whenever they disagreed about a
+      // borderline contact, since the bias fires at any overlap depth.
       float overlap = sum_r - dist;
-      float push = overlap * 0.5f + 0.5f;
+      float push = overlap * 0.6f;
       a->position += Point(nx, ny) * push;
       a->position.wrap();
       b->position += Point(-nx, -ny) * push;
@@ -1542,8 +1545,15 @@ bool GLGame::net_send_delta() {
         fabsf(a->velocity.x() - b.vx) > 0.01f ||
         fabsf(a->velocity.y() - b.vy) > 0.01f ||
         (uint8_t)a->health != b.health || ast_state_byte(a) != b.state ||
-        fabsf(a->position.x() - pred_x) > 50.0f ||
-        fabsf(a->position.y() - pred_y) > 50.0f;
+        // 16, not 50: elastic separation pushes move POSITION without
+        // touching velocity, so rocks resting in contact piles drifted
+        // silently to the old threshold, corrected, and drifted again —
+        // a permanent ~50-unit sawtooth on every touching pair (the
+        // "constant position jitter"). A 16-unit correction glides in
+        // below perception; the extra records only flow while a pile is
+        // actually grinding.
+        fabsf(a->position.x() - pred_x) > 16.0f ||
+        fabsf(a->position.y() - pred_y) > 16.0f;
     if (dirty) dyn.push_back(a);
   }
   std::vector<uint32_t> removed;
@@ -2030,6 +2040,29 @@ void GLGame::tick_net_client(int delta) {
     for (auto *a : *objects) {
       a->step(step_size);
       net_decay_render_offset(*a, step_size);  // drawn pose fades to truth
+      // Render-jump detector: the DRAWN pose may only move by motion,
+      // gravity, mirrored bounces and offset decay — log any step that
+      // exceeds that budget several-fold, because that is the literal
+      // jitter the player sees and no reconcile counter measures it.
+      if (Net::net_debug_enabled()) {
+        static std::unordered_map<uint32_t, Point> s_prev;
+        WrappedPoint r(a->position.x() + a->net_pose_err.x(),
+                       a->position.y() + a->net_pose_err.y());
+        r.wrap();
+        std::unordered_map<uint32_t, Point>::iterator pi = s_prev.find(a->net_id);
+        if (pi != s_prev.end()) {
+          Point c = r.closest_to(pi->second);
+          float jx = c.x() - pi->second.x(), jy = c.y() - pi->second.y();
+          float jump = sqrtf(jx * jx + jy * jy);
+          float off = sqrtf(a->net_pose_err.x() * a->net_pose_err.x() +
+                            a->net_pose_err.y() * a->net_pose_err.y());
+          float budget = a->velocity.magnitude() * step_size + off * 0.15f + 2.0f;
+          if (jump > budget * 3.0f)
+            NET_LOG("net: render jump %.0f id=%u (spd %.2f off %.0f budget %.0f)\n",
+                    jump, a->net_id, a->velocity.magnitude(), off, budget);
+        }
+        s_prev[a->net_id] = Point(r.x(), r.y());
+      }
     }
     // Mirror the host's asteroid gravity so drift between 1 Hz keyframes
     // stays small — otherwise every asteroid near a hole goes stale.
