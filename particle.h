@@ -1,6 +1,8 @@
 #ifndef PARTICLE_H
 #define PARTICLE_H
 
+#include <stdint.h>
+
 #include "object.h"
 #include "point.h"
 #include "wrapped_point.h"
@@ -13,6 +15,11 @@ public:
   virtual void step(int delta);
   bool is_alive() const;
   float aliveness() const;
+
+  // PROTO 14 shot identity: assigned by the firing client, carried by
+  // the host's exact clone, referenced by MSG_HIT for precise consume.
+  // 0 = not a reported shot (debris, host-native bullets).
+  uint32_t net_id = 0;
 
   //TODO: Fix encapsulation, GLShip -> ParticleDrawer etc.
   friend class GLShip;

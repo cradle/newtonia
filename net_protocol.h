@@ -103,7 +103,13 @@ namespace Net {
 //     (kill + credit), keeping fragments/drops/score host-owned. Ends
 //     "shots that don't count" when the host's copy of the bullet missed
 //     (pose divergence, stall-delayed inputs).
-const uint8_t PROTO_VERSION = 13;
+// 14: client-authoritative shot spawning — MSG_SHOT (C->H rel: uint32
+//     shot id, spawn pos, exact velocity with spread applied, flags)
+//     replaces the host's re-simulation of the client's gun (independent
+//     rand() spread flew every shot's two copies on different headings);
+//     the host spawns exact clones. MSG_HIT gains the bullet id for
+//     precise consume of the killing bullet's host copy.
+const uint8_t PROTO_VERSION = 14;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check
@@ -119,9 +125,15 @@ enum MsgType {
   MSG_PING = 8,
   MSG_PONG = 9,
   // Client hit claim (PROTO 13): uint32 asteroid net_id the local ship's
-  // bullet visibly killed. RELIABLE — a claim must survive the exact
-  // stall conditions that made the host's copy of the bullet miss.
+  // bullet visibly killed, + uint32 bullet net_id (PROTO 14) so the host
+  // consumes exactly the killing bullet's clone. RELIABLE — a claim must
+  // survive the exact stall conditions that delay everything else.
   MSG_HIT = 10,
+  // Client shot report (PROTO 14): uint32 shot id, 2x float spawn pos,
+  // 2x float velocity (spread already applied), uint8 flags (bit0
+  // kills_invincible, bit1 trail). RELIABLE + ordered, so a MSG_HIT can
+  // never arrive before the shot it references.
+  MSG_SHOT = 11,
 };
 
 enum EventCode {

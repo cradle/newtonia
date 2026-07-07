@@ -685,6 +685,9 @@ void GLGame::add_remote_player() {
     object->ship->safe_position(grid, false);
   }
   object->ship->bullets.clear();  // drop the lethal spawn-flash debris
+  // PROTO 14: this ship's bullets arrive as MSG_SHOT reports — its own
+  // gun sim keeps its bookkeeping but mints no bullets.
+  object->ship->net_remote_gun = true;
 }
 
 // Elastic asteroid-asteroid collisions: 2D impulse physics (mass ~
@@ -1028,6 +1031,21 @@ void GLGame::net_host_poll() {
       if (r.ok) net_handle_event(code, arg);
       continue;
     }
+    if (h.msg_type == Net::MSG_SHOT) {
+      // Client shot report (PROTO 14): spawn an exact clone of the
+      // bullet the client fired — same spawn point, same spread-applied
+      // velocity, same id. The remote ship's own gun sim mints nothing
+      // (net_remote_gun); this is the only source of its bullets.
+      uint32_t id = r.u32();
+      float sx = r.f32(), sy = r.f32(), svx = r.f32(), svy = r.f32();
+      uint8_t flags = r.u8();
+      if (!r.ok || !remote) continue;
+      if (std::isfinite(sx) && std::isfinite(sy) && std::isfinite(svx) &&
+          std::isfinite(svy) && svx * svx + svy * svy < 25.0f)
+        remote->net_spawn_reported_bullet(id, Point(sx, sy), Point(svx, svy),
+                                          (flags & 1) != 0, (flags & 2) != 0);
+      continue;
+    }
     if (h.msg_type == Net::MSG_HIT) {
       // Client hit claim (PROTO 13): its screen saw its own bullet kill
       // this asteroid — honor it. The client only claims hits its local
@@ -1039,6 +1057,7 @@ void GLGame::net_host_poll() {
       // drops, and the removal record replicates back — where the claim
       // sender already killed its copy, making that a no-op.
       uint32_t id = r.u32();
+      uint32_t bullet_id = r.u32();  // PROTO 14: the killing bullet
       if (!r.ok || !remote) continue;
       for (auto oi = objects->begin(); oi != objects->end(); ++oi) {
         Asteroid *a = *oi;
@@ -1052,16 +1071,21 @@ void GLGame::net_host_poll() {
           remote->kills_this_life += 1;
           remote->kills += 1;
           remote->tally_nova_kill(a->position);
-          // The host's simulated copy of the killing bullet is still in
-          // flight (the claim beat it here by ~RTT/2) — left alone it
-          // plows into the freshly-spawned fragments and takes one of
-          // them too ("kills one of the sub-asteroids"). Spend the
-          // nearest remote bullet at the impact.
-          float best = a->radius + 200.0f;
+          // The clone of the killing bullet is still in flight here (the
+          // claim beat it by ~RTT/2) — left alone it plows into the
+          // freshly-spawned fragments and takes one of them too. Spend
+          // it by id (PROTO 14 exact match; ordered channel guarantees
+          // the shot arrived first), nearest-at-impact as the fallback
+          // for a clone the host sim already spent elsewhere.
           int best_i = -1;
-          for (size_t bi = 0; bi < remote->bullets.size(); bi++) {
-            float d = remote->bullets[bi].position.distance_to(a->position);
-            if (d < best) { best = d; best_i = (int)bi; }
+          for (size_t bi = 0; bi < remote->bullets.size(); bi++)
+            if (remote->bullets[bi].net_id == bullet_id) { best_i = (int)bi; break; }
+          if (best_i < 0) {
+            float best = a->radius + 200.0f;
+            for (size_t bi = 0; bi < remote->bullets.size(); bi++) {
+              float d = remote->bullets[bi].position.distance_to(a->position);
+              if (d < best) { best = d; best_i = (int)bi; }
+            }
           }
           if (best_i >= 0) {
             remote->explode(remote->bullets[best_i].position, a->velocity);
@@ -1069,7 +1093,7 @@ void GLGame::net_host_poll() {
             remote->bullets.pop_back();
           }
           NET_LOG("net: hit claim honored id=%u (bullet %s)\n", id,
-                  best_i >= 0 ? "consumed" : "not found");
+                  best_i >= 0 ? "consumed" : "already spent");
         }
         break;
       }
@@ -1799,6 +1823,7 @@ void GLGame::net_clear_event_outboxes() {
   Ship::net_shots.clear();
   Ship::net_booms.clear();
   Ship::net_kill_claims.clear();
+  Ship::net_shot_reports.clear();
 }
 
 void GLGame::net_send_event(uint8_t code, uint32_t arg) {
@@ -1988,6 +2013,13 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
   Net::set_net_log_role(false);  // lobby set it too; belt & braces
   net_session_ = session;
   net_assembler_ = new Net::SnapshotAssembler();
+  // PROTO 14: the local ship reports every shot it fires (id, spawn,
+  // exact velocity) so the host spawns clones instead of re-rolling.
+  if (!players->empty()) {
+    players->back()->ship->net_report_shots = true;
+    NET_LOG("net: shot reporting armed (ship=%p)\n",
+            (void *)players->back()->ship);
+  }
   NET_LOG("net: ice path %s\n",
          net_session_->transport()->connection_info().c_str());
   // Snapshot restores call Ship::respawn 10x/s; without this its hum
@@ -2380,24 +2412,55 @@ void GLGame::tick_net_client(int delta) {
   // drops and score stay host-owned and replicate back as ordinary new
   // records / HUD scalars; the only local fiction is the parent's final
   // explosion at this screen's pose. "No more shots that don't count."
+  // PROTO 14: report every shot the local ship fired this tick — the
+  // host spawns exact clones (same spawn point, same spread-applied
+  // velocity, same id) instead of re-rolling its own gun sim.
+  for (const Ship::NetShotReport &r : Ship::net_shot_reports) {
+    std::vector<uint8_t> msg;
+    Net::put_header(msg, Net::MSG_SHOT, 2);
+    Net::put_u32(msg, r.id);
+    Net::put_f32(msg, r.x);
+    Net::put_f32(msg, r.y);
+    Net::put_f32(msg, r.vx);
+    Net::put_f32(msg, r.vy);
+    Net::put_u8(msg, (r.kills_invincible ? 1 : 0) | (r.has_trail ? 2 : 0));
+    net_session_->transport()->send_reliable(&msg[0], msg.size());
+    // 1 Hz send-side twin of the host's "reported shots/s spawned" —
+    // a rate mismatch between the two lines localizes a report leak.
+    if (Net::net_debug_enabled()) {
+      static uint32_t s_last = 0;
+      static int s_count = 0;
+      s_count++;
+      uint32_t now = SDL_GetTicks();
+      if (now - s_last >= 1000) {
+        NET_LOG("net: %d shot reports/s sent (last id=%u)\n", s_count, r.id);
+        s_last = now;
+        s_count = 0;
+      }
+    }
+  }
+  Ship::net_shot_reports.clear();
+
   if (!Ship::net_kill_claims.empty()) {
-    for (uint32_t id : Ship::net_kill_claims) {
+    for (const Ship::NetKillClaim &c : Ship::net_kill_claims) {
       // Several bullets (or several steps of this tick) can consume
       // against the same rock before the drain kills it — one claim is
       // enough, the rest are duplicates.
-      std::map<uint32_t, int>::iterator dup = net_predicted_kills_.find(id);
+      std::map<uint32_t, int>::iterator dup =
+          net_predicted_kills_.find(c.ast_id);
       if (dup != net_predicted_kills_.end() && current_time < dup->second)
         continue;
       std::vector<uint8_t> msg;
       Net::put_header(msg, Net::MSG_HIT, 2);
-      Net::put_u32(msg, id);
+      Net::put_u32(msg, c.ast_id);
+      Net::put_u32(msg, c.bullet_id);
       net_session_->transport()->send_reliable(&msg[0], msg.size());
       // Keyframes cut before the host processes the claim still list
       // this id — suppress re-creation until the removal propagates.
-      net_predicted_kills_[id] = current_time + 3000;
+      net_predicted_kills_[c.ast_id] = current_time + 3000;
       for (auto oi = objects->begin(); oi != objects->end(); ++oi) {
         Asteroid *a = *oi;
-        if (a->net_id != id) continue;
+        if (a->net_id != c.ast_id) continue;
         a->kill();  // claim conditions guarantee a plain bullet kills it
         if (!a->is_alive() && !a->is_removable()) {
           Asteroid::play_explode_sound();
@@ -2408,7 +2471,7 @@ void GLGame::tick_net_client(int delta) {
         objects->erase(oi);
         break;
       }
-      NET_LOG("net: hit claim sent id=%u (killed locally)\n", id);
+      NET_LOG("net: hit claim sent id=%u (killed locally)\n", c.ast_id);
     }
     Ship::net_kill_claims.clear();
     grid.update((std::list<Object *> *)objects);  // no dangling grid entries

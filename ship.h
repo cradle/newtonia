@@ -180,9 +180,38 @@ class Ship : public CompositeObject {
     // asteroid locally and sends the host a reliable MSG_HIT claim it
     // honors (PROTO 13 client hit-authority: client kills always count).
     void net_cosmetic_impacts(const Grid &grid, bool claim_kills = false);
-    // Client outbox: net_ids of asteroids the local ship's bullets just
-    // visibly killed (see claim_kills above). tick_net_client drains it.
-    static std::vector<uint32_t> net_kill_claims;
+    // Client outbox: {asteroid net_id, bullet net_id} pairs the local
+    // ship's bullets just visibly killed (see claim_kills above).
+    // tick_net_client drains it into MSG_HIT claims.
+    struct NetKillClaim { uint32_t ast_id; uint32_t bullet_id; };
+    static std::vector<NetKillClaim> net_kill_claims;
+
+    // ---- PROTO 14 client-authoritative shot spawning ------------------
+    // net_report_shots (the client's LOCAL ship): every fired bullet is
+    // reported (id, spawn pose, exact velocity with spread applied) and
+    // sent as reliable MSG_SHOT — the host spawns exact clones instead
+    // of re-rolling its own gun sim (independent rand() spread made the
+    // two copies of every shot fly on different headings).
+    bool net_report_shots = false;
+    uint32_t net_shot_seq = 0;  // id mint for reported shots
+    struct NetShotReport {
+      uint32_t id;
+      float x, y, vx, vy;
+      bool kills_invincible, has_trail;
+    };
+    static std::vector<NetShotReport> net_shot_reports;  // client outbox
+    // Assign the freshly-fired bullets.back() its id and push its report
+    // (no-op unless net_report_shots). Ship is Particle's friend; the
+    // weapons that fire bullets are not.
+    void net_report_last_bullet();
+    // net_remote_gun (the HOST's remote ship): the weapon sim keeps its
+    // cooldown/ammo/trigger bookkeeping but mints no bullets and plays
+    // no shot sound — the real bullets arrive as MSG_SHOT reports via
+    // net_spawn_reported_bullet (sound + exact Particle clone).
+    bool net_remote_gun = false;
+    void net_spawn_reported_bullet(uint32_t id, const Point &pos,
+                                   const Point &vel, bool kills_inv,
+                                   bool trail);
     // Start the looping missile-fly sound for replicated missiles (the
     // weapon starts it for locally-fired ones); the handle halts the
     // channel when the last missile holding it is destroyed.

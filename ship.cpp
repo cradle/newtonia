@@ -20,7 +20,8 @@ bool Ship::net_quiet_respawn = false;
 std::vector<Ship::NetShipImpact> Ship::net_ship_impacts;
 std::vector<const Ship*> Ship::net_shots;
 std::vector<const Ship*> Ship::net_booms;
-std::vector<uint32_t> Ship::net_kill_claims;
+std::vector<Ship::NetKillClaim> Ship::net_kill_claims;
+std::vector<Ship::NetShotReport> Ship::net_shot_reports;
 #include <algorithm>
 #include <math.h>
 #include <climits>
@@ -1433,7 +1434,12 @@ void Ship::net_cosmetic_impacts(const Grid &grid, bool claim_kills) {
       b.net_sparked = true;
       b.time_left = 0.0f;
       explode(b.position, o->velocity);
-      if (claim_kills) net_kill_claims.push_back(ast->net_id);
+      if (claim_kills) {
+        NetKillClaim c;
+        c.ast_id = ast->net_id;
+        c.bullet_id = b.net_id;
+        net_kill_claims.push_back(c);
+      }
       NET_LOG("net: cosmetic impact consume id=%u\n", ast->net_id);
       continue;
     }
@@ -1599,6 +1605,11 @@ void Ship::mark_last_bullet_kills_invincible() {
 }
 
 void Ship::fire_bullet_from_gun() {
+  // PROTO 14: the host's remote ship mints no bullets — the weapon sim
+  // still ran (cooldown/ammo/trigger bookkeeping stays approximately in
+  // step with the client's), but the real bullet arrives as a MSG_SHOT
+  // report and spawns via net_spawn_reported_bullet.
+  if (net_remote_gun) return;
   if(shoot_sound != NULL && sound_volume_scale > 0.0f) {
     Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * sound_volume_scale));
     Mix_PlayChannel(-1, shoot_sound, 0);
@@ -1607,6 +1618,50 @@ void Ship::fire_bullet_from_gun() {
   bullets.push_back(Particle(gun(), facing * 0.615f + velocity * 0.99f, 2000.0f));
   mark_last_bullet_trail();
   mark_last_bullet_kills_invincible();
+  net_report_last_bullet();
+}
+
+void Ship::net_report_last_bullet() {
+  if (!net_report_shots || bullets.empty()) return;
+  Particle &b = bullets.back();
+  b.net_id = ++net_shot_seq;
+  NetShotReport r;
+  r.id = b.net_id;
+  r.x = b.position.x(); r.y = b.position.y();
+  r.vx = b.velocity.x(); r.vy = b.velocity.y();
+  r.kills_invincible = b.kills_invincible;
+  r.has_trail = b.has_trail;
+  net_shot_reports.push_back(r);
+}
+
+// PROTO 14: spawn the remote player's reported shot as an exact clone —
+// same spawn point, same velocity (spread already applied by the firing
+// client), same identity for the MSG_HIT consume.
+void Ship::net_spawn_reported_bullet(uint32_t id, const Point &pos,
+                                     const Point &vel, bool kills_inv,
+                                     bool trail) {
+  if(shoot_sound != NULL && sound_volume_scale > 0.0f) {
+    Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * sound_volume_scale));
+    Mix_PlayChannel(-1, shoot_sound, 0);
+  }
+  bullets.push_back(Particle(pos, vel, 2000.0f));
+  Particle &b = bullets.back();
+  b.net_id = id;
+  b.kills_invincible = kills_inv;
+  b.has_trail = trail;
+  // 1 Hz proof-of-flow: reported clones spawning at all (the handler is
+  // otherwise silent, and its failure mode would just be an idle gun).
+  if (Net::net_debug_enabled()) {
+    static Uint32 s_last = 0;
+    static int s_count = 0;
+    s_count++;
+    Uint32 now = SDL_GetTicks();
+    if (now - s_last >= 1000) {
+      NET_LOG("net: %d reported shots/s spawned\n", s_count);
+      s_last = now;
+      s_count = 0;
+    }
+  }
 }
 
 WrappedPoint Ship::tail() const {
