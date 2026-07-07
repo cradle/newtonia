@@ -119,8 +119,12 @@ re-relays too. On one Android phone:
 2. App: ONLINE → HOST. Browser: web build, ONLINE → JOIN. If the browser
    offers to paste/read the clipboard, decline — the auto-join would race
    the arming. Type `0`, then the code shown in the app.
-3. Connected at all = relayed: the armed side gathers no direct
-   candidates, so the pair physically cannot go direct. `npx wrangler
+3. Connected at all = relayed: the armed side DROPS every non-relay
+   remote candidate (gathering-side filtering alone proved insufficient
+   — libdatachannel still fired direct checks and once connected
+   host/host), so the only reachable peer address is its TURN endpoint.
+   The armed side logs "relay-only ICE policy ACTIVE" and one
+   "dropped remote ... candidate" per filtered candidate. `npx wrangler
    tail` shows `turn creds minted, ttl=...` to confirm any TURN_TTL
    override took effect.
 
