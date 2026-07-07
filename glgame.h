@@ -193,6 +193,13 @@ private:
   void net_ping_tick(int delta);
   // Answers PING / consumes PONG; true when the message was one of them.
   bool net_handle_ping_pong(uint8_t msg_type, Net::Reader &r);
+  // How far ahead (ms) to extrapolate a host pose to compensate its
+  // transit staleness: RTT/2, capped, 0 before the first PONG.
+  float net_lead_ms() const;
+  // Reconcile a freshly-applied authoritative pose with the client's own
+  // extrapolation (old_pos): lead it by net_lead_ms(), keep the client
+  // pose inside a dead zone, blend moderate error, snap real jumps.
+  void net_reconcile_pose(Object &o, const WrappedPoint &old_pos) const;
 
   // ---- M2-4 rejoin (host only; see NETPLAY.md) ----
   // The lobby's signal connection moves in here so the room stays open

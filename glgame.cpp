@@ -726,6 +726,40 @@ bool GLGame::net_handle_ping_pong(uint8_t msg_type, Net::Reader &r) {
   return false;
 }
 
+float GLGame::net_lead_ms() const {
+  float lead = net_rtt_ms_ > 0.0f ? net_rtt_ms_ * 0.5f : 0.0f;
+  return lead > 250.0f ? 250.0f : lead;  // a spike is not a lead
+}
+
+// World objects (asteroids, the remote ship) are extrapolated locally with
+// the same physics the host runs, so an arriving pose *should* be a no-op
+// — but it is RTT/2 stale and rides the reliable channel, whose delivery
+// time wobbles under relay retransmits. Overwriting outright made every
+// asteroid visibly jitter once a second (each keyframe yanked it by the
+// timing error). Lead the pose by RTT/2, then: in-agreement poses keep the
+// client's smooth extrapolation, moderate error blends over a few applies,
+// and anything larger (teleport, host-side bounce) is taken whole.
+void GLGame::net_reconcile_pose(Object &o, const WrappedPoint &old_pos) const {
+  float lead = net_lead_ms();
+  WrappedPoint target(o.position.x() + o.velocity.x() * lead,
+                      o.position.y() + o.velocity.y() * lead);
+  target.wrap();
+  Point c = target.closest_to(old_pos);
+  float cx = c.x() - old_pos.x();
+  float cy = c.y() - old_pos.y();
+  float err2 = cx * cx + cy * cy;
+  const float dead_zone = 8.0f, blend_dist = 150.0f;
+  if (err2 < dead_zone * dead_zone) {
+    o.position = old_pos;
+  } else if (err2 < blend_dist * blend_dist) {
+    o.position = WrappedPoint(old_pos.x() + cx * 0.35f,
+                              old_pos.y() + cy * 0.35f);
+  } else {
+    o.position = target;
+  }
+  o.position.wrap();
+}
+
 void GLGame::net_host_poll() {
   NetTransport *t = net_session_->transport();
   Ship *remote = players->size() >= 2 ? players->back()->ship : NULL;
@@ -1962,8 +1996,10 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in) {
     // Teleporting asteroid relocated on the host this instant (the
     // vulnerable window opens on arrival): play the warp locally.
     bool was_vulnerable = a->teleport_vulnerable;
+    WrappedPoint extrapolated = a->position;
     a->position = WrappedPoint(px, py);
     a->velocity = Point(vx, vy);
+    net_reconcile_pose(*a, extrapolated);
     a->health = health;
     a->phased = (state & 1) != 0;
     a->teleport_vulnerable = (state & 2) != 0;
@@ -2090,6 +2126,13 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     // however close to a rock it is. Pin the authoritative position back.
     ship->position = WrappedPoint(s.players[i].pos_x, s.players[i].pos_y);
 
+    // The remote (host) ship is client-extrapolated between applies like
+    // every other world object — reconcile instead of overwriting, or it
+    // shimmers with the channel's delivery jitter exactly like the
+    // asteroids did. Facing/velocity stay authoritative.
+    if (!is_local && was_alive && ship->is_alive() && !world_rebuilt)
+      net_reconcile_pose(*ship, old_pos);
+
     if (is_local && was_alive && ship->is_alive() && !world_rebuilt) {
       // A correction beyond any plausible prediction error means the host
       // moved the ship discontinuously — teleport, respawn, new-level spawn.
@@ -2104,8 +2147,7 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       // the measured round trip (velocity is per-ms) before comparing,
       // and leave the prediction untouched inside a small dead zone so
       // an in-agreement ship isn't nudged 10x a second.
-      float lead_ms = net_rtt_ms_ > 0.0f ? net_rtt_ms_ * 0.5f : 0.0f;
-      if (lead_ms > 250.0f) lead_ms = 250.0f;  // a spike is not a lead
+      float lead_ms = net_lead_ms();
       WrappedPoint target(
           ship->position.x() + ship->velocity.x() * lead_ms,
           ship->position.y() + ship->velocity.y() * lead_ms);
@@ -2392,7 +2434,9 @@ void GLGame::net_apply_keyframe_asteroid_ids(Save::Stream &in,
     const Save::Asteroid &sa = s.asteroids[i];
     std::unordered_map<uint32_t, Asteroid *>::iterator found = by_id.find(ids[i]);
     if (found != by_id.end()) {
+      WrappedPoint extrapolated = found->second->position;
       found->second->restore_state(sa);
+      net_reconcile_pose(*found->second, extrapolated);
       by_id.erase(found);
     } else {
       Asteroid *a = new Asteroid(sa.invincible, sa.invisible, sa.reflective,
