@@ -84,7 +84,13 @@ namespace Net {
 //     plus a warp-count echo; the host adopts the reported pose, so the
 //     pilot is never corrected (an input blackout shows on the REMOTE view
 //     of that ship instead of rubberbanding its own player).
-const uint8_t PROTO_VERSION = 12;
+// 13: client-authoritative bullet kills — MSG_HIT (C->H rel, uint32
+//     asteroid net_id) claims a would-kill hit the client's screen saw;
+//     the client kills its copy instantly and the host honors the claim
+//     (kill + credit), keeping fragments/drops/score host-owned. Ends
+//     "shots that don't count" when the host's copy of the bullet missed
+//     (pose divergence, stall-delayed inputs).
+const uint8_t PROTO_VERSION = 13;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check
@@ -99,6 +105,10 @@ enum MsgType {
   // sender's SDL_GetTicks, PONG echoes it straight back.
   MSG_PING = 8,
   MSG_PONG = 9,
+  // Client hit claim (PROTO 13): uint32 asteroid net_id the local ship's
+  // bullet visibly killed. RELIABLE — a claim must survive the exact
+  // stall conditions that made the host's copy of the bullet miss.
+  MSG_HIT = 10,
 };
 
 enum EventCode {

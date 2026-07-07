@@ -1028,6 +1028,36 @@ void GLGame::net_host_poll() {
       if (r.ok) net_handle_event(code, arg);
       continue;
     }
+    if (h.msg_type == Net::MSG_HIT) {
+      // Client hit claim (PROTO 13): its screen saw its own bullet kill
+      // this asteroid — honor it. The client only claims hits its local
+      // rules say a plain bullet kills, so divergent host-side state
+      // (tough health, teleport window, phase) is forced through rather
+      // than re-litigated; invincible stays the one hard no (a claim for
+      // one can only be a stale-flag artifact). The kill runs the normal
+      // host path from here: this tick's reap spawns fragments and
+      // drops, and the removal record replicates back — where the claim
+      // sender already killed its copy, making that a no-op.
+      uint32_t id = r.u32();
+      if (!r.ok || !remote) continue;
+      for (auto oi = objects->begin(); oi != objects->end(); ++oi) {
+        Asteroid *a = *oi;
+        if (a->net_id != id) continue;
+        if (a->invincible || !a->is_alive()) break;
+        if (a->tough) a->health = 1;
+        if (a->teleporting) a->teleport_vulnerable = true;
+        a->phased = false;
+        if (a->kill()) {
+          remote->score += a->get_value() * remote->multiplier();
+          remote->kills_this_life += 1;
+          remote->kills += 1;
+          remote->tally_nova_kill(a->position);
+          NET_LOG("net: hit claim honored id=%u\n", id);
+        }
+        break;
+      }
+      continue;
+    }
     if (h.msg_type != Net::MSG_INPUT) continue;
 
     Net::InputState in;
@@ -2318,32 +2348,49 @@ void GLGame::tick_net_client(int delta) {
     time_until_next_step += time_between_steps;
   }
 
-  // Kill-confirmation telemetry: every locally-consumed would-kill hit
-  // should be followed by the host's removal within ~RTT. Measure the
-  // real latency — and shout when a claimed kill never lands (the
-  // "bullets hitting but not killing" report), with enough context to
-  // say which asteroid the host disagreed about.
-  for (uint32_t id : Ship::net_kill_claims)
-    net_pending_kills_.push_back(std::make_pair(id, current_time));
-  Ship::net_kill_claims.clear();
-  for (auto ki = net_pending_kills_.begin(); ki != net_pending_kills_.end();) {
-    Asteroid *found = NULL;
-    for (auto *a : *objects)
-      if (a->net_id == ki->first) { found = a; break; }
-    if (!found) {
-      NET_LOG("net: kill confirmed %d ms after local hit (id=%u)\n",
-              current_time - ki->second, ki->first);
-      ki = net_pending_kills_.erase(ki);
-    } else if (current_time - ki->second > 2500) {
-      NET_LOG("net: kill NOT confirmed 2500 ms after local hit "
-              "(id=%u spd=%.3f r=%.0f hp=%d)\n",
-              ki->first, found->velocity.magnitude(), found->radius,
-              found->health);
-      ki = net_pending_kills_.erase(ki);
-    } else {
-      ++ki;
+  // Client hit-authority (PROTO 13): every would-kill consume detected
+  // in the step loop kills the asteroid HERE — instantly, even mid-stall
+  // — and sends a reliable MSG_HIT claim the host honors. Fragments,
+  // drops and score stay host-owned and replicate back as ordinary new
+  // records / HUD scalars; the only local fiction is the parent's final
+  // explosion at this screen's pose. "No more shots that don't count."
+  if (!Ship::net_kill_claims.empty()) {
+    for (uint32_t id : Ship::net_kill_claims) {
+      // Several bullets (or several steps of this tick) can consume
+      // against the same rock before the drain kills it — one claim is
+      // enough, the rest are duplicates.
+      std::map<uint32_t, int>::iterator dup = net_predicted_kills_.find(id);
+      if (dup != net_predicted_kills_.end() && current_time < dup->second)
+        continue;
+      std::vector<uint8_t> msg;
+      Net::put_header(msg, Net::MSG_HIT, 2);
+      Net::put_u32(msg, id);
+      net_session_->transport()->send_reliable(&msg[0], msg.size());
+      // Keyframes cut before the host processes the claim still list
+      // this id — suppress re-creation until the removal propagates.
+      net_predicted_kills_[id] = current_time + 3000;
+      for (auto oi = objects->begin(); oi != objects->end(); ++oi) {
+        Asteroid *a = *oi;
+        if (a->net_id != id) continue;
+        a->kill();  // claim conditions guarantee a plain bullet kills it
+        if (!a->is_alive() && !a->is_removable()) {
+          Asteroid::play_explode_sound();
+          dead_objects->push_back(a);
+        } else {
+          delete a;
+        }
+        objects->erase(oi);
+        break;
+      }
+      NET_LOG("net: hit claim sent id=%u (killed locally)\n", id);
     }
+    Ship::net_kill_claims.clear();
+    grid.update((std::list<Object *> *)objects);  // no dangling grid entries
   }
+  // Expire suppression entries the removal record has long since covered.
+  for (auto pk = net_predicted_kills_.begin();
+       pk != net_predicted_kills_.end();)
+    pk = current_time >= pk->second ? net_predicted_kills_.erase(pk) : ++pk;
 
   auto oi = dead_objects->begin();
   while (oi != dead_objects->end()) {
@@ -2693,9 +2740,9 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     while (!objects->empty()) { delete objects->back(); objects->pop_back(); }
     while (!dead_objects->empty()) { delete dead_objects->back(); dead_objects->pop_back(); }
     Asteroid::num_killable = 0;
-    // The rollover wiped every id — pending kill claims would all read
-    // as spuriously "confirmed" against the empty list.
-    net_pending_kills_.clear();
+    // The rollover wiped every id — predicted-kill suppression entries
+    // are meaningless against the rebuilt world.
+    net_predicted_kills_.clear();
   }
 
   generation = s.generation;
@@ -3068,6 +3115,14 @@ void GLGame::net_apply_keyframe_asteroid_ids(Save::Stream &in,
       net_reconcile_pose(*a, old_render, /*sim_exact=*/true);
       by_id.erase(found);
     } else {
+      // Predicted-kill suppression (PROTO 13): we killed this id locally
+      // on our own hit; a keyframe cut before the host processes the
+      // claim still lists it, and re-creating it would resurrect the
+      // rock for ~RTT. The entry expires in 3 s regardless.
+      std::map<uint32_t, int>::iterator pk =
+          net_predicted_kills_.find(ids[i]);
+      if (pk != net_predicted_kills_.end() && current_time < pk->second)
+        continue;
       Asteroid *a = new Asteroid(sa.invincible, sa.invisible, sa.reflective,
                                  sa.teleporting, sa.quantum, sa.tough,
                                  sa.armoured, sa.phasing);

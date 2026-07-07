@@ -231,10 +231,11 @@ private:
   // the transport's tx-buffered depth at that instant — the 1 Hz sample
   // can miss a sub-second gap entirely, this cannot. Both roles.
   bool net_quiet_logged_ = false;
-  // Client: local would-kill hits awaiting the host's confirming removal
-  // (net_id, current_time of the hit) — measures confirm latency and
-  // logs loudly when a claimed kill never lands.
-  std::vector<std::pair<uint32_t, int> > net_pending_kills_;
+  // Client hit-authority (PROTO 13): ids killed locally on our own hit,
+  // mapped to a suppression expiry — a keyframe cut before the host
+  // processes the claim still lists the id, and re-creating it would
+  // resurrect the rock for ~RTT.
+  std::map<uint32_t, int> net_predicted_kills_;
   // RX watchdog (both roles): last current_time anything arrived from the
   // peer. A one-way path death (Deck wifi sleep) otherwise leaves a ghost
   // world extrapolating for the ~45 s the transport takes to give up —
