@@ -2635,6 +2635,19 @@ bool GLGame::cleared() const {
 }
 
 void GLGame::tick(int delta) {
+  if (net_mode_ != NetOff) {
+    // Name a hole in OUR OWN tick cadence (App Nap on an occluded mac
+    // window, a window drag, a debugger): in every other log line it is
+    // indistinguishable from a network stall — it produces "input gap"
+    // on the peer and correction bursts here.
+    if (Net::net_debug_enabled() && delta > 250)
+      NET_LOG("net: LOCAL frame stall %d ms\n", delta);
+    // Pin the simulation rate online: the =/- time cheats change
+    // time_between_steps on ONE machine only, and a 8 vs 7 ms mismatch
+    // makes every object drift continuously — permanent rubberbanding
+    // that no reconciliation can hide.
+    time_between_steps = step_size;
+  }
   if (net_mode_ == NetClient) {
     tick_net_client(delta);
     return;
