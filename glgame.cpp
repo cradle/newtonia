@@ -1028,8 +1028,12 @@ void GLGame::net_host_poll() {
       // The first INPUT proves the client's game is up: if we are
       // paused (auto-paused on its disconnect, or by hand), share the
       // pause state now — an event sent while it was still in the lobby
-      // would have been dropped.
+      // would have been dropped. The friendly-fire room rule has the
+      // same delivery problem (the ctor/rejoin announcements land while
+      // the client is still bootstrapping and vanish — its HUD showed
+      // OFF with the rule enabled), so re-announce it here too.
       if (!running) net_send_event(Net::EV_PAUSE);
+      net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
     }
 
     // One-shot deltas; capped so a rejoining/wrapped counter can't burst.
