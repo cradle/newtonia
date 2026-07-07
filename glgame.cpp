@@ -2818,8 +2818,15 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     float analog_rot = ship->rotation_scale;
     float analog_thrust = ship->thrust_analog;
     float analog_reverse = ship->reverse_analog;
+    // Local bullets are client-owned (own_bullets): restore_state's
+    // reset() clears the list, and with the echo rebuild gone nothing
+    // repopulated it — every in-flight shot vanished on the next apply
+    // ("only rendering for one tick"). Carry them across the restore.
+    std::vector<Particle> kept_bullets;
+    if (is_local) kept_bullets.swap(ship->bullets);
 
     ship->restore_state(s.players[i], grid);
+    if (is_local) ship->bullets.swap(kept_bullets);
     // restore_state -> respawn() -> safe_position() relocates the ship to a
     // RANDOM spot whenever the restored position is within 50 units of an
     // asteroid. Right for loading a solo save into a freshly-built world;
