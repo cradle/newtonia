@@ -2065,6 +2065,12 @@ void GLGame::tick_net_client(int delta) {
   if (!net_connection_lost_) {
     net_client_poll();
     net_ping_tick(delta);
+    if (running && net_last_rx_time_ &&
+        current_time - net_last_rx_time_ > 10000) {
+      NET_LOG("net: RX watchdog - 10 s of silence, connection lost\n");
+      net_session_->transport()->close();  // unblock the peer's side too
+      net_connection_lost_ = true;
+    }
   }
   if (net_session_->transport()->failed()) net_connection_lost_ = true;
   if (net_connection_lost_) {
@@ -2087,6 +2093,7 @@ void GLGame::tick_net_client(int delta) {
 
   if (!running) {
     last_tick += delta;
+    net_last_rx_time_ = current_time;  // paused peers legitimately go quiet
     return;
   }
   // The host's clock runs whenever we do (pauses stop both), so our
@@ -2291,6 +2298,7 @@ void GLGame::net_client_poll() {
   NetTransport *t = net_session_->transport();
   std::vector<unsigned char> msg;
   while (t->poll(msg)) {
+    net_last_rx_time_ = current_time;  // any arrival feeds the watchdog
     Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
     Net::Header h;
     if (!Net::read_header(r, h)) continue;
@@ -2964,6 +2972,20 @@ void GLGame::tick(int delta) {
     if (!net_connection_lost_) {
       net_host_poll();
       net_ping_tick(delta);
+      // RX watchdog, host side: a client whose game runs sends INPUT at
+      // 125 Hz (+ the reliable mirror); 10 s of silence while WE are
+      // running is a dead path, not a quiet player. Paused games pause
+      // both sides, and the pause gate below stops this tick anyway.
+      if (running && net_have_input_ &&
+          current_time - net_last_input_time_ > 10000) {
+        NET_LOG("net: RX watchdog - 10 s without INPUT, client lost\n");
+        // Close actively: the path may be one-way dead (or the peer
+        // frozen) with OUR transport still nominally alive — the close
+        // is what makes the peer's side fail fast and auto-rejoin
+        // instead of playing into the void.
+        net_session_->transport()->close();
+        net_connection_lost_ = true;
+      }
     }
     if (net_session_ && net_session_->transport()->failed())
       net_connection_lost_ = true;

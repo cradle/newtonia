@@ -199,6 +199,12 @@ private:
   // asteroid backward then forward at once. Items older than this
   // estimate are dropped instead.
   int net_host_est_ = -1;
+  // RX watchdog (both roles): last current_time anything arrived from the
+  // peer. A one-way path death (Deck wifi sleep) otherwise leaves a ghost
+  // world extrapolating for the ~45 s the transport takes to give up —
+  // 10 s of silence while running IS the diagnosis (10 Hz deltas / 125 Hz
+  // inputs never pause without the game pausing too).
+  int net_last_rx_time_ = 0;
 
   // Phase 8 polish (see NETPLAY.md)
   static void net_clear_event_outboxes();  // reset the static host outboxes
