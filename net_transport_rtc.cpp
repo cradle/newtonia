@@ -116,6 +116,21 @@ public:
   void add_remote_candidate(const std::string &mid,
                             const std::string &cand) override {
     if (pc_ < 0) return;
+    // Relay-only must also filter REMOTE candidates: libdatachannel's
+    // iceTransportPolicy only stops non-relay candidates being SIGNALED —
+    // the agent still fires connectivity checks from its own host sockets
+    // at whatever peer addresses it learns, so a one-sided force happily
+    // connected host/host straight across the LAN (Glenn caught it: the
+    // policy-ACTIVE log line followed by "ice path host/host"). With only
+    // the peer's relay endpoint known, every pair must traverse TURN.
+    // (Room flow always trickles; the manual clipboard flow isn't a
+    // force-relay test path.)
+    if ((force_relay() || relay_only_) &&
+        cand_type(cand.c_str()) != "relay") {
+      NET_LOG("net: relay-only - dropped remote %s candidate\n",
+              cand_type(cand.c_str()).c_str());
+      return;
+    }
     rtcAddRemoteCandidate(pc_, cand.c_str(), mid.c_str());
   }
 
