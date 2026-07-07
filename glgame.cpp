@@ -1924,21 +1924,25 @@ struct NetShipExtras {
 
 // quiet: suppress vanish explosions for this apply (level rollover wipes
 // every projectile at once — that's a rebuild, not a barrage of booms).
-bool nx_read_projectiles(Save::Stream &in, Ship &s, bool quiet,
+// s == NULL: parse-only — advance the stream past the projectile sections
+// without touching any ship (the stale-delta membership walk needs the
+// removal records that sit AFTER these sections; see net_client_poll).
+bool nx_read_projectiles(Save::Stream &in, Ship *s, bool quiet,
                          float lead_ms) {
   uint16_t n = 0;
   float x, y, vx, vy;
 
   if (!nx_read(in, n)) return false;
-  s.bullets.clear();
+  if (s) s->bullets.clear();
   for (int i = 0; i < n; i++) {
     if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
     // Lead by RTT/2: bullets are rebuilt wholesale every apply, and the
     // stale pose strobed against the client's own between-apply stepping
     // (fast movers made it obvious). Mines/gigas are near-stationary and
     // their disappearance matching relies on raw positions — no lead.
-    s.bullets.push_back(Particle(Point(x + vx * lead_ms, y + vy * lead_ms),
-                                 Point(vx, vy), 2000.0f));
+    if (s)
+      s->bullets.push_back(Particle(Point(x + vx * lead_ms, y + vy * lead_ms),
+                                    Point(vx, vy), 2000.0f));
   }
 
   if (!nx_read(in, n)) return false;
@@ -1946,10 +1950,11 @@ bool nx_read_projectiles(Save::Stream &in, Ship &s, bool quiet,
   // (proximity) — play the explosion here. Position-match against the
   // incoming set; mines barely drift, so 100 units is generous.
   std::vector<Particle> old_mines;
-  old_mines.swap(s.mines);
+  if (s) old_mines.swap(s->mines);
   for (int i = 0; i < n; i++) {
     if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
-    s.mines.push_back(Particle(Point(x, y), Point(vx, vy), 60000.0f));
+    if (!s) continue;
+    s->mines.push_back(Particle(Point(x, y), Point(vx, vy), 60000.0f));
     for (size_t j = 0; j < old_mines.size(); j++) {
       if (old_mines[j].position.distance_to(WrappedPoint(x, y)) < 100.0f) {
         old_mines.erase(old_mines.begin() + j);
@@ -1957,15 +1962,16 @@ bool nx_read_projectiles(Save::Stream &in, Ship &s, bool quiet,
       }
     }
   }
-  if (!quiet)
-    for (auto &om : old_mines) s.net_mine_exploded(om.position, om.velocity);
+  if (s && !quiet)
+    for (auto &om : old_mines) s->net_mine_exploded(om.position, om.velocity);
 
   if (!nx_read(in, n)) return false;
   std::vector<Particle> old_gigas;
-  old_gigas.swap(s.giga_mines);
+  if (s) old_gigas.swap(s->giga_mines);
   for (int i = 0; i < n; i++) {
     if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
-    s.giga_mines.push_back(Particle(Point(x, y), Point(vx, vy), 60000.0f));
+    if (!s) continue;
+    s->giga_mines.push_back(Particle(Point(x, y), Point(vx, vy), 60000.0f));
     for (size_t j = 0; j < old_gigas.size(); j++) {
       if (old_gigas[j].position.distance_to(WrappedPoint(x, y)) < 100.0f) {
         old_gigas.erase(old_gigas.begin() + j);
@@ -1973,8 +1979,8 @@ bool nx_read_projectiles(Save::Stream &in, Ship &s, bool quiet,
       }
     }
   }
-  if (!quiet)
-    for (auto &og : old_gigas) s.net_giga_mine_exploded(og.position);
+  if (s && !quiet)
+    for (auto &og : old_gigas) s->net_giga_mine_exploded(og.position);
 
   if (!nx_read(in, n)) return false;
   // Missiles carry local presentation state the wire doesn't (trail,
@@ -1982,11 +1988,12 @@ bool nx_read_projectiles(Save::Stream &in, Ship &s, bool quiet,
   // missiles looked like they teleported. Adopt it from the nearest
   // previous missile instead.
   std::vector<MissileShot> old_missiles;
-  old_missiles.swap(s.missiles);
+  if (s) old_missiles.swap(s->missiles);
   for (int i = 0; i < n; i++) {
     float fx, fy, time_left;
     if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy) ||
         !nx_read(in, fx) || !nx_read(in, fy) || !nx_read(in, time_left)) return false;
+    if (!s) continue;
     MissileShot m(WrappedPoint(x, y), Point(fx, fy), Point(0, 0));
     m.velocity = Point(vx, vy);
     m.time_left = time_left;
@@ -2002,25 +2009,25 @@ bool nx_read_projectiles(Save::Stream &in, Ship &s, bool quiet,
       m.sound_handle = old_missiles[best].sound_handle;
       old_missiles.erase(old_missiles.begin() + best);
     }
-    s.missiles.push_back(m);
+    s->missiles.push_back(m);
   }
   // A missile that vanished with life remaining exploded on the host
   // (collision) — the expiry case detonates locally in Ship::step. Play
   // the explosion here since the client never simulates the impact.
   for (auto &om : old_missiles) {
-    if (!quiet && om.time_left > 300.0f)
-      s.net_missile_exploded(om.position, om.velocity);
+    if (s && !quiet && om.time_left > 300.0f)
+      s->net_missile_exploded(om.position, om.velocity);
   }
   // Fly loop: locally-fired missiles get it from the weapon; replicated
   // ones share one channel per ship, kept alive via the adopted handles
   // and halted automatically when the last holder is destroyed.
-  {
+  if (s) {
     std::shared_ptr<int> fly;
-    for (auto &m : s.missiles)
+    for (auto &m : s->missiles)
       if (m.sound_handle) { fly = m.sound_handle; break; }
-    for (auto &m : s.missiles) {
+    for (auto &m : s->missiles) {
       if (!m.sound_handle) {
-        if (!fly) fly = s.net_start_missile_fly_loop();
+        if (!fly) fly = s->net_start_missile_fly_loop();
         m.sound_handle = fly;
       }
     }
@@ -2028,9 +2035,11 @@ bool nx_read_projectiles(Save::Stream &in, Ship &s, bool quiet,
 
   if (!nx_read(in, n)) return false;
   size_t old_novas = 0;
-  for (const Shockwave &w : s.shockwaves)
-    if (w.is_nova) old_novas++;
-  s.shockwaves.clear();
+  if (s) {
+    for (const Shockwave &w : s->shockwaves)
+      if (w.is_nova) old_novas++;
+    s->shockwaves.clear();
+  }
   size_t new_novas = 0;
   for (int i = 0; i < n; i++) {
     float px, py, radius, max_radius, speed, time_left;
@@ -2038,15 +2047,16 @@ bool nx_read_projectiles(Save::Stream &in, Ship &s, bool quiet,
     if (!nx_read(in, px) || !nx_read(in, py) || !nx_read(in, radius) ||
         !nx_read(in, max_radius) || !nx_read(in, speed) ||
         !nx_read(in, time_left) || !nx_read(in, is_nova)) return false;
+    if (!s) continue;
     Shockwave w(Point(px, py), max_radius, speed, time_left, is_nova != 0);
     w.radius = radius;
     w.prev_radius = radius;
-    s.shockwaves.push_back(w);
+    s->shockwaves.push_back(w);
     if (is_nova) new_novas++;
   }
   // A nova wave the client hasn't seen yet: the wave itself replicates,
   // only its boom was host-side.
-  if (!quiet && new_novas > old_novas) s.net_nova_arrived();
+  if (s && !quiet && new_novas > old_novas) s->net_nova_arrived();
   return true;
 }
 
@@ -2331,12 +2341,17 @@ void GLGame::net_client_poll() {
       if (!Save::deserialize_game(in, s)) continue;
       if (!net_state_sane(s)) continue;
       // Drop stale backlog items (see net_host_est_): dyn records are
-      // absolute and the 1 Hz keyframe re-syncs new/removed ids, so a
-      // skipped delta costs nothing but the backward tour it would have
-      // painted across every asteroid at once.
+      // absolute, so a skipped delta spares the backward tour it would
+      // have painted across every asteroid at once. But NEW/REMOVED
+      // records are sent exactly once and are monotonic facts, so walk
+      // the stream past the (poisonous) state/ship sections and apply
+      // just the membership — otherwise a kill riding a gated delta
+      // waited ~1 s for the keyframe backstop (late explosions).
       if (net_host_est_ >= 0 && s.current_time + 120 < net_host_est_) {
-        NET_LOG("net: dropped stale delta (%d ms behind)\n",
+        NET_LOG("net: dropped stale delta (%d ms behind), membership kept\n",
                 net_host_est_ - s.current_time);
+        if (net_apply_ship_extras(in, s, /*apply=*/false))
+          net_apply_delta_asteroids(in, /*membership_only=*/true);
         continue;
       }
       net_host_est_ = s.current_time;
@@ -2370,7 +2385,13 @@ void GLGame::net_client_poll() {
   }
 }
 
-void GLGame::net_apply_delta_asteroids(Save::Stream &in) {
+// membership_only: the delta was stale-gated (see net_client_poll) — its
+// dyn poses would tour the world backward, but its NEW and REMOVED records
+// are monotonic facts (a breakup/kill that happened before the stall is
+// still true now), so those still apply. Without this, a kill whose
+// removal record rode a gated delta waited for the next 1 Hz keyframe —
+// Glenn's "about a 1 second delay on ~1/20 asteroid hits".
+void GLGame::net_apply_delta_asteroids(Save::Stream &in, bool membership_only) {
   // unordered_map + reserve: one bucket allocation and no tree balancing,
   // vs std::map's per-node red-black inserts, on this 10x/s lookup build.
   std::unordered_map<uint32_t, Asteroid *> by_id;
@@ -2400,7 +2421,7 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in) {
   // 1 Hz record-rate summary: at gen>=9 gravity dirties every asteroid
   // every delta, so this says how many hard authoritative writes the
   // asteroid field takes per second.
-  if (Net::net_debug_enabled()) {
+  if (Net::net_debug_enabled() && !membership_only) {
     static uint32_t s_last = 0;
     static int s_records = 0;
     s_records += n_dyn;
@@ -2419,6 +2440,7 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in) {
         !nx_read(in, vx) || !nx_read(in, vy) || !nx_read(in, health) ||
         !nx_read(in, state))
       return;
+    if (membership_only) continue;  // stale pose — parse past it only
     std::unordered_map<uint32_t, Asteroid *>::iterator f = by_id.find(id);
     if (f == by_id.end()) continue;  // unknown id — next keyframe reconciles
     Asteroid *a = f->second;
@@ -2496,6 +2518,11 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in) {
     }
     by_id.erase(f);
   }
+  // Positive proof for the stale-delta walk: a misaligned parse would
+  // silently misread these once-sent sections, so say when they land.
+  if (membership_only && (n_new || n_rm))
+    NET_LOG("net: stale delta membership applied (+%d -%d)\n",
+            (int)n_new, (int)n_rm);
 }
 
 void GLGame::net_apply_state(const Save::GameState &s) {
@@ -2688,7 +2715,8 @@ void GLGame::net_apply_extras(Save::Stream &in, const Save::GameState &s) {
   net_apply_keyframe_asteroid_ids(in, s);
 }
 
-bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s) {
+bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
+                                   bool apply) {
   uint32_t nplayers = 0;
   if (!nx_read(in, nplayers)) return false;
   auto it = players->begin();
@@ -2699,6 +2727,13 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s) {
         !nx_read(in, ex.god_ms) || !nx_read(in, ex.shield) ||
         !nx_read(in, ex.warp_count) || !nx_read(in, ex.move_flags))
       return false;
+    if (!apply) {
+      // Parse-only walk (stale delta): every pose/effect in this section
+      // is stale poison — only the stream position matters, so the
+      // asteroid membership records behind it can still be reached.
+      if (!nx_read_projectiles(in, NULL, false, 0.0f)) return false;
+      continue;
+    }
     if (it == players->end()) return false;
     Ship *ship = (*it)->ship;
 
@@ -2762,7 +2797,7 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s) {
     // (both still function — the host simulates them; only their local
     // visual/audio flourishes are missing).
 
-    if (!nx_read_projectiles(in, *ship, net_world_rebuilt_last_apply_,
+    if (!nx_read_projectiles(in, ship, net_world_rebuilt_last_apply_,
                              net_lead_ms()))
       return false;
     ++it;
@@ -2783,7 +2818,7 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s) {
         Point(x + vx * net_lead_ms(), y + vy * net_lead_ms()),
         Point(vx, vy), 2000.0f));
   }
-  if (mini_station) mini_station->bullets.swap(ms_bullets);
+  if (apply && mini_station) mini_station->bullets.swap(ms_bullets);
 
   // v7: station enemies' bullets, in the same order the station restore
   // just rebuilt the enemies list.
@@ -2805,7 +2840,7 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s) {
           Point(x + vx * net_lead_ms(), y + vy * net_lead_ms()),
           Point(vx, vy), 2000.0f));
     }
-    if (ei != enemies->end()) {
+    if (apply && ei != enemies->end()) {
       (*ei)->ship->bullets.swap(ebs);
       ++ei;
     }

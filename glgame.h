@@ -147,10 +147,14 @@ private:
   void net_apply_extras(Save::Stream &in, const Save::GameState &s);
   // Delta protocol (M2-6): the ship half of the extras is shared between
   // keyframes and deltas; asteroids arrive as new/dynamic/removed records.
-  bool net_apply_ship_extras(Save::Stream &in, const Save::GameState &s);
+  // apply=false / membership_only=true drive the stale-delta walk: parse
+  // past the stale poses, keep only the once-sent new/removed records.
+  bool net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
+                             bool apply = true);
   void net_apply_keyframe_asteroid_ids(Save::Stream &in,
                                        const Save::GameState &s);
-  void net_apply_delta_asteroids(Save::Stream &in);
+  void net_apply_delta_asteroids(Save::Stream &in,
+                                 bool membership_only = false);
   bool net_send_delta();          // false: too big / not possible -> keyframe
 
   // The lobby bootstraps the client game (constructor + first snapshot's
