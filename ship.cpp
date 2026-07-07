@@ -1398,6 +1398,7 @@ void Ship::net_cosmetic_impacts(const Grid &grid) {
     Asteroid *ast = dynamic_cast<Asteroid *>(o);
     if (ast == NULL) continue;
     bool ting;
+    bool consume = false;  // absorbed/killing hits stop the bullet HERE
     if (ast->reflective || (ast->phasing && ast->phased)) {
       ting = true;  // bullet bounces off / passes through
     } else if (ast->armoured) {
@@ -1415,11 +1416,24 @@ void Ship::net_cosmetic_impacts(const Grid &grid) {
       ting = true;
     } else if (ast->invincible || (ast->tough && ast->health > 1) ||
                (ast->teleporting && !ast->teleport_vulnerable)) {
-      ting = false;  // thud: absorbed (or the asteroid teleports away)
+      ting = false;   // thud: absorbed (or the asteroid teleports away)
+      consume = true; // the host consumes its copy — ours must stop too
     } else {
-      continue;  // plain killable asteroid: the host's kill replicates
+      // Plain killable asteroid: the KILL is the host's call (it lands
+      // via the removal record ~RTT later), but the BULLET must not fly
+      // on through the rock while we wait — on a relay that read as
+      // shots phasing through asteroids that died a beat later. Consume
+      // it at the contact point with a hit spray now; the death
+      // explosion and sound still replicate. If the host's copy of this
+      // shot somehow misses, we spent a spark on a miss — cosmetic.
+      b.net_sparked = true;
+      b.time_left = 0.0f;
+      explode(b.position, o->velocity);
+      NET_LOG("net: cosmetic impact consume\n");
+      continue;
     }
     b.net_sparked = true;
+    if (consume) b.time_left = 0.0f;
     explode(b.position, o->velocity);
     Mix_Chunk *snd = ting ? Asteroid::ting_sound : Asteroid::thud_sound;
     if (snd != NULL) {
