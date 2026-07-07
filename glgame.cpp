@@ -931,9 +931,26 @@ void GLGame::net_host_poll() {
         std::isfinite(in.pos_x) && std::isfinite(in.pos_y) &&
         std::isfinite(in.vel_x) && std::isfinite(in.vel_y) &&
         in.vel_x * in.vel_x + in.vel_y * in.vel_y < 9.0f) {
-      remote->position = WrappedPoint(in.pos_x, in.pos_y);
-      remote->position.wrap();
+      WrappedPoint reported(in.pos_x, in.pos_y);
+      reported.wrap();
+      Point c = reported.closest_to(remote->position);
+      float dx = c.x() - remote->position.x();
+      float dy = c.y() - remote->position.y();
+      float err2 = dx * dx + dy * dy;
       remote->velocity = Point(in.vel_x, in.vel_y);
+      if (err2 < 40.0f * 40.0f || err2 > 600.0f * 600.0f) {
+        // Steady state (125 Hz reports differ by a step or two) or a
+        // teleport-scale jump: take the pose whole.
+        remote->position = reported;
+        remote->net_pose_err = Point(0.0f, 0.0f);
+      } else {
+        // Post-blackout catch-up: the client's report leaps to wherever
+        // it really flew during the gap. Bank the leap and let the host
+        // tick's drain glide the visible ship there over ~150 ms — the
+        // hop the HOST player was seeing. Gameplay pose is momentarily
+        // stale, which is no worse than the blackout itself was.
+        remote->net_pose_err = Point(dx, dy);
+      }
     }
     remote->rotate_left((held & Net::IN_LEFT) != 0);
     remote->rotate_right((held & Net::IN_RIGHT) != 0);
@@ -2828,6 +2845,10 @@ void GLGame::tick(int delta) {
     for(o = players->begin(); o != players->end(); o++) {
       (*o)->step(step_size, grid);
     }
+    // v12 adopt smoothing: a post-blackout pose catch-up banked by
+    // net_host_poll glides in instead of hopping on this screen.
+    if (net_mode_ == NetHost && players->size() >= 2)
+      net_smooth_step(*players->back()->ship, step_size);
 
     // Apply black-hole gravity to ships.
     // Ships in god mode or using the shield receive reduced gravity so they can escape.
