@@ -62,6 +62,11 @@ function random_code() {
   return code;
 }
 
+function turn_ttl(env) {
+  return Math.min(Math.max(Number(env.TURN_TTL) || 4 * 60 * 60, 30),
+                  48 * 60 * 60);
+}
+
 // Short-lived Cloudflare Calls TURN credentials, minted per connection.
 // Configured via secrets (wrangler secret put TURN_KEY_ID / TURN_API_TOKEN);
 // without them this returns [] and the game stays STUN-only.
@@ -94,11 +99,12 @@ async function turn_ice_servers(env) {
           // `wrangler secret put TURN_TTL` overrides (seconds, clamped to
           // Cloudflare's 48 h cap) — for expiry testing with a tiny TTL;
           // delete the secret to restore the default.
-          body: JSON.stringify({
-            ttl: Math.min(Math.max(Number(env.TURN_TTL) || 4 * 60 * 60, 30),
-                          48 * 60 * 60),
-          }),
+          body: JSON.stringify({ ttl: turn_ttl(env) }),
         });
+    // Visible in `npx wrangler tail` — the only way to confirm a TURN_TTL
+    // override actually took effect for a given mint (the credential
+    // itself never exposes its expiry to the game).
+    console.log(`turn creds minted, ttl=${turn_ttl(env)}s`);
     if (!resp.ok) return [];
     const data = await resp.json();
     const s = data.iceServers;
