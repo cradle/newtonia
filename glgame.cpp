@@ -686,6 +686,87 @@ void GLGame::add_remote_player() {
   object->ship->bullets.clear();  // drop the lethal spawn-flash debris
 }
 
+// Elastic asteroid-asteroid collisions: 2D impulse physics (mass ~
+// radius^2) plus a positional push that resolves overlap, for every live
+// pair where at least one is elastic (reflective asteroids carry
+// elastic=true). Pairs are processed once via inner iterator starting
+// after outer. ONE definition for two callers: the host simulates it for
+// real (announce=true: bounce ting + EV_ROID_BOUNCE), and the net client
+// mirrors it silently each visual step — bounces are position-and-
+// pairing-dependent, so without the mirror every one of them was a
+// surprise the authoritative records corrected 100 ms later (the last
+// source of asteroid jitter; gravity is mirrored the same way).
+void GLGame::elastic_asteroid_collisions(bool announce) {
+  std::list<Asteroid*>::iterator ai, bi;
+  for(ai = objects->begin(); ai != objects->end(); ++ai) {
+    Asteroid *a = *ai;
+    if(!a->alive) continue;
+    bi = ai; ++bi;
+    for(; bi != objects->end(); ++bi) {
+      Asteroid *b = *bi;
+      if(!b->alive) continue;
+      if(!a->elastic && !b->elastic) continue;
+
+      // Use world-wrap aware distance: get closest copy of A to B
+      Point a_near = a->position.closest_to(b->position);
+      float dx = a_near.x() - b->position.x();
+      float dy = a_near.y() - b->position.y();
+      float dist2 = dx * dx + dy * dy;
+      float sum_r = a->radius + b->radius;
+      if(dist2 >= sum_r * sum_r) continue; // no overlap
+
+      float dist = sqrtf(dist2);
+      if(dist < 1e-4f) continue; // degenerate overlap, skip
+
+      // Collision normal pointing from B to A
+      float nx = dx / dist;
+      float ny = dy / dist;
+
+      // Positional correction: always push apart to resolve overlap,
+      // including the case where children spawn inside each other.
+      float overlap = sum_r - dist;
+      float push = overlap * 0.5f + 0.5f;
+      a->position += Point(nx, ny) * push;
+      a->position.wrap();
+      b->position += Point(-nx, -ny) * push;
+      b->position.wrap();
+
+      // Velocity impulse: only when approaching (negative = approaching)
+      float vrel_n = (a->velocity.x() - b->velocity.x()) * nx
+                   + (a->velocity.y() - b->velocity.y()) * ny;
+      if(vrel_n >= 0.0f) continue; // already separating, no impulse needed
+
+      // Mass proportional to area (radius^2)
+      float ma = a->radius * a->radius;
+      float mb = b->radius * b->radius;
+      float impulse = -2.0f * vrel_n * ma * mb / (ma + mb);
+
+      a->velocity = a->velocity + Point(nx, ny) * (impulse / ma);
+      b->velocity = b->velocity - Point(nx, ny) * (impulse / mb);
+
+      // Play a deep metallic ting when an asteroid strikes a reflective one,
+      // but only if the collision is visible to any player.
+      if(announce && (a->reflective || b->reflective) &&
+         Asteroid::asteroid_ting_sound != NULL) {
+        Point contact(
+          (a->position.x() + b->position.x()) * 0.5f,
+          (a->position.y() + b->position.y()) * 0.5f);
+        float vol = sound_volume_for_point(contact);
+        if(vol > 0.0f) {
+          static Uint32 last_asteroid_ting_tick = UINT32_MAX;
+          Uint32 now = SDL_GetTicks();
+          if(now - last_asteroid_ting_tick >= 125) {
+            last_asteroid_ting_tick = now;
+            Mix_VolumeChunk(Asteroid::asteroid_ting_sound, (int)(MIX_MAX_VOLUME * vol));
+            Mix_PlayChannel(-1, Asteroid::asteroid_ting_sound, 0);
+            net_send_event(Net::EV_ROID_BOUNCE, (uint32_t)(vol * 255.0f));
+          }
+        }
+      }
+    }
+  }
+}
+
 // ---- RTT probe (PROTO 11) ----------------------------------------------
 // 1 Hz MSG_PING on the UNRELIABLE channel; the peer echoes the timestamp
 // back as MSG_PONG untouched, so only the sender's clock is ever read —
@@ -1955,6 +2036,9 @@ void GLGame::tick_net_client(int delta) {
     for (auto *bh : *black_holes)
       for (auto *a : *objects)
         if (!a->invincible) bh->apply_gravity(*a, step_size);
+    // Mirror the host's elastic bounces too (silently), or every one of
+    // them is a surprise the records correct 100 ms later.
+    elastic_asteroid_collisions(/*announce=*/false);
     for (auto *a : *dead_objects) a->step(step_size);
     for (auto *p : *pickups) p->step(step_size);
     // The HOST owns respawns. Ship::step self-respawns when the local
@@ -2947,80 +3031,7 @@ void GLGame::tick(int delta) {
     grid.update((std::list<Object *>*)objects);
 
   /* ELASTIC ASTEROID-ASTEROID COLLISIONS */
-    // For each pair of live asteroids where at least one is elastic, apply
-    // 2D elastic collision physics (mass ~ radius^2, conservation of momentum
-    // and kinetic energy along the collision normal). Pairs are processed once
-    // via inner iterator starting after outer to avoid double-application.
-    // Reflective asteroids carry elastic=true so they participate automatically.
-    {
-      std::list<Asteroid*>::iterator ai, bi;
-      for(ai = objects->begin(); ai != objects->end(); ++ai) {
-        Asteroid *a = *ai;
-        if(!a->alive) continue;
-        bi = ai; ++bi;
-        for(; bi != objects->end(); ++bi) {
-          Asteroid *b = *bi;
-          if(!b->alive) continue;
-          if(!a->elastic && !b->elastic) continue;
-
-          // Use world-wrap aware distance: get closest copy of A to B
-          Point a_near = a->position.closest_to(b->position);
-          float dx = a_near.x() - b->position.x();
-          float dy = a_near.y() - b->position.y();
-          float dist2 = dx * dx + dy * dy;
-          float sum_r = a->radius + b->radius;
-          if(dist2 >= sum_r * sum_r) continue; // no overlap
-
-          float dist = sqrtf(dist2);
-          if(dist < 1e-4f) continue; // degenerate overlap, skip
-
-          // Collision normal pointing from B to A
-          float nx = dx / dist;
-          float ny = dy / dist;
-
-          // Positional correction: always push apart to resolve overlap,
-          // including the case where children spawn inside each other.
-          float overlap = sum_r - dist;
-          float push = overlap * 0.5f + 0.5f;
-          a->position += Point(nx, ny) * push;
-          a->position.wrap();
-          b->position += Point(-nx, -ny) * push;
-          b->position.wrap();
-
-          // Velocity impulse: only when approaching (negative = approaching)
-          float vrel_n = (a->velocity.x() - b->velocity.x()) * nx
-                       + (a->velocity.y() - b->velocity.y()) * ny;
-          if(vrel_n >= 0.0f) continue; // already separating, no impulse needed
-
-          // Mass proportional to area (radius^2)
-          float ma = a->radius * a->radius;
-          float mb = b->radius * b->radius;
-          float impulse = -2.0f * vrel_n * ma * mb / (ma + mb);
-
-          a->velocity = a->velocity + Point(nx, ny) * (impulse / ma);
-          b->velocity = b->velocity - Point(nx, ny) * (impulse / mb);
-
-          // Play a deep metallic ting when an asteroid strikes a reflective one,
-          // but only if the collision is visible to any player.
-          if((a->reflective || b->reflective) && Asteroid::asteroid_ting_sound != NULL) {
-            Point contact(
-              (a->position.x() + b->position.x()) * 0.5f,
-              (a->position.y() + b->position.y()) * 0.5f);
-            float vol = sound_volume_for_point(contact);
-            if(vol > 0.0f) {
-              static Uint32 last_asteroid_ting_tick = UINT32_MAX;
-              Uint32 now = SDL_GetTicks();
-              if(now - last_asteroid_ting_tick >= 125) {
-                last_asteroid_ting_tick = now;
-                Mix_VolumeChunk(Asteroid::asteroid_ting_sound, (int)(MIX_MAX_VOLUME * vol));
-                Mix_PlayChannel(-1, Asteroid::asteroid_ting_sound, 0);
-                net_send_event(Net::EV_ROID_BOUNCE, (uint32_t)(vol * 255.0f));
-              }
-            }
-          }
-        }
-      }
-    }
+    elastic_asteroid_collisions(/*announce=*/true);
 
   /* COLLIDE EVERYTHING */
     for(o = players->begin(); o != players->end(); o++) {

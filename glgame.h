@@ -128,6 +128,11 @@ private:
   enum NetMode { NetOff, NetHost, NetClient };
   void add_remote_player();       // player 2 without local input bindings
   void net_host_poll();           // apply queued INPUT messages
+  // Elastic asteroid-asteroid physics, shared by the host sim
+  // (announce=true: ting + EV_ROID_BOUNCE) and the net client's silent
+  // per-step mirror — unmirrored, every bounce was a surprise the
+  // authoritative records corrected 100 ms later (client-side jitter).
+  void elastic_asteroid_collisions(bool announce);
   void net_host_send_snapshot(int delta);  // 10 Hz world broadcast
 
   // Client side: visual/kinematic tick (no kills/drops/generation logic),
