@@ -1052,7 +1052,24 @@ void GLGame::net_host_poll() {
           remote->kills_this_life += 1;
           remote->kills += 1;
           remote->tally_nova_kill(a->position);
-          NET_LOG("net: hit claim honored id=%u\n", id);
+          // The host's simulated copy of the killing bullet is still in
+          // flight (the claim beat it here by ~RTT/2) — left alone it
+          // plows into the freshly-spawned fragments and takes one of
+          // them too ("kills one of the sub-asteroids"). Spend the
+          // nearest remote bullet at the impact.
+          float best = a->radius + 200.0f;
+          int best_i = -1;
+          for (size_t bi = 0; bi < remote->bullets.size(); bi++) {
+            float d = remote->bullets[bi].position.distance_to(a->position);
+            if (d < best) { best = d; best_i = (int)bi; }
+          }
+          if (best_i >= 0) {
+            remote->explode(remote->bullets[best_i].position, a->velocity);
+            remote->bullets[best_i] = std::move(remote->bullets.back());
+            remote->bullets.pop_back();
+          }
+          NET_LOG("net: hit claim honored id=%u (bullet %s)\n", id,
+                  best_i >= 0 ? "consumed" : "not found");
         }
         break;
       }
