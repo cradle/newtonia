@@ -15,6 +15,7 @@
 #ifdef NEWTONIA_NET_RTC
 
 #include "net_transport.h"
+#include "net_protocol.h"  // NET_LOG
 
 #include <rtc/rtc.h>
 
@@ -268,8 +269,17 @@ private:
       ice_ptrs_.push_back(ice_extra_[i].c_str());
     config.iceServers = &ice_ptrs_[0];
     config.iceServersCount = (int)ice_ptrs_.size();
-    if (force_relay() || relay_only_)
+    if (force_relay() || relay_only_) {
       config.iceTransportPolicy = RTC_TRANSPORT_POLICY_RELAY;
+      // The overlay proves it worked (local candidate reads "relay/");
+      // this line proves the INTENT arrived — a shell export does not
+      // reach a mac .app launched by double-click/open, and that failure
+      // was silent ("my mac client says HOST/HOST" with the var set).
+      NET_LOG("net: relay-only ICE policy ACTIVE (%s)\n",
+              relay_only_ ? "0-prefix join" : "NEWTONIA_NET_FORCE_RELAY");
+    } else if (std::getenv("NEWTONIA_NET_FORCE_RELAY")) {
+      NET_LOG("net: NEWTONIA_NET_FORCE_RELAY present but value is '0'/off\n");
+    }
 
     pc_ = rtcCreatePeerConnection(&config);
     if (pc_ < 0) {
