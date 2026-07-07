@@ -170,6 +170,13 @@ public:
   bool connected() const override { return rel_open_ && unrel_open_; }
   bool failed() const override { return failed_; }
 
+  int buffered_amount() const override {
+    int total = 0, b;
+    if (dc_rel_ >= 0 && (b = rtcGetBufferedAmount(dc_rel_)) > 0) total += b;
+    if (dc_unrel_ >= 0 && (b = rtcGetBufferedAmount(dc_unrel_)) > 0) total += b;
+    return total;
+  }
+
   void send_reliable(const void *data, size_t size) override {
     if (rel_open_)
       rtcSendMessage(dc_rel_, (const char *)data, (int)size);

@@ -239,6 +239,12 @@ EM_JS(int, nw_failed, (int h), {
   var c = Module.__nwnet.conns[h];
   return (c && c.failed) ? 1 : 0;
 });
+EM_JS(int, nw_buffered, (int h), {
+  var c = Module.__nwnet.conns[h];
+  if (!c) return 0;
+  return ((c.rel && c.rel.bufferedAmount) | 0) +
+         ((c.unrel && c.unrel.bufferedAmount) | 0);
+});
 EM_JS(void, nw_send, (int h, int rel, const void *data, int size), {
   // slice() copies out of the wasm heap so the channel never holds a view
   // over memory the game is about to reuse.
@@ -385,6 +391,8 @@ public:
     return std::string(buf);
   }
   bool failed() const override { return nw_failed(handle_) != 0; }
+
+  int buffered_amount() const override { return nw_buffered(handle_); }
 
   void send_reliable(const void *data, size_t size) override {
     nw_send(handle_, 1, data, (int)size);

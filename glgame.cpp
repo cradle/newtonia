@@ -812,6 +812,14 @@ void GLGame::net_ping_tick(int delta) {
   net_ping_timer_ += delta;
   if (net_ping_timer_ < 1000) return;
   net_ping_timer_ = 0;
+  // Piggybacked 1 Hz sample: at these traffic rates the transport send
+  // buffer drains in microseconds, so ANY nonzero here means our sender
+  // is blocked — the smoking gun that an outage is the path/relay eating
+  // the flow (peer stopped acking) rather than in-flight delay.
+  if (Net::net_debug_enabled()) {
+    int buffered = net_session_->transport()->buffered_amount();
+    if (buffered > 0) NET_LOG("net: tx buffered %d bytes\n", buffered);
+  }
   std::vector<uint8_t> p;
   Net::put_header(p, Net::MSG_PING, net_mode_ == NetHost ? 1 : 2);
   Net::put_u32(p, (uint32_t)SDL_GetTicks());

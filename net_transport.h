@@ -43,6 +43,14 @@ public:
   // BEFORE start_host()/start_join(); default no-op.
   virtual void set_force_relay(bool on) { (void)on; }
 
+  // Bytes queued in the transport's send buffers (both channels) that
+  // have not reached the wire yet. Diagnosis telemetry: climbing during
+  // an outage = OUR sender is blocked (the peer stopped acking — the
+  // path or relay is eating the flow); staying ~0 while the peer logs a
+  // gap = packets left this machine and are delayed in flight. Default
+  // 0 for backends that can't tell.
+  virtual int buffered_amount() const { return 0; }
+
   virtual void start_host() = 0;
   virtual void start_join(const std::string& remote_offer) = 0;
 
