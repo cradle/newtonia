@@ -770,6 +770,38 @@ void GLGame::elastic_asteroid_collisions(bool announce) {
   }
 }
 
+// Quantum observation: collapse when any player looks at a quantum
+// asteroid (base speed), superposition otherwise (4x speed so it can
+// sneak up on players who look away). ONE definition for two callers:
+// the host simulates it for real, and the net client mirrors it every
+// visual step — both ships' poses and facings are known here, and
+// without the mirror every observation flip changed the rock's speed
+// 4x on the host only, so the client extrapolated at the wrong speed
+// until the next record: rocks "warping back and forth and ending up
+// in their expected location". The state-byte in the records remains
+// authoritative; this only keeps the between-record extrapolation right.
+void GLGame::update_quantum_observation() {
+  for(std::list<Asteroid*>::iterator oi = objects->begin();
+      oi != objects->end(); ++oi) {
+    Asteroid *ast = *oi;
+    if(!ast->quantum) continue;
+    bool now_observed = is_point_faced_by_any_player(ast->position);
+    if(now_observed == ast->quantum_observed) continue;
+    ast->quantum_observed = now_observed;
+    float spd = ast->velocity.magnitude();
+    if(spd > 1e-6f) {
+      Point dir = ast->velocity * (1.0f / spd);
+      if(now_observed) {
+        // Collapse: slow to base speed
+        ast->velocity = dir * ast->quantum_base_speed;
+      } else {
+        // Superposition: speed up 4x
+        ast->velocity = dir * ast->quantum_base_speed * 4.0f;
+      }
+    }
+  }
+}
+
 // ---- RTT probe (PROTO 11) ----------------------------------------------
 // 1 Hz MSG_PING on the UNRELIABLE channel; the peer echoes the timestamp
 // back as MSG_PONG untouched, so only the sender's clock is ever read —
@@ -922,7 +954,13 @@ void net_smooth_step(Object &o, int delta) {
 // coordinated lurch that reads as jitter no matter how smooth each
 // individual glide is. Capped near the rock's own speed the correction
 // hides inside ordinary motion (a 150-unit debt takes ~1 s to melt).
-void net_decay_render_offset(Object &o, int delta) {
+// PROXIMITY-SCALED: rocks near the player drain at full exponential
+// speed — anything that can kill you is drawn where it truly is (a
+// lingering banked offset near the ship meant "asteroids kill me when I
+// didn't see the impact") — while distant rocks keep the rate-capped
+// crawl that stops the whole-field lurch.
+void net_decay_render_offset(Object &o, int delta,
+                             const WrappedPoint &player) {
   float ex = o.net_pose_err.x(), ey = o.net_pose_err.y();
   float off2 = ex * ex + ey * ey;
   if (off2 < 0.25f) {
@@ -931,9 +969,13 @@ void net_decay_render_offset(Object &o, int delta) {
   }
   float off = sqrtf(off2);
   float want = off * (1.0f - expf(-(float)delta / 65.0f));
-  float cap = (o.velocity.magnitude() * 1.5f + 0.25f) * (float)delta;
-  float move = want < cap ? want : cap;
-  o.net_pose_err = o.net_pose_err * ((off - move) / off);
+  Point near_p = o.position.closest_to(player);
+  float dx = near_p.x() - player.x(), dy = near_p.y() - player.y();
+  if (dx * dx + dy * dy > 700.0f * 700.0f) {
+    float cap = (o.velocity.magnitude() * 1.5f + 0.25f) * (float)delta;
+    if (want > cap) want = cap;
+  }
+  o.net_pose_err = o.net_pose_err * ((off - want) / off);
 }
 }  // namespace
 
@@ -1878,7 +1920,8 @@ struct NetShipExtras {
 
 // quiet: suppress vanish explosions for this apply (level rollover wipes
 // every projectile at once — that's a rebuild, not a barrage of booms).
-bool nx_read_projectiles(Save::Stream &in, Ship &s, bool quiet) {
+bool nx_read_projectiles(Save::Stream &in, Ship &s, bool quiet,
+                         float lead_ms) {
   uint16_t n = 0;
   float x, y, vx, vy;
 
@@ -1886,7 +1929,12 @@ bool nx_read_projectiles(Save::Stream &in, Ship &s, bool quiet) {
   s.bullets.clear();
   for (int i = 0; i < n; i++) {
     if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
-    s.bullets.push_back(Particle(Point(x, y), Point(vx, vy), 2000.0f));
+    // Lead by RTT/2: bullets are rebuilt wholesale every apply, and the
+    // stale pose strobed against the client's own between-apply stepping
+    // (fast movers made it obvious). Mines/gigas are near-stationary and
+    // their disappearance matching relies on raw positions — no lead.
+    s.bullets.push_back(Particle(Point(x + vx * lead_ms, y + vy * lead_ms),
+                                 Point(vx, vy), 2000.0f));
   }
 
   if (!nx_read(in, n)) return false;
@@ -2050,7 +2098,8 @@ void GLGame::tick_net_client(int delta) {
     for (auto *bh : *black_holes) bh->step(step_size);
     for (auto *a : *objects) {
       a->step(step_size);
-      net_decay_render_offset(*a, step_size);  // drawn pose fades to truth
+      net_decay_render_offset(*a, step_size,
+                              players->back()->ship->position);
       // Render-jump detector: the DRAWN pose may only move by motion,
       // gravity, mirrored bounces and offset decay — log any step that
       // exceeds that budget several-fold, because that is the literal
@@ -2083,6 +2132,9 @@ void GLGame::tick_net_client(int delta) {
     // Mirror the host's elastic bounces too (silently), or every one of
     // them is a surprise the records correct 100 ms later.
     elastic_asteroid_collisions(/*announce=*/false);
+    // ...and the quantum observation flips (4x speed changes), the last
+    // host-only velocity rule the client couldn't predict.
+    update_quantum_observation();
     for (auto *a : *dead_objects) a->step(step_size);
     for (auto *p : *pickups) p->step(step_size);
     // The HOST owns respawns. Ship::step self-respawns when the local
@@ -2130,6 +2182,32 @@ void GLGame::tick_net_client(int delta) {
     // asteroids a bullet can't kill), detected locally against the fresh
     // grid — replaces the host's EV_ROID impact events (PROTO 10).
     for (auto *gs : *players) gs->ship->net_cosmetic_impacts(grid);
+
+    // Local-ship render-jump detector: the camera rides this pose, so a
+    // single-step discontinuity here moves the WHOLE visible field in
+    // unison — "all the asteroids jump at the same time" while every
+    // asteroid diagnostic stays silent.
+    if (Net::net_debug_enabled()) {
+      static Point s_prev_ship;
+      static bool s_have_prev = false;
+      Ship *me = players->back()->ship;
+      if (me->is_alive()) {
+        Point cur(me->position.x(), me->position.y());
+        if (s_have_prev) {
+          Point c = me->position.closest_to(s_prev_ship);
+          float jx = c.x() - s_prev_ship.x(), jy = c.y() - s_prev_ship.y();
+          float jump = sqrtf(jx * jx + jy * jy);
+          float budget = me->velocity.magnitude() * step_size + 3.0f;
+          if (jump > budget * 3.0f)
+            NET_LOG("net: SHIP render jump %.0f (spd %.2f)\n",
+                    jump, me->velocity.magnitude());
+        }
+        s_prev_ship = cur;
+        s_have_prev = true;
+      } else {
+        s_have_prev = false;
+      }
+    }
 
     net_client_send_input();
     time_until_next_step += time_between_steps;
@@ -2642,7 +2720,8 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s) {
     // (both still function — the host simulates them; only their local
     // visual/audio flourishes are missing).
 
-    if (!nx_read_projectiles(in, *ship, net_world_rebuilt_last_apply_))
+    if (!nx_read_projectiles(in, *ship, net_world_rebuilt_last_apply_,
+                             net_lead_ms()))
       return false;
     ++it;
   }
@@ -2658,7 +2737,9 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s) {
     if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) ||
         !nx_read(in, vy))
       return false;
-    ms_bullets.push_back(Particle(Point(x, y), Point(vx, vy), 2000.0f));
+    ms_bullets.push_back(Particle(
+        Point(x + vx * net_lead_ms(), y + vy * net_lead_ms()),
+        Point(vx, vy), 2000.0f));
   }
   if (mini_station) mini_station->bullets.swap(ms_bullets);
 
@@ -2678,7 +2759,9 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s) {
       if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) ||
           !nx_read(in, vy))
         return false;
-      ebs.push_back(Particle(Point(x, y), Point(vx, vy), 2000.0f));
+      ebs.push_back(Particle(
+          Point(x + vx * net_lead_ms(), y + vy * net_lead_ms()),
+          Point(vx, vy), 2000.0f));
     }
     if (ei != enemies->end()) {
       (*ei)->ship->bullets.swap(ebs);
@@ -2807,6 +2890,8 @@ void GLGame::tick(int delta) {
     // on the peer and correction bursts here.
     if (Net::net_debug_enabled() && delta > 250)
       NET_LOG("net: LOCAL frame stall %d ms\n", delta);
+    else if (Net::net_debug_enabled() && delta > 50)
+      NET_LOG("net: frame hitch %d ms\n", delta);  // visible stutter
     // Pin the simulation rate online: the =/- time cheats change
     // time_between_steps on ONE machine only, and a 8 vs 7 ms mismatch
     // makes every object drift continuously — permanent rubberbanding
@@ -3176,27 +3261,9 @@ void GLGame::tick(int delta) {
         Mix_PlayChannel(-1, warp_sound, 0);
     }
 
-    // Update quantum asteroid observation state: collapse when any player looks at
-    // it (normal speed), enter superposition otherwise (4x speed so it can sneak
-    // up on players who look away). Quantum asteroids are always killable.
-    for(oi = objects->begin(); oi != objects->end(); ++oi) {
-      Asteroid *ast = *oi;
-      if(!ast->quantum) continue;
-      bool now_observed = is_point_faced_by_any_player(ast->position);
-      if(now_observed == ast->quantum_observed) continue;
-      ast->quantum_observed = now_observed;
-      float spd = ast->velocity.magnitude();
-      if(spd > 1e-6f) {
-        Point dir = ast->velocity * (1.0f / spd);
-        if(now_observed) {
-          // Collapse: slow to base speed
-          ast->velocity = dir * ast->quantum_base_speed;
-        } else {
-          // Superposition: speed up 4x
-          ast->velocity = dir * ast->quantum_base_speed * 4.0f;
-        }
-      }
-    }
+    // Update quantum asteroid observation state (shared with the net
+    // client's mirror — see update_quantum_observation).
+    update_quantum_observation();
 
     // Clean up dead asteroids whose debris has fully faded.
     oi = dead_objects->begin();

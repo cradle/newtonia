@@ -133,6 +133,9 @@ private:
   // per-step mirror — unmirrored, every bounce was a surprise the
   // authoritative records corrected 100 ms later (client-side jitter).
   void elastic_asteroid_collisions(bool announce);
+  // Quantum observation flips (4x speed), shared by the host sim and the
+  // net client's per-step mirror — see the definition for why.
+  void update_quantum_observation();
   void net_host_send_snapshot(int delta);  // 10 Hz world broadcast
 
   // Client side: visual/kinematic tick (no kills/drops/generation logic),
