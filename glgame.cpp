@@ -1980,6 +1980,22 @@ void GLGame::net_client_send_input() {
   std::vector<uint8_t> msg;
   Net::encode_input(msg, in, 2);
   net_session_->transport()->send_unreliable(&msg[0], msg.size());
+
+  // Reliable mirror (see net_mirror_* in glgame.h): every input CHANGE
+  // rides the ordered channel too, so a lost release can be late but
+  // never gone; a 10 Hz refresh covers the analog-only drift between
+  // changes. ~40 bytes a shot — noise next to the 10 Hz deltas.
+  uint8_t counts = (uint8_t)(in.boost_count + in.next_weapon_count +
+                             in.next_secondary_count + in.teleport_count +
+                             in.respawn_count + in.shoot_press_count +
+                             in.secondary_press_count);
+  bool changed = in.held != net_mirror_held_ || counts != net_mirror_counts_;
+  if (changed || ++net_mirror_steps_ >= 12) {
+    net_session_->transport()->send_reliable(&msg[0], msg.size());
+    net_mirror_steps_ = 0;
+    net_mirror_held_ = in.held;
+    net_mirror_counts_ = counts;
+  }
 }
 
 void GLGame::net_client_poll() {

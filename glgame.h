@@ -160,6 +160,14 @@ private:
           net_prev_respawn_ = 0, net_prev_shoot_press_ = 0,
           net_prev_secondary_press_ = 0;
   uint32_t net_input_seq_ = 0;    // client: outgoing INPUT sequence
+  // Client: INPUT mirroring onto the RELIABLE channel — on any held-bit /
+  // one-shot change, plus a ~10 Hz refresh. An unreliable-channel blackout
+  // otherwise leaves the host acting on stale held bits for up to the 1 s
+  // dead-man: phantom thrust that syncs the player ahead of themselves.
+  // Same bytes, same seq — the host's seq filter dedupes the twin.
+  uint16_t net_mirror_held_ = 0;
+  uint8_t net_mirror_counts_ = 0;
+  int net_mirror_steps_ = 0;
   uint8_t net_prev_warp_ = 0;     // client: last seen local-ship warp count
   bool net_have_warp_ = false;    // first snapshot baselines the count
   // Client: last net_apply_state was a generation rollover — suppress the
