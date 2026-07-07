@@ -38,6 +38,14 @@ const int SIGNAL_TIMEOUT_MS = 12000;
 static std::string s_last_hosted_code;
 static std::string s_dead_code;  // room confirmed dead (host BYE / relay says gone)
 
+// TURN test hook, process-wide: a "0" typed before the room code (0 is
+// not in the code alphabet) toggles relay-only joins — the one-phone
+// test (TESTING.md), where same-device peers otherwise always pick the
+// direct ICE path. Process-wide, not per-lobby, so the mid-game
+// AUTO-rejoin after a TURN-credential kick re-relays too (a direct
+// reconnect would silently end the test).
+static bool s_join_force_relay = false;
+
 // Lobby tap bands — one definition each for the drawn label AND the
 // touch hit-test (view/tap_band.h). The bottom RETURN TO MENU strip is
 // the shared TapBand::return_to_menu.
@@ -114,6 +122,7 @@ NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
   // out reads as a hang — the joiner can TRY AGAIN from the fail screen).
   rejoin_budget_ms_ = 60000;
   transport_->set_trickle(true);  // room flow: live relay carries candidates
+  transport_->set_force_relay(s_join_force_relay);  // keep a TURN test relayed
   signal_->connect_join(net_signal_url(), code_entry_);
   signal_wait_ms_ = 0;
   screen_ = RoomJoining;
@@ -272,6 +281,10 @@ void NetLobby::confirm() {
     if (code_entry_.size() == (size_t)NET_ROOM_CODE_LEN) {
       code_entry_keyboard(false);
       floating_kb_up_ = false;
+      // Applied here, not at transport creation: the "0" arming happens
+      // while typing, after the transport already exists. The pc (and its
+      // ICE policy) is only built at start_join, so this is in time.
+      if (transport_) transport_->set_force_relay(s_join_force_relay);
       signal_->connect_join(net_signal_url(), code_entry_);
       signal_wait_ms_ = 0;
       screen_ = RoomJoining;
@@ -629,7 +642,10 @@ void NetLobby::tick(int delta) {
           delete transport_;
         }
         transport_ = NetTransport::create();
-        if (transport_) transport_->set_trickle(true);
+        if (transport_) {
+          transport_->set_trickle(true);
+          transport_->set_force_relay(s_join_force_relay);
+        }
         ice_servers_.clear();
         answer_sent_ = false;
         signal_wait_ms_ = 0;
@@ -1056,6 +1072,17 @@ void NetLobby::code_entry_key(unsigned char key) {
   }
   if (key == 8 || key == 127) {  // backspace / delete
     if (!code_entry_.empty()) code_entry_.erase(code_entry_.size() - 1);
+    return;
+  }
+  // Hidden TURN-test hook: codes never contain 0, so a leading zero arms
+  // a relay-only join instead of feeding the code field. Two same-device
+  // instances (the one-phone test, see TESTING.md) otherwise always pick
+  // the direct ICE path and the relay goes unexercised.
+  if (key == '0' && code_entry_.empty()) {
+    s_join_force_relay = !s_join_force_relay;
+    set_status(s_join_force_relay ? "RELAY-ONLY JOIN ARMED (TEST)"
+                                  : "RELAY-ONLY JOIN DISARMED",
+               8000);
     return;
   }
   bool alnum = (key >= 'a' && key <= 'z') || (key >= 'A' && key <= 'Z') ||

@@ -89,6 +89,25 @@ NEWTONIA_NET_FORCE_RELAY=1, check the debug overlay (B) shows
 "net: relay/relay", play past the TTL, watch the auto-pause/rejoin heal.
 Delete the TURN_TTL secret and redeploy afterwards.
 
+### One-phone relay test (no env vars)
+
+Two instances on one device always pick the direct ICE path, so the
+joiner must be relay-forced. Codes never contain `0`, so typing **`0` on
+the join screen before the code** toggles a relay-only join (status:
+"RELAY-ONLY JOIN ARMED (TEST)"). Works from every platform's code entry,
+and the arming is process-wide so an auto-rejoin after an expiry kick
+re-relays too. On one Android phone:
+
+1. Put the Newtonia app and a browser in split-screen (both must stay
+   foreground — a fully backgrounded host pauses and eventually freezes).
+2. App: ONLINE → HOST. Browser: web build, ONLINE → JOIN. If the browser
+   offers to paste/read the clipboard, decline — the auto-join would race
+   the arming. Type `0`, then the code shown in the app.
+3. Connected at all = relayed: the armed side gathers no direct
+   candidates, so the pair physically cannot go direct. `npx wrangler
+   tail` shows `turn creds minted, ttl=...` to confirm any TURN_TTL
+   override took effect.
+
 hiccup.sh simulates the mid-session transport death a TURN credential
 expiry causes (SIGSTOP the joiner until the host's ICE fails, then thaw):
 it proves the self-repair loop, but not the credentials themselves —

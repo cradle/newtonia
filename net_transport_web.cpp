@@ -40,7 +40,7 @@ EM_JS(void, nw_init, (), {
       N.conns[h] = { pc: null, rel: null, unrel: null, inbox: [],
                      localDesc: null, failed: false,
                      relOpen: false, unrelOpen: false,
-                     trickle: false, cands: [] };
+                     trickle: false, cands: [], relayOnly: false };
       return h;
     },
 
@@ -62,7 +62,10 @@ EM_JS(void, nw_init, (), {
     _pc: function(c) {
       var servers = [{ urls: 'stun:stun.l.google.com:19302' }];
       if (Module.__nwice) servers = servers.concat(Module.__nwice);
-      var pc = new RTCPeerConnection({ iceServers: servers });
+      var pc = new RTCPeerConnection({
+        iceServers: servers,
+        iceTransportPolicy: c.relayOnly ? 'relay' : 'all'
+      });
       pc.onicegatheringstatechange = function() {
         // Non-trickle: expose the SDP once every candidate is in it.
         if (!c.trickle && pc.iceGatheringState === 'complete' &&
@@ -255,6 +258,11 @@ EM_JS(void, nw_path_info, (int h, char *buf, int len), {
   stringToUTF8(c && c.pathInfo ? c.pathInfo : "", buf, len);
 });
 
+EM_JS(void, nw_set_force_relay, (int h, int on), {
+  var c = Module.__nwnet.conns[h];
+  if (c) c.relayOnly = !!on;
+});
+
 // ---- trickle ICE (M3-2b) --------------------------------------------------
 EM_JS(void, nw_set_trickle, (int h, int on), {
   var c = Module.__nwnet.conns[h];
@@ -346,6 +354,10 @@ public:
 
   void set_remote_answer(const std::string &remote_answer) override {
     nw_set_answer(handle_, remote_answer.c_str());
+  }
+
+  void set_force_relay(bool on) override {
+    nw_set_force_relay(handle_, on ? 1 : 0);
   }
 
   // ---- trickle ICE (M3-2b) ----

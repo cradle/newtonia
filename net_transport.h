@@ -35,6 +35,14 @@ public:
     (void)servers;
   }
 
+  // Relay-only ICE (TURN testing): same effect as the
+  // NEWTONIA_NET_FORCE_RELAY=1 env var but reachable from touch builds —
+  // the lobby arms it via a "0" typed before the room code (0 is not in
+  // the code alphabet). One relay-forced side guarantees the whole pair
+  // relays: it simply has no direct candidates to offer. Must be called
+  // BEFORE start_host()/start_join(); default no-op.
+  virtual void set_force_relay(bool on) { (void)on; }
+
   virtual void start_host() = 0;
   virtual void start_join(const std::string& remote_offer) = 0;
 

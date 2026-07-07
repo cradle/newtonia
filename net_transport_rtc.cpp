@@ -99,6 +99,8 @@ public:
     gather_started_ = true;
   }
 
+  void set_force_relay(bool on) override { relay_only_ = on; }
+
   // ---- trickle ICE (M3-2b) ----
   void set_trickle(bool on) override { trickle_ = on; }
 
@@ -221,7 +223,7 @@ private:
       ice_ptrs_.push_back(ice_extra_[i].c_str());
     config.iceServers = &ice_ptrs_[0];
     config.iceServersCount = (int)ice_ptrs_.size();
-    if (force_relay())
+    if (force_relay() || relay_only_)
       config.iceTransportPolicy = RTC_TRANSPORT_POLICY_RELAY;
 
     pc_ = rtcCreatePeerConnection(&config);
@@ -340,6 +342,7 @@ private:
   int dc_rel_, dc_unrel_;
   std::vector<std::string> ice_extra_;   // composed turn: URLs
   std::vector<const char *> ice_ptrs_;
+  bool relay_only_ = false;              // set_force_relay (lobby test hook)
 
   std::atomic<bool> rel_open_, unrel_open_;
   mutable std::atomic<bool> desc_ready_;
