@@ -732,14 +732,18 @@ float GLGame::net_lead_ms() const {
 }
 
 // World objects (asteroids, the remote ship) are extrapolated locally with
-// the same physics the host runs, so an arriving pose *should* be a no-op
-// — but it is RTT/2 stale and rides the reliable channel, whose delivery
-// time wobbles under relay retransmits. Overwriting outright made every
-// asteroid visibly jitter once a second (each keyframe yanked it by the
-// timing error). Lead the pose by RTT/2, then: in-agreement poses keep the
-// client's smooth extrapolation, moderate error blends over a few applies,
-// and anything larger (teleport, host-side bounce) is taken whole.
-void GLGame::net_reconcile_pose(Object &o, const WrappedPoint &old_pos) const {
+// the same physics the host runs — but host-side collision responses
+// (elastic bounces, asteroid-vs-reflective deflections) are unpredictable
+// here, so authoritative records routinely land 30-100 units from the
+// local pose. Overwriting yanked objects at 10 Hz, and partial blending
+// made them wobble to-and-fro ("looks like out-of-order states" — it
+// wasn't; the rel channel is ordered). So: adopt the authoritative
+// VELOCITY exactly (the simulation stays right), keep the RENDER pose
+// where it is, and bank the difference in net_pose_err, which
+// net_smooth_step drains over ~150 ms — corrections become a glide in
+// one direction. Teleport-scale jumps still snap: they should look
+// instant. Returns the pre-correction error distance (diagnostics).
+float GLGame::net_reconcile_pose(Object &o, const WrappedPoint &old_pos) const {
   float lead = net_lead_ms();
   WrappedPoint target(o.position.x() + o.velocity.x() * lead,
                       o.position.y() + o.velocity.y() * lead);
@@ -748,17 +752,59 @@ void GLGame::net_reconcile_pose(Object &o, const WrappedPoint &old_pos) const {
   float cx = c.x() - old_pos.x();
   float cy = c.y() - old_pos.y();
   float err2 = cx * cx + cy * cy;
-  const float dead_zone = 8.0f, blend_dist = 150.0f;
-  if (err2 < dead_zone * dead_zone) {
+  const float snap_dist = 250.0f;
+  // 1 Hz summary of how hard the incoming authority fights the local
+  // extrapolation — the number that says whether visible jitter is
+  // network correction (big counts / big max) or something else (silence).
+  if (Net::net_debug_enabled()) {
+    static uint32_t s_last = 0;
+    static int s_n = 0, s_snaps = 0;
+    static float s_max = 0.0f;
+    float err = sqrtf(err2);
+    if (err >= 8.0f) {
+      s_n++;
+      if (err > s_max) s_max = err;
+      if (err >= snap_dist) s_snaps++;
+    }
+    uint32_t now = SDL_GetTicks();
+    if (now - s_last >= 1000) {
+      if (s_n)
+        NET_LOG("net: reconcile %d corrections/s (max %.0f units, %d snaps)\n",
+                s_n, s_max, s_snaps);
+      s_last = now;
+      s_n = 0;
+      s_snaps = 0;
+      s_max = 0.0f;
+    }
+  }
+  if (err2 < snap_dist * snap_dist) {
     o.position = old_pos;
-  } else if (err2 < blend_dist * blend_dist) {
-    o.position = WrappedPoint(old_pos.x() + cx * 0.35f,
-                              old_pos.y() + cy * 0.35f);
+    o.net_pose_err = Point(cx, cy);  // replaces (not adds to) the old debt
   } else {
     o.position = target;
+    o.net_pose_err = Point(0.0f, 0.0f);
   }
   o.position.wrap();
+  return sqrtf(err2);
 }
+
+namespace {
+// Drain a client object's banked authoritative correction: exponential
+// decay with a ~65 ms time constant (~150 ms to mostly gone), applied
+// every visual step so the glide is frame-smooth.
+void net_smooth_step(Object &o, int delta) {
+  float ex = o.net_pose_err.x(), ey = o.net_pose_err.y();
+  if (ex * ex + ey * ey < 0.25f) {
+    o.net_pose_err = Point(0.0f, 0.0f);
+    return;
+  }
+  float k = 1.0f - expf(-(float)delta / 65.0f);
+  Point c = o.net_pose_err * k;
+  o.position += c;
+  o.position.wrap();
+  o.net_pose_err = o.net_pose_err - c;
+}
+}  // namespace
 
 void GLGame::net_host_poll() {
   NetTransport *t = net_session_->transport();
@@ -1825,7 +1871,10 @@ void GLGame::tick_net_client(int delta) {
     // No collisions, kills, drops or generation logic — the host simulates
     // and its snapshots overwrite this extrapolation at 10 Hz.
     for (auto *bh : *black_holes) bh->step(step_size);
-    for (auto *a : *objects) a->step(step_size);
+    for (auto *a : *objects) {
+      a->step(step_size);
+      net_smooth_step(*a, step_size);  // drain authoritative corrections
+    }
     // Mirror the host's asteroid gravity so drift between 1 Hz keyframes
     // stays small — otherwise every asteroid near a hole goes stale.
     for (auto *bh : *black_holes)
@@ -1845,6 +1894,10 @@ void GLGame::tick_net_client(int delta) {
         sh->time_until_respawn = step_size + 1;
     }
     for (auto *gs : *players) gs->step(step_size, grid);
+    // The remote (host) ship reconciles like the asteroids; the LOCAL
+    // ship never banks an error (its blend handles prediction), so this
+    // is a no-op for it.
+    for (auto *gs : *players) net_smooth_step(*gs->ship, step_size);
     // Mini-station: drift/spin/bullets extrapolate between snapshots —
     // without this it visibly teleported at the 10 Hz apply rate.
     if (mini_station) mini_station->net_client_step(step_size);
@@ -1926,7 +1979,14 @@ void GLGame::net_client_poll() {
       continue;
     }
     if (h.msg_type == Net::MSG_DELTA) {
-      (void)r.u32();  // snap id (monotonic with keyframes; informational)
+      uint32_t snap_id = r.u32();  // monotonic with keyframes
+      if (net_last_delta_id_ &&
+          (int32_t)(snap_id - net_last_delta_id_) <= 0) {
+        NET_LOG("net: DROPPED stale delta %u (last %u)\n", snap_id,
+                net_last_delta_id_);
+        continue;
+      }
+      net_last_delta_id_ = snap_id;
       size_t n = r.remaining();
       const uint8_t *body = r.bytes(n);
       if (!body) continue;
@@ -1982,6 +2042,20 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in) {
   uint16_t n_dyn = 0;
   if (!nx_read(in, n_dyn)) return;
   if (n_dyn > 5000) return;
+  // 1 Hz record-rate summary: at gen>=9 gravity dirties every asteroid
+  // every delta, so this says how many hard authoritative writes the
+  // asteroid field takes per second.
+  if (Net::net_debug_enabled()) {
+    static uint32_t s_last = 0;
+    static int s_records = 0;
+    s_records += n_dyn;
+    uint32_t now = SDL_GetTicks();
+    if (now - s_last >= 1000) {
+      if (s_records) NET_LOG("net: delta dyn %d records/s\n", s_records);
+      s_last = now;
+      s_records = 0;
+    }
+  }
   for (int i = 0; i < n_dyn; i++) {
     uint32_t id = 0;
     float px, py, vx, vy;
@@ -1999,7 +2073,21 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in) {
     WrappedPoint extrapolated = a->position;
     a->position = WrappedPoint(px, py);
     a->velocity = Point(vx, vy);
-    net_reconcile_pose(*a, extrapolated);
+    float rec_err = net_reconcile_pose(*a, extrapolated);
+    // Who exactly diverges: id, hole distance, speed, special flags.
+    if (Net::net_debug_enabled() && rec_err >= 30.0f) {
+      float bh_dist = -1.0f;
+      for (auto *bh : *black_holes) {
+        Point p = bh->position.closest_to(a->position);
+        float d = (p - a->position).magnitude();
+        if (bh_dist < 0.0f || d < bh_dist) bh_dist = d;
+      }
+      NET_LOG("net: dyn err %.0f id=%u bh=%.0f spd=%.3f r=%.0f%s%s%s%s%s\n",
+              rec_err, a->net_id, bh_dist, a->velocity.magnitude(), a->radius,
+              a->reflective ? " refl" : "", a->teleporting ? " tele" : "",
+              a->quantum ? " quant" : "", a->phasing ? " phase" : "",
+              a->invincible ? " invinc" : "");
+    }
     a->health = health;
     a->phased = (state & 1) != 0;
     a->teleport_vulnerable = (state & 2) != 0;
@@ -2166,6 +2254,17 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       float cx = snap.x() - old_pos.x();
       float cy = snap.y() - old_pos.y();
       float err2 = cx * cx + cy * cy;
+      // Rate-limited: how far the local prediction sits from the (leaded)
+      // authoritative pose whenever a correction actually applies.
+      if (Net::net_debug_enabled() && err2 >= dead_zone * dead_zone) {
+        static uint32_t s_last = 0;
+        uint32_t now = SDL_GetTicks();
+        if (now - s_last >= 1000) {
+          NET_LOG("net: local ship correction %.0f units (rtt %.0f ms)\n",
+                  sqrtf(err2), net_rtt_ms_);
+          s_last = now;
+        }
+      }
       if (err2 < dead_zone * dead_zone) {
         ship->position = old_pos;
         ship->velocity = old_vel;

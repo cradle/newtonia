@@ -29,6 +29,11 @@ public:
   //TODO: Fix encapsulation
   WrappedPoint position;
   Point velocity;
+  // Netplay CLIENT only: remaining authoritative-pose correction, drained
+  // over ~150 ms by the client tick so host-side events the client can't
+  // predict (elastic bounces) glide in instead of yanking the object at
+  // 10 Hz. Always zero offline and on the host.
+  Point net_pose_err;
 
   virtual bool kill();
   float radius, radius_squared;

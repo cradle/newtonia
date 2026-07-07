@@ -172,6 +172,10 @@ private:
   uint16_t net_held_suppress_ = 0;
   Net::SnapshotAssembler *net_assembler_ = nullptr;  // client chunk reassembly
   bool net_ids_adopted_ = false;  // client: bootstrap id adoption ran
+  // Client: last applied MSG_DELTA snap id. The rel channel is ordered so
+  // this should never fire — pure insurance against a stale/duplicated
+  // apply ever reading as "replaying out-of-order states".
+  uint32_t net_last_delta_id_ = 0;
 
   // Phase 8 polish (see NETPLAY.md)
   static void net_clear_event_outboxes();  // reset the static host outboxes
@@ -199,7 +203,8 @@ private:
   // Reconcile a freshly-applied authoritative pose with the client's own
   // extrapolation (old_pos): lead it by net_lead_ms(), keep the client
   // pose inside a dead zone, blend moderate error, snap real jumps.
-  void net_reconcile_pose(Object &o, const WrappedPoint &old_pos) const;
+  // Returns the pre-correction error distance (diagnostics).
+  float net_reconcile_pose(Object &o, const WrappedPoint &old_pos) const;
 
   // ---- M2-4 rejoin (host only; see NETPLAY.md) ----
   // The lobby's signal connection moves in here so the room stays open
