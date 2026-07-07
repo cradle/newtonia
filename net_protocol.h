@@ -52,7 +52,9 @@ namespace Net {
 // 10: bullet-vs-asteroid impact cues are client-side cosmetic
 //     (Ship::net_cosmetic_impacts); the host no longer sends EV_ROID_*
 //     for them — a mixed pairing would double or drop those cues.
-const uint8_t PROTO_VERSION = 10;
+// 11: MSG_PING/MSG_PONG — 1 Hz unreliable RTT probe from each side; the
+//     client's local-ship blend latency-compensates with it.
+const uint8_t PROTO_VERSION = 11;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check
@@ -62,6 +64,11 @@ enum MsgType {
   MSG_SNAPSHOT_CHUNK = 5,  // H->C rel: chunked KEYFRAME snapshot, 1 Hz
   MSG_DELTA = 7,           // H->C rel: between-keyframe delta, 10 Hz
   MSG_EVENT = 6,           // both ways, rel: EventCode below
+  // RTT probe, both ways on the UNRELIABLE channel (the reliable one
+  // would fold head-of-line stalls into the reading): PING carries the
+  // sender's SDL_GetTicks, PONG echoes it straight back.
+  MSG_PING = 8,
+  MSG_PONG = 9,
 };
 
 enum EventCode {

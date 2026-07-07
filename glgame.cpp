@@ -685,6 +685,47 @@ void GLGame::add_remote_player() {
   object->ship->bullets.clear();  // drop the lethal spawn-flash debris
 }
 
+// ---- RTT probe (PROTO 11) ----------------------------------------------
+// 1 Hz MSG_PING on the UNRELIABLE channel; the peer echoes the timestamp
+// back as MSG_PONG untouched, so only the sender's clock is ever read —
+// no cross-machine clock comparison. A lost probe just skips a sample.
+
+void GLGame::net_ping_tick(int delta) {
+  net_ping_timer_ += delta;
+  if (net_ping_timer_ < 1000) return;
+  net_ping_timer_ = 0;
+  std::vector<uint8_t> p;
+  Net::put_header(p, Net::MSG_PING, net_mode_ == NetHost ? 1 : 2);
+  Net::put_u32(p, (uint32_t)SDL_GetTicks());
+  net_session_->transport()->send_unreliable(&p[0], p.size());
+}
+
+bool GLGame::net_handle_ping_pong(uint8_t msg_type, Net::Reader &r) {
+  if (msg_type == Net::MSG_PING) {
+    uint32_t t = r.u32();
+    if (!r.ok) return true;
+    std::vector<uint8_t> p;
+    Net::put_header(p, Net::MSG_PONG, net_mode_ == NetHost ? 1 : 2);
+    Net::put_u32(p, t);
+    net_session_->transport()->send_unreliable(&p[0], p.size());
+    return true;
+  }
+  if (msg_type == Net::MSG_PONG) {
+    uint32_t t = r.u32();
+    if (!r.ok) return true;
+    // uint32 subtraction survives SDL_GetTicks wrap; anything over 10 s
+    // is a thawed process or a stalled relay, not a latency reading.
+    float sample = (float)(uint32_t)((uint32_t)SDL_GetTicks() - t);
+    if (sample < 10000.0f) {
+      if (net_rtt_ms_ < 0.0f) NET_LOG("net: rtt %.0f ms (first pong)\n", sample);
+      net_rtt_ms_ = net_rtt_ms_ < 0.0f ? sample
+                                       : net_rtt_ms_ * 0.8f + sample * 0.2f;
+    }
+    return true;
+  }
+  return false;
+}
+
 void GLGame::net_host_poll() {
   NetTransport *t = net_session_->transport();
   Ship *remote = players->size() >= 2 ? players->back()->ship : NULL;
@@ -694,6 +735,7 @@ void GLGame::net_host_poll() {
     Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
     Net::Header h;
     if (!Net::read_header(r, h)) continue;
+    if (net_handle_ping_pong(h.msg_type, r)) continue;
     if (h.msg_type == Net::MSG_EVENT) {
       uint8_t code = r.u8();
       uint32_t arg = r.remaining() >= 4 ? r.u32() : 0;
@@ -1034,6 +1076,8 @@ void GLGame::net_host_rejoin_poll(int delta) {
       net_connection_lost_ = false;
       net_have_input_ = false;      // re-baseline the one-shot counters
       net_input_zeroed_ = false;
+      net_rtt_ms_ = -1.0f;          // fresh transport, fresh RTT baseline
+      net_ping_timer_ = 0;
       net_held_suppress_ = 0xffff;  // fresh presses required, like a spawn
       net_force_keyframe_ = true;   // rejoined client starts from a keyframe
       net_last_input_time_ = current_time;
@@ -1713,7 +1757,10 @@ void GLGame::tick_net_client(int delta) {
     players->front()->ship->sound_volume_scale =
         net_listener_volume(players->front()->ship->position);
 
-  if (!net_connection_lost_) net_client_poll();
+  if (!net_connection_lost_) {
+    net_client_poll();
+    net_ping_tick(delta);
+  }
   if (net_session_->transport()->failed()) net_connection_lost_ = true;
   if (net_connection_lost_) {
     // M3-1 auto-rejoin: with a room code the loss is recoverable — hand
@@ -1837,6 +1884,7 @@ void GLGame::net_client_poll() {
     Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
     Net::Header h;
     if (!Net::read_header(r, h)) continue;
+    if (net_handle_ping_pong(h.msg_type, r)) continue;
     if (h.msg_type == Net::MSG_EVENT) {
       uint8_t code = r.u8();
       uint32_t arg = r.remaining() >= 4 ? r.u32() : 0;
@@ -2049,19 +2097,50 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       // facing included; the old aim is meaningless after a jump) instead
       // of visibly sliding there over several snapshots. The primary signal
       // is the explicit warp count in the extras; this is the backstop.
-      const float snap_dist = 250.0f;
-      Point snap = ship->position.closest_to(old_pos);
+      // The snapshot pose is ~RTT/2 stale by the time it arrives, so on a
+      // laggy path every correction dragged the predicted ship backwards
+      // along its own trail — the "heavy rubberbanding" on relayed
+      // connections. Extrapolate the authoritative pose forward by half
+      // the measured round trip (velocity is per-ms) before comparing,
+      // and leave the prediction untouched inside a small dead zone so
+      // an in-agreement ship isn't nudged 10x a second.
+      float lead_ms = net_rtt_ms_ > 0.0f ? net_rtt_ms_ * 0.5f : 0.0f;
+      if (lead_ms > 250.0f) lead_ms = 250.0f;  // a spike is not a lead
+      WrappedPoint target(
+          ship->position.x() + ship->velocity.x() * lead_ms,
+          ship->position.y() + ship->velocity.y() * lead_ms);
+      target.wrap();
+
+      // Backstop threshold. The explicit warp count in the extras is the
+      // primary teleport signal and respawns arrive as a dead->alive
+      // transition, so this only catches what those miss. On a laggy path
+      // ordinary fast flight can overrun a fixed 250: grow the allowance
+      // by what the ship covers in one round trip at its current speed,
+      // so lag reads as a correction to blend, not a teleport to snap.
+      float snap_dist = 250.0f + ship->velocity.magnitude() *
+                                     (net_rtt_ms_ > 0.0f ? net_rtt_ms_ : 400.0f);
+      const float dead_zone = 12.0f;
+      Point snap = target.closest_to(old_pos);
       float cx = snap.x() - old_pos.x();
       float cy = snap.y() - old_pos.y();
-      if (cx * cx + cy * cy < snap_dist * snap_dist) {
+      float err2 = cx * cx + cy * cy;
+      if (err2 < dead_zone * dead_zone) {
+        ship->position = old_pos;
+        ship->velocity = old_vel;
+        ship->facing = old_facing;
+      } else if (err2 < snap_dist * snap_dist) {
         ship->position = WrappedPoint(old_pos.x() + cx * 0.35f,
                                       old_pos.y() + cy * 0.35f);
         ship->position.wrap();
         ship->velocity = old_vel + (ship->velocity - old_vel) * 0.35f;
         ship->facing = old_facing;  // aim stays fully local
       } else {
-        NET_LOG("net: local ship snapped %.0f units (teleport/respawn/new level)\n",
-               sqrtf(cx * cx + cy * cy));
+        // rtt/speed in the line: a post-respawn first snapshot or a real
+        // teleport snaps at any latency; only a snap with high rtt AND
+        // high speed suggests the correction budget is still too tight.
+        NET_LOG("net: local ship snapped %.0f units (rtt %.0f ms, speed %.2f)"
+                " - teleport/respawn/new level\n",
+                sqrtf(err2), net_rtt_ms_, old_vel.magnitude());
       }
 
       ship->rotate_left(held_left);
@@ -2412,7 +2491,10 @@ void GLGame::tick(int delta) {
       }
     }
 
-    if (!net_connection_lost_) net_host_poll();
+    if (!net_connection_lost_) {
+      net_host_poll();
+      net_ping_tick(delta);
+    }
     if (net_session_ && net_session_->transport()->failed())
       net_connection_lost_ = true;
     if (net_signal_ && !net_connection_lost_) net_host_signal_maintain(delta);

@@ -33,7 +33,7 @@ using namespace std;
 
 class NetSession;
 class NetTransport;
-namespace Net { class SnapshotAssembler; }
+namespace Net { class SnapshotAssembler; struct Reader; }
 
 class GLGame : public State {
 public:
@@ -185,6 +185,14 @@ private:
   std::string net_banner_text_;
   int net_last_input_time_ = 0;     // host: dead-man switch (1 s)
   bool net_input_zeroed_ = false;
+  // RTT probe (MSG_PING/PONG, 1 Hz each way): smoothed round-trip in ms,
+  // -1 until the first PONG. Shown on the debug overlay; the client's
+  // local-ship blend latency-compensates with it.
+  float net_rtt_ms_ = -1.0f;
+  int net_ping_timer_ = 0;
+  void net_ping_tick(int delta);
+  // Answers PING / consumes PONG; true when the message was one of them.
+  bool net_handle_ping_pong(uint8_t msg_type, Net::Reader &r);
 
   // ---- M2-4 rejoin (host only; see NETPLAY.md) ----
   // The lobby's signal connection moves in here so the room stays open

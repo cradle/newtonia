@@ -540,13 +540,19 @@ void Overlay::debug_info(const GLGame *glgame, const GLShip *glship) {
   }
   // Online: the selected ICE path ("net: host/host" direct LAN,
   // "srflx/..." NAT-punched, "relay/..." through TURN) — the fast way to
-  // see whether a session is burning relay bandwidth.
-  char net_buf[64] = "";
+  // see whether a session is burning relay bandwidth — plus the smoothed
+  // MSG_PING round trip once the first PONG lands.
+  char net_buf[80] = "";
   if (glgame->net_active() && glgame->net_session_ &&
       glgame->net_session_->transport()) {
     std::string ci = glgame->net_session_->transport()->connection_info();
-    if (!ci.empty())
-      snprintf(net_buf, sizeof(net_buf), "net: %s", ci.c_str());
+    if (!ci.empty()) {
+      if (glgame->net_rtt_ms_ >= 0.0f)
+        snprintf(net_buf, sizeof(net_buf), "net: %s %dms", ci.c_str(),
+                 (int)(glgame->net_rtt_ms_ + 0.5f));
+      else
+        snprintf(net_buf, sizeof(net_buf), "net: %s", ci.c_str());
+    }
   }
 
   Typer::draw(x, y,      gm_str, sz);
