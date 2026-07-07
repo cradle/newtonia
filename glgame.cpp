@@ -2277,11 +2277,13 @@ void GLGame::net_apply_state(const Save::GameState &s) {
 
       // Backstop threshold. The explicit warp count in the extras is the
       // primary teleport signal and respawns arrive as a dead->alive
-      // transition, so this only catches what those miss. On a laggy path
-      // ordinary fast flight can overrun a fixed 250: grow the allowance
-      // by what the ship covers in one round trip at its current speed,
-      // so lag reads as a correction to blend, not a teleport to snap.
-      float snap_dist = 250.0f + ship->velocity.magnitude() *
+      // transition, so this only catches what those miss — and a ~1 s
+      // input blackout (relay stall, peer's window napped) legitimately
+      // diverges the prediction by speed x gap = 400-600 units, which
+      // must GLIDE back (drain), not hard-snap ("it still snapped me").
+      // 600 base + a round trip of flight; a real missed teleport merely
+      // glides in fast, and the warp count catches almost all of those.
+      float snap_dist = 600.0f + ship->velocity.magnitude() *
                                      (net_rtt_ms_ > 0.0f ? net_rtt_ms_ : 400.0f);
       const float dead_zone = 12.0f;
       Point snap = target.closest_to(old_pos);
