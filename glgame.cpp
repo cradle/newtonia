@@ -2685,7 +2685,17 @@ void GLGame::net_apply_keyframe_asteroid_ids(Save::Stream &in,
       Asteroid *a = found->second;
       WrappedPoint old_render(a->position.x() + a->net_pose_err.x(),
                               a->position.y() + a->net_pose_err.y());
+      // Spin stays CLIENT-continuous: the restored angle is RTT/2 stale,
+      // so adopting it twitched every rock's rotation backwards once per
+      // second — "constant jitter" that no position diagnostic saw. Both
+      // sides advance at the same rotation_speed (which IS adopted), so
+      // the local angle never drifts; same for the armoured weak-spot
+      // angle.
+      float spin = a->rotation;
+      float armour = a->armour_angle;
       a->restore_state(sa);
+      a->rotation = spin;
+      a->armour_angle = armour;
       net_reconcile_pose(*a, old_render, /*sim_exact=*/true);
       by_id.erase(found);
     } else {
