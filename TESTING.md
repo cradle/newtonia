@@ -75,7 +75,14 @@ test/e2e/rejoin.sh   # SIGKILL joiner mid-game -> auto-pause -> rejoin -> resume
 test/e2e/impacts.sh  # gen-3 spin-and-fire: joiner detects cosmetic impacts locally
 test/e2e/ownroom.sh  # shared-prefs auto-join probe (mac host+client on one box)
 test/e2e/mismatch.sh # fake pv-less old host (node) -> instant VERSION MISMATCH
+test/e2e/hiccup.sh   # transport dies under live processes -> auto-pause -> AUTO-rejoin
 ```
+
+hiccup.sh simulates the mid-session transport death a TURN credential
+expiry causes (SIGSTOP the joiner until the host's ICE fails, then thaw):
+it proves the self-repair loop, but not the credentials themselves —
+that needs real Cloudflare TURN, a tiny-TTL test key, and a relay-forced
+pair, which no headless rig here can produce.
 
 Each driver re-execs itself under `xvfb-run` when `DISPLAY` is unset, prints
 `ROOM-E2E-OK` / `REJOIN-E2E-OK` on success, and exits non-zero on any
