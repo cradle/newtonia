@@ -215,6 +215,29 @@ private:
   }
 
   void open_peer() {
+    // SCTP tuning for sparse real-time game traffic (global; applies to
+    // peer connections created after it). Every DataChannel — the
+    // "unreliable" one included — rides ONE SCTP association, and with
+    // only ~10 small messages a second in flight a lost packet rarely
+    // gathers the 3 duplicate SACKs fast-retransmit needs: recovery
+    // waits for the retransmission timeout, and the stock ~1 s RTO froze
+    // the whole association (measured: 0.6-1.7 s input blackouts on a
+    // relay path whose ICMP ping was clean). Tighter RTO bounds cut such
+    // stalls to ~200-500 ms; the 10 ms SACK delay speeds the peer's loss
+    // reports the same way. Browsers expose no equivalent, so web
+    // clients keep the stock behaviour.
+    static bool sctp_tuned = false;
+    if (!sctp_tuned) {
+      sctp_tuned = true;
+      rtcSctpSettings s;
+      std::memset(&s, 0, sizeof(s));  // 0 = library default elsewhere
+      s.minRetransmitTimeoutMs = 200;
+      s.initialRetransmitTimeoutMs = 500;
+      s.maxRetransmitTimeoutMs = 1500;
+      s.delayedSackTimeMs = 10;
+      rtcSetSctpSettings(&s);
+    }
+
     rtcConfiguration config;
     std::memset(&config, 0, sizeof(config));
     ice_ptrs_.clear();
