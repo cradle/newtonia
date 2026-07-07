@@ -37,6 +37,28 @@ public:
     // the signal relay). libdatachannel takes credentials embedded in the
     // URL: turn:USER:PASS@host:port?transport=udp
     ice_extra_.clear();
+    // A/B test hook (stall diagnosis): NEWTONIA_NET_TURN="urls|user|cred"
+    // REPLACES the relay-minted TURN server, so a session can run against
+    // a different provider — stalls that vanish indict the usual one,
+    // stalls that persist indict our stack. Combine with force-relay.
+    if (const char *ov = std::getenv("NEWTONIA_NET_TURN")) {
+      std::string s(ov);
+      size_t a = s.find('|');
+      size_t b = a == std::string::npos ? std::string::npos : s.find('|', a + 1);
+      std::string urls = s.substr(0, a);
+      size_t scheme = urls.find(':');
+      if (a != std::string::npos && b != std::string::npos &&
+          scheme != std::string::npos) {
+        std::string user = s.substr(a + 1, b - a - 1);
+        std::string cred = s.substr(b + 1);
+        ice_extra_.push_back(urls.substr(0, scheme + 1) + user + ":" + cred +
+                             "@" + urls.substr(scheme + 1));
+      } else {
+        ice_extra_.push_back(urls);
+      }
+      NET_LOG("net: TURN override active (%s)\n", urls.c_str());
+      return;
+    }
     for (size_t i = 0; i < servers.size(); i++) {
       const std::string &s = servers[i];
       size_t a = s.find('\n');
@@ -253,6 +275,28 @@ private:
   }
 
   void open_peer() {
+    // Deep-diagnosis tap (stall hunt): NEWTONIA_NET_RTC_LOG=warn|info|
+    // debug|verbose forwards libdatachannel/libjuice's own logger to
+    // stdout — ICE checks, TURN allocation/permission/channel-bind
+    // traffic and SCTP state changes, timestamped like every NET_LOG
+    // line so they land on the same timeline as the gap forensics.
+    // Opt-in; debug+ is very chatty.
+    static bool rtc_log_inited = false;
+    if (!rtc_log_inited) {
+      rtc_log_inited = true;
+      if (const char *lv = std::getenv("NEWTONIA_NET_RTC_LOG")) {
+        rtcLogLevel level = RTC_LOG_INFO;
+        if (!std::strcmp(lv, "warn")) level = RTC_LOG_WARNING;
+        else if (!std::strcmp(lv, "debug")) level = RTC_LOG_DEBUG;
+        else if (!std::strcmp(lv, "verbose")) level = RTC_LOG_VERBOSE;
+        rtcInitLogger(level, [](rtcLogLevel l, const char *m) {
+          std::printf("%s%9.3f rtc[%d]: %s\n", Net::net_log_role(),
+                      Net::net_log_secs(), (int)l, m ? m : "");
+          std::fflush(stdout);
+        });
+      }
+    }
+
     // SCTP tuning for sparse real-time game traffic (global; applies to
     // peer connections created after it). Every DataChannel — the
     // "unreliable" one included — rides ONE SCTP association, and with

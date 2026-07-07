@@ -14,6 +14,7 @@
 
 #include <stdint.h>
 
+#include <chrono>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -46,12 +47,22 @@ inline void set_net_log_role(bool host) {
   net_log_role() = host ? "host: " : "client: ";
 }
 
+// Seconds since this process's first net log line: gap/stall events on
+// a timeline expose any periodicity (TURN permission refresh 240 s,
+// channel rebind 600 s, ICE consent ~15 s all have fingerprint cadences).
+inline double net_log_secs() {
+  static const std::chrono::steady_clock::time_point t0 =
+      std::chrono::steady_clock::now();
+  return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0)
+      .count();
+}
+
 }  // namespace Net
 
 // Both printfs land in the same stdio buffer and flush as one write, so
 // two processes sharing a terminal don't shear a line apart.
 #define NET_LOG(...) \
-  do { if (::Net::net_debug_enabled()) { std::printf("%s", ::Net::net_log_role()); std::printf(__VA_ARGS__); std::fflush(stdout); } } while (0)
+  do { if (::Net::net_debug_enabled()) { std::printf("%s%9.3f ", ::Net::net_log_role(), ::Net::net_log_secs()); std::printf(__VA_ARGS__); std::fflush(stdout); } } while (0)
 
 namespace Net {
 
