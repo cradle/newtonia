@@ -89,6 +89,47 @@ Types: HELLO(1) C→H rel; WELCOME(2)/REJECT(3) H→C rel; INPUT(4) C→H unrel 
 
 Two newtonia.exe on one machine: paste-connect, both ships controllable, remote one-shots work, host kills explode on client, pickups reflect, pause syncs, generation rollover on both, kill-process → CONNECTION LOST → Menu, solo save intact afterward. Then native↔web (Chrome+Firefox clipboard, chunking). CI: all three workflows green each phase.
 
+## Where things stand (2026-07-08 handoff)
+
+**Architecture (PROTO 14), one paragraph:** the host owns the world —
+asteroids, physics, rules, fragments, drops, score, everyone's fate —
+and streams it as 10 Hz deltas + 1 Hz keyframes (reliable channel; the
+client's stale gate sheds post-stall backlogs but keeps the once-sent
+membership records). The client owns its own ship's entire presentation
+and intent: pose and aim (12: the host adopts them from INPUT, the pilot
+is never corrected), bullets (locally simulated, never echo-wiped, local
+mirror-bounce approximation), gun (14: every shot reported via MSG_SHOT,
+the host spawns exact clones — no independent spread rolls), and kills
+(13: MSG_HIT claims are always honored, killing bullet consumed by id,
+predicted-kill suppression stops keyframe resurrection). Everything else
+the client mirrors deterministically (gravity, elastic bounces, quantum
+observation) with reconcile-and-glide corrections split between sim pose
+and render offset.
+
+**Known-good:** mac↔mac direct and relay-forced, Steam Deck↔mac, web
+build compiles in CI. e2e drivers in test/e2e cover room/rejoin/
+impacts/hiccup/blackout/mismatch; TESTING.md is the inventory.
+
+**Open items (task list #s):** #110 replace Cloudflare TURN — their
+edge stalls this flow 0.4-1.7 s on our keepalive cadences (proven by
+A/B: metered.ca = zero gaps); plan is coturn on a ~$5 VPS + worker
+HMAC minting, and the drafted Cloudflare report is in the chat log of
+2026-07-08. #105 no-connectivity JOIN screen dead-ends. Windows builds
+are unsigned (Defender FP submitted; icon.rc now carries VERSIONINFO +
+manifest; revisit signing only if Steam-installed builds get flagged).
+Deferred niceties: host-side RTT lead on reported shot spawns, local
+bullets pass visually through enemy ships/stations (host sim still
+applies damage).
+
+**Debug kit:** NEWTONIA_NET_DEBUG=1 (role-prefixed, timestamped),
+NEWTONIA_NET_LOG_FILE=path (Windows), NEWTONIA_NET_RTC_LOG=info|debug
+(libdatachannel/juice internals), NEWTONIA_NET_TURN="urls|user|cred"
+(provider A/B), NEWTONIA_NET_FORCE_RELAY=1 / "0"-prefixed join code
+(relay forcing), NEWTONIA_NET_SCTP_HB_MS (heartbeat interval, default
+1 h). Gap forensics, tx-buffered markers, shot-flow counters and claim
+logs all live under the debug flag — the session log below explains how
+to read each one.
+
 ## Session log
 
 - **2026-07-08 (uu)**: **PROTO 14 — client-authoritative shot spawning (Glenn: "build PROTO 14", after spotting that "the bullets vector deviates randomly": weapon/default.cpp rolls rand() spread independently per side, so every shot's two copies flew on different headings).** The host no longer simulates the client's gun into bullets: each shot the local client fires is reported (`MSG_SHOT(11)`: id, spawn pos, exact spread-applied velocity, kills_invincible/trail flags; reliable+ordered so a HIT can never precede its bullet) and the host spawns EXACT clones via `Ship::net_spawn_reported_bullet`. The remote ship's weapon sim keeps running for ammo/cooldown/trigger bookkeeping but mints no bullets and plays no sim sounds (`net_remote_gun` gates in `Weapon::Default::fire/fire_shot` and `Ship::fire_bullet_from_gun` — the shot sound now plays when the real clone spawns). `MSG_HIT` gains the killing bullet's id, so the claim-consume is exact (nearest-at-impact stays as fallback for a clone the host sim already spent). Particle grows a `net_id`. Two hard-won findings from verification: (1) the default gun does NOT fire through `Ship::fire_bullet_from_gun` — `Weapon::Default::fire_shot` pushes bullets directly (and god-mode is the only fire_bullet_from_gun user), so the first cut hooked a path that never ran and the build silently behaved like PROTO 13 (caught because the new 1 Hz "reported shots/s spawned" counter stayed silent while claims still consumed sim-minted bullets); (2) the e2e drivers' `xdotool keydown space` produces ONE key press with no auto-repeat, so the semi-auto default gun fired once per 25 s spray — most historical "cosmetic impact" counts were the HOST ship's echoed bullets, not the joiner's. A tap-loop driver (60 presses) validated the pipeline at volume: 54 reports sent = 54 clones spawned (1:1), 4 kills claimed, 4 honored, all `(bullet consumed)` by id. Kept as production diagnostics: 1 Hz `shot reports/s sent` (client) / `reported shots/s spawned` (host) — a rate mismatch between them localizes a leak. The client now owns its ship's pose (12), aim (12), kills (13), bullets (tt) and gun (14); the host owns the world, the rules, and everyone else. room/rejoin/blackout/selftest green.
