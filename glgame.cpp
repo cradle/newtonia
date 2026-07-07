@@ -2640,6 +2640,7 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in, bool membership_only) {
   uint16_t n_rm = 0;
   if (!nx_read(in, n_rm)) return;
   if (n_rm > 5000) return;
+  bool removed_any = false;
   for (int i = 0; i < n_rm; i++) {
     uint32_t id = 0;
     if (!nx_read(in, id)) return;
@@ -2661,10 +2662,15 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in, bool membership_only) {
         delete a;
       }
       objects->erase(oi);
+      removed_any = true;
       break;
     }
     by_id.erase(f);
   }
+  // Invariant: no poll-path delete may leave the grid holding freed
+  // pointers — later messages in the SAME drain probe it (respawn's
+  // safe_position, spark events), which was a live use-after-free crash.
+  if (removed_any) grid.update((std::list<Object *> *)objects);
   // Positive proof for the stale-delta walk: a misaligned parse would
   // silently misread these once-sent sections, so say when they land.
   if (membership_only && (n_new || n_rm))
@@ -2696,6 +2702,15 @@ void GLGame::net_apply_state(const Save::GameState &s) {
   level_cleared = s.level_cleared;
   time_until_next_generation = s.time_until_next_generation;
   current_time = s.current_time;
+
+  // The grid still holds raw pointers from the last step-loop rebuild,
+  // but this poll drain may already have DELETED asteroids (removal
+  // records, stale-membership kills, keyframe leftovers) in an earlier
+  // message. The player restore below probes the grid on every apply
+  // (restore_state -> respawn -> safe_position), and walking those
+  // dangling pointers was a real crash (mac: Object::collide on freed
+  // memory under net_apply_state). Rebuild from the live list first.
+  grid.update((std::list<Object *> *)objects);
 
   // Players: the remote host ship snaps to the snapshot; the local ship
   // takes stats/weapons but blends its predicted pose toward the host's
