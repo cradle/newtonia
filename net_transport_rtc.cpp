@@ -167,8 +167,23 @@ public:
   bool poll(std::vector<unsigned char> &out) override {
     std::lock_guard<std::mutex> lock(inbox_mutex_);
     if (inbox_.empty()) return false;
+    // Test hook: NEWTONIA_NET_TEST_RX_DELAY_MS holds every received
+    // message for N ms — RTT-realistic staleness on a loopback pair
+    // (the container has no netem; TESTING.md's iptables rig covers
+    // loss, this covers latency).
+    static int rx_delay = -1;
+    if (rx_delay < 0) {
+      const char *e = std::getenv("NEWTONIA_NET_TEST_RX_DELAY_MS");
+      rx_delay = (e && e[0]) ? std::atoi(e) : 0;
+    }
+    if (rx_delay > 0) {
+      uint64_t now = (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now().time_since_epoch()).count();
+      if (inbox_t_.front() + (uint64_t)rx_delay > now) return false;
+    }
     out.swap(inbox_.front());
     inbox_.pop_front();
+    if (!inbox_t_.empty()) inbox_t_.pop_front();
     return true;
   }
 
@@ -366,6 +381,8 @@ private:
     std::lock_guard<std::mutex> lock(self->inbox_mutex_);
     self->inbox_.push_back(std::vector<unsigned char>());
     self->inbox_.back().swap(bytes);
+    self->inbox_t_.push_back((uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
   }
 
   int pc_;
@@ -389,6 +406,7 @@ private:
 
   std::mutex inbox_mutex_;
   std::deque<std::vector<unsigned char> > inbox_;
+  std::deque<uint64_t> inbox_t_;  // arrival stamps (RX-delay test hook)
 };
 
 }  // namespace

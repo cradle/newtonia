@@ -915,14 +915,25 @@ void net_smooth_step(Object &o, int delta) {
 }
 
 // Asteroid flavour (sim_exact reconcile): the sim pose already rides the
-// authority — only the drawn-continuity offset fades.
+// authority — only the drawn-continuity offset fades. Exponential for
+// small offsets (invisible), RATE-CAPPED for big ones: a post-gap burst
+// banks 100+ units on every rock at once, and a fixed ~150 ms drain
+// moved the entire field at several times its natural speed — a
+// coordinated lurch that reads as jitter no matter how smooth each
+// individual glide is. Capped near the rock's own speed the correction
+// hides inside ordinary motion (a 150-unit debt takes ~1 s to melt).
 void net_decay_render_offset(Object &o, int delta) {
   float ex = o.net_pose_err.x(), ey = o.net_pose_err.y();
-  if (ex * ex + ey * ey < 0.25f) {
+  float off2 = ex * ex + ey * ey;
+  if (off2 < 0.25f) {
     o.net_pose_err = Point(0.0f, 0.0f);
     return;
   }
-  o.net_pose_err = o.net_pose_err * expf(-(float)delta / 65.0f);
+  float off = sqrtf(off2);
+  float want = off * (1.0f - expf(-(float)delta / 65.0f));
+  float cap = (o.velocity.magnitude() * 1.5f + 0.25f) * (float)delta;
+  float move = want < cap ? want : cap;
+  o.net_pose_err = o.net_pose_err * ((off - move) / off);
 }
 }  // namespace
 
