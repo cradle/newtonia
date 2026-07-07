@@ -754,14 +754,15 @@ float GLGame::net_lead_ms() const {
 // net_smooth_step drains over ~150 ms — corrections become a glide in
 // one direction. Teleport-scale jumps still snap: they should look
 // instant. Returns the pre-correction error distance (diagnostics).
-float GLGame::net_reconcile_pose(Object &o, const WrappedPoint &old_pos) const {
+float GLGame::net_reconcile_pose(Object &o, const WrappedPoint &old_render,
+                                 bool sim_exact) const {
   float lead = net_lead_ms();
   WrappedPoint target(o.position.x() + o.velocity.x() * lead,
                       o.position.y() + o.velocity.y() * lead);
   target.wrap();
-  Point c = target.closest_to(old_pos);
-  float cx = c.x() - old_pos.x();
-  float cy = c.y() - old_pos.y();
+  Point c = target.closest_to(old_render);
+  float cx = c.x() - old_render.x();
+  float cy = c.y() - old_render.y();
   float err2 = cx * cx + cy * cy;
   const float snap_dist = 250.0f;
   // 1 Hz summary of how hard the incoming authority fights the local
@@ -788,8 +789,16 @@ float GLGame::net_reconcile_pose(Object &o, const WrappedPoint &old_pos) const {
       s_max = 0.0f;
     }
   }
-  if (err2 < snap_dist * snap_dist) {
-    o.position = old_pos;
+  if (sim_exact) {
+    // Asteroids: sim = authority NOW (gravity mirrors correctly again);
+    // the render offset preserves what the player saw at this instant
+    // and fades to truth (~150 ms) — or is dropped whole on a
+    // teleport-scale jump, which should look instant.
+    o.position = target;
+    o.net_pose_err = err2 < snap_dist * snap_dist ? Point(-cx, -cy)
+                                                  : Point(0.0f, 0.0f);
+  } else if (err2 < snap_dist * snap_dist) {
+    o.position = old_render;
     o.net_pose_err = Point(cx, cy);  // replaces (not adds to) the old debt
   } else {
     o.position = target;
@@ -814,6 +823,17 @@ void net_smooth_step(Object &o, int delta) {
   o.position += c;
   o.position.wrap();
   o.net_pose_err = o.net_pose_err - c;
+}
+
+// Asteroid flavour (sim_exact reconcile): the sim pose already rides the
+// authority — only the drawn-continuity offset fades.
+void net_decay_render_offset(Object &o, int delta) {
+  float ex = o.net_pose_err.x(), ey = o.net_pose_err.y();
+  if (ex * ex + ey * ey < 0.25f) {
+    o.net_pose_err = Point(0.0f, 0.0f);
+    return;
+  }
+  o.net_pose_err = o.net_pose_err * expf(-(float)delta / 65.0f);
 }
 }  // namespace
 
@@ -1923,7 +1943,7 @@ void GLGame::tick_net_client(int delta) {
     for (auto *bh : *black_holes) bh->step(step_size);
     for (auto *a : *objects) {
       a->step(step_size);
-      net_smooth_step(*a, step_size);  // drain authoritative corrections
+      net_decay_render_offset(*a, step_size);  // drawn pose fades to truth
     }
     // Mirror the host's asteroid gravity so drift between 1 Hz keyframes
     // stays small — otherwise every asteroid near a hole goes stale.
@@ -2158,10 +2178,11 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in) {
     // Teleporting asteroid relocated on the host this instant (the
     // vulnerable window opens on arrival): play the warp locally.
     bool was_vulnerable = a->teleport_vulnerable;
-    WrappedPoint extrapolated = a->position;
+    WrappedPoint old_render(a->position.x() + a->net_pose_err.x(),
+                            a->position.y() + a->net_pose_err.y());
     a->position = WrappedPoint(px, py);
     a->velocity = Point(vx, vy);
-    float rec_err = net_reconcile_pose(*a, extrapolated);
+    float rec_err = net_reconcile_pose(*a, old_render, /*sim_exact=*/true);
     // Who exactly diverges: id, hole distance, speed, special flags.
     if (Net::net_debug_enabled() && rec_err >= 30.0f) {
       float bh_dist = -1.0f;
@@ -2307,7 +2328,7 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     // shimmers with the channel's delivery jitter exactly like the
     // asteroids did. Facing/velocity stay authoritative.
     if (!is_local && was_alive && ship->is_alive() && !world_rebuilt)
-      net_reconcile_pose(*ship, old_pos);
+      net_reconcile_pose(*ship, old_pos, /*sim_exact=*/false);
 
     if (is_local && was_alive && ship->is_alive() && !world_rebuilt) {
       // v12: this machine's pose is AUTHORITATIVE — the host adopts it
@@ -2572,9 +2593,11 @@ void GLGame::net_apply_keyframe_asteroid_ids(Save::Stream &in,
     const Save::Asteroid &sa = s.asteroids[i];
     std::unordered_map<uint32_t, Asteroid *>::iterator found = by_id.find(ids[i]);
     if (found != by_id.end()) {
-      WrappedPoint extrapolated = found->second->position;
-      found->second->restore_state(sa);
-      net_reconcile_pose(*found->second, extrapolated);
+      Asteroid *a = found->second;
+      WrappedPoint old_render(a->position.x() + a->net_pose_err.x(),
+                              a->position.y() + a->net_pose_err.y());
+      a->restore_state(sa);
+      net_reconcile_pose(*a, old_render, /*sim_exact=*/true);
       by_id.erase(found);
     } else {
       Asteroid *a = new Asteroid(sa.invincible, sa.invisible, sa.reflective,
@@ -3679,8 +3702,8 @@ void GLGame::draw_perspective(GLShip *glship) const {
         Asteroid const *a = *it;
         if (!a->invisible || !a->alive) continue;
 
-        float ax = a->position.x();
-        float ay = a->position.y();
+        float ax = a->position.x() + a->net_pose_err.x();
+        float ay = a->position.y() + a->net_pose_err.y();
         AsteroidDrawer::draw_invisible_mask(a, ax, ay);
         starfield->draw_stars_near(ax, ay, a->radius);
       }
@@ -3745,8 +3768,8 @@ void GLGame::draw_perspective(GLShip *glship) const {
         Asteroid const *a = *it;
         if (!a->invisible || !a->alive) continue;
 
-        float ax = a->position.x();
-        float ay = a->position.y();
+        float ax = a->position.x() + a->net_pose_err.x();
+        float ay = a->position.y() + a->net_pose_err.y();
         // No black mask here — draw_batch already renders the invisible asteroid
         // fill behind visible asteroids. Drawing it again after game objects would
         // overdraw visible asteroids on top of invisible ones.
@@ -3788,7 +3811,9 @@ void GLGame::draw_perspective(GLShip *glship) const {
         for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
           Asteroid const *a = *it;
           if (!a->invisible || !a->alive) continue;
-          warp_pass_->draw(a, a->position.x(), a->position.y(), vp[0], vp[1], vp[2], vp[3]);
+          warp_pass_->draw(a, a->position.x() + a->net_pose_err.x(),
+                           a->position.y() + a->net_pose_err.y(),
+                           vp[0], vp[1], vp[2], vp[3]);
         }
       }
     }

@@ -213,10 +213,17 @@ private:
   // transit staleness: RTT/2, capped, 0 before the first PONG.
   float net_lead_ms() const;
   // Reconcile a freshly-applied authoritative pose with the client's own
-  // extrapolation (old_pos): lead it by net_lead_ms(), keep the client
-  // pose inside a dead zone, blend moderate error, snap real jumps.
-  // Returns the pre-correction error distance (diagnostics).
-  float net_reconcile_pose(Object &o, const WrappedPoint &old_pos) const;
+  // extrapolation. old_render is the pose the player currently SEES.
+  // sim_exact=true (asteroids): the sim pose takes the authority exactly
+  // — the client mirrors position-dependent gravity, and simulating from
+  // a drained pose fed the error back through the field near the black
+  // hole — while drawn continuity lives in the render-only net_pose_err
+  // offset the AsteroidDrawer adds. sim_exact=false (remote ship, no
+  // position-dependent forces): the pose itself keeps continuity and
+  // net_smooth_step drains it toward authority. Returns the
+  // pre-correction error distance (diagnostics).
+  float net_reconcile_pose(Object &o, const WrappedPoint &old_render,
+                           bool sim_exact) const;
 
   // ---- M2-4 rejoin (host only; see NETPLAY.md) ----
   // The lobby's signal connection moves in here so the room stays open

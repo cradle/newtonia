@@ -22,8 +22,10 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
     static MeshBuilder mb;
     static Mesh mesh;
 
-    float cx  = object->position.x();
-    float cy  = object->position.y();
+    // Netplay client: draw at sim pose + render-continuity offset (zero
+    // everywhere else) — see GLGame::net_reconcile_pose.
+    float cx  = object->position.x() + object->net_pose_err.x();
+    float cy  = object->position.y() + object->net_pose_err.y();
     float r   = object->radius;
     float rot = object->rotation * (float)M_PI / 180.0f;
     int   sc  = seg_count(r);
@@ -138,8 +140,10 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
   for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
     Asteroid const *a = *it;
     AsteroidVerts v;
-    v.cx  = a->position.x();
-    v.cy  = a->position.y();
+    // Netplay client: sim pose + render-continuity offset (zero offline
+    // and on the host) — see GLGame::net_reconcile_pose.
+    v.cx  = a->position.x() + a->net_pose_err.x();
+    v.cy  = a->position.y() + a->net_pose_err.y();
     float r   = a->radius;
     float rot = a->rotation * (float)M_PI / 180.0f;
     v.segs    = seg_count(r);
