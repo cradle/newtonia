@@ -992,6 +992,20 @@ void GLGame::net_host_poll() {
   NetTransport *t = net_session_->transport();
   Ship *remote = players->size() >= 2 ? players->back()->ship : NULL;
 
+  // Mid-gap marker (host side): fires once when INPUT silence crosses
+  // 300 ms, with our send-buffer depth at that instant — pairs with the
+  // client's "rx quiet" line to show whether both senders were blocked.
+  if (Net::net_debug_enabled() && running && net_have_input_) {
+    int quiet = current_time - net_last_input_time_;
+    if (quiet > 300 && !net_quiet_logged_) {
+      net_quiet_logged_ = true;
+      NET_LOG("net: input quiet 300 ms, tx buffered %d bytes\n",
+              t->buffered_amount());
+    } else if (quiet <= 300) {
+      net_quiet_logged_ = false;
+    }
+  }
+
   // Close an input-gap observation window (opened below) and report what
   // the gap turned out to be — see glgame.h net_gap_* for how to read it.
   if (net_gap_deadline_ && current_time >= net_gap_deadline_) {
@@ -2121,6 +2135,20 @@ void GLGame::tick_net_client(int delta) {
   if (!net_connection_lost_) {
     net_client_poll();
     net_ping_tick(delta);
+    // Mid-gap marker: the 1 Hz buffered sample can miss a sub-second
+    // stall entirely; this fires exactly when silence crosses 300 ms,
+    // with our own send-buffer depth at that instant (nonzero = our
+    // sender is blocked too, i.e. the stall is bidirectional).
+    if (Net::net_debug_enabled() && running && net_last_rx_time_) {
+      int quiet = current_time - net_last_rx_time_;
+      if (quiet > 300 && !net_quiet_logged_) {
+        net_quiet_logged_ = true;
+        NET_LOG("net: rx quiet 300 ms, tx buffered %d bytes\n",
+                net_session_->transport()->buffered_amount());
+      } else if (quiet <= 300) {
+        net_quiet_logged_ = false;
+      }
+    }
     if (running && net_last_rx_time_ &&
         current_time - net_last_rx_time_ > 10000) {
       NET_LOG("net: RX watchdog - 10 s of silence, connection lost\n");

@@ -227,6 +227,10 @@ private:
   int net_gap_accepts_ = 0;        // accepted INPUTs inside the window
   uint32_t net_gap_max_leap_ = 0;  // biggest forward seq jump in the window
   int net_last_send_time_ = 0;     // client: INPUT send cadence (stall log)
+  // Mid-gap markers: fire ONCE when inbound silence crosses 300 ms, with
+  // the transport's tx-buffered depth at that instant — the 1 Hz sample
+  // can miss a sub-second gap entirely, this cannot. Both roles.
+  bool net_quiet_logged_ = false;
   // Client: local would-kill hits awaiting the host's confirming removal
   // (net_id, current_time of the hit) — measures confirm latency and
   // logs loudly when a claimed kill never lands.
