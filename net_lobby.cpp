@@ -1176,10 +1176,17 @@ void NetLobby::controller(SDL_Event event) {
   if (event.type == SDL_CONTROLLERBUTTONDOWN ||
       event.type == SDL_CONTROLLERAXISMOTION) {
     controller_seen_ = true;
-    // The Deck's floating keyboard consumes controller input while it
-    // is showing — an event reaching us means it has been dismissed, so
-    // the picker may come back.
-    floating_kb_up_ = false;
+    // The Deck's floating keyboard consumes BUTTON input while it is
+    // showing, so a button press reaching us proves it was dismissed and
+    // the picker may come back. AXIS events do NOT count: stick drift
+    // and gyro noise stream through the keyboard continuously, and
+    // clearing on them brought the picker back underneath it within
+    // milliseconds ("both keyboards are showing"). A deliberate hard
+    // flick past the nav threshold also counts as proof.
+    if (event.type == SDL_CONTROLLERBUTTONDOWN ||
+        (event.type == SDL_CONTROLLERAXISMOTION &&
+         (event.caxis.value > STICK_ON || event.caxis.value < -STICK_ON)))
+      floating_kb_up_ = false;
   }
   if (event.type == SDL_CONTROLLERBUTTONDOWN) {
     switch (event.cbutton.button) {
