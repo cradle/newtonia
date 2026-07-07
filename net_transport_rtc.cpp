@@ -235,6 +235,13 @@ private:
       s.initialRetransmitTimeoutMs = 500;
       s.maxRetransmitTimeoutMs = 1500;
       s.delayedSackTimeMs = 10;
+      // The RTO cap has a side effect: the association's retransmit
+      // budget (stock ~10 attempts) burns through in ~12 s of continuous
+      // loss instead of the stock ~minute, killing the session into the
+      // pause/rejoin cycle on outages it used to just freeze through.
+      // More attempts restore long-outage tolerance (~45 s) while keeping
+      // the fast per-packet recovery the tight RTOs buy.
+      s.maxRetransmitAttempts = 30;
       rtcSetSctpSettings(&s);
     }
 
