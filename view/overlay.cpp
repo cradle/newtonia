@@ -494,8 +494,14 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
 }
 
 void Overlay::debug_info(const GLGame *glgame, const GLShip *glship) {
-  // Only draw once — skip for the second player's viewport.
-  if (glship->ship != glgame->players->front()->ship) return;
+  // Only draw once — skip for the second player's viewport. The primary
+  // viewport is player 1 offline, but ONLINE the single viewport belongs
+  // to the LOCAL player — on the client that is the BACK of the list
+  // (the front is the remote host), and comparing against the front
+  // blanked the whole debug stack on every client.
+  const GLShip *primary = glgame->net_active() ? glgame->local_player()
+                                               : glgame->players->front();
+  if (glship != primary) return;
 
   // Rolling FPS: count frames over ~500 ms windows so the reading reflects
   // current performance rather than the lifetime average.
