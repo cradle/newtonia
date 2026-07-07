@@ -194,6 +194,10 @@ private:
   // local-ship blend latency-compensates with it.
   float net_rtt_ms_ = -1.0f;
   int net_ping_timer_ = 0;
+  // Last 8 raw RTT samples; net_lead_ms() uses their MINIMUM — a spike is
+  // relay queueing, not path length, and must never inflate the lead.
+  float net_rtt_ring_[8];
+  int net_rtt_ring_n_ = 0, net_rtt_ring_i_ = 0;
   void net_ping_tick(int delta);
   // Answers PING / consumes PONG; true when the message was one of them.
   bool net_handle_ping_pong(uint8_t msg_type, Net::Reader &r);

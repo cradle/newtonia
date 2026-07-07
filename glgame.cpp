@@ -720,6 +720,9 @@ bool GLGame::net_handle_ping_pong(uint8_t msg_type, Net::Reader &r) {
       if (net_rtt_ms_ < 0.0f) NET_LOG("net: rtt %.0f ms (first pong)\n", sample);
       net_rtt_ms_ = net_rtt_ms_ < 0.0f ? sample
                                        : net_rtt_ms_ * 0.8f + sample * 0.2f;
+      net_rtt_ring_[net_rtt_ring_i_] = sample;
+      net_rtt_ring_i_ = (net_rtt_ring_i_ + 1) % 8;
+      if (net_rtt_ring_n_ < 8) net_rtt_ring_n_++;
     }
     return true;
   }
@@ -727,8 +730,15 @@ bool GLGame::net_handle_ping_pong(uint8_t msg_type, Net::Reader &r) {
 }
 
 float GLGame::net_lead_ms() const {
-  float lead = net_rtt_ms_ > 0.0f ? net_rtt_ms_ * 0.5f : 0.0f;
-  return lead > 250.0f ? 250.0f : lead;  // a spike is not a lead
+  // Minimum of the recent samples, not the smoothed average: a spike is
+  // relay queueing, not path length, and the smoothed value stays wrong
+  // for ~10 s after one while every extrapolation target overshoots.
+  if (net_rtt_ring_n_ == 0) return 0.0f;
+  float rtt = net_rtt_ring_[0];
+  for (int i = 1; i < net_rtt_ring_n_; i++)
+    if (net_rtt_ring_[i] < rtt) rtt = net_rtt_ring_[i];
+  float lead = rtt * 0.5f;
+  return lead > 250.0f ? 250.0f : lead;
 }
 
 // World objects (asteroids, the remote ship) are extrapolated locally with
@@ -831,6 +841,12 @@ void GLGame::net_host_poll() {
     if (net_have_input_ && (int32_t)(in.seq - net_last_input_seq_) <= 0)
       continue;
     net_last_input_seq_ = in.seq;
+    // An INPUT blackout (unreliable channel dying under relay congestion)
+    // is what big local-ship corrections on the CLIENT look like from
+    // here — log the gap so the two logs can be correlated.
+    if (net_have_input_ && current_time - net_last_input_time_ > 300)
+      NET_LOG("net: input gap %d ms ended (seq %u)\n",
+              current_time - net_last_input_time_, in.seq);
     net_last_input_time_ = current_time;
     net_input_zeroed_ = false;
     if (!remote) continue;
@@ -1158,6 +1174,8 @@ void GLGame::net_host_rejoin_poll(int delta) {
       net_input_zeroed_ = false;
       net_rtt_ms_ = -1.0f;          // fresh transport, fresh RTT baseline
       net_ping_timer_ = 0;
+      net_rtt_ring_n_ = 0;
+      net_rtt_ring_i_ = 0;
       net_held_suppress_ = 0xffff;  // fresh presses required, like a spawn
       net_force_keyframe_ = true;   // rejoined client starts from a keyframe
       net_last_input_time_ = current_time;
@@ -2269,16 +2287,22 @@ void GLGame::net_apply_state(const Save::GameState &s) {
         ship->position = old_pos;
         ship->velocity = old_vel;
         ship->facing = old_facing;
+        ship->net_pose_err = Point(0.0f, 0.0f);
       } else if (err2 < snap_dist * snap_dist) {
-        ship->position = WrappedPoint(old_pos.x() + cx * 0.35f,
-                                      old_pos.y() + cy * 0.35f);
-        ship->position.wrap();
-        ship->velocity = old_vel + (ship->velocity - old_vel) * 0.35f;
+        // Bank-and-drain like the world objects (the 35% positional blend
+        // dragged visibly over several frames when an input blackout on
+        // the unreliable channel opened a 200+ unit gap): render pose
+        // stays put NOW, velocity goes fully authoritative so the
+        // prediction resumes from truth, and net_smooth_step glides the
+        // banked difference in over ~150 ms.
+        ship->position = old_pos;
+        ship->net_pose_err = Point(cx, cy);
         ship->facing = old_facing;  // aim stays fully local
       } else {
         // rtt/speed in the line: a post-respawn first snapshot or a real
         // teleport snaps at any latency; only a snap with high rtt AND
         // high speed suggests the correction budget is still too tight.
+        ship->net_pose_err = Point(0.0f, 0.0f);
         NET_LOG("net: local ship snapped %.0f units (rtt %.0f ms, speed %.2f)"
                 " - teleport/respawn/new level\n",
                 sqrtf(err2), net_rtt_ms_, old_vel.magnitude());
