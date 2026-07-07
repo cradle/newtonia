@@ -764,7 +764,12 @@ float GLGame::net_reconcile_pose(Object &o, const WrappedPoint &old_render,
   float cx = c.x() - old_render.x();
   float cy = c.y() - old_render.y();
   float err2 = cx * cx + cy * cy;
-  const float snap_dist = 250.0f;
+  // Asteroids get a wider glide budget: after a connection stall the
+  // near-hole rocks legitimately curve 300-700 units away from the blind
+  // extrapolation, and the recovery burst should swoosh in, not teleport
+  // a dozen rocks in one frame. Real asteroid teleports land at a random
+  // spot in a 2950+ world — far beyond 800 essentially always.
+  const float snap_dist = sim_exact ? 800.0f : 250.0f;
   // 1 Hz summary of how hard the incoming authority fights the local
   // extrapolation — the number that says whether visible jitter is
   // network correction (big counts / big max) or something else (silence).
