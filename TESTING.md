@@ -89,6 +89,22 @@ NEWTONIA_NET_FORCE_RELAY=1, check the debug overlay (B) shows
 "net: relay/relay", play past the TTL, watch the auto-pause/rejoin heal.
 Delete the TURN_TTL secret and redeploy afterwards.
 
+### Simulating relay-path loss locally (no relay needed)
+
+The dev container's kernel has no netem, but iptables works — real UDP
+loss below SCTP, which reproduces the retransmit-stall dynamics a lossy
+relay causes (root + sandbox override required):
+
+```sh
+/usr/sbin/iptables -A INPUT -i lo -p udp -m statistic --mode random --probability 0.02 -j DROP
+test/e2e/room.sh          # or the gen-10 probe; read the reconcile summaries
+/usr/sbin/iptables -D INPUT -i lo -p udp -m statistic --mode random --probability 0.02 -j DROP
+```
+
+Healthy signature under 2% loss: steady reconcile <10/s with small
+maxes, loss bursts glide (0 snaps), no input gaps at loopback RTT
+(retransmits recover inside the 300 ms gap-log threshold).
+
 ### One-phone relay test (no env vars)
 
 Two instances on one device always pick the direct ICE path, so the
