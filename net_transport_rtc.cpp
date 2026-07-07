@@ -324,6 +324,22 @@ private:
       // More attempts restore long-outage tolerance (~45 s) while keeping
       // the fast per-packet recovery the tight RTOs buy.
       s.maxRetransmitAttempts = 30;
+      // The 10.000 s stall metronome: libdatachannel enables SCTP
+      // HEARTBEATs at a 10 s default, and on relay paths every heartbeat
+      // coincided with a 0.4-1.7 s bidirectional stall of the whole
+      // association — Glenn's gap starts sat on an exact 10.000 s grid
+      // (49.998 s across five periods) while ICMP on the same link ran
+      // clean, and nothing else in the stack ticks at 10 s (juice: 15 s
+      // keepalive, 4-6 s jittered consent, 540 s TURN refresh). With
+      // 10-125 Hz of data flowing both ways plus the app-level RX
+      // watchdogs, heartbeats buy us nothing — push them out to once an
+      // hour. NEWTONIA_NET_SCTP_HB_MS overrides for A/B conviction
+      // (7000 must move the metronome to 7 s; 0 = library default 10 s).
+      s.heartbeatIntervalMs = 3600000;
+      if (const char *hb = std::getenv("NEWTONIA_NET_SCTP_HB_MS")) {
+        int v = std::atoi(hb);
+        s.heartbeatIntervalMs = v > 0 ? v : 0;  // 0 = library default
+      }
       rtcSetSctpSettings(&s);
     }
 
