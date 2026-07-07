@@ -175,7 +175,14 @@ class Ship : public CompositeObject {
     // Net client: locally-detected cosmetic bullet-vs-asteroid impacts
     // (debris + thud/ting) for asteroids a plain bullet cannot kill —
     // replaces the host's EV_ROID_THUD/TING impact events (PROTO 10).
-    void net_cosmetic_impacts(const Grid &grid);
+    // claim_kills (local ship only): each would-kill consume also pushes
+    // the asteroid's net_id to net_kill_claims so the game can measure
+    // how long the host's confirming removal takes — and whether it ever
+    // comes (diagnosis telemetry for "hit but didn't die").
+    void net_cosmetic_impacts(const Grid &grid, bool claim_kills = false);
+    // Client outbox: net_ids of asteroids the local ship's bullets just
+    // visibly killed (see claim_kills above). tick_net_client drains it.
+    static std::vector<uint32_t> net_kill_claims;
     // Start the looping missile-fly sound for replicated missiles (the
     // weapon starts it for locally-fired ones); the handle halts the
     // channel when the last missile holding it is destroyed.

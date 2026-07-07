@@ -983,6 +983,16 @@ void GLGame::net_host_poll() {
   NetTransport *t = net_session_->transport();
   Ship *remote = players->size() >= 2 ? players->back()->ship : NULL;
 
+  // Close an input-gap observation window (opened below) and report what
+  // the gap turned out to be — see glgame.h net_gap_* for how to read it.
+  if (net_gap_deadline_ && current_time >= net_gap_deadline_) {
+    NET_LOG("net: post-gap 1.5 s: %d inputs accepted (~185 normal), "
+            "%d stale rx, max seq leap %u (skipped at gap end: %u)\n",
+            net_gap_accepts_, net_gap_stragglers_, net_gap_max_leap_,
+            net_gap_skipped_);
+    net_gap_deadline_ = 0;
+  }
+
   std::vector<unsigned char> msg;
   while (t->poll(msg)) {
     Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
@@ -1001,16 +1011,37 @@ void GLGame::net_host_poll() {
     if (!Net::decode_input(r, in)) continue;
     // Unreliable channel: drop stale/reordered packets (signed distance
     // handles seq wrap).
-    if (net_have_input_ && (int32_t)(in.seq - net_last_input_seq_) <= 0)
+    if (net_have_input_ && (int32_t)(in.seq - net_last_input_seq_) <= 0) {
+      net_input_stale_drops_++;
+      if (net_gap_deadline_) net_gap_stragglers_++;
       continue;
+    }
+    uint32_t seq_leap = net_have_input_ ? in.seq - net_last_input_seq_ : 1;
     net_last_input_seq_ = in.seq;
+    if (net_gap_deadline_) {
+      net_gap_accepts_++;
+      if (seq_leap > net_gap_max_leap_) net_gap_max_leap_ = seq_leap;
+    }
     // An INPUT blackout (unreliable channel dying under relay congestion)
     // is what big local-ship corrections on the CLIENT look like from
-    // here — log the gap so the two logs can be correlated.
-    if (net_have_input_ && current_time - net_last_input_time_ > 300)
-      NET_LOG("net: input gap %d ms ended (seq %u)\n",
-              current_time - net_last_input_time_, in.seq);
+    // here — log the gap so the two logs can be correlated, then watch
+    // the next 1.5 s to say what the gap actually WAS (see glgame.h).
+    // The client mints a seq every 8 ms step, so "skipped" = it kept
+    // sending into the void; zero skipped = it stopped stepping (or an
+    // ordered backlog is about to replay — the window tells them apart).
+    if (net_have_input_ && current_time - net_last_input_time_ > 300) {
+      NET_LOG("net: input gap %d ms ended (seq %u, %u seqs skipped, "
+              "%d stale rx during gap)\n",
+              current_time - net_last_input_time_, in.seq, seq_leap - 1,
+              net_input_stale_drops_);
+      net_gap_deadline_ = current_time + 1500;
+      net_gap_skipped_ = seq_leap - 1;
+      net_gap_stragglers_ = 0;
+      net_gap_accepts_ = 0;
+      net_gap_max_leap_ = 0;
+    }
     net_last_input_time_ = current_time;
+    net_input_stale_drops_ = 0;
     net_input_zeroed_ = false;
     if (!remote) continue;
 
@@ -1697,6 +1728,7 @@ void GLGame::net_clear_event_outboxes() {
   Ship::net_ship_impacts.clear();
   Ship::net_shots.clear();
   Ship::net_booms.clear();
+  Ship::net_kill_claims.clear();
 }
 
 void GLGame::net_send_event(uint8_t code, uint32_t arg) {
@@ -2108,12 +2140,19 @@ void GLGame::tick_net_client(int delta) {
   if (!running) {
     last_tick += delta;
     net_last_rx_time_ = current_time;  // paused peers legitimately go quiet
+    net_last_send_time_ = current_time;  // no sends while paused = no stall
+    // Pauses freeze the host clock too: shift the anchor so paused time
+    // doesn't count into the derived estimate below.
+    if (net_est_anchor_local_ >= 0) net_est_anchor_local_ += delta;
     return;
   }
-  // The host's clock runs whenever we do (pauses stop both), so our
-  // stale-delta estimate advances with local running time and re-anchors
-  // on every accepted apply.
-  if (net_host_est_ >= 0) net_host_est_ += delta;
+  // The host's clock runs whenever we do (pauses stop both), so the
+  // stale-delta estimate is the last accepted apply's host clock plus
+  // local running time since it arrived. DERIVED, not accumulated: a
+  // "+= delta" here after a poll that just re-anchored double-counted
+  // client-side hitches and wedged the gate shut (see glgame.h).
+  if (net_est_anchor_host_ >= 0)
+    net_host_est_ = net_est_anchor_host_ + (current_time - net_est_anchor_local_);
 
   time_until_next_step -= delta;
   while (time_until_next_step <= 0) {
@@ -2205,8 +2244,11 @@ void GLGame::tick_net_client(int delta) {
     grid.update((std::list<Object *> *)objects);
     // Cosmetic bullet-vs-asteroid impacts (debris + thud/ting for
     // asteroids a bullet can't kill), detected locally against the fresh
-    // grid — replaces the host's EV_ROID impact events (PROTO 10).
-    for (auto *gs : *players) gs->ship->net_cosmetic_impacts(grid);
+    // grid — replaces the host's EV_ROID impact events (PROTO 10). The
+    // local ship also claims its would-kill hits for the confirmation
+    // telemetry below.
+    for (auto *gs : *players)
+      gs->ship->net_cosmetic_impacts(grid, gs == players->back());
 
     // Local-ship render-jump detector: the camera rides this pose, so a
     // single-step discontinuity here moves the WHOLE visible field in
@@ -2238,6 +2280,33 @@ void GLGame::tick_net_client(int delta) {
     time_until_next_step += time_between_steps;
   }
 
+  // Kill-confirmation telemetry: every locally-consumed would-kill hit
+  // should be followed by the host's removal within ~RTT. Measure the
+  // real latency — and shout when a claimed kill never lands (the
+  // "bullets hitting but not killing" report), with enough context to
+  // say which asteroid the host disagreed about.
+  for (uint32_t id : Ship::net_kill_claims)
+    net_pending_kills_.push_back(std::make_pair(id, current_time));
+  Ship::net_kill_claims.clear();
+  for (auto ki = net_pending_kills_.begin(); ki != net_pending_kills_.end();) {
+    Asteroid *found = NULL;
+    for (auto *a : *objects)
+      if (a->net_id == ki->first) { found = a; break; }
+    if (!found) {
+      NET_LOG("net: kill confirmed %d ms after local hit (id=%u)\n",
+              current_time - ki->second, ki->first);
+      ki = net_pending_kills_.erase(ki);
+    } else if (current_time - ki->second > 2500) {
+      NET_LOG("net: kill NOT confirmed 2500 ms after local hit "
+              "(id=%u spd=%.3f r=%.0f hp=%d)\n",
+              ki->first, found->velocity.magnitude(), found->radius,
+              found->health);
+      ki = net_pending_kills_.erase(ki);
+    } else {
+      ++ki;
+    }
+  }
+
   auto oi = dead_objects->begin();
   while (oi != dead_objects->end()) {
     if ((*oi)->is_removable()) {
@@ -2250,6 +2319,14 @@ void GLGame::tick_net_client(int delta) {
 }
 
 void GLGame::net_client_send_input() {
+  // Production-side half of the host's input-gap forensics: if THIS log
+  // fires at the same moment the host logs a gap, the client simply
+  // stopped stepping (frame stall, app nap) — no network involved.
+  if (net_last_send_time_ && current_time - net_last_send_time_ > 300)
+    NET_LOG("net: input send stall %d ms (client-side)\n",
+            current_time - net_last_send_time_);
+  net_last_send_time_ = current_time;
+
   GLShip *local = players->back();
   Ship *s = local->ship;
 
@@ -2312,6 +2389,12 @@ void GLGame::net_client_poll() {
   NetTransport *t = net_session_->transport();
   std::vector<unsigned char> msg;
   while (t->poll(msg)) {
+    // RX-side half of the gap forensics: fires when OUR inbound stream
+    // resumes after silence — pairs with the host's "input gap" line to
+    // show whether an outage was bidirectional (path) or one-way.
+    if (running && net_last_rx_time_ &&
+        current_time - net_last_rx_time_ > 300)
+      NET_LOG("net: rx gap %d ms ended\n", current_time - net_last_rx_time_);
     net_last_rx_time_ = current_time;  // any arrival feeds the watchdog
     Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
     Net::Header h;
@@ -2347,14 +2430,31 @@ void GLGame::net_client_poll() {
       // the stream past the (poisonous) state/ship sections and apply
       // just the membership — otherwise a kill riding a gated delta
       // waited ~1 s for the keyframe backstop (late explosions).
-      if (net_host_est_ >= 0 && s.current_time + 120 < net_host_est_) {
-        NET_LOG("net: dropped stale delta (%d ms behind), membership kept\n",
-                net_host_est_ - s.current_time);
-        if (net_apply_ship_extras(in, s, /*apply=*/false))
-          net_apply_delta_asteroids(in, /*membership_only=*/true);
-        continue;
+      int behind = net_host_est_ >= 0 ? net_host_est_ - s.current_time : 0;
+      if (behind > 120) {
+        // Wedge hatch: a broken estimate shows as CONSTANT mild
+        // staleness with nothing ever accepted (a real backlog drain
+        // rushes toward fresh within a second) — after 30 straight
+        // drops, take a mildly-stale item as the new anchor rather
+        // than dead-reckoning forever.
+        bool wedged = net_stale_streak_ >= 30 && behind < 1000;
+        if (!wedged) {
+          net_stale_streak_++;
+          NET_LOG("net: dropped stale delta (%d ms behind), membership kept\n",
+                  behind);
+          if (net_apply_ship_extras(in, s, /*apply=*/false))
+            net_apply_delta_asteroids(in, /*membership_only=*/true);
+          else
+            NET_LOG("net: stale-delta walk FAILED (stream mismatch)\n");
+          continue;
+        }
+        NET_LOG("net: stale gate wedged (%d drops, %d ms behind) - re-anchoring\n",
+                net_stale_streak_, behind);
       }
+      net_stale_streak_ = 0;
       net_host_est_ = s.current_time;
+      net_est_anchor_host_ = s.current_time;
+      net_est_anchor_local_ = current_time;
       // The mini state carries everything but asteroids (its asteroid
       // vector is empty by construction, so the wholesale sections apply
       // exactly like a keyframe); asteroids follow as delta records.
@@ -2372,14 +2472,23 @@ void GLGame::net_client_poll() {
     if (!net_state_sane(s)) continue;  // reject a hostile/corrupt snapshot
     // Same stale-backlog gate as deltas — a stale KEYFRAME tours the
     // whole world backward hardest of all. Bootstrap (est unset) always
-    // applies; the next keyframe is at most a second away.
+    // applies; the next keyframe is at most a second away. Shares the
+    // wedge hatch with the delta path (see above).
     if (net_ids_adopted_ && net_host_est_ >= 0 &&
         s.current_time + 120 < net_host_est_) {
-      NET_LOG("net: dropped stale keyframe (%d ms behind)\n",
-              net_host_est_ - s.current_time);
-      continue;
+      int behind = net_host_est_ - s.current_time;
+      if (net_stale_streak_ < 30 || behind >= 1000) {
+        net_stale_streak_++;
+        NET_LOG("net: dropped stale keyframe (%d ms behind)\n", behind);
+        continue;
+      }
+      NET_LOG("net: stale gate wedged (%d drops, %d ms behind) - re-anchoring\n",
+              net_stale_streak_, behind);
     }
+    net_stale_streak_ = 0;
     net_host_est_ = s.current_time;
+    net_est_anchor_host_ = s.current_time;
+    net_est_anchor_local_ = current_time;
     net_apply_state(s);
     net_apply_extras(in, s);
   }
@@ -2540,6 +2649,9 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     while (!objects->empty()) { delete objects->back(); objects->pop_back(); }
     while (!dead_objects->empty()) { delete dead_objects->back(); dead_objects->pop_back(); }
     Asteroid::num_killable = 0;
+    // The rollover wiped every id — pending kill claims would all read
+    // as spuriously "confirmed" against the empty list.
+    net_pending_kills_.clear();
   }
 
   generation = s.generation;

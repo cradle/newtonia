@@ -203,6 +203,34 @@ private:
   // asteroid backward then forward at once. Items older than this
   // estimate are dropped instead.
   int net_host_est_ = -1;
+  // The estimate is DERIVED each tick as anchor_host + local time since
+  // the anchor (paused time excluded). The old "+= delta" accumulator
+  // double-counted any tick that both accepted an apply and covered a
+  // long frame: the anchor already contains the host's advance over a
+  // client-side hitch, so adding the hitch's delta on top left the
+  // estimate permanently ahead — every delta then looked ~hitch ms
+  // stale, nothing was ever accepted again, and the gate wedged shut
+  // (Glenn: continuous "dropped stale delta (~200 ms behind)").
+  int net_est_anchor_host_ = -1;   // host clock at the last accepted apply
+  int net_est_anchor_local_ = -1;  // our current_time at that moment
+  int net_stale_streak_ = 0;       // consecutive stale drops (see hatch)
+
+  // Diagnosis telemetry, no gameplay effect. Host: input-gap forensics —
+  // when a gap ends, a 1.5 s observation window counts what arrives so
+  // the log alone says whether the client stopped sending (no seqs
+  // skipped, normal-rate accepts), packets were lost (seqs skipped, no
+  // stragglers), or a queued backlog replayed (accept burst + stale rx).
+  int net_input_stale_drops_ = 0;  // seq<=last arrivals since last accept
+  int net_gap_deadline_ = 0;       // current_time when the window closes
+  uint32_t net_gap_skipped_ = 0;   // seqs missing when the gap ended
+  int net_gap_stragglers_ = 0;     // stale-seq arrivals inside the window
+  int net_gap_accepts_ = 0;        // accepted INPUTs inside the window
+  uint32_t net_gap_max_leap_ = 0;  // biggest forward seq jump in the window
+  int net_last_send_time_ = 0;     // client: INPUT send cadence (stall log)
+  // Client: local would-kill hits awaiting the host's confirming removal
+  // (net_id, current_time of the hit) — measures confirm latency and
+  // logs loudly when a claimed kill never lands.
+  std::vector<std::pair<uint32_t, int> > net_pending_kills_;
   // RX watchdog (both roles): last current_time anything arrived from the
   // peer. A one-way path death (Deck wifi sleep) otherwise leaves a ghost
   // world extrapolating for the ~45 s the transport takes to give up —

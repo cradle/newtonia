@@ -20,6 +20,7 @@ bool Ship::net_quiet_respawn = false;
 std::vector<Ship::NetShipImpact> Ship::net_ship_impacts;
 std::vector<const Ship*> Ship::net_shots;
 std::vector<const Ship*> Ship::net_booms;
+std::vector<uint32_t> Ship::net_kill_claims;
 #include <algorithm>
 #include <math.h>
 #include <climits>
@@ -1390,7 +1391,7 @@ void Ship::fire_secondary(bool on) {
 // and doubling it would flash twice. The host's copy of this bullet is
 // reflected or consumed authoritatively; this copy just gets one spray
 // (net_sparked) until the next snapshot correction replaces it.
-void Ship::net_cosmetic_impacts(const Grid &grid) {
+void Ship::net_cosmetic_impacts(const Grid &grid, bool claim_kills) {
   for (auto &b : bullets) {
     if (b.net_sparked || b.kills_invincible) continue;
     Object *o = grid.collide(b);
@@ -1429,7 +1430,8 @@ void Ship::net_cosmetic_impacts(const Grid &grid) {
       b.net_sparked = true;
       b.time_left = 0.0f;
       explode(b.position, o->velocity);
-      NET_LOG("net: cosmetic impact consume\n");
+      if (claim_kills) net_kill_claims.push_back(ast->net_id);
+      NET_LOG("net: cosmetic impact consume id=%u\n", ast->net_id);
       continue;
     }
     b.net_sparked = true;
