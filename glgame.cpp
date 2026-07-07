@@ -2459,6 +2459,12 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in) {
       a->vulnerable_time_left = 5000;
       a->explode();  // arrival debris, as the host's relocation shows
       if (warp_sound) Mix_PlayChannel(-1, warp_sound, 0);
+      // A teleport must LOOK like a teleport: drop any render-continuity
+      // offset so the rock appears at the arrival point this frame. The
+      // 800-unit glide budget otherwise smeared short teleports across
+      // the screen ("moved smoothly instead of jumping") — this flag
+      // transition is the explicit signal, no distance guessing.
+      a->net_pose_err = Point(0.0f, 0.0f);
     }
   }
 
