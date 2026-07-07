@@ -26,8 +26,13 @@ export NEWTONIA_SIGNAL_URL="${NEWTONIA_SIGNAL_URL:-ws://127.0.0.1:8787/ws}"
 # The room flow needs a signal relay. Default is a local wrangler dev:
 #   cd signal && npx wrangler dev --local --port 8787
 relay_check() {
-  local url="${NEWTONIA_SIGNAL_URL#ws://}"; url="http://${url%/ws}"
-  curl -s --max-time 3 "$url" | grep -q newtonia-signal || {
+  local url
+  case "$NEWTONIA_SIGNAL_URL" in
+    wss://*) url="https://${NEWTONIA_SIGNAL_URL#wss://}" ;;
+    *)       url="http://${NEWTONIA_SIGNAL_URL#ws://}" ;;
+  esac
+  url="${url%/ws}"
+  curl -s --max-time 5 "$url" | grep -q newtonia-signal || {
     echo "FATAL: no signal relay at $NEWTONIA_SIGNAL_URL"
     echo "start one: cd signal && npx wrangler dev --local --port 8787"
     exit 1

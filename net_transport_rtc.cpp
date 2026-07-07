@@ -20,6 +20,7 @@
 
 #include <chrono>
 #include <atomic>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <mutex>
@@ -169,6 +170,15 @@ public:
     return true;
   }
 
+  std::string connection_info() const override {
+    if (pc_ < 0 || !connected()) return std::string();
+    char local[512], remote[512];
+    if (rtcGetSelectedCandidatePair(pc_, local, (int)sizeof(local), remote,
+                                    (int)sizeof(remote)) < 0)
+      return std::string();
+    return cand_type(local) + "/" + cand_type(remote);
+  }
+
   void close() override {
     if (closed_) return;
     closed_ = true;
@@ -180,6 +190,28 @@ public:
   }
 
 private:
+  // The token after " typ " in a candidate line (host/srflx/prflx/relay).
+  static std::string cand_type(const char *cand) {
+    const char *t = std::strstr(cand, " typ ");
+    if (!t) return "?";
+    t += 5;
+    const char *e = t;
+    while (*e && *e != ' ') e++;
+    return std::string(t, (size_t)(e - t));
+  }
+
+  // NEWTONIA_NET_FORCE_RELAY=1: relay-only ICE for TURN testing — a
+  // loopback/LAN pair would otherwise always pick the direct path and
+  // the relay (and its credential lifetime) would go unexercised.
+  static bool force_relay() {
+    static int on = -1;
+    if (on < 0) {
+      const char *e = std::getenv("NEWTONIA_NET_FORCE_RELAY");
+      on = (e && e[0] && e[0] != '0') ? 1 : 0;
+    }
+    return on != 0;
+  }
+
   void open_peer() {
     rtcConfiguration config;
     std::memset(&config, 0, sizeof(config));
@@ -189,6 +221,8 @@ private:
       ice_ptrs_.push_back(ice_extra_[i].c_str());
     config.iceServers = &ice_ptrs_[0];
     config.iceServersCount = (int)ice_ptrs_.size();
+    if (force_relay())
+      config.iceTransportPolicy = RTC_TRANSPORT_POLICY_RELAY;
 
     pc_ = rtcCreatePeerConnection(&config);
     if (pc_ < 0) {

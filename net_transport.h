@@ -67,6 +67,12 @@ public:
   virtual bool connected() const = 0;
   virtual bool failed() const = 0;
 
+  // Diagnostics: the selected ICE path once connected, as
+  // "local/remote" candidate types — "host/host" (direct), "srflx/..."
+  // (NAT-punched), "relay/..." (TURN). Empty when unknown. Cheap enough
+  // for the debug overlay to poll every frame.
+  virtual std::string connection_info() const { return std::string(); }
+
   virtual void send_reliable(const void* data, size_t size) = 0;
   virtual void send_unreliable(const void* data, size_t size) = 0;
 

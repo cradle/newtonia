@@ -76,7 +76,18 @@ test/e2e/impacts.sh  # gen-3 spin-and-fire: joiner detects cosmetic impacts loca
 test/e2e/ownroom.sh  # shared-prefs auto-join probe (mac host+client on one box)
 test/e2e/mismatch.sh # fake pv-less old host (node) -> instant VERSION MISMATCH
 test/e2e/hiccup.sh   # transport dies under live processes -> auto-pause -> AUTO-rejoin
+test/e2e/turnexpiry.sh # REAL TURN expiry on a relay-forced pair (needs UDP egress)
 ```
+
+turnexpiry.sh is the real-credential companion to hiccup.sh and CANNOT run
+in the dev container (no UDP egress; STUN/TURN unreachable). Run it on any
+Linux box with normal internet after `wrangler secret put TURN_TTL` (e.g.
+90) + deploy; it forces both instances relay-only, asserts
+"ice path relay/relay", waits out the expiry, and asserts the self-repair.
+Manual equivalent on a mac: run two instances with
+NEWTONIA_NET_FORCE_RELAY=1, check the debug overlay (B) shows
+"net: relay/relay", play past the TTL, watch the auto-pause/rejoin heal.
+Delete the TURN_TTL secret and redeploy afterwards.
 
 hiccup.sh simulates the mid-session transport death a TURN credential
 expiry causes (SIGSTOP the joiner until the host's ICE fails, then thaw):

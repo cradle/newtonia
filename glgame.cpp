@@ -155,6 +155,8 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
   players->front()->ship->respawn(grid, false);
   players->front()->ship->bullets.clear();  // no lethal spawn-flash debris
   add_remote_player();
+  NET_LOG("net: ice path %s\n",
+         net_session_->transport()->connection_info().c_str());
   // Co-op scoring parity: the initial hull costs a life, so each co-op
   // player fields the same total ship count as a solo run — otherwise a
   // pair banks two free hulls and the high scores aren't comparable.
@@ -1057,6 +1059,8 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // Re-sync the room rule — the rejoiner may be a fresh app launch
       // whose HUD reset to its own preference.
       net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
+      NET_LOG("net: ice path %s\n",
+             net_session_->transport()->connection_info().c_str());
       // Host paused (auto-paused on the disconnect, or by hand): the
       // paused tick never reaches the 10 Hz send, so push the keyframe
       // NOW — the rejoiner's lobby is waiting on it to bootstrap the
@@ -1534,6 +1538,8 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
   net_mode_ = NetClient;
   net_session_ = session;
   net_assembler_ = new Net::SnapshotAssembler();
+  NET_LOG("net: ice path %s\n",
+         net_session_->transport()->connection_info().c_str());
   // Snapshot restores call Ship::respawn 10x/s; without this its hum
   // start-then-halt leaks random audible blips. The snapshot extras are
   // the only hum authority on a client.

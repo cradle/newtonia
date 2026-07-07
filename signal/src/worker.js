@@ -91,7 +91,13 @@ async function turn_ice_servers(env) {
           // covers any plausible sitting; the harvested-credential risk
           // this lengthens is already bounded by per-IP mint rate limits
           // (and an issuance budget, when added). Cloudflare's cap: 48 h.
-          body: JSON.stringify({ ttl: 4 * 60 * 60 }),
+          // `wrangler secret put TURN_TTL` overrides (seconds, clamped to
+          // Cloudflare's 48 h cap) — for expiry testing with a tiny TTL;
+          // delete the secret to restore the default.
+          body: JSON.stringify({
+            ttl: Math.min(Math.max(Number(env.TURN_TTL) || 4 * 60 * 60, 30),
+                          48 * 60 * 60),
+          }),
         });
     if (!resp.ok) return [];
     const data = await resp.json();

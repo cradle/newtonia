@@ -76,6 +76,33 @@ EM_JS(void, nw_init, (), {
                        ev.candidate.candidate);
       };
       pc.onconnectionstatechange = function() {
+        // Diagnostics cache: sample the selected candidate pair's types
+        // ("host/relay"...) once connected; refreshed every 2 s.
+        if (pc.connectionState === 'connected' && !c.pathTimer) {
+          c.pathTimer = setInterval(function() {
+            pc.getStats().then(function(stats) {
+              var pair = null, byId = {};
+              stats.forEach(function(r) { byId[r.id] = r; });
+              stats.forEach(function(r) {
+                if (r.type === 'transport' && r.selectedCandidatePairId)
+                  pair = byId[r.selectedCandidatePairId];
+                if (!pair && r.type === 'candidate-pair' && r.nominated &&
+                    r.state === 'succeeded')
+                  pair = r;
+              });
+              if (!pair) return;
+              var l = byId[pair.localCandidateId];
+              var r2 = byId[pair.remoteCandidateId];
+              var typ = function(c2) {
+                if (!c2) return '?';
+                var t = c2.candidateType;
+                return t === 'srflx' || t === 'prflx' || t === 'relay' ||
+                       t === 'host' ? t : String(t);
+              };
+              c.pathInfo = typ(l) + '/' + typ(r2);
+            }).catch(function() {});
+          }, 2000);
+        }
         // 'disconnected' is transient per spec and can recover; only
         // 'failed'/'closed' are fatal (plus channel onclose below).
         var s = pc.connectionState;
@@ -156,6 +183,7 @@ EM_JS(void, nw_init, (), {
       // Clear the open flags first so the onclose handlers don't read a
       // deliberate shutdown as a peer failure.
       c.relOpen = false; c.unrelOpen = false;
+      if (c.pathTimer) { clearInterval(c.pathTimer); c.pathTimer = null; }
       try { if (c.rel) c.rel.close(); } catch (e) {}
       try { if (c.unrel) c.unrel.close(); } catch (e) {}
       try { if (c.pc) c.pc.close(); } catch (e) {}
@@ -222,6 +250,10 @@ EM_JS(void, nw_poll_take, (int h, void *buf), {
   if (c && c.inbox.length) HEAPU8.set(c.inbox.shift(), buf);
 });
 EM_JS(void, nw_close, (int h), { Module.__nwnet.close(h); });
+EM_JS(void, nw_path_info, (int h, char *buf, int len), {
+  var c = Module.__nwnet.conns[h];
+  stringToUTF8(c && c.pathInfo ? c.pathInfo : "", buf, len);
+});
 
 // ---- trickle ICE (M3-2b) --------------------------------------------------
 EM_JS(void, nw_set_trickle, (int h, int on), {
@@ -334,6 +366,12 @@ public:
   }
 
   bool connected() const override { return nw_connected(handle_) != 0; }
+
+  std::string connection_info() const override {
+    char buf[64];
+    nw_path_info(handle_, buf, (int)sizeof(buf));
+    return std::string(buf);
+  }
   bool failed() const override { return nw_failed(handle_) != 0; }
 
   void send_reliable(const void *data, size_t size) override {

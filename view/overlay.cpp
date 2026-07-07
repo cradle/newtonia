@@ -1,5 +1,7 @@
 #include "overlay.h"
 #include "tap_band.h"
+#include "../net_session.h"
+#include "../net_transport.h"
 #include "../glship.h"
 #include "../glgame.h"
 #include "../typer.h"
@@ -530,13 +532,27 @@ void Overlay::debug_info(const GLGame *glgame, const GLShip *glship) {
     case GameModeStatus::Ready: gm_str = "game mode: ready"; break;
     case GameModeStatus::Off:   gm_str = "game mode: off";   break;
   }
+  // Online: the selected ICE path ("net: host/host" direct LAN,
+  // "srflx/..." NAT-punched, "relay/..." through TURN) — the fast way to
+  // see whether a session is burning relay bandwidth.
+  char net_buf[64] = "";
+  if (glgame->net_active() && glgame->net_session_ &&
+      glgame->net_session_->transport()) {
+    std::string ci = glgame->net_session_->transport()->connection_info();
+    if (!ci.empty())
+      snprintf(net_buf, sizeof(net_buf), "net: %s", ci.c_str());
+  }
+
   Typer::draw(x, y,      gm_str, sz);
   Typer::draw(x, y - dy, fps_buf, sz);
+  float next_y = y - dy * 2;
 #ifdef STEAM_BUILD
   std::string branch = get_steam_branch();
   char branch_buf[64];
   snprintf(branch_buf, sizeof(branch_buf), "branch: %s",
            branch.empty() ? "default" : branch.c_str());
-  Typer::draw(x, y - dy * 2, branch_buf, sz);
+  Typer::draw(x, next_y, branch_buf, sz);
+  next_y -= dy;
 #endif
+  if (net_buf[0]) Typer::draw(x, next_y, net_buf, sz);
 }
