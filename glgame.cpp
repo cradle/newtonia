@@ -2089,6 +2089,10 @@ void GLGame::tick_net_client(int delta) {
     last_tick += delta;
     return;
   }
+  // The host's clock runs whenever we do (pauses stop both), so our
+  // stale-delta estimate advances with local running time and re-anchors
+  // on every accepted apply.
+  if (net_host_est_ >= 0) net_host_est_ += delta;
 
   time_until_next_step -= delta;
   while (time_until_next_step <= 0) {
@@ -2314,6 +2318,16 @@ void GLGame::net_client_poll() {
       Save::GameState s;
       if (!Save::deserialize_game(in, s)) continue;
       if (!net_state_sane(s)) continue;
+      // Drop stale backlog items (see net_host_est_): dyn records are
+      // absolute and the 1 Hz keyframe re-syncs new/removed ids, so a
+      // skipped delta costs nothing but the backward tour it would have
+      // painted across every asteroid at once.
+      if (net_host_est_ >= 0 && s.current_time + 120 < net_host_est_) {
+        NET_LOG("net: dropped stale delta (%d ms behind)\n",
+                net_host_est_ - s.current_time);
+        continue;
+      }
+      net_host_est_ = s.current_time;
       // The mini state carries everything but asteroids (its asteroid
       // vector is empty by construction, so the wholesale sections apply
       // exactly like a keyframe); asteroids follow as delta records.
@@ -2329,6 +2343,16 @@ void GLGame::net_client_poll() {
     Save::GameState s;
     if (!Save::deserialize_game(in, s)) continue;
     if (!net_state_sane(s)) continue;  // reject a hostile/corrupt snapshot
+    // Same stale-backlog gate as deltas — a stale KEYFRAME tours the
+    // whole world backward hardest of all. Bootstrap (est unset) always
+    // applies; the next keyframe is at most a second away.
+    if (net_ids_adopted_ && net_host_est_ >= 0 &&
+        s.current_time + 120 < net_host_est_) {
+      NET_LOG("net: dropped stale keyframe (%d ms behind)\n",
+              net_host_est_ - s.current_time);
+      continue;
+    }
+    net_host_est_ = s.current_time;
     net_apply_state(s);
     net_apply_extras(in, s);
   }

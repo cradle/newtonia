@@ -192,6 +192,13 @@ private:
   // this should never fire — pure insurance against a stale/duplicated
   // apply ever reading as "replaying out-of-order states".
   uint32_t net_last_delta_id_ = 0;
+  // Client: estimate of the host's game clock "now" (advanced by local
+  // running time, reset by every accepted state apply). A post-stall
+  // backlog trickles in over several frames, each item describing a PAST
+  // the client already extrapolated beyond — applying them toured every
+  // asteroid backward then forward at once. Items older than this
+  // estimate are dropped instead.
+  int net_host_est_ = -1;
 
   // Phase 8 polish (see NETPLAY.md)
   static void net_clear_event_outboxes();  // reset the static host outboxes
