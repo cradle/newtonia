@@ -1400,8 +1400,10 @@ void Ship::net_cosmetic_impacts(const Grid &grid, bool claim_kills) {
     if (ast == NULL) continue;
     bool ting;
     bool consume = false;  // absorbed/killing hits stop the bullet HERE
+    bool deflect = false;  // mirror/armour bounce, approximated locally
     if (ast->reflective || (ast->phasing && ast->phased)) {
       ting = true;  // bullet bounces off / passes through
+      deflect = ast->reflective;  // phased rocks genuinely pass bullets
     } else if (ast->armoured) {
       // Shielded arc only (same ±120° test as the host's collide code,
       // sans the entry back-trace — cosmetic precision is enough): an
@@ -1415,6 +1417,7 @@ void Ship::net_cosmetic_impacts(const Grid &grid, bool claim_kills) {
               : -1.0f;
       if (shield_dot <= -0.5f) continue;
       ting = true;
+      deflect = true;
     } else if (ast->invincible || (ast->tough && ast->health > 1) ||
                (ast->teleporting && !ast->teleport_vulnerable)) {
       ting = false;   // thud: absorbed (or the asteroid teleports away)
@@ -1436,6 +1439,22 @@ void Ship::net_cosmetic_impacts(const Grid &grid, bool claim_kills) {
     }
     b.net_sparked = true;
     if (consume) b.time_left = 0.0f;
+    if (deflect) {
+      // Local bullets are client-owned (no host echo replaces them any
+      // more), so approximate the host's mirror/armour bounce here or
+      // the shot sails straight through the rock. The host's copy does
+      // the REAL bounce (which can hit things); this one is presentation
+      // — net_sparked above keeps it claim-inert from here on.
+      float nx = b.position.x() - ast->position.x();
+      float ny = b.position.y() - ast->position.y();
+      float nm = sqrtf(nx * nx + ny * ny);
+      if (nm > 1e-6f) {
+        nx /= nm; ny /= nm;
+        float d = b.velocity.x() * nx + b.velocity.y() * ny;
+        b.velocity = Point(b.velocity.x() - 2.0f * d * nx,
+                           b.velocity.y() - 2.0f * d * ny);
+      }
+    }
     explode(b.position, o->velocity);
     Mix_Chunk *snd = ting ? Asteroid::ting_sound : Asteroid::thud_sound;
     if (snd != NULL) {

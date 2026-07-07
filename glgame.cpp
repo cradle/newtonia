@@ -2013,20 +2013,29 @@ struct NetShipExtras {
 // s == NULL: parse-only — advance the stream past the projectile sections
 // without touching any ship (the stale-delta membership walk needs the
 // removal records that sit AFTER these sections; see net_client_poll).
+// own_bullets: this is the CLIENT's OWN ship — its plain bullets are
+// locally simulated (fired, stepped, consumed at impacts, expired by
+// TTL) and must NOT be replaced by the host's echo: the echo lags a
+// round trip, and any shot the host's copy of the gun didn't fire
+// (input in flight, cooldown phase off by a step) got WIPED mid-flight
+// by the next apply — Glenn's "bullets just disappear soon after they
+// leave the ship" — taking its PROTO 13 hit claim with it. Mines/gigas/
+// missiles/shockwaves stay host-echoed: they're deployed objects with
+// host-side lifecycles, not aim-critical projectiles.
 bool nx_read_projectiles(Save::Stream &in, Ship *s, bool quiet,
-                         float lead_ms) {
+                         float lead_ms, bool own_bullets = false) {
   uint16_t n = 0;
   float x, y, vx, vy;
 
   if (!nx_read(in, n)) return false;
-  if (s) s->bullets.clear();
+  if (s && !own_bullets) s->bullets.clear();
   for (int i = 0; i < n; i++) {
     if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
     // Lead by RTT/2: bullets are rebuilt wholesale every apply, and the
     // stale pose strobed against the client's own between-apply stepping
     // (fast movers made it obvious). Mines/gigas are near-stationary and
     // their disappearance matching relies on raw positions — no lead.
-    if (s)
+    if (s && !own_bullets)
       s->bullets.push_back(Particle(Point(x + vx * lead_ms, y + vy * lead_ms),
                                     Point(vx, vy), 2000.0f));
   }
@@ -2743,6 +2752,9 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     // The rollover wiped every id — predicted-kill suppression entries
     // are meaningless against the rebuilt world.
     net_predicted_kills_.clear();
+    // Local-ship bullets are client-owned (own_bullets): the rollover
+    // wipe that used to arrive via the wholesale echo happens here now.
+    if (!players->empty()) players->back()->ship->bullets.clear();
   }
 
   generation = s.generation;
@@ -3010,7 +3022,7 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
     // visual/audio flourishes are missing).
 
     if (!nx_read_projectiles(in, ship, net_world_rebuilt_last_apply_,
-                             net_lead_ms()))
+                             net_lead_ms(), /*own_bullets=*/local_ship))
       return false;
     ++it;
   }

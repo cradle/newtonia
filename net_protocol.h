@@ -30,7 +30,20 @@ namespace Net {
 // never printf, so nothing here is ever needed in a release build.
 inline bool net_debug_enabled() {
   static int on = -1;
-  if (on < 0) { const char *e = std::getenv("NEWTONIA_NET_DEBUG"); on = (e && e[0]) ? 1 : 0; }
+  if (on < 0) {
+    const char *e = std::getenv("NEWTONIA_NET_DEBUG");
+    on = (e && e[0]) ? 1 : 0;
+    // Windows sessions have nowhere to see stdout (GUI/Steam launch
+    // loses it — "unfortunately no log was written"): point
+    // NEWTONIA_NET_LOG_FILE at a path and everything printed lands
+    // there instead.
+    if (on) {
+      const char *f = std::getenv("NEWTONIA_NET_LOG_FILE");
+      if (f && f[0] && !std::freopen(f, "w", stdout)) {
+        // stdout unchanged on failure; nothing sane to report to.
+      }
+    }
+  }
   return on != 0;
 }
 
