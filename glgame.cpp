@@ -26,6 +26,7 @@
 #include "net_session.h"
 #include "teleport.h"
 #include <math.h>
+#include <cmath>
 #include <SDL.h>
 
 #include "gl_compat.h"
@@ -920,6 +921,20 @@ void GLGame::net_host_poll() {
     float fmag = sqrtf(in.facing_x * in.facing_x + in.facing_y * in.facing_y);
     if (fmag > 0.5f && fmag < 2.0f)
       remote->facing = Point(in.facing_x / fmag, in.facing_y / fmag);
+    // Pose is client-authoritative too (v12): adopt it, so the pilot is
+    // never rubberbanded by corrections and collisions computed here
+    // match what that player actually saw. Gated on the warp echo —
+    // after a host-driven respawn/teleport, in-flight INPUTs still carry
+    // the pre-warp pose and would drag the ship straight back. Sanity
+    // checks only, not anti-cheat (co-op): finite values, plausible speed.
+    if (in.warp_echo == remote->net_warp_count &&
+        std::isfinite(in.pos_x) && std::isfinite(in.pos_y) &&
+        std::isfinite(in.vel_x) && std::isfinite(in.vel_y) &&
+        in.vel_x * in.vel_x + in.vel_y * in.vel_y < 9.0f) {
+      remote->position = WrappedPoint(in.pos_x, in.pos_y);
+      remote->position.wrap();
+      remote->velocity = Point(in.vel_x, in.vel_y);
+    }
     remote->rotate_left((held & Net::IN_LEFT) != 0);
     remote->rotate_right((held & Net::IN_RIGHT) != 0);
     remote->thrust((held & Net::IN_THRUST) != 0);
@@ -1913,9 +1928,23 @@ void GLGame::tick_net_client(int delta) {
     }
     for (auto *gs : *players) gs->step(step_size, grid);
     // The remote (host) ship reconciles like the asteroids; the LOCAL
-    // ship never banks an error (its blend handles prediction), so this
-    // is a no-op for it.
+    // ship never banks an error (its pose is authoritative, v12), so
+    // this is a no-op for it.
     for (auto *gs : *players) net_smooth_step(*gs->ship, step_size);
+    // v12: with pose authority the black hole must pull the pilot HERE —
+    // the host's pull is overwritten by every adopted INPUT. Same
+    // reduced-pull rule as the host's ship loop; the event-horizon kill
+    // stays host-side (ignore the return — death arrives as a snapshot
+    // alive-transition).
+    {
+      Ship *me = players->back()->ship;
+      if (me->is_alive()) {
+        float scale = (me->god_mode_time_remaining() > 0 ||
+                       me->shield_active()) ? 0.25f : 1.0f;
+        for (auto *bh : *black_holes)
+          bh->apply_gravity(*me, step_size, scale);
+      }
+    }
     // Mini-station: drift/spin/bullets extrapolate between snapshots —
     // without this it visibly teleported at the 10 Hz apply rate.
     if (mini_station) mini_station->net_client_step(step_size);
@@ -1976,6 +2005,14 @@ void GLGame::net_client_send_input() {
   in.analog_reverse = s->reverse_analog;
   in.facing_x = s->facing.x();
   in.facing_y = s->facing.y();
+  // Client-authoritative pose (v12): report the exact pose this screen
+  // shows; the echoed warp count proves it postdates any host-driven
+  // respawn/teleport (net_prev_warp_ tracks the last one seen).
+  in.pos_x = s->position.x();
+  in.pos_y = s->position.y();
+  in.vel_x = s->velocity.x();
+  in.vel_y = s->velocity.y();
+  in.warp_echo = net_prev_warp_;
 
   std::vector<uint8_t> msg;
   Net::encode_input(msg, in, 2);
@@ -2256,75 +2293,18 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       net_reconcile_pose(*ship, old_pos);
 
     if (is_local && was_alive && ship->is_alive() && !world_rebuilt) {
-      // A correction beyond any plausible prediction error means the host
-      // moved the ship discontinuously — teleport, respawn, new-level spawn.
-      // Snap to the authoritative pose (already set by restore_state,
-      // facing included; the old aim is meaningless after a jump) instead
-      // of visibly sliding there over several snapshots. The primary signal
-      // is the explicit warp count in the extras; this is the backstop.
-      // The snapshot pose is ~RTT/2 stale by the time it arrives, so on a
-      // laggy path every correction dragged the predicted ship backwards
-      // along its own trail — the "heavy rubberbanding" on relayed
-      // connections. Extrapolate the authoritative pose forward by half
-      // the measured round trip (velocity is per-ms) before comparing,
-      // and leave the prediction untouched inside a small dead zone so
-      // an in-agreement ship isn't nudged 10x a second.
-      float lead_ms = net_lead_ms();
-      WrappedPoint target(
-          ship->position.x() + ship->velocity.x() * lead_ms,
-          ship->position.y() + ship->velocity.y() * lead_ms);
-      target.wrap();
-
-      // Backstop threshold. The explicit warp count in the extras is the
-      // primary teleport signal and respawns arrive as a dead->alive
-      // transition, so this only catches what those miss — and a ~1 s
-      // input blackout (relay stall, peer's window napped) legitimately
-      // diverges the prediction by speed x gap = 400-600 units, which
-      // must GLIDE back (drain), not hard-snap ("it still snapped me").
-      // 600 base + a round trip of flight; a real missed teleport merely
-      // glides in fast, and the warp count catches almost all of those.
-      float snap_dist = 600.0f + ship->velocity.magnitude() *
-                                     (net_rtt_ms_ > 0.0f ? net_rtt_ms_ : 400.0f);
-      const float dead_zone = 12.0f;
-      Point snap = target.closest_to(old_pos);
-      float cx = snap.x() - old_pos.x();
-      float cy = snap.y() - old_pos.y();
-      float err2 = cx * cx + cy * cy;
-      // Rate-limited: how far the local prediction sits from the (leaded)
-      // authoritative pose whenever a correction actually applies.
-      if (Net::net_debug_enabled() && err2 >= dead_zone * dead_zone) {
-        static uint32_t s_last = 0;
-        uint32_t now = SDL_GetTicks();
-        if (now - s_last >= 1000) {
-          NET_LOG("net: local ship correction %.0f units (rtt %.0f ms)\n",
-                  sqrtf(err2), net_rtt_ms_);
-          s_last = now;
-        }
-      }
-      if (err2 < dead_zone * dead_zone) {
-        ship->position = old_pos;
-        ship->velocity = old_vel;
-        ship->facing = old_facing;
-        ship->net_pose_err = Point(0.0f, 0.0f);
-      } else if (err2 < snap_dist * snap_dist) {
-        // Bank-and-drain like the world objects (the 35% positional blend
-        // dragged visibly over several frames when an input blackout on
-        // the unreliable channel opened a 200+ unit gap): render pose
-        // stays put NOW, velocity goes fully authoritative so the
-        // prediction resumes from truth, and net_smooth_step glides the
-        // banked difference in over ~150 ms.
-        ship->position = old_pos;
-        ship->net_pose_err = Point(cx, cy);
-        ship->facing = old_facing;  // aim stays fully local
-      } else {
-        // rtt/speed in the line: a post-respawn first snapshot or a real
-        // teleport snaps at any latency; only a snap with high rtt AND
-        // high speed suggests the correction budget is still too tight.
-        ship->net_pose_err = Point(0.0f, 0.0f);
-        NET_LOG("net: local ship snapped %.0f units (rtt %.0f ms, speed %.2f)"
-                " - teleport/respawn/new level\n",
-                sqrtf(err2), net_rtt_ms_, old_vel.magnitude());
-      }
+      // v12: this machine's pose is AUTHORITATIVE — the host adopts it
+      // from every INPUT — so the snapshot's copy is just our own report
+      // echoed back a round trip late. Ignore it outright: the pilot is
+      // never corrected, which is what finally killed the relay
+      // rubberbanding (every blackout used to land here as a huge
+      // correction that slewed the camera and, with it, the whole world).
+      // Host-driven respawns/teleports still land via the explicit
+      // warp-count snap in the extras; death via the alive transition.
+      ship->position = old_pos;
+      ship->velocity = old_vel;
+      ship->facing = old_facing;
+      ship->net_pose_err = Point(0.0f, 0.0f);
 
       ship->rotate_left(held_left);
       ship->rotate_right(held_right);

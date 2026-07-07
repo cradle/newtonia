@@ -136,6 +136,11 @@ void encode_input(std::vector<uint8_t> &out, const InputState &in,
   put_f32(out, in.analog_reverse);
   put_f32(out, in.facing_x);
   put_f32(out, in.facing_y);
+  put_f32(out, in.pos_x);
+  put_f32(out, in.pos_y);
+  put_f32(out, in.vel_x);
+  put_f32(out, in.vel_y);
+  put_u8(out, in.warp_echo);
 }
 
 bool decode_input(Reader &r, InputState &out) {
@@ -153,6 +158,11 @@ bool decode_input(Reader &r, InputState &out) {
   out.analog_reverse = r.f32();
   out.facing_x = r.f32();
   out.facing_y = r.f32();
+  out.pos_x = r.f32();
+  out.pos_y = r.f32();
+  out.vel_x = r.f32();
+  out.vel_y = r.f32();
+  out.warp_echo = r.u8();
   return r.ok;
 }
 

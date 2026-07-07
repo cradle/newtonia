@@ -54,7 +54,11 @@ namespace Net {
 //     for them — a mixed pairing would double or drop those cues.
 // 11: MSG_PING/MSG_PONG — 1 Hz unreliable RTT probe from each side; the
 //     client's local-ship blend latency-compensates with it.
-const uint8_t PROTO_VERSION = 11;
+// 12: client-authoritative ship pose — MSG_INPUT carries position/velocity
+//     plus a warp-count echo; the host adopts the reported pose, so the
+//     pilot is never corrected (an input blackout shows on the REMOTE view
+//     of that ship instead of rubberbanding its own player).
+const uint8_t PROTO_VERSION = 12;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check

@@ -66,13 +66,23 @@ struct InputState {
   // no aim data; the host ignores it.
   float facing_x;
   float facing_y;
+  // Client-authoritative pose (v12, same rationale as the aim): the exact
+  // position/velocity the client's screen shows. The host adopts it — the
+  // pilot is never rubberbanded by corrections, and host-side collisions
+  // match what the player actually saw — once warp_echo proves the client
+  // has seen the latest host-driven respawn/teleport (Ship::net_warp_count;
+  // in-flight INPUTs from before a warp would drag the ship straight back).
+  float pos_x, pos_y;
+  float vel_x, vel_y;
+  uint8_t warp_echo;
 
   InputState()
       : seq(0), held(0), boost_count(0), next_weapon_count(0),
         next_secondary_count(0), teleport_count(0), respawn_count(0),
         shoot_press_count(0), secondary_press_count(0),
         analog_rotation(1.0f), analog_thrust(1.0f), analog_reverse(1.0f),
-        facing_x(0.0f), facing_y(0.0f) {}
+        facing_x(0.0f), facing_y(0.0f),
+        pos_x(0.0f), pos_y(0.0f), vel_x(0.0f), vel_y(0.0f), warp_echo(0) {}
 };
 
 // Appends the complete MSG_INPUT message (header included).
