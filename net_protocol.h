@@ -33,10 +33,25 @@ inline bool net_debug_enabled() {
   return on != 0;
 }
 
+// Which side of the wire this process is, stamped in front of every
+// NET_LOG line so interleaved host+client logs (side-by-side captures
+// from both machines) attribute themselves. Set at the lobby's
+// host/join decision and again when GLGame enters a net mode; empty
+// until a role exists.
+inline const char *&net_log_role() {
+  static const char *role = "";
+  return role;
+}
+inline void set_net_log_role(bool host) {
+  net_log_role() = host ? "host: " : "client: ";
+}
+
 }  // namespace Net
 
+// Both printfs land in the same stdio buffer and flush as one write, so
+// two processes sharing a terminal don't shear a line apart.
 #define NET_LOG(...) \
-  do { if (::Net::net_debug_enabled()) { std::printf(__VA_ARGS__); std::fflush(stdout); } } while (0)
+  do { if (::Net::net_debug_enabled()) { std::printf("%s", ::Net::net_log_role()); std::printf(__VA_ARGS__); std::fflush(stdout); } } while (0)
 
 namespace Net {
 

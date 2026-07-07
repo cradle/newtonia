@@ -108,6 +108,7 @@ NetLobby::NetLobby()
 
 NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
   hosting_ = false;
+  Net::set_net_log_role(false);  // rejoin is always the client side
   transport_ = NetTransport::create();
   signal_ = NetSignal::create();
   if (!transport_ || !signal_) {
@@ -241,6 +242,9 @@ void NetLobby::leave_to_menu() {
 void NetLobby::confirm() {
   if (screen_ == Choose) {
     hosting_ = (selection_ == 0);
+    // Every NET_LOG from here on says which side it came from —
+    // side-by-side host+client captures otherwise read as one soup.
+    Net::set_net_log_role(hosting_);
     transport_ = NetTransport::create();
     if (!transport_) {  // menu hides ONLINE when unavailable; belt & braces
       set_status("NETPLAY NOT AVAILABLE ON THIS BUILD");

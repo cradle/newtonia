@@ -64,7 +64,10 @@ host_room_code() {
   local code="" i
   for i in $(seq 1 30); do
     sleep 1
-    code=$(grep -a "\[lobby\] room " "$OUT/$1.log" | tail -1 | awk '{print $3}')
+    # sed, not a fixed awk field: NET_LOG lines carry a "host: " role
+    # prefix now, so positional extraction would grab the wrong word.
+    code=$(grep -a "\[lobby\] room " "$OUT/$1.log" | tail -1 |
+           sed 's/.*\[lobby\] room \([^ ]*\).*/\1/')
     [ -n "$code" ] && break
   done
   echo "$code"

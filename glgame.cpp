@@ -147,6 +147,7 @@ GLGame::GLGame(SDL_GameController *controller) :
 GLGame::GLGame(NetSession *session, SDL_GameController *controller)
   : GLGame(controller) {
   net_mode_ = NetHost;
+  Net::set_net_log_role(true);  // lobby set it too; belt & braces
   net_session_ = session;
   // A fresh game's player 1 starts dead (offline you wait out the initial
   // countdown or tap fire). Online the host just finished the lobby, so
@@ -1915,6 +1916,7 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
                SDL_GameController *controller)
   : GLGame(snapshot, (SDL_GameController *)NULL) {
   net_mode_ = NetClient;
+  Net::set_net_log_role(false);  // lobby set it too; belt & braces
   net_session_ = session;
   net_assembler_ = new Net::SnapshotAssembler();
   NET_LOG("net: ice path %s\n",
