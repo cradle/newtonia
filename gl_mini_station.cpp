@@ -198,7 +198,10 @@ void GLMiniStation::net_client_step(float delta) {
   // Constant drift + spins extrapolate perfectly; the 10 Hz restore only
   // corrects tiny error. Bullets fly like any particle. No firing and no
   // collisions — the host simulates those and the snapshot reconciles.
-  Object::step(delta);
+  // CompositeObject::step = Object::step + the debris loop, so the death
+  // burst animates on the client too (the replica now outlives its death
+  // by the record's `present` window; see net_apply_state).
+  CompositeObject::step((int)delta);
   outer_rotation += outer_rotation_speed * delta;
   inner_rotation += inner_rotation_speed * delta;
   for (auto &b : bullets) b.step(delta);

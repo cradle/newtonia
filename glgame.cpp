@@ -3143,9 +3143,26 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     delete station;
     station = NULL;
   }
-  if (s.mini_station.present && s.mini_station.alive) {
+  // Keep the replica for the record's whole `present` window, not just
+  // while alive: the host keeps its dead mini around while the debris
+  // burst fades, and deleting the replica on the alive->dead delta
+  // skipped the explosion entirely on the client (Glenn's report). The
+  // transition runs destroy() BEFORE the restore overwrites `alive` —
+  // destroy() no-ops on an already-dead object — so the client spawns
+  // the same local debris burst the host is showing.
+  if (s.mini_station.present) {
+    // Transition detection wants a replica we watched die — a fresh one
+    // (bootstrap mid-fade) starts dead with no burst.
+    bool watched_alive = mini_station != NULL && mini_station->is_alive();
     if (!mini_station)
       mini_station = new GLMiniStation(grid, players, (std::list<Object *> *)objects);
+    if (watched_alive && !s.mini_station.alive) {
+      // Burst at the authoritative death spot, not the extrapolated one.
+      mini_station->position =
+          WrappedPoint(s.mini_station.pos_x, s.mini_station.pos_y);
+      mini_station->destroy();
+      NET_LOG("net: mini-station death burst (replica destroyed locally)\n");
+    }
     mini_station->restore_state(s.mini_station);
   } else if (mini_station) {
     delete mini_station;
