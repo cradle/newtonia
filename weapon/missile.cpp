@@ -1,5 +1,6 @@
 #include "missile.h"
 #include "../asset_path.h"
+#include "../sound_cache.h"
 #include "../ship.h"
 #include "../point.h"
 #include "../wrapped_point.h"
@@ -109,12 +110,12 @@ Missile::Missile(Ship *ship) : Base(ship) {
   _ammo = 10;
   unlimited = false;
 
-  fly_sound = Mix_LoadWAV(asset_path("audio/missile_fly.wav").c_str());
+  fly_sound = load_wav_cached("audio/missile_fly.wav");
   if (fly_sound == NULL) {
     std::cout << "Unable to load missile_fly.wav (" << Mix_GetError() << ")" << std::endl;
   }
 
-  empty_sound = Mix_LoadWAV(asset_path("audio/empty.wav").c_str());
+  empty_sound = load_wav_cached("audio/empty.wav");
   if (empty_sound == NULL) {
     std::cout << "Unable to load empty.wav (" << Mix_GetError() << ")" << std::endl;
   }

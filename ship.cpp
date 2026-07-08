@@ -1,5 +1,6 @@
 #include "ship.h"
 #include "asset_path.h"
+#include "sound_cache.h"
 #include "point.h"
 #include "particle.h"
 #include "asteroid.h"
@@ -45,25 +46,25 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   safe_position(grid);
   init(!has_friction);
   if(tic_sound == NULL) {
-    tic_sound = Mix_LoadWAV(asset_path("audio/tic.wav").c_str());
+    tic_sound = load_wav_cached("audio/tic.wav");
     if(tic_sound == NULL) {
       std::cout << "Unable to load tic.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(tic_low_sound == NULL) {
-    tic_low_sound = Mix_LoadWAV(asset_path("audio/tic_low.wav").c_str());
+    tic_low_sound = load_wav_cached("audio/tic_low.wav");
     if(tic_low_sound == NULL) {
       std::cout << "Unable to load tic_low.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(click_sound == NULL) {
-    click_sound = Mix_LoadWAV(asset_path("audio/click.wav").c_str());
+    click_sound = load_wav_cached("audio/click.wav");
     if(click_sound == NULL) {
       std::cout << "Unable to load click.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(boost_sound == NULL) {
-    boost_sound = Mix_LoadWAV(asset_path("audio/boost.wav").c_str());
+    boost_sound = load_wav_cached("audio/boost.wav");
   }
   if(boost_sound != NULL) {
     Mix_VolumeChunk(boost_sound, 0);
@@ -72,55 +73,55 @@ Ship::Ship(const Grid &grid, bool has_friction) :
     std::cout << "Unable to load boost.wav (" << Mix_GetError() << ")" << std::endl;
   }
   if(missile_explode_sound == NULL) {
-    missile_explode_sound = Mix_LoadWAV(asset_path("audio/missile_explode.wav").c_str());
+    missile_explode_sound = load_wav_cached("audio/missile_explode.wav");
     if(missile_explode_sound == NULL) {
       std::cout << "Unable to load missile_explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(shield_hum_sound == NULL) {
-    shield_hum_sound = Mix_LoadWAV(asset_path("audio/shield_hum.wav").c_str());
+    shield_hum_sound = load_wav_cached("audio/shield_hum.wav");
   }
   if(shield_hum_sound == NULL) {
     std::cout << "Unable to load shield_hum.wav (" << Mix_GetError() << ")" << std::endl;
   }
   if(explode_sound == NULL) {
-    explode_sound = Mix_LoadWAV(asset_path("audio/explode.wav").c_str());
+    explode_sound = load_wav_cached("audio/explode.wav");
     if(explode_sound == NULL) {
       std::cout << "Unable to load explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(giga_mine_explode_sound == NULL) {
-    giga_mine_explode_sound = Mix_LoadWAV(asset_path("audio/giga_mine_explode.wav").c_str());
+    giga_mine_explode_sound = load_wav_cached("audio/giga_mine_explode.wav");
     if(giga_mine_explode_sound == NULL) {
       std::cout << "Unable to load giga_mine_explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(mine_explode_sound == NULL) {
-    mine_explode_sound = Mix_LoadWAV(asset_path("audio/mine_explode.wav").c_str());
+    mine_explode_sound = load_wav_cached("audio/mine_explode.wav");
     if(mine_explode_sound == NULL) {
       std::cout << "Unable to load mine_explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(missile_fly_sound == NULL) {
-    missile_fly_sound = Mix_LoadWAV(asset_path("audio/missile_fly.wav").c_str());
+    missile_fly_sound = load_wav_cached("audio/missile_fly.wav");
     if(missile_fly_sound == NULL) {
       std::cout << "Unable to load missile_fly.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(shoot_sound == NULL) {
-    shoot_sound = Mix_LoadWAV(asset_path("audio/shoot.wav").c_str());
+    shoot_sound = load_wav_cached("audio/shoot.wav");
     if(shoot_sound == NULL) {
       std::cout << "Unable to load shoot.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(god_mode_music_sound == NULL) {
-    god_mode_music_sound = Mix_LoadWAV(asset_path("audio/god_mode_music.wav").c_str());
+    god_mode_music_sound = load_wav_cached("audio/god_mode_music.wav");
     if(god_mode_music_sound == NULL) {
       std::cout << "Unable to load god_mode_music.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(god_mode_music_warn_sound == NULL) {
-    god_mode_music_warn_sound = Mix_LoadWAV(asset_path("audio/god_mode_music_warn.wav").c_str());
+    god_mode_music_warn_sound = load_wav_cached("audio/god_mode_music_warn.wav");
     if(god_mode_music_warn_sound == NULL) {
       std::cout << "Unable to load god_mode_music_warn.wav (" << Mix_GetError() << ")" << std::endl;
     }

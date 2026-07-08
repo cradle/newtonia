@@ -231,6 +231,9 @@ private:
   // the transport's tx-buffered depth at that instant — the 1 Hz sample
   // can miss a sub-second gap entirely, this cannot. Both roles.
   bool net_quiet_logged_ = false;
+  // Hitch breakdown: SDL_GetTicks at tick_net_client entry, so the
+  // "slow tick" line can split poll (applies) from step-loop time.
+  uint32_t net_tick_t0_ = 0;
   // Client hit-authority (PROTO 13): ids killed locally on our own hit,
   // mapped to a suppression expiry — a keyframe cut before the host
   // processes the claim still lists the id, and re-creating it would

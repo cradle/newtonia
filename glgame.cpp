@@ -2288,6 +2288,7 @@ bool nx_read_projectiles(Save::Stream &in, Ship *s, bool quiet,
 }  // namespace
 
 void GLGame::tick_net_client(int delta) {
+  net_tick_t0_ = SDL_GetTicks();  // hitch-breakdown baseline (see below)
   current_time += delta;
   // Anything the local kill() calls queued (ghost removals) is noise —
   // drop it; the host relays the real cues (or the client detects the
@@ -2361,8 +2362,16 @@ void GLGame::tick_net_client(int delta) {
   if (net_est_anchor_host_ >= 0)
     net_host_est_ = net_est_anchor_host_ + (current_time - net_est_anchor_local_);
 
+  // Hitch breakdown: "net: frame hitch" (tick()) names the stall but not
+  // the culprit — split this tick into poll (applies) vs step-loop time,
+  // and pair it with the "slow draw" line to localize a slow frame.
+  uint32_t hb_poll_ms = SDL_GetTicks() - net_tick_t0_;
+  uint32_t hb_steps_t0 = SDL_GetTicks();
+  int hb_steps = 0;
+
   time_until_next_step -= delta;
   while (time_until_next_step <= 0) {
+    hb_steps++;
     // Visual/kinematic stepping only: motion, particles, trails, timers.
     // No collisions, kills, drops or generation logic — the host simulates
     // and its snapshots overwrite this extrapolation at 10 Hz.
@@ -2500,6 +2509,12 @@ void GLGame::tick_net_client(int delta) {
 
     net_client_send_input();
     time_until_next_step += time_between_steps;
+  }
+  if (Net::net_debug_enabled()) {
+    uint32_t steps_ms = SDL_GetTicks() - hb_steps_t0;
+    if (hb_poll_ms + steps_ms > 25)
+      NET_LOG("net: slow tick: poll %u ms, %d steps %u ms\n",
+              hb_poll_ms, hb_steps, steps_ms);
   }
 
   // Client hit-authority (PROTO 13): every would-kill consume detected
@@ -3116,13 +3131,12 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     black_holes->push_back(new BlackHole(WrappedPoint(sbh.pos_x, sbh.pos_y)));
 
   // Stations restore in place; created/destroyed on presence transitions.
-  // restore_state APPENDS its deployed enemies (save-load semantics) — at
-  // the 10 Hz apply rate that accumulated hundreds of ships and hung the
-  // game. All enemies are station-owned: wholesale rebuild each apply.
+  // restore_state reconciles its deployed enemies in place (no clearing
+  // here — recreating every GLEnemy at 10 Hz re-uploaded meshes and held
+  // the client near 15 fps at gen 20+; see glstation.cpp).
   if (s.station.present) {
     if (!station)
       station = new GLStation(grid, enemies, players, (std::list<Object *> *)objects);
-    while (!enemies->empty()) { delete enemies->back(); enemies->pop_back(); }
     station->restore_state(s.station, grid);
   } else if (station) {
     while (!enemies->empty()) { delete enemies->back(); enemies->pop_back(); }
@@ -3272,6 +3286,17 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
           Point(vx, vy), 2000.0f));
     }
     if (apply && ei != enemies->end()) {
+      // One-shot field check that real ids are riding the wire — an
+      // all-zero stream means the host-side mint regressed (it lives in
+      // GLEnemy's ctor, NOT the unused Enemy class) and exact claims
+      // would silently collapse onto the first alive enemy.
+      if (Net::net_debug_enabled() && enemy_id != 0) {
+        static bool s_ids_seen = false;
+        if (!s_ids_seen) {
+          s_ids_seen = true;
+          NET_LOG("net: enemy wire ids live (first=%u)\n", enemy_id);
+        }
+      }
       // PROTO 16: re-stamp identity on the freshly-rebuilt replica, and
       // keep locally-killed enemies dead — the station restore just
       // resurrected everything, and the host's authoritative state only
@@ -4144,6 +4169,9 @@ void GLGame::draw(void) {
   Uint32 now = SDL_GetTicks();
   int frame_delta = (int)(now - last_draw_time_);
   last_draw_time_ = now;
+  // Hitch breakdown, draw half (see the "slow tick" line): a slow frame
+  // that ISN'T in poll/steps is render-side.
+  uint32_t hb_draw_t0 = SDL_GetTicks();
   for(GLShip *gs : *players) gs->smooth_camera(frame_delta);
 
   glClear(GL_COLOR_BUFFER_BIT /*| GL_DEPTH_BUFFER_BIT*/);
@@ -4167,6 +4195,10 @@ void GLGame::draw(void) {
     }
     //Draw map after - for partial translucency
     draw_map();
+  }
+  if (net_mode_ != NetOff && Net::net_debug_enabled()) {
+    uint32_t draw_ms = SDL_GetTicks() - hb_draw_t0;
+    if (draw_ms > 25) NET_LOG("net: slow draw %u ms\n", draw_ms);
   }
 }
 

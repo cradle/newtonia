@@ -17,6 +17,12 @@ GLEnemy::GLEnemy(const Grid &grid, float x, float y, list<GLShip*>* targets, flo
     ships->push_back((*s)->ship);
   }
   ship = new Ship(grid); // FIX: Enemy is unused
+  // PROTO 16 wire identity. Minted HERE and not only in the (unused)
+  // Enemy constructor — station enemies are plain Ships wrapped in
+  // GLEnemy, and an id of 0 would collapse every exact enemy claim
+  // onto the first alive enemy. The host's mint is authoritative; a
+  // client replica's is overwritten from the extras on every apply.
+  ship->net_ship_id = ++Ship::net_next_ship_id;
   ship->behaviours.push_back(new Follower(ship, (list<Object*>*)ships, asteroids, difficulty));
   ship->position = WrappedPoint(x,y);
   ship->thrust_force = 0.129 + difficulty*0.00025 + rand()%50/10000.0;

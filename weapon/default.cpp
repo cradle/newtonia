@@ -1,5 +1,6 @@
 #include "default.h"
 #include "../asset_path.h"
+#include "../sound_cache.h"
 #include "../net_protocol.h"  // NET_LOG
 #include "../particle.h"
 #include "../point.h"
@@ -49,13 +50,13 @@ namespace Weapon {
       if(!unlimited)
         _ammo = 100;
 
-      shoot_sound = Mix_LoadWAV(asset_path("audio/shoot.wav").c_str());
+      shoot_sound = load_wav_cached("audio/shoot.wav");
       if(shoot_sound == NULL) {
         cout << "Unable to load shoot.wav (" << Mix_GetError() << ")" << endl;
       }
 
       if(!unlimited) {
-        empty_sound = Mix_LoadWAV(asset_path("audio/empty.wav").c_str());
+        empty_sound = load_wav_cached("audio/empty.wav");
         if(empty_sound == NULL) {
           cout << "Unable to load empty.wav (" << Mix_GetError() << ")" << endl;
         }
