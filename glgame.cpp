@@ -1053,6 +1053,7 @@ void GLGame::net_host_poll() {
       // the claim is a no-op, so no shot ever counts twice.
       uint8_t kind = r.u8();
       uint32_t bullet_id = r.u32();
+      uint32_t target_id = r.u32();  // PROTO 16: exact enemy claimed
       float hx = r.f32(), hy = r.f32();
       if (!r.ok || !remote || !std::isfinite(hx) || !std::isfinite(hy))
         continue;
@@ -1070,22 +1071,30 @@ void GLGame::net_host_poll() {
       remote->bullets.pop_back();
       WrappedPoint hit_pos(hx, hy);
       if (kind == 0) {
-        // Nearest alive enemy to the claimed impact — the client aimed
-        // at the replicated pose, so allow a generous slack.
-        GLShip *best = NULL;
-        float best_d = 250.0f;
-        for (auto *ge : *enemies) {
-          if (!ge->ship->is_alive()) continue;
-          float d = ge->ship->position.distance_to(hit_pos);
-          if (d < best_d) { best_d = d; best = ge; }
-        }
-        if (best != NULL && best->ship->kill_stop()) {
-          best->ship->detonate();
+        // PROTO 16: the claim names the exact enemy by wire id. Absent
+        // or already dead = the host sim (or another claim) beat this
+        // one to it — silent no-op, the kill still counted once.
+        GLShip *target = NULL;
+        for (auto *ge : *enemies)
+          if (ge->ship->net_ship_id == target_id && ge->ship->is_alive()) {
+            target = ge;
+            break;
+          }
+        if (target != NULL && target->ship->kill_stop()) {
+          target->ship->detonate();
           remote->kills_this_life += 1;
           remote->kills += 1;
-          remote->score += best->ship->get_value() * remote->multiplier();
-          NET_LOG("net: ship hit claim honored (enemy, %d away)\n",
-                  (int)best_d);
+          remote->score += target->ship->get_value() * remote->multiplier();
+          // The claimant already played its own boom at consume; drop
+          // this ship from the boom outbox so EV_WORLD_BOOM doesn't
+          // double the cue (the host played its local sound in kill()).
+          for (auto bi = Ship::net_booms.begin();
+               bi != Ship::net_booms.end(); ++bi)
+            if (*bi == target->ship) { Ship::net_booms.erase(bi); break; }
+          NET_LOG("net: ship hit claim honored (enemy %u)\n", target_id);
+        } else {
+          NET_LOG("net: ship hit claim no-op (enemy %u already dead)\n",
+                  target_id);
         }
       } else if (kind == 1 && station != NULL && station->is_alive()) {
         // Host-local hull-thud only — the claiming client already played
@@ -1694,10 +1703,13 @@ void nx_write_mini_station_bullets(Save::Stream &out, const GLMiniStation *ms) {
 
 // v7: the gen-20 station's deployed enemies' shots, in enemies-list order
 // (the client rebuilds its enemies from the station record in the same
-// order every apply).
+// order every apply). PROTO 16: each record leads with the enemy's
+// net_ship_id — the rebuilt replicas' only durable identity, re-stamped
+// on the client every apply, referenced by exact MSG_HIT_SHIP claims.
 void nx_write_enemy_bullets(Save::Stream &out, const std::list<GLShip *> *enemies) {
   nx_write(out, (uint16_t)enemies->size());
   for (auto *e : *enemies) {
+    nx_write(out, e->ship->net_ship_id);
     nx_write(out, (uint16_t)e->ship->bullets.size());
     for (const Particle &b : e->ship->bullets) nx_write_projectile(out, b);
   }
@@ -2448,16 +2460,15 @@ void GLGame::tick_net_client(int delta) {
     // stations — they used to sail straight through (enemies aren't in
     // the asteroid grid). Consume at contact + claim to the host.
     {
-      std::vector<std::pair<Object *, uint8_t> > ship_targets;
+      std::vector<Ship::NetShipTarget> ship_targets;
       for (auto *ge : *enemies)
         if (ge->ship->is_alive())
           ship_targets.push_back(
-              std::make_pair((Object *)ge->ship, (uint8_t)0));
+              {(Object *)ge->ship, (uint8_t)0, ge->ship->net_ship_id});
       if (station != NULL && station->is_alive())
-        ship_targets.push_back(std::make_pair((Object *)station, (uint8_t)1));
+        ship_targets.push_back({(Object *)station, (uint8_t)1, 0u});
       if (mini_station != NULL && mini_station->is_alive())
-        ship_targets.push_back(
-            std::make_pair((Object *)mini_station, (uint8_t)2));
+        ship_targets.push_back({(Object *)mini_station, (uint8_t)2, 0u});
       players->back()->ship->net_cosmetic_ship_impacts(ship_targets);
     }
 
@@ -2526,16 +2537,21 @@ void GLGame::tick_net_client(int delta) {
   }
   Ship::net_shot_reports.clear();
 
-  // PROTO 15: ship/station hit claims — damage applies host-side IFF the
-  // referenced clone gets consumed there (exactly-once per shot).
+  // PROTO 15/16: ship/station hit claims — damage applies host-side IFF
+  // the referenced clone gets consumed there (exactly-once per shot).
   for (const Ship::NetShipHit &c : Ship::net_ship_hit_claims) {
     std::vector<uint8_t> msg;
     Net::put_header(msg, Net::MSG_HIT_SHIP, 2);
     Net::put_u8(msg, c.kind);
     Net::put_u32(msg, c.bullet_id);
+    Net::put_u32(msg, c.target_id);
     Net::put_f32(msg, c.x);
     Net::put_f32(msg, c.y);
     net_session_->transport()->send_reliable(&msg[0], msg.size());
+    // The enemy died locally the moment the bullet connected — keep the
+    // restores from resurrecting it while the claim is in flight.
+    if (c.kind == 0 && c.target_id != 0)
+      net_predicted_ship_kills_[c.target_id] = current_time + 3000;
   }
   Ship::net_ship_hit_claims.clear();
 
@@ -2578,6 +2594,10 @@ void GLGame::tick_net_client(int delta) {
   for (auto pk = net_predicted_kills_.begin();
        pk != net_predicted_kills_.end();)
     pk = current_time >= pk->second ? net_predicted_kills_.erase(pk) : ++pk;
+  for (auto pk = net_predicted_ship_kills_.begin();
+       pk != net_predicted_ship_kills_.end();)
+    pk = current_time >= pk->second ? net_predicted_ship_kills_.erase(pk)
+                                    : ++pk;
 
   auto oi = dead_objects->begin();
   while (oi != dead_objects->end()) {
@@ -3236,6 +3256,8 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
   if (n_en > 256) return false;  // hostile/corrupt
   auto ei = enemies->begin();
   for (int e = 0; e < n_en; e++) {
+    uint32_t enemy_id = 0;
+    if (!nx_read(in, enemy_id)) return false;
     uint16_t nb = 0;
     if (!nx_read(in, nb)) return false;
     if (nb > 512) return false;
@@ -3250,6 +3272,15 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
           Point(vx, vy), 2000.0f));
     }
     if (apply && ei != enemies->end()) {
+      // PROTO 16: re-stamp identity on the freshly-rebuilt replica, and
+      // keep locally-killed enemies dead — the station restore just
+      // resurrected everything, and the host's authoritative state only
+      // agrees once the claim lands (~RTT/2). Entries expire in 3 s.
+      (*ei)->ship->net_ship_id = enemy_id;
+      std::map<uint32_t, int>::iterator pk =
+          net_predicted_ship_kills_.find(enemy_id);
+      if (pk != net_predicted_ship_kills_.end() && current_time < pk->second)
+        (*ei)->ship->alive = false;
       (*ei)->ship->bullets.swap(ebs);
       ++ei;
     }

@@ -114,7 +114,13 @@ namespace Net {
 //     bullet at visible contact (they used to sail straight through
 //     replicated ships); the host applies the damage IFF it consumes
 //     the referenced clone — exactly-once per shot by construction.
-const uint8_t PROTO_VERSION = 15;
+// 16: per-enemy ids — the extras' enemy section carries each deployed
+//     enemy's net_ship_id (client re-stamps its rebuilt replicas every
+//     apply), MSG_HIT_SHIP gains the target id so enemy claims kill the
+//     EXACT enemy (no nearest-to-impact guessing), and the client kills
+//     its replica instantly with resurrection suppression — enemy
+//     deaths get the asteroid treatment.
+const uint8_t PROTO_VERSION = 16;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check
@@ -139,11 +145,12 @@ enum MsgType {
   // kills_invincible, bit1 trail). RELIABLE + ordered, so a MSG_HIT can
   // never arrive before the shot it references.
   MSG_SHOT = 11,
-  // Client bullet-vs-ship hit claim (PROTO 15): uint8 kind (0 enemy,
-  // 1 station, 2 mini-station), uint32 bullet net_id, 2x float impact
-  // pos. Damage applies IFF the host consumes the referenced clone —
-  // a clone its own sim already resolved makes the claim a no-op, so
-  // every shot resolves exactly once.
+  // Client bullet-vs-ship hit claim (PROTO 15/16): uint8 kind (0 enemy,
+  // 1 station, 2 mini-station), uint32 bullet net_id, uint32 target id
+  // (the enemy's net_ship_id; 0 for the singleton stations), 2x float
+  // impact pos. Damage applies IFF the host consumes the referenced
+  // clone — a clone its own sim already resolved makes the claim a
+  // no-op, so every shot resolves exactly once.
   MSG_HIT_SHIP = 12,
 };
 

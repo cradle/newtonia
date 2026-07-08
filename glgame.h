@@ -236,6 +236,10 @@ private:
   // processes the claim still lists the id, and re-creating it would
   // resurrect the rock for ~RTT.
   std::map<uint32_t, int> net_predicted_kills_;
+  // PROTO 16 twin for enemies (net_ship_id space is separate from the
+  // asteroid ids): applied where the extras re-stamp the rebuilt
+  // replicas' ids each apply.
+  std::map<uint32_t, int> net_predicted_ship_kills_;
   // RX watchdog (both roles): last current_time anything arrived from the
   // peer. A one-way path death (Deck wifi sleep) otherwise leaves a ghost
   // world extrapolating for the ~45 s the transport takes to give up —

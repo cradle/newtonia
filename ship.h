@@ -205,15 +205,25 @@ class Ship : public CompositeObject {
     // weapons that fire bullets are not.
     void net_report_last_bullet();
 
-    // PROTO 15: local bullets vs replicated enemy ships / stations — the
-    // ship-shaped twin of net_cosmetic_impacts. Contact consumes the
-    // bullet with a spark + thud NOW and pushes a claim; the host
-    // applies the damage IFF it consumes the referenced clone. targets
-    // carries only ALIVE candidates, each tagged with its claim kind.
-    struct NetShipHit { uint8_t kind; uint32_t bullet_id; float x, y; };
+    // PROTO 15/16: local bullets vs replicated enemy ships / stations —
+    // the ship-shaped twin of net_cosmetic_impacts. Contact consumes the
+    // bullet with a spark NOW and pushes a claim; the host applies the
+    // damage IFF it consumes the referenced clone. Enemy targets (kind
+    // 0) are killed HERE instantly (per-enemy ids make the claim exact
+    // and the suppression map stops restores resurrecting them); the
+    // stations just thud. targets carries only ALIVE candidates.
+    struct NetShipTarget { Object *obj; uint8_t kind; uint32_t id; };
+    struct NetShipHit { uint8_t kind; uint32_t bullet_id; uint32_t target_id;
+                        float x, y; };
     static std::vector<NetShipHit> net_ship_hit_claims;  // client outbox
-    void net_cosmetic_ship_impacts(
-        const std::vector<std::pair<Object *, uint8_t> > &targets);
+    void net_cosmetic_ship_impacts(const std::vector<NetShipTarget> &targets);
+    // PROTO 16: wire identity for ships (enemies today). Minted in the
+    // Enemy constructor from the static counter on both sides; the
+    // client's mints are overwritten by the host's ids on every apply
+    // (replicas are rebuilt from the station record, so identity must
+    // be re-stamped each time). 0 = never assigned.
+    uint32_t net_ship_id = 0;
+    static uint32_t net_next_ship_id;
     // net_remote_gun (the HOST's remote ship): the weapon sim keeps its
     // cooldown/ammo/trigger bookkeeping but mints no bullets and plays
     // no shot sound — the real bullets arrive as MSG_SHOT reports via

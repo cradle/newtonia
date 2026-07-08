@@ -17,6 +17,9 @@ Enemy::Enemy(const Grid &grid, float x, float y, std::list<Ship*>* targets, int 
   target = NULL;
   alive = true;
   sound_volume_scale = 0.0f;  // silent until visible to a player
+  // PROTO 16 wire identity: the host's mint is authoritative; a client
+  // replica's mint is overwritten from the extras on every apply.
+  net_ship_id = ++net_next_ship_id;
 }
 
 Enemy::~Enemy() {

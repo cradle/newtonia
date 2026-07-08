@@ -23,6 +23,7 @@ std::vector<const Ship*> Ship::net_booms;
 std::vector<Ship::NetKillClaim> Ship::net_kill_claims;
 std::vector<Ship::NetShotReport> Ship::net_shot_reports;
 std::vector<Ship::NetShipHit> Ship::net_ship_hit_claims;
+uint32_t Ship::net_next_ship_id = 0;
 #include <algorithm>
 #include <math.h>
 #include <climits>
@@ -1478,21 +1479,34 @@ void Ship::net_cosmetic_impacts(const Grid &grid, bool claim_kills) {
 }
 
 void Ship::net_cosmetic_ship_impacts(
-    const std::vector<std::pair<Object *, uint8_t> > &targets) {
+    const std::vector<NetShipTarget> &targets) {
   if (targets.empty()) return;
   for (auto &b : bullets) {
     if (b.net_sparked || b.kills_invincible) continue;
     for (size_t t = 0; t < targets.size(); t++) {
-      Object *o = targets[t].first;
+      Object *o = targets[t].obj;
       if (!b.collide(*o)) continue;
-      // Visible contact: stop the bullet here with the impact effects —
-      // enemy deaths / station damage replicate back from the host once
-      // the claim lands (~RTT/2), the local cue is what makes the shot
-      // FEEL like it connected.
+      // Visible contact: stop the bullet here with the impact effects.
       b.net_sparked = true;
       b.time_left = 0.0f;
       explode(b.position, o->velocity);
-      if (Asteroid::thud_sound != NULL) {
+      if (targets[t].kind == 0) {
+        // PROTO 16: enemies die HERE, instantly — the claim is exact
+        // (per-enemy id) and always honored, the suppression map keeps
+        // restores from resurrecting the replica, and the host skips
+        // the EV_WORLD_BOOM relay for claimed kills so this local boom
+        // is the only cue we hear.
+        Ship *e = static_cast<Ship *>(o);
+        if (e->kill_stop()) e->detonate();
+        // kill() stays silent (replicas keep sound_volume_scale 0 on the
+        // client) — play the dying ship's per-instance chunk ourselves,
+        // full volume: the kill is at our own crosshair.
+        if (e->explode_sound != NULL) {
+          Mix_VolumeChunk(e->explode_sound, MIX_MAX_VOLUME);
+          Mix_PlayChannel(-1, e->explode_sound, 0);
+        }
+      } else if (Asteroid::thud_sound != NULL) {
+        // Station hulls absorb the shot with a thud.
         static Uint32 last_ship_thud = UINT32_MAX;
         Uint32 now = SDL_GetTicks();
         if (now - last_ship_thud >= 125) {
@@ -1501,13 +1515,14 @@ void Ship::net_cosmetic_ship_impacts(
         }
       }
       NetShipHit c;
-      c.kind = targets[t].second;
+      c.kind = targets[t].kind;
       c.bullet_id = b.net_id;
+      c.target_id = targets[t].id;
       c.x = b.position.x();
       c.y = b.position.y();
       net_ship_hit_claims.push_back(c);
-      NET_LOG("net: ship impact consume kind=%u bullet=%u\n",
-              (unsigned)c.kind, c.bullet_id);
+      NET_LOG("net: ship impact consume kind=%u bullet=%u target=%u\n",
+              (unsigned)c.kind, c.bullet_id, c.target_id);
       break;
     }
   }
