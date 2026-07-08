@@ -57,7 +57,7 @@ private:
     JoinGathering,   // manual fallback: waiting for the local answer
     WaitConnect,     // signaling done on our side; transport connecting
     Connected,       // session Ready
-    LobbyFailed,     // error text in status_; ENTER retries
+    LobbyFailed,     // error headline; ENTER -> back to the HOST/JOIN chooser
   };
 
   void confirm();
@@ -76,7 +76,6 @@ private:
   void join_unreachable(const char *why);
   void code_entry_key(unsigned char key);
   void schedule_rejoin_retry(const char *why, int delay_ms);
-  void retry_join();  // abandon current attempt -> empty join screen
   // Controller support (Steam Deck / gamepad-only setups): CodeEntry
   // shows a character-picker grid of the code alphabet once a controller
   // is seen — d-pad/stick moves, A or right trigger types, B deletes.

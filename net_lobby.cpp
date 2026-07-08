@@ -296,27 +296,12 @@ void NetLobby::confirm() {
       set_status("THE CODE IS 5 LETTERS");
     }
   } else if (screen_ == LobbyFailed) {
-    // TRY AGAIN after a failed JOIN goes straight back to an empty join
-    // screen; only a failed HOST attempt returns to the chooser.
-    if (!hosting_ || rejoin_mode_) {
-      retry_join();
-    } else {
-      reset_to_choose();
-    }
+    // Back to the HOST/JOIN chooser for everyone (Glenn). A failed JOIN
+    // used to rebuild an empty join screen via retry_join(), but that
+    // screen deliberately skips the clipboard auto-read — re-entering
+    // JOIN from the chooser is one press and arms everything fresh.
+    reset_to_choose();
   }
-}
-
-// Abandon the current attempt and land on an EMPTY join screen with a
-// fresh transport/signal. Used by TRY AGAIN and the joining-screen
-// CANCEL band.
-void NetLobby::retry_join() {
-  reset_to_choose();
-  selection_ = 1;
-  confirm();  // -> CodeEntry
-  // The code that just failed (or is being cancelled) is likely still on
-  // the clipboard — don't auto-join it again.
-  code_clip_pending_ = false;
-  code_entry_.clear();
 }
 
 // The signal server never answered (or refused the room): keep the pair
