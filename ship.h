@@ -204,6 +204,16 @@ class Ship : public CompositeObject {
     // (no-op unless net_report_shots). Ship is Particle's friend; the
     // weapons that fire bullets are not.
     void net_report_last_bullet();
+
+    // PROTO 15: local bullets vs replicated enemy ships / stations — the
+    // ship-shaped twin of net_cosmetic_impacts. Contact consumes the
+    // bullet with a spark + thud NOW and pushes a claim; the host
+    // applies the damage IFF it consumes the referenced clone. targets
+    // carries only ALIVE candidates, each tagged with its claim kind.
+    struct NetShipHit { uint8_t kind; uint32_t bullet_id; float x, y; };
+    static std::vector<NetShipHit> net_ship_hit_claims;  // client outbox
+    void net_cosmetic_ship_impacts(
+        const std::vector<std::pair<Object *, uint8_t> > &targets);
     // net_remote_gun (the HOST's remote ship): the weapon sim keeps its
     // cooldown/ammo/trigger bookkeeping but mints no bullets and plays
     // no shot sound — the real bullets arrive as MSG_SHOT reports via

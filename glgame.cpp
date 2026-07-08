@@ -1046,6 +1046,74 @@ void GLGame::net_host_poll() {
                                           (flags & 1) != 0, (flags & 2) != 0);
       continue;
     }
+    if (h.msg_type == Net::MSG_HIT_SHIP) {
+      // Client bullet-vs-ship claim (PROTO 15). Exactly-once rule: the
+      // damage applies IFF the referenced clone is consumed HERE — if
+      // our own sim already resolved that bullet (hit something, TTL'd),
+      // the claim is a no-op, so no shot ever counts twice.
+      uint8_t kind = r.u8();
+      uint32_t bullet_id = r.u32();
+      float hx = r.f32(), hy = r.f32();
+      if (!r.ok || !remote || !std::isfinite(hx) || !std::isfinite(hy))
+        continue;
+      int bi = -1;
+      for (size_t i = 0; i < remote->bullets.size(); i++)
+        if (remote->bullets[i].net_id == bullet_id) { bi = (int)i; break; }
+      if (bi < 0) {
+        NET_LOG("net: ship hit claim no-op (bullet %u already resolved)\n",
+                bullet_id);
+        continue;
+      }
+      Point bpos = remote->bullets[bi].position;
+      remote->explode(bpos, Point(0.0f, 0.0f));
+      remote->bullets[bi] = std::move(remote->bullets.back());
+      remote->bullets.pop_back();
+      WrappedPoint hit_pos(hx, hy);
+      if (kind == 0) {
+        // Nearest alive enemy to the claimed impact — the client aimed
+        // at the replicated pose, so allow a generous slack.
+        GLShip *best = NULL;
+        float best_d = 250.0f;
+        for (auto *ge : *enemies) {
+          if (!ge->ship->is_alive()) continue;
+          float d = ge->ship->position.distance_to(hit_pos);
+          if (d < best_d) { best_d = d; best = ge; }
+        }
+        if (best != NULL && best->ship->kill_stop()) {
+          best->ship->detonate();
+          remote->kills_this_life += 1;
+          remote->kills += 1;
+          remote->score += best->ship->get_value() * remote->multiplier();
+          NET_LOG("net: ship hit claim honored (enemy, %d away)\n",
+                  (int)best_d);
+        }
+      } else if (kind == 1 && station != NULL && station->is_alive()) {
+        // Host-local hull-thud only — the claiming client already played
+        // its own cue at consume (relaying EV_ROID_THUD would double it).
+        if (Asteroid::thud_sound != NULL)
+          Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+        station->hit();
+        NET_LOG("net: ship hit claim honored (station)\n");
+      } else if (kind == 2 && mini_station != NULL &&
+                 mini_station->is_alive()) {
+        remote->score += GLMiniStation::REWARD;
+        mini_station->destroy();
+        // The tick's destruction-sound block only fires for a mini that
+        // was alive when it started — this one died between ticks, so
+        // play + relay the boom here (same as the tick block does).
+        float vol = net_listener_volume(mini_station->position);
+        if (station_explode_sound != NULL && vol > 0.0f) {
+          Mix_VolumeChunk(station_explode_sound, (int)(MIX_MAX_VOLUME * vol));
+          Mix_PlayChannel(-1, station_explode_sound, 0);
+        }
+        net_send_event(Net::EV_STATION_BOOM,
+                       Net::pack_pos(mini_station->position.x(),
+                                     mini_station->position.y(),
+                                     world.x(), world.y()));
+        NET_LOG("net: ship hit claim honored (mini-station)\n");
+      }
+      continue;
+    }
     if (h.msg_type == Net::MSG_HIT) {
       // Client hit claim (PROTO 13): its screen saw its own bullet kill
       // this asteroid — honor it. The client only claims hits its local
@@ -1824,6 +1892,7 @@ void GLGame::net_clear_event_outboxes() {
   Ship::net_booms.clear();
   Ship::net_kill_claims.clear();
   Ship::net_shot_reports.clear();
+  Ship::net_ship_hit_claims.clear();
 }
 
 void GLGame::net_send_event(uint8_t code, uint32_t arg) {
@@ -2375,6 +2444,22 @@ void GLGame::tick_net_client(int delta) {
     // telemetry below.
     for (auto *gs : *players)
       gs->ship->net_cosmetic_impacts(grid, gs == players->back());
+    // PROTO 15: the local ship's bullets vs replicated enemy ships and
+    // stations — they used to sail straight through (enemies aren't in
+    // the asteroid grid). Consume at contact + claim to the host.
+    {
+      std::vector<std::pair<Object *, uint8_t> > ship_targets;
+      for (auto *ge : *enemies)
+        if (ge->ship->is_alive())
+          ship_targets.push_back(
+              std::make_pair((Object *)ge->ship, (uint8_t)0));
+      if (station != NULL && station->is_alive())
+        ship_targets.push_back(std::make_pair((Object *)station, (uint8_t)1));
+      if (mini_station != NULL && mini_station->is_alive())
+        ship_targets.push_back(
+            std::make_pair((Object *)mini_station, (uint8_t)2));
+      players->back()->ship->net_cosmetic_ship_impacts(ship_targets);
+    }
 
     // Local-ship render-jump detector: the camera rides this pose, so a
     // single-step discontinuity here moves the WHOLE visible field in
@@ -2440,6 +2525,19 @@ void GLGame::tick_net_client(int delta) {
     }
   }
   Ship::net_shot_reports.clear();
+
+  // PROTO 15: ship/station hit claims — damage applies host-side IFF the
+  // referenced clone gets consumed there (exactly-once per shot).
+  for (const Ship::NetShipHit &c : Ship::net_ship_hit_claims) {
+    std::vector<uint8_t> msg;
+    Net::put_header(msg, Net::MSG_HIT_SHIP, 2);
+    Net::put_u8(msg, c.kind);
+    Net::put_u32(msg, c.bullet_id);
+    Net::put_f32(msg, c.x);
+    Net::put_f32(msg, c.y);
+    net_session_->transport()->send_reliable(&msg[0], msg.size());
+  }
+  Ship::net_ship_hit_claims.clear();
 
   if (!Ship::net_kill_claims.empty()) {
     for (const Ship::NetKillClaim &c : Ship::net_kill_claims) {

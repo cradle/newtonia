@@ -22,6 +22,7 @@ std::vector<const Ship*> Ship::net_shots;
 std::vector<const Ship*> Ship::net_booms;
 std::vector<Ship::NetKillClaim> Ship::net_kill_claims;
 std::vector<Ship::NetShotReport> Ship::net_shot_reports;
+std::vector<Ship::NetShipHit> Ship::net_ship_hit_claims;
 #include <algorithm>
 #include <math.h>
 #include <climits>
@@ -1473,6 +1474,42 @@ void Ship::net_cosmetic_impacts(const Grid &grid, bool claim_kills) {
       }
     }
     NET_LOG("net: cosmetic impact %s\n", ting ? "ting" : "thud");
+  }
+}
+
+void Ship::net_cosmetic_ship_impacts(
+    const std::vector<std::pair<Object *, uint8_t> > &targets) {
+  if (targets.empty()) return;
+  for (auto &b : bullets) {
+    if (b.net_sparked || b.kills_invincible) continue;
+    for (size_t t = 0; t < targets.size(); t++) {
+      Object *o = targets[t].first;
+      if (!b.collide(*o)) continue;
+      // Visible contact: stop the bullet here with the impact effects —
+      // enemy deaths / station damage replicate back from the host once
+      // the claim lands (~RTT/2), the local cue is what makes the shot
+      // FEEL like it connected.
+      b.net_sparked = true;
+      b.time_left = 0.0f;
+      explode(b.position, o->velocity);
+      if (Asteroid::thud_sound != NULL) {
+        static Uint32 last_ship_thud = UINT32_MAX;
+        Uint32 now = SDL_GetTicks();
+        if (now - last_ship_thud >= 125) {
+          last_ship_thud = now;
+          Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+        }
+      }
+      NetShipHit c;
+      c.kind = targets[t].second;
+      c.bullet_id = b.net_id;
+      c.x = b.position.x();
+      c.y = b.position.y();
+      net_ship_hit_claims.push_back(c);
+      NET_LOG("net: ship impact consume kind=%u bullet=%u\n",
+              (unsigned)c.kind, c.bullet_id);
+      break;
+    }
   }
 }
 

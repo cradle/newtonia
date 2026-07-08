@@ -109,7 +109,12 @@ namespace Net {
 //     rand() spread flew every shot's two copies on different headings);
 //     the host spawns exact clones. MSG_HIT gains the bullet id for
 //     precise consume of the killing bullet's host copy.
-const uint8_t PROTO_VERSION = 14;
+// 15: client bullet hits on enemy ships / stations — MSG_HIT_SHIP
+//     (C->H rel: kind, bullet id, impact pos). The client consumes the
+//     bullet at visible contact (they used to sail straight through
+//     replicated ships); the host applies the damage IFF it consumes
+//     the referenced clone — exactly-once per shot by construction.
+const uint8_t PROTO_VERSION = 15;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check
@@ -134,6 +139,12 @@ enum MsgType {
   // kills_invincible, bit1 trail). RELIABLE + ordered, so a MSG_HIT can
   // never arrive before the shot it references.
   MSG_SHOT = 11,
+  // Client bullet-vs-ship hit claim (PROTO 15): uint8 kind (0 enemy,
+  // 1 station, 2 mini-station), uint32 bullet net_id, 2x float impact
+  // pos. Damage applies IFF the host consumes the referenced clone —
+  // a clone its own sim already resolved makes the claim a no-op, so
+  // every shot resolves exactly once.
+  MSG_HIT_SHIP = 12,
 };
 
 enum EventCode {
