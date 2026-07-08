@@ -123,14 +123,29 @@ are unsigned (Defender FP submitted; icon.rc now carries VERSIONINFO +
 manifest; revisit signing only if Steam-installed builds get flagged).
 Deferred niceties: host-side RTT lead on reported shot spawns.
 
+**Glenn's on-device checklist (next playtest, all log receipts under
+NEWTONIA_NET_DEBUG=1):** (1) gen-20 enemies — instant pop on the client
+when your bullet lands, paired `ship impact consume kind=0 bullet=N
+target=M` / host `ship hit claim honored (enemy M)`, plus a one-shot
+`enemy wire ids live (first=N)`; (2) ~~gen-10 mini-station~~ CONFIRMED by Glenn in the field
+2026-07-08: a client-killed mini now explodes on the client
+(`mini-station death burst`); (3) gen 21+
+— the sustained 66 ms hitching should be gone (if anything remains, the
+new `slow tick: poll/steps` + `slow draw` lines name the phase);
+(4) offline (wifi off + `bridge1` virtual interface, see (xx)) — JOIN
+fails fast to "COULD NOT REACH THE ROOM SERVER", ENTER returns to
+HOST/JOIN, and a manual invite copied at ANY point while sitting on the
+join screen auto-enters the manual flow.
+
 **Debug kit:** NEWTONIA_NET_DEBUG=1 (role-prefixed, timestamped),
 NEWTONIA_NET_LOG_FILE=path (Windows), NEWTONIA_NET_RTC_LOG=info|debug
 (libdatachannel/juice internals), NEWTONIA_NET_TURN="urls|user|cred"
 (provider A/B), NEWTONIA_NET_FORCE_RELAY=1 / "0"-prefixed join code
 (relay forcing), NEWTONIA_NET_SCTP_HB_MS (heartbeat interval, default
-1 h). Gap forensics, tx-buffered markers, shot-flow counters and claim
-logs all live under the debug flag — the session log below explains how
-to read each one.
+1 h). Gap forensics, tx-buffered markers, shot-flow counters, claim
+logs and the hitch-breakdown lines (slow tick / slow draw) all live
+under the debug flag — the session log below explains how to read each
+one.
 
 ## Session log
 
