@@ -114,6 +114,7 @@ private:
   // clipboard gets told off instead of silently ignored.
   bool code_clip_explicit_ = false;
   int code_clip_retry_ms_;   // Android 10 focus-gated reads: brief retry
+  int code_clip_repoll_ms_ = 0;  // desktop: idle re-poll for late codes/invites
   // M3-1 auto-rejoin retries: a mobile client's own network is often still
   // down when the rejoin fires; retry the relay instead of falling back
   // to the manual screen, within a budget matching the room grace window.

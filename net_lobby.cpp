@@ -745,6 +745,27 @@ void NetLobby::tick(int delta) {
     }
   }
 
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+  // Keep watching the clipboard while the join screen is idle (desktop
+  // only: web reads need a user gesture, Android toasts every read).
+  // The one-shot read above fires when the screen OPENS, which misses
+  // anything copied after — the offline re-pair flow (Glenn): the game
+  // ends, the joiner opens JOIN first, and only THEN does the host
+  // re-host manually and auto-copy its fresh invite. This picks up a
+  // late room code or invite blob within a second.
+  if (screen_ == CodeEntry && !code_clip_pending_ && !is_touch_mode() &&
+      code_entry_.empty()) {
+    code_clip_repoll_ms_ += delta;
+    if (code_clip_repoll_ms_ >= 800) {
+      code_clip_repoll_ms_ = 0;
+      code_clip_pending_ = true;
+      net_clipboard_read_start();
+    }
+  } else if (screen_ != CodeEntry) {
+    code_clip_repoll_ms_ = 0;
+  }
+#endif
+
   // Async clipboard read completion (web; immediate on native).
   if (paste_pending_ && net_clipboard_read_poll(paste_buffer_)) {
     paste_pending_ = false;
