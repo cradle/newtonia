@@ -83,7 +83,7 @@ void Overlay::net_overlays(const GLGame *glgame) {
              !glgame->net_room_code_.empty()) {
     Typer::draw_centered(0, 60, "CONNECTION LOST", 34);
     if ((now / 700) % 2 == 0)
-      Typer::draw_centered(0, -80, "REJOINING...", 16);
+      Typer::draw_centered(0, -80, "REJOINING", 16);
   } else if (glgame->net_connection_lost_) {
     // y=160, not 60: the pause overlay's "Paused" sits at y=30 and both
     // show when the host leaves a paused game.

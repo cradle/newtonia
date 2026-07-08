@@ -127,7 +127,7 @@ NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
   signal_->connect_join(net_signal_url(), code_entry_);
   signal_wait_ms_ = 0;
   screen_ = RoomJoining;
-  set_status("RECONNECTING...");
+  set_status("RECONNECTING");
 }
 
 // CodeEntry character picker for controllers: the code alphabet drawn as
@@ -180,7 +180,7 @@ static bool code_entry_keyboard(bool open) {
 // briefly unreachable): stay on the joining screen and try again.
 void NetLobby::schedule_rejoin_retry(const char *why, int delay_ms) {
   NET_LOG("[lobby] rejoin retry in %d ms (%s)\n", delay_ms, why);
-  set_status("RECONNECTING...");
+  set_status("RECONNECTING");
   screen_ = RoomJoining;
   signal_wait_ms_ = 0;
   if (rejoin_retry_ms_ <= 0) rejoin_retry_ms_ = delay_ms;
@@ -459,7 +459,7 @@ void NetLobby::pump_signal(int delta) {
         set_status("ROOM FOUND - WAITING FOR THE HOST");
         break;
       case NetSignal::Event::PeerJoin:
-        set_status("PLAYER 2 IS CONNECTING...");
+        set_status("PLAYER 2 IS CONNECTING");
         break;
       case NetSignal::Event::PeerLeave:
         set_status("PLAYER 2 LEFT THE ROOM");
@@ -947,7 +947,7 @@ void NetLobby::draw() {
     case RoomHost:
       if (room_code_.empty()) {
         lines.push_back("CREATING A ROOM");
-        if (blink) lines.push_back("PLEASE WAIT...");
+        if (blink) lines.push_back("PLEASE WAIT");
       } else if (is_touch_mode()) {
         // Spread over the full height under the hoisted header — the
         // default stack hugs the lower half of a phone screen.
@@ -960,7 +960,7 @@ void NetLobby::draw() {
           Typer::draw_centered(0, -80, "IT IS ON YOUR CLIPBOARD", sz);
         }
         if (blink)
-          Typer::draw_centered(0, -220, "WAITING FOR PLAYER 2...", sz);
+          Typer::draw_centered(0, -220, "WAITING FOR PLAYER 2", sz);
       } else {
         lines.push_back("ROOM CODE");
         Typer::draw_centered(0, 20, room_code_.c_str(), 48);
@@ -968,7 +968,7 @@ void NetLobby::draw() {
         lines.push_back("TELL YOUR FRIEND THE CODE");
         lines.push_back("IT IS ON YOUR CLIPBOARD");
         lines.push_back("");
-        if (blink) lines.push_back("WAITING FOR PLAYER 2...");
+        if (blink) lines.push_back("WAITING FOR PLAYER 2");
       }
       break;
     case CodeEntry: {
@@ -1024,12 +1024,12 @@ void NetLobby::draw() {
         lines.push_back(left);
       } else {
         lines.push_back("JOINING THE ROOM");
-        if (blink) lines.push_back("PLEASE WAIT...");
+        if (blink) lines.push_back("PLEASE WAIT");
       }
       break;
     case HostGathering:
       lines.push_back("PREPARING YOUR INVITE CODE");
-      if (blink) lines.push_back("PLEASE WAIT...");
+      if (blink) lines.push_back("PLEASE WAIT");
       break;
     case HostWaitAnswer:
       lines.push_back("1. INVITE CODE COPIED - SEND IT TO YOUR FRIEND");
@@ -1045,22 +1045,22 @@ void NetLobby::draw() {
       break;
     case JoinGathering:
       lines.push_back("PREPARING YOUR REPLY CODE");
-      if (blink) lines.push_back("PLEASE WAIT...");
+      if (blink) lines.push_back("PLEASE WAIT");
       break;
     case WaitConnect:
       if (hosting_) {
         char waited[48];
-        snprintf(waited, sizeof(waited), "CONNECTING... %d", connect_wait_ms_ / 1000);
+        snprintf(waited, sizeof(waited), "CONNECTING %d", connect_wait_ms_ / 1000);
         lines.push_back(waited);
       } else if (signal_) {
         // Room flow: everything is automatic from here.
         lines.push_back("FOUND THE HOST");
-        if (blink) lines.push_back("CONNECTING...");
+        if (blink) lines.push_back("CONNECTING");
       } else {
         lines.push_back("REPLY CODE COPIED TO CLIPBOARD");
         lines.push_back("SEND IT BACK TO THE HOST");
         lines.push_back("");
-        if (blink) lines.push_back("WAITING FOR CONNECTION...");
+        if (blink) lines.push_back("WAITING FOR CONNECTION");
         lines.push_back("");
         lines.push_back("C - COPY THE REPLY AGAIN");
       }
@@ -1071,7 +1071,7 @@ void NetLobby::draw() {
       lines.push_back("CONNECTED!");
       lines.push_back("YOU ARE PLAYER 2");
       lines.push_back("");
-      if (blink) lines.push_back("WAITING FOR THE HOST'S WORLD...");
+      if (blink) lines.push_back("WAITING FOR THE HOST'S WORLD");
       break;
     case LobbyFailed:
       lines.push_back(fail_headline_);
@@ -1090,7 +1090,7 @@ void NetLobby::draw() {
   // the one universal exit, and an empty join screen is two taps away.)
 
   // The rejoin wait's persistent heading + countdown already say
-  // everything the transient status could ("RECONNECTING...", "ROOM
+  // everything the transient status could ("RECONNECTING", "ROOM
   // FOUND..."); two WAITING lines just read as clutter. Errors go to
   // LobbyFailed, so nothing informative is lost.
   bool status_redundant = rejoin_mode_ && screen_ == RoomJoining;
