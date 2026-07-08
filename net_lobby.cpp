@@ -337,6 +337,26 @@ void NetLobby::fall_back_to_manual(const char *why) {
   screen_ = hosting_ ? HostGathering : JoinWaitOffer;
 }
 
+// The JOINER's signal path died before the room answered. The host in
+// this spot falls back to minting a manual invite — useful, visibly a
+// different mode. A joiner has nothing it can do by itself: the old
+// behavior (silently landing on the manual paste screen) read as a
+// normal join step that never finishes (Glenn, wifi off: "the client
+// still sits on a normal join screen"). Fail honestly instead — TRY
+// AGAIN gives a fresh join screen, and a manual invite from the host
+// can be pasted right there (see the CodeEntry clipboard handler).
+void NetLobby::join_unreachable(const char *why) {
+  NET_LOG("[lobby] join failed: %s\n", why);
+  if (signal_) {
+    signal_->close();
+    delete signal_;
+    signal_ = nullptr;
+  }
+  fail_headline_ = "COULD NOT REACH THE ROOM SERVER";
+  set_status("CHECK YOUR INTERNET CONNECTION", 2 * STATUS_SHOW_MS);
+  screen_ = LobbyFailed;
+}
+
 void NetLobby::start_paste() {
   if (screen_ != HostWaitAnswer && screen_ != JoinWaitOffer) return;
   if (paste_pending_) return;
@@ -553,7 +573,8 @@ void NetLobby::pump_signal(int delta) {
             schedule_rejoin_retry("socket closed", 5000);
             break;
           }
-          fall_back_to_manual("socket closed while joining");
+          // join_unreachable deletes signal_ — the poll loop must stop.
+          join_unreachable("socket closed while joining");
           return;
         }
         // Later screens no longer need the relay; ignore.
@@ -567,7 +588,8 @@ void NetLobby::pump_signal(int delta) {
     signal_wait_ms_ += delta;
     if (signal_wait_ms_ > SIGNAL_TIMEOUT_MS) {
       if (rejoin_mode_) schedule_rejoin_retry("signal timeout", 1000);
-      else fall_back_to_manual("signal server timeout");
+      else if (hosting_) fall_back_to_manual("signal server timeout");
+      else join_unreachable("signal server timeout");
     }
   }
 }
@@ -685,6 +707,34 @@ void NetLobby::tick(int delta) {
         bool ok = code.size() == (size_t)NET_ROOM_CODE_LEN;
         for (size_t i = 0; ok && i < code.size(); i++)
           ok = net_room_code_char_ok(code[i]);
+        // Not a room code — maybe a manual INVITE blob (what the host's
+        // no-server fallback copies)? Enter the manual flow right here:
+        // the room relay is not involved, so drop it and stop trickling
+        // (the blob and our reply each carry their candidates whole).
+        // Taken for the auto-read too, not just the explicit paste
+        // (desktop has no explicit paste on this screen: V is a code
+        // letter, only controller X pastes) — decode_signal matches
+        // nothing but Newtonia's own blob format, so arbitrary clipboard
+        // content can't land here. This is the deliberate replacement
+        // for the old silent timeout-into-manual fallback (see
+        // join_unreachable).
+        std::string sdp;
+        if (!ok && code_entry_.empty() && transport_ &&
+            Net::decode_signal(clip, sdp) == 'O') {
+          NET_LOG("[lobby] manual invite found at code entry\n");
+          code_clip_explicit_ = false;
+          code_entry_keyboard(false);
+          floating_kb_up_ = false;
+          if (signal_) {
+            signal_->close();
+            delete signal_;
+            signal_ = nullptr;
+          }
+          transport_->set_trickle(false);
+          transport_->start_join(Net::strip_ice_candidates(sdp));
+          screen_ = JoinGathering;
+          return;
+        }
         if (code_clip_explicit_ && !ok)
           set_status("NO ROOM CODE ON THE CLIPBOARD");
         // Never auto-join a room THIS process hosted (it closed the room

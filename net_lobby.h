@@ -70,6 +70,10 @@ private:
   void set_status(const char *text, int show_ms = -1);
   void pump_signal(int delta);
   void fall_back_to_manual(const char *why);
+  // The joiner's twin of the host's manual fallback: the signal server
+  // never answered, but a joiner can't do anything by itself — fail to
+  // LobbyFailed honestly instead of stranding it on the paste screen.
+  void join_unreachable(const char *why);
   void code_entry_key(unsigned char key);
   void schedule_rejoin_retry(const char *why, int delay_ms);
   void retry_join();  // abandon current attempt -> empty join screen
