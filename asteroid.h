@@ -15,6 +15,13 @@ public:
   virtual ~Asteroid();
 
   bool add_children(list<Asteroid*> *objects);
+  // True for a killed asteroid whose breakup fragments have NOT been
+  // spawned yet AND that is big enough to produce them — i.e. it still
+  // owes num_killable an increment in the upcoming reap. The level-clear
+  // check uses this so a client kill-claim (applied in net_host_poll,
+  // before the check, with its add_children deferred to the step-loop
+  // reap after it) can't latch CLEARED on the one-tick dip to zero.
+  bool pending_fragments() const;
   virtual bool kill() override;
   virtual void step(int delta) override;
   virtual bool contains(Point p, float r = 0.0f) const override;

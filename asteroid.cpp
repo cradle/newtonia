@@ -494,6 +494,12 @@ bool Asteroid::kill() {
   return CompositeObject::kill();
 }
 
+bool Asteroid::pending_fragments() const {
+  // Mirror add_children's spawn test: it splits only a dead, not-yet-split
+  // asteroid whose halves clear the minimum radius.
+  return killed && !children_added && radius / 2.0f >= minimum_radius;
+}
+
 bool Asteroid::add_children(list<Asteroid*> *roids) {
   if(alive || children_added) return false;
   children_added = true;

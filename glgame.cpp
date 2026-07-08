@@ -3571,8 +3571,25 @@ void GLGame::tick(int delta) {
 
   if(Asteroid::num_killable == 0) {
     if(!level_cleared) {
-      level_cleared = true;
-      time_until_next_generation = 5000;
+      // A client kill-claim (PROTO 13) is applied in net_host_poll —
+      // BEFORE this check — but the killed asteroid's breakup runs in the
+      // step-loop reap AFTER it, so num_killable dips to 0 for one tick
+      // with fragments still incoming. Latching CLEARED here freezes the
+      // countdown (the decrement lives only inside this num_killable==0
+      // block) until those un-counted fragments happen to die — which,
+      // with the claimer dead, they never do. Defer the latch while any
+      // just-killed asteroid still owes fragments (Glenn: host stuck on
+      // "CLEARED" at gen 0 after the client rammed the last rocks).
+      bool owed_fragments = false;
+      for (Asteroid *a : *objects)
+        if (a->pending_fragments()) { owed_fragments = true; break; }
+      if (!owed_fragments) {
+        level_cleared = true;
+        time_until_next_generation = 5000;
+      } else if (Net::net_debug_enabled()) {
+        NET_LOG("net: level-clear deferred - killed rock still owes "
+                "fragments (would have stuck CLEARED)\n");
+      }
     } else if (time_until_next_generation > 0) {
       if(floor(time_until_next_generation/1000) != floor((time_until_next_generation-delta)/1000)) {
         if(tic_sound != NULL) {
