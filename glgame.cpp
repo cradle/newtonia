@@ -2327,12 +2327,38 @@ void GLGame::tick_net_client(int delta) {
     }
   }
   if (net_session_->transport()->failed()) net_connection_lost_ = true;
+  // Game over is observed here, not simulated: alive/lives replicate, so
+  // when the last life goes this side sees it too. The host's tick never
+  // runs on a client, so without this the 3 s accidental-exit guard and
+  // the local high-score save never armed — and the GAME OVER card (see
+  // Overlay::net_overlays) is the client's whole ending, where it used
+  // to get only the host's departure (Glenn: "no gameover state for the
+  // client, it just disconnects").
+  if (!score_saved && !players->empty()) {
+    bool all_over = true;
+    for (auto *gs : *players)
+      if (gs->ship->is_alive() || gs->ship->lives > 0) {
+        all_over = false;
+        break;
+      }
+    if (all_over) {
+      for (auto *gs : *players) save_high_score(gs->ship->score);
+      score_saved = true;
+      game_over_time = current_time;
+      NET_LOG("net: game over (all players out) - showing GAME OVER card\n");
+#ifdef __EMSCRIPTEN__
+      EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
+#endif
+    }
+  }
   if (net_connection_lost_) {
     // M3-1 auto-rejoin: with a room code the loss is recoverable — hand
     // the game back to a fresh auto-joining lobby (full keyframe
     // bootstrap, the same path as a manual rejoin). Any key/button still
-    // exits to the menu via the input handlers.
-    if (!net_room_code_.empty()) {
+    // exits to the menu via the input handlers. A finished game is the
+    // exception: the host leaving AFTER game over is the expected way
+    // out, not a loss to recover from — stay on the GAME OVER card.
+    if (!net_room_code_.empty() && !score_saved) {
       if (net_client_rejoin_ms_ <= 0) net_client_rejoin_ms_ = 1500;
       net_client_rejoin_ms_ -= delta;
       if (net_client_rejoin_ms_ <= 0) {

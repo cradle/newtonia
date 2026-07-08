@@ -27,7 +27,21 @@ const float Overlay::SAFE_AREA_SCALE = 1.0f;
 // Intro state) and the CONNECTION LOST / rejoin card. Overlay is a friend
 // of GLGame, so it reads the net_* state directly.
 void Overlay::net_overlays(const GLGame *glgame) {
-  if (glgame->net_banner_ms_ <= 0 && !glgame->net_connection_lost_) return;
+  // All players out = the game ended. Lives replicate, so both roles see
+  // this at the same moment — and it outranks every connection card: the
+  // host leaving right after game over used to greet the client with
+  // "THE HOST LEFT THE GAME", so the game never LOOKED finished there
+  // (Glenn: "no gameover state for the client, it just disconnects").
+  bool all_game_over = !glgame->players->empty();
+  for (auto *gs : *glgame->players)
+    if (gs->ship->is_alive() || gs->ship->lives > 0) {
+      all_game_over = false;
+      break;
+    }
+
+  if (!all_game_over && glgame->net_banner_ms_ <= 0 &&
+      !glgame->net_connection_lost_)
+    return;
 
   glViewport(0, 0, glgame->window.x(), glgame->window.y());
   float hw = glgame->window.x() / Overlay::SAFE_AREA_SCALE;
@@ -43,6 +57,19 @@ void Overlay::net_overlays(const GLGame *glgame) {
   // vh is the virtual half-height (the top of the title-safe area).
   float vh = Typer::scaled_window_height;
   int now = glgame->current_time;
+
+  if (all_game_over) {
+    // The offline hints live in the single-player title_text branch, so
+    // the online game (always 2 players) had NO game-over text on either
+    // screen. One shared card for both roles; the 3 s guard in the input
+    // handlers still stops a mid-fight trigger from skipping it.
+    Typer::draw_centered(0, 60, "GAME OVER", 34);
+    if ((now / 700) % 2 == 0)
+      Typer::draw_centered(0, -80,
+                           is_touch_mode() ? "TAP FIRE FOR MENU"
+                                           : "PRESS FIRE FOR MENU", 16);
+    return;
+  }
 
   if (glgame->net_connection_lost_ && glgame->net_mode_ == GLGame::NetHost &&
       glgame->net_signal_) {
