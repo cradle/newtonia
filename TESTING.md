@@ -87,6 +87,9 @@ test/e2e/spectate_disconnect.sh # joiner spectating -> host process killed -> GA
 test/e2e/weapons_net.sh # PROTO 18: lance pulses + beam clones both ways (normal
                         # NETPLAY=1 build; the driver sets the runtime hook
                         # NEWTONIA_NET_TEST_GRANT_WEAPONS=1 to stock both weapons)
+test/e2e/revive.sh   # co-op revive: drop gating (partner out, 10%, one at a time)
+                     # + the NEWTONIA_NET_TEST_REVIVE_MS payload hook -> the
+                     # fallen joiner leaves spectate and respawns, no GAME OVER
 ```
 
 spectate.sh uses the host-only `NEWTONIA_NET_TEST_KILL_MS`/`_WHO` hooks

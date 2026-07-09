@@ -23,6 +23,7 @@
 #include "nova_charge_pickup.h"
 #include "beam_pickup.h"
 #include "lance_pickup.h"
+#include "revive_pickup.h"
 #include "net_signal.h"
 #include "view/tap_band.h"
 #include <SDL.h>
@@ -129,6 +130,10 @@ private:
   // region — one definition for the drawn text (Overlay) and the tap
   // hit-test (touch_tap); see view/tap_band.h.
   TapBand ff_toggle_band() const;
+  // Co-op revive (revive_pickup.h): put a fully-out partner back on their
+  // last life. Called from the pickup collection site and the
+  // NEWTONIA_NET_TEST_REVIVE_MS e2e hook.
+  void revive_fallen_partner(Ship *except);
   void draw_map() const;
   void draw_objects(float direction = 0.0f, bool minimap = false) const;
   void draw_world(GLShip *glship = NULL, bool primary = true) const;
@@ -391,6 +396,9 @@ private:
   static const float god_mode_pickup_drop_chance;
   static const float beam_pickup_drop_chance;
   static const float lance_pickup_drop_chance;
+  // Co-op revive: 10% per asteroid kill while a
+  // partner is fully out, at most one in the world at a time.
+  static const float revive_pickup_drop_chance;
   mutable WarpPass *warp_pass_;
 
   Mix_Chunk *tic_sound = NULL;

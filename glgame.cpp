@@ -62,6 +62,10 @@ const float GLGame::shield_pickup_drop_chance = 0.0125f;
 const float GLGame::god_mode_pickup_drop_chance = 0.0025f;
 const float GLGame::beam_pickup_drop_chance = 0.0075f;
 const float GLGame::lance_pickup_drop_chance = 0.005f;
+// Co-op revive: rolled INDEPENDENTLY of the cumulative table above, only
+// while a partner is fully out of lives and no revive is already in the
+// world — generous by design, it is the fallen player's only way back.
+const float GLGame::revive_pickup_drop_chance = 0.1f;
 
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
@@ -314,6 +318,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
       case Save::PickupType::NovaCharge: pickups->push_back(new NovaChargePickup(pos)); break;
       case Save::PickupType::Beam:     pickups->push_back(new BeamPickup(pos)); break;
       case Save::PickupType::Lance:    pickups->push_back(new LancePickup(pos)); break;
+      case Save::PickupType::Revive:   pickups->push_back(new RevivePickup(pos)); break;
       default: break;
     }
   }
@@ -463,6 +468,8 @@ Save::GameState GLGame::build_save_data(bool include_asteroids) const {
       sp.type = Save::PickupType::Beam;
     } else if (dynamic_cast<LancePickup*>(p)) {
       sp.type = Save::PickupType::Lance;
+    } else if (dynamic_cast<RevivePickup*>(p)) {
+      sp.type = Save::PickupType::Revive;
     } else {
       continue; // unknown pickup type, skip
     }
@@ -3263,6 +3270,9 @@ void GLGame::net_apply_state(const Save::GameState &s) {
         case Save::PickupType::GodMode:  pickups->push_back(new GodModePickup(pos)); break;
         case Save::PickupType::ExtraLife: pickups->push_back(new ExtraLife(pos)); break;
         case Save::PickupType::NovaCharge: pickups->push_back(new NovaChargePickup(pos)); break;
+        case Save::PickupType::Beam:     pickups->push_back(new BeamPickup(pos)); break;
+        case Save::PickupType::Lance:    pickups->push_back(new LancePickup(pos)); break;
+        case Save::PickupType::Revive:   pickups->push_back(new RevivePickup(pos)); break;
         default: break;
       }
     }
@@ -3672,6 +3682,23 @@ void GLGame::tick(int delta) {
         victim->ship->kill();
       }
     }
+    // Revive e2e hook: after N ms, apply the revive effect to whichever
+    // player is fully out — the pickup-collection payload without the
+    // blind-navigation problem of actually touching a pickup in a driver.
+    // Inert without the env var.
+    static int test_revive_ms = -2;
+    if (test_revive_ms == -2) {
+      const char *e = getenv("NEWTONIA_NET_TEST_REVIVE_MS");
+      test_revive_ms = e ? atoi(e) : -1;
+    }
+    if (test_revive_ms > 0 && players->size() >= 2) {
+      test_revive_ms -= delta;
+      if (test_revive_ms <= 0) {
+        test_revive_ms = -1;
+        NET_LOG("net: TEST applying revive\n");
+        revive_fallen_partner(NULL);
+      }
+    }
 
     if (!net_connection_lost_) {
       net_host_poll();
@@ -3951,6 +3978,27 @@ void GLGame::tick(int delta) {
     while(oi != objects->end()) {
       if((*oi)->add_children(objects)) {
         if(!(*oi)->invincible) {
+          // Co-op revive (its own roll, ahead of the normal table): only
+          // while some player is fully out with a partner still in it, and
+          // never more than one in the world at a time.
+          bool revive_due = false;
+          if (players->size() >= 2) {
+            bool any_out = false, any_in = false;
+            for (auto *gs : *players) {
+              if (!gs->ship->is_alive() && gs->ship->lives <= 0) any_out = true;
+              else if (gs->ship->is_alive() || gs->ship->lives > 0) any_in = true;
+            }
+            if (any_out && any_in) {
+              revive_due = true;
+              for (auto *pk : *pickups)
+                if (dynamic_cast<RevivePickup*>(pk)) { revive_due = false; break; }
+            }
+          }
+          if (revive_due &&
+              rand() / float(RAND_MAX) < revive_pickup_drop_chance) {
+            pickups->push_back(new RevivePickup((*oi)->position));
+            NET_LOG("revive pickup dropped\n");
+          } else {
           float roll = rand() / float(RAND_MAX);
           if(roll < extra_life_drop_chance) {
             pickups->push_back(new ExtraLife((*oi)->position));
@@ -3971,6 +4019,7 @@ void GLGame::tick(int delta) {
             pickups->push_back(new BeamPickup((*oi)->position));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance + beam_pickup_drop_chance + lance_pickup_drop_chance) {
             pickups->push_back(new LancePickup((*oi)->position));
+          }
           }
         }
         // Move to dead_objects so the collision grid no longer iterates this
@@ -4213,6 +4262,17 @@ void GLGame::tick(int delta) {
         if(!(*pi)->collected && (*pi)->collide(*(*o)->ship)) {
           (*pi)->collected = true;
           (*pi)->apply((*o)->ship);
+          // The revive targets the fallen PARTNER (the pickup can't see the
+          // player list — same pattern as the mini-station reward): put them
+          // back on their last life and let the ordinary respawn machinery
+          // run. lives=1 restarts the parked countdown; the respawn charges
+          // the life back to 0 = the standard alive-on-last-life state.
+          // Online this is host-side sim; lives/alive replicate, the client's
+          // spectate ends by itself, and their alive-transition respawns the
+          // wreck. A revive with nobody down (partner beat it back some other
+          // way) is just the pickup sound.
+          if (dynamic_cast<RevivePickup*>(*pi))
+            revive_fallen_partner((*o)->ship);
           if(pickup_sound != NULL)
             Mix_PlayChannel(-1, pickup_sound, 0);
           net_send_event(Net::EV_PICKUP);  // collection cue for the client
@@ -5062,6 +5122,26 @@ void GLGame::touch_tap(float nx, float ny) {
     host_toggle_friendly_fire();
 }
 
+// Put a fully-out partner back on their last life; the ordinary respawn
+// machinery does the rest (lives=1 restarts the parked countdown; the
+// respawn charges the life back to 0 = the standard alive-on-last-life
+// state). Online this runs host-side; lives/alive replicate, the fallen
+// client's spectate ends by itself and the alive-transition respawns the
+// wreck. No fallen partner (they beat the pickup back some other way) is
+// a quiet no-op. except = the collector (never revives itself).
+void GLGame::revive_fallen_partner(Ship *except) {
+  for (auto *gs : *players) {
+    Ship *fallen = gs->ship;
+    if (fallen == except) continue;
+    if (!fallen->is_alive() && fallen->lives <= 0) {
+      fallen->lives = 1;
+      fallen->time_until_respawn = fallen->respawn_time;
+      NET_LOG("revive - partner respawning\n");
+      break;
+    }
+  }
+}
+
 GLShip *GLGame::local_player() const {
   if (players->empty()) return NULL;
   return net_mode_ == NetClient ? players->back() : players->front();
@@ -5096,9 +5176,13 @@ void GLGame::update_spectate() {
   bool local_out = local && !local->ship->is_alive() && local->ship->lives <= 0;
   bool remote_in = remote && (remote->ship->is_alive() || remote->ship->lives > 0);
   if (local_out && remote_in) {
-    if (spectate_death_time_ < 0) spectate_death_time_ = current_time;
+    if (spectate_death_time_ < 0) {
+      spectate_death_time_ = current_time;
+      NET_LOG("net: spectate armed\n");
+    }
   } else {
-    // Peer also out (GAME OVER takes over) or we somehow came back.
+    // Peer also out (GAME OVER takes over) or we came back (revived).
+    if (spectate_death_time_ >= 0) NET_LOG("net: spectate ended\n");
     spectate_death_time_ = -1;
   }
 }

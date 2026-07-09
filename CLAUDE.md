@@ -237,9 +237,10 @@ All inherit from `Pickup` base class (`pickup.h`). Each pickup implements `draw(
 | `nova_charge_pickup` | Nova Charge | +1 nova charge (auto-drops every 100 asteroid kills) |
 | `beam_pickup` | Pierce Beam | +20 beam bolts (violet star) |
 | `lance_pickup` | Lance | +10 lance pulses (amber star) |
+| `revive_pickup` | Revive | Co-op only (green cross): revives the fallen partner on their last life; GLGame applies it at the collection site (the pickup can't see the player list) |
 | `extra_life` | Extra Life | +1 life (heart shape) |
 
-**Drop chances** (per asteroid death, constants in `glgame.cpp`): extra_life 0.3125%, weapon 1.25%, mine 1.25%, giga_mine 0.5%, missile 1.25%, shield 1.25%, god_mode 0.25%, beam 0.75%, lance 0.5%.
+**Drop chances** (per asteroid death, constants in `glgame.cpp`): extra_life 0.3125%, weapon 1.25%, mine 1.25%, giga_mine 0.5%, missile 1.25%, shield 1.25%, god_mode 0.25%, beam 0.75%, lance 0.5%. **Revive** is a separate 10% roll ahead of that table, active only while some player is fully out of lives with a partner still in it, and capped at one in the world at a time; collecting it sets the fallen partner's `lives = 1` and restarts their respawn countdown (`GLGame::revive_fallen_partner`), which online replicates like any respawn and ends the spectator flow by itself.
 
 ### Asteroid Special Types
 
@@ -326,7 +327,7 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 
 ### Save / Load
 
-**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 12:
+**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 13:
 - `WeaponEntry`: kind, weapon_index, ammo (kinds include the primaries `Beam` and `Lance`)
 - `Player`: score, lives, kills, respawning flag, position, velocity, facing, weapons, nova state
 - `Asteroid`: position, velocity, radius, health, all special flags and transient state

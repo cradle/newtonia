@@ -73,6 +73,7 @@
 		AB00005B /* lance_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00005C /* lance_pickup.cpp */; };
 		AB00005C /* beam.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00005E /* beam.cpp */; };
 		AB00005D /* lance.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000076 /* lance.cpp */; };
+		AB000070 /* revive_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000078 /* revive_pickup.cpp */; };
 		AB000030 /* OpenGLES.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000030 /* OpenGLES.framework */; };
 		AB000031 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000031 /* UIKit.framework */; };
 		AB000032 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000032 /* Foundation.framework */; };
@@ -163,6 +164,8 @@
 		AA00005F /* beam.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../weapon/beam.h; sourceTree = SOURCE_ROOT; };
 		AA000076 /* lance.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/lance.cpp; sourceTree = SOURCE_ROOT; };
 		AA000077 /* lance.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../weapon/lance.h; sourceTree = SOURCE_ROOT; };
+		AA000078 /* revive_pickup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../revive_pickup.cpp; sourceTree = SOURCE_ROOT; };
+		AA000079 /* revive_pickup.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../revive_pickup.h; sourceTree = SOURCE_ROOT; };
 		AA000051 /* mesh.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../mesh.h; sourceTree = SOURCE_ROOT; };
 		AA000030 /* OpenGLES.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGLES.framework; path = System/Library/Frameworks/OpenGLES.framework; sourceTree = SDKROOT; };
 		AA000031 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
@@ -293,6 +296,8 @@
 			AA00005F /* beam.h */,
 			AA000076 /* lance.cpp */,
 			AA000077 /* lance.h */,
+			AA000078 /* revive_pickup.cpp */,
+			AA000079 /* revive_pickup.h */,
 			);
 			name = Sources;
 			sourceTree = "<group>";
@@ -453,6 +458,7 @@
 			AB00005B /* lance_pickup.cpp in Sources */,
 			AB00005C /* beam.cpp in Sources */,
 			AB00005D /* lance.cpp in Sources */,
+			AB000070 /* revive_pickup.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
