@@ -3602,7 +3602,42 @@ bool GLGame::cleared() const {
   return level_cleared;
 }
 
+// Adds the scope's wall time to an accumulator + running max on exit —
+// early returns in tick() are common, so bracketing must be RAII.
+namespace {
+struct PerfScope {
+  Uint32 t0, *acc, *mx;
+  PerfScope(Uint32 *a, Uint32 *m) : t0(SDL_GetTicks()), acc(a), mx(m) {}
+  ~PerfScope() { Uint32 d = SDL_GetTicks() - t0; *acc += d; if (d > *mx) *mx = d; }
+};
+}  // namespace
+
+void GLGame::perf_report() {
+  Uint32 now = SDL_GetTicks();
+  if (perf_window_start_ == 0) perf_window_start_ = now;
+  perf_frames_++;
+  Uint32 span = now - perf_window_start_;
+  if (span < 1000) return;
+  // Below ~55 fps: say where the second went. tick+draw are CPU-side
+  // (sim + GL submission); the remainder is swap/present (GPU-bound or
+  // vsync). One line per second at most, only while slow.
+  if (perf_frames_ * 1000 < (int)span * 55) {
+    SDL_Log("perf: fps=%d tick=%ums(max %u) draw=%ums(max %u) "
+            "other=%dms asteroids=%zu dead=%zu pickups=%zu gen=%d",
+            (int)(perf_frames_ * 1000 / span), perf_tick_ms_, perf_tick_max_,
+            perf_draw_ms_, perf_draw_max_,
+            (int)(span - perf_tick_ms_ - perf_draw_ms_),
+            objects->size(), dead_objects->size(), pickups->size(),
+            generation);
+  }
+  perf_window_start_ = now;
+  perf_frames_ = 0;
+  perf_tick_ms_ = perf_draw_ms_ = 0;
+  perf_tick_max_ = perf_draw_max_ = 0;
+}
+
 void GLGame::tick(int delta) {
+  PerfScope perf_scope_(&perf_tick_ms_, &perf_tick_max_);
   if (net_mode_ != NetOff) {
     // Name a hole in OUR OWN tick cadence (App Nap on an occluded mac
     // window, a window drag, a debugger): in every other log line it is
@@ -4471,6 +4506,8 @@ void GLGame::draw_objects(float direction, bool minimap) const {
 }
 
 void GLGame::draw(void) {
+  PerfScope perf_scope_(&perf_draw_ms_, &perf_draw_max_);
+  perf_report();  // once per second, only while below ~55 fps
   Uint32 now = SDL_GetTicks();
   int frame_delta = (int)(now - last_draw_time_);
   last_draw_time_ = now;

@@ -378,6 +378,16 @@ private:
   bool auto_paused = false;
   bool save_written_this_death_ = false;
   bool save_deleted_ = false;
+  // Lightweight frame telemetry for on-device perf hunts (Android logcat):
+  // tick()/draw() bracket themselves; once a second, if the frame rate ran
+  // below ~55 fps, one SDL_Log line breaks the frame down (sim vs GL
+  // submission vs the rest = swap/present) with the live object counts.
+  // Silent at healthy frame rates; no env plumbing needed on device.
+  Uint32 perf_window_start_ = 0;
+  Uint32 perf_tick_ms_ = 0, perf_draw_ms_ = 0;
+  Uint32 perf_tick_max_ = 0, perf_draw_max_ = 0;
+  int perf_frames_ = 0;
+  void perf_report();
   int game_over_time;
   // current_time at which the local player went fully out while the peer
   // played on (arms the spectate countdown), or -1 when not spectating.
