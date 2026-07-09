@@ -90,6 +90,9 @@ test/e2e/weapons_net.sh # PROTO 18: lance pulses + beam clones both ways (normal
 test/e2e/revive.sh   # co-op revive: drop gating (partner out, 10%, one at a time)
                      # + the NEWTONIA_NET_TEST_REVIVE_MS payload hook -> the
                      # fallen joiner leaves spectate and respawns, no GAME OVER
+test/e2e/gensoak.sh  # late-gen soak: host skips online to gen 25 (black hole,
+                     # mini-station, gen-20 station/enemies, world growth) with
+                     # per-gen liveness + no-drop + clean-log asserts
 ```
 
 spectate.sh uses the host-only `NEWTONIA_NET_TEST_KILL_MS`/`_WHO` hooks
