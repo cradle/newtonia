@@ -46,13 +46,19 @@ namespace Weapon {
   }
 
   void Lance::fire() {
+    // PROTO 18: like Default, the host's remote-player lance keeps its
+    // ammo/cooldown bookkeeping but fires no pulse and plays no sound —
+    // the owning client ray-marches its own pulse (kills arrive as
+    // MSG_HIT claims, the flash as an MSG_LANCE report).
+    bool sim_only = ship->net_remote_gun;
     if(_ammo == 0) {
-      if(empty_sound != NULL) {
+      if(empty_sound != NULL && !sim_only) {
         Mix_PlayChannel(-1, empty_sound, 0);
       }
       return;
     }
     _ammo--;
+    if(sim_only) return;
     if(shoot_sound != NULL && ship->sound_volume_scale > 0.0f) {
       Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * ship->sound_volume_scale));
       Mix_PlayChannel(-1, shoot_sound, 0);

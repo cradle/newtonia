@@ -25,6 +25,7 @@ std::vector<const Ship*> Ship::net_shots;
 std::vector<const Ship*> Ship::net_booms;
 std::vector<Ship::NetKillClaim> Ship::net_kill_claims;
 std::vector<Ship::NetShotReport> Ship::net_shot_reports;
+std::vector<std::vector<Point>> Ship::net_lance_reports;
 std::vector<Ship::NetShipHit> Ship::net_ship_hit_claims;
 uint32_t Ship::net_next_ship_id = 0;
 #include <algorithm>
@@ -884,7 +885,9 @@ void Ship::reset(bool was_killed) {
   bullets.clear();
   missiles.clear();
   shockwaves.clear();
-  lance_pulses.clear();
+  // Lance pulses are presentation like debris (below): a net client's
+  // restore_state must not cut the 250 ms flash short.
+  if (!net_quiet_respawn) lance_pulses.clear();
   lance_pulse_pending = false;
   // Debris is pure presentation and is never serialized. On a net client
   // reset() runs inside EVERY 10 Hz snapshot restore (restore_state →
@@ -1360,10 +1363,10 @@ void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
 void Ship::fire_lance_pulse(const Grid &grid) {
   // Instantaneous full-length pulse: ray-march up to Weapon::Lance::RANGE of
   // total path. Killable asteroids along the line die and the pulse continues
-  // through them; surfaces that reflect bullets (reflective asteroids,
-  // armoured faces, phased ghosts) mirror-reflect it with its remaining
-  // distance; anything it cannot destroy (plain invincible, tough not yet
-  // broken, a teleport evade) blocks it.
+  // through them — including TOUGH asteroids, which the lance kills outright;
+  // surfaces that reflect bullets (reflective asteroids, armoured faces,
+  // phased ghosts) mirror-reflect it with its remaining distance; anything it
+  // cannot destroy (plain invincible, a teleport evade) blocks it.
   float fm = facing.magnitude();
   if(fm <= 0.0f) return;
   Point dir = facing * (1.0f / fm);
@@ -1373,6 +1376,11 @@ void Ship::fire_lance_pulse(const Grid &grid) {
   LancePulse pulse;
   pulse.ttl = pulse.time_left = 250.0f;
   pulse.points.push_back(Point(pos.x(), pos.y()));
+
+  // PROTO 18 (net client): asteroids this pulse already claimed — they stay
+  // alive until the claim drain kills them later this tick, so the march
+  // must not re-strike them (offline/host kills leave them !is_alive()).
+  vector<Asteroid *> claimed;
 
   vector<Object *> candidates;
   const int max_hits = 16;  // safety cap on kills+reflections per pulse
@@ -1390,6 +1398,7 @@ void Ship::fire_lance_pulse(const Grid &grid) {
     for(Object *cand : candidates) {
       Asteroid *ast = dynamic_cast<Asteroid *>(cand);
       if(!ast || !ast->is_alive()) continue;
+      if(std::find(claimed.begin(), claimed.end(), ast) != claimed.end()) continue;
       Point ast_near = ast->position.closest_to(seg_a);
       float ox = ast_near.x() - ast->position.x();
       float oy = ast_near.y() - ast->position.y();
@@ -1453,6 +1462,33 @@ void Ship::fire_lance_pulse(const Grid &grid) {
     }
 
     explode(Point(hit_world.x(), hit_world.y()), ast_hit->velocity);
+
+    // PROTO 18 (net client, net_claim_kills): predict the outcome without
+    // killing locally and queue an MSG_HIT claim (bullet_id 0 — no clone
+    // to consume). The claim drain later this tick does the local kill
+    // with proper removal bookkeeping, exactly like bullet claims; the
+    // host honors the claim with the same tough/teleport forcing.
+    if(net_claim_kills) {
+      if(ast_hit->invincible ||
+         (ast_hit->teleporting && !ast_hit->teleport_vulnerable)) {
+        // Blocked (a teleport evade is the host's call — don't claim it).
+        remaining = 0.0f;
+        break;
+      }
+      NetKillClaim c;
+      c.ast_id = ast_hit->net_id;
+      c.bullet_id = 0;  // lance sentinel: honor without a clone consume
+      net_kill_claims.push_back(c);
+      claimed.push_back(ast_hit);
+      // Claimed-dead: carry straight on through it (score/kills are
+      // host-owned and arrive via the snapshot HUD scalars).
+      pos = WrappedPoint(hit_world.x(), hit_world.y());
+      continue;
+    }
+
+    // The lance kills tough asteroids outright (Glenn's ruling) — force the
+    // health through like the host's claim handler does, then kill.
+    if(ast_hit->tough) ast_hit->health = 1;
     if(ast_hit->kill()) {
       score += ast_hit->get_value() * multiplier();
       kills_this_life += 1;
@@ -1463,11 +1499,16 @@ void Ship::fire_lance_pulse(const Grid &grid) {
       continue;
     }
 
-    // Survived the hit (invincible, tough not yet broken, teleport evade):
-    // the pulse is blocked here.
+    // Survived the hit (invincible or a teleport evade): the pulse is
+    // blocked here.
     remaining = 0.0f;
     break;
   }
+
+  // Report the traced polyline to the peer for its flash + sound
+  // (net_report_shots covers exactly the two reporters: the client's own
+  // ship and, since PROTO 17, the host's player ship).
+  if(net_report_shots) net_lance_reports.push_back(pulse.points);
 
   lance_pulses.push_back(std::move(pulse));
 }
@@ -1636,16 +1677,24 @@ void Ship::net_cosmetic_impacts(const Grid &grid, bool claim_kills) {
       // it at the contact point with a hit spray now; the death
       // explosion and sound still replicate. If the host's copy of this
       // shot somehow misses, we spent a spark on a miss — cosmetic.
-      b.net_sparked = true;
-      b.time_left = 0.0f;
+      // PROTO 18: a piercing beam bolt claims the kill and PLOUGHS ON
+      // (mirroring the sim's plough-through-kills rule) — the claim
+      // drain kills the asteroid this same tick, so the next step's
+      // grid no longer holds it; duplicate claims before then dedupe
+      // against the prediction map at the drain.
       explode(b.position, o->velocity);
       if (claim_kills) {
         NetKillClaim c;
         c.ast_id = ast->net_id;
-        c.bullet_id = b.net_id;
+        c.bullet_id = b.piercing ? 0 : b.net_id;  // 0: don't consume the clone
         net_kill_claims.push_back(c);
       }
-      NET_LOG("net: cosmetic impact consume id=%u\n", ast->net_id);
+      if (!b.piercing) {
+        b.net_sparked = true;
+        b.time_left = 0.0f;
+      }
+      NET_LOG("net: cosmetic impact %s id=%u\n",
+              b.piercing ? "pierce" : "consume", ast->net_id);
       continue;
     }
     b.net_sparked = true;
@@ -1890,6 +1939,7 @@ void Ship::net_report_last_bullet() {
   r.vx = b.velocity.x(); r.vy = b.velocity.y();
   r.kills_invincible = b.kills_invincible;
   r.has_trail = b.has_trail;
+  r.piercing = b.piercing;
   net_shot_reports.push_back(r);
 }
 
@@ -1898,16 +1948,24 @@ void Ship::net_report_last_bullet() {
 // client), same identity for the MSG_HIT consume.
 void Ship::net_spawn_reported_bullet(uint32_t id, const Point &pos,
                                      const Point &vel, bool kills_inv,
-                                     bool trail) {
-  if(shoot_sound != NULL && sound_volume_scale > 0.0f) {
-    Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * sound_volume_scale));
-    Mix_PlayChannel(-1, shoot_sound, 0);
+                                     bool trail, bool piercing) {
+  // A piercing clone is a beam bolt — play the beam's own sound, not the
+  // pew (the chunk is shared/cached; every play site sets volume first).
+  Mix_Chunk *snd = shoot_sound;
+  if (piercing) {
+    static Mix_Chunk *beam_snd = Mix_LoadWAV(asset_path("audio/beam.wav").c_str());
+    if (beam_snd) snd = beam_snd;
+  }
+  if(snd != NULL && sound_volume_scale > 0.0f) {
+    Mix_VolumeChunk(snd, (int)(MIX_MAX_VOLUME * sound_volume_scale));
+    Mix_PlayChannel(-1, snd, 0);
   }
   bullets.push_back(Particle(pos, vel, 2000.0f));
   Particle &b = bullets.back();
   b.net_id = id;
   b.kills_invincible = kills_inv;
   b.has_trail = trail;
+  b.piercing = piercing;
   // 1 Hz proof-of-flow: reported clones spawning at all (the handler is
   // otherwise silent, and its failure mode would just be an idle gun).
   if (Net::net_debug_enabled()) {

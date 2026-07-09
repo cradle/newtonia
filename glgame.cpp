@@ -1057,7 +1057,17 @@ void GLGame::net_host_poll() {
       if (std::isfinite(sx) && std::isfinite(sy) && std::isfinite(svx) &&
           std::isfinite(svy) && svx * svx + svy * svy < 25.0f)
         remote->net_spawn_reported_bullet(id, Point(sx, sy), Point(svx, svy),
-                                          (flags & 1) != 0, (flags & 2) != 0);
+                                          (flags & 1) != 0, (flags & 2) != 0,
+                                          (flags & 4) != 0);  // PROTO 18 pierce
+      continue;
+    }
+    if (h.msg_type == Net::MSG_LANCE) {
+      // Client lance pulse (PROTO 18): display-only — push the traced
+      // polyline onto the remote ship for the flash; the kills arrive
+      // separately as bullet_id-0 MSG_HIT claims. The pulse plays the
+      // lance sound attenuated at its origin.
+      if (!remote) continue;
+      if (net_receive_lance_pulse(r, remote)) continue;
       continue;
     }
     if (h.msg_type == Net::MSG_HIT_SHIP) {
@@ -1168,23 +1178,32 @@ void GLGame::net_host_poll() {
           // it by id (PROTO 14 exact match; ordered channel guarantees
           // the shot arrived first), nearest-at-impact as the fallback
           // for a clone the host sim already spent elsewhere.
+          // bullet_id 0 (PROTO 18): a lance kill or a PIERCING bolt's
+          // kill — there is nothing to spend (the lance has no clone;
+          // a piercing clone must keep flying through the kill), and
+          // the nearest-bullet fallback would wrongly eat an unrelated
+          // shot. Skip the consume entirely.
           int best_i = -1;
-          for (size_t bi = 0; bi < remote->bullets.size(); bi++)
-            if (remote->bullets[bi].net_id == bullet_id) { best_i = (int)bi; break; }
-          if (best_i < 0) {
-            float best = a->radius + 200.0f;
-            for (size_t bi = 0; bi < remote->bullets.size(); bi++) {
-              float d = remote->bullets[bi].position.distance_to(a->position);
-              if (d < best) { best = d; best_i = (int)bi; }
+          if (bullet_id != 0) {
+            for (size_t bi = 0; bi < remote->bullets.size(); bi++)
+              if (remote->bullets[bi].net_id == bullet_id) { best_i = (int)bi; break; }
+            if (best_i < 0) {
+              float best = a->radius + 200.0f;
+              for (size_t bi = 0; bi < remote->bullets.size(); bi++) {
+                float d = remote->bullets[bi].position.distance_to(a->position);
+                if (d < best) { best = d; best_i = (int)bi; }
+              }
+            }
+            if (best_i >= 0) {
+              remote->explode(remote->bullets[best_i].position, a->velocity);
+              remote->bullets[best_i] = std::move(remote->bullets.back());
+              remote->bullets.pop_back();
             }
           }
-          if (best_i >= 0) {
-            remote->explode(remote->bullets[best_i].position, a->velocity);
-            remote->bullets[best_i] = std::move(remote->bullets.back());
-            remote->bullets.pop_back();
-          }
           NET_LOG("net: hit claim honored id=%u (bullet %s)\n", id,
-                  best_i >= 0 ? "consumed" : "already spent");
+                  bullet_id == 0 ? "none (pierce/lance)"
+                  : best_i >= 0  ? "consumed"
+                                 : "already spent");
         }
         break;
       }
@@ -1680,7 +1699,13 @@ void nx_write_ship(Save::Stream &out, const Ship &s) {
   nx_write(out, move);
 
   nx_write(out, (uint16_t)s.bullets.size());
-  for (const Particle &p : s.bullets) nx_write_projectile(out, p);
+  for (const Particle &p : s.bullets) {
+    nx_write_projectile(out, p);
+    // PROTO 18: per-bullet flags so piercing (beam bolt), trail and
+    // kills_invincible survive the wholesale 10 Hz rebuild — a host beam
+    // bolt used to flicker back to a plain pew on every apply.
+    nx_write(out, p.net_flags());
+  }
   nx_write(out, (uint16_t)s.mines.size());
   for (const Particle &p : s.mines) nx_write_projectile(out, p);
   nx_write(out, (uint16_t)s.giga_mines.size());
@@ -1919,6 +1944,7 @@ void GLGame::net_clear_event_outboxes() {
   Ship::net_kill_claims.clear();
   Ship::net_shot_reports.clear();
   Ship::net_ship_hit_claims.clear();
+  Ship::net_lance_reports.clear();
 }
 
 void GLGame::net_send_event(uint8_t code, uint32_t arg) {
@@ -2112,6 +2138,9 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
   // exact velocity) so the host spawns clones instead of re-rolling.
   if (!players->empty()) {
     players->back()->ship->net_report_shots = true;
+    // PROTO 18: the lance ray-march claims kills instead of killing
+    // locally (the claim drain kills — same flow as bullet claims).
+    players->back()->ship->net_claim_kills = true;
     NET_LOG("net: shot reporting armed (ship=%p)\n",
             (void *)players->back()->ship);
   }
@@ -2174,14 +2203,18 @@ bool nx_read_projectiles(Save::Stream &in, Ship *s, bool quiet,
   if (!nx_read(in, n)) return false;
   if (s && !own_bullets) s->bullets.clear();
   for (int i = 0; i < n; i++) {
+    uint8_t flags = 0;
     if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
+    if (!nx_read(in, flags)) return false;  // PROTO 18 per-bullet flags
     // Lead by RTT/2: bullets are rebuilt wholesale every apply, and the
     // stale pose strobed against the client's own between-apply stepping
     // (fast movers made it obvious). Mines/gigas are near-stationary and
     // their disappearance matching relies on raw positions — no lead.
-    if (s && !own_bullets)
+    if (s && !own_bullets) {
       s->bullets.push_back(Particle(Point(x + vx * lead_ms, y + vy * lead_ms),
                                     Point(vx, vy), 2000.0f));
+      s->bullets.back().set_net_flags(flags);
+    }
   }
 
   if (!nx_read(in, n)) return false;
@@ -2591,7 +2624,8 @@ void GLGame::tick_net_client(int delta) {
     Net::put_f32(msg, r.y);
     Net::put_f32(msg, r.vx);
     Net::put_f32(msg, r.vy);
-    Net::put_u8(msg, (r.kills_invincible ? 1 : 0) | (r.has_trail ? 2 : 0));
+    Net::put_u8(msg, (r.kills_invincible ? 1 : 0) | (r.has_trail ? 2 : 0) |
+                       (r.piercing ? 4 : 0));
     net_session_->transport()->send_reliable(&msg[0], msg.size());
     // 1 Hz send-side twin of the host's "reported shots/s spawned" —
     // a rate mismatch between the two lines localizes a report leak.
@@ -2608,6 +2642,21 @@ void GLGame::tick_net_client(int delta) {
     }
   }
   Ship::net_shot_reports.clear();
+
+  // PROTO 18: fired lance pulses — the traced polyline for the host's
+  // flash + sound (the kills ride the MSG_HIT claims below).
+  for (const std::vector<Point> &pts : Ship::net_lance_reports) {
+    if (pts.size() < 2 || pts.size() > 17) continue;
+    std::vector<uint8_t> msg;
+    Net::put_header(msg, Net::MSG_LANCE, 2);
+    Net::put_u8(msg, (uint8_t)pts.size());
+    for (const Point &p : pts) {
+      Net::put_f32(msg, p.x());
+      Net::put_f32(msg, p.y());
+    }
+    net_session_->transport()->send_reliable(&msg[0], msg.size());
+  }
+  Ship::net_lance_reports.clear();
 
   // PROTO 15/16: ship/station hit claims — damage applies host-side IFF
   // the referenced clone gets consumed there (exactly-once per shot).
@@ -2647,7 +2696,13 @@ void GLGame::tick_net_client(int delta) {
       for (auto oi = objects->begin(); oi != objects->end(); ++oi) {
         Asteroid *a = *oi;
         if (a->net_id != c.ast_id) continue;
-        a->kill();  // claim conditions guarantee a plain bullet kills it
+        // Force the same divergent state the host's claim handler forces:
+        // a lance claim (PROTO 18) can name a tough asteroid — kill() must
+        // actually kill here or the local copy vanishes without exploding.
+        if (a->tough) a->health = 1;
+        if (a->teleporting) a->teleport_vulnerable = true;
+        a->phased = false;
+        a->kill();  // claim conditions guarantee the kill lands
         if (!a->is_alive() && !a->is_removable()) {
           Asteroid::play_explode_sound();
           dead_objects->push_back(a);
@@ -2790,7 +2845,15 @@ void GLGame::net_client_poll() {
           std::isfinite(svy) && svx * svx + svy * svy < 25.0f)
         host_ship->net_spawn_reported_bullet(
             id, Point(sx + svx * lead, sy + svy * lead), Point(svx, svy),
-            (flags & 1) != 0, (flags & 2) != 0);
+            (flags & 1) != 0, (flags & 2) != 0,
+            (flags & 4) != 0);  // PROTO 18 pierce
+      continue;
+    }
+    if (h.msg_type == Net::MSG_LANCE) {
+      // Host lance pulse echo (PROTO 18): display-only flash + sound on
+      // the host's ship; its kills arrive as ordinary removal records.
+      if (players->empty()) continue;
+      net_receive_lance_pulse(r, players->front()->ship);
       continue;
     }
     if (h.msg_type == Net::MSG_DELTA) {
@@ -4288,7 +4351,21 @@ void GLGame::tick(int delta) {
       Net::put_f32(msg, r.y);
       Net::put_f32(msg, r.vx);
       Net::put_f32(msg, r.vy);
-      Net::put_u8(msg, (r.kills_invincible ? 1 : 0) | (r.has_trail ? 2 : 0));
+      Net::put_u8(msg, (r.kills_invincible ? 1 : 0) | (r.has_trail ? 2 : 0) |
+                       (r.piercing ? 4 : 0));
+      net_session_->transport()->send_reliable(&msg[0], msg.size());
+    }
+    // PROTO 18: the host player's lance pulses, echoed for the client's
+    // flash + sound (the kills replicate as ordinary removal records).
+    for (const std::vector<Point> &pts : Ship::net_lance_reports) {
+      if (pts.size() < 2 || pts.size() > 17) continue;
+      std::vector<uint8_t> msg;
+      Net::put_header(msg, Net::MSG_LANCE, 2);
+      Net::put_u8(msg, (uint8_t)pts.size());
+      for (const Point &p : pts) {
+        Net::put_f32(msg, p.x());
+        Net::put_f32(msg, p.y());
+      }
       net_session_->transport()->send_reliable(&msg[0], msg.size());
     }
   }
@@ -4296,8 +4373,9 @@ void GLGame::tick(int delta) {
   Ship::net_shots.clear();
   Ship::net_booms.clear();
   // Cleared outside the session guard: with no live session (solo online
-  // after a leave, rejoin pending) the queue must not grow unbounded.
+  // after a leave, rejoin pending) the queues must not grow unbounded.
   Ship::net_shot_reports.clear();
+  Ship::net_lance_reports.clear();
 
   // Online host: broadcast the world at 10 Hz once everything has stepped.
   if (net_mode_ == NetHost) net_host_send_snapshot(delta);
@@ -4413,6 +4491,33 @@ bool GLGame::is_visible_to_any_player(Point p) const {
 // Online: the only listener is the local player. The split-screen
 // variant below treats EVERY player as a listener, which puts the remote
 // ship at distance zero from its own sounds.
+// PROTO 18: a peer's lance pulse — display-only. The kills travel on their
+// own channel (bullet_id-0 MSG_HIT claims from a client firer, ordinary
+// removal records from the host); this is the flash and the sound.
+bool GLGame::net_receive_lance_pulse(Net::Reader &r, Ship *shooter) {
+  uint8_t n = r.u8();
+  if (!r.ok || n < 2 || n > 17) return false;
+  LancePulse pulse;
+  pulse.ttl = pulse.time_left = 250.0f;
+  for (int i = 0; i < n; i++) {
+    float x = r.f32(), y = r.f32();
+    if (!r.ok || !std::isfinite(x) || !std::isfinite(y)) return false;
+    pulse.points.push_back(Point(x, y));
+  }
+  float vol = net_listener_volume(pulse.points.front());
+  if (vol > 0.0f) {
+    static Mix_Chunk *lance_snd =
+        Mix_LoadWAV(asset_path("audio/lance.wav").c_str());
+    if (lance_snd) {
+      Mix_VolumeChunk(lance_snd, (int)(MIX_MAX_VOLUME * vol));
+      Mix_PlayChannel(-1, lance_snd, 0);
+    }
+  }
+  shooter->lance_pulses.push_back(std::move(pulse));
+  NET_LOG("net: lance pulse received (%d points)\n", (int)n);
+  return true;
+}
+
 float GLGame::net_listener_volume(Point p) const {
   // The listener is whoever the camera follows: normally the local player,
   // but the peer while spectating — the spectator hears the action they

@@ -292,6 +292,10 @@ private:
   void net_ping_tick(int delta);
   // Answers PING / consumes PONG; true when the message was one of them.
   bool net_handle_ping_pong(uint8_t msg_type, Net::Reader &r);
+  // PROTO 18: parse an MSG_LANCE body and push the pulse onto shooter's
+  // lance_pulses (display-only flash + attenuated lance sound); false on
+  // a malformed body. Shared by the host and client receive paths.
+  bool net_receive_lance_pulse(Net::Reader &r, Ship *shooter);
   // How far ahead (ms) to extrapolate a host pose to compensate its
   // transit staleness: RTT/2, capped, 0 before the first PONG.
   float net_lead_ms() const;

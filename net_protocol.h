@@ -126,7 +126,16 @@ namespace Net {
 //     rebuild, so each one popped in up to a snapshot interval late and
 //     already down-range (obvious when spectating at the host's muzzle).
 //     The echo also carries the host's gun sound to the client.
-const uint8_t PROTO_VERSION = 17;
+// 18: Pierce Beam + Lance go online. MSG_SHOT flags gain bit2 = piercing
+//     (clone bolts plough through kills on both sides) and the snapshot's
+//     per-bullet records gain a flags byte so piercing/trail/kills_invincible
+//     survive the 10 Hz rebuild. New MSG_LANCE (both ways) carries a fired
+//     lance pulse's traced polyline for the peer's flash + sound; the
+//     lance's kills ride the existing claim machinery — a client lance
+//     queues MSG_HIT claims with bullet_id 0 (sentinel: no clone to
+//     consume) and its ray-march predicts outcomes without killing locally
+//     (the claim drain kills, exactly like bullet claims).
+const uint8_t PROTO_VERSION = 18;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check
@@ -148,11 +157,12 @@ enum MsgType {
   MSG_HIT = 10,
   // Shot report, BOTH ways since PROTO 17: uint32 shot id, 2x float spawn
   // pos, 2x float velocity (spread already applied), uint8 flags (bit0
-  // kills_invincible, bit1 trail). RELIABLE + ordered, so a MSG_HIT can
-  // never arrive before the shot it references. C->H (PROTO 14): the host
-  // spawns exact clones of the client's shots. H->C (PROTO 17): the client
-  // spawns exact clones of the host's shots the moment they fire, instead
-  // of waiting for the next 10 Hz snapshot rebuild.
+  // kills_invincible, bit1 trail, bit2 piercing — PROTO 18 beam bolt).
+  // RELIABLE + ordered, so a MSG_HIT can never arrive before the shot it
+  // references. C->H (PROTO 14): the host spawns exact clones of the
+  // client's shots. H->C (PROTO 17): the client spawns exact clones of the
+  // host's shots the moment they fire, instead of waiting for the next
+  // 10 Hz snapshot rebuild.
   MSG_SHOT = 11,
   // Client bullet-vs-ship hit claim (PROTO 15/16): uint8 kind (0 enemy,
   // 1 station, 2 mini-station), uint32 bullet net_id, uint32 target id
@@ -161,6 +171,12 @@ enum MsgType {
   // clone — a clone its own sim already resolved makes the claim a
   // no-op, so every shot resolves exactly once.
   MSG_HIT_SHIP = 12,
+  // Lance pulse report (PROTO 18), BOTH ways rel: u8 n_points (2..17),
+  // n x 2 float polyline the firer's ray-march traced. Display-only on
+  // the receiver — the pulse's KILLS travel as MSG_HIT claims (client
+  // firer, bullet_id 0) or ordinary removal records (host firer); this
+  // message is the flash and the sound.
+  MSG_LANCE = 13,
 };
 
 enum EventCode {

@@ -52,13 +52,18 @@ namespace Weapon {
   }
 
   void Beam::fire() {
+    // PROTO 18: like Default, the host's remote-player beam keeps its
+    // ammo/cooldown bookkeeping but mints no bolt and plays no sound —
+    // the real bolt arrives as an MSG_SHOT report (piercing flag set).
+    bool sim_only = ship->net_remote_gun;
     if(_ammo == 0) {
-      if(empty_sound != NULL) {
+      if(empty_sound != NULL && !sim_only) {
         Mix_PlayChannel(-1, empty_sound, 0);
       }
       return;
     }
     _ammo--;
+    if(sim_only) return;
     if(shoot_sound != NULL && ship->sound_volume_scale > 0.0f) {
       Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * ship->sound_volume_scale));
       Mix_PlayChannel(-1, shoot_sound, 0);
@@ -71,5 +76,8 @@ namespace Weapon {
       ship->mark_last_bullet_trail();
       ship->mark_last_bullet_kills_invincible();
     }
+    // Report after every mark so the peer's clone carries them all
+    // (no-op unless net_report_shots — offline play is untouched).
+    ship->net_report_last_bullet();
   }
 }

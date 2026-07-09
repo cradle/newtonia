@@ -210,13 +210,24 @@ class Ship : public CompositeObject {
     struct NetShotReport {
       uint32_t id;
       float x, y, vx, vy;
-      bool kills_invincible, has_trail;
+      bool kills_invincible, has_trail, piercing;
     };
     static std::vector<NetShotReport> net_shot_reports;  // client outbox
     // Assign the freshly-fired bullets.back() its id and push its report
     // (no-op unless net_report_shots). Ship is Particle's friend; the
     // weapons that fire bullets are not.
     void net_report_last_bullet();
+
+    // PROTO 18: fired lance pulses (the traced polyline) to report to the
+    // peer for its flash + sound. Pushed by fire_lance_pulse on reporting
+    // ships (net_report_shots); drained into MSG_LANCE by both roles.
+    static std::vector<std::vector<Point>> net_lance_reports;
+    // net_claim_kills (the client's LOCAL ship): the lance ray-march
+    // predicts kill outcomes without killing locally and queues MSG_HIT
+    // claims with bullet_id 0 — the claim drain does the local kills,
+    // exactly like bullet claims (PROTO 13). The host player's lance
+    // (and offline play) kills directly.
+    bool net_claim_kills = false;
 
     // PROTO 15/16: local bullets vs replicated enemy ships / stations —
     // the ship-shaped twin of net_cosmetic_impacts. Contact consumes the
@@ -244,7 +255,7 @@ class Ship : public CompositeObject {
     bool net_remote_gun = false;
     void net_spawn_reported_bullet(uint32_t id, const Point &pos,
                                    const Point &vel, bool kills_inv,
-                                   bool trail);
+                                   bool trail, bool piercing = false);
     // Start the looping missile-fly sound for replicated missiles (the
     // weapon starts it for locally-fired ones); the handle halts the
     // channel when the last missile holding it is destroyed.
