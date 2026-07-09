@@ -218,7 +218,7 @@ void Menu::draw() {
       for (int i = 0; i < num_steps; i++) {              // numbered choices, mid
         int x = STEP_CX + (int)((i - (num_steps - 1) * 0.5f) * STEP_GAP);
         std::string step = (i == cur_idx)
-          ? "[" + std::to_string(i + 1) + "]"
+          ? "]" + std::to_string(i + 1) + "["
           :       std::to_string(i + 1);
         Typer::draw_centered(x, y, step.c_str(), 13);
       }
