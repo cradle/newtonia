@@ -38,6 +38,26 @@ const MAX_SDP_LEN = 16384;
 const MAX_CAND_LEN = 512;
 const MAX_CANDS = 32;
 
+// Browser origins allowed to open a signaling socket. Browsers always send an
+// Origin header on the WebSocket handshake and cannot forge it, so this stops
+// an unrelated web page a player visits from opening role=host in their
+// browser and reading the minted TURN credentials off the {t:"ice"} frames
+// (denial-of-wallet at scale). Non-browser callers (the native game client)
+// send no Origin and were never bound by it — they use their own IP under the
+// per-IP mint caps — so a missing Origin is allowed. Entries beginning with a
+// dot match that host or any subdomain; others match the full origin exactly.
+// Override with the ALLOWED_ORIGINS secret (comma-separated) without a
+// redeploy. Origin never carries a path, so path-scoped deploys (…/play/) are
+// covered by their bare origin.
+const DEFAULT_ALLOWED_ORIGINS = [
+  "https://newtonia.metonymous.com", // GitHub Pages web build (served at /play/)
+  "https://metonymous.itch.io",      // itch.io project page
+  ".itch.zone",                      // itch.io HTML5 game iframe (rotating CDN host)
+  ".hwcdn.net",                      // itch.io CDN origin
+  ".localhost",                      // wrangler dev + local browser test
+  ".127.0.0.1",
+];
+
 // Rate-limit key from the client IP. IPv6 users get a whole /64 (or more)
 // to rotate through for free, which would bypass a per-address limit — so
 // collapse v6 to its /64 prefix; v4 addresses key whole. Exported for the
@@ -55,10 +75,35 @@ export function rate_key(ip) {
   return "v4:" + ip;
 }
 
+// Is the request's Origin permitted to open a signaling socket? See
+// DEFAULT_ALLOWED_ORIGINS. Exported for the unit test.
+export function origin_allowed(env, origin) {
+  if (!origin) return true; // native client / non-browser caller
+  const list = (env.ALLOWED_ORIGINS
+      ? env.ALLOWED_ORIGINS.split(",")
+      : DEFAULT_ALLOWED_ORIGINS).map((s) => s.trim()).filter(Boolean);
+  let hostname;
+  try { hostname = new URL(origin).hostname; } catch (e) { return false; }
+  return list.some((e) => e.startsWith(".")
+      ? (hostname === e.slice(1) || hostname.endsWith(e))
+      : origin === e);
+}
+
 function random_code() {
-  const bytes = crypto.getRandomValues(new Uint8Array(CODE_LEN));
+  // Rejection sampling for a uniform code: a plain `byte % 28` biases the
+  // first 256 % 28 = 4 letters (A-D), since 28 doesn't divide 256. Discard
+  // bytes at or above the largest multiple of the alphabet length so every
+  // letter is equally likely.
+  const n = CODE_ALPHABET.length;
+  const limit = Math.floor(256 / n) * n; // 252 for n = 28
   let code = "";
-  for (const b of bytes) code += CODE_ALPHABET[b % CODE_ALPHABET.length];
+  while (code.length < CODE_LEN) {
+    for (const b of crypto.getRandomValues(new Uint8Array(CODE_LEN))) {
+      if (b >= limit) continue; // in the biased tail — draw again
+      code += CODE_ALPHABET[b % n];
+      if (code.length === CODE_LEN) break;
+    }
+  }
   return code;
 }
 
@@ -153,6 +198,11 @@ export default {
     if (request.headers.get("Upgrade") !== "websocket")
       return new Response("expected websocket", { status: 426 });
 
+    // Reject cross-site browser callers before spending a limiter round-trip
+    // or minting TURN. A blocked page gets a readable {t:"err"} frame.
+    if (!origin_allowed(env, request.headers.get("Origin")))
+      return reject_ws(request, "forbidden-origin");
+
     // CF-Connecting-IP may be absent under miniflare (wrangler dev --local);
     // a fixed fallback key still lets the limiter exercise end to end.
     const ip = rate_key(request.headers.get("CF-Connecting-IP") || "local");
@@ -173,16 +223,23 @@ export default {
         return reject_ws(request, "rate-limited");
       // Host RECLAIM (M3-1): a disconnected host returning within the
       // grace window proves ownership with the token from its room frame.
-      // Validate the code shape BEFORE minting TURN — a garbage reclaim
-      // shouldn't cost a credential.
+      // Validate the code shape, then confirm the token against the room
+      // BEFORE minting TURN — a garbage or wrong-token reclaim shouldn't
+      // cost a credential (mirrors the /exists pre-check on the join path).
       const token = url.searchParams.get("token");
       if (token) {
         const code = (url.searchParams.get("code") || "").toUpperCase();
         if (code.length !== CODE_LEN ||
             [...code].some((c) => !CODE_ALPHABET.includes(c)))
           return new Response("bad code", { status: 400 });
-        const ice = await turn_ice_servers(env);
         const room = env.ROOMS.get(env.ROOMS.idFromName(code));
+        let ice = [];
+        try {
+          const pre = await room.fetch(new Request(
+              `https://room/reclaim-check?token=${encodeURIComponent(token)}`));
+          const st = await pre.json();
+          if (st.ok) ice = await turn_ice_servers(env);
+        } catch (e) {}
         return room.fetch(new Request(
             `https://room/reclaim?code=${code}&token=${encodeURIComponent(token)}&ice=${encodeURIComponent(JSON.stringify(ice))}`,
             request));
@@ -232,24 +289,42 @@ export default {
 export class Limiter {
   constructor(state) {
     this.state = state;
-    this.windowStart = 0;
-    this.hostCount = 0;
-    this.joinCount = 0;
+    // The window counters MUST survive DO eviction. An idle Durable Object
+    // is evicted and its constructor re-runs on the next request; if these
+    // lived only in memory (as they used to), that reset the fixed window
+    // and let a client pacing just slower than the eviction interval mint
+    // TURN credentials without bound — the cap this DO exists to enforce.
+    // So persist to storage and reload here, mirroring the Room DO.
+    this.l = { windowStart: 0, hostCount: 0, joinCount: 0 };
+    state.blockConcurrencyWhile(async () => {
+      const stored = await state.storage.get("limits");
+      if (stored) this.l = stored;
+    });
   }
 
   async fetch(request) {
     const action = new URL(request.url).searchParams.get("action");
     const now = Date.now();
-    if (now - this.windowStart > RATE_WINDOW_MS) {
-      this.windowStart = now;
-      this.hostCount = 0;
-      this.joinCount = 0;
+    if (now - this.l.windowStart > RATE_WINDOW_MS) {
+      this.l.windowStart = now;
+      this.l.hostCount = 0;
+      this.l.joinCount = 0;
     }
     let allowed;
-    if (action === "host") allowed = ++this.hostCount <= HOST_LIMIT;
-    else allowed = ++this.joinCount <= JOIN_LIMIT;
+    if (action === "host") allowed = ++this.l.hostCount <= HOST_LIMIT;
+    else allowed = ++this.l.joinCount <= JOIN_LIMIT;
+    await this.state.storage.put("limits", this.l);
+    // Self-clean: once a full window elapses with no further hits the stored
+    // count is meaningless, so free it via the alarm rather than leaving one
+    // storage row per IP ever seen (unbounded growth = its own abuse vector).
+    await this.state.storage.setAlarm(now + RATE_WINDOW_MS + 1000);
     return new Response(JSON.stringify({ allowed }),
                         { headers: { "Content-Type": "application/json" } });
+  }
+
+  async alarm() {
+    if (Date.now() - this.l.windowStart > RATE_WINDOW_MS)
+      await this.state.storage.deleteAll();
   }
 }
 
@@ -317,6 +392,18 @@ export class Room {
       const pair = new WebSocketPair();
       await this.accept_host(pair[1], code, now, ice);
       return new Response(null, { status: 101, webSocket: pair[0] });
+    }
+
+    if (url.pathname === "/reclaim-check") {
+      // Worker's pre-mint probe: would this token actually reclaim the room?
+      // Same predicate as /reclaim below, minus the socket upgrade, so TURN
+      // is minted only for a reclaim that will succeed. The real /reclaim
+      // re-checks, so a state change in the gap is refused there (no leak).
+      const token = url.searchParams.get("token");
+      const ok = !this.hostWs() && this.r.host_token &&
+                 token === this.r.host_token && this.in_grace(now);
+      return new Response(JSON.stringify({ ok: !!ok }),
+                          { headers: { "Content-Type": "application/json" } });
     }
 
     if (url.pathname === "/reclaim") {
