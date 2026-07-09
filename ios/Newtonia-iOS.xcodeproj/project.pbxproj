@@ -59,6 +59,10 @@
 		AB000052 /* preferences.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000052 /* preferences.cpp */; };
 		AB000056 /* gl_mini_station.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000056 /* gl_mini_station.cpp */; };
 		AB000058 /* intro.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000058 /* intro.cpp */; };
+		AB00005A /* beam_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00005A /* beam_pickup.cpp */; };
+		AB00005B /* lance_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00005C /* lance_pickup.cpp */; };
+		AB00005C /* beam.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00005E /* beam.cpp */; };
+		AB00005D /* lance.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000060 /* lance.cpp */; };
 		AB000030 /* OpenGLES.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000030 /* OpenGLES.framework */; };
 		AB000031 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000031 /* UIKit.framework */; };
 		AB000032 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000032 /* Foundation.framework */; };
@@ -131,6 +135,14 @@
 		AA000057 /* gl_mini_station.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../gl_mini_station.h; sourceTree = SOURCE_ROOT; };
 		AA000058 /* intro.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../intro.cpp; sourceTree = SOURCE_ROOT; };
 		AA000059 /* intro.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../intro.h; sourceTree = SOURCE_ROOT; };
+		AA00005A /* beam_pickup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../beam_pickup.cpp; sourceTree = SOURCE_ROOT; };
+		AA00005B /* beam_pickup.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../beam_pickup.h; sourceTree = SOURCE_ROOT; };
+		AA00005C /* lance_pickup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../lance_pickup.cpp; sourceTree = SOURCE_ROOT; };
+		AA00005D /* lance_pickup.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../lance_pickup.h; sourceTree = SOURCE_ROOT; };
+		AA00005E /* beam.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/beam.cpp; sourceTree = SOURCE_ROOT; };
+		AA00005F /* beam.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../weapon/beam.h; sourceTree = SOURCE_ROOT; };
+		AA000060 /* lance.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/lance.cpp; sourceTree = SOURCE_ROOT; };
+		AA000061 /* lance.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../weapon/lance.h; sourceTree = SOURCE_ROOT; };
 		AA000051 /* mesh.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../mesh.h; sourceTree = SOURCE_ROOT; };
 		AA000030 /* OpenGLES.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGLES.framework; path = System/Library/Frameworks/OpenGLES.framework; sourceTree = SDKROOT; };
 		AA000031 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
@@ -243,6 +255,14 @@
 			AA000057 /* gl_mini_station.h */,
 			AA000058 /* intro.cpp */,
 			AA000059 /* intro.h */,
+			AA00005A /* beam_pickup.cpp */,
+			AA00005B /* beam_pickup.h */,
+			AA00005C /* lance_pickup.cpp */,
+			AA00005D /* lance_pickup.h */,
+			AA00005E /* beam.cpp */,
+			AA00005F /* beam.h */,
+			AA000060 /* lance.cpp */,
+			AA000061 /* lance.h */,
 			);
 			name = Sources;
 			sourceTree = "<group>";
@@ -389,6 +409,10 @@
 			AB000052 /* preferences.cpp in Sources */,
 			AB000056 /* gl_mini_station.cpp in Sources */,
 			AB000058 /* intro.cpp in Sources */,
+			AB00005A /* beam_pickup.cpp in Sources */,
+			AB00005B /* lance_pickup.cpp in Sources */,
+			AB00005C /* beam.cpp in Sources */,
+			AB00005D /* lance.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
