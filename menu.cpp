@@ -181,11 +181,13 @@ void Menu::draw() {
 
     int n = opt_row_count();
     // Desktop: three centred lines per row (heading / step marks / value),
-    // pitched to fit up to 7 rows. Touch: one big tappable row per option,
-    // name on the left and the current value on the right (tap to cycle).
-    const float band_top = 300.0f, band_bottom = -388.0f;
+    // pitched to fit up to 7 rows. The options screen has no copyright line,
+    // so the rows use the full height below the header for breathing room.
+    // Touch: one big tappable row per option, name on the left and the
+    // current value on the right (tap to cycle).
+    const float band_top = 305.0f, band_bottom = -480.0f;
     float pitch = (band_top - band_bottom) / n;
-    int within = 32;  // desktop heading↔steps↔name spacing
+    int within = 34;  // desktop heading↔steps↔name spacing
 
     for (int row = 0; row < n; row++) {
       const OptRow &r = opt_row(row);
