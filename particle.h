@@ -31,6 +31,7 @@ private:
   bool world_bullet = false;
   bool has_trail = false;
   bool kills_invincible = false;
+  bool piercing = false;        // beam bolt: survives asteroid kills, ploughs through a line
   int trail_timer = 0;
   // Net client: this bullet already sprayed its cosmetic asteroid-impact
   // debris (Ship::net_cosmetic_impacts) — a replicated copy crossing an

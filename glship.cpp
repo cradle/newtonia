@@ -6,6 +6,8 @@
 #include "weapon/base.h"
 #include "weapon/god_mode.h"
 #include "weapon/nova.h"
+#include "weapon/beam.h"
+#include "weapon/lance.h"
 #include "mat4.h"
 #include "preferences.h"
 #include <math.h>
@@ -177,6 +179,22 @@ void GLShip::smooth_camera(int frame_delta) {
 
 void GLShip::step(int delta, const Grid &grid) {
   ship->step(delta, grid);
+
+#ifdef NEWTONIA_DEBUG_BEAM
+  // Debug/test builds only (-DNEWTONIA_DEBUG_BEAM): keep this player stocked
+  // with the Pierce Beam and Lance so they can be exercised immediately and
+  // after every respawn (respawning drops pickup weapons). Granted once per
+  // life — skipped while still present, so weapon switching works normally.
+  if(ship->is_alive()) {
+    bool has_beam = false, has_lance = false;
+    for(Weapon::Base *w : ship->primary_weapons) {
+      if(dynamic_cast<Weapon::Beam*>(w)) has_beam = true;
+      else if(dynamic_cast<Weapon::Lance*>(w)) has_lance = true;
+    }
+    if(!has_lance) ship->add_lance_ammo(999);
+    if(!has_beam) ship->add_beam_ammo(999);
+  }
+#endif
 
   for(list<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
     (*i)->step(delta);
@@ -940,10 +958,13 @@ void GLShip::draw_particles() const {
       //TODO: Work out how to make bullets draw themselves. GLBullet?
       if(b->world_bullet) {
         mb.color(1.0f, 1.0f, 1.0f);
+      } else if(b->piercing) {
+        mb.color(0.7f, 0.4f, 1.0f);   // beam lance: violet, matching the pickup
       } else {
         mb.color(color[0], color[1], color[2]);
       }
-      Point tail = b->position - b->velocity * 10;
+      // Beam bolts draw a longer streak to read as a lance.
+      Point tail = b->position - b->velocity * (b->piercing ? 22 : 10);
       mb.vertex(tail.x(), tail.y());
       mb.vertex(b->position.x(), b->position.y());
     }
@@ -951,6 +972,25 @@ void GLShip::draw_particles() const {
     glLineWidth(2.5f);
     mesh.upload(mb, GL_DYNAMIC_DRAW);
     mesh.draw();
+  }
+
+  if(!ship->lance_pulses.empty()) {
+    mb.clear();
+    mb.begin(GL_LINES);
+    for(auto &p : ship->lance_pulses) {
+      float a = p.aliveness();
+      // Amber flash matching the pickup, fading out over the pulse's ttl.
+      mb.color(1.0f, 0.85f, 0.35f, a);
+      for(size_t k = 0; k + 1 < p.points.size(); k++) {
+        mb.vertex(p.points[k].x(), p.points[k].y());
+        mb.vertex(p.points[k + 1].x(), p.points[k + 1].y());
+      }
+    }
+    mb.end();
+    glLineWidth(3.5f);
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw();
+    glLineWidth(2.5f);
   }
 
   if(!ship->bullet_trails.empty()) {

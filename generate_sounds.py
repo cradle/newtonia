@@ -28,6 +28,40 @@ def make_shoot():
         samples.append(math.sin(2 * math.pi * freq * t) * env * 0.8)
     return samples
 
+def make_beam():
+    """Piercing lance: bright electric zap, downward sweep 1600->500 Hz with a
+    buzzing harmonic, 180ms. Sharper and higher than the default pew."""
+    n = int(SAMPLE_RATE * 0.18)
+    samples = []
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        p = i / n
+        freq = 1600 - 1100 * p
+        env = math.exp(-t * 16) * (1.0 - p * 0.3)
+        base = math.sin(2 * math.pi * freq * t)
+        # Square-ish harmonic buzz an octave up for an energetic, cutting edge.
+        buzz = 0.3 * math.sin(2 * math.pi * freq * 2 * t)
+        buzz += 0.15 * (1.0 if math.sin(2 * math.pi * freq * t) >= 0 else -1.0)
+        samples.append((base + buzz) * env * 0.7)
+    return samples
+
+def make_lance():
+    """Full-length pulse: heavy instantaneous zap — a deep 220 Hz body under a
+    fast 2400->300 Hz crack, with a noise transient at the front, 300ms."""
+    n = int(SAMPLE_RATE * 0.3)
+    rng = random.Random(42)
+    samples = []
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        p = i / n
+        env = math.exp(-t * 14)
+        crack_freq = 2400 - 2100 * min(1.0, p * 3.0)
+        crack = math.sin(2 * math.pi * crack_freq * t) * env * 0.5
+        body = math.sin(2 * math.pi * 220 * t) * math.exp(-t * 8) * 0.45
+        transient = (rng.random() * 2 - 1) * math.exp(-t * 90) * 0.5
+        samples.append(crack + body + transient)
+    return samples
+
 def make_empty():
     """Empty ammo click: short noise burst + tone, 80ms."""
     n = int(SAMPLE_RATE * 0.08)
@@ -715,6 +749,8 @@ if __name__ == '__main__':
 
     sounds = {
         'shoot.wav':           make_shoot,
+        'beam.wav':            make_beam,
+        'lance.wav':           make_lance,
         'empty.wav':           make_empty,
         'click.wav':           make_click,
         'mine.wav':            make_mine,

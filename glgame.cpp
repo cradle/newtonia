@@ -60,6 +60,8 @@ const float GLGame::giga_mine_pickup_drop_chance = 0.005f;
 const float GLGame::missile_pickup_drop_chance = 0.0125f;
 const float GLGame::shield_pickup_drop_chance = 0.0125f;
 const float GLGame::god_mode_pickup_drop_chance = 0.0025f;
+const float GLGame::beam_pickup_drop_chance = 0.0075f;
+const float GLGame::lance_pickup_drop_chance = 0.005f;
 
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
@@ -310,6 +312,8 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
       case Save::PickupType::GodMode:  pickups->push_back(new GodModePickup(pos)); break;
       case Save::PickupType::ExtraLife: pickups->push_back(new ExtraLife(pos)); break;
       case Save::PickupType::NovaCharge: pickups->push_back(new NovaChargePickup(pos)); break;
+      case Save::PickupType::Beam:     pickups->push_back(new BeamPickup(pos)); break;
+      case Save::PickupType::Lance:    pickups->push_back(new LancePickup(pos)); break;
       default: break;
     }
   }
@@ -455,6 +459,10 @@ Save::GameState GLGame::build_save_data(bool include_asteroids) const {
       sp.type = Save::PickupType::ExtraLife;
     } else if (dynamic_cast<NovaChargePickup*>(p)) {
       sp.type = Save::PickupType::NovaCharge;
+    } else if (dynamic_cast<BeamPickup*>(p)) {
+      sp.type = Save::PickupType::Beam;
+    } else if (dynamic_cast<LancePickup*>(p)) {
+      sp.type = Save::PickupType::Lance;
     } else {
       continue; // unknown pickup type, skip
     }
@@ -3896,6 +3904,10 @@ void GLGame::tick(int delta) {
             pickups->push_back(new ShieldPickup((*oi)->position));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance) {
             pickups->push_back(new GodModePickup((*oi)->position));
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance + beam_pickup_drop_chance) {
+            pickups->push_back(new BeamPickup((*oi)->position));
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance + beam_pickup_drop_chance + lance_pickup_drop_chance) {
+            pickups->push_back(new LancePickup((*oi)->position));
           }
         }
         // Move to dead_objects so the collision grid no longer iterates this
