@@ -294,10 +294,14 @@ void Overlay::temperature(const GLGame *glgame, const GLShip *glship) {
 }
 
 void Overlay::respawn_timer(const GLGame *glgame, const GLShip *glship) {
-  // The dead-with-no-lives branch of draw_respawn_timer() renders its own
-  // "GameOver" + score card; during the spectate flow the spectate overlay
-  // owns that messaging, so suppress it (otherwise the two overlap).
-  if(glgame->spectate_arming() || glgame->is_spectating()) return;
+  // draw_respawn_timer()'s dead-with-no-lives branch renders its own
+  // "GameOver" + score. Online that messaging is owned by the full-screen
+  // overlays — the shared GAME OVER card (net_overlays) and, before that, the
+  // SPECTATING countdown — so the per-ship indicator would just double them
+  // up. Suppress it whenever the drawn ship is fully out online; the respawn
+  // countdown (lives > 0) and the offline split-screen indicator still show.
+  if(glgame->net_active() && !glship->ship->is_alive() && glship->ship->lives <= 0)
+    return;
   if(glgame->running && !glship->show_help) {
     float saved[16]; gles2_get_mvp(saved);
     float vp[16]; mat4_scale(vp, saved, 20.0f, 20.0f, 1.0f);
