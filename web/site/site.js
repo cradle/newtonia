@@ -69,7 +69,7 @@
 
   function drawStar(s) {
     ctx.globalAlpha = s.a;
-    ctx.fillStyle = s.r > 1.4 ? '#8fa8ff' : '#ffffff';
+    ctx.fillStyle = s.r > 1.4 ? '#8effb8' : '#ffffff';
     ctx.beginPath();
     ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
     ctx.fill();
@@ -80,7 +80,7 @@
     ctx.translate(o.x, o.y);
     ctx.rotate(o.rot);
     ctx.globalAlpha = o.a;
-    ctx.strokeStyle = '#dfe6ff';
+    ctx.strokeStyle = '#e9f7ee';
     ctx.lineWidth = 1.2;
     ctx.beginPath();
     ctx.moveTo(o.pts[0][0], o.pts[0][1]);
