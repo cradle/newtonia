@@ -4500,6 +4500,13 @@ void GLGame::draw_objects(float direction, bool minimap,
                              cam_x, cam_y, cull_r);
 
   for(auto pi = pickups->begin(); pi != pickups->end(); pi++) {
+    if (cull_r > 0) {
+      // Glow halos extend past the pickup radius — cull generously.
+      float reach = cull_r + (*pi)->radius * 4.0f;
+      float rx = (*pi)->position.x() - cam_x;
+      float ry = (*pi)->position.y() - cam_y;
+      if (rx*rx + ry*ry > reach*reach) continue;
+    }
     (*pi)->draw(direction);
   }
 
