@@ -229,21 +229,6 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 1.4rem; }
 }
 .hud-item:last-child { border-right: none; }
 .hud-item b { color: var(--ink); font-weight: 400; }
-.hud-temp {
-  display: inline-block;
-  width: 64px;
-  height: 8px;
-  border: 1px solid var(--line);
-  vertical-align: middle;
-}
-.hud-temp-fill {
-  display: block;
-  height: 100%;
-  width: 45%;
-  background: linear-gradient(90deg, var(--acc), var(--gold));
-  animation: heat 4s ease-in-out infinite alternate;
-}
-@keyframes heat { from { width: 30%; } to { width: 72%; } }
 
 /* ---- Buttons: chamfered HUD panels, no pill corners ---- */
 .btn {
@@ -424,6 +409,6 @@ kbd {
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .spin-slow, .jet-flicker, .hud-temp-fill, .press-fire { animation: none; }
+  .spin-slow, .jet-flicker, .press-fire { animation: none; }
   .btn:hover, .card:hover, a.platform:hover { transform: none; }
 }
