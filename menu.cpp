@@ -180,14 +180,16 @@ void Menu::draw() {
     Typer::draw_centered(0, touch ? 340 : 368, "OPTIONS", touch ? 30 : 26);
 
     int n = opt_row_count();
-    // Desktop: three centred lines per row (heading / step marks / value),
-    // pitched to fit up to 7 rows. The options screen has no copyright line,
-    // so the rows use the full height below the header for breathing room.
-    // Touch: one big tappable row per option, name on the left and the
-    // current value on the right (tap to cycle).
-    const float band_top = 305.0f, band_bottom = -480.0f;
+    // Desktop: one line per option, using the horizontal room — name on the
+    // left, numbered choices in the middle, value description on the right.
+    // Touch: one big tappable row per option, name left / value right (tap
+    // to cycle).
+    const float band_top = 250.0f, band_bottom = -300.0f;
     float pitch = (band_top - band_bottom) / n;
-    int within = 42;  // desktop heading↔steps↔name spacing (line spacing)
+    // Desktop columns (virtual units; the ±200 step span sits well inside
+    // the visible width even at 4:3): name left-anchored, step marks
+    // centred just right of centre, value left-anchored on the right.
+    const int NAME_X = -470, STEP_CX = 95, STEP_GAP = 50, VALUE_X = 265;
 
     for (int row = 0; row < n; row++) {
       const OptRow &r = opt_row(row);
@@ -210,19 +212,17 @@ void Menu::draw() {
         continue;
       }
 
-      int center    = (int)(band_top - (row + 0.5f) * pitch);
+      int y = (int)(band_top - (row + 0.5f) * pitch);
       std::string heading = std::string(active_row_ == row ? "> " : "  ") + r.name;
-      Typer::draw_centered(0, center + within, heading.c_str(), 12);
-      // Step marks centred on 0, 100 apart (5 steps span -200..200; the
-      // 2-step camera row sits at -50/50).
-      for (int i = 0; i < num_steps; i++) {
-        int x = (int)((i - (num_steps - 1) * 0.5f) * 100);
+      Typer::draw(NAME_X, y, heading.c_str(), 12);       // name, left
+      for (int i = 0; i < num_steps; i++) {              // numbered choices, mid
+        int x = STEP_CX + (int)((i - (num_steps - 1) * 0.5f) * STEP_GAP);
         std::string step = (i == cur_idx)
           ? "[" + std::to_string(i + 1) + "]"
           :       std::to_string(i + 1);
-        Typer::draw_centered(x, center, step.c_str(), 14);
+        Typer::draw_centered(x, y, step.c_str(), 13);
       }
-      Typer::draw_centered(0, center - within, lbl[cur_idx], 11);
+      Typer::draw(VALUE_X, y, lbl[cur_idx], 12);         // value description, right
     }
 
     if (touch) {
