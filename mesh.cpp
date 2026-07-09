@@ -110,6 +110,28 @@ void MeshBuilder::clear() {
     in_group_ = false;
 }
 
+void MeshBuilder::append_translated(const MeshBuilder& src, float dx, float dy) {
+    if (in_group_) end();
+    int base = (int)(pos_.size() / 3);
+    for (const MeshGroup& g : src.groups_) {
+        MeshGroup ng = g;
+        ng.vertex_start = base + g.vertex_start;
+#ifndef DESKTOP_COMPAT_GL
+        ng.vbo_pos = 0;
+        ng.vbo_col = 0;
+#endif
+        groups_.push_back(ng);
+    }
+    size_t n = src.pos_.size() / 3;
+    pos_.reserve(pos_.size() + src.pos_.size());
+    for (size_t i = 0; i < n; i++) {
+        pos_.push_back(src.pos_[i*3 + 0] + dx);
+        pos_.push_back(src.pos_[i*3 + 1] + dy);
+        pos_.push_back(src.pos_[i*3 + 2]);
+    }
+    col_.insert(col_.end(), src.col_.begin(), src.col_.end());
+}
+
 void MeshBuilder::flatten_to_lines() {
     if (in_group_) end();
     if (groups_.size() <= 1) return; // Already single-group — nothing to do.
@@ -299,11 +321,16 @@ Mesh::~Mesh() {
 }
 
 void Mesh::upload(const MeshBuilder& mb, GLenum usage) {
-    // Delete any existing per-group VBOs before replacing geometry.
+    // Keep existing per-group VBO ids so re-uploads (dynamic meshes rebuild
+    // every frame) reuse them instead of a delete+gen pair per group — the
+    // churn is measurable on mobile GL drivers. Extra old buffers are
+    // deleted below; missing ones are created.
 #ifndef DESKTOP_COMPAT_GL
+    std::vector<GLuint> old_pos, old_col;
+    old_pos.reserve(groups_.size()); old_col.reserve(groups_.size());
     for (MeshGroup& g : groups_) {
-        if (g.vbo_pos) glDeleteBuffers(1, &g.vbo_pos);
-        if (g.vbo_col) glDeleteBuffers(1, &g.vbo_col);
+        old_pos.push_back(g.vbo_pos);
+        old_col.push_back(g.vbo_col);
     }
 #endif
 
@@ -324,7 +351,15 @@ void Mesh::upload(const MeshBuilder& mb, GLenum usage) {
         cpu_col_.clear();
     }
 
-    if (vertex_count_ == 0) return;
+    if (vertex_count_ == 0) {
+#ifndef DESKTOP_COMPAT_GL
+        for (size_t i = 0; i < old_pos.size(); i++) {
+            if (old_pos[i]) glDeleteBuffers(1, &old_pos[i]);
+            if (old_col[i]) glDeleteBuffers(1, &old_col[i]);
+        }
+#endif
+        return;
+    }
 
 #ifdef DESKTOP_COMPAT_GL
     // Desktop: upload all vertices into two shared VBOs and record attribute
@@ -354,23 +389,36 @@ void Mesh::upload(const MeshBuilder& mb, GLenum usage) {
     // This avoids both the Safari/Metal non-zero-first bug and Emscripten's
     // JS-side WebGL attribute-state cache becoming stale when many meshes are
     // uploaded in sequence (e.g. Typer::init_meshes building ~60 char meshes).
+    size_t gi = 0;
     for (MeshGroup& g : groups_) {
         const float* pos_data = mb.positions().data() + (size_t)g.vertex_start * 3;
         const float* col_data = mb.colours().data()   + (size_t)g.vertex_start * 4;
 
-        glGenBuffers(1, &g.vbo_pos);
+        if (gi < old_pos.size() && old_pos[gi] && old_col[gi]) {
+            g.vbo_pos = old_pos[gi];
+            g.vbo_col = old_col[gi];
+        } else {
+            glGenBuffers(1, &g.vbo_pos);
+            glGenBuffers(1, &g.vbo_col);
+        }
+        gi++;
+
         glBindBuffer(GL_ARRAY_BUFFER, g.vbo_pos);
         glBufferData(GL_ARRAY_BUFFER,
                      (GLsizeiptr)((size_t)g.vertex_count * 3 * sizeof(float)),
                      pos_data, usage);
 
-        glGenBuffers(1, &g.vbo_col);
         glBindBuffer(GL_ARRAY_BUFFER, g.vbo_col);
         glBufferData(GL_ARRAY_BUFFER,
                      (GLsizeiptr)((size_t)g.vertex_count * 4 * sizeof(float)),
                      col_data, usage);
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+    // Delete leftover old buffers the new geometry didn't claim.
+    for (; gi < old_pos.size(); gi++) {
+        if (old_pos[gi]) glDeleteBuffers(1, &old_pos[gi]);
+        if (old_col[gi]) glDeleteBuffers(1, &old_col[gi]);
     }
 #endif
 }

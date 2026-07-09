@@ -226,8 +226,10 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
     }
   }
   mb.end();
-  mesh_fill.upload(mb, GL_DYNAMIC_DRAW);
-  mesh_fill.draw();
+  if (mb.vertex_count() > 0) {
+    mesh_fill.upload(mb, GL_DYNAMIC_DRAW);
+    mesh_fill.draw();
+  }
 
   // --- Outline pass (non-invisible asteroids, GL_LINES) ---
   mb.clear();
@@ -264,9 +266,11 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
     }
   }
   mb.end();
-  glLineWidth(is_minimap ? 1.0f : 2.5f);
-  mesh_outline.upload(mb, GL_DYNAMIC_DRAW);
-  mesh_outline.draw();
+  if (mb.vertex_count() > 0) {
+    glLineWidth(is_minimap ? 1.0f : 2.5f);
+    mesh_outline.upload(mb, GL_DYNAMIC_DRAW);
+    mesh_outline.draw();
+  }
 
   if (!is_minimap) {
     // --- Crack pass (tough asteroids) ---
@@ -300,9 +304,11 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
       }
     }
     mb.end();
-    glLineWidth(1.5f);
-    mesh_cracks.upload(mb, GL_DYNAMIC_DRAW);
-    mesh_cracks.draw();
+    if (mb.vertex_count() > 0) {
+      glLineWidth(1.5f);
+      mesh_cracks.upload(mb, GL_DYNAMIC_DRAW);
+      mesh_cracks.draw();
+    }
 
     // --- Armour edge indicator pass ---
     mb.clear();
@@ -352,9 +358,11 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
       }
     }
     mb.end();
-    glLineWidth(3.0f);
-    mesh_armour.upload(mb, GL_DYNAMIC_DRAW);
-    mesh_armour.draw();
+    if (mb.vertex_count() > 0) {
+      glLineWidth(3.0f);
+      mesh_armour.upload(mb, GL_DYNAMIC_DRAW);
+      mesh_armour.draw();
+    }
 
     // --- Teleport indicators (circles and arrows) ---
     mb.clear();
@@ -395,9 +403,11 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
         mb.end();
       }
     }
-    glLineWidth(2.0f);
-    mesh_teleport.upload(mb, GL_DYNAMIC_DRAW);
-    mesh_teleport.draw();
+    if (mb.vertex_count() > 0) {
+      glLineWidth(2.0f);
+      mesh_teleport.upload(mb, GL_DYNAMIC_DRAW);
+      mesh_teleport.draw();
+    }
 
     // --- Teleport debris (alive teleporting asteroids) ---
     mb.clear();
@@ -431,8 +441,10 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
       }
       mb.end();
     }
-    mesh_debris.upload(mb, GL_DYNAMIC_DRAW);
-    mesh_debris.draw(3.0f);
+    if (mb.vertex_count() > 0) {
+      mesh_debris.upload(mb, GL_DYNAMIC_DRAW);
+      mesh_debris.draw(3.0f);
+    }
 
     // --- Dead asteroid debris + score text ---
     {
@@ -461,8 +473,10 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
         }
       }
       mb.end();
-      mesh_dead_debris.upload(mb, GL_DYNAMIC_DRAW);
-      mesh_dead_debris.draw(3.0f);
+      if (mb.vertex_count() > 0) {
+        mesh_dead_debris.upload(mb, GL_DYNAMIC_DRAW);
+        mesh_dead_debris.draw(3.0f);
+      }
     }
 
     float tile_vp[16]; gles2_get_mvp(tile_vp);

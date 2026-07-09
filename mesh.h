@@ -54,6 +54,11 @@ public:
 
     void clear();
 
+    // Append another builder's collected groups with a position offset —
+    // used to assemble one mesh from prebuilt pieces (e.g. a text string
+    // from per-glyph builders). Must not be called mid-group.
+    void append_translated(const MeshBuilder& src, float dx, float dy = 0.0f);
+
     // Merge all GL_LINE_STRIP / GL_LINE_LOOP / GL_LINES groups into a single
     // GL_LINES group.  This eliminates multi-group meshes so that draw_with_mvp()
     // only ever needs one glVertexAttribPointer + glDrawArrays sequence.

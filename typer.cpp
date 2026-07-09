@@ -1,8 +1,11 @@
 #include "typer.h"
 
+#include <cstdio>
 #include <cstring>
+#include <map>
 #include <math.h>
 #include <set>
+#include <string>
 #include "glship.h"
 #include "gl_compat.h"
 #include "mat4.h"
@@ -10,6 +13,47 @@
 float Typer::colour[] = {0.0f,1.0f,0.0f};
 Mesh* Typer::char_meshes[256] = {};
 bool Typer::meshes_initialized = false;
+
+// CPU copies of the glyph geometry (aliased upper/lower like char_meshes),
+// kept so whole strings can be assembled into one cached mesh: one
+// thick-line draw per string instead of one per character — the per-draw
+// CPU projection + stream upload in gles2_draw_thick_lines_mvp() made
+// per-char HUD text a measurable slice of the Android frame.
+static MeshBuilder* s_char_builders[256] = {};
+static std::map<std::string, Mesh*> s_string_meshes;
+
+// Build (or fetch) the combined mesh for a whole string. Glyphs are baked at
+// their per-column offset in glyph-local units (advance = 2.0), so the one
+// pre_draw(x, y, size) transform positions the entire string exactly where
+// the per-char path would have. Returns NULL if any drawable char has no
+// prebuilt builder (the animated char) — caller falls back to per-char.
+static Mesh* string_mesh(const char* text) {
+  auto it = s_string_meshes.find(text);
+  if (it != s_string_meshes.end()) return it->second;
+
+  MeshBuilder combined;
+  int col = 0;
+  for (const char* c = text; *c; c++) {
+    unsigned char uc = (unsigned char)*c;
+    if (uc == '\'') continue;  // no glyph, no gap (matches Typer::draw)
+    MeshBuilder* gb = s_char_builders[uc];
+    if (gb) combined.append_translated(*gb, col * 2.0f);
+    else if (uc != ' ') return NULL;  // animated/unknown glyph: per-char path
+    col++;
+  }
+  combined.flatten_to_lines();
+
+  // Bound the cache: scores and countdowns mint new strings over a long
+  // session. Dropping everything on overflow is a one-frame rebuild.
+  if (s_string_meshes.size() >= 512) {
+    for (auto& e : s_string_meshes) delete e.second;
+    s_string_meshes.clear();
+  }
+  Mesh* m = new Mesh();
+  m->upload(combined);
+  s_string_meshes[text] = m;
+  return m;
+}
 const int Typer::original_window_width = 800;
 int Typer::window_width = Typer::original_window_width;
 float Typer::scaled_window_height = Typer::window_height;
@@ -62,22 +106,12 @@ void Typer::draw_lefted(float x, float y, int number, float size, int time) {
 }
 
 void Typer::draw(float x, float y, int number, float size, int time) {
-  bool negative = (number < 0);
-  int i = 0;
-
-  if(negative) {
-    number *= -1;
-  }
-
-  do {
-    draw(x-i*size*2, y, char((number % 10)+48), size, time);
-    i++;
-    number = number / 10;
-  } while(number != 0);
-
-  if(negative) {
-    draw(x-size*i-size*i,y,'-',size, time);
-  }
+  // Anchor stays on the LAST digit (digits historically drew right-to-left
+  // from x); the string path draws left-to-right, so shift the start left.
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%d", number);
+  size_t len = strlen(buf);
+  draw(x - (float)(len - 1) * size * 2.0f, y, buf, size, time);
 }
 
 void Typer::draw_lives(float x, float y, const GLShip *ship, float size, int time) {
@@ -96,6 +130,19 @@ void Typer::draw_centered(float x, float y, const char * text, float size, int t
 }
 
 void Typer::draw(float x, float y, const char * text, float size, int time) {
+  if (!meshes_initialized) init_meshes();
+  // Whole string as one cached mesh where possible: one thick-line draw
+  // instead of one per character. string_mesh() returns NULL for strings
+  // containing the animated char — those take the per-char path below.
+  if (text[0] && text[1]) {
+    Mesh* m = string_mesh(text);
+    if (m) {
+      pre_draw(x, y, size);
+      m->draw_tinted(colour[0], colour[1], colour[2], 1.0f);
+      post_draw();
+      return;
+    }
+  }
   unsigned int col = 0;
   for(unsigned int i = 0; i < strlen(text); i++) {
     if (text[i] == '\'') continue;  // no apostrophe glyph — skip, no gap
@@ -160,6 +207,8 @@ void Typer::init_meshes() {
     mb.flatten_to_lines();
     char_meshes[c] = new Mesh();
     char_meshes[c]->upload(mb);
+    delete s_char_builders[c];
+    s_char_builders[c] = new MeshBuilder(mb);   // CPU copy for string_mesh()
   };
 
   { MeshBuilder mb;
@@ -246,6 +295,10 @@ void Typer::init_meshes() {
     mb.flatten_to_lines();
     Mesh* m = new Mesh(); m->upload(mb);
     char_meshes[upper] = char_meshes[lower] = m;
+    if (s_char_builders[upper] != s_char_builders[lower])
+      delete s_char_builders[lower];
+    delete s_char_builders[upper];
+    s_char_builders[upper] = s_char_builders[lower] = new MeshBuilder(mb);
   };
 
   { MeshBuilder mb; mb.color(1,1,1);
@@ -448,6 +501,17 @@ void Typer::cleanup() {
     }
     char_meshes[i] = nullptr;
   }
+  // Same aliasing applies to the CPU glyph builders.
+  std::set<MeshBuilder*> freed_b;
+  for (int i = 0; i < 256; i++) {
+    if (s_char_builders[i] && freed_b.find(s_char_builders[i]) == freed_b.end()) {
+      freed_b.insert(s_char_builders[i]);
+      delete s_char_builders[i];
+    }
+    s_char_builders[i] = nullptr;
+  }
+  for (auto& e : s_string_meshes) delete e.second;
+  s_string_meshes.clear();
   meshes_initialized = false;
 }
 
