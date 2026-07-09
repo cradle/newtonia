@@ -719,7 +719,7 @@ bool Menu::show_online_row() const {
 }
 
 bool Menu::show_options_row() const {
-  return is_beta_feature_enabled();
+  return true;  // always available (was beta-gated)
 }
 
 int Menu::menu_row_size() { return is_touch_mode() ? 26 : 22; }

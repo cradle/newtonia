@@ -25,8 +25,8 @@ private:
   // ONLINE row (netplay lobby): only on builds with a net backend.
   bool show_online_row() const;
   int  online_row_index() const;  // -1 when the row is hidden
-  // OPTIONS row: beta-only, and keyboard/controller-only (the options
-  // screen has no touch interaction).
+  // OPTIONS row: always shown. The options screen works on keyboard,
+  // controller, and touch (tap a row to cycle its value).
   bool show_options_row() const;
   // Shared vertical row layout for the main menu (desktop cursor rows and
   // touch tap targets use the same geometry).
