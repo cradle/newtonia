@@ -208,9 +208,20 @@ void Intro::keyboard(unsigned char key, int x, int y) {
 }
 
 void Intro::keyboard_up(unsigned char key, int x, int y) {
-  // Only the menu key acts while the intro is up; shoot (on key down) starts.
-  if (!is_finished() && key == (unsigned char)g_prefs.general_keys.menu) {
+  // Only the menu and skip-level keys act while the intro is up; shoot (on
+  // key down) starts.
+  if (is_finished()) return;
+  if (key == (unsigned char)g_prefs.general_keys.menu) {
     leave_to_menu();
+    return;
+  }
+  // Skip-level during an intro skips this level too: apply the game's own
+  // skip handling (the intro is for the level being skipped), then start.
+  // One N per level whether an intro is up or not — level-marching driver
+  // scripts and the debug key behave identically on intro generations.
+  if (key == (unsigned char)g_prefs.general_keys.skip_level) {
+    game->keyboard_up(key, x, y);
+    dismiss();
   }
 }
 

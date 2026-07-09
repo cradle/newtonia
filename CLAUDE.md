@@ -85,7 +85,10 @@ gdb -batch -ex run -ex "bt 20" --args ./newtonia > gdb.log 2>&1 &
 - The skip-level key (`n`) sets `time_until_next_generation = 0`, so the next
   generation (and its intro screen) starts **immediately** — there is no 5 s
   tick countdown like a normally cleared level. Time waits in driver scripts
-  accordingly.
+  accordingly. It also works **on** an intro screen (skips that level and
+  dismisses the intro in one press), so level-marching scripts — and
+  `adb shell input keyevent KEYCODE_N` on device — can hammer `n` without
+  stalling on intro generations.
 - `kill $PID; wait $PID` reports 143 (SIGTERM) for a healthy shutdown; 139
   means the game segfaulted on its own.
 - `xdotool` prints `XGetInputFocus returned the focused window of 1` warnings
