@@ -120,7 +120,13 @@ namespace Net {
 //     EXACT enemy (no nearest-to-impact guessing), and the client kills
 //     its replica instantly with resurrection suppression — enemy
 //     deaths get the asteroid treatment.
-const uint8_t PROTO_VERSION = 16;
+// 17: MSG_SHOT flows BOTH ways. The host echoes its player's shots to the
+//     client (same wire format), which spawns exact clones instantly —
+//     host bullets used to exist client-side only via the 10 Hz snapshot
+//     rebuild, so each one popped in up to a snapshot interval late and
+//     already down-range (obvious when spectating at the host's muzzle).
+//     The echo also carries the host's gun sound to the client.
+const uint8_t PROTO_VERSION = 17;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check
@@ -140,10 +146,13 @@ enum MsgType {
   // consumes exactly the killing bullet's clone. RELIABLE — a claim must
   // survive the exact stall conditions that delay everything else.
   MSG_HIT = 10,
-  // Client shot report (PROTO 14): uint32 shot id, 2x float spawn pos,
-  // 2x float velocity (spread already applied), uint8 flags (bit0
+  // Shot report, BOTH ways since PROTO 17: uint32 shot id, 2x float spawn
+  // pos, 2x float velocity (spread already applied), uint8 flags (bit0
   // kills_invincible, bit1 trail). RELIABLE + ordered, so a MSG_HIT can
-  // never arrive before the shot it references.
+  // never arrive before the shot it references. C->H (PROTO 14): the host
+  // spawns exact clones of the client's shots. H->C (PROTO 17): the client
+  // spawns exact clones of the host's shots the moment they fire, instead
+  // of waiting for the next 10 Hz snapshot rebuild.
   MSG_SHOT = 11,
   // Client bullet-vs-ship hit claim (PROTO 15/16): uint8 kind (0 enemy,
   // 1 station, 2 mini-station), uint32 bullet net_id, uint32 target id

@@ -57,6 +57,20 @@ cp "$OUT/spectate-t2.png" "$OUT/spectate-countdown.png"  # mid-countdown
 cp "$OUT/spectate-t7.png" "$OUT/spectate-active.png"     # after hand-off
 shot $PEER spectate-peer        # peer view unaffected (still playing)
 
+# PROTO 17 (joiner-spectates-host direction): the surviving HOST fires for
+# 3 s; every shot must echo to the client as MSG_SHOT and spawn a clone
+# there instantly — "reported shots/s spawned" in the JOINER log is the
+# clone spawns' proof-of-flow (before PROTO 17 that line could only ever
+# appear on a host).
+if [ "$WHO" = remote ]; then
+  xdotool keydown --window $A space; sleep 3
+  xdotool keyup --window $A space; sleep 1
+  shot $B spectate-hostfire      # spectator view of the host firing
+  grep -aq "reported shots/s spawned" "$OUT/joiner.log" || {
+    echo "FAIL: no host shot echo reached the spectating client (PROTO 17)"
+    kill $PA $PB; exit 1; }
+fi
+
 kill $PA $PB 2>/dev/null; wait $PA $PB 2>/dev/null
 assert_clean "$OUT/host.log" "$OUT/joiner.log"
 echo "SPECTATE-E2E-OK"

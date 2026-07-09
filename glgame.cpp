@@ -689,6 +689,11 @@ void GLGame::add_remote_player() {
   // PROTO 14: this ship's bullets arrive as MSG_SHOT reports — its own
   // gun sim keeps its bookkeeping but mints no bullets.
   object->ship->net_remote_gun = true;
+  // PROTO 17: mirror of the client's shot reporting — every shot the host
+  // player fires is echoed to the client as MSG_SHOT (drained in tick()),
+  // which spawns an exact clone instantly instead of waiting for the next
+  // 10 Hz snapshot rebuild.
+  p1_ship->net_report_shots = true;
 }
 
 // Elastic asteroid-asteroid collisions: 2D impulse physics (mass ~
@@ -2757,6 +2762,29 @@ void GLGame::net_client_poll() {
       if (r.ok) net_handle_event(code, arg);
       continue;
     }
+    if (h.msg_type == Net::MSG_SHOT) {
+      // Host shot echo (PROTO 17), the mirror of the host's handler:
+      // spawn an exact clone of the bullet the HOST player just fired
+      // (same spawn, same spread-applied velocity) instead of waiting
+      // for the next 10 Hz snapshot rebuild — which is where each host
+      // bullet used to pop in, up to an interval late and already
+      // down-range (obvious when spectating at the host's muzzle).
+      // Leading by RTT/2 matches the rebuild's lead, so the clone and
+      // its snapshot successor line up; the clone also plays the shot
+      // sound, attenuated like every other remote cue.
+      uint32_t id = r.u32();
+      float sx = r.f32(), sy = r.f32(), svx = r.f32(), svy = r.f32();
+      uint8_t flags = r.u8();
+      if (!r.ok || players->empty()) continue;
+      Ship *host_ship = players->front()->ship;
+      float lead = net_lead_ms();
+      if (std::isfinite(sx) && std::isfinite(sy) && std::isfinite(svx) &&
+          std::isfinite(svy) && svx * svx + svy * svy < 25.0f)
+        host_ship->net_spawn_reported_bullet(
+            id, Point(sx + svx * lead, sy + svy * lead), Point(svx, svy),
+            (flags & 1) != 0, (flags & 2) != 0);
+      continue;
+    }
     if (h.msg_type == Net::MSG_DELTA) {
       uint32_t snap_id = r.u32();  // monotonic with keyframes
       if (net_last_delta_id_ &&
@@ -4214,16 +4242,16 @@ void GLGame::tick(int delta) {
       if (idx)
         net_send_event(Net::EV_SHIP_IMPACT, idx | (si.ting ? 0x100u : 0u));
     }
-    // Shots: the HOST player's go over as EV_REMOTE_SHOT (the client
+    // Shots: world actors' (enemies, the mini-station) go over as
+    // EV_WORLD_SHOT with their position for attenuation. The HOST
+    // player's are superseded by the MSG_SHOT echo below (PROTO 17),
+    // whose clone spawn plays the shot sound client-side; the client
     // fires its own weapon locally, and the host simulates the client's
-    // shots too — neither is relayed). World actors' (enemies, the
-    // mini-station) go over with their position for attenuation.
+    // shots too — neither is relayed.
     Ship *p1 = players->empty() ? NULL : players->front()->ship;
     Ship *p2 = players->size() >= 2 ? players->back()->ship : NULL;
     for (const Ship *shooter : Ship::net_shots) {
-      if (shooter == p1)
-        net_send_event(Net::EV_REMOTE_SHOT, 1);
-      else if (shooter != p2)
+      if (shooter != p1 && shooter != p2)
         net_send_event(Net::EV_WORLD_SHOT,
                        Net::pack_pos(shooter->position.x(),
                                      shooter->position.y(),
@@ -4235,10 +4263,29 @@ void GLGame::tick(int delta) {
       if (boom != p1 && boom != p2)
         net_send_event(Net::EV_WORLD_BOOM,
                        Net::pack_pos(boom->position.x(), boom->position.y(), world.x(), world.y()));
+    // PROTO 17: echo the host player's shots as MSG_SHOT (the mirror of
+    // the client's PROTO 14 reports; p1 is the only reporter on a host).
+    // The client spawns exact clones instantly — without this a host
+    // bullet exists there only via the 10 Hz snapshot rebuild, popping in
+    // up to a snapshot interval late and already down-range.
+    for (const Ship::NetShotReport &r : Ship::net_shot_reports) {
+      std::vector<uint8_t> msg;
+      Net::put_header(msg, Net::MSG_SHOT, 2);
+      Net::put_u32(msg, r.id);
+      Net::put_f32(msg, r.x);
+      Net::put_f32(msg, r.y);
+      Net::put_f32(msg, r.vx);
+      Net::put_f32(msg, r.vy);
+      Net::put_u8(msg, (r.kills_invincible ? 1 : 0) | (r.has_trail ? 2 : 0));
+      net_session_->transport()->send_reliable(&msg[0], msg.size());
+    }
   }
   Ship::net_ship_impacts.clear();
   Ship::net_shots.clear();
   Ship::net_booms.clear();
+  // Cleared outside the session guard: with no live session (solo online
+  // after a leave, rejoin pending) the queue must not grow unbounded.
+  Ship::net_shot_reports.clear();
 
   // Online host: broadcast the world at 10 Hz once everything has stepped.
   if (net_mode_ == NetHost) net_host_send_snapshot(delta);
@@ -4355,7 +4402,10 @@ bool GLGame::is_visible_to_any_player(Point p) const {
 // variant below treats EVERY player as a listener, which puts the remote
 // ship at distance zero from its own sounds.
 float GLGame::net_listener_volume(Point p) const {
-  GLShip *me = local_player();
+  // The listener is whoever the camera follows: normally the local player,
+  // but the peer while spectating — the spectator hears the action they
+  // are watching (their own wreck is dead and would mute everything).
+  GLShip *me = camera_target();
   if (!me || !me->ship->is_alive()) return 0.0f;
   float fov_deg = me->view_angle();
   float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
