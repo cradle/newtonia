@@ -133,7 +133,8 @@ struct AsteroidVerts {
 void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
                                 list<Asteroid*> const *dead_objects,
                                 float direction, bool is_minimap,
-                                float wrap_x, float wrap_y) {
+                                float wrap_x, float wrap_y,
+                                float cam_x, float cam_y, float cull_r) {
   // --- Pre-compute vertex data (trig once per asteroid) ---
   vector<AsteroidVerts> verts;
   verts.reserve(objects->size());
@@ -144,6 +145,11 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
     // and on the host) — see GLGame::net_reconcile_pose.
     v.cx  = a->position.x() + a->net_pose_err.x();
     v.cy  = a->position.y() + a->net_pose_err.y();
+    if (cull_r > 0) {
+      float reach = cull_r + a->radius;
+      float rx = v.cx - cam_x, ry = v.cy - cam_y;
+      if (rx*rx + ry*ry > reach*reach) continue;
+    }
     float r   = a->radius;
     float rot = a->rotation * (float)M_PI / 180.0f;
     v.segs    = seg_count(r);
@@ -407,6 +413,12 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
       for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
         Asteroid const *a = *it;
         if (!a->teleporting) continue;
+        if (cull_r > 0) {
+          // Debris drifts, so allow twice the radius before skipping.
+          float reach = cull_r + a->radius * 2.0f;
+          float rx = a->position.x() - cam_x, ry = a->position.y() - cam_y;
+          if (rx*rx + ry*ry > reach*reach) continue;
+        }
         for (auto const &d : a->debris) {
           float alive = d.aliveness();
           float alpha = tp_flicker[tp_flicker_idx++ % 64] * alive / 2.0f + alive / 2.0f;
@@ -436,6 +448,11 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
       mb.begin(GL_POINTS);
       for (list<Asteroid*>::const_iterator it = dead_objects->begin(); it != dead_objects->end(); ++it) {
         Asteroid const *a = *it;
+        if (cull_r > 0) {
+          float reach = cull_r + a->radius * 2.0f;
+          float rx = a->position.x() - cam_x, ry = a->position.y() - cam_y;
+          if (rx*rx + ry*ry > reach*reach) continue;
+        }
         for (auto d = a->debris.begin(); d != a->debris.end(); ++d) {
           float alive = d->aliveness();
           float alpha = flicker[flicker_idx++ % 64] * alive / 2.0f + alive / 2.0f;
@@ -452,6 +469,11 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
     for (list<Asteroid*>::const_iterator it = dead_objects->begin(); it != dead_objects->end(); ++it) {
       Asteroid const *a = *it;
       if (a->is_alive()) continue;  // score values belong to dead asteroids only
+      if (cull_r > 0) {
+        float reach = cull_r + a->radius;
+        float rx = a->position.x() - cam_x, ry = a->position.y() - cam_y;
+        if (rx*rx + ry*ry > reach*reach) continue;
+      }
       float val_vp[16];
       mat4_translate(val_vp, tile_vp, a->position.x(), a->position.y(), 0.0f);
       mat4_rotate_z(val_vp, val_vp, -direction);

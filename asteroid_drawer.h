@@ -11,9 +11,14 @@ class Particle;
 class AsteroidDrawer {
 public:
   static void draw(Asteroid const *object, float direction, bool is_minimap);
+  // cull_r > 0 enables per-asteroid screen culling: asteroids (and debris)
+  // further than cull_r + radius from (cam_x, cam_y) — the camera's centre
+  // in this tile's object space — are skipped entirely, geometry build and
+  // upload included. 0 (minimap, intro) draws everything as before.
   static void draw_batch(list<Asteroid*> const *objects, list<Asteroid*> const *dead_objects,
                          float direction, bool is_minimap,
-                         float wrap_x = 0, float wrap_y = 0);
+                         float wrap_x = 0, float wrap_y = 0,
+                         float cam_x = 0, float cam_y = 0, float cull_r = 0);
   static void draw_debris(vector<Particle> const &debris);
   static void draw_invisible_mask(Asteroid const *object, float x, float y);
 

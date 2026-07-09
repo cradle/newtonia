@@ -3622,11 +3622,16 @@ void GLGame::perf_report() {
   // (sim + GL submission); the remainder is swap/present (GPU-bound or
   // vsync). One line per second at most, only while slow.
   if (perf_frames_ * 1000 < (int)span * 55) {
+    Uint64 pcf = SDL_GetPerformanceFrequency();
     SDL_Log("perf: fps=%d tick=%ums(max %u) draw=%ums(max %u) "
-            "lens=%ums(max %u) other=%dms asteroids=%zu dead=%zu "
-            "pickups=%zu gen=%d",
+            "objs=%ums stars=%ums osd=%ums lens=%ums(max %u) other=%dms "
+            "asteroids=%zu dead=%zu pickups=%zu gen=%d",
             (int)(perf_frames_ * 1000 / span), perf_tick_ms_, perf_tick_max_,
-            perf_draw_ms_, perf_draw_max_, perf_lens_ms_, perf_lens_max_,
+            perf_draw_ms_, perf_draw_max_,
+            (unsigned)(perf_objs_pc_ * 1000 / pcf),
+            (unsigned)(perf_stars_pc_ * 1000 / pcf),
+            (unsigned)(perf_osd_pc_ * 1000 / pcf),
+            perf_lens_ms_, perf_lens_max_,
             (int)(span - perf_tick_ms_ - perf_draw_ms_),
             objects->size(), dead_objects->size(), pickups->size(),
             generation);
@@ -3636,6 +3641,7 @@ void GLGame::perf_report() {
   perf_tick_ms_ = perf_draw_ms_ = 0;
   perf_tick_max_ = perf_draw_max_ = 0;
   perf_lens_ms_ = perf_lens_max_ = 0;
+  perf_objs_pc_ = perf_stars_pc_ = perf_osd_pc_ = 0;
 }
 
 void GLGame::tick(int delta) {
@@ -4481,7 +4487,8 @@ void GLGame::tick(int delta) {
   //std::cout << (num_frames*1000 / current_time) << std::endl;
 }
 
-void GLGame::draw_objects(float direction, bool minimap) const {
+void GLGame::draw_objects(float direction, bool minimap,
+                          float cam_x, float cam_y, float cull_r) const {
   if(debug_grid && !minimap) grid.draw_debug();
 
   for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
@@ -4489,7 +4496,8 @@ void GLGame::draw_objects(float direction, bool minimap) const {
   }
 
   AsteroidDrawer::draw_batch(objects, dead_objects, direction, minimap,
-                             minimap ? world.x() : 0, minimap ? world.y() : 0);
+                             minimap ? world.x() : 0, minimap ? world.y() : 0,
+                             cam_x, cam_y, cull_r);
 
   for(auto pi = pickups->begin(); pi != pickups->end(); pi++) {
     (*pi)->draw(direction);
@@ -4724,7 +4732,9 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   setup_viewport(primary);
   float saved_sw = Typer::scaled_window_width;
   Typer::scaled_window_width = capped_hw / Typer::scale * nx;
+  Uint64 pc0 = SDL_GetPerformanceCounter();
   Overlay::draw(this, glship);
+  perf_osd_pc_ += SDL_GetPerformanceCounter() - pc0;
   Typer::scaled_window_width = saved_sw;
 }
 
@@ -4747,6 +4757,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
   float base_pv[16]; gles2_get_mvp(base_pv);
 
   // Draw the world tessellated 3x3, culling tiles that are entirely off-screen.
+  Uint64 pc0 = SDL_GetPerformanceCounter();
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
       // Nearest distance from camera to tile rectangle (starfield tiles are
@@ -4766,6 +4777,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
       starfield->draw_rear(position);
     }
   }
+  perf_stars_pc_ += SDL_GetPerformanceCounter() - pc0;
   // --- Invisible asteroid lensing: black asteroid polygon + shifted rear stars ---
   // Lensing is expensive per asteroid (the mask mesh re-uploads and
   // draw_stars_near's cache rebuild scans every star), so unlike the batched
@@ -4811,6 +4823,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
 
   // Game objects: drawn directly each tile (no display list) so draw_batch
   // can emit all asteroids in two draw calls per tile instead of one per asteroid.
+  pc0 = SDL_GetPerformanceCounter();
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
       // Nearest distance from camera to tile rect (objects span [0,world) per tile)
@@ -4826,9 +4839,14 @@ void GLGame::draw_perspective(GLShip *glship) const {
       mat4_rotate_z(tile_vp, base_pv, direction);
       mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
       gles2_set_vp(tile_vp);
-      draw_objects(direction);
+      // Camera centre in this tile's object space, for per-asteroid culling.
+      draw_objects(direction, false,
+                   position.x() - world.x()*x, position.y() - world.y()*y,
+                   cull_r);
     }
   }
+  perf_objs_pc_ += SDL_GetPerformanceCounter() - pc0;
+  pc0 = SDL_GetPerformanceCounter();
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
       float smin_x = world.x()*x - position.x();
@@ -4846,6 +4864,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
       starfield->draw_front(position);
     }
   }
+  perf_stars_pc_ += SDL_GetPerformanceCounter() - pc0;
 
   // --- Front star lensing (same void + shift, applied after front stars) ---
   lens_t0 = SDL_GetTicks();
