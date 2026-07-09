@@ -19,6 +19,7 @@ struct WeaponEntry {
         Missile,
         Shield,
         Nova,      // screen-clearing secondary; ammo = number of charges
+        Beam,      // primary piercing-bolt gun; ammo = number of bolts
     };
     Kind kind;
     int  weapon_index;  // Default only; ignored for all other kinds
@@ -80,7 +81,7 @@ struct Asteroid {
 // ── Pickup ───────────────────────────────────────────────────────────────────
 
 enum class PickupType : uint8_t {
-    Weapon, Mine, GigaMine, Missile, Shield, GodMode, ExtraLife, NovaCharge
+    Weapon, Mine, GigaMine, Missile, Shield, GodMode, ExtraLife, NovaCharge, Beam
 };
 
 struct Pickup {
@@ -140,7 +141,7 @@ struct MiniStation {
 
 struct GameState {
     static constexpr uint32_t MAGIC   = 0x4E57544E;  // "NWTN"
-    static constexpr uint16_t VERSION = 10;
+    static constexpr uint16_t VERSION = 11;
     // Oldest save format we can still read. Saves from MIN_VERSION..VERSION all
     // load; anything older (or from a newer build) is ignored. To keep old saves
     // working across a version bump, only ever APPEND new fields at the end of

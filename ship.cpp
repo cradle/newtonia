@@ -12,6 +12,7 @@
 #include "weapon/shield.h"
 #include "weapon/god_mode.h"
 #include "weapon/nova.h"
+#include "weapon/beam.h"
 
 static const int NOVA_MAX_AMMO = 10;
 #include <algorithm>
@@ -378,6 +379,35 @@ void Ship::add_shield_ammo(int amount) {
   secondary = --secondary_weapons.end();
 }
 
+void Ship::add_beam_ammo(int amount) {
+  // Primary weapon, like a picked-up Default gun: reuse an existing Beam and
+  // switch to it, or create one and select it (unless god mode / an automatic
+  // gun is currently being held, matching add_weapon()).
+  bool in_god_mode = god_mode_time_remaining() > 0;
+  bool auto_shooting = !primary_weapons.empty() && (*primary)->is_automatic() && (*primary)->is_shooting();
+
+  for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
+    if(dynamic_cast<Weapon::Beam*>(*it)) {
+      (*it)->add_ammo(amount);
+      if(!in_god_mode && !auto_shooting) {
+        (*primary)->shoot(false);
+        primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
+        primary = --primary_weapons.end();
+      }
+      return;
+    }
+  }
+
+  Weapon::Beam *w = new Weapon::Beam(this);
+  w->add_ammo(amount);
+  primary_weapons.push_back(w);
+  if(!in_god_mode && !auto_shooting) {
+    if (primary != primary_weapons.end())
+      (*primary)->shoot(false);
+    primary = --primary_weapons.end();
+  }
+}
+
 void Ship::add_god_mode(int duration_ms) {
   set_shield_hum(false);
   for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
@@ -500,6 +530,10 @@ Save::Player Ship::capture_state() const {
       we.kind         = Save::WeaponEntry::Kind::GodMode;
       we.weapon_index = -1;
       we.ammo         = gm->time_remaining();
+    } else if (dynamic_cast<Weapon::Beam*>(*it)) {
+      we.kind         = Save::WeaponEntry::Kind::Beam;
+      we.weapon_index = -1;
+      we.ammo         = (*it)->ammo();
     } else {
       Weapon::Default *dw = dynamic_cast<Weapon::Default*>(*it);
       we.kind         = Save::WeaponEntry::Kind::Default;
@@ -547,6 +581,11 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
   for (const auto &we : p.primary_weapons) {
     if (we.kind == Save::WeaponEntry::Kind::GodMode) {
       add_god_mode(we.ammo);
+    } else if (we.kind == Save::WeaponEntry::Kind::Beam) {
+      Weapon::Beam *w = new Weapon::Beam(this);
+      w->set_ammo(we.ammo);
+      primary_weapons.push_back(w);
+      primary = --primary_weapons.end();
     } else {
       // Bypass add_weapon(): it rejects weapon_index==-1 (base weapon) and
       // ignores saved ammo. Construct directly and restore ammo explicitly.
@@ -1143,8 +1182,15 @@ void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
           tally_nova_kill(object->position);
         }
         explode(bullets[i].position, object->velocity);
-        bullets[i] = std::move(bullets.back());
-        bullets.pop_back();
+        if(bullets[i].piercing) {
+          // Beam bolt keeps going: the swept collision next frame resumes from
+          // this hit point and catches the next asteroid along the line, so the
+          // bolt ploughs through a whole row without tunnelling.
+          ++i;
+        } else {
+          bullets[i] = std::move(bullets.back());
+          bullets.pop_back();
+        }
       }
     } else {
       ++i;
@@ -1358,6 +1404,10 @@ void Ship::mark_last_bullet_trail() {
 void Ship::mark_last_bullet_kills_invincible() {
   if(!bullets.empty())
     bullets.back().kills_invincible = true;
+}
+void Ship::mark_last_bullet_piercing() {
+  if(!bullets.empty())
+    bullets.back().piercing = true;
 }
 
 void Ship::fire_bullet_from_gun() {

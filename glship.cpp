@@ -921,10 +921,13 @@ void GLShip::draw_particles() const {
       //TODO: Work out how to make bullets draw themselves. GLBullet?
       if(b->world_bullet) {
         mb.color(1.0f, 1.0f, 1.0f);
+      } else if(b->piercing) {
+        mb.color(0.7f, 0.4f, 1.0f);   // beam lance: violet, matching the pickup
       } else {
         mb.color(color[0], color[1], color[2]);
       }
-      Point tail = b->position - b->velocity * 10;
+      // Beam bolts draw a longer streak to read as a lance.
+      Point tail = b->position - b->velocity * (b->piercing ? 22 : 10);
       mb.vertex(tail.x(), tail.y());
       mb.vertex(b->position.x(), b->position.y());
     }

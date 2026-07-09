@@ -134,6 +134,7 @@ class Ship : public CompositeObject {
     void add_giga_mine_ammo(int amount);
     void add_missile_ammo(int amount);
     void add_shield_ammo(int amount);
+    void add_beam_ammo(int amount);
     void add_god_mode(int duration_ms = 10000);
     int god_mode_time_remaining() const;
     bool shield_active() const;
@@ -148,6 +149,7 @@ class Ship : public CompositeObject {
     WrappedPoint gun() const;
     void mark_last_bullet_trail();
     void mark_last_bullet_kills_invincible();
+    void mark_last_bullet_piercing();
     void fire_bullet_from_gun();
     bool kill();
 
