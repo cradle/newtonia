@@ -126,6 +126,7 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 1.4rem; }
   letter-spacing: 0.14em;
   margin-bottom: 2.4rem;
   text-align: center;
+  color: var(--acc);
   text-shadow: 0 0 26px rgba(40, 255, 120, 0.22);
 }
 .sec-tag { color: var(--acc); opacity: 0.85; margin-right: 0.4em; }
@@ -182,7 +183,7 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 1.4rem; }
   width: min(640px, 82vw);
   height: auto;
   margin: 0 auto;
-  color: var(--ink);
+  color: var(--acc);
   filter: drop-shadow(0 0 16px rgba(40, 255, 120, 0.65));
 }
 .tagline {
@@ -320,7 +321,7 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 1.4rem; }
   overflow: visible;
 }
 .card h3 {
-  color: var(--ink);
+  color: var(--acc-bright);
   font-size: 1rem;
   margin-bottom: 0.5rem;
   letter-spacing: 0.06em;
