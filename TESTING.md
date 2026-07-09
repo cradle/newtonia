@@ -84,8 +84,9 @@ test/e2e/hiccup.sh   # transport dies under live processes -> auto-pause -> AUTO
 test/e2e/turnexpiry.sh # REAL TURN expiry on a relay-forced pair (needs UDP egress)
 test/e2e/spectate.sh # one player out of lives -> "SPECTATING IN N" -> camera to peer
 test/e2e/spectate_disconnect.sh # joiner spectating -> host process killed -> GAME OVER
-test/e2e/weapons_net.sh # PROTO 18: lance pulses + beam clones both ways (needs the
-                        # cheat build: make clean && NEWTONIA_DEBUG_BEAM=1 make -j NETPLAY=1)
+test/e2e/weapons_net.sh # PROTO 18: lance pulses + beam clones both ways (normal
+                        # NETPLAY=1 build; the driver sets the runtime hook
+                        # NEWTONIA_NET_TEST_GRANT_WEAPONS=1 to stock both weapons)
 ```
 
 spectate.sh uses the host-only `NEWTONIA_NET_TEST_KILL_MS`/`_WHO` hooks

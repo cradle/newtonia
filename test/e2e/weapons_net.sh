@@ -1,8 +1,8 @@
 #!/bin/bash
-# PROTO 18 regression: Pierce Beam + Lance online. REQUIRES a build with
-# BOTH flags:   make clean && NEWTONIA_DEBUG_BEAM=1 make -j NETPLAY=1
-# (the debug flag keeps every player stocked with Lance+Beam so the driver
-# can cycle to them; without it the asserts below fail with no pulses).
+# PROTO 18 regression: Pierce Beam + Lance online, on a normal NETPLAY=1
+# build. NEWTONIA_NET_TEST_GRANT_WEAPONS=1 (runtime hook, inert without the
+# env var) keeps every player stocked with Lance+Beam so the driver can
+# cycle to them deterministically (real drops are random).
 #
 # Two instances connect via the relay; each side cycles off the default gun
 # and fires the lance — the peer must log "lance pulse received" (MSG_LANCE,
@@ -17,6 +17,7 @@ fi
 . "$(dirname "$0")/lib.sh"
 relay_check
 
+export NEWTONIA_NET_TEST_GRANT_WEAPONS=1
 PA=$(launch host)
 sleep 2
 PB=$(launch joiner)
@@ -42,15 +43,16 @@ grep -aq "bootstrap adopted" "$OUT/joiner.log" || { echo "NO BOOTSTRAP"; exit 1;
 # cycle positions on both sides (q = P1 next-weapon; each machine drives
 # its LOCAL player with p1 keys) — every weapon fires at least once
 # regardless of which one the grant left selected.
-echo "== both fire through all three primaries"
-for round in 1 2 3; do
+echo "== both fire through all three primaries (twice: a ship that died
+==    mid-sequence respawns in ~4 s with the weapons re-granted)"
+for round in 1 2 3 4 5 6; do
   for i in 1 2 3; do key $A space; key $B space; sleep 0.5; done
   key $A q; key $B q
+  [ "$round" = 3 ] && sleep 5   # cover a respawn between the two passes
 done
 sleep 2
 grep -aq "lance pulse received" "$OUT/host.log" || {
-  echo "FAIL: client lance pulse never reached the host (MSG_LANCE C->H)."
-  echo "      (is the binary built with NEWTONIA_DEBUG_BEAM=1 NETPLAY=1?)"
+  echo "FAIL: client lance pulse never reached the host (MSG_LANCE C->H)"
   kill $PA $PB; exit 1; }
 grep -aq "lance pulse received" "$OUT/joiner.log" || {
   echo "FAIL: host lance pulse never reached the client (MSG_LANCE H->C)"

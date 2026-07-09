@@ -180,12 +180,15 @@ void GLShip::smooth_camera(int frame_delta) {
 void GLShip::step(int delta, const Grid &grid) {
   ship->step(delta, grid);
 
-#ifdef NEWTONIA_DEBUG_BEAM
-  // Debug/test builds only (-DNEWTONIA_DEBUG_BEAM): keep this player stocked
-  // with the Pierce Beam and Lance so they can be exercised immediately and
-  // after every respawn (respawning drops pickup weapons). Granted once per
-  // life — skipped while still present, so weapon switching works normally.
-  if(ship->is_alive()) {
+  // e2e hook in the NEWTONIA_NET_TEST_* family (see test/e2e/weapons_net.sh):
+  // keep this player stocked with the Pierce Beam and Lance so the drivers
+  // can exercise them deterministically (drops are random). Granted once per
+  // life — skipped while still present, so weapon cycling works normally.
+  // Inert without the env var; replaces the old NEWTONIA_DEBUG_BEAM
+  // compile-time cheat, so no special build is needed (or shipped).
+  static const bool test_grant_weapons =
+      SDL_getenv("NEWTONIA_NET_TEST_GRANT_WEAPONS") != NULL;
+  if(test_grant_weapons && ship->is_alive()) {
     bool has_beam = false, has_lance = false;
     for(Weapon::Base *w : ship->primary_weapons) {
       if(dynamic_cast<Weapon::Beam*>(w)) has_beam = true;
@@ -194,7 +197,6 @@ void GLShip::step(int delta, const Grid &grid) {
     if(!has_lance) ship->add_lance_ammo(999);
     if(!has_beam) ship->add_beam_ammo(999);
   }
-#endif
 
   for(list<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
     (*i)->step(delta);
