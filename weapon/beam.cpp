@@ -12,7 +12,7 @@ namespace Weapon {
   // clears a line of asteroids in a couple of frames. The swept
   // segment-polygon collision in Ship handles the high speed without tunnelling.
   static const float BOLT_SPEED = 1.5f;
-  static const float BOLT_TTL   = 500.0f;
+  static const float BOLT_TTL   = 250.0f;
 
   Beam::Beam(Ship *ship) :
     Base(ship),
