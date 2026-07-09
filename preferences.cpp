@@ -105,7 +105,13 @@ static void parse_line(const char *key, const char *val) {
     if (strcmp(key, "fullscreen") == 0) {
         g_prefs.fullscreen = (val[0] == '1');
     } else if (strcmp(key, "rotate_view") == 0) {
-        g_prefs.rotate_view = (val[0] == '1');
+        // Legacy single global (pre-per-player). Seed BOTH players from it so
+        // an old INI's one setting migrates; explicit p1_/p2_rotate_view lines
+        // below (written after this in newer files) override per player.
+        bool v = (val[0] == '1');
+        g_prefs.rotate_view = v;
+        g_prefs.p1_keys.rotate_view = v;
+        g_prefs.p2_keys.rotate_view = v;
     } else if (strcmp(key, "friendly_fire") == 0) {
         g_prefs.friendly_fire = (val[0] == '1');
     } else if (strcmp(key, "star_density") == 0) {
@@ -140,6 +146,8 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "p1_camera_smoothing") == 0) {
         float v = (float)atof(val);
         if (v >= 0.0f && v <= 0.1f) g_prefs.p1_keys.camera_smoothing = v;
+    } else if (strcmp(key, "p1_rotate_view") == 0) {
+        g_prefs.p1_keys.rotate_view = (val[0] == '1');
 
     // Player 2 keybinds
     } else if (strcmp(key, "p2_left")           == 0) { g_prefs.p2_keys.left           = ini_to_key(val);
@@ -160,6 +168,8 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "p2_camera_smoothing") == 0) {
         float v = (float)atof(val);
         if (v >= 0.0f && v <= 0.1f) g_prefs.p2_keys.camera_smoothing = v;
+    } else if (strcmp(key, "p2_rotate_view") == 0) {
+        g_prefs.p2_keys.rotate_view = (val[0] == '1');
 
     // General keybinds
     } else if (strcmp(key, "general_pause")                == 0) { g_prefs.general_keys.pause                = ini_to_key(val);
@@ -209,7 +219,9 @@ void save_preferences() {
 
     // Scalar preferences
     fprintf(f, "fullscreen=%d\n",              g_prefs.fullscreen         ? 1 : 0);
-    fprintf(f, "rotate_view=%d\n",             g_prefs.rotate_view        ? 1 : 0);
+    // Legacy global written from P1 so a downgrade to a pre-per-player build
+    // still reads a sane camera setting; new builds use p1_/p2_rotate_view.
+    fprintf(f, "rotate_view=%d\n",             g_prefs.p1_keys.rotate_view ? 1 : 0);
     fprintf(f, "friendly_fire=%d\n",           g_prefs.friendly_fire      ? 1 : 0);
     fprintf(f, "star_density=%.4f\n",           g_prefs.star_density);
     if (!g_prefs.signal_url.empty())
@@ -236,6 +248,7 @@ void save_preferences() {
     WRITE_KEY("p1_toggle_rotate_view", g_prefs.p1_keys.toggle_rotate_view);
     fprintf(f, "p1_keyboard_sensitivity=%.2f\n", g_prefs.p1_keys.keyboard_sensitivity);
     fprintf(f, "p1_camera_smoothing=%.4f\n",     g_prefs.p1_keys.camera_smoothing);
+    fprintf(f, "p1_rotate_view=%d\n",            g_prefs.p1_keys.rotate_view ? 1 : 0);
 
     // Player 2 keybinds
     WRITE_KEY("p2_left",           g_prefs.p2_keys.left);
@@ -252,6 +265,7 @@ void save_preferences() {
     WRITE_KEY("p2_toggle_rotate_view", g_prefs.p2_keys.toggle_rotate_view);
     fprintf(f, "p2_keyboard_sensitivity=%.2f\n", g_prefs.p2_keys.keyboard_sensitivity);
     fprintf(f, "p2_camera_smoothing=%.4f\n",     g_prefs.p2_keys.camera_smoothing);
+    fprintf(f, "p2_rotate_view=%d\n",            g_prefs.p2_keys.rotate_view ? 1 : 0);
 
     // General keybinds
     WRITE_KEY("general_pause",                g_prefs.general_keys.pause);

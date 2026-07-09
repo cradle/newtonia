@@ -25,6 +25,7 @@ struct PlayerKeys {
     int toggle_rotate_view = 'v'; // P1 default; P2 default is ';' (set in ctor)
     float keyboard_sensitivity = 1.0f;  // rotation speed multiplier
     float camera_smoothing     = 0.004f; // camera follow rate (0 = instant snap)
+    bool  rotate_view          = true;  // camera follows this ship's heading
 };
 
 struct GeneralKeys {
@@ -42,7 +43,9 @@ struct GeneralKeys {
 
 struct Preferences {
     bool fullscreen          = true;   // desktop only; ignored on mobile/web
-    bool rotate_view         = true;   // camera follows ship heading
+    bool rotate_view         = true;   // LEGACY global (pre-per-player): only a
+                                       // migration/downgrade seed now — the game
+                                       // reads PlayerKeys::rotate_view per player
     bool friendly_fire       = true;   // players damage each other
     int  window_width        = 800;    // last windowed resolution (desktop only)
     int  window_height       = 600;

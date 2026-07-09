@@ -366,7 +366,8 @@ void GLShip::controller_input(SDL_Event event) {
     ship->behaviours.push_back(new Teleport(ship));
   } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_LEFTSTICK && pressed) {
     rotating_view = !rotating_view;
-    g_prefs.rotate_view = rotating_view;
+    if (rotate_view_pref_) *rotate_view_pref_ = rotating_view;
+    else g_prefs.rotate_view = rotating_view;
     save_preferences();
   }
 }
@@ -568,7 +569,8 @@ void GLShip::input(unsigned char key, bool pressed) {
     ship->behaviours.push_back(new Teleport(ship));
   } else if (key == (unsigned char)toggle_rotate_view_key && pressed) {
     rotating_view = !rotating_view;
-    g_prefs.rotate_view = rotating_view;
+    if (rotate_view_pref_) *rotate_view_pref_ = rotating_view;
+    else g_prefs.rotate_view = rotating_view;
     save_preferences();
   }
 }

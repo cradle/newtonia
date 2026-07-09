@@ -40,12 +40,13 @@
 #include <unordered_map>
 
 static void set_player_keys(GLShip *gs, int player_index) {
-  const PlayerKeys &k = (player_index == 0) ? g_prefs.p1_keys : g_prefs.p2_keys;
+  PlayerKeys &k = (player_index == 0) ? g_prefs.p1_keys : g_prefs.p2_keys;
   gs->set_keys(k.left, k.right, k.thrust, k.shoot, k.reverse, k.mine,
                k.next_weapon, k.boost, k.teleport, k.help, k.next_secondary,
                k.toggle_rotate_view);
   gs->set_keyboard_sensitivity(k.keyboard_sensitivity);
   gs->set_camera_smoothing(k.camera_smoothing);
+  gs->set_rotate_view_pref(&k.rotate_view);
 }
 
 const int GLGame::default_world_width = 2500;

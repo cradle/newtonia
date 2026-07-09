@@ -30,6 +30,13 @@ public:
   void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key, int teleport_key, int help_key, int next_secondary_key, int toggle_rotate_view_key);
   void set_keyboard_sensitivity(float s) { keyboard_sensitivity = s; }
   void set_camera_smoothing(float s)     { camera_smoothing = s; }
+  // Per-player camera fixed/rotate: adopt the owning player's pref as the
+  // initial state and remember where to persist an in-game toggle (the V
+  // key / left-stick click). NULL for the remote ghost ship (no local input).
+  void set_rotate_view_pref(bool *pref) {
+    if (pref) rotating_view = *pref;
+    rotate_view_pref_ = pref;
+  }
   void set_controller(SDL_GameController *game_controller);
   bool has_controller() const;
   bool is_my_controller_id(SDL_JoystickID id) const;
@@ -107,6 +114,7 @@ protected:
   bool kb_rotate_right = false;
 
   bool rotating_view, show_help, last_input_was_controller;
+  bool *rotate_view_pref_ = nullptr;  // per-player pref to persist on toggle
   float camera_rotation;
   float camera_angle;
 
