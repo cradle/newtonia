@@ -7,6 +7,7 @@
 #include "weapon/god_mode.h"
 #include "weapon/nova.h"
 #include "weapon/beam.h"
+#include "weapon/lance.h"
 #include "mat4.h"
 #include "preferences.h"
 #include <math.h>
@@ -181,13 +182,16 @@ void GLShip::step(int delta, const Grid &grid) {
 
 #ifdef NEWTONIA_DEBUG_BEAM
   // Debug/test builds only (-DNEWTONIA_DEBUG_BEAM): keep this player stocked
-  // with the Pierce Beam so it can be exercised immediately and after every
-  // respawn (respawning drops pickup weapons). Granted once per life — skipped
-  // while the beam is still present, so the player can freely switch weapons.
+  // with the Pierce Beam and Lance so they can be exercised immediately and
+  // after every respawn (respawning drops pickup weapons). Granted once per
+  // life — skipped while still present, so weapon switching works normally.
   if(ship->is_alive()) {
-    bool has_beam = false;
-    for(Weapon::Base *w : ship->primary_weapons)
-      if(dynamic_cast<Weapon::Beam*>(w)) { has_beam = true; break; }
+    bool has_beam = false, has_lance = false;
+    for(Weapon::Base *w : ship->primary_weapons) {
+      if(dynamic_cast<Weapon::Beam*>(w)) has_beam = true;
+      else if(dynamic_cast<Weapon::Lance*>(w)) has_lance = true;
+    }
+    if(!has_lance) ship->add_lance_ammo(999);
     if(!has_beam) ship->add_beam_ammo(999);
   }
 #endif
@@ -949,6 +953,25 @@ void GLShip::draw_particles() const {
     glLineWidth(2.5f);
     mesh.upload(mb, GL_DYNAMIC_DRAW);
     mesh.draw();
+  }
+
+  if(!ship->lance_pulses.empty()) {
+    mb.clear();
+    mb.begin(GL_LINES);
+    for(auto &p : ship->lance_pulses) {
+      float a = p.aliveness();
+      // Amber flash matching the pickup, fading out over the pulse's ttl.
+      mb.color(1.0f, 0.85f, 0.35f, a);
+      for(size_t k = 0; k + 1 < p.points.size(); k++) {
+        mb.vertex(p.points[k].x(), p.points[k].y());
+        mb.vertex(p.points[k + 1].x(), p.points[k + 1].y());
+      }
+    }
+    mb.end();
+    glLineWidth(3.5f);
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw();
+    glLineWidth(2.5f);
   }
 
   if(!ship->bullet_trails.empty()) {

@@ -36,6 +36,15 @@ struct Shockwave {
   }
 };
 
+// A fired lance pulse, kept only for rendering: the polyline the ray-march
+// traced (gun -> reflections -> end point), fading out over ttl ms.
+struct LancePulse {
+  std::vector<Point> points;
+  float time_left;
+  float ttl;
+  float aliveness() const { return ttl > 0.0f ? time_left / ttl : 0.0f; }
+};
+
 class Behaviour;
 class Object;
 namespace Weapon { class Base; }
@@ -99,6 +108,8 @@ class Ship : public CompositeObject {
     std::vector<Particle> bullets, mines, giga_mines, bullet_trails;
     std::vector<MissileShot> missiles;
     std::vector<Shockwave> shockwaves;
+    std::vector<LancePulse> lance_pulses;
+    bool lance_pulse_pending = false;  // set by Weapon::Lance; consumed in step()
 
     enum Rotation {
       LEFT = 1,
@@ -135,6 +146,7 @@ class Ship : public CompositeObject {
     void add_missile_ammo(int amount);
     void add_shield_ammo(int amount);
     void add_beam_ammo(int amount);
+    void add_lance_ammo(int amount);
     void add_god_mode(int duration_ms = 10000);
     int god_mode_time_remaining() const;
     bool shield_active() const;
@@ -190,6 +202,7 @@ class Ship : public CompositeObject {
   private:
     void safe_position(const Grid &grid, bool try_current = false);
     void tally_nova_kill(const Point &pos);  // call on every asteroid kill; drops pickup every 100
+    void fire_lance_pulse(const Grid &grid); // instantaneous lance ray-march (see weapon/lance.h)
 
     void play_rotating_sound(bool on);
     void update_god_mode_music(int time_remaining);

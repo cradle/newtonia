@@ -215,6 +215,7 @@ There are three states:
 | `weapon/god_mode` | God Mode | Timed invincibility (10s); fires periodic shockwaves (150ms); plays special music with a warning phase in the final 3s |
 | `weapon/nova` | Nova | Secondary weapon; charges accumulate from asteroid kills (0–9); triggers `ship->nova_detonate()` |
 | `weapon/beam` | Pierce Beam | Primary weapon; limited ammo; fires a single fast bolt (`piercing` flag on the `Particle`) that ploughs straight through a line of asteroids instead of stopping at the first, but only continues through asteroids it actually destroys — it stops when it hits one it can't destroy (invincible, or tough not yet broken); one bolt per trigger pull |
+| `weapon/lance` | Lance | Primary weapon; limited ammo; one instantaneous full-length pulse per trigger pull (`Lance::RANGE` = the beam bolt's total travel). The weapon just sets `ship->lance_pulse_pending`; `Ship::fire_lance_pulse()` ray-marches it with the grid: kills every killable asteroid along the line, mirror-reflects (carrying remaining distance) off surfaces that reflect bullets (reflective asteroids, armoured faces, phased ghosts), and is blocked by anything it can't destroy. The traced polyline is kept as a fading `LancePulse` drawn by `GLShip` |
 
 ### Pickup System
 
@@ -230,9 +231,10 @@ All inherit from `Pickup` base class (`pickup.h`). Each pickup implements `draw(
 | `god_mode_pickup` | God Mode | +10s invincibility |
 | `nova_charge_pickup` | Nova Charge | +1 nova charge (auto-drops every 100 asteroid kills) |
 | `beam_pickup` | Pierce Beam | +8 beam bolts (violet star) |
+| `lance_pickup` | Lance | +3 lance pulses (amber star) |
 | `extra_life` | Extra Life | +1 life (heart shape) |
 
-**Drop chances** (per asteroid death, constants in `glgame.cpp`): extra_life 0.3125%, weapon 1.25%, mine 1.25%, giga_mine 0.5%, missile 1.25%, shield 1.25%, god_mode 0.25%, beam 0.75%.
+**Drop chances** (per asteroid death, constants in `glgame.cpp`): extra_life 0.3125%, weapon 1.25%, mine 1.25%, giga_mine 0.5%, missile 1.25%, shield 1.25%, god_mode 0.25%, beam 0.75%, lance 0.5%.
 
 ### Asteroid Special Types
 
@@ -319,8 +321,8 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 
 ### Save / Load
 
-**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 11:
-- `WeaponEntry`: kind, weapon_index, ammo (kinds include the primary `Beam`)
+**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 12:
+- `WeaponEntry`: kind, weapon_index, ammo (kinds include the primaries `Beam` and `Lance`)
 - `Player`: score, lives, kills, respawning flag, position, velocity, facing, weapons, nova state
 - `Asteroid`: position, velocity, radius, health, all special flags and transient state
 - `Pickup`: type, position, weapon_index

@@ -13,6 +13,7 @@
 #include "weapon/god_mode.h"
 #include "weapon/nova.h"
 #include "weapon/beam.h"
+#include "weapon/lance.h"
 
 static const int NOVA_MAX_AMMO = 10;
 #include <algorithm>
@@ -408,6 +409,33 @@ void Ship::add_beam_ammo(int amount) {
   }
 }
 
+void Ship::add_lance_ammo(int amount) {
+  // Primary weapon; same reuse-or-create-and-select logic as add_beam_ammo().
+  bool in_god_mode = god_mode_time_remaining() > 0;
+  bool auto_shooting = !primary_weapons.empty() && (*primary)->is_automatic() && (*primary)->is_shooting();
+
+  for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
+    if(dynamic_cast<Weapon::Lance*>(*it)) {
+      (*it)->add_ammo(amount);
+      if(!in_god_mode && !auto_shooting) {
+        (*primary)->shoot(false);
+        primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
+        primary = --primary_weapons.end();
+      }
+      return;
+    }
+  }
+
+  Weapon::Lance *w = new Weapon::Lance(this);
+  w->add_ammo(amount);
+  primary_weapons.push_back(w);
+  if(!in_god_mode && !auto_shooting) {
+    if (primary != primary_weapons.end())
+      (*primary)->shoot(false);
+    primary = --primary_weapons.end();
+  }
+}
+
 void Ship::add_god_mode(int duration_ms) {
   set_shield_hum(false);
   for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
@@ -534,6 +562,10 @@ Save::Player Ship::capture_state() const {
       we.kind         = Save::WeaponEntry::Kind::Beam;
       we.weapon_index = -1;
       we.ammo         = (*it)->ammo();
+    } else if (dynamic_cast<Weapon::Lance*>(*it)) {
+      we.kind         = Save::WeaponEntry::Kind::Lance;
+      we.weapon_index = -1;
+      we.ammo         = (*it)->ammo();
     } else {
       Weapon::Default *dw = dynamic_cast<Weapon::Default*>(*it);
       we.kind         = Save::WeaponEntry::Kind::Default;
@@ -583,6 +615,11 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
       add_god_mode(we.ammo);
     } else if (we.kind == Save::WeaponEntry::Kind::Beam) {
       Weapon::Beam *w = new Weapon::Beam(this);
+      w->set_ammo(we.ammo);
+      primary_weapons.push_back(w);
+      primary = --primary_weapons.end();
+    } else if (we.kind == Save::WeaponEntry::Kind::Lance) {
+      Weapon::Lance *w = new Weapon::Lance(this);
       w->set_ammo(we.ammo);
       primary_weapons.push_back(w);
       primary = --primary_weapons.end();
@@ -756,6 +793,8 @@ void Ship::reset(bool was_killed) {
   bullets.clear();
   missiles.clear();
   shockwaves.clear();
+  lance_pulses.clear();
+  lance_pulse_pending = false;
   debris.clear();
   rotation_direction = NONE;
   still_rotating_left = false;
@@ -1200,6 +1239,121 @@ void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
   }
 }
 
+void Ship::fire_lance_pulse(const Grid &grid) {
+  // Instantaneous full-length pulse: ray-march up to Weapon::Lance::RANGE of
+  // total path. Killable asteroids along the line die and the pulse continues
+  // through them; surfaces that reflect bullets (reflective asteroids,
+  // armoured faces, phased ghosts) mirror-reflect it with its remaining
+  // distance; anything it cannot destroy (plain invincible, tough not yet
+  // broken, a teleport evade) blocks it.
+  float fm = facing.magnitude();
+  if(fm <= 0.0f) return;
+  Point dir = facing * (1.0f / fm);
+  WrappedPoint pos = gun();
+  float remaining = Weapon::Lance::RANGE;
+
+  LancePulse pulse;
+  pulse.ttl = pulse.time_left = 250.0f;
+  pulse.points.push_back(Point(pos.x(), pos.y()));
+
+  vector<Object *> candidates;
+  const int max_hits = 16;  // safety cap on kills+reflections per pulse
+  for(int hit_count = 0; hit_count < max_hits && remaining > 1.0f; hit_count++) {
+    Point seg_a(pos.x(), pos.y());
+    Point seg_b(seg_a.x() + dir.x() * remaining, seg_a.y() + dir.y() * remaining);
+    candidates.clear();
+    grid.query_segment(seg_a, seg_b, candidates);
+
+    // Nearest asteroid the segment crosses (same wrapped-world translation as
+    // the swept bullet collision above).
+    Asteroid *ast_hit = NULL;
+    float best_t = 2.0f;
+    Point best_entry;  // hit point in the asteroid's own world-copy
+    for(Object *cand : candidates) {
+      Asteroid *ast = dynamic_cast<Asteroid *>(cand);
+      if(!ast || !ast->is_alive()) continue;
+      Point ast_near = ast->position.closest_to(seg_a);
+      float ox = ast_near.x() - ast->position.x();
+      float oy = ast_near.y() - ast->position.y();
+      Point local_a(seg_a.x() - ox, seg_a.y() - oy);
+      Point local_b(seg_b.x() - ox, seg_b.y() - oy);
+      float t;
+      // Ignore sub-unit hits so a fresh reflection can't re-strike the edge
+      // it just left.
+      if(ast->segment_hit(local_a, local_b, t) && t < best_t && t * remaining > 1.0f) {
+        best_t = t;
+        ast_hit = ast;
+        best_entry = Point(local_a.x() + (local_b.x() - local_a.x()) * t,
+                           local_a.y() + (local_b.y() - local_a.y()) * t);
+      }
+    }
+
+    if(ast_hit == NULL) {
+      // Clear line: the pulse runs out at full remaining length.
+      pulse.points.push_back(seg_b);
+      remaining = 0.0f;
+      break;
+    }
+
+    float travelled = best_t * remaining;
+    Point hit_world(seg_a.x() + dir.x() * travelled, seg_a.y() + dir.y() * travelled);
+    pulse.points.push_back(hit_world);
+    remaining -= travelled;
+
+    bool reflect = false;
+    if(ast_hit->reflective || (ast_hit->phasing && ast_hit->phased)) {
+      reflect = true;
+      ast_hit->kill();  // never destroys these; plays the ting/thud feedback
+    } else if(ast_hit->armoured) {
+      // Same shielded-arc test as the bullet handler: surface-point direction
+      // from centre vs armour_angle (±120°).
+      float ix = best_entry.x() - ast_hit->position.x();
+      float iy = best_entry.y() - ast_hit->position.y();
+      float im = sqrtf(ix * ix + iy * iy);
+      float shield_dot = (im > 1e-6f)
+        ? (ix * cosf(ast_hit->armour_angle) + iy * sinf(ast_hit->armour_angle)) / im
+        : -1.0f;
+      if(shield_dot > -0.5f) {
+        reflect = true;
+        if(Asteroid::ting_sound != NULL && sound_volume_scale > 0.0f) {
+          Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
+        }
+      }
+    }
+
+    if(reflect) {
+      Point normal = ast_hit->surface_normal(best_entry, dir);
+      float dot = normal.x() * dir.x() + normal.y() * dir.y();
+      dir = dir - normal * (2.0f * dot);
+      float dm = dir.magnitude();
+      if(dm <= 0.0f) break;
+      dir = dir * (1.0f / dm);
+      // Step off the surface so the next segment starts clear of this edge.
+      pos = WrappedPoint(hit_world.x() + normal.x() * 2.0f,
+                         hit_world.y() + normal.y() * 2.0f);
+      continue;
+    }
+
+    explode(Point(hit_world.x(), hit_world.y()), ast_hit->velocity);
+    if(ast_hit->kill()) {
+      score += ast_hit->get_value() * multiplier();
+      kills_this_life += 1;
+      kills += 1;
+      tally_nova_kill(ast_hit->position);
+      // Destroyed: carry straight on through it.
+      pos = WrappedPoint(hit_world.x(), hit_world.y());
+      continue;
+    }
+
+    // Survived the hit (invincible, tough not yet broken, teleport evade):
+    // the pulse is blocked here.
+    remaining = 0.0f;
+    break;
+  }
+
+  lance_pulses.push_back(std::move(pulse));
+}
+
 void Ship::collide(Ship *other) {
   for(size_t i = 0; i < bullets.size(); ) {
     if(other->is_alive() && bullets[i].collide(*other)) {
@@ -1477,6 +1631,13 @@ void Ship::step(float delta, const Grid &grid) {
         (*it)->step(delta);
     }
 
+    // A lance fired this frame: execute the instantaneous pulse now that the
+    // collision grid is in hand.
+    if(lance_pulse_pending) {
+      lance_pulse_pending = false;
+      fire_lance_pulse(grid);
+    }
+
     // God mode music: update phase transitions and play rapid tic beeps in last second
     int gm_time = god_mode_time_remaining();
     update_god_mode_music(gm_time);
@@ -1551,6 +1712,16 @@ void Ship::step(float delta, const Grid &grid) {
           bullet_trails.push_back(Particle(bullets[i].position, spread, 200.0f));
         }
       }
+      ++i;
+    }
+  }
+
+  for(size_t i = 0; i < lance_pulses.size(); ) {
+    lance_pulses[i].time_left -= delta;
+    if(lance_pulses[i].time_left <= 0.0f) {
+      lance_pulses[i] = std::move(lance_pulses.back());
+      lance_pulses.pop_back();
+    } else {
       ++i;
     }
   }
