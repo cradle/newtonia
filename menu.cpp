@@ -187,7 +187,7 @@ void Menu::draw() {
     // current value on the right (tap to cycle).
     const float band_top = 305.0f, band_bottom = -480.0f;
     float pitch = (band_top - band_bottom) / n;
-    int within = 34;  // desktop heading↔steps↔name spacing
+    int within = 42;  // desktop heading↔steps↔name spacing (line spacing)
 
     for (int row = 0; row < n; row++) {
       const OptRow &r = opt_row(row);
