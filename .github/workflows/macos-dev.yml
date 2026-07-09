@@ -86,6 +86,7 @@ jobs:
         run: |
           clang++ -O2 -Wall -std=c++11 -arch arm64 \
             -DGL_SILENCE_DEPRECATION \
+            -DNEWTONIA_DEBUG_BEAM \
             -mmacosx-version-min=12.0 \
             -o newtonia-arm64 $(cat srcs.txt) macos_window.mm \
             $(/opt/homebrew/bin/sdl2-config --cflags --libs) \
@@ -100,6 +101,7 @@ jobs:
         run: |
           clang++ -O2 -Wall -std=c++11 -arch x86_64 \
             -DGL_SILENCE_DEPRECATION \
+            -DNEWTONIA_DEBUG_BEAM \
             -mmacosx-version-min=12.0 \
             -o newtonia-x86_64 $(cat srcs.txt) macos_window.mm \
             $(/usr/local/bin/sdl2-config --cflags --libs) \

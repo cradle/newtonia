@@ -6,6 +6,7 @@
 #include "weapon/base.h"
 #include "weapon/god_mode.h"
 #include "weapon/nova.h"
+#include "weapon/beam.h"
 #include "mat4.h"
 #include "preferences.h"
 #include <math.h>
@@ -177,6 +178,19 @@ void GLShip::smooth_camera(int frame_delta) {
 
 void GLShip::step(int delta, const Grid &grid) {
   ship->step(delta, grid);
+
+#ifdef NEWTONIA_DEBUG_BEAM
+  // Debug/test builds only (-DNEWTONIA_DEBUG_BEAM): keep this player stocked
+  // with the Pierce Beam so it can be exercised immediately and after every
+  // respawn (respawning drops pickup weapons). Granted once per life — skipped
+  // while the beam is still present, so the player can freely switch weapons.
+  if(ship->is_alive()) {
+    bool has_beam = false;
+    for(Weapon::Base *w : ship->primary_weapons)
+      if(dynamic_cast<Weapon::Beam*>(w)) { has_beam = true; break; }
+    if(!has_beam) ship->add_beam_ammo(999);
+  }
+#endif
 
   for(list<GLTrail*>::iterator i = trails.begin(); i != trails.end(); i++) {
     (*i)->step(delta);
