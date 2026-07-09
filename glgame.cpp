@@ -69,7 +69,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   level_cleared(false),
   friendly_fire(g_prefs.friendly_fire),
   debug_grid(false),
-  score_saved(false),
+  game_over(false),
   game_over_time(-1),
   grid(Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2))) {
   time_between_steps = step_size;
@@ -263,7 +263,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   level_cleared(save.level_cleared),
   friendly_fire(g_prefs.friendly_fire),
   debug_grid(false),
-  score_saved(false),
+  game_over(false),
   game_over_time(-1),
   grid(Grid(Point(save.world_x, save.world_y),
             Point(Asteroid::max_radius*2, Asteroid::max_radius*2))) {
@@ -400,7 +400,7 @@ void GLGame::save_progress() {
   // hosted world is not the solo game, and the game-over delete below
   // would otherwise wipe real progress.
   if (net_mode_ != NetOff) return;
-  if (score_saved) return;
+  if (game_over) return;
   for (auto* gs : *players) {
     if (gs->ship->is_alive() || gs->ship->lives > 0) {
       Save::save_game(build_save_data());
@@ -2335,7 +2335,7 @@ void GLGame::tick_net_client(int delta) {
   // Overlay::net_overlays) is the client's whole ending, where it used
   // to get only the host's departure (Glenn: "no gameover state for the
   // client, it just disconnects").
-  if (!score_saved && !players->empty()) {
+  if (!game_over && !players->empty()) {
     bool all_over = true;
     for (auto *gs : *players)
       if (gs->ship->is_alive() || gs->ship->lives > 0) {
@@ -2344,7 +2344,7 @@ void GLGame::tick_net_client(int delta) {
       }
     if (all_over) {
       for (auto *gs : *players) save_high_score(gs->ship->score);
-      score_saved = true;
+      game_over = true;
       game_over_time = current_time;
       NET_LOG("net: game over (all players out) - showing GAME OVER card\n");
 #ifdef __EMSCRIPTEN__
@@ -2362,10 +2362,10 @@ void GLGame::tick_net_client(int delta) {
     // host is terminal — there is nothing left to rejoin for. End on the
     // GAME OVER card rather than the REJOINING spinner.
     GLShip *me = local_player();
-    if (!score_saved && me &&
+    if (!game_over && me &&
         !me->ship->is_alive() && me->ship->lives <= 0) {
       for (auto *gs : *players) save_high_score(gs->ship->score);
-      score_saved = true;
+      game_over = true;
       game_over_time = current_time;
       spectate_death_time_ = -1;
       NET_LOG("net: host lost while spectating - GAME OVER\n");
@@ -2376,7 +2376,7 @@ void GLGame::tick_net_client(int delta) {
     // exits to the menu via the input handlers. A finished game is the
     // exception: the host leaving AFTER game over is the expected way
     // out, not a loss to recover from — stay on the GAME OVER card.
-    if (!net_room_code_.empty() && !score_saved) {
+    if (!net_room_code_.empty() && !game_over) {
       if (net_client_rejoin_ms_ <= 0) net_client_rejoin_ms_ = 1500;
       net_client_rejoin_ms_ -= delta;
       if (net_client_rejoin_ms_ <= 0) {
@@ -4132,7 +4132,7 @@ void GLGame::tick(int delta) {
     time_until_next_step += time_between_steps;
   }
   /* Save high score automatically on game over */
-  if (!score_saved && !players->empty()) {
+  if (!game_over && !players->empty()) {
     bool all_game_over = true;
     for (auto* glship : *players) {
       if (glship->ship->is_alive() || glship->ship->lives > 0) {
@@ -4143,7 +4143,7 @@ void GLGame::tick(int delta) {
     if (all_game_over) {
       for (auto* glship : *players)
         save_high_score(glship->ship->score);
-      score_saved = true;
+      game_over = true;
       game_over_time = current_time;
 #ifdef __EMSCRIPTEN__
       // Show the tap-to-continue overlay so any touch reaches _web_tap_start().
@@ -4157,13 +4157,13 @@ void GLGame::tick(int delta) {
   update_spectate();
 
   /* Delete save on true game over */
-  if (score_saved && !save_deleted_ && net_mode_ == NetOff) {
+  if (game_over && !save_deleted_ && net_mode_ == NetOff) {
     Save::delete_save();
     save_deleted_ = true;
   }
 
   /* Save on death while lives remain (once per death window) */
-  if (!score_saved && net_mode_ == NetOff && !players->empty()) {
+  if (!game_over && net_mode_ == NetOff && !players->empty()) {
     bool any_dead_with_lives = false;
     bool any_dead_no_lives   = false;
     for (auto* glship : *players) {
@@ -4916,11 +4916,11 @@ GLShip *GLGame::camera_target() const {
 // mirrored on the client), so both roles agree on the timing. Purely a
 // function of state + wall clock; called once per frame from either tick path.
 void GLGame::update_spectate() {
-  // score_saved latches game-over for us (all players out, or a spectator
-  // who lost the peer). Once set there is no spectating — and after a peer
-  // disconnect the peer's ship stays stale-alive, which would otherwise
-  // re-arm the countdown every frame under the GAME OVER card.
-  if (net_mode_ == NetOff || players->size() < 2 || score_saved) {
+  // Once game_over is latched (all players out, or a spectator who lost the
+  // peer) there is no spectating — and after a peer disconnect the peer's
+  // ship stays stale-alive, which would otherwise re-arm the countdown every
+  // frame under the GAME OVER card.
+  if (net_mode_ == NetOff || players->size() < 2 || game_over) {
     spectate_death_time_ = -1;
     return;
   }

@@ -358,7 +358,12 @@ private:
   int last_tick, time_until_next_step, num_frames, current_time, time_between_steps;
   Uint32 last_draw_time_;
   int time_until_next_generation;
-  bool running, level_cleared, friendly_fire, debug_grid, score_saved;
+  // game_over: latches once the game has ended for us — all players out, or
+  // (netplay) a spectator who then lost the peer. Gates the one-time
+  // high-score save, the savegame delete, the in-progress autosave, netplay
+  // auto-rejoin suppression, and the spectate flow. NOT a savegame flag:
+  // online co-op never writes a resumable save (those paths are NetOff-only).
+  bool running, level_cleared, friendly_fire, debug_grid, game_over;
   bool auto_paused = false;
   bool save_written_this_death_ = false;
   bool save_deleted_ = false;

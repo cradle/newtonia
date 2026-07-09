@@ -39,11 +39,11 @@ void Overlay::net_overlays(const GLGame *glgame) {
       break;
     }
 
-  // score_saved latches "the game is over for us": it fires with all_game_over,
+  // game_over latches "the game is over for us": it fires with all_game_over,
   // and also when a spectating player loses the peer (terminal — nothing left
   // to rejoin for). Treat it as game over so the card, not the reconnect
   // notice, is the ending in that case.
-  if (glgame->score_saved) all_game_over = true;
+  if (glgame->game_over) all_game_over = true;
 
   if (!all_game_over && glgame->net_banner_ms_ <= 0 &&
       !glgame->net_connection_lost_)
