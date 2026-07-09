@@ -52,6 +52,11 @@ The worker (`signal/`) has its own tests — see `signal/README.md`:
 ```sh
 cd signal
 npx wrangler dev --local --port 8787 &   # local relay (also used by the e2e drivers)
+# If `wrangler@latest` (4.x) aborts with a workerd SQLite error
+# ("table _cf_ALARM has 3 columns but 2 values"), its bundled runtime
+# mismatches the persisted Durable Object state: clear it and pin an older
+# wrangler — `rm -rf .wrangler && npx wrangler@3.114.1 dev --local --port 8787`
+# (warns it caps the compat date to 2025-03-10; harmless for these tests).
 node test/reclaim_test.js                # M3-1 protocol: token + grace + reclaim (24 checks)
 node test/rate_key_test.mjs              # rate_key /64-collapse unit test
 node test/pv_replay_test.mjs             # stored-offer replay keeps the version stamp
