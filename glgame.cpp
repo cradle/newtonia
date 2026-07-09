@@ -2352,7 +2352,24 @@ void GLGame::tick_net_client(int delta) {
 #endif
     }
   }
+
+  // Arm/advance the spectate countdown (client side): our ship out, the
+  // host still in it -> after kSpectateDelayMs the camera follows the host.
+  update_spectate();
+
   if (net_connection_lost_) {
+    // If our own ship is already out (we were spectating the host), a lost
+    // host is terminal — there is nothing left to rejoin for. End on the
+    // GAME OVER card rather than the REJOINING spinner.
+    GLShip *me = local_player();
+    if (!score_saved && me &&
+        !me->ship->is_alive() && me->ship->lives <= 0) {
+      for (auto *gs : *players) save_high_score(gs->ship->score);
+      score_saved = true;
+      game_over_time = current_time;
+      spectate_death_time_ = -1;
+      NET_LOG("net: host lost while spectating - GAME OVER\n");
+    }
     // M3-1 auto-rejoin: with a room code the loss is recoverable — hand
     // the game back to a fresh auto-joining lobby (full keyframe
     // bootstrap, the same path as a manual rejoin). Any key/button still
@@ -3531,6 +3548,32 @@ void GLGame::tick(int delta) {
       }
     }
 
+    // Spectator e2e hook: drive a player fully out of lives on a timer so
+    // the spectate flow (camera hand-off + "SPECTATING") can be exercised
+    // headlessly. Lives are host-authoritative, so this is applied here and
+    // replicates to the client. "remote" (default) empties the joiner's
+    // lives -> the CLIENT spectates the host; "local" empties the host's.
+    // Inert without the env var.
+    static int test_kill_ms = -2;
+    static bool test_kill_remote = true;
+    if (test_kill_ms == -2) {
+      const char *e = getenv("NEWTONIA_NET_TEST_KILL_MS");
+      test_kill_ms = e ? atoi(e) : -1;
+      const char *who = getenv("NEWTONIA_NET_TEST_KILL_WHO");
+      test_kill_remote = !(who && std::string(who) == "local");
+    }
+    if (test_kill_ms > 0 && players->size() >= 2) {
+      test_kill_ms -= delta;
+      if (test_kill_ms <= 0) {
+        test_kill_ms = -1;
+        GLShip *victim = test_kill_remote ? players->back() : players->front();
+        NET_LOG("net: TEST forcing %s player out of lives\n",
+                test_kill_remote ? "remote" : "local");
+        victim->ship->lives = 0;
+        victim->ship->kill();
+      }
+    }
+
     if (!net_connection_lost_) {
       net_host_poll();
       net_ping_tick(delta);
@@ -4109,6 +4152,10 @@ void GLGame::tick(int delta) {
     }
   }
 
+  // Arm/advance the spectate countdown (host side): local player out, peer
+  // still in it -> after kSpectateDelayMs the camera follows the peer.
+  update_spectate();
+
   /* Delete save on true game over */
   if (score_saved && !save_deleted_ && net_mode_ == NetOff) {
     Save::delete_save();
@@ -4242,8 +4289,10 @@ void GLGame::draw(void) {
   }
   else if(net_mode_ != NetOff) {
     // Online: one full-screen view following the local player (host =
-    // front of the list, client = back). The peer draws their own view.
-    draw_world(local_player(), true);
+    // front of the list, client = back). Once the local player is fully
+    // out and spectating has begun, the camera hands off to the peer. The
+    // peer draws their own view.
+    draw_world(camera_target(), true);
     draw_map();
     Overlay::net_overlays(this);
   }
@@ -4849,6 +4898,54 @@ void GLGame::touch_tap(float nx, float ny) {
 GLShip *GLGame::local_player() const {
   if (players->empty()) return NULL;
   return net_mode_ == NetClient ? players->back() : players->front();
+}
+
+GLShip *GLGame::remote_player() const {
+  if (players->size() < 2) return NULL;
+  return net_mode_ == NetClient ? players->front() : players->back();
+}
+
+GLShip *GLGame::camera_target() const {
+  if (is_spectating()) {
+    if (GLShip *r = remote_player()) return r;
+  }
+  return local_player();
+}
+
+// Arm/disarm the spectate countdown from replicated lives (host authoritative,
+// mirrored on the client), so both roles agree on the timing. Purely a
+// function of state + wall clock; called once per frame from either tick path.
+void GLGame::update_spectate() {
+  if (net_mode_ == NetOff || players->size() < 2) {
+    spectate_death_time_ = -1;
+    return;
+  }
+  GLShip *local = local_player();
+  GLShip *remote = remote_player();
+  bool local_out = local && !local->ship->is_alive() && local->ship->lives <= 0;
+  bool remote_in = remote && (remote->ship->is_alive() || remote->ship->lives > 0);
+  if (local_out && remote_in) {
+    if (spectate_death_time_ < 0) spectate_death_time_ = current_time;
+  } else {
+    // Peer also out (GAME OVER takes over) or we somehow came back.
+    spectate_death_time_ = -1;
+  }
+}
+
+bool GLGame::spectate_arming() const {
+  return spectate_death_time_ >= 0 &&
+         current_time - spectate_death_time_ < kSpectateDelayMs;
+}
+
+bool GLGame::is_spectating() const {
+  return spectate_death_time_ >= 0 &&
+         current_time - spectate_death_time_ >= kSpectateDelayMs;
+}
+
+int GLGame::spectate_countdown_secs() const {
+  int remaining = kSpectateDelayMs - (current_time - spectate_death_time_);
+  if (remaining < 0) remaining = 0;
+  return (remaining + 999) / 1000;  // 5..1, ceil
 }
 
 void GLGame::touch_joystick(float nx, float ny) {

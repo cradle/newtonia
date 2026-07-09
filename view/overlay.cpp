@@ -39,6 +39,12 @@ void Overlay::net_overlays(const GLGame *glgame) {
       break;
     }
 
+  // score_saved latches "the game is over for us": it fires with all_game_over,
+  // and also when a spectating player loses the peer (terminal — nothing left
+  // to rejoin for). Treat it as game over so the card, not the reconnect
+  // notice, is the ending in that case.
+  if (glgame->score_saved) all_game_over = true;
+
   if (!all_game_over && glgame->net_banner_ms_ <= 0 &&
       !glgame->net_connection_lost_)
     return;
@@ -114,6 +120,7 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   weapons(glgame, glship);
   temperature(glgame, glship);
   respawn_timer(glgame, glship);
+  spectate(glgame, glship);
   paused(glgame, glship);
   touch_controls(glgame, glship);
   edge_indicators(glgame, glship);
@@ -287,12 +294,32 @@ void Overlay::temperature(const GLGame *glgame, const GLShip *glship) {
 }
 
 void Overlay::respawn_timer(const GLGame *glgame, const GLShip *glship) {
+  // The dead-with-no-lives branch of draw_respawn_timer() renders its own
+  // "GameOver" + score card; during the spectate flow the spectate overlay
+  // owns that messaging, so suppress it (otherwise the two overlap).
+  if(glgame->spectate_arming() || glgame->is_spectating()) return;
   if(glgame->running && !glship->show_help) {
     float saved[16]; gles2_get_mvp(saved);
     float vp[16]; mat4_scale(vp, saved, 20.0f, 20.0f, 1.0f);
     gles2_set_vp(vp);
     glship->draw_respawn_timer();
     gles2_set_vp(saved);
+  }
+}
+
+// Spectator flow (netplay co-op): a "SPECTATING IN N" countdown on the local
+// wreck, then "SPECTATING" at the bottom once the camera has handed off to the
+// peer. Both phases are driven by GLGame::spectate_death_time_.
+void Overlay::spectate(const GLGame *glgame, const GLShip *glship) {
+  (void)glship;
+  if (glgame->spectate_arming()) {
+    char buf[24];
+    snprintf(buf, sizeof buf, "SPECTATING IN %d", glgame->spectate_countdown_secs());
+    Typer::draw_centered(0, 40, buf, 20);
+  } else if (glgame->is_spectating()) {
+    // Bottom of the viewport, clear of the touch RETURN TO MENU band.
+    float vhb = -Typer::scaled_window_height / glgame->num_y_viewports();
+    Typer::draw_centered(0, vhb + 130, "SPECTATING", 16);
   }
 }
 
@@ -417,8 +444,12 @@ void Overlay::draw_circle(float cx, float cy, float r, int segs, bool filled,
 void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
 #if defined(__ANDROID__) || defined(__IOS__)
   // Only the locally-controlled ship's viewport gets the OSD (on a net
-  // client that is the LAST player, not the first).
+  // client that is the LAST player, not the first). While spectating the
+  // camera follows the peer, so this already fails; the extra guard also
+  // hides the OSD during the "SPECTATING IN N" countdown, when the camera
+  // is still on our own wreck but there is nothing left to control.
   if(glgame->local_player() != glship) return;
+  if(glgame->spectate_arming() || glgame->is_spectating()) return;
 
   float pw = (float)Typer::window_width;
   float ph = (float)Typer::window_height;

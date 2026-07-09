@@ -77,7 +77,16 @@ test/e2e/ownroom.sh  # shared-prefs auto-join probe (mac host+client on one box)
 test/e2e/mismatch.sh # fake pv-less old host (node) -> instant VERSION MISMATCH
 test/e2e/hiccup.sh   # transport dies under live processes -> auto-pause -> AUTO-rejoin
 test/e2e/turnexpiry.sh # REAL TURN expiry on a relay-forced pair (needs UDP egress)
+test/e2e/spectate.sh # one player out of lives -> "SPECTATING IN N" -> camera to peer
 ```
+
+spectate.sh uses the host-only `NEWTONIA_NET_TEST_KILL_MS`/`_WHO` hooks
+(inert without the env vars) to empty a player's lives on a timer — lives are
+host-authoritative, so it is applied on the host and replicates. `_WHO`
+defaults to `remote` (the joiner spectates the host); pass `SPECTATE_WHO=local`
+to make the host spectate the joiner. It burst-screenshots the spectator's
+window across the 5 s countdown and the hand-off; asserts SPECTATE-E2E-OK and a
+clean log.
 
 turnexpiry.sh is the real-credential companion to hiccup.sh and CANNOT run
 in the dev container (no UDP egress; STUN/TURN unreachable). Run it on any

@@ -28,6 +28,7 @@ private:
   static void weapons(const GLGame *glgame, const GLShip *glship);
   static void temperature(const GLGame *glgame, const GLShip *glship);
   static void respawn_timer(const GLGame *glgame, const GLShip *glship);
+  static void spectate(const GLGame *glgame, const GLShip *glship);
   static void keymap(const GLGame *glgame, const GLShip *glship);
   static void title_text(const GLGame *glgame, const GLShip *glship);
   static void paused(const GLGame *glgame, const GLShip *glship);

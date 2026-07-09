@@ -62,6 +62,22 @@ public:
   // net client where the first ship is the remote host's and the local
   // player is the last. Touch input and the touch OSD key off this.
   GLShip *local_player() const;
+  // The peer's ship on this machine (the entry local_player() is not), or
+  // NULL in single-machine play. The spectate camera target.
+  GLShip *remote_player() const;
+  // The ship the camera follows: normally the local player, but the peer
+  // once this machine's player is fully out and spectating has begun.
+  GLShip *camera_target() const;
+
+  // Spectator flow (netplay co-op). When the local player runs out of lives
+  // while the peer is still in it, a 5 s "SPECTATING IN N" countdown runs on
+  // the local wreck, then the camera hands off to the peer and "SPECTATING"
+  // shows at the bottom. The shared GAME OVER card takes over once the peer
+  // is also out. Camera rotation stays whatever the viewer selected — the
+  // peer's rotate/fixed preference is not adopted.
+  bool is_spectating() const;      // countdown elapsed, camera on the peer
+  bool spectate_arming() const;    // out, countdown still running
+  int  spectate_countdown_secs() const;  // N in "SPECTATING IN N" (5..1)
 
   friend class Overlay;
   // The between-level intro state adopts the game while it runs (drawing the
@@ -347,6 +363,11 @@ private:
   bool save_written_this_death_ = false;
   bool save_deleted_ = false;
   int game_over_time;
+  // current_time at which the local player went fully out while the peer
+  // played on (arms the spectate countdown), or -1 when not spectating.
+  int spectate_death_time_ = -1;
+  static const int kSpectateDelayMs = 5000;
+  void update_spectate();
 
   static const int default_world_width, default_world_height;
   static const int default_num_asteroids, extra_num_asteroids;
