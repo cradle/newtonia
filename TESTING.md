@@ -83,6 +83,7 @@ test/e2e/mismatch.sh # fake pv-less old host (node) -> instant VERSION MISMATCH
 test/e2e/hiccup.sh   # transport dies under live processes -> auto-pause -> AUTO-rejoin
 test/e2e/turnexpiry.sh # REAL TURN expiry on a relay-forced pair (needs UDP egress)
 test/e2e/spectate.sh # one player out of lives -> "SPECTATING IN N" -> camera to peer
+test/e2e/spectate_disconnect.sh # joiner spectating -> host process killed -> GAME OVER
 ```
 
 spectate.sh uses the host-only `NEWTONIA_NET_TEST_KILL_MS`/`_WHO` hooks

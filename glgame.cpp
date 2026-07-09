@@ -4916,7 +4916,11 @@ GLShip *GLGame::camera_target() const {
 // mirrored on the client), so both roles agree on the timing. Purely a
 // function of state + wall clock; called once per frame from either tick path.
 void GLGame::update_spectate() {
-  if (net_mode_ == NetOff || players->size() < 2) {
+  // score_saved latches game-over for us (all players out, or a spectator
+  // who lost the peer). Once set there is no spectating — and after a peer
+  // disconnect the peer's ship stays stale-alive, which would otherwise
+  // re-arm the countdown every frame under the GAME OVER card.
+  if (net_mode_ == NetOff || players->size() < 2 || score_saved) {
     spectate_death_time_ = -1;
     return;
   }
