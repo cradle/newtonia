@@ -72,7 +72,7 @@
 		AB00005A /* beam_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00005A /* beam_pickup.cpp */; };
 		AB00005B /* lance_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00005C /* lance_pickup.cpp */; };
 		AB00005C /* beam.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00005E /* beam.cpp */; };
-		AB00005D /* lance.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000060 /* lance.cpp */; };
+		AB00005D /* lance.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000076 /* lance.cpp */; };
 		AB000030 /* OpenGLES.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000030 /* OpenGLES.framework */; };
 		AB000031 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000031 /* UIKit.framework */; };
 		AB000032 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000032 /* Foundation.framework */; };
@@ -161,8 +161,8 @@
 		AA00005D /* lance_pickup.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../lance_pickup.h; sourceTree = SOURCE_ROOT; };
 		AA00005E /* beam.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/beam.cpp; sourceTree = SOURCE_ROOT; };
 		AA00005F /* beam.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../weapon/beam.h; sourceTree = SOURCE_ROOT; };
-		AA000060 /* lance.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/lance.cpp; sourceTree = SOURCE_ROOT; };
-		AA000061 /* lance.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../weapon/lance.h; sourceTree = SOURCE_ROOT; };
+		AA000076 /* lance.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/lance.cpp; sourceTree = SOURCE_ROOT; };
+		AA000077 /* lance.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../weapon/lance.h; sourceTree = SOURCE_ROOT; };
 		AA000051 /* mesh.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../mesh.h; sourceTree = SOURCE_ROOT; };
 		AA000030 /* OpenGLES.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGLES.framework; path = System/Library/Frameworks/OpenGLES.framework; sourceTree = SDKROOT; };
 		AA000031 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
@@ -291,8 +291,8 @@
 			AA00005D /* lance_pickup.h */,
 			AA00005E /* beam.cpp */,
 			AA00005F /* beam.h */,
-			AA000060 /* lance.cpp */,
-			AA000061 /* lance.h */,
+			AA000076 /* lance.cpp */,
+			AA000077 /* lance.h */,
 			);
 			name = Sources;
 			sourceTree = "<group>";
