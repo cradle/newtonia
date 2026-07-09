@@ -221,6 +221,16 @@ void Intro::keyboard_up(unsigned char key, int x, int y) {
   // scripts and the debug key behave identically on intro generations.
   if (key == (unsigned char)g_prefs.general_keys.skip_level) {
     game->keyboard_up(key, x, y);
+    // The game's skip zeroes Asteroid::num_killable assuming every live
+    // asteroid was in its lists — but our display copy is still alive and
+    // its destructor decrements on teardown, leaving the count at -1.
+    // Every branch of the level-clear ladder is gated on num_killable == 0,
+    // so the skipped level then never rolled over: an empty world stuck on
+    // the CLEARED banner (asteroid intros only, gens 1-8 — the black hole /
+    // station intros have no display copy). Pre-count the copy so its
+    // destructor nets to zero.
+    if (asteroid != NULL && !asteroid->invincible)
+      Asteroid::num_killable++;
     dismiss();
   }
 }
