@@ -124,6 +124,10 @@ inline bool is_touch_mode() {
 #elif defined(__EMSCRIPTEN__)
   return EM_ASM_INT(return window.matchMedia('(pointer: coarse)').matches ? 1 : 0;) != 0;
 #else
-  return false;
+  // Desktop test hook: NEWTONIA_FORCE_TOUCH=1 exercises the touch-mode UI
+  // (menu / lobby / options tap layouts) under a normal desktop build.
+  // Harmless in production — the env var is unset there.
+  static const bool forced = SDL_getenv("NEWTONIA_FORCE_TOUCH") != nullptr;
+  return forced;
 #endif
 }

@@ -35,7 +35,7 @@ private:
   int  menu_row_at(float ny) const;  // -1 when the tap misses every row
   void open_options();
   void close_options();
-  void adjust_active_row(int delta);
+  void adjust_active_row(int delta, bool wrap = false);
 
   int currentTime;
   int high_score;

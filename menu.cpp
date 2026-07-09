@@ -11,6 +11,7 @@
 #include "mat4.h"
 #include "steam_build.h"
 #include "view/overlay.h"
+#include "view/tap_band.h"
 #include <iostream>
 #include <string>
 
@@ -41,9 +42,10 @@ static const OptRow OPT_ROWS_DESKTOP[] = {
   {0, 1, "P2  SENSITIVITY"}, {1, 1, "P2  SMOOTHING"}, {2, 1, "P2  CAMERA"},
   {3, 0, "STAR  DENSITY"},
 };
+// Mobile shows Player 1 + shared options only, so the "P1" prefix is dropped.
 static const OptRow OPT_ROWS_TOUCH[] = {
-  {0, 0, "P1  SENSITIVITY"}, {1, 0, "P1  SMOOTHING"}, {2, 0, "P1  CAMERA"},
-  {3, 0, "STAR  DENSITY"},
+  {0, 0, "SENSITIVITY"}, {1, 0, "SMOOTHING"}, {2, 0, "CAMERA"},
+  {3, 0, "STAR DENSITY"},
 };
 static int opt_row_count() {
   return is_touch_mode() ? (int)(sizeof(OPT_ROWS_TOUCH) / sizeof(OPT_ROWS_TOUCH[0]))
@@ -51,6 +53,23 @@ static int opt_row_count() {
 }
 static const OptRow &opt_row(int r) {
   return is_touch_mode() ? OPT_ROWS_TOUCH[r] : OPT_ROWS_DESKTOP[r];
+}
+
+// Touch options row geometry — shared by the draw and the tap hit-test so a
+// tap always lands on the row it appears on. Rows fill the band above the
+// RETURN TO MENU strip; row i's vertical centre and the row a tap falls in
+// both come from here.
+static const float TOUCH_OPT_TOP = 250.0f, TOUCH_OPT_BOTTOM = -210.0f;
+static int touch_opt_center(int i, int n) {
+  float pitch = (TOUCH_OPT_TOP - TOUCH_OPT_BOTTOM) / n;
+  return (int)(TOUCH_OPT_TOP - (i + 0.5f) * pitch);
+}
+static int touch_opt_row_at(float ny, int n) {
+  float y = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
+  float pitch = (TOUCH_OPT_TOP - TOUCH_OPT_BOTTOM) / n;
+  float t = TOUCH_OPT_TOP - y;
+  if (t < 0 || t >= pitch * n) return -1;
+  return (int)(t / pitch);
 }
 
 static int sensitivity_index_for(float value) {
@@ -157,22 +176,19 @@ void Menu::draw() {
   gles2_set_vp(ortho);
 
   if (options_mode_) {
-    Typer::draw_centered(0, 368, "OPTIONS", 26);
+    bool touch = is_touch_mode();
+    Typer::draw_centered(0, touch ? 340 : 368, "OPTIONS", touch ? 30 : 26);
 
-    // Three centred lines per row — heading / numbered step marks / value
-    // name. The full desktop list is 7 rows (with P2's), so the pitch and
-    // fonts are sized down from the old fixed 5-row table to fit.
     int n = opt_row_count();
+    // Desktop: three centred lines per row (heading / step marks / value),
+    // pitched to fit up to 7 rows. Touch: one big tappable row per option,
+    // name on the left and the current value on the right (tap to cycle).
     const float band_top = 300.0f, band_bottom = -388.0f;
     float pitch = (band_top - band_bottom) / n;
-    int within = 32;  // heading↔steps↔name spacing (clears the glyph descenders)
+    int within = 32;  // desktop heading↔steps↔name spacing
 
     for (int row = 0; row < n; row++) {
       const OptRow &r = opt_row(row);
-      int center    = (int)(band_top - (row + 0.5f) * pitch);
-      int heading_y = center + within;
-      int steps_y   = center;
-      int name_y    = center - within;
 
       int num_steps, cur_idx;
       const char* const *lbl;
@@ -183,9 +199,18 @@ void Menu::draw() {
         default:num_steps = NUM_STAR_DENSITY; cur_idx = star_density_index_;          lbl = STAR_DENSITY_LABELS;  break;
       }
 
-      std::string heading = std::string(active_row_ == row ? "> " : "  ") + r.name;
-      Typer::draw_centered(0, heading_y, heading.c_str(), 12);
+      if (touch) {
+        int cy = touch_opt_center(row, n);
+        // Name left, value right. Name font sized so the longest label
+        // ("SENSITIVITY"/"STAR DENSITY") clears the value column.
+        Typer::draw(-315, cy, r.name, 16);               // name, left-aligned
+        Typer::draw_centered(205, cy, lbl[cur_idx], 18); // value
+        continue;
+      }
 
+      int center    = (int)(band_top - (row + 0.5f) * pitch);
+      std::string heading = std::string(active_row_ == row ? "> " : "  ") + r.name;
+      Typer::draw_centered(0, center + within, heading.c_str(), 12);
       // Step marks centred on 0, 100 apart (5 steps span -200..200; the
       // 2-step camera row sits at -50/50).
       for (int i = 0; i < num_steps; i++) {
@@ -193,9 +218,14 @@ void Menu::draw() {
         std::string step = (i == cur_idx)
           ? "[" + std::to_string(i + 1) + "]"
           :       std::to_string(i + 1);
-        Typer::draw_centered(x, steps_y, step.c_str(), 14);
+        Typer::draw_centered(x, center, step.c_str(), 14);
       }
-      Typer::draw_centered(0, name_y, lbl[cur_idx], 11);
+      Typer::draw_centered(0, center - within, lbl[cur_idx], 11);
+    }
+
+    if (touch) {
+      Typer::draw_centered(0, -270, "TAP AN OPTION TO CHANGE IT", 12);
+      TapBand::return_to_menu.draw("RETURN TO MENU", currentTime);
     }
   } else {
     Typer::draw_centered(0, 320, "Newtonia", 80);
@@ -607,6 +637,10 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
 }
 
 bool Menu::back_pressed() {
+  if (options_mode_) {
+    close_options();  // persists and returns to the menu
+    return true;
+  }
   if (attract_mode_) {
     attract_mode_ = false;
 #if defined(_GAMING_XBOX) || defined(_GAMING_DESKTOP)
@@ -633,7 +667,17 @@ void Menu::touch_tap(float nx, float ny) {
     attract_mode_ = false;  // any tap dismisses the attract screen
     return;
   }
-  if (options_mode_) return;  // options is keyboard/controller-only
+  if (options_mode_) {
+    // Bottom strip exits (and persists via close_options); tapping a row
+    // cycles that option to its next value, wrapping at the end.
+    if (TapBand::return_to_menu.contains(nx, ny)) { close_options(); return; }
+    int row = touch_opt_row_at(ny, opt_row_count());
+    if (row >= 0) {
+      active_row_ = row;
+      adjust_active_row(+1, /*wrap=*/true);
+    }
+    return;
+  }
   if (quit_confirm_) {
     // Left half = Yes (quit), right half = No (dismiss)
     if (nx < 0.5f) {
@@ -675,7 +719,7 @@ bool Menu::show_online_row() const {
 }
 
 bool Menu::show_options_row() const {
-  return is_beta_feature_enabled() && !is_touch_mode();
+  return is_beta_feature_enabled();
 }
 
 int Menu::menu_row_size() { return is_touch_mode() ? 26 : 22; }
@@ -730,7 +774,7 @@ void Menu::open_options() {
   options_mode_ = true;
 }
 
-void Menu::adjust_active_row(int delta) {
+void Menu::adjust_active_row(int delta, bool wrap) {
   const OptRow &r = opt_row(active_row_);
   int *idx, num;
   switch (r.kind) {
@@ -740,8 +784,13 @@ void Menu::adjust_active_row(int delta) {
     default:idx = &star_density_index_;          num = NUM_STAR_DENSITY; break;
   }
   *idx += delta;
-  if (*idx < 0)        *idx = 0;
-  if (*idx >= num)     *idx = num - 1;
+  if (wrap) {
+    // Touch cycles round; ((v % num) + num) % num handles either direction.
+    *idx = ((*idx % num) + num) % num;
+  } else {
+    if (*idx < 0)    *idx = 0;
+    if (*idx >= num) *idx = num - 1;
+  }
 }
 
 void Menu::close_options() {
