@@ -18,6 +18,14 @@ endif
 OSX_LIBS = -framework GLUT -framework OpenGL -framework AppKit $(SDL2_LIBS)
 OSX_CFLAGS = $(CFLAGS) -std=c++11 -arch arm64 -arch x86_64
 CFLAGS += -MMD -MP
+
+# Test/debug builds: set NEWTONIA_DEBUG_BEAM=1 in the environment (or on the
+# make command line) to start every game with the Pierce Beam auto-granted.
+# e.g. `make clean && NEWTONIA_DEBUG_BEAM=1 make osx`  (run clean first so the
+# flag change forces a full recompile). Leave it unset for normal builds.
+ifdef NEWTONIA_DEBUG_BEAM
+  CFLAGS += -DNEWTONIA_DEBUG_BEAM
+endif
 COMPILE = $(CC) $(CFLAGS) -c
 OBJFILES := $(patsubst %.cpp,%.o,$(ALL_SRCS))
 ifeq ($(UNAME), Darwin)
