@@ -317,9 +317,12 @@ void Overlay::respawn_timer(const GLGame *glgame, const GLShip *glship) {
 void Overlay::spectate(const GLGame *glgame, const GLShip *glship) {
   (void)glship;
   if (glgame->spectate_arming()) {
+    // The local player IS game over (out of lives) — say so, with the
+    // hand-off countdown below it.
     char buf[24];
     snprintf(buf, sizeof buf, "SPECTATING IN %d", glgame->spectate_countdown_secs());
-    Typer::draw_centered(0, 40, buf, 20);
+    Typer::draw_centered(0, 120, "GAME OVER", 30);
+    Typer::draw_centered(0, 20, buf, 18);
   } else if (glgame->is_spectating()) {
     // Bottom of the viewport, clear of the touch RETURN TO MENU band.
     float vhb = -Typer::scaled_window_height / glgame->num_y_viewports();
