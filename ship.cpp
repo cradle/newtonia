@@ -1173,7 +1173,8 @@ void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
           if(ast && ast->teleporting) ast->teleport_vulnerable = true;
           if(ast && ast->tough) ast->health = 1;
         }
-        if(object->kill()) {
+        bool destroyed = object->kill();
+        if(destroyed) {
           object->invincible = was_invincible;
           if(was_invincible) Asteroid::num_killable++;
           score += object->get_value() * multiplier() * (was_invincible ? 5 : 1);
@@ -1182,10 +1183,11 @@ void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
           tally_nova_kill(object->position);
         }
         explode(bullets[i].position, object->velocity);
-        if(bullets[i].piercing) {
-          // Beam bolt keeps going: the swept collision next frame resumes from
-          // this hit point and catches the next asteroid along the line, so the
-          // bolt ploughs through a whole row without tunnelling.
+        if(bullets[i].piercing && destroyed) {
+          // Beam bolt ploughs on only through asteroids it actually destroys:
+          // the swept collision next frame resumes from this hit point and
+          // catches the next one without tunnelling. If the asteroid survived
+          // the hit (invincible, or tough not yet broken) the bolt stops here.
           ++i;
         } else {
           bullets[i] = std::move(bullets.back());
