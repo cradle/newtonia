@@ -215,12 +215,17 @@ void Menu::draw() {
       int y = (int)(band_top - (row + 0.5f) * pitch);
       std::string heading = std::string(active_row_ == row ? "> " : "  ") + r.name;
       Typer::draw(NAME_X, y, heading.c_str(), 12);       // name, left
+      const float step_sz = 13.0f;
       for (int i = 0; i < num_steps; i++) {              // numbered choices, mid
         int x = STEP_CX + (int)((i - (num_steps - 1) * 0.5f) * STEP_GAP);
-        std::string step = (i == cur_idx)
-          ? "]" + std::to_string(i + 1) + "["
-          :       std::to_string(i + 1);
-        Typer::draw_centered(x, y, step.c_str(), 13);
+        Typer::draw_centered(x, y, std::to_string(i + 1).c_str(), step_sz);
+        if (i == cur_idx) {
+          // Hug the selected digit with brackets. Drawn as single glyphs one
+          // cell in from the default 2*size character advance, which would
+          // otherwise leave "[ 3 ]"; a single-size advance tightens it to "[3]".
+          Typer::draw(x - 1.5f * step_sz, y, '[', step_sz);
+          Typer::draw(x + 0.5f * step_sz, y, ']', step_sz);
+        }
       }
       Typer::draw(VALUE_X, y, lbl[cur_idx], 12);         // value description, right
     }
