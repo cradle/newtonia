@@ -3623,9 +3623,10 @@ void GLGame::perf_report() {
   // vsync). One line per second at most, only while slow.
   if (perf_frames_ * 1000 < (int)span * 55) {
     SDL_Log("perf: fps=%d tick=%ums(max %u) draw=%ums(max %u) "
-            "other=%dms asteroids=%zu dead=%zu pickups=%zu gen=%d",
+            "lens=%ums(max %u) other=%dms asteroids=%zu dead=%zu "
+            "pickups=%zu gen=%d",
             (int)(perf_frames_ * 1000 / span), perf_tick_ms_, perf_tick_max_,
-            perf_draw_ms_, perf_draw_max_,
+            perf_draw_ms_, perf_draw_max_, perf_lens_ms_, perf_lens_max_,
             (int)(span - perf_tick_ms_ - perf_draw_ms_),
             objects->size(), dead_objects->size(), pickups->size(),
             generation);
@@ -3634,6 +3635,7 @@ void GLGame::perf_report() {
   perf_frames_ = 0;
   perf_tick_ms_ = perf_draw_ms_ = 0;
   perf_tick_max_ = perf_draw_max_ = 0;
+  perf_lens_ms_ = perf_lens_max_ = 0;
 }
 
 void GLGame::tick(int delta) {
@@ -4765,6 +4767,15 @@ void GLGame::draw_perspective(GLShip *glship) const {
     }
   }
   // --- Invisible asteroid lensing: black asteroid polygon + shifted rear stars ---
+  // Lensing is expensive per asteroid (the mask mesh re-uploads and
+  // draw_stars_near's cache rebuild scans every star), so unlike the batched
+  // object pass each asteroid is culled to the screen individually — only
+  // the handful actually in view pay. lens_on_screen then gates the warp
+  // capture below: off-screen invisible asteroids must not cost a
+  // full-viewport texture copy either.
+  float cull_r = sqrtf(cull_r2);
+  bool lens_on_screen = false;
+  Uint32 lens_t0 = SDL_GetTicks();
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
       float smin_x = world.x()*x - position.x();
@@ -4786,11 +4797,17 @@ void GLGame::draw_perspective(GLShip *glship) const {
 
         float ax = a->position.x() + a->net_pose_err.x();
         float ay = a->position.y() + a->net_pose_err.y();
+        float rel_x = ax + world.x()*x - position.x();
+        float rel_y = ay + world.y()*y - position.y();
+        float reach = cull_r + a->radius;
+        if (rel_x*rel_x + rel_y*rel_y > reach*reach) continue;
+        lens_on_screen = true;
         AsteroidDrawer::draw_invisible_mask(a, ax, ay);
         starfield->draw_stars_near(ax, ay, a->radius);
       }
     }
   }
+  Uint32 lens_frame_ms = SDL_GetTicks() - lens_t0;
 
   // Game objects: drawn directly each tile (no display list) so draw_batch
   // can emit all asteroids in two draw calls per tile instead of one per asteroid.
@@ -4831,6 +4848,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
   }
 
   // --- Front star lensing (same void + shift, applied after front stars) ---
+  lens_t0 = SDL_GetTicks();
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
       float smin_x = world.x()*x - position.x();
@@ -4852,6 +4870,10 @@ void GLGame::draw_perspective(GLShip *glship) const {
 
         float ax = a->position.x() + a->net_pose_err.x();
         float ay = a->position.y() + a->net_pose_err.y();
+        float rel_x = ax + world.x()*x - position.x();
+        float rel_y = ay + world.y()*y - position.y();
+        float reach = cull_r + a->radius;
+        if (rel_x*rel_x + rel_y*rel_y > reach*reach) continue;
         // No black mask here — draw_batch already renders the invisible asteroid
         // fill behind visible asteroids. Drawing it again after game objects would
         // overdraw visible asteroids on top of invisible ones.
@@ -4861,13 +4883,10 @@ void GLGame::draw_perspective(GLShip *glship) const {
   }
 
   // --- Warp pass: distort the contents of each invisible asteroid ---
-  // Check whether any invisible asteroids are present to avoid the capture cost.
-  bool has_invisible = false;
-  for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
-    if ((*it)->invisible && (*it)->alive) { has_invisible = true; break; }
-  }
-
-  if (has_invisible) {
+  // Gated on an invisible asteroid actually being ON SCREEN (set by the
+  // rear lens loop) — merely existing somewhere in the world must not cost
+  // the full-viewport texture copy every frame.
+  if (lens_on_screen) {
     // Snapshot the current viewport (stars + game objects) into the warp texture.
     GLint vp[4];
     glGetIntegerv(GL_VIEWPORT, vp);
@@ -4893,15 +4912,21 @@ void GLGame::draw_perspective(GLShip *glship) const {
         for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
           Asteroid const *a = *it;
           if (!a->invisible || !a->alive) continue;
-          warp_pass_->draw(a, a->position.x() + a->net_pose_err.x(),
-                           a->position.y() + a->net_pose_err.y(),
-                           vp[0], vp[1], vp[2], vp[3]);
+          float ax = a->position.x() + a->net_pose_err.x();
+          float ay = a->position.y() + a->net_pose_err.y();
+          float rel_x = ax + world.x()*x - position.x();
+          float rel_y = ay + world.y()*y - position.y();
+          float reach = cull_r + a->radius;
+          if (rel_x*rel_x + rel_y*rel_y > reach*reach) continue;
+          warp_pass_->draw(a, ax, ay, vp[0], vp[1], vp[2], vp[3]);
         }
       }
     }
     gles2_set_vp(base_pv);
   }
-
+  lens_frame_ms += SDL_GetTicks() - lens_t0;
+  perf_lens_ms_ += lens_frame_ms;
+  if (lens_frame_ms > perf_lens_max_) perf_lens_max_ = lens_frame_ms;
 }
 
 void GLGame::draw_map() const {

@@ -386,6 +386,8 @@ private:
   Uint32 perf_window_start_ = 0;
   Uint32 perf_tick_ms_ = 0, perf_draw_ms_ = 0;
   Uint32 perf_tick_max_ = 0, perf_draw_max_ = 0;
+  // Lens/warp share of draw (mutable: accumulated inside const draw paths).
+  mutable Uint32 perf_lens_ms_ = 0, perf_lens_max_ = 0;
   int perf_frames_ = 0;
   void perf_report();
   int game_over_time;
