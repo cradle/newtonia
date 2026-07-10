@@ -142,7 +142,13 @@ namespace Net {
 //     asteroid reference frame) overrides the client's local radial
 //     approximation, so the two copies of a ricocheted shot fly the SAME
 //     post-bounce trajectory instead of merely sharing a colour.
-const uint8_t PROTO_VERSION = 19;
+// 20: Lance ship hits. MSG_HIT_SHIP gains the bullet_id-0 sentinel (the
+//     twin of MSG_HIT's): a client lance kills enemy replicas instantly
+//     and claims them with no clone to consume — enemy kills are
+//     idempotent by wire id, so the host's own resolution of the same
+//     MSG_LANCE polyline (self-kill on reflection, partner under friendly
+//     fire, station hull damage) can never double-count them.
+const uint8_t PROTO_VERSION = 20;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check

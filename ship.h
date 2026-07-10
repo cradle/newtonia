@@ -224,11 +224,12 @@ class Ship : public CompositeObject {
     static std::vector<std::vector<Point>> net_lance_reports;
 
     // Lance ship/station hits: the pulse's ray-march only sees asteroids
-    // (ships and stations live in GLGame's lists), so an AUTHORITATIVE
-    // firer (offline, or the host's own ship — not a claim-mode client)
-    // parks its traced polyline here and GLGame::resolve_lance_ship_hits
-    // consumes it after the step. A client's polyline reaches the same
-    // resolution on the host via MSG_LANCE instead.
+    // (ships and stations live in GLGame's lists), so every firer parks
+    // its traced polyline here. Offline/host firers get the full
+    // GLGame::resolve_lance_ship_hits pass after the step; a claim-mode
+    // client's pass covers enemy replicas only (instant kill + bullet_id-0
+    // claim, PROTO 20) while its station/self/partner hits resolve on the
+    // host from the MSG_LANCE polyline.
     std::vector<Point> lance_hit_pending;
     // Credit a ship kill exactly like the bullet/missile paths in
     // Ship::collide (kill counters + value x streak multiplier) — exposed

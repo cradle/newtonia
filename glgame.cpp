@@ -39,6 +39,31 @@
 #include <set>
 #include <unordered_map>
 
+// First point along segment a->b entering the circle (centre target_pos,
+// radius r), with the target translated to its wrapped copy nearest a —
+// the same wrap idiom as the lance's asteroid march. Used by the lance
+// ship/station hit passes (host resolution + the client's enemy pass);
+// the entry point doubles as the impact position for debris/claims.
+static bool lance_seg_circle_entry(const Point &a, const Point &b,
+                                   const WrappedPoint &target_pos, float r,
+                                   Point *entry) {
+  Point p = target_pos.closest_to(a);
+  float dx = b.x() - a.x(), dy = b.y() - a.y();
+  float fx = a.x() - p.x(), fy = a.y() - p.y();
+  float A = dx * dx + dy * dy;
+  if (A <= 0.0f) return false;
+  float B = 2.0f * (fx * dx + fy * dy);
+  float C = fx * fx + fy * fy - r * r;
+  float disc = B * B - 4.0f * A * C;
+  if (disc < 0.0f) return false;
+  float sq = sqrtf(disc);
+  float t0 = (-B - sq) / (2.0f * A), t1 = (-B + sq) / (2.0f * A);
+  if (t1 < 0.0f || t0 > 1.0f) return false;  // circle behind or beyond
+  float t = t0 < 0.0f ? 0.0f : t0;           // started inside: entry = start
+  if (entry) *entry = Point(a.x() + dx * t, a.y() + dy * t);
+  return true;
+}
+
 static void set_player_keys(GLShip *gs, int player_index) {
   PlayerKeys &k = (player_index == 0) ? g_prefs.p1_keys : g_prefs.p2_keys;
   gs->set_keys(k.left, k.right, k.thrust, k.shoot, k.reverse, k.mine,
@@ -1123,18 +1148,25 @@ void GLGame::net_host_poll() {
       float hx = r.f32(), hy = r.f32();
       if (!r.ok || !remote || !std::isfinite(hx) || !std::isfinite(hy))
         continue;
-      int bi = -1;
-      for (size_t i = 0; i < remote->bullets.size(); i++)
-        if (remote->bullets[i].net_id == bullet_id) { bi = (int)i; break; }
-      if (bi < 0) {
-        NET_LOG("net: ship hit claim no-op (bullet %u already resolved)\n",
-                bullet_id);
-        continue;
+      if (bullet_id == 0) {
+        // PROTO 20 lance sentinel (the twin of MSG_HIT's): no clone to
+        // consume. Enemy claims only — kills are idempotent by wire id,
+        // hull damage is not (it applies via the MSG_LANCE polyline).
+        if (kind != 0) continue;
+      } else {
+        int bi = -1;
+        for (size_t i = 0; i < remote->bullets.size(); i++)
+          if (remote->bullets[i].net_id == bullet_id) { bi = (int)i; break; }
+        if (bi < 0) {
+          NET_LOG("net: ship hit claim no-op (bullet %u already resolved)\n",
+                  bullet_id);
+          continue;
+        }
+        Point bpos = remote->bullets[bi].position;
+        remote->explode(bpos, Point(0.0f, 0.0f));
+        remote->bullets[bi] = std::move(remote->bullets.back());
+        remote->bullets.pop_back();
       }
-      Point bpos = remote->bullets[bi].position;
-      remote->explode(bpos, Point(0.0f, 0.0f));
-      remote->bullets[bi] = std::move(remote->bullets.back());
-      remote->bullets.pop_back();
       WrappedPoint hit_pos(hx, hy);
       if (kind == 0) {
         // PROTO 16: the claim names the exact enemy by wire id. Absent
@@ -1159,6 +1191,18 @@ void GLGame::net_host_poll() {
             if (*bi == target->ship) { Ship::net_booms.erase(bi); break; }
           NET_LOG("net: ship hit claim honored (enemy %u)\n", target_id);
         } else {
+          // Already dead — usually our own resolution of the same lance
+          // polyline (MSG_LANCE precedes the claims on the ordered
+          // channel). The claimant played its own boom at its instant
+          // kill, so drop any EV_WORLD_BOOM still queued for this ship
+          // or the client hears the death twice.
+          for (auto *ge : *enemies)
+            if (ge->ship->net_ship_id == target_id) {
+              for (auto bo = Ship::net_booms.begin();
+                   bo != Ship::net_booms.end(); ++bo)
+                if (*bo == ge->ship) { Ship::net_booms.erase(bo); break; }
+              break;
+            }
           NET_LOG("net: ship hit claim no-op (enemy %u already dead)\n",
                   target_id);
         }
@@ -2616,6 +2660,45 @@ void GLGame::tick_net_client(int delta) {
       if (mini_station != NULL && mini_station->is_alive())
         ship_targets.push_back({(Object *)mini_station, (uint8_t)2, 0u});
       players->back()->ship->net_cosmetic_ship_impacts(ship_targets);
+
+      // PROTO 20: the local lance vs enemy replicas — the same instant
+      // kill + claim treatment bullets get (kind 0 with bullet_id 0: a
+      // lance has no clone to consume, mirroring MSG_HIT's sentinel).
+      // Station/mini hull hits stay host-side (resolved from the
+      // MSG_LANCE polyline): hull damage is not idempotent, so it must
+      // apply exactly once — enemy kills are idempotent by wire id.
+      Ship *lme = players->back()->ship;
+      if (!lme->lance_hit_pending.empty()) {
+        for (auto &t : ship_targets) {
+          if (t.kind != 0) continue;
+          Ship *e = static_cast<Ship *>(t.obj);
+          if (!e->is_alive()) continue;
+          Point where;
+          bool hit = false;
+          for (size_t s = 0; s + 1 < lme->lance_hit_pending.size() && !hit; s++)
+            hit = lance_seg_circle_entry(lme->lance_hit_pending[s],
+                                         lme->lance_hit_pending[s + 1],
+                                         e->position, e->radius, &where);
+          if (!hit) continue;
+          if (e->kill_stop()) e->detonate();
+          // Same silent-replica rule as the bullet path: play the dying
+          // ship's boom ourselves, full volume — the kill is at our own
+          // crosshair (the host skips its relay for claimed kills).
+          if (e->explode_sound != NULL) {
+            Mix_VolumeChunk(e->explode_sound, MIX_MAX_VOLUME);
+            Mix_PlayChannel(-1, e->explode_sound, 0);
+          }
+          Ship::NetShipHit c;
+          c.kind = 0;
+          c.bullet_id = 0;  // lance sentinel: honor without a clone consume
+          c.target_id = t.id;
+          c.x = where.x();
+          c.y = where.y();
+          Ship::net_ship_hit_claims.push_back(c);
+          NET_LOG("net: lance enemy kill claimed id=%u\n", t.id);
+        }
+        lme->lance_hit_pending.clear();
+      }
     }
 
     // Local-ship render-jump detector: the camera rides this pose, so a
@@ -5302,27 +5385,6 @@ void GLGame::touch_tap(float nx, float ny) {
     host_toggle_friendly_fire();
 }
 
-// Squared distance from a lance segment to a target, with the target
-// translated to its wrapped copy nearest the segment start — the same
-// idiom the lance's asteroid march uses. hit_out gets the closest point
-// on the segment (the impact position for effects).
-static float lance_seg_target_dist2(const Point &a, const Point &b,
-                                    const WrappedPoint &target_pos,
-                                    Point *hit_out) {
-  Point p = target_pos.closest_to(a);
-  float dx = b.x() - a.x(), dy = b.y() - a.y();
-  float len2 = dx * dx + dy * dy;
-  float t = len2 > 0.0f
-      ? ((p.x() - a.x()) * dx + (p.y() - a.y()) * dy) / len2
-      : 0.0f;
-  if (t < 0.0f) t = 0.0f;
-  else if (t > 1.0f) t = 1.0f;
-  Point c(a.x() + dx * t, a.y() + dy * t);
-  if (hit_out) *hit_out = c;
-  float cx = c.x() - p.x(), cy = c.y() - p.y();
-  return cx * cx + cy * cy;
-}
-
 // How hard a lance pulse hits the gen-20 station's hull, in bullet
 // equivalents (bullets and missiles do 1 each).
 static const int LANCE_STATION_DAMAGE = 3;
@@ -5344,12 +5406,12 @@ void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts)
     if ((ax * bx + ay * by) / (am * bm) < 0.9995f) { first_refl_seg = i; break; }
   }
 
-  // First segment (from from_seg on) whose swept line passes within the
-  // target's radius; fills the impact point.
+  // First segment (from from_seg on) that enters the target's circle;
+  // fills the hull-entry point (the impact position for debris).
   auto first_hit = [&](const Ship *target, size_t from_seg, Point *where) {
-    float r2 = target->radius * target->radius;
     for (size_t s = from_seg; s + 1 < pts.size(); s++)
-      if (lance_seg_target_dist2(pts[s], pts[s + 1], target->position, where) <= r2)
+      if (lance_seg_circle_entry(pts[s], pts[s + 1], target->position,
+                                 target->radius, where))
         return true;
     return false;
   };
@@ -5407,6 +5469,9 @@ void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts)
   // net relay as a hull bullet deflection.
   if (station != NULL && station->is_alive() &&
       first_hit(station, 0, &where)) {
+    // Debris splash at the initial hull contact, like the bullet path's
+    // deflection spray.
+    firer->explode(where, station->velocity);
     for (int i = 0; i < LANCE_STATION_DAMAGE && station->is_alive(); i++)
       station->hit();
     if (Asteroid::thud_sound != NULL)
