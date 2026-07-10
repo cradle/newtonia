@@ -113,6 +113,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
   object->ship->set_missile_ships(ship_objects);
+  object->ship->missiles_seek_players = friendly_fire;
   object->ship->set_black_holes(black_holes);
   players->push_back(object);
 
@@ -339,6 +340,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     gs->ship->set_missile_asteroids((std::list<Object*>*)objects);
     ship_objects->push_back(gs->ship);
     gs->ship->set_missile_ships(ship_objects);
+    gs->ship->missiles_seek_players = friendly_fire;
     gs->ship->set_black_holes(black_holes);
     gs->ship->restore_state(sp, grid);
     gs->snap_camera_to_heading();
@@ -668,6 +670,7 @@ void GLGame::add_player2(SDL_GameController *ctrl) {
   ship_objects->push_back(object->ship);
   for(auto *p : *players) p->ship->set_missile_ships(ship_objects);
   object->ship->set_missile_ships(ship_objects);
+  object->ship->missiles_seek_players = friendly_fire;
   object->ship->set_black_holes(black_holes);
   players->push_back(object);
 }
@@ -681,6 +684,7 @@ void GLGame::add_remote_player() {
   ship_objects->push_back(object->ship);
   for(auto *p : *players) p->ship->set_missile_ships(ship_objects);
   object->ship->set_missile_ships(ship_objects);
+  object->ship->missiles_seek_players = friendly_fire;
   object->ship->set_black_holes(black_holes);
   players->push_back(object);
   // The Ship constructor creates ships dead (offline player 2 waits out
@@ -1934,6 +1938,7 @@ void GLGame::host_toggle_friendly_fire() {
   friendly_fire = !friendly_fire;
   g_prefs.friendly_fire = friendly_fire;
   save_preferences();
+  for (auto *p : *players) p->ship->missiles_seek_players = friendly_fire;
   net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
 }
 
@@ -2003,6 +2008,9 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
         net_banner_ms_ = 2000;
       }
       friendly_fire = on;
+      // Keep the local missile sim honest too: seeking is cosmetic-ish on
+      // the client but a missile visibly hunting the partner reads wrong.
+      for (auto *p : *players) p->ship->missiles_seek_players = friendly_fire;
       NET_LOG("net: friendly fire %s\n", on ? "on" : "off");
       break;
     }
@@ -5351,6 +5359,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       ship_objects->push_back(object->ship);
       for (auto *p : *players) p->ship->set_missile_ships(ship_objects);
       object->ship->set_missile_ships(ship_objects);
+      object->ship->missiles_seek_players = friendly_fire;
       players->push_back(object);
     }
   }

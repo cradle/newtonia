@@ -248,6 +248,14 @@ class Ship : public CompositeObject {
     // be re-stamped each time). 0 = never assigned.
     uint32_t net_ship_id = 0;
     static uint32_t net_next_ship_id;
+    // True for ships a player pilots (set by the GLShip/GLCar wrappers);
+    // enemies and stations stay false. Missile homing keys off it:
+    // with friendly fire off a missile must not seek the partner.
+    bool player_ship = false;
+    // Mirror of GLGame::friendly_fire on the FIRING ship (kept in sync by
+    // GLGame at every toggle/apply site): when false, this ship's missiles
+    // skip player_ship targets in their seek scan.
+    bool missiles_seek_players = true;
     // net_remote_gun (the HOST's remote ship): the weapon sim keeps its
     // cooldown/ammo/trigger bookkeeping but mints no bullets and plays
     // no shot sound — the real bullets arrive as MSG_SHOT reports via

@@ -30,7 +30,8 @@ MissileShot::MissileShot(WrappedPoint pos, Point facing_dir, Point bv)
   radius = 3.0f;
 }
 
-void MissileShot::step_missile(int delta, std::list<Object*> *asteroids, std::list<Object*> *ships) {
+void MissileShot::step_missile(int delta, std::list<Object*> *asteroids,
+                               std::list<Object*> *ships, bool seek_players) {
   time_left -= delta;
 
   // Seek nearest target (asteroid or ship) within forward cone
@@ -45,6 +46,10 @@ void MissileShot::step_missile(int delta, std::list<Object*> *asteroids, std::li
         Object *a = *it;
         if (!a->alive) continue;
         if (skip_invincible && a->invincible) continue;
+        if (!seek_players) {
+          Ship *s = dynamic_cast<Ship*>(a);
+          if (s && s->player_ship) continue;
+        }
         WrappedPoint apos = a->position;
         float dist = position.distance_to(apos) - a->radius;
         if (dist >= closest) continue;

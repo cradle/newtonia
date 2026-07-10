@@ -1714,6 +1714,9 @@ void Ship::net_cosmetic_impacts(const Grid &grid, bool claim_kills) {
         b.velocity = Point(b.velocity.x() - 2.0f * d * nx,
                            b.velocity.y() - 2.0f * d * ny);
       }
+      // Match the host's recolour: a ricocheted shot turns white
+      // (world_bullet) so both screens read the bounce the same way.
+      b.world_bullet = true;
     }
     explode(b.position, o->velocity);
     Mix_Chunk *snd = ting ? Asteroid::ting_sound : Asteroid::thud_sound;
@@ -2173,7 +2176,8 @@ void Ship::step(float delta, const Grid &grid) {
 
   // Step missiles unconditionally so they keep flying regardless of weapon state.
   for(size_t i = 0; i < missiles.size(); i++) {
-    missiles[i].step_missile(delta, missile_asteroids, missile_ships_list);
+    missiles[i].step_missile(delta, missile_asteroids, missile_ships_list,
+                             missiles_seek_players);
   }
 
   // Missile movement is handled in Weapon::Missile::step() above.
