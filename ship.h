@@ -223,6 +223,18 @@ class Ship : public CompositeObject {
     // ships (net_report_shots); drained into MSG_LANCE by both roles.
     static std::vector<std::vector<Point>> net_lance_reports;
 
+    // Lance ship/station hits: the pulse's ray-march only sees asteroids
+    // (ships and stations live in GLGame's lists), so an AUTHORITATIVE
+    // firer (offline, or the host's own ship — not a claim-mode client)
+    // parks its traced polyline here and GLGame::resolve_lance_ship_hits
+    // consumes it after the step. A client's polyline reaches the same
+    // resolution on the host via MSG_LANCE instead.
+    std::vector<Point> lance_hit_pending;
+    // Credit a ship kill exactly like the bullet/missile paths in
+    // Ship::collide (kill counters + value x streak multiplier) — exposed
+    // so GLGame's lance resolution can award the same way.
+    void award_kill(int value);
+
     // PROTO 19: authoritative ricochets. The HOST sim pushes a report
     // whenever it bounces an id-carrying bullet off a reflective asteroid
     // or an armoured face (gated by net_report_bounces — host games only);

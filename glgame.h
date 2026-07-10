@@ -134,6 +134,14 @@ private:
   // last life. Called from the pickup collection site and the
   // NEWTONIA_NET_TEST_REVIVE_MS e2e hook.
   void revive_fallen_partner(Ship *except);
+  // Lance ship/station hits: the pulse's ray-march (Ship) only sees
+  // asteroids, so the traced polyline comes back here — from the firer's
+  // lance_hit_pending (offline/host) or the client's MSG_LANCE — and is
+  // tested against ships. Self-hits count only from the first mirror
+  // bounce (kills pass through collinearly, so the first direction change
+  // IS the first reflection); the partner needs friendly_fire; enemies and
+  // the mini-station die; the station hull takes multi-hit damage.
+  void resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts);
   void draw_map() const;
   // cull_r > 0 skips asteroids further than cull_r + radius from
   // (cam_x, cam_y) — the camera centre in the calling tile's object space —

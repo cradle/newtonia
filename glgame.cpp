@@ -1099,12 +1099,17 @@ void GLGame::net_host_poll() {
       continue;
     }
     if (h.msg_type == Net::MSG_LANCE) {
-      // Client lance pulse (PROTO 18): display-only — push the traced
-      // polyline onto the remote ship for the flash; the kills arrive
-      // separately as bullet_id-0 MSG_HIT claims. The pulse plays the
-      // lance sound attenuated at its origin.
+      // Client lance pulse (PROTO 18): push the traced polyline onto the
+      // remote ship for the flash (asteroid kills arrive separately as
+      // bullet_id-0 MSG_HIT claims), then resolve its SHIP/station hits
+      // here — ship damage is host authority, and the polyline is already
+      // on the wire, so no extra message is needed. The size guard skips
+      // resolution if the receive bailed without pushing a pulse.
       if (!remote) continue;
-      if (net_receive_lance_pulse(r, remote)) continue;
+      size_t before = remote->lance_pulses.size();
+      if (net_receive_lance_pulse(r, remote) &&
+          remote->lance_pulses.size() > before)
+        resolve_lance_ship_hits(remote, remote->lance_pulses.back().points);
       continue;
     }
     if (h.msg_type == Net::MSG_HIT_SHIP) {
@@ -4200,6 +4205,17 @@ void GLGame::tick(int delta) {
       }
     }
 
+    // Lance ship/station hits: authoritative firers parked their traced
+    // polyline during the step (the ray-march only sees asteroids); a
+    // client's polyline reaches resolve_lance_ship_hits via MSG_LANCE.
+    for(o = players->begin(); o != players->end(); o++) {
+      Ship *ls = (*o)->ship;
+      if(!ls->lance_hit_pending.empty()) {
+        resolve_lance_ship_hits(ls, ls->lance_hit_pending);
+        ls->lance_hit_pending.clear();
+      }
+    }
+
     for(o = players->begin(); o != players->end(); o++) {
       if(friendly_fire) {
         for(o2 = o; o2 != players->end(); o2++) {
@@ -5284,6 +5300,120 @@ void GLGame::touch_tap(float nx, float ny) {
   if (players->size() >= 2 && net_mode_ != NetClient &&
       ff_toggle_band().contains(nx, ny))
     host_toggle_friendly_fire();
+}
+
+// Squared distance from a lance segment to a target, with the target
+// translated to its wrapped copy nearest the segment start — the same
+// idiom the lance's asteroid march uses. hit_out gets the closest point
+// on the segment (the impact position for effects).
+static float lance_seg_target_dist2(const Point &a, const Point &b,
+                                    const WrappedPoint &target_pos,
+                                    Point *hit_out) {
+  Point p = target_pos.closest_to(a);
+  float dx = b.x() - a.x(), dy = b.y() - a.y();
+  float len2 = dx * dx + dy * dy;
+  float t = len2 > 0.0f
+      ? ((p.x() - a.x()) * dx + (p.y() - a.y()) * dy) / len2
+      : 0.0f;
+  if (t < 0.0f) t = 0.0f;
+  else if (t > 1.0f) t = 1.0f;
+  Point c(a.x() + dx * t, a.y() + dy * t);
+  if (hit_out) *hit_out = c;
+  float cx = c.x() - p.x(), cy = c.y() - p.y();
+  return cx * cx + cy * cy;
+}
+
+// How hard a lance pulse hits the gen-20 station's hull, in bullet
+// equivalents (bullets and missiles do 1 each).
+static const int LANCE_STATION_DAMAGE = 3;
+
+void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts) {
+  if (pts.size() < 2) return;
+
+  // The first mirror bounce: a killed asteroid is passed through
+  // collinearly, a reflection bends the path — so the first direction
+  // change between consecutive segments marks where the pulse can start
+  // hitting its own firer. (A near-grazing reflection under the threshold
+  // barely deviates and can't come back at the firer anyway.)
+  size_t first_refl_seg = pts.size();
+  for (size_t i = 1; i + 1 < pts.size(); i++) {
+    float ax = pts[i].x() - pts[i - 1].x(), ay = pts[i].y() - pts[i - 1].y();
+    float bx = pts[i + 1].x() - pts[i].x(), by = pts[i + 1].y() - pts[i].y();
+    float am = sqrtf(ax * ax + ay * ay), bm = sqrtf(bx * bx + by * by);
+    if (am <= 1e-3f || bm <= 1e-3f) continue;
+    if ((ax * bx + ay * by) / (am * bm) < 0.9995f) { first_refl_seg = i; break; }
+  }
+
+  // First segment (from from_seg on) whose swept line passes within the
+  // target's radius; fills the impact point.
+  auto first_hit = [&](const Ship *target, size_t from_seg, Point *where) {
+    float r2 = target->radius * target->radius;
+    for (size_t s = from_seg; s + 1 < pts.size(); s++)
+      if (lance_seg_target_dist2(pts[s], pts[s + 1], target->position, where) <= r2)
+        return true;
+    return false;
+  };
+
+  Point where;
+
+  // Self: reflected segments only (the outgoing beam leaves the firer's
+  // own muzzle). kill_stop() gates shields/invincibility like every other
+  // ship-vs-ship weapon; no score for shooting yourself.
+  if (first_refl_seg + 1 < pts.size() && firer->is_alive() &&
+      first_hit(firer, first_refl_seg, &where)) {
+    firer->kill_stop();
+  }
+
+  // Partner: any segment, friendly fire only.
+  if (friendly_fire) {
+    for (auto *p : *players) {
+      Ship *t = p->ship;
+      if (t == firer || !t->is_alive()) continue;
+      if (first_hit(t, 0, &where) && t->kill_stop())
+        firer->award_kill(t->value);
+    }
+  }
+
+  // Enemies: always.
+  for (auto *e : *enemies) {
+    Ship *t = e->ship;
+    if (!t->is_alive()) continue;
+    if (first_hit(t, 0, &where) && t->kill_stop())
+      firer->award_kill(t->value);
+  }
+
+  // Mini-station: dies to any hit, flat bounty — mirror of the bullet
+  // path, including the attenuated boom + net relay.
+  if (mini_station != NULL && mini_station->is_alive() &&
+      first_hit(mini_station, 0, &where)) {
+    firer->explode(where, mini_station->velocity);
+    firer->score += GLMiniStation::REWARD;
+    mini_station->destroy();
+    float vol = net_mode_ != NetOff
+                    ? net_listener_volume(mini_station->position)
+                    : sound_volume_for_point(mini_station->position);
+    if (station_explode_sound != NULL && vol > 0.0f) {
+      Mix_VolumeChunk(station_explode_sound, (int)(MIX_MAX_VOLUME * vol));
+      Mix_PlayChannel(-1, station_explode_sound, 0);
+    }
+    net_send_event(Net::EV_STATION_BOOM,
+                   Net::pack_pos(mini_station->position.x(),
+                                 mini_station->position.y(),
+                                 world.x(), world.y()));
+  }
+
+  // Station: the hull takes a chunk of damage (it survives the pulse
+  // visually — a ring is plausible to lance through). Same thud cue and
+  // net relay as a hull bullet deflection.
+  if (station != NULL && station->is_alive() &&
+      first_hit(station, 0, &where)) {
+    for (int i = 0; i < LANCE_STATION_DAMAGE && station->is_alive(); i++)
+      station->hit();
+    if (Asteroid::thud_sound != NULL)
+      Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+    net_send_event(Net::EV_ROID_THUD,
+                   Net::pack_pos(where.x(), where.y(), world.x(), world.y()));
+  }
 }
 
 // Put a fully-out partner back on their last life; the ordinary respawn

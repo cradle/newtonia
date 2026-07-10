@@ -1522,7 +1522,18 @@ void Ship::fire_lance_pulse(const Grid &grid) {
   // ship and, since PROTO 17, the host's player ship).
   if(net_report_shots) net_lance_reports.push_back(pulse.points);
 
+  // Authoritative firers park the polyline for GLGame's ship/station hit
+  // resolution (a claim-mode client's ship hits are the host's call — its
+  // polyline arrives there via MSG_LANCE).
+  if(!net_claim_kills) lance_hit_pending = pulse.points;
+
   lance_pulses.push_back(std::move(pulse));
+}
+
+void Ship::award_kill(int value) {
+  kills_this_life += 1;
+  kills += 1;
+  score += value * multiplier();
 }
 
 void Ship::collide(Ship *other) {
