@@ -37,6 +37,21 @@ protected:
   // transfer_ownership: the next state takes ownership of this one instead
   // of the StateManager deleting it on transition.
   void request_state_change(State* next_state, bool transfer_ownership = false);
+  // Arrow keys alias WASD in every menu, on every platform. Desktop GLUT
+  // delivers specials as 128 + GLUT_KEY_* (LEFT=100, UP=101, RIGHT=102,
+  // DOWN=103 — the same scheme preferences.h uses for F-key bindings), and
+  // the SDL entry points translate arrow keysyms to the same codes. Menus
+  // call this on the incoming key so the rest of their handler only ever
+  // sees the wasd form.
+  static unsigned char nav_key(unsigned char key) {
+    switch (key) {
+      case 128 + 101: return 'w';  // GLUT_KEY_UP
+      case 128 + 103: return 's';  // GLUT_KEY_DOWN
+      case 128 + 100: return 'a';  // GLUT_KEY_LEFT
+      case 128 + 102: return 'd';  // GLUT_KEY_RIGHT
+      default: return key;
+    }
+  }
   Point window;
 
 private:

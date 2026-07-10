@@ -184,6 +184,15 @@ static void CALLBACK plm_suspend_callback(void * /*ctx*/,
 static unsigned char game_key_from_sdl(SDL_Keycode k)
 {
     if (k >= SDLK_F1 && k <= SDLK_F12) return (unsigned char)(129 + (k - SDLK_F1));
+    // Arrows use desktop GLUT's special-key codes; menus alias them to
+    // WASD (State::nav_key).
+    switch (k) {
+        case SDLK_UP:    return 128 + GLUT_KEY_UP;
+        case SDLK_DOWN:  return 128 + GLUT_KEY_DOWN;
+        case SDLK_LEFT:  return 128 + GLUT_KEY_LEFT;
+        case SDLK_RIGHT: return 128 + GLUT_KEY_RIGHT;
+        default: break;
+    }
     return (k < 128) ? (unsigned char)k : 0;
 }
 

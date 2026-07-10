@@ -135,6 +135,10 @@ typedef double  GLclampd;
 #define GLUT_KEY_F4               4
 #define GLUT_KEY_F8               8
 #define GLUT_KEY_F11              11
+#define GLUT_KEY_LEFT             100
+#define GLUT_KEY_UP               101
+#define GLUT_KEY_RIGHT            102
+#define GLUT_KEY_DOWN             103
 #define GLUT_ACTIVE_ALT           4
 #define GLUT_WINDOW_WIDTH         100
 #define GLUT_WINDOW_HEIGHT        101

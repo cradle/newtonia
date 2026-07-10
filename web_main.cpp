@@ -134,10 +134,16 @@ static void main_loop() {
             SDL_Keycode k = e.key.keysym.sym;
             unsigned char key = (k < 128) ? (unsigned char)k : 0;
             if (!key) switch (k) {
-                case SDLK_F1:  key = 128 + GLUT_KEY_F1;  break;
-                case SDLK_F4:  key = 128 + GLUT_KEY_F4;  break;
-                case SDLK_F8:  key = 128 + GLUT_KEY_F8;  break;
-                case SDLK_F11: key = 128 + GLUT_KEY_F11; break;
+                case SDLK_F1:    key = 128 + GLUT_KEY_F1;    break;
+                case SDLK_F4:    key = 128 + GLUT_KEY_F4;    break;
+                case SDLK_F8:    key = 128 + GLUT_KEY_F8;    break;
+                case SDLK_F11:   key = 128 + GLUT_KEY_F11;   break;
+                // Arrows use desktop GLUT's special-key codes; menus alias
+                // them to WASD (State::nav_key).
+                case SDLK_UP:    key = 128 + GLUT_KEY_UP;    break;
+                case SDLK_DOWN:  key = 128 + GLUT_KEY_DOWN;  break;
+                case SDLK_LEFT:  key = 128 + GLUT_KEY_LEFT;  break;
+                case SDLK_RIGHT: key = 128 + GLUT_KEY_RIGHT; break;
                 default: break;
             }
             if (key) s_game->keyboard(key, 0, 0);
@@ -147,10 +153,14 @@ static void main_loop() {
             SDL_Keycode k = e.key.keysym.sym;
             unsigned char key = (k < 128) ? (unsigned char)k : 0;
             if (!key) switch (k) {
-                case SDLK_F1:  key = 128 + GLUT_KEY_F1;  break;
-                case SDLK_F4:  key = 128 + GLUT_KEY_F4;  break;
-                case SDLK_F8:  key = 128 + GLUT_KEY_F8;  break;
-                case SDLK_F11: key = 128 + GLUT_KEY_F11; break;
+                case SDLK_F1:    key = 128 + GLUT_KEY_F1;    break;
+                case SDLK_F4:    key = 128 + GLUT_KEY_F4;    break;
+                case SDLK_F8:    key = 128 + GLUT_KEY_F8;    break;
+                case SDLK_F11:   key = 128 + GLUT_KEY_F11;   break;
+                case SDLK_UP:    key = 128 + GLUT_KEY_UP;    break;
+                case SDLK_DOWN:  key = 128 + GLUT_KEY_DOWN;  break;
+                case SDLK_LEFT:  key = 128 + GLUT_KEY_LEFT;  break;
+                case SDLK_RIGHT: key = 128 + GLUT_KEY_RIGHT; break;
                 default: break;
             }
             if (key) s_game->keyboard_up(key, 0, 0);

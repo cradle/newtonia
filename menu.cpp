@@ -506,6 +506,7 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 }
 
 void Menu::keyboard_up(unsigned char key, int x, int y) {
+  key = nav_key(key);  // arrows navigate like WASD
   // Options screen: platform-agnostic
   if (options_mode_) {
     if (key == 'w' || key == 'W') {

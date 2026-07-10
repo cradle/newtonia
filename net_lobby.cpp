@@ -1165,6 +1165,7 @@ void NetLobby::code_entry_key(unsigned char key) {
 void NetLobby::keyboard_up(unsigned char key, int x, int y) {
   (void)x;
   (void)y;
+  key = nav_key(key);  // arrows navigate like WASD
   if (key == 27) {
     leave_to_menu();
     return;
