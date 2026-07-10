@@ -322,7 +322,11 @@ void init_controllers_and_audio() {
       std::cout << "Unable to open audio device" << std::endl;
       std::cout << Mix_GetError() << std::endl;
     }
-    if(ENABLE_AUDIO) Mix_AllocateChannels(32);
+    // 64 channels: gen-20+ firefights (enemy shot cues, booms, boost and
+    // missile loops) can pin 32 and silently drop new sounds. Channels 0/1
+    // are reserved out of -1 allocation as a guaranteed-loop-free fallback
+    // for must-hear booms (see play_priority_chunk in glgame.cpp).
+    if(ENABLE_AUDIO) { Mix_AllocateChannels(64); Mix_ReserveChannels(2); }
     SDL_JoystickEventState(SDL_ENABLE);
     int opened = 0;
     for (int i = 0; i < SDL_NumJoysticks() && opened < 2; ++i) {

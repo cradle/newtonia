@@ -328,7 +328,9 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         SDL_Log("Mix opened: %d Hz, fmt=0x%x, channels=%d, chunk=%d",
                 freq, fmt, chans, audio_frames);
     }
-    Mix_AllocateChannels(32);
+    // 64 channels + 2 reserved for must-hear booms — see glut.cpp.
+    Mix_AllocateChannels(64);
+    Mix_ReserveChannels(2);
 
     // Pre-warm the audio pipeline so the first real sound plays without delay.
     {

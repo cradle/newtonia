@@ -272,7 +272,10 @@ void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
 }
 
 void GLStation::net_client_step(float delta) {
-  Object::step(delta);
+  // CompositeObject::step = Object::step + the debris loop, so the death
+  // burst animates on the client too (plain Object::step left the burst
+  // frozen at its spawn points — the particles never stepped).
+  CompositeObject::step((int)delta);
   if (!alive) return;
   outer_rotation += outer_rotation_speed * delta;
   inner_rotation += inner_rotation_speed * delta;

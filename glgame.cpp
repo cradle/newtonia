@@ -64,6 +64,18 @@ static bool lance_seg_circle_entry(const Point &a, const Point &b,
   return true;
 }
 
+// Rare, must-hear cues (station/mini-station destruction booms). In a
+// heavy gen-20 firefight every dynamic mixing channel can be busy and
+// Mix_PlayChannel(-1) silently drops the play; fall back to the reserved
+// channels (0/1 — excluded from -1 allocation at platform init via
+// Mix_ReserveChannels, so no boost/music loop ever lives there).
+static void play_priority_chunk(Mix_Chunk *chunk, float vol) {
+  if (chunk == NULL || vol <= 0.0f) return;
+  Mix_VolumeChunk(chunk, (int)(MIX_MAX_VOLUME * vol));
+  if (Mix_PlayChannel(-1, chunk, 0) != -1) return;
+  Mix_PlayChannel(Mix_Playing(0) ? 1 : 0, chunk, 0);
+}
+
 static void set_player_keys(GLShip *gs, int player_index) {
   PlayerKeys &k = (player_index == 0) ? g_prefs.p1_keys : g_prefs.p2_keys;
   gs->set_keys(k.left, k.right, k.thrust, k.shoot, k.reverse, k.mine,
@@ -1220,11 +1232,8 @@ void GLGame::net_host_poll() {
         // The tick's destruction-sound block only fires for a mini that
         // was alive when it started — this one died between ticks, so
         // play + relay the boom here (same as the tick block does).
-        float vol = net_listener_volume(mini_station->position);
-        if (station_explode_sound != NULL && vol > 0.0f) {
-          Mix_VolumeChunk(station_explode_sound, (int)(MIX_MAX_VOLUME * vol));
-          Mix_PlayChannel(-1, station_explode_sound, 0);
-        }
+        play_priority_chunk(station_explode_sound,
+                            net_listener_volume(mini_station->position));
         net_send_event(Net::EV_STATION_BOOM,
                        Net::pack_pos(mini_station->position.x(),
                                      mini_station->position.y(),
@@ -2145,10 +2154,14 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
       Net::unpack_pos(arg, wx, wy, world.x(), world.y());
       float vol = net_listener_volume(Point(wx, wy));
       if (vol <= 0.0f || players->empty()) break;
-      Mix_Chunk *snd = NULL;
-      if (code == Net::EV_WORLD_SHOT) snd = local_player()->ship->shoot_sound;
-      else if (code == Net::EV_WORLD_BOOM) snd = local_player()->ship->explode_sound;
-      else snd = station_explode_sound;
+      if (code == Net::EV_STATION_BOOM) {
+        // Rare and important enough to survive a saturated mixer.
+        play_priority_chunk(station_explode_sound, vol);
+        break;
+      }
+      Mix_Chunk *snd = code == Net::EV_WORLD_SHOT
+                           ? local_player()->ship->shoot_sound
+                           : local_player()->ship->explode_sound;
       if (snd) {
         Mix_VolumeChunk(snd, (int)(MIX_MAX_VOLUME * vol));
         Mix_PlayChannel(-1, snd, 0);
@@ -2670,7 +2683,6 @@ void GLGame::tick_net_client(int delta) {
       Ship *lme = players->back()->ship;
       if (!lme->lance_hit_pending.empty()) {
         for (auto &t : ship_targets) {
-          if (t.kind != 0) continue;
           Ship *e = static_cast<Ship *>(t.obj);
           if (!e->is_alive()) continue;
           Point where;
@@ -2680,6 +2692,18 @@ void GLGame::tick_net_client(int delta) {
                                          lme->lance_hit_pending[s + 1],
                                          e->position, e->radius, &where);
           if (!hit) continue;
+          if (t.kind != 0) {
+            // Station/mini hull contact: cosmetic only — local debris
+            // splash (the host's splash spawns on OUR replica over there
+            // and never replicates back) plus the deflection thud for the
+            // station. Damage/destruction stay host-side via MSG_LANCE,
+            // and the host skips its EV_ROID_THUD relay for our polyline
+            // so this cue isn't doubled.
+            lme->explode(where, e->velocity);
+            if (t.kind == 1 && Asteroid::thud_sound != NULL)
+              Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+            continue;
+          }
           if (e->kill_stop()) e->detonate();
           // Same silent-replica rule as the bullet path: play the dying
           // ship's boom ourselves, full volume — the kill is at our own
@@ -4421,13 +4445,11 @@ void GLGame::tick(int delta) {
       // destroyed it, play the destruction sound once — attenuated by
       // listener distance, and relayed to the net client.
       if (!mini_station->is_alive()) {
-        float vol = net_mode_ != NetOff
-                        ? net_listener_volume(mini_station->position)
-                        : sound_volume_for_point(mini_station->position);
-        if (station_explode_sound != NULL && vol > 0.0f) {
-          Mix_VolumeChunk(station_explode_sound, (int)(MIX_MAX_VOLUME * vol));
-          Mix_PlayChannel(-1, station_explode_sound, 0);
-        }
+        play_priority_chunk(
+            station_explode_sound,
+            net_mode_ != NetOff
+                ? net_listener_volume(mini_station->position)
+                : sound_volume_for_point(mini_station->position));
         net_send_event(Net::EV_STATION_BOOM,
                        Net::pack_pos(mini_station->position.x(),
                                      mini_station->position.y(),
@@ -4459,13 +4481,10 @@ void GLGame::tick(int delta) {
     {
       bool station_alive_now = station != NULL && station->is_alive();
       if (station_alive_prev && !station_alive_now && station != NULL) {
-        float vol = net_mode_ != NetOff
-                        ? net_listener_volume(station->position)
-                        : sound_volume_for_point(station->position);
-        if (station_explode_sound != NULL && vol > 0.0f) {
-          Mix_VolumeChunk(station_explode_sound, (int)(MIX_MAX_VOLUME * vol));
-          Mix_PlayChannel(-1, station_explode_sound, 0);
-        }
+        play_priority_chunk(station_explode_sound,
+                            net_mode_ != NetOff
+                                ? net_listener_volume(station->position)
+                                : sound_volume_for_point(station->position));
         net_send_event(Net::EV_STATION_BOOM,
                        Net::pack_pos(station->position.x(),
                                      station->position.y(),
@@ -5475,13 +5494,11 @@ void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts)
     firer->explode(where, mini_station->velocity);
     firer->score += GLMiniStation::REWARD;
     mini_station->destroy();
-    float vol = net_mode_ != NetOff
-                    ? net_listener_volume(mini_station->position)
-                    : sound_volume_for_point(mini_station->position);
-    if (station_explode_sound != NULL && vol > 0.0f) {
-      Mix_VolumeChunk(station_explode_sound, (int)(MIX_MAX_VOLUME * vol));
-      Mix_PlayChannel(-1, station_explode_sound, 0);
-    }
+    play_priority_chunk(
+        station_explode_sound,
+        net_mode_ != NetOff
+            ? net_listener_volume(mini_station->position)
+            : sound_volume_for_point(mini_station->position));
     net_send_event(Net::EV_STATION_BOOM,
                    Net::pack_pos(mini_station->position.x(),
                                  mini_station->position.y(),
@@ -5500,8 +5517,13 @@ void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts)
       station->hit();
     if (Asteroid::thud_sound != NULL)
       Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
-    net_send_event(Net::EV_ROID_THUD,
-                   Net::pack_pos(where.x(), where.y(), world.x(), world.y()));
+    // A client firer already played its own splash + thud at contact
+    // (the PROTO 20 pass in tick_net_client) — relaying would double it.
+    bool remote_firer = net_mode_ == NetHost && remote_player() != NULL &&
+                        firer == remote_player()->ship;
+    if (!remote_firer)
+      net_send_event(Net::EV_ROID_THUD,
+                     Net::pack_pos(where.x(), where.y(), world.x(), world.y()));
   }
 }
 
