@@ -135,7 +135,11 @@ namespace Net {
 //     queues MSG_HIT claims with bullet_id 0 (sentinel: no clone to
 //     consume) and its ray-march predicts outcomes without killing locally
 //     (the claim drain kills, exactly like bullet claims).
-const uint8_t PROTO_VERSION = 18;
+// 19: Snapshot per-bullet flags byte gains bit3 = world_bullet, so a shot
+//     the host sim ricocheted off a reflective/armoured surface recolours
+//     white on the client too (the client's own bullets recolour in their
+//     local cosmetic bounce, no wire needed).
+const uint8_t PROTO_VERSION = 19;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check

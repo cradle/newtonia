@@ -21,17 +21,20 @@ public:
   // 0 = not a reported shot (debris, host-native bullets).
   uint32_t net_id = 0;
 
-  // PROTO 18 wire flags (snapshot per-bullet byte): bit0 kills_invincible,
-  // bit1 has_trail, bit2 piercing — the free nx_* serializers are not
-  // friends, so the presentation-critical flags cross the wire via these.
+  // PROTO 18/19 wire flags (snapshot per-bullet byte): bit0 kills_invincible,
+  // bit1 has_trail, bit2 piercing, bit3 world_bullet (P19: ricochets off
+  // reflective/armoured surfaces recolour white on the client too) — the
+  // free nx_* serializers are not friends, so the presentation-critical
+  // flags cross the wire via these.
   uint8_t net_flags() const {
     return (uint8_t)((kills_invincible ? 1 : 0) | (has_trail ? 2 : 0) |
-                     (piercing ? 4 : 0));
+                     (piercing ? 4 : 0) | (world_bullet ? 8 : 0));
   }
   void set_net_flags(uint8_t f) {
     kills_invincible = (f & 1) != 0;
     has_trail = (f & 2) != 0;
     piercing = (f & 4) != 0;
+    world_bullet = (f & 8) != 0;
   }
 
   //TODO: Fix encapsulation, GLShip -> ParticleDrawer etc.
