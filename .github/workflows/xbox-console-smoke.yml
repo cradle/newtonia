@@ -36,8 +36,8 @@ on:
   workflow_dispatch:
 
 env:
-  SDL2_VERSION: 2.30.9
-  SDL2_MIXER_VERSION: 2.8.0
+  SDL2_VERSION: 2.32.10
+  SDL2_MIXER_VERSION: 2.8.2
 
 jobs:
   compile-smoke:

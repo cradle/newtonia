@@ -28,7 +28,7 @@ jobs:
 
       - name: Build SDL2_mixer (WAV + MP3 only)
         run: |
-          git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
+          git clone --depth 1 --branch release-2.8.2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
           cmake -S SDL2_mixer -B SDL2_mixer/build \
             -DSDL2MIXER_WAV=ON \
             -DSDL2MIXER_MP3=ON \
