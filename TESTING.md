@@ -86,7 +86,11 @@ test/e2e/spectate.sh # one player out of lives -> "SPECTATING IN N" -> camera to
 test/e2e/spectate_disconnect.sh # joiner spectating -> host process killed -> GAME OVER
 test/e2e/weapons_net.sh # PROTO 18: lance pulses + beam clones both ways (normal
                         # NETPLAY=1 build; the driver sets the runtime hook
-                        # NEWTONIA_NET_TEST_GRANT_WEAPONS=1 to stock both weapons)
+                        # NEWTONIA_NET_TEST_GRANT_WEAPONS=1 to stock both weapons.
+                        # Online the hook must be set on the HOST — it grants
+                        # both ships and replicates; on a client it is a no-op,
+                        # since weapons are host-owned and a local grant would
+                        # fight the snapshot restore)
 test/e2e/revive.sh   # co-op revive: drop gating (partner out, 10%, one at a time)
                      # + the NEWTONIA_NET_TEST_REVIVE_MS payload hook -> the
                      # fallen joiner leaves spectate and respawns, no GAME OVER

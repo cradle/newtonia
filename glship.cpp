@@ -189,7 +189,14 @@ void GLShip::step(int delta, const Grid &grid) {
   // compile-time cheat, so no special build is needed (or shipped).
   static const bool test_grant_weapons =
       SDL_getenv("NEWTONIA_NET_TEST_GRANT_WEAPONS") != NULL;
-  if(test_grant_weapons && ship->is_alive()) {
+  // Never grant on a net CLIENT (net_quiet_respawn = the client game's
+  // lifetime): weapons are host-owned state, so a client-side grant just
+  // fights the 10 Hz snapshot restore — ammo pins at 999, selection snaps
+  // back to the host's idea, and trigger pulls right after an apply fire
+  // the default gun (Glenn's "different guns to the server"). Set the env
+  // var on the HOST instead: it grants both ships and the weapons
+  // replicate here through the ordinary snapshot path.
+  if(test_grant_weapons && !Ship::net_quiet_respawn && ship->is_alive()) {
     bool has_beam = false, has_lance = false;
     for(Weapon::Base *w : ship->primary_weapons) {
       if(dynamic_cast<Weapon::Beam*>(w)) has_beam = true;
