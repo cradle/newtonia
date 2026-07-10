@@ -104,7 +104,7 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(SDL2
     GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-    GIT_TAG        release-2.30.9   # pinned: branch tip (SDL2) drifts between CI runs — see issue #287
+    GIT_TAG        release-2.32.10   # pinned: branch tip (SDL2) drifts between CI runs — see issue #287
     GIT_SHALLOW    TRUE
 )
 set(SDL_SHARED           OFF CACHE BOOL "" FORCE)
@@ -130,7 +130,7 @@ target_compile_options(SDL2-static PRIVATE /U__GDK__)
 # SDL2_mixer: WAV + MP3 only (mirrors every other platform build).
 FetchContent_Declare(SDL2_mixer
     GIT_REPOSITORY https://github.com/libsdl-org/SDL_mixer.git
-    GIT_TAG        release-2.8.0   # pinned alongside SDL2
+    GIT_TAG        release-2.8.2   # pinned alongside SDL2
     GIT_SHALLOW    TRUE
 )
 set(SDL2MIXER_WAVPACK OFF CACHE BOOL "" FORCE)
