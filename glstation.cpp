@@ -215,6 +215,10 @@ Save::Station GLStation::capture_state() const {
 }
 
 void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
+  // Net client: the host's copy just died — run the same debris burst its
+  // destroy() made, or the replica silently pops out of existence (the
+  // boom sound arrives separately via EV_STATION_BOOM).
+  if (alive && !s.alive) destroy();
   alive = s.alive;
   lives = s.lives;
   health = s.health;

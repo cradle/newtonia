@@ -4452,6 +4452,30 @@ void GLGame::tick(int delta) {
       }
     }
 
+    // Big station death boom, fired on the alive→dead transition so every
+    // kill path (bullets, missiles, ramming, lance, net kill claims) plays
+    // it exactly once — attenuated by listener distance, and relayed to the
+    // net client (whose replica runs the debris burst in restore_state).
+    {
+      bool station_alive_now = station != NULL && station->is_alive();
+      if (station_alive_prev && !station_alive_now && station != NULL) {
+        float vol = net_mode_ != NetOff
+                        ? net_listener_volume(station->position)
+                        : sound_volume_for_point(station->position);
+        if (station_explode_sound != NULL && vol > 0.0f) {
+          Mix_VolumeChunk(station_explode_sound, (int)(MIX_MAX_VOLUME * vol));
+          Mix_PlayChannel(-1, station_explode_sound, 0);
+        }
+        net_send_event(Net::EV_STATION_BOOM,
+                       Net::pack_pos(station->position.x(),
+                                     station->position.y(),
+                                     world.x(), world.y()));
+        NET_LOG("station destroyed at (%.0f, %.0f)",
+                station->position.x(), station->position.y());
+      }
+      station_alive_prev = station_alive_now;
+    }
+
     // Remove dead station once its debris has faded and all its ships are gone.
     if (station != NULL && station->is_removable() && enemies->empty()) {
       delete station;

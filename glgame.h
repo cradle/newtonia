@@ -439,6 +439,11 @@ private:
   Grid grid;
   GLStarfield *starfield;
   GLStation *station;
+  // Station death is detected as an alive→dead transition once per tick
+  // (rather than at each damage site) so every kill path — bullets,
+  // missiles, ramming, lance resolution, net kill claims — produces the
+  // same one-shot boom sound + EV_STATION_BOOM.
+  bool station_alive_prev = false;
   GLMiniStation *mini_station;
   list<GLShip*> *enemies, *players;
   list<Object*> *ship_objects;  // Ship* (as Object*) for missile homing
