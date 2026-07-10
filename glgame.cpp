@@ -5647,6 +5647,12 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
         dead_objects->pop_back();
       }
       Asteroid::num_killable = 0;
+      // The grid still holds pointers to the asteroids just deleted, and
+      // the next re-population is a sim tick away — which never comes
+      // while paused. Anything probing the grid in between (the rejoin
+      // path's safe_position when player 2 reconnects to a paused host)
+      // walked dangling pointers: Glenn's skip-while-paused segfault.
+      grid.update((std::list<Object *>*)objects);
   }
 
   if (host_keys && key == (unsigned char)gk.toggle_friendly_fire)
