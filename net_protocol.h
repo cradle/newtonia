@@ -137,8 +137,11 @@ namespace Net {
 //     (the claim drain kills, exactly like bullet claims).
 // 19: Snapshot per-bullet flags byte gains bit3 = world_bullet, so a shot
 //     the host sim ricocheted off a reflective/armoured surface recolours
-//     white on the client too (the client's own bullets recolour in their
-//     local cosmetic bounce, no wire needed).
+//     white on the client too. New MSG_BOUNCE (H->C): the sim's real
+//     bounce of any id-carrying bullet (entry back-trace, edge normal,
+//     asteroid reference frame) overrides the client's local radial
+//     approximation, so the two copies of a ricocheted shot fly the SAME
+//     post-bounce trajectory instead of merely sharing a colour.
 const uint8_t PROTO_VERSION = 19;
 
 enum MsgType {
@@ -181,6 +184,16 @@ enum MsgType {
   // firer, bullet_id 0) or ordinary removal records (host firer); this
   // message is the flash and the sound.
   MSG_LANCE = 13,
+  // Authoritative bullet-state override (PROTO 19), H->C rel: uint32
+  // bullet net_id, 2x float pos, 2x float velocity, uint8 flags (the
+  // Particle net_flags byte). Sent whenever the host sim RICOCHETS an
+  // id-carrying bullet (reflective / armoured-face deflection) so the
+  // client snaps its copy onto the real post-bounce trajectory instead
+  // of keeping its local radial approximation. Deliberately general —
+  // any future host-side bullet redirection (gravity slingshots, new
+  // deflectors) can reuse it as-is. Unknown ids are ignored (the bullet
+  // already expired or was consumed client-side).
+  MSG_BOUNCE = 14,
 };
 
 enum EventCode {

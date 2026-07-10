@@ -157,6 +157,7 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
   net_mode_ = NetHost;
   Net::set_net_log_role(true);  // lobby set it too; belt & braces
   net_session_ = session;
+  Ship::net_report_bounces = true;  // PROTO 19: sim ricochets -> MSG_BOUNCE
   // A fresh game's player 1 starts dead (offline you wait out the initial
   // countdown or tap fire). Online the host just finished the lobby, so
   // start alive — and without this the client's bootstrap snapshot catches
@@ -180,6 +181,7 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
 GLGame::~GLGame() {
   save_progress();
   if (net_mode_ == NetClient) Ship::net_quiet_respawn = false;
+  if (net_mode_ == NetHost) Ship::net_report_bounces = false;
   // Leaving an online game: tell the peer (best effort — a hard close is
   // also detected via the channel-close path).
   if (net_session_ && !net_connection_lost_)
@@ -1957,6 +1959,7 @@ void GLGame::net_clear_event_outboxes() {
   Ship::net_shot_reports.clear();
   Ship::net_ship_hit_claims.clear();
   Ship::net_lance_reports.clear();
+  Ship::net_bounce_reports.clear();
 }
 
 void GLGame::net_send_event(uint8_t code, uint32_t arg) {
@@ -2869,6 +2872,32 @@ void GLGame::net_client_poll() {
       // the host's ship; its kills arrive as ordinary removal records.
       if (players->empty()) continue;
       net_receive_lance_pulse(r, players->front()->ship);
+      continue;
+    }
+    if (h.msg_type == Net::MSG_BOUNCE) {
+      // Authoritative ricochet (PROTO 19): the host sim bounced a bullet
+      // we know by id — our own shot (already bounced here by the radial
+      // approximation in net_cosmetic_impacts) or a host-shot clone
+      // (which flew straight through). Snap it onto the real post-bounce
+      // trajectory, leading by RTT/2 like the shot clones so it lines up
+      // with the next snapshot rebuild. Unknown id = bullet already
+      // expired or consumed locally — ignore.
+      uint32_t id = r.u32();
+      float bx = r.f32(), by = r.f32(), bvx = r.f32(), bvy = r.f32();
+      uint8_t flags = r.u8();
+      if (!r.ok || id == 0) continue;
+      if (!(std::isfinite(bx) && std::isfinite(by) && std::isfinite(bvx) &&
+            std::isfinite(bvy) && bvx * bvx + bvy * bvy < 25.0f)) continue;
+      float lead = net_lead_ms();
+      for (auto *gs : *players) {
+        for (auto &b : gs->ship->bullets) {
+          if (b.net_id != id) continue;
+          b.position = WrappedPoint(bx + bvx * lead, by + bvy * lead);
+          b.velocity = Point(bvx, bvy);
+          b.set_net_flags(flags);
+          break;
+        }
+      }
       continue;
     }
     if (h.msg_type == Net::MSG_DELTA) {
@@ -4479,6 +4508,20 @@ void GLGame::tick(int delta) {
       }
       net_session_->transport()->send_reliable(&msg[0], msg.size());
     }
+    // PROTO 19: authoritative ricochets — the sim's real bounce of any
+    // id-carrying bullet overrides the client's local approximation, so
+    // both screens fly the same post-bounce trajectory.
+    for (const Ship::NetBounceReport &r : Ship::net_bounce_reports) {
+      std::vector<uint8_t> msg;
+      Net::put_header(msg, Net::MSG_BOUNCE, 2);
+      Net::put_u32(msg, r.id);
+      Net::put_f32(msg, r.x);
+      Net::put_f32(msg, r.y);
+      Net::put_f32(msg, r.vx);
+      Net::put_f32(msg, r.vy);
+      Net::put_u8(msg, r.flags);
+      net_session_->transport()->send_reliable(&msg[0], msg.size());
+    }
   }
   Ship::net_ship_impacts.clear();
   Ship::net_shots.clear();
@@ -4487,6 +4530,7 @@ void GLGame::tick(int delta) {
   // after a leave, rejoin pending) the queues must not grow unbounded.
   Ship::net_shot_reports.clear();
   Ship::net_lance_reports.clear();
+  Ship::net_bounce_reports.clear();
 
   // Online host: broadcast the world at 10 Hz once everything has stepped.
   if (net_mode_ == NetHost) net_host_send_snapshot(delta);

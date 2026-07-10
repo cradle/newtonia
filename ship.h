@@ -222,6 +222,16 @@ class Ship : public CompositeObject {
     // peer for its flash + sound. Pushed by fire_lance_pulse on reporting
     // ships (net_report_shots); drained into MSG_LANCE by both roles.
     static std::vector<std::vector<Point>> net_lance_reports;
+
+    // PROTO 19: authoritative ricochets. The HOST sim pushes a report
+    // whenever it bounces an id-carrying bullet off a reflective asteroid
+    // or an armoured face (gated by net_report_bounces — host games only);
+    // GLGame drains them into MSG_BOUNCE so the client snaps its copy onto
+    // the real post-bounce trajectory instead of keeping the local radial
+    // approximation from net_cosmetic_impacts.
+    struct NetBounceReport { uint32_t id; float x, y, vx, vy; uint8_t flags; };
+    static std::vector<NetBounceReport> net_bounce_reports;  // host outbox
+    static bool net_report_bounces;
     // net_claim_kills (the client's LOCAL ship): the lance ray-march
     // predicts kill outcomes without killing locally and queues MSG_HIT
     // claims with bullet_id 0 — the claim drain does the local kills,

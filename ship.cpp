@@ -26,6 +26,8 @@ std::vector<const Ship*> Ship::net_booms;
 std::vector<Ship::NetKillClaim> Ship::net_kill_claims;
 std::vector<Ship::NetShotReport> Ship::net_shot_reports;
 std::vector<std::vector<Point>> Ship::net_lance_reports;
+std::vector<Ship::NetBounceReport> Ship::net_bounce_reports;
+bool Ship::net_report_bounces = false;
 std::vector<Ship::NetShipHit> Ship::net_ship_hit_claims;
 uint32_t Ship::net_next_ship_id = 0;
 #include <algorithm>
@@ -1272,6 +1274,11 @@ void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
                                            entry.y() + normal.y() * push);
         object->kill(); // plays thud sound
         bullets[i].world_bullet = true;
+        if (net_report_bounces && bullets[i].net_id != 0)
+          net_bounce_reports.push_back({bullets[i].net_id,
+              bullets[i].position.x(), bullets[i].position.y(),
+              bullets[i].velocity.x(), bullets[i].velocity.y(),
+              bullets[i].net_flags()});
         ++i;
       } else if (ast && ast->armoured && !bullets[i].kills_invincible) {
         // Armoured asteroid: back-trace to the actual surface entry point, then
@@ -1313,6 +1320,11 @@ void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
             }
           }
           bullets[i].world_bullet = true;
+          if (net_report_bounces && bullets[i].net_id != 0)
+            net_bounce_reports.push_back({bullets[i].net_id,
+                bullets[i].position.x(), bullets[i].position.y(),
+                bullets[i].velocity.x(), bullets[i].velocity.y(),
+                bullets[i].net_flags()});
           ++i;
         } else {
           // Hit the unarmoured face — kill normally
