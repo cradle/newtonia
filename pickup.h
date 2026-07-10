@@ -29,6 +29,28 @@ public:
   Mesh glow_mesh;
 
 protected:
+  // Shared 4-layer halo treatment for arbitrary icon geometry: emit is
+  // called once per layer, after the layer's colour+alpha is set, with the
+  // layer's scale factor — it adds the icon's line groups multiplied by
+  // that scale. Gives every pickup silhouette the same glow the original
+  // stars had, so each item can carry a distinct line-art icon (colour
+  // alone left mine/giga/shield/beam near-identical purples).
+  template <typename EmitFn>
+  static void build_glow_icon(MeshBuilder& mb, float r, float g, float b,
+                              EmitFn emit) {
+    struct Layer { float scale; float alpha; };
+    static const Layer layers[] = {
+      {2.0f,  0.05f},
+      {1.5f,  0.12f},
+      {1.15f, 0.28f},
+      {1.0f,  1.0f },
+    };
+    for (const Layer& L : layers) {
+      mb.color(r, g, b, L.alpha);
+      emit(mb, L.scale);
+    }
+  }
+
   // Fill mb with a glowing 5-pointed star (4 layers: 3 halo + 1 solid).
   static void build_glow_star(MeshBuilder& mb, float r, float g, float b,
                                float outer, float inner) {

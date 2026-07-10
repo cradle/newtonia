@@ -117,6 +117,30 @@ GLGame::GLGame(SDL_GameController *controller) :
   object->ship->set_black_holes(black_holes);
   players->push_back(object);
 
+  // Test hook (inert without the env var): ring one of each pickup around
+  // the spawn so a driver can screenshot the full icon set (TESTING.md).
+  if (SDL_getenv("NEWTONIA_TEST_SPAWN_PICKUPS")) {
+    Point c(world.x() / 2.0f, world.y() / 2.0f);
+    // Spawns are random; park the ship at the ring's centre so the whole
+    // set is on the first screenshot (first-life respawn keeps the spot
+    // unless an asteroid overlaps it).
+    object->ship->position = WrappedPoint(c.x(), c.y());
+    std::vector<Pickup*> ring = {
+      new WeaponPickup(WrappedPoint(0, 0), 1), new MinePickup(WrappedPoint(0, 0)),
+      new GigaMinePickup(WrappedPoint(0, 0)),  new MissilePickup(WrappedPoint(0, 0)),
+      new ShieldPickup(WrappedPoint(0, 0)),    new GodModePickup(WrappedPoint(0, 0)),
+      new NovaChargePickup(WrappedPoint(0, 0)), new BeamPickup(WrappedPoint(0, 0)),
+      new LancePickup(WrappedPoint(0, 0)),     new RevivePickup(WrappedPoint(0, 0)),
+      new ExtraLife(WrappedPoint(0, 0)),
+    };
+    for (size_t i = 0; i < ring.size(); i++) {
+      float a = i * 2.0f * (float)M_PI / ring.size();
+      ring[i]->position = WrappedPoint(c.x() + cosf(a) * 200.0f,
+                                       c.y() + sinf(a) * 200.0f);
+      pickups->push_back(ring[i]);
+    }
+  }
+
   station = NULL;//new GLStation(enemies, players);
   mini_station = NULL;
 

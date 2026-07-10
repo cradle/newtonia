@@ -3,9 +3,26 @@
 #include "gl_compat.h"
 
 ShieldPickup::ShieldPickup(WrappedPoint pos) : Pickup(pos) {
+  // Three bubble arcs around a core dot — the force-shield ring.
   float s = radius * 0.8f;
   MeshBuilder mb;
-  build_glow_star(mb, 0.8f, 0.2f, 1.0f, s, s * 0.4f);
+  build_glow_icon(mb, 0.8f, 0.2f, 1.0f, [s](MeshBuilder& b, float k) {
+    float d = s * k;
+    for (int arc = 0; arc < 3; arc++) {
+      b.begin(GL_LINE_STRIP);
+      for (int i = 0; i <= 6; i++) {
+        float a = (arc * 120.0f + i * 80.0f / 6.0f) * (float)M_PI / 180.0f;
+        b.vertex(cosf(a) * 0.95f * d, sinf(a) * 0.95f * d);
+      }
+      b.end();
+    }
+    b.begin(GL_LINE_LOOP);   // core
+    for (int i = 0; i < 6; i++) {
+      float a = i * 2.0f * (float)M_PI / 6.0f;
+      b.vertex(cosf(a) * 0.16f * d, sinf(a) * 0.16f * d);
+    }
+    b.end();
+  });
   glow_mesh.upload(mb);
 }
 

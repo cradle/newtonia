@@ -3,9 +3,28 @@
 #include "gl_compat.h"
 
 MissilePickup::MissilePickup(WrappedPoint pos) : Pickup(pos) {
+  // A finned rocket, nose up, exhaust dash below.
   float s = radius * 0.8f;
   MeshBuilder mb;
-  build_glow_star(mb, 0.2f, 0.8f, 1.0f, s, s * 0.4f);
+  build_glow_icon(mb, 0.2f, 0.8f, 1.0f, [s](MeshBuilder& b, float k) {
+    float d = s * k;
+    b.begin(GL_LINE_LOOP);   // nose + body
+    b.vertex(0, d);
+    b.vertex(0.3f * d, 0.45f * d);  b.vertex(0.3f * d, -0.55f * d);
+    b.vertex(-0.3f * d, -0.55f * d); b.vertex(-0.3f * d, 0.45f * d);
+    b.end();
+    b.begin(GL_LINE_STRIP);  // left fin
+    b.vertex(-0.3f * d, -0.15f * d); b.vertex(-0.75f * d, -0.75f * d);
+    b.vertex(-0.3f * d, -0.55f * d);
+    b.end();
+    b.begin(GL_LINE_STRIP);  // right fin
+    b.vertex(0.3f * d, -0.15f * d); b.vertex(0.75f * d, -0.75f * d);
+    b.vertex(0.3f * d, -0.55f * d);
+    b.end();
+    b.begin(GL_LINES);       // exhaust
+    b.vertex(0, -0.65f * d); b.vertex(0, -0.95f * d);
+    b.end();
+  });
   glow_mesh.upload(mb);
 }
 

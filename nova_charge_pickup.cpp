@@ -27,6 +27,14 @@ NovaChargePickup::NovaChargePickup(WrappedPoint pos) : Pickup(pos) {
       mb.vertex(cosf(a) * r * L.scale, sinf(a) * r * L.scale);
     }
     mb.end();
+    // Radiating spokes: a shockwave, not just a circle.
+    mb.begin(GL_LINES);
+    for (int i = 0; i < 8; i++) {
+      float a = i * 2.0f * (float)M_PI / 8.0f;
+      mb.vertex(cosf(a) * r * 1.12f * L.scale, sinf(a) * r * 1.12f * L.scale);
+      mb.vertex(cosf(a) * r * 1.42f * L.scale, sinf(a) * r * 1.42f * L.scale);
+    }
+    mb.end();
   }
   glow_mesh.upload(mb);
 }

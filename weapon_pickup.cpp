@@ -4,9 +4,24 @@
 
 WeaponPickup::WeaponPickup(WrappedPoint pos, int weapon_index) :
   Pickup(pos), weapon_index(weapon_index) {
+  // A crosshair: circle with four ticks.
   float s = radius * 0.8f;
   MeshBuilder mb;
-  build_glow_star(mb, 0.0f, 1.0f, 0.0f, s, s * 0.4f);
+  build_glow_icon(mb, 0.0f, 1.0f, 0.0f, [s](MeshBuilder& b, float k) {
+    float d = s * k;
+    b.begin(GL_LINE_LOOP);
+    for (int i = 0; i < 12; i++) {
+      float a = i * 2.0f * (float)M_PI / 12.0f;
+      b.vertex(cosf(a) * 0.55f * d, sinf(a) * 0.55f * d);
+    }
+    b.end();
+    b.begin(GL_LINES);
+    b.vertex(0.3f * d, 0);  b.vertex(0.95f * d, 0);
+    b.vertex(-0.3f * d, 0); b.vertex(-0.95f * d, 0);
+    b.vertex(0, 0.3f * d);  b.vertex(0, 0.95f * d);
+    b.vertex(0, -0.3f * d); b.vertex(0, -0.95f * d);
+    b.end();
+  });
   glow_mesh.upload(mb);
 }
 

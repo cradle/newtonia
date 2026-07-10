@@ -3,9 +3,19 @@
 #include "gl_compat.h"
 
 LancePickup::LancePickup(WrappedPoint pos) : Pickup(pos) {
+  // A full-width double-ended arrow — goes all the way through.
   float s = radius * 0.8f;
   MeshBuilder mb;
-  build_glow_star(mb, 1.0f, 0.8f, 0.2f, s, s * 0.4f);
+  build_glow_icon(mb, 1.0f, 0.8f, 0.2f, [s](MeshBuilder& b, float k) {
+    float d = s * k;
+    b.begin(GL_LINES);
+    b.vertex(-d, 0); b.vertex(d, 0);
+    b.vertex(d, 0);  b.vertex(0.68f * d, 0.24f * d);
+    b.vertex(d, 0);  b.vertex(0.68f * d, -0.24f * d);
+    b.vertex(-d, 0); b.vertex(-0.68f * d, 0.24f * d);
+    b.vertex(-d, 0); b.vertex(-0.68f * d, -0.24f * d);
+    b.end();
+  });
   glow_mesh.upload(mb);
 }
 

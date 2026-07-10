@@ -95,6 +95,10 @@ test/e2e/gensoak.sh  # late-gen soak: host skips online to gen 25 (black hole,
                      # per-gen liveness + no-drop + clean-log asserts
 ```
 
+`NEWTONIA_TEST_SPAWN_PICKUPS=1` (offline, inert without the env var) rings
+one of each pickup around the spawn with the ship parked at the centre —
+screenshot it to eyeball the full icon set after touching pickup art.
+
 spectate.sh uses the host-only `NEWTONIA_NET_TEST_KILL_MS`/`_WHO` hooks
 (inert without the env vars) to empty a player's lives on a timer — lives are
 host-authoritative, so it is applied on the host and replicates. `_WHO`
