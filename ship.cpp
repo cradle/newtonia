@@ -1730,7 +1730,9 @@ void Ship::net_cosmetic_impacts(const Grid &grid, bool claim_kills) {
       // (world_bullet) so both screens read the bounce the same way.
       b.world_bullet = true;
     }
-    explode(b.position, o->velocity);
+    // Deflections spray no debris — the host's sim bounce doesn't either
+    // (the bullet survives; debris reads as it breaking up).
+    if (!deflect) explode(b.position, o->velocity);
     Mix_Chunk *snd = ting ? Asteroid::ting_sound : Asteroid::thud_sound;
     if (snd != NULL) {
       // Same 125 ms cue rate limit the host-side impact sites use.
