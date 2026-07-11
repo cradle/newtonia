@@ -382,7 +382,7 @@ void Ship::add_shield_ammo(int amount) {
 
 void Ship::add_god_mode(int duration_ms) {
   // God mode starts firing shockwaves the moment it activates, so activation
-  // counts as usage for the all_weapons achievement.
+  // counts as usage for the weapons_7 achievement.
   record_weapon_fired(Save::WeaponEntry::Kind::GodMode);
   set_shield_hum(false);
   for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {

@@ -13,7 +13,7 @@
 namespace Stats {
 
 // Bits in the special-asteroid kill mask, one per special type ever destroyed
-// by a local player (drives the all_specials achievement).
+// by a local player (drives the specials_7 achievement).
 enum Special {
   SPECIAL_REFLECTIVE  = 0,
   SPECIAL_TELEPORTING = 1,

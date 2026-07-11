@@ -198,7 +198,7 @@ class Ship : public CompositeObject {
     // Central bookkeeping for an asteroid this ship destroyed (score counters,
     // nova feedback, achievements, lifetime stats). All weapon paths call this.
     void credit_asteroid_kill(Object *object, bool nova_feedback = true);
-    void record_weapon_fired(Save::WeaponEntry::Kind kind);  // all_weapons tracking
+    void record_weapon_fired(Save::WeaponEntry::Kind kind);  // weapons_7 tracking
 
     void play_rotating_sound(bool on);
     void update_god_mode_music(int time_remaining);
