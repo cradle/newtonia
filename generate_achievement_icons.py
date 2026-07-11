@@ -145,10 +145,13 @@ def asteroid(c, cx, cy, r, color=WHITE, width=2.4, shape=None, fill=None):
     return verts
 
 
-def station_band(c, cx, cy, r, rot_deg, skip=None, width=2.0, segments=30):
-    """One glstation.cpp ring assembly: circles at r and 0.9r + radial
-    spokes every 12 degrees. skip=(a0,a1) leaves a destroyed sector out."""
-    r2 = r * 0.9
+def station_band(c, cx, cy, r, rot_deg, skip=None, width=2.0, segments=30,
+                 inner=0.9):
+    """One glstation.cpp ring assembly: circles at r and inner*r + radial
+    spokes every 12 degrees. skip=(a0,a1) leaves a destroyed sector out.
+    In-game inner is 0.9; a smaller value mimics the visual mass of the
+    two nested assemblies when an icon draws only one band."""
+    r2 = r * inner
     seg = 360.0 / segments
 
     def kept(a):
@@ -366,8 +369,11 @@ def scene_mini_station_kill():
     c = Canvas(50)
     c.stars()
     mx, my, mr = W * 0.60, W * 0.40, W * 0.20
-    station(c, mx, my, mr, skip=(215, 275))
-    bang = math.radians(245)
+    # single band: reads cleaner at icon size and distinguishes the mini
+    # from the big station's two-band icon. The breach faces the incoming
+    # shot (ship approaches from lower-left).
+    station_band(c, mx, my, mr, 0.0, skip=(107, 167), inner=0.78)
+    bang = math.radians(137)
     sparks(c, mx + mr * 0.95 * math.cos(bang), my + mr * 0.95 * math.sin(bang),
            bang, n=11, scale=W * 0.04)
     scx, scy, ss = W * 0.22, W * 0.76, W * 0.07
