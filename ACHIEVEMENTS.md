@@ -201,8 +201,8 @@ only the description mentions where it lives.
 | no_damage_clear | Untouchable | Clear level 9 or beyond without taking damage | 100 |
 | weapons_7 | Full Arsenal | Fire 7 different weapon types in one game | 60 |
 | coop_clear | Co-Pilot | Clear a level in 2-player mode | 60 |
-| kills_100 | Century | Destroy 100 asteroids in one game | 60 |
-| kills_1000_lifetime | Millennium | Destroy 1,000 asteroids (lifetime — `stats.dat`, §4) | 100 |
+| kills_1000 | Millennium | Destroy 1,000 asteroids in one game | 60 |
+| kills_10000_lifetime | Myriad | Destroy 10,000 asteroids (lifetime — `stats.dat`, §4) | 100 |
 | reach_level15 | Deep Space | Reach level 15 | 100 |
 | | **Total** | | **1,000** |
 
@@ -236,12 +236,14 @@ level 9, so getting *to* the black-hole level (10) is reliable — but the
 black-hole level itself is the difficulty wall. A run to level 10 scored
 ~2.7M points, which (at `value ≈ 1600/radius` per kill × the
 kills-per-life multiplier) implies on the order of 1,000–1,500 asteroid
-kills per good run — so `kills_100` lands early (level ~3) and a single
-good run nearly completes `kills_1000_lifetime`. A no-death run to level 9
-yielded a 90+ multiplier and 9 of the 10 nova charges: `nova_detonated`
-(~1,000 kills in one life) sits right at the edge of a strong run — hard
-but genuinely attainable, so its criteria and 60 GS stand. Decisions
-taken:
+kills per good run — 100 kills in one game proved trivial (reached by
+level ~3), so the per-game kill achievement is pitched at 1,000
+(`kills_1000`, roughly one full run) and the lifetime one at 10,000
+(`kills_10000_lifetime`, a genuine long-haul across many runs). A no-death
+run to level 9 yielded a 90+ multiplier and 9 of the 10 nova charges:
+`nova_detonated` (~1,000 kills in one life) sits right at the edge of a
+strong run — hard but genuinely attainable, so its criteria and 60 GS
+stand. Decisions taken:
 
 - GS values stay as drafted (the table above is no longer placeholder).
 - `no_damage_clear` anchored at level 9 — the edge of the consistently
