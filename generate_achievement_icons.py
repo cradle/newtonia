@@ -306,13 +306,36 @@ def scene_specials_7():
                        py + (vy - py) * 0.55 - sgn * (vx - px) * 0.18)
                 end = (px + (vx - px) * 0.45, py + (vy - py) * 0.45)
                 c.line([(vx, vy), mid, end], (178, 178, 178), int(1.2 * S), boost=1.2)
-        elif i == 5:  # armoured: cyan shield arc at 1.18r over the armoured face
-            asteroid(c, px, py, small, WHITE, 1.8)
-            fd = math.degrees(a + math.pi)   # armour facing outward from ring
-            c.arc(px, py, small * 1.18, fd - 120, fd + 120, CYAN, int(2.6 * S))
-        else:         # phasing: half solid white, half ghost cyan
-            c.arc(px, py, small, -90, 90, WHITE, int(1.8 * S))
-            c.arc(px, py, small, 90, 270, (46, 138, 153), int(1.6 * S), boost=1.2)
+        elif i == 5:  # armoured: the asteroid's own edges at 1.18 scale form
+                      # the armour plate over the shielded face (asteroid_drawer)
+            v = asteroid(c, px, py, small, WHITE, 1.8)
+            fa_ = a + math.pi               # armour facing outward from ring
+            adx, ady = math.cos(fa_), math.sin(fa_)
+            plate = [(px + (vx - px) * 1.18, py + (vy - py) * 1.18) for vx, vy in v]
+            n = len(plate)
+            for j in range(n):
+                k = (j + 1) % n
+                ax_, ay_ = plate[j][0] - px, plate[j][1] - py
+                bx_, by_ = plate[k][0] - px, plate[k][1] - py
+                la = math.hypot(ax_, ay_)
+                lb = math.hypot(bx_, by_)
+                a_in = (ax_ * adx + ay_ * ady) > -0.5 * la   # within +/-120 deg
+                b_in = (bx_ * adx + by_ * ady) > -0.5 * lb
+                if a_in and b_in:
+                    c.line([plate[j], plate[k]], CYAN, int(2.6 * S))
+        else:         # phasing: asteroid outline half solid white, half ghost cyan
+            shape = [(200, 1.0), (240, 0.86), (275, 1.04), (312, 0.92),
+                     (350, 1.08), (25, 0.95), (65, 1.02), (110, 0.88), (155, 0.97)]
+            v = [(px + small * f * math.cos(math.radians(ang)),
+                  py + small * f * math.sin(math.radians(ang))) for ang, f in shape]
+            n = len(v)
+            for j in range(n):
+                k = (j + 1) % n
+                mx, my = (v[j][0] + v[k][0]) / 2 - px, (v[j][1] + v[k][1]) / 2 - py
+                if mx >= 0:   # right half mid-phase ghost, left half solid
+                    c.line([v[j], v[k]], (46, 138, 153), int(1.6 * S), boost=1.2)
+                else:
+                    c.line([v[j], v[k]], WHITE, int(1.8 * S))
     text(c, cx, cy, "7", W * 0.09, GOLD, width=3.0)
     return c.finish("specials_7")
 
