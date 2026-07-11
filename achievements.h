@@ -8,10 +8,11 @@
 // touches game code. The default backend is a no-op, so builds without a
 // platform integration carry zero cost and zero new dependencies.
 //
-// Symbolic IDs currently wired up (ACHIEVEMENTS.md §5):
-//   first_kill, clear_gen1, all_specials, black_hole_survivor,
+// Symbolic IDs currently wired up (ACHIEVEMENTS.md §5; user-facing text uses
+// displayed level numbers, i.e. internal generation + 1):
+//   first_kill, clear_level1, all_specials, black_hole_survivor,
 //   mini_station_kill, station_destroyed, nova_full, no_damage_clear,
-//   all_weapons, coop_clear, kills_100, kills_1000_lifetime, reach_gen25
+//   all_weapons, coop_clear, kills_100, kills_1000_lifetime, reach_level25
 
 namespace Achievements {
 

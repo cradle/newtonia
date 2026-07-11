@@ -173,21 +173,27 @@ any portal (they get baked into the backend mapping tables). The GS column
 is Xbox-only; other platforms ignore it (or map it to their own point
 schemes at backend-definition time).
 
+**Terminology rule:** user-facing names and criteria always use the
+**displayed level number** (the HUD's `LEVEL = internal generation + 1`) —
+players never see "generation". Code hooks translate: the black hole appears
+at internal generation 9 = level 10; the station at internal generation 20 =
+level 21.
+
 | ID (symbolic) | Name (draft) | Criteria | GS |
 |---------------|--------------|----------|----|
 | first_kill | First Blood | Destroy your first asteroid | 10 |
-| clear_gen1 | Clear Skies | Clear generation 1 | 20 |
+| clear_level1 | Clear Skies | Clear level 1 | 20 |
 | all_specials | Special Delivery | Destroy one of every special asteroid type (reflective → phasing) | 100 |
-| black_hole_survivor | Event Horizon | Survive a black-hole generation (9+) without dying | 80 |
+| black_hole_survivor | Event Horizon | Survive a black-hole level (level 10 onward) without dying | 80 |
 | mini_station_kill | Little Nuisance | Destroy a mini-station | 50 |
-| station_destroyed | Station to Station | Destroy the enemy station (generation 20) | 200 |
-| nova_full | Nova | Detonate a fully-charged (9) nova | 60 |
-| no_damage_clear | Untouchable | Clear a generation ≥ 5 without taking damage | 100 |
+| station_destroyed | Station to Station | Destroy the enemy station (appears at level 21) | 200 |
+| nova_full | Nova | Detonate a nova with a full stock of charges | 60 |
+| no_damage_clear | Untouchable | Clear level 5 or beyond without taking damage | 100 |
 | all_weapons | Full Arsenal | Fire every weapon type in one game | 60 |
-| coop_clear | Co-Pilot | Clear a generation in 2-player mode | 60 |
+| coop_clear | Co-Pilot | Clear a level in 2-player mode | 60 |
 | kills_100 | Century | Destroy 100 asteroids in one game | 60 |
 | kills_1000_lifetime | Millennium | Destroy 1,000 asteroids (lifetime — `stats.dat`, §4) | 100 |
-| reach_gen25 | Deep Space | Reach generation 25 | 100 |
+| reach_level25 | Deep Space | Reach level 25 | 100 |
 | | **Total** | | **1,000** |
 
 13 achievements ≥ the 10 minimum; max single value 200 (at the cap);
@@ -198,8 +204,8 @@ a netplay-era criteria revision).
 ### Difficulty check before freezing (open question)
 
 The current game is probably **too hard** for several of these as drafted —
-worst suspects: `station_destroyed` (means *reaching* generation 20),
-`reach_gen25`, `no_damage_clear`, `black_hole_survivor`. Two forces to
+worst suspects: `station_destroyed` (means *reaching* level 21),
+`reach_level25`, `no_damage_clear`, `black_hole_survivor`. Two forces to
 balance:
 
 - XR-055 requires every achievement to be **achievable**, and cert test
@@ -211,10 +217,10 @@ balance:
   not deleting the late achievements.
 
 Before freezing IDs: playtest how far a competent-but-normal player actually
-gets (is gen 9–10 typical? is gen 20 a rare event?), then re-pitch the
-generation thresholds and/or soften criteria (e.g. "damage" excludes
+gets (is level 10 typical? is level 21 a rare event?), then re-pitch the
+level thresholds and/or soften criteria (e.g. "damage" excludes
 shield-absorbed hits; `black_hole_survivor` counts any player surviving in
-2P). If gen 20+ is genuinely rare, move GS down from the late items and
+2P). If level 21+ is genuinely rare, move GS down from the late items and
 redistribute to mid-game additions. Values above are placeholders until this
 pass happens.
 

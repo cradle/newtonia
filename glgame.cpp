@@ -617,9 +617,9 @@ void GLGame::tick(int delta) {
       // Generation cleared legitimately — the skip-level cheat sets
       // level_cleared directly and never reaches this branch. unlock() itself
       // still suppresses if any cheat was used this game (XR-057).
-      // Generation numbers are internal: displayed LEVEL is generation+1
-      // (see ACHIEVEMENTS.md §5 difficulty re-pitch).
-      if(generation == 1) Achievements::unlock("clear_gen1");
+      // User-facing criteria use displayed level numbers = generation + 1
+      // (ACHIEVEMENTS.md §5 terminology rule).
+      if(generation == 0) Achievements::unlock("clear_level1");
       if(players->size() >= 2) Achievements::unlock("coop_clear");
       bool local_died = false, local_survived = false;
       for(auto *gs : *players) {
@@ -627,9 +627,10 @@ void GLGame::tick(int delta) {
         if(gs->ship->died_this_generation) local_died = true;
         else local_survived = true;
       }
-      if(generation >= 5 && !local_died) Achievements::unlock("no_damage_clear");
-      // Black hole exists from generation 9; any local player surviving the
-      // whole generation counts (2P criteria per the §5 re-pitch note).
+      // "Clear level 5 or beyond without taking damage" — level 5 = generation 4.
+      if(generation >= 4 && !local_died) Achievements::unlock("no_damage_clear");
+      // Black hole exists from level 10 (generation 9); any local player
+      // surviving the whole level counts (2P criteria per the §5 re-pitch note).
       if(generation >= 9 && local_survived) Achievements::unlock("black_hole_survivor");
     } else if (time_until_next_generation > 0) {
       if(floor(time_until_next_generation/1000) != floor((time_until_next_generation-delta)/1000)) {
@@ -696,8 +697,9 @@ void GLGame::tick(int delta) {
       // Suppressed (like every unlock) for the rest of the game once any
       // cheat key has been used — deliberately NOT reset per generation, or
       // skipping to one generation short and clearing a single level would
-      // unlock the progression achievements (XR-057).
-      Achievements::progress("reach_gen25", generation * 100 / 25);
+      // unlock the progression achievements (XR-057). "Reach level 25":
+      // displayed level = generation + 1.
+      Achievements::progress("reach_level25", (generation + 1) * 100 / 25);
       level_cleared = false;
       save_progress();
       maybe_start_intro();
