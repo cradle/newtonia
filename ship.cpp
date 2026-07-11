@@ -1892,8 +1892,13 @@ std::shared_ptr<int> Ship::net_start_missile_fly_loop() {
 }
 
 void Ship::set_shield_hum(bool on) {
-  if(shield_hum_sound == NULL || sound_volume_scale < 1.0f) return;
   if(on) {
+    // The distance gate applies only to STARTING the hum. It used to gate
+    // the whole function, so a hum started at full volume could never be
+    // halted once the ship drifted out of earshot (the host re-scales a
+    // remote ship's sound_volume_scale by listener distance every tick) —
+    // the loop played forever: Glenn's "hum stuck on".
+    if(shield_hum_sound == NULL || sound_volume_scale < 1.0f) return;
     if(shield_hum_channel >= 0) return; // already playing, don't leak a new channel
     shield_hum_channel = Mix_PlayChannel(-1, shield_hum_sound, -1);
   } else if(shield_hum_channel >= 0) {
