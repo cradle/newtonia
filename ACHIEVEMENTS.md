@@ -195,9 +195,9 @@ only the description mentions where it lives.
 | specials_7 | Special Delivery | Destroy 7 different special asteroid types | 100 |
 | black_hole_survivor | Event Horizon | Survive a black-hole level (level 10 onward) without dying | 80 |
 | mini_station_kill | Little Nuisance | Destroy a mini-station | 50 |
-| station_destroyed | Station to Station | Destroy the enemy station (appears at level 15) | 200 |
+| station_destroyed | Station to Station | Destroy the enemy station (appears at level 15) | 160 |
 | enemies_10 | Ace | Destroy 10 enemy ships in one game | 40 |
-| nova_detonated | Nova | Detonate a nova | 20 |
+| nova_detonated | Nova | Detonate a nova | 60 |
 | no_damage_clear | Untouchable | Clear level 9 or beyond without taking damage | 100 |
 | weapons_7 | Full Arsenal | Fire 7 different weapon types in one game | 60 |
 | coop_clear | Co-Pilot | Clear a level in 2-player mode | 60 |
@@ -206,13 +206,17 @@ only the description mentions where it lives.
 | reach_level15 | Deep Space | Reach level 15 | 100 |
 | | **Total** | | **1,000** |
 
-14 achievements ≥ the 10 minimum; max single value 200 (at the cap);
+14 achievements ≥ the 10 minimum; max single value 160 (under the 200 cap);
 late-game items keep the "half the content" rule honest. Note `coop_clear`
 assumes local 2P exists on the platform (touch builds may need a variant or
 a netplay-era criteria revision). `enemies_10` took its GS from
-`nova_detonated` (60 → 20 + 40) when the nova criteria were simplified —
-enemy ships exist only from the station's arrival at level 15, so it's a
-late-game item.
+`station_destroyed` (200 → 160), which got easier when the station moved to
+level 15 — the fighters are part of the same content. Despite its simple
+criteria, `nova_detonated` is deceptively hard: charge pickups drop every
+100 kills, a nova needs 10 charge points, and death resets charge progress
+and wipes stocked novas — so it effectively demands ~1,000 kills in a
+single life, harder than `kills_1000_lifetime`. Its 60 GS (or a criteria
+softening) is a re-pitch candidate.
 
 ### Difficulty check before freezing
 
