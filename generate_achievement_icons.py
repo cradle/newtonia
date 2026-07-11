@@ -199,6 +199,16 @@ def mine(c, cx, cy, size, color=WHITE, angle=0.3):
     c.outline(pts, color, int(2.0 * S))
 
 
+def pickup_star(c, cx, cy, outer, color):
+    # build_glow_star (pickup.h): five-pointed star line loop, inner = 0.4*outer
+    pts = []
+    for i in range(10):
+        ang = i * math.pi / 5 - math.pi / 2
+        rad = outer if i % 2 == 0 else outer * 0.4
+        pts.append((cx + rad * math.cos(ang), cy + rad * math.sin(ang)))
+    c.outline(pts, color, int(1.8 * S))
+
+
 def missile(c, cx, cy, size, heading, color=P1BLUE):
     # glship.cpp missile_body: triangle loop (0,1),(-0.5,-1),(0.5,-1)
     c.outline(_place([(0, 1), (-0.5, -1), (0.5, -1)], cx, cy, size, heading),
@@ -503,27 +513,25 @@ def scene_no_damage_clear():
 def scene_no_secondary_level10():
     c = Canvas(66)
     c.stars()
-    # ship firing plain bullets only
+    # ship firing plain bullets: short line segments in the ship's colour,
+    # exactly as GLShip::draw_particles renders them
     scx, scy, ss = W * 0.32, W * 0.42, W * 0.085
     heading = math.radians(-15)
     ship(c, scx, scy, ss, heading)
     for k in range(4):
         t0 = 2.2 + k * 1.4
-        bx = scx + t0 * ss * math.cos(heading)
-        by = scy + t0 * ss * math.sin(heading)
-        c.db.ellipse([bx - 1.6 * S, by - 1.6 * S, bx + 1.6 * S, by + 1.6 * S], fill=GOLD)
-        c.dg.ellipse([bx - 3 * S, by - 3 * S, bx + 3 * S, by + 3 * S], fill=(120, 110, 70))
-    # secondaries struck out below: mine and missile in prohibition rings
-    for i, glyph in enumerate(("mine", "missile")):
+        b0 = (scx + t0 * ss * math.cos(heading), scy + t0 * ss * math.sin(heading))
+        b1 = (scx + (t0 + 0.45) * ss * math.cos(heading), scy + (t0 + 0.45) * ss * math.sin(heading))
+        c.line([b0, b1], P1BLUE, int(2.0 * S), boost=1.4)
+    # secondaries struck out below: the in-game pickup stars (missile cyan,
+    # shield purple) behind clean red no-rings — interiors stay black
+    for i, (col, ) in enumerate(((( 51, 204, 255),), ((204, 51, 255),))):
         px, py = W * (0.38 + i * 0.26), W * 0.76
         pr = W * 0.085
-        if glyph == "mine":
-            mine(c, px, py, pr * 0.42, (200, 200, 215), 0.4)
-        else:
-            missile(c, px, py, pr * 0.5, math.radians(-90), (200, 200, 215))
-        c.ring(px, py, pr, (255, 80, 80), int(2.6 * S))
+        pickup_star(c, px, py, pr * 0.52, col)
+        c.ring(px, py, pr, (255, 80, 80), int(2.6 * S), boost=1.0)
         d = pr / math.sqrt(2)
-        c.line([(px - d, py - d), (px + d, py + d)], (255, 80, 80), int(2.6 * S))
+        c.line([(px - d, py - d), (px + d, py + d)], (255, 80, 80), int(2.6 * S), boost=1.0)
     return c.finish("no_secondary_level10")
 
 
