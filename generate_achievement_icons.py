@@ -675,11 +675,12 @@ def scene_score_3m():
 def scene_reach_level15():
     c = Canvas(103)
     c.stars(n=110)
-    # the station small and distant, upper right — the journey's landmark
-    station(c, W * 0.74, W * 0.26, W * 0.11)
+    # the station looms mostly offscreen — a quarter of it entering at the
+    # top-right corner, huge, the way it first fills the screen in-game
+    station(c, W * 1.02, W * -0.02, W * 0.45)
     # ship far lower-left on the long haul toward it, extended dashed trail
     scx, scy, ss = W * 0.28, W * 0.72, W * 0.07
-    heading = math.atan2(W * 0.26 - scy, W * 0.74 - scx)
+    heading = math.atan2(W * 0.10 - scy, W * 0.85 - scx)
     ship(c, scx, scy, ss, heading)
     for k in range(3, 7):
         t0, t1 = 1.7 + k * 0.75, 2.1 + k * 0.75
@@ -687,10 +688,10 @@ def scene_reach_level15():
         c.line([(scx - t0 * ss * math.cos(heading), scy - t0 * ss * math.sin(heading)),
                 (scx - t1 * ss * math.cos(heading), scy - t1 * ss * math.sin(heading))],
                (a // 2, a // 2, a), int(1.1 * S), boost=1.3)
-    # a deployed fighter peels off the station toward the player
-    ex, ey = W * 0.30, W * 0.26
+    # a deployed fighter peels off the station toward the player, full size
+    ex, ey = W * 0.38, W * 0.30
     eh = math.atan2(scy - ey, scx - ex)
-    c.outline(_place(SHIP_LOOP, ex, ey, W * 0.05, eh), ENEMYGREEN, int(2.2 * S))
+    c.outline(_place(SHIP_LOOP, ex, ey, W * 0.07, eh), ENEMYGREEN, int(2.6 * S))
     return c.finish("reach_level15")
 
 
