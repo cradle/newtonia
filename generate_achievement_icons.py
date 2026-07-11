@@ -660,7 +660,7 @@ def scene_kills_1000():
 
 
 def scene_kills_10000_lifetime():
-    c = _kill_count_scene(101, "10K", GOLD)
+    c = _kill_count_scene(101, "10K", (255, 180, 10))  # rich gold, not spark-yellow
     return c.finish("kills_10000_lifetime")
 
 
