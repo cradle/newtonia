@@ -1036,15 +1036,38 @@ void GLShip::draw_debris() const {
   static MeshBuilder mb;
   static Mesh mesh;
 
+  bool any_points = false, any_streaks = false;
   mb.clear();
   mb.begin(GL_POINTS);
   for(auto d = ship->debris.begin(); d != ship->debris.end(); d++) {
+    if(d->streak) { any_streaks = true; continue; }
     mb.color(color[0], flicker[idx++ % 64], color[2], d->aliveness());
     mb.vertex(d->position.x(), d->position.y());
+    any_points = true;
   }
   mb.end();
-  mesh.upload(mb, GL_DYNAMIC_DRAW);
-  mesh.draw(2.5f);
+  if(any_points) {
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw(2.5f);
+  }
+
+  // Streak-flagged debris (the peer's mine blast on a net client) draws
+  // exactly like draw_particles' bullets: a solid tail-to-position line.
+  if(any_streaks) {
+    mb.clear();
+    mb.begin(GL_LINES);
+    for(auto d = ship->debris.begin(); d != ship->debris.end(); d++) {
+      if(!d->streak) continue;
+      mb.color(color[0], color[1], color[2]);
+      Point tail = d->position - d->velocity * 10;
+      mb.vertex(tail.x(), tail.y());
+      mb.vertex(d->position.x(), d->position.y());
+    }
+    mb.end();
+    glLineWidth(2.5f);
+    mesh.upload(mb, GL_DYNAMIC_DRAW);
+    mesh.draw();
+  }
 }
 
 void GLShip::draw_mines(bool minimap) const {

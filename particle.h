@@ -54,6 +54,11 @@ private:
   // asteroid between snapshot corrections must not strobe. Transient;
   // never serialized (rebuilt copies default to false).
   bool net_sparked = false;
+  // Cosmetic: draw this DEBRIS particle as a bullet-style streak instead
+  // of a flickering point. Used for the peer's mine blast on a net client,
+  // which lives in debris (bullets are wholesale-rebuilt every apply) but
+  // should look exactly like the real blast's bullets. Never serialized.
+  bool streak = false;
 };
 
 #endif /* PARTICLE_H */

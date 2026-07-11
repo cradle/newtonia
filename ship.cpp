@@ -1828,12 +1828,14 @@ void Ship::net_mine_exploded(const Point &pos, const Point &vel) {
     // the record on every 10 Hz apply, which wiped a bullets-list blast
     // within ~100 ms of it appearing ("mine explosions aren't displayed
     // on net clients"). Same particle recipe as detonate(50), but into
-    // debris, which the applies leave alone.
+    // debris, which the applies leave alone; the streak flag makes them
+    // draw exactly like the real blast's bullets.
     Point dir = (facing * radius * 1.2);
     for(int i = rand() % 50 + 25; i > 0; i--) {
       dir.rotate(rand() % 360 * M_PI / 180);
       debris.push_back(Particle(pos + dir, vel + dir * 0.0001 * (rand() % 150),
                                 rand() % 1500));
+      debris.back().streak = true;
     }
   }
   if(mine_explode_sound != NULL)
