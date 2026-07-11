@@ -1,4 +1,7 @@
 #include "achievements.h"
+#include <iostream>
+#include <set>
+#include <string>
 
 namespace Achievements {
 
@@ -17,6 +20,16 @@ namespace Backend {  // steam_achievements.cpp
 namespace {
 
 bool cheated_this_game = false;
+
+// unlock() is idempotent and re-fires constantly (threshold achievements
+// re-unlock every rebuild), so log each ID once per run — the only visible
+// trace of an earn on builds without a platform backend, and what headless
+// tests grep for.
+void log_unlock_once(const char *id) {
+  static std::set<std::string> logged;
+  if (logged.insert(id).second)
+    std::cout << "Achievement unlocked: " << id << std::endl;
+}
 
 void backend_unlock(const char *id) {
 #ifdef STEAM_BUILD
@@ -38,6 +51,7 @@ void backend_progress(const char *id, int pct) {
 
 void unlock(const char *id) {
   if (cheated_this_game) return;
+  log_unlock_once(id);
   backend_unlock(id);
 }
 
@@ -46,8 +60,10 @@ void progress(const char *id, int pct) {
   if (pct > 100) pct = 100;
   if (pct < 1) return;
   backend_progress(id, pct);
-  if (pct == 100)
+  if (pct == 100) {
+    log_unlock_once(id);
     backend_unlock(id);  // 100% == unlock on every backend (§3 LCD semantics)
+  }
 }
 
 void note_cheat_used()    { cheated_this_game = true; }
