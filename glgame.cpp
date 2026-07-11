@@ -1126,6 +1126,7 @@ void GLGame::tick(int delta) {
           if (s->is_local_player) {
             Achievements::unlock("mini_station_kill");
             Achievements::progress("score_3m", s->score / 30000);
+            if (s->shield_active()) Achievements::unlock("shield_ram");
           }
           break;
         }

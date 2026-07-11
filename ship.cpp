@@ -919,9 +919,13 @@ void Ship::collide(Ship* first, Ship* second) {
     } else if(!first->invincible) {
       first->kill_stop();
       first->detonate();
+      if(second->is_local_player && !first->is_local_player && second->shield_active())
+        Achievements::unlock("shield_ram");
     } else if(!second->invincible) {
       second->kill_stop();
       second->detonate();
+      if(first->is_local_player && !second->is_local_player && first->shield_active())
+        Achievements::unlock("shield_ram");
     }
   }
 }
