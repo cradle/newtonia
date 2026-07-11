@@ -37,6 +37,7 @@ NOVA_BRIGHT = (255, 153, 26)  # glship.cpp draw_shockwaves bright ring (1,0.6,0.
 NOVA_GLOW = (255, 77, 0)      # ...and its translucent glow ring (1,0.3,0)
 WHITE = (235, 235, 245)
 GOLD = (255, 240, 170)
+HUDGREEN = (60, 255, 60)    # the in-game Typer HUD text green
 
 
 class Canvas:
@@ -655,24 +656,19 @@ def _kill_count_scene(seed, label, label_color):
 
 
 def scene_kills_1000():
-    c = _kill_count_scene(100, "1000", WHITE)
+    c = _kill_count_scene(100, "1000", HUDGREEN)
     return c.finish("kills_1000")
 
 
 def scene_kills_10000_lifetime():
-    c = _kill_count_scene(101, "10K", (255, 180, 10))  # rich gold, not spark-yellow
+    c = _kill_count_scene(101, "10K", HUDGREEN)
     return c.finish("kills_10000_lifetime")
 
 
 def scene_score_3m():
     c = Canvas(102)
     c.stars(n=80)
-    cx, cy = W * 0.5, W * 0.47
-    text(c, cx, cy, "3M", W * 0.135, (255, 180, 10), width=3.4)
-    # score sparkle bursts at the corners of the numerals
-    for px, py in [(0.30, 0.30), (0.72, 0.62), (0.66, 0.28)]:
-        sparks(c, W * px, W * py, math.radians(random.uniform(0, 360)),
-               n=7, scale=W * 0.022)
+    text(c, W * 0.5, W * 0.47, "3M", W * 0.135, HUDGREEN, width=3.4)
     return c.finish("score_3m")
 
 
