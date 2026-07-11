@@ -386,12 +386,14 @@ bool Save::save_game(const Save::GameState &s) {
     ok = ok && write_station(f, s.station);
     ok = ok && write_mini_station(f, s.mini_station);
 
-    // v11 append: per-player achievements bookkeeping, in players order.
+    // v11 append: per-player achievements bookkeeping (in players order),
+    // then the game-scoped cheat flag.
     for (const auto &p : s.players) {
         ok = ok && wv(f, (int32_t)p.asteroid_kills);
         ok = ok && wv(f, (uint8_t)p.died_this_generation);
         ok = ok && wv(f, (uint32_t)p.weapons_fired_mask);
     }
+    ok = ok && wv(f, (uint8_t)s.cheated);
 
     fclose(f);
 
@@ -458,8 +460,8 @@ bool Save::load_game(Save::GameState &s) {
         s.mini_station.present = false;
     }
 
-    // Per-player achievements bookkeeping was appended in v11; older saves
-    // end before it and keep the Player struct defaults.
+    // Per-player achievements bookkeeping and the game-scoped cheat flag were
+    // appended in v11; older saves end before them and keep the defaults.
     if (version >= 11) {
         for (auto &p : s.players) {
             int32_t ak = 0; uint8_t died = 0; uint32_t wm = 0;
@@ -468,6 +470,9 @@ bool Save::load_game(Save::GameState &s) {
             p.died_this_generation = (bool)died;
             p.weapons_fired_mask   = wm;
         }
+        uint8_t cheated = 0;
+        ok = ok && rv(f, cheated);
+        s.cheated = (bool)cheated;
     }
 
     fclose(f);

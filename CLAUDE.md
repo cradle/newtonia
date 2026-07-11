@@ -324,7 +324,7 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 - `Pickup`: type, position, weapon_index
 - `BlackHole`, `Enemy`, `Station`: positional/state data (Station includes its deployed enemies)
 - `MiniStation`: present flag, alive, position, drift velocity, rotations, shot timer
-- `GameState`: generation, world size, level_cleared, players, all object lists
+- `GameState`: generation, world size, level_cleared, players, all object lists, game-scoped achievements cheat flag (appended in v11)
 
 **Backward compatibility:** `GameState::MIN_VERSION..VERSION` all load; older or newer files are ignored. New fields are only ever **appended at the end** and read back gated on `version >= N`, so an older save stops short and the new fields take their defaults (e.g. v9 saves load with no mini-station). Loading then re-saving upgrades the file to the current `VERSION`. Keep this convention when bumping the version so existing saves survive.
 
@@ -344,7 +344,7 @@ Auto-save triggers on pause or player death if the player has lives or score rem
 
 Full design in `ACHIEVEMENTS.md` (platform requirements, master list, backend plan).
 
-**Achievements** (`achievements.h/cpp`) — platform-neutral seam: `Achievements::unlock(id)` / `progress(id, pct)` (percent, 100 == unlock) with symbolic string IDs; the default backend is a no-op, platform backends (GDK in the private mirror, then Steam / Play Games / Game Center) replace it behind their own build flags. The shared layer owns the XR-057 cheat-suppression flag: skip-level and time-scale keys call `note_cheat_used()`, a legitimately starting generation (rebuild, new game, save resume) calls `generation_started()`, and `unlock`/`progress` are dropped while suppressed; the rebuild re-suppresses if the time scale is still altered.
+**Achievements** (`achievements.h/cpp`) — platform-neutral seam: `Achievements::unlock(id)` / `progress(id, pct)` (percent, 100 == unlock) with symbolic string IDs; the default backend is a no-op, platform backends (GDK in the private mirror, then Steam / Play Games / Game Center) replace it behind their own build flags. The shared layer owns the XR-057 cheat-suppression flag, which is **game-scoped**: skip-level and time-scale keys call `note_cheat_used()`, `unlock`/`progress` are dropped for the rest of that game, and only a fresh game (`new_game_started()`) clears it — deliberately not per-generation, or skipping to one level short of a progression achievement and clearing a single level would unlock it. The flag rides the savegame (`GameState::cheated`, v11) so save/quit/resume doesn't launder it.
 
 Hooks: `GLGame` (level clear, generation rebuild/progression, station + mini-station destruction, cheat keys) and `Ship` (`credit_asteroid_kill()` shared by every asteroid-kill path, weapon-kind tracking in `shoot()`/`fire_secondary()`/`add_god_mode()`, `nova_detonate()`, death flag in `kill()`). Attribution: only ships with `is_local_player` (set by `GLGame` when creating player ships; false for enemies, stations, and future remote netplay peers) earn achievements and stats.
 

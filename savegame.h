@@ -161,6 +161,9 @@ struct GameState {
     bool  level_cleared;
     int   time_until_next_generation;
     int   current_time;
+    // v11 append (end of file): a cheat key was used this game — achievement
+    // unlocks stay suppressed after resume (XR-057, ACHIEVEMENTS.md §1).
+    bool  cheated = false;
 
     std::vector<Player>    players;
     std::vector<Asteroid>  asteroids;

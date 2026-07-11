@@ -68,9 +68,12 @@ cheat; a "complete level 1" achievement must not).
 **Newtonia-specific hazard:** the skip-level (`N`) and time-scale (`=`/`-`)
 keys exist in shared code (keyboard-only, hidden from the controller help
 overlay, but present). Policy, enforced in the shared layer so every backend
-inherits it: **any cheat key used this generation → suppress all unlocks
-until the next legitimately started generation** (a `level_cheated` flag set
-on skip or time-scale change, cleared on generation rebuild).
+inherits it: **any cheat key used → suppress all unlocks for the rest of the
+game** (a `cheated` flag set on skip or time-scale change, cleared only when
+a new game starts, and persisted in the savegame so save/quit/resume doesn't
+launder it). A per-generation reset was considered and rejected: it would let
+a player skip to one generation short of a progression achievement and
+legitimately clear a single level to unlock it.
 
 ## 2. The other platforms
 
@@ -222,9 +225,9 @@ pass happens.
    from the §5 table.
 3. `stats.dat` lifetime stats via `SaveStorage` (Roaming), with the
    local-player attribution rule.
-4. The XR-057 cheat-suppression flag (`level_cheated`, set by skip-level and
-   time-scale keys, cleared on generation rebuild) gating completion-style
-   unlocks in the shared layer.
+4. The XR-057 cheat-suppression flag (game-scoped `cheated`, set by
+   skip-level and time-scale keys, cleared only on new game, persisted in
+   the savegame) gating all unlocks in the shared layer.
 5. Later, one backend at a time against the same seam: Steamworks (next to
    `steam/`), Google Play Games Services, Game Center.
 

@@ -4,7 +4,7 @@ namespace Achievements {
 
 namespace {
 
-bool cheated_this_generation = false;
+bool cheated_this_game = false;
 
 // Default no-op backend. Platform backends (GDK in the private mirror,
 // Steamworks, Play Games Services, Game Center — ACHIEVEMENTS.md §2) replace
@@ -17,12 +17,12 @@ void backend_progress(const char * /*id*/, int /*pct*/) {}
 } // namespace
 
 void unlock(const char *id) {
-  if (cheated_this_generation) return;
+  if (cheated_this_game) return;
   backend_unlock(id);
 }
 
 void progress(const char *id, int pct) {
-  if (cheated_this_generation) return;
+  if (cheated_this_game) return;
   if (pct > 100) pct = 100;
   if (pct < 1) return;
   if (pct == 100) {
@@ -32,8 +32,8 @@ void progress(const char *id, int pct) {
   }
 }
 
-void note_cheat_used()    { cheated_this_generation = true; }
-void generation_started() { cheated_this_generation = false; }
-bool unlocks_suppressed() { return cheated_this_generation; }
+void note_cheat_used()    { cheated_this_game = true; }
+void new_game_started()   { cheated_this_game = false; }
+bool unlocks_suppressed() { return cheated_this_game; }
 
 } // namespace Achievements

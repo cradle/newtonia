@@ -93,7 +93,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   object->ship->is_local_player = true;
   // A new game begins legitimately: lift any XR-057 suppression left over
   // from a previous game's cheat keys.
-  Achievements::generation_started();
+  Achievements::new_game_started();
   if(controller != NULL) {
     object->set_controller(controller);
   }
@@ -216,8 +216,10 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
             Point(Asteroid::max_radius*2, Asteroid::max_radius*2))) {
   time_between_steps = step_size;
   time_until_next_generation = save.time_until_next_generation;
-  // Resuming a save starts play legitimately (XR-057 suppression lifted).
-  Achievements::generation_started();
+  // Cheat suppression is game-scoped and rides the savegame, so quitting and
+  // resuming doesn't launder it (XR-057).
+  if (save.cheated) Achievements::note_cheat_used();
+  else              Achievements::new_game_started();
 
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
@@ -368,6 +370,7 @@ Save::GameState GLGame::build_save_data() const {
   s.level_cleared              = level_cleared;
   s.time_until_next_generation = time_until_next_generation;
   s.current_time               = current_time;
+  s.cheated                    = Achievements::unlocks_suppressed();
 
   for (auto* gs : *players)
     s.players.push_back(gs->ship->capture_state());
@@ -613,9 +616,9 @@ void GLGame::tick(int delta) {
       time_until_next_generation = 5000;
       // Generation cleared legitimately — the skip-level cheat sets
       // level_cleared directly and never reaches this branch. unlock() itself
-      // still suppresses if a cheat (e.g. time-scale) was used this generation
-      // (XR-057). Generation numbers are internal: displayed LEVEL is
-      // generation+1 (see ACHIEVEMENTS.md §5 difficulty re-pitch).
+      // still suppresses if any cheat was used this game (XR-057).
+      // Generation numbers are internal: displayed LEVEL is generation+1
+      // (see ACHIEVEMENTS.md §5 difficulty re-pitch).
       if(generation == 1) Achievements::unlock("clear_gen1");
       if(players->size() >= 2) Achievements::unlock("coop_clear");
       bool local_died = false, local_survived = false;
@@ -690,13 +693,11 @@ void GLGame::tick(int delta) {
         (*o)->ship->respawn(grid, false);
         (*o)->ship->died_this_generation = false;
       }
-      // Reported before the suppression reset below, so a generation reached
-      // via the skip-level cheat awards no progression (XR-057).
+      // Suppressed (like every unlock) for the rest of the game once any
+      // cheat key has been used — deliberately NOT reset per generation, or
+      // skipping to one generation short and clearing a single level would
+      // unlock the progression achievements (XR-057).
       Achievements::progress("reach_gen25", generation * 100 / 25);
-      // The new generation starts legitimately — unless the time-scale cheat
-      // is still engaged, which re-suppresses it immediately.
-      Achievements::generation_started();
-      if(time_between_steps != step_size) Achievements::note_cheat_used();
       level_cleared = false;
       save_progress();
       maybe_start_intro();
@@ -1818,8 +1819,8 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   const GeneralKeys &gk = g_prefs.general_keys;
 
   if (key == (unsigned char)gk.skip_level) {
-      // Cheat: suppress all achievement unlocks until the next legitimately
-      // started generation (XR-057, ACHIEVEMENTS.md §1).
+      // Cheat: suppress all achievement unlocks for the rest of this game
+      // (XR-057, ACHIEVEMENTS.md §1).
       Achievements::note_cheat_used();
       level_cleared = true;
       time_until_next_generation = 0;

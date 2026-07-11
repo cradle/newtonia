@@ -26,11 +26,14 @@ void progress(const char *id, int pct);
 
 // ── XR-057 cheat suppression (ACHIEVEMENTS.md §1) ───────────────────────────
 // Lives in this shared layer so every backend inherits it: any cheat input
-// (skip-level, time-scale keys) suppresses all unlocks and progress until the
-// next legitimately started generation.
+// (skip-level, time-scale keys) suppresses all unlocks and progress for the
+// REST OF THE GAME — a per-generation reset would let a player skip to one
+// generation short of a progression achievement and legitimately clear a
+// single level to unlock it. The flag is persisted in the savegame, so
+// save/quit/resume doesn't launder it; only starting a new game clears it.
 
 void note_cheat_used();     // a cheat key changed the game state
-void generation_started();  // a generation legitimately begins: lift suppression
-bool unlocks_suppressed();  // true while suppression is active
+void new_game_started();    // a fresh game begins: lift suppression
+bool unlocks_suppressed();  // true while suppression is active (saved/restored)
 
 } // namespace Achievements
