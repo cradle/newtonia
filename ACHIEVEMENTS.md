@@ -6,8 +6,8 @@ stats, and the unlock-integrity rules. Platform backends plug in behind it:
 
 | Backend | Where it lives | Status |
 |---------|----------------|--------|
-| Xbox / Microsoft Store (GDK) | private GDKX mirror (`xbox/PRIVATE_REPO.md`) | first — cert-blocking |
-| Steam | this repo, next to `steam/` | after Xbox |
+| Xbox / Microsoft Store (GDK) | private GDKX mirror (`xbox/PRIVATE_REPO.md`) | cert-blocking |
+| Steam | this repo, `steam_achievements.cpp` | **implemented** — portal config pending (§2 checklist) |
 | Android (Google Play Games Services) | this repo, Android integration | later |
 | iOS (Game Center) | this repo, iOS integration | later |
 
@@ -95,6 +95,58 @@ in-game achievement UI needed), definitions live in each store's portal (so
 the §5 list is the single master, frozen once), and offline earns are queued
 by the platform SDK — where a backend's SDK doesn't queue reliably, the
 backend owns retrying, not the game code.
+
+### Steam backend (`steam_achievements.cpp`)
+
+Implemented upstream behind `STEAM_BUILD` (the flag the deploy-steam
+workflow already sets; `steam_init()`/`steam_run_callbacks()` were already
+in the desktop loop). Per Valve's directions
+(https://partner.steamgames.com/doc/features/achievements):
+
+- **Unlocks** call `SetAchievement` + immediate `StoreStats` (the toast
+  should be instant). An in-memory unlocked cache keeps the seam's
+  idempotent re-unlocks from spamming the rate-limited `StoreStats`.
+- **Progress** maps the seam's 0–100 percent onto per-achievement
+  **increment-only INT stats** (`SetStat` is documented as a cheap
+  in-memory write). The portal binds each stat to its achievement as the
+  "Progress Stat" with unlock value 100, which gives Community progress
+  bars, server-side auto-unlock at the threshold, and Steam's
+  higher-value merge across devices. `StoreStats` for stat progress is
+  throttled to ~60 s checkpoints per Valve's guidance; unlock stores
+  flush anything pending.
+- **Init timing:** targets SDK 1.61+ (stats auto-requested at
+  `SteamAPI_Init`; `RequestCurrentStats` is gone). Anything set before
+  `UserStatsReceived_t` fires is queued and flushed by the callback.
+  `UserStatsStored_t` failures are logged — `k_EResultInvalidParam`
+  means a name isn't published in the portal.
+- **Offline** is Valve-handled: "Steam keeps a local cache of the stats
+  and achievement data so that the APIs can be used as normal in offline
+  mode" — no journal needed on this platform.
+
+**Steamworks portal checklist (no code):**
+
+1. Define the 14 achievements under App Admin → Stats & Achievements with
+   exactly these API names (the mapping table in `steam_achievements.cpp`
+   is authoritative): `ACH_FIRST_KILL`, `ACH_CLEAR_LEVEL1`,
+   `ACH_SPECIALS_7`, `ACH_BLACK_HOLE_SURVIVOR`, `ACH_MINI_STATION_KILL`,
+   `ACH_STATION_DESTROYED`, `ACH_ENEMIES_10`, `ACH_NOVA_DETONATED`,
+   `ACH_NO_DAMAGE_CLEAR`, `ACH_WEAPONS_7`, `ACH_COOP_CLEAR`,
+   `ACH_KILLS_1000`, `ACH_KILLS_10000_LIFETIME`, `ACH_REACH_LEVEL15`.
+   Names/descriptions from the §5 table; each needs achieved/unachieved
+   icons (Valve: all-ages appropriate; 64×64 minimum). 14 is well inside
+   the initial 100-achievement limit.
+2. Define 6 INT stats — `specials_7_pct`, `weapons_7_pct`,
+   `enemies_10_pct`, `kills_1000_pct`, `kills_10000_lifetime_pct`,
+   `reach_level15_pct` — each min 0, max 100, default 0,
+   **increment-only**, and bind each to its achievement as the Progress
+   Stat with unlock value 100.
+3. Add `stats.dat` (plus `highscore.dat`/`savegame.dat` if desired) to the
+   depot's **Auto-Cloud** file patterns so lifetime stats roam (§4).
+4. Publish the changes, then test on the `beta` branch build — unlocks
+   show as overlay toasts. Reset a test account with
+   `ISteamUserStats::ResetAllStats(true)` or the Steam console
+   (`steam.exe -console`, then `reset_all_stats <appid>` /
+   `achievement_clear <appid> <name>`).
 
 ### Offline earns
 
