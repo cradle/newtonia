@@ -134,9 +134,10 @@ in the desktop loop). Per Valve's directions
    `ACH_NO_SECONDARY_LEVEL10`, `ACH_WEAPONS_7`, `ACH_COOP_CLEAR`,
    `ACH_KILLS_1000`, `ACH_KILLS_10000_LIFETIME`, `ACH_SCORE_3M`,
    `ACH_REACH_LEVEL15`.
-   Names/descriptions from the §5 table; each needs achieved/unachieved
-   icons (Valve: all-ages appropriate; 64×64 minimum). 18 is well inside
-   the initial 100-achievement limit.
+   Names/descriptions from the §5 table. Icons (achieved + greyscale
+   locked, 256×256) are generated in the game's vector style by
+   `generate_achievement_icons.py` into `steam/icons/` — regenerate after
+   any list change. 18 is well inside the initial 100-achievement limit.
 2. Define 7 INT stats — `specials_7_pct`, `weapons_7_pct`,
    `enemies_10_pct`, `kills_1000_pct`, `kills_10000_lifetime_pct`,
    `score_3m_pct`, `reach_level15_pct` — each min 0, max 100, default 0,

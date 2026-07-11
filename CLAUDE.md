@@ -125,6 +125,9 @@ cmake -B xbox/build-desktop -S xbox -A Gaming.Desktop.x64
 ### Sound assets
 `generate_sounds.py` procedurally generates the WAV files in `audio/`.
 
+### Achievement icons
+`generate_achievement_icons.py` (requires Pillow) procedurally generates the 256×256 achieved/locked Steam achievement icon pairs into `steam/icons/`, porting the in-game glyph constructions (ship/station/asteroid meshes, Typer font, in-game colours) so the icons match the game's look. One deterministic scene function per §5 symbolic ID — rerun after any achievement list change.
+
 ## Architecture
 
 ### Class Hierarchy
