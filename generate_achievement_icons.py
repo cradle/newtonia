@@ -233,8 +233,8 @@ def scene_first_kill():
     c = Canvas(12)
     c.stars()
     acx, acy, ar = W * 0.63, W * 0.37, W * 0.20
-    for da, dd, a0, r in [(35, 0.55, 0.2, 0.62), (145, 0.6, 1.0, 0.5),
-                          (215, 0.5, 2.1, 0.55), (320, 0.62, 0.6, 0.48)]:
+    for da, dd, a0, r in [(35, 1.00, 0.2, 0.58), (145, 1.05, 1.0, 0.46),
+                          (215, 0.95, 2.1, 0.5), (320, 1.1, 0.6, 0.44)]:
         cx = acx + ar * dd * math.cos(math.radians(da))
         cy = acy + ar * dd * math.sin(math.radians(da))
         piece = [(cx + ar * r * (1.2 if i % 2 else 0.75) * math.cos(2 * math.pi * i / 5 + a0),
