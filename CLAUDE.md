@@ -177,14 +177,14 @@ Particle (: Object)             — bullet/trail particle with TTL
 
 When all killable asteroids are destroyed, a 5-second countdown (tick sounds) runs, then `generation` increments and the level rebuilds (`glgame.cpp`):
 
-- World grows by 50×50 per generation; at generation 20 it instead grows by 3000×3000
+- World grows by 50×50 per generation; at generation 14 it instead grows by 3000×3000
 - Asteroid count: `default_num_asteroids + generation * extra_num_asteroids`
 - Special asteroid types unlock by generation: reflective ≥ 2, teleporting ≥ 3, invisible ≥ 4, quantum ≥ 5, tough ≥ 6, armoured ≥ 7, phasing ≥ 8 (counts scale with generation)
 - Black hole spawns at world centre from generation ≥ 9
 - `GLMiniStation` (mini-station) spawns from generation ≥ 10
-- `GLStation` (enemy station) spawns from generation ≥ 20
+- `GLStation` (enemy station) spawns from generation ≥ 14
 - Pickups are cleared, the starfield and grid are rebuilt, players respawn, and progress is auto-saved
-- Every level that introduces a new object type gets an intro screen — the `Intro` state (`intro.h/cpp`; asteroid specials at 1–8, black hole at 9, mini-station at 10, station at 20; a new game starts straight into play): the world freezes and the object spins centre-screen with its name and a flashing "PRESS FIRE TO START" ("TAP FIRE TO START" in touch mode); any player's shoot input (key, controller A/right trigger, the touch fire button — not a tap anywhere) dismisses it, and the touch OSD is drawn on the intro so the fire button is findable, or it auto-starts after 5 s (`Intro::auto_start_ms`) with no input (`GLGame::maybe_start_intro()` decides whether one is due and hands the game to a new `Intro`; not persisted in saves — resuming a save never re-shows one); a looping title-style tune (`audio/intro.wav`) plays on its own channel while other sound channels stay paused, halted on dismissal
+- Every level that introduces a new object type gets an intro screen — the `Intro` state (`intro.h/cpp`; asteroid specials at 1–8, black hole at 9, mini-station at 10, station at 14; a new game starts straight into play): the world freezes and the object spins centre-screen with its name and a flashing "PRESS FIRE TO START" ("TAP FIRE TO START" in touch mode); any player's shoot input (key, controller A/right trigger, the touch fire button — not a tap anywhere) dismisses it, and the touch OSD is drawn on the intro so the fire button is findable, or it auto-starts after 5 s (`Intro::auto_start_ms`) with no input (`GLGame::maybe_start_intro()` decides whether one is due and hands the game to a new `Intro`; not persisted in saves — resuming a save never re-shows one); a looping title-style tune (`audio/intro.wav`) plays on its own channel while other sound channels stay paused, halted on dismissal
 
 ## Key Systems
 

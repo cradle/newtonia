@@ -176,8 +176,8 @@ schemes at backend-definition time).
 **Terminology rule:** user-facing names and criteria always use the
 **displayed level number** (the HUD's `LEVEL = internal generation + 1`) —
 players never see "generation". Code hooks translate: the black hole appears
-at internal generation 9 = level 10; the station at internal generation 20 =
-level 21.
+at internal generation 9 = level 10; the station at internal generation 14 =
+level 15.
 
 | ID (symbolic) | Name (draft) | Criteria | GS |
 |---------------|--------------|----------|----|
@@ -186,7 +186,7 @@ level 21.
 | all_specials | Special Delivery | Destroy one of every special asteroid type (reflective → phasing) | 100 |
 | black_hole_survivor | Event Horizon | Survive a black-hole level (level 10 onward) without dying | 80 |
 | mini_station_kill | Little Nuisance | Destroy a mini-station | 50 |
-| station_destroyed | Station to Station | Destroy the enemy station (appears at level 21) | 200 |
+| station_destroyed | Station to Station | Destroy the enemy station (appears at level 15) | 200 |
 | nova_full | Nova | Detonate a nova with a full stock of charges | 60 |
 | no_damage_clear | Untouchable | Clear level 9 or beyond without taking damage | 100 |
 | all_weapons | Full Arsenal | Fire every weapon type in one game | 60 |
@@ -222,11 +222,10 @@ black-hole level itself is the difficulty wall. Decisions taken from that:
   reachable range, right before the wall.
 - `reach_level25` re-anchored to **level 15** (`reach_level15`) so the
   progression achievement sits past the wall but not expert-only deep.
-- **Pending decision:** possibly move the enemy station earlier than its
-  current level 21 (a gameplay change, not just an achievement change — the
-  station spawn, the 3000×3000 world-growth jump, and the intro screen are
-  all tied to generation 20 in `glgame.cpp`). `station_destroyed`'s criteria
-  text follows whatever level it lands on.
+- The enemy station moved from level 21 to **level 15** (gameplay change:
+  the station spawn, the 3000×3000 world-growth jump, and the intro screen
+  all moved together from generation 20 to generation 14 in `glgame.cpp`),
+  so the station now arrives on the same level `reach_level15` fires.
 - Still open for the late items: soften criteria if needed (e.g. "damage"
   excludes shield-absorbed hits; `black_hole_survivor` already counts any
   player surviving in 2P).

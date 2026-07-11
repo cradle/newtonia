@@ -482,7 +482,7 @@ void GLGame::maybe_start_intro() {
              name = "PHASING";     break;
     case 9:  if (!black_holes->empty()) { kind = Intro::BLACK_HOLE;   name = "BLACK HOLE"; }    break;
     case 10: if (mini_station != NULL)  { kind = Intro::MINI_STATION; name = "MINI STATION"; }  break;
-    case 20: if (station != NULL)       { kind = Intro::STATION;      name = "ENEMY STATION"; } break;
+    case 14: if (station != NULL)       { kind = Intro::STATION;      name = "ENEMY STATION"; } break;
     default: return;
   }
   if (name == NULL) return;
@@ -641,13 +641,15 @@ void GLGame::tick(int delta) {
       time_until_next_generation -= delta;
     } else {
       generation++;
-      if(generation == 20) {
+      // The enemy station arrives at generation 14 (displayed level 15) and
+      // the world takes its one big growth jump to make room for it.
+      if(generation == 14) {
         world += Point(3000, 3000);
       } else {
         world += Point(50, 50);
       }
       grid = Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2));
-      if(generation >= 20) {
+      if(generation >= 14) {
         if(station != NULL)
           delete station;
         station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
