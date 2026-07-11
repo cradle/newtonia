@@ -443,21 +443,29 @@ void Ship::credit_asteroid_kill(Object *object, bool nova_feedback) {
   if (asteroid_kills == 1) Achievements::unlock("first_kill");
   Achievements::progress("kills_100", asteroid_kills);  // 100 kills == 100%
   Achievements::progress("kills_1000_lifetime", (int)(Stats::lifetime_kills() / 10));
+  // Frozen target (ACHIEVEMENTS.md §5 future-proofing rule): any 7 distinct
+  // special types unlock, counted across the whole mask so a future 8th type
+  // widens the pool without raising the bar. New types get a NEW achievement.
+  static const int SPECIALS_TARGET = 7;
   int specials = 0;
-  for (int i = 0; i < Stats::SPECIAL_COUNT; i++)
+  for (int i = 0; i < 32; i++)
     if (Stats::special_kill_mask() & (1u << i)) specials++;
-  Achievements::progress("all_specials", specials * 100 / Stats::SPECIAL_COUNT);
+  if (specials > SPECIALS_TARGET) specials = SPECIALS_TARGET;
+  Achievements::progress("specials_7", specials * 100 / SPECIALS_TARGET);
 }
 
 // WeaponEntry::Kind values double as bit positions in weapons_fired_mask.
 void Ship::record_weapon_fired(Save::WeaponEntry::Kind kind) {
   weapons_fired_mask |= 1u << (int)kind;
   if (!is_local_player) return;
-  const int num_kinds = (int)Save::WeaponEntry::Kind::Nova + 1;
+  // Frozen target (ACHIEVEMENTS.md §5 future-proofing rule): any 7 distinct
+  // weapon kinds unlock; a future kind widens the pool, never raises the bar.
+  static const int WEAPONS_TARGET = 7;
   int fired = 0;
-  for (int i = 0; i < num_kinds; i++)
+  for (int i = 0; i < 32; i++)
     if (weapons_fired_mask & (1u << i)) fired++;
-  Achievements::progress("all_weapons", fired * 100 / num_kinds);
+  if (fired > WEAPONS_TARGET) fired = WEAPONS_TARGET;
+  Achievements::progress("weapons_7", fired * 100 / WEAPONS_TARGET);
 }
 
 void Ship::add_nova_ammo(int amount) {

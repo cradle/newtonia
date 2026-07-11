@@ -179,17 +179,26 @@ players never see "generation". Code hooks translate: the black hole appears
 at internal generation 9 = level 10; the station at internal generation 14 =
 level 15.
 
+**Future-proofing rule:** design criteria to survive content additions —
+never "all X". Count-based targets frozen at today's numbers instead
+(`specials_7`, `weapons_7`): adding an 8th special type or weapon widens the
+pool a player can pick 7 from, it never raises the bar or retroactively
+devalues an unlock. New content earns a *new* achievement (post-launch GS
+budget) rather than mutating an old one. Entity-anchored triggers
+(`station_destroyed`) follow the same idea — the trigger is the entity, and
+only the description mentions where it lives.
+
 | ID (symbolic) | Name (draft) | Criteria | GS |
 |---------------|--------------|----------|----|
 | first_kill | First Blood | Destroy your first asteroid | 10 |
 | clear_level1 | Clear Skies | Clear level 1 | 20 |
-| all_specials | Special Delivery | Destroy one of every special asteroid type (reflective → phasing) | 100 |
+| specials_7 | Special Delivery | Destroy 7 different special asteroid types | 100 |
 | black_hole_survivor | Event Horizon | Survive a black-hole level (level 10 onward) without dying | 80 |
 | mini_station_kill | Little Nuisance | Destroy a mini-station | 50 |
 | station_destroyed | Station to Station | Destroy the enemy station (appears at level 15) | 200 |
 | nova_full | Nova | Detonate a nova with a full stock of charges | 60 |
 | no_damage_clear | Untouchable | Clear level 9 or beyond without taking damage | 100 |
-| all_weapons | Full Arsenal | Fire every weapon type in one game | 60 |
+| weapons_7 | Full Arsenal | Fire 7 different weapon types in one game | 60 |
 | coop_clear | Co-Pilot | Clear a level in 2-player mode | 60 |
 | kills_100 | Century | Destroy 100 asteroids in one game | 60 |
 | kills_1000_lifetime | Millennium | Destroy 1,000 asteroids (lifetime — `stats.dat`, §4) | 100 |
