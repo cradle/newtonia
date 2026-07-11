@@ -668,7 +668,7 @@ def scene_score_3m():
     c = Canvas(102)
     c.stars(n=80)
     cx, cy = W * 0.5, W * 0.47
-    text(c, cx, cy, "3M", W * 0.135, GOLD, width=3.4)
+    text(c, cx, cy, "3M", W * 0.135, (255, 180, 10), width=3.4)
     # score sparkle bursts at the corners of the numerals
     for px, py in [(0.30, 0.30), (0.72, 0.62), (0.66, 0.28)]:
         sparks(c, W * px, W * py, math.radians(random.uniform(0, 360)),
