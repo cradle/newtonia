@@ -134,11 +134,13 @@ def shield(c, cx, cy, ship_size, color=P1BLUE):
     c.ring(cx, cy, ship_size * 2.0, color, int(2.4 * S))
 
 
-def asteroid(c, cx, cy, r, color=WHITE, width=2.4, shape=None):
+def asteroid(c, cx, cy, r, color=WHITE, width=2.4, shape=None, fill=None):
     shape = shape or [(200, 1.0), (240, 0.86), (275, 1.04), (312, 0.92),
                       (350, 1.08), (25, 0.95), (65, 1.02), (110, 0.88), (155, 0.97)]
     verts = [(cx + r * f * math.cos(math.radians(a)),
               cy + r * f * math.sin(math.radians(a))) for a, f in shape]
+    if fill is not None:
+        c.db.polygon(verts, fill=fill)
     c.outline(verts, color, int(width * S))
     return verts
 
@@ -276,10 +278,10 @@ def scene_specials_7():
     for i in range(7):
         a = 2 * math.pi * i / 7 - math.pi / 2
         px, py = cx + R * math.cos(a), cy + R * math.sin(a)
-        if i == 0:    # reflective: cyan outline
-            asteroid(c, px, py, small, CYAN, 1.8)
-        elif i == 1:  # teleporting: white outline, triangle arrow inside
-            asteroid(c, px, py, small, WHITE, 1.8)
+        if i == 0:    # reflective: cyan outline over teal fill
+            asteroid(c, px, py, small, CYAN, 1.8, fill=(0, 82, 102))
+        elif i == 1:  # teleporting: black-filled, triangle arrow inside
+            asteroid(c, px, py, small, WHITE, 1.8, fill=(4, 4, 10))
             ta = a + 0.6
             ri = small * 0.55
             tip = (px + ri * math.cos(ta), py + ri * math.sin(ta))
@@ -295,11 +297,10 @@ def scene_specials_7():
                 aa = 2 * math.pi * j / 9
                 dx, dy = px + small * math.cos(aa), py + small * math.sin(aa)
                 c.db.ellipse([dx - S, dy - S, dx + S, dy + S], fill=(120, 120, 135))
-        elif i == 3:  # quantum: purple superposition (dim + bright copies)
-            asteroid(c, px - small * 0.25, py, small * 0.85, QUANTUM, 1.4)
-            asteroid(c, px + small * 0.25, py, small * 0.85, (166, 26, 255), 1.8)
-        elif i == 4:  # tough: cracks kinked inward from rim vertices
-            v = asteroid(c, px, py, small, WHITE, 1.8)
+        elif i == 3:  # quantum (observed): purple outline over dark purple fill
+            asteroid(c, px, py, small, (166, 26, 255), 1.8, fill=(33, 0, 76))
+        elif i == 4:  # tough: black-filled, cracks kinked inward from rim vertices
+            v = asteroid(c, px, py, small, WHITE, 1.8, fill=(4, 4, 10))
             for vi, sgn in ((0, 1), (4, -1), (7, 1)):
                 vx, vy = v[vi]
                 mid = (px + (vx - px) * 0.55 + sgn * (vy - py) * 0.18,
@@ -308,7 +309,7 @@ def scene_specials_7():
                 c.line([(vx, vy), mid, end], (178, 178, 178), int(1.2 * S), boost=1.2)
         elif i == 5:  # armoured: the asteroid's own edges at 1.18 scale form
                       # the armour plate over the shielded face (asteroid_drawer)
-            v = asteroid(c, px, py, small, WHITE, 1.8)
+            v = asteroid(c, px, py, small, WHITE, 1.8, fill=(4, 4, 10))
             fa_ = a + math.pi               # armour facing outward from ring
             adx, ady = math.cos(fa_), math.sin(fa_)
             plate = [(px + (vx - px) * 1.18, py + (vy - py) * 1.18) for vx, vy in v]
@@ -328,6 +329,7 @@ def scene_specials_7():
                      (350, 1.08), (25, 0.95), (65, 1.02), (110, 0.88), (155, 0.97)]
             v = [(px + small * f * math.cos(math.radians(ang)),
                   py + small * f * math.sin(math.radians(ang))) for ang, f in shape]
+            c.db.polygon(v, fill=(0, 45, 56))  # ghost teal fill, mid-phase
             n = len(v)
             for j in range(n):
                 k = (j + 1) % n
