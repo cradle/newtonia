@@ -354,7 +354,7 @@ def scene_black_hole_survivor():
                                (hr * 3.0, 240, 100, (80, 90, 170))]:
         c.arc(cx, cy, rr, a0, a0 + sweep, col, int(1.6 * S), boost=1.3)
     orbit_r = hr * 2.3
-    sa = math.radians(150)
+    sa = math.radians(97)    # bottom-middle of the hole's influence radius
     sx, sy = cx + orbit_r * math.cos(sa), cy + orbit_r * math.sin(sa)
     ship(c, sx, sy, W * 0.062, sa - math.pi / 2 - 0.25)
     c.arc(cx, cy, orbit_r, math.degrees(sa) + 12, math.degrees(sa) + 85,
