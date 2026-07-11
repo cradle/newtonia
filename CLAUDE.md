@@ -27,6 +27,28 @@ brew install sdl2 sdl2_mixer
 ```
 GLUT ships with Xcode Command Line Tools (`xcode-select --install`).
 
+#### Windows (MSYS2/MinGW64)
+One-time setup (installs MSYS2 via winget, all packages, netplay deps, and
+builds + selftests; idempotent, safe to re-run):
+```powershell
+./setup_windows_build.ps1                # add -SkipNetplay for a plain build
+```
+Day-to-day, from the **MSYS2 MINGW64** shell (not "MSYS2 MSYS" — only
+MINGW64 has g++/SDL on PATH), or from PowerShell via
+`$env:MSYSTEM='MINGW64'; C:\msys64\usr\bin\bash.exe -lc 'cd "$PWD" && make -j8'`:
+```sh
+make -j8              # plain build
+make NETPLAY=1 -j8    # netplay build (needs ./netplay-libs — see below)
+```
+The Makefile's `_NT` branch mirrors `.github/workflows/windows.yml`: fully
+static `newtonia.exe` (no MinGW DLLs needed), GUI subsystem so stdout only
+shows when piped from a shell (e.g. the `NEWTONIA_NET_SELFTEST=1` gate).
+`./build_netplay_deps.sh` has a matching Windows branch: static
+libdatachannel + vendored archives copied into `netplay-libs/lib/*.a`, all
+linked in one `--start-group` with msys2's static OpenSSL. `%zu` in
+`SDL_Log` formats warns (and misprints) under MinGW — cast to `unsigned`
+and use `%u`.
+
 #### Syntax-check without a full build
 The pre-commit hook in `.claude/settings.json` runs this automatically on staged files:
 ```sh

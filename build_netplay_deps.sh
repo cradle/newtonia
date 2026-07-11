@@ -30,6 +30,33 @@ echo "== cloning libdatachannel $TAG"
 git clone --branch "$TAG" --depth 1 --recurse-submodules --shallow-submodules \
   https://github.com/paullouisageneau/libdatachannel.git "$SRC"
 
+# Windows (MSYS2 MINGW64 shell) — mirrors .github/workflows/windows.yml:
+# static libdatachannel (+ vendored libjuice/usrsctp) against msys2's
+# OpenSSL. No `cmake --install` (it wants the shared target); instead the
+# headers and every built archive are copied into the prefix, and the
+# Makefile's Windows NETPLAY branch links all lib/*.a in one --start-group.
+# Needs: pacman -S git mingw-w64-x86_64-{gcc,cmake,ninja,openssl}
+# (setup_windows_build.ps1 installs these).
+case "$(uname)" in
+MINGW*|MSYS*)
+  [ "$UNIVERSAL" = "0" ] || { echo "--universal is macOS-only"; exit 1; }
+  echo "== building (Windows static)"
+  cmake -S "$SRC" -B "$SRC/build" -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DNO_MEDIA=ON -DNO_WEBSOCKET=OFF -DNO_EXAMPLES=ON -DNO_TESTS=ON
+  cmake --build "$SRC/build" --target datachannel-static
+  echo "== installing into $PREFIX"
+  mkdir -p "$PREFIX/include" "$PREFIX/lib"
+  cp -r "$SRC/include/." "$PREFIX/include/"
+  find "$SRC/build" -name '*.a' -exec cp {} "$PREFIX/lib/" \;
+  echo ""
+  echo "Done. Build the game with:"
+  echo "  make NETPLAY=1"
+  exit 0
+  ;;
+esac
+
 EXTRA=()
 if [ "$UNIVERSAL" = "1" ]; then
   [ "$(uname)" = "Darwin" ] || { echo "--universal is macOS-only"; exit 1; }

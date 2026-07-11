@@ -3798,7 +3798,7 @@ void GLGame::perf_report() {
     Uint64 pcf = SDL_GetPerformanceFrequency();
     SDL_Log("perf: fps=%d tick=%ums(max %u) draw=%ums(max %u) "
             "objs=%ums stars=%ums osd=%ums lens=%ums(max %u) other=%dms "
-            "asteroids=%zu dead=%zu pickups=%zu gen=%d",
+            "asteroids=%u dead=%u pickups=%u gen=%d",
             (int)(perf_frames_ * 1000 / span), perf_tick_ms_, perf_tick_max_,
             perf_draw_ms_, perf_draw_max_,
             (unsigned)(perf_objs_pc_ * 1000 / pcf),
@@ -3806,8 +3806,8 @@ void GLGame::perf_report() {
             (unsigned)(perf_osd_pc_ * 1000 / pcf),
             perf_lens_ms_, perf_lens_max_,
             (int)(span - perf_tick_ms_ - perf_draw_ms_),
-            objects->size(), dead_objects->size(), pickups->size(),
-            generation);
+            (unsigned)objects->size(), (unsigned)dead_objects->size(),
+            (unsigned)pickups->size(), generation);
   }
   perf_window_start_ = now;
   perf_frames_ = 0;

@@ -10,6 +10,13 @@ ifeq ($(UNAME), Darwin)
   LIBS = -framework GLUT -framework OpenGL -framework AppKit $(SDL2_LIBS)
   CFLAGS += -DGL_SILENCE_DEPRECATION -Wno-char-subscripts
   ALL_SRCS := $(filter-out $(ANDROID_SRCS),$(wildcard *.cpp) $(wildcard */*.cpp))
+else ifneq (,$(findstring _NT,$(UNAME)))
+  # Windows (MSYS2 MINGW64 shell) — mirrors .github/workflows/windows.yml:
+  # static link so newtonia.exe runs without mingw64 DLLs on PATH.
+  CFLAGS += -D_USE_MATH_DEFINES -DFREEGLUT_STATIC
+  LIBS = -static $(shell pkg-config --libs --static sdl2 SDL2_mixer freeglut) \
+         -lopengl32 -lglu32
+  ALL_SRCS := $(filter-out $(ANDROID_SRCS),$(wildcard *.cpp) $(wildcard */*.cpp))
 else
   LIBS = -lglut -lGL -lGLU -lX11 $(SDL2_LIBS)
   ALL_SRCS := $(filter-out $(ANDROID_SRCS),$(wildcard *.cpp) $(wildcard */*.cpp))
@@ -33,7 +40,19 @@ NETPLAY_PREFIX at an existing install)
     endif
   endif
   CFLAGS += -DNEWTONIA_NET_RTC -I$(NETPLAY_PREFIX)/include
-  LIBS += -L$(NETPLAY_PREFIX)/lib -ldatachannel -Wl,-rpath,$(NETPLAY_PREFIX)/lib
+  ifneq (,$(findstring _NT,$(UNAME)))
+    # Windows (MSYS2 MINGW64) — mirrors .github/workflows/windows.yml: static
+    # libdatachannel + vendored libjuice/usrsctp archives ("--start-group"
+    # resolves their circular references), msys2's static OpenSSL, and the
+    # Winsock/crypto system libs. RTC_STATIC stops rtc.h declaring dllimport
+    # symbols. Populate $(NETPLAY_PREFIX) with include/ and lib/*.a first
+    # (see the CI workflow's "Build libdatachannel" step).
+    CFLAGS += -DRTC_STATIC
+    LIBS += -Wl,--start-group $(wildcard $(NETPLAY_PREFIX)/lib/*.a) -Wl,--end-group \
+            -lssl -lcrypto -lws2_32 -liphlpapi -lbcrypt -lcrypt32
+  else
+    LIBS += -L$(NETPLAY_PREFIX)/lib -ldatachannel -Wl,-rpath,$(NETPLAY_PREFIX)/lib
+  endif
 endif
 
 CFLAGS += -MMD -MP
@@ -118,7 +137,7 @@ newtonia: $(OBJFILES)
 	$(CC) -o newtonia $(OBJFILES) $(LIBS)
 
 clean:
-	rm -rf $(OBJFILES) $(DEPFILES) newtonia newtonia-arm64 newtonia-x86_64 flavor.stamp
+	rm -rf $(OBJFILES) $(DEPFILES) newtonia newtonia.exe newtonia-arm64 newtonia-x86_64 flavor.stamp
 
 # ============================================================
 # Web / Emscripten target
