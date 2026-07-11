@@ -263,37 +263,56 @@ def scene_clear_level1():
 
 
 def scene_specials_7():
+    # Seven special types in a ring, using the in-game per-type visuals
+    # (asteroid_drawer.cpp): reflective/phased/armour cyan (0.3,0.9,1.0),
+    # quantum purple, teleport = interior triangle arrow at 0.45r, tough
+    # cracks kinked from a rim vertex halfway in (never meeting centre).
     c = Canvas(77)
     c.stars(n=60)
+    CYAN = (77, 230, 255)
+    QUANTUM = (128, 26, 204)
     cx, cy, R = W * 0.5, W * 0.5, W * 0.335
     small = W * 0.085
     for i in range(7):
         a = 2 * math.pi * i / 7 - math.pi / 2
         px, py = cx + R * math.cos(a), cy + R * math.sin(a)
-        kind = i
-        if kind == 0:    # reflective: double outline
+        if i == 0:    # reflective: cyan outline
+            asteroid(c, px, py, small, CYAN, 1.8)
+        elif i == 1:  # teleporting: white outline, triangle arrow inside
             asteroid(c, px, py, small, WHITE, 1.8)
-            asteroid(c, px, py, small * 0.72, (170, 170, 185), 1.2)
-        elif kind == 1:  # teleporting: departure arrow
-            asteroid(c, px, py, small, WHITE, 1.8)
-            c.line([(px + small * 1.2, py), (px + small * 2.0, py)], (190, 255, 255), int(1.6 * S))
-        elif kind == 2:  # invisible: dotted hint of an outline
+            ta = a + 0.6
+            ri = small * 0.55
+            tip = (px + ri * math.cos(ta), py + ri * math.sin(ta))
+            base_r = ri * 0.55
+            back, perp = ta + math.pi, ta + math.pi / 2
+            bl = (px + base_r * math.cos(back) + base_r * 0.6 * math.cos(perp),
+                  py + base_r * math.sin(back) + base_r * 0.6 * math.sin(perp))
+            br = (px + base_r * math.cos(back) - base_r * 0.6 * math.cos(perp),
+                  py + base_r * math.sin(back) - base_r * 0.6 * math.sin(perp))
+            c.outline([tip, bl, br], WHITE, int(1.4 * S))
+        elif i == 2:  # invisible: no outline in-game; faint dotted hint
             for j in range(9):
                 aa = 2 * math.pi * j / 9
                 dx, dy = px + small * math.cos(aa), py + small * math.sin(aa)
                 c.db.ellipse([dx - S, dy - S, dx + S, dy + S], fill=(120, 120, 135))
-        elif kind == 3:  # quantum: two overlapping possibilities
-            asteroid(c, px - small * 0.25, py, small * 0.85, (160, 160, 175), 1.4)
-            asteroid(c, px + small * 0.25, py, small * 0.85, WHITE, 1.8)
-        elif kind == 4:  # tough: crack lines
+        elif i == 3:  # quantum: purple superposition (dim + bright copies)
+            asteroid(c, px - small * 0.25, py, small * 0.85, QUANTUM, 1.4)
+            asteroid(c, px + small * 0.25, py, small * 0.85, (166, 26, 255), 1.8)
+        elif i == 4:  # tough: cracks kinked inward from rim vertices
             v = asteroid(c, px, py, small, WHITE, 1.8)
-            c.line([v[0], (px, py), v[4]], (185, 185, 200), int(1.2 * S), boost=1.2)
-        elif kind == 5:  # armoured: thick shield arc on one face
+            for vi, sgn in ((0, 1), (4, -1), (7, 1)):
+                vx, vy = v[vi]
+                mid = (px + (vx - px) * 0.55 + sgn * (vy - py) * 0.18,
+                       py + (vy - py) * 0.55 - sgn * (vx - px) * 0.18)
+                end = (px + (vx - px) * 0.45, py + (vy - py) * 0.45)
+                c.line([(vx, vy), mid, end], (178, 178, 178), int(1.2 * S), boost=1.2)
+        elif i == 5:  # armoured: cyan shield arc at 1.18r over the armoured face
             asteroid(c, px, py, small, WHITE, 1.8)
-            c.arc(px, py, small * 1.25, 160, 280, (200, 200, 215), int(3.0 * S))
-        else:            # phasing: half faded
-            asteroid(c, px, py, small, (120, 120, 135), 1.6)
+            fd = math.degrees(a + math.pi)   # armour facing outward from ring
+            c.arc(px, py, small * 1.18, fd - 120, fd + 120, CYAN, int(2.6 * S))
+        else:         # phasing: half solid white, half ghost cyan
             c.arc(px, py, small, -90, 90, WHITE, int(1.8 * S))
+            c.arc(px, py, small, 90, 270, (46, 138, 153), int(1.6 * S), boost=1.2)
     text(c, cx, cy, "7", W * 0.09, GOLD, width=3.0)
     return c.finish("specials_7")
 
