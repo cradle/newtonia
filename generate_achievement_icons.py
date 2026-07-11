@@ -459,11 +459,8 @@ def scene_enemies_10():
         for col in range(5):
             px = W * (0.20 + col * 0.15)
             py = W * (0.30 + row * 0.24)
-            if row == 1 and col == 4:
-                sparks(c, px, py, math.radians(-30), n=9, scale=es * 0.8)
-            else:
-                pts = _place(SHIP_LOOP, px, py, es, math.radians(90))
-                c.outline(pts, ENEMYGREEN, int(2.2 * S))
+            pts = _place(SHIP_LOOP, px, py, es, math.radians(90))
+            c.outline(pts, ENEMYGREEN, int(2.2 * S))
     scx, scy, ss = W * 0.5, W * 0.80, W * 0.075
     ship(c, scx, scy, ss, math.radians(-90))
     return c.finish("enemies_10")
