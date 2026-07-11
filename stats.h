@@ -12,10 +12,12 @@
 
 namespace Stats {
 
-// Bits in the special-asteroid kill mask, one per special type ever destroyed
-// by a local player (drives the specials_7 achievement).
+// Bits in the killable-asteroid-type kill mask, one per type ever destroyed
+// by a local player (drives the specials_7 achievement). Reflective and
+// invincible asteroids are deliberately absent: they die only to god mode,
+// so they are bonus kills rather than requirements.
 enum Special {
-  SPECIAL_REFLECTIVE  = 0,
+  SPECIAL_NORMAL      = 0,
   SPECIAL_TELEPORTING = 1,
   SPECIAL_INVISIBLE   = 2,
   SPECIAL_QUANTUM     = 3,

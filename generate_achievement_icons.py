@@ -348,10 +348,11 @@ def scene_clear_level1():
 
 
 def scene_specials_7():
-    # Seven special types in a ring, using the in-game per-type visuals
-    # (asteroid_drawer.cpp): reflective/phased/armour cyan (0.3,0.9,1.0),
-    # quantum purple, teleport = interior triangle arrow at 0.45r, tough
-    # cracks kinked from a rim vertex halfway in (never meeting centre).
+    # The seven killable types in a ring, using the in-game per-type visuals
+    # (asteroid_drawer.cpp): plain normal rock (reflective is god-mode-only
+    # and excluded), quantum purple, teleport = interior triangle arrow at
+    # 0.45r, tough cracks kinked from a rim vertex halfway in, armour plate
+    # cyan, phasing split solid/ghost.
     c = Canvas(77)
     c.stars(n=60)
     CYAN = (77, 230, 255)
@@ -361,8 +362,8 @@ def scene_specials_7():
     for i in range(7):
         a = 2 * math.pi * i / 7 - math.pi / 2
         px, py = cx + R * math.cos(a), cy + R * math.sin(a)
-        if i == 0:    # reflective: cyan outline over teal fill
-            asteroid(c, px, py, small, CYAN, 1.8, fill=(0, 82, 102))
+        if i == 0:    # normal: plain white rock, black fill
+            asteroid(c, px, py, small, WHITE, 1.8, fill=(4, 4, 10))
         elif i == 1:  # teleporting: black-filled, triangle arrow inside
             asteroid(c, px, py, small, WHITE, 1.8, fill=(4, 4, 10))
             ta = a + 0.6
