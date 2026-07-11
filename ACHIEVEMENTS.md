@@ -232,7 +232,12 @@ The two forces to balance:
 
 **Playtest findings (2026-07):** a competent player consistently reaches
 level 9, so getting *to* the black-hole level (10) is reliable — but the
-black-hole level itself is the difficulty wall. Decisions taken from that:
+black-hole level itself is the difficulty wall. A run to level 10 scored
+~2.7M points, which (at `value ≈ 1600/radius` per kill × the
+kills-per-life multiplier) implies on the order of 1,000–1,500 asteroid
+kills per good run — so `kills_100` lands early (level ~3), a single good
+run nearly completes `kills_1000_lifetime`, and `nova_detonated`'s
+~1,000-kills-in-one-life is a near-perfect full run. Decisions taken:
 
 - GS values stay as drafted (the table above is no longer placeholder).
 - `no_damage_clear` anchored at level 9 — the edge of the consistently
