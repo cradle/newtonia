@@ -96,6 +96,50 @@ the §5 list is the single master, frozen once), and offline earns are queued
 by the platform SDK — where a backend's SDK doesn't queue reliably, the
 backend owns retrying, not the game code.
 
+### Offline earns
+
+The game never checks connectivity: hooks call `unlock()`/`progress()` the
+moment criteria are met, and **delivery is each backend's responsibility**
+(XR-055: an offline earn must post when connectivity returns — the player
+must never re-earn it; lost-but-recovered-on-relaunch is Minor, lost
+entirely is Critical).
+
+Per platform:
+
+- **Steam** — the Steam client stores `SetAchievement` calls locally and
+  syncs when it reconnects. Nothing for the backend to do.
+- **Google Play Games** — the SDK caches unlock/increment calls offline and
+  flushes them on reconnect. Nothing to do.
+- **Xbox / GDK** — unlock calls need Xbox Live, and the GDK does **not**
+  queue them offline: the backend must persist a small pending-unlocks
+  journal (same pref-path pattern as `stats.dat`), retry on launch / resume
+  / connectivity-regained, and drop an entry only on confirmed post.
+  (Signed-out play earning nothing is allowed; offline-while-signed-in must
+  recover.)
+- **Game Center** — `reportAchievements` can fail offline and GameKit does
+  not reliably queue, so the iOS backend uses the same persist-and-resubmit
+  journal.
+
+Two properties of the shared layer make retries trivially safe:
+
+1. **Unlocks are idempotent and progress is monotonic** — a backend can
+   blindly re-send anything it is unsure about; double-posting is harmless
+   on every platform.
+2. **The facts behind most achievements are persisted locally** (lifetime
+   kills + specials mask in `stats.dat`; per-game counters and the cheat
+   flag in the savegame), so a backend can run a **reconcile pass** at
+   startup or sign-in: re-derive progress from the persisted counters and
+   re-report it. Even a lost journal entry is then re-earned from ground
+   truth without the player redoing anything.
+
+The exception: event-only achievements with no counter behind them
+(`nova_detonated`, `black_hole_survivor`, `coop_clear`, `clear_level1`,
+`no_damage_clear`, `mini_station_kill`, `station_destroyed`) cannot be
+re-derived, so the pending journal is their only safety net. Build the
+journal once as a small shared utility next to the seam when the first
+backend that needs it lands (GDK — first in line), rather than
+re-implementing it per backend.
+
 ## 3. The seam (`achievements.h`)
 
 Mirror the `SaveStorage` pattern (`save_storage.h/.cpp`): a tiny
