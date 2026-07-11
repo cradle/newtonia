@@ -677,14 +677,20 @@ def scene_reach_level15():
     c.stars(n=110)
     # the station small and distant, upper right — the journey's landmark
     station(c, W * 0.74, W * 0.26, W * 0.11)
-    # ship far lower-left, long trail toward it
+    # ship far lower-left on the long haul toward it, extended dashed trail
     scx, scy, ss = W * 0.28, W * 0.72, W * 0.07
     heading = math.atan2(W * 0.26 - scy, W * 0.74 - scx)
-    trail = [(scx - t * ss * math.cos(heading), scy - t * ss * math.sin(heading))
-             for t in range(2, 9)]
-    c.line(trail, (60, 70, 140), int(2.2 * S), boost=1.3)
     ship(c, scx, scy, ss, heading)
-    text(c, W * 0.24, W * 0.28, "15", W * 0.07, WHITE, width=2.6)
+    for k in range(3, 7):
+        t0, t1 = 1.7 + k * 0.75, 2.1 + k * 0.75
+        a = max(40, 210 - k * 40)
+        c.line([(scx - t0 * ss * math.cos(heading), scy - t0 * ss * math.sin(heading)),
+                (scx - t1 * ss * math.cos(heading), scy - t1 * ss * math.sin(heading))],
+               (a // 2, a // 2, a), int(1.1 * S), boost=1.3)
+    # a deployed fighter peels off the station toward the player
+    ex, ey = W * 0.30, W * 0.26
+    eh = math.atan2(scy - ey, scx - ex)
+    c.outline(_place(SHIP_LOOP, ex, ey, W * 0.05, eh), ENEMYGREEN, int(2.2 * S))
     return c.finish("reach_level15")
 
 
