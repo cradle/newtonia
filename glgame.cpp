@@ -1,5 +1,7 @@
 #include "glgame.h"
 #include "achievements.h"
+#include "steam_build.h"
+#include <cstdlib>
 #include "asset_path.h"
 #include "highscore.h"
 #include "stats.h"
@@ -84,6 +86,26 @@ GLGame::GLGame(SDL_GameController *controller) :
   last_draw_time_ = SDL_GetTicks();
 
   generation = 0;
+  // Dev/testing (beta builds only): NEWTONIA_START_GENERATION=N starts a new
+  // game at generation N so the late game is reachable for playtesting
+  // (achievement earnability past the black-hole wall, station fights).
+  // Marked as a cheat below so it can never launder achievements (XR-057).
+  bool dev_start = false;
+  {
+    const char *sg = SDL_getenv("NEWTONIA_START_GENERATION");
+    if (sg != NULL && is_beta_feature_enabled() && atoi(sg) > 0) {
+      dev_start = true;
+      generation = atoi(sg);
+      // Replicate the per-generation growth: +50 each rebuild, +3000 at 14.
+      float grow = 50.0f * generation + (generation >= 14 ? 2950.0f : 0.0f);
+      world += Point(grow, grow);
+      grid = Grid(world, Point(Asteroid::max_radius*2, Asteroid::max_radius*2));
+      WrappedPoint::set_boundaries(world);
+      delete starfield;
+      starfield = new GLStarfield(world, star_density_scale());
+      std::cout << "DEV: starting at generation " << generation << std::endl;
+    }
+  }
   Asteroid::num_killable = 0;
   add_asteroids();
   grid.update((std::list<Object *>*)objects);
@@ -105,6 +127,18 @@ GLGame::GLGame(SDL_GameController *controller) :
 
   station = NULL;//new GLStation(enemies, players);
   mini_station = NULL;
+
+  if (dev_start) {
+    // Spawn the hazards this generation would have accumulated, exactly as
+    // the rebuild in tick() does, then suppress achievements for the game.
+    if (generation >= 9)
+      black_holes->push_back(new BlackHole(WrappedPoint(world.x() / 2.0f, world.y() / 2.0f)));
+    if (generation >= 10)
+      mini_station = new GLMiniStation(grid, players, (std::list<Object*>*)objects);
+    if (generation >= 14)
+      station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
+    Achievements::note_cheat_used();
+  }
 
   if(tic_sound == NULL) {
     tic_sound = Mix_LoadWAV(asset_path("audio/tic.wav").c_str());

@@ -374,6 +374,33 @@ stand. Decisions taken:
   excludes shield-absorbed hits; `black_hole_survivor` already counts any
   player surviving in 2P).
 
+### Earnability audit (2026-07)
+
+"Possible" splits into *mechanically earnable* (no hidden gate) and
+*humanly achievable* (someone can play that well). Status per achievement:
+
+| Achievement | Gate analysis | Status |
+|---|---|---|
+| first_kill, clear_level1, kills_1000, shield_ram_asteroid | none — verified in play / headless | **verified** |
+| score_3m | playtest hit 2.7M by level 10; a level-15 run clears 3M | earnable |
+| kills_10000_lifetime | pure accumulation (~7–10 good runs) | earnable |
+| specials_7 | every type killable: invisible/tough/armoured/phasing/quantum(observed)/teleporting(window) die to bullets; **reflective needs a shockwave (mine/giga/nova) or god-mode** — all credited paths; lifetime mask spans games | earnable |
+| coop_clear | needs a second controller/player only | earnable |
+| mini_station_kill | single shot from level 11 | earnable |
+| shield_ram | shield pickup (1.25%/kill) + any enemy from level 11 | earnable |
+| no_damage_clear, black_hole_survivor | skill-only, no mechanical gate; playtest shows level 9 clears consistently, survival at 10 is the wall | earnable, hard |
+| nova_detonated | charge counter **and** charges reset on death → ~1,000 kills in one life; playtest reached 9/10 charges | earnable, at the edge |
+| **weapons_7** | **coupled to nova_detonated**: firing a nova is the 7th kind, so it embeds the same one-life feat, plus drop RNG — P(≥1 god-mode drop) ≈ 63% by 400 kills, 92% by 1,000, 98% by 1,500 (other pickups ≈100%; the fired-mask spans lives, only the nova leg is single-life) | earnable; capstone-hard, review GS |
+| reach_level15, station_destroyed, enemies_10 | gated on surviving 5 levels past the black-hole wall — **no playtest data exists** | **needs playtest** |
+
+**Playtest tooling:** beta builds honour `NEWTONIA_START_GENERATION=N`
+(with `NEWTONIA_BETA=1`) — a new game starts at generation N with the
+correct world size and hazards (black hole ≥9, mini-station ≥10, station
+≥14), so the wall and the station fight can be practised directly. It
+marks the game as cheated, so it can never launder achievements; use it to
+answer the "needs playtest" rows, then re-pitch GS if the station fight
+proves out of reach.
+
 ## 6. Work items (this repo)
 
 1. `achievements.h/.cpp` — seam + no-op default backend.
