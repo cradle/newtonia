@@ -127,8 +127,20 @@ def ship(c, cx, cy, size, heading, color=P1BLUE, trail=True):
                    (a // 2, a // 2, a), int((2.1 - k * 0.5) * S), boost=1.3)
 
 
-def car(c, cx, cy, size, heading, color=P2ORANGE):
+def car(c, cx, cy, size, heading, color=P2ORANGE, trail=True):
     c.outline(_place(CAR_LOOP, cx, cy, size, heading), color, int(2.8 * S))
+    if trail:
+        # the GLCar thrusts from two jets at the hull corners: twin dash trails
+        perp = (math.cos(heading + math.pi / 2), math.sin(heading + math.pi / 2))
+        for side in (-1, 1):
+            ox, oy = perp[0] * 0.45 * size * side, perp[1] * 0.45 * size * side
+            for k in range(3):
+                o0 = rot((1.7 + k * 0.75) * size, 0, heading + math.pi)
+                o1 = rot((2.1 + k * 0.75) * size, 0, heading + math.pi)
+                a = 210 - k * 55
+                c.line([(cx + ox + o0[0], cy + oy + o0[1]),
+                        (cx + ox + o1[0], cy + oy + o1[1])],
+                       (a // 2, a // 4, a // 8), int((1.6 - k * 0.4) * S), boost=1.3)
 
 
 def shield(c, cx, cy, ship_size, color=P1BLUE):
@@ -614,24 +626,13 @@ def scene_weapons_7():
 
 
 def scene_coop_clear():
+    # Two-player mirror of clear_level1: both ships cruising through
+    # cleared space in formation, thruster dashes only.
     c = Canvas(90)
     c.stars(n=110)
-    heading = math.radians(-30)
-    for (fx, fy), glyph in [((0.38, 0.62), "ship"), ((0.58, 0.72), "car")]:
-        px, py = W * fx, W * fy
-        trail = [(px - t * W * 0.05 * math.cos(heading), py - t * W * 0.05 * math.sin(heading))
-                 for t in range(2, 7)]
-        c.line(trail, (60, 70, 140), int(2.0 * S), boost=1.3)
-        if glyph == "ship":
-            ship(c, px, py, W * 0.075, heading)
-        else:
-            car(c, px, py, W * 0.075, heading)
-    # one shared final shard dissolving ahead
-    sx, sy = W * 0.76, W * 0.26
-    shard = [(sx + W * 0.03 * (1.2 if i % 2 else 0.75) * math.cos(2 * math.pi * i / 5),
-              sy + W * 0.03 * (1.2 if i % 2 else 0.75) * math.sin(2 * math.pi * i / 5))
-             for i in range(5)]
-    c.outline(shard, (140, 140, 155), int(1.5 * S))
+    heading = math.radians(-38)
+    ship(c, W * 0.38, W * 0.42, W * 0.09, heading)
+    car(c, W * 0.62, W * 0.62, W * 0.09, heading)
     return c.finish("coop_clear")
 
 
