@@ -254,24 +254,11 @@ def scene_first_kill():
 
 
 def scene_clear_level1():
+    # Clear skies: nothing left but the ship, centred in clean space,
+    # thruster dashes only.
     c = Canvas(41)
     c.stars(n=110)
-    # last three shards dissolving in the distance
-    for cx, cy, r, a0, col in [(W * 0.72, W * 0.30, 0.035, 0.4, (140, 140, 150)),
-                               (W * 0.62, W * 0.20, 0.022, 1.2, (110, 110, 120)),
-                               (W * 0.80, W * 0.42, 0.018, 2.0, (90, 90, 100))]:
-        shard = [(W * 0 + cx + W * r * (1.2 if i % 2 else 0.75) * math.cos(2 * math.pi * i / 5 + a0),
-                  cy + W * r * (1.2 if i % 2 else 0.75) * math.sin(2 * math.pi * i / 5 + a0))
-                 for i in range(5)]
-        c.outline(shard, col, int(1.5 * S))
-    # ship cruising up-right through clean space, long victory trail
-    # straight down its flight line behind the thruster dashes
-    scx, scy, ss = W * 0.42, W * 0.60, W * 0.085
-    heading = math.radians(-38)
-    c.line([(scx - 4.2 * ss * math.cos(heading), scy - 4.2 * ss * math.sin(heading)),
-            (scx - 9.0 * ss * math.cos(heading), scy - 9.0 * ss * math.sin(heading))],
-           (60, 70, 140), int(2.2 * S), boost=1.3)
-    ship(c, scx, scy, ss, heading)
+    ship(c, W * 0.5, W * 0.5, W * 0.10, math.radians(-38))
     return c.finish("clear_level1")
 
 
