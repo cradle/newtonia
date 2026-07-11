@@ -627,8 +627,8 @@ void GLGame::tick(int delta) {
         if(gs->ship->died_this_generation) local_died = true;
         else local_survived = true;
       }
-      // "Clear level 5 or beyond without taking damage" — level 5 = generation 4.
-      if(generation >= 4 && !local_died) Achievements::unlock("no_damage_clear");
+      // "Clear level 9 or beyond without taking damage" — level 9 = generation 8.
+      if(generation >= 8 && !local_died) Achievements::unlock("no_damage_clear");
       // Black hole exists from level 10 (generation 9); any local player
       // surviving the whole level counts (2P criteria per the §5 re-pitch note).
       if(generation >= 9 && local_survived) Achievements::unlock("black_hole_survivor");

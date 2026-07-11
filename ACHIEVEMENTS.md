@@ -188,7 +188,7 @@ level 21.
 | mini_station_kill | Little Nuisance | Destroy a mini-station | 50 |
 | station_destroyed | Station to Station | Destroy the enemy station (appears at level 21) | 200 |
 | nova_full | Nova | Detonate a nova with a full stock of charges | 60 |
-| no_damage_clear | Untouchable | Clear level 5 or beyond without taking damage | 100 |
+| no_damage_clear | Untouchable | Clear level 9 or beyond without taking damage | 100 |
 | all_weapons | Full Arsenal | Fire every weapon type in one game | 60 |
 | coop_clear | Co-Pilot | Clear a level in 2-player mode | 60 |
 | kills_100 | Century | Destroy 100 asteroids in one game | 60 |
