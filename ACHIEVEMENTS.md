@@ -214,9 +214,10 @@ a netplay-era criteria revision). `enemies_10` took its GS from
 level 15 — the fighters are part of the same content. Despite its simple
 criteria, `nova_detonated` is deceptively hard: charge pickups drop every
 100 kills, a nova needs 10 charge points, and death resets charge progress
-and wipes stocked novas — so it effectively demands ~1,000 kills in a
-single life, harder than `kills_1000_lifetime`. Its 60 GS (or a criteria
-softening) is a re-pitch candidate.
+and wipes stocked novas — effectively ~1,000 kills in a single life.
+Playtest showed a strong no-death run reaches 9 of 10 charges by level 9,
+so it is hard but attainable and its 60 GS stands (see the playtest
+findings below).
 
 ### Difficulty check before freezing
 
@@ -235,9 +236,12 @@ level 9, so getting *to* the black-hole level (10) is reliable — but the
 black-hole level itself is the difficulty wall. A run to level 10 scored
 ~2.7M points, which (at `value ≈ 1600/radius` per kill × the
 kills-per-life multiplier) implies on the order of 1,000–1,500 asteroid
-kills per good run — so `kills_100` lands early (level ~3), a single good
-run nearly completes `kills_1000_lifetime`, and `nova_detonated`'s
-~1,000-kills-in-one-life is a near-perfect full run. Decisions taken:
+kills per good run — so `kills_100` lands early (level ~3) and a single
+good run nearly completes `kills_1000_lifetime`. A no-death run to level 9
+yielded a 90+ multiplier and 9 of the 10 nova charges: `nova_detonated`
+(~1,000 kills in one life) sits right at the edge of a strong run — hard
+but genuinely attainable, so its criteria and 60 GS stand. Decisions
+taken:
 
 - GS values stay as drafted (the table above is no longer placeholder).
 - `no_damage_clear` anchored at level 9 — the edge of the consistently
