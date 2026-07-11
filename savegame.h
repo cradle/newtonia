@@ -44,6 +44,7 @@ struct Player {
     // end of the file, not inside the player block, per the append-only
     // convention; defaults keep older saves loading unchanged.
     int      asteroid_kills = 0;        // asteroids destroyed this game
+    int      enemy_kills = 0;           // enemy ships destroyed this game
     bool     died_this_generation = false;
     uint32_t weapons_fired_mask = 0;    // bit = (int)WeaponEntry::Kind fired this game
 };

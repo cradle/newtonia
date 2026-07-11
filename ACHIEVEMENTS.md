@@ -196,7 +196,8 @@ only the description mentions where it lives.
 | black_hole_survivor | Event Horizon | Survive a black-hole level (level 10 onward) without dying | 80 |
 | mini_station_kill | Little Nuisance | Destroy a mini-station | 50 |
 | station_destroyed | Station to Station | Destroy the enemy station (appears at level 15) | 200 |
-| nova_detonated | Nova | Detonate a nova | 60 |
+| enemies_10 | Ace | Destroy 10 enemy ships in one game | 40 |
+| nova_detonated | Nova | Detonate a nova | 20 |
 | no_damage_clear | Untouchable | Clear level 9 or beyond without taking damage | 100 |
 | weapons_7 | Full Arsenal | Fire 7 different weapon types in one game | 60 |
 | coop_clear | Co-Pilot | Clear a level in 2-player mode | 60 |
@@ -205,10 +206,13 @@ only the description mentions where it lives.
 | reach_level15 | Deep Space | Reach level 15 | 100 |
 | | **Total** | | **1,000** |
 
-13 achievements ≥ the 10 minimum; max single value 200 (at the cap);
+14 achievements ≥ the 10 minimum; max single value 200 (at the cap);
 late-game items keep the "half the content" rule honest. Note `coop_clear`
 assumes local 2P exists on the platform (touch builds may need a variant or
-a netplay-era criteria revision).
+a netplay-era criteria revision). `enemies_10` took its GS from
+`nova_detonated` (60 → 20 + 40) when the nova criteria were simplified —
+enemy ships exist only from the station's arrival at level 15, so it's a
+late-game item.
 
 ### Difficulty check before freezing
 

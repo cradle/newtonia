@@ -390,6 +390,7 @@ bool Save::save_game(const Save::GameState &s) {
     // then the game-scoped cheat flag.
     for (const auto &p : s.players) {
         ok = ok && wv(f, (int32_t)p.asteroid_kills);
+        ok = ok && wv(f, (int32_t)p.enemy_kills);
         ok = ok && wv(f, (uint8_t)p.died_this_generation);
         ok = ok && wv(f, (uint32_t)p.weapons_fired_mask);
     }
@@ -464,9 +465,10 @@ bool Save::load_game(Save::GameState &s) {
     // appended in v11; older saves end before them and keep the defaults.
     if (version >= 11) {
         for (auto &p : s.players) {
-            int32_t ak = 0; uint8_t died = 0; uint32_t wm = 0;
-            ok = ok && rv(f, ak) && rv(f, died) && rv(f, wm);
+            int32_t ak = 0, ek = 0; uint8_t died = 0; uint32_t wm = 0;
+            ok = ok && rv(f, ak) && rv(f, ek) && rv(f, died) && rv(f, wm);
             p.asteroid_kills       = (int)ak;
+            p.enemy_kills          = (int)ek;
             p.died_this_generation = (bool)died;
             p.weapons_fired_mask   = wm;
         }

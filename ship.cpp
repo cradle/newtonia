@@ -454,6 +454,19 @@ void Ship::credit_asteroid_kill(Object *object, bool nova_feedback) {
   Achievements::progress("specials_7", specials * 100 / SPECIALS_TARGET);
 }
 
+// Bookkeeping for a ship this ship shot down (bullet and missile paths).
+// The enemies_10 achievement counts AI ships only: another local player
+// (friendly fire) doesn't qualify, and a future remote netplay peer is a
+// player too, not an enemy.
+void Ship::credit_ship_kill(Ship *other) {
+  kills_this_life += 1;
+  kills += 1;
+  score += other->value * multiplier();
+  if (!is_local_player || other->is_local_player) return;
+  enemy_kills += 1;
+  Achievements::progress("enemies_10", enemy_kills * 10);  // 10 ships == 100%
+}
+
 // WeaponEntry::Kind values double as bit positions in weapons_fired_mask.
 void Ship::record_weapon_fired(Save::WeaponEntry::Kind kind) {
   weapons_fired_mask |= 1u << (int)kind;
@@ -547,6 +560,7 @@ Save::Player Ship::capture_state() const {
   p.nova_charge       = nova_charge;
   p.nova_kill_counter = nova_kill_counter;
   p.asteroid_kills       = asteroid_kills;
+  p.enemy_kills          = enemy_kills;
   p.died_this_generation = died_this_generation;
   p.weapons_fired_mask   = weapons_fired_mask;
 
@@ -600,6 +614,7 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
   nova_charge       = p.nova_charge;
   nova_kill_counter = p.nova_kill_counter;
   asteroid_kills       = p.asteroid_kills;
+  enemy_kills          = p.enemy_kills;
   died_this_generation = p.died_this_generation;
   // Restored before the weapon loop below; add_god_mode() may re-OR its bit.
   weapons_fired_mask   = p.weapons_fired_mask;
@@ -1213,9 +1228,7 @@ void Ship::collide(Ship *other) {
   for(size_t i = 0; i < bullets.size(); ) {
     if(other->is_alive() && bullets[i].collide(*other)) {
       other->kill_stop();
-      kills_this_life += 1;
-      kills += 1;
-      score += other->value * multiplier();
+      credit_ship_kill(other);
       bullets[i] = std::move(bullets.back());
       bullets.pop_back();
     } else {
@@ -1256,9 +1269,7 @@ void Ship::collide(Ship *other) {
   for(size_t i = 0; i < missiles.size(); ) {
     if(is_alive() && other->is_alive() && missiles[i].collide(*other, 5.0)) {
       other->kill_stop();
-      kills_this_life += 1;
-      kills += 1;
-      score += other->value * multiplier();
+      credit_ship_kill(other);
       detonate(missiles[i].position, missiles[i].velocity, 25);
       if(missile_explode_sound != NULL) {
         Mix_PlayChannel(-1, missile_explode_sound, 0);

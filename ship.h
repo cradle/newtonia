@@ -77,6 +77,7 @@ class Ship : public CompositeObject {
     int score;
     int lives, kills, kills_this_life;
     int asteroid_kills = 0;  // asteroids destroyed this game (achievements; saved)
+    int enemy_kills = 0;     // enemy ships destroyed this game (achievements; saved)
     // Locally-controlled player ship: gates achievement and lifetime-stat
     // attribution (ACHIEVEMENTS.md §4). Set by GLGame when creating player
     // ships; stays false for enemies, stations, and future remote netplay peers.
@@ -198,6 +199,7 @@ class Ship : public CompositeObject {
     // Central bookkeeping for an asteroid this ship destroyed (score counters,
     // nova feedback, achievements, lifetime stats). All weapon paths call this.
     void credit_asteroid_kill(Object *object, bool nova_feedback = true);
+    void credit_ship_kill(Ship *other);  // score + enemies_10 tracking
     void record_weapon_fired(Save::WeaponEntry::Kind kind);  // weapons_7 tracking
 
     void play_rotating_sound(bool on);
