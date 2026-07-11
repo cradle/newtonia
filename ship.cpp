@@ -1640,12 +1640,22 @@ void Ship::giga_detonate(Point const position) {
 }
 
 void Ship::shoot(bool on) {
-  if(!primary_weapons.empty()) {
-    if((*primary)->empty() && on) {
-      previous_weapon();
-    } else {
-      (*primary)->shoot(on);
-    }
+  if(primary_weapons.empty()) return;
+  if((*primary)->empty() && on) {
+    // Firing an empty limited primary (beam/lance) drops it from the
+    // list, exactly like fire_secondary() below — it used to just switch
+    // away and leave the spent weapon cluttering the cycle. The default
+    // gun is unlimited, so the list never empties for real.
+    auto to_remove = primary;
+    auto next = to_remove;
+    ++next;
+    if(next == primary_weapons.end())
+      next = primary_weapons.begin();
+    delete *to_remove;
+    primary_weapons.erase(to_remove);
+    primary = primary_weapons.empty() ? primary_weapons.end() : next;
+  } else {
+    (*primary)->shoot(on);
   }
 }
 
