@@ -193,7 +193,7 @@ level 21.
 | coop_clear | Co-Pilot | Clear a level in 2-player mode | 60 |
 | kills_100 | Century | Destroy 100 asteroids in one game | 60 |
 | kills_1000_lifetime | Millennium | Destroy 1,000 asteroids (lifetime — `stats.dat`, §4) | 100 |
-| reach_level25 | Deep Space | Reach level 25 | 100 |
+| reach_level15 | Deep Space | Reach level 15 | 100 |
 | | **Total** | | **1,000** |
 
 13 achievements ≥ the 10 minimum; max single value 200 (at the cap);
@@ -201,12 +201,9 @@ late-game items keep the "half the content" rule honest. Note `coop_clear`
 assumes local 2P exists on the platform (touch builds may need a variant or
 a netplay-era criteria revision).
 
-### Difficulty check before freezing (open question)
+### Difficulty check before freezing
 
-The current game is probably **too hard** for several of these as drafted —
-worst suspects: `station_destroyed` (means *reaching* level 21),
-`reach_level25`, `no_damage_clear`, `black_hole_survivor`. Two forces to
-balance:
+The two forces to balance:
 
 - XR-055 requires every achievement to be **achievable**, and cert test
   057-01's steps literally include "**gain all achievements**" — a list only
@@ -216,13 +213,23 @@ balance:
   must still reach deep into the progression, so the fix is tuning numbers,
   not deleting the late achievements.
 
-Before freezing IDs: playtest how far a competent-but-normal player actually
-gets (is level 10 typical? is level 21 a rare event?), then re-pitch the
-level thresholds and/or soften criteria (e.g. "damage" excludes
-shield-absorbed hits; `black_hole_survivor` counts any player surviving in
-2P). If level 21+ is genuinely rare, move GS down from the late items and
-redistribute to mid-game additions. Values above are placeholders until this
-pass happens.
+**Playtest findings (2026-07):** a competent player consistently reaches
+level 9, so getting *to* the black-hole level (10) is reliable — but the
+black-hole level itself is the difficulty wall. Decisions taken from that:
+
+- GS values stay as drafted (the table above is no longer placeholder).
+- `no_damage_clear` anchored at level 9 — the edge of the consistently
+  reachable range, right before the wall.
+- `reach_level25` re-anchored to **level 15** (`reach_level15`) so the
+  progression achievement sits past the wall but not expert-only deep.
+- **Pending decision:** possibly move the enemy station earlier than its
+  current level 21 (a gameplay change, not just an achievement change — the
+  station spawn, the 3000×3000 world-growth jump, and the intro screen are
+  all tied to generation 20 in `glgame.cpp`). `station_destroyed`'s criteria
+  text follows whatever level it lands on.
+- Still open for the late items: soften criteria if needed (e.g. "damage"
+  excludes shield-absorbed hits; `black_hole_survivor` already counts any
+  player surviving in 2P).
 
 ## 6. Work items (this repo)
 

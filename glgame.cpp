@@ -697,9 +697,9 @@ void GLGame::tick(int delta) {
       // Suppressed (like every unlock) for the rest of the game once any
       // cheat key has been used — deliberately NOT reset per generation, or
       // skipping to one generation short and clearing a single level would
-      // unlock the progression achievements (XR-057). "Reach level 25":
+      // unlock the progression achievements (XR-057). "Reach level 15":
       // displayed level = generation + 1.
-      Achievements::progress("reach_level25", (generation + 1) * 100 / 25);
+      Achievements::progress("reach_level15", (generation + 1) * 100 / 15);
       level_cleared = false;
       save_progress();
       maybe_start_intro();
