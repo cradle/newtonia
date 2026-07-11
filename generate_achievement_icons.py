@@ -487,17 +487,16 @@ def scene_no_damage_clear():
     # streaks pass close on either side — untouched
     scx, scy, ss = W * 0.50, W * 0.60, W * 0.085
     heading = math.radians(-90)
-    trail = [(scx, scy + ss * 2.0), (scx, scy + ss * 6.5)]
-    c.line(trail, (60, 70, 140), int(2.4 * S), boost=1.3)
     ship(c, scx, scy, ss, heading)
+    # extend the standard thruster dashes into a longer dashed run
+    for k in range(3, 6):
+        y0 = scy + (1.7 + k * 0.75) * ss
+        y1 = scy + (2.1 + k * 0.75) * ss
+        a = max(40, 210 - k * 40)
+        c.line([(scx, y0), (scx, y1)], (a // 2, a // 2, a), int(1.1 * S), boost=1.3)
     for side in (-1, 1):
         px, py = scx + side * W * 0.235, W * 0.34
-        asteroid(c, px, py, W * 0.115, WHITE, 2.0)
-        # motion streaks sweeping past the ship's flank
-        for k in range(2):
-            sx = px - side * W * (0.02 + k * 0.035)
-            c.line([(sx, py + W * 0.16), (sx, py + W * 0.34)],
-                   (110, 110, 130), int(1.4 * S), boost=1.2)
+        asteroid(c, px, py, W * 0.115, WHITE, 2.0, fill=(4, 4, 10))
     return c.finish("no_damage_clear")
 
 
