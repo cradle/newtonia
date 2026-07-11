@@ -467,26 +467,16 @@ def scene_enemies_10():
 
 
 def scene_nova_detonated():
-    # The in-game nova shockwave (glship.cpp draw_shockwaves): a bright
-    # orange expanding ring with a slightly larger translucent glow ring.
+    # The in-game nova shockwave (glship.cpp draw_shockwaves): the bright
+    # orange expanding ring with its slightly larger translucent glow ring,
+    # ship at the epicentre. Nothing else.
     c = Canvas(30)
     cx, cy = W * 0.5, W * 0.5
     c.stars()
     swr = W * 0.34
     c.ring(cx, cy, swr, NOVA_BRIGHT, int(3.6 * S), boost=1.15)        # bright ring
     c.ring(cx, cy, swr * 1.06, NOVA_GLOW, int(1.8 * S), boost=1.25)   # glow ring
-    # one fading ring left behind by the expansion
-    c.ring(cx, cy, swr * 0.55, (140, 75, 12), int(1.6 * S), boost=1.1)
     ship(c, cx, cy, W * 0.06, math.radians(-90), trail=False)
-    # asteroids caught at the ring front, coming apart
-    for aa, sz in [(25, 0.075), (150, 0.06), (255, 0.068)]:
-        ax = cx + swr * 1.12 * math.cos(math.radians(aa))
-        ay = cy + swr * 1.12 * math.sin(math.radians(aa))
-        half = [(ax + W * sz * (1.15 if i % 2 else 0.7) * math.cos(2 * math.pi * i / 5 + aa),
-                 ay + W * sz * (1.15 if i % 2 else 0.7) * math.sin(2 * math.pi * i / 5 + aa))
-                for i in range(5)]
-        c.outline(half, (210, 210, 222), int(1.8 * S))
-        sparks(c, ax, ay, math.radians(aa), n=5, scale=W * 0.02)
     return c.finish("nova_detonated")
 
 
