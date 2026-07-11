@@ -177,11 +177,17 @@ class Ship : public CompositeObject {
     // extras decide), never by respawn itself.
     static bool net_quiet_respawn;
     // Net client: a replicated missile vanished mid-flight — the host saw
-    // it hit something. Debris + explosion sound at its last position.
+    // it hit something. Blast + explosion sound at its last position.
     void net_missile_exploded(const Point &pos, const Point &vel);
     // Same for mines / giga mines that vanish from the snapshot early.
     void net_mine_exploded(const Point &pos, const Point &vel);
     void net_giga_mine_exploded(const Point &pos);
+    // Shared blast for the two above: the local ship's goes into bullets
+    // like the real detonate() (instant local kills + bullet_id-0 claims);
+    // the peer's is cosmetic streak debris — its bullets are wholesale-
+    // rebuilt from the record every apply, which wiped a bullets blast
+    // within ~100 ms.
+    void net_blast(const Point &pos, const Point &vel, int count);
     // A nova shockwave appeared in the snapshot: play its boom (the wave
     // itself is replicated; only the audio was host-side).
     void net_nova_arrived();
