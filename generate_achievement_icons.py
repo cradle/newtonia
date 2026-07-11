@@ -265,12 +265,12 @@ def scene_clear_level1():
                  for i in range(5)]
         c.outline(shard, col, int(1.5 * S))
     # ship cruising up-right through clean space, long victory trail
+    # straight down its flight line behind the thruster dashes
     scx, scy, ss = W * 0.42, W * 0.60, W * 0.085
     heading = math.radians(-38)
-    trail = [(scx - t * ss * math.cos(heading) - 0.25 * t * t * ss * 0.08,
-              scy + t * ss * math.sin(heading) + 0.25 * t * ss * 0.3)
-             for t in range(3, 10)]
-    c.line(trail, (60, 70, 140), int(2.2 * S), boost=1.3)
+    c.line([(scx - 4.2 * ss * math.cos(heading), scy - 4.2 * ss * math.sin(heading)),
+            (scx - 9.0 * ss * math.cos(heading), scy - 9.0 * ss * math.sin(heading))],
+           (60, 70, 140), int(2.2 * S), boost=1.3)
     ship(c, scx, scy, ss, heading)
     return c.finish("clear_level1")
 
