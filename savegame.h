@@ -39,6 +39,13 @@ struct Player {
     int selected_secondary_idx;  // -1 when secondary iterator == end()
     int nova_charge;             // charge points toward next Nova bomb (0–9)
     int nova_kill_counter;       // kill sub-count toward next charge point (0–99)
+
+    // v11 append — achievements bookkeeping (ACHIEVEMENTS.md). Written at the
+    // end of the file, not inside the player block, per the append-only
+    // convention; defaults keep older saves loading unchanged.
+    int      asteroid_kills = 0;        // asteroids destroyed this game
+    bool     died_this_generation = false;
+    uint32_t weapons_fired_mask = 0;    // bit = (int)WeaponEntry::Kind fired this game
 };
 
 // ── Asteroid ─────────────────────────────────────────────────────────────────
@@ -140,7 +147,7 @@ struct MiniStation {
 
 struct GameState {
     static constexpr uint32_t MAGIC   = 0x4E57544E;  // "NWTN"
-    static constexpr uint16_t VERSION = 10;
+    static constexpr uint16_t VERSION = 11;
     // Oldest save format we can still read. Saves from MIN_VERSION..VERSION all
     // load; anything older (or from a newer build) is ignored. To keep old saves
     // working across a version bump, only ever APPEND new fields at the end of

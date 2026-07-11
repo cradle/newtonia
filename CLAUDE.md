@@ -317,9 +317,9 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 
 ### Save / Load
 
-**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 10:
+**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 11:
 - `WeaponEntry`: kind, weapon_index, ammo
-- `Player`: score, lives, kills, respawning flag, position, velocity, facing, weapons, nova state
+- `Player`: score, lives, kills, respawning flag, position, velocity, facing, weapons, nova state, achievements bookkeeping (asteroid kills, died-this-generation, weapons-fired mask; appended in v11)
 - `Asteroid`: position, velocity, radius, health, all special flags and transient state
 - `Pickup`: type, position, weapon_index
 - `BlackHole`, `Enemy`, `Station`: positional/state data (Station includes its deployed enemies)
@@ -339,6 +339,16 @@ Auto-save triggers on pause or player death if the player has lives or score rem
 - API: `load_preferences()`, `save_preferences()`; missing keys in old files are silently ignored
 
 **High Score** (`highscore.h`) — `load_high_score()` / `save_high_score(score)`.
+
+### Achievements & Lifetime Stats
+
+Full design in `ACHIEVEMENTS.md` (platform requirements, master list, backend plan).
+
+**Achievements** (`achievements.h/cpp`) — platform-neutral seam: `Achievements::unlock(id)` / `progress(id, pct)` (percent, 100 == unlock) with symbolic string IDs; the default backend is a no-op, platform backends (GDK in the private mirror, then Steam / Play Games / Game Center) replace it behind their own build flags. The shared layer owns the XR-057 cheat-suppression flag: skip-level and time-scale keys call `note_cheat_used()`, a legitimately starting generation (rebuild, new game, save resume) calls `generation_started()`, and `unlock`/`progress` are dropped while suppressed; the rebuild re-suppresses if the time scale is still altered.
+
+Hooks: `GLGame` (level clear, generation rebuild/progression, station + mini-station destruction, cheat keys) and `Ship` (`credit_asteroid_kill()` shared by every asteroid-kill path, weapon-kind tracking in `shoot()`/`fire_secondary()`/`add_god_mode()`, `nova_detonate()`, death flag in `kill()`). Attribution: only ships with `is_local_player` (set by `GLGame` when creating player ships; false for enemies, stations, and future remote netplay peers) earn achievements and stats.
+
+**Lifetime stats** (`stats.h/cpp`) — standalone roaming `stats.dat` in the SDL pref path (magic "NWST", version 1, append-only format like the savegame): lifetime asteroid kills and a special-type kill mask, deliberately outside `savegame.dat` so netplay still counts. Kill writes are batched (every 10) and flushed via `Stats::flush()` from `save_progress()` and game over. Likely needs adding to Steam Auto-Cloud patterns so it persists across installs.
 
 ### Touch Controls
 

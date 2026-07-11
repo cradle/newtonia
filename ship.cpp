@@ -1,4 +1,6 @@
 #include "ship.h"
+#include "achievements.h"
+#include "stats.h"
 #include "asset_path.h"
 #include "point.h"
 #include "particle.h"
@@ -379,6 +381,9 @@ void Ship::add_shield_ammo(int amount) {
 }
 
 void Ship::add_god_mode(int duration_ms) {
+  // God mode starts firing shockwaves the moment it activates, so activation
+  // counts as usage for the all_weapons achievement.
+  record_weapon_fired(Save::WeaponEntry::Kind::GodMode);
   set_shield_hum(false);
   for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
     if(dynamic_cast<Weapon::GodMode*>(*it)) {
@@ -412,6 +417,49 @@ void Ship::tally_nova_kill(const Point &pos) {
   }
 }
 
+// Nova shockwaves pass nova_feedback=false so a nova's own kills don't feed
+// the next nova charge. Achievements and lifetime stats accrue only to
+// locally-controlled players (ACHIEVEMENTS.md §4) — enemies and the
+// mini-station reuse these collision paths but earn nothing.
+void Ship::credit_asteroid_kill(Object *object, bool nova_feedback) {
+  kills_this_life += 1;
+  kills += 1;
+  asteroid_kills += 1;
+  if (nova_feedback) tally_nova_kill(object->position);
+  if (!is_local_player) return;
+
+  Stats::add_kill();
+  Asteroid *ast = dynamic_cast<Asteroid*>(object);
+  if (ast) {
+    if (ast->reflective)  Stats::note_special_kill(Stats::SPECIAL_REFLECTIVE);
+    if (ast->teleporting) Stats::note_special_kill(Stats::SPECIAL_TELEPORTING);
+    if (ast->invisible)   Stats::note_special_kill(Stats::SPECIAL_INVISIBLE);
+    if (ast->quantum)     Stats::note_special_kill(Stats::SPECIAL_QUANTUM);
+    if (ast->tough)       Stats::note_special_kill(Stats::SPECIAL_TOUGH);
+    if (ast->armoured)    Stats::note_special_kill(Stats::SPECIAL_ARMOURED);
+    if (ast->phasing)     Stats::note_special_kill(Stats::SPECIAL_PHASING);
+  }
+
+  if (asteroid_kills == 1) Achievements::unlock("first_kill");
+  Achievements::progress("kills_100", asteroid_kills);  // 100 kills == 100%
+  Achievements::progress("kills_1000_lifetime", (int)(Stats::lifetime_kills() / 10));
+  int specials = 0;
+  for (int i = 0; i < Stats::SPECIAL_COUNT; i++)
+    if (Stats::special_kill_mask() & (1u << i)) specials++;
+  Achievements::progress("all_specials", specials * 100 / Stats::SPECIAL_COUNT);
+}
+
+// WeaponEntry::Kind values double as bit positions in weapons_fired_mask.
+void Ship::record_weapon_fired(Save::WeaponEntry::Kind kind) {
+  weapons_fired_mask |= 1u << (int)kind;
+  if (!is_local_player) return;
+  const int num_kinds = (int)Save::WeaponEntry::Kind::Nova + 1;
+  int fired = 0;
+  for (int i = 0; i < num_kinds; i++)
+    if (weapons_fired_mask & (1u << i)) fired++;
+  Achievements::progress("all_weapons", fired * 100 / num_kinds);
+}
+
 void Ship::add_nova_ammo(int amount) {
   for (auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
     Weapon::Nova *nw = dynamic_cast<Weapon::Nova*>(*it);
@@ -442,6 +490,11 @@ int Ship::nova_ammo() const {
 }
 
 void Ship::nova_detonate() {
+  // Detonated with a full stock: Weapon::Nova consumed one charge to trigger
+  // this call, so a pre-fire count at the cap reads as NOVA_MAX_AMMO-1 here.
+  if (is_local_player && nova_ammo() >= NOVA_MAX_AMMO - 1)
+    Achievements::unlock("nova_full");
+
   if (giga_mine_explode_sound != NULL)
     Mix_PlayChannel(-1, giga_mine_explode_sound, 0);
 
@@ -487,6 +540,9 @@ Save::Player Ship::capture_state() const {
   p.vel_y           = velocity.y();
   p.nova_charge       = nova_charge;
   p.nova_kill_counter = nova_kill_counter;
+  p.asteroid_kills       = asteroid_kills;
+  p.died_this_generation = died_this_generation;
+  p.weapons_fired_mask   = weapons_fired_mask;
 
   // Primary weapons
   list<Weapon::Base*>::const_iterator cprimary = primary;
@@ -537,6 +593,10 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
   kills_this_life = p.kills_this_life;
   nova_charge       = p.nova_charge;
   nova_kill_counter = p.nova_kill_counter;
+  asteroid_kills       = p.asteroid_kills;
+  died_this_generation = p.died_this_generation;
+  // Restored before the weapon loop below; add_god_mode() may re-OR its bit.
+  weapons_fired_mask   = p.weapons_fired_mask;
   position        = WrappedPoint(p.pos_x, p.pos_y);
   first_life      = true;  // tells respawn() to try the saved position first
 
@@ -747,6 +807,7 @@ void Ship::reset(bool was_killed) {
 
 bool Ship::kill() {
   if(CompositeObject::kill()) {
+    died_this_generation = true;  // no-damage/black-hole-survivor tracking
     thrusting = false;
     reversing = false;
     rotation_direction = NONE;
@@ -858,9 +919,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
           object->invincible = was_invincible;
           if(was_invincible) Asteroid::num_killable++;
           score += object->get_value() * multiplier() * (was_invincible ? 5 : 1);
-          kills_this_life += 1;
-          kills += 1;
-          tally_nova_kill(object->position);
+          credit_asteroid_kill(object);
         } else {
           object->invincible = was_invincible;
         }
@@ -950,9 +1009,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
       if(in_kill_zone) {
         if(obj->kill()) {
           score += obj->get_value() * multiplier();
-          kills_this_life += 1;
-          kills += 1;
-          if(!sw.is_nova) tally_nova_kill(obj->position);  // no feedback from nova's own kills
+          credit_asteroid_kill(obj, !sw.is_nova);  // no nova feedback from nova's own kills
         }
       }
     }
@@ -977,9 +1034,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
     if(object != NULL && object->alive) {
       if(object->kill()) {
         score += object->get_value() * multiplier();
-        kills_this_life += 1;
-        kills += 1;
-        tally_nova_kill(object->position);
+        credit_asteroid_kill(object);
       }
       detonate(missiles[i].position, missiles[i].velocity, 25);
       if(missile_explode_sound != NULL) {
@@ -1119,9 +1174,7 @@ void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
           // Hit the unarmoured face — kill normally
           if(object->kill()) {
             score += object->get_value() * multiplier();
-            kills_this_life += 1;
-            kills += 1;
-            tally_nova_kill(object->position);
+            credit_asteroid_kill(object);
           }
           explode(bullets[i].position, object->velocity);
           bullets[i] = std::move(bullets.back());
@@ -1138,9 +1191,7 @@ void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
           object->invincible = was_invincible;
           if(was_invincible) Asteroid::num_killable++;
           score += object->get_value() * multiplier() * (was_invincible ? 5 : 1);
-          kills_this_life += 1;
-          kills += 1;
-          tally_nova_kill(object->position);
+          credit_asteroid_kill(object);
         }
         explode(bullets[i].position, object->velocity);
         bullets[i] = std::move(bullets.back());
@@ -1242,6 +1293,11 @@ void Ship::shoot(bool on) {
     if((*primary)->empty() && on) {
       previous_weapon();
     } else {
+      if(on) {
+        record_weapon_fired(dynamic_cast<Weapon::GodMode*>(*primary)
+                              ? Save::WeaponEntry::Kind::GodMode
+                              : Save::WeaponEntry::Kind::Default);
+      }
       (*primary)->shoot(on);
     }
   }
@@ -1259,6 +1315,14 @@ void Ship::fire_secondary(bool on) {
     secondary_weapons.erase(to_remove);
     secondary = secondary_weapons.empty() ? secondary_weapons.end() : next;
   } else {
+    if(on) {
+      Save::WeaponEntry::Kind kind = Save::WeaponEntry::Kind::Mine;
+      if      (dynamic_cast<Weapon::GigaMine*>(*secondary)) kind = Save::WeaponEntry::Kind::GigaMine;
+      else if (dynamic_cast<Weapon::Missile*>(*secondary))  kind = Save::WeaponEntry::Kind::Missile;
+      else if (dynamic_cast<Weapon::Shield*>(*secondary))   kind = Save::WeaponEntry::Kind::Shield;
+      else if (dynamic_cast<Weapon::Nova*>(*secondary))     kind = Save::WeaponEntry::Kind::Nova;
+      record_weapon_fired(kind);
+    }
     (*secondary)->shoot(on);
   }
 }

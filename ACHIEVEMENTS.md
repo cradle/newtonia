@@ -144,6 +144,16 @@ The lifetime-kills counter lives in its own small **`stats.dat`** under the
 - **Roams with the person.** On platforms with roaming storage the counter
   follows the account across devices — matching how the achievements
   themselves roam. No savegame VERSION bump needed.
+- **Steam Cloud:** `stats.dat` likely needs adding to the depot's Steam
+  Auto-Cloud file patterns so lifetime stats persist across installs and
+  machines — the achievements roam via Steam, so their backing stats must
+  too. Decide alongside the Steamworks backend (`highscore.dat` and
+  `savegame.dat` deserve the same call).
+
+Implementation status: `SaveStorage` does not exist upstream yet (it is a
+planned abstraction — `xbox/PORT_PLAN.md` Phase 4 / work item 10), so
+`stats.h/.cpp` mirrors `highscore.dat`'s SDL-pref-path + IDBFS pattern
+directly; when SaveStorage lands, the file I/O moves behind it unchanged.
 
 **Attribution rule (couch 2P and netplay alike):** kills are already
 credited per player (bullets carry an owner for scoring). The hook is "kill

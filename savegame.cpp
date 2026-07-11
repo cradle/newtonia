@@ -386,6 +386,13 @@ bool Save::save_game(const Save::GameState &s) {
     ok = ok && write_station(f, s.station);
     ok = ok && write_mini_station(f, s.mini_station);
 
+    // v11 append: per-player achievements bookkeeping, in players order.
+    for (const auto &p : s.players) {
+        ok = ok && wv(f, (int32_t)p.asteroid_kills);
+        ok = ok && wv(f, (uint8_t)p.died_this_generation);
+        ok = ok && wv(f, (uint32_t)p.weapons_fired_mask);
+    }
+
     fclose(f);
 
 #ifdef __EMSCRIPTEN__
@@ -449,6 +456,18 @@ bool Save::load_game(Save::GameState &s) {
         ok = ok && read_mini_station(f, s.mini_station);
     } else {
         s.mini_station.present = false;
+    }
+
+    // Per-player achievements bookkeeping was appended in v11; older saves
+    // end before it and keep the Player struct defaults.
+    if (version >= 11) {
+        for (auto &p : s.players) {
+            int32_t ak = 0; uint8_t died = 0; uint32_t wm = 0;
+            ok = ok && rv(f, ak) && rv(f, died) && rv(f, wm);
+            p.asteroid_kills       = (int)ak;
+            p.died_this_generation = (bool)died;
+            p.weapons_fired_mask   = wm;
+        }
     }
 
     fclose(f);

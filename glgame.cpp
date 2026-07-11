@@ -1,6 +1,8 @@
 #include "glgame.h"
+#include "achievements.h"
 #include "asset_path.h"
 #include "highscore.h"
+#include "stats.h"
 #include "preferences.h"
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -88,6 +90,10 @@ GLGame::GLGame(SDL_GameController *controller) :
 
   GLShip *object = new GLShip(grid, true);
   set_player_keys(object, 0);
+  object->ship->is_local_player = true;
+  // A new game begins legitimately: lift any XR-057 suppression left over
+  // from a previous game's cheat keys.
+  Achievements::generation_started();
   if(controller != NULL) {
     object->set_controller(controller);
   }
@@ -210,6 +216,8 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
             Point(Asteroid::max_radius*2, Asteroid::max_radius*2))) {
   time_between_steps = step_size;
   time_until_next_generation = save.time_until_next_generation;
+  // Resuming a save starts play legitimately (XR-057 suppression lifted).
+  Achievements::generation_started();
 
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
@@ -263,6 +271,8 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     bool is_p1 = players->empty();
     GLShip *gs = is_p1 ? new GLShip(grid, true) : new GLCar(grid, true);
     set_player_keys(gs, is_p1 ? 0 : 1);
+    // Set before restore_state() so restored weapons attribute correctly.
+    gs->ship->is_local_player = true;
     if (controller != NULL && is_p1) {
       gs->set_controller(controller);
     }
@@ -335,6 +345,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
 }
 
 void GLGame::save_progress() {
+  Stats::flush();  // lifetime stats persist regardless of campaign-save eligibility
   if (score_saved) return;
   for (auto* gs : *players) {
     if (gs->ship->is_alive() || gs->ship->lives > 0) {
@@ -560,6 +571,7 @@ void GLGame::add_player2(SDL_GameController *ctrl) {
   if(!p1->is_alive() && !p1->lives) return;
   GLShip* object = new GLCar(grid, true);
   object->set_controller(ctrl);
+  object->ship->is_local_player = true;
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
   for(auto *p : *players) p->ship->set_missile_ships(ship_objects);
@@ -599,6 +611,23 @@ void GLGame::tick(int delta) {
     if(!level_cleared) {
       level_cleared = true;
       time_until_next_generation = 5000;
+      // Generation cleared legitimately — the skip-level cheat sets
+      // level_cleared directly and never reaches this branch. unlock() itself
+      // still suppresses if a cheat (e.g. time-scale) was used this generation
+      // (XR-057). Generation numbers are internal: displayed LEVEL is
+      // generation+1 (see ACHIEVEMENTS.md §5 difficulty re-pitch).
+      if(generation == 1) Achievements::unlock("clear_gen1");
+      if(players->size() >= 2) Achievements::unlock("coop_clear");
+      bool local_died = false, local_survived = false;
+      for(auto *gs : *players) {
+        if(!gs->ship->is_local_player) continue;
+        if(gs->ship->died_this_generation) local_died = true;
+        else local_survived = true;
+      }
+      if(generation >= 5 && !local_died) Achievements::unlock("no_damage_clear");
+      // Black hole exists from generation 9; any local player surviving the
+      // whole generation counts (2P criteria per the §5 re-pitch note).
+      if(generation >= 9 && local_survived) Achievements::unlock("black_hole_survivor");
     } else if (time_until_next_generation > 0) {
       if(floor(time_until_next_generation/1000) != floor((time_until_next_generation-delta)/1000)) {
         if(tic_sound != NULL) {
@@ -659,7 +688,15 @@ void GLGame::tick(int delta) {
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {
         (*o)->ship->respawn(grid, false);
+        (*o)->ship->died_this_generation = false;
       }
+      // Reported before the suppression reset below, so a generation reached
+      // via the skip-level cheat awards no progression (XR-057).
+      Achievements::progress("reach_gen25", generation * 100 / 25);
+      // The new generation starts legitimately — unless the time-scale cheat
+      // is still engaged, which re-suppresses it immediately.
+      Achievements::generation_started();
+      if(time_between_steps != step_size) Achievements::note_cheat_used();
       level_cleared = false;
       save_progress();
       maybe_start_intro();
@@ -1033,7 +1070,10 @@ void GLGame::tick(int delta) {
             station->hit();
             s->bullets[i] = std::move(s->bullets.back());
             s->bullets.pop_back();
-            if (!station->is_alive()) break;
+            if (!station->is_alive()) {
+              if (s->is_local_player) Achievements::unlock("station_destroyed");
+              break;
+            }
           } else {
             ++i;
           }
@@ -1059,6 +1099,7 @@ void GLGame::tick(int delta) {
           }
           s->score += GLMiniStation::REWARD;
           mini_station->destroy();
+          if (s->is_local_player) Achievements::unlock("mini_station_kill");
           break;
         }
         for (size_t i = 0; i < s->bullets.size(); ) {
@@ -1068,6 +1109,7 @@ void GLGame::tick(int delta) {
             s->bullets.pop_back();
             s->score += GLMiniStation::REWARD;
             mini_station->destroy();
+            if (s->is_local_player) Achievements::unlock("mini_station_kill");
             break;
           } else {
             ++i;
@@ -1083,6 +1125,7 @@ void GLGame::tick(int delta) {
             s->missiles.pop_back();
             s->score += GLMiniStation::REWARD;
             mini_station->destroy();
+            if (s->is_local_player) Achievements::unlock("mini_station_kill");
             break;
           } else {
             ++i;
@@ -1158,6 +1201,7 @@ void GLGame::tick(int delta) {
     if (all_game_over) {
       for (auto* glship : *players)
         save_high_score(glship->ship->score);
+      Stats::flush();
       score_saved = true;
       game_over_time = current_time;
 #ifdef __EMSCRIPTEN__
@@ -1774,6 +1818,9 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   const GeneralKeys &gk = g_prefs.general_keys;
 
   if (key == (unsigned char)gk.skip_level) {
+      // Cheat: suppress all achievement unlocks until the next legitimately
+      // started generation (XR-057, ACHIEVEMENTS.md §1).
+      Achievements::note_cheat_used();
       level_cleared = true;
       time_until_next_generation = 0;
       while(!objects->empty()) {
@@ -1795,8 +1842,17 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (key == (unsigned char)gk.toggle_debug_grid) {
     debug_grid = !debug_grid;
   }
-  if (key == (unsigned char)gk.time_speed_up && time_between_steps > 1) time_between_steps--;
-  if (key == (unsigned char)gk.time_slow_down) time_between_steps++;
+  // Time-scale changes are cheats too (XR-057); resetting to normal speed is
+  // not itself a cheat, but any earlier change already suppressed this
+  // generation and the rebuild re-checks time_between_steps != step_size.
+  if (key == (unsigned char)gk.time_speed_up && time_between_steps > 1) {
+    time_between_steps--;
+    Achievements::note_cheat_used();
+  }
+  if (key == (unsigned char)gk.time_slow_down) {
+    time_between_steps++;
+    Achievements::note_cheat_used();
+  }
   if (key == (unsigned char)gk.time_reset) time_between_steps = step_size;
   if (key == (unsigned char)gk.pause) toggle_pause();
 #if !defined(__ANDROID__) && !defined(__IOS__)
@@ -1805,6 +1861,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     if(p1->is_alive() || p1->lives) {
       GLShip* object = new GLCar(grid, true);
       set_player_keys(object, 1);
+      object->ship->is_local_player = true;
       object->ship->set_missile_asteroids((std::list<Object*>*)objects);
       ship_objects->push_back(object->ship);
       for (auto *p : *players) p->ship->set_missile_ships(ship_objects);
