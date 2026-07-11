@@ -101,11 +101,13 @@ def rot(px, py, a):
 # ── glyphs ported from the game meshes (game Y-up -> image Y-down) ──────────
 
 def _place(shape, cx, cy, size, heading):
-    # heading: image-space angle the ship nose points toward (0 = +x).
-    # Game shapes are drawn nose-up (+y); rotate so nose == heading.
+    # heading: image-space angle the ship nose points toward (0 = +x,
+    # increasing clockwise on screen). Game shapes are authored nose-up
+    # (+y, game Y-up): the Y-flip puts the nose at image angle -pi/2, so
+    # rotating by heading + pi/2 lands it on the requested heading.
     a = heading + math.pi / 2
-    return [(cx + rot(px * size, -py * size, -a)[0],
-             cy + rot(px * size, -py * size, -a)[1]) for px, py in shape]
+    return [(cx + rot(px * size, -py * size, a)[0],
+             cy + rot(px * size, -py * size, a)[1]) for px, py in shape]
 
 
 SHIP_LOOP = [(0.0, 1.0), (-0.8, -1.0), (0.0, -0.5), (0.8, -1.0)]   # glship.cpp
