@@ -882,11 +882,22 @@ void Ship::reset(bool was_killed) {
   thrusting = false;
   reversing = false;
   shoot(false);
-  mines.clear();
-  giga_mines.clear();
-  bullets.clear();
-  missiles.clear();
-  shockwaves.clear();
+  // On a net client reset() runs inside EVERY 10 Hz snapshot restore
+  // (restore_state → respawn) — the same story as debris/lance_pulses
+  // below. Clearing the projectile lists here emptied them moments before
+  // nx_read_projectiles swapped them out as the "old" lists for its
+  // vanish detection, so a mine or missile the host detonated was never
+  // seen disappearing — the client showed NO mine/missile explosions at
+  // all (and the nova-arrival boom re-counted from zero every apply).
+  // The snapshot extras own these lists on a client (wholesale-rebuilt
+  // per apply); the clears are for real offline/host respawns.
+  if (!net_quiet_respawn) {
+    mines.clear();
+    giga_mines.clear();
+    bullets.clear();
+    missiles.clear();
+    shockwaves.clear();
+  }
   // Lance pulses are presentation like debris (below): a net client's
   // restore_state must not cut the 250 ms flash short.
   if (!net_quiet_respawn) lance_pulses.clear();
@@ -1111,6 +1122,8 @@ void Ship::collide_grid(Grid &grid, int delta) {
   for(size_t i = 0; i < mines.size(); ) {
     object = grid.collide(mines[i], 50.0f);
     if(object != NULL && object->alive) {
+      NET_LOG("net: mine detonated at (%.0f, %.0f)\n",
+              mines[i].position.x(), mines[i].position.y());
       detonate(mines[i].position, mines[i].velocity, 50);
       if(mine_explode_sound != NULL) Mix_PlayChannel(-1, mine_explode_sound, 0);
       mines[i] = std::move(mines.back());
@@ -1810,6 +1823,8 @@ void Ship::net_cosmetic_ship_impacts(
 }
 
 void Ship::net_blast(const Point &pos, const Point &vel, int count) {
+  NET_LOG("net: blast at (%.0f, %.0f) count=%d %s\n", pos.x(), pos.y(), count,
+          net_claim_kills ? "own->bullets" : "peer->debris");
   if(net_claim_kills) {
     // Our OWN deployable (the client's local ship): blast into bullets
     // exactly like the real detonate() — the particles kill asteroids
