@@ -379,7 +379,7 @@ def scene_mini_station_kill():
     scx, scy, ss = W * 0.22, W * 0.76, W * 0.07
     heading = math.atan2(my + mr * math.sin(bang) - scy, mx + mr * math.cos(bang) - scx)
     ship(c, scx, scy, ss, heading)
-    for k in range(3):
+    for k in range(2):  # dashes stop short of the breach
         t0 = 2.4 + k * 1.6
         c.line([(scx + t0 * ss * math.cos(heading), scy + t0 * ss * math.sin(heading)),
                 (scx + (t0 + 0.5) * ss * math.cos(heading), scy + (t0 + 0.5) * ss * math.sin(heading))],
