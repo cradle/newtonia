@@ -390,14 +390,10 @@ def scene_mini_station_kill():
 def scene_shield_ram():
     c = Canvas(61)
     c.stars()
-    # enemy ship split into two halves, tumbling apart upper-right
+    # enemy ship intact, knocked tumbling away up-right from the impact
     ex, ey, es = W * 0.66, W * 0.34, W * 0.085
-    left_half = [(0.0, 1.0), (-0.8, -1.0), (0.0, -0.5)]
-    right_half = [(0.0, 1.0), (0.8, -1.0), (0.0, -0.5)]
-    c.outline(_place(left_half, ex - es * 0.9, ey - es * 0.2, es, math.radians(115)),
-              ENEMYGREEN, int(2.4 * S))
-    c.outline(_place(right_half, ex + es * 0.9, ey - es * 0.6, es, math.radians(170)),
-              ENEMYGREEN, int(2.4 * S))
+    c.outline(_place(SHIP_LOOP, ex, ey, es, math.radians(20)), ENEMYGREEN,
+              int(2.6 * S))
     # shielded player driving in
     scx, scy, ss = W * 0.30, W * 0.70, W * 0.08
     heading = math.atan2(ey - scy, ex - scx)
