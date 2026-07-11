@@ -47,9 +47,10 @@ class Canvas:
         self.db = ImageDraw.Draw(self.base)
         self.dg = ImageDraw.Draw(self.glow)
 
-    def line(self, pts, color, width, boost=1.6):
-        self.dg.line(pts, fill=tuple(min(255, int(c * boost)) for c in color),
-                     width=width * 3, joint="curve")
+    def line(self, pts, color, width, boost=1.6, glow=True):
+        if glow:
+            self.dg.line(pts, fill=tuple(min(255, int(c * boost)) for c in color),
+                         width=width * 3, joint="curve")
         self.db.line(pts, fill=color, width=width, joint="curve")
 
     def outline(self, pts, color, width):
@@ -58,10 +59,11 @@ class Canvas:
     def disc(self, cx, cy, r, fill):
         self.db.ellipse([cx - r, cy - r, cx + r, cy + r], fill=fill)
 
-    def ring(self, cx, cy, r, color, width, boost=1.6):
+    def ring(self, cx, cy, r, color, width, boost=1.6, glow=True):
         box = [cx - r, cy - r, cx + r, cy + r]
-        self.dg.ellipse(box, outline=tuple(min(255, int(c * boost)) for c in color),
-                        width=width * 3)
+        if glow:
+            self.dg.ellipse(box, outline=tuple(min(255, int(c * boost)) for c in color),
+                            width=width * 3)
         self.db.ellipse(box, outline=color, width=width)
 
     def arc(self, cx, cy, r, a0, a1, color, width, boost=1.6):
@@ -199,14 +201,31 @@ def mine(c, cx, cy, size, color=WHITE, angle=0.3):
     c.outline(pts, color, int(2.0 * S))
 
 
-def pickup_star(c, cx, cy, outer, color):
-    # build_glow_star (pickup.h): five-pointed star line loop, inner = 0.4*outer
-    pts = []
-    for i in range(10):
-        ang = i * math.pi / 5 - math.pi / 2
-        rad = outer if i % 2 == 0 else outer * 0.4
-        pts.append((cx + rad * math.cos(ang), cy + rad * math.sin(ang)))
-    c.outline(pts, color, int(1.8 * S))
+def missile_pickup_glyph(c, cx, cy, d, color=(51, 204, 255)):
+    # missile_pickup.cpp (netplay branch): finned rocket, nose up, exhaust
+    # dash below (game Y-up flipped to image Y-down)
+    body = [(0, -d), (0.3 * d, -0.45 * d), (0.3 * d, 0.55 * d),
+            (-0.3 * d, 0.55 * d), (-0.3 * d, -0.45 * d)]
+    c.outline([(cx + x, cy + y) for x, y in body], color, int(1.6 * S))
+    for sx in (-1, 1):
+        fin = [(sx * 0.3 * d, 0.15 * d), (sx * 0.75 * d, 0.75 * d),
+               (sx * 0.3 * d, 0.55 * d)]
+        c.line([(cx + x, cy + y) for x, y in fin], color, int(1.6 * S))
+    c.line([(cx, cy + 0.65 * d), (cx, cy + 0.95 * d)], color, int(1.6 * S))
+
+
+def shield_pickup_glyph(c, cx, cy, d, color=(204, 51, 255)):
+    # shield_pickup.cpp (netplay branch): three 80-degree bubble arcs every
+    # 120 degrees around a small hexagonal core
+    for arc in range(3):
+        pts = []
+        for i in range(7):
+            a = math.radians(arc * 120 + i * 80 / 6)
+            pts.append((cx + math.cos(a) * 0.95 * d, cy - math.sin(a) * 0.95 * d))
+        c.line(pts, color, int(1.6 * S))
+    hexpts = [(cx + math.cos(math.radians(60 * i)) * 0.16 * d,
+               cy - math.sin(math.radians(60 * i)) * 0.16 * d) for i in range(6)]
+    c.outline(hexpts, color, int(1.4 * S))
 
 
 def missile(c, cx, cy, size, heading, color=P1BLUE):
@@ -523,15 +542,18 @@ def scene_no_secondary_level10():
         b0 = (scx + t0 * ss * math.cos(heading), scy + t0 * ss * math.sin(heading))
         b1 = (scx + (t0 + 0.45) * ss * math.cos(heading), scy + (t0 + 0.45) * ss * math.sin(heading))
         c.line([b0, b1], P1BLUE, int(2.0 * S), boost=1.4)
-    # secondaries struck out below: the in-game pickup stars (missile cyan,
-    # shield purple) behind clean red no-rings — interiors stay black
-    for i, (col, ) in enumerate(((( 51, 204, 255),), ((204, 51, 255),))):
+    # secondaries struck out below: the in-game pickup glyphs (netplay
+    # branch line art) behind glow-free red no-rings — interiors stay black
+    for i in range(2):
         px, py = W * (0.38 + i * 0.26), W * 0.76
         pr = W * 0.085
-        pickup_star(c, px, py, pr * 0.52, col)
-        c.ring(px, py, pr, (255, 80, 80), int(2.6 * S), boost=1.0)
+        if i == 0:
+            missile_pickup_glyph(c, px, py, pr * 0.62)
+        else:
+            shield_pickup_glyph(c, px, py, pr * 0.62)
+        c.ring(px, py, pr, (255, 80, 80), int(2.6 * S), glow=False)
         d = pr / math.sqrt(2)
-        c.line([(px - d, py - d), (px + d, py + d)], (255, 80, 80), int(2.6 * S), boost=1.0)
+        c.line([(px - d, py - d), (px + d, py + d)], (255, 80, 80), int(2.6 * S), glow=False)
     return c.finish("no_secondary_level10")
 
 
