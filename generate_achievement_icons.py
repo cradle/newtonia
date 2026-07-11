@@ -228,6 +228,44 @@ def shield_pickup_glyph(c, cx, cy, d, color=(204, 51, 255)):
     c.outline(hexpts, color, int(1.4 * S))
 
 
+def mine_pickup_glyph(c, cx, cy, d, color=(255, 128, 0)):
+    # mine_pickup.cpp (netplay branch): rotated diamond with a cross inside
+    c.outline([(cx, cy - d), (cx + 0.9 * d, cy), (cx, cy + d), (cx - 0.9 * d, cy)],
+              color, int(1.6 * S))
+    c.line([(cx - 0.45 * d, cy), (cx + 0.45 * d, cy)], color, int(1.4 * S))
+    c.line([(cx, cy - 0.5 * d), (cx, cy + 0.5 * d)], color, int(1.4 * S))
+
+
+def giga_mine_pickup_glyph(c, cx, cy, d, color=(153, 0, 255)):
+    # giga_mine_pickup.cpp (netplay branch): the mine glyph ringed by a blast circle
+    mine_pickup_glyph(c, cx, cy, d * 0.72, color)
+    c.ring(cx, cy, d * 1.05, color, int(1.4 * S))
+
+
+def weapon_pickup_glyph(c, cx, cy, d, color=(0, 255, 0)):
+    # weapon_pickup.cpp (netplay branch): a crosshair — circle with four ticks
+    c.ring(cx, cy, 0.55 * d, color, int(1.6 * S))
+    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        c.line([(cx + dx * 0.3 * d, cy + dy * 0.3 * d),
+                (cx + dx * 0.95 * d, cy + dy * 0.95 * d)], color, int(1.6 * S))
+
+
+def god_mode_pickup_glyph(c, cx, cy, d, color=(255, 230, 0)):
+    # god_mode_pickup.cpp: the lightning bolt (game Y-up flipped)
+    pts = [(0.2, 1.0), (0.6, 1.0), (0.1, 0.1), (0.5, 0.1),
+           (-0.2, -1.0), (-0.6, -1.0), (-0.1, -0.1), (-0.5, -0.1)]
+    c.outline([(cx + x * d, cy - y * d) for x, y in pts], color, int(1.6 * S))
+
+
+def nova_charge_pickup_glyph(c, cx, cy, d, color=NOVA_BRIGHT):
+    # nova_charge_pickup.cpp (netplay branch): ring with radiating spokes
+    c.ring(cx, cy, 0.7 * d, color, int(1.6 * S))
+    for i in range(8):
+        a = 2 * math.pi * i / 8
+        c.line([(cx + 0.78 * d * math.cos(a), cy + 0.78 * d * math.sin(a)),
+                (cx + d * math.cos(a), cy + d * math.sin(a))], color, int(1.4 * S))
+
+
 def missile(c, cx, cy, size, heading, color=P1BLUE):
     # glship.cpp missile_body: triangle loop (0,1),(-0.5,-1),(0.5,-1)
     c.outline(_place([(0, 1), (-0.5, -1), (0.5, -1)], cx, cy, size, heading),
@@ -558,33 +596,20 @@ def scene_no_secondary_level10():
 
 
 def scene_weapons_7():
+    # The seven weapon kinds as their in-game pickup icons (netplay branch
+    # line art), ringed around the ship.
     c = Canvas(70)
     c.stars(n=60)
     cx, cy = W * 0.5, W * 0.54
     ship(c, cx, cy, W * 0.07, math.radians(-90), trail=False)
-    R = W * 0.32
-    for i in range(7):
+    R = W * 0.34
+    d = W * 0.052
+    glyphs = [weapon_pickup_glyph, god_mode_pickup_glyph, mine_pickup_glyph,
+              giga_mine_pickup_glyph, missile_pickup_glyph,
+              shield_pickup_glyph, nova_charge_pickup_glyph]
+    for i, glyph in enumerate(glyphs):
         a = -math.pi / 2 + 2 * math.pi * i / 7
-        px, py = cx + R * math.cos(a), cy + R * math.sin(a)
-        if i == 0:      # default gun: three bullet dots
-            for k in range(3):
-                bx = px + (k - 1) * W * 0.035
-                c.db.ellipse([bx - 1.8 * S, py - 1.8 * S, bx + 1.8 * S, py + 1.8 * S], fill=GOLD)
-                c.dg.ellipse([bx - 3 * S, py - 3 * S, bx + 3 * S, py + 3 * S], fill=(120, 110, 70))
-        elif i == 1:    # god mode: yellow shield ring (genGodShield)
-            c.ring(px, py, W * 0.045, GODYELLOW, int(2.2 * S))
-        elif i == 2:    # mine
-            mine(c, px, py, W * 0.032, WHITE, 0.4)
-        elif i == 3:    # giga mine
-            mine(c, px, py, W * 0.05, WHITE, 0.1)
-            mine(c, px, py, W * 0.028, (180, 180, 195), 0.6)
-        elif i == 4:    # missile
-            missile(c, px, py, W * 0.045, math.radians(-90))
-        elif i == 5:    # shield
-            c.ring(px, py, W * 0.045, P1BLUE, int(2.2 * S))
-        else:           # nova: the orange shockwave ring pair
-            c.ring(px, py, W * 0.045, NOVA_BRIGHT, int(2.0 * S), boost=1.15)
-            c.ring(px, py, W * 0.045 * 1.2, NOVA_GLOW, int(1.2 * S), boost=1.25)
+        glyph(c, cx + R * math.cos(a), cy + R * math.sin(a), d)
     return c.finish("weapons_7")
 
 
