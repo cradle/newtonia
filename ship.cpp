@@ -1816,7 +1816,18 @@ void Ship::net_missile_exploded(const Point &pos, const Point &vel) {
 }
 
 void Ship::net_mine_exploded(const Point &pos, const Point &vel) {
-  detonate(pos, vel, 50);
+  // Cosmetic only — the host's authoritative blast does the killing. The
+  // spray goes into debris, NOT bullets like detonate(): a remote ship's
+  // bullets are wholesale-rebuilt from the record on every 10 Hz apply,
+  // which wiped the blast within ~100 ms of it appearing (Glenn: "mine
+  // explosions aren't displayed on net clients"). Same particle recipe as
+  // detonate(50), just a list the applies leave alone.
+  Point dir = (facing * radius * 1.2);
+  for(int i = rand() % 50 + 25; i > 0; i--) {
+    dir.rotate(rand() % 360 * M_PI / 180);
+    debris.push_back(Particle(pos + dir, vel + dir * 0.0001 * (rand() % 150),
+                              rand() % 1500));
+  }
   if(mine_explode_sound != NULL)
     Mix_PlayChannel(-1, mine_explode_sound, 0);
 }
