@@ -443,6 +443,7 @@ void Ship::credit_asteroid_kill(Object *object, bool nova_feedback) {
   if (asteroid_kills == 1) Achievements::unlock("first_kill");
   Achievements::progress("kills_1000", asteroid_kills / 10);  // 1,000 kills == 100%
   Achievements::progress("kills_10000_lifetime", (int)(Stats::lifetime_kills() / 100));
+  Achievements::progress("score_3m", score / 30000);  // 3,000,000 points == 100%
   // Frozen target (ACHIEVEMENTS.md §5 future-proofing rule): any 7 distinct
   // special types unlock, counted across the whole mask so a future 8th type
   // widens the pool without raising the bar. New types get a NEW achievement.
@@ -462,7 +463,9 @@ void Ship::credit_ship_kill(Ship *other) {
   kills_this_life += 1;
   kills += 1;
   score += other->value * multiplier();
-  if (!is_local_player || other->is_local_player) return;
+  if (!is_local_player) return;
+  Achievements::progress("score_3m", score / 30000);
+  if (other->is_local_player) return;  // friendly fire: no enemy credit
   enemy_kills += 1;
   Achievements::progress("enemies_10", enemy_kills * 10);  // 10 ships == 100%
 }

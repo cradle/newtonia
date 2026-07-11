@@ -51,10 +51,12 @@ const Mapping MAPPINGS[] = {
   { "enemies_10",           "ACH_ENEMIES_10",           "enemies_10_pct" },
   { "nova_detonated",       "ACH_NOVA_DETONATED",       NULL },
   { "no_damage_clear",      "ACH_NO_DAMAGE_CLEAR",      NULL },
+  { "no_secondary_level10", "ACH_NO_SECONDARY_LEVEL10", NULL },
   { "weapons_7",            "ACH_WEAPONS_7",            "weapons_7_pct" },
   { "coop_clear",           "ACH_COOP_CLEAR",           NULL },
   { "kills_1000",           "ACH_KILLS_1000",           "kills_1000_pct" },
   { "kills_10000_lifetime", "ACH_KILLS_10000_LIFETIME", "kills_10000_lifetime_pct" },
+  { "score_3m",             "ACH_SCORE_3M",             "score_3m_pct" },
   { "reach_level15",        "ACH_REACH_LEVEL15",        "reach_level15_pct" },
 };
 

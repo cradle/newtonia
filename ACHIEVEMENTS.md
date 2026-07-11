@@ -125,19 +125,20 @@ in the desktop loop). Per Valve's directions
 
 **Steamworks portal checklist (no code):**
 
-1. Define the 14 achievements under App Admin → Stats & Achievements with
+1. Define the 16 achievements under App Admin → Stats & Achievements with
    exactly these API names (the mapping table in `steam_achievements.cpp`
    is authoritative): `ACH_FIRST_KILL`, `ACH_CLEAR_LEVEL1`,
    `ACH_SPECIALS_7`, `ACH_BLACK_HOLE_SURVIVOR`, `ACH_MINI_STATION_KILL`,
    `ACH_STATION_DESTROYED`, `ACH_ENEMIES_10`, `ACH_NOVA_DETONATED`,
-   `ACH_NO_DAMAGE_CLEAR`, `ACH_WEAPONS_7`, `ACH_COOP_CLEAR`,
-   `ACH_KILLS_1000`, `ACH_KILLS_10000_LIFETIME`, `ACH_REACH_LEVEL15`.
+   `ACH_NO_DAMAGE_CLEAR`, `ACH_NO_SECONDARY_LEVEL10`, `ACH_WEAPONS_7`,
+   `ACH_COOP_CLEAR`, `ACH_KILLS_1000`, `ACH_KILLS_10000_LIFETIME`,
+   `ACH_SCORE_3M`, `ACH_REACH_LEVEL15`.
    Names/descriptions from the §5 table; each needs achieved/unachieved
-   icons (Valve: all-ages appropriate; 64×64 minimum). 14 is well inside
+   icons (Valve: all-ages appropriate; 64×64 minimum). 16 is well inside
    the initial 100-achievement limit.
-2. Define 6 INT stats — `specials_7_pct`, `weapons_7_pct`,
+2. Define 7 INT stats — `specials_7_pct`, `weapons_7_pct`,
    `enemies_10_pct`, `kills_1000_pct`, `kills_10000_lifetime_pct`,
-   `reach_level15_pct` — each min 0, max 100, default 0,
+   `score_3m_pct`, `reach_level15_pct` — each min 0, max 100, default 0,
    **increment-only**, and bind each to its achievement as the Progress
    Stat with unlock value 100.
 3. Add `stats.dat` (plus `highscore.dat`/`savegame.dat` if desired) to the
@@ -186,8 +187,9 @@ Two properties of the shared layer make retries trivially safe:
 
 The exception: event-only achievements with no counter behind them
 (`nova_detonated`, `black_hole_survivor`, `coop_clear`, `clear_level1`,
-`no_damage_clear`, `mini_station_kill`, `station_destroyed`) cannot be
-re-derived, so the pending journal is their only safety net. Build the
+`no_damage_clear`, `no_secondary_level10`, `mini_station_kill`,
+`station_destroyed`) cannot be re-derived, so the pending journal is their
+only safety net. Build the
 journal once as a small shared utility next to the seam when the first
 backend that needs it lands (GDK — first in line), rather than
 re-implementing it per backend.
@@ -295,14 +297,23 @@ only the description mentions where it lives.
 | enemies_10 | Ace | Destroy 10 enemy ships in one game | 40 |
 | nova_detonated | Nova | Detonate a nova | 60 |
 | no_damage_clear | Untouchable | Clear level 9 or beyond without taking damage | 100 |
+| no_secondary_level10 | Purist | Reach level 10 without using a secondary weapon | 60 |
 | weapons_7 | Full Arsenal | Fire 7 different weapon types in one game | 60 |
 | coop_clear | Co-Pilot | Clear a level in 2-player mode | 60 |
 | kills_1000 | Millennium | Destroy 1,000 asteroids in one game | 60 |
-| kills_10000_lifetime | Myriad | Destroy 10,000 asteroids (lifetime — `stats.dat`, §4) | 100 |
-| reach_level15 | Deep Space | Reach level 15 | 100 |
+| kills_10000_lifetime | Myriad | Destroy 10,000 asteroids (lifetime — `stats.dat`, §4) | 40 |
+| score_3m | Megascore | Score 3,000,000 points in one game | 60 |
+| reach_level15 | Deep Space | Reach level 15 | 40 |
 | | **Total** | | **1,000** |
 
-14 achievements ≥ the 10 minimum; max single value 160 (under the 200 cap);
+16 achievements ≥ the 10 minimum; max single value 160 (under the 200 cap);
+`score_3m` is pitched just above the best playtest run (2.7M) — a
+beat-your-best skill target — and took its GS from `kills_10000_lifetime`
+(100 → 40), which is time investment rather than skill.
+`no_secondary_level10` (primary gun and god-mode pickups only, all the way
+to the black-hole level) took its GS from `reach_level15` (100 → 40): the
+reach milestone cedes points to the skill runs, while `station_destroyed`
+still pays 160 for the follow-through at level 15.
 late-game items keep the "half the content" rule honest. Note `coop_clear`
 assumes local 2P exists on the platform (touch builds may need a variant or
 a netplay-era criteria revision). `enemies_10` took its GS from

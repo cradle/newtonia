@@ -702,6 +702,25 @@ void GLGame::tick(int delta) {
       // unlock the progression achievements (XR-057). "Reach level 15":
       // displayed level = generation + 1.
       Achievements::progress("reach_level15", (generation + 1) * 100 / 15);
+      // "Reach level 10 without using a secondary weapon" — secondary kinds
+      // are Mine..Nova in weapons_fired_mask, which is per-game, per-player,
+      // and saved, so a resumed game keeps its usage history. Level-triggered
+      // (>= 9) so a still-clean mask keeps qualifying on later rebuilds.
+      if(generation >= 9) {
+        const uint32_t secondary_bits =
+            (1u << (int)Save::WeaponEntry::Kind::Mine) |
+            (1u << (int)Save::WeaponEntry::Kind::GigaMine) |
+            (1u << (int)Save::WeaponEntry::Kind::Missile) |
+            (1u << (int)Save::WeaponEntry::Kind::Shield) |
+            (1u << (int)Save::WeaponEntry::Kind::Nova);
+        for(o = players->begin(); o != players->end(); o++) {
+          Ship *s = (*o)->ship;
+          if(s->is_local_player && (s->weapons_fired_mask & secondary_bits) == 0) {
+            Achievements::unlock("no_secondary_level10");
+            break;
+          }
+        }
+      }
       level_cleared = false;
       save_progress();
       maybe_start_intro();
@@ -1104,7 +1123,10 @@ void GLGame::tick(int delta) {
           }
           s->score += GLMiniStation::REWARD;
           mini_station->destroy();
-          if (s->is_local_player) Achievements::unlock("mini_station_kill");
+          if (s->is_local_player) {
+            Achievements::unlock("mini_station_kill");
+            Achievements::progress("score_3m", s->score / 30000);
+          }
           break;
         }
         for (size_t i = 0; i < s->bullets.size(); ) {
@@ -1114,7 +1136,10 @@ void GLGame::tick(int delta) {
             s->bullets.pop_back();
             s->score += GLMiniStation::REWARD;
             mini_station->destroy();
-            if (s->is_local_player) Achievements::unlock("mini_station_kill");
+            if (s->is_local_player) {
+            Achievements::unlock("mini_station_kill");
+            Achievements::progress("score_3m", s->score / 30000);
+          }
             break;
           } else {
             ++i;
@@ -1130,7 +1155,10 @@ void GLGame::tick(int delta) {
             s->missiles.pop_back();
             s->score += GLMiniStation::REWARD;
             mini_station->destroy();
-            if (s->is_local_player) Achievements::unlock("mini_station_kill");
+            if (s->is_local_player) {
+            Achievements::unlock("mini_station_kill");
+            Achievements::progress("score_3m", s->score / 30000);
+          }
             break;
           } else {
             ++i;
