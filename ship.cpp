@@ -1816,17 +1816,25 @@ void Ship::net_missile_exploded(const Point &pos, const Point &vel) {
 }
 
 void Ship::net_mine_exploded(const Point &pos, const Point &vel) {
-  // Cosmetic only — the host's authoritative blast does the killing. The
-  // spray goes into debris, NOT bullets like detonate(): a remote ship's
-  // bullets are wholesale-rebuilt from the record on every 10 Hz apply,
-  // which wiped the blast within ~100 ms of it appearing (Glenn: "mine
-  // explosions aren't displayed on net clients"). Same particle recipe as
-  // detonate(50), just a list the applies leave alone.
-  Point dir = (facing * radius * 1.2);
-  for(int i = rand() % 50 + 25; i > 0; i--) {
-    dir.rotate(rand() % 360 * M_PI / 180);
-    debris.push_back(Particle(pos + dir, vel + dir * 0.0001 * (rand() % 150),
-                              rand() % 1500));
+  if(net_claim_kills) {
+    // Our OWN mine (the client's local ship): blast into bullets exactly
+    // like the real detonate() — the particles kill asteroids locally and
+    // claim them (bullet_id 0, the no-clone sentinel), so mine kills feel
+    // instant. Own bullets are client-owned and survive the applies.
+    detonate(pos, vel, 50);
+  } else {
+    // The peer's mine: cosmetic only — the host's authoritative blast does
+    // the killing, and a remote ship's bullets are wholesale-rebuilt from
+    // the record on every 10 Hz apply, which wiped a bullets-list blast
+    // within ~100 ms of it appearing ("mine explosions aren't displayed
+    // on net clients"). Same particle recipe as detonate(50), but into
+    // debris, which the applies leave alone.
+    Point dir = (facing * radius * 1.2);
+    for(int i = rand() % 50 + 25; i > 0; i--) {
+      dir.rotate(rand() % 360 * M_PI / 180);
+      debris.push_back(Particle(pos + dir, vel + dir * 0.0001 * (rand() % 150),
+                                rand() % 1500));
+    }
   }
   if(mine_explode_sound != NULL)
     Mix_PlayChannel(-1, mine_explode_sound, 0);
