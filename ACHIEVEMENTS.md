@@ -384,7 +384,7 @@ stand. Decisions taken:
 | first_kill, clear_level1, kills_1000, shield_ram_asteroid | none — verified in play / headless | **verified** |
 | score_3m | playtest hit 2.7M by level 10; a level-15 run clears 3M | earnable |
 | kills_10000_lifetime | pure accumulation (~7–10 good runs) | earnable |
-| specials_7 | every type killable: invisible/tough/armoured/phasing/quantum(observed)/teleporting(window) die to bullets; **reflective needs a shockwave (mine/giga/nova) or god-mode** — all credited paths; lifetime mask spans games | earnable |
+| specials_7 | invisible/tough/armoured/phasing/quantum(observed)/teleporting(window) die to bullets, but **reflective is invincible-flagged (asteroid.cpp:63)** — bullets ricochet and shockwaves skip invincible, so it dies **only to god mode** (contact or its kills-invincible bullets, both credited). Hard dependency on the 0.25%/kill god-mode drop (63% by 400 kills, 92% by 1,000); the lifetime mask spans games, which softens it | earnable; god-mode-gated |
 | coop_clear | needs a second controller/player only | earnable |
 | mini_station_kill | single shot from level 11 | earnable |
 | shield_ram | shield pickup (1.25%/kill) + any enemy from level 11 | earnable |
