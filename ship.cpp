@@ -498,10 +498,8 @@ int Ship::nova_ammo() const {
 }
 
 void Ship::nova_detonate() {
-  // Detonated with a full stock: Weapon::Nova consumed one charge to trigger
-  // this call, so a pre-fire count at the cap reads as NOVA_MAX_AMMO-1 here.
-  if (is_local_player && nova_ammo() >= NOVA_MAX_AMMO - 1)
-    Achievements::unlock("nova_full");
+  if (is_local_player)
+    Achievements::unlock("nova_detonated");
 
   if (giga_mine_explode_sound != NULL)
     Mix_PlayChannel(-1, giga_mine_explode_sound, 0);
