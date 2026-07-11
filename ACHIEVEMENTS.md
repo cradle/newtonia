@@ -125,17 +125,17 @@ in the desktop loop). Per Valve's directions
 
 **Steamworks portal checklist (no code):**
 
-1. Define the 17 achievements under App Admin → Stats & Achievements with
+1. Define the 18 achievements under App Admin → Stats & Achievements with
    exactly these API names (the mapping table in `steam_achievements.cpp`
    is authoritative): `ACH_FIRST_KILL`, `ACH_CLEAR_LEVEL1`,
    `ACH_SPECIALS_7`, `ACH_BLACK_HOLE_SURVIVOR`, `ACH_MINI_STATION_KILL`,
-   `ACH_SHIELD_RAM`, `ACH_STATION_DESTROYED`, `ACH_ENEMIES_10`,
-   `ACH_NOVA_DETONATED`, `ACH_NO_DAMAGE_CLEAR`,
+   `ACH_SHIELD_RAM`, `ACH_SHIELD_RAM_ASTEROID`, `ACH_STATION_DESTROYED`,
+   `ACH_ENEMIES_10`, `ACH_NOVA_DETONATED`, `ACH_NO_DAMAGE_CLEAR`,
    `ACH_NO_SECONDARY_LEVEL10`, `ACH_WEAPONS_7`, `ACH_COOP_CLEAR`,
    `ACH_KILLS_1000`, `ACH_KILLS_10000_LIFETIME`, `ACH_SCORE_3M`,
    `ACH_REACH_LEVEL15`.
    Names/descriptions from the §5 table; each needs achieved/unachieved
-   icons (Valve: all-ages appropriate; 64×64 minimum). 17 is well inside
+   icons (Valve: all-ages appropriate; 64×64 minimum). 18 is well inside
    the initial 100-achievement limit.
 2. Define 7 INT stats — `specials_7_pct`, `weapons_7_pct`,
    `enemies_10_pct`, `kills_1000_pct`, `kills_10000_lifetime_pct`,
@@ -189,8 +189,8 @@ Two properties of the shared layer make retries trivially safe:
 The exception: event-only achievements with no counter behind them
 (`nova_detonated`, `black_hole_survivor`, `coop_clear`, `clear_level1`,
 `no_damage_clear`, `no_secondary_level10`, `mini_station_kill`,
-`shield_ram`, `station_destroyed`) cannot be re-derived, so the pending
-journal is their only safety net. Build the
+`shield_ram`, `shield_ram_asteroid`, `station_destroyed`) cannot be
+re-derived, so the pending journal is their only safety net. Build the
 journal once as a small shared utility next to the seam when the first
 backend that needs it lands (GDK — first in line), rather than
 re-implementing it per backend.
@@ -295,6 +295,7 @@ only the description mentions where it lives.
 | black_hole_survivor | Event Horizon | Survive a black-hole level (level 10 onward) without dying | 80 |
 | mini_station_kill | Little Nuisance | Destroy a mini-station | 50 |
 | shield_ram | Battering Ram | Destroy an enemy by ramming it with your shield active | 20 |
+| shield_ram_asteroid | Icebreaker | Ram an asteroid with your shield active | 10 |
 | station_destroyed | Station to Station | Destroy the enemy station (appears at level 15) | 160 |
 | enemies_10 | Ace | Destroy 10 enemy ships in one game | 40 |
 | nova_detonated | Nova | Detonate a nova | 60 |
@@ -302,15 +303,18 @@ only the description mentions where it lives.
 | no_secondary_level10 | Purist | Reach level 10 without using a secondary weapon | 60 |
 | weapons_7 | Full Arsenal | Fire 7 different weapon types in one game | 60 |
 | coop_clear | Co-Pilot | Clear a level in 2-player mode | 40 |
-| kills_1000 | Millennium | Destroy 1,000 asteroids in one game | 60 |
+| kills_1000 | Millennium | Destroy 1,000 asteroids in one game | 50 |
 | kills_10000_lifetime | Myriad | Destroy 10,000 asteroids (lifetime — `stats.dat`, §4) | 40 |
 | score_3m | Megascore | Score 3,000,000 points in one game | 60 |
 | reach_level15 | Deep Space | Reach level 15 | 40 |
 | | **Total** | | **1,000** |
 
-17 achievements ≥ the 10 minimum; max single value 160 (under the 200 cap);
+18 achievements ≥ the 10 minimum; max single value 160 (under the 200 cap);
 `shield_ram` (funded from `coop_clear`, 60 → 40) is the fun low-stakes one —
 it counts enemy ships and the mini-station, so it's earnable from level 11.
+`shield_ram_asteroid` (funded from `kills_1000`, 60 → 50) is the genuinely
+easy early one: shield pickups drop from level 1 and the ram already
+destroys the asteroid in existing gameplay.
 `score_3m` is pitched just above the best playtest run (2.7M) — a
 beat-your-best skill target — and took its GS from `kills_10000_lifetime`
 (100 → 40), which is time investment rather than skill.

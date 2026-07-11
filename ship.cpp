@@ -976,6 +976,8 @@ void Ship::collide_grid(Grid &grid, int delta) {
           }
         } else if(object->kill()) {
           detonate();
+          if(is_local_player && shield_active())
+            Achievements::unlock("shield_ram_asteroid");
         } else {
           explode(position, object->velocity);
           // The hit object was invincible. If the ship is also invincible
@@ -986,6 +988,8 @@ void Ship::collide_grid(Grid &grid, int delta) {
             Object *killable = grid.collide(*this, 0.0f, true);
             if(killable != NULL && killable->kill()) {
               detonate();
+              if(is_local_player && shield_active())
+                Achievements::unlock("shield_ram_asteroid");
             }
           }
         }

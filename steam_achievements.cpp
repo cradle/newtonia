@@ -48,6 +48,7 @@ const Mapping MAPPINGS[] = {
   { "black_hole_survivor",  "ACH_BLACK_HOLE_SURVIVOR",  NULL },
   { "mini_station_kill",    "ACH_MINI_STATION_KILL",    NULL },
   { "shield_ram",           "ACH_SHIELD_RAM",           NULL },
+  { "shield_ram_asteroid",  "ACH_SHIELD_RAM_ASTEROID",  NULL },
   { "station_destroyed",    "ACH_STATION_DESTROYED",    NULL },
   { "enemies_10",           "ACH_ENEMIES_10",           "enemies_10_pct" },
   { "nova_detonated",       "ACH_NOVA_DETONATED",       NULL },

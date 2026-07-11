@@ -11,9 +11,10 @@
 // Symbolic IDs currently wired up (ACHIEVEMENTS.md §5; user-facing text uses
 // displayed level numbers, i.e. internal generation + 1):
 //   first_kill, clear_level1, specials_7, black_hole_survivor,
-//   mini_station_kill, shield_ram, station_destroyed, enemies_10,
-//   nova_detonated, no_damage_clear, no_secondary_level10, weapons_7,
-//   coop_clear, kills_1000, kills_10000_lifetime, score_3m, reach_level15
+//   mini_station_kill, shield_ram, shield_ram_asteroid, station_destroyed,
+//   enemies_10, nova_detonated, no_damage_clear, no_secondary_level10,
+//   weapons_7, coop_clear, kills_1000, kills_10000_lifetime, score_3m,
+//   reach_level15
 
 namespace Achievements {
 
