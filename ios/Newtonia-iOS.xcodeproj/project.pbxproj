@@ -56,7 +56,7 @@
 		AB00004C /* warp_pass.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00004C /* warp_pass.cpp */; };
 		AB00004D /* mesh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00004D /* mesh.cpp */; };
 		AB00004E /* savegame.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00004E /* savegame.cpp */; };
-		AB000059 /* achievements.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000059 /* achievements.cpp */; };
+		AB00005C /* achievements.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00005C /* achievements.cpp */; };
 		AB00005A /* stats.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00005A /* stats.cpp */; };
 		AB00005B /* steam_achievements.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00005B /* steam_achievements.cpp */; };
 		AB000052 /* preferences.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000052 /* preferences.cpp */; };
@@ -127,7 +127,7 @@
 		AA00004C /* warp_pass.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../warp_pass.cpp; sourceTree = SOURCE_ROOT; };
 		AA00004D /* mesh.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../mesh.cpp; sourceTree = SOURCE_ROOT; };
 		AA00004E /* savegame.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../savegame.cpp; sourceTree = SOURCE_ROOT; };
-		AA000059 /* achievements.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../achievements.cpp; sourceTree = SOURCE_ROOT; };
+		AA00005C /* achievements.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../achievements.cpp; sourceTree = SOURCE_ROOT; };
 		AA00005A /* stats.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../stats.cpp; sourceTree = SOURCE_ROOT; };
 		AA00005B /* steam_achievements.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../steam_achievements.cpp; sourceTree = SOURCE_ROOT; };
 		AA00004F /* savegame.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../savegame.h; sourceTree = SOURCE_ROOT; };
@@ -242,7 +242,7 @@
 			AA00004D /* mesh.cpp */,
 			AA000051 /* mesh.h */,
 			AA00004E /* savegame.cpp */,
-			AA000059 /* achievements.cpp */,
+			AA00005C /* achievements.cpp */,
 			AA00005A /* stats.cpp */,
 			AA00005B /* steam_achievements.cpp */,
 			AA00004F /* savegame.h */,
@@ -395,7 +395,7 @@
 			AB00004C /* warp_pass.cpp in Sources */,
 			AB00004D /* mesh.cpp in Sources */,
 			AB00004E /* savegame.cpp in Sources */,
-			AB000059 /* achievements.cpp in Sources */,
+			AB00005C /* achievements.cpp in Sources */,
 			AB00005A /* stats.cpp in Sources */,
 			AB00005B /* steam_achievements.cpp in Sources */,
 			AB000052 /* preferences.cpp in Sources */,
