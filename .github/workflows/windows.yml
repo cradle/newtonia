@@ -2,7 +2,7 @@ name: Windows
 
 on:
   push:
-    branches: [master, main, 'claude/**']
+    branches: [master, main]
   pull_request:
   workflow_dispatch:
 
