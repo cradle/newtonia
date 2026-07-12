@@ -359,8 +359,11 @@ a real run accumulates through levels 1–9). Station fight (dev start at 14,
 first attempt): **8 fighters downed** — `enemies_10` is comfortably
 reachable (kills accrue game-wide and waves keep deploying) — but the
 station itself survived. The station takes 100 hits while its escort
-waves grow by one fighter per redeploy, so `station_destroyed` is an
-endurance siege; more attempts pending. Remaining unknowns: killing the
+waves grow by one fighter per redeploy (capped at 50/wave, after which
+wave difficulty climbs instead), so `station_destroyed` is an endurance
+siege. Tactical note from the deploy code: a new wave only launches once
+the current wave is wiped — leaving one fighter alive leashes the
+reinforcements while the station is burned down. More attempts pending. Remaining unknowns: killing the
 station, and the 10–15 stretch as one continuous run. A run to level 10 scored
 ~2.7M points, which (at `value ≈ 1600/radius` per kill × the
 kills-per-life multiplier) implies on the order of 1,000–1,500 asteroid
