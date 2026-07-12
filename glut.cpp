@@ -14,6 +14,7 @@
 #include "net_transport.h"
 #include "net_signal.h"
 #include "achievements.h"
+#include "presence.h"
 
 // gl_compat.h pulls in GLUT (for window management) and gles2_compat.h
 // (for the VBO/VAO/shader shim that replaces all legacy GL calls).
@@ -403,7 +404,7 @@ int main(int argc, char* argv[]) {
 #endif
   }
   init_controllers_and_audio();
-  atexit([]{ save_preferences(); if (game) game->focus_lost(); steam_shutdown(); });
+  atexit([]{ save_preferences(); if (game) game->focus_lost(); Presence::clear(); steam_shutdown(); });
   game = new StateManager();
   for(int i = 0; i < 2; i++) {
     if(controllers[i]) game->controller_added(controllers[i]);

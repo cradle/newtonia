@@ -7,6 +7,7 @@
 #include "net_lobby.h"
 #include "net_transport.h"
 #include "preferences.h"
+#include "presence.h"
 #include "gl_compat.h"
 #include "mat4.h"
 #include "steam_build.h"
@@ -123,6 +124,7 @@ Menu::Menu() :
   camera_index_[0]      = g_prefs.p1_keys.rotate_view ? 1 : 0;
   camera_index_[1]      = g_prefs.p2_keys.rotate_view ? 1 : 0;
   star_density_index_   = star_density_index_for(g_prefs.star_density);
+  Presence::set_menu();
 #ifdef __EMSCRIPTEN__
   EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
 #endif

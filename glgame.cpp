@@ -1,5 +1,6 @@
 #include "glgame.h"
 #include "achievements.h"
+#include "presence.h"
 #include "steam_build.h"
 #include <cstdlib>
 #include "asset_path.h"
@@ -220,6 +221,8 @@ GLGame::GLGame(SDL_GameController *controller) :
       station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
     Achievements::note_cheat_used();
   }
+
+  update_presence();
 
   if(tic_sound == NULL) {
     tic_sound = Mix_LoadWAV(asset_path("audio/tic.wav").c_str());
@@ -482,6 +485,8 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     mini_station = NULL;
   }
   warp_pass_ = new WarpPass();
+
+  update_presence();
 
   if(tic_sound == NULL) {
     tic_sound = Mix_LoadWAV(asset_path("audio/tic.wav").c_str());
@@ -795,6 +800,13 @@ void GLGame::add_player2(SDL_GameController *ctrl) {
   object->ship->missiles_seek_players = friendly_fire;
   object->ship->set_black_holes(black_holes);
   players->push_back(object);
+  update_presence();
+}
+
+void GLGame::update_presence() const {
+  // Displayed level numbers = internal generation + 1, the same rule as
+  // achievements (ACHIEVEMENTS.md §5).
+  Presence::set_level(generation + 1, (int)players->size());
 }
 
 // Player 2 for online play: same wiring as add_player2 but with no local
@@ -4125,6 +4137,7 @@ void GLGame::tick(int delta) {
       time_until_next_generation -= delta;
     } else {
       generation++;
+      update_presence();
       // The enemy station arrives at generation 14 (displayed level 15) and
       // the world takes its one big growth jump to make room for it.
       if(generation == 14) {
@@ -5919,6 +5932,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       object->ship->set_missile_ships(ship_objects);
       object->ship->missiles_seek_players = friendly_fire;
       players->push_back(object);
+      update_presence();
     }
   }
 #endif

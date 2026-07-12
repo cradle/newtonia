@@ -378,6 +378,11 @@ private:
   int net_slot_ = 0;                    // snapshot slot; every 10th = keyframe
   bool net_force_keyframe_ = true;      // first send / rejoin / new level
 
+  // Re-report the platform online status ("Level N" / "Level N Co-Op").
+  // Called wherever the level or player count changes; duplicates are
+  // deduped in the Presence layer.
+  void update_presence() const;
+
   static const int step_size = 8;
 
   Point world;
