@@ -148,7 +148,11 @@ namespace Net {
 //     idempotent by wire id, so the host's own resolution of the same
 //     MSG_LANCE polyline (self-kill on reflection, partner under friendly
 //     fire, station hull damage) can never double-count them.
-const uint8_t PROTO_VERSION = 20;
+// 21: Snapshot GameState grew the save-v14 achievements append (per-player
+//     asteroid/enemy kills, died-this-generation, weapons-fired mask, the
+//     game-scoped cheat flag) — serialize/deserialize_game are shared
+//     between saves and the wire, so the snapshot layout changed with it.
+const uint8_t PROTO_VERSION = 21;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check

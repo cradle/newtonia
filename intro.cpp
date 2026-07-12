@@ -62,6 +62,11 @@ void Intro::dismiss() {
     music_channel = -1;
   }
   Mix_Resume(-1);
+  // This state swallowed all ship input while it was up: a thrust/stick
+  // release during the intro never reached the ships, and a centred stick
+  // sends no further events — release everything before play resumes or a
+  // control held over the level transition stays latched ON.
+  game->release_player_controls();
   // Ownership of the game returns to the StateManager; play resumes exactly
   // where it froze. `game` must stay set (not owned): this state remains
   // current — and still draws — until the manager performs the swap.

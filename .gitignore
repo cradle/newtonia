@@ -38,3 +38,9 @@ package-lock.json
 Newtonia.app/
 netplay-libs/
 flavor.stamp
+## Steam local build (make steam)
+/newtonia-steam
+/sdk/
+/steam_appid.txt
+/libsteam_api.*
+/steamworks_sdk.zip

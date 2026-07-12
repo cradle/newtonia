@@ -546,6 +546,26 @@ void GLShip::controller_touchpad_input(SDL_Event event) {
   touch_joystick_input(nx, ny);
 }
 
+// Force-release every held control. Called whenever a state stops routing
+// input to the ships (pause, the between-level intro): a key/stick release
+// delivered while nobody was listening leaves flags like Ship::thrusting
+// latched on, and a centred stick generates no further SDL events to clear
+// them — the ship flies off on its own until the player re-taps the control.
+void GLShip::release_controls() {
+  kb_thrust = kb_reverse = kb_rotate_left = kb_rotate_right = false;
+  left_axis_x_active = left_axis_y_active = false;
+  r2_shoot_active = l2_shoot_active = false;
+  ship->rotation_scale = 1.0f;
+  ship->thrust_analog  = 1.0f;
+  ship->reverse_analog = 1.0f;
+  ship->thrust(false);
+  ship->reverse(false);
+  ship->rotate_left(false);
+  ship->rotate_right(false);
+  ship->shoot(false);
+  ship->fire_secondary(false);
+}
+
 void GLShip::input(unsigned char key, bool pressed) {
   if (key == help_key && pressed) show_help = !show_help;
   if(!ship->is_alive()) {

@@ -44,6 +44,14 @@ struct Player {
     int selected_secondary_idx;  // -1 when secondary iterator == end()
     int nova_charge;             // charge points toward next Nova bomb (0–9)
     int nova_kill_counter;       // kill sub-count toward next charge point (0–99)
+
+    // v11 append — achievements bookkeeping (ACHIEVEMENTS.md). Written at the
+    // end of the file, not inside the player block, per the append-only
+    // convention; defaults keep older saves loading unchanged.
+    int      asteroid_kills = 0;        // asteroids destroyed this game
+    int      enemy_kills = 0;           // enemy ships destroyed this game
+    bool     died_this_generation = false;
+    uint32_t weapons_fired_mask = 0;    // bit = (int)WeaponEntry::Kind fired this game
 };
 
 // ── Asteroid ─────────────────────────────────────────────────────────────────
@@ -146,7 +154,11 @@ struct MiniStation {
 
 struct GameState {
     static constexpr uint32_t MAGIC   = 0x4E57544E;  // "NWTN"
-    static constexpr uint16_t VERSION = 13;  // 13 = Revive pickup type
+    // 12 = Beam/Lance weapon kinds, 13 = Revive pickup type, 14 = the
+    // achievements append (master's "v11 append" renumbered: per-player
+    // asteroid/enemy kills, died-this-generation, weapons-fired mask,
+    // then the game-scoped cheat flag).
+    static constexpr uint16_t VERSION = 14;
     // Oldest save format we can still read. Saves from MIN_VERSION..VERSION all
     // load; anything older (or from a newer build) is ignored. To keep old saves
     // working across a version bump, only ever APPEND new fields at the end of
@@ -160,6 +172,9 @@ struct GameState {
     bool  level_cleared;
     int   time_until_next_generation;
     int   current_time;
+    // v11 append (end of file): a cheat key was used this game — achievement
+    // unlocks stay suppressed after resume (XR-057, ACHIEVEMENTS.md §1).
+    bool  cheated = false;
 
     std::vector<Player>    players;
     std::vector<Asteroid>  asteroids;

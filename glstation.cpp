@@ -37,6 +37,11 @@ GLStation::GLStation(const Grid &grid, list<GLShip*>* objects, list<GLShip*>* ta
 
   // behaviours.push_back(new Roamer(this));
 
+  // The station never thrusts: release the looping engine-hum channel the
+  // Ship constructor started (same as GLMiniStation), or it holds one of
+  // the mixer's channels for its whole life.
+  mute_engine();
+
   outer_rotation_speed = 0.01;
   inner_rotation_speed = -0.0025;
   inner_rotation = outer_rotation = 0;

@@ -115,6 +115,10 @@ public:
   float net_listener_volume(Point p) const;
   bool is_point_faced_by_any_player(Point p) const;
   bool has_free_controller() const;
+  // Force-release all players' held controls. Called by states that swallow
+  // input (pause, Intro) so a release delivered while the game wasn't
+  // listening can't leave a control latched on (e.g. thrust stuck ON).
+  void release_player_controls();
 private:
   void add_asteroids();
   void add_player2(SDL_GameController *ctrl);
@@ -388,6 +392,9 @@ private:
   // auto-rejoin suppression, and the spectate flow. NOT a savegame flag:
   // online co-op never writes a resumable save (those paths are NetOff-only).
   bool running, level_cleared, friendly_fire, debug_grid, game_over;
+  // High score/stats banked for this game (master's achievements work):
+  // save_progress() becomes a no-op once set at game over.
+  bool score_saved = false;
   bool auto_paused = false;
   bool save_written_this_death_ = false;
   bool save_deleted_ = false;

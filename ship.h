@@ -85,6 +85,14 @@ class Ship : public CompositeObject {
     //TODO: make friends with glship
     int score;
     int lives, kills, kills_this_life;
+    int asteroid_kills = 0;  // asteroids destroyed this game (achievements; saved)
+    int enemy_kills = 0;     // enemy ships destroyed this game (achievements; saved)
+    // Locally-controlled player ship: gates achievement and lifetime-stat
+    // attribution (ACHIEVEMENTS.md §4). Set by GLGame when creating player
+    // ships; stays false for enemies, stations, and future remote netplay peers.
+    bool is_local_player = false;
+    bool died_this_generation = false;  // reset by GLGame on generation rebuild
+    uint32_t weapons_fired_mask = 0;    // bit = (int)Save::WeaponEntry::Kind fired this game
     int nova_charge;       // charge points accumulated toward next bomb (0–9)
     int nova_kill_counter; // asteroid kills accumulated toward next charge pickup drop (0–99)
     std::vector<Point> nova_drops_pending;  // pickup spawn positions; GLGame reads and clears each frame
@@ -358,6 +366,15 @@ class Ship : public CompositeObject {
     void safe_position(const Grid &grid, bool try_current = false);
     void tally_nova_kill(const Point &pos);  // call on every asteroid kill; drops pickup every 100
     void fire_lance_pulse(const Grid &grid); // instantaneous lance ray-march (see weapon/lance.h)
+    // Central bookkeeping for an asteroid this ship destroyed (score counters,
+    // nova feedback, achievements, lifetime stats). All weapon paths call this.
+    void credit_asteroid_kill(Object *object, bool nova_feedback = true);
+    // Bookkeeping for a downed ship (kill counters, score, enemies_10). The
+    // CALLER gates on kill_stop() returning true: shots absorbed by a
+    // shield/invincibility (e.g. a disconnected player's parked ship) must
+    // not award anything.
+    void credit_ship_kill(Ship *other);
+    void record_weapon_fired(Save::WeaponEntry::Kind kind);  // weapons_7 tracking
 
     void play_rotating_sound(bool on);
     void update_god_mode_music(int time_remaining);

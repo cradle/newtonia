@@ -394,6 +394,17 @@ bool Save::serialize_game(Save::Stream &f, const Save::GameState &s) {
     ok = ok && write_station(f, s.station);
     ok = ok && write_mini_station(f, s.mini_station);
 
+    // v14 append (master's "v11 append" renumbered on the netplay branch):
+    // per-player achievements bookkeeping (in players order), then the
+    // game-scoped cheat flag.
+    for (const auto &p : s.players) {
+        ok = ok && wv(f, (int32_t)p.asteroid_kills);
+        ok = ok && wv(f, (int32_t)p.enemy_kills);
+        ok = ok && wv(f, (uint8_t)p.died_this_generation);
+        ok = ok && wv(f, (uint32_t)p.weapons_fired_mask);
+    }
+    ok = ok && wv(f, (uint8_t)s.cheated);
+
     return ok;
 }
 
@@ -445,6 +456,22 @@ bool Save::deserialize_game(Save::Stream &f, Save::GameState &s, uint16_t versio
         ok = ok && read_mini_station(f, s.mini_station);
     } else {
         s.mini_station.present = false;
+    }
+
+    // Per-player achievements bookkeeping and the game-scoped cheat flag
+    // (appended in v14); older saves end before them and keep the defaults.
+    if (version >= 14) {
+        for (auto &p : s.players) {
+            int32_t ak = 0, ek = 0; uint8_t died = 0; uint32_t wm = 0;
+            ok = ok && rv(f, ak) && rv(f, ek) && rv(f, died) && rv(f, wm);
+            p.asteroid_kills       = (int)ak;
+            p.enemy_kills          = (int)ek;
+            p.died_this_generation = (bool)died;
+            p.weapons_fired_mask   = wm;
+        }
+        uint8_t cheated = 0;
+        ok = ok && rv(f, cheated);
+        s.cheated = (bool)cheated;
     }
 
     return ok;

@@ -180,7 +180,66 @@ web:
 web-clean:
 	rm -rf web/dist
 
+# ============================================================
+# Steam build (local testing): make steam
+# ============================================================
+# Requires the Steamworks SDK unzipped at ./sdk (so that
+# sdk/public/steam/steam_api.h exists). Produces ./newtonia-steam plus
+# steam_appid.txt and the Steam runtime library beside it, so it can be
+# launched directly from the repo root with the Steam client running.
+# Steam objects build as *.steam.o so they never mix with the plain
+# build's objects (different -D flags). The deploy-steam workflow remains
+# the source of truth for shippable depots — this target is for local
+# achievement/overlay testing only (never ship steam_appid.txt).
+STEAM_APPID ?= 4536720
+STEAM_SDK ?= sdk
+STEAM_CFLAGS = $(CFLAGS) -DSTEAM_BUILD -I$(STEAM_SDK)/public
+STEAM_OBJFILES := $(patsubst %.cpp,%.steam.o,$(ALL_SRCS))
+ifeq ($(UNAME), Darwin)
+  STEAM_OBJFILES += macos_window.steam.o
+  STEAM_RUNTIME = libsteam_api.dylib
+  STEAM_SDK_LIB = $(STEAM_SDK)/redistributable_bin/osx/libsteam_api.dylib
+  STEAM_LINK = -L. -lsteam_api
+else
+  STEAM_RUNTIME = libsteam_api.so
+  STEAM_SDK_LIB = $(STEAM_SDK)/redistributable_bin/linux64/libsteam_api.so
+  STEAM_LINK = -L. -lsteam_api -Wl,-rpath,'$$ORIGIN'
+endif
+STEAM_DEPFILES := $(STEAM_OBJFILES:.o=.d)
+
+.PHONY: steam steam-clean check-steam-sdk
+
+steam: check-steam-sdk newtonia-steam steam_appid.txt
+
+check-steam-sdk:
+	@test -f $(STEAM_SDK)/public/steam/steam_api.h || { \
+	  echo "Steamworks SDK not found at ./$(STEAM_SDK)/."; \
+	  echo "Unzip steamworks_sdk.zip in the repo root (creates ./sdk/) and retry."; \
+	  exit 1; }
+
+$(STEAM_RUNTIME): $(STEAM_SDK_LIB)
+	cp $< $@
+ifeq ($(UNAME), Darwin)
+	install_name_tool -id @loader_path/libsteam_api.dylib $@
+endif
+
+newtonia-steam: $(STEAM_OBJFILES) $(STEAM_RUNTIME)
+	$(CC) -o $@ $(STEAM_OBJFILES) $(STEAM_LINK) $(LIBS)
+
+steam_appid.txt:
+	echo $(STEAM_APPID) > $@
+
+steam-clean:
+	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam $(STEAM_RUNTIME) steam_appid.txt
+
+%.steam.o: %.cpp
+	$(CC) $(STEAM_CFLAGS) -c -o $@ $<
+
+%.steam.o: %.mm
+	$(CC) $(STEAM_CFLAGS) -c -o $@ $<
+
 -include $(DEPFILES)
+-include $(STEAM_DEPFILES)
 
 %.o: %.cpp
 	$(COMPILE) -o $@ $<
