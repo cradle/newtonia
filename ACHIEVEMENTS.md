@@ -492,10 +492,13 @@ testing** — black-hole levels are beatable, though not easily — and
 **level 11 has been passed** the same way. A **full continuous run has
 since reached level 10** from a fresh start, confirming reachability and
 pinning down *why* the wall is hard: the black hole keeps accelerating
-asteroids that pass near it — gravity is softened near the horizon but
-velocity is never capped (`black_hole.cpp`) — so the level fills with
+asteroids that pass near it, and while speed is clamped each step to the
+absolute `max_speed` (3, `asteroid.cpp`), asteroids *spawn* at
+`max_speed / radius` — so gravity can drive a large asteroid to ~20–240×
+its natural speed before the clamp bites. The level fills with big,
 fast-flying asteroids far harder to dodge and hit than anything in
-levels 1–9. Dev-start caveat, cutting both
+levels 1–9. (Possible tuning lever, not yet taken: a radius-scaled cap,
+e.g. some multiple of spawn speed, instead of the flat one.) Dev-start caveat, cutting both
 ways: full lives (4) at the start of the tested level, but also a bare
 loadout (base gun only — no banked secondaries, upgrades, or extra lives
 a real run accumulates through levels 1–9). Station fight (dev start at 14,
