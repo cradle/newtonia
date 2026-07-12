@@ -489,7 +489,13 @@ level 9, so getting *to* the black-hole level (10) is reliable — but the
 black-hole level itself is the difficulty wall. Using the dev start
 (`NEWTONIA_START_GENERATION=10`), the wall has now been **passed in
 testing** — black-hole levels are beatable, though not easily — and
-**level 11 has been passed** the same way. Dev-start caveat, cutting both
+**level 11 has been passed** the same way. A **full continuous run has
+since reached level 10** from a fresh start, confirming reachability and
+pinning down *why* the wall is hard: the black hole keeps accelerating
+asteroids that pass near it — gravity is softened near the horizon but
+velocity is never capped (`black_hole.cpp`) — so the level fills with
+fast-flying asteroids far harder to dodge and hit than anything in
+levels 1–9. Dev-start caveat, cutting both
 ways: full lives (4) at the start of the tested level, but also a bare
 loadout (base gun only — no banked secondaries, upgrades, or extra lives
 a real run accumulates through levels 1–9). Station fight (dev start at 14,
@@ -544,7 +550,7 @@ stand. Decisions taken:
 | coop_clear | needs a second controller/player only | earnable |
 | mini_station_kill | single shot from level 11 | earnable |
 | shield_ram | shield pickup (1.25%/kill) + any enemy from level 11 | earnable |
-| no_damage_clear, black_hole_survivor | skill-only, no mechanical gate; playtest shows level 9 clears consistently, survival at 10 is the wall | earnable, hard |
+| no_damage_clear, black_hole_survivor | skill-only, no mechanical gate; playtest shows level 9 clears consistently, survival at 10 is the wall (black-hole-accelerated asteroids) | earnable, hard |
 | nova_detonated | charge counter **and** charges reset on death → ~1,000 kills in one life; playtest reached 9/10 charges | earnable, at the edge |
 | **weapons_7** | **coupled to nova_detonated**: firing a nova is the 7th kind, so it embeds the same one-life feat, plus drop RNG — P(≥1 god-mode drop) ≈ 63% by 400 kills, 92% by 1,000, 98% by 1,500 (other pickups ≈100%; the fired-mask spans lives, only the nova leg is single-life) | earnable; capstone-hard, review GS |
 | station_destroyed, enemies_10 | **verified in dev-start play**: station dies easily to an upgraded multishot gun (the bare-loadout siege was the outlier); 8+ fighters downed in a single fight | **verified** |
