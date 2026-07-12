@@ -2115,6 +2115,7 @@ void GLGame::net_clear_event_outboxes() {
   Ship::net_lance_reports.clear();
   Ship::net_bounce_reports.clear();
   Ship::net_ach_relays.clear();
+  Ship::net_ram_blasts.clear();
 }
 
 void GLGame::net_send_event(uint8_t code, uint32_t arg) {
@@ -2165,6 +2166,21 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
       else if (arg == Net::ACH_SHIELD_RAM_ASTEROID) Achievements::unlock("shield_ram_asteroid");
       else if (arg == Net::ACH_MINI_STATION_KILL) Achievements::unlock("mini_station_kill");
       else if (arg == Net::ACH_STATION_DESTROYED) Achievements::unlock("station_destroyed");
+      break;
+    }
+    case Net::EV_RAM_BLAST: {
+      // Our shielded ram killed an asteroid host-side and burst bullets
+      // out of our replica — our own bullet echo is skipped, so mint the
+      // blast here. net_blast on the local ship (net_claim_kills) goes
+      // into REAL bullets: instant local kills + bullet_id-0 claims,
+      // exactly like an own-mine explosion. Our pose is authoritative and
+      // the host adopted it, so blasting at our current position lands
+      // where the player just saw the impact.
+      if (!players->empty()) {
+        Ship *me = players->back()->ship;
+        if (me->is_alive())
+          me->net_blast(me->position, me->velocity, 10);
+      }
       break;
     }
     case Net::EV_FRIENDLY_FIRE: {
@@ -4928,6 +4944,14 @@ void GLGame::tick(int delta) {
     if (remote_player() && ar.first == remote_player()->ship)
       net_send_event(Net::EV_ACHIEVEMENT, ar.second);
   Ship::net_ach_relays.clear();
+  // Shield-ram bursts the sim minted into a player's bullets: only the
+  // remote replica's need the wire (the client skips its own-ship bullet
+  // echo); the host's own replicate through the ordinary echo.
+  for (const Ship *rb : Ship::net_ram_blasts)
+    if (net_mode_ == NetHost && net_session_ && !net_connection_lost_ &&
+        remote_player() && rb == remote_player()->ship)
+      net_send_event(Net::EV_RAM_BLAST);
+  Ship::net_ram_blasts.clear();
 
   // Online host: broadcast the world at 10 Hz once everything has stepped.
   if (net_mode_ == NetHost) net_host_send_snapshot(delta);

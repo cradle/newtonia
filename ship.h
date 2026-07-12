@@ -260,6 +260,11 @@ class Ship : public CompositeObject {
     // GLGame drains it each tick and relays entries belonging to the net
     // remote replica as EV_ACHIEVEMENT (second = Net::AchRelay).
     static std::vector<std::pair<const Ship*, uint8_t>> net_ach_relays;
+    // Host outbox: a surviving (shielded) ram killed an asteroid and
+    // detonate()d into this ship's bullets. GLGame relays the remote
+    // replica's entries as EV_RAM_BLAST — the client skips its own-ship
+    // bullet echo, so without the relay the rammer never sees the burst.
+    static std::vector<const Ship*> net_ram_blasts;
     // net_claim_kills (the client's LOCAL ship): the lance ray-march
     // predicts kill outcomes without killing locally and queues MSG_HIT
     // claims with bullet_id 0 — the claim drain does the local kills,

@@ -31,6 +31,7 @@ std::vector<std::vector<Point>> Ship::net_lance_reports;
 std::vector<Ship::NetBounceReport> Ship::net_bounce_reports;
 bool Ship::net_report_bounces = false;
 std::vector<std::pair<const Ship*, uint8_t>> Ship::net_ach_relays;
+std::vector<const Ship*> Ship::net_ram_blasts;
 std::vector<Ship::NetShipHit> Ship::net_ship_hit_claims;
 uint32_t Ship::net_next_ship_id = 0;
 #include <algorithm>
@@ -1195,6 +1196,13 @@ void Ship::collide_grid(Grid &grid, int delta) {
           }
         } else if(object->kill()) {
           detonate();
+          // Shielded ram survived: the burst above went into OUR bullets
+          // host-side, but a net client skips its own-ship bullet echo
+          // (locally simulated, PROTO 14) — relay so the rammer sees it.
+          // Fatal rams need no relay: the extras' death detonate covers
+          // them client-side.
+          if(net_report_bounces && player_ship && !is_local_player && invincible)
+            net_ram_blasts.push_back(this);
           if(is_local_player && shield_active())
             Achievements::unlock("shield_ram_asteroid");
           else if(net_report_bounces && player_ship && shield_active())
@@ -1220,6 +1228,9 @@ void Ship::collide_grid(Grid &grid, int delta) {
             Object *killable = grid.collide(*this, 0.0f, true);
             if(killable != NULL && killable->kill()) {
               detonate();
+              // Same own-ship-echo gap as the primary ram-kill above.
+              if(net_report_bounces && player_ship && !is_local_player)
+                net_ram_blasts.push_back(this);
               if(is_local_player && shield_active())
                 Achievements::unlock("shield_ram_asteroid");
               else if(net_report_bounces && player_ship && shield_active())

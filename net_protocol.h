@@ -250,6 +250,15 @@ enum EventCode {
   // resolve host-side). arg = AchRelay; the client's own cheat
   // suppression still applies inside unlock().
   EV_ACHIEVEMENT = 17,
+  // Host -> client: a surviving (shielded) ram by the CLIENT's ship killed
+  // an asteroid, and the sim detonate()d a bullet burst into that ship's
+  // list. The client skips its own-ship bullet echo (locally simulated,
+  // PROTO 14), so the burst was invisible on the very machine that rammed;
+  // on receipt the client mints the blast locally via net_blast() — real
+  // bullets, instant kills, bullet_id-0 claims, exactly the own-mine-
+  // explosion treatment. Fatal rams need no relay (the extras' death
+  // detonate already runs client-side). No arg.
+  EV_RAM_BLAST = 18,
 };
 
 // EV_ACHIEVEMENT arg values. Stable wire numbers — append only.
