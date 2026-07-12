@@ -1,0 +1,18 @@
+// Steam Rich Presence localization tokens — the in-repo source of truth for
+// what steam_presence.cpp sets via "steam_display". No workflow uploads
+// this file: paste its contents into the Steamworks portal at
+// App Admin → Community → Rich Presence, and re-paste after any change
+// here. %level% is substituted from the "level" rich-presence key set
+// alongside the token.
+"lang"
+{
+	"english"
+	{
+		"tokens"
+		{
+			"#StatusMenu"		"In the Menu"
+			"#StatusLevel"		"Level %level%"
+			"#StatusLevelCoop"	"Level %level% Co-Op"
+		}
+	}
+}
