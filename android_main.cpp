@@ -273,7 +273,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         SDL_Log("Mix opened: %d Hz, fmt=0x%x, channels=%d, chunk=%d",
                 freq, fmt, chans, audio_frames);
     }
-    Mix_AllocateChannels(32);
+    Mix_AllocateChannels(64);
 
     // Pre-warm the audio pipeline so the first real sound plays without delay.
     {

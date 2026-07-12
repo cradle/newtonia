@@ -365,7 +365,7 @@ int main(int argc, char *argv[])
     // Audio: 48 kHz matches the Xbox audio subsystem's native rate.
     if (Mix_OpenAudio(48000, MIX_DEFAULT_FORMAT, 2, 512) < 0)
         SDL_Log("Mix_OpenAudio failed: %s", Mix_GetError());
-    Mix_AllocateChannels(32);
+    Mix_AllocateChannels(64);
 
     // Open all (up to 2) game controllers present at startup; hot-plugged
     // ones are opened by SDL_CONTROLLERDEVICEADDED in the event loop.

@@ -315,7 +315,7 @@ void init_controllers_and_audio() {
       std::cout << "Unable to open audio device" << std::endl;
       std::cout << Mix_GetError() << std::endl;
     }
-    if(ENABLE_AUDIO) Mix_AllocateChannels(32);
+    if(ENABLE_AUDIO) Mix_AllocateChannels(64);
     SDL_JoystickEventState(SDL_ENABLE);
     int opened = 0;
     for (int i = 0; i < SDL_NumJoysticks() && opened < 2; ++i) {

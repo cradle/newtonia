@@ -358,13 +358,17 @@ loadout (base gun only — no banked secondaries, upgrades, or extra lives
 a real run accumulates through levels 1–9). Station fight (dev start at 14,
 first attempt): **8 fighters downed** — `enemies_10` is comfortably
 reachable (kills accrue game-wide and waves keep deploying) — but the
-station itself survived. The station takes 100 hits while its escort
-waves grow by one fighter per redeploy (capped at 50/wave, after which
-wave difficulty climbs instead), so `station_destroyed` is an endurance
-siege. Tactical note from the deploy code: a new wave only launches once
-the current wave is wiped — leaving one fighter alive leashes the
-reinforcements while the station is burned down. More attempts pending. Remaining unknowns: killing the
-station, and the 10–15 stretch as one continuous run. A run to level 10 scored
+station itself survived. **Follow-up attempt: the station died easily**
+once the player brought an upgraded multishot gun — the 100-hit health
+pool that felt like an endurance siege at bare loadout melts under a
+levelled default weapon, which a real run reaching level 15 will have.
+`station_destroyed` is confirmed earnable; the loadout, not the health
+pool, is the variable. (Tactical note from the deploy code, still useful
+at bare loadout: a new wave only launches once the current wave is wiped
+— leaving one fighter alive leashes the reinforcements while the station
+is burned down. The station takes 100 hits; escort waves grow by one
+fighter per redeploy, capped at 50/wave, after which wave difficulty
+climbs instead.) Remaining unknown: the 10–15 stretch as one continuous run. A run to level 10 scored
 ~2.7M points, which (at `value ≈ 1600/radius` per kill × the
 kills-per-life multiplier) implies on the order of 1,000–1,500 asteroid
 kills per good run — 100 kills in one game proved trivial (reached by
@@ -406,15 +410,16 @@ stand. Decisions taken:
 | no_damage_clear, black_hole_survivor | skill-only, no mechanical gate; playtest shows level 9 clears consistently, survival at 10 is the wall | earnable, hard |
 | nova_detonated | charge counter **and** charges reset on death → ~1,000 kills in one life; playtest reached 9/10 charges | earnable, at the edge |
 | **weapons_7** | **coupled to nova_detonated**: firing a nova is the 7th kind, so it embeds the same one-life feat, plus drop RNG — P(≥1 god-mode drop) ≈ 63% by 400 kills, 92% by 1,000, 98% by 1,500 (other pickups ≈100%; the fired-mask spans lives, only the nova leg is single-life) | earnable; capstone-hard, review GS |
-| reach_level15, station_destroyed, enemies_10 | the black-hole wall itself has been passed in dev-start testing (hard but doable); still unproven: chaining levels 10–15 in one run and the station fight | **needs playtest** (de-risked) |
+| station_destroyed, enemies_10 | **verified in dev-start play**: station dies easily to an upgraded multishot gun (the bare-loadout siege was the outlier); 8+ fighters downed in a single fight | **verified** |
+| reach_level15 | the black-hole wall has been passed in dev-start testing (hard but doable), levels 10 and 11 individually cleared; still unproven: chaining 10–15 in one run | **needs playtest** (de-risked) |
 
 **Playtest tooling:** beta builds honour `NEWTONIA_START_GENERATION=N`
 (with `NEWTONIA_BETA=1`) — a new game starts at generation N with the
 correct world size and hazards (black hole ≥9, mini-station ≥10, station
 ≥14), so the wall and the station fight can be practised directly. It
 marks the game as cheated, so it can never launder achievements; use it to
-answer the "needs playtest" rows, then re-pitch GS if the station fight
-proves out of reach.
+answer the remaining "needs playtest" row (the continuous 10–15 run). The
+station fight itself has proved out — no GS re-pitch needed there.
 
 ## 6. Work items (this repo)
 

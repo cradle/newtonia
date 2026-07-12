@@ -1123,8 +1123,17 @@ void GLGame::tick(int delta) {
             Point reflected(bvel.x() - 2.0f * dot * normal.x(),
                             bvel.y() - 2.0f * dot * normal.y());
             s->explode(bpos, reflected.normalized() * station->velocity.magnitude());
-            if (Asteroid::thud_sound != NULL)
-              Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+            if (Asteroid::thud_sound != NULL) {
+              // Rate-limit like every other thud/ting site: sustained fire on
+              // the station otherwise grabs a mixer channel per bullet and
+              // starves the 32-channel pool (audio "drops out" mid-siege).
+              static Uint32 last_station_thud = UINT32_MAX;
+              Uint32 now = SDL_GetTicks();
+              if (now - last_station_thud >= 125) {
+                last_station_thud = now;
+                Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+              }
+            }
             station->hit();
             s->bullets[i] = std::move(s->bullets.back());
             s->bullets.pop_back();
