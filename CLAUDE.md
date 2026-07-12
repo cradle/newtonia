@@ -363,6 +363,8 @@ Full design in `ACHIEVEMENTS.md` (platform requirements, master list, backend pl
 
 Hooks: `GLGame` (level clear, generation rebuild/progression, station + mini-station destruction, cheat keys) and `Ship` (`credit_asteroid_kill()` shared by every asteroid-kill path, `credit_ship_kill()` on the bullet/missile ship-kill paths, weapon-kind tracking in `shoot()`/`fire_secondary()`/`add_god_mode()`, `nova_detonate()`, death flag in `kill()`). Attribution: only ships with `is_local_player` (set by `GLGame` when creating player ships; false for enemies, stations, and future remote netplay peers) earn achievements and stats.
 
+**Presence** (`presence.h/cpp`) — platform-neutral online-status seam mirroring the achievements pattern: `Presence::set_menu()` / `set_level(level, num_players)` / `clear()`; the shared layer dedupes repeat reports (logging each change to stdout — greppable in headless tests) and the default backend is a no-op. The Steam backend (`steam_presence.cpp` under `STEAM_BUILD`) sets Rich Presence via `ISteamFriends::SetRichPresence`: a plain-English `status` key plus a `steam_display` localization token (`#StatusMenu`, `#StatusLevel`, `#StatusLevelCoop`; `%level%` substituted from the `level` key) so friends see "Level 3" / "Level 3 Co-Op". The tokens live in `steam/rich_presence.vdf`, pasted manually into the Steamworks portal (App Admin → Community → Rich Presence) after any change — no workflow uploads it. Hooks: `Menu` constructor (menu status); `GLGame::update_presence()` from both `GLGame` constructors, the generation increment, and both player-2 join paths; `glut.cpp` clears presence at exit. Levels are reported as displayed numbers (generation + 1). No cheat suppression — presence is descriptive, not an earn.
+
 **Lifetime stats** (`stats.h/cpp`) — standalone roaming `stats.dat` in the SDL pref path (magic "NWST", version 1, append-only format like the savegame): lifetime asteroid kills and a special-type kill mask, deliberately outside `savegame.dat` so netplay still counts. Kill writes are batched (every 10) and flushed via `Stats::flush()` from `save_progress()` and game over. Writes are skipped while the cheat flag is set — `specials_7`/`kills_10000_lifetime` read this file, so cheat games banking lifetime progress would launder achievements. Likely needs adding to Steam Auto-Cloud patterns so it persists across installs.
 
 ### Touch Controls
@@ -399,7 +401,7 @@ GitHub Actions runs builds on every push to `master`/`main` and on PRs (feature 
 
 **Disabled workflows** — `.github/workflows/disabled/` holds inactive deployment workflows (`deploy-macos.yml`, `deploy-windows.yml`, `deploy-xbox.yml`); move a file back into `workflows/` to re-enable it.
 
-**Steam integration** — `steam_build.h` (constants/SDK), `steam_achievements.cpp` (achievements backend behind `STEAM_BUILD`; symbolic→`ACH_*` mapping, progress via increment-only pct stats), `steam/` contains Steamworks VDF config files (`app_build.vdf`, `depot_build_windows.vdf`, `depot_build_macos.vdf`, `depot_build_linux.vdf`).
+**Steam integration** — `steam_build.h` (constants/SDK), `steam_achievements.cpp` (achievements backend behind `STEAM_BUILD`; symbolic→`ACH_*` mapping, progress via increment-only pct stats), `steam_presence.cpp` (rich-presence backend behind `STEAM_BUILD`), `steam/` contains Steamworks VDF config files (`app_build.vdf`, `depot_build_windows.vdf`, `depot_build_macos.vdf`, `depot_build_linux.vdf`, plus `rich_presence.vdf` — pasted manually into the portal, not uploaded by a workflow).
 
 ## Conventions & Patterns
 

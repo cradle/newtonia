@@ -86,6 +86,11 @@ private:
   // spinning centre-screen until a player presses shoot.
   void maybe_start_intro();
 
+  // Re-report the platform online status ("Level N" / "Level N Co-Op").
+  // Called wherever the level or player count changes; duplicates are
+  // deduped in the Presence layer.
+  void update_presence() const;
+
   static const int step_size = 8;
 
   Point world;

@@ -5,6 +5,7 @@
 #include "glgame.h"
 #include "menu.h"
 #include "preferences.h"
+#include "presence.h"
 #include "gl_compat.h"
 #include "mat4.h"
 #include "steam_build.h"
@@ -73,6 +74,7 @@ Menu::Menu() :
   smoothing_index_[0]   = smoothing_index_for(g_prefs.p1_keys.camera_smoothing);
   smoothing_index_[1]   = smoothing_index_for(g_prefs.p2_keys.camera_smoothing);
   star_density_index_   = star_density_index_for(g_prefs.star_density);
+  Presence::set_menu();
 #ifdef __EMSCRIPTEN__
   EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
 #endif
