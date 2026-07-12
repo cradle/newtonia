@@ -816,12 +816,19 @@ void GLGame::tick(int delta) {
     }
 
     // Apply black-hole gravity to asteroids (asteroids pass through, not swallowed).
-    // Invincible asteroids are unaffected.
+    // Invincible asteroids are unaffected. Asteroids inside a well keep full
+    // slingshot dynamics; the excess-speed decay in Asteroid::step() only runs
+    // once they are free, so re-flag in_gravity_well every tick.
+    for(oi = objects->begin(); oi != objects->end(); oi++)
+      (*oi)->in_gravity_well = false;
     for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
       oi = objects->begin();
       while(oi != objects->end()) {
-        if(!(*oi)->invincible)
+        if(!(*oi)->invincible) {
           (*bhi)->apply_gravity(**oi, step_size);
+          if((*oi)->position.distance_to((*bhi)->position) < BlackHole::influence_radius)
+            (*oi)->in_gravity_well = true;
+        }
         oi++;
       }
     }

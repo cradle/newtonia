@@ -497,8 +497,15 @@ absolute `max_speed` (3, `asteroid.cpp`), asteroids *spawn* at
 `max_speed / radius` — so gravity can drive a large asteroid to ~20–240×
 its natural speed before the clamp bites. The level fills with big,
 fast-flying asteroids far harder to dodge and hit than anything in
-levels 1–9. (Possible tuning lever, not yet taken: a radius-scaled cap,
-e.g. some multiple of spawn speed, instead of the flat one.) Dev-start caveat, cutting both
+levels 1–9. **Tuning applied (2026-07):** speed above 4× natural now
+decays away (2 s time constant) once an asteroid is *outside* the
+influence radius; inside the well slingshot dynamics are untouched, so
+asteroids still escape (a naive always-on decay trapped them in orbit).
+A 10-minute headless sim (40 asteroids, gen-10 world) shows well escapes
+preserved (561 vs 932 before) while time spent outside the well above 4×
+natural speed drops from 46% to 2.4% — slung asteroids cross the level
+hot, then settle. Black-hole levels should need re-playtesting against
+the wall verdict above. Dev-start caveat, cutting both
 ways: full lives (4) at the start of the tested level, but also a bare
 loadout (base gun only — no banked secondaries, upgrades, or extra lives
 a real run accumulates through levels 1–9). Station fight (dev start at 14,
