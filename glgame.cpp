@@ -526,8 +526,17 @@ void GLGame::maybe_start_intro() {
   request_state_change(new Intro(this, kind, name, display), true);
 }
 
+void GLGame::release_player_controls() {
+  for (auto *glship : *players)
+    glship->release_controls();
+}
+
 void GLGame::toggle_pause() {
   running = !running;
+  // Pausing stops keyboard()/controller() forwarding to the ships, so any
+  // release that happens while paused is lost — drop everything now, or a
+  // thrust held over the pause stays latched ON after unpausing.
+  if (!running) release_player_controls();
   if (running) {
     if (pause_music_channel >= 0) {
       Mix_HaltChannel(pause_music_channel);

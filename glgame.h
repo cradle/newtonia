@@ -65,6 +65,10 @@ public:
   float sound_volume_for_point(Point p) const;
   bool is_point_faced_by_any_player(Point p) const;
   bool has_free_controller() const;
+  // Force-release all players' held controls. Called by states that swallow
+  // input (pause, Intro) so a release delivered while the game wasn't
+  // listening can't leave a control latched on (e.g. thrust stuck ON).
+  void release_player_controls();
 private:
   void add_asteroids();
   void add_player2(SDL_GameController *ctrl);
