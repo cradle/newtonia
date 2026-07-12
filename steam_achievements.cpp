@@ -103,23 +103,26 @@ public:
     store_if_due();
   }
 
-private:
-  // Self-heal a missed UserStatsReceived_t: if this object was constructed
-  // after the SDK's automatic stats delivery had already been dispatched
-  // (no listener registered yet — the bug Achievements::init() exists to
-  // prevent), the callback never fires. GetAchievement only succeeds once
-  // stats are in, so a positive probe means they arrived and we can run.
+  // Primary readiness path on SDK 1.61+: current-user stats are available
+  // synchronously once SteamAPI_Init() returns (RequestCurrentStats was
+  // removed), and UserStatsReceived_t is not posted for them — observed
+  // live: the callback never fired while a GetAchievement probe succeeded.
+  // GetAchievement only succeeds once stats are in, so a positive probe
+  // means ready. Called at init, and again from unlock/progress as a
+  // self-heal if init ran before Steam was reachable.
   bool stats_ready_probe() {
+    if (stats_received_) return true;
     ISteamUserStats *stats = SteamUserStats();
     if (!stats) return false;
     bool dummy = false;
     if (!stats->GetAchievement(MAPPINGS[0].ach, &dummy)) return false;
-    std::cout << "Steam user stats detected by probe (missed callback) — "
-                 "achievements live" << std::endl;
+    std::cout << "Steam user stats available — achievements live" << std::endl;
     stats_received_ = true;
     flush_pending();
     return true;
   }
+
+private:
 
   void flush_pending() {
     for (std::map<std::string, int>::const_iterator it = pending_stats_.begin();
@@ -191,6 +194,7 @@ private:
                 << std::endl;
       return;
     }
+    if (stats_received_) return;  // probe already went live
     std::cout << "Steam user stats received — achievements live" << std::endl;
     stats_received_ = true;
     flush_pending();
@@ -227,13 +231,14 @@ SteamAchievements *instance() {
 namespace Achievements {
 namespace Backend {
 
-// Called from Achievements::init() right after SteamAPI_Init(): constructing
-// the singleton registers its CCallbacks BEFORE the first
-// SteamAPI_RunCallbacks(), so the SDK's automatic stats delivery (SDK 1.61+)
-// finds a listener. Constructed lazily on first unlock instead, the delivery
-// has usually already been dispatched unheard and everything queues forever.
+// Called from Achievements::init() right after SteamAPI_Init(). On SDK
+// 1.61+ current-user stats are ready synchronously by now, so the probe
+// normally goes live immediately; the CCallbacks registered by the
+// constructor cover any path where they are not (and must be registered
+// before the first SteamAPI_RunCallbacks(), hence init-time construction
+// rather than lazily on the first unlock).
 void init() {
-  instance();
+  instance()->stats_ready_probe();
 }
 
 void unlock(const char *id) {
