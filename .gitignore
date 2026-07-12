@@ -32,3 +32,9 @@ package.json
 package-lock.json
 ## Mac build
 Newtonia.app/
+## Steam local build (make steam)
+/newtonia-steam
+/sdk/
+/steam_appid.txt
+/libsteam_api.*
+/steamworks_sdk.zip

@@ -37,7 +37,14 @@ void Object::step(int delta) {
 }
 
 bool Object::collide(const Object &other, float proximity) const {
-  return collide(other, proximity, Point(0,0));
+  // Direct (non-grid) tests must respect the toroidal world: compare against
+  // the copy of `other` nearest to us, or objects straddling the wrap seam —
+  // e.g. the station, which spawns on it at (0,0) — miss collisions the tiled
+  // renderer plainly shows. Grid queries pass explicit wrap offsets instead
+  // (Grid::collide), so the 3-arg overload below stays untouched.
+  float r = radius + other.effective_radius() + proximity;
+  Point o_near = other.position.closest_to(position);
+  return (o_near - position).magnitude_squared() < r * r;
 }
 
 bool Object::collide(const Object &other, float proximity, const Point offset) const {

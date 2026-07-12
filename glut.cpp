@@ -11,6 +11,7 @@
 #include "asteroid.h"
 #include "typer.h"
 #include "preferences.h"
+#include "achievements.h"
 
 // gl_compat.h pulls in GLUT (for window management) and gles2_compat.h
 // (for the VBO/VAO/shader shim that replaces all legacy GL calls).
@@ -315,7 +316,7 @@ void init_controllers_and_audio() {
       std::cout << "Unable to open audio device" << std::endl;
       std::cout << Mix_GetError() << std::endl;
     }
-    if(ENABLE_AUDIO) Mix_AllocateChannels(32);
+    if(ENABLE_AUDIO) Mix_AllocateChannels(64);
     SDL_JoystickEventState(SDL_ENABLE);
     int opened = 0;
     for (int i = 0; i < SDL_NumJoysticks() && opened < 2; ++i) {
@@ -343,6 +344,10 @@ int main(int argc, char* argv[]) {
   srand(time(NULL));
   if (!steam_init())
     std::cout << "Steam API unavailable (offline / direct-launch mode)" << std::endl;
+  // Must precede the first frame: the Steam backend registers its stat
+  // callbacks here, and the SDK's automatic stats delivery is dispatched on
+  // an early SteamAPI_RunCallbacks() — unheard registrations queue forever.
+  Achievements::init();
   load_preferences();
   old_width  = g_prefs.window_width;
   old_height = g_prefs.window_height;

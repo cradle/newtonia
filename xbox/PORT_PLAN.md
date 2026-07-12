@@ -70,7 +70,11 @@ Status: planning document. Companion to `xbox/CMakeLists.txt`, `xbox_main.cpp`,
 - **GDK Desktop** stays as the free CI canary and PC test vehicle, not a
   shipping target (Steam covers Windows).
 - **Features:** offline 1–2 player couch play, exactly as on desktop. No
-  Xbox Live multiplayer, achievements, or leaderboards in v1. Sign-in and
+  Xbox Live multiplayer or leaderboards in v1. **Achievements are in scope**
+  — XR-055 makes a 10-achievement / 1,000-gamerscore base mandatory for cert,
+  so v1 cannot ship without them. The shared seam, game hooks, and lifetime
+  stats live upstream (see `ACHIEVEMENTS.md`); the GDK Achievements Manager
+  backend and Partner Center config live in the private mirror. Sign-in and
   save handling only to the extent certification requires.
 
 ## 3. Phases

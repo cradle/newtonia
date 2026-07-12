@@ -16,6 +16,15 @@ make clean    # Remove build artifacts
 
 Compiler: g++ with `-Wall -O3 -std=c++11`. Sources include root, `weapon/`, and `view/`.
 
+#### Steam build (local achievement/overlay testing)
+```sh
+make steam       # Build ./newtonia-steam with -DSTEAM_BUILD
+make steam-clean
+```
+Requires the Steamworks SDK unzipped at `./sdk/` (gitignored). Also drops `steam_appid.txt` (app 4536720, override with `STEAM_APPID=`) and the Steam runtime library beside the binary, so `./newtonia-steam` runs from the repo root with the Steam client logged in. Steam objects build as `*.steam.o`, never mixing with the plain build's objects. Never ship `steam_appid.txt` — real depots come from `deploy-steam.yml`.
+
+To re-test earns from scratch: run once with `NEWTONIA_RESET_STEAM_STATS=1` (wipes the account's Steam achievements/stats via `ResetAllStats`, then quit), and delete the local lifetime file `~/Library/Application Support/cc.gfm/newtonia/stats.dat` — otherwise `specials_7` re-unlocks on the first kill from the banked type mask.
+
 #### Linux dependencies
 ```sh
 sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev freeglut3-dev
@@ -87,6 +96,9 @@ gdb -batch -ex run -ex "bt 20" --args ./newtonia > gdb.log 2>&1 &
   under Xvfb; they are harmless — filter with `grep -v XGetInputFocus`.
 - Give the driver a hard `timeout` and log to a file; a hung X client can
   otherwise keep `xvfb-run` alive forever.
+- Late-game testing: `NEWTONIA_BETA=1 NEWTONIA_START_GENERATION=N ./newtonia`
+  starts a new game at generation N (world size + hazards included). Flagged
+  as a cheat, so achievements stay suppressed for that game.
 
 ### macOS App Bundle
 ```sh
@@ -124,6 +136,9 @@ cmake -B xbox/build-desktop -S xbox -A Gaming.Desktop.x64
 
 ### Sound assets
 `generate_sounds.py` procedurally generates the WAV files in `audio/`.
+
+### Achievement icons
+`generate_achievement_icons.py` (requires Pillow) procedurally generates the 256×256 achieved/locked Steam achievement icon pairs into `steam/icons/`, porting the in-game glyph constructions (ship/station/asteroid meshes, Typer font, in-game colours) so the icons match the game's look. One deterministic scene function per §5 symbolic ID — rerun after any achievement list change.
 
 ## Architecture
 
@@ -177,14 +192,14 @@ Particle (: Object)             — bullet/trail particle with TTL
 
 When all killable asteroids are destroyed, a 5-second countdown (tick sounds) runs, then `generation` increments and the level rebuilds (`glgame.cpp`):
 
-- World grows by 50×50 per generation; at generation 20 it instead grows by 3000×3000
+- World grows by 50×50 per generation; at generation 14 it instead grows by 3000×3000
 - Asteroid count: `default_num_asteroids + generation * extra_num_asteroids`
 - Special asteroid types unlock by generation: reflective ≥ 2, teleporting ≥ 3, invisible ≥ 4, quantum ≥ 5, tough ≥ 6, armoured ≥ 7, phasing ≥ 8 (counts scale with generation)
 - Black hole spawns at world centre from generation ≥ 9
 - `GLMiniStation` (mini-station) spawns from generation ≥ 10
-- `GLStation` (enemy station) spawns from generation ≥ 20
+- `GLStation` (enemy station) spawns from generation ≥ 14
 - Pickups are cleared, the starfield and grid are rebuilt, players respawn, and progress is auto-saved
-- Every level that introduces a new object type gets an intro screen — the `Intro` state (`intro.h/cpp`; asteroid specials at 1–8, black hole at 9, mini-station at 10, station at 20; a new game starts straight into play): the world freezes and the object spins centre-screen with its name and a flashing "PRESS FIRE TO START" ("TAP FIRE TO START" in touch mode); any player's shoot input (key, controller A/right trigger, the touch fire button — not a tap anywhere) dismisses it, and the touch OSD is drawn on the intro so the fire button is findable, or it auto-starts after 5 s (`Intro::auto_start_ms`) with no input (`GLGame::maybe_start_intro()` decides whether one is due and hands the game to a new `Intro`; not persisted in saves — resuming a save never re-shows one); a looping title-style tune (`audio/intro.wav`) plays on its own channel while other sound channels stay paused, halted on dismissal
+- Every level that introduces a new object type gets an intro screen — the `Intro` state (`intro.h/cpp`; asteroid specials at 1–8, black hole at 9, mini-station at 10, station at 14; a new game starts straight into play): the world freezes and the object spins centre-screen with its name and a flashing "PRESS FIRE TO START" ("TAP FIRE TO START" in touch mode); any player's shoot input (key, controller A/right trigger, the touch fire button — not a tap anywhere) dismisses it, and the touch OSD is drawn on the intro so the fire button is findable, or it auto-starts after 5 s (`Intro::auto_start_ms`) with no input (`GLGame::maybe_start_intro()` decides whether one is due and hands the game to a new `Intro`; not persisted in saves — resuming a save never re-shows one); a looping title-style tune (`audio/intro.wav`) plays on its own channel while other sound channels stay paused, halted on dismissal
 
 ## Key Systems
 
@@ -317,14 +332,14 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 
 ### Save / Load
 
-**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 10:
+**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 11:
 - `WeaponEntry`: kind, weapon_index, ammo
-- `Player`: score, lives, kills, respawning flag, position, velocity, facing, weapons, nova state
+- `Player`: score, lives, kills, respawning flag, position, velocity, facing, weapons, nova state, achievements bookkeeping (asteroid kills, enemy-ship kills, died-this-generation, weapons-fired mask; appended in v11)
 - `Asteroid`: position, velocity, radius, health, all special flags and transient state
 - `Pickup`: type, position, weapon_index
 - `BlackHole`, `Enemy`, `Station`: positional/state data (Station includes its deployed enemies)
 - `MiniStation`: present flag, alive, position, drift velocity, rotations, shot timer
-- `GameState`: generation, world size, level_cleared, players, all object lists
+- `GameState`: generation, world size, level_cleared, players, all object lists, game-scoped achievements cheat flag (appended in v11)
 
 **Backward compatibility:** `GameState::MIN_VERSION..VERSION` all load; older or newer files are ignored. New fields are only ever **appended at the end** and read back gated on `version >= N`, so an older save stops short and the new fields take their defaults (e.g. v9 saves load with no mini-station). Loading then re-saving upgrades the file to the current `VERSION`. Keep this convention when bumping the version so existing saves survive.
 
@@ -340,6 +355,16 @@ Auto-save triggers on pause or player death if the player has lives or score rem
 
 **High Score** (`highscore.h`) — `load_high_score()` / `save_high_score(score)`.
 
+### Achievements & Lifetime Stats
+
+Full design in `ACHIEVEMENTS.md` (platform requirements, master list, backend plan).
+
+**Achievements** (`achievements.h/cpp`) — platform-neutral seam: `Achievements::unlock(id)` / `progress(id, pct)` (percent, 100 == unlock) with symbolic string IDs; the default backend is a no-op; platform backends replace it behind their own build flags (Steam: `steam_achievements.cpp` under `STEAM_BUILD`; GDK in the private mirror; Play Games / Game Center later). The shared layer owns the XR-057 cheat-suppression flag, which is **game-scoped**: skip-level and time-scale keys call `note_cheat_used()`, `unlock`/`progress` are dropped for the rest of that game, and only a fresh game (`new_game_started()`) clears it — deliberately not per-generation, or skipping to one level short of a progression achievement and clearing a single level would unlock it. The flag rides the savegame (`GameState::cheated`, v11) so save/quit/resume doesn't launder it.
+
+Hooks: `GLGame` (level clear, generation rebuild/progression, station + mini-station destruction, cheat keys) and `Ship` (`credit_asteroid_kill()` shared by every asteroid-kill path, `credit_ship_kill()` on the bullet/missile ship-kill paths, weapon-kind tracking in `shoot()`/`fire_secondary()`/`add_god_mode()`, `nova_detonate()`, death flag in `kill()`). Attribution: only ships with `is_local_player` (set by `GLGame` when creating player ships; false for enemies, stations, and future remote netplay peers) earn achievements and stats.
+
+**Lifetime stats** (`stats.h/cpp`) — standalone roaming `stats.dat` in the SDL pref path (magic "NWST", version 1, append-only format like the savegame): lifetime asteroid kills and a special-type kill mask, deliberately outside `savegame.dat` so netplay still counts. Kill writes are batched (every 10) and flushed via `Stats::flush()` from `save_progress()` and game over. Writes are skipped while the cheat flag is set — `specials_7`/`kills_10000_lifetime` read this file, so cheat games banking lifetime progress would launder achievements. Likely needs adding to Steam Auto-Cloud patterns so it persists across installs.
+
 ### Touch Controls
 
 `touch_controls.h/cpp` — maps screen zones to ship actions for iOS/Android:
@@ -353,7 +378,7 @@ SDL_mixer; all assets are WAV files in `audio/` (generated by `generate_sounds.p
 
 ## CI/CD
 
-GitHub Actions runs builds on every push to `master`, `main`, or `claude/*` branches, and on PRs:
+GitHub Actions runs builds on every push to `master`/`main` and on PRs (feature branches build once via their PR, not twice):
 
 | Workflow | Output |
 |----------|--------|
@@ -374,7 +399,7 @@ GitHub Actions runs builds on every push to `master`, `main`, or `claude/*` bran
 
 **Disabled workflows** — `.github/workflows/disabled/` holds inactive deployment workflows (`deploy-macos.yml`, `deploy-windows.yml`, `deploy-xbox.yml`); move a file back into `workflows/` to re-enable it.
 
-**Steam integration** — `steam_build.h` (constants/SDK), `steam/` contains Steamworks VDF config files (`app_build.vdf`, `depot_build_windows.vdf`, `depot_build_macos.vdf`, `depot_build_linux.vdf`).
+**Steam integration** — `steam_build.h` (constants/SDK), `steam_achievements.cpp` (achievements backend behind `STEAM_BUILD`; symbolic→`ACH_*` mapping, progress via increment-only pct stats), `steam/` contains Steamworks VDF config files (`app_build.vdf`, `depot_build_windows.vdf`, `depot_build_macos.vdf`, `depot_build_linux.vdf`).
 
 ## Conventions & Patterns
 
