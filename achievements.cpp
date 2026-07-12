@@ -12,6 +12,7 @@ namespace Achievements {
 // must not move into a backend.
 #ifdef STEAM_BUILD
 namespace Backend {  // steam_achievements.cpp
+  void init();
   void unlock(const char *id);
   void progress(const char *id, int pct);
 }
@@ -48,6 +49,12 @@ void backend_progress(const char *id, int pct) {
 }
 
 } // namespace
+
+void init() {
+#ifdef STEAM_BUILD
+  Backend::init();
+#endif
+}
 
 void unlock(const char *id) {
   if (cheated_this_game) return;

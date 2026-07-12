@@ -86,7 +86,7 @@ public:
 
   void unlock(const char *ach) {
     if (unlocked_.count(ach)) return;
-    if (!stats_received_) {
+    if (!stats_received_ && !stats_ready_probe()) {
       pending_unlocks_.insert(ach);
       return;
     }
@@ -94,7 +94,7 @@ public:
   }
 
   void progress(const char *stat, int pct) {
-    if (!stats_received_) {
+    if (!stats_received_ && !stats_ready_probe()) {
       int &pending = pending_stats_[stat];
       if (pct > pending) pending = pct;
       return;
@@ -104,6 +104,36 @@ public:
   }
 
 private:
+  // Self-heal a missed UserStatsReceived_t: if this object was constructed
+  // after the SDK's automatic stats delivery had already been dispatched
+  // (no listener registered yet — the bug Achievements::init() exists to
+  // prevent), the callback never fires. GetAchievement only succeeds once
+  // stats are in, so a positive probe means they arrived and we can run.
+  bool stats_ready_probe() {
+    ISteamUserStats *stats = SteamUserStats();
+    if (!stats) return false;
+    bool dummy = false;
+    if (!stats->GetAchievement(MAPPINGS[0].ach, &dummy)) return false;
+    std::cout << "Steam user stats detected by probe (missed callback) — "
+                 "achievements live" << std::endl;
+    stats_received_ = true;
+    flush_pending();
+    return true;
+  }
+
+  void flush_pending() {
+    for (std::map<std::string, int>::const_iterator it = pending_stats_.begin();
+         it != pending_stats_.end(); ++it) {
+      write_stat(it->first, it->second);
+    }
+    pending_stats_.clear();
+    for (std::set<std::string>::const_iterator it = pending_unlocks_.begin();
+         it != pending_unlocks_.end(); ++it) {
+      set_and_store(*it);  // stores at most once more than needed; harmless
+    }
+    pending_unlocks_.clear();
+    store_if_due();
+  }
   void set_and_store(const std::string &ach) {
     ISteamUserStats *stats = SteamUserStats();
     if (!stats) return;  // Steam client not running: nothing to deliver to
@@ -163,17 +193,7 @@ private:
     }
     std::cout << "Steam user stats received — achievements live" << std::endl;
     stats_received_ = true;
-    for (std::map<std::string, int>::const_iterator it = pending_stats_.begin();
-         it != pending_stats_.end(); ++it) {
-      write_stat(it->first, it->second);
-    }
-    pending_stats_.clear();
-    for (std::set<std::string>::const_iterator it = pending_unlocks_.begin();
-         it != pending_unlocks_.end(); ++it) {
-      set_and_store(*it);  // stores at most once more than needed; harmless
-    }
-    pending_unlocks_.clear();
-    store_if_due();
+    flush_pending();
   }
 
   void on_stats_stored(UserStatsStored_t *result) {
@@ -206,6 +226,15 @@ SteamAchievements *instance() {
 
 namespace Achievements {
 namespace Backend {
+
+// Called from Achievements::init() right after SteamAPI_Init(): constructing
+// the singleton registers its CCallbacks BEFORE the first
+// SteamAPI_RunCallbacks(), so the SDK's automatic stats delivery (SDK 1.61+)
+// finds a listener. Constructed lazily on first unlock instead, the delivery
+// has usually already been dispatched unheard and everything queues forever.
+void init() {
+  instance();
+}
 
 void unlock(const char *id) {
   const Mapping *m = find_mapping(id);

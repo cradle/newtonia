@@ -18,6 +18,14 @@
 
 namespace Achievements {
 
+// Initialise the platform backend. Call once at startup, right after the
+// platform's own init (e.g. SteamAPI_Init) and BEFORE the first frame: the
+// Steam backend must register its stat callbacks before the first
+// SteamAPI_RunCallbacks(), or the SDK's automatic stats delivery is
+// dispatched with no listener and every earn queues forever. No-op on
+// builds without a platform backend.
+void init();
+
 // Unlock an achievement. Safe to call repeatedly — backends treat unlocks as
 // idempotent. Suppressed while a cheat is active this generation (XR-057).
 void unlock(const char *id);
