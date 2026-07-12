@@ -351,9 +351,12 @@ The two forces to balance:
 level 9, so getting *to* the black-hole level (10) is reliable — but the
 black-hole level itself is the difficulty wall. Using the dev start
 (`NEWTONIA_START_GENERATION=10`), the wall has now been **passed in
-testing** — black-hole levels are beatable, though not easily. The
-remaining unknown is the station fight and the 10–15 stretch as a
-continuous run. A run to level 10 scored
+testing** — black-hole levels are beatable, though not easily — and
+**level 11 has been passed** the same way. Dev-start caveat, cutting both
+ways: full lives (4) at the start of the tested level, but also a bare
+loadout (base gun only — no banked secondaries, upgrades, or extra lives
+a real run accumulates through levels 1–9). Remaining unknowns: the
+station fight, and the 10–15 stretch as one continuous run. A run to level 10 scored
 ~2.7M points, which (at `value ≈ 1600/radius` per kill × the
 kills-per-life multiplier) implies on the order of 1,000–1,500 asteroid
 kills per good run — 100 kills in one game proved trivial (reached by
