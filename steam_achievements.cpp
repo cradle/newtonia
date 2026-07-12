@@ -23,6 +23,7 @@
 #ifdef STEAM_BUILD
 
 #include <steam/steam_api.h>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <iostream>
@@ -238,6 +239,22 @@ namespace Backend {
 // before the first SteamAPI_RunCallbacks(), hence init-time construction
 // rather than lazily on the first unlock).
 void init() {
+  // Dev reset: NEWTONIA_RESET_STEAM_STATS=1 wipes this account's
+  // achievements and progress stats so the earn flow can be re-tested
+  // (Valve provides no portal button for per-user resets; ResetAllStats
+  // from the game is the sanctioned way). Self-targeting only — a player
+  // setting it merely resets their own earns. Quit and relaunch without
+  // the variable afterwards; in-game counters in a live session would
+  // otherwise re-earn immediately.
+  if (std::getenv("NEWTONIA_RESET_STEAM_STATS")) {
+    ISteamUserStats *stats = SteamUserStats();
+    if (stats && stats->ResetAllStats(true) && stats->StoreStats())
+      std::cout << "DEV: Steam achievements and stats reset for this account"
+                << std::endl;
+    else
+      std::cout << "DEV: Steam achievements reset FAILED (client not running?)"
+                << std::endl;
+  }
   instance()->stats_ready_probe();
 }
 
