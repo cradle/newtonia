@@ -115,6 +115,9 @@ private:
     if (stats->SetAchievement(ach.c_str())) {
       unlocked_.insert(ach);
       store_now();  // unlock toasts should appear immediately
+    } else {
+      std::cout << "Steam SetAchievement rejected '" << ach
+                << "' — name not in the published portal schema?" << std::endl;
     }
   }
 
@@ -128,6 +131,10 @@ private:
     if (stats->GetStat(stat.c_str(), &current) && current >= pct) return;
     if (stats->SetStat(stat.c_str(), pct))
       stats_dirty_ = true;
+    else
+      std::cout << "Steam SetStat rejected '" << stat
+                << "' — name/type not in the published portal schema?"
+                << std::endl;
   }
 
   void store_now() {
@@ -146,7 +153,15 @@ private:
   }
 
   void on_stats_received(UserStatsReceived_t *result) {
-    if (result->m_eResult != k_EResultOK) return;
+    if (result->m_eResult != k_EResultOK) {
+      // Without this callback succeeding nothing can ever reach Steam —
+      // pending unlocks/stats stay queued until process exit.
+      std::cout << "Steam UserStatsReceived failed (result "
+                << result->m_eResult << ") — achievements cannot sync"
+                << std::endl;
+      return;
+    }
+    std::cout << "Steam user stats received — achievements live" << std::endl;
     stats_received_ = true;
     for (std::map<std::string, int>::const_iterator it = pending_stats_.begin();
          it != pending_stats_.end(); ++it) {
