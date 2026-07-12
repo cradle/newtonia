@@ -428,20 +428,27 @@ void Ship::credit_asteroid_kill(Object *object, bool nova_feedback) {
   if (nova_feedback) tally_nova_kill(object->position);
   if (!is_local_player) return;
 
-  Stats::add_kill();
-  Asteroid *ast = dynamic_cast<Asteroid*>(object);
-  if (ast) {
-    if (ast->teleporting) Stats::note_special_kill(Stats::SPECIAL_TELEPORTING);
-    if (ast->invisible)   Stats::note_special_kill(Stats::SPECIAL_INVISIBLE);
-    if (ast->quantum)     Stats::note_special_kill(Stats::SPECIAL_QUANTUM);
-    if (ast->tough)       Stats::note_special_kill(Stats::SPECIAL_TOUGH);
-    if (ast->armoured)    Stats::note_special_kill(Stats::SPECIAL_ARMOURED);
-    if (ast->phasing)     Stats::note_special_kill(Stats::SPECIAL_PHASING);
-    // Plain asteroids count as the seventh type; reflective/invincible are
-    // god-mode-only bonus kills and set no bit.
-    if (!ast->teleporting && !ast->invisible && !ast->quantum && !ast->tough &&
-        !ast->armoured && !ast->phasing && !ast->reflective && !ast->invincible)
-      Stats::note_special_kill(Stats::SPECIAL_NORMAL);
+  // Lifetime stats are frozen during cheated games too, not just the
+  // unlock/progress calls: specials_7 and kills_10000_lifetime read
+  // stats.dat, so a dev-start run would otherwise bank progress there for a
+  // later clean game to cash in — the same laundering the game-scoped cheat
+  // flag exists to prevent.
+  if (!Achievements::unlocks_suppressed()) {
+    Stats::add_kill();
+    Asteroid *ast = dynamic_cast<Asteroid*>(object);
+    if (ast) {
+      if (ast->teleporting) Stats::note_special_kill(Stats::SPECIAL_TELEPORTING);
+      if (ast->invisible)   Stats::note_special_kill(Stats::SPECIAL_INVISIBLE);
+      if (ast->quantum)     Stats::note_special_kill(Stats::SPECIAL_QUANTUM);
+      if (ast->tough)       Stats::note_special_kill(Stats::SPECIAL_TOUGH);
+      if (ast->armoured)    Stats::note_special_kill(Stats::SPECIAL_ARMOURED);
+      if (ast->phasing)     Stats::note_special_kill(Stats::SPECIAL_PHASING);
+      // Plain asteroids count as the seventh type; reflective/invincible are
+      // god-mode-only bonus kills and set no bit.
+      if (!ast->teleporting && !ast->invisible && !ast->quantum && !ast->tough &&
+          !ast->armoured && !ast->phasing && !ast->reflective && !ast->invincible)
+        Stats::note_special_kill(Stats::SPECIAL_NORMAL);
+    }
   }
 
   if (asteroid_kills == 1) Achievements::unlock("first_kill");

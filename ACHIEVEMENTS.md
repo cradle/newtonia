@@ -266,6 +266,15 @@ this also satisfies XR-055's correct-profile-only rule by construction.
 Residual netplay risk — a modified peer feeding fake kill events — is
 self-cheat exposure only, the same as a local memory editor.
 
+**Cheat games don't accrue lifetime stats either.** The game-scoped cheat
+flag (§1) suppresses more than `unlock`/`progress`: kill writes to
+`stats.dat` are also skipped while it is set. `specials_7` and
+`kills_10000_lifetime` read the lifetime file, so a dev-start run would
+otherwise bank progress there for a later clean game to cash in — the exact
+laundering the flag exists to prevent. (Found live: a heavily-playtested
+machine unlocked `specials_7` on the first kill of the first clean Steam
+game, from a mask partly filled during dev-start sessions.)
+
 ## 5. Candidate achievement list (draft — must sum to exactly 1,000 GS)
 
 Master list for **every store**. Tune names/values before freezing IDs in
