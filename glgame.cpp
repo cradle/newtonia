@@ -847,6 +847,7 @@ void GLGame::add_remote_player() {
   // which spawns an exact clone instantly instead of waiting for the next
   // 10 Hz snapshot rebuild.
   p1_ship->net_report_shots = true;
+  update_presence();  // rich presence: now a co-op game
 }
 
 // Elastic asteroid-asteroid collisions: 2D impulse physics (mass ~
