@@ -355,8 +355,13 @@ testing** — black-hole levels are beatable, though not easily — and
 **level 11 has been passed** the same way. Dev-start caveat, cutting both
 ways: full lives (4) at the start of the tested level, but also a bare
 loadout (base gun only — no banked secondaries, upgrades, or extra lives
-a real run accumulates through levels 1–9). Remaining unknowns: the
-station fight, and the 10–15 stretch as one continuous run. A run to level 10 scored
+a real run accumulates through levels 1–9). Station fight (dev start at 14,
+first attempt): **8 fighters downed** — `enemies_10` is comfortably
+reachable (kills accrue game-wide and waves keep deploying) — but the
+station itself survived. The station takes 100 hits while its escort
+waves grow by one fighter per redeploy, so `station_destroyed` is an
+endurance siege; more attempts pending. Remaining unknowns: killing the
+station, and the 10–15 stretch as one continuous run. A run to level 10 scored
 ~2.7M points, which (at `value ≈ 1600/radius` per kill × the
 kills-per-life multiplier) implies on the order of 1,000–1,500 asteroid
 kills per good run — 100 kills in one game proved trivial (reached by
