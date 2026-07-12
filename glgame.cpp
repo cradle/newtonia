@@ -2101,6 +2101,7 @@ void GLGame::net_clear_event_outboxes() {
   Ship::net_ship_hit_claims.clear();
   Ship::net_lance_reports.clear();
   Ship::net_bounce_reports.clear();
+  Ship::net_ach_relays.clear();
 }
 
 void GLGame::net_send_event(uint8_t code, uint32_t arg) {
@@ -2143,6 +2144,16 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
         NET_LOG("net: host bye - no rejoin\n");
       }
       break;
+    case Net::EV_ACHIEVEMENT: {
+      // The host's sim detected an unlock it attributes to OUR ship (ram
+      // kills and station kills only resolve host-side). Our own cheat
+      // suppression still applies inside unlock().
+      if (arg == Net::ACH_SHIELD_RAM) Achievements::unlock("shield_ram");
+      else if (arg == Net::ACH_SHIELD_RAM_ASTEROID) Achievements::unlock("shield_ram_asteroid");
+      else if (arg == Net::ACH_MINI_STATION_KILL) Achievements::unlock("mini_station_kill");
+      else if (arg == Net::ACH_STATION_DESTROYED) Achievements::unlock("station_destroyed");
+      break;
+    }
     case Net::EV_FRIENDLY_FIRE: {
       // The host's preference is the room rule; adopt it for the HUD only
       // (damage runs in the host sim). g_prefs stays the player's own.
@@ -2320,6 +2331,10 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
   // this machine's player-1 controls.
   if (players->size() >= 2) {
     GLShip *remote = players->front();
+    // The save-restoring base ctor flags every saved ship as a local
+    // player; the first ship here is the HOST's — achievements and
+    // lifetime stats must not attribute its actions to this machine.
+    remote->ship->is_local_player = false;
     remote->set_keys(-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1);
     remote->set_controller(NULL);
     GLShip *local = players->back();
@@ -2763,7 +2778,10 @@ void GLGame::tick_net_client(int delta) {
               Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
             continue;
           }
-          if (e->kill_stop()) e->detonate();
+          if (e->kill_stop()) {
+            e->detonate();
+            lme->credit_ship_kill(e);  // enemies_10/score, ours
+          }
           // Same silent-replica rule as the bullet path: play the dying
           // ship's boom ourselves, full volume — the kill is at our own
           // crosshair (the host skips its relay for claimed kills).
@@ -2916,6 +2934,13 @@ void GLGame::tick_net_client(int delta) {
         if (a->teleporting) a->teleport_vulnerable = true;
         a->phased = false;
         a->kill();  // claim conditions guarantee the kill lands
+        // Our claimed kill: achievements + lifetime stats credit on THIS
+        // machine (first_kill, kills_1000, specials_7, stats.dat...). The
+        // host credits its replica's counters too; the snapshot replaces
+        // our local increments with the authoritative count. No nova
+        // feedback — nova charge and drops are host-owned state.
+        if (!players->empty())
+          players->back()->ship->credit_asteroid_kill(a, false);
         if (!a->is_alive() && !a->is_removable()) {
           Asteroid::play_explode_sound();
           dead_objects->push_back(a);
@@ -3330,12 +3355,49 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in, bool membership_only) {
 }
 
 void GLGame::net_apply_state(const Save::GameState &s) {
+  // The host's cheat keys must suppress THIS machine's unlocks too — the
+  // flag rides every snapshot, so a mid-game skip-level arrives before
+  // the rebuild it causes is evaluated below.
+  if (s.cheated) Achievements::note_cheat_used();
+
   // Generation rollover: the world grew — rebuild boundaries, grid and
   // starfield, drop every stale object (mirrors the host's rollover block;
   // the snapshot then repopulates everything below).
   const bool world_rebuilt = s.world_x != world.x() || s.world_y != world.y();
   net_world_rebuilt_last_apply_ = world_rebuilt;
   if (world_rebuilt) {
+    // Level-clear achievements, mirroring the host's num_killable==0 block
+    // (which never runs on a client): everything they need replicates —
+    // the generation, our died_this_generation flag and weapons_fired_mask
+    // (still PRE-apply here), and the cheat flag applied above. The
+    // +1-generation gate keeps bootstrap/rejoin jumps from firing them.
+    if (net_mode_ == NetClient && s.generation == generation + 1 &&
+        !players->empty()) {
+      Ship *me = players->back()->ship;  // local player is last on a client
+      if (generation == 0) Achievements::unlock("clear_level1");
+      Achievements::unlock("coop_clear");  // online is always two-player
+      if (generation >= 8 && !me->died_this_generation)
+        Achievements::unlock("no_damage_clear");
+      if (generation >= 9 && !me->died_this_generation)
+        Achievements::unlock("black_hole_survivor");
+      Achievements::progress("reach_level15", (s.generation + 1) * 100 / 15);
+      if (s.generation >= 9) {
+        const uint32_t secondary_bits =
+            (1u << (int)Save::WeaponEntry::Kind::Mine) |
+            (1u << (int)Save::WeaponEntry::Kind::GigaMine) |
+            (1u << (int)Save::WeaponEntry::Kind::Missile) |
+            (1u << (int)Save::WeaponEntry::Kind::Shield) |
+            (1u << (int)Save::WeaponEntry::Kind::Nova);
+        if ((me->weapons_fired_mask & secondary_bits) == 0)
+          Achievements::unlock("no_secondary_level10");
+      }
+      // Counter-driven progress from the replicated (authoritative)
+      // counters, once per level: covers paths that only credit
+      // host-side (e.g. our missiles killing enemies in the host's sim).
+      Achievements::progress("kills_1000", me->asteroid_kills / 10);
+      Achievements::progress("enemies_10", me->enemy_kills * 10);
+      Achievements::progress("score_3m", me->score / 30000);
+    }
     world = Point(s.world_x, s.world_y);
     grid = Grid(world, Point(Asteroid::max_radius * 2, Asteroid::max_radius * 2));
     WrappedPoint::set_boundaries(world);
@@ -4503,6 +4565,9 @@ void GLGame::tick(int delta) {
             s->bullets.pop_back();
             if (!station->is_alive()) {
               if (s->is_local_player) Achievements::unlock("station_destroyed");
+              else if (net_mode_ == NetHost && remote_player() &&
+                       s == remote_player()->ship)
+                net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_STATION_DESTROYED);
               break;
             }
           } else {
@@ -4534,6 +4599,11 @@ void GLGame::tick(int delta) {
             Achievements::unlock("mini_station_kill");
             Achievements::progress("score_3m", s->score / 30000);
             if (s->shield_active()) Achievements::unlock("shield_ram");
+          } else if (net_mode_ == NetHost && remote_player() &&
+                     s == remote_player()->ship) {
+            net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_MINI_STATION_KILL);
+            if (s->shield_active())
+              net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_SHIELD_RAM);
           }
           break;
         }
@@ -4545,9 +4615,12 @@ void GLGame::tick(int delta) {
             s->score += GLMiniStation::REWARD;
             mini_station->destroy();
             if (s->is_local_player) {
-            Achievements::unlock("mini_station_kill");
-            Achievements::progress("score_3m", s->score / 30000);
-          }
+              Achievements::unlock("mini_station_kill");
+              Achievements::progress("score_3m", s->score / 30000);
+            } else if (net_mode_ == NetHost && remote_player() &&
+                       s == remote_player()->ship) {
+              net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_MINI_STATION_KILL);
+            }
             break;
           } else {
             ++i;
@@ -4564,9 +4637,12 @@ void GLGame::tick(int delta) {
             s->score += GLMiniStation::REWARD;
             mini_station->destroy();
             if (s->is_local_player) {
-            Achievements::unlock("mini_station_kill");
-            Achievements::progress("score_3m", s->score / 30000);
-          }
+              Achievements::unlock("mini_station_kill");
+              Achievements::progress("score_3m", s->score / 30000);
+            } else if (net_mode_ == NetHost && remote_player() &&
+                       s == remote_player()->ship) {
+              net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_MINI_STATION_KILL);
+            }
             break;
           } else {
             ++i;
@@ -4831,6 +4907,13 @@ void GLGame::tick(int delta) {
   Ship::net_shot_reports.clear();
   Ship::net_lance_reports.clear();
   Ship::net_bounce_reports.clear();
+  // Achievement relays: unlocks the sim attributed to the remote replica
+  // (ram kills resolve inside Ship code). Anything not the replica's —
+  // an enemy, or offline residue — is dropped.
+  for (const auto &ar : Ship::net_ach_relays)
+    if (remote_player() && ar.first == remote_player()->ship)
+      net_send_event(Net::EV_ACHIEVEMENT, ar.second);
+  Ship::net_ach_relays.clear();
 
   // Online host: broadcast the world at 10 Hz once everything has stepped.
   if (net_mode_ == NetHost) net_host_send_snapshot(delta);
@@ -5609,7 +5692,7 @@ void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts)
       Ship *t = p->ship;
       if (t == firer || !t->is_alive()) continue;
       if (first_hit(t, 0, &where) && t->kill_stop())
-        firer->award_kill(t->value);
+        firer->credit_ship_kill(t);
     }
   }
 
@@ -5618,7 +5701,7 @@ void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts)
     Ship *t = e->ship;
     if (!t->is_alive()) continue;
     if (first_hit(t, 0, &where) && t->kill_stop())
-      firer->award_kill(t->value);
+      firer->credit_ship_kill(t);
   }
 
   // Mini-station: dies to any hit, flat bounty — mirror of the bullet
@@ -5628,6 +5711,13 @@ void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts)
     firer->explode(where, mini_station->velocity);
     firer->score += GLMiniStation::REWARD;
     mini_station->destroy();
+    if (firer->is_local_player) {
+      Achievements::unlock("mini_station_kill");
+      Achievements::progress("score_3m", firer->score / 30000);
+    } else if (net_mode_ == NetHost && remote_player() &&
+               firer == remote_player()->ship) {
+      net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_MINI_STATION_KILL);
+    }
     play_priority_chunk(
         station_explode_sound,
         net_mode_ != NetOff
@@ -5649,6 +5739,12 @@ void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts)
     firer->explode(where, station->velocity);
     for (int i = 0; i < LANCE_STATION_DAMAGE && station->is_alive(); i++)
       station->hit();
+    if (!station->is_alive()) {
+      if (firer->is_local_player) Achievements::unlock("station_destroyed");
+      else if (net_mode_ == NetHost && remote_player() &&
+               firer == remote_player()->ship)
+        net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_STATION_DESTROYED);
+    }
     if (Asteroid::thud_sound != NULL)
       Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
     // A client firer already played its own splash + thud at contact

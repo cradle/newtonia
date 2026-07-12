@@ -30,6 +30,7 @@ std::vector<Ship::NetShotReport> Ship::net_shot_reports;
 std::vector<std::vector<Point>> Ship::net_lance_reports;
 std::vector<Ship::NetBounceReport> Ship::net_bounce_reports;
 bool Ship::net_report_bounces = false;
+std::vector<std::pair<const Ship*, uint8_t>> Ship::net_ach_relays;
 std::vector<Ship::NetShipHit> Ship::net_ship_hit_claims;
 uint32_t Ship::net_next_ship_id = 0;
 #include <algorithm>
@@ -1132,11 +1133,17 @@ void Ship::collide(Ship* first, Ship* second) {
       first->detonate();
       if(second->is_local_player && !first->is_local_player && second->shield_active())
         Achievements::unlock("shield_ram");
+      else if(net_report_bounces && second->player_ship && !second->is_local_player &&
+              !first->is_local_player && second->shield_active())
+        net_ach_relays.push_back({second, 1});  // Net::ACH_SHIELD_RAM
     } else if(!second->invincible) {
       second->kill_stop();
       second->detonate();
       if(first->is_local_player && !second->is_local_player && first->shield_active())
         Achievements::unlock("shield_ram");
+      else if(net_report_bounces && first->player_ship && !first->is_local_player &&
+              !second->is_local_player && first->shield_active())
+        net_ach_relays.push_back({first, 1});  // Net::ACH_SHIELD_RAM
     }
   }
 }
@@ -1190,6 +1197,8 @@ void Ship::collide_grid(Grid &grid, int delta) {
           detonate();
           if(is_local_player && shield_active())
             Achievements::unlock("shield_ram_asteroid");
+          else if(net_report_bounces && player_ship && shield_active())
+            net_ach_relays.push_back({this, 2});  // Net::ACH_SHIELD_RAM_ASTEROID
         } else {
           explode(position, object->velocity);
           {
@@ -1213,6 +1222,8 @@ void Ship::collide_grid(Grid &grid, int delta) {
               detonate();
               if(is_local_player && shield_active())
                 Achievements::unlock("shield_ram_asteroid");
+              else if(net_report_bounces && player_ship && shield_active())
+                net_ach_relays.push_back({this, 2});  // Net::ACH_SHIELD_RAM_ASTEROID
             }
           }
         }
@@ -1638,12 +1649,6 @@ void Ship::fire_lance_pulse(const Grid &grid) {
   lance_pulses.push_back(std::move(pulse));
 }
 
-void Ship::award_kill(int value) {
-  kills_this_life += 1;
-  kills += 1;
-  score += value * multiplier();
-}
-
 void Ship::collide(Ship *other) {
   for(size_t i = 0; i < bullets.size(); ) {
     if(other->is_alive() && bullets[i].collide(*other)) {
@@ -1908,7 +1913,12 @@ void Ship::net_cosmetic_ship_impacts(
         // the EV_WORLD_BOOM relay for claimed kills so this local boom
         // is the only cue we hear.
         Ship *e = static_cast<Ship *>(o);
-        if (e->kill_stop()) e->detonate();
+        if (e->kill_stop()) {
+          e->detonate();
+          // Our kill: enemies_10/score progress on THIS machine (the host
+          // credits its replica's counters; snapshots reconcile ours).
+          credit_ship_kill(e);
+        }
         // kill() stays silent (replicas keep sound_volume_scale 0 on the
         // client) — play the dying ship's per-instance chunk ourselves,
         // full volume: the kill is at our own crosshair.

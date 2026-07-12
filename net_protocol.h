@@ -245,6 +245,19 @@ enum EventCode {
   // 0/1. The client adopts it for its HUD only — its own saved
   // preference is never touched.
   EV_FRIENDLY_FIRE = 16,
+  // Host -> client: the host's simulation detected an achievement unlock
+  // it attributes to the CLIENT's ship (ram kills and station kills only
+  // resolve host-side). arg = AchRelay; the client's own cheat
+  // suppression still applies inside unlock().
+  EV_ACHIEVEMENT = 17,
+};
+
+// EV_ACHIEVEMENT arg values. Stable wire numbers — append only.
+enum AchRelay {
+  ACH_SHIELD_RAM = 1,
+  ACH_SHIELD_RAM_ASTEROID = 2,
+  ACH_MINI_STATION_KILL = 3,
+  ACH_STATION_DESTROYED = 4,
 };
 
 // Packs a world position into an event arg as two uint16 FRACTIONS of the

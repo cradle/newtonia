@@ -245,10 +245,6 @@ class Ship : public CompositeObject {
     // claim, PROTO 20) while its station/self/partner hits resolve on the
     // host from the MSG_LANCE polyline.
     std::vector<Point> lance_hit_pending;
-    // Credit a ship kill exactly like the bullet/missile paths in
-    // Ship::collide (kill counters + value x streak multiplier) — exposed
-    // so GLGame's lance resolution can award the same way.
-    void award_kill(int value);
 
     // PROTO 19: authoritative ricochets. The HOST sim pushes a report
     // whenever it bounces an id-carrying bullet off a reflective asteroid
@@ -259,6 +255,11 @@ class Ship : public CompositeObject {
     struct NetBounceReport { uint32_t id; float x, y, vx, vy; uint8_t flags; };
     static std::vector<NetBounceReport> net_bounce_reports;  // host outbox
     static bool net_report_bounces;
+    // Host outbox: achievement unlocks the sim detected for a NON-local
+    // ship (ram kills resolve inside Ship code, which cannot send events).
+    // GLGame drains it each tick and relays entries belonging to the net
+    // remote replica as EV_ACHIEVEMENT (second = Net::AchRelay).
+    static std::vector<std::pair<const Ship*, uint8_t>> net_ach_relays;
     // net_claim_kills (the client's LOCAL ship): the lance ray-march
     // predicts kill outcomes without killing locally and queues MSG_HIT
     // claims with bullet_id 0 — the claim drain does the local kills,
