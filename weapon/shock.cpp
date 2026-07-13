@@ -1,6 +1,7 @@
 #include "shock.h"
 #include "../asset_path.h"
 #include "../ship.h"
+#include "../asteroid.h"
 #include "../point.h"
 #include "../wrapped_point.h"
 #include <cmath>
@@ -16,6 +17,7 @@ const float ShockBolt::HIT_RADIUS   = 16.0f;
 const float ShockBolt::SPREAD       = 0.55f;   // radians of per-segment wobble
 const float ShockBolt::STAGGER      = 18.0f;   // perpendicular offset for the zig-zag
 const float ShockBolt::FADE_MS      = 150.0f;
+const float ShockBolt::SPARK_MS     = 220.0f;  // spark lingers a touch past the line
 
 static inline float frand() { return rand() / (float)RAND_MAX; }
 
@@ -32,13 +34,14 @@ ShockBolt::ShockBolt(WrappedPoint origin, Point facing_dir, Object *owner)
 }
 
 Object *ShockBolt::seek_target(const Point &tip, std::list<Object*> *lst,
-                               bool skip_invincible, float &best_dist) const {
+                               float &best_dist) const {
   Object *best = NULL;
   if (!lst) return best;
   for (Object *o : *lst) {
     if (o == owner) continue;  // a bolt never seeks the ship that fired it
     if (!o->alive) continue;
-    if (skip_invincible && o->invincible) continue;
+    // Invincible objects (invincible asteroids, shielded players) are eligible
+    // targets: the arc paths to and stops at them rather than arcing past.
     bool skip = false;
     for (Object *a : avoid) if (a == o) { skip = true; break; }
     if (skip) continue;
@@ -58,8 +61,8 @@ void ShockBolt::grow_segment(std::list<Object*> *asteroids, std::list<Object*> *
 
   // Pick the single nearest target across asteroids and hostiles.
   float best = SEEK_RANGE;
-  Object *target = seek_target(tip, asteroids, true, best);
-  Object *h = seek_target(tip, hostiles, false, best);
+  Object *target = seek_target(tip, asteroids, best);
+  Object *h = seek_target(tip, hostiles, best);
   if (h) target = h;
 
   // Base direction: toward the target if we found one, else keep travelling.
@@ -82,15 +85,54 @@ void ShockBolt::grow_segment(std::list<Object*> *asteroids, std::list<Object*> *
   next += seg_dir.perpendicular() * ((frand() - 0.5f) * STAGGER);
   points.push_back(next);
 
-  // Did this segment reach the target? If so, snap onto it, record the hit and
-  // let the next segment chain onward to whatever else is nearby.
+  // Did this segment reach the target? If so, snap onto its surface (not its
+  // centre, which would look like the arc pierced it), record the hit and let the
+  // next segment chain onward to whatever else is nearby.
   if (target) {
     Point tp = target->position.closest_to(next);
     if ((tp - next).magnitude() <= target->radius + HIT_RADIUS) {
-      points.back() = tp;
+      points.back() = surface_hit(target, tp, tip);
       struck.push_back(target);
       avoid.push_back(target);
     }
+  }
+}
+
+Point ShockBolt::surface_hit(Object *target, const Point &center, const Point &from) const {
+  Point out = from - center;   // from the centre back toward the incoming bolt
+  float m = out.magnitude();
+  if (m < 1e-3f) return center;   // degenerate: bolt starts at the centre
+  Point dir = out / m;
+  Point stop = center + dir * target->radius;   // circle surface (ships/stations/hazards)
+  // Asteroids are irregular polygons: walk outward from the centre along the
+  // approach direction until we cross the real edge, matching the drawn outline.
+  if (Asteroid *ast = dynamic_cast<Asteroid*>(target)) {
+    float max_trace = ast->effective_radius() + 4.0f;
+    for (float d = 1.0f; d <= max_trace; d += 1.0f) {
+      if (!ast->contains(Point(ast->position.x() + dir.x() * d,
+                               ast->position.y() + dir.y() * d))) {
+        stop = center + dir * d;
+        break;
+      }
+    }
+  }
+  return stop;
+}
+
+void ShockBolt::stop() {
+  if (!growing) return;   // only the first stop ends the arc and sparks
+  growing = false;
+  if (points.empty()) return;
+  // Spark burst at the collision point: a handful of short rays at random angles
+  // and lengths, generated once so they hold steady while they fade.
+  spark_pos = points.back();
+  spark_life = 1.0f;
+  spark_rays.clear();
+  int n = 5 + rand() % 4;   // 5–8 rays
+  for (int i = 0; i < n; i++) {
+    float ang = frand() * 2.0f * (float)M_PI;
+    float len = 10.0f + frand() * 18.0f;
+    spark_rays.push_back(Point(cosf(ang) * len, sinf(ang) * len));
   }
 }
 
@@ -102,6 +144,7 @@ void ShockBolt::step_bolt(int delta, std::list<Object*> *asteroids, std::list<Ob
   }
   if ((int)points.size() > MAX_SEGMENTS) growing = false;
   if (!growing) life -= (float)delta / FADE_MS;
+  if (spark_life > 0.0f) spark_life -= (float)delta / SPARK_MS;
 }
 
 // ── Weapon ───────────────────────────────────────────────────────────────────

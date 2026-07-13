@@ -11,13 +11,17 @@
 
 // A single chain-lightning bolt. It grows out ahead of the ship one staggered
 // segment per tick, and each new segment looks for the nearest asteroid / enemy
-// / station near its advancing tip and bends the *next* segment toward it — so
-// the bolt visibly paths to whatever is nearby. When a tip reaches a target the
-// target is recorded in `struck`; the owning Ship drains and damages asteroid
-// hits, GLGame drains and damages enemy/station hits (each is handled where it
-// has the right API). After hitting a target the bolt keeps chaining to the
-// next-nearest one (targets already reached are skipped). The whole thing is
-// transient: it grows for a handful of frames then fades out.
+// / station / hazard near its advancing tip and bends the *next* segment toward
+// it — so the bolt visibly paths to whatever is nearby. When a tip reaches a
+// target the target is recorded in `struck`; the owning Ship drains and damages
+// asteroid hits, GLGame drains and damages enemy/station/hazard hits (each is
+// handled where it has the right API). After a *killing* hit the bolt keeps
+// chaining to the next-nearest target (targets already reached are skipped); but
+// if a hit fails to destroy the target — an invincible object (invincible
+// asteroid, shielded player) or something that survives more than one shot
+// (tough asteroid, station, comet, pulsar) — the owner calls stop() so the arc
+// ends there instead of arcing onward. The whole thing is transient: it grows
+// for a handful of frames then fades out.
 struct ShockBolt {
   std::vector<Point>   points;      // polyline; points[0] == origin at the gun
   Point                main_dir;    // firing direction; the bolt stays in its front 180°
@@ -29,6 +33,13 @@ struct ShockBolt {
   std::vector<Object*> avoid;       // targets already chained to (skipped when seeking)
   Object              *owner;       // the ship that fired this bolt; never a seek/hit target
 
+  // Spark burst drawn where an arc was absorbed by something it couldn't
+  // destroy. `spark_rays` are endpoint offsets from `spark_pos`, generated once
+  // when the arc stops so they don't flicker; `spark_life` fades 1 -> 0.
+  Point                spark_pos;
+  std::vector<Point>   spark_rays;
+  float                spark_life = 0.0f;
+
   static const float SEGMENT_LEN;   // world units per segment
   static const float SEG_MS;        // ms between segments (~ one per tick)
   static const int   MAX_SEGMENTS;  // bolt length cap
@@ -37,17 +48,27 @@ struct ShockBolt {
   static const float SPREAD;        // random per-segment heading jitter (radians)
   static const float STAGGER;       // perpendicular endpoint offset (units)
   static const float FADE_MS;       // fade-out duration once fully grown
+  static const float SPARK_MS;      // spark-burst fade duration
 
   ShockBolt(WrappedPoint origin, Point facing_dir, Object *owner = nullptr);
   void step_bolt(int delta, std::list<Object*> *asteroids, std::list<Object*> *hostiles);
-  bool is_alive() const { return life > 0.0f; }
+  bool is_alive() const { return life > 0.0f || spark_life > 0.0f; }
+  // Halt further growth: the arc has reached a target it couldn't destroy, so it
+  // ends where it is and fades instead of chaining onward, spawning a spark at
+  // the collision point. Called by the owning Ship / GLGame once a struck target
+  // is known to have survived the hit.
+  void stop();
 
 private:
   // Nearest live, un-avoided target in `lst` within SEEK_RANGE of `tip`.
-  // Asteroids that are invincible are skipped (skip_invincible); hostiles are not.
-  Object *seek_target(const Point &tip, std::list<Object*> *lst, bool skip_invincible,
-                      float &best_dist) const;
+  // Invincible objects are eligible targets — the arc paths to and stops at them.
+  Object *seek_target(const Point &tip, std::list<Object*> *lst, float &best_dist) const;
   void grow_segment(std::list<Object*> *asteroids, std::list<Object*> *hostiles);
+  // Where a terminal segment should end: the point on `target`'s surface facing
+  // the incoming bolt (`from`), given the target's centre. Traces the real
+  // polygon edge for asteroids; falls back to the collision circle otherwise, so
+  // the arc lands on the surface instead of piercing to the centre.
+  Point surface_hit(Object *target, const Point &center, const Point &from) const;
 };
 
 namespace Weapon {

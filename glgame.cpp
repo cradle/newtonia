@@ -956,10 +956,11 @@ void GLGame::tick(int delta) {
     }
 
     // Refresh the shock-bolt seek list: every hostile a player's lightning may
-    // path to this frame (enemy ships, the station, the mini-station). Asteroids
-    // are seeked separately via each ship's missile-asteroid list. With friendly
-    // fire on, other players join the list too — each bolt skips its own owner,
-    // so a ship's lightning only arcs to the *other* player, matching bullets.
+    // path to this frame (enemy ships, the station, the mini-station, the
+    // mid-game hazards). Asteroids are seeked separately via each ship's
+    // missile-asteroid list. With friendly fire on, other players join the list
+    // too — each bolt skips its own owner, so a ship's lightning only arcs to the
+    // *other* player, matching bullets.
     shock_targets->clear();
     for(o = enemies->begin(); o != enemies->end(); o++)
       shock_targets->push_back((*o)->ship);
@@ -967,6 +968,9 @@ void GLGame::tick(int delta) {
       shock_targets->push_back(station);
     if(mini_station != NULL && mini_station->is_alive())
       shock_targets->push_back(mini_station);
+    for(auto* h : *hazards)
+      if(h->is_alive())
+        shock_targets->push_back(h);
     if(friendly_fire)
       for(o = players->begin(); o != players->end(); o++)
         shock_targets->push_back((*o)->ship);
@@ -1551,10 +1555,16 @@ void GLGame::tick(int delta) {
       }
     }
 
-    /* APPLY SHOCK-BOLT HITS ON ENEMIES / STATIONS */
+    /* APPLY SHOCK-BOLT HITS ON ENEMIES / STATIONS / HAZARDS */
     // Asteroid hits were already applied in each player's collide_grid(); the
     // pointers still in a bolt's `struck` list here are hostiles, damaged with
     // the same APIs bullets/missiles use so scoring and achievements match.
+    //
+    // The arc only chains onward from a *killing* hit. A target that survives —
+    // the station or a comet/pulsar with health left, or a shielded/invincible
+    // player — calls bolt.stop() so the lightning ends there instead of arcing
+    // past. A one-shot kill (mini-station, seeker, an un-shielded enemy) leaves
+    // the bolt growing so it chains to the next-nearest target.
     for(o = players->begin(); o != players->end(); o++) {
       Ship* s = (*o)->ship;
       for(auto &bolt : s->shocks) {
@@ -1571,18 +1581,64 @@ void GLGame::tick(int delta) {
               Mix_PlayChannel(-1, station_explode_sound, 0);
           } else if(station != NULL && obj == station && station->is_alive()) {
             station->hit();
-            if(!station->is_alive() && s->is_local_player)
-              Achievements::unlock("station_destroyed");
+            if(!station->is_alive()) {
+              if(s->is_local_player)
+                Achievements::unlock("station_destroyed");
+            } else {
+              bolt.stop();  // station survived — arc ends here
+            }
           } else {
+            // Mid-game hazards: a seeker dies to one arc hit (chain onward); a
+            // comet/pulsar absorbs several, so the arc stops until it breaks up.
+            bool handled = false;
+            for(auto* h : *hazards) {
+              if(h != obj || !h->is_alive()) continue;
+              handled = true;
+              if(h->kind_of() == Hazard::SEEKER) {
+                h->destroy();
+                s->score += Hazard::SEEKER_REWARD;
+                if(station_explode_sound != NULL)
+                  Mix_PlayChannel(-1, station_explode_sound, 0);
+              } else {
+                h->hit();
+                if(h->kind_of() == Hazard::COMET) {
+                  shed_comet_fragment(h);   // knock a couple of chunks loose
+                  shed_comet_fragment(h);
+                }
+                if(h->is_alive()) {
+                  play_hazard_hit_sound(h->kind_of() == Hazard::COMET
+                                          ? Asteroid::explode_sound
+                                          : Asteroid::thud_sound);
+                  bolt.stop();  // comet/pulsar survived — arc ends here
+                } else {
+                  s->score += (h->kind_of() == Hazard::COMET)
+                                ? Hazard::COMET_REWARD : Hazard::PULSAR_REWARD;
+                  if(station_explode_sound != NULL)
+                    Mix_PlayChannel(-1, station_explode_sound, 0);
+                }
+              }
+              break;
+            }
+            if(handled) continue;
+
             bool hit = false;
             for(auto* e : *enemies) {
-              if(e->ship == obj) { s->shock_hit_ship(e->ship); hit = true; break; }
+              if(e->ship == obj) {
+                s->shock_hit_ship(e->ship);
+                if(e->ship->is_alive()) bolt.stop();  // survived (invincible) — arc ends
+                hit = true; break;
+              }
             }
             // Friendly fire: a bolt that arced to the other player damages it,
-            // credited exactly like a bullet (score, no enemy achievement).
+            // credited exactly like a bullet (score, no enemy achievement). A
+            // shielded/invincible player survives, so the arc stops at them.
             if(!hit && friendly_fire) {
               for(auto* p : *players) {
-                if(p->ship == obj && p->ship != s) { s->shock_hit_ship(p->ship); break; }
+                if(p->ship == obj && p->ship != s) {
+                  s->shock_hit_ship(p->ship);
+                  if(p->ship->is_alive()) bolt.stop();
+                  break;
+                }
               }
             }
           }
