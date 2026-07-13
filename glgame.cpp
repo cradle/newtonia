@@ -2912,6 +2912,31 @@ void GLGame::tick_net_client(int delta) {
           bh->apply_gravity(*me, step_size, scale);
       }
     }
+    // v12 pose authority: the pulsar shockwave's outward SHOVE is a force on
+    // the local ship, so — like the black-hole pull above — it must be applied
+    // HERE. The host applies it to its copy of our ship, but our authoritative
+    // pose discards that every INPUT, so without this mirror the wave passed
+    // straight through the client's pilot ("the pulsar doesn't do anything").
+    // The push flings you into an asteroid; the host resolves the resulting
+    // collision and the death replicates. Matches the host loop's knockback
+    // (glgame.cpp COLLIDE SHIPS ... HAZARDS); the client's pulsar timer is
+    // reconciled from the snapshot, so wave_active()/wave_radius() line up.
+    {
+      Ship *me = players->back()->ship;
+      if (me->is_alive()) {
+        for (auto *h : *hazards) {
+          if (h->kind_of() != Hazard::PULSAR || !h->is_alive() || !h->wave_active())
+            continue;
+          float wr = h->wave_radius();
+          if (fabsf(me->position.distance_to(h->position) - wr) > Hazard::WAVE_BAND)
+            continue;
+          Point self = h->position.closest_to(me->position);
+          Point out(me->position.x() - self.x(), me->position.y() - self.y());
+          float m = out.magnitude();
+          if (m > 1e-4f) me->velocity += (out / m) * (Hazard::KNOCKBACK * step_size);
+        }
+      }
+    }
     // Mini-station: drift/spin/bullets extrapolate between snapshots —
     // without this it visibly teleported at the 10 Hz apply rate.
     if (mini_station) mini_station->net_client_step(step_size);
@@ -2931,6 +2956,40 @@ void GLGame::tick_net_client(int delta) {
       (*hi)->update(step_size, players);
       if ((*hi)->is_removable()) { delete *hi; hi = hazards->erase(hi); }
       else ++hi;
+    }
+    // Cosmetic bullet-vs-hazard impacts: hazards aren't in the collision grid,
+    // so net_cosmetic_impacts (below) misses them and a shot would sail
+    // straight through the pulsar/comet on the client. Consume the bullet at
+    // contact with a spark + thud, mirroring the host's hit — the real damage
+    // is host-authoritative (the client's shot rides to the host as a MSG_SHOT
+    // clone; the break-up arrives as the replica dropping from the snapshot).
+    if (!hazards->empty()) {
+      for (auto *gs : *players) {
+        Ship *sh = gs->ship;
+        for (size_t bi = 0; bi < sh->bullets.size();) {
+          bool hit = false;
+          for (auto *h : *hazards) {
+            if (!h->is_alive()) continue;
+            if (h->Object::collide(sh->bullets[bi])) {
+              sh->explode(sh->bullets[bi].position, Point());
+              float vol = net_listener_volume(
+                  Point(sh->bullets[bi].position.x(), sh->bullets[bi].position.y()));
+              if (vol > 0.0f && Asteroid::thud_sound != NULL) {
+                Mix_VolumeChunk(Asteroid::thud_sound, (int)(MIX_MAX_VOLUME * vol));
+                Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+              }
+              hit = true;
+              break;
+            }
+          }
+          if (hit) {
+            sh->bullets[bi] = std::move(sh->bullets.back());
+            sh->bullets.pop_back();
+          } else {
+            ++bi;
+          }
+        }
+      }
     }
     grid.update((std::list<Object *> *)objects);
     // Cosmetic bullet-vs-asteroid impacts (debris + thud/ting for
@@ -3915,6 +3974,14 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       if (used[j]) continue;
       if (live[j]->is_alive()) {
         live[j]->destroy();
+        // The host plays explode_sound when a hazard breaks up; replicate it
+        // at the wreck, gated by the local camera's distance (net_listener).
+        float vol = net_listener_volume(
+            Point(live[j]->position.x(), live[j]->position.y()));
+        if (vol > 0.0f && Asteroid::explode_sound != NULL) {
+          Mix_VolumeChunk(Asteroid::explode_sound, (int)(MIX_MAX_VOLUME * vol));
+          Mix_PlayChannel(-1, Asteroid::explode_sound, 0);
+        }
         NET_LOG("net: hazard replica destroyed (kind %d)\n",
                 (int)live[j]->kind_of());
       }

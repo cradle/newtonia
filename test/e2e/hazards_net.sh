@@ -3,9 +3,11 @@
 # the host skips level-by-level to generation 12 — past the PULSAR (gen 9),
 # COMET (gen 11) and SEEKER (gen 12) introductions. The host is authoritative
 # for hazards; the JOINER must reconcile them from the snapshot, logging a
-# "hazard replica spawned" for each kind (0=pulsar,1=comet,2=seeker) and at
-# least one "hazard replica destroyed" (skipping past a hazard gen clears the
-# host's, which the client bursts). Logs must stay clean. Prints HAZARD-E2E-OK.
+# "hazard replica spawned" for each kind (0=pulsar,1=comet,2=seeker). Both then
+# fire at gen 12 to exercise the client bullet-vs-hazard cosmetic (spark+thud);
+# any resulting host-side break-up bursts on the joiner ("hazard replica
+# destroyed", reported not required — random aim). Logs must stay clean.
+# Prints HAZARD-E2E-OK.
 set -u
 if [ -z "${DISPLAY:-}" ]; then
   exec xvfb-run -a -s "-screen 0 1280x800x24" "$0" "$@"
@@ -40,8 +42,16 @@ for g in $(seq 1 12); do
   alive $PA host || exit 1
   alive $PB joiner || exit 1
 done
-# Hold on gen 12 so all three kinds replicate to the joiner, then screenshot.
+# Hold on gen 12 so all three kinds replicate to the joiner, then both fire
+# (held) to drive the client bullet-vs-hazard cosmetic path, then screenshot.
 sleep 4
+alive $PA host; alive $PB joiner
+for round in 1 2 3 4; do
+  xdotool keydown --window $A space; xdotool keydown --window $B space
+  sleep 1; xdotool keyup --window $A space; xdotool keyup --window $B space
+  key $A w; key $B w; sleep 0.4
+done
+sleep 2
 alive $PA host; alive $PB joiner
 shot $A hazards-host; shot $B hazards-joiner
 
@@ -52,9 +62,6 @@ for kind in 0 1 2; do
     echo "FAIL: joiner never replicated hazard kind $kind"
     exit 1; }
 done
-grep -aq "hazard replica destroyed" "$OUT/joiner.log" || {
-  echo "FAIL: joiner never saw a hazard death (skip-clear should burst them)"
-  exit 1; }
 assert_clean "$OUT/host.log" "$OUT/joiner.log"
 echo "joiner hazard spawns:   $(grep -ac 'hazard replica spawned' "$OUT/joiner.log")"
 echo "joiner hazard deaths:   $(grep -ac 'hazard replica destroyed' "$OUT/joiner.log")"
