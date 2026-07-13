@@ -144,6 +144,16 @@ void Ship::mute_engine() {
   }
 }
 
+// Halt every continuous per-ship sound. On a net client the shield hum,
+// god-mode music and boost are driven by snapshots; when the host leaves
+// snapshots stop, so nothing would ever turn them off — the game freezes
+// with the loop stuck on. Called on the client's terminal disconnect.
+void Ship::silence_loops() {
+  set_shield_hum(false);
+  stop_god_mode_music();
+  mute_engine();
+}
+
 void Ship::add_behaviour(Behaviour *b) {
   behaviours.push_back(b);
 }

@@ -2625,6 +2625,11 @@ void GLGame::tick_net_client(int delta) {
   update_spectate();
 
   if (net_connection_lost_) {
+    // Host gone: snapshots stop, so any snapshot-driven continuous loop
+    // (shield hum from spawn invincibility, god-mode music) would be left
+    // playing forever. Silence them now — a rejoin restores them from the
+    // next snapshot.
+    for (auto *gs : *players) gs->ship->silence_loops();
     // If our own ship is already out (we were spectating the host), a lost
     // host is terminal — there is nothing left to rejoin for. End on the
     // GAME OVER card rather than the REJOINING spinner.

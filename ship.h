@@ -179,6 +179,10 @@ class Ship : public CompositeObject {
     void nova_detonate();
     int nova_ammo() const;
     void set_shield_hum(bool on);
+    // Halt all continuous per-ship loops (shield hum, god-mode music, boost)
+    // — used on a net client's terminal disconnect so a snapshot-driven loop
+    // isn't left stuck on when the host leaves and snapshots stop.
+    void silence_loops();
     // Net client: respawn() runs inside every snapshot restore (10 Hz),
     // and its hum start-then-halt leaked audible blips. With this set the
     // hum is started ONLY by explicit set_shield_hum calls (the snapshot
