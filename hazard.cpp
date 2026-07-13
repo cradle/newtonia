@@ -173,6 +173,8 @@ void Hazard::update(int delta, list<GLShip*> *players) {
         }
         position += velocity * delta;
         position.wrap();
+        rotation += 0.04f * delta;  // slow idle spin (deg/ms, ~9s per turn)
+        if (rotation >= 360.0f) rotation -= 360.0f;
       }
       break;
     }
@@ -415,7 +417,7 @@ void Hazard::draw(bool minimap) const {
   // SEEKER
   if (alive) {
     glLineWidth(2.5f);
-    body_mesh_.draw_at(px, py, 0.0f);
+    body_mesh_.draw_at(px, py, rotation);  // slow idle spin
     // Blinking core light.
     float blink = 0.5f + 0.5f * sinf(timer_ * 0.012f);
     float m[16];
