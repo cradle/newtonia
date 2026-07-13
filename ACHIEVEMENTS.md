@@ -408,7 +408,7 @@ schemes at backend-definition time).
 **Terminology rule:** user-facing names and criteria always use the
 **displayed level number** (the HUD's `LEVEL = internal generation + 1`) —
 players never see "generation". Code hooks translate: the black hole appears
-at internal generation 9 = level 10; the station at internal generation 14 =
+at internal generation 13 = level 14; the station at internal generation 14 =
 level 15.
 
 **Future-proofing rule:** design criteria to survive content additions —
@@ -425,7 +425,7 @@ only the description mentions where it lives.
 | first_kill | First Blood | Destroy your first asteroid | 10 |
 | clear_level1 | Clear Skies | Clear level 1 | 20 |
 | specials_7 | Special Delivery | Destroy 7 different asteroid types | 100 |
-| black_hole_survivor | Event Horizon | Survive a black-hole level (level 10 onward) without dying | 80 |
+| black_hole_survivor | Event Horizon | Survive a black-hole level (level 14 onward) without dying | 80 |
 | mini_station_kill | Little Nuisance | Destroy a mini-station | 50 |
 | shield_ram | Battering Ram | Destroy an enemy by ramming it with your shield active | 20 |
 | shield_ram_asteroid | Icebreaker | Ram an asteroid with your shield active | 10 |
@@ -452,7 +452,7 @@ destroys the asteroid in existing gameplay.
 beat-your-best skill target — and took its GS from `kills_10000_lifetime`
 (100 → 40), which is time investment rather than skill.
 `no_secondary_level10` (primary gun and god-mode pickups only, all the way
-to the black-hole level) took its GS from `reach_level15` (100 → 40): the
+to level 10) took its GS from `reach_level15` (100 → 40): the
 reach milestone cedes points to the skill runs, while `station_destroyed`
 still pays 160 for the follow-through at level 15.
 late-game items keep the "half the content" rule honest. Note `coop_clear`
@@ -504,8 +504,11 @@ asteroids still escape (a naive always-on decay trapped them in orbit).
 A 10-minute headless sim (40 asteroids, gen-10 world) shows well escapes
 preserved (561 vs 932 before) while time spent outside the well above 4×
 natural speed drops from 46% to 2.4% — slung asteroids cross the level
-hot, then settle. Black-hole levels should need re-playtesting against
-the wall verdict above. Dev-start caveat, cutting both
+hot, then settle. **Progression change (2026-07):** the black hole itself
+moved from level 10 (generation 9) to level 14 (generation 13), so a run
+to the station level (15) faces exactly one black-hole level. The
+findings above describe the hole at its old level-10 position;
+black-hole levels need re-playtesting at 14 with both changes in. Dev-start caveat, cutting both
 ways: full lives (4) at the start of the tested level, but also a bare
 loadout (base gun only — no banked secondaries, upgrades, or extra lives
 a real run accumulates through levels 1–9). Station fight (dev start at 14,
@@ -560,15 +563,15 @@ stand. Decisions taken:
 | coop_clear | needs a second controller/player only | earnable |
 | mini_station_kill | single shot from level 11 | earnable |
 | shield_ram | shield pickup (1.25%/kill) + any enemy from level 11 | earnable |
-| no_damage_clear, black_hole_survivor | skill-only, no mechanical gate; playtest shows level 9 clears consistently, survival at 10 is the wall (black-hole-accelerated asteroids) | earnable, hard |
+| no_damage_clear, black_hole_survivor | skill-only, no mechanical gate; playtest shows level 9 clears consistently. The black-hole wall (accelerated asteroids) prompted two changes: slingshot-speed decay, and the hole moving from level 10 to 14 — black_hole_survivor now gates on level 14 | earnable, hard |
 | nova_detonated | charge counter **and** charges reset on death → ~1,000 kills in one life; playtest reached 9/10 charges | earnable, at the edge |
 | **weapons_7** | **coupled to nova_detonated**: firing a nova is the 7th kind, so it embeds the same one-life feat, plus drop RNG — P(≥1 god-mode drop) ≈ 63% by 400 kills, 92% by 1,000, 98% by 1,500 (other pickups ≈100%; the fired-mask spans lives, only the nova leg is single-life) | earnable; capstone-hard, review GS |
 | station_destroyed, enemies_10 | **verified in dev-start play**: station dies easily to an upgraded multishot gun (the bare-loadout siege was the outlier); 8+ fighters downed in a single fight | **verified** |
-| reach_level15 | the black-hole wall has been passed in dev-start testing (hard but doable), levels 10 and 11 individually cleared; still unproven: chaining 10–15 in one run | **needs playtest** (de-risked) |
+| reach_level15 | the black-hole wall has been passed in dev-start testing (hard but doable), levels 10 and 11 individually cleared; the stretch is now easier — the hole moved to level 14, leaving one black-hole level before the station; still unproven: chaining 10–15 in one run | **needs playtest** (de-risked) |
 
 **Playtest tooling:** beta builds honour `NEWTONIA_START_GENERATION=N`
 (with `NEWTONIA_BETA=1`) — a new game starts at generation N with the
-correct world size and hazards (black hole ≥9, mini-station ≥10, station
+correct world size and hazards (mini-station ≥10, black hole ≥13, station
 ≥14), so the wall and the station fight can be practised directly. It
 marks the game as cheated, so it can never launder achievements; use it to
 answer the remaining "needs playtest" row (the continuous 10–15 run). The
