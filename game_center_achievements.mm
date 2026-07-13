@@ -298,7 +298,14 @@ private:
   // Confirm entries out of the journal only when the server's achievement
   // list shows them; anything missing stays journaled and is logged so a
   // portal misconfiguration is visible instead of silently eating earns.
-  void verify_and_confirm(const std::vector<AchievementJournal::Entry> &batch) {
+  //
+  // Takes the batch BY VALUE: it escapes into the asynchronous completion
+  // blocks below, and Objective-C++ blocks capture C++ references by
+  // reference (only non-reference variables get the const-copy treatment).
+  // A reference parameter here dangles the moment the caller's completion
+  // block is destroyed — long before GameKit's load completes — which
+  // crashed the first delivery verification (the first_kill unlock).
+  void verify_and_confirm(std::vector<AchievementJournal::Entry> batch) {
     [GKAchievement loadAchievementsWithCompletionHandler:^(
                        NSArray<GKAchievement *> *achievements, NSError *error) {
       dispatch_async(dispatch_get_main_queue(), ^{
