@@ -844,6 +844,28 @@ void NetLobby::tick(int delta) {
 
     case WaitConnect: {
       connect_wait_ms_ += delta;
+#ifdef NEWTONIA_NET_RTC
+      // e2e hook: sever the freshly re-established rejoin transport once,
+      // mid-handshake — the exact condition (a WebRTC path flapping in the
+      // first seconds after a network returns) that used to strand a rejoin
+      // on "CONNECTION LOST"/LobbyFailed. session_->update() below then flips
+      // the phase to Failed and rejoin_retry_after_session_loss must catch
+      // it. Process-global count so it fires across the auto-rejoin's lobby
+      // instances; inert without the env var. See test/e2e/rejoinflap.sh.
+      if (rejoin_mode_) {
+        static int test_rejoin_flap = -2;
+        if (test_rejoin_flap == -2) {
+          const char *e = getenv("NEWTONIA_NET_TEST_REJOIN_FLAP");
+          test_rejoin_flap = e ? atoi(e) : 0;
+        }
+        if (test_rejoin_flap > 0 && session_->transport() &&
+            !session_->transport()->failed()) {
+          test_rejoin_flap--;
+          NET_LOG("[lobby] TEST injecting rejoin transport flap\n");
+          session_->transport()->close();
+        }
+      }
+#endif
       session_->update(delta);
       NetSession::Phase p = session_->phase();
       if (p == NetSession::Ready) {

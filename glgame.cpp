@@ -1776,6 +1776,24 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // socket — resend the current one.
       NET_LOG("net: room %s reclaimed (mid-rejoin)\n", net_room_code_.c_str());
       net_rehost_offer_sent_ = false;
+    } else if (ev.kind == NetSignal::Event::PeerJoin) {
+      // The rejoiner re-entered the room while we were still mid-handshake
+      // with a prior attempt of theirs: their transport flapped (common in
+      // the first seconds after a network returns) and they answered our
+      // one-shot offer, then dropped it. Our half-open session/offer would
+      // take an ICE timeout (~tens of seconds) to fail on its own, leaving
+      // the rejoiner's fresh JOIN waiting on an offer we never resend. Tear
+      // it down now and let the re-offer block at the top fire next tick.
+      NET_LOG("net: peer re-joined mid-rejoin - re-offering\n");
+      delete net_session_;
+      net_session_ = nullptr;
+      if (net_rehost_) {
+        net_rehost_->close();
+        delete net_rehost_;
+        net_rehost_ = nullptr;
+      }
+      net_rehost_offer_sent_ = false;
+      return;  // top-of-poll re-offer owns the signal from here
     }
   }
 
