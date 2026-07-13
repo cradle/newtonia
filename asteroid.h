@@ -58,6 +58,8 @@ public:
   bool phased;              // true = currently intangible (invincible to bullets)
   int  phase_timer;         // ms remaining in current phase state
 
+  bool comet_fragment;      // true = a chunk shed by a comet; drawn solid white
+
   bool in_gravity_well;     // re-flagged by the game loop every tick; suspends
                             // the excess-speed decay so slingshots stay intact
 

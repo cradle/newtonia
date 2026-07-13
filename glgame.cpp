@@ -533,9 +533,13 @@ void GLGame::add_hazards() {
   for(int i = 0; i < num_comet;  i++) hazards->push_back(new Hazard(Hazard::COMET,  world));
   for(int i = 0; i < num_seeker; i++) hazards->push_back(new Hazard(Hazard::SEEKER, world));
 
-  // TEMPORARY (testing): drop a comet on level 1 so it can be exercised without
-  // reaching generation 11. Remove before merge.
-  if(generation == 0) hazards->push_back(new Hazard(Hazard::COMET, world));
+  // TEMPORARY (testing): drop one of each hazard on level 1 so they can be
+  // exercised without reaching the mid-game. Remove before merge.
+  if(generation == 0) {
+    hazards->push_back(new Hazard(Hazard::COMET,  world));
+    hazards->push_back(new Hazard(Hazard::PULSAR, world));
+    hazards->push_back(new Hazard(Hazard::SEEKER, world));
+  }
 }
 
 Hazard *GLGame::first_hazard(Hazard::Kind kind) const {
@@ -559,6 +563,7 @@ void GLGame::shed_comet_fragment(const Hazard *comet) {
   // comet's heading. num_killable is bumped by the constructor, so the piece
   // counts toward clearing the level like any other asteroid.
   Asteroid *frag = new Asteroid(false);
+  frag->comet_fragment = true;          // drawn solid white, like the comet
   frag->radius = 16.0f + rand() % 14;   // 16–29: a small shard
   frag->radius_squared = frag->radius * frag->radius;
   frag->value = std::min(100, std::max(1, (int)(1600.0f / frag->radius)));

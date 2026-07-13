@@ -62,6 +62,7 @@ struct Asteroid {
 
     // type flags
     bool invincible, invisible, reflective, teleporting, quantum, tough, elastic, armoured, phasing;
+    bool comet_fragment;   // drawn solid white; packed into flags2
 
     // teleporting state (only meaningful when teleporting == true)
     bool  teleport_vulnerable;

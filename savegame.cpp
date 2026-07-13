@@ -132,7 +132,8 @@ static bool write_asteroid(FILE *f, const Save::Asteroid &a) {
     if (a.armoured)    flags |= (1 << 7);
     if (!wv(f, flags)) return false;
     uint8_t flags2 = 0;
-    if (a.phasing) flags2 |= (1 << 0);
+    if (a.phasing)        flags2 |= (1 << 0);
+    if (a.comet_fragment) flags2 |= (1 << 1);
     if (!wv(f, flags2)) return false;
 
     if (a.teleporting) {
@@ -181,7 +182,8 @@ static bool read_asteroid(FILE *f, Save::Asteroid &a) {
     a.armoured    = (flags >> 7) & 1;
     uint8_t flags2;
     if (!rv(f, flags2)) return false;
-    a.phasing = (flags2 >> 0) & 1;
+    a.phasing        = (flags2 >> 0) & 1;
+    a.comet_fragment = (flags2 >> 1) & 1;
 
     if (a.teleporting) {
         uint8_t tv; int32_t vtl;
