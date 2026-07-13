@@ -157,8 +157,12 @@ void Hazard::update(int delta, list<GLShip*> *players) {
           }
         }
         if (nearest != NULL) {
-          Point tgt = position.closest_to(nearest->ship->position);
-          Point dir(tgt.x() - position.x(), tgt.y() - position.y());
+          // closest_to() returns the wrapped copy of *our* position nearest the
+          // target; steer from that copy toward the target's actual position
+          // (mirrors GLMiniStation::fire_at_nearest_player).
+          Point self = position.closest_to(nearest->ship->position);
+          Point dir(nearest->ship->position.x() - self.x(),
+                    nearest->ship->position.y() - self.y());
           float m = dir.magnitude();
           if (m > 1e-4f) {
             Point desired = (dir / m) * SEEKER_SPEED;
