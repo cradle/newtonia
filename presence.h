@@ -17,6 +17,12 @@ namespace Presence {
 // Browsing the menu (attract screen, main menu, options).
 void set_menu();
 
+// In the netplay lobby: hosting a room and waiting for a friend to join, or
+// joining someone else's room (entering/submitting a code). Rendered as
+// "Hosting a Co-Op Game" / "Joining a Co-Op Game" in the friends list.
+void set_hosting();
+void set_joining();
+
 // In-game on the given displayed level; num_players >= 2 renders as co-op.
 // Safe to re-report the current state — duplicate updates are dropped in
 // the shared layer, so callers don't need to track what was last sent.

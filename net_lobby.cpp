@@ -8,6 +8,7 @@
 #include "gl_compat.h"
 #include "glgame.h"
 #include "invites.h"
+#include "presence.h"
 #include "glstarfield.h"
 #include "mat4.h"
 #include "menu.h"
@@ -109,6 +110,7 @@ NetLobby::NetLobby()
 
 NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
   hosting_ = false;
+  Presence::set_joining();  // auto-rejoin / invite-accept: joining a game
   Net::set_net_log_role(false);  // rejoin is always the client side
   transport_ = NetTransport::create();
   signal_ = NetSignal::create();
@@ -263,6 +265,7 @@ void NetLobby::confirm() {
     // fall_back_to_manual() flips this off again before any start_*).
     if (signal_) transport_->set_trickle(true);
     if (hosting_) {
+      Presence::set_hosting();  // "Hosting a Co-Op Game" in the friends list
       if (signal_) {
         // start_host() waits for the Room frame: the relay sends the TURN
         // credentials first, and ICE servers bind at pc creation.
@@ -274,6 +277,7 @@ void NetLobby::confirm() {
         screen_ = HostGathering;
       }
     } else {
+      Presence::set_joining();  // "Joining a Co-Op Game"
       if (signal_) {
         screen_ = CodeEntry;
         floating_kb_up_ = code_entry_keyboard(true);

@@ -30,6 +30,20 @@ void set_menu() {
   friends->SetRichPresence("steam_display", "#StatusMenu");
 }
 
+void set_hosting() {
+  ISteamFriends *friends = SteamFriends();
+  if (!friends) return;
+  friends->SetRichPresence("status", "Hosting a Co-Op Game");
+  friends->SetRichPresence("steam_display", "#StatusHosting");
+}
+
+void set_joining() {
+  ISteamFriends *friends = SteamFriends();
+  if (!friends) return;
+  friends->SetRichPresence("status", "Joining a Co-Op Game");
+  friends->SetRichPresence("steam_display", "#StatusJoining");
+}
+
 void set_level(int level, int num_players) {
   ISteamFriends *friends = SteamFriends();
   if (!friends) return;
