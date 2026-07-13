@@ -119,6 +119,10 @@ GLGame::GLGame(SDL_GameController *controller) :
   // A new game begins legitimately: lift any XR-057 suppression left over
   // from a previous game's cheat keys.
   Achievements::new_game_started();
+  // NEWTONIA_ALL_WEAPONS: debug cheat granting the full arsenal each life.
+  // Suppress achievements for the game like the other cheat paths (XR-057).
+  all_weapons_cheat = (SDL_getenv("NEWTONIA_ALL_WEAPONS") != NULL);
+  if(all_weapons_cheat) Achievements::note_cheat_used();
   if(controller != NULL) {
     object->set_controller(controller);
   }
@@ -261,6 +265,9 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   // resuming doesn't launder it (XR-057).
   if (save.cheated) Achievements::note_cheat_used();
   else              Achievements::new_game_started();
+  // NEWTONIA_ALL_WEAPONS: debug cheat granting the full arsenal each life.
+  all_weapons_cheat = (SDL_getenv("NEWTONIA_ALL_WEAPONS") != NULL);
+  if(all_weapons_cheat) Achievements::note_cheat_used();
 
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
@@ -840,6 +847,18 @@ void GLGame::tick(int delta) {
             (*oi)->in_gravity_well = true;
         }
         oi++;
+      }
+    }
+
+    // NEWTONIA_ALL_WEAPONS: give each player the full arsenal at 999 rounds.
+    // A death strips the ship back to the base gun (reset()), so re-grant the
+    // moment a freshly-respawned player is detected — that also seeds it once
+    // at game start. GLGame is a friend of Ship, so it can inspect the lists.
+    if(all_weapons_cheat) {
+      for(o = players->begin(); o != players->end(); o++) {
+        Ship* s = (*o)->ship;
+        if(s->is_alive() && s->primary_weapons.size() <= 1 && s->secondary_weapons.empty())
+          s->give_all_weapons(999);
       }
     }
 

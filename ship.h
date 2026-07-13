@@ -145,6 +145,11 @@ class Ship : public CompositeObject {
     void add_missile_ammo(int amount);
     void add_shield_ammo(int amount);
     void add_shock_ammo(int amount);
+    // Debug/testing: grant every primary gun variant and every secondary at
+    // `ammo` rounds (Nova stays at its design cap). Used by the NEWTONIA_ALL_WEAPONS
+    // cheat flag. God mode is deliberately excluded — it hijacks the primary slot
+    // and blocks weapon cycling.
+    void give_all_weapons(int ammo);
     void add_god_mode(int duration_ms = 10000);
     int god_mode_time_remaining() const;
     bool shield_active() const;

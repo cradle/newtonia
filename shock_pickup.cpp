@@ -3,10 +3,9 @@
 #include "gl_compat.h"
 
 ShockPickup::ShockPickup(WrappedPoint pos) : Pickup(pos) {
-  float s = radius * 0.8f;
-  // Electric blue-white glow star.
+  // Small electric-blue lightning arc.
   MeshBuilder mb;
-  build_glow_star(mb, 0.6f, 0.85f, 1.0f, s, s * 0.4f);
+  build_glow_bolt(mb, 0.6f, 0.85f, 1.0f, radius * 0.9f);
   glow_mesh.upload(mb);
 }
 

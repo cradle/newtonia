@@ -399,6 +399,24 @@ void Ship::add_shock_ammo(int amount) {
     secondary = --secondary_weapons.end();
 }
 
+void Ship::give_all_weapons(int ammo) {
+  // Every primary gun variant.
+  for (int i = 0; i < num_weapon_configs; i++) add_weapon(i);
+  // Every secondary. Nova clamps to its own cap inside add_nova_ammo().
+  add_mine_ammo(ammo);
+  add_giga_mine_ammo(ammo);
+  add_missile_ammo(ammo);
+  add_shield_ammo(ammo);
+  add_nova_ammo(ammo);
+  add_shock_ammo(ammo);
+  // Top every limited-ammo weapon up to `ammo` (base gun stays unlimited; Nova
+  // keeps its design cap set above).
+  for (auto *w : primary_weapons)
+    if (!w->is_unlimited()) w->set_ammo(ammo);
+  for (auto *w : secondary_weapons)
+    if (!dynamic_cast<Weapon::Nova*>(w)) w->set_ammo(ammo);
+}
+
 void Ship::add_god_mode(int duration_ms) {
   // God mode starts firing shockwaves the moment it activates, so activation
   // counts as usage for the weapons_7 achievement.

@@ -99,6 +99,11 @@ gdb -batch -ex run -ex "bt 20" --args ./newtonia > gdb.log 2>&1 &
 - Late-game testing: `NEWTONIA_BETA=1 NEWTONIA_START_GENERATION=N ./newtonia`
   starts a new game at generation N (world size + hazards included). Flagged
   as a cheat, so achievements stay suppressed for that game.
+- Weapon testing: `NEWTONIA_ALL_WEAPONS=1 ./newtonia` grants every player the
+  full arsenal (all primary gun variants + all secondaries) at 999 rounds,
+  re-granted on each respawn (`Ship::give_all_weapons`). God mode is excluded
+  (it hijacks the primary slot). Flagged as a cheat, so achievements stay
+  suppressed for that game.
 
 ### macOS App Bundle
 ```sh
