@@ -69,6 +69,7 @@ struct Asteroid {
 
     // type flags
     bool invincible, invisible, reflective, teleporting, quantum, tough, elastic, armoured, phasing;
+    bool comet_fragment;   // drawn solid white; packed into flags2
 
     // teleporting state (only meaningful when teleporting == true)
     bool  teleport_vulnerable;
@@ -110,6 +111,20 @@ struct Pickup {
 
 struct BlackHole {
     float pos_x, pos_y;
+};
+
+// ── Hazard ───────────────────────────────────────────────────────────────────
+// The environmental obstacles introduced on the mid-game "quiet" levels
+// (generations 9/11/12). One struct for all kinds; `kind` selects the
+// behaviour (see hazard.h). `timer` carries the PULSAR shockwave phase;
+// `vel_*` the COMET/SEEKER travel velocity (PULSAR is stationary).
+
+struct Hazard {
+    uint8_t kind;               // Hazard::Kind
+    float   pos_x, pos_y;
+    float   vel_x, vel_y;
+    float   timer;              // PULSAR shockwave phase
+    int32_t health;             // COMET shots remaining (0 for other kinds)
 };
 
 // ── Enemy ship ───────────────────────────────────────────────────────────────
@@ -162,7 +177,9 @@ struct GameState {
     // asteroid/enemy kills, died-this-generation, weapons-fired mask,
     // then the game-scoped cheat flag). 15 = Shock weapon kind + ShockWeapon
     // pickup type (merged from master, appended after the branch's additions).
-    static constexpr uint16_t VERSION = 15;
+    // 16 = mid-game hazards (pulsar/comet/seeker) appended at the end (merged
+    // from master's "v12"; renumbered onto this branch's higher version).
+    static constexpr uint16_t VERSION = 16;
     // Oldest save format we can still read. Saves from MIN_VERSION..VERSION all
     // load; anything older (or from a newer build) is ignored. To keep old saves
     // working across a version bump, only ever APPEND new fields at the end of
@@ -186,6 +203,8 @@ struct GameState {
     std::vector<BlackHole> black_holes;
     Station                station;
     MiniStation            mini_station;
+    // v12 append (end of file): mid-game hazards (pulsar/comet/seeker).
+    std::vector<Hazard>    hazards;
 };
 
 // ── Streams ──────────────────────────────────────────────────────────────────

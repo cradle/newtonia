@@ -12,6 +12,7 @@
 #include "gl_mini_station.h"
 #include "asteroid.h"
 #include "black_hole.h"
+#include "hazard.h"
 #include "pickup.h"
 #include "extra_life.h"
 #include "weapon_pickup.h"
@@ -100,6 +101,11 @@ public:
   list<Asteroid*> *dead_objects; // killed asteroids with lingering debris
   list<Pickup*> *pickups;
   list<BlackHole*> *black_holes;
+  list<Hazard*> *hazards;        // mid-game obstacles (pulsar/comet/seeker)
+
+  // First hazard of a given kind, or NULL — used by the intro screen to focus
+  // on the newly-introduced obstacle.
+  Hazard *first_hazard(Hazard::Kind kind) const;
 
   int num_x_viewports() const;
   int num_y_viewports() const;
@@ -122,6 +128,15 @@ public:
   void release_player_controls();
 private:
   void add_asteroids();
+  // Spawn the mid-game hazards this generation calls for (counts scale with
+  // generation, like the special-asteroid counts). Appends to `hazards`.
+  void add_hazards();
+  // Break a small asteroid chunk off a comet at its current position, flung
+  // outward from its heading. The chunk is a normal killable asteroid.
+  void shed_comet_fragment(const Hazard *comet);
+  // Play a bullet-impact sound for a non-fatal hazard hit, rate-limited so a
+  // burst of hits can't starve the mixer channel pool.
+  void play_hazard_hit_sound(Mix_Chunk *snd);
   void add_player2(SDL_GameController *ctrl);
   // include_asteroids=false skips capturing the asteroid list (the delta
   // path diffs asteroids itself and would otherwise discard the capture).

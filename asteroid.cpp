@@ -47,6 +47,7 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   this->armour_angle = rand() / (float)RAND_MAX * 2.0f * (float)M_PI;
   this->phasing = phasing;
   this->phased = false;
+  this->comet_fragment = false;
   // Stagger initial timers so a group doesn't all phase in sync.
   this->phase_timer = 1500 + rand() % 1500;
   this->in_gravity_well = false;
@@ -165,6 +166,7 @@ Save::Asteroid Asteroid::capture_state() const {
     s.phasing        = phasing;
     s.phased         = phased;
     s.phase_timer    = phase_timer;
+    s.comet_fragment = comet_fragment;
     s.teleport_vulnerable  = teleport_vulnerable;
     s.teleport_angle       = teleport_angle;
     s.vulnerable_time_left = vulnerable_time_left;
@@ -205,6 +207,7 @@ void Asteroid::restore_state(const Save::Asteroid &s) {
     phasing        = s.phasing;
     phased         = s.phased;
     phase_timer    = s.phase_timer;
+    comet_fragment = s.comet_fragment;
 
     teleport_vulnerable  = s.teleport_vulnerable;
     teleport_angle       = s.teleport_angle;
@@ -301,6 +304,7 @@ Asteroid::Asteroid(Asteroid const *mother) {
   phasing = mother->phasing;
   phased = false;
   phase_timer = 1500 + rand() % 1500;
+  comet_fragment = mother->comet_fragment;  // inherit the white-chunk look
   in_gravity_well = mother->in_gravity_well;
   health = 1;
   killed = false;
