@@ -206,6 +206,11 @@ GLGame::GLGame(SDL_GameController *controller) :
                                        c.y() + sinf(a) * 200.0f);
       pickups->push_back(ring[i]);
     }
+    // A line of 10 nova charges below the ring — enough to max the nova
+    // (0-9) for co-op nova testing.
+    for (int i = 0; i < 10; i++)
+      pickups->push_back(new NovaChargePickup(
+          WrappedPoint(c.x() - 450.0f + i * 100.0f, c.y() + 350.0f)));
   }
 
   station = NULL;//new GLStation(enemies, players);
