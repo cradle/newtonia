@@ -62,6 +62,14 @@ namespace Weapon {
     void step(int delta) override;
     bool is_automatic() const override { return true; }
 
+    // Cooldown accessors: the net client rebuilds the weapon list with fresh
+    // objects 10x/s from snapshots, and a fresh Shock (cooldown 0) fires the
+    // instant it is re-armed — an extra bolt+sound every snapshot while the
+    // trigger is held. net_apply_state preserves the live cooldown across the
+    // rebuild (mirroring the Default gun).
+    int  get_cooldown() const { return cooldown; }
+    void set_cooldown(int ms) { cooldown = ms; }
+
   private:
     void try_fire();  // fire a bolt if off cooldown; handles empty ammo
     int cooldown;   // ms until the next bolt may be fired

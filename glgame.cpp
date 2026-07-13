@@ -3669,9 +3669,12 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     // it is re-armed — an extra shot (and shoot sound) every snapshot
     // while the trigger is held.
     int shot_cooldown = 0;
+    int shock_cooldown = -1;  // -1: the selected primary is not a Shock
     if (!ship->primary_weapons.empty()) {
       Weapon::Default *dw = dynamic_cast<Weapon::Default *>(*ship->primary);
       if (dw) shot_cooldown = dw->cooldown();
+      Weapon::Shock *sw = dynamic_cast<Weapon::Shock *>(*ship->primary);
+      if (sw) shock_cooldown = sw->get_cooldown();
     }
     bool armed_secondary = ship->secondary != ship->secondary_weapons.end() &&
                            (*ship->secondary)->is_shooting();
@@ -3719,6 +3722,13 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       ship->rotate_right(held_right);
       ship->thrust(held_thrust);
       ship->reverse(held_reverse);
+      // Shock fires the instant it is re-armed (its shoot() calls try_fire
+      // straight away), so its preserved cooldown must be restored BEFORE the
+      // shoot() below — unlike the Default gun, whose fire waits for step().
+      if (shock_cooldown >= 0 && !ship->primary_weapons.empty()) {
+        Weapon::Shock *sw = dynamic_cast<Weapon::Shock *>(*ship->primary);
+        if (sw) sw->set_cooldown(shock_cooldown);
+      }
       ship->shoot(armed_shoot);
       ship->fire_secondary(armed_secondary);
       if (shot_cooldown > 0 && !ship->primary_weapons.empty()) {
