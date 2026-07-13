@@ -1,0 +1,91 @@
+#include "invites.h"
+
+#include <cctype>
+#include <cstring>
+
+// Shared invite layer: owns the pending-code handoff and the connect-string
+// parsing, so every backend (and the cold-launch path) funnels through one
+// place. Platform backends implement Backend::init/set_joinable/clear_joinable
+// behind their own build flags; there is no default backend, so builds without
+// a platform integration carry zero cost — capture_launch still works, so a
+// "+connect <code>" on the command line joins even without one.
+
+#ifdef STEAM_BUILD
+namespace Invites {
+namespace Backend {  // steam_invites.cpp
+void init();
+void set_joinable(const std::string &room_code);
+void clear_joinable();
+}
+}
+#endif
+
+namespace Invites {
+
+namespace {
+
+// A room code accepted (via callback or launch arg) and awaiting the menu's
+// poll. Empty when nothing is pending.
+std::string s_pending;
+
+// The advertised connect string is "+connect <code>"; pull <code> back out.
+// Tolerant of a bare code (no "+connect" prefix) so capture_launch can hand
+// us either form.
+std::string parse_connect(const char *s) {
+  if (!s) return std::string();
+  std::string in(s);
+  const std::string key = "+connect";
+  size_t p = in.find(key);
+  size_t start = (p == std::string::npos) ? 0 : p + key.size();
+  while (start < in.size() && std::isspace((unsigned char)in[start])) start++;
+  size_t end = start;
+  while (end < in.size() && !std::isspace((unsigned char)in[end])) end++;
+  return in.substr(start, end - start);
+}
+
+} // namespace
+
+void init() {
+#ifdef STEAM_BUILD
+  Backend::init();
+#endif
+}
+
+void set_joinable(const std::string &room_code) {
+#ifdef STEAM_BUILD
+  Backend::set_joinable(room_code);
+#else
+  (void)room_code;
+#endif
+}
+
+void clear_joinable() {
+#ifdef STEAM_BUILD
+  Backend::clear_joinable();
+#endif
+}
+
+void note_accepted(const char *connect_string) {
+  std::string code = parse_connect(connect_string);
+  if (!code.empty()) s_pending = code;
+}
+
+bool poll_accepted_invite(std::string &code_out) {
+  if (s_pending.empty()) return false;
+  code_out = s_pending;
+  s_pending.clear();
+  return true;
+}
+
+void capture_launch(int argc, char **argv) {
+  // The platform appends the connect string to the command line on a cold
+  // launch. Look for the "+connect <code>" pair we advertise.
+  for (int i = 0; i + 1 < argc; i++) {
+    if (argv[i] && std::strcmp(argv[i], "+connect") == 0) {
+      note_accepted(argv[i + 1]);  // parse_connect tolerates the bare code
+      return;
+    }
+  }
+}
+
+} // namespace Invites

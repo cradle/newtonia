@@ -4,6 +4,7 @@
 #include "glstarfield.h"
 #include "glgame.h"
 #include "menu.h"
+#include "invites.h"
 #include "net_lobby.h"
 #include "net_transport.h"
 #include "preferences.h"
@@ -306,6 +307,17 @@ void Menu::draw() {
 }
 
 void Menu::tick(int delta) {
+  // A friend's invite was accepted (or the game was launched from one):
+  // jump straight into the lobby as a joiner for that room code, the same
+  // programmatic path as the clipboard/rejoin auto-join.
+  {
+    std::string invite_code;
+    if (Invites::poll_accepted_invite(invite_code)) {
+      request_state_change(new NetLobby(invite_code));
+      return;
+    }
+  }
+
   currentTime += delta;
   viewpoint += Point(1,0) * (0.025 * delta);
   //FIX: Wrapping bug

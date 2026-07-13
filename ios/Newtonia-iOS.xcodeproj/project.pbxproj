@@ -71,6 +71,8 @@
 		AB00006B /* steam_achievements.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00006B /* steam_achievements.cpp */; };
 		AB00006C /* presence.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00006C /* presence.cpp */; };
 		AB00006D /* steam_presence.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA00006D /* steam_presence.cpp */; };
+		AB0000A2 /* invites.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA0000A2 /* invites.cpp */; };
+		AB0000A3 /* steam_invites.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA0000A3 /* steam_invites.cpp */; };
 		AB000052 /* preferences.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000052 /* preferences.cpp */; };
 		AB000056 /* gl_mini_station.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000056 /* gl_mini_station.cpp */; };
 		AB000058 /* intro.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000058 /* intro.cpp */; };
@@ -162,6 +164,8 @@
 		AA00006B /* steam_achievements.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../steam_achievements.cpp; sourceTree = SOURCE_ROOT; };
 		AA00006C /* presence.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../presence.cpp; sourceTree = SOURCE_ROOT; };
 		AA00006D /* steam_presence.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../steam_presence.cpp; sourceTree = SOURCE_ROOT; };
+		AA0000A2 /* invites.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../invites.cpp; sourceTree = SOURCE_ROOT; };
+		AA0000A3 /* steam_invites.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../steam_invites.cpp; sourceTree = SOURCE_ROOT; };
 		AA00004F /* savegame.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../savegame.h; sourceTree = SOURCE_ROOT; };
 		AA000052 /* preferences.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../preferences.cpp; sourceTree = SOURCE_ROOT; };
 		AA000053 /* preferences.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../preferences.h; sourceTree = SOURCE_ROOT; };
@@ -303,6 +307,8 @@
 			AA00006B /* steam_achievements.cpp */,
 			AA00006C /* presence.cpp */,
 			AA00006D /* steam_presence.cpp */,
+			AA0000A2 /* invites.cpp */,
+			AA0000A3 /* steam_invites.cpp */,
 			AA0000A0 /* achievement_journal.cpp */,
 			AA0000A1 /* game_center_achievements.mm */,
 			AA00004F /* savegame.h */,
@@ -481,6 +487,8 @@
 			AB00006B /* steam_achievements.cpp in Sources */,
 			AB00006C /* presence.cpp in Sources */,
 			AB00006D /* steam_presence.cpp in Sources */,
+			AB0000A2 /* invites.cpp in Sources */,
+			AB0000A3 /* steam_invites.cpp in Sources */,
 			AB0000A0 /* achievement_journal.cpp in Sources */,
 			AB0000A1 /* game_center_achievements.mm in Sources */,
 			AB000052 /* preferences.cpp in Sources */,

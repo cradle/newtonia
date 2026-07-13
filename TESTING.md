@@ -24,7 +24,8 @@ signatures copied verbatim from the real SDK; syntax-check any file that
 touches the Steam API against it:
 
 ```sh
-g++ -std=c++11 -fsyntax-only -DSTEAM_BUILD -Itest/steam_stub -I. -I/usr/include/SDL2 net_lobby.cpp menu.cpp
+g++ -std=c++11 -fsyntax-only -DSTEAM_BUILD -Itest/steam_stub -I. -I/usr/include/SDL2 \
+    net_lobby.cpp menu.cpp steam_presence.cpp steam_invites.cpp
 ```
 
 When adding a Steamworks call: verify the signature against the SDK docs /

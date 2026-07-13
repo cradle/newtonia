@@ -15,6 +15,7 @@
 #include "net_signal.h"
 #include "achievements.h"
 #include "presence.h"
+#include "invites.h"
 
 // gl_compat.h pulls in GLUT (for window management) and gles2_compat.h
 // (for the VBO/VAO/shader shim that replaces all legacy GL calls).
@@ -384,6 +385,12 @@ int main(int argc, char* argv[]) {
   // callbacks here, and the SDK's automatic stats delivery is dispatched on
   // an early SteamAPI_RunCallbacks() — unheard registrations queue forever.
   Achievements::init();
+  // Register the invite backend before the first callback pump (an invite
+  // accepted while running arrives via a Steam callback), and capture a
+  // "+connect <code>" the platform may have appended on a cold launch — the
+  // menu drains it and joins the room.
+  Invites::init();
+  Invites::capture_launch(argc, argv);
   load_preferences();
   old_width  = g_prefs.window_width;
   old_height = g_prefs.window_height;

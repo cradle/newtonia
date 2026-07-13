@@ -7,6 +7,7 @@
 
 #include "gl_compat.h"
 #include "glgame.h"
+#include "invites.h"
 #include "glstarfield.h"
 #include "mat4.h"
 #include "menu.h"
@@ -187,6 +188,10 @@ void NetLobby::schedule_rejoin_retry(const char *why, int delay_ms) {
 }
 
 NetLobby::~NetLobby() {
+  // Leaving the lobby (into the game once the peer connected, or back to the
+  // menu): no longer joinable — the co-op slot is full or gone. A no-op if we
+  // never advertised (joiner, or non-Steam build).
+  Invites::clear_joinable();
   delete session_;  // closes + deletes the transport it owns
   if (!session_ && transport_) {
     transport_->close();
@@ -447,6 +452,11 @@ void NetLobby::pump_signal(int delta) {
         g_prefs.last_hosted_code = room_code_;
         save_preferences();
         net_clipboard_write(room_code_);  // ready to paste to the friend
+        // Advertise the room to the platform invite system (Steam "Join
+        // Game" etc.). Cleared in the destructor once the slot fills or the
+        // host leaves. The platform only ferries this code — the connection
+        // still runs over signaling + WebRTC.
+        Invites::set_joinable(room_code_);
         NET_LOG("[lobby] room %s (%d turn servers)\n", room_code_.c_str(),
                (int)ice_servers_.size());
         if (transport_) {

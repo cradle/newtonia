@@ -17,8 +17,27 @@ class ISteamApps {
 public:
   virtual bool GetCurrentBetaName( char *pchName, int cchNameBufferSize ) = 0;
 };
+// Rich Presence surface used by steam_presence.cpp and steam_invites.cpp.
+class ISteamFriends {
+public:
+  virtual void SetRichPresence( const char *pchKey, const char *pchValue ) = 0;
+  virtual void ClearRichPresence() = 0;
+};
+// Fired when a friend accepts an invite while the game is already running;
+// m_rgchConnect carries the advertised "connect" string (steam_invites.cpp).
+struct GameRichPresenceJoinRequested_t {
+  char m_rgchConnect[256];
+};
+// Minimal stand-in for the SDK's CCallback registration helper — enough to
+// syntax-check the backends' member-callback wiring without the real SDK.
+template <class T, class P>
+class CCallback {
+public:
+  CCallback( T *pObj, void ( T::*func )( P * ) ) { (void)pObj; (void)func; }
+};
 inline bool SteamAPI_Init() { return false; }
 inline void SteamAPI_Shutdown() {}
 inline void SteamAPI_RunCallbacks() {}
 inline ISteamUtils *SteamUtils() { return nullptr; }
 inline ISteamApps *SteamApps() { return nullptr; }
+inline ISteamFriends *SteamFriends() { return nullptr; }
