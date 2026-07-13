@@ -1133,15 +1133,26 @@ void Ship::collide_grid(Grid &grid, int delta) {
   }
 
   // Shock bolts: damage the asteroids their arcs reached this frame. Non-asteroid
-  // targets (enemies, stations) are left in `struck` for GLGame to handle, which
-  // owns those lists and their damage APIs.
+  // targets (enemies, stations, hazards) are left in `struck` for GLGame to
+  // handle, which owns those lists and their damage APIs.
+  //
+  // The arc only chains onward from a *killing* hit: if the asteroid is
+  // invincible, or survives the hit (tough with health left, phasing while a
+  // ghost, teleporting mid-evade), the bolt stops where it is instead of arcing
+  // past to the next target.
   for(auto &bolt : shocks) {
     for(size_t i = 0; i < bolt.struck.size(); ) {
       Object *obj = bolt.struck[i];
       if(dynamic_cast<Asteroid*>(obj)) {
-        if(obj->alive && !obj->invincible && obj->kill()) {
-          score += obj->get_value() * multiplier();
-          credit_asteroid_kill(obj);
+        if(obj->alive) {
+          if(obj->invincible) {
+            bolt.stop();  // absorbed by an invincible asteroid
+          } else if(obj->kill()) {
+            score += obj->get_value() * multiplier();
+            credit_asteroid_kill(obj);  // destroyed — arc chains onward
+          } else {
+            bolt.stop();  // survived the hit — arc ends here
+          }
         }
         bolt.struck[i] = bolt.struck.back();
         bolt.struck.pop_back();
