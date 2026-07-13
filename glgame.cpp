@@ -1,6 +1,7 @@
 #include "glgame.h"
 #include "achievements.h"
 #include "presence.h"
+#include "invites.h"
 #include "steam_build.h"
 #include <cstdlib>
 #include "asset_path.h"
@@ -284,6 +285,14 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
 
 GLGame::~GLGame() {
   save_progress();
+  // Host tore down while re-advertising the open slot (peer left, then we
+  // returned to the menu / quit / game over): stop showing the "Join Game"
+  // option.
+  if (net_invite_advertised_) {
+    Invites::clear_joinable();
+    net_invite_advertised_ = false;
+    NET_LOG("net: invite - room no longer joinable (game teardown)\n");
+  }
   if (net_mode_ == NetClient) Ship::net_quiet_respawn = false;
   if (net_mode_ == NetHost) Ship::net_report_bounces = false;
   // Leaving an online game: tell the peer (best effort — a hard close is
@@ -4093,6 +4102,24 @@ void GLGame::tick(int delta) {
         net_host_rejoin_poll(delta);  // room open: play on, await rejoin
       else
         return;  // frozen; draw shows CONNECTION LOST
+    }
+    // Steam invite: while the peer is gone but the room is still open for
+    // rejoin (net_signal_ live), re-advertise as joinable so a friend — or
+    // the dropped peer — can drop into the empty co-op slot via a platform
+    // Join. Edge-detected so the "connect" key is written only on the
+    // transitions, not every frame; cleared again the moment the slot fills
+    // (net_connection_lost_ back to false) or the room is truly lost.
+    bool joinable_now =
+        net_connection_lost_ && net_signal_ != NULL && !net_room_code_.empty();
+    if (joinable_now && !net_invite_advertised_) {
+      Invites::set_joinable(net_room_code_);
+      net_invite_advertised_ = true;
+      NET_LOG("net: invite - room %s joinable (peer gone)\n",
+              net_room_code_.c_str());
+    } else if (!joinable_now && net_invite_advertised_) {
+      Invites::clear_joinable();
+      net_invite_advertised_ = false;
+      NET_LOG("net: invite - room no longer joinable\n");
     }
     if (net_banner_ms_ > 0) net_banner_ms_ -= delta;
   }

@@ -411,7 +411,7 @@ int main(int argc, char* argv[]) {
 #endif
   }
   init_controllers_and_audio();
-  atexit([]{ save_preferences(); if (game) game->focus_lost(); Presence::clear(); steam_shutdown(); });
+  atexit([]{ save_preferences(); if (game) game->focus_lost(); Presence::clear(); Invites::clear_joinable(); steam_shutdown(); });
   game = new StateManager();
   for(int i = 0; i < 2; i++) {
     if(controllers[i]) game->controller_added(controllers[i]);

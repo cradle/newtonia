@@ -360,6 +360,8 @@ private:
   NetSignal *net_signal_ = nullptr;     // owned; null in the manual flow
   std::string net_room_code_;
   std::string net_room_token_;        // proves room ownership on reclaim
+  bool net_invite_advertised_ = false; // host: "connect" key live for rejoin
+
   int net_signal_retry_ms_ = 0;       // >0: reclaim attempt countdown
   int net_client_rejoin_ms_ = 0;      // client: auto-rejoin countdown
   std::vector<std::string> net_ice_;  // TURN triples for rejoin re-hosts
