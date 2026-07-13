@@ -22,6 +22,12 @@ SDL*
 android/.gradle/
 android/app/build/
 android/build/
+## Android native build cache + generated files
+android/app/.cxx/
+android/app/src/main/assets/
+android/local.properties
+## iOS CI generated source list (.github/workflows/ios.yml)
+srcs.txt
 ## Web build output
 web/dist/
 .claude/
