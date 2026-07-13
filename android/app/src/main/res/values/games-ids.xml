@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Google Play Games Services IDs (ACHIEVEMENTS.md §2, Play Games backend).
+
+     game_services_project_id: replace the placeholder with the numeric
+     project ID the Play Console assigns when Play Games Services is
+     configured for the app (referenced from AndroidManifest.xml as the
+     com.google.android.gms.games.APP_ID meta-data). With the placeholder in
+     place the SDK initialises but sign-in fails, so achievements are
+     silently off — the game is unaffected.
+
+     Achievements: uncomment each entry and paste the ID the Play Console
+     generates for it. The resource NAMES are fixed by the mapping table in
+     play_games_achievements.cpp (authoritative) — keep them exactly as
+     written here even though the console's own "Get resources" export
+     derives different names from the display names. An entry left missing
+     just drops that achievement's earns with a logcat warning. coop_clear
+     is deliberately absent until netplay (ACHIEVEMENTS.md §5). -->
+<resources>
+    <string name="game_services_project_id" translatable="false">0</string>
+    <!--
+    <string name="achievement_first_kill" translatable="false">CgkI...</string>
+    <string name="achievement_clear_level1" translatable="false">CgkI...</string>
+    <string name="achievement_specials_7" translatable="false">CgkI...</string>
+    <string name="achievement_black_hole_survivor" translatable="false">CgkI...</string>
+    <string name="achievement_mini_station_kill" translatable="false">CgkI...</string>
+    <string name="achievement_shield_ram" translatable="false">CgkI...</string>
+    <string name="achievement_shield_ram_asteroid" translatable="false">CgkI...</string>
+    <string name="achievement_station_destroyed" translatable="false">CgkI...</string>
+    <string name="achievement_enemies_10" translatable="false">CgkI...</string>
+    <string name="achievement_nova_detonated" translatable="false">CgkI...</string>
+    <string name="achievement_no_damage_clear" translatable="false">CgkI...</string>
+    <string name="achievement_no_secondary_level10" translatable="false">CgkI...</string>
+    <string name="achievement_weapons_7" translatable="false">CgkI...</string>
+    <string name="achievement_kills_1000" translatable="false">CgkI...</string>
+    <string name="achievement_kills_10000_lifetime" translatable="false">CgkI...</string>
+    <string name="achievement_score_3m" translatable="false">CgkI...</string>
+    <string name="achievement_reach_level15" translatable="false">CgkI...</string>
+    -->
+</resources>

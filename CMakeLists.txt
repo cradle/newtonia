@@ -65,4 +65,7 @@ target_link_libraries(newtonia
     ${openslES-lib}
 )
 
-target_compile_definitions(newtonia PRIVATE __ANDROID__)
+# PLAY_GAMES_BUILD enables the Play Games achievements backend
+# (play_games_achievements.cpp + PlayGamesAchievements.java); this CMake file
+# only builds the Android library, so it is always on here.
+target_compile_definitions(newtonia PRIVATE __ANDROID__ PLAY_GAMES_BUILD)

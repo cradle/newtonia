@@ -32,6 +32,14 @@ public class NewtoniaActivity extends SDLActivity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        // Retry Play Games sign-in / flush queued earns after backgrounding
+        // (no-op until the native side has initialised the backend).
+        PlayGamesAchievements.onResume();
+    }
+
+    @Override
     protected String[] getLibraries() {
         // SDL2 and SDL2_mixer must be listed before the game library so they
         // are loaded first by the class loader.
