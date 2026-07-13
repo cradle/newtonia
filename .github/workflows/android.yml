@@ -36,7 +36,19 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install NDK and CMake
-        run: sdkmanager "ndk;26.3.11579264" "cmake;3.22.1"
+        # sdkmanager occasionally fetches a corrupt archive ("Error on ZipFile
+        # unknown archive") and aborts; retry a few times so a flaky download
+        # doesn't fail the whole build.
+        run: |
+          for attempt in 1 2 3; do
+            if sdkmanager "ndk;26.3.11579264" "cmake;3.22.1"; then
+              exit 0
+            fi
+            echo "sdkmanager failed (attempt $attempt), retrying in $((attempt * 10))s..."
+            sleep $((attempt * 10))
+          done
+          echo "sdkmanager failed after 3 attempts" >&2
+          exit 1
 
       - name: Copy audio assets
         run: mkdir -p newtonia/android/app/src/main/assets && cp -r newtonia/audio newtonia/android/app/src/main/assets/
