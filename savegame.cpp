@@ -330,6 +330,20 @@ static bool read_mini_station(FILE *f, Save::MiniStation &s) {
     return true;
 }
 
+static bool write_hazard(FILE *f, const Save::Hazard &h) {
+    return wv(f, h.kind)
+        && wv(f, h.pos_x) && wv(f, h.pos_y)
+        && wv(f, h.vel_x) && wv(f, h.vel_y)
+        && wv(f, h.timer);
+}
+
+static bool read_hazard(FILE *f, Save::Hazard &h) {
+    return rv(f, h.kind)
+        && rv(f, h.pos_x) && rv(f, h.pos_y)
+        && rv(f, h.vel_x) && rv(f, h.vel_y)
+        && rv(f, h.timer);
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 bool Save::save_exists() {
@@ -395,6 +409,12 @@ bool Save::save_game(const Save::GameState &s) {
         ok = ok && wv(f, (uint32_t)p.weapons_fired_mask);
     }
     ok = ok && wv(f, (uint8_t)s.cheated);
+
+    // v12 append: mid-game hazards (pulsar/comet/seeker). Written last so a v11
+    // reader stops after the cheat flag and a v12 reader picks these up.
+    cnt = (uint32_t)s.hazards.size();
+    ok = ok && wv(f, cnt);
+    for (const auto &h : s.hazards) ok = ok && write_hazard(f, h);
 
     fclose(f);
 
@@ -475,6 +495,15 @@ bool Save::load_game(Save::GameState &s) {
         uint8_t cheated = 0;
         ok = ok && rv(f, cheated);
         s.cheated = (bool)cheated;
+    }
+
+    // Mid-game hazards were appended in v12; older saves end before them.
+    if (version >= 12) {
+        ok = ok && rv(f, cnt);
+        if (ok) {
+            s.hazards.resize(cnt);
+            for (auto &h : s.hazards) ok = ok && read_hazard(f, h);
+        }
     }
 
     fclose(f);

@@ -12,6 +12,7 @@
 #include "gl_mini_station.h"
 #include "asteroid.h"
 #include "black_hole.h"
+#include "hazard.h"
 #include "pickup.h"
 #include "extra_life.h"
 #include "weapon_pickup.h"
@@ -57,6 +58,11 @@ public:
   list<Asteroid*> *dead_objects; // killed asteroids with lingering debris
   list<Pickup*> *pickups;
   list<BlackHole*> *black_holes;
+  list<Hazard*> *hazards;        // mid-game obstacles (pulsar/comet/seeker)
+
+  // First hazard of a given kind, or NULL — used by the intro screen to focus
+  // on the newly-introduced obstacle.
+  Hazard *first_hazard(Hazard::Kind kind) const;
 
   int num_x_viewports() const;
   int num_y_viewports() const;
@@ -71,6 +77,9 @@ public:
   void release_player_controls();
 private:
   void add_asteroids();
+  // Spawn the mid-game hazards this generation calls for (counts scale with
+  // generation, like the special-asteroid counts). Appends to `hazards`.
+  void add_hazards();
   void add_player2(SDL_GameController *ctrl);
   Save::GameState build_save_data() const;
   void save_progress();   // save only when at least one player is alive or has lives

@@ -103,6 +103,19 @@ struct BlackHole {
     float pos_x, pos_y;
 };
 
+// ── Hazard ───────────────────────────────────────────────────────────────────
+// The environmental obstacles introduced on the mid-game "quiet" levels
+// (generations 9/11/12). One struct for all kinds; `kind` selects the
+// behaviour (see hazard.h). `timer` carries the PULSAR shockwave phase;
+// `vel_*` the COMET/SEEKER travel velocity (PULSAR is stationary).
+
+struct Hazard {
+    uint8_t kind;               // Hazard::Kind
+    float   pos_x, pos_y;
+    float   vel_x, vel_y;
+    float   timer;
+};
+
 // ── Enemy ship ───────────────────────────────────────────────────────────────
 
 struct Enemy {
@@ -148,7 +161,7 @@ struct MiniStation {
 
 struct GameState {
     static constexpr uint32_t MAGIC   = 0x4E57544E;  // "NWTN"
-    static constexpr uint16_t VERSION = 11;
+    static constexpr uint16_t VERSION = 12;
     // Oldest save format we can still read. Saves from MIN_VERSION..VERSION all
     // load; anything older (or from a newer build) is ignored. To keep old saves
     // working across a version bump, only ever APPEND new fields at the end of
@@ -172,6 +185,8 @@ struct GameState {
     std::vector<BlackHole> black_holes;
     Station                station;
     MiniStation            mini_station;
+    // v12 append (end of file): mid-game hazards (pulsar/comet/seeker).
+    std::vector<Hazard>    hazards;
 };
 
 // ── API ───────────────────────────────────────────────────────────────────────

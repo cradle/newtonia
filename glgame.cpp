@@ -75,6 +75,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   dead_objects = new std::list<Asteroid*>;
   pickups = new std::list<Pickup*>;
   black_holes = new std::list<BlackHole*>;
+  hazards = new std::list<Hazard*>;
 
   WrappedPoint::set_boundaries(world);
 
@@ -140,6 +141,9 @@ GLGame::GLGame(SDL_GameController *controller) :
       station = new GLStation(grid, enemies, players, (std::list<Object*>*)objects);
     Achievements::note_cheat_used();
   }
+
+  // Mid-game hazards accumulated by this generation (none at generation 0).
+  add_hazards();
 
   update_presence();
 
@@ -211,6 +215,11 @@ GLGame::~GLGame() {
     black_holes->pop_back();
   }
   delete black_holes;
+  while(!hazards->empty()) {
+    delete hazards->back();
+    hazards->pop_back();
+  }
+  delete hazards;
   delete starfield;
   if(station != NULL)
     delete station;
@@ -265,6 +274,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   dead_objects = new std::list<Asteroid*>;
   pickups = new std::list<Pickup*>;
   black_holes = new std::list<BlackHole*>;
+  hazards = new std::list<Hazard*>;
 
   WrappedPoint::set_boundaries(world);
 
@@ -303,6 +313,12 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   // Restore black holes
   for (const auto &sbh : save.black_holes) {
     black_holes->push_back(new BlackHole(WrappedPoint(sbh.pos_x, sbh.pos_y)));
+  }
+
+  // Restore mid-game hazards (position, velocity and shockwave phase). A
+  // seeker that had already been shot down was not saved, so nothing to make.
+  for (const auto &sh : save.hazards) {
+    hazards->push_back(Hazard::from_state(sh, world));
   }
 
   // Restore players — player 1 is GLShip, player 2+ is GLCar (matches add_player2)
@@ -448,6 +464,12 @@ Save::GameState GLGame::build_save_data() const {
   for (auto* bh : *black_holes)
     s.black_holes.push_back({bh->position.x(), bh->position.y()});
 
+  // A destroyed seeker (still around only for its fading debris) isn't worth
+  // persisting; everything else is captured with its live state.
+  for (auto* h : *hazards)
+    if (h->is_alive())
+      s.hazards.push_back(h->capture_state());
+
   if (station) {
     s.station = station->capture_state();
   } else {
@@ -498,10 +520,31 @@ void GLGame::add_asteroids() {
   }
 }
 
+void GLGame::add_hazards() {
+  // Counts scale with generation, mirroring the special-asteroid formulas: the
+  // introducing level gets one, later levels accumulate more.
+  //   PULSAR from generation 9  (displayed level 10)
+  //   COMET  from generation 11 (displayed level 12)
+  //   SEEKER from generation 12 (displayed level 13)
+  int num_pulsar = (generation >= 9)  ? (generation - 9)  / 3 + 1 : 0;
+  int num_comet  = (generation >= 11) ? (generation - 11) / 2 + 1 : 0;
+  int num_seeker = (generation >= 12) ? (generation - 12) / 2 + 1 : 0;
+  for(int i = 0; i < num_pulsar; i++) hazards->push_back(new Hazard(Hazard::PULSAR, world));
+  for(int i = 0; i < num_comet;  i++) hazards->push_back(new Hazard(Hazard::COMET,  world));
+  for(int i = 0; i < num_seeker; i++) hazards->push_back(new Hazard(Hazard::SEEKER, world));
+}
+
+Hazard *GLGame::first_hazard(Hazard::Kind kind) const {
+  for(auto* h : *hazards)
+    if(h->kind_of() == kind) return h;
+  return NULL;
+}
+
 void GLGame::maybe_start_intro() {
   const char *name = NULL;
   Asteroid *display = NULL;
   Intro::Kind kind = Intro::ASTEROID;
+  int hazard_kind = -1;  // Hazard::Kind for Intro::HAZARD, else unused
   switch (generation) {
     case 1:  display = new Asteroid(true);
              name = "INVINCIBLE";  break;
@@ -519,7 +562,13 @@ void GLGame::maybe_start_intro() {
              name = "ARMOURED";    break;
     case 8:  display = new Asteroid(false, false, false, false, false, false, false, true);
              name = "PHASING";     break;
+    case 9:  if (first_hazard(Hazard::PULSAR)) { kind = Intro::HAZARD; name = "PULSAR";
+             hazard_kind = Hazard::PULSAR; } break;
     case 10: if (mini_station != NULL)  { kind = Intro::MINI_STATION; name = "MINI STATION"; }  break;
+    case 11: if (first_hazard(Hazard::COMET))  { kind = Intro::HAZARD; name = "COMET";
+             hazard_kind = Hazard::COMET; }  break;
+    case 12: if (first_hazard(Hazard::SEEKER)) { kind = Intro::HAZARD; name = "SEEKER";
+             hazard_kind = Hazard::SEEKER; } break;
     case 13: if (!black_holes->empty()) { kind = Intro::BLACK_HOLE;   name = "BLACK HOLE"; }    break;
     case 14: if (station != NULL)       { kind = Intro::STATION;      name = "ENEMY STATION"; } break;
     default: return;
@@ -528,7 +577,7 @@ void GLGame::maybe_start_intro() {
 
   // The intro adopts this state (ownership transfers, so the StateManager
   // won't delete it) and hands it back when the player presses fire.
-  request_state_change(new Intro(this, kind, name, display), true);
+  request_state_change(new Intro(this, kind, name, display, hazard_kind), true);
 }
 
 void GLGame::release_player_controls() {
@@ -736,6 +785,13 @@ void GLGame::tick(int delta) {
           delete mini_station;
         mini_station = new GLMiniStation(grid, players, (std::list<Object*>*)objects);
       }
+      // Rebuild the mid-game hazards for the new generation (fresh positions,
+      // like the mini-station gets a fresh heading each level).
+      while(!hazards->empty()) {
+        delete hazards->back();
+        hazards->pop_back();
+      }
+      add_hazards();
       while(!pickups->empty()) {
         delete pickups->back();
         pickups->pop_back();
@@ -805,6 +861,11 @@ void GLGame::tick(int delta) {
     // Step black holes (visual animation only).
     for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
       (*bhi)->step(step_size);
+    }
+
+    // Advance the mid-game hazards (pulsar cycle, comet drift, seeker homing).
+    for(auto* h : *hazards) {
+      h->update(step_size, players);
     }
 
     std::list<Asteroid*>::iterator oi;
@@ -1177,6 +1238,111 @@ void GLGame::tick(int delta) {
       }
     }
 
+    /* COLLIDE SHIPS AND PLAYER SHOTS WITH MID-GAME HAZARDS */
+    for(auto* h : *hazards) {
+      switch(h->kind_of()) {
+        case Hazard::PULSAR: {
+          // The expanding shockwave hurls any ship its front reaches outward,
+          // killing it unless it is invincible (respawn shield / god mode).
+          if(!h->wave_active()) break;
+          float wr = h->wave_radius();
+          for(o = players->begin(); o != players->end(); o++) {
+            Ship* s = (*o)->ship;
+            if(!s->is_alive()) continue;
+            if(fabsf(s->position.distance_to(h->position) - wr) > Hazard::WAVE_BAND) continue;
+            Point self = h->position.closest_to(s->position);
+            Point out(s->position.x() - self.x(), s->position.y() - self.y());
+            float m = out.magnitude();
+            if(m > 1e-4f) s->velocity += (out / m) * Hazard::KNOCKBACK;
+            s->explode(s->position, s->velocity);
+            s->kill_stop();  // zeroes velocity only if the kill lands (not invincible)
+            if(!s->is_alive()) s->detonate();
+          }
+          for(o = enemies->begin(); o != enemies->end(); o++) {
+            Ship* s = (*o)->ship;
+            if(!s->is_alive()) continue;
+            if(fabsf(s->position.distance_to(h->position) - wr) > Hazard::WAVE_BAND) continue;
+            Point self = h->position.closest_to(s->position);
+            Point out(s->position.x() - self.x(), s->position.y() - self.y());
+            float m = out.magnitude();
+            if(m > 1e-4f) s->velocity += (out / m) * Hazard::KNOCKBACK;
+            s->kill();
+          }
+          break;
+        }
+        case Hazard::COMET: {
+          // Indestructible; ploughs through ships, lethal unless invincible.
+          for(o = players->begin(); o != players->end(); o++) {
+            Ship* s = (*o)->ship;
+            if(s->is_alive() && h->Object::collide(*s)) {
+              s->explode(s->position, h->velocity);
+              s->kill_stop();
+              if(!s->is_alive()) s->detonate();
+            }
+          }
+          for(o = enemies->begin(); o != enemies->end(); o++) {
+            Ship* s = (*o)->ship;
+            if(s->is_alive() && h->Object::collide(*s)) s->kill();
+          }
+          break;
+        }
+        case Hazard::SEEKER: {
+          // Rams players (lethal unless invincible) and dies to a single shot
+          // for a flat bounty. Passes through asteroids like the mini-station.
+          if(!h->is_alive()) break;
+          bool killed = false;
+          for(o = players->begin(); o != players->end() && !killed; o++) {
+            Ship* s = (*o)->ship;
+            if(s->is_alive() && h->Object::collide(*s)) {
+              s->explode(s->position, h->velocity);
+              s->kill_stop();
+              if(!s->is_alive()) s->detonate();
+              h->destroy();
+              killed = true;
+              break;
+            }
+            for(size_t i = 0; i < s->bullets.size();) {
+              if(h->Object::collide(s->bullets[i])) {
+                s->explode(s->bullets[i].position, h->velocity);
+                s->bullets[i] = std::move(s->bullets.back());
+                s->bullets.pop_back();
+                s->score += Hazard::SEEKER_REWARD;
+                h->destroy();
+                killed = true;
+                break;
+              } else { ++i; }
+            }
+            if(killed) break;
+            for(size_t i = 0; i < s->missiles.size();) {
+              if(h->Object::collide(s->missiles[i])) {
+                s->detonate(s->missiles[i].position, s->missiles[i].velocity, 25);
+                if(s->missile_explode_sound != NULL)
+                  Mix_PlayChannel(-1, s->missile_explode_sound, 0);
+                s->missiles[i] = std::move(s->missiles.back());
+                s->missiles.pop_back();
+                s->score += Hazard::SEEKER_REWARD;
+                h->destroy();
+                killed = true;
+                break;
+              } else { ++i; }
+            }
+          }
+          if(killed && station_explode_sound != NULL)
+            Mix_PlayChannel(-1, station_explode_sound, 0);
+          break;
+        }
+      }
+    }
+    // Reap seekers whose debris burst has faded.
+    for(auto hi = hazards->begin(); hi != hazards->end();) {
+      if((*hi)->is_removable()) {
+        delete *hi;
+        hi = hazards->erase(hi);
+      } else {
+        ++hi;
+      }
+    }
+
     /* COLLIDE PLAYERS AND PLAYER SHOTS WITH MINI-STATION */
     // The roaming mini-station dies to a single player shot or to a ram, and
     // rewards a flat bounty. It passes straight through asteroids, so only
@@ -1350,6 +1516,10 @@ void GLGame::draw_objects(float direction, bool minimap) const {
 
   for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
     (*bhi)->draw(minimap);
+  }
+
+  for(auto* h : *hazards) {
+    h->draw(minimap);
   }
 
   AsteroidDrawer::draw_batch(objects, dead_objects, direction, minimap,

@@ -179,6 +179,7 @@ Object                          — position, velocity, radius, collision, step(
     └── Asteroid                — breakup mechanics, spawns children on death
 Pickup (: Object)               — collectible items dropped by asteroids
 BlackHole (: Object)            — stationary gravitational hazard
+Hazard (: Object)               — mid-game obstacle; kind = pulsar/comet/seeker
 Particle (: Object)             — bullet/trail particle with TTL
 ```
 
@@ -198,11 +199,12 @@ When all killable asteroids are destroyed, a 5-second countdown (tick sounds) ru
 - World grows by 50×50 per generation; at generation 14 it instead grows by 3000×3000
 - Asteroid count: `default_num_asteroids + generation * extra_num_asteroids`
 - Special asteroid types unlock by generation: reflective ≥ 2, teleporting ≥ 3, invisible ≥ 4, quantum ≥ 5, tough ≥ 6, armoured ≥ 7, phasing ≥ 8 (counts scale with generation)
+- `Hazard` obstacles fill the otherwise-quiet mid-game levels (`hazard.h/cpp`, spawned by `GLGame::add_hazards()`, counts scale with generation like the specials): pulsar ≥ 9, comet ≥ 11, seeker ≥ 12
 - `GLMiniStation` (mini-station) spawns from generation ≥ 10
 - Black hole spawns at world centre from generation ≥ 13
 - `GLStation` (enemy station) spawns from generation ≥ 14
 - Pickups are cleared, the starfield and grid are rebuilt, players respawn, and progress is auto-saved
-- Every level that introduces a new object type gets an intro screen — the `Intro` state (`intro.h/cpp`; asteroid specials at 1–8, mini-station at 10, black hole at 13, station at 14; a new game starts straight into play): the world freezes and the object spins centre-screen with its name and a flashing "PRESS FIRE TO START" ("TAP FIRE TO START" in touch mode); any player's shoot input (key, controller A/right trigger, the touch fire button — not a tap anywhere) dismisses it, and the touch OSD is drawn on the intro so the fire button is findable, or it auto-starts after 5 s (`Intro::auto_start_ms`) with no input (`GLGame::maybe_start_intro()` decides whether one is due and hands the game to a new `Intro`; not persisted in saves — resuming a save never re-shows one); a looping title-style tune (`audio/intro.wav`) plays on its own channel while other sound channels stay paused, halted on dismissal
+- Every level that introduces a new object type gets an intro screen — the `Intro` state (`intro.h/cpp`; asteroid specials at 1–8, pulsar at 9, mini-station at 10, comet at 11, seeker at 12, black hole at 13, station at 14; a new game starts straight into play): the world freezes and the object spins centre-screen with its name and a flashing "PRESS FIRE TO START" ("TAP FIRE TO START" in touch mode); any player's shoot input (key, controller A/right trigger, the touch fire button — not a tap anywhere) dismisses it, and the touch OSD is drawn on the intro so the fire button is findable, or it auto-starts after 5 s (`Intro::auto_start_ms`) with no input (`GLGame::maybe_start_intro()` decides whether one is due and hands the game to a new `Intro`; not persisted in saves — resuming a save never re-shows one); a looping title-style tune (`audio/intro.wav`) plays on its own channel while other sound channels stay paused, halted on dismissal
 
 ## Key Systems
 
@@ -267,6 +269,18 @@ Asteroids (`asteroid.h/cpp`) are 9-vertex irregular polygons with per-vertex rad
 | `phasing` | Cycles between solid and intangible states (`phased`, `phase_timer`) |
 
 Serialization: `capture_state()` / `restore_state()` for save/load.
+
+### Mid-game Hazards
+
+`Hazard` (`hazard.h/cpp`) is a single `Object` subclass whose `kind` selects one of three behaviours (the same flag-selects-behaviour approach as `Asteroid`). Introduced on the mid-game generations that otherwise added nothing new — 9, 11, 12 (displayed levels 10, 12, 13) — with counts scaling by generation. Like the black hole they are non-scoring obstacles (the seeker is the lone exception, paying a flat bounty when shot down; no achievements). `GLGame` owns them in a `list<Hazard*> *hazards`, wired exactly like `black_holes`: spawned by `add_hazards()` on each generation rebuild, advanced via `Hazard::update(delta, players)` in the step loop, collided against ships/shots just before the mini-station block, drawn in `draw_objects()`, and serialized in the savegame.
+
+| Kind | Behaviour |
+|------|-----------|
+| `PULSAR` | Stationary; charges then fires an expanding shockwave ring (`wave_active()` / `wave_radius()`) that hurls any ship its front reaches outward (`KNOCKBACK`), killing it unless invincible. Rendered as a neutron star: hot core, accretion ring, rotating lighthouse beams, amber double-ring shockwave |
+| `COMET` | Indestructible; a solid-white, asteroid-shaped body that tumbles as it cruises in a straight line (wrapping the world) trailing debris; lethal to any ship it strikes |
+| `SEEKER` | Homes on the nearest player and rams it (lethal unless invincible); dies to a single shot for `SEEKER_REWARD`. Passes through asteroids like the mini-station; rendered as a blinking red drone |
+
+Serialization: `capture_state()` / `from_state()` (kind, position, velocity, shockwave phase). Destroyed seekers aren't persisted.
 
 ### Behaviours
 
@@ -335,14 +349,15 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 
 ### Save / Load
 
-**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 11:
+**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 12:
 - `WeaponEntry`: kind, weapon_index, ammo
 - `Player`: score, lives, kills, respawning flag, position, velocity, facing, weapons, nova state, achievements bookkeeping (asteroid kills, enemy-ship kills, died-this-generation, weapons-fired mask; appended in v11)
 - `Asteroid`: position, velocity, radius, health, all special flags and transient state
 - `Pickup`: type, position, weapon_index
 - `BlackHole`, `Enemy`, `Station`: positional/state data (Station includes its deployed enemies)
 - `MiniStation`: present flag, alive, position, drift velocity, rotations, shot timer
-- `GameState`: generation, world size, level_cleared, players, all object lists, game-scoped achievements cheat flag (appended in v11)
+- `Hazard`: kind, position, velocity, shockwave phase timer (appended in v12)
+- `GameState`: generation, world size, level_cleared, players, all object lists, game-scoped achievements cheat flag (appended in v11), hazard list (appended in v12)
 
 **Backward compatibility:** `GameState::MIN_VERSION..VERSION` all load; older or newer files are ignored. New fields are only ever **appended at the end** and read back gated on `version >= N`, so an older save stops short and the new fields take their defaults (e.g. v9 saves load with no mini-station). Loading then re-saving upgrades the file to the current `VERSION`. Keep this convention when bumping the version so existing saves survive.
 
