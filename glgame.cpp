@@ -2167,6 +2167,12 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
         dead_objects->pop_back();
       }
       Asteroid::num_killable = 0;
+      // Level completion now also requires the hazards to be gone, so the
+      // skip-level cheat must clear them too or the clear never triggers.
+      while(!hazards->empty()) {
+        delete hazards->back();
+        hazards->pop_back();
+      }
   }
 
   if (key == (unsigned char)gk.toggle_friendly_fire) {
