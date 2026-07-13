@@ -212,7 +212,8 @@ over the SDL window once it exists.
    turn Game Center on for the app in App Store Connect. (Local Xcode
    device builds sign with `ios/EntitlementsDev.plist` via the project's
    `CODE_SIGN_ENTITLEMENTS`, so sandbox testing works without any of
-   this — automatic signing manages the dev profile.)
+   this — automatic signing manages the dev profile.) **Done 2026-07-13 —
+   capability enabled, profile regenerated, and the secret re-encoded.**
 2. Define **17 achievements** (all of §5 except `coop_clear`) with exactly
    the reverse-DNS identifiers from the mapping table in
    `game_center_achievements.mm` (the table is authoritative):
