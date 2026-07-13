@@ -83,9 +83,9 @@ void Overlay::net_overlays(const GLGame *glgame) {
     // A "P2 DISCONNECTED" header over the room code (steady, no blink): the
     // host may be reading the code out to the other player, and it explains
     // why the code is back on screen.
-    Typer::draw_centered(0, vh * 0.80f, "P2 DISCONNECTED", 20);
+    Typer::draw_centered(0, vh * 0.80f, "PLAYER 2 DISCONNECTED", 20);
     std::string room = "ROOM " + glgame->net_room_code_;
-    Typer::draw_centered(0, vh * 0.72f, room.c_str(), 18);
+    Typer::draw_centered(0, vh * 0.67f, room.c_str(), 18);
   } else if (glgame->net_connection_lost_ &&
              glgame->net_mode_ == GLGame::NetClient &&
              !glgame->net_room_code_.empty()) {
