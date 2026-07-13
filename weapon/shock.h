@@ -20,6 +20,7 @@
 // transient: it grows for a handful of frames then fades out.
 struct ShockBolt {
   std::vector<Point>   points;      // polyline; points[0] == origin at the gun
+  Point                main_dir;    // firing direction; the bolt stays in its front 180°
   Point                heading;     // current (un-jittered) growth direction
   float                seg_accum;   // ms accumulated toward the next segment
   bool                 growing;

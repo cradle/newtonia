@@ -20,7 +20,8 @@ const float ShockBolt::FADE_MS      = 150.0f;
 static inline float frand() { return rand() / (float)RAND_MAX; }
 
 ShockBolt::ShockBolt(WrappedPoint origin, Point facing_dir, Object *owner)
-  : heading(facing_dir.normalized()),
+  : main_dir(facing_dir.normalized()),
+    heading(facing_dir.normalized()),
     seg_accum(0.0f),
     growing(true),
     life(1.0f),
@@ -42,7 +43,11 @@ Object *ShockBolt::seek_target(const Point &tip, std::list<Object*> *lst,
     for (Object *a : avoid) if (a == o) { skip = true; break; }
     if (skip) continue;
     Point op = o->position.closest_to(tip);
-    float d = (op - tip).magnitude() - o->radius;
+    Point to_o = op - tip;
+    // Only seek targets ahead of the tip within the front 180° of the firing
+    // direction, so the arc never reaches backward past the ship.
+    if (to_o.x() * main_dir.x() + to_o.y() * main_dir.y() <= 0.0f) continue;
+    float d = to_o.magnitude() - o->radius;
     if (d < best_dist) { best_dist = d; best = o; }
   }
   return best;
@@ -66,6 +71,13 @@ void ShockBolt::grow_segment(std::list<Object*> *asteroids, std::list<Object*> *
   // sideways, giving the staggered forked-lightning look.
   Point seg_dir = base;
   seg_dir.rotate((frand() - 0.5f) * SPREAD);
+  // Keep every segment within the front 180° of the firing direction: if the
+  // jitter (or a boundary target) tipped it backward, clamp to the ±90° edge.
+  if (seg_dir.x() * main_dir.x() + seg_dir.y() * main_dir.y() < 0.0f) {
+    Point perp(-main_dir.y(), main_dir.x());
+    float side = seg_dir.x() * perp.x() + seg_dir.y() * perp.y();
+    seg_dir = (side >= 0.0f) ? perp : Point(-perp.x(), -perp.y());
+  }
   Point next = tip + seg_dir * SEGMENT_LEN;
   next += seg_dir.perpendicular() * ((frand() - 0.5f) * STAGGER);
   points.push_back(next);

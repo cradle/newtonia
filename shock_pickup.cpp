@@ -10,7 +10,7 @@ ShockPickup::ShockPickup(WrappedPoint pos) : Pickup(pos) {
 }
 
 void ShockPickup::apply(Ship *ship) {
-  ship->add_shock(8);
+  ship->add_shock(100);
 }
 
 void ShockPickup::draw(float world_rotation) const {
