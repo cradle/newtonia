@@ -76,6 +76,12 @@ private:
   void join_unreachable(const char *why);
   void code_entry_key(unsigned char key);
   void schedule_rejoin_retry(const char *why, int delay_ms);
+  // A rejoin that got as far as a live session (handshake done) but then had
+  // its transport flap — common in the first seconds after a network returns.
+  // In rejoin mode with budget left, tear the dead session down and re-enter
+  // the retry loop instead of failing terminally. Returns true if it did;
+  // false means this isn't a retryable rejoin and the caller should fail.
+  bool rejoin_retry_after_session_loss(const char *why);
   // Controller support (Steam Deck / gamepad-only setups): CodeEntry
   // shows a character-picker grid of the code alphabet once a controller
   // is seen — d-pad/stick moves, A or right trigger types, B deletes.

@@ -189,6 +189,28 @@ void NetLobby::schedule_rejoin_retry(const char *why, int delay_ms) {
   if (rejoin_retry_ms_ <= 0) rejoin_retry_ms_ = delay_ms;
 }
 
+// The handshake completed on a rejoin (WaitConnect Ready / Connected), then
+// the fresh transport failed — a WebRTC path routinely flaps once in the
+// first seconds after wifi/cell returns. Giving up here stranded the joiner
+// on "CONNECTION LOST" with 20 s of budget and the host's 2 min reclaim grace
+// still on the table (Glenn: wifi off 40 s, lost on re-enable). Drop the dead
+// session and re-enter the retry loop (which is gated on !session_) so the
+// next attempt reclaims the room within the remaining budget.
+bool NetLobby::rejoin_retry_after_session_loss(const char *why) {
+  if (!rejoin_mode_ || rejoin_budget_ms_ <= 0) return false;
+  delete session_;
+  session_ = nullptr;
+  if (transport_) {
+    transport_->close();
+    delete transport_;
+    transport_ = nullptr;
+  }
+  answer_sent_ = false;
+  connect_wait_ms_ = 0;
+  schedule_rejoin_retry(why, 1000);
+  return true;
+}
+
 NetLobby::~NetLobby() {
   // Leaving the lobby (into the game once the peer connected, or back to the
   // menu): no longer joinable — the co-op slot is full or gone. A no-op if we
@@ -792,6 +814,8 @@ void NetLobby::tick(int delta) {
 
   if (transport_ && transport_->failed() && screen_ != LobbyFailed) {
     NET_LOG("[lobby] transport failed during signaling\n");
+    if (rejoin_retry_after_session_loss("transport failed during signaling"))
+      return;
     set_status("CONNECTION FAILED");
     screen_ = LobbyFailed;
     return;
@@ -859,6 +883,8 @@ void NetLobby::tick(int delta) {
         NET_LOG("[lobby] connect failed: session_phase=%d waited=%d ms transport_failed=%d\n",
                (int)p, connect_wait_ms_,
                session_->transport() ? (int)session_->transport()->failed() : -1);
+        if (rejoin_retry_after_session_loss("transport failed mid-handshake"))
+          break;
         fail_headline_ = "COULD NOT CONNECT";
         set_status("A FIREWALL MAY BE BLOCKING THE GAME", 2 * STATUS_SHOW_MS);
         screen_ = LobbyFailed;
@@ -894,6 +920,8 @@ void NetLobby::tick(int delta) {
       }
       if (session_->phase() == NetSession::Failed ||
           (session_->transport() && session_->transport()->failed())) {
+        if (rejoin_retry_after_session_loss("transport flapped before snapshot"))
+          break;
         set_status("CONNECTION LOST");
         screen_ = LobbyFailed;
       }
