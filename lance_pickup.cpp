@@ -20,7 +20,7 @@ LancePickup::LancePickup(WrappedPoint pos) : Pickup(pos) {
 }
 
 void LancePickup::apply(Ship *ship) {
-  ship->add_lance_ammo(10);
+  ship->add_lance_ammo(100);
 }
 
 void LancePickup::draw(float world_rotation) const {

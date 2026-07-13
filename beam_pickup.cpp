@@ -19,7 +19,7 @@ BeamPickup::BeamPickup(WrappedPoint pos) : Pickup(pos) {
 }
 
 void BeamPickup::apply(Ship *ship) {
-  ship->add_beam_ammo(20);
+  ship->add_beam_ammo(100);
 }
 
 void BeamPickup::draw(float world_rotation) const {

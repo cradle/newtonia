@@ -278,8 +278,8 @@ All inherit from `Pickup` base class (`pickup.h`). Each pickup implements `draw(
 | `shield_pickup` | Shield | +N shield charges |
 | `god_mode_pickup` | God Mode | +10s invincibility |
 | `nova_charge_pickup` | Nova Charge | +1 nova charge (auto-drops every 100 asteroid kills) |
-| `beam_pickup` | Pierce Beam | +20 beam bolts (violet star) |
-| `lance_pickup` | Lance | +10 lance pulses (amber star) |
+| `beam_pickup` | Pierce Beam | +100 beam bolts (violet star) |
+| `lance_pickup` | Lance | +100 lance pulses (amber star) |
 | `revive_pickup` | Revive | Co-op only (green cross): revives the fallen partner on their last life; GLGame applies it at the collection site (the pickup can't see the player list) |
 | `extra_life` | Extra Life | +1 life (heart shape) |
 
