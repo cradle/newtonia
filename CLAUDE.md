@@ -194,7 +194,7 @@ Particle (: Object)             — bullet/trail particle with TTL
 
 ### Level / Generation Progression
 
-When all killable asteroids are destroyed, a 5-second countdown (tick sounds) runs, then `generation` increments and the level rebuilds (`glgame.cpp`):
+When all killable asteroids **and all hazards** (pulsar/comet/seeker) are destroyed, a 5-second countdown (tick sounds) runs, then `generation` increments and the level rebuilds (`glgame.cpp`):
 
 - World grows by 50×50 per generation; at generation 14 it instead grows by 3000×3000
 - Asteroid count: `default_num_asteroids + generation * extra_num_asteroids`
@@ -272,11 +272,11 @@ Serialization: `capture_state()` / `restore_state()` for save/load.
 
 ### Mid-game Hazards
 
-`Hazard` (`hazard.h/cpp`) is a single `Object` subclass whose `kind` selects one of three behaviours (the same flag-selects-behaviour approach as `Asteroid`). Introduced on the mid-game generations that otherwise added nothing new — 9, 11, 12 (displayed levels 10, 12, 13) — with counts scaling by generation. Like the black hole they are non-scoring obstacles (the seeker is the lone exception, paying a flat bounty when shot down; no achievements). `GLGame` owns them in a `list<Hazard*> *hazards`, wired exactly like `black_holes`: spawned by `add_hazards()` on each generation rebuild, advanced via `Hazard::update(delta, players)` in the step loop, collided against ships/shots just before the mini-station block, drawn in `draw_objects()`, and serialized in the savegame.
+`Hazard` (`hazard.h/cpp`) is a single `Object` subclass whose `kind` selects one of three behaviours (the same flag-selects-behaviour approach as `Asteroid`). Introduced on the mid-game generations that otherwise added nothing new — 9, 11, 12 (displayed levels 10, 12, 13) — with counts scaling by generation. All three are destructible and **must be cleared (along with every killable asteroid) to finish the level** (`tick()` gates the clear countdown on no living hazard remaining); each pays a flat bounty when destroyed but grants no achievements. `GLGame` owns them in a `list<Hazard*> *hazards`, wired exactly like `black_holes`: spawned by `add_hazards()` on each generation rebuild, advanced via `Hazard::update(delta, players)` in the step loop, collided against ships/shots just before the mini-station block, drawn in `draw_objects()`, and serialized in the savegame.
 
 | Kind | Behaviour |
 |------|-----------|
-| `PULSAR` | Stationary; charges then fires an expanding shockwave ring (`wave_active()` / `wave_radius()`) that hurls any ship its front reaches outward (`KNOCKBACK`), killing it unless invincible. Rendered as a neutron star: hot core, accretion ring, rotating lighthouse beams, amber double-ring shockwave |
+| `PULSAR` | Stationary; charges then fires an expanding shockwave ring (`wave_active()` / `wave_radius()`) that *shoves* any ship its front reaches outward (`KNOCKBACK`, an acceleration — never directly lethal, but the push can fling a ship into other hazards). Breaks up after `PULSAR_HEALTH` shots for `PULSAR_REWARD`. Rendered as a neutron star: hot core, accretion ring, rotating lighthouse beams, amber double-ring shockwave |
 | `COMET` | A solid-white, asteroid-shaped body that tumbles as it cruises fast in a straight line (wrapping the world) trailing a bright debris tail; lethal to any ship it strikes, but breaks up after `COMET_HEALTH` shots for `COMET_REWARD` |
 | `SEEKER` | Homes on the nearest player and rams it (lethal unless invincible); dies to a single shot for `SEEKER_REWARD`. Passes through asteroids like the mini-station; rendered as a blinking red drone |
 

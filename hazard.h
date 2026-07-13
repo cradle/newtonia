@@ -52,8 +52,9 @@ public:
   // PULSAR: the radius the wavefront has reached (0 while charging).
   float wave_radius() const { return wave_radius_; }
 
-  // COMET: take one point of damage; spawns impact debris and, at zero health,
-  // destroys the comet. No effect on other kinds.
+  // COMET / PULSAR: take one point of damage; spawns impact debris and, at zero
+  // health, destroys the hazard. No effect on the seeker (it dies in one shot
+  // via destroy()).
   void hit();
 
   // Spawn a death burst and mark the hazard destroyed (PULSAR never dies).
@@ -64,6 +65,7 @@ public:
   static const float KNOCKBACK;    // PULSAR: outward speed imparted to a ship
   static const int   SEEKER_REWARD;
   static const int   COMET_REWARD;
+  static const int   PULSAR_REWARD;
 
   Save::Hazard capture_state() const;
   static Hazard *from_state(const Save::Hazard &s, const Point &world);
@@ -74,7 +76,7 @@ private:
   Kind  kind_;
   float timer_ = 0.0f;        // ms; PULSAR cycle phase / SEEKER blink phase
   float wave_radius_ = 0.0f;  // PULSAR only
-  int   health_ = 0;          // COMET: shots remaining before it breaks up
+  int   health_ = 0;          // COMET/PULSAR: shots remaining before it breaks up
 
   std::vector<Particle> debris_;   // SEEKER death burst / COMET trail
   int   trail_timer_ = 0;          // COMET: ms until the next trail puff
@@ -89,6 +91,7 @@ private:
   static const float PULSAR_EXPAND_MS;
   static const float PULSAR_MAX_RADIUS;
   static const float PULSAR_CORE_RADIUS;
+  static const int   PULSAR_HEALTH;
   static const float COMET_SPEED;
   static const int   COMET_HEALTH;
   static const float SEEKER_SPEED;

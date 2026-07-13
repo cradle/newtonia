@@ -714,7 +714,13 @@ void GLGame::tick(int delta) {
 
   num_frames++;
 
-  if(Asteroid::num_killable == 0) {
+  // The level is only clear once every killable asteroid AND every hazard
+  // (pulsar/comet/seeker) is destroyed — the hazards must be hunted down too.
+  bool hazards_pending = false;
+  for(auto* h : *hazards)
+    if(h->is_alive()) { hazards_pending = true; break; }
+
+  if(Asteroid::num_killable == 0 && !hazards_pending) {
     if(!level_cleared) {
       level_cleared = true;
       time_until_next_generation = 5000;
@@ -1242,32 +1248,57 @@ void GLGame::tick(int delta) {
     for(auto* h : *hazards) {
       switch(h->kind_of()) {
         case Hazard::PULSAR: {
-          // The expanding shockwave hurls any ship its front reaches outward,
-          // killing it unless it is invincible (respawn shield / god mode).
-          if(!h->wave_active()) break;
-          float wr = h->wave_radius();
-          for(o = players->begin(); o != players->end(); o++) {
-            Ship* s = (*o)->ship;
-            if(!s->is_alive()) continue;
-            if(fabsf(s->position.distance_to(h->position) - wr) > Hazard::WAVE_BAND) continue;
-            Point self = h->position.closest_to(s->position);
-            Point out(s->position.x() - self.x(), s->position.y() - self.y());
-            float m = out.magnitude();
-            if(m > 1e-4f) s->velocity += (out / m) * Hazard::KNOCKBACK;
-            s->explode(s->position, s->velocity);
-            s->kill_stop();  // zeroes velocity only if the kill lands (not invincible)
-            if(!s->is_alive()) s->detonate();
+          if(!h->is_alive()) break;
+          // The expanding shockwave *shoves* every ship its front reaches
+          // outward — it never kills directly, but the push can fling you into
+          // asteroids, a black hole, or another hazard.
+          if(h->wave_active()) {
+            float wr = h->wave_radius();
+            for(o = players->begin(); o != players->end(); o++) {
+              Ship* s = (*o)->ship;
+              if(!s->is_alive()) continue;
+              if(fabsf(s->position.distance_to(h->position) - wr) > Hazard::WAVE_BAND) continue;
+              Point self = h->position.closest_to(s->position);
+              Point out(s->position.x() - self.x(), s->position.y() - self.y());
+              float m = out.magnitude();
+              if(m > 1e-4f) s->velocity += (out / m) * (Hazard::KNOCKBACK * step_size);
+            }
+            for(o = enemies->begin(); o != enemies->end(); o++) {
+              Ship* s = (*o)->ship;
+              if(!s->is_alive()) continue;
+              if(fabsf(s->position.distance_to(h->position) - wr) > Hazard::WAVE_BAND) continue;
+              Point self = h->position.closest_to(s->position);
+              Point out(s->position.x() - self.x(), s->position.y() - self.y());
+              float m = out.magnitude();
+              if(m > 1e-4f) s->velocity += (out / m) * (Hazard::KNOCKBACK * step_size);
+            }
           }
-          for(o = enemies->begin(); o != enemies->end(); o++) {
+          // Player shots break the stationary core (health-gated like the comet).
+          for(o = players->begin(); o != players->end() && h->is_alive(); o++) {
             Ship* s = (*o)->ship;
-            if(!s->is_alive()) continue;
-            if(fabsf(s->position.distance_to(h->position) - wr) > Hazard::WAVE_BAND) continue;
-            Point self = h->position.closest_to(s->position);
-            Point out(s->position.x() - self.x(), s->position.y() - self.y());
-            float m = out.magnitude();
-            if(m > 1e-4f) s->velocity += (out / m) * Hazard::KNOCKBACK;
-            s->kill();
+            for(size_t i = 0; i < s->bullets.size();) {
+              if(h->is_alive() && h->Object::collide(s->bullets[i])) {
+                s->explode(s->bullets[i].position, Point());
+                s->bullets[i] = std::move(s->bullets.back());
+                s->bullets.pop_back();
+                h->hit();
+                if(!h->is_alive()) s->score += Hazard::PULSAR_REWARD;
+              } else { ++i; }
+            }
+            for(size_t i = 0; i < s->missiles.size() && h->is_alive();) {
+              if(h->Object::collide(s->missiles[i])) {
+                s->detonate(s->missiles[i].position, s->missiles[i].velocity, 25);
+                if(s->missile_explode_sound != NULL)
+                  Mix_PlayChannel(-1, s->missile_explode_sound, 0);
+                s->missiles[i] = std::move(s->missiles.back());
+                s->missiles.pop_back();
+                h->hit();
+                if(!h->is_alive()) s->score += Hazard::PULSAR_REWARD;
+              } else { ++i; }
+            }
           }
+          if(!h->is_alive() && station_explode_sound != NULL)
+            Mix_PlayChannel(-1, station_explode_sound, 0);
           break;
         }
         case Hazard::COMET: {

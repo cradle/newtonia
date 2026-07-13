@@ -18,14 +18,18 @@ const float Hazard::PULSAR_CHARGE_MS  = 2400.0f;
 const float Hazard::PULSAR_EXPAND_MS  = 1100.0f;
 const float Hazard::PULSAR_MAX_RADIUS = 520.0f;
 const float Hazard::PULSAR_CORE_RADIUS = 26.0f;
+const int   Hazard::PULSAR_HEALTH     = 6;      // tanky — shoot it between waves
 const float Hazard::WAVE_BAND         = 55.0f;
-const float Hazard::KNOCKBACK         = 0.45f;
+// Outward acceleration (per ms) applied while a ship sits inside the wavefront
+// band — not an instant impulse, so a full pass firmly shoves without a spike.
+const float Hazard::KNOCKBACK         = 0.0014f;
 
 const float Hazard::COMET_SPEED  = 0.28f;   // fast — a real dodge, not a drift
 const int   Hazard::COMET_HEALTH = 4;       // shots to break it up
 const float Hazard::SEEKER_SPEED = 0.135f;  // slow enough to out-fly
 const int   Hazard::SEEKER_REWARD = 250;
 const int   Hazard::COMET_REWARD  = 500;
+const int   Hazard::PULSAR_REWARD = 750;
 
 static float frand() { return (float)(rand() % 100000) / 100000.0f; }
 
@@ -46,7 +50,8 @@ Hazard::Hazard(Kind kind, const Point &world) : kind_(kind) {
     case PULSAR:
       radius = PULSAR_CORE_RADIUS;
       velocity = Point(0.0f, 0.0f);
-      invincible = true;
+      invincible = false;   // shots break the core
+      health_ = PULSAR_HEALTH;
       // Random starting phase so several pulsars don't fire in lockstep.
       timer_ = frand() * (PULSAR_CHARGE_MS + PULSAR_EXPAND_MS);
       break;
@@ -73,20 +78,21 @@ Hazard::Hazard(Kind kind, const Point &world) : kind_(kind) {
 }
 
 bool Hazard::wave_active() const {
-  if (kind_ != PULSAR) return false;
+  if (kind_ != PULSAR || !alive) return false;  // a dead pulsar fires nothing
   float phase = fmodf(timer_, PULSAR_CHARGE_MS + PULSAR_EXPAND_MS);
   return phase >= PULSAR_CHARGE_MS;
 }
 
 bool Hazard::is_removable() const {
-  // The pulsar is a permanent fixture; a destroyed comet or seeker lingers only
-  // until its debris burst has faded, then it is reaped.
-  if (kind_ == PULSAR) return false;
+  // A destroyed hazard lingers only until its debris burst has faded, then it
+  // is reaped. Live hazards are never removable.
   return !alive && debris_.empty();
 }
 
 void Hazard::hit() {
-  if (kind_ != COMET || !alive) return;
+  // The seeker dies in one shot via destroy(); only the comet and pulsar have
+  // a health pool to chip down here.
+  if ((kind_ != COMET && kind_ != PULSAR) || !alive) return;
   // Chip off a puff of impact debris on every hit.
   for (int i = 0; i < 10; i++) {
     float a = frand() * 2.0f * (float)M_PI;
@@ -102,6 +108,7 @@ void Hazard::update(int delta, list<GLShip*> *players) {
 
   switch (kind_) {
     case PULSAR: {
+      if (!alive) break;  // destroyed: only its debris keeps evolving
       float cycle = PULSAR_CHARGE_MS + PULSAR_EXPAND_MS;
       if (timer_ >= cycle) timer_ -= cycle;  // keep the float bounded
       if (timer_ < PULSAR_CHARGE_MS) {
@@ -316,6 +323,23 @@ void Hazard::draw(bool minimap) const {
   }
 
   if (kind_ == PULSAR) {
+    // Impact/break-up debris (from hits, and the final burst) always render.
+    if (!debris_.empty()) {
+      static MeshBuilder mb;
+      static Mesh mesh;
+      mb.clear();
+      mb.begin(GL_POINTS);
+      for (const auto &d : debris_) {
+        float al = d.aliveness();
+        mb.color(0.7f, 0.75f + 0.25f * al, 1.0f, al);
+        mb.vertex(d.position.x(), d.position.y());
+      }
+      mb.end();
+      mesh.upload(mb, GL_DYNAMIC_DRAW);
+      mesh.draw(5.0f);
+    }
+    if (!alive) return;  // destroyed: nothing left but the fading debris
+
     float cycle = PULSAR_CHARGE_MS + PULSAR_EXPAND_MS;
     float phase = fmodf(timer_, cycle);
     // Energy ramps 0→1 while charging, then 1→0 as it discharges through the
