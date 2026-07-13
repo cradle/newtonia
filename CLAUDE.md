@@ -99,6 +99,11 @@ gdb -batch -ex run -ex "bt 20" --args ./newtonia > gdb.log 2>&1 &
 - Late-game testing: `NEWTONIA_BETA=1 NEWTONIA_START_GENERATION=N ./newtonia`
   starts a new game at generation N (world size + hazards included). Flagged
   as a cheat, so achievements stay suppressed for that game.
+- Weapon testing: `NEWTONIA_ALL_WEAPONS=1 ./newtonia` grants every player the
+  full arsenal (all primary gun variants + all secondaries) at 999 rounds,
+  re-granted on each respawn (`Ship::give_all_weapons`). God mode is excluded
+  (it hijacks the primary slot). Flagged as a cheat, so achievements stay
+  suppressed for that game.
 
 ### macOS App Bundle
 ```sh
@@ -234,6 +239,7 @@ There are three states:
 | `weapon/shield` | Shield | Energy barrier, limited ammo |
 | `weapon/god_mode` | God Mode | Timed invincibility (10s); fires periodic shockwaves (150ms); plays special music with a warning phase in the final 3s |
 | `weapon/nova` | Nova | Secondary weapon; charges accumulate from asteroid kills (0–9); triggers `ship->nova_detonate()` |
+| `weapon/shock` | Shock | Primary weapon (lives in `primary_weapons`, fired via `shoot()`, cycled with the rest); limited ammo; automatic while held (fires a bolt every 200 ms, first on press). Added via `Ship::add_shock`. Spawns a `ShockBolt` (stored in `Ship::shocks`) that grows one staggered segment per tick ahead of the ship, seeks the nearest asteroid/enemy/station near its advancing tip, chains onward after each hit, then fades. Asteroid damage is applied in `Ship::collide_grid`; enemy/station damage in `GLGame` (which owns those lists). Seek targets: each ship's missile-asteroid list plus `shock_targets` (enemies + stations, refreshed per tick by `GLGame`; other players are added when friendly fire is on). Each bolt carries its `owner` ship and never seeks/hits it, so friendly-fire lightning only arcs to the *other* player (credited like a bullet) |
 
 ### Pickup System
 
@@ -248,9 +254,10 @@ All inherit from `Pickup` base class (`pickup.h`). Each pickup implements `draw(
 | `shield_pickup` | Shield | +N shield charges |
 | `god_mode_pickup` | God Mode | +10s invincibility |
 | `nova_charge_pickup` | Nova Charge | +1 nova charge (auto-drops every 100 asteroid kills) |
+| `shock_pickup` | Shock | +100 shock bolts (chain-lightning primary; lightning-arc icon) |
 | `extra_life` | Extra Life | +1 life (heart shape) |
 
-**Drop chances** (per asteroid death, constants in `glgame.cpp`): extra_life 0.3125%, weapon 1.25%, mine 1.25%, giga_mine 0.5%, missile 1.25%, shield 1.25%, god_mode 0.25%.
+**Drop chances** (per asteroid death, constants in `glgame.cpp`): extra_life 0.3125%, weapon 1.25%, mine 1.25%, giga_mine 0.5%, missile 1.25%, shield 1.25%, god_mode 0.25%, shock 1.25%.
 
 ### Asteroid Special Types
 
@@ -349,7 +356,7 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 
 ### Save / Load
 
-**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 12:
+**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 12 (v12 appended the `Shock` weapon kind — a *primary* weapon, captured/restored in the primary-weapon list — and the `ShockWeapon` pickup type; both are new enum values, so older saves still load — they just never contain them; v12 also appended the mid-game hazard list at end of file):
 - `WeaponEntry`: kind, weapon_index, ammo
 - `Player`: score, lives, kills, respawning flag, position, velocity, facing, weapons, nova state, achievements bookkeeping (asteroid kills, enemy-ship kills, died-this-generation, weapons-fired mask; appended in v11)
 - `Asteroid`: position, velocity, radius, health, all special flags and transient state

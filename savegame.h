@@ -19,6 +19,7 @@ struct WeaponEntry {
         Missile,
         Shield,
         Nova,      // screen-clearing secondary; ammo = number of charges
+        Shock,     // chain-lightning primary; ammo = number of bolts
     };
     Kind kind;
     int  weapon_index;  // Default only; ignored for all other kinds
@@ -89,7 +90,7 @@ struct Asteroid {
 // ── Pickup ───────────────────────────────────────────────────────────────────
 
 enum class PickupType : uint8_t {
-    Weapon, Mine, GigaMine, Missile, Shield, GodMode, ExtraLife, NovaCharge
+    Weapon, Mine, GigaMine, Missile, Shield, GodMode, ExtraLife, NovaCharge, ShockWeapon
 };
 
 struct Pickup {

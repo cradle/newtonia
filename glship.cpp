@@ -590,6 +590,7 @@ void GLShip::draw(bool minimap) {
   if(!minimap) {
     draw_missiles();
     draw_shockwaves();
+    draw_shocks();
   }
   if(ship->is_alive()) {
     draw_ship(minimap);
@@ -1163,6 +1164,46 @@ void GLShip::draw_shockwaves() const {
   glLineWidth(1.5f);
   mesh_glow.upload(mb_glow, GL_DYNAMIC_DRAW);
   mesh_glow.draw();
+}
+
+void GLShip::draw_shocks() const {
+  if(ship->shocks.empty()) return;
+
+  static MeshBuilder mb_core, mb_glow;
+  static Mesh mesh_core, mesh_glow;
+
+  mb_core.clear();
+  mb_glow.clear();
+
+  for(auto &b : ship->shocks) {
+    if(b.points.size() < 2) continue;
+    float alpha = b.growing ? 1.0f : b.life;
+    if(alpha > 1.0f) alpha = 1.0f;
+    if(alpha <= 0.0f) continue;
+
+    // Wide translucent halo
+    mb_glow.begin(GL_LINE_STRIP);
+    mb_glow.color(0.35f, 0.65f, 1.0f, alpha * 0.35f);
+    for(auto &p : b.points) mb_glow.vertex(p.x(), p.y());
+    mb_glow.end();
+
+    // Bright blue-white core
+    mb_core.begin(GL_LINE_STRIP);
+    mb_core.color(0.85f, 0.92f, 1.0f, alpha);
+    for(auto &p : b.points) mb_core.vertex(p.x(), p.y());
+    mb_core.end();
+  }
+
+  // Additive so overlapping forks read as hot electric light.
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+  glLineWidth(5.0f);
+  mesh_glow.upload(mb_glow, GL_DYNAMIC_DRAW);
+  mesh_glow.draw();
+
+  glLineWidth(2.0f);
+  mesh_core.upload(mb_core, GL_DYNAMIC_DRAW);
+  mesh_core.draw();
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 void GLShip::draw_missiles() const {

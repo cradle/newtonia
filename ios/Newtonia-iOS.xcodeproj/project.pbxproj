@@ -46,7 +46,7 @@
 		AB000044 /* missile_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000044 /* missile_pickup.cpp */; };
 		AB000045 /* shield_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000045 /* shield_pickup.cpp */; };
 		AB000046 /* black_hole.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000046 /* black_hole.cpp */; };
-		AB000062 /* hazard.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000062 /* hazard.cpp */; };
+		AB000064 /* hazard.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000064 /* hazard.cpp */; };
 		AB000047 /* giga_mine_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000047 /* giga_mine_pickup.cpp */; };
 		AB000048 /* giga_mine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000048 /* giga_mine.cpp */; };
 		AB000049 /* shield_behaviour.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000049 /* shield_behaviour.cpp */; };
@@ -67,6 +67,8 @@
 		AB000058 /* intro.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000058 /* intro.cpp */; };
 		AB000060 /* achievement_journal.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000060 /* achievement_journal.cpp */; };
 		AB000061 /* game_center_achievements.mm in Sources */ = {isa = PBXBuildFile; fileRef = AA000061 /* game_center_achievements.mm */; };
+		AB000062 /* shock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000062 /* shock.cpp */; };
+		AB000063 /* shock_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000063 /* shock_pickup.cpp */; };
 		AB000030 /* OpenGLES.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000030 /* OpenGLES.framework */; };
 		AB000031 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000031 /* UIKit.framework */; };
 		AB000032 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000032 /* Foundation.framework */; };
@@ -123,8 +125,8 @@
 		AA000044 /* missile_pickup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../missile_pickup.cpp; sourceTree = SOURCE_ROOT; };
 		AA000045 /* shield_pickup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../shield_pickup.cpp; sourceTree = SOURCE_ROOT; };
 		AA000046 /* black_hole.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../black_hole.cpp; sourceTree = SOURCE_ROOT; };
-		AA000062 /* hazard.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../hazard.cpp; sourceTree = SOURCE_ROOT; };
-		AA000063 /* hazard.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../hazard.h; sourceTree = SOURCE_ROOT; };
+		AA000064 /* hazard.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../hazard.cpp; sourceTree = SOURCE_ROOT; };
+		AA000065 /* hazard.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../hazard.h; sourceTree = SOURCE_ROOT; };
 		AA000047 /* giga_mine_pickup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../giga_mine_pickup.cpp; sourceTree = SOURCE_ROOT; };
 		AA000048 /* giga_mine.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/giga_mine.cpp; sourceTree = SOURCE_ROOT; };
 		AA000049 /* shield_behaviour.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../shield_behaviour.cpp; sourceTree = SOURCE_ROOT; };
@@ -163,6 +165,8 @@
 		AA00005F /* GameKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GameKit.framework; path = System/Library/Frameworks/GameKit.framework; sourceTree = SDKROOT; };
 		AA000060 /* achievement_journal.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../achievement_journal.cpp; sourceTree = SOURCE_ROOT; };
 		AA000061 /* game_center_achievements.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = ../game_center_achievements.mm; sourceTree = SOURCE_ROOT; };
+		AA000062 /* shock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/shock.cpp; sourceTree = SOURCE_ROOT; };
+		AA000063 /* shock_pickup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../shock_pickup.cpp; sourceTree = SOURCE_ROOT; };
 		AA000040 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA000041 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA000050 /* Newtonia.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Newtonia.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -245,8 +249,8 @@
 				AA000044 /* missile_pickup.cpp */,
 				AA000045 /* shield_pickup.cpp */,
 			AA000046 /* black_hole.cpp */,
-			AA000062 /* hazard.cpp */,
-			AA000063 /* hazard.h */,
+			AA000064 /* hazard.cpp */,
+			AA000065 /* hazard.h */,
 			AA000047 /* giga_mine_pickup.cpp */,
 			AA000048 /* giga_mine.cpp */,
 			AA000049 /* shield_behaviour.cpp */,
@@ -272,6 +276,8 @@
 			AA000057 /* gl_mini_station.h */,
 			AA000058 /* intro.cpp */,
 			AA000059 /* intro.h */,
+			AA000062 /* shock.cpp */,
+			AA000063 /* shock_pickup.cpp */,
 			);
 			name = Sources;
 			sourceTree = "<group>";
@@ -406,7 +412,7 @@
 				AB000044 /* missile_pickup.cpp in Sources */,
 				AB000045 /* shield_pickup.cpp in Sources */,
 			AB000046 /* black_hole.cpp in Sources */,
-			AB000062 /* hazard.cpp in Sources */,
+			AB000064 /* hazard.cpp in Sources */,
 			AB000047 /* giga_mine_pickup.cpp in Sources */,
 			AB000048 /* giga_mine.cpp in Sources */,
 			AB000049 /* shield_behaviour.cpp in Sources */,
@@ -427,6 +433,8 @@
 			AB000052 /* preferences.cpp in Sources */,
 			AB000056 /* gl_mini_station.cpp in Sources */,
 			AB000058 /* intro.cpp in Sources */,
+			AB000062 /* shock.cpp in Sources */,
+			AB000063 /* shock_pickup.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
