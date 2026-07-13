@@ -82,6 +82,40 @@ web-clean:
 	rm -rf web/dist
 
 # ============================================================
+# Android build: make android / make android-install
+# ============================================================
+# Thin wrapper over the Gradle build in android/. The native half is built
+# from the root CMakeLists.txt (see android/app/build.gradle); SDL2 and
+# SDL2_mixer must be cloned as siblings to the repo root first (see
+# .github/workflows/android.yml for the exact clone commands). Audio assets
+# are copied into the app's assets dir here, matching the CI "Copy audio
+# assets" step, so the APK ships its sounds.
+ANDROID_DIR = android
+ANDROID_ASSETS = $(ANDROID_DIR)/app/src/main/assets
+ANDROID_APK = $(ANDROID_DIR)/app/build/outputs/apk/debug/app-debug.apk
+
+.PHONY: android android-install android-assets android-clean
+
+android-assets:
+	mkdir -p $(ANDROID_ASSETS)
+	rm -rf $(ANDROID_ASSETS)/audio
+	cp -r audio $(ANDROID_ASSETS)/audio
+
+# Build the debug APK. Output lands at $(ANDROID_APK).
+android: android-assets
+	cd $(ANDROID_DIR) && ./gradlew assembleDebug
+	@echo "APK: $(ANDROID_APK)"
+
+# Build and install the debug APK onto a connected device / running emulator
+# (requires adb to see exactly one target).
+android-install: android-assets
+	cd $(ANDROID_DIR) && ./gradlew installDebug
+
+android-clean:
+	cd $(ANDROID_DIR) && ./gradlew clean
+	rm -rf $(ANDROID_ASSETS)/audio
+
+# ============================================================
 # Steam build (local testing): make steam
 # ============================================================
 # Requires the Steamworks SDK unzipped at ./sdk (so that
