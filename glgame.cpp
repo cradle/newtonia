@@ -133,13 +133,6 @@ GLGame::GLGame(SDL_GameController *controller) :
   object->ship->set_black_holes(black_holes);
   players->push_back(object);
 
-  // Testing: drop a shock-weapon pickup on the first level, a short hop ahead of
-  // the player, so the new primary is grabbable without waiting for a random drop.
-  {
-    Point pc = object->ship->position;
-    pickups->push_back(new ShockPickup(WrappedPoint(pc.x(), pc.y() + 220)));
-  }
-
   station = NULL;//new GLStation(enemies, players);
   mini_station = NULL;
 

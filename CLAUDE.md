@@ -252,7 +252,7 @@ All inherit from `Pickup` base class (`pickup.h`). Each pickup implements `draw(
 | `shield_pickup` | Shield | +N shield charges |
 | `god_mode_pickup` | God Mode | +10s invincibility |
 | `nova_charge_pickup` | Nova Charge | +1 nova charge (auto-drops every 100 asteroid kills) |
-| `shock_pickup` | Shock | +N shock bolts (chain-lightning primary; lightning-arc icon). Force-spawned on level 1 for testing (`GLGame` new-game ctor) |
+| `shock_pickup` | Shock | +100 shock bolts (chain-lightning primary; lightning-arc icon) |
 | `extra_life` | Extra Life | +1 life (heart shape) |
 
 **Drop chances** (per asteroid death, constants in `glgame.cpp`): extra_life 0.3125%, weapon 1.25%, mine 1.25%, giga_mine 0.5%, missile 1.25%, shield 1.25%, god_mode 0.25%, shock 1.25%.
