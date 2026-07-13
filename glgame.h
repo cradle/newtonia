@@ -83,6 +83,9 @@ private:
   // Break a small asteroid chunk off a comet at its current position, flung
   // outward from its heading. The chunk is a normal killable asteroid.
   void shed_comet_fragment(const Hazard *comet);
+  // Play a bullet-impact sound for a non-fatal hazard hit, rate-limited so a
+  // burst of hits can't starve the mixer channel pool.
+  void play_hazard_hit_sound(Mix_Chunk *snd);
   void add_player2(SDL_GameController *ctrl);
   Save::GameState build_save_data() const;
   void save_progress();   // save only when at least one player is alive or has lives

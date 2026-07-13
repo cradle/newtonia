@@ -544,6 +544,16 @@ Hazard *GLGame::first_hazard(Hazard::Kind kind) const {
   return NULL;
 }
 
+void GLGame::play_hazard_hit_sound(Mix_Chunk *snd) {
+  if(snd == NULL) return;
+  static Uint32 last = UINT32_MAX;
+  Uint32 now = SDL_GetTicks();
+  if(now - last >= 50) {  // same guard idiom as the station bullet thud
+    last = now;
+    Mix_PlayChannel(-1, snd, 0);
+  }
+}
+
 void GLGame::shed_comet_fragment(const Hazard *comet) {
   // A normal killable asteroid, shrunk to a chunk and flung outward from the
   // comet's heading. num_killable is bumped by the constructor, so the piece
@@ -1301,7 +1311,8 @@ void GLGame::tick(int delta) {
                 s->bullets[i] = std::move(s->bullets.back());
                 s->bullets.pop_back();
                 h->hit();
-                if(!h->is_alive()) s->score += Hazard::PULSAR_REWARD;
+                if(h->is_alive()) play_hazard_hit_sound(Asteroid::thud_sound);
+                else              s->score += Hazard::PULSAR_REWARD;
               } else { ++i; }
             }
             for(size_t i = 0; i < s->missiles.size() && h->is_alive();) {
@@ -1312,7 +1323,8 @@ void GLGame::tick(int delta) {
                 s->missiles[i] = std::move(s->missiles.back());
                 s->missiles.pop_back();
                 h->hit();
-                if(!h->is_alive()) s->score += Hazard::PULSAR_REWARD;
+                if(h->is_alive()) play_hazard_hit_sound(Asteroid::thud_sound);
+                else              s->score += Hazard::PULSAR_REWARD;
               } else { ++i; }
             }
           }
@@ -1347,7 +1359,8 @@ void GLGame::tick(int delta) {
                 h->hit();
                 shed_comet_fragment(h);   // knock a couple of chunks loose
                 shed_comet_fragment(h);
-                if(!h->is_alive()) s->score += Hazard::COMET_REWARD;
+                if(h->is_alive()) play_hazard_hit_sound(Asteroid::explode_sound);
+                else              s->score += Hazard::COMET_REWARD;
               } else { ++i; }
             }
             for(size_t i = 0; i < s->missiles.size() && h->is_alive();) {
@@ -1360,7 +1373,8 @@ void GLGame::tick(int delta) {
                 h->hit();
                 shed_comet_fragment(h);
                 shed_comet_fragment(h);
-                if(!h->is_alive()) s->score += Hazard::COMET_REWARD;
+                if(h->is_alive()) play_hazard_hit_sound(Asteroid::explode_sound);
+                else              s->score += Hazard::COMET_REWARD;
               } else { ++i; }
             }
           }
