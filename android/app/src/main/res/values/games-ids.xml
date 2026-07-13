@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Google Play Games Services IDs (ACHIEVEMENTS.md §2, Play Games backend).
+
+     game_services_project_id: the numeric project ID of the "newtonia"
+     Play Games Services game project in the Play Console (referenced from
+     AndroidManifest.xml as the com.google.android.gms.games.APP_ID
+     meta-data).
+
+     Achievement IDs are the console-generated values (entered 2026-07-13),
+     stored under the resource names fixed by the mapping table in
+     play_games_achievements.cpp (authoritative). The console's own "Get
+     resources" export derives different names from the display names
+     (e.g. achievement_first_blood) — when re-exporting after a console
+     change, remap the ID values onto these names; do not adopt the
+     export's names. coop_clear is deliberately absent until netplay
+     (ACHIEVEMENTS.md §5). -->
+<resources>
+    <string name="game_services_project_id" translatable="false">717199808901</string>
+    <!-- First Blood -->
+    <string name="achievement_first_kill" translatable="false">CgkIhbPC4-8UEAIQAw</string>
+    <!-- Clear Skies -->
+    <string name="achievement_clear_level1" translatable="false">CgkIhbPC4-8UEAIQBA</string>
+    <!-- Special Delivery -->
+    <string name="achievement_specials_7" translatable="false">CgkIhbPC4-8UEAIQCQ</string>
+    <!-- Event Horizon -->
+    <string name="achievement_black_hole_survivor" translatable="false">CgkIhbPC4-8UEAIQDQ</string>
+    <!-- Little Nuisance -->
+    <string name="achievement_mini_station_kill" translatable="false">CgkIhbPC4-8UEAIQDw</string>
+    <!-- Battering Ram -->
+    <string name="achievement_shield_ram" translatable="false">CgkIhbPC4-8UEAIQCw</string>
+    <!-- Icebreaker -->
+    <string name="achievement_shield_ram_asteroid" translatable="false">CgkIhbPC4-8UEAIQCA</string>
+    <!-- Station to Station -->
+    <string name="achievement_station_destroyed" translatable="false">CgkIhbPC4-8UEAIQEg</string>
+    <!-- Ace -->
+    <string name="achievement_enemies_10" translatable="false">CgkIhbPC4-8UEAIQBg</string>
+    <!-- Nova -->
+    <string name="achievement_nova_detonated" translatable="false">CgkIhbPC4-8UEAIQCg</string>
+    <!-- Untouchable -->
+    <string name="achievement_no_damage_clear" translatable="false">CgkIhbPC4-8UEAIQDA</string>
+    <!-- Purist -->
+    <string name="achievement_no_secondary_level10" translatable="false">CgkIhbPC4-8UEAIQDg</string>
+    <!-- Full Arsenal -->
+    <string name="achievement_weapons_7" translatable="false">CgkIhbPC4-8UEAIQEw</string>
+    <!-- Millennium -->
+    <string name="achievement_kills_1000" translatable="false">CgkIhbPC4-8UEAIQEQ</string>
+    <!-- Myriad -->
+    <string name="achievement_kills_10000_lifetime" translatable="false">CgkIhbPC4-8UEAIQBw</string>
+    <!-- Megascore -->
+    <string name="achievement_score_3m" translatable="false">CgkIhbPC4-8UEAIQEA</string>
+    <!-- Deep Space -->
+    <string name="achievement_reach_level15" translatable="false">CgkIhbPC4-8UEAIQBQ</string>
+</resources>

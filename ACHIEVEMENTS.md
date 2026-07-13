@@ -8,8 +8,8 @@ stats, and the unlock-integrity rules. Platform backends plug in behind it:
 |---------|----------------|--------|
 | Xbox / Microsoft Store (GDK) | private GDKX mirror (`xbox/PRIVATE_REPO.md`) | cert-blocking |
 | Steam | this repo, `steam_achievements.cpp` | **implemented** — portal config pending (§2 checklist) |
-| Android (Google Play Games Services) | this repo, Android integration | later |
-| iOS (Game Center) | this repo, iOS integration | later |
+| Android (Google Play Games Services) | this repo, `play_games_achievements.cpp` + `PlayGamesAchievements.java` | **implemented** — console configured + IDs wired 2026-07-13; testers/publish pending (§2 checklist) |
+| iOS (Game Center) | this repo, `game_center_achievements.mm` | **implemented** — achievements entered in App Store Connect 2026-07-13; go live with the next submitted version (§2 checklist) |
 
 Why now: Xbox certification **requires** achievements. XR-055 scores "a game
 doesn't support the minimum 10 achievements and 1,000 gamerscore" as
@@ -151,6 +151,224 @@ in the desktop loop). Per Valve's directions
    (`steam.exe -console`, then `reset_all_stats <appid>` /
    `achievement_clear <appid> <name>`).
 
+### Game Center backend (`game_center_achievements.mm`)
+
+Implemented upstream behind `GAME_CENTER_BUILD` (defined by the iOS Xcode
+project, which also links GameKit.framework). `Achievements::init()` is
+called from `ios_main.mm` at startup and sets the GameKit
+`authenticateHandler` — that is what triggers sign-in; the prompt presents
+over the SDL window once it exists.
+
+- **Unlocks and progress are the same call.** `GKAchievement.percentComplete`
+  is natively 0–100, so the seam's percent maps 1:1 and event-only
+  achievements are a single report of 100. GameKit draws the unlock banner
+  (`showsCompletionBanner`) and the server keeps the highest percent it has
+  ever seen, so re-sends never regress anything.
+- **Every earn is journaled before the delivery attempt** (§2 offline
+  earns): GameKit does not reliably queue offline reports, so earns go into
+  the shared pending journal, keyed by the authenticated player
+  (`teamPlayerID`) so an account switch can never credit one player's earn
+  to another (XR-055's correct-profile rule, §1). Entries are confirmed
+  out only when the server's achievement list actually shows the earn — a
+  nil `reportAchievements:` error alone is not trusted, because a batch
+  can "succeed" while the server silently drops an identifier that isn't
+  defined in App Store Connect (a typo'd portal entry would otherwise eat
+  the earn); a missing-after-accept identifier is logged and stays
+  journaled. Unconfirmed entries resubmit on sign-in and app foreground;
+  sign-in first loads the server's achievement list and confirms away
+  anything it already has — the reconcile pass, which also makes
+  cross-device double-earns cheap no-ops.
+- **Send cadence:** a Game Center report is a network RPC (unlike Steam's
+  in-memory `SetStat`), so progress-only changes batch on a 60 s interval;
+  a new unlock flushes the whole journal immediately so its banner is
+  instant (unless it raced an in-flight send whose batch then failed — then
+  it rides the next earn/foreground/interval; delivery is never lost). The
+  journal batches its own disk writes the same way stats.dat does: unlocks
+  write through, progress advances flush on the send cadence and app
+  resign-active. Signed-out play earns nothing on Game Center until the
+  device's account signs back in — unowned journal entries resolve to the
+  device's last-signed-in account, never to a different account.
+- **`coop_clear` is deliberately unmapped** — deferred until netplay makes
+  it earnable on touch devices (§5). Unmapped earns drop silently in the
+  backend; the shared hook keeps firing, so adding the mapping later is the
+  whole change.
+- **Dev reset:** launch once with `NEWTONIA_RESET_GAME_CENTER=1` (set via
+  the Xcode scheme) to wipe the signed-in account's Game Center
+  achievements and drop the local pending journal, then quit and relaunch
+  without it. Delete `stats.dat` too — the lifetime counters would
+  otherwise re-earn `specials_7`/`kills_10000_lifetime` progress
+  immediately (same caveat as the Steam reset).
+
+**App Store Connect checklist (no code):**
+
+1. In the Developer Portal, enable the **Game Center capability** on the
+   `cc.gfm.Newtonia` App ID and regenerate the distribution provisioning
+   profile — `ios/Entitlements.plist` now carries
+   `com.apple.developer.game-center`, and signing fails if the profile
+   lacks it. **Then re-encode the new `.mobileprovision` into the
+   `PROVISIONING_PROFILE_BASE64` GitHub secret** (`base64 -w0` /
+   macOS `base64 -i`) — deploy-ios.yml signs with the secret, not the
+   portal, so the deploy stays broken until the secret is updated. Then
+   turn Game Center on for the app in App Store Connect. (Local Xcode
+   device builds sign with `ios/EntitlementsDev.plist` via the project's
+   `CODE_SIGN_ENTITLEMENTS`, so sandbox testing works without any of
+   this — automatic signing manages the dev profile.) **Done 2026-07-13 —
+   capability enabled, profile regenerated, and the secret re-encoded.**
+2. Define **17 achievements** (all of §5 except `coop_clear`) with exactly
+   the reverse-DNS identifiers from the mapping table in
+   `game_center_achievements.mm` (the table is authoritative):
+   `cc.gfm.newtonia.first_kill` … `cc.gfm.newtonia.reach_level15`.
+   All visible (none hidden), standard one-time achievements — Game Center
+   needs no incremental configuration; progress is just the reported
+   percent. **Done — entered 2026-07-13; the portal-text table below
+   records exactly what was entered.**
+3. Points: Game Center caps a single achievement at 100 points (1,000
+   total), so use the §5 GS values with `station_destroyed` capped at
+   **100** — total 900, leaving 100 headroom for `coop_clear` (40) at
+   netplay time plus future additions. **Done — see the table below.**
+4. Icons: upload `gamecenter/icons/<id>.png` (512×512, generated by
+   `generate_achievement_icons.py`; no locked variant — Game Center
+   renders its own locked state).
+5. Achievements go live with a **version**: definitions are app-level (and
+   work in sandbox immediately), but public availability requires turning
+   the Game Center section on in the next submitted App Store version and
+   attaching the achievements to it — already-released versions are
+   immutable, so this rides the release that ships the entitled binary.
+6. Test with a development/TestFlight build (sandbox Game Center is
+   automatic there): earns show as GameKit banners; use the dev reset
+   above to re-test from scratch.
+
+**Portal text as entered in App Store Connect (2026-07-13).** Achievement
+definitions live only in Apple's portal, so this table is the repo's copy
+of record — keep it in sync with any portal edits. Wording deviations from
+§5 are deliberate: Myriad spells out "across all your games" to
+distinguish the lifetime count from Millennium's one-game count (the
+state-your-requirements rule), and Untouchable's earned text drops the
+"level 9 or beyond" qualifier since the requirement only matters before
+the earn.
+
+| Achievement ID | Display Name | Pre-Earned Description | Earned Description | Points |
+|---|---|---|---|---|
+| `cc.gfm.newtonia.first_kill` | First Blood | Destroy your first asteroid | You destroyed your first asteroid | 10 |
+| `cc.gfm.newtonia.clear_level1` | Clear Skies | Clear level 1 | You cleared level 1 | 20 |
+| `cc.gfm.newtonia.specials_7` | Special Delivery | Destroy 7 different asteroid types | You destroyed 7 different asteroid types | 100 |
+| `cc.gfm.newtonia.black_hole_survivor` | Event Horizon | Survive a black-hole level (level 10 onward) without dying | You survived a black-hole level without dying | 80 |
+| `cc.gfm.newtonia.mini_station_kill` | Little Nuisance | Destroy a mini-station | You destroyed a mini-station | 50 |
+| `cc.gfm.newtonia.shield_ram` | Battering Ram | Destroy an enemy by ramming it with your shield active | You destroyed an enemy by ramming it with your shield active | 20 |
+| `cc.gfm.newtonia.shield_ram_asteroid` | Icebreaker | Ram an asteroid with your shield active | You rammed an asteroid with your shield active | 10 |
+| `cc.gfm.newtonia.station_destroyed` | Station to Station | Destroy the enemy station (appears at level 15) | You destroyed the enemy station | 100 |
+| `cc.gfm.newtonia.enemies_10` | Ace | Destroy 10 enemy ships in one game | You destroyed 10 enemy ships in one game | 40 |
+| `cc.gfm.newtonia.nova_detonated` | Nova | Detonate a nova | You detonated a nova | 60 |
+| `cc.gfm.newtonia.no_damage_clear` | Untouchable | Clear level 9 or beyond without taking damage | You cleared a level without taking damage | 100 |
+| `cc.gfm.newtonia.no_secondary_level10` | Purist | Reach level 10 without using a secondary weapon | You reached level 10 without using a secondary weapon | 60 |
+| `cc.gfm.newtonia.weapons_7` | Full Arsenal | Fire 7 different weapon types in one game | You fired 7 different weapon types in one game | 60 |
+| `cc.gfm.newtonia.kills_1000` | Millennium | Destroy 1,000 asteroids in one game | You destroyed 1,000 asteroids in one game | 50 |
+| `cc.gfm.newtonia.kills_10000_lifetime` | Myriad | Destroy 10,000 asteroids across all your games | You destroyed 10,000 asteroids across all your games | 40 |
+| `cc.gfm.newtonia.score_3m` | Megascore | Score 3,000,000 points in one game | You scored 3,000,000 points in one game | 60 |
+| `cc.gfm.newtonia.reach_level15` | Deep Space | Reach level 15 | You reached level 15 | 40 |
+| | | | **Total** | **900** |
+
+### Play Games backend (`play_games_achievements.cpp` + `PlayGamesAchievements.java`)
+
+Implemented upstream behind `PLAY_GAMES_BUILD`, which the root
+`CMakeLists.txt` defines for every Android build (that CMake file builds
+nothing else). The Play Games v2 SDK is Java-only, so the backend is split:
+the native half owns the authoritative symbolic→resource-name mapping table
+and forwards earns over JNI (from the game thread, deduped through a
+best-sent cache so the seam's idempotent re-fires don't spam JNI); the Java
+half (`android/app/src/main/java/org/newtonia/PlayGamesAchievements.java`)
+marshals everything to the UI thread and owns the SDK calls.
+`Achievements::init()` is called from `android_main.cpp` after `SDL_Init`
+(the JNI activity handle must exist) and initialises `PlayGamesSdk`, which
+kicks off the v2 SDK's **automatic sign-in** — there is no sign-in UI in
+the game.
+
+- **Unlocks** call `AchievementsClient.unlock()`; the Play Games shell
+  draws the toast. **Progress** maps the seam's percent onto **incremental
+  achievements defined with 100 steps** via `setSteps(id, pct)` — the same
+  seven counter-backed achievements that get progress stats on Steam.
+  `setSteps` is "at least this many steps", so lower values are server-side
+  no-ops (monotonic by construction) and reaching 100 steps unlocks the
+  achievement server-side — the backend never calls `unlock()` on an
+  incremental definition, which the Play API disallows.
+- **IDs live in `res/values/games-ids.xml`**: the Play Console generates
+  opaque IDs, pasted there under the resource names fixed by the native
+  mapping table (`achievement_<symbolic>` — keep these names; the console's
+  own "Get resources" export derives different names from the display
+  names). A missing resource drops that achievement's earns with a one-shot
+  logcat warning, never a crash — so the backend ships ahead of the portal
+  config and each console entry landing later is the whole fix.
+- **Offline is Google-handled** (§2 "Offline earns"): once signed in,
+  `unlock`/`setSteps` are cached on-device by Play services and synced when
+  connectivity returns — no pending journal on this platform. The only gap
+  is the pre-sign-in window: earns arriving before the async sign-in check
+  resolves (or while signed out) are held in an in-memory queue merged per
+  achievement at max percent, flushed when a later check succeeds —
+  re-checked on every activity resume (`NewtoniaActivity.onResume`).
+  Signed-out play earning nothing if the process dies first is allowed
+  (XR-055), and the counter-backed achievements re-derive from persisted
+  stats next session anyway.
+- **`coop_clear` is deliberately unmapped** — same decision as Game Center
+  (§5): deferred until netplay makes it earnable on touch devices.
+- **Failure-proof by design:** a missing `APP_ID` meta-data or absent Play
+  services logs a warning and disables achievements for the session — the
+  game must never crash over Games config, since the placeholder ships
+  before the Play Console project exists.
+
+**Play Console checklist (no code):** immediately actionable — the app is
+already live on the Play internal testing track (deploy-android.yml), so
+achievements can be configured and then tested with the existing internal
+testers. Until then, builds carrying the placeholder project ID are safe to
+ship: sign-in fails silently and earns are held/dropped per the backend
+rules above.
+
+1. In the Play Console, set up **Play Games Services** for the app
+   (Grow → Play Games Services → Setup and management → Configuration),
+   create the game project, and link the `org.newtonia` app (adds the OAuth
+   client / SHA-1 for the signing key — credentials are needed for **both**
+   the upload key and the Play App Signing key, or sign-in works in local
+   builds but fails on Play-delivered internal-testing builds, and vice
+   versa). **Done 2026-07-13** — game project 717199808901, two Android
+   credentials (Play-signed + upload key, anti-piracy off, Play-signed
+   marked "use for new installs"). SHA-1s live on the OAuth clients in
+   Cloud Console (APIs & Services → Credentials), not in the Play
+   credential UI. A third OAuth client/credential for a dev machine's
+   debug keystore can be added the same way for `assembleDebug` testing.
+2. Replace the placeholder `game_services_project_id` in
+   `android/app/src/main/res/values/games-ids.xml` with the numeric project
+   ID the console assigns. **Done 2026-07-13.**
+3. Define **17 achievements** (all of §5 except `coop_clear`) with the §5
+   names/descriptions. Define these seven as **incremental with 100 steps**:
+   `specials_7`, `enemies_10`, `weapons_7`, `kills_1000`,
+   `kills_10000_lifetime`, `score_3m`, `reach_level15`; the rest are
+   standard. Play awards XP rather than gamerscore — scale the §5 GS values
+   at definition time (XP must be a multiple of 5, 5–200 per achievement;
+   the ratios are what matter). **Done 2026-07-13** via the console's ZIP
+   bulk import (CSVs + icons; the CSV format forbids commas in
+   names/descriptions, so Millennium/Myriad/Megascore use "1000" /
+   "10000" / "3 million"; the Game Center point values were used, sum
+   900). With only the default locale, AchievementsLocalizations.csv must
+   be present but EMPTY — en-US rows are rejected as "wrong locale".
+4. Paste each generated achievement ID into `games-ids.xml` under the
+   resource name from the mapping table in `play_games_achievements.cpp`
+   (keep the names exactly). **Done 2026-07-13** — all 17 wired and
+   cross-checked against the mapping table.
+5. Icons: upload 512×512 icons — reuse `gamecenter/icons/<id>.png`
+   (generated by `generate_achievement_icons.py`; Play renders its own
+   locked state, so the achieved art is all it needs). **Done 2026-07-13**
+   (rode the ZIP import).
+6. Add tester accounts under Play Games Services → Testers (separate from
+   the app's internal-testing testers) — while the games config is a
+   draft, only listed testers can sign in — and test with a
+   correctly-signed build from the internal track (or a local
+   release-signed build): earns show as Play Games toasts, sign-in state
+   is greppable via `adb logcat -s NewtoniaPlayGames`. Then **publish**
+   the Games Services configuration to open sign-in to everyone —
+   deliberately after tester validation, since published achievements are
+   permanent (they can be edited but never deleted). There is no
+   client-side reset API — reset a test account's earns via the console
+   or the Play Games Management API.
+
 ### Offline earns
 
 The game never checks connectivity: hooks call `unlock()`/`progress()` the
@@ -164,7 +382,8 @@ Per platform:
 - **Steam** — the Steam client stores `SetAchievement` calls locally and
   syncs when it reconnects. Nothing for the backend to do.
 - **Google Play Games** — the SDK caches unlock/increment calls offline and
-  flushes them on reconnect. Nothing to do.
+  flushes them on reconnect. Nothing to do beyond the backend's in-memory
+  pre-sign-in queue (see the Play Games backend section).
 - **Xbox / GDK** — unlock calls need Xbox Live, and the GDK does **not**
   queue them offline: the backend must persist a small pending-unlocks
   journal (same pref-path pattern as `stats.dat`), retry on launch / resume
@@ -172,8 +391,8 @@ Per platform:
   (Signed-out play earning nothing is allowed; offline-while-signed-in must
   recover.)
 - **Game Center** — `reportAchievements` can fail offline and GameKit does
-  not reliably queue, so the iOS backend uses the same persist-and-resubmit
-  journal.
+  not reliably queue, so the iOS backend uses the persist-and-resubmit
+  journal (implemented — see the Game Center backend section above).
 
 Two properties of the shared layer make retries trivially safe:
 
@@ -191,10 +410,16 @@ The exception: event-only achievements with no counter behind them
 (`nova_detonated`, `black_hole_survivor`, `coop_clear`, `clear_level1`,
 `no_damage_clear`, `no_secondary_level10`, `mini_station_kill`,
 `shield_ram`, `shield_ram_asteroid`, `station_destroyed`) cannot be
-re-derived, so the pending journal is their only safety net. Build the
-journal once as a small shared utility next to the seam when the first
-backend that needs it lands (GDK — first in line), rather than
-re-implementing it per backend.
+re-derived, so the pending journal is their only safety net. The journal
+exists as the planned shared utility next to the seam —
+`achievement_journal.h/.cpp`, keyed by symbolic ID **plus the platform
+account that earned it** (earns made before sign-in resolve to the
+device's last-signed-in account, so a profile switch can never
+cross-credit — XR-055's correct-profile rule), earns merged per-key at
+their maximum percent, persisted as `pending_achievements.dat` in the SDL
+pref path — built alongside the Game Center backend (which landed first);
+the GDK backend consumes it as-is (single-threaded: marshal SDK
+completions to the game thread, as the Game Center backend does).
 
 ## 3. The seam (`achievements.h`)
 
@@ -285,7 +510,7 @@ schemes at backend-definition time).
 **Terminology rule:** user-facing names and criteria always use the
 **displayed level number** (the HUD's `LEVEL = internal generation + 1`) —
 players never see "generation". Code hooks translate: the black hole appears
-at internal generation 9 = level 10; the station at internal generation 14 =
+at internal generation 13 = level 14; the station at internal generation 14 =
 level 15.
 
 **Future-proofing rule:** design criteria to survive content additions —
@@ -302,7 +527,7 @@ only the description mentions where it lives.
 | first_kill | First Blood | Destroy your first asteroid | 10 |
 | clear_level1 | Clear Skies | Clear level 1 | 20 |
 | specials_7 | Special Delivery | Destroy 7 different asteroid types | 100 |
-| black_hole_survivor | Event Horizon | Survive a black-hole level (level 10 onward) without dying | 80 |
+| black_hole_survivor | Event Horizon | Survive a black-hole level (level 14 onward) without dying | 80 |
 | mini_station_kill | Little Nuisance | Destroy a mini-station | 50 |
 | shield_ram | Battering Ram | Destroy an enemy by ramming it with your shield active | 20 |
 | shield_ram_asteroid | Icebreaker | Ram an asteroid with your shield active | 10 |
@@ -329,12 +554,17 @@ destroys the asteroid in existing gameplay.
 beat-your-best skill target — and took its GS from `kills_10000_lifetime`
 (100 → 40), which is time investment rather than skill.
 `no_secondary_level10` (primary gun and god-mode pickups only, all the way
-to the black-hole level) took its GS from `reach_level15` (100 → 40): the
+to level 10) took its GS from `reach_level15` (100 → 40): the
 reach milestone cedes points to the skill runs, while `station_destroyed`
 still pays 160 for the follow-through at level 15.
 late-game items keep the "half the content" rule honest. Note `coop_clear`
 assumes local 2P exists on the platform (touch builds may need a variant or
-a netplay-era criteria revision). `enemies_10` took its GS from
+a netplay-era criteria revision). **Decision (2026-07): `coop_clear` is not
+defined in the Game Center / Play portals and stays unmapped in the mobile
+backends until netplay lands** — a defined-but-unearnable achievement would
+break the earnability house rule, and both stores allow adding achievements
+post-launch. The criteria ("Clear a level in 2-player mode") already covers
+netplay co-op unchanged; its points stay reserved in the Game Center budget. `enemies_10` took its GS from
 `station_destroyed` (200 → 160), which got easier when the station moved to
 level 15 — the fighters are part of the same content. Despite its simple
 criteria, `nova_detonated` is deceptively hard: charge pickups drop every
@@ -361,7 +591,26 @@ level 9, so getting *to* the black-hole level (10) is reliable — but the
 black-hole level itself is the difficulty wall. Using the dev start
 (`NEWTONIA_START_GENERATION=10`), the wall has now been **passed in
 testing** — black-hole levels are beatable, though not easily — and
-**level 11 has been passed** the same way. Dev-start caveat, cutting both
+**level 11 has been passed** the same way. A **full continuous run has
+since reached level 10** from a fresh start, confirming reachability and
+pinning down *why* the wall is hard: the black hole keeps accelerating
+asteroids that pass near it, and while speed is clamped each step to the
+absolute `max_speed` (3, `asteroid.cpp`), asteroids *spawn* at
+`max_speed / radius` — so gravity can drive a large asteroid to ~20–240×
+its natural speed before the clamp bites. The level fills with big,
+fast-flying asteroids far harder to dodge and hit than anything in
+levels 1–9. **Tuning applied (2026-07):** speed above 4× natural now
+decays away (2 s time constant) once an asteroid is *outside* the
+influence radius; inside the well slingshot dynamics are untouched, so
+asteroids still escape (a naive always-on decay trapped them in orbit).
+A 10-minute headless sim (40 asteroids, gen-10 world) shows well escapes
+preserved (561 vs 932 before) while time spent outside the well above 4×
+natural speed drops from 46% to 2.4% — slung asteroids cross the level
+hot, then settle. **Progression change (2026-07):** the black hole itself
+moved from level 10 (generation 9) to level 14 (generation 13), so a run
+to the station level (15) faces exactly one black-hole level. The
+findings above describe the hole at its old level-10 position;
+black-hole levels need re-playtesting at 14 with both changes in. Dev-start caveat, cutting both
 ways: full lives (4) at the start of the tested level, but also a bare
 loadout (base gun only — no banked secondaries, upgrades, or extra lives
 a real run accumulates through levels 1–9). Station fight (dev start at 14,
@@ -416,15 +665,15 @@ stand. Decisions taken:
 | coop_clear | needs a second controller/player only | earnable |
 | mini_station_kill | single shot from level 11 | earnable |
 | shield_ram | shield pickup (1.25%/kill) + any enemy from level 11 | earnable |
-| no_damage_clear, black_hole_survivor | skill-only, no mechanical gate; playtest shows level 9 clears consistently, survival at 10 is the wall | earnable, hard |
+| no_damage_clear, black_hole_survivor | skill-only, no mechanical gate; playtest shows level 9 clears consistently. The black-hole wall (accelerated asteroids) prompted two changes: slingshot-speed decay, and the hole moving from level 10 to 14 — black_hole_survivor now gates on level 14 | earnable, hard |
 | nova_detonated | charge counter **and** charges reset on death → ~1,000 kills in one life; playtest reached 9/10 charges | earnable, at the edge |
 | **weapons_7** | **coupled to nova_detonated**: firing a nova is the 7th kind, so it embeds the same one-life feat, plus drop RNG — P(≥1 god-mode drop) ≈ 63% by 400 kills, 92% by 1,000, 98% by 1,500 (other pickups ≈100%; the fired-mask spans lives, only the nova leg is single-life) | earnable; capstone-hard, review GS |
 | station_destroyed, enemies_10 | **verified in dev-start play**: station dies easily to an upgraded multishot gun (the bare-loadout siege was the outlier); 8+ fighters downed in a single fight | **verified** |
-| reach_level15 | the black-hole wall has been passed in dev-start testing (hard but doable), levels 10 and 11 individually cleared; still unproven: chaining 10–15 in one run | **needs playtest** (de-risked) |
+| reach_level15 | the black-hole wall has been passed in dev-start testing (hard but doable), levels 10 and 11 individually cleared; the stretch is now easier — the hole moved to level 14, leaving one black-hole level before the station; still unproven: chaining 10–15 in one run | **needs playtest** (de-risked) |
 
 **Playtest tooling:** beta builds honour `NEWTONIA_START_GENERATION=N`
 (with `NEWTONIA_BETA=1`) — a new game starts at generation N with the
-correct world size and hazards (black hole ≥9, mini-station ≥10, station
+correct world size and hazards (mini-station ≥10, black hole ≥13, station
 ≥14), so the wall and the station fight can be practised directly. It
 marks the game as cheated, so it can never launder achievements; use it to
 answer the remaining "needs playtest" row (the continuous 10–15 run). The
@@ -472,8 +721,11 @@ the ghost too) never earns on the wrong machine.
 4. The XR-057 cheat-suppression flag (game-scoped `cheated`, set by
    skip-level and time-scale keys, cleared only on new game, persisted in
    the savegame) gating all unlocks in the shared layer.
-5. Later, one backend at a time against the same seam: Steamworks (next to
-   `steam/`), Google Play Games Services, Game Center.
+5. One backend at a time against the same seam: Steamworks (**done**),
+   Game Center (**done** — `game_center_achievements.mm` plus the shared
+   pending journal `achievement_journal.h/.cpp`), Google Play Games
+   Services (**done** — `play_games_achievements.cpp` +
+   `PlayGamesAchievements.java`; Play Console config pending).
 
 The Xbox backend (GDK Achievements Manager wiring, Partner Center config,
 sandbox testing) is tracked in the private GDKX mirror and consumes this

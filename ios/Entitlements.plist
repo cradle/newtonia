@@ -8,5 +8,12 @@
 
     <key>get-task-allow</key>
     <false/>
+
+    <!-- Game Center achievements (game_center_achievements.mm). The App ID
+         in the Developer Portal must have the Game Center capability enabled
+         and the provisioning profile regenerated afterwards, or signing
+         rejects this entitlement. -->
+    <key>com.apple.developer.game-center</key>
+    <true/>
 </dict>
 </plist>

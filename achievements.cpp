@@ -5,13 +5,15 @@
 
 namespace Achievements {
 
-// Platform backends (GDK in the private mirror, Steamworks, Play Games
-// Services, Game Center — ACHIEVEMENTS.md §2) implement Backend::unlock/
+// Platform backends (GDK in the private mirror, Steamworks, Game Center,
+// Play Games Services — ACHIEVEMENTS.md §2) implement Backend::unlock/
 // progress behind their own build flags and map the symbolic IDs to platform
 // ones. Everything in this file, including cheat suppression, is shared and
 // must not move into a backend.
-#ifdef STEAM_BUILD
-namespace Backend {  // steam_achievements.cpp
+#if defined(STEAM_BUILD) || defined(GAME_CENTER_BUILD) || defined(PLAY_GAMES_BUILD)
+#define ACHIEVEMENTS_HAVE_BACKEND 1
+namespace Backend {  // steam_achievements.cpp / game_center_achievements.mm /
+                     // play_games_achievements.cpp
   void init();
   void unlock(const char *id);
   void progress(const char *id, int pct);
@@ -33,7 +35,7 @@ void log_unlock_once(const char *id) {
 }
 
 void backend_unlock(const char *id) {
-#ifdef STEAM_BUILD
+#ifdef ACHIEVEMENTS_HAVE_BACKEND
   Backend::unlock(id);
 #else
   (void)id;  // default backend: no-op
@@ -41,7 +43,7 @@ void backend_unlock(const char *id) {
 }
 
 void backend_progress(const char *id, int pct) {
-#ifdef STEAM_BUILD
+#ifdef ACHIEVEMENTS_HAVE_BACKEND
   Backend::progress(id, pct);
 #else
   (void)id; (void)pct;  // default backend: no-op
@@ -51,7 +53,7 @@ void backend_progress(const char *id, int pct) {
 } // namespace
 
 void init() {
-#ifdef STEAM_BUILD
+#ifdef ACHIEVEMENTS_HAVE_BACKEND
   Backend::init();
 #endif
 }

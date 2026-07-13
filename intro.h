@@ -45,6 +45,7 @@ public:
 private:
   void dismiss();        // hand the game back to the state manager
   void leave_to_menu();  // abandon the game (deleted in ~Intro, which saves)
+  void toggle_pause();   // freeze the auto-start countdown / intro tune
   Point focus() const;
 
   static const int auto_start_ms = 5000;  // auto-start if nothing pressed
@@ -58,6 +59,7 @@ private:
   int time = 0;        // ms since the intro appeared (drives flash + spin)
   int step_accum = 0;  // accumulates delta into fixed steps for the spin
   bool unfocused = false;  // freeze the auto-start countdown while unfocused
+  bool paused = false;     // pause key held the intro (countdown/tune frozen)
   Mix_Chunk *music_sound = NULL;
   int music_channel = -1;  // looping intro tune; halted on dismissal
 };

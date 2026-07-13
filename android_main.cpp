@@ -9,6 +9,7 @@
 #include <SDL_mixer.h>
 #include <GLES2/gl2.h>
 
+#include "achievements.h"
 #include "gles2_compat.h"
 #include "state_manager.h"
 #include "touch_controls.h"
@@ -348,6 +349,11 @@ extern "C" int SDL_main(int argc, char *argv[]) {
             if (controller) break;
         }
     }
+
+    // Play Games achievements backend: needs the SDL activity via JNI (so
+    // after SDL_Init) and must precede the state machine, whose constructors
+    // can already fire earns from a resumed save.
+    Achievements::init();
 
     // Load user preferences before creating the state machine so that GLShip
     // constructors can read them (e.g. rotate_view).

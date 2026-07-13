@@ -213,7 +213,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   if (dev_start) {
     // Spawn the hazards this generation would have accumulated, exactly as
     // the rebuild in tick() does, then suppress achievements for the game.
-    if (generation >= 9)
+    if (generation >= 13)
       black_holes->push_back(new BlackHole(WrappedPoint(world.x() / 2.0f, world.y() / 2.0f)));
     if (generation >= 10)
       mini_station = new GLMiniStation(grid, players, (std::list<Object*>*)objects);
@@ -672,8 +672,8 @@ void GLGame::maybe_start_intro() {
              name = "ARMOURED";    break;
     case 8:  display = new Asteroid(false, false, false, false, false, false, false, true);
              name = "PHASING";     break;
-    case 9:  if (!black_holes->empty()) { kind = Intro::BLACK_HOLE;   name = "BLACK HOLE"; }    break;
     case 10: if (mini_station != NULL)  { kind = Intro::MINI_STATION; name = "MINI STATION"; }  break;
+    case 13: if (!black_holes->empty()) { kind = Intro::BLACK_HOLE;   name = "BLACK HOLE"; }    break;
     case 14: if (station != NULL)       { kind = Intro::STATION;      name = "ENEMY STATION"; } break;
     default: return;
   }
@@ -3407,7 +3407,8 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       Achievements::unlock("coop_clear");  // online is always two-player
       if (generation >= 8 && !me->died_this_generation)
         Achievements::unlock("no_damage_clear");
-      if (generation >= 9 && !me->died_this_generation)
+      // Black hole moved to level 14 (generation 13) — see the host block.
+      if (generation >= 13 && !me->died_this_generation)
         Achievements::unlock("black_hole_survivor");
       Achievements::progress("reach_level15", (s.generation + 1) * 100 / 15);
       if (s.generation >= 9) {
@@ -4137,9 +4138,9 @@ void GLGame::tick(int delta) {
         }
         // "Clear level 9 or beyond without taking damage" — level 9 = generation 8.
         if(generation >= 8 && !local_died) Achievements::unlock("no_damage_clear");
-        // Black hole exists from level 10 (generation 9); any local player
+        // Black hole exists from level 14 (generation 13); any local player
         // surviving the whole level counts (2P criteria per the §5 re-pitch note).
-        if(generation >= 9 && local_survived) Achievements::unlock("black_hole_survivor");
+        if(generation >= 13 && local_survived) Achievements::unlock("black_hole_survivor");
       } else if (Net::net_debug_enabled()) {
         NET_LOG("net: level-clear deferred - killed rock still owes "
                 "fragments (would have stuck CLEARED)\n");
@@ -4185,10 +4186,10 @@ void GLGame::tick(int delta) {
       Asteroid::num_killable = 0;
       add_asteroids();
       grid.update((std::list<Object *>*)objects);
-      // From the level after the black hole appears (generation 9), spawn a
-      // small roaming station with a fresh random heading each generation.
-      // Created here, after the new world bounds and asteroids are in place, so
-      // it gets a valid random starting position inside the new world.
+      // From generation 10, spawn a small roaming station with a fresh random
+      // heading each generation. Created here, after the new world bounds and
+      // asteroids are in place, so it gets a valid random starting position
+      // inside the new world.
       if(generation >= 10) {
         if(mini_station != NULL)
           delete mini_station;
@@ -4203,7 +4204,7 @@ void GLGame::tick(int delta) {
         delete black_holes->back();
         black_holes->pop_back();
       }
-      if(generation >= 9)
+      if(generation >= 13)
         black_holes->push_back(new BlackHole(WrappedPoint(world.x() / 2.0f, world.y() / 2.0f)));
       std::list<GLShip*>::iterator o;
       for(o = players->begin(); o != players->end(); o++) {
@@ -4290,12 +4291,19 @@ void GLGame::tick(int delta) {
     }
 
     // Apply black-hole gravity to asteroids (asteroids pass through, not swallowed).
-    // Invincible asteroids are unaffected.
+    // Invincible asteroids are unaffected. Asteroids inside a well keep full
+    // slingshot dynamics; the excess-speed decay in Asteroid::step() only runs
+    // once they are free, so re-flag in_gravity_well every tick.
+    for(oi = objects->begin(); oi != objects->end(); oi++)
+      (*oi)->in_gravity_well = false;
     for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
       oi = objects->begin();
       while(oi != objects->end()) {
-        if(!(*oi)->invincible)
+        if(!(*oi)->invincible) {
           (*bhi)->apply_gravity(**oi, step_size);
+          if((*oi)->position.distance_to((*bhi)->position) < BlackHole::influence_radius)
+            (*oi)->in_gravity_well = true;
+        }
         oi++;
       }
     }

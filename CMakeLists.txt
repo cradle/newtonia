@@ -16,6 +16,11 @@ list(FILTER GAME_SOURCES EXCLUDE REGEX ".*glut\\.cpp$")
 # the source tree when Gradle runs CMake from android/app/.cxx/.
 list(FILTER GAME_SOURCES EXCLUDE REGEX ".*/CMakeFiles/.*")
 list(FILTER GAME_SOURCES EXCLUDE REGEX ".*\\.cxx/.*")
+# Exclude the Steamworks SDK a developer may have unzipped at ./sdk/ for
+# local `make steam` builds (gitignored, so CI never sees it): the recursive
+# glob above would otherwise sweep Valve's sample sources (e.g. glmgr, which
+# includes macOS-only <OpenGL/OpenGL.h>) into the Android build.
+list(FILTER GAME_SOURCES EXCLUDE REGEX ".*/sdk/.*")
 
 # SDL2 dependency: build from source if SDL2_SOURCE_DIR is provided (e.g. CI),
 # otherwise expect pre-built SDL2 to be found via SDL2_DIR / SDL2_mixer_DIR.
@@ -110,7 +115,10 @@ target_link_libraries(newtonia
     ${openslES-lib}
 )
 
-target_compile_definitions(newtonia PRIVATE __ANDROID__)
+# PLAY_GAMES_BUILD enables the Play Games achievements backend
+# (play_games_achievements.cpp + PlayGamesAchievements.java); this CMake file
+# only builds the Android library, so it is always on here.
+target_compile_definitions(newtonia PRIVATE __ANDROID__ PLAY_GAMES_BUILD)
 
 if(NEWTONIA_NET)
     # Activates net_transport_rtc.cpp / net_signal_rtc.cpp (empty TUs

@@ -25,6 +25,13 @@
         android:allowBackup="false"
         android:hardwareAccelerated="true">
 
+        <!-- Play Games Services project ID (achievements backend). Must be a
+             @string reference — an inline numeric value gets parsed as an int
+             and the SDK rejects it. Placeholder lives in values/games-ids.xml
+             until the Play Console project exists. -->
+        <meta-data android:name="com.google.android.gms.games.APP_ID"
+                   android:value="@string/game_services_project_id" />
+
         <activity
             android:name="org.newtonia.NewtoniaActivity"
             android:label="@string/app_name"

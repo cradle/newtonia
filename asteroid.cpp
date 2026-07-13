@@ -8,6 +8,13 @@
 using namespace std;
 
 const int Asteroid::max_speed = 3;
+// A black-hole slingshot can leave an asteroid far above its natural cruise
+// speed (max_speed / radius). Excess speed decays away gradually instead of
+// being clamped, so slung asteroids still escape the well and cross the level
+// hot, then settle back to a dodgeable pace. Headroom matches the 4x quantum
+// superposition speed so unobserved quantum asteroids are never slowed.
+const float Asteroid::speed_headroom = 4.0f;
+const float Asteroid::speed_decay_ms = 2000.0f;
 const int Asteroid::max_rotation = 15;
 int Asteroid::num_killable = 0;
 uint32_t Asteroid::next_net_id = 0;
@@ -42,6 +49,7 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
   this->phased = false;
   // Stagger initial timers so a group doesn't all phase in sync.
   this->phase_timer = 1500 + rand() % 1500;
+  this->in_gravity_well = false;
   if(this->tough) {
     health = 5;
     // Pre-compute stable crack geometry (rotation-invariant: stored as t and perp fractions).
@@ -219,8 +227,15 @@ void Asteroid::restore_state(const Save::Asteroid &s) {
 void Asteroid::step(int delta) {
   CompositeObject::step(delta);
   float spd = velocity.magnitude();
-  if (spd > (float)max_speed)
+  if (spd > (float)max_speed) {
     velocity = velocity * ((float)max_speed / spd);
+    spd = (float)max_speed;
+  }
+  float cruise = speed_headroom * (float)max_speed / radius;
+  if (!in_gravity_well && spd > cruise) {
+    float excess = (spd - cruise) * expf(-(float)delta / speed_decay_ms);
+    velocity = velocity * ((cruise + excess) / spd);
+  }
   if(armoured) {
     armour_angle += rotation_speed * delta * (float)M_PI / 180.0f;
   }
@@ -286,6 +301,7 @@ Asteroid::Asteroid(Asteroid const *mother) {
   phasing = mother->phasing;
   phased = false;
   phase_timer = 1500 + rand() % 1500;
+  in_gravity_well = mother->in_gravity_well;
   health = 1;
   killed = false;
   invincible = mother->invincible;

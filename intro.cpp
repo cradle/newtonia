@@ -84,8 +84,19 @@ void Intro::leave_to_menu() {
   request_state_change(new Menu());
 }
 
+void Intro::toggle_pause() {
+  paused = !paused;
+  // Freeze/thaw the intro tune alongside the auto-start countdown so a paused
+  // intro is silent, matching the in-game pause. (While unfocused the channel
+  // is already paused; focus_gained() won't un-pause it if we stay paused.)
+  if (music_channel >= 0) {
+    if (paused) Mix_Pause(music_channel);
+    else if (!unfocused) Mix_Resume(music_channel);
+  }
+}
+
 void Intro::tick(int delta) {
-  if (is_finished() || unfocused) return;
+  if (is_finished() || unfocused || paused) return;
   time += delta;
   if (time >= auto_start_ms) {
     dismiss();
@@ -194,7 +205,11 @@ void Intro::draw() {
   // Typer multiplies coordinates by Typer::scale (800x600 virtual space), so
   // convert the ortho half-height into Typer units to place text on screen.
   float top = hh / Typer::scale;
-  if ((time / 700) % 2 == 0) {
+  if (paused) {
+    // Countdown (and thus `time`) is frozen while paused, so show a steady
+    // PAUSED in place of the flashing start prompt.
+    Typer::draw_centered(0, top * 0.75f, "PAUSED", 20);
+  } else if ((time / 700) % 2 == 0) {
     Typer::draw_centered(0, top * 0.75f,
                          is_touch_mode() ? "TAP FIRE TO START" : "PRESS FIRE TO START", 20);
   }
@@ -202,10 +217,18 @@ void Intro::draw() {
 }
 
 void Intro::keyboard(unsigned char key, int x, int y) {
-  // Small delay so a shoot key held over the level transition doesn't
+  if (is_finished()) return;
+  // Pause freezes the auto-start countdown (and the intro tune) so the intro
+  // holds indefinitely; press again to resume.
+  if (key == (unsigned char)g_prefs.general_keys.pause) {
+    toggle_pause();
+    return;
+  }
+  // Shoot dismisses, but not while paused (as in-game, shots don't fire when
+  // paused). Small delay so a shoot key held over the level transition doesn't
   // dismiss the intro before it is seen. The touch fire button arrives here
   // too (it synthesises the shoot key).
-  if (!is_finished() && time >= input_delay_ms &&
+  if (!paused && time >= input_delay_ms &&
       (key == (unsigned char)g_prefs.p1_keys.shoot ||
        key == (unsigned char)g_prefs.p2_keys.shoot)) {
     dismiss();
@@ -241,7 +264,15 @@ void Intro::keyboard_up(unsigned char key, int x, int y) {
 }
 
 void Intro::controller(SDL_Event event) {
-  if (!is_finished() && time >= input_delay_ms &&
+  if (is_finished()) return;
+  // Start (or Guide) pauses, matching the in-game pause button.
+  if (event.type == SDL_CONTROLLERBUTTONDOWN &&
+      (event.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
+       event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE)) {
+    toggle_pause();
+    return;
+  }
+  if (!paused && time >= input_delay_ms &&
       ((event.type == SDL_CONTROLLERBUTTONDOWN &&
         event.cbutton.button == SDL_CONTROLLER_BUTTON_A) ||
        (event.type == SDL_CONTROLLERAXISMOTION &&
@@ -263,7 +294,8 @@ void Intro::focus_lost() {
 
 void Intro::focus_gained() {
   unfocused = false;
-  if (music_channel >= 0) Mix_Resume(music_channel);
+  // Stay silent if the player paused the intro before losing focus.
+  if (music_channel >= 0 && !paused) Mix_Resume(music_channel);
 }
 
 void Intro::controller_added(SDL_GameController *ctrl) {

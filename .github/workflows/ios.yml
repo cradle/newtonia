@@ -115,6 +115,7 @@ jobs:
             > srcs.txt
           echo "ios_main.mm" >> srcs.txt
           echo "ios_share.mm" >> srcs.txt
+          echo "game_center_achievements.mm" >> srcs.txt
           echo "Sources to compile:"
           cat srcs.txt
 
@@ -129,9 +130,13 @@ jobs:
           mkdir -p obj
           while IFS= read -r src; do
             objname=$(echo "$src" | tr '/' '_' | sed -E 's/\.(cpp|mm)$/.o/')
-            clang++ $SIM_FLAGS -std=c++11 -O2 \
+            # Objective-C++ compiles under ARC, matching the Xcode project
+            # (game_center_achievements.mm assumes it)
+            case "$src" in *.mm) ARC_FLAG="-fobjc-arc" ;; *) ARC_FLAG="" ;; esac
+            clang++ $SIM_FLAGS $ARC_FLAG -std=c++11 -O2 \
               -D__IOS__=1 \
               -DNEWTONIA_NET_RTC \
+              -DGAME_CENTER_BUILD=1 \
               -Inewtonia -Inewtonia/view -Inewtonia/weapon \
               -I libdatachannel/include \
               -I SDL2/include \
@@ -167,6 +172,7 @@ jobs:
             -framework AVFoundation \
             -framework CoreHaptics \
             -framework GameController \
+            -framework GameKit \
             -framework QuartzCore \
             -framework Metal
 

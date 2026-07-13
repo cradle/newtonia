@@ -38,3 +38,12 @@ Xcode build with netplay:
 
 Without those steps the project still builds — the netplay TUs compile
 empty and the menu simply hides ONLINE.
+
+## Game Center in the simulator build
+
+The simulator artifact compiles the Game Center achievements backend
+(`GAME_CENTER_BUILD`), so on launch it may show a Game Center sign-in
+sheet if the simulator has no signed-in account — cancel it once and the
+game plays normally (earns are journaled locally and delivered whenever
+an account signs in). Sandbox achievement testing needs a device build;
+see ACHIEVEMENTS.md §2.
