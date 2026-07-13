@@ -1271,7 +1271,9 @@ void GLGame::tick(int delta) {
           break;
         }
         case Hazard::COMET: {
-          // Indestructible; ploughs through ships, lethal unless invincible.
+          // Ploughs through ships (lethal unless invincible) but breaks up after
+          // COMET_HEALTH shots, paying a bounty.
+          if(!h->is_alive()) break;
           for(o = players->begin(); o != players->end(); o++) {
             Ship* s = (*o)->ship;
             if(s->is_alive() && h->Object::collide(*s)) {
@@ -1284,6 +1286,32 @@ void GLGame::tick(int delta) {
             Ship* s = (*o)->ship;
             if(s->is_alive() && h->Object::collide(*s)) s->kill();
           }
+          // Player shots chip away at it.
+          for(o = players->begin(); o != players->end() && h->is_alive(); o++) {
+            Ship* s = (*o)->ship;
+            for(size_t i = 0; i < s->bullets.size();) {
+              if(h->is_alive() && h->Object::collide(s->bullets[i])) {
+                s->explode(s->bullets[i].position, h->velocity);
+                s->bullets[i] = std::move(s->bullets.back());
+                s->bullets.pop_back();
+                h->hit();
+                if(!h->is_alive()) s->score += Hazard::COMET_REWARD;
+              } else { ++i; }
+            }
+            for(size_t i = 0; i < s->missiles.size() && h->is_alive();) {
+              if(h->Object::collide(s->missiles[i])) {
+                s->detonate(s->missiles[i].position, s->missiles[i].velocity, 25);
+                if(s->missile_explode_sound != NULL)
+                  Mix_PlayChannel(-1, s->missile_explode_sound, 0);
+                s->missiles[i] = std::move(s->missiles.back());
+                s->missiles.pop_back();
+                h->hit();
+                if(!h->is_alive()) s->score += Hazard::COMET_REWARD;
+              } else { ++i; }
+            }
+          }
+          if(!h->is_alive() && station_explode_sound != NULL)
+            Mix_PlayChannel(-1, station_explode_sound, 0);
           break;
         }
         case Hazard::SEEKER: {

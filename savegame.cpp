@@ -334,14 +334,19 @@ static bool write_hazard(FILE *f, const Save::Hazard &h) {
     return wv(f, h.kind)
         && wv(f, h.pos_x) && wv(f, h.pos_y)
         && wv(f, h.vel_x) && wv(f, h.vel_y)
-        && wv(f, h.timer);
+        && wv(f, h.timer)
+        && wv(f, (int32_t)h.health);
 }
 
 static bool read_hazard(FILE *f, Save::Hazard &h) {
-    return rv(f, h.kind)
+    int32_t health = 0;
+    bool ok = rv(f, h.kind)
         && rv(f, h.pos_x) && rv(f, h.pos_y)
         && rv(f, h.vel_x) && rv(f, h.vel_y)
-        && rv(f, h.timer);
+        && rv(f, h.timer)
+        && rv(f, health);
+    h.health = (int)health;
+    return ok;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────

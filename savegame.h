@@ -113,7 +113,8 @@ struct Hazard {
     uint8_t kind;               // Hazard::Kind
     float   pos_x, pos_y;
     float   vel_x, vel_y;
-    float   timer;
+    float   timer;              // PULSAR shockwave phase
+    int32_t health;             // COMET shots remaining (0 for other kinds)
 };
 
 // ── Enemy ship ───────────────────────────────────────────────────────────────

@@ -21,9 +21,11 @@ const float Hazard::PULSAR_CORE_RADIUS = 26.0f;
 const float Hazard::WAVE_BAND         = 55.0f;
 const float Hazard::KNOCKBACK         = 0.45f;
 
-const float Hazard::COMET_SPEED  = 0.22f;   // well above the mini-station's drift
+const float Hazard::COMET_SPEED  = 0.28f;   // fast — a real dodge, not a drift
+const int   Hazard::COMET_HEALTH = 4;       // shots to break it up
 const float Hazard::SEEKER_SPEED = 0.135f;  // slow enough to out-fly
 const int   Hazard::SEEKER_REWARD = 250;
+const int   Hazard::COMET_REWARD  = 500;
 
 static float frand() { return (float)(rand() % 100000) / 100000.0f; }
 
@@ -51,7 +53,8 @@ Hazard::Hazard(Kind kind, const Point &world) : kind_(kind) {
     case COMET:
       radius = 32.0f;
       velocity = Point(cosf(dir) * COMET_SPEED, sinf(dir) * COMET_SPEED);
-      invincible = true;
+      invincible = false;   // shots break it up
+      health_ = COMET_HEALTH;
       // Tumble like an asteroid (degrees/ms, same formula as Asteroid).
       rotation_speed = ((rand() % 15) - 7) / radius;
       if (rotation_speed > -0.08f && rotation_speed < 0.08f)
@@ -76,10 +79,22 @@ bool Hazard::wave_active() const {
 }
 
 bool Hazard::is_removable() const {
-  // The pulsar and comet are permanent fixtures for the level; a destroyed
-  // seeker lingers only until its debris burst has faded.
-  if (kind_ != SEEKER) return false;
+  // The pulsar is a permanent fixture; a destroyed comet or seeker lingers only
+  // until its debris burst has faded, then it is reaped.
+  if (kind_ == PULSAR) return false;
   return !alive && debris_.empty();
+}
+
+void Hazard::hit() {
+  if (kind_ != COMET || !alive) return;
+  // Chip off a puff of impact debris on every hit.
+  for (int i = 0; i < 10; i++) {
+    float a = frand() * 2.0f * (float)M_PI;
+    float sp = 0.05f + frand() * 0.2f;
+    debris_.push_back(Particle(position, Point(cosf(a) * sp, sinf(a) * sp),
+                               400.0f + frand() * 300.0f));
+  }
+  if (--health_ <= 0) destroy();
 }
 
 void Hazard::update(int delta, list<GLShip*> *players) {
@@ -95,6 +110,11 @@ void Hazard::update(int delta, list<GLShip*> *players) {
         float t = (timer_ - PULSAR_CHARGE_MS) / PULSAR_EXPAND_MS;
         wave_radius_ = t * PULSAR_MAX_RADIUS;
       }
+      // Beams spin off their own accumulator (not the cycle timer, which resets
+      // and would snap the beams back each loop). Wrapped at 360 so it never
+      // loses precision, seamlessly.
+      rotation += 0.09f * delta;
+      if (rotation >= 360.0f) rotation -= 360.0f;
       break;
     }
 
@@ -102,12 +122,15 @@ void Hazard::update(int delta, list<GLShip*> *players) {
       position += velocity * delta;
       position.wrap();
       rotation += rotation_speed * delta;  // tumble like an asteroid
-      // Leave a trail of fading debris behind the head.
+      // Lay down a bright, lengthening tail: debris lag behind the head so the
+      // fast comet stretches them into a visible streak.
       trail_timer_ -= delta;
       if (trail_timer_ <= 0) {
-        trail_timer_ += 45;
-        Point jitter((frand() - 0.5f) * 0.03f, (frand() - 0.5f) * 0.03f);
-        debris_.push_back(Particle(position, velocity * -0.15f + jitter, 550.0f));
+        trail_timer_ += 28;
+        for (int i = 0; i < 2; i++) {
+          Point jitter((frand() - 0.5f) * 0.05f, (frand() - 0.5f) * 0.05f);
+          debris_.push_back(Particle(position, velocity * -0.25f + jitter, 750.0f));
+        }
       }
       break;
     }
@@ -295,23 +318,21 @@ void Hazard::draw(bool minimap) const {
   if (kind_ == PULSAR) {
     float cycle = PULSAR_CHARGE_MS + PULSAR_EXPAND_MS;
     float phase = fmodf(timer_, cycle);
-    // Charge ramps 0→1 through the charge window, then the core blazes and the
-    // beams flare white for the brief emit window.
-    bool firing = phase >= PULSAR_CHARGE_MS;
-    float charge = firing ? 1.0f : phase / PULSAR_CHARGE_MS;
-    float spin = timer_ * 0.09f;  // degrees; a steady lighthouse sweep
+    // Energy ramps 0→1 while charging, then 1→0 as it discharges through the
+    // emit window. It is exactly 0 at both ends of the cycle, so brightness has
+    // no seam at the loop point.
+    float e = phase < PULSAR_CHARGE_MS
+                ? phase / PULSAR_CHARGE_MS
+                : 1.0f - (phase - PULSAR_CHARGE_MS) / PULSAR_EXPAND_MS;
 
-    // Beams: cyan while charging, flaring white-hot on emit. Faint so they read
-    // as light, not solid geometry.
-    float beam_a = (firing ? 0.85f : 0.20f + 0.35f * charge);
-    beam_mesh_.draw_tinted_at(firing ? 1.0f : 0.5f,
-                              firing ? 1.0f : 0.85f,
-                              1.0f, beam_a, px, py, spin);
+    // Beams: faint cyan when idle, flaring toward white as energy peaks. Kept
+    // translucent so they read as light rather than solid geometry.
+    beam_mesh_.draw_tinted_at(0.5f + 0.5f * e, 0.7f + 0.3f * e, 1.0f,
+                              0.20f + 0.65f * e, px, py, rotation);
 
-    // Core: dim blue at rest, white-hot when it fires.
-    float core_r = 0.5f + 0.5f * charge;
+    // Core: dim blue at rest, white-hot at the peak.
     glLineWidth(2.0f);
-    body_mesh_.draw_tinted_at(core_r, 0.6f + 0.4f * charge, 1.0f, 1.0f, px, py, 0.0f);
+    body_mesh_.draw_tinted_at(0.5f + 0.5f * e, 0.6f + 0.4f * e, 1.0f, 1.0f, px, py, 0.0f);
 
     if (wave_radius_ > 1.0f) {
       float t = wave_radius_ / PULSAR_MAX_RADIUS;
@@ -344,15 +365,18 @@ void Hazard::draw(bool minimap) const {
       mb.begin(GL_POINTS);
       for (const auto &d : debris_) {
         float al = d.aliveness();
-        mb.color(0.6f * al, 0.85f * al, 1.0f * al, al);
+        // Icy white core fading to blue at the tail's end.
+        mb.color(0.75f + 0.25f * al, 0.85f + 0.15f * al, 1.0f, al);
         mb.vertex(d.position.x(), d.position.y());
       }
       mb.end();
       mesh.upload(mb, GL_DYNAMIC_DRAW);
-      mesh.draw(4.0f);
+      mesh.draw(6.0f);
     }
-    glLineWidth(2.0f);
-    body_mesh_.draw_at(px, py, rotation);  // rotation is in degrees
+    if (alive) {
+      glLineWidth(2.0f);
+      body_mesh_.draw_at(px, py, rotation);  // rotation is in degrees
+    }
     return;
   }
 
@@ -387,12 +411,13 @@ void Hazard::draw(bool minimap) const {
 
 Save::Hazard Hazard::capture_state() const {
   Save::Hazard s;
-  s.kind  = (uint8_t)kind_;
-  s.pos_x = position.x();
-  s.pos_y = position.y();
-  s.vel_x = velocity.x();
-  s.vel_y = velocity.y();
-  s.timer = timer_;
+  s.kind   = (uint8_t)kind_;
+  s.pos_x  = position.x();
+  s.pos_y  = position.y();
+  s.vel_x  = velocity.x();
+  s.vel_y  = velocity.y();
+  s.timer  = timer_;
+  s.health = health_;
   return s;
 }
 
@@ -401,5 +426,6 @@ Hazard *Hazard::from_state(const Save::Hazard &s, const Point &world) {
   h->position = WrappedPoint(s.pos_x, s.pos_y);
   h->velocity = Point(s.vel_x, s.vel_y);
   h->timer_ = s.timer;
+  h->health_ = s.health;
   return h;
 }

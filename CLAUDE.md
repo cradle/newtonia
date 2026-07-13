@@ -277,7 +277,7 @@ Serialization: `capture_state()` / `restore_state()` for save/load.
 | Kind | Behaviour |
 |------|-----------|
 | `PULSAR` | Stationary; charges then fires an expanding shockwave ring (`wave_active()` / `wave_radius()`) that hurls any ship its front reaches outward (`KNOCKBACK`), killing it unless invincible. Rendered as a neutron star: hot core, accretion ring, rotating lighthouse beams, amber double-ring shockwave |
-| `COMET` | Indestructible; a solid-white, asteroid-shaped body that tumbles as it cruises in a straight line (wrapping the world) trailing debris; lethal to any ship it strikes |
+| `COMET` | A solid-white, asteroid-shaped body that tumbles as it cruises fast in a straight line (wrapping the world) trailing a bright debris tail; lethal to any ship it strikes, but breaks up after `COMET_HEALTH` shots for `COMET_REWARD` |
 | `SEEKER` | Homes on the nearest player and rams it (lethal unless invincible); dies to a single shot for `SEEKER_REWARD`. Passes through asteroids like the mini-station; rendered as a blinking red drone |
 
 Serialization: `capture_state()` / `from_state()` (kind, position, velocity, shockwave phase). Destroyed seekers aren't persisted.
