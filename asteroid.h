@@ -58,6 +58,9 @@ public:
   bool phased;              // true = currently intangible (invincible to bullets)
   int  phase_timer;         // ms remaining in current phase state
 
+  bool in_gravity_well;     // re-flagged by the game loop every tick; suspends
+                            // the excess-speed decay so slingshots stay intact
+
   int health;               // hits remaining (tough: 5, others: 1)
   int crack_vertex[5];      // which polygon vertex each crack line starts from
   float crack_t[5];         // position along vertex→center (0.35–0.65)
@@ -65,6 +68,8 @@ public:
 
 private:
   const static int max_speed;
+  const static float speed_headroom;
+  const static float speed_decay_ms;
   const static int radius_variation;
   const static int minimum_radius;
   const static int max_rotation;
