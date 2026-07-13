@@ -16,7 +16,11 @@ public:
 class ISteamApps {
 public:
   virtual bool GetCurrentBetaName( char *pchName, int cchNameBufferSize ) = 0;
+  virtual int GetLaunchCommandLine( char *pszCommandLine, int cubCommandLine ) = 0;
 };
+// Posted to a running game when Steam hands it a fresh launch command line
+// (an API-delivered Join / steam:// while already open) — steam_invites.cpp.
+struct NewUrlLaunchParameters_t { int m_unused; };
 // Rich Presence surface used by steam_presence.cpp and steam_invites.cpp.
 class ISteamFriends {
 public:
