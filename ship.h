@@ -144,7 +144,7 @@ class Ship : public CompositeObject {
     void add_giga_mine_ammo(int amount);
     void add_missile_ammo(int amount);
     void add_shield_ammo(int amount);
-    void add_shock_ammo(int amount);
+    void add_shock(int amount);  // primary weapon (chain lightning)
     // Debug/testing: grant every primary gun variant and every secondary at
     // `ammo` rounds (Nova stays at its design cap). Used by the NEWTONIA_ALL_WEAPONS
     // cheat flag. God mode is deliberately excluded — it hijacks the primary slot

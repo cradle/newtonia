@@ -381,34 +381,44 @@ void Ship::add_shield_ammo(int amount) {
   secondary = --secondary_weapons.end();
 }
 
-void Ship::add_shock_ammo(int amount) {
-  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+// Shock is a primary weapon (lives in primary_weapons, fired via shoot()).
+// Selection mirrors add_weapon(): switch to it on pickup unless in god mode or
+// mid-auto-fire, so it doesn't yank the gun out from under a held trigger.
+void Ship::add_shock(int amount) {
+  bool in_god_mode = god_mode_time_remaining() > 0;
+  bool auto_shooting = !primary_weapons.empty() && (*primary)->is_automatic() && (*primary)->is_shooting();
+
+  for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
     if(dynamic_cast<Weapon::Shock*>(*it)) {
       (*it)->add_ammo(amount);
-      if(!shield_held(secondary_weapons, secondary)) {
-        (*secondary)->shoot(false);
-        secondary = it;
+      if(!in_god_mode && !auto_shooting) {
+        (*primary)->shoot(false);
+        primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
+        primary = --primary_weapons.end();
       }
       return;
     }
   }
   Weapon::Shock *w = new Weapon::Shock(this);
   w->set_ammo(amount);
-  secondary_weapons.push_back(w);
-  if(!shield_held(secondary_weapons, secondary))
-    secondary = --secondary_weapons.end();
+  primary_weapons.push_back(w);
+  if(!in_god_mode && !auto_shooting) {
+    if(primary != primary_weapons.end())
+      (*primary)->shoot(false);
+    primary = --primary_weapons.end();
+  }
 }
 
 void Ship::give_all_weapons(int ammo) {
-  // Every primary gun variant.
+  // Every primary gun variant, plus the shock primary.
   for (int i = 0; i < num_weapon_configs; i++) add_weapon(i);
+  add_shock(ammo);
   // Every secondary. Nova clamps to its own cap inside add_nova_ammo().
   add_mine_ammo(ammo);
   add_giga_mine_ammo(ammo);
   add_missile_ammo(ammo);
   add_shield_ammo(ammo);
   add_nova_ammo(ammo);
-  add_shock_ammo(ammo);
   // Top every limited-ammo weapon up to `ammo` (base gun stays unlimited; Nova
   // keeps its design cap set above).
   for (auto *w : primary_weapons)
@@ -627,6 +637,10 @@ Save::Player Ship::capture_state() const {
       we.kind         = Save::WeaponEntry::Kind::GodMode;
       we.weapon_index = -1;
       we.ammo         = gm->time_remaining();
+    } else if (dynamic_cast<Weapon::Shock*>(*it)) {
+      we.kind         = Save::WeaponEntry::Kind::Shock;
+      we.weapon_index = -1;
+      we.ammo         = (*it)->ammo();
     } else {
       Weapon::Default *dw = dynamic_cast<Weapon::Default*>(*it);
       we.kind         = Save::WeaponEntry::Kind::Default;
@@ -650,7 +664,6 @@ Save::Player Ship::capture_state() const {
     else if (dynamic_cast<Weapon::Missile*>(*it))  we.kind = Save::WeaponEntry::Kind::Missile;
     else if (dynamic_cast<Weapon::Shield*>(*it))   we.kind = Save::WeaponEntry::Kind::Shield;
     else if (dynamic_cast<Weapon::Nova*>(*it))     we.kind = Save::WeaponEntry::Kind::Nova;
-    else if (dynamic_cast<Weapon::Shock*>(*it))    we.kind = Save::WeaponEntry::Kind::Shock;
     else we.kind = Save::WeaponEntry::Kind::Mine; // fallback
     p.secondary_weapons.push_back(we);
   }
@@ -680,6 +693,13 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
   for (const auto &we : p.primary_weapons) {
     if (we.kind == Save::WeaponEntry::Kind::GodMode) {
       add_god_mode(we.ammo);
+    } else if (we.kind == Save::WeaponEntry::Kind::Shock) {
+      // Construct directly (like the Default branch) to preserve list order;
+      // selected_primary_idx is re-clamped after the loop.
+      Weapon::Shock *w = new Weapon::Shock(this);
+      w->set_ammo(we.ammo);
+      primary_weapons.push_back(w);
+      primary = --primary_weapons.end();
     } else {
       // Bypass add_weapon(): it rejects weapon_index==-1 (base weapon) and
       // ignores saved ammo. Construct directly and restore ammo explicitly.
@@ -709,7 +729,6 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
       case Save::WeaponEntry::Kind::Missile:  add_missile_ammo(we.ammo);  break;
       case Save::WeaponEntry::Kind::Shield:   add_shield_ammo(we.ammo);   break;
       case Save::WeaponEntry::Kind::Nova:     add_nova_ammo(we.ammo);     break;
-      case Save::WeaponEntry::Kind::Shock:    add_shock_ammo(we.ammo);    break;
       default: break;
     }
   }
@@ -1407,9 +1426,10 @@ void Ship::shoot(bool on) {
       previous_weapon();
     } else {
       if(on) {
-        record_weapon_fired(dynamic_cast<Weapon::GodMode*>(*primary)
-                              ? Save::WeaponEntry::Kind::GodMode
-                              : Save::WeaponEntry::Kind::Default);
+        Save::WeaponEntry::Kind kind = Save::WeaponEntry::Kind::Default;
+        if      (dynamic_cast<Weapon::GodMode*>(*primary)) kind = Save::WeaponEntry::Kind::GodMode;
+        else if (dynamic_cast<Weapon::Shock*>(*primary))   kind = Save::WeaponEntry::Kind::Shock;
+        record_weapon_fired(kind);
       }
       (*primary)->shoot(on);
     }
@@ -1434,7 +1454,6 @@ void Ship::fire_secondary(bool on) {
       else if (dynamic_cast<Weapon::Missile*>(*secondary))  kind = Save::WeaponEntry::Kind::Missile;
       else if (dynamic_cast<Weapon::Shield*>(*secondary))   kind = Save::WeaponEntry::Kind::Shield;
       else if (dynamic_cast<Weapon::Nova*>(*secondary))     kind = Save::WeaponEntry::Kind::Nova;
-      else if (dynamic_cast<Weapon::Shock*>(*secondary))    kind = Save::WeaponEntry::Kind::Shock;
       record_weapon_fired(kind);
     }
     (*secondary)->shoot(on);

@@ -19,7 +19,7 @@ struct WeaponEntry {
         Missile,
         Shield,
         Nova,      // screen-clearing secondary; ammo = number of charges
-        Shock,     // chain-lightning secondary; ammo = number of bolts
+        Shock,     // chain-lightning primary; ammo = number of bolts
     };
     Kind kind;
     int  weapon_index;  // Default only; ignored for all other kinds
