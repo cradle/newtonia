@@ -29,6 +29,7 @@ std::vector<const Ship*> Ship::net_booms;
 std::vector<Ship::NetKillClaim> Ship::net_kill_claims;
 std::vector<Ship::NetShotReport> Ship::net_shot_reports;
 std::vector<std::vector<Point>> Ship::net_lance_reports;
+std::vector<std::vector<Point>> Ship::net_shock_reports;
 std::vector<Ship::NetBounceReport> Ship::net_bounce_reports;
 bool Ship::net_report_bounces = false;
 std::vector<std::pair<const Ship*, uint8_t>> Ship::net_ach_relays;
@@ -1382,14 +1383,16 @@ void Ship::collide_grid(Grid &grid, int delta) {
 
   // Shock bolts: damage the asteroids their arcs reached this frame. Non-asteroid
   // targets (enemies, stations) are left in `struck` for GLGame to handle, which
-  // owns those lists and their damage APIs.
+  // owns those lists and their damage APIs. This runs on the host / single
+  // player only — the net client never calls collide_grid, so it drains its
+  // shock struck lists (asteroid claims included) in GLGame::tick_net_client.
   for(auto &bolt : shocks) {
     for(size_t i = 0; i < bolt.struck.size(); ) {
       Object *obj = bolt.struck[i];
-      if(dynamic_cast<Asteroid*>(obj)) {
-        if(obj->alive && !obj->invincible && obj->kill()) {
-          score += obj->get_value() * multiplier();
-          credit_asteroid_kill(obj);
+      if(Asteroid *a = dynamic_cast<Asteroid*>(obj)) {
+        if(a->alive && !a->invincible && a->kill()) {
+          score += a->get_value() * multiplier();
+          credit_asteroid_kill(a);
         }
         bolt.struck[i] = bolt.struck.back();
         bolt.struck.pop_back();
@@ -2119,6 +2122,22 @@ void Ship::net_nova_arrived() {
     Mix_PlayChannel(-1, giga_mine_explode_sound, 0);
 }
 
+// PROTO 22: a shock bolt the peer fired arrived as a polyline. Show it on
+// this (the firer's replica) ship as a display-only bolt: fully grown, just
+// fades, and — crucially — its exact segments are the peer's, never re-seeked
+// (net_display keeps it out of the report + kill paths). The zap sound is
+// played by the GLGame handler that owns the audio volume model.
+void Ship::net_receive_shock(const std::vector<Point> &pts) {
+  if(pts.size() < 2) return;
+  ShockBolt bolt(WrappedPoint(pts[0].x(), pts[0].y()), Point(1, 0), this);
+  bolt.points = pts;
+  bolt.growing = false;   // already grown: step_bolt only fades it now
+  bolt.life = 1.0f;
+  bolt.net_display = true;
+  bolt.net_reported = true;
+  shocks.push_back(std::move(bolt));
+}
+
 std::shared_ptr<int> Ship::net_start_missile_fly_loop() {
   if(missile_fly_sound == NULL) return nullptr;
   int ch = Mix_PlayChannel(-1, missile_fly_sound, -1);
@@ -2496,7 +2515,17 @@ void Ship::step(float delta, const Grid &grid) {
   // has been drained (asteroids in collide_grid, hostiles in GLGame) so no hit is
   // dropped on the frame it dies.
   for(size_t i = 0; i < shocks.size(); ) {
+    bool was_growing = shocks[i].growing;
     shocks[i].step_bolt(delta, missile_asteroids, shock_targets);
+    // PROTO 22: the instant a bolt finishes growing, report its exact
+    // polyline to the peer so the remote flash uses identical segments (a
+    // re-seek would diverge — grow_segment jitters with rand()). Display
+    // replicas (net_display) are never re-reported.
+    if(net_report_shots && !shocks[i].net_display && !shocks[i].net_reported &&
+       was_growing && !shocks[i].growing && shocks[i].points.size() >= 2) {
+      net_shock_reports.push_back(shocks[i].points);
+      shocks[i].net_reported = true;
+    }
     if(!shocks[i].is_alive() && shocks[i].struck.empty()) {
       shocks[i] = std::move(shocks.back());
       shocks.pop_back();

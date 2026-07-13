@@ -101,6 +101,11 @@ test/e2e/revive.sh   # co-op revive: drop gating (partner out, 10%, one at a tim
 test/e2e/gensoak.sh  # late-gen soak: host skips online to gen 25 (black hole,
                      # mini-station, gen-20 station/enemies, world growth) with
                      # per-gen liveness + no-drop + clean-log asserts
+test/e2e/shock_net.sh # PROTO 22: Shock chain-lightning both ways. Both sides
+                     # launch with NEWTONIA_ALL_WEAPONS=1, fire held, and must
+                     # log "shock bolt received" (MSG_SHOCK) both directions with
+                     # SANE counts (tens, not thousands — a runaway means an
+                     # accumulator isn't cleared) and a clean log.
 ```
 
 `NEWTONIA_TEST_SPAWN_PICKUPS=1` (offline, inert without the env var) rings
@@ -196,6 +201,49 @@ rules (hard-won; the rest are in CLAUDE.md's headless-testing section):
   countdown; time your sleeps accordingly.
 - Wrap ad-hoc runs in a hard `timeout` — a hung client can keep `xvfb-run`
   alive forever.
+
+### Debugging a crash an e2e driver caught (core dump → backtrace)
+
+When a driver reports `DEAD: joiner` (or host), don't guess — pull a real
+backtrace. This is how the PROTO 22 shock crash was pinned to one line:
+
+1. **Enable core dumps, then run the driver as-is.** The crashing instance
+   drops a core in the process's cwd (the repo root, since `launch` runs
+   `./newtonia` from `$ROOT`):
+   ```sh
+   echo 'core.%p' > /proc/sys/kernel/core_pattern   # pid-tagged, no clobber
+   ( ulimit -c unlimited; timeout 200 bash test/e2e/shock_net.sh )
+   ls core.*                                          # e.g. core.13852
+   ```
+2. **Backtrace it.** The binary must have symbols — build with `-g` (see the
+   gotcha below):
+   ```sh
+   gdb -batch -ex "bt 30" -ex "info locals" ./newtonia core.13852
+   ```
+   `#0 __dynamic_cast … glgame.cpp:2935` pointed straight at a `dynamic_cast`
+   on a freed pointer — a stale `Object*` left in a shock bolt's `struck`
+   list after `net_apply_state` deleted the asteroid.
+
+**Build gotchas that waste an hour if you miss them:**
+
+- **Keep the real netplay define when overriding `CFLAGS` for symbols.** A
+  command-line `CFLAGS=…` *replaces* the Makefile's flags — make cannot `+=`
+  onto a command-line variable — so `NETPLAY=1`'s `-DNEWTONIA_NET_RTC`
+  silently vanishes. Without it the menu's **ONLINE row disappears**, hosting
+  never starts, and every driver dies with `NO ROOM CODE` that looks like
+  flakiness. Always pass it back explicitly:
+  ```sh
+  make clean && make NETPLAY=1 -j8 CFLAGS="-Wall -g -O2 -std=c++11 \
+    $(sdl2-config --cflags) -MMD -MP -DNEWTONIA_NET_RTC -I$(pwd)/netplay-libs/include"
+  ```
+  (`LIBS` is `+=`-appended by the Makefile and survives, so only `CFLAGS`
+  needs the manual define.) When a driver stalls on the menu, **screenshot
+  it** (`xwd -id $W | convert … png`) — NEW GAME + OPTIONS with no ONLINE row
+  is the unmistakable tell.
+- **Use `-O2 -g`, not `-O0 -g`, for driver runs.** `-O0` is slow enough under
+  Xvfb + software GL that the menu-nav keystrokes get dropped and the host
+  never leaves the menu. `-O2` keeps a readable backtrace and stays fast
+  enough for the driver's timing.
 
 ## 5. What CI runs where
 

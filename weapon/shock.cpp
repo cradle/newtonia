@@ -145,6 +145,10 @@ void Shock::step(int delta) {
 
 void Shock::try_fire() {
   if (cooldown > 0) return;
+  // Netplay: the host does NOT run the remote (client's) ship's shock — the
+  // client owns its bolts and replicates them over MSG_SHOCK. Suppress the
+  // local spawn here so the host doesn't grow a second, diverging bolt.
+  if (ship->net_remote_gun) { cooldown = FIRE_INTERVAL; return; }
   if (_ammo == 0) {
     if (empty_sound != NULL && ship->sound_volume_scale > 0.0f)
       Mix_PlayChannel(-1, empty_sound, 0);

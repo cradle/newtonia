@@ -152,7 +152,16 @@ namespace Net {
 //     asteroid/enemy kills, died-this-generation, weapons-fired mask, the
 //     game-scoped cheat flag) — serialize/deserialize_game are shared
 //     between saves and the wire, so the snapshot layout changed with it.
-const uint8_t PROTO_VERSION = 21;
+// 22: Shock weapon online. MSG_SHOCK (both ways) carries a completed
+//     chain-lightning bolt's polyline for the remote flash + zap sound (the
+//     firer's growing seek is local-only; the receiver shows the finished
+//     bolt fading). The bolt's KILLS reuse the existing claim paths exactly
+//     like the lance: the client claims asteroid kills via MSG_HIT (bullet_id
+//     0) and enemy kills via MSG_HIT_SHIP (bullet_id 0); the host resolves
+//     its own player's kills locally and applies station/mini-station hull
+//     damage from the received polyline. The host suppresses the remote
+//     ship's local shock sim (net_remote_gun) so bolts come only from the wire.
+const uint8_t PROTO_VERSION = 22;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check
@@ -204,6 +213,13 @@ enum MsgType {
   // deflectors) can reuse it as-is. Unknown ids are ignored (the bullet
   // already expired or was consumed client-side).
   MSG_BOUNCE = 14,
+  // Shock bolt report (PROTO 22), BOTH ways rel: u8 n_points (2..15),
+  // n x 2 float polyline of a completed chain-lightning bolt. Display-only
+  // on the receiver (the finished bolt fading) plus the zap sound; the
+  // bolt's KILLS travel as MSG_HIT / MSG_HIT_SHIP claims (client firer,
+  // bullet_id 0) or the host firer's own resolution, and station/mini hull
+  // damage from a client bolt is applied host-side from this polyline.
+  MSG_SHOCK = 15,
 };
 
 enum EventCode {

@@ -106,6 +106,9 @@ const float GLGame::god_mode_pickup_drop_chance = 0.0025f;
 const float GLGame::beam_pickup_drop_chance = 0.0075f;
 const float GLGame::lance_pickup_drop_chance = 0.005f;
 const float GLGame::shock_pickup_drop_chance = 0.0125f;
+// Defined below; used by the host's MSG_SHOCK handler above it.
+static bool shock_bolt_reaches(const std::vector<Point> &pts,
+                               const WrappedPoint &pos, float radius);
 // Co-op revive: rolled INDEPENDENTLY of the cumulative table above, only
 // while a partner is fully out of lives and no revive is already in the
 // world — generous by design, it is the fallen player's only way back.
@@ -1252,6 +1255,30 @@ void GLGame::net_host_poll() {
         resolve_lance_ship_hits(remote, remote->lance_pulses.back().points);
       continue;
     }
+    if (h.msg_type == Net::MSG_SHOCK) {
+      // Client shock bolt (PROTO 22): show the exact polyline on the remote
+      // ship + zap sound, then apply station/mini HULL damage from it host-
+      // side (enemy kills arrive as bullet_id-0 MSG_HIT_SHIP claims, asteroids
+      // as MSG_HIT). One hull hit per bolt, like a bullet.
+      if (!remote) continue;
+      std::vector<Point> pts;
+      if (!net_receive_shock_pulse(r, remote, &pts)) continue;
+      if (station != NULL && station->is_alive() &&
+          shock_bolt_reaches(pts, station->position, station->radius)) {
+        station->hit();
+        if (!station->is_alive() && remote->is_local_player)
+          Achievements::unlock("station_destroyed");
+      }
+      if (mini_station != NULL && mini_station->is_alive() &&
+          shock_bolt_reaches(pts, mini_station->position, mini_station->radius)) {
+        remote->explode(mini_station->position, mini_station->velocity);
+        remote->score += GLMiniStation::REWARD;
+        mini_station->destroy();
+        if (station_explode_sound != NULL)
+          Mix_PlayChannel(-1, station_explode_sound, 0);
+      }
+      continue;
+    }
     if (h.msg_type == Net::MSG_HIT_SHIP) {
       // Client bullet-vs-ship claim (PROTO 15). Exactly-once rule: the
       // damage applies IFF the referenced clone is consumed HERE — if
@@ -2173,6 +2200,7 @@ void GLGame::net_clear_event_outboxes() {
   Ship::net_shot_reports.clear();
   Ship::net_ship_hit_claims.clear();
   Ship::net_lance_reports.clear();
+  Ship::net_shock_reports.clear();
   Ship::net_bounce_reports.clear();
   Ship::net_ach_relays.clear();
   Ship::net_ram_blasts.clear();
@@ -2894,6 +2922,63 @@ void GLGame::tick_net_client(int delta) {
         }
         lme->lance_hit_pending.clear();
       }
+
+      // PROTO 22: resolve the local shock bolts' hits. A bolt's struck list
+      // holds the exact objects its arc reached this frame. This MUST fully
+      // drain struck every tick: the client never calls Ship::collide_grid
+      // (it uses net_cosmetic_impacts instead), so an entry left here dangles
+      // once net_apply_state frees the asteroid a few frames later — the next
+      // dynamic_cast then segfaults on freed memory (Glenn's joiner crash).
+      //   Asteroids: claim the kill with a bullet_id-0 MSG_HIT (the lance
+      //     sentinel — one-shot, since the host suppresses the remote ship's
+      //     shock sim and so can't chip tough rocks itself; the claim drain
+      //     kills our copy this tick and the host honors it exactly-once).
+      //   Enemies: instant kill + bullet_id-0 ship claim, like the lance.
+      //   Station / mini: cosmetic splash only; hull damage stays host-side,
+      //     applied from the MSG_SHOCK polyline in the host's handler.
+      Ship *sme = players->back()->ship;
+      for (auto &bolt : sme->shocks) {
+        for (Object *obj : bolt.struck) {
+          if (Asteroid *a = dynamic_cast<Asteroid *>(obj)) {
+            if (a->alive && !a->invincible) {
+              Ship::NetKillClaim c;
+              c.ast_id = a->net_id;
+              c.bullet_id = 0;
+              Ship::net_kill_claims.push_back(c);
+            }
+            continue;
+          }
+          const Ship::NetShipTarget *t = NULL;
+          for (auto &st : ship_targets) if (st.obj == obj) { t = &st; break; }
+          if (t == NULL) continue;
+          Ship *e = static_cast<Ship *>(t->obj);
+          if (!e->is_alive()) continue;
+          if (t->kind != 0) {
+            // Station / mini hull: cosmetic only; damage is host-authoritative.
+            sme->explode(e->position, e->velocity);
+            if (t->kind == 1 && Asteroid::thud_sound != NULL)
+              Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+            continue;
+          }
+          if (e->kill_stop()) {
+            e->detonate();
+            sme->credit_ship_kill(e);
+          }
+          if (e->explode_sound != NULL) {
+            Mix_VolumeChunk(e->explode_sound, MIX_MAX_VOLUME);
+            Mix_PlayChannel(-1, e->explode_sound, 0);
+          }
+          Ship::NetShipHit c;
+          c.kind = 0;
+          c.bullet_id = 0;  // shock sentinel: honor without a clone consume
+          c.target_id = t->id;
+          c.x = e->position.x();
+          c.y = e->position.y();
+          Ship::net_ship_hit_claims.push_back(c);
+          NET_LOG("net: shock enemy kill claimed id=%u\n", t->id);
+        }
+        bolt.struck.clear();  // fully drained — never carry a pointer to next frame
+      }
     }
 
     // Local-ship render-jump detector: the camera rides this pose, so a
@@ -2982,6 +3067,22 @@ void GLGame::tick_net_client(int delta) {
     net_session_->transport()->send_reliable(&msg[0], msg.size());
   }
   Ship::net_lance_reports.clear();
+
+  // PROTO 22: completed shock bolts — the peer shows the firer's EXACT
+  // segments (a re-seek would diverge). Kills ride the MSG_HIT/MSG_HIT_SHIP
+  // claims; station/mini hull damage is applied from this polyline.
+  for (const std::vector<Point> &pts : Ship::net_shock_reports) {
+    if (pts.size() < 2 || pts.size() > 15) continue;
+    std::vector<uint8_t> msg;
+    Net::put_header(msg, Net::MSG_SHOCK, 2);
+    Net::put_u8(msg, (uint8_t)pts.size());
+    for (const Point &p : pts) {
+      Net::put_f32(msg, p.x());
+      Net::put_f32(msg, p.y());
+    }
+    net_session_->transport()->send_reliable(&msg[0], msg.size());
+  }
+  Ship::net_shock_reports.clear();
 
   // PROTO 15/16: ship/station hit claims — damage applies host-side IFF
   // the referenced clone gets consumed there (exactly-once per shot).
@@ -3186,6 +3287,13 @@ void GLGame::net_client_poll() {
       // the host's ship; its kills arrive as ordinary removal records.
       if (players->empty()) continue;
       net_receive_lance_pulse(r, players->front()->ship);
+      continue;
+    }
+    if (h.msg_type == Net::MSG_SHOCK) {
+      // Host shock bolt echo (PROTO 22): display-only exact segments + zap
+      // sound on the host's ship; kills replicate as removal/score records.
+      if (players->empty()) continue;
+      net_receive_shock_pulse(r, players->front()->ship, NULL);
       continue;
     }
     if (h.msg_type == Net::MSG_BOUNCE) {
@@ -5075,6 +5183,19 @@ void GLGame::tick(int delta) {
       }
       net_session_->transport()->send_reliable(&msg[0], msg.size());
     }
+    // PROTO 22: the host player's shock bolts, echoed for the client's
+    // flash + sound (kills replicate as ordinary removal / score records).
+    for (const std::vector<Point> &pts : Ship::net_shock_reports) {
+      if (pts.size() < 2 || pts.size() > 15) continue;
+      std::vector<uint8_t> msg;
+      Net::put_header(msg, Net::MSG_SHOCK, 2);
+      Net::put_u8(msg, (uint8_t)pts.size());
+      for (const Point &p : pts) {
+        Net::put_f32(msg, p.x());
+        Net::put_f32(msg, p.y());
+      }
+      net_session_->transport()->send_reliable(&msg[0], msg.size());
+    }
     // PROTO 19: authoritative ricochets — the sim's real bounce of any
     // id-carrying bullet overrides the client's local approximation, so
     // both screens fly the same post-bounce trajectory.
@@ -5097,6 +5218,7 @@ void GLGame::tick(int delta) {
   // after a leave, rejoin pending) the queues must not grow unbounded.
   Ship::net_shot_reports.clear();
   Ship::net_lance_reports.clear();
+  Ship::net_shock_reports.clear();
   Ship::net_bounce_reports.clear();
   // Achievement relays: unlocks the sim attributed to the remote replica
   // (ram kills resolve inside Ship code). Anything not the replica's —
@@ -5264,6 +5386,48 @@ bool GLGame::net_receive_lance_pulse(Net::Reader &r, Ship *shooter) {
   shooter->lance_pulses.push_back(std::move(pulse));
   NET_LOG("net: lance pulse received (%d points)\n", (int)n);
   return true;
+}
+
+// PROTO 22: parse a shock-bolt polyline, show it on the firer's replica (the
+// exact segments, never re-seeked) with the zap sound, and hand the points
+// back so the host can resolve station/mini hull damage from them.
+bool GLGame::net_receive_shock_pulse(Net::Reader &r, Ship *shooter,
+                                     std::vector<Point> *out) {
+  uint8_t n = r.u8();
+  if (!r.ok || n < 2 || n > 15) return false;
+  std::vector<Point> pts;
+  for (int i = 0; i < n; i++) {
+    float x = r.f32(), y = r.f32();
+    if (!r.ok || !std::isfinite(x) || !std::isfinite(y)) return false;
+    pts.push_back(Point(x, y));
+  }
+  float vol = net_listener_volume(pts.front());
+  if (vol > 0.0f) {
+    static Mix_Chunk *shock_snd =
+        Mix_LoadWAV(asset_path("audio/shock.wav").c_str());
+    if (shock_snd) {
+      Mix_VolumeChunk(shock_snd, (int)(MIX_MAX_VOLUME * vol));
+      Mix_PlayChannel(-1, shock_snd, 0);
+    }
+  }
+  shooter->net_receive_shock(pts);
+  if (out) *out = pts;
+  NET_LOG("net: shock bolt received (%d points)\n", (int)n);
+  return true;
+}
+
+// True if any vertex of a shock polyline is within (radius + HIT_RADIUS) of a
+// world object — the same reach grow_segment uses to register a hit, so the
+// host resolves station/mini contact from the client's bolt the same way.
+static bool shock_bolt_reaches(const std::vector<Point> &pts,
+                               const WrappedPoint &pos, float radius) {
+  float r = radius + ShockBolt::HIT_RADIUS;
+  for (const Point &p : pts) {
+    Point c = pos.closest_to(p);
+    float dx = c.x() - p.x(), dy = c.y() - p.y();
+    if (dx * dx + dy * dy <= r * r) return true;
+  }
+  return false;
 }
 
 float GLGame::net_listener_volume(Point p) const {

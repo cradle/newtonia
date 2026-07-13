@@ -25,6 +25,8 @@ struct ShockBolt {
   float                seg_accum;   // ms accumulated toward the next segment
   bool                 growing;
   float                life;        // fade fraction once grown (1 -> 0)
+  bool                 net_reported = false;  // polyline sent to the peer once grown
+  bool                 net_display = false;   // received replica: no local kills
   std::vector<Object*> struck;      // targets reached this run, for owners to damage
   std::vector<Object*> avoid;       // targets already chained to (skipped when seeking)
   Object              *owner;       // the ship that fired this bolt; never a seek/hit target

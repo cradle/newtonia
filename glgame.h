@@ -319,6 +319,11 @@ private:
   // lance_pulses (display-only flash + attenuated lance sound); false on
   // a malformed body. Shared by the host and client receive paths.
   bool net_receive_lance_pulse(Net::Reader &r, Ship *shooter);
+  // PROTO 22: parse a shock-bolt polyline into a display bolt on `shooter`
+  // (+ zap sound); `out` (optional) receives the points for host-side
+  // station/mini hull resolution.
+  bool net_receive_shock_pulse(Net::Reader &r, Ship *shooter,
+                               std::vector<Point> *out);
   // How far ahead (ms) to extrapolate a host pose to compensate its
   // transit staleness: RTT/2, capped, 0 before the first PONG.
   float net_lead_ms() const;
