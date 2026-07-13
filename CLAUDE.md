@@ -232,7 +232,7 @@ There are three states:
 | `weapon/shield` | Shield | Energy barrier, limited ammo |
 | `weapon/god_mode` | God Mode | Timed invincibility (10s); fires periodic shockwaves (150ms); plays special music with a warning phase in the final 3s |
 | `weapon/nova` | Nova | Secondary weapon; charges accumulate from asteroid kills (0–9); triggers `ship->nova_detonate()` |
-| `weapon/shock` | Shock | Secondary weapon; limited ammo; automatic while held (fires a bolt every 200 ms, first on press). Spawns a `ShockBolt` (stored in `Ship::shocks`) that grows one staggered segment per tick ahead of the ship, seeks the nearest asteroid/enemy/station near its advancing tip, chains onward after each hit, then fades. Asteroid damage is applied in `Ship::collide_grid`; enemy/station damage in `GLGame` (which owns those lists). Seek targets: each ship's missile-asteroid list plus `shock_targets` (enemies + stations, refreshed per tick by `GLGame`) |
+| `weapon/shock` | Shock | Secondary weapon; limited ammo; automatic while held (fires a bolt every 200 ms, first on press). Spawns a `ShockBolt` (stored in `Ship::shocks`) that grows one staggered segment per tick ahead of the ship, seeks the nearest asteroid/enemy/station near its advancing tip, chains onward after each hit, then fades. Asteroid damage is applied in `Ship::collide_grid`; enemy/station damage in `GLGame` (which owns those lists). Seek targets: each ship's missile-asteroid list plus `shock_targets` (enemies + stations, refreshed per tick by `GLGame`; other players are added when friendly fire is on). Each bolt carries its `owner` ship and never seeks/hits it, so friendly-fire lightning only arcs to the *other* player (credited like a bullet) |
 
 ### Pickup System
 

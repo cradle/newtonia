@@ -26,6 +26,7 @@ struct ShockBolt {
   float                life;        // fade fraction once grown (1 -> 0)
   std::vector<Object*> struck;      // targets reached this run, for owners to damage
   std::vector<Object*> avoid;       // targets already chained to (skipped when seeking)
+  Object              *owner;       // the ship that fired this bolt; never a seek/hit target
 
   static const float SEGMENT_LEN;   // world units per segment
   static const float SEG_MS;        // ms between segments (~ one per tick)
@@ -36,7 +37,7 @@ struct ShockBolt {
   static const float STAGGER;       // perpendicular endpoint offset (units)
   static const float FADE_MS;       // fade-out duration once fully grown
 
-  ShockBolt(WrappedPoint origin, Point facing_dir);
+  ShockBolt(WrappedPoint origin, Point facing_dir, Object *owner = nullptr);
   void step_bolt(int delta, std::list<Object*> *asteroids, std::list<Object*> *hostiles);
   bool is_alive() const { return life > 0.0f; }
 

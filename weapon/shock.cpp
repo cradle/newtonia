@@ -19,11 +19,12 @@ const float ShockBolt::FADE_MS      = 150.0f;
 
 static inline float frand() { return rand() / (float)RAND_MAX; }
 
-ShockBolt::ShockBolt(WrappedPoint origin, Point facing_dir)
+ShockBolt::ShockBolt(WrappedPoint origin, Point facing_dir, Object *owner)
   : heading(facing_dir.normalized()),
     seg_accum(0.0f),
     growing(true),
-    life(1.0f)
+    life(1.0f),
+    owner(owner)
 {
   points.reserve(MAX_SEGMENTS + 1);
   points.push_back(Point(origin.x(), origin.y()));
@@ -34,6 +35,7 @@ Object *ShockBolt::seek_target(const Point &tip, std::list<Object*> *lst,
   Object *best = NULL;
   if (!lst) return best;
   for (Object *o : *lst) {
+    if (o == owner) continue;  // a bolt never seeks the ship that fired it
     if (!o->alive) continue;
     if (skip_invincible && o->invincible) continue;
     bool skip = false;
@@ -138,7 +140,7 @@ void Shock::try_fire() {
     return;
   }
   _ammo--;
-  ship->shocks.push_back(ShockBolt(ship->gun(), ship->facing.normalized()));
+  ship->shocks.push_back(ShockBolt(ship->gun(), ship->facing.normalized(), ship));
   if (shoot_sound != NULL && ship->sound_volume_scale > 0.0f) {
     Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * ship->sound_volume_scale));
     Mix_PlayChannel(-1, shoot_sound, 0);

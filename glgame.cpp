@@ -845,7 +845,9 @@ void GLGame::tick(int delta) {
 
     // Refresh the shock-bolt seek list: every hostile a player's lightning may
     // path to this frame (enemy ships, the station, the mini-station). Asteroids
-    // are seeked separately via each ship's missile-asteroid list.
+    // are seeked separately via each ship's missile-asteroid list. With friendly
+    // fire on, other players join the list too — each bolt skips its own owner,
+    // so a ship's lightning only arcs to the *other* player, matching bullets.
     shock_targets->clear();
     for(o = enemies->begin(); o != enemies->end(); o++)
       shock_targets->push_back((*o)->ship);
@@ -853,6 +855,9 @@ void GLGame::tick(int delta) {
       shock_targets->push_back(station);
     if(mini_station != NULL && mini_station->is_alive())
       shock_targets->push_back(mini_station);
+    if(friendly_fire)
+      for(o = players->begin(); o != players->end(); o++)
+        shock_targets->push_back((*o)->ship);
 
     for(o = players->begin(); o != players->end(); o++) {
       (*o)->step(step_size, grid);
@@ -1291,8 +1296,16 @@ void GLGame::tick(int delta) {
             if(!station->is_alive() && s->is_local_player)
               Achievements::unlock("station_destroyed");
           } else {
+            bool hit = false;
             for(auto* e : *enemies) {
-              if(e->ship == obj) { s->shock_hit_ship(e->ship); break; }
+              if(e->ship == obj) { s->shock_hit_ship(e->ship); hit = true; break; }
+            }
+            // Friendly fire: a bolt that arced to the other player damages it,
+            // credited exactly like a bullet (score, no enemy achievement).
+            if(!hit && friendly_fire) {
+              for(auto* p : *players) {
+                if(p->ship == obj && p->ship != s) { s->shock_hit_ship(p->ship); break; }
+              }
             }
           }
         }
