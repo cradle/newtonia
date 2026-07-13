@@ -2922,6 +2922,16 @@ void GLGame::tick_net_client(int delta) {
       e->ship->Object::step(step_size);
       for (auto &b : e->ship->bullets) b.step(step_size);
     }
+    // Mid-game hazards: extrapolate motion + animation between snapshots
+    // (pulsar cycle, comet drift + trail, seeker homing) so they glide
+    // rather than teleport at the apply rate — visual only; the lethal
+    // effects and deaths are host-authoritative and reconcile via the
+    // snapshot. Reap replicas whose death burst has finished fading.
+    for (auto hi = hazards->begin(); hi != hazards->end();) {
+      (*hi)->update(step_size, players);
+      if ((*hi)->is_removable()) { delete *hi; hi = hazards->erase(hi); }
+      else ++hi;
+    }
     grid.update((std::list<Object *> *)objects);
     // Cosmetic bullet-vs-asteroid impacts (debris + thud/ting for
     // asteroids a bullet can't kill), detected locally against the fresh
@@ -3864,6 +3874,54 @@ void GLGame::net_apply_state(const Save::GameState &s) {
   while (!black_holes->empty()) { delete black_holes->back(); black_holes->pop_back(); }
   for (const auto &sbh : s.black_holes)
     black_holes->push_back(new BlackHole(WrappedPoint(sbh.pos_x, sbh.pos_y)));
+
+  // Mid-game hazards (pulsar/comet/seeker): host-authoritative and MOVING
+  // (comet drifts, seeker homes), so a wholesale rebuild each snapshot would
+  // teleport them 10x/s. They carry no net id, so match each snapshot hazard
+  // to the nearest live replica of the same kind and reconcile it in place —
+  // this keeps the comet trail / seeker debris continuous and survives a
+  // mid-list death (a rebuild-by-index would misalign after it). The client
+  // extrapolates their motion between applies in tick_net_client; kills stay
+  // host-side (the lethal pulsar wave, comet/seeker rams) and land as the
+  // replica dropping out of the snapshot below.
+  {
+    std::vector<Hazard *> live(hazards->begin(), hazards->end());
+    std::vector<bool> used(live.size(), false);
+    hazards->clear();
+    for (const auto &sh : s.hazards) {
+      int best = -1;
+      float best_d2 = 1e30f;
+      for (size_t j = 0; j < live.size(); j++) {
+        if (used[j] || !live[j]->is_alive()) continue;
+        if ((int)live[j]->kind_of() != (int)sh.kind) continue;
+        Point c = live[j]->position.closest_to(Point(sh.pos_x, sh.pos_y));
+        float dx = c.x() - sh.pos_x, dy = c.y() - sh.pos_y;
+        float d2 = dx * dx + dy * dy;
+        if (d2 < best_d2) { best_d2 = d2; best = (int)j; }
+      }
+      if (best >= 0) {
+        live[best]->apply_net_state(sh);
+        used[best] = true;
+        hazards->push_back(live[best]);
+      } else {
+        hazards->push_back(Hazard::from_state(sh, world));
+        NET_LOG("net: hazard replica spawned (kind %d)\n", (int)sh.kind);
+      }
+    }
+    // Live replicas the host no longer reports: an alive one just died there
+    // (play its death burst); a fading one keeps its debris. Either way keep
+    // it until is_removable(), so the burst is seen before it is reaped.
+    for (size_t j = 0; j < live.size(); j++) {
+      if (used[j]) continue;
+      if (live[j]->is_alive()) {
+        live[j]->destroy();
+        NET_LOG("net: hazard replica destroyed (kind %d)\n",
+                (int)live[j]->kind_of());
+      }
+      if (live[j]->is_removable()) delete live[j];
+      else hazards->push_back(live[j]);
+    }
+  }
 
   // Stations restore in place; created/destroyed on presence transitions.
   // restore_state reconciles its deployed enemies in place (no clearing

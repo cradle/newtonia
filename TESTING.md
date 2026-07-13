@@ -106,6 +106,10 @@ test/e2e/shock_net.sh # PROTO 22: Shock chain-lightning both ways. Both sides
                      # log "shock bolt received" (MSG_SHOCK) both directions with
                      # SANE counts (tens, not thousands — a runaway means an
                      # accumulator isn't cleared) and a clean log.
+test/e2e/hazards_net.sh # Mid-game hazards online: host skips to gen 12 (past
+                     # pulsar/comet/seeker); the joiner must reconcile all three
+                     # kinds from the snapshot ("hazard replica spawned (kind
+                     # 0/1/2)") plus a death burst, with a clean log.
 ```
 
 `NEWTONIA_TEST_SPAWN_PICKUPS=1` (offline, inert without the env var) rings

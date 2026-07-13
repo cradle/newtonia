@@ -69,6 +69,10 @@ public:
 
   Save::Hazard capture_state() const;
   static Hazard *from_state(const Save::Hazard &s, const Point &world);
+  // Net client: reconcile a live replica to an authoritative snapshot in place
+  // (pose/velocity/cycle timer/health), keeping meshes, debris and trail
+  // continuity so motion stays smooth between the 10 Hz applies.
+  void apply_net_state(const Save::Hazard &s);
 
 private:
   void build_meshes();

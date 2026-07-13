@@ -242,6 +242,7 @@ bool net_state_sane(const Save::GameState &s) {
   if (s.asteroids.size() > 5000) return false;
   if (s.pickups.size() > 500) return false;
   if (s.black_holes.size() > 16) return false;
+  if (s.hazards.size() > 256) return false;
   if (s.station.enemies.size() > 64) return false;
   for (size_t i = 0; i < s.players.size(); i++) {
     if (s.players[i].primary_weapons.size() > 64) return false;

@@ -463,3 +463,14 @@ Hazard *Hazard::from_state(const Save::Hazard &s, const Point &world) {
   h->health_ = s.health;
   return h;
 }
+
+void Hazard::apply_net_state(const Save::Hazard &s) {
+  // In-place reconcile for the net client: snap pose/velocity and re-sync the
+  // cycle timer + health to the host. Meshes, debris and the comet trail are
+  // left untouched so replicas keep their continuity between snapshots; the
+  // client extrapolates motion with update() in the gaps.
+  position = WrappedPoint(s.pos_x, s.pos_y);
+  velocity = Point(s.vel_x, s.vel_y);
+  timer_   = s.timer;
+  health_  = s.health;
+}
