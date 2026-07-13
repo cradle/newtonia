@@ -166,16 +166,28 @@ over the SDL window once it exists.
   ever seen, so re-sends never regress anything.
 - **Every earn is journaled before the delivery attempt** (§2 offline
   earns): GameKit does not reliably queue offline reports, so earns go into
-  the shared pending journal and are confirmed out only when
-  `reportAchievements:` completes without error. Unconfirmed entries
-  resubmit on sign-in and app foreground; sign-in first loads the server's
-  achievement list and confirms away anything it already has — the
-  reconcile pass, which also makes cross-device double-earns cheap no-ops.
+  the shared pending journal, keyed by the authenticated player
+  (`teamPlayerID`) so an account switch can never credit one player's earn
+  to another (XR-055's correct-profile rule, §1). Entries are confirmed
+  out only when the server's achievement list actually shows the earn — a
+  nil `reportAchievements:` error alone is not trusted, because a batch
+  can "succeed" while the server silently drops an identifier that isn't
+  defined in App Store Connect (a typo'd portal entry would otherwise eat
+  the earn); a missing-after-accept identifier is logged and stays
+  journaled. Unconfirmed entries resubmit on sign-in and app foreground;
+  sign-in first loads the server's achievement list and confirms away
+  anything it already has — the reconcile pass, which also makes
+  cross-device double-earns cheap no-ops.
 - **Send cadence:** a Game Center report is a network RPC (unlike Steam's
   in-memory `SetStat`), so progress-only changes batch on a 60 s interval;
   a new unlock flushes the whole journal immediately so its banner is
-  instant. Signed-out play earns nothing on Game Center (allowed, same as
-  Xbox), but the journal holds the earns for whoever signs in next.
+  instant (unless it raced an in-flight send whose batch then failed — then
+  it rides the next earn/foreground/interval; delivery is never lost). The
+  journal batches its own disk writes the same way stats.dat does: unlocks
+  write through, progress advances flush on the send cadence and app
+  resign-active. Signed-out play earns nothing on Game Center until the
+  device's account signs back in — unowned journal entries resolve to the
+  device's last-signed-in account, never to a different account.
 - **`coop_clear` is deliberately unmapped** — deferred until netplay makes
   it earnable on touch devices (§5). Unmapped earns drop silently in the
   backend; the shared hook keeps firing, so adding the mapping later is the
@@ -193,7 +205,14 @@ over the SDL window once it exists.
    `cc.gfm.Newtonia` App ID and regenerate the distribution provisioning
    profile — `ios/Entitlements.plist` now carries
    `com.apple.developer.game-center`, and signing fails if the profile
-   lacks it. Then turn Game Center on for the app in App Store Connect.
+   lacks it. **Then re-encode the new `.mobileprovision` into the
+   `PROVISIONING_PROFILE_BASE64` GitHub secret** (`base64 -w0` /
+   macOS `base64 -i`) — deploy-ios.yml signs with the secret, not the
+   portal, so the deploy stays broken until the secret is updated. Then
+   turn Game Center on for the app in App Store Connect. (Local Xcode
+   device builds sign with `ios/EntitlementsDev.plist` via the project's
+   `CODE_SIGN_ENTITLEMENTS`, so sandbox testing works without any of
+   this — automatic signing manages the dev profile.)
 2. Define **17 achievements** (all of §5 except `coop_clear`) with exactly
    the reverse-DNS identifiers from the mapping table in
    `game_center_achievements.mm` (the table is authoritative):
@@ -290,10 +309,14 @@ The exception: event-only achievements with no counter behind them
 `shield_ram`, `shield_ram_asteroid`, `station_destroyed`) cannot be
 re-derived, so the pending journal is their only safety net. The journal
 exists as the planned shared utility next to the seam —
-`achievement_journal.h/.cpp`, keyed by symbolic IDs with earns merged
-per-id at their maximum percent, persisted as `pending_achievements.dat`
-in the SDL pref path — built alongside the Game Center backend (which
-landed first); the GDK backend consumes it as-is.
+`achievement_journal.h/.cpp`, keyed by symbolic ID **plus the platform
+account that earned it** (earns made before sign-in resolve to the
+device's last-signed-in account, so a profile switch can never
+cross-credit — XR-055's correct-profile rule), earns merged per-key at
+their maximum percent, persisted as `pending_achievements.dat` in the SDL
+pref path — built alongside the Game Center backend (which landed first);
+the GDK backend consumes it as-is (single-threaded: marshal SDK
+completions to the game thread, as the Game Center backend does).
 
 ## 3. The seam (`achievements.h`)
 

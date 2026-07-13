@@ -1,7 +1,9 @@
 // Game Center achievements backend (ACHIEVEMENTS.md §2) — compiled only when
-// GAME_CENTER_BUILD is defined (set by the iOS Xcode project, which also
-// links GameKit.framework; the Makefile/CMake builds never pick up .mm
-// files, so this stays out of every other platform).
+// GAME_CENTER_BUILD is defined, which the iOS Xcode project and the ios.yml
+// simulator CI build both set (each also links GameKit.framework). No other
+// build compiles this file: the Makefile and CMake source lists take *.cpp
+// plus explicitly named .mm files only, and the GAME_CENTER_BUILD guard
+// keeps the body empty anywhere else.
 //
 // Shape of the backend:
 // - GKAchievement.percentComplete is natively 0-100, so the seam's percent
@@ -10,19 +12,28 @@
 //   highest percent it has ever seen, so re-sends never regress progress.
 // - GameKit does NOT reliably queue reports made offline, so every earn is
 //   written to the shared pending journal (achievement_journal.h) BEFORE a
-//   delivery attempt and confirmed out of it only when reportAchievements:
-//   completes without error. Unconfirmed entries are resubmitted on sign-in
-//   and app foreground; on sign-in the server's achievement list is loaded
-//   first so anything it already has is confirmed away instead of re-sent.
+//   delivery attempt, keyed by the authenticated player so an account
+//   switch can never credit one player's earn to another. Entries are
+//   confirmed out only after the server's achievement list shows the earn
+//   (a nil reportAchievements error alone is not trusted — a batch can
+//   "succeed" while the server silently drops an identifier that is not
+//   defined in App Store Connect, and the journal is the only safety net
+//   for event-only earns). Unconfirmed entries are resubmitted on sign-in
+//   and app foreground.
 // - Progress-only changes batch on a send interval (a report is a network
 //   RPC, unlike Steam's in-memory SetStat); a NEW unlock flushes the whole
-//   journal immediately so its banner is instant. Re-fired unlocks the seam
-//   sends every generation rebuild dedupe against the confirmed cache and
-//   the journal (record() returns false), so they never hit the network.
+//   journal immediately so its banner is instant (an unlock that races an
+//   in-flight send whose batch then fails waits for the next earn,
+//   foreground, or interval — delivery is never lost, only that banner is
+//   late). Re-fired unlocks the seam sends every generation rebuild dedupe
+//   against the confirmed cache and the journal, so they never hit the
+//   network.
 // - Authentication is GameKit's: the authenticateHandler either hands us a
 //   sign-in view controller to present over the SDL window or reports the
-//   player signed in. Signed-out play earns nothing on Game Center, but the
-//   journal keeps the earns for whoever signs in next (§2).
+//   player signed in. Signed-out play earns nothing on Game Center until
+//   the device's account signs back in — unowned journal entries resolve
+//   to the device's last-signed-in account (achievement_journal.h), never
+//   to a different account.
 
 #ifdef GAME_CENTER_BUILD
 
@@ -37,6 +48,7 @@
 #include <ctime>
 #include <iostream>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -73,12 +85,14 @@ const Mapping MAPPINGS[] = {
 };
 
 const char *gc_identifier(const char *symbolic) {
+  if (!symbolic) return NULL;
   for (const Mapping &m : MAPPINGS)
     if (std::strcmp(m.symbolic, symbolic) == 0) return m.gc;
   return NULL;
 }
 
 const char *symbolic_for(const char *gc) {
+  if (!gc) return NULL;
   for (const Mapping &m : MAPPINGS)
     if (std::strcmp(m.gc, gc) == 0) return m.symbolic;
   return NULL;
@@ -89,9 +103,16 @@ const char *symbolic_for(const char *gc) {
 // the next sign-in/foreground flush.
 const time_t SEND_INTERVAL_SECONDS = 60;
 
+// A send whose completion never arrives (wedged network stack) would
+// otherwise block delivery for the rest of the session; after this long,
+// assume the completion was swallowed and allow a fresh send. Worst case
+// is a harmless double-post.
+const time_t SEND_STALE_SECONDS = 180;
+
 // Present GameKit's sign-in view controller over the SDL window. The
-// authenticateHandler can fire before SDL has created the window, so retry
-// until a root view controller exists.
+// authenticateHandler can in principle fire before SDL has created the
+// window (init() runs after SDL_CreateWindow in ios_main.mm, so in practice
+// a root view controller already exists), so retry until one does.
 void present_auth(UIViewController *vc) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -120,7 +141,12 @@ public:
           std::cout << "Game Center authenticated — achievements live"
                     << std::endl;
           authenticated_ = true;
+          const char *pid = GKLocalPlayer.localPlayer.teamPlayerID.UTF8String;
+          current_player_ = pid ? pid : "unknown";
           confirmed_.clear();  // may be a different player than last session
+          // Resolve earns journaled before sign-in (they belong to the
+          // device's account) and park any previous account's earns.
+          AchievementJournal::player_signed_in(current_player_.c_str());
           // Dev reset (set via the Xcode scheme): wipe this account's Game
           // Center achievements and the local pending journal so the earn
           // flow can be re-tested. Quit and relaunch without the variable
@@ -134,6 +160,7 @@ public:
           reconcile_and_flush();
         } else {
           authenticated_ = false;
+          current_player_.clear();
           std::cout << "Game Center unavailable"
                     << (error ? std::string(" (") +
                                     error.localizedDescription.UTF8String + ")"
@@ -152,13 +179,23 @@ public:
                   (void)note;
                   send_pending(true);
                 }];
+    // Persist batched progress-only journal writes before backgrounding.
+    [[NSNotificationCenter defaultCenter]
+        addObserverForName:UIApplicationWillResignActiveNotification
+                    object:nil
+                     queue:NSOperationQueue.mainQueue
+                usingBlock:^(NSNotification *note) {
+                  (void)note;
+                  AchievementJournal::flush();
+                }];
   }
 
   void report(const char *symbolic, int pct) {
     if (!gc_identifier(symbolic)) return;  // unmapped (e.g. coop_clear)
     std::map<std::string, int>::const_iterator it = confirmed_.find(symbolic);
     if (it != confirmed_.end() && it->second >= pct) return;
-    bool advanced = AchievementJournal::record(symbolic, pct);
+    bool advanced =
+        AchievementJournal::record(symbolic, pct, current_player_.c_str());
     send_pending(advanced && pct >= 100);
   }
 
@@ -173,9 +210,7 @@ private:
           return;
         }
         // Drop journaled earns too, or they would re-deliver immediately.
-        std::vector<AchievementJournal::Entry> p = AchievementJournal::pending();
-        for (size_t i = 0; i < p.size(); i++)
-          AchievementJournal::confirm(p[i].id.c_str(), 100);
+        AchievementJournal::clear();
         std::cout << "DEV: Game Center achievements reset for this account"
                   << std::endl;
       });
@@ -203,18 +238,28 @@ private:
   }
 
   void send_pending(bool force) {
-    if (!authenticated_ || send_in_flight_) return;
+    if (!authenticated_) return;
+    if (send_in_flight_) {
+      // Self-heal a swallowed completion rather than staying mute all
+      // session; the journal makes a double-post harmless.
+      if (std::time(NULL) - last_send_ < SEND_STALE_SECONDS) return;
+      std::cout << "Game Center send stale — assuming completion was lost"
+                << std::endl;
+      send_in_flight_ = false;
+    }
     if (!force && std::time(NULL) - last_send_ < SEND_INTERVAL_SECONDS) return;
 
     std::vector<AchievementJournal::Entry> batch;
     NSMutableArray<GKAchievement *> *reports = [NSMutableArray array];
-    std::vector<AchievementJournal::Entry> entries = AchievementJournal::pending();
+    std::vector<AchievementJournal::Entry> entries =
+        AchievementJournal::pending(current_player_.c_str());
     for (size_t i = 0; i < entries.size(); i++) {
       const AchievementJournal::Entry &e = entries[i];
       std::map<std::string, int>::const_iterator it = confirmed_.find(e.id);
       if (it != confirmed_.end() && it->second >= e.pct) {
-        AchievementJournal::confirm(e.id.c_str(), e.pct);  // server has it
-        continue;
+        AchievementJournal::confirm(e.id.c_str(), e.pct,
+                                    current_player_.c_str());
+        continue;  // server already has it
       }
       const char *gc = gc_identifier(e.id.c_str());
       if (!gc) continue;
@@ -232,26 +277,70 @@ private:
     [GKAchievement reportAchievements:reports
                 withCompletionHandler:^(NSError *error) {
       dispatch_async(dispatch_get_main_queue(), ^{
-        send_in_flight_ = false;
         if (error) {
           // Entries stay journaled; the next unlock/foreground/sign-in
-          // retries them.
+          // retries them. No chained retry here — that would tight-loop
+          // while offline.
+          send_in_flight_ = false;
           std::cout << "Game Center report failed ("
                     << error.localizedDescription.UTF8String
                     << ") — earns stay journaled" << std::endl;
           return;
         }
+        verify_and_confirm(batch);
+      });
+    }];
+  }
+
+  // A nil report error is necessary but not sufficient: the server can
+  // accept a batch while silently dropping an identifier that is not
+  // defined in App Store Connect (a typo, or the pre-go-live window).
+  // Confirm entries out of the journal only when the server's achievement
+  // list shows them; anything missing stays journaled and is logged so a
+  // portal misconfiguration is visible instead of silently eating earns.
+  void verify_and_confirm(const std::vector<AchievementJournal::Entry> &batch) {
+    [GKAchievement loadAchievementsWithCompletionHandler:^(
+                       NSArray<GKAchievement *> *achievements, NSError *error) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        send_in_flight_ = false;
+        std::map<std::string, int> server;  // symbolic -> pct on server
+        if (!error) {
+          for (GKAchievement *a in achievements) {
+            const char *sym = symbolic_for(a.identifier.UTF8String);
+            if (!sym) continue;
+            int pct = (int)a.percentComplete;
+            int &best = server[sym];
+            if (pct > best) best = pct;
+          }
+        }
         for (size_t i = 0; i < batch.size(); i++) {
-          remember_confirmed(batch[i].id.c_str(), batch[i].pct);
-          AchievementJournal::confirm(batch[i].id.c_str(), batch[i].pct);
+          const AchievementJournal::Entry &e = batch[i];
+          // If the verification load itself failed, trust the nil report
+          // error rather than re-sending forever on a flaky connection.
+          std::map<std::string, int>::const_iterator it = server.find(e.id);
+          bool delivered = error != nil ||
+                           (it != server.end() && it->second >= e.pct);
+          if (delivered) {
+            remember_confirmed(e.id.c_str(), e.pct);
+            AchievementJournal::confirm(e.id.c_str(), e.pct,
+                                        current_player_.c_str());
+          } else if (verify_warned_.insert(e.id).second) {
+            std::cout << "Game Center accepted '" << e.id
+                      << "' but does not list it — identifier missing from "
+                         "App Store Connect? Earn stays journaled."
+                      << std::endl;
+          }
         }
         // An unlock that raced this batch shouldn't wait for the next
         // earn/foreground/interval to get its banner — chain one more
         // send. Progress-only leftovers keep riding the interval.
         std::vector<AchievementJournal::Entry> rest =
-            AchievementJournal::pending();
+            AchievementJournal::pending(current_player_.c_str());
         for (size_t i = 0; i < rest.size(); i++)
-          if (rest[i].pct >= 100) { send_pending(true); break; }
+          if (rest[i].pct >= 100 && !verify_warned_.count(rest[i].id)) {
+            send_pending(true);
+            break;
+          }
       });
     }];
   }
@@ -264,7 +353,9 @@ private:
   bool authenticated_ = false;
   bool send_in_flight_ = false;
   time_t last_send_ = 0;
+  std::string current_player_;            // teamPlayerID; "" until signed in
   std::map<std::string, int> confirmed_;  // best percent the server has
+  std::set<std::string> verify_warned_;   // portal-misconfig log dedupe
 };
 
 GameCenterAchievements *instance() {
@@ -292,8 +383,7 @@ void unlock(const char *id) {
 }
 
 void progress(const char *id, int pct) {
-  if (pct > 100) pct = 100;
-  if (pct < 1) return;
+  // Range already enforced by the shared seam (achievements.cpp).
   instance()->report(id, pct);
 }
 

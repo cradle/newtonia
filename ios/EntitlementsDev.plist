@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Entitlements for local development builds from Xcode (set as
+         CODE_SIGN_ENTITLEMENTS in the project), so sandbox Game Center
+         works on-device without a TestFlight round trip. Release builds
+         use Entitlements.plist, injected by deploy-ios.yml on the
+         xcodebuild command line, which overrides this setting. Automatic
+         signing fills in application-identifier / get-task-allow. -->
+    <key>com.apple.developer.game-center</key>
+    <true/>
+</dict>
+</plist>
