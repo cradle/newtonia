@@ -1787,22 +1787,22 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // socket — resend the current one.
       NET_LOG("net: room %s reclaimed (mid-rejoin)\n", net_room_code_.c_str());
       net_rehost_offer_sent_ = false;
-    } else if (ev.kind == NetSignal::Event::PeerJoin) {
-      // The rejoiner re-entered the room while we were still mid-handshake
-      // with a prior attempt of theirs: their transport flapped (common in
-      // the first seconds after a network returns) and they answered our
-      // one-shot offer, then dropped it. Our half-open session/offer would
-      // take an ICE timeout (~tens of seconds) to fail on its own, leaving
-      // the rejoiner's fresh JOIN waiting on an offer we never resend. Tear
-      // it down now and let the re-offer block at the top fire next tick.
-      NET_LOG("net: peer re-joined mid-rejoin - re-offering\n");
+    } else if (ev.kind == NetSignal::Event::PeerJoin && net_session_) {
+      // A rejoiner re-entered the room while we ALREADY have a handshaking
+      // session with them. The relay sends the host a PeerJoin the instant a
+      // joiner arrives, BEFORE its answer — so the normal single rejoin's
+      // PeerJoin lands while net_session_ is still null (offer out, awaiting
+      // the answer) and must be left alone. Tearing that offer down restarted
+      // ICE on every join event and looped forever over a real TURN path
+      // (Glenn: "AGES to reconnect", re-offering ~0.7 s after the answer while
+      // candidates were still flowing). A PeerJoin AFTER a session exists is a
+      // genuine SECOND join — their prior attempt's transport flapped — so the
+      // half-open session is a corpse the joiner is no longer party to. Drop
+      // it and let the top-of-poll block re-offer a fresh one next tick,
+      // instead of waiting out its ~30 s ICE timeout.
+      NET_LOG("net: peer re-joined onto a stale session - re-offering\n");
       delete net_session_;
       net_session_ = nullptr;
-      if (net_rehost_) {
-        net_rehost_->close();
-        delete net_rehost_;
-        net_rehost_ = nullptr;
-      }
       net_rehost_offer_sent_ = false;
       return;  // top-of-poll re-offer owns the signal from here
     }
