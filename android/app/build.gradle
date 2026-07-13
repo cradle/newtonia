@@ -52,3 +52,9 @@ android {
         }
     }
 }
+
+dependencies {
+    // Play Games Services v2 — achievements backend (PlayGamesAchievements.java;
+    // native half in play_games_achievements.cpp under PLAY_GAMES_BUILD).
+    implementation 'com.google.android.gms:play-services-games-v2:20.1.2'
+}

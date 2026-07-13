@@ -26,9 +26,22 @@ public class NewtoniaActivity extends SDLActivity {
         if (am != null) {
             String sr  = am.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE);
             String fpb = am.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER);
-            if (sr  != null) sOptimalSampleRate      = Integer.parseInt(sr);
-            if (fpb != null) sOptimalFramesPerBuffer = Integer.parseInt(fpb);
+            // OEM audio HALs supply these strings; a malformed value must
+            // fall back to the defaults, not crash onCreate.
+            try {
+                if (sr  != null) sOptimalSampleRate      = Integer.parseInt(sr);
+                if (fpb != null) sOptimalFramesPerBuffer = Integer.parseInt(fpb);
+            } catch (NumberFormatException ignored) {}
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Refresh the Play Games backend's activity reference (a recreated
+        // activity resumes before the native side re-runs its init) and
+        // retry sign-in / flush queued earns after backgrounding.
+        PlayGamesAchievements.onResume(this);
     }
 
     @Override

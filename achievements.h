@@ -24,7 +24,9 @@ namespace Achievements {
 // SteamAPI_RunCallbacks(), or the SDK's automatic stats delivery is
 // dispatched with no listener and every earn queues forever; the Game
 // Center backend sets the GameKit authenticateHandler here, which is what
-// triggers sign-in. No-op on builds without a platform backend.
+// triggers sign-in; the Play Games backend caches its JNI bridge and starts
+// the SDK's automatic sign-in (so on Android call it after SDL_Init — the
+// activity handle must exist). No-op on builds without a platform backend.
 void init();
 
 // Unlock an achievement. Safe to call repeatedly — backends treat unlocks as

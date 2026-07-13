@@ -8,7 +8,7 @@ stats, and the unlock-integrity rules. Platform backends plug in behind it:
 |---------|----------------|--------|
 | Xbox / Microsoft Store (GDK) | private GDKX mirror (`xbox/PRIVATE_REPO.md`) | cert-blocking |
 | Steam | this repo, `steam_achievements.cpp` | **implemented** — portal config pending (§2 checklist) |
-| Android (Google Play Games Services) | this repo, Android integration | later (Android isn't live yet) |
+| Android (Google Play Games Services) | this repo, `play_games_achievements.cpp` + `PlayGamesAchievements.java` | **implemented** — console configured + IDs wired 2026-07-13; testers/publish pending (§2 checklist) |
 | iOS (Game Center) | this repo, `game_center_achievements.mm` | **implemented** — achievements entered in App Store Connect 2026-07-13; go live with the next submitted version (§2 checklist) |
 
 Why now: Xbox certification **requires** achievements. XR-055 scores "a game
@@ -268,6 +268,107 @@ the earn.
 | `cc.gfm.newtonia.reach_level15` | Deep Space | Reach level 15 | You reached level 15 | 40 |
 | | | | **Total** | **900** |
 
+### Play Games backend (`play_games_achievements.cpp` + `PlayGamesAchievements.java`)
+
+Implemented upstream behind `PLAY_GAMES_BUILD`, which the root
+`CMakeLists.txt` defines for every Android build (that CMake file builds
+nothing else). The Play Games v2 SDK is Java-only, so the backend is split:
+the native half owns the authoritative symbolic→resource-name mapping table
+and forwards earns over JNI (from the game thread, deduped through a
+best-sent cache so the seam's idempotent re-fires don't spam JNI); the Java
+half (`android/app/src/main/java/org/newtonia/PlayGamesAchievements.java`)
+marshals everything to the UI thread and owns the SDK calls.
+`Achievements::init()` is called from `android_main.cpp` after `SDL_Init`
+(the JNI activity handle must exist) and initialises `PlayGamesSdk`, which
+kicks off the v2 SDK's **automatic sign-in** — there is no sign-in UI in
+the game.
+
+- **Unlocks** call `AchievementsClient.unlock()`; the Play Games shell
+  draws the toast. **Progress** maps the seam's percent onto **incremental
+  achievements defined with 100 steps** via `setSteps(id, pct)` — the same
+  seven counter-backed achievements that get progress stats on Steam.
+  `setSteps` is "at least this many steps", so lower values are server-side
+  no-ops (monotonic by construction) and reaching 100 steps unlocks the
+  achievement server-side — the backend never calls `unlock()` on an
+  incremental definition, which the Play API disallows.
+- **IDs live in `res/values/games-ids.xml`**: the Play Console generates
+  opaque IDs, pasted there under the resource names fixed by the native
+  mapping table (`achievement_<symbolic>` — keep these names; the console's
+  own "Get resources" export derives different names from the display
+  names). A missing resource drops that achievement's earns with a one-shot
+  logcat warning, never a crash — so the backend ships ahead of the portal
+  config and each console entry landing later is the whole fix.
+- **Offline is Google-handled** (§2 "Offline earns"): once signed in,
+  `unlock`/`setSteps` are cached on-device by Play services and synced when
+  connectivity returns — no pending journal on this platform. The only gap
+  is the pre-sign-in window: earns arriving before the async sign-in check
+  resolves (or while signed out) are held in an in-memory queue merged per
+  achievement at max percent, flushed when a later check succeeds —
+  re-checked on every activity resume (`NewtoniaActivity.onResume`).
+  Signed-out play earning nothing if the process dies first is allowed
+  (XR-055), and the counter-backed achievements re-derive from persisted
+  stats next session anyway.
+- **`coop_clear` is deliberately unmapped** — same decision as Game Center
+  (§5): deferred until netplay makes it earnable on touch devices.
+- **Failure-proof by design:** a missing `APP_ID` meta-data or absent Play
+  services logs a warning and disables achievements for the session — the
+  game must never crash over Games config, since the placeholder ships
+  before the Play Console project exists.
+
+**Play Console checklist (no code):** immediately actionable — the app is
+already live on the Play internal testing track (deploy-android.yml), so
+achievements can be configured and then tested with the existing internal
+testers. Until then, builds carrying the placeholder project ID are safe to
+ship: sign-in fails silently and earns are held/dropped per the backend
+rules above.
+
+1. In the Play Console, set up **Play Games Services** for the app
+   (Grow → Play Games Services → Setup and management → Configuration),
+   create the game project, and link the `org.newtonia` app (adds the OAuth
+   client / SHA-1 for the signing key — credentials are needed for **both**
+   the upload key and the Play App Signing key, or sign-in works in local
+   builds but fails on Play-delivered internal-testing builds, and vice
+   versa). **Done 2026-07-13** — game project 717199808901, two Android
+   credentials (Play-signed + upload key, anti-piracy off, Play-signed
+   marked "use for new installs"). SHA-1s live on the OAuth clients in
+   Cloud Console (APIs & Services → Credentials), not in the Play
+   credential UI. A third OAuth client/credential for a dev machine's
+   debug keystore can be added the same way for `assembleDebug` testing.
+2. Replace the placeholder `game_services_project_id` in
+   `android/app/src/main/res/values/games-ids.xml` with the numeric project
+   ID the console assigns. **Done 2026-07-13.**
+3. Define **17 achievements** (all of §5 except `coop_clear`) with the §5
+   names/descriptions. Define these seven as **incremental with 100 steps**:
+   `specials_7`, `enemies_10`, `weapons_7`, `kills_1000`,
+   `kills_10000_lifetime`, `score_3m`, `reach_level15`; the rest are
+   standard. Play awards XP rather than gamerscore — scale the §5 GS values
+   at definition time (XP must be a multiple of 5, 5–200 per achievement;
+   the ratios are what matter). **Done 2026-07-13** via the console's ZIP
+   bulk import (CSVs + icons; the CSV format forbids commas in
+   names/descriptions, so Millennium/Myriad/Megascore use "1000" /
+   "10000" / "3 million"; the Game Center point values were used, sum
+   900). With only the default locale, AchievementsLocalizations.csv must
+   be present but EMPTY — en-US rows are rejected as "wrong locale".
+4. Paste each generated achievement ID into `games-ids.xml` under the
+   resource name from the mapping table in `play_games_achievements.cpp`
+   (keep the names exactly). **Done 2026-07-13** — all 17 wired and
+   cross-checked against the mapping table.
+5. Icons: upload 512×512 icons — reuse `gamecenter/icons/<id>.png`
+   (generated by `generate_achievement_icons.py`; Play renders its own
+   locked state, so the achieved art is all it needs). **Done 2026-07-13**
+   (rode the ZIP import).
+6. Add tester accounts under Play Games Services → Testers (separate from
+   the app's internal-testing testers) — while the games config is a
+   draft, only listed testers can sign in — and test with a
+   correctly-signed build from the internal track (or a local
+   release-signed build): earns show as Play Games toasts, sign-in state
+   is greppable via `adb logcat -s NewtoniaPlayGames`. Then **publish**
+   the Games Services configuration to open sign-in to everyone —
+   deliberately after tester validation, since published achievements are
+   permanent (they can be edited but never deleted). There is no
+   client-side reset API — reset a test account's earns via the console
+   or the Play Games Management API.
+
 ### Offline earns
 
 The game never checks connectivity: hooks call `unlock()`/`progress()` the
@@ -281,7 +382,8 @@ Per platform:
 - **Steam** — the Steam client stores `SetAchievement` calls locally and
   syncs when it reconnects. Nothing for the backend to do.
 - **Google Play Games** — the SDK caches unlock/increment calls offline and
-  flushes them on reconnect. Nothing to do.
+  flushes them on reconnect. Nothing to do beyond the backend's in-memory
+  pre-sign-in queue (see the Play Games backend section).
 - **Xbox / GDK** — unlock calls need Xbox Live, and the GDK does **not**
   queue them offline: the backend must persist a small pending-unlocks
   journal (same pref-path pattern as `stats.dat`), retry on launch / resume
@@ -571,7 +673,8 @@ station fight itself has proved out — no GS re-pitch needed there.
 5. One backend at a time against the same seam: Steamworks (**done**),
    Game Center (**done** — `game_center_achievements.mm` plus the shared
    pending journal `achievement_journal.h/.cpp`), Google Play Games
-   Services (later, once the Android build ships).
+   Services (**done** — `play_games_achievements.cpp` +
+   `PlayGamesAchievements.java`; Play Console config pending).
 
 The Xbox backend (GDK Achievements Manager wiring, Partner Center config,
 sandbox testing) is tracked in the private GDKX mirror and consumes this

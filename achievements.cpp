@@ -6,13 +6,14 @@
 namespace Achievements {
 
 // Platform backends (GDK in the private mirror, Steamworks, Game Center,
-// Play Games Services later — ACHIEVEMENTS.md §2) implement Backend::unlock/
+// Play Games Services — ACHIEVEMENTS.md §2) implement Backend::unlock/
 // progress behind their own build flags and map the symbolic IDs to platform
 // ones. Everything in this file, including cheat suppression, is shared and
 // must not move into a backend.
-#if defined(STEAM_BUILD) || defined(GAME_CENTER_BUILD)
+#if defined(STEAM_BUILD) || defined(GAME_CENTER_BUILD) || defined(PLAY_GAMES_BUILD)
 #define ACHIEVEMENTS_HAVE_BACKEND 1
-namespace Backend {  // steam_achievements.cpp / game_center_achievements.mm
+namespace Backend {  // steam_achievements.cpp / game_center_achievements.mm /
+                     // play_games_achievements.cpp
   void init();
   void unlock(const char *id);
   void progress(const char *id, int pct);
