@@ -14,7 +14,9 @@ porting the game's own glyph construction so the icons stay on-theme —
   asteroid    9-vertex irregular polygon (asteroid.cpp)
   text        the Typer stroke font (typer.cpp), 1x2 glyph boxes
 Output: steam/icons/<id>_achieved.png and <id>_locked.png for every
-symbolic ID in ACHIEVEMENTS.md §5, plus preview contact sheets.
+symbolic ID in ACHIEVEMENTS.md §5, plus preview contact sheets, and
+gamecenter/icons/<id>.png (512x512, achieved art only — Game Center
+renders its own locked state) for the App Store Connect definitions.
 
 Requires Pillow:  pip3 install pillow
 """
@@ -26,6 +28,11 @@ from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter
 S, SIZE = 4, 256
 W = SIZE * S
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "steam", "icons")
+# Game Center icons come off the same supersampled canvas at App Store
+# Connect's 512x512 (a clean 2x downsample of the 1024px working canvas).
+GC_SIZE = 512
+OUT_GC = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                      "gamecenter", "icons")
 
 # In-game colours
 P1BLUE = (72, 118, 255)     # glship.cpp
@@ -93,6 +100,8 @@ class Canvas:
         locked = ImageEnhance.Brightness(achieved.convert("L")).enhance(0.55).convert("RGB")
         achieved.save(os.path.join(OUT, f"{name}_achieved.png"))
         locked.save(os.path.join(OUT, f"{name}_locked.png"))
+        img.resize((GC_SIZE, GC_SIZE), Image.LANCZOS).save(
+            os.path.join(OUT_GC, f"{name}.png"))
         return achieved, locked
 
 
@@ -708,6 +717,7 @@ SCENES = [
 
 def main():
     os.makedirs(OUT, exist_ok=True)
+    os.makedirs(OUT_GC, exist_ok=True)
     pairs = [f() for f in SCENES]
     # contact sheets (achieved + locked, 6 per row) at 256 and at Steam's 64
     for px, name in [(SIZE, "sheet_256.png"), (64, "sheet_64.png")]:
@@ -722,6 +732,7 @@ def main():
                         (8 + c_ * (px + 8), 8 + r_ * (px + 8)))
         sheet.save(os.path.join(OUT, name))
     print(f"{len(pairs)} icon pairs -> {OUT}")
+    print(f"{len(pairs)} Game Center icons -> {OUT_GC}")
 
 
 if __name__ == "__main__":

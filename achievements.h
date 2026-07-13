@@ -22,8 +22,9 @@ namespace Achievements {
 // platform's own init (e.g. SteamAPI_Init) and BEFORE the first frame: the
 // Steam backend must register its stat callbacks before the first
 // SteamAPI_RunCallbacks(), or the SDK's automatic stats delivery is
-// dispatched with no listener and every earn queues forever. No-op on
-// builds without a platform backend.
+// dispatched with no listener and every earn queues forever; the Game
+// Center backend sets the GameKit authenticateHandler here, which is what
+// triggers sign-in. No-op on builds without a platform backend.
 void init();
 
 // Unlock an achievement. Safe to call repeatedly — backends treat unlocks as
