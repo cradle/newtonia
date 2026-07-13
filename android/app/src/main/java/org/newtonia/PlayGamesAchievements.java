@@ -3,20 +3,28 @@ package org.newtonia;
 // Java half of the Google Play Games Services achievements backend
 // (ACHIEVEMENTS.md §2). The native half — play_games_achievements.cpp,
 // compiled under PLAY_GAMES_BUILD — owns the symbolic→resource-name mapping
-// table and calls the two static entry points below over JNI from the game
-// thread; everything here immediately hops to the UI thread, where all
-// state lives (no locking needed).
+// table and calls the static entry points below over JNI from the game
+// thread; every entry point immediately posts to the UI thread through a
+// main-looper handler (never Activity.runOnUiThread — posting must not
+// depend on an activity being alive), so all state lives on the UI thread.
+// The one exception is sActivity, which init()/onResume() also write
+// synchronously on their calling thread (hence volatile): earns can fire on
+// the game thread the moment init() returns, before the UI thread has run
+// anything, and the native side counts a JNI call that returned without an
+// exception as delivered — report() must therefore never silently drop.
 //
 // The Play Games v2 SDK signs the player in automatically once
 // PlayGamesSdk.initialize() has run; there is no sign-in UI in the game.
-// Earns that arrive before the async sign-in check resolves (or while the
-// player is signed out) are held in an in-memory queue merged per
-// achievement at maximum percent, and flushed when a later check succeeds —
-// re-checked on every activity resume (NewtoniaActivity.onResume). Signed-in
-// earns go straight to AchievementsClient, whose fire-and-forget
-// unlock()/setSteps() calls are cached by Play services on the device and
-// synced when connectivity returns, so offline-while-signed-in delivery is
-// the platform's job (ACHIEVEMENTS.md §2 "Offline earns"). Signed-out play
+// Any earn that cannot be sent right now — SDK init failed, sign-in check
+// still in flight, or the player is signed out — is held in an in-memory
+// queue merged per achievement at maximum percent (bounded: one entry per
+// achievement), and flushed when a sign-in check succeeds. Sign-in is
+// re-checked on every activity resume, whether or not the last check
+// succeeded — the player can sign OUT while backgrounded too. Signed-in
+// earns go to AchievementsClient, whose fire-and-forget unlock()/setSteps()
+// calls are cached by Play services on the device and synced when
+// connectivity returns, so offline-while-signed-in delivery is the
+// platform's job (ACHIEVEMENTS.md §2 "Offline earns"). Signed-out play
 // earning nothing if the process dies first is allowed (XR-055): the
 // counter-backed achievements re-derive from persisted stats next session
 // anyway.
@@ -28,16 +36,18 @@ package org.newtonia;
 // a crash, and the same-named entry landing later is the whole fix.
 
 import android.app.Activity;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import com.google.android.gms.games.AchievementsClient;
 import com.google.android.gms.games.AuthenticationResult;
-import com.google.android.gms.games.GamesSignInClient;
 import com.google.android.gms.games.PlayGames;
 import com.google.android.gms.games.PlayGamesSdk;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -47,11 +57,18 @@ public final class PlayGamesAchievements {
 
     private static final String TAG = "NewtoniaPlayGames";
 
-    // All fields are touched only on the UI thread.
-    private static Activity sActivity;
+    private static final Handler sUiHandler = new Handler(Looper.getMainLooper());
+
+    // Written by init()/onResume() on their calling threads, read on the UI
+    // thread (and refreshed by onResume before the native side re-inits when
+    // SDL's kept-alive process recreates the activity). All other fields are
+    // touched only on the UI thread.
+    private static volatile Activity sActivity;
+
     private static boolean sSdkReady;
     private static boolean sAuthenticated;
     private static boolean sAuthCheckInFlight;
+    private static boolean sAuthLogged;
     // Earns awaiting sign-in, merged per resource name at max percent.
     private static final Map<String, Earn> sPending = new HashMap<>();
     // One-shot log dedupe for resource names missing from games-ids.xml.
@@ -69,20 +86,24 @@ public final class PlayGamesAchievements {
     private PlayGamesAchievements() {}
 
     // Native entry point (game thread): called from Achievements::init().
-    // Re-entrant for SDL's kept-alive-process restarts — just refreshes the
-    // activity reference and re-checks sign-in.
+    // Re-entrant for SDL's kept-alive-process restarts — refreshes the
+    // activity reference and re-checks sign-in (earns queued by a previous
+    // run flush once the check succeeds).
     public static void init(final Activity activity) {
-        activity.runOnUiThread(new Runnable() {
+        // Synchronous, before the post: report() can run on the game thread
+        // before the UI thread executes anything, and must see the activity.
+        sActivity = activity;
+        sUiHandler.post(new Runnable() {
             @Override public void run() {
-                sActivity = activity;
                 if (!sSdkReady) {
                     try {
                         PlayGamesSdk.initialize(activity);
                         sSdkReady = true;
                     } catch (Throwable t) {
                         // Missing APP_ID meta-data or absent Play services
-                        // must never take the game down — achievements just
-                        // stay off for the session.
+                        // must never take the game down — earns queue in
+                        // memory and achievements stay off until an init
+                        // retry (kept-alive restart) succeeds.
                         Log.w(TAG, "Play Games SDK unavailable — achievements disabled", t);
                         return;
                     }
@@ -92,16 +113,16 @@ public final class PlayGamesAchievements {
         });
     }
 
-    // NewtoniaActivity.onResume(): the natural retry point — the player may
-    // have signed in (or regained connectivity) while the game was
-    // backgrounded. A redundant check is cheap and flushing is a no-op when
-    // nothing is pending.
-    public static void onResume() {
-        final Activity activity = sActivity;
-        if (activity == null) return;
-        activity.runOnUiThread(new Runnable() {
+    // NewtoniaActivity.onResume(): refresh the activity reference — on SDL,
+    // a recreated activity resumes BEFORE the native side re-runs init — and
+    // re-check sign-in: the player may have signed in or out, or regained
+    // connectivity, while the game was backgrounded. A redundant check is
+    // cheap and flushing is a no-op when nothing is pending.
+    public static void onResume(final Activity activity) {
+        sActivity = activity;
+        sUiHandler.post(new Runnable() {
             @Override public void run() {
-                if (sSdkReady && !sAuthenticated) checkAuth();
+                if (sSdkReady) checkAuth();
             }
         });
     }
@@ -109,74 +130,113 @@ public final class PlayGamesAchievements {
     // Native entry point (game thread): report an earn. pct is 1-100 (100 ==
     // unlock, enforced by the shared seam); incremental mirrors the native
     // mapping table — those achievements are defined in the Play Console as
-    // incremental with 100 steps, so pct maps 1:1 to steps.
+    // incremental with 100 steps, so pct maps 1:1 to steps. Never drops
+    // silently: anything that can't be sent right now is queued (the native
+    // best-sent cache already counts this call as delivered).
     public static void report(final String resName, final int pct,
                               final boolean incremental) {
-        final Activity activity = sActivity;
-        if (activity == null) return;
-        activity.runOnUiThread(new Runnable() {
+        sUiHandler.post(new Runnable() {
             @Override public void run() {
-                if (!sSdkReady) return;
-                if (sAuthenticated) {
+                if (sSdkReady && sAuthenticated) {
                     send(resName, pct, incremental);
                     return;
                 }
-                Earn earn = sPending.get(resName);
-                if (earn == null) sPending.put(resName, new Earn(pct, incremental));
-                else if (pct > earn.pct) earn.pct = pct;
-                checkAuth();  // no-op while a check is already in flight
+                queueEarn(resName, pct, incremental);
+                if (sSdkReady) checkAuth();  // no-op while one is in flight
             }
         });
     }
 
+    // UI thread only.
+    private static void queueEarn(String resName, int pct, boolean incremental) {
+        Earn earn = sPending.get(resName);
+        if (earn == null) sPending.put(resName, new Earn(pct, incremental));
+        else if (pct > earn.pct) earn.pct = pct;
+    }
+
+    // UI thread only.
     private static void checkAuth() {
         if (sAuthCheckInFlight) return;
+        final Activity activity = sActivity;
+        if (activity == null) return;
         sAuthCheckInFlight = true;
-        GamesSignInClient client = PlayGames.getGamesSignInClient(sActivity);
-        client.isAuthenticated().addOnCompleteListener(sActivity,
-                new OnCompleteListener<AuthenticationResult>() {
-            @Override public void onComplete(Task<AuthenticationResult> task) {
-                // Listener is activity-scoped, so this runs on the UI thread.
-                sAuthCheckInFlight = false;
-                boolean ok = task.isSuccessful()
-                        && task.getResult().isAuthenticated();
-                if (ok && !sAuthenticated)
-                    Log.i(TAG, "Play Games signed in — achievements live");
-                sAuthenticated = ok;
-                if (ok) flushPending();
-                else Log.i(TAG, "Play Games not signed in — earns held in memory");
-            }
-        });
+        try {
+            PlayGames.getGamesSignInClient(activity).isAuthenticated()
+                    .addOnCompleteListener(new OnCompleteListener<AuthenticationResult>() {
+                // Deliberately NOT the activity-scoped listener overload:
+                // activity-scoped listeners are detached at onStop, so a
+                // check completing while the game is backgrounded would
+                // never fire this callback and sAuthCheckInFlight would
+                // wedge true for the rest of the process — every later
+                // check would no-op and queued earns would never flush.
+                // The executor-less overload always fires, on the main
+                // thread, and touches no activity lifecycle machinery
+                // (the scoped overload attaches a lifecycle fragment,
+                // which THROWS on a destroyed activity).
+                @Override public void onComplete(Task<AuthenticationResult> task) {
+                    sAuthCheckInFlight = false;
+                    boolean ok = task.isSuccessful()
+                            && task.getResult().isAuthenticated();
+                    if (ok != sAuthenticated || !sAuthLogged) {
+                        sAuthLogged = true;
+                        Log.i(TAG, ok ? "Play Games signed in — achievements live"
+                                      : "Play Games not signed in — earns held in memory");
+                    }
+                    sAuthenticated = ok;
+                    if (ok) flushPending();
+                }
+            });
+        } catch (Throwable t) {
+            // A Games client failure must neither wedge the in-flight flag
+            // nor crash the UI thread; the next resume/earn retries.
+            sAuthCheckInFlight = false;
+            Log.w(TAG, "Play Games sign-in check failed", t);
+        }
     }
 
+    // UI thread only. Snapshot-and-clear before sending: send() re-queues on
+    // failure, and mutating sPending while iterating it would throw.
     private static void flushPending() {
-        for (Map.Entry<String, Earn> e : sPending.entrySet())
-            send(e.getKey(), e.getValue().pct, e.getValue().incremental);
+        if (sPending.isEmpty()) return;
+        ArrayList<Map.Entry<String, Earn>> batch =
+                new ArrayList<>(sPending.entrySet());
         sPending.clear();
+        for (Map.Entry<String, Earn> e : batch)
+            send(e.getKey(), e.getValue().pct, e.getValue().incremental);
     }
 
+    // UI thread only.
     private static void send(String resName, int pct, boolean incremental) {
-        int rid = sActivity.getResources().getIdentifier(
-                resName, "string", sActivity.getPackageName());
-        if (rid == 0) {
-            if (sWarnedUnmapped.add(resName))
-                Log.w(TAG, "'" + resName + "' missing from games-ids.xml — earn "
-                        + "dropped (define the achievement in the Play Console "
-                        + "and paste its generated ID under this resource name)");
-            return;
+        Activity activity = sActivity;
+        if (activity == null) return;  // unreachable once sSdkReady; belt-and-braces
+        try {
+            int rid = activity.getResources().getIdentifier(
+                    resName, "string", activity.getPackageName());
+            if (rid == 0) {
+                if (sWarnedUnmapped.add(resName))
+                    Log.w(TAG, "'" + resName + "' missing from games-ids.xml — earn "
+                            + "dropped (define the achievement in the Play Console "
+                            + "and paste its generated ID under this resource name)");
+                return;
+            }
+            String id = activity.getString(rid);
+            AchievementsClient client = PlayGames.getAchievementsClient(activity);
+            if (incremental) {
+                // setSteps is "at least this many": lower values are
+                // server-side no-ops, so progress is monotonic by
+                // construction, and reaching all 100 steps unlocks the
+                // achievement — no separate unlock() call, which the Play
+                // API disallows for incremental definitions.
+                client.setSteps(id, Math.min(pct, 100));
+            } else if (pct >= 100) {
+                client.unlock(id);
+            }
+            // pct < 100 on a non-incremental achievement: nothing to report
+            // (the native side only sends progress for incremental mappings).
+        } catch (Throwable t) {
+            // Don't lose the earn — the native best-sent cache won't resend.
+            queueEarn(resName, pct, incremental);
+            Log.w(TAG, "Play Games report failed — earn re-queued", t);
         }
-        String id = sActivity.getString(rid);
-        AchievementsClient client = PlayGames.getAchievementsClient(sActivity);
-        if (incremental) {
-            // setSteps is "at least this many": lower values are server-side
-            // no-ops, so progress is monotonic by construction, and reaching
-            // all 100 steps unlocks the achievement — no separate unlock()
-            // call, which the Play API disallows for incremental definitions.
-            client.setSteps(id, Math.min(pct, 100));
-        } else if (pct >= 100) {
-            client.unlock(id);
-        }
-        // pct < 100 on a non-incremental achievement: nothing to report (the
-        // native side only sends progress for incremental mappings anyway).
     }
 }

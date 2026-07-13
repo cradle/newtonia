@@ -107,17 +107,34 @@ jclass resolve_bridge_class(JNIEnv *env, jobject activity) {
   jclass cls = env->FindClass("org/newtonia/PlayGamesAchievements");
   if (cls && !clear_exception(env)) return cls;
   clear_exception(env);
+  // Check after every step: a JNI call made with an exception pending (or a
+  // null object) is undefined behaviour, and CheckJNI — on for every
+  // debuggable APK — turns it into an abort. None of these lookups should
+  // fail, but this path exists precisely for the unexpected case.
   jclass activity_class = env->GetObjectClass(activity);
   jmethodID get_loader = env->GetMethodID(activity_class, "getClassLoader",
                                           "()Ljava/lang/ClassLoader;");
+  if (clear_exception(env) || !get_loader) {
+    env->DeleteLocalRef(activity_class);
+    return NULL;
+  }
   jobject loader = env->CallObjectMethod(activity, get_loader);
+  if (clear_exception(env) || !loader) {
+    env->DeleteLocalRef(activity_class);
+    return NULL;
+  }
   jclass loader_class = env->GetObjectClass(loader);
   jmethodID load_class = env->GetMethodID(loader_class, "loadClass",
                                           "(Ljava/lang/String;)Ljava/lang/Class;");
-  jstring name = env->NewStringUTF("org.newtonia.PlayGamesAchievements");
-  cls = (jclass)env->CallObjectMethod(loader, load_class, name);
-  if (clear_exception(env)) cls = NULL;
-  env->DeleteLocalRef(name);
+  jstring name = NULL;
+  if (!clear_exception(env) && load_class)
+    name = env->NewStringUTF("org.newtonia.PlayGamesAchievements");
+  cls = NULL;
+  if (name && !clear_exception(env)) {
+    cls = (jclass)env->CallObjectMethod(loader, load_class, name);
+    if (clear_exception(env)) cls = NULL;
+    env->DeleteLocalRef(name);
+  }
   env->DeleteLocalRef(loader_class);
   env->DeleteLocalRef(loader);
   env->DeleteLocalRef(activity_class);
@@ -131,6 +148,10 @@ void call_report(const Mapping *m, int pct) {
   JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
   if (!env) return;
   jstring res = env->NewStringUTF(m->res);
+  // NewStringUTF fails only under OOM, but it fails with an exception
+  // PENDING — calling any other JNI function then is undefined behaviour
+  // (CheckJNI aborts), and a null String would NPE on the Java UI thread.
+  if (!res || clear_exception(env)) return;
   env->CallStaticVoidMethod(g_bridge, g_report, res, (jint)pct,
                             (jboolean)(m->incremental ? JNI_TRUE : JNI_FALSE));
   if (!clear_exception(env)) best = pct;
@@ -156,10 +177,19 @@ void init() {
               << std::endl;
     return;
   }
+  // Re-entry (kept-alive process, SDL_main runs again): drop the best-sent
+  // cache. The previous session's Java side may have dropped everything in
+  // it (e.g. Play services was being updated and the SDK never initialised),
+  // and re-sends are harmless — unlock is idempotent, setSteps monotonic.
+  g_sent.clear();
   if (!g_bridge) {
     jclass cls = resolve_bridge_class(env, activity);
     if (cls) {
       g_init = env->GetStaticMethodID(cls, "init", "(Landroid/app/Activity;)V");
+      // A failed lookup leaves its exception PENDING; clear it before the
+      // next JNI call or that call is undefined behaviour (CheckJNI abort) —
+      // this graceful-degradation path must itself not crash.
+      clear_exception(env);
       g_report = env->GetStaticMethodID(cls, "report",
                                         "(Ljava/lang/String;IZ)V");
       if (clear_exception(env) || !g_init || !g_report) {
