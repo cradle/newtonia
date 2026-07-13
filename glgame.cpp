@@ -105,6 +105,7 @@ const float GLGame::shield_pickup_drop_chance = 0.0125f;
 const float GLGame::god_mode_pickup_drop_chance = 0.0025f;
 const float GLGame::beam_pickup_drop_chance = 0.0075f;
 const float GLGame::lance_pickup_drop_chance = 0.005f;
+const float GLGame::shock_pickup_drop_chance = 0.0125f;
 // Co-op revive: rolled INDEPENDENTLY of the cumulative table above, only
 // while a partner is fully out of lives and no revive is already in the
 // world — generous by design, it is the fallen player's only way back.
@@ -126,6 +127,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
   ship_objects = new std::list<Object*>;
+  shock_targets = new std::list<Object*>;
   objects = new std::list<Asteroid*>;
   dead_objects = new std::list<Asteroid*>;
   pickups = new std::list<Pickup*>;
@@ -174,6 +176,10 @@ GLGame::GLGame(SDL_GameController *controller) :
   // A new game begins legitimately: lift any XR-057 suppression left over
   // from a previous game's cheat keys.
   Achievements::new_game_started();
+  // NEWTONIA_ALL_WEAPONS: debug cheat granting the full arsenal each life.
+  // Suppress achievements for the game like the other cheat paths (XR-057).
+  all_weapons_cheat = (SDL_getenv("NEWTONIA_ALL_WEAPONS") != NULL);
+  if(all_weapons_cheat) Achievements::note_cheat_used();
   if(controller != NULL) {
     object->set_controller(controller);
   }
@@ -181,6 +187,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   ship_objects->push_back(object->ship);
   object->ship->set_missile_ships(ship_objects);
   object->ship->missiles_seek_players = friendly_fire;
+  object->ship->set_shock_targets(shock_targets);
   object->ship->set_black_holes(black_holes);
   players->push_back(object);
 
@@ -334,6 +341,7 @@ GLGame::~GLGame() {
   }
   delete enemies;
   delete ship_objects;
+  delete shock_targets;
   while(!objects->empty()) {
     delete objects->back();
     objects->pop_back();
@@ -400,10 +408,14 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   // resuming doesn't launder it (XR-057).
   if (save.cheated) Achievements::note_cheat_used();
   else              Achievements::new_game_started();
+  // NEWTONIA_ALL_WEAPONS: debug cheat granting the full arsenal each life.
+  all_weapons_cheat = (SDL_getenv("NEWTONIA_ALL_WEAPONS") != NULL);
+  if(all_weapons_cheat) Achievements::note_cheat_used();
 
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
   ship_objects = new std::list<Object*>;
+  shock_targets = new std::list<Object*>;
   objects = new std::list<Asteroid*>;
   dead_objects = new std::list<Asteroid*>;
   pickups = new std::list<Pickup*>;
@@ -444,6 +456,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
       case Save::PickupType::Beam:     pickups->push_back(new BeamPickup(pos)); break;
       case Save::PickupType::Lance:    pickups->push_back(new LancePickup(pos)); break;
       case Save::PickupType::Revive:   pickups->push_back(new RevivePickup(pos)); break;
+      case Save::PickupType::ShockWeapon: pickups->push_back(new ShockPickup(pos)); break;
       default: break;
     }
   }
@@ -467,6 +480,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     ship_objects->push_back(gs->ship);
     gs->ship->set_missile_ships(ship_objects);
     gs->ship->missiles_seek_players = friendly_fire;
+    gs->ship->set_shock_targets(shock_targets);
     gs->ship->set_black_holes(black_holes);
     gs->ship->restore_state(sp, grid);
     gs->snap_camera_to_heading();
@@ -603,6 +617,8 @@ Save::GameState GLGame::build_save_data(bool include_asteroids) const {
       sp.type = Save::PickupType::Lance;
     } else if (dynamic_cast<RevivePickup*>(p)) {
       sp.type = Save::PickupType::Revive;
+    } else if (dynamic_cast<ShockPickup*>(p)) {
+      sp.type = Save::PickupType::ShockWeapon;
     } else {
       continue; // unknown pickup type, skip
     }
@@ -812,6 +828,7 @@ void GLGame::add_player2(SDL_GameController *ctrl) {
   for(auto *p : *players) p->ship->set_missile_ships(ship_objects);
   object->ship->set_missile_ships(ship_objects);
   object->ship->missiles_seek_players = friendly_fire;
+  object->ship->set_shock_targets(shock_targets);
   object->ship->set_black_holes(black_holes);
   players->push_back(object);
   update_presence();
@@ -4374,6 +4391,34 @@ void GLGame::tick(int delta) {
       }
     }
 
+    // NEWTONIA_ALL_WEAPONS: give each player the full arsenal at 999 rounds.
+    // A death strips the ship back to the base gun (reset()), so re-grant the
+    // moment a freshly-respawned player is detected — that also seeds it once
+    // at game start. GLGame is a friend of Ship, so it can inspect the lists.
+    if(all_weapons_cheat) {
+      for(o = players->begin(); o != players->end(); o++) {
+        Ship* s = (*o)->ship;
+        if(s->is_alive() && s->primary_weapons.size() <= 1 && s->secondary_weapons.empty())
+          s->give_all_weapons(999);
+      }
+    }
+
+    // Refresh the shock-bolt seek list: every hostile a player's lightning may
+    // path to this frame (enemy ships, the station, the mini-station). Asteroids
+    // are seeked separately via each ship's missile-asteroid list. With friendly
+    // fire on, other players join the list too — each bolt skips its own owner,
+    // so a ship's lightning only arcs to the *other* player, matching bullets.
+    shock_targets->clear();
+    for(o = enemies->begin(); o != enemies->end(); o++)
+      shock_targets->push_back((*o)->ship);
+    if(station != NULL && station->is_alive())
+      shock_targets->push_back(station);
+    if(mini_station != NULL && mini_station->is_alive())
+      shock_targets->push_back(mini_station);
+    if(friendly_fire)
+      for(o = players->begin(); o != players->end(); o++)
+        shock_targets->push_back((*o)->ship);
+
     for(o = players->begin(); o != players->end(); o++) {
       (*o)->step(step_size, grid);
     }
@@ -4506,6 +4551,8 @@ void GLGame::tick(int delta) {
             pickups->push_back(new BeamPickup((*oi)->position));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance + beam_pickup_drop_chance + lance_pickup_drop_chance) {
             pickups->push_back(new LancePickup((*oi)->position));
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance + beam_pickup_drop_chance + lance_pickup_drop_chance + shock_pickup_drop_chance) {
+            pickups->push_back(new ShockPickup((*oi)->position));
           }
           }
         }
@@ -4766,6 +4813,46 @@ void GLGame::tick(int delta) {
                        Net::pack_pos(mini_station->position.x(),
                                      mini_station->position.y(),
                                      world.x(), world.y()));
+      }
+    }
+
+    /* APPLY SHOCK-BOLT HITS ON ENEMIES / STATIONS */
+    // Asteroid hits were already applied in each player's collide_grid(); the
+    // pointers still in a bolt's `struck` list here are hostiles, damaged with
+    // the same APIs bullets/missiles use so scoring and achievements match.
+    for(o = players->begin(); o != players->end(); o++) {
+      Ship* s = (*o)->ship;
+      for(auto &bolt : s->shocks) {
+        for(Object *obj : bolt.struck) {
+          if(mini_station != NULL && obj == mini_station && mini_station->is_alive()) {
+            s->explode(mini_station->position, mini_station->velocity);
+            s->score += GLMiniStation::REWARD;
+            mini_station->destroy();
+            if(s->is_local_player) {
+              Achievements::unlock("mini_station_kill");
+              Achievements::progress("score_3m", s->score / 30000);
+            }
+            if(station_explode_sound != NULL)
+              Mix_PlayChannel(-1, station_explode_sound, 0);
+          } else if(station != NULL && obj == station && station->is_alive()) {
+            station->hit();
+            if(!station->is_alive() && s->is_local_player)
+              Achievements::unlock("station_destroyed");
+          } else {
+            bool hit = false;
+            for(auto* e : *enemies) {
+              if(e->ship == obj) { s->shock_hit_ship(e->ship); hit = true; break; }
+            }
+            // Friendly fire: a bolt that arced to the other player damages it,
+            // credited exactly like a bullet (score, no enemy achievement).
+            if(!hit && friendly_fire) {
+              for(auto* p : *players) {
+                if(p->ship == obj && p->ship != s) { s->shock_hit_ship(p->ship); break; }
+              }
+            }
+          }
+        }
+        bolt.struck.clear();
       }
     }
 
@@ -6030,6 +6117,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       for (auto *p : *players) p->ship->set_missile_ships(ship_objects);
       object->ship->set_missile_ships(ship_objects);
       object->ship->missiles_seek_players = friendly_fire;
+      object->ship->set_shock_targets(shock_targets);
       players->push_back(object);
       update_presence();
     }

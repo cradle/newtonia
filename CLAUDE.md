@@ -129,6 +129,11 @@ gdb -batch -ex run -ex "bt 20" --args ./newtonia > gdb.log 2>&1 &
 - Late-game testing: `NEWTONIA_BETA=1 NEWTONIA_START_GENERATION=N ./newtonia`
   starts a new game at generation N (world size + hazards included). Flagged
   as a cheat, so achievements stay suppressed for that game.
+- Weapon testing: `NEWTONIA_ALL_WEAPONS=1 ./newtonia` grants every player the
+  full arsenal (all primary gun variants + all secondaries) at 999 rounds,
+  re-granted on each respawn (`Ship::give_all_weapons`). God mode is excluded
+  (it hijacks the primary slot). Flagged as a cheat, so achievements stay
+  suppressed for that game.
 
 ### macOS App Bundle
 ```sh
@@ -264,6 +269,8 @@ There are three states:
 | `weapon/nova` | Nova | Secondary weapon; charges accumulate from asteroid kills (0–9); triggers `ship->nova_detonate()` |
 | `weapon/beam` | Pierce Beam | Primary weapon; limited ammo; fires a single fast bolt (`piercing` flag on the `Particle`) that ploughs straight through a line of asteroids instead of stopping at the first, but only continues through asteroids it actually destroys — it stops when it hits one it can't destroy (invincible, or tough not yet broken); one bolt per trigger pull |
 | `weapon/lance` | Lance | Primary weapon; limited ammo; one instantaneous full-length pulse per trigger pull (`Lance::RANGE` = the beam bolt's total travel). The weapon just sets `ship->lance_pulse_pending`; `Ship::fire_lance_pulse()` ray-marches it with the grid: kills every killable asteroid along the line — including tough ones, which the lance kills outright — mirror-reflects (carrying remaining distance) off surfaces that reflect bullets (reflective asteroids, armoured faces, phased ghosts), and is blocked by plain invincible asteroids and teleport evades. The traced polyline is kept as a fading `LancePulse` drawn by `GLShip`. Ship/station hits resolve in `GLGame::resolve_lance_ship_hits` (the march only sees asteroids): the firer dies to post-reflection segments only, the partner needs friendly fire on, enemies and the mini-station die (scored like bullet kills), the gen-20 station hull takes multi-hit damage; online a client's polyline is resolved host-side from MSG_LANCE, except enemies, which the client kills instantly and claims with bullet_id 0 (PROTO 20) like bullet claims |
+| `weapon/shock` | Shock | Primary weapon (lives in `primary_weapons`, fired via `shoot()`, cycled with the rest); limited ammo; automatic while held (fires a bolt every 200 ms, first on press). Added via `Ship::add_shock`. Spawns a `ShockBolt` (stored in `Ship::shocks`) that grows one staggered segment per tick ahead of the ship, seeks the nearest asteroid/enemy/station near its advancing tip, chains onward after each hit, then fades. Asteroid damage is applied in `Ship::collide_grid`; enemy/station damage in `GLGame` (which owns those lists). Seek targets: each ship's missile-asteroid list plus `shock_targets` (enemies + stations, refreshed per tick by `GLGame`; other players are added when friendly fire is on). Each bolt carries its `owner` ship and never seeks/hits it, so friendly-fire lightning only arcs to the *other* player (credited like a bullet). Online (PROTO 22): each fired bolt's polyline is replicated both ways (MSG_SHOCK) for the remote view, and the firing side's kills flow through the same claim/authority path as bullets/lance — the client kills asteroids/enemies locally and claims them (bullet_id 0 sentinel), the host applies its own and station hull damage |
+
 
 ### Pickup System
 
@@ -280,10 +287,13 @@ All inherit from `Pickup` base class (`pickup.h`). Each pickup implements `draw(
 | `nova_charge_pickup` | Nova Charge | +1 nova charge (auto-drops every 100 asteroid kills) |
 | `beam_pickup` | Pierce Beam | +100 beam bolts (violet star) |
 | `lance_pickup` | Lance | +100 lance pulses (amber star) |
+| `shock_pickup` | Shock | +100 shock bolts (chain-lightning primary; lightning-arc icon) |
 | `revive_pickup` | Revive | Co-op only (green cross): revives the fallen partner on their last life; GLGame applies it at the collection site (the pickup can't see the player list) |
 | `extra_life` | Extra Life | +1 life (heart shape) |
 
-**Drop chances** (per asteroid death, constants in `glgame.cpp`): extra_life 0.3125%, weapon 1.25%, mine 1.25%, giga_mine 0.5%, missile 1.25%, shield 1.25%, god_mode 0.25%, beam 0.75%, lance 0.5%. **Revive** is a separate 10% roll ahead of that table, active only while some player is fully out of lives with a partner still in it, and capped at one in the world at a time; collecting it sets the fallen partner's `lives = 1` and restarts their respawn countdown (`GLGame::revive_fallen_partner`), which online replicates like any respawn and ends the spectator flow by itself.
+**Drop chances** (per asteroid death, constants in `glgame.cpp`): extra_life 0.3125%, weapon 1.25%, mine 1.25%, giga_mine 0.5%, missile 1.25%, shield 1.25%, god_mode 0.25%, beam 0.75%, lance 0.5%, shock 1.25%. **Revive** is a separate 10% roll ahead of that table, active only while some player is fully out of lives with a partner still in it, and capped at one in the world at a time; collecting it sets the fallen partner's `lives = 1` and restarts their respawn countdown (`GLGame::revive_fallen_partner`), which online replicates like any respawn and ends the spectator flow by itself.
+
+**Debug cheat** — `NEWTONIA_ALL_WEAPONS=1` grants every primary (all default variants + Beam + Lance + Shock) and every secondary at 999 rounds on spawn and after each respawn (`Ship::give_all_weapons`, re-granted from `GLGame::tick`). It flags the game as cheated (`Achievements::note_cheat_used()` in both `GLGame` constructors) so no achievements or lifetime stats count, and that flag rides the savegame (`GameState::cheated`) so save/resume can't launder it.
 
 ### Asteroid Special Types
 
@@ -370,8 +380,8 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 
 ### Save / Load
 
-**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 14:
-- `WeaponEntry`: kind, weapon_index, ammo (kinds include the primaries `Beam` and `Lance`)
+**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 15:
+- `WeaponEntry`: kind, weapon_index, ammo (kinds include the primaries `Beam`, `Lance`, and `Shock` — all captured/restored in the primary-weapon list; `Shock` appended in v15 after the branch's Beam/Lance to keep wire ordinals stable)
 - `Player`: score, lives, kills, respawning flag, position, velocity, facing, weapons, nova state, achievements bookkeeping (asteroid kills, enemy-ship kills, died-this-generation, weapons-fired mask; appended in v14 together with the game-scoped cheat flag)
 - `Asteroid`: position, velocity, radius, health, all special flags and transient state
 - `Pickup`: type, position, weapon_index

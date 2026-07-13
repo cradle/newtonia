@@ -5,6 +5,7 @@
 #include "point.h"
 #include "particle.h"
 #include "weapon/missile.h"
+#include "weapon/shock.h"
 #include "grid.h"
 #include "black_hole.h"
 #include "savegame.h"
@@ -119,6 +120,7 @@ class Ship : public CompositeObject {
     std::vector<Shockwave> shockwaves;
     std::vector<LancePulse> lance_pulses;
     bool lance_pulse_pending = false;  // set by Weapon::Lance; consumed in step()
+    std::vector<ShockBolt> shocks;
 
     enum Rotation {
       LEFT = 1,
@@ -171,6 +173,12 @@ class Ship : public CompositeObject {
     void add_shield_ammo(int amount);
     void add_beam_ammo(int amount);
     void add_lance_ammo(int amount);
+    void add_shock(int amount);  // primary weapon (chain lightning)
+    // Debug/testing: grant every primary gun variant and every secondary at
+    // `ammo` rounds (Nova stays at its design cap). Used by the NEWTONIA_ALL_WEAPONS
+    // cheat flag. God mode is deliberately excluded — it hijacks the primary slot
+    // and blocks weapon cycling.
+    void give_all_weapons(int ammo);
     void add_god_mode(int duration_ms = 10000);
     int god_mode_time_remaining() const;
     bool shield_active() const;
@@ -330,6 +338,9 @@ class Ship : public CompositeObject {
     static std::vector<const Ship*> net_booms;
     void set_missile_asteroids(std::list<Object*> *asteroids);
     void set_missile_ships(std::list<Object*> *ships);
+    void set_shock_targets(std::list<Object*> *hostiles);
+    // Kill an enemy ship a shock bolt reached, crediting this ship (GLGame path).
+    void shock_hit_ship(Ship *other);
     void set_black_holes(const std::list<BlackHole*> *bhs);
     WrappedPoint gun() const;
     void mark_last_bullet_trail();
@@ -408,6 +419,7 @@ class Ship : public CompositeObject {
     std::list<Object*> *missile_asteroids = nullptr;
     const std::list<BlackHole*> *black_holes = nullptr;
     std::list<Object*> *missile_ships_list = nullptr;
+    std::list<Object*> *shock_targets = nullptr;  // enemies/stations for bolt seeking
 };
 
 #endif

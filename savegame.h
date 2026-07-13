@@ -24,6 +24,8 @@ struct WeaponEntry {
         Nova,      // screen-clearing secondary; ammo = number of charges
         Beam,      // primary piercing-bolt gun; ammo = number of bolts
         Lance,     // primary full-length pulse; ammo = number of pulses
+        Shock,     // chain-lightning primary; ammo = number of bolts (appended
+                   // after Lance to keep the branch's v14 wire ordinals stable)
     };
     Kind kind;
     int  weapon_index;  // Default only; ignored for all other kinds
@@ -94,7 +96,8 @@ struct Asteroid {
 
 enum class PickupType : uint8_t {
     Weapon, Mine, GigaMine, Missile, Shield, GodMode, ExtraLife, NovaCharge, Beam, Lance,
-    Revive   // co-op: revives the fallen partner (v13)
+    Revive,       // co-op: revives the fallen partner (v13)
+    ShockWeapon   // chain-lightning primary drop (appended after Revive, v15)
 };
 
 struct Pickup {
@@ -157,8 +160,9 @@ struct GameState {
     // 12 = Beam/Lance weapon kinds, 13 = Revive pickup type, 14 = the
     // achievements append (master's "v11 append" renumbered: per-player
     // asteroid/enemy kills, died-this-generation, weapons-fired mask,
-    // then the game-scoped cheat flag).
-    static constexpr uint16_t VERSION = 14;
+    // then the game-scoped cheat flag). 15 = Shock weapon kind + ShockWeapon
+    // pickup type (merged from master, appended after the branch's additions).
+    static constexpr uint16_t VERSION = 15;
     // Oldest save format we can still read. Saves from MIN_VERSION..VERSION all
     // load; anything older (or from a newer build) is ignored. To keep old saves
     // working across a version bump, only ever APPEND new fields at the end of

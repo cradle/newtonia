@@ -24,6 +24,7 @@
 #include "beam_pickup.h"
 #include "lance_pickup.h"
 #include "revive_pickup.h"
+#include "shock_pickup.h"
 #include "net_signal.h"
 #include "view/tap_band.h"
 #include <SDL.h>
@@ -438,6 +439,7 @@ private:
   static const float god_mode_pickup_drop_chance;
   static const float beam_pickup_drop_chance;
   static const float lance_pickup_drop_chance;
+  static const float shock_pickup_drop_chance;
   // Co-op revive: 10% per asteroid kill while a
   // partner is fully out, at most one in the world at a time.
   static const float revive_pickup_drop_chance;
@@ -461,6 +463,8 @@ private:
   GLMiniStation *mini_station;
   list<GLShip*> *enemies, *players;
   list<Object*> *ship_objects;  // Ship* (as Object*) for missile homing
+  list<Object*> *shock_targets; // enemies + stations (as Object*) for shock-bolt seeking
+  bool all_weapons_cheat = false;  // NEWTONIA_ALL_WEAPONS: grant full arsenal each life
 };
 
 #endif

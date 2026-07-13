@@ -1,0 +1,20 @@
+#include "shock_pickup.h"
+#include "ship.h"
+#include "gl_compat.h"
+
+ShockPickup::ShockPickup(WrappedPoint pos) : Pickup(pos) {
+  // Small electric-blue lightning arc.
+  MeshBuilder mb;
+  build_glow_bolt(mb, 0.6f, 0.85f, 1.0f, radius * 0.9f);
+  glow_mesh.upload(mb);
+}
+
+void ShockPickup::apply(Ship *ship) {
+  ship->add_shock(100);
+}
+
+void ShockPickup::draw(float world_rotation) const {
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+  glow_mesh.draw_at(position.x(), position.y(), -world_rotation);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+}

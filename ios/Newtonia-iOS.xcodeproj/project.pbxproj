@@ -83,6 +83,8 @@
 		AB000070 /* revive_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000078 /* revive_pickup.cpp */; };
 		AB0000A0 /* achievement_journal.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA0000A0 /* achievement_journal.cpp */; };
 		AB0000A1 /* game_center_achievements.mm in Sources */ = {isa = PBXBuildFile; fileRef = AA0000A1 /* game_center_achievements.mm */; };
+		AB0000A4 /* shock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA0000A4 /* shock.cpp */; };
+		AB0000A5 /* shock_pickup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA0000A5 /* shock_pickup.cpp */; };
 		AB000030 /* OpenGLES.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000030 /* OpenGLES.framework */; };
 		AB000031 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000031 /* UIKit.framework */; };
 		AB000032 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000032 /* Foundation.framework */; };
@@ -199,6 +201,8 @@
 		AA00005F /* GameKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GameKit.framework; path = System/Library/Frameworks/GameKit.framework; sourceTree = SDKROOT; };
 		AA0000A0 /* achievement_journal.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../achievement_journal.cpp; sourceTree = SOURCE_ROOT; };
 		AA0000A1 /* game_center_achievements.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = ../game_center_achievements.mm; sourceTree = SOURCE_ROOT; };
+		AA0000A4 /* shock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../weapon/shock.cpp; sourceTree = SOURCE_ROOT; };
+		AA0000A5 /* shock_pickup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../shock_pickup.cpp; sourceTree = SOURCE_ROOT; };
 		AA000040 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA000041 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA000050 /* Newtonia.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Newtonia.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -328,6 +332,8 @@
 			AA000077 /* lance.h */,
 			AA000078 /* revive_pickup.cpp */,
 			AA000079 /* revive_pickup.h */,
+			AA0000A4 /* shock.cpp */,
+			AA0000A5 /* shock_pickup.cpp */,
 			);
 			name = Sources;
 			sourceTree = "<group>";
@@ -499,6 +505,8 @@
 			AB00005C /* beam.cpp in Sources */,
 			AB00005D /* lance.cpp in Sources */,
 			AB000070 /* revive_pickup.cpp in Sources */,
+			AB0000A4 /* shock.cpp in Sources */,
+			AB0000A5 /* shock_pickup.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
