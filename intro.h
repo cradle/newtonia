@@ -7,6 +7,7 @@
 
 class GLGame;
 class Asteroid;
+class Hazard;
 
 // Between-level intro screen shown when a generation introduces a new object
 // type: the game world freezes and the object spins centre-screen with its
@@ -18,13 +19,16 @@ class Asteroid;
 // one.
 class Intro : public State {
 public:
-  enum Kind { ASTEROID, BLACK_HOLE, MINI_STATION, STATION };
+  enum Kind { ASTEROID, BLACK_HOLE, MINI_STATION, STATION, HAZARD };
 
   // Takes ownership of `game` (handed back to the StateManager on dismissal,
   // or deleted — which auto-saves — when leaving to the menu) and of
   // `display_asteroid` (only for Kind ASTEROID, NULL otherwise; display-only,
   // it never enters the game's object lists or collision grid).
-  Intro(GLGame *game, Kind kind, const char *name, Asteroid *display_asteroid);
+  // `hazard_kind` selects which live hazard to focus on for Kind HAZARD
+  // (a Hazard::Kind value); ignored otherwise.
+  Intro(GLGame *game, Kind kind, const char *name, Asteroid *display_asteroid,
+        int hazard_kind = -1);
   virtual ~Intro();
 
   void draw() override;
@@ -56,6 +60,7 @@ private:
   Kind kind;
   const char *name;
   Asteroid *asteroid;  // owned; display-only (Kind ASTEROID)
+  int hazard_kind;     // Hazard::Kind to focus on (Kind HAZARD), else -1
   int time = 0;        // ms since the intro appeared (drives flash + spin)
   int step_accum = 0;  // accumulates delta into fixed steps for the spin
   bool unfocused = false;  // freeze the auto-start countdown while unfocused

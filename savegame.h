@@ -63,6 +63,7 @@ struct Asteroid {
 
     // type flags
     bool invincible, invisible, reflective, teleporting, quantum, tough, elastic, armoured, phasing;
+    bool comet_fragment;   // drawn solid white; packed into flags2
 
     // teleporting state (only meaningful when teleporting == true)
     bool  teleport_vulnerable;
@@ -102,6 +103,20 @@ struct Pickup {
 
 struct BlackHole {
     float pos_x, pos_y;
+};
+
+// ── Hazard ───────────────────────────────────────────────────────────────────
+// The environmental obstacles introduced on the mid-game "quiet" levels
+// (generations 9/11/12). One struct for all kinds; `kind` selects the
+// behaviour (see hazard.h). `timer` carries the PULSAR shockwave phase;
+// `vel_*` the COMET/SEEKER travel velocity (PULSAR is stationary).
+
+struct Hazard {
+    uint8_t kind;               // Hazard::Kind
+    float   pos_x, pos_y;
+    float   vel_x, vel_y;
+    float   timer;              // PULSAR shockwave phase
+    int32_t health;             // COMET shots remaining (0 for other kinds)
 };
 
 // ── Enemy ship ───────────────────────────────────────────────────────────────
@@ -173,6 +188,8 @@ struct GameState {
     std::vector<BlackHole> black_holes;
     Station                station;
     MiniStation            mini_station;
+    // v12 append (end of file): mid-game hazards (pulsar/comet/seeker).
+    std::vector<Hazard>    hazards;
 };
 
 // ── API ───────────────────────────────────────────────────────────────────────

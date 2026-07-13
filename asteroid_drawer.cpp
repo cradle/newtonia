@@ -126,6 +126,7 @@ struct AsteroidVerts {
   bool phasing;
   bool phased;
   int  phase_timer;
+  bool comet_fragment;
 };
 
 void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
@@ -173,6 +174,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
     v.phasing             = a->phasing;
     v.phased              = a->phased;
     v.phase_timer         = a->phase_timer;
+    v.comet_fragment      = a->comet_fragment;
     for (int k = 0; k < 5; k++) {
       v.crack_vertex[k] = a->crack_vertex[k];
       v.crack_t[k]      = a->crack_t[k];
@@ -200,6 +202,7 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
     else if (v.teleporting || v.armoured)          { r=0.0f; g=0.0f; b=0.0f; a=1.0f; }
     else if (v.reflective)                         { r=0.0f; g=0.4f; b=0.5f; a=0.6f; }
     else if (v.invincible)                         { r=0.5f; g=0.5f; b=0.5f; a=0.5f; }
+    else if (v.comet_fragment)                     { r=1.0f; g=1.0f; b=1.0f; a=1.0f; }
     else                                           { r=0.0f; g=0.0f; b=0.0f; a=1.0f; }
     mb.color(r, g, b, a);
     for (int wi = 0; wi < (v.dx != 0 ? 2 : 1); wi++) {

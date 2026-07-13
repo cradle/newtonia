@@ -15,12 +15,14 @@
 #include <iostream>
 #include <list>
 
-Intro::Intro(GLGame *game, Kind kind, const char *name, Asteroid *display_asteroid) :
+Intro::Intro(GLGame *game, Kind kind, const char *name, Asteroid *display_asteroid,
+             int hazard_kind) :
   State(),
   game(game),
   kind(kind),
   name(name),
-  asteroid(display_asteroid) {
+  asteroid(display_asteroid),
+  hazard_kind(hazard_kind) {
   if (asteroid != NULL) {
     // Park the display asteroid at the world centre so the fixed intro camera
     // (which looks at the focus point) keeps it centre-screen while it spins.
@@ -109,6 +111,12 @@ void Intro::tick(int delta) {
       for (auto bhi = game->black_holes->begin(); bhi != game->black_holes->end(); bhi++)
         (*bhi)->step(GLGame::step_size);
     }
+    if (kind == HAZARD) {
+      // Animate the focused hazard (pulsar shockwave, seeker blink); the fixed
+      // intro camera tracks its position, so any drift stays centre-screen.
+      Hazard *h = game->first_hazard((Hazard::Kind)hazard_kind);
+      if (h != NULL) h->update(GLGame::step_size, game->players);
+    }
     step_accum -= GLGame::step_size;
   }
 }
@@ -118,6 +126,11 @@ Point Intro::focus() const {
     case BLACK_HOLE:   return game->black_holes->front()->position;
     case MINI_STATION: return game->mini_station->position;
     case STATION:      return game->station->position;
+    case HAZARD: {
+      Hazard *h = game->first_hazard((Hazard::Kind)hazard_kind);
+      if (h != NULL) return h->position;
+      return Point(game->world.x() / 2.0f, game->world.y() / 2.0f);
+    }
     case ASTEROID:
     default:           return asteroid->position;
   }
@@ -171,6 +184,11 @@ void Intro::draw() {
     case BLACK_HOLE:   game->black_holes->front()->draw(false); break;
     case MINI_STATION: game->mini_station->draw(false);         break;
     case STATION:      game->station->draw(false);              break;
+    case HAZARD: {
+      Hazard *h = game->first_hazard((Hazard::Kind)hazard_kind);
+      if (h != NULL) h->draw(false);
+      break;
+    }
   }
 
   for (int x = -1; x <= 1; x++) {
