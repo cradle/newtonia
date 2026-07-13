@@ -532,6 +532,10 @@ void GLGame::add_hazards() {
   for(int i = 0; i < num_pulsar; i++) hazards->push_back(new Hazard(Hazard::PULSAR, world));
   for(int i = 0; i < num_comet;  i++) hazards->push_back(new Hazard(Hazard::COMET,  world));
   for(int i = 0; i < num_seeker; i++) hazards->push_back(new Hazard(Hazard::SEEKER, world));
+
+  // TEMPORARY (testing): drop a comet on level 1 so it can be exercised without
+  // reaching generation 11. Remove before merge.
+  if(generation == 0) hazards->push_back(new Hazard(Hazard::COMET, world));
 }
 
 Hazard *GLGame::first_hazard(Hazard::Kind kind) const {
