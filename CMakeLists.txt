@@ -16,6 +16,11 @@ list(FILTER GAME_SOURCES EXCLUDE REGEX ".*glut\\.cpp$")
 # the source tree when Gradle runs CMake from android/app/.cxx/.
 list(FILTER GAME_SOURCES EXCLUDE REGEX ".*/CMakeFiles/.*")
 list(FILTER GAME_SOURCES EXCLUDE REGEX ".*\\.cxx/.*")
+# Exclude the Steamworks SDK a developer may have unzipped at ./sdk/ for
+# local `make steam` builds (gitignored, so CI never sees it): the recursive
+# glob above would otherwise sweep Valve's sample sources (e.g. glmgr, which
+# includes macOS-only <OpenGL/OpenGL.h>) into the Android build.
+list(FILTER GAME_SOURCES EXCLUDE REGEX ".*/sdk/.*")
 
 # SDL2 dependency: build from source if SDL2_SOURCE_DIR is provided (e.g. CI),
 # otherwise expect pre-built SDL2 to be found via SDL2_DIR / SDL2_mixer_DIR.
