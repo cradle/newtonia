@@ -66,6 +66,7 @@ protected:
   void draw_mines(bool minimap) const;
   void draw_giga_mines(bool minimap) const;
   void draw_shockwaves() const;
+  void draw_shocks() const;
   void draw_missiles() const;
   void draw_debris() const;
 

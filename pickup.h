@@ -51,6 +51,36 @@ protected:
     }
   }
 
+  // Fill mb with a glowing lightning bolt (4 layers: 3 halo + 1 solid), a
+  // jagged single stroke that reads as a small electric arc.
+  static void build_glow_bolt(MeshBuilder& mb, float r, float g, float b,
+                              float s) {
+    struct Layer { float scale; float alpha; };
+    static const Layer layers[] = {
+      {2.0f,  0.05f},
+      {1.5f,  0.12f},
+      {1.15f, 0.28f},
+      {1.0f,  1.0f },
+    };
+    // Zig-zag bolt, normalised to roughly [-0.3, 0.25] x [-1, 1].
+    static const float bolt[][2] = {
+      { 0.25f,  1.00f},
+      {-0.20f,  0.30f},
+      { 0.15f,  0.15f},
+      {-0.30f, -0.45f},
+      { 0.10f, -0.55f},
+      {-0.15f, -1.00f},
+    };
+    const int n = (int)(sizeof(bolt) / sizeof(bolt[0]));
+    for (const Layer& L : layers) {
+      mb.begin(GL_LINE_STRIP);
+      mb.color(r, g, b, L.alpha);
+      for (int i = 0; i < n; i++)
+        mb.vertex(bolt[i][0] * s * L.scale, bolt[i][1] * s * L.scale);
+      mb.end();
+    }
+  }
+
   // Fill mb with a glowing heart shape (4 layers: 3 halo + 1 solid).
   static void build_glow_heart(MeshBuilder& mb, float r, float g, float b,
                                 float s) {
