@@ -58,7 +58,9 @@ npx wrangler dev --local --port 8787 &   # local relay (also used by the e2e dri
 # mismatches the persisted Durable Object state: clear it and pin an older
 # wrangler — `rm -rf .wrangler && npx wrangler@3.114.1 dev --local --port 8787`
 # (warns it caps the compat date to 2025-03-10; harmless for these tests).
-node test/reclaim_test.js                # M3-1 protocol: token + grace + reclaim (24 checks)
+node test/reclaim_test.js                # M3-1 protocol: token + grace + reclaim,
+                                         #   incl. abrupt-drop reclaim past a stale
+                                         #   host socket (ghost eviction)
 node test/rate_key_test.mjs              # rate_key /64-collapse unit test
 node test/pv_replay_test.mjs             # stored-offer replay keeps the version stamp
 ```

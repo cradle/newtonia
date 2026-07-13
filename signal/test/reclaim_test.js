@@ -1,6 +1,6 @@
 // M3-1 worker protocol test: host token + grace + reclaim.
 // Run: node reclaim_test.js   (wrangler dev on :8787)
-const BASE = "ws://127.0.0.1:8787/ws";
+const BASE = process.env.RECLAIM_TEST_URL || "ws://127.0.0.1:8787/ws";
 
 function connect(qs) {
   return new Promise((resolve, reject) => {
@@ -135,6 +135,39 @@ function check(name, cond) {
   check("closed room rejects join with host-closed (no grace)",
         j4.t === "err" && j4.reason === "host-closed");
   join4.close?.();
+
+  // 11. Abrupt-drop reclaim: after wifi-off / sleep the host's OLD socket is
+  //     still registered (its TCP close undetected) when it reconnects. A
+  //     valid-token reclaim must EVICT the ghost and succeed, not reject
+  //     "room-in-use" — the bug behind Glenn's wifi-off "CONNECTION LOST".
+  //     Fresh room so the lingering socket is unambiguous; no close() first.
+  const ghost = await connect("?role=host");
+  const groom = await ghost._recv();
+  check("ghost-test room frame", groom.t === "room" && !!groom.token);
+  let ghostClosed = false;
+  ghost.addEventListener("close", () => { ghostClosed = true; });
+  const reHost = await connect(
+      `?role=host&code=${groom.code}&token=${encodeURIComponent(groom.token)}`);
+  const reFrame = await reHost._recv();
+  check("reclaim past a lingering host socket succeeds",
+        reFrame.t === "room" && reFrame.code === groom.code);
+  check("token stable across ghost-evicting reclaim", reFrame.token === groom.token);
+  // Whether the ghost's CLIENT sees the close frame is a miniflare-fidelity
+  // detail (server-initiated closes on a hibernated socket aren't always
+  // delivered locally), so it's informational, not an assertion. The real
+  // proof of eviction is the functional check below: a lone working host.
+  for (let i = 0; i < 20 && !ghostClosed; i++) await t(100);
+  console.log(`      (ghost client close observed: ${ghostClosed})`);
+  // The reclaimed host is fully functional: a joiner connects and gets the
+  // fresh offer (proves we didn't leak a second host tag past the evict).
+  const gjoin = await connect(`?role=join&code=${groom.code}`);
+  const gj = await gjoin._recv();
+  check("joiner connects to ghost-evicted room", gj.t === "joined");
+  reHost.send(JSON.stringify({ t: "offer", sdp: "post-ghost-offer" }));
+  const goff = await gjoin._recv();
+  check("offer relays after ghost eviction",
+        goff.t === "offer" && goff.sdp === "post-ghost-offer");
+  reHost.close(); gjoin.close();
 
   host3.close(); join3.close(); squat.close?.();
   console.log(failures ? `\n${failures} FAILURES` : "\nRECLAIM-TEST-OK");

@@ -399,17 +399,28 @@ export class Room {
       // Same predicate as /reclaim below, minus the socket upgrade, so TURN
       // is minted only for a reclaim that will succeed. The real /reclaim
       // re-checks, so a state change in the gap is refused there (no leak).
+      // A lingering host socket (abrupt drop, close not yet detected) still
+      // yields ok: the reclaim below evicts it, so TURN must be minted.
       const token = url.searchParams.get("token");
-      const ok = !this.hostWs() && this.r.host_token &&
-                 token === this.r.host_token && this.in_grace(now);
+      const ok = this.r.host_token && token === this.r.host_token &&
+                 (this.hostWs() || this.in_grace(now));
       return new Response(JSON.stringify({ ok: !!ok }),
                           { headers: { "Content-Type": "application/json" } });
     }
 
     if (url.pathname === "/reclaim") {
       const token = url.searchParams.get("token");
-      if (this.hostWs()) return this.reject_ws("room-in-use");
-      if (!this.r.host_token || token !== this.r.host_token || !this.in_grace(now))
+      // A valid host token proves ownership. A host returning after an
+      // ABRUPT drop (wifi off, laptop sleep) routinely finds its OLD socket
+      // still registered — the DO hasn't seen the TCP close yet — so
+      // hostWs() is truthy and grace never started. Rejecting that as
+      // "room-in-use" stranded the rightful host on CONNECTION LOST (Glenn:
+      // reclaim after wifi-off). Accept whenever the token matches and the
+      // room isn't truly gone (a live-or-stale host socket, or still in
+      // grace); reclaim_host evicts any lingering socket.
+      if (!this.r.host_token || token !== this.r.host_token)
+        return this.reject_ws("no-such-room");
+      if (!this.hostWs() && !this.in_grace(now))
         return this.reject_ws("no-such-room");
       const pair = new WebSocketPair();
       await this.reclaim_host(pair[1], code, ice);
@@ -460,6 +471,14 @@ export class Room {
   // Reclaim: same room, same token, fresh socket. The old offer is stale
   // (its transport died with the old socket); the host re-offers.
   async reclaim_host(ws, code, ice) {
+    // Evict any lingering host socket first: an abrupt drop can leave the
+    // old one registered (its TCP close undetected) until now. The valid
+    // token that got us here proves this new socket is the rightful owner.
+    // The old socket's later webSocketClose is a no-op — drop_host sees this
+    // fresh socket and bails as "superseded".
+    for (const old of this.state.getWebSockets("host")) {
+      try { old.close(1000); } catch (e) {}
+    }
     this.state.acceptWebSocket(ws, ["host"]);
     this.r.offer = null;
     this.r.offer_pv = null;

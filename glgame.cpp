@@ -1628,6 +1628,17 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
         net_signal_retry_ms_ = 15000;
         return NetSigHandled;
       }
+      // room-in-use: after an ABRUPT drop (wifi/sleep) our OWN previous
+      // socket is often still registered on the relay — the reclaim finds
+      // hostWs() truthy before the dead socket's close is detected. The room
+      // is still ours (valid token); retry until the ghost is evicted (the
+      // relay now does this on the first valid-token reclaim, but an older
+      // relay just needs it reaped). Dropping here was Glenn's wifi-off
+      // "CONNECTION LOST".
+      if (ev.text == "room-in-use") {
+        net_signal_retry_ms_ = 3000;
+        return NetSigHandled;
+      }
       // no-such-room / expired on reclaim: the room is gone for good.
       NET_LOG("net: room %s lost (%s)\n", net_room_code_.c_str(),
              ev.text.c_str());
