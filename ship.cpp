@@ -1382,17 +1382,28 @@ void Ship::collide_grid(Grid &grid, int delta) {
   }
 
   // Shock bolts: damage the asteroids their arcs reached this frame. Non-asteroid
-  // targets (enemies, stations) are left in `struck` for GLGame to handle, which
-  // owns those lists and their damage APIs. This runs on the host / single
-  // player only — the net client never calls collide_grid, so it drains its
-  // shock struck lists (asteroid claims included) in GLGame::tick_net_client.
+  // targets (enemies, stations, hazards) are left in `struck` for GLGame to
+  // handle, which owns those lists and their damage APIs. This runs on the host /
+  // single player only — the net client never calls collide_grid, so it drains
+  // its shock struck lists (asteroid claims included) in GLGame::tick_net_client.
+  //
+  // The arc only chains onward from a *killing* hit: if the asteroid is
+  // invincible, or survives the hit (tough with health left, phasing while a
+  // ghost, teleporting mid-evade), the bolt stops where it is instead of arcing
+  // past to the next target.
   for(auto &bolt : shocks) {
     for(size_t i = 0; i < bolt.struck.size(); ) {
       Object *obj = bolt.struck[i];
-      if(Asteroid *a = dynamic_cast<Asteroid*>(obj)) {
-        if(a->alive && !a->invincible && a->kill()) {
-          score += a->get_value() * multiplier();
-          credit_asteroid_kill(a);
+      if(dynamic_cast<Asteroid*>(obj)) {
+        if(obj->alive) {
+          if(obj->invincible) {
+            bolt.stop();  // absorbed by an invincible asteroid
+          } else if(obj->kill()) {
+            score += obj->get_value() * multiplier();
+            credit_asteroid_kill(obj);  // destroyed — arc chains onward
+          } else {
+            bolt.stop();  // survived the hit — arc ends here
+          }
         }
         bolt.struck[i] = bolt.struck.back();
         bolt.struck.pop_back();
@@ -2515,14 +2526,18 @@ void Ship::step(float delta, const Grid &grid) {
   // has been drained (asteroids in collide_grid, hostiles in GLGame) so no hit is
   // dropped on the frame it dies.
   for(size_t i = 0; i < shocks.size(); ) {
-    bool was_growing = shocks[i].growing;
     shocks[i].step_bolt(delta, missile_asteroids, shock_targets);
-    // PROTO 22: the instant a bolt finishes growing, report its exact
-    // polyline to the peer so the remote flash uses identical segments (a
-    // re-seek would diverge — grow_segment jitters with rand()). Display
-    // replicas (net_display) are never re-reported.
+    // PROTO 22: once a bolt is done growing, report its exact polyline to the
+    // peer so the remote flash uses identical segments (a re-seek would
+    // diverge — grow_segment jitters with rand()). "Done growing" is either
+    // reaching MAX_SEGMENTS or stop() halting it early at a survivor it
+    // couldn't destroy — both clear `growing`, so key off !growing rather than
+    // the growing→!growing edge (stop() flips it in the drain, AFTER this
+    // check ran, so an edge test would miss stopped bolts entirely). The
+    // net_reported guard keeps it to a single report. Display replicas
+    // (net_display) are never re-reported.
     if(net_report_shots && !shocks[i].net_display && !shocks[i].net_reported &&
-       was_growing && !shocks[i].growing && shocks[i].points.size() >= 2) {
+       !shocks[i].growing && shocks[i].points.size() >= 2) {
       net_shock_reports.push_back(shocks[i].points);
       shocks[i].net_reported = true;
     }

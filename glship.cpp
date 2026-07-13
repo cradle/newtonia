@@ -1261,11 +1261,12 @@ void GLShip::draw_shockwaves() const {
 void GLShip::draw_shocks() const {
   if(ship->shocks.empty()) return;
 
-  static MeshBuilder mb_core, mb_glow;
-  static Mesh mesh_core, mesh_glow;
+  static MeshBuilder mb_core, mb_glow, mb_spark;
+  static Mesh mesh_core, mesh_glow, mesh_spark;
 
   mb_core.clear();
   mb_glow.clear();
+  mb_spark.clear();
 
   for(auto &b : ship->shocks) {
     if(b.points.size() < 2) continue;
@@ -1286,6 +1287,25 @@ void GLShip::draw_shocks() const {
     mb_core.end();
   }
 
+  // Spark burst where an arc was absorbed by something it couldn't destroy:
+  // short rays fanning out from the collision point, hot at the centre and
+  // fading to transparent at their tips.
+  bool any_spark = false;
+  for(auto &b : ship->shocks) {
+    if(b.spark_life <= 0.0f || b.spark_rays.empty()) continue;
+    any_spark = true;
+    float sa = b.spark_life; if(sa > 1.0f) sa = 1.0f;
+    float grow = 0.5f + 0.5f * b.spark_life;  // rays retract a little as they fade
+    mb_spark.begin(GL_LINES);
+    for(auto &r : b.spark_rays) {
+      mb_spark.color(0.9f, 0.95f, 1.0f, sa);
+      mb_spark.vertex(b.spark_pos.x(), b.spark_pos.y());
+      mb_spark.color(0.4f, 0.7f, 1.0f, 0.0f);
+      mb_spark.vertex(b.spark_pos.x() + r.x() * grow, b.spark_pos.y() + r.y() * grow);
+    }
+    mb_spark.end();
+  }
+
   // Additive so overlapping forks read as hot electric light.
   glBlendFunc(GL_SRC_ALPHA, GL_ONE);
   glLineWidth(5.0f);
@@ -1295,6 +1315,12 @@ void GLShip::draw_shocks() const {
   glLineWidth(2.0f);
   mesh_core.upload(mb_core, GL_DYNAMIC_DRAW);
   mesh_core.draw();
+
+  if(any_spark) {
+    glLineWidth(2.5f);
+    mesh_spark.upload(mb_spark, GL_DYNAMIC_DRAW);
+    mesh_spark.draw();
+  }
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
