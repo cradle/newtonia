@@ -544,6 +544,21 @@ Hazard *GLGame::first_hazard(Hazard::Kind kind) const {
   return NULL;
 }
 
+void GLGame::shed_comet_fragment(const Hazard *comet) {
+  // A normal killable asteroid, shrunk to a chunk and flung outward from the
+  // comet's heading. num_killable is bumped by the constructor, so the piece
+  // counts toward clearing the level like any other asteroid.
+  Asteroid *frag = new Asteroid(false);
+  frag->radius = 16.0f + rand() % 14;   // 16–29: a small shard
+  frag->radius_squared = frag->radius * frag->radius;
+  frag->value = std::min(100, std::max(1, (int)(1600.0f / frag->radius)));
+  frag->position = WrappedPoint(comet->position.x(), comet->position.y());
+  float ang = rand() / (float)RAND_MAX * 2.0f * (float)M_PI;
+  float sp  = 0.15f + rand() / (float)RAND_MAX * 0.15f;
+  frag->velocity = comet->velocity * 0.5f + Point(cosf(ang) * sp, sinf(ang) * sp);
+  objects->push_back(frag);
+}
+
 void GLGame::maybe_start_intro() {
   const char *name = NULL;
   Asteroid *display = NULL;
@@ -1330,6 +1345,8 @@ void GLGame::tick(int delta) {
                 s->bullets[i] = std::move(s->bullets.back());
                 s->bullets.pop_back();
                 h->hit();
+                shed_comet_fragment(h);   // knock a couple of chunks loose
+                shed_comet_fragment(h);
                 if(!h->is_alive()) s->score += Hazard::COMET_REWARD;
               } else { ++i; }
             }
@@ -1341,6 +1358,8 @@ void GLGame::tick(int delta) {
                 s->missiles[i] = std::move(s->missiles.back());
                 s->missiles.pop_back();
                 h->hit();
+                shed_comet_fragment(h);
+                shed_comet_fragment(h);
                 if(!h->is_alive()) s->score += Hazard::COMET_REWARD;
               } else { ++i; }
             }

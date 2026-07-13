@@ -126,6 +126,7 @@ void Hazard::update(int delta, list<GLShip*> *players) {
     }
 
     case COMET: {
+      if (!alive) break;  // destroyed: stop moving and stop trailing, just fade
       position += velocity * delta;
       position.wrap();
       rotation += rotation_speed * delta;  // tumble like an asteroid
@@ -188,6 +189,9 @@ void Hazard::update(int delta, list<GLShip*> *players) {
 void Hazard::destroy() {
   if (!alive) return;
   alive = false;
+  // Drop any lingering trail/impact debris so the death reads as one clean
+  // radial burst rather than a streak that keeps drifting off.
+  debris_.clear();
   int count = 60;
   debris_.reserve(debris_.size() + count);
   for (int i = 0; i < count; i++) {

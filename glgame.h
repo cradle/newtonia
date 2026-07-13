@@ -80,6 +80,9 @@ private:
   // Spawn the mid-game hazards this generation calls for (counts scale with
   // generation, like the special-asteroid counts). Appends to `hazards`.
   void add_hazards();
+  // Break a small asteroid chunk off a comet at its current position, flung
+  // outward from its heading. The chunk is a normal killable asteroid.
+  void shed_comet_fragment(const Hazard *comet);
   void add_player2(SDL_GameController *ctrl);
   Save::GameState build_save_data() const;
   void save_progress();   // save only when at least one player is alive or has lives
