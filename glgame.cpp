@@ -54,6 +54,7 @@ const float GLGame::giga_mine_pickup_drop_chance = 0.005f;
 const float GLGame::missile_pickup_drop_chance = 0.0125f;
 const float GLGame::shield_pickup_drop_chance = 0.0125f;
 const float GLGame::god_mode_pickup_drop_chance = 0.0025f;
+const float GLGame::shock_pickup_drop_chance = 0.0125f;
 
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
@@ -71,6 +72,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
   ship_objects = new std::list<Object*>;
+  shock_targets = new std::list<Object*>;
   objects = new std::list<Asteroid*>;
   dead_objects = new std::list<Asteroid*>;
   pickups = new std::list<Pickup*>;
@@ -123,6 +125,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
   object->ship->set_missile_ships(ship_objects);
+  object->ship->set_shock_targets(shock_targets);
   object->ship->set_black_holes(black_holes);
   players->push_back(object);
 
@@ -191,6 +194,7 @@ GLGame::~GLGame() {
   }
   delete enemies;
   delete ship_objects;
+  delete shock_targets;
   while(!objects->empty()) {
     delete objects->back();
     objects->pop_back();
@@ -261,6 +265,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
   ship_objects = new std::list<Object*>;
+  shock_targets = new std::list<Object*>;
   objects = new std::list<Asteroid*>;
   dead_objects = new std::list<Asteroid*>;
   pickups = new std::list<Pickup*>;
@@ -296,6 +301,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
       case Save::PickupType::GodMode:  pickups->push_back(new GodModePickup(pos)); break;
       case Save::PickupType::ExtraLife: pickups->push_back(new ExtraLife(pos)); break;
       case Save::PickupType::NovaCharge: pickups->push_back(new NovaChargePickup(pos)); break;
+      case Save::PickupType::ShockWeapon: pickups->push_back(new ShockPickup(pos)); break;
       default: break;
     }
   }
@@ -318,6 +324,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     gs->ship->set_missile_asteroids((std::list<Object*>*)objects);
     ship_objects->push_back(gs->ship);
     gs->ship->set_missile_ships(ship_objects);
+    gs->ship->set_shock_targets(shock_targets);
     gs->ship->set_black_holes(black_holes);
     gs->ship->restore_state(sp, grid);
     gs->snap_camera_to_heading();
@@ -439,6 +446,8 @@ Save::GameState GLGame::build_save_data() const {
       sp.type = Save::PickupType::ExtraLife;
     } else if (dynamic_cast<NovaChargePickup*>(p)) {
       sp.type = Save::PickupType::NovaCharge;
+    } else if (dynamic_cast<ShockPickup*>(p)) {
+      sp.type = Save::PickupType::ShockWeapon;
     } else {
       continue; // unknown pickup type, skip
     }
@@ -627,6 +636,7 @@ void GLGame::add_player2(SDL_GameController *ctrl) {
   ship_objects->push_back(object->ship);
   for(auto *p : *players) p->ship->set_missile_ships(ship_objects);
   object->ship->set_missile_ships(ship_objects);
+  object->ship->set_shock_targets(shock_targets);
   object->ship->set_black_holes(black_holes);
   players->push_back(object);
   update_presence();
@@ -833,6 +843,17 @@ void GLGame::tick(int delta) {
       }
     }
 
+    // Refresh the shock-bolt seek list: every hostile a player's lightning may
+    // path to this frame (enemy ships, the station, the mini-station). Asteroids
+    // are seeked separately via each ship's missile-asteroid list.
+    shock_targets->clear();
+    for(o = enemies->begin(); o != enemies->end(); o++)
+      shock_targets->push_back((*o)->ship);
+    if(station != NULL && station->is_alive())
+      shock_targets->push_back(station);
+    if(mini_station != NULL && mini_station->is_alive())
+      shock_targets->push_back(mini_station);
+
     for(o = players->begin(); o != players->end(); o++) {
       (*o)->step(step_size, grid);
     }
@@ -1003,6 +1024,8 @@ void GLGame::tick(int delta) {
             pickups->push_back(new ShieldPickup((*oi)->position));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance) {
             pickups->push_back(new GodModePickup((*oi)->position));
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance + shock_pickup_drop_chance) {
+            pickups->push_back(new ShockPickup((*oi)->position));
           }
         }
         // Move to dead_objects so the collision grid no longer iterates this
@@ -1242,6 +1265,38 @@ void GLGame::tick(int delta) {
       // destroyed it, play the destruction sound once.
       if (!mini_station->is_alive() && station_explode_sound != NULL) {
         Mix_PlayChannel(-1, station_explode_sound, 0);
+      }
+    }
+
+    /* APPLY SHOCK-BOLT HITS ON ENEMIES / STATIONS */
+    // Asteroid hits were already applied in each player's collide_grid(); the
+    // pointers still in a bolt's `struck` list here are hostiles, damaged with
+    // the same APIs bullets/missiles use so scoring and achievements match.
+    for(o = players->begin(); o != players->end(); o++) {
+      Ship* s = (*o)->ship;
+      for(auto &bolt : s->shocks) {
+        for(Object *obj : bolt.struck) {
+          if(mini_station != NULL && obj == mini_station && mini_station->is_alive()) {
+            s->explode(mini_station->position, mini_station->velocity);
+            s->score += GLMiniStation::REWARD;
+            mini_station->destroy();
+            if(s->is_local_player) {
+              Achievements::unlock("mini_station_kill");
+              Achievements::progress("score_3m", s->score / 30000);
+            }
+            if(station_explode_sound != NULL)
+              Mix_PlayChannel(-1, station_explode_sound, 0);
+          } else if(station != NULL && obj == station && station->is_alive()) {
+            station->hit();
+            if(!station->is_alive() && s->is_local_player)
+              Achievements::unlock("station_destroyed");
+          } else {
+            for(auto* e : *enemies) {
+              if(e->ship == obj) { s->shock_hit_ship(e->ship); break; }
+            }
+          }
+        }
+        bolt.struck.clear();
       }
     }
 
@@ -1972,6 +2027,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       ship_objects->push_back(object->ship);
       for (auto *p : *players) p->ship->set_missile_ships(ship_objects);
       object->ship->set_missile_ships(ship_objects);
+      object->ship->set_shock_targets(shock_targets);
       players->push_back(object);
       update_presence();
     }

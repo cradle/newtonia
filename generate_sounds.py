@@ -28,6 +28,23 @@ def make_shoot():
         samples.append(math.sin(2 * math.pi * freq * t) * env * 0.8)
     return samples
 
+def make_shock():
+    """Electric zap: buzzy detuned high tones sweeping down under crackling
+    amplitude-modulated noise, 200ms."""
+    n = int(SAMPLE_RATE * 0.2)
+    rng = random.Random(73)
+    samples = []
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        env = math.exp(-t * 14)
+        f1 = 1600 - 900 * (i / n)
+        f2 = 2350 - 1400 * (i / n)
+        tone = (math.sin(2 * math.pi * f1 * t) + 0.6 * math.sin(2 * math.pi * f2 * t)) * 0.4
+        crackle = (rng.random() * 2 - 1) * (0.5 + 0.5 * math.sin(2 * math.pi * 90 * t)) * 0.5
+        samples.append((tone + crackle) * env * 0.8)
+    peak = max(abs(s) for s in samples) or 1.0
+    return [s / peak * 0.85 for s in samples]
+
 def make_empty():
     """Empty ammo click: short noise burst + tone, 80ms."""
     n = int(SAMPLE_RATE * 0.08)
@@ -715,6 +732,7 @@ if __name__ == '__main__':
 
     sounds = {
         'shoot.wav':           make_shoot,
+        'shock.wav':           make_shock,
         'empty.wav':           make_empty,
         'click.wav':           make_click,
         'mine.wav':            make_mine,

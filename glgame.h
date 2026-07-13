@@ -21,6 +21,7 @@
 #include "shield_pickup.h"
 #include "god_mode_pickup.h"
 #include "nova_charge_pickup.h"
+#include "shock_pickup.h"
 #include <SDL.h>
 #include <list>
 
@@ -114,6 +115,7 @@ private:
   static const float missile_pickup_drop_chance;
   static const float shield_pickup_drop_chance;
   static const float god_mode_pickup_drop_chance;
+  static const float shock_pickup_drop_chance;
   mutable WarpPass *warp_pass_;
 
   Mix_Chunk *tic_sound = NULL;
@@ -129,6 +131,7 @@ private:
   GLMiniStation *mini_station;
   list<GLShip*> *enemies, *players;
   list<Object*> *ship_objects;  // Ship* (as Object*) for missile homing
+  list<Object*> *shock_targets; // enemies + stations (as Object*) for shock-bolt seeking
 };
 
 #endif

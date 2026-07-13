@@ -14,6 +14,7 @@
 #include "weapon/shield.h"
 #include "weapon/god_mode.h"
 #include "weapon/nova.h"
+#include "weapon/shock.h"
 
 static const int NOVA_MAX_AMMO = 10;
 #include <algorithm>
@@ -380,6 +381,24 @@ void Ship::add_shield_ammo(int amount) {
   secondary = --secondary_weapons.end();
 }
 
+void Ship::add_shock_ammo(int amount) {
+  for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+    if(dynamic_cast<Weapon::Shock*>(*it)) {
+      (*it)->add_ammo(amount);
+      if(!shield_held(secondary_weapons, secondary)) {
+        (*secondary)->shoot(false);
+        secondary = it;
+      }
+      return;
+    }
+  }
+  Weapon::Shock *w = new Weapon::Shock(this);
+  w->set_ammo(amount);
+  secondary_weapons.push_back(w);
+  if(!shield_held(secondary_weapons, secondary))
+    secondary = --secondary_weapons.end();
+}
+
 void Ship::add_god_mode(int duration_ms) {
   // God mode starts firing shockwaves the moment it activates, so activation
   // counts as usage for the weapons_7 achievement.
@@ -613,6 +632,7 @@ Save::Player Ship::capture_state() const {
     else if (dynamic_cast<Weapon::Missile*>(*it))  we.kind = Save::WeaponEntry::Kind::Missile;
     else if (dynamic_cast<Weapon::Shield*>(*it))   we.kind = Save::WeaponEntry::Kind::Shield;
     else if (dynamic_cast<Weapon::Nova*>(*it))     we.kind = Save::WeaponEntry::Kind::Nova;
+    else if (dynamic_cast<Weapon::Shock*>(*it))    we.kind = Save::WeaponEntry::Kind::Shock;
     else we.kind = Save::WeaponEntry::Kind::Mine; // fallback
     p.secondary_weapons.push_back(we);
   }
@@ -671,6 +691,7 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
       case Save::WeaponEntry::Kind::Missile:  add_missile_ammo(we.ammo);  break;
       case Save::WeaponEntry::Kind::Shield:   add_shield_ammo(we.ammo);   break;
       case Save::WeaponEntry::Kind::Nova:     add_nova_ammo(we.ammo);     break;
+      case Save::WeaponEntry::Kind::Shock:    add_shock_ammo(we.ammo);    break;
       default: break;
     }
   }
@@ -706,6 +727,21 @@ void Ship::set_missile_ships(std::list<Object*> *ships) {
   for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
     Weapon::Missile *mw = dynamic_cast<Weapon::Missile*>(*it);
     if(mw) { mw->set_ship_targets(ships); return; }
+  }
+}
+
+void Ship::set_shock_targets(std::list<Object*> *hostiles) {
+  shock_targets = hostiles;
+}
+
+// A shock bolt reached `other` (an enemy ship). Kill and credit it, mirroring
+// the bullet/missile ship-kill paths. Called from GLGame, which owns the
+// enemy/station lists; asteroid hits are handled in collide_grid() instead.
+void Ship::shock_hit_ship(Ship *other) {
+  if(!other->is_alive()) return;
+  if(other->kill()) {
+    other->velocity.zero();
+    credit_ship_kill(other);
   }
 }
 
@@ -812,6 +848,7 @@ void Ship::reset(bool was_killed) {
   bullets.clear();
   missiles.clear();
   shockwaves.clear();
+  shocks.clear();
   debris.clear();
   rotation_direction = NONE;
   still_rotating_left = false;
@@ -1054,6 +1091,25 @@ void Ship::collide_grid(Grid &grid, int delta) {
           score += obj->get_value() * multiplier();
           credit_asteroid_kill(obj, !sw.is_nova);  // no nova feedback from nova's own kills
         }
+      }
+    }
+  }
+
+  // Shock bolts: damage the asteroids their arcs reached this frame. Non-asteroid
+  // targets (enemies, stations) are left in `struck` for GLGame to handle, which
+  // owns those lists and their damage APIs.
+  for(auto &bolt : shocks) {
+    for(size_t i = 0; i < bolt.struck.size(); ) {
+      Object *obj = bolt.struck[i];
+      if(dynamic_cast<Asteroid*>(obj)) {
+        if(obj->alive && !obj->invincible && obj->kill()) {
+          score += obj->get_value() * multiplier();
+          credit_asteroid_kill(obj);
+        }
+        bolt.struck[i] = bolt.struck.back();
+        bolt.struck.pop_back();
+      } else {
+        ++i;
       }
     }
   }
@@ -1360,6 +1416,7 @@ void Ship::fire_secondary(bool on) {
       else if (dynamic_cast<Weapon::Missile*>(*secondary))  kind = Save::WeaponEntry::Kind::Missile;
       else if (dynamic_cast<Weapon::Shield*>(*secondary))   kind = Save::WeaponEntry::Kind::Shield;
       else if (dynamic_cast<Weapon::Nova*>(*secondary))     kind = Save::WeaponEntry::Kind::Nova;
+      else if (dynamic_cast<Weapon::Shock*>(*secondary))    kind = Save::WeaponEntry::Kind::Shock;
       record_weapon_fired(kind);
     }
     (*secondary)->shoot(on);
@@ -1641,6 +1698,20 @@ void Ship::step(float delta, const Grid &grid) {
     if(!shockwaves[i].alive()) {
       shockwaves[i] = std::move(shockwaves.back());
       shockwaves.pop_back();
+    } else {
+      ++i;
+    }
+  }
+
+  // Step shock bolts unconditionally so they finish arcing and fading regardless
+  // of weapon state. A bolt is only removed once it has faded AND its struck list
+  // has been drained (asteroids in collide_grid, hostiles in GLGame) so no hit is
+  // dropped on the frame it dies.
+  for(size_t i = 0; i < shocks.size(); ) {
+    shocks[i].step_bolt(delta, missile_asteroids, shock_targets);
+    if(!shocks[i].is_alive() && shocks[i].struck.empty()) {
+      shocks[i] = std::move(shocks.back());
+      shocks.pop_back();
     } else {
       ++i;
     }
