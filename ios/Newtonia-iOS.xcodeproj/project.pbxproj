@@ -64,6 +64,8 @@
 		AB000052 /* preferences.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000052 /* preferences.cpp */; };
 		AB000056 /* gl_mini_station.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000056 /* gl_mini_station.cpp */; };
 		AB000058 /* intro.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000058 /* intro.cpp */; };
+		AB000060 /* achievement_journal.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA000060 /* achievement_journal.cpp */; };
+		AB000061 /* game_center_achievements.mm in Sources */ = {isa = PBXBuildFile; fileRef = AA000061 /* game_center_achievements.mm */; };
 		AB000030 /* OpenGLES.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000030 /* OpenGLES.framework */; };
 		AB000031 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000031 /* UIKit.framework */; };
 		AB000032 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000032 /* Foundation.framework */; };
@@ -76,6 +78,7 @@
 		AB000039 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000039 /* CoreAudio.framework */; };
 		AB00003A /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA00003A /* QuartzCore.framework */; };
 		AB00003B /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA00003B /* Metal.framework */; };
+		AB00005F /* GameKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA00005F /* GameKit.framework */; };
 		AB000041 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA000041 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -154,6 +157,9 @@
 		AA000039 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
 		AA00003A /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		AA00003B /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		AA00005F /* GameKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GameKit.framework; path = System/Library/Frameworks/GameKit.framework; sourceTree = SDKROOT; };
+		AA000060 /* achievement_journal.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../achievement_journal.cpp; sourceTree = SOURCE_ROOT; };
+		AA000061 /* game_center_achievements.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = ../game_center_achievements.mm; sourceTree = SOURCE_ROOT; };
 		AA000040 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA000041 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA000050 /* Newtonia.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Newtonia.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -176,6 +182,7 @@
 				AB000039 /* CoreAudio.framework in Frameworks */,
 				AB00003A /* QuartzCore.framework in Frameworks */,
 				AB00003B /* Metal.framework in Frameworks */,
+				AB00005F /* GameKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -247,6 +254,8 @@
 			AA000051 /* mesh.h */,
 			AA00004E /* savegame.cpp */,
 			AA00005C /* achievements.cpp */,
+			AA000060 /* achievement_journal.cpp */,
+			AA000061 /* game_center_achievements.mm */,
 			AA00005D /* presence.cpp */,
 			AA00005E /* steam_presence.cpp */,
 			AA00005A /* stats.cpp */,
@@ -277,6 +286,7 @@
 				AA000039 /* CoreAudio.framework */,
 				AA00003A /* QuartzCore.framework */,
 				AA00003B /* Metal.framework */,
+				AA00005F /* GameKit.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -402,6 +412,8 @@
 			AB00004D /* mesh.cpp in Sources */,
 			AB00004E /* savegame.cpp in Sources */,
 			AB00005C /* achievements.cpp in Sources */,
+			AB000060 /* achievement_journal.cpp in Sources */,
+			AB000061 /* game_center_achievements.mm in Sources */,
 			AB00005D /* presence.cpp in Sources */,
 			AB00005E /* steam_presence.cpp in Sources */,
 			AB00005A /* stats.cpp in Sources */,
@@ -446,11 +458,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_ENTITLEMENTS = "$(SRCROOT)/EntitlementsDev.plist";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = "";
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"__IOS__=1",
+					"GAME_CENTER_BUILD=1",
 					"DEBUG=1",
 					"$(inherited)",
 				);
@@ -480,11 +494,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_ENTITLEMENTS = "$(SRCROOT)/EntitlementsDev.plist";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = "";
 				GCC_OPTIMIZATION_LEVEL = 3;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"__IOS__=1",
+					"GAME_CENTER_BUILD=1",
 					"$(inherited)",
 				);
 				HEADER_SEARCH_PATHS = (
