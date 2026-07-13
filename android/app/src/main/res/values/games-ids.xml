@@ -1,14 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Google Play Games Services IDs (ACHIEVEMENTS.md §2, Play Games backend).
 
-     game_services_project_id: replace the placeholder with the numeric
-     project ID the Play Console assigns when Play Games Services is
-     configured for the app — the app itself is already live on the internal
-     testing track, so this is the only gate (referenced from
+     game_services_project_id: the numeric project ID of the "newtonia"
+     Play Games Services game project in the Play Console (referenced from
      AndroidManifest.xml as the com.google.android.gms.games.APP_ID
-     meta-data). With the placeholder in place the SDK initialises but
-     sign-in fails, so achievements are silently off — the game is
-     unaffected, and shipping the placeholder to testers is safe.
+     meta-data).
 
      Achievements: uncomment each entry and paste the ID the Play Console
      generates for it. The resource NAMES are fixed by the mapping table in
@@ -18,7 +14,7 @@
      just drops that achievement's earns with a logcat warning. coop_clear
      is deliberately absent until netplay (ACHIEVEMENTS.md §5). -->
 <resources>
-    <string name="game_services_project_id" translatable="false">0</string>
+    <string name="game_services_project_id" translatable="false">717199808901</string>
     <!--
     <string name="achievement_first_kill" translatable="false">CgkI...</string>
     <string name="achievement_clear_level1" translatable="false">CgkI...</string>
