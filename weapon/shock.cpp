@@ -145,23 +145,27 @@ void Shock::step(int delta) {
 
 void Shock::try_fire() {
   if (cooldown > 0) return;
-  // Netplay: the host does NOT run the remote (client's) ship's shock — the
-  // client owns its bolts and replicates them over MSG_SHOCK. Suppress the
-  // local spawn here so the host doesn't grow a second, diverging bolt.
-  if (ship->net_remote_gun) { cooldown = FIRE_INTERVAL; return; }
+  cooldown = FIRE_INTERVAL;  // re-arm on every trigger evaluation (empty click too)
+  // Netplay: like Default/Beam/Lance, the host's remote-player shock keeps its
+  // ammo + cooldown bookkeeping but mints no bolt and plays no sound — the
+  // real polyline arrives as MSG_SHOCK. The ammo decrement below MUST still
+  // run on the host: it is what keeps the host's snapshot ammo in step with
+  // the client's firing. Returning early here (skipping the decrement) left
+  // the host's count pinned, so the 10 Hz snapshot restore reset the client's
+  // ammo back up after every shot.
+  bool sim_only = ship->net_remote_gun;
   if (_ammo == 0) {
-    if (empty_sound != NULL && ship->sound_volume_scale > 0.0f)
+    if (empty_sound != NULL && !sim_only && ship->sound_volume_scale > 0.0f)
       Mix_PlayChannel(-1, empty_sound, 0);
-    cooldown = FIRE_INTERVAL;  // don't spam the empty click every frame
     return;
   }
   _ammo--;
+  if (sim_only) return;
   ship->shocks.push_back(ShockBolt(ship->gun(), ship->facing.normalized(), ship));
   if (shoot_sound != NULL && ship->sound_volume_scale > 0.0f) {
     Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * ship->sound_volume_scale));
     Mix_PlayChannel(-1, shoot_sound, 0);
   }
-  cooldown = FIRE_INTERVAL;
 }
 
 } // namespace Weapon
