@@ -73,6 +73,34 @@ const float PICKER_CELL_W = 45.0f;
 // plain ±8000 edge felt twitchy on a real gamepad).
 const int STICK_ON = 16000, STICK_OFF = 8000;
 
+// Pull a room code out of clipboard text. The host auto-copies the universal
+// join link (https://…/join?code=XXXXX) so a friend can paste a clickable
+// link, but the same clipboard feeds this JOIN-screen auto-join — so accept
+// either a link (take the valid code chars right after "code=") or a bare
+// code (strip whitespace, uppercase, the legacy behaviour). Returns the
+// uppercased code; the caller still validates length + alphabet.
+static std::string room_code_from_clip(const std::string &text) {
+  size_t p = text.find("code=");
+  if (p != std::string::npos) {
+    std::string code;
+    for (size_t i = p + 5; i < text.size() && code.size() < (size_t)NET_ROOM_CODE_LEN; i++) {
+      char c = text[i];
+      if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+      if (!net_room_code_char_ok(c)) break;  // stop at '&', '#', whitespace, end
+      code += c;
+    }
+    return code;
+  }
+  std::string code;
+  for (size_t i = 0; i < text.size(); i++) {
+    char c = text[i];
+    if (c == ' ' || c == '\t' || c == '\r' || c == '\n') continue;
+    if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+    code += c;
+  }
+  return code;
+}
+
 }  // namespace
 
 void NetLobby::mark_room_dead(const std::string &code) { s_dead_code = code; }
@@ -477,7 +505,12 @@ void NetLobby::pump_signal(int delta) {
         // the ex-host straight into its own dead room.
         g_prefs.last_hosted_code = room_code_;
         save_preferences();
-        net_clipboard_write(room_code_);  // ready to paste to the friend
+        // Copy the universal join link, not the bare code: on desktop/Steam
+        // there is no OS share sheet, so the clipboard IS the host's only
+        // way to hand a friend something clickable. The joiner's clipboard
+        // auto-join (room_code_from_clip) still extracts the code from it,
+        // and the zombie-room guards below compare that extracted code.
+        net_clipboard_write(net_join_url(room_code_));
         // Advertise the room to the platform invite system (Steam "Join
         // Game" etc.). Cleared in the destructor once the slot fills or the
         // host leaves. The platform only ferries this code — the connection
@@ -718,13 +751,7 @@ void NetLobby::tick(int delta) {
       } else {
         code_clip_pending_ = false;
         code_clip_retry_ms_ = 0;
-        std::string code;
-        for (size_t i = 0; i < clip.size(); i++) {
-          char c = clip[i];
-          if (c == ' ' || c == '\t' || c == '\r' || c == '\n') continue;
-          if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
-          code += c;
-        }
+        std::string code = room_code_from_clip(clip);
         bool ok = code.size() == (size_t)NET_ROOM_CODE_LEN;
         for (size_t i = 0; ok && i < code.size(); i++)
           ok = net_room_code_char_ok(code[i]);
