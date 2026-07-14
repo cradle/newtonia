@@ -31,6 +31,14 @@ std::string net_signal_url() {
   return SIGNAL_URL_DEFAULT;
 }
 
+// The public site (GitHub Pages) that hosts the /join landing page and the
+// browser game under /play. Keep in sync with web/site/CNAME.
+static const char *JOIN_URL_BASE = "https://newtonia.metonymous.com/join?code=";
+
+std::string net_join_url(const std::string &room_code) {
+  return std::string(JOIN_URL_BASE) + room_code;
+}
+
 // No 0/O/1/I/5/S (confusable in the game font). No F: the desktop build
 // toggles fullscreen on F at the window layer, before the lobby's code
 // entry ever sees it — so codes simply never contain one (keep in sync

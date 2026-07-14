@@ -121,9 +121,14 @@ jobs:
             -not -path "*/CMakeFiles/*" \
             | sed 's|^newtonia/||' \
             > srcs.txt
-          echo "ios_main.mm" >> srcs.txt
-          echo "ios_share.mm" >> srcs.txt
-          echo "game_center_achievements.mm" >> srcs.txt
+          # Root Objective-C++ that compiles on iOS (all *.mm minus the
+          # macOS-only entry points); mirrors ios/project.yml's *.mm glob so a
+          # new ios_*.mm needs no edit here either.
+          find newtonia -maxdepth 1 -name "*.mm" \
+            -not -name "Newtonia.mm" \
+            -not -name "macos_window.mm" \
+            | sed 's|^newtonia/||' \
+            >> srcs.txt
           echo "Sources to compile:"
           cat srcs.txt
 

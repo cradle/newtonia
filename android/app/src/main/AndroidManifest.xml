@@ -38,11 +38,30 @@
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
             android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|fontScale|screenLayout|density|uiMode"
+            android:launchMode="singleTask"
             android:exported="true">
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Co-op join links (App Links). A tapped
+                 https://newtonia.metonymous.com/join?code=XXXX opens the game;
+                 NewtoniaActivity hands the code to Invites::note_accepted via
+                 nativeAcceptInvite (android_main.cpp). autoVerify makes Android
+                 fetch /.well-known/assetlinks.json at install so the link opens
+                 the app directly (no chooser) — the file must name this package
+                 and the release signing cert's SHA-256. singleTask above makes
+                 a link tapped while the game is running arrive at onNewIntent
+                 rather than spawning a second task. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https"
+                      android:host="newtonia.metonymous.com"
+                      android:pathPrefix="/join" />
             </intent-filter>
         </activity>
     </application>

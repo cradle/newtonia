@@ -16,6 +16,7 @@
 #include "typer.h"
 #include "asteroid.h"
 #include "preferences.h"
+#include "invites.h"
 
 #include <iostream>
 #include <cmath>
@@ -181,6 +182,22 @@ void net_share_text(const std::string &text) {
     env->DeleteLocalRef(extra_key);  env->DeleteLocalRef(extra_val);
     env->DeleteLocalRef(title);      env->DeleteLocalRef(chooser);
     env->DeleteLocalRef(activity_cls); env->DeleteLocalRef(activity);
+}
+
+// Co-op join link (App Link). NewtoniaActivity extracts the ?code= from a
+// tapped https://newtonia.metonymous.com/join?code=XXXX intent and calls this
+// (cold launch from onCreate, warm from onNewIntent). The code flows into the
+// shared invite layer; Menu::tick's poll_accepted_invite jumps into the lobby
+// as a joiner — the same handoff Steam / the web ?code= path use. Called on
+// the Android UI thread, so note_accepted's mutex matters.
+extern "C" JNIEXPORT void JNICALL
+Java_org_newtonia_NewtoniaActivity_nativeAcceptInvite(JNIEnv *env, jclass, jstring code) {
+    if (!code) return;
+    const char *c = env->GetStringUTFChars(code, NULL);
+    if (c) {
+        Invites::note_accepted(c);
+        env->ReleaseStringUTFChars(code, c);
+    }
 }
 
 static void finger_up(SDL_FingerID id, float x, float y) {

@@ -12,6 +12,30 @@ declare const Module: {
   const fsBtn = document.getElementById("fullscreen-btn") as HTMLButtonElement;
   const muteBtn = document.getElementById("mute-btn") as HTMLButtonElement;
 
+  // ---- Universal join link (?code=) ----
+  // A shared https://newtonia.metonymous.com/join?code=XXXX link that fell
+  // through to the web game (no native app installed, or a desktop browser)
+  // lands here with the room code in the query string. Hand it to the wasm
+  // module once its runtime is up (Module._web_accept_invite is exported),
+  // then scrub ?code= from the URL so a refresh doesn't rejoin. Menu::tick
+  // polls Invites::poll_accepted_invite and jumps into the lobby as a joiner.
+  (function handleJoinCode() {
+    const code = new URLSearchParams(window.location.search).get("code");
+    if (!code) return;
+    const m = Module as any;
+    let tries = 0;
+    const deliver = () => {
+      if (m.ccall && m._web_accept_invite) {
+        m.ccall("web_accept_invite", null, ["string"], [code]);
+        const clean = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, "", clean);
+        return;
+      }
+      if (tries++ < 200) setTimeout(deliver, 50);  // ~10 s of runtime warmup
+    };
+    deliver();
+  })();
+
   // ---- Fullscreen ----
   function toggleFullscreen() {
     if (!document.fullscreenElement) {

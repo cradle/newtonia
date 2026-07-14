@@ -77,6 +77,15 @@ public:
 // baked-in production worker (placeholder until M2-3 deploys it).
 std::string net_signal_url();
 
+// The universal co-op join link for a room code:
+// https://newtonia.metonymous.com/join?code=<CODE>. One link works on every
+// platform — the recipient's device resolves it at tap time (installed
+// iOS/Android apps auto-open via Universal/App Links; Steam desktop gets a
+// steam:// button; everything else falls through to the browser game, which
+// reads ?code=). Shared by the lobby's SHARE band (invites.h). Room codes use
+// a URL-safe alphabet, so no percent-encoding is needed.
+std::string net_join_url(const std::string &room_code);
+
 // The room code alphabet (shared with signal/src/worker.js): 5 chars,
 // no 0/O/1/I/5/S (confusable in the game font) or F (fullscreen key).
 // Used by the lobby's code-entry screen and its controller picker.

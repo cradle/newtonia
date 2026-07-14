@@ -1404,7 +1404,14 @@ void NetLobby::touch_tap(float nx, float ny) {
     case RoomHost:
       if (kShareBand.contains(nx, ny) && !room_code_.empty() &&
           net_share_available())
-        net_share_text("Join my Newtonia game! Room code: " + room_code_);
+        // Share ONE universal link, regardless of the host's platform: the
+        // recipient's device resolves it at tap time (invites.h). Installed
+        // iOS/Android apps auto-open via Universal/App Links; Steam desktop
+        // gets a "Join on Steam" button; everyone else falls through to the
+        // browser game, which reads ?code= and joins. The bare code still
+        // rides along in the text for manual entry.
+        net_share_text("Join my Newtonia co-op game: " + net_join_url(room_code_) +
+                       "  (room code: " + room_code_ + ")");
       break;
     case LobbyFailed:
       confirm();  // same as ENTER: back to the choose screen

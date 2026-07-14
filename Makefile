@@ -176,6 +176,11 @@ web:
 	cp web/main.js web/dist/play/main.js
 	cp web/site/index.html web/site/styles.css web/site/site.js web/site/icon.png web/dist/
 	cp web/site/CNAME web/dist/CNAME
+	# Universal join link (invites.h): the /join landing page + the
+	# apple-app-site-association / assetlinks.json association files that make
+	# a tapped link open the native app (Universal / App Links).
+	cp -r web/site/join web/dist/join
+	cp -r web/site/.well-known web/dist/.well-known
 
 web-clean:
 	rm -rf web/dist

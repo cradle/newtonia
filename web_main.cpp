@@ -23,6 +23,7 @@
 #include "typer.h"
 #include "asteroid.h"
 #include "preferences.h"
+#include "invites.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -224,6 +225,14 @@ static void main_loop() {
 // nx/ny are normalised [-1, 1]; ny positive = down on screen = reverse thrust.
 extern "C" EMSCRIPTEN_KEEPALIVE void web_touch_joystick(float nx, float ny) {
     if (s_game) s_game->touch_joystick(nx, ny);
+}
+
+// A universal join link (https://newtonia.metonymous.com/join?code=XXXX)
+// opened the web game with ?code=; main.ts pulls the code out and calls this
+// so Menu::tick's Invites::poll_accepted_invite jumps straight into the lobby
+// as a joiner — the same handoff Steam/iOS/Android deep links use.
+extern "C" EMSCRIPTEN_KEEPALIVE void web_accept_invite(const char *code) {
+    if (code && code[0]) Invites::note_accepted(code);
 }
 
 // Called from the JS menu overlay on touchend with normalised [0,1] tap position.

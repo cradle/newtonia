@@ -5,7 +5,9 @@ package org.newtonia;
 // SDL_main() in the native library.
 
 import android.content.Context;
+import android.content.Intent;
 import android.media.AudioManager;
+import android.net.Uri;
 import android.os.Bundle;
 
 import org.libsdl.app.SDLActivity;
@@ -17,6 +19,23 @@ public class NewtoniaActivity extends SDLActivity {
     // sample rate and buffer size for this hardware.
     static int sOptimalSampleRate      = 48000;
     static int sOptimalFramesPerBuffer = 512;
+
+    // Hands a co-op join link's room code to the native invite layer
+    // (android_main.cpp → Invites::note_accepted). super.onCreate has already
+    // loaded libnewtonia by the time we call this, so the symbol resolves.
+    private static native void nativeAcceptInvite(String code);
+
+    // Pull ?code= out of a https://newtonia.metonymous.com/join?code=XXXX
+    // App Link intent and forward it. Safe to call with any intent.
+    private void handleInviteIntent(Intent intent) {
+        if (intent == null) return;
+        Uri data = intent.getData();
+        if (data == null) return;
+        String code = data.getQueryParameter("code");
+        if (code != null && !code.isEmpty()) {
+            nativeAcceptInvite(code);
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -33,6 +52,18 @@ public class NewtoniaActivity extends SDLActivity {
                 if (fpb != null) sOptimalFramesPerBuffer = Integer.parseInt(fpb);
             } catch (NumberFormatException ignored) {}
         }
+
+        // Cold launch from a tapped join link.
+        handleInviteIntent(getIntent());
+    }
+
+    // Warm launch: singleTask (AndroidManifest) delivers a join link tapped
+    // while the game is already running here instead of spawning a new task.
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleInviteIntent(intent);
     }
 
     @Override

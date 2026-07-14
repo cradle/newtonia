@@ -2,6 +2,7 @@
 
 #include <cctype>
 #include <cstring>
+#include <mutex>
 
 // Shared invite layer: owns the pending-code handoff and the connect-string
 // parsing, so every backend (and the cold-launch path) funnels through one
@@ -25,8 +26,11 @@ namespace Invites {
 namespace {
 
 // A room code accepted (via callback or launch arg) and awaiting the menu's
-// poll. Empty when nothing is pending.
+// poll. Empty when nothing is pending. Guarded by s_mutex: the deep-link
+// backends deliver on a platform thread (Android's UI thread, an iOS UIKit
+// callback) while Menu::tick drains on the game thread.
 std::string s_pending;
+std::mutex s_mutex;
 
 // The advertised connect string is "+connect <code>"; pull <code> back out.
 // Tolerant of a bare code (no "+connect" prefix) so capture_launch can hand
@@ -67,10 +71,13 @@ void clear_joinable() {
 
 void note_accepted(const char *connect_string) {
   std::string code = parse_connect(connect_string);
-  if (!code.empty()) s_pending = code;
+  if (code.empty()) return;
+  std::lock_guard<std::mutex> lock(s_mutex);
+  s_pending = code;
 }
 
 bool poll_accepted_invite(std::string &code_out) {
+  std::lock_guard<std::mutex> lock(s_mutex);
   if (s_pending.empty()) return false;
   code_out = s_pending;
   s_pending.clear();
