@@ -249,6 +249,29 @@ STEAM_DEPFILES := $(STEAM_OBJFILES:.o=.d)
 .PHONY: steam steam-clean check-steam-sdk
 
 steam: check-steam-sdk newtonia-steam steam_appid.txt
+ifeq ($(UNAME), Darwin)
+	# Also wrap the Steam binary in Newtonia.app so macOS treats it as a real
+	# app: window activation/focus, Game Mode, and App Nap suppression all key
+	# off the bundle's Info.plist (macos_window.mm + Newtonia-Info.plist), and
+	# the Steam overlay only injects into a bundled, Steam-launched app.
+	# Mirrors the deploy-steam macOS layout. The Steam runtime dylib sits
+	# beside the executable (its id is @loader_path/libsteam_api.dylib);
+	# steam_appid.txt rides along for standalone (non-Steam) launches. The
+	# bare ./newtonia-steam at the repo root still works too (run from here so
+	# steam_appid.txt is in the CWD). A NETPLAY=1 build resolves libdatachannel
+	# through its absolute netplay-libs rpath, so no extra copy is needed for
+	# local testing.
+	mkdir -p Newtonia.app/Contents/MacOS Newtonia.app/Contents/Resources
+	cp newtonia-steam Newtonia.app/Contents/MacOS/Newtonia
+	cp $(STEAM_RUNTIME) Newtonia.app/Contents/MacOS/$(STEAM_RUNTIME)
+	cp steam_appid.txt Newtonia.app/Contents/MacOS/steam_appid.txt
+	rm -rf Newtonia.app/Contents/Resources/audio
+	cp -r audio Newtonia.app/Contents/Resources/audio
+	cp steam_appid.txt Newtonia.app/Contents/Resources/steam_appid.txt
+	cp icon.icns Newtonia.app/Contents/Resources/icon.icns
+	sed 's/$${EXECUTABLE_NAME}/Newtonia/g' Newtonia-Info.plist > Newtonia.app/Contents/Info.plist
+	@echo "Bundled Newtonia.app (Steam build) - launch via Steam for overlay/presence."
+endif
 
 check-steam-sdk:
 	@test -f $(STEAM_SDK)/public/steam/steam_api.h || { \
@@ -269,7 +292,7 @@ steam_appid.txt:
 	echo $(STEAM_APPID) > $@
 
 steam-clean:
-	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam $(STEAM_RUNTIME) steam_appid.txt
+	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam $(STEAM_RUNTIME) steam_appid.txt Newtonia.app
 
 %.steam.o: %.cpp
 	$(CC) $(STEAM_CFLAGS) -c -o $@ $<
