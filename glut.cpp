@@ -75,12 +75,11 @@ void draw() {
   }
 #ifdef __APPLE__
   // Activate after the first rendered frame so the window is on screen before
-  // we request focus (a 0ms timer fires before the window is visible).
-  // Retry every 200 ms for up to 5 s (25 attempts).  This covers both the
-  // fullscreen transition animation (~500 ms) and the native Steam "Now
-  // Playing" overlay, which holds focus for several seconds after launch.
-  // activate_app_macos() is a no-op once [NSApp isActive] is true, so the
-  // retries are cheap and stop stealing focus as soon as we have it.
+  // we request focus (a 0ms timer fires before the window is visible), then
+  // once more 200 ms later — twice total. activate_app_macos() re-raises the
+  // window every call (orderFrontRegardless), so hammering it for seconds
+  // yanks focus back if the user alt-tabs away right after launch; two quick
+  // attempts get us in front without fighting the user after that.
   if (s_needs_activation) {
     s_needs_activation = false;
     s_activation_retries = 0;
@@ -200,7 +199,10 @@ void hide_cursor_after_fullscreen(int) {
 
 void activate_app_timer(int) {
   activate_app_macos(); // No-op once [NSApp isActive].
-  if (++s_activation_retries < 25) { // 25 × 200 ms = 5 s total
+  // One retry only: this is the SECOND (and final) activation — the first ran
+  // in draw() when the window first appeared. Two attempts then stop, so we
+  // never fight the user for focus after launch.
+  if (++s_activation_retries < 1) {
     glutTimerFunc(200, activate_app_timer, 0);
   }
 }
