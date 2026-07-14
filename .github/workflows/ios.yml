@@ -18,6 +18,14 @@ jobs:
         with:
           path: newtonia
 
+      # The .xcodeproj is generated from ios/project.yml (gitignored), so a new
+      # .cpp is picked up by the glob with no pbxproj edit. Regenerate before
+      # the Xcode-project compile gate below builds through it.
+      - name: Generate Xcode project (XcodeGen)
+        run: |
+          brew install xcodegen
+          cd newtonia/ios && xcodegen generate --spec project.yml
+
       - name: Clone SDL2
         run: git clone --depth 1 --branch release-2.32.10 https://github.com/libsdl-org/SDL.git SDL2
 

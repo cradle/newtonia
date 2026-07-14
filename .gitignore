@@ -28,6 +28,8 @@ android/app/src/main/assets/
 android/local.properties
 ## iOS CI generated source list (.github/workflows/ios.yml)
 srcs.txt
+## iOS Xcode project — generated from ios/project.yml by XcodeGen
+ios/Newtonia-iOS.xcodeproj/
 ## Web build output
 web/dist/
 .claude/

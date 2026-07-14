@@ -1,0 +1,133 @@
+# XcodeGen spec for the iOS build.
+#
+# Why this exists: the Xcode project is the ONLY build that doesn't discover
+# sources by glob (Makefile / web / Android-CMake / Xbox-CMake all glob or
+# `find`). Hand-maintaining ios/Newtonia-iOS.xcodeproj/project.pbxproj meant
+# every new .cpp had to be added by hand to four pbxproj sections, and every
+# master merge risked duplicate object IDs silently dropping a file from the
+# compile (see the netplay/hazard ID collision that broke the iOS link). This
+# spec globs the same source set the Makefile does, so adding a file is
+# nothing — CI regenerates the project with `xcodegen generate` before it
+# builds.
+#
+# Regenerate locally (macOS):  brew install xcodegen && cd ios && xcodegen generate
+# The generated .xcodeproj is gitignored; only this spec is tracked.
+#
+# The $(SDL2_HEADER_PATH) / $(NEWTONIA_NET_DEFINE) / etc. placeholders are
+# supplied by ios.yml and deploy-ios.yml on the xcodebuild command line
+# (empty when unset, so a plain local Xcode build is unaffected).
+
+name: Newtonia-iOS
+
+options:
+  bundleIdPrefix: cc.gfm
+  deploymentTarget:
+    iOS: "13.0"
+  developmentLanguage: en
+  createIntermediateGroups: true
+
+settings:
+  base:
+    ALWAYS_SEARCH_USER_PATHS: NO
+    CLANG_ENABLE_OBJC_ARC: YES
+    TARGETED_DEVICE_FAMILY: "1,2"
+  configs:
+    Debug:
+      ONLY_ACTIVE_ARCH: YES
+      COPY_PHASE_STRIP: NO
+    Release:
+      COPY_PHASE_STRIP: YES
+      VALIDATE_PRODUCT: YES
+
+targets:
+  Newtonia:
+    type: application
+    platform: iOS
+    # Sources live at the repo root (this spec is in ios/). Glob the same set
+    # the Makefile compiles: every root/weapon/view .cpp minus the other
+    # platforms' entry points, plus the three iOS/GameKit Objective-C++ files.
+    # steam_*.cpp, net_*_web.cpp etc. are kept — they self-guard to empty
+    # translation units off their platform, matching the old explicit list.
+    sources:
+      - path: ..
+        name: Newtonia
+        includes:
+          - "*.cpp"
+          - "weapon/*.cpp"
+          - "view/*.cpp"
+          - "ios_main.mm"
+          - "ios_share.mm"
+          - "game_center_achievements.mm"
+        excludes:
+          - "android_main.cpp"      # Android SDL entry point
+          - "glut.cpp"              # desktop GLUT entry point
+          - "web_main.cpp"          # Emscripten entry point
+          - "xbox_main.cpp"         # Xbox/GDK entry point
+          - "play_games_achievements.cpp"  # Android Play Games backend
+      - path: Assets.xcassets
+    settings:
+      base:
+        PRODUCT_NAME: Newtonia
+        PRODUCT_BUNDLE_IDENTIFIER: cc.gfm.Newtonia
+        INFOPLIST_FILE: "$(SRCROOT)/Info.plist"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_ENTITLEMENTS: "$(SRCROOT)/EntitlementsDev.plist"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        OTHER_CPLUSPLUSFLAGS: "-std=c++11"
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/.."
+          - "$(SRCROOT)/../view"
+          - "$(SRCROOT)/../weapon"
+          - "$(SDL2_HEADER_PATH)"
+          - "$(SDL2_MIXER_HEADER_PATH)"
+          - "$(NEWTONIA_NET_HEADER_PATH)"
+        OTHER_LDFLAGS:
+          - "$(SDL2_LIB_PATH)"
+          - "$(SDL2_MIXER_LIB_PATH)"
+        GCC_PREPROCESSOR_DEFINITIONS:
+          - "__IOS__=1"
+          - "GAME_CENTER_BUILD=1"
+          - "$(NEWTONIA_NET_DEFINE)"
+          - "$(inherited)"
+      configs:
+        Debug:
+          GCC_OPTIMIZATION_LEVEL: "0"
+          GCC_PREPROCESSOR_DEFINITIONS:
+            - "__IOS__=1"
+            - "GAME_CENTER_BUILD=1"
+            - "DEBUG=1"
+            - "$(NEWTONIA_NET_DEFINE)"
+            - "$(inherited)"
+        Release:
+          GCC_OPTIMIZATION_LEVEL: "3"
+    dependencies:
+      - sdk: OpenGLES.framework
+      - sdk: UIKit.framework
+      - sdk: Foundation.framework
+      - sdk: CoreGraphics.framework
+      - sdk: CoreMotion.framework
+      - sdk: AudioToolbox.framework
+      - sdk: AVFoundation.framework
+      - sdk: CoreHaptics.framework
+      - sdk: GameController.framework
+      - sdk: CoreAudio.framework
+      - sdk: QuartzCore.framework
+      - sdk: Metal.framework
+      - sdk: GameKit.framework
+
+schemes:
+  Newtonia:
+    build:
+      targets:
+        Newtonia: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

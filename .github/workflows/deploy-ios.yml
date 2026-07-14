@@ -30,6 +30,13 @@ jobs:
         with:
           path: newtonia
 
+      # The .xcodeproj is generated from ios/project.yml (gitignored). Build
+      # it before the archive step so the same globbed source set deploys.
+      - name: Generate Xcode project (XcodeGen)
+        run: |
+          brew install xcodegen
+          cd newtonia/ios && xcodegen generate --spec project.yml
+
       - name: Clone SDL2
         run: git clone --depth 1 --branch release-2.32.10 https://github.com/libsdl-org/SDL.git SDL2
 
