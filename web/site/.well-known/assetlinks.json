@@ -5,8 +5,9 @@
       "namespace": "android_app",
       "package_name": "org.newtonia",
       "sha256_cert_fingerprints": [
-        "REPLACE_WITH_PLAY_APP_SIGNING_SHA256"
+        "6F:0D:40:A1:7D:17:F6:CD:21:1F:14:20:FB:57:05:9A:0F:52:FE:95:A9:89:9B:6F:8A:95:62:C0:D7:05:7E:FD",
+        "86:F8:7D:7E:FA:9F:D0:A2:B7:FE:ED:82:59:50:9F:4F:A0:21:54:3C:BF:DE:32:D0:EE:A1:00:0B:29:97:C0:ED"
       ]
     }
   }
-]
+
