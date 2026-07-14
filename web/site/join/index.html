@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Join a Newtonia co-op game</title>
+  <meta name="robots" content="noindex" />
+  <style>
+    :root { color-scheme: dark; }
+    html, body {
+      margin: 0; height: 100%;
+      background: #05060d; color: #e7ecff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+    }
+    body { display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .card { width: 100%; max-width: 460px; text-align: center; }
+    h1 { font-size: 1.6rem; margin: 0 0 6px; letter-spacing: 0.02em; }
+    p.sub { margin: 0 0 22px; color: #9aa6c7; }
+    .code {
+      font-variant-numeric: tabular-nums; letter-spacing: 0.28em;
+      font-size: 2.1rem; font-weight: 700; margin: 4px 0 26px;
+      color: #7fd0ff; text-shadow: 0 0 18px rgba(80,170,255,0.35);
+    }
+    a.btn {
+      display: block; margin: 12px auto; padding: 15px 20px; max-width: 320px;
+      border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 1.05rem;
+      transition: transform 0.08s ease, filter 0.15s ease;
+    }
+    a.btn:active { transform: translateY(1px); }
+    a.primary { background: linear-gradient(180deg,#4f7cff,#3358e6); color: #fff; }
+    a.steam   { background: #1b2838; color: #c7d5e0; border: 1px solid #2a475e; }
+    a.primary:hover, a.steam:hover { filter: brightness(1.12); }
+    .foot { margin-top: 26px; font-size: 0.85rem; color: #667; }
+    .foot a { color: #8aa0d8; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Join co-op</h1>
+    <p class="sub" id="sub">Opening your Newtonia game…</p>
+    <div class="code" id="code"></div>
+
+    <a class="btn primary" id="browserBtn" href="#">▶ Play in your browser</a>
+    <a class="btn steam hidden" id="steamBtn" href="#">Join on Steam</a>
+
+    <p class="foot">Not working? Open Newtonia and enter the room code above by hand.</p>
+  </main>
+
+  <script>
+    // The universal join link (invites.h). A tapped
+    // https://newtonia.metonymous.com/join?code=XXXX lands here ONLY when no
+    // native app claimed it — an installed, domain-verified iOS/Android app
+    // opens directly and this page never loads. So here we route the leftover
+    // cases: Steam desktop (steam:// launch) and the browser game (/play).
+    var STEAM_APPID = "4536720";
+    var params = new URLSearchParams(location.search);
+    var code = (params.get("code") || "").trim();
+
+    var codeEl = document.getElementById("code");
+    var subEl = document.getElementById("sub");
+    var browserBtn = document.getElementById("browserBtn");
+    var steamBtn = document.getElementById("steamBtn");
+
+    if (!code) {
+      subEl.textContent = "This link is missing a room code.";
+      codeEl.classList.add("hidden");
+      browserBtn.textContent = "▶ Open Newtonia";
+      browserBtn.href = "/play/";
+    } else {
+      codeEl.textContent = code;
+      var enc = encodeURIComponent(code);
+      var playUrl = "/play/?code=" + enc;
+      browserBtn.href = playUrl;
+
+      // Desktop: offer a Steam launch (steam://run/<appid>//+connect <code>).
+      // Steam registers the steam:// handler OS-wide; the game consumes the
+      // +connect arg via steam_invites.cpp (cold launch or running game).
+      var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (!isMobile) {
+        steamBtn.href = "steam://run/" + STEAM_APPID + "//+connect%20" + enc;
+        steamBtn.classList.remove("hidden");
+        subEl.textContent = "Choose how to join room";
+      } else {
+        // Mobile with no installed app: the browser game is the only path.
+        // Give the tap a beat to register, then go.
+        subEl.textContent = "Opening the game…";
+        setTimeout(function () { location.replace(playUrl); }, 1400);
+      }
+    }
+  </script>
+</body>
+</html>

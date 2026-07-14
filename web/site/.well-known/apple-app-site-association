@@ -1,0 +1,12 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["TEAMID.cc.gfm.Newtonia"],
+        "components": [
+          { "/": "/join*", "comment": "Co-op join links open the app" }
+        ]
+      }
+    ]
+  }
+}
