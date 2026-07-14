@@ -63,6 +63,16 @@ void draw() {
   last_render_time = current_time;
   game->draw();
   glutSwapBuffers();
+  // A Steam join accepted while the game is already running (steam://run into
+  // an already-open game) does not bring us to the front. Drain the request
+  // each frame; on macOS re-run the activate/retry cycle so our window rises
+  // above Steam. (Windows/Linux Steam focuses the game itself, so the drained
+  // request is a harmless no-op there for now.)
+  if (Invites::take_focus_request()) {
+#ifdef __APPLE__
+    s_needs_activation = true;
+#endif
+  }
 #ifdef __APPLE__
   // Activate after the first rendered frame so the window is on screen before
   // we request focus (a 0ms timer fires before the window is visible).

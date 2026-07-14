@@ -32,6 +32,10 @@ namespace {
 std::string s_pending;
 std::mutex s_mutex;
 
+// One-shot "raise the window" request, set alongside s_pending when an invite
+// is accepted and drained by the desktop entry point (glut.cpp). Same guard.
+bool s_focus_request = false;
+
 // The advertised connect string is "+connect <code>"; pull <code> back out.
 // Tolerant of a bare code (no "+connect" prefix) so capture_launch can hand
 // us either form.
@@ -74,6 +78,7 @@ void note_accepted(const char *connect_string) {
   if (code.empty()) return;
   std::lock_guard<std::mutex> lock(s_mutex);
   s_pending = code;
+  s_focus_request = true;  // raise the window if we're already running
 }
 
 bool poll_accepted_invite(std::string &code_out) {
@@ -81,6 +86,13 @@ bool poll_accepted_invite(std::string &code_out) {
   if (s_pending.empty()) return false;
   code_out = s_pending;
   s_pending.clear();
+  return true;
+}
+
+bool take_focus_request() {
+  std::lock_guard<std::mutex> lock(s_mutex);
+  if (!s_focus_request) return false;
+  s_focus_request = false;
   return true;
 }
 

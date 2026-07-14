@@ -51,4 +51,11 @@ void capture_launch(int argc, char **argv);
 // string is "+connect <code>", but a bare code is tolerated too).
 void note_accepted(const char *connect_string);
 
+// Desktop window focus: accepting an invite while the game is already running
+// (Steam launches an already-running game via steam://run WITHOUT bringing it
+// to the front) sets a one-shot request. The desktop entry point (glut.cpp)
+// drains it each frame and re-raises/activates the window. Returns true at
+// most once per request; false otherwise. No-op consumer on mobile/web.
+bool take_focus_request();
+
 } // namespace Invites
