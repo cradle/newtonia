@@ -26,7 +26,10 @@ CODE=$(host_room_code host)
 echo "room code: $CODE"
 key $B Return; sleep 1; key $B s; key $B Return; sleep 1; key $B s; key $B Return; sleep 1
 for c in $(echo "$CODE" | grep -o .); do key $B "$c"; done
-sleep 18; alive $PA host; alive $PB joiner
+for i in $(seq 1 22); do
+  grep -aq "bootstrap adopted" "$OUT/joiner.log" && break; sleep 1
+done
+alive $PA host; alive $PB joiner
 grep -aq "bootstrap adopted" "$OUT/joiner.log" || { echo "NO FIRST BOOTSTRAP"; exit 1; }
 
 echo "== freeze the joiner until the host's transport fails"

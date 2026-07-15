@@ -43,7 +43,12 @@ for i in $(seq 1 30); do
 done
 grep -aq "TEST forcing remote player out" "$OUT/host.log" || {
   echo "KILL HOOK DID NOT FIRE"; kill $PA $PB; exit 1; }
-sleep 2
+# The death has to replicate host->joiner and the joiner has to arm its
+# spectate countdown; poll instead of a fixed sleep so a slow relay round
+# trip doesn't false-fail (returns the instant it arms).
+for i in $(seq 1 10); do
+  grep -aq "spectate armed" "$OUT/joiner.log" && break; sleep 1
+done
 grep -aq "spectate armed" "$OUT/joiner.log" || {
   echo "FAIL: joiner never armed spectate"; kill $PA $PB; exit 1; }
 

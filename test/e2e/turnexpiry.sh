@@ -34,7 +34,10 @@ CODE=$(host_room_code host)
 echo "room code: $CODE (relay-only, tiny-TTL creds)"
 key $B Return; sleep 1; key $B s; key $B Return; sleep 1; key $B s; key $B Return; sleep 1
 for c in $(echo "$CODE" | grep -o .); do key $B "$c"; done
-sleep 25; alive $PA host; alive $PB joiner
+for i in $(seq 1 30); do
+  grep -aq "bootstrap adopted" "$OUT/joiner.log" && break; sleep 1
+done
+alive $PA host; alive $PB joiner
 grep -aq "bootstrap adopted" "$OUT/joiner.log" || { echo "NO BOOTSTRAP"; kill $PA $PB; exit 1; }
 grep -a "ice path" "$OUT/host.log" "$OUT/joiner.log"
 grep -aq "ice path relay/relay" "$OUT/host.log" || {

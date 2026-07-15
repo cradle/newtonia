@@ -50,7 +50,13 @@ for round in 1 2 3 4 5 6; do
   key $A q; key $B q
   [ "$round" = 3 ] && sleep 5   # cover a respawn between the two passes
 done
-sleep 2
+# Poll for the lance pulses to round-trip both ways instead of a fixed sleep,
+# so a slow relay doesn't false-fail (returns the instant both have arrived).
+for i in $(seq 1 10); do
+  grep -aq "lance pulse received" "$OUT/host.log" &&
+  grep -aq "lance pulse received" "$OUT/joiner.log" && break
+  sleep 1
+done
 grep -aq "lance pulse received" "$OUT/host.log" || {
   echo "FAIL: client lance pulse never reached the host (MSG_LANCE C->H)"
   kill $PA $PB; exit 1; }
