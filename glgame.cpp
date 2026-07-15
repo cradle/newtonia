@@ -208,8 +208,8 @@ GLGame::GLGame(SDL_GameController *controller) :
       new GigaMinePickup(WrappedPoint(0, 0)),  new MissilePickup(WrappedPoint(0, 0)),
       new ShieldPickup(WrappedPoint(0, 0)),    new GodModePickup(WrappedPoint(0, 0)),
       new NovaChargePickup(WrappedPoint(0, 0)), new BeamPickup(WrappedPoint(0, 0)),
-      new LancePickup(WrappedPoint(0, 0)),     new RevivePickup(WrappedPoint(0, 0)),
-      new ExtraLife(WrappedPoint(0, 0)),
+      new LancePickup(WrappedPoint(0, 0)),     new ShockPickup(WrappedPoint(0, 0)),
+      new RevivePickup(WrappedPoint(0, 0)),    new ExtraLife(WrappedPoint(0, 0)),
     };
     for (size_t i = 0; i < ring.size(); i++) {
       float a = i * 2.0f * (float)M_PI / ring.size();
