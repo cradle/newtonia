@@ -1798,7 +1798,9 @@ void Ship::collide(Ship *other) {
 
   for(size_t i = 0; i < mines.size(); ) {
     if(is_alive() && other->is_alive() && mines[i].collide(*other, 50.0)) {
-      detonate(mines[i].position, mines[i].velocity);
+      // Same 20-shrapnel blast as the grid (asteroid) path above — this
+      // ship-contact path was silently using detonate()'s default 10.
+      detonate(mines[i].position, mines[i].velocity, 20);
       if(mine_explode_sound != NULL) Mix_PlayChannel(-1, mine_explode_sound, 0);
       mines[i] = std::move(mines.back());
       mines.pop_back();
