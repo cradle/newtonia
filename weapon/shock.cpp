@@ -216,18 +216,21 @@ Shock::~Shock() {
 }
 
 void Shock::shoot(bool on) {
-  shooting = on;
-  if (on) try_fire();  // fire the first bolt on the press, like the other weapons
+  shooting = on;  // armed on the trigger press; step() fires one bolt
 }
 
 void Shock::step(int delta) {
   cooldown -= delta;
-  if (shooting) try_fire();  // keep arcing at FIRE_INTERVAL while held
+  if (shooting && cooldown <= 0) {
+    try_fire();
+    cooldown = FIRE_INTERVAL;  // rate-limit rapid taps (empty click included)
+  }
+  // Semi-automatic, like Beam/Lance: one bolt per trigger pull, no
+  // hold-to-repeat. Releasing and pressing fire again shoots the next.
+  shooting = false;
 }
 
 void Shock::try_fire() {
-  if (cooldown > 0) return;
-  cooldown = FIRE_INTERVAL;  // re-arm on every trigger evaluation (empty click too)
   // Netplay: like Default/Beam/Lance, the host's remote-player shock keeps its
   // ammo + cooldown bookkeeping but mints no bolt and plays no sound — the
   // real polyline arrives as MSG_SHOCK. The ammo decrement below MUST still

@@ -81,13 +81,13 @@ namespace Weapon {
 
     void shoot(bool on = true) override;
     void step(int delta) override;
-    bool is_automatic() const override { return true; }
+    // Semi-automatic (inherits is_automatic()==false): one bolt per trigger
+    // pull, no hold-to-repeat — like Beam/Lance.
 
     // Cooldown accessors: the net client rebuilds the weapon list with fresh
-    // objects 10x/s from snapshots, and a fresh Shock (cooldown 0) fires the
-    // instant it is re-armed — an extra bolt+sound every snapshot while the
-    // trigger is held. net_apply_state preserves the live cooldown across the
-    // rebuild (mirroring the Default gun).
+    // objects 10x/s from snapshots; net_apply_state preserves the live cooldown
+    // across the rebuild (mirroring the Default gun) so the re-press rate limit
+    // stays consistent and a snapshot landing mid-press can't double-fire.
     int  get_cooldown() const { return cooldown; }
     void set_cooldown(int ms) { cooldown = ms; }
 

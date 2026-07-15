@@ -33,9 +33,12 @@ echo "== waiting for connect"; sleep 18
 alive $PA host; alive $PB joiner
 grep -aq "bootstrap adopted" "$OUT/joiner.log" || { echo "NO BOOTSTRAP"; exit 1; }
 
-# Both hold fire so shock arcs and completes several bolts (a bolt reports
-# once it finishes growing). Thrust around a little so bolts seek asteroids.
-echo "== both fire shock (held) while drifting"
+# Shock is SEMI-AUTOMATIC: one bolt per trigger PULL, no hold-to-repeat. So
+# each round is a discrete press (keydown/hold/keyup = a single pull = a single
+# bolt) — six rounds ⇒ ~6 bolts per side, NOT the ~40 an automatic weapon would
+# emit while held. That drop is itself the semi-auto proof. Thrust a little
+# between pulls so the bolts seek asteroids.
+echo "== both fire shock (one pull per round) while drifting"
 for round in 1 2 3 4 5 6; do
   xdotool keydown --window $A space; xdotool keydown --window $B space
   sleep 1.2
