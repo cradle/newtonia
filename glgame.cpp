@@ -3513,8 +3513,24 @@ void GLGame::net_client_send_input() {
 
 void GLGame::net_client_poll() {
   NetTransport *t = net_session_->transport();
+  // Flood guard, symmetric with net_host_poll: the host is an untrusted peer
+  // too, and its SHOT/LANCE/SHOCK echoes each allocate (bullets/lance_pulses/
+  // shocks) on our side. Same two budgets — a read-loop cap so a message storm
+  // can't spin, and a shared action budget across the spawn family. The state
+  // stream (DELTA/SNAPSHOT_CHUNK) is left out of the tight budget: it is
+  // essential and already stale-gated, and the read-loop cap bounds it.
+  const int NET_MAX_MSGS_PER_POLL = 512;
+  const int NET_MAX_ACTIONS_PER_POLL = 64;
+  int net_msgs_seen = 0, net_actions = 0;
+  bool net_action_cap_logged = false;
+
   std::vector<unsigned char> msg;
   while (t->poll(msg)) {
+    if (++net_msgs_seen > NET_MAX_MSGS_PER_POLL) {
+      NET_LOG("net: rx message storm - %d msgs, deferring rest\n",
+              net_msgs_seen);
+      break;
+    }
     // RX-side half of the gap forensics: fires when OUR inbound stream
     // resumes after silence — pairs with the host's "input gap" line to
     // show whether an outage was bidirectional (path) or one-way.
@@ -3526,6 +3542,18 @@ void GLGame::net_client_poll() {
     Net::Header h;
     if (!Net::read_header(r, h)) continue;
     if (net_handle_ping_pong(h.msg_type, r)) continue;
+    // Spawn family shares one per-poll action budget (mirrors net_host_poll);
+    // over it, drop the effect so a host flood can't grow our object lists.
+    if ((h.msg_type == Net::MSG_SHOT || h.msg_type == Net::MSG_LANCE ||
+         h.msg_type == Net::MSG_SHOCK) &&
+        ++net_actions > NET_MAX_ACTIONS_PER_POLL) {
+      if (!net_action_cap_logged) {
+        NET_LOG("net: rx action budget %d/poll hit - dropping spawn flood\n",
+                NET_MAX_ACTIONS_PER_POLL);
+        net_action_cap_logged = true;
+      }
+      continue;
+    }
     if (h.msg_type == Net::MSG_EVENT) {
       uint8_t code = r.u8();
       uint32_t arg = r.remaining() >= 4 ? r.u32() : 0;
