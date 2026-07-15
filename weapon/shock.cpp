@@ -95,6 +95,35 @@ void ShockBolt::grow_segment(std::list<Object*> *asteroids, std::list<Object*> *
   next += seg_dir.perpendicular() * ((frand() - 0.5f) * STAGGER);
   points.push_back(next);
 
+  // Invincible asteroids are never SOUGHT (seek_target skips them), but they
+  // still BLOCK the arc, like the lance: if this segment runs into one, the
+  // bolt stops at its surface instead of arcing through. Test the whole
+  // segment, not just the endpoint, so a 55-unit step can't tunnel through a
+  // small rock. Stop here directly (spark at the surface) — nothing to score,
+  // so no struck entry — and the ended polyline replicates as-is.
+  if (asteroids) {
+    const Point ab = next - tip;
+    const float ab2 = ab.x() * ab.x() + ab.y() * ab.y();
+    for (Object *o : *asteroids) {
+      if (!o->alive) continue;
+      Asteroid *ast = dynamic_cast<Asteroid *>(o);
+      if (!ast || !ast->invincible) continue;
+      Point c = o->position.closest_to(next);
+      float t = ab2 > 1e-6f ? ((c.x() - tip.x()) * ab.x() +
+                               (c.y() - tip.y()) * ab.y()) / ab2
+                            : 0.0f;
+      if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
+      float dx = c.x() - (tip.x() + ab.x() * t);
+      float dy = c.y() - (tip.y() + ab.y() * t);
+      float reach = o->radius + HIT_RADIUS;
+      if (dx * dx + dy * dy <= reach * reach) {
+        points.back() = surface_hit(o, c, tip);
+        stop();  // absorbed by an invincible rock — arc ends at its surface
+        return;
+      }
+    }
+  }
+
   // Did this segment reach the target? If so, snap onto its surface (not its
   // centre, which would look like the arc pierced it), record the hit and let the
   // next segment chain onward to whatever else is nearby.
