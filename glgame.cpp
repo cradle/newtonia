@@ -2383,6 +2383,13 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
     case Net::EV_PICKUP:
       if (pickup_sound)
         Mix_PlayChannel(-1, pickup_sound, 0);
+      // A pickup was collected host-side; its ammo bump reaches us only via
+      // the next snapshot. Arm the anti-flicker latch so net_apply_state
+      // accepts the coming INCREASE on the local ship's primaries instead of
+      // clamping it away as a lag blip. Consumed on the first accepted rise,
+      // and self-expiring (~1.2 s) so a pickup the HOST grabbed can't leave
+      // our clamp disabled indefinitely.
+      net_pickup_latch_ = 12;
       break;
     case Net::EV_ROID_BOUNCE:
       // Asteroid-vs-reflective bounce; arg is the volume the host
@@ -3721,6 +3728,10 @@ void GLGame::net_apply_state(const Save::GameState &s) {
   // the snapshot then repopulates everything below).
   const bool world_rebuilt = s.world_x != world.x() || s.world_y != world.y();
   net_world_rebuilt_last_apply_ = world_rebuilt;
+  // Age the primary-ammo anti-flicker latch once per apply. A level rebuild
+  // clears every pickup and refills nothing, so any pending latch is stale.
+  if (world_rebuilt) net_pickup_latch_ = 0;
+  else if (net_pickup_latch_ > 0) net_pickup_latch_--;
   if (world_rebuilt) {
     // Level-clear achievements, mirroring the host's num_killable==0 block
     // (which never runs on a client): everything they need replicates —
@@ -3842,6 +3853,15 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     std::vector<Particle> kept_bullets;
     if (is_local) kept_bullets.swap(ship->bullets);
 
+    // Anti-flicker: remember the local ship's live primary ammo before the
+    // restore rebuilds the weapon list from the (lagging) snapshot, so a
+    // snapshot that hasn't yet seen our just-fired shots can't bump the count
+    // back up. Keyed by weapon name — one of each primary kind at most.
+    std::map<std::string, int> pre_primary_ammo;
+    if (is_local)
+      for (auto *w : ship->primary_weapons)
+        pre_primary_ammo[w->name()] = w->ammo();
+
     ship->restore_state(s.players[i], grid);
     if (is_local) ship->bullets.swap(kept_bullets);
     // restore_state -> respawn() -> safe_position() relocates the ship to a
@@ -3892,6 +3912,25 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       ship->rotation_scale = analog_rot;
       ship->thrust_analog = analog_thrust;
       ship->reverse_analog = analog_reverse;
+
+      // Anti-flicker: the restore just overwrote our limited-ammo primaries
+      // with the snapshot's copy. If that copy is HIGHER than what we held a
+      // moment ago, the host simply hasn't seen our latest shots yet — clamp
+      // it back down so the counter doesn't blip up for a round trip. A
+      // genuine pickup is exempted by the EV_PICKUP latch (consumed here on
+      // the first real rise). A snapshot that is lower or equal is the host's
+      // authoritative decrement and passes through untouched.
+      for (auto *w : ship->primary_weapons) {
+        auto pi = pre_primary_ammo.find(w->name());
+        if (pi == pre_primary_ammo.end()) continue;
+        int pre = pi->second, snap = w->ammo();
+        if (snap > pre) {
+          if (net_pickup_latch_ > 0)
+            net_pickup_latch_ = 0;   // real pickup: accept and consume
+          else
+            w->set_ammo(pre);        // lag blip: suppress the upward flicker
+        }
+      }
     } else if (is_local && world_rebuilt) {
       // Level transition: keep the authoritative new-level pose and do NOT
       // re-apply the held state — the host cleared the remote ship's
