@@ -1335,7 +1335,11 @@ void Ship::collide_grid(Grid &grid, int delta) {
     if(object != NULL && object->alive) {
       NET_LOG("net: mine detonated at (%.0f, %.0f)\n",
               mines[i].position.x(), mines[i].position.y());
-      detonate(mines[i].position, mines[i].velocity, 50);
+      // Blast size: 20 -> rand()%20 + 10 = 10-29 shrapnel bullets. Was 50
+      // (25-74), which flooded the world with bullets when several mines
+      // detonated together and tanked the frame rate; also brings the mine in
+      // line with the missile (25) instead of being 2x it.
+      detonate(mines[i].position, mines[i].velocity, 20);
       if(mine_explode_sound != NULL) Mix_PlayChannel(-1, mine_explode_sound, 0);
       mines[i] = std::move(mines.back());
       mines.pop_back();
