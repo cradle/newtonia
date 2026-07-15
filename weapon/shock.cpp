@@ -40,17 +40,27 @@ Object *ShockBolt::seek_target(const Point &tip, std::list<Object*> *lst,
   for (Object *o : *lst) {
     if (o == owner) continue;  // a bolt never seeks the ship that fired it
     if (!o->alive) continue;
-    // Invincible objects (invincible asteroids, shielded players) are eligible
-    // targets: the arc paths to and stops at them rather than arcing past.
+    // Invincible ASTEROIDS are not sought: the arc would only dead-end on a
+    // rock it can't destroy, wasting the bolt, so it ignores them and chains
+    // to killable targets instead. Invincible SHIPS (a shielded/god-mode
+    // player under friendly fire) stay eligible — the arc paths to and stops
+    // at them rather than arcing past.
+    if (Asteroid *ast = dynamic_cast<Asteroid *>(o))
+      if (ast->invincible) continue;
     bool skip = false;
     for (Object *a : avoid) if (a == o) { skip = true; break; }
     if (skip) continue;
     Point op = o->position.closest_to(tip);
     Point to_o = op - tip;
-    // Only seek targets ahead of the tip within the front 180° of the firing
-    // direction, so the arc never reaches backward past the ship.
-    if (to_o.x() * main_dir.x() + to_o.y() * main_dir.y() <= 0.0f) continue;
-    float d = to_o.magnitude() - o->radius;
+    float mag = to_o.magnitude();
+    // Only seek targets inside the forward 135° cone (±67.5° of the firing
+    // direction), so the arc reaches ahead and a little to the side but never
+    // sharply back past the ship. main_dir is unit length, so the dot product
+    // is |to_o|*cos(angle); keep it only when cos(angle) >= cos(67.5°).
+    static const float kCosHalfCone = 0.38268343f;  // cos(67.5°)
+    if (to_o.x() * main_dir.x() + to_o.y() * main_dir.y() < mag * kCosHalfCone)
+      continue;
+    float d = mag - o->radius;
     if (d < best_dist) { best_dist = d; best = o; }
   }
   return best;
