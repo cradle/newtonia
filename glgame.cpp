@@ -1352,6 +1352,41 @@ void GLGame::net_host_poll() {
         if (station_explode_sound != NULL)
           Mix_PlayChannel(-1, station_explode_sound, 0);
       }
+      // Mid-game hazards the client's arc reached (the polyline already ends
+      // where its bolt stopped, so this only touches ones it truly hit): same
+      // per-kind damage the host's own bolt applies in tick() — a seeker dies
+      // outright, a comet sheds chunks, a comet/pulsar pays out on break-up.
+      // The client showed the arc/spark; destruction replicates via snapshot.
+      for (auto *h : *hazards) {
+        if (!h->is_alive()) continue;
+        if (!shock_bolt_reaches(pts, h->position, h->radius)) continue;
+        if (h->kind_of() == Hazard::SEEKER) {
+          h->destroy();
+          remote->score += Hazard::SEEKER_REWARD;
+          if (station_explode_sound != NULL)
+            Mix_PlayChannel(-1, station_explode_sound, 0);
+        } else {
+          h->hit();
+          if (h->kind_of() == Hazard::COMET) {
+            shed_comet_fragment(h);
+            shed_comet_fragment(h);
+          }
+          if (!h->is_alive()) {
+            remote->score += (h->kind_of() == Hazard::COMET)
+                                 ? Hazard::COMET_REWARD : Hazard::PULSAR_REWARD;
+            if (station_explode_sound != NULL)
+              Mix_PlayChannel(-1, station_explode_sound, 0);
+          }
+        }
+      }
+      // Friendly fire: the client's arc reached our (host) player. Credited
+      // exactly like the host's own bolt-vs-partner (score, no achievement).
+      if (friendly_fire && !players->empty()) {
+        Ship *partner = players->front()->ship;
+        if (partner->is_alive() && partner != remote &&
+            shock_bolt_reaches(pts, partner->position, partner->radius))
+          remote->shock_hit_ship(partner);
+      }
       continue;
     }
     if (h.msg_type == Net::MSG_HIT_SHIP) {
@@ -2900,6 +2935,26 @@ void GLGame::tick_net_client(int delta) {
       if (!sh->is_alive() && sh->time_until_respawn <= (int)step_size)
         sh->time_until_respawn = step_size + 1;
     }
+    // Refresh the shock-bolt seek list before stepping the local ship, exactly
+    // as the host's tick() does — without this the client's shock arc seeks
+    // ONLY asteroids (missile list) and sails straight past every enemy,
+    // station, mini-station and hazard, so a client-fired bolt could never
+    // reach (or claim) them. Damage stays where it belongs: enemies are
+    // client-claimed below, station/mini/hazard hull is host-authoritative.
+    shock_targets->clear();
+    for (auto *ge : *enemies)
+      shock_targets->push_back(ge->ship);
+    if (station != NULL && station->is_alive())
+      shock_targets->push_back(station);
+    if (mini_station != NULL && mini_station->is_alive())
+      shock_targets->push_back(mini_station);
+    for (auto *h : *hazards)
+      if (h->is_alive())
+        shock_targets->push_back(h);
+    if (friendly_fire)
+      for (auto *gs : *players)
+        shock_targets->push_back(gs->ship);
+
     for (auto *gs : *players) gs->step(step_size, grid);
     // The remote (host) ship reconciles like the asteroids; the LOCAL
     // ship never banks an error (its pose is authoritative, v12), so
@@ -3102,6 +3157,33 @@ void GLGame::tick_net_client(int delta) {
                 c.bullet_id = 0;
                 Ship::net_kill_claims.push_back(c);
               }
+            }
+            continue;
+          }
+          // Mid-game hazards: hull damage is host-authoritative (resolved from
+          // our MSG_SHOCK polyline over there), so this is cosmetic + the arc
+          // stop() rule only. A comet/pulsar absorbs the bolt and halts it; a
+          // one-shot seeker lets it chain onward. Never claimed here — the real
+          // destruction arrives as the replica dropping from the snapshot.
+          if (Hazard *hz = dynamic_cast<Hazard *>(obj)) {
+            if (hz->is_alive()) {
+              sme->explode(hz->position, hz->velocity);
+              if (Asteroid::thud_sound != NULL)
+                Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+              if (hz->kind_of() != Hazard::SEEKER)
+                bolt.stop();
+            }
+            continue;
+          }
+          // Friendly fire: the arc reached the partner (host) ship. Its damage
+          // is host-authoritative too (resolved from the polyline), so stop the
+          // arc cosmetically and let the host decide the kill.
+          if (friendly_fire && !players->empty() &&
+              obj == players->front()->ship) {
+            if (players->front()->ship->is_alive()) {
+              sme->explode(players->front()->ship->position,
+                           players->front()->ship->velocity);
+              bolt.stop();
             }
             continue;
           }

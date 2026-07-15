@@ -110,6 +110,13 @@ test/e2e/hazards_net.sh # Mid-game hazards online: host skips to gen 12 (past
                      # pulsar/comet/seeker); the joiner must reconcile all three
                      # kinds from the snapshot ("hazard replica spawned (kind
                      # 0/1/2)") plus a death burst, with a clean log.
+test/e2e/shock_hazards_net.sh # PROTO 22 shock vs a hazard: host skips to gen 9
+                     # (pulsar — non-lethal so the joiner keeps firing, and the
+                     # survivor case that must stop() the arc). Both spin-fire
+                     # shock (ALL_WEAPONS auto-selects it); asserts bolts round-
+                     # trip both ways, the pulsar replicated, nobody crashed
+                     # (the client now seeks hostiles + drains hazard/partner
+                     # struck entries), clean log. Guards #142.
 ```
 
 `NEWTONIA_TEST_SPAWN_PICKUPS=1` (offline, inert without the env var) rings
