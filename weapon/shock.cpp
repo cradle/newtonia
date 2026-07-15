@@ -21,6 +21,23 @@ const float ShockBolt::SPARK_MS     = 220.0f;  // spark lingers a touch past the
 
 static inline float frand() { return rand() / (float)RAND_MAX; }
 
+// Squared distance from `center` to the segment [a,b]. Used so a hit is a
+// segment-vs-body test, not an endpoint-only one: a fast 55-unit segment can
+// cross a small asteroid and land past it, and an endpoint check would miss
+// (the arc "passes through"). `center` must already be the target's nearest
+// toroidal image (closest_to), so this is wrap-correct.
+static float seg_point_dist2(const Point &a, const Point &b, const Point &center) {
+  Point ab = b - a;
+  float ab2 = ab.x() * ab.x() + ab.y() * ab.y();
+  float t = ab2 > 1e-6f ? ((center.x() - a.x()) * ab.x() +
+                           (center.y() - a.y()) * ab.y()) / ab2
+                        : 0.0f;
+  if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
+  float dx = center.x() - (a.x() + ab.x() * t);
+  float dy = center.y() - (a.y() + ab.y() * t);
+  return dx * dx + dy * dy;
+}
+
 ShockBolt::ShockBolt(WrappedPoint origin, Point facing_dir, Object *owner)
   : main_dir(facing_dir.normalized()),
     heading(facing_dir.normalized()),
@@ -102,21 +119,13 @@ void ShockBolt::grow_segment(std::list<Object*> *asteroids, std::list<Object*> *
   // small rock. Stop here directly (spark at the surface) — nothing to score,
   // so no struck entry — and the ended polyline replicates as-is.
   if (asteroids) {
-    const Point ab = next - tip;
-    const float ab2 = ab.x() * ab.x() + ab.y() * ab.y();
     for (Object *o : *asteroids) {
       if (!o->alive) continue;
       Asteroid *ast = dynamic_cast<Asteroid *>(o);
       if (!ast || !ast->invincible) continue;
       Point c = o->position.closest_to(next);
-      float t = ab2 > 1e-6f ? ((c.x() - tip.x()) * ab.x() +
-                               (c.y() - tip.y()) * ab.y()) / ab2
-                            : 0.0f;
-      if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
-      float dx = c.x() - (tip.x() + ab.x() * t);
-      float dy = c.y() - (tip.y() + ab.y() * t);
       float reach = o->radius + HIT_RADIUS;
-      if (dx * dx + dy * dy <= reach * reach) {
+      if (seg_point_dist2(tip, next, c) <= reach * reach) {
         points.back() = surface_hit(o, c, tip);
         stop();  // absorbed by an invincible rock — arc ends at its surface
         return;
@@ -124,13 +133,16 @@ void ShockBolt::grow_segment(std::list<Object*> *asteroids, std::list<Object*> *
     }
   }
 
-  // Did this segment reach the target? If so, snap onto its surface (not its
-  // centre, which would look like the arc pierced it), record the hit and let the
-  // next segment chain onward to whatever else is nearby.
+  // Did this segment reach the target? Test the whole segment against the
+  // target's body (not just the endpoint) so a fast step that crosses a small
+  // rock still registers — an endpoint-only check let the arc pass through.
+  // Snap onto the surface (not the centre, which would look pierced), record
+  // the hit and let the next segment chain onward to whatever else is nearby.
   if (target) {
-    Point tp = target->position.closest_to(next);
-    if ((tp - next).magnitude() <= target->radius + HIT_RADIUS) {
-      points.back() = surface_hit(target, tp, tip);
+    Point c = target->position.closest_to(next);
+    float reach = target->radius + HIT_RADIUS;
+    if (seg_point_dist2(tip, next, c) <= reach * reach) {
+      points.back() = surface_hit(target, c, tip);
       struck.push_back(target);
       avoid.push_back(target);
     }
