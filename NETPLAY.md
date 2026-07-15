@@ -120,6 +120,26 @@ peer can't make us buffer unbounded data either. If leaderboard/achievement
 integrity ever matters, validate at *submission* (and reuse the game-scoped
 `cheated` flag), not per-packet in-game.
 
+The two budget-exempt streams are safe to exempt because their per-message
+work is bounded regardless of flood rate:
+- **INPUT (host)** is O(1) — a seq check and a pose adopt (finiteness +
+  speed-guarded, no alloc). Its wrap-counters (boost/next_weapon/
+  next_secondary/teleport) are **clamped to 4** before the catch-up loop, so a
+  fabricated counter jump can't loop-amplify into hundreds of actions; the
+  only allocation is `new Teleport` (≤4/INPUT), a transient behaviour drained
+  the same frame. Bounded by the read-loop cap.
+- **DELTA/SNAPSHOT (client)** each do a full deserialize+rebuild, but the
+  reassembler rejects any chunk whose `count` would exceed `SNAPSHOT_MAX_BYTES`
+  (4 MB) and drops mismatched/never-completing partials, and `net_state_sane`
+  bounds every deserialized count (asteroids ≤5000, pickups ≤500, …), so
+  per-message allocation is capped. A flood is a *bounded CPU* cost (repeated
+  rebuilds, ≤ the read-loop cap, and far less in practice — the reliable SCTP
+  channel + chunking + bandwidth bound delivery well below it), never a memory
+  or crash vector. Applying only the newest is deliberately NOT done: a
+  superseded delta still carries monotonic NEW/REMOVED membership that must
+  apply or kills are missed — capping rebuilds would risk that correctness for
+  a griefing-only vector the victim can just leave.
+
 The signaling Worker is a separate layer: it sits behind Cloudflare's edge
 DDoS protection, holds only ephemeral per-room Durable Object state, and never
 touches gameplay packets — a volumetric attack there is Cloudflare's problem,
