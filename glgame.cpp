@@ -4119,6 +4119,7 @@ void GLGame::net_apply_state(const Save::GameState &s) {
         case Save::PickupType::Beam:     pickups->push_back(new BeamPickup(pos)); break;
         case Save::PickupType::Lance:    pickups->push_back(new LancePickup(pos)); break;
         case Save::PickupType::Revive:   pickups->push_back(new RevivePickup(pos)); break;
+        case Save::PickupType::ShockWeapon: pickups->push_back(new ShockPickup(pos)); break;
         default: break;
       }
     }
