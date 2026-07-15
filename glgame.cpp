@@ -1311,20 +1311,23 @@ void GLGame::net_host_poll() {
     Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
     Net::Header h;
     if (!Net::read_header(r, h)) continue;
-    if (net_handle_ping_pong(h.msg_type, r)) continue;
-    // Spawn/claim families share one per-poll action budget. Over it, drop
-    // the effect (drain-and-skip) so a flood can't grow our object lists.
-    if ((h.msg_type == Net::MSG_SHOT || h.msg_type == Net::MSG_LANCE ||
-         h.msg_type == Net::MSG_SHOCK || h.msg_type == Net::MSG_HIT ||
-         h.msg_type == Net::MSG_HIT_SHIP) &&
+    // Every client->host message EXCEPT the INPUT control stream shares one
+    // per-poll action budget. Broader than just the spawn/claim families on
+    // purpose: some EVENTs also do real work (EV_RAM_BLAST spawns 10 bullets,
+    // EV_ACHIEVEMENT pokes the achievements backend), and counting PING here
+    // bounds the pong reflection. INPUT is the pose/control stream and must
+    // always flow, but it is cheap (a seq check + pose adopt) and the
+    // read-loop cap above bounds it. Over budget: drop and keep draining.
+    if (h.msg_type != Net::MSG_INPUT &&
         ++net_actions > NET_MAX_ACTIONS_PER_POLL) {
       if (!net_action_cap_logged) {
-        NET_LOG("net: action budget %d/poll hit - dropping spawn/claim flood\n",
+        NET_LOG("net: action budget %d/poll hit - dropping flood\n",
                 NET_MAX_ACTIONS_PER_POLL);
         net_action_cap_logged = true;
       }
       continue;
     }
+    if (net_handle_ping_pong(h.msg_type, r)) continue;
     if (h.msg_type == Net::MSG_EVENT) {
       uint8_t code = r.u8();
       uint32_t arg = r.remaining() >= 4 ? r.u32() : 0;
@@ -3541,19 +3544,21 @@ void GLGame::net_client_poll() {
     Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
     Net::Header h;
     if (!Net::read_header(r, h)) continue;
-    if (net_handle_ping_pong(h.msg_type, r)) continue;
-    // Spawn family shares one per-poll action budget (mirrors net_host_poll);
-    // over it, drop the effect so a host flood can't grow our object lists.
-    if ((h.msg_type == Net::MSG_SHOT || h.msg_type == Net::MSG_LANCE ||
-         h.msg_type == Net::MSG_SHOCK) &&
+    // Every host->client message EXCEPT the state stream (DELTA/SNAPSHOT_CHUNK,
+    // essential and already stale-gated) shares one per-poll action budget —
+    // mirrors net_host_poll. Broader than the spawn family on purpose: EVENTs
+    // can spawn too (EV_RAM_BLAST -> 10 bullets) and counting PING bounds the
+    // pong reflection. Over budget: drop and keep draining.
+    if (h.msg_type != Net::MSG_DELTA && h.msg_type != Net::MSG_SNAPSHOT_CHUNK &&
         ++net_actions > NET_MAX_ACTIONS_PER_POLL) {
       if (!net_action_cap_logged) {
-        NET_LOG("net: rx action budget %d/poll hit - dropping spawn flood\n",
+        NET_LOG("net: rx action budget %d/poll hit - dropping flood\n",
                 NET_MAX_ACTIONS_PER_POLL);
         net_action_cap_logged = true;
       }
       continue;
     }
+    if (net_handle_ping_pong(h.msg_type, r)) continue;
     if (h.msg_type == Net::MSG_EVENT) {
       uint8_t code = r.u8();
       uint32_t arg = r.remaining() >= 4 ? r.u32() : 0;

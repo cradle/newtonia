@@ -100,18 +100,30 @@ from exactly-once claims resolved against objects the host actually has (a
 claim for a nonexistent/dead object is a silent no-op), never asserted by the
 client.
 
-What the host DOES enforce is **memory safety against a malformed or flooding
-peer**: every wire field is bounds/finiteness-checked before use (polyline
-counts are `uint8` bounded *before* alloc, velocities magnitude-capped, ids
-looked up not indexed, event codes switched with a no-op default), and
-`net_host_poll` carries two per-poll budgets — a total read-loop cap
-(`NET_MAX_MSGS_PER_POLL`) and a shared action budget across the spawn/claim
-families (`NET_MAX_ACTIONS_PER_POLL`, MSG_SHOT/LANCE/SHOCK/HIT/HIT_SHIP) so a
-flood can't grow `bullets`/`lance_pulses`/`shocks` or spin the drain
-unbounded. A legitimate frame uses a handful; over budget the effect is
-dropped and draining continues. If leaderboard/achievement integrity ever
-matters, validate at *submission* (and reuse the game-scoped `cheated` flag),
-not per-packet in-game.
+What both peers DO enforce is **memory/CPU safety against a malformed or
+flooding peer**: every wire field is bounds/finiteness-checked before use
+(polyline counts are `uint8` bounded *before* alloc, velocities
+magnitude-capped, ids looked up not indexed, event codes switched with a
+no-op default). Both `net_host_poll` and `net_client_poll` carry two symmetric
+per-poll budgets: a total read-loop cap (`NET_MAX_MSGS_PER_POLL` = 512) so a
+message storm can't spin the drain, and a shared action budget
+(`NET_MAX_ACTIONS_PER_POLL` = 64) across **every** message except the one
+essential high-frequency stream (INPUT on the host; DELTA/SNAPSHOT_CHUNK on the
+client). The budget is deliberately broad, not just the spawn/claim families:
+some EVENTs also do real work — `EV_RAM_BLAST` spawns 10 bullets, `EV_ACHIEVEMENT`
+pokes the achievements backend — and counting PING bounds the pong reflection,
+so gating only the obvious spawn messages would leave those paths open. Over
+budget the effect is dropped and draining continues; a legitimate frame uses a
+handful of actions (a few shots + one INPUT). Below our read layer, the WebRTC
+SCTP transport applies flow control / drops on the unreliable channels, so a
+peer can't make us buffer unbounded data either. If leaderboard/achievement
+integrity ever matters, validate at *submission* (and reuse the game-scoped
+`cheated` flag), not per-packet in-game.
+
+The signaling Worker is a separate layer: it sits behind Cloudflare's edge
+DDoS protection, holds only ephemeral per-room Durable Object state, and never
+touches gameplay packets — a volumetric attack there is Cloudflare's problem,
+not the game binary's.
 
 ## Verification checklist (M1 done =)
 
