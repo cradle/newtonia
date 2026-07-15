@@ -54,3 +54,5 @@ xbox/build-*/
 /steam_appid.txt
 /libsteam_api.*
 /steamworks_sdk.zip
+## Netplay prebuilt libs (libdatachannel/WebRTC)
+/netplay-libs/
