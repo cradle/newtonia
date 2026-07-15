@@ -86,6 +86,33 @@ M3-1's reclaim token lives only in the host's memory: backgrounding/wifi blips a
 Header: `uint8 proto_ver(=1) | uint8 msg_type | uint8 player_id | uint8 reserved`, little-endian, explicit byte packing.
 Types: HELLO(1) C→H rel; WELCOME(2)/REJECT(3) H→C rel; INPUT(4) C→H unrel (uint32 seq, uint16 held bitmask, uint8 wrap-counters: boost/next_weapon/next_secondary/teleport/respawn_tap, 3 floats analog); SNAPSHOT_CHUNK(5) H→C rel (uint32 snap_id, uint16 idx, uint16 count, bytes); EVENT(6) rel (PAUSE/RESUME/GENERATION_START+gen/GAME_OVER/BYE); PING(8)/PONG(9) both ways unrel (uint32 sender ticks, echoed verbatim — 1 Hz RTT probe); HIT(10) C→H rel (uint32 asteroid net_id + uint32 bullet net_id — PROTO 13/14 client kill claim, always honored, killing bullet consumed by id); SHOT(11) BOTH ways rel (uint32 shot id, 2f spawn pos, 2f exact velocity, u8 flags — C→H PROTO 14: the host spawns exact clones instead of simulating the client's gun; H→C PROTO 17: the host echoes its own player's shots and the client spawns exact clones instantly with the shot sound, RTT/2-leaded to line up with the next 10 Hz bullet rebuild — host bullets used to pop in up to a snapshot interval late, obvious when spectating at the host's muzzle. The EV_REMOTE_SHOT p1 sound event is superseded. PROTO 18: flags bit2 = piercing beam bolt — clones plough through kills on both sides, and the snapshot's per-bullet records carry a flags byte so piercing/trail survive the 10 Hz rebuild; PROTO 19: the snapshot flags byte gains bit3 = world_bullet so host-side ricochets off reflective/armoured surfaces recolour white on the client too); HIT_SHIP(12) C→H rel (u8 kind: 0 enemy/1 station/2 mini, uint32 bullet net_id, uint32 target net_ship_id (0 for station/mini) — PROTO 16, 2f impact pos — PROTO 15/16, damage applies IFF the host consumes the referenced clone: exactly-once per shot; enemy claims name the exact enemy by wire id, absent = already dead = no-op; PROTO 20: bullet_id 0 = lance sentinel, enemy claims only, honored with no clone consume — kills are idempotent by id so the host's own MSG_LANCE polyline resolution can't double-count them); LANCE(13) BOTH ways rel (u8 n_points 2..17 + n x 2f polyline — PROTO 18, lance flash + sound on the peer, and since the lance-vs-ships feature the HOST also resolves a client polyline's ship/station hits from it (self on reflection, partner under friendly fire, enemies, stations) — ship damage is host authority, no extra message; a client lance's kills ride MSG_HIT claims with bullet_id 0 = no clone consume, its ray-march predicts outcomes and the claim drain kills locally; a host lance's kills replicate as removal records); BOUNCE(14) H→C rel (uint32 bullet net_id, 2f pos, 2f vel, u8 net_flags — PROTO 19 authoritative ricochet: the sim's real reflective/armour bounce overrides the client copy's local radial approximation so both screens fly the same post-bounce trajectory; unknown ids ignored).
 
+## Trust model & input safety
+
+P2P, no authoritative server — the "server" is the host *peer*, itself an
+untrusted local binary, so validation is one peer defending against the
+other, not anti-cheat. Because play is **cooperative** and **friends-invite**
+(room code / share link), there is deliberately **no authoritative
+re-simulation**: pose/aim/shots are client-authoritative by design (PROTO
+12/13/14) to kill rubberbanding, and `net_host_poll` adopts them with *sanity*
+checks only (finiteness + plausible speed — see the "not anti-cheat (co-op)"
+comment). Score/kills are still hard to inflate: they are *derived* host-side
+from exactly-once claims resolved against objects the host actually has (a
+claim for a nonexistent/dead object is a silent no-op), never asserted by the
+client.
+
+What the host DOES enforce is **memory safety against a malformed or flooding
+peer**: every wire field is bounds/finiteness-checked before use (polyline
+counts are `uint8` bounded *before* alloc, velocities magnitude-capped, ids
+looked up not indexed, event codes switched with a no-op default), and
+`net_host_poll` carries two per-poll budgets — a total read-loop cap
+(`NET_MAX_MSGS_PER_POLL`) and a shared action budget across the spawn/claim
+families (`NET_MAX_ACTIONS_PER_POLL`, MSG_SHOT/LANCE/SHOCK/HIT/HIT_SHIP) so a
+flood can't grow `bullets`/`lance_pulses`/`shocks` or spin the drain
+unbounded. A legitimate frame uses a handful; over budget the effect is
+dropped and draining continues. If leaderboard/achievement integrity ever
+matters, validate at *submission* (and reuse the game-scoped `cheated` flag),
+not per-packet in-game.
+
 ## Verification checklist (M1 done =)
 
 Two newtonia.exe on one machine: paste-connect, both ships controllable, remote one-shots work, host kills explode on client, pickups reflect, pause syncs, generation rollover on both, kill-process → CONNECTION LOST → Menu, solo save intact afterward. Then native↔web (Chrome+Firefox clipboard, chunking). CI: all three workflows green each phase.

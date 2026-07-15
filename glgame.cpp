@@ -1288,12 +1288,43 @@ void GLGame::net_host_poll() {
     net_gap_deadline_ = 0;
   }
 
+  // Flood guard (safety, not anti-cheat): a peer that spams the spawn/claim
+  // channels would otherwise make us allocate (bullets/lance_pulses/shocks)
+  // and work without bound in this single drain. Two budgets per poll: a
+  // total read-loop cap so a message storm can't spin here, and a shared
+  // action budget across every spawn/claim family so per-frame allocation
+  // stays bounded. A legitimate client never approaches either (a busy frame
+  // is a handful of shots + one INPUT); over budget we drop the effect and
+  // keep draining. INPUT/EVENT/ping are never gated — control must flow.
+  const int NET_MAX_MSGS_PER_POLL = 512;    // read-loop bound
+  const int NET_MAX_ACTIONS_PER_POLL = 64;  // spawn/claim effects acted on
+  int net_msgs_seen = 0, net_actions = 0;
+  bool net_action_cap_logged = false;
+
   std::vector<unsigned char> msg;
   while (t->poll(msg)) {
+    if (++net_msgs_seen > NET_MAX_MSGS_PER_POLL) {
+      NET_LOG("net: poll message storm - %d msgs, deferring rest\n",
+              net_msgs_seen);
+      break;
+    }
     Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
     Net::Header h;
     if (!Net::read_header(r, h)) continue;
     if (net_handle_ping_pong(h.msg_type, r)) continue;
+    // Spawn/claim families share one per-poll action budget. Over it, drop
+    // the effect (drain-and-skip) so a flood can't grow our object lists.
+    if ((h.msg_type == Net::MSG_SHOT || h.msg_type == Net::MSG_LANCE ||
+         h.msg_type == Net::MSG_SHOCK || h.msg_type == Net::MSG_HIT ||
+         h.msg_type == Net::MSG_HIT_SHIP) &&
+        ++net_actions > NET_MAX_ACTIONS_PER_POLL) {
+      if (!net_action_cap_logged) {
+        NET_LOG("net: action budget %d/poll hit - dropping spawn/claim flood\n",
+                NET_MAX_ACTIONS_PER_POLL);
+        net_action_cap_logged = true;
+      }
+      continue;
+    }
     if (h.msg_type == Net::MSG_EVENT) {
       uint8_t code = r.u8();
       uint32_t arg = r.remaining() >= 4 ? r.u32() : 0;
