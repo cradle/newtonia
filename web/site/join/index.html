@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Join a Newtonia co-op game</title>
   <meta name="robots" content="noindex" />
+  <!-- iOS Smart App Banner: shows an install/open strip in Safari when the
+       app isn't installed (an installed, domain-verified app intercepts the
+       Universal Link before this page ever loads, so the banner only appears
+       to users who don't have it yet). app-id is Newtonia on the App Store. -->
+  <meta name="apple-itunes-app" content="app-id=6760685759" />
   <style>
     :root { color-scheme: dark; }
     html, body {
@@ -29,7 +34,8 @@
     a.btn:active { transform: translateY(1px); }
     a.primary { background: linear-gradient(180deg,#4f7cff,#3358e6); color: #fff; }
     a.steam   { background: #1b2838; color: #c7d5e0; border: 1px solid #2a475e; }
-    a.primary:hover, a.steam:hover { filter: brightness(1.12); }
+    a.store   { background: #0a0a0a; color: #fff; border: 1px solid #333; }
+    a.primary:hover, a.steam:hover, a.store:hover { filter: brightness(1.12); }
     .foot { margin-top: 26px; font-size: 0.85rem; color: #667; }
     .foot a { color: #8aa0d8; }
     .hidden { display: none; }
@@ -43,6 +49,8 @@
 
     <a class="btn primary" id="browserBtn" href="#">▶ Play in your browser</a>
     <a class="btn steam hidden" id="steamBtn" href="#">Join on Steam</a>
+    <a class="btn store hidden" id="appStoreBtn"
+       href="https://apps.apple.com/app/id6760685759">Get the app on the App Store</a>
 
     <p class="foot">Not working? Open Newtonia and enter the room code above by hand.</p>
   </main>
@@ -52,7 +60,8 @@
     // https://newtonia.metonymous.com/join?code=XXXX lands here ONLY when no
     // native app claimed it — an installed, domain-verified iOS/Android app
     // opens directly and this page never loads. So here we route the leftover
-    // cases: Steam desktop (steam:// launch) and the browser game (/play).
+    // cases: Steam desktop (steam:// launch), the App Store (iOS, no app), and
+    // the browser game (/play) everywhere else.
     var STEAM_APPID = "4536720";
     var params = new URLSearchParams(location.search);
     var code = (params.get("code") || "").trim();
@@ -61,6 +70,13 @@
     var subEl = document.getElementById("sub");
     var browserBtn = document.getElementById("browserBtn");
     var steamBtn = document.getElementById("steamBtn");
+    var appStoreBtn = document.getElementById("appStoreBtn");
+
+    var ua = navigator.userAgent;
+    var isIOS = /iPhone|iPad|iPod/i.test(ua) ||
+                // iPadOS 13+ reports as desktop Safari, so sniff touch too.
+                (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    var isAndroid = /Android/i.test(ua);
 
     if (!code) {
       subEl.textContent = "This link is missing a room code.";
@@ -73,19 +89,25 @@
       var playUrl = "/play/?code=" + enc;
       browserBtn.href = playUrl;
 
-      // Desktop: offer a Steam launch (steam://run/<appid>//+connect <code>).
-      // Steam registers the steam:// handler OS-wide; the game consumes the
-      // +connect arg via steam_invites.cpp (cold launch or running game).
-      var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      if (!isMobile) {
+      if (isIOS) {
+        // No app installed (else the Universal Link would have opened it). Offer
+        // the App Store alongside the instant browser game — and don't silently
+        // redirect, so the install option (button + the Smart App Banner) stays
+        // reachable. After installing, re-tapping the shared link auto-joins.
+        appStoreBtn.classList.remove("hidden");
+        subEl.textContent = "Play now, or get the app";
+      } else if (isAndroid) {
+        // Android app is not on a public store yet — the browser game is the
+        // only path. Give the tap a beat to register, then go.
+        subEl.textContent = "Opening the game…";
+        setTimeout(function () { location.replace(playUrl); }, 1400);
+      } else {
+        // Desktop: offer a Steam launch (steam://run/<appid>//+connect <code>).
+        // Steam registers the steam:// handler OS-wide; the game consumes the
+        // +connect arg via steam_invites.cpp (cold launch or running game).
         steamBtn.href = "steam://run/" + STEAM_APPID + "//+connect%20" + enc;
         steamBtn.classList.remove("hidden");
         subEl.textContent = "Choose how to join room";
-      } else {
-        // Mobile with no installed app: the browser game is the only path.
-        // Give the tap a beat to register, then go.
-        subEl.textContent = "Opening the game…";
-        setTimeout(function () { location.replace(playUrl); }, 1400);
       }
     }
   </script>
