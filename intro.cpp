@@ -247,8 +247,8 @@ void Intro::keyboard(unsigned char key, int x, int y) {
   // dismiss the intro before it is seen. The touch fire button arrives here
   // too (it synthesises the shoot key).
   if (!paused && time >= input_delay_ms &&
-      (key == (unsigned char)g_prefs.p1_keys.shoot ||
-       key == (unsigned char)g_prefs.p2_keys.shoot)) {
+      (g_prefs.p1_keys.shoot.matches(key) ||
+       g_prefs.p2_keys.shoot.matches(key))) {
     dismiss();
   }
 }

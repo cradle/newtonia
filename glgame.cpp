@@ -85,27 +85,13 @@ static void play_priority_chunk(Mix_Chunk *chunk, float vol) {
   Mix_PlayChannel(Mix_Playing(0) ? 1 : 0, chunk, 0);
 }
 
-// In gameplay the arrow keys always drive player 1: translate them to P1's
-// bound direction keys (WASD by default — rebinds are honoured) before ship
-// dispatch, mirroring the menus where arrows alias WASD (State::nav_key).
-// Codes are 128 + GLUT_KEY_* — the special-key scheme every platform entry
-// point funnels arrows into. P2's bindings (IJKL by default) are unaffected.
-static unsigned char p1_arrow_key(unsigned char key) {
-  const PlayerKeys &k = g_prefs.p1_keys;
-  switch (key) {
-    case 128 + 101: return (unsigned char)k.thrust;   // GLUT_KEY_UP
-    case 128 + 103: return (unsigned char)k.reverse;  // GLUT_KEY_DOWN
-    case 128 + 100: return (unsigned char)k.left;     // GLUT_KEY_LEFT
-    case 128 + 102: return (unsigned char)k.right;    // GLUT_KEY_RIGHT
-    default: return key;
-  }
-}
-
+// Arrow keys drive player 1 as built-in binding alternates (PlayerKeys
+// defaults, preferences.h) — GLShip::input matches either slot of each
+// KeyBinding, so no translation pass is needed here and an arrow bound to
+// any player's action just works.
 static void set_player_keys(GLShip *gs, int player_index) {
   PlayerKeys &k = (player_index == 0) ? g_prefs.p1_keys : g_prefs.p2_keys;
-  gs->set_keys(k.left, k.right, k.thrust, k.shoot, k.reverse, k.mine,
-               k.next_weapon, k.boost, k.teleport, k.help, k.next_secondary,
-               k.toggle_rotate_view);
+  gs->set_keys(k);
   gs->set_keyboard_sensitivity(k.keyboard_sensitivity);
   gs->set_camera_smoothing(k.camera_smoothing);
   gs->set_rotate_view_pref(&k.rotate_view);
@@ -2657,7 +2643,7 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
     // player; the first ship here is the HOST's — achievements and
     // lifetime stats must not attribute its actions to this machine.
     remote->ship->is_local_player = false;
-    remote->set_keys(-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1);
+    remote->clear_keys();
     remote->set_controller(NULL);
     GLShip *local = players->back();
     set_player_keys(local, 0);
@@ -6933,7 +6919,6 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
   if (!running)
     return;
 
-  key = p1_arrow_key(key);
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
     (*object)->input(key);
@@ -7041,7 +7026,6 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     request_state_change(new Menu());
   }
 
-  key = p1_arrow_key(key);
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
     (*object)->input(key, false);

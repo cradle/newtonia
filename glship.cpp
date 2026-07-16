@@ -211,19 +211,25 @@ void GLShip::step(int delta, const Grid &grid) {
   }
 }
 
-void GLShip::set_keys(int left, int right, int thrust, int shoot, int reverse, int mine, int next_weapon, int boost, int teleport, int help, int next_secondary, int toggle_rotate_view) {
-  left_key = left;
-  right_key = right;
-  shoot_key = shoot;
-  thrust_key = thrust;
-  teleport_key = teleport;
-  reverse_key = reverse;
-  mine_key = mine;
-  next_weapon_key = next_weapon;
-  boost_key = boost;
-  help_key = help;
-  next_secondary_key = next_secondary;
-  toggle_rotate_view_key = toggle_rotate_view;
+void GLShip::set_keys(const PlayerKeys &k) {
+  left_key = k.left;
+  right_key = k.right;
+  shoot_key = k.shoot;
+  thrust_key = k.thrust;
+  teleport_key = k.teleport;
+  reverse_key = k.reverse;
+  mine_key = k.mine;
+  next_weapon_key = k.next_weapon;
+  boost_key = k.boost;
+  help_key = k.help;
+  next_secondary_key = k.next_secondary;
+  toggle_rotate_view_key = k.toggle_rotate_view;
+}
+
+void GLShip::clear_keys() {
+  left_key = right_key = shoot_key = thrust_key = teleport_key = reverse_key =
+  mine_key = next_weapon_key = boost_key = help_key = next_secondary_key =
+  toggle_rotate_view_key = KeyBinding();
 }
 
 void GLShip::set_controller(SDL_GameController *game_controller) {
@@ -567,10 +573,10 @@ void GLShip::release_controls() {
 }
 
 void GLShip::input(unsigned char key, bool pressed) {
-  if (key == help_key && pressed) show_help = !show_help;
+  if (help_key.matches(key) && pressed) show_help = !show_help;
   if(!ship->is_alive()) {
     kb_thrust = kb_reverse = kb_rotate_left = kb_rotate_right = false;
-    if(key == shoot_key && ship->lives > 0 &&
+    if(shoot_key.matches(key) && ship->lives > 0 &&
        ship->time_until_respawn <= ship->respawn_time - 1000) {
       last_input_was_controller = false;
       net_respawn_count++;
@@ -578,44 +584,45 @@ void GLShip::input(unsigned char key, bool pressed) {
     }
     return;
   }
-  if (key == left_key || key == right_key || key == thrust_key || key == reverse_key ||
-      key == shoot_key || key == mine_key || key == boost_key || key == next_weapon_key ||
-      key == next_secondary_key || key == teleport_key || key == help_key ||
-      key == (unsigned char)toggle_rotate_view_key) {
+  if (left_key.matches(key) || right_key.matches(key) || thrust_key.matches(key) ||
+      reverse_key.matches(key) || shoot_key.matches(key) || mine_key.matches(key) ||
+      boost_key.matches(key) || next_weapon_key.matches(key) ||
+      next_secondary_key.matches(key) || teleport_key.matches(key) ||
+      help_key.matches(key) || toggle_rotate_view_key.matches(key)) {
     last_input_was_controller = false;
   }
-  if (key == left_key) {
+  if (left_key.matches(key)) {
     if (pressed) ship->rotation_scale = keyboard_sensitivity;
     kb_rotate_left = pressed;
     ship->rotate_left(pressed);
-  } else if (key == right_key) {
+  } else if (right_key.matches(key)) {
     if (pressed) ship->rotation_scale = keyboard_sensitivity;
     kb_rotate_right = pressed;
     ship->rotate_right(pressed);
-  } else if (key == thrust_key) {
+  } else if (thrust_key.matches(key)) {
     kb_thrust = pressed;
     ship->thrust(pressed);
-  } else if (key == reverse_key) {
+  } else if (reverse_key.matches(key)) {
     kb_reverse = pressed;
     ship->reverse(pressed);
-  } else if (key == shoot_key) {
+  } else if (shoot_key.matches(key)) {
     net_shoot_held = pressed;
     if (pressed) net_shoot_press_count++;
     ship->shoot(pressed);
-  } else if (key == mine_key) {
+  } else if (mine_key.matches(key)) {
     net_secondary_held = pressed;
     if (pressed) net_secondary_press_count++;
     ship->fire_secondary(pressed);
-  } else if (key == boost_key && pressed) {
+  } else if (boost_key.matches(key) && pressed) {
     ship->boost();
-  } else if(key == next_weapon_key && pressed) {
+  } else if(next_weapon_key.matches(key) && pressed) {
     ship->next_weapon();
-  } else if(key == next_secondary_key && pressed) {
+  } else if(next_secondary_key.matches(key) && pressed) {
     ship->next_secondary_weapon();
-  } else if (key == teleport_key && pressed) {
+  } else if (teleport_key.matches(key) && pressed) {
     ship->net_teleport_count++;
     ship->behaviours.push_back(new Teleport(ship));
-  } else if (key == (unsigned char)toggle_rotate_view_key && pressed) {
+  } else if (toggle_rotate_view_key.matches(key) && pressed) {
     rotating_view = !rotating_view;
     if (rotate_view_pref_) *rotate_view_pref_ = rotating_view;
     else g_prefs.rotate_view = rotating_view;
@@ -699,6 +706,10 @@ static std::string key_label(int key) {
   if (key == 27)   return "ESC";
   if (key == 13)   return "ENTER";
   if (key == 9)    return "TAB";
+  if (key == 128 + 100) return "LEFT";   // GLUT_KEY_LEFT
+  if (key == 128 + 101) return "UP";     // GLUT_KEY_UP
+  if (key == 128 + 102) return "RIGHT";  // GLUT_KEY_RIGHT
+  if (key == 128 + 103) return "DOWN";   // GLUT_KEY_DOWN
   if (key >= 129 && key <= 140) {
     char buf[8];
     snprintf(buf, sizeof(buf), "F%d", key - 128);
@@ -709,6 +720,14 @@ static std::string key_label(int key) {
   char buf[16];
   snprintf(buf, sizeof(buf), "[%d]", key);
   return buf;
+}
+
+// Label a full binding: primary, plus "/ALT" when an alternate is bound
+// (e.g. "W/UP" for thrust with its arrow alias).
+static std::string binding_label(const KeyBinding &b) {
+  std::string s = key_label(b.keys[0]);
+  if (b.keys[1] != 0) s += "/" + key_label(b.keys[1]);
+  return s;
 }
 
 void GLShip::draw_keymap() const {
@@ -747,77 +766,77 @@ void GLShip::draw_keymap() const {
   }
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "THRUST", size);
   if(!last_input_was_controller) {
-    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, key_label(thrust_key).c_str(), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(thrust_key).c_str(), size);
   } else {
     draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_DPAD_UP);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "REVERSE", size);
   if(!last_input_was_controller) {
-    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, key_label(reverse_key).c_str(), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(reverse_key).c_str(), size);
   } else {
     draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "TURN RIGHT", size);
   if(!last_input_was_controller) {
-    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, key_label(right_key).c_str(), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(right_key).c_str(), size);
   } else {
     draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "TURN LEFT", size);
   if(!last_input_was_controller) {
-    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, key_label(left_key).c_str(), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(left_key).c_str(), size);
   } else {
     draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "SHOOT", size);
   if(!last_input_was_controller) {
-    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, key_label(shoot_key).c_str(), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(shoot_key).c_str(), size);
   } else {
     draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_A);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "MINE", size);
   if(!last_input_was_controller) {
-    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, key_label(mine_key).c_str(), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(mine_key).c_str(), size);
   } else {
     draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_B);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "CHANGE WEAPON", size);
   if(!last_input_was_controller) {
-    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, key_label(next_weapon_key).c_str(), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(next_weapon_key).c_str(), size);
   } else {
     draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_X);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "CHANGE SECONDARY", size);
   if(!last_input_was_controller) {
-    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, key_label(next_secondary_key).c_str(), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(next_secondary_key).c_str(), size);
   } else {
     draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_Y);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "BOOST", size);
   if(!last_input_was_controller) {
-    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, key_label(boost_key).c_str(), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(boost_key).c_str(), size);
   } else {
     draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "TELEPORT", size);
   if(!last_input_was_controller) {
-    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, key_label(teleport_key).c_str(), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(teleport_key).c_str(), size);
   } else {
     draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
   }
   control_index++;
   Typer::draw(offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, "ROTATE VIEW", size);
   if(!last_input_was_controller) {
-    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, key_label(toggle_rotate_view_key).c_str(), size);
+    Typer::draw(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, binding_label(toggle_rotate_view_key).c_str(), size);
   } else {
     draw_btn(-offset, (num_controls-control_index)/2.0f * (size + padding) * char_height + y_offset, SDL_CONTROLLER_BUTTON_LEFTSTICK);
   }
@@ -848,7 +867,7 @@ void GLShip::draw_keymap() const {
   }
   Typer::draw(offset, row_y(), "HIDE THIS", size);
   if(!last_input_was_controller) {
-    Typer::draw(-offset, row_y(), key_label(help_key).c_str(), size);
+    Typer::draw(-offset, row_y(), binding_label(help_key).c_str(), size);
   } else {
     draw_btn(-offset, row_y(), SDL_CONTROLLER_BUTTON_RIGHTSTICK);
   }
@@ -895,8 +914,11 @@ void GLShip::draw_weapons() const {
   //   NAME  [ammo]
   //   FIRE [key]      NEXT [key]
   auto draw_weapon_row = [&](int row_y, Weapon::Base *weapon, bool has_next,
-                             int cycle_key_kb, SDL_GameControllerButton cycle_btn,
-                             int fire_key_kb,  SDL_GameControllerButton fire_btn) {
+                             const KeyBinding &cycle_key_bind, SDL_GameControllerButton cycle_btn,
+                             const KeyBinding &fire_key_bind,  SDL_GameControllerButton fire_btn) {
+    // The 3-char HUD slot only fits one key, so show the binding's primary.
+    int cycle_key_kb = cycle_key_bind.primary();
+    int fire_key_kb  = fire_key_bind.primary();
     // Line 1: NAME  ammo
     int cx = 10;
     Typer::draw(cx, row_y, weapon->name(), size);

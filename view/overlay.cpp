@@ -373,10 +373,10 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     if(!glship->last_input_was_controller && !is_touch_mode()) {
       char hint[48];
       if(glship->show_help) {
-        key_hint(glship->help_key, hint, sizeof(hint), "hide");
+        key_hint(glship->help_key.primary(), hint, sizeof(hint), "hide");
         Typer::draw_centered(-1*Typer::scaled_window_width/2, Typer::scaled_window_height-40, hint, 8);
       } else if ((glgame->current_time)/12000 % 2) {
-        key_hint(glship->help_key, hint, sizeof(hint), "show");
+        key_hint(glship->help_key.primary(), hint, sizeof(hint), "show");
         Typer::draw_centered(-1*Typer::scaled_window_width/2, Typer::scaled_window_height-40, hint, 8);
       }
     }
@@ -399,10 +399,10 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     if(!glship->last_input_was_controller && !is_touch_mode()) {
       char hint[48];
       if(glship->show_help) {
-        key_hint(glship->help_key, hint, sizeof(hint), "hide");
+        key_hint(glship->help_key.primary(), hint, sizeof(hint), "hide");
         Typer::draw_centered(0, vhb+85, hint, 8);
       } else if ((glgame->current_time)/12000 % 2) {
-        key_hint(glship->help_key, hint, sizeof(hint), "show");
+        key_hint(glship->help_key.primary(), hint, sizeof(hint), "show");
         Typer::draw_centered(0, vhb+85, hint, 8);
       }
     }

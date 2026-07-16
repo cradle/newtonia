@@ -4,6 +4,7 @@
 #include "ship.h"
 #include "point.h"
 #include "gltrail.h"
+#include "preferences.h"
 #include "typer.h"
 #include <SDL.h>
 #include <SDL_joystick.h>
@@ -28,7 +29,10 @@ public:
   void release_controls();
   bool wasMyController(SDL_JoystickID id);
 
-  void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key, int teleport_key, int help_key, int next_secondary_key, int toggle_rotate_view_key);
+  void set_keys(const PlayerKeys &k);
+  // Strip every keyboard binding (the netplay ghost ship must never respond
+  // to this machine's keys).
+  void clear_keys();
   void set_keyboard_sensitivity(float s) { keyboard_sensitivity = s; }
   void set_camera_smoothing(float s)     { camera_smoothing = s; }
   // Per-player camera fixed/rotate: adopt the owning player's pref as the
@@ -100,7 +104,10 @@ protected:
   Mesh minimap_dot;    // single white vertex at origin, tinted per draw
   Mesh missile_body;   // unit missile triangle (ship colour), per-missile matrix
 
-  int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, next_secondary_key, boost_key, teleport_key, help_key, toggle_rotate_view_key;
+  // Two-slot bindings (primary + optional alternate; see KeyBinding).
+  // Default-constructed empty, so a ship that never gets set_keys (the
+  // netplay ghost) matches no keyboard input at all.
+  KeyBinding thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, next_secondary_key, boost_key, teleport_key, help_key, toggle_rotate_view_key;
   float keyboard_sensitivity = 1.0f;  // rotation speed multiplier for keyboard input
   float camera_smoothing     = 0.004f; // camera follow rate (0 = instant snap)
 

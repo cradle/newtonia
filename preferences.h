@@ -10,19 +10,47 @@
 // keyboard dispatch: printable ASCII (0–127) plus GLUT special keys encoded as
 // 128 + GLUT_KEY_* (e.g. F1 = 129, F8 = 136, F11 = 139).
 
+// One game action's keyboard binding: up to two key aliases (slot 0 is the
+// primary shown on the keymap, slot 1 an alternate; 0 = empty slot).
+//
+// INI compatibility both ways (Steam testers switch between the netplay and
+// stable branches, which share preferences.ini): save_preferences() keeps the
+// canonical line in the old single-value format ("p1_thrust=w") so OLDER
+// builds still parse it, and writes the alternate on a separate
+// "p1_thrust_alt=up" line older builds silently ignore ("none" = explicitly
+// cleared). Loading, a bare single value replaces the primary and KEEPS the
+// current (default) alternate — that is what every pre-multibind file
+// contains, and clearing the alternate on upgrade would silently strip the
+// arrow aliases from existing installs. A comma list ("thrust=w,up" /
+// "w,none", no spaces) is also accepted for hand edits and sets the binding
+// exactly as listed. Assigning a plain int replaces the whole binding (used
+// by the P2 ctor defaults, which deliberately carry no arrows).
+struct KeyBinding {
+    int keys[2];
+    KeyBinding(int primary = 0, int alt = 0) : keys{primary, alt} {}
+    bool matches(unsigned char key) const {
+        return (keys[0] != 0 && key == (unsigned char)keys[0]) ||
+               (keys[1] != 0 && key == (unsigned char)keys[1]);
+    }
+    int primary() const { return keys[0]; }
+};
+
 struct PlayerKeys {
-    int left               = 'a';
-    int right              = 'd';
-    int thrust             = 'w';
-    int shoot              = ' ';
-    int reverse            = 's';
-    int mine               = 'x';
-    int next_weapon        = 'q';
-    int next_secondary     = 'c';
-    int boost              = 'e';
-    int teleport           = 't';
-    int help               = 129; // F1  (128 + GLUT_KEY_F1)
-    int toggle_rotate_view = 'v'; // P1 default; P2 default is ';' (set in ctor)
+    // P1's directions carry the arrow keys as built-in alternates (encoded
+    // 128 + GLUT_KEY_*, like the F-keys); the P2 ctor overrides assign bare
+    // ints, which clears the alternates so arrows drive player 1 only.
+    KeyBinding left               = {'a', 128 + 100}; // + left arrow
+    KeyBinding right              = {'d', 128 + 102}; // + right arrow
+    KeyBinding thrust             = {'w', 128 + 101}; // + up arrow
+    KeyBinding shoot              = ' ';
+    KeyBinding reverse            = {'s', 128 + 103}; // + down arrow
+    KeyBinding mine               = 'x';
+    KeyBinding next_weapon        = 'q';
+    KeyBinding next_secondary     = 'c';
+    KeyBinding boost              = 'e';
+    KeyBinding teleport           = 't';
+    KeyBinding help               = 129; // F1  (128 + GLUT_KEY_F1)
+    KeyBinding toggle_rotate_view = 'v'; // P1 default; P2 default is ';' (set in ctor)
     float keyboard_sensitivity = 1.0f;  // rotation speed multiplier
     float camera_smoothing     = 0.004f; // camera follow rate (0 = instant snap)
     bool  rotate_view          = true;  // camera follows this ship's heading
