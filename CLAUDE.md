@@ -349,7 +349,7 @@ Serialization: `capture_state()` / `from_state()` (kind, position, velocity, sho
 
 ### Rendering
 
-**OpenGL compatibility** — `gl_compat.h` and `gles2_compat.h/cpp` abstract desktop OpenGL 3.3 Core vs OpenGL ES 2 (mobile/web/Xbox). `gles2_compat` provides GLSL program wrappers, vertex/color buffers, and line-thickening for WebGL (which disallows `lineWidth > 1`).
+**OpenGL compatibility** — `gl_compat.h` and `gles2_compat.h/cpp` abstract desktop OpenGL 3.3 Core vs OpenGL ES 2 (mobile/web/Xbox). `gles2_compat` provides GLSL program wrappers, vertex/color buffers, and line-thickening for platforms where `lineWidth > 1` does nothing (WebGL clamps to 1, macOS core GL ignores it, ANGLE reports a [1,1] range). Real GLES drivers (Android/iOS) rasterize wide aliased lines natively, so `gles2_init` queries `GL_ALIASED_LINE_WIDTH_RANGE` and in-range widths bypass the emulation entirely — the per-draw CPU quad expansion + shared-VBO re-upload was the dominant mobile frame cost (~44 ms/frame in the objects pass at 21 fps, fixed by the bypass). `NEWTONIA_LINE_EMULATION=1` forces the emulation back on for A/B.
 
 **Mesh system** (`mesh.h/cpp`) — GPU geometry with interleaved position/colour data. Builder API:
 ```cpp
