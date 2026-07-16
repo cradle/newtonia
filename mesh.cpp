@@ -443,10 +443,13 @@ void Mesh::draw_with_mvp(const float mvp[16], float point_size) const {
         glUniform1i(p->uni_ispt, g.mode == GL_POINTS ? 1 : 0);
         {
             // glLineWidth > 1 is ignored on macOS/Metal and WebGL; use the
-            // feathered screen-space quad emulation on all platforms.
+            // feathered screen-space quad emulation there. Real GLES drivers
+            // (Android/iOS) rasterize wide aliased lines natively — skip the
+            // per-draw CPU expansion + upload (gles2_line_width_is_native).
             bool is_line = (g.mode == GL_LINES || g.mode == GL_LINE_STRIP ||
                             g.mode == GL_LINE_LOOP);
-            if (is_line && !cpu_pos_.empty() && gles2_get_line_width() > 1.05f) {
+            if (is_line && !cpu_pos_.empty() && gles2_get_line_width() > 1.05f &&
+                !gles2_line_width_is_native()) {
                 gles2_draw_thick_lines_mvp(
                     cpu_pos_.data() + (size_t)g.vertex_start * 3,
                     cpu_col_.data() + (size_t)g.vertex_start * 4,
