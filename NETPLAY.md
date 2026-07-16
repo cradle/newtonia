@@ -107,14 +107,18 @@ magnitude-capped, ids looked up not indexed, event codes switched with a
 no-op default). Both `net_host_poll` and `net_client_poll` carry two symmetric
 per-poll budgets: a total read-loop cap (`NET_MAX_MSGS_PER_POLL` = 512) so a
 message storm can't spin the drain, and a shared action budget
-(`NET_MAX_ACTIONS_PER_POLL` = 64) across **every** message except the one
-essential high-frequency stream (INPUT on the host; DELTA/SNAPSHOT_CHUNK on the
-client). The budget is deliberately broad, not just the spawn/claim families:
-some EVENTs also do real work — `EV_RAM_BLAST` spawns 10 bullets, `EV_ACHIEVEMENT`
-pokes the achievements backend — and counting PING bounds the pong reflection,
-so gating only the obvious spawn messages would leave those paths open. Over
-budget the effect is dropped and draining continues; a legitimate frame uses a
-handful of actions (a few shots + one INPUT). Below our read layer, the WebRTC
+(`NET_MAX_ACTIONS_PER_POLL` = 64) across every droppable message. NEVER
+drop-gated: the essential high-frequency stream (INPUT on the host;
+DELTA/SNAPSHOT_CHUNK on the client) and **EVENT** — EVENT is reliable+ordered
+and stateful (`EV_PAUSE`/`EV_BYE`/`EV_PICKUP` have no snapshot reconcile, and
+a dropped one is consumed from SCTP forever; a legitimate post-stall backlog
+can exceed the budget in one drain). EVENT's two work-doing codes bound
+themselves instead: `EV_RAM_BLAST` (spawns bullets) and `EV_ACHIEVEMENT`
+(pokes the platform SDK) share `NET_EVENT_EFFECTS_PER_POLL` (8), so an EVENT
+flood degrades to sound cues + flag sets, all O(1). PING stays counted (bounds
+the pong reflection; worst case the RTT lead stales until the flood ends).
+Over budget the effect is dropped and draining continues; a legitimate frame
+uses a handful of actions (a few shots + one INPUT). Below our read layer, the WebRTC
 SCTP transport applies flow control / drops on the unreliable channels, so a
 peer can't make us buffer unbounded data either. If leaderboard/achievement
 integrity ever matters, validate at *submission* (and reuse the game-scoped

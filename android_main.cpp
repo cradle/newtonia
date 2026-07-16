@@ -403,6 +403,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
             case SDL_TEXTINPUT:
                 break;
             case SDL_KEYDOWN: {
+                if (e.key.repeat) break; // game tracks held state itself; ignore SDL repeats
                 SDL_Keycode k = e.key.keysym.sym;
                 if (k == SDLK_AC_BACK || k == SDLK_ESCAPE) {
                     if (!s_game->back_pressed()) s_running = false;

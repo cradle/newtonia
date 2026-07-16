@@ -2,6 +2,7 @@
 #include "../asset_path.h"
 #include "../ship.h"
 #include "../asteroid.h"
+#include "../grid.h"
 #include "../point.h"
 #include "../wrapped_point.h"
 #include <cmath>
@@ -51,7 +52,7 @@ ShockBolt::ShockBolt(WrappedPoint origin, Point facing_dir, Object *owner)
 }
 
 Object *ShockBolt::seek_target(const Point &tip, std::list<Object*> *lst,
-                               float &best_dist) const {
+                               float &best_dist, bool asteroid_list) const {
   Object *best = NULL;
   if (!lst) return best;
   for (Object *o : *lst) {
@@ -59,11 +60,13 @@ Object *ShockBolt::seek_target(const Point &tip, std::list<Object*> *lst,
     if (!o->alive) continue;
     // Invincible ASTEROIDS are not sought: the arc would only dead-end on a
     // rock it can't destroy, wasting the bolt, so it ignores them and chains
-    // to killable targets instead. Invincible SHIPS (a shielded/god-mode
-    // player under friendly fire) stay eligible — the arc paths to and stops
-    // at them rather than arcing past.
-    if (Asteroid *ast = dynamic_cast<Asteroid *>(o))
-      if (ast->invincible) continue;
+    // to killable targets instead (they still BLOCK — see grow_segment).
+    // The asteroid list is statically all-Asteroid (the ship's missile list
+    // is the game's asteroid list), so no RTTI is needed; the hostiles list
+    // never contains asteroids, so it skips the check entirely. Invincible
+    // SHIPS (a shielded/god-mode player under friendly fire) stay eligible —
+    // the arc paths to and stops at them rather than arcing past.
+    if (asteroid_list && static_cast<Asteroid *>(o)->invincible) continue;
     bool skip = false;
     for (Object *a : avoid) if (a == o) { skip = true; break; }
     if (skip) continue;
@@ -83,13 +86,14 @@ Object *ShockBolt::seek_target(const Point &tip, std::list<Object*> *lst,
   return best;
 }
 
-void ShockBolt::grow_segment(std::list<Object*> *asteroids, std::list<Object*> *hostiles) {
+void ShockBolt::grow_segment(std::list<Object*> *asteroids, std::list<Object*> *hostiles,
+                             const Grid *grid) {
   const Point tip = points.back();
 
   // Pick the single nearest target across asteroids and hostiles.
   float best = SEEK_RANGE;
-  Object *target = seek_target(tip, asteroids, best);
-  Object *h = seek_target(tip, hostiles, best);
+  Object *target = seek_target(tip, asteroids, best, /*asteroid_list=*/true);
+  Object *h = seek_target(tip, hostiles, best, /*asteroid_list=*/false);
   if (h) target = h;
 
   // Base direction: toward the target if we found one, else keep travelling.
@@ -116,10 +120,15 @@ void ShockBolt::grow_segment(std::list<Object*> *asteroids, std::list<Object*> *
   // still BLOCK the arc, like the lance: if this segment runs into one, the
   // bolt stops at its surface instead of arcing through. Test the whole
   // segment, not just the endpoint, so a 55-unit step can't tunnel through a
-  // small rock. Stop here directly (spark at the surface) — nothing to score,
-  // so no struck entry — and the ended polyline replicates as-is.
-  if (asteroids) {
-    for (Object *o : *asteroids) {
+  // small rock. Candidates come from the collision grid (segment query, like
+  // the bullet sweep) rather than a full asteroid scan — CLAUDE.md convention
+  // 6. Stop here directly (spark at the surface) — nothing to score, so no
+  // struck entry — and the ended polyline replicates as-is.
+  if (grid) {
+    static std::vector<Object *> block_candidates;
+    block_candidates.clear();
+    grid->query_segment(tip, next, block_candidates);
+    for (Object *o : block_candidates) {
       if (!o->alive) continue;
       Asteroid *ast = dynamic_cast<Asteroid *>(o);
       if (!ast || !ast->invincible) continue;
@@ -187,11 +196,12 @@ void ShockBolt::stop() {
   }
 }
 
-void ShockBolt::step_bolt(int delta, std::list<Object*> *asteroids, std::list<Object*> *hostiles) {
+void ShockBolt::step_bolt(int delta, std::list<Object*> *asteroids, std::list<Object*> *hostiles,
+                          const Grid *grid) {
   seg_accum += delta;
   while (growing && (int)points.size() <= MAX_SEGMENTS && seg_accum >= SEG_MS) {
     seg_accum -= SEG_MS;
-    grow_segment(asteroids, hostiles);
+    grow_segment(asteroids, hostiles, grid);
   }
   if ((int)points.size() > MAX_SEGMENTS) growing = false;
   if (!growing) life -= (float)delta / FADE_MS;

@@ -132,6 +132,7 @@ static void main_loop() {
             return;
 
         case SDL_KEYDOWN: {
+            if (e.key.repeat) break; // game tracks held state itself; ignore SDL repeats
             SDL_Keycode k = e.key.keysym.sym;
             unsigned char key = (k < 128) ? (unsigned char)k : 0;
             if (!key) switch (k) {

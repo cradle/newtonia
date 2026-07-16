@@ -59,6 +59,13 @@ shot $A shock-host; shot $B shock-joiner
 
 kill $PA $PB 2>/dev/null; wait $PA $PB 2>/dev/null
 assert_clean "$OUT/host.log" "$OUT/joiner.log"
-echo "host  shock bolts received: $(grep -ac 'shock bolt received' "$OUT/host.log")"
-echo "joiner shock bolts received: $(grep -ac 'shock bolt received' "$OUT/joiner.log")"
+HB=$(grep -ac 'shock bolt received' "$OUT/host.log")
+JB=$(grep -ac 'shock bolt received' "$OUT/joiner.log")
+echo "host  shock bolts received: $HB"
+echo "joiner shock bolts received: $JB"
+# Semi-auto UPPER BOUND: six discrete pulls per side must yield ~6 bolts, not
+# the ~40 an automatic (or auto-repeat-defeated) shock would emit while held.
+# Without this assert the semi-auto claim was documented but never enforced.
+[ "$HB" -le 12 ] && [ "$JB" -le 12 ] || {
+  echo "FAIL: bolt count exceeds semi-auto bound (one per pull, 6 pulls)"; exit 1; }
 echo "SHOCK-E2E-OK"

@@ -61,9 +61,10 @@ grep -aq "hazard replica spawned (kind 0)" "$OUT/joiner.log" || {
   echo "FAIL: joiner never replicated the pulsar"; kill $PA $PB; exit 1; }
 
 # The grant hook re-stocks every primary and leaves SHOCK selected (add_shock
-# splices it to the current slot), so DON'T cycle — just hold fire. Both spin
-# (rotate held) so the arcs sweep the pulsar. Shock is automatic while held (a
-# bolt every 200 ms). Pulsar is non-lethal, so the joiner keeps firing.
+# splices it to the current slot), so DON'T cycle. Shock is SEMI-AUTOMATIC —
+# one bolt per trigger pull — so each round below is a discrete press. Both
+# spin (rotate held) so the arcs sweep the pulsar. Pulsar is non-lethal, so
+# the joiner keeps firing.
 echo "== both spin-fire shock across the pulsar field"
 xdotool keydown --window $A d; xdotool keydown --window $B a
 for round in $(seq 1 10); do

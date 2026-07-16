@@ -484,6 +484,12 @@ void init(int &argc, char* argv[], float width, float height) {
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
   glutDisplayFunc(draw);
+  // Deliver only real presses: without this, holding a key streams
+  // auto-repeat keydowns that re-arm the semi-automatic primaries
+  // (Beam/Lance/Shock disarm after each bolt) every repeat — a held fire
+  // key kept firing despite the one-bolt-per-pull design. The game tracks
+  // held state itself via keyboard_up, so repeats carry no information.
+  glutIgnoreKeyRepeat(1);
   glutKeyboardFunc(keyboard);
   glutKeyboardUpFunc(keyboard_up);
   glutSpecialFunc(special);

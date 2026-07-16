@@ -1065,6 +1065,7 @@ void Ship::reset(bool was_killed) {
   thrusting = false;
   reversing = false;
   shoot(false);
+  net_queued_shot_presses = 0;  // don't fire stale presses across a respawn
   // On a net client reset() runs inside EVERY 10 Hz snapshot restore
   // (restore_state → respawn) — the same story as debris/lance_pulses
   // below. Clearing the projectile lists here emptied them moments before
@@ -1390,18 +1391,17 @@ void Ship::collide_grid(Grid &grid, int delta) {
   // single player only — the net client never calls collide_grid, so it drains
   // its shock struck lists (asteroid claims included) in GLGame::tick_net_client.
   //
-  // The arc only chains onward from a *killing* hit: if the asteroid is
-  // invincible, or survives the hit (tough with health left, phasing while a
-  // ghost, teleporting mid-evade), the bolt stops where it is instead of arcing
-  // past to the next target.
+  // The arc only chains onward from a *killing* hit: if the asteroid survives
+  // the hit (tough with health left, phasing while a ghost, teleporting
+  // mid-evade), the bolt stops where it is instead of arcing past to the next
+  // target. Invincible asteroids never appear here: they are not sought and
+  // grow_segment stops the bolt at their surface without a struck entry.
   for(auto &bolt : shocks) {
     for(size_t i = 0; i < bolt.struck.size(); ) {
       Object *obj = bolt.struck[i];
       if(dynamic_cast<Asteroid*>(obj)) {
         if(obj->alive) {
-          if(obj->invincible) {
-            bolt.stop();  // absorbed by an invincible asteroid
-          } else if(obj->kill()) {
+          if(obj->kill()) {
             score += obj->get_value() * multiplier();
             credit_asteroid_kill(obj);  // destroyed — arc chains onward
           } else {
@@ -2369,6 +2369,32 @@ void Ship::step(float delta, const Grid &grid) {
       }
     }
 
+    // Replay queued remote trigger presses (host side, PROTO 12 INPUT): a
+    // semi-automatic primary fires once per press, so presses the client
+    // batched into one INPUT delta (a lost-packet blackout straddling two
+    // real fires) must arm the weapon once EACH across successive steps —
+    // collapsing them into a single shoot(true) fired once while the client
+    // decremented twice, and the ammo clamp then pinned the divergence.
+    // Automatics consume the whole queue in one arm (extra presses are
+    // meaningless while held). Local ships never queue (only the host's
+    // INPUT handler feeds it).
+    if(net_queued_shot_presses > 0 && !primary_weapons.empty()) {
+      if((*primary)->is_automatic()) {
+        shoot(true);                   // held-fire: one arm covers every press
+        net_queued_shot_presses = 0;
+      } else if(!(*primary)->is_shooting()) {
+        shoot(true);                   // replay one press per step
+        net_queued_shot_presses--;
+      } else {
+        // Still armed at drain time = a primary that never self-disarms
+        // (god mode). Extra presses are meaningless while it holds, and
+        // leaving them queued would block the release-disarm in the INPUT
+        // handler (it waits for an empty queue). Semi-autos are never armed
+        // here — they disarm in their own step(), after this drain.
+        net_queued_shot_presses = 0;
+      }
+    }
+
     for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ) {
       (*it)->step(delta);
       Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
@@ -2531,7 +2557,7 @@ void Ship::step(float delta, const Grid &grid) {
   // has been drained (asteroids in collide_grid, hostiles in GLGame) so no hit is
   // dropped on the frame it dies.
   for(size_t i = 0; i < shocks.size(); ) {
-    shocks[i].step_bolt(delta, missile_asteroids, shock_targets);
+    shocks[i].step_bolt(delta, missile_asteroids, shock_targets, &grid);
     // PROTO 22: once a bolt is done growing, report its exact polyline to the
     // peer so the remote flash uses identical segments (a re-seek would
     // diverge — grow_segment jitters with rand()). "Done growing" is either

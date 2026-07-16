@@ -232,6 +232,13 @@ class Ship : public CompositeObject {
     // of re-rolling its own gun sim (independent rand() spread made the
     // two copies of every shot fly on different headings).
     bool net_report_shots = false;
+    // Host side, PROTO 12 INPUT: trigger presses the client batched into one
+    // INPUT delta (a lost-packet blackout straddling two real semi-auto
+    // fires). Ship::step replays one press per step onto the primary so the
+    // host's ammo decrements once per CLIENT press, not once per INPUT —
+    // collapsing them fired once for N presses and desynced ammo. Fed only
+    // by GLGame's INPUT handler; cleared on reset().
+    int net_queued_shot_presses = 0;
     uint32_t net_shot_seq = 0;  // id mint for reported shots
     struct NetShotReport {
       uint32_t id;

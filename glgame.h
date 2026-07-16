@@ -270,14 +270,28 @@ private:
   int net_est_anchor_host_ = -1;   // host clock at the last accepted apply
   int net_est_anchor_local_ = -1;  // our current_time at that moment
   int net_stale_streak_ = 0;       // consecutive stale drops (see hatch)
-  // Client anti-flicker for limited-ammo primaries (Beam/Lance/Shock): the
-  // client fires locally and decrements ammo instantly, but the host's 10 Hz
-  // snapshot lags ~1 RTT and would restore the pre-fire (higher) count for a
-  // beat. net_apply_state suppresses a snapshot INCREASE on the local ship's
-  // primaries unless a pickup is legitimately expected — this latch, armed by
-  // the reliable EV_PICKUP event and consumed the moment the increase lands
-  // (or timed out) so a host-only pickup can't leave it stuck open.
-  int net_pickup_latch_ = 0;       // applies during which a primary ammo rise is real
+  // Client anti-flicker for limited-ammo primaries (Beam/Lance/Shock/GodMode):
+  // the client fires locally and decrements ammo instantly, but the host's
+  // 10 Hz snapshot lags ~1 RTT and would restore the pre-fire (higher) count
+  // for a beat. net_apply_state suppresses a snapshot INCREASE on the local
+  // ship's primaries unless a pickup is legitimately expected — a PER-WEAPON
+  // latch, armed by the reliable EV_PICKUP event whose arg names the kind
+  // (only when OUR ship collected a primary-ammo pickup) and consumed the
+  // moment that weapon's increase lands (or timed out). One shared scalar
+  // armed by any pickup mis-fired both ways: a lag blip on weapon A consumed
+  // the latch meant for weapon B's real pickup (pinning B's ammo low for the
+  // rest of the generation), and an unrelated host-side pickup admitted a
+  // blip as if it were real.
+  enum NetPrimaryKind { NET_PRIM_NONE = 0, NET_PRIM_BEAM = 1, NET_PRIM_LANCE = 2,
+                        NET_PRIM_SHOCK = 3, NET_PRIM_GOD = 4, NET_PRIMARY_KINDS = 5 };
+  int net_pickup_latch_[NET_PRIMARY_KINDS] = {0, 0, 0, 0, 0};
+  // Per-poll budget for the EVENT codes that do real work (EV_RAM_BLAST
+  // spawns bullets, EV_ACHIEVEMENT pokes the platform SDK). EVENT itself is
+  // never drop-gated by the flood budgets — it is reliable+ordered and
+  // stateful, so a dropped one is gone for good — but its heavy effects
+  // bound themselves here instead. Reset at the top of each poll.
+  static const int NET_EVENT_EFFECTS_PER_POLL = 8;
+  int net_event_effect_budget_ = NET_EVENT_EFFECTS_PER_POLL;
 
   // Diagnosis telemetry, no gameplay effect. Host: input-gap forensics —
   // when a gap ends, a 1.5 s observation window counts what arrives so

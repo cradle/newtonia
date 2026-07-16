@@ -13,6 +13,9 @@
 #endif
 #include "glship.h"
 #include "weapon/default.h"
+#include "weapon/beam.h"
+#include "weapon/lance.h"
+#include "weapon/god_mode.h"
 #include "net_signal.h"
 #include "net_transport.h"
 #include "glcar.h"
@@ -109,6 +112,32 @@ const float GLGame::shock_pickup_drop_chance = 0.003125f;
 // Defined below; used by the host's MSG_SHOCK handler above it.
 static bool shock_bolt_reaches(const std::vector<Point> &pts,
                                const WrappedPoint &pos, float radius);
+
+// THE single Save::Pickup -> Pickup* factory, shared by the savefile-load
+// constructor and the net client's snapshot rebuild (net_apply_state). Those
+// used to be two hand-maintained copies of the same switch, and every new
+// PickupType so far (Beam/Lance, then Shock) shipped with the net copy
+// missed — the pickup existed in saves but was invisible on net clients.
+// One switch, no default: a future enum value the switch doesn't handle is
+// a -Wswitch warning here instead of an invisible-online runtime gap.
+static Pickup *make_pickup(const Save::Pickup &sp) {
+  WrappedPoint pos(sp.pos_x, sp.pos_y);
+  switch (sp.type) {
+    case Save::PickupType::Weapon:      return new WeaponPickup(pos, sp.weapon_index);
+    case Save::PickupType::Mine:        return new MinePickup(pos);
+    case Save::PickupType::GigaMine:    return new GigaMinePickup(pos);
+    case Save::PickupType::Missile:     return new MissilePickup(pos);
+    case Save::PickupType::Shield:      return new ShieldPickup(pos);
+    case Save::PickupType::GodMode:     return new GodModePickup(pos);
+    case Save::PickupType::ExtraLife:   return new ExtraLife(pos);
+    case Save::PickupType::NovaCharge:  return new NovaChargePickup(pos);
+    case Save::PickupType::Beam:        return new BeamPickup(pos);
+    case Save::PickupType::Lance:       return new LancePickup(pos);
+    case Save::PickupType::Revive:      return new RevivePickup(pos);
+    case Save::PickupType::ShockWeapon: return new ShockPickup(pos);
+  }
+  return NULL;  // unknown value from a newer save: skip, matching old behavior
+}
 // Co-op revive: rolled INDEPENDENTLY of the cumulative table above, only
 // while a partner is fully out of lives and no revive is already in the
 // world — generous by design, it is the fallen player's only way back.
@@ -454,24 +483,10 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   }
   grid.update((std::list<Object*>*)objects);
 
-  // Restore pickups
+  // Restore pickups (make_pickup: the single shared PickupType switch)
   for (const auto &sp : save.pickups) {
-    WrappedPoint pos(sp.pos_x, sp.pos_y);
-    switch (sp.type) {
-      case Save::PickupType::Weapon:   pickups->push_back(new WeaponPickup(pos, sp.weapon_index)); break;
-      case Save::PickupType::Mine:     pickups->push_back(new MinePickup(pos)); break;
-      case Save::PickupType::GigaMine: pickups->push_back(new GigaMinePickup(pos)); break;
-      case Save::PickupType::Missile:  pickups->push_back(new MissilePickup(pos)); break;
-      case Save::PickupType::Shield:   pickups->push_back(new ShieldPickup(pos)); break;
-      case Save::PickupType::GodMode:  pickups->push_back(new GodModePickup(pos)); break;
-      case Save::PickupType::ExtraLife: pickups->push_back(new ExtraLife(pos)); break;
-      case Save::PickupType::NovaCharge: pickups->push_back(new NovaChargePickup(pos)); break;
-      case Save::PickupType::Beam:     pickups->push_back(new BeamPickup(pos)); break;
-      case Save::PickupType::Lance:    pickups->push_back(new LancePickup(pos)); break;
-      case Save::PickupType::Revive:   pickups->push_back(new RevivePickup(pos)); break;
-      case Save::PickupType::ShockWeapon: pickups->push_back(new ShockPickup(pos)); break;
-      default: break;
-    }
+    Pickup *p = make_pickup(sp);
+    if (p) pickups->push_back(p);
   }
 
   // Restore black holes
@@ -1292,14 +1307,22 @@ void GLGame::net_host_poll() {
   // channels would otherwise make us allocate (bullets/lance_pulses/shocks)
   // and work without bound in this single drain. Two budgets per poll: a
   // total read-loop cap so a message storm can't spin here, and a shared
-  // action budget across every spawn/claim family so per-frame allocation
+  // action budget across the droppable families so per-frame allocation
   // stays bounded. A legitimate client never approaches either (a busy frame
   // is a handful of shots + one INPUT); over budget we drop the effect and
-  // keep draining. INPUT/EVENT/ping are never gated — control must flow.
+  // keep draining. NEVER gated: INPUT (the pose/control stream — cheap, and
+  // the read-loop cap bounds it) and EVENT (reliable+ordered and stateful —
+  // a dropped EV_PAUSE/EV_BYE/EV_PICKUP is consumed from SCTP, never
+  // redelivered, and no snapshot reconciles it; a post-stall backlog can
+  // legitimately exceed the budget in one drain. EVENT's two heavy codes are
+  // bounded separately — see net_event_effect_budget_). PING stays counted:
+  // that bounds the pong reflection, at worst staling the RTT lead until
+  // the flood ends.
   const int NET_MAX_MSGS_PER_POLL = 512;    // read-loop bound
   const int NET_MAX_ACTIONS_PER_POLL = 64;  // spawn/claim effects acted on
   int net_msgs_seen = 0, net_actions = 0;
   bool net_action_cap_logged = false;
+  net_event_effect_budget_ = NET_EVENT_EFFECTS_PER_POLL;
 
   std::vector<unsigned char> msg;
   while (t->poll(msg)) {
@@ -1311,14 +1334,7 @@ void GLGame::net_host_poll() {
     Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
     Net::Header h;
     if (!Net::read_header(r, h)) continue;
-    // Every client->host message EXCEPT the INPUT control stream shares one
-    // per-poll action budget. Broader than just the spawn/claim families on
-    // purpose: some EVENTs also do real work (EV_RAM_BLAST spawns 10 bullets,
-    // EV_ACHIEVEMENT pokes the achievements backend), and counting PING here
-    // bounds the pong reflection. INPUT is the pose/control stream and must
-    // always flow, but it is cheap (a seq check + pose adopt) and the
-    // read-loop cap above bounds it. Over budget: drop and keep draining.
-    if (h.msg_type != Net::MSG_INPUT &&
+    if (h.msg_type != Net::MSG_INPUT && h.msg_type != Net::MSG_EVENT &&
         ++net_actions > NET_MAX_ACTIONS_PER_POLL) {
       if (!net_action_cap_logged) {
         NET_LOG("net: action budget %d/poll hit - dropping flood\n",
@@ -1731,9 +1747,16 @@ void GLGame::net_host_poll() {
     // (which disarm themselves after each shot) thus fire once per press,
     // automatics keep firing while held, and hold-style weapons like the
     // shield stay active — all without inspecting the weapon type.
+    // Presses are QUEUED (clamped like the other wrap counters below), not
+    // collapsed into one shoot(true): a lost-INPUT blackout straddling two
+    // real semi-auto fires delivers shot_presses==2 on recovery, and firing
+    // once for two client fires desynced the ammo — Ship::step replays one
+    // queued press per step so the host decrements once per CLIENT press.
     if (shot_presses)
-      remote->shoot(true);
-    else if (!(held & Net::IN_SHOOT))
+      remote->net_queued_shot_presses +=
+          (shot_presses > 4 ? 4 : shot_presses);
+    else if (!(held & Net::IN_SHOOT) &&
+             remote->net_queued_shot_presses == 0)
       remote->shoot(false);
     if (sec_presses)
       remote->fire_secondary(true);
@@ -2393,7 +2416,12 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
     case Net::EV_ACHIEVEMENT: {
       // The host's sim detected an unlock it attributes to OUR ship (ram
       // kills and station kills only resolve host-side). Our own cheat
-      // suppression still applies inside unlock().
+      // suppression still applies inside unlock(). Effect-budgeted: EVENT is
+      // never drop-gated by the polls (reliable control must flow), so the
+      // codes that do real work bound themselves instead — a flood of these
+      // would otherwise hammer the platform achievements SDK.
+      if (net_event_effect_budget_ <= 0) break;
+      net_event_effect_budget_--;
       if (arg == Net::ACH_SHIELD_RAM) Achievements::unlock("shield_ram");
       else if (arg == Net::ACH_SHIELD_RAM_ASTEROID) Achievements::unlock("shield_ram_asteroid");
       else if (arg == Net::ACH_MINI_STATION_KILL) Achievements::unlock("mini_station_kill");
@@ -2407,7 +2435,11 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
       // into REAL bullets: instant local kills + bullet_id-0 claims,
       // exactly like an own-mine explosion. Our pose is authoritative and
       // the host adopted it, so blasting at our current position lands
-      // where the player just saw the impact.
+      // where the player just saw the impact. Effect-budgeted (see
+      // EV_ACHIEVEMENT): each blast spawns ~10 bullets, and EVENT itself is
+      // never drop-gated, so the spawn bounds itself per poll.
+      if (net_event_effect_budget_ <= 0) break;
+      net_event_effect_budget_--;
       if (!players->empty()) {
         Ship *me = players->back()->ship;
         if (me->is_alive())
@@ -2453,12 +2485,18 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
       if (pickup_sound)
         Mix_PlayChannel(-1, pickup_sound, 0);
       // A pickup was collected host-side; its ammo bump reaches us only via
-      // the next snapshot. Arm the anti-flicker latch so net_apply_state
-      // accepts the coming INCREASE on the local ship's primaries instead of
-      // clamping it away as a lag blip. Consumed on the first accepted rise,
-      // and self-expiring (~1.2 s) so a pickup the HOST grabbed can't leave
-      // our clamp disabled indefinitely.
-      net_pickup_latch_ = 12;
+      // the next snapshot. `arg` names WHICH of OUR limited primaries gained
+      // ammo (NetPrimaryKind; 0 = a pickup that changes none of our primary
+      // ammo — the host's own, or a non-primary type). Arm that weapon's
+      // anti-flicker latch so net_apply_state accepts the coming INCREASE on
+      // exactly that primary instead of clamping it away as a lag blip. The
+      // latch was originally ONE shared scalar armed by ANY pickup — so a
+      // lag blip on a different weapon could consume it (permanently pinning
+      // the real pickup's ammo low) and an unrelated host-side pickup could
+      // launder a blip through. Keyed per weapon, neither can happen.
+      // Consumed on the accepted rise; self-expiring (~1.2 s).
+      if (arg >= 1 && arg < NET_PRIMARY_KINDS)
+        net_pickup_latch_[arg] = 12;
       break;
     case Net::EV_ROID_BOUNCE:
       // Asteroid-vs-reflective bounce; arg is the volume the host
@@ -3180,17 +3218,15 @@ void GLGame::tick_net_client(int delta) {
       for (auto &bolt : sme->shocks) {
         for (Object *obj : bolt.struck) {
           if (Asteroid *a = dynamic_cast<Asteroid *>(obj)) {
+            // Invincible asteroids never appear here: they are not sought
+            // and grow_segment stops the bolt at their surface without a
+            // struck entry. (Even if one slipped through, the host's MSG_HIT
+            // handler refuses claims on invincible rocks.)
             if (a->alive) {
-              if (a->invincible) {
-                // Absorbed — the arc ends here instead of chaining past, just
-                // like the host's collide_grid drain (master's stop() rule).
-                bolt.stop();
-              } else {
-                Ship::NetKillClaim c;
-                c.ast_id = a->net_id;
-                c.bullet_id = 0;
-                Ship::net_kill_claims.push_back(c);
-              }
+              Ship::NetKillClaim c;
+              c.ast_id = a->net_id;
+              c.bullet_id = 0;
+              Ship::net_kill_claims.push_back(c);
             }
             continue;
           }
@@ -3519,13 +3555,19 @@ void GLGame::net_client_poll() {
   // Flood guard, symmetric with net_host_poll: the host is an untrusted peer
   // too, and its SHOT/LANCE/SHOCK echoes each allocate (bullets/lance_pulses/
   // shocks) on our side. Same two budgets — a read-loop cap so a message storm
-  // can't spin, and a shared action budget across the spawn family. The state
-  // stream (DELTA/SNAPSHOT_CHUNK) is left out of the tight budget: it is
-  // essential and already stale-gated, and the read-loop cap bounds it.
+  // can't spin, and a shared action budget across the spawn family. NEVER
+  // gated: the state stream (DELTA/SNAPSHOT_CHUNK — essential and already
+  // stale-gated) and EVENT (reliable+ordered and stateful: a dropped
+  // EV_PAUSE/EV_BYE/EV_PICKUP is consumed from SCTP, never redelivered, and
+  // no snapshot reconciles it; a post-stall backlog can legitimately exceed
+  // the budget in one drain. EVENT's heavy codes are bounded separately —
+  // net_event_effect_budget_). PING stays counted (bounds the pong
+  // reflection; worst case the RTT lead stales until the flood ends).
   const int NET_MAX_MSGS_PER_POLL = 512;
   const int NET_MAX_ACTIONS_PER_POLL = 64;
   int net_msgs_seen = 0, net_actions = 0;
   bool net_action_cap_logged = false;
+  net_event_effect_budget_ = NET_EVENT_EFFECTS_PER_POLL;
 
   std::vector<unsigned char> msg;
   while (t->poll(msg)) {
@@ -3544,12 +3586,8 @@ void GLGame::net_client_poll() {
     Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
     Net::Header h;
     if (!Net::read_header(r, h)) continue;
-    // Every host->client message EXCEPT the state stream (DELTA/SNAPSHOT_CHUNK,
-    // essential and already stale-gated) shares one per-poll action budget —
-    // mirrors net_host_poll. Broader than the spawn family on purpose: EVENTs
-    // can spawn too (EV_RAM_BLAST -> 10 bullets) and counting PING bounds the
-    // pong reflection. Over budget: drop and keep draining.
     if (h.msg_type != Net::MSG_DELTA && h.msg_type != Net::MSG_SNAPSHOT_CHUNK &&
+        h.msg_type != Net::MSG_EVENT &&
         ++net_actions > NET_MAX_ACTIONS_PER_POLL) {
       if (!net_action_cap_logged) {
         NET_LOG("net: rx action budget %d/poll hit - dropping flood\n",
@@ -3874,10 +3912,13 @@ void GLGame::net_apply_state(const Save::GameState &s) {
   // the snapshot then repopulates everything below).
   const bool world_rebuilt = s.world_x != world.x() || s.world_y != world.y();
   net_world_rebuilt_last_apply_ = world_rebuilt;
-  // Age the primary-ammo anti-flicker latch once per apply. A level rebuild
-  // clears every pickup and refills nothing, so any pending latch is stale.
-  if (world_rebuilt) net_pickup_latch_ = 0;
-  else if (net_pickup_latch_ > 0) net_pickup_latch_--;
+  // Age the per-weapon primary-ammo anti-flicker latches once per apply. A
+  // level rebuild clears every pickup and refills nothing, so any pending
+  // latch is stale.
+  for (int k = 1; k < NET_PRIMARY_KINDS; k++) {
+    if (world_rebuilt) net_pickup_latch_[k] = 0;
+    else if (net_pickup_latch_[k] > 0) net_pickup_latch_[k]--;
+  }
   if (world_rebuilt) {
     // Level-clear achievements, mirroring the host's num_killable==0 block
     // (which never runs on a client): everything they need replicates —
@@ -4042,9 +4083,12 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       ship->rotate_right(held_right);
       ship->thrust(held_thrust);
       ship->reverse(held_reverse);
-      // Shock fires the instant it is re-armed (its shoot() calls try_fire
-      // straight away), so its preserved cooldown must be restored BEFORE the
-      // shoot() below — unlike the Default gun, whose fire waits for step().
+      // Restore the preserved Shock cooldown before re-arming: a fresh Shock
+      // (cooldown 0) fires on its first armed step(), so re-arming below with
+      // a zeroed cooldown would emit an extra bolt+sound every snapshot while
+      // the trigger is held. (Shock::shoot() no longer fires directly — the
+      // semi-auto rewrite moved firing into step() — but the ordering still
+      // matters for that first post-restore step.)
       if (shock_cooldown >= 0 && !ship->primary_weapons.empty()) {
         Weapon::Shock *sw = dynamic_cast<Weapon::Shock *>(*ship->primary);
         if (sw) sw->set_cooldown(shock_cooldown);
@@ -4063,16 +4107,23 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       // with the snapshot's copy. If that copy is HIGHER than what we held a
       // moment ago, the host simply hasn't seen our latest shots yet — clamp
       // it back down so the counter doesn't blip up for a round trip. A
-      // genuine pickup is exempted by the EV_PICKUP latch (consumed here on
-      // the first real rise). A snapshot that is lower or equal is the host's
-      // authoritative decrement and passes through untouched.
+      // genuine pickup is exempted by THAT WEAPON's EV_PICKUP latch (keyed by
+      // kind and consumed on its rise — a shared latch let a blip on one
+      // weapon steal the exemption meant for another's real pickup, pinning
+      // the real gain low every apply thereafter). Lower-or-equal snapshots
+      // are the host's authoritative decrements and pass through untouched.
       for (auto *w : ship->primary_weapons) {
         auto pi = pre_primary_ammo.find(w->name());
         if (pi == pre_primary_ammo.end()) continue;
         int pre = pi->second, snap = w->ammo();
         if (snap > pre) {
-          if (net_pickup_latch_ > 0)
-            net_pickup_latch_ = 0;   // real pickup: accept and consume
+          int kind = NET_PRIM_NONE;
+          if (dynamic_cast<Weapon::Beam *>(w)) kind = NET_PRIM_BEAM;
+          else if (dynamic_cast<Weapon::Lance *>(w)) kind = NET_PRIM_LANCE;
+          else if (dynamic_cast<Weapon::Shock *>(w)) kind = NET_PRIM_SHOCK;
+          else if (dynamic_cast<Weapon::GodMode *>(w)) kind = NET_PRIM_GOD;
+          if (kind != NET_PRIM_NONE && net_pickup_latch_[kind] > 0)
+            net_pickup_latch_[kind] = 0;  // this weapon's real pickup: accept
           else
             w->set_ammo(pre);        // lag blip: suppress the upward flicker
         }
@@ -4105,23 +4156,11 @@ void GLGame::net_apply_state(const Save::GameState &s) {
   }
   if (!pickups_same) {
     while (!pickups->empty()) { delete pickups->back(); pickups->pop_back(); }
+    // make_pickup: the single shared PickupType switch — this rebuild used to
+    // be a hand-maintained copy that silently missed every new pickup type.
     for (const auto &sp : s.pickups) {
-      WrappedPoint pos(sp.pos_x, sp.pos_y);
-      switch (sp.type) {
-        case Save::PickupType::Weapon:   pickups->push_back(new WeaponPickup(pos, sp.weapon_index)); break;
-        case Save::PickupType::Mine:     pickups->push_back(new MinePickup(pos)); break;
-        case Save::PickupType::GigaMine: pickups->push_back(new GigaMinePickup(pos)); break;
-        case Save::PickupType::Missile:  pickups->push_back(new MissilePickup(pos)); break;
-        case Save::PickupType::Shield:   pickups->push_back(new ShieldPickup(pos)); break;
-        case Save::PickupType::GodMode:  pickups->push_back(new GodModePickup(pos)); break;
-        case Save::PickupType::ExtraLife: pickups->push_back(new ExtraLife(pos)); break;
-        case Save::PickupType::NovaCharge: pickups->push_back(new NovaChargePickup(pos)); break;
-        case Save::PickupType::Beam:     pickups->push_back(new BeamPickup(pos)); break;
-        case Save::PickupType::Lance:    pickups->push_back(new LancePickup(pos)); break;
-        case Save::PickupType::Revive:   pickups->push_back(new RevivePickup(pos)); break;
-        case Save::PickupType::ShockWeapon: pickups->push_back(new ShockPickup(pos)); break;
-        default: break;
-      }
+      Pickup *p = make_pickup(sp);
+      if (p) pickups->push_back(p);
     }
   }
 
@@ -5674,7 +5713,20 @@ void GLGame::tick(int delta) {
             revive_fallen_partner((*o)->ship);
           if(pickup_sound != NULL)
             Mix_PlayChannel(-1, pickup_sound, 0);
-          net_send_event(Net::EV_PICKUP);  // collection cue for the client
+          // Collection cue for the client. The arg names WHICH of the
+          // CLIENT's limited primaries gained ammo (NetPrimaryKind) so the
+          // client arms exactly that weapon's anti-flicker latch — 0 for the
+          // host's own pickups and for types that touch no primary ammo (see
+          // net_pickup_latch_ in glgame.h for why kind-blind arming misfired).
+          uint32_t pk = NET_PRIM_NONE;
+          if (net_mode_ == NetHost && remote_player() &&
+              (*o) == remote_player()) {
+            if (dynamic_cast<BeamPickup*>(*pi))         pk = NET_PRIM_BEAM;
+            else if (dynamic_cast<LancePickup*>(*pi))   pk = NET_PRIM_LANCE;
+            else if (dynamic_cast<ShockPickup*>(*pi))   pk = NET_PRIM_SHOCK;
+            else if (dynamic_cast<GodModePickup*>(*pi)) pk = NET_PRIM_GOD;
+          }
+          net_send_event(Net::EV_PICKUP, pk);
         }
       }
     }
@@ -6066,12 +6118,17 @@ bool GLGame::net_receive_shock_pulse(Net::Reader &r, Ship *shooter,
   return true;
 }
 
-// True if any vertex of a shock polyline is within (radius + HIT_RADIUS) of a
-// world object — the same reach grow_segment uses to register a hit, so the
-// host resolves station/mini contact from the client's bolt the same way.
+// True if the client's shock polyline STRUCK this body. When grow_segment
+// registers a hit it snaps the vertex onto the target's surface (surface_hit:
+// exactly `radius` from the centre for circle bodies — the raw f32 polyline
+// rides the wire unquantized), so a genuine hit always has a vertex at
+// distance <= radius + epsilon. Testing radius + HIT_RADIUS here (the seek
+// slack) instead made the host damage BYSTANDERS: any hazard/station/partner
+// a meandering vertex merely passed within ~16 units of took hull damage and
+// paid score the firing client never showed.
 static bool shock_bolt_reaches(const std::vector<Point> &pts,
                                const WrappedPoint &pos, float radius) {
-  float r = radius + ShockBolt::HIT_RADIUS;
+  float r = radius + 2.0f;  // surface-snap epsilon, not the seek slack
   for (const Point &p : pts) {
     Point c = pos.closest_to(p);
     float dx = c.x() - p.x(), dy = c.y() - p.y();
