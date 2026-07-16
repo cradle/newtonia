@@ -103,9 +103,9 @@ const float GLGame::giga_mine_pickup_drop_chance = 0.005f;
 const float GLGame::missile_pickup_drop_chance = 0.0125f;
 const float GLGame::shield_pickup_drop_chance = 0.0125f;
 const float GLGame::god_mode_pickup_drop_chance = 0.0025f;
-const float GLGame::beam_pickup_drop_chance = 0.0075f;
-const float GLGame::lance_pickup_drop_chance = 0.005f;
-const float GLGame::shock_pickup_drop_chance = 0.0125f;
+const float GLGame::beam_pickup_drop_chance = 0.00375f;
+const float GLGame::lance_pickup_drop_chance = 0.0025f;
+const float GLGame::shock_pickup_drop_chance = 0.00625f;
 // Defined below; used by the host's MSG_SHOCK handler above it.
 static bool shock_bolt_reaches(const std::vector<Point> &pts,
                                const WrappedPoint &pos, float radius);
