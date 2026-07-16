@@ -336,29 +336,7 @@ void Menu::tick(int delta) {
       r2_pressed = true;
       if(!r2_active) {
         r2_active = true;
-        if (attract_mode_) {
-          attract_mode_ = false;
-          return;
-        }
-        if (options_mode_) {
-          close_options();
-        } else if (quit_confirm_) {
-          if (quit_selection_ == 0) {
-            glutLeaveMainLoop();
-          } else {
-            quit_confirm_ = false;
-          }
-        } else if (new_confirm_) {
-          if (new_selection_ == 0) {
-            confirm_selection(ctrl);
-          } else {
-            new_confirm_ = false;
-          }
-        } else if (show_options_row() && menu_selection == max_menu_items() - 1) {
-          open_options();
-        } else {
-          confirm_selection(ctrl);
-        }
+        nav_input('\r', ctrl);  // trigger = confirm, same ladder as A/Start
         return;
       }
       break;
@@ -368,152 +346,13 @@ void Menu::tick(int delta) {
 }
 
 void Menu::controller(SDL_Event event) {
-  if (options_mode_) {
-    if (event.type == SDL_CONTROLLERBUTTONDOWN) {
-      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
-        if (active_row_ > 0) active_row_--;
-      } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
-        if (active_row_ < opt_row_count() - 1) active_row_++;
-      } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_LEFT) {
-        adjust_active_row(-1);
-      } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_RIGHT) {
-        adjust_active_row(1);
-      } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A ||
-                 event.cbutton.button == SDL_CONTROLLER_BUTTON_B ||
-                 event.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
-                 event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
-        close_options();
-      }
-    } else if (event.type == SDL_CONTROLLERAXISMOTION) {
-      if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
-        bool up   = event.caxis.value < -8000;
-        bool down = event.caxis.value >  8000;
-        if (up   && !left_stick_up_active   && active_row_ > 0) active_row_--;
-        if (down && !left_stick_down_active && active_row_ < opt_row_count() - 1) active_row_++;
-        left_stick_up_active   = up;
-        left_stick_down_active = down;
-      } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) {
-        bool l = event.caxis.value < -8000;
-        bool r = event.caxis.value >  8000;
-        if (l && !left_stick_left_active)  adjust_active_row(-1);
-        if (r && !left_stick_right_active) adjust_active_row(1);
-        left_stick_left_active  = l;
-        left_stick_right_active = r;
-      }
-    }
-    return;
-  }
-
-  int n = max_menu_items();
-  if (event.type == SDL_CONTROLLERBUTTONDOWN) {
-    if (attract_mode_) {
-      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A ||
-          event.cbutton.button == SDL_CONTROLLER_BUTTON_START) {
-        attract_mode_ = false;
-      }
-#ifndef __EMSCRIPTEN__
-      else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
-        attract_mode_ = false;
-        quit_confirm_ = true;
-        quit_selection_ = 0;
-      }
-#endif
-      return;
-    }
-    if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
-      if (new_confirm_) {
-        new_confirm_ = false; // dismiss = No
-        return;
-      }
-#ifndef __EMSCRIPTEN__
-      if (quit_confirm_) {
-        quit_confirm_ = false;
-      } else {
-        quit_confirm_ = true;
-        quit_selection_ = 0;
-      }
-#endif
-    } else if (quit_confirm_) {
-      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
-        quit_selection_ = 0;
-      } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
-        quit_selection_ = 1;
-      } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
-                 event.cbutton.button == SDL_CONTROLLER_BUTTON_A) {
-        if (quit_selection_ == 0) {
-          glutLeaveMainLoop();
-        } else {
-          quit_confirm_ = false;
-        }
-      }
-    } else if (new_confirm_) {
-      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
-        new_selection_ = 0;
-      } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
-        new_selection_ = 1;
-      } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
-                 event.cbutton.button == SDL_CONTROLLER_BUTTON_A) {
-        if (new_selection_ == 0) {
-          confirm_selection(SDL_GameControllerFromInstanceID(event.cbutton.which));
-        } else {
-          new_confirm_ = false;
-        }
-      } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_B) {
-        new_confirm_ = false;
-      }
-    } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
-      if (menu_selection > 0) menu_selection--;
-    } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
-      if (menu_selection < n - 1) menu_selection++;
-    } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
-               event.cbutton.button == SDL_CONTROLLER_BUTTON_A) {
-      if (show_options_row() && menu_selection == n - 1) {
-        open_options();
-      } else {
-        confirm_selection(SDL_GameControllerFromInstanceID(event.cbutton.which));
-      }
-    }
-  } else if (event.type == SDL_CONTROLLERAXISMOTION) {
-    if (event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) {
-      bool pressed = event.caxis.value > 8000;
-      if (pressed && !r2_active) {
-        r2_active = true;
-        if (quit_confirm_) {
-          if (quit_selection_ == 0) {
-            glutLeaveMainLoop();
-          } else {
-            quit_confirm_ = false;
-          }
-        } else if (new_confirm_) {
-          if (new_selection_ == 0) {
-            confirm_selection(SDL_GameControllerFromInstanceID(event.caxis.which));
-          } else {
-            new_confirm_ = false;
-          }
-        } else if (show_options_row() && menu_selection == n - 1) {
-          open_options();
-        } else {
-          confirm_selection(SDL_GameControllerFromInstanceID(event.caxis.which));
-        }
-      }
-      if (!pressed) r2_active = false;
-    } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
-      bool up   = event.caxis.value < -8000;
-      bool down = event.caxis.value >  8000;
-      if (quit_confirm_) {
-        if (up   && !left_stick_up_active)   quit_selection_ = 0;
-        if (down && !left_stick_down_active) quit_selection_ = 1;
-      } else if (new_confirm_) {
-        if (up   && !left_stick_up_active)   new_selection_ = 0;
-        if (down && !left_stick_down_active) new_selection_ = 1;
-      } else {
-        if (up   && !left_stick_up_active   && menu_selection > 0)     menu_selection--;
-        if (down && !left_stick_down_active && menu_selection < n - 1) menu_selection++;
-      }
-      left_stick_up_active   = up;
-      left_stick_down_active = down;
-    }
-  }
+  // Dpad / left stick / A / B / Start / Back / right-trigger all act
+  // through the same ladder the keyboard uses — one decision path per
+  // screen, so pad directionals and back work wherever keys do. The pad
+  // that confirmed rides along so confirm_selection can bind it to P1.
+  SDL_GameController *src = NULL;
+  unsigned char k = nav_key_from_controller(event, &src);
+  if (k) nav_input(k, src);
 }
 
 void Menu::keyboard(unsigned char key, int x, int y) {
@@ -521,7 +360,43 @@ void Menu::keyboard(unsigned char key, int x, int y) {
 
 void Menu::keyboard_up(unsigned char key, int x, int y) {
   key = nav_key(key);  // arrows navigate like WASD
-  // Options screen: platform-agnostic
+#if defined(__ANDROID__) || defined(__IOS__)
+  // Touch/mobile — touch_tap and back_pressed() handle ALL interaction
+  // (attract dismissal, row selection, confirms). The keys arriving here
+  // are only the ones the touch zones synthesize (\r, space, x, p);
+  // acting on them would double-handle the tap touch_tap already did.
+  // Controller input still works: it arrives via controller(), which
+  // feeds nav_input directly and never passes through this filter.
+  (void)key;
+  return;
+#else
+#ifdef __EMSCRIPTEN__
+  // Touch web: same as mobile — touch_tap owns all interaction and
+  // web_menu_tap() synthesizes a stray keyboard_up('\r') per tap.
+  if (is_touch_mode()) return;
+#endif
+  nav_input(key, nullptr);
+#endif
+}
+
+// The single menu decision ladder (see menu.h). Everything that navigates —
+// keyboard, controller buttons/stick, the tick() trigger poll — lands here,
+// so each screen's rules exist exactly once.
+void Menu::nav_input(unsigned char key, SDL_GameController *src) {
+  bool confirm = (key == ' ' || key == '\r' || key == '\n');
+  if (attract_mode_) {
+    if (confirm) {
+      attract_mode_ = false;
+    }
+#ifndef __EMSCRIPTEN__
+    else if (key == 27) {
+      attract_mode_ = false;
+      quit_confirm_ = true;
+      quit_selection_ = 0;
+    }
+#endif
+    return;
+  }
   if (options_mode_) {
     if (key == 'w' || key == 'W') {
       if (active_row_ > 0) active_row_--;
@@ -531,90 +406,16 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
       adjust_active_row(-1);
     } else if (key == 'd' || key == 'D') {
       adjust_active_row(1);
-    } else if (key == 27 || key == ' ' || key == '\r' || key == '\n') {
+    } else if (key == 27 || confirm) {
       close_options();
     }
     return;
   }
-
   int n = max_menu_items();
-
-#if defined(__ANDROID__) || defined(__IOS__)
-  // Touch/mobile — touch_tap and back_pressed() handle ALL interaction
-  // (attract dismissal, row selection, confirms). The keys arriving here
-  // are only the ones the touch zones synthesize (\r, space, x, p);
-  // acting on them would double-handle the tap touch_tap already did.
-  (void)n;
-  (void)key;
-  return;
-#elif defined(__EMSCRIPTEN__)
-  if (is_touch_mode()) {
-    // Touch web: same as mobile — touch_tap owns all interaction and
-    // web_menu_tap() synthesizes a stray keyboard_up('\r') per tap.
-    return;
-  } else {
-    // Keyboard web: w/s navigate, space/enter confirm
-    if (attract_mode_) {
-      if (key == ' ' || key == '\r' || key == '\n') attract_mode_ = false;
-      return;
-    }
-    if (quit_confirm_) {
-      if (key == 27) {
-        quit_confirm_ = false;
-      } else if (key == ' ' || key == '\r' || key == '\n') {
-        if (quit_selection_ == 0) {
-          glutLeaveMainLoop();
-        } else {
-          quit_confirm_ = false;
-        }
-      } else if (key == 'w' || key == 'W') {
-        quit_selection_ = 0;
-      } else if (key == 's' || key == 'S') {
-        quit_selection_ = 1;
-      }
-    } else if (new_confirm_) {
-      if (key == 27) {
-        new_confirm_ = false;
-      } else if (key == ' ' || key == '\r' || key == '\n') {
-        if (new_selection_ == 0) {
-          confirm_selection(nullptr);
-        } else {
-          new_confirm_ = false;
-        }
-      } else if (key == 'w' || key == 'W') {
-        new_selection_ = 0;
-      } else if (key == 's' || key == 'S') {
-        new_selection_ = 1;
-      }
-    } else {
-      if (key == ' ' || key == '\r' || key == '\n') {
-        if (show_options_row() && menu_selection == n - 1) {
-          open_options();
-        } else {
-          confirm_selection(nullptr);
-        }
-      } else if (key == 'w' || key == 'W') {
-        if (menu_selection > 0) menu_selection--;
-      } else if (key == 's' || key == 'S') {
-        if (menu_selection < n - 1) menu_selection++;
-      }
-    }
-  }
-#else
-  if (attract_mode_) {
-    if (key == ' ' || key == '\r' || key == '\n') {
-      attract_mode_ = false;
-    } else if (key == 27) {
-      attract_mode_ = false;
-      quit_confirm_ = true;
-      quit_selection_ = 0;
-    }
-    return;
-  }
   if (quit_confirm_) {
     if (key == 27) {
-      quit_confirm_ = false;
-    } else if (key == ' ' || key == '\r' || key == '\n') {
+      quit_confirm_ = false;  // back = No
+    } else if (confirm) {
       if (quit_selection_ == 0) {
         glutLeaveMainLoop();
       } else {
@@ -627,10 +428,10 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
     }
   } else if (new_confirm_) {
     if (key == 27) {
-      new_confirm_ = false;
-    } else if (key == ' ' || key == '\r' || key == '\n') {
+      new_confirm_ = false;  // back = No, keep the save
+    } else if (confirm) {
       if (new_selection_ == 0) {
-        confirm_selection(nullptr);
+        confirm_selection(src);
       } else {
         new_confirm_ = false;
       }
@@ -641,13 +442,17 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
     }
   } else {
     if (key == 27) {
+      // Quit confirmation is compiled out on web (the browser tab owns
+      // closing); Esc/B is a no-op on the root menu there.
+#ifndef __EMSCRIPTEN__
       quit_confirm_ = true;
       quit_selection_ = 0;
-    } else if (key == ' ' || key == '\r' || key == '\n') {
+#endif
+    } else if (confirm) {
       if (show_options_row() && menu_selection == n - 1) {
         open_options();
       } else {
-        confirm_selection(nullptr);
+        confirm_selection(src);
       }
     } else if (key == 'w' || key == 'W') {
       if (menu_selection > 0) menu_selection--;
@@ -655,7 +460,6 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
       if (menu_selection < n - 1) menu_selection++;
     }
   }
-#endif
 }
 
 bool Menu::back_pressed() {

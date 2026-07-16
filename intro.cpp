@@ -283,19 +283,23 @@ void Intro::keyboard_up(unsigned char key, int x, int y) {
 
 void Intro::controller(SDL_Event event) {
   if (is_finished()) return;
-  // Start (or Guide) pauses, matching the in-game pause button.
+  // Start (or Guide) pauses, matching the in-game pause button. Start must
+  // be claimed BEFORE the shared translation below folds it into confirm.
   if (event.type == SDL_CONTROLLERBUTTONDOWN &&
       (event.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
        event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE)) {
     toggle_pause();
     return;
   }
-  if (!paused && time >= input_delay_ms &&
-      ((event.type == SDL_CONTROLLERBUTTONDOWN &&
-        event.cbutton.button == SDL_CONTROLLER_BUTTON_A) ||
-       (event.type == SDL_CONTROLLERAXISMOTION &&
-        event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT &&
-        event.caxis.value > 8000))) {
+  // Shared nav language: A / right trigger = confirm (start the level),
+  // B / Back = Esc (leave to the menu, auto-saving — the keyboard's menu
+  // key already did this; a pad previously had no way out of an intro).
+  unsigned char k = nav_key_from_controller(event);
+  if (k == 27) {
+    leave_to_menu();
+    return;
+  }
+  if (k == '\r' && !paused && time >= input_delay_ms) {
     dismiss();
   }
 }

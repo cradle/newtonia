@@ -1241,12 +1241,22 @@ void NetLobby::keyboard_up(unsigned char key, int x, int y) {
   }
   // Touch platforms synthesize key-ups from finger zones ('p', '\r', ' ',
   // 'x'); touch_tap() owns all lobby interaction there, so acting on keys
-  // here would double-handle taps (and corrupt the code field).
+  // here would double-handle taps (and corrupt the code field). Controller
+  // input still works: it arrives via controller() -> nav_input directly.
   if (is_touch_mode()) return;
   // Code characters are consumed on key-down in keyboard(); swallowing
   // them here keeps V/C/W/S shortcuts from also firing while typing.
   if (screen_ == CodeEntry) return;
+  nav_input(key);
+}
+
+// The single lobby decision ladder (see net_lobby.h) — everything that
+// navigates off the CodeEntry screen lands here exactly once.
+void NetLobby::nav_input(unsigned char key) {
   switch (key) {
+    case 27:
+      leave_to_menu();
+      break;
     case 'w':
     case 'W':
       if (screen_ == Choose && selection_ > 0) selection_--;
@@ -1318,91 +1328,92 @@ void NetLobby::controller(SDL_Event event) {
          (event.caxis.value > STICK_ON || event.caxis.value < -STICK_ON)))
       floating_kb_up_ = false;
   }
+
+  // X (paste) and Y (copy) are lobby shortcuts on every screen, not nav.
   if (event.type == SDL_CONTROLLERBUTTONDOWN) {
-    switch (event.cbutton.button) {
-      case SDL_CONTROLLER_BUTTON_DPAD_UP:
-        if (screen_ == CodeEntry) picker_move(0, -1);
-        else if (screen_ == Choose && selection_ > 0) selection_--;
-        break;
-      case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
-        if (screen_ == CodeEntry) picker_move(0, 1);
-        else if (screen_ == Choose && selection_ < 1) selection_++;
-        break;
-      case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
-        if (screen_ == CodeEntry) picker_move(-1, 0);
-        break;
-      case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
-        if (screen_ == CodeEntry) picker_move(1, 0);
-        break;
-      case SDL_CONTROLLER_BUTTON_A:
-        controller_confirm();
-        break;
-      case SDL_CONTROLLER_BUTTON_X:
-        // CodeEntry advertises X - PASTE: re-run the clipboard CODE read
-        // as an explicit paste. start_paste() is the manual flow's SDP
-        // blob path and ignores a bare room code.
-        if (screen_ == CodeEntry) {
-          code_entry_.clear();  // the pasted code replaces partial typing
-          code_clip_explicit_ = true;
-          code_clip_pending_ = true;
-          net_clipboard_read_start();
-        } else {
-          start_paste();
-        }
-        break;
-      case SDL_CONTROLLER_BUTTON_Y:
-        copy_local_description();
-        break;
-      case SDL_CONTROLLER_BUTTON_B:
-        // Console convention: B deletes while there is something to
-        // delete, and only backs out of an empty code field (non-touch
-        // only — the soft keyboard owns code entry on touch).
-        if (screen_ == CodeEntry && !is_touch_mode() &&
-            !code_entry_.empty()) {
-          code_entry_key(8);
+    if (event.cbutton.button == SDL_CONTROLLER_BUTTON_X) {
+      // CodeEntry advertises X - PASTE: re-run the clipboard CODE read
+      // as an explicit paste. start_paste() is the manual flow's SDP
+      // blob path and ignores a bare room code.
+      if (screen_ == CodeEntry) {
+        code_entry_.clear();  // the pasted code replaces partial typing
+        code_clip_explicit_ = true;
+        code_clip_pending_ = true;
+        net_clipboard_read_start();
+      } else {
+        start_paste();
+      }
+      return;
+    }
+    if (event.cbutton.button == SDL_CONTROLLER_BUTTON_Y) {
+      copy_local_description();
+      return;
+    }
+  }
+
+  // CodeEntry keeps its richer pad semantics: d-pad/stick drive the
+  // character picker, A types the picker's character, B deletes (and only
+  // backs out of an empty field), the right trigger mirrors A.
+  if (screen_ == CodeEntry) {
+    if (event.type == SDL_CONTROLLERBUTTONDOWN) {
+      switch (event.cbutton.button) {
+        case SDL_CONTROLLER_BUTTON_DPAD_UP:    picker_move(0, -1); break;
+        case SDL_CONTROLLER_BUTTON_DPAD_DOWN:  picker_move(0, 1);  break;
+        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:  picker_move(-1, 0); break;
+        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: picker_move(1, 0);  break;
+        case SDL_CONTROLLER_BUTTON_A:
+          controller_confirm();
           break;
-        }
-        leave_to_menu();
-        break;
-      case SDL_CONTROLLER_BUTTON_BACK:
-        leave_to_menu();
-        break;
-      default:
-        break;
+        case SDL_CONTROLLER_BUTTON_B:
+          // Console convention: B deletes while there is something to
+          // delete, and only backs out of an empty code field (non-touch
+          // only — the soft keyboard owns code entry on touch).
+          if (!is_touch_mode() && !code_entry_.empty()) {
+            code_entry_key(8);
+            break;
+          }
+          leave_to_menu();
+          break;
+        case SDL_CONTROLLER_BUTTON_BACK:
+          leave_to_menu();
+          break;
+        default:
+          break;
+      }
+      return;
+    }
+    if (event.type != SDL_CONTROLLERAXISMOTION) return;
+    // Left stick mirrors the d-pad and the right trigger mirrors A (it is
+    // the in-game fire button, so it is what a Steam Deck player reaches
+    // for). Each direction arms at STICK_ON and releases at STICK_OFF.
+    if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
+      bool up = event.caxis.value < -(stick_up_ ? STICK_OFF : STICK_ON);
+      bool down = event.caxis.value > (stick_down_ ? STICK_OFF : STICK_ON);
+      if (up && !stick_up_) picker_move(0, -1);
+      if (down && !stick_down_) picker_move(0, 1);
+      stick_up_ = up;
+      stick_down_ = down;
+    } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) {
+      bool l = event.caxis.value < -(stick_left_ ? STICK_OFF : STICK_ON);
+      bool r = event.caxis.value > (stick_right_ ? STICK_OFF : STICK_ON);
+      if (l && !stick_left_) picker_move(-1, 0);
+      if (r && !stick_right_) picker_move(1, 0);
+      stick_left_ = l;
+      stick_right_ = r;
+    } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) {
+      // Plain ±8000 edge like the menu's RT confirm: triggers spring fully
+      // back to zero, so they don't hover near a threshold like a stick.
+      bool pressed = event.caxis.value > 8000;
+      if (pressed && !rt_active_) controller_confirm();
+      rt_active_ = pressed;
     }
     return;
   }
-  if (event.type != SDL_CONTROLLERAXISMOTION) return;
-  // Left stick mirrors the d-pad and the right trigger mirrors A (it is
-  // the in-game fire button, so it is what a Steam Deck player reaches
-  // for). Each direction arms at STICK_ON and releases at STICK_OFF.
-  if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
-    bool up = event.caxis.value < -(stick_up_ ? STICK_OFF : STICK_ON);
-    bool down = event.caxis.value > (stick_down_ ? STICK_OFF : STICK_ON);
-    if (up && !stick_up_) {
-      if (screen_ == CodeEntry) picker_move(0, -1);
-      else if (screen_ == Choose && selection_ > 0) selection_--;
-    }
-    if (down && !stick_down_) {
-      if (screen_ == CodeEntry) picker_move(0, 1);
-      else if (screen_ == Choose && selection_ < 1) selection_++;
-    }
-    stick_up_ = up;
-    stick_down_ = down;
-  } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) {
-    bool l = event.caxis.value < -(stick_left_ ? STICK_OFF : STICK_ON);
-    bool r = event.caxis.value > (stick_right_ ? STICK_OFF : STICK_ON);
-    if (l && !stick_left_ && screen_ == CodeEntry) picker_move(-1, 0);
-    if (r && !stick_right_ && screen_ == CodeEntry) picker_move(1, 0);
-    stick_left_ = l;
-    stick_right_ = r;
-  } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) {
-    // Plain ±8000 edge like the menu's RT confirm: triggers spring fully
-    // back to zero, so they don't hover near a threshold like a stick.
-    bool pressed = event.caxis.value > 8000;
-    if (pressed && !rt_active_) controller_confirm();
-    rt_active_ = pressed;
-  }
+
+  // Every other lobby screen speaks the shared nav language: d-pad/stick =
+  // w/s, A/Start/right-trigger = confirm, B/Back = Esc (leave to menu).
+  unsigned char k = nav_key_from_controller(event);
+  if (k) nav_input(k);
 }
 
 void NetLobby::touch_tap(float nx, float ny) {

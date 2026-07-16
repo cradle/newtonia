@@ -20,6 +20,13 @@ public:
   bool back_pressed() override;
 
 private:
+  // The single menu decision ladder: w/s move, a/d adjust (options),
+  // Enter/space confirm, Esc backs out one level. Fed by keyboard_up (after
+  // per-platform touch filtering) and by controller() via the shared
+  // State::nav_key_from_controller translation, so keyboard and pad behave
+  // identically on every menu screen. src is the pad that produced a
+  // confirm (bound to player 1), null for real keyboard input.
+  void nav_input(unsigned char key, SDL_GameController *src);
   void confirm_selection(SDL_GameController *ctrl);
   int  max_menu_items() const;
   // ONLINE row (netplay lobby): only on builds with a net backend.
@@ -52,11 +59,7 @@ private:
   static const int default_world_width, default_world_height;
 
   Mix_Music *music = NULL;
-  bool r2_active = false;
-  bool left_stick_up_active = false;
-  bool left_stick_down_active = false;
-  bool left_stick_left_active = false;
-  bool left_stick_right_active = false;
+  bool r2_active = false;  // tick()'s direct trigger poll (first-load fallback)
 
   bool quit_confirm_ = false;
   int  quit_selection_ = 0;  // 0 = Yes, 1 = No

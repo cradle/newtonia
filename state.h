@@ -52,9 +52,27 @@ protected:
       default: return key;
     }
   }
+  // Controller twin of nav_key: translate a pad event into the logical menu
+  // key the state's keyboard ladder already understands — dpad and left
+  // stick become w/a/s/d, A/Start/right-trigger become Enter (confirm),
+  // B/Back become Esc (back out one level). Returns 0 for anything a menu
+  // doesn't navigate by. Stick directions arm at ±NAV_STICK_ON and release
+  // at ±NAV_STICK_OFF (hysteresis state lives per-State here, so every
+  // screen gets the same feel without hand-rolled flag sets). When a key is
+  // produced and src is non-null, *src receives the pad that pressed it
+  // (menus bind that pad to player 1 on confirm). States with richer pad
+  // semantics (gameplay, the lobby's code picker) handle those events
+  // BEFORE falling back to this.
+  unsigned char nav_key_from_controller(const SDL_Event &e,
+                                        SDL_GameController **src = NULL);
   Point window;
 
 private:
+  // nav_key_from_controller hysteresis: stick up/down/left/right armed, and
+  // the right-trigger edge.
+  bool nav_stick_[4] = {false, false, false, false};
+  bool nav_rt_ = false;
+
   bool finished;
   State* next_state;
   bool ownership_transferred_;

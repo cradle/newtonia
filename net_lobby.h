@@ -61,6 +61,11 @@ private:
   };
 
   void confirm();
+  // The single lobby decision ladder off the CodeEntry screen: w/s pick
+  // HOST/JOIN, Enter/space confirm, Esc leaves, V/C paste/copy. Fed by
+  // keyboard_up (after touch/CodeEntry filtering) and by controller() via
+  // State::nav_key_from_controller, so pad and keyboard behave identically.
+  void nav_input(unsigned char key);
   void start_paste();
   void handle_paste(const std::string &blob);
   void copy_local_description();

@@ -249,6 +249,7 @@ When all killable asteroids **and all hazards** (pulsar/comet/seeker) are destro
 
 - Pure virtual: `draw()`, `keyboard()`, `keyboard_up()`, `controller()`, `tick()`
 - Virtual: `touch_tap()`, `back_pressed()`, `resize()`
+- **Generalised nav input**: menu-ish screens keep ONE decision ladder (`Menu::nav_input`, `NetLobby::nav_input`) speaking logical keys — w/a/s/d move, Enter/space confirm, Esc backs out one level. Keyboard reaches it via `State::nav_key` (arrows→WASD) after per-platform touch filtering; controllers reach it via `State::nav_key_from_controller` (dpad + left stick with shared arm/release hysteresis → wasd, A/Start/RT → Enter, B/Back → Esc, and the source pad returned so Menu binds it to P1 on confirm). New screens should follow this pattern rather than hand-rolling a controller handler; richer pad semantics (gameplay, the lobby's CodeEntry picker) claim their events before falling back to the translator
 - States call `request_state_change()` to transition. `request_state_change(next, true)` transfers ownership of the outgoing state to the next one — the `StateManager` skips its usual `delete` — and `clear_state_change()` resets a stale transition when such a state is later reinstalled
 
 There are three states:
