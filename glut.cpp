@@ -300,6 +300,13 @@ void tick() {
   int current_time = glutGet(GLUT_ELAPSED_TIME);
   int delta = current_time - last_tick_time;
   last_tick_time = current_time;
+  // NEWTONIA_FRAME_LOG=1: log every frame slower than 50 ms (sim + draw +
+  // swap, since tick idles between redisplays). Greppable in headless runs
+  // and cheap enough to leave in — field reports like "frame rate collapsed
+  // when the mines went off" become measurable instead of anecdotal.
+  static const bool frame_log = getenv("NEWTONIA_FRAME_LOG") != NULL;
+  if (frame_log && delta > 50)
+    std::cout << "frame: " << delta << " ms at t=" << current_time << std::endl;
   check_controller();
 #ifdef __linux__
   check_linux_focus();
