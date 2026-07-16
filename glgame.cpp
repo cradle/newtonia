@@ -5209,7 +5209,7 @@ void GLGame::tick(int delta) {
         for (size_t i = 0; i < s->missiles.size(); ) {
           if (station->Object::collide(s->missiles[i])) {
             station->hit();
-            s->detonate(s->missiles[i].position, s->missiles[i].velocity, 25);
+            s->detonate(s->missiles[i].position, s->missiles[i].velocity, Ship::MISSILE_SHRAPNEL);
             if (s->missile_explode_sound != NULL)
               Mix_PlayChannel(-1, s->missile_explode_sound, 0);
             s->missiles[i] = std::move(s->missiles.back());
@@ -5308,7 +5308,7 @@ void GLGame::tick(int delta) {
             }
             for(size_t i = 0; i < s->missiles.size() && h->is_alive();) {
               if(h->Object::collide(s->missiles[i])) {
-                s->detonate(s->missiles[i].position, s->missiles[i].velocity, 25);
+                s->detonate(s->missiles[i].position, s->missiles[i].velocity, Ship::MISSILE_SHRAPNEL);
                 if(s->missile_explode_sound != NULL)
                   Mix_PlayChannel(-1, s->missile_explode_sound, 0);
                 s->missiles[i] = std::move(s->missiles.back());
@@ -5356,7 +5356,7 @@ void GLGame::tick(int delta) {
             }
             for(size_t i = 0; i < s->missiles.size() && h->is_alive();) {
               if(h->Object::collide(s->missiles[i])) {
-                s->detonate(s->missiles[i].position, s->missiles[i].velocity, 25);
+                s->detonate(s->missiles[i].position, s->missiles[i].velocity, Ship::MISSILE_SHRAPNEL);
                 if(s->missile_explode_sound != NULL)
                   Mix_PlayChannel(-1, s->missile_explode_sound, 0);
                 s->missiles[i] = std::move(s->missiles.back());
@@ -5402,7 +5402,7 @@ void GLGame::tick(int delta) {
             if(killed) break;
             for(size_t i = 0; i < s->missiles.size();) {
               if(h->Object::collide(s->missiles[i])) {
-                s->detonate(s->missiles[i].position, s->missiles[i].velocity, 25);
+                s->detonate(s->missiles[i].position, s->missiles[i].velocity, Ship::MISSILE_SHRAPNEL);
                 if(s->missile_explode_sound != NULL)
                   Mix_PlayChannel(-1, s->missile_explode_sound, 0);
                 s->missiles[i] = std::move(s->missiles.back());
@@ -5482,7 +5482,7 @@ void GLGame::tick(int delta) {
         if (!mini_station->is_alive()) break;
         for (size_t i = 0; i < s->missiles.size(); ) {
           if (mini_station->Object::collide(s->missiles[i])) {
-            s->detonate(s->missiles[i].position, s->missiles[i].velocity, 25);
+            s->detonate(s->missiles[i].position, s->missiles[i].velocity, Ship::MISSILE_SHRAPNEL);
             if (s->missile_explode_sound != NULL)
               Mix_PlayChannel(-1, s->missile_explode_sound, 0);
             s->missiles[i] = std::move(s->missiles.back());

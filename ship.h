@@ -368,6 +368,15 @@ class Ship : public CompositeObject {
     void respawn(const Grid &grid, bool was_killed = true);
     void init(bool no_friction);
     virtual void reset(bool was_killed = true);
+    // Shrapnel counts for the deployable blasts (detonate's particle_count:
+    // spawns rand()%count + count/2 bullets). ONE constant per weapon, used by
+    // BOTH the authoritative detonation paths and the net client's replay
+    // (net_mine_exploded / net_missile_exploded) — the two once drifted (the
+    // mine's replay stayed at the old 50 after the real blast was cut to 20),
+    // making a client's own mine kill a different asteroid set than the host
+    // simulated. Never pass a literal at a detonation call site.
+    static const int MINE_SHRAPNEL = 20;
+    static const int MISSILE_SHRAPNEL = 25;
     void detonate();
     void detonate(Point const position, Point const velocity, int particle_count = 10);
     void giga_detonate(Point const position);

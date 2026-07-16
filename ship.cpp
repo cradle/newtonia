@@ -1335,11 +1335,10 @@ void Ship::collide_grid(Grid &grid, int delta) {
     if(object != NULL && object->alive) {
       NET_LOG("net: mine detonated at (%.0f, %.0f)\n",
               mines[i].position.x(), mines[i].position.y());
-      // Blast size: 20 -> rand()%20 + 10 = 10-29 shrapnel bullets. Was 50
-      // (25-74), which flooded the world with bullets when several mines
-      // detonated together and tanked the frame rate; also brings the mine in
-      // line with the missile (25) instead of being 2x it.
-      detonate(mines[i].position, mines[i].velocity, 20);
+      // MINE_SHRAPNEL (20) -> 10-29 shrapnel bullets. Was 50 (25-74), which
+      // flooded the world with bullets when several mines detonated together
+      // and tanked the frame rate.
+      detonate(mines[i].position, mines[i].velocity, MINE_SHRAPNEL);
       if(mine_explode_sound != NULL) Mix_PlayChannel(-1, mine_explode_sound, 0);
       mines[i] = std::move(mines.back());
       mines.pop_back();
@@ -1438,7 +1437,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
         score += object->get_value() * multiplier();
         credit_asteroid_kill(object);
       }
-      detonate(missiles[i].position, missiles[i].velocity, 25);
+      detonate(missiles[i].position, missiles[i].velocity, MISSILE_SHRAPNEL);
       if(missile_explode_sound != NULL) {
         Mix_PlayChannel(-1, missile_explode_sound, 0);
       }
@@ -1798,9 +1797,9 @@ void Ship::collide(Ship *other) {
 
   for(size_t i = 0; i < mines.size(); ) {
     if(is_alive() && other->is_alive() && mines[i].collide(*other, 50.0)) {
-      // Same 20-shrapnel blast as the grid (asteroid) path above — this
-      // ship-contact path was silently using detonate()'s default 10.
-      detonate(mines[i].position, mines[i].velocity, 20);
+      // Same blast as the grid (asteroid) path above — this ship-contact
+      // path was silently using detonate()'s default 10.
+      detonate(mines[i].position, mines[i].velocity, MINE_SHRAPNEL);
       if(mine_explode_sound != NULL) Mix_PlayChannel(-1, mine_explode_sound, 0);
       mines[i] = std::move(mines.back());
       mines.pop_back();
@@ -1832,7 +1831,7 @@ void Ship::collide(Ship *other) {
     if(is_alive() && other->is_alive() && missiles[i].collide(*other, 5.0)) {
       // No credit for a shielded/invincible target.
       if(other->kill_stop()) credit_ship_kill(other);
-      detonate(missiles[i].position, missiles[i].velocity, 25);
+      detonate(missiles[i].position, missiles[i].velocity, MISSILE_SHRAPNEL);
       if(missile_explode_sound != NULL) {
         Mix_PlayChannel(-1, missile_explode_sound, 0);
       }
@@ -2116,13 +2115,13 @@ void Ship::net_blast(const Point &pos, const Point &vel, int count) {
 }
 
 void Ship::net_missile_exploded(const Point &pos, const Point &vel) {
-  net_blast(pos, vel, 25);
+  net_blast(pos, vel, MISSILE_SHRAPNEL);
   if(missile_explode_sound != NULL)
     Mix_PlayChannel(-1, missile_explode_sound, 0);
 }
 
 void Ship::net_mine_exploded(const Point &pos, const Point &vel) {
-  net_blast(pos, vel, 50);
+  net_blast(pos, vel, MINE_SHRAPNEL);
   if(mine_explode_sound != NULL)
     Mix_PlayChannel(-1, mine_explode_sound, 0);
 }
@@ -2565,7 +2564,7 @@ void Ship::step(float delta, const Grid &grid) {
   // Here we only handle expiry detonation.
   for(size_t i = 0; i < missiles.size(); ) {
     if(!missiles[i].is_alive()) {
-      detonate(missiles[i].position, missiles[i].velocity, 25);
+      detonate(missiles[i].position, missiles[i].velocity, MISSILE_SHRAPNEL);
       if(missile_explode_sound != NULL) {
         Mix_PlayChannel(-1, missile_explode_sound, 0);
       }
