@@ -523,6 +523,17 @@ void Ship::give_all_weapons(int ammo) {
     if (!w->is_unlimited()) w->set_ammo(ammo);
   for (auto *w : secondary_weapons)
     if (!dynamic_cast<Weapon::Nova*>(w)) w->set_ammo(ammo);
+  // Each add_* selects the weapon it just stocked, which leaves Nova (added
+  // last) on the trigger; test sessions want the everyday Mine armed.
+  if (!shield_held(secondary_weapons, secondary)) {
+    for (auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+      if (dynamic_cast<Weapon::Mine*>(*it)) {
+        (*secondary)->shoot(false);
+        secondary = it;
+        break;
+      }
+    }
+  }
 }
 
 void Ship::add_god_mode(int duration_ms) {
