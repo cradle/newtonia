@@ -44,8 +44,14 @@
 
     canvas#canvas {
       display: block;
-      width: 100%;
-      height: 100%;
+      /* !important so the canvas's DISPLAY size always tracks the container:
+         some SDL emscripten backends write inline style.width/height on the
+         canvas, and web_main.cpp's resize handler derives the drawing-buffer
+         size from the canvas's CSS size — an inline override would decouple
+         the two and re-open the DPR feedback that blurred/thinned the
+         thick-line rendering on phones. */
+      width: 100% !important;
+      height: 100% !important;
       /* Crisp pixels — the game renders its own smoothing */
       image-rendering: pixelated;
     }

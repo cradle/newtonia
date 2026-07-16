@@ -192,14 +192,38 @@ static void main_loop() {
 
         case SDL_WINDOWEVENT:
             if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
-                // e.window.data1/data2 are CSS pixels; scale to physical pixels
-                // so the canvas renders at full device resolution.
+                // Don't trust data1/data2: depending on the SDL emscripten
+                // backend's external-size detection they are either CSS pixels
+                // or an echo of the last SDL_SetWindowSize — which we already
+                // DPR-scaled. Multiplying the echo by DPR again inflates the
+                // drawing buffer DPR× on EVERY browser resize (phones fire one
+                // per URL-bar show/hide and app switch), compounding until the
+                // canvas allocation fails. The CSS downscale of an oversized
+                // buffer then drops the antialiased thick-line cores — long
+                // axis-aligned strokes (the menu title) go uniformly faint
+                // while diagonals stay bright. Re-reading the canvas's CSS
+                // size makes this idempotent: repeated events converge on the
+                // same buffer size, so no feedback is possible.
+                double css_w = 0, css_h = 0;
                 double dpr = emscripten_get_device_pixel_ratio();
-                s_w = (int)(e.window.data1 * dpr);
-                s_h = (int)(e.window.data2 * dpr);
-                SDL_SetWindowSize(s_window, s_w, s_h);
-                s_game->resize(s_w, s_h);
-                Typer::resize(s_w, s_h);
+                int w, h;
+                if (emscripten_get_element_css_size("#canvas", &css_w, &css_h) == EMSCRIPTEN_RESULT_SUCCESS
+                        && css_w >= 1.0 && css_h >= 1.0) {
+                    w = (int)(css_w * dpr);
+                    h = (int)(css_h * dpr);
+                } else {
+                    w = (int)(e.window.data1 * dpr);
+                    h = (int)(e.window.data2 * dpr);
+                }
+                if (w != s_w || h != s_h) {
+                    s_w = w;
+                    s_h = h;
+                    SDL_SetWindowSize(s_window, s_w, s_h);
+                    s_game->resize(s_w, s_h);
+                    Typer::resize(s_w, s_h);
+                    SDL_Log("web: resize css %.0fx%.0f dpr %.2f buffer %dx%d",
+                            css_w, css_h, dpr, s_w, s_h);
+                }
             }
             break;
 
