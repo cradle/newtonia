@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Bundle;
+import android.system.Os;
 
 import org.libsdl.app.SDLActivity;
 
@@ -37,8 +38,33 @@ public class NewtoniaActivity extends SDLActivity {
         }
     }
 
+    // Debug bridge: Android processes fork from zygote, so `adb shell` env
+    // vars never reach the app. Intent extras named NEWTONIA_* are copied
+    // into this process's environment instead, making every desktop debug
+    // knob (NEWTONIA_BETA, NEWTONIA_START_GENERATION, NEWTONIA_ALL_WEAPONS,
+    // ...) reachable on device:
+    //   adb shell am start -S -n org.newtonia/.NewtoniaActivity \
+    //       --es NEWTONIA_BETA 1 --es NEWTONIA_START_GENERATION 9
+    // (-S force-stops first so a FRESH process reads the extras; a warm
+    // resume keeps its old environment.) Runs before super.onCreate so the
+    // env is set before any native code can read it. getenv is what the
+    // native layer uses, so no JNI is needed.
+    private void applyEnvExtras(Intent intent) {
+        if (intent == null || intent.getExtras() == null) return;
+        Bundle extras = intent.getExtras();
+        for (String key : extras.keySet()) {
+            if (!key.startsWith("NEWTONIA_")) continue;
+            Object v = extras.get(key);
+            if (v == null) continue;
+            try {
+                Os.setenv(key, String.valueOf(v), true);
+            } catch (Exception ignored) {}  // ErrnoException: skip, don't crash
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        applyEnvExtras(getIntent());
         super.onCreate(savedInstanceState);
 
         AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
