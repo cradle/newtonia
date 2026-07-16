@@ -324,6 +324,46 @@ int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
     srand(time(NULL));
 
+    // Debug bridge (the web twin of NewtoniaActivity's intent-extra bridge):
+    // NEWTONIA_* URL query params — or localStorage entries — become process
+    // env vars. Directly-served builds take
+    //   ?NEWTONIA_BETA=1&NEWTONIA_START_GENERATION=9&NEWTONIA_ALL_WEAPONS=1;
+    // on itch (the only web deploy of the netplay branch) the game sits in an
+    // iframe whose URL isn't editable, so set the knobs from the remote-
+    // inspection console instead:
+    //   localStorage.NEWTONIA_START_GENERATION = 9; location.reload()
+    // (localStorage.clear() to reset). URL params win over localStorage. All
+    // current debug knobs take numeric values, so only integers pass — the
+    // bridge stays trivial and nothing attacker-shaped rides a shared link;
+    // worst case is a cheat-flagged test game.
+    {
+        static const char *kDebugVars[] = {
+            "NEWTONIA_BETA", "NEWTONIA_START_GENERATION",
+            "NEWTONIA_ALL_WEAPONS", "NEWTONIA_FRAME_LOG",
+            "NEWTONIA_LINE_EMULATION", "NEWTONIA_TEST_SPAWN_PICKUPS", NULL };
+        for (int i = 0; kDebugVars[i]; i++) {
+            int v = EM_ASM_INT({
+                try {
+                    var k = UTF8ToString($0);
+                    var val = new URLSearchParams(location.search).get(k);
+                    if (val === null || val === '') {
+                        try { val = localStorage.getItem(k); } catch (e) {}
+                    }
+                    if (val === null || val === '') return -1;
+                    var n = parseInt(val, 10);
+                    return isNaN(n) ? -1 : n;
+                } catch (e) { return -1; }
+            }, kDebugVars[i]);
+            if (v >= 0) {
+                char buf[16];
+                snprintf(buf, sizeof(buf), "%d", v);
+                setenv(kDebugVars[i], buf, 1);
+                printf("web: env %s=%s (from URL/localStorage)\n",
+                       kDebugVars[i], buf);
+            }
+        }
+    }
+
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         return 1;
