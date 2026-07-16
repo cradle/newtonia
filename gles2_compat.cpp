@@ -562,6 +562,11 @@ static std::vector<Vertex> quads_to_triangles(const std::vector<Vertex> &in) {
     return out;
 }
 
+// Frame-profiling counters (see gles2_compat.h): the desktop frame logger
+// resets these once per frame and reports them alongside slow frames.
+int g_gles2_dbg_draws = 0;
+int g_gles2_dbg_line_segs = 0;
+
 // Static buffers to avoid per-draw heap allocation.
 static std::vector<Vertex> s_converted;
 static std::vector<Vertex> s_thick_quads;
@@ -635,6 +640,9 @@ static void draw_thick_lines_impl(const std::vector<Vertex>& verts, GLenum mode,
     }
 
     if (s_thick_quads.empty()) return;
+
+    g_gles2_dbg_draws++;
+    g_gles2_dbg_line_segs += (int)(s_thick_quads.size() / 6);
 
     size_t n2 = s_thick_quads.size();
     s_pos.resize(n2 * 3);
@@ -718,6 +726,7 @@ static void flush_vertices() {
         return;
     }
 
+    g_gles2_dbg_draws++;
     size_t n = src->size();
     s_pos.resize(n * 3);
     s_col.resize(n * 4);

@@ -454,6 +454,7 @@ void Mesh::draw_with_mvp(const float mvp[16], float point_size) const {
                 continue;
             }
         }
+        g_gles2_dbg_draws++;
 #ifdef DESKTOP_COMPAT_GL
         glDrawArrays(g.mode, g.vertex_start, g.vertex_count);
 #else

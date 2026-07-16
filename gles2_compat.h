@@ -187,6 +187,13 @@ void gles2_set_viewport(GLint x, GLint y, GLsizei w, GLsizei h);
 // Return the current emulated line width (set via glLineWidth / gles2_set_line_width).
 float gles2_get_line_width();
 
+// Frame-profiling counters (NEWTONIA_FRAME_LOG): draw calls issued through
+// the shim/Mesh and thick-line segments CPU-expanded this frame. The desktop
+// frame logger zeroes them at the top of each frame and prints them with any
+// slow-frame report; incremented in gles2_compat.cpp and mesh.cpp.
+extern int g_gles2_dbg_draws;
+extern int g_gles2_dbg_line_segs;
+
 // Fraction of the emulated line width used for the solid (fully-opaque) core;
 // the remainder is the antialiased feather.  Defaults to a per-platform value
 // (thicker strokes on web).  Callers that need a different stroke weight for a

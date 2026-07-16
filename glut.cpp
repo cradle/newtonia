@@ -57,11 +57,17 @@ void activate_app_timer(int);
 void hide_cursor_after_fullscreen(int);
 #endif
 
+static int s_last_frame_draws = 0, s_last_frame_segs = 0;
+
 void draw() {
   if (!game) return;
   int current_time = glutGet(GLUT_ELAPSED_TIME);
   last_render_time = current_time;
+  g_gles2_dbg_draws = 0;
+  g_gles2_dbg_line_segs = 0;
   game->draw();
+  s_last_frame_draws = g_gles2_dbg_draws;
+  s_last_frame_segs  = g_gles2_dbg_line_segs;
   glutSwapBuffers();
   // A Steam join accepted while the game is already running (steam://run into
   // an already-open game) does not bring us to the front. Drain the request
@@ -306,7 +312,9 @@ void tick() {
   // when the mines went off" become measurable instead of anecdotal.
   static const bool frame_log = getenv("NEWTONIA_FRAME_LOG") != NULL;
   if (frame_log && delta > 50)
-    std::cout << "frame: " << delta << " ms at t=" << current_time << std::endl;
+    std::cout << "frame: " << delta << " ms at t=" << current_time
+              << " draws=" << s_last_frame_draws
+              << " segs=" << s_last_frame_segs << std::endl;
   check_controller();
 #ifdef __linux__
   check_linux_focus();
