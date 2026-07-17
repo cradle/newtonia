@@ -19,6 +19,12 @@ public:
   void resize(int x, int y);
   void touch_joystick(float nx, float ny);
   void touch_tap(float nx, float ny);
+  // DEBUG (NEWTONIA_BETA only): a tap in the very top-right corner skips
+  // the level. One implementation for every touch platform's finger_down —
+  // returns true when the tap was consumed. Call BEFORE any pause zones
+  // (the corner sits inside them) — see the call sites in web_main.cpp /
+  // android_main.cpp.
+  bool debug_skip_corner_tap(float nx, float ny);
   // True while an online session (in-game or lobby) needs the loop to
   // keep ticking even when the browser tab is hidden (web build).
   bool wants_background_ticks();

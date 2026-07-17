@@ -74,18 +74,9 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
 }
 
 static void finger_down(SDL_FingerID id, float x, float y) {
-    // DEBUG (NEWTONIA_BETA only — a working skip corner in a normal game
-    // would let a stray tap skip the level and cheat-flag the run): very
-    // top-right corner → skip level. Checked BEFORE the pause zones — the
-    // corner sits inside the pause hit region, so with pause first the skip
-    // tap only ever paused. The skip handler lives in keyboard_up, so
-    // synthesize the full press+release, not just the down.
-    static const bool debug_corner = getenv("NEWTONIA_BETA") != NULL;
-    if(debug_corner && x > 0.85f && y < 0.15f) {
-        s_game->keyboard('n', 0, 0);
-        s_game->keyboard_up('n', 0, 0);
-        return;
-    }
+    // Beta skip corner, BEFORE the pause zones — the corner sits inside the
+    // pause hit region, so with pause first the skip tap only ever paused.
+    if (s_game->debug_skip_corner_tap(x, y)) return;
 
     // Pause button: top-right, below score/multiplier
     if(!s_pause_active && x >= 0.75f && y < 0.25f) {

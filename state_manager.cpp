@@ -112,6 +112,18 @@ void StateManager::touch_tap(float nx, float ny) {
   state->touch_tap(nx, ny);
 }
 
+// Beta-only skip corner (a working skip in a normal game would let a stray
+// tap skip the level and cheat-flag the run). The skip handler lives in
+// keyboard_up (GLGame/Intro), so synthesize the full press+release — a bare
+// key-down never actually skipped.
+bool StateManager::debug_skip_corner_tap(float nx, float ny) {
+  static const bool enabled = SDL_getenv("NEWTONIA_BETA") != NULL;
+  if (!enabled || nx <= 0.85f || ny >= 0.15f) return false;
+  keyboard('n', 0, 0);
+  keyboard_up('n', 0, 0);
+  return true;
+}
+
 bool StateManager::wants_background_ticks() {
   GLGame *game = dynamic_cast<GLGame*>(state);
   if (game) return game->net_active();
