@@ -83,11 +83,15 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     float px = x * (float)s_w;
     float py = y * (float)s_h;
 
-    // DEBUG: top-right corner → skip to next level. The skip handler lives
-    // in keyboard_up (GLGame/Intro), so synthesize the full press+release —
-    // the bare key-down this used to send never actually skipped (hence the
-    // adb keyevent workaround in CLAUDE.md's testing notes).
-    if(x > 0.85f && y < 0.15f) {
+    // DEBUG (NEWTONIA_BETA only — a working skip corner in a normal game
+    // would let a stray tap skip the level and cheat-flag the run; launch
+    // with `adb shell am start --es NEWTONIA_BETA 1` to enable): top-right
+    // corner → skip to next level. The skip handler lives in keyboard_up
+    // (GLGame/Intro), so synthesize the full press+release — the bare
+    // key-down this used to send never actually skipped (hence the adb
+    // keyevent workaround in CLAUDE.md's testing notes).
+    static const bool debug_corner = SDL_getenv("NEWTONIA_BETA") != NULL;
+    if(debug_corner && x > 0.85f && y < 0.15f) {
         s_game->keyboard('n', 0, 0);
         s_game->keyboard_up('n', 0, 0);
         return;
