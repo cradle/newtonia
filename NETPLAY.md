@@ -173,7 +173,9 @@ and configuration, not engineering. Order matters only where noted.
 - [ ] Sanity-check public-scale budgets: Workers free-tier request/DO
       limits and TURN minutes at expected launch traffic.
 
-### Gate 2 — field pass on everything since v1.44.5 (none of it verified on-device yet)
+### Gate 2 — field pass on everything since v1.44.5 — COMPLETE 2026-07-17
+(Every item below verified by Glenn on device; the web touch-region fix
+(cc8bc62) confirmed on mobile itch — "touch regions work well now".)
 - [x] Tag `netplay-v1.44.7` (2026-07-17); all four test channels green
       (Steam netplay branch, TestFlight, Play internal, itch
       html5-netplay — iOS signal selftest passed first try).
