@@ -702,14 +702,17 @@ void GLShip::draw_body() const {
 // Convert an internal game key code to a short display label.
 // F-keys are encoded as 128 + GLUT_KEY_Fn (129=F1, 136=F8, etc.).
 static std::string key_label(int key) {
-  if (key == ' ')  return "SPACE";
+  // The two labels that diverge from the INI's canonical names (which the
+  // keymap would show too long): ESC not ESCAPE, ENTER not RETURN.
   if (key == 27)   return "ESC";
   if (key == 13)   return "ENTER";
-  if (key == 9)    return "TAB";
-  if (key == 128 + 100) return "LEFT";   // GLUT_KEY_LEFT
-  if (key == 128 + 101) return "UP";     // GLUT_KEY_UP
-  if (key == 128 + 102) return "RIGHT";  // GLUT_KEY_RIGHT
-  if (key == 128 + 103) return "DOWN";   // GLUT_KEY_DOWN
+  // Everything else named: the canonical table (preferences.cpp),
+  // uppercased for the HUD.
+  if (const char *n = special_key_name(key)) {
+    std::string s(n);
+    for (size_t i = 0; i < s.size(); i++) s[i] = (char)::toupper(s[i]);
+    return s;
+  }
   if (key >= 129 && key <= 140) {
     char buf[8];
     snprintf(buf, sizeof(buf), "F%d", key - 128);

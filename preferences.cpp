@@ -47,26 +47,41 @@ static std::string pref_filepath() {
     return fp;
 }
 
+// The one named-special-key table (see special_key_name in preferences.h).
+// The HUD's key_label (glship.cpp) uppercases these same names, so a key
+// added here shows up correctly in the keymap for free.
+struct SpecialKey { int code; const char *name; };
+static const SpecialKey kSpecialKeys[] = {
+    { ' ',       "space"  },
+    { 27,        "escape" },
+    { 13,        "return" },
+    { 9,         "tab"    },
+    { 128 + 100, "left"   },  // 128 + GLUT_KEY_LEFT
+    { 128 + 101, "up"     },  // 128 + GLUT_KEY_UP
+    { 128 + 102, "right"  },  // 128 + GLUT_KEY_RIGHT
+    { 128 + 103, "down"   },  // 128 + GLUT_KEY_DOWN
+};
+
+const char *special_key_name(int key) {
+    for (size_t i = 0; i < sizeof(kSpecialKeys) / sizeof(kSpecialKeys[0]); i++)
+        if (kSpecialKeys[i].code == key) return kSpecialKeys[i].name;
+    return NULL;
+}
+
+static int special_key_code(const char *name) {
+    for (size_t i = 0; i < sizeof(kSpecialKeys) / sizeof(kSpecialKeys[0]); i++)
+        if (SDL_strcasecmp(name, kSpecialKeys[i].name) == 0)
+            return kSpecialKeys[i].code;
+    return 0;
+}
+
 // Serialise a key code to a human-readable INI value:
 //   printable ASCII  → the character itself (e.g. "a", "/", "=")
-//   space (32)       → "space"
-//   escape (27)      → "escape"
-//   return (13)      → "return"
-//   tab (9)          → "tab"
+//   named specials   → their kSpecialKeys name ("space", "up", ...)
 //   F1–F12 (129–140) → "F1"–"F12"
-//   arrows (228–231, i.e. 128 + GLUT_KEY_*) → "up"/"down"/"left"/"right"
 //   anything else    → decimal integer (fallback)
 static std::string key_to_ini(int key) {
-    switch (key) {
-        case ' ':  return "space";
-        case 27:   return "escape";
-        case 13:   return "return";
-        case 9:    return "tab";
-        case 128 + 100: return "left";   // GLUT_KEY_LEFT
-        case 128 + 101: return "up";     // GLUT_KEY_UP
-        case 128 + 102: return "right";  // GLUT_KEY_RIGHT
-        case 128 + 103: return "down";   // GLUT_KEY_DOWN
-    }
+    if (const char *n = special_key_name(key)) return n;
     if (key >= 129 && key <= 140) {
         char buf[8];
         snprintf(buf, sizeof(buf), "F%d", key - 128);
@@ -84,17 +99,12 @@ static std::string key_to_ini(int key) {
 static int ini_to_key(const char *val) {
     if (!val || !val[0]) return 0;
 
-    if (SDL_strcasecmp(val, "space")  == 0) return ' ';
-    if (SDL_strcasecmp(val, "escape") == 0) return 27;
+    if (int k = special_key_code(val)) return k;
+    // Hand-edit aliases and the explicit empty slot (not canonical names,
+    // so key_to_ini never writes them).
     if (SDL_strcasecmp(val, "esc")    == 0) return 27;
-    if (SDL_strcasecmp(val, "return") == 0) return 13;
     if (SDL_strcasecmp(val, "enter")  == 0) return 13;
-    if (SDL_strcasecmp(val, "tab")    == 0) return 9;
-    if (SDL_strcasecmp(val, "left")   == 0) return 128 + 100; // GLUT_KEY_LEFT
-    if (SDL_strcasecmp(val, "up")     == 0) return 128 + 101; // GLUT_KEY_UP
-    if (SDL_strcasecmp(val, "right")  == 0) return 128 + 102; // GLUT_KEY_RIGHT
-    if (SDL_strcasecmp(val, "down")   == 0) return 128 + 103; // GLUT_KEY_DOWN
-    if (SDL_strcasecmp(val, "none")   == 0) return 0;         // explicit empty slot
+    if (SDL_strcasecmp(val, "none")   == 0) return 0;
 
     // F1–F12 (case-insensitive prefix 'f' or 'F')
     if ((val[0] == 'F' || val[0] == 'f') && val[1] != '\0') {

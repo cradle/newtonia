@@ -93,6 +93,13 @@ struct Preferences {
 // Returns the star-count multiplier from g_prefs (clamped to a safe range).
 float star_density_scale();
 
+// Canonical lowercase name for a named special key ("space", "escape",
+// "left", ...), NULL when the code has no name (printable ASCII, F-keys and
+// the decimal fallback are handled by the callers). THE one code→name table:
+// the INI serializer/parser and the keymap HUD's labels all read it, so a
+// new special key is added here once.
+const char *special_key_name(int key);
+
 // Populate g_prefs from disk.  Call once at startup (after the pref path is
 // available, i.e. after IDBFS sync on web).  Returns defaults when no file
 // exists or a key is absent.
