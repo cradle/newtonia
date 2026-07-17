@@ -187,10 +187,11 @@ and configuration, not engineering. Order matters only where noted.
       auto-join by design (reachable only via the own-dead-code guard
       bypass) and shares the same read machinery — accepted as covered.
 - [x] Arrow keys drive P1 in gameplay and every menu — VERIFIED
-      (Glenn 2026-07-17). Stable-branch INI downgrade check: N/A — all
-      of Glenn's Steam installs run the netplay branch, so no older
-      build shares the preferences file. (The format stays
-      downgrade-safe by design regardless.)
+      (Glenn 2026-07-17). Stable-branch INI round-trip VERIFIED both
+      directions with a real default-branch install: the old build
+      reads the new-format file (canonical lines + ignored _alt lines)
+      and the netplay build reads the old build's rewrite (bare values
+      restore the default arrow alternates).
 - [x] Pause auto-save: play without dying, pause, force-kill, relaunch →
       CONTINUE resumes from the pause. VERIFIED on device (Glenn
       2026-07-17).
