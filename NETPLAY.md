@@ -198,8 +198,13 @@ and configuration, not engineering. Order matters only where noted.
 - [x] God-mode expiry hands the trigger back to the weapon held at
       pickup (not the default gun). VERIFIED (Glenn 2026-07-17):
       Shock -> god mode -> 10 s expiry -> back on Shock.
-- [ ] Kill-storm sanity on-device: mine carpet at gen 9+ on Android
-      (native wide lines + batched score labels — should hold ~60 fps).
+- [x] Kill-storm sanity on-device: mine carpet at gen 9+ on Android.
+      VERIFIED (Glenn 2026-07-17): ONE perf line the whole session —
+      a single 46 fps second at the detonation (tick=796ms/s max 76,
+      i.e. sim-side fragmentation, not rendering: objs=191ms/s ≈
+      4 ms/frame vs ~900 ms/s pre-fix). Native lines + batched score
+      labels hold; the residual spike is proportional to simultaneous
+      kills and only reachable with the 999-mine cheat.
 
 ### Gate 3 — human platform config (Glenn-only, ~10 min each)
 - [x] Steamworks: promptless `+connect` Launch Option — DONE (Glenn
