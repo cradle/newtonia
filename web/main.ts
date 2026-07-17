@@ -322,9 +322,13 @@ declare const Module: {
 
     // Capture button elements once; reused by the resize handler to avoid
     // repeated querySelector calls.
+    // Button centres sit clear of the canvas centre-pause zone (x <= 0.60
+    // in web_main.cpp finger_down) — at 0.62 the shoot circle's left edge
+    // was ~0.57, so a near-miss to its left hit the pause zone instead
+    // (Glenn, 2026-07-17). Keep these in sync with touch_to_key's zones.
     const circleButtons = [
-      { el: container.querySelector<HTMLElement>(".touch-shoot")!, cx: 0.62, cy: 0.75 },
-      { el: container.querySelector<HTMLElement>(".touch-mine")!,  cx: 0.85, cy: 0.75 },
+      { el: container.querySelector<HTMLElement>(".touch-shoot")!, cx: 0.70, cy: 0.75 },
+      { el: container.querySelector<HTMLElement>(".touch-mine")!,  cx: 0.90, cy: 0.75 },
     ];
     _circleButtonEls = circleButtons.map(b => b.el);
 

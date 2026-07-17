@@ -66,10 +66,15 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
         else if (lx < 0.5f)  return 'a'; // rotate left
         else                 return 'd'; // rotate right
     } else {
+        // Canvas fallback zones behind the HTML circle buttons (main.ts) —
+        // keep the boundaries centred on the same cx values (shoot 0.70,
+        // mine 0.90). Left of the shoot zone is dead, NOT shoot: the
+        // centre pause zone ends at x=0.60, and a stray tap between them
+        // should do nothing rather than pause or fire.
         if (norm_y < 0.65f) return 0;  // dead zone above buttons
-        float rx = (norm_x - 0.5f) * 2.0f;
-        if (rx < 0.5f)  return ' ';  // shoot
-        else            return 'x';  // mine
+        if (norm_x < 0.60f) return 0;  // gap between pause zone and buttons
+        if (norm_x < 0.80f) return ' ';  // shoot
+        return 'x';                      // mine
     }
 }
 
@@ -86,8 +91,11 @@ static void finger_down(SDL_FingerID id, float x, float y) {
         return;
     }
 
-    // Centre-screen pause zone (large invisible area, avoids edges used by controls)
-    if(!s_pause_active && x >= 0.30f && x <= 0.70f && y >= 0.25f && y <= 0.75f) {
+    // Centre-screen pause zone (large invisible area, avoids edges used by
+    // controls). Right edge stops at 0.60: the shoot button's circle starts
+    // at ~0.65, and a near-miss to its left must not pause (this zone is
+    // checked BEFORE touch_to_key, so any overlap steals fire taps).
+    if(!s_pause_active && x >= 0.30f && x <= 0.60f && y >= 0.25f && y <= 0.75f) {
         s_pause_active = true;
         s_pause_finger = id;
         s_game->keyboard('\r', 0, 0);
