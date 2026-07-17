@@ -36,12 +36,6 @@ void State::mouse_move(int x, int y) {
   // std::cout << x << ", " << y << std::endl;
 }
 
-// Stick nav thresholds (shared by every screen): arm past ON, release
-// inside OFF — the gap stops a stick hovering near the threshold from
-// repeating (the Mac-gamepad sensitivity fix, now in one place).
-static const int NAV_STICK_ON  = 16000;
-static const int NAV_STICK_OFF = 8000;
-
 unsigned char State::nav_key_from_controller(const SDL_Event &e,
                                              SDL_GameController **src) {
   unsigned char key = 0;

@@ -149,11 +149,8 @@ private:
   // maybe our own kill-orphaned room — the no-offer timeout is short.
   bool own_room_probe_ = false;
 
-  // Controller state: left-stick / right-trigger edge detection (the
-  // menu's pattern) and the CodeEntry picker selection.
-  bool stick_up_ = false, stick_down_ = false;
-  bool stick_left_ = false, stick_right_ = false;
-  bool rt_active_ = false;
+  // Controller state (stick/trigger edges live in State's shared nav
+  // translator; only the picker's own bits remain here).
   bool controller_seen_ = false;  // draws the picker + button hints
   // The Deck's floating keyboard is showing: hide the picker under it.
   // Cleared when a controller event reaches us (the keyboard consumes

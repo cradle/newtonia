@@ -67,12 +67,6 @@ const float PICKER_TOP_Y = -130.0f;
 const float PICKER_ROW_H = 52.0f;
 const float PICKER_CELL_W = 45.0f;
 
-// Stick navigation hysteresis: a move arms at half deflection and only
-// re-arms once the stick falls back under a quarter — a light nudge does
-// nothing, and wobble around a single threshold can't re-trigger (a
-// plain ±8000 edge felt twitchy on a real gamepad).
-const int STICK_ON = 16000, STICK_OFF = 8000;
-
 // Pull a room code out of clipboard text. The host auto-copies the universal
 // join link (https://…/join?code=XXXXX) so a friend can paste a clickable
 // link, but the same clipboard feeds this JOIN-screen auto-join — so accept
@@ -1325,7 +1319,7 @@ void NetLobby::controller(SDL_Event event) {
     // flick past the nav threshold also counts as proof.
     if (event.type == SDL_CONTROLLERBUTTONDOWN ||
         (event.type == SDL_CONTROLLERAXISMOTION &&
-         (event.caxis.value > STICK_ON || event.caxis.value < -STICK_ON)))
+         (event.caxis.value > NAV_STICK_ON || event.caxis.value < -NAV_STICK_ON)))
       floating_kb_up_ = false;
   }
 
@@ -1351,61 +1345,35 @@ void NetLobby::controller(SDL_Event event) {
     }
   }
 
-  // CodeEntry keeps its richer pad semantics: d-pad/stick drive the
-  // character picker, A types the picker's character, B deletes (and only
-  // backs out of an empty field), the right trigger mirrors A.
+  // CodeEntry keeps its richer pad semantics, but the raw dpad/stick/
+  // trigger decoding (and its arm/release hysteresis) is the shared
+  // translator's job — the picker just remaps the logical keys: w/a/s/d
+  // drive the character grid, Enter (A or the right trigger — the in-game
+  // fire button, what a Steam Deck player reaches for) types the picker's
+  // character, Esc (B/Back) deletes before it backs out. Sharing the
+  // translator also shares its latches, so a stick held across the
+  // Choose→CodeEntry transition stays armed instead of double-stepping.
   if (screen_ == CodeEntry) {
-    if (event.type == SDL_CONTROLLERBUTTONDOWN) {
-      switch (event.cbutton.button) {
-        case SDL_CONTROLLER_BUTTON_DPAD_UP:    picker_move(0, -1); break;
-        case SDL_CONTROLLER_BUTTON_DPAD_DOWN:  picker_move(0, 1);  break;
-        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:  picker_move(-1, 0); break;
-        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: picker_move(1, 0);  break;
-        case SDL_CONTROLLER_BUTTON_A:
-          controller_confirm();
-          break;
-        case SDL_CONTROLLER_BUTTON_B:
-          // Console convention: B deletes while there is something to
-          // delete, and only backs out of an empty code field (non-touch
-          // only — the soft keyboard owns code entry on touch).
-          if (!is_touch_mode() && !code_entry_.empty()) {
-            code_entry_key(8);
-            break;
-          }
-          leave_to_menu();
-          break;
-        case SDL_CONTROLLER_BUTTON_BACK:
-          leave_to_menu();
-          break;
-        default:
-          break;
-      }
+    if (event.type == SDL_CONTROLLERBUTTONDOWN &&
+        event.cbutton.button == SDL_CONTROLLER_BUTTON_B &&
+        !is_touch_mode() && !code_entry_.empty()) {
+      // Console convention: B deletes while there is something to delete,
+      // and only backs out of an empty code field (non-touch only — the
+      // soft keyboard owns code entry on touch).
+      code_entry_key(8);
       return;
     }
-    if (event.type != SDL_CONTROLLERAXISMOTION) return;
-    // Left stick mirrors the d-pad and the right trigger mirrors A (it is
-    // the in-game fire button, so it is what a Steam Deck player reaches
-    // for). Each direction arms at STICK_ON and releases at STICK_OFF.
-    if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
-      bool up = event.caxis.value < -(stick_up_ ? STICK_OFF : STICK_ON);
-      bool down = event.caxis.value > (stick_down_ ? STICK_OFF : STICK_ON);
-      if (up && !stick_up_) picker_move(0, -1);
-      if (down && !stick_down_) picker_move(0, 1);
-      stick_up_ = up;
-      stick_down_ = down;
-    } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) {
-      bool l = event.caxis.value < -(stick_left_ ? STICK_OFF : STICK_ON);
-      bool r = event.caxis.value > (stick_right_ ? STICK_OFF : STICK_ON);
-      if (l && !stick_left_) picker_move(-1, 0);
-      if (r && !stick_right_) picker_move(1, 0);
-      stick_left_ = l;
-      stick_right_ = r;
-    } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) {
-      // Plain ±8000 edge like the menu's RT confirm: triggers spring fully
-      // back to zero, so they don't hover near a threshold like a stick.
-      bool pressed = event.caxis.value > 8000;
-      if (pressed && !rt_active_) controller_confirm();
-      rt_active_ = pressed;
+    if (event.type == SDL_CONTROLLERBUTTONDOWN &&
+        event.cbutton.button == SDL_CONTROLLER_BUTTON_START)
+      return;  // Start is not a picker key (A/RT type, and joins on full)
+    switch (nav_key_from_controller(event)) {
+      case 'w':  picker_move(0, -1); break;
+      case 's':  picker_move(0, 1);  break;
+      case 'a':  picker_move(-1, 0); break;
+      case 'd':  picker_move(1, 0);  break;
+      case '\r': controller_confirm(); break;
+      case 27:   leave_to_menu(); break;
+      default:   break;
     }
     return;
   }
