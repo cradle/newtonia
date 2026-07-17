@@ -12,7 +12,17 @@ StateManager::~StateManager() {
   delete state;
 }
 
+// Frame-profiling counters (see gles2_compat.h). Zeroed HERE because every
+// platform's main loop funnels through StateManager::draw — resetting only
+// in glut.cpp left them growing unbounded (eventually signed-overflow UB)
+// on web/Android/Xbox, whose loops call this directly. The desktop frame
+// logger snapshots them right after its game->draw() returns.
+extern int g_gles2_dbg_draws;
+extern int g_gles2_dbg_line_segs;
+
 void StateManager::draw() {
+  g_gles2_dbg_draws = 0;
+  g_gles2_dbg_line_segs = 0;
   state->draw();
 }
 

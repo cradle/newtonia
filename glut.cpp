@@ -63,9 +63,7 @@ void draw() {
   if (!game) return;
   int current_time = glutGet(GLUT_ELAPSED_TIME);
   last_render_time = current_time;
-  g_gles2_dbg_draws = 0;
-  g_gles2_dbg_line_segs = 0;
-  game->draw();
+  game->draw();  // StateManager::draw zeroes the dbg counters at entry
   s_last_frame_draws = g_gles2_dbg_draws;
   s_last_frame_segs  = g_gles2_dbg_line_segs;
   glutSwapBuffers();
