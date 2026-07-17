@@ -274,6 +274,9 @@ static GLint         s_viewport[4]  = {0, 0, 800, 600};
 // max, queried in gles2_init on real-GLES platforms; stays 1.0 on desktop,
 // web, and ANGLE so those keep the quad emulation). See gles2_compat.h.
 static float         s_native_line_max = 1.0f;
+#ifndef DESKTOP_COMPAT_GL
+static float         s_driver_line_width = 1.0f;  // last width actually sent to the driver
+#endif
 static bool          s_in_begin     = false;
 static GLenum        s_begin_mode   = GL_POINTS;
 static std::vector<Vertex> s_vbuf;
@@ -809,6 +812,9 @@ void gles2_init() {
         s_native_line_max = range[1];
         SDL_Log("gles2: native aliased line width max %.1f", range[1]);
     }
+    // Fresh (or recreated — Android resume) context: the driver's line width
+    // is back at 1.0, so the same-value skip must start from that.
+    s_driver_line_width = 1.0f;
 #endif
 }
 
@@ -1031,9 +1037,12 @@ void gles2_set_line_width(GLfloat width) {
     // Real-GLES native path: apply the width to the driver so the emulation
     // bypass (gles2_line_width_is_native) actually draws thick. Harmless when
     // the emulation is used anyway; never called with the macro form (undef'd
-    // at the top of this file).
-    if (width >= 1.0f && width <= s_native_line_max)
+    // at the top of this file). Skip same-value re-sets — this runs per text/
+    // object draw, usually with the width already in effect.
+    if (width >= 1.0f && width <= s_native_line_max && width != s_driver_line_width) {
         glLineWidth(width);
+        s_driver_line_width = width;
+    }
 #endif
 }
 
