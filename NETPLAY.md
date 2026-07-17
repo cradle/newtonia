@@ -180,8 +180,8 @@ and configuration, not engineering. Order matters only where noted.
       (Glenn 2026-07-17): single R2 confirm, dpad nav, stick nav, menu
       nav, Options, CodeEntry picker, and the held-stick-across-JOIN
       stale-latch fix (4204bff — no self-step when the code screen
-      opens). Remaining: quit/new-game confirms, Intro dismiss +
-      B-to-menu, X paste on CodeEntry.
+      opens), quit/new-game confirms (B backs out). Remaining: Intro
+      dismiss + B-to-menu, X paste on CodeEntry.
 - [ ] Arrow keys drive P1 in gameplay and every menu; preferences.ini
       round-trips bindings on this build AND still parses on the stable
       branch (downgrade check — Steam testers share the file).
