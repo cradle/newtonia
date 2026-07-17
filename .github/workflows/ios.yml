@@ -213,11 +213,19 @@ jobs:
 
           # Signal self-test: wss + TLS + a full room round-trip against the
           # PRODUCTION relay, from inside the iOS runtime (one short-lived
-          # room per CI run; the relay's TTL cleans it up).
-          SIMCTL_CHILD_NEWTONIA_SIGNAL_SELFTEST=1 SIMCTL_CHILD_SDL_AUDIODRIVER=dummy \
-            perl -e 'alarm shift; exec @ARGV' 120 \
-            xcrun simctl launch --console-pty "$UDID" cc.gfm.Newtonia \
-            | tee sigtest.log || true
+          # room per CI run; the relay's TTL cleans it up). A blip on the
+          # production Worker or the runner's egress is not a code
+          # regression (seen 2026-07-17: FAIL on a docs-only commit, green
+          # either side) — retry up to 3x before declaring failure.
+          for attempt in 1 2 3; do
+            SIMCTL_CHILD_NEWTONIA_SIGNAL_SELFTEST=1 SIMCTL_CHILD_SDL_AUDIODRIVER=dummy \
+              perl -e 'alarm shift; exec @ARGV' 120 \
+              xcrun simctl launch --console-pty "$UDID" cc.gfm.Newtonia \
+              | tee sigtest.log || true
+            grep -q "SIGNAL SELFTEST PASS" sigtest.log && break
+            echo "signal selftest attempt $attempt failed"
+            [ "$attempt" -lt 3 ] && sleep 20
+          done
           grep -q "SIGNAL SELFTEST PASS" sigtest.log
 
       # Deploy-parity gate: deploy-ios.yml builds through the Xcode PROJECT
