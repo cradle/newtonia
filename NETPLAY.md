@@ -235,8 +235,13 @@ and configuration, not engineering. Order matters only where noted.
       renderer by design; batched score labels carry the storm case.
 - [ ] Windows Defender: confirm Steam-installed unsigned builds aren't
       flagged (FP report was submitted; revisit signing only if so).
-- [ ] Map the Game Center `coop_clear` achievement — netplay now makes
-      2P earnable on touch (it was deliberately left unmapped).
+- [x] `coop_clear` mobile mappings: DEFERRED POST-LAUNCH by decision
+      (Glenn 2026-07-18) — tasks #153 (Game Center: one mapping line +
+      App Store Connect definition at 40 pts) and #154 (Play Games:
+      console-generated ID, pairs with Android going public / #145).
+      Nothing is lost meanwhile: unmapped earns drop silently and the
+      shared hook re-fires on any future co-op clear. Not a release
+      blocker.
 
 ### Gate 5 — release mechanics
 - [ ] Merge netplay branch → master. Side effects to expect: production
