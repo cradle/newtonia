@@ -225,10 +225,14 @@ and configuration, not engineering. Order matters only where noted.
       pasted (App Admin → Community → Rich Presence).
 
 ### Gate 4 — decisions, not blockers
-- [ ] Mobile-web perf posture: profile a mine storm on phone web (perf
-      overlay + `?NEWTONIA_FRAME_LOG=1`); ship with known numbers or a
-      documented caveat — WebGL keeps the line emulation, so web is the
-      slowest renderer by design.
+- [x] Mobile-web perf posture: SHIP AS-IS. Field-tested 2026-07-17
+      (local branch build via adb-reverse, gen 9, ALL_WEAPONS mine
+      carpet on phone Chrome): storm plays smoothly by eye. Numeric
+      perf lines weren't capturable (Chrome no longer mirrors page
+      console to logcat and swallows injected keyevents; devtools
+      inspect wedged) — visual judgment accepted for the posture call.
+      WebGL keeps the line emulation, so web remains the slowest
+      renderer by design; batched score labels carry the storm case.
 - [ ] Windows Defender: confirm Steam-installed unsigned builds aren't
       flagged (FP report was submitted; revisit signing only if so).
 - [ ] Map the Game Center `coop_clear` achievement — netplay now makes
