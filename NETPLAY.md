@@ -189,8 +189,9 @@ and configuration, not engineering. Order matters only where noted.
 - [ ] Arrow keys drive P1 in gameplay and every menu; preferences.ini
       round-trips bindings on this build AND still parses on the stable
       branch (downgrade check — Steam testers share the file).
-- [ ] Pause auto-save: play without dying, pause, force-kill, relaunch →
-      CONTINUE resumes from the pause.
+- [x] Pause auto-save: play without dying, pause, force-kill, relaunch →
+      CONTINUE resumes from the pause. VERIFIED on device (Glenn
+      2026-07-17).
 - [ ] God-mode expiry hands the trigger back to the weapon held at
       pickup (not the default gun).
 - [ ] Kill-storm sanity on-device: mine carpet at gen 9+ on Android
