@@ -170,8 +170,13 @@ and configuration, not engineering. Order matters only where noted.
       fixing it upstream — so the worst case improves on its own.
       Revisit only if post-launch telemetry shows real pairs suffering
       (the gap forensics under NEWTONIA_NET_DEBUG stay in place).
-- [ ] Sanity-check public-scale budgets: Workers free-tier request/DO
-      limits and TURN minutes at expected launch traffic.
+- [x] Budget sanity check (2026-07-17, ~30 launch players): $0/month
+      with ~100x headroom. Workers free plan = 100k req/day (DOs
+      included, 5 GB storage); worst-case signaling ≈ 6k req/day (30
+      rooms x ~200 req). Realtime TURN free tier = 1,000 GB/month at
+      $0.05/GB after; worst-case ALL-relay ≈ 65 GB/month (30 x 1 h x
+      ~72 MB/relay-hour), realistic ≈ 2%. First paid threshold: the
+      $5/mo Workers Paid plan at ~500 rooms/day (thousands of players).
 
 ### Gate 2 — field pass on everything since v1.44.5 — COMPLETE 2026-07-17
 (Every item below verified by Glenn on device; the web touch-region fix
