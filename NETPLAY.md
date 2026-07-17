@@ -195,8 +195,9 @@ and configuration, not engineering. Order matters only where noted.
 - [x] Pause auto-save: play without dying, pause, force-kill, relaunch →
       CONTINUE resumes from the pause. VERIFIED on device (Glenn
       2026-07-17).
-- [ ] God-mode expiry hands the trigger back to the weapon held at
-      pickup (not the default gun).
+- [x] God-mode expiry hands the trigger back to the weapon held at
+      pickup (not the default gun). VERIFIED (Glenn 2026-07-17):
+      Shock -> god mode -> 10 s expiry -> back on Shock.
 - [ ] Kill-storm sanity on-device: mine carpet at gen 9+ on Android
       (native wide lines + batched score labels — should hold ~60 fps).
 
