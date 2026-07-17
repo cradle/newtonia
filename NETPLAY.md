@@ -174,7 +174,9 @@ and configuration, not engineering. Order matters only where noted.
       limits and TURN minutes at expected launch traffic.
 
 ### Gate 2 — field pass on everything since v1.44.5 (none of it verified on-device yet)
-- [ ] Tag `netplay-v1.44.6`; all four test channels green.
+- [x] Tag `netplay-v1.44.7` (2026-07-17); all four test channels green
+      (Steam netplay branch, TestFlight, Play internal, itch
+      html5-netplay — iOS signal selftest passed first try).
 - [x] Controller session — COMPLETE, verified on a local branch build
       (Glenn 2026-07-17): single R2 confirm, dpad nav, stick nav, menu
       nav, Options, CodeEntry picker, the held-stick-across-JOIN
