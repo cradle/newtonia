@@ -197,7 +197,8 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "window_height") == 0) {
         int h = atoi(val);
         if (h > 0) g_prefs.window_height = h;
-    // Player 1 keybinds    } else if (strcmp(key, "p1_keyboard_sensitivity") == 0) {
+    // Player 1 scalars (bindings are handled generically above)
+    } else if (strcmp(key, "p1_keyboard_sensitivity") == 0) {
         float v = (float)atof(val);
         if (v >= 0.1f && v <= 5.0f) g_prefs.p1_keys.keyboard_sensitivity = v;
     } else if (strcmp(key, "p1_camera_smoothing") == 0) {
@@ -206,7 +207,8 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "p1_rotate_view") == 0) {
         g_prefs.p1_keys.rotate_view = (val[0] == '1');
 
-    // Player 2 keybinds    } else if (strcmp(key, "p2_keyboard_sensitivity") == 0) {
+    // Player 2 scalars
+    } else if (strcmp(key, "p2_keyboard_sensitivity") == 0) {
         float v = (float)atof(val);
         if (v >= 0.1f && v <= 5.0f) g_prefs.p2_keys.keyboard_sensitivity = v;
     } else if (strcmp(key, "p2_camera_smoothing") == 0) {
