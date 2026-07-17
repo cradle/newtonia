@@ -816,6 +816,13 @@ void GLGame::release_player_controls() {
 
 void GLGame::toggle_pause(bool broadcast) {
   running = !running;
+  // Pausing auto-saves (the long-documented behavior — it previously only
+  // happened via the focus-loss path, so quitting in a way that skips the
+  // exit hooks (force-kill, crash, a killed mobile-web tab) lost everything
+  // since the last death or level clear). Covers the pause key, controller
+  // Start, and the touch pause zones; save_progress() itself refuses online
+  // games, game over, and dead rosters.
+  if (!running) save_progress();
   // Online, pausing is shared state: tell the peer (unless this call IS
   // the peer's event being applied).
   if (broadcast && net_mode_ != NetOff && net_session_ && !net_connection_lost_)
