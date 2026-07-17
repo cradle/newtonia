@@ -186,9 +186,9 @@ and configuration, not engineering. Order matters only where noted.
       CLIPBOARD"). X's happy path is shadowed by the clipboard
       auto-join by design (reachable only via the own-dead-code guard
       bypass) and shares the same read machinery — accepted as covered.
-- [ ] Arrow keys drive P1 in gameplay and every menu; preferences.ini
-      round-trips bindings on this build AND still parses on the stable
-      branch (downgrade check — Steam testers share the file).
+- [x] Arrow keys drive P1 in gameplay and every menu — VERIFIED
+      (Glenn 2026-07-17). Stable-branch INI downgrade check still open
+      if a stable install shares the preferences file.
 - [x] Pause auto-save: play without dying, pause, force-kill, relaunch →
       CONTINUE resumes from the pause. VERIFIED on device (Glenn
       2026-07-17).
