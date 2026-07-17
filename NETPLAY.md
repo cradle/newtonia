@@ -159,13 +159,17 @@ The feature set is complete and the deploy pipeline has shipped four
 channels green from 1.41.0 through 1.44.5. What remains is verification
 and configuration, not engineering. Order matters only where noted.
 
-### Gate 1 — TURN decision (#110, the one real infra blocker)
-- [ ] Re-test a forced-relay pair on Cloudflare TURN (`0`-prefixed join
-      code or NEWTONIA_NET_FORCE_RELAY=1, watch the gap telemetry) —
-      Cloudflare confirmed the stall bug and said they're fixing it, so
-      it may already be resolved. If gaps are gone, close #110 as-is.
-- [ ] If stalls persist: switch to metered.ca (A/B-proven zero gaps) or
-      coturn on a ~$5 VPS with worker HMAC minting.
+### Gate 1 — TURN decision (#110): CLOSED — staying on Cloudflare
+- [x] **Decision (Glenn 2026-07-17): ship on Cloudflare TURN, stall bug
+      and all.** Rationale: the cost-to-value ratio is huge (free at our
+      scale vs a paid provider or a VPS to babysit), the client-side
+      mitigations built during the relay work (SCTP RTO tuning, pose
+      blending, gap drain, min-RTT lead) degrade the stalls to cosmetic
+      glide on the observer's screen only, relay is already the rare
+      CGNAT-fallback path, and Cloudflare has confirmed the bug and is
+      fixing it upstream — so the worst case improves on its own.
+      Revisit only if post-launch telemetry shows real pairs suffering
+      (the gap forensics under NEWTONIA_NET_DEBUG stay in place).
 - [ ] Sanity-check public-scale budgets: Workers free-tier request/DO
       limits and TURN minutes at expected launch traffic.
 
@@ -242,12 +246,12 @@ offset.
 build compiles in CI. e2e drivers in test/e2e cover room/rejoin/
 impacts/hiccup/blackout/mismatch; TESTING.md is the inventory.
 
-**Open items (task list #s):** #110 replace Cloudflare TURN — their
-edge stalls this flow 0.4-1.7 s on our keepalive cadences (proven by
-A/B: metered.ca = zero gaps); plan is coturn on a ~$5 VPS + worker
-HMAC minting, and the drafted Cloudflare report is in the chat log of
-2026-07-08 — Cloudflare has since CONFIRMED the bug and is fixing it
-with high priority, so re-test relays first. Windows builds
+**Open items (task list #s):** #110 CLOSED 2026-07-17 — staying on
+Cloudflare TURN despite the stall bug (edge stalls 0.4-1.7 s, proven by
+A/B vs metered.ca): the cost-to-value ratio wins, the client-side
+mitigations degrade stalls to cosmetic observer glide, relay is the
+rare CGNAT fallback, and Cloudflare confirmed the bug and is fixing it
+upstream. See the release checklist Gate 1. Windows builds
 are unsigned (Defender FP submitted; icon.rc now carries VERSIONINFO +
 manifest; revisit signing only if Steam-installed builds get flagged).
 Deferred niceties: host-side RTT lead on reported shot spawns.
