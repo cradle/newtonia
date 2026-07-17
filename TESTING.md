@@ -256,7 +256,78 @@ backtrace. This is how the PROTO 22 shock crash was pinned to one line:
   never leaves the menu. `-O2` keeps a readable backtrace and stays fast
   enough for the driver's timing.
 
-## 5. What CI runs where
+## 5. Debug knobs & getting them onto devices
+
+The debug env vars (all inert unless set; the cheat-shaped ones flag the
+game so achievements stay suppressed):
+
+| Var | Effect |
+|-----|--------|
+| `NEWTONIA_BETA=1` | Unlocks dev-only features: `NEWTONIA_START_GENERATION=N` (new game starts at gen N) and the touch skip-level corner |
+| `NEWTONIA_ALL_WEAPONS=1` | Full arsenal at 999 on every spawn, **Mine armed** as the secondary |
+| `NEWTONIA_FRAME_LOG=1` | Logs every frame slower than 50 ms; on desktop the line carries `draws=` (shim/Mesh draw calls) and `segs=` (thick-line segments CPU-expanded) for that frame |
+| `NEWTONIA_LINE_EMULATION=1` | Forces the thick-line quad emulation on platforms whose driver would draw wide lines natively (Android/iOS) — for A/B against the native path |
+| `NEWTONIA_TEST_SPAWN_PICKUPS=1` | Pickup-icon ring (see above) |
+
+Independent of any env var, the game SDL_Logs a **perf report** once per
+second whenever fps drops below 55 —
+`perf: fps=… tick=… draw=… objs=… stars=… osd=… lens=… other=… asteroids=… gen=…`
+— sim vs draw, the draw sub-phases (game objects / starfield / HUD /
+invisible-asteroid lens), and swap in `other`. This is the first thing to
+capture for any "it got slow" report; it works on every platform:
+
+- **Desktop**: run from a terminal.
+- **Android**: `adb logcat -s SDL/APP` (filter on `perf:`).
+- **iOS**: Xcode console.
+- **Web**: the browser console — on a phone, attach remote DevTools
+  (Android: `chrome://inspect/#devices` on a cabled desktop Chrome →
+  *inspect* the tab; iOS: Safari's Develop menu).
+
+### Env vars on Android (adb)
+
+Android apps fork from zygote, so shell env never reaches them. Intent
+extras named `NEWTONIA_*` are copied into the process env by
+`NewtoniaActivity` instead:
+
+```sh
+adb shell am start -S -n org.newtonia/.NewtoniaActivity \
+    --es NEWTONIA_BETA 1 --es NEWTONIA_START_GENERATION 9 --es NEWTONIA_ALL_WEAPONS 1
+```
+
+`-S` force-stops first — only a FRESH process reads the extras.
+
+### Env vars on web (URL / localStorage)
+
+`web_main.cpp` copies `NEWTONIA_*` URL query params — or, where the URL
+isn't editable (the itch iframe), `localStorage` entries — into the env at
+startup. Integer values only.
+
+```
+# directly-served build (e.g. the port-forward loop below):
+http://localhost:8000/?NEWTONIA_BETA=1&NEWTONIA_START_GENERATION=9&NEWTONIA_ALL_WEAPONS=1
+
+# itch: from the attached remote-DevTools console
+localStorage.NEWTONIA_BETA = 1; localStorage.NEWTONIA_START_GENERATION = 9;
+location.reload()          // localStorage.clear() to reset
+```
+
+Each applied knob logs `web: env NAME=VALUE (from URL/localStorage)`.
+
+**Tight phone-web loop with no deploy** (needs emcc/tsc locally): `make
+web`, `python3 -m http.server 8000 -d web/dist/play`, then in
+`chrome://inspect` enable **Port forwarding** `8000 → localhost:8000`; the
+phone's Chrome opens `http://localhost:8000` through the USB cable.
+
+### Skipping levels on touch
+
+The very top-right corner (x>0.85, y<0.15) is a skip-level tap on web and
+Android — **only when `NEWTONIA_BETA` is set** (a working skip corner in a
+normal game would let a stray tap cheat-flag the run). It synthesizes a
+full n press+release, so it works on intro screens like the desktop key.
+`adb shell input keyevent KEYCODE_N` works on Android regardless of the
+gate.
+
+## 6. What CI runs where
 
 | Gate | Where |
 |------|-------|
@@ -269,7 +340,7 @@ backtrace. This is how the PROTO 22 shock crash was pinned to one line:
 The e2e drivers are currently run locally/by-agent, not in CI (wrangler dev
 + Xvfb in Actions is possible if flakiness proves acceptable).
 
-## 6. Hardware-only checks
+## 7. Hardware-only checks
 
 Things no headless rig covers — verify on device after a `netplay-v*` tag:
 
