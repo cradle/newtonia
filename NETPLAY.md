@@ -178,11 +178,10 @@ and configuration, not engineering. Order matters only where noted.
 - [ ] Controller session (the nav/bindings refactor is the only change
       touching real input paths). VERIFIED on a local branch build
       (Glenn 2026-07-17): single R2 confirm, dpad nav, stick nav, menu
-      nav, Options, CodeEntry picker. Remaining: quit/new-game confirms,
-      Intro dismiss + B-to-menu, X paste on CodeEntry, and the
-      held-stick-across-JOIN check (hold the stick down through the JOIN
-      confirm — the picker cursor must NOT step on its own when the code
-      screen opens; shared-latch fix 4204bff).
+      nav, Options, CodeEntry picker, and the held-stick-across-JOIN
+      stale-latch fix (4204bff — no self-step when the code screen
+      opens). Remaining: quit/new-game confirms, Intro dismiss +
+      B-to-menu, X paste on CodeEntry.
 - [ ] Arrow keys drive P1 in gameplay and every menu; preferences.ini
       round-trips bindings on this build AND still parses on the stable
       branch (downgrade check — Steam testers share the file).
