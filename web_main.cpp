@@ -57,9 +57,6 @@ static SDL_GameController *s_controller = nullptr;
 static bool             s_idb_ready = false;
 
 static unsigned char touch_to_key(float norm_x, float norm_y) {
-    if (norm_x > 0.85f && norm_y < 0.15f)
-        return 'n'; // debug: skip level
-
     bool left_half = (norm_x < 0.5f);
     if (left_half) {
         float lx = norm_x * 2.0f;
@@ -77,6 +74,17 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
 }
 
 static void finger_down(SDL_FingerID id, float x, float y) {
+    // DEBUG: very top-right corner → skip level. Checked BEFORE the pause
+    // zones — the corner sits inside the pause hit region, so with pause
+    // first the skip tap only ever paused (Android orders it this way too).
+    // The skip handler lives in keyboard_up, so synthesize the full
+    // press+release, not just the down.
+    if(x > 0.85f && y < 0.15f) {
+        s_game->keyboard('n', 0, 0);
+        s_game->keyboard_up('n', 0, 0);
+        return;
+    }
+
     // Pause button: top-right, below score/multiplier
     if(!s_pause_active && x >= 0.75f && y < 0.25f) {
         s_pause_active = true;
