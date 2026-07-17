@@ -229,6 +229,30 @@ Ship::~Ship() {
   }
 }
 
+// Identity key for a primary weapon (kind + Default-gun variant index),
+// used by the exhausted-primary fallback to find "the weapon the player was
+// using before this one" across list reshuffles and netplay roster
+// rebuilds. index_out is the Default gun's weapon_index, -1 for the rest.
+Save::WeaponEntry::Kind Ship::primary_kind_of(Weapon::Base *w, int *index_out) {
+  *index_out = -1;
+  if(dynamic_cast<Weapon::GodMode*>(w)) return Save::WeaponEntry::Kind::GodMode;
+  if(dynamic_cast<Weapon::Beam*>(w))    return Save::WeaponEntry::Kind::Beam;
+  if(dynamic_cast<Weapon::Lance*>(w))   return Save::WeaponEntry::Kind::Lance;
+  if(dynamic_cast<Weapon::Shock*>(w))   return Save::WeaponEntry::Kind::Shock;
+  Weapon::Default *d = dynamic_cast<Weapon::Default*>(w);
+  if(d) *index_out = d->weapon_index();
+  return Save::WeaponEntry::Kind::Default;
+}
+
+// Remember the CURRENT primary as "the weapon used before" — every path
+// that moves the selection (cycling, pickup auto-select) calls this first,
+// so an exhausted weapon can hand the trigger back to it (see shoot()).
+void Ship::record_primary_selection() {
+  if(primary_weapons.empty() || primary == primary_weapons.end()) return;
+  last_primary_kind = primary_kind_of(*primary, &last_primary_index);
+  has_last_primary = true;
+}
+
 void Ship::next_weapon() {
   net_next_weapon_count++;
   if(god_mode_time_remaining() > 0) return;
@@ -244,6 +268,7 @@ void Ship::next_weapon() {
   if(next == primary_weapons.end())
     next = primary_weapons.begin();
 
+  if(next != primary) record_primary_selection();
   (*next)->shoot((*primary)->is_shooting());
   (*primary)->shoot(false);
 
@@ -263,6 +288,7 @@ void Ship::previous_weapon() {
 
   next--;
 
+  if(next != primary) record_primary_selection();
   (*next)->shoot((*primary)->is_shooting());
   (*primary)->shoot(false);
   primary = next;
@@ -321,6 +347,7 @@ void Ship::add_weapon(int weapon_index) {
     if(w && w->weapon_index() == weapon_index) {
       w->add_ammo(100);
       if(!in_god_mode && !auto_shooting) {
+        if(it != primary) record_primary_selection();
         (*primary)->shoot(false);
         primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
         primary = --primary_weapons.end();
@@ -331,8 +358,10 @@ void Ship::add_weapon(int weapon_index) {
 
   primary_weapons.push_back(new Weapon::Default(this, cfg.automatic, cfg.level, cfg.accuracy, cfg.time_between_shots, weapon_index));
   if(!in_god_mode && !auto_shooting) {
-    if (primary != primary_weapons.end())
+    if (primary != primary_weapons.end()) {
+      record_primary_selection();
       (*primary)->shoot(false);
+    }
     primary = --primary_weapons.end();
   }
 }
@@ -432,6 +461,7 @@ void Ship::add_beam_ammo(int amount) {
     if(dynamic_cast<Weapon::Beam*>(*it)) {
       (*it)->add_ammo(amount);
       if(!in_god_mode && !auto_shooting) {
+        if(it != primary) record_primary_selection();
         (*primary)->shoot(false);
         primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
         primary = --primary_weapons.end();
@@ -444,8 +474,10 @@ void Ship::add_beam_ammo(int amount) {
   w->add_ammo(amount);
   primary_weapons.push_back(w);
   if(!in_god_mode && !auto_shooting) {
-    if (primary != primary_weapons.end())
+    if (primary != primary_weapons.end()) {
+      record_primary_selection();
       (*primary)->shoot(false);
+    }
     primary = --primary_weapons.end();
   }
 }
@@ -459,6 +491,7 @@ void Ship::add_lance_ammo(int amount) {
     if(dynamic_cast<Weapon::Lance*>(*it)) {
       (*it)->add_ammo(amount);
       if(!in_god_mode && !auto_shooting) {
+        if(it != primary) record_primary_selection();
         (*primary)->shoot(false);
         primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
         primary = --primary_weapons.end();
@@ -471,8 +504,10 @@ void Ship::add_lance_ammo(int amount) {
   w->add_ammo(amount);
   primary_weapons.push_back(w);
   if(!in_god_mode && !auto_shooting) {
-    if (primary != primary_weapons.end())
+    if (primary != primary_weapons.end()) {
+      record_primary_selection();
       (*primary)->shoot(false);
+    }
     primary = --primary_weapons.end();
   }
 }
@@ -488,6 +523,7 @@ void Ship::add_shock(int amount) {
     if(dynamic_cast<Weapon::Shock*>(*it)) {
       (*it)->add_ammo(amount);
       if(!in_god_mode && !auto_shooting) {
+        if(it != primary) record_primary_selection();
         (*primary)->shoot(false);
         primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
         primary = --primary_weapons.end();
@@ -499,8 +535,10 @@ void Ship::add_shock(int amount) {
   w->set_ammo(amount);
   primary_weapons.push_back(w);
   if(!in_god_mode && !auto_shooting) {
-    if(primary != primary_weapons.end())
+    if(primary != primary_weapons.end()) {
+      record_primary_selection();
       (*primary)->shoot(false);
+    }
     primary = --primary_weapons.end();
   }
 }
@@ -551,8 +589,10 @@ void Ship::add_god_mode(int duration_ms) {
     }
   }
   primary_weapons.push_back(new Weapon::GodMode(this, duration_ms));
-  if (primary != primary_weapons.end())
+  if (primary != primary_weapons.end()) {
+    record_primary_selection();
     (*primary)->shoot(false);
+  }
   primary = --primary_weapons.end();
   update_god_mode_music(duration_ms);
 }
@@ -1113,6 +1153,8 @@ void Ship::reset(bool was_killed) {
     kills_this_life = 0;
     nova_charge = 0;
     nova_kill_counter = 0;
+
+    has_last_primary = false;  // the weapons this history names die below
 
     // Remove all upgraded primary weapons, keeping only the base PEW PEW at the front
     auto it = primary_weapons.begin();
@@ -1885,10 +1927,29 @@ void Ship::shoot(bool on) {
     // away and leave the spent weapon cluttering the cycle. The default
     // gun is unlimited, so the list never empties for real.
     auto to_remove = primary;
-    auto next = to_remove;
-    ++next;
-    if(next == primary_weapons.end())
-      next = primary_weapons.begin();
+    // Hand the trigger back to the weapon the player was using BEFORE this
+    // one (selection history, kind+variant identity). Fall back to the
+    // previous list neighbour — pickups splice the selection to the back,
+    // so the neighbour is the most recent pickup — and only wrap forward
+    // when removing the front. The old wrap-forward-only rule landed on the
+    // default gun every time, because the spent weapon was always last.
+    auto next = primary_weapons.end();
+    if(has_last_primary) {
+      for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
+        if(it == to_remove) continue;
+        int idx;
+        if(primary_kind_of(*it, &idx) == last_primary_kind &&
+           idx == last_primary_index) {
+          next = it;
+          break;
+        }
+      }
+    }
+    if(next == primary_weapons.end()) {
+      next = to_remove;
+      if(next != primary_weapons.begin()) --next;
+      else ++next;  // removing the front: the only direction left
+    }
     delete *to_remove;
     primary_weapons.erase(to_remove);
     primary = primary_weapons.empty() ? primary_weapons.end() : next;

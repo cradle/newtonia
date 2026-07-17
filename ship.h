@@ -422,6 +422,20 @@ class Ship : public CompositeObject {
     void credit_ship_kill(Ship *other);
     void record_weapon_fired(Save::WeaponEntry::Kind kind);  // weapons_7 tracking
 
+    // Primary selection history: when a limited primary runs dry it is
+    // removed and the selection falls back to the weapon the player was
+    // using BEFORE it — not the front of the list (the default gun), which
+    // is where the old wrap-forward rule always landed because pickups
+    // splice the selection to the back. Identity is kind + gun variant
+    // (never a pointer/iterator), so it survives list reshuffles and the
+    // netplay roster rebuilds; if the remembered weapon is gone, the
+    // exhaustion fallback uses the previous list neighbour instead.
+    Save::WeaponEntry::Kind last_primary_kind = Save::WeaponEntry::Kind::Default;
+    int  last_primary_index = -1;  // Default-gun variant; -1 for the specials
+    bool has_last_primary = false;
+    void record_primary_selection();  // call BEFORE switching the selection away
+    static Save::WeaponEntry::Kind primary_kind_of(Weapon::Base *w, int *index_out);
+
     void play_rotating_sound(bool on);
     void update_god_mode_music(int time_remaining);
     void stop_god_mode_music();
