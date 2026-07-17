@@ -253,6 +253,31 @@ void Ship::record_primary_selection() {
   has_last_primary = true;
 }
 
+// Where the selection lands after removing a primary. Hand the trigger back
+// to the weapon the player was using BEFORE this one (selection history,
+// kind+variant identity). Fall back to the previous list neighbour — pickups
+// splice the selection to the back, so the neighbour is the most recent
+// pickup — and only wrap forward when removing the front. The old
+// wrap-forward-only rule landed on the default gun every time, because the
+// spent weapon was always last. Shared by the exhausted-primary removal in
+// shoot() and the god-mode expiry in step().
+list<Weapon::Base *>::iterator Ship::fallback_primary(list<Weapon::Base *>::iterator to_remove) {
+  if(has_last_primary) {
+    for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
+      if(it == to_remove) continue;
+      int idx;
+      if(primary_kind_of(*it, &idx) == last_primary_kind &&
+         idx == last_primary_index) {
+        return it;
+      }
+    }
+  }
+  auto next = to_remove;
+  if(next != primary_weapons.begin()) --next;
+  else ++next;  // removing the front: the only direction left
+  return next;
+}
+
 void Ship::next_weapon() {
   net_next_weapon_count++;
   if(god_mode_time_remaining() > 0) return;
@@ -1927,29 +1952,7 @@ void Ship::shoot(bool on) {
     // away and leave the spent weapon cluttering the cycle. The default
     // gun is unlimited, so the list never empties for real.
     auto to_remove = primary;
-    // Hand the trigger back to the weapon the player was using BEFORE this
-    // one (selection history, kind+variant identity). Fall back to the
-    // previous list neighbour — pickups splice the selection to the back,
-    // so the neighbour is the most recent pickup — and only wrap forward
-    // when removing the front. The old wrap-forward-only rule landed on the
-    // default gun every time, because the spent weapon was always last.
-    auto next = primary_weapons.end();
-    if(has_last_primary) {
-      for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
-        if(it == to_remove) continue;
-        int idx;
-        if(primary_kind_of(*it, &idx) == last_primary_kind &&
-           idx == last_primary_index) {
-          next = it;
-          break;
-        }
-      }
-    }
-    if(next == primary_weapons.end()) {
-      next = to_remove;
-      if(next != primary_weapons.begin()) --next;
-      else ++next;  // removing the front: the only direction left
-    }
+    auto next = fallback_primary(to_remove);
     delete *to_remove;
     primary_weapons.erase(to_remove);
     primary = primary_weapons.empty() ? primary_weapons.end() : next;
@@ -2471,12 +2474,10 @@ void Ship::step(float delta, const Grid &grid) {
       (*it)->step(delta);
       Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
       if(gm && gm->empty()) {
-        auto next = it; ++next;
-        if(next == primary_weapons.end()) {
-          // God mode is always pushed to the back; return to the weapon before it
-          next = it;
-          if(next != primary_weapons.begin()) --next;
-        }
+        // add_god_mode() recorded the weapon held at pickup time — hand the
+        // trigger back to it, same policy as an exhausted primary. (The old
+        // rule here took the list neighbour, ignoring the recorded history.)
+        auto next = fallback_primary(it);
         if(it == primary) primary = next;
         delete *it;
         it = primary_weapons.erase(it);

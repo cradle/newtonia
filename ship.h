@@ -435,6 +435,10 @@ class Ship : public CompositeObject {
     bool has_last_primary = false;
     void record_primary_selection();  // call BEFORE switching the selection away
     static Save::WeaponEntry::Kind primary_kind_of(Weapon::Base *w, int *index_out);
+    // The one fallback policy for removing a primary (exhausted beam/lance/
+    // shock, expired god mode): the remembered selection first, then the
+    // previous list neighbour, wrapping forward only from the front.
+    list<Weapon::Base *>::iterator fallback_primary(list<Weapon::Base *>::iterator to_remove);
 
     void play_rotating_sound(bool on);
     void update_god_mode_music(int time_remaining);
