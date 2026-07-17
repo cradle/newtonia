@@ -178,8 +178,8 @@ and configuration, not engineering. Order matters only where noted.
 - [ ] Controller session (the nav/bindings refactor is the only change
       touching real input paths): menu, Options, quit/new-game confirms,
       Intro dismiss + B-to-menu, lobby Choose, CodeEntry picker (stick +
-      dpad move, A and RT type, B deletes then backs out, X pastes),
-      R2 confirm fires ONCE everywhere.
+      dpad move, A and RT type, B deletes then backs out, X pastes).
+      Single R2 confirm: VERIFIED on device (Glenn 2026-07-17).
 - [ ] Arrow keys drive P1 in gameplay and every menu; preferences.ini
       round-trips bindings on this build AND still parses on the stable
       branch (downgrade check — Steam testers share the file).
