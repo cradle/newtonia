@@ -325,24 +325,35 @@ void Menu::tick(int delta) {
       viewpoint += Point(-default_world_width,0);
   }
 
-  // Poll R2 trigger directly each tick as a fallback for the first menu load,
-  // where SDL may not have sent initial axis-motion events for the trigger yet.
-  bool r2_pressed = false;
+  // Poll R2 directly each tick as a fallback for the first menu load, where
+  // SDL may not have sent initial axis-motion events for the trigger yet.
+  // The poll feeds the SAME translator (and so the same edge latch) as the
+  // event path — a private second latch here made one physical pull confirm
+  // twice, once per latch. Max across pads so releasing an idle second pad
+  // can't release a latch another pad's held trigger armed.
   int n = SDL_NumJoysticks();
-  for(int i = 0; i < n; i++) {
-    SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(SDL_JoystickGetDeviceInstanceID(i));
-    if(!ctrl) continue;
-    if(SDL_GameControllerGetAxis(ctrl, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 8000) {
-      r2_pressed = true;
-      if(!r2_active) {
-        r2_active = true;
-        nav_input('\r', ctrl);  // trigger = confirm, same ladder as A/Start
-        return;
+  if (n > 0) {
+    Sint16 rt_max = 0;
+    SDL_GameController *rt_ctrl = NULL;
+    SDL_JoystickID rt_id = -1;
+    for(int i = 0; i < n; i++) {
+      SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(SDL_JoystickGetDeviceInstanceID(i));
+      if(!ctrl) continue;
+      Sint16 v = SDL_GameControllerGetAxis(ctrl, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+      if(v > rt_max) {
+        rt_max = v;
+        rt_ctrl = ctrl;
+        rt_id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(ctrl));
       }
-      break;
     }
+    SDL_Event e;
+    e.type = SDL_CONTROLLERAXISMOTION;
+    e.caxis.which = rt_id;
+    e.caxis.axis = SDL_CONTROLLER_AXIS_TRIGGERRIGHT;
+    e.caxis.value = rt_max;
+    unsigned char k = nav_key_from_controller(e);
+    if(k) nav_input(k, rt_ctrl);
   }
-  if(!r2_pressed) r2_active = false;
 }
 
 void Menu::controller(SDL_Event event) {

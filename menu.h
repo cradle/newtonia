@@ -59,7 +59,6 @@ private:
   static const int default_world_width, default_world_height;
 
   Mix_Music *music = NULL;
-  bool r2_active = false;  // tick()'s direct trigger poll (first-load fallback)
 
   bool quit_confirm_ = false;
   int  quit_selection_ = 0;  // 0 = Yes, 1 = No
