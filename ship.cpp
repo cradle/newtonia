@@ -806,29 +806,11 @@ Save::Player Ship::capture_state() const {
   for (auto it = primary_weapons.cbegin(); it != primary_weapons.cend(); ++it, ++idx) {
     if (it == cprimary) p.selected_primary_idx = idx;
     Save::WeaponEntry we;
+    // One classification ladder for primaries (primary_kind_of) — only the
+    // ammo differs by kind: god mode's "ammo" is its live countdown.
+    we.kind = primary_kind_of(*it, &we.weapon_index);
     Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
-    if (gm) {
-      we.kind         = Save::WeaponEntry::Kind::GodMode;
-      we.weapon_index = -1;
-      we.ammo         = gm->time_remaining();
-    } else if (dynamic_cast<Weapon::Beam*>(*it)) {
-      we.kind         = Save::WeaponEntry::Kind::Beam;
-      we.weapon_index = -1;
-      we.ammo         = (*it)->ammo();
-    } else if (dynamic_cast<Weapon::Lance*>(*it)) {
-      we.kind         = Save::WeaponEntry::Kind::Lance;
-      we.weapon_index = -1;
-      we.ammo         = (*it)->ammo();
-    } else if (dynamic_cast<Weapon::Shock*>(*it)) {
-      we.kind         = Save::WeaponEntry::Kind::Shock;
-      we.weapon_index = -1;
-      we.ammo         = (*it)->ammo();
-    } else {
-      Weapon::Default *dw = dynamic_cast<Weapon::Default*>(*it);
-      we.kind         = Save::WeaponEntry::Kind::Default;
-      we.weapon_index = dw ? dw->weapon_index() : -1;
-      we.ammo         = (*it)->ammo();
-    }
+    we.ammo = gm ? gm->time_remaining() : (*it)->ammo();
     p.primary_weapons.push_back(we);
   }
 
