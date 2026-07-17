@@ -448,6 +448,11 @@ private:
   bool auto_paused = false;
   bool save_written_this_death_ = false;
   bool save_deleted_ = false;
+  // The simulation has advanced since the last savegame write. Set once per
+  // running tick, cleared by save_progress()'s write — so stacked save
+  // triggers (pause -> focus loss -> quit, or menu-exit -> destructor)
+  // produce ONE file write instead of identical back-to-back ones.
+  bool save_dirty_ = false;
   // Lightweight frame telemetry for on-device perf hunts (Android logcat):
   // tick()/draw() bracket themselves; once a second, if the frame rate ran
   // below ~55 fps, one SDL_Log line breaks the frame down (sim vs GL

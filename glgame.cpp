@@ -594,7 +594,14 @@ void GLGame::save_progress() {
   if (score_saved) return;
   for (auto* gs : *players) {
     if (gs->ship->is_alive() || gs->ship->lives > 0) {
-      Save::save_game(build_save_data());
+      // Dedupe stacked triggers: skip the write when the sim hasn't advanced
+      // since the last one (paused pause->quit, menu-exit->destructor). The
+      // game-over delete below is not gated — a roster can only become
+      // all-dead through a running tick, which sets the flag anyway.
+      if (save_dirty_) {
+        Save::save_game(build_save_data());
+        save_dirty_ = false;
+      }
       return;
     }
   }
@@ -4746,6 +4753,8 @@ void GLGame::tick(int delta) {
     last_tick += delta;
     return;
   }
+
+  save_dirty_ = true;  // the sim advances below; the save on disk is stale
 
   time_until_next_step -= delta;
 
