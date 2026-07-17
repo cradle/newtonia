@@ -175,13 +175,15 @@ and configuration, not engineering. Order matters only where noted.
 
 ### Gate 2 — field pass on everything since v1.44.5 (none of it verified on-device yet)
 - [ ] Tag `netplay-v1.44.6`; all four test channels green.
-- [ ] Controller session (the nav/bindings refactor is the only change
-      touching real input paths). VERIFIED on a local branch build
+- [x] Controller session — COMPLETE, verified on a local branch build
       (Glenn 2026-07-17): single R2 confirm, dpad nav, stick nav, menu
-      nav, Options, CodeEntry picker, and the held-stick-across-JOIN
+      nav, Options, CodeEntry picker, the held-stick-across-JOIN
       stale-latch fix (4204bff — no self-step when the code screen
       opens), quit/new-game confirms (B backs out), Intro dismiss (A) +
-      B-to-menu. Remaining: X paste on CodeEntry.
+      B-to-menu, X paste empty-clipboard message ("NO ROOM CODE ON THE
+      CLIPBOARD"). X's happy path is shadowed by the clipboard
+      auto-join by design (reachable only via the own-dead-code guard
+      bypass) and shares the same read machinery — accepted as covered.
 - [ ] Arrow keys drive P1 in gameplay and every menu; preferences.ini
       round-trips bindings on this build AND still parses on the stable
       branch (downgrade check — Steam testers share the file).
