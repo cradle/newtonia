@@ -153,6 +153,69 @@ not the game binary's.
 
 Two newtonia.exe on one machine: paste-connect, both ships controllable, remote one-shots work, host kills explode on client, pickups reflect, pause syncs, generation rollover on both, kill-process → CONNECTION LOST → Menu, solo save intact afterward. Then native↔web (Chrome+Firefox clipboard, chunking). CI: all three workflows green each phase.
 
+## Release checklist (netplay → master → public, drafted 2026-07-17)
+
+The feature set is complete and the deploy pipeline has shipped four
+channels green from 1.41.0 through 1.44.5. What remains is verification
+and configuration, not engineering. Order matters only where noted.
+
+### Gate 1 — TURN decision (#110, the one real infra blocker)
+- [ ] Re-test a forced-relay pair on Cloudflare TURN (`0`-prefixed join
+      code or NEWTONIA_NET_FORCE_RELAY=1, watch the gap telemetry) —
+      Cloudflare confirmed the stall bug and said they're fixing it, so
+      it may already be resolved. If gaps are gone, close #110 as-is.
+- [ ] If stalls persist: switch to metered.ca (A/B-proven zero gaps) or
+      coturn on a ~$5 VPS with worker HMAC minting.
+- [ ] Sanity-check public-scale budgets: Workers free-tier request/DO
+      limits and TURN minutes at expected launch traffic.
+
+### Gate 2 — field pass on everything since v1.44.5 (none of it verified on-device yet)
+- [ ] Tag `netplay-v1.44.6`; all four test channels green.
+- [ ] Controller session (the nav/bindings refactor is the only change
+      touching real input paths): menu, Options, quit/new-game confirms,
+      Intro dismiss + B-to-menu, lobby Choose, CodeEntry picker (stick +
+      dpad move, A and RT type, B deletes then backs out, X pastes),
+      R2 confirm fires ONCE everywhere.
+- [ ] Arrow keys drive P1 in gameplay and every menu; preferences.ini
+      round-trips bindings on this build AND still parses on the stable
+      branch (downgrade check — Steam testers share the file).
+- [ ] Pause auto-save: play without dying, pause, force-kill, relaunch →
+      CONTINUE resumes from the pause.
+- [ ] God-mode expiry hands the trigger back to the weapon held at
+      pickup (not the default gun).
+- [ ] Kill-storm sanity on-device: mine carpet at gen 9+ on Android
+      (native wide lines + batched score labels — should hold ~60 fps).
+
+### Gate 3 — human platform config (Glenn-only, ~10 min each)
+- [ ] Steamworks: promptless `+connect` Launch Option (invite links into
+      a cold-launched Steam build).
+- [ ] Apple Developer: Associated Domains on `cc.gfm.Newtonia` +
+      reprovision (iOS universal links).
+- [ ] Steamworks portal: confirm `steam/rich_presence.vdf` tokens are
+      pasted (App Admin → Community → Rich Presence).
+
+### Gate 4 — decisions, not blockers
+- [ ] Mobile-web perf posture: profile a mine storm on phone web (perf
+      overlay + `?NEWTONIA_FRAME_LOG=1`); ship with known numbers or a
+      documented caveat — WebGL keeps the line emulation, so web is the
+      slowest renderer by design.
+- [ ] Windows Defender: confirm Steam-installed unsigned builds aren't
+      flagged (FP report was submitted; revisit signing only if so).
+- [ ] Map the Game Center `coop_clear` achievement — netplay now makes
+      2P earnable on touch (it was deliberately left unmapped).
+
+### Gate 5 — release mechanics
+- [ ] Merge netplay branch → master. Side effects to expect: production
+      website deploys (landing page + `/join` + `.well-known` already
+      live from master; web auto-join via `?code=` goes live with the
+      merged `web/main.ts`), and master CI runs every workflow.
+- [ ] Tag `v1.45.0` (or next) — the normal `v*.*.*` pipeline: Steam
+      `beta` branch, TestFlight, Play internal, itch. Promote channels
+      (Steam default branch, Play production, App Store review) per
+      platform once smoke-tested.
+- [ ] Post-release: watch `wrangler tail` for room/TURN errors the first
+      days; keep the netplay-v* tag namespace for future test cycles.
+
 ## Where things stand (2026-07-08 handoff)
 
 **Architecture (PROTO 16), one paragraph:** the host owns the world —
