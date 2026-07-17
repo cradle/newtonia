@@ -132,6 +132,36 @@ void MeshBuilder::append_translated(const MeshBuilder& src, float dx, float dy) 
     col_.insert(col_.end(), src.col_.begin(), src.col_.end());
 }
 
+void MeshBuilder::append_transformed(const MeshBuilder& src, const float model[16],
+                                     float r, float g, float b, float a) {
+    if (in_group_) end();
+    int base = (int)(pos_.size() / 3);
+    for (const MeshGroup& gr : src.groups_) {
+        MeshGroup ng = gr;
+        ng.vertex_start = base + gr.vertex_start;
+#ifndef DESKTOP_COMPAT_GL
+        ng.vbo_pos = 0;
+        ng.vbo_col = 0;
+#endif
+        groups_.push_back(ng);
+    }
+    size_t n = src.pos_.size() / 3;
+    pos_.reserve(pos_.size() + src.pos_.size());
+    for (size_t i = 0; i < n; i++) {
+        float x = src.pos_[i*3 + 0], y = src.pos_[i*3 + 1], z = src.pos_[i*3 + 2];
+        pos_.push_back(model[0]*x + model[4]*y + model[8]*z  + model[12]);
+        pos_.push_back(model[1]*x + model[5]*y + model[9]*z  + model[13]);
+        pos_.push_back(model[2]*x + model[6]*y + model[10]*z + model[14]);
+    }
+    col_.reserve(col_.size() + src.col_.size());
+    for (size_t i = 0; i + 3 < src.col_.size(); i += 4) {
+        col_.push_back(src.col_[i + 0] * r);
+        col_.push_back(src.col_[i + 1] * g);
+        col_.push_back(src.col_[i + 2] * b);
+        col_.push_back(src.col_[i + 3] * a);
+    }
+}
+
 void MeshBuilder::flatten_to_lines() {
     if (in_group_) end();
     if (groups_.size() <= 1) return; // Already single-group — nothing to do.

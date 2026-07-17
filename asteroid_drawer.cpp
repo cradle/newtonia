@@ -482,7 +482,19 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
       }
     }
 
-    float tile_vp[16]; gles2_get_mvp(tile_vp);
+    // All dead asteroids' score labels in ONE mesh and ONE draw. Each label
+    // used to be its own Typer::draw plus two viewport swaps — ~125 extra
+    // draw calls per frame during a mine-carpet kill storm (measured with
+    // NEWTONIA_FRAME_LOG's draws= counter). Glyph geometry comes from
+    // Typer's retained CPU builders, transformed into tile space here with
+    // Typer's own pre_draw maths: S world units per glyph unit, baseline at
+    // -2S, char advance 2S, anchor on the LAST digit like Typer::draw(int),
+    // billboarded against the camera rotation like the old per-label path.
+    static MeshBuilder score_mb;
+    static Mesh score_mesh;
+    score_mb.clear();
+    const float *tc = Typer::text_colour();
+    const float S = 18.0f;  // = the old (18 / Typer::scale) size x Typer::scale
     for (list<Asteroid*>::const_iterator it = dead_objects->begin(); it != dead_objects->end(); ++it) {
       Asteroid const *a = *it;
       if (a->is_alive()) continue;  // score values belong to dead asteroids only
@@ -491,13 +503,31 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
         float rx = a->position.x() - cam_x, ry = a->position.y() - cam_y;
         if (rx*rx + ry*ry > reach*reach) continue;
       }
-      float val_vp[16];
-      mat4_translate(val_vp, tile_vp, a->position.x(), a->position.y(), 0.0f);
-      mat4_rotate_z(val_vp, val_vp, -direction);
-      gles2_set_vp(val_vp);
-      Typer::draw(0.0f, 0.0f, a->value, 18.0f / Typer::scale);
+      char buf[16];
+      snprintf(buf, sizeof(buf), "%d", a->value);
+      int len = (int)strlen(buf);
+      float base[16];
+      mat4_identity(base);
+      mat4_translate(base, base, a->position.x(), a->position.y(), 0.0f);
+      mat4_rotate_z(base, base, -direction);
+      for (int col = 0; col < len; col++) {
+        const MeshBuilder *gb = Typer::glyph_builder((unsigned char)buf[col]);
+        if (!gb) continue;
+        float m[16];
+        mat4_translate(m, base, (float)(col - (len - 1)) * 2.0f * S, -2.0f * S, 0.0f);
+        mat4_scale(m, m, S, S, 1.0f);
+        score_mb.append_transformed(*gb, m, tc[0], tc[1], tc[2], 1.0f);
+      }
     }
-    gles2_set_vp(tile_vp);
+    if (score_mb.vertex_count() > 0) {
+      score_mb.flatten_to_lines();
+      glLineWidth(1.1f * Typer::scale);
+      float saved_core = gles2_get_line_core_scale();
+      gles2_set_line_core_scale(0.1f);   // Typer's thin text weight
+      score_mesh.upload(score_mb, GL_DYNAMIC_DRAW);
+      score_mesh.draw();
+      gles2_set_line_core_scale(saved_core);
+    }
   }
 }
 

@@ -95,6 +95,15 @@ void Typer::resize(int x, int y) {
   cout << "scale:" << scale << endl;
 }
 
+const MeshBuilder *Typer::glyph_builder(unsigned char c) {
+  if (!meshes_initialized) init_meshes();
+  return s_char_builders[c];
+}
+
+const float *Typer::text_colour() {
+  return colour;
+}
+
 void Typer::draw_lefted(float x, float y, int number, float size, int time) {
   int length = -1;
   int temp = number/10;
