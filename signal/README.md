@@ -95,6 +95,32 @@ npx wrangler secret put TURN_OFF
 npx wrangler secret delete TURN_OFF
 ```
 
+## Automatic TURN budget (the free-tier hard cap)
+
+The worker also trips TURN_OFF's behaviour AUTOMATICALLY when the account's
+real month-to-date TURN egress (read from the GraphQL Analytics API,
+`callsTurnUsageAdaptiveGroups`, cached ~15 min) crosses a budget — default
+**900 GB**, 90% of the Realtime free tier's 1,000 GB/month. Past the cap
+minting pauses (STUN-only; direct pairs unaffected) until the UTC month
+rolls over. Log line on `wrangler tail`: `turn budget tripped`.
+
+Setup (without these the budget can't be measured and minting stays open —
+it is a cost cap, not an auth gate; the per-IP mint limits still apply):
+
+```sh
+# API token: dashboard -> My Profile -> API Tokens -> Create Token ->
+# custom, permission "Account Analytics: Read" on this account.
+npx wrangler secret put CF_ANALYTICS_TOKEN
+# The account tag (dashboard URL /<hex id>/ or `npx wrangler whoami`).
+npx wrangler secret put CF_ACCOUNT_ID
+# Optional override, in GB (e.g. while testing: 1):
+npx wrangler secret put TURN_BUDGET_GB
+npx wrangler deploy
+```
+
+Unit tests: `node test/turn_budget_test.mjs` (mocked GraphQL; covers the
+trip, the cache window, API-failure verdict-holding, and the month query).
+
 Bluntest option, if you'd rather remove the worker entirely: `npx wrangler
 delete` (clients hit the 12 s signal timeout, then fall back to manual
 codes). The Calls TURN key can also be rolled/deleted in the dashboard,

@@ -112,6 +112,99 @@ function turn_ttl(env) {
                   48 * 60 * 60);
 }
 
+// ---- TURN monthly egress budget ------------------------------------------
+// The issuance budget the mint comment always promised: stop minting TURN
+// credentials once the account's REAL month-to-date TURN egress (read from
+// the GraphQL Analytics API) crosses the budget, so the free account can
+// never be billed no matter what any population does. Sessions degrade to
+// STUN-only past the cap — direct pairs (the vast majority) are unaffected;
+// only the CGNAT relay fallback pauses until the month rolls over.
+//
+// Default 900 GB = 90% of the Realtime free tier's 1,000 GB/month; override
+// with `wrangler secret put TURN_BUDGET_GB`. Needs two extra secrets:
+// CF_ACCOUNT_ID (the account tag) and CF_ANALYTICS_TOKEN (an API token with
+// Account Analytics: Read). Without them the budget can't be measured and
+// minting stays open — the budget is a COST CAP, not an auth gate, and the
+// per-IP mint limits still apply.
+//
+// The reading is cached ~15 min per isolate; a failed refresh keeps the
+// last reading (a tripped budget stays tripped, an open one stays open) and
+// retries in a minute. Analytics lag + the refresh window bound the
+// overshoot past the trip point; the 100 GB of headroom under the free
+// tier absorbs it.
+const TURN_BUDGET_GB_DEFAULT = 900;
+const TURN_BUDGET_RECHECK_MS = 15 * 60 * 1000;
+const TURN_BUDGET_RETRY_MS = 60 * 1000;
+
+export function turn_budget_gb(env) {
+  const v = Number(env.TURN_BUDGET_GB);
+  return Number.isFinite(v) && v > 0 ? v : TURN_BUDGET_GB_DEFAULT;
+}
+
+// Month-to-date TURN egress in bytes via the GraphQL Analytics API
+// (callsTurnUsageAdaptiveGroups, summed over the current UTC month for our
+// key). Returns null when unconfigured, unreachable, or unparseable.
+export async function turn_egress_month_bytes(env, fetcher = fetch,
+                                              now = new Date()) {
+  if (!env.CF_ACCOUNT_ID || !env.CF_ANALYTICS_TOKEN || !env.TURN_KEY_ID)
+    return null;
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const from = `${y}-${m}-01`;
+  const to = now.toISOString().slice(0, 10);
+  // Values are interpolated inline (none are user input) so the query needs
+  // no variable declarations — the Date scalar coerces from the strings.
+  const query = `query { viewer { accounts(filter: {accountTag: "${env.CF_ACCOUNT_ID}"}) {
+    callsTurnUsageAdaptiveGroups(limit: 100, filter: {
+      keyId: "${env.TURN_KEY_ID}", date_geq: "${from}", date_leq: "${to}"
+    }) { sum { egressBytes } } } } }`;
+  try {
+    const resp = await fetcher("https://api.cloudflare.com/client/v4/graphql", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.CF_ANALYTICS_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query }),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const accounts = data && data.data && data.data.viewer &&
+                     data.data.viewer.accounts;
+    const groups = accounts && accounts[0] &&
+                   accounts[0].callsTurnUsageAdaptiveGroups;
+    if (!Array.isArray(groups)) return null;
+    let bytes = 0;
+    for (const g of groups) bytes += Number(g && g.sum && g.sum.egressBytes) || 0;
+    return bytes;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Per-isolate cache of the last reading. Cross-isolate durability is not
+// needed: every isolate re-derives the same verdict from the same source of
+// truth within one recheck window.
+let turn_budget_cache = { bytes: null, at: 0 };
+export function turn_budget_cache_reset() {   // tests only
+  turn_budget_cache = { bytes: null, at: 0 };
+}
+
+export async function turn_budget_ok(env, fetcher = fetch,
+                                     now_ms = Date.now()) {
+  if (now_ms - turn_budget_cache.at > TURN_BUDGET_RECHECK_MS) {
+    const bytes = await turn_egress_month_bytes(env, fetcher);
+    if (bytes !== null) {
+      turn_budget_cache = { bytes, at: now_ms };
+    } else {
+      // Keep the last reading; retry soon rather than in a full window.
+      turn_budget_cache.at = now_ms - TURN_BUDGET_RECHECK_MS + TURN_BUDGET_RETRY_MS;
+    }
+  }
+  if (turn_budget_cache.bytes === null) return true; // never measured: stay open
+  return turn_budget_cache.bytes < turn_budget_gb(env) * 1e9;
+}
+
 // Short-lived Cloudflare Calls TURN credentials, minted per connection.
 // Configured via secrets (wrangler secret put TURN_KEY_ID / TURN_API_TOKEN);
 // without them this returns [] and the game stays STUN-only.
@@ -120,6 +213,12 @@ async function turn_ice_servers(env) {
   // bandwidth (STUN-only) while signaling keeps working. Delete to restore.
   if (env.TURN_OFF) return [];
   if (!env.TURN_KEY_ID || !env.TURN_API_TOKEN) return [];
+  // Automatic monthly budget (see turn_budget_ok above): past the cap the
+  // free account must not mint. Same STUN-only degradation as TURN_OFF.
+  if (!(await turn_budget_ok(env))) {
+    console.log("turn budget tripped — minting paused (STUN-only)");
+    return [];
+  }
   try {
     const resp = await fetch(
         `https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate`,
