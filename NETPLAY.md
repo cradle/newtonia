@@ -270,10 +270,11 @@ and configuration, not engineering. Order matters only where noted.
       blocker.
 
 ### Gate 5 — release mechanics
-- [ ] Merge netplay branch → master. Side effects to expect: production
-      website deploys (landing page + `/join` + `.well-known` already
-      live from master; web auto-join via `?code=` goes live with the
-      merged `web/main.ts`), and master CI runs every workflow.
+- [x] Merge netplay branch → master — DONE (PR #323, 2026-07-18), with
+      the full branch CI matrix green on the merge commit first (8/8:
+      Linux, Windows, macOS Dev, iOS, Android, Web, both Xbox).
+      Master CI + the production website deploy (landing page, /join
+      with the paid-itch route, `.well-known`) trigger off the merge.
 - [x] **Public web ships netplay-OFF at release** (Glenn 2026-07-18,
       landed on the branch): `make web NETPLAY=0` defines
       NEWTONIA_NET_DISABLED (ONLINE row hidden, invite codes drained,
