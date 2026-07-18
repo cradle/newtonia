@@ -55,9 +55,10 @@ jobs:
         run: |
           source ~/emsdk/emsdk_env.sh
           emcc --version
-          # Release channel ships netplay force-disabled until live
-          # Worker/TURN usage is understood (NETPLAY.md release
-          # checklist); the netplay test channel keeps it on.
+          # The FREE release channel ships netplay force-disabled
+          # permanently (pricing decision in NETPLAY.md: paid on
+          # Steam/iOS, browser co-op is the paid newtonia-online
+          # project below); the netplay test channel keeps it on.
           if [ "${{ steps.chan.outputs.channel }}" = "html5-netplay" ]; then
             make web
           else
@@ -80,4 +81,30 @@ jobs:
           # page that web/dist serves at the root of the GitHub Pages site.
           linux-amd64/butler push web/dist/play \
             ${{ secrets.ITCH_GAME }}:${{ steps.chan.outputs.channel }} \
+            --userversion "${{ github.ref_name || github.sha }}"
+
+      # Paid web co-op (task #156): every public release also ships the
+      # netplay-ON build to the purchase-gated newtonia-online project —
+      # itch is the accounts system, so only buyers get the embed. The
+      # free public page above stays NETPLAY=0 by the pricing decision in
+      # NETPLAY.md (paid on Steam/iOS; free browser co-op would undercut
+      # them). The netplay-v* test cycle (html5-netplay) never touches
+      # the paid project. Same origin allowlist covers both projects
+      # (metonymous.itch.io + the itch.zone/hwcdn iframe hosts).
+      - name: Build WebAssembly (netplay, paid online project)
+        if: steps.chan.outputs.channel == 'html5'
+        run: |
+          source ~/emsdk/emsdk_env.sh
+          make web-clean
+          make web
+
+      - name: Push to itch.io (paid online project)
+        if: steps.chan.outputs.channel == 'html5'
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_CREDENTIALS }}
+          ITCH_GAME: ${{ secrets.ITCH_GAME }}
+        run: |
+          # Same itch user as the public project, fixed project slug.
+          linux-amd64/butler push web/dist/play \
+            "${ITCH_GAME%%/*}/newtonia-online:html5" \
             --userversion "${{ github.ref_name || github.sha }}"
