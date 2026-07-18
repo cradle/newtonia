@@ -311,10 +311,13 @@ and configuration, not engineering. Order matters only where noted.
       v1.45.0 is live — task #157 holds the cleanup list (tag globs,
       tag-netplay.yml, itch `html5-netplay`, docs); they stay
       untouched until then as the last pre-release test path.
-- [ ] Tag `v1.45.0` (or next) — the normal `v*.*.*` pipeline: Steam
-      `beta` branch, TestFlight, Play internal, itch. Promote channels
-      (Steam default branch, Play production, App Store review) per
-      platform once smoke-tested.
+- [x] Tag `v1.45.0` — DONE (2026-07-18): all five tag runs green
+      (Steam beta, TestFlight, Play internal, itch both channels,
+      macOS Dev). Smoke-tested by Glenn same day: Steam on latest
+      confirmed, Android on latest confirmed, **cross-platform
+      Steam↔Android host/client verified live, including the join
+      link on Android**; App Store build in review. Channel promotion
+      proceeds per platform.
 - [ ] Post-release: watch `wrangler tail` for room/TURN errors the first
       days; retire the netplay test pipeline (task #157 — netplay-v*
       tags, Steam `netplay` branch, itch `html5-netplay`,
