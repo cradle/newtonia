@@ -57,4 +57,9 @@ dependencies {
     // Play Games Services v2 — achievements backend (PlayGamesAchievements.java;
     // native half in play_games_achievements.cpp under PLAY_GAMES_BUILD).
     implementation 'com.google.android.gms:play-services-games-v2:20.1.2'
+    // Explicit floor for a transitive dep of play-services: without it the
+    // resolved androidx.activity is 1.0.0, which the Play Console flags as
+    // an outdated SDK on every release. Gradle resolves to the highest
+    // requested version, so this one line lifts the whole tree.
+    implementation 'androidx.activity:activity:1.9.3'
 }
