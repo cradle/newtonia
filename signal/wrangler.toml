@@ -1,0 +1,26 @@
+name = "newtonia-signal"
+main = "src/worker.js"
+compatibility_date = "2026-06-01"
+
+# NOTE: no [limits] cpu_ms block — per-script CPU limits are a PAID-plan
+# feature and the Free plan rejects the deploy outright (API error
+# 100328). Free-plan workers are platform-capped at 10 ms CPU per
+# invocation anyway, which is a tighter denial-of-wallet bound than the
+# 50 ms this used to request. If the account moves to a paid plan,
+# restore:  [limits]  cpu_ms = 50
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+[[durable_objects.bindings]]
+name = "LIMITS"
+class_name = "Limiter"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Limiter"]

@@ -22,8 +22,10 @@ void AsteroidDrawer::draw(Asteroid const *object, float direction, bool is_minim
     static MeshBuilder mb;
     static Mesh mesh;
 
-    float cx  = object->position.x();
-    float cy  = object->position.y();
+    // Netplay client: draw at sim pose + render-continuity offset (zero
+    // everywhere else) — see GLGame::net_reconcile_pose.
+    float cx  = object->position.x() + object->net_pose_err.x();
+    float cy  = object->position.y() + object->net_pose_err.y();
     float r   = object->radius;
     float rot = object->rotation * (float)M_PI / 180.0f;
     int   sc  = seg_count(r);
@@ -132,15 +134,23 @@ struct AsteroidVerts {
 void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
                                 list<Asteroid*> const *dead_objects,
                                 float direction, bool is_minimap,
-                                float wrap_x, float wrap_y) {
+                                float wrap_x, float wrap_y,
+                                float cam_x, float cam_y, float cull_r) {
   // --- Pre-compute vertex data (trig once per asteroid) ---
   vector<AsteroidVerts> verts;
   verts.reserve(objects->size());
   for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
     Asteroid const *a = *it;
     AsteroidVerts v;
-    v.cx  = a->position.x();
-    v.cy  = a->position.y();
+    // Netplay client: sim pose + render-continuity offset (zero offline
+    // and on the host) — see GLGame::net_reconcile_pose.
+    v.cx  = a->position.x() + a->net_pose_err.x();
+    v.cy  = a->position.y() + a->net_pose_err.y();
+    if (cull_r > 0) {
+      float reach = cull_r + a->radius;
+      float rx = v.cx - cam_x, ry = v.cy - cam_y;
+      if (rx*rx + ry*ry > reach*reach) continue;
+    }
     float r   = a->radius;
     float rot = a->rotation * (float)M_PI / 180.0f;
     v.segs    = seg_count(r);
@@ -219,8 +229,10 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
     }
   }
   mb.end();
-  mesh_fill.upload(mb, GL_DYNAMIC_DRAW);
-  mesh_fill.draw();
+  if (mb.vertex_count() > 0) {
+    mesh_fill.upload(mb, GL_DYNAMIC_DRAW);
+    mesh_fill.draw();
+  }
 
   // --- Outline pass (non-invisible asteroids, GL_LINES) ---
   mb.clear();
@@ -257,9 +269,11 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
     }
   }
   mb.end();
-  glLineWidth(is_minimap ? 1.0f : 2.5f);
-  mesh_outline.upload(mb, GL_DYNAMIC_DRAW);
-  mesh_outline.draw();
+  if (mb.vertex_count() > 0) {
+    glLineWidth(is_minimap ? 1.0f : 2.5f);
+    mesh_outline.upload(mb, GL_DYNAMIC_DRAW);
+    mesh_outline.draw();
+  }
 
   if (!is_minimap) {
     // --- Crack pass (tough asteroids) ---
@@ -293,9 +307,11 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
       }
     }
     mb.end();
-    glLineWidth(1.5f);
-    mesh_cracks.upload(mb, GL_DYNAMIC_DRAW);
-    mesh_cracks.draw();
+    if (mb.vertex_count() > 0) {
+      glLineWidth(1.5f);
+      mesh_cracks.upload(mb, GL_DYNAMIC_DRAW);
+      mesh_cracks.draw();
+    }
 
     // --- Armour edge indicator pass ---
     mb.clear();
@@ -345,9 +361,11 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
       }
     }
     mb.end();
-    glLineWidth(3.0f);
-    mesh_armour.upload(mb, GL_DYNAMIC_DRAW);
-    mesh_armour.draw();
+    if (mb.vertex_count() > 0) {
+      glLineWidth(3.0f);
+      mesh_armour.upload(mb, GL_DYNAMIC_DRAW);
+      mesh_armour.draw();
+    }
 
     // --- Teleport indicators (circles and arrows) ---
     mb.clear();
@@ -388,9 +406,11 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
         mb.end();
       }
     }
-    glLineWidth(2.0f);
-    mesh_teleport.upload(mb, GL_DYNAMIC_DRAW);
-    mesh_teleport.draw();
+    if (mb.vertex_count() > 0) {
+      glLineWidth(2.0f);
+      mesh_teleport.upload(mb, GL_DYNAMIC_DRAW);
+      mesh_teleport.draw();
+    }
 
     // --- Teleport debris (alive teleporting asteroids) ---
     mb.clear();
@@ -406,6 +426,12 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
       for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
         Asteroid const *a = *it;
         if (!a->teleporting) continue;
+        if (cull_r > 0) {
+          // Debris drifts, so allow twice the radius before skipping.
+          float reach = cull_r + a->radius * 2.0f;
+          float rx = a->position.x() - cam_x, ry = a->position.y() - cam_y;
+          if (rx*rx + ry*ry > reach*reach) continue;
+        }
         for (auto const &d : a->debris) {
           float alive = d.aliveness();
           float alpha = tp_flicker[tp_flicker_idx++ % 64] * alive / 2.0f + alive / 2.0f;
@@ -418,8 +444,10 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
       }
       mb.end();
     }
-    mesh_debris.upload(mb, GL_DYNAMIC_DRAW);
-    mesh_debris.draw(3.0f);
+    if (mb.vertex_count() > 0) {
+      mesh_debris.upload(mb, GL_DYNAMIC_DRAW);
+      mesh_debris.draw(3.0f);
+    }
 
     // --- Dead asteroid debris + score text ---
     {
@@ -435,6 +463,11 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
       mb.begin(GL_POINTS);
       for (list<Asteroid*>::const_iterator it = dead_objects->begin(); it != dead_objects->end(); ++it) {
         Asteroid const *a = *it;
+        if (cull_r > 0) {
+          float reach = cull_r + a->radius * 2.0f;
+          float rx = a->position.x() - cam_x, ry = a->position.y() - cam_y;
+          if (rx*rx + ry*ry > reach*reach) continue;
+        }
         for (auto d = a->debris.begin(); d != a->debris.end(); ++d) {
           float alive = d->aliveness();
           float alpha = flicker[flicker_idx++ % 64] * alive / 2.0f + alive / 2.0f;
@@ -443,20 +476,58 @@ void AsteroidDrawer::draw_batch(list<Asteroid*> const *objects,
         }
       }
       mb.end();
-      mesh_dead_debris.upload(mb, GL_DYNAMIC_DRAW);
-      mesh_dead_debris.draw(3.0f);
+      if (mb.vertex_count() > 0) {
+        mesh_dead_debris.upload(mb, GL_DYNAMIC_DRAW);
+        mesh_dead_debris.draw(3.0f);
+      }
     }
 
-    float tile_vp[16]; gles2_get_mvp(tile_vp);
+    // All dead asteroids' score labels in ONE mesh and ONE draw. Each label
+    // used to be its own Typer::draw plus two viewport swaps — ~125 extra
+    // draw calls per frame during a mine-carpet kill storm (measured with
+    // NEWTONIA_FRAME_LOG's draws= counter). Glyph geometry comes from
+    // Typer's retained CPU builders, transformed into tile space here with
+    // Typer's own pre_draw maths: S world units per glyph unit, baseline at
+    // -2S, char advance 2S, anchor on the LAST digit like Typer::draw(int),
+    // billboarded against the camera rotation like the old per-label path.
+    static MeshBuilder score_mb;
+    static Mesh score_mesh;
+    score_mb.clear();
+    const float *tc = Typer::text_colour();
+    const float S = 18.0f;  // = the old (18 / Typer::scale) size x Typer::scale
     for (list<Asteroid*>::const_iterator it = dead_objects->begin(); it != dead_objects->end(); ++it) {
       Asteroid const *a = *it;
-      float val_vp[16];
-      mat4_translate(val_vp, tile_vp, a->position.x(), a->position.y(), 0.0f);
-      mat4_rotate_z(val_vp, val_vp, -direction);
-      gles2_set_vp(val_vp);
-      Typer::draw(0.0f, 0.0f, a->value, 18.0f / Typer::scale);
+      if (a->is_alive()) continue;  // score values belong to dead asteroids only
+      if (cull_r > 0) {
+        float reach = cull_r + a->radius;
+        float rx = a->position.x() - cam_x, ry = a->position.y() - cam_y;
+        if (rx*rx + ry*ry > reach*reach) continue;
+      }
+      char buf[16];
+      snprintf(buf, sizeof(buf), "%d", a->value);
+      int len = (int)strlen(buf);
+      float base[16];
+      mat4_identity(base);
+      mat4_translate(base, base, a->position.x(), a->position.y(), 0.0f);
+      mat4_rotate_z(base, base, -direction);
+      for (int col = 0; col < len; col++) {
+        const MeshBuilder *gb = Typer::glyph_builder((unsigned char)buf[col]);
+        if (!gb) continue;
+        float m[16];
+        mat4_translate(m, base, (float)(col - (len - 1)) * 2.0f * S, -2.0f * S, 0.0f);
+        mat4_scale(m, m, S, S, 1.0f);
+        score_mb.append_transformed(*gb, m, tc[0], tc[1], tc[2], 1.0f);
+      }
     }
-    gles2_set_vp(tile_vp);
+    if (score_mb.vertex_count() > 0) {
+      score_mb.flatten_to_lines();
+      glLineWidth(1.1f * Typer::scale);
+      float saved_core = gles2_get_line_core_scale();
+      gles2_set_line_core_scale(0.1f);   // Typer's thin text weight
+      score_mesh.upload(score_mb, GL_DYNAMIC_DRAW);
+      score_mesh.draw();
+      gles2_set_line_core_scale(saved_core);
+    }
   }
 }
 

@@ -7,5 +7,16 @@
          the hardened runtime (they are not Apple-signed or same-team-signed). -->
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
+
+    <!-- Allow DYLD_* environment variables under the hardened runtime.
+         Steam injects its overlay (gameoverlayrenderer.dylib) via
+         DYLD_INSERT_LIBRARIES when it launches the game; without this
+         entitlement macOS strips the variable at exec, so the overlay
+         never loads (Shift+Tab dead, no achievement toasts) while the
+         linked libsteam_api keeps working (achievements still store).
+         Both this and disable-library-validation are required for the
+         overlay in a hardened-runtime/notarized app. -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
 </dict>
 </plist>

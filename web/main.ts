@@ -12,6 +12,30 @@ declare const Module: {
   const fsBtn = document.getElementById("fullscreen-btn") as HTMLButtonElement;
   const muteBtn = document.getElementById("mute-btn") as HTMLButtonElement;
 
+  // ---- Universal join link (?code=) ----
+  // A shared https://newtonia.metonymous.com/join?code=XXXX link that fell
+  // through to the web game (no native app installed, or a desktop browser)
+  // lands here with the room code in the query string. Hand it to the wasm
+  // module once its runtime is up (Module._web_accept_invite is exported),
+  // then scrub ?code= from the URL so a refresh doesn't rejoin. Menu::tick
+  // polls Invites::poll_accepted_invite and jumps into the lobby as a joiner.
+  (function handleJoinCode() {
+    const code = new URLSearchParams(window.location.search).get("code");
+    if (!code) return;
+    const m = Module as any;
+    let tries = 0;
+    const deliver = () => {
+      if (m.ccall && m._web_accept_invite) {
+        m.ccall("web_accept_invite", null, ["string"], [code]);
+        const clean = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, "", clean);
+        return;
+      }
+      if (tries++ < 200) setTimeout(deliver, 50);  // ~10 s of runtime warmup
+    };
+    deliver();
+  })();
+
   // ---- Fullscreen ----
   function toggleFullscreen() {
     if (!document.fullscreenElement) {
@@ -298,9 +322,13 @@ declare const Module: {
 
     // Capture button elements once; reused by the resize handler to avoid
     // repeated querySelector calls.
+    // Button centres sit clear of the canvas centre-pause zone (x <= 0.60
+    // in web_main.cpp finger_down) — at 0.62 the shoot circle's left edge
+    // was ~0.57, so a near-miss to its left hit the pause zone instead
+    // (Glenn, 2026-07-17). Keep these in sync with touch_to_key's zones.
     const circleButtons = [
-      { el: container.querySelector<HTMLElement>(".touch-shoot")!, cx: 0.62, cy: 0.75 },
-      { el: container.querySelector<HTMLElement>(".touch-mine")!,  cx: 0.85, cy: 0.75 },
+      { el: container.querySelector<HTMLElement>(".touch-shoot")!, cx: 0.70, cy: 0.75 },
+      { el: container.querySelector<HTMLElement>(".touch-mine")!,  cx: 0.90, cy: 0.75 },
     ];
     _circleButtonEls = circleButtons.map(b => b.el);
 

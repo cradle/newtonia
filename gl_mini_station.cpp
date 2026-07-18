@@ -185,8 +185,26 @@ void GLMiniStation::fire_at_nearest_player() {
                       position.y() + dir.y() * (radius + 5.0f));
   bullets.push_back(Particle(muzzle, dir * 0.615f + velocity * 0.99f, 2000.0f));
 
-  if (shoot_sound != NULL)
+  if (shoot_sound != NULL && sound_volume_scale > 0.0f) {
+    // sound_volume_scale is set per tick by GLGame: distance to the
+    // nearest player (solo) or to the local player (online host).
+    Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * sound_volume_scale));
     Mix_PlayChannel(-1, shoot_sound, 0);
+  }
+  net_shots.push_back(this);  // net host relays as EV_WORLD_SHOT
+}
+
+void GLMiniStation::net_client_step(float delta) {
+  // Constant drift + spins extrapolate perfectly; the 10 Hz restore only
+  // corrects tiny error. Bullets fly like any particle. No firing and no
+  // collisions — the host simulates those and the snapshot reconciles.
+  // CompositeObject::step = Object::step + the debris loop, so the death
+  // burst animates on the client too (the replica now outlives its death
+  // by the record's `present` window; see net_apply_state).
+  CompositeObject::step((int)delta);
+  outer_rotation += outer_rotation_speed * delta;
+  inner_rotation += inner_rotation_speed * delta;
+  for (auto &b : bullets) b.step(delta);
 }
 
 void GLMiniStation::step(float delta, const Grid &grid) {

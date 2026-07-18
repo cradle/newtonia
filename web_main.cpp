@@ -23,6 +23,7 @@
 #include "typer.h"
 #include "asteroid.h"
 #include "preferences.h"
+#include "invites.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -56,9 +57,6 @@ static SDL_GameController *s_controller = nullptr;
 static bool             s_idb_ready = false;
 
 static unsigned char touch_to_key(float norm_x, float norm_y) {
-    if (norm_x > 0.85f && norm_y < 0.15f)
-        return 'n'; // debug: skip level
-
     bool left_half = (norm_x < 0.5f);
     if (left_half) {
         float lx = norm_x * 2.0f;
@@ -68,14 +66,23 @@ static unsigned char touch_to_key(float norm_x, float norm_y) {
         else if (lx < 0.5f)  return 'a'; // rotate left
         else                 return 'd'; // rotate right
     } else {
+        // Canvas fallback zones behind the HTML circle buttons (main.ts) —
+        // keep the boundaries centred on the same cx values (shoot 0.70,
+        // mine 0.90). Left of the shoot zone is dead, NOT shoot: the
+        // centre pause zone ends at x=0.60, and a stray tap between them
+        // should do nothing rather than pause or fire.
         if (norm_y < 0.65f) return 0;  // dead zone above buttons
-        float rx = (norm_x - 0.5f) * 2.0f;
-        if (rx < 0.5f)  return ' ';  // shoot
-        else            return 'x';  // mine
+        if (norm_x < 0.60f) return 0;  // gap between pause zone and buttons
+        if (norm_x < 0.80f) return ' ';  // shoot
+        return 'x';                      // mine
     }
 }
 
 static void finger_down(SDL_FingerID id, float x, float y) {
+    // Beta skip corner, BEFORE the pause zones — the corner sits inside the
+    // pause hit region, so with pause first the skip tap only ever paused.
+    if (s_game->debug_skip_corner_tap(x, y)) return;
+
     // Pause button: top-right, below score/multiplier
     if(!s_pause_active && x >= 0.75f && y < 0.25f) {
         s_pause_active = true;
@@ -84,8 +91,11 @@ static void finger_down(SDL_FingerID id, float x, float y) {
         return;
     }
 
-    // Centre-screen pause zone (large invisible area, avoids edges used by controls)
-    if(!s_pause_active && x >= 0.30f && x <= 0.70f && y >= 0.25f && y <= 0.75f) {
+    // Centre-screen pause zone (large invisible area, avoids edges used by
+    // controls). Right edge stops at 0.60: the shoot button's circle starts
+    // at ~0.65, and a near-miss to its left must not pause (this zone is
+    // checked BEFORE touch_to_key, so any overlap steals fire taps).
+    if(!s_pause_active && x >= 0.30f && x <= 0.60f && y >= 0.25f && y <= 0.75f) {
         s_pause_active = true;
         s_pause_finger = id;
         s_game->keyboard('\r', 0, 0);
@@ -131,13 +141,20 @@ static void main_loop() {
             return;
 
         case SDL_KEYDOWN: {
+            if (e.key.repeat) break; // game tracks held state itself; ignore SDL repeats
             SDL_Keycode k = e.key.keysym.sym;
             unsigned char key = (k < 128) ? (unsigned char)k : 0;
             if (!key) switch (k) {
-                case SDLK_F1:  key = 128 + GLUT_KEY_F1;  break;
-                case SDLK_F4:  key = 128 + GLUT_KEY_F4;  break;
-                case SDLK_F8:  key = 128 + GLUT_KEY_F8;  break;
-                case SDLK_F11: key = 128 + GLUT_KEY_F11; break;
+                case SDLK_F1:    key = 128 + GLUT_KEY_F1;    break;
+                case SDLK_F4:    key = 128 + GLUT_KEY_F4;    break;
+                case SDLK_F8:    key = 128 + GLUT_KEY_F8;    break;
+                case SDLK_F11:   key = 128 + GLUT_KEY_F11;   break;
+                // Arrows use desktop GLUT's special-key codes; menus alias
+                // them to WASD (State::nav_key).
+                case SDLK_UP:    key = 128 + GLUT_KEY_UP;    break;
+                case SDLK_DOWN:  key = 128 + GLUT_KEY_DOWN;  break;
+                case SDLK_LEFT:  key = 128 + GLUT_KEY_LEFT;  break;
+                case SDLK_RIGHT: key = 128 + GLUT_KEY_RIGHT; break;
                 default: break;
             }
             if (key) s_game->keyboard(key, 0, 0);
@@ -147,10 +164,14 @@ static void main_loop() {
             SDL_Keycode k = e.key.keysym.sym;
             unsigned char key = (k < 128) ? (unsigned char)k : 0;
             if (!key) switch (k) {
-                case SDLK_F1:  key = 128 + GLUT_KEY_F1;  break;
-                case SDLK_F4:  key = 128 + GLUT_KEY_F4;  break;
-                case SDLK_F8:  key = 128 + GLUT_KEY_F8;  break;
-                case SDLK_F11: key = 128 + GLUT_KEY_F11; break;
+                case SDLK_F1:    key = 128 + GLUT_KEY_F1;    break;
+                case SDLK_F4:    key = 128 + GLUT_KEY_F4;    break;
+                case SDLK_F8:    key = 128 + GLUT_KEY_F8;    break;
+                case SDLK_F11:   key = 128 + GLUT_KEY_F11;   break;
+                case SDLK_UP:    key = 128 + GLUT_KEY_UP;    break;
+                case SDLK_DOWN:  key = 128 + GLUT_KEY_DOWN;  break;
+                case SDLK_LEFT:  key = 128 + GLUT_KEY_LEFT;  break;
+                case SDLK_RIGHT: key = 128 + GLUT_KEY_RIGHT; break;
                 default: break;
             }
             if (key) s_game->keyboard_up(key, 0, 0);
@@ -180,14 +201,38 @@ static void main_loop() {
 
         case SDL_WINDOWEVENT:
             if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
-                // e.window.data1/data2 are CSS pixels; scale to physical pixels
-                // so the canvas renders at full device resolution.
+                // Don't trust data1/data2: depending on the SDL emscripten
+                // backend's external-size detection they are either CSS pixels
+                // or an echo of the last SDL_SetWindowSize — which we already
+                // DPR-scaled. Multiplying the echo by DPR again inflates the
+                // drawing buffer DPR× on EVERY browser resize (phones fire one
+                // per URL-bar show/hide and app switch), compounding until the
+                // canvas allocation fails. The CSS downscale of an oversized
+                // buffer then drops the antialiased thick-line cores — long
+                // axis-aligned strokes (the menu title) go uniformly faint
+                // while diagonals stay bright. Re-reading the canvas's CSS
+                // size makes this idempotent: repeated events converge on the
+                // same buffer size, so no feedback is possible.
+                double css_w = 0, css_h = 0;
                 double dpr = emscripten_get_device_pixel_ratio();
-                s_w = (int)(e.window.data1 * dpr);
-                s_h = (int)(e.window.data2 * dpr);
-                SDL_SetWindowSize(s_window, s_w, s_h);
-                s_game->resize(s_w, s_h);
-                Typer::resize(s_w, s_h);
+                int w, h;
+                if (emscripten_get_element_css_size("#canvas", &css_w, &css_h) == EMSCRIPTEN_RESULT_SUCCESS
+                        && css_w >= 1.0 && css_h >= 1.0) {
+                    w = (int)(css_w * dpr);
+                    h = (int)(css_h * dpr);
+                } else {
+                    w = (int)(e.window.data1 * dpr);
+                    h = (int)(e.window.data2 * dpr);
+                }
+                if (w != s_w || h != s_h) {
+                    s_w = w;
+                    s_h = h;
+                    SDL_SetWindowSize(s_window, s_w, s_h);
+                    s_game->resize(s_w, s_h);
+                    Typer::resize(s_w, s_h);
+                    SDL_Log("web: resize css %.0fx%.0f dpr %.2f buffer %dx%d",
+                            css_w, css_h, dpr, s_w, s_h);
+                }
             }
             break;
 
@@ -216,6 +261,14 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_touch_joystick(float nx, float ny) {
     if (s_game) s_game->touch_joystick(nx, ny);
 }
 
+// A universal join link (https://newtonia.metonymous.com/join?code=XXXX)
+// opened the web game with ?code=; main.ts pulls the code out and calls this
+// so Menu::tick's Invites::poll_accepted_invite jumps straight into the lobby
+// as a joiner — the same handoff Steam/iOS/Android deep links use.
+extern "C" EMSCRIPTEN_KEEPALIVE void web_accept_invite(const char *code) {
+    if (code && code[0]) Invites::note_accepted(code);
+}
+
 // Called from the JS menu overlay on touchend with normalised [0,1] tap position.
 // touch_tap() handles the Continue/New Game split (when a save exists).
 // keyboard_up('\r') handles the no-save "tap to start" case (touch_tap is a no-op then).
@@ -223,6 +276,23 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_menu_tap(float nx, float ny) {
     if (!s_game) return;
     s_game->touch_tap(nx, ny);
     s_game->keyboard_up('\r', 0, 0);
+}
+
+// Background heartbeat for online sessions: hidden/occluded tabs stop
+// requestAnimationFrame entirely, so the main loop starves and snapshots
+// apply in rare bursts (host stops simulating; the peer's game stalls).
+// A plain interval keeps ticking at the browser's clamped background rate
+// (~1 Hz — pages with a live WebRTC connection are exempt from Chrome's
+// harsher 1-per-minute throttling). Solo play intentionally stays frozen
+// while hidden, like a pause.
+extern "C" EMSCRIPTEN_KEEPALIVE void web_background_tick() {
+    if (!s_idb_ready || !s_game) return;
+    if (!s_game->wants_background_ticks()) return;
+    // Cap the catch-up burst: if the browser throttled us harder than
+    // expected, don't try to simulate a minute of world time in one call.
+    Uint32 now = SDL_GetTicks();
+    if (now - s_last_tick > 2000) s_last_tick = now - 2000;
+    main_loop();
 }
 
 // Called from JS after FS.syncfs(true) completes (IDBFS → memory).
@@ -262,6 +332,46 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_on_idb_ready() {
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
     srand(time(NULL));
+
+    // Debug bridge (the web twin of NewtoniaActivity's intent-extra bridge):
+    // NEWTONIA_* URL query params — or localStorage entries — become process
+    // env vars. Directly-served builds take
+    //   ?NEWTONIA_BETA=1&NEWTONIA_START_GENERATION=9&NEWTONIA_ALL_WEAPONS=1;
+    // on itch (the only web deploy of the netplay branch) the game sits in an
+    // iframe whose URL isn't editable, so set the knobs from the remote-
+    // inspection console instead:
+    //   localStorage.NEWTONIA_START_GENERATION = 9; location.reload()
+    // (localStorage.clear() to reset). URL params win over localStorage. All
+    // current debug knobs take numeric values, so only integers pass — the
+    // bridge stays trivial and nothing attacker-shaped rides a shared link;
+    // worst case is a cheat-flagged test game.
+    {
+        static const char *kDebugVars[] = {
+            "NEWTONIA_BETA", "NEWTONIA_START_GENERATION",
+            "NEWTONIA_ALL_WEAPONS", "NEWTONIA_FRAME_LOG",
+            "NEWTONIA_LINE_EMULATION", "NEWTONIA_TEST_SPAWN_PICKUPS", NULL };
+        for (int i = 0; kDebugVars[i]; i++) {
+            int v = EM_ASM_INT({
+                try {
+                    var k = UTF8ToString($0);
+                    var val = new URLSearchParams(location.search).get(k);
+                    if (val === null || val === '') {
+                        try { val = localStorage.getItem(k); } catch (e) {}
+                    }
+                    if (val === null || val === '') return -1;
+                    var n = parseInt(val, 10);
+                    return isNaN(n) ? -1 : n;
+                } catch (e) { return -1; }
+            }, kDebugVars[i]);
+            if (v >= 0) {
+                char buf[16];
+                snprintf(buf, sizeof(buf), "%d", v);
+                setenv(kDebugVars[i], buf, 1);
+                printf("web: env %s=%s (from URL/localStorage)\n",
+                       kDebugVars[i], buf);
+            }
+        }
+    }
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
@@ -325,7 +435,9 @@ int main(int argc, char *argv[]) {
     // SDL2_mixer on Emscripten defers actual playback until unlocked.
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024) < 0)
         SDL_Log("Mix_OpenAudio failed: %s", Mix_GetError());
+    // 64 channels + 2 reserved for must-hear booms — see glut.cpp.
     Mix_AllocateChannels(64);
+    Mix_ReserveChannels(2);
 
     SDL_JoystickEventState(SDL_ENABLE);
     for (int i = 0; i < SDL_NumJoysticks(); i++) {
@@ -363,6 +475,16 @@ int main(int argc, char *argv[]) {
         // No pref path — initialise without persistence.
         web_on_idb_ready();
     }
+
+    // Background heartbeat: rAF stops in hidden tabs, so an interval pumps
+    // web_background_tick() instead (it no-ops unless an online session or
+    // lobby is active — see wants_background_ticks). 500 ms nominal; the
+    // browser clamps it to ~1 s while hidden.
+    EM_ASM({
+        setInterval(function() {
+            if (document.hidden) Module._web_background_tick();
+        }, 500);
+    });
 
     // emscripten_set_main_loop stays in main() so the WebGL context is never
     // torn down.  The loop returns early until s_idb_ready is set.

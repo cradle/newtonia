@@ -11,6 +11,8 @@ namespace Presence {
 #ifdef STEAM_BUILD
 namespace Backend {  // steam_presence.cpp
   void set_menu();
+  void set_hosting();
+  void set_joining();
   void set_level(int level, int num_players);
   void clear();
 }
@@ -37,6 +39,20 @@ void set_menu() {
   if (!status_changed("In the Menu")) return;
 #ifdef STEAM_BUILD
   Backend::set_menu();
+#endif
+}
+
+void set_hosting() {
+  if (!status_changed("Hosting a Co-Op Game")) return;
+#ifdef STEAM_BUILD
+  Backend::set_hosting();
+#endif
+}
+
+void set_joining() {
+  if (!status_changed("Joining a Co-Op Game")) return;
+#ifdef STEAM_BUILD
+  Backend::set_joining();
 #endif
 }
 

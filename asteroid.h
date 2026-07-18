@@ -15,6 +15,13 @@ public:
   virtual ~Asteroid();
 
   bool add_children(list<Asteroid*> *objects);
+  // True for a killed asteroid whose breakup fragments have NOT been
+  // spawned yet AND that is big enough to produce them — i.e. it still
+  // owes num_killable an increment in the upcoming reap. The level-clear
+  // check uses this so a client kill-claim (applied in net_host_poll,
+  // before the check, with its add_children deferred to the step-loop
+  // reap after it) can't latch CLEARED on the one-tick dip to zero.
+  bool pending_fragments() const;
   virtual bool kill() override;
   virtual void step(int delta) override;
   virtual bool contains(Point p, float r = 0.0f) const override;
@@ -31,9 +38,21 @@ public:
 
   static int num_killable;
 
+  // Netplay identity: unique per asteroid, assigned from a counter in every
+  // constructor. The host's values travel in snapshot NetExtras so the
+  // client can match asteroids across snapshots (it overwrites its local
+  // ids with the host's when applying). See NETPLAY.md.
+  uint32_t net_id;
+  static uint32_t next_net_id;
+
   const static int max_radius;
 
   static Mix_Chunk *explode_sound, *thud_sound, *ting_sound, *asteroid_ting_sound;
+
+  // Death explosion, clamped to once per millisecond tick (stacked
+  // same-frame deaths would clip). Shared by the host's add_children and
+  // the net client's removal paths, which never run add_children.
+  static void play_explode_sound();
 
   static void free_sounds();
 

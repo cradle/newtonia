@@ -1,5 +1,7 @@
 #include "default.h"
 #include "../asset_path.h"
+#include "../sound_cache.h"
+#include "../net_protocol.h"  // NET_LOG
 #include "../particle.h"
 #include "../point.h"
 #include "../ship.h"
@@ -48,13 +50,13 @@ namespace Weapon {
       if(!unlimited)
         _ammo = 100;
 
-      shoot_sound = Mix_LoadWAV(asset_path("audio/shoot.wav").c_str());
+      shoot_sound = load_wav_cached("audio/shoot.wav");
       if(shoot_sound == NULL) {
         cout << "Unable to load shoot.wav (" << Mix_GetError() << ")" << endl;
       }
 
       if(!unlimited) {
-        empty_sound = Mix_LoadWAV(asset_path("audio/empty.wav").c_str());
+        empty_sound = load_wav_cached("audio/empty.wav");
         if(empty_sound == NULL) {
           cout << "Unable to load empty.wav (" << Mix_GetError() << ")" << endl;
         }
@@ -84,21 +86,25 @@ namespace Weapon {
   }
 
   void Default::fire() {
+    // PROTO 14: the host's remote-player gun keeps its ammo/cooldown/
+    // trigger bookkeeping but plays no sim sound — the real bullets (and
+    // the shot sound) arrive as MSG_SHOT reports from the owning client.
+    bool sim_only = ship->net_remote_gun;
     if(!unlimited) {
       if(_ammo == 0) {
-        if(empty_sound != NULL) {
+        if(empty_sound != NULL && !sim_only) {
           Mix_PlayChannel(-1, empty_sound, 0);
         }
         return;
       } else {
         _ammo--;
-        if(shoot_sound != NULL && ship->sound_volume_scale > 0.0f) {
+        if(shoot_sound != NULL && ship->sound_volume_scale > 0.0f && !sim_only) {
           Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * ship->sound_volume_scale));
           Mix_PlayChannel(-1, shoot_sound, 0);
         }
       }
     } else {
-      if(shoot_sound != NULL && ship->sound_volume_scale > 0.0f) {
+      if(shoot_sound != NULL && ship->sound_volume_scale > 0.0f && !sim_only) {
         Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * ship->sound_volume_scale));
         Mix_PlayChannel(-1, shoot_sound, 0);
       }
@@ -156,12 +162,20 @@ namespace Weapon {
   }
 
   void Default::fire_shot(Point direction) {
-    direction = Point(direction);
-    direction.rotate((rand() / (float)RAND_MAX) * accuracy - accuracy / 2.0);
-    ship->bullets.push_back(Particle(ship->gun(), direction*0.615 + ship->velocity*0.99, 2000.0));
-    if(ship->god_mode_time_remaining() > 0) {
-      ship->mark_last_bullet_trail();
-      ship->mark_last_bullet_kills_invincible();
+    // PROTO 14: the host's remote-player gun mints no bullets — its real
+    // shots arrive as MSG_SHOT reports (exact clones). The semi-auto
+    // disarm below still runs so the trigger bookkeeping stays in step.
+    if(!ship->net_remote_gun) {
+      direction = Point(direction);
+      direction.rotate((rand() / (float)RAND_MAX) * accuracy - accuracy / 2.0);
+      ship->bullets.push_back(Particle(ship->gun(), direction*0.615 + ship->velocity*0.99, 2000.0));
+      if(ship->god_mode_time_remaining() > 0) {
+        ship->mark_last_bullet_trail();
+        ship->mark_last_bullet_kills_invincible();
+      }
+      // The owning client reports each bullet (multi-shot levels report
+      // one per barrel) so the host spawns exact clones.
+      ship->net_report_last_bullet();
     }
     if(!automatic) {
       shoot(false);

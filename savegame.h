@@ -1,5 +1,8 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <utility>
 #include <vector>
 
 // Binary save/load for a complete in-progress game.
@@ -19,7 +22,10 @@ struct WeaponEntry {
         Missile,
         Shield,
         Nova,      // screen-clearing secondary; ammo = number of charges
-        Shock,     // chain-lightning primary; ammo = number of bolts
+        Beam,      // primary piercing-bolt gun; ammo = number of bolts
+        Lance,     // primary full-length pulse; ammo = number of pulses
+        Shock,     // chain-lightning primary; ammo = number of bolts (appended
+                   // after Lance to keep the branch's v14 wire ordinals stable)
     };
     Kind kind;
     int  weapon_index;  // Default only; ignored for all other kinds
@@ -90,7 +96,9 @@ struct Asteroid {
 // ── Pickup ───────────────────────────────────────────────────────────────────
 
 enum class PickupType : uint8_t {
-    Weapon, Mine, GigaMine, Missile, Shield, GodMode, ExtraLife, NovaCharge, ShockWeapon
+    Weapon, Mine, GigaMine, Missile, Shield, GodMode, ExtraLife, NovaCharge, Beam, Lance,
+    Revive,       // co-op: revives the fallen partner (v13)
+    ShockWeapon   // chain-lightning primary drop (appended after Revive, v15)
 };
 
 struct Pickup {
@@ -164,7 +172,14 @@ struct MiniStation {
 
 struct GameState {
     static constexpr uint32_t MAGIC   = 0x4E57544E;  // "NWTN"
-    static constexpr uint16_t VERSION = 12;
+    // 12 = Beam/Lance weapon kinds, 13 = Revive pickup type, 14 = the
+    // achievements append (master's "v11 append" renumbered: per-player
+    // asteroid/enemy kills, died-this-generation, weapons-fired mask,
+    // then the game-scoped cheat flag). 15 = Shock weapon kind + ShockWeapon
+    // pickup type (merged from master, appended after the branch's additions).
+    // 16 = mid-game hazards (pulsar/comet/seeker) appended at the end (merged
+    // from master's "v12"; renumbered onto this branch's higher version).
+    static constexpr uint16_t VERSION = 16;
     // Oldest save format we can still read. Saves from MIN_VERSION..VERSION all
     // load; anything older (or from a newer build) is ignored. To keep old saves
     // working across a version bump, only ever APPEND new fields at the end of
@@ -192,11 +207,61 @@ struct GameState {
     std::vector<Hazard>    hazards;
 };
 
+// ── Streams ──────────────────────────────────────────────────────────────────
+// Byte-sink/source abstraction so the same serialization code drives both the
+// save file and in-memory netplay snapshots (see NETPLAY.md). Both methods
+// return false on failure so serialization can short-circuit with &&.
+
+class Stream {
+public:
+    virtual ~Stream() {}
+    virtual bool write(const void *data, size_t size) = 0;
+    virtual bool read(void *data, size_t size) = 0;
+};
+
+class FileStream : public Stream {
+public:
+    explicit FileStream(std::FILE *file) : f(file) {}
+    bool write(const void *data, size_t size) override;
+    bool read(void *data, size_t size) override;
+private:
+    std::FILE *f;
+};
+
+class MemStream : public Stream {
+public:
+    MemStream() : pos(0) {}  // empty sink: write, then take data()
+    explicit MemStream(std::vector<uint8_t> bytes)  // source: read from bytes
+        : buf(std::move(bytes)), pos(0) {}
+    bool write(const void *data, size_t size) override;
+    bool read(void *data, size_t size) override;
+    const std::vector<uint8_t> &data() const { return buf; }
+private:
+    std::vector<uint8_t> buf;
+    size_t pos;
+};
+
 // ── API ───────────────────────────────────────────────────────────────────────
 
 bool save_exists();
 bool save_game(const GameState &state);  // returns false on I/O error
 bool load_game(GameState &state);        // returns false if absent or format mismatch
 void delete_save();
+
+// Header-less body serialization: save_game/load_game wrap these with the
+// MAGIC/VERSION header and the save file's path; netplay snapshots call them
+// directly on a MemStream. deserialize_game takes the format version the
+// bytes were written with (current VERSION when omitted).
+// Per-struct serializers, exposed for the netplay delta protocol
+// (NETPLAY.md M2-6): deltas carry individual players and new asteroids
+// in exactly the save format.
+bool write_player(Stream &f, const Player &p);
+bool read_player(Stream &f, Player &p);
+bool write_asteroid(Stream &f, const Asteroid &a);
+bool read_asteroid(Stream &f, Asteroid &a);
+
+bool serialize_game(Stream &out, const GameState &state);
+bool deserialize_game(Stream &in, GameState &state,
+                      uint16_t version = GameState::VERSION);
 
 } // namespace Save

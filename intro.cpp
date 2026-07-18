@@ -247,34 +247,59 @@ void Intro::keyboard(unsigned char key, int x, int y) {
   // dismiss the intro before it is seen. The touch fire button arrives here
   // too (it synthesises the shoot key).
   if (!paused && time >= input_delay_ms &&
-      (key == (unsigned char)g_prefs.p1_keys.shoot ||
-       key == (unsigned char)g_prefs.p2_keys.shoot)) {
+      (g_prefs.p1_keys.shoot.matches(key) ||
+       g_prefs.p2_keys.shoot.matches(key))) {
     dismiss();
   }
 }
 
 void Intro::keyboard_up(unsigned char key, int x, int y) {
-  // Only the menu key acts while the intro is up; shoot (on key down) starts.
-  if (!is_finished() && key == (unsigned char)g_prefs.general_keys.menu) {
+  // Only the menu and skip-level keys act while the intro is up; shoot (on
+  // key down) starts.
+  if (is_finished()) return;
+  if (key == (unsigned char)g_prefs.general_keys.menu) {
     leave_to_menu();
+    return;
+  }
+  // Skip-level during an intro skips this level too: apply the game's own
+  // skip handling (the intro is for the level being skipped), then start.
+  // One N per level whether an intro is up or not — level-marching driver
+  // scripts and the debug key behave identically on intro generations.
+  if (key == (unsigned char)g_prefs.general_keys.skip_level) {
+    game->keyboard_up(key, x, y);
+    // The game's skip zeroes Asteroid::num_killable assuming every live
+    // asteroid was in its lists — but our display copy is still alive and
+    // its destructor decrements on teardown, leaving the count at -1.
+    // Every branch of the level-clear ladder is gated on num_killable == 0,
+    // so the skipped level then never rolled over: an empty world stuck on
+    // the CLEARED banner (asteroid intros only, gens 1-8 — the black hole /
+    // station intros have no display copy). Pre-count the copy so its
+    // destructor nets to zero.
+    if (asteroid != NULL && !asteroid->invincible)
+      Asteroid::num_killable++;
+    dismiss();
   }
 }
 
 void Intro::controller(SDL_Event event) {
   if (is_finished()) return;
-  // Start (or Guide) pauses, matching the in-game pause button.
+  // Start (or Guide) pauses, matching the in-game pause button. Start must
+  // be claimed BEFORE the shared translation below folds it into confirm.
   if (event.type == SDL_CONTROLLERBUTTONDOWN &&
       (event.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
        event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE)) {
     toggle_pause();
     return;
   }
-  if (!paused && time >= input_delay_ms &&
-      ((event.type == SDL_CONTROLLERBUTTONDOWN &&
-        event.cbutton.button == SDL_CONTROLLER_BUTTON_A) ||
-       (event.type == SDL_CONTROLLERAXISMOTION &&
-        event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT &&
-        event.caxis.value > 8000))) {
+  // Shared nav language: A / right trigger = confirm (start the level),
+  // B / Back = Esc (leave to the menu, auto-saving — the keyboard's menu
+  // key already did this; a pad previously had no way out of an intro).
+  unsigned char k = nav_key_from_controller(event);
+  if (k == 27) {
+    leave_to_menu();
+    return;
+  }
+  if (k == '\r' && !paused && time >= input_delay_ms) {
     dismiss();
   }
 }

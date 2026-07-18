@@ -10,14 +10,58 @@ ifeq ($(UNAME), Darwin)
   LIBS = -framework GLUT -framework OpenGL -framework AppKit $(SDL2_LIBS)
   CFLAGS += -DGL_SILENCE_DEPRECATION -Wno-char-subscripts
   ALL_SRCS := $(filter-out $(ANDROID_SRCS),$(wildcard *.cpp) $(wildcard */*.cpp))
+else ifneq (,$(findstring _NT,$(UNAME)))
+  # Windows (MSYS2 MINGW64 shell) — mirrors .github/workflows/windows.yml:
+  # static link so newtonia.exe runs without mingw64 DLLs on PATH.
+  CFLAGS += -D_USE_MATH_DEFINES -DFREEGLUT_STATIC
+  LIBS = -static $(shell pkg-config --libs --static sdl2 SDL2_mixer freeglut) \
+         -lopengl32 -lglu32
+  ALL_SRCS := $(filter-out $(ANDROID_SRCS),$(wildcard *.cpp) $(wildcard */*.cpp))
 else
   LIBS = -lglut -lGL -lGLU -lX11 $(SDL2_LIBS)
   ALL_SRCS := $(filter-out $(ANDROID_SRCS),$(wildcard *.cpp) $(wildcard */*.cpp))
 endif
 
-OSX_LIBS = -framework GLUT -framework OpenGL -framework AppKit $(SDL2_LIBS)
-OSX_CFLAGS = $(CFLAGS) -std=c++11 -arch arm64 -arch x86_64
+# Native netplay backend (macOS/Linux/Windows MinGW) — ON BY DEFAULT since
+# the netplay release; see NETPLAY.md. Needs libdatachannel, which is not
+# packaged by Homebrew — build it from source ONCE:
+#   ./build_netplay_deps.sh              (--universal for `make osx`)
+# Opt out (netless binary, no deps needed):
+#   make NETPLAY=0
+# NETPLAY_PREFIX defaults to the script's install dir (./netplay-libs);
+# pass it only for a prefix elsewhere. Netplay-on defines NEWTONIA_NET_RTC
+# (activates net_transport_rtc.cpp and the menu's ONLINE row) and links the
+# libdatachannel C API. Missing deps are a hard error, not a silent
+# fallback — a netless binary must be asked for, never shipped by accident.
+NETPLAY ?= 1
+ifeq ($(NETPLAY),1)
+  NETPLAY_PREFIX ?= $(CURDIR)/netplay-libs
+  ifeq ($(filter clean web-clean android android-install android-assets android-clean web,$(MAKECMDGOALS)),)
+    ifeq ($(wildcard $(NETPLAY_PREFIX)/include/rtc/rtc.h),)
+      $(error netplay builds by default but $(NETPLAY_PREFIX)/include/rtc/rtc.h \
+is missing — run ./build_netplay_deps.sh once (--universal for `make osx`), \
+point NETPLAY_PREFIX at an existing install, or build without netplay: \
+make NETPLAY=0)
+    endif
+  endif
+  CFLAGS += -DNEWTONIA_NET_RTC -I$(NETPLAY_PREFIX)/include
+  ifneq (,$(findstring _NT,$(UNAME)))
+    # Windows (MSYS2 MINGW64) — mirrors .github/workflows/windows.yml: static
+    # libdatachannel + vendored libjuice/usrsctp archives ("--start-group"
+    # resolves their circular references), msys2's static OpenSSL, and the
+    # Winsock/crypto system libs. RTC_STATIC stops rtc.h declaring dllimport
+    # symbols. Populate $(NETPLAY_PREFIX) with include/ and lib/*.a first
+    # (see the CI workflow's "Build libdatachannel" step).
+    CFLAGS += -DRTC_STATIC
+    LIBS += -Wl,--start-group $(wildcard $(NETPLAY_PREFIX)/lib/*.a) -Wl,--end-group \
+            -lssl -lcrypto -lws2_32 -liphlpapi -lbcrypt -lcrypt32
+  else
+    LIBS += -L$(NETPLAY_PREFIX)/lib -ldatachannel -Wl,-rpath,$(NETPLAY_PREFIX)/lib
+  endif
+endif
+
 CFLAGS += -MMD -MP
+
 COMPILE = $(CC) $(CFLAGS) -c
 OBJFILES := $(patsubst %.cpp,%.o,$(ALL_SRCS))
 ifeq ($(UNAME), Darwin)
@@ -25,10 +69,63 @@ ifeq ($(UNAME), Darwin)
 endif
 DEPFILES := $(OBJFILES:.o=.d)
 
+
 all: newtonia
 
-osx: $(OBJFILES)
-	CFLAGS="$(OSX_CFLAGS)" $(CC) -o newtonia $(OBJFILES) $(OSX_LIBS)
+# Flavor stamp: the netplay seam files compile to EMPTY translation units
+# without NEWTONIA_NET_RTC, so switching NETPLAY on or off between builds
+# must rebuild everything — otherwise stale objects from the other flavor
+# link against the wrong library set ("undefined symbols: _rtcCreate...").
+FLAVOR := netplay-$(if $(filter 1,$(NETPLAY)),on,off)
+.PHONY: FORCE
+FORCE: ;
+flavor.stamp: FORCE
+	@[ "`cat flavor.stamp 2>/dev/null`" = "$(FLAVOR)" ] || echo "$(FLAVOR)" > flavor.stamp
+$(OBJFILES): flavor.stamp
+
+# --- macOS universal bundle ----------------------------------------------
+# Two whole-program compiles (arm64 + x86_64) lipo'd together, mirroring
+# the CI recipe. The x86_64 half links against the Rosetta Homebrew tree
+# (/usr/local) — install it plus sdl2/sdl2_mixer there for local universal
+# builds. The default netplay build needs a UNIVERSAL libdatachannel here:
+#   ./build_netplay_deps.sh --universal
+# and the dylib is embedded in the bundle at Contents/Frameworks.
+OSX_SDL_ARM ?= /opt/homebrew
+OSX_SDL_X86 ?= /usr/local
+OSX_MIN = -mmacosx-version-min=12.0
+ifeq ($(NETPLAY),1)
+  OSX_NET_CFLAGS = -DNEWTONIA_NET_RTC -I$(NETPLAY_PREFIX)/include
+  OSX_NET_LIBS = -L$(NETPLAY_PREFIX)/lib -ldatachannel \
+                 -Wl,-rpath,@executable_path/../Frameworks \
+                 -Wl,-rpath,$(NETPLAY_PREFIX)/lib
+endif
+
+newtonia-arm64: OSX_SDL = $(OSX_SDL_ARM)
+newtonia-x86_64: OSX_SDL = $(OSX_SDL_X86)
+newtonia-arm64 newtonia-x86_64: osx-netplay-check FORCE
+	$(CC) -O3 -Wall -std=c++11 -arch $(patsubst newtonia-%,%,$@) $(OSX_MIN) \
+	  -DGL_SILENCE_DEPRECATION -Wno-char-subscripts $(OSX_NET_CFLAGS) \
+	  -I$(OSX_SDL)/include/SDL2 -D_THREAD_SAFE \
+	  -o $@ $(ALL_SRCS) macos_window.mm \
+	  -L$(OSX_SDL)/lib -lSDL2 -lSDL2_mixer $(OSX_NET_LIBS) \
+	  -framework GLUT -framework OpenGL -framework AppKit
+
+# A thin (single-arch) libdatachannel from a plain `./build_netplay_deps.sh`
+# run fails the x86_64 link with pages of undefined _rtc* symbols; catch it
+# up front instead.
+.PHONY: osx-netplay-check
+osx-netplay-check:
+ifeq ($(NETPLAY),1)
+	@lipo -info $(NETPLAY_PREFIX)/lib/libdatachannel.dylib | grep -q x86_64 && \
+	 lipo -info $(NETPLAY_PREFIX)/lib/libdatachannel.dylib | grep -q arm64 || { \
+	  echo "error: $(NETPLAY_PREFIX)/lib/libdatachannel.dylib is not universal —" ; \
+	  echo "       rebuild the deps with: ./build_netplay_deps.sh --universal" ; \
+	  exit 1 ; }
+endif
+
+osx: osx-netplay-check newtonia-arm64 newtonia-x86_64
+	lipo -create -output newtonia newtonia-arm64 newtonia-x86_64
+	lipo -info newtonia
 	mkdir -p Newtonia.app/Contents/MacOS
 	mkdir -p Newtonia.app/Contents/Resources
 	cp newtonia Newtonia.app/Contents/MacOS/Newtonia
@@ -36,12 +133,16 @@ osx: $(OBJFILES)
 	cp -r audio Newtonia.app/Contents/Resources/audio
 	cp icon.icns Newtonia.app/Contents/Resources/icon.icns
 	sed 's/$${EXECUTABLE_NAME}/Newtonia/g' Newtonia-Info.plist > Newtonia.app/Contents/Info.plist
+ifeq ($(NETPLAY),1)
+	mkdir -p Newtonia.app/Contents/Frameworks
+	cp $(NETPLAY_PREFIX)/lib/libdatachannel.*.dylib Newtonia.app/Contents/Frameworks/
+endif
 
 newtonia: $(OBJFILES)
 	$(CC) -o newtonia $(OBJFILES) $(LIBS)
 
 clean:
-	rm -rf $(OBJFILES) $(DEPFILES) newtonia
+	rm -rf $(OBJFILES) $(DEPFILES) newtonia newtonia.exe newtonia-arm64 newtonia-x86_64 flavor.stamp
 
 # ============================================================
 # Web / Emscripten target
@@ -55,6 +156,8 @@ WEB_SRCS := $(filter-out $(WEB_EXCL), $(wildcard *.cpp) $(wildcard */*.cpp))
 # GROWABLE_ARRAYBUFFERS (default-on since emscripten 6.0.2) breaks Firefox:
 # its TextDecoder rejects views over resizable ArrayBuffers, crashing
 # UTF8ToString at startup. Requires emcc >= 4.0.12 to recognise the setting.
+# ccall is used by the netplay test hooks (nwtest_* in net_transport_web.cpp)
+# to pass SDP strings from JS; harmless to production pages.
 WEB_FLAGS = -std=c++11 -O2 \
             -s USE_SDL=2 \
             -s USE_SDL_MIXER=2 \
@@ -62,10 +165,21 @@ WEB_FLAGS = -std=c++11 -O2 \
             -s FULL_ES2=1 \
             -s ALLOW_MEMORY_GROWTH=1 \
             -s GROWABLE_ARRAYBUFFERS=0 \
+            -s EXPORTED_RUNTIME_METHODS='["ccall"]' \
             -lidbfs.js \
             --shell-file web/shell.html
 
 WEB_FLAGS += --preload-file audio@audio
+
+# `make web NETPLAY=0` ships the web game with netplay force-disabled
+# (NEWTONIA_NET_DISABLED: ONLINE row hidden, invite codes drained and
+# dropped, factories return null — the Worker/TURN are never contacted).
+# Used by the PUBLIC web deploys (GitHub Pages, itch release channel)
+# until live infra usage is understood; the netplay test channel builds
+# without it. The backend still compiles, so no source-set changes.
+ifeq ($(NETPLAY),0)
+  WEB_FLAGS += -DNEWTONIA_NET_DISABLED
+endif
 
 .PHONY: web web-clean
 
@@ -151,6 +265,29 @@ STEAM_DEPFILES := $(STEAM_OBJFILES:.o=.d)
 .PHONY: steam steam-clean check-steam-sdk
 
 steam: check-steam-sdk newtonia-steam steam_appid.txt
+ifeq ($(UNAME), Darwin)
+	# Also wrap the Steam binary in Newtonia.app so macOS treats it as a real
+	# app: window activation/focus, Game Mode, and App Nap suppression all key
+	# off the bundle's Info.plist (macos_window.mm + Newtonia-Info.plist), and
+	# the Steam overlay only injects into a bundled, Steam-launched app.
+	# Mirrors the deploy-steam macOS layout. The Steam runtime dylib sits
+	# beside the executable (its id is @loader_path/libsteam_api.dylib);
+	# steam_appid.txt rides along for standalone (non-Steam) launches. The
+	# bare ./newtonia-steam at the repo root still works too (run from here so
+	# steam_appid.txt is in the CWD). A netplay build resolves libdatachannel
+	# through its absolute netplay-libs rpath, so no extra copy is needed for
+	# local testing.
+	mkdir -p Newtonia.app/Contents/MacOS Newtonia.app/Contents/Resources
+	cp newtonia-steam Newtonia.app/Contents/MacOS/Newtonia
+	cp $(STEAM_RUNTIME) Newtonia.app/Contents/MacOS/$(STEAM_RUNTIME)
+	cp steam_appid.txt Newtonia.app/Contents/MacOS/steam_appid.txt
+	rm -rf Newtonia.app/Contents/Resources/audio
+	cp -r audio Newtonia.app/Contents/Resources/audio
+	cp steam_appid.txt Newtonia.app/Contents/Resources/steam_appid.txt
+	cp icon.icns Newtonia.app/Contents/Resources/icon.icns
+	sed 's/$${EXECUTABLE_NAME}/Newtonia/g' Newtonia-Info.plist > Newtonia.app/Contents/Info.plist
+	@echo "Bundled Newtonia.app (Steam build) - launch via Steam for overlay/presence."
+endif
 
 check-steam-sdk:
 	@test -f $(STEAM_SDK)/public/steam/steam_api.h || { \
@@ -171,7 +308,7 @@ steam_appid.txt:
 	echo $(STEAM_APPID) > $@
 
 steam-clean:
-	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam $(STEAM_RUNTIME) steam_appid.txt
+	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam $(STEAM_RUNTIME) steam_appid.txt Newtonia.app
 
 %.steam.o: %.cpp
 	$(CC) $(STEAM_CFLAGS) -c -o $@ $<

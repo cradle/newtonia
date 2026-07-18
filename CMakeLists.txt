@@ -44,6 +44,51 @@ if(DEFINED SDL2_SOURCE_DIR AND DEFINED SDL2_MIXER_SOURCE_DIR)
     add_subdirectory(${SDL2_MIXER_SOURCE_DIR} ${CMAKE_BINARY_DIR}/SDL2_mixer EXCLUDE_FROM_ALL)
 endif()
 
+# ---------------------------------------------------------------
+# Netplay backend (M3-3) — MbedTLS + libdatachannel via FetchContent,
+# transplanted from xbox/CMakeLists.txt (pins per NETPLAY.md). The NDK
+# toolchain cross-compiles both for every ABI Gradle asks for.
+# ---------------------------------------------------------------
+option(NEWTONIA_NET "Enable the online netplay backend (libdatachannel)" ON)
+
+if(NEWTONIA_NET)
+    include(FetchContent)
+    # Skipping install rules sidesteps libdatachannel's install(EXPORT)
+    # failing because the in-tree mbedtls target is in no export set.
+    set(CMAKE_SKIP_INSTALL_RULES ON)
+
+    # libdatachannel's MbedTLS DTLS transport uses the DTLS-SRTP API even
+    # with NO_MEDIA; MbedTLS's default config compiles that API out. The
+    # user config defines MBEDTLS_SSL_DTLS_SRTP for library and consumers.
+    add_compile_definitions(
+        "MBEDTLS_USER_CONFIG_FILE=\"${CMAKE_CURRENT_SOURCE_DIR}/xbox/mbedtls_user_config.h\"")
+
+    FetchContent_Declare(MbedTLS
+        GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
+        GIT_TAG        v3.6.6
+    )
+    set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+    set(ENABLE_TESTING  OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(MbedTLS)
+
+    if(NOT TARGET MbedTLS::MbedTLS)
+        add_library(MbedTLS::MbedTLS    ALIAS mbedtls)
+        add_library(MbedTLS::MbedX509   ALIAS mbedx509)
+        add_library(MbedTLS::MbedCrypto ALIAS mbedcrypto)
+    endif()
+
+    FetchContent_Declare(libdatachannel
+        GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
+        GIT_TAG        v0.24.5
+    )
+    set(USE_MBEDTLS  ON  CACHE BOOL "" FORCE)
+    set(NO_MEDIA     ON  CACHE BOOL "" FORCE)
+    set(NO_WEBSOCKET OFF CACHE BOOL "" FORCE)  # room-code signaling
+    set(NO_EXAMPLES  ON  CACHE BOOL "" FORCE)
+    set(NO_TESTS     ON  CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(libdatachannel)
+endif()
+
 add_library(newtonia SHARED ${GAME_SOURCES})
 
 target_include_directories(newtonia PRIVATE
@@ -74,3 +119,10 @@ target_link_libraries(newtonia
 # (play_games_achievements.cpp + PlayGamesAchievements.java); this CMake file
 # only builds the Android library, so it is always on here.
 target_compile_definitions(newtonia PRIVATE __ANDROID__ PLAY_GAMES_BUILD)
+
+if(NEWTONIA_NET)
+    # Activates net_transport_rtc.cpp / net_signal_rtc.cpp (empty TUs
+    # everywhere else) and net_available(); see net_transport.h.
+    target_compile_definitions(newtonia PRIVATE NEWTONIA_NET_RTC)
+    target_link_libraries(newtonia LibDataChannel::LibDataChannelStatic)
+endif()

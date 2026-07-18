@@ -198,6 +198,12 @@ Save::Station GLStation::capture_state() const {
   s.deploying = deploying;
   s.redeploying = redeploying;
   for (const auto *gs : *objects) {
+    // Skip enemies that are dead but not yet pruned (the host keeps them a
+    // couple of seconds for debris). Serializing them would make the
+    // client — which wholesale-rebuilds this list from the record 10x/s —
+    // resurrect a killed enemy for that whole window; its death visual
+    // already replicates via EV_WORLD_BOOM.
+    if (!gs->ship->is_alive()) continue;
     Save::Enemy e;
     e.pos_x = gs->ship->position.x();
     e.pos_y = gs->ship->position.y();
@@ -214,6 +220,10 @@ Save::Station GLStation::capture_state() const {
 }
 
 void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
+  // Net client: the host's copy just died — run the same debris burst its
+  // destroy() made, or the replica silently pops out of existence (the
+  // boom sound arrives separately via EV_STATION_BOOM).
+  if (alive && !s.alive) destroy();
   alive = s.alive;
   lives = s.lives;
   health = s.health;
@@ -228,8 +238,29 @@ void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
   time_until_next_ship = (float)s.time_until_next_ship;
   deploying = s.deploying;
   redeploying = s.redeploying;
+  // Reconcile the deployed enemies IN PLACE against the record, in list
+  // order (the net extras re-stamp pairs wire ids to replicas by the
+  // same order). The old wholesale delete+recreate ran on every 10 Hz
+  // net apply, and each GLEnemy construction builds and uploads fresh
+  // GPU meshes — at gen-20+ wave sizes that alone held the client near
+  // 15 fps (Glenn's level-21 frame hitches). A save-load lands here
+  // with an empty list, where reconcile degenerates to the old appends.
+  std::list<GLShip *>::iterator oi = objects->begin();
   for (const auto &se : s.enemies) {
-    GLEnemy *ge = new GLEnemy(grid, se.pos_x, se.pos_y, targets, (float)difficulty, asteroids);
+    GLEnemy *ge;
+    if (oi != objects->end()) {
+      ge = (GLEnemy *)*oi;
+      ++oi;
+    } else {
+      ge = new GLEnemy(grid, se.pos_x, se.pos_y, targets, (float)difficulty, asteroids);
+      objects->push_back(ge);
+      // Skip the initial 2.5s lock delay — enemy is already deployed at
+      // the recorded position.
+      if (!ge->ship->behaviours.empty())
+        if (Follower *f = dynamic_cast<Follower*>(ge->ship->behaviours.front()))
+          f->lock_now();
+      oi = objects->end();
+    }
     ge->ship->alive = true;
     ge->ship->position = WrappedPoint(se.pos_x, se.pos_y);
     ge->ship->velocity = Point(se.vel_x, se.vel_y);
@@ -237,12 +268,22 @@ void GLStation::restore_state(const Save::Station &s, const Grid &grid) {
     ge->ship->thrust_force = se.thrust_force;
     ge->ship->rotation_force = se.rotation_force;
     ge->ship->value = se.value;
-    objects->push_back(ge);
-    // Skip the initial 2.5s lock delay — enemy is already deployed at saved position
-    if (!ge->ship->behaviours.empty())
-      if (Follower *f = dynamic_cast<Follower*>(ge->ship->behaviours.front()))
-        f->lock_now();
   }
+  // Record shrank (deaths the host already pruned): drop the leftovers.
+  while (oi != objects->end()) {
+    delete *oi;
+    oi = objects->erase(oi);
+  }
+}
+
+void GLStation::net_client_step(float delta) {
+  // CompositeObject::step = Object::step + the debris loop, so the death
+  // burst animates on the client too (plain Object::step left the burst
+  // frozen at its spawn points — the particles never stepped).
+  CompositeObject::step((int)delta);
+  if (!alive) return;
+  outer_rotation += outer_rotation_speed * delta;
+  inner_rotation += inner_rotation_speed * delta;
 }
 
 void GLStation::step(float delta, const Grid &grid) {

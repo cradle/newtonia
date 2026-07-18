@@ -11,5 +11,13 @@
          signing fills in application-identifier / get-task-allow. -->
     <key>com.apple.developer.game-center</key>
     <true/>
+
+    <!-- Universal Links (ios_universal_link.mm) for local device testing.
+         Needs the App ID's Associated Domains capability + the site's
+         apple-app-site-association; see Entitlements.plist. -->
+    <key>com.apple.developer.associated-domains</key>
+    <array>
+        <string>applinks:newtonia.metonymous.com</string>
+    </array>
 </dict>
 </plist>

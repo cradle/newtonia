@@ -54,6 +54,18 @@ public:
 
     void clear();
 
+    // Append another builder's collected groups with a position offset —
+    // used to assemble one mesh from prebuilt pieces (e.g. a text string
+    // from per-glyph builders). Must not be called mid-group.
+    void append_translated(const MeshBuilder& src, float dx, float dy = 0.0f);
+
+    // append_translated's bigger sibling: apply a full column-major 4x4
+    // model transform to every vertex and multiply an RGBA tint into every
+    // colour. Lets many instances of a small builder be baked into one
+    // world-space batch (AsteroidDrawer's dead-asteroid score labels).
+    void append_transformed(const MeshBuilder& src, const float model[16],
+                            float r, float g, float b, float a);
+
     // Merge all GL_LINE_STRIP / GL_LINE_LOOP / GL_LINES groups into a single
     // GL_LINES group.  This eliminates multi-group meshes so that draw_with_mvp()
     // only ever needs one glVertexAttribPointer + glDrawArrays sequence.

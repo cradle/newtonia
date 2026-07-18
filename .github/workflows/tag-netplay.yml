@@ -1,0 +1,66 @@
+# Mint a netplay-v* test-release tag from the Actions UI — usable from a
+# phone (github.com → Actions → "Tag netplay release" → Run workflow), where
+# plain tags otherwise can't be created without publishing a Release, and
+# Releases are reserved for master.
+#
+# Usage:
+#   - "Use workflow from" picks the branch whose HEAD gets tagged (post
+#     netplay-merge that's normally master; the namespace is kept for
+#     future netplay test cycles routed to the test channels).
+#   - Leave the tag input empty to auto-bump the latest netplay-v* patch
+#     number; or type an explicit netplay-vX.Y.Z.
+#   - Only netplay-v* names are accepted — real releases (v*) stay a
+#     deliberate push from master.
+#
+# Setup (one-time, human):
+#   - The push uses the NETPLAY_TAG_TOKEN repo secret (fine-grained PAT,
+#     Contents: read+write on this repo). The default GITHUB_TOKEN cannot be
+#     used: tags it pushes never trigger other workflows (GitHub's
+#     anti-recursion rule), and the whole point is firing the deploy-*.yml
+#     tag builds.
+#   - The Run workflow button only appears once this file exists on the
+#     default branch.
+name: Tag netplay release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag name (empty = bump latest netplay-v* patch)'
+        required: false
+        default: ''
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.NETPLAY_TAG_TOKEN }}
+
+      - name: Create and push tag
+        env:
+          TAG_INPUT: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          TAG="$TAG_INPUT"
+          if [ -z "$TAG" ]; then
+            LAST=$(git tag -l 'netplay-v*' --sort=-v:refname | head -1)
+            [ -n "$LAST" ] || { echo "::error::no netplay-v* tag found to bump"; exit 1; }
+            BASE=${LAST%.*}
+            PATCH=${LAST##*.}
+            TAG="$BASE.$((PATCH + 1))"
+            echo "auto-bump: $LAST -> $TAG"
+          fi
+          case "$TAG" in
+            netplay-v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::refusing '$TAG' — this workflow only mints netplay-v* tags"; exit 1 ;;
+          esac
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::tag $TAG already exists"
+            exit 1
+          fi
+          git tag "$TAG"
+          git push origin "$TAG"
+          echo "Created \`$TAG\` at \`$(git rev-parse --short HEAD)\` on \`$GITHUB_REF_NAME\`" >> "$GITHUB_STEP_SUMMARY"

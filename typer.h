@@ -17,6 +17,12 @@ public:
   static void draw_button(float x, float y, char c, float size = 1);
   static void resize(int width, int height);
   static void cleanup();
+  // Batch support: read-only access to a glyph's retained CPU builder and
+  // the current text colour, so many labels can be baked into ONE mesh
+  // (AsteroidDrawer's dead-asteroid score labels) instead of one Typer draw
+  // + two viewport swaps each. NULL for glyphs without a prebuilt builder.
+  static const MeshBuilder *glyph_builder(unsigned char c);
+  static const float *text_colour();
   static const int original_window_width, original_window_height;
   static float scaled_window_width, scaled_window_height;
   static int window_width, window_height;

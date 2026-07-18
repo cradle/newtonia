@@ -34,6 +34,31 @@ inline void steam_run_callbacks() {
 #endif
 }
 
+// Steam Deck: summon the floating on-screen keyboard, positioned to dock
+// clear of the text field at the given window-relative pixel rect. The
+// keyboard delivers ordinary key events (no read-back API needed), so the
+// caller's normal keyboard path receives the typed characters. Returns
+// false when the keyboard will not show — non-Steam build, Steam client
+// absent, or hardware without a floating keyboard (plain desktop) — and
+// the caller just leaves its own text-entry UI up.
+inline bool steam_show_floating_keyboard(int x, int y, int w, int h) {
+#ifdef STEAM_BUILD
+  if (SteamUtils())
+    return SteamUtils()->ShowFloatingGamepadTextInput(
+        k_EFloatingGamepadTextInputModeModeSingleLine, x, y, w, h);
+#endif
+  (void)x; (void)y; (void)w; (void)h;
+  return false;
+}
+
+// Dismiss the floating keyboard when leaving the text field. Harmless if
+// it is not showing.
+inline void steam_dismiss_floating_keyboard() {
+#ifdef STEAM_BUILD
+  if (SteamUtils()) SteamUtils()->DismissFloatingGamepadTextInput();
+#endif
+}
+
 // Returns the Steam beta branch the user is running on (e.g. "beta",
 // "experimental"), or an empty string when on the default/public branch or
 // when STEAM_BUILD is not defined.

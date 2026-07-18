@@ -2,6 +2,7 @@
 #include "glgame.h"
 #include "intro.h"
 #include "menu.h"
+#include "net_lobby.h"
 
 StateManager::StateManager() {
   state = new Menu();
@@ -11,7 +12,17 @@ StateManager::~StateManager() {
   delete state;
 }
 
+// Frame-profiling counters (see gles2_compat.h). Zeroed HERE because every
+// platform's main loop funnels through StateManager::draw — resetting only
+// in glut.cpp left them growing unbounded (eventually signed-overflow UB)
+// on web/Android/Xbox, whose loops call this directly. The desktop frame
+// logger snapshots them right after its game->draw() returns.
+extern int g_gles2_dbg_draws;
+extern int g_gles2_dbg_line_segs;
+
 void StateManager::draw() {
+  g_gles2_dbg_draws = 0;
+  g_gles2_dbg_line_segs = 0;
   state->draw();
 }
 
@@ -99,6 +110,24 @@ void StateManager::touch_joystick(float nx, float ny) {
 
 void StateManager::touch_tap(float nx, float ny) {
   state->touch_tap(nx, ny);
+}
+
+// Beta-only skip corner (a working skip in a normal game would let a stray
+// tap skip the level and cheat-flag the run). The skip handler lives in
+// keyboard_up (GLGame/Intro), so synthesize the full press+release — a bare
+// key-down never actually skipped.
+bool StateManager::debug_skip_corner_tap(float nx, float ny) {
+  static const bool enabled = SDL_getenv("NEWTONIA_BETA") != NULL;
+  if (!enabled || nx <= 0.85f || ny >= 0.15f) return false;
+  keyboard('n', 0, 0);
+  keyboard_up('n', 0, 0);
+  return true;
+}
+
+bool StateManager::wants_background_ticks() {
+  GLGame *game = dynamic_cast<GLGame*>(state);
+  if (game) return game->net_active();
+  return dynamic_cast<NetLobby*>(state) != NULL;
 }
 
 bool StateManager::back_pressed() {

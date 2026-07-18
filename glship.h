@@ -4,6 +4,7 @@
 #include "ship.h"
 #include "point.h"
 #include "gltrail.h"
+#include "preferences.h"
 #include "typer.h"
 #include <SDL.h>
 #include <SDL_joystick.h>
@@ -28,9 +29,19 @@ public:
   void release_controls();
   bool wasMyController(SDL_JoystickID id);
 
-  void set_keys(int left, int right, int up, int down, int reverse, int mine, int next_weapon_key, int boost_key, int teleport_key, int help_key, int next_secondary_key, int toggle_rotate_view_key);
+  void set_keys(const PlayerKeys &k);
+  // Strip every keyboard binding (the netplay ghost ship must never respond
+  // to this machine's keys).
+  void clear_keys();
   void set_keyboard_sensitivity(float s) { keyboard_sensitivity = s; }
   void set_camera_smoothing(float s)     { camera_smoothing = s; }
+  // Per-player camera fixed/rotate: adopt the owning player's pref as the
+  // initial state and remember where to persist an in-game toggle (the V
+  // key / left-stick click). NULL for the remote ghost ship (no local input).
+  void set_rotate_view_pref(bool *pref) {
+    if (pref) rotating_view = *pref;
+    rotate_view_pref_ = pref;
+  }
   void set_controller(SDL_GameController *game_controller);
   bool has_controller() const;
   bool is_my_controller_id(SDL_JoystickID id) const;
@@ -51,6 +62,16 @@ public:
   float view_angle() const;
   void snap_camera_to_heading();
   void smooth_camera(int frame_delta);
+
+  // Netplay: input-intent mirrors sampled by the online client into INPUT
+  // messages. The fire triggers must be tracked here (key intent) rather
+  // than read from the weapon, because semi-automatic weapons clear their
+  // own trigger after each shot. Meaningless offline. See NETPLAY.md.
+  uint8_t net_respawn_count = 0;   // wrapping respawn-tap (shoot while dead)
+  bool net_shoot_held = false;
+  bool net_secondary_held = false;
+  uint8_t net_shoot_press_count = 0;      // wrapping, one per key press
+  uint8_t net_secondary_press_count = 0;
 
   void collide_grid(Grid &grid, int delta);
   static void collide(GLShip* first, GLShip* second);
@@ -83,7 +104,10 @@ protected:
   Mesh minimap_dot;    // single white vertex at origin, tinted per draw
   Mesh missile_body;   // unit missile triangle (ship colour), per-missile matrix
 
-  int thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, next_secondary_key, boost_key, teleport_key, help_key, toggle_rotate_view_key;
+  // Two-slot bindings (primary + optional alternate; see KeyBinding).
+  // Default-constructed empty, so a ship that never gets set_keys (the
+  // netplay ghost) matches no keyboard input at all.
+  KeyBinding thrust_key, left_key, right_key, shoot_key, reverse_key, mine_key, next_weapon_key, next_secondary_key, boost_key, teleport_key, help_key, toggle_rotate_view_key;
   float keyboard_sensitivity = 1.0f;  // rotation speed multiplier for keyboard input
   float camera_smoothing     = 0.004f; // camera follow rate (0 = instant snap)
 
@@ -99,6 +123,7 @@ protected:
   bool kb_rotate_right = false;
 
   bool rotating_view, show_help, last_input_was_controller;
+  bool *rotate_view_pref_ = nullptr;  // per-player pref to persist on toggle
   float camera_rotation;
   float camera_angle;
 

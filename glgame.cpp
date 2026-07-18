@@ -1,6 +1,7 @@
 #include "glgame.h"
 #include "achievements.h"
 #include "presence.h"
+#include "invites.h"
 #include "steam_build.h"
 #include <cstdlib>
 #include "asset_path.h"
@@ -11,11 +12,18 @@
 #include <emscripten.h>
 #endif
 #include "glship.h"
+#include "weapon/default.h"
+#include "weapon/beam.h"
+#include "weapon/lance.h"
+#include "weapon/god_mode.h"
+#include "net_signal.h"
+#include "net_transport.h"
 #include "glcar.h"
 #include "glstarfield.h"
 #include "wrapped_point.h"
 #include "intro.h"
 #include "menu.h"
+#include "net_lobby.h"
 #include "state.h"
 #include "asteroid.h"
 #include "asteroid_drawer.h"
@@ -24,7 +32,10 @@
 #include "view/overlay.h"
 #include "typer.h"
 #include "touch_controls.h"
+#include "net_session.h"
+#include "teleport.h"
 #include <math.h>
+#include <cmath>
 #include <SDL.h>
 
 #include "gl_compat.h"
@@ -33,14 +44,57 @@
 
 #include <iostream>
 #include <list>
+#include <map>
+#include <set>
+#include <unordered_map>
 
+// First point along segment a->b entering the circle (centre target_pos,
+// radius r), with the target translated to its wrapped copy nearest a —
+// the same wrap idiom as the lance's asteroid march. Used by the lance
+// ship/station hit passes (host resolution + the client's enemy pass);
+// the entry point doubles as the impact position for debris/claims.
+static bool lance_seg_circle_entry(const Point &a, const Point &b,
+                                   const WrappedPoint &target_pos, float r,
+                                   Point *entry) {
+  Point p = target_pos.closest_to(a);
+  float dx = b.x() - a.x(), dy = b.y() - a.y();
+  float fx = a.x() - p.x(), fy = a.y() - p.y();
+  float A = dx * dx + dy * dy;
+  if (A <= 0.0f) return false;
+  float B = 2.0f * (fx * dx + fy * dy);
+  float C = fx * fx + fy * fy - r * r;
+  float disc = B * B - 4.0f * A * C;
+  if (disc < 0.0f) return false;
+  float sq = sqrtf(disc);
+  float t0 = (-B - sq) / (2.0f * A), t1 = (-B + sq) / (2.0f * A);
+  if (t1 < 0.0f || t0 > 1.0f) return false;  // circle behind or beyond
+  float t = t0 < 0.0f ? 0.0f : t0;           // started inside: entry = start
+  if (entry) *entry = Point(a.x() + dx * t, a.y() + dy * t);
+  return true;
+}
+
+// Rare, must-hear cues (station/mini-station destruction booms). In a
+// heavy gen-20 firefight every dynamic mixing channel can be busy and
+// Mix_PlayChannel(-1) silently drops the play; fall back to the reserved
+// channels (0/1 — excluded from -1 allocation at platform init via
+// Mix_ReserveChannels, so no boost/music loop ever lives there).
+static void play_priority_chunk(Mix_Chunk *chunk, float vol) {
+  if (chunk == NULL || vol <= 0.0f) return;
+  Mix_VolumeChunk(chunk, (int)(MIX_MAX_VOLUME * vol));
+  if (Mix_PlayChannel(-1, chunk, 0) != -1) return;
+  Mix_PlayChannel(Mix_Playing(0) ? 1 : 0, chunk, 0);
+}
+
+// Arrow keys drive player 1 as built-in binding alternates (PlayerKeys
+// defaults, preferences.h) — GLShip::input matches either slot of each
+// KeyBinding, so no translation pass is needed here and an arrow bound to
+// any player's action just works.
 static void set_player_keys(GLShip *gs, int player_index) {
-  const PlayerKeys &k = (player_index == 0) ? g_prefs.p1_keys : g_prefs.p2_keys;
-  gs->set_keys(k.left, k.right, k.thrust, k.shoot, k.reverse, k.mine,
-               k.next_weapon, k.boost, k.teleport, k.help, k.next_secondary,
-               k.toggle_rotate_view);
+  PlayerKeys &k = (player_index == 0) ? g_prefs.p1_keys : g_prefs.p2_keys;
+  gs->set_keys(k);
   gs->set_keyboard_sensitivity(k.keyboard_sensitivity);
   gs->set_camera_smoothing(k.camera_smoothing);
+  gs->set_rotate_view_pref(&k.rotate_view);
 }
 
 const int GLGame::default_world_width = 2500;
@@ -54,7 +108,42 @@ const float GLGame::giga_mine_pickup_drop_chance = 0.005f;
 const float GLGame::missile_pickup_drop_chance = 0.0125f;
 const float GLGame::shield_pickup_drop_chance = 0.0125f;
 const float GLGame::god_mode_pickup_drop_chance = 0.0025f;
-const float GLGame::shock_pickup_drop_chance = 0.0125f;
+const float GLGame::beam_pickup_drop_chance = 0.00375f;
+const float GLGame::lance_pickup_drop_chance = 0.0025f;
+const float GLGame::shock_pickup_drop_chance = 0.003125f;
+// Defined below; used by the host's MSG_SHOCK handler above it.
+static bool shock_bolt_reaches(const std::vector<Point> &pts,
+                               const WrappedPoint &pos, float radius);
+
+// THE single Save::Pickup -> Pickup* factory, shared by the savefile-load
+// constructor and the net client's snapshot rebuild (net_apply_state). Those
+// used to be two hand-maintained copies of the same switch, and every new
+// PickupType so far (Beam/Lance, then Shock) shipped with the net copy
+// missed — the pickup existed in saves but was invisible on net clients.
+// One switch, no default: a future enum value the switch doesn't handle is
+// a -Wswitch warning here instead of an invisible-online runtime gap.
+static Pickup *make_pickup(const Save::Pickup &sp) {
+  WrappedPoint pos(sp.pos_x, sp.pos_y);
+  switch (sp.type) {
+    case Save::PickupType::Weapon:      return new WeaponPickup(pos, sp.weapon_index);
+    case Save::PickupType::Mine:        return new MinePickup(pos);
+    case Save::PickupType::GigaMine:    return new GigaMinePickup(pos);
+    case Save::PickupType::Missile:     return new MissilePickup(pos);
+    case Save::PickupType::Shield:      return new ShieldPickup(pos);
+    case Save::PickupType::GodMode:     return new GodModePickup(pos);
+    case Save::PickupType::ExtraLife:   return new ExtraLife(pos);
+    case Save::PickupType::NovaCharge:  return new NovaChargePickup(pos);
+    case Save::PickupType::Beam:        return new BeamPickup(pos);
+    case Save::PickupType::Lance:       return new LancePickup(pos);
+    case Save::PickupType::Revive:      return new RevivePickup(pos);
+    case Save::PickupType::ShockWeapon: return new ShockPickup(pos);
+  }
+  return NULL;  // unknown value from a newer save: skip, matching old behavior
+}
+// Co-op revive: rolled INDEPENDENTLY of the cumulative table above, only
+// while a partner is fully out of lives and no revive is already in the
+// world — generous by design, it is the fallen player's only way back.
+const float GLGame::revive_pickup_drop_chance = 0.1f;
 
 GLGame::GLGame(SDL_GameController *controller) :
   State(),
@@ -64,7 +153,7 @@ GLGame::GLGame(SDL_GameController *controller) :
   level_cleared(false),
   friendly_fire(g_prefs.friendly_fire),
   debug_grid(false),
-  score_saved(false),
+  game_over(false),
   game_over_time(-1),
   grid(Grid(world, Point(Asteroid::max_radius*2,Asteroid::max_radius*2))) {
   time_between_steps = step_size;
@@ -78,6 +167,8 @@ GLGame::GLGame(SDL_GameController *controller) :
   pickups = new std::list<Pickup*>;
   black_holes = new std::list<BlackHole*>;
   hazards = new std::list<Hazard*>;
+
+  net_clear_event_outboxes();
 
   WrappedPoint::set_boundaries(world);
 
@@ -130,9 +221,39 @@ GLGame::GLGame(SDL_GameController *controller) :
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
   object->ship->set_missile_ships(ship_objects);
+  object->ship->missiles_seek_players = friendly_fire;
   object->ship->set_shock_targets(shock_targets);
   object->ship->set_black_holes(black_holes);
   players->push_back(object);
+
+  // Test hook (inert without the env var): ring one of each pickup around
+  // the spawn so a driver can screenshot the full icon set (TESTING.md).
+  if (SDL_getenv("NEWTONIA_TEST_SPAWN_PICKUPS")) {
+    Point c(world.x() / 2.0f, world.y() / 2.0f);
+    // Spawns are random; park the ship at the ring's centre so the whole
+    // set is on the first screenshot (first-life respawn keeps the spot
+    // unless an asteroid overlaps it).
+    object->ship->position = WrappedPoint(c.x(), c.y());
+    std::vector<Pickup*> ring = {
+      new WeaponPickup(WrappedPoint(0, 0), 1), new MinePickup(WrappedPoint(0, 0)),
+      new GigaMinePickup(WrappedPoint(0, 0)),  new MissilePickup(WrappedPoint(0, 0)),
+      new ShieldPickup(WrappedPoint(0, 0)),    new GodModePickup(WrappedPoint(0, 0)),
+      new NovaChargePickup(WrappedPoint(0, 0)), new BeamPickup(WrappedPoint(0, 0)),
+      new LancePickup(WrappedPoint(0, 0)),     new ShockPickup(WrappedPoint(0, 0)),
+      new RevivePickup(WrappedPoint(0, 0)),    new ExtraLife(WrappedPoint(0, 0)),
+    };
+    for (size_t i = 0; i < ring.size(); i++) {
+      float a = i * 2.0f * (float)M_PI / ring.size();
+      ring[i]->position = WrappedPoint(c.x() + cosf(a) * 200.0f,
+                                       c.y() + sinf(a) * 200.0f);
+      pickups->push_back(ring[i]);
+    }
+    // A line of 10 nova charges below the ring — enough to max the nova
+    // (0-9) for co-op nova testing.
+    for (int i = 0; i < 10; i++)
+      pickups->push_back(new NovaChargePickup(
+          WrappedPoint(c.x() - 450.0f + i * 100.0f, c.y() + 350.0f)));
+  }
 
   station = NULL;//new GLStation(enemies, players);
   mini_station = NULL;
@@ -186,8 +307,64 @@ GLGame::GLGame(SDL_GameController *controller) :
   }
 }
 
+GLGame::GLGame(NetSession *session, SDL_GameController *controller)
+  : GLGame(controller) {
+  net_mode_ = NetHost;
+  Net::set_net_log_role(true);  // lobby set it too; belt & braces
+  net_session_ = session;
+  Ship::net_report_bounces = true;  // PROTO 19: sim ricochets -> MSG_BOUNCE
+  // A fresh game's player 1 starts dead (offline you wait out the initial
+  // countdown or tap fire). Online the host just finished the lobby, so
+  // start alive — and without this the client's bootstrap snapshot catches
+  // the corpse mid-countdown: the restore resurrects the ghost, the first
+  // extras kill it again, and the joiner watches player 1 "die" at start.
+  players->front()->ship->respawn(grid, false);
+  players->front()->ship->bullets.clear();  // no lethal spawn-flash debris
+  add_remote_player();
+  NET_LOG("net: ice path %s\n",
+         net_session_->transport()->connection_info().c_str());
+  // Co-op scoring parity: the initial hull costs a life, so each co-op
+  // player fields the same total ship count as a solo run — otherwise a
+  // pair banks two free hulls and the high scores aren't comparable.
+  // Host-authoritative; the client mirrors lives via the snapshots.
+  for (auto *gs : *players) gs->ship->lives -= 1;
+  // The host's friendly-fire preference is the room rule; the client's HUD
+  // shows its own preference until told otherwise.
+  net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
+}
+
 GLGame::~GLGame() {
   save_progress();
+  // Host tore down while re-advertising the open slot (peer left, then we
+  // returned to the menu / quit / game over): stop showing the "Join Game"
+  // option.
+  if (net_invite_advertised_) {
+    Invites::clear_joinable();
+    net_invite_advertised_ = false;
+    NET_LOG("net: invite - room no longer joinable (game teardown)\n");
+  }
+  if (net_mode_ == NetClient) Ship::net_quiet_respawn = false;
+  if (net_mode_ == NetHost) Ship::net_report_bounces = false;
+  // Leaving an online game: tell the peer (best effort — a hard close is
+  // also detected via the channel-close path).
+  if (net_session_ && !net_connection_lost_)
+    net_send_event(Net::EV_BYE);
+  delete net_session_;  // closes + deletes the transport
+  delete net_assembler_;
+  // Deliberate host teardown (quit to menu, game over): tell the relay to
+  // kill the room NOW. A bare socket close would start the 2-minute
+  // reclaim grace, leaving joiners — including this very player rejoining
+  // their own code — waiting forever on "JOINING THE ROOM". A crash sends
+  // nothing, so the grace window still covers real host drops.
+  if (net_signal_) {
+    net_signal_->send_close();
+    net_signal_->close();
+    delete net_signal_;
+  }
+  if (net_rehost_) {
+    net_rehost_->close();
+    delete net_rehost_;
+  }
 
   //TODO: Make erase, use boost::ptr_list? something better
   // std::erase(std::remove_if(v.begin(),v.end(),true), v.end());
@@ -264,7 +441,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   level_cleared(save.level_cleared),
   friendly_fire(g_prefs.friendly_fire),
   debug_grid(false),
-  score_saved(false),
+  game_over(false),
   game_over_time(-1),
   grid(Grid(Point(save.world_x, save.world_y),
             Point(Asteroid::max_radius*2, Asteroid::max_radius*2))) {
@@ -288,6 +465,8 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   black_holes = new std::list<BlackHole*>;
   hazards = new std::list<Hazard*>;
 
+  net_clear_event_outboxes();
+
   WrappedPoint::set_boundaries(world);
 
   starfield = new GLStarfield(world, star_density_scale());
@@ -306,21 +485,10 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   }
   grid.update((std::list<Object*>*)objects);
 
-  // Restore pickups
+  // Restore pickups (make_pickup: the single shared PickupType switch)
   for (const auto &sp : save.pickups) {
-    WrappedPoint pos(sp.pos_x, sp.pos_y);
-    switch (sp.type) {
-      case Save::PickupType::Weapon:   pickups->push_back(new WeaponPickup(pos, sp.weapon_index)); break;
-      case Save::PickupType::Mine:     pickups->push_back(new MinePickup(pos)); break;
-      case Save::PickupType::GigaMine: pickups->push_back(new GigaMinePickup(pos)); break;
-      case Save::PickupType::Missile:  pickups->push_back(new MissilePickup(pos)); break;
-      case Save::PickupType::Shield:   pickups->push_back(new ShieldPickup(pos)); break;
-      case Save::PickupType::GodMode:  pickups->push_back(new GodModePickup(pos)); break;
-      case Save::PickupType::ExtraLife: pickups->push_back(new ExtraLife(pos)); break;
-      case Save::PickupType::NovaCharge: pickups->push_back(new NovaChargePickup(pos)); break;
-      case Save::PickupType::ShockWeapon: pickups->push_back(new ShockPickup(pos)); break;
-      default: break;
-    }
+    Pickup *p = make_pickup(sp);
+    if (p) pickups->push_back(p);
   }
 
   // Restore black holes
@@ -347,6 +515,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     gs->ship->set_missile_asteroids((std::list<Object*>*)objects);
     ship_objects->push_back(gs->ship);
     gs->ship->set_missile_ships(ship_objects);
+    gs->ship->missiles_seek_players = friendly_fire;
     gs->ship->set_shock_targets(shock_targets);
     gs->ship->set_black_holes(black_holes);
     gs->ship->restore_state(sp, grid);
@@ -417,10 +586,22 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
 
 void GLGame::save_progress() {
   Stats::flush();  // lifetime stats persist regardless of campaign-save eligibility
+  // Online play never touches the local solo save (see NETPLAY.md): the
+  // hosted world is not the solo game, and the game-over delete below
+  // would otherwise wipe real progress.
+  if (net_mode_ != NetOff) return;
+  if (game_over) return;
   if (score_saved) return;
   for (auto* gs : *players) {
     if (gs->ship->is_alive() || gs->ship->lives > 0) {
-      Save::save_game(build_save_data());
+      // Dedupe stacked triggers: skip the write when the sim hasn't advanced
+      // since the last one (paused pause->quit, menu-exit->destructor). The
+      // game-over delete below is not gated — a roster can only become
+      // all-dead through a running tick, which sets the flag anyway.
+      if (save_dirty_) {
+        Save::save_game(build_save_data());
+        save_dirty_ = false;
+      }
       return;
     }
   }
@@ -431,7 +612,7 @@ void GLGame::save_progress() {
   }
 }
 
-Save::GameState GLGame::build_save_data() const {
+Save::GameState GLGame::build_save_data(bool include_asteroids) const {
   Save::GameState s;
   s.generation                 = generation;
   s.world_x                    = world.x();
@@ -444,8 +625,12 @@ Save::GameState GLGame::build_save_data() const {
   for (auto* gs : *players)
     s.players.push_back(gs->ship->capture_state());
 
-  for (auto* a : *objects)
-    s.asteroids.push_back(a->capture_state());
+  // The delta path sends asteroids itself (fresh/dirty/removed diff) and
+  // discards this list, so capturing every asteroid here — ~200 bytes each
+  // via capture_state, 9x/s — is pure waste on that path.
+  if (include_asteroids)
+    for (auto* a : *objects)
+      s.asteroids.push_back(a->capture_state());
 
   for (auto* p : *pickups) {
     Save::Pickup sp;
@@ -469,6 +654,12 @@ Save::GameState GLGame::build_save_data() const {
       sp.type = Save::PickupType::ExtraLife;
     } else if (dynamic_cast<NovaChargePickup*>(p)) {
       sp.type = Save::PickupType::NovaCharge;
+    } else if (dynamic_cast<BeamPickup*>(p)) {
+      sp.type = Save::PickupType::Beam;
+    } else if (dynamic_cast<LancePickup*>(p)) {
+      sp.type = Save::PickupType::Lance;
+    } else if (dynamic_cast<RevivePickup*>(p)) {
+      sp.type = Save::PickupType::Revive;
     } else if (dynamic_cast<ShockPickup*>(p)) {
       sp.type = Save::PickupType::ShockWeapon;
     } else {
@@ -583,6 +774,9 @@ void GLGame::shed_comet_fragment(const Hazard *comet) {
 }
 
 void GLGame::maybe_start_intro() {
+  // No Intro states online: both machines must keep ticking in lockstep
+  // with the snapshot stream (a 2 s banner replaces them — Phase 8).
+  if (net_mode_ != NetOff) return;
   const char *name = NULL;
   Asteroid *display = NULL;
   Intro::Kind kind = Intro::ASTEROID;
@@ -627,8 +821,19 @@ void GLGame::release_player_controls() {
     glship->release_controls();
 }
 
-void GLGame::toggle_pause() {
+void GLGame::toggle_pause(bool broadcast) {
   running = !running;
+  // Pausing auto-saves (the long-documented behavior — it previously only
+  // happened via the focus-loss path, so quitting in a way that skips the
+  // exit hooks (force-kill, crash, a killed mobile-web tab) lost everything
+  // since the last death or level clear). Covers the pause key, controller
+  // Start, and the touch pause zones; save_progress() itself refuses online
+  // games, game over, and dead rosters.
+  if (!running) save_progress();
+  // Online, pausing is shared state: tell the peer (unless this call IS
+  // the peer's event being applied).
+  if (broadcast && net_mode_ != NetOff && net_session_ && !net_connection_lost_)
+    net_send_event(running ? Net::EV_RESUME : Net::EV_PAUSE);
   // Pausing stops keyboard()/controller() forwarding to the ships, so any
   // release that happens while paused is lost — drop everything now, or a
   // thrust held over the pause stays latched ON after unpausing.
@@ -656,7 +861,9 @@ bool GLGame::back_pressed() {
 
 void GLGame::focus_lost() {
   save_progress();
-  if(running) {
+  // Online the sim must keep running while unfocused — the peer's game
+  // doesn't stop. Sound still mutes below.
+  if(running && net_mode_ == NetOff) {
     toggle_pause();
     auto_paused = true;
   }
@@ -667,6 +874,16 @@ void GLGame::focus_lost() {
 
 void GLGame::controller_added(SDL_GameController *ctrl) {
   SDL_JoystickID id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(ctrl));
+  // Online, the only ship this machine controls is the local player;
+  // players->front() is the remote host's ghost on a client (and the
+  // remote client's ghost on a host), so binding "the first ship without
+  // a controller" would hand the pad to a ship this machine can't drive.
+  if (net_mode_ != NetOff) {
+    GLShip *local = local_player();
+    if (local && !local->is_my_controller_id(id) && !local->has_controller())
+      local->set_controller(ctrl);
+    return;
+  }
   // Skip if any player already has this controller
   for(auto* glship : *players) {
     if(glship->is_my_controller_id(id)) return;
@@ -708,6 +925,7 @@ void GLGame::controller_removed(SDL_JoystickID id) {
 }
 
 void GLGame::add_player2(SDL_GameController *ctrl) {
+  if(net_mode_ != NetOff) return;  // player 2 is the remote peer online
   if(players->size() >= 2) return;
   Ship* p1 = players->front()->ship;
   if(!p1->is_alive() && !p1->lives) return;
@@ -718,6 +936,7 @@ void GLGame::add_player2(SDL_GameController *ctrl) {
   ship_objects->push_back(object->ship);
   for(auto *p : *players) p->ship->set_missile_ships(ship_objects);
   object->ship->set_missile_ships(ship_objects);
+  object->ship->missiles_seek_players = friendly_fire;
   object->ship->set_shock_targets(shock_targets);
   object->ship->set_black_holes(black_holes);
   players->push_back(object);
@@ -730,7 +949,3603 @@ void GLGame::update_presence() const {
   Presence::set_level(generation + 1, (int)players->size());
 }
 
+// Player 2 for online play: same wiring as add_player2 but with no local
+// controller or key bindings — the peer drives it via INPUT messages.
+void GLGame::add_remote_player() {
+  if(players->size() >= 2) return;
+  GLShip* object = new GLCar(grid, true);
+  object->ship->set_missile_asteroids((std::list<Object*>*)objects);
+  ship_objects->push_back(object->ship);
+  for(auto *p : *players) p->ship->set_missile_ships(ship_objects);
+  object->ship->set_missile_ships(ship_objects);
+  object->ship->missiles_seek_players = friendly_fire;
+  object->ship->set_black_holes(black_holes);
+  players->push_back(object);
+  // The Ship constructor creates ships dead (offline player 2 waits out
+  // the respawn countdown after pressing Enter to join mid-game). The
+  // remote player just finished the whole lobby flow — bring them up
+  // alive immediately, with the usual spawn-invincibility window.
+  object->ship->respawn(grid, false);
+  // Keep the join spawn clear of player 1: safe_position() only avoids
+  // asteroids, and a nearby (or overlapping) spawn is lethal with
+  // friendly fire on — respawn's detonate() flash is made of real
+  // bullets, and body overlap kills outright.
+  Ship *p1_ship = players->front()->ship;
+  for (int tries = 0; tries < 32; tries++) {
+    // ("near" is a reserved legacy macro in the Windows headers)
+    Point nearest = object->ship->position.closest_to(p1_ship->position);
+    if ((nearest - p1_ship->position).magnitude() > 400.0f) break;
+    object->ship->position = WrappedPoint();
+    object->ship->safe_position(grid, false);
+  }
+  object->ship->bullets.clear();  // drop the lethal spawn-flash debris
+  // PROTO 14: this ship's bullets arrive as MSG_SHOT reports — its own
+  // gun sim keeps its bookkeeping but mints no bullets.
+  object->ship->net_remote_gun = true;
+  // PROTO 17: mirror of the client's shot reporting — every shot the host
+  // player fires is echoed to the client as MSG_SHOT (drained in tick()),
+  // which spawns an exact clone instantly instead of waiting for the next
+  // 10 Hz snapshot rebuild.
+  p1_ship->net_report_shots = true;
+  update_presence();  // rich presence: now a co-op game
+}
+
+// Elastic asteroid-asteroid collisions: 2D impulse physics (mass ~
+// radius^2) plus a positional push that resolves overlap, for every live
+// pair where at least one is elastic (reflective asteroids carry
+// elastic=true). Pairs are processed once via inner iterator starting
+// after outer. ONE definition for two callers: the host simulates it for
+// real (announce=true: bounce ting + EV_ROID_BOUNCE), and the net client
+// mirrors it silently each visual step — bounces are position-and-
+// pairing-dependent, so without the mirror every one of them was a
+// surprise the authoritative records corrected 100 ms later (the last
+// source of asteroid jitter; gravity is mirrored the same way).
+void GLGame::elastic_asteroid_collisions(bool announce) {
+  std::list<Asteroid*>::iterator ai, bi;
+  for(ai = objects->begin(); ai != objects->end(); ++ai) {
+    Asteroid *a = *ai;
+    if(!a->alive) continue;
+    bi = ai; ++bi;
+    for(; bi != objects->end(); ++bi) {
+      Asteroid *b = *bi;
+      if(!b->alive) continue;
+      if(!a->elastic && !b->elastic) continue;
+
+      // Use world-wrap aware distance: get closest copy of A to B
+      Point a_near = a->position.closest_to(b->position);
+      float dx = a_near.x() - b->position.x();
+      float dy = a_near.y() - b->position.y();
+      float dist2 = dx * dx + dy * dy;
+      float sum_r = a->radius + b->radius;
+      if(dist2 >= sum_r * sum_r) continue; // no overlap
+
+      float dist = sqrtf(dist2);
+      if(dist < 1e-4f) continue; // degenerate overlap, skip
+
+      // Collision normal pointing from B to A
+      float nx = dx / dist;
+      float ny = dy / dist;
+
+      // Positional correction: push apart to resolve overlap, including
+      // children spawning inside each other. Proportional ONLY — a flat
+      // +0.5/tick bias made host and client (which mirrors this pass)
+      // diverge at up to ~60 units/s whenever they disagreed about a
+      // borderline contact, since the bias fires at any overlap depth.
+      float overlap = sum_r - dist;
+      float push = overlap * 0.6f;
+      a->position += Point(nx, ny) * push;
+      a->position.wrap();
+      b->position += Point(-nx, -ny) * push;
+      b->position.wrap();
+
+      // Velocity impulse: only when approaching (negative = approaching)
+      float vrel_n = (a->velocity.x() - b->velocity.x()) * nx
+                   + (a->velocity.y() - b->velocity.y()) * ny;
+      if(vrel_n >= 0.0f) continue; // already separating, no impulse needed
+
+      // Mass proportional to area (radius^2)
+      float ma = a->radius * a->radius;
+      float mb = b->radius * b->radius;
+      float impulse = -2.0f * vrel_n * ma * mb / (ma + mb);
+
+      a->velocity = a->velocity + Point(nx, ny) * (impulse / ma);
+      b->velocity = b->velocity - Point(nx, ny) * (impulse / mb);
+
+      // Play a deep metallic ting when an asteroid strikes a reflective one,
+      // but only if the collision is visible to any player.
+      if(announce && (a->reflective || b->reflective) &&
+         Asteroid::asteroid_ting_sound != NULL) {
+        Point contact(
+          (a->position.x() + b->position.x()) * 0.5f,
+          (a->position.y() + b->position.y()) * 0.5f);
+        float vol = sound_volume_for_point(contact);
+        if(vol > 0.0f) {
+          static Uint32 last_asteroid_ting_tick = UINT32_MAX;
+          Uint32 now = SDL_GetTicks();
+          if(now - last_asteroid_ting_tick >= 125) {
+            last_asteroid_ting_tick = now;
+            Mix_VolumeChunk(Asteroid::asteroid_ting_sound, (int)(MIX_MAX_VOLUME * vol));
+            Mix_PlayChannel(-1, Asteroid::asteroid_ting_sound, 0);
+            net_send_event(Net::EV_ROID_BOUNCE, (uint32_t)(vol * 255.0f));
+          }
+        }
+      }
+    }
+  }
+}
+
+// Quantum observation: collapse when any player looks at a quantum
+// asteroid (base speed), superposition otherwise (4x speed so it can
+// sneak up on players who look away). ONE definition for two callers:
+// the host simulates it for real, and the net client mirrors it every
+// visual step — both ships' poses and facings are known here, and
+// without the mirror every observation flip changed the rock's speed
+// 4x on the host only, so the client extrapolated at the wrong speed
+// until the next record: rocks "warping back and forth and ending up
+// in their expected location". The state-byte in the records remains
+// authoritative; this only keeps the between-record extrapolation right.
+void GLGame::update_quantum_observation() {
+  for(std::list<Asteroid*>::iterator oi = objects->begin();
+      oi != objects->end(); ++oi) {
+    Asteroid *ast = *oi;
+    if(!ast->quantum) continue;
+    bool now_observed = is_point_faced_by_any_player(ast->position);
+    if(now_observed == ast->quantum_observed) continue;
+    ast->quantum_observed = now_observed;
+    float spd = ast->velocity.magnitude();
+    if(spd > 1e-6f) {
+      Point dir = ast->velocity * (1.0f / spd);
+      if(now_observed) {
+        // Collapse: slow to base speed
+        ast->velocity = dir * ast->quantum_base_speed;
+      } else {
+        // Superposition: speed up 4x
+        ast->velocity = dir * ast->quantum_base_speed * 4.0f;
+      }
+    }
+  }
+}
+
+// ---- RTT probe (PROTO 11) ----------------------------------------------
+// 1 Hz MSG_PING on the UNRELIABLE channel; the peer echoes the timestamp
+// back as MSG_PONG untouched, so only the sender's clock is ever read —
+// no cross-machine clock comparison. A lost probe just skips a sample.
+
+void GLGame::net_ping_tick(int delta) {
+  net_ping_timer_ += delta;
+  if (net_ping_timer_ < 1000) return;
+  net_ping_timer_ = 0;
+  // Piggybacked 1 Hz sample: at these traffic rates the transport send
+  // buffer drains in microseconds, so ANY nonzero here means our sender
+  // is blocked — the smoking gun that an outage is the path/relay eating
+  // the flow (peer stopped acking) rather than in-flight delay.
+  if (Net::net_debug_enabled()) {
+    int buffered = net_session_->transport()->buffered_amount();
+    if (buffered > 0) NET_LOG("net: tx buffered %d bytes\n", buffered);
+  }
+  std::vector<uint8_t> p;
+  Net::put_header(p, Net::MSG_PING, net_mode_ == NetHost ? 1 : 2);
+  Net::put_u32(p, (uint32_t)SDL_GetTicks());
+  net_session_->transport()->send_unreliable(&p[0], p.size());
+}
+
+bool GLGame::net_handle_ping_pong(uint8_t msg_type, Net::Reader &r) {
+  if (msg_type == Net::MSG_PING) {
+    uint32_t t = r.u32();
+    if (!r.ok) return true;
+    std::vector<uint8_t> p;
+    Net::put_header(p, Net::MSG_PONG, net_mode_ == NetHost ? 1 : 2);
+    Net::put_u32(p, t);
+    net_session_->transport()->send_unreliable(&p[0], p.size());
+    return true;
+  }
+  if (msg_type == Net::MSG_PONG) {
+    uint32_t t = r.u32();
+    if (!r.ok) return true;
+    // uint32 subtraction survives SDL_GetTicks wrap; anything over 10 s
+    // is a thawed process or a stalled relay, not a latency reading.
+    float sample = (float)(uint32_t)((uint32_t)SDL_GetTicks() - t);
+    if (sample < 10000.0f) {
+      if (net_rtt_ms_ < 0.0f) NET_LOG("net: rtt %.0f ms (first pong)\n", sample);
+      net_rtt_ms_ = net_rtt_ms_ < 0.0f ? sample
+                                       : net_rtt_ms_ * 0.8f + sample * 0.2f;
+      net_rtt_ring_[net_rtt_ring_i_] = sample;
+      net_rtt_ring_i_ = (net_rtt_ring_i_ + 1) % 8;
+      if (net_rtt_ring_n_ < 8) net_rtt_ring_n_++;
+    }
+    return true;
+  }
+  return false;
+}
+
+float GLGame::net_lead_ms() const {
+  // Minimum of the recent samples, not the smoothed average: a spike is
+  // relay queueing, not path length, and the smoothed value stays wrong
+  // for ~10 s after one while every extrapolation target overshoots.
+  if (net_rtt_ring_n_ == 0) return 0.0f;
+  float rtt = net_rtt_ring_[0];
+  for (int i = 1; i < net_rtt_ring_n_; i++)
+    if (net_rtt_ring_[i] < rtt) rtt = net_rtt_ring_[i];
+  float lead = rtt * 0.5f;
+  return lead > 250.0f ? 250.0f : lead;
+}
+
+// World objects (asteroids, the remote ship) are extrapolated locally with
+// the same physics the host runs — but host-side collision responses
+// (elastic bounces, asteroid-vs-reflective deflections) are unpredictable
+// here, so authoritative records routinely land 30-100 units from the
+// local pose. Overwriting yanked objects at 10 Hz, and partial blending
+// made them wobble to-and-fro ("looks like out-of-order states" — it
+// wasn't; the rel channel is ordered). So: adopt the authoritative
+// VELOCITY exactly (the simulation stays right), keep the RENDER pose
+// where it is, and bank the difference in net_pose_err, which
+// net_smooth_step drains over ~150 ms — corrections become a glide in
+// one direction. Teleport-scale jumps still snap: they should look
+// instant. Returns the pre-correction error distance (diagnostics).
+float GLGame::net_reconcile_pose(Object &o, const WrappedPoint &old_render,
+                                 bool sim_exact) const {
+  float lead = net_lead_ms();
+  WrappedPoint target(o.position.x() + o.velocity.x() * lead,
+                      o.position.y() + o.velocity.y() * lead);
+  target.wrap();
+  Point c = target.closest_to(old_render);
+  float cx = c.x() - old_render.x();
+  float cy = c.y() - old_render.y();
+  float err2 = cx * cx + cy * cy;
+  // Asteroids get a wider glide budget: after a connection stall the
+  // near-hole rocks legitimately curve 300-700 units away from the blind
+  // extrapolation, and the recovery burst should swoosh in, not teleport
+  // a dozen rocks in one frame. Real asteroid teleports land at a random
+  // spot in a 2950+ world — far beyond 800 essentially always.
+  const float snap_dist = sim_exact ? 800.0f : 250.0f;
+  // 1 Hz summary of how hard the incoming authority fights the local
+  // extrapolation — the number that says whether visible jitter is
+  // network correction (big counts / big max) or something else (silence).
+  if (Net::net_debug_enabled()) {
+    static uint32_t s_last = 0;
+    static int s_n = 0, s_snaps = 0;
+    static float s_max = 0.0f;
+    float err = sqrtf(err2);
+    if (err >= 8.0f) {
+      s_n++;
+      if (err > s_max) s_max = err;
+      if (err >= snap_dist) s_snaps++;
+    }
+    uint32_t now = SDL_GetTicks();
+    if (now - s_last >= 1000) {
+      if (s_n)
+        NET_LOG("net: reconcile %d corrections/s (max %.0f units, %d snaps)\n",
+                s_n, s_max, s_snaps);
+      s_last = now;
+      s_n = 0;
+      s_snaps = 0;
+      s_max = 0.0f;
+    }
+  }
+  if (sim_exact) {
+    // Asteroids: sim = authority NOW (gravity mirrors correctly again);
+    // the render offset preserves what the player saw at this instant
+    // and fades to truth (~150 ms) — or is dropped whole on a
+    // teleport-scale jump, which should look instant.
+    o.position = target;
+    o.net_pose_err = err2 < snap_dist * snap_dist ? Point(-cx, -cy)
+                                                  : Point(0.0f, 0.0f);
+  } else if (err2 < snap_dist * snap_dist) {
+    o.position = old_render;
+    o.net_pose_err = Point(cx, cy);  // replaces (not adds to) the old debt
+  } else {
+    o.position = target;
+    o.net_pose_err = Point(0.0f, 0.0f);
+  }
+  o.position.wrap();
+  return sqrtf(err2);
+}
+
+namespace {
+// Drain a client object's banked authoritative correction: exponential
+// decay with a ~65 ms time constant (~150 ms to mostly gone), applied
+// every visual step so the glide is frame-smooth.
+void net_smooth_step(Object &o, int delta) {
+  float ex = o.net_pose_err.x(), ey = o.net_pose_err.y();
+  if (ex * ex + ey * ey < 0.25f) {
+    o.net_pose_err = Point(0.0f, 0.0f);
+    return;
+  }
+  float k = 1.0f - expf(-(float)delta / 65.0f);
+  Point c = o.net_pose_err * k;
+  o.position += c;
+  o.position.wrap();
+  o.net_pose_err = o.net_pose_err - c;
+}
+
+// Asteroid flavour (sim_exact reconcile): the sim pose already rides the
+// authority — only the drawn-continuity offset fades. Exponential for
+// small offsets (invisible), RATE-CAPPED for big ones: a post-gap burst
+// banks 100+ units on every rock at once, and a fixed ~150 ms drain
+// moved the entire field at several times its natural speed — a
+// coordinated lurch that reads as jitter no matter how smooth each
+// individual glide is. Capped near the rock's own speed the correction
+// hides inside ordinary motion (a 150-unit debt takes ~1 s to melt).
+// PROXIMITY-SCALED: rocks near the player drain at full exponential
+// speed — anything that can kill you is drawn where it truly is (a
+// lingering banked offset near the ship meant "asteroids kill me when I
+// didn't see the impact") — while distant rocks keep the rate-capped
+// crawl that stops the whole-field lurch.
+void net_decay_render_offset(Object &o, int delta,
+                             const WrappedPoint &player) {
+  float ex = o.net_pose_err.x(), ey = o.net_pose_err.y();
+  float off2 = ex * ex + ey * ey;
+  if (off2 < 0.25f) {
+    o.net_pose_err = Point(0.0f, 0.0f);
+    return;
+  }
+  float off = sqrtf(off2);
+  float want = off * (1.0f - expf(-(float)delta / 65.0f));
+  Point near_p = o.position.closest_to(player);
+  float dx = near_p.x() - player.x(), dy = near_p.y() - player.y();
+  if (dx * dx + dy * dy > 700.0f * 700.0f) {
+    float cap = (o.velocity.magnitude() * 1.5f + 0.25f) * (float)delta;
+    if (want > cap) want = cap;
+  }
+  o.net_pose_err = o.net_pose_err * ((off - want) / off);
+}
+}  // namespace
+
+void GLGame::net_host_poll() {
+  NetTransport *t = net_session_->transport();
+  Ship *remote = players->size() >= 2 ? players->back()->ship : NULL;
+
+  // Mid-gap marker (host side): fires once when INPUT silence crosses
+  // 300 ms, with our send-buffer depth at that instant — pairs with the
+  // client's "rx quiet" line to show whether both senders were blocked.
+  if (Net::net_debug_enabled() && running && net_have_input_) {
+    int quiet = current_time - net_last_input_time_;
+    if (quiet > 300 && !net_quiet_logged_) {
+      net_quiet_logged_ = true;
+      NET_LOG("net: input quiet 300 ms, tx buffered %d bytes\n",
+              t->buffered_amount());
+    } else if (quiet <= 300) {
+      net_quiet_logged_ = false;
+    }
+  }
+
+  // Close an input-gap observation window (opened below) and report what
+  // the gap turned out to be — see glgame.h net_gap_* for how to read it.
+  if (net_gap_deadline_ && current_time >= net_gap_deadline_) {
+    NET_LOG("net: post-gap 1.5 s: %d inputs accepted (~185 normal), "
+            "%d stale rx, max seq leap %u (skipped at gap end: %u)\n",
+            net_gap_accepts_, net_gap_stragglers_, net_gap_max_leap_,
+            net_gap_skipped_);
+    net_gap_deadline_ = 0;
+  }
+
+  // Flood guard (safety, not anti-cheat): a peer that spams the spawn/claim
+  // channels would otherwise make us allocate (bullets/lance_pulses/shocks)
+  // and work without bound in this single drain. Two budgets per poll: a
+  // total read-loop cap so a message storm can't spin here, and a shared
+  // action budget across the droppable families so per-frame allocation
+  // stays bounded. A legitimate client never approaches either (a busy frame
+  // is a handful of shots + one INPUT); over budget we drop the effect and
+  // keep draining. NEVER gated: INPUT (the pose/control stream — cheap, and
+  // the read-loop cap bounds it) and EVENT (reliable+ordered and stateful —
+  // a dropped EV_PAUSE/EV_BYE/EV_PICKUP is consumed from SCTP, never
+  // redelivered, and no snapshot reconciles it; a post-stall backlog can
+  // legitimately exceed the budget in one drain. EVENT's two heavy codes are
+  // bounded separately — see net_event_effect_budget_). PING stays counted:
+  // that bounds the pong reflection, at worst staling the RTT lead until
+  // the flood ends.
+  const int NET_MAX_MSGS_PER_POLL = 512;    // read-loop bound
+  const int NET_MAX_ACTIONS_PER_POLL = 64;  // spawn/claim effects acted on
+  int net_msgs_seen = 0, net_actions = 0;
+  bool net_action_cap_logged = false;
+  net_event_effect_budget_ = NET_EVENT_EFFECTS_PER_POLL;
+
+  std::vector<unsigned char> msg;
+  while (t->poll(msg)) {
+    if (++net_msgs_seen > NET_MAX_MSGS_PER_POLL) {
+      NET_LOG("net: poll message storm - %d msgs, deferring rest\n",
+              net_msgs_seen);
+      break;
+    }
+    Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
+    Net::Header h;
+    if (!Net::read_header(r, h)) continue;
+    if (h.msg_type != Net::MSG_INPUT && h.msg_type != Net::MSG_EVENT &&
+        ++net_actions > NET_MAX_ACTIONS_PER_POLL) {
+      if (!net_action_cap_logged) {
+        NET_LOG("net: action budget %d/poll hit - dropping flood\n",
+                NET_MAX_ACTIONS_PER_POLL);
+        net_action_cap_logged = true;
+      }
+      continue;
+    }
+    if (net_handle_ping_pong(h.msg_type, r)) continue;
+    if (h.msg_type == Net::MSG_EVENT) {
+      uint8_t code = r.u8();
+      uint32_t arg = r.remaining() >= 4 ? r.u32() : 0;
+      if (r.ok) net_handle_event(code, arg);
+      continue;
+    }
+    if (h.msg_type == Net::MSG_SHOT) {
+      // Client shot report (PROTO 14): spawn an exact clone of the
+      // bullet the client fired — same spawn point, same spread-applied
+      // velocity, same id. The remote ship's own gun sim mints nothing
+      // (net_remote_gun); this is the only source of its bullets.
+      uint32_t id = r.u32();
+      float sx = r.f32(), sy = r.f32(), svx = r.f32(), svy = r.f32();
+      uint8_t flags = r.u8();
+      if (!r.ok || !remote) continue;
+      if (std::isfinite(sx) && std::isfinite(sy) && std::isfinite(svx) &&
+          std::isfinite(svy) && svx * svx + svy * svy < 25.0f)
+        remote->net_spawn_reported_bullet(id, Point(sx, sy), Point(svx, svy),
+                                          (flags & 1) != 0, (flags & 2) != 0,
+                                          (flags & 4) != 0);  // PROTO 18 pierce
+      continue;
+    }
+    if (h.msg_type == Net::MSG_LANCE) {
+      // Client lance pulse (PROTO 18): push the traced polyline onto the
+      // remote ship for the flash (asteroid kills arrive separately as
+      // bullet_id-0 MSG_HIT claims), then resolve its SHIP/station hits
+      // here — ship damage is host authority, and the polyline is already
+      // on the wire, so no extra message is needed. The size guard skips
+      // resolution if the receive bailed without pushing a pulse.
+      if (!remote) continue;
+      size_t before = remote->lance_pulses.size();
+      if (net_receive_lance_pulse(r, remote) &&
+          remote->lance_pulses.size() > before)
+        resolve_lance_ship_hits(remote, remote->lance_pulses.back().points);
+      continue;
+    }
+    if (h.msg_type == Net::MSG_SHOCK) {
+      // Client shock bolt (PROTO 22): show the exact polyline on the remote
+      // ship + zap sound, then apply station/mini HULL damage from it host-
+      // side (enemy kills arrive as bullet_id-0 MSG_HIT_SHIP claims, asteroids
+      // as MSG_HIT). One hull hit per bolt, like a bullet.
+      if (!remote) continue;
+      std::vector<Point> pts;
+      if (!net_receive_shock_pulse(r, remote, &pts)) continue;
+      if (station != NULL && station->is_alive() &&
+          shock_bolt_reaches(pts, station->position, station->radius)) {
+        station->hit();
+        if (!station->is_alive() && remote->is_local_player)
+          Achievements::unlock("station_destroyed");
+      }
+      if (mini_station != NULL && mini_station->is_alive() &&
+          shock_bolt_reaches(pts, mini_station->position, mini_station->radius)) {
+        remote->explode(mini_station->position, mini_station->velocity);
+        remote->score += GLMiniStation::REWARD;
+        mini_station->destroy();
+        if (station_explode_sound != NULL)
+          Mix_PlayChannel(-1, station_explode_sound, 0);
+      }
+      // Mid-game hazards the client's arc reached (the polyline already ends
+      // where its bolt stopped, so this only touches ones it truly hit): same
+      // per-kind damage the host's own bolt applies in tick() — a seeker dies
+      // outright, a comet sheds chunks, a comet/pulsar pays out on break-up.
+      // The client showed the arc/spark; destruction replicates via snapshot.
+      for (auto *h : *hazards) {
+        if (!h->is_alive()) continue;
+        if (!shock_bolt_reaches(pts, h->position, h->radius)) continue;
+        if (h->kind_of() == Hazard::SEEKER) {
+          h->destroy();
+          remote->score += Hazard::SEEKER_REWARD;
+          if (station_explode_sound != NULL)
+            Mix_PlayChannel(-1, station_explode_sound, 0);
+        } else {
+          h->hit();
+          if (h->kind_of() == Hazard::COMET) {
+            shed_comet_fragment(h);
+            shed_comet_fragment(h);
+          }
+          if (!h->is_alive()) {
+            remote->score += (h->kind_of() == Hazard::COMET)
+                                 ? Hazard::COMET_REWARD : Hazard::PULSAR_REWARD;
+            if (station_explode_sound != NULL)
+              Mix_PlayChannel(-1, station_explode_sound, 0);
+          }
+        }
+      }
+      // Friendly fire: the client's arc reached our (host) player. Credited
+      // exactly like the host's own bolt-vs-partner (score, no achievement).
+      if (friendly_fire && !players->empty()) {
+        Ship *partner = players->front()->ship;
+        if (partner->is_alive() && partner != remote &&
+            shock_bolt_reaches(pts, partner->position, partner->radius))
+          remote->shock_hit_ship(partner);
+      }
+      continue;
+    }
+    if (h.msg_type == Net::MSG_HIT_SHIP) {
+      // Client bullet-vs-ship claim (PROTO 15). Exactly-once rule: the
+      // damage applies IFF the referenced clone is consumed HERE — if
+      // our own sim already resolved that bullet (hit something, TTL'd),
+      // the claim is a no-op, so no shot ever counts twice.
+      uint8_t kind = r.u8();
+      uint32_t bullet_id = r.u32();
+      uint32_t target_id = r.u32();  // PROTO 16: exact enemy claimed
+      float hx = r.f32(), hy = r.f32();
+      if (!r.ok || !remote || !std::isfinite(hx) || !std::isfinite(hy))
+        continue;
+      if (bullet_id == 0) {
+        // PROTO 20 lance sentinel (the twin of MSG_HIT's): no clone to
+        // consume. Enemy claims only — kills are idempotent by wire id,
+        // hull damage is not (it applies via the MSG_LANCE polyline).
+        if (kind != 0) continue;
+      } else {
+        int bi = -1;
+        for (size_t i = 0; i < remote->bullets.size(); i++)
+          if (remote->bullets[i].net_id == bullet_id) { bi = (int)i; break; }
+        if (bi < 0) {
+          NET_LOG("net: ship hit claim no-op (bullet %u already resolved)\n",
+                  bullet_id);
+          continue;
+        }
+        Point bpos = remote->bullets[bi].position;
+        remote->explode(bpos, Point(0.0f, 0.0f));
+        remote->bullets[bi] = std::move(remote->bullets.back());
+        remote->bullets.pop_back();
+      }
+      WrappedPoint hit_pos(hx, hy);
+      if (kind == 0) {
+        // PROTO 16: the claim names the exact enemy by wire id. Absent
+        // or already dead = the host sim (or another claim) beat this
+        // one to it — silent no-op, the kill still counted once.
+        GLShip *target = NULL;
+        for (auto *ge : *enemies)
+          if (ge->ship->net_ship_id == target_id && ge->ship->is_alive()) {
+            target = ge;
+            break;
+          }
+        if (target != NULL && target->ship->kill_stop()) {
+          target->ship->detonate();
+          remote->kills_this_life += 1;
+          remote->kills += 1;
+          remote->score += target->ship->get_value() * remote->multiplier();
+          // The claimant already played its own boom at consume; drop
+          // this ship from the boom outbox so EV_WORLD_BOOM doesn't
+          // double the cue (the host played its local sound in kill()).
+          for (auto bi = Ship::net_booms.begin();
+               bi != Ship::net_booms.end(); ++bi)
+            if (*bi == target->ship) { Ship::net_booms.erase(bi); break; }
+          NET_LOG("net: ship hit claim honored (enemy %u)\n", target_id);
+        } else {
+          // Already dead — usually our own resolution of the same lance
+          // polyline (MSG_LANCE precedes the claims on the ordered
+          // channel). The claimant played its own boom at its instant
+          // kill, so drop any EV_WORLD_BOOM still queued for this ship
+          // or the client hears the death twice.
+          for (auto *ge : *enemies)
+            if (ge->ship->net_ship_id == target_id) {
+              for (auto bo = Ship::net_booms.begin();
+                   bo != Ship::net_booms.end(); ++bo)
+                if (*bo == ge->ship) { Ship::net_booms.erase(bo); break; }
+              break;
+            }
+          NET_LOG("net: ship hit claim no-op (enemy %u already dead)\n",
+                  target_id);
+        }
+      } else if (kind == 1 && station != NULL && station->is_alive()) {
+        // Host-local hull-thud only — the claiming client already played
+        // its own cue at consume (relaying EV_ROID_THUD would double it).
+        if (Asteroid::thud_sound != NULL)
+          Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+        station->hit();
+        NET_LOG("net: ship hit claim honored (station)\n");
+      } else if (kind == 2 && mini_station != NULL &&
+                 mini_station->is_alive()) {
+        remote->score += GLMiniStation::REWARD;
+        mini_station->destroy();
+        // The tick's destruction-sound block only fires for a mini that
+        // was alive when it started — this one died between ticks, so
+        // play + relay the boom here (same as the tick block does).
+        play_priority_chunk(station_explode_sound,
+                            net_listener_volume(mini_station->position));
+        net_send_event(Net::EV_STATION_BOOM,
+                       Net::pack_pos(mini_station->position.x(),
+                                     mini_station->position.y(),
+                                     world.x(), world.y()));
+        NET_LOG("net: ship hit claim honored (mini-station)\n");
+      }
+      continue;
+    }
+    if (h.msg_type == Net::MSG_HIT) {
+      // Client hit claim (PROTO 13): its screen saw its own bullet kill
+      // this asteroid — honor it. The client only claims hits its local
+      // rules say a plain bullet kills, so divergent host-side state
+      // (tough health, teleport window, phase) is forced through rather
+      // than re-litigated; invincible stays the one hard no (a claim for
+      // one can only be a stale-flag artifact). The kill runs the normal
+      // host path from here: this tick's reap spawns fragments and
+      // drops, and the removal record replicates back — where the claim
+      // sender already killed its copy, making that a no-op.
+      uint32_t id = r.u32();
+      uint32_t bullet_id = r.u32();  // PROTO 14: the killing bullet
+      if (!r.ok || !remote) continue;
+      for (auto oi = objects->begin(); oi != objects->end(); ++oi) {
+        Asteroid *a = *oi;
+        if (a->net_id != id) continue;
+        if (a->invincible || !a->is_alive()) break;
+        if (a->tough) a->health = 1;
+        if (a->teleporting) a->teleport_vulnerable = true;
+        a->phased = false;
+        if (a->kill()) {
+          remote->score += a->get_value() * remote->multiplier();
+          remote->kills_this_life += 1;
+          remote->kills += 1;
+          remote->tally_nova_kill(a->position);
+          // The clone of the killing bullet is still in flight here (the
+          // claim beat it by ~RTT/2) — left alone it plows into the
+          // freshly-spawned fragments and takes one of them too. Spend
+          // it by id (PROTO 14 exact match; ordered channel guarantees
+          // the shot arrived first), nearest-at-impact as the fallback
+          // for a clone the host sim already spent elsewhere.
+          // bullet_id 0 (PROTO 18): a lance kill or a PIERCING bolt's
+          // kill — there is nothing to spend (the lance has no clone;
+          // a piercing clone must keep flying through the kill), and
+          // the nearest-bullet fallback would wrongly eat an unrelated
+          // shot. Skip the consume entirely.
+          int best_i = -1;
+          if (bullet_id != 0) {
+            for (size_t bi = 0; bi < remote->bullets.size(); bi++)
+              if (remote->bullets[bi].net_id == bullet_id) { best_i = (int)bi; break; }
+            if (best_i < 0) {
+              float best = a->radius + 200.0f;
+              for (size_t bi = 0; bi < remote->bullets.size(); bi++) {
+                float d = remote->bullets[bi].position.distance_to(a->position);
+                if (d < best) { best = d; best_i = (int)bi; }
+              }
+            }
+            if (best_i >= 0) {
+              remote->explode(remote->bullets[best_i].position, a->velocity);
+              remote->bullets[best_i] = std::move(remote->bullets.back());
+              remote->bullets.pop_back();
+            }
+          }
+          NET_LOG("net: hit claim honored id=%u (bullet %s)\n", id,
+                  bullet_id == 0 ? "none (pierce/lance)"
+                  : best_i >= 0  ? "consumed"
+                                 : "already spent");
+        }
+        break;
+      }
+      continue;
+    }
+    if (h.msg_type != Net::MSG_INPUT) continue;
+
+    Net::InputState in;
+    if (!Net::decode_input(r, in)) continue;
+    // Unreliable channel: drop stale/reordered packets (signed distance
+    // handles seq wrap).
+    if (net_have_input_ && (int32_t)(in.seq - net_last_input_seq_) <= 0) {
+      net_input_stale_drops_++;
+      if (net_gap_deadline_) net_gap_stragglers_++;
+      continue;
+    }
+    uint32_t seq_leap = net_have_input_ ? in.seq - net_last_input_seq_ : 1;
+    net_last_input_seq_ = in.seq;
+    if (net_gap_deadline_) {
+      net_gap_accepts_++;
+      if (seq_leap > net_gap_max_leap_) net_gap_max_leap_ = seq_leap;
+    }
+    // An INPUT blackout (unreliable channel dying under relay congestion)
+    // is what big local-ship corrections on the CLIENT look like from
+    // here — log the gap so the two logs can be correlated, then watch
+    // the next 1.5 s to say what the gap actually WAS (see glgame.h).
+    // The client mints a seq every 8 ms step, so "skipped" = it kept
+    // sending into the void; zero skipped = it stopped stepping (or an
+    // ordered backlog is about to replay — the window tells them apart).
+    if (net_have_input_ && current_time - net_last_input_time_ > 300) {
+      NET_LOG("net: input gap %d ms ended (seq %u, %u seqs skipped, "
+              "%d stale rx during gap)\n",
+              current_time - net_last_input_time_, in.seq, seq_leap - 1,
+              net_input_stale_drops_);
+      net_gap_deadline_ = current_time + 1500;
+      net_gap_skipped_ = seq_leap - 1;
+      net_gap_stragglers_ = 0;
+      net_gap_accepts_ = 0;
+      net_gap_max_leap_ = 0;
+    }
+    net_last_input_time_ = current_time;
+    net_input_stale_drops_ = 0;
+    net_input_zeroed_ = false;
+    if (!remote) continue;
+
+    if (!net_have_input_) {
+      // First INPUT: baseline the one-shot counters instead of firing
+      // whatever the client accumulated before we were listening.
+      net_have_input_ = true;
+      net_prev_boost_ = in.boost_count;
+      net_prev_next_weapon_ = in.next_weapon_count;
+      net_prev_next_secondary_ = in.next_secondary_count;
+      net_prev_teleport_ = in.teleport_count;
+      net_prev_respawn_ = in.respawn_count;
+      net_prev_shoot_press_ = in.shoot_press_count;
+      net_prev_secondary_press_ = in.secondary_press_count;
+      // The first INPUT proves the client's game is up: if we are
+      // paused (auto-paused on its disconnect, or by hand), share the
+      // pause state now — an event sent while it was still in the lobby
+      // would have been dropped. The friendly-fire room rule has the
+      // same delivery problem (the ctor/rejoin announcements land while
+      // the client is still bootstrapping and vanish — its HUD showed
+      // OFF with the rule enabled), so re-announce it here too.
+      if (!running) net_send_event(Net::EV_PAUSE);
+      net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
+    }
+
+    // One-shot deltas; capped so a rejoining/wrapped counter can't burst.
+    uint8_t boosts = (uint8_t)(in.boost_count - net_prev_boost_);
+    uint8_t weapons = (uint8_t)(in.next_weapon_count - net_prev_next_weapon_);
+    uint8_t secondaries =
+        (uint8_t)(in.next_secondary_count - net_prev_next_secondary_);
+    uint8_t teleports = (uint8_t)(in.teleport_count - net_prev_teleport_);
+    uint8_t respawns = (uint8_t)(in.respawn_count - net_prev_respawn_);
+    uint8_t shot_presses = (uint8_t)(in.shoot_press_count - net_prev_shoot_press_);
+    uint8_t sec_presses =
+        (uint8_t)(in.secondary_press_count - net_prev_secondary_press_);
+    net_prev_shoot_press_ = in.shoot_press_count;
+    net_prev_secondary_press_ = in.secondary_press_count;
+    net_prev_boost_ = in.boost_count;
+    net_prev_next_weapon_ = in.next_weapon_count;
+    net_prev_next_secondary_ = in.next_secondary_count;
+    net_prev_teleport_ = in.teleport_count;
+    net_prev_respawn_ = in.respawn_count;
+
+    if (!remote->is_alive()) {
+      // Dead ships take no control input, same as the local player. Keys
+      // still held at death stay suppressed through the respawn until the
+      // player releases and re-presses them — respawn's reset() gives the
+      // local player exactly that restriction.
+      net_held_suppress_ = 0xffff;
+      // Mirror the local respawn-tap rule (GLShip::input): a shoot tap
+      // while dead, after a short grace period, skips the countdown.
+      if (respawns && remote->lives > 0 &&
+          remote->time_until_respawn <= remote->respawn_time - 1000)
+        remote->time_until_respawn = 0;
+      continue;
+    }
+
+    // A suppressed bit (set at each level transition) stays ignored while
+    // continuously held and expires the first time the client reports it
+    // released — the remote player re-presses each key exactly like the
+    // local player does after respawn's reset().
+    net_held_suppress_ &= in.held;
+    uint16_t held = in.held & (uint16_t)~net_held_suppress_;
+
+    remote->rotation_scale = in.analog_rotation;
+    remote->thrust_analog = in.analog_thrust;
+    remote->reverse_analog = in.analog_reverse;
+    // Aim is client-authoritative: adopt the exact facing the client's
+    // screen shows (rotation inertia, analog rate and sensitivity all
+    // included) — the client's local aim is never snapshot-corrected, so
+    // reconstructing rotation host-side from the on/off bits drifted and
+    // bullets left the nose at a visibly wrong angle. The held rotate
+    // bits below still extrapolate between INPUT arrivals.
+    float fmag = sqrtf(in.facing_x * in.facing_x + in.facing_y * in.facing_y);
+    if (fmag > 0.5f && fmag < 2.0f)
+      remote->facing = Point(in.facing_x / fmag, in.facing_y / fmag);
+    // Pose is client-authoritative too (v12): adopt it, so the pilot is
+    // never rubberbanded by corrections and collisions computed here
+    // match what that player actually saw. Gated on the warp echo —
+    // after a host-driven respawn/teleport, in-flight INPUTs still carry
+    // the pre-warp pose and would drag the ship straight back. Sanity
+    // checks only, not anti-cheat (co-op): finite values, plausible speed.
+    if (in.warp_echo == remote->net_warp_count &&
+        std::isfinite(in.pos_x) && std::isfinite(in.pos_y) &&
+        std::isfinite(in.vel_x) && std::isfinite(in.vel_y) &&
+        in.vel_x * in.vel_x + in.vel_y * in.vel_y < 9.0f) {
+      WrappedPoint reported(in.pos_x, in.pos_y);
+      reported.wrap();
+      Point c = reported.closest_to(remote->position);
+      float dx = c.x() - remote->position.x();
+      float dy = c.y() - remote->position.y();
+      float err2 = dx * dx + dy * dy;
+      remote->velocity = Point(in.vel_x, in.vel_y);
+      if (err2 < 40.0f * 40.0f || err2 > 600.0f * 600.0f) {
+        // Steady state (125 Hz reports differ by a step or two) or a
+        // teleport-scale jump: take the pose whole.
+        remote->position = reported;
+        remote->net_pose_err = Point(0.0f, 0.0f);
+      } else {
+        // Post-blackout catch-up: the client's report leaps to wherever
+        // it really flew during the gap. Bank the leap and let the host
+        // tick's drain glide the visible ship there over ~150 ms — the
+        // hop the HOST player was seeing. Gameplay pose is momentarily
+        // stale, which is no worse than the blackout itself was.
+        remote->net_pose_err = Point(dx, dy);
+      }
+    }
+    remote->rotate_left((held & Net::IN_LEFT) != 0);
+    remote->rotate_right((held & Net::IN_RIGHT) != 0);
+    remote->thrust((held & Net::IN_THRUST) != 0);
+    remote->reverse((held & Net::IN_REVERSE) != 0);
+    // Trigger rule: a new press arms the weapon; releasing disarms it; a
+    // held key with no new press leaves the weapon alone. Semi-automatics
+    // (which disarm themselves after each shot) thus fire once per press,
+    // automatics keep firing while held, and hold-style weapons like the
+    // shield stay active — all without inspecting the weapon type.
+    // Presses are QUEUED (clamped like the other wrap counters below), not
+    // collapsed into one shoot(true): a lost-INPUT blackout straddling two
+    // real semi-auto fires delivers shot_presses==2 on recovery, and firing
+    // once for two client fires desynced the ammo — Ship::step replays one
+    // queued press per step so the host decrements once per CLIENT press.
+    if (shot_presses)
+      remote->net_queued_shot_presses +=
+          (shot_presses > 4 ? 4 : shot_presses);
+    else if (!(held & Net::IN_SHOOT) &&
+             remote->net_queued_shot_presses == 0)
+      remote->shoot(false);
+    if (sec_presses)
+      remote->fire_secondary(true);
+    else if (!(held & Net::IN_SECONDARY))
+      remote->fire_secondary(false);
+
+    if (boosts > 4) boosts = 4;
+    if (weapons > 4) weapons = 4;
+    if (secondaries > 4) secondaries = 4;
+    if (teleports > 4) teleports = 4;
+    while (boosts--) remote->boost();
+    while (weapons--) remote->next_weapon();
+    while (secondaries--) remote->next_secondary_weapon();
+    while (teleports--) remote->add_behaviour(new Teleport(remote));
+  }
+
+  // Dead-man switch: no INPUT for 1 s (loss burst, hung tab) — release the
+  // remote ship's held actions instead of letting it fly into a wall.
+  if (remote && net_have_input_ && !net_input_zeroed_ &&
+      current_time - net_last_input_time_ > 1000) {
+    net_input_zeroed_ = true;
+    remote->rotate_left(false);
+    remote->rotate_right(false);
+    remote->thrust(false);
+    remote->reverse(false);
+    remote->shoot(false);
+    remote->fire_secondary(false);
+  }
+}
+
+void GLGame::net_adopt_signal(NetSignal *signal, const std::string &room_code,
+                              const std::vector<std::string> &ice_servers,
+                              const std::string &room_token) {
+  net_signal_ = signal;
+  net_room_code_ = room_code;
+  net_room_token_ = room_token;
+  net_ice_ = ice_servers;
+}
+
+// M3-1 reclaim countdown, shared by both host signal loops: the relay
+// socket dropped, so count down and reattach to the room with the token.
+void GLGame::net_host_signal_reclaim_tick(int delta) {
+  if (net_signal_retry_ms_ <= 0) return;
+  net_signal_retry_ms_ -= delta;
+  if (net_signal_retry_ms_ > 0) return;
+  net_signal_retry_ms_ = 0;
+  net_ice_.clear();  // fresh TURN creds ride the reclaim reply
+  net_signal_->connect_host_reclaim(net_signal_url(), net_room_code_,
+                                    net_room_token_);
+  NET_LOG("net: reclaiming room %s\n", net_room_code_.c_str());
+}
+
+// Signal events both host loops must treat identically: TURN creds,
+// socket drop (schedule a reclaim, or give up on the pre-token relay),
+// and relay errors (back off when rate-limited, drop the room when it
+// is gone for good).
+GLGame::NetSignalEventResult
+GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
+  switch (ev.kind) {
+    case NetSignal::Event::Ice:
+      net_ice_.push_back(ev.text);
+      if (net_rehost_) net_rehost_->set_ice_servers(net_ice_);
+      return NetSigHandled;
+    case NetSignal::Event::Closed:
+      if (net_room_token_.empty()) {
+        // Pre-token relay: no reclaim protocol — drop the signal (the
+        // old behaviour; rejoin stops being possible).
+        net_signal_->close();
+        delete net_signal_;
+        net_signal_ = nullptr;
+        return NetSigDropped;
+      }
+      if (net_signal_retry_ms_ <= 0) net_signal_retry_ms_ = 3000;
+      return NetSigHandled;
+    case NetSignal::Event::Error:
+      // rate-limited: the room is still ours (2h TTL, valid token) — the
+      // per-IP host limiter just throttled this reclaim. Back off and
+      // retry rather than abandoning a live room, same as the joiner.
+      if (ev.text == "rate-limited") {
+        net_signal_retry_ms_ = 15000;
+        return NetSigHandled;
+      }
+      // room-in-use: after an ABRUPT drop (wifi/sleep) our OWN previous
+      // socket is often still registered on the relay — the reclaim finds
+      // hostWs() truthy before the dead socket's close is detected. The room
+      // is still ours (valid token); retry until the ghost is evicted (the
+      // relay now does this on the first valid-token reclaim, but an older
+      // relay just needs it reaped). Dropping here was Glenn's wifi-off
+      // "CONNECTION LOST".
+      if (ev.text == "room-in-use") {
+        net_signal_retry_ms_ = 3000;
+        return NetSigHandled;
+      }
+      // no-such-room / expired on reclaim: the room is gone for good.
+      NET_LOG("net: room %s lost (%s)\n", net_room_code_.c_str(),
+             ev.text.c_str());
+      net_signal_->close();
+      delete net_signal_;
+      net_signal_ = nullptr;
+      return NetSigDropped;
+    default:
+      return NetSigUnhandled;
+  }
+}
+
+// M3-1 mobile lifecycle: the relay socket can drop while the game is fine
+// (host app backgrounded, wifi blip). Reclaim the room with the token so
+// later rejoins stay possible, and treat a peer-join notification as
+// instant client-loss detection — the client would not be rejoining the
+// room if its transport were alive (ICE takes ~10 s to say so).
+void GLGame::net_host_signal_maintain(int delta) {
+  net_host_signal_reclaim_tick(delta);
+
+  NetSignal::Event ev;
+  while (net_signal_->poll(ev)) {
+    NetSignalEventResult common = net_host_signal_common_event(ev);
+    if (common == NetSigDropped) return;
+    if (common == NetSigHandled) continue;
+    switch (ev.kind) {
+      case NetSignal::Event::Room:
+        NET_LOG("net: room %s reclaimed\n", net_room_code_.c_str());
+        break;
+      case NetSignal::Event::PeerJoin:
+        // The client re-entered the room: its transport is dead even if
+        // ours has not noticed yet. Enter the rejoin flow immediately.
+        NET_LOG("net: peer rejoined the room - fast loss detect\n");
+        delete net_session_;
+        net_session_ = nullptr;
+        net_connection_lost_ = true;
+        return;  // net_host_rejoin_poll owns the signal from here
+      default:
+        break;
+    }
+  }
+}
+
+// Client gone but the room is still open: keep simulating solo, offer a
+// fresh transport through the room, and resume when the peer rejoins
+// (a rejoin is a plain JOIN on their side — full snapshot bootstrap).
+void GLGame::net_host_rejoin_poll(int delta) {
+  Ship *remote = players->size() >= 2 ? players->back()->ship : NULL;
+
+  // Runs once per loss: only while there is no live rehost offer AND no
+  // session other than the dead one (a fresh session created from a
+  // rejoin answer is Handshaking on a HEALTHY transport — leave it be).
+  if (!net_rehost_ &&
+      (!net_session_ || net_session_->transport()->failed())) {
+    // First tick after the loss: park the remote ship and re-host. An
+    // alive ship stays visible where it stood, motionless with the
+    // shield up (invincible), until its owner rejoins; a dead one keeps
+    // its corpse frozen (no respawn countdown bleeding lives into
+    // drifting asteroids). Held inputs are cleared in case the dead-man
+    // switch hadn't zeroed them yet.
+    if (remote) {
+      if (remote->is_alive()) {
+        remote->velocity = Point(0, 0);
+        remote->invincible = true;
+        remote->time_left_invincible = 1 << 29;
+        remote->rotate_left(false);
+        remote->rotate_right(false);
+        remote->thrust(false);
+        remote->reverse(false);
+        remote->shoot(false);
+        remote->fire_secondary(false);
+      } else {
+        remote->time_until_respawn = 1 << 29;
+      }
+    }
+    delete net_session_;
+    net_session_ = nullptr;
+    net_rehost_ = NetTransport::create();
+    net_rehost_offer_sent_ = false;
+    if (net_rehost_) {
+      net_rehost_->set_ice_servers(net_ice_);
+      net_rehost_->set_trickle(true);  // the room relay carries candidates
+      net_rehost_->start_host();
+    }
+    NET_LOG("net: player 2 lost - room %s reopened for rejoin\n",
+           net_room_code_.c_str());
+    // Pause rather than playing on solo: waiting is the sensible default
+    // while the room is open for a rejoin (the pause key still resumes a
+    // solo session by hand). No broadcast — there is no peer to tell.
+    if (running) {
+      toggle_pause(false);
+      NET_LOG("net: paused awaiting rejoin\n");
+    }
+  }
+
+  // Signal socket dropped mid-rejoin: reclaim the room (M3-1) with the
+  // same countdown the healthy path uses; the offer re-sends once the
+  // reclaimed Room frame arrives.
+  net_host_signal_reclaim_tick(delta);
+
+  if (net_rehost_ && !net_rehost_offer_sent_ && net_signal_retry_ms_ <= 0 &&
+      net_rehost_->local_description_ready()) {
+    net_signal_->send_offer(net_rehost_->local_description());
+    net_rehost_offer_sent_ = true;
+  }
+
+  // Trickle ICE (M3-2b): stream the rehost transport's candidates to the
+  // rejoining client through the room — only once the offer is out (a
+  // candidate arriving before it gets wiped with the relay's stale-cand
+  // buffer when the offer lands).
+  if (net_signal_retry_ms_ <= 0 && (net_rehost_offer_sent_ || net_session_)) {
+    NetTransport *t =
+        net_rehost_ ? net_rehost_
+                    : (net_session_ ? net_session_->transport() : nullptr);
+    std::string c;
+    while (t && t->poll_local_candidate(c)) {
+      size_t nl = c.find('\n');
+      if (nl != std::string::npos)
+        net_signal_->send_cand(c.substr(0, nl), c.substr(nl + 1));
+    }
+  }
+
+  NetSignal::Event ev;
+  while (net_signal_->poll(ev)) {
+    NetSignalEventResult common = net_host_signal_common_event(ev);
+    if (common == NetSigDropped) return;
+    if (common == NetSigHandled) continue;
+    if (ev.kind == NetSignal::Event::Answer && net_rehost_) {
+      // Version gate, as in the lobby: a rejoiner on a different build
+      // can't bootstrap — ignore its answer and keep the offer open.
+      if (ev.text2 != std::to_string((int)Net::PROTO_VERSION)) {
+        NET_LOG("net: rejoin answer pv '%s' != ours %d - ignored\n",
+               ev.text2.c_str(), (int)Net::PROTO_VERSION);
+        continue;
+      }
+      net_rehost_->set_remote_answer(ev.text);
+      net_session_ = new NetSession(net_rehost_, NetSession::HostRole);
+      net_rehost_ = nullptr;
+    } else if (ev.kind == NetSignal::Event::Cand) {
+      NetTransport *t =
+          net_rehost_ ? net_rehost_
+                      : (net_session_ ? net_session_->transport() : nullptr);
+      if (t) t->add_remote_candidate(ev.text2, ev.text);
+    } else if (ev.kind == NetSignal::Event::Room) {
+      // Reclaimed mid-rejoin: the room's stored offer died with the old
+      // socket — resend the current one.
+      NET_LOG("net: room %s reclaimed (mid-rejoin)\n", net_room_code_.c_str());
+      net_rehost_offer_sent_ = false;
+    } else if (ev.kind == NetSignal::Event::PeerJoin && net_session_) {
+      // A rejoiner re-entered the room while we ALREADY have a handshaking
+      // session with them. The relay sends the host a PeerJoin the instant a
+      // joiner arrives, BEFORE its answer — so the normal single rejoin's
+      // PeerJoin lands while net_session_ is still null (offer out, awaiting
+      // the answer) and must be left alone. Tearing that offer down restarted
+      // ICE on every join event and looped forever over a real TURN path
+      // (Glenn: "AGES to reconnect", re-offering ~0.7 s after the answer while
+      // candidates were still flowing). A PeerJoin AFTER a session exists is a
+      // genuine SECOND join — their prior attempt's transport flapped — so the
+      // half-open session is a corpse the joiner is no longer party to. Drop
+      // it and let the top-of-poll block re-offer a fresh one next tick,
+      // instead of waiting out its ~30 s ICE timeout.
+      NET_LOG("net: peer re-joined onto a stale session - re-offering\n");
+      delete net_session_;
+      net_session_ = nullptr;
+      net_rehost_offer_sent_ = false;
+      return;  // top-of-poll re-offer owns the signal from here
+    }
+  }
+
+  // Fresh session handshaking (HELLO/WELCOME) over the new transport.
+  if (net_session_) {
+    net_session_->update(delta);
+    if (net_session_->phase() == NetSession::Ready) {
+      net_connection_lost_ = false;
+      net_have_input_ = false;      // re-baseline the one-shot counters
+      net_input_zeroed_ = false;
+      net_rtt_ms_ = -1.0f;          // fresh transport, fresh RTT baseline
+      net_ping_timer_ = 0;
+      net_rtt_ring_n_ = 0;
+      net_rtt_ring_i_ = 0;
+      net_held_suppress_ = 0xffff;  // fresh presses required, like a spawn
+      net_force_keyframe_ = true;   // rejoined client starts from a keyframe
+      net_last_input_time_ = current_time;
+      if (remote) {
+        if (remote->is_alive()) {
+          // Shield-parked hull: drop the parked shield to the normal
+          // respawn grace window and resume in place — unless an
+          // asteroid drifted onto the hull while its owner was away, in
+          // which case resume at a clear spot instead of inside the
+          // rock (try_current keeps the parked position when safe; the
+          // rejoiner bootstraps from the next keyframe, so any move is
+          // adopted as its baseline pose).
+          remote->time_left_invincible = 1500;
+          remote->safe_position(grid, true);
+        } else {
+          // Unpark directly — the step-countdown respawn would charge a life.
+          remote->respawn(grid, false);
+        }
+        remote->bullets.clear();  // no lethal spawn-flash debris
+      }
+      net_set_generation_banner(generation);
+      net_banner_text_ = "PLAYER 2 RECONNECTED";
+      // Re-sync the room rule — the rejoiner may be a fresh app launch
+      // whose HUD reset to its own preference.
+      net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
+      NET_LOG("net: ice path %s\n",
+             net_session_->transport()->connection_info().c_str());
+      // Host paused (auto-paused on the disconnect, or by hand): the
+      // paused tick never reaches the 10 Hz send, so push the keyframe
+      // NOW — the rejoiner's lobby is waiting on it to bootstrap the
+      // world. The EV_PAUSE follows on the client's first INPUT, once
+      // it provably exists (the lobby does not consume events).
+      if (!running) {
+        net_snapshot_timer_ = 100;
+        net_host_send_snapshot(0);
+      }
+      NET_LOG("net: player 2 rejoined\n");
+    } else if (net_session_->phase() == NetSession::Failed ||
+               net_session_->phase() == NetSession::Rejected) {
+      // Bad handshake (wrong build?): drop it and re-offer for another try.
+      delete net_session_;
+      net_session_ = nullptr;
+      net_rehost_ = NetTransport::create();
+      if (net_rehost_) net_rehost_->set_trickle(true);
+      net_rehost_offer_sent_ = false;
+      if (net_rehost_) {
+        net_rehost_->set_ice_servers(net_ice_);
+        net_rehost_->start_host();
+      }
+    }
+  }
+}
+
+// ---- snapshot NetExtras -------------------------------------------------
+// Appended after the serialize_game body: per-ship transients the save
+// format deliberately omits, the public projectile vectors, and the
+// asteroid net_id array (same iteration order as build_save_data). Raw
+// native-endian writes, matching the savegame body it rides with (every
+// supported platform is little-endian).
+
+namespace {
+
+template <typename T>
+void nx_write(Save::Stream &out, const T &v) { out.write(&v, sizeof(T)); }
+
+void nx_write_projectile(Save::Stream &out, const Object &o) {
+  nx_write(out, o.position.x());
+  nx_write(out, o.position.y());
+  nx_write(out, o.velocity.x());
+  nx_write(out, o.velocity.y());
+}
+
+void nx_write_ship(Save::Stream &out, const Ship &s) {
+  nx_write(out, (uint8_t)s.is_alive());
+  nx_write(out, s.temperature);
+  nx_write(out, (int32_t)s.time_until_respawn);
+  nx_write(out, (int32_t)s.time_left_invincible);
+  nx_write(out, (int32_t)s.god_mode_time_remaining());
+  nx_write(out, (uint8_t)s.shield_active());
+  nx_write(out, s.net_warp_count);
+  // Movement flags so the peer can run this ship's exhaust-trail
+  // emitters: bit0 thrust, bit1 reverse, bits 2-3 rotation (1=L, 2=R).
+  uint8_t move = (uint8_t)((s.thrusting ? 1 : 0) | (s.reversing ? 2 : 0) |
+                           ((s.rotation_direction == Ship::LEFT    ? 1
+                             : s.rotation_direction == Ship::RIGHT ? 2
+                                                                   : 0)
+                            << 2));
+  nx_write(out, move);
+
+  nx_write(out, (uint16_t)s.bullets.size());
+  for (const Particle &p : s.bullets) {
+    nx_write_projectile(out, p);
+    // PROTO 18: per-bullet flags so piercing (beam bolt), trail and
+    // kills_invincible survive the wholesale 10 Hz rebuild — a host beam
+    // bolt used to flicker back to a plain pew on every apply.
+    nx_write(out, p.net_flags());
+  }
+  nx_write(out, (uint16_t)s.mines.size());
+  for (const Particle &p : s.mines) nx_write_projectile(out, p);
+  nx_write(out, (uint16_t)s.giga_mines.size());
+  for (const Particle &p : s.giga_mines) nx_write_projectile(out, p);
+
+  nx_write(out, (uint16_t)s.missiles.size());
+  for (const MissileShot &m : s.missiles) {
+    nx_write_projectile(out, m);
+    nx_write(out, m.facing.x());
+    nx_write(out, m.facing.y());
+    nx_write(out, m.time_left);
+  }
+
+  nx_write(out, (uint16_t)s.shockwaves.size());
+  for (const Shockwave &w : s.shockwaves) {
+    nx_write(out, w.position.x());
+    nx_write(out, w.position.y());
+    nx_write(out, w.radius);
+    nx_write(out, w.max_radius);
+    nx_write(out, w.speed);
+    nx_write(out, w.time_left);
+    nx_write(out, (uint8_t)w.is_nova);
+  }
+}
+
+// v6: the mini-station's shots — its Save record carries none, so the
+// client faced invisible (and lethal-looking) fire at generation 10+.
+void nx_write_mini_station_bullets(Save::Stream &out, const GLMiniStation *ms) {
+  uint16_t n = (ms && ms->is_alive()) ? (uint16_t)ms->bullets.size() : 0;
+  nx_write(out, n);
+  if (ms)
+    for (uint16_t i = 0; i < n; i++) nx_write_projectile(out, ms->bullets[i]);
+}
+
+// v7: the gen-20 station's deployed enemies' shots, in enemies-list order
+// (the client rebuilds its enemies from the station record in the same
+// order every apply). PROTO 16: each record leads with the enemy's
+// net_ship_id — the rebuilt replicas' only durable identity, re-stamped
+// on the client every apply, referenced by exact MSG_HIT_SHIP claims.
+void nx_write_enemy_bullets(Save::Stream &out, const std::list<GLShip *> *enemies) {
+  nx_write(out, (uint16_t)enemies->size());
+  for (auto *e : *enemies) {
+    nx_write(out, e->ship->net_ship_id);
+    nx_write(out, (uint16_t)e->ship->bullets.size());
+    for (const Particle &b : e->ship->bullets) nx_write_projectile(out, b);
+  }
+}
+
+}  // namespace
+
+// One state byte per asteroid in delta records: the transient flags a
+// client cannot extrapolate (motion and rotation it can — see NETPLAY.md).
+static uint8_t ast_state_byte(const Asteroid *a) {
+  return (uint8_t)((a->phased ? 1 : 0) | (a->teleport_vulnerable ? 2 : 0) |
+                   (a->teleport_pending ? 4 : 0) |
+                   (a->quantum_observed ? 8 : 0));
+}
+
+void GLGame::net_host_send_snapshot(int delta) {
+  if (!net_session_ || net_connection_lost_) return;  // mid-rejoin
+  net_snapshot_timer_ += delta;
+  if (net_snapshot_timer_ < 100) return;
+  net_snapshot_timer_ = 0;
+
+  bool keyframe = net_force_keyframe_ || (net_slot_ % 10 == 0);
+  net_slot_++;
+  if (!keyframe && net_send_delta()) return;
+
+  // KEYFRAME: the full snapshot, exactly as Milestone 1 sent every slot.
+  Save::MemStream payload;
+  Save::serialize_game(payload, build_save_data());
+
+  nx_write(payload, (uint32_t)players->size());
+  for (auto *gs : *players) nx_write_ship(payload, *gs->ship);
+  nx_write_mini_station_bullets(payload, mini_station);
+  nx_write_enemy_bullets(payload, enemies);
+
+  nx_write(payload, (uint32_t)objects->size());
+  for (auto *a : *objects) nx_write(payload, a->net_id);
+
+  Net::send_snapshot(net_session_->transport(), ++net_snapshot_id_,
+                     payload.data(), 1);
+  net_force_keyframe_ = false;
+
+  // The keyframe is the client's new baseline: deltas from here describe
+  // changes against it (reliable ordered channel — no acks needed).
+  net_known_.clear();
+  for (auto *a : *objects) {
+    NetAstBase b;
+    b.px = a->position.x(); b.py = a->position.y();
+    b.vx = a->velocity.x(); b.vy = a->velocity.y();
+    b.health = (uint8_t)a->health;
+    b.state = ast_state_byte(a);
+    b.t = current_time;
+    net_known_[a->net_id] = b;
+  }
+
+  // Bandwidth telemetry (M2-6): a line every 10 s of play at 10 Hz.
+  net_bytes_sent_ += payload.data().size();
+  if (net_slot_ % 100 == 0) {
+    NET_LOG("net: slot #%d gen=%d asteroids=%d key_bytes=%d avg10s=%.1f KB/s\n",
+           net_slot_, generation, (int)objects->size(),
+           (int)payload.data().size(), net_bytes_sent_ / 10240.0f);
+    net_bytes_sent_ = 0;
+  }
+}
+
+bool GLGame::net_send_delta() {
+  // Everything except asteroids rides wholesale — it is small and reuses
+  // the entire keyframe apply path on the client. Asteroids are diffed
+  // below, so skip capturing them into s.
+  Save::GameState s = build_save_data(false);
+  Save::MemStream payload;
+  Save::serialize_game(payload, s);
+
+  nx_write(payload, (uint32_t)players->size());
+  for (auto *gs : *players) nx_write_ship(payload, *gs->ship);
+  nx_write_mini_station_bullets(payload, mini_station);
+  nx_write_enemy_bullets(payload, enemies);
+
+  // Asteroids: new since the last keyframe/delta, changed beyond what the
+  // client can extrapolate, or gone. Record every live id in this single
+  // pass so the removed set is the known ids NOT seen — the old nested
+  // "for each known, scan all objects" was O(N^2) at 9x/s.
+  std::vector<Asteroid *> fresh, dyn;
+  std::set<uint32_t> present_ids;
+  for (auto *a : *objects) {
+    present_ids.insert(a->net_id);
+    std::map<uint32_t, NetAstBase>::iterator f = net_known_.find(a->net_id);
+    if (f == net_known_.end()) {
+      fresh.push_back(a);
+      continue;
+    }
+    const NetAstBase &b = f->second;
+    float dt = (float)(current_time - b.t);
+    float pred_x = b.px + b.vx * dt, pred_y = b.py + b.vy * dt;
+    bool dirty =
+        fabsf(a->velocity.x() - b.vx) > 0.01f ||
+        fabsf(a->velocity.y() - b.vy) > 0.01f ||
+        (uint8_t)a->health != b.health || ast_state_byte(a) != b.state ||
+        // 16, not 50: elastic separation pushes move POSITION without
+        // touching velocity, so rocks resting in contact piles drifted
+        // silently to the old threshold, corrected, and drifted again —
+        // a permanent ~50-unit sawtooth on every touching pair (the
+        // "constant position jitter"). A 16-unit correction glides in
+        // below perception; the extra records only flow while a pile is
+        // actually grinding.
+        fabsf(a->position.x() - pred_x) > 16.0f ||
+        fabsf(a->position.y() - pred_y) > 16.0f;
+    if (dirty) dyn.push_back(a);
+  }
+  std::vector<uint32_t> removed;
+  for (std::map<uint32_t, NetAstBase>::iterator it = net_known_.begin();
+       it != net_known_.end(); ++it)
+    if (present_ids.find(it->first) == present_ids.end())
+      removed.push_back(it->first);
+
+  nx_write(payload, (uint16_t)fresh.size());
+  for (size_t i = 0; i < fresh.size(); i++) {
+    nx_write(payload, fresh[i]->net_id);
+    Save::write_asteroid(payload, fresh[i]->capture_state());
+  }
+  nx_write(payload, (uint16_t)dyn.size());
+  for (size_t i = 0; i < dyn.size(); i++) {
+    Asteroid *a = dyn[i];
+    nx_write(payload, a->net_id);
+    nx_write(payload, a->position.x());
+    nx_write(payload, a->position.y());
+    nx_write(payload, a->velocity.x());
+    nx_write(payload, a->velocity.y());
+    nx_write(payload, (uint8_t)a->health);
+    nx_write(payload, ast_state_byte(a));
+  }
+  nx_write(payload, (uint16_t)removed.size());
+  for (size_t i = 0; i < removed.size(); i++) nx_write(payload, removed[i]);
+
+  // Rare escape hatch: a delta bigger than one snapshot chunk (mass
+  // change) is not worth the format — send a keyframe this slot instead.
+  if (payload.data().size() > Net::SNAPSHOT_CHUNK_BYTES) return false;
+
+  std::vector<uint8_t> msg;
+  msg.reserve(Net::HEADER_SIZE + 4 + payload.data().size());
+  Net::put_header(msg, Net::MSG_DELTA, 1);
+  Net::put_u32(msg, ++net_snapshot_id_);
+  Net::put_bytes(msg, &payload.data()[0], payload.data().size());
+  net_session_->transport()->send_reliable(&msg[0], msg.size());
+
+  // Only now (the send is committed) does the baseline move.
+  for (size_t i = 0; i < removed.size(); i++) net_known_.erase(removed[i]);
+  std::vector<Asteroid *> *sent[2] = { &fresh, &dyn };
+  for (int k = 0; k < 2; k++)
+    for (size_t i = 0; i < sent[k]->size(); i++) {
+      Asteroid *a = (*sent[k])[i];
+      NetAstBase b;
+      b.px = a->position.x(); b.py = a->position.y();
+      b.vx = a->velocity.x(); b.vy = a->velocity.y();
+      b.health = (uint8_t)a->health;
+      b.state = ast_state_byte(a);
+      b.t = current_time;
+      net_known_[a->net_id] = b;
+    }
+
+  net_bytes_sent_ += msg.size();
+  if (net_slot_ % 100 == 0) {
+    NET_LOG("net: slot #%d gen=%d asteroids=%d delta_bytes=%d (new %d dyn %d rm %d) avg10s=%.1f KB/s\n",
+           net_slot_, generation, (int)objects->size(), (int)msg.size(),
+           (int)fresh.size(), (int)dyn.size(), (int)removed.size(),
+           net_bytes_sent_ / 10240.0f);
+    net_bytes_sent_ = 0;
+  }
+  return true;
+}
+
+// Host-side toggle (G key, or the touch region on the HUD text). The
+// flip persists as the host's own preference and — online — is announced
+// as the room rule. The client never reaches this (host_keys / the
+// net_mode_ guard in touch_tap).
+void GLGame::host_toggle_friendly_fire() {
+  friendly_fire = !friendly_fire;
+  g_prefs.friendly_fire = friendly_fire;
+  save_preferences();
+  for (auto *p : *players) p->ship->missiles_seek_players = friendly_fire;
+  net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
+}
+
+// The host event outboxes are process-wide statics holding raw Ship*/
+// positions queued during a tick and drained at its end. They must not
+// carry entries across GLGame instances: a client game populates them
+// (its local ship pushes to net_shots on every shot), and if that game is
+// deleted before the entries are drained, a later host game's drain would
+// dereference freed ships. Clearing at construction guarantees each game
+// starts from empty regardless of how the previous one ended.
+void GLGame::net_clear_event_outboxes() {
+  Ship::net_ship_impacts.clear();
+  Ship::net_shots.clear();
+  Ship::net_booms.clear();
+  Ship::net_kill_claims.clear();
+  Ship::net_shot_reports.clear();
+  Ship::net_ship_hit_claims.clear();
+  Ship::net_lance_reports.clear();
+  Ship::net_shock_reports.clear();
+  Ship::net_bounce_reports.clear();
+  Ship::net_ach_relays.clear();
+  Ship::net_ram_blasts.clear();
+}
+
+void GLGame::net_send_event(uint8_t code, uint32_t arg) {
+  // While the joiner is disconnected (rejoinable loss) the host plays on
+  // with no session at all — level completion and pause still fire events.
+  if (!net_session_) return;
+  std::vector<uint8_t> msg;
+  Net::put_header(msg, Net::MSG_EVENT, net_mode_ == NetHost ? 1 : 2);
+  Net::put_u8(msg, code);
+  Net::put_u32(msg, arg);
+  net_session_->transport()->send_reliable(&msg[0], msg.size());
+}
+
+void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
+  switch (code) {
+    case Net::EV_PAUSE:
+      if (running) toggle_pause(false);
+      break;
+    case Net::EV_RESUME:
+      if (!running) toggle_pause(false);
+      break;
+    case Net::EV_GENERATION_START:
+      // The world rebuild itself rides the next snapshot (client side);
+      // the event just drives the banner.
+      net_set_generation_banner((int)arg);
+      break;
+    case Net::EV_BYE:
+      net_connection_lost_ = true;
+      // A BYE is a DELIBERATE goodbye, not a dropped link. The client must
+      // not auto-rejoin a room whose host said it isn't coming back (the
+      // relay may still hold it in reclaim grace if the host's signal
+      // socket was already dead — joins would be admitted and wait
+      // forever). Clearing the code disables the rejoin path and flips the
+      // card to its exit variant; the lobby's clipboard auto-join refuses
+      // the dead code too.
+      if (net_mode_ == NetClient && !net_room_code_.empty()) {
+        net_peer_bye_ = true;
+        NetLobby::mark_room_dead(net_room_code_);
+        net_room_code_.clear();
+        NET_LOG("net: host bye - no rejoin\n");
+      }
+      break;
+    case Net::EV_ACHIEVEMENT: {
+      // The host's sim detected an unlock it attributes to OUR ship (ram
+      // kills and station kills only resolve host-side). Our own cheat
+      // suppression still applies inside unlock(). Effect-budgeted: EVENT is
+      // never drop-gated by the polls (reliable control must flow), so the
+      // codes that do real work bound themselves instead — a flood of these
+      // would otherwise hammer the platform achievements SDK.
+      if (net_event_effect_budget_ <= 0) break;
+      net_event_effect_budget_--;
+      if (arg == Net::ACH_SHIELD_RAM) Achievements::unlock("shield_ram");
+      else if (arg == Net::ACH_SHIELD_RAM_ASTEROID) Achievements::unlock("shield_ram_asteroid");
+      else if (arg == Net::ACH_MINI_STATION_KILL) Achievements::unlock("mini_station_kill");
+      else if (arg == Net::ACH_STATION_DESTROYED) Achievements::unlock("station_destroyed");
+      break;
+    }
+    case Net::EV_RAM_BLAST: {
+      // Our shielded ram killed an asteroid host-side and burst bullets
+      // out of our replica — our own bullet echo is skipped, so mint the
+      // blast here. net_blast on the local ship (net_claim_kills) goes
+      // into REAL bullets: instant local kills + bullet_id-0 claims,
+      // exactly like an own-mine explosion. Our pose is authoritative and
+      // the host adopted it, so blasting at our current position lands
+      // where the player just saw the impact. Effect-budgeted (see
+      // EV_ACHIEVEMENT): each blast spawns ~10 bullets, and EVENT itself is
+      // never drop-gated, so the spawn bounds itself per poll.
+      if (net_event_effect_budget_ <= 0) break;
+      net_event_effect_budget_--;
+      if (!players->empty()) {
+        Ship *me = players->back()->ship;
+        if (me->is_alive())
+          me->net_blast(me->position, me->velocity, 10);
+      }
+      break;
+    }
+    case Net::EV_FRIENDLY_FIRE: {
+      // The host's preference is the room rule; adopt it for the HUD only
+      // (damage runs in the host sim). g_prefs stays the player's own.
+      bool on = arg != 0;
+      if (on != friendly_fire) {
+        net_banner_text_ = on ? "FRIENDLY FIRE ON" : "FRIENDLY FIRE OFF";
+        net_banner_ms_ = 2000;
+      }
+      friendly_fire = on;
+      // Keep the local missile sim honest too: seeking is cosmetic-ish on
+      // the client but a missile visibly hunting the partner reads wrong.
+      for (auto *p : *players) p->ship->missiles_seek_players = friendly_fire;
+      NET_LOG("net: friendly fire %s\n", on ? "on" : "off");
+      break;
+    }
+    case Net::EV_ROID_THUD:
+    case Net::EV_ROID_TING: {
+      // Since PROTO 10 only the gen-20 station-hull deflection sends
+      // THUD (asteroid impacts are client-side cosmetic — see
+      // Ship::net_cosmetic_impacts); TING is retired but kept decodable.
+      // Play the cue and spark any asteroid near the packed position.
+      Mix_Chunk *snd = code == Net::EV_ROID_TING ? Asteroid::ting_sound
+                                                 : Asteroid::thud_sound;
+      if (snd) Mix_PlayChannel(-1, snd, 0);
+      NET_LOG("net: roid impact\n");
+      float ix, iy;
+      Net::unpack_pos(arg, ix, iy, world.x(), world.y());
+      net_spark_asteroid_at(ix, iy);
+      break;
+    }
+    case Net::EV_LEVEL_TIC:
+      if (tic_sound)
+        Mix_PlayChannel(-1, tic_sound, 0);
+      break;
+    case Net::EV_PICKUP:
+      if (pickup_sound)
+        Mix_PlayChannel(-1, pickup_sound, 0);
+      // A pickup was collected host-side; its ammo bump reaches us only via
+      // the next snapshot. `arg` names WHICH of OUR limited primaries gained
+      // ammo (NetPrimaryKind; 0 = a pickup that changes none of our primary
+      // ammo — the host's own, or a non-primary type). Arm that weapon's
+      // anti-flicker latch so net_apply_state accepts the coming INCREASE on
+      // exactly that primary instead of clamping it away as a lag blip. The
+      // latch was originally ONE shared scalar armed by ANY pickup — so a
+      // lag blip on a different weapon could consume it (permanently pinning
+      // the real pickup's ammo low) and an unrelated host-side pickup could
+      // launder a blip through. Keyed per weapon, neither can happen.
+      // Consumed on the accepted rise; self-expiring (~1.2 s).
+      if (arg >= 1 && arg < NET_PRIMARY_KINDS)
+        net_pickup_latch_[arg] = 12;
+      break;
+    case Net::EV_ROID_BOUNCE:
+      // Asteroid-vs-reflective bounce; arg is the volume the host
+      // computed for the nearest player.
+      if (Asteroid::asteroid_ting_sound) {
+        Mix_VolumeChunk(Asteroid::asteroid_ting_sound,
+                        (int)(arg & 0xff) * MIX_MAX_VOLUME / 255);
+        Mix_PlayChannel(-1, Asteroid::asteroid_ting_sound, 0);
+      }
+      break;
+    case Net::EV_REMOTE_SHOT: {
+      // The host player's gun, attenuated by distance to our ship. Our
+      // own shots play locally; this event only ever describes P1.
+      if (players->empty()) break;
+      Ship *shooter = players->front()->ship;
+      float vol = net_listener_volume(shooter->position);
+      if (vol > 0.0f && shooter->shoot_sound) {
+        Mix_VolumeChunk(shooter->shoot_sound, (int)(MIX_MAX_VOLUME * vol));
+        Mix_PlayChannel(-1, shooter->shoot_sound, 0);
+      }
+      break;
+    }
+    case Net::EV_WORLD_SHOT:
+    case Net::EV_WORLD_BOOM:
+    case Net::EV_STATION_BOOM: {
+      // Host-simulated world actors (enemies, mini-station): play the
+      // cue attenuated by distance from our ship to the packed position.
+      // Chunks are per-instance and every play site sets volume first,
+      // so borrowing the local ship's is safe.
+      float wx, wy;
+      Net::unpack_pos(arg, wx, wy, world.x(), world.y());
+      float vol = net_listener_volume(Point(wx, wy));
+      if (vol <= 0.0f || players->empty()) break;
+      if (code == Net::EV_STATION_BOOM) {
+        // Rare and important enough to survive a saturated mixer.
+        play_priority_chunk(station_explode_sound, vol);
+        break;
+      }
+      Mix_Chunk *snd = code == Net::EV_WORLD_SHOT
+                           ? local_player()->ship->shoot_sound
+                           : local_player()->ship->explode_sound;
+      if (snd) {
+        Mix_VolumeChunk(snd, (int)(MIX_MAX_VOLUME * vol));
+        Mix_PlayChannel(-1, snd, 0);
+      }
+      break;
+    }
+    case Net::EV_SHIP_IMPACT: {
+      // Non-fatal ship-vs-asteroid bounce: debris spray on that ship
+      // (explode() fills the object's own debris, which is never
+      // serialized — hence invisible on the client until now).
+      int idx = (int)(arg & 0xff);
+      GLShip *gs = NULL;
+      if (idx == 1 && !players->empty()) gs = players->front();
+      else if (idx == 2 && players->size() >= 2) gs = players->back();
+      if (gs && gs->ship->is_alive()) {
+        gs->ship->explode(gs->ship->position, gs->ship->velocity * 0.25f);
+        if ((arg & 0x100) && Asteroid::ting_sound)
+          Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
+      }
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+// Client: debris spray on the asteroid nearest an impact position (the
+// impact events carry where, not which — ids would cost more bytes than
+// a proximity match is worth at these rates).
+void GLGame::net_spark_asteroid_at(float x, float y) {
+  // Point-probe the grid (the client refreshes it each tick) rather than
+  // scanning every asteroid — CLAUDE.md: use Grid for spatial queries. A
+  // zero-radius probe with proximity 80 matches the old center-distance <
+  // asteroid.radius + 80 test; the grid holds only asteroids, so the cast
+  // is safe.
+  Object probe(WrappedPoint(x, y), Point(0, 0));
+  probe.radius = 0.0f;
+  Object *hit = grid.collide(probe, 80.0f);
+  if (hit) static_cast<Asteroid *>(hit)->explode();
+}
+
+void GLGame::net_set_generation_banner(int gen) {
+  const char *name = NULL;
+  switch (gen) {
+    case 1:  name = "INVINCIBLE";    break;
+    case 2:  name = "REFLECTIVE";    break;
+    case 3:  name = "TELEPORTING";   break;
+    case 4:  name = "INVISIBLE";     break;
+    case 5:  name = "QUANTUM";       break;
+    case 6:  name = "TOUGH";         break;
+    case 7:  name = "ARMOURED";      break;
+    case 8:  name = "PHASING";       break;
+    case 9:  name = "BLACK HOLE";    break;
+    case 10: name = "MINI STATION";  break;
+    case 20: name = "ENEMY STATION"; break;
+    default: break;
+  }
+  char buf[64];
+  if (name)
+    snprintf(buf, sizeof(buf), "LEVEL %d - %s", gen + 1, name);
+  else
+    snprintf(buf, sizeof(buf), "LEVEL %d", gen + 1);
+  net_banner_text_ = buf;
+  net_banner_ms_ = 2000;
+}
+
+
+// ---- client side ---------------------------------------------------------
+
+GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
+               SDL_GameController *controller)
+  : GLGame(snapshot, (SDL_GameController *)NULL) {
+  net_mode_ = NetClient;
+  Net::set_net_log_role(false);  // lobby set it too; belt & braces
+  net_session_ = session;
+  net_assembler_ = new Net::SnapshotAssembler();
+  // PROTO 14: the local ship reports every shot it fires (id, spawn,
+  // exact velocity) so the host spawns clones instead of re-rolling.
+  if (!players->empty()) {
+    players->back()->ship->net_report_shots = true;
+    // PROTO 18: the lance ray-march claims kills instead of killing
+    // locally (the claim drain kills — same flow as bullet claims).
+    players->back()->ship->net_claim_kills = true;
+    NET_LOG("net: shot reporting armed (ship=%p)\n",
+            (void *)players->back()->ship);
+  }
+  NET_LOG("net: ice path %s\n",
+         net_session_->transport()->connection_info().c_str());
+  // Snapshot restores call Ship::respawn 10x/s; without this its hum
+  // start-then-halt leaks random audible blips. The snapshot extras are
+  // the only hum authority on a client.
+  Ship::net_quiet_respawn = true;
+
+  // The save-restore base constructor bound player-1 keys to the FIRST ship,
+  // but on the client the local player is the LAST one; the first is the
+  // remote host's ship. Strip the ghost's bindings and give the local ship
+  // this machine's player-1 controls.
+  if (players->size() >= 2) {
+    GLShip *remote = players->front();
+    // The save-restoring base ctor flags every saved ship as a local
+    // player; the first ship here is the HOST's — achievements and
+    // lifetime stats must not attribute its actions to this machine.
+    remote->ship->is_local_player = false;
+    remote->clear_keys();
+    remote->set_controller(NULL);
+    GLShip *local = players->back();
+    set_player_keys(local, 0);
+    if (controller) local->set_controller(controller);
+  }
+}
+
+namespace {
+
+template <typename T>
+bool nx_read(Save::Stream &in, T &v) { return in.read(&v, sizeof(T)); }
+
+struct NetShipExtras {
+  uint8_t alive;
+  float temperature;
+  int32_t time_until_respawn;
+  int32_t time_left_invincible;
+  int32_t god_ms;
+  uint8_t shield;
+  uint8_t warp_count;  // pose-is-absolute signal — see Ship::net_warp_count
+  uint8_t move_flags;  // bit0 thrust, bit1 reverse, bits 2-3 rotation (1=L, 2=R)
+};
+
+// quiet: suppress vanish explosions for this apply (level rollover wipes
+// every projectile at once — that's a rebuild, not a barrage of booms).
+// s == NULL: parse-only — advance the stream past the projectile sections
+// without touching any ship (the stale-delta membership walk needs the
+// removal records that sit AFTER these sections; see net_client_poll).
+// own_bullets: this is the CLIENT's OWN ship — its plain bullets are
+// locally simulated (fired, stepped, consumed at impacts, expired by
+// TTL) and must NOT be replaced by the host's echo: the echo lags a
+// round trip, and any shot the host's copy of the gun didn't fire
+// (input in flight, cooldown phase off by a step) got WIPED mid-flight
+// by the next apply — Glenn's "bullets just disappear soon after they
+// leave the ship" — taking its PROTO 13 hit claim with it. Mines/gigas/
+// missiles/shockwaves stay host-echoed: they're deployed objects with
+// host-side lifecycles, not aim-critical projectiles.
+bool nx_read_projectiles(Save::Stream &in, Ship *s, bool quiet,
+                         float lead_ms, bool own_bullets = false) {
+  uint16_t n = 0;
+  float x, y, vx, vy;
+
+  if (!nx_read(in, n)) return false;
+  if (s && !own_bullets) s->bullets.clear();
+  for (int i = 0; i < n; i++) {
+    uint8_t flags = 0;
+    if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
+    if (!nx_read(in, flags)) return false;  // PROTO 18 per-bullet flags
+    // Lead by RTT/2: bullets are rebuilt wholesale every apply, and the
+    // stale pose strobed against the client's own between-apply stepping
+    // (fast movers made it obvious). Mines/gigas are near-stationary and
+    // their disappearance matching relies on raw positions — no lead.
+    if (s && !own_bullets) {
+      s->bullets.push_back(Particle(Point(x + vx * lead_ms, y + vy * lead_ms),
+                                    Point(vx, vy), 2000.0f));
+      s->bullets.back().set_net_flags(flags);
+    }
+  }
+
+  if (!nx_read(in, n)) return false;
+  // Mines that disappear from the snapshot were detonated by the host
+  // (proximity) — play the explosion here. Position-match against the
+  // incoming set; mines barely drift, so 100 units is generous.
+  std::vector<Particle> old_mines;
+  if (s) old_mines.swap(s->mines);
+  for (int i = 0; i < n; i++) {
+    if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
+    if (!s) continue;
+    s->mines.push_back(Particle(Point(x, y), Point(vx, vy), 60000.0f));
+    for (size_t j = 0; j < old_mines.size(); j++) {
+      if (old_mines[j].position.distance_to(WrappedPoint(x, y)) < 100.0f) {
+        old_mines.erase(old_mines.begin() + j);
+        break;
+      }
+    }
+  }
+  if (s && !quiet)
+    for (auto &om : old_mines) s->net_mine_exploded(om.position, om.velocity);
+
+  if (!nx_read(in, n)) return false;
+  std::vector<Particle> old_gigas;
+  if (s) old_gigas.swap(s->giga_mines);
+  for (int i = 0; i < n; i++) {
+    if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
+    if (!s) continue;
+    s->giga_mines.push_back(Particle(Point(x, y), Point(vx, vy), 60000.0f));
+    for (size_t j = 0; j < old_gigas.size(); j++) {
+      if (old_gigas[j].position.distance_to(WrappedPoint(x, y)) < 100.0f) {
+        old_gigas.erase(old_gigas.begin() + j);
+        break;
+      }
+    }
+  }
+  if (s && !quiet)
+    for (auto &og : old_gigas) s->net_giga_mine_exploded(og.position);
+
+  if (!nx_read(in, n)) return false;
+  // Missiles carry local presentation state the wire doesn't (trail,
+  // thrust ramp): wholesale replacement wiped it 10x/s, so replicated
+  // missiles looked like they teleported. Adopt it from the nearest
+  // previous missile instead.
+  std::vector<MissileShot> old_missiles;
+  if (s) old_missiles.swap(s->missiles);
+  for (int i = 0; i < n; i++) {
+    float fx, fy, time_left;
+    if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy) ||
+        !nx_read(in, fx) || !nx_read(in, fy) || !nx_read(in, time_left)) return false;
+    if (!s) continue;
+    MissileShot m(WrappedPoint(x, y), Point(fx, fy), Point(0, 0));
+    m.velocity = Point(vx, vy);
+    m.time_left = time_left;
+    int best = -1;
+    float best_d = 150.0f;  // a missile moves well under this per delta
+    for (size_t j = 0; j < old_missiles.size(); j++) {
+      float d = old_missiles[j].position.distance_to(m.position);
+      if (d < best_d) { best_d = d; best = (int)j; }
+    }
+    if (best >= 0) {
+      m.trail = std::move(old_missiles[best].trail);
+      m.thrust = old_missiles[best].thrust;
+      m.sound_handle = old_missiles[best].sound_handle;
+      old_missiles.erase(old_missiles.begin() + best);
+    }
+    s->missiles.push_back(m);
+  }
+  // A missile that vanished with life remaining exploded on the host
+  // (collision) — the expiry case detonates locally in Ship::step. Play
+  // the explosion here since the client never simulates the impact.
+  for (auto &om : old_missiles) {
+    if (s && !quiet && om.time_left > 300.0f)
+      s->net_missile_exploded(om.position, om.velocity);
+  }
+  // Fly loop: locally-fired missiles get it from the weapon; replicated
+  // ones share one channel per ship, kept alive via the adopted handles
+  // and halted automatically when the last holder is destroyed.
+  if (s) {
+    std::shared_ptr<int> fly;
+    for (auto &m : s->missiles)
+      if (m.sound_handle) { fly = m.sound_handle; break; }
+    for (auto &m : s->missiles) {
+      if (!m.sound_handle) {
+        if (!fly) fly = s->net_start_missile_fly_loop();
+        m.sound_handle = fly;
+      }
+    }
+  }
+
+  if (!nx_read(in, n)) return false;
+  size_t old_novas = 0;
+  if (s) {
+    for (const Shockwave &w : s->shockwaves)
+      if (w.is_nova) old_novas++;
+    s->shockwaves.clear();
+  }
+  size_t new_novas = 0;
+  for (int i = 0; i < n; i++) {
+    float px, py, radius, max_radius, speed, time_left;
+    uint8_t is_nova;
+    if (!nx_read(in, px) || !nx_read(in, py) || !nx_read(in, radius) ||
+        !nx_read(in, max_radius) || !nx_read(in, speed) ||
+        !nx_read(in, time_left) || !nx_read(in, is_nova)) return false;
+    if (!s) continue;
+    Shockwave w(Point(px, py), max_radius, speed, time_left, is_nova != 0);
+    w.radius = radius;
+    w.prev_radius = radius;
+    s->shockwaves.push_back(w);
+    if (is_nova) new_novas++;
+  }
+  // A nova wave the client hasn't seen yet: the wave itself replicates,
+  // only its boom was host-side.
+  if (s && !quiet && new_novas > old_novas) s->net_nova_arrived();
+  return true;
+}
+
+}  // namespace
+
+void GLGame::tick_net_client(int delta) {
+  net_tick_t0_ = SDL_GetTicks();  // hitch-breakdown baseline (see below)
+  current_time += delta;
+  // Anything the local kill() calls queued (ghost removals) is noise —
+  // drop it; the host relays the real cues (or the client detects the
+  // cosmetic ones itself).
+  Ship::net_ship_impacts.clear();
+  Ship::net_shots.clear();
+  Ship::net_booms.clear();
+  // Remote (host) ship: attenuate its self-played sounds (death
+  // explosion, god-mode tics) by distance to the local ship.
+  if (players->size() >= 2)
+    players->front()->ship->sound_volume_scale =
+        net_listener_volume(players->front()->ship->position);
+
+  if (!net_connection_lost_) {
+    net_client_poll();
+    net_ping_tick(delta);
+    // Mid-gap marker: the 1 Hz buffered sample can miss a sub-second
+    // stall entirely; this fires exactly when silence crosses 300 ms,
+    // with our own send-buffer depth at that instant (nonzero = our
+    // sender is blocked too, i.e. the stall is bidirectional).
+    if (Net::net_debug_enabled() && running && net_last_rx_time_) {
+      int quiet = current_time - net_last_rx_time_;
+      if (quiet > 300 && !net_quiet_logged_) {
+        net_quiet_logged_ = true;
+        NET_LOG("net: rx quiet 300 ms, tx buffered %d bytes\n",
+                net_session_->transport()->buffered_amount());
+      } else if (quiet <= 300) {
+        net_quiet_logged_ = false;
+      }
+    }
+    if (running && net_last_rx_time_ &&
+        current_time - net_last_rx_time_ > 10000) {
+      NET_LOG("net: RX watchdog - 10 s of silence, connection lost\n");
+      net_session_->transport()->close();  // unblock the peer's side too
+      net_connection_lost_ = true;
+    }
+  }
+  if (net_session_->transport()->failed()) net_connection_lost_ = true;
+  // Game over is observed here, not simulated: alive/lives replicate, so
+  // when the last life goes this side sees it too. The host's tick never
+  // runs on a client, so without this the 3 s accidental-exit guard and
+  // the local high-score save never armed — and the GAME OVER card (see
+  // Overlay::net_overlays) is the client's whole ending, where it used
+  // to get only the host's departure (Glenn: "no gameover state for the
+  // client, it just disconnects").
+  if (!game_over && !players->empty()) {
+    bool all_over = true;
+    for (auto *gs : *players)
+      if (gs->ship->is_alive() || gs->ship->lives > 0) {
+        all_over = false;
+        break;
+      }
+    if (all_over) {
+      for (auto *gs : *players) save_high_score(gs->ship->score);
+      game_over = true;
+      game_over_time = current_time;
+      NET_LOG("net: game over (all players out) - showing GAME OVER card\n");
+#ifdef __EMSCRIPTEN__
+      EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
+#endif
+    }
+  }
+
+  // Arm/advance the spectate countdown (client side): our ship out, the
+  // host still in it -> after kSpectateDelayMs the camera follows the host.
+  update_spectate();
+
+  if (net_connection_lost_) {
+    // Host gone: snapshots stop, so any snapshot-driven continuous loop
+    // (shield hum from spawn invincibility, god-mode music) would be left
+    // playing forever. Silence them now — a rejoin restores them from the
+    // next snapshot.
+    for (auto *gs : *players) gs->ship->silence_loops();
+    // If our own ship is already out (we were spectating the host), a lost
+    // host is terminal — there is nothing left to rejoin for. End on the
+    // GAME OVER card rather than the REJOINING spinner.
+    GLShip *me = local_player();
+    if (!game_over && me &&
+        !me->ship->is_alive() && me->ship->lives <= 0) {
+      for (auto *gs : *players) save_high_score(gs->ship->score);
+      game_over = true;
+      game_over_time = current_time;
+      spectate_death_time_ = -1;
+      NET_LOG("net: host lost while spectating - GAME OVER\n");
+    }
+    // M3-1 auto-rejoin: with a room code the loss is recoverable — hand
+    // the game back to a fresh auto-joining lobby (full keyframe
+    // bootstrap, the same path as a manual rejoin). Any key/button still
+    // exits to the menu via the input handlers. A finished game is the
+    // exception: the host leaving AFTER game over is the expected way
+    // out, not a loss to recover from — stay on the GAME OVER card.
+    if (!net_room_code_.empty() && !game_over) {
+      if (net_client_rejoin_ms_ <= 0) net_client_rejoin_ms_ = 1500;
+      net_client_rejoin_ms_ -= delta;
+      if (net_client_rejoin_ms_ <= 0) {
+        NET_LOG("net: auto-rejoining room %s\n", net_room_code_.c_str());
+        request_state_change(new NetLobby(net_room_code_));
+        net_room_code_.clear();  // fire once
+      }
+    }
+    return;  // frozen; draw shows the reconnect notice
+  }
+  if (net_banner_ms_ > 0) net_banner_ms_ -= delta;
+
+  if (!running) {
+    last_tick += delta;
+    net_last_rx_time_ = current_time;  // paused peers legitimately go quiet
+    net_last_send_time_ = current_time;  // no sends while paused = no stall
+    // Pauses freeze the host clock too: shift the anchor so paused time
+    // doesn't count into the derived estimate below.
+    if (net_est_anchor_local_ >= 0) net_est_anchor_local_ += delta;
+    return;
+  }
+  // The host's clock runs whenever we do (pauses stop both), so the
+  // stale-delta estimate is the last accepted apply's host clock plus
+  // local running time since it arrived. DERIVED, not accumulated: a
+  // "+= delta" here after a poll that just re-anchored double-counted
+  // client-side hitches and wedged the gate shut (see glgame.h).
+  if (net_est_anchor_host_ >= 0)
+    net_host_est_ = net_est_anchor_host_ + (current_time - net_est_anchor_local_);
+
+  // Hitch breakdown: "net: frame hitch" (tick()) names the stall but not
+  // the culprit — split this tick into poll (applies) vs step-loop time,
+  // and pair it with the "slow draw" line to localize a slow frame.
+  uint32_t hb_poll_ms = SDL_GetTicks() - net_tick_t0_;
+  uint32_t hb_steps_t0 = SDL_GetTicks();
+  int hb_steps = 0;
+
+  time_until_next_step -= delta;
+  while (time_until_next_step <= 0) {
+    hb_steps++;
+    // Visual/kinematic stepping only: motion, particles, trails, timers.
+    // No collisions, kills, drops or generation logic — the host simulates
+    // and its snapshots overwrite this extrapolation at 10 Hz.
+    for (auto *bh : *black_holes) bh->step(step_size);
+    for (auto *a : *objects) {
+      a->step(step_size);
+      net_decay_render_offset(*a, step_size,
+                              players->back()->ship->position);
+      // Render-jump detector: the DRAWN pose may only move by motion,
+      // gravity, mirrored bounces and offset decay — log any step that
+      // exceeds that budget several-fold, because that is the literal
+      // jitter the player sees and no reconcile counter measures it.
+      if (Net::net_debug_enabled()) {
+        static std::unordered_map<uint32_t, Point> s_prev;
+        WrappedPoint r(a->position.x() + a->net_pose_err.x(),
+                       a->position.y() + a->net_pose_err.y());
+        r.wrap();
+        std::unordered_map<uint32_t, Point>::iterator pi = s_prev.find(a->net_id);
+        if (pi != s_prev.end()) {
+          Point c = r.closest_to(pi->second);
+          float jx = c.x() - pi->second.x(), jy = c.y() - pi->second.y();
+          float jump = sqrtf(jx * jx + jy * jy);
+          float off = sqrtf(a->net_pose_err.x() * a->net_pose_err.x() +
+                            a->net_pose_err.y() * a->net_pose_err.y());
+          float budget = a->velocity.magnitude() * step_size + off * 0.15f + 2.0f;
+          if (jump > budget * 3.0f)
+            NET_LOG("net: render jump %.0f id=%u (spd %.2f off %.0f budget %.0f)\n",
+                    jump, a->net_id, a->velocity.magnitude(), off, budget);
+        }
+        s_prev[a->net_id] = Point(r.x(), r.y());
+      }
+    }
+    // Mirror the host's asteroid gravity so drift between 1 Hz keyframes
+    // stays small — otherwise every asteroid near a hole goes stale.
+    for (auto *bh : *black_holes)
+      for (auto *a : *objects)
+        if (!a->invincible) bh->apply_gravity(*a, step_size);
+    // Mirror the host's elastic bounces too (silently), or every one of
+    // them is a surprise the records correct 100 ms later.
+    elastic_asteroid_collisions(/*announce=*/false);
+    // ...and the quantum observation flips (4x speed changes), the last
+    // host-only velocity rule the client couldn't predict.
+    update_quantum_observation();
+    for (auto *a : *dead_objects) a->step(step_size);
+    for (auto *p : *pickups) p->step(step_size);
+    // The HOST owns respawns. Ship::step self-respawns when the local
+    // countdown crosses zero — at a RANDOM position (and charging a
+    // life), racing the authoritative snapshot by tick skew; the ghost
+    // then stood at the random spot until the host's real spawn arrived.
+    // Hold the countdown just above zero; the snapshot's alive-transition
+    // resurrects the ship at the host's spawn position.
+    for (auto *gs : *players) {
+      Ship *sh = gs->ship;
+      if (!sh->is_alive() && sh->time_until_respawn <= (int)step_size)
+        sh->time_until_respawn = step_size + 1;
+    }
+    // Refresh the shock-bolt seek list before stepping the local ship, exactly
+    // as the host's tick() does — without this the client's shock arc seeks
+    // ONLY asteroids (missile list) and sails straight past every enemy,
+    // station, mini-station and hazard, so a client-fired bolt could never
+    // reach (or claim) them. Damage stays where it belongs: enemies are
+    // client-claimed below, station/mini/hazard hull is host-authoritative.
+    shock_targets->clear();
+    for (auto *ge : *enemies)
+      shock_targets->push_back(ge->ship);
+    if (station != NULL && station->is_alive())
+      shock_targets->push_back(station);
+    if (mini_station != NULL && mini_station->is_alive())
+      shock_targets->push_back(mini_station);
+    for (auto *h : *hazards)
+      if (h->is_alive())
+        shock_targets->push_back(h);
+    if (friendly_fire)
+      for (auto *gs : *players)
+        shock_targets->push_back(gs->ship);
+
+    for (auto *gs : *players) gs->step(step_size, grid);
+    // The remote (host) ship reconciles like the asteroids; the LOCAL
+    // ship never banks an error (its pose is authoritative, v12), so
+    // this is a no-op for it.
+    for (auto *gs : *players) net_smooth_step(*gs->ship, step_size);
+    // v12: with pose authority the black hole must pull the pilot HERE —
+    // the host's pull is overwritten by every adopted INPUT. Same
+    // reduced-pull rule as the host's ship loop; the event-horizon kill
+    // stays host-side (ignore the return — death arrives as a snapshot
+    // alive-transition).
+    {
+      Ship *me = players->back()->ship;
+      if (me->is_alive()) {
+        float scale = (me->god_mode_time_remaining() > 0 ||
+                       me->shield_active()) ? 0.25f : 1.0f;
+        for (auto *bh : *black_holes)
+          bh->apply_gravity(*me, step_size, scale);
+      }
+    }
+    // v12 pose authority: the pulsar shockwave's outward SHOVE is a force on
+    // the local ship, so — like the black-hole pull above — it must be applied
+    // HERE. The host applies it to its copy of our ship, but our authoritative
+    // pose discards that every INPUT, so without this mirror the wave passed
+    // straight through the client's pilot ("the pulsar doesn't do anything").
+    // The push flings you into an asteroid; the host resolves the resulting
+    // collision and the death replicates. Matches the host loop's knockback
+    // (glgame.cpp COLLIDE SHIPS ... HAZARDS); the client's pulsar timer is
+    // reconciled from the snapshot, so wave_active()/wave_radius() line up.
+    {
+      Ship *me = players->back()->ship;
+      if (me->is_alive()) {
+        for (auto *h : *hazards) {
+          if (h->kind_of() != Hazard::PULSAR || !h->is_alive() || !h->wave_active())
+            continue;
+          float wr = h->wave_radius();
+          if (fabsf(me->position.distance_to(h->position) - wr) > Hazard::WAVE_BAND)
+            continue;
+          Point self = h->position.closest_to(me->position);
+          Point out(me->position.x() - self.x(), me->position.y() - self.y());
+          float m = out.magnitude();
+          if (m > 1e-4f) me->velocity += (out / m) * (Hazard::KNOCKBACK * step_size);
+        }
+      }
+    }
+    // Mini-station: drift/spin/bullets extrapolate between snapshots —
+    // without this it visibly teleported at the 10 Hz apply rate.
+    if (mini_station) mini_station->net_client_step(step_size);
+    // Gen-20 station + its enemies: kinematic-only extrapolation (no AI,
+    // no firing — the host owns those, the snapshot reconciles).
+    if (station) station->net_client_step(step_size);
+    for (auto *e : *enemies) {
+      e->ship->Object::step(step_size);
+      for (auto &b : e->ship->bullets) b.step(step_size);
+    }
+    // Mid-game hazards: extrapolate motion + animation between snapshots
+    // (pulsar cycle, comet drift + trail, seeker homing) so they glide
+    // rather than teleport at the apply rate — visual only; the lethal
+    // effects and deaths are host-authoritative and reconcile via the
+    // snapshot. Reap replicas whose death burst has finished fading.
+    for (auto hi = hazards->begin(); hi != hazards->end();) {
+      (*hi)->update(step_size, players);
+      if ((*hi)->is_removable()) { delete *hi; hi = hazards->erase(hi); }
+      else ++hi;
+    }
+    // Cosmetic bullet-vs-hazard impacts: hazards aren't in the collision grid,
+    // so net_cosmetic_impacts (below) misses them and a shot would sail
+    // straight through the pulsar/comet on the client. Consume the bullet at
+    // contact with a spark + thud, mirroring the host's hit — the real damage
+    // is host-authoritative (the client's shot rides to the host as a MSG_SHOT
+    // clone; the break-up arrives as the replica dropping from the snapshot).
+    if (!hazards->empty()) {
+      for (auto *gs : *players) {
+        Ship *sh = gs->ship;
+        for (size_t bi = 0; bi < sh->bullets.size();) {
+          bool hit = false;
+          for (auto *h : *hazards) {
+            if (!h->is_alive()) continue;
+            if (h->Object::collide(sh->bullets[bi])) {
+              sh->explode(sh->bullets[bi].position, Point());
+              float vol = net_listener_volume(
+                  Point(sh->bullets[bi].position.x(), sh->bullets[bi].position.y()));
+              if (vol > 0.0f && Asteroid::thud_sound != NULL) {
+                Mix_VolumeChunk(Asteroid::thud_sound, (int)(MIX_MAX_VOLUME * vol));
+                Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+              }
+              hit = true;
+              break;
+            }
+          }
+          if (hit) {
+            sh->bullets[bi] = std::move(sh->bullets.back());
+            sh->bullets.pop_back();
+          } else {
+            ++bi;
+          }
+        }
+      }
+    }
+    grid.update((std::list<Object *> *)objects);
+    // Cosmetic bullet-vs-asteroid impacts (debris + thud/ting for
+    // asteroids a bullet can't kill), detected locally against the fresh
+    // grid — replaces the host's EV_ROID impact events (PROTO 10). The
+    // local ship also claims its would-kill hits for the confirmation
+    // telemetry below.
+    for (auto *gs : *players)
+      gs->ship->net_cosmetic_impacts(grid, gs == players->back());
+    // PROTO 15: the local ship's bullets vs replicated enemy ships and
+    // stations — they used to sail straight through (enemies aren't in
+    // the asteroid grid). Consume at contact + claim to the host.
+    {
+      std::vector<Ship::NetShipTarget> ship_targets;
+      for (auto *ge : *enemies)
+        if (ge->ship->is_alive())
+          ship_targets.push_back(
+              {(Object *)ge->ship, (uint8_t)0, ge->ship->net_ship_id});
+      if (station != NULL && station->is_alive())
+        ship_targets.push_back({(Object *)station, (uint8_t)1, 0u});
+      if (mini_station != NULL && mini_station->is_alive())
+        ship_targets.push_back({(Object *)mini_station, (uint8_t)2, 0u});
+      players->back()->ship->net_cosmetic_ship_impacts(ship_targets);
+
+      // PROTO 20: the local lance vs enemy replicas — the same instant
+      // kill + claim treatment bullets get (kind 0 with bullet_id 0: a
+      // lance has no clone to consume, mirroring MSG_HIT's sentinel).
+      // Station/mini hull hits stay host-side (resolved from the
+      // MSG_LANCE polyline): hull damage is not idempotent, so it must
+      // apply exactly once — enemy kills are idempotent by wire id.
+      Ship *lme = players->back()->ship;
+      if (!lme->lance_hit_pending.empty()) {
+        for (auto &t : ship_targets) {
+          Ship *e = static_cast<Ship *>(t.obj);
+          if (!e->is_alive()) continue;
+          Point where;
+          bool hit = false;
+          for (size_t s = 0; s + 1 < lme->lance_hit_pending.size() && !hit; s++)
+            hit = lance_seg_circle_entry(lme->lance_hit_pending[s],
+                                         lme->lance_hit_pending[s + 1],
+                                         e->position, e->radius, &where);
+          if (!hit) continue;
+          if (t.kind != 0) {
+            // Station/mini hull contact: cosmetic only — local debris
+            // splash (the host's splash spawns on OUR replica over there
+            // and never replicates back) plus the deflection thud for the
+            // station. Damage/destruction stay host-side via MSG_LANCE,
+            // and the host skips its EV_ROID_THUD relay for our polyline
+            // so this cue isn't doubled.
+            lme->explode(where, e->velocity);
+            if (t.kind == 1 && Asteroid::thud_sound != NULL)
+              Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+            continue;
+          }
+          if (e->kill_stop()) {
+            e->detonate();
+            lme->credit_ship_kill(e);  // enemies_10/score, ours
+          }
+          // Same silent-replica rule as the bullet path: play the dying
+          // ship's boom ourselves, full volume — the kill is at our own
+          // crosshair (the host skips its relay for claimed kills).
+          if (e->explode_sound != NULL) {
+            Mix_VolumeChunk(e->explode_sound, MIX_MAX_VOLUME);
+            Mix_PlayChannel(-1, e->explode_sound, 0);
+          }
+          Ship::NetShipHit c;
+          c.kind = 0;
+          c.bullet_id = 0;  // lance sentinel: honor without a clone consume
+          c.target_id = t.id;
+          c.x = where.x();
+          c.y = where.y();
+          Ship::net_ship_hit_claims.push_back(c);
+          NET_LOG("net: lance enemy kill claimed id=%u\n", t.id);
+        }
+        lme->lance_hit_pending.clear();
+      }
+
+      // PROTO 22: resolve the local shock bolts' hits. A bolt's struck list
+      // holds the exact objects its arc reached this frame. This MUST fully
+      // drain struck every tick: the client never calls Ship::collide_grid
+      // (it uses net_cosmetic_impacts instead), so an entry left here dangles
+      // once net_apply_state frees the asteroid a few frames later — the next
+      // dynamic_cast then segfaults on freed memory (Glenn's joiner crash).
+      //   Asteroids: claim the kill with a bullet_id-0 MSG_HIT (the lance
+      //     sentinel — one-shot, since the host suppresses the remote ship's
+      //     shock sim and so can't chip tough rocks itself; the claim drain
+      //     kills our copy this tick and the host honors it exactly-once).
+      //   Enemies: instant kill + bullet_id-0 ship claim, like the lance.
+      //   Station / mini: cosmetic splash only; hull damage stays host-side,
+      //     applied from the MSG_SHOCK polyline in the host's handler.
+      Ship *sme = players->back()->ship;
+      for (auto &bolt : sme->shocks) {
+        for (Object *obj : bolt.struck) {
+          if (Asteroid *a = dynamic_cast<Asteroid *>(obj)) {
+            // Invincible asteroids never appear here: they are not sought
+            // and grow_segment stops the bolt at their surface without a
+            // struck entry. (Even if one slipped through, the host's MSG_HIT
+            // handler refuses claims on invincible rocks.)
+            if (a->alive) {
+              Ship::NetKillClaim c;
+              c.ast_id = a->net_id;
+              c.bullet_id = 0;
+              Ship::net_kill_claims.push_back(c);
+            }
+            continue;
+          }
+          // Mid-game hazards: hull damage is host-authoritative (resolved from
+          // our MSG_SHOCK polyline over there), so this is cosmetic + the arc
+          // stop() rule only. A comet/pulsar absorbs the bolt and halts it; a
+          // one-shot seeker lets it chain onward. Never claimed here — the real
+          // destruction arrives as the replica dropping from the snapshot.
+          if (Hazard *hz = dynamic_cast<Hazard *>(obj)) {
+            if (hz->is_alive()) {
+              sme->explode(hz->position, hz->velocity);
+              if (Asteroid::thud_sound != NULL)
+                Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+              if (hz->kind_of() != Hazard::SEEKER)
+                bolt.stop();
+            }
+            continue;
+          }
+          // Friendly fire: the arc reached the partner (host) ship. Its damage
+          // is host-authoritative too (resolved from the polyline), so stop the
+          // arc cosmetically and let the host decide the kill.
+          if (friendly_fire && !players->empty() &&
+              obj == players->front()->ship) {
+            if (players->front()->ship->is_alive()) {
+              sme->explode(players->front()->ship->position,
+                           players->front()->ship->velocity);
+              bolt.stop();
+            }
+            continue;
+          }
+          const Ship::NetShipTarget *t = NULL;
+          for (auto &st : ship_targets) if (st.obj == obj) { t = &st; break; }
+          if (t == NULL) continue;
+          Ship *e = static_cast<Ship *>(t->obj);
+          if (!e->is_alive()) continue;
+          if (t->kind != 0) {
+            // Station / mini hull: cosmetic only; damage is host-authoritative.
+            // The station/mini survive multiple hits, so the arc stops here.
+            sme->explode(e->position, e->velocity);
+            if (t->kind == 1 && Asteroid::thud_sound != NULL)
+              Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+            bolt.stop();
+            continue;
+          }
+          if (e->kill_stop()) {
+            e->detonate();
+            sme->credit_ship_kill(e);
+          } else {
+            bolt.stop();  // enemy survived (invincible) — arc ends here
+          }
+          if (e->explode_sound != NULL) {
+            Mix_VolumeChunk(e->explode_sound, MIX_MAX_VOLUME);
+            Mix_PlayChannel(-1, e->explode_sound, 0);
+          }
+          Ship::NetShipHit c;
+          c.kind = 0;
+          c.bullet_id = 0;  // shock sentinel: honor without a clone consume
+          c.target_id = t->id;
+          c.x = e->position.x();
+          c.y = e->position.y();
+          Ship::net_ship_hit_claims.push_back(c);
+          NET_LOG("net: shock enemy kill claimed id=%u\n", t->id);
+        }
+        bolt.struck.clear();  // fully drained — never carry a pointer to next frame
+      }
+    }
+
+    // Local-ship render-jump detector: the camera rides this pose, so a
+    // single-step discontinuity here moves the WHOLE visible field in
+    // unison — "all the asteroids jump at the same time" while every
+    // asteroid diagnostic stays silent.
+    if (Net::net_debug_enabled()) {
+      static Point s_prev_ship;
+      static bool s_have_prev = false;
+      Ship *me = players->back()->ship;
+      if (me->is_alive()) {
+        Point cur(me->position.x(), me->position.y());
+        if (s_have_prev) {
+          Point c = me->position.closest_to(s_prev_ship);
+          float jx = c.x() - s_prev_ship.x(), jy = c.y() - s_prev_ship.y();
+          float jump = sqrtf(jx * jx + jy * jy);
+          float budget = me->velocity.magnitude() * step_size + 3.0f;
+          if (jump > budget * 3.0f)
+            NET_LOG("net: SHIP render jump %.0f (spd %.2f)\n",
+                    jump, me->velocity.magnitude());
+        }
+        s_prev_ship = cur;
+        s_have_prev = true;
+      } else {
+        s_have_prev = false;
+      }
+    }
+
+    net_client_send_input();
+    time_until_next_step += time_between_steps;
+  }
+  if (Net::net_debug_enabled()) {
+    uint32_t steps_ms = SDL_GetTicks() - hb_steps_t0;
+    if (hb_poll_ms + steps_ms > 25)
+      NET_LOG("net: slow tick: poll %u ms, %d steps %u ms\n",
+              hb_poll_ms, hb_steps, steps_ms);
+  }
+
+  // Client hit-authority (PROTO 13): every would-kill consume detected
+  // in the step loop kills the asteroid HERE — instantly, even mid-stall
+  // — and sends a reliable MSG_HIT claim the host honors. Fragments,
+  // drops and score stay host-owned and replicate back as ordinary new
+  // records / HUD scalars; the only local fiction is the parent's final
+  // explosion at this screen's pose. "No more shots that don't count."
+  // PROTO 14: report every shot the local ship fired this tick — the
+  // host spawns exact clones (same spawn point, same spread-applied
+  // velocity, same id) instead of re-rolling its own gun sim.
+  for (const Ship::NetShotReport &r : Ship::net_shot_reports) {
+    std::vector<uint8_t> msg;
+    Net::put_header(msg, Net::MSG_SHOT, 2);
+    Net::put_u32(msg, r.id);
+    Net::put_f32(msg, r.x);
+    Net::put_f32(msg, r.y);
+    Net::put_f32(msg, r.vx);
+    Net::put_f32(msg, r.vy);
+    Net::put_u8(msg, (r.kills_invincible ? 1 : 0) | (r.has_trail ? 2 : 0) |
+                       (r.piercing ? 4 : 0));
+    net_session_->transport()->send_reliable(&msg[0], msg.size());
+    // 1 Hz send-side twin of the host's "reported shots/s spawned" —
+    // a rate mismatch between the two lines localizes a report leak.
+    if (Net::net_debug_enabled()) {
+      static uint32_t s_last = 0;
+      static int s_count = 0;
+      s_count++;
+      uint32_t now = SDL_GetTicks();
+      if (now - s_last >= 1000) {
+        NET_LOG("net: %d shot reports/s sent (last id=%u)\n", s_count, r.id);
+        s_last = now;
+        s_count = 0;
+      }
+    }
+  }
+  Ship::net_shot_reports.clear();
+
+  // PROTO 18: fired lance pulses — the traced polyline for the host's
+  // flash + sound (the kills ride the MSG_HIT claims below).
+  for (const std::vector<Point> &pts : Ship::net_lance_reports) {
+    if (pts.size() < 2 || pts.size() > 17) continue;
+    std::vector<uint8_t> msg;
+    Net::put_header(msg, Net::MSG_LANCE, 2);
+    Net::put_u8(msg, (uint8_t)pts.size());
+    for (const Point &p : pts) {
+      Net::put_f32(msg, p.x());
+      Net::put_f32(msg, p.y());
+    }
+    net_session_->transport()->send_reliable(&msg[0], msg.size());
+  }
+  Ship::net_lance_reports.clear();
+
+  // PROTO 22: completed shock bolts — the peer shows the firer's EXACT
+  // segments (a re-seek would diverge). Kills ride the MSG_HIT/MSG_HIT_SHIP
+  // claims; station/mini hull damage is applied from this polyline.
+  for (const std::vector<Point> &pts : Ship::net_shock_reports) {
+    if (pts.size() < 2 || pts.size() > 15) continue;
+    std::vector<uint8_t> msg;
+    Net::put_header(msg, Net::MSG_SHOCK, 2);
+    Net::put_u8(msg, (uint8_t)pts.size());
+    for (const Point &p : pts) {
+      Net::put_f32(msg, p.x());
+      Net::put_f32(msg, p.y());
+    }
+    net_session_->transport()->send_reliable(&msg[0], msg.size());
+  }
+  Ship::net_shock_reports.clear();
+
+  // PROTO 15/16: ship/station hit claims — damage applies host-side IFF
+  // the referenced clone gets consumed there (exactly-once per shot).
+  for (const Ship::NetShipHit &c : Ship::net_ship_hit_claims) {
+    std::vector<uint8_t> msg;
+    Net::put_header(msg, Net::MSG_HIT_SHIP, 2);
+    Net::put_u8(msg, c.kind);
+    Net::put_u32(msg, c.bullet_id);
+    Net::put_u32(msg, c.target_id);
+    Net::put_f32(msg, c.x);
+    Net::put_f32(msg, c.y);
+    net_session_->transport()->send_reliable(&msg[0], msg.size());
+    // The enemy died locally the moment the bullet connected — keep the
+    // restores from resurrecting it while the claim is in flight.
+    if (c.kind == 0 && c.target_id != 0)
+      net_predicted_ship_kills_[c.target_id] = current_time + 3000;
+  }
+  Ship::net_ship_hit_claims.clear();
+
+  if (!Ship::net_kill_claims.empty()) {
+    for (const Ship::NetKillClaim &c : Ship::net_kill_claims) {
+      // Several bullets (or several steps of this tick) can consume
+      // against the same rock before the drain kills it — one claim is
+      // enough, the rest are duplicates.
+      std::map<uint32_t, int>::iterator dup =
+          net_predicted_kills_.find(c.ast_id);
+      if (dup != net_predicted_kills_.end() && current_time < dup->second)
+        continue;
+      std::vector<uint8_t> msg;
+      Net::put_header(msg, Net::MSG_HIT, 2);
+      Net::put_u32(msg, c.ast_id);
+      Net::put_u32(msg, c.bullet_id);
+      net_session_->transport()->send_reliable(&msg[0], msg.size());
+      // Keyframes cut before the host processes the claim still list
+      // this id — suppress re-creation until the removal propagates.
+      net_predicted_kills_[c.ast_id] = current_time + 3000;
+      for (auto oi = objects->begin(); oi != objects->end(); ++oi) {
+        Asteroid *a = *oi;
+        if (a->net_id != c.ast_id) continue;
+        // Force the same divergent state the host's claim handler forces:
+        // a lance claim (PROTO 18) can name a tough asteroid — kill() must
+        // actually kill here or the local copy vanishes without exploding.
+        if (a->tough) a->health = 1;
+        if (a->teleporting) a->teleport_vulnerable = true;
+        a->phased = false;
+        a->kill();  // claim conditions guarantee the kill lands
+        // Our claimed kill: achievements + lifetime stats credit on THIS
+        // machine (first_kill, kills_1000, specials_7, stats.dat...). The
+        // host credits its replica's counters too; the snapshot replaces
+        // our local increments with the authoritative count. No nova
+        // feedback — nova charge and drops are host-owned state.
+        if (!players->empty())
+          players->back()->ship->credit_asteroid_kill(a, false);
+        if (!a->is_alive() && !a->is_removable()) {
+          Asteroid::play_explode_sound();
+          dead_objects->push_back(a);
+        } else {
+          delete a;
+        }
+        objects->erase(oi);
+        break;
+      }
+      NET_LOG("net: hit claim sent id=%u (killed locally)\n", c.ast_id);
+    }
+    Ship::net_kill_claims.clear();
+    grid.update((std::list<Object *> *)objects);  // no dangling grid entries
+  }
+  // Expire suppression entries the removal record has long since covered.
+  for (auto pk = net_predicted_kills_.begin();
+       pk != net_predicted_kills_.end();)
+    pk = current_time >= pk->second ? net_predicted_kills_.erase(pk) : ++pk;
+  for (auto pk = net_predicted_ship_kills_.begin();
+       pk != net_predicted_ship_kills_.end();)
+    pk = current_time >= pk->second ? net_predicted_ship_kills_.erase(pk)
+                                    : ++pk;
+
+  auto oi = dead_objects->begin();
+  while (oi != dead_objects->end()) {
+    if ((*oi)->is_removable()) {
+      delete *oi;
+      oi = dead_objects->erase(oi);
+    } else {
+      oi++;
+    }
+  }
+}
+
+void GLGame::net_client_send_input() {
+  // Production-side half of the host's input-gap forensics: if THIS log
+  // fires at the same moment the host logs a gap, the client simply
+  // stopped stepping (frame stall, app nap) — no network involved.
+  if (net_last_send_time_ && current_time - net_last_send_time_ > 300)
+    NET_LOG("net: input send stall %d ms (client-side)\n",
+            current_time - net_last_send_time_);
+  net_last_send_time_ = current_time;
+
+  GLShip *local = players->back();
+  Ship *s = local->ship;
+
+  Net::InputState in;
+  in.seq = ++net_input_seq_;
+  uint16_t held = 0;
+  if (s->rotation_direction == Ship::LEFT) held |= Net::IN_LEFT;
+  if (s->rotation_direction == Ship::RIGHT) held |= Net::IN_RIGHT;
+  if (s->thrusting) held |= Net::IN_THRUST;
+  if (s->reversing) held |= Net::IN_REVERSE;
+  // Fire triggers come from key intent (GLShip), not the weapon: a
+  // semi-automatic weapon clears its own trigger after every shot, which
+  // would read as "not shooting" in almost every INPUT message.
+  if (local->net_shoot_held) held |= Net::IN_SHOOT;
+  if (local->net_secondary_held) held |= Net::IN_SECONDARY;
+  in.held = held;
+  in.boost_count = s->net_boost_count;
+  in.next_weapon_count = s->net_next_weapon_count;
+  in.next_secondary_count = s->net_next_secondary_count;
+  in.teleport_count = s->net_teleport_count;
+  in.respawn_count = local->net_respawn_count;
+  in.shoot_press_count = local->net_shoot_press_count;
+  in.secondary_press_count = local->net_secondary_press_count;
+  in.analog_rotation = s->rotation_scale;
+  in.analog_thrust = s->thrust_analog;
+  in.analog_reverse = s->reverse_analog;
+  in.facing_x = s->facing.x();
+  in.facing_y = s->facing.y();
+  // Client-authoritative pose (v12): report the exact pose this screen
+  // shows; the echoed warp count proves it postdates any host-driven
+  // respawn/teleport (net_prev_warp_ tracks the last one seen).
+  in.pos_x = s->position.x();
+  in.pos_y = s->position.y();
+  in.vel_x = s->velocity.x();
+  in.vel_y = s->velocity.y();
+  in.warp_echo = net_prev_warp_;
+
+  std::vector<uint8_t> msg;
+  Net::encode_input(msg, in, 2);
+  net_session_->transport()->send_unreliable(&msg[0], msg.size());
+
+  // Reliable mirror (see net_mirror_* in glgame.h): every input CHANGE
+  // rides the ordered channel too, so a lost release can be late but
+  // never gone; a 10 Hz refresh covers the analog-only drift between
+  // changes. ~40 bytes a shot — noise next to the 10 Hz deltas.
+  uint8_t counts = (uint8_t)(in.boost_count + in.next_weapon_count +
+                             in.next_secondary_count + in.teleport_count +
+                             in.respawn_count + in.shoot_press_count +
+                             in.secondary_press_count);
+  bool changed = in.held != net_mirror_held_ || counts != net_mirror_counts_;
+  if (changed || ++net_mirror_steps_ >= 12) {
+    net_session_->transport()->send_reliable(&msg[0], msg.size());
+    net_mirror_steps_ = 0;
+    net_mirror_held_ = in.held;
+    net_mirror_counts_ = counts;
+  }
+}
+
+void GLGame::net_client_poll() {
+  NetTransport *t = net_session_->transport();
+  // Flood guard, symmetric with net_host_poll: the host is an untrusted peer
+  // too, and its SHOT/LANCE/SHOCK echoes each allocate (bullets/lance_pulses/
+  // shocks) on our side. Same two budgets — a read-loop cap so a message storm
+  // can't spin, and a shared action budget across the spawn family. NEVER
+  // gated: the state stream (DELTA/SNAPSHOT_CHUNK — essential and already
+  // stale-gated) and EVENT (reliable+ordered and stateful: a dropped
+  // EV_PAUSE/EV_BYE/EV_PICKUP is consumed from SCTP, never redelivered, and
+  // no snapshot reconciles it; a post-stall backlog can legitimately exceed
+  // the budget in one drain. EVENT's heavy codes are bounded separately —
+  // net_event_effect_budget_). PING stays counted (bounds the pong
+  // reflection; worst case the RTT lead stales until the flood ends).
+  const int NET_MAX_MSGS_PER_POLL = 512;
+  const int NET_MAX_ACTIONS_PER_POLL = 64;
+  int net_msgs_seen = 0, net_actions = 0;
+  bool net_action_cap_logged = false;
+  net_event_effect_budget_ = NET_EVENT_EFFECTS_PER_POLL;
+
+  std::vector<unsigned char> msg;
+  while (t->poll(msg)) {
+    if (++net_msgs_seen > NET_MAX_MSGS_PER_POLL) {
+      NET_LOG("net: rx message storm - %d msgs, deferring rest\n",
+              net_msgs_seen);
+      break;
+    }
+    // RX-side half of the gap forensics: fires when OUR inbound stream
+    // resumes after silence — pairs with the host's "input gap" line to
+    // show whether an outage was bidirectional (path) or one-way.
+    if (running && net_last_rx_time_ &&
+        current_time - net_last_rx_time_ > 300)
+      NET_LOG("net: rx gap %d ms ended\n", current_time - net_last_rx_time_);
+    net_last_rx_time_ = current_time;  // any arrival feeds the watchdog
+    Net::Reader r(msg.empty() ? nullptr : &msg[0], msg.size());
+    Net::Header h;
+    if (!Net::read_header(r, h)) continue;
+    if (h.msg_type != Net::MSG_DELTA && h.msg_type != Net::MSG_SNAPSHOT_CHUNK &&
+        h.msg_type != Net::MSG_EVENT &&
+        ++net_actions > NET_MAX_ACTIONS_PER_POLL) {
+      if (!net_action_cap_logged) {
+        NET_LOG("net: rx action budget %d/poll hit - dropping flood\n",
+                NET_MAX_ACTIONS_PER_POLL);
+        net_action_cap_logged = true;
+      }
+      continue;
+    }
+    if (net_handle_ping_pong(h.msg_type, r)) continue;
+    if (h.msg_type == Net::MSG_EVENT) {
+      uint8_t code = r.u8();
+      uint32_t arg = r.remaining() >= 4 ? r.u32() : 0;
+      if (r.ok) net_handle_event(code, arg);
+      continue;
+    }
+    if (h.msg_type == Net::MSG_SHOT) {
+      // Host shot echo (PROTO 17), the mirror of the host's handler:
+      // spawn an exact clone of the bullet the HOST player just fired
+      // (same spawn, same spread-applied velocity) instead of waiting
+      // for the next 10 Hz snapshot rebuild — which is where each host
+      // bullet used to pop in, up to an interval late and already
+      // down-range (obvious when spectating at the host's muzzle).
+      // Leading by RTT/2 matches the rebuild's lead, so the clone and
+      // its snapshot successor line up; the clone also plays the shot
+      // sound, attenuated like every other remote cue.
+      uint32_t id = r.u32();
+      float sx = r.f32(), sy = r.f32(), svx = r.f32(), svy = r.f32();
+      uint8_t flags = r.u8();
+      if (!r.ok || players->empty()) continue;
+      Ship *host_ship = players->front()->ship;
+      float lead = net_lead_ms();
+      if (std::isfinite(sx) && std::isfinite(sy) && std::isfinite(svx) &&
+          std::isfinite(svy) && svx * svx + svy * svy < 25.0f)
+        host_ship->net_spawn_reported_bullet(
+            id, Point(sx + svx * lead, sy + svy * lead), Point(svx, svy),
+            (flags & 1) != 0, (flags & 2) != 0,
+            (flags & 4) != 0);  // PROTO 18 pierce
+      continue;
+    }
+    if (h.msg_type == Net::MSG_LANCE) {
+      // Host lance pulse echo (PROTO 18): display-only flash + sound on
+      // the host's ship; its kills arrive as ordinary removal records.
+      if (players->empty()) continue;
+      net_receive_lance_pulse(r, players->front()->ship);
+      continue;
+    }
+    if (h.msg_type == Net::MSG_SHOCK) {
+      // Host shock bolt echo (PROTO 22): display-only exact segments + zap
+      // sound on the host's ship; kills replicate as removal/score records.
+      if (players->empty()) continue;
+      net_receive_shock_pulse(r, players->front()->ship, NULL);
+      continue;
+    }
+    if (h.msg_type == Net::MSG_BOUNCE) {
+      // Authoritative ricochet (PROTO 19): the host sim bounced a bullet
+      // we know by id — our own shot (already bounced here by the radial
+      // approximation in net_cosmetic_impacts) or a host-shot clone
+      // (which flew straight through). Snap it onto the real post-bounce
+      // trajectory, leading by RTT/2 like the shot clones so it lines up
+      // with the next snapshot rebuild. Unknown id = bullet already
+      // expired or consumed locally — ignore.
+      uint32_t id = r.u32();
+      float bx = r.f32(), by = r.f32(), bvx = r.f32(), bvy = r.f32();
+      uint8_t flags = r.u8();
+      if (!r.ok || id == 0) continue;
+      if (!(std::isfinite(bx) && std::isfinite(by) && std::isfinite(bvx) &&
+            std::isfinite(bvy) && bvx * bvx + bvy * bvy < 25.0f)) continue;
+      float lead = net_lead_ms();
+      for (auto *gs : *players) {
+        for (auto &b : gs->ship->bullets) {
+          if (b.net_id != id) continue;
+          b.position = WrappedPoint(bx + bvx * lead, by + bvy * lead);
+          b.velocity = Point(bvx, bvy);
+          b.set_net_flags(flags);
+          break;
+        }
+      }
+      continue;
+    }
+    if (h.msg_type == Net::MSG_DELTA) {
+      uint32_t snap_id = r.u32();  // monotonic with keyframes
+      if (net_last_delta_id_ &&
+          (int32_t)(snap_id - net_last_delta_id_) <= 0) {
+        NET_LOG("net: DROPPED stale delta %u (last %u)\n", snap_id,
+                net_last_delta_id_);
+        continue;
+      }
+      net_last_delta_id_ = snap_id;
+      size_t n = r.remaining();
+      const uint8_t *body = r.bytes(n);
+      if (!body) continue;
+      std::vector<uint8_t> buf(body, body + n);
+      Save::MemStream in(buf);
+      Save::GameState s;
+      if (!Save::deserialize_game(in, s)) continue;
+      if (!net_state_sane(s)) continue;
+      // Drop stale backlog items (see net_host_est_): dyn records are
+      // absolute, so a skipped delta spares the backward tour it would
+      // have painted across every asteroid at once. But NEW/REMOVED
+      // records are sent exactly once and are monotonic facts, so walk
+      // the stream past the (poisonous) state/ship sections and apply
+      // just the membership — otherwise a kill riding a gated delta
+      // waited ~1 s for the keyframe backstop (late explosions).
+      int behind = net_host_est_ >= 0 ? net_host_est_ - s.current_time : 0;
+      if (behind > 120) {
+        // Wedge hatch: a broken estimate shows as CONSTANT mild
+        // staleness with nothing ever accepted (a real backlog drain
+        // rushes toward fresh within a second) — after 30 straight
+        // drops, take a mildly-stale item as the new anchor rather
+        // than dead-reckoning forever.
+        bool wedged = net_stale_streak_ >= 30 && behind < 1000;
+        if (!wedged) {
+          net_stale_streak_++;
+          NET_LOG("net: dropped stale delta (%d ms behind), membership kept\n",
+                  behind);
+          if (net_apply_ship_extras(in, s, /*apply=*/false))
+            net_apply_delta_asteroids(in, /*membership_only=*/true);
+          else
+            NET_LOG("net: stale-delta walk FAILED (stream mismatch)\n");
+          continue;
+        }
+        NET_LOG("net: stale gate wedged (%d drops, %d ms behind) - re-anchoring\n",
+                net_stale_streak_, behind);
+      }
+      net_stale_streak_ = 0;
+      net_host_est_ = s.current_time;
+      net_est_anchor_host_ = s.current_time;
+      net_est_anchor_local_ = current_time;
+      // The mini state carries everything but asteroids (its asteroid
+      // vector is empty by construction, so the wholesale sections apply
+      // exactly like a keyframe); asteroids follow as delta records.
+      net_apply_state(s);
+      if (!net_apply_ship_extras(in, s)) continue;
+      net_apply_delta_asteroids(in);
+      continue;
+    }
+    if (h.msg_type != Net::MSG_SNAPSHOT_CHUNK) continue;
+    if (!net_assembler_->add_chunk(r)) continue;
+
+    Save::MemStream in(net_assembler_->payload());
+    Save::GameState s;
+    if (!Save::deserialize_game(in, s)) continue;
+    if (!net_state_sane(s)) continue;  // reject a hostile/corrupt snapshot
+    // Same stale-backlog gate as deltas — a stale KEYFRAME tours the
+    // whole world backward hardest of all. Bootstrap (est unset) always
+    // applies; the next keyframe is at most a second away. Shares the
+    // wedge hatch with the delta path (see above).
+    if (net_ids_adopted_ && net_host_est_ >= 0 &&
+        s.current_time + 120 < net_host_est_) {
+      int behind = net_host_est_ - s.current_time;
+      if (net_stale_streak_ < 30 || behind >= 1000) {
+        net_stale_streak_++;
+        NET_LOG("net: dropped stale keyframe (%d ms behind)\n", behind);
+        continue;
+      }
+      NET_LOG("net: stale gate wedged (%d drops, %d ms behind) - re-anchoring\n",
+              net_stale_streak_, behind);
+    }
+    net_stale_streak_ = 0;
+    net_host_est_ = s.current_time;
+    net_est_anchor_host_ = s.current_time;
+    net_est_anchor_local_ = current_time;
+    net_apply_state(s);
+    net_apply_extras(in, s);
+  }
+}
+
+// membership_only: the delta was stale-gated (see net_client_poll) — its
+// dyn poses would tour the world backward, but its NEW and REMOVED records
+// are monotonic facts (a breakup/kill that happened before the stall is
+// still true now), so those still apply. Without this, a kill whose
+// removal record rode a gated delta waited for the next 1 Hz keyframe —
+// Glenn's "about a 1 second delay on ~1/20 asteroid hits".
+void GLGame::net_apply_delta_asteroids(Save::Stream &in, bool membership_only) {
+  // unordered_map + reserve: one bucket allocation and no tree balancing,
+  // vs std::map's per-node red-black inserts, on this 10x/s lookup build.
+  std::unordered_map<uint32_t, Asteroid *> by_id;
+  by_id.reserve(objects->size() * 2);
+  for (auto *a : *objects) by_id[a->net_id] = a;
+
+  uint16_t n_new = 0;
+  if (!nx_read(in, n_new)) return;
+  if (n_new > 512) return;  // hostile/corrupt
+  for (int i = 0; i < n_new; i++) {
+    uint32_t id = 0;
+    Save::Asteroid sa;
+    if (!nx_read(in, id) || !Save::read_asteroid(in, sa)) return;
+    if (by_id.find(id) != by_id.end()) continue;  // already known
+    Asteroid *a = new Asteroid(sa.invincible, sa.invisible, sa.reflective,
+                               sa.teleporting, sa.quantum, sa.tough,
+                               sa.armoured, sa.phasing);
+    a->restore_state(sa);
+    a->net_id = id;
+    objects->push_back(a);
+    by_id[id] = a;
+  }
+
+  uint16_t n_dyn = 0;
+  if (!nx_read(in, n_dyn)) return;
+  if (n_dyn > 5000) return;
+  // 1 Hz record-rate summary: at gen>=9 gravity dirties every asteroid
+  // every delta, so this says how many hard authoritative writes the
+  // asteroid field takes per second.
+  if (Net::net_debug_enabled() && !membership_only) {
+    static uint32_t s_last = 0;
+    static int s_records = 0;
+    s_records += n_dyn;
+    uint32_t now = SDL_GetTicks();
+    if (now - s_last >= 1000) {
+      if (s_records) NET_LOG("net: delta dyn %d records/s\n", s_records);
+      s_last = now;
+      s_records = 0;
+    }
+  }
+  for (int i = 0; i < n_dyn; i++) {
+    uint32_t id = 0;
+    float px, py, vx, vy;
+    uint8_t health, state;
+    if (!nx_read(in, id) || !nx_read(in, px) || !nx_read(in, py) ||
+        !nx_read(in, vx) || !nx_read(in, vy) || !nx_read(in, health) ||
+        !nx_read(in, state))
+      return;
+    if (membership_only) continue;  // stale pose — parse past it only
+    std::unordered_map<uint32_t, Asteroid *>::iterator f = by_id.find(id);
+    if (f == by_id.end()) continue;  // unknown id — next keyframe reconciles
+    Asteroid *a = f->second;
+    // Teleporting asteroid relocated on the host this instant (the
+    // vulnerable window opens on arrival): play the warp locally.
+    bool was_vulnerable = a->teleport_vulnerable;
+    WrappedPoint old_render(a->position.x() + a->net_pose_err.x(),
+                            a->position.y() + a->net_pose_err.y());
+    a->position = WrappedPoint(px, py);
+    a->velocity = Point(vx, vy);
+    float rec_err = net_reconcile_pose(*a, old_render, /*sim_exact=*/true);
+    // Who exactly diverges: id, hole distance, speed, special flags.
+    if (Net::net_debug_enabled() && rec_err >= 30.0f) {
+      float bh_dist = -1.0f;
+      for (auto *bh : *black_holes) {
+        Point p = bh->position.closest_to(a->position);
+        float d = (p - a->position).magnitude();
+        if (bh_dist < 0.0f || d < bh_dist) bh_dist = d;
+      }
+      NET_LOG("net: dyn err %.0f id=%u bh=%.0f spd=%.3f r=%.0f%s%s%s%s%s\n",
+              rec_err, a->net_id, bh_dist, a->velocity.magnitude(), a->radius,
+              a->reflective ? " refl" : "", a->teleporting ? " tele" : "",
+              a->quantum ? " quant" : "", a->phasing ? " phase" : "",
+              a->invincible ? " invinc" : "");
+    }
+    a->health = health;
+    a->phased = (state & 1) != 0;
+    a->teleport_vulnerable = (state & 2) != 0;
+    a->teleport_pending = (state & 4) != 0;
+    a->quantum_observed = (state & 8) != 0;
+    if (!was_vulnerable && a->teleport_vulnerable) {
+      // The delta carries only the flag, not the timer — without this
+      // the client's own Asteroid::step sees vulnerable_time_left <= 0
+      // on the very next step and snaps the indicator straight back to
+      // the triangle. Mirror the host's window (glgame relocation sets
+      // 5000); both clocks started within one snapshot interval, and
+      // the host's clear ships as a state-byte delta anyway.
+      a->vulnerable_time_left = 5000;
+      a->explode();  // arrival debris, as the host's relocation shows
+      if (warp_sound) Mix_PlayChannel(-1, warp_sound, 0);
+      // A teleport must LOOK like a teleport: drop any render-continuity
+      // offset so the rock appears at the arrival point this frame. The
+      // 800-unit glide budget otherwise smeared short teleports across
+      // the screen ("moved smoothly instead of jumping") — this flag
+      // transition is the explicit signal, no distance guessing.
+      a->net_pose_err = Point(0.0f, 0.0f);
+    }
+  }
+
+  uint16_t n_rm = 0;
+  if (!nx_read(in, n_rm)) return;
+  if (n_rm > 5000) return;
+  bool removed_any = false;
+  for (int i = 0; i < n_rm; i++) {
+    uint32_t id = 0;
+    if (!nx_read(in, id)) return;
+    std::unordered_map<uint32_t, Asteroid *>::iterator f = by_id.find(id);
+    if (f == by_id.end()) continue;
+    Asteroid *a = f->second;
+    for (auto oi = objects->begin(); oi != objects->end(); ++oi) {
+      if (*oi != a) continue;
+      a->kill();
+      // kill() is a no-op on invincible asteroids: an id the host dropped
+      // is a stale ghost either way, and an ALIVE ghost in dead_objects
+      // renders forever (with its score value on top). Only truly dead
+      // ones stay for their debris.
+      if (!a->is_alive() && !a->is_removable()) {
+        // Real death: explosion audio (add_children is host-only).
+        Asteroid::play_explode_sound();
+        dead_objects->push_back(a);
+      } else {
+        delete a;
+      }
+      objects->erase(oi);
+      removed_any = true;
+      break;
+    }
+    by_id.erase(f);
+  }
+  // Invariant: no poll-path delete may leave the grid holding freed
+  // pointers — later messages in the SAME drain probe it (respawn's
+  // safe_position, spark events), which was a live use-after-free crash.
+  if (removed_any) grid.update((std::list<Object *> *)objects);
+  // Positive proof for the stale-delta walk: a misaligned parse would
+  // silently misread these once-sent sections, so say when they land.
+  if (membership_only && (n_new || n_rm))
+    NET_LOG("net: stale delta membership applied (+%d -%d)\n",
+            (int)n_new, (int)n_rm);
+}
+
+void GLGame::net_apply_state(const Save::GameState &s) {
+  // The host's cheat keys must suppress THIS machine's unlocks too — the
+  // flag rides every snapshot, so a mid-game skip-level arrives before
+  // the rebuild it causes is evaluated below.
+  if (s.cheated) Achievements::note_cheat_used();
+
+  // Generation rollover: the world grew — rebuild boundaries, grid and
+  // starfield, drop every stale object (mirrors the host's rollover block;
+  // the snapshot then repopulates everything below).
+  const bool world_rebuilt = s.world_x != world.x() || s.world_y != world.y();
+  net_world_rebuilt_last_apply_ = world_rebuilt;
+  // Age the per-weapon primary-ammo anti-flicker latches once per apply. A
+  // level rebuild clears every pickup and refills nothing, so any pending
+  // latch is stale.
+  for (int k = 1; k < NET_PRIMARY_KINDS; k++) {
+    if (world_rebuilt) net_pickup_latch_[k] = 0;
+    else if (net_pickup_latch_[k] > 0) net_pickup_latch_[k]--;
+  }
+  if (world_rebuilt) {
+    // Level-clear achievements, mirroring the host's num_killable==0 block
+    // (which never runs on a client): everything they need replicates —
+    // the generation, our died_this_generation flag and weapons_fired_mask
+    // (still PRE-apply here), and the cheat flag applied above. The
+    // +1-generation gate keeps bootstrap/rejoin jumps from firing them.
+    if (net_mode_ == NetClient && s.generation == generation + 1 &&
+        !players->empty()) {
+      Ship *me = players->back()->ship;  // local player is last on a client
+      if (generation == 0) Achievements::unlock("clear_level1");
+      Achievements::unlock("coop_clear");  // online is always two-player
+      if (generation >= 8 && !me->died_this_generation)
+        Achievements::unlock("no_damage_clear");
+      // Black hole moved to level 14 (generation 13) — see the host block.
+      if (generation >= 13 && !me->died_this_generation)
+        Achievements::unlock("black_hole_survivor");
+      Achievements::progress("reach_level15", (s.generation + 1) * 100 / 15);
+      if (s.generation >= 9) {
+        const uint32_t secondary_bits =
+            (1u << (int)Save::WeaponEntry::Kind::Mine) |
+            (1u << (int)Save::WeaponEntry::Kind::GigaMine) |
+            (1u << (int)Save::WeaponEntry::Kind::Missile) |
+            (1u << (int)Save::WeaponEntry::Kind::Shield) |
+            (1u << (int)Save::WeaponEntry::Kind::Nova);
+        if ((me->weapons_fired_mask & secondary_bits) == 0)
+          Achievements::unlock("no_secondary_level10");
+      }
+      // Counter-driven progress from the replicated (authoritative)
+      // counters, once per level: covers paths that only credit
+      // host-side (e.g. our missiles killing enemies in the host's sim).
+      Achievements::progress("kills_1000", me->asteroid_kills / 10);
+      Achievements::progress("enemies_10", me->enemy_kills * 10);
+      Achievements::progress("score_3m", me->score / 30000);
+    }
+    world = Point(s.world_x, s.world_y);
+    grid = Grid(world, Point(Asteroid::max_radius * 2, Asteroid::max_radius * 2));
+    WrappedPoint::set_boundaries(world);
+    delete starfield;
+    starfield = new GLStarfield(world, star_density_scale());
+    while (!objects->empty()) { delete objects->back(); objects->pop_back(); }
+    while (!dead_objects->empty()) { delete dead_objects->back(); dead_objects->pop_back(); }
+    Asteroid::num_killable = 0;
+    // The rollover wiped every id — predicted-kill suppression entries
+    // are meaningless against the rebuilt world.
+    net_predicted_kills_.clear();
+    // Local-ship bullets are client-owned (own_bullets): the rollover
+    // wipe that used to arrive via the wholesale echo happens here now.
+    if (!players->empty()) players->back()->ship->bullets.clear();
+  }
+
+  generation = s.generation;
+  level_cleared = s.level_cleared;
+  time_until_next_generation = s.time_until_next_generation;
+  current_time = s.current_time;
+
+  // The grid still holds raw pointers from the last step-loop rebuild,
+  // but this poll drain may already have DELETED asteroids (removal
+  // records, stale-membership kills, keyframe leftovers) in an earlier
+  // message. The player restore below probes the grid on every apply
+  // (restore_state -> respawn -> safe_position), and walking those
+  // dangling pointers was a real crash (mac: Object::collide on freed
+  // memory under net_apply_state). Rebuild from the live list first.
+  grid.update((std::list<Object *> *)objects);
+
+  // Players: the remote host ship snaps to the snapshot; the local ship
+  // takes stats/weapons but blends its predicted pose toward the host's
+  // authoritative one (~0.35 per snapshot) so corrections don't jerk.
+  auto it = players->begin();
+  for (size_t i = 0; i < s.players.size() && it != players->end(); i++, ++it) {
+    Ship *ship = (*it)->ship;
+    bool is_local = (*it == players->back());
+
+    // Mid-respawn on the host: skip the full restore — restore_state runs
+    // respawn(), which would resurrect the corpse (burning a life) every
+    // snapshot until the host's countdown ends. Track the HUD scalars; the
+    // extras' alive-transition brings the ship back for real.
+    if (s.players[i].respawning) {
+      ship->score = s.players[i].score;
+      ship->lives = s.players[i].lives;
+      ship->kills = s.players[i].kills;
+      continue;
+    }
+
+    WrappedPoint old_pos = ship->position;
+    Point old_vel = ship->velocity;
+    Point old_facing = ship->facing;
+    bool was_alive = ship->is_alive();
+    // restore_state runs respawn()/reset(), which clears every held input
+    // flag — and keys only re-assert them on the next key-DOWN event. The
+    // whole held state must be captured and re-applied for the local ship,
+    // or held keys die ~100 ms after each press (10 Hz snapshots).
+    bool held_left = ship->rotation_direction == Ship::LEFT;
+    bool held_right = ship->rotation_direction == Ship::RIGHT;
+    bool held_thrust = ship->thrusting;
+    bool held_reverse = ship->reversing;
+    bool armed_shoot = !ship->primary_weapons.empty() &&
+                       (*ship->primary)->is_shooting();
+    // Fire cooldown of the selected primary: the restore rebuilds the
+    // weapon list with fresh objects, and a fresh weapon fires the instant
+    // it is re-armed — an extra shot (and shoot sound) every snapshot
+    // while the trigger is held.
+    int shot_cooldown = 0;
+    int shock_cooldown = -1;  // -1: the selected primary is not a Shock
+    if (!ship->primary_weapons.empty()) {
+      Weapon::Default *dw = dynamic_cast<Weapon::Default *>(*ship->primary);
+      if (dw) shot_cooldown = dw->cooldown();
+      Weapon::Shock *sw = dynamic_cast<Weapon::Shock *>(*ship->primary);
+      if (sw) shock_cooldown = sw->get_cooldown();
+    }
+    bool armed_secondary = ship->secondary != ship->secondary_weapons.end() &&
+                           (*ship->secondary)->is_shooting();
+    float analog_rot = ship->rotation_scale;
+    float analog_thrust = ship->thrust_analog;
+    float analog_reverse = ship->reverse_analog;
+    // Local bullets are client-owned (own_bullets): restore_state's
+    // reset() clears the list, and with the echo rebuild gone nothing
+    // repopulated it — every in-flight shot vanished on the next apply
+    // ("only rendering for one tick"). Carry them across the restore.
+    std::vector<Particle> kept_bullets;
+    if (is_local) kept_bullets.swap(ship->bullets);
+
+    // Anti-flicker: remember the local ship's live primary ammo before the
+    // restore rebuilds the weapon list from the (lagging) snapshot, so a
+    // snapshot that hasn't yet seen our just-fired shots can't bump the count
+    // back up. Keyed by weapon name — one of each primary kind at most.
+    std::map<std::string, int> pre_primary_ammo;
+    if (is_local)
+      for (auto *w : ship->primary_weapons)
+        pre_primary_ammo[w->name()] = w->ammo();
+
+    ship->restore_state(s.players[i], grid);
+    if (is_local) ship->bullets.swap(kept_bullets);
+    // restore_state -> respawn() -> safe_position() relocates the ship to a
+    // RANDOM spot whenever the restored position is within 50 units of an
+    // asteroid. Right for loading a solo save into a freshly-built world;
+    // wrong 10x/s against live snapshots — the host's position is the truth
+    // however close to a rock it is. Pin the authoritative position back.
+    ship->position = WrappedPoint(s.players[i].pos_x, s.players[i].pos_y);
+
+    // The remote (host) ship is client-extrapolated between applies like
+    // every other world object — reconcile instead of overwriting, or it
+    // shimmers with the channel's delivery jitter exactly like the
+    // asteroids did. Facing/velocity stay authoritative.
+    if (!is_local && was_alive && ship->is_alive() && !world_rebuilt)
+      net_reconcile_pose(*ship, old_pos, /*sim_exact=*/false);
+
+    if (is_local && was_alive && ship->is_alive() && !world_rebuilt) {
+      // v12: this machine's pose is AUTHORITATIVE — the host adopts it
+      // from every INPUT — so the snapshot's copy is just our own report
+      // echoed back a round trip late. Ignore it outright: the pilot is
+      // never corrected, which is what finally killed the relay
+      // rubberbanding (every blackout used to land here as a huge
+      // correction that slewed the camera and, with it, the whole world).
+      // Host-driven respawns/teleports still land via the explicit
+      // warp-count snap in the extras; death via the alive transition.
+      ship->position = old_pos;
+      ship->velocity = old_vel;
+      ship->facing = old_facing;
+      ship->net_pose_err = Point(0.0f, 0.0f);
+
+      ship->rotate_left(held_left);
+      ship->rotate_right(held_right);
+      ship->thrust(held_thrust);
+      ship->reverse(held_reverse);
+      // Restore the preserved Shock cooldown before re-arming: a fresh Shock
+      // (cooldown 0) fires on its first armed step(), so re-arming below with
+      // a zeroed cooldown would emit an extra bolt+sound every snapshot while
+      // the trigger is held. (Shock::shoot() no longer fires directly — the
+      // semi-auto rewrite moved firing into step() — but the ordering still
+      // matters for that first post-restore step.)
+      if (shock_cooldown >= 0 && !ship->primary_weapons.empty()) {
+        Weapon::Shock *sw = dynamic_cast<Weapon::Shock *>(*ship->primary);
+        if (sw) sw->set_cooldown(shock_cooldown);
+      }
+      ship->shoot(armed_shoot);
+      ship->fire_secondary(armed_secondary);
+      if (shot_cooldown > 0 && !ship->primary_weapons.empty()) {
+        Weapon::Default *dw = dynamic_cast<Weapon::Default *>(*ship->primary);
+        if (dw) dw->set_cooldown(shot_cooldown);
+      }
+      ship->rotation_scale = analog_rot;
+      ship->thrust_analog = analog_thrust;
+      ship->reverse_analog = analog_reverse;
+
+      // Anti-flicker: the restore just overwrote our limited-ammo primaries
+      // with the snapshot's copy. If that copy is HIGHER than what we held a
+      // moment ago, the host simply hasn't seen our latest shots yet — clamp
+      // it back down so the counter doesn't blip up for a round trip. A
+      // genuine pickup is exempted by THAT WEAPON's EV_PICKUP latch (keyed by
+      // kind and consumed on its rise — a shared latch let a blip on one
+      // weapon steal the exemption meant for another's real pickup, pinning
+      // the real gain low every apply thereafter). Lower-or-equal snapshots
+      // are the host's authoritative decrements and pass through untouched.
+      for (auto *w : ship->primary_weapons) {
+        auto pi = pre_primary_ammo.find(w->name());
+        if (pi == pre_primary_ammo.end()) continue;
+        int pre = pi->second, snap = w->ammo();
+        if (snap > pre) {
+          int kind = NET_PRIM_NONE;
+          if (dynamic_cast<Weapon::Beam *>(w)) kind = NET_PRIM_BEAM;
+          else if (dynamic_cast<Weapon::Lance *>(w)) kind = NET_PRIM_LANCE;
+          else if (dynamic_cast<Weapon::Shock *>(w)) kind = NET_PRIM_SHOCK;
+          else if (dynamic_cast<Weapon::GodMode *>(w)) kind = NET_PRIM_GOD;
+          if (kind != NET_PRIM_NONE && net_pickup_latch_[kind] > 0)
+            net_pickup_latch_[kind] = 0;  // this weapon's real pickup: accept
+          else
+            w->set_ammo(pre);        // lag blip: suppress the upward flicker
+        }
+      }
+    } else if (is_local && world_rebuilt) {
+      // Level transition: keep the authoritative new-level pose and do NOT
+      // re-apply the held state — the host cleared the remote ship's
+      // controls (and suppresses our held INPUT bits until re-press), so
+      // the local prediction starts the level with controls released too,
+      // exactly like the host's own player.
+      (*it)->net_shoot_held = false;
+      (*it)->net_secondary_held = false;
+    }
+  }
+
+  // Pickups: the set changes only when one drops or is collected (seconds
+  // apart), but this applies 10x/s. Pickups are stationary and the host
+  // sends them in a stable order, so a matching count with matching
+  // positions means the set is unchanged — skip the delete/new storm. Any
+  // divergence (a type swap at the same spot, astronomically unlikely) is
+  // reconciled by the next 1 Hz keyframe.
+  bool pickups_same = pickups->size() == s.pickups.size();
+  if (pickups_same) {
+    size_t i = 0;
+    for (auto *p : *pickups) {
+      const Save::Pickup &sp = s.pickups[i++];
+      if (fabsf(p->position.x() - sp.pos_x) > 0.5f ||
+          fabsf(p->position.y() - sp.pos_y) > 0.5f) { pickups_same = false; break; }
+    }
+  }
+  if (!pickups_same) {
+    while (!pickups->empty()) { delete pickups->back(); pickups->pop_back(); }
+    // make_pickup: the single shared PickupType switch — this rebuild used to
+    // be a hand-maintained copy that silently missed every new pickup type.
+    for (const auto &sp : s.pickups) {
+      Pickup *p = make_pickup(sp);
+      if (p) pickups->push_back(p);
+    }
+  }
+
+  // Black holes: cheap wholesale rebuild (0 or 1 in practice).
+  while (!black_holes->empty()) { delete black_holes->back(); black_holes->pop_back(); }
+  for (const auto &sbh : s.black_holes)
+    black_holes->push_back(new BlackHole(WrappedPoint(sbh.pos_x, sbh.pos_y)));
+
+  // Mid-game hazards (pulsar/comet/seeker): host-authoritative and MOVING
+  // (comet drifts, seeker homes), so a wholesale rebuild each snapshot would
+  // teleport them 10x/s. They carry no net id, so match each snapshot hazard
+  // to the nearest live replica of the same kind and reconcile it in place —
+  // this keeps the comet trail / seeker debris continuous and survives a
+  // mid-list death (a rebuild-by-index would misalign after it). The client
+  // extrapolates their motion between applies in tick_net_client; kills stay
+  // host-side (the lethal pulsar wave, comet/seeker rams) and land as the
+  // replica dropping out of the snapshot below.
+  {
+    std::vector<Hazard *> live(hazards->begin(), hazards->end());
+    std::vector<bool> used(live.size(), false);
+    hazards->clear();
+    for (const auto &sh : s.hazards) {
+      int best = -1;
+      float best_d2 = 1e30f;
+      for (size_t j = 0; j < live.size(); j++) {
+        if (used[j] || !live[j]->is_alive()) continue;
+        if ((int)live[j]->kind_of() != (int)sh.kind) continue;
+        Point c = live[j]->position.closest_to(Point(sh.pos_x, sh.pos_y));
+        float dx = c.x() - sh.pos_x, dy = c.y() - sh.pos_y;
+        float d2 = dx * dx + dy * dy;
+        if (d2 < best_d2) { best_d2 = d2; best = (int)j; }
+      }
+      if (best >= 0) {
+        live[best]->apply_net_state(sh);
+        used[best] = true;
+        hazards->push_back(live[best]);
+      } else {
+        hazards->push_back(Hazard::from_state(sh, world));
+        NET_LOG("net: hazard replica spawned (kind %d)\n", (int)sh.kind);
+      }
+    }
+    // Live replicas the host no longer reports: an alive one just died there
+    // (play its death burst); a fading one keeps its debris. Either way keep
+    // it until is_removable(), so the burst is seen before it is reaped.
+    for (size_t j = 0; j < live.size(); j++) {
+      if (used[j]) continue;
+      if (live[j]->is_alive()) {
+        live[j]->destroy();
+        // The host plays explode_sound when a hazard breaks up; replicate it
+        // at the wreck, gated by the local camera's distance (net_listener).
+        float vol = net_listener_volume(
+            Point(live[j]->position.x(), live[j]->position.y()));
+        if (vol > 0.0f && Asteroid::explode_sound != NULL) {
+          Mix_VolumeChunk(Asteroid::explode_sound, (int)(MIX_MAX_VOLUME * vol));
+          Mix_PlayChannel(-1, Asteroid::explode_sound, 0);
+        }
+        NET_LOG("net: hazard replica destroyed (kind %d)\n",
+                (int)live[j]->kind_of());
+      }
+      if (live[j]->is_removable()) delete live[j];
+      else hazards->push_back(live[j]);
+    }
+  }
+
+  // Stations restore in place; created/destroyed on presence transitions.
+  // restore_state reconciles its deployed enemies in place (no clearing
+  // here — recreating every GLEnemy at 10 Hz re-uploaded meshes and held
+  // the client near 15 fps at gen 20+; see glstation.cpp).
+  if (s.station.present) {
+    if (!station)
+      station = new GLStation(grid, enemies, players, (std::list<Object *> *)objects);
+    station->restore_state(s.station, grid);
+  } else if (station) {
+    while (!enemies->empty()) { delete enemies->back(); enemies->pop_back(); }
+    delete station;
+    station = NULL;
+  }
+  // Keep the replica for the record's whole `present` window, not just
+  // while alive: the host keeps its dead mini around while the debris
+  // burst fades, and deleting the replica on the alive->dead delta
+  // skipped the explosion entirely on the client (Glenn's report). The
+  // transition runs destroy() BEFORE the restore overwrites `alive` —
+  // destroy() no-ops on an already-dead object — so the client spawns
+  // the same local debris burst the host is showing.
+  if (s.mini_station.present) {
+    // Transition detection wants a replica we watched die — a fresh one
+    // (bootstrap mid-fade) starts dead with no burst.
+    bool watched_alive = mini_station != NULL && mini_station->is_alive();
+    if (!mini_station)
+      mini_station = new GLMiniStation(grid, players, (std::list<Object *> *)objects);
+    if (watched_alive && !s.mini_station.alive) {
+      // Burst at the authoritative death spot, not the extrapolated one.
+      mini_station->position =
+          WrappedPoint(s.mini_station.pos_x, s.mini_station.pos_y);
+      mini_station->destroy();
+      NET_LOG("net: mini-station death burst (replica destroyed locally)\n");
+    }
+    mini_station->restore_state(s.mini_station);
+  } else if (mini_station) {
+    delete mini_station;
+    mini_station = NULL;
+  }
+}
+
+void GLGame::net_apply_extras(Save::Stream &in, const Save::GameState &s) {
+  if (!net_apply_ship_extras(in, s)) return;
+  net_apply_keyframe_asteroid_ids(in, s);
+}
+
+bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
+                                   bool apply) {
+  uint32_t nplayers = 0;
+  if (!nx_read(in, nplayers)) return false;
+  auto it = players->begin();
+  for (uint32_t i = 0; i < nplayers; i++) {
+    NetShipExtras ex;
+    if (!nx_read(in, ex.alive) || !nx_read(in, ex.temperature) ||
+        !nx_read(in, ex.time_until_respawn) || !nx_read(in, ex.time_left_invincible) ||
+        !nx_read(in, ex.god_ms) || !nx_read(in, ex.shield) ||
+        !nx_read(in, ex.warp_count) || !nx_read(in, ex.move_flags))
+      return false;
+    if (!apply) {
+      // Parse-only walk (stale delta): every pose/effect in this section
+      // is stale poison — only the stream position matters, so the
+      // asteroid membership records behind it can still be reached.
+      if (!nx_read_projectiles(in, NULL, false, 0.0f)) return false;
+      continue;
+    }
+    if (it == players->end()) return false;
+    Ship *ship = (*it)->ship;
+
+    // The host moved this ship discontinuously (respawn, teleport, new-level
+    // spawn) since the last snapshot: the pose is absolute. For the local
+    // ship that overrides net_apply_state's prediction blend, which would
+    // otherwise slide the ship across the world to the new position.
+    if (*it == players->back() && i < s.players.size()) {
+      if (net_have_warp_ && ex.warp_count != net_prev_warp_ && ex.alive) {
+        ship->position = WrappedPoint(s.players[i].pos_x, s.players[i].pos_y);
+        ship->velocity = Point(s.players[i].vel_x, s.players[i].vel_y);
+        ship->facing = Point(s.players[i].facing_x, s.players[i].facing_y);
+        NET_LOG("net: warp snap (count %u)\n", (unsigned)ex.warp_count);
+      }
+      net_prev_warp_ = ex.warp_count;
+      net_have_warp_ = true;
+    }
+
+    if (!ex.alive && ship->is_alive()) {
+      // Host says this ship died: explode locally too.
+      ship->kill_stop();
+      ship->detonate();
+    } else if (ex.alive && !ship->is_alive() && i < s.players.size()) {
+      // Host respawned it: bring it back at the authoritative position.
+      ship->respawn(grid, false);
+      ship->position = WrappedPoint(s.players[i].pos_x, s.players[i].pos_y);
+      ship->velocity = Point(s.players[i].vel_x, s.players[i].vel_y);
+      // respawn() fired its spawn flash at an interim random position
+      // (the authoritative one is only pinned above, after the fact);
+      // re-fire it where the ship actually spawned.
+      ship->bullets.clear();
+      ship->detonate();
+    }
+    ship->temperature = ex.temperature;
+    ship->time_until_respawn = ex.time_until_respawn;
+    ship->time_left_invincible = ex.time_left_invincible;
+    // restore_state -> respawn() force-sets invincible=true (and restarts
+    // the shield hum) every snapshot; reflect the authoritative state
+    // instead or the shield ring flickers and the hum plays constantly.
+    ship->invincible = ex.time_left_invincible > 0 || ex.god_ms > 0 ||
+                       ex.shield != 0;
+    // The hum is a personal cue: only the LOCAL ship (last in the list on
+    // the client) gets it. The remote host's ship respawning far away
+    // otherwise plays short full-volume hums that sound random.
+    bool local_ship = (i + 1 == nplayers);
+    ship->set_shield_hum(local_ship && ship->is_alive() && ship->invincible &&
+                         ex.god_ms <= 0);
+    // Movement flags drive the remote ship's exhaust-trail emitters (the
+    // restore cleared them). Raw flag writes: Ship::thrust()/reverse()
+    // touch the shared boost-sound volume, which belongs to local input.
+    // The local ship keeps its own input-driven flags.
+    if (!local_ship) {
+      ship->thrusting = (ex.move_flags & 1) != 0;
+      ship->reversing = (ex.move_flags & 2) != 0;
+      int rot = (ex.move_flags >> 2) & 3;
+      ship->rotation_direction = rot == 1   ? Ship::LEFT
+                                 : rot == 2 ? Ship::RIGHT
+                                            : Ship::NONE;
+    }
+    // god-mode / shield presentation on the client is a Milestone-1 cut
+    // (both still function — the host simulates them; only their local
+    // visual/audio flourishes are missing).
+
+    if (!nx_read_projectiles(in, ship, net_world_rebuilt_last_apply_,
+                             net_lead_ms(), /*own_bullets=*/local_ship))
+      return false;
+    ++it;
+  }
+
+  // v6: mini-station bullets (see nx_write_mini_station_bullets). The
+  // state apply ran first, so mini_station reflects host presence.
+  uint16_t n_ms = 0;
+  if (!nx_read(in, n_ms)) return false;
+  if (n_ms > 512) return false;  // hostile/corrupt
+  std::vector<Particle> ms_bullets;
+  for (int i = 0; i < n_ms; i++) {
+    float x, y, vx, vy;
+    if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) ||
+        !nx_read(in, vy))
+      return false;
+    ms_bullets.push_back(Particle(
+        Point(x + vx * net_lead_ms(), y + vy * net_lead_ms()),
+        Point(vx, vy), 2000.0f));
+  }
+  if (apply && mini_station) mini_station->bullets.swap(ms_bullets);
+
+  // v7: station enemies' bullets, in the same order the station restore
+  // just rebuilt the enemies list.
+  uint16_t n_en = 0;
+  if (!nx_read(in, n_en)) return false;
+  if (n_en > 256) return false;  // hostile/corrupt
+  auto ei = enemies->begin();
+  for (int e = 0; e < n_en; e++) {
+    uint32_t enemy_id = 0;
+    if (!nx_read(in, enemy_id)) return false;
+    uint16_t nb = 0;
+    if (!nx_read(in, nb)) return false;
+    if (nb > 512) return false;
+    std::vector<Particle> ebs;
+    for (int i = 0; i < nb; i++) {
+      float x, y, vx, vy;
+      if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) ||
+          !nx_read(in, vy))
+        return false;
+      ebs.push_back(Particle(
+          Point(x + vx * net_lead_ms(), y + vy * net_lead_ms()),
+          Point(vx, vy), 2000.0f));
+    }
+    if (apply && ei != enemies->end()) {
+      // One-shot field check that real ids are riding the wire — an
+      // all-zero stream means the host-side mint regressed (it lives in
+      // GLEnemy's ctor, NOT the unused Enemy class) and exact claims
+      // would silently collapse onto the first alive enemy.
+      if (Net::net_debug_enabled() && enemy_id != 0) {
+        static bool s_ids_seen = false;
+        if (!s_ids_seen) {
+          s_ids_seen = true;
+          NET_LOG("net: enemy wire ids live (first=%u)\n", enemy_id);
+        }
+      }
+      // PROTO 16: re-stamp identity on the freshly-rebuilt replica, and
+      // keep locally-killed enemies dead — the station restore just
+      // resurrected everything, and the host's authoritative state only
+      // agrees once the claim lands (~RTT/2). Entries expire in 3 s.
+      (*ei)->ship->net_ship_id = enemy_id;
+      std::map<uint32_t, int>::iterator pk =
+          net_predicted_ship_kills_.find(enemy_id);
+      if (pk != net_predicted_ship_kills_.end() && current_time < pk->second)
+        (*ei)->ship->alive = false;
+      (*ei)->ship->bullets.swap(ebs);
+      ++ei;
+    }
+  }
+  return true;
+}
+
+void GLGame::net_apply_keyframe_asteroid_ids(Save::Stream &in,
+                                             const Save::GameState &s) {
+  // Asteroids: match by net_id; new ids construct + restore, missing ids
+  // play the standard death visual so host-side kills still explode here.
+  uint32_t n_ids = 0;
+  if (!nx_read(in, n_ids)) return;
+
+  // Bootstrap: the constructor just built these asteroids from this very
+  // snapshot, in the same order as this id array — adopt the host ids in
+  // place. The old path replaced every asteroid and killed the originals,
+  // which flashed their score values (debris) for a second on every join.
+  if (!net_ids_adopted_) {
+    net_ids_adopted_ = true;
+    if (n_ids == objects->size() && n_ids == s.asteroids.size()) {
+      size_t i = 0;
+      std::vector<uint32_t> ids_tmp(n_ids);
+      for (uint32_t k = 0; k < n_ids; k++)
+        if (!nx_read(in, ids_tmp[k])) return;
+      for (auto *a : *objects) a->net_id = ids_tmp[i++];
+      NET_LOG("net: bootstrap adopted %u asteroid ids\n", n_ids);
+      return;
+    }
+  }
+  // Check the count BEFORE allocating: s.asteroids is already bounded by
+  // the deserializer, so a hostile n_ids can't force a huge vector here.
+  if (n_ids != s.asteroids.size()) return;  // malformed snapshot
+  std::vector<uint32_t> ids(n_ids);
+  for (uint32_t i = 0; i < n_ids; i++)
+    if (!nx_read(in, ids[i])) return;
+
+  std::unordered_map<uint32_t, Asteroid *> by_id;
+  by_id.reserve(objects->size() * 2);
+  for (auto *a : *objects) by_id[a->net_id] = a;
+
+  for (uint32_t i = 0; i < n_ids; i++) {
+    const Save::Asteroid &sa = s.asteroids[i];
+    std::unordered_map<uint32_t, Asteroid *>::iterator found = by_id.find(ids[i]);
+    if (found != by_id.end()) {
+      Asteroid *a = found->second;
+      WrappedPoint old_render(a->position.x() + a->net_pose_err.x(),
+                              a->position.y() + a->net_pose_err.y());
+      // Spin stays CLIENT-continuous: the restored angle is RTT/2 stale,
+      // so adopting it twitched every rock's rotation backwards once per
+      // second — "constant jitter" that no position diagnostic saw. Both
+      // sides advance at the same rotation_speed (which IS adopted), so
+      // the local angle never drifts; same for the armoured weak-spot
+      // angle.
+      float spin = a->rotation;
+      float armour = a->armour_angle;
+      a->restore_state(sa);
+      a->rotation = spin;
+      a->armour_angle = armour;
+      net_reconcile_pose(*a, old_render, /*sim_exact=*/true);
+      by_id.erase(found);
+    } else {
+      // Predicted-kill suppression (PROTO 13): we killed this id locally
+      // on our own hit; a keyframe cut before the host processes the
+      // claim still lists it, and re-creating it would resurrect the
+      // rock for ~RTT. The entry expires in 3 s regardless.
+      std::map<uint32_t, int>::iterator pk =
+          net_predicted_kills_.find(ids[i]);
+      if (pk != net_predicted_kills_.end() && current_time < pk->second)
+        continue;
+      Asteroid *a = new Asteroid(sa.invincible, sa.invisible, sa.reflective,
+                                 sa.teleporting, sa.quantum, sa.tough,
+                                 sa.armoured, sa.phasing);
+      a->restore_state(sa);
+      a->net_id = ids[i];
+      objects->push_back(a);
+    }
+  }
+
+  // Anything left in the map no longer exists on the host — kill it here
+  // for the debris, then let dead_objects fade it out.
+  if (!by_id.empty()) {
+    auto oi = objects->begin();
+    while (oi != objects->end()) {
+      if (by_id.find((*oi)->net_id) == by_id.end() || by_id[(*oi)->net_id] != *oi) {
+        ++oi;
+        continue;
+      }
+      (*oi)->kill();
+      // See the delta removal path: invincible asteroids survive kill();
+      // an alive ghost must not linger in dead_objects.
+      if (!(*oi)->is_alive() && !(*oi)->is_removable()) {
+        // A real host-side death: the sound lives in add_children(),
+        // which only the host runs — play it with the debris here.
+        Asteroid::play_explode_sound();
+        dead_objects->push_back(*oi);
+      } else {
+        delete *oi;
+      }
+      oi = objects->erase(oi);
+    }
+  }
+
+  grid.update((std::list<Object *> *)objects);
+}
+
 void GLGame::focus_gained() {
+  // M3-1: returning to a disconnected client (mobile resume) rejoins at
+  // once instead of waiting out the countdown.
+  if (net_mode_ == NetClient && net_connection_lost_ &&
+      net_client_rejoin_ms_ > 300)
+    net_client_rejoin_ms_ = 300;
   Mix_ResumeMusic();
   if(auto_paused) {
     toggle_pause();
@@ -745,13 +4560,201 @@ bool GLGame::cleared() const {
   return level_cleared;
 }
 
+// Adds the scope's wall time to an accumulator + running max on exit —
+// early returns in tick() are common, so bracketing must be RAII.
+namespace {
+struct PerfScope {
+  Uint32 t0, *acc, *mx;
+  PerfScope(Uint32 *a, Uint32 *m) : t0(SDL_GetTicks()), acc(a), mx(m) {}
+  ~PerfScope() { Uint32 d = SDL_GetTicks() - t0; *acc += d; if (d > *mx) *mx = d; }
+};
+}  // namespace
+
+void GLGame::perf_report() {
+  Uint32 now = SDL_GetTicks();
+  if (perf_window_start_ == 0) perf_window_start_ = now;
+  perf_frames_++;
+  Uint32 span = now - perf_window_start_;
+  if (span < 1000) return;
+  // Below ~55 fps: say where the second went. tick+draw are CPU-side
+  // (sim + GL submission); the remainder is swap/present (GPU-bound or
+  // vsync). One line per second at most, only while slow.
+  if (perf_frames_ * 1000 < (int)span * 55) {
+    Uint64 pcf = SDL_GetPerformanceFrequency();
+    SDL_Log("perf: fps=%d tick=%ums(max %u) draw=%ums(max %u) "
+            "objs=%ums stars=%ums osd=%ums lens=%ums(max %u) other=%dms "
+            "asteroids=%u dead=%u pickups=%u gen=%d",
+            (int)(perf_frames_ * 1000 / span), perf_tick_ms_, perf_tick_max_,
+            perf_draw_ms_, perf_draw_max_,
+            (unsigned)(perf_objs_pc_ * 1000 / pcf),
+            (unsigned)(perf_stars_pc_ * 1000 / pcf),
+            (unsigned)(perf_osd_pc_ * 1000 / pcf),
+            perf_lens_ms_, perf_lens_max_,
+            (int)(span - perf_tick_ms_ - perf_draw_ms_),
+            (unsigned)objects->size(), (unsigned)dead_objects->size(),
+            (unsigned)pickups->size(), generation);
+  }
+  perf_window_start_ = now;
+  perf_frames_ = 0;
+  perf_tick_ms_ = perf_draw_ms_ = 0;
+  perf_tick_max_ = perf_draw_max_ = 0;
+  perf_lens_ms_ = perf_lens_max_ = 0;
+  perf_objs_pc_ = perf_stars_pc_ = perf_osd_pc_ = 0;
+}
+
 void GLGame::tick(int delta) {
+  PerfScope perf_scope_(&perf_tick_ms_, &perf_tick_max_);
+  if (net_mode_ != NetOff) {
+    // Name a hole in OUR OWN tick cadence (App Nap on an occluded mac
+    // window, a window drag, a debugger): in every other log line it is
+    // indistinguishable from a network stall — it produces "input gap"
+    // on the peer and correction bursts here.
+    if (Net::net_debug_enabled() && delta > 250)
+      NET_LOG("net: LOCAL frame stall %d ms\n", delta);
+    else if (Net::net_debug_enabled() && delta > 50)
+      NET_LOG("net: frame hitch %d ms\n", delta);  // visible stutter
+    // Pin the simulation rate online: the =/- time cheats change
+    // time_between_steps on ONE machine only, and a 8 vs 7 ms mismatch
+    // makes every object drift continuously — permanent rubberbanding
+    // that no reconciliation can hide.
+    time_between_steps = step_size;
+  }
+  if (net_mode_ == NetClient) {
+    tick_net_client(delta);
+    return;
+  }
   current_time += delta;
+
+  // Online host: poll the peer before the pause gate — their RESUME (or a
+  // dead transport) must be noticed even while paused.
+  if (net_mode_ == NetHost) {
+    // M3-1 e2e hooks: sever the transport / relay socket on a timer so the
+    // recovery paths can be driven without killing either process. Inert
+    // without the env vars.
+    static int test_drop_transport = -2, test_drop_signal = -2;
+    if (test_drop_transport == -2) {
+      const char *e = getenv("NEWTONIA_NET_TEST_DROP_TRANSPORT_MS");
+      test_drop_transport = e ? atoi(e) : -1;
+    }
+    if (test_drop_signal == -2) {
+      const char *e = getenv("NEWTONIA_NET_TEST_DROP_SIGNAL_MS");
+      test_drop_signal = e ? atoi(e) : -1;
+    }
+    if (test_drop_transport > 0 && net_session_) {
+      test_drop_transport -= delta;
+      if (test_drop_transport <= 0) {
+        test_drop_transport = -1;
+        NET_LOG("net: TEST dropping transport\n");
+        net_session_->transport()->close();
+      }
+    }
+    if (test_drop_signal > 0 && net_signal_) {
+      test_drop_signal -= delta;
+      if (test_drop_signal <= 0) {
+        test_drop_signal = -1;
+        NET_LOG("net: TEST dropping signal socket\n");
+        net_signal_->close();          // local close emits no Closed event;
+        net_signal_retry_ms_ = 700;    // a real drop arrives as Event::Closed
+      }
+    }
+
+    // Spectator e2e hook: drive a player fully out of lives on a timer so
+    // the spectate flow (camera hand-off + "SPECTATING") can be exercised
+    // headlessly. Lives are host-authoritative, so this is applied here and
+    // replicates to the client. "remote" (default) empties the joiner's
+    // lives -> the CLIENT spectates the host; "local" empties the host's.
+    // Inert without the env var.
+    static int test_kill_ms = -2;
+    static bool test_kill_remote = true;
+    if (test_kill_ms == -2) {
+      const char *e = getenv("NEWTONIA_NET_TEST_KILL_MS");
+      test_kill_ms = e ? atoi(e) : -1;
+      const char *who = getenv("NEWTONIA_NET_TEST_KILL_WHO");
+      test_kill_remote = !(who && std::string(who) == "local");
+    }
+    if (test_kill_ms > 0 && players->size() >= 2) {
+      test_kill_ms -= delta;
+      if (test_kill_ms <= 0) {
+        test_kill_ms = -1;
+        GLShip *victim = test_kill_remote ? players->back() : players->front();
+        NET_LOG("net: TEST forcing %s player out of lives\n",
+                test_kill_remote ? "remote" : "local");
+        victim->ship->lives = 0;
+        victim->ship->kill();
+      }
+    }
+    // Revive e2e hook: after N ms, apply the revive effect to whichever
+    // player is fully out — the pickup-collection payload without the
+    // blind-navigation problem of actually touching a pickup in a driver.
+    // Inert without the env var.
+    static int test_revive_ms = -2;
+    if (test_revive_ms == -2) {
+      const char *e = getenv("NEWTONIA_NET_TEST_REVIVE_MS");
+      test_revive_ms = e ? atoi(e) : -1;
+    }
+    if (test_revive_ms > 0 && players->size() >= 2) {
+      test_revive_ms -= delta;
+      if (test_revive_ms <= 0) {
+        test_revive_ms = -1;
+        NET_LOG("net: TEST applying revive\n");
+        revive_fallen_partner(NULL);
+      }
+    }
+
+    if (!net_connection_lost_) {
+      net_host_poll();
+      net_ping_tick(delta);
+      // RX watchdog, host side: a client whose game runs sends INPUT at
+      // 125 Hz (+ the reliable mirror); 10 s of silence while WE are
+      // running is a dead path, not a quiet player. Paused games pause
+      // both sides, and the pause gate below stops this tick anyway.
+      if (running && net_have_input_ &&
+          current_time - net_last_input_time_ > 10000) {
+        NET_LOG("net: RX watchdog - 10 s without INPUT, client lost\n");
+        // Close actively: the path may be one-way dead (or the peer
+        // frozen) with OUR transport still nominally alive — the close
+        // is what makes the peer's side fail fast and auto-rejoin
+        // instead of playing into the void.
+        net_session_->transport()->close();
+        net_connection_lost_ = true;
+      }
+    }
+    if (net_session_ && net_session_->transport()->failed())
+      net_connection_lost_ = true;
+    if (net_signal_ && !net_connection_lost_) net_host_signal_maintain(delta);
+    if (net_connection_lost_) {
+      if (net_signal_)
+        net_host_rejoin_poll(delta);  // room open: play on, await rejoin
+      else
+        return;  // frozen; draw shows CONNECTION LOST
+    }
+    // Steam invite: while the peer is gone but the room is still open for
+    // rejoin (net_signal_ live), re-advertise as joinable so a friend — or
+    // the dropped peer — can drop into the empty co-op slot via a platform
+    // Join. Edge-detected so the "connect" key is written only on the
+    // transitions, not every frame; cleared again the moment the slot fills
+    // (net_connection_lost_ back to false) or the room is truly lost.
+    bool joinable_now =
+        net_connection_lost_ && net_signal_ != NULL && !net_room_code_.empty();
+    if (joinable_now && !net_invite_advertised_) {
+      Invites::set_joinable(net_room_code_);
+      net_invite_advertised_ = true;
+      NET_LOG("net: invite - room %s joinable (peer gone)\n",
+              net_room_code_.c_str());
+    } else if (!joinable_now && net_invite_advertised_) {
+      Invites::clear_joinable();
+      net_invite_advertised_ = false;
+      NET_LOG("net: invite - room no longer joinable\n");
+    }
+    if (net_banner_ms_ > 0) net_banner_ms_ -= delta;
+  }
 
   if (!running) {
     last_tick += delta;
     return;
   }
+
+  save_dirty_ = true;  // the sim advances below; the save on disk is stale
 
   time_until_next_step -= delta;
 
@@ -765,31 +4768,49 @@ void GLGame::tick(int delta) {
 
   if(Asteroid::num_killable == 0 && !hazards_pending) {
     if(!level_cleared) {
-      level_cleared = true;
-      time_until_next_generation = 5000;
-      // Generation cleared legitimately — the skip-level cheat sets
-      // level_cleared directly and never reaches this branch. unlock() itself
-      // still suppresses if any cheat was used this game (XR-057).
-      // User-facing criteria use displayed level numbers = generation + 1
-      // (ACHIEVEMENTS.md §5 terminology rule).
-      if(generation == 0) Achievements::unlock("clear_level1");
-      if(players->size() >= 2) Achievements::unlock("coop_clear");
-      bool local_died = false, local_survived = false;
-      for(auto *gs : *players) {
-        if(!gs->ship->is_local_player) continue;
-        if(gs->ship->died_this_generation) local_died = true;
-        else local_survived = true;
+      // A client kill-claim (PROTO 13) is applied in net_host_poll —
+      // BEFORE this check — but the killed asteroid's breakup runs in the
+      // step-loop reap AFTER it, so num_killable dips to 0 for one tick
+      // with fragments still incoming. Latching CLEARED here freezes the
+      // countdown (the decrement lives only inside this num_killable==0
+      // block) until those un-counted fragments happen to die — which,
+      // with the claimer dead, they never do. Defer the latch while any
+      // just-killed asteroid still owes fragments (Glenn: host stuck on
+      // "CLEARED" at gen 0 after the client rammed the last rocks).
+      bool owed_fragments = false;
+      for (Asteroid *a : *objects)
+        if (a->pending_fragments()) { owed_fragments = true; break; }
+      if (!owed_fragments) {
+        level_cleared = true;
+        time_until_next_generation = 5000;
+        // Generation cleared legitimately — the skip-level cheat sets
+        // level_cleared directly and never reaches this branch. unlock() itself
+        // still suppresses if any cheat was used this game (XR-057).
+        // User-facing criteria use displayed level numbers = generation + 1
+        // (ACHIEVEMENTS.md §5 terminology rule).
+        if(generation == 0) Achievements::unlock("clear_level1");
+        if(players->size() >= 2) Achievements::unlock("coop_clear");
+        bool local_died = false, local_survived = false;
+        for(auto *gs : *players) {
+          if(!gs->ship->is_local_player) continue;
+          if(gs->ship->died_this_generation) local_died = true;
+          else local_survived = true;
+        }
+        // "Clear level 9 or beyond without taking damage" — level 9 = generation 8.
+        if(generation >= 8 && !local_died) Achievements::unlock("no_damage_clear");
+        // Black hole exists from level 14 (generation 13); any local player
+        // surviving the whole level counts (2P criteria per the §5 re-pitch note).
+        if(generation >= 13 && local_survived) Achievements::unlock("black_hole_survivor");
+      } else if (Net::net_debug_enabled()) {
+        NET_LOG("net: level-clear deferred - killed rock still owes "
+                "fragments (would have stuck CLEARED)\n");
       }
-      // "Clear level 9 or beyond without taking damage" — level 9 = generation 8.
-      if(generation >= 8 && !local_died) Achievements::unlock("no_damage_clear");
-      // Black hole exists from level 14 (generation 13); any local player
-      // surviving the whole level counts (2P criteria per the §5 re-pitch note).
-      if(generation >= 13 && local_survived) Achievements::unlock("black_hole_survivor");
     } else if (time_until_next_generation > 0) {
       if(floor(time_until_next_generation/1000) != floor((time_until_next_generation-delta)/1000)) {
         if(tic_sound != NULL) {
           Mix_PlayChannel(-1, tic_sound, 0);
         }
+        net_send_event(Net::EV_LEVEL_TIC);  // the client mirrors the countdown
       }
       time_until_next_generation -= delta;
     } else {
@@ -885,6 +4906,16 @@ void GLGame::tick(int delta) {
       level_cleared = false;
       save_progress();
       maybe_start_intro();
+      if (net_mode_ == NetHost) {
+        net_set_generation_banner(generation);
+        net_send_event(Net::EV_GENERATION_START, (uint32_t)generation);
+        // Same restriction as the local player: respawn's reset() cleared
+        // the remote ship's controls; don't let the still-held INPUT bits
+        // re-arm them 8 ms later — each key must be released and re-pressed.
+        net_held_suppress_ = 0xffff;
+        // The world was rebuilt: deltas would reference dead ids.
+        net_force_keyframe_ = true;
+      }
       if (is_finished()) {
         // Handing off to an intro: freeze here and give back the delta so no
         // catch-up steps (or their sounds, just muted by the intro) run.
@@ -904,6 +4935,12 @@ void GLGame::tick(int delta) {
     }
 
     if(mini_station != NULL) {
+      // Attenuate its shot sound: nearest player (solo/split), or the
+      // local player only when hosting online.
+      mini_station->sound_volume_scale =
+          net_mode_ != NetOff
+              ? net_listener_volume(mini_station->position)
+              : sound_volume_for_point(mini_station->position);
       mini_station->step(step_size, grid);
     }
 
@@ -978,6 +5015,10 @@ void GLGame::tick(int delta) {
     for(o = players->begin(); o != players->end(); o++) {
       (*o)->step(step_size, grid);
     }
+    // v12 adopt smoothing: a post-blackout pose catch-up banked by
+    // net_host_poll glides in instead of hopping on this screen.
+    if (net_mode_ == NetHost && players->size() >= 2)
+      net_smooth_step(*players->back()->ship, step_size);
 
     // Apply black-hole gravity to ships.
     // Ships in god mode or using the shield receive reduced gravity so they can escape.
@@ -1024,7 +5065,12 @@ void GLGame::tick(int delta) {
 
     for(o = enemies->begin(); o != enemies->end(); o++) {
       Ship* s = (*o)->ship;
-      s->sound_volume_scale = is_visible_to_any_player(*s) ? 0.5f : 0.0f;
+      // Online host: attenuate by distance to the LOCAL player — the
+      // visibility test counts the remote player's view too, which
+      // plays full-volume shots from someone else's dogfight.
+      s->sound_volume_scale = net_mode_ != NetOff
+          ? 0.5f * net_listener_volume(s->position)
+          : (is_visible_to_any_player(*s) ? 0.5f : 0.0f);
       (*o)->step(step_size, grid);
       // Re-apply boost volume after step since thrust() inside may have reset it
       if(s->boost_sound != NULL) {
@@ -1043,79 +5089,7 @@ void GLGame::tick(int delta) {
     grid.update((std::list<Object *>*)objects);
 
   /* ELASTIC ASTEROID-ASTEROID COLLISIONS */
-    // For each pair of live asteroids where at least one is elastic, apply
-    // 2D elastic collision physics (mass ~ radius^2, conservation of momentum
-    // and kinetic energy along the collision normal). Pairs are processed once
-    // via inner iterator starting after outer to avoid double-application.
-    // Reflective asteroids carry elastic=true so they participate automatically.
-    {
-      std::list<Asteroid*>::iterator ai, bi;
-      for(ai = objects->begin(); ai != objects->end(); ++ai) {
-        Asteroid *a = *ai;
-        if(!a->alive) continue;
-        bi = ai; ++bi;
-        for(; bi != objects->end(); ++bi) {
-          Asteroid *b = *bi;
-          if(!b->alive) continue;
-          if(!a->elastic && !b->elastic) continue;
-
-          // Use world-wrap aware distance: get closest copy of A to B
-          Point a_near = a->position.closest_to(b->position);
-          float dx = a_near.x() - b->position.x();
-          float dy = a_near.y() - b->position.y();
-          float dist2 = dx * dx + dy * dy;
-          float sum_r = a->radius + b->radius;
-          if(dist2 >= sum_r * sum_r) continue; // no overlap
-
-          float dist = sqrtf(dist2);
-          if(dist < 1e-4f) continue; // degenerate overlap, skip
-
-          // Collision normal pointing from B to A
-          float nx = dx / dist;
-          float ny = dy / dist;
-
-          // Positional correction: always push apart to resolve overlap,
-          // including the case where children spawn inside each other.
-          float overlap = sum_r - dist;
-          float push = overlap * 0.5f + 0.5f;
-          a->position += Point(nx, ny) * push;
-          a->position.wrap();
-          b->position += Point(-nx, -ny) * push;
-          b->position.wrap();
-
-          // Velocity impulse: only when approaching (negative = approaching)
-          float vrel_n = (a->velocity.x() - b->velocity.x()) * nx
-                       + (a->velocity.y() - b->velocity.y()) * ny;
-          if(vrel_n >= 0.0f) continue; // already separating, no impulse needed
-
-          // Mass proportional to area (radius^2)
-          float ma = a->radius * a->radius;
-          float mb = b->radius * b->radius;
-          float impulse = -2.0f * vrel_n * ma * mb / (ma + mb);
-
-          a->velocity = a->velocity + Point(nx, ny) * (impulse / ma);
-          b->velocity = b->velocity - Point(nx, ny) * (impulse / mb);
-
-          // Play a deep metallic ting when an asteroid strikes a reflective one,
-          // but only if the collision is visible to any player.
-          if((a->reflective || b->reflective) && Asteroid::asteroid_ting_sound != NULL) {
-            Point contact(
-              (a->position.x() + b->position.x()) * 0.5f,
-              (a->position.y() + b->position.y()) * 0.5f);
-            float vol = sound_volume_for_point(contact);
-            if(vol > 0.0f) {
-              static Uint32 last_asteroid_ting_tick = UINT32_MAX;
-              Uint32 now = SDL_GetTicks();
-              if(now - last_asteroid_ting_tick >= 125) {
-                last_asteroid_ting_tick = now;
-                Mix_VolumeChunk(Asteroid::asteroid_ting_sound, (int)(MIX_MAX_VOLUME * vol));
-                Mix_PlayChannel(-1, Asteroid::asteroid_ting_sound, 0);
-              }
-            }
-          }
-        }
-      }
-    }
+    elastic_asteroid_collisions(/*announce=*/true);
 
   /* COLLIDE EVERYTHING */
     for(o = players->begin(); o != players->end(); o++) {
@@ -1129,6 +5103,27 @@ void GLGame::tick(int delta) {
     while(oi != objects->end()) {
       if((*oi)->add_children(objects)) {
         if(!(*oi)->invincible) {
+          // Co-op revive (its own roll, ahead of the normal table): only
+          // while some player is fully out with a partner still in it, and
+          // never more than one in the world at a time.
+          bool revive_due = false;
+          if (players->size() >= 2) {
+            bool any_out = false, any_in = false;
+            for (auto *gs : *players) {
+              if (!gs->ship->is_alive() && gs->ship->lives <= 0) any_out = true;
+              else if (gs->ship->is_alive() || gs->ship->lives > 0) any_in = true;
+            }
+            if (any_out && any_in) {
+              revive_due = true;
+              for (auto *pk : *pickups)
+                if (dynamic_cast<RevivePickup*>(pk)) { revive_due = false; break; }
+            }
+          }
+          if (revive_due &&
+              rand() / float(RAND_MAX) < revive_pickup_drop_chance) {
+            pickups->push_back(new RevivePickup((*oi)->position));
+            NET_LOG("revive pickup dropped\n");
+          } else {
           float roll = rand() / float(RAND_MAX);
           if(roll < extra_life_drop_chance) {
             pickups->push_back(new ExtraLife((*oi)->position));
@@ -1145,8 +5140,13 @@ void GLGame::tick(int delta) {
             pickups->push_back(new ShieldPickup((*oi)->position));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance) {
             pickups->push_back(new GodModePickup((*oi)->position));
-          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance + shock_pickup_drop_chance) {
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance + beam_pickup_drop_chance) {
+            pickups->push_back(new BeamPickup((*oi)->position));
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance + beam_pickup_drop_chance + lance_pickup_drop_chance) {
+            pickups->push_back(new LancePickup((*oi)->position));
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance + beam_pickup_drop_chance + lance_pickup_drop_chance + shock_pickup_drop_chance) {
             pickups->push_back(new ShockPickup((*oi)->position));
+          }
           }
         }
         // Move to dead_objects so the collision grid no longer iterates this
@@ -1208,27 +5208,9 @@ void GLGame::tick(int delta) {
         Mix_PlayChannel(-1, warp_sound, 0);
     }
 
-    // Update quantum asteroid observation state: collapse when any player looks at
-    // it (normal speed), enter superposition otherwise (4x speed so it can sneak
-    // up on players who look away). Quantum asteroids are always killable.
-    for(oi = objects->begin(); oi != objects->end(); ++oi) {
-      Asteroid *ast = *oi;
-      if(!ast->quantum) continue;
-      bool now_observed = is_point_faced_by_any_player(ast->position);
-      if(now_observed == ast->quantum_observed) continue;
-      ast->quantum_observed = now_observed;
-      float spd = ast->velocity.magnitude();
-      if(spd > 1e-6f) {
-        Point dir = ast->velocity * (1.0f / spd);
-        if(now_observed) {
-          // Collapse: slow to base speed
-          ast->velocity = dir * ast->quantum_base_speed;
-        } else {
-          // Superposition: speed up 4x
-          ast->velocity = dir * ast->quantum_base_speed * 4.0f;
-        }
-      }
-    }
+    // Update quantum asteroid observation state (shared with the net
+    // client's mirror — see update_quantum_observation).
+    update_quantum_observation();
 
     // Clean up dead asteroids whose debris has fully faded.
     oi = dead_objects->begin();
@@ -1238,6 +5220,17 @@ void GLGame::tick(int delta) {
         oi = dead_objects->erase(oi);
       } else {
         oi++;
+      }
+    }
+
+    // Lance ship/station hits: authoritative firers parked their traced
+    // polyline during the step (the ray-march only sees asteroids); a
+    // client's polyline reaches resolve_lance_ship_hits via MSG_LANCE.
+    for(o = players->begin(); o != players->end(); o++) {
+      Ship *ls = (*o)->ship;
+      if(!ls->lance_hit_pending.empty()) {
+        resolve_lance_ship_hits(ls, ls->lance_hit_pending);
+        ls->lance_hit_pending.clear();
       }
     }
 
@@ -1273,7 +5266,7 @@ void GLGame::tick(int delta) {
         for (size_t i = 0; i < s->missiles.size(); ) {
           if (station->Object::collide(s->missiles[i])) {
             station->hit();
-            s->detonate(s->missiles[i].position, s->missiles[i].velocity, 25);
+            s->detonate(s->missiles[i].position, s->missiles[i].velocity, Ship::MISSILE_SHRAPNEL);
             if (s->missile_explode_sound != NULL)
               Mix_PlayChannel(-1, s->missile_explode_sound, 0);
             s->missiles[i] = std::move(s->missiles.back());
@@ -1299,12 +5292,16 @@ void GLGame::tick(int delta) {
             if (Asteroid::thud_sound != NULL) {
               // Rate-limit like every other thud/ting site: sustained fire on
               // the station otherwise grabs a mixer channel per bullet and
-              // starves the 32-channel pool (audio "drops out" mid-siege).
+              // starves the pool (audio "drops out" mid-siege). The net
+              // relay rides the same limiter — the client plays one cue per
+              // window too instead of one per bullet.
               static Uint32 last_station_thud = UINT32_MAX;
               Uint32 now = SDL_GetTicks();
               if (now - last_station_thud >= 125) {
                 last_station_thud = now;
                 Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+                // Station-hull deflection: same thud cue for the net client.
+                net_send_event(Net::EV_ROID_THUD, Net::pack_pos(bpos.x(), bpos.y(), world.x(), world.y()));
               }
             }
             station->hit();
@@ -1312,6 +5309,9 @@ void GLGame::tick(int delta) {
             s->bullets.pop_back();
             if (!station->is_alive()) {
               if (s->is_local_player) Achievements::unlock("station_destroyed");
+              else if (net_mode_ == NetHost && remote_player() &&
+                       s == remote_player()->ship)
+                net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_STATION_DESTROYED);
               break;
             }
           } else {
@@ -1365,7 +5365,7 @@ void GLGame::tick(int delta) {
             }
             for(size_t i = 0; i < s->missiles.size() && h->is_alive();) {
               if(h->Object::collide(s->missiles[i])) {
-                s->detonate(s->missiles[i].position, s->missiles[i].velocity, 25);
+                s->detonate(s->missiles[i].position, s->missiles[i].velocity, Ship::MISSILE_SHRAPNEL);
                 if(s->missile_explode_sound != NULL)
                   Mix_PlayChannel(-1, s->missile_explode_sound, 0);
                 s->missiles[i] = std::move(s->missiles.back());
@@ -1413,7 +5413,7 @@ void GLGame::tick(int delta) {
             }
             for(size_t i = 0; i < s->missiles.size() && h->is_alive();) {
               if(h->Object::collide(s->missiles[i])) {
-                s->detonate(s->missiles[i].position, s->missiles[i].velocity, 25);
+                s->detonate(s->missiles[i].position, s->missiles[i].velocity, Ship::MISSILE_SHRAPNEL);
                 if(s->missile_explode_sound != NULL)
                   Mix_PlayChannel(-1, s->missile_explode_sound, 0);
                 s->missiles[i] = std::move(s->missiles.back());
@@ -1459,7 +5459,7 @@ void GLGame::tick(int delta) {
             if(killed) break;
             for(size_t i = 0; i < s->missiles.size();) {
               if(h->Object::collide(s->missiles[i])) {
-                s->detonate(s->missiles[i].position, s->missiles[i].velocity, 25);
+                s->detonate(s->missiles[i].position, s->missiles[i].velocity, Ship::MISSILE_SHRAPNEL);
                 if(s->missile_explode_sound != NULL)
                   Mix_PlayChannel(-1, s->missile_explode_sound, 0);
                 s->missiles[i] = std::move(s->missiles.back());
@@ -1509,6 +5509,11 @@ void GLGame::tick(int delta) {
             Achievements::unlock("mini_station_kill");
             Achievements::progress("score_3m", s->score / 30000);
             if (s->shield_active()) Achievements::unlock("shield_ram");
+          } else if (net_mode_ == NetHost && remote_player() &&
+                     s == remote_player()->ship) {
+            net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_MINI_STATION_KILL);
+            if (s->shield_active())
+              net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_SHIELD_RAM);
           }
           break;
         }
@@ -1520,9 +5525,12 @@ void GLGame::tick(int delta) {
             s->score += GLMiniStation::REWARD;
             mini_station->destroy();
             if (s->is_local_player) {
-            Achievements::unlock("mini_station_kill");
-            Achievements::progress("score_3m", s->score / 30000);
-          }
+              Achievements::unlock("mini_station_kill");
+              Achievements::progress("score_3m", s->score / 30000);
+            } else if (net_mode_ == NetHost && remote_player() &&
+                       s == remote_player()->ship) {
+              net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_MINI_STATION_KILL);
+            }
             break;
           } else {
             ++i;
@@ -1531,7 +5539,7 @@ void GLGame::tick(int delta) {
         if (!mini_station->is_alive()) break;
         for (size_t i = 0; i < s->missiles.size(); ) {
           if (mini_station->Object::collide(s->missiles[i])) {
-            s->detonate(s->missiles[i].position, s->missiles[i].velocity, 25);
+            s->detonate(s->missiles[i].position, s->missiles[i].velocity, Ship::MISSILE_SHRAPNEL);
             if (s->missile_explode_sound != NULL)
               Mix_PlayChannel(-1, s->missile_explode_sound, 0);
             s->missiles[i] = std::move(s->missiles.back());
@@ -1539,9 +5547,12 @@ void GLGame::tick(int delta) {
             s->score += GLMiniStation::REWARD;
             mini_station->destroy();
             if (s->is_local_player) {
-            Achievements::unlock("mini_station_kill");
-            Achievements::progress("score_3m", s->score / 30000);
-          }
+              Achievements::unlock("mini_station_kill");
+              Achievements::progress("score_3m", s->score / 30000);
+            } else if (net_mode_ == NetHost && remote_player() &&
+                       s == remote_player()->ship) {
+              net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_MINI_STATION_KILL);
+            }
             break;
           } else {
             ++i;
@@ -1549,9 +5560,18 @@ void GLGame::tick(int delta) {
         }
       }
       // The station was alive when this block started; if a player just
-      // destroyed it, play the destruction sound once.
-      if (!mini_station->is_alive() && station_explode_sound != NULL) {
-        Mix_PlayChannel(-1, station_explode_sound, 0);
+      // destroyed it, play the destruction sound once — attenuated by
+      // listener distance, and relayed to the net client.
+      if (!mini_station->is_alive()) {
+        play_priority_chunk(
+            station_explode_sound,
+            net_mode_ != NetOff
+                ? net_listener_volume(mini_station->position)
+                : sound_volume_for_point(mini_station->position));
+        net_send_event(Net::EV_STATION_BOOM,
+                       Net::pack_pos(mini_station->position.x(),
+                                     mini_station->position.y(),
+                                     world.x(), world.y()));
       }
     }
 
@@ -1664,6 +5684,27 @@ void GLGame::tick(int delta) {
       }
     }
 
+    // Big station death boom, fired on the alive→dead transition so every
+    // kill path (bullets, missiles, ramming, lance, net kill claims) plays
+    // it exactly once — attenuated by listener distance, and relayed to the
+    // net client (whose replica runs the debris burst in restore_state).
+    {
+      bool station_alive_now = station != NULL && station->is_alive();
+      if (station_alive_prev && !station_alive_now && station != NULL) {
+        play_priority_chunk(station_explode_sound,
+                            net_mode_ != NetOff
+                                ? net_listener_volume(station->position)
+                                : sound_volume_for_point(station->position));
+        net_send_event(Net::EV_STATION_BOOM,
+                       Net::pack_pos(station->position.x(),
+                                     station->position.y(),
+                                     world.x(), world.y()));
+        NET_LOG("station destroyed at (%.0f, %.0f)",
+                station->position.x(), station->position.y());
+      }
+      station_alive_prev = station_alive_now;
+    }
+
     // Remove dead station once its debris has faded and all its ships are gone.
     if (station != NULL && station->is_removable() && enemies->empty()) {
       delete station;
@@ -1677,8 +5718,33 @@ void GLGame::tick(int delta) {
         if(!(*pi)->collected && (*pi)->collide(*(*o)->ship)) {
           (*pi)->collected = true;
           (*pi)->apply((*o)->ship);
+          // The revive targets the fallen PARTNER (the pickup can't see the
+          // player list — same pattern as the mini-station reward): put them
+          // back on their last life and let the ordinary respawn machinery
+          // run. lives=1 restarts the parked countdown; the respawn charges
+          // the life back to 0 = the standard alive-on-last-life state.
+          // Online this is host-side sim; lives/alive replicate, the client's
+          // spectate ends by itself, and their alive-transition respawns the
+          // wreck. A revive with nobody down (partner beat it back some other
+          // way) is just the pickup sound.
+          if (dynamic_cast<RevivePickup*>(*pi))
+            revive_fallen_partner((*o)->ship);
           if(pickup_sound != NULL)
             Mix_PlayChannel(-1, pickup_sound, 0);
+          // Collection cue for the client. The arg names WHICH of the
+          // CLIENT's limited primaries gained ammo (NetPrimaryKind) so the
+          // client arms exactly that weapon's anti-flicker latch — 0 for the
+          // host's own pickups and for types that touch no primary ammo (see
+          // net_pickup_latch_ in glgame.h for why kind-blind arming misfired).
+          uint32_t pk = NET_PRIM_NONE;
+          if (net_mode_ == NetHost && remote_player() &&
+              (*o) == remote_player()) {
+            if (dynamic_cast<BeamPickup*>(*pi))         pk = NET_PRIM_BEAM;
+            else if (dynamic_cast<LancePickup*>(*pi))   pk = NET_PRIM_LANCE;
+            else if (dynamic_cast<ShockPickup*>(*pi))   pk = NET_PRIM_SHOCK;
+            else if (dynamic_cast<GodModePickup*>(*pi)) pk = NET_PRIM_GOD;
+          }
+          net_send_event(Net::EV_PICKUP, pk);
         }
       }
     }
@@ -1698,7 +5764,7 @@ void GLGame::tick(int delta) {
     time_until_next_step += time_between_steps;
   }
   /* Save high score automatically on game over */
-  if (!score_saved && !players->empty()) {
+  if (!game_over && !players->empty()) {
     bool all_game_over = true;
     for (auto* glship : *players) {
       if (glship->ship->is_alive() || glship->ship->lives > 0) {
@@ -1709,6 +5775,7 @@ void GLGame::tick(int delta) {
     if (all_game_over) {
       for (auto* glship : *players)
         save_high_score(glship->ship->score);
+      game_over = true;
       Stats::flush();
       score_saved = true;
       game_over_time = current_time;
@@ -1719,14 +5786,18 @@ void GLGame::tick(int delta) {
     }
   }
 
+  // Arm/advance the spectate countdown (host side): local player out, peer
+  // still in it -> after kSpectateDelayMs the camera follows the peer.
+  update_spectate();
+
   /* Delete save on true game over */
-  if (score_saved && !save_deleted_) {
+  if (game_over && !save_deleted_ && net_mode_ == NetOff) {
     Save::delete_save();
     save_deleted_ = true;
   }
 
   /* Save on death while lives remain (once per death window) */
-  if (!score_saved && !players->empty()) {
+  if (!game_over && net_mode_ == NetOff && !players->empty()) {
     bool any_dead_with_lives = false;
     bool any_dead_no_lives   = false;
     for (auto* glship : *players) {
@@ -1743,11 +5814,153 @@ void GLGame::tick(int delta) {
       save_written_this_death_ = false;
   }
 
+  // Online, the shield hum is a personal cue (your invincibility window /
+  // shield). The remote player's ship respawns hum through Ship::respawn
+  // exactly like a local split-screen partner's would — but online that
+  // ship is usually a world away on someone else's screen, so the short
+  // full-volume hum at every remote respawn just sounds random. Mute it.
+  if (net_mode_ == NetHost && players->size() >= 2) {
+    Ship *remote = players->back()->ship;
+    remote->set_shield_hum(false);
+    // The sim plays the remote player's own sounds (gun etc.) like a
+    // split-screen partner's — full volume. Online the only listener
+    // here is the local player: attenuate by distance.
+    remote->sound_volume_scale = net_listener_volume(remote->position);
+    // While parked for rejoin, re-assert the shield every tick: level
+    // rebuilds respawn all players with the normal 1.5 s window, which
+    // would otherwise expire and leave the pilotless hull killable.
+    if (net_connection_lost_ && net_signal_ && remote->is_alive()) {
+      remote->invincible = true;
+      remote->time_left_invincible = 1 << 29;
+    }
+  }
+
+  // (Bullet-vs-asteroid impact cues used to be forwarded here as
+  // EV_ROID_THUD/TING events; since PROTO 10 the client detects those
+  // cosmetics locally — Ship::net_cosmetic_impacts.)
+  if (net_mode_ == NetHost && net_session_ && !net_connection_lost_) {
+    // Non-fatal ship-vs-asteroid bounces (debris + armour ting). Enemy
+    // ships collide through the same code; only player ships are sent.
+    for (const Ship::NetShipImpact &si : Ship::net_ship_impacts) {
+      uint32_t idx = 0;
+      if (!players->empty() && players->front()->ship == si.ship) idx = 1;
+      else if (players->size() >= 2 && players->back()->ship == si.ship) idx = 2;
+      if (idx)
+        net_send_event(Net::EV_SHIP_IMPACT, idx | (si.ting ? 0x100u : 0u));
+    }
+    // Shots: world actors' (enemies, the mini-station) go over as
+    // EV_WORLD_SHOT with their position for attenuation. The HOST
+    // player's are superseded by the MSG_SHOT echo below (PROTO 17),
+    // whose clone spawn plays the shot sound client-side; the client
+    // fires its own weapon locally, and the host simulates the client's
+    // shots too — neither is relayed.
+    Ship *p1 = players->empty() ? NULL : players->front()->ship;
+    Ship *p2 = players->size() >= 2 ? players->back()->ship : NULL;
+    for (const Ship *shooter : Ship::net_shots) {
+      if (shooter != p1 && shooter != p2)
+        net_send_event(Net::EV_WORLD_SHOT,
+                       Net::pack_pos(shooter->position.x(),
+                                     shooter->position.y(),
+                                     world.x(), world.y()));
+    }
+    // Deaths: player explosions already reach the client through the
+    // snapshot extras; world actors' need the event.
+    for (const Ship *boom : Ship::net_booms)
+      if (boom != p1 && boom != p2)
+        net_send_event(Net::EV_WORLD_BOOM,
+                       Net::pack_pos(boom->position.x(), boom->position.y(), world.x(), world.y()));
+    // PROTO 17: echo the host player's shots as MSG_SHOT (the mirror of
+    // the client's PROTO 14 reports; p1 is the only reporter on a host).
+    // The client spawns exact clones instantly — without this a host
+    // bullet exists there only via the 10 Hz snapshot rebuild, popping in
+    // up to a snapshot interval late and already down-range.
+    for (const Ship::NetShotReport &r : Ship::net_shot_reports) {
+      std::vector<uint8_t> msg;
+      Net::put_header(msg, Net::MSG_SHOT, 2);
+      Net::put_u32(msg, r.id);
+      Net::put_f32(msg, r.x);
+      Net::put_f32(msg, r.y);
+      Net::put_f32(msg, r.vx);
+      Net::put_f32(msg, r.vy);
+      Net::put_u8(msg, (r.kills_invincible ? 1 : 0) | (r.has_trail ? 2 : 0) |
+                       (r.piercing ? 4 : 0));
+      net_session_->transport()->send_reliable(&msg[0], msg.size());
+    }
+    // PROTO 18: the host player's lance pulses, echoed for the client's
+    // flash + sound (the kills replicate as ordinary removal records).
+    for (const std::vector<Point> &pts : Ship::net_lance_reports) {
+      if (pts.size() < 2 || pts.size() > 17) continue;
+      std::vector<uint8_t> msg;
+      Net::put_header(msg, Net::MSG_LANCE, 2);
+      Net::put_u8(msg, (uint8_t)pts.size());
+      for (const Point &p : pts) {
+        Net::put_f32(msg, p.x());
+        Net::put_f32(msg, p.y());
+      }
+      net_session_->transport()->send_reliable(&msg[0], msg.size());
+    }
+    // PROTO 22: the host player's shock bolts, echoed for the client's
+    // flash + sound (kills replicate as ordinary removal / score records).
+    for (const std::vector<Point> &pts : Ship::net_shock_reports) {
+      if (pts.size() < 2 || pts.size() > 15) continue;
+      std::vector<uint8_t> msg;
+      Net::put_header(msg, Net::MSG_SHOCK, 2);
+      Net::put_u8(msg, (uint8_t)pts.size());
+      for (const Point &p : pts) {
+        Net::put_f32(msg, p.x());
+        Net::put_f32(msg, p.y());
+      }
+      net_session_->transport()->send_reliable(&msg[0], msg.size());
+    }
+    // PROTO 19: authoritative ricochets — the sim's real bounce of any
+    // id-carrying bullet overrides the client's local approximation, so
+    // both screens fly the same post-bounce trajectory.
+    for (const Ship::NetBounceReport &r : Ship::net_bounce_reports) {
+      std::vector<uint8_t> msg;
+      Net::put_header(msg, Net::MSG_BOUNCE, 2);
+      Net::put_u32(msg, r.id);
+      Net::put_f32(msg, r.x);
+      Net::put_f32(msg, r.y);
+      Net::put_f32(msg, r.vx);
+      Net::put_f32(msg, r.vy);
+      Net::put_u8(msg, r.flags);
+      net_session_->transport()->send_reliable(&msg[0], msg.size());
+    }
+  }
+  Ship::net_ship_impacts.clear();
+  Ship::net_shots.clear();
+  Ship::net_booms.clear();
+  // Cleared outside the session guard: with no live session (solo online
+  // after a leave, rejoin pending) the queues must not grow unbounded.
+  Ship::net_shot_reports.clear();
+  Ship::net_lance_reports.clear();
+  Ship::net_shock_reports.clear();
+  Ship::net_bounce_reports.clear();
+  // Achievement relays: unlocks the sim attributed to the remote replica
+  // (ram kills resolve inside Ship code). Anything not the replica's —
+  // an enemy, or offline residue — is dropped.
+  for (const auto &ar : Ship::net_ach_relays)
+    if (remote_player() && ar.first == remote_player()->ship)
+      net_send_event(Net::EV_ACHIEVEMENT, ar.second);
+  Ship::net_ach_relays.clear();
+  // Shield-ram bursts the sim minted into a player's bullets: only the
+  // remote replica's need the wire (the client skips its own-ship bullet
+  // echo); the host's own replicate through the ordinary echo.
+  for (const Ship *rb : Ship::net_ram_blasts)
+    if (net_mode_ == NetHost && net_session_ && !net_connection_lost_ &&
+        remote_player() && rb == remote_player()->ship)
+      net_send_event(Net::EV_RAM_BLAST);
+  Ship::net_ram_blasts.clear();
+
+  // Online host: broadcast the world at 10 Hz once everything has stepped.
+  if (net_mode_ == NetHost) net_host_send_snapshot(delta);
+
   /* Display FPS */
   //std::cout << (num_frames*1000 / current_time) << std::endl;
 }
 
-void GLGame::draw_objects(float direction, bool minimap) const {
+void GLGame::draw_objects(float direction, bool minimap,
+                          float cam_x, float cam_y, float cull_r) const {
   if(debug_grid && !minimap) grid.draw_debug();
 
   for(auto bhi = black_holes->begin(); bhi != black_holes->end(); bhi++) {
@@ -1759,9 +5972,17 @@ void GLGame::draw_objects(float direction, bool minimap) const {
   }
 
   AsteroidDrawer::draw_batch(objects, dead_objects, direction, minimap,
-                             minimap ? world.x() : 0, minimap ? world.y() : 0);
+                             minimap ? world.x() : 0, minimap ? world.y() : 0,
+                             cam_x, cam_y, cull_r);
 
   for(auto pi = pickups->begin(); pi != pickups->end(); pi++) {
+    if (cull_r > 0) {
+      // Glow halos extend past the pickup radius — cull generously.
+      float reach = cull_r + (*pi)->radius * 4.0f;
+      float rx = (*pi)->position.x() - cam_x;
+      float ry = (*pi)->position.y() - cam_y;
+      if (rx*rx + ry*ry > reach*reach) continue;
+    }
     (*pi)->draw(direction);
   }
 
@@ -1778,15 +5999,29 @@ void GLGame::draw_objects(float direction, bool minimap) const {
 }
 
 void GLGame::draw(void) {
+  PerfScope perf_scope_(&perf_draw_ms_, &perf_draw_max_);
+  perf_report();  // once per second, only while below ~55 fps
   Uint32 now = SDL_GetTicks();
   int frame_delta = (int)(now - last_draw_time_);
   last_draw_time_ = now;
+  // Hitch breakdown, draw half (see the "slow tick" line): a slow frame
+  // that ISN'T in poll/steps is render-side.
+  uint32_t hb_draw_t0 = SDL_GetTicks();
   for(GLShip *gs : *players) gs->smooth_camera(frame_delta);
 
   glClear(GL_COLOR_BUFFER_BIT /*| GL_DEPTH_BUFFER_BIT*/);
 
   if(players->size() == 0) {
     draw_world();
+  }
+  else if(net_mode_ != NetOff) {
+    // Online: one full-screen view following the local player (host =
+    // front of the list, client = back). Once the local player is fully
+    // out and spectating has begun, the camera hands off to the peer. The
+    // peer draws their own view.
+    draw_world(camera_target(), true);
+    draw_map();
+    Overlay::net_overlays(this);
   }
   else {
     if(players->size() > 0) {
@@ -1798,14 +6033,20 @@ void GLGame::draw(void) {
     //Draw map after - for partial translucency
     draw_map();
   }
+  if (net_mode_ != NetOff && Net::net_debug_enabled()) {
+    uint32_t draw_ms = SDL_GetTicks() - hb_draw_t0;
+    if (draw_ms > 25) NET_LOG("net: slow draw %u ms\n", draw_ms);
+  }
 }
 
 
 int GLGame::num_x_viewports() const {
+  if (net_mode_ != NetOff) return 1;
   return (players->size() == 0) ? 1 : (window.x() > window.y()) ? players->size() : 1;
 }
 
 int GLGame::num_y_viewports() const {
+  if (net_mode_ != NetOff) return 1;
   return (players->size() == 0) ? 1 : (window.x() > window.y()) ? 1 : players->size();
 }
 
@@ -1835,6 +6076,99 @@ bool GLGame::is_visible_to_any_player(Point p) const {
     if(dist * dist <= cull_r2) return true;
   }
   return false;
+}
+
+// Online: the only listener is the local player. The split-screen
+// variant below treats EVERY player as a listener, which puts the remote
+// ship at distance zero from its own sounds.
+// PROTO 18: a peer's lance pulse — display-only. The kills travel on their
+// own channel (bullet_id-0 MSG_HIT claims from a client firer, ordinary
+// removal records from the host); this is the flash and the sound.
+bool GLGame::net_receive_lance_pulse(Net::Reader &r, Ship *shooter) {
+  uint8_t n = r.u8();
+  if (!r.ok || n < 2 || n > 17) return false;
+  LancePulse pulse;
+  pulse.ttl = pulse.time_left = 250.0f;
+  for (int i = 0; i < n; i++) {
+    float x = r.f32(), y = r.f32();
+    if (!r.ok || !std::isfinite(x) || !std::isfinite(y)) return false;
+    pulse.points.push_back(Point(x, y));
+  }
+  float vol = net_listener_volume(pulse.points.front());
+  if (vol > 0.0f) {
+    static Mix_Chunk *lance_snd =
+        Mix_LoadWAV(asset_path("audio/lance.wav").c_str());
+    if (lance_snd) {
+      Mix_VolumeChunk(lance_snd, (int)(MIX_MAX_VOLUME * vol));
+      Mix_PlayChannel(-1, lance_snd, 0);
+    }
+  }
+  shooter->lance_pulses.push_back(std::move(pulse));
+  NET_LOG("net: lance pulse received (%d points)\n", (int)n);
+  return true;
+}
+
+// PROTO 22: parse a shock-bolt polyline, show it on the firer's replica (the
+// exact segments, never re-seeked) with the zap sound, and hand the points
+// back so the host can resolve station/mini hull damage from them.
+bool GLGame::net_receive_shock_pulse(Net::Reader &r, Ship *shooter,
+                                     std::vector<Point> *out) {
+  uint8_t n = r.u8();
+  if (!r.ok || n < 2 || n > 15) return false;
+  std::vector<Point> pts;
+  for (int i = 0; i < n; i++) {
+    float x = r.f32(), y = r.f32();
+    if (!r.ok || !std::isfinite(x) || !std::isfinite(y)) return false;
+    pts.push_back(Point(x, y));
+  }
+  float vol = net_listener_volume(pts.front());
+  if (vol > 0.0f) {
+    static Mix_Chunk *shock_snd =
+        Mix_LoadWAV(asset_path("audio/shock.wav").c_str());
+    if (shock_snd) {
+      Mix_VolumeChunk(shock_snd, (int)(MIX_MAX_VOLUME * vol));
+      Mix_PlayChannel(-1, shock_snd, 0);
+    }
+  }
+  shooter->net_receive_shock(pts);
+  if (out) *out = pts;
+  NET_LOG("net: shock bolt received (%d points)\n", (int)n);
+  return true;
+}
+
+// True if the client's shock polyline STRUCK this body. When grow_segment
+// registers a hit it snaps the vertex onto the target's surface (surface_hit:
+// exactly `radius` from the centre for circle bodies — the raw f32 polyline
+// rides the wire unquantized), so a genuine hit always has a vertex at
+// distance <= radius + epsilon. Testing radius + HIT_RADIUS here (the seek
+// slack) instead made the host damage BYSTANDERS: any hazard/station/partner
+// a meandering vertex merely passed within ~16 units of took hull damage and
+// paid score the firing client never showed.
+static bool shock_bolt_reaches(const std::vector<Point> &pts,
+                               const WrappedPoint &pos, float radius) {
+  float r = radius + 2.0f;  // surface-snap epsilon, not the seek slack
+  for (const Point &p : pts) {
+    Point c = pos.closest_to(p);
+    float dx = c.x() - p.x(), dy = c.y() - p.y();
+    if (dx * dx + dy * dy <= r * r) return true;
+  }
+  return false;
+}
+
+float GLGame::net_listener_volume(Point p) const {
+  // The listener is whoever the camera follows: normally the local player,
+  // but the peer while spectating — the spectator hears the action they
+  // are watching (their own wreck is dead and would mute everything).
+  GLShip *me = camera_target();
+  if (!me || !me->ship->is_alive()) return 0.0f;
+  float fov_deg = me->view_angle();
+  float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
+  float aspect = window.x() / (float)window.y();
+  float half_w = half_h * aspect;
+  float cull_r = sqrtf(half_w * half_w + half_h * half_h) * sqrtf(1.1f);
+  float dist = me->ship->position.distance_to(p);
+  if (dist >= cull_r) return 0.0f;
+  return 1.0f - dist / cull_r;
 }
 
 float GLGame::sound_volume_for_point(Point p) const {
@@ -1885,7 +6219,7 @@ bool GLGame::is_point_faced_by_any_player(Point p) const {
 
 
 void GLGame::setup_viewport(bool primary) const {
-  if(players->size() > 1 && window.x() <= window.y()) {
+  if(split_screen() && window.x() <= window.y()) {
     primary = !primary; //HACK: Fix this
   }
   if(primary) {
@@ -1928,7 +6262,9 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   setup_viewport(primary);
   float saved_sw = Typer::scaled_window_width;
   Typer::scaled_window_width = capped_hw / Typer::scale * nx;
+  Uint64 pc0 = SDL_GetPerformanceCounter();
   Overlay::draw(this, glship);
+  perf_osd_pc_ += SDL_GetPerformanceCounter() - pc0;
   Typer::scaled_window_width = saved_sw;
 }
 
@@ -1951,6 +6287,7 @@ void GLGame::draw_perspective(GLShip *glship) const {
   float base_pv[16]; gles2_get_mvp(base_pv);
 
   // Draw the world tessellated 3x3, culling tiles that are entirely off-screen.
+  Uint64 pc0 = SDL_GetPerformanceCounter();
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
       // Nearest distance from camera to tile rectangle (starfield tiles are
@@ -1970,7 +6307,17 @@ void GLGame::draw_perspective(GLShip *glship) const {
       starfield->draw_rear(position);
     }
   }
+  perf_stars_pc_ += SDL_GetPerformanceCounter() - pc0;
   // --- Invisible asteroid lensing: black asteroid polygon + shifted rear stars ---
+  // Lensing is expensive per asteroid (the mask mesh re-uploads and
+  // draw_stars_near's cache rebuild scans every star), so unlike the batched
+  // object pass each asteroid is culled to the screen individually — only
+  // the handful actually in view pay. lens_on_screen then gates the warp
+  // capture below: off-screen invisible asteroids must not cost a
+  // full-viewport texture copy either.
+  float cull_r = sqrtf(cull_r2);
+  bool lens_on_screen = false;
+  Uint32 lens_t0 = SDL_GetTicks();
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
       float smin_x = world.x()*x - position.x();
@@ -1990,16 +6337,23 @@ void GLGame::draw_perspective(GLShip *glship) const {
         Asteroid const *a = *it;
         if (!a->invisible || !a->alive) continue;
 
-        float ax = a->position.x();
-        float ay = a->position.y();
+        float ax = a->position.x() + a->net_pose_err.x();
+        float ay = a->position.y() + a->net_pose_err.y();
+        float rel_x = ax + world.x()*x - position.x();
+        float rel_y = ay + world.y()*y - position.y();
+        float reach = cull_r + a->radius;
+        if (rel_x*rel_x + rel_y*rel_y > reach*reach) continue;
+        lens_on_screen = true;
         AsteroidDrawer::draw_invisible_mask(a, ax, ay);
         starfield->draw_stars_near(ax, ay, a->radius);
       }
     }
   }
+  Uint32 lens_frame_ms = SDL_GetTicks() - lens_t0;
 
   // Game objects: drawn directly each tile (no display list) so draw_batch
   // can emit all asteroids in two draw calls per tile instead of one per asteroid.
+  pc0 = SDL_GetPerformanceCounter();
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
       // Nearest distance from camera to tile rect (objects span [0,world) per tile)
@@ -2015,9 +6369,14 @@ void GLGame::draw_perspective(GLShip *glship) const {
       mat4_rotate_z(tile_vp, base_pv, direction);
       mat4_translate(tile_vp, tile_vp, world.x()*x - position.x(), world.y()*y - position.y(), 0.0f);
       gles2_set_vp(tile_vp);
-      draw_objects(direction);
+      // Camera centre in this tile's object space, for per-asteroid culling.
+      draw_objects(direction, false,
+                   position.x() - world.x()*x, position.y() - world.y()*y,
+                   cull_r);
     }
   }
+  perf_objs_pc_ += SDL_GetPerformanceCounter() - pc0;
+  pc0 = SDL_GetPerformanceCounter();
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
       float smin_x = world.x()*x - position.x();
@@ -2035,8 +6394,10 @@ void GLGame::draw_perspective(GLShip *glship) const {
       starfield->draw_front(position);
     }
   }
+  perf_stars_pc_ += SDL_GetPerformanceCounter() - pc0;
 
   // --- Front star lensing (same void + shift, applied after front stars) ---
+  lens_t0 = SDL_GetTicks();
   for(int x = -1; x <= 1; x++) {
     for(int y = -1; y <= 1; y++) {
       float smin_x = world.x()*x - position.x();
@@ -2056,8 +6417,12 @@ void GLGame::draw_perspective(GLShip *glship) const {
         Asteroid const *a = *it;
         if (!a->invisible || !a->alive) continue;
 
-        float ax = a->position.x();
-        float ay = a->position.y();
+        float ax = a->position.x() + a->net_pose_err.x();
+        float ay = a->position.y() + a->net_pose_err.y();
+        float rel_x = ax + world.x()*x - position.x();
+        float rel_y = ay + world.y()*y - position.y();
+        float reach = cull_r + a->radius;
+        if (rel_x*rel_x + rel_y*rel_y > reach*reach) continue;
         // No black mask here — draw_batch already renders the invisible asteroid
         // fill behind visible asteroids. Drawing it again after game objects would
         // overdraw visible asteroids on top of invisible ones.
@@ -2067,13 +6432,10 @@ void GLGame::draw_perspective(GLShip *glship) const {
   }
 
   // --- Warp pass: distort the contents of each invisible asteroid ---
-  // Check whether any invisible asteroids are present to avoid the capture cost.
-  bool has_invisible = false;
-  for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
-    if ((*it)->invisible && (*it)->alive) { has_invisible = true; break; }
-  }
-
-  if (has_invisible) {
+  // Gated on an invisible asteroid actually being ON SCREEN (set by the
+  // rear lens loop) — merely existing somewhere in the world must not cost
+  // the full-viewport texture copy every frame.
+  if (lens_on_screen) {
     // Snapshot the current viewport (stars + game objects) into the warp texture.
     GLint vp[4];
     glGetIntegerv(GL_VIEWPORT, vp);
@@ -2099,13 +6461,21 @@ void GLGame::draw_perspective(GLShip *glship) const {
         for (list<Asteroid*>::const_iterator it = objects->begin(); it != objects->end(); ++it) {
           Asteroid const *a = *it;
           if (!a->invisible || !a->alive) continue;
-          warp_pass_->draw(a, a->position.x(), a->position.y(), vp[0], vp[1], vp[2], vp[3]);
+          float ax = a->position.x() + a->net_pose_err.x();
+          float ay = a->position.y() + a->net_pose_err.y();
+          float rel_x = ax + world.x()*x - position.x();
+          float rel_y = ay + world.y()*y - position.y();
+          float reach = cull_r + a->radius;
+          if (rel_x*rel_x + rel_y*rel_y > reach*reach) continue;
+          warp_pass_->draw(a, ax, ay, vp[0], vp[1], vp[2], vp[3]);
         }
       }
     }
     gles2_set_vp(base_pv);
   }
-
+  lens_frame_ms += SDL_GetTicks() - lens_t0;
+  perf_lens_ms_ += lens_frame_ms;
+  if (lens_frame_ms > perf_lens_max_) perf_lens_max_ = lens_frame_ms;
 }
 
 void GLGame::draw_map() const {
@@ -2114,7 +6484,7 @@ void GLGame::draw_map() const {
 #endif
   float minimap_size = num_y_viewports() == 2 ? window.y()/6 : window.y()/4;
 
-  if(players->size() > 1) {
+  if(split_screen()) {
     /* DRAW CENTER LINE */
     float center_ortho[16];
     mat4_ortho(center_ortho, -(float)window.x(), (float)window.x(),
@@ -2146,7 +6516,7 @@ void GLGame::draw_map() const {
     mat4_ortho(minimap_ortho, 0.0f, (float)world.x(), 0.0f, (float)world.y(), -1.0f, 1.0f);
     gles2_set_vp(minimap_ortho);
   }
-  if (players->size() == 1) {
+  if (!split_screen()) {
 #if defined(__ANDROID__) || defined(__IOS__)
     // Shift the minimap right of the virtual joystick so they don't overlap.
     int map_x = (int)(g_touch_controls.joy_hint_cx + g_touch_controls.joy_radius + Overlay::CORNER_INSET);
@@ -2196,6 +6566,11 @@ void GLGame::draw_map() const {
 }
 
 void GLGame::controller(SDL_Event event) {
+  if (net_connection_lost_ && !(net_mode_ == NetHost && net_signal_)) {
+    if (event.type == SDL_CONTROLLERBUTTONDOWN)
+      request_state_change(new Menu());
+    return;
+  }
   if(event.cbutton.type == SDL_CONTROLLERBUTTONDOWN) {
     if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) {
       bool known_player = false;
@@ -2222,7 +6597,7 @@ void GLGame::controller(SDL_Event event) {
         } else {
           toggle_pause();
         }
-      } else if(players->size() < 2) {
+      } else if(players->size() < 2 && net_mode_ == NetOff) {
         SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(event.cbutton.which);
         if(ctrl) add_player2(ctrl);
       }
@@ -2253,7 +6628,7 @@ void GLGame::controller(SDL_Event event) {
           }
           return;
         }
-      } else if(players->size() < 2) {
+      } else if(players->size() < 2 && net_mode_ == NetOff) {
         SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(event.cbutton.which);
         if(ctrl) add_player2(ctrl);
       }
@@ -2311,9 +6686,249 @@ void GLGame::controller(SDL_Event event) {
   }
 }
 
+// The friendly-fire toggle band hugs the viewport bottom, kept to the
+// centre third: the OSD shoot/mine hit circles reach into the bottom
+// strip on the right, and the floating joystick can release on the left.
+TapBand GLGame::ff_toggle_band() const {
+  float vhb = -Typer::scaled_window_height / num_y_viewports();
+  return TapBand(0.5f, vhb + 55, 8, 45.0f, false, /*to_bottom=*/true,
+                 0.38f, 0.62f);
+}
+
+void GLGame::touch_tap(float nx, float ny) {
+  if (!is_touch_mode()) return;
+  // The bottom strip is the RETURN TO MENU band the overlay labels (the
+  // shared TapBand). It exits to the menu from every state that has no
+  // other touch exit: GAME OVER, the pause screen, and — online — a
+  // local ship that's fully out while the peer plays on.
+  if (!TapBand::return_to_menu.contains(nx, ny)) return;
+  bool all_game_over = !players->empty();
+  for (auto *glship : *players) {
+    if (glship->ship->is_alive() || glship->ship->lives > 0) {
+      all_game_over = false;
+      break;
+    }
+  }
+  if (all_game_over) {
+    // The 3 s grace mirrors the key/controller exits so a frantic
+    // last-second tap can't skip past the game over screen.
+    if (game_over_time >= 0 && current_time - game_over_time < 3000) return;
+    for (auto *glship : *players)
+      save_high_score(glship->ship->score);
+    request_state_change(new Menu());
+    return;
+  }
+  GLShip *local = local_player();
+  bool local_over = net_mode_ != NetOff && local &&
+                    !local->ship->is_alive() && local->ship->lives <= 0;
+  if (!running || local_over) {
+    save_progress();
+    request_state_change(new Menu());
+    return;
+  }
+  // Mid-play, the "friendly fire on/off" HUD text (two-player only) is a
+  // toggle region — host only, mirroring the G key.
+  if (players->size() >= 2 && net_mode_ != NetClient &&
+      ff_toggle_band().contains(nx, ny))
+    host_toggle_friendly_fire();
+}
+
+// How hard a lance pulse hits the gen-20 station's hull, in bullet
+// equivalents (bullets and missiles do 1 each).
+static const int LANCE_STATION_DAMAGE = 3;
+
+void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts) {
+  if (pts.size() < 2) return;
+
+  // The first mirror bounce: a killed asteroid is passed through
+  // collinearly, a reflection bends the path — so the first direction
+  // change between consecutive segments marks where the pulse can start
+  // hitting its own firer. (A near-grazing reflection under the threshold
+  // barely deviates and can't come back at the firer anyway.)
+  size_t first_refl_seg = pts.size();
+  for (size_t i = 1; i + 1 < pts.size(); i++) {
+    float ax = pts[i].x() - pts[i - 1].x(), ay = pts[i].y() - pts[i - 1].y();
+    float bx = pts[i + 1].x() - pts[i].x(), by = pts[i + 1].y() - pts[i].y();
+    float am = sqrtf(ax * ax + ay * ay), bm = sqrtf(bx * bx + by * by);
+    if (am <= 1e-3f || bm <= 1e-3f) continue;
+    if ((ax * bx + ay * by) / (am * bm) < 0.9995f) { first_refl_seg = i; break; }
+  }
+
+  // First segment (from from_seg on) that enters the target's circle;
+  // fills the hull-entry point (the impact position for debris).
+  auto first_hit = [&](const Ship *target, size_t from_seg, Point *where) {
+    for (size_t s = from_seg; s + 1 < pts.size(); s++)
+      if (lance_seg_circle_entry(pts[s], pts[s + 1], target->position,
+                                 target->radius, where))
+        return true;
+    return false;
+  };
+
+  Point where;
+
+  // Self: reflected segments only (the outgoing beam leaves the firer's
+  // own muzzle). kill_stop() gates shields/invincibility like every other
+  // ship-vs-ship weapon; no score for shooting yourself.
+  if (first_refl_seg + 1 < pts.size() && firer->is_alive() &&
+      first_hit(firer, first_refl_seg, &where)) {
+    firer->kill_stop();
+  }
+
+  // Partner: any segment, friendly fire only.
+  if (friendly_fire) {
+    for (auto *p : *players) {
+      Ship *t = p->ship;
+      if (t == firer || !t->is_alive()) continue;
+      if (first_hit(t, 0, &where) && t->kill_stop())
+        firer->credit_ship_kill(t);
+    }
+  }
+
+  // Enemies: always.
+  for (auto *e : *enemies) {
+    Ship *t = e->ship;
+    if (!t->is_alive()) continue;
+    if (first_hit(t, 0, &where) && t->kill_stop())
+      firer->credit_ship_kill(t);
+  }
+
+  // Mini-station: dies to any hit, flat bounty — mirror of the bullet
+  // path, including the attenuated boom + net relay.
+  if (mini_station != NULL && mini_station->is_alive() &&
+      first_hit(mini_station, 0, &where)) {
+    firer->explode(where, mini_station->velocity);
+    firer->score += GLMiniStation::REWARD;
+    mini_station->destroy();
+    if (firer->is_local_player) {
+      Achievements::unlock("mini_station_kill");
+      Achievements::progress("score_3m", firer->score / 30000);
+    } else if (net_mode_ == NetHost && remote_player() &&
+               firer == remote_player()->ship) {
+      net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_MINI_STATION_KILL);
+    }
+    play_priority_chunk(
+        station_explode_sound,
+        net_mode_ != NetOff
+            ? net_listener_volume(mini_station->position)
+            : sound_volume_for_point(mini_station->position));
+    net_send_event(Net::EV_STATION_BOOM,
+                   Net::pack_pos(mini_station->position.x(),
+                                 mini_station->position.y(),
+                                 world.x(), world.y()));
+  }
+
+  // Station: the hull takes a chunk of damage (it survives the pulse
+  // visually — a ring is plausible to lance through). Same thud cue and
+  // net relay as a hull bullet deflection.
+  if (station != NULL && station->is_alive() &&
+      first_hit(station, 0, &where)) {
+    // Debris splash at the initial hull contact, like the bullet path's
+    // deflection spray.
+    firer->explode(where, station->velocity);
+    for (int i = 0; i < LANCE_STATION_DAMAGE && station->is_alive(); i++)
+      station->hit();
+    if (!station->is_alive()) {
+      if (firer->is_local_player) Achievements::unlock("station_destroyed");
+      else if (net_mode_ == NetHost && remote_player() &&
+               firer == remote_player()->ship)
+        net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_STATION_DESTROYED);
+    }
+    if (Asteroid::thud_sound != NULL)
+      Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+    // A client firer already played its own splash + thud at contact
+    // (the PROTO 20 pass in tick_net_client) — relaying would double it.
+    bool remote_firer = net_mode_ == NetHost && remote_player() != NULL &&
+                        firer == remote_player()->ship;
+    if (!remote_firer)
+      net_send_event(Net::EV_ROID_THUD,
+                     Net::pack_pos(where.x(), where.y(), world.x(), world.y()));
+  }
+}
+
+// Put a fully-out partner back on their last life; the ordinary respawn
+// machinery does the rest (lives=1 restarts the parked countdown; the
+// respawn charges the life back to 0 = the standard alive-on-last-life
+// state). Online this runs host-side; lives/alive replicate, the fallen
+// client's spectate ends by itself and the alive-transition respawns the
+// wreck. No fallen partner (they beat the pickup back some other way) is
+// a quiet no-op. except = the collector (never revives itself).
+void GLGame::revive_fallen_partner(Ship *except) {
+  for (auto *gs : *players) {
+    Ship *fallen = gs->ship;
+    if (fallen == except) continue;
+    if (!fallen->is_alive() && fallen->lives <= 0) {
+      fallen->lives = 1;
+      fallen->time_until_respawn = fallen->respawn_time;
+      NET_LOG("revive - partner respawning\n");
+      break;
+    }
+  }
+}
+
+GLShip *GLGame::local_player() const {
+  if (players->empty()) return NULL;
+  return net_mode_ == NetClient ? players->back() : players->front();
+}
+
+GLShip *GLGame::remote_player() const {
+  if (players->size() < 2) return NULL;
+  return net_mode_ == NetClient ? players->front() : players->back();
+}
+
+GLShip *GLGame::camera_target() const {
+  if (is_spectating()) {
+    if (GLShip *r = remote_player()) return r;
+  }
+  return local_player();
+}
+
+// Arm/disarm the spectate countdown from replicated lives (host authoritative,
+// mirrored on the client), so both roles agree on the timing. Purely a
+// function of state + wall clock; called once per frame from either tick path.
+void GLGame::update_spectate() {
+  // Once game_over is latched (all players out, or a spectator who lost the
+  // peer) there is no spectating — and after a peer disconnect the peer's
+  // ship stays stale-alive, which would otherwise re-arm the countdown every
+  // frame under the GAME OVER card.
+  if (net_mode_ == NetOff || players->size() < 2 || game_over) {
+    spectate_death_time_ = -1;
+    return;
+  }
+  GLShip *local = local_player();
+  GLShip *remote = remote_player();
+  bool local_out = local && !local->ship->is_alive() && local->ship->lives <= 0;
+  bool remote_in = remote && (remote->ship->is_alive() || remote->ship->lives > 0);
+  if (local_out && remote_in) {
+    if (spectate_death_time_ < 0) {
+      spectate_death_time_ = current_time;
+      NET_LOG("net: spectate armed\n");
+    }
+  } else {
+    // Peer also out (GAME OVER takes over) or we came back (revived).
+    if (spectate_death_time_ >= 0) NET_LOG("net: spectate ended\n");
+    spectate_death_time_ = -1;
+  }
+}
+
+bool GLGame::spectate_arming() const {
+  return spectate_death_time_ >= 0 &&
+         current_time - spectate_death_time_ < kSpectateDelayMs;
+}
+
+bool GLGame::is_spectating() const {
+  return spectate_death_time_ >= 0 &&
+         current_time - spectate_death_time_ >= kSpectateDelayMs;
+}
+
+int GLGame::spectate_countdown_secs() const {
+  int remaining = kSpectateDelayMs - (current_time - spectate_death_time_);
+  if (remaining < 0) remaining = 0;
+  return (remaining + 999) / 1000;  // 5..1, ceil
+}
+
 void GLGame::touch_joystick(float nx, float ny) {
   if(!running || players->empty()) return;
-  players->front()->touch_joystick_input(nx, ny);
+  local_player()->touch_joystick_input(nx, ny);
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
@@ -2329,7 +6944,16 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
   const GeneralKeys &gk = g_prefs.general_keys;
 
-  if (key == (unsigned char)gk.skip_level) {
+  if (net_connection_lost_ && !(net_mode_ == NetHost && net_signal_)) {
+    request_state_change(new Menu());
+    return;
+  }
+
+  // Host-only / debug keys are ignored on the online client — it never
+  // mutates world state locally (the host's snapshots are authoritative).
+  bool host_keys = net_mode_ != NetClient;
+
+  if (host_keys && key == (unsigned char)gk.skip_level) {
       // Cheat: suppress all achievement unlocks for the rest of this game
       // (XR-057, ACHIEVEMENTS.md §1).
       Achievements::note_cheat_used();
@@ -2350,31 +6974,34 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
         delete hazards->back();
         hazards->pop_back();
       }
+      // The grid still holds pointers to the asteroids just deleted, and
+      // the next re-population is a sim tick away — which never comes
+      // while paused. Anything probing the grid in between (the rejoin
+      // path's safe_position when player 2 reconnects to a paused host)
+      // walked dangling pointers: Glenn's skip-while-paused segfault.
+      grid.update((std::list<Object *>*)objects);
   }
 
-  if (key == (unsigned char)gk.toggle_friendly_fire) {
-    friendly_fire = !friendly_fire;
-    g_prefs.friendly_fire = friendly_fire;
-    save_preferences();
-  }
+  if (host_keys && key == (unsigned char)gk.toggle_friendly_fire)
+    host_toggle_friendly_fire();
   if (key == (unsigned char)gk.toggle_debug_grid) {
     debug_grid = !debug_grid;
   }
   // Time-scale changes are cheats too (XR-057); resetting to normal speed is
   // not itself a cheat, but any earlier change already suppressed this
   // generation and the rebuild re-checks time_between_steps != step_size.
-  if (key == (unsigned char)gk.time_speed_up && time_between_steps > 1) {
+  if (host_keys && key == (unsigned char)gk.time_speed_up && time_between_steps > 1) {
     time_between_steps--;
     Achievements::note_cheat_used();
   }
-  if (key == (unsigned char)gk.time_slow_down) {
+  if (host_keys && key == (unsigned char)gk.time_slow_down) {
     time_between_steps++;
     Achievements::note_cheat_used();
   }
-  if (key == (unsigned char)gk.time_reset) time_between_steps = step_size;
+  if (host_keys && key == (unsigned char)gk.time_reset) time_between_steps = step_size;
   if (key == (unsigned char)gk.pause) toggle_pause();
 #if !defined(__ANDROID__) && !defined(__IOS__)
-  if (key == (unsigned char)gk.add_player2 && players->size() < 2) {
+  if (key == (unsigned char)gk.add_player2 && players->size() < 2 && net_mode_ == NetOff) {
     Ship* p1 = players->front()->ship;
     if(p1->is_alive() || p1->lives) {
       GLShip* object = new GLCar(grid, true);
@@ -2384,6 +7011,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       ship_objects->push_back(object->ship);
       for (auto *p : *players) p->ship->set_missile_ships(ship_objects);
       object->ship->set_missile_ships(ship_objects);
+      object->ship->missiles_seek_players = friendly_fire;
       object->ship->set_shock_targets(shock_targets);
       players->push_back(object);
       update_presence();

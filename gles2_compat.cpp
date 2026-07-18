@@ -80,6 +80,9 @@
 #ifdef glViewport
 #  undef glViewport
 #endif
+#ifdef glLineWidth
+#  undef glLineWidth   // gles2_set_line_width forwards to the driver's entry point
+#endif
 #ifdef DESKTOP_COMPAT_GL
 #  undef glMatrixMode
 #  undef glLoadIdentity
@@ -267,6 +270,13 @@ static float         s_line_core_scale = 0.5f;
 static float         s_line_core_scale = 0.1f;
 #endif
 static GLint         s_viewport[4]  = {0, 0, 800, 600};
+// Widest line the driver rasterizes natively (GL_ALIASED_LINE_WIDTH_RANGE
+// max, queried in gles2_init on real-GLES platforms; stays 1.0 on desktop,
+// web, and ANGLE so those keep the quad emulation). See gles2_compat.h.
+static float         s_native_line_max = 1.0f;
+#ifndef DESKTOP_COMPAT_GL
+static float         s_driver_line_width = 1.0f;  // last width actually sent to the driver
+#endif
 static bool          s_in_begin     = false;
 static GLenum        s_begin_mode   = GL_POINTS;
 static std::vector<Vertex> s_vbuf;
@@ -562,6 +572,11 @@ static std::vector<Vertex> quads_to_triangles(const std::vector<Vertex> &in) {
     return out;
 }
 
+// Frame-profiling counters (see gles2_compat.h): the desktop frame logger
+// resets these once per frame and reports them alongside slow frames.
+int g_gles2_dbg_draws = 0;
+int g_gles2_dbg_line_segs = 0;
+
 // Static buffers to avoid per-draw heap allocation.
 static std::vector<Vertex> s_converted;
 static std::vector<Vertex> s_thick_quads;
@@ -635,6 +650,9 @@ static void draw_thick_lines_impl(const std::vector<Vertex>& verts, GLenum mode,
     }
 
     if (s_thick_quads.empty()) return;
+
+    g_gles2_dbg_draws++;
+    g_gles2_dbg_line_segs += (int)(s_thick_quads.size() / 6);
 
     size_t n2 = s_thick_quads.size();
     s_pos.resize(n2 * 3);
@@ -712,12 +730,14 @@ static void flush_vertices() {
 
     if (src->empty()) return;
 
-    if (s_line_width > 1.05f && (gl_mode == GL_LINES || gl_mode == GL_LINE_STRIP ||
-                                  gl_mode == GL_LINE_LOOP)) {
+    if (s_line_width > 1.05f && !gles2_line_width_is_native() &&
+        (gl_mode == GL_LINES || gl_mode == GL_LINE_STRIP ||
+         gl_mode == GL_LINE_LOOP)) {
         draw_thick_lines(*src, gl_mode);
         return;
     }
 
+    g_gles2_dbg_draws++;
     size_t n = src->size();
     s_pos.resize(n * 3);
     s_col.resize(n * 4);
@@ -775,6 +795,27 @@ void gles2_init() {
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // Native wide-line support: real GLES drivers (Android/iOS) rasterize
+    // aliased lines wider than 1 px, so line meshes can draw their
+    // GPU-resident VBOs directly — the quad emulation's per-draw CPU expand +
+    // shared-VBO re-upload was the dominant mobile frame cost (objs ≈ 44 ms/
+    // frame on device). WebGL clamps line width to 1 in practice whatever the
+    // range query says (excluded outright), ANGLE/D3D reports a [1,1] range
+    // (query keeps it on the emulation), and desktop core GL ignores >1
+    // (excluded by DESKTOP_COMPAT_GL). NEWTONIA_LINE_EMULATION=1 forces the
+    // emulation back on for A/B comparison on device.
+#if !defined(DESKTOP_COMPAT_GL) && !defined(__EMSCRIPTEN__)
+    if (!SDL_getenv("NEWTONIA_LINE_EMULATION")) {
+        GLfloat range[2] = {1.0f, 1.0f};
+        glGetFloatv(GL_ALIASED_LINE_WIDTH_RANGE, range);
+        s_native_line_max = range[1];
+        SDL_Log("gles2: native aliased line width max %.1f", range[1]);
+    }
+    // Fresh (or recreated — Android resume) context: the driver's line width
+    // is back at 1.0, so the same-value skip must start from that.
+    s_driver_line_width = 1.0f;
+#endif
 }
 
 void gles2_set_tint(float r, float g, float b, float a) {
@@ -992,6 +1033,21 @@ void gles2_set_line_width(GLfloat width) {
         DLCommand c; c.type = DLCommand::LINE_WIDTH; c.f[0] = width; dl_push(c); return;
     }
     s_line_width = width;
+#ifndef DESKTOP_COMPAT_GL
+    // Real-GLES native path: apply the width to the driver so the emulation
+    // bypass (gles2_line_width_is_native) actually draws thick. Harmless when
+    // the emulation is used anyway; never called with the macro form (undef'd
+    // at the top of this file). Skip same-value re-sets — this runs per text/
+    // object draw, usually with the width already in effect.
+    if (width >= 1.0f && width <= s_native_line_max && width != s_driver_line_width) {
+        glLineWidth(width);
+        s_driver_line_width = width;
+    }
+#endif
+}
+
+bool gles2_line_width_is_native() {
+    return s_line_width <= s_native_line_max;
 }
 
 // ---- Viewport (intercepted via macro to keep s_viewport cache current) ----

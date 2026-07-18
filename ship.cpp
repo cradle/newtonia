@@ -2,6 +2,7 @@
 #include "achievements.h"
 #include "stats.h"
 #include "asset_path.h"
+#include "sound_cache.h"
 #include "point.h"
 #include "particle.h"
 #include "asteroid.h"
@@ -14,9 +15,27 @@
 #include "weapon/shield.h"
 #include "weapon/god_mode.h"
 #include "weapon/nova.h"
+#include "weapon/beam.h"
+#include "weapon/lance.h"
 #include "weapon/shock.h"
+#include "net_protocol.h"  // NET_LOG
 
 static const int NOVA_MAX_AMMO = 10;
+
+bool Ship::net_quiet_respawn = false;
+std::vector<Ship::NetShipImpact> Ship::net_ship_impacts;
+std::vector<const Ship*> Ship::net_shots;
+std::vector<const Ship*> Ship::net_booms;
+std::vector<Ship::NetKillClaim> Ship::net_kill_claims;
+std::vector<Ship::NetShotReport> Ship::net_shot_reports;
+std::vector<std::vector<Point>> Ship::net_lance_reports;
+std::vector<std::vector<Point>> Ship::net_shock_reports;
+std::vector<Ship::NetBounceReport> Ship::net_bounce_reports;
+bool Ship::net_report_bounces = false;
+std::vector<std::pair<const Ship*, uint8_t>> Ship::net_ach_relays;
+std::vector<const Ship*> Ship::net_ram_blasts;
+std::vector<Ship::NetShipHit> Ship::net_ship_hit_claims;
+uint32_t Ship::net_next_ship_id = 0;
 #include <algorithm>
 #include <math.h>
 #include <climits>
@@ -38,25 +57,25 @@ Ship::Ship(const Grid &grid, bool has_friction) :
   safe_position(grid);
   init(!has_friction);
   if(tic_sound == NULL) {
-    tic_sound = Mix_LoadWAV(asset_path("audio/tic.wav").c_str());
+    tic_sound = load_wav_cached("audio/tic.wav");
     if(tic_sound == NULL) {
       std::cout << "Unable to load tic.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(tic_low_sound == NULL) {
-    tic_low_sound = Mix_LoadWAV(asset_path("audio/tic_low.wav").c_str());
+    tic_low_sound = load_wav_cached("audio/tic_low.wav");
     if(tic_low_sound == NULL) {
       std::cout << "Unable to load tic_low.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(click_sound == NULL) {
-    click_sound = Mix_LoadWAV(asset_path("audio/click.wav").c_str());
+    click_sound = load_wav_cached("audio/click.wav");
     if(click_sound == NULL) {
       std::cout << "Unable to load click.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(boost_sound == NULL) {
-    boost_sound = Mix_LoadWAV(asset_path("audio/boost.wav").c_str());
+    boost_sound = load_wav_cached("audio/boost.wav");
   }
   if(boost_sound != NULL) {
     Mix_VolumeChunk(boost_sound, 0);
@@ -65,49 +84,55 @@ Ship::Ship(const Grid &grid, bool has_friction) :
     std::cout << "Unable to load boost.wav (" << Mix_GetError() << ")" << std::endl;
   }
   if(missile_explode_sound == NULL) {
-    missile_explode_sound = Mix_LoadWAV(asset_path("audio/missile_explode.wav").c_str());
+    missile_explode_sound = load_wav_cached("audio/missile_explode.wav");
     if(missile_explode_sound == NULL) {
       std::cout << "Unable to load missile_explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(shield_hum_sound == NULL) {
-    shield_hum_sound = Mix_LoadWAV(asset_path("audio/shield_hum.wav").c_str());
+    shield_hum_sound = load_wav_cached("audio/shield_hum.wav");
   }
   if(shield_hum_sound == NULL) {
     std::cout << "Unable to load shield_hum.wav (" << Mix_GetError() << ")" << std::endl;
   }
   if(explode_sound == NULL) {
-    explode_sound = Mix_LoadWAV(asset_path("audio/explode.wav").c_str());
+    explode_sound = load_wav_cached("audio/explode.wav");
     if(explode_sound == NULL) {
       std::cout << "Unable to load explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(giga_mine_explode_sound == NULL) {
-    giga_mine_explode_sound = Mix_LoadWAV(asset_path("audio/giga_mine_explode.wav").c_str());
+    giga_mine_explode_sound = load_wav_cached("audio/giga_mine_explode.wav");
     if(giga_mine_explode_sound == NULL) {
       std::cout << "Unable to load giga_mine_explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(mine_explode_sound == NULL) {
-    mine_explode_sound = Mix_LoadWAV(asset_path("audio/mine_explode.wav").c_str());
+    mine_explode_sound = load_wav_cached("audio/mine_explode.wav");
     if(mine_explode_sound == NULL) {
       std::cout << "Unable to load mine_explode.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
+  if(missile_fly_sound == NULL) {
+    missile_fly_sound = load_wav_cached("audio/missile_fly.wav");
+    if(missile_fly_sound == NULL) {
+      std::cout << "Unable to load missile_fly.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
   if(shoot_sound == NULL) {
-    shoot_sound = Mix_LoadWAV(asset_path("audio/shoot.wav").c_str());
+    shoot_sound = load_wav_cached("audio/shoot.wav");
     if(shoot_sound == NULL) {
       std::cout << "Unable to load shoot.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(god_mode_music_sound == NULL) {
-    god_mode_music_sound = Mix_LoadWAV(asset_path("audio/god_mode_music.wav").c_str());
+    god_mode_music_sound = load_wav_cached("audio/god_mode_music.wav");
     if(god_mode_music_sound == NULL) {
       std::cout << "Unable to load god_mode_music.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
   if(god_mode_music_warn_sound == NULL) {
-    god_mode_music_warn_sound = Mix_LoadWAV(asset_path("audio/god_mode_music_warn.wav").c_str());
+    god_mode_music_warn_sound = load_wav_cached("audio/god_mode_music_warn.wav");
     if(god_mode_music_warn_sound == NULL) {
       std::cout << "Unable to load god_mode_music_warn.wav (" << Mix_GetError() << ")" << std::endl;
     }
@@ -119,6 +144,16 @@ void Ship::mute_engine() {
     Mix_HaltChannel(boost_channel);
     boost_channel = -1;
   }
+}
+
+// Halt every continuous per-ship sound. On a net client the shield hum,
+// god-mode music and boost are driven by snapshots; when the host leaves
+// snapshots stop, so nothing would ever turn them off — the game freezes
+// with the loop stuck on. Called on the client's terminal disconnect.
+void Ship::silence_loops() {
+  set_shield_hum(false);
+  stop_god_mode_music();
+  mute_engine();
 }
 
 void Ship::add_behaviour(Behaviour *b) {
@@ -179,6 +214,9 @@ Ship::~Ship() {
   if(mine_explode_sound != NULL) {
     Mix_FreeChunk(mine_explode_sound);
   }
+  if(missile_fly_sound != NULL) {
+    Mix_FreeChunk(missile_fly_sound);
+  }
   if(shoot_sound != NULL) {
     Mix_FreeChunk(shoot_sound);
   }
@@ -191,7 +229,57 @@ Ship::~Ship() {
   }
 }
 
+// Identity key for a primary weapon (kind + Default-gun variant index),
+// used by the exhausted-primary fallback to find "the weapon the player was
+// using before this one" across list reshuffles and netplay roster
+// rebuilds. index_out is the Default gun's weapon_index, -1 for the rest.
+Save::WeaponEntry::Kind Ship::primary_kind_of(Weapon::Base *w, int *index_out) {
+  *index_out = -1;
+  if(dynamic_cast<Weapon::GodMode*>(w)) return Save::WeaponEntry::Kind::GodMode;
+  if(dynamic_cast<Weapon::Beam*>(w))    return Save::WeaponEntry::Kind::Beam;
+  if(dynamic_cast<Weapon::Lance*>(w))   return Save::WeaponEntry::Kind::Lance;
+  if(dynamic_cast<Weapon::Shock*>(w))   return Save::WeaponEntry::Kind::Shock;
+  Weapon::Default *d = dynamic_cast<Weapon::Default*>(w);
+  if(d) *index_out = d->weapon_index();
+  return Save::WeaponEntry::Kind::Default;
+}
+
+// Remember the CURRENT primary as "the weapon used before" — every path
+// that moves the selection (cycling, pickup auto-select) calls this first,
+// so an exhausted weapon can hand the trigger back to it (see shoot()).
+void Ship::record_primary_selection() {
+  if(primary_weapons.empty() || primary == primary_weapons.end()) return;
+  last_primary_kind = primary_kind_of(*primary, &last_primary_index);
+  has_last_primary = true;
+}
+
+// Where the selection lands after removing a primary. Hand the trigger back
+// to the weapon the player was using BEFORE this one (selection history,
+// kind+variant identity). Fall back to the previous list neighbour — pickups
+// splice the selection to the back, so the neighbour is the most recent
+// pickup — and only wrap forward when removing the front. The old
+// wrap-forward-only rule landed on the default gun every time, because the
+// spent weapon was always last. Shared by the exhausted-primary removal in
+// shoot() and the god-mode expiry in step().
+list<Weapon::Base *>::iterator Ship::fallback_primary(list<Weapon::Base *>::iterator to_remove) {
+  if(has_last_primary) {
+    for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
+      if(it == to_remove) continue;
+      int idx;
+      if(primary_kind_of(*it, &idx) == last_primary_kind &&
+         idx == last_primary_index) {
+        return it;
+      }
+    }
+  }
+  auto next = to_remove;
+  if(next != primary_weapons.begin()) --next;
+  else ++next;  // removing the front: the only direction left
+  return next;
+}
+
 void Ship::next_weapon() {
+  net_next_weapon_count++;
   if(god_mode_time_remaining() > 0) return;
   if(click_sound != NULL) {
     Mix_PlayChannel(-1, click_sound, 0);
@@ -205,6 +293,7 @@ void Ship::next_weapon() {
   if(next == primary_weapons.end())
     next = primary_weapons.begin();
 
+  if(next != primary) record_primary_selection();
   (*next)->shoot((*primary)->is_shooting());
   (*primary)->shoot(false);
 
@@ -224,12 +313,14 @@ void Ship::previous_weapon() {
 
   next--;
 
+  if(next != primary) record_primary_selection();
   (*next)->shoot((*primary)->is_shooting());
   (*primary)->shoot(false);
   primary = next;
 }
 
 void Ship::next_secondary_weapon() {
+  net_next_secondary_count++;
   if(secondary_weapons.empty()) return;
   if(click_sound != NULL) {
     Mix_PlayChannel(-1, click_sound, 0);
@@ -281,6 +372,7 @@ void Ship::add_weapon(int weapon_index) {
     if(w && w->weapon_index() == weapon_index) {
       w->add_ammo(100);
       if(!in_god_mode && !auto_shooting) {
+        if(it != primary) record_primary_selection();
         (*primary)->shoot(false);
         primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
         primary = --primary_weapons.end();
@@ -291,8 +383,10 @@ void Ship::add_weapon(int weapon_index) {
 
   primary_weapons.push_back(new Weapon::Default(this, cfg.automatic, cfg.level, cfg.accuracy, cfg.time_between_shots, weapon_index));
   if(!in_god_mode && !auto_shooting) {
-    if (primary != primary_weapons.end())
+    if (primary != primary_weapons.end()) {
+      record_primary_selection();
       (*primary)->shoot(false);
+    }
     primary = --primary_weapons.end();
   }
 }
@@ -381,6 +475,68 @@ void Ship::add_shield_ammo(int amount) {
   secondary = --secondary_weapons.end();
 }
 
+void Ship::add_beam_ammo(int amount) {
+  // Primary weapon, like a picked-up Default gun: reuse an existing Beam and
+  // switch to it, or create one and select it (unless god mode / an automatic
+  // gun is currently being held, matching add_weapon()).
+  bool in_god_mode = god_mode_time_remaining() > 0;
+  bool auto_shooting = !primary_weapons.empty() && (*primary)->is_automatic() && (*primary)->is_shooting();
+
+  for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
+    if(dynamic_cast<Weapon::Beam*>(*it)) {
+      (*it)->add_ammo(amount);
+      if(!in_god_mode && !auto_shooting) {
+        if(it != primary) record_primary_selection();
+        (*primary)->shoot(false);
+        primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
+        primary = --primary_weapons.end();
+      }
+      return;
+    }
+  }
+
+  Weapon::Beam *w = new Weapon::Beam(this);
+  w->add_ammo(amount);
+  primary_weapons.push_back(w);
+  if(!in_god_mode && !auto_shooting) {
+    if (primary != primary_weapons.end()) {
+      record_primary_selection();
+      (*primary)->shoot(false);
+    }
+    primary = --primary_weapons.end();
+  }
+}
+
+void Ship::add_lance_ammo(int amount) {
+  // Primary weapon; same reuse-or-create-and-select logic as add_beam_ammo().
+  bool in_god_mode = god_mode_time_remaining() > 0;
+  bool auto_shooting = !primary_weapons.empty() && (*primary)->is_automatic() && (*primary)->is_shooting();
+
+  for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ++it) {
+    if(dynamic_cast<Weapon::Lance*>(*it)) {
+      (*it)->add_ammo(amount);
+      if(!in_god_mode && !auto_shooting) {
+        if(it != primary) record_primary_selection();
+        (*primary)->shoot(false);
+        primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
+        primary = --primary_weapons.end();
+      }
+      return;
+    }
+  }
+
+  Weapon::Lance *w = new Weapon::Lance(this);
+  w->add_ammo(amount);
+  primary_weapons.push_back(w);
+  if(!in_god_mode && !auto_shooting) {
+    if (primary != primary_weapons.end()) {
+      record_primary_selection();
+      (*primary)->shoot(false);
+    }
+    primary = --primary_weapons.end();
+  }
+}
+
 // Shock is a primary weapon (lives in primary_weapons, fired via shoot()).
 // Selection mirrors add_weapon(): switch to it on pickup unless in god mode or
 // mid-auto-fire, so it doesn't yank the gun out from under a held trigger.
@@ -392,6 +548,7 @@ void Ship::add_shock(int amount) {
     if(dynamic_cast<Weapon::Shock*>(*it)) {
       (*it)->add_ammo(amount);
       if(!in_god_mode && !auto_shooting) {
+        if(it != primary) record_primary_selection();
         (*primary)->shoot(false);
         primary_weapons.splice(primary_weapons.end(), primary_weapons, it);
         primary = --primary_weapons.end();
@@ -403,15 +560,19 @@ void Ship::add_shock(int amount) {
   w->set_ammo(amount);
   primary_weapons.push_back(w);
   if(!in_god_mode && !auto_shooting) {
-    if(primary != primary_weapons.end())
+    if(primary != primary_weapons.end()) {
+      record_primary_selection();
       (*primary)->shoot(false);
+    }
     primary = --primary_weapons.end();
   }
 }
 
 void Ship::give_all_weapons(int ammo) {
-  // Every primary gun variant, plus the shock primary.
+  // Every primary gun variant, plus the shock/beam/lance primaries.
   for (int i = 0; i < num_weapon_configs; i++) add_weapon(i);
+  add_beam_ammo(ammo);
+  add_lance_ammo(ammo);
   add_shock(ammo);
   // Every secondary. Nova clamps to its own cap inside add_nova_ammo().
   add_mine_ammo(ammo);
@@ -425,6 +586,17 @@ void Ship::give_all_weapons(int ammo) {
     if (!w->is_unlimited()) w->set_ammo(ammo);
   for (auto *w : secondary_weapons)
     if (!dynamic_cast<Weapon::Nova*>(w)) w->set_ammo(ammo);
+  // Each add_* selects the weapon it just stocked, which leaves Nova (added
+  // last) on the trigger; test sessions want the everyday Mine armed.
+  if (!shield_held(secondary_weapons, secondary)) {
+    for (auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
+      if (dynamic_cast<Weapon::Mine*>(*it)) {
+        (*secondary)->shoot(false);
+        secondary = it;
+        break;
+      }
+    }
+  }
 }
 
 void Ship::add_god_mode(int duration_ms) {
@@ -442,8 +614,10 @@ void Ship::add_god_mode(int duration_ms) {
     }
   }
   primary_weapons.push_back(new Weapon::GodMode(this, duration_ms));
-  if (primary != primary_weapons.end())
+  if (primary != primary_weapons.end()) {
+    record_primary_selection();
     (*primary)->shoot(false);
+  }
   primary = --primary_weapons.end();
   update_god_mode_music(duration_ms);
 }
@@ -632,21 +806,11 @@ Save::Player Ship::capture_state() const {
   for (auto it = primary_weapons.cbegin(); it != primary_weapons.cend(); ++it, ++idx) {
     if (it == cprimary) p.selected_primary_idx = idx;
     Save::WeaponEntry we;
+    // One classification ladder for primaries (primary_kind_of) — only the
+    // ammo differs by kind: god mode's "ammo" is its live countdown.
+    we.kind = primary_kind_of(*it, &we.weapon_index);
     Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
-    if (gm) {
-      we.kind         = Save::WeaponEntry::Kind::GodMode;
-      we.weapon_index = -1;
-      we.ammo         = gm->time_remaining();
-    } else if (dynamic_cast<Weapon::Shock*>(*it)) {
-      we.kind         = Save::WeaponEntry::Kind::Shock;
-      we.weapon_index = -1;
-      we.ammo         = (*it)->ammo();
-    } else {
-      Weapon::Default *dw = dynamic_cast<Weapon::Default*>(*it);
-      we.kind         = Save::WeaponEntry::Kind::Default;
-      we.weapon_index = dw ? dw->weapon_index() : -1;
-      we.ammo         = (*it)->ammo();
-    }
+    we.ammo = gm ? gm->time_remaining() : (*it)->ammo();
     p.primary_weapons.push_back(we);
   }
 
@@ -671,6 +835,40 @@ Save::Player Ship::capture_state() const {
   return p;
 }
 
+// Classify a live secondary weapon into its Save kind (mirrors the
+// capture_state dispatch), for the roster-match fast path.
+static Save::WeaponEntry::Kind secondary_kind(Weapon::Base *w) {
+  if      (dynamic_cast<Weapon::Mine*>(w))     return Save::WeaponEntry::Kind::Mine;
+  else if (dynamic_cast<Weapon::GigaMine*>(w)) return Save::WeaponEntry::Kind::GigaMine;
+  else if (dynamic_cast<Weapon::Missile*>(w))  return Save::WeaponEntry::Kind::Missile;
+  else if (dynamic_cast<Weapon::Shield*>(w))   return Save::WeaponEntry::Kind::Shield;
+  else if (dynamic_cast<Weapon::Nova*>(w))     return Save::WeaponEntry::Kind::Nova;
+  return Save::WeaponEntry::Kind::Mine;  // capture_state's fallback
+}
+
+// True when the live weapon roster matches the snapshot's (so restore only
+// needs ammo/selection, not a rebuild). Conservative: any GodMode weapon
+// (its ammo is a live countdown with music/warning state) forces the slow
+// path, as does any count or kind/index divergence.
+bool Ship::net_weapons_roster_matches(const Save::Player &p) const {
+  if (primary_weapons.size() != p.primary_weapons.size()) return false;
+  if (secondary_weapons.size() != p.secondary_weapons.size()) return false;
+  auto pit = primary_weapons.begin();
+  for (const auto &we : p.primary_weapons) {
+    if (we.kind == Save::WeaponEntry::Kind::GodMode) return false;
+    Weapon::Default *dw = dynamic_cast<Weapon::Default*>(*pit);
+    if (!dw) return false;  // a live GodMode (or other) where a Default is expected
+    if (dw->weapon_index() != we.weapon_index) return false;
+    ++pit;
+  }
+  auto sit = secondary_weapons.begin();
+  for (const auto &we : p.secondary_weapons) {
+    if (secondary_kind(*sit) != we.kind) return false;
+    ++sit;
+  }
+  return true;
+}
+
 void Ship::restore_state(const Save::Player &p, const Grid &grid) {
   score           = p.score;
   lives           = p.lives;
@@ -686,6 +884,38 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
   position        = WrappedPoint(p.pos_x, p.pos_y);
   first_life      = true;  // tells respawn() to try the saved position first
 
+  // Fast path (netplay applies this 10x/s): when the weapon ROSTER is
+  // unchanged — same counts, same primary weapon_indices, same secondary
+  // kinds, and no timed GodMode weapon (its state is fiddly) — the incoming
+  // snapshot differs only in ammo and selection. Update those in place
+  // instead of deleting and re-newing the whole arsenal. A roster change
+  // (weapon picked up, ammo hit zero and removed) falls through to the
+  // rebuild below.
+  if (net_weapons_roster_matches(p)) {
+    auto pit = primary_weapons.begin();
+    for (const auto &we : p.primary_weapons) { (*pit)->set_ammo(we.ammo); ++pit; }
+    auto sit = secondary_weapons.begin();
+    for (const auto &we : p.secondary_weapons) { (*sit)->set_ammo(we.ammo); ++sit; }
+
+    primary = primary_weapons.begin();
+    if (!primary_weapons.empty())
+      std::advance(primary, std::min(p.selected_primary_idx,
+                                     (int)primary_weapons.size() - 1));
+    if (p.selected_secondary_idx >= 0 && !secondary_weapons.empty()) {
+      secondary = secondary_weapons.begin();
+      std::advance(secondary, std::min(p.selected_secondary_idx,
+                                       (int)secondary_weapons.size() - 1));
+    } else {
+      secondary = secondary_weapons.end();
+    }
+
+    if (!p.respawning) alive = true;
+    respawn(grid, p.respawning);
+    facing   = Point(p.facing_x, p.facing_y);
+    velocity = Point(p.vel_x, p.vel_y);
+    return;
+  }
+
   disable_weapons();
   primary   = primary_weapons.end();
   secondary = secondary_weapons.end();
@@ -693,6 +923,16 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
   for (const auto &we : p.primary_weapons) {
     if (we.kind == Save::WeaponEntry::Kind::GodMode) {
       add_god_mode(we.ammo);
+    } else if (we.kind == Save::WeaponEntry::Kind::Beam) {
+      Weapon::Beam *w = new Weapon::Beam(this);
+      w->set_ammo(we.ammo);
+      primary_weapons.push_back(w);
+      primary = --primary_weapons.end();
+    } else if (we.kind == Save::WeaponEntry::Kind::Lance) {
+      Weapon::Lance *w = new Weapon::Lance(this);
+      w->set_ammo(we.ammo);
+      primary_weapons.push_back(w);
+      primary = --primary_weapons.end();
     } else if (we.kind == Save::WeaponEntry::Kind::Shock) {
       // Construct directly (like the Default branch) to preserve list order;
       // selected_primary_idx is re-clamped after the loop.
@@ -838,6 +1078,7 @@ float Ship::temperature_ratio() {
 
 void Ship::respawn(const Grid &grid, bool was_killed) {
   if(alive || lives > 0) {
+    net_warp_count++;  // discontinuous move — netplay clients must not blend
     bool try_current_position = first_life;
     if(first_life) {
       first_life = false;
@@ -853,7 +1094,9 @@ void Ship::respawn(const Grid &grid, bool was_killed) {
     reset(was_killed);
     safe_position(grid, try_current_position);
     invincible = true;
-    if(god_mode_time_remaining() <= 0) set_shield_hum(true);
+    // Net client: snapshot restores run through here 10x/s — the hum is
+    // driven exclusively by the snapshot extras there (see net_quiet_respawn).
+    if(god_mode_time_remaining() <= 0 && !net_quiet_respawn) set_shield_hum(true);
     detonate();
   }
 }
@@ -880,13 +1123,35 @@ void Ship::reset(bool was_killed) {
   thrusting = false;
   reversing = false;
   shoot(false);
-  mines.clear();
-  giga_mines.clear();
-  bullets.clear();
-  missiles.clear();
-  shockwaves.clear();
-  shocks.clear();
-  debris.clear();
+  net_queued_shot_presses = 0;  // don't fire stale presses across a respawn
+  // On a net client reset() runs inside EVERY 10 Hz snapshot restore
+  // (restore_state → respawn) — the same story as debris/lance_pulses
+  // below. Clearing the projectile lists here emptied them moments before
+  // nx_read_projectiles swapped them out as the "old" lists for its
+  // vanish detection, so a mine or missile the host detonated was never
+  // seen disappearing — the client showed NO mine/missile explosions at
+  // all (and the nova-arrival boom re-counted from zero every apply).
+  // The snapshot extras own these lists on a client (wholesale-rebuilt
+  // per apply); the clears are for real offline/host respawns.
+  if (!net_quiet_respawn) {
+    mines.clear();
+    giga_mines.clear();
+    bullets.clear();
+    missiles.clear();
+    shockwaves.clear();
+    shocks.clear();
+  }
+  // Lance pulses are presentation like debris (below): a net client's
+  // restore_state must not cut the 250 ms flash short.
+  if (!net_quiet_respawn) lance_pulses.clear();
+  lance_pulse_pending = false;
+  // Debris is pure presentation and is never serialized. On a net client
+  // reset() runs inside EVERY 10 Hz snapshot restore (restore_state →
+  // respawn), so clearing it there cut every impact spray to <100 ms —
+  // debris froze at the impact site and vanished. The projectile vectors
+  // above are refilled by the snapshot extras right after; debris has no
+  // such source, so the client keeps it for its natural lifetime.
+  if (!net_quiet_respawn) debris.clear();
   rotation_direction = NONE;
   still_rotating_left = false;
   still_rotating_right = false;
@@ -895,6 +1160,8 @@ void Ship::reset(bool was_killed) {
     kills_this_life = 0;
     nova_charge = 0;
     nova_kill_counter = 0;
+
+    has_last_primary = false;  // the weapons this history names die below
 
     // Remove all upgraded primary weapons, keeping only the base PEW PEW at the front
     auto it = primary_weapons.begin();
@@ -930,17 +1197,25 @@ bool Ship::kill() {
     set_shield_hum(false);
     stop_god_mode_music();
     if(explode_sound != NULL && sound_volume_scale > 0.0f) {
+      // Every play site sets the chunk volume first: online, the net
+      // event handler reuses this per-instance chunk at other volumes.
+      Mix_VolumeChunk(explode_sound,
+                      (int)(MIX_MAX_VOLUME *
+                            (sound_volume_scale > 1.0f ? 1.0f : sound_volume_scale)));
       Mix_PlayChannel(-1, explode_sound, 0);
     }
+    net_booms.push_back(this);  // net host relays world actors' deaths
     return true;
   }
   return false;
 }
 
-void Ship::kill_stop() {
+bool Ship::kill_stop() {
   if(kill()) {
     velocity.zero();
+    return true;
   }
+  return false;
 }
 
 bool Ship::is_removable() const {
@@ -984,6 +1259,7 @@ void Ship::reverse(bool on) {
 }
 
 void Ship::boost() {
+  net_boost_count++;
   boosting = true;
 }
 
@@ -1006,11 +1282,17 @@ void Ship::collide(Ship* first, Ship* second) {
       first->detonate();
       if(second->is_local_player && !first->is_local_player && second->shield_active())
         Achievements::unlock("shield_ram");
+      else if(net_report_bounces && second->player_ship && !second->is_local_player &&
+              !first->is_local_player && second->shield_active())
+        net_ach_relays.push_back({second, 1});  // Net::ACH_SHIELD_RAM
     } else if(!second->invincible) {
       second->kill_stop();
       second->detonate();
       if(first->is_local_player && !second->is_local_player && first->shield_active())
         Achievements::unlock("shield_ram");
+      else if(net_report_bounces && first->player_ship && !first->is_local_player &&
+              !second->is_local_player && first->shield_active())
+        net_ach_relays.push_back({first, 1});  // Net::ACH_SHIELD_RAM
     }
   }
 }
@@ -1051,6 +1333,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
         if(armour_blocked) {
           // Armoured face: ship is destroyed but asteroid is unharmed.
           explode(position, object->velocity);
+          net_ship_impacts.push_back({this, true});
           if(Asteroid::ting_sound != NULL) {
             static Uint32 last_armour_ting = UINT32_MAX;
             Uint32 now = SDL_GetTicks();
@@ -1061,10 +1344,30 @@ void Ship::collide_grid(Grid &grid, int delta) {
           }
         } else if(object->kill()) {
           detonate();
+          // Shielded ram survived: the burst above went into OUR bullets
+          // host-side, but a net client skips its own-ship bullet echo
+          // (locally simulated, PROTO 14) — relay so the rammer sees it.
+          // Fatal rams need no relay: the extras' death detonate covers
+          // them client-side.
+          if(net_report_bounces && player_ship && !is_local_player && invincible)
+            net_ram_blasts.push_back(this);
           if(is_local_player && shield_active())
             Achievements::unlock("shield_ram_asteroid");
+          else if(net_report_bounces && player_ship && shield_active())
+            net_ach_relays.push_back({this, 2});  // Net::ACH_SHIELD_RAM_ASTEROID
         } else {
           explode(position, object->velocity);
+          {
+            // Non-fatal bounce (shielded/invincible contact): queue the
+            // impact for the net client, rate-limited — contact persists
+            // across many 8 ms steps and would flood the channel.
+            static Uint32 last_net_ship_impact = UINT32_MAX;
+            Uint32 now_imp = SDL_GetTicks();
+            if(now_imp - last_net_ship_impact >= 125) {
+              last_net_ship_impact = now_imp;
+              net_ship_impacts.push_back({this, false});
+            }
+          }
           // The hit object was invincible. If the ship is also invincible
           // (shielded), neither side died — but we still need to check whether
           // the ship is simultaneously touching a killable asteroid, because
@@ -1073,8 +1376,13 @@ void Ship::collide_grid(Grid &grid, int delta) {
             Object *killable = grid.collide(*this, 0.0f, true);
             if(killable != NULL && killable->kill()) {
               detonate();
+              // Same own-ship-echo gap as the primary ram-kill above.
+              if(net_report_bounces && player_ship && !is_local_player)
+                net_ram_blasts.push_back(this);
               if(is_local_player && shield_active())
                 Achievements::unlock("shield_ram_asteroid");
+              else if(net_report_bounces && player_ship && shield_active())
+                net_ach_relays.push_back({this, 2});  // Net::ACH_SHIELD_RAM_ASTEROID
             }
           }
         }
@@ -1086,7 +1394,12 @@ void Ship::collide_grid(Grid &grid, int delta) {
   for(size_t i = 0; i < mines.size(); ) {
     object = grid.collide(mines[i], 50.0f);
     if(object != NULL && object->alive) {
-      detonate(mines[i].position, mines[i].velocity, 50);
+      NET_LOG("net: mine detonated at (%.0f, %.0f)\n",
+              mines[i].position.x(), mines[i].position.y());
+      // MINE_SHRAPNEL (20) -> 10-29 shrapnel bullets. Was 50 (25-74), which
+      // flooded the world with bullets when several mines detonated together
+      // and tanked the frame rate.
+      detonate(mines[i].position, mines[i].velocity, MINE_SHRAPNEL);
       if(mine_explode_sound != NULL) Mix_PlayChannel(-1, mine_explode_sound, 0);
       mines[i] = std::move(mines.back());
       mines.pop_back();
@@ -1134,20 +1447,21 @@ void Ship::collide_grid(Grid &grid, int delta) {
 
   // Shock bolts: damage the asteroids their arcs reached this frame. Non-asteroid
   // targets (enemies, stations, hazards) are left in `struck` for GLGame to
-  // handle, which owns those lists and their damage APIs.
+  // handle, which owns those lists and their damage APIs. This runs on the host /
+  // single player only — the net client never calls collide_grid, so it drains
+  // its shock struck lists (asteroid claims included) in GLGame::tick_net_client.
   //
-  // The arc only chains onward from a *killing* hit: if the asteroid is
-  // invincible, or survives the hit (tough with health left, phasing while a
-  // ghost, teleporting mid-evade), the bolt stops where it is instead of arcing
-  // past to the next target.
+  // The arc only chains onward from a *killing* hit: if the asteroid survives
+  // the hit (tough with health left, phasing while a ghost, teleporting
+  // mid-evade), the bolt stops where it is instead of arcing past to the next
+  // target. Invincible asteroids never appear here: they are not sought and
+  // grow_segment stops the bolt at their surface without a struck entry.
   for(auto &bolt : shocks) {
     for(size_t i = 0; i < bolt.struck.size(); ) {
       Object *obj = bolt.struck[i];
       if(dynamic_cast<Asteroid*>(obj)) {
         if(obj->alive) {
-          if(obj->invincible) {
-            bolt.stop();  // absorbed by an invincible asteroid
-          } else if(obj->kill()) {
+          if(obj->kill()) {
             score += obj->get_value() * multiplier();
             credit_asteroid_kill(obj);  // destroyed — arc chains onward
           } else {
@@ -1183,7 +1497,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
         score += object->get_value() * multiplier();
         credit_asteroid_kill(object);
       }
-      detonate(missiles[i].position, missiles[i].velocity, 25);
+      detonate(missiles[i].position, missiles[i].velocity, MISSILE_SHRAPNEL);
       if(missile_explode_sound != NULL) {
         Mix_PlayChannel(-1, missile_explode_sound, 0);
       }
@@ -1275,6 +1589,11 @@ void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
                                            entry.y() + normal.y() * push);
         object->kill(); // plays thud sound
         bullets[i].world_bullet = true;
+        if (net_report_bounces && bullets[i].net_id != 0)
+          net_bounce_reports.push_back({bullets[i].net_id,
+              bullets[i].position.x(), bullets[i].position.y(),
+              bullets[i].velocity.x(), bullets[i].velocity.y(),
+              bullets[i].net_flags()});
         ++i;
       } else if (ast && ast->armoured && !bullets[i].kills_invincible) {
         // Armoured asteroid: back-trace to the actual surface entry point, then
@@ -1316,6 +1635,11 @@ void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
             }
           }
           bullets[i].world_bullet = true;
+          if (net_report_bounces && bullets[i].net_id != 0)
+            net_bounce_reports.push_back({bullets[i].net_id,
+                bullets[i].position.x(), bullets[i].position.y(),
+                bullets[i].velocity.x(), bullets[i].velocity.y(),
+                bullets[i].net_flags()});
           ++i;
         } else {
           // Hit the unarmoured face — kill normally
@@ -1334,15 +1658,24 @@ void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
           if(ast && ast->teleporting) ast->teleport_vulnerable = true;
           if(ast && ast->tough) ast->health = 1;
         }
-        if(object->kill()) {
+        bool destroyed = object->kill();
+        if(destroyed) {
           object->invincible = was_invincible;
           if(was_invincible) Asteroid::num_killable++;
           score += object->get_value() * multiplier() * (was_invincible ? 5 : 1);
           credit_asteroid_kill(object);
         }
         explode(bullets[i].position, object->velocity);
-        bullets[i] = std::move(bullets.back());
-        bullets.pop_back();
+        if(bullets[i].piercing && destroyed) {
+          // Beam bolt ploughs on only through asteroids it actually destroys:
+          // the swept collision next frame resumes from this hit point and
+          // catches the next one without tunnelling. If the asteroid survived
+          // the hit (invincible, or tough not yet broken) the bolt stops here.
+          ++i;
+        } else {
+          bullets[i] = std::move(bullets.back());
+          bullets.pop_back();
+        }
       }
     } else {
       ++i;
@@ -1350,11 +1683,171 @@ void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
   }
 }
 
+void Ship::fire_lance_pulse(const Grid &grid) {
+  // Instantaneous full-length pulse: ray-march up to Weapon::Lance::RANGE of
+  // total path. Killable asteroids along the line die and the pulse continues
+  // through them — including TOUGH asteroids, which the lance kills outright;
+  // surfaces that reflect bullets (reflective asteroids, armoured faces,
+  // phased ghosts) mirror-reflect it with its remaining distance; anything it
+  // cannot destroy (plain invincible, a teleport evade) blocks it.
+  float fm = facing.magnitude();
+  if(fm <= 0.0f) return;
+  Point dir = facing * (1.0f / fm);
+  WrappedPoint pos = gun();
+  float remaining = Weapon::Lance::RANGE;
+
+  LancePulse pulse;
+  pulse.ttl = pulse.time_left = 250.0f;
+  pulse.points.push_back(Point(pos.x(), pos.y()));
+
+  // PROTO 18 (net client): asteroids this pulse already claimed — they stay
+  // alive until the claim drain kills them later this tick, so the march
+  // must not re-strike them (offline/host kills leave them !is_alive()).
+  vector<Asteroid *> claimed;
+
+  vector<Object *> candidates;
+  const int max_hits = 16;  // safety cap on kills+reflections per pulse
+  for(int hit_count = 0; hit_count < max_hits && remaining > 1.0f; hit_count++) {
+    Point seg_a(pos.x(), pos.y());
+    Point seg_b(seg_a.x() + dir.x() * remaining, seg_a.y() + dir.y() * remaining);
+    candidates.clear();
+    grid.query_segment(seg_a, seg_b, candidates);
+
+    // Nearest asteroid the segment crosses (same wrapped-world translation as
+    // the swept bullet collision above).
+    Asteroid *ast_hit = NULL;
+    float best_t = 2.0f;
+    Point best_entry;  // hit point in the asteroid's own world-copy
+    for(Object *cand : candidates) {
+      Asteroid *ast = dynamic_cast<Asteroid *>(cand);
+      if(!ast || !ast->is_alive()) continue;
+      if(std::find(claimed.begin(), claimed.end(), ast) != claimed.end()) continue;
+      Point ast_near = ast->position.closest_to(seg_a);
+      float ox = ast_near.x() - ast->position.x();
+      float oy = ast_near.y() - ast->position.y();
+      Point local_a(seg_a.x() - ox, seg_a.y() - oy);
+      Point local_b(seg_b.x() - ox, seg_b.y() - oy);
+      float t;
+      // Ignore sub-unit hits so a fresh reflection can't re-strike the edge
+      // it just left.
+      if(ast->segment_hit(local_a, local_b, t) && t < best_t && t * remaining > 1.0f) {
+        best_t = t;
+        ast_hit = ast;
+        best_entry = Point(local_a.x() + (local_b.x() - local_a.x()) * t,
+                           local_a.y() + (local_b.y() - local_a.y()) * t);
+      }
+    }
+
+    if(ast_hit == NULL) {
+      // Clear line: the pulse runs out at full remaining length.
+      pulse.points.push_back(seg_b);
+      remaining = 0.0f;
+      break;
+    }
+
+    float travelled = best_t * remaining;
+    Point hit_world(seg_a.x() + dir.x() * travelled, seg_a.y() + dir.y() * travelled);
+    pulse.points.push_back(hit_world);
+    remaining -= travelled;
+
+    bool reflect = false;
+    if(ast_hit->reflective || (ast_hit->phasing && ast_hit->phased)) {
+      reflect = true;
+      ast_hit->kill();  // never destroys these; plays the ting/thud feedback
+    } else if(ast_hit->armoured) {
+      // Same shielded-arc test as the bullet handler: surface-point direction
+      // from centre vs armour_angle (±120°).
+      float ix = best_entry.x() - ast_hit->position.x();
+      float iy = best_entry.y() - ast_hit->position.y();
+      float im = sqrtf(ix * ix + iy * iy);
+      float shield_dot = (im > 1e-6f)
+        ? (ix * cosf(ast_hit->armour_angle) + iy * sinf(ast_hit->armour_angle)) / im
+        : -1.0f;
+      if(shield_dot > -0.5f) {
+        reflect = true;
+        if(Asteroid::ting_sound != NULL && sound_volume_scale > 0.0f) {
+          Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
+        }
+      }
+    }
+
+    if(reflect) {
+      Point normal = ast_hit->surface_normal(best_entry, dir);
+      float dot = normal.x() * dir.x() + normal.y() * dir.y();
+      dir = dir - normal * (2.0f * dot);
+      float dm = dir.magnitude();
+      if(dm <= 0.0f) break;
+      dir = dir * (1.0f / dm);
+      // Step off the surface so the next segment starts clear of this edge.
+      pos = WrappedPoint(hit_world.x() + normal.x() * 2.0f,
+                         hit_world.y() + normal.y() * 2.0f);
+      continue;
+    }
+
+    explode(Point(hit_world.x(), hit_world.y()), ast_hit->velocity);
+
+    // PROTO 18 (net client, net_claim_kills): predict the outcome without
+    // killing locally and queue an MSG_HIT claim (bullet_id 0 — no clone
+    // to consume). The claim drain later this tick does the local kill
+    // with proper removal bookkeeping, exactly like bullet claims; the
+    // host honors the claim with the same tough/teleport forcing.
+    if(net_claim_kills) {
+      if(ast_hit->invincible ||
+         (ast_hit->teleporting && !ast_hit->teleport_vulnerable)) {
+        // Blocked (a teleport evade is the host's call — don't claim it).
+        remaining = 0.0f;
+        break;
+      }
+      NetKillClaim c;
+      c.ast_id = ast_hit->net_id;
+      c.bullet_id = 0;  // lance sentinel: honor without a clone consume
+      net_kill_claims.push_back(c);
+      claimed.push_back(ast_hit);
+      // Claimed-dead: carry straight on through it (score/kills are
+      // host-owned and arrive via the snapshot HUD scalars).
+      pos = WrappedPoint(hit_world.x(), hit_world.y());
+      continue;
+    }
+
+    // The lance kills tough asteroids outright (Glenn's ruling) — force the
+    // health through like the host's claim handler does, then kill.
+    if(ast_hit->tough) ast_hit->health = 1;
+    if(ast_hit->kill()) {
+      score += ast_hit->get_value() * multiplier();
+      kills_this_life += 1;
+      kills += 1;
+      tally_nova_kill(ast_hit->position);
+      // Destroyed: carry straight on through it.
+      pos = WrappedPoint(hit_world.x(), hit_world.y());
+      continue;
+    }
+
+    // Survived the hit (invincible or a teleport evade): the pulse is
+    // blocked here.
+    remaining = 0.0f;
+    break;
+  }
+
+  // Report the traced polyline to the peer for its flash + sound
+  // (net_report_shots covers exactly the two reporters: the client's own
+  // ship and, since PROTO 17, the host's player ship).
+  if(net_report_shots) net_lance_reports.push_back(pulse.points);
+
+  // Park the polyline for GLGame's ship/station hit resolution: the
+  // authoritative pass offline/host-side, or the client's enemy-replica
+  // pass (instant kill + bullet_id-0 claim, PROTO 20 — station/mini hull
+  // hits stay the host's, resolved from the MSG_LANCE polyline).
+  lance_hit_pending = pulse.points;
+
+  lance_pulses.push_back(std::move(pulse));
+}
+
 void Ship::collide(Ship *other) {
   for(size_t i = 0; i < bullets.size(); ) {
     if(other->is_alive() && bullets[i].collide(*other)) {
-      other->kill_stop();
-      credit_ship_kill(other);
+      // No kill, no credit: shots absorbed by a shield/invincibility (e.g.
+      // a disconnected player's parked ship) must not award anything.
+      if(other->kill_stop()) credit_ship_kill(other);
       bullets[i] = std::move(bullets.back());
       bullets.pop_back();
     } else {
@@ -1364,7 +1857,9 @@ void Ship::collide(Ship *other) {
 
   for(size_t i = 0; i < mines.size(); ) {
     if(is_alive() && other->is_alive() && mines[i].collide(*other, 50.0)) {
-      detonate(mines[i].position, mines[i].velocity);
+      // Same blast as the grid (asteroid) path above — this ship-contact
+      // path was silently using detonate()'s default 10.
+      detonate(mines[i].position, mines[i].velocity, MINE_SHRAPNEL);
       if(mine_explode_sound != NULL) Mix_PlayChannel(-1, mine_explode_sound, 0);
       mines[i] = std::move(mines.back());
       mines.pop_back();
@@ -1394,9 +1889,9 @@ void Ship::collide(Ship *other) {
 
   for(size_t i = 0; i < missiles.size(); ) {
     if(is_alive() && other->is_alive() && missiles[i].collide(*other, 5.0)) {
-      other->kill_stop();
-      credit_ship_kill(other);
-      detonate(missiles[i].position, missiles[i].velocity, 25);
+      // No credit for a shielded/invincible target.
+      if(other->kill_stop()) credit_ship_kill(other);
+      detonate(missiles[i].position, missiles[i].velocity, MISSILE_SHRAPNEL);
       if(missile_explode_sound != NULL) {
         Mix_PlayChannel(-1, missile_explode_sound, 0);
       }
@@ -1432,18 +1927,33 @@ void Ship::giga_detonate(Point const position) {
 }
 
 void Ship::shoot(bool on) {
-  if(!primary_weapons.empty()) {
-    if((*primary)->empty() && on) {
-      previous_weapon();
-    } else {
-      if(on) {
-        Save::WeaponEntry::Kind kind = Save::WeaponEntry::Kind::Default;
-        if      (dynamic_cast<Weapon::GodMode*>(*primary)) kind = Save::WeaponEntry::Kind::GodMode;
-        else if (dynamic_cast<Weapon::Shock*>(*primary))   kind = Save::WeaponEntry::Kind::Shock;
-        record_weapon_fired(kind);
-      }
-      (*primary)->shoot(on);
+  if(primary_weapons.empty()) return;
+  if((*primary)->empty() && on) {
+    // Firing an empty limited primary (beam/lance/shock) drops it from the
+    // list, exactly like fire_secondary() below — it used to just switch
+    // away and leave the spent weapon cluttering the cycle. The default
+    // gun is unlimited, so the list never empties for real.
+    auto to_remove = primary;
+    auto next = fallback_primary(to_remove);
+    delete *to_remove;
+    primary_weapons.erase(to_remove);
+    primary = primary_weapons.empty() ? primary_weapons.end() : next;
+  } else {
+    if(on) {
+      // weapons_7 tracking: name the branch's extra primaries too, not
+      // just master's GodMode/Default pair.
+      Save::WeaponEntry::Kind kind = Save::WeaponEntry::Kind::Default;
+      if(dynamic_cast<Weapon::GodMode*>(*primary))
+        kind = Save::WeaponEntry::Kind::GodMode;
+      else if(dynamic_cast<Weapon::Beam*>(*primary))
+        kind = Save::WeaponEntry::Kind::Beam;
+      else if(dynamic_cast<Weapon::Lance*>(*primary))
+        kind = Save::WeaponEntry::Kind::Lance;
+      else if(dynamic_cast<Weapon::Shock*>(*primary))
+        kind = Save::WeaponEntry::Kind::Shock;
+      record_weapon_fired(kind);
     }
+    (*primary)->shoot(on);
   }
 }
 
@@ -1471,9 +1981,251 @@ void Ship::fire_secondary(bool on) {
   }
 }
 
+// Net client: cosmetic bullet-vs-asteroid impacts, detected locally
+// against the replicated state. The client never runs
+// collide_bullets_with_asteroids (the host owns the world), so bullets
+// flying into asteroids that survive a plain bullet showed neither
+// debris nor a thud/ting — and shipping every impact as a host event
+// costs bandwidth for a purely visual cue. Only un-killable cases spark
+// here: a killable asteroid's death explosion arrives via the snapshot,
+// and doubling it would flash twice. The host's copy of this bullet is
+// reflected or consumed authoritatively; this copy just gets one spray
+// (net_sparked) until the next snapshot correction replaces it.
+void Ship::net_cosmetic_impacts(const Grid &grid, bool claim_kills) {
+  for (auto &b : bullets) {
+    if (b.net_sparked || b.kills_invincible) continue;
+    Object *o = grid.collide(b);
+    if (o == NULL) continue;
+    Asteroid *ast = dynamic_cast<Asteroid *>(o);
+    if (ast == NULL) continue;
+    bool ting;
+    bool consume = false;  // absorbed/killing hits stop the bullet HERE
+    bool deflect = false;  // mirror/armour bounce, approximated locally
+    if (ast->reflective || (ast->phasing && ast->phased)) {
+      ting = true;  // bullet bounces off / passes through
+      deflect = ast->reflective;  // phased rocks genuinely pass bullets
+    } else if (ast->armoured) {
+      // Shielded arc only (same ±120° test as the host's collide code,
+      // sans the entry back-trace — cosmetic precision is enough): an
+      // unshielded hit kills, and that explosion is replicated.
+      float ix = b.position.x() - ast->position.x();
+      float iy = b.position.y() - ast->position.y();
+      float im = sqrtf(ix * ix + iy * iy);
+      float shield_dot =
+          (im > 1e-6f)
+              ? (ix * cosf(ast->armour_angle) + iy * sinf(ast->armour_angle)) / im
+              : -1.0f;
+      if (shield_dot <= -0.5f) continue;
+      ting = true;
+      deflect = true;
+    } else if (ast->invincible || (ast->tough && ast->health > 1) ||
+               (ast->teleporting && !ast->teleport_vulnerable)) {
+      ting = false;   // thud: absorbed (or the asteroid teleports away)
+      consume = true; // the host consumes its copy — ours must stop too
+    } else {
+      // Plain killable asteroid: the KILL is the host's call (it lands
+      // via the removal record ~RTT later), but the BULLET must not fly
+      // on through the rock while we wait — on a relay that read as
+      // shots phasing through asteroids that died a beat later. Consume
+      // it at the contact point with a hit spray now; the death
+      // explosion and sound still replicate. If the host's copy of this
+      // shot somehow misses, we spent a spark on a miss — cosmetic.
+      // PROTO 18: a piercing beam bolt claims the kill and PLOUGHS ON
+      // (mirroring the sim's plough-through-kills rule) — the claim
+      // drain kills the asteroid this same tick, so the next step's
+      // grid no longer holds it; duplicate claims before then dedupe
+      // against the prediction map at the drain.
+      explode(b.position, o->velocity);
+      if (claim_kills) {
+        NetKillClaim c;
+        c.ast_id = ast->net_id;
+        c.bullet_id = b.piercing ? 0 : b.net_id;  // 0: don't consume the clone
+        net_kill_claims.push_back(c);
+      }
+      if (!b.piercing) {
+        b.net_sparked = true;
+        b.time_left = 0.0f;
+      }
+      NET_LOG("net: cosmetic impact %s id=%u\n",
+              b.piercing ? "pierce" : "consume", ast->net_id);
+      continue;
+    }
+    b.net_sparked = true;
+    if (consume) b.time_left = 0.0f;
+    if (deflect) {
+      // Local bullets are client-owned (no host echo replaces them any
+      // more), so approximate the host's mirror/armour bounce here or
+      // the shot sails straight through the rock. The host's copy does
+      // the REAL bounce (which can hit things); this one is presentation
+      // — net_sparked above keeps it claim-inert from here on.
+      float nx = b.position.x() - ast->position.x();
+      float ny = b.position.y() - ast->position.y();
+      float nm = sqrtf(nx * nx + ny * ny);
+      if (nm > 1e-6f) {
+        nx /= nm; ny /= nm;
+        float d = b.velocity.x() * nx + b.velocity.y() * ny;
+        b.velocity = Point(b.velocity.x() - 2.0f * d * nx,
+                           b.velocity.y() - 2.0f * d * ny);
+      }
+      // Match the host's recolour: a ricocheted shot turns white
+      // (world_bullet) so both screens read the bounce the same way.
+      b.world_bullet = true;
+    }
+    // Deflections spray no debris — the host's sim bounce doesn't either
+    // (the bullet survives; debris reads as it breaking up).
+    if (!deflect) explode(b.position, o->velocity);
+    Mix_Chunk *snd = ting ? Asteroid::ting_sound : Asteroid::thud_sound;
+    if (snd != NULL) {
+      // Same 125 ms cue rate limit the host-side impact sites use.
+      static Uint32 last_cosmetic_cue = UINT32_MAX;
+      Uint32 now = SDL_GetTicks();
+      if (now - last_cosmetic_cue >= 125) {
+        last_cosmetic_cue = now;
+        Mix_PlayChannel(-1, snd, 0);
+      }
+    }
+    NET_LOG("net: cosmetic impact %s\n", ting ? "ting" : "thud");
+  }
+}
+
+void Ship::net_cosmetic_ship_impacts(
+    const std::vector<NetShipTarget> &targets) {
+  if (targets.empty()) return;
+  for (auto &b : bullets) {
+    if (b.net_sparked || b.kills_invincible) continue;
+    for (size_t t = 0; t < targets.size(); t++) {
+      Object *o = targets[t].obj;
+      if (!b.collide(*o)) continue;
+      // Visible contact: stop the bullet here with the impact effects.
+      b.net_sparked = true;
+      b.time_left = 0.0f;
+      explode(b.position, o->velocity);
+      if (targets[t].kind == 0) {
+        // PROTO 16: enemies die HERE, instantly — the claim is exact
+        // (per-enemy id) and always honored, the suppression map keeps
+        // restores from resurrecting the replica, and the host skips
+        // the EV_WORLD_BOOM relay for claimed kills so this local boom
+        // is the only cue we hear.
+        Ship *e = static_cast<Ship *>(o);
+        if (e->kill_stop()) {
+          e->detonate();
+          // Our kill: enemies_10/score progress on THIS machine (the host
+          // credits its replica's counters; snapshots reconcile ours).
+          credit_ship_kill(e);
+        }
+        // kill() stays silent (replicas keep sound_volume_scale 0 on the
+        // client) — play the dying ship's per-instance chunk ourselves,
+        // full volume: the kill is at our own crosshair.
+        if (e->explode_sound != NULL) {
+          Mix_VolumeChunk(e->explode_sound, MIX_MAX_VOLUME);
+          Mix_PlayChannel(-1, e->explode_sound, 0);
+        }
+      } else if (Asteroid::thud_sound != NULL) {
+        // Station hulls absorb the shot with a thud.
+        static Uint32 last_ship_thud = UINT32_MAX;
+        Uint32 now = SDL_GetTicks();
+        if (now - last_ship_thud >= 125) {
+          last_ship_thud = now;
+          Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+        }
+      }
+      NetShipHit c;
+      c.kind = targets[t].kind;
+      c.bullet_id = b.net_id;
+      c.target_id = targets[t].id;
+      c.x = b.position.x();
+      c.y = b.position.y();
+      net_ship_hit_claims.push_back(c);
+      NET_LOG("net: ship impact consume kind=%u bullet=%u target=%u\n",
+              (unsigned)c.kind, c.bullet_id, c.target_id);
+      break;
+    }
+  }
+}
+
+void Ship::net_blast(const Point &pos, const Point &vel, int count) {
+  NET_LOG("net: blast at (%.0f, %.0f) count=%d %s\n", pos.x(), pos.y(), count,
+          net_claim_kills ? "own->bullets" : "peer->debris");
+  if(net_claim_kills) {
+    // Our OWN deployable (the client's local ship): blast into bullets
+    // exactly like the real detonate() — the particles kill asteroids
+    // locally and claim them (bullet_id 0, the no-clone sentinel), so the
+    // kills feel instant. Own bullets are client-owned and survive the
+    // applies.
+    detonate(pos, vel, count);
+    return;
+  }
+  // The peer's: cosmetic only — the host's authoritative blast does the
+  // killing, and a remote ship's bullets are wholesale-rebuilt from the
+  // record on every 10 Hz apply, which wiped a bullets-list blast within
+  // ~100 ms of it appearing ("mine explosions aren't displayed on net
+  // clients"). Same particle recipe as detonate(count), but into debris,
+  // which the applies leave alone; the streak flag makes them draw
+  // exactly like the real blast's bullets.
+  Point dir = (facing * radius * 1.2);
+  for(int i = rand() % count + count / 2; i > 0; i--) {
+    dir.rotate(rand() % 360 * M_PI / 180);
+    debris.push_back(Particle(pos + dir, vel + dir * 0.0001 * (rand() % 150),
+                              rand() % 1500));
+    debris.back().streak = true;
+  }
+}
+
+void Ship::net_missile_exploded(const Point &pos, const Point &vel) {
+  net_blast(pos, vel, MISSILE_SHRAPNEL);
+  if(missile_explode_sound != NULL)
+    Mix_PlayChannel(-1, missile_explode_sound, 0);
+}
+
+void Ship::net_mine_exploded(const Point &pos, const Point &vel) {
+  net_blast(pos, vel, MINE_SHRAPNEL);
+  if(mine_explode_sound != NULL)
+    Mix_PlayChannel(-1, mine_explode_sound, 0);
+}
+
+void Ship::net_giga_mine_exploded(const Point &pos) {
+  // Mirrors giga_detonate's presentation (sound + shockwave ring); the
+  // host's real shockwave also arrives via the snapshot a beat later and
+  // replaces this one harmlessly.
+  giga_detonate(pos);
+}
+
+void Ship::net_nova_arrived() {
+  if(giga_mine_explode_sound != NULL)
+    Mix_PlayChannel(-1, giga_mine_explode_sound, 0);
+}
+
+// PROTO 22: a shock bolt the peer fired arrived as a polyline. Show it on
+// this (the firer's replica) ship as a display-only bolt: fully grown, just
+// fades, and — crucially — its exact segments are the peer's, never re-seeked
+// (net_display keeps it out of the report + kill paths). The zap sound is
+// played by the GLGame handler that owns the audio volume model.
+void Ship::net_receive_shock(const std::vector<Point> &pts) {
+  if(pts.size() < 2) return;
+  ShockBolt bolt(WrappedPoint(pts[0].x(), pts[0].y()), Point(1, 0), this);
+  bolt.points = pts;
+  bolt.growing = false;   // already grown: step_bolt only fades it now
+  bolt.life = 1.0f;
+  bolt.net_display = true;
+  bolt.net_reported = true;
+  shocks.push_back(std::move(bolt));
+}
+
+std::shared_ptr<int> Ship::net_start_missile_fly_loop() {
+  if(missile_fly_sound == NULL) return nullptr;
+  int ch = Mix_PlayChannel(-1, missile_fly_sound, -1);
+  if(ch == -1) return nullptr;
+  return std::shared_ptr<int>(new int(ch), [](int *p) { Mix_HaltChannel(*p); delete p; });
+}
+
 void Ship::set_shield_hum(bool on) {
-  if(shield_hum_sound == NULL || sound_volume_scale < 1.0f) return;
   if(on) {
+    // The distance gate applies only to STARTING the hum. It used to gate
+    // the whole function, so a hum started at full volume could never be
+    // halted once the ship drifted out of earshot (the host re-scales a
+    // remote ship's sound_volume_scale by listener distance every tick) —
+    // the loop played forever: Glenn's "hum stuck on".
+    if(shield_hum_sound == NULL || sound_volume_scale < 1.0f) return;
     if(shield_hum_channel >= 0) return; // already playing, don't leak a new channel
     shield_hum_channel = Mix_PlayChannel(-1, shield_hum_sound, -1);
   } else if(shield_hum_channel >= 0) {
@@ -1567,15 +2319,78 @@ void Ship::mark_last_bullet_kills_invincible() {
   if(!bullets.empty())
     bullets.back().kills_invincible = true;
 }
+void Ship::mark_last_bullet_piercing() {
+  if(!bullets.empty())
+    bullets.back().piercing = true;
+}
 
 void Ship::fire_bullet_from_gun() {
+  // PROTO 14: the host's remote ship mints no bullets — the weapon sim
+  // still ran (cooldown/ammo/trigger bookkeeping stays approximately in
+  // step with the client's), but the real bullet arrives as a MSG_SHOT
+  // report and spawns via net_spawn_reported_bullet.
+  if (net_remote_gun) return;
   if(shoot_sound != NULL && sound_volume_scale > 0.0f) {
     Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * sound_volume_scale));
     Mix_PlayChannel(-1, shoot_sound, 0);
   }
+  net_shots.push_back(this);  // net host relays its player's shots
   bullets.push_back(Particle(gun(), facing * 0.615f + velocity * 0.99f, 2000.0f));
   mark_last_bullet_trail();
   mark_last_bullet_kills_invincible();
+  net_report_last_bullet();
+}
+
+void Ship::net_report_last_bullet() {
+  if (!net_report_shots || bullets.empty()) return;
+  Particle &b = bullets.back();
+  b.net_id = ++net_shot_seq;
+  NetShotReport r;
+  r.id = b.net_id;
+  r.x = b.position.x(); r.y = b.position.y();
+  r.vx = b.velocity.x(); r.vy = b.velocity.y();
+  r.kills_invincible = b.kills_invincible;
+  r.has_trail = b.has_trail;
+  r.piercing = b.piercing;
+  net_shot_reports.push_back(r);
+}
+
+// PROTO 14: spawn the remote player's reported shot as an exact clone —
+// same spawn point, same velocity (spread already applied by the firing
+// client), same identity for the MSG_HIT consume.
+void Ship::net_spawn_reported_bullet(uint32_t id, const Point &pos,
+                                     const Point &vel, bool kills_inv,
+                                     bool trail, bool piercing) {
+  // A piercing clone is a beam bolt — play the beam's own sound, not the
+  // pew (the chunk is shared/cached; every play site sets volume first).
+  Mix_Chunk *snd = shoot_sound;
+  if (piercing) {
+    static Mix_Chunk *beam_snd = Mix_LoadWAV(asset_path("audio/beam.wav").c_str());
+    if (beam_snd) snd = beam_snd;
+  }
+  if(snd != NULL && sound_volume_scale > 0.0f) {
+    Mix_VolumeChunk(snd, (int)(MIX_MAX_VOLUME * sound_volume_scale));
+    Mix_PlayChannel(-1, snd, 0);
+  }
+  bullets.push_back(Particle(pos, vel, 2000.0f));
+  Particle &b = bullets.back();
+  b.net_id = id;
+  b.kills_invincible = kills_inv;
+  b.has_trail = trail;
+  b.piercing = piercing;
+  // 1 Hz proof-of-flow: reported clones spawning at all (the handler is
+  // otherwise silent, and its failure mode would just be an idle gun).
+  if (Net::net_debug_enabled()) {
+    static Uint32 s_last = 0;
+    static int s_count = 0;
+    s_count++;
+    Uint32 now = SDL_GetTicks();
+    if (now - s_last >= 1000) {
+      NET_LOG("net: %d reported shots/s spawned\n", s_count);
+      s_last = now;
+      s_count = 0;
+    }
+  }
 }
 
 WrappedPoint Ship::tail() const {
@@ -1611,16 +2426,40 @@ void Ship::step(float delta, const Grid &grid) {
       }
     }
 
+    // Replay queued remote trigger presses (host side, PROTO 12 INPUT): a
+    // semi-automatic primary fires once per press, so presses the client
+    // batched into one INPUT delta (a lost-packet blackout straddling two
+    // real fires) must arm the weapon once EACH across successive steps —
+    // collapsing them into a single shoot(true) fired once while the client
+    // decremented twice, and the ammo clamp then pinned the divergence.
+    // Automatics consume the whole queue in one arm (extra presses are
+    // meaningless while held). Local ships never queue (only the host's
+    // INPUT handler feeds it).
+    if(net_queued_shot_presses > 0 && !primary_weapons.empty()) {
+      if((*primary)->is_automatic()) {
+        shoot(true);                   // held-fire: one arm covers every press
+        net_queued_shot_presses = 0;
+      } else if(!(*primary)->is_shooting()) {
+        shoot(true);                   // replay one press per step
+        net_queued_shot_presses--;
+      } else {
+        // Still armed at drain time = a primary that never self-disarms
+        // (god mode). Extra presses are meaningless while it holds, and
+        // leaving them queued would block the release-disarm in the INPUT
+        // handler (it waits for an empty queue). Semi-autos are never armed
+        // here — they disarm in their own step(), after this drain.
+        net_queued_shot_presses = 0;
+      }
+    }
+
     for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ) {
       (*it)->step(delta);
       Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
       if(gm && gm->empty()) {
-        auto next = it; ++next;
-        if(next == primary_weapons.end()) {
-          // God mode is always pushed to the back; return to the weapon before it
-          next = it;
-          if(next != primary_weapons.begin()) --next;
-        }
+        // add_god_mode() recorded the weapon held at pickup time — hand the
+        // trigger back to it, same policy as an exhausted primary. (The old
+        // rule here took the list neighbour, ignoring the recorded history.)
+        auto next = fallback_primary(it);
         if(it == primary) primary = next;
         delete *it;
         it = primary_weapons.erase(it);
@@ -1631,6 +2470,13 @@ void Ship::step(float delta, const Grid &grid) {
     for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
       if (!dynamic_cast<Weapon::Missile*>(*it))
         (*it)->step(delta);
+    }
+
+    // A lance fired this frame: execute the instantaneous pulse now that the
+    // collision grid is in hand.
+    if(lance_pulse_pending) {
+      lance_pulse_pending = false;
+      fire_lance_pulse(grid);
     }
 
     // God mode music: update phase transitions and play rapid tic beeps in last second
@@ -1711,6 +2557,16 @@ void Ship::step(float delta, const Grid &grid) {
     }
   }
 
+  for(size_t i = 0; i < lance_pulses.size(); ) {
+    lance_pulses[i].time_left -= delta;
+    if(lance_pulses[i].time_left <= 0.0f) {
+      lance_pulses[i] = std::move(lance_pulses.back());
+      lance_pulses.pop_back();
+    } else {
+      ++i;
+    }
+  }
+
   for(size_t i = 0; i < bullet_trails.size(); ) {
     bullet_trails[i].step(delta);
     if(!bullet_trails[i].is_alive()) {
@@ -1756,7 +2612,21 @@ void Ship::step(float delta, const Grid &grid) {
   // has been drained (asteroids in collide_grid, hostiles in GLGame) so no hit is
   // dropped on the frame it dies.
   for(size_t i = 0; i < shocks.size(); ) {
-    shocks[i].step_bolt(delta, missile_asteroids, shock_targets);
+    shocks[i].step_bolt(delta, missile_asteroids, shock_targets, &grid);
+    // PROTO 22: once a bolt is done growing, report its exact polyline to the
+    // peer so the remote flash uses identical segments (a re-seek would
+    // diverge — grow_segment jitters with rand()). "Done growing" is either
+    // reaching MAX_SEGMENTS or stop() halting it early at a survivor it
+    // couldn't destroy — both clear `growing`, so key off !growing rather than
+    // the growing→!growing edge (stop() flips it in the drain, AFTER this
+    // check ran, so an edge test would miss stopped bolts entirely). The
+    // net_reported guard keeps it to a single report. Display replicas
+    // (net_display) are never re-reported.
+    if(net_report_shots && !shocks[i].net_display && !shocks[i].net_reported &&
+       !shocks[i].growing && shocks[i].points.size() >= 2) {
+      net_shock_reports.push_back(shocks[i].points);
+      shocks[i].net_reported = true;
+    }
     if(!shocks[i].is_alive() && shocks[i].struck.empty()) {
       shocks[i] = std::move(shocks.back());
       shocks.pop_back();
@@ -1767,14 +2637,15 @@ void Ship::step(float delta, const Grid &grid) {
 
   // Step missiles unconditionally so they keep flying regardless of weapon state.
   for(size_t i = 0; i < missiles.size(); i++) {
-    missiles[i].step_missile(delta, missile_asteroids, missile_ships_list);
+    missiles[i].step_missile(delta, missile_asteroids, missile_ships_list,
+                             missiles_seek_players);
   }
 
   // Missile movement is handled in Weapon::Missile::step() above.
   // Here we only handle expiry detonation.
   for(size_t i = 0; i < missiles.size(); ) {
     if(!missiles[i].is_alive()) {
-      detonate(missiles[i].position, missiles[i].velocity, 25);
+      detonate(missiles[i].position, missiles[i].velocity, MISSILE_SHRAPNEL);
       if(missile_explode_sound != NULL) {
         Mix_PlayChannel(-1, missile_explode_sound, 0);
       }

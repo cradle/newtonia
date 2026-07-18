@@ -135,6 +135,10 @@ typedef double  GLclampd;
 #define GLUT_KEY_F4               4
 #define GLUT_KEY_F8               8
 #define GLUT_KEY_F11              11
+#define GLUT_KEY_LEFT             100
+#define GLUT_KEY_UP               101
+#define GLUT_KEY_RIGHT            102
+#define GLUT_KEY_DOWN             103
 #define GLUT_ACTIVE_ALT           4
 #define GLUT_WINDOW_WIDTH         100
 #define GLUT_WINDOW_HEIGHT        101
@@ -182,6 +186,24 @@ void gles2_set_viewport(GLint x, GLint y, GLsizei w, GLsizei h);
 
 // Return the current emulated line width (set via glLineWidth / gles2_set_line_width).
 float gles2_get_line_width();
+
+// True when the CURRENT line width can be rasterized natively by the driver
+// (GL_ALIASED_LINE_WIDTH_RANGE covers it — real GLES drivers on Android/iOS
+// support wide aliased lines even though WebGL clamps to 1 and macOS core GL
+// ignores >1). When true, the line-mesh draw paths skip the screen-space
+// quad emulation entirely: GPU-resident line VBOs draw directly instead of
+// being CPU-expanded and re-uploaded through a shared buffer on every call —
+// the dominant per-frame submission cost on mobile. Feathered AA edges are
+// traded for aliased native lines; NEWTONIA_LINE_EMULATION=1 forces the
+// emulation back on for A/B comparison.
+bool gles2_line_width_is_native();
+
+// Frame-profiling counters (NEWTONIA_FRAME_LOG): draw calls issued through
+// the shim/Mesh and thick-line segments CPU-expanded this frame. The desktop
+// frame logger zeroes them at the top of each frame and prints them with any
+// slow-frame report; incremented in gles2_compat.cpp and mesh.cpp.
+extern int g_gles2_dbg_draws;
+extern int g_gles2_dbg_line_segs;
 
 // Fraction of the emulated line width used for the solid (fully-opaque) core;
 // the remainder is the antialiased feather.  Defaults to a per-platform value

@@ -11,6 +11,8 @@
 		"tokens"
 		{
 			"#StatusMenu"		"In the Menu"
+			"#StatusHosting"	"Hosting a Co-Op Game"
+			"#StatusJoining"	"Joining a Co-Op Game"
 			"#StatusLevel"		"Level %level%"
 			"#StatusLevelCoop"	"Level %level% Co-Op"
 		}

@@ -51,6 +51,8 @@
     <a class="btn steam hidden" id="steamBtn" href="#">Join on Steam</a>
     <a class="btn store hidden" id="appStoreBtn"
        href="https://apps.apple.com/app/id6760685759">Get the app on the App Store</a>
+    <a class="btn store hidden" id="itchBtn" target="_blank" rel="noopener"
+       href="https://metonymous.itch.io/newtonia-online">Browser co-op on itch.io</a>
 
     <p class="foot">Not working? Open Newtonia and enter the room code above by hand.</p>
   </main>
@@ -62,6 +64,17 @@
     // opens directly and this page never loads. So here we route the leftover
     // cases: Steam desktop (steam:// launch), the App Store (iOS, no app), and
     // the browser game (/play) everywhere else.
+    //
+    // WEB_COOP: the FREE public web build ships with netplay disabled
+    // permanently (NEWTONIA_NET_DISABLED — pricing decision in NETPLAY.md:
+    // the game is paid on Steam/iOS, so free browser co-op stays off), so
+    // this page's own /play cannot JOIN. Browser co-op lives on the PAID
+    // itch project instead (metonymous.itch.io/newtonia-online, task #156)
+    // — buyers open it there and type the room code shown above (the itch
+    // iframe URL can't carry ?code=). While WEB_COOP is false this page
+    // leads with the stores (Steam / App Store / paid itch) and sends the
+    // no-app cases to the landing page, which lists every way to play.
+    var WEB_COOP = false;
     var STEAM_APPID = "4536720";
     var params = new URLSearchParams(location.search);
     var code = (params.get("code") || "").trim();
@@ -71,6 +84,7 @@
     var browserBtn = document.getElementById("browserBtn");
     var steamBtn = document.getElementById("steamBtn");
     var appStoreBtn = document.getElementById("appStoreBtn");
+    var itchBtn = document.getElementById("itchBtn");
 
     var ua = navigator.userAgent;
     var isIOS = /iPhone|iPad|iPod/i.test(ua) ||
@@ -89,7 +103,25 @@
       var playUrl = "/play/?code=" + enc;
       browserBtn.href = playUrl;
 
-      if (isIOS) {
+      if (!WEB_COOP) {
+        // Browser joins are off: never offer /play with a code (it would
+        // open the game and silently drop it). Lead with the app paths and
+        // point everyone else at the landing page's full platform list.
+        browserBtn.textContent = "See all ways to play";
+        browserBtn.href = "/";
+        if (isIOS) {
+          appStoreBtn.classList.remove("hidden");
+          subEl.textContent = "Get the app to join this game";
+        } else if (isAndroid) {
+          subEl.textContent = "Joining needs the app";
+        } else {
+          steamBtn.href = "steam://run/" + STEAM_APPID + "//+connect%20" + enc;
+          steamBtn.classList.remove("hidden");
+          itchBtn.classList.remove("hidden");
+          subEl.textContent = "Join on Steam, or in your browser on itch.io " +
+                              "— enter the room code above in the game";
+        }
+      } else if (isIOS) {
         // No app installed (else the Universal Link would have opened it). Offer
         // the App Store alongside the instant browser game — and don't silently
         // redirect, so the install option (button + the Smart App Banner) stays

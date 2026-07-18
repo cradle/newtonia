@@ -1,15 +1,22 @@
 name: Deploy Steam
 
+# Two tag namespaces (globs can't overlap: v*.*.* never matches netplay-*):
+#   v*.*.*       — normal release pipeline, deploys to the 'beta' branch
+#   netplay-v*   — netplay test release, deploys to the 'netplay' branch
+#     (kept post-launch for future netplay test cycles)
+# Manual dispatch defaults to 'beta' (the release pipeline's branch);
+# pick 'netplay' explicitly for a test-branch push.
 on:
   push:
     tags:
       - 'v*.*.*'
+      - 'netplay-v*'
   workflow_dispatch:
     inputs:
       branch:
-        description: 'Steam branch to deploy to (e.g. beta, default)'
+        description: 'Steam branch to deploy to (e.g. beta, netplay, default)'
         required: true
-        default: 'default'
+        default: 'beta'
 
 jobs:
   build-windows:
@@ -25,12 +32,29 @@ jobs:
           msystem: MINGW64
           update: true
           install: >-
+            git
             mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-openssl
             mingw-w64-x86_64-pkgconf
             mingw-w64-x86_64-freeglut
             mingw-w64-x86_64-SDL2
             mingw-w64-x86_64-SDL2_mixer
             mingw-w64-x86_64-tools-git
+
+      # Netplay (NETPLAY.md): static libdatachannel, MinGW flavour — same
+      # recipe as windows.yml (the dev CI is the compile gate for this).
+      - name: Build libdatachannel (netplay, static)
+        run: |
+          mkdir netplay-deps
+          git clone --branch v0.24.5 --depth 1 --recurse-submodules --shallow-submodules \
+            https://github.com/paullouisageneau/libdatachannel.git netplay-deps/libdatachannel
+          cmake -S netplay-deps/libdatachannel -B netplay-deps/libdatachannel/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DNO_MEDIA=ON -DNO_WEBSOCKET=OFF -DNO_EXAMPLES=ON -DNO_TESTS=ON
+          cmake --build netplay-deps/libdatachannel/build --target datachannel-static
 
       - name: Download Steamworks SDK
         shell: pwsh
@@ -55,16 +79,27 @@ jobs:
           SRCS=$(find . -name "*.cpp" \
             -not -path "./android/*" \
             -not -path "./.git/*" \
-            -not -path "./sdk/*")
+            -not -path "./sdk/*" \
+            -not -path "./netplay-deps/*")
+          NETLIBS=$(find netplay-deps/libdatachannel/build -name "*.a" | sort -u)
           windres icon.rc -O coff -o icon.res
           g++ -O2 -std=c++11 -D_USE_MATH_DEFINES -DFREEGLUT_STATIC -DSTEAM_BUILD \
+            -DNEWTONIA_NET_RTC -DRTC_STATIC \
+            -Inetplay-deps/libdatachannel/include \
             $(pkg-config --cflags sdl2 SDL2_mixer freeglut) \
             -I./sdk/public \
             -o newtonia.exe $SRCS icon.res \
             -static \
             $(pkg-config --libs --static sdl2 SDL2_mixer freeglut) \
+            -Wl,--start-group $NETLIBS -Wl,--end-group \
+            -lssl -lcrypto -lws2_32 -liphlpapi -lbcrypt -lcrypt32 \
             -lopengl32 -lglu32 \
             -L. -lsteam_api64
+
+      - name: Netplay loopback self-test
+        run: |
+          NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia.exe | tee selftest.log
+          grep -q "NET SELFTEST PASS" selftest.log
 
       - name: Stage depot
         shell: bash
@@ -157,6 +192,13 @@ jobs:
             "@executable_path/../Frameworks/libsteam_api.dylib" \
             sdk/redistributable_bin/osx/libsteam_api.dylib
 
+      # Netplay (NETPLAY.md): universal (fat) libdatachannel — the same
+      # recipe macos-dev.yml gates on every push. MbedTLS-based so both
+      # architectures come out of one build; installs into ./netplay-libs
+      # (headers + libs only — the source clone lives in a temp dir).
+      - name: Build libdatachannel (netplay, universal)
+        run: ./build_netplay_deps.sh --universal
+
       - name: Collect sources
         run: |
           find . -name "*.cpp" \
@@ -171,13 +213,29 @@ jobs:
           clang++ -O2 -std=c++11 -arch arm64 \
             -mmacosx-version-min=12.0 \
             -DGL_SILENCE_DEPRECATION -DSTEAM_BUILD \
+            -DNEWTONIA_NET_RTC -I./netplay-libs/include \
             -I./sdk/public \
             -o newtonia-arm64 $(cat srcs.txt) macos_window.mm \
             $(/opt/homebrew/bin/sdl2-config --cflags --libs) \
             -L/opt/homebrew/lib -lSDL2_mixer \
             -I/opt/homebrew/include/SDL2 \
+            -L./netplay-libs/lib -ldatachannel \
+            -Wl,-rpath,@executable_path/../Frameworks \
+            -Wl,-rpath,"$PWD/netplay-libs/lib" \
             -L./sdk/redistributable_bin/osx -lsteam_api \
             -framework GLUT -framework OpenGL -framework AppKit
+
+      # In-process WebRTC loopback — runs before any window/GL is created,
+      # resolving libdatachannel via the netplay-libs rpath. libsteam_api's
+      # install name was rewritten to @executable_path/../Frameworks for the
+      # bundle, so stage it there relative to the raw binary or dyld aborts
+      # the launch before main().
+      - name: Netplay loopback self-test (arm64)
+        run: |
+          mkdir -p ../Frameworks
+          cp sdk/redistributable_bin/osx/libsteam_api.dylib ../Frameworks/
+          NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia-arm64 | tee selftest.log
+          grep -q "NET SELFTEST PASS" selftest.log
 
       - name: Build x86_64
         env:
@@ -186,11 +244,15 @@ jobs:
           clang++ -O2 -std=c++11 -arch x86_64 \
             -mmacosx-version-min=12.0 \
             -DGL_SILENCE_DEPRECATION -DSTEAM_BUILD \
+            -DNEWTONIA_NET_RTC -I./netplay-libs/include \
             -I./sdk/public \
             -o newtonia-x86_64 $(cat srcs.txt) macos_window.mm \
             $(/usr/local/bin/sdl2-config --cflags --libs) \
             -L/usr/local/lib -lSDL2_mixer \
             -I/usr/local/include/SDL2 \
+            -L./netplay-libs/lib -ldatachannel \
+            -Wl,-rpath,@executable_path/../Frameworks \
+            -Wl,-rpath,"$PWD/netplay-libs/lib" \
             -L./sdk/redistributable_bin/osx -lsteam_api \
             -framework GLUT -framework OpenGL -framework AppKit
 
@@ -266,6 +328,17 @@ jobs:
           cp sdk/redistributable_bin/osx/libsteam_api.dylib "$FW/libsteam_api.dylib"
           codesign --sign "Developer ID Application" --force --timestamp \
             --options runtime "$FW/libsteam_api.dylib"
+
+          # Bundle libdatachannel (netplay) — referenced as @rpath/... so the
+          # bundle() walk skips it (@ prefix), same as libsteam_api. The
+          # binary's @executable_path/../Frameworks rpath resolves it. Fat
+          # dylib (MbedTLS statically absorbed), one file per install name.
+          cp netplay-libs/lib/libdatachannel.*.dylib "$FW/"
+          for f in "$FW"/libdatachannel*.dylib; do
+            lipo -info "$f" | grep arm64 | grep -q x86_64
+            codesign --sign "Developer ID Application" --force --timestamp \
+              --options runtime "$f"
+          done
 
           # Bundle libSDL3 — Homebrew's "sdl2" is now sdl2-compat, an SDL2 API
           # shim that loads SDL3 at runtime via dlopen and aborts if it can't
@@ -370,6 +443,7 @@ jobs:
             freeglut3-dev \
             libgl1-mesa-dev \
             libglu1-mesa-dev \
+            libssl-dev \
             cmake \
             libudev-dev \
             libasound2-dev \
@@ -419,6 +493,13 @@ jobs:
           cmake --build SDL2_mixer/build --parallel
           cmake --install SDL2_mixer/build
 
+      # Netplay (NETPLAY.md): libdatachannel from source, built INSIDE the
+      # steamrt container so it links the runtime's own OpenSSL. Installs
+      # into ./netplay-libs (headers + libs only; source clone is in a temp
+      # dir, so the source find below stays clean).
+      - name: Build libdatachannel (netplay)
+        run: ./build_netplay_deps.sh
+
       - name: Build
         run: |
           SRCS=$(find . -name "*.cpp" \
@@ -429,20 +510,36 @@ jobs:
             -not -path "./SDL2_mixer/*")
           g++ -O2 -Wall -std=c++11 \
             -DSTEAM_BUILD \
+            -DNEWTONIA_NET_RTC -I./netplay-libs/include \
             $(sdl2-config --cflags) -I/usr/local/include/SDL2 \
             -I./sdk/public \
             -o newtonia $SRCS \
             -lglut -lGL -lGLU \
             -lSDL2_mixer $(sdl2-config --static-libs) \
+            -L./netplay-libs/lib -ldatachannel \
             -L./sdk/redistributable_bin/linux64 -lsteam_api \
-            -Wl,-rpath,'$ORIGIN' \
+            -Wl,-rpath,'$ORIGIN' -Wl,-rpath,"$PWD/netplay-libs/lib" \
             -lX11
+
+      # In-process WebRTC loopback — runs before any window/GL is created,
+      # so it works headless inside the container. libsteam_api.so resolves
+      # via the $ORIGIN rpath (depot layout), so put it next to the binary
+      # or the loader fails before main().
+      - name: Netplay loopback self-test
+        run: |
+          cp sdk/redistributable_bin/linux64/libsteam_api.so .
+          NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia | tee selftest.log
+          grep -q "NET SELFTEST PASS" selftest.log
 
       - name: Stage depot
         run: |
           mkdir -p steam_output/linux
           cp newtonia steam_output/linux/
           cp sdk/redistributable_bin/linux64/libsteam_api.so steam_output/linux/
+          # Ship libdatachannel under the exact SONAME the binary asks for;
+          # the $ORIGIN rpath finds it next to the executable.
+          soname=$(objdump -p newtonia | awk '/NEEDED.*datachannel/{print $2}')
+          cp -L "netplay-libs/lib/$soname" steam_output/linux/
           cp -r audio steam_output/linux/
 
       - uses: actions/upload-artifact@v4
@@ -482,4 +579,4 @@ jobs:
           depot1Path: windows
           depot2Path: macos
           depot3Path: linux
-          releaseBranch: ${{ github.event.inputs.branch || 'beta' }}
+          releaseBranch: ${{ github.event.inputs.branch || (startsWith(github.ref_name, 'netplay-') && 'netplay' || 'beta') }}

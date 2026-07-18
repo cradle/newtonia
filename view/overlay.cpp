@@ -1,4 +1,7 @@
 #include "overlay.h"
+#include "tap_band.h"
+#include "../net_session.h"
+#include "../net_transport.h"
 #include "../glship.h"
 #include "../glgame.h"
 #include "../typer.h"
@@ -19,6 +22,95 @@ const float Overlay::SAFE_AREA_SCALE = 0.9f;
 const float Overlay::SAFE_AREA_SCALE = 1.0f;
 #endif
 
+// Full-screen text layered over the online game view (one full-screen
+// pass, not per-viewport): the 2 s generation banner (replaces the offline
+// Intro state) and the CONNECTION LOST / rejoin card. Overlay is a friend
+// of GLGame, so it reads the net_* state directly.
+void Overlay::net_overlays(const GLGame *glgame) {
+  // All players out = the game ended. Lives replicate, so both roles see
+  // this at the same moment — and it outranks every connection card: the
+  // host leaving right after game over used to greet the client with
+  // "THE HOST LEFT THE GAME", so the game never LOOKED finished there
+  // (Glenn: "no gameover state for the client, it just disconnects").
+  bool all_game_over = !glgame->players->empty();
+  for (auto *gs : *glgame->players)
+    if (gs->ship->is_alive() || gs->ship->lives > 0) {
+      all_game_over = false;
+      break;
+    }
+
+  // game_over latches "the game is over for us": it fires with all_game_over,
+  // and also when a spectating player loses the peer (terminal — nothing left
+  // to rejoin for). Treat it as game over so the card, not the reconnect
+  // notice, is the ending in that case.
+  if (glgame->game_over) all_game_over = true;
+
+  if (!all_game_over && glgame->net_banner_ms_ <= 0 &&
+      !glgame->net_connection_lost_)
+    return;
+
+  glViewport(0, 0, glgame->window.x(), glgame->window.y());
+  float hw = glgame->window.x() / Overlay::SAFE_AREA_SCALE;
+  float hh = glgame->window.y() / Overlay::SAFE_AREA_SCALE;
+  float ortho[16];
+  mat4_ortho(ortho, -hw, hw, -hh, hh, -1.0f, 1.0f);
+  gles2_set_vp(ortho);
+
+  // Typer scales all coordinates by Typer::scale (the 800x600-based virtual
+  // HUD space every Overlay position lives in) — pixel-derived positions
+  // like hh*0.72 only line up when the window happens to be near 800x600
+  // and drift offscreen in fullscreen. Position in virtual units instead;
+  // vh is the virtual half-height (the top of the title-safe area).
+  float vh = Typer::scaled_window_height;
+  int now = glgame->current_time;
+
+  if (all_game_over) {
+    // The offline hints live in the single-player title_text branch, so
+    // the online game (always 2 players) had NO game-over text on either
+    // screen. One shared card for both roles; the 3 s guard in the input
+    // handlers still stops a mid-fight trigger from skipping it.
+    Typer::draw_centered(0, 60, "GAME OVER", 34);
+    if ((now / 700) % 2 == 0)
+      Typer::draw_centered(0, -80,
+                           is_touch_mode() ? "TAP FIRE FOR MENU"
+                                           : "PRESS FIRE FOR MENU", 16);
+    return;
+  }
+
+  if (glgame->net_connection_lost_ && glgame->net_mode_ == GLGame::NetHost &&
+      glgame->net_signal_) {
+    // Rejoinable loss: the game continues — a quiet notice, not a card.
+    // A "P2 DISCONNECTED" header over the room code (steady, no blink): the
+    // host may be reading the code out to the other player, and it explains
+    // why the code is back on screen.
+    Typer::draw_centered(0, vh * 0.80f, "PLAYER 2 DISCONNECTED", 20);
+    std::string room = "ROOM " + glgame->net_room_code_;
+    Typer::draw_centered(0, vh * 0.67f, room.c_str(), 18);
+  } else if (glgame->net_connection_lost_ &&
+             glgame->net_mode_ == GLGame::NetClient &&
+             !glgame->net_room_code_.empty()) {
+    Typer::draw_centered(0, 60, "CONNECTION LOST", 34);
+    if ((now / 700) % 2 == 0)
+      Typer::draw_centered(0, -80, "REJOINING", 16);
+  } else if (glgame->net_connection_lost_) {
+    // y=160, not 60: the pause overlay's "Paused" sits at y=30 and both
+    // show when the host leaves a paused game.
+    Typer::draw_centered(0, 160,
+                         glgame->net_peer_bye_ ? "THE HOST LEFT THE GAME"
+                                               : "CONNECTION LOST",
+                         glgame->net_peer_bye_ ? 22 : 34);
+    // y=-130: clear of the pause overlay's sub-lines ("press p to
+    // resume" at -40, "press esc..." at -70, glyphs reaching ~-86) —
+    // the game auto-pauses on a disconnect, so both stacks show at once.
+    if ((now / 700) % 2 == 0)
+      Typer::draw_centered(0, -130,
+                           is_touch_mode() ? "TAP FIRE FOR MENU"
+                                           : "PRESS FIRE FOR MENU", 16);
+  } else if (glgame->net_banner_ms_ > 0) {
+    Typer::draw_centered(0, vh * 0.55f, glgame->net_banner_text_.c_str(), 22);
+  }
+}
+
 void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   title_text(glgame, glship);
   level(glgame, glship);
@@ -30,6 +122,7 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   weapons(glgame, glship);
   temperature(glgame, glship);
   respawn_timer(glgame, glship);
+  spectate(glgame, glship);
   paused(glgame, glship);
   touch_controls(glgame, glship);
   edge_indicators(glgame, glship);
@@ -203,6 +296,14 @@ void Overlay::temperature(const GLGame *glgame, const GLShip *glship) {
 }
 
 void Overlay::respawn_timer(const GLGame *glgame, const GLShip *glship) {
+  // draw_respawn_timer()'s dead-with-no-lives branch renders its own
+  // "GameOver" + score. Online that messaging is owned by the full-screen
+  // overlays — the shared GAME OVER card (net_overlays) and, before that, the
+  // SPECTATING countdown — so the per-ship indicator would just double them
+  // up. Suppress it whenever the drawn ship is fully out online; the respawn
+  // countdown (lives > 0) and the offline split-screen indicator still show.
+  if(glgame->net_active() && !glship->ship->is_alive() && glship->ship->lives <= 0)
+    return;
   if(glgame->running && !glship->show_help) {
     float saved[16]; gles2_get_mvp(saved);
     float vp[16]; mat4_scale(vp, saved, 20.0f, 20.0f, 1.0f);
@@ -212,10 +313,41 @@ void Overlay::respawn_timer(const GLGame *glgame, const GLShip *glship) {
   }
 }
 
+// Spectator flow (netplay co-op): a "SPECTATING IN N" countdown on the local
+// wreck, then "SPECTATING" at the bottom once the camera has handed off to the
+// peer. Both phases are driven by GLGame::spectate_death_time_.
+void Overlay::spectate(const GLGame *glgame, const GLShip *glship) {
+  (void)glship;
+  if (glgame->spectate_arming()) {
+    // The local player IS game over (out of lives) — say so, with the
+    // hand-off countdown below it.
+    char buf[24];
+    snprintf(buf, sizeof buf, "SPECTATING IN %d", glgame->spectate_countdown_secs());
+    Typer::draw_centered(0, 120, "GAME OVER", 30);
+    Typer::draw_centered(0, 20, buf, 18);
+  } else if (glgame->is_spectating()) {
+    // Bottom of the viewport, clear of the touch RETURN TO MENU band.
+    float vhb = -Typer::scaled_window_height / glgame->num_y_viewports();
+    Typer::draw_centered(0, vhb + 130, "SPECTATING", 16);
+  }
+}
+
 void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
   if(glship->show_help) {
     glship->draw_keymap();
   }
+}
+
+
+// Human-readable name of a bound key for HUD hints (F-keys arrive as
+// 128 + GLUT function-key code; everything else is the character itself).
+static void key_hint(int key, char *out, size_t n, const char *verb) {
+  if (key > 128 && key <= 128 + 12)
+    snprintf(out, n, "%s controls with F%d", verb, key - 128);
+  else if (key >= 33 && key <= 126)
+    snprintf(out, n, "%s controls with %c", verb, (char)key);
+  else
+    snprintf(out, n, "%s controls with F1", verb);
 }
 
 void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
@@ -224,49 +356,76 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     if((glgame->current_time/1400) % 2) {
       if(p1->is_alive() || p1->lives > 0) {
         if(!is_touch_mode()) {
+          // -40 (not -10): a real margin inside the title-safe edge,
+          // matching the bottom-row hints (Xbox compliance).
           if(glgame->has_free_controller())
-            Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-10, "player 2 press start to join", 8);
+            Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-40, "player 2 press start to join", 8);
 #ifndef _GAMING_XBOX
           // Keyboard join hint — on Xbox the only join path is a second controller.
           else if(!is_steam_gamemode())
-            Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-10, "player 2 press enter to join", 8);
+            Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-40, "player 2 press enter to join", 8);
 #endif
         }
-      } else {
-        Typer::draw_centered(0, Typer::scaled_window_height-10, glship->has_controller() ? "return to menu with start" : "return to menu with ESC", 8);
+      } else if(!is_touch_mode()) {
+        Typer::draw_centered(0, Typer::scaled_window_height-40, glship->has_controller() ? "return to menu with start" : "return to menu with ESC", 8);
       }
     }
     if(!glship->last_input_was_controller && !is_touch_mode()) {
+      char hint[48];
       if(glship->show_help) {
-        Typer::draw_centered(-1*Typer::scaled_window_width/2, Typer::scaled_window_height-10, "hide controls with F1", 8);
+        key_hint(glship->help_key.primary(), hint, sizeof(hint), "hide");
+        Typer::draw_centered(-1*Typer::scaled_window_width/2, Typer::scaled_window_height-40, hint, 8);
       } else if ((glgame->current_time)/12000 % 2) {
-        Typer::draw_centered(-1*Typer::scaled_window_width/2, Typer::scaled_window_height-10, "show controls with F1", 8);
+        key_hint(glship->help_key.primary(), hint, sizeof(hint), "show");
+        Typer::draw_centered(-1*Typer::scaled_window_width/2, Typer::scaled_window_height-40, hint, 8);
       }
     }
   } else {
     float vhb = -Typer::scaled_window_height/glgame->num_y_viewports();
+    // Keep these clear of the bottom edge: Typer glyphs extend ~2x the
+    // size below their anchor, so a small offset puts the text on the
+    // title-safe boundary (an Xbox-compliance problem, and clipped-looking
+    // on desktop where the safe area IS the screen edge).
     if(glgame->friendly_fire) {
-      Typer::draw_centered(0, vhb+30, "friendly fire on", 8);
+      glgame->ff_toggle_band().draw("friendly fire on");
+    } else if(is_touch_mode()) {
+      // Touch: the text doubles as the toggle region (GLGame::touch_tap
+      // hit-tests the same band), so the OFF state must be visible too or
+      // it can't be turned back on.
+      glgame->ff_toggle_band().draw("friendly fire off");
     }
+    // Label the key this ship actually has bound — online the client's
+    // local ship is player 2 in the list but plays with player-1 keys.
     if(!glship->last_input_was_controller && !is_touch_mode()) {
-      if(p1 == glship->ship) {
-        if(glship->show_help) {
-          Typer::draw_centered(0, vhb+60, "hide controls with F1", 8);
-        } else if ((glgame->current_time)/12000 % 2) {
-          Typer::draw_centered(0, vhb+60, "show controls with F1", 8);
-        }
-      } else {
-        if(glship->show_help) {
-          Typer::draw_centered(0, vhb+60, "hide controls with F8", 8);
-        } else if ((glgame->current_time)/12000 % 2) {
-          Typer::draw_centered(0, vhb+60, "show controls with F8", 8);
-        }
+      char hint[48];
+      if(glship->show_help) {
+        key_hint(glship->help_key.primary(), hint, sizeof(hint), "hide");
+        Typer::draw_centered(0, vhb+85, hint, 8);
+      } else if ((glgame->current_time)/12000 % 2) {
+        key_hint(glship->help_key.primary(), hint, sizeof(hint), "show");
+        Typer::draw_centered(0, vhb+85, hint, 8);
       }
     }
   }
   if(!glgame->running && glship->show_help) {
     const char* unpause = glship->has_controller() ? "press start to resume" : "press p to resume";
     Typer::draw_centered(0, Typer::scaled_window_height/glgame->num_y_viewports()-80, unpause, 8);
+  }
+
+  // Touch: exit affordance — the bottom strip is a tap band
+  // (GLGame::touch_tap), same placement as the lobby's return band. Shown
+  // at GAME OVER, on the pause screen, and — online — when the LOCAL ship
+  // is fully out while the peer plays on (all-over never fires there).
+  if(is_touch_mode()) {
+    bool all_over = !glgame->players->empty();
+    for(auto* gs : *glgame->players) {
+      if(gs->ship->is_alive() || gs->ship->lives > 0) { all_over = false; break; }
+    }
+    const GLShip* local = glgame->local_player();
+    bool local_over = glgame->net_active() && local &&
+                      !local->ship->is_alive() && local->ship->lives <= 0;
+    if(all_over || !glgame->running || local_over)
+      TapBand::return_to_menu.draw("RETURN TO MENU", glgame->current_time);
   }
 }
 
@@ -293,7 +452,13 @@ void Overlay::draw_circle(float cx, float cy, float r, int segs, bool filled,
 
 void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
 #if defined(__ANDROID__) || defined(__IOS__)
-  if(glgame->players->front() != glship) return;
+  // Only the locally-controlled ship's viewport gets the OSD (on a net
+  // client that is the LAST player, not the first). While spectating the
+  // camera follows the peer, so this already fails; the extra guard also
+  // hides the OSD during the "SPECTATING IN N" countdown, when the camera
+  // is still on our own wreck but there is nothing left to control.
+  if(glgame->local_player() != glship) return;
+  if(glgame->spectate_arming() || glgame->is_spectating()) return;
 
   float pw = (float)Typer::window_width;
   float ph = (float)Typer::window_height;
@@ -396,8 +561,14 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
 }
 
 void Overlay::debug_info(const GLGame *glgame, const GLShip *glship) {
-  // Only draw once — skip for the second player's viewport.
-  if (glship->ship != glgame->players->front()->ship) return;
+  // Only draw once — skip for the second player's viewport. The primary
+  // viewport is player 1 offline, but ONLINE the single viewport belongs
+  // to the LOCAL player — on the client that is the BACK of the list
+  // (the front is the remote host), and comparing against the front
+  // blanked the whole debug stack on every client.
+  const GLShip *primary = glgame->net_active() ? glgame->local_player()
+                                               : glgame->players->front();
+  if (glship != primary) return;
 
   // Rolling FPS: count frames over ~500 ms windows so the reading reflects
   // current performance rather than the lifetime average.
@@ -415,15 +586,15 @@ void Overlay::debug_info(const GLGame *glgame, const GLShip *glship) {
   }
 
   float vw = Typer::scaled_window_width / glgame->num_x_viewports();
+  float vh = Typer::scaled_window_height / glgame->num_y_viewports();
   float x  = -vw + CORNER_INSET;
   float sz = 7;
   float dy = sz * 2.5f + 4;
-  // Centre the stack vertically in the viewport.
-#ifdef STEAM_BUILD
-  float y = dy;        // 3 items at +dy, 0, -dy
-#else
-  float y = dy * 0.5f; // 2 items at +dy/2, -dy/2
-#endif
+  // Anchor the stack's TOP at a fixed height on the left edge: below the
+  // weapons HUD (top ~0.6*vh) and safely above the minimap, whose top
+  // reaches ~-vh/2 — the old vertically-centred stack sank into the
+  // minimap corner on some aspects once it grew past two lines.
+  float y = vh * 0.35f;
 
   char fps_buf[32];
   snprintf(fps_buf, sizeof(fps_buf), "fps: %d", fps_display);
@@ -434,13 +605,33 @@ void Overlay::debug_info(const GLGame *glgame, const GLShip *glship) {
     case GameModeStatus::Ready: gm_str = "game mode: ready"; break;
     case GameModeStatus::Off:   gm_str = "game mode: off";   break;
   }
+  // Online: the selected ICE path ("net: host/host" direct LAN,
+  // "srflx/..." NAT-punched, "relay/..." through TURN) — the fast way to
+  // see whether a session is burning relay bandwidth — plus the smoothed
+  // MSG_PING round trip once the first PONG lands.
+  char net_buf[80] = "";
+  if (glgame->net_active() && glgame->net_session_ &&
+      glgame->net_session_->transport()) {
+    std::string ci = glgame->net_session_->transport()->connection_info();
+    if (!ci.empty()) {
+      if (glgame->net_rtt_ms_ >= 0.0f)
+        snprintf(net_buf, sizeof(net_buf), "net: %s %dms", ci.c_str(),
+                 (int)(glgame->net_rtt_ms_ + 0.5f));
+      else
+        snprintf(net_buf, sizeof(net_buf), "net: %s", ci.c_str());
+    }
+  }
+
   Typer::draw(x, y,      gm_str, sz);
   Typer::draw(x, y - dy, fps_buf, sz);
+  float next_y = y - dy * 2;
 #ifdef STEAM_BUILD
   std::string branch = get_steam_branch();
   char branch_buf[64];
   snprintf(branch_buf, sizeof(branch_buf), "branch: %s",
            branch.empty() ? "default" : branch.c_str());
-  Typer::draw(x, y - dy * 2, branch_buf, sz);
+  Typer::draw(x, next_y, branch_buf, sz);
+  next_y -= dy;
 #endif
+  if (net_buf[0]) Typer::draw(x, next_y, net_buf, sz);
 }

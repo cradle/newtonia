@@ -66,6 +66,8 @@ extern "C" void GDK_DispatchTaskQueue(void) {}
 #include "typer.h"
 #include "asteroid.h"
 #include "preferences.h"
+#include "net_transport.h"
+#include "net_signal.h"
 
 #include <cstdlib>
 #include <ctime>
@@ -182,6 +184,15 @@ static void CALLBACK plm_suspend_callback(void * /*ctx*/,
 static unsigned char game_key_from_sdl(SDL_Keycode k)
 {
     if (k >= SDLK_F1 && k <= SDLK_F12) return (unsigned char)(129 + (k - SDLK_F1));
+    // Arrows use desktop GLUT's special-key codes; menus alias them to
+    // WASD (State::nav_key).
+    switch (k) {
+        case SDLK_UP:    return 128 + GLUT_KEY_UP;
+        case SDLK_DOWN:  return 128 + GLUT_KEY_DOWN;
+        case SDLK_LEFT:  return 128 + GLUT_KEY_LEFT;
+        case SDLK_RIGHT: return 128 + GLUT_KEY_RIGHT;
+        default: break;
+    }
     return (k < 128) ? (unsigned char)k : 0;
 }
 
@@ -207,6 +218,32 @@ int main(int argc, char *argv[])
                 fprintf((FILE *)fp, "%s\n", msg);
                 fflush((FILE *)fp);
             }, logFile);
+        }
+    }
+#endif
+
+#ifdef NEWTONIA_NET_RTC
+    // Hidden CI/debug hook: run the netplay loopback self-test and exit.
+    // Placed before SDL_Init so it works headless (no display needed).
+    {
+        const char *st = SDL_getenv("NEWTONIA_NET_SELFTEST");
+        if (st && st[0] == '1' && st[1] == '\0') {
+            SDL_Log("NEWTONIA_NET_SELFTEST: running loopback self-test...");
+            bool ok = net_selftest();
+            SDL_Log(ok ? "NET SELFTEST PASS" : "NET SELFTEST FAIL");
+            return ok ? 0 : 1;
+        }
+        // M2 room-code relay self-test (needs a live signal server:
+        // wrangler dev locally, or NEWTONIA_SIGNAL_URL to point elsewhere).
+        const char *ss = SDL_getenv("NEWTONIA_SIGNAL_SELFTEST");
+        // (load_preferences runs later in normal startup; the selftest
+        // resolves the relay URL now, so honour the INI override here.)
+        if (ss && ss[0] == '1' && ss[1] == '\0') {
+            load_preferences();
+            SDL_Log("NEWTONIA_SIGNAL_SELFTEST: running relay self-test...");
+            bool ok = net_signal_selftest();
+            SDL_Log(ok ? "SIGNAL SELFTEST PASS" : "SIGNAL SELFTEST FAIL");
+            return ok ? 0 : 1;
         }
     }
 #endif
@@ -365,7 +402,9 @@ int main(int argc, char *argv[])
     // Audio: 48 kHz matches the Xbox audio subsystem's native rate.
     if (Mix_OpenAudio(48000, MIX_DEFAULT_FORMAT, 2, 512) < 0)
         SDL_Log("Mix_OpenAudio failed: %s", Mix_GetError());
+    // 64 channels + 2 reserved for must-hear booms — see glut.cpp.
     Mix_AllocateChannels(64);
+    Mix_ReserveChannels(2);
 
     // Open all (up to 2) game controllers present at startup; hot-plugged
     // ones are opened by SDL_CONTROLLERDEVICEADDED in the event loop.

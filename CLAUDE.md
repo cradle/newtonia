@@ -10,11 +10,19 @@ Newtonia is a top-down 2D space shooter written in C++ using SDL2 and OpenGL. It
 
 ### Desktop (macOS / Linux)
 ```sh
-make          # Build native executable: ./newtonia
-make clean    # Remove build artifacts
+make            # Build native executable: ./newtonia — NETPLAY ON by default
+make NETPLAY=0  # Netless binary (no libdatachannel needed)
+make clean      # Remove build artifacts
 ```
 
 Compiler: g++ with `-Wall -O3 -std=c++11`. Sources include root, `weapon/`, and `view/`.
+
+**Netplay builds by default** (the old opt-in `NETPLAY=1` still works and is
+now redundant). The default needs libdatachannel at `./netplay-libs` — build
+it ONCE with `./build_netplay_deps.sh` (`--universal` for `make osx`). A
+missing prefix is a hard `make` error (never a silent netless fallback);
+`make NETPLAY=0` is the explicit opt-out. `make web` / `make android*` don't
+need the prefix (web's backend is unconditional; Android builds via Gradle).
 
 #### Steam build (local achievement/overlay testing)
 ```sh
@@ -36,6 +44,28 @@ brew install sdl2 sdl2_mixer
 ```
 GLUT ships with Xcode Command Line Tools (`xcode-select --install`).
 
+#### Windows (MSYS2/MinGW64)
+One-time setup (installs MSYS2 via winget, all packages, netplay deps, and
+builds + selftests; idempotent, safe to re-run):
+```powershell
+./setup_windows_build.ps1                # add -SkipNetplay for a plain build
+```
+Day-to-day, from the **MSYS2 MINGW64** shell (not "MSYS2 MSYS" — only
+MINGW64 has g++/SDL on PATH), or from PowerShell via
+`$env:MSYSTEM='MINGW64'; C:\msys64\usr\bin\bash.exe -lc 'cd "$PWD" && make -j8'`:
+```sh
+make -j8              # netplay build, the default (needs ./netplay-libs — see below)
+make NETPLAY=0 -j8    # plain netless build
+```
+The Makefile's `_NT` branch mirrors `.github/workflows/windows.yml`: fully
+static `newtonia.exe` (no MinGW DLLs needed), GUI subsystem so stdout only
+shows when piped from a shell (e.g. the `NEWTONIA_NET_SELFTEST=1` gate).
+`./build_netplay_deps.sh` has a matching Windows branch: static
+libdatachannel + vendored archives copied into `netplay-libs/lib/*.a`, all
+linked in one `--start-group` with msys2's static OpenSSL. `%zu` in
+`SDL_Log` formats warns (and misprints) under MinGW — cast to `unsigned`
+and use `%u`.
+
 #### Syntax-check without a full build
 The pre-commit hook in `.claude/settings.json` runs this automatically on staged files:
 ```sh
@@ -43,6 +73,11 @@ g++ -std=c++11 -fsyntax-only -I. -I/usr/include/SDL2 <file.cpp>
 ```
 
 #### Headless runtime testing & debugging (Linux, no display)
+**See TESTING.md for the full test inventory** — build gates, in-binary
+selftests (`NEWTONIA_NET_SELFTEST`), signal-worker tests, the committed
+netplay e2e drivers (`test/e2e/`), and the `STEAM_BUILD` stub check. This
+section documents the underlying driver technique those drivers use.
+
 A clean build is not proof that gameplay flows work — state transitions, input
 handling, and object lifetimes (double-delete, use-after-free across state
 swaps) only fail at runtime. The game runs fine under Xvfb with software GL,
@@ -89,7 +124,10 @@ gdb -batch -ex run -ex "bt 20" --args ./newtonia > gdb.log 2>&1 &
 - The skip-level key (`n`) sets `time_until_next_generation = 0`, so the next
   generation (and its intro screen) starts **immediately** — there is no 5 s
   tick countdown like a normally cleared level. Time waits in driver scripts
-  accordingly.
+  accordingly. It also works **on** an intro screen (skips that level and
+  dismisses the intro in one press), so level-marching scripts — and
+  `adb shell input keyevent KEYCODE_N` on device — can hammer `n` without
+  stalling on intro generations.
 - `kill $PID; wait $PID` reports 143 (SIGTERM) for a healthy shutdown; 139
   means the game segfaulted on its own.
 - `xdotool` prints `XGetInputFocus returned the focused window of 1` warnings
@@ -118,6 +156,8 @@ make web        # Build WebAssembly output to web/dist/
 make web-clean  # Remove web build artifacts
 ```
 
+`make web NETPLAY=0` force-disables netplay in the web build (`-DNEWTONIA_NET_DISABLED`: ONLINE row hidden, `?code=` invite codes drained and dropped, transport/signal factories return null — the signaling Worker and TURN are never contacted; the backend still compiles, so the source set is unchanged). **The PUBLIC web deploys build this way** — web.yml (GitHub Pages) and deploy-itch's release `html5` channel — until live Worker/TURN usage is understood; the `html5-netplay` test channel builds with netplay on.
+
 Requires Emscripten (`emcc`) and TypeScript compiler (`tsc`) on PATH. The web frontend is TypeScript: `tsc -p web/tsconfig.json` compiles `web/main.ts`; `web/shell.html` is the Emscripten shell file. The build links `-lidbfs.js` for IndexedDB persistence and preloads audio assets (`--preload-file audio@audio`). `web_main.cpp` mounts IDBFS asynchronously and only starts the game loop after `web_on_idb_ready()` fires from JS.
 
 Output layout (see `web/README.md`): the marketing landing page (`web/site/`, including the GitHub Pages `CNAME`) is copied to the `web/dist/` root; the playable game builds into `web/dist/play/`. The shell's "back to site" link points at https://newtonia.metonymous.com and opens in a new tab when embedded off-domain (e.g. the itch.io iframe). The build sets `-s GROWABLE_ARRAYBUFFERS=0` explicitly — the emscripten 6.0.2 default-on setting breaks Firefox (its TextDecoder rejects views over resizable ArrayBuffers).
@@ -133,7 +173,7 @@ cd android && ./gradlew assembleDebug
 `make android`/`make android-install` are thin wrappers over Gradle that first copy `audio/` into `android/app/src/main/assets/` (matching the CI "Copy audio assets" step) so the APK ships its sounds; `make android-clean` runs `gradlew clean` and removes the copied assets. SDL2/SDL2_mixer must still be cloned as siblings to the repo root first (see `.github/workflows/android.yml`). The native build uses the root `CMakeLists.txt` (a generic CMake build that globs all sources, excludes the desktop `glut.cpp` entry point, and clones SDL2/SDL2_mixer from GitHub). Requires Android NDK 26.3.11579264 and CMake 3.22.1 (set in `android/app/build.gradle`; compileSdk/targetSdk 35, minSdk 21; ABIs arm64-v8a, armeabi-v7a, x86_64). The CMake target is `libnewtonia.so` (shared library).
 
 ### iOS
-Open `ios/Newtonia-iOS.xcodeproj` in Xcode. For simulator builds see `ios/README.md`.
+The Xcode project is generated by XcodeGen from `ios/project.yml` (the `.xcodeproj` is gitignored — see convention 11): `brew install xcodegen && cd ios && xcodegen generate`, then open `ios/Newtonia-iOS.xcodeproj` in Xcode. For simulator builds see `ios/README.md`.
 
 ### Xbox / GDK (Windows)
 ```sh
@@ -219,11 +259,12 @@ When all killable asteroids **and all hazards** (pulsar/comet/seeker) are destro
 
 - Pure virtual: `draw()`, `keyboard()`, `keyboard_up()`, `controller()`, `tick()`
 - Virtual: `touch_tap()`, `back_pressed()`, `resize()`
+- **Generalised nav input**: menu-ish screens keep ONE decision ladder (`Menu::nav_input`, `NetLobby::nav_input`) speaking logical keys — w/a/s/d move, Enter/space confirm, Esc backs out one level. Keyboard reaches it via `State::nav_key` (arrows→WASD) after per-platform touch filtering; controllers reach it via `State::nav_key_from_controller` (dpad + left stick with shared arm/release hysteresis → wasd, A/Start/RT → Enter, B/Back → Esc, and the source pad returned so Menu binds it to P1 on confirm). New screens should follow this pattern rather than hand-rolling a controller handler; richer pad semantics (gameplay, the lobby's CodeEntry picker) claim their events before falling back to the translator
 - States call `request_state_change()` to transition. `request_state_change(next, true)` transfers ownership of the outgoing state to the next one — the `StateManager` skips its usual `delete` — and `clear_state_change()` resets a stale transition when such a state is later reinstalled
 
 There are three states:
-- **Menu** (`menu.h/cpp`) — main menu and options screen, animated starfield, touch support. On non-touch platforms it opens on an attract screen (flashing "PRESS ENTER/START") dismissed by Enter/Space/controller Start. Esc or controller Back opens a quit confirmation (compiled out on web with `__EMSCRIPTEN__`; Android/Xbox reach it via `back_pressed()`). Selecting NEW GAME while a save exists shows a "New game?" YES/NO confirmation (NO is the default; keyboard/controller stack YES above NO, touch puts YES on the left half and NO on the right). Options (5 steps each): P1/P2 sensitivity (SLOW–MAX, 0.5–2.0), P1/P2 camera smoothing (OFF–MAX, 0.0–0.010), star density (MINIMAL–FULL, 0.1–1.0 multiplier)
-- **GLGame** (`glgame.h/cpp`) — in-game; owns all game objects; handles asteroid spawning, pickup drops, two-player split-screen, pause, auto-save. Game over transitions back to Menu (no separate game-over state)
+- **Menu** (`menu.h/cpp`) — main menu and options screen, animated starfield, touch support. On non-touch platforms it opens on an attract screen (flashing "PRESS ENTER/START") dismissed by Enter/Space/controller Start. Esc or controller Back opens a quit confirmation (compiled out on web with `__EMSCRIPTEN__`; Android/Xbox reach it via `back_pressed()`). Selecting NEW GAME while a save exists shows a "New game?" YES/NO confirmation (NO is the default; keyboard/controller stack YES above NO, touch puts YES on the left half and NO on the right). Options screen (a data-driven row list, `opt_row`): P1/P2 sensitivity (SLOW–MAX, 0.5–2.0, 5 steps), P1/P2 camera smoothing (OFF–MAX, 0.0–0.010, 5 steps), P1/P2 camera (FIXED/ROTATE, 2 steps), star density (MINIMAL–FULL, 0.1–1.0, 5 steps). Desktop/controller: three lines per row (heading / numbered steps / value), left/right adjusts, Esc/back closes. Touch: P2 rows excluded (mobile shows P1 + shared options), one row each with the name left and value right, tap to cycle, a RETURN TO MENU band exits
+- **GLGame** (`glgame.h/cpp`) — in-game; owns all game objects; handles asteroid spawning, pickup drops, two-player split-screen, pause, auto-save. Game over transitions back to Menu (no separate game-over state). **Netplay spectator flow**: online, when the local player runs out of lives while the peer plays on (the game only ends when *all* players are out), a 5 s `SPECTATING IN N` countdown runs on the local wreck (`update_spectate()` / `spectate_arming()`), then the camera hands off to the peer (`camera_target()` returns `remote_player()`) and `SPECTATING` shows at the bottom — the viewer keeps their own rotate/fixed camera preference, the peer's is not adopted. The control OSD and the wreck's own GAME OVER indicator are suppressed while spectating; the shared GAME OVER card takes over once the peer is also out. On the client, losing the host while already out is terminal (goes straight to GAME OVER, no rejoin)
 - **Intro** (`intro.h/cpp`) — between-level new-object intro screen. `GLGame::maybe_start_intro()` hands the game to a new `Intro` via ownership transfer; the intro (a `friend` of `GLGame`) draws the frozen world's starfield with the new object spinning centre-screen, and on fire/auto-start hands the game back (`request_state_change(game)`), or deletes it (auto-saving) when leaving to the Menu. `StateManager` forwards focus and controller hot-plug events to it alongside the `GLGame` case
 
 ### Weapon System
@@ -239,7 +280,10 @@ There are three states:
 | `weapon/shield` | Shield | Energy barrier, limited ammo |
 | `weapon/god_mode` | God Mode | Timed invincibility (10s); fires periodic shockwaves (150ms); plays special music with a warning phase in the final 3s |
 | `weapon/nova` | Nova | Secondary weapon; charges accumulate from asteroid kills (0–9); triggers `ship->nova_detonate()` |
-| `weapon/shock` | Shock | Primary weapon (lives in `primary_weapons`, fired via `shoot()`, cycled with the rest); limited ammo; automatic while held (fires a bolt every 200 ms, first on press). Added via `Ship::add_shock`. Spawns a `ShockBolt` (stored in `Ship::shocks`) that grows one staggered segment per tick ahead of the ship, seeks the nearest asteroid/enemy/station/hazard near its advancing tip, and **chains onward only from a *killing* hit**: if a hit fails to destroy the target — an invincible object (invincible asteroid, shielded/invincible player) or something that survives more than one shot (tough asteroid, station, comet, pulsar) — the owner calls `ShockBolt::stop()`, which ends the arc there and spawns a **spark burst** at the collision point (drawn in `GLShip::draw_shocks`) instead of arcing past. A one-shot kill (mini-station, seeker, un-shielded enemy, breakable asteroid) leaves it chaining. Then it fades. Asteroid damage/stop is applied in `Ship::collide_grid`; enemy/station/hazard damage/stop in `GLGame` (which owns those lists), reusing the same `kill()`/`hit()` results bullets use so a survivor is detected by the target still being alive. Seek targets: each ship's missile-asteroid list (invincible asteroids included) plus `shock_targets` (enemies + stations + mini-station + live hazards, refreshed per tick by `GLGame`; other players are added when friendly fire is on). Each bolt carries its `owner` ship and never seeks/hits it, so friendly-fire lightning only arcs to the *other* player (credited like a bullet) |
+| `weapon/beam` | Pierce Beam | Primary weapon; limited ammo; fires a single fast bolt (`piercing` flag on the `Particle`) that ploughs straight through a line of asteroids instead of stopping at the first, but only continues through asteroids it actually destroys — it stops when it hits one it can't destroy (invincible, or tough not yet broken); one bolt per trigger pull |
+| `weapon/lance` | Lance | Primary weapon; limited ammo; one instantaneous full-length pulse per trigger pull (`Lance::RANGE` = the beam bolt's total travel). The weapon just sets `ship->lance_pulse_pending`; `Ship::fire_lance_pulse()` ray-marches it with the grid: kills every killable asteroid along the line — including tough ones, which the lance kills outright — mirror-reflects (carrying remaining distance) off surfaces that reflect bullets (reflective asteroids, armoured faces, phased ghosts), and is blocked by plain invincible asteroids and teleport evades. The traced polyline is kept as a fading `LancePulse` drawn by `GLShip`. Ship/station hits resolve in `GLGame::resolve_lance_ship_hits` (the march only sees asteroids): the firer dies to post-reflection segments only, the partner needs friendly fire on, enemies and the mini-station die (scored like bullet kills), the gen-20 station hull takes multi-hit damage; online a client's polyline is resolved host-side from MSG_LANCE, except enemies, which the client kills instantly and claims with bullet_id 0 (PROTO 20) like bullet claims |
+| `weapon/shock` | Shock | Primary weapon (lives in `primary_weapons`, fired via `shoot()`, cycled with the rest); limited ammo; **semi-automatic — one bolt per trigger pull, no hold-to-repeat** (like Beam/Lance; `is_automatic()`==false, `step()` disarms after each shot; `FIRE_INTERVAL` = 200 ms re-press rate limit). Added via `Ship::add_shock`. Spawns a `ShockBolt` (stored in `Ship::shocks`) that grows one staggered segment per tick ahead of the ship, seeks the nearest asteroid/enemy/station/hazard within a **forward 135° cone** (±67.5° of the firing direction) near its advancing tip, and **chains onward only from a *killing* hit**: if a hit fails to destroy the target — a shielded/invincible player, or something that survives more than one shot (tough asteroid, station, comet, pulsar) — the owner calls `ShockBolt::stop()`, which ends the arc there and spawns a **spark burst** at the collision point (drawn in `GLShip::draw_shocks`) instead of arcing past. A one-shot kill (mini-station, seeker, un-shielded enemy, breakable asteroid) leaves it chaining. Then it fades. **Invincible asteroids are never *sought*** (`ShockBolt::seek_target` skips them, so the arc chains to killable targets instead of dead-ending on a rock it can't destroy) **but they still *block* it** — `grow_segment` does a segment-vs-body test and, when a segment runs into an invincible rock, stops the bolt at its surface (like the lance). Asteroid damage/stop is applied in `Ship::collide_grid`; enemy/station/hazard damage/stop in `GLGame` (which owns those lists), reusing the same `kill()`/`hit()` results bullets use so a survivor is detected by the target still being alive. Seek targets: each ship's missile-asteroid list (invincible asteroids seek-excluded but still blocking — see above) plus `shock_targets` (enemies + stations + mini-station + live hazards, refreshed per tick by `GLGame`; other players are added when friendly fire is on). Each bolt carries its `owner` ship and never seeks/hits it, so friendly-fire lightning only arcs to the *other* player (credited like a bullet). Online (PROTO 22): each fired bolt's polyline is replicated both ways (MSG_SHOCK) for the remote view, and the firing side's kills flow through the same claim/authority path as bullets/lance — the client kills asteroids/enemies locally and claims them (bullet_id 0 sentinel), the host applies its own and station/hazard hull damage |
+
 
 ### Pickup System
 
@@ -254,10 +298,15 @@ All inherit from `Pickup` base class (`pickup.h`). Each pickup implements `draw(
 | `shield_pickup` | Shield | +N shield charges |
 | `god_mode_pickup` | God Mode | +10s invincibility |
 | `nova_charge_pickup` | Nova Charge | +1 nova charge (auto-drops every 100 asteroid kills) |
+| `beam_pickup` | Pierce Beam | +100 beam bolts (violet star) |
+| `lance_pickup` | Lance | +100 lance pulses (amber star) |
 | `shock_pickup` | Shock | +100 shock bolts (chain-lightning primary; lightning-arc icon) |
+| `revive_pickup` | Revive | Co-op only (green cross): revives the fallen partner on their last life; GLGame applies it at the collection site (the pickup can't see the player list) |
 | `extra_life` | Extra Life | +1 life (heart shape) |
 
-**Drop chances** (per asteroid death, constants in `glgame.cpp`): extra_life 0.3125%, weapon 1.25%, mine 1.25%, giga_mine 0.5%, missile 1.25%, shield 1.25%, god_mode 0.25%, shock 1.25%.
+**Drop chances** (per asteroid death, constants in `glgame.cpp`): extra_life 0.3125%, weapon 1.25%, mine 1.25%, giga_mine 0.5%, missile 1.25%, shield 1.25%, god_mode 0.25%, beam 0.375%, lance 0.25%, shock 0.3125%. **Revive** is a separate 10% roll ahead of that table, active only while some player is fully out of lives with a partner still in it, and capped at one in the world at a time; collecting it sets the fallen partner's `lives = 1` and restarts their respawn countdown (`GLGame::revive_fallen_partner`), which online replicates like any respawn and ends the spectator flow by itself.
+
+**Debug cheat** — `NEWTONIA_ALL_WEAPONS=1` grants every primary (all default variants + Beam + Lance + Shock) and every secondary at 999 rounds on spawn and after each respawn (`Ship::give_all_weapons`, re-granted from `GLGame::tick`). It flags the game as cheated (`Achievements::note_cheat_used()` in both `GLGame` constructors) so no achievements or lifetime stats count, and that flag rides the savegame (`GameState::cheated`) so save/resume can't launder it.
 
 ### Asteroid Special Types
 
@@ -310,7 +359,7 @@ Serialization: `capture_state()` / `from_state()` (kind, position, velocity, sho
 
 ### Rendering
 
-**OpenGL compatibility** — `gl_compat.h` and `gles2_compat.h/cpp` abstract desktop OpenGL 3.3 Core vs OpenGL ES 2 (mobile/web/Xbox). `gles2_compat` provides GLSL program wrappers, vertex/color buffers, and line-thickening for WebGL (which disallows `lineWidth > 1`).
+**OpenGL compatibility** — `gl_compat.h` and `gles2_compat.h/cpp` abstract desktop OpenGL 3.3 Core vs OpenGL ES 2 (mobile/web/Xbox). `gles2_compat` provides GLSL program wrappers, vertex/color buffers, and line-thickening for platforms where `lineWidth > 1` does nothing (WebGL clamps to 1, macOS core GL ignores it, ANGLE reports a [1,1] range). Real GLES drivers (Android/iOS) rasterize wide aliased lines natively, so `gles2_init` queries `GL_ALIASED_LINE_WIDTH_RANGE` and in-range widths bypass the emulation entirely — the per-draw CPU quad expansion + shared-VBO re-upload was the dominant mobile frame cost (~44 ms/frame in the objects pass at 21 fps, fixed by the bypass). `NEWTONIA_LINE_EMULATION=1` forces the emulation back on for A/B.
 
 **Mesh system** (`mesh.h/cpp`) — GPU geometry with interleaved position/colour data. Builder API:
 ```cpp
@@ -356,25 +405,27 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 
 ### Save / Load
 
-**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 12 (v12 appended the `Shock` weapon kind — a *primary* weapon, captured/restored in the primary-weapon list — and the `ShockWeapon` pickup type; both are new enum values, so older saves still load — they just never contain them; v12 also appended the mid-game hazard list at end of file):
-- `WeaponEntry`: kind, weapon_index, ammo
-- `Player`: score, lives, kills, respawning flag, position, velocity, facing, weapons, nova state, achievements bookkeeping (asteroid kills, enemy-ship kills, died-this-generation, weapons-fired mask; appended in v11)
+**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 16:
+- `WeaponEntry`: kind, weapon_index, ammo (kinds include the primaries `Beam`, `Lance`, and `Shock` — all captured/restored in the primary-weapon list; `Shock` appended in v15 after the branch's Beam/Lance to keep wire ordinals stable)
+- `Player`: score, lives, kills, respawning flag, position, velocity, facing, weapons, nova state, achievements bookkeeping (asteroid kills, enemy-ship kills, died-this-generation, weapons-fired mask; appended in v14 together with the game-scoped cheat flag)
 - `Asteroid`: position, velocity, radius, health, all special flags and transient state
-- `Pickup`: type, position, weapon_index
+- `Pickup`: type, position, weapon_index (the `ShockWeapon` pickup type merged from master; a new enum value, so older saves still load — they just never contain it)
 - `BlackHole`, `Enemy`, `Station`: positional/state data (Station includes its deployed enemies)
 - `MiniStation`: present flag, alive, position, drift velocity, rotations, shot timer
-- `Hazard`: kind, position, velocity, shockwave phase timer (appended in v12)
-- `GameState`: generation, world size, level_cleared, players, all object lists, game-scoped achievements cheat flag (appended in v11), hazard list (appended in v12)
+- `Hazard`: kind, position, velocity, shockwave phase timer (mid-game pulsar/comet/seeker; merged from master and appended at end of file in v16)
+- `GameState`: generation, world size, level_cleared, players, all object lists, game-scoped achievements cheat flag (appended in v11→renumbered v14 on this branch), hazard list (appended in v16)
 
 **Backward compatibility:** `GameState::MIN_VERSION..VERSION` all load; older or newer files are ignored. New fields are only ever **appended at the end** and read back gated on `version >= N`, so an older save stops short and the new fields take their defaults (e.g. v9 saves load with no mini-station). Loading then re-saving upgrades the file to the current `VERSION`. Keep this convention when bumping the version so existing saves survive.
+
+**Netplay reuses these structs — update the snapshot rebuild too.** Snapshots serialize through the same `Save::` types, and the restore logic exists in TWO places: the savefile-load switch in the `GLGame(save)` constructor AND the wholesale rebuild in `net_apply_state()` (what a net client applies 10x/s). Anything added to the savefile — a new `PickupType`, `WeaponEntry::Kind`, object list — must be handled in **both**, or the addition silently vanishes on net clients (a missing case is skipped, not an error: the Beam/Lance pickups arrived in client snapshots invisible for exactly this reason; the mid-game hazards merged from master round-tripped through the savegame but were invisible online until `net_apply_state` learned to rebuild them, and the Shock pickup repeated the pattern). **Pickups are now immune**: both paths share the single `make_pickup()` factory in `glgame.cpp` (no `default:` case, so a missed new `PickupType` is a `-Wswitch` warning) — add new pickup types there only. For everything else, grep for the existing enum's cases and extend every switch you find. Objects that MOVE (mini-station, station, comet/seeker hazards) also need a `net_state_sane` bound, a nearest/in-place reconcile in `net_apply_state` (a wholesale delete+recreate teleports them at the 10 Hz apply rate) and an extrapolation step in `tick_net_client` so they glide between snapshots. A world FORCE on the local ship (black-hole pull, pulsar shockwave push) must additionally be re-applied to `players->back()->ship` in `tick_net_client` — the host applies it to its copy, but the client's authoritative pose (PROTO 12) discards that every INPUT, so without the client-side mirror the effect passes straight through the pilot. The resulting collision/death still resolves host-side and replicates.
 
 Auto-save triggers on pause or player death if the player has lives or score remaining, and on level completion.
 
 **Preferences** (`preferences.h/cpp`) — INI file in SDL pref path; global `g_prefs` instance:
-- Per-player (`PlayerKeys`): 12 key bindings (left, right, thrust, shoot, reverse, mine, next_weapon, next_secondary, boost, teleport, help, toggle_rotate_view; defaults WASD + Space/X) plus `keyboard_sensitivity` and `camera_smoothing` floats
+- Per-player (`PlayerKeys`): 12 key bindings (left, right, thrust, shoot, reverse, mine, next_weapon, next_secondary, boost, teleport, help, toggle_rotate_view; defaults WASD + Space/X) plus `keyboard_sensitivity` and `camera_smoothing` floats and a `rotate_view` bool (per-player camera fixed/rotate; the in-game toggle key and the Options screen both write it). Each binding is a two-slot `KeyBinding` (primary + optional alternate; `matches()` is the dispatch test) — P1's directions default to the arrow keys as alternates, P2's carry none. INI format is downgrade-safe (Steam testers switch branches sharing the file): the canonical line stays single-value (`p1_thrust=w`, old builds parse it), the alternate rides a `p1_thrust_alt=up` line old builds ignore (`none` = cleared); a bare value on load replaces the primary and keeps the default alternate, and a comma list (`w,up`) is accepted for hand edits
 - General (`GeneralKeys`): pause (P), menu (Esc), add_player2 (Enter), toggle_friendly_fire (G), skip_level (N), toggle_debug_grid (B), time_speed_up (=), time_slow_down (-), time_reset (0), toggle_fullscreen (F)
 - Display: `fullscreen` flag, `window_width`/`window_height`
-- Camera: `rotate_view` flag
+- Camera: legacy global `rotate_view` flag — superseded by the per-player `PlayerKeys::rotate_view`; kept only as a load-time migration seed (old INIs) and a downgrade fallback written from P1
 - Gameplay: `friendly_fire` flag, `star_density` multiplier (user-editable float in the INI)
 - API: `load_preferences()`, `save_preferences()`; missing keys in old files are silently ignored
 
@@ -388,7 +439,11 @@ Full design in `ACHIEVEMENTS.md` (platform requirements, master list, backend pl
 
 Hooks: `GLGame` (level clear, generation rebuild/progression, station + mini-station destruction, cheat keys) and `Ship` (`credit_asteroid_kill()` shared by every asteroid-kill path, `credit_ship_kill()` on the bullet/missile ship-kill paths, weapon-kind tracking in `shoot()`/`fire_secondary()`/`add_god_mode()`, `nova_detonate()`, death flag in `kill()`). Attribution: only ships with `is_local_player` (set by `GLGame` when creating player ships; false for enemies, stations, and future remote netplay peers) earn achievements and stats.
 
-**Presence** (`presence.h/cpp`) — platform-neutral online-status seam mirroring the achievements pattern: `Presence::set_menu()` / `set_level(level, num_players)` / `clear()`; the shared layer dedupes repeat reports (logging each change to stdout — greppable in headless tests) and the default backend is a no-op. The Steam backend (`steam_presence.cpp` under `STEAM_BUILD`) sets Rich Presence via `ISteamFriends::SetRichPresence`: a plain-English `status` key plus a `steam_display` localization token (`#StatusMenu`, `#StatusLevel`, `#StatusLevelCoop`; `%level%` substituted from the `level` key) so friends see "Level 3" / "Level 3 Co-Op". The tokens live in `steam/rich_presence.vdf`, pasted manually into the Steamworks portal (App Admin → Community → Rich Presence) after any change — no workflow uploads it. Hooks: `Menu` constructor (menu status); `GLGame::update_presence()` from both `GLGame` constructors, the generation increment, and both player-2 join paths; `glut.cpp` clears presence at exit. Levels are reported as displayed numbers (generation + 1). No cheat suppression — presence is descriptive, not an earn.
+**Presence** (`presence.h/cpp`) — platform-neutral online-status seam mirroring the achievements pattern: `Presence::set_menu()` / `set_level(level, num_players)` / `clear()`; the shared layer dedupes repeat reports (logging each change to stdout — greppable in headless tests) and the default backend is a no-op. The Steam backend (`steam_presence.cpp` under `STEAM_BUILD`) sets Rich Presence via `ISteamFriends::SetRichPresence`: a plain-English `status` key plus a `steam_display` localization token (`#StatusMenu`, `#StatusHosting`, `#StatusJoining`, `#StatusLevel`, `#StatusLevelCoop`; `%level%` substituted from the `level` key) so friends see "In the Menu" / "Hosting a Co-Op Game" / "Joining a Co-Op Game" / "Level 3" / "Level 3 Co-Op". The tokens live in `steam/rich_presence.vdf`, pasted manually into the Steamworks portal (App Admin → Community → Rich Presence) after any change — no workflow uploads it. Hooks: `Menu` constructor (menu status); `NetLobby` sets hosting/joining status when the player commits to HOST/JOIN (and the rejoin/invite-accept ctor sets joining); `GLGame::update_presence()` from both `GLGame` constructors, the generation increment, and all player-2 join paths (both local joins and the netplay `add_remote_player()`); `glut.cpp` clears presence at exit. Levels are reported as displayed numbers (generation + 1). No cheat suppression — presence is descriptive, not an earn.
+
+**Invites** (`invites.h/cpp`) — platform-neutral game-invite seam mirroring the presence/achievements pattern: `Invites::init()` / `set_joinable(room_code)` / `clear_joinable()` / `poll_accepted_invite(code_out)` / `capture_launch(argc, argv)`. **The room code is the universal join token** — the platform invite system only ferries it host→joiner; the actual connection still runs over signaling + WebRTC, so no platform networking is involved. The shared layer owns the connect-string parse (`"+connect <code>"`, bare code tolerated) and the pending-code handoff; the default backend is a no-op. The Steam backend (`steam_invites.cpp` under `STEAM_BUILD`) advertises via `ISteamFriends::SetRichPresence("connect", "+connect <code>")` (a non-empty `connect` key gives friends the "Join Game" option for free) and catches accepts with a `GameRichPresenceJoinRequested_t` callback (running game) or the `+connect` launch arg (cold launch, `capture_launch`). Hooks: `glut.cpp` calls `Invites::init()` + `capture_launch()` at startup (and `Invites::clear_joinable()` at exit); `NetLobby` calls `set_joinable()` when its room code arrives and `clear_joinable()` in its destructor (slot full or host left); `Menu::tick()` polls `poll_accepted_invite()` and routes the code to `new NetLobby(code)` (the existing programmatic-join ctor). The host also **re-advertises mid-game**: `GLGame`'s host tick edge-detects `net_connection_lost_` (peer gone but the room still open for rejoin) and calls `set_joinable(net_room_code_)`, clearing again when the slot refills or on teardown (`~GLGame`) — so a dropped peer or a fresh friend can Join into the empty co-op slot. `net_invite_advertised_` tracks the advertised state; transitions log `net: invite - ...` (greppable, `test/e2e/invite.sh`). Xbox/GDK (MPSD + activity handle) slots in behind its own flag later.
+
+**Universal join link** — the *cross-platform* invite path (per-platform friends systems are walled gardens; a Steam friend can't native-invite a Game Center friend). One URL, `net_join_url(code)` = `https://newtonia.metonymous.com/join?code=<CODE>` (`net_signal.h/cpp`), is what the host hands out regardless of platform — the lobby's SHARE band on touch (`net_share_text`) AND the room's clipboard auto-copy on every platform (`net_clipboard_write(net_join_url(...))` in `net_lobby.cpp`; on desktop/Steam the clipboard is the *only* share affordance, since `net_share_available()` is false there). The *recipient's* device resolves it at tap time. The share side is dumb; the intelligence is the static `/join` landing page (`web/site/join/index.html`, copied to the site root by `make web`): it reads `?code=`, and routes to Steam desktop (`steam://run/4536720//+connect%20<code>`, consumed by `steam_invites.cpp` with no code change) or falls through to the browser game (`/play/?code=`). An installed, domain-verified iOS/Android app intercepts the https link *before* the page loads (Universal / App Links) and opens directly. Deep-link consumers all funnel into `Invites::note_accepted` → `poll_accepted_invite` → `NetLobby(code)`: web (`web_main.cpp` `web_accept_invite` export, called from `web/main.ts` on `?code=`), iOS (`ios_universal_link.mm` — a Point-free TU like `ios_share.mm`; subclasses `SDLUIKitDelegate` via the `+getAppDelegateClassName` category override to catch `continueUserActivity`/`openURL`; needs the `applinks:` entitlement in `ios/Entitlements*.plist`), Android (`AndroidManifest.xml` `autoVerify` intent-filter + `singleTask` → `NewtoniaActivity.handleInviteIntent` → `nativeAcceptInvite` JNI in `android_main.cpp`). `note_accepted`/`poll_accepted_invite` are mutex-guarded (`invites.cpp`) — the deep-link backends deliver on a platform thread while `Menu::tick` drains on the game thread. **Pasting the link into the JOIN screen also works**: the clipboard auto-join extracts the code from a `…?code=<CODE>` string via `room_code_from_clip` (`net_lobby.cpp`; bare codes still accepted), and the zombie-room guards compare that *extracted* code against the last-hosted/dead codes as before. **Desktop window focus**: accepting an invite in an already-running game (a `steam://run` into an open game, which Steam does NOT bring to the front) sets a one-shot `Invites::take_focus_request()`; `glut.cpp`'s `draw()` drains it each frame and re-arms the macOS `activate_app_macos()` raise cycle so the window rises above Steam. The domain-association files `web/site/.well-known/{apple-app-site-association,assetlinks.json}` are **populated and served live** (Apple Team ID `4RWPRHJG6D`; the release/debug Android signing SHA-256s — see `web/site/.well-known/README.md`); they deploy from **master** (the hardcoded `cp` list in the `web` Makefile target copies `/join` + `.well-known` explicitly). All platform setup is done and field-tested: iOS Associated Domains is enabled and provisioned, and the Steamworks promptless `+connect` Launch Option is configured. Android + iOS deep links are field-verified on-device; web auto-join rides the netplay→master merge.
 
 **Lifetime stats** (`stats.h/cpp`) — standalone roaming `stats.dat` in the SDL pref path (magic "NWST", version 1, append-only format like the savegame): lifetime asteroid kills and a special-type kill mask, deliberately outside `savegame.dat` so netplay still counts. Kill writes are batched (every 10) and flushed via `Stats::flush()` from `save_progress()` and game over. Writes are skipped while the cheat flag is set — `specials_7`/`kills_10000_lifetime` read this file, so cheat games banking lifetime progress would launder achievements. Likely needs adding to Steam Auto-Cloud patterns so it persists across installs.
 
@@ -412,17 +467,19 @@ GitHub Actions runs builds on every push to `master`/`main` and on PRs (feature 
 | `.github/workflows/macos-dev.yml` | Universal arm64+x86_64 binary |
 | `.github/workflows/android.yml` | Debug APK |
 | `.github/workflows/ios.yml` | iOS simulator build |
-| `.github/workflows/linux.yml` | Linux executable |
-| `.github/workflows/windows.yml` | Windows executable |
+| `.github/workflows/linux.yml` | Linux executable (netplay + headless loopback self-test) |
+| `.github/workflows/windows.yml` | Windows executable (netplay: MinGW-static libdatachannel + self-test — the compile gate for deploy-steam's Windows build) |
 | `.github/workflows/web.yml` | WebAssembly + GitHub Pages deploy (master/main only) |
 | `.github/workflows/xbox-dev.yml` | GDK Desktop (Gaming.Desktop.x64) build — catches Xbox-port compile errors without hardware |
 | `.github/workflows/xbox-console-smoke.yml` | Compile-only check of the `_GAMING_XBOX` console paths with MSVC under `WINAPI_FAMILY_GAMES` (no GDKX/NDA material; GDK-only headers stubbed in `xbox/smoke_stubs/`) |
 
-**Deployment workflows** (triggered manually):
-- `.github/workflows/deploy-steam.yml` — Steam (Windows/macOS/Linux via Steamworks SDK)
+**Deployment workflows** (triggered by version tags or manual dispatch). Two tag namespaces: `v*.*.*` is the normal release pipeline; `netplay-v*` is a netplay test release routed to test channels (Steam `netplay` branch, itch `html5-netplay` channel; TestFlight/Play-internal are test tracks either way). The globs can't overlap, so netplay tags never touch the normal pipeline:
+- `.github/workflows/deploy-steam.yml` — Steam (Windows/macOS/Linux via Steamworks SDK); manual dispatch defaults to `beta`, `v*.*.*` tags go to `beta`, `netplay-v*` tags to `netplay`
 - `.github/workflows/deploy-ios.yml` — TestFlight
 - `.github/workflows/deploy-android.yml` — Play Store
 - `.github/workflows/deploy-itch.yml` — Itch.io (pushes only the playable game `web/dist/play`, not the landing page)
+
+All deploy artifacts build with netplay (NETPLAY.md M3-5): web/Android have it inherently (Emscripten backend is unconditional; root CMakeLists defaults `NEWTONIA_NET=ON`), deploy-ios feeds the device libdatachannel build through the pbxproj's `NEWTONIA_NET_DEFINE`/`NEWTONIA_NET_HEADER_PATH` vars, and deploy-steam builds libdatachannel per platform. Each native deploy job runs the headless `NEWTONIA_NET_SELFTEST` loopback as a gate; the dev workflows above prove the same recipes on every push.
 
 **Disabled workflows** — `.github/workflows/disabled/` holds inactive deployment workflows (`deploy-macos.yml`, `deploy-windows.yml`, `deploy-xbox.yml`); move a file back into `workflows/` to re-enable it.
 
@@ -440,3 +497,4 @@ GitHub Actions runs builds on every push to `master`/`main` and on PRs (feature 
 8. **Platform abstraction** — Use `gl_compat.h` macros; never call desktop-only GL functions directly.
 9. **File naming** — Behaviours: `*_behaviour.h/cpp`. Weapons: `weapon/*.h/cpp`. Pickups: `*_pickup.h/cpp` at root. Views/HUD: `view/*.h/cpp`.
 10. **C++11** — Codebase targets C++11 (`-std=c++11`). Avoid later standard features.
+11. **The iOS Xcode project is generated by XcodeGen — never hand-edit the pbxproj.** `ios/Newtonia-iOS.xcodeproj/` is gitignored and rebuilt from `ios/project.yml` (`brew install xcodegen && cd ios && xcodegen generate`); both `ios.yml` and `deploy-ios.yml` run `xcodegen generate` before they build through the project. The spec **globs** the same source set the Makefile compiles — root `*.cpp` + `weapon/*.cpp` + `view/*.cpp` (minus the other platforms' entry points: `glut.cpp`, `android_main.cpp`, `web_main.cpp`, `xbox_main.cpp`, `play_games_achievements.cpp`) plus the three Objective-C++ files (`ios_main.mm`, `ios_share.mm`, `game_center_achievements.mm`). So a **new `.cpp` at root / `weapon/` / `view/` needs no project edit** — it's picked up automatically, and master merges can no longer collide object IDs (the class of bug that silently dropped `net_transport.cpp` from the compile). Only touch `ios/project.yml` when adding a **new source directory**, a framework, or a build setting; a new platform-specific entry point that must NOT compile on iOS goes in that spec's `excludes:` list. This replaced a hand-maintained pbxproj where every file had to be added to four sections under a globally-unique `AA…`/`AB…` ID.

@@ -10,6 +10,10 @@ build
 ## Makefile
 *.o
 /newtonia
+/newtonia.exe
+/newtonia-arm64
+/newtonia-x86_64
+/selftest.log
 ## Glut (binaries)
 GL/
 ## SDL
@@ -18,6 +22,14 @@ SDL*
 android/.gradle/
 android/app/build/
 android/build/
+## Android native build cache + generated files
+android/app/.cxx/
+android/app/src/main/assets/
+android/local.properties
+## iOS CI generated source list (.github/workflows/ios.yml)
+srcs.txt
+## iOS Xcode project — generated from ios/project.yml by XcodeGen
+ios/Newtonia-iOS.xcodeproj/
 ## Web build output
 web/dist/
 .claude/
@@ -32,6 +44,10 @@ package.json
 package-lock.json
 ## Mac build
 Newtonia.app/
+netplay-libs/
+flavor.stamp
+## Xbox/GDK local build trees (cmake -B xbox/build-*)
+xbox/build-*/
 ## Steam local build (make steam)
 /newtonia-steam
 /sdk/

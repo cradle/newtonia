@@ -11,8 +11,11 @@
 #include "asteroid.h"
 #include "typer.h"
 #include "preferences.h"
+#include "net_transport.h"
+#include "net_signal.h"
 #include "achievements.h"
 #include "presence.h"
+#include "invites.h"
 
 // gl_compat.h pulls in GLUT (for window management) and gles2_compat.h
 // (for the VBO/VAO/shader shim that replaces all legacy GL calls).
@@ -54,20 +57,33 @@ void activate_app_timer(int);
 void hide_cursor_after_fullscreen(int);
 #endif
 
+static int s_last_frame_draws = 0, s_last_frame_segs = 0;
+
 void draw() {
   if (!game) return;
   int current_time = glutGet(GLUT_ELAPSED_TIME);
   last_render_time = current_time;
-  game->draw();
+  game->draw();  // StateManager::draw zeroes the dbg counters at entry
+  s_last_frame_draws = g_gles2_dbg_draws;
+  s_last_frame_segs  = g_gles2_dbg_line_segs;
   glutSwapBuffers();
+  // A Steam join accepted while the game is already running (steam://run into
+  // an already-open game) does not bring us to the front. Drain the request
+  // each frame; on macOS re-run the activate/retry cycle so our window rises
+  // above Steam. (Windows/Linux Steam focuses the game itself, so the drained
+  // request is a harmless no-op there for now.)
+  if (Invites::take_focus_request()) {
+#ifdef __APPLE__
+    s_needs_activation = true;
+#endif
+  }
 #ifdef __APPLE__
   // Activate after the first rendered frame so the window is on screen before
-  // we request focus (a 0ms timer fires before the window is visible).
-  // Retry every 200 ms for up to 5 s (25 attempts).  This covers both the
-  // fullscreen transition animation (~500 ms) and the native Steam "Now
-  // Playing" overlay, which holds focus for several seconds after launch.
-  // activate_app_macos() is a no-op once [NSApp isActive] is true, so the
-  // retries are cheap and stop stealing focus as soon as we have it.
+  // we request focus (a 0ms timer fires before the window is visible), then
+  // once more 200 ms later — twice total. activate_app_macos() re-raises the
+  // window every call (orderFrontRegardless), so hammering it for seconds
+  // yanks focus back if the user alt-tabs away right after launch; two quick
+  // attempts get us in front without fighting the user after that.
   if (s_needs_activation) {
     s_needs_activation = false;
     s_activation_retries = 0;
@@ -187,7 +203,10 @@ void hide_cursor_after_fullscreen(int) {
 
 void activate_app_timer(int) {
   activate_app_macos(); // No-op once [NSApp isActive].
-  if (++s_activation_retries < 25) { // 25 × 200 ms = 5 s total
+  // One retry only: this is the SECOND (and final) activation — the first ran
+  // in draw() when the window first appeared. Two attempts then stop, so we
+  // never fight the user for focus after launch.
+  if (++s_activation_retries < 1) {
     glutTimerFunc(200, activate_app_timer, 0);
   }
 }
@@ -285,6 +304,15 @@ void tick() {
   int current_time = glutGet(GLUT_ELAPSED_TIME);
   int delta = current_time - last_tick_time;
   last_tick_time = current_time;
+  // NEWTONIA_FRAME_LOG=1: log every frame slower than 50 ms (sim + draw +
+  // swap, since tick idles between redisplays). Greppable in headless runs
+  // and cheap enough to leave in — field reports like "frame rate collapsed
+  // when the mines went off" become measurable instead of anecdotal.
+  static const bool frame_log = getenv("NEWTONIA_FRAME_LOG") != NULL;
+  if (frame_log && delta > 50)
+    std::cout << "frame: " << delta << " ms at t=" << current_time
+              << " draws=" << s_last_frame_draws
+              << " segs=" << s_last_frame_segs << std::endl;
   check_controller();
 #ifdef __linux__
   check_linux_focus();
@@ -312,12 +340,21 @@ void init_controllers_and_audio() {
   if(ENABLE_AUDIO) {
     SDL_INIT_FLAGS |= SDL_INIT_AUDIO;
   }
+#ifdef NEWTONIA_NET_RTC
+  // The netplay lobby's clipboard signaling uses SDL's clipboard API, which
+  // lives in the video subsystem (GLUT still owns the actual window).
+  SDL_INIT_FLAGS |= SDL_INIT_VIDEO;
+#endif
   if(SDL_Init(SDL_INIT_FLAGS) == 0) {
     if( ENABLE_AUDIO && Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 1024 ) < 0) {
       std::cout << "Unable to open audio device" << std::endl;
       std::cout << Mix_GetError() << std::endl;
     }
-    if(ENABLE_AUDIO) Mix_AllocateChannels(64);
+    // 64 channels: gen-20+ firefights (enemy shot cues, booms, boost and
+    // missile loops) can pin 32 and silently drop new sounds. Channels 0/1
+    // are reserved out of -1 allocation as a guaranteed-loop-free fallback
+    // for must-hear booms (see play_priority_chunk in glgame.cpp).
+    if(ENABLE_AUDIO) { Mix_AllocateChannels(64); Mix_ReserveChannels(2); }
     SDL_JoystickEventState(SDL_ENABLE);
     int opened = 0;
     for (int i = 0; i < SDL_NumJoysticks() && opened < 2; ++i) {
@@ -343,12 +380,42 @@ void init(int &argc, char* argv[], float width, float height);
 
 int main(int argc, char* argv[]) {
   srand(time(NULL));
+#ifdef NEWTONIA_NET_RTC
+  // Hidden CI/debug hook (same as xbox_main.cpp): run the netplay loopback
+  // self-test and exit. Works headless — no window or GL is created.
+  {
+    const char *st = SDL_getenv("NEWTONIA_NET_SELFTEST");
+    if (st && st[0] == '1' && st[1] == '\0') {
+      std::cout << "NEWTONIA_NET_SELFTEST: running loopback self-test..." << std::endl;
+      bool ok = net_selftest();
+      std::cout << (ok ? "NET SELFTEST PASS" : "NET SELFTEST FAIL") << std::endl;
+      return ok ? 0 : 1;
+    }
+    // Same idea for the M2 room-code relay (needs a live signal server:
+    // wrangler dev locally, or NEWTONIA_SIGNAL_URL / the preferences INI's
+    // signal_url to point elsewhere).
+    const char *ss = SDL_getenv("NEWTONIA_SIGNAL_SELFTEST");
+    if (ss && ss[0] == '1' && ss[1] == '\0') {
+      load_preferences();  // net_signal_url() honours the INI override
+      std::cout << "NEWTONIA_SIGNAL_SELFTEST: running relay self-test..." << std::endl;
+      bool ok = net_signal_selftest();
+      std::cout << (ok ? "SIGNAL SELFTEST PASS" : "SIGNAL SELFTEST FAIL") << std::endl;
+      return ok ? 0 : 1;
+    }
+  }
+#endif
   if (!steam_init())
     std::cout << "Steam API unavailable (offline / direct-launch mode)" << std::endl;
   // Must precede the first frame: the Steam backend registers its stat
   // callbacks here, and the SDK's automatic stats delivery is dispatched on
   // an early SteamAPI_RunCallbacks() — unheard registrations queue forever.
   Achievements::init();
+  // Register the invite backend before the first callback pump (an invite
+  // accepted while running arrives via a Steam callback), and capture a
+  // "+connect <code>" the platform may have appended on a cold launch — the
+  // menu drains it and joins the room.
+  Invites::init();
+  Invites::capture_launch(argc, argv);
   load_preferences();
   old_width  = g_prefs.window_width;
   old_height = g_prefs.window_height;
@@ -369,7 +436,7 @@ int main(int argc, char* argv[]) {
 #endif
   }
   init_controllers_and_audio();
-  atexit([]{ save_preferences(); if (game) game->focus_lost(); Presence::clear(); steam_shutdown(); });
+  atexit([]{ save_preferences(); if (game) game->focus_lost(); Presence::clear(); Invites::clear_joinable(); steam_shutdown(); });
   game = new StateManager();
   for(int i = 0; i < 2; i++) {
     if(controllers[i]) game->controller_added(controllers[i]);
@@ -430,6 +497,12 @@ void init(int &argc, char* argv[], float width, float height) {
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
   glutDisplayFunc(draw);
+  // Deliver only real presses: without this, holding a key streams
+  // auto-repeat keydowns that re-arm the semi-automatic primaries
+  // (Beam/Lance/Shock disarm after each bolt) every repeat — a held fire
+  // key kept firing despite the one-bolt-per-pull design. The game tracks
+  // held state itself via keyboard_up, so repeats carry no information.
+  glutIgnoreKeyRepeat(1);
   glutKeyboardFunc(keyboard);
   glutKeyboardUpFunc(keyboard_up);
   glutSpecialFunc(special);

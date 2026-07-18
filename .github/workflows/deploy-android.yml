@@ -2,11 +2,14 @@ name: Deploy Android (Google Play)
 
 # Triggered by pushing a version tag, e.g.:
 #   git tag v1.0.0 && git push --tags
+# netplay-v* tags (netplay test releases) also deploy — the upload goes to
+# the internal track as a draft either way, so no routing difference.
 # Or manually from the Actions tab.
 on:
   push:
     tags:
       - 'v*.*.*'
+      - 'netplay-v*'
   workflow_dispatch:
 
 jobs:
@@ -60,8 +63,9 @@ jobs:
           SIGNING_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
         run: |
           REF="${{ github.ref }}"
-          if [[ "$REF" == refs/tags/v* ]]; then
+          if [[ "$REF" == refs/tags/v* || "$REF" == refs/tags/netplay-v* ]]; then
             VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#netplay-}"
             VERSION="${VERSION#v}"
           else
             SHORT_SHA=$(git -C "$GITHUB_WORKSPACE/newtonia" rev-parse --short HEAD)

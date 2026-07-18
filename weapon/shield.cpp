@@ -1,5 +1,6 @@
 #include "shield.h"
 #include "../asset_path.h"
+#include "../sound_cache.h"
 #include "../ship.h"
 #include "../shield_behaviour.h"
 #include <iostream>
@@ -10,7 +11,7 @@ namespace Weapon {
     _ammo = 10;
     unlimited = false;
 
-    empty_sound = Mix_LoadWAV(asset_path("audio/empty.wav").c_str());
+    empty_sound = load_wav_cached("audio/empty.wav");
     if(empty_sound == NULL) {
       std::cout << "Unable to load empty.wav (" << Mix_GetError() << ")" << std::endl;
     }
@@ -35,10 +36,10 @@ namespace Weapon {
 
   void Shield::step(int delta) {
     if(shooting && !ship->invincible) {
-      if(_ammo == 0) {
-        if(empty_sound != NULL) Mix_PlayChannel(-1, empty_sound, 0);
-        return;
-      }
+      // No empty click here: this runs every 8 ms step while the key is
+      // held, and an empty shield hammered the mixer with 125 plays/s of
+      // empty.wav (the press itself already clicked in shoot()).
+      if(_ammo == 0) return;
       _ammo--;
       ship->add_behaviour(new ShieldBehaviour(ship, 1000));
     }

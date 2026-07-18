@@ -16,6 +16,7 @@
 #include "typer.h"
 #include "asteroid.h"
 #include "preferences.h"
+#include "invites.h"
 
 #include <iostream>
 #include <cmath>
@@ -73,14 +74,18 @@ static void update_joystick_nub(float px, float py) {
 // ---- Finger event handlers ----
 
 static void finger_down(SDL_FingerID id, float x, float y) {
+    // Soft keyboard up (lobby code entry): taps must not synthesize game
+    // keys — '\r', 'x', 'n' would leak into the code field (X and N are
+    // code-alphabet letters) or arm the pause zone. touch_tap on release
+    // still fires, which is all the lobby needs (re-summon keyboard etc).
+    if (SDL_IsTextInputActive()) return;
+
     float px = x * (float)s_w;
     float py = y * (float)s_h;
 
-    // DEBUG: top-right corner → skip to next level
-    if(x > 0.85f && y < 0.15f) {
-        s_game->keyboard('n', 0, 0);
-        return;
-    }
+    // Beta skip corner, BEFORE the pause zones (launch with
+    // `adb shell am start --es NEWTONIA_BETA 1` to enable).
+    if (s_game->debug_skip_corner_tap(x, y)) return;
 
     // Pause button hit zone: top-right, below score/multiplier (larger than visual circle)
     if(!g_touch_controls.pause_active &&
@@ -131,6 +136,65 @@ static void finger_down(SDL_FingerID id, float x, float y) {
             s_game->keyboard('x', 0, 0);
         }
         // Touches that don't hit a button are silently ignored.
+    }
+}
+
+// OS share sheet via ACTION_SEND chooser (see net_transport.h seam).
+bool net_share_available() { return true; }
+void net_share_text(const std::string &text) {
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (!env || !activity) return;
+
+    jclass intent_cls = env->FindClass("android/content/Intent");
+    jstring action = env->NewStringUTF("android.intent.action.SEND");
+    jobject intent = env->NewObject(
+        intent_cls, env->GetMethodID(intent_cls, "<init>", "(Ljava/lang/String;)V"),
+        action);
+    jstring mime = env->NewStringUTF("text/plain");
+    env->CallObjectMethod(
+        intent, env->GetMethodID(intent_cls, "setType",
+                                 "(Ljava/lang/String;)Landroid/content/Intent;"),
+        mime);
+    jstring extra_key = env->NewStringUTF("android.intent.extra.TEXT");
+    jstring extra_val = env->NewStringUTF(text.c_str());
+    env->CallObjectMethod(
+        intent, env->GetMethodID(intent_cls, "putExtra",
+            "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;"),
+        extra_key, extra_val);
+
+    jstring title = env->NewStringUTF("Share room code");
+    jobject chooser = env->CallStaticObjectMethod(
+        intent_cls, env->GetStaticMethodID(intent_cls, "createChooser",
+            "(Landroid/content/Intent;Ljava/lang/CharSequence;)Landroid/content/Intent;"),
+        intent, title);
+
+    jclass activity_cls = env->GetObjectClass(activity);
+    env->CallVoidMethod(
+        activity, env->GetMethodID(activity_cls, "startActivity",
+                                   "(Landroid/content/Intent;)V"),
+        chooser);
+
+    env->DeleteLocalRef(intent_cls); env->DeleteLocalRef(action);
+    env->DeleteLocalRef(intent);     env->DeleteLocalRef(mime);
+    env->DeleteLocalRef(extra_key);  env->DeleteLocalRef(extra_val);
+    env->DeleteLocalRef(title);      env->DeleteLocalRef(chooser);
+    env->DeleteLocalRef(activity_cls); env->DeleteLocalRef(activity);
+}
+
+// Co-op join link (App Link). NewtoniaActivity extracts the ?code= from a
+// tapped https://newtonia.metonymous.com/join?code=XXXX intent and calls this
+// (cold launch from onCreate, warm from onNewIntent). The code flows into the
+// shared invite layer; Menu::tick's poll_accepted_invite jumps into the lobby
+// as a joiner — the same handoff Steam / the web ?code= path use. Called on
+// the Android UI thread, so note_accepted's mutex matters.
+extern "C" JNIEXPORT void JNICALL
+Java_org_newtonia_NewtoniaActivity_nativeAcceptInvite(JNIEnv *env, jclass, jstring code) {
+    if (!code) return;
+    const char *c = env->GetStringUTFChars(code, NULL);
+    if (c) {
+        Invites::note_accepted(c);
+        env->ReleaseStringUTFChars(code, c);
     }
 }
 
@@ -195,6 +259,12 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         return 1;
     }
+
+    // SDL2 starts with text input ACTIVE by default; anything gated on
+    // SDL_IsTextInputActive() (the finger_down key-synthesis guard) would
+    // otherwise be stuck on forever. Only the lobby's code entry turns it
+    // back on, via SDL_StartTextInput.
+    SDL_StopTextInput();
     SDL_Log("Audio driver in use: %s", SDL_GetCurrentAudioDriver());
 
     // Request OpenGL ES 2.0 context
@@ -274,7 +344,9 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         SDL_Log("Mix opened: %d Hz, fmt=0x%x, channels=%d, chunk=%d",
                 freq, fmt, chans, audio_frames);
     }
+    // 64 channels + 2 reserved for must-hear booms — see glut.cpp.
     Mix_AllocateChannels(64);
+    Mix_ReserveChannels(2);
 
     // Pre-warm the audio pipeline so the first real sound plays without delay.
     {
@@ -318,20 +390,46 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                 s_running = false;
                 break;
 
-            // Physical keyboard (Bluetooth keyboard, emulator, etc.)
+            // Keyboard: key events are the ONE source of typed characters.
+            // Soft keyboards deliver text two ways — commitText (which SDL
+            // turns into synthesized KEYDOWN/KEYUP per char *and* an
+            // SDL_TEXTINPUT) and real IME KeyEvents (KEYDOWN/KEYUP only, no
+            // TEXTINPUT). GBoard mixes both, so feeding from TEXTINPUT
+            // drops the KeyEvent-delivered letters, and feeding from both
+            // doubles the commitText ones. KEYDOWN fires exactly once per
+            // character on every path (and covers Bluetooth keyboards).
+            case SDL_TEXTINPUT:
+                break;
             case SDL_KEYDOWN: {
+                if (e.key.repeat) break; // game tracks held state itself; ignore SDL repeats
                 SDL_Keycode k = e.key.keysym.sym;
                 if (k == SDLK_AC_BACK || k == SDLK_ESCAPE) {
                     if (!s_game->back_pressed()) s_running = false;
                     break;
                 }
                 unsigned char key = (k < 128) ? (unsigned char)k : 0;
+                // Arrows (hardware keyboards / adb) use desktop GLUT's
+                // special-key codes; menus alias them to WASD (State::nav_key).
+                if (!key) switch (k) {
+                    case SDLK_UP:    key = 128 + GLUT_KEY_UP;    break;
+                    case SDLK_DOWN:  key = 128 + GLUT_KEY_DOWN;  break;
+                    case SDLK_LEFT:  key = 128 + GLUT_KEY_LEFT;  break;
+                    case SDLK_RIGHT: key = 128 + GLUT_KEY_RIGHT; break;
+                    default: break;
+                }
                 if (key) s_game->keyboard(key, 0, 0);
                 break;
             }
             case SDL_KEYUP: {
                 SDL_Keycode k = e.key.keysym.sym;
                 unsigned char key = (k < 128) ? (unsigned char)k : 0;
+                if (!key) switch (k) {
+                    case SDLK_UP:    key = 128 + GLUT_KEY_UP;    break;
+                    case SDLK_DOWN:  key = 128 + GLUT_KEY_DOWN;  break;
+                    case SDLK_LEFT:  key = 128 + GLUT_KEY_LEFT;  break;
+                    case SDLK_RIGHT: key = 128 + GLUT_KEY_RIGHT; break;
+                    default: break;
+                }
                 if (key) s_game->keyboard_up(key, 0, 0);
                 break;
             }

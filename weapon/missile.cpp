@@ -1,5 +1,6 @@
 #include "missile.h"
 #include "../asset_path.h"
+#include "../sound_cache.h"
 #include "../ship.h"
 #include "../point.h"
 #include "../wrapped_point.h"
@@ -29,7 +30,8 @@ MissileShot::MissileShot(WrappedPoint pos, Point facing_dir, Point bv)
   radius = 3.0f;
 }
 
-void MissileShot::step_missile(int delta, std::list<Object*> *asteroids, std::list<Object*> *ships) {
+void MissileShot::step_missile(int delta, std::list<Object*> *asteroids,
+                               std::list<Object*> *ships, bool seek_players) {
   time_left -= delta;
 
   // Seek nearest target (asteroid or ship) within forward cone
@@ -44,6 +46,10 @@ void MissileShot::step_missile(int delta, std::list<Object*> *asteroids, std::li
         Object *a = *it;
         if (!a->alive) continue;
         if (skip_invincible && a->invincible) continue;
+        if (!seek_players) {
+          Ship *s = dynamic_cast<Ship*>(a);
+          if (s && s->player_ship) continue;
+        }
         WrappedPoint apos = a->position;
         float dist = position.distance_to(apos) - a->radius;
         if (dist >= closest) continue;
@@ -109,12 +115,12 @@ Missile::Missile(Ship *ship) : Base(ship) {
   _ammo = 10;
   unlimited = false;
 
-  fly_sound = Mix_LoadWAV(asset_path("audio/missile_fly.wav").c_str());
+  fly_sound = load_wav_cached("audio/missile_fly.wav");
   if (fly_sound == NULL) {
     std::cout << "Unable to load missile_fly.wav (" << Mix_GetError() << ")" << std::endl;
   }
 
-  empty_sound = Mix_LoadWAV(asset_path("audio/empty.wav").c_str());
+  empty_sound = load_wav_cached("audio/empty.wav");
   if (empty_sound == NULL) {
     std::cout << "Unable to load empty.wav (" << Mix_GetError() << ")" << std::endl;
   }

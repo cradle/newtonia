@@ -679,6 +679,38 @@ marks the game as cheated, so it can never launder achievements; use it to
 answer the remaining "needs playtest" row (the continuous 10–15 run). The
 station fight itself has proved out — no GS re-pitch needed there.
 
+
+### Netplay attribution matrix (2026-07)
+
+Online, each machine earns for its OWN player only (§4). The host's full
+simulation fires every hook naturally; the client earns through three
+mechanisms — LOCAL (its own sim runs the hook), CLAIM (its kill-claim
+consume calls credit_* with full achievements/stats), and RELAY
+(EV_ACHIEVEMENT: the host's sim detected an unlock it attributes to the
+client's ship — ram kills and station kills only resolve host-side). The
+host's cheat keys suppress BOTH machines: `GameState::cheated` rides every
+snapshot and the client applies it before evaluating anything.
+
+| Achievement | Host | Client | Mechanism on the client |
+|---|---|---|---|
+| first_kill, kills_1000, specials_7, kills_10000_lifetime | sim | ✓ | CLAIM (bullet + lance asteroid claims) |
+| score_3m | sim | ✓ | CLAIM/credit sites + per-level refresh from the replicated score |
+| enemies_10 | sim | ✓ | LOCAL instant enemy kills (bullet + lance) + per-level counter refresh (covers missile kills, which credit host-side) |
+| weapons_7 | sim | ✓ | LOCAL — shoot()/fire_secondary() run in the client's own sim |
+| nova_detonated | sim | ✓ | LOCAL — the client's nova weapon detonates in its own sim |
+| clear_level1, coop_clear, no_damage_clear, black_hole_survivor, reach_level15, no_secondary_level10 | sim | ✓ | Level-clear block mirrored at the client's rollover apply — generation, died_this_generation and weapons_fired_mask all replicate (save v14) |
+| shield_ram, shield_ram_asteroid | sim | ✓ | RELAY — collisions resolve host-side only |
+| mini_station_kill | sim | ✓ | RELAY (ram/bullet/missile/lance host paths) |
+| station_destroyed | sim | ✓ | RELAY (bullet + lance killing blows) |
+
+Notes: coop_clear unlocks for both machines on any online level clear (an
+online game is by definition 2-player). The client's counter increments
+are provisional — every snapshot replaces them with the host's
+authoritative counts for that ship, so progress percentages converge even
+when a local prediction was wrong. The host's replica of the client
+(`is_local_player == false`, set explicitly in the client bootstrap for
+the ghost too) never earns on the wrong machine.
+
 ## 6. Work items (this repo)
 
 1. `achievements.h/.cpp` — seam + no-op default backend.

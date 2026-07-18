@@ -15,5 +15,16 @@
          rejects this entitlement. -->
     <key>com.apple.developer.game-center</key>
     <true/>
+
+    <!-- Universal Links for co-op join links (ios_universal_link.mm). The App
+         ID must have the "Associated Domains" capability enabled (regenerate
+         the provisioning profile after), and the site must serve
+         /.well-known/apple-app-site-association naming
+         <TeamID>.cc.gfm.Newtonia for the /join path. Without all three a
+         tapped link opens the browser fallback instead of the app. -->
+    <key>com.apple.developer.associated-domains</key>
+    <array>
+        <string>applinks:newtonia.metonymous.com</string>
+    </array>
 </dict>
 </plist>

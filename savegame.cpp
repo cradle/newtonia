@@ -1,6 +1,7 @@
 #include "savegame.h"
 #include <SDL.h>
 #include <cstdio>
+#include <cstring>
 #include <string>
 
 #ifdef __EMSCRIPTEN__
@@ -21,28 +22,60 @@ static std::string save_path() {
     return path;
 }
 
+// ── Stream implementations ───────────────────────────────────────────────────
+
+bool Save::FileStream::write(const void *data, size_t size) {
+    return fwrite(data, 1, size, f) == size;
+}
+
+bool Save::FileStream::read(void *data, size_t size) {
+    return fread(data, 1, size, f) == size;
+}
+
+bool Save::MemStream::write(const void *data, size_t size) {
+    const uint8_t *p = (const uint8_t *)data;
+    buf.insert(buf.end(), p, p + size);
+    return true;
+}
+
+bool Save::MemStream::read(void *data, size_t size) {
+    if (size == 0) return true;
+    if (pos + size > buf.size()) return false;
+    memcpy(data, &buf[pos], size);
+    pos += size;
+    return true;
+}
+
 // ── Low-level I/O helpers ────────────────────────────────────────────────────
 // All return false on failure so callers can short-circuit with &&.
 
 template<typename T>
-static bool wv(FILE *f, const T &v) { return fwrite(&v, sizeof(T), 1, f) == 1; }
+static bool wv(Save::Stream &f, const T &v) { return f.write(&v, sizeof(T)); }
 
 template<typename T>
-static bool rv(FILE *f, T &v)       { return fread(&v,  sizeof(T), 1, f) == 1; }
+static bool rv(Save::Stream &f, T &v)       { return f.read(&v, sizeof(T)); }
+
+// Read a container count and reject it if it exceeds a sane maximum, so a
+// hostile/corrupt netplay snapshot can't force a huge resize() before
+// net_state_sane() gets a chance to run. Returns false (kills the parse)
+// on a read failure or an out-of-range count.
+static bool read_count(Save::Stream &f, uint32_t &cnt, uint32_t max_allowed) {
+    return rv(f, cnt) && cnt <= max_allowed;
+}
 
 template<typename T, int N>
-static bool wa(FILE *f, const T (&a)[N]) { return fwrite(a, sizeof(T), N, f) == (size_t)N; }
+static bool wa(Save::Stream &f, const T (&a)[N]) { return f.write(a, sizeof(T) * N); }
 
 template<typename T, int N>
-static bool ra(FILE *f, T (&a)[N])       { return fread(a,  sizeof(T), N, f) == (size_t)N; }
+static bool ra(Save::Stream &f, T (&a)[N])       { return f.read(a, sizeof(T) * N); }
 
 // ── Per-type write/read ───────────────────────────────────────────────────────
 
-static bool write_weapon(FILE *f, const Save::WeaponEntry &w) {
+static bool write_weapon(Save::Stream &f, const Save::WeaponEntry &w) {
     return wv(f, (uint8_t)w.kind) && wv(f, (int32_t)w.weapon_index) && wv(f, (int32_t)w.ammo);
 }
 
-static bool read_weapon(FILE *f, Save::WeaponEntry &w) {
+static bool read_weapon(Save::Stream &f, Save::WeaponEntry &w) {
     uint8_t kind; int32_t wi, ammo;
     if (!rv(f, kind) || !rv(f, wi) || !rv(f, ammo)) return false;
     w.kind         = (Save::WeaponEntry::Kind)kind;
@@ -51,7 +84,7 @@ static bool read_weapon(FILE *f, Save::WeaponEntry &w) {
     return true;
 }
 
-static bool write_player(FILE *f, const Save::Player &p) {
+bool Save::write_player(Save::Stream &f, const Save::Player &p) {
     if (!wv(f, (int32_t)p.score))           return false;
     if (!wv(f, (int32_t)p.lives))           return false;
     if (!wv(f, (int32_t)p.kills))           return false;
@@ -78,7 +111,7 @@ static bool write_player(FILE *f, const Save::Player &p) {
     return true;
 }
 
-static bool read_player(FILE *f, Save::Player &p) {
+bool Save::read_player(Save::Stream &f, Save::Player &p) {
     int32_t score = 0, lives = 0, kills = 0, kills_this_life = 0;
     if (!rv(f, score) || !rv(f, lives) || !rv(f, kills) || !rv(f, kills_this_life)) return false;
     p.score = score; p.lives = lives; p.kills = kills; p.kills_this_life = kills_this_life;
@@ -111,7 +144,7 @@ static bool read_player(FILE *f, Save::Player &p) {
     return true;
 }
 
-static bool write_asteroid(FILE *f, const Save::Asteroid &a) {
+bool Save::write_asteroid(Save::Stream &f, const Save::Asteroid &a) {
     if (!wv(f, a.pos_x) || !wv(f, a.pos_y)) return false;
     if (!wv(f, a.vel_x) || !wv(f, a.vel_y)) return false;
     if (!wv(f, a.radius) || !wv(f, a.rotation) || !wv(f, a.rotation_speed)) return false;
@@ -160,7 +193,7 @@ static bool write_asteroid(FILE *f, const Save::Asteroid &a) {
     return true;
 }
 
-static bool read_asteroid(FILE *f, Save::Asteroid &a) {
+bool Save::read_asteroid(Save::Stream &f, Save::Asteroid &a) {
     if (!rv(f, a.pos_x) || !rv(f, a.pos_y)) return false;
     if (!rv(f, a.vel_x) || !rv(f, a.vel_y)) return false;
     if (!rv(f, a.radius) || !rv(f, a.rotation) || !rv(f, a.rotation_speed)) return false;
@@ -226,11 +259,11 @@ static bool read_asteroid(FILE *f, Save::Asteroid &a) {
     return true;
 }
 
-static bool write_pickup(FILE *f, const Save::Pickup &p) {
+static bool write_pickup(Save::Stream &f, const Save::Pickup &p) {
     return wv(f, (uint8_t)p.type) && wv(f, p.pos_x) && wv(f, p.pos_y) && wv(f, (int32_t)p.weapon_index);
 }
 
-static bool read_pickup(FILE *f, Save::Pickup &p) {
+static bool read_pickup(Save::Stream &f, Save::Pickup &p) {
     uint8_t type; int32_t wi;
     if (!rv(f, type) || !rv(f, p.pos_x) || !rv(f, p.pos_y) || !rv(f, wi)) return false;
     p.type         = (Save::PickupType)type;
@@ -238,7 +271,7 @@ static bool read_pickup(FILE *f, Save::Pickup &p) {
     return true;
 }
 
-static bool write_enemy(FILE *f, const Save::Enemy &e) {
+static bool write_enemy(Save::Stream &f, const Save::Enemy &e) {
     return wv(f, e.pos_x) && wv(f, e.pos_y)
         && wv(f, e.vel_x) && wv(f, e.vel_y)
         && wv(f, e.facing_x) && wv(f, e.facing_y)
@@ -246,7 +279,7 @@ static bool write_enemy(FILE *f, const Save::Enemy &e) {
         && wv(f, (int32_t)e.value);
 }
 
-static bool read_enemy(FILE *f, Save::Enemy &e) {
+static bool read_enemy(Save::Stream &f, Save::Enemy &e) {
     int32_t value = 0;
     if (!rv(f, e.pos_x) || !rv(f, e.pos_y)
      || !rv(f, e.vel_x) || !rv(f, e.vel_y)
@@ -257,7 +290,7 @@ static bool read_enemy(FILE *f, Save::Enemy &e) {
     return true;
 }
 
-static bool write_station(FILE *f, const Save::Station &s) {
+static bool write_station(Save::Stream &f, const Save::Station &s) {
     if (!wv(f, (uint8_t)s.present)) return false;
     if (!s.present) return true;
     if (!wv(f, (uint8_t)s.alive)) return false;
@@ -277,7 +310,7 @@ static bool write_station(FILE *f, const Save::Station &s) {
     return true;
 }
 
-static bool read_station(FILE *f, Save::Station &s) {
+static bool read_station(Save::Stream &f, Save::Station &s) {
     uint8_t present = 0;
     if (!rv(f, present)) return false;
     s.present = (bool)present;
@@ -299,14 +332,14 @@ static bool read_station(FILE *f, Save::Station &s) {
     if (!rv(f, deploying) || !rv(f, redeploying)) return false;
     s.deploying = (bool)deploying; s.redeploying = (bool)redeploying;
     uint32_t cnt = 0;
-    if (!rv(f, cnt)) return false;
+    if (!read_count(f, cnt, 64)) return false;  // net_state_sane bound
     s.enemies.resize(cnt);
     for (auto &e : s.enemies)
         if (!read_enemy(f, e)) return false;
     return true;
 }
 
-static bool write_mini_station(FILE *f, const Save::MiniStation &s) {
+static bool write_mini_station(Save::Stream &f, const Save::MiniStation &s) {
     if (!wv(f, (uint8_t)s.present)) return false;
     if (!s.present) return true;
     if (!wv(f, (uint8_t)s.alive)) return false;
@@ -317,7 +350,7 @@ static bool write_mini_station(FILE *f, const Save::MiniStation &s) {
     return true;
 }
 
-static bool read_mini_station(FILE *f, Save::MiniStation &s) {
+static bool read_mini_station(Save::Stream &f, Save::MiniStation &s) {
     uint8_t present = 0;
     if (!rv(f, present)) return false;
     s.present = (bool)present;
@@ -332,7 +365,7 @@ static bool read_mini_station(FILE *f, Save::MiniStation &s) {
     return true;
 }
 
-static bool write_hazard(FILE *f, const Save::Hazard &h) {
+static bool write_hazard(Save::Stream &f, const Save::Hazard &h) {
     return wv(f, h.kind)
         && wv(f, h.pos_x) && wv(f, h.pos_y)
         && wv(f, h.vel_x) && wv(f, h.vel_y)
@@ -340,7 +373,7 @@ static bool write_hazard(FILE *f, const Save::Hazard &h) {
         && wv(f, (int32_t)h.health);
 }
 
-static bool read_hazard(FILE *f, Save::Hazard &h) {
+static bool read_hazard(Save::Stream &f, Save::Hazard &h) {
     int32_t health = 0;
     bool ok = rv(f, h.kind)
         && rv(f, h.pos_x) && rv(f, h.pos_y)
@@ -353,33 +386,8 @@ static bool read_hazard(FILE *f, Save::Hazard &h) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-bool Save::save_exists() {
-    std::string path = save_path();
-    if (path.empty()) return false;
-    FILE *f = fopen(path.c_str(), "rb");
-    if (!f) return false;
-    uint32_t magic   = 0;
-    uint16_t version = 0;
-    bool ok = rv(f, magic) && rv(f, version)
-              && magic   == GameState::MAGIC
-              && version >= GameState::MIN_VERSION
-              && version <= GameState::VERSION;
-    fclose(f);
-    return ok;
-}
-
-bool Save::save_game(const Save::GameState &s) {
-    std::string path = save_path();
-    if (path.empty()) return false;
-
-    FILE *f = fopen(path.c_str(), "wb");
-    if (!f) return false;
-
+bool Save::serialize_game(Save::Stream &f, const Save::GameState &s) {
     bool ok = true;
-    uint32_t magic   = GameState::MAGIC;
-    uint16_t version = GameState::VERSION;
-    ok = ok && wv(f, magic);
-    ok = ok && wv(f, version);
     ok = ok && wv(f, (int32_t)s.generation);
     ok = ok && wv(f, s.world_x) && wv(f, s.world_y);
     ok = ok && wv(f, (uint8_t)s.level_cleared);
@@ -407,8 +415,9 @@ bool Save::save_game(const Save::GameState &s) {
     ok = ok && write_station(f, s.station);
     ok = ok && write_mini_station(f, s.mini_station);
 
-    // v11 append: per-player achievements bookkeeping (in players order),
-    // then the game-scoped cheat flag.
+    // v14 append (master's "v11 append" renumbered on the netplay branch):
+    // per-player achievements bookkeeping (in players order), then the
+    // game-scoped cheat flag.
     for (const auto &p : s.players) {
         ok = ok && wv(f, (int32_t)p.asteroid_kills);
         ok = ok && wv(f, (int32_t)p.enemy_kills);
@@ -417,13 +426,125 @@ bool Save::save_game(const Save::GameState &s) {
     }
     ok = ok && wv(f, (uint8_t)s.cheated);
 
-    // v12 append: mid-game hazards (pulsar/comet/seeker). Written last so a v11
-    // reader stops after the cheat flag and a v12 reader picks these up.
+    // v16 append: mid-game hazards (pulsar/comet/seeker). Written last so a
+    // pre-v16 reader stops after the cheat flag and a v16 reader picks these up.
     cnt = (uint32_t)s.hazards.size();
     ok = ok && wv(f, cnt);
     for (const auto &h : s.hazards) ok = ok && write_hazard(f, h);
 
-    fclose(f);
+    return ok;
+}
+
+bool Save::deserialize_game(Save::Stream &f, Save::GameState &s, uint16_t version) {
+    bool ok = true;
+
+    int32_t  ival = 0;
+    uint8_t  bval = 0;
+
+    ok = ok && rv(f, ival);  s.generation = (int)ival;
+    ok = ok && rv(f, s.world_x) && rv(f, s.world_y);
+    ok = ok && rv(f, bval);  s.level_cleared = (bool)bval;
+    ok = ok && rv(f, ival);  s.time_until_next_generation = (int)ival;
+    ok = ok && rv(f, ival);  s.current_time = (int)ival;
+
+    uint32_t cnt = 0;
+
+    // Bound every count BEFORE resizing: this stream may be a hostile or
+    // corrupt netplay snapshot, and net_state_sane() only runs after the
+    // whole state deserializes — a raw resize(0xFFFFFFFF) would bad_alloc
+    // and terminate first. The caps match net_state_sane()'s limits (a
+    // legitimate save never approaches them), so a count past them was
+    // going to be rejected anyway.
+    ok = ok && read_count(f, cnt, 2);
+    if (!ok) return false;
+    s.players.resize(cnt);
+    for (auto &p : s.players) ok = ok && read_player(f, p);
+
+    ok = ok && read_count(f, cnt, 5000);
+    if (!ok) return false;
+    s.asteroids.resize(cnt);
+    for (auto &a : s.asteroids) ok = ok && read_asteroid(f, a);
+
+    ok = ok && read_count(f, cnt, 500);
+    if (!ok) return false;
+    s.pickups.resize(cnt);
+    for (auto &p : s.pickups) ok = ok && read_pickup(f, p);
+
+    ok = ok && read_count(f, cnt, 16);
+    if (!ok) return false;
+    s.black_holes.resize(cnt);
+    for (auto &bh : s.black_holes)
+        ok = ok && rv(f, bh.pos_x) && rv(f, bh.pos_y);
+
+    ok = ok && read_station(f, s.station);
+
+    // Mini-station was added in v10; older saves end before it.
+    if (version >= 10) {
+        ok = ok && read_mini_station(f, s.mini_station);
+    } else {
+        s.mini_station.present = false;
+    }
+
+    // Per-player achievements bookkeeping and the game-scoped cheat flag
+    // (appended in v14); older saves end before them and keep the defaults.
+    if (version >= 14) {
+        for (auto &p : s.players) {
+            int32_t ak = 0, ek = 0; uint8_t died = 0; uint32_t wm = 0;
+            ok = ok && rv(f, ak) && rv(f, ek) && rv(f, died) && rv(f, wm);
+            p.asteroid_kills       = (int)ak;
+            p.enemy_kills          = (int)ek;
+            p.died_this_generation = (bool)died;
+            p.weapons_fired_mask   = wm;
+        }
+        uint8_t cheated = 0;
+        ok = ok && rv(f, cheated);
+        s.cheated = (bool)cheated;
+    }
+
+    // Mid-game hazards (pulsar/comet/seeker) were appended in v16 on this
+    // branch; older saves (and pre-v16 net snapshots) end before them.
+    if (version >= 16) {
+        ok = ok && read_count(f, cnt, 256);
+        if (!ok) return false;
+        s.hazards.resize(cnt);
+        for (auto &h : s.hazards) ok = ok && read_hazard(f, h);
+    }
+
+    return ok;
+}
+
+bool Save::save_exists() {
+    std::string path = save_path();
+    if (path.empty()) return false;
+    FILE *fp = fopen(path.c_str(), "rb");
+    if (!fp) return false;
+    FileStream f(fp);
+    uint32_t magic   = 0;
+    uint16_t version = 0;
+    bool ok = rv(f, magic) && rv(f, version)
+              && magic   == GameState::MAGIC
+              && version >= GameState::MIN_VERSION
+              && version <= GameState::VERSION;
+    fclose(fp);
+    return ok;
+}
+
+bool Save::save_game(const Save::GameState &s) {
+    std::string path = save_path();
+    if (path.empty()) return false;
+
+    FILE *fp = fopen(path.c_str(), "wb");
+    if (!fp) return false;
+
+    FileStream f(fp);
+    bool ok = true;
+    uint32_t magic   = GameState::MAGIC;
+    uint16_t version = GameState::VERSION;
+    ok = ok && wv(f, magic);
+    ok = ok && wv(f, version);
+    ok = ok && serialize_game(f, s);
+
+    fclose(fp);
 
 #ifdef __EMSCRIPTEN__
     EM_ASM(
@@ -440,80 +561,21 @@ bool Save::load_game(Save::GameState &s) {
     std::string path = save_path();
     if (path.empty()) return false;
 
-    FILE *f = fopen(path.c_str(), "rb");
-    if (!f) return false;
+    FILE *fp = fopen(path.c_str(), "rb");
+    if (!fp) return false;
 
-    bool ok = true;
+    FileStream f(fp);
 
     // Validate header. Accept any format from MIN_VERSION up to the current
-    // VERSION; fields added in newer versions are read back conditionally below.
-    uint32_t magic;   if (!rv(f, magic)   || magic != GameState::MAGIC) { fclose(f); return false; }
+    // VERSION; fields added in newer versions are read back conditionally in
+    // deserialize_game.
+    uint32_t magic;   if (!rv(f, magic)   || magic != GameState::MAGIC) { fclose(fp); return false; }
     uint16_t version; if (!rv(f, version) || version < GameState::MIN_VERSION
-                                          || version > GameState::VERSION) { fclose(f); return false; }
+                                          || version > GameState::VERSION) { fclose(fp); return false; }
 
-    int32_t  ival = 0;
-    uint8_t  bval = 0;
+    bool ok = deserialize_game(f, s, version);
 
-    ok = ok && rv(f, ival);  s.generation = (int)ival;
-    ok = ok && rv(f, s.world_x) && rv(f, s.world_y);
-    ok = ok && rv(f, bval);  s.level_cleared = (bool)bval;
-    ok = ok && rv(f, ival);  s.time_until_next_generation = (int)ival;
-    ok = ok && rv(f, ival);  s.current_time = (int)ival;
-
-    uint32_t cnt = 0;
-
-    ok = ok && rv(f, cnt);
-    s.players.resize(cnt);
-    for (auto &p : s.players) ok = ok && read_player(f, p);
-
-    ok = ok && rv(f, cnt);
-    s.asteroids.resize(cnt);
-    for (auto &a : s.asteroids) ok = ok && read_asteroid(f, a);
-
-    ok = ok && rv(f, cnt);
-    s.pickups.resize(cnt);
-    for (auto &p : s.pickups) ok = ok && read_pickup(f, p);
-
-    ok = ok && rv(f, cnt);
-    s.black_holes.resize(cnt);
-    for (auto &bh : s.black_holes)
-        ok = ok && rv(f, bh.pos_x) && rv(f, bh.pos_y);
-
-    ok = ok && read_station(f, s.station);
-
-    // Mini-station was added in v10; older saves end before it.
-    if (version >= 10) {
-        ok = ok && read_mini_station(f, s.mini_station);
-    } else {
-        s.mini_station.present = false;
-    }
-
-    // Per-player achievements bookkeeping and the game-scoped cheat flag were
-    // appended in v11; older saves end before them and keep the defaults.
-    if (version >= 11) {
-        for (auto &p : s.players) {
-            int32_t ak = 0, ek = 0; uint8_t died = 0; uint32_t wm = 0;
-            ok = ok && rv(f, ak) && rv(f, ek) && rv(f, died) && rv(f, wm);
-            p.asteroid_kills       = (int)ak;
-            p.enemy_kills          = (int)ek;
-            p.died_this_generation = (bool)died;
-            p.weapons_fired_mask   = wm;
-        }
-        uint8_t cheated = 0;
-        ok = ok && rv(f, cheated);
-        s.cheated = (bool)cheated;
-    }
-
-    // Mid-game hazards were appended in v12; older saves end before them.
-    if (version >= 12) {
-        ok = ok && rv(f, cnt);
-        if (ok) {
-            s.hazards.resize(cnt);
-            for (auto &h : s.hazards) ok = ok && read_hazard(f, h);
-        }
-    }
-
-    fclose(f);
+    fclose(fp);
     return ok;
 }
 

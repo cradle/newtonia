@@ -10,6 +10,8 @@
 
 #include "achievements.h"
 #include "gles2_compat.h"
+#include "net_signal.h"
+#include "net_transport.h"
 #include "state_manager.h"
 #include "touch_controls.h"
 #include "typer.h"
@@ -72,6 +74,12 @@ static void update_joystick_nub(float px, float py) {
 // ---- Finger event handlers ----
 
 static void finger_down(SDL_FingerID id, float x, float y) {
+    // Soft keyboard up (lobby code entry): taps must not synthesize game
+    // keys — '\r', 'x', 'n' would leak into the code field (X and N are
+    // code-alphabet letters). Same guard as Android; touch_tap on release
+    // still fires, which is all the lobby needs (re-summon keyboard etc).
+    if (SDL_IsTextInputActive()) return;
+
     float px = x * (float)s_w;
     float py = y * (float)s_h;
 
@@ -133,6 +141,10 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     }
 }
 
+// The OS share sheet lives in ios_share.mm: UIKit's MacTypes.h defines a
+// global `struct Point` that collides with the game's `class Point`, so
+// this TU (which includes game headers) must not import UIKit.
+
 static void finger_up(SDL_FingerID id, float x, float y) {
     // Forward tap position on finger-up so menu selections fire on release, not press
     s_game->touch_tap(x, y);
@@ -191,6 +203,33 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         return 1;
     }
 
+    // SDL2 starts with text input ACTIVE by default; the key-event guards
+    // gated on SDL_IsTextInputActive() would otherwise swallow printable
+    // keys forever. Only the lobby's code entry turns it back on.
+    SDL_StopTextInput();
+
+#ifdef NEWTONIA_NET_RTC
+    // Headless netplay self-tests (mirrors xbox_main.cpp) — CI boots the
+    // Simulator and launches with these env vars via SIMCTL_CHILD_*.
+    {
+        const char *st = SDL_getenv("NEWTONIA_NET_SELFTEST");
+        if (st && st[0] == '1' && st[1] == '\0') {
+            SDL_Log("NEWTONIA_NET_SELFTEST: running loopback self-test...");
+            bool ok = net_selftest();
+            SDL_Log(ok ? "NET SELFTEST PASS" : "NET SELFTEST FAIL");
+            return ok ? 0 : 1;
+        }
+        const char *ss = SDL_getenv("NEWTONIA_SIGNAL_SELFTEST");
+        if (ss && ss[0] == '1' && ss[1] == '\0') {
+            load_preferences();  // signal_url INI override applies here too
+            SDL_Log("NEWTONIA_SIGNAL_SELFTEST: running relay self-test...");
+            bool ok = net_signal_selftest();
+            SDL_Log(ok ? "SIGNAL SELFTEST PASS" : "SIGNAL SELFTEST FAIL");
+            return ok ? 0 : 1;
+        }
+    }
+#endif
+
     // Request OpenGL ES 2.0 context
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
@@ -238,7 +277,9 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     // Audio
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024) < 0)
         SDL_Log("Mix_OpenAudio failed: %s", Mix_GetError());
+    // 64 channels + 2 reserved for must-hear booms — see glut.cpp.
     Mix_AllocateChannels(64);
+    Mix_ReserveChannels(2);
 
     // Game controller (physical gamepad via Bluetooth)
     SDL_JoystickEventState(SDL_ENABLE);
@@ -274,8 +315,18 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                 s_running = false;
                 break;
 
-            // Physical keyboard (Bluetooth keyboard, etc.)
+            // Keyboard: key events are the ONE source of typed characters —
+            // the same scheme the Android device testing settled on. SDL's
+            // iOS insertText synthesizes KEYDOWN/KEYUP per ASCII char
+            // alongside SDL_TEXTINPUT, but on real hardware some presses
+            // arrive with the key events only (Glenn: dropped letters made
+            // code entry nearly impossible feeding from TEXTINPUT), so
+            // TEXTINPUT is not forwarded and KEYDOWN passes unconditionally
+            // (which also covers Bluetooth keyboards).
+            case SDL_TEXTINPUT:
+                break;
             case SDL_KEYDOWN: {
+                if (e.key.repeat) break; // game tracks held state itself; ignore SDL repeats
                 SDL_Keycode k = e.key.keysym.sym;
                 if (k == SDLK_ESCAPE) { s_running = false; break; }
                 unsigned char key = (k < 128) ? (unsigned char)k : 0;

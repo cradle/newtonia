@@ -18,6 +18,14 @@ jobs:
         with:
           path: newtonia
 
+      # The .xcodeproj is generated from ios/project.yml (gitignored), so a new
+      # .cpp is picked up by the glob with no pbxproj edit. Regenerate before
+      # the Xcode-project compile gate below builds through it.
+      - name: Generate Xcode project (XcodeGen)
+        run: |
+          brew install xcodegen
+          cd newtonia/ios && xcodegen generate --spec project.yml
+
       - name: Clone SDL2
         run: git clone --depth 1 --branch release-2.32.10 https://github.com/libsdl-org/SDL.git SDL2
 
@@ -35,6 +43,7 @@ jobs:
             "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" \
             -DSDL_SHARED=OFF \
             -DSDL_STATIC=ON \
+            -DSDL_HIDAPI=OFF \
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY="" \
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO
           cmake --build SDL2/build-ios-sim --config Release
@@ -66,6 +75,42 @@ jobs:
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO
           cmake --build SDL2_mixer/build-ios-sim --config Release
 
+      - name: Build MbedTLS + libdatachannel for iOS Simulator (netplay)
+        run: |
+          # Same pins and DTLS-SRTP user config as every other platform
+          # (see NETPLAY.md). Quotes must survive shell->CMake->compiler,
+          # hence the backslash escaping (same trick as build_netplay_deps.sh).
+          UCFG="-DMBEDTLS_USER_CONFIG_FILE=\\\"$(pwd)/newtonia/xbox/mbedtls_user_config.h\\\""
+          git clone --branch v3.6.6 --depth 1 --recurse-submodules --shallow-submodules \
+            https://github.com/Mbed-TLS/mbedtls.git mbedtls
+          cmake -S mbedtls -B mbedtls/build-ios-sim \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF \
+            -DCMAKE_C_FLAGS="$UCFG" \
+            -DCMAKE_INSTALL_PREFIX=$(pwd)/netlibs
+          cmake --build mbedtls/build-ios-sim -j3
+          cmake --install mbedtls/build-ios-sim
+
+          git clone --branch v0.24.5 --depth 1 --recurse-submodules --shallow-submodules \
+            https://github.com/paullouisageneau/libdatachannel.git libdatachannel
+          cmake -S libdatachannel -B libdatachannel/build-ios-sim \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DUSE_MBEDTLS=ON -DNO_MEDIA=ON -DNO_WEBSOCKET=OFF \
+            -DNO_EXAMPLES=ON -DNO_TESTS=ON \
+            -DCMAKE_PREFIX_PATH=$(pwd)/netlibs \
+            -DCMAKE_FIND_ROOT_PATH=$(pwd)/netlibs \
+            -DCMAKE_C_FLAGS="$UCFG" -DCMAKE_CXX_FLAGS="$UCFG"
+          cmake --build libdatachannel/build-ios-sim -j3 --target datachannel-static
+
       - name: Collect game sources
         run: |
           find newtonia -name "*.cpp" \
@@ -76,8 +121,14 @@ jobs:
             -not -path "*/CMakeFiles/*" \
             | sed 's|^newtonia/||' \
             > srcs.txt
-          echo "ios_main.mm" >> srcs.txt
-          echo "game_center_achievements.mm" >> srcs.txt
+          # Root Objective-C++ that compiles on iOS (all *.mm minus the
+          # macOS-only entry points); mirrors ios/project.yml's *.mm glob so a
+          # new ios_*.mm needs no edit here either.
+          find newtonia -maxdepth 1 -name "*.mm" \
+            -not -name "Newtonia.mm" \
+            -not -name "macos_window.mm" \
+            | sed 's|^newtonia/||' \
+            >> srcs.txt
           echo "Sources to compile:"
           cat srcs.txt
 
@@ -97,8 +148,10 @@ jobs:
             case "$src" in *.mm) ARC_FLAG="-fobjc-arc" ;; *) ARC_FLAG="" ;; esac
             clang++ $SIM_FLAGS $ARC_FLAG -std=c++11 -O2 \
               -D__IOS__=1 \
+              -DNEWTONIA_NET_RTC \
               -DGAME_CENTER_BUILD=1 \
               -Inewtonia -Inewtonia/view -Inewtonia/weapon \
+              -I libdatachannel/include \
               -I SDL2/include \
               -I SDL2_mixer/include \
               -c "newtonia/$src" -o "obj/$objname"
@@ -109,6 +162,11 @@ jobs:
             echo "Error: no object files compiled" >&2; exit 1
           fi
 
+          # Netplay static archives: libdatachannel + its vendored deps +
+          # MbedTLS (ld64 resolves across archives regardless of order).
+          NETLIBS=$(find libdatachannel/build-ios-sim netlibs/lib -name "*.a" | sort -u)
+          echo "netplay archives:"; echo "$NETLIBS"
+
           mkdir -p Newtonia.app
           clang++ $SIM_FLAGS \
             -o Newtonia.app/Newtonia \
@@ -116,6 +174,7 @@ jobs:
             "$SDL2MAIN_LIB" \
             "$SDL2_LIB" \
             "$SDL2MIX_LIB" \
+            $NETLIBS \
             -framework OpenGLES \
             -framework UIKit \
             -framework Foundation \
@@ -124,7 +183,6 @@ jobs:
             -framework CoreAudio \
             -framework AudioToolbox \
             -framework AVFoundation \
-            -framework CoreBluetooth \
             -framework CoreHaptics \
             -framework GameController \
             -framework GameKit \
@@ -136,6 +194,67 @@ jobs:
           cp newtonia/ios/Info.plist Newtonia.app/Info.plist
           cp -r newtonia/audio Newtonia.app/audio
           zip -r Newtonia-iOS-Simulator.zip Newtonia.app
+
+      - name: Run netplay loopback + signal self-tests in the Simulator
+        run: |
+          UDID=$(xcrun simctl list devices available -j \
+            | python3 -c "import json,sys; ds=json.load(sys.stdin)['devices']; print(next(d['udid'] for v in ds.values() for d in v if 'iPhone' in d['name']))")
+          echo "simulator: $UDID"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" Newtonia.app
+          # macOS runners have no GNU `timeout`; perl's alarm is the
+          # portable equivalent (SIGALRM kills the launch after 180s).
+          SIMCTL_CHILD_NEWTONIA_NET_SELFTEST=1 SIMCTL_CHILD_SDL_AUDIODRIVER=dummy \
+            perl -e 'alarm shift; exec @ARGV' 180 \
+            xcrun simctl launch --console-pty "$UDID" cc.gfm.Newtonia \
+            | tee selftest.log || true
+          grep -q "NET SELFTEST PASS" selftest.log
+
+          # Signal self-test: wss + TLS + a full room round-trip against the
+          # PRODUCTION relay, from inside the iOS runtime (one short-lived
+          # room per CI run; the relay's TTL cleans it up). A blip on the
+          # production Worker or the runner's egress is not a code
+          # regression (seen 2026-07-17: FAIL on a docs-only commit, green
+          # either side) — retry up to 3x before declaring failure.
+          for attempt in 1 2 3; do
+            SIMCTL_CHILD_NEWTONIA_SIGNAL_SELFTEST=1 SIMCTL_CHILD_SDL_AUDIODRIVER=dummy \
+              perl -e 'alarm shift; exec @ARGV' 120 \
+              xcrun simctl launch --console-pty "$UDID" cc.gfm.Newtonia \
+              | tee sigtest.log || true
+            grep -q "SIGNAL SELFTEST PASS" sigtest.log && break
+            echo "signal selftest attempt $attempt failed"
+            [ "$attempt" -lt 3 ] && sleep 20
+          done
+          grep -q "SIGNAL SELFTEST PASS" sigtest.log
+
+      # Deploy-parity gate: deploy-ios.yml builds through the Xcode PROJECT
+      # (not the hand-rolled compile above), passing the netplay define,
+      # header path and static archives as build settings. Build the same
+      # project against the simulator SDK here so a pbxproj or build-setting
+      # regression is caught on push instead of at TestFlight deploy time.
+      - name: Xcode project netplay compile gate (deploy-ios parity)
+        run: |
+          SDL2_LIB=$(find "$(pwd)/SDL2/build-ios-sim" -name "libSDL2.a" | head -1)
+          SDL2MAIN_LIB=$(find "$(pwd)/SDL2/build-ios-sim" -name "libSDL2main.a" | head -1)
+          SDL2MIX_LIB=$(find "$(pwd)/SDL2_mixer/build-ios-sim" -name "libSDL2_mixer.a" | head -1)
+          # Absolute paths: xcodebuild links with cwd at the PROJECT dir
+          # (newtonia/ios), so relative archive paths don't resolve.
+          NETLIBS=$(find "$(pwd)/libdatachannel/build-ios-sim" "$(pwd)/netlibs/lib" -name "*.a" | sort -u | tr '\n' ' ')
+          OTHER_LD="-ObjC $SDL2MAIN_LIB $SDL2_LIB $SDL2MIX_LIB $NETLIBS"
+          xcodebuild build \
+            -project newtonia/ios/Newtonia-iOS.xcodeproj \
+            -scheme Newtonia \
+            -sdk iphonesimulator \
+            -configuration Release \
+            -destination 'generic/platform=iOS Simulator' \
+            ARCHS=arm64 \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            "SDL2_HEADER_PATH=$(pwd)/SDL2/include" \
+            "SDL2_MIXER_HEADER_PATH=$(pwd)/SDL2_mixer/include" \
+            "NEWTONIA_NET_DEFINE=NEWTONIA_NET_RTC=1" \
+            "NEWTONIA_NET_HEADER_PATH=$(pwd)/libdatachannel/include" \
+            "OTHER_LDFLAGS=$OTHER_LD"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7

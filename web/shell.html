@@ -31,14 +31,27 @@
 
     #game-container {
       position: relative;
-      width: min(100vw, calc(100dvh * 4 / 3));
-      aspect-ratio: 4 / 3;
+      /* Fill the whole viewport. This used to clamp the game into a 4:3 box
+         (width: min(100vw, 100dvh * 4/3)) — a relic from before the engine
+         resized dynamically — which pillar-boxed wide screens: on a landscape
+         phone the game sat in a centred 4:3 island with dead bars either
+         side. web_main.cpp sizes the drawing buffer from the canvas's real
+         CSS size (x DPR) and the game/Typer handle any aspect, exactly like
+         the freely-resizable native window. */
+      width: 100vw;
+      height: 100dvh;
     }
 
     canvas#canvas {
       display: block;
-      width: 100%;
-      height: 100%;
+      /* !important so the canvas's DISPLAY size always tracks the container:
+         some SDL emscripten backends write inline style.width/height on the
+         canvas, and web_main.cpp's resize handler derives the drawing-buffer
+         size from the canvas's CSS size — an inline override would decouple
+         the two and re-open the DPR feedback that blurred/thinned the
+         thick-line rendering on phones. */
+      width: 100% !important;
+      height: 100% !important;
       /* Crisp pixels — the game renders its own smoothing */
       image-rendering: pixelated;
     }

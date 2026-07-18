@@ -27,7 +27,11 @@ struct MissileShot : public Object {
   static const int   TRAIL_LENGTH;
 
   MissileShot(WrappedPoint pos, Point facing_dir, Point base_velocity);
-  void step_missile(int delta, std::list<Object*> *asteroids, std::list<Object*> *ships = nullptr);
+  // seek_players=false (friendly fire off) skips player ships in the seek
+  // scan — a co-op missile must not hunt the partner.
+  void step_missile(int delta, std::list<Object*> *asteroids,
+                    std::list<Object*> *ships = nullptr,
+                    bool seek_players = true);
   bool is_alive() const { return time_left > 0; }
 };
 

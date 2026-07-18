@@ -17,6 +17,9 @@ public:
 
   void draw(bool minimap = false) const;
   void step(float delta, const Grid &grid);
+  // Net client: motion + ring spin only — deployment, waves and
+  // collisions are host-authoritative (restore_state mirrors them).
+  void net_client_step(float delta);
   // void collide(Ship *ship) const;
   void reset(bool was_killed = true);
   int level() const;

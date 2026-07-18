@@ -2,6 +2,7 @@
 #include "../asset_path.h"
 #include "../ship.h"
 #include "../asteroid.h"
+#include "../grid.h"
 #include "../point.h"
 #include "../wrapped_point.h"
 #include <cmath>
@@ -21,6 +22,23 @@ const float ShockBolt::SPARK_MS     = 220.0f;  // spark lingers a touch past the
 
 static inline float frand() { return rand() / (float)RAND_MAX; }
 
+// Squared distance from `center` to the segment [a,b]. Used so a hit is a
+// segment-vs-body test, not an endpoint-only one: a fast 55-unit segment can
+// cross a small asteroid and land past it, and an endpoint check would miss
+// (the arc "passes through"). `center` must already be the target's nearest
+// toroidal image (closest_to), so this is wrap-correct.
+static float seg_point_dist2(const Point &a, const Point &b, const Point &center) {
+  Point ab = b - a;
+  float ab2 = ab.x() * ab.x() + ab.y() * ab.y();
+  float t = ab2 > 1e-6f ? ((center.x() - a.x()) * ab.x() +
+                           (center.y() - a.y()) * ab.y()) / ab2
+                        : 0.0f;
+  if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
+  float dx = center.x() - (a.x() + ab.x() * t);
+  float dy = center.y() - (a.y() + ab.y() * t);
+  return dx * dx + dy * dy;
+}
+
 ShockBolt::ShockBolt(WrappedPoint origin, Point facing_dir, Object *owner)
   : main_dir(facing_dir.normalized()),
     heading(facing_dir.normalized()),
@@ -34,35 +52,48 @@ ShockBolt::ShockBolt(WrappedPoint origin, Point facing_dir, Object *owner)
 }
 
 Object *ShockBolt::seek_target(const Point &tip, std::list<Object*> *lst,
-                               float &best_dist) const {
+                               float &best_dist, bool asteroid_list) const {
   Object *best = NULL;
   if (!lst) return best;
   for (Object *o : *lst) {
     if (o == owner) continue;  // a bolt never seeks the ship that fired it
     if (!o->alive) continue;
-    // Invincible objects (invincible asteroids, shielded players) are eligible
-    // targets: the arc paths to and stops at them rather than arcing past.
+    // Invincible ASTEROIDS are not sought: the arc would only dead-end on a
+    // rock it can't destroy, wasting the bolt, so it ignores them and chains
+    // to killable targets instead (they still BLOCK — see grow_segment).
+    // The asteroid list is statically all-Asteroid (the ship's missile list
+    // is the game's asteroid list), so no RTTI is needed; the hostiles list
+    // never contains asteroids, so it skips the check entirely. Invincible
+    // SHIPS (a shielded/god-mode player under friendly fire) stay eligible —
+    // the arc paths to and stops at them rather than arcing past.
+    if (asteroid_list && static_cast<Asteroid *>(o)->invincible) continue;
     bool skip = false;
     for (Object *a : avoid) if (a == o) { skip = true; break; }
     if (skip) continue;
     Point op = o->position.closest_to(tip);
     Point to_o = op - tip;
-    // Only seek targets ahead of the tip within the front 180° of the firing
-    // direction, so the arc never reaches backward past the ship.
-    if (to_o.x() * main_dir.x() + to_o.y() * main_dir.y() <= 0.0f) continue;
-    float d = to_o.magnitude() - o->radius;
+    float mag = to_o.magnitude();
+    // Only seek targets inside the forward 135° cone (±67.5° of the firing
+    // direction), so the arc reaches ahead and a little to the side but never
+    // sharply back past the ship. main_dir is unit length, so the dot product
+    // is |to_o|*cos(angle); keep it only when cos(angle) >= cos(67.5°).
+    static const float kCosHalfCone = 0.38268343f;  // cos(67.5°)
+    if (to_o.x() * main_dir.x() + to_o.y() * main_dir.y() < mag * kCosHalfCone)
+      continue;
+    float d = mag - o->radius;
     if (d < best_dist) { best_dist = d; best = o; }
   }
   return best;
 }
 
-void ShockBolt::grow_segment(std::list<Object*> *asteroids, std::list<Object*> *hostiles) {
+void ShockBolt::grow_segment(std::list<Object*> *asteroids, std::list<Object*> *hostiles,
+                             const Grid *grid) {
   const Point tip = points.back();
 
   // Pick the single nearest target across asteroids and hostiles.
   float best = SEEK_RANGE;
-  Object *target = seek_target(tip, asteroids, best);
-  Object *h = seek_target(tip, hostiles, best);
+  Object *target = seek_target(tip, asteroids, best, /*asteroid_list=*/true);
+  Object *h = seek_target(tip, hostiles, best, /*asteroid_list=*/false);
   if (h) target = h;
 
   // Base direction: toward the target if we found one, else keep travelling.
@@ -85,13 +116,42 @@ void ShockBolt::grow_segment(std::list<Object*> *asteroids, std::list<Object*> *
   next += seg_dir.perpendicular() * ((frand() - 0.5f) * STAGGER);
   points.push_back(next);
 
-  // Did this segment reach the target? If so, snap onto its surface (not its
-  // centre, which would look like the arc pierced it), record the hit and let the
-  // next segment chain onward to whatever else is nearby.
+  // Invincible asteroids are never SOUGHT (seek_target skips them), but they
+  // still BLOCK the arc, like the lance: if this segment runs into one, the
+  // bolt stops at its surface instead of arcing through. Test the whole
+  // segment, not just the endpoint, so a 55-unit step can't tunnel through a
+  // small rock. Candidates come from the collision grid (segment query, like
+  // the bullet sweep) rather than a full asteroid scan — CLAUDE.md convention
+  // 6. Stop here directly (spark at the surface) — nothing to score, so no
+  // struck entry — and the ended polyline replicates as-is.
+  if (grid) {
+    static std::vector<Object *> block_candidates;
+    block_candidates.clear();
+    grid->query_segment(tip, next, block_candidates);
+    for (Object *o : block_candidates) {
+      if (!o->alive) continue;
+      Asteroid *ast = dynamic_cast<Asteroid *>(o);
+      if (!ast || !ast->invincible) continue;
+      Point c = o->position.closest_to(next);
+      float reach = o->radius + HIT_RADIUS;
+      if (seg_point_dist2(tip, next, c) <= reach * reach) {
+        points.back() = surface_hit(o, c, tip);
+        stop();  // absorbed by an invincible rock — arc ends at its surface
+        return;
+      }
+    }
+  }
+
+  // Did this segment reach the target? Test the whole segment against the
+  // target's body (not just the endpoint) so a fast step that crosses a small
+  // rock still registers — an endpoint-only check let the arc pass through.
+  // Snap onto the surface (not the centre, which would look pierced), record
+  // the hit and let the next segment chain onward to whatever else is nearby.
   if (target) {
-    Point tp = target->position.closest_to(next);
-    if ((tp - next).magnitude() <= target->radius + HIT_RADIUS) {
-      points.back() = surface_hit(target, tp, tip);
+    Point c = target->position.closest_to(next);
+    float reach = target->radius + HIT_RADIUS;
+    if (seg_point_dist2(tip, next, c) <= reach * reach) {
+      points.back() = surface_hit(target, c, tip);
       struck.push_back(target);
       avoid.push_back(target);
     }
@@ -136,11 +196,12 @@ void ShockBolt::stop() {
   }
 }
 
-void ShockBolt::step_bolt(int delta, std::list<Object*> *asteroids, std::list<Object*> *hostiles) {
+void ShockBolt::step_bolt(int delta, std::list<Object*> *asteroids, std::list<Object*> *hostiles,
+                          const Grid *grid) {
   seg_accum += delta;
   while (growing && (int)points.size() <= MAX_SEGMENTS && seg_accum >= SEG_MS) {
     seg_accum -= SEG_MS;
-    grow_segment(asteroids, hostiles);
+    grow_segment(asteroids, hostiles, grid);
   }
   if ((int)points.size() > MAX_SEGMENTS) growing = false;
   if (!growing) life -= (float)delta / FADE_MS;
@@ -177,30 +238,41 @@ Shock::~Shock() {
 }
 
 void Shock::shoot(bool on) {
-  shooting = on;
-  if (on) try_fire();  // fire the first bolt on the press, like the other weapons
+  shooting = on;  // armed on the trigger press; step() fires one bolt
 }
 
 void Shock::step(int delta) {
   cooldown -= delta;
-  if (shooting) try_fire();  // keep arcing at FIRE_INTERVAL while held
+  if (shooting && cooldown <= 0) {
+    try_fire();
+    cooldown = FIRE_INTERVAL;  // rate-limit rapid taps (empty click included)
+  }
+  // Semi-automatic, like Beam/Lance: one bolt per trigger pull, no
+  // hold-to-repeat. Releasing and pressing fire again shoots the next.
+  shooting = false;
 }
 
 void Shock::try_fire() {
-  if (cooldown > 0) return;
+  // Netplay: like Default/Beam/Lance, the host's remote-player shock keeps its
+  // ammo + cooldown bookkeeping but mints no bolt and plays no sound — the
+  // real polyline arrives as MSG_SHOCK. The ammo decrement below MUST still
+  // run on the host: it is what keeps the host's snapshot ammo in step with
+  // the client's firing. Returning early here (skipping the decrement) left
+  // the host's count pinned, so the 10 Hz snapshot restore reset the client's
+  // ammo back up after every shot.
+  bool sim_only = ship->net_remote_gun;
   if (_ammo == 0) {
-    if (empty_sound != NULL && ship->sound_volume_scale > 0.0f)
+    if (empty_sound != NULL && !sim_only && ship->sound_volume_scale > 0.0f)
       Mix_PlayChannel(-1, empty_sound, 0);
-    cooldown = FIRE_INTERVAL;  // don't spam the empty click every frame
     return;
   }
   _ammo--;
+  if (sim_only) return;
   ship->shocks.push_back(ShockBolt(ship->gun(), ship->facing.normalized(), ship));
   if (shoot_sound != NULL && ship->sound_volume_scale > 0.0f) {
     Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * ship->sound_volume_scale));
     Mix_PlayChannel(-1, shoot_sound, 0);
   }
-  cooldown = FIRE_INTERVAL;
 }
 
 } // namespace Weapon
