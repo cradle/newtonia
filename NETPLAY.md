@@ -274,8 +274,13 @@ and configuration, not engineering. Order matters only where noted.
       zero-install browser co-op would undercut those SKUs. Web co-op
       arrives via the PAID itch project instead (task #156); free
       platforms are web solo (the demo) and Android (reach/invite
-      funnel). The mechanical re-enable for the paid build is deleting
-      NETPLAY=0 from the workflow line for that channel.
+      funnel). The paid channel is WIRED (2026-07-18, task #156):
+      deploy-itch also builds netplay-ON and butler-pushes it to
+      `newtonia-online:html5` on every public release, and /join
+      offers desktop joiners the paid project beside Steam. First
+      real push = the v1.45.0 tag; after it, Glenn sets the embed +
+      price gate on the itch project and a live paid-embed join test
+      closes #156.
 - [ ] Update the deploy workflows for master + default channels
       (task #152): deploy-steam's manual-dispatch default off the
       `netplay` test branch, itch channel routing DONE above (v* tags →
