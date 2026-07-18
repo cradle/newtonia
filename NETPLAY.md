@@ -81,6 +81,50 @@ M3-1's reclaim token lives only in the host's memory: backgrounding/wifi blips a
 5. **Cleanup rules**: ticket + online save deleted on clean session end (game over, BYE, returning to menu) so stale resumes never haunt the menu.
 6. **Verification**: extend the M3-1 e2e — SIGKILL the HOST mid-game, relaunch within grace, drive the resume row, assert the client's auto-rejoin reconnects and score/lives/generation survive via the online save.
 
+## Future milestone — LAN play (offline local co-op, rough plan 2026-07-18)
+
+Two facts make this small: the TRANSPORT already works offline (WebRTC
+over host candidates needs no STUN/TURN/signaling once offer/answer are
+exchanged — the M1 loopback/LAN sessions ran with zero ICE servers, and
+DTLS handshakes fine on a closed network), and the offline PAIRING flow
+already exists (the manual INVITE blob, `decode_signal`=='O', trickle
+off, `start_join` on the stripped offer). The only reason two
+internet-less machines can't pair today is that the blob travels by
+clipboard, and clipboards don't cross machines. LAN play = move that
+blob over the local network. Native-only (browsers have no
+UDP/broadcast and the web page itself needs serving).
+
+1. **Discovery beacon (desktop-first)**: host broadcasts one small UDP
+   packet/sec on a fixed port — magic, PROTO_VERSION, player name?, and
+   the TCP port of its blob server. Joiner listens for beacons. Raw
+   broadcast is fine on mac/Windows/Linux/Deck; the only friction is
+   the first-run Windows firewall prompt.
+2. **Blob exchange over TCP**: joiner connects to the beaconed port;
+   host sends the offer blob, joiner replies with the answer blob —
+   byte-for-byte the manual clipboard flow with a socket as the
+   courier. The existing manual-join machinery then brings the WebRTC
+   session up on host candidates. Version mismatch is caught at the
+   beacon (PROTO in the packet), before any connection.
+3. **Lobby UX**: a LOCAL row beside HOST/JOIN. Hosting = beacon +
+   listen with a "HOSTING ON THIS NETWORK" screen; joining = a
+   discovered-hosts list (usually exactly one, tap to join). No room
+   codes, no Worker, no invite links.
+4. **Discovery seam for mobile** (later, invites/presence-style:
+   shared logic + per-platform backends): Android needs a
+   `MulticastLock` (or `NsdManager` mDNS); iOS must NOT use raw
+   broadcast — the `com.apple.developer.networking.multicast`
+   entitlement is Apple-approval-gated — but Bonjour via
+   Network.framework (`NWBrowser`/`NWListener`) is allowed without it,
+   plus the `NSLocalNetworkUsageDescription` local-network prompt.
+5. **Verification**: two-instance Xvfb e2e on loopback broadcast —
+   host beacons, joiner discovers + pairs with the signal URL pointed
+   at a dead port (proving no relay involvement), normal room-flow
+   regression stays green.
+
+Estimate: desktop-first a couple of days including lobby UX + e2e;
+each mobile backend ~a day, mostly permission plumbing. Deck LAN
+parties are the killer use case.
+
 ## Protocol quick-ref
 
 Header: `uint8 proto_ver(=1) | uint8 msg_type | uint8 player_id | uint8 reserved`, little-endian, explicit byte packing.
