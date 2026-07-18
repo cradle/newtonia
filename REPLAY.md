@@ -172,6 +172,24 @@ R4's field.
   (high-water mark → append, not full rewrite), and/or move the write to a
   background thread joined before the lifecycle callback returns. Measure
   before relying on the pause/background flush for durability.
+- **Xbox certification tightens the above into a hard rule.** If the recorder
+  is reused on Xbox/GDK it flushes through the same `focus_lost()` hook the
+  PLM suspend callback already calls (`xbox_main.cpp:171-177`:
+  `plm_suspend_callback` → `focus_lost()` → `XSuspendResumeAcknowledge`), so
+  the flush runs *before the ack*, inside the certified suspend budget (~1 s
+  TCR — formally tested, and the title is TERMINATED, not merely hitched, on
+  overrun). A background thread doesn't rescue this: once acknowledged the OS
+  suspends the process, so any write must COMPLETE before the ack, not
+  outlive it. So on Xbox the suspend-path flush must be bounded small:
+  append-only-since-last-checkpoint (the whole-buffer rewrite is banned from
+  the suspend path), kept tiny by flushing at cheaper in-game checkpoints
+  (pause menu open, level clear) so the suspend delta is a handful of
+  records. Quick Resume (constrained mode) snapshots the whole process RAM,
+  so the in-RAM buffer survives a Quick-Resumed suspend with NO disk flush at
+  all — only a true termination needs the on-disk copy — but since the title
+  can't tell which it will get, the bounded append is still required.
+  Cross-reference `xbox/PORT_PLAN.md` (the existing "suspend completes within
+  the time budget" verification item).
 - Whether `last.nrp` should survive an immediate quit-at-menu with zero
   sim ticks (proposal: no — reuse the save_dirty_ idea: don't finalize a
   recording with no delta records).
