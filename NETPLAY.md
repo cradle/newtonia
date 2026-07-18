@@ -186,8 +186,12 @@ and configuration, not engineering. Order matters only where noted.
       join correctly refused with no relay candidates, and direct/STUN
       joins were untouched (the "normal join also refused" scare was
       the 0-prefix latch still armed — it's process-wide by design;
-      restart or a second 0 disarms it). Unit tests in
-      `signal/test/turn_budget_test.mjs`; setup in `signal/README.md`.
+      restart or a second 0 disarms it). Both forcing hooks (0-prefix
+      latch and NEWTONIA_NET_FORCE_RELAY) confirmed to share the
+      enforcement; after restoring the budget, forced-relay connects
+      again — verified both directions (Glenn 2026-07-18). Unit tests
+      in `signal/test/turn_budget_test.mjs`; setup in
+      `signal/README.md`.
 
 ### Gate 2 — field pass on everything since v1.44.5 — COMPLETE 2026-07-17
 (Every item below verified by Glenn on device; the web touch-region fix
