@@ -223,8 +223,11 @@ jobs:
       # race a cold cache. Short retention; it only feeds this run.
       - name: Package deps for the parity job
         run: |
-          find SDL2/build-ios-sim SDL2_mixer/build-ios-sim libdatachannel/build-ios-sim netlibs -name "*.a" > libs.txt
-          tar czf ios-sim-deps.tgz SDL2/include SDL2_mixer/include libdatachannel/include netlibs -T libs.txt
+          # One -T list, options before paths: macOS bsdtar stops option
+          # parsing at the first path argument (GNU tar does not).
+          find SDL2/build-ios-sim SDL2_mixer/build-ios-sim libdatachannel/build-ios-sim -name "*.a" > paths.txt
+          printf '%s\n' SDL2/include SDL2_mixer/include libdatachannel/include netlibs >> paths.txt
+          tar czf ios-sim-deps.tgz -T paths.txt
 
       - name: Upload deps artifact
         uses: actions/upload-artifact@v7
