@@ -149,3 +149,14 @@ R4's field.
   recording with no delta records).
 - Cap on file size for marathon runs (proposal: none locally; the
   leaderboard submission path can cap/reject server-side).
+- **Maybe: an "Auto-record replays" toggle on the Options screen** (not
+  committed). Default ON — the "always record, never ask" decision stands as
+  the default — but a user-facing off switch would double as the perf escape
+  hatch from the recorder-overhead question above (replaces the env/pref-only
+  fallback with a visible control), and lets storage-conscious players opt
+  out. Wiring is cheap: one `opt_row` in the data-driven Options list (`bool`,
+  ON/OFF like friendly-fire) backed by a `preferences.h` flag the recorder
+  checks at game start; touch shows the shared-options one-row form, P2 rows
+  unaffected. Open because it's arguably clutter for a feature that's meant to
+  be invisible — decide alongside the mobile-overhead measurement, since the
+  two share the same off-switch plumbing.
