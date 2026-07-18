@@ -212,12 +212,18 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     // Headless netplay self-tests (mirrors xbox_main.cpp) — CI boots the
     // Simulator and launches with these env vars via SIMCTL_CHILD_*.
     {
+        // exit(), not return: SDL_main runs inside UIApplicationMain on
+        // iOS, and returning from it does not reliably terminate the
+        // process — CI's `simctl launch --console-pty` then sat holding
+        // the pty until its watchdog alarm fired (minutes of dead time
+        // per PASSING test). A hard exit flushes stdio and ends the
+        // process the moment the verdict is printed.
         const char *st = SDL_getenv("NEWTONIA_NET_SELFTEST");
         if (st && st[0] == '1' && st[1] == '\0') {
             SDL_Log("NEWTONIA_NET_SELFTEST: running loopback self-test...");
             bool ok = net_selftest();
             SDL_Log(ok ? "NET SELFTEST PASS" : "NET SELFTEST FAIL");
-            return ok ? 0 : 1;
+            exit(ok ? 0 : 1);
         }
         const char *ss = SDL_getenv("NEWTONIA_SIGNAL_SELFTEST");
         if (ss && ss[0] == '1' && ss[1] == '\0') {
@@ -225,7 +231,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
             SDL_Log("NEWTONIA_SIGNAL_SELFTEST: running relay self-test...");
             bool ok = net_signal_selftest();
             SDL_Log(ok ? "SIGNAL SELFTEST PASS" : "SIGNAL SELFTEST FAIL");
-            return ok ? 0 : 1;
+            exit(ok ? 0 : 1);
         }
     }
 #endif

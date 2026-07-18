@@ -46,9 +46,9 @@ namespace {
 // achievements that get progress stats on Steam). This table is
 // authoritative: the games-ids.xml entries must use exactly these resource
 // names (§2 Play Games checklist), whatever ID values the console generates.
-// coop_clear is deliberately absent: touch builds have no proven local-2P
-// path, so its definition and mapping wait for netplay (unmapped earns drop
-// silently and re-fire in a future co-op game once the mapping exists).
+// coop_clear mapped with the netplay release (v1.45.0 made 2P earnable on
+// touch); until its console definition + games-ids.xml ID exist (Co-Pilot,
+// one-shot), the missing resource just drops earns with a logcat warning.
 struct Mapping {
   const char *symbolic;
   const char *res;   // string resource name holding the Play Console ID
@@ -72,6 +72,7 @@ const Mapping MAPPINGS[] = {
   { "kills_10000_lifetime", "achievement_kills_10000_lifetime", true  },
   { "score_3m",             "achievement_score_3m",             true  },
   { "reach_level15",        "achievement_reach_level15",        true  },
+  { "coop_clear",           "achievement_coop_clear",           false },
 };
 
 const Mapping *find_mapping(const char *symbolic) {

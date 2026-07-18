@@ -8,6 +8,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Three jobs (task #158): `build` compiles the deps (cached) and the app,
+# then `selftest` (simulator) and `xcode-parity` (deploy-ios build-settings
+# gate) run IN PARALLEL off its artifacts — wall time is build + the slower
+# of the two instead of the old single-job sum.
 jobs:
   build:
     runs-on: macos-latest
@@ -18,23 +22,33 @@ jobs:
         with:
           path: newtonia
 
-      # The .xcodeproj is generated from ios/project.yml (gitignored), so a new
-      # .cpp is picked up by the glob with no pbxproj edit. Regenerate before
-      # the Xcode-project compile gate below builds through it.
-      - name: Generate Xcode project (XcodeGen)
-        run: |
-          brew install xcodegen
-          cd newtonia/ios && xcodegen generate --spec project.yml
+      # SDL2/SDL2_mixer/MbedTLS+libdatachannel are pinned versions built
+      # from source — identical output every run, so cache the built trees
+      # and skip the clone+build steps entirely on a hit. Bump the key when
+      # changing any pin below or the MbedTLS user config.
+      - name: Cache simulator dependencies
+        id: deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            SDL2
+            SDL2_mixer
+            libdatachannel
+            netlibs
+          key: ios-sim-deps-v1-sdl2.32.10-mix2.8.2-mbedtls3.6.6-ldc0.24.5-${{ hashFiles('newtonia/xbox/mbedtls_user_config.h') }}
 
       - name: Clone SDL2
+        if: steps.deps.outputs.cache-hit != 'true'
         run: git clone --depth 1 --branch release-2.32.10 https://github.com/libsdl-org/SDL.git SDL2
 
       - name: Clone SDL2_mixer
+        if: steps.deps.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 --branch release-2.8.2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
           git -C SDL2_mixer submodule update --init --depth 1
 
       - name: Build SDL2 static library for iOS Simulator
+        if: steps.deps.outputs.cache-hit != 'true'
         run: |
           cmake -S SDL2 -B SDL2/build-ios-sim \
             -DCMAKE_SYSTEM_NAME=iOS \
@@ -49,6 +63,7 @@ jobs:
           cmake --build SDL2/build-ios-sim --config Release
 
       - name: Build SDL2_mixer static library for iOS Simulator
+        if: steps.deps.outputs.cache-hit != 'true'
         run: |
           # SDL2_mixer's FindPrivateSDL2.cmake looks for SDL2_LIBRARY and
           # SDL2_INCLUDE_DIR directly; point them at the pre-built SDL2.
@@ -76,6 +91,7 @@ jobs:
           cmake --build SDL2_mixer/build-ios-sim --config Release
 
       - name: Build MbedTLS + libdatachannel for iOS Simulator (netplay)
+        if: steps.deps.outputs.cache-hit != 'true'
         run: |
           # Same pins and DTLS-SRTP user config as every other platform
           # (see NETPLAY.md). Quotes must survive shell->CMake->compiler,
@@ -195,20 +211,75 @@ jobs:
           cp -r newtonia/audio Newtonia.app/audio
           zip -r Newtonia-iOS-Simulator.zip Newtonia.app
 
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: newtonia-ios-simulator
+          path: Newtonia-iOS-Simulator.zip
+          retention-days: 30
+
+      # Headers + static archives the xcode-parity job links against —
+      # artifact hand-off instead of a shared cache so parity can never
+      # race a cold cache. Short retention; it only feeds this run.
+      - name: Package deps for the parity job
+        run: |
+          # One -T list, options before paths: macOS bsdtar stops option
+          # parsing at the first path argument (GNU tar does not).
+          find SDL2/build-ios-sim SDL2_mixer/build-ios-sim libdatachannel/build-ios-sim -name "*.a" > paths.txt
+          printf '%s\n' SDL2/include SDL2_mixer/include libdatachannel/include netlibs >> paths.txt
+          tar czf ios-sim-deps.tgz -T paths.txt
+
+      - name: Upload deps artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-sim-deps
+          path: ios-sim-deps.tgz
+          retention-days: 1
+
+  selftest:
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Download simulator app
+        uses: actions/download-artifact@v4
+        with:
+          name: newtonia-ios-simulator
+
       - name: Run netplay loopback + signal self-tests in the Simulator
         run: |
+          unzip -q Newtonia-iOS-Simulator.zip
           UDID=$(xcrun simctl list devices available -j \
             | python3 -c "import json,sys; ds=json.load(sys.stdin)['devices']; print(next(d['udid'] for v in ds.values() for d in v if 'iPhone' in d['name']))")
           echo "simulator: $UDID"
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" Newtonia.app
-          # macOS runners have no GNU `timeout`; perl's alarm is the
-          # portable equivalent (SIGALRM kills the launch after 180s).
-          SIMCTL_CHILD_NEWTONIA_NET_SELFTEST=1 SIMCTL_CHILD_SDL_AUDIODRIVER=dummy \
-            perl -e 'alarm shift; exec @ARGV' 180 \
-            xcrun simctl launch --console-pty "$UDID" cc.gfm.Newtonia \
-            | tee selftest.log || true
+
+          # Poll the log for the verdict instead of holding the launch's
+          # pty: even though the app now hard-exits after a selftest
+          # (ios_main.mm), `simctl launch --console-pty` has been seen
+          # keeping the pty open past app exit — the old shape burned the
+          # full watchdog window on every PASSING test. The launch runs in
+          # the background; the loop moves on the moment the verdict line
+          # appears, and the timeout only bites on a genuine hang.
+          run_selftest() {  # $1=env var  $2=verdict prefix  $3=log  $4=timeout(s)
+            : > "$3"
+            env "SIMCTL_CHILD_$1=1" SIMCTL_CHILD_SDL_AUDIODRIVER=dummy \
+              xcrun simctl launch --console-pty "$UDID" cc.gfm.Newtonia > "$3" 2>&1 &
+            local pid=$! waited=0
+            until grep -Eq "$2 (PASS|FAIL)" "$3"; do
+              [ "$waited" -ge "$4" ] && break
+              sleep 2; waited=$((waited + 2))
+            done
+            xcrun simctl terminate "$UDID" cc.gfm.Newtonia 2>/dev/null || true
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+            echo "--- $3 (${waited}s) ---"; cat "$3"
+          }
+
+          run_selftest NEWTONIA_NET_SELFTEST "NET SELFTEST" selftest.log 180
           grep -q "NET SELFTEST PASS" selftest.log
 
           # Signal self-test: wss + TLS + a full room round-trip against the
@@ -218,21 +289,43 @@ jobs:
           # regression (seen 2026-07-17: FAIL on a docs-only commit, green
           # either side) — retry up to 3x before declaring failure.
           for attempt in 1 2 3; do
-            SIMCTL_CHILD_NEWTONIA_SIGNAL_SELFTEST=1 SIMCTL_CHILD_SDL_AUDIODRIVER=dummy \
-              perl -e 'alarm shift; exec @ARGV' 120 \
-              xcrun simctl launch --console-pty "$UDID" cc.gfm.Newtonia \
-              | tee sigtest.log || true
+            run_selftest NEWTONIA_SIGNAL_SELFTEST "SIGNAL SELFTEST" sigtest.log 120
             grep -q "SIGNAL SELFTEST PASS" sigtest.log && break
             echo "signal selftest attempt $attempt failed"
             [ "$attempt" -lt 3 ] && sleep 20
           done
           grep -q "SIGNAL SELFTEST PASS" sigtest.log
 
-      # Deploy-parity gate: deploy-ios.yml builds through the Xcode PROJECT
-      # (not the hand-rolled compile above), passing the netplay define,
-      # header path and static archives as build settings. Build the same
-      # project against the simulator SDK here so a pbxproj or build-setting
-      # regression is caught on push instead of at TestFlight deploy time.
+  # Deploy-parity gate: deploy-ios.yml builds through the Xcode PROJECT
+  # (not the hand-rolled compile above), passing the netplay define,
+  # header path and static archives as build settings. Build the same
+  # project against the simulator SDK here so a pbxproj or build-setting
+  # regression is caught on push instead of at TestFlight deploy time.
+  xcode-parity:
+    needs: build
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          path: newtonia
+
+      # The .xcodeproj is generated from ios/project.yml (gitignored), so a new
+      # .cpp is picked up by the glob with no pbxproj edit.
+      - name: Generate Xcode project (XcodeGen)
+        run: |
+          brew install xcodegen
+          cd newtonia/ios && xcodegen generate --spec project.yml
+
+      - name: Download deps artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-sim-deps
+
+      - name: Unpack deps
+        run: tar xzf ios-sim-deps.tgz
+
       - name: Xcode project netplay compile gate (deploy-ios parity)
         run: |
           SDL2_LIB=$(find "$(pwd)/SDL2/build-ios-sim" -name "libSDL2.a" | head -1)
@@ -255,10 +348,3 @@ jobs:
             "NEWTONIA_NET_DEFINE=NEWTONIA_NET_RTC=1" \
             "NEWTONIA_NET_HEADER_PATH=$(pwd)/libdatachannel/include" \
             "OTHER_LDFLAGS=$OTHER_LD"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: newtonia-ios-simulator
-          path: Newtonia-iOS-Simulator.zip
-          retention-days: 30

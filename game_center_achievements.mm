@@ -56,10 +56,11 @@ namespace {
 
 // Symbolic ID (ACHIEVEMENTS.md §5) → Game Center achievement identifier.
 // The App Store Connect definitions must use exactly these identifiers —
-// this table is authoritative (§2 Game Center checklist). coop_clear is
-// deliberately absent: touch builds have no proven local-2P path, so its
-// definition and mapping wait for netplay (unmapped earns drop silently
-// and re-fire in a future co-op game once the mapping exists).
+// this table is authoritative (§2 Game Center checklist). coop_clear
+// mapped with the netplay release (v1.45.0 made 2P earnable on touch);
+// until its App Store Connect definition exists (Co-Pilot, 40 pts),
+// GameKit just rejects the unknown identifier and the pending journal
+// retries later — nothing is lost.
 struct Mapping {
   const char *symbolic;
   const char *gc;
@@ -82,6 +83,7 @@ const Mapping MAPPINGS[] = {
   { "kills_10000_lifetime", "cc.gfm.newtonia.kills_10000_lifetime" },
   { "score_3m",             "cc.gfm.newtonia.score_3m" },
   { "reach_level15",        "cc.gfm.newtonia.reach_level15" },
+  { "coop_clear",           "cc.gfm.newtonia.coop_clear" },
 };
 
 const char *gc_identifier(const char *symbolic) {
