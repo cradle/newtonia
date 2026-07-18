@@ -313,8 +313,13 @@ void Menu::tick(int delta) {
   {
     std::string invite_code;
     if (Invites::poll_accepted_invite(invite_code)) {
-      request_state_change(new NetLobby(invite_code));
-      return;
+      // Drain the code even when netplay is unavailable/disabled
+      // (NEWTONIA_NET_DISABLED web builds): a ?code= deep link must not
+      // sit pending forever, and there is no lobby to route it to.
+      if (net_available()) {
+        request_state_change(new NetLobby(invite_code));
+        return;
+      }
     }
   }
 

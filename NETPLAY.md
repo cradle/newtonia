@@ -248,13 +248,22 @@ and configuration, not engineering. Order matters only where noted.
       website deploys (landing page + `/join` + `.well-known` already
       live from master; web auto-join via `?code=` goes live with the
       merged `web/main.ts`), and master CI runs every workflow.
+- [x] **Public web ships netplay-OFF at release** (Glenn 2026-07-18,
+      landed on the branch): `make web NETPLAY=0` defines
+      NEWTONIA_NET_DISABLED (ONLINE row hidden, invite codes drained,
+      factories null — Worker/TURN never contacted). web.yml (Pages)
+      and deploy-itch's release `html5` channel build this way; the
+      `html5-netplay` test channel keeps netplay on. Revisit once live
+      Worker/TURN usage from the native channels is understood — the
+      re-enable is deleting NETPLAY=0 from two workflow lines.
 - [ ] Update the deploy workflows for master + default channels
       (task #152): deploy-steam's manual-dispatch default off the
-      `netplay` test branch, itch off `html5-netplay` onto the main
-      channel, audit ios/android for netplay-branch references, decide
-      whether the `netplay-v*` tag namespace stays for future test
-      cycles, and confirm tag-netplay.yml + the dev workflows' branch
-      filters behave once merged.
+      `netplay` test branch, itch channel routing DONE above (v* tags →
+      `html5` netless, netplay-v* → `html5-netplay`), audit ios/android
+      for netplay-branch references, decide whether the `netplay-v*`
+      tag namespace stays for future test cycles, and confirm
+      tag-netplay.yml + the dev workflows' branch filters behave once
+      merged.
 - [ ] Tag `v1.45.0` (or next) — the normal `v*.*.*` pipeline: Steam
       `beta` branch, TestFlight, Play internal, itch. Promote channels
       (Steam default branch, Play production, App Store review) per

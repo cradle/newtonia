@@ -171,6 +171,16 @@ WEB_FLAGS = -std=c++11 -O2 \
 
 WEB_FLAGS += --preload-file audio@audio
 
+# `make web NETPLAY=0` ships the web game with netplay force-disabled
+# (NEWTONIA_NET_DISABLED: ONLINE row hidden, invite codes drained and
+# dropped, factories return null — the Worker/TURN are never contacted).
+# Used by the PUBLIC web deploys (GitHub Pages, itch release channel)
+# until live infra usage is understood; the netplay test channel builds
+# without it. The backend still compiles, so no source-set changes.
+ifeq ($(NETPLAY),0)
+  WEB_FLAGS += -DNEWTONIA_NET_DISABLED
+endif
+
 .PHONY: web web-clean
 
 # Landing page (web/site/) is served at the root; the playable game lives at /play.

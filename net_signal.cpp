@@ -260,7 +260,10 @@ bool net_signal_selftest() { return false; }
 
 // ---- factory ---------------------------------------------------------------
 
-#if defined(NEWTONIA_NET_RTC)
+#if defined(NEWTONIA_NET_DISABLED)
+// Force-disabled build (public web deploys): never opens a signal socket.
+NetSignal *NetSignal::create() { return nullptr; }
+#elif defined(NEWTONIA_NET_RTC)
 NetSignal *net_signal_create_rtc();
 NetSignal *NetSignal::create() { return net_signal_create_rtc(); }
 #elif defined(__EMSCRIPTEN__)

@@ -39,11 +39,30 @@ jobs:
           ~/emsdk/emsdk install latest
           ~/emsdk/emsdk activate latest
 
+      - name: Pick itch channel
+        id: chan
+        run: |
+          CHANNEL="${{ github.event.inputs.channel }}"
+          if [ -z "$CHANNEL" ]; then
+            case "${{ github.ref_name }}" in
+              netplay-*) CHANNEL=html5-netplay ;;
+              *)         CHANNEL=html5 ;;
+            esac
+          fi
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+
       - name: Build WebAssembly
         run: |
           source ~/emsdk/emsdk_env.sh
           emcc --version
-          make web
+          # Release channel ships netplay force-disabled until live
+          # Worker/TURN usage is understood (NETPLAY.md release
+          # checklist); the netplay test channel keeps it on.
+          if [ "${{ steps.chan.outputs.channel }}" = "html5-netplay" ]; then
+            make web
+          else
+            make web NETPLAY=0
+          fi
 
       - name: Install butler
         run: |
@@ -57,14 +76,8 @@ jobs:
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_CREDENTIALS }}
         run: |
-          CHANNEL="${{ github.event.inputs.channel }}"
-          if [ -z "$CHANNEL" ]; then
-            case "${{ github.ref_name }}" in
-              netplay-*) CHANNEL=html5-netplay ;;
-              *)         CHANNEL=html5 ;;
-            esac
-          fi
           # Upload only the playable game (web/dist/play), not the landing
           # page that web/dist serves at the root of the GitHub Pages site.
-          linux-amd64/butler push web/dist/play ${{ secrets.ITCH_GAME }}:${CHANNEL} \
+          linux-amd64/butler push web/dist/play \
+            ${{ secrets.ITCH_GAME }}:${{ steps.chan.outputs.channel }} \
             --userversion "${{ github.ref_name || github.sha }}"

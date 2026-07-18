@@ -126,9 +126,18 @@ bool net_share_available();
 // run by CI — blocks for up to ~90 s, never call it during gameplay.
 bool net_selftest();
 
-// Compile-time gate for netplay UI (the menu's ONLINE row).
+// Compile-time gate for netplay UI (the menu's ONLINE row) and the menu's
+// invite-code intake. NEWTONIA_NET_DISABLED force-disables a platform whose
+// backend would otherwise be compiled in — used by `make web NETPLAY=0` so
+// the PUBLIC web deploys (GitHub Pages, itch release channel) ship with
+// netplay off until live Worker/TURN usage is understood, while the
+// netplay test channel keeps it on. The backend code still compiles (the
+// lobby's clipboard helpers link from the same TUs); it is simply
+// unreachable — nothing constructs a transport or signal socket, so the
+// Worker and TURN are never contacted.
 inline bool net_available() {
-#if defined(NEWTONIA_NET_RTC) || defined(__EMSCRIPTEN__)
+#if (defined(NEWTONIA_NET_RTC) || defined(__EMSCRIPTEN__)) && \
+    !defined(NEWTONIA_NET_DISABLED)
   return true;
 #else
   return false;

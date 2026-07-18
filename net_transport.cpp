@@ -11,7 +11,11 @@ NetTransport* create_web_transport();
 #endif
 
 NetTransport* NetTransport::create() {
-#if defined(NEWTONIA_NET_RTC)
+#if defined(NEWTONIA_NET_DISABLED)
+  // Force-disabled build (public web deploys): backend compiled but
+  // unreachable — net_available() already hides every entry point.
+  return nullptr;
+#elif defined(NEWTONIA_NET_RTC)
   return create_rtc_transport();
 #elif defined(__EMSCRIPTEN__)
   return create_web_transport();
