@@ -6,10 +6,15 @@ package org.newtonia;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.system.Os;
+
+import com.android.installreferrer.api.InstallReferrerClient;
+import com.android.installreferrer.api.InstallReferrerStateListener;
+import com.android.installreferrer.api.ReferrerDetails;
 
 import org.libsdl.app.SDLActivity;
 
@@ -36,6 +41,69 @@ public class NewtoniaActivity extends SDLActivity {
         if (code != null && !code.isEmpty()) {
             nativeAcceptInvite(code);
         }
+    }
+
+    // Deferred deep link (task #145): a join link tapped on a phone WITHOUT
+    // the game routes to the Play Store with the room code riding the
+    // install referrer (&referrer=code%3DXXXX on the store URL — the /join
+    // page builds it). The Play Store preserves that string across the
+    // install; on first launch we read it back and hand the code to the
+    // same native invite path a tapped App Link uses. One-shot: a stored
+    // flag stops every later launch from re-consuming a stale code, but a
+    // TRANSIENT service failure leaves the flag unset so the next launch
+    // retries (the referrer itself persists ~90 days server-side).
+    private void checkInstallReferrer() {
+        final SharedPreferences prefs =
+            getSharedPreferences("newtonia", Context.MODE_PRIVATE);
+        if (prefs.getBoolean("install_referrer_checked", false)) return;
+        final InstallReferrerClient client =
+            InstallReferrerClient.newBuilder(this).build();
+        client.startConnection(new InstallReferrerStateListener() {
+            @Override
+            public void onInstallReferrerSetupFinished(int responseCode) {
+                boolean definitive = true;
+                try {
+                    if (responseCode ==
+                        InstallReferrerClient.InstallReferrerResponse.OK) {
+                        ReferrerDetails details = client.getInstallReferrer();
+                        String code = referrerCode(details.getInstallReferrer());
+                        if (code != null) nativeAcceptInvite(code);
+                    } else if (responseCode ==
+                               InstallReferrerClient.InstallReferrerResponse
+                                   .SERVICE_UNAVAILABLE) {
+                        definitive = false;  // transient: retry next launch
+                    }
+                } catch (Exception ignored) {
+                    // Referrer is best-effort; never let it disturb launch.
+                } finally {
+                    if (definitive) {
+                        prefs.edit()
+                            .putBoolean("install_referrer_checked", true)
+                            .apply();
+                    }
+                    try { client.endConnection(); } catch (Exception ignored) {}
+                }
+            }
+            @Override
+            public void onInstallReferrerServiceDisconnected() {
+                // Retry happens naturally on the next launch (flag unset).
+            }
+        });
+    }
+
+    // Extract a room code from a referrer string like "code=XXXX" (the Play
+    // Store URL-decodes the %3D once) or "utm_source=...&code=XXXX". Codes
+    // are short upper-alnum; anything else is not ours.
+    private static String referrerCode(String referrer) {
+        if (referrer == null) return null;
+        for (String kv : referrer.split("&")) {
+            int eq = kv.indexOf('=');
+            if (eq <= 0) continue;
+            if (!kv.substring(0, eq).equals("code")) continue;
+            String v = kv.substring(eq + 1).trim().toUpperCase();
+            if (v.matches("[A-Z0-9]{1,8}")) return v;
+        }
+        return null;
     }
 
     // Debug bridge: Android processes fork from zygote, so `adb shell` env
@@ -81,6 +149,13 @@ public class NewtoniaActivity extends SDLActivity {
 
         // Cold launch from a tapped join link.
         handleInviteIntent(getIntent());
+
+        // First launch after a Play Store install: recover a join code that
+        // rode the install referrer (async; no-op on every later launch).
+        // If this launch ALSO carried an App Link intent, both feed the
+        // same pending-code slot and the menu poll drains one — the codes
+        // are identical in that scenario, so order doesn't matter.
+        checkInstallReferrer();
     }
 
     // Warm launch: singleTask (AndroidManifest) delivers a join link tapped
