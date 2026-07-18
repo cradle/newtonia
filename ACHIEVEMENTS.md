@@ -188,10 +188,11 @@ over the SDL window once it exists.
   resign-active. Signed-out play earns nothing on Game Center until the
   device's account signs back in — unowned journal entries resolve to the
   device's last-signed-in account, never to a different account.
-- **`coop_clear` is deliberately unmapped** — deferred until netplay makes
-  it earnable on touch devices (§5). Unmapped earns drop silently in the
-  backend; the shared hook keeps firing, so adding the mapping later is the
-  whole change.
+- **`coop_clear` is mapped** (post-netplay-release, task #153):
+  `cc.gfm.newtonia.coop_clear` in the table. GLENN'S HALF still pending:
+  define it in App Store Connect (Co-Pilot, 40 pts, exactly that
+  identifier). Until the definition exists, GameKit rejects the unknown
+  identifier and the pending journal retries later — no earns are lost.
 - **Dev reset:** launch once with `NEWTONIA_RESET_GAME_CENTER=1` (set via
   the Xcode scheme) to wipe the signed-in account's Game Center
   achievements and drop the local pending journal, then quit and relaunch
@@ -308,8 +309,12 @@ the game.
   Signed-out play earning nothing if the process dies first is allowed
   (XR-055), and the counter-backed achievements re-derive from persisted
   stats next session anyway.
-- **`coop_clear` is deliberately unmapped** — same decision as Game Center
-  (§5): deferred until netplay makes it earnable on touch devices.
+- **`coop_clear` is mapped** (post-netplay-release, task #154):
+  `achievement_coop_clear` in the native table, with a commented
+  placeholder in games-ids.xml. GLENN'S HALF still pending: define it in
+  the Play Console (Co-Pilot, one-shot, NOT incremental) and paste the
+  generated ID into games-ids.xml. Until then the missing resource drops
+  coop_clear earns with a logcat warning (Play services queues nothing).
 - **Failure-proof by design:** a missing `APP_ID` meta-data or absent Play
   services logs a warning and disables achievements for the session — the
   game must never crash over Games config, since the placeholder ships
