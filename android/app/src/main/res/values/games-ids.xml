@@ -49,9 +49,6 @@
     <string name="achievement_score_3m" translatable="false">CgkIhbPC4-8UEAIQEA</string>
     <!-- Deep Space -->
     <string name="achievement_reach_level15" translatable="false">CgkIhbPC4-8UEAIQBQ</string>
-    <!-- Co-Pilot (coop_clear): define in the Play Console (one-shot, not
-         incremental) and paste its generated ID here — until then the
-         native mapping drops coop_clear earns with a logcat warning.
-    <string name="achievement_coop_clear" translatable="false">PASTE_CONSOLE_ID</string>
-    -->
+    <!-- Co-Pilot -->
+    <string name="achievement_coop_clear" translatable="false">CgkIhbPC4-8UEAIQFA</string>
 </resources>
