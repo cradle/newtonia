@@ -74,9 +74,21 @@ records: [slot index | kind | payload] ...
 
 - Records are slot-indexed (the 10 Hz snapshot cadence), not wall-clock:
   pauses simply emit no records, so the playback timeline is pure sim time.
-- The file streams to disk during play; the header's score/duration/flags
-  are back-patched at finalize. A crash mid-run leaves a truncated file
-  that still plays to its last intact record (free crash-repro artifact).
+- **Storage model: buffer in RAM, flush at checkpoints** (all platforms, not
+  streamed per slot). Records accumulate in an in-memory `Save::MemStream`
+  (the type netplay already builds snapshots into) during play; the whole
+  buffer is written to `replays/*.nrp` — header back-patched — at each
+  checkpoint: game-over/abandon (finalize), AND the same pause / background /
+  focus-loss points the savegame already auto-saves at. At a few MB per long
+  run the RAM cost is negligible, and this eliminates any 10 Hz disk I/O on
+  the game thread — the mobile-overhead risk. This is what web already does
+  implicitly (its pref path IS MEMFS; syncfs→IndexedDB fires only at flush),
+  so native now matches web instead of being the odd one out. Each flush is a
+  whole-buffer rewrite, so the on-disk file is always valid and complete —
+  never a half-written trailing record. Durability equals the savegame's: a
+  hard crash loses only play since the last checkpoint (the background flush
+  covers Android's silent kill of a suspended process); the flushed file
+  stays a free crash-repro artifact up to that point.
 - **Resumed games work naturally**: the first record is always a keyframe
   (full world state), exactly like a rejoining net client's bootstrap. A
   resume *within the same run* (the save's `run_id` still matches
@@ -143,7 +155,23 @@ R4's field.
 
 - Recorder overhead target on mobile: the delta path is cheap and keyframes
   are 1 Hz, but measure with the perf logger on-device before enabling by
-  default on Android/iOS/web.
+  default on Android/iOS/web. Disk I/O is no longer the concern — the
+  buffer-in-RAM + flush-at-checkpoints storage model (see File format) means
+  no per-slot writes on the game thread; what's left to measure is the 10 Hz
+  serialize/allocation cost (build_save_data + MemStream churn) at HIGH
+  generation on a low-end Android device. Reuse the buffers across slots
+  rather than reallocating; netplay already runs this exact serialize 10 Hz
+  while hosting on mobile, so the ceiling is known-acceptable.
+- Checkpoint-flush latency: the buffer→disk write is now a single multi-MB
+  blob at finalize / pause / focus-loss, so it must be profiled at a
+  marathon-run buffer size (worst case) to confirm it (a) doesn't hitch the
+  frame it lands on, and (b) on Android completes inside the `onPause`/
+  `onStop` budget before the OS suspends the process — a flush that doesn't
+  finish loses the run it was meant to save. If either fails: cap the
+  per-flush size by writing only records appended since the last checkpoint
+  (high-water mark → append, not full rewrite), and/or move the write to a
+  background thread joined before the lifecycle callback returns. Measure
+  before relying on the pause/background flush for durability.
 - Whether `last.nrp` should survive an immediate quit-at-menu with zero
   sim ticks (proposal: no — reuse the save_dirty_ idea: don't finalize a
   recording with no delta records).
