@@ -10,8 +10,6 @@ on:
     tags:
       - 'v*.*.*'
       - 'netplay-v*'
-    branches:
-      - claude/fix-ios-xcode-beta-uoUHc
   workflow_dispatch:
 
 jobs:

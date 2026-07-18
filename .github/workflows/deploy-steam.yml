@@ -3,6 +3,9 @@ name: Deploy Steam
 # Two tag namespaces (globs can't overlap: v*.*.* never matches netplay-*):
 #   v*.*.*       — normal release pipeline, deploys to the 'beta' branch
 #   netplay-v*   — netplay test release, deploys to the 'netplay' branch
+#     (kept post-launch for future netplay test cycles)
+# Manual dispatch defaults to 'beta' (the release pipeline's branch);
+# pick 'netplay' explicitly for a test-branch push.
 on:
   push:
     tags:
@@ -11,9 +14,9 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: 'Steam branch to deploy to (e.g. netplay, beta, default)'
+        description: 'Steam branch to deploy to (e.g. beta, netplay, default)'
         required: true
-        default: 'netplay'
+        default: 'beta'
 
 jobs:
   build-windows:

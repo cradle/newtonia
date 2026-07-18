@@ -46,10 +46,11 @@ jobs:
         run: |
           source ~/emsdk/emsdk_env.sh
           emcc --version   # triggers sanity checks + sysroot initialisation
-          # Public site (GitHub Pages) ships with netplay force-disabled
-          # (NEWTONIA_NET_DISABLED) until live Worker/TURN usage is
-          # understood — see the release checklist in NETPLAY.md. The
-          # netplay test channel (deploy-itch html5-netplay) keeps it on.
+          # The free public site (GitHub Pages) ships with netplay
+          # force-disabled permanently (NEWTONIA_NET_DISABLED — pricing
+          # decision in NETPLAY.md: paid on Steam/iOS, browser co-op is
+          # the paid newtonia-online itch project). The netplay test
+          # channel (deploy-itch html5-netplay) keeps it on.
           make web NETPLAY=0
 
       - name: Upload Pages artifact

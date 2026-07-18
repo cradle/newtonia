@@ -281,14 +281,18 @@ and configuration, not engineering. Order matters only where noted.
       real push = the v1.45.0 tag; after it, Glenn sets the embed +
       price gate on the itch project and a live paid-embed join test
       closes #156.
-- [ ] Update the deploy workflows for master + default channels
-      (task #152): deploy-steam's manual-dispatch default off the
-      `netplay` test branch, itch channel routing DONE above (v* tags →
-      `html5` netless, netplay-v* → `html5-netplay`), audit ios/android
-      for netplay-branch references, decide whether the `netplay-v*`
-      tag namespace stays for future test cycles, and confirm
-      tag-netplay.yml + the dev workflows' branch filters behave once
-      merged.
+- [x] Update the deploy workflows for master + default channels
+      (task #152, 2026-07-18): deploy-steam's manual-dispatch default
+      is now `beta` (was the `netplay` test branch); itch channel
+      routing done earlier (v* tags → `html5` netless + paid
+      `newtonia-online`, netplay-v* → `html5-netplay`); deploy-ios's
+      stale debug-branch trigger removed; deploy-android needs nothing
+      (internal track for both tag types, promotion is manual in the
+      Play console); DECIDED: the `netplay-v*` tag namespace STAYS for
+      future test cycles (tag-netplay.yml runs from master post-merge,
+      test tags route to Steam `netplay` + itch `html5-netplay`); dev
+      workflows' filters audited — all master/main + PR, web.yml's
+      `claude/**` push is compile-gate only with a master-gated deploy.
 - [ ] Tag `v1.45.0` (or next) — the normal `v*.*.*` pipeline: Steam
       `beta` branch, TestFlight, Play internal, itch. Promote channels
       (Steam default branch, Play production, App Store review) per

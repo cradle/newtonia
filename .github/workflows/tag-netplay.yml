@@ -4,8 +4,9 @@
 # Releases are reserved for master.
 #
 # Usage:
-#   - "Use workflow from" picks the branch whose HEAD gets tagged (the
-#     netplay deploy branch while netplay is in test).
+#   - "Use workflow from" picks the branch whose HEAD gets tagged (post
+#     netplay-merge that's normally master; the namespace is kept for
+#     future netplay test cycles routed to the test channels).
 #   - Leave the tag input empty to auto-bump the latest netplay-v* patch
 #     number; or type an explicit netplay-vX.Y.Z.
 #   - Only netplay-v* names are accepted — real releases (v*) stay a
