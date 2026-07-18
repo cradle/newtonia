@@ -228,7 +228,7 @@ and configuration, not engineering. Order matters only where noted.
       labels hold; the residual spike is proportional to simultaneous
       kills and only reachable with the 999-mine cheat.
 
-### Gate 3 — human platform config (Glenn-only, ~10 min each)
+### Gate 3 — human platform config — COMPLETE 2026-07-18
 - [x] Steamworks: promptless `+connect` Launch Option — DONE (Glenn
       2026-07-17: already configured and tested; matches the Steam leg
       of the universal-join-link field verification).
@@ -236,8 +236,11 @@ and configuration, not engineering. Order matters only where noted.
       reprovision — DONE (Glenn 2026-07-17: iOS invite links already
       field-tested; a working universal link implies the capability +
       profile are in place).
-- [ ] Steamworks portal: confirm `steam/rich_presence.vdf` tokens are
-      pasted (App Admin → Community → Rich Presence).
+- [x] Steamworks portal: `steam/rich_presence.vdf` tokens pasted and
+      live — VERIFIED (Glenn 2026-07-18): "Level 1 Co-Op" displayed
+      correctly in the friends list, which exercises the
+      `#StatusLevelCoop` token added by the #133 fix (the last token
+      to change). Gate 3 COMPLETE.
 
 ### Gate 4 — decisions, not blockers
 - [x] Mobile-web perf posture: SHIP AS-IS. Field-tested 2026-07-17
