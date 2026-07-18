@@ -18,11 +18,25 @@ criteria. Nothing here is built yet.
   already hardened. Cost: a few MB per long run vs tens of KB — fine.
 - **Always record, never ask.** Recording starts silently at every new solo
   game (kilobytes-per-second budget). No "save replay?" prompt anywhere.
-- **Auto-keep two local replays**: `replays/last.nrp` (finalized every time a
-  game ends — game over OR abandoned to the menu) and `replays/best.nrp`
-  (promoted from last when the run's final score beats best's header score
-  AND the game wasn't cheat-flagged; cheat runs still get `last` — useful
-  for debugging — but can never become `best`).
+- **Auto-keep two local replays**: `replays/last.nrp` (header back-patched
+  every time a game ends — game over OR abandoned to the menu; a later resume
+  of the same run reopens and continues it, see the run-scoped decision
+  below) and `replays/best.nrp` (promoted from last when the run's final
+  score beats best's header score AND the game wasn't cheat-flagged; cheat
+  runs still get `last` — useful for debugging — but can never become
+  `best`).
+- **Replays are run-scoped, not session-scoped — resume continues the same
+  replay.** A new solo game stamps a random `run_id` into both the savegame
+  (`GameState`) and the replay header. Exiting to the menu back-patches
+  `last.nrp`'s header but does NOT close the run. On CONTINUE, if the loaded
+  save's `run_id` matches `last.nrp`'s, the recorder reopens that file and
+  appends — starting with a fresh keyframe as a resume seam (sim time
+  continues) — so an exit→continue cycle produces ONE continuous replay, not
+  a fragment. A mismatched or absent `run_id` starts a fresh recording from
+  that keyframe. This is what keeps `best.nrp` a *whole* run: without it,
+  resuming and then beating the old score would promote a `best` that opens
+  mid-run on the resume keyframe with the score already high, and the
+  earlier gens would be lost.
 - **REPLAYS menu row** on the main menu below OPTIONS → a list screen (LAST
   RUN / BEST RUN with score, level, date) → playback. Same nav-ladder +
   TapBand patterns as every other screen.
@@ -47,7 +61,7 @@ criteria. Nothing here is built yet.
 ## File format — `replays/*.nrp` (pref path, IDBFS on web)
 
 ```
-header:  magic "NWRP" | format version | game version string |
+header:  magic "NWRP" | format version | game version string | run id |
          flags (cheated, aborted) | final score | generation reached |
          duration ms | player count | date
 records: [slot index | kind | payload] ...
@@ -64,8 +78,12 @@ records: [slot index | kind | payload] ...
   are back-patched at finalize. A crash mid-run leaves a truncated file
   that still plays to its last intact record (free crash-repro artifact).
 - **Resumed games work naturally**: the first record is always a keyframe
-  (full world state), exactly like a rejoining net client's bootstrap — a
-  replay of a resumed save just starts from that state.
+  (full world state), exactly like a rejoining net client's bootstrap. A
+  resume *within the same run* (the save's `run_id` still matches
+  `last.nrp`'s) appends that keyframe as a seam to the existing file so the
+  replay stays continuous across exit→continue; a resume whose `run_id` no
+  longer matches (e.g. `last.nrp` was already rotated or belongs to a
+  different run) starts a fresh recording from that keyframe.
 
 ## Milestones
 
@@ -76,11 +94,18 @@ keyframe/delta builders `net_host_send_snapshot` uses but sinks to a
 `Save::FileStream` instead of the session; the EV outbox tees per slot.
 Finalize from game over and `~GLGame`; rotate last→best per the rules above.
 The snapshot builders move behind a small seam so host-send and recorder
-share them (they must never fork).
+share them (they must never fork). A new game stamps a random `run_id` into
+`GameState` (append-only field, version bump) and the replay header; on
+resume the recorder reads the save's `run_id` and, if it matches
+`last.nrp`'s, reopens that file and appends a resume-seam keyframe instead of
+starting fresh — so exit→continue stays one file.
 **Exit**: headless driver plays a scripted run; asserts `last.nrp` exists,
 header fields match the run (score/generation/duration), a higher-scoring
 second run promotes `best.nrp`, a cheat-flagged run does not, an abandoned
-run still writes `last`.
+run still writes `last`, and an exit-to-menu-then-CONTINUE of the same save
+yields a SINGLE continuous `last.nrp` (one `run_id`, a seam keyframe at the
+resume point, gens from before and after the exit both present) whose header
+score reflects the whole run.
 
 ### R2 — playback
 `GLGame` gains a `NetReplay` mode: `tick_net_client`'s apply/extrapolate
