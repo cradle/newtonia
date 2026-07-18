@@ -10,9 +10,10 @@ inventory of what exists and how to run it.
 # Syntax-check one file without a full build (the pre-commit hook does this)
 g++ -std=c++11 -fsyntax-only -I. -I/usr/include/SDL2 <file.cpp>
 
-# Full builds — switching NETPLAY on/off needs a clean (objects don't mix)
-make -j                                   # stub-net build
-make clean && make -j NETPLAY=1           # netplay build (needs ./build_netplay_deps.sh once)
+# Full builds — netplay is ON by default (needs ./build_netplay_deps.sh once);
+# switching NETPLAY on/off needs a clean (objects don't mix)
+make -j                                   # netplay build (the default)
+make clean && make -j NETPLAY=0           # netless stub build
 ```
 
 ### STEAM_BUILD syntax gate (no SDK needed)
@@ -76,7 +77,7 @@ xdotool, real relay, assertions greped from `NEWTONIA_NET_DEBUG=1` logs.
 ```sh
 sudo apt-get install -y xvfb xdotool x11-apps imagemagick   # once
 cd signal && npx wrangler dev --local --port 8787 &         # relay
-make clean && make -j NETPLAY=1                             # netplay build
+make clean && make -j                                       # netplay build (default)
 
 test/e2e/room.sh     # connect via room code, 3 level skips, both fire 8s
 test/e2e/rejoin.sh   # SIGKILL joiner mid-game -> auto-pause -> rejoin -> resume
@@ -89,7 +90,7 @@ test/e2e/spectate.sh # one player out of lives -> "SPECTATING IN N" -> camera to
 test/e2e/spectate_disconnect.sh # joiner spectating -> host process killed -> GAME OVER
 test/e2e/invite.sh   # host re-advertises the open slot on peer loss, clears on menu teardown
 test/e2e/weapons_net.sh # PROTO 18: lance pulses + beam clones both ways (normal
-                        # NETPLAY=1 build; the driver sets the runtime hook
+                        # default netplay build; the driver sets the runtime hook
                         # NEWTONIA_NET_TEST_GRANT_WEAPONS=1 to stock both weapons.
                         # Online the hook must be set on the HOST — it grants
                         # both ships and replicates; on a client it is a no-op,
@@ -239,12 +240,12 @@ backtrace. This is how the PROTO 22 shock crash was pinned to one line:
 
 - **Keep the real netplay define when overriding `CFLAGS` for symbols.** A
   command-line `CFLAGS=…` *replaces* the Makefile's flags — make cannot `+=`
-  onto a command-line variable — so `NETPLAY=1`'s `-DNEWTONIA_NET_RTC`
+  onto a command-line variable — so the netplay default's `-DNEWTONIA_NET_RTC`
   silently vanishes. Without it the menu's **ONLINE row disappears**, hosting
   never starts, and every driver dies with `NO ROOM CODE` that looks like
   flakiness. Always pass it back explicitly:
   ```sh
-  make clean && make NETPLAY=1 -j8 CFLAGS="-Wall -g -O2 -std=c++11 \
+  make clean && make -j8 CFLAGS="-Wall -g -O2 -std=c++11 \
     $(sdl2-config --cflags) -MMD -MP -DNEWTONIA_NET_RTC -I$(pwd)/netplay-libs/include"
   ```
   (`LIBS` is `+=`-appended by the Makefile and survives, so only `CFLAGS`

@@ -10,11 +10,19 @@ Newtonia is a top-down 2D space shooter written in C++ using SDL2 and OpenGL. It
 
 ### Desktop (macOS / Linux)
 ```sh
-make          # Build native executable: ./newtonia
-make clean    # Remove build artifacts
+make            # Build native executable: ./newtonia — NETPLAY ON by default
+make NETPLAY=0  # Netless binary (no libdatachannel needed)
+make clean      # Remove build artifacts
 ```
 
 Compiler: g++ with `-Wall -O3 -std=c++11`. Sources include root, `weapon/`, and `view/`.
+
+**Netplay builds by default** (the old opt-in `NETPLAY=1` still works and is
+now redundant). The default needs libdatachannel at `./netplay-libs` — build
+it ONCE with `./build_netplay_deps.sh` (`--universal` for `make osx`). A
+missing prefix is a hard `make` error (never a silent netless fallback);
+`make NETPLAY=0` is the explicit opt-out. `make web` / `make android*` don't
+need the prefix (web's backend is unconditional; Android builds via Gradle).
 
 #### Steam build (local achievement/overlay testing)
 ```sh
@@ -46,8 +54,8 @@ Day-to-day, from the **MSYS2 MINGW64** shell (not "MSYS2 MSYS" — only
 MINGW64 has g++/SDL on PATH), or from PowerShell via
 `$env:MSYSTEM='MINGW64'; C:\msys64\usr\bin\bash.exe -lc 'cd "$PWD" && make -j8'`:
 ```sh
-make -j8              # plain build
-make NETPLAY=1 -j8    # netplay build (needs ./netplay-libs — see below)
+make -j8              # netplay build, the default (needs ./netplay-libs — see below)
+make NETPLAY=0 -j8    # plain netless build
 ```
 The Makefile's `_NT` branch mirrors `.github/workflows/windows.yml`: fully
 static `newtonia.exe` (no MinGW DLLs needed), GUI subsystem so stdout only

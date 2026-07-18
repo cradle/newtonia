@@ -22,21 +22,26 @@ else
   ALL_SRCS := $(filter-out $(ANDROID_SRCS),$(wildcard *.cpp) $(wildcard */*.cpp))
 endif
 
-# Optional native netplay backend (macOS/Linux) — see NETPLAY.md.
-# libdatachannel is not packaged by Homebrew; build it from source first:
+# Native netplay backend (macOS/Linux/Windows MinGW) — ON BY DEFAULT since
+# the netplay release; see NETPLAY.md. Needs libdatachannel, which is not
+# packaged by Homebrew — build it from source ONCE:
 #   ./build_netplay_deps.sh              (--universal for `make osx`)
-#   make NETPLAY=1
+# Opt out (netless binary, no deps needed):
+#   make NETPLAY=0
 # NETPLAY_PREFIX defaults to the script's install dir (./netplay-libs);
-# pass it only for a prefix elsewhere. Defines NEWTONIA_NET_RTC (activates
-# net_transport_rtc.cpp and the menu's ONLINE row) and links the
-# libdatachannel C API.
+# pass it only for a prefix elsewhere. Netplay-on defines NEWTONIA_NET_RTC
+# (activates net_transport_rtc.cpp and the menu's ONLINE row) and links the
+# libdatachannel C API. Missing deps are a hard error, not a silent
+# fallback — a netless binary must be asked for, never shipped by accident.
+NETPLAY ?= 1
 ifeq ($(NETPLAY),1)
   NETPLAY_PREFIX ?= $(CURDIR)/netplay-libs
-  ifeq ($(filter clean web-clean,$(MAKECMDGOALS)),)
+  ifeq ($(filter clean web-clean android android-install android-assets android-clean web,$(MAKECMDGOALS)),)
     ifeq ($(wildcard $(NETPLAY_PREFIX)/include/rtc/rtc.h),)
-      $(error NETPLAY=1 but $(NETPLAY_PREFIX)/include/rtc/rtc.h is missing — \
-run ./build_netplay_deps.sh first (--universal for `make osx`), or point \
-NETPLAY_PREFIX at an existing install)
+      $(error netplay builds by default but $(NETPLAY_PREFIX)/include/rtc/rtc.h \
+is missing — run ./build_netplay_deps.sh once (--universal for `make osx`), \
+point NETPLAY_PREFIX at an existing install, or build without netplay: \
+make NETPLAY=0)
     endif
   endif
   CFLAGS += -DNEWTONIA_NET_RTC -I$(NETPLAY_PREFIX)/include
@@ -82,7 +87,7 @@ $(OBJFILES): flavor.stamp
 # Two whole-program compiles (arm64 + x86_64) lipo'd together, mirroring
 # the CI recipe. The x86_64 half links against the Rosetta Homebrew tree
 # (/usr/local) — install it plus sdl2/sdl2_mixer there for local universal
-# builds. With NETPLAY=1 the prefix must hold a UNIVERSAL libdatachannel:
+# builds. The default netplay build needs a UNIVERSAL libdatachannel here:
 #   ./build_netplay_deps.sh --universal
 # and the dylib is embedded in the bundle at Contents/Frameworks.
 OSX_SDL_ARM ?= /opt/homebrew
@@ -259,7 +264,7 @@ ifeq ($(UNAME), Darwin)
 	# beside the executable (its id is @loader_path/libsteam_api.dylib);
 	# steam_appid.txt rides along for standalone (non-Steam) launches. The
 	# bare ./newtonia-steam at the repo root still works too (run from here so
-	# steam_appid.txt is in the CWD). A NETPLAY=1 build resolves libdatachannel
+	# steam_appid.txt is in the CWD). A netplay build resolves libdatachannel
 	# through its absolute netplay-libs rpath, so no extra copy is needed for
 	# local testing.
 	mkdir -p Newtonia.app/Contents/MacOS Newtonia.app/Contents/Resources

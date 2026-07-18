@@ -2,15 +2,16 @@
 # builds the game — repeatable and idempotent, safe to re-run any time.
 #
 #   ./setup_windows_build.ps1                 # toolchain + netplay deps + build + selftest
-#   ./setup_windows_build.ps1 -SkipNetplay    # plain (non-netplay) build
+#   ./setup_windows_build.ps1 -SkipNetplay    # plain (netless) build: make NETPLAY=0
 #   ./setup_windows_build.ps1 -SkipBuild      # toolchain/deps only, no game build
 #
 # Mirrors .github/workflows/windows.yml: MSYS2 MINGW64 gcc + static SDL2/
-# SDL2_mixer/freeglut, and a static libdatachannel for NETPLAY=1 (built by
-# build_netplay_deps.sh, which has a matching Windows branch).
+# SDL2_mixer/freeglut, and a static libdatachannel for the default netplay
+# build (built by build_netplay_deps.sh, which has a matching Windows branch).
 #
 # After setup, day-to-day builds don't need this script: open the
-# "MSYS2 MINGW64" shell and run `make -j8` or `make NETPLAY=1 -j8`.
+# "MSYS2 MINGW64" shell and run `make -j8` (netplay by default) or
+# `make NETPLAY=0 -j8` for a netless binary.
 
 param(
     [switch]$SkipNetplay,
@@ -63,11 +64,11 @@ if (-not $SkipNetplay) {
 # --- build + selftest --------------------------------------------------------
 if (-not $SkipBuild) {
     if ($SkipNetplay) {
-        Write-Host '== building newtonia.exe'
-        Invoke-Mingw "cd '$Repo' && make -j8"
+        Write-Host '== building newtonia.exe (netless: NETPLAY=0)'
+        Invoke-Mingw "cd '$Repo' && make NETPLAY=0 -j8"
     } else {
-        Write-Host '== building newtonia.exe (NETPLAY=1)'
-        Invoke-Mingw "cd '$Repo' && make NETPLAY=1 -j8"
+        Write-Host '== building newtonia.exe (netplay, the default)'
+        Invoke-Mingw "cd '$Repo' && make -j8"
         Write-Host '== netplay loopback selftest'
         Invoke-Mingw "cd '$Repo' && NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia.exe | tee selftest.log; grep -q 'NET SELFTEST PASS' selftest.log"
     }
@@ -75,5 +76,5 @@ if (-not $SkipBuild) {
 
 Write-Host ''
 Write-Host 'Done. Day-to-day: open the "MSYS2 MINGW64" shell and run:'
-Write-Host '  make -j8              # plain build'
-Write-Host '  make NETPLAY=1 -j8    # netplay build'
+Write-Host '  make -j8              # netplay build (the default)'
+Write-Host '  make NETPLAY=0 -j8    # plain netless build'
