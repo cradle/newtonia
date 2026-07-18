@@ -287,12 +287,16 @@ and configuration, not engineering. Order matters only where noted.
       arrives via the PAID itch project instead (task #156); free
       platforms are web solo (the demo) and Android (reach/invite
       funnel). The paid channel is WIRED (2026-07-18, task #156):
-      deploy-itch also builds netplay-ON and butler-pushes it to
-      `newtonia-online:html5` on every public release, and /join
-      offers desktop joiners the paid project beside Steam. First
-      real push = the v1.45.0 tag; after it, Glenn sets the embed +
-      price gate on the itch project and a live paid-embed join test
-      closes #156.
+      deploy-itch builds netplay-ON and butler-pushes it to
+      `newtonia-online:html5` on every public release (first push =
+      the v1.45.0 tag). **BUT (same day): itch cannot purchase-gate
+      HTML5 embeds** — minimum price only restricts downloads, a
+      long-declined itch feature. So `newtonia-online` STAYS
+      UNPUBLISHED (Draft) and /join's itch button is hidden again;
+      the viable design is server-side purchase verification in the
+      signaling Worker (itch download key / OAuth — see task #156
+      for the full sketch). The deploy wiring stays; it's inert
+      while the project is drafted. Not a release dependency.
 - [x] Update the deploy workflows for master + default channels
       (task #152, 2026-07-18): deploy-steam's manual-dispatch default
       is now `beta` (was the `netplay` test branch); itch channel
