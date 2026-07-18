@@ -268,9 +268,14 @@ and configuration, not engineering. Order matters only where noted.
       NEWTONIA_NET_DISABLED (ONLINE row hidden, invite codes drained,
       factories null — Worker/TURN never contacted). web.yml (Pages)
       and deploy-itch's release `html5` channel build this way; the
-      `html5-netplay` test channel keeps netplay on. Revisit once live
-      Worker/TURN usage from the native channels is understood — the
-      re-enable is deleting NETPLAY=0 from two workflow lines.
+      `html5-netplay` test channel keeps netplay on. Pricing decision
+      (Glenn 2026-07-18): browser co-op stays off the FREE page
+      permanently — the game is paid on Steam/iOS, and free
+      zero-install browser co-op would undercut those SKUs. Web co-op
+      arrives via the PAID itch project instead (task #156); free
+      platforms are web solo (the demo) and Android (reach/invite
+      funnel). The mechanical re-enable for the paid build is deleting
+      NETPLAY=0 from the workflow line for that channel.
 - [ ] Update the deploy workflows for master + default channels
       (task #152): deploy-steam's manual-dispatch default off the
       `netplay` test branch, itch channel routing DONE above (v* tags →
