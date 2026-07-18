@@ -117,9 +117,10 @@
         } else {
           steamBtn.href = "steam://run/" + STEAM_APPID + "//+connect%20" + enc;
           steamBtn.classList.remove("hidden");
-          itchBtn.classList.remove("hidden");
-          subEl.textContent = "Join on Steam, or in your browser on itch.io " +
-                              "— enter the room code above in the game";
+          // itchBtn stays hidden: itch can't purchase-gate HTML5 embeds
+          // (task #156) — re-show once the Worker-side purchase gate
+          // ships and the paid project publishes.
+          subEl.textContent = "Join on Steam";
         }
       } else if (isIOS) {
         // No app installed (else the Universal Link would have opened it). Offer
