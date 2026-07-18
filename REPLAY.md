@@ -78,8 +78,24 @@ records: [slot index | kind | payload] ...
   streamed per slot). Records accumulate in an in-memory `Save::MemStream`
   (the type netplay already builds snapshots into) during play; the whole
   buffer is written to `replays/*.nrp` — header back-patched — at each
-  checkpoint: game-over/abandon (finalize), AND the same pause / background /
-  focus-loss points the savegame already auto-saves at. At a few MB per long
+  checkpoint: game-over/abandon (finalize), **level clear**, AND the same
+  pause / background / focus-loss points the savegame already auto-saves at.
+  Level clear is the load-bearing one: it's already a savegame auto-save
+  point, it lands inside the frozen 5 s clear countdown / generation rebuild
+  (no combat to hitch), and it flushes proactively so the buffer is nearly
+  drained before any suspend hits — bounding the reactive pause/background/
+  suspend flush to at most one level's worth of records (this is what keeps
+  the Xbox cert window and Android `onPause` budget safe; see the flush
+  items under Open questions). Where a level *has* an intro screen (the
+  new-object levels — specials 1–8, pulsar 9, mini-station 10, comet 11,
+  seeker 12, black hole 13, station 14), that screen is the slackest window
+  of all — the world is frozen and idle for up to 5 s — so the flush should
+  land there in preference to the bare level-clear instant, and a large write
+  can even spread across intro frames. The recorder survives the ownership
+  transfer into the `Intro` state (it's owned by `GLGame`, which the `Intro`
+  friend holds), so it's still available to flush there. Intros aren't on
+  every level, though, so level clear stays the guaranteed checkpoint and the
+  intro is the extra-slack refinement. At a few MB per long
   run the RAM cost is negligible, and this eliminates any 10 Hz disk I/O on
   the game thread — the mobile-overhead risk. This is what web already does
   implicitly (its pref path IS MEMFS; syncfs→IndexedDB fires only at flush),
