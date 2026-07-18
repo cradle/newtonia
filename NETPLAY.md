@@ -177,6 +177,17 @@ and configuration, not engineering. Order matters only where noted.
       $0.05/GB after; worst-case ALL-relay ≈ 65 GB/month (30 x 1 h x
       ~72 MB/relay-hour), realistic ≈ 2%. First paid threshold: the
       $5/mo Workers Paid plan at ~500 rooms/day (thousands of players).
+- [x] Automatic TURN budget in the Worker (2026-07-18, deployed +
+      field-verified): month-to-date TURN egress read from the GraphQL
+      Analytics API, minting pauses past a budget (default 900 GB, 90%
+      of the free tier; `TURN_BUDGET_GB` overrides). Trip-wire test
+      (budget 0.001 GB) confirmed live: tail logged `turn budget
+      tripped — minting paused (STUN-only)`, a forced-relay (0-prefix)
+      join correctly refused with no relay candidates, and direct/STUN
+      joins were untouched (the "normal join also refused" scare was
+      the 0-prefix latch still armed — it's process-wide by design;
+      restart or a second 0 disarms it). Unit tests in
+      `signal/test/turn_budget_test.mjs`; setup in `signal/README.md`.
 
 ### Gate 2 — field pass on everything since v1.44.5 — COMPLETE 2026-07-17
 (Every item below verified by Glenn on device; the web touch-region fix
