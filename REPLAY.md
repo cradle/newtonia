@@ -86,16 +86,17 @@ records: [slot index | kind | payload] ...
   drained before any suspend hits — bounding the reactive pause/background/
   suspend flush to at most one level's worth of records (this is what keeps
   the Xbox cert window and Android `onPause` budget safe; see the flush
-  items under Open questions). Where a level *has* an intro screen (the
-  new-object levels — specials 1–8, pulsar 9, mini-station 10, comet 11,
-  seeker 12, black hole 13, station 14), that screen is the slackest window
-  of all — the world is frozen and idle for up to 5 s — so the flush should
-  land there in preference to the bare level-clear instant, and a large write
-  can even spread across intro frames. The recorder survives the ownership
+  items under Open questions). Levels 1–15 all have an intro screen, and that
+  screen is the slackest window of all — the world is frozen and idle for up
+  to 5 s — so through the entire early game the flush should land on the
+  intro in preference to the bare level-clear instant, and a large write can
+  even spread across intro frames. The recorder survives the ownership
   transfer into the `Intro` state (it's owned by `GLGame`, which the `Intro`
-  friend holds), so it's still available to flush there. Intros aren't on
-  every level, though, so level clear stays the guaranteed checkpoint and the
-  intro is the extra-slack refinement. At a few MB per long
+  friend holds), so it's still available to flush there. From level 16 on
+  there's no new object type and hence no intro, so those levels flush at the
+  level boundary itself — the clear countdown / generation rebuild (level end
+  or start). Either way every level gets a proactive flush; the intro is just
+  the preferred, slacker host while it exists (1–15). At a few MB per long
   run the RAM cost is negligible, and this eliminates any 10 Hz disk I/O on
   the game thread — the mobile-overhead risk. This is what web already does
   implicitly (its pref path IS MEMFS; syncfs→IndexedDB fires only at flush),
