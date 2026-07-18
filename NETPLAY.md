@@ -288,17 +288,21 @@ and configuration, not engineering. Order matters only where noted.
       `newtonia-online`, netplay-v* → `html5-netplay`); deploy-ios's
       stale debug-branch trigger removed; deploy-android needs nothing
       (internal track for both tag types, promotion is manual in the
-      Play console); DECIDED: the `netplay-v*` tag namespace STAYS for
-      future test cycles (tag-netplay.yml runs from master post-merge,
-      test tags route to Steam `netplay` + itch `html5-netplay`); dev
-      workflows' filters audited — all master/main + PR, web.yml's
-      `claude/**` push is compile-gate only with a master-gated deploy.
+      Play console); dev workflows' filters audited — all master/main
+      + PR, web.yml's `claude/**` push is compile-gate only with a
+      master-gated deploy. DECIDED (Glenn): the `netplay-v*` tag
+      namespace and the Steam `netplay` branch are DROPPED once
+      v1.45.0 is live — task #157 holds the cleanup list (tag globs,
+      tag-netplay.yml, itch `html5-netplay`, docs); they stay
+      untouched until then as the last pre-release test path.
 - [ ] Tag `v1.45.0` (or next) — the normal `v*.*.*` pipeline: Steam
       `beta` branch, TestFlight, Play internal, itch. Promote channels
       (Steam default branch, Play production, App Store review) per
       platform once smoke-tested.
 - [ ] Post-release: watch `wrangler tail` for room/TURN errors the first
-      days; keep the netplay-v* tag namespace for future test cycles.
+      days; retire the netplay test pipeline (task #157 — netplay-v*
+      tags, Steam `netplay` branch, itch `html5-netplay`,
+      tag-netplay.yml).
 
 ## Where things stand (2026-07-08 handoff)
 
