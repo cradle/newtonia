@@ -251,8 +251,16 @@ and configuration, not engineering. Order matters only where noted.
       inspect wedged) — visual judgment accepted for the posture call.
       WebGL keeps the line emulation, so web remains the slowest
       renderer by design; batched score labels carry the storm case.
-- [ ] Windows Defender: confirm Steam-installed unsigned builds aren't
-      flagged (FP report was submitted; revisit signing only if so).
+- [x] Windows Defender: Steam-installed builds NOT flagged — VERIFIED
+      (Glenn 2026-07-18, netplay branch via Steam on his Windows
+      machine, with NO Defender exclusions/whitelist in place, so the
+      pass is genuine detection state, not an allowlist artifact). The
+      one historical flag was a raw manual .exe download (harsher
+      Mark-of-the-Web / SmartScreen path than a Steam install; also
+      predates the submitted FP report), restored from quarantine.
+      n=1 machine — if launch-week players report flags, the recourse
+      remains re-submitting the FP report per build and, only if it
+      persists, code signing. Gate 4 COMPLETE.
 - [x] `coop_clear` mobile mappings: DEFERRED POST-LAUNCH by decision
       (Glenn 2026-07-18) — tasks #153 (Game Center: one mapping line +
       App Store Connect definition at 40 pts) and #154 (Play Games:
