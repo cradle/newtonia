@@ -197,7 +197,28 @@ file (one `run_id`, a seam keyframe at the resume point, gens from before
 and after the exit both present) whose patched header score reflects the
 whole run.
 
-### R2 — playback
+### R2 — playback ✅ (landed on this branch)
+Implementation notes: `NetMode` gained the distinct `NetReplay` value;
+playback boots through `GLGame::start_replay_playback(path)` (bootstraps
+from the file's first keyframe exactly like the lobby's client bootstrap,
+declining unreadable/older files with a log line) and runs
+`tick_net_client` with `tick_replay_poll` standing in for the transport
+poll. The predicted apply-path forks all got mode gates: local-ship pose
+blend/warp-snap/client-owned bullets (`is_local`/`local_ship` now require
+NetClient), the black-hole/pulsar force mirrors, the claim/report tail, the
+cheat-flag poke, and spectate arming. One fork the plan missed: netplay
+never grows the player roster from snapshots (both players exist from the
+lobby), so a mid-run player-2 join was invisible — `net_apply_state` now
+adds a ghost `GLCar` in NetReplay when a snapshot carries more players,
+and split-screen engages at the recorded join moment. The header gained a
+`save_version` field (the pad at offset 50) so future builds can parse old
+files' GameState bytes. Input is swallowed (Esc exits, P pauses, `=`/`-`
+halve/double speed 0.25x–4x, no cheat flag); the world freezes at the last
+record rather than extrapolating into an invented future; watching writes
+nothing (no high score, no save, no achievements — ghosts carry
+`is_local_player=false`). Dev/test entry until R3:
+`NEWTONIA_REPLAY_PLAY=<path|current|recent|best>`. Exit criteria enforced
+by `test/e2e/replay_playback.sh`, all green headless.
 `GLGame` gains a `NetReplay` mode: `tick_net_client`'s apply/extrapolate
 path fed by a file reader instead of the transport; no INPUT sending, no
 local authoritative ship — every ship is a remote-style ghost. **Playback

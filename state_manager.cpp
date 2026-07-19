@@ -3,8 +3,25 @@
 #include "intro.h"
 #include "menu.h"
 #include "net_lobby.h"
+#include "replay.h"
+#include <SDL.h>
+#include <string>
 
 StateManager::StateManager() {
+  // REPLAY.md R2 dev/test entry (the REPLAYS menu is R3): boot straight
+  // into playback of a named file — or the shorthand current/recent/best.
+  // Falls back to the menu (with a log line) when the file declines.
+  const char *rp = SDL_getenv("NEWTONIA_REPLAY_PLAY");
+  if (rp && *rp) {
+    std::string path = rp;
+    if (path == "current")     path = Replay::current_path();
+    else if (path == "recent") path = Replay::recent_path();
+    else if (path == "best")   path = Replay::best_path();
+    if (State *s = GLGame::start_replay_playback(path)) {
+      state = s;
+      return;
+    }
+  }
   state = new Menu();
 }
 

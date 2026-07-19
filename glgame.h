@@ -39,7 +39,7 @@ using namespace std;
 class NetSession;
 class NetTransport;
 namespace Net { class SnapshotAssembler; struct Reader; }
-namespace Replay { class Recorder; }
+namespace Replay { class Recorder; class Reader; }
 
 class GLGame : public State {
 public:
@@ -54,6 +54,14 @@ public:
   // machine's player is the LAST in the list; player 1 is the remote host.
   GLGame(const Save::GameState &snapshot, NetSession *session,
          SDL_GameController *controller);
+  // Replay playback (REPLAY.md R2): world bootstrapped from the file's
+  // first keyframe — the same restore a joining net client gets — then
+  // records drive it through the client apply path. Takes ownership of the
+  // reader. Use start_replay_playback(), which parses the bootstrap.
+  GLGame(const Save::GameState &snapshot, Replay::Reader *reader);
+  // Opens and validates a replay file, returns the playback state — NULL
+  // (with a log line) on unreadable/older-version/keyframe-less files.
+  static GLGame *start_replay_playback(const std::string &path);
   GLGame(GLGame const &other);
   virtual ~GLGame();
 
@@ -112,7 +120,12 @@ public:
   int num_y_viewports() const;
   // Two local players share this machine's screen; online each machine
   // draws only its own full-screen view even though players->size() == 2.
-  bool split_screen() const { return net_mode_ == NetOff && players->size() > 1; }
+  // A 2-player REPLAY renders the same split-screen the game showed while
+  // being played — both viewports, each following its own ghost.
+  bool split_screen() const {
+    return (net_mode_ == NetOff || net_mode_ == NetReplay) &&
+           players->size() > 1;
+  }
   // Online game in progress (host or client) — the web build keeps a
   // hidden tab ticking only for these (see web_background_tick).
   bool net_active() const { return net_mode_ != NetOff; }
@@ -182,7 +195,11 @@ private:
   // ---- netplay (see NETPLAY.md) ----
   // All no-ops when net_mode_ == NetOff. Online, every local-save path is
   // hard-gated off so online play can never clobber the solo save.
-  enum NetMode { NetOff, NetHost, NetClient };
+  // NetReplay (REPLAY.md R2) rides the NetClient apply/extrapolate path fed
+  // from a file instead of a transport: no session, no INPUT, every ship a
+  // ghost. It is a DISTINCT mode value on purpose — net_apply_state's
+  // NetClient-gated achievement blocks must stay cold while watching.
+  enum NetMode { NetOff, NetHost, NetClient, NetReplay };
   void add_remote_player();       // player 2 without local input bindings
   void net_host_poll();           // apply queued INPUT messages
   // Elastic asteroid-asteroid physics, shared by the host sim
@@ -455,6 +472,16 @@ private:
   // both offline ctors; carried by saves; 0 never happens for new games.
   uint64_t run_id_ = 0;
   bool replay_resume_candidate_ = false;  // the loaded save carried a run_id
+
+  // ---- replay playback (REPLAY.md R2; net_mode_ == NetReplay) ----
+  // Apply records that have come due on the playback clock (the file-fed
+  // stand-in for net_client_poll).
+  void tick_replay_poll(int delta);
+  Replay::Reader *replay_reader_ = nullptr;  // owned
+  int replay_clock_ms_ = 0;       // timeline position (slot * 100 domain)
+  float replay_speed_ = 1.0f;     // 0.25x..4x, =/- keys (never a cheat)
+  bool replay_finished_ = false;  // past the last record: world frozen
+  uint16_t replay_save_version_ = 0;  // savegame format of the payloads
 
   static const int step_size = 8;
 

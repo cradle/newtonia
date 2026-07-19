@@ -1,4 +1,5 @@
 #include "replay.h"
+#include "savegame.h"
 
 #include <SDL.h>
 #include <cstdio>
@@ -74,7 +75,7 @@ static void pack_header(uint8_t out[Header::SIZE], const Header &h) {
     // Patchable tail at PATCH_OFFSET (48):
     out[48] = h.flags;
     out[49] = h.player_count;
-    // 50..51 pad
+    memcpy(out + 50, &h.save_version, 2);
     memcpy(out + 52, &h.final_score, 4);
     memcpy(out + 56, &h.generation, 4);
     memcpy(out + 60, &h.duration_ms, 4);
@@ -95,6 +96,7 @@ static bool unpack_header(const uint8_t in[Header::SIZE], Header &h) {
     memcpy(&h.date, in + 40, 8);
     h.flags = in[48];
     h.player_count = in[49];
+    memcpy(&h.save_version, in + 50, 2);
     memcpy(&h.final_score, in + 52, 4);
     memcpy(&h.generation, in + 56, 4);
     memcpy(&h.duration_ms, in + 60, 4);
@@ -164,6 +166,63 @@ int last_record_slot(const std::string &path) {
     int last = -1;
     scan_records(path, false, NULL, &last);
     return last;
+}
+
+// ── Reader ───────────────────────────────────────────────────────────────────
+
+Reader::Reader(const std::string &path) {
+    if (path.empty()) return;
+    FILE *fp = fopen(path.c_str(), "rb");
+    if (!fp) return;
+    fseek(fp, 0, SEEK_END);
+    long fsize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    if (fsize < (long)Header::SIZE || fsize > 512L * 1024L * 1024L) {
+        fclose(fp);
+        return;
+    }
+    data_.resize((size_t)fsize);
+    bool read_ok = fread(&data_[0], 1, data_.size(), fp) == data_.size();
+    fclose(fp);
+    if (!read_ok || !unpack_header(&data_[0], header_)) {
+        data_.clear();
+        return;
+    }
+    pos_ = header_.header_size;
+    // Timeline length from the records, not the (possibly stale) header.
+    last_slot_ = last_record_slot(path);
+    ok_ = true;
+}
+
+// True while an intact record starts at pos_ (frame + full payload).
+static bool record_at(const std::vector<uint8_t> &data, size_t pos,
+                      uint32_t *slot, uint8_t *kind, uint32_t *len) {
+    if (pos + 9 > data.size()) return false;
+    memcpy(slot, &data[pos], 4);
+    *kind = data[pos + 4];
+    memcpy(len, &data[pos + 5], 4);
+    if (*len > MAX_RECORD_BYTES) return false;
+    if (pos + 9 + *len > data.size()) return false;
+    return true;
+}
+
+bool Reader::next(Record &out) {
+    uint32_t slot = 0, len = 0;
+    uint8_t kind = 0;
+    if (!ok_ || !record_at(data_, pos_, &slot, &kind, &len)) return false;
+    out.slot = slot;
+    out.kind = kind;
+    out.payload = len ? &data_[pos_ + 9] : NULL;
+    out.len = len;
+    pos_ += 9 + len;
+    return true;
+}
+
+int Reader::peek_slot() const {
+    uint32_t slot = 0, len = 0;
+    uint8_t kind = 0;
+    if (!ok_ || !record_at(data_, pos_, &slot, &kind, &len)) return -1;
+    return (int)slot;
 }
 
 // ── Run ids ──────────────────────────────────────────────────────────────────
@@ -271,6 +330,9 @@ Recorder::Recorder(uint64_t run_id, uint8_t player_count, bool resumed)
     header_.run_id = run_id;
     header_.date = (uint64_t)time(NULL);
     header_.player_count = player_count;
+    // The record payloads serialize with this build's savegame format;
+    // playback needs the number to parse them across future bumps.
+    header_.save_version = Save::GameState::VERSION;
 
     FILE *fp = fopen(path_.c_str(), "wb");
     if (!fp) return;

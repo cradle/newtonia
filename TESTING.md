@@ -118,6 +118,14 @@ test/e2e/shock_hazards_net.sh # PROTO 22 shock vs a hazard: host skips to gen 9
                      # trip both ways, the pulsar replicated, nobody crashed
                      # (the client now seeks hostiles + drains hazard/partner
                      # struck entries), clean log. Guards #142.
+test/e2e/replay_playback.sh # REPLAY.md R2 exit criteria, solo (no relay):
+                     # record a run, play it back (NEWTONIA_REPLAY_PLAY=
+                     # current) — world unfolds (screenshots differ over
+                     # time), pause survives, playback reaches the end and
+                     # Esc exits; x4 speed finishes the file in under half
+                     # real time; a 2-player recording grows the ghost
+                     # roster at the recorded join ("replay: player 2
+                     # joined") and plays back split-screen.
 test/e2e/replay.sh   # REPLAY.md R1 exit criteria, solo (no relay needed):
                      # abandon leaves a resumable current.nrp; CONTINUE
                      # appends to the SAME file (one run_id, seam keyframe,

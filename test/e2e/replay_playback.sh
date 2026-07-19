@@ -1,0 +1,110 @@
+#!/bin/bash
+# REPLAY.md R2 exit criteria, headless:
+#   S1  record a short run (shots, a level skip -> generation banner event,
+#       an abandon) — the input for everything below
+#   S2  play it back at 1x: world unfolds (screenshots differ over time),
+#       pause/unpause survives, playback reaches the end, Esc exits
+#   S3  speed keys: at x4 the same file finishes in well under half the
+#       real-time duration
+#   S4  a 2-player recording plays back (split-screen, "2 players" log)
+set -u
+if [ -z "${DISPLAY:-}" ]; then
+  exec xvfb-run -a -s "-screen 0 1280x800x24" "$0" "$@"
+fi
+. "$(dirname "$0")/lib.sh"
+
+FAIL=0
+fail() { echo "FAIL: $*"; FAIL=1; }
+
+use_home() {
+  export XDG_DATA_HOME="$OUT/xdg-$1"
+  RDIR="$XDG_DATA_HOME/cc.gfm/newtonia/replays"
+}
+
+launch_game() { "$ROOT/newtonia" > "$OUT/$1.log" 2>&1 & echo $!; }
+launch_playback() {
+  NEWTONIA_REPLAY_PLAY=current "$ROOT/newtonia" > "$OUT/$1.log" 2>&1 & echo $!;
+}
+win() { xdotool search --name Newtonia | tail -1; }
+stop_hard() { kill -9 "$1" 2>/dev/null; wait "$1" 2>/dev/null; sleep 0.5; }
+
+# wait_log LOG PATTERN TIMEOUT_S -> 0 when the pattern appears
+wait_log() {
+  local i
+  for i in $(seq 1 $(($3 * 2))); do
+    grep -q "$2" "$OUT/$1.log" && return 0
+    sleep 0.5
+  done
+  return 1
+}
+
+record_run() {  # record_run NAME ADD_P2
+  P=$(launch_game "$1"); sleep 2; W=$(win)
+  key "$W" Return; sleep 0.5; key "$W" Return   # attract -> NEW GAME
+  sleep 0.5; key "$W" space                     # spawn
+  [ "$2" = 1 ] && { key "$W" Return; sleep 0.5; }  # add player 2
+  xdotool keydown --window "$W" d
+  for i in $(seq 1 25); do xdotool key --window "$W" space; sleep 0.1; done
+  xdotool keyup --window "$W" d
+  key "$W" n; sleep 1                           # level skip -> intro
+  key "$W" space; sleep 3                       # dismiss intro, play on
+  key "$W" Escape; sleep 2                      # abandon (CLEAN header)
+  stop_hard $P
+  [ -f "$RDIR/current.nrp" ] || fail "$1: no current.nrp recorded"
+}
+
+echo "===== S1: record the input run ====="
+use_home p1
+record_run rec1 0
+DUR_MS=$(python3 "$ROOT/test/e2e/replay_check.py" "$RDIR/current.nrp" | sed -n 's/^duration_ms=//p')
+echo "recorded ${DUR_MS} ms"
+[ "${DUR_MS:-0}" -gt 4000 ] || fail "S1: recording too short (${DUR_MS} ms)"
+
+echo "===== S2: playback at 1x — world unfolds, pause survives, Esc exits ====="
+P=$(launch_playback play1); sleep 2; W=$(win)
+wait_log play1 "replay: playback started" 10 || fail "S2: playback never started"
+sleep 1;  shot "$W" play-t1
+sleep 3;  shot "$W" play-t2
+key "$W" p; sleep 1; key "$W" p                 # pause / unpause
+sleep 3;  shot "$W" play-t3
+cmp -s "$OUT/play-t1.png" "$OUT/play-t2.png" && fail "S2: t1==t2 (world frozen?)"
+cmp -s "$OUT/play-t2.png" "$OUT/play-t3.png" && fail "S2: t2==t3 (world frozen?)"
+wait_log play1 "replay: playback finished" $(( DUR_MS / 1000 + 15 )) \
+  || fail "S2: playback never finished"
+alive $P play1
+key "$W" Escape; sleep 2                        # exit to menu
+alive $P play1
+shot "$W" play-menu
+stop_hard $P
+grep -q "replay: playback started" "$OUT/play1.log" || fail "S2: lost the log?"
+
+echo "===== S3: x4 speed finishes fast ====="
+P=$(launch_playback play4); sleep 2; W=$(win)
+wait_log play4 "replay: playback started" 10 || fail "S3: playback never started"
+key "$W" equal; key "$W" equal                  # x2 -> x4
+T0=$(date +%s)
+wait_log play4 "replay: playback finished" $(( DUR_MS / 1000 + 15 )) \
+  || fail "S3: playback never finished at x4"
+T1=$(date +%s)
+ELAPSED=$((T1 - T0))
+echo "x4 finished in ${ELAPSED}s (recording is $(( DUR_MS / 1000 ))s)"
+[ "$ELAPSED" -le $(( DUR_MS / 2000 + 3 )) ] \
+  || fail "S3: x4 too slow (${ELAPSED}s for a $(( DUR_MS / 1000 ))s file)"
+stop_hard $P
+
+echo "===== S4: 2-player recording plays back split-screen ====="
+use_home p2
+record_run rec2 1
+grep -q "" /dev/null  # keep set -u happy on empty branches
+P=$(launch_playback play2p); sleep 2; W=$(win)
+wait_log play2p "replay: playback started" 10 || fail "S4: playback never started"
+grep -q "2 players" "$OUT/play2p.log" || fail "S4: not a 2-player playback"
+wait_log play2p "replay: player 2 joined" 10 \
+  || fail "S4: ghost roster never grew (split-screen never engaged)"
+sleep 2; shot "$W" play-2p                      # split-screen for the humans
+sleep 1; shot "$W" play-2p-b
+cmp -s "$OUT/play-2p.png" "$OUT/play-2p-b.png" && fail "S4: 2P world frozen"
+stop_hard $P
+
+echo
+if [ "$FAIL" = 0 ]; then echo "REPLAY-R2-OK"; else echo "REPLAY-R2-FAIL"; exit 1; fi

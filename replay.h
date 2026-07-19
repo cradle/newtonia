@@ -48,9 +48,14 @@ struct Header {
     // -- patchable tail (stale between patches; by design) --
     uint8_t  flags = 0;       // Flags below
     uint8_t  player_count = 1;
+    // Savegame format the record payloads were serialized with
+    // (GameState::VERSION at record time) — playback passes it to
+    // deserialize_game so a newer build can still parse an older file's
+    // snapshot bytes. 0 (pre-field files) = assume the current build's.
+    uint16_t save_version = 0;
     uint32_t final_score = 0;
     uint32_t generation = 0;  // generation reached
-    uint32_t duration_ms = 0; // sim time (current_time at last patch)
+    uint32_t duration_ms = 0; // timeline ms (slot count x 100 at last patch)
 };
 
 enum Flags {
@@ -95,6 +100,39 @@ void rotate_current_to_recent();
 // possibly a crash artifact): rotate it into recent so it isn't silently
 // lost, then the caller starts a fresh Recorder.
 void on_new_game();
+
+// Playback-side file reader (R2). Loads the whole file into memory (a few
+// MB) and iterates intact records in order; a truncated final record (crash
+// artifact) simply ends iteration, and the header may understate the
+// records behind it (both legal — see the storage model in REPLAY.md).
+class Reader {
+public:
+    explicit Reader(const std::string &path);
+
+    bool ok() const { return ok_; }
+    const Header &header() const { return header_; }
+    // Timeline length in slots, from the records themselves (never the
+    // header, which can be stale): highest intact slot index.
+    int last_slot() const { return last_slot_; }
+
+    struct Record {
+        uint32_t slot;
+        uint8_t kind;      // RecordKind
+        const uint8_t *payload;  // into the Reader's buffer
+        size_t len;
+    };
+    // Next intact record, in file order. False at end (or truncation).
+    bool next(Record &out);
+    // Peek the next record's slot without consuming (-1 at end).
+    int peek_slot() const;
+
+private:
+    std::vector<uint8_t> data_;
+    Header header_;
+    size_t pos_ = 0;
+    int last_slot_ = -1;
+    bool ok_ = false;
+};
 
 class Recorder {
 public:

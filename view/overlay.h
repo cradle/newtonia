@@ -16,6 +16,10 @@ public:
   // Full-screen text layered over the online game view (one full-screen
   // pass, not per-viewport): the generation banner and CONNECTION LOST card.
   static void net_overlays(const GLGame *glgame);
+  // Replay playback chrome (REPLAY.md R2, one full-screen pass): REPLAY
+  // watermark (+ speed when not 1x), elapsed/total timeline, the flashing
+  // exit hint once the recording ends short of a game over.
+  static void replay_hud(const GLGame *glgame);
   // Touch OSD (joystick, fire/mine, pause) — public so the intro screen can
   // draw it too; no-op off Android/iOS. Needs a full-window ortho of
   // ±window extents to be current.

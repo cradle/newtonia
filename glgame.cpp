@@ -343,6 +343,7 @@ GLGame::~GLGame() {
   // current.nrp in place — CONTINUE appends to it (REPLAY.md run-scoping).
   // After a game over the recorder is already finalized (no-op here).
   replay_finish(game_over);
+  delete replay_reader_;  // playback mode (R2); null otherwise
   // Host tore down while re-advertising the open slot (peer left, then we
   // returned to the menu / quit / game over): stop showing the "Join Game"
   // option.
@@ -2472,6 +2473,111 @@ void GLGame::replay_finish(bool ended) {
   replay_ = nullptr;
 }
 
+// ---- replay playback (REPLAY.md R2) ----
+
+// Playback ctor. Delegates to the save-restore ctor (the same world rebuild
+// a joining net client's bootstrap uses), then re-badges the game as a
+// replay: every ship is a ghost — no input reaches them (keyboard/controller
+// handlers gate on NetReplay), and is_local_player is stripped so no
+// kill-credit or stats path can earn from watching. The delegated ctor ran
+// the new-game/cheat achievement hooks as if a real game were starting;
+// that's inert here (ghosts can't earn, and the next real game re-runs the
+// hooks) but noted for honesty.
+GLGame::GLGame(const Save::GameState &snapshot, Replay::Reader *reader)
+  : GLGame(snapshot, (SDL_GameController *)NULL) {
+  net_mode_ = NetReplay;
+  replay_reader_ = reader;
+  replay_save_version_ = reader->header().save_version
+                             ? reader->header().save_version
+                             : Save::GameState::VERSION;
+  for (auto *gs : *players) gs->ship->is_local_player = false;
+}
+
+GLGame *GLGame::start_replay_playback(const std::string &path) {
+  Replay::Reader *r = new Replay::Reader(path);
+  Replay::Reader::Record rec;
+  if (!r->ok() || !r->next(rec) || rec.kind != Replay::REC_KEYFRAME) {
+    // Unreadable, out-of-range format version, or no leading keyframe:
+    // decline politely (REPLAY.md — "REPLAY FROM AN OLDER VERSION" is the
+    // R3 menu's rendering of this NULL).
+    SDL_Log("replay: cannot play %s (%s)", path.c_str(),
+            r->ok() ? "no leading keyframe" : "unreadable or older version");
+    delete r;
+    return NULL;
+  }
+  uint16_t sv = r->header().save_version ? r->header().save_version
+                                         : Save::GameState::VERSION;
+  std::vector<uint8_t> buf(rec.payload, rec.payload + rec.len);
+  Save::MemStream in(buf);
+  Save::GameState s;
+  if (!Save::deserialize_game(in, s, sv) || !net_state_sane(s)) {
+    SDL_Log("replay: bootstrap keyframe unparseable - declining");
+    delete r;
+    return NULL;
+  }
+  GLGame *g = new GLGame(s, r);
+  // The extras behind the game state — ship poses/bullets, mini-station and
+  // enemy bullets, asteroid id adoption — exactly like the lobby bootstrap.
+  g->net_apply_extras(in, s);
+  // The timeline starts at the bootstrap record's slot (0 for a fresh run).
+  g->replay_clock_ms_ = (int)rec.slot * 100;
+  SDL_Log("replay: playback started (%s, %d slots, %u player%s)",
+          path.c_str(), r->last_slot() + 1,
+          (unsigned)r->header().player_count,
+          r->header().player_count == 1 ? "" : "s");
+  return g;
+}
+
+// Apply every record that has come due on the playback clock — the file-fed
+// stand-in for net_client_poll. Records arrive in file order (the reliable-
+// ordered channel of the replay world), so none of the client's stale/
+// reorder gates are needed.
+void GLGame::tick_replay_poll(int delta) {
+  if (replay_finished_ || !replay_reader_) return;
+  replay_clock_ms_ += delta;
+  net_event_effect_budget_ = NET_EVENT_EFFECTS_PER_POLL;
+  for (;;) {
+    int slot = replay_reader_->peek_slot();
+    if (slot < 0) {
+      replay_finished_ = true;
+      SDL_Log("replay: playback finished (slot %d)",
+              replay_reader_->last_slot());
+      break;
+    }
+    if (slot * 100 > replay_clock_ms_) break;
+    Replay::Reader::Record rec;
+    replay_reader_->next(rec);
+    if (rec.kind == Replay::REC_EVENTS) {
+      if (rec.len >= 5) {
+        uint8_t code = rec.payload[0];
+        uint32_t arg = 0;
+        memcpy(&arg, rec.payload + 1, 4);
+        // Never replayed: session control (pause emits no records by
+        // design; BYE is transport lifecycle), EV_ACHIEVEMENT (watching
+        // must never poke a platform SDK) and EV_RAM_BLAST (mints real
+        // bullets + kill claims on a "local ship" a replay doesn't have).
+        if (code != Net::EV_PAUSE && code != Net::EV_RESUME &&
+            code != Net::EV_BYE && code != Net::EV_ACHIEVEMENT &&
+            code != Net::EV_RAM_BLAST)
+          net_handle_event(code, arg);
+      }
+      continue;
+    }
+    std::vector<uint8_t> buf(rec.payload, rec.payload + rec.len);
+    Save::MemStream in(buf);
+    Save::GameState s;
+    if (!Save::deserialize_game(in, s, replay_save_version_)) continue;
+    if (!net_state_sane(s)) continue;
+    net_apply_state(s);
+    if (rec.kind == Replay::REC_KEYFRAME) {
+      net_apply_extras(in, s);
+    } else {
+      if (!net_apply_ship_extras(in, s)) continue;
+      net_apply_delta_asteroids(in);
+    }
+  }
+}
+
 // Host-side toggle (G key, or the touch region on the HUD text). The
 // flip persists as the host's own preference and — online — is announced
 // as the room rule. The client never reaches this (host_keys / the
@@ -2972,7 +3078,10 @@ void GLGame::tick_net_client(int delta) {
     players->front()->ship->sound_volume_scale =
         net_listener_volume(players->front()->ship->position);
 
-  if (!net_connection_lost_) {
+  if (net_mode_ == NetReplay) {
+    // The file is the transport: apply whatever has come due.
+    tick_replay_poll(delta);
+  } else if (!net_connection_lost_) {
     net_client_poll();
     net_ping_tick(delta);
     // Mid-gap marker: the 1 Hz buffered sample can miss a sub-second
@@ -2996,7 +3105,8 @@ void GLGame::tick_net_client(int delta) {
       net_connection_lost_ = true;
     }
   }
-  if (net_session_->transport()->failed()) net_connection_lost_ = true;
+  if (net_mode_ == NetClient && net_session_->transport()->failed())
+    net_connection_lost_ = true;
   // Game over is observed here, not simulated: alive/lives replicate, so
   // when the last life goes this side sees it too. The host's tick never
   // runs on a client, so without this the 3 s accidental-exit guard and
@@ -3012,7 +3122,10 @@ void GLGame::tick_net_client(int delta) {
         break;
       }
     if (all_over) {
-      for (auto *gs : *players) save_high_score(gs->ship->score);
+      // Watching a replay must never bank a high score — the card still
+      // shows (the recorded run really did end here).
+      if (net_mode_ == NetClient)
+        for (auto *gs : *players) save_high_score(gs->ship->score);
       game_over = true;
       game_over_time = current_time;
       NET_LOG("net: game over (all players out) - showing GAME OVER card\n");
@@ -3079,6 +3192,14 @@ void GLGame::tick_net_client(int delta) {
   // client-side hitches and wedged the gate shut (see glgame.h).
   if (net_est_anchor_host_ >= 0)
     net_host_est_ = net_est_anchor_host_ + (current_time - net_est_anchor_local_);
+
+  // End of the recording: freeze the world — extrapolating past the last
+  // record would invent a future the file never contained. The HUD shows
+  // the ended state; Esc (or the game-over card's flow) exits.
+  if (net_mode_ == NetReplay && replay_finished_) {
+    last_tick += delta;
+    return;
+  }
 
   // Hitch breakdown: "net: frame hitch" (tick()) names the stall but not
   // the culprit — split this tick into poll (applies) vs step-loop time,
@@ -3175,8 +3296,10 @@ void GLGame::tick_net_client(int delta) {
     // the host's pull is overwritten by every adopted INPUT. Same
     // reduced-pull rule as the host's ship loop; the event-horizon kill
     // stays host-side (ignore the return — death arrives as a snapshot
-    // alive-transition).
-    {
+    // alive-transition). NetClient only: replay ghosts have no authoritative
+    // pilot — their poses are wholly record-driven, and a local force would
+    // fight the recorded outcome.
+    if (net_mode_ == NetClient) {
       Ship *me = players->back()->ship;
       if (me->is_alive()) {
         float scale = (me->god_mode_time_remaining() > 0 ||
@@ -3194,7 +3317,8 @@ void GLGame::tick_net_client(int delta) {
     // collision and the death replicates. Matches the host loop's knockback
     // (glgame.cpp COLLIDE SHIPS ... HAZARDS); the client's pulsar timer is
     // reconciled from the snapshot, so wave_active()/wave_radius() line up.
-    {
+    // NetClient only — same ghost rule as the black-hole mirror above.
+    if (net_mode_ == NetClient) {
       Ship *me = players->back()->ship;
       if (me->is_alive()) {
         for (auto *h : *hazards) {
@@ -3271,11 +3395,14 @@ void GLGame::tick_net_client(int delta) {
     // local ship also claims its would-kill hits for the confirmation
     // telemetry below.
     for (auto *gs : *players)
-      gs->ship->net_cosmetic_impacts(grid, gs == players->back());
+      gs->ship->net_cosmetic_impacts(
+          grid, net_mode_ == NetClient && gs == players->back());
     // PROTO 15: the local ship's bullets vs replicated enemy ships and
     // stations — they used to sail straight through (enemies aren't in
-    // the asteroid grid). Consume at contact + claim to the host.
-    {
+    // the asteroid grid). Consume at contact + claim to the host. The
+    // whole block is claim machinery for the LOCAL ship — a replay has
+    // none (ghost hits resolve in the records themselves).
+    if (net_mode_ == NetClient) {
       std::vector<Ship::NetShipTarget> ship_targets;
       for (auto *ge : *enemies)
         if (ge->ship->is_alive())
@@ -3459,7 +3586,7 @@ void GLGame::tick_net_client(int delta) {
       }
     }
 
-    net_client_send_input();
+    if (net_mode_ == NetClient) net_client_send_input();
     time_until_next_step += time_between_steps;
   }
   if (Net::net_debug_enabled()) {
@@ -3467,6 +3594,19 @@ void GLGame::tick_net_client(int delta) {
     if (hb_poll_ms + steps_ms > 25)
       NET_LOG("net: slow tick: poll %u ms, %d steps %u ms\n",
               hb_poll_ms, hb_steps, steps_ms);
+  }
+
+  // Everything below is the client's outbound report/claim machinery
+  // (MSG_SHOT/LANCE/SHOCK/HIT/HIT_SHIP over the session). A replay has no
+  // session and its ghosts never arm the reporting flags, so the vectors
+  // stay empty — but clear them explicitly rather than trust that forever.
+  if (net_mode_ != NetClient) {
+    Ship::net_shot_reports.clear();
+    Ship::net_lance_reports.clear();
+    Ship::net_shock_reports.clear();
+    Ship::net_ship_hit_claims.clear();
+    Ship::net_kill_claims.clear();
+    return;
   }
 
   // Client hit-authority (PROTO 13): every would-kill consume detected
@@ -4043,8 +4183,9 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in, bool membership_only) {
 void GLGame::net_apply_state(const Save::GameState &s) {
   // The host's cheat keys must suppress THIS machine's unlocks too — the
   // flag rides every snapshot, so a mid-game skip-level arrives before
-  // the rebuild it causes is evaluated below.
-  if (s.cheated) Achievements::note_cheat_used();
+  // the rebuild it causes is evaluated below. NetClient only: WATCHING a
+  // cheated replay must not poison the viewer's session flag.
+  if (net_mode_ == NetClient && s.cheated) Achievements::note_cheat_used();
 
   // Generation rollover: the world grew — rebuild boundaries, grid and
   // starfield, drop every stale object (mirrors the host's rollover block;
@@ -4105,7 +4246,9 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     net_predicted_kills_.clear();
     // Local-ship bullets are client-owned (own_bullets): the rollover
     // wipe that used to arrive via the wholesale echo happens here now.
-    if (!players->empty()) players->back()->ship->bullets.clear();
+    // (Replay ghosts' bullets are record-owned — no wipe.)
+    if (net_mode_ == NetClient && !players->empty())
+      players->back()->ship->bullets.clear();
   }
 
   generation = s.generation;
@@ -4122,13 +4265,39 @@ void GLGame::net_apply_state(const Save::GameState &s) {
   // memory under net_apply_state). Rebuild from the live list first.
   grid.update((std::list<Object *> *)objects);
 
+  // NetReplay: a mid-run player-2 join lives in the records — grow the
+  // ghost roster when a snapshot carries more players than we have (the
+  // player loop below silently ignores snapshot players past the list;
+  // netplay never needed growth because both players exist from the
+  // lobby). Mirrors add_remote_player minus the host-side arming: no
+  // bindings, no shot reporting — the records own its pose and bullets.
+  // The ghost starts dead; the extras' alive-transition respawns it at
+  // the recorded join position, and split-screen engages via
+  // players->size() the moment it lands.
+  if (net_mode_ == NetReplay) {
+    while (players->size() < s.players.size() && players->size() < 2) {
+      GLShip *ghost = new GLCar(grid, true);
+      ghost->ship->set_missile_asteroids((std::list<Object *> *)objects);
+      ship_objects->push_back(ghost->ship);
+      for (auto *p : *players) p->ship->set_missile_ships(ship_objects);
+      ghost->ship->set_missile_ships(ship_objects);
+      ghost->ship->missiles_seek_players = friendly_fire;
+      ghost->ship->set_black_holes(black_holes);
+      ghost->ship->net_remote_gun = true;
+      players->push_back(ghost);
+      SDL_Log("replay: player 2 joined");
+    }
+  }
+
   // Players: the remote host ship snaps to the snapshot; the local ship
   // takes stats/weapons but blends its predicted pose toward the host's
   // authoritative one (~0.35 per snapshot) so corrections don't jerk.
+  // NetReplay: there is no local ship — EVERY ship takes the remote snap
+  // path (is_local false), so all ghosts ride the records exactly.
   auto it = players->begin();
   for (size_t i = 0; i < s.players.size() && it != players->end(); i++, ++it) {
     Ship *ship = (*it)->ship;
-    bool is_local = (*it == players->back());
+    bool is_local = net_mode_ == NetClient && (*it == players->back());
 
     // Mid-respawn on the host: skip the full restore — restore_state runs
     // respawn(), which would resurrect the corpse (burning a life) every
@@ -4435,7 +4604,9 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
     // spawn) since the last snapshot: the pose is absolute. For the local
     // ship that overrides net_apply_state's prediction blend, which would
     // otherwise slide the ship across the world to the new position.
-    if (*it == players->back() && i < s.players.size()) {
+    // (NetClient only — replay ghosts snap in net_apply_state already.)
+    if (net_mode_ == NetClient && *it == players->back() &&
+        i < s.players.size()) {
       if (net_have_warp_ && ex.warp_count != net_prev_warp_ && ex.alive) {
         ship->position = WrappedPoint(s.players[i].pos_x, s.players[i].pos_y);
         ship->velocity = Point(s.players[i].vel_x, s.players[i].vel_y);
@@ -4471,8 +4642,11 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
                        ex.shield != 0;
     // The hum is a personal cue: only the LOCAL ship (last in the list on
     // the client) gets it. The remote host's ship respawning far away
-    // otherwise plays short full-volume hums that sound random.
-    bool local_ship = (i + 1 == nplayers);
+    // otherwise plays short full-volume hums that sound random. A replay
+    // has NO local ship: every ghost takes the remote treatment — its
+    // bullets and exhaust flags come from the records (the local-ship
+    // variant deliberately skips both as client-owned).
+    bool local_ship = net_mode_ == NetClient && (i + 1 == nplayers);
     ship->set_shield_hum(local_ship && ship->is_alive() && ship->invincible &&
                          ex.god_ms <= 0);
     // Movement flags drive the remote ship's exhaust-trail emitters (the
@@ -4749,7 +4923,13 @@ void GLGame::tick(int delta) {
     // that no reconciliation can hide.
     time_between_steps = step_size;
   }
-  if (net_mode_ == NetClient) {
+  if (net_mode_ == NetClient || net_mode_ == NetReplay) {
+    if (net_mode_ == NetReplay) {
+      // Playback speed scales time itself — clock, extrapolation and
+      // banners all stretch together. Never a cheat (nothing is earned).
+      delta = (int)(delta * replay_speed_);
+      if (delta < 1) delta = 1;
+    }
     tick_net_client(delta);
     return;
   }
@@ -6159,6 +6339,16 @@ void GLGame::draw(void) {
   if(players->size() == 0) {
     draw_world();
   }
+  else if(net_mode_ == NetReplay) {
+    // Replay playback: the same viewports the game showed while being
+    // played — one full view for a solo run, split-screen for a 2-player
+    // run, each following its own ghost (REPLAY.md R2).
+    draw_world(players->front(), true);
+    if (players->size() > 1) draw_world(players->back(), false);
+    draw_map();
+    Overlay::net_overlays(this);  // generation banner + shared GAME OVER card
+    Overlay::replay_hud(this);
+  }
   else if(net_mode_ != NetOff) {
     // Online: one full-screen view following the local player (host =
     // front of the list, client = back). Once the local player is fully
@@ -6186,12 +6376,14 @@ void GLGame::draw(void) {
 
 
 int GLGame::num_x_viewports() const {
-  if (net_mode_ != NetOff) return 1;
+  // Online each machine draws one view; a replay reproduces the recorded
+  // game's own layout (split-screen for 2 players), like offline.
+  if (net_mode_ == NetHost || net_mode_ == NetClient) return 1;
   return (players->size() == 0) ? 1 : (window.x() > window.y()) ? players->size() : 1;
 }
 
 int GLGame::num_y_viewports() const {
-  if (net_mode_ != NetOff) return 1;
+  if (net_mode_ == NetHost || net_mode_ == NetClient) return 1;
   return (players->size() == 0) ? 1 : (window.x() > window.y()) ? 1 : players->size();
 }
 
@@ -6716,6 +6908,17 @@ void GLGame::controller(SDL_Event event) {
       request_state_change(new Menu());
     return;
   }
+  // Replay playback: Start pauses, B (or any button once the recording's
+  // game over has sat 3 s) exits; ghosts take no pad input.
+  if (net_mode_ == NetReplay) {
+    if (event.type == SDL_CONTROLLERBUTTONDOWN) {
+      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) toggle_pause();
+      else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_B ||
+               (game_over && current_time - game_over_time >= 3000))
+        request_state_change(new Menu());
+    }
+    return;
+  }
   if(event.cbutton.type == SDL_CONTROLLERBUTTONDOWN) {
     if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) {
       bool known_player = false;
@@ -6847,6 +7050,12 @@ void GLGame::touch_tap(float nx, float ny) {
   // other touch exit: GAME OVER, the pause screen, and — online — a
   // local ship that's fully out while the peer plays on.
   if (!TapBand::return_to_menu.contains(nx, ny)) return;
+  // Replay playback: the band always exits (there is no other touch exit,
+  // and nothing in a replay needs protecting from an accidental tap).
+  if (net_mode_ == NetReplay) {
+    request_state_change(new Menu());
+    return;
+  }
   bool all_game_over = !players->empty();
   for (auto *glship : *players) {
     if (glship->ship->is_alive() || glship->ship->lives > 0) {
@@ -7035,7 +7244,10 @@ void GLGame::update_spectate() {
   // peer) there is no spectating — and after a peer disconnect the peer's
   // ship stays stale-alive, which would otherwise re-arm the countdown every
   // frame under the GAME OVER card.
-  if (net_mode_ == NetOff || players->size() < 2 || game_over) {
+  // NetReplay: a 2P replay shows both ghosts in split-screen; a dead ghost
+  // is just history unfolding, never a spectate handoff.
+  if (net_mode_ == NetOff || net_mode_ == NetReplay || players->size() < 2 ||
+      game_over) {
     spectate_death_time_ = -1;
     return;
   }
@@ -7072,12 +7284,15 @@ int GLGame::spectate_countdown_secs() const {
 }
 
 void GLGame::touch_joystick(float nx, float ny) {
-  if(!running || players->empty()) return;
+  if(!running || players->empty() || net_mode_ == NetReplay) return;
   local_player()->touch_joystick_input(nx, ny);
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
   if (!running)
+    return;
+  // Replay ghosts take no input — the records drive them.
+  if (net_mode_ == NetReplay)
     return;
 
   std::list<GLShip*>::iterator object;
@@ -7091,6 +7306,26 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
 
   if (net_connection_lost_ && !(net_mode_ == NetHost && net_signal_)) {
     request_state_change(new Menu());
+    return;
+  }
+
+  // Replay playback controls (REPLAY.md R2): pause pauses, the time-scale
+  // keys become playback speed (never a cheat — nothing is earned in a
+  // replay), Esc exits to the menu, and everything else is swallowed so no
+  // gameplay/cheat key can touch the recorded world. After the recording's
+  // game over, any key exits (mirrors the offline game-over flow).
+  if (net_mode_ == NetReplay) {
+    if (key == (unsigned char)gk.menu ||
+        (game_over && current_time - game_over_time >= 3000)) {
+      request_state_change(new Menu());
+      return;
+    }
+    if (key == (unsigned char)gk.pause) { toggle_pause(); return; }
+    if (key == (unsigned char)gk.time_speed_up && replay_speed_ < 4.0f)
+      replay_speed_ *= 2.0f;
+    if (key == (unsigned char)gk.time_slow_down && replay_speed_ > 0.26f)
+      replay_speed_ *= 0.5f;
+    if (key == (unsigned char)gk.time_reset) replay_speed_ = 1.0f;
     return;
   }
 
