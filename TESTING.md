@@ -118,6 +118,14 @@ test/e2e/shock_hazards_net.sh # PROTO 22 shock vs a hazard: host skips to gen 9
                      # trip both ways, the pulsar replicated, nobody crashed
                      # (the client now seeks hostiles + drains hazard/partner
                      # struck entries), clean log. Guards #142.
+test/e2e/replay.sh   # REPLAY.md R1 exit criteria, solo (no relay needed):
+                     # abandon leaves a resumable current.nrp; CONTINUE
+                     # appends to the SAME file (one run_id, seam keyframe,
+                     # continuous slots); NEW GAME rotates old runs into
+                     # recent.nrp; clean higher scores promote best.nrp;
+                     # cheat runs and crashed (stale-header) runs never do;
+                     # game over patches the header (ENDED) and deletes the
+                     # save. Headers/records parsed by test/e2e/replay_check.py.
 ```
 
 `NEWTONIA_TEST_SPAWN_PICKUPS=1` (offline, inert without the env var) rings

@@ -39,6 +39,7 @@ using namespace std;
 class NetSession;
 class NetTransport;
 namespace Net { class SnapshotAssembler; struct Reader; }
+namespace Replay { class Recorder; }
 
 class GLGame : public State {
 public:
@@ -212,6 +213,13 @@ private:
   void net_apply_delta_asteroids(Save::Stream &in,
                                  bool membership_only = false);
   bool net_send_delta();          // false: too big / not possible -> keyframe
+
+  // REPLAY.md R1 seam: payload builders shared by the online host and the
+  // replay recorder (they must never fork). Both move net_known_, the delta
+  // baseline — safe, because only one consumer is ever active (recorder is
+  // solo-only). counts (optional): out {new, dyn, removed} for telemetry.
+  void net_build_keyframe_payload(Save::MemStream &payload);
+  bool net_build_delta_payload(Save::MemStream &payload, int counts[3] = NULL);
 
   // The lobby bootstraps the client game (constructor + first snapshot's
   // NetExtras) before handing over the state.
@@ -427,6 +435,26 @@ private:
   // Called wherever the level or player count changes; duplicates are
   // deduped in the Presence layer.
   void update_presence() const;
+
+  // ---- replay recording (REPLAY.md R1) ----
+  // Every solo game records into replays/current.nrp via the snapshot-
+  // builder seam above. Started lazily on the first tick (the net ctors
+  // delegate to the offline ctors and set net_mode_ afterwards, so
+  // construction can't know the game is offline); NEWTONIA_REPLAY_DISABLE
+  // is the escape hatch. Checkpoint flushes: level rollover (the intro
+  // screen, when one follows, is the slack window the write lands in),
+  // pause, focus loss. finalize+rotation at game over / destruction.
+  void replay_start();
+  void replay_record_slot(int delta);  // one KEYFRAME/DELTA per 100 ms run
+  void replay_finish(bool ended);      // finalize; deletes replay_
+  Replay::Recorder *replay_ = nullptr;
+  bool replay_tried_ = false;          // lazy-start ran (or was skipped)
+  int replay_slot_timer_ = 0;          // 100 ms cadence accumulator
+  // Random id stamped into the savegame (v17) and the replay header so a
+  // resume can continue the same recording (run-scoped replays). Set by
+  // both offline ctors; carried by saves; 0 never happens for new games.
+  uint64_t run_id_ = 0;
+  bool replay_resume_candidate_ = false;  // the loaded save carried a run_id
 
   static const int step_size = 8;
 

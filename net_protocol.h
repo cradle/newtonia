@@ -161,7 +161,9 @@ namespace Net {
 //     its own player's kills locally and applies station/mini-station hull
 //     damage from the received polyline. The host suppresses the remote
 //     ship's local shock sim (net_remote_gun) so bolts come only from the wire.
-const uint8_t PROTO_VERSION = 22;
+// 23: savegame v17 appended run_id (REPLAY.md) — snapshots serialize through
+//     the same structs, so every keyframe/delta grew 8 bytes.
+const uint8_t PROTO_VERSION = 23;
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check

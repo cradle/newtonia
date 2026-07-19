@@ -432,6 +432,9 @@ bool Save::serialize_game(Save::Stream &f, const Save::GameState &s) {
     ok = ok && wv(f, cnt);
     for (const auto &h : s.hazards) ok = ok && write_hazard(f, h);
 
+    // v17 append: replay run id (REPLAY.md).
+    ok = ok && wv(f, s.run_id);
+
     return ok;
 }
 
@@ -508,6 +511,12 @@ bool Save::deserialize_game(Save::Stream &f, Save::GameState &s, uint16_t versio
         if (!ok) return false;
         s.hazards.resize(cnt);
         for (auto &h : s.hazards) ok = ok && read_hazard(f, h);
+    }
+
+    // Replay run id appended in v17; older saves keep the 0 default (= no
+    // recording to continue).
+    if (version >= 17) {
+        ok = ok && rv(f, s.run_id);
     }
 
     return ok;

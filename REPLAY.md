@@ -146,7 +146,21 @@ records: [slot index | kind | payload] ...
 
 ## Milestones
 
-### R1 — recorder
+### R1 — recorder ✅ (landed on this branch)
+Implementation notes, where reality refined the sketch: slots are the
+recorder's own 10 Hz emission count (continued across resume by scanning the
+file's last slot) rather than a sim-clock derivation — `current_time`
+advances during pauses, so deriving slots from it would have put pause-length
+gaps in the timeline; header `duration_ms` = slot count × 100 (pure play
+time). The EV tee lives at the top of `net_send_event` and skips
+EV_PAUSE/RESUME (pauses emit nothing), EV_BYE (transport lifecycle), and
+EV_ACHIEVEMENT (playback must never poke a platform SDK);
+EV_GENERATION_START's call site moved out of its NetHost gate so solo runs
+record the marker. `run_id` is savegame v17 and bumped netplay PROTO to 23
+(snapshots serialize through the same structs). The recorder starts lazily
+on the first tick — the net ctors delegate to the offline ctors, so
+construction can't know the game is offline. Exit criteria are enforced by
+`test/e2e/replay.sh` (+ `replay_check.py`), all green headless.
 `replay.h/cpp`: a `ReplayRecorder` owned by GLGame (records every solo game,
 cheat-flagged or not). Hooks: the 10 Hz slot cadence calls the same
 keyframe/delta builders `net_host_send_snapshot` uses, but appends the record

@@ -179,7 +179,9 @@ struct GameState {
     // pickup type (merged from master, appended after the branch's additions).
     // 16 = mid-game hazards (pulsar/comet/seeker) appended at the end (merged
     // from master's "v12"; renumbered onto this branch's higher version).
-    static constexpr uint16_t VERSION = 16;
+    // 17 = run_id appended (REPLAY.md: ties the replay recording to the save
+    // so exit→continue appends to one continuous replay file).
+    static constexpr uint16_t VERSION = 17;
     // Oldest save format we can still read. Saves from MIN_VERSION..VERSION all
     // load; anything older (or from a newer build) is ignored. To keep old saves
     // working across a version bump, only ever APPEND new fields at the end of
@@ -196,6 +198,11 @@ struct GameState {
     // v11 append (end of file): a cheat key was used this game — achievement
     // unlocks stay suppressed after resume (XR-057, ACHIEVEMENTS.md §1).
     bool  cheated = false;
+    // v17 append (end of file): random id stamped at new-game, immutable for
+    // the run's life. The replay recorder matches it against current.nrp's
+    // header on resume to continue the same recording (REPLAY.md). 0 = save
+    // predates replays (a resume then starts a fresh recording).
+    uint64_t run_id = 0;
 
     std::vector<Player>    players;
     std::vector<Asteroid>  asteroids;
