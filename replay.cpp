@@ -378,6 +378,17 @@ void Recorder::record_event(uint8_t code, uint32_t arg) {
                   sizeof(payload));
 }
 
+void Recorder::record_effect(uint8_t subtype, uint8_t player_idx,
+                             const std::vector<uint8_t> &body) {
+    std::vector<uint8_t> payload;
+    payload.reserve(2 + body.size());
+    payload.push_back(subtype);
+    payload.push_back(player_idx);
+    payload.insert(payload.end(), body.begin(), body.end());
+    append_record((uint32_t)(last_slot_ + 1), REC_EFFECT,
+                  payload.empty() ? NULL : &payload[0], payload.size());
+}
+
 void Recorder::write_chunk() {
     if (chunk_.empty()) return;
     FILE *fp = fopen(path_.c_str(), "ab");

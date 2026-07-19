@@ -217,8 +217,19 @@ halve/double speed 0.25x–4x, no cheat flag); the world freezes at the last
 record rather than extrapolating into an invented future; watching writes
 nothing (no high score, no save, no achievements — ghosts carry
 `is_local_player=false`). Dev/test entry until R3:
-`NEWTONIA_REPLAY_PLAY=<path|current|recent|best>`. Exit criteria enforced
-by `test/e2e/replay_playback.sh`, all green headless.
+`NEWTONIA_REPLAY_PLAY=<path|current|recent|best|last>`. Exit criteria
+enforced by `test/e2e/replay_playback.sh`, all green headless.
+**Effect fidelity**: snapshots carry projectiles but not the flash-class
+visuals (online those ride MSG_LANCE/MSG_SHOCK echoes or are host-local),
+so REC_EFFECT records (kind 4) capture lance pulses and shock arcs in the
+exact MSG wire encodings — played back through the same
+`net_receive_lance_pulse`/`net_receive_shock_pulse` functions the net
+client uses, sounds included — plus nova/giga shockwave rings with their
+`Shockwave` parameters. Mint sites push to always-on `Ship::replay_*`
+outboxes (the `net_*` twins stay gated on `net_report_shots`, wire
+behaviour untouched) drained once per tick. God mode needed nothing new:
+its aura/music/warn-tics key off the restored GodMode weapon's state and
+its bullets ride the ordinary records.
 `GLGame` gains a `NetReplay` mode: `tick_net_client`'s apply/extrapolate
 path fed by a file reader instead of the transport; no INPUT sending, no
 local authoritative ship — every ship is a remote-style ghost. **Playback

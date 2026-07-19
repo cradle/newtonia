@@ -271,6 +271,24 @@ class Ship : public CompositeObject {
     // grown, just fades; never seeks or kills). Used by the MSG_SHOCK handler.
     void net_receive_shock(const std::vector<Point> &pts);
 
+    // Replay-recorder outboxes (REPLAY.md R2 effect fidelity): the flash-
+    // class weapon visuals the snapshots don't carry — lance pulses, shock
+    // arcs, nova/giga shockwave rings. Pushed UNCONDITIONALLY at their mint
+    // sites (a handful per fight — the net_* twins above stay gated on
+    // net_report_shots so wire behaviour is untouched) and drained once per
+    // tick by GLGame: recorded when a replay recorder is live, discarded
+    // otherwise. Ship* attribution so 2P recordings flash the right ghost.
+    struct ReplayRing {
+        const Ship *ship;
+        float x, y, max_r, speed, duration;
+        bool nova;
+    };
+    static std::vector<std::pair<const Ship *, std::vector<Point>>>
+        replay_lance_flashes;
+    static std::vector<std::pair<const Ship *, std::vector<Point>>>
+        replay_shock_flashes;
+    static std::vector<ReplayRing> replay_rings;
+
     // Lance ship/station hits: the pulse's ray-march only sees asteroids
     // (ships and stations live in GLGame's lists), so every firer parks
     // its traced polyline here. Offline/host firers get the full

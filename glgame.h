@@ -463,6 +463,10 @@ private:
   // pause, focus loss. finalize+rotation at game over / destruction.
   void replay_start();
   void replay_record_slot(int delta);  // one KEYFRAME/DELTA per 100 ms run
+  // Drain the Ship::replay_* effect outboxes (lance/shock/ring visuals the
+  // snapshots don't carry): recorded as REC_EFFECT when recording, else
+  // discarded. Called once per offline tick; net paths clear instead.
+  void replay_drain_effects();
   void replay_finish(bool ended);      // finalize; deletes replay_
   Replay::Recorder *replay_ = nullptr;
   bool replay_tried_ = false;          // lazy-start ran (or was skipped)

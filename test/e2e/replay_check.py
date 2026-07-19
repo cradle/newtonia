@@ -15,7 +15,7 @@ import sys
 
 MAGIC = 0x5052574E  # "NWRP"
 HEADER_SIZE = 64
-KINDS = {1: "keyframes", 2: "deltas", 3: "events"}
+KINDS = {1: "keyframes", 2: "deltas", 3: "events", 4: "effects"}
 
 
 def main():
@@ -43,7 +43,7 @@ def main():
     flags, players = data[48], data[49]
     (score, gen, dur) = struct.unpack_from("<III", data, 52)
 
-    counts = {"keyframes": 0, "deltas": 0, "events": 0}
+    counts = {"keyframes": 0, "deltas": 0, "events": 0, "effects": 0}
     last_slot = -1
     first_kind = ""
     truncated = 0
@@ -85,6 +85,7 @@ def main():
     print(f"keyframes={counts['keyframes']}")
     print(f"deltas={counts['deltas']}")
     print(f"events={counts['events']}")
+    print(f"effects={counts['effects']}")
     print(f"last_slot={last_slot}")
     print(f"first_kind={first_kind}")
     print(f"truncated_tail={truncated}")

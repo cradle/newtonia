@@ -68,6 +68,19 @@ enum RecordKind : uint8_t {
     REC_KEYFRAME = 1,  // full snapshot payload (net keyframe encoding)
     REC_DELTA    = 2,  // delta payload (net delta encoding)
     REC_EVENTS   = 3,  // one EV_* event: u8 code | u32 arg
+    // Transient weapon visual (u8 subtype | u8 player index | body).
+    // Snapshots carry projectiles but not the flash-class visuals — online
+    // those ride MSG_LANCE/MSG_SHOCK echoes or are host-local (nova/giga
+    // rings), none of which a solo game emits. LANCE/SHOCK bodies use the
+    // exact MSG wire encodings and play back through the same receive
+    // functions the net client uses.
+    REC_EFFECT   = 4,
+};
+
+enum EffectSubtype : uint8_t {
+    FX_LANCE = 1,  // MSG_LANCE body: u8 count | count * (f32 x, f32 y)
+    FX_SHOCK = 2,  // MSG_SHOCK body: u8 count | count * (f32 x, f32 y)
+    FX_RING  = 3,  // shockwave ring: f32 x,y,max_r,speed,duration | u8 nova
 };
 
 // Paths in <pref>/replays/ (created on demand). Empty string on failure.
@@ -158,6 +171,9 @@ public:
     // Events attach to the upcoming slot (they happened after the last
     // emitted record); teed from net_send_event.
     void record_event(uint8_t code, uint32_t arg);
+    // Transient weapon visual (REC_EFFECT), same slot rule as events.
+    void record_effect(uint8_t subtype, uint8_t player_idx,
+                       const std::vector<uint8_t> &body);
 
     // Append the in-RAM chunk to current.nrp (checkpoint: level clear,
     // pause, focus loss). No-op when nothing new was recorded.

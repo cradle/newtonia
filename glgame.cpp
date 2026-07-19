@@ -2465,6 +2465,67 @@ void GLGame::replay_record_slot(int delta) {
   net_force_keyframe_ = false;
 }
 
+// Drain the Ship::replay_* effect outboxes. The bodies reuse the MSG wire
+// encodings (u8 count | f32 pairs) so playback feeds the exact receive
+// functions the net client uses; rings carry their Shockwave parameters.
+// Attribution: the pushing Ship* resolves to a player index at record time
+// (effects from non-player ships — there are none today — would drop).
+void GLGame::replay_drain_effects() {
+  if (replay_) {
+    auto player_index = [this](const Ship *s) -> int {
+      int i = 0;
+      for (auto *gs : *players) {
+        if (gs->ship == s) return i;
+        i++;
+      }
+      return -1;
+    };
+    for (auto &lf : Ship::replay_lance_flashes) {
+      int idx = player_index(lf.first);
+      if (idx < 0 || lf.second.size() < 2 || lf.second.size() > 17) continue;
+      std::vector<uint8_t> body;
+      Net::put_u8(body, (uint8_t)lf.second.size());
+      for (const Point &p : lf.second) {
+        Net::put_f32(body, p.x());
+        Net::put_f32(body, p.y());
+      }
+      replay_->record_effect(Replay::FX_LANCE, (uint8_t)idx, body);
+      NET_LOG("replay: effect lance recorded (p%d, %d pts)\n", idx + 1,
+              (int)lf.second.size());
+    }
+    for (auto &sf : Ship::replay_shock_flashes) {
+      int idx = player_index(sf.first);
+      if (idx < 0 || sf.second.size() < 2 || sf.second.size() > 15) continue;
+      std::vector<uint8_t> body;
+      Net::put_u8(body, (uint8_t)sf.second.size());
+      for (const Point &p : sf.second) {
+        Net::put_f32(body, p.x());
+        Net::put_f32(body, p.y());
+      }
+      replay_->record_effect(Replay::FX_SHOCK, (uint8_t)idx, body);
+      NET_LOG("replay: effect shock recorded (p%d, %d pts)\n", idx + 1,
+              (int)sf.second.size());
+    }
+    for (auto &rg : Ship::replay_rings) {
+      int idx = player_index(rg.ship);
+      if (idx < 0) continue;
+      std::vector<uint8_t> body;
+      Net::put_f32(body, rg.x);
+      Net::put_f32(body, rg.y);
+      Net::put_f32(body, rg.max_r);
+      Net::put_f32(body, rg.speed);
+      Net::put_f32(body, rg.duration);
+      Net::put_u8(body, rg.nova ? 1 : 0);
+      replay_->record_effect(Replay::FX_RING, (uint8_t)idx, body);
+      NET_LOG("replay: effect ring recorded (p%d, %s)\n", idx + 1,
+              rg.nova ? "nova" : "giga");
+    }
+  }
+  Ship::replay_lance_flashes.clear();
+  Ship::replay_shock_flashes.clear();
+  Ship::replay_rings.clear();
+}
+
 // Finalize (header patch) and drop the recorder. ended=true (game over)
 // also rotates current -> recent with the best check; ended=false (abandon
 // to the menu / teardown) leaves current.nrp resumable.
@@ -2599,6 +2660,46 @@ void GLGame::tick_replay_poll(int delta) {
     if (slot * 100 > replay_clock_ms_) break;
     Replay::Reader::Record rec;
     replay_reader_->next(rec);
+    if (rec.kind == Replay::REC_EFFECT) {
+      // Transient weapon visuals: feed the exact net receive paths (lance/
+      // shock flashes + sounds) or mint the recorded shockwave ring on the
+      // owning ghost. Display-only — kills arrive in the state records.
+      if (rec.len < 2) continue;
+      uint8_t subtype = rec.payload[0], idx = rec.payload[1];
+      Ship *fx_ship = NULL;
+      uint8_t i = 0;
+      for (auto *gs : *players) {
+        if (i++ == idx) { fx_ship = gs->ship; break; }
+      }
+      if (!fx_ship) continue;
+      if (subtype == Replay::FX_LANCE || subtype == Replay::FX_SHOCK) {
+        Net::Reader r(rec.payload + 2, rec.len - 2);
+        if (subtype == Replay::FX_LANCE)
+          net_receive_lance_pulse(r, fx_ship);
+        else
+          net_receive_shock_pulse(r, fx_ship, NULL);
+      } else if (subtype == Replay::FX_RING && rec.len >= 2 + 21) {
+        float x, y, max_r, speed, duration;
+        memcpy(&x, rec.payload + 2, 4);
+        memcpy(&y, rec.payload + 6, 4);
+        memcpy(&max_r, rec.payload + 10, 4);
+        memcpy(&speed, rec.payload + 14, 4);
+        memcpy(&duration, rec.payload + 18, 4);
+        bool nova = rec.payload[22] != 0;
+        if (std::isfinite(x) && std::isfinite(y) && std::isfinite(max_r) &&
+            std::isfinite(speed) && std::isfinite(duration) &&
+            max_r > 0.0f && max_r < 100000.0f && duration > 0.0f &&
+            duration < 600000.0f) {
+          fx_ship->shockwaves.push_back(
+              Shockwave(Point(x, y), max_r, speed, duration, nova));
+          // Both ring types play the giga blast at the mint site.
+          if (fx_ship->giga_mine_explode_sound != NULL)
+            Mix_PlayChannel(-1, fx_ship->giga_mine_explode_sound, 0);
+          NET_LOG("net: replay ring (%s)\n", nova ? "nova" : "giga");
+        }
+      }
+      continue;
+    }
     if (rec.kind == Replay::REC_EVENTS) {
       if (rec.len >= 5) {
         uint8_t code = rec.payload[0];
@@ -2661,6 +2762,9 @@ void GLGame::net_clear_event_outboxes() {
   Ship::net_bounce_reports.clear();
   Ship::net_ach_relays.clear();
   Ship::net_ram_blasts.clear();
+  Ship::replay_lance_flashes.clear();
+  Ship::replay_shock_flashes.clear();
+  Ship::replay_rings.clear();
 }
 
 void GLGame::net_send_event(uint8_t code, uint32_t arg) {
@@ -3124,6 +3228,12 @@ void GLGame::tick_net_client(int delta) {
   Ship::net_ship_impacts.clear();
   Ship::net_shots.clear();
   Ship::net_booms.clear();
+  // Replay-recorder outboxes: only an offline recording drains these; the
+  // client's own fired visuals (and playback's received replicas, which
+  // never push) must not accumulate.
+  Ship::replay_lance_flashes.clear();
+  Ship::replay_shock_flashes.clear();
+  Ship::replay_rings.clear();
   // Remote (host) ship: attenuate its self-played sounds (death
   // explosion, god-mode tics) by distance to the local ship.
   if (players->size() >= 2)
@@ -6340,9 +6450,12 @@ void GLGame::tick(int delta) {
   // Online host: broadcast the world at 10 Hz once everything has stepped.
   // Offline, the replay recorder consumes the same builders at the same
   // cadence (this point is only reached while running, so pauses record
-  // nothing).
+  // nothing). Effect flashes drain every tick — they are one-shot mints,
+  // not 10 Hz state — recorded when a recorder is live and discarded
+  // otherwise (the host's own mints included; the statics never grow).
   if (net_mode_ == NetHost) net_host_send_snapshot(delta);
-  else if (replay_) replay_record_slot(delta);
+  replay_drain_effects();
+  if (replay_) replay_record_slot(delta);
 
   /* Display FPS */
   //std::cout << (num_frames*1000 / current_time) << std::endl;

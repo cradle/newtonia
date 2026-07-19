@@ -125,7 +125,11 @@ test/e2e/replay_playback.sh # REPLAY.md R2 exit criteria, solo (no relay):
                      # Esc exits; x4 speed finishes the file in under half
                      # real time; a 2-player recording grows the ghost
                      # roster at the recorded join ("replay: player 2
-                     # joined") and plays back split-screen.
+                     # joined") and plays back split-screen; a game-over
+                     # recording reaches the GAME OVER card; an ALL_WEAPONS
+                     # run round-trips the flash-class effects (REC_EFFECT:
+                     # lance pulse, shock arc, nova ring — asserted via the
+                     # record + receive log lines).
 test/e2e/replay.sh   # REPLAY.md R1 exit criteria, solo (no relay needed):
                      # abandon leaves a resumable current.nrp; CONTINUE
                      # appends to the SAME file (one run_id, seam keyframe,

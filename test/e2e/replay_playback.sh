@@ -9,6 +9,9 @@
 #   S4  a 2-player recording plays back (split-screen, "2 players" log)
 #   S5  a game-over recording plays through to the GAME OVER card (the
 #       forced final keyframe carries the ended world into the file)
+#   S6  weapon visual effects round-trip: an ALL_WEAPONS run firing the
+#       whole arsenal records REC_EFFECT records, and playback shows the
+#       lance flash, shock arc and nova ring via the net receive paths
 set -u
 if [ -z "${DISPLAY:-}" ]; then
   exec xvfb-run -a -s "-screen 0 1280x800x24" "$0" "$@"
@@ -17,6 +20,10 @@ fi
 
 FAIL=0
 fail() { echo "FAIL: $*"; FAIL=1; }
+
+CHECK="$ROOT/test/e2e/replay_check.py"
+# field FILE NAME -> value from replay_check.py
+field() { python3 "$CHECK" "$1" | sed -n "s/^$2=//p"; }
 
 use_home() {
   export XDG_DATA_HOME="$OUT/xdg-$1"
@@ -135,6 +142,39 @@ wait_log play-go "playback finished" 90 || fail "S5: playback never finished"
 wait_log play-go "game over (all players out)" 10 \
   || fail "S5: GAME OVER card never latched (final keyframe missing?)"
 sleep 1; shot "$W" play-gameover
+stop_hard $P
+
+echo "===== S6: weapon effect visuals round-trip ====="
+use_home p4
+P=$(NEWTONIA_ALL_WEAPONS=1 "$ROOT/newtonia" > "$OUT/rec4.log" 2>&1 & echo $!)
+sleep 2; W=$(win)
+key "$W" Return; sleep 0.5; key "$W" Return   # attract -> NEW GAME
+sleep 0.5; key "$W" space                     # request spawn
+sleep 3.5                                     # ...and wait out the countdown:
+                                              # a dead ship ignores fire, so
+                                              # cycling early records nothing
+# The grant's primary list is [15 default variants, beam, lance, shock]
+# with shock selected. Fire at EVERY position (fire, then advance) so all
+# of beam/lance/shock get a trigger pull even if X drops a keypress or two
+# — a fixed-count walk to a specific slot proved fragile under Xvfb. Then
+# every secondary (x fires the selection; nova mints its ring immediately).
+for i in $(seq 1 19); do key "$W" space; key "$W" q; done
+sleep 1
+for i in $(seq 1 5); do key "$W" c; key "$W" x; sleep 0.3; done
+sleep 2
+key "$W" Escape; sleep 2
+stop_hard $P
+FX=$(field "$RDIR/current.nrp" effects)
+echo "recorded $FX effect records"
+[ "${FX:-0}" -ge 3 ] || fail "S6: expected lance+shock+nova effects, got ${FX:-0}"
+
+P=$(NEWTONIA_REPLAY_PLAY=current "$ROOT/newtonia" > "$OUT/play-fx.log" 2>&1 & echo $!)
+sleep 2; W=$(win)
+wait_log play-fx "replay: playback started" 10 || fail "S6: playback never started"
+wait_log play-fx "playback finished" 60 || fail "S6: playback never finished"
+grep -q "lance pulse received" "$OUT/play-fx.log" || fail "S6: lance flash never played back"
+grep -q "shock bolt received" "$OUT/play-fx.log"  || fail "S6: shock arc never played back"
+grep -q "replay ring" "$OUT/play-fx.log"          || fail "S6: nova/giga ring never played back"
 stop_hard $P
 
 echo
