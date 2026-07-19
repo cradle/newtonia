@@ -482,6 +482,11 @@ private:
   float replay_speed_ = 1.0f;     // 0.25x..4x, =/- keys (never a cheat)
   bool replay_finished_ = false;  // past the last record: world frozen
   uint16_t replay_save_version_ = 0;  // savegame format of the payloads
+  // True only while the factory applies the bootstrap keyframe's extras:
+  // an alive→dead "transition" there is initial state, not an event — a
+  // new game starts dead in the spawn countdown, and detonating painted
+  // an explosion no real new game shows.
+  bool replay_bootstrap_apply_ = false;
 
   static const int step_size = 8;
 

@@ -2461,6 +2461,16 @@ void GLGame::replay_record_slot(int delta) {
 // to the menu / teardown) leaves current.nrp resumable.
 void GLGame::replay_finish(bool ended) {
   if (!replay_) return;
+  if (ended) {
+    // The game-over latch runs BEFORE this tick's cadence record, so
+    // without a final record the file ends up to ~100 ms short of the
+    // actual ending — the last death never landed and playback froze one
+    // breath before the GAME OVER card. One forced keyframe carries the
+    // ended world (dead ships, zero lives) so playback reaches it.
+    Save::MemStream payload;
+    net_build_keyframe_payload(payload);
+    replay_->record_keyframe(payload.data());
+  }
   uint32_t score = 0;
   for (auto *gs : *players) {
     int s = gs->ship->score;
@@ -2536,7 +2546,12 @@ GLGame *GLGame::start_replay_playback(const std::string &path) {
   GLGame *g = new GLGame(s, r);
   // The extras behind the game state — ship poses/bullets, mini-station and
   // enemy bullets, asteroid id adoption — exactly like the lobby bootstrap.
+  // Bootstrap-silent: state transitions in this first apply are initial
+  // conditions, not events (no death explosion for a run that starts in
+  // the spawn countdown).
+  g->replay_bootstrap_apply_ = true;
   g->net_apply_extras(in, s);
+  g->replay_bootstrap_apply_ = false;
   // The timeline starts at the bootstrap record's slot (0 for a fresh run).
   g->replay_clock_ms_ = (int)rec.slot * 100;
   SDL_Log("replay: playback started (%s, %d slots, %u player%s)",
@@ -4636,9 +4651,13 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
     }
 
     if (!ex.alive && ship->is_alive()) {
-      // Host says this ship died: explode locally too.
+      // Host says this ship died: explode locally too — except during the
+      // replay bootstrap, where dead-in-the-spawn-countdown is initial
+      // state, not a death (a new game's restore builds the ship alive, so
+      // this "transition" fired a spawn-position explosion no real new
+      // game shows).
       ship->kill_stop();
-      ship->detonate();
+      if (!replay_bootstrap_apply_) ship->detonate();
     } else if (ex.alive && !ship->is_alive() && i < s.players.size()) {
       // Host respawned it: bring it back at the authoritative position.
       ship->respawn(grid, false);

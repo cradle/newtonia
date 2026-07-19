@@ -7,6 +7,8 @@
 #   S3  speed keys: at x4 the same file finishes in well under half the
 #       real-time duration
 #   S4  a 2-player recording plays back (split-screen, "2 players" log)
+#   S5  a game-over recording plays through to the GAME OVER card (the
+#       forced final keyframe carries the ended world into the file)
 set -u
 if [ -z "${DISPLAY:-}" ]; then
   exec xvfb-run -a -s "-screen 0 1280x800x24" "$0" "$@"
@@ -104,6 +106,32 @@ wait_log play2p "replay: player 2 joined" 10 \
 sleep 2; shot "$W" play-2p                      # split-screen for the humans
 sleep 1; shot "$W" play-2p-b
 cmp -s "$OUT/play-2p.png" "$OUT/play-2p-b.png" && fail "S4: 2P world frozen"
+stop_hard $P
+
+echo "===== S5: game-over recording reaches the GAME OVER card ====="
+use_home p3
+P=$(NEWTONIA_BETA=1 NEWTONIA_START_GENERATION=12 "$ROOT/newtonia" \
+     > "$OUT/rec3.log" 2>&1 & echo $!); sleep 2; W=$(win)
+key "$W" Return; sleep 0.5; key "$W" Return   # attract -> NEW GAME
+GAMEOVER=0
+for i in $(seq 1 60); do
+  key "$W" space   # spawn each fresh life straight into the seekers
+  sleep 1.5
+  if grep -q "replay: run ended" "$OUT/rec3.log"; then GAMEOVER=1; break; fi
+  kill -0 $P 2>/dev/null || { fail "S5: recording game crashed"; break; }
+done
+[ "$GAMEOVER" = 1 ] || fail "S5: never reached game over while recording"
+sleep 1; stop_hard $P
+[ -f "$RDIR/recent.nrp" ] || fail "S5: game-over run did not rotate to recent"
+
+P=$(NEWTONIA_REPLAY_PLAY=recent "$ROOT/newtonia" > "$OUT/play-go.log" 2>&1 & echo $!)
+sleep 2; W=$(win)
+wait_log play-go "replay: playback started" 10 || fail "S5: playback never started"
+wait_log play-go "playback finished" 90 || fail "S5: playback never finished"
+# The recorded final death must land: the all-out latch logs the card.
+wait_log play-go "game over (all players out)" 10 \
+  || fail "S5: GAME OVER card never latched (final keyframe missing?)"
+sleep 1; shot "$W" play-gameover
 stop_hard $P
 
 echo
