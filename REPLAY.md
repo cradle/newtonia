@@ -18,17 +18,19 @@ criteria. Nothing here is built yet.
   already hardened. Cost: a few MB per long run vs tens of KB — fine.
 - **Always record, never ask.** Recording starts silently at every new solo
   game (kilobytes-per-second budget). No "save replay?" prompt anywhere.
-- **Auto-keep two local replays**: `replays/last.nrp` (header back-patched
-  every time a game ends — game over OR abandoned to the menu; a later resume
-  of the same run reopens and continues it, see the run-scoped decision
-  below) and `replays/best.nrp` (promoted from last when the run's final
-  score beats best's header score AND the game wasn't cheat-flagged; cheat
+- **Auto-keep two local replays**: `replays/last.nrp` (rewritten with a
+  finalized header every time a game ends — game over OR abandoned to the
+  menu; a later resume of the same run reopens and continues it, see the
+  run-scoped decision below) and `replays/best.nrp` (promoted from `last` at
+  any finalize whose score beats best's header score AND the game wasn't
+  cheat-flagged — safe to promote at a non-game-over finalize because
+  run-scoping keeps `last` the whole continuous run, not a fragment; cheat
   runs still get `last` — useful for debugging — but can never become
   `best`).
 - **Replays are run-scoped, not session-scoped — resume continues the same
   replay.** A new solo game stamps a random `run_id` into both the savegame
-  (`GameState`) and the replay header. Exiting to the menu back-patches
-  `last.nrp`'s header but does NOT close the run. On CONTINUE, if the loaded
+  (`GameState`) and the replay header. Exiting to the menu rewrites `last.nrp`
+  with a finalized header but does NOT close the run. On CONTINUE, if the loaded
   save's `run_id` matches `last.nrp`'s, the recorder reopens that file and
   appends — starting with a fresh keyframe as a resume seam (sim time
   continues) — so an exit→continue cycle produces ONE continuous replay, not
@@ -51,9 +53,12 @@ criteria. Nothing here is built yet.
   comparable), so replay compatibility only ever needs to hold within a
   season = a version window with no format break. Old seasons keep replays
   best-effort, eventually score-only.
-- **Solo games only in v1.** Online games are excluded (client-authoritative
-  positions mean the host's stream isn't the whole truth, and saves are
-  already NetOff-gated; same gate applies here).
+- **Solo games only in v1.** "Solo" = offline: single-player OR local
+  2-player split-screen (the NetOff gate that already guards saves — same
+  gate applies here). Online games are excluded (client-authoritative
+  positions mean the host's stream isn't the whole truth). A 2-player replay
+  records both ships and plays back in split-screen (R2); the header's player
+  count drives which.
 - **Input-log verification is deferred** until leaderboard cheating actually
   materialises. The submission format reserves room for it (checksum field)
   but no determinism work (sim-RNG split, libm hardening) happens now.
@@ -77,9 +82,12 @@ records: [slot index | kind | payload] ...
 - **Storage model: buffer in RAM, flush at checkpoints** (all platforms, not
   streamed per slot). Records accumulate in an in-memory `Save::MemStream`
   (the type netplay already builds snapshots into) during play; the whole
-  buffer is written to `replays/*.nrp` — header back-patched — at each
-  checkpoint: game-over/abandon (finalize), **level clear**, AND the same
-  pause / background / focus-loss points the savegame already auto-saves at.
+  buffer — header (with final score/duration/flags) followed by all records —
+  is rewritten to `replays/*.nrp` at each checkpoint: game-over/abandon
+  (finalize), **level clear**, AND the same pause / background / focus-loss
+  points the savegame already auto-saves at (on iOS this rides the same
+  `SDL_APP_WILLENTERBACKGROUND` / resign-active save hook; Android `onPause`
+  and Xbox PLM are called out under Open questions).
   Level clear is the load-bearing one: it's already a savegame auto-save
   point, it lands inside the frozen 5 s clear countdown / generation rebuild
   (no combat to hitch), and it flushes proactively so the buffer is nearly
@@ -117,17 +125,31 @@ records: [slot index | kind | payload] ...
 ## Milestones
 
 ### R1 — recorder
-`replay.h/cpp`: a `ReplayRecorder` owned by GLGame (solo, non-cheated-path
-agnostic — records always). Hooks: the 10 Hz slot cadence calls the same
-keyframe/delta builders `net_host_send_snapshot` uses but sinks to a
-`Save::FileStream` instead of the session; the EV outbox tees per slot.
+`replay.h/cpp`: a `ReplayRecorder` owned by GLGame (records every solo game,
+cheat-flagged or not). Hooks: the 10 Hz slot cadence calls the same
+keyframe/delta builders `net_host_send_snapshot` uses, but appends the record
+to the recorder's in-RAM `Save::MemStream` buffer (see the storage model
+under File format) instead of sending it — the buffer is flushed to
+`replays/*.nrp` at the checkpoints listed there, not written per slot. The
+snapshot builders move behind a small seam so host-send and recorder share
+them (they must never fork).
+- **EV capture needs its own tee — the net outbox does not exist offline.**
+  `net_send_event` early-returns `if (!net_session_) return;` (glgame.cpp),
+  so in a solo game the EV_* events (EV_PICKUP, EV_WORLD_BOOM, banners,
+  booms — "what makes playback feel right") are emitted at their call sites
+  but dropped. The recorder therefore can't "tee an outbox"; it must be fed
+  directly. Cleanest: give `net_send_event` (or a thin sibling both call) a
+  recorder sink that runs regardless of session, so every existing event
+  call site feeds the replay whether or not netplay is live. This is real
+  wiring, not a footnote — EVENTS records depend on it.
+- A new game stamps a random `run_id` into `GameState` (append-only field,
+  version bump) and the replay header; on resume the recorder reads the
+  save's `run_id` and, if it matches `last.nrp`'s, reopens that file (loading
+  it into the buffer) and appends a resume-seam keyframe instead of starting
+  fresh — so exit→continue stays one file. (`run_id` rides `serialize_game`,
+  so it also appears in net snapshots — harmless, but `net_apply_state` must
+  tolerate the new field per the savegame append-only convention.)
 Finalize from game over and `~GLGame`; rotate last→best per the rules above.
-The snapshot builders move behind a small seam so host-send and recorder
-share them (they must never fork). A new game stamps a random `run_id` into
-`GameState` (append-only field, version bump) and the replay header; on
-resume the recorder reads the save's `run_id` and, if it matches
-`last.nrp`'s, reopens that file and appends a resume-seam keyframe instead of
-starting fresh — so exit→continue stays one file.
 **Exit**: headless driver plays a scripted run; asserts `last.nrp` exists,
 header fields match the run (score/generation/duration), a higher-scoring
 second run promotes `best.nrp`, a cheat-flagged run does not, an abandoned
@@ -139,14 +161,19 @@ score reflects the whole run.
 ### R2 — playback
 `GLGame` gains a `NetReplay` mode: `tick_net_client`'s apply/extrapolate
 path fed by a file reader instead of the transport; no INPUT sending, no
-local authoritative ship — every ship is a remote-style ghost; camera
-follows player 1 via the spectator-flow camera. HUD: REPLAY watermark +
-elapsed/total time. Controls: pause key pauses, `=`/`-` adjust playback
-speed (no cheat flag in replay mode), Esc/back exits to the menu. No rewind
-in v1; fast-forward covers seeking at these run lengths.
+local authoritative ship — every ship is a remote-style ghost. **Playback
+honours the recorded player count** (header field): a 1-player replay renders
+a single viewport following P1 via the spectator-flow camera; a 2-player
+replay reuses GLGame's existing split-screen — the same two viewports the
+game rendered while playing — each following its own ghost ship (no
+authoritative/local distinction; both are file-driven). HUD: REPLAY
+watermark + elapsed/total time. Controls: pause key pauses, `=`/`-` adjust
+playback speed (no cheat flag in replay mode), Esc/back exits to the menu.
+No rewind in v1; fast-forward covers seeking at these run lengths.
 **Exit**: headless — record a run, play it back, screenshots show the same
-world unfolding (ship motion, kills, level clear banner); speed keys and
-exit verified.
+world unfolding (ship motion, kills, level clear banner); a 2-player run
+plays back in split-screen with both ghosts moving; speed keys and exit
+verified.
 
 ### R3 — REPLAYS menu
 Menu row REPLAYS (hidden while no `.nrp` exists) → list screen: LAST RUN /
