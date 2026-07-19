@@ -154,11 +154,11 @@ sleep 3.5                                     # ...and wait out the countdown:
                                               # a dead ship ignores fire, so
                                               # cycling early records nothing
 # The grant's primary list is [15 default variants, beam, lance, shock]
-# with shock selected. Fire at EVERY position (fire, then advance) so all
-# of beam/lance/shock get a trigger pull even if X drops a keypress or two
-# — a fixed-count walk to a specific slot proved fragile under Xvfb. Then
-# every secondary (x fires the selection; nova mints its ring immediately).
-for i in $(seq 1 19); do key "$W" space; key "$W" q; done
+# with shock selected. Fire TWICE at EVERY position (then advance) and walk
+# one position past a full lap, so beam/lance/shock each get trigger pulls
+# even when Xvfb drops keypresses — single pulls per position still flaked.
+# Then every secondary (x fires the selection; nova mints its ring).
+for i in $(seq 1 20); do key "$W" space; key "$W" space; key "$W" q; done
 sleep 1
 for i in $(seq 1 5); do key "$W" c; key "$W" x; sleep 0.3; done
 sleep 2

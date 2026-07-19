@@ -4827,9 +4827,14 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
     // otherwise plays short full-volume hums that sound random. A replay
     // has NO local ship: every ghost takes the remote treatment — its
     // bullets and exhaust flags come from the records (the local-ship
-    // variant deliberately skips both as client-owned).
+    // variant deliberately skips both as client-owned) — but every ghost
+    // IS a watched ship (its own viewport in 2P), and the recorded offline
+    // game hummed for every local player, so the hum keys off the
+    // replicated invincibility for all of them. This is also the ONLY hum
+    // source in playback: quiet restores suppress respawn()'s.
     bool local_ship = net_mode_ == NetClient && (i + 1 == nplayers);
-    ship->set_shield_hum(local_ship && ship->is_alive() && ship->invincible &&
+    bool hum_ship = net_mode_ == NetReplay ? true : local_ship;
+    ship->set_shield_hum(hum_ship && ship->is_alive() && ship->invincible &&
                          ex.god_ms <= 0);
     // Movement flags drive the remote ship's exhaust-trail emitters (the
     // restore cleared them). Raw flag writes: Ship::thrust()/reverse()
