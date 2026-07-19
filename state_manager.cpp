@@ -17,6 +17,15 @@ StateManager::StateManager() {
     if (path == "current")     path = Replay::current_path();
     else if (path == "recent") path = Replay::recent_path();
     else if (path == "best")   path = Replay::best_path();
+    else if (path == "last") {
+      // "The last thing I played": the live/resumable run if one exists,
+      // otherwise the most recently completed one — a finished run rotates
+      // current -> recent, so plain `current` finds nothing after game over.
+      Replay::Header h;
+      path = Replay::read_header(Replay::current_path(), h)
+                 ? Replay::current_path()
+                 : Replay::recent_path();
+    }
     if (State *s = GLGame::start_replay_playback(path)) {
       state = s;
       return;

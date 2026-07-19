@@ -2494,6 +2494,23 @@ GLGame::GLGame(const Save::GameState &snapshot, Replay::Reader *reader)
 }
 
 GLGame *GLGame::start_replay_playback(const std::string &path) {
+  // A MISSING file is normal life, not damage: a game over ROTATES
+  // current -> recent (R1 lifecycle), so asking for `current` right after
+  // finishing a run correctly finds nothing. Say that, and point at where
+  // the run went, instead of the scary decline below.
+  FILE *probe = path.empty() ? NULL : fopen(path.c_str(), "rb");
+  if (!probe) {
+    SDL_Log("replay: nothing to play at %s", path.c_str());
+    Replay::Header h;
+    if (path == Replay::current_path() &&
+        Replay::read_header(Replay::recent_path(), h))
+      SDL_Log("replay: no active run - the last completed run (score=%u) "
+              "is in recent.nrp (NEWTONIA_REPLAY_PLAY=recent)",
+              h.final_score);
+    return NULL;
+  }
+  fclose(probe);
+
   Replay::Reader *r = new Replay::Reader(path);
   Replay::Reader::Record rec;
   if (!r->ok() || !r->next(rec) || rec.kind != Replay::REC_KEYFRAME) {
@@ -2501,7 +2518,8 @@ GLGame *GLGame::start_replay_playback(const std::string &path) {
     // decline politely (REPLAY.md — "REPLAY FROM AN OLDER VERSION" is the
     // R3 menu's rendering of this NULL).
     SDL_Log("replay: cannot play %s (%s)", path.c_str(),
-            r->ok() ? "no leading keyframe" : "unreadable or older version");
+            r->ok() ? "no leading keyframe (empty recording?)"
+                    : "unreadable or older format version");
     delete r;
     return NULL;
   }
