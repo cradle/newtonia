@@ -258,7 +258,20 @@ world unfolding (ship motion, kills, level clear banner); a 2-player run
 plays back in split-screen with both ghosts moving; speed keys and exit
 verified.
 
-### R3 — REPLAYS menu
+### R3 — REPLAYS menu ✅ (landed on this branch)
+Implementation notes: the row sits below OPTIONS (hidden while no `.nrp`
+exists) and the confirm dispatch moved from "last row = options" to
+explicit `options_row_index()`/`replays_row_index()` helpers. The list
+screen follows the options screen's layout grammar: desktop shows a cursor
+row per file with SCORE / LEVEL / date columns, touch reuses the options
+band geometry (tap a run to watch it, RETURN TO MENU band exits), and the
+shared nav translator gives the controller w/s/confirm/back for free.
+`scan_replays()` re-reads the three headers on every menu build and list
+open, so the rows always match disk; a file the build can't parse renders
+as an unselectable OLDER VERSION row, and a selection whose file changed
+underneath (rotated/deleted) rescans instead of crashing. Selecting a row
+hands the state to `start_replay_playback` (R2); Esc from playback lands
+back on the menu. Exit criteria enforced by `test/e2e/replay_menu.sh`.
 Menu row REPLAYS (hidden while no `.nrp` exists) → list screen: CURRENT RUN
 (`current.nrp`, shown while a resumable run exists), LAST RUN
 (`recent.nrp`), and BEST RUN (`best.nrp`) rows showing score, level

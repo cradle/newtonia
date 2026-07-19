@@ -9,11 +9,13 @@
 #include "net_transport.h"
 #include "preferences.h"
 #include "presence.h"
+#include "replay.h"
 #include "gl_compat.h"
 #include "mat4.h"
 #include "steam_build.h"
 #include "view/overlay.h"
 #include "view/tap_band.h"
+#include <ctime>
 #include <iostream>
 #include <string>
 
@@ -125,6 +127,7 @@ Menu::Menu() :
   camera_index_[0]      = g_prefs.p1_keys.rotate_view ? 1 : 0;
   camera_index_[1]      = g_prefs.p2_keys.rotate_view ? 1 : 0;
   star_density_index_   = star_density_index_for(g_prefs.star_density);
+  scan_replays();
   Presence::set_menu();
 #ifdef __EMSCRIPTEN__
   EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
@@ -178,7 +181,45 @@ void Menu::draw() {
   mat4_ortho(ortho, -menu_hw, menu_hw, -menu_hh, menu_hh, -1.0f, 1.0f);
   gles2_set_vp(ortho);
 
-  if (options_mode_) {
+  if (replays_mode_) {
+    bool touch = is_touch_mode();
+    Typer::draw_centered(0, touch ? 340 : 368, "REPLAYS", touch ? 30 : 26);
+    int n = (int)replay_rows_.size();
+    for (int i = 0; i < n; i++) {
+      const ReplayRow &r = replay_rows_[i];
+      char score_buf[24], level_buf[16];
+      snprintf(score_buf, sizeof(score_buf), "SCORE %u", r.score);
+      snprintf(level_buf, sizeof(level_buf), "LEVEL %u", r.level);
+      if (touch) {
+        int cy = touch_opt_center(i, n);
+        Typer::draw(-440, cy, r.label.c_str(), 16);
+        if (r.ok) {
+          Typer::draw_centered(120, cy, score_buf, 14);
+          Typer::draw(300, cy, r.date.c_str(), 12);
+        } else {
+          Typer::draw_centered(205, cy, "OLDER VERSION", 14);
+        }
+        continue;
+      }
+      const float band_top = 250.0f, band_bottom = -300.0f;
+      float pitch = (band_top - band_bottom) / n;
+      int y = (int)(band_top - (i + 0.5f) * pitch);
+      std::string heading =
+          std::string(replay_sel_ == i ? "> " : "  ") + r.label;
+      Typer::draw(-470, y, heading.c_str(), 14);
+      if (r.ok) {
+        Typer::draw(-60, y, score_buf, 13);
+        Typer::draw(240, y, level_buf, 13);
+        Typer::draw(470, y, r.date.c_str(), 11);
+      } else {
+        Typer::draw(-60, y, "OLDER VERSION", 13);
+      }
+    }
+    if (touch) {
+      Typer::draw_centered(0, -270, "TAP A RUN TO WATCH IT", 12);
+      TapBand::return_to_menu.draw("RETURN TO MENU", currentTime);
+    }
+  } else if (options_mode_) {
     bool touch = is_touch_mode();
     Typer::draw_centered(0, touch ? 340 : 368, "OPTIONS", touch ? 30 : 26);
 
@@ -248,7 +289,7 @@ void Menu::draw() {
     }
   }
 
-  if (!options_mode_) {
+  if (!options_mode_ && !replays_mode_) {
     if (attract_mode_) {
       if (!((currentTime / 1400) % 2)) {
         // title_bot=160 (320-2*80), scores_top=-215; center single item in that gap
@@ -293,16 +334,18 @@ void Menu::draw() {
       rows.push_back("NEW GAME");
       if (show_online_row()) rows.push_back("ONLINE");
       if (show_options_row()) rows.push_back("OPTIONS");
+      if (show_replays_row()) rows.push_back("REPLAYS");
       draw_menu_rows(rows);
     } else {
       std::vector<std::string> rows;
       rows.push_back("NEW GAME");
       if (show_online_row()) rows.push_back("ONLINE");
       if (show_options_row()) rows.push_back("OPTIONS");
+      if (show_replays_row()) rows.push_back("REPLAYS");
       draw_menu_rows(rows);
     }
   }
-  if (!options_mode_)
+  if (!options_mode_ && !replays_mode_)
     Typer::draw_centered(0, -420, "© 2008-2026 METONYMOUS", 13, currentTime);
 }
 
@@ -427,6 +470,30 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
     }
     return;
   }
+  if (replays_mode_) {
+    if (key == 'w' || key == 'W') {
+      if (replay_sel_ > 0) replay_sel_--;
+    } else if (key == 's' || key == 'S') {
+      if (replay_sel_ < (int)replay_rows_.size() - 1) replay_sel_++;
+    } else if (key == 27) {
+      replays_mode_ = false;
+    } else if (confirm && replay_sel_ < (int)replay_rows_.size()) {
+      const ReplayRow &r = replay_rows_[replay_sel_];
+      if (r.ok) {
+        // The cursor can rest on an OLDER VERSION row; only readable runs
+        // confirm. A NULL here means the file changed underneath us
+        // (rotated/deleted) — rescan so the list matches reality.
+        if (GLGame *g = GLGame::start_replay_playback(r.path)) {
+          request_state_change(g);
+          return;
+        }
+        scan_replays();
+        if (replay_rows_.empty()) replays_mode_ = false;
+        if (replay_sel_ >= (int)replay_rows_.size()) replay_sel_ = 0;
+      }
+    }
+    return;
+  }
   int n = max_menu_items();
   if (quit_confirm_) {
     if (key == 27) {
@@ -465,8 +532,10 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
       quit_selection_ = 0;
 #endif
     } else if (confirm) {
-      if (show_options_row() && menu_selection == n - 1) {
+      if (menu_selection == options_row_index()) {
         open_options();
+      } else if (menu_selection == replays_row_index()) {
+        open_replays();
       } else {
         confirm_selection(src);
       }
@@ -481,6 +550,10 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
 bool Menu::back_pressed() {
   if (options_mode_) {
     close_options();  // persists and returns to the menu
+    return true;
+  }
+  if (replays_mode_) {
+    replays_mode_ = false;
     return true;
   }
   if (attract_mode_) {
@@ -520,6 +593,19 @@ void Menu::touch_tap(float nx, float ny) {
     }
     return;
   }
+  if (replays_mode_) {
+    if (TapBand::return_to_menu.contains(nx, ny)) { replays_mode_ = false; return; }
+    int row = touch_opt_row_at(ny, (int)replay_rows_.size());
+    if (row >= 0 && replay_rows_[row].ok) {
+      if (GLGame *g = GLGame::start_replay_playback(replay_rows_[row].path)) {
+        request_state_change(g);
+        return;
+      }
+      scan_replays();  // file changed underneath us — resync the list
+      if (replay_rows_.empty()) replays_mode_ = false;
+    }
+    return;
+  }
   if (quit_confirm_) {
     // Left half = Yes (quit), right half = No (dismiss)
     if (nx < 0.5f) {
@@ -542,8 +628,12 @@ void Menu::touch_tap(float nx, float ny) {
   int row = menu_row_at(ny);
   if (row < 0) return;
   menu_selection = row;
-  if (show_options_row() && row == max_menu_items() - 1) {
+  if (row == options_row_index()) {
     open_options();
+    return;
+  }
+  if (row == replays_row_index()) {
+    open_replays();
     return;
   }
   confirm_selection(nullptr);
@@ -553,6 +643,7 @@ int Menu::max_menu_items() const {
   int n = has_save_ ? 2 : 1;
   if (show_online_row()) n++;
   if (show_options_row()) n++;
+  if (show_replays_row()) n++;
   return n;
 }
 
@@ -614,6 +705,67 @@ int Menu::online_row_index() const {
 
 void Menu::open_options() {
   options_mode_ = true;
+}
+
+// Build the replays list from disk (REPLAY.md R3). A readable header makes
+// a selectable row with its score/level/date; a file that exists but this
+// build can't parse (older/newer format) still shows, unselectable, as
+// OLDER VERSION — the polite decline the plan asks for. Absent files make
+// no row, and no rows hides the whole REPLAYS menu row.
+void Menu::scan_replays() {
+  replay_rows_.clear();
+  struct { const char *label; std::string path; } sources[3] = {
+      {"CURRENT RUN", Replay::current_path()},
+      {"LAST RUN", Replay::recent_path()},
+      {"BEST RUN", Replay::best_path()},
+  };
+  for (int i = 0; i < 3; i++) {
+    if (sources[i].path.empty()) continue;
+    FILE *fp = fopen(sources[i].path.c_str(), "rb");
+    if (!fp) continue;
+    fclose(fp);
+    ReplayRow row;
+    row.label = sources[i].label;
+    row.path = sources[i].path;
+    Replay::Header h;
+    row.ok = Replay::read_header(sources[i].path, h);
+    if (row.ok) {
+      row.score = h.final_score;
+      row.level = h.generation + 1;  // displayed level, like everywhere else
+      char buf[16] = "";
+      time_t t = (time_t)h.date;
+      struct tm *tmv = localtime(&t);
+      if (tmv) strftime(buf, sizeof(buf), "%Y-%m-%d", tmv);
+      row.date = buf;
+    } else {
+      row.score = 0;
+      row.level = 0;
+    }
+    replay_rows_.push_back(row);
+  }
+}
+
+int Menu::options_row_index() const {
+  if (!show_options_row()) return -1;
+  int i = has_save_ ? 2 : 1;
+  if (show_online_row()) i++;
+  return i;
+}
+
+int Menu::replays_row_index() const {
+  if (!show_replays_row()) return -1;
+  int i = has_save_ ? 2 : 1;
+  if (show_online_row()) i++;
+  if (show_options_row()) i++;
+  return i;
+}
+
+void Menu::open_replays() {
+  // Rescan on entry: the files change every time a game runs.
+  scan_replays();
+  if (replay_rows_.empty()) return;  // raced away — row disappears next draw
+  replay_sel_ = 0;
+  replays_mode_ = true;
 }
 
 void Menu::adjust_active_row(int delta, bool wrap) {

@@ -130,6 +130,11 @@ test/e2e/replay_playback.sh # REPLAY.md R2 exit criteria, solo (no relay):
                      # run round-trips the flash-class effects (REC_EFFECT:
                      # lance pulse, shock arc, nova ring — asserted via the
                      # record + receive log lines).
+test/e2e/replay_menu.sh # REPLAY.md R3: the REPLAYS menu row (shown once a
+                     # .nrp exists) opens the list screen; selecting
+                     # CURRENT RUN starts playback ("replay: playback
+                     # started"), Esc returns to the menu, and the list
+                     # backs out cleanly on a second visit.
 test/e2e/replay.sh   # REPLAY.md R1 exit criteria, solo (no relay needed):
                      # abandon leaves a resumable current.nrp; CONTINUE
                      # appends to the SAME file (one run_id, seam keyframe,
