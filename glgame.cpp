@@ -3365,10 +3365,37 @@ void GLGame::tick_net_client(int delta) {
 
   // End of the recording: freeze the world — extrapolating past the last
   // record would invent a future the file never contained. The HUD shows
-  // the ended state; Esc (or the game-over card's flow) exits.
+  // the ended state; Esc (or the game-over card's flow) exits. Engine audio
+  // off: the flags freeze in their last state and would drone forever.
   if (net_mode_ == NetReplay && replay_finished_) {
+    if (!players->empty() && players->front()->ship->boost_sound != NULL)
+      Mix_VolumeChunk(players->front()->ship->boost_sound, 0);
     last_tick += delta;
     return;
+  }
+
+  // Ghost engine audio (REPLAY.md R2): the boost loop's volume is driven
+  // only by the local input methods (thrust/reverse/rotate) — the extras
+  // write ghost flags raw precisely so remote ships can't fight the local
+  // player's engine volume. A replay has no local input to protect, so
+  // drive the shared chunk from the replicated flags: any ghost under
+  // power at full engine volume, else any still turning at the rotation
+  // murmur, else silent (the same ladder thrust()/play_rotating_sound()
+  // implement for live input).
+  if (net_mode_ == NetReplay && !players->empty()) {
+    Mix_Chunk *bs = players->front()->ship->boost_sound;
+    if (bs != NULL) {
+      bool powered = false, turning = false;
+      for (auto *gs : *players) {
+        Ship *sh = gs->ship;
+        if (!sh->is_alive()) continue;
+        if (sh->thrusting || sh->reversing) powered = true;
+        else if (sh->rotation_direction != Ship::NONE) turning = true;
+      }
+      Mix_VolumeChunk(bs, powered   ? MIX_MAX_VOLUME / 8
+                          : turning ? MIX_MAX_VOLUME / 16
+                                    : 0);
+    }
   }
 
   // Hitch breakdown: "net: frame hitch" (tick()) names the stall but not
