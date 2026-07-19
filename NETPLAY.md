@@ -105,10 +105,40 @@ UDP/broadcast and the web page itself needs serving).
    courier. The existing manual-join machinery then brings the WebRTC
    session up on host candidates. Version mismatch is caught at the
    beacon (PROTO in the packet), before any connection.
-3. **Lobby UX**: a LOCAL row beside HOST/JOIN. Hosting = beacon +
-   listen with a "HOSTING ON THIS NETWORK" screen; joining = a
-   discovered-hosts list (usually exactly one, tap to join). No room
-   codes, no Worker, no invite links.
+3. **Lobby UX — LAN is not a mode** (decided with Glenn 2026-07-18,
+   supersedes the earlier LOCAL-row sketch): discovery weaves into
+   the existing HOST/JOIN screens, no third branch.
+   - **HOST**: the beacon + blob listener start unconditionally
+     alongside the relay connection; the room screen gains a
+     "VISIBLE ON THIS NETWORK" line. Offline degrades invisibly —
+     the relay times out into the existing manual-fallback screen
+     as today, but the beacon keeps running and a LAN joiner
+     connects anyway; the host never chose anything. With internet,
+     both paths are live and whichever joiner arrives first fills
+     the slot. Beacon lifetime mirrors the invite re-advertise
+     logic: while the lobby is open OR mid-game with an empty slot,
+     so LAN rejoin-after-drop works by rediscovery.
+   - **JOIN**: discovered hosts render as a section ABOVE the code
+     entry ("ON THIS NETWORK: ▸ GLENN-MBP" / "OR ENTER A ROOM
+     CODE"), absent entirely when nothing is beaconing — the screen
+     looks unchanged until the moment it's useful. Desktop:
+     up/down (nav ladder w/s) moves between host rows and the code
+     field, Enter joins the highlighted host, typing a letter
+     always goes to the code field. Controller/Deck: host rows
+     join the CodeEntry picker's navigation (the shared
+     nav_key_from_controller translator). **Touch: NOT the full
+     list** — the soft keyboard eats the bottom half (the reason
+     code entry is already hoisted top + CANCEL is a top band), so
+     touch gets a single compact tap band under the code field
+     ("JOIN GLENN-PIXEL ▸ ON THIS NETWORK", strongest/newest
+     beacon); the rare multi-host case gets a small "MORE…" chip
+     that dismisses the keyboard to reveal the full list. Mobile
+     is phase 2 anyway (discovery seam below), so this placement
+     ships with the mobile backends, not the desktop cut. Host
+     names via gethostname() on desktop (device name on mobile
+     later); PROTO mismatch shows the row greyed with "DIFFERENT
+     VERSION" instead of a doomed connect. Cap the list at 3-4; a
+     dead host's row fades after ~2 missed beacons (no flicker).
 4. **Discovery seam for mobile** (later, invites/presence-style:
    shared logic + per-platform backends): Android needs a
    `MulticastLock` (or `NsdManager` mDNS); iOS must NOT use raw
