@@ -18,11 +18,14 @@ criteria. Nothing here is built yet.
   already hardened. Cost: a few MB per long run vs tens of KB — fine.
 - **Always record, never ask.** Recording starts silently at every new solo
   game (kilobytes-per-second budget). No "save replay?" prompt anywhere.
-- **Auto-keep three local replay files**: `replays/current.nrp` — the active
-  run, appended to as it's played, and deliberately NOT offered for playback
-  (you can't watch a run you're still in; this also means its stale header
-  and open-for-append state — see the storage model — are never
-  user-visible). `replays/recent.nrp` — the most recently COMPLETED run;
+- **Auto-keep three local replay files — all three watchable**:
+  `replays/current.nrp` — the active (live or resumable) run; watching it
+  from the menu is allowed and useful — review what just happened before
+  diving back in. Safe because playback only ever starts from the menu, and
+  by then `current.nrp` is closed and its header was patched at the clean
+  abandon; the only stale-header file a viewer can meet is a crash artifact,
+  which the reader tolerates anyway (see the storage model).
+  `replays/recent.nrp` — the most recently COMPLETED run;
   every run lands here when it ends, cheat-flagged or not (useful for
   debugging). `replays/best.nrp` — a copy promoted when a completed,
   non-cheat-flagged run's final score beats best's header score.
@@ -120,10 +123,13 @@ records: [slot index | kind | payload] ...
   fixed-size tail fields (score, duration, flags, generation) are patched in
   place only at game over or a clean abandon-to-menu — both outside any
   lifecycle time budget. Between patches the header understates the records
-  behind it. That is acceptable because `current.nrp` is never offered for
-  playback (three-file decision above): the only readers of a stale-header
-  file are the resume path (which needs only the immutable `run_id`) and
-  crash recovery. File validity comes from self-delimiting records, not
+  behind it. That is acceptable because playback only starts from the menu,
+  where `current.nrp` has just been patched by the clean abandon — the only
+  stale-header file a reader can meet is a crash artifact (plus the resume
+  path, which needs only the immutable `run_id`). Playback therefore derives
+  total time from the final record's slot index, not the header's duration
+  field; a stale header at worst understates the score shown on the replay
+  list row. File validity comes from self-delimiting records, not
   rewrite atomicity — a flush cut mid-append leaves a truncated final record
   the reader detects and drops (R2's reader needs truncation tolerance for
   crash artifacts regardless). Durability equals the savegame's: a hard
@@ -207,12 +213,13 @@ plays back in split-screen with both ghosts moving; speed keys and exit
 verified.
 
 ### R3 — REPLAYS menu
-Menu row REPLAYS (hidden while neither `recent.nrp` nor `best.nrp` exists)
-→ list screen: LAST RUN (`recent.nrp`) / BEST RUN (`best.nrp`) rows showing
-score, level reached, date; `current.nrp` is never listed (the active run
-isn't watchable — three-file decision). Esc/B backs out; touch gets tap
-bands. Selecting a row starts R2 playback. Version-mismatched files render
-as unselectable "OLDER VERSION" rows.
+Menu row REPLAYS (hidden while no `.nrp` exists) → list screen: CURRENT RUN
+(`current.nrp`, shown while a resumable run exists), LAST RUN
+(`recent.nrp`), and BEST RUN (`best.nrp`) rows showing score, level
+reached, date (a crashed current's row shows its last-patched header score,
+which may understate — accepted). Esc/B backs out; touch gets tap bands.
+Selecting a row starts R2 playback. Version-mismatched files render as
+unselectable "OLDER VERSION" rows.
 **Exit**: keyboard, controller (shared nav translator), and touch all drive
 list → playback → back-out; verified headless + on-device.
 
