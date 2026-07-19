@@ -2500,7 +2500,17 @@ GLGame::GLGame(const Save::GameState &snapshot, Replay::Reader *reader)
   replay_save_version_ = reader->header().save_version
                              ? reader->header().save_version
                              : Save::GameState::VERSION;
-  for (auto *gs : *players) gs->ship->is_local_player = false;
+  for (auto *gs : *players) {
+    gs->ship->is_local_player = false;
+    // The delegated restore resurrects a mid-countdown ship instantly
+    // (restore_state -> respawn(was_killed) — deliberate for RESUMING a
+    // save: you come back alive without re-waiting the countdown), and
+    // respawn's detonate() mints its flash as real bullets. For playback
+    // that's an explosion before a new game's first countdown; scrub the
+    // debris — the bootstrap extras then silently re-kill the ship and
+    // the countdown plays out exactly as recorded.
+    gs->ship->bullets.clear();
+  }
 }
 
 GLGame *GLGame::start_replay_playback(const std::string &path) {
