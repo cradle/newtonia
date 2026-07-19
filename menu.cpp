@@ -190,14 +190,18 @@ void Menu::draw() {
       char score_buf[24], level_buf[16];
       snprintf(score_buf, sizeof(score_buf), "SCORE %u", r.score);
       snprintf(level_buf, sizeof(level_buf), "LEVEL %u", r.level);
+      // Column x's chosen so the whole row block spans symmetrically about
+      // x=0 (the worst-case row — "> CURRENT RUN" + a 6-digit score +
+      // LEVEL 99 + date — runs ~-590..610); a right-heavy set read as
+      // off-centre against the centred title.
       if (touch) {
         int cy = touch_opt_center(i, n);
-        Typer::draw(-440, cy, r.label.c_str(), 16);
+        Typer::draw(-500, cy, r.label.c_str(), 16);
         if (r.ok) {
-          Typer::draw_centered(120, cy, score_buf, 14);
-          Typer::draw(300, cy, r.date.c_str(), 12);
+          Typer::draw_centered(60, cy, score_buf, 14);
+          Typer::draw(320, cy, r.date.c_str(), 11);
         } else {
-          Typer::draw_centered(205, cy, "OLDER VERSION", 14);
+          Typer::draw_centered(145, cy, "OLDER VERSION", 14);
         }
         continue;
       }
@@ -206,13 +210,13 @@ void Menu::draw() {
       int y = (int)(band_top - (i + 0.5f) * pitch);
       std::string heading =
           std::string(replay_sel_ == i ? "> " : "  ") + r.label;
-      Typer::draw(-470, y, heading.c_str(), 14);
+      Typer::draw(-590, y, heading.c_str(), 14);
       if (r.ok) {
-        Typer::draw(-60, y, score_buf, 13);
-        Typer::draw(240, y, level_buf, 13);
-        Typer::draw(470, y, r.date.c_str(), 11);
+        Typer::draw(-180, y, score_buf, 13);
+        Typer::draw(175, y, level_buf, 13);
+        Typer::draw(410, y, r.date.c_str(), 10);
       } else {
-        Typer::draw(-60, y, "OLDER VERSION", 13);
+        Typer::draw(-180, y, "OLDER VERSION", 13);
       }
     }
     if (touch) {
