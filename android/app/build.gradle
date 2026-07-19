@@ -68,4 +68,8 @@ dependencies {
     // stdlib artifact to one version (the 1.8 -jdk8 artifact is an empty
     // relocation shim, so the duplicates vanish).
     implementation platform('org.jetbrains.kotlin:kotlin-bom:1.8.22')
+    // Deferred deep link (task #145): reads the Play Store install
+    // referrer on first launch so a join link's room code survives the
+    // store install (NewtoniaActivity.checkInstallReferrer).
+    implementation 'com.android.installreferrer:installreferrer:2.2'
 }
