@@ -1218,6 +1218,21 @@ bool Ship::kill_stop() {
   return false;
 }
 
+void Ship::quiet_unspawn() {
+  alive = false;
+  invincible = false;
+  velocity.zero();
+  thrusting = false;
+  reversing = false;
+  rotation_direction = NONE;
+  still_rotating_left = false;
+  still_rotating_right = false;
+  bullets.clear();  // the restore's respawn-detonate flash (real bullets)
+  if(boost_sound != NULL) Mix_VolumeChunk(boost_sound, 0);
+  set_shield_hum(false);
+  stop_god_mode_music();
+}
+
 bool Ship::is_removable() const {
   return CompositeObject::is_removable() && (lives == 0) && bullets.empty();
 }

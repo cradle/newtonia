@@ -115,6 +115,12 @@ class Ship : public CompositeObject {
     // Returns whether the ship actually died (false = shield/invincible).
     bool kill_stop();
 
+    // Replay bootstrap (REPLAY.md R2): return a restore-resurrected ship to
+    // its recorded dead-in-countdown state with NONE of kill()'s theatre —
+    // no CompositeObject::explode() hull debris, no explode sound, no boom
+    // relay, no detonate flash. Initial state is state, not an event.
+    void quiet_unspawn();
+
     std::vector<Particle> bullets, mines, giga_mines, bullet_trails;
     std::vector<MissileShot> missiles;
     std::vector<Shockwave> shockwaves;

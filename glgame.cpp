@@ -4663,11 +4663,19 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
     if (!ex.alive && ship->is_alive()) {
       // Host says this ship died: explode locally too — except during the
       // replay bootstrap, where dead-in-the-spawn-countdown is initial
-      // state, not a death (a new game's restore builds the ship alive, so
-      // this "transition" fired a spawn-position explosion no real new
-      // game shows).
-      ship->kill_stop();
-      if (!replay_bootstrap_apply_) ship->detonate();
+      // state, not a death. The restore's respawn() resurrected the ship
+      // (the resume-a-save UX), so this "transition" ran the full death
+      // theatre — kill()'s hull-debris explode(), the boom sound AND the
+      // detonate flash — before a recorded first countdown that never had
+      // one. quiet_unspawn puts it back dead with none of that, and the
+      // life the resurrect burned comes back from the recorded scalars.
+      if (replay_bootstrap_apply_) {
+        ship->quiet_unspawn();
+        if (i < s.players.size()) ship->lives = s.players[i].lives;
+      } else {
+        ship->kill_stop();
+        ship->detonate();
+      }
     } else if (ex.alive && !ship->is_alive() && i < s.players.size()) {
       // Host respawned it: bring it back at the authoritative position.
       ship->respawn(grid, false);
