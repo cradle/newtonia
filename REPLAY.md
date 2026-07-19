@@ -18,21 +18,33 @@ criteria. Nothing here is built yet.
   already hardened. Cost: a few MB per long run vs tens of KB — fine.
 - **Always record, never ask.** Recording starts silently at every new solo
   game (kilobytes-per-second budget). No "save replay?" prompt anywhere.
-- **Auto-keep two local replays**: `replays/last.nrp` (rewritten with a
-  finalized header every time a game ends — game over OR abandoned to the
-  menu; a later resume of the same run reopens and continues it, see the
-  run-scoped decision below) and `replays/best.nrp` (promoted from `last` at
-  any finalize whose score beats best's header score AND the game wasn't
-  cheat-flagged — safe to promote at a non-game-over finalize because
-  run-scoping keeps `last` the whole continuous run, not a fragment; cheat
-  runs still get `last` — useful for debugging — but can never become
-  `best`).
+- **Auto-keep three local replay files**: `replays/current.nrp` — the active
+  run, appended to as it's played, and deliberately NOT offered for playback
+  (you can't watch a run you're still in; this also means its stale header
+  and open-for-append state — see the storage model — are never
+  user-visible). `replays/recent.nrp` — the most recently COMPLETED run;
+  every run lands here when it ends, cheat-flagged or not (useful for
+  debugging). `replays/best.nrp` — a copy promoted when a completed,
+  non-cheat-flagged run's final score beats best's header score.
+  **Rotation**: game over patches `current`'s header, runs the best check,
+  and renames it to `recent`. Abandon-to-menu patches the header but keeps
+  `current` in place — the run is still live and resumable. Confirming NEW
+  GAME over an existing run first rotates the old `current` into `recent`
+  as-is (an abandoned-forever run is never silently lost), then starts a
+  fresh `current`. The best check runs only where the header is known
+  accurate: at game over, and at NEW-GAME rotation of a cleanly abandoned
+  run (its header was patched at abandon). A run that CRASHED and is then
+  discarded via NEW GAME rotates into `recent` with its stale header and
+  gets NO best check — accepted limitation: promotion can't be evaluated
+  inside a de-focus window (no time budget there), and if a best-worthy run
+  crashes and the player picks NEW GAME, it's just too bad — the run itself
+  still survives in `recent`, it can only never become `best`.
 - **Replays are run-scoped, not session-scoped — resume continues the same
   replay.** A new solo game stamps a random `run_id` into both the savegame
-  (`GameState`) and the replay header. Exiting to the menu rewrites `last.nrp`
-  with a finalized header but does NOT close the run. On CONTINUE, if the loaded
-  save's `run_id` matches `last.nrp`'s, the recorder reopens that file and
-  appends — starting with a fresh keyframe as a resume seam (sim time
+  (`GameState`) and the replay header. Exiting to the menu patches
+  `current.nrp`'s header but does NOT close the run. On CONTINUE, if the
+  loaded save's `run_id` matches `current.nrp`'s, the recorder appends to
+  that file — starting with a fresh keyframe as a resume seam (sim time
   continues) — so an exit→continue cycle produces ONE continuous replay, not
   a fragment. A mismatched or absent `run_id` starts a fresh recording from
   that keyframe. This is what keeps `best.nrp` a *whole* run: without it,
@@ -79,47 +91,51 @@ records: [slot index | kind | payload] ...
 
 - Records are slot-indexed (the 10 Hz snapshot cadence), not wall-clock:
   pauses simply emit no records, so the playback timeline is pure sim time.
-- **Storage model: buffer in RAM, flush at checkpoints** (all platforms, not
-  streamed per slot). Records accumulate in an in-memory `Save::MemStream`
-  (the type netplay already builds snapshots into) during play; the whole
-  buffer — header (with final score/duration/flags) followed by all records —
-  is rewritten to `replays/*.nrp` at each checkpoint: game-over/abandon
-  (finalize), **level clear**, AND the same pause / background / focus-loss
-  points the savegame already auto-saves at (on iOS this rides the same
-  `SDL_APP_WILLENTERBACKGROUND` / resign-active save hook; Android `onPause`
-  and Xbox PLM are called out under Open questions).
-  Level clear is the load-bearing one: it's already a savegame auto-save
-  point, it lands inside the frozen 5 s clear countdown / generation rebuild
-  (no combat to hitch), and it flushes proactively so the buffer is nearly
-  drained before any suspend hits — bounding the reactive pause/background/
-  suspend flush to at most one level's worth of records (this is what keeps
-  the Xbox cert window and Android `onPause` budget safe; see the flush
-  items under Open questions). Levels 1–15 all have an intro screen, and that
-  screen is the slackest window of all — the world is frozen and idle for up
-  to 5 s — so through the entire early game the flush should land on the
-  intro in preference to the bare level-clear instant, and a large write can
-  even spread across intro frames. The recorder survives the ownership
-  transfer into the `Intro` state (it's owned by `GLGame`, which the `Intro`
-  friend holds), so it's still available to flush there. From level 16 on
-  there's no new object type and hence no intro, so those levels flush at the
-  level boundary itself — the clear countdown / generation rebuild (level end
-  or start). Either way every level gets a proactive flush; the intro is just
-  the preferred, slacker host while it exists (1–15). At a few MB per long
-  run the RAM cost is negligible, and this eliminates any 10 Hz disk I/O on
-  the game thread — the mobile-overhead risk. This is what web already does
-  implicitly (its pref path IS MEMFS; syncfs→IndexedDB fires only at flush),
-  so native now matches web instead of being the odd one out. Each flush is a
-  whole-buffer rewrite, so the on-disk file is always valid and complete —
-  never a half-written trailing record. Durability equals the savegame's: a
-  hard crash loses only play since the last checkpoint (the background flush
-  covers Android's silent kill of a suspended process); the flushed file
-  stays a free crash-repro artifact up to that point.
+- **Storage model: append at checkpoints; header patched in place, never a
+  whole-file rewrite** (all platforms). Records since the last flush
+  accumulate in an in-RAM `Save::MemStream` chunk (the type netplay already
+  builds snapshots into); each checkpoint APPENDS that chunk to
+  `replays/current.nrp` and drops it from RAM. Appending bounds BOTH the
+  per-flush write and the RAM footprint to roughly one level's worth of
+  records regardless of run length — the bound that keeps the Android
+  `onPause` budget and the ~1 s Xbox suspend TCR safe (see Open questions),
+  and eliminates any 10 Hz disk I/O on the game thread. Checkpoints:
+  **level clear**, the same pause / background / focus-loss points the
+  savegame already auto-saves at (on iOS this rides the
+  `SDL_APP_WILLENTERBACKGROUND` / resign-active save hook), and run end.
+  Level clear is the load-bearing proactive one: it's already a savegame
+  auto-save point, it lands inside the frozen 5 s clear countdown /
+  generation rebuild (no combat to hitch), and it drains the buffer at every
+  level boundary so the reactive lifecycle appends stay tiny. Levels 1–15
+  all have an intro screen — the world frozen and idle for up to 5 s, the
+  slackest window of all — so through the early game the flush should land
+  on the intro in preference to the bare level-clear instant (the recorder
+  survives the ownership transfer into the `Intro` state — it's owned by
+  `GLGame`, which the `Intro` friend holds — so it's available to flush
+  there). From level 16 on there's no new object type and hence no intro, so
+  those levels flush at the level boundary itself. Web appends to MEMFS and
+  fires `FS.syncfs`→IndexedDB at the same checkpoints.
+  **The header goes stale between patches — by design.** It is written once
+  at file creation (`run_id` and date are immutable from then on); its
+  fixed-size tail fields (score, duration, flags, generation) are patched in
+  place only at game over or a clean abandon-to-menu — both outside any
+  lifecycle time budget. Between patches the header understates the records
+  behind it. That is acceptable because `current.nrp` is never offered for
+  playback (three-file decision above): the only readers of a stale-header
+  file are the resume path (which needs only the immutable `run_id`) and
+  crash recovery. File validity comes from self-delimiting records, not
+  rewrite atomicity — a flush cut mid-append leaves a truncated final record
+  the reader detects and drops (R2's reader needs truncation tolerance for
+  crash artifacts regardless). Durability equals the savegame's: a hard
+  crash loses only records since the last checkpoint (the background append
+  covers Android's silent kill of a suspended process), and the surviving
+  file is a free crash-repro artifact up to that point.
 - **Resumed games work naturally**: the first record is always a keyframe
   (full world state), exactly like a rejoining net client's bootstrap. A
   resume *within the same run* (the save's `run_id` still matches
-  `last.nrp`'s) appends that keyframe as a seam to the existing file so the
-  replay stays continuous across exit→continue; a resume whose `run_id` no
-  longer matches (e.g. `last.nrp` was already rotated or belongs to a
+  `current.nrp`'s) appends that keyframe as a seam to the existing file so
+  the replay stays continuous across exit→continue; a resume whose `run_id`
+  no longer matches (e.g. `current.nrp` was already rotated or belongs to a
   different run) starts a fresh recording from that keyframe.
 
 ## Milestones
@@ -128,9 +144,9 @@ records: [slot index | kind | payload] ...
 `replay.h/cpp`: a `ReplayRecorder` owned by GLGame (records every solo game,
 cheat-flagged or not). Hooks: the 10 Hz slot cadence calls the same
 keyframe/delta builders `net_host_send_snapshot` uses, but appends the record
-to the recorder's in-RAM `Save::MemStream` buffer (see the storage model
-under File format) instead of sending it — the buffer is flushed to
-`replays/*.nrp` at the checkpoints listed there, not written per slot. The
+to the recorder's in-RAM `Save::MemStream` chunk (see the storage model
+under File format) instead of sending it — the chunk is appended to
+`current.nrp` at the checkpoints listed there, not written per slot. The
 snapshot builders move behind a small seam so host-send and recorder share
 them (they must never fork).
 - **EV capture needs its own tee — the net outbox does not exist offline.**
@@ -144,19 +160,22 @@ them (they must never fork).
   wiring, not a footnote — EVENTS records depend on it.
 - A new game stamps a random `run_id` into `GameState` (append-only field,
   version bump) and the replay header; on resume the recorder reads the
-  save's `run_id` and, if it matches `last.nrp`'s, reopens that file (loading
-  it into the buffer) and appends a resume-seam keyframe instead of starting
-  fresh — so exit→continue stays one file. (`run_id` rides `serialize_game`,
-  so it also appears in net snapshots — harmless, but `net_apply_state` must
-  tolerate the new field per the savegame append-only convention.)
-Finalize from game over and `~GLGame`; rotate last→best per the rules above.
-**Exit**: headless driver plays a scripted run; asserts `last.nrp` exists,
-header fields match the run (score/generation/duration), a higher-scoring
-second run promotes `best.nrp`, a cheat-flagged run does not, an abandoned
-run still writes `last`, and an exit-to-menu-then-CONTINUE of the same save
-yields a SINGLE continuous `last.nrp` (one `run_id`, a seam keyframe at the
-resume point, gens from before and after the exit both present) whose header
-score reflects the whole run.
+  save's `run_id` and, if it matches `current.nrp`'s, appends to that file
+  starting with a resume-seam keyframe instead of starting fresh — so
+  exit→continue stays one file. (`run_id` rides `serialize_game`, so it also
+  appears in net snapshots — harmless, but `net_apply_state` must tolerate
+  the new field per the savegame append-only convention.)
+Run end (game over and `~GLGame`) patches the header and rotates
+current→recent (+ the best check) per the rules above.
+**Exit**: headless driver plays a scripted run; asserts a completed run
+rotates into `recent.nrp` with header fields matching the run
+(score/generation/duration), a higher-scoring second run promotes
+`best.nrp`, a cheat-flagged run does not, an abandoned run keeps a resumable
+`current.nrp` (and a subsequent NEW GAME rotates it into `recent.nrp`), and
+an exit-to-menu-then-CONTINUE of the same save yields a SINGLE continuous
+file (one `run_id`, a seam keyframe at the resume point, gens from before
+and after the exit both present) whose patched header score reflects the
+whole run.
 
 ### R2 — playback
 `GLGame` gains a `NetReplay` mode: `tick_net_client`'s apply/extrapolate
@@ -166,7 +185,19 @@ honours the recorded player count** (header field): a 1-player replay renders
 a single viewport following P1 via the spectator-flow camera; a 2-player
 replay reuses GLGame's existing split-screen — the same two viewports the
 game rendered while playing — each following its own ghost ship (no
-authoritative/local distinction; both are file-driven). HUD: REPLAY
+authoritative/local distinction; both are file-driven). Two reuse caveats,
+verified in code: (1) `net_apply_state` special-cases the local ship — pose
+blended toward the snapshot instead of snapped, and local-ship bullets are
+client-owned (wiped on rollover, never applied from snapshots) — so
+NetReplay must route EVERY ship, including P1's bullets, through the
+remote-snap path. (2) NetReplay must be a DISTINCT `net_mode_` value, not
+NetClient: `net_apply_state`'s generation-rollover block unlocks
+achievements (`coop_clear` et al.) when `net_mode_ == NetClient`, and
+watching a replay must never earn — ghosts also carry
+`is_local_player = false`, keeping every kill-credit path inert. The file
+reader tolerates a truncated final record AND a header staler than the
+records behind it (both are legal artifacts of the append model — crash
+files and un-patched headers). HUD: REPLAY
 watermark + elapsed/total time. Controls: pause key pauses, `=`/`-` adjust
 playback speed (no cheat flag in replay mode), Esc/back exits to the menu.
 No rewind in v1; fast-forward covers seeking at these run lengths.
@@ -176,10 +207,12 @@ plays back in split-screen with both ghosts moving; speed keys and exit
 verified.
 
 ### R3 — REPLAYS menu
-Menu row REPLAYS (hidden while no `.nrp` exists) → list screen: LAST RUN /
-BEST RUN rows showing score, level reached, date; Esc/B backs out; touch
-gets tap bands. Selecting a row starts R2 playback. Version-mismatched
-files render as unselectable "OLDER VERSION" rows.
+Menu row REPLAYS (hidden while neither `recent.nrp` nor `best.nrp` exists)
+→ list screen: LAST RUN (`recent.nrp`) / BEST RUN (`best.nrp`) rows showing
+score, level reached, date; `current.nrp` is never listed (the active run
+isn't watchable — three-file decision). Esc/B backs out; touch gets tap
+bands. Selecting a row starts R2 playback. Version-mismatched files render
+as unselectable "OLDER VERSION" rows.
 **Exit**: keyboard, controller (shared nav translator), and touch all drive
 list → playback → back-out; verified headless + on-device.
 
@@ -206,37 +239,37 @@ R4's field.
   generation on a low-end Android device. Reuse the buffers across slots
   rather than reallocating; netplay already runs this exact serialize 10 Hz
   while hosting on mobile, so the ceiling is known-acceptable.
-- Checkpoint-flush latency: the buffer→disk write is now a single multi-MB
-  blob at finalize / pause / focus-loss, so it must be profiled at a
-  marathon-run buffer size (worst case) to confirm it (a) doesn't hitch the
-  frame it lands on, and (b) on Android completes inside the `onPause`/
-  `onStop` budget before the OS suspends the process — a flush that doesn't
-  finish loses the run it was meant to save. If either fails: cap the
-  per-flush size by writing only records appended since the last checkpoint
-  (high-water mark → append, not full rewrite), and/or move the write to a
-  background thread joined before the lifecycle callback returns. Measure
-  before relying on the pause/background flush for durability.
-- **Xbox certification tightens the above into a hard rule.** If the recorder
-  is reused on Xbox/GDK it flushes through the same `focus_lost()` hook the
-  PLM suspend callback already calls (`xbox_main.cpp:171-177`:
-  `plm_suspend_callback` → `focus_lost()` → `XSuspendResumeAcknowledge`), so
-  the flush runs *before the ack*, inside the certified suspend budget (~1 s
-  TCR — formally tested, and the title is TERMINATED, not merely hitched, on
-  overrun). A background thread doesn't rescue this: once acknowledged the OS
-  suspends the process, so any write must COMPLETE before the ack, not
-  outlive it. So on Xbox the suspend-path flush must be bounded small:
-  append-only-since-last-checkpoint (the whole-buffer rewrite is banned from
-  the suspend path), kept tiny by flushing at cheaper in-game checkpoints
-  (pause menu open, level clear) so the suspend delta is a handful of
-  records. Quick Resume (constrained mode) snapshots the whole process RAM,
-  so the in-RAM buffer survives a Quick-Resumed suspend with NO disk flush at
-  all — only a true termination needs the on-disk copy — but since the title
-  can't tell which it will get, the bounded append is still required.
-  Cross-reference `xbox/PORT_PLAN.md` (the existing "suspend completes within
-  the time budget" verification item).
-- Whether `last.nrp` should survive an immediate quit-at-menu with zero
-  sim ticks (proposal: no — reuse the save_dirty_ idea: don't finalize a
-  recording with no delta records).
+- Checkpoint-flush latency: the append model bounds every lifecycle flush to
+  roughly one level's worth of records by construction, so the open item is
+  confirmation, not design: profile the bounded append on-device to check it
+  (a) doesn't hitch the frame it lands on and (b) on Android completes
+  inside the `onPause`/`onStop` budget before the OS suspends the process —
+  a flush that doesn't finish loses the records it was appending (the file
+  stays valid; the reader drops the truncated tail). The header patch +
+  current→recent rotation happen only at game over / in the menu, outside
+  any lifecycle budget, so marathon-run file size never meets a de-focus
+  window.
+- **Xbox certification is why the append rule is global, not an
+  optimisation.** On Xbox/GDK the recorder flushes through the same
+  `focus_lost()` hook the PLM suspend callback already calls
+  (`xbox_main.cpp:171-177`: `plm_suspend_callback` → `focus_lost()` →
+  `XSuspendResumeAcknowledge`), so the flush runs *before the ack*, inside
+  the certified suspend budget (~1 s TCR — formally tested, and the title is
+  TERMINATED, not merely hitched, on overrun). A background thread doesn't
+  rescue this: once acknowledged the OS suspends the process, so the write
+  must COMPLETE before the ack, not outlive it. The bounded append (kept
+  tiny by the proactive level-clear/intro checkpoints) is what fits that
+  window. Quick Resume (constrained mode) snapshots the whole process RAM,
+  so the un-flushed chunk survives a Quick-Resumed suspend even with no disk
+  write — only a true termination needs the on-disk copy — but since the
+  title can't tell which it will get, the append still runs. Cross-reference
+  `xbox/PORT_PLAN.md` (the existing "suspend completes within the time
+  budget" verification item).
+- Whether a run with zero sim ticks should leave a replay (proposal: no — a
+  flush with no new records is a no-op, and a `current.nrp` containing no
+  DELTA records is never rotated into `recent`; that covers
+  new-game-instant-quit, and a resume-then-instant-quit appends nothing, so
+  the existing file — and the run it holds — is left exactly as it was).
 - Cap on file size for marathon runs (proposal: none locally; the
   leaderboard submission path can cap/reject server-side).
 - **Maybe: an "Auto-record replays" toggle on the Options screen** (not
