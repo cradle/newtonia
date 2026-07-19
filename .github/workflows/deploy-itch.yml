@@ -1,19 +1,15 @@
 name: Deploy Itch.io
 
-# v*.*.* tags push the public html5 channel; netplay-v* tags (netplay test
-# releases) push a separate html5-netplay channel so the public game is
-# untouched.
+# v*.*.* tags (or manual dispatch) push two builds: the public html5
+# channel (netless — pricing decision in NETPLAY.md) and the netplay-ON
+# build to the purchase-gated newtonia-online project. (The netplay-v*
+# test namespace and its html5-netplay channel retired post-launch —
+# task #157.)
 on:
   push:
     tags:
       - 'v*.*.*'
-      - 'netplay-v*'
   workflow_dispatch:
-    inputs:
-      channel:
-        description: 'itch.io channel (e.g. html5, html5-netplay)'
-        required: true
-        default: 'html5'
 
 jobs:
   deploy-itch:
@@ -39,31 +35,15 @@ jobs:
           ~/emsdk/emsdk install latest
           ~/emsdk/emsdk activate latest
 
-      - name: Pick itch channel
-        id: chan
-        run: |
-          CHANNEL="${{ github.event.inputs.channel }}"
-          if [ -z "$CHANNEL" ]; then
-            case "${{ github.ref_name }}" in
-              netplay-*) CHANNEL=html5-netplay ;;
-              *)         CHANNEL=html5 ;;
-            esac
-          fi
-          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
-
       - name: Build WebAssembly
         run: |
           source ~/emsdk/emsdk_env.sh
           emcc --version
-          # The FREE release channel ships netplay force-disabled
+          # The FREE public channel ships netplay force-disabled
           # permanently (pricing decision in NETPLAY.md: paid on
           # Steam/iOS, browser co-op is the paid newtonia-online
-          # project below); the netplay test channel keeps it on.
-          if [ "${{ steps.chan.outputs.channel }}" = "html5-netplay" ]; then
-            make web
-          else
-            make web NETPLAY=0
-          fi
+          # project below).
+          make web NETPLAY=0
 
       - name: Install butler
         run: |
@@ -80,7 +60,7 @@ jobs:
           # Upload only the playable game (web/dist/play), not the landing
           # page that web/dist serves at the root of the GitHub Pages site.
           linux-amd64/butler push web/dist/play \
-            ${{ secrets.ITCH_GAME }}:${{ steps.chan.outputs.channel }} \
+            ${{ secrets.ITCH_GAME }}:html5 \
             --userversion "${{ github.ref_name || github.sha }}"
 
       # Paid web co-op (task #156): every public release also ships the
@@ -88,18 +68,15 @@ jobs:
       # itch is the accounts system, so only buyers get the embed. The
       # free public page above stays NETPLAY=0 by the pricing decision in
       # NETPLAY.md (paid on Steam/iOS; free browser co-op would undercut
-      # them). The netplay-v* test cycle (html5-netplay) never touches
-      # the paid project. Same origin allowlist covers both projects
+      # them). Same origin allowlist covers both projects
       # (metonymous.itch.io + the itch.zone/hwcdn iframe hosts).
       - name: Build WebAssembly (netplay, paid online project)
-        if: steps.chan.outputs.channel == 'html5'
         run: |
           source ~/emsdk/emsdk_env.sh
           make web-clean
           make web
 
       - name: Push to itch.io (paid online project)
-        if: steps.chan.outputs.channel == 'html5'
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_CREDENTIALS }}
           ITCH_GAME: ${{ secrets.ITCH_GAME }}
