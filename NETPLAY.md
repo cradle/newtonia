@@ -362,10 +362,17 @@ and configuration, not engineering. Order matters only where noted.
       Steam↔Android host/client verified live, including the join
       link on Android**; App Store build in review. Channel promotion
       proceeds per platform.
-- [ ] Post-release: watch `wrangler tail` for room/TURN errors the first
-      days; retire the netplay test pipeline (task #157 — netplay-v*
-      tags, Steam `netplay` branch, itch `html5-netplay`,
-      tag-netplay.yml).
+- [x] Post-release: netplay test pipeline RETIRED (task #157,
+      2026-07-18): netplay-v* tag globs removed from all four deploy
+      workflows (deploy-itch's channel picker collapsed — html5 +
+      the paid newtonia-online push are all that remain),
+      tag-netplay.yml deleted, docs updated. Historical netplay-v*
+      tags stay in the repo as inert history. GLENN's portal halves:
+      hide/retire the Steam `netplay` branch in Steamworks, delete
+      the itch `html5-netplay` channel/upload (already hidden), and
+      revoke + delete the NETPLAY_TAG_TOKEN repo secret. Future test
+      builds go via manual workflow dispatch. Continue watching
+      `wrangler tail` casually for the first days.
 
 ## Where things stand (2026-07-08 handoff)
 

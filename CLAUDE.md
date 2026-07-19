@@ -156,7 +156,7 @@ make web        # Build WebAssembly output to web/dist/
 make web-clean  # Remove web build artifacts
 ```
 
-`make web NETPLAY=0` force-disables netplay in the web build (`-DNEWTONIA_NET_DISABLED`: ONLINE row hidden, `?code=` invite codes drained and dropped, transport/signal factories return null — the signaling Worker and TURN are never contacted; the backend still compiles, so the source set is unchanged). **The PUBLIC web deploys build this way** — web.yml (GitHub Pages) and deploy-itch's release `html5` channel — until live Worker/TURN usage is understood; the `html5-netplay` test channel builds with netplay on.
+`make web NETPLAY=0` force-disables netplay in the web build (`-DNEWTONIA_NET_DISABLED`: ONLINE row hidden, `?code=` invite codes drained and dropped, transport/signal factories return null — the signaling Worker and TURN are never contacted; the backend still compiles, so the source set is unchanged). **The PUBLIC web deploys build this way** — web.yml (GitHub Pages) and deploy-itch's `html5` channel — permanently, by the pricing decision in NETPLAY.md (browser co-op is the paid `newtonia-online` itch project, which deploy-itch builds netplay-ON).
 
 Requires Emscripten (`emcc`) and TypeScript compiler (`tsc`) on PATH. The web frontend is TypeScript: `tsc -p web/tsconfig.json` compiles `web/main.ts`; `web/shell.html` is the Emscripten shell file. The build links `-lidbfs.js` for IndexedDB persistence and preloads audio assets (`--preload-file audio@audio`). `web_main.cpp` mounts IDBFS asynchronously and only starts the game loop after `web_on_idb_ready()` fires from JS.
 
@@ -473,8 +473,8 @@ GitHub Actions runs builds on every push to `master`/`main` and on PRs (feature 
 | `.github/workflows/xbox-dev.yml` | GDK Desktop (Gaming.Desktop.x64) build — catches Xbox-port compile errors without hardware |
 | `.github/workflows/xbox-console-smoke.yml` | Compile-only check of the `_GAMING_XBOX` console paths with MSVC under `WINAPI_FAMILY_GAMES` (no GDKX/NDA material; GDK-only headers stubbed in `xbox/smoke_stubs/`) |
 
-**Deployment workflows** (triggered by version tags or manual dispatch). Two tag namespaces: `v*.*.*` is the normal release pipeline; `netplay-v*` is a netplay test release routed to test channels (Steam `netplay` branch, itch `html5-netplay` channel; TestFlight/Play-internal are test tracks either way). The globs can't overlap, so netplay tags never touch the normal pipeline:
-- `.github/workflows/deploy-steam.yml` — Steam (Windows/macOS/Linux via Steamworks SDK); manual dispatch defaults to `beta`, `v*.*.*` tags go to `beta`, `netplay-v*` tags to `netplay`
+**Deployment workflows** (triggered by `v*.*.*` version tags or manual dispatch; the old `netplay-v*` test namespace was retired post-launch — historical `netplay-v*` tags remain in the repo but trigger nothing):
+- `.github/workflows/deploy-steam.yml` — Steam (Windows/macOS/Linux via Steamworks SDK); tags and the manual-dispatch default both go to the `beta` branch
 - `.github/workflows/deploy-ios.yml` — TestFlight
 - `.github/workflows/deploy-android.yml` — Play Store
 - `.github/workflows/deploy-itch.yml` — Itch.io (pushes only the playable game `web/dist/play`, not the landing page)
