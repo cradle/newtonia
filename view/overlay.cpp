@@ -7,7 +7,9 @@
 #include "../typer.h"
 #include "../ship.h"
 #include "../touch_controls.h"
+#include "../preferences.h"
 #include "../replay.h"
+#include <cctype>
 
 #include "../gl_compat.h"
 #include "../mat4.h"
@@ -59,6 +61,30 @@ void Overlay::replay_hud(const GLGame *glgame) {
            (elapsed_ms / 1000) % 60, total_ms / 60000,
            (total_ms / 1000) % 60);
   Typer::draw_centered(0, -vh + 30, text, 14);
+
+  // On-screen controls. Touch: real tap targets (one definition with the
+  // hit-tests in GLGame::touch_tap — the TapBand rule). Desktop/controller:
+  // a dim hint line above the timeline, built from the live bindings.
+  if (is_touch_mode()) {
+    TapBand::replay_slower.draw("SLOWER");
+    TapBand::replay_pause.draw(glgame->running ? "PAUSE" : "RESUME");
+    TapBand::replay_faster.draw("FASTER");
+    TapBand::return_to_menu.draw("RETURN TO MENU", now);
+  } else {
+    bool has_ctrl = false;
+    int nc = SDL_NumJoysticks();
+    for (int i = 0; i < nc; i++)
+      if (SDL_IsGameController(i)) { has_ctrl = true; break; }
+    if (has_ctrl) {
+      snprintf(text, sizeof(text), "START PAUSE   B MENU");
+    } else {
+      const GeneralKeys &gk = g_prefs.general_keys;
+      snprintf(text, sizeof(text), "%c PAUSE   %c/%c SPEED   ESC MENU",
+               toupper(gk.pause), (char)gk.time_speed_up,
+               (char)gk.time_slow_down);
+    }
+    Typer::draw_centered(0, -vh + 62, text, 9);
+  }
 
   if (glgame->replay_finished_ && !glgame->game_over && (now / 700) % 2 == 0)
     Typer::draw_centered(0, -80,

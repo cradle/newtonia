@@ -36,6 +36,11 @@ struct TapBand {
   // The universal bottom exit strip: drawn by the in-game overlay and
   // the lobby, hit-tested by GLGame::touch_tap and NetLobby::touch_tap.
   static const TapBand return_to_menu;
+
+  // Replay playback controls (REPLAY.md R3): a three-way strip stacked
+  // above the exit band — SLOWER | PAUSE/RESUME | FASTER. Drawn by
+  // Overlay::replay_hud, hit-tested by GLGame::touch_tap in NetReplay.
+  static const TapBand replay_slower, replay_pause, replay_faster;
 };
 
 #endif

@@ -272,6 +272,13 @@ as an unselectable OLDER VERSION row, and a selection whose file changed
 underneath (rotated/deleted) rescans instead of crashing. Selecting a row
 hands the state to `start_replay_playback` (R2); Esc from playback lands
 back on the menu. Exit criteria enforced by `test/e2e/replay_menu.sh`.
+Playback gained on-screen controls: touch gets real tap targets (SLOWER |
+PAUSE/RESUME | FASTER stacked above the labeled RETURN TO MENU band, the
+TapBand one-definition rule), desktop/controller a dim hint line above the
+timeline built from the live bindings ("P PAUSE  =/- SPEED  ESC MENU" /
+"START PAUSE  B MENU"). Rewind stays out per the v1 decision, but the
+format's keyframe seek makes a "jump back 10 s" control a bounded add-on
+(restart the reader, apply silently to the target slot) if wanted later.
 Menu row REPLAYS (hidden while no `.nrp` exists) → list screen: CURRENT RUN
 (`current.nrp`, shown while a resumable run exists), LAST RUN
 (`recent.nrp`), and BEST RUN (`best.nrp`) rows showing score, level

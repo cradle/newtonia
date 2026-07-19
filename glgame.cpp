@@ -7226,13 +7226,25 @@ void GLGame::touch_tap(float nx, float ny) {
   // shared TapBand). It exits to the menu from every state that has no
   // other touch exit: GAME OVER, the pause screen, and — online — a
   // local ship that's fully out while the peer plays on.
-  if (!TapBand::return_to_menu.contains(nx, ny)) return;
-  // Replay playback: the band always exits (there is no other touch exit,
-  // and nothing in a replay needs protecting from an accidental tap).
+  // Replay playback controls (labels drawn by Overlay::replay_hud — the
+  // TapBand rule: one definition for text and hit-test).
   if (net_mode_ == NetReplay) {
-    request_state_change(new Menu());
+    if (TapBand::replay_pause.contains(nx, ny)) { toggle_pause(); return; }
+    if (TapBand::replay_slower.contains(nx, ny)) {
+      if (replay_speed_ > 0.26f) replay_speed_ *= 0.5f;
+      return;
+    }
+    if (TapBand::replay_faster.contains(nx, ny)) {
+      if (replay_speed_ < 4.0f) replay_speed_ *= 2.0f;
+      return;
+    }
+    // The exit band always exits (nothing in a replay needs protecting
+    // from an accidental tap).
+    if (TapBand::return_to_menu.contains(nx, ny))
+      request_state_change(new Menu());
     return;
   }
+  if (!TapBand::return_to_menu.contains(nx, ny)) return;
   bool all_game_over = !players->empty();
   for (auto *glship : *players) {
     if (glship->ship->is_alive() || glship->ship->lives > 0) {
