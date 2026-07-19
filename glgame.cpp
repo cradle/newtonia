@@ -2418,7 +2418,16 @@ void GLGame::replay_start() {
   if (replay_resume_candidate_) {
     Replay::Header h;
     resumed = Replay::read_header(Replay::current_path(), h) &&
-              h.run_id == run_id_;
+              h.run_id == run_id_ &&
+              // Version fence: the reader parses EVERY record with the
+              // header's save_version, so appending this build's records to
+              // a file serialized under an older savegame format would mix
+              // versions it can't distinguish — the appended tail would
+              // silently drop on playback. A version-bumped build starts a
+              // fresh recording instead; the old segment rotates into
+              // recent, still watchable best-effort (REPLAY.md seasons).
+              h.save_version == Save::GameState::VERSION &&
+              h.format_version == Replay::Header::FORMAT_VERSION;
   }
   if (!resumed) Replay::on_new_game();
   replay_ = new Replay::Recorder(run_id_, (uint8_t)players->size(), resumed);

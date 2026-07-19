@@ -66,11 +66,14 @@ echo "===== S2: playback at 1x — world unfolds, pause survives, Esc exits ====
 P=$(launch_playback play1); sleep 2; W=$(win)
 wait_log play1 "replay: playback started" 10 || fail "S2: playback never started"
 sleep 1;  shot "$W" play-t1
-sleep 3;  shot "$W" play-t2
-key "$W" p; sleep 1; key "$W" p                 # pause / unpause
-sleep 3;  shot "$W" play-t3
+sleep 2;  shot "$W" play-t2
+sleep 2;  shot "$W" play-t3
 cmp -s "$OUT/play-t1.png" "$OUT/play-t2.png" && fail "S2: t1==t2 (world frozen?)"
 cmp -s "$OUT/play-t2.png" "$OUT/play-t3.png" && fail "S2: t2==t3 (world frozen?)"
+# Pause/unpause after the motion assertions (a lost unpause key used to
+# freeze the world between screenshot pairs — flake); a genuinely stuck
+# pause is still caught: "playback finished" below never arrives.
+key "$W" p; sleep 1; key "$W" p
 wait_log play1 "replay: playback finished" $(( DUR_MS / 1000 + 15 )) \
   || fail "S2: playback never finished"
 alive $P play1
