@@ -352,7 +352,8 @@ GLGame::~GLGame() {
     net_invite_advertised_ = false;
     NET_LOG("net: invite - room no longer joinable (game teardown)\n");
   }
-  if (net_mode_ == NetClient) Ship::net_quiet_respawn = false;
+  if (net_mode_ == NetClient || net_mode_ == NetReplay)
+    Ship::net_quiet_respawn = false;
   if (net_mode_ == NetHost) Ship::net_report_bounces = false;
   // Leaving an online game: tell the peer (best effort — a hard close is
   // also detected via the channel-close path).
@@ -2566,6 +2567,13 @@ void GLGame::replay_finish(bool ended) {
 GLGame::GLGame(const Save::GameState &snapshot, Replay::Reader *reader)
   : GLGame(snapshot, (SDL_GameController *)NULL) {
   net_mode_ = NetReplay;
+  // Quiet restores, exactly like the net client: every 10 Hz state apply
+  // runs restore_state -> respawn -> reset(), and an un-quiet reset()
+  // CLEARS the presentation vectors — the received lance pulses, shock
+  // bolts and shockwave rings the REC_EFFECT records just pushed died
+  // within 100 ms of appearing (sound played, flash never drew — Glenn),
+  // and impact debris froze the same way the client comment describes.
+  Ship::net_quiet_respawn = true;
   replay_reader_ = reader;
   replay_save_version_ = reader->header().save_version
                              ? reader->header().save_version
