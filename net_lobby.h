@@ -25,6 +25,7 @@
 #include <string>
 #include <vector>
 
+#include "net_lan.h"
 #include "net_session.h"
 #include "state.h"
 
@@ -93,6 +94,15 @@ private:
   void picker_move(int dx, int dy);
   void controller_confirm();  // A / right trigger
   void draw_picker();
+  // LAN play (net_lan.h; NETPLAY.md "LAN is not a mode"): the host's
+  // lobby always beacons + serves the manual INVITE blob over TCP as a
+  // second door beside the relay; the joiner's CodeEntry lists beaconing
+  // hosts above the code field. Whichever door's joiner completes first
+  // takes the co-op slot.
+  void lan_host_update(int delta);
+  void lan_join_update(int delta);
+  void lan_join_selected();
+  void lan_teardown();
 public:
   // M3-1 auto-rejoin: skip Choose and join the known room immediately.
   explicit NetLobby(const std::string &rejoin_code);
@@ -157,6 +167,17 @@ private:
   // controller input while up, so an event proves it was dismissed).
   bool floating_kb_up_ = false;
   int picker_index_ = 0;
+
+  // LAN state. lan_transport_ is the host's LAN-door peer connection
+  // (no STUN, non-trickle) — the relay keeps its own transport_ so an
+  // SDP is never answered twice across the two doors.
+  NetLan::Announce lan_announce_;
+  NetLan::Browse lan_browse_;
+  NetTransport *lan_transport_ = nullptr;
+  bool lan_offer_set_ = false;   // offer blob handed to the announcer
+  int lan_sel_ = -1;             // CodeEntry host row (-1 = code field)
+  bool lan_joining_ = false;     // joiner committed to a LAN host
+  std::string lan_host_name_;    // the host we committed to (for draw)
 
   int currentTime;
   WrappedPoint viewpoint;

@@ -155,6 +155,23 @@ Estimate: desktop-first a couple of days including lobby UX + e2e;
 each mobile backend ~a day, mostly permission plumbing. Deck LAN
 parties are the killer use case.
 
+**Round 1 LANDED (2026-07-19, task #159)**: `net_lan.h/cpp` (seam-style:
+real UDP-beacon + non-blocking TCP blob exchange on desktop native,
+no-op stubs elsewhere; same-machine duplicate beacons deduped by
+name+port), `NetTransport::set_lan_only` (zero ICE servers — gathering
+is instant, no offline STUN wait), and the NetLobby two-door wiring
+(host always beacons beside the relay, "VISIBLE ON THIS NETWORK" /
+"A LAN PLAYER IS CONNECTING" lines; joiner rows on CodeEntry with
+arrow-key selection below the code field — keyboard flow only this
+round, controller picker + touch band are later rounds; the LAN winner
+closes the relay room). Verified by `test/e2e/lan.sh`: dead signal
+URL, discovery at t=0, 15 ms blob exchange, `ice path host/prflx`
+(zero servers), client bootstrap + gameplay; room.sh regression green
+against the production relay. Known round-2+ items: controller/Deck
+row navigation, touch band (mobile phase), mid-game re-beacon on peer
+loss + LAN rejoin by rediscovery, an Options LAN-visibility toggle if
+anyone minds the hostname broadcast.
+
 ## Protocol quick-ref
 
 Header: `uint8 proto_ver(=1) | uint8 msg_type | uint8 player_id | uint8 reserved`, little-endian, explicit byte packing.

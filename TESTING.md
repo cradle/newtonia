@@ -80,6 +80,12 @@ cd signal && npx wrangler dev --local --port 8787 &         # relay
 make clean && make -j                                       # netplay build (default)
 
 test/e2e/room.sh     # connect via room code, 3 level skips, both fire 8s
+test/e2e/lan.sh      # LAN play, NO relay: dead signal URL -> host beacons +
+                     # manual fallback, joiner discovers on CodeEntry
+                     # (loopback beacon), arrow-selects, blob exchange over
+                     # TCP, host-candidate session to bootstrap. Uses a
+                     # private NEWTONIA_LAN_PORT so parallel runs (or a
+                     # real session) don't cross-beacon.
 test/e2e/rejoin.sh   # SIGKILL joiner mid-game -> auto-pause -> rejoin -> resume
 test/e2e/impacts.sh  # gen-3 spin-and-fire: joiner detects cosmetic impacts locally
 test/e2e/ownroom.sh  # shared-prefs auto-join probe (mac host+client on one box)

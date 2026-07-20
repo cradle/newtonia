@@ -238,6 +238,7 @@ NetLobby::~NetLobby() {
   // menu): no longer joinable — the co-op slot is full or gone. A no-op if we
   // never advertised (joiner, or non-Steam build).
   Invites::clear_joinable();
+  lan_teardown();  // beacon/browse sockets + the LAN door's transport
   delete session_;  // closes + deletes the transport it owns
   if (!session_ && transport_) {
     transport_->close();
@@ -278,6 +279,8 @@ void NetLobby::reset_to_choose() {
   connect_wait_ms_ = 0;
   rejoin_mode_ = false;  // a manual retry is a fresh join, not a rejoin
   rejoin_retry_ms_ = 0;
+  lan_teardown();  // re-picking HOST/JOIN re-opens the LAN door fresh
+  lan_host_name_.clear();
   screen_ = Choose;
 }
 
@@ -310,6 +313,18 @@ void NetLobby::confirm() {
     if (signal_) transport_->set_trickle(true);
     if (hosting_) {
       Presence::set_hosting();  // "Hosting a Co-Op Game" in the friends list
+      // LAN door (NETPLAY.md "LAN is not a mode"): beacon + serve the
+      // manual INVITE blob over TCP from its own no-STUN transport,
+      // unconditionally beside the relay flow. Offline this is what
+      // still works; online it's the couch shortcut.
+      if (NetLan::available() && lan_announce_.start(NetLan::local_host_name())) {
+        lan_transport_ = NetTransport::create();
+        if (lan_transport_) {
+          lan_transport_->set_lan_only(true);
+          lan_transport_->set_trickle(false);
+          lan_transport_->start_host();
+        }
+      }
       if (signal_) {
         // start_host() waits for the Room frame: the relay sends the TURN
         // credentials first, and ICE servers bind at pc creation.
@@ -322,6 +337,7 @@ void NetLobby::confirm() {
       }
     } else {
       Presence::set_joining();  // "Joining a Co-Op Game"
+      if (NetLan::available()) lan_browse_.start();
       if (signal_) {
         screen_ = CodeEntry;
         floating_kb_up_ = code_entry_keyboard(true);
@@ -373,6 +389,128 @@ void NetLobby::fall_back_to_manual(const char *why) {
   if (transport_) transport_->set_trickle(false);
   if (hosting_ && transport_) transport_->start_host();  // was deferred
   screen_ = hosting_ ? HostGathering : JoinWaitOffer;
+}
+
+// Close the LAN door: the co-op slot is spoken for (either door's joiner
+// completed, or the lobby is being torn down/reset).
+void NetLobby::lan_teardown() {
+  lan_announce_.stop();
+  lan_browse_.stop();
+  if (lan_transport_) {
+    lan_transport_->close();
+    delete lan_transport_;
+    lan_transport_ = nullptr;
+  }
+  lan_offer_set_ = false;
+  lan_joining_ = false;
+  lan_sel_ = -1;
+}
+
+// Host side of the LAN door, every tick while hosting: feed the announcer
+// the offer blob once gathering mints it, and adopt a completed joiner —
+// the LAN transport becomes THE session transport and the relay door
+// closes (its room is killed so the code dies with it).
+void NetLobby::lan_host_update(int delta) {
+  if (!lan_announce_.running()) return;
+  if (session_) {  // the relay door won while we were beaconing
+    lan_teardown();
+    return;
+  }
+  if (!lan_offer_set_ && lan_transport_ &&
+      lan_transport_->local_description_ready()) {
+    lan_announce_.set_offer_blob(
+        Net::encode_signal(true, lan_transport_->local_description()));
+    lan_offer_set_ = true;
+  }
+  std::string answer_blob;
+  if (!lan_announce_.update(delta, answer_blob)) return;
+
+  std::string sdp;
+  if (Net::decode_signal(answer_blob, sdp) != 'A' || !lan_transport_) {
+    NET_LOG("[lobby] lan answer blob invalid - ignoring\n");
+    return;
+  }
+  NET_LOG("[lobby] lan joiner completed - adopting the lan transport\n");
+  if (signal_) {
+    signal_->send_close();  // the room code is dead; kill it at the relay
+    signal_->close();
+    delete signal_;
+    signal_ = nullptr;
+  }
+  if (transport_) {
+    transport_->close();
+    delete transport_;
+    transport_ = nullptr;
+  }
+  lan_announce_.stop();
+  lan_transport_->set_remote_answer(sdp);
+  session_ = new NetSession(lan_transport_, NetSession::HostRole);
+  lan_transport_ = nullptr;  // owned by the session now
+  screen_ = WaitConnect;
+  connect_wait_ms_ = 0;
+}
+
+// Joiner side: pump discovery (and a committed exchange). The offer blob
+// arriving runs the exact manual-join machinery with the socket as the
+// clipboard; the answer goes back in tick's JoinGathering case.
+void NetLobby::lan_join_update(int delta) {
+  lan_browse_.update(delta);
+
+  // Never let a vanished row silently shift the highlight onto a
+  // different host (the mis-tap class of bug) — drop to the code field.
+  if (lan_sel_ >= (int)lan_browse_.hosts().size()) lan_sel_ = -1;
+
+  if (!lan_joining_) return;
+
+  std::string offer_blob;
+  if (lan_browse_.offer_ready(offer_blob)) {
+    std::string sdp;
+    if (Net::decode_signal(offer_blob, sdp) == 'O' && transport_) {
+      // The relay is out of the picture from here: LAN pairing is the
+      // manual flow (non-trickle, and no STUN — host candidates only).
+      if (signal_) {
+        signal_->close();
+        delete signal_;
+        signal_ = nullptr;
+      }
+      transport_->set_trickle(false);
+      transport_->set_lan_only(true);
+      transport_->start_join(Net::strip_ice_candidates(sdp));
+      screen_ = JoinGathering;
+    } else {
+      NET_LOG("[lobby] lan offer blob invalid\n");
+      lan_joining_ = false;
+      fail_headline_ = "COULD NOT JOIN THE LAN GAME";
+      screen_ = LobbyFailed;
+    }
+  }
+
+  if (lan_browse_.failed() && screen_ != LobbyFailed) {
+    lan_joining_ = false;
+    fail_headline_ = "COULD NOT JOIN THE LAN GAME";
+    set_status("THE HOST DID NOT RESPOND");
+    screen_ = LobbyFailed;
+  }
+}
+
+// A host row on CodeEntry was chosen (Enter on the highlight).
+void NetLobby::lan_join_selected() {
+  const std::vector<NetLan::HostInfo> &hosts = lan_browse_.hosts();
+  if (lan_sel_ < 0 || lan_sel_ >= (int)hosts.size()) return;
+  if (hosts[lan_sel_].proto != Net::PROTO_VERSION) {
+    set_status("DIFFERENT GAME VERSION - UPDATE BOTH GAMES");
+    return;
+  }
+  if (!lan_browse_.connect_host(lan_sel_)) {
+    set_status("COULD NOT REACH THAT HOST");
+    return;
+  }
+  lan_host_name_ = hosts[lan_sel_].name;
+  lan_joining_ = true;
+  code_entry_keyboard(false);
+  floating_kb_up_ = false;
+  screen_ = RoomJoining;
+  join_wait_ms_ = 0;
 }
 
 // The JOINER's signal path died before the room answered. The host in
@@ -650,6 +788,10 @@ void NetLobby::tick(int delta) {
 
   pump_signal(delta);
 
+  // The LAN door (no-ops where NetLan isn't available or nothing runs).
+  if (hosting_) lan_host_update(delta);
+  else lan_join_update(delta);
+
   // Trickle ICE (M3-2b): relay candidates our transport gathers to the
   // peer as they appear ("mid\ncand" strings from the backend). Only after
   // our SDP has gone out: a candidate sent BEFORE its offer is buffered by
@@ -854,7 +996,14 @@ void NetLobby::tick(int delta) {
 
     case JoinGathering:
       if (transport_ && transport_->local_description_ready()) {
-        copy_local_description();
+        if (lan_joining_) {
+          // LAN pairing: the answer rides the TCP socket, not the
+          // clipboard (lan_join_update keeps pumping the flush).
+          lan_browse_.send_answer(
+              Net::encode_signal(false, transport_->local_description()));
+        } else {
+          copy_local_description();
+        }
         status_ms_ = 0;
         screen_ = WaitConnect;
         connect_wait_ms_ = 0;
@@ -1032,6 +1181,10 @@ void NetLobby::draw() {
         lines.push_back("IT IS ON YOUR CLIPBOARD");
         lines.push_back("");
         if (blink) lines.push_back("WAITING FOR PLAYER 2");
+        if (lan_announce_.running())
+          lines.push_back(lan_announce_.peer_engaged()
+                              ? "A LAN PLAYER IS CONNECTING"
+                              : "VISIBLE ON THIS NETWORK");
       }
       break;
     case CodeEntry: {
@@ -1070,6 +1223,26 @@ void NetLobby::draw() {
           draw_picker();
         } else {
           lines.push_back("TYPE THE CODE YOUR HOST SEES");
+          // LAN host rows (round 1: keyboard flow only — the picker
+          // owns this area on controller setups, and touch defers to
+          // the mobile phase). Below the hint, clear of the header
+          // (y=320) and heading/code (200/120) above.
+          const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
+          if (!lh.empty()) {
+            Typer::draw_centered(0, -110, "ON THIS NETWORK", 12);
+            size_t show = lh.size() > 3 ? 3 : lh.size();
+            for (size_t i = 0; i < show; i++) {
+              std::string row =
+                  (lan_sel_ == (int)i ? "> " : "  ") + lh[i].name;
+              if (lh[i].proto != Net::PROTO_VERSION)
+                row += " - DIFFERENT VERSION";
+              Typer::draw_centered(0, -160.0f - (float)i * 46.0f,
+                                   row.c_str(),
+                                   lan_sel_ == (int)i ? 18 : 14);
+            }
+            Typer::draw_centered(0, -160.0f - (float)show * 46.0f,
+                                 "UP/DOWN AND ENTER TO JOIN", 10);
+          }
         }
       }
       break;
@@ -1085,6 +1258,10 @@ void NetLobby::draw() {
         snprintf(left, sizeof(left), "GIVING UP IN %d",
                  rejoin_budget_ms_ > 0 ? rejoin_budget_ms_ / 1000 + 1 : 0);
         lines.push_back(left);
+      } else if (lan_joining_) {
+        lines.push_back(("JOINING " + lan_host_name_).c_str());
+        lines.push_back("ON THIS NETWORK");
+        if (blink) lines.push_back("PLEASE WAIT");
       } else {
         lines.push_back("JOINING THE ROOM");
         if (blink) lines.push_back("PLEASE WAIT");
@@ -1100,6 +1277,10 @@ void NetLobby::draw() {
       lines.push_back("3. COPY THE REPLY, THEN PRESS V HERE");
       lines.push_back("");
       lines.push_back("C - COPY THE INVITE AGAIN");
+      if (lan_announce_.running())
+        lines.push_back(lan_announce_.peer_engaged()
+                            ? "A LAN PLAYER IS CONNECTING"
+                            : "ALSO VISIBLE ON THIS NETWORK");
       break;
     case JoinWaitOffer:
       lines.push_back("GET THE INVITE CODE FROM YOUR HOST");
@@ -1182,6 +1363,20 @@ void NetLobby::keyboard(unsigned char key, int x, int y) {
   // Touch synthesizes '\r' on finger-down too, and a full code auto-joins,
   // so Enter is meaningless there — it would only flash the length hint.
   if (is_touch_mode() && (key == '\r' || key == '\n')) return;
+  // LAN host rows: up/down moves the highlight between the discovered
+  // hosts and the code field (arrows arrive as 128+GLUT specials, which
+  // code entry ignores — the keys were free). -1 = the code field.
+  if (!is_touch_mode() && !lan_browse_.hosts().empty()) {
+    int n = (int)lan_browse_.hosts().size();
+    if (key == 128 + 101) {  // up: code field wraps to the last row
+      lan_sel_ = (lan_sel_ <= -1) ? n - 1 : lan_sel_ - 1;
+      return;
+    }
+    if (key == 128 + 103) {  // down: past the last row = code field
+      lan_sel_ = (lan_sel_ >= n - 1) ? -1 : lan_sel_ + 1;
+      return;
+    }
+  }
   code_entry_key(key);
 }
 
@@ -1190,6 +1385,10 @@ void NetLobby::keyboard(unsigned char key, int x, int y) {
 // all valid code characters.
 void NetLobby::code_entry_key(unsigned char key) {
   if (key == '\r' || key == '\n') {
+    if (lan_sel_ >= 0) {  // a LAN host row is highlighted: join it
+      lan_join_selected();
+      return;
+    }
     confirm();
     return;
   }
