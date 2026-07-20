@@ -143,8 +143,9 @@ working, and verification flips display back on.
 **Steam verification design (researched, not built):** Steam supports
 user-to-user auth with session tickets, no game server needed.
 
-1. Each side mints a ticket (`ISteamUser::GetAuthTicketForNetworkIdentity`,
-   ~1 KB, signed by Steam, carries the holder's SteamID) and sends it as
+1. Each side mints a ticket (`ISteamUser::GetAuthSessionTicket` — its
+   `SteamNetworkingIdentity` param is the recipient binding; ~1 KB,
+   signed by Steam, carries the holder's SteamID) and sends it as
    another HELLO/WELCOME append — same append-only convention, no PROTO
    bump, absence = unverified peer.
 2. The receiver validates via `BeginAuthSession`; the async
@@ -185,15 +186,26 @@ and validation fails unless the verifier presents the same identity.
 
 **Open questions (resolve at build time):**
 
-1. Does client-side `BeginAuthSession` enforce **generic-string**
-   identities, or only SteamID/IP? The string binding is documented for
-   the Web-API path (`GetAuthTicketForWebAPI` +
-   `AuthenticateUserTicket` with a matching `identity` param), which
-   would route verification through a service holding a publisher key —
-   our signal worker could do it, at the cost of centralizing
-   verification. If `BeginAuthSession` accepts the string form we get
-   channel binding fully P2P — the preferred outcome. Check the SDK
-   docs/headers before choosing.
+1. ~~Does client-side `BeginAuthSession` enforce generic-string
+   identities?~~ **RESOLVED against the Steamworks docs (2026-07-20):
+   default to the P2P path.** The docs treat user-to-user and Web-API
+   verification as co-equal (no stated preference; both forward to
+   Steam's backend for the reuse/ownership check). The P2P binding
+   vocabulary is the peer's **SteamID only** — `GetAuthSessionTicket`'s
+   `SteamNetworkingIdentity` param, docs: "If it is peer-to-peer then
+   the user steam ID" — so P2P gets no channel binding and keeps the
+   live-MITM residual, but needs NO secrets anywhere, delivers the
+   verdict exactly where it's used, and includes the continuous
+   session monitoring. The arbitrary **identity string** exists only on
+   the Web-API pairing (`GetAuthTicketForWebApi` +
+   `AuthenticateUserTicket` with a matching `identity` param, publisher
+   Web API key on the verifier) — the DTLS-fingerprint channel-binding
+   idea therefore requires the signal worker to hold a publisher key
+   and attest verdicts to peers (extra trust hop), and uses the string
+   as a per-connection value where Valve intends a service name —
+   unconventional; validate with Valve before relying on it. Decision:
+   build P2P/SteamID-bound first; hold the worker path as the upgrade
+   if channel binding is ever deemed worth the key custody.
 2. The XR-014-style rule "no account IDs on the wire" needs a
    deliberate amendment: tickets inherently carry the SteamID (it is
    the thing being proven). Spirit survives as: account IDs may transit
