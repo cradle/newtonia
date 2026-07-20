@@ -837,7 +837,22 @@ void GLGame::release_player_controls() {
     glship->release_controls();
 }
 
+bool GLGame::all_players_out() const {
+  if (game_over) return true;
+  if (players->empty()) return false;
+  for (auto *gs : *players)
+    if (gs->ship->is_alive() || gs->ship->lives > 0) return false;
+  return true;
+}
+
 void GLGame::toggle_pause(bool broadcast) {
+  // A finished game can't be paused: the GAME OVER card owns the screen and
+  // the only input that matters is fire-for-menu — pausing would stack the
+  // "Paused" overlay on top of the card (seen on a net client, but the pause
+  // key reached here in every mode). Unpausing stays allowed for a game that
+  // ends while already paused (e.g. the host leaving a paused game is
+  // terminal for a spectating client).
+  if (running && all_players_out()) return;
   running = !running;
   // Pausing auto-saves (the long-documented behavior — it previously only
   // happened via the focus-loss path, so quitting in a way that skips the
@@ -890,7 +905,10 @@ void GLGame::focus_lost() {
   // doesn't stop. Sound still mutes below.
   if(running && net_mode_ == NetOff) {
     toggle_pause();
-    auto_paused = true;
+    // toggle_pause refuses when the game is over — only remember an
+    // auto-pause that actually took, or focus regain would pause a
+    // running game-over screen.
+    auto_paused = !running;
   }
   // Everything goes silent while the window is unfocused, pause tune included.
   if(pause_music_channel >= 0) Mix_Pause(pause_music_channel);

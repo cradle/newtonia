@@ -129,6 +129,11 @@ public:
   // Online game in progress (host or client) — the web build keeps a
   // hidden tab ticking only for these (see web_background_tick).
   bool net_active() const { return net_mode_ != NetOff; }
+  // The game has ended for everyone: every player dead with no lives left,
+  // or the game_over latch (which also covers the terminal spectator case —
+  // losing the host while already out). Drives the shared GAME OVER card
+  // and the "no pausing a finished game" gate in toggle_pause.
+  bool all_players_out() const;
   bool is_visible_to_any_player(const Ship &ship) const;
   bool is_visible_to_any_player(Point p) const;
   float sound_volume_for_point(Point p) const;

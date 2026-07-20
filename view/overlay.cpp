@@ -99,18 +99,11 @@ void Overlay::net_overlays(const GLGame *glgame) {
   // host leaving right after game over used to greet the client with
   // "THE HOST LEFT THE GAME", so the game never LOOKED finished there
   // (Glenn: "no gameover state for the client, it just disconnects").
-  bool all_game_over = !glgame->players->empty();
-  for (auto *gs : *glgame->players)
-    if (gs->ship->is_alive() || gs->ship->lives > 0) {
-      all_game_over = false;
-      break;
-    }
-
-  // game_over latches "the game is over for us": it fires with all_game_over,
-  // and also when a spectating player loses the peer (terminal — nothing left
-  // to rejoin for). Treat it as game over so the card, not the reconnect
-  // notice, is the ending in that case.
-  if (glgame->game_over) all_game_over = true;
+  // all_players_out() also folds in the game_over latch: it fires with
+  // all-out, and also when a spectating player loses the peer (terminal —
+  // nothing left to rejoin for). Treat that as game over so the card, not
+  // the reconnect notice, is the ending in that case.
+  bool all_game_over = glgame->all_players_out();
 
   if (!all_game_over && glgame->net_banner_ms_ <= 0 &&
       !glgame->net_connection_lost_)
@@ -290,6 +283,13 @@ void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
 }
 
 void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
+  // Once the game is over, the game-over messaging (the shared GAME OVER
+  // card online / in replays, the per-ship indicator offline) owns the
+  // centre of the screen — never stack "Paused" under it. toggle_pause
+  // refuses new pauses on a finished game; this covers a game that ENDS
+  // while already paused (e.g. the host leaving a paused game is terminal
+  // for a spectating client).
+  if (glgame->all_players_out()) return;
   if(!glgame->running && !glship->show_help) {
     Typer::draw_centered(0, 30, "Paused", 25);
     if(is_touch_mode())
