@@ -57,12 +57,14 @@ const TapBand kBackBand(0.85f, 480, 22, 6.0f, /*to_top=*/true, false, 0.72f);
 // RoomHost: the "TAP HERE TO SHARE IT" line, padded to finger height.
 const TapBand kShareBand(0.5f, -80, 18, 42.0f);
 // CodeEntry LAN host bands (touch): in the top half above the soft
-// keyboard, between the code slots (y 230, glyphs to ~134) and the
-// keyboard's edge (max 2). Size-18 text with generous finger padding
-// and a clear gap between the two zones — the first cut's size-16 /
-// 80-apart bands read cramped and tap-risky (Glenn).
-const TapBand kLanBand[2] = {TapBand(0.5f, 130, 18, 26.0f),
-                             TapBand(0.5f, 30, 18, 26.0f)};
+// keyboard (max 3, Glenn). Three finger-sized size-18 bands with gaps
+// don't fit under the full-size code slots, so while ANY host is
+// visible the code block compresses upward (heading y 400, slots y 300
+// at size 34, glyphs to ~232) and the bands take y 214 down to ~0.
+const int kLanBandCount = 3;
+const TapBand kLanBand[kLanBandCount] = {TapBand(0.5f, 200, 18, 14.0f),
+                                         TapBand(0.5f, 122, 18, 14.0f),
+                                         TapBand(0.5f, 44, 18, 14.0f)};
 
 // CodeEntry controller picker: the code alphabet as a grid under the
 // code slots (desktop layout — touch uses the soft keyboard instead).
@@ -1327,16 +1329,23 @@ void NetLobby::draw() {
         // RIGHT instead (see touch_tap) — the centre of the top strip is
         // the ONLINE CO-OP header.
         kBackBand.draw("BACK");
-        Typer::draw_centered(0, 360, "ENTER THE ROOM CODE", sz);
-        Typer::draw_centered(0, 230, slots.c_str(), 48);
-        y = 80;
         // LAN host bands under the code slots while hosts are visible
         // (tapped in touch_tap; a mismatched version still taps through
         // to lan_join_selected, which explains instead of joining). No
-        // typing hint here or anywhere: the heading + blank slots say
-        // it all.
+        // typing hint: the heading + blank slots say it all. With hosts
+        // the code block compresses upward so three finger-sized bands
+        // fit above the soft keyboard (see kLanBand).
         const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
-        int show = (int)lh.size() > 2 ? 2 : (int)lh.size();
+        int show =
+            (int)lh.size() > kLanBandCount ? kLanBandCount : (int)lh.size();
+        if (show > 0) {
+          Typer::draw_centered(0, 400, "ENTER THE ROOM CODE", 14);
+          Typer::draw_centered(0, 300, slots.c_str(), 34);
+        } else {
+          Typer::draw_centered(0, 360, "ENTER THE ROOM CODE", sz);
+          Typer::draw_centered(0, 230, slots.c_str(), 48);
+        }
+        y = 80;
         for (int i = 0; i < show; i++) {
           std::string label =
               lh[i].proto == Net::PROTO_VERSION
@@ -1869,7 +1878,8 @@ void NetLobby::touch_tap(float nx, float ny) {
       // mismatch taps through to the explanatory status message.
       {
         const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
-        int show = (int)lh.size() > 2 ? 2 : (int)lh.size();
+        int show =
+            (int)lh.size() > kLanBandCount ? kLanBandCount : (int)lh.size();
         for (int i = 0; i < show; i++) {
           if (kLanBand[i].contains(nx, ny)) {
             lan_sel_ = i;
