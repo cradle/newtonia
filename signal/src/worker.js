@@ -17,7 +17,14 @@
 
 const CODE_ALPHABET = "ABCDEGHJKLMNPQRTUVWXYZ2346789"; // no 0/O/1/I/5/S (confusable in the game font) or F (game fullscreen key)
 const CODE_LEN = 5;
-const ROOM_TTL_MS = 2 * 60 * 60 * 1000;
+// Counted from room CREATION even while the host socket is live, so it
+// must outlive any real co-op session: at the old 2 h a long game
+// silently lost its rejoin room mid-session — the host kept showing
+// ROOM <code> (expiry is lazy, the host is never told) while every
+// join got no-such-room (Glenn, 2026-07-20). Abandoned rooms are
+// reaped by host-disconnect + HOST_GRACE_MS regardless, so this TTL
+// only backstops leaked-but-connected sockets.
+const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 
 // Per-IP rate limits (fixed window). Host-creates farm rooms + TURN
 // credentials; join-attempts can brute-force the 4-letter code space.
