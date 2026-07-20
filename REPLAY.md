@@ -82,13 +82,18 @@ criteria. Nothing here is built yet.
   recording too — the replay is honest to that machine's session.
   Remote-player effects arrive as MSG_LANCE/MSG_SHOCK/MSG_SHOT and are teed
   at their receive sites; received EV_* events tee with the same skip list
-  as the send tee. **File: `replays/online.nrp`** — deliberately separate
+  as the send tee. **File: `replays/online.nrp` — the REPLAYS menu's own
+  ONLINE RUN row (a 4th slot, Glenn 2026-07-20)** — deliberately separate
   from `current.nrp` so hosting/joining mid-way through an offline run
-  never rotates that run's recording away. It rotates into `recent` (+best
-  check) at game over; an abandon or crash leaves it in place and the
-  REPLAYS screen opener (or the next online recording) sweeps it into
-  `recent` later — never the menu constructor, which a relaunched client
-  passes through on its way to rejoin-resume.
+  never rotates that run's resumable recording away. It never rotates
+  anywhere: ended or abandoned, the session stays listed as ONLINE RUN
+  until the next online session overwrites it (exactly like `recent` is
+  overwritten by the next completed offline run — and unlike the earlier
+  design, an online game can no longer clobber the offline LAST RUN).
+  The best check runs at ended-finalize and again on a cleanly-closed
+  leftover about to be overwritten (the twin of the NEW-GAME rotation
+  check); a crashed session's stale header gets none — same accepted
+  limitation as offline.
   **Disconnect gaps**: slots are emission counts, not wall clock, so a
   disconnect doesn't freeze the timeline — it compresses out, and the world
   jumps at the seam keyframe. The host records straight through a
@@ -309,8 +314,9 @@ format's keyframe seek makes a "jump back 10 s" control a bounded add-on
 (restart the reader, apply silently to the target slot) if wanted later.
 Menu row REPLAYS (hidden while no `.nrp` exists) → list screen: CURRENT RUN
 (`current.nrp`, shown while a resumable run exists), LAST RUN
-(`recent.nrp`), and BEST RUN (`best.nrp`) rows showing score, level
-reached, date (a crashed current's row shows its last-patched header score,
+(`recent.nrp`), ONLINE RUN (`online.nrp`, the most recent online session —
+added with R-online), and BEST RUN (`best.nrp`) rows showing score, level
+reached, date (a crashed run's row shows its last-patched header score,
 which may understate — accepted). Esc/B backs out; touch gets tap bands.
 Selecting a row starts R2 playback. Version-mismatched files render as
 unselectable "OLDER VERSION" rows.
@@ -333,12 +339,12 @@ Remote effects tee at the MSG_LANCE/MSG_SHOCK/MSG_SHOT receive sites via
 `replay_record_polyline`/`replay_record_shot`; local ones drain from the
 `Ship::replay_*` outboxes in both roles' ticks. Received EV_* events tee
 with the send tee's skip list; EV_GENERATION_START doubles as the client's
-level-boundary flush. Finalize: game-over latches on either role rotate
-online → recent (+best check); abandons leave a clean-patched file for the
-sweep (the REPLAYS screen opener / the next online recording — never the
-menu constructor, which a relaunched client passes through on its way to
-rejoin). The REPLAYS row also shows for an unswept orphan so the sweep is
-reachable. `NEWTONIA_REPLAY_PLAY=online` plays the live file directly.
+level-boundary flush. Lifecycle: `online.nrp` is the REPLAYS menu's ONLINE
+RUN row (4th slot) and never rotates — game-over latches on either role
+finalize + best-check it in place, abandons leave a clean-patched file
+(still listed, still watchable, and the rejoin-resume target), and the
+next online session overwrites it after best-checking a cleanly-closed
+leftover. `NEWTONIA_REPLAY_PLAY=online` plays the file directly.
 **Exit criteria — all verified headless (`test/e2e/replay_online.sh`)**:
 both sides bank identical record counts in S1; the host's file grows
 through a SIGKILLed peer; the relaunched joiner resume-appends across

@@ -145,8 +145,10 @@ test/e2e/replay_online.sh # REPLAY.md online recording (needs the relay):
                      # sends are skipped); the relaunched joiner's rejoin
                      # RESUMES its file ("replay: resuming recording" — the
                      # run_id seam rides the snapshots); clean abandons
-                     # patch both headers (host marked 2P); and both files
-                     # play back (NEWTONIA_REPLAY_PLAY=online).
+                     # patch both headers (host marked 2P); both files
+                     # play back (NEWTONIA_REPLAY_PLAY=online); and the
+                     # REPLAYS menu's ONLINE RUN row starts the same
+                     # playback (the 4th slot — online.nrp never rotates).
 test/e2e/replay.sh   # REPLAY.md R1 exit criteria, solo (no relay needed):
                      # abandon leaves a resumable current.nrp; CONTINUE
                      # appends to the SAME file (one run_id, seam keyframe,

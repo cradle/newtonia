@@ -2471,15 +2471,17 @@ bool GLGame::net_send_delta(bool can_send) {
 // Online games record too — BOTH roles, each machine writing what its own
 // screen was fed (the host tees the snapshots it builds and sends; the
 // client tees the stream it receives, so its own ship shows as the host's
-// reconciled view of it). The file is replays/online.nrp, deliberately
-// separate from current.nrp so hosting/joining mid-way through an offline
-// run never rotates that run's recording away; it rotates into recent at
-// game over, or is swept there later (the REPLAYS screen / the next online
-// recording) after an abandon or crash. run_id rides every snapshot
-// (GameState v17), so a client whose auto-rejoin rebuilt the GLGame finds
-// the same run_id in the leftover file and APPENDS — the self-built seam
-// keyframe below keeps the timeline continuous, the disconnect gap simply
-// compresses out (slots are emission counts, not wall clock).
+// reconciled view of it). The file is replays/online.nrp — the REPLAYS
+// menu's ONLINE RUN row — deliberately separate from current.nrp so
+// hosting/joining mid-way through an offline run never rotates that run's
+// resumable recording away. It never rotates anywhere: each new online
+// session overwrites it (like each offline run overwrites recent), with a
+// best check on the cleanly-closed leftover being replaced. run_id rides
+// every snapshot (GameState v17), so a client whose auto-rejoin rebuilt
+// the GLGame finds the same run_id in the leftover file and APPENDS — the
+// self-built seam keyframe below keeps the timeline continuous, the
+// disconnect gap simply compresses out (slots are emission counts, not
+// wall clock).
 void GLGame::replay_start() {
   if (SDL_getenv("NEWTONIA_REPLAY_DISABLE")) return;
   if (net_mode_ == NetHost || net_mode_ == NetClient) {
@@ -2489,7 +2491,11 @@ void GLGame::replay_start() {
                    // Same version fence as the offline resume below.
                    h.save_version == Save::GameState::VERSION &&
                    h.format_version == Replay::Header::FORMAT_VERSION;
-    if (!resumed) Replay::rotate_online_to_recent();  // orphan sweep
+    // About to overwrite the previous session: give a cleanly-closed
+    // leftover its best check first (the twin of on_new_game's offline
+    // rotation check). Ended runs were checked at finalize — repeating
+    // the check is an idempotent no-op.
+    if (!resumed) Replay::best_check_online();
     replay_ = new Replay::Recorder(run_id_, (uint8_t)players->size(),
                                    resumed, Replay::online_path());
     if (!replay_->ok()) {
@@ -6521,7 +6527,8 @@ void GLGame::tick(int delta) {
       game_over = true;
       Stats::flush();
       // The run is over: patch the replay header (accurate final
-      // score/generation) and rotate the file -> recent (+best check).
+      // score/generation) and retire the file — offline rotates current
+      // -> recent, online best-checks the ONLINE RUN slot in place.
       replay_finish(true);
       // Host: finalize's forced final keyframe rebuilt the shared delta
       // baseline without being SENT, so an asteroid spawned since the last

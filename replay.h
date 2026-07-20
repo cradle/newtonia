@@ -12,18 +12,21 @@
 // Storage model (REPLAY.md): records since the last flush accumulate in an
 // in-RAM chunk; each checkpoint APPENDS the chunk to the recording file —
 // never a whole-file rewrite — and the header's tail fields are patched in
-// place only at run end / clean abandon. Three files, all watchable:
+// place only at run end / clean abandon. Four files, all watchable (the
+// REPLAYS menu lists one row per existing file):
 //   current.nrp  the active (live or resumable) OFFLINE run
-//   recent.nrp   the most recently completed run
-//   best.nrp     promoted copy of the highest-scoring non-cheated run
-// plus a session-scoped side file for ONLINE games (both roles record —
-// the host tees the snapshots it builds, the client the stream it
-// receives):
-//   online.nrp   the active online session; rotated into recent at game
-//                over, or swept there later (REPLAYS screen open / next
-//                recording) after an abandon or crash — deliberately separate
-//                from current.nrp so hosting/joining mid-way through an
-//                offline run never rotates that run's recording away
+//   recent.nrp   the most recently completed offline run (current rotates
+//                here at game over / NEW-GAME abandonment)
+//   online.nrp   the most recent ONLINE session (both roles record — the
+//                host tees the snapshots it builds, the client the stream
+//                it receives). This file never rotates: it IS the listed
+//                ONLINE RUN slot, overwritten by the next online session
+//                like recent is by the next offline run — and it is
+//                deliberately separate from current.nrp so hosting/joining
+//                mid-way through an offline run never rotates that run's
+//                resumable recording away
+//   best.nrp     promoted copy of the highest-scoring non-cheated run,
+//                offline or online (checked at each retirement)
 //
 // File layout (little-endian native, like the savegame):
 //   header (HEADER_SIZE bytes, see Header)
@@ -125,14 +128,16 @@ void rotate_current_to_recent();
 // lost, then the caller starts a fresh Recorder.
 void on_new_game();
 
-// Sweep a leftover online.nrp (an online session that was abandoned, or a
-// crash artifact) into recent, same zero-delta/best rules as the offline
-// rotation. Safe no-op when none exists. Called when the REPLAYS screen
-// opens and from the start of any new online recording that is NOT a
-// rejoin-resume of the same run — a client rejoining mid-session leaves
-// the file in place and appends to it instead (which is why the menu
-// constructor must NOT sweep: a relaunched client passes through it).
-void rotate_online_to_recent();
+// Run the best check on online.nrp in place (clean, non-cheated header
+// beating best's score → copy promoted). online.nrp never rotates — it is
+// the listed ONLINE RUN slot — so this is the whole of its retirement:
+// called from finalize when an online run truly ends, and from the start
+// of a new online recording that is about to overwrite a cleanly-closed
+// leftover (the twin of the NEW-GAME rotation's best check offline). Safe
+// no-op when the file is missing, junk, or stale-headered (a crashed
+// session stays watchable in its slot but can't become best — the same
+// accepted limitation as offline).
+void best_check_online();
 
 // Playback-side file reader (R2). Loads the whole file into memory (a few
 // MB) and iterates intact records in order; a truncated final record (crash
@@ -207,9 +212,12 @@ public:
 
     // Final flush + in-place header patch (score/generation/duration/flags;
     // duration derives from the slot count — pure play time).
-    // ended=true (game over): also rotates the file → recent (+best check).
+    // ended=true (game over): also retires the file — offline rotates
+    // current → recent (+best check); online just best-checks in place
+    // (online.nrp is the listed slot and never moves).
     // ended=false (abandon to menu): the file stays in place — resumable
-    // offline; online it waits for the rejoin-resume or the sweep.
+    // offline; online it waits for a rejoin-resume or the next session's
+    // overwrite.
     // A fresh session that never recorded a DELTA deletes the file instead
     // (zero-tick rule); a resumed session with nothing new leaves the file
     // exactly as it was.
@@ -220,7 +228,7 @@ private:
     void append_record(uint32_t slot, uint8_t kind, const uint8_t *data,
                        size_t len);
     void write_chunk();  // append the RAM chunk to the file (no ok_ gate)
-    const char *rotate_label() const;  // "current"/"online" for log lines
+    void retire();       // truly-over run: rotate (offline) / best check (online)
 
     // Consecutive failed chunk appends before the recording declares
     // itself dead (see write_chunk) instead of growing the RAM chunk

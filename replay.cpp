@@ -261,10 +261,24 @@ static bool copy_file(const std::string &from, const std::string &to) {
     return ok;
 }
 
-// Shared rotation body: FROM (current.nrp or online.nrp) becomes recent,
-// after the zero-tick junk check and the best promotion. `what` labels the
-// log line only.
-static void rotate_to_recent(const std::string &from, const char *what) {
+// Best promotion — only where the header is known accurate (FLAG_CLEAN:
+// the tail was patched at a clean stop). A crashed run's stale header gets
+// no check (REPLAY.md accepted limitation): the run stays watchable in its
+// slot, it just can't become best.
+static void maybe_promote_best(const std::string &from, const Header &h) {
+    if (!(h.flags & FLAG_CLEAN) || (h.flags & FLAG_CHEATED)) return;
+    Header hb;
+    bool have_best = read_header(best_path(), hb);
+    if (!have_best || h.final_score > hb.final_score) {
+        copy_file(from, best_path());
+        SDL_Log("replay: promoted best (score=%u gen=%u)", h.final_score,
+                h.generation);
+    }
+}
+
+// current.nrp becomes recent, after the zero-tick junk check and the best
+// promotion.
+static void rotate_to_recent(const std::string &from) {
     if (from.empty()) return;
     Header h;
     if (!read_header(from, h)) {
@@ -278,29 +292,20 @@ static void rotate_to_recent(const std::string &from, const char *what) {
         web_sync();
         return;
     }
-    // Best check — only where the header is known accurate (FLAG_CLEAN: the
-    // tail was patched at a clean stop). A crashed run's stale header gets
-    // no check (REPLAY.md accepted limitation): it still lands in recent,
-    // it just can't become best.
-    if ((h.flags & FLAG_CLEAN) && !(h.flags & FLAG_CHEATED)) {
-        Header hb;
-        bool have_best = read_header(best_path(), hb);
-        if (!have_best || h.final_score > hb.final_score)
-            copy_file(from, best_path());
-    }
+    maybe_promote_best(from, h);
     std::remove(recent_path().c_str());
     if (std::rename(from.c_str(), recent_path().c_str()) != 0) {
         // Cross-volume or locked-file fallback: copy then delete.
         if (copy_file(from, recent_path())) std::remove(from.c_str());
     }
     web_sync();
-    SDL_Log("replay: rotated %s -> recent (score=%u gen=%u%s%s)", what,
+    SDL_Log("replay: rotated current -> recent (score=%u gen=%u%s%s)",
             h.final_score, h.generation,
             (h.flags & FLAG_CLEAN) ? "" : " stale-header",
             (h.flags & FLAG_CHEATED) ? " cheated" : "");
 }
 
-void rotate_current_to_recent() { rotate_to_recent(current_path(), "current"); }
+void rotate_current_to_recent() { rotate_to_recent(current_path()); }
 
 static bool file_exists(const std::string &path) {
     if (path.empty()) return false;
@@ -314,8 +319,11 @@ void on_new_game() {
     if (file_exists(current_path())) rotate_current_to_recent();
 }
 
-void rotate_online_to_recent() {
-    if (file_exists(online_path())) rotate_to_recent(online_path(), "online");
+void best_check_online() {
+    Header h;
+    if (!read_header(online_path(), h)) return;
+    if (!has_delta_record(online_path())) return;
+    maybe_promote_best(online_path(), h);
 }
 
 // ── Recorder ─────────────────────────────────────────────────────────────────
@@ -405,10 +413,6 @@ void Recorder::record_effect(uint8_t subtype, uint8_t player_idx,
                   payload.empty() ? NULL : &payload[0], payload.size());
 }
 
-const char *Recorder::rotate_label() const {
-    return path_ == online_path() ? "online" : "current";
-}
-
 void Recorder::write_chunk() {
     if (chunk_.empty()) return;
     FILE *fp = fopen(path_.c_str(), "ab");
@@ -456,9 +460,9 @@ void Recorder::finalize(uint32_t score, uint32_t generation, bool cheated,
             std::remove(path_.c_str());
             web_sync();
         }
-        // ended with a resumed file: the run is still over — rotate what the
+        // ended with a resumed file: the run is still over — retire what the
         // earlier sessions recorded.
-        if (resumed_ && ended) rotate_to_recent(path_, rotate_label());
+        if (resumed_ && ended) retire();
         return;
     }
 
@@ -487,7 +491,16 @@ void Recorder::finalize(uint32_t score, uint32_t generation, bool cheated,
             ended ? "run ended" : "abandoned (resumable)", score, generation,
             header_.duration_ms, cheated ? " cheated" : "");
 
-    if (ended) rotate_to_recent(path_, rotate_label());
+    if (ended) retire();
+}
+
+// A truly-over run leaves its live slot. Offline that is a rotation:
+// current.nrp -> recent (+best check). Online there is nowhere to go —
+// online.nrp IS the listed ONLINE RUN slot, overwritten per session like
+// recent is per offline run — so retirement is just the best check.
+void Recorder::retire() {
+    if (path_ == online_path()) best_check_online();
+    else rotate_to_recent(path_);
 }
 
 }  // namespace Replay

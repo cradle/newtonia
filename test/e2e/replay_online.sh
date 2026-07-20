@@ -19,6 +19,9 @@
 #     2-player.
 # S4: playback smoke on both files (NEWTONIA_REPLAY_PLAY=online): the
 #     playback game must come up, tick to the end region, and stay alive.
+# S5: the REPLAYS menu lists the session as its own ONLINE RUN row (the
+#     4th slot — online.nrp never rotates into recent) and selecting it
+#     starts the same playback.
 # Prints REPLAY-NET-OK on success. See TESTING.md.
 set -u
 if [ -z "${DISPLAY:-}" ]; then
@@ -165,6 +168,23 @@ for side in host joiner; do
     echo "PLAYBACK NEVER STARTED ($side)"; exit 1; }
 done
 
+echo "===== S5: REPLAYS menu lists the session as ONLINE RUN and plays it"
+# Host pref dir holds ONLY online.nrp (online games never save), so the
+# menu is NEW GAME / ONLINE / OPTIONS / REPLAYS and the list has a single
+# ONLINE RUN row.
+PP=$(XDG_DATA_HOME="$XDG_A" "$ROOT/newtonia" > "$OUT/menu-online.log" 2>&1 & echo $!)
+sleep 3
+W=$(newtonia_windows | tail -1)
+key $W Return                                   # dismiss attract
+key $W s; key $W s; key $W s; key $W Return     # down to REPLAYS, open
+key $W Return                                   # select ONLINE RUN
+sleep 3
+kill -0 $PP 2>/dev/null || { echo "MENU PLAYBACK CRASHED"; exit 1; }
+shot $W replay-online-menu-row
+grep -aq "replay: playback started" "$OUT/menu-online.log" || {
+  echo "ONLINE RUN ROW DID NOT START PLAYBACK"; exit 1; }
+kill -9 $PP 2>/dev/null; sleep 1
+
 assert_clean "$OUT/host.log" "$OUT/joiner1.log" "$OUT/joiner2.log" \
-             "$OUT/play-host.log" "$OUT/play-joiner.log"
+             "$OUT/play-host.log" "$OUT/play-joiner.log" "$OUT/menu-online.log"
 echo "REPLAY-NET-OK out=$OUT"
