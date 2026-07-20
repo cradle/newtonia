@@ -54,7 +54,7 @@ static bool s_join_force_relay = false;
 // CodeEntry: the soft keyboard buries the bottom exit strip, so the way
 // out lives top-right beside the hoisted header.
 const TapBand kBackBand(0.85f, 480, 22, 6.0f, /*to_top=*/true, false, 0.72f);
-// RoomHost: the "TAP HERE TO SHARE IT" line, padded to finger height.
+// RoomHost: the "TAP TO SHARE" line, padded to finger height.
 const TapBand kShareBand(0.5f, -80, 18, 42.0f);
 // CodeEntry LAN host bands (touch): above the soft keyboard (max 3).
 // Filled BOTTOM-UP — one host uses only the lowest band, sitting in
@@ -1294,7 +1294,7 @@ void NetLobby::draw() {
         Typer::draw_centered(0, 340, "ROOM CODE", sz);
         Typer::draw_centered(0, 220, room_code_.c_str(), 48);
         if (net_share_available()) {
-          kShareBand.draw("TAP HERE TO SHARE IT");
+          kShareBand.draw("TAP TO SHARE");
         } else {
           Typer::draw_centered(0, -80, "COPIED TO CLIPBOARD", sz);
         }
