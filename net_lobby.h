@@ -92,6 +92,10 @@ private:
   // shows a character-picker grid of the code alphabet once a controller
   // is seen — d-pad/stick moves, A or right trigger types, B deletes.
   void picker_move(int dx, int dy);
+  // Shared picker-grid + LAN-row navigation in logical wasd, fed by the
+  // controller translator AND the keyboard arrows (raw 128+specials —
+  // nav_key's wasd outputs are code letters, so CodeEntry can't use it).
+  void picker_nav(unsigned char key);
   void controller_confirm();  // A / right trigger
   void draw_picker();
   // LAN play (net_lan.h; NETPLAY.md "LAN is not a mode"): the host's

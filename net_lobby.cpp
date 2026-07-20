@@ -1531,10 +1531,27 @@ void NetLobby::keyboard(unsigned char key, int x, int y) {
   // Touch synthesizes '\r' on finger-down too, and a full code auto-joins,
   // so Enter is meaningless there — it would only flash the length hint.
   if (is_touch_mode() && (key == '\r' || key == '\n')) return;
-  // LAN host rows: up/down moves the highlight between the discovered
-  // hosts and the code field (arrows arrive as 128+GLUT specials, which
-  // code entry ignores — the keys were free). -1 = the code field.
-  if (!is_touch_mode() && lan_rows_shown() > 0) {
+  // Arrow keys (128+GLUT specials — code entry ignores them, so the
+  // keys were free; deliberately NOT nav_key-translated, which would
+  // turn them into W/A/D code letters).
+  if (!is_touch_mode() && controller_seen_ && !floating_kb_up_) {
+    // The picker is showing: arrows drive the same grid+LAN-row
+    // navigation the pad does, and Enter acts like the pad's A —
+    // type the highlighted character, or join a highlighted host.
+    // Direct typing/backspace still work through code_entry_key.
+    switch (key) {
+      case 128 + 100: picker_nav('a'); return;  // left
+      case 128 + 101: picker_nav('w'); return;  // up
+      case 128 + 102: picker_nav('d'); return;  // right
+      case 128 + 103: picker_nav('s'); return;  // down
+    }
+    if (key == '\r' || key == '\n') {
+      controller_confirm();
+      return;
+    }
+  } else if (!is_touch_mode() && lan_rows_shown() > 0) {
+    // No picker (pure keyboard flow): up/down moves the highlight
+    // between the discovered hosts and the code field (-1).
     int n = lan_rows_shown();
     if (key == 128 + 101) {  // up: code field wraps to the last row
       lan_sel_ = (lan_sel_ <= -1) ? n - 1 : lan_sel_ - 1;
@@ -1638,6 +1655,37 @@ void NetLobby::nav_input(unsigned char key) {
     case 'c':
     case 'C':
       copy_local_description();
+      break;
+    default:
+      break;
+  }
+}
+
+// One navigation model for the picker grid + the LAN host rows under
+// it, spoken in logical wasd. Fed by BOTH the controller translator
+// (dpad/stick) and the keyboard arrow keys — the picker shows whenever
+// a controller has been seen, but a player with both devices in reach
+// uses either, and the arrows previously did nothing there (Glenn).
+void NetLobby::picker_nav(unsigned char key) {
+  switch (key) {
+    case 'w':
+      if (lan_sel_ >= 0) lan_sel_--;  // -1 = back onto the grid
+      else picker_move(0, -1);
+      break;
+    case 's':
+      if (lan_sel_ >= 0) {
+        if (lan_sel_ < lan_rows_shown() - 1) lan_sel_++;
+      } else if (lan_rows_shown() > 0 && picker_on_bottom_row()) {
+        lan_sel_ = 0;  // walk off the grid into the rows
+      } else {
+        picker_move(0, 1);
+      }
+      break;
+    case 'a':
+      if (lan_sel_ < 0) picker_move(-1, 0);
+      break;
+    case 'd':
+      if (lan_sel_ < 0) picker_move(1, 0);
       break;
     default:
       break;
@@ -1766,22 +1814,11 @@ void NetLobby::controller(SDL_Event event) {
     // off the grid's bottom row enters them, up from the top row returns
     // to the grid, A joins the highlighted host (controller_confirm), B
     // backs out (above). lan_sel_ -1 = the picker owns the pad.
-    switch (nav_key_from_controller(event)) {
-      case 'w':
-        if (lan_sel_ >= 0) lan_sel_--;
-        else picker_move(0, -1);
+    unsigned char nk = nav_key_from_controller(event);
+    switch (nk) {
+      case 'w': case 's': case 'a': case 'd':
+        picker_nav(nk);
         break;
-      case 's':
-        if (lan_sel_ >= 0) {
-          if (lan_sel_ < lan_rows_shown() - 1) lan_sel_++;
-        } else if (lan_rows_shown() > 0 && picker_on_bottom_row()) {
-          lan_sel_ = 0;
-        } else {
-          picker_move(0, 1);
-        }
-        break;
-      case 'a':  if (lan_sel_ < 0) picker_move(-1, 0); break;
-      case 'd':  if (lan_sel_ < 0) picker_move(1, 0);  break;
       case '\r': controller_confirm(); break;
       case 27:   leave_to_menu(); break;
       default:   break;
