@@ -80,9 +80,9 @@ const TapBand kLanBand[kLanBandCount] = {TapBand(0.5f, 225, 18, 12.0f),
 
 // CodeEntry controller picker: the code alphabet as a grid under the
 // code slots (desktop layout — touch uses the soft keyboard instead).
-// Two rows sit between the button-hint line at -20 (glyphs reach ~-56)
-// and the transient status line at -320 (selected cells grow to size 22
-// → 44 tall, so the second row bottoms out around -226).
+// Two rows sit between the button-hint lines at -36/-88 (glyphs reach
+// ~-124) and the LAN rows below (selected cells grow to size 22 → 44
+// tall, so the second row bottoms out around -226).
 const int PICKER_COLS = 15;
 const float PICKER_TOP_Y = -130.0f;
 const float PICKER_ROW_H = 52.0f;
@@ -1422,7 +1422,11 @@ void NetLobby::draw() {
           Typer::draw_centered(0, 428, top.c_str(), 12);
           Typer::draw_centered(0, 392, "CLOSE THE KEYBOARD TO JOIN", 9);
         }
-        y = -20;
+        // Below the transient status (y 4, glyphs to ~-26): at -20 the
+        // hints sat inside the error text (Glenn, Deck). The Y-KEYBOARD
+        // second line lands at -88 (glyphs to ~-124), still clear of the
+        // picker top at -130.
+        y = -36;
         if (controller_seen_ && !floating_kb_up_) {
           // Controller flow: button hints replace the keyboard hint,
           // picker grid below. Hidden while the Deck's floating
@@ -1582,8 +1586,8 @@ void NetLobby::draw() {
     // CodeEntry hoists the status out of the bottom half on touch (soft
     // keyboard) AND in the controller layout (picker + LAN rows + join
     // hint own the space down to ~-340); it sits in the gap between the
-    // code slots (glyphs to 24) and the button-hint line at -20 — low in
-    // that gap, since at size 15 it rises ~15 units and y 20 grazed the
+    // code slots (glyphs to 24) and the button-hint line at -36 — low in
+    // that gap, since at size 15 it descends to ~-26 and y 20 grazed the
     // code glyphs (Glenn, Deck).
     int sy = (screen_ == CodeEntry && (is_touch_mode() || controller_seen_))
                  ? 4
