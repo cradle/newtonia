@@ -1268,6 +1268,17 @@ void NetLobby::draw() {
         // the touch layout hoists them above the soft keyboard).
         Typer::draw_centered(0, 200, "ENTER THE ROOM CODE", sz);
         Typer::draw_centered(0, 120, slots.c_str(), 48);
+        // The LAN rows live in the bottom half, which the Deck's floating
+        // keyboard covers — mirror the touch layout's while-typing
+        // visibility with a compact line in the free strip above the
+        // header (keyboard input is consumed by the keyboard, so joining
+        // has to wait for its dismissal anyway).
+        if (floating_kb_up_ && !lan_browse_.hosts().empty()) {
+          std::string top = "ON THIS NETWORK - " + lan_browse_.hosts()[0].name;
+          if (lan_browse_.hosts().size() > 1) top += " +";
+          Typer::draw_centered(0, 428, top.c_str(), 12);
+          Typer::draw_centered(0, 392, "CLOSE THE KEYBOARD TO JOIN", 9);
+        }
         y = -20;
         if (controller_seen_ && !floating_kb_up_) {
           // Controller flow: button hints replace the keyboard hint,
