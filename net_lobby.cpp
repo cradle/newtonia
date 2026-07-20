@@ -1283,38 +1283,31 @@ void NetLobby::draw() {
       } else if (is_touch_mode()) {
         // Spread over the full height under the hoisted header — the
         // default stack hugs the lower half of a phone screen.
+        // Sparse on purpose (Glenn): the code + one clipboard/share line
+        // say it all, and the LAN line only appears when a joiner is
+        // actually mid-exchange.
         Typer::draw_centered(0, 340, "ROOM CODE", sz);
         Typer::draw_centered(0, 220, room_code_.c_str(), 48);
-        Typer::draw_centered(0, 40, "TELL YOUR FRIEND THE CODE", sz);
         if (net_share_available()) {
           kShareBand.draw("TAP HERE TO SHARE IT");
         } else {
-          Typer::draw_centered(0, -80, "IT IS ON YOUR CLIPBOARD", sz);
+          Typer::draw_centered(0, -80, "COPIED TO CLIPBOARD", sz);
         }
-        // Between the share band (bottoms ~ -158 with its finger pad)
-        // and the blink line at -220.
-        if (lan_announce_.running())
-          Typer::draw_centered(0, -180,
-                               lan_announce_.peer_engaged()
-                                   ? "A LAN PLAYER IS CONNECTING"
-                                   : "ALSO VISIBLE ON THIS NETWORK",
-                               12);
+        if (lan_announce_.running() && lan_announce_.peer_engaged())
+          Typer::draw_centered(0, -180, "A LAN PLAYER IS CONNECTING", 12);
         if (blink)
           Typer::draw_centered(0, -220, "WAITING FOR PLAYER 2", sz);
       } else {
         lines.push_back("ROOM CODE");
         Typer::draw_centered(0, 20, room_code_.c_str(), 48);
         y = -100;
-        lines.push_back("TELL YOUR FRIEND THE CODE");
-        lines.push_back("IT IS ON YOUR CLIPBOARD");
+        lines.push_back("COPIED TO CLIPBOARD");
         lines.push_back("");
         // Pushed on the off-phase too (as a blank) — a conditional push
         // here makes every line below it jump each blink.
         lines.push_back(blink ? "WAITING FOR PLAYER 2" : "");
-        if (lan_announce_.running())
-          lines.push_back(lan_announce_.peer_engaged()
-                              ? "A LAN PLAYER IS CONNECTING"
-                              : "VISIBLE ON THIS NETWORK");
+        if (lan_announce_.running() && lan_announce_.peer_engaged())
+          lines.push_back("A LAN PLAYER IS CONNECTING");
       }
       break;
     case CodeEntry: {
@@ -1464,10 +1457,8 @@ void NetLobby::draw() {
       lines.push_back("V - PASTE THEIR REPLY");
       lines.push_back("");
       lines.push_back("C - COPY THE INVITE AGAIN");
-      if (lan_announce_.running())
-        lines.push_back(lan_announce_.peer_engaged()
-                            ? "A LAN PLAYER IS CONNECTING"
-                            : "ALSO VISIBLE ON THIS NETWORK");
+      if (lan_announce_.running() && lan_announce_.peer_engaged())
+        lines.push_back("A LAN PLAYER IS CONNECTING");
       break;
     case JoinWaitOffer:
       lines.push_back("GET THE INVITE FROM YOUR HOST");
