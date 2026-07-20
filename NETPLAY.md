@@ -242,7 +242,10 @@ rejoin's honest-wait screen and 60 s budget; exchange failures restart
 the browse instead of failing. EV_BYE clears the name like it clears
 the code (a deliberate goodbye is not browsed after). Verified by
 `test/e2e/lanrejoin.sh` (both directions, no relay) plus rejoin.sh /
-room.sh regressions for the refactored relay path.
+room.sh regressions for the refactored relay path. FIELD-VERIFIED
+(2026-07-20, Android host + mac joiner): the loss recovers over the
+LAN door, and a deliberate host quit shows the client "THE HOST LEFT
+THE GAME" (EV_BYE — no futile browsing) as designed.
 
 **Round 2 discovery hardening (2026-07-20)**: the beacon now goes to
 every broadcast-capable interface's DIRECTED broadcast address
