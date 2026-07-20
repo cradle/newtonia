@@ -3,6 +3,7 @@
 #include <cmath>
 #include <vector>
 
+#include "net_policy.h"
 #include "net_protocol.h"
 #include "savegame.h"
 
@@ -294,11 +295,14 @@ void parse_identity(Net::Reader &r, NetIdentity &out) {
   if (r.remaining() < 2) return;  // legacy peer: nothing appended
   uint8_t platform = r.u8();
   uint8_t name_len = r.u8();
-  if ((size_t)name_len > r.remaining()) return;  // inconsistent: no identity
   std::string name;
   if (name_len) {
+    // bytes() is the single lying-length guard: it bounds-checks and
+    // returns null on over-read (flipping r.ok, which the caller no
+    // longer consults after accepting the message).
     const uint8_t *bytes = r.bytes(name_len);
-    if (bytes) name.assign((const char *)bytes, name_len);
+    if (!bytes) return;  // inconsistent length: treat as no identity
+    name.assign((const char *)bytes, name_len);
   }
   out.platform = platform;
   out.name = net_sanitize_name(name);  // cap + Typer glyph set, our side
@@ -398,9 +402,21 @@ void NetSession::update(int delta_ms) {
         return;
       }
       // Accept path only, AFTER the version gate: the identity append is
-      // metadata and must never influence (or fail) the handshake.
+      // metadata and must never fail the handshake — but it IS the input
+      // to the comms-policy gate (net_policy.h; default backend always
+      // allows), which must run HERE, before the WELCOME goes out: refusing
+      // after Ready would ghost the joiner on a CONNECTED screen it was
+      // never entitled to, and every session adopter (lobby, mid-game
+      // rejoin) inherits this single chokepoint instead of re-checking.
       parse_identity(r, peer_identity_);
       log_identity(peer_identity_);
+      if (!net_comms_allowed_with(peer_identity_)) {
+        NET_LOG("net: identity - peer refused by policy\n");
+        send_reject(transport_, RejectNotAllowed);
+        reject_reason_ = RejectNotAllowed;
+        phase_ = Rejected;
+        return;
+      }
       send_welcome(transport_);
       phase_ = Ready;
       return;
@@ -413,6 +429,16 @@ void NetSession::update(int delta_ms) {
       if (!r.ok || assigned != 2) continue;
       parse_identity(r, peer_identity_);
       log_identity(peer_identity_);
+      // The client-side twin of the host's pre-WELCOME policy gate. There
+      // is no client->host reject message; the host experiences the local
+      // refusal as a peer that never sends INPUT and takes its normal
+      // disconnect/rejoin path.
+      if (!net_comms_allowed_with(peer_identity_)) {
+        NET_LOG("net: identity - peer refused by policy\n");
+        reject_reason_ = RejectNotAllowed;
+        phase_ = Rejected;
+        return;
+      }
       phase_ = Ready;
       return;
     }

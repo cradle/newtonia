@@ -18,24 +18,21 @@ PB=$(launch joiner)
 sleep 4
 
 WINS=$(newtonia_windows)
+[ "$(echo "$WINS" | wc -l)" -eq 2 ] ||
+  { echo "expected 2 game windows, got: $WINS"; kill_pair $PA $PB; exit 1; }
 A=$(echo "$WINS" | head -1); B=$(echo "$WINS" | tail -1)
-[ "$A" != "$B" ] || { echo "only one window"; exit 1; }
 
-# Host: attract -> menu -> ONLINE -> HOST
-key $A Return; sleep 1; key $A s; key $A Return; sleep 1; key $A Return
-
+nav_host $A
 CODE=$(host_room_code host)
-[ -n "$CODE" ] || { echo "NO ROOM CODE"; kill $PA $PB; exit 1; }
+[ -n "$CODE" ] || { echo "NO ROOM CODE"; kill_pair $PA $PB; exit 1; }
 echo "room code: $CODE"
 
-# Joiner: attract -> menu -> ONLINE -> JOIN -> type the code
-key $B Return; sleep 1; key $B s; key $B Return; sleep 1; key $B s; key $B Return; sleep 1
-for c in $(echo "$CODE" | grep -o .); do key $B "$c"; done
+nav_join $B "$CODE"
 echo "== waiting for connect"; sleep 18
 alive $PA host; alive $PB joiner
 grep -aq "bootstrap adopted" "$OUT/joiner.log" || { echo "NO BOOTSTRAP"; exit 1; }
 
-kill $PA $PB 2>/dev/null; wait $PA $PB 2>/dev/null
+kill_pair $PA $PB
 assert_clean "$OUT/host.log" "$OUT/joiner.log"
 
 # The host learns the client's identity from HELLO; the client learns the

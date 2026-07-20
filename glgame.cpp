@@ -16,7 +16,6 @@
 #include "weapon/beam.h"
 #include "weapon/lance.h"
 #include "weapon/god_mode.h"
-#include "net_policy.h"
 #include "net_signal.h"
 #include "net_transport.h"
 #include "glcar.h"
@@ -2038,24 +2037,14 @@ void GLGame::net_host_rejoin_poll(int delta) {
   }
 
   // Fresh session handshaking (HELLO/WELCOME) over the new transport.
+  // A policy-refused rejoiner never reaches Ready — the session itself
+  // rejects inside the handshake (net_session.cpp, RejectNotAllowed) and
+  // lands in the Failed/Rejected branch below, which re-offers so the
+  // room stays open for an allowed rejoiner; the refused peer got an
+  // honest MSG_REJECT and its lobby stops retrying.
   if (net_session_) {
     net_session_->update(delta);
-    if (net_session_->phase() == NetSession::Ready &&
-        !net_comms_allowed_with(net_session_->peer_identity())) {
-      // Platform policy refuses this peer (net_policy.h; default backend
-      // never does): treat it like a bad handshake — drop the session and
-      // re-offer so the room stays open for an allowed rejoiner.
-      NET_LOG("net: identity - rejoin peer refused by policy\n");
-      delete net_session_;
-      net_session_ = nullptr;
-      net_rehost_ = NetTransport::create();
-      net_rehost_offer_sent_ = false;
-      if (net_rehost_) {
-        net_rehost_->set_trickle(true);
-        net_rehost_->set_ice_servers(net_ice_);
-        net_rehost_->start_host();
-      }
-    } else if (net_session_->phase() == NetSession::Ready) {
+    if (net_session_->phase() == NetSession::Ready) {
       net_connection_lost_ = false;
       // A rejoin re-runs the handshake, so the identity re-arrived fresh —
       // refresh the stored badge (the rejoiner may be a different friend
@@ -2090,10 +2079,9 @@ void GLGame::net_host_rejoin_poll(int delta) {
       net_set_generation_banner(generation);
       // Name the rejoiner when their identity is known ("GLENN
       // RECONNECTED"); a legacy peer keeps the plain text.
-      net_banner_text_ = (net_peer_identity_.name.empty()
-                              ? std::string("PLAYER 2")
-                              : net_peer_identity_.name) +
-                         " RECONNECTED";
+      net_banner_text_ =
+          net_identity_name_or(net_peer_identity_, "PLAYER 2") +
+          " RECONNECTED";
       // Re-sync the room rule — the rejoiner may be a fresh app launch
       // whose HUD reset to its own preference.
       net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);

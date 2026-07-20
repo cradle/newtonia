@@ -144,9 +144,15 @@ the savegame append-only convention applied to the wire (guarded by
 current build send the short messages). The peer identity lives on
 `NetSession::peer_identity()`, is copied to `GLGame::net_peer_identity_`
 at adoption, and refreshes with every rejoin handshake. `net_policy.h`
-(`net_online_play_allowed` / `net_comms_allowed_with`, default allow-all)
-gates the menu ONLINE row, the lobby HOST/JOIN commits, and the
-session-Ready points where the identity is first known.
+(`net_online_play_allowed` / `net_comms_allowed_with`, default allow-all;
+backends must answer from a cached snapshot — hot paths): online-play
+gates the menu ONLINE row and the lobby HOST/JOIN commits; the per-peer
+comms check runs INSIDE the NetSession handshake — host: between the
+HELLO identity parse and WELCOME, refusing with MSG_REJECT reason 2
+(`RejectNotAllowed`, an appended enum value old builds render as their
+generic refusal); client: locally on the WELCOME identity — so adopters
+only ever see the Rejected phase and a refused peer is told honestly
+instead of being ghosted on a CONNECTED screen.
 
 ## Trust model & input safety
 

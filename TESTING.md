@@ -126,6 +126,11 @@ test/e2e/identity_legacy.sh # mixed-version interop: a legacy peer (short
                      # directions) must still handshake + bootstrap, with the
                      # current side logging "net: identity none (legacy peer)"
                      # — guards the append-only wire convention (no PROTO bump)
+test/e2e/policy.sh   # net_policy refusal path: a host refusing all peers
+                     # (NEWTONIA_NET_TEST_REFUSE_COMMS=1, default backend's
+                     # inert hook) must reject INSIDE the handshake (MSG_REJECT
+                     # RejectNotAllowed before WELCOME); the joiner never
+                     # bootstraps and both sides stay alive
 ```
 
 `NEWTONIA_TEST_SPAWN_PICKUPS=1` (offline, inert without the env var) rings

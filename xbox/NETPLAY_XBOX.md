@@ -690,21 +690,26 @@ All platform-neutral, all improve the existing shipping netplay, all give the
 private Xbox backend a place to land — mirrors the `Achievements` / `Presence`
 seam pattern.
 
-> **Status (2026-07-20): the netplay base is on this fork and items 1–4 below
-> are implemented** (branch `claude/net-protocol-identity-ki90s4`): identity on
+> **Status (2026-07-20): items 1–4 below are implemented upstream** (branch `claude/net-protocol-identity-ki90s4`): identity on
 > the wire as an append-only HELLO/WELCOME extension with NO `PROTO_VERSION`
 > bump (`net_protocol.h`, `net_session.*`), the `net_identity.*` seam (default
-> compile-time platform + "PLAYER"; Steam persona backend `steam_identity.cpp`;
-> platform enum reserves 6 = Xbox for the private backend), the badge UX
-> (lobby "HOSTED BY <NAME> - <PLATFORM>", `Overlay::remote_badge` bottom-row
-> tag, name-based DISCONNECTED/RECONNECTED — a legacy peer renders exactly the
-> pre-badge UI), and the `net_policy.*` seam (default allow-all; the private
-> backend defines `NEWTONIA_NET_POLICY_BACKEND` and supplies the
-> `XUserCheckPrivilege` checks — multiplayer 254, cross-network 185, per the
-> public GDK docs) wired at the menu ONLINE row, the lobby HOST/JOIN commits,
-> and every session-Ready point. Guards: `test/e2e/identity.sh`,
-> `test/e2e/identity_legacy.sh` (mixed-version interop, both directions).
-> Items 8c/8d below remain open.
+> compile-time platform + "PLAYER"; backends implement
+> `NetIdentityBackend::local_platform()/local_name()` — Steam persona under
+> `STEAM_BUILD`, and the fork's gamertag backend defines
+> `NEWTONIA_NET_IDENTITY_BACKEND` and returns `NET_PLATFORM_XBOX` in its own
+> TU, no shared-layer edit), the badge UX (lobby "HOSTED BY <NAME> -
+> <PLATFORM>", `Overlay::remote_badge` bottom-row tag, name-based
+> DISCONNECTED/RECONNECTED — a legacy peer renders exactly the pre-badge UI),
+> and the `net_policy.*` seam (default allow-all; the private backend defines
+> `NEWTONIA_NET_POLICY_BACKEND` and supplies the `XUserCheckPrivilege` checks
+> — multiplayer 254, cross-network 185, per the public GDK docs — from a
+> CACHED snapshot, both calls are hot paths). `net_online_play_allowed` gates
+> the menu ONLINE row + lobby commits; `net_comms_allowed_with` is enforced
+> inside the NetSession handshake (host refuses pre-WELCOME with MSG_REJECT
+> reason `RejectNotAllowed`; client refuses locally on the WELCOME identity),
+> so a blocked peer gets an honest refusal on every adoption path, including
+> mid-game rejoin. Guards: `test/e2e/identity.sh`, `test/e2e/identity_legacy.sh`
+> (mixed-version interop, both directions). Items 8c/8d below remain open.
 1. **Platform identity on the wire.** Extend `MSG_HELLO`/`MSG_WELCOME`
    (`net_protocol.h`, `net_session.*`) with a `peer_platform` enum
    (Web/Steam/iOS/Android/Xbox/Desktop) + a display-name string; store it on the

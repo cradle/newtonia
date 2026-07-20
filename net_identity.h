@@ -46,6 +46,14 @@ struct NetIdentity {
 
 // The local player's identity: compile-time platform detection plus the
 // backend's display name (generic "PLAYER" without a platform backend).
+//
+// Platform backends implement NetIdentityBackend::local_platform() /
+// local_name() (see net_identity.cpp): STEAM_BUILD enables the Steam
+// persona backend (steam_identity.cpp); any other platform defines
+// NEWTONIA_NET_IDENTITY_BACKEND for its build and supplies the two
+// functions in its own TU — the Xbox fork's gamertag backend returns
+// NET_PLATFORM_XBOX + XUserGetGamertag there, with no edit to the shared
+// layer. Backend returns platform 0 / empty name to keep the defaults.
 const NetIdentity &net_local_identity();
 
 // Badge label for a platform tag ("STEAM", "WEB", ...); "" for Unknown and
@@ -61,5 +69,16 @@ std::string net_sanitize_name(const std::string &raw);
 // "GLENN - STEAM" (name + platform), "GLENN" (unknown label), "STEAM"
 // (name filtered to nothing), or "" (no identity — render no badge).
 std::string net_identity_badge(const NetIdentity &id);
+
+// The peer's name, or `fallback` for a legacy/nameless peer — the one rule
+// for every name-bearing message ("GLENN DISCONNECTED" vs "PLAYER 2
+// DISCONNECTED"), so the DISCONNECTED and RECONNECTED texts can't drift.
+std::string net_identity_name_or(const NetIdentity &id, const char *fallback);
+
+// True when the Typer font can draw `c`. DEFINED IN typer.cpp, right next
+// to the glyph table it must mirror, so a glyph addition updates both in
+// one file; declared here so the SDL/GL-free net_identity.cpp can call it
+// without pulling in typer.h's heavy includes.
+bool net_name_char_drawable(char c);
 
 #endif /* NET_IDENTITY_H */

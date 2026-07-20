@@ -85,9 +85,8 @@ void Overlay::net_overlays(const GLGame *glgame) {
     // host may be reading the code out to the other player, and it explains
     // why the code is back on screen. Named when the peer's identity is
     // known ("GLENN DISCONNECTED"); a legacy peer keeps the plain text.
-    std::string who = glgame->net_peer_identity_.name.empty()
-                          ? std::string("PLAYER 2")
-                          : glgame->net_peer_identity_.name;
+    std::string who =
+        net_identity_name_or(glgame->net_peer_identity_, "PLAYER 2");
     Typer::draw_centered(0, vh * 0.80f, (who + " DISCONNECTED").c_str(), 20);
     std::string room = "ROOM " + glgame->net_room_code_;
     Typer::draw_centered(0, vh * 0.67f, room.c_str(), 18);

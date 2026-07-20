@@ -132,14 +132,19 @@ NetLobby::NetLobby()
 #endif
 }
 
+void NetLobby::fail_online_not_allowed() {
+  fail_headline_ = "ONLINE PLAY NOT ALLOWED";
+  set_status("THIS ACCOUNT CANNOT PLAY ONLINE", 2 * STATUS_SHOW_MS);
+  policy_blocked_ = true;
+  screen_ = LobbyFailed;
+}
+
 NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
   hosting_ = false;
   // Same policy gate as the interactive JOIN commit (confirm()): this ctor
   // is a join commit too — auto-rejoin and platform invite accepts.
   if (!net_online_play_allowed()) {
-    fail_headline_ = "ONLINE PLAY NOT ALLOWED";
-    set_status("THIS ACCOUNT CANNOT PLAY ONLINE", 2 * STATUS_SHOW_MS);
-    screen_ = LobbyFailed;
+    fail_online_not_allowed();
     return;
   }
   Presence::set_joining();  // auto-rejoin / invite-accept: joining a game
@@ -306,9 +311,7 @@ void NetLobby::confirm() {
     // allows). The menu already hides ONLINE when disallowed — this covers
     // a mid-session privilege change and any path straight into the lobby.
     if (!net_online_play_allowed()) {
-      fail_headline_ = "ONLINE PLAY NOT ALLOWED";
-      set_status("THIS ACCOUNT CANNOT PLAY ONLINE", 2 * STATUS_SHOW_MS);
-      screen_ = LobbyFailed;
+      fail_online_not_allowed();
       return;
     }
     hosting_ = (selection_ == 0);
@@ -368,6 +371,13 @@ void NetLobby::confirm() {
       set_status("THE CODE IS 5 LETTERS");
     }
   } else if (screen_ == LobbyFailed) {
+    // A policy-blocked account gets no chooser: HOST and JOIN would both
+    // refuse with the same headline, an infinite dead-end — back to the
+    // menu, where show_online_row() hides ONLINE for the same reason.
+    if (policy_blocked_) {
+      leave_to_menu();
+      return;
+    }
     // Back to the HOST/JOIN chooser for everyone (Glenn). A failed JOIN
     // used to rebuild an empty join screen via retry_join(), but that
     // screen deliberately skips the clipboard auto-read — re-entering
@@ -886,19 +896,6 @@ void NetLobby::tick(int delta) {
       connect_wait_ms_ += delta;
       session_->update(delta);
       NetSession::Phase p = session_->phase();
-      if (p == NetSession::Ready &&
-          !net_comms_allowed_with(session_->peer_identity())) {
-        // The handshake told us who the peer is and platform policy
-        // (net_policy.h; default backend never refuses) says we may not
-        // play with them. Tear the session down and fail honestly.
-        NET_LOG("net: identity - peer refused by policy\n");
-        delete session_;
-        session_ = nullptr;
-        fail_headline_ = "CANNOT PLAY WITH THAT PLAYER";
-        set_status("BLOCKED BY PLATFORM POLICY", 2 * STATUS_SHOW_MS);
-        screen_ = LobbyFailed;
-        break;
-      }
       if (p == NetSession::Ready) {
         if (session_->role() == NetSession::HostRole) {
           // Host starts the game immediately; the session (and transport)
@@ -921,6 +918,13 @@ void NetLobby::tick(int delta) {
         if (session_->reject_reason() == NetSession::RejectVersionMismatch) {
           fail_headline_ = "VERSION MISMATCH";
           set_status("UPDATE BOTH GAMES", 2 * STATUS_SHOW_MS);
+        } else if (session_->reject_reason() == NetSession::RejectNotAllowed) {
+          // Platform policy refused the pairing — the session decided this
+          // inside the handshake (host: MSG_REJECT before WELCOME; client:
+          // locally on the host's identity). Terminal, so a rejoin loop
+          // can't thrash against a refusal that will never change.
+          fail_headline_ = "CANNOT PLAY WITH THAT PLAYER";
+          set_status("BLOCKED BY PLATFORM POLICY", 2 * STATUS_SHOW_MS);
         } else {
           fail_headline_ = "HOST REFUSED THE CONNECTION";
         }

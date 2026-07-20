@@ -161,8 +161,17 @@ public:
     Failed,       // transport failed or handshake timed out
   };
 
+  // Wire values in MSG_REJECT's reason byte — append only. An old build
+  // receiving a value it doesn't know renders its generic "HOST REFUSED
+  // THE CONNECTION" text, so new reasons are safe to add.
   enum RejectReason {
     RejectVersionMismatch = 1,
+    // Platform policy refused this pairing (net_policy.h,
+    // net_comms_allowed_with — checked inside the handshake, before the
+    // host's WELCOME, so a blocked joiner gets an honest refusal instead
+    // of a ghosted CONNECTED screen). Also set locally (no wire message)
+    // when the CLIENT's own policy refuses the host's identity.
+    RejectNotAllowed = 2,
   };
 
   // Takes ownership of the transport (must be non-null).

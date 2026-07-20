@@ -2,59 +2,37 @@
 
 // Shared layer of the peer-identity seam (net_identity.h). Compiles in every
 // build unconditionally, like the other net_*.cpp shared layers — no SDL, no
-// GL, no platform SDK includes here.
+// GL, no platform SDK includes here (the glyph predicate net_name_char_drawable
+// is defined in typer.cpp beside the glyph table for the same reason).
 
-#if defined(__APPLE__)
-#include <TargetConditionals.h>
-#endif
-
-#ifdef STEAM_BUILD
-// steam_identity.cpp (compiled only under STEAM_BUILD) provides the persona
-// name; the same flag selects the Steam platform tag below.
+// Platform backends implement these two behind their own build flag, in
+// their own TU: STEAM_BUILD -> steam_identity.cpp (persona name);
+// NEWTONIA_NET_IDENTITY_BACKEND -> any other platform's backend (the Xbox
+// fork's gamertag backend lands here with no edit to this file). A backend
+// returns platform 0 / empty name to fall back to the defaults below.
+#if defined(STEAM_BUILD) || defined(NEWTONIA_NET_IDENTITY_BACKEND)
+#define IDENTITY_HAVE_BACKEND 1
 namespace NetIdentityBackend {
+uint8_t local_platform();
 std::string local_name();
 }
 #endif
 
 namespace {
 
-// Compile-time platform detection, mirroring how the build system separates
-// the platforms (each flag is exclusive to its build).
-uint8_t local_platform() {
+// Compile-time platform detection — the no-backend default. Uses the
+// codebase's own platform macros (__IOS__ from ios/project.yml, the same
+// macro gl_compat.h and touch_controls branch on).
+uint8_t default_platform() {
 #if defined(__EMSCRIPTEN__)
   return NET_PLATFORM_WEB;
 #elif defined(__ANDROID__)
   return NET_PLATFORM_ANDROID;
-#elif defined(__APPLE__) && TARGET_OS_IPHONE
+#elif defined(__IOS__)
   return NET_PLATFORM_IOS;
-#elif defined(STEAM_BUILD)
-  return NET_PLATFORM_STEAM;
 #else
   return NET_PLATFORM_DESKTOP;
 #endif
-}
-
-std::string local_name() {
-#ifdef STEAM_BUILD
-  std::string name = NetIdentityBackend::local_name();
-  if (!name.empty()) return name;
-#endif
-  return "PLAYER";
-}
-
-// Characters the Typer font has glyphs for (typer.cpp init_meshes): letters
-// (upper/lower share meshes), digits, and this symbol set. Space advances
-// without drawing, which is fine in a name.
-bool typer_can_draw(char c) {
-  if (c >= 'A' && c <= 'Z') return true;
-  if (c >= 'a' && c <= 'z') return true;
-  if (c >= '0' && c <= '9') return true;
-  switch (c) {
-    case ' ': case '-': case '.': case ',': case '+': case '/':
-    case '(': case ')': case '[': case ']': case '<': case '>': case '=':
-      return true;
-  }
-  return false;
 }
 
 }  // namespace
@@ -64,8 +42,15 @@ const NetIdentity &net_local_identity() {
   static bool built = false;
   if (!built) {
     built = true;
-    id.platform = local_platform();
-    id.name = net_sanitize_name(local_name());
+    id.platform = default_platform();
+    std::string name;
+#ifdef IDENTITY_HAVE_BACKEND
+    uint8_t backend_platform = NetIdentityBackend::local_platform();
+    if (backend_platform != NET_PLATFORM_UNKNOWN) id.platform = backend_platform;
+    name = NetIdentityBackend::local_name();
+#endif
+    if (name.empty()) name = "PLAYER";
+    id.name = net_sanitize_name(name);
   }
   return id;
 }
@@ -87,7 +72,7 @@ std::string net_sanitize_name(const std::string &raw) {
   for (size_t i = 0; i < raw.size() && out.size() < (size_t)NET_IDENTITY_NAME_MAX;
        i++) {
     char c = raw[i];
-    if (typer_can_draw(c)) out += c;
+    if (net_name_char_drawable(c)) out += c;
   }
   // Trim surrounding spaces (dropped UTF-8 can leave stray separators).
   size_t begin = out.find_first_not_of(' ');
@@ -101,4 +86,8 @@ std::string net_identity_badge(const NetIdentity &id) {
   if (id.name.empty()) return label;  // may be "" — caller renders nothing
   if (label.empty()) return id.name;  // future platform: name-only badge
   return id.name + " - " + label;
+}
+
+std::string net_identity_name_or(const NetIdentity &id, const char *fallback) {
+  return id.name.empty() ? std::string(fallback) : id.name;
 }
