@@ -10,7 +10,9 @@ import android.content.SharedPreferences;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.system.Os;
 
 import com.android.installreferrer.api.InstallReferrerClient;
@@ -131,9 +133,32 @@ public class NewtoniaActivity extends SDLActivity {
         }
     }
 
+    // LAN discovery beacons (net_lan.cpp) carry a host name for the
+    // joiner's row/band; native gethostname() is a bare "localhost" on
+    // Android, so export the user-visible device name over the same env
+    // bridge the adb debug extras use (native reads NEWTONIA_DEVICE_NAME
+    // and sanitizes it into the game font). Skipped if the var is
+    // already set — an adb --es NEWTONIA_DEVICE_NAME override wins.
+    private void exportDeviceName() {
+        try {
+            if (Os.getenv("NEWTONIA_DEVICE_NAME") != null) return;
+            String name = Settings.Global.getString(
+                getContentResolver(), Settings.Global.DEVICE_NAME);
+            if (name == null || name.isEmpty())
+                name = Settings.Secure.getString(getContentResolver(),
+                                                 "bluetooth_name");
+            if (name == null || name.isEmpty()) name = Build.MODEL;
+            if (name != null && !name.isEmpty())
+                Os.setenv("NEWTONIA_DEVICE_NAME", name, true);
+        } catch (Exception ignored) {
+            // Best-effort: native falls back to its NEWTONIA default.
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         applyEnvExtras(getIntent());
+        exportDeviceName();
         super.onCreate(savedInstanceState);
 
         AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);

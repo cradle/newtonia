@@ -270,19 +270,35 @@ std::string dests_to_string(const std::vector<uint32_t> &dests) {
 bool available() { return lan_sockets_init(); }
 
 std::string local_host_name() {
-  char buf[256] = {0};
-  if (lan_sockets_init() && gethostname(buf, (int)sizeof(buf) - 1) == 0 &&
-      buf[0]) {
-    // Strip the domain suffix ("glenn-mbp.local" -> "glenn-mbp") and
-    // uppercase into the game font's alphabet.
-    std::string name(buf);
+  // The user-visible device name when the platform layer exports one
+  // (NewtoniaActivity: Android's gethostname() is a useless
+  // "localhost", but "GLENNS PIXEL 7" is right there in Settings).
+  // Also an adb debug override via the intent-extras env bridge.
+  const char *dev = std::getenv("NEWTONIA_DEVICE_NAME");
+  std::string name = dev ? dev : "";
+  if (name.empty()) {
+    char buf[256] = {0};
+    if (lan_sockets_init() && gethostname(buf, (int)sizeof(buf) - 1) == 0)
+      name = buf;
+    // Strip the domain suffix ("glenn-mbp.local" -> "glenn-mbp") —
+    // hostname path only; a device name may legitimately contain dots.
     size_t dot = name.find('.');
     if (dot != std::string::npos) name = name.substr(0, dot);
-    for (size_t i = 0; i < name.size(); i++)
-      name[i] = (char)toupper((unsigned char)name[i]);
-    if (!name.empty()) return name.substr(0, MAX_NAME);
   }
-  return "NEWTONIA";
+  // Uppercase into the game font and keep only glyphs it draws well in
+  // a row label (letters, digits, space, dash); device names carry
+  // apostrophes/emoji the font has no glyph for.
+  std::string out;
+  for (size_t i = 0; i < name.size(); i++) {
+    char c = (char)toupper((unsigned char)name[i]);
+    if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' ||
+        (c == ' ' && !out.empty() && out[out.size() - 1] != ' '))
+      out += c;
+  }
+  while (!out.empty() && out[out.size() - 1] == ' ')
+    out.erase(out.size() - 1);
+  if (out.empty() || out == "LOCALHOST") return "NEWTONIA";
+  return out.substr(0, MAX_NAME);
 }
 
 // ---------------------------------------------------------------- Announce
