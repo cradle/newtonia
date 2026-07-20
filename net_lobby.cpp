@@ -205,6 +205,9 @@ static bool code_entry_keyboard(bool open) {
     float H = Typer::scaled_window_height;
     int top = (int)((1.0f - 120.0f / H) * Typer::window_height * 0.5f);
     int height = (int)((96.0f / H) * Typer::window_height * 0.5f);
+    // Belt-and-braces beside the tick drain: any dismissal event from a
+    // PREVIOUS keyboard must not be read as this one closing.
+    steam_floating_keyboard_dismissed();
     return steam_show_floating_keyboard(Typer::window_width / 4, top,
                                         Typer::window_width / 2, height);
   }
@@ -895,9 +898,13 @@ void NetLobby::tick(int delta) {
   // keyboard is dismissed. The old proof — the next controller event
   // reaching us — left the keyboard-up layout on screen until the
   // player pressed something else (Glenn, Deck beta test). The event
-  // path stays as a fallback for a missed callback.
-  if (floating_kb_up_ && steam_floating_keyboard_dismissed())
-    floating_kb_up_ = false;
+  // path stays as a fallback for a missed callback. Drained EVERY tick,
+  // not just while floating_kb_up_: a programmatic dismissal (backing
+  // out, LAN join) latches the event too, and an unconsumed latch made
+  // the NEXT summon flip back instantly — button hints drawn under the
+  // live keyboard (Glenn's second Deck report).
+  bool kb_dismissed = steam_floating_keyboard_dismissed();
+  if (floating_kb_up_ && kb_dismissed) floating_kb_up_ = false;
 
   // The LAN door (no-ops where NetLan isn't available or nothing runs).
   if (hosting_) lan_host_update(delta);
@@ -1407,12 +1414,13 @@ void NetLobby::draw() {
               Typer::draw_centered(0, -266.0f - (float)i * 32.0f,
                                    row.c_str(), lan_sel_ == i ? 14 : 11);
             }
-            // The join hint the keyboard flow shows, matching wording
-            // (the pad's down/A land in the same places). The status
+            // The keyboard flow's join hint in the pad's vocabulary
+            // (Glenn, Deck). Keyboard arrows/Enter land in the same
+            // places for a desk setup with both devices. The status
             // line moved to the top half for this layout, so the
             // 2-row stack can reach down here freely.
             Typer::draw_centered(0, -274.0f - (float)show * 32.0f,
-                                 "UP/DOWN AND ENTER TO JOIN", 8);
+                                 "UP/DOWN AND A TO JOIN", 8);
           }
         } else {
           // LAN host rows clear of the header (y=320) and heading/code

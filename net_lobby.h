@@ -38,6 +38,12 @@ public:
   NetLobby();
   virtual ~NetLobby();
 
+  // True while the room-code field is consuming typed characters — the
+  // platform layer suppresses global single-key hotkeys (the bare F
+  // fullscreen toggle) so typing into the field can't trigger them
+  // (StateManager::text_entry_active).
+  bool code_entry_active() const { return screen_ == CodeEntry; }
+
   void draw() override;
   void keyboard(unsigned char key, int x, int y) override;
   void keyboard_up(unsigned char key, int x, int y) override;
