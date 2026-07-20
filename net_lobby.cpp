@@ -1387,6 +1387,12 @@ void NetLobby::draw() {
               Typer::draw_centered(0, -266.0f - (float)i * 32.0f,
                                    row.c_str(), lan_sel_ == i ? 14 : 11);
             }
+            // The join hint the keyboard flow shows, matching wording
+            // (the pad's down/A land in the same places). The status
+            // line moved to the top half for this layout, so the
+            // 2-row stack can reach down here freely.
+            Typer::draw_centered(0, -274.0f - (float)show * 32.0f,
+                                 "UP/DOWN AND ENTER TO JOIN", 8);
           }
         } else {
           // LAN host rows clear of the header (y=320) and heading/code
@@ -1509,7 +1515,13 @@ void NetLobby::draw() {
   if (status_ms_ > 0 && !status_.empty() && !status_redundant) {
     // Touch code entry: the usual status spot is behind the soft
     // keyboard; tuck it under the hint line instead.
-    int sy = (is_touch_mode() && screen_ == CodeEntry) ? 20 : -320;
+    // CodeEntry hoists the status out of the bottom half on touch (soft
+    // keyboard) AND in the controller layout (picker + LAN rows + join
+    // hint own the space down to ~-340); it sits in the gap between the
+    // code slots (glyphs to 24) and the button-hint line at -20.
+    int sy = (screen_ == CodeEntry && (is_touch_mode() || controller_seen_))
+                 ? 20
+                 : -320;
     Typer::draw_centered(0, sy, status_.c_str(), 15);
   }
 
