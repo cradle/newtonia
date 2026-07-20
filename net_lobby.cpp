@@ -1170,9 +1170,12 @@ void NetLobby::draw() {
       lines.push_back("CONNECTED!");
       lines.push_back("YOU ARE PLAYER 2");
       // The host's identity badge from the WELCOME append ("HOSTED BY
-      // GLENN - STEAM"); a legacy host draws exactly the old screen.
+      // GLENN - STEAM"; a nameless host is player 1, "HOSTED BY
+      // PLAYER 1 - DESKTOP"); a legacy host draws exactly the old screen.
       std::string badge =
-          session_ ? net_identity_badge(session_->peer_identity()) : "";
+          session_ ? net_identity_badge_or(session_->peer_identity(),
+                                           "PLAYER 1")
+                   : "";
       if (!badge.empty()) lines.push_back("HOSTED BY " + badge);
       lines.push_back("");
       if (blink) lines.push_back("WAITING FOR THE HOST'S WORLD");

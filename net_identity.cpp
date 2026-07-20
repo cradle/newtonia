@@ -1,5 +1,7 @@
 #include "net_identity.h"
 
+#include <cstdlib>
+
 // Shared layer of the peer-identity seam (net_identity.h). Compiles in every
 // build unconditionally, like the other net_*.cpp shared layers — no SDL, no
 // GL, no platform SDK includes here (the glyph predicate net_name_char_drawable
@@ -49,7 +51,15 @@ const NetIdentity &net_local_identity() {
     if (backend_platform != NET_PLATFORM_UNKNOWN) id.platform = backend_platform;
     name = NetIdentityBackend::local_name();
 #endif
-    if (name.empty()) name = "PLAYER";
+    if (name.empty()) {
+      // Dev/test hook (and stopgap until a name preference exists): no
+      // placeholder default — a build without a name backend sends the
+      // badge-only identity (name_len 0) and the RECEIVER labels the peer
+      // by role ("PLAYER 1" = host, "PLAYER 2" = client), which carries
+      // strictly more information than a canned name could.
+      const char *e = std::getenv("NEWTONIA_NET_NAME");
+      if (e) name = e;
+    }
     id.name = net_sanitize_name(name);
   }
   return id;
@@ -86,6 +96,15 @@ std::string net_identity_badge(const NetIdentity &id) {
   if (id.name.empty()) return label;  // may be "" — caller renders nothing
   if (label.empty()) return id.name;  // future platform: name-only badge
   return id.name + " - " + label;
+}
+
+std::string net_identity_badge_or(const NetIdentity &id,
+                                  const char *fallback_name) {
+  if (!id.known()) return "";  // legacy peer: no badge, no placeholder
+  std::string name = id.name.empty() ? std::string(fallback_name) : id.name;
+  std::string label = net_platform_label(id.platform);
+  if (label.empty()) return name;  // future platform: name-only badge
+  return name + " - " + label;
 }
 
 std::string net_identity_name_or(const NetIdentity &id, const char *fallback) {

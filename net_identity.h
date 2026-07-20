@@ -57,7 +57,12 @@ struct NetIdentity {
 };
 
 // The local player's identity: compile-time platform detection plus the
-// backend's display name (generic "PLAYER" without a platform backend).
+// backend's display name. Without a name source the name stays EMPTY —
+// the identity goes out badge-only (name_len 0) and the receiving side
+// labels the peer by role: "PLAYER 1" for the host, "PLAYER 2" for the
+// client (the fallback each name/badge call site passes). The
+// NEWTONIA_NET_NAME env var is a dev/test name source for builds with no
+// platform backend.
 //
 // Platform backends implement NetIdentityBackend::local_platform() /
 // local_name() (see net_identity.cpp): STEAM_BUILD enables the Steam
@@ -81,6 +86,13 @@ std::string net_sanitize_name(const std::string &raw);
 // "GLENN - STEAM" (name + platform), "GLENN" (unknown label), "STEAM"
 // (name filtered to nothing), or "" (no identity — render no badge).
 std::string net_identity_badge(const NetIdentity &id);
+
+// Like net_identity_badge but a nameless-yet-known peer gets the role
+// fallback instead of a name-less badge: "PLAYER 1 - DESKTOP" (pass
+// "PLAYER 1" when the peer is the host, "PLAYER 2" when it's the client).
+// Still "" for a legacy peer — the no-badge rendering stays exact.
+std::string net_identity_badge_or(const NetIdentity &id,
+                                  const char *fallback_name);
 
 // The peer's name, or `fallback` for a legacy/nameless peer — the one rule
 // for every name-bearing message ("GLENN DISCONNECTED" vs "PLAYER 2

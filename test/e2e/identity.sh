@@ -1,14 +1,16 @@
 #!/bin/bash
-# Peer-identity happy path, two phases:
-#   A) two current builds connect via a room code and each side must log
-#      the OTHER's identity from the HELLO/WELCOME append ("net: identity
-#      peer name='PLAYER' platform=DESKTOP(1)" — the default backend's
-#      generic name + compile-time platform).
-#   B) badge-only: the host withholds its display name (name_len 0 via the
-#      NEWTONIA_NET_ANON_IDENTITY hook — a valid wire state some platform
-#      backends produce deliberately; names are optional). The joiner must
-#      log the nameless identity (name='' with the platform still known,
-#      NOT the legacy "identity none" line) and connect normally.
+# Peer-identity happy path, three assertions across two pairings:
+#   A) named exchange: both sides carry a display name (the
+#      NEWTONIA_NET_NAME dev hook — desktop default builds send no name)
+#      and each side must log the OTHER's from the HELLO/WELCOME append
+#      ("net: identity peer name='GLENN' platform=DESKTOP(1)").
+#   B) badge-only: the host withholds its display name (name_len 0 via
+#      NEWTONIA_NET_ANON_IDENTITY=1, overriding its configured name — a
+#      valid wire state some platform backends produce deliberately;
+#      names are optional). The joiner must log the nameless identity
+#      (name='' with the platform still known, NOT the legacy "identity
+#      none" line) and connect normally; the receiver renders role labels
+#      (PLAYER 1 = host, PLAYER 2 = client) in name-bearing text.
 # Guards the identity exchange end-to-end (net_identity.*, net_session.cpp).
 # Prints IDENTITY-E2E-OK. See TESTING.md.
 set -u
@@ -18,17 +20,15 @@ fi
 . "$(dirname "$0")/lib.sh"
 relay_check
 
-# pair HOSTNAME JOINERNAME ANON: one host+joiner run to a connected game;
-# logs at $OUT/$1.log / $OUT/$2.log. ANON=1 withholds the host's name.
+# pair HOSTNAME JOINERNAME HOSTANON HOSTDISPLAY JOINERDISPLAY: one
+# host+joiner run to a connected game; logs at $OUT/$1.log / $OUT/$2.log.
+# HOSTANON=1 withholds the host's name on the wire.
 pair() {
-  local hname=$1 jname=$2 anon=$3 pa pb wins a b code
-  if [ "$anon" = 1 ]; then
-    pa=$(NEWTONIA_NET_ANON_IDENTITY=1 launch "$hname")
-  else
-    pa=$(launch "$hname")
-  fi
+  local hname=$1 jname=$2 anon=$3 hn=$4 jn=$5 pa pb wins a b code
+  pa=$(NEWTONIA_NET_NAME="$hn" NEWTONIA_NET_ANON_IDENTITY="$anon" \
+       launch "$hname")
   sleep 2
-  pb=$(launch "$jname")
+  pb=$(NEWTONIA_NET_NAME="$jn" launch "$jname")
   sleep 4
 
   wins=$(newtonia_windows)
@@ -52,24 +52,29 @@ pair() {
   wait_no_windows
 }
 
-echo "=== A: both sides full identity"
-pair host joiner 0
+echo "=== A: named identities both ways"
+pair host joiner 0 GLENN BOB
 # The host learns the client's identity from HELLO; the client learns the
-# host's from WELCOME. Both sides of this run are the same desktop build.
-grep -aq "net: identity peer name='PLAYER' platform=DESKTOP(1)" "$OUT/host.log" ||
+# host's from WELCOME.
+grep -aq "net: identity peer name='BOB' platform=DESKTOP(1)" "$OUT/host.log" ||
   { echo "IDENTITY-E2E-FAIL: host never logged the client identity"; exit 1; }
-grep -aq "net: identity peer name='PLAYER' platform=DESKTOP(1)" "$OUT/joiner.log" ||
+grep -aq "net: identity peer name='GLENN' platform=DESKTOP(1)" "$OUT/joiner.log" ||
   { echo "IDENTITY-E2E-FAIL: joiner never logged the host identity"; exit 1; }
 
 echo "=== B: host withholds its name (badge-only identity)"
-pair anon_host anon_joiner 1
-# The joiner sees platform-known/name-withheld — distinct from legacy.
+pair anon_host anon_joiner 1 GLENN BOB
+# The joiner sees platform-known/name-withheld — distinct from legacy —
+# even though the host had a name configured.
 grep -aq "net: identity peer name='' platform=DESKTOP(1)" "$OUT/anon_joiner.log" ||
   { echo "IDENTITY-E2E-FAIL: joiner never logged the badge-only identity"; exit 1; }
 grep -aq "net: identity none" "$OUT/anon_joiner.log" &&
   { echo "IDENTITY-E2E-FAIL: badge-only host mistaken for a legacy peer"; exit 1; }
+# The nameless host renders under its role label on the joiner's side
+# ("JOINED PLAYER 1 SERVER" greeting banner).
+grep -aq "net: banner 'JOINED PLAYER 1 SERVER'" "$OUT/anon_joiner.log" ||
+  { echo "IDENTITY-E2E-FAIL: joiner never used the PLAYER 1 role label"; exit 1; }
 # The joiner's own identity is unaffected by the host's hook.
-grep -aq "net: identity peer name='PLAYER' platform=DESKTOP(1)" "$OUT/anon_host.log" ||
+grep -aq "net: identity peer name='BOB' platform=DESKTOP(1)" "$OUT/anon_host.log" ||
   { echo "IDENTITY-E2E-FAIL: anon host never logged the client identity"; exit 1; }
 
 echo "IDENTITY-E2E-OK"

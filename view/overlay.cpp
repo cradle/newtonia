@@ -100,11 +100,11 @@ void Overlay::net_overlays(const GLGame *glgame) {
     if (glgame->net_peer_bye_) {
       // Named like DISCONNECTED/RECONNECTED but near the middle, at the
       // banner spot ("GLENN LEFT THE GAME"; the host is player 1, so a
-      // nameless/legacy host reads "PLAYER LEFT THE GAME"). Clear of the
+      // nameless/legacy host reads "PLAYER 1 LEFT THE GAME"). Clear of the
       // pause overlay's "Paused" at y=30 — both show when the host
       // leaves a paused game.
       std::string who =
-          net_identity_name_or(glgame->net_peer_identity_, "PLAYER");
+          net_identity_name_or(glgame->net_peer_identity_, "PLAYER 1");
       Typer::draw_centered(0, vh * 0.55f, (who + " LEFT THE GAME").c_str(),
                            22);
     } else {
@@ -338,7 +338,11 @@ void Overlay::respawn_timer(const GLGame *glgame, const GLShip *glship) {
 void Overlay::remote_badge(const GLGame *glgame, const GLShip *glship) {
   (void)glship;
   if (!glgame->net_active()) return;
-  std::string badge = net_identity_badge(glgame->net_peer_identity_);
+  // The badge names the REMOTE player: the client looks at the host
+  // (player 1), the host at the client (player 2).
+  std::string badge = net_identity_badge_or(
+      glgame->net_peer_identity_,
+      glgame->net_mode_ == GLGame::NetClient ? "PLAYER 1" : "PLAYER 2");
   if (badge.empty()) return;  // legacy peer: no badge, no placeholder
   // Bottom row like the SPECTATING hint, clear of the touch RETURN TO MENU
   // band and the title-safe margin; hoisted above SPECTATING when the

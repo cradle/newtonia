@@ -2658,9 +2658,9 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
   net_peer_identity_ = session->peer_identity();
   // The joiner's complement of the host's "<NAME> JOINED" greeting: name
   // whose game this is ("JOINED GLENN SERVER"; the host is player 1, so a
-  // nameless/legacy host reads "JOINED PLAYER SERVER").
+  // nameless/legacy host reads "JOINED PLAYER 1 SERVER").
   net_banner_text_ = "JOINED " +
-      net_identity_name_or(net_peer_identity_, "PLAYER") + " SERVER";
+      net_identity_name_or(net_peer_identity_, "PLAYER 1") + " SERVER";
   net_banner_ms_ = 3000;
   NET_LOG("net: banner '%s' %d ms\n", net_banner_text_.c_str(), net_banner_ms_);
   net_assembler_ = new Net::SnapshotAssembler();
