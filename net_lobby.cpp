@@ -1300,9 +1300,9 @@ void NetLobby::draw() {
       if (blink) lines.push_back("PLEASE WAIT");
       break;
     case HostWaitAnswer:
-      lines.push_back("1. INVITE CODE COPIED - SEND IT TO YOUR FRIEND");
-      lines.push_back("2. THEY JOIN AND SEND YOU A REPLY CODE");
-      lines.push_back("3. COPY THE REPLY, THEN PRESS V HERE");
+      lines.push_back("INVITE CODE COPIED");
+      lines.push_back("SEND IT TO YOUR FRIEND");
+      lines.push_back("V - PASTE THEIR REPLY");
       lines.push_back("");
       lines.push_back("C - COPY THE INVITE AGAIN");
       if (lan_announce_.running())
@@ -1311,7 +1311,7 @@ void NetLobby::draw() {
                             : "ALSO VISIBLE ON THIS NETWORK");
       break;
     case JoinWaitOffer:
-      lines.push_back("GET THE INVITE CODE FROM YOUR HOST");
+      lines.push_back("GET THE INVITE FROM YOUR HOST");
       lines.push_back("");
       lines.push_back("V - PASTE THE INVITE CODE");
       break;

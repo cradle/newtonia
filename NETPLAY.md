@@ -187,6 +187,22 @@ Verified by `test/e2e/lanclip.sh`, which reproduces the exact race
 (host on the fallback first, blob delivered — the held log line proves
 it — LAN row joins over the LAN door).
 
+**Round 2 discovery hardening (2026-07-20)**: the beacon now goes to
+every broadcast-capable interface's DIRECTED broadcast address
+(getifaddrs / SIO_GET_INTERFACE_LIST) as well as 255.255.255.255 and
+loopback — the global broadcast alone is dropped by many Wi-Fi routers
+between clients, and a multi-homed machine (VPN, virtual adapters)
+sends it out one interface of the OS's choosing. The destination set
+is recomputed every beacon (interface changes mid-lobby self-heal) and
+logged on change (`net: lan beacon -> 255.255.255.255 127.0.0.1
+192.168.1.255`), so a field log shows exactly which networks the host
+is beaconing into. Field note (Glenn's Windows machine): Windows
+Firewall app rules are per-profile — an allow scoped to Public while
+the Wi-Fi is the Private profile silently drops all inbound
+beacons/TCP; tick both profiles in "Allow an app through firewall".
+Manual host/join screens also lost their long lines (they overflowed
+the Windows window width).
+
 ## Protocol quick-ref
 
 Header: `uint8 proto_ver(=1) | uint8 msg_type | uint8 player_id | uint8 reserved`, little-endian, explicit byte packing.

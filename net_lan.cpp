@@ -29,6 +29,7 @@
 #ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <ws2ipdef.h>  // INTERFACE_INFO / SIO_GET_INTERFACE_LIST
 typedef SOCKET lan_socket_t;
 #define LAN_INVALID INVALID_SOCKET
 #define lan_close closesocket
@@ -53,6 +54,8 @@ static bool lan_sockets_init() {
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <ifaddrs.h>
+#include <net/if.h>  // IFF_UP / IFF_BROADCAST / IFF_LOOPBACK
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -151,6 +154,78 @@ std::string frame(const std::string &blob) {
   return f;
 }
 
+// Beacon destinations (network byte order): each broadcast-capable
+// interface's DIRECTED broadcast (e.g. 192.168.1.255) plus the global
+// broadcast and loopback. The global 255.255.255.255 alone is not
+// enough: Wi-Fi routers commonly drop it between clients where the
+// directed form gets through, and a multi-homed machine (VPN, virtual
+// adapters) sends it out ONE interface of the OS's choosing — which is
+// how a host can beacon into its VPN while the real LAN hears nothing.
+// Recomputed every beacon so interface changes mid-lobby self-heal.
+std::vector<uint32_t> beacon_dests() {
+  std::vector<uint32_t> out;
+  out.push_back(htonl(INADDR_BROADCAST));
+  out.push_back(htonl(INADDR_LOOPBACK));
+#ifdef _WIN32
+  // SIO_GET_INTERFACE_LIST needs only ws2_32 (no iphlpapi link).
+  SOCKET s = socket(AF_INET, SOCK_DGRAM, 0);
+  if (s != INVALID_SOCKET) {
+    INTERFACE_INFO ifl[32];
+    DWORD got = 0;
+    if (WSAIoctl(s, SIO_GET_INTERFACE_LIST, nullptr, 0, ifl, sizeof(ifl),
+                 &got, nullptr, nullptr) == 0) {
+      int n = (int)(got / sizeof(INTERFACE_INFO));
+      for (int i = 0; i < n; i++) {
+        if (!(ifl[i].iiFlags & IFF_UP) || (ifl[i].iiFlags & IFF_LOOPBACK) ||
+            !(ifl[i].iiFlags & IFF_BROADCAST))
+          continue;
+        uint32_t a = ((sockaddr_in *)&ifl[i].iiAddress)->sin_addr.s_addr;
+        uint32_t m = ((sockaddr_in *)&ifl[i].iiNetmask)->sin_addr.s_addr;
+        if (a && m) out.push_back(a | ~m);
+      }
+    }
+    closesocket(s);
+  }
+#else
+  ifaddrs *ifs = nullptr;
+  if (getifaddrs(&ifs) == 0) {
+    for (ifaddrs *p = ifs; p; p = p->ifa_next) {
+      if (!(p->ifa_flags & IFF_UP) || (p->ifa_flags & IFF_LOOPBACK) ||
+          !(p->ifa_flags & IFF_BROADCAST))
+        continue;
+      if (!p->ifa_addr || p->ifa_addr->sa_family != AF_INET) continue;
+      if (!p->ifa_broadaddr) continue;
+      uint32_t b = ((sockaddr_in *)p->ifa_broadaddr)->sin_addr.s_addr;
+      if (b) out.push_back(b);
+    }
+    freeifaddrs(ifs);
+  }
+#endif
+  // Dedupe (an interface's directed broadcast can repeat, and some
+  // report 255.255.255.255 which is already first in the list).
+  std::vector<uint32_t> uniq;
+  for (size_t i = 0; i < out.size(); i++) {
+    bool seen = false;
+    for (size_t j = 0; j < uniq.size() && !seen; j++)
+      seen = uniq[j] == out[i];
+    if (!seen) uniq.push_back(out[i]);
+  }
+  return uniq;
+}
+
+std::string dests_to_string(const std::vector<uint32_t> &dests) {
+  std::string s;
+  for (size_t i = 0; i < dests.size(); i++) {
+    in_addr a;
+    a.s_addr = dests[i];
+    char buf[INET_ADDRSTRLEN] = {0};
+    if (!inet_ntop(AF_INET, &a, buf, sizeof(buf))) continue;
+    if (!s.empty()) s += " ";
+    s += buf;
+  }
+  return s;
+}
+
 }  // namespace
 
 bool available() { return lan_sockets_init(); }
@@ -186,6 +261,7 @@ struct Announce::Impl {
   bool offer_sent = false;
   std::string recv_buf;
   int client_ms = 0;  // time since the client connected (timeout)
+  std::string dests_logged;  // last logged beacon-destination set
 };
 
 Announce::Announce() : impl_(new Impl()) {}
@@ -267,19 +343,26 @@ bool Announce::update(int delta_ms, std::string &answer_out) {
   im.beacon_ms -= delta_ms;
   if (im.beacon_ms <= 0) {
     im.beacon_ms = BEACON_INTERVAL_MS;
+    // Global broadcast + loopback (one-box tests) + every interface's
+    // directed broadcast — see beacon_dests(). Recomputed per beacon so
+    // plugging in a cable or dropping a VPN mid-lobby self-heals; the
+    // set is logged whenever it changes (field diagnosis: the log shows
+    // exactly which networks the host is beaconing into).
+    std::vector<uint32_t> dests = beacon_dests();
+    std::string dstr = dests_to_string(dests);
+    if (dstr != im.dests_logged) {
+      im.dests_logged = dstr;
+      NET_LOG("net: lan beacon -> %s\n", dstr.c_str());
+    }
     sockaddr_in to;
     std::memset(&to, 0, sizeof(to));
     to.sin_family = AF_INET;
     to.sin_port = htons(lan_port());
-    // Broadcast for the real LAN; loopback too so two instances on one
-    // machine (the e2e, one-box testing) discover each other even where
-    // 255.255.255.255 routes out a different interface.
-    to.sin_addr.s_addr = htonl(INADDR_BROADCAST);
-    sendto(im.udp, im.beacon.data(), (int)im.beacon.size(), 0,
-           (sockaddr *)&to, sizeof(to));
-    to.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    sendto(im.udp, im.beacon.data(), (int)im.beacon.size(), 0,
-           (sockaddr *)&to, sizeof(to));
+    for (size_t i = 0; i < dests.size(); i++) {
+      to.sin_addr.s_addr = dests[i];
+      sendto(im.udp, im.beacon.data(), (int)im.beacon.size(), 0,
+             (sockaddr *)&to, sizeof(to));
+    }
   }
 
   if (im.client == LAN_INVALID) {
