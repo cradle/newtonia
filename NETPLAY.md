@@ -289,6 +289,25 @@ FIELD-VERIFIED: mac + Windows on real Wi-Fi discovered each other and
 played (2026-07-20), one-box mac shared-clipboard flow shows the LAN
 row first.
 
+**Silent clipboard auto-join failures (2026-07-20, task #165)**: a
+typed bad code showed "NO ROOM WITH THAT CODE" twice in quick
+succession (Glenn, Deck — the Deck had hosted earlier, so its
+clipboard still held the join URL). The second attempt was the 800 ms
+clipboard repoll probing that stale code once the typed failure
+cleared the field; its identical error read as the lobby retrying. Two
+fixes: (1) relay errors for a join the player never asked for
+(`last_join_was_auto_`, set only by the clipboard AUTO path — typing
+and the explicit controller-X paste stay loud) no longer set a status,
+while the dead-marking, field clear, and keyboard re-summon all still
+run; (2) the confirmed-dead guard is now a LIST (`s_dead_codes`) —
+the old single slot meant the typed code's dead-mark EVICTED the
+clipboard code's, freeing the repoll to probe it a third time.
+Verified headless (stale join-URL on clipboard + typed bad code:
+exactly two relay joins, screenshot after the auto failure shows no
+status, after the typed one shows it), room/lan/lankeep/lanclip e2e
+green. Same pass: the CodeEntry status line dropped from y 20 to y 4 —
+at size 15 it grazed the code glyphs (which reach down to y 24).
+
 ## Protocol quick-ref
 
 Header: `uint8 proto_ver(=1) | uint8 msg_type | uint8 player_id | uint8 reserved`, little-endian, explicit byte packing.

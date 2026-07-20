@@ -38,7 +38,17 @@ const int SIGNAL_TIMEOUT_MS = 12000;
 // auto-copies its code to the clipboard, so after quitting a game the
 // JOIN screen would otherwise auto-join the player's own dead room.
 static std::string s_last_hosted_code;
-static std::string s_dead_code;  // room confirmed dead (host BYE / relay says gone)
+// Rooms confirmed dead this run (host BYE / relay says gone). A list, not
+// one slot: a typed bad code dead-marks too, and with a single slot it
+// EVICTED the stale clipboard code marked moments earlier — freeing the
+// repoll to probe it a second time (the engine of task #165's double
+// attempt).
+static std::vector<std::string> s_dead_codes;
+static bool room_is_dead(const std::string &code) {
+  for (size_t i = 0; i < s_dead_codes.size(); i++)
+    if (s_dead_codes[i] == code) return true;
+  return false;
+}
 
 // TURN test hook, process-wide: a "0" typed before the room code (0 is
 // not in the code alphabet) toggles relay-only joins — the one-phone
@@ -108,7 +118,9 @@ static std::string room_code_from_clip(const std::string &text) {
 
 }  // namespace
 
-void NetLobby::mark_room_dead(const std::string &code) { s_dead_code = code; }
+void NetLobby::mark_room_dead(const std::string &code) {
+  if (!code.empty() && !room_is_dead(code)) s_dead_codes.push_back(code);
+}
 
 NetLobby::NetLobby()
     : screen_(Choose),
@@ -405,6 +417,11 @@ void NetLobby::confirm() {
     if (code_entry_.size() == (size_t)NET_ROOM_CODE_LEN) {
       code_entry_keyboard(false);
       floating_kb_up_ = false;
+      // Every join through here is player-driven; the clipboard AUTO-join
+      // site re-flags it right after this call (its failure stays silent —
+      // task #165). The join itself is sent synchronously below, the
+      // relay's verdict only ever arrives later via pump_signal.
+      last_join_was_auto_ = false;
       // Applied here, not at transport creation: the "0" arming happens
       // while typing, after the transport already exists. The pc (and its
       // ICE policy) is only built at start_join, so this is in time.
@@ -841,11 +858,20 @@ void NetLobby::pump_signal(int delta) {
         if (screen_ == RoomJoining || screen_ == CodeEntry) {
           NET_LOG("[lobby] relay err '%s' (screen %d)\n", ev.text.c_str(),
                   (int)screen_);
-          if (ev.text == "no-such-room") set_status("NO ROOM WITH THAT CODE");
-          else if (ev.text == "room-full") set_status("THAT ROOM IS FULL");
-          else if (ev.text == "rate-limited") set_status("TOO MANY TRIES - WAIT A MINUTE");
-          else if (ev.text == "host-closed") set_status("THAT SERVER WAS SHUT DOWN");
-          else set_status("THE ROOM HAS EXPIRED");
+          // A failed clipboard AUTO-join stays silent: the player never
+          // asked for it, so its error reads as the lobby retrying — a
+          // typed bad code was followed ~800 ms later by the repoll
+          // probing a stale clipboard code, showing "NO ROOM WITH THAT
+          // CODE" twice (Glenn, Deck, task #165). Dead-marking below
+          // still stops further probes of that code.
+          if (!last_join_was_auto_) {
+            if (ev.text == "no-such-room") set_status("NO ROOM WITH THAT CODE");
+            else if (ev.text == "room-full") set_status("THAT ROOM IS FULL");
+            else if (ev.text == "rate-limited") set_status("TOO MANY TRIES - WAIT A MINUTE");
+            else if (ev.text == "host-closed") set_status("THAT SERVER WAS SHUT DOWN");
+            else set_status("THE ROOM HAS EXPIRED");
+          }
+          last_join_was_auto_ = false;
           // Any of these except rate-limited means the code is dead — stop
           // the clipboard auto-join from walking back into it.
           if (ev.text != "rate-limited") mark_room_dead(code_entry_);
@@ -854,7 +880,7 @@ void NetLobby::pump_signal(int delta) {
           answer_sent_ = false;
           screen_ = CodeEntry;
           floating_kb_up_ = code_entry_keyboard(true);
-        if (floating_kb_up_) floating_kb_available_ = true;
+          if (floating_kb_up_) floating_kb_available_ = true;
         } else if (screen_ == RoomHost) {
           // fall_back_to_manual deletes signal_ — the poll loop must stop.
           fall_back_to_manual(ev.text.c_str());
@@ -1067,7 +1093,7 @@ void NetLobby::tick(int delta) {
         // when it left) or one confirmed dead. An EXPLICIT paste (the
         // controller X hint) is user intent, like typing — no guards.
         if (ok && !code_clip_explicit_ &&
-            (code == s_last_hosted_code || code == s_dead_code))
+            (code == s_last_hosted_code || room_is_dead(code)))
           ok = false;
         // A code matching only the PERSISTED last-hosted pref is
         // ambiguous: another live instance on this machine hosting right
@@ -1077,10 +1103,14 @@ void NetLobby::tick(int delta) {
         // a live room answers in seconds, the orphan never does.
         own_room_probe_ =
             ok && !code_clip_explicit_ && code == g_prefs.last_hosted_code;
+        bool was_explicit = code_clip_explicit_;
         code_clip_explicit_ = false;
         if (ok && code_entry_.empty()) {
           code_entry_ = code;
           confirm();
+          // AFTER confirm (which defaults the flag to player-driven):
+          // an unsolicited clipboard probe fails silently.
+          last_join_was_auto_ = !was_explicit;
         }
       }
     }
@@ -1552,9 +1582,11 @@ void NetLobby::draw() {
     // CodeEntry hoists the status out of the bottom half on touch (soft
     // keyboard) AND in the controller layout (picker + LAN rows + join
     // hint own the space down to ~-340); it sits in the gap between the
-    // code slots (glyphs to 24) and the button-hint line at -20.
+    // code slots (glyphs to 24) and the button-hint line at -20 — low in
+    // that gap, since at size 15 it rises ~15 units and y 20 grazed the
+    // code glyphs (Glenn, Deck).
     int sy = (screen_ == CodeEntry && (is_touch_mode() || controller_seen_))
-                 ? 20
+                 ? 4
                  : -320;
     Typer::draw_centered(0, sy, status_.c_str(), 15);
   }

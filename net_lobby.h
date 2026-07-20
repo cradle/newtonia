@@ -158,6 +158,12 @@ private:
   // so the own-room auto-join guards don't apply, and an empty/invalid
   // clipboard gets told off instead of silently ignored.
   bool code_clip_explicit_ = false;
+  // The in-flight join came from the clipboard AUTO-join, not the
+  // player: its relay failure stays silent (dead-marking still stops
+  // retries). A typed bad code followed ~800 ms later by the repoll
+  // probing a stale clipboard code showed TWO "NO ROOM WITH THAT CODE"
+  // errors — reading as the lobby retrying (Glenn, Deck, task #165).
+  bool last_join_was_auto_ = false;
   int code_clip_retry_ms_;   // Android 10 focus-gated reads: brief retry
   int code_clip_repoll_ms_ = 0;  // desktop: idle re-poll for late codes/invites
   // M3-1 auto-rejoin retries: a mobile client's own network is often still
