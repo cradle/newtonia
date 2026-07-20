@@ -187,9 +187,15 @@ private:
   // translator; only the picker's own bits remain here).
   bool controller_seen_ = false;  // draws the picker + button hints
   // The Deck's floating keyboard is showing: hide the picker under it.
-  // Cleared when a controller event reaches us (the keyboard consumes
+  // Cleared by the Steamworks dismissed callback (instant), or by a
+  // controller event reaching us (fallback — the keyboard consumes
   // controller input while up, so an event proves it was dismissed).
   bool floating_kb_up_ = false;
+  // This hardware has actually shown the floating keyboard (Deck):
+  // enables the Y - KEYBOARD re-summon and its hint. Steam has no
+  // keyboard-SHOWN callback, so a Steam+X summon is invisible to the
+  // game — Y routes the re-summon through a path it can see.
+  bool floating_kb_available_ = false;
   int picker_index_ = 0;
 
   // LAN state. lan_transport_ is the host's LAN-door peer connection

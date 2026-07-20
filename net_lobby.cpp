@@ -391,6 +391,7 @@ void NetLobby::confirm() {
       if (signal_) {
         screen_ = CodeEntry;
         floating_kb_up_ = code_entry_keyboard(true);
+        if (floating_kb_up_) floating_kb_available_ = true;
         // If the clipboard already holds the friend's code (the host side
         // auto-copies it), prefill and join without any typing. Started
         // here so the web backend's read stays inside the user gesture.
@@ -850,6 +851,7 @@ void NetLobby::pump_signal(int delta) {
           answer_sent_ = false;
           screen_ = CodeEntry;
           floating_kb_up_ = code_entry_keyboard(true);
+        if (floating_kb_up_) floating_kb_available_ = true;
         } else if (screen_ == RoomHost) {
           // fall_back_to_manual deletes signal_ — the poll loop must stop.
           fall_back_to_manual(ev.text.c_str());
@@ -1396,6 +1398,9 @@ void NetLobby::draw() {
           // reaches us proves it was dismissed (it consumes controller
           // input while showing) and brings the picker back.
           lines.push_back("A - TYPE   B - DELETE   X - PASTE");
+          // Second hint line only where the floating keyboard has
+          // actually shown (Deck) — Y re-summons it (see controller()).
+          if (floating_kb_available_) lines.push_back("Y - KEYBOARD");
           draw_picker();
           // LAN host rows under the picker grid (grid bottom ~ -182):
           // walking down off the grid's last row highlights them, A
@@ -1815,6 +1820,16 @@ void NetLobby::controller(SDL_Event event) {
       return;
     }
     if (event.cbutton.button == SDL_CONTROLLER_BUTTON_Y) {
+      // Deck: Y re-summons the floating keyboard on CodeEntry (its copy
+      // meaning is useless there — nothing local to copy yet). Steam
+      // has no keyboard-SHOWN callback, so a Steam+X summon leaves the
+      // layout stuck in controller mode (Glenn); Y routes the summon
+      // through the game so the mode toggles reliably both ways.
+      if (screen_ == CodeEntry && floating_kb_available_ &&
+          !is_touch_mode()) {
+        floating_kb_up_ = code_entry_keyboard(true);
+        return;
+      }
       copy_local_description();
       return;
     }
@@ -1907,6 +1922,7 @@ void NetLobby::touch_tap(float nx, float ny) {
       }
       // Re-summon a dismissed soft keyboard (touch; no-op elsewhere).
       floating_kb_up_ = code_entry_keyboard(true);
+        if (floating_kb_up_) floating_kb_available_ = true;
       break;
     case RoomHost:
       if (kShareBand.contains(nx, ny) && !room_code_.empty() &&
