@@ -35,9 +35,21 @@ enum NetPlatform {
 // on send AND on receive — a peer's length claim is never trusted.
 const int NET_IDENTITY_NAME_MAX = 24;
 
+// Three first-class states, all of which every consumer must render:
+//   badge+name  — platform and name both known (the common case)
+//   badge-only  — platform known, name withheld (name_len 0 on the wire, a
+//                 deliberate choice some platform backends make: display
+//                 names are OPTIONAL; the platform tag alone carries the
+//                 cross-network identifiability obligation). Render the
+//                 badge plus the generic fallback name ("PLAYER 2") —
+//                 never a placeholder like "UNKNOWN".
+//   no identity — legacy peer, nothing appended: render exactly the
+//                 pre-badge UI.
+// The badge (net_identity_badge) and the name (net_identity_name_or) are
+// therefore separable — no consumer may assume one implies the other.
 struct NetIdentity {
   uint8_t platform;   // NetPlatform value
-  std::string name;   // sanitized display name; empty = none
+  std::string name;   // sanitized display name; empty = withheld/none
   NetIdentity() : platform(NET_PLATFORM_UNKNOWN) {}
   // False for a legacy peer (nothing arrived on the wire) — the badge UX
   // must then render exactly the identity-less UI, no placeholder.

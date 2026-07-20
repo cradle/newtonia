@@ -272,13 +272,23 @@ bool identity_suppressed() {
   return e && e[0] && e[0] != '0';
 }
 
+// Test hook: send the identity with the name withheld (name_len 0) — the
+// badge-only state. Valid on the wire by design: a console backend may
+// withhold the display name while still sending the platform tag (the tag
+// alone satisfies cross-network identifiability; names are optional
+// everywhere). test/e2e/identity.sh asserts the badge-only path with this.
+bool identity_name_withheld() {
+  const char *e = std::getenv("NEWTONIA_NET_ANON_IDENTITY");
+  return e && e[0] && e[0] != '0';
+}
+
 // Append-only identity extension shared by HELLO and WELCOME — see the
 // PROTO_VERSION comment in net_protocol.h. Old peers ignore the trailing
 // bytes; the parse side reads them only when present.
 void append_identity(std::vector<uint8_t> &msg) {
   if (identity_suppressed()) return;
   const NetIdentity &id = net_local_identity();
-  size_t n = id.name.size();
+  size_t n = identity_name_withheld() ? 0 : id.name.size();
   if (n > (size_t)NET_IDENTITY_NAME_MAX) n = NET_IDENTITY_NAME_MAX;
   Net::put_u8(msg, id.platform);
   Net::put_u8(msg, (uint8_t)n);
@@ -286,7 +296,9 @@ void append_identity(std::vector<uint8_t> &msg) {
 }
 
 // Parses the appended identity, tolerating every legacy/hostile shape: a
-// short (old-build) message means "no identity", and a lying name_len must
+// short (old-build) message means "no identity", name_len 0 is a VALID
+// name-withheld identity (platform known, badge-only — NOT the legacy
+// case; renders as badge + generic fallback name), and a lying name_len must
 // neither fault the reader nor fail the otherwise-valid handshake — the
 // caller runs this only AFTER accepting the message, and ignores r.ok
 // from here on.

@@ -171,7 +171,10 @@ const uint8_t PROTO_VERSION = 22;
 // tolerates trailing bytes, so old builds ignore the append for free; new
 // builds parse it ONLY when `remaining() > 0` and treat absence (or a
 // lying name_len) as "no identity" — the savegame append-only convention
-// applied to the wire. See net_identity.h / net_session.cpp.
+// applied to the wire. `name_len == 0` is VALID and distinct from absence:
+// platform known, name deliberately withheld (display names are optional;
+// some platform backends send badge-only). See net_identity.h /
+// net_session.cpp.
 
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check
