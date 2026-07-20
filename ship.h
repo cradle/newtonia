@@ -288,6 +288,13 @@ class Ship : public CompositeObject {
     static std::vector<std::pair<const Ship *, std::vector<Point>>>
         replay_shock_flashes;
     static std::vector<ReplayRing> replay_rings;
+    // Gun-shot sound cues (position only — the bullets themselves ride the
+    // snapshots; online the SOUND rides the MSG_SHOT echo / EV_WORLD_SHOT,
+    // neither of which a solo recording emits). One entry per pew from any
+    // ship: players, enemies, god-mode rapid fire, the mini-station.
+    // Beam fires cue separately (beam.wav, the piercing-clone rule).
+    static std::vector<Point> replay_pews;
+    static std::vector<Point> replay_beam_pews;
 
     // Lance ship/station hits: the pulse's ray-march only sees asteroids
     // (ships and stations live in GLGame's lists), so every firer parks

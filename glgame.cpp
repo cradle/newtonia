@@ -2521,10 +2521,26 @@ void GLGame::replay_drain_effects() {
       NET_LOG("replay: effect ring recorded (p%d, %s)\n", idx + 1,
               rg.nova ? "nova" : "giga");
     }
+    for (const Point &p : Ship::replay_pews) {
+      std::vector<uint8_t> body;
+      Net::put_f32(body, p.x());
+      Net::put_f32(body, p.y());
+      Net::put_u8(body, 0);  // sound kind: pew
+      replay_->record_effect(Replay::FX_SHOT, 0, body);
+    }
+    for (const Point &p : Ship::replay_beam_pews) {
+      std::vector<uint8_t> body;
+      Net::put_f32(body, p.x());
+      Net::put_f32(body, p.y());
+      Net::put_u8(body, 1);  // sound kind: beam
+      replay_->record_effect(Replay::FX_SHOT, 0, body);
+    }
   }
   Ship::replay_lance_flashes.clear();
   Ship::replay_shock_flashes.clear();
   Ship::replay_rings.clear();
+  Ship::replay_pews.clear();
+  Ship::replay_beam_pews.clear();
 }
 
 // Finalize (header patch) and drop the recorder. ended=true (game over)
@@ -2686,6 +2702,30 @@ void GLGame::tick_replay_poll(int delta) {
           net_receive_lance_pulse(r, fx_ship);
         else
           net_receive_shock_pulse(r, fx_ship, NULL);
+      } else if (subtype == Replay::FX_SHOT && rec.len >= 2 + 8) {
+        // Gun-shot cue: attenuate against the playback camera exactly like
+        // EV_WORLD_SHOT (chunks are per-instance; every play site sets
+        // volume first, so borrowing a ship's is safe). The trailing kind
+        // byte picks the chunk — 1 = beam (the piercing-clone sound rule).
+        float sx, sy;
+        memcpy(&sx, rec.payload + 2, 4);
+        memcpy(&sy, rec.payload + 6, 4);
+        uint8_t snd_kind = rec.len >= 2 + 9 ? rec.payload[10] : 0;
+        if (std::isfinite(sx) && std::isfinite(sy)) {
+          // Nearest-ghost attenuation — the same offline rule the recorded
+          // game played by (net_listener_volume would ignore P2's viewport).
+          float vol = sound_volume_for_point(Point(sx, sy));
+          Mix_Chunk *snd = fx_ship->shoot_sound;
+          if (snd_kind == 1) {
+            static Mix_Chunk *beam_snd =
+                Mix_LoadWAV(asset_path("audio/beam.wav").c_str());
+            if (beam_snd) snd = beam_snd;
+          }
+          if (vol > 0.0f && snd != NULL) {
+            Mix_VolumeChunk(snd, (int)(MIX_MAX_VOLUME * (vol > 1.0f ? 1.0f : vol)));
+            Mix_PlayChannel(-1, snd, 0);
+          }
+        }
       } else if (subtype == Replay::FX_RING && rec.len >= 2 + 21) {
         float x, y, max_r, speed, duration;
         memcpy(&x, rec.payload + 2, 4);
@@ -2773,6 +2813,8 @@ void GLGame::net_clear_event_outboxes() {
   Ship::replay_lance_flashes.clear();
   Ship::replay_shock_flashes.clear();
   Ship::replay_rings.clear();
+  Ship::replay_pews.clear();
+  Ship::replay_beam_pews.clear();
 }
 
 void GLGame::net_send_event(uint8_t code, uint32_t arg) {
@@ -3242,6 +3284,8 @@ void GLGame::tick_net_client(int delta) {
   Ship::replay_lance_flashes.clear();
   Ship::replay_shock_flashes.clear();
   Ship::replay_rings.clear();
+  Ship::replay_pews.clear();
+  Ship::replay_beam_pews.clear();
   // Remote (host) ship: attenuate its self-played sounds (death
   // explosion, god-mode tics) by distance to the local ship.
   if (players->size() >= 2)

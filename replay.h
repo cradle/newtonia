@@ -81,6 +81,8 @@ enum EffectSubtype : uint8_t {
     FX_LANCE = 1,  // MSG_LANCE body: u8 count | count * (f32 x, f32 y)
     FX_SHOCK = 2,  // MSG_SHOCK body: u8 count | count * (f32 x, f32 y)
     FX_RING  = 3,  // shockwave ring: f32 x,y,max_r,speed,duration | u8 nova
+    FX_SHOT  = 4,  // gun-shot sound cue: f32 x, f32 y | u8 kind (0 pew, 1 beam)
+                   // (bullets ride snapshots; the SOUND rode MSG_SHOT/EV_WORLD_SHOT)
 };
 
 // Paths in <pref>/replays/ (created on demand). Empty string on failure.

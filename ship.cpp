@@ -32,6 +32,8 @@ std::vector<std::vector<Point>> Ship::net_lance_reports;
 std::vector<std::pair<const Ship *, std::vector<Point>>> Ship::replay_lance_flashes;
 std::vector<std::pair<const Ship *, std::vector<Point>>> Ship::replay_shock_flashes;
 std::vector<Ship::ReplayRing> Ship::replay_rings;
+std::vector<Point> Ship::replay_pews;
+std::vector<Point> Ship::replay_beam_pews;
 std::vector<std::vector<Point>> Ship::net_shock_reports;
 std::vector<Ship::NetBounceReport> Ship::net_bounce_reports;
 bool Ship::net_report_bounces = false;
@@ -2358,6 +2360,10 @@ void Ship::fire_bullet_from_gun() {
     Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * sound_volume_scale));
     Mix_PlayChannel(-1, shoot_sound, 0);
   }
+  // Replay recorder: the pew cue with its position (unconditional — the
+  // recording-side volume gate is view-relative, and playback re-attenuates
+  // against its own camera, which is the same view).
+  replay_pews.push_back(Point(position.x(), position.y()));
   net_shots.push_back(this);  // net host relays its player's shots
   bullets.push_back(Particle(gun(), facing * 0.615f + velocity * 0.99f, 2000.0f));
   mark_last_bullet_trail();

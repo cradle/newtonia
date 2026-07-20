@@ -191,6 +191,9 @@ void GLMiniStation::fire_at_nearest_player() {
     Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * sound_volume_scale));
     Mix_PlayChannel(-1, shoot_sound, 0);
   }
+  // Replay recorder: the shot cue rides an FX_SHOT record (playback
+  // re-attenuates against its own camera).
+  replay_pews.push_back(Point(position.x(), position.y()));
   net_shots.push_back(this);  // net host relays as EV_WORLD_SHOT
 }
 
