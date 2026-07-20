@@ -211,6 +211,7 @@ developer.apple.com/contact/request/networking-multicast, then (a) add
 up with no code change. Until then iOS keeps the stub (available()
 false) so the visibility line never lies. LAN sessions currently reach
 touch devices only in that pending iOS case and on Android.
+Entitlement request SUBMITTED to Apple 2026-07-20 (app id 6760685759).
 
 **Round 2 discovery hardening (2026-07-20)**: the beacon now goes to
 every broadcast-capable interface's DIRECTED broadcast address
