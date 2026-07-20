@@ -215,6 +215,34 @@ and validation fails unless the verifier presents the same identity.
    validation needs a live two-Steam-account smoke test — same class of
    manual gate as the persona smoke test.
 
+**Other platforms (researched 2026-07-20) — verification strength is
+per-platform; the per-peer verified bit carries a quality, not a bool
+in spirit:**
+
+- *Game Center (iOS)*: `GKLocalPlayer.fetchItems(forIdentityVerification
+  Signature:)` → signature over playerID+bundleID+salt+timestamp plus a
+  `publicKeyURL` to Apple's cert. Verifiable by ANYONE (fetch cert,
+  check chain to Apple root, check signature — no secret), so the peer
+  can verify client-side like Steam. BUT the signed fields are fixed:
+  no recipient/channel binding, no single-use tracking, no revocation —
+  replayable/relayable within the verifier's timestamp freshness window
+  (enforce a tight one, ~minutes; industry practice 10 min).
+- *Play Games v2 (Android)*: `GamesSignInClient.requestServerSideAccess()`
+  mints a SINGLE-USE OAuth server auth code, exchangeable only with our
+  OAuth client secret; the real player ID then comes from the Play
+  Games API (Google: never trust the client-reported ID). Strong
+  replay/recipient properties but NO client-to-client primitive — the
+  signal worker must hold the secret and act as verifier (joiner sends
+  the code up, worker exchanges + attests to the peer). Centralizes
+  verification like Steam's Web-API path.
+- *Web*: nothing to attest with — browser peers stay unverified/role-
+  labeled permanently (an own-account system contradicts the
+  no-accounts design).
+- *Xbox*: fork-side (XSTS token brokering), out of scope upstream.
+- Only Steam potentially offers DTLS channel binding; GC/PGS pairs
+  accept the platform's weaker ceiling. Cross-platform pairs verify
+  each side independently by whatever its platform supports.
+
 **Architectural backstop (holds regardless):** identity is display-only.
 No matchmaking privilege, host authority, or policy decision hangs off
 the peer's claim, so even a defeated verification buys an attacker a
