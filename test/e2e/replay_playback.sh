@@ -37,6 +37,12 @@ launch_playback() {
 win() { xdotool search --name Newtonia | tail -1; }
 stop_hard() { kill -9 "$1" 2>/dev/null; wait "$1" 2>/dev/null; sleep 0.5; }
 
+# The current game's pid rides $P throughout; kill it on ANY exit so a
+# failed assertion never leaks a live game under Xvfb (they linger as
+# zombies whose focus-loss flushes corrupt later runs' assertions).
+P=""
+trap 'kill -9 $P 2>/dev/null' EXIT
+
 # wait_log LOG PATTERN TIMEOUT_S -> 0 when the pattern appears
 wait_log() {
   local i

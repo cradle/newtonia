@@ -222,9 +222,15 @@ private:
     void write_chunk();  // append the RAM chunk to the file (no ok_ gate)
     const char *rotate_label() const;  // "current"/"online" for log lines
 
+    // Consecutive failed chunk appends before the recording declares
+    // itself dead (see write_chunk) instead of growing the RAM chunk
+    // for the rest of the run on a disk that never recovers.
+    static const int MAX_FAILED_WRITES = 8;
+
     std::string path_;
     Header header_;
     std::vector<uint8_t> chunk_;  // records since the last flush
+    int  failed_writes_ = 0;      // consecutive write_chunk open failures
     int  last_slot_ = -1;
     int  deltas_this_session_ = 0;  // REC_DELTA records this session
     bool resumed_ = false;

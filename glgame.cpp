@@ -2924,8 +2924,14 @@ void GLGame::net_send_event(uint8_t code, uint32_t arg) {
   // the EV_* cues would vanish — there is no offline outbox. Session-control
   // events are skipped (pause emits no records by design; BYE is transport
   // lifecycle; ACHIEVEMENT must never re-poke a platform SDK on playback).
+  // EV_WORLD_SHOT is skipped too: its recorded twin is the FX_SHOT record
+  // from the Ship::replay_pews outbox — recording both played the
+  // mini-station's every shot twice in a host-side online replay. (The
+  // client's file still gets it: its tee sits at the RECEIVE site, and the
+  // wire send below is untouched.)
   if (replay_ && code != Net::EV_PAUSE && code != Net::EV_RESUME &&
-      code != Net::EV_BYE && code != Net::EV_ACHIEVEMENT)
+      code != Net::EV_BYE && code != Net::EV_ACHIEVEMENT &&
+      code != Net::EV_WORLD_SHOT)
     replay_->record_event(code, arg);
   // While the joiner is disconnected (rejoinable loss) the host plays on
   // with no session at all — level completion and pause still fire events.
@@ -6584,7 +6590,18 @@ void GLGame::tick(int delta) {
   // (Bullet-vs-asteroid impact cues used to be forwarded here as
   // EV_ROID_THUD/TING events; since PROTO 10 the client detects those
   // cosmetics locally — Ship::net_cosmetic_impacts.)
-  if (net_mode_ == NetHost && net_session_ && !net_connection_lost_) {
+  //
+  // The EVENT drains run for the online host AND for any live recording:
+  // net_send_event tees the event into the replay file, then returns
+  // without a session — so offline replays get the enemy-death booms and
+  // ship-bounce debris/ting cues the net client gets. (They used to sit
+  // behind the host gate, which left offline playback silent on both:
+  // playback ghosts never run the collision sim that plays them live.)
+  // The MSG echo loops below stay host-gated — raw transport writes, and
+  // every one already has a recorded twin (outbox or receive tee).
+  bool host_online =
+      net_mode_ == NetHost && net_session_ && !net_connection_lost_;
+  if (host_online || replay_) {
     // Non-fatal ship-vs-asteroid bounces (debris + armour ting). Enemy
     // ships collide through the same code; only player ships are sent.
     for (const Ship::NetShipImpact &si : Ship::net_ship_impacts) {
@@ -6599,7 +6616,8 @@ void GLGame::tick(int delta) {
     // player's are superseded by the MSG_SHOT echo below (PROTO 17),
     // whose clone spawn plays the shot sound client-side; the client
     // fires its own weapon locally, and the host simulates the client's
-    // shots too — neither is relayed.
+    // shots too — neither is relayed. (Never recorded — the tee skips
+    // EV_WORLD_SHOT; FX_SHOT from the replay_pews outbox is its twin.)
     Ship *p1 = players->empty() ? NULL : players->front()->ship;
     Ship *p2 = players->size() >= 2 ? players->back()->ship : NULL;
     for (const Ship *shooter : Ship::net_shots) {
@@ -6615,6 +6633,8 @@ void GLGame::tick(int delta) {
       if (boom != p1 && boom != p2)
         net_send_event(Net::EV_WORLD_BOOM,
                        Net::pack_pos(boom->position.x(), boom->position.y(), world.x(), world.y()));
+  }
+  if (host_online) {
     // PROTO 17: echo the host player's shots as MSG_SHOT (the mirror of
     // the client's PROTO 14 reports; p1 is the only reporter on a host).
     // The client spawns exact clones instantly — without this a host

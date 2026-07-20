@@ -412,7 +412,23 @@ const char *Recorder::rotate_label() const {
 void Recorder::write_chunk() {
     if (chunk_.empty()) return;
     FILE *fp = fopen(path_.c_str(), "ab");
-    if (!fp) return;
+    if (!fp) {
+        // Keep the chunk for the next checkpoint — a transient failure
+        // costs nothing. But a disk that never comes back must not grow
+        // the RAM chunk for the rest of the run: checkpoints are minutes
+        // apart, so after this many straight failures the recording is
+        // dead (it could never be finalized either). The file keeps its
+        // intact records + stale header — ordinary crash-artifact
+        // semantics the reader already tolerates.
+        if (++failed_writes_ >= MAX_FAILED_WRITES) {
+            SDL_Log("replay: recording stopped (%d failed writes to %s)",
+                    failed_writes_, path_.c_str());
+            chunk_.clear();
+            ok_ = false;
+        }
+        return;
+    }
+    failed_writes_ = 0;
     // A short write leaves a truncated final record; the reader detects and
     // drops it (self-delimiting framing), so no cleanup is attempted here.
     fwrite(&chunk_[0], 1, chunk_.size(), fp);
