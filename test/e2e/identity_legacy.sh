@@ -68,10 +68,9 @@ run_pair() {
   alive $pa "$hname"; alive $pb "$jname"
   grep -aq "bootstrap adopted" "$OUT/$jname.log" ||
     { echo "NO BOOTSTRAP ($jname)"; exit 1; }
-  # SIGTERM then a hard kill: SDL translates TERM into an SDL_QUIT event
-  # the desktop entry point doesn't consume, so TERM alone can leave the
-  # pairing running — and its stale windows would eat the next pairing's
-  # keys. The logs are already written; SIGKILL loses nothing here.
+  # SIGTERM (clean quit via the SDL_QUIT path) with a hard-kill fallback:
+  # a wedged instance's stale windows would otherwise eat the next
+  # pairing's keys. The logs are already written; SIGKILL loses nothing.
   kill $pa $pb 2>/dev/null; sleep 2
   kill -9 $pa $pb 2>/dev/null; wait $pa $pb 2>/dev/null
   assert_clean "$OUT/$hname.log" "$OUT/$jname.log"

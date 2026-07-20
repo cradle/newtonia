@@ -128,8 +128,9 @@ gdb -batch -ex run -ex "bt 20" --args ./newtonia > gdb.log 2>&1 &
   dismisses the intro in one press), so level-marching scripts — and
   `adb shell input keyevent KEYCODE_N` on device — can hammer `n` without
   stalling on intro generations.
-- `kill $PID; wait $PID` reports 143 (SIGTERM) for a healthy shutdown; 139
-  means the game segfaulted on its own.
+- `kill $PID; wait $PID` reports 0 for a healthy shutdown (SDL turns SIGTERM
+  into an SDL_QUIT event and the desktop loop exits cleanly through the same
+  path as Alt-F4 — saves included); 139 means the game segfaulted on its own.
 - `xdotool` prints `XGetInputFocus returned the focused window of 1` warnings
   under Xvfb; they are harmless — filter with `grep -v XGetInputFocus`.
 - Give the driver a hard `timeout` and log to a file; a hung X client can
