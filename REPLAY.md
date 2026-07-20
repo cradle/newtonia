@@ -321,7 +321,10 @@ R4's field.
   stays valid; the reader drops the truncated tail). The header patch +
   current→recent rotation happen only at game over / in the menu, outside
   any lifecycle budget, so marathon-run file size never meets a de-focus
-  window.
+  window. **Durability field-verified on Android** (2026-07-20): app
+  backgrounded mid-run then killed from the switcher — the background flush
+  landed and the replay played back intact after relaunch. Latency
+  profiling (a/b above) remains the open half.
 - **Xbox certification is why the append rule is global, not an
   optimisation.** On Xbox/GDK the recorder flushes through the same
   `focus_lost()` hook the PLM suspend callback already calls
