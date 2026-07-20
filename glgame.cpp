@@ -3837,6 +3837,23 @@ void GLGame::tick_net_client(int delta) {
               hb_poll_ms, hb_steps, steps_ms);
   }
 
+  // Reap faded kill remains — NOT client-only machinery: the score value
+  // drawn on a dead asteroid lives exactly as long as its dead_objects
+  // entry, so skipping this in playback left every kill's score (and
+  // debris) on screen forever (Glenn's Android report; it sat below the
+  // NetReplay early-out until it moved here, above it).
+  {
+    auto oi = dead_objects->begin();
+    while (oi != dead_objects->end()) {
+      if ((*oi)->is_removable()) {
+        delete *oi;
+        oi = dead_objects->erase(oi);
+      } else {
+        oi++;
+      }
+    }
+  }
+
   // Everything below is the client's outbound report/claim machinery
   // (MSG_SHOT/LANCE/SHOCK/HIT/HIT_SHIP over the session). A replay has no
   // session and its ghosts never arm the reporting flags, so the vectors
@@ -3991,16 +4008,6 @@ void GLGame::tick_net_client(int delta) {
        pk != net_predicted_ship_kills_.end();)
     pk = current_time >= pk->second ? net_predicted_ship_kills_.erase(pk)
                                     : ++pk;
-
-  auto oi = dead_objects->begin();
-  while (oi != dead_objects->end()) {
-    if ((*oi)->is_removable()) {
-      delete *oi;
-      oi = dead_objects->erase(oi);
-    } else {
-      oi++;
-    }
-  }
 }
 
 void GLGame::net_client_send_input() {
