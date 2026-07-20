@@ -92,6 +92,7 @@ std::string net_sanitize_name(const std::string &raw) {
 }
 
 std::string net_identity_badge(const NetIdentity &id) {
+  if (!NET_IDENTITY_DISPLAY_ENABLED) return "";  // unverified: no badge
   std::string label = net_platform_label(id.platform);
   if (id.name.empty()) return label;  // may be "" — caller renders nothing
   if (label.empty()) return id.name;  // future platform: name-only badge
@@ -100,6 +101,7 @@ std::string net_identity_badge(const NetIdentity &id) {
 
 std::string net_identity_badge_or(const NetIdentity &id,
                                   const char *fallback_name) {
+  if (!NET_IDENTITY_DISPLAY_ENABLED) return "";  // unverified: no badge
   if (!id.known()) return "";  // legacy peer: no badge, no placeholder
   std::string name = id.name.empty() ? std::string(fallback_name) : id.name;
   std::string label = net_platform_label(id.platform);
@@ -108,5 +110,7 @@ std::string net_identity_badge_or(const NetIdentity &id,
 }
 
 std::string net_identity_name_or(const NetIdentity &id, const char *fallback) {
+  // Unverified claims never render — the role fallback always wins.
+  if (!NET_IDENTITY_DISPLAY_ENABLED) return fallback;
   return id.name.empty() ? std::string(fallback) : id.name;
 }

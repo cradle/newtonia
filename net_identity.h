@@ -17,6 +17,18 @@
 
 #include <string>
 
+// DISPLAY GATE: the peer identity is UNVERIFIED — a self-reported claim
+// on the wire, with no attestation binding it to a real account (a
+// modified client can claim any name or platform). Until a verification
+// path exists (e.g. Steam auth-session tickets riding the same
+// HELLO/WELCOME append), the UI must not show a peer's claimed name or
+// platform: with this false, net_identity_name_or returns its role
+// fallback ("PLAYER 1"/"PLAYER 2") and the badge helpers return "" (no
+// badge row, no HOSTED BY line — the exact pre-badge UI). The wire
+// exchange, the greppable logs, and the policy plumbing stay live so the
+// seam keeps working and verification can flip this back on.
+const bool NET_IDENTITY_DISPLAY_ENABLED = false;
+
 // Wire-stable platform tags — APPEND ONLY, never renumber: these travel in
 // the HELLO/WELCOME identity append and a mixed-version pairing must agree
 // on what each value means. Values we don't know yet (a newer peer) render
