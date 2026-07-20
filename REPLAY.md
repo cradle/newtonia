@@ -68,10 +68,38 @@ criteria. Nothing here is built yet.
   comparable), so replay compatibility only ever needs to hold within a
   season = a version window with no format break. Old seasons keep replays
   best-effort, eventually score-only.
-- **Solo games only in v1.** "Solo" = offline: single-player OR local
-  2-player split-screen (the NetOff gate that already guards saves — same
-  gate applies here). Online games are excluded (client-authoritative
-  positions mean the host's stream isn't the whole truth). A 2-player replay
+- ~~**Solo games only in v1.**~~ **Online games record too (added
+  2026-07-20, Glenn: host AND client, "even if it might contain gaps from
+  disconnects").** Both roles record, each machine writing what its own
+  screen was fed: the host tees the exact keyframe/delta payloads it builds
+  and sends (no second build — the builders' shared delta baseline forbids
+  two callers), the client tees the reassembled stream it receives plus a
+  self-built bootstrap keyframe (the lobby consumed the wire one before the
+  game existed). Consequences of "what this machine saw": the client's own
+  ship appears as the host's reconciled view of it (not the buttery local
+  prediction), and an effect that never replicated in live play (e.g. the
+  peer's nova ring, which is host-local) is absent from the other side's
+  recording too — the replay is honest to that machine's session.
+  Remote-player effects arrive as MSG_LANCE/MSG_SHOCK/MSG_SHOT and are teed
+  at their receive sites; received EV_* events tee with the same skip list
+  as the send tee. **File: `replays/online.nrp`** — deliberately separate
+  from `current.nrp` so hosting/joining mid-way through an offline run
+  never rotates that run's recording away. It rotates into `recent` (+best
+  check) at game over; an abandon or crash leaves it in place and the
+  REPLAYS screen opener (or the next online recording) sweeps it into
+  `recent` later — never the menu constructor, which a relaunched client
+  passes through on its way to rejoin-resume.
+  **Disconnect gaps**: slots are emission counts, not wall clock, so a
+  disconnect doesn't freeze the timeline — it compresses out, and the world
+  jumps at the seam keyframe. The host records straight through a
+  rejoinable loss (the cadence and builders keep running; only sends are
+  skipped). A client whose auto-rejoin rebuilt the GLGame APPENDS to the
+  same file: `run_id` rides every snapshot (GameState v17), so the new
+  game's `replay_start` finds the matching id and continues the slot
+  numbering — the same resume seam as offline exit→continue. Dev quirk:
+  two instances sharing one machine/pref-dir (loopback testing) both write
+  the same `online.nrp` and interleave; e2e drivers isolate
+  `XDG_DATA_HOME` per instance. A 2-player replay
   records both ships and plays back in split-screen (R2); the header's player
   count drives which.
 - **Input-log verification is deferred** until leaderboard cheating actually
@@ -288,6 +316,35 @@ Selecting a row starts R2 playback. Version-mismatched files render as
 unselectable "OLDER VERSION" rows.
 **Exit**: keyboard, controller (shared nav translator), and touch all drive
 list → playback → back-out; verified headless + on-device.
+
+### R-online — online games record too ✅ (landed on this branch, 2026-07-20)
+
+Both roles record into `replays/online.nrp` (see the decision above for the
+full model). Implementation shape: the host tees inside
+`net_host_send_snapshot`/`net_send_delta` (the built payload bytes ARE the
+records; a second builder call per slot would corrupt the shared delta
+baseline, so `replay_record_slot` stays offline-only) and keeps the cadence
+through a rejoinable disconnect (sends skipped, records kept). The client
+tees the reassembled keyframes + every arriving delta in `net_client_poll`
+(before its stale gates — those guard the live timeline, not the file) and
+opens the file with a self-built keyframe of the just-bootstrapped replica
+(doubling as the rejoin resume seam; `run_id` arrives in every snapshot).
+Remote effects tee at the MSG_LANCE/MSG_SHOCK/MSG_SHOT receive sites via
+`replay_record_polyline`/`replay_record_shot`; local ones drain from the
+`Ship::replay_*` outboxes in both roles' ticks. Received EV_* events tee
+with the send tee's skip list; EV_GENERATION_START doubles as the client's
+level-boundary flush. Finalize: game-over latches on either role rotate
+online → recent (+best check); abandons leave a clean-patched file for the
+sweep (the REPLAYS screen opener / the next online recording — never the
+menu constructor, which a relaunched client passes through on its way to
+rejoin). The REPLAYS row also shows for an unswept orphan so the sweep is
+reachable. `NEWTONIA_REPLAY_PLAY=online` plays the live file directly.
+**Exit criteria — all verified headless (`test/e2e/replay_online.sh`)**:
+both sides bank identical record counts in S1; the host's file grows
+through a SIGKILLed peer; the relaunched joiner resume-appends across
+rejoin ("replay: resuming recording"); clean abandons patch both headers;
+both files play back split-screen with the joiner's timeline shorter by
+exactly the compressed disconnect gap.
 
 ### R4 — leaderboard hooks (with the leaderboard project)
 Score submission attaches the finalized replay blob; server stores it;

@@ -46,6 +46,10 @@ std::string best_path() {
     std::string d = dir_path();
     return d.empty() ? "" : d + "best.nrp";
 }
+std::string online_path() {
+    std::string d = dir_path();
+    return d.empty() ? "" : d + "online.nrp";
+}
 
 // Mirror the savegame's IDBFS behaviour: MEMFS writes only survive a web
 // reload once synced to IndexedDB, so every flush/patch/rotation syncs.
@@ -257,18 +261,20 @@ static bool copy_file(const std::string &from, const std::string &to) {
     return ok;
 }
 
-void rotate_current_to_recent() {
-    std::string cur = current_path();
-    if (cur.empty()) return;
+// Shared rotation body: FROM (current.nrp or online.nrp) becomes recent,
+// after the zero-tick junk check and the best promotion. `what` labels the
+// log line only.
+static void rotate_to_recent(const std::string &from, const char *what) {
+    if (from.empty()) return;
     Header h;
-    if (!read_header(cur, h)) {
+    if (!read_header(from, h)) {
         // Unreadable junk (or nothing there) — just make sure it's gone.
-        std::remove(cur.c_str());
+        std::remove(from.c_str());
         return;
     }
-    if (!has_delta_record(cur)) {
+    if (!has_delta_record(from)) {
         // Zero-tick rule: a run with no sim records never becomes recent.
-        std::remove(cur.c_str());
+        std::remove(from.c_str());
         web_sync();
         return;
     }
@@ -280,34 +286,44 @@ void rotate_current_to_recent() {
         Header hb;
         bool have_best = read_header(best_path(), hb);
         if (!have_best || h.final_score > hb.final_score)
-            copy_file(cur, best_path());
+            copy_file(from, best_path());
     }
     std::remove(recent_path().c_str());
-    if (std::rename(cur.c_str(), recent_path().c_str()) != 0) {
+    if (std::rename(from.c_str(), recent_path().c_str()) != 0) {
         // Cross-volume or locked-file fallback: copy then delete.
-        if (copy_file(cur, recent_path())) std::remove(cur.c_str());
+        if (copy_file(from, recent_path())) std::remove(from.c_str());
     }
     web_sync();
-    SDL_Log("replay: rotated current -> recent (score=%u gen=%u%s%s)",
+    SDL_Log("replay: rotated %s -> recent (score=%u gen=%u%s%s)", what,
             h.final_score, h.generation,
             (h.flags & FLAG_CLEAN) ? "" : " stale-header",
             (h.flags & FLAG_CHEATED) ? " cheated" : "");
 }
 
-void on_new_game() {
-    std::string cur = current_path();
-    if (cur.empty()) return;
-    FILE *fp = fopen(cur.c_str(), "rb");
-    if (!fp) return;  // nothing left over
+void rotate_current_to_recent() { rotate_to_recent(current_path(), "current"); }
+
+static bool file_exists(const std::string &path) {
+    if (path.empty()) return false;
+    FILE *fp = fopen(path.c_str(), "rb");
+    if (!fp) return false;
     fclose(fp);
-    rotate_current_to_recent();
+    return true;
+}
+
+void on_new_game() {
+    if (file_exists(current_path())) rotate_current_to_recent();
+}
+
+void rotate_online_to_recent() {
+    if (file_exists(online_path())) rotate_to_recent(online_path(), "online");
 }
 
 // ── Recorder ─────────────────────────────────────────────────────────────────
 
-Recorder::Recorder(uint64_t run_id, uint8_t player_count, bool resumed)
+Recorder::Recorder(uint64_t run_id, uint8_t player_count, bool resumed,
+                   const std::string &path)
     : resumed_(resumed) {
-    path_ = current_path();
+    path_ = path;
     if (path_.empty()) return;
 
     if (resumed) {
@@ -389,6 +405,10 @@ void Recorder::record_effect(uint8_t subtype, uint8_t player_idx,
                   payload.empty() ? NULL : &payload[0], payload.size());
 }
 
+const char *Recorder::rotate_label() const {
+    return path_ == online_path() ? "online" : "current";
+}
+
 void Recorder::write_chunk() {
     if (chunk_.empty()) return;
     FILE *fp = fopen(path_.c_str(), "ab");
@@ -422,7 +442,7 @@ void Recorder::finalize(uint32_t score, uint32_t generation, bool cheated,
         }
         // ended with a resumed file: the run is still over — rotate what the
         // earlier sessions recorded.
-        if (resumed_ && ended) rotate_current_to_recent();
+        if (resumed_ && ended) rotate_to_recent(path_, rotate_label());
         return;
     }
 
@@ -451,7 +471,7 @@ void Recorder::finalize(uint32_t score, uint32_t generation, bool cheated,
             ended ? "run ended" : "abandoned (resumable)", score, generation,
             header_.duration_ms, cheated ? " cheated" : "");
 
-    if (ended) rotate_current_to_recent();
+    if (ended) rotate_to_recent(path_, rotate_label());
 }
 
 }  // namespace Replay

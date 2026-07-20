@@ -234,12 +234,16 @@ private:
                                        const Save::GameState &s);
   void net_apply_delta_asteroids(Save::Stream &in,
                                  bool membership_only = false);
-  bool net_send_delta();          // false: too big / not possible -> keyframe
+  // Build (and tee to the recorder) one delta; send it when can_send.
+  // false: too big / not possible -> caller does a keyframe instead.
+  bool net_send_delta(bool can_send);
 
   // REPLAY.md R1 seam: payload builders shared by the online host and the
   // replay recorder (they must never fork). Both move net_known_, the delta
-  // baseline — safe, because only one consumer is ever active (recorder is
-  // solo-only). counts (optional): out {new, dyn, removed} for telemetry.
+  // baseline — safe, because only one consumer is ever active: offline the
+  // recorder's cadence calls them, online ONLY the host send path does and
+  // the recorder tees the built bytes (never a second build).
+  // counts (optional): out {new, dyn, removed} for telemetry.
   void net_build_keyframe_payload(Save::MemStream &payload);
   bool net_build_delta_payload(Save::MemStream &payload, int counts[3] = NULL);
 
@@ -460,18 +464,32 @@ private:
 
   // ---- replay recording (REPLAY.md R1) ----
   // Every solo game records into replays/current.nrp via the snapshot-
-  // builder seam above. Started lazily on the first tick (the net ctors
+  // builder seam above; every ONLINE game records into replays/online.nrp
+  // (host: tee of the snapshots it builds and sends; client: tee of the
+  // stream it receives). Started lazily on the first tick (the net ctors
   // delegate to the offline ctors and set net_mode_ afterwards, so
-  // construction can't know the game is offline); NEWTONIA_REPLAY_DISABLE
+  // construction can't know the game's mode); NEWTONIA_REPLAY_DISABLE
   // is the escape hatch. Checkpoint flushes: level rollover (the intro
   // screen, when one follows, is the slack window the write lands in),
   // pause, focus loss. finalize+rotation at game over / destruction.
   void replay_start();
   void replay_record_slot(int delta);  // one KEYFRAME/DELTA per 100 ms run
+                                       // (offline cadence only — the host
+                                       // tees inside net_host_send_snapshot)
   // Drain the Ship::replay_* effect outboxes (lance/shock/ring visuals the
   // snapshots don't carry): recorded as REC_EFFECT when recording, else
-  // discarded. Called once per offline tick; net paths clear instead.
+  // discarded. Called once per offline/host tick and per client tick; a
+  // non-recording game just gets the keep-empty clear.
   void replay_drain_effects();
+  // Receive-side effect tees (online recording): the REMOTE player's
+  // weapon visuals arrive as MSG_LANCE/MSG_SHOCK/MSG_SHOT, not through the
+  // local outboxes — record them at their receive sites.
+  void replay_record_polyline(uint8_t subtype, const Ship *shooter,
+                              const std::vector<Point> &pts);
+  void replay_record_shot(float x, float y, uint8_t kind);
+  // Index of a ship in the players list (-1 if absent) — the REC_EFFECT
+  // attribution byte, resolved the same way on record and playback.
+  int player_index_of(const Ship *s) const;
   void replay_finish(bool ended);      // finalize; deletes replay_
   Replay::Recorder *replay_ = nullptr;
   bool replay_tried_ = false;          // lazy-start ran (or was skipped)

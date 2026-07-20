@@ -718,6 +718,15 @@ void Menu::open_options() {
 // no row, and no rows hides the whole REPLAYS menu row.
 void Menu::scan_replays() {
   replay_rows_.clear();
+  // An unswept online.nrp isn't listed (it isn't one of the three named
+  // files yet) but it does earn the REPLAYS row — open_replays sweeps it
+  // into recent and rescans, at which point it appears as LAST RUN.
+  {
+    std::string op = Replay::online_path();
+    FILE *fp = op.empty() ? NULL : fopen(op.c_str(), "rb");
+    online_orphan_ = fp != NULL;
+    if (fp) fclose(fp);
+  }
   struct { const char *label; std::string path; } sources[3] = {
       {"CURRENT RUN", Replay::current_path()},
       {"LAST RUN", Replay::recent_path()},
@@ -765,6 +774,13 @@ int Menu::replays_row_index() const {
 }
 
 void Menu::open_replays() {
+  // Sweep a leftover online session recording (abandoned mid-game or a
+  // crash artifact) into recent, so it surfaces as LAST RUN instead of
+  // sitting invisible in online.nrp. Done here rather than on every menu
+  // visit: a client relaunched after a crash passes through the menu to
+  // rejoin, and sweeping in the constructor would rotate the very file
+  // its rejoin-resume wants to append to.
+  Replay::rotate_online_to_recent();
   // Rescan on entry: the files change every time a game runs.
   scan_replays();
   if (replay_rows_.empty()) return;  // raced away — row disappears next draw

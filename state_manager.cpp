@@ -17,6 +17,7 @@ StateManager::StateManager() {
     if (path == "current")     path = Replay::current_path();
     else if (path == "recent") path = Replay::recent_path();
     else if (path == "best")   path = Replay::best_path();
+    else if (path == "online") path = Replay::online_path();
     else if (path == "last") {
       // "The last thing I played": the live/resumable run if one exists,
       // otherwise the most recently completed one — a finished run rotates

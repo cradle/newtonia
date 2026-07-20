@@ -42,7 +42,14 @@ private:
   // recently completed) and BEST RUN, with score/level/date; files this
   // build can't parse render as unselectable OLDER VERSION rows. Selecting
   // a row starts R2 playback.
-  bool show_replays_row() const { return !replay_rows_.empty(); }
+  // online_orphan_: a leftover replays/online.nrp (abandoned/crashed online
+  // session, not yet swept into recent) also earns the row — open_replays
+  // rotates it and rescans, so it surfaces as LAST RUN. Without this a
+  // profile whose ONLY replay is that orphan would never show the row, and
+  // the sweep could never run.
+  bool show_replays_row() const {
+    return !replay_rows_.empty() || online_orphan_;
+  }
   int  replays_row_index() const;  // -1 when hidden
   void scan_replays();             // rebuild replay_rows_ from disk
   void open_replays();
@@ -70,6 +77,7 @@ private:
   bool replays_mode_ = false;
   int  replay_sel_ = 0;                 // cursor in the replays list
   std::vector<ReplayRow> replay_rows_;  // rebuilt by scan_replays()
+  bool online_orphan_ = false;          // unswept online.nrp exists
   int  sensitivity_index_[2] = {2, 2};  // per-player index into SENSITIVITY_VALUES
   int  smoothing_index_[2]   = {1, 1};  // per-player index into SMOOTHING_VALUES (1=NORMAL=0.004)
   int  star_density_index_   = 4;       // index into STAR_DENSITY_MULTIPLIERS (4=full)

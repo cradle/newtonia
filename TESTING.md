@@ -135,6 +135,18 @@ test/e2e/replay_menu.sh # REPLAY.md R3: the REPLAYS menu row (shown once a
                      # CURRENT RUN starts playback ("replay: playback
                      # started"), Esc returns to the menu, and the list
                      # backs out cleanly on a second visit.
+test/e2e/replay_online.sh # REPLAY.md online recording (needs the relay):
+                     # host + client each record their session into their
+                     # own pref dir's replays/online.nrp (per-instance
+                     # XDG_DATA_HOME — one shared dir would interleave).
+                     # Asserts both sides bank keyframes/deltas/effects
+                     # after the pause checkpoint flush; the host records
+                     # straight through a SIGKILLed peer (file grows while
+                     # sends are skipped); the relaunched joiner's rejoin
+                     # RESUMES its file ("replay: resuming recording" — the
+                     # run_id seam rides the snapshots); clean abandons
+                     # patch both headers (host marked 2P); and both files
+                     # play back (NEWTONIA_REPLAY_PLAY=online).
 test/e2e/replay.sh   # REPLAY.md R1 exit criteria, solo (no relay needed):
                      # abandon leaves a resumable current.nrp; CONTINUE
                      # appends to the SAME file (one run_id, seam keyframe,

@@ -10,12 +10,20 @@
 // client's apply path fed from the file.
 //
 // Storage model (REPLAY.md): records since the last flush accumulate in an
-// in-RAM chunk; each checkpoint APPENDS the chunk to replays/current.nrp —
+// in-RAM chunk; each checkpoint APPENDS the chunk to the recording file —
 // never a whole-file rewrite — and the header's tail fields are patched in
 // place only at run end / clean abandon. Three files, all watchable:
-//   current.nrp  the active (live or resumable) run
+//   current.nrp  the active (live or resumable) OFFLINE run
 //   recent.nrp   the most recently completed run
 //   best.nrp     promoted copy of the highest-scoring non-cheated run
+// plus a session-scoped side file for ONLINE games (both roles record —
+// the host tees the snapshots it builds, the client the stream it
+// receives):
+//   online.nrp   the active online session; rotated into recent at game
+//                over, or swept there later (REPLAYS screen open / next
+//                recording) after an abandon or crash — deliberately separate
+//                from current.nrp so hosting/joining mid-way through an
+//                offline run never rotates that run's recording away
 //
 // File layout (little-endian native, like the savegame):
 //   header (HEADER_SIZE bytes, see Header)
@@ -89,6 +97,7 @@ enum EffectSubtype : uint8_t {
 std::string current_path();
 std::string recent_path();
 std::string best_path();
+std::string online_path();
 
 uint64_t new_run_id();  // never returns 0
 
@@ -115,6 +124,15 @@ void rotate_current_to_recent();
 // possibly a crash artifact): rotate it into recent so it isn't silently
 // lost, then the caller starts a fresh Recorder.
 void on_new_game();
+
+// Sweep a leftover online.nrp (an online session that was abandoned, or a
+// crash artifact) into recent, same zero-delta/best rules as the offline
+// rotation. Safe no-op when none exists. Called when the REPLAYS screen
+// opens and from the start of any new online recording that is NOT a
+// rejoin-resume of the same run — a client rejoining mid-session leaves
+// the file in place and appends to it instead (which is why the menu
+// constructor must NOT sweep: a relaunched client passes through it).
+void rotate_online_to_recent();
 
 // Playback-side file reader (R2). Loads the whole file into memory (a few
 // MB) and iterates intact records in order; a truncated final record (crash
@@ -151,11 +169,17 @@ private:
 
 class Recorder {
 public:
-    // resumed=false: truncates current.nrp and writes a fresh header.
-    // resumed=true: current.nrp exists with a matching run_id — records
+    // path selects the file: current_path() for an offline run,
+    // online_path() for an online session (each machine writes its own —
+    // see the storage model above).
+    // resumed=false: truncates the file and writes a fresh header.
+    // resumed=true: the file exists with a matching run_id — records
     // append after the existing ones (the caller verified the match; the
-    // first new record should be a keyframe, the resume seam).
-    Recorder(uint64_t run_id, uint8_t player_count, bool resumed);
+    // first new record should be a keyframe, the resume seam). Offline
+    // that is exit→continue; online it is a client whose auto-rejoin
+    // rebuilt the game around the same run_id (carried by the snapshots).
+    Recorder(uint64_t run_id, uint8_t player_count, bool resumed,
+             const std::string &path);
 
     bool ok() const { return ok_; }
     // Slots are the recorder's own 10 Hz emission count (continued across a
@@ -183,8 +207,9 @@ public:
 
     // Final flush + in-place header patch (score/generation/duration/flags;
     // duration derives from the slot count — pure play time).
-    // ended=true (game over): also rotates current → recent (+best check).
-    // ended=false (abandon to menu): current stays in place, resumable.
+    // ended=true (game over): also rotates the file → recent (+best check).
+    // ended=false (abandon to menu): the file stays in place — resumable
+    // offline; online it waits for the rejoin-resume or the sweep.
     // A fresh session that never recorded a DELTA deletes the file instead
     // (zero-tick rule); a resumed session with nothing new leaves the file
     // exactly as it was.
@@ -195,6 +220,7 @@ private:
     void append_record(uint32_t slot, uint8_t kind, const uint8_t *data,
                        size_t len);
     void write_chunk();  // append the RAM chunk to the file (no ok_ gate)
+    const char *rotate_label() const;  // "current"/"online" for log lines
 
     std::string path_;
     Header header_;
