@@ -108,9 +108,18 @@ private:
   // rows that are actually drawn (2 under the picker, 3 keyboard-flow).
   bool picker_on_bottom_row() const;
   int lan_rows_shown() const;
+  void lan_rejoin_restart(const char *why);
 public:
   // M3-1 auto-rejoin: skip Choose and join the known room immediately.
   explicit NetLobby(const std::string &rejoin_code);
+  // LAN rejoin (round 4): the session came through the LAN door, so the
+  // way back is rediscovery, not a room code — browse for the remembered
+  // host NAME and auto-run the blob exchange when its beacon reappears
+  // (the host's GLGame re-beacons on loss; a restarted host app beacons
+  // the same name from its lobby). The tag disambiguates from the
+  // room-code ctor above.
+  struct LanRejoinTag {};
+  NetLobby(const std::string &lan_host_name, LanRejoinTag);
   // A room known to be dead (host said BYE, or the relay reported it
   // closed/gone): the clipboard auto-join refuses it for the rest of this
   // run — typing it manually still works.
@@ -185,6 +194,8 @@ private:
   std::string lan_host_name_;    // the host we committed to (for draw)
   int lan_browse_ms_ = 0;        // time browsing (blob-pickup hold grace)
   bool lan_blob_held_ = false;   // logged the hold once (repoll re-fires it)
+  bool lan_rejoin_ = false;      // round 4: rediscover-and-rejoin mode
+  std::string lan_rejoin_name_;  // the host name to auto-select
 
   int currentTime;
   WrappedPoint viewpoint;

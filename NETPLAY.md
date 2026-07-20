@@ -220,6 +220,30 @@ Android gethostname() — fixed by exporting the Settings device name
 through the env bridge). Remaining untested: the controller/Deck row
 navigation.
 
+**Round 4 (2026-07-20): mid-game re-beacon + LAN rejoin by rediscovery**
+(field hit: Android hosted, mac joined over LAN, mac quit — the host
+showed a terminal CONNECTION LOST because the LAN door had closed its
+relay room at adoption and stopped beaconing; there was NO path back).
+Host side: on peer loss BOTH rejoin doors open, mirroring the lobby —
+the relay room re-offer where a signal exists, and a fresh LAN
+announce + lan-only offer wherever `NetLan::available()` (including
+sessions that STARTED on the LAN door and have no signal at all);
+whichever door's re-pair completes is adopted by the shared
+`net_host_rejoin_session_update` (extracted from the relay poll along
+with the park/pause block, which now runs once per loss regardless of
+door order). Client side: a LAN-door join remembers the host's NAME
+(`net_lan_host_name_`, set at bootstrap) the way a relay join
+remembers the code — on loss it hands the game to
+`NetLobby(name, LanRejoinTag)`, which browses and auto-runs the blob
+exchange the moment that name's beacon reappears (the host's game
+re-beacons; a RESTARTED host app beacons the same name from its lobby,
+so the rejoin lands in whatever it hosts next). Shares the relay
+rejoin's honest-wait screen and 60 s budget; exchange failures restart
+the browse instead of failing. EV_BYE clears the name like it clears
+the code (a deliberate goodbye is not browsed after). Verified by
+`test/e2e/lanrejoin.sh` (both directions, no relay) plus rejoin.sh /
+room.sh regressions for the refactored relay path.
+
 **Round 2 discovery hardening (2026-07-20)**: the beacon now goes to
 every broadcast-capable interface's DIRECTED broadcast address
 (getifaddrs / SIO_GET_INTERFACE_LIST) as well as 255.255.255.255 and

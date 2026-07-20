@@ -92,6 +92,12 @@ test/e2e/lanclip.sh  # the LAN-vs-clipboard race (one-box mac field bug): host
                      # asserts the auto blob pickup is HELD ("invite blob on
                      # clipboard held"), the LAN row appears, and the join runs
                      # over the LAN door anyway.
+test/e2e/lanrejoin.sh # LAN mid-game rejoin, both directions, no relay:
+                     # SIGKILL the LAN joiner -> host reopens the LAN door
+                     # (re-beacon + pause) and a NEW instance re-pairs in;
+                     # then SIGKILL the host -> the client auto-browses for
+                     # the host NAME and re-pairs into a freshly launched
+                     # host's game (2nd bootstrap).
 test/e2e/rejoin.sh   # SIGKILL joiner mid-game -> auto-pause -> rejoin -> resume
 test/e2e/impacts.sh  # gen-3 spin-and-fire: joiner detects cosmetic impacts locally
 test/e2e/ownroom.sh  # shared-prefs auto-join probe (mac host+client on one box)

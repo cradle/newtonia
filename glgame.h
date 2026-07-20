@@ -3,6 +3,7 @@
 
 #include "state.h"
 #include "savegame.h"
+#include "net_lan.h"
 #include "glship.h"
 #include "point.h"
 #include "warp_pass.h"
@@ -410,6 +411,25 @@ private:
   std::vector<std::string> net_ice_;  // TURN triples for rejoin re-hosts
   NetTransport *net_rehost_ = nullptr;  // owned until handed to a session
   bool net_rehost_offer_sent_ = false;
+  // ---- LAN rejoin (round 4; see NETPLAY.md "LAN is not a mode") ----
+  // On client loss the host re-opens the LAN door TOO: a fresh beacon +
+  // blob listener beside the relay rejoin offer (or alone, when the
+  // session came through the LAN door and there is no signal). The
+  // dropped peer rediscovers the host by name and re-pairs; whichever
+  // door completes first is adopted. Client side: net_lan_host_name_
+  // (set by the lobby on a LAN join) is the rejoin identity the way
+  // net_room_code_ is for relay joins — a loss hands the game to a
+  // browsing NetLobby that auto-selects that name when it reappears.
+  bool net_host_lan_rejoin_poll(int delta);  // false = LAN unavailable
+  void net_host_rejoin_park_remote();  // once per loss: park + pause
+  void net_host_rejoin_session_update(int delta);  // shared adopt/resume
+  void net_lan_rejoin_reset();
+  bool net_lan_door_open() const;
+  NetLan::Announce net_lan_announce_;
+  NetTransport *net_lan_rehost_ = nullptr;  // owned until adopted
+  bool net_lan_offer_set_ = false;
+  bool net_rejoin_parked_ = false;   // the once-per-loss park/pause ran
+  std::string net_lan_host_name_;    // client: LAN host to rediscover
   long net_bytes_sent_ = 0;             // M2-6 bandwidth telemetry window
 
   // M2-6 delta snapshots: what the client is known to have (reliable

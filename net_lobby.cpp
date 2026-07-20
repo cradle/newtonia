@@ -207,6 +207,32 @@ static bool code_entry_keyboard(bool open) {
   return false;
 }
 
+// LAN rejoin (round 4): the lost session came through the LAN door, so
+// there is no room code — browse for the remembered host name and
+// auto-pair when its beacon reappears (the host's game re-beacons on
+// loss; a restarted host beacons the same name from its lobby). Shares
+// the relay rejoin's honest-wait display and 60 s budget.
+NetLobby::NetLobby(const std::string &lan_host_name, LanRejoinTag)
+    : NetLobby() {
+  hosting_ = false;
+  Presence::set_joining();
+  Net::set_net_log_role(false);
+  transport_ = NetTransport::create();
+  if (!transport_ || !NetLan::available() || !lan_browse_.start()) {
+    set_status("NETPLAY NOT AVAILABLE ON THIS BUILD");
+    screen_ = LobbyFailed;
+    return;
+  }
+  lan_rejoin_ = true;
+  lan_rejoin_name_ = lan_host_name;
+  lan_browse_ms_ = 0;
+  rejoin_mode_ = true;
+  rejoin_budget_ms_ = 60000;
+  screen_ = RoomJoining;
+  set_status("RECONNECTING");
+  NET_LOG("[lobby] lan rejoin: browsing for %s\n", lan_rejoin_name_.c_str());
+}
+
 // A rejoin attempt failed in a retryable way (network still down, relay
 // briefly unreachable): stay on the joining screen and try again.
 void NetLobby::schedule_rejoin_retry(const char *why, int delay_ms) {
@@ -226,6 +252,12 @@ void NetLobby::schedule_rejoin_retry(const char *why, int delay_ms) {
 // next attempt reclaims the room within the remaining budget.
 bool NetLobby::rejoin_retry_after_session_loss(const char *why) {
   if (!rejoin_mode_ || rejoin_budget_ms_ <= 0) return false;
+  // LAN rejoin: the retry is a fresh browse, not a relay reconnect.
+  if (lan_rejoin_) {
+    connect_wait_ms_ = 0;
+    lan_rejoin_restart(why);
+    return true;
+  }
   delete session_;
   session_ = nullptr;
   if (transport_) {
@@ -473,6 +505,24 @@ void NetLobby::lan_join_update(int delta) {
   // different host (the mis-tap class of bug) — drop to the code field.
   if (lan_sel_ >= lan_rows_shown()) lan_sel_ = -1;
 
+  // LAN rejoin auto-select: the moment the remembered host's beacon is
+  // back (and speaks our protocol), run the join as if its row was
+  // picked. A connect refusal just waits for the next beacon; the
+  // shared rejoin budget bounds the whole wait.
+  if (lan_rejoin_ && !lan_joining_ && !session_ && screen_ == RoomJoining) {
+    const std::vector<NetLan::HostInfo> &hosts = lan_browse_.hosts();
+    for (size_t i = 0; i < hosts.size(); i++) {
+      if (hosts[i].name == lan_rejoin_name_ &&
+          hosts[i].proto == Net::PROTO_VERSION) {
+        NET_LOG("[lobby] lan rejoin: %s reappeared\n",
+                lan_rejoin_name_.c_str());
+        lan_sel_ = (int)i;
+        lan_join_selected();
+        break;
+      }
+    }
+  }
+
   if (!lan_joining_) return;
 
   std::string offer_blob;
@@ -493,17 +543,47 @@ void NetLobby::lan_join_update(int delta) {
     } else {
       NET_LOG("[lobby] lan offer blob invalid\n");
       lan_joining_ = false;
-      fail_headline_ = "COULD NOT JOIN THE LAN GAME";
-      screen_ = LobbyFailed;
+      if (lan_rejoin_) {
+        lan_rejoin_restart("invalid blob");
+      } else {
+        fail_headline_ = "COULD NOT JOIN THE LAN GAME";
+        screen_ = LobbyFailed;
+      }
     }
   }
 
   if (lan_browse_.failed() && screen_ != LobbyFailed) {
     lan_joining_ = false;
-    fail_headline_ = "COULD NOT JOIN THE LAN GAME";
-    set_status("THE HOST DID NOT RESPOND");
-    screen_ = LobbyFailed;
+    // Rejoin mode keeps trying — the host may still be reopening its
+    // door — bounded by the shared budget. A first join fails honestly.
+    if (lan_rejoin_) {
+      lan_rejoin_restart("exchange failed");
+    } else {
+      fail_headline_ = "COULD NOT JOIN THE LAN GAME";
+      set_status("THE HOST DID NOT RESPOND");
+      screen_ = LobbyFailed;
+    }
   }
+}
+
+// One failed LAN rejoin attempt: back to browsing with fresh sockets
+// (and a fresh transport if the old one was consumed by a start_join).
+// The shared rejoin budget keeps ticking, so this can't loop forever.
+void NetLobby::lan_rejoin_restart(const char *why) {
+  NET_LOG("[lobby] lan rejoin retry (%s)\n", why);
+  delete session_;
+  session_ = nullptr;
+  if (transport_) {
+    transport_->close();
+    delete transport_;
+  }
+  transport_ = NetTransport::create();
+  lan_joining_ = false;
+  lan_sel_ = -1;
+  lan_browse_.start();
+  lan_browse_ms_ = 0;
+  screen_ = RoomJoining;
+  set_status("RECONNECTING");
 }
 
 // A host row on CodeEntry was chosen (Enter on the highlight).
@@ -1116,6 +1196,9 @@ void NetLobby::tick(int delta) {
         session_ = nullptr;
         GLGame *game = new GLGame(s, session, (SDL_GameController *)0);
         game->net_room_code_ = room_code_;  // enables client auto-rejoin
+        // A LAN-door join remembers the host's NAME the way a relay join
+        // remembers the code — it is the rejoin identity (round 4).
+        game->net_lan_host_name_ = lan_host_name_;
         game->net_apply_extras(in, s);
         request_state_change(game);
         return;
