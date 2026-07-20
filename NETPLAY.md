@@ -201,7 +201,9 @@ Firewall app rules are per-profile — an allow scoped to Public while
 the Wi-Fi is the Private profile silently drops all inbound
 beacons/TCP; tick both profiles in "Allow an app through firewall".
 Manual host/join screens also lost their long lines (they overflowed
-the Windows window width).
+the Windows window width). FIELD-VERIFIED after the fixes: mac +
+Windows on real Wi-Fi discovered each other and played (2026-07-20),
+one-box mac shared-clipboard flow shows the LAN row first.
 
 ## Protocol quick-ref
 
