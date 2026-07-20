@@ -1574,6 +1574,18 @@ void NetLobby::keyboard(unsigned char key, int x, int y) {
   // Touch synthesizes '\r' on finger-down too, and a full code auto-joins,
   // so Enter is meaningless there — it would only flash the length hint.
   if (is_touch_mode() && (key == '\r' || key == '\n')) return;
+  // Deck: a Steam-shortcut keyboard summon is invisible (Steamworks has
+  // no SHOWN callback — Y is the observable path), but its keystrokes
+  // are not: a typed character arriving while the picker layout is up,
+  // on hardware where the floating keyboard has shown, means an OSD is
+  // open over it. Flip on the first keystroke. Never fires on desktop —
+  // floating_kb_available_ only latches where the keyboard really shows.
+  if (controller_seen_ && floating_kb_available_ && !floating_kb_up_ &&
+      !is_touch_mode()) {
+    bool typed = (key >= 'a' && key <= 'z') || (key >= 'A' && key <= 'Z') ||
+                 (key >= '0' && key <= '9') || key == 8 || key == 127;
+    if (typed) floating_kb_up_ = true;
+  }
   // Arrow keys (128+GLUT specials — code entry ignores them, so the
   // keys were free; deliberately NOT nav_key-translated, which would
   // turn them into W/A/D code letters).
@@ -1648,7 +1660,7 @@ void NetLobby::code_entry_key(unsigned char key) {
     // Deliberately absent from the code alphabet: 0/O, 1/I and 5/S are
     // confusable in the game font, F is the fullscreen key. Say so
     // instead of silently eating the keystroke.
-    set_status("CODES NEVER USE 0 O 1 I 5 S OR F");
+    set_status("CODES NEVER USE 0 I OR F");
   }
 }
 
