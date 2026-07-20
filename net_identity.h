@@ -92,7 +92,10 @@ const char *net_platform_label(uint8_t platform);
 // Clamp to NET_IDENTITY_NAME_MAX bytes and keep only characters the Typer
 // font can draw (letters map to the shared upper/lower glyphs, so case is
 // preserved as-is); everything else — including multi-byte UTF-8 — is
-// dropped. Surrounding whitespace is trimmed.
+// dropped. Surrounding whitespace is trimmed. Control bytes and non-ASCII
+// are ALSO stripped explicitly, independent of the glyph predicate — a
+// security boundary (no terminal-escape/log injection) that must survive
+// any future glyph-set growth.
 std::string net_sanitize_name(const std::string &raw);
 
 // "GLENN - STEAM" (name + platform), "GLENN" (unknown label), "STEAM"

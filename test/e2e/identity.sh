@@ -53,7 +53,11 @@ pair() {
 }
 
 echo "=== A: named identities both ways"
-pair host joiner 0 GLENN BOB
+# The host's configured name carries an embedded ESC byte: the sanitizer's
+# explicit control-byte strip (net_sanitize_name — a security boundary
+# independent of the glyph set) must reduce it to GLENN before it reaches
+# the wire; the receive path runs the same function on whatever arrives.
+pair host joiner 0 $'GL\x1bENN' BOB
 # The host learns the client's identity from HELLO; the client learns the
 # host's from WELCOME.
 grep -aq "net: identity peer name='BOB' platform=DESKTOP(1)" "$OUT/host.log" ||

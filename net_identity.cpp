@@ -82,6 +82,14 @@ std::string net_sanitize_name(const std::string &raw) {
   for (size_t i = 0; i < raw.size() && out.size() < (size_t)NET_IDENTITY_NAME_MAX;
        i++) {
     char c = raw[i];
+    // SECURITY INVARIANT, deliberately independent of the glyph set:
+    // control bytes (ESC/CSI, NUL, DEL) and non-ASCII must never survive
+    // into the logs or the display, even if the Typer glyph table someday
+    // grows entries outside printable ASCII. The drawable check below is
+    // a rendering concern and may evolve; this line is the security
+    // boundary and must stay.
+    unsigned char u = (unsigned char)c;
+    if (u < 0x20 || u >= 0x7f) continue;
     if (net_name_char_drawable(c)) out += c;
   }
   // Trim surrounding spaces (dropped UTF-8 can leave stray separators).
