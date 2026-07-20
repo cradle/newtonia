@@ -867,7 +867,9 @@ void NetLobby::pump_signal(int delta) {
           if (!last_join_was_auto_) {
             if (ev.text == "no-such-room") set_status("NO ROOM WITH THAT CODE");
             else if (ev.text == "room-full") set_status("THAT ROOM IS FULL");
-            else if (ev.text == "rate-limited") set_status("TOO MANY TRIES - WAIT A MINUTE");
+            // The worker's fixed window is 10 min from the FIRST try, so
+            // "a minute" oversold it (Glenn hit it while field-testing).
+            else if (ev.text == "rate-limited") set_status("TOO MANY TRIES - WAIT A FEW MINUTES");
             else if (ev.text == "host-closed") set_status("THAT SERVER WAS SHUT DOWN");
             else set_status("THE ROOM HAS EXPIRED");
           }
