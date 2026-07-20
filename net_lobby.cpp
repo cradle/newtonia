@@ -1404,7 +1404,10 @@ void NetLobby::draw() {
               Typer::draw_centered(0, -160.0f - (float)i * 46.0f,
                                    row.c_str(), lan_sel_ == i ? 18 : 14);
             }
-            Typer::draw_centered(0, -160.0f - (float)show * 46.0f,
+            // 14 extra under the last row: a SELECTED row's size-18
+            // glyphs reach ~36 below their anchor, which left the hint
+            // nearly touching the name (Glenn's screenshot).
+            Typer::draw_centered(0, -174.0f - (float)show * 46.0f,
                                  "UP/DOWN AND ENTER TO JOIN", 10);
           }
         }
