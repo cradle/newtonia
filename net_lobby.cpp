@@ -56,15 +56,17 @@ static bool s_join_force_relay = false;
 const TapBand kBackBand(0.85f, 480, 22, 6.0f, /*to_top=*/true, false, 0.72f);
 // RoomHost: the "TAP HERE TO SHARE IT" line, padded to finger height.
 const TapBand kShareBand(0.5f, -80, 18, 42.0f);
-// CodeEntry LAN host bands (touch): in the top half above the soft
-// keyboard (max 3, Glenn). Three finger-sized size-18 bands with gaps
-// don't fit under the full-size code slots, so while ANY host is
-// visible the code block compresses upward (heading y 400, slots y 300
-// at size 34, glyphs to ~232) and the bands take y 214 down to ~0.
+// CodeEntry LAN host bands (touch): above the soft keyboard (max 3).
+// Filled BOTTOM-UP — one host uses only the lowest band, sitting in
+// the free space just above the keyboard, well clear of the code
+// (Glenn's S25 screenshot); a full list grows upward toward the
+// compressed slots. The lowest band bottoms out ~y 49: tall phone
+// keyboards reach ~y 48 in Typer units (measured on the S25 — the
+// "half the screen" assumption undershot it).
 const int kLanBandCount = 3;
-const TapBand kLanBand[kLanBandCount] = {TapBand(0.5f, 200, 18, 14.0f),
-                                         TapBand(0.5f, 122, 18, 14.0f),
-                                         TapBand(0.5f, 44, 18, 14.0f)};
+const TapBand kLanBand[kLanBandCount] = {TapBand(0.5f, 225, 18, 12.0f),
+                                         TapBand(0.5f, 155, 18, 12.0f),
+                                         TapBand(0.5f, 85, 18, 12.0f)};
 
 // CodeEntry controller picker: the code alphabet as a grid under the
 // code slots (desktop layout — touch uses the soft keyboard instead).
@@ -1339,8 +1341,9 @@ void NetLobby::draw() {
         int show =
             (int)lh.size() > kLanBandCount ? kLanBandCount : (int)lh.size();
         if (show > 0) {
-          Typer::draw_centered(0, 400, "ENTER THE ROOM CODE", 14);
-          Typer::draw_centered(0, 300, slots.c_str(), 34);
+          // Clear of the ONLINE CO-OP title (glyphs reach ~y 400).
+          Typer::draw_centered(0, 375, "ENTER THE ROOM CODE", 14);
+          Typer::draw_centered(0, 315, slots.c_str(), 34);
         } else {
           Typer::draw_centered(0, 360, "ENTER THE ROOM CODE", sz);
           Typer::draw_centered(0, 230, slots.c_str(), 48);
@@ -1351,7 +1354,8 @@ void NetLobby::draw() {
               lh[i].proto == Net::PROTO_VERSION
                   ? "TAP TO JOIN " + lh[i].name
                   : lh[i].name + " - DIFFERENT VERSION";
-          kLanBand[i].draw(label.c_str());
+          // Bottom-up fill: host 0 takes the LOWEST band.
+          kLanBand[kLanBandCount - show + i].draw(label.c_str());
         }
       } else {
         // Heading + code live in the top half: the Steam Deck's floating
@@ -1881,7 +1885,8 @@ void NetLobby::touch_tap(float nx, float ny) {
         int show =
             (int)lh.size() > kLanBandCount ? kLanBandCount : (int)lh.size();
         for (int i = 0; i < show; i++) {
-          if (kLanBand[i].contains(nx, ny)) {
+          // Mirror of the draw's bottom-up fill.
+          if (kLanBand[kLanBandCount - show + i].contains(nx, ny)) {
             lan_sel_ = i;
             lan_join_selected();
             return;
