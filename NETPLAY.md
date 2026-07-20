@@ -187,6 +187,31 @@ Verified by `test/e2e/lanclip.sh`, which reproduces the exact race
 (host on the fallback first, blob delivered — the held log line proves
 it — LAN row joins over the LAN door).
 
+**Round 3 (2026-07-20): controller rows + touch bands + Android
+enablement**. Controller/Deck: the CodeEntry picker grid and the LAN
+rows are one navigation space — walking down off the grid's bottom row
+highlights the rows drawn under it (max 2 there, 3 in the keyboard
+layout; `lan_rows_shown()` caps selection to what is drawn), A joins,
+B backs out to the grid, and up from row 0 returns. Touch: discovered
+hosts appear as tap bands ("TAP TO JOIN <NAME>", max 2) in place of
+the typing hint above the soft keyboard, and the host's RoomHost
+screen shows the ALSO VISIBLE / LAN PLAYER CONNECTING line. Android
+runs the SAME raw-UDP backend as desktop (one wire protocol is the
+point — a phone must discover a desktop host, which mDNS/NSD could
+not): `NewtoniaActivity` holds a `MulticastLock` while foreground
+(CHANGE_WIFI_MULTICAST_STATE, install-time grant) so the wifi driver
+delivers beacons, and `beacon_dests()` walks interfaces via
+SIOCGIFCONF there (getifaddrs needs API 24; minSdk is 21). **iOS is
+compiled but OFF behind `NEWTONIA_LAN_IOS`**: receiving/sending
+broadcast needs the Apple-gated multicast entitlement — request it at
+developer.apple.com/contact/request/networking-multicast, then (a) add
+`com.apple.developer.networking.multicast` (bool true) to
+`ios/Entitlements.plist` + `ios/EntitlementsDev.plist`, (b) add
+`NEWTONIA_LAN_IOS` to the defines in `ios/project.yml`, and it lights
+up with no code change. Until then iOS keeps the stub (available()
+false) so the visibility line never lies. LAN sessions currently reach
+touch devices only in that pending iOS case and on Android.
+
 **Round 2 discovery hardening (2026-07-20)**: the beacon now goes to
 every broadcast-capable interface's DIRECTED broadcast address
 (getifaddrs / SIO_GET_INTERFACE_LIST) as well as 255.255.255.255 and

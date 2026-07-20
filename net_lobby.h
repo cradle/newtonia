@@ -103,6 +103,11 @@ private:
   void lan_join_update(int delta);
   void lan_join_selected();
   void lan_teardown();
+  // Round 3: every input flavour reaches the LAN rows. Controller walks
+  // down off the picker grid into them; the caps keep the highlight on
+  // rows that are actually drawn (2 under the picker, 3 keyboard-flow).
+  bool picker_on_bottom_row() const;
+  int lan_rows_shown() const;
 public:
   // M3-1 auto-rejoin: skip Choose and join the known room immediately.
   explicit NetLobby(const std::string &rejoin_code);

@@ -1,18 +1,25 @@
-// LAN discovery + pairing (see net_lan.h). Desktop native only for now:
-// the guard below enables the real implementation where BSD/winsock
-// broadcast just works; everywhere else the seam compiles as no-ops
-// (available() false) so the lobby needs no ifdefs — the same pattern as
-// invites/presence.
+// LAN discovery + pairing (see net_lan.h). The real implementation runs
+// wherever raw UDP broadcast works — desktop native AND Android (round
+// 3; NewtoniaActivity holds a MulticastLock so the wifi driver delivers
+// broadcast). One wire protocol everywhere is the point: a phone must
+// discover a DESKTOP host, so mDNS/Bonjour backends would need a second
+// advertise+browse stack on every platform. iOS has the same code but
+// stays opt-in behind NEWTONIA_LAN_IOS until the Apple-gated multicast
+// entitlement (com.apple.developer.networking.multicast) is granted —
+// without it iOS silently drops broadcast both ways, and the lobby's
+// "VISIBLE ON THIS NETWORK" line would lie. Web/Xbox compile the no-op
+// stubs (available() false) so the lobby needs no ifdefs — the same
+// pattern as invites/presence.
 
 #include "net_lan.h"
 
 #include "net_protocol.h"  // PROTO_VERSION, NET_LOG
 
 #if defined(NEWTONIA_NET_RTC) && !defined(__EMSCRIPTEN__) && \
-    !defined(__ANDROID__) && !defined(_GAMING_XBOX)
+    !defined(_GAMING_XBOX)
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
-#if !TARGET_OS_IPHONE
+#if !TARGET_OS_IPHONE || defined(NEWTONIA_LAN_IOS)
 #define NEWTONIA_LAN 1
 #endif
 #else
@@ -54,11 +61,15 @@ static bool lan_sockets_init() {
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <ifaddrs.h>
 #include <net/if.h>  // IFF_UP / IFF_BROADCAST / IFF_LOOPBACK
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#ifdef __ANDROID__
+#include <sys/ioctl.h>  // SIOCGIFCONF interface walk (getifaddrs is API 24+)
+#else
+#include <ifaddrs.h>
+#endif
 typedef int lan_socket_t;
 #define LAN_INVALID (-1)
 #define lan_close ::close
@@ -185,6 +196,34 @@ std::vector<uint32_t> beacon_dests() {
       }
     }
     closesocket(s);
+  }
+#elif defined(__ANDROID__)
+  // getifaddrs needs API 24 but minSdk is 21: the classic SIOCGIFCONF
+  // walk works on every Android (IPv4-only, which is all beacons use).
+  int s = socket(AF_INET, SOCK_DGRAM, 0);
+  if (s >= 0) {
+    struct ifreq reqs[16];
+    struct ifconf conf;
+    std::memset(&conf, 0, sizeof(conf));
+    conf.ifc_len = sizeof(reqs);
+    conf.ifc_req = reqs;
+    if (ioctl(s, SIOCGIFCONF, &conf) == 0) {
+      int n = (int)(conf.ifc_len / sizeof(struct ifreq));
+      for (int i = 0; i < n; i++) {
+        // The ioctls answer into the same union the name shares — work
+        // on copies so one query can't corrupt the next.
+        struct ifreq fl = reqs[i];
+        if (ioctl(s, SIOCGIFFLAGS, &fl) != 0) continue;
+        if (!(fl.ifr_flags & IFF_UP) || (fl.ifr_flags & IFF_LOOPBACK) ||
+            !(fl.ifr_flags & IFF_BROADCAST))
+          continue;
+        struct ifreq br = reqs[i];
+        if (ioctl(s, SIOCGIFBRDADDR, &br) != 0) continue;
+        uint32_t b = ((sockaddr_in *)&br.ifr_broadaddr)->sin_addr.s_addr;
+        if (b) out.push_back(b);
+      }
+    }
+    ::close(s);
   }
 #else
   ifaddrs *ifs = nullptr;

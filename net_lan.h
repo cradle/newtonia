@@ -17,10 +17,12 @@
 //   the host, then u32 len + answer blob back. One joiner at a time.
 //
 // Everything is single-threaded and non-blocking, driven by update()
-// from the lobby tick. Desktop native only for now (NEWTONIA_LAN in the
-// .cpp): browsers have no UDP, Android needs a MulticastLock, and iOS
-// raw broadcast needs an Apple-gated entitlement (Bonjour later — the
-// mobile phase gets its own discovery backends behind this same seam).
+// from the lobby tick. Real on desktop native AND Android (round 3:
+// NewtoniaActivity holds a MulticastLock while the app is foreground);
+// iOS compiles the same code behind NEWTONIA_LAN_IOS, off until the
+// Apple-gated multicast entitlement is granted; browsers have no UDP
+// (stubs). One raw wire protocol on every platform — that's what lets
+// a phone discover a desktop host.
 
 #include <string>
 #include <vector>

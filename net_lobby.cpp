@@ -56,6 +56,12 @@ static bool s_join_force_relay = false;
 const TapBand kBackBand(0.85f, 480, 22, 6.0f, /*to_top=*/true, false, 0.72f);
 // RoomHost: the "TAP HERE TO SHARE IT" line, padded to finger height.
 const TapBand kShareBand(0.5f, -80, 18, 42.0f);
+// CodeEntry LAN host bands (touch): in the top half above the soft
+// keyboard, between the code slots (y 230, glyphs to ~134) and the
+// keyboard's edge — they replace the typing hint while hosts are
+// visible (max 2; hint text otherwise sits at y 80).
+const TapBand kLanBand[2] = {TapBand(0.5f, 120, 16, 16.0f),
+                             TapBand(0.5f, 40, 16, 16.0f)};
 
 // CodeEntry controller picker: the code alphabet as a grid under the
 // code slots (desktop layout — touch uses the soft keyboard instead).
@@ -465,7 +471,7 @@ void NetLobby::lan_join_update(int delta) {
 
   // Never let a vanished row silently shift the highlight onto a
   // different host (the mis-tap class of bug) — drop to the code field.
-  if (lan_sel_ >= (int)lan_browse_.hosts().size()) lan_sel_ = -1;
+  if (lan_sel_ >= lan_rows_shown()) lan_sel_ = -1;
 
   if (!lan_joining_) return;
 
@@ -1197,6 +1203,14 @@ void NetLobby::draw() {
         } else {
           Typer::draw_centered(0, -80, "IT IS ON YOUR CLIPBOARD", sz);
         }
+        // Between the share band (bottoms ~ -158 with its finger pad)
+        // and the blink line at -220.
+        if (lan_announce_.running())
+          Typer::draw_centered(0, -180,
+                               lan_announce_.peer_engaged()
+                                   ? "A LAN PLAYER IS CONNECTING"
+                                   : "ALSO VISIBLE ON THIS NETWORK",
+                               12);
         if (blink)
           Typer::draw_centered(0, -220, "WAITING FOR PLAYER 2", sz);
       } else {
@@ -1232,7 +1246,22 @@ void NetLobby::draw() {
         Typer::draw_centered(0, 360, "ENTER THE ROOM CODE", sz);
         Typer::draw_centered(0, 230, slots.c_str(), 48);
         y = 80;
-        lines.push_back("TYPE THE CODE YOUR HOST SEES");
+        // LAN host bands take the hint's spot while hosts are visible
+        // (tapped in touch_tap; a mismatched version still taps through
+        // to lan_join_selected, which explains instead of joining).
+        const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
+        int show = (int)lh.size() > 2 ? 2 : (int)lh.size();
+        if (show > 0) {
+          for (int i = 0; i < show; i++) {
+            std::string label =
+                lh[i].proto == Net::PROTO_VERSION
+                    ? "TAP TO JOIN " + lh[i].name
+                    : lh[i].name + " - DIFFERENT VERSION";
+            kLanBand[i].draw(label.c_str());
+          }
+        } else {
+          lines.push_back("TYPE THE CODE YOUR HOST SEES");
+        }
       } else {
         // Heading + code live in the top half: the Steam Deck's floating
         // keyboard docks over the bottom half of the screen (same reason
@@ -1249,24 +1278,40 @@ void NetLobby::draw() {
           // input while showing) and brings the picker back.
           lines.push_back("A - TYPE   B - DELETE   X - PASTE");
           draw_picker();
+          // LAN host rows under the picker grid (grid bottom ~ -182):
+          // walking down off the grid's last row highlights them, A
+          // joins, B backs out (see controller()).
+          // Between the picker's second row (bottoms ~ -226) and the
+          // transient status line at -320.
+          const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
+          int show = lan_rows_shown();
+          if (show > 0) {
+            Typer::draw_centered(0, -240, "ON THIS NETWORK", 9);
+            for (int i = 0; i < show; i++) {
+              std::string row =
+                  (lan_sel_ == i ? "> " : "  ") + lh[i].name;
+              if (lh[i].proto != Net::PROTO_VERSION)
+                row += " - DIFFERENT VERSION";
+              Typer::draw_centered(0, -266.0f - (float)i * 32.0f,
+                                   row.c_str(), lan_sel_ == i ? 14 : 11);
+            }
+          }
         } else {
           lines.push_back("TYPE THE CODE YOUR HOST SEES");
-          // LAN host rows (round 1: keyboard flow only — the picker
-          // owns this area on controller setups, and touch defers to
-          // the mobile phase). Below the hint, clear of the header
-          // (y=320) and heading/code (200/120) above.
+          // LAN host rows below the hint, clear of the header (y=320)
+          // and heading/code (200/120) above; arrows move the highlight
+          // (see keyboard()), Enter joins.
           const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
-          if (!lh.empty()) {
+          int show = lan_rows_shown();
+          if (show > 0) {
             Typer::draw_centered(0, -110, "ON THIS NETWORK", 12);
-            size_t show = lh.size() > 3 ? 3 : lh.size();
-            for (size_t i = 0; i < show; i++) {
+            for (int i = 0; i < show; i++) {
               std::string row =
-                  (lan_sel_ == (int)i ? "> " : "  ") + lh[i].name;
+                  (lan_sel_ == i ? "> " : "  ") + lh[i].name;
               if (lh[i].proto != Net::PROTO_VERSION)
                 row += " - DIFFERENT VERSION";
               Typer::draw_centered(0, -160.0f - (float)i * 46.0f,
-                                   row.c_str(),
-                                   lan_sel_ == (int)i ? 18 : 14);
+                                   row.c_str(), lan_sel_ == i ? 18 : 14);
             }
             Typer::draw_centered(0, -160.0f - (float)show * 46.0f,
                                  "UP/DOWN AND ENTER TO JOIN", 10);
@@ -1395,8 +1440,8 @@ void NetLobby::keyboard(unsigned char key, int x, int y) {
   // LAN host rows: up/down moves the highlight between the discovered
   // hosts and the code field (arrows arrive as 128+GLUT specials, which
   // code entry ignores — the keys were free). -1 = the code field.
-  if (!is_touch_mode() && !lan_browse_.hosts().empty()) {
-    int n = (int)lan_browse_.hosts().size();
+  if (!is_touch_mode() && lan_rows_shown() > 0) {
+    int n = lan_rows_shown();
     if (key == 128 + 101) {  // up: code field wraps to the last row
       lan_sel_ = (lan_sel_ <= -1) ? n - 1 : lan_sel_ - 1;
       return;
@@ -1525,10 +1570,32 @@ void NetLobby::controller_confirm() {
   // Touch platforms never draw the picker (the soft keyboard owns code
   // entry there), so a paired controller must not type from it blind.
   if (screen_ == CodeEntry && !is_touch_mode()) {
+    if (lan_sel_ >= 0) {  // a LAN host row is highlighted: join it
+      lan_join_selected();
+      return;
+    }
     code_entry_key((unsigned char)NET_ROOM_CODE_ALPHABET[picker_index_]);
     return;
   }
   confirm();
+}
+
+// The picker's last (possibly short) row — walking down off it enters
+// the LAN host rows drawn underneath.
+bool NetLobby::picker_on_bottom_row() const {
+  int n = (int)strlen(NET_ROOM_CODE_ALPHABET);
+  int rows = (n + PICKER_COLS - 1) / PICKER_COLS;
+  return picker_index_ / PICKER_COLS == rows - 1;
+}
+
+// How many LAN host rows the current screen draws — the controller
+// layout fits 2 under the picker, the keyboard layout 3 below the hint.
+// Draw and selection both use this so the highlight can never land on
+// an invisible host.
+int NetLobby::lan_rows_shown() const {
+  int n = (int)lan_browse_.hosts().size();
+  int cap = controller_seen_ ? 2 : 3;
+  return n > cap ? cap : n;
 }
 
 void NetLobby::controller(SDL_Event event) {
@@ -1584,6 +1651,13 @@ void NetLobby::controller(SDL_Event event) {
   if (screen_ == CodeEntry) {
     if (event.type == SDL_CONTROLLERBUTTONDOWN &&
         event.cbutton.button == SDL_CONTROLLER_BUTTON_B &&
+        !is_touch_mode() && lan_sel_ >= 0) {
+      // B steps back out of the LAN host rows before it deletes/leaves.
+      lan_sel_ = -1;
+      return;
+    }
+    if (event.type == SDL_CONTROLLERBUTTONDOWN &&
+        event.cbutton.button == SDL_CONTROLLER_BUTTON_B &&
         !is_touch_mode() && !code_entry_.empty()) {
       // Console convention: B deletes while there is something to delete,
       // and only backs out of an empty code field (non-touch only — the
@@ -1594,11 +1668,26 @@ void NetLobby::controller(SDL_Event event) {
     if (event.type == SDL_CONTROLLERBUTTONDOWN &&
         event.cbutton.button == SDL_CONTROLLER_BUTTON_START)
       return;  // Start is not a picker key (A/RT type, and joins on full)
+    // LAN host rows sit BELOW the picker grid (max 2 drawn): walking down
+    // off the grid's bottom row enters them, up from the top row returns
+    // to the grid, A joins the highlighted host (controller_confirm), B
+    // backs out (above). lan_sel_ -1 = the picker owns the pad.
     switch (nav_key_from_controller(event)) {
-      case 'w':  picker_move(0, -1); break;
-      case 's':  picker_move(0, 1);  break;
-      case 'a':  picker_move(-1, 0); break;
-      case 'd':  picker_move(1, 0);  break;
+      case 'w':
+        if (lan_sel_ >= 0) lan_sel_--;
+        else picker_move(0, -1);
+        break;
+      case 's':
+        if (lan_sel_ >= 0) {
+          if (lan_sel_ < lan_rows_shown() - 1) lan_sel_++;
+        } else if (lan_rows_shown() > 0 && picker_on_bottom_row()) {
+          lan_sel_ = 0;
+        } else {
+          picker_move(0, 1);
+        }
+        break;
+      case 'a':  if (lan_sel_ < 0) picker_move(-1, 0); break;
+      case 'd':  if (lan_sel_ < 0) picker_move(1, 0);  break;
       case '\r': controller_confirm(); break;
       case 27:   leave_to_menu(); break;
       default:   break;
@@ -1631,6 +1720,19 @@ void NetLobby::touch_tap(float nx, float ny) {
       if (kBackBand.contains(nx, ny)) {
         leave_to_menu();
         return;
+      }
+      // LAN host bands (drawn in place of the typing hint). A version
+      // mismatch taps through to the explanatory status message.
+      {
+        const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
+        int show = (int)lh.size() > 2 ? 2 : (int)lh.size();
+        for (int i = 0; i < show; i++) {
+          if (kLanBand[i].contains(nx, ny)) {
+            lan_sel_ = i;
+            lan_join_selected();
+            return;
+          }
+        }
       }
       // Re-summon a dismissed soft keyboard (touch; no-op elsewhere).
       floating_kb_up_ = code_entry_keyboard(true);
