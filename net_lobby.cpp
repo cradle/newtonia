@@ -1329,21 +1329,19 @@ void NetLobby::draw() {
         Typer::draw_centered(0, 360, "ENTER THE ROOM CODE", sz);
         Typer::draw_centered(0, 230, slots.c_str(), 48);
         y = 80;
-        // LAN host bands take the hint's spot while hosts are visible
+        // LAN host bands under the code slots while hosts are visible
         // (tapped in touch_tap; a mismatched version still taps through
-        // to lan_join_selected, which explains instead of joining).
+        // to lan_join_selected, which explains instead of joining). No
+        // typing hint here or anywhere: the heading + blank slots say
+        // it all.
         const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
         int show = (int)lh.size() > 2 ? 2 : (int)lh.size();
-        if (show > 0) {
-          for (int i = 0; i < show; i++) {
-            std::string label =
-                lh[i].proto == Net::PROTO_VERSION
-                    ? "TAP TO JOIN " + lh[i].name
-                    : lh[i].name + " - DIFFERENT VERSION";
-            kLanBand[i].draw(label.c_str());
-          }
-        } else {
-          lines.push_back("TYPE THE CODE YOUR HOST SEES");
+        for (int i = 0; i < show; i++) {
+          std::string label =
+              lh[i].proto == Net::PROTO_VERSION
+                  ? "TAP TO JOIN " + lh[i].name
+                  : lh[i].name + " - DIFFERENT VERSION";
+          kLanBand[i].draw(label.c_str());
         }
       } else {
         // Heading + code live in the top half: the Steam Deck's floating
@@ -1391,10 +1389,9 @@ void NetLobby::draw() {
             }
           }
         } else {
-          lines.push_back("TYPE THE CODE YOUR HOST SEES");
-          // LAN host rows below the hint, clear of the header (y=320)
-          // and heading/code (200/120) above; arrows move the highlight
-          // (see keyboard()), Enter joins.
+          // LAN host rows clear of the header (y=320) and heading/code
+          // (200/120) above; arrows move the highlight (see
+          // keyboard()), Enter joins.
           const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
           int show = lan_rows_shown();
           if (show > 0) {
