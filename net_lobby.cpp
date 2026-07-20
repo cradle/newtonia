@@ -58,10 +58,11 @@ const TapBand kBackBand(0.85f, 480, 22, 6.0f, /*to_top=*/true, false, 0.72f);
 const TapBand kShareBand(0.5f, -80, 18, 42.0f);
 // CodeEntry LAN host bands (touch): in the top half above the soft
 // keyboard, between the code slots (y 230, glyphs to ~134) and the
-// keyboard's edge — they replace the typing hint while hosts are
-// visible (max 2; hint text otherwise sits at y 80).
-const TapBand kLanBand[2] = {TapBand(0.5f, 120, 16, 16.0f),
-                             TapBand(0.5f, 40, 16, 16.0f)};
+// keyboard's edge (max 2). Size-18 text with generous finger padding
+// and a clear gap between the two zones — the first cut's size-16 /
+// 80-apart bands read cramped and tap-risky (Glenn).
+const TapBand kLanBand[2] = {TapBand(0.5f, 130, 18, 26.0f),
+                             TapBand(0.5f, 30, 18, 26.0f)};
 
 // CodeEntry controller picker: the code alphabet as a grid under the
 // code slots (desktop layout — touch uses the soft keyboard instead).
