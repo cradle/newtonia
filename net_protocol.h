@@ -163,9 +163,21 @@ namespace Net {
 //     ship's local shock sim (net_remote_gun) so bolts come only from the wire.
 const uint8_t PROTO_VERSION = 22;
 
+// Peer identity (badge metadata) rides HELLO/WELCOME as an APPEND, not a
+// PROTO bump: `u8 platform (NetPlatform), u8 name_len, name_len bytes
+// UTF-8` at the END of both messages. A bump would flag-day the live
+// cross-platform pool for what is pure display metadata — an old peer that
+// never learns your platform is still a fully playable partner. Reader
+// tolerates trailing bytes, so old builds ignore the append for free; new
+// builds parse it ONLY when `remaining() > 0` and treat absence (or a
+// lying name_len) as "no identity" — the savegame append-only convention
+// applied to the wire. See net_identity.h / net_session.cpp.
+
 enum MsgType {
   MSG_HELLO = 1,           // C->H rel: proto + save version + build check
+                           //   + appended identity (see above)
   MSG_WELCOME = 2,         // H->C rel: assigned player_id, timing constants
+                           //   + appended identity (see above)
   MSG_REJECT = 3,          // H->C rel: version/build mismatch, lobby full
   MSG_INPUT = 4,           // C->H unrel: per-tick input state
   MSG_SNAPSHOT_CHUNK = 5,  // H->C rel: chunked KEYFRAME snapshot, 1 Hz

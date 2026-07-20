@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "net_identity.h"
 #include "net_protocol.h"
 #include "net_transport.h"
 
@@ -176,6 +177,12 @@ public:
   int player_id() const { return role_ == HostRole ? 1 : 2; }
   uint8_t reject_reason() const { return reject_reason_; }
 
+  // The peer's identity as parsed from its HELLO (host role) / WELCOME
+  // (client role) append — see net_protocol.h. Default-constructed (platform
+  // Unknown, empty name) for a legacy peer or before Ready. A rejoin runs a
+  // fresh NetSession, so the identity re-arrives with every handshake.
+  const NetIdentity &peer_identity() const { return peer_identity_; }
+
   NetTransport *transport() { return transport_; }
 
 private:
@@ -187,6 +194,7 @@ private:
   uint8_t reject_reason_;
   bool hello_sent_;
   int handshake_ms_;  // time spent in Handshaking, for the timeout
+  NetIdentity peer_identity_;
 };
 
 #endif /* NET_SESSION_H */

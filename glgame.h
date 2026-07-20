@@ -26,6 +26,7 @@
 #include "lance_pickup.h"
 #include "revive_pickup.h"
 #include "shock_pickup.h"
+#include "net_identity.h"
 #include "net_signal.h"
 #include "view/tap_band.h"
 #include <SDL.h>
@@ -219,6 +220,12 @@ private:
 
   NetMode net_mode_ = NetOff;
   NetSession *net_session_ = nullptr;  // owned when net_mode_ != NetOff
+  // The peer's badge identity (name + platform, net_identity.h), copied from
+  // the session at adoption and REFRESHED on every rejoin handshake — kept
+  // here rather than read through net_session_ so the badge survives the
+  // sessionless window while a dropped peer rejoins. Default (unknown) for
+  // a legacy peer: the overlay then renders exactly the identity-less UI.
+  NetIdentity net_peer_identity_;
   int net_snapshot_timer_ = 0;
   uint32_t net_snapshot_id_ = 0;
   uint32_t net_last_input_seq_ = 0;

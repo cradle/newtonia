@@ -1,5 +1,6 @@
 #include "overlay.h"
 #include "tap_band.h"
+#include "../net_identity.h"
 #include "../net_session.h"
 #include "../net_transport.h"
 #include "../glship.h"
@@ -82,8 +83,12 @@ void Overlay::net_overlays(const GLGame *glgame) {
     // Rejoinable loss: the game continues — a quiet notice, not a card.
     // A "P2 DISCONNECTED" header over the room code (steady, no blink): the
     // host may be reading the code out to the other player, and it explains
-    // why the code is back on screen.
-    Typer::draw_centered(0, vh * 0.80f, "PLAYER 2 DISCONNECTED", 20);
+    // why the code is back on screen. Named when the peer's identity is
+    // known ("GLENN DISCONNECTED"); a legacy peer keeps the plain text.
+    std::string who = glgame->net_peer_identity_.name.empty()
+                          ? std::string("PLAYER 2")
+                          : glgame->net_peer_identity_.name;
+    Typer::draw_centered(0, vh * 0.80f, (who + " DISCONNECTED").c_str(), 20);
     std::string room = "ROOM " + glgame->net_room_code_;
     Typer::draw_centered(0, vh * 0.67f, room.c_str(), 18);
   } else if (glgame->net_connection_lost_ &&
@@ -123,6 +128,7 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   temperature(glgame, glship);
   respawn_timer(glgame, glship);
   spectate(glgame, glship);
+  remote_badge(glgame, glship);
   paused(glgame, glship);
   touch_controls(glgame, glship);
   edge_indicators(glgame, glship);
@@ -316,6 +322,19 @@ void Overlay::respawn_timer(const GLGame *glgame, const GLShip *glship) {
 // Spectator flow (netplay co-op): a "SPECTATING IN N" countdown on the local
 // wreck, then "SPECTATING" at the bottom once the camera has handed off to the
 // peer. Both phases are driven by GLGame::spectate_death_time_.
+void Overlay::remote_badge(const GLGame *glgame, const GLShip *glship) {
+  (void)glship;
+  if (!glgame->net_active()) return;
+  std::string badge = net_identity_badge(glgame->net_peer_identity_);
+  if (badge.empty()) return;  // legacy peer: no badge, no placeholder
+  // Bottom row like the SPECTATING hint, clear of the touch RETURN TO MENU
+  // band and the title-safe margin; hoisted above SPECTATING when the
+  // camera is on the peer (that's exactly when the tag matters most).
+  float vhb = -Typer::scaled_window_height / glgame->num_y_viewports();
+  float y = glgame->is_spectating() ? vhb + 175.0f : vhb + 130.0f;
+  Typer::draw_centered(0, y, badge.c_str(), 11);
+}
+
 void Overlay::spectate(const GLGame *glgame, const GLShip *glship) {
   (void)glship;
   if (glgame->spectate_arming()) {
