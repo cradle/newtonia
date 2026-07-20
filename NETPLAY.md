@@ -125,6 +125,101 @@ Estimate: desktop-first a couple of days including lobby UX + e2e;
 each mobile backend ~a day, mostly permission plumbing. Deck LAN
 parties are the killer use case.
 
+## Future milestone — verified peer identity (design notes 2026-07-20)
+
+**Current state (shipped on the identity branch):** the peer identity
+(platform tag + display name in the HELLO/WELCOME append) is a
+self-reported claim — no attestation binds it to a real account, so a
+modified client can call itself anything on any platform. Decision
+(Glenn 2026-07-20): **nothing claimed reaches the screen until
+verification exists.** `NET_IDENTITY_DISPLAY_ENABLED = false` in
+`net_identity.h` is the single display chokepoint: badge helpers return
+"" (no bottom-row badge, no lobby HOSTED BY line — exact pre-badge UI)
+and `net_identity_name_or` always returns its role fallback, so every
+notice reads PLAYER 1 (host) / PLAYER 2 (client). The wire exchange,
+`net: identity` logs, and policy plumbing stay live — the seam keeps
+working, and verification flips display back on.
+
+**Steam verification design (researched, not built):** Steam supports
+user-to-user auth with session tickets, no game server needed.
+
+1. Each side mints a ticket (`ISteamUser::GetAuthTicketForNetworkIdentity`,
+   ~1 KB, signed by Steam, carries the holder's SteamID) and sends it as
+   another HELLO/WELCOME append — same append-only convention, no PROTO
+   bump, absence = unverified peer.
+2. The receiver validates via `BeginAuthSession`; the async
+   `ValidateAuthTicketResponse_t` callback confirms the ticket is
+   genuine, unexpired, owned by that SteamID, **and single-use** — a
+   replayed ticket fails with `AuthTicketInvalidAlreadyUsed`. The
+   session is monitored for its whole life: owner logs off / cancels /
+   gets VAC'd → a follow-up callback revokes mid-game, so "verified" is
+   a revocable state (drop back to role labels), and `EndAuthSession`
+   belongs in disconnect teardown. Callbacks arrive off-thread —
+   marshal to the game thread (same rule as the achievement journal).
+3. **The display name never comes from the wire.** Verification proves
+   a SteamID; the receiver then derives the name itself
+   (`GetFriendPersonaName` / `RequestUserInformation`). A lying name
+   field simply stops mattering.
+
+**Recipient binding — what's encoded in the ticket, and why it matters:**
+the issuer chooses a recipient identity at mint time; Steam signs it in
+and validation fails unless the verifier presents the same identity.
+
+- *Bind to the peer's claimed SteamID* (naive): kills offline replay and
+  all third-party reuse, but has a chicken-and-egg hole — in the
+  room-code flow the peer's SteamID is learned from the same unverified
+  handshake, so a live MITM can tell the victim "I am T", receive a
+  ticket minted for T, and relay it to the real T in real time.
+- *Bind to the connection* (preferred): use a generic identity string =
+  hash of this transport's WebRTC **DTLS certificate fingerprints**
+  (already exchanged in the SDP; libdatachannel exposes them; both ends
+  compute it locally). An MITM terminates DTLS separately per leg with
+  different certs, so the relayed ticket names the wrong channel and
+  fails — even a malicious signaling relay rewriting SDP can't make the
+  two legs' fingerprints equal. This is real channel binding: relay
+  becomes structurally impossible, not just hard.
+- Residual risk either way: a fully colluding "victim" client minting
+  tickets on demand — account sharing with extra steps, throttled by
+  Steam's one-auth-session-per-account tracking, bannable, and worth
+  only a cosmetic string (see backstop below).
+
+**Open questions (resolve at build time):**
+
+1. Does client-side `BeginAuthSession` enforce **generic-string**
+   identities, or only SteamID/IP? The string binding is documented for
+   the Web-API path (`GetAuthTicketForWebAPI` +
+   `AuthenticateUserTicket` with a matching `identity` param), which
+   would route verification through a service holding a publisher key —
+   our signal worker could do it, at the cost of centralizing
+   verification. If `BeginAuthSession` accepts the string form we get
+   channel binding fully P2P — the preferred outcome. Check the SDK
+   docs/headers before choosing.
+2. The XR-014-style rule "no account IDs on the wire" needs a
+   deliberate amendment: tickets inherently carry the SteamID (it is
+   the thing being proven). Spirit survives as: account IDs may transit
+   the handshake *for verification only* — never logged, never
+   persisted, never displayed raw. Write it into `net_identity.h` when
+   built.
+3. `NET_IDENTITY_DISPLAY_ENABLED` becomes a per-peer `verified` bit on
+   `NetIdentity` (mixed pairs: a Steam↔Steam game shows verified
+   personas, a Steam↔web game keeps role labels — web/mobile have
+   nothing to attest with until each platform grows its own
+   attestation backend behind the same seam).
+4. Verification failure = render as unverified (role labels), NOT a
+   reject — lying about a name shouldn't kick anyone;
+   `net_comms_allowed_with` stays the separate refusal gate, and policy
+   backends must keep treating the claimed platform tag as a claim
+   (enforce privileges on the LOCAL account only).
+5. Testing: headless e2e can cover the ticket plumbing and the
+   unverified-renders-role-labels half (fake/absent tickets), but real
+   validation needs a live two-Steam-account smoke test — same class of
+   manual gate as the persona smoke test.
+
+**Architectural backstop (holds regardless):** identity is display-only.
+No matchmaking privilege, host authority, or policy decision hangs off
+the peer's claim, so even a defeated verification buys an attacker a
+name string, nothing more.
+
 ## Protocol quick-ref
 
 Header: `uint8 proto_ver(=1) | uint8 msg_type | uint8 player_id | uint8 reserved`, little-endian, explicit byte packing.
