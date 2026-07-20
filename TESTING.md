@@ -92,6 +92,11 @@ test/e2e/lanclip.sh  # the LAN-vs-clipboard race (one-box mac field bug): host
                      # asserts the auto blob pickup is HELD ("invite blob on
                      # clipboard held"), the LAN row appears, and the join runs
                      # over the LAN door anyway.
+test/e2e/lankeep.sh  # LAN door + LIVE relay (needs the local wrangler +
+                     # xclip): the room stays open when the LAN door wins
+                     # the pairing - clears the clipboard to beat the code
+                     # auto-join, pairs via the LAN row, then asserts BOTH
+                     # rejoin doors open on peer loss and a re-pair lands.
 test/e2e/lanrejoin.sh # LAN mid-game rejoin, both directions, no relay:
                      # SIGKILL the LAN joiner -> host reopens the LAN door
                      # (re-beacon + pause) and a NEW instance re-pairs in;

@@ -247,6 +247,26 @@ room.sh regressions for the refactored relay path. FIELD-VERIFIED
 LAN door, and a deliberate host quit shows the client "THE HOST LEFT
 THE GAME" (EV_BYE — no futile browsing) as designed.
 
+**Round 5 (2026-07-20): the LAN door keeps the room open.** When the
+LAN door wins the pairing the relay room used to be killed
+(send_close) so no stale code could strand a joiner — but that also
+meant a LAN session had NO code-based rejoin (Glenn asked). Now the
+lobby keeps the signal and the standard WaitConnect handoff gives it
+to GLGame (net_adopt_signal), so a LAN-paired session is
+indistinguishable from a relay session afterwards: room reclaim over
+drops, rejoin BY CODE from anywhere (the code shows on the host's
+disconnect notice), the Steam invite re-advertise on loss, and the
+relay re-offer beside the LAN re-beacon (round 4's both-doors). Cost:
+one idle socket per session — the same as every relay game already
+holds. The genuinely-offline case is unchanged (no relay, no room,
+rediscovery only). The LAN JOINER still doesn't learn the code (it
+never typed one), so ITS auto-rejoin stays rediscovery-by-name; the
+code path is for a human re-entering it. Verified by
+`test/e2e/lankeep.sh` (live local relay + xclip: clears the clipboard
+to beat the code auto-join, pairs via the LAN row, asserts the keep
+log, both doors on loss, and a re-pair) plus lan.sh / lanrejoin.sh
+regressions.
+
 **Round 2 discovery hardening (2026-07-20)**: the beacon now goes to
 every broadcast-capable interface's DIRECTED broadcast address
 (getifaddrs / SIO_GET_INTERFACE_LIST) as well as 255.255.255.255 and

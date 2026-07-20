@@ -480,12 +480,17 @@ void NetLobby::lan_host_update(int delta) {
     return;
   }
   NET_LOG("[lobby] lan joiner completed - adopting the lan transport\n");
-  if (signal_) {
-    signal_->send_close();  // the room code is dead; kill it at the relay
-    signal_->close();
-    delete signal_;
-    signal_ = nullptr;
-  }
+  // The room stays OPEN (it used to be killed here): the WaitConnect
+  // handoff gives it to GLGame via net_adopt_signal exactly like a
+  // relay pairing, so a LAN session keeps the relay session's whole
+  // loss toolkit — rejoin by code from anywhere, the Steam invite
+  // re-advertise, and the fresh relay re-offer beside the LAN
+  // re-beacon. Costs one idle socket; the code stays on the host's
+  // screen for anyone who needs it. (The stored lobby offer goes stale
+  // with the transport below — the rejoin poll re-offers fresh.)
+  if (signal_)
+    NET_LOG("[lobby] lan door won - keeping room %s open\n",
+            room_code_.c_str());
   if (transport_) {
     transport_->close();
     delete transport_;
