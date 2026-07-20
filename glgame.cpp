@@ -5136,6 +5136,20 @@ void GLGame::perf_report() {
   Uint32 now = SDL_GetTicks();
   if (perf_window_start_ == 0) perf_window_start_ = now;
   perf_frames_++;
+  // A frame gap no real frame produces means the game wasn't running —
+  // an Intro owned the state, the app was backgrounded, a state handoff.
+  // Those gaps used to land in the window as fps=0 lines with the whole
+  // stall in "other" (Glenn's Android level-march logs: one bogus line
+  // per skip-intro, plus a 5 s one for the intro auto-start). Restart
+  // the window instead; genuine hitches are far below this bar.
+  if (perf_last_frame_ && now - perf_last_frame_ > 500) {
+    perf_window_start_ = now;
+    perf_frames_ = 0;
+    perf_tick_ms_ = perf_draw_ms_ = perf_tick_max_ = perf_draw_max_ = 0;
+    perf_lens_ms_ = perf_lens_max_ = 0;
+    perf_objs_pc_ = perf_stars_pc_ = perf_osd_pc_ = 0;
+  }
+  perf_last_frame_ = now;
   Uint32 span = now - perf_window_start_;
   if (span < 1000) return;
   // Below ~55 fps: say where the second went. tick+draw are CPU-side

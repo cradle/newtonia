@@ -523,6 +523,7 @@ private:
   // submission vs the rest = swap/present) with the live object counts.
   // Silent at healthy frame rates; no env plumbing needed on device.
   Uint32 perf_window_start_ = 0;
+  Uint32 perf_last_frame_ = 0;  // gap detector: >500 ms = not-running window
   Uint32 perf_tick_ms_ = 0, perf_draw_ms_ = 0;
   Uint32 perf_tick_max_ = 0, perf_draw_max_ = 0;
   // Lens/warp share of draw (mutable: accumulated inside const draw paths).
