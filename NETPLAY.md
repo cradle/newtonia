@@ -172,6 +172,21 @@ row navigation, touch band (mobile phase), mid-game re-beacon on peer
 loss + LAN rejoin by rediscovery, an Options LAN-visibility toggle if
 anyone minds the hostname broadcast.
 
+**Round 2 field fix (2026-07-20)**: on a shared clipboard (Glenn's
+one-box mac test — also macOS Universal Clipboard between one person's
+devices) the host's manual fallback puts its INVITE blob on the
+clipboard, and the joiner's CodeEntry auto-pickup used to steal the
+screen into the manual flow before the LAN row could appear. The
+AUTOMATIC blob pickup is now held while LAN browse is running and
+either lists hosts or hasn't had time to hear a first beacon (2.5 s);
+the 800 ms repoll re-offers the blob, so with no LAN host around the
+manual flow proceeds exactly as before, and an explicit paste
+(controller X) is never held. Room-code auto-join is deliberately NOT
+held — on a same-LAN relay join ICE picks host candidates anyway.
+Verified by `test/e2e/lanclip.sh`, which reproduces the exact race
+(host on the fallback first, blob delivered — the held log line proves
+it — LAN row joins over the LAN door).
+
 ## Protocol quick-ref
 
 Header: `uint8 proto_ver(=1) | uint8 msg_type | uint8 player_id | uint8 reserved`, little-endian, explicit byte packing.

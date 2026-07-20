@@ -86,6 +86,12 @@ test/e2e/lan.sh      # LAN play, NO relay: dead signal URL -> host beacons +
                      # TCP, host-candidate session to bootstrap. Uses a
                      # private NEWTONIA_LAN_PORT so parallel runs (or a
                      # real session) don't cross-beacon.
+test/e2e/lanclip.sh  # the LAN-vs-clipboard race (one-box mac field bug): host
+                     # reaches the manual fallback FIRST so its INVITE blob is
+                     # on the shared clipboard when the joiner opens CodeEntry;
+                     # asserts the auto blob pickup is HELD ("invite blob on
+                     # clipboard held"), the LAN row appears, and the join runs
+                     # over the LAN door anyway.
 test/e2e/rejoin.sh   # SIGKILL joiner mid-game -> auto-pause -> rejoin -> resume
 test/e2e/impacts.sh  # gen-3 spin-and-fire: joiner detects cosmetic impacts locally
 test/e2e/ownroom.sh  # shared-prefs auto-join probe (mac host+client on one box)

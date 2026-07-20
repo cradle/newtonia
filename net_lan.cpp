@@ -360,6 +360,7 @@ bool Browse::exchanging() const {
          impl_->state != Impl::Done;
 }
 bool Browse::failed() const { return impl_->state == Impl::Error; }
+bool Browse::running() const { return impl_->udp != LAN_INVALID; }
 
 bool Browse::start() {
   if (!lan_sockets_init()) return false;
@@ -589,6 +590,7 @@ bool Browse::offer_ready(std::string &) { return false; }
 void Browse::send_answer(const std::string &) {}
 bool Browse::exchanging() const { return false; }
 bool Browse::failed() const { return false; }
+bool Browse::running() const { return false; }
 
 }  // namespace NetLan
 

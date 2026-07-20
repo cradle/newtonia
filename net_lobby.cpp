@@ -337,7 +337,11 @@ void NetLobby::confirm() {
       }
     } else {
       Presence::set_joining();  // "Joining a Co-Op Game"
-      if (NetLan::available()) lan_browse_.start();
+      if (NetLan::available()) {
+        lan_browse_.start();
+        lan_browse_ms_ = 0;
+        lan_blob_held_ = false;
+      }
       if (signal_) {
         screen_ = CodeEntry;
         floating_kb_up_ = code_entry_keyboard(true);
@@ -404,6 +408,8 @@ void NetLobby::lan_teardown() {
   lan_offer_set_ = false;
   lan_joining_ = false;
   lan_sel_ = -1;
+  lan_browse_ms_ = 0;
+  lan_blob_held_ = false;
 }
 
 // Host side of the LAN door, every tick while hosting: feed the announcer
@@ -454,6 +460,7 @@ void NetLobby::lan_host_update(int delta) {
 // arriving runs the exact manual-join machinery with the socket as the
 // clipboard; the answer goes back in tick's JoinGathering case.
 void NetLobby::lan_join_update(int delta) {
+  if (lan_browse_.running()) lan_browse_ms_ += delta;
   lan_browse_.update(delta);
 
   // Never let a vanished row silently shift the highlight onto a
@@ -902,9 +909,28 @@ void NetLobby::tick(int delta) {
         // content can't land here. This is the deliberate replacement
         // for the old silent timeout-into-manual fallback (see
         // join_unreachable).
+        // ...but the LAN rows outrank the AUTOMATIC blob pickup. On a
+        // shared clipboard (one box, or macOS Universal Clipboard between
+        // one person's devices) the host's manual fallback copies its
+        // INVITE blob right as the joiner's CodeEntry opens, and acting on
+        // it here would steal the screen into the manual flow before the
+        // beaconing host's row can even appear (field-hit on a one-box
+        // mac test). Hold the auto pickup while LAN hosts are listed — or
+        // while browse hasn't had time to hear a first beacon yet — and
+        // let the 800 ms repoll re-offer the blob; if no host ever shows,
+        // the manual flow proceeds as before. An explicit paste
+        // (controller X) is user intent and is never held.
         std::string sdp;
-        if (!ok && code_entry_.empty() && transport_ &&
-            Net::decode_signal(clip, sdp) == 'O') {
+        bool lan_hold =
+            !code_clip_explicit_ && lan_browse_.running() &&
+            (!lan_browse_.hosts().empty() || lan_browse_ms_ < 2500);
+        bool is_blob = !ok && code_entry_.empty() && transport_ &&
+                       Net::decode_signal(clip, sdp) == 'O';
+        if (is_blob && lan_hold && !lan_blob_held_) {
+          lan_blob_held_ = true;
+          NET_LOG("[lobby] invite blob on clipboard held - lan rows first\n");
+        }
+        if (is_blob && !lan_hold) {
           NET_LOG("[lobby] manual invite found at code entry\n");
           code_clip_explicit_ = false;
           code_entry_keyboard(false);
@@ -1180,7 +1206,9 @@ void NetLobby::draw() {
         lines.push_back("TELL YOUR FRIEND THE CODE");
         lines.push_back("IT IS ON YOUR CLIPBOARD");
         lines.push_back("");
-        if (blink) lines.push_back("WAITING FOR PLAYER 2");
+        // Pushed on the off-phase too (as a blank) — a conditional push
+        // here makes every line below it jump each blink.
+        lines.push_back(blink ? "WAITING FOR PLAYER 2" : "");
         if (lan_announce_.running())
           lines.push_back(lan_announce_.peer_engaged()
                               ? "A LAN PLAYER IS CONNECTING"
@@ -1304,7 +1332,8 @@ void NetLobby::draw() {
         lines.push_back("REPLY CODE COPIED TO CLIPBOARD");
         lines.push_back("SEND IT BACK TO THE HOST");
         lines.push_back("");
-        if (blink) lines.push_back("WAITING FOR CONNECTION");
+        // Blank on the off-phase so the COPY hint below doesn't jump.
+        lines.push_back(blink ? "WAITING FOR CONNECTION" : "");
         lines.push_back("");
         lines.push_back("C - COPY THE REPLY AGAIN");
       }

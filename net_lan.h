@@ -75,6 +75,7 @@ class Browse {
   bool start();
   void stop();
   void update(int delta_ms);
+  bool running() const;  // listening for beacons (between start and stop)
   const std::vector<HostInfo> &hosts() const;
   // Begin the exchange with hosts()[index]. update() advances it.
   bool connect_host(int index);
