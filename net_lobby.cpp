@@ -409,6 +409,7 @@ void NetLobby::confirm() {
       // while typing, after the transport already exists. The pc (and its
       // ICE policy) is only built at start_join, so this is in time.
       if (transport_) transport_->set_force_relay(s_join_force_relay);
+      NET_LOG("[lobby] joining room %s\n", code_entry_.c_str());
       signal_->connect_join(net_signal_url(), code_entry_);
       signal_wait_ms_ = 0;
       screen_ = RoomJoining;
@@ -838,6 +839,8 @@ void NetLobby::pump_signal(int delta) {
           break;
         }
         if (screen_ == RoomJoining || screen_ == CodeEntry) {
+          NET_LOG("[lobby] relay err '%s' (screen %d)\n", ev.text.c_str(),
+                  (int)screen_);
           if (ev.text == "no-such-room") set_status("NO ROOM WITH THAT CODE");
           else if (ev.text == "room-full") set_status("THAT ROOM IS FULL");
           else if (ev.text == "rate-limited") set_status("TOO MANY TRIES - WAIT A MINUTE");
