@@ -88,8 +88,11 @@ namespace {
 
 const char MAGIC[4] = {'N', 'W', 'L', 'N'};
 const uint8_t BEACON_VERSION = 1;
-const int BEACON_INTERVAL_MS = 1000;
-// Rows fade after ~2 missed beacons (no flicker on one lost packet).
+// 2 Hz: Wi-Fi broadcast is lossy (lowest mandatory link rate, no
+// retries), and at 1 Hz a couple of lost packets made a host appear
+// seconds late — Glenn's two-host test showed only one on the first
+// look. ~80 B/s per host; the expiry window now rides out ~4 losses.
+const int BEACON_INTERVAL_MS = 500;
 const int HOST_EXPIRE_MS = 2500;
 const int EXCHANGE_TIMEOUT_MS = 10000;
 const size_t MAX_BLOB = 64 * 1024;  // framing sanity cap
