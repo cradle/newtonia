@@ -80,8 +80,8 @@ const TapBand kLanBand[kLanBandCount] = {TapBand(0.5f, 225, 18, 12.0f),
 
 // CodeEntry controller picker: the code alphabet as a grid under the
 // code slots (desktop layout — touch uses the soft keyboard instead).
-// Two rows sit between the button-hint lines at -36/-88 (glyphs reach
-// ~-124) and the LAN rows below (selected cells grow to size 22 → 44
+// Two rows sit between the button-hint lines at -48/-96 (glyphs reach
+// ~-120) and the LAN rows below (selected cells grow to size 22 → 44
 // tall, so the second row bottoms out around -226).
 const int PICKER_COLS = 15;
 const float PICKER_TOP_Y = -130.0f;
@@ -1424,11 +1424,6 @@ void NetLobby::draw() {
           Typer::draw_centered(0, 428, top.c_str(), 12);
           Typer::draw_centered(0, 392, "CLOSE THE KEYBOARD TO JOIN", 9);
         }
-        // Below the transient status (y 4, glyphs to ~-26): at -20 the
-        // hints sat inside the error text (Glenn, Deck). The Y-KEYBOARD
-        // second line lands at -88 (glyphs to ~-124), still clear of the
-        // picker top at -130.
-        y = -36;
         if (controller_seen_ && !floating_kb_up_) {
           // Controller flow: button hints replace the keyboard hint,
           // picker grid below. Hidden while the Deck's floating
@@ -1436,10 +1431,18 @@ void NetLobby::draw() {
           // types plain key events; the first controller event that
           // reaches us proves it was dismissed (it consumes controller
           // input while showing) and brings the picker back.
-          lines.push_back("A - TYPE   B - DELETE   X - PASTE");
+          // Drawn directly, not via the shared lines stack: the space
+          // between the transient status (glyphs to ~-26) and the
+          // picker top (-130) is too shallow for its 52-unit spacing —
+          // the main line sits at -48 with breathing room under an
+          // error (Glenn, Deck, twice), and the Y hint tucks in
+          // smaller at -96 (glyphs to ~-120), clear of the picker.
+          Typer::draw_centered(0, -48, "A - TYPE   B - DELETE   X - PASTE",
+                               sz);
           // Second hint line only where the floating keyboard has
           // actually shown (Deck) — Y re-summons it (see controller()).
-          if (floating_kb_available_) lines.push_back("Y - KEYBOARD");
+          if (floating_kb_available_)
+            Typer::draw_centered(0, -96, "Y - KEYBOARD", 12);
           draw_picker();
           // LAN host rows under the picker grid (grid bottom ~ -182):
           // walking down off the grid's last row highlights them, A
@@ -1588,7 +1591,7 @@ void NetLobby::draw() {
     // CodeEntry hoists the status out of the bottom half on touch (soft
     // keyboard) AND in the controller layout (picker + LAN rows + join
     // hint own the space down to ~-340); it sits in the gap between the
-    // code slots (glyphs to 24) and the button-hint line at -36 — low in
+    // code slots (glyphs to 24) and the button-hint line at -48 — low in
     // that gap, since at size 15 it descends to ~-26 and y 20 grazed the
     // code glyphs (Glenn, Deck).
     int sy = (screen_ == CodeEntry && (is_touch_mode() || controller_seen_))
