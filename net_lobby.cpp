@@ -891,6 +891,14 @@ void NetLobby::tick(int delta) {
 
   pump_signal(delta);
 
+  // Deck: bring the picker (and LAN rows) back the MOMENT the floating
+  // keyboard is dismissed. The old proof — the next controller event
+  // reaching us — left the keyboard-up layout on screen until the
+  // player pressed something else (Glenn, Deck beta test). The event
+  // path stays as a fallback for a missed callback.
+  if (floating_kb_up_ && steam_floating_keyboard_dismissed())
+    floating_kb_up_ = false;
+
   // The LAN door (no-ops where NetLan isn't available or nothing runs).
   if (hosting_) lan_host_update(delta);
   else lan_join_update(delta);
