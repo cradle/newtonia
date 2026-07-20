@@ -196,14 +196,16 @@ sends it out one interface of the OS's choosing. The destination set
 is recomputed every beacon (interface changes mid-lobby self-heal) and
 logged on change (`net: lan beacon -> 255.255.255.255 127.0.0.1
 192.168.1.255`), so a field log shows exactly which networks the host
-is beaconing into. Field note (Glenn's Windows machine): Windows
-Firewall app rules are per-profile — an allow scoped to Public while
-the Wi-Fi is the Private profile silently drops all inbound
-beacons/TCP; tick both profiles in "Allow an app through firewall".
-Manual host/join screens also lost their long lines (they overflowed
-the Windows window width). FIELD-VERIFIED after the fixes: mac +
-Windows on real Wi-Fi discovered each other and played (2026-07-20),
-one-box mac shared-clipboard flow shows the LAN row first.
+is beaconing into. This WAS the root cause on Glenn's mac + Windows
+pair: with the global-broadcast-only beacon the machines never saw
+each other; the directed-broadcast build discovered and played with
+NO firewall changes (the Windows allow rule stayed Public-only — the
+prompt's default matches the active network profile, so first-launch
+Allow is normally sufficient). Manual host/join screens also lost
+their long lines (they overflowed the Windows window width).
+FIELD-VERIFIED: mac + Windows on real Wi-Fi discovered each other and
+played (2026-07-20), one-box mac shared-clipboard flow shows the LAN
+row first.
 
 ## Protocol quick-ref
 
