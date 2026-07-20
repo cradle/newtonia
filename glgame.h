@@ -345,6 +345,16 @@ private:
   bool net_peer_bye_ = false;  // client: the host said BYE — no auto-rejoin
   int net_banner_ms_ = 0;
   std::string net_banner_text_;
+  // True for the "<NAME> RECONNECTED" notice: drawn up top at the
+  // DISCONNECTED header's position/size so the pair share a height; other
+  // banners (level, friendly fire, the JOINED greetings) keep the
+  // just-above-middle spot.
+  bool net_banner_header_ = false;
+  // Client: false until the first EV_FRIENDLY_FIRE lands. The first event
+  // is the initial room-rule sync on join, adopted silently — a banner
+  // there would stomp the "JOINED <NAME> SERVER" greeting and announce a
+  // "change" the joiner never saw. Later events are real toggles.
+  bool net_ff_synced_ = false;
   int net_last_input_time_ = 0;     // host: dead-man switch (1 s)
   bool net_input_zeroed_ = false;
   // RTT probe (MSG_PING/PONG, 1 Hz each way): smoothed round-trip in ms,

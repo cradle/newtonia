@@ -97,12 +97,20 @@ void Overlay::net_overlays(const GLGame *glgame) {
     if ((now / 700) % 2 == 0)
       Typer::draw_centered(0, -80, "REJOINING", 16);
   } else if (glgame->net_connection_lost_) {
-    // y=160, not 60: the pause overlay's "Paused" sits at y=30 and both
-    // show when the host leaves a paused game.
-    Typer::draw_centered(0, 160,
-                         glgame->net_peer_bye_ ? "THE HOST LEFT THE GAME"
-                                               : "CONNECTION LOST",
-                         glgame->net_peer_bye_ ? 22 : 34);
+    if (glgame->net_peer_bye_) {
+      // Named like DISCONNECTED/RECONNECTED but near the middle, at the
+      // banner spot ("GLENN LEFT THE GAME"; the host is player 1, so a
+      // nameless/legacy host reads "PLAYER LEFT THE GAME"). Clear of the
+      // pause overlay's "Paused" at y=30 — both show when the host
+      // leaves a paused game.
+      std::string who =
+          net_identity_name_or(glgame->net_peer_identity_, "PLAYER");
+      Typer::draw_centered(0, vh * 0.55f, (who + " LEFT THE GAME").c_str(),
+                           22);
+    } else {
+      // y=160, not 60: clear of the pause overlay's "Paused" at y=30.
+      Typer::draw_centered(0, 160, "CONNECTION LOST", 34);
+    }
     // y=-130: clear of the pause overlay's sub-lines ("press p to
     // resume" at -40, "press esc..." at -70, glyphs reaching ~-86) —
     // the game auto-pauses on a disconnect, so both stacks show at once.
@@ -111,7 +119,13 @@ void Overlay::net_overlays(const GLGame *glgame) {
                            is_touch_mode() ? "TAP FIRE FOR MENU"
                                            : "PRESS FIRE FOR MENU", 16);
   } else if (glgame->net_banner_ms_ > 0) {
-    Typer::draw_centered(0, vh * 0.55f, glgame->net_banner_text_.c_str(), 22);
+    // A header banner ("<NAME> RECONNECTED") takes the DISCONNECTED
+    // header's exact position and size, so the notice swaps in place
+    // rather than jumping down the screen when the peer returns.
+    if (glgame->net_banner_header_)
+      Typer::draw_centered(0, vh * 0.80f, glgame->net_banner_text_.c_str(), 20);
+    else
+      Typer::draw_centered(0, vh * 0.55f, glgame->net_banner_text_.c_str(), 22);
   }
 }
 
