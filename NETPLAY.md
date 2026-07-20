@@ -265,7 +265,9 @@ code path is for a human re-entering it. Verified by
 `test/e2e/lankeep.sh` (live local relay + xclip: clears the clipboard
 to beat the code auto-join, pairs via the LAN row, asserts the keep
 log, both doors on loss, and a re-pair) plus lan.sh / lanrejoin.sh
-regressions.
+regressions. FIELD-VERIFIED (2026-07-20): Android host + mac LAN
+client, mac rejoined BY CODE after a drop (the first attempt failed on
+a pre-round-5 APK, which still killed the room at adoption).
 
 **Round 2 discovery hardening (2026-07-20)**: the beacon now goes to
 every broadcast-capable interface's DIRECTED broadcast address
