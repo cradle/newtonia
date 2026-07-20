@@ -303,15 +303,13 @@ R4's field.
 
 ## Open questions (decide before R1 lands)
 
-- Recorder overhead target on mobile: the delta path is cheap and keyframes
-  are 1 Hz, but measure with the perf logger on-device before enabling by
-  default on Android/iOS/web. Disk I/O is no longer the concern — the
-  buffer-in-RAM + flush-at-checkpoints storage model (see File format) means
-  no per-slot writes on the game thread; what's left to measure is the 10 Hz
-  serialize/allocation cost (build_save_data + MemStream churn) at HIGH
-  generation on a low-end Android device. Reuse the buffers across slots
-  rather than reallocating; netplay already runs this exact serialize 10 Hz
-  while hosting on mobile, so the ceiling is known-acceptable.
+- ~~Recorder overhead target on mobile~~ **RESOLVED by field measurement
+  (Android, 2026-07-20)**: recording at generation 9 with 113 asteroids,
+  the perf logger stayed silent during play (accumulated tick time 5–27 ms
+  per second even across the level-march rebuilds) and Glenn reports no
+  perceptible hitches. The recorder is below the noise floor on device;
+  default-on everywhere stands, `NEWTONIA_REPLAY_DISABLE` remains the
+  escape hatch and no Options toggle is needed on this evidence.
 - Checkpoint-flush latency: the append model bounds every lifecycle flush to
   roughly one level's worth of records by construction, so the open item is
   confirmation, not design: profile the bounded append on-device to check it
@@ -321,10 +319,11 @@ R4's field.
   stays valid; the reader drops the truncated tail). The header patch +
   current→recent rotation happen only at game over / in the menu, outside
   any lifecycle budget, so marathon-run file size never meets a de-focus
-  window. **Durability field-verified on Android** (2026-07-20): app
-  backgrounded mid-run then killed from the switcher — the background flush
-  landed and the replay played back intact after relaunch. Latency
-  profiling (a/b above) remains the open half.
+  window. **Both halves field-verified on Android** (2026-07-20):
+  durability — app backgrounded mid-run then killed from the switcher, the
+  background flush landed and the replay played back intact after relaunch
+  (so the append also fit the `onPause` budget); latency — no perceptible
+  hitches through play including level boundaries, where the flushes land.
 - **Xbox certification is why the append rule is global, not an
   optimisation.** On Xbox/GDK the recorder flushes through the same
   `focus_lost()` hook the PLM suspend callback already calls
