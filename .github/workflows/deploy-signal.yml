@@ -1,0 +1,130 @@
+name: Deploy Signal Worker
+
+# The netplay signaling relay (signal/ — Cloudflare Worker + Durable
+# Objects, NETPLAY.md M2). Two targets from one workflow:
+#
+#   v*.*.* tag           -> PRODUCTION worker (newtonia-signal), the same
+#                           trigger as the other production deploys.
+#   master push touching -> BETA worker (newtonia-signal-beta), a fully
+#   signal/                 isolated Worker (own DO namespaces, own
+#                           secrets, own URL) for testing; point a build
+#                           at it with NEWTONIA_SIGNAL_URL (see
+#                           signal/README.md).
+#   manual dispatch      -> either target (default beta).
+#
+# GitHub applies the `paths` filter to BRANCH pushes only — tag pushes
+# ignore it — so a release tag always deploys production even when the
+# tagged commit didn't touch signal/.
+#
+# Needs repo secrets CLOUDFLARE_API_TOKEN (custom token with permission
+# "Workers Scripts: Edit" on the account; the dashboard's "Edit
+# Cloudflare Workers" template works) and CLOUDFLARE_ACCOUNT_ID
+# (`npx wrangler whoami`). The worker's RUNTIME secrets (TURN keys, kill
+# switches — signal/README.md) live in Cloudflare per script and survive
+# every deploy; this workflow never touches them.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+    branches:
+      - master
+      - main
+    paths:
+      - 'signal/**'
+      - '.github/workflows/deploy-signal.yml'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Worker to deploy (beta or production)'
+        required: true
+        default: 'beta'
+
+# Serialize deploys; never cancel one mid-flight (a half-applied DO
+# migration would be worse than a briefly stale worker).
+concurrency:
+  group: deploy-signal
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: signal
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # global WebSocket client (the protocol tests use it)
+
+      - name: Unit tests
+        run: |
+          node test/rate_key_test.mjs
+          node test/origin_test.mjs
+          node test/turn_budget_test.mjs
+          node test/steam_verify_test.mjs
+
+      # Protocol tests against the real worker code under miniflare — no
+      # Cloudflare account involved. wrangler@4's workerd/SQLite mismatch
+      # (TESTING.md §3) only bites persisted .wrangler/ state; a fresh
+      # checkout has none.
+      - name: Protocol tests (wrangler dev --local)
+        run: |
+          # FAKE_VERIFY lets identity_test.js exercise attestation without a
+          # platform backend; it's inert for the other protocol tests (they
+          # never send an identity frame).
+          npx wrangler@4 dev --local --port 8787 --var FAKE_VERIFY:1 > wrangler-dev.log 2>&1 &
+          DEV_PID=$!
+          for i in $(seq 1 60); do
+            curl -s -o /dev/null http://127.0.0.1:8787/ && break
+            kill -0 $DEV_PID 2>/dev/null || { echo "wrangler dev died:"; cat wrangler-dev.log; exit 1; }
+            sleep 1
+          done
+          node test/reclaim_test.js
+          node test/pv_replay_test.mjs
+          node test/identity_test.js
+          kill $DEV_PID
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Resolve target
+        id: target
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TARGET="${{ github.event.inputs.target }}"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            TARGET=production
+          else
+            TARGET=beta
+          fi
+          case "$TARGET" in
+            production|beta) ;;
+            *) echo "unknown target '$TARGET' (want beta or production)"; exit 1 ;;
+          esac
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "deploying: $TARGET"
+
+      # Production is the TOP-LEVEL wrangler environment (a plain
+      # `wrangler deploy`, exactly what the manual flow always ran), so
+      # automating it changed nothing about the live worker. Beta is the
+      # named env in wrangler.toml.
+      - name: Deploy
+        working-directory: signal
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ "${{ steps.target.outputs.target }}" = "production" ]; then
+            npx wrangler@4 deploy --env=""
+          else
+            npx wrangler@4 deploy --env beta
+          fi

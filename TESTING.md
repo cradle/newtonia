@@ -26,7 +26,8 @@ touches the Steam API against it:
 
 ```sh
 g++ -std=c++11 -fsyntax-only -DSTEAM_BUILD -Itest/steam_stub -I. -I/usr/include/SDL2 \
-    net_lobby.cpp menu.cpp steam_presence.cpp steam_invites.cpp
+    net_lobby.cpp menu.cpp steam_presence.cpp steam_invites.cpp steam_keyboard.cpp \
+    steam_identity.cpp steam_identity_verify.cpp
 ```
 
 When adding a Steamworks call: verify the signature against the SDK docs /
@@ -64,7 +65,17 @@ node test/reclaim_test.js                # M3-1 protocol: token + grace + reclai
                                          #   host socket (ghost eviction)
 node test/rate_key_test.mjs              # rate_key /64-collapse unit test
 node test/pv_replay_test.mjs             # stored-offer replay keeps the version stamp
+node test/steam_verify_test.mjs          # V1 Steam verifier, mocked Valve (unit)
+# The identity protocol test needs the FAKE_VERIFY dev flag set on the relay:
+#   npx wrangler dev --local --port 8787 --var FAKE_VERIFY:1
+node test/identity_test.js               # V0 identity attest/broadcast/replay
 ```
+
+Note on the Limiter: `wrangler dev --local` has no `CF-Connecting-IP`, so every
+socket shares the rate-limit key `local` (HOST_LIMIT 10 / 10 min). Repeated
+host-creates across many test runs can trip it (`[lobby] manual fallback:
+rate-limited` in a game log) — `rm -rf signal/.wrangler` resets the persisted
+Limiter DO between heavy runs.
 
 `SIGNAL_WS=wss://... node test/pv_replay_test.mjs` points a test at another
 relay (e.g. production after a worker deploy).
@@ -80,6 +91,29 @@ cd signal && npx wrangler dev --local --port 8787 &         # relay
 make clean && make -j                                       # netplay build (default)
 
 test/e2e/room.sh     # connect via room code, 3 level skips, both fire 8s
+test/e2e/lan.sh      # LAN play, NO relay: dead signal URL -> host beacons +
+                     # manual fallback, joiner discovers on CodeEntry
+                     # (loopback beacon), arrow-selects, blob exchange over
+                     # TCP, host-candidate session to bootstrap. Uses a
+                     # private NEWTONIA_LAN_PORT so parallel runs (or a
+                     # real session) don't cross-beacon.
+test/e2e/lanclip.sh  # the LAN-vs-clipboard race (one-box mac field bug): host
+                     # reaches the manual fallback FIRST so its INVITE blob is
+                     # on the shared clipboard when the joiner opens CodeEntry;
+                     # asserts the auto blob pickup is HELD ("invite blob on
+                     # clipboard held"), the LAN row appears, and the join runs
+                     # over the LAN door anyway.
+test/e2e/lankeep.sh  # LAN door + LIVE relay (needs the local wrangler +
+                     # xclip): the room stays open when the LAN door wins
+                     # the pairing - clears the clipboard to beat the code
+                     # auto-join, pairs via the LAN row, then asserts BOTH
+                     # rejoin doors open on peer loss and a re-pair lands.
+test/e2e/lanrejoin.sh # LAN mid-game rejoin, both directions, no relay:
+                     # SIGKILL the LAN joiner -> host reopens the LAN door
+                     # (re-beacon + pause) and a NEW instance re-pairs in;
+                     # then SIGKILL the host -> the client auto-browses for
+                     # the host NAME and re-pairs into a freshly launched
+                     # host's game (2nd bootstrap).
 test/e2e/rejoin.sh   # SIGKILL joiner mid-game -> auto-pause -> rejoin -> resume
 test/e2e/impacts.sh  # gen-3 spin-and-fire: joiner detects cosmetic impacts locally
 test/e2e/ownroom.sh  # shared-prefs auto-join probe (mac host+client on one box)
@@ -157,6 +191,32 @@ test/e2e/replay.sh   # REPLAY.md R1 exit criteria, solo (no relay needed):
                      # cheat runs and crashed (stale-header) runs never do;
                      # game over patches the header (ENDED) and deletes the
                      # save. Headers/records parsed by test/e2e/replay_check.py.
+test/e2e/identity.sh # peer-identity happy path: named exchange both ways
+                     # (NEWTONIA_NET_NAME=GLENN/BOB — default builds send
+                     # no name) logged as "net: identity peer name='GLENN'
+                     # platform=DESKTOP(1)"; phase B is the badge-only
+                     # state (NEWTONIA_NET_ANON_IDENTITY=1 host sends
+                     # name_len 0 — platform known, name withheld, distinct
+                     # from the legacy no-append case) and the receiver's
+                     # role labels (PLAYER 1 = host, PLAYER 2 = client). Run
+                     # against a PLAIN relay (no FAKE_VERIFY) — the claim must
+                     # stay unattested so the display shows role labels.
+test/e2e/identity_attested.sh # V0/V1 worker attestation: self-hosts its OWN
+                     # FAKE_VERIFY relay (private port, so the shared :8787 dev
+                     # relay is untouched), connects a named host+joiner, and
+                     # asserts BOTH sides log "net: identity attested
+                     # name='GLENN'/'BOB' platform=DESKTOP(1)" — the worker
+                     # verified each side and the game folded it in as ATTESTED
+test/e2e/identity_legacy.sh # mixed-version interop: a legacy peer (short
+                     # HELLO/WELCOME via NEWTONIA_NET_NO_IDENTITY=1, both
+                     # directions) must still handshake + bootstrap, with the
+                     # current side logging "net: identity none (legacy peer)"
+                     # — guards the append-only wire convention (no PROTO bump)
+test/e2e/policy.sh   # net_policy refusal path: a host refusing all peers
+                     # (NEWTONIA_NET_TEST_REFUSE_COMMS=1, default backend's
+                     # inert hook) must reject INSIDE the handshake (MSG_REJECT
+                     # RejectNotAllowed before WELCOME); the joiner never
+                     # bootstraps and both sides stay alive
 ```
 
 `NEWTONIA_TEST_SPAWN_PICKUPS=1` (offline, inert without the env var) rings
@@ -375,7 +435,8 @@ gate.
 | Xcode project compile with netplay vars (pbxproj regressions) | ios.yml |
 | Web/Emscripten compile (only web-code gate — no emcc in dev containers) | web.yml |
 | Xbox compile paths | xbox-dev.yml, xbox-console-smoke.yml |
-| Worker deploy | manual `npx wrangler deploy` (see signal/README.md) |
+| Worker unit + protocol tests (`signal/test/`) | deploy-signal.yml, as the deploy gate (prod on v* tags, beta worker on master pushes touching signal/) |
+| Worker deploy | deploy-signal.yml (manual `npx wrangler deploy` still works — see signal/README.md) |
 
 The e2e drivers are currently run locally/by-agent, not in CI (wrangler dev
 + Xvfb in Actions is possible if flakiness proves acceptable).

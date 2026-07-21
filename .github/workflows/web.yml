@@ -49,8 +49,8 @@ jobs:
           # The free public site (GitHub Pages) ships with netplay
           # force-disabled permanently (NEWTONIA_NET_DISABLED — pricing
           # decision in NETPLAY.md: paid on Steam/iOS, browser co-op is
-          # the paid newtonia-online itch project). The netplay test
-          # channel (deploy-itch html5-netplay) keeps it on.
+          # the paid newtonia-online itch project, which deploy-itch
+          # builds netplay-ON).
           make web NETPLAY=0
 
       - name: Upload Pages artifact

@@ -157,6 +157,11 @@ bool StateManager::wants_background_ticks() {
   return dynamic_cast<NetLobby*>(state) != NULL;
 }
 
+bool StateManager::text_entry_active() {
+  NetLobby *lobby = dynamic_cast<NetLobby*>(state);
+  return lobby && lobby->code_entry_active();
+}
+
 bool StateManager::back_pressed() {
   return state->back_pressed();
 }

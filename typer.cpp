@@ -1,5 +1,7 @@
 #include "typer.h"
 
+#include "net_identity.h"  // declares net_name_char_drawable (defined here)
+
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -204,6 +206,25 @@ static const float TC  = TW / 2.0f;    // center            = 0.5
 // that draw(char) becomes pre_draw + draw_tinted + post_draw instead of many
 // individual glBegin/glEnd pairs.
 // The animated character (case '©') is excluded; its mesh pointer stays null.
+// Which characters the font can draw — the pure-data mirror of the glyph
+// uploads in init_meshes() below, kept in THIS file so a glyph added or
+// removed there is edited alongside its entry here. Declared in
+// net_identity.h (net_sanitize_name filters peer display names through it)
+// because the net layer must stay free of typer.h's SDL/GL includes.
+// Deliberately excludes the fallback-path glyphs ('?' and the animated ©):
+// they draw, but per-char only, and have no place in a player name.
+bool net_name_char_drawable(char c) {
+  if (c >= 'A' && c <= 'Z') return true;
+  if (c >= 'a' && c <= 'z') return true;
+  if (c >= '0' && c <= '9') return true;
+  switch (c) {
+    case ' ': case '-': case '.': case ',': case '+': case '/':
+    case '(': case ')': case '[': case ']': case '<': case '>': case '=':
+      return true;
+  }
+  return false;
+}
+
 void Typer::init_meshes() {
   meshes_initialized = true;
 

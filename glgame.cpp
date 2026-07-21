@@ -316,6 +316,14 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
   net_mode_ = NetHost;
   Net::set_net_log_role(true);  // lobby set it too; belt & braces
   net_session_ = session;
+  net_peer_identity_ = session->peer_identity();
+  // Greet the friend who just connected the moment the hosted game starts
+  // ("GLENN JOINED"), at the attention-drawing banner spot above centre.
+  net_banner_text_ =
+      net_identity_name_or(net_peer_identity_, "PLAYER 2", net_id_ctx()) +
+      " JOINED";
+  net_banner_ms_ = 3000;
+  NET_LOG("net: banner '%s' %d ms\n", net_banner_text_.c_str(), net_banner_ms_);
   Ship::net_report_bounces = true;  // PROTO 19: sim ricochets -> MSG_BOUNCE
   // A fresh game's player 1 starts dead (offline you wait out the initial
   // countdown or tap fire). Online the host just finished the lobby, so
@@ -375,6 +383,11 @@ GLGame::~GLGame() {
     net_rehost_->close();
     delete net_rehost_;
   }
+  if (net_lan_rehost_) {
+    net_lan_rehost_->close();
+    delete net_lan_rehost_;
+  }
+  // net_lan_announce_ stops itself in its destructor.
 
   //TODO: Make erase, use boost::ptr_list? something better
   // std::erase(std::remove_if(v.begin(),v.end(),true), v.end());
@@ -1872,6 +1885,13 @@ void GLGame::net_adopt_signal(NetSignal *signal, const std::string &room_code,
   net_ice_ = ice_servers;
 }
 
+void GLGame::net_send_local_identity() {
+  if (!net_signal_) return;
+  const NetIdentity &me = net_local_identity();
+  net_signal_->send_identity(me.platform, me.name,
+                             net_local_verify_credential());
+}
+
 // M3-1 reclaim countdown, shared by both host signal loops: the relay
 // socket dropped, so count down and reattach to the room with the token.
 void GLGame::net_host_signal_reclaim_tick(int delta) {
@@ -1895,6 +1915,22 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
     case NetSignal::Event::Ice:
       net_ice_.push_back(ev.text);
       if (net_rehost_) net_rehost_->set_ice_servers(net_ice_);
+      return NetSigHandled;
+    case NetSignal::Event::Identity:
+      // Worker peer attestation (NETPLAY.md V0): a rejoiner re-attests, so
+      // refresh the badge in-game. Only a verified result promotes fields.
+      if (ev.verified) {
+        NetIdentity att;
+        att.platform = ev.platform;
+        att.platform_trust = NET_TRUST_ATTESTED;
+        att.name = net_sanitize_name(ev.text);
+        att.name_trust =
+            att.name.empty() ? NET_TRUST_ABSENT : NET_TRUST_ATTESTED;
+        net_apply_attested(net_peer_identity_, att);
+        NET_LOG("net: identity attested name='%s' platform=%s(%u)\n",
+                att.name.c_str(), net_platform_label(ev.platform),
+                (unsigned)ev.platform);
+      }
       return NetSigHandled;
     case NetSignal::Event::Closed:
       if (net_room_token_.empty()) {
@@ -1954,6 +1990,7 @@ void GLGame::net_host_signal_maintain(int delta) {
     switch (ev.kind) {
       case NetSignal::Event::Room:
         NET_LOG("net: room %s reclaimed\n", net_room_code_.c_str());
+        net_send_local_identity();  // re-attest for the (re)joiner
         break;
       case NetSignal::Event::PeerJoin:
         // The client re-entered the room: its transport is dead even if
@@ -1969,40 +2006,55 @@ void GLGame::net_host_signal_maintain(int delta) {
   }
 }
 
+// First tick after a loss (shared by the relay and LAN rejoin doors,
+// whichever opens first): park the remote ship and pause. An alive ship
+// stays visible where it stood, motionless with the shield up
+// (invincible), until its owner rejoins; a dead one keeps its corpse
+// frozen (no respawn countdown bleeding lives into drifting asteroids).
+// Held inputs are cleared in case the dead-man switch hadn't zeroed
+// them yet. Pausing rather than playing on solo is the sensible default
+// while a door is open for a rejoin (the pause key still resumes a solo
+// session by hand; no broadcast — there is no peer to tell). Guarded to
+// run ONCE per loss: toggle_pause toggles, so a second call from the
+// other door would silently unpause.
+void GLGame::net_host_rejoin_park_remote() {
+  if (net_rejoin_parked_) return;
+  net_rejoin_parked_ = true;
+  Ship *remote = players->size() >= 2 ? players->back()->ship : NULL;
+  if (remote) {
+    if (remote->is_alive()) {
+      remote->velocity = Point(0, 0);
+      remote->invincible = true;
+      remote->time_left_invincible = 1 << 29;
+      remote->rotate_left(false);
+      remote->rotate_right(false);
+      remote->thrust(false);
+      remote->reverse(false);
+      remote->shoot(false);
+      remote->fire_secondary(false);
+    } else {
+      remote->time_until_respawn = 1 << 29;
+    }
+  }
+  delete net_session_;
+  net_session_ = nullptr;
+  if (running) {
+    toggle_pause(false);
+    NET_LOG("net: paused awaiting rejoin\n");
+  }
+}
+
 // Client gone but the room is still open: keep simulating solo, offer a
 // fresh transport through the room, and resume when the peer rejoins
 // (a rejoin is a plain JOIN on their side — full snapshot bootstrap).
 void GLGame::net_host_rejoin_poll(int delta) {
-  Ship *remote = players->size() >= 2 ? players->back()->ship : NULL;
 
   // Runs once per loss: only while there is no live rehost offer AND no
   // session other than the dead one (a fresh session created from a
   // rejoin answer is Handshaking on a HEALTHY transport — leave it be).
   if (!net_rehost_ &&
       (!net_session_ || net_session_->transport()->failed())) {
-    // First tick after the loss: park the remote ship and re-host. An
-    // alive ship stays visible where it stood, motionless with the
-    // shield up (invincible), until its owner rejoins; a dead one keeps
-    // its corpse frozen (no respawn countdown bleeding lives into
-    // drifting asteroids). Held inputs are cleared in case the dead-man
-    // switch hadn't zeroed them yet.
-    if (remote) {
-      if (remote->is_alive()) {
-        remote->velocity = Point(0, 0);
-        remote->invincible = true;
-        remote->time_left_invincible = 1 << 29;
-        remote->rotate_left(false);
-        remote->rotate_right(false);
-        remote->thrust(false);
-        remote->reverse(false);
-        remote->shoot(false);
-        remote->fire_secondary(false);
-      } else {
-        remote->time_until_respawn = 1 << 29;
-      }
-    }
-    delete net_session_;
-    net_session_ = nullptr;
+    net_host_rejoin_park_remote();
     net_rehost_ = NetTransport::create();
     net_rehost_offer_sent_ = false;
     if (net_rehost_) {
@@ -2012,13 +2064,6 @@ void GLGame::net_host_rejoin_poll(int delta) {
     }
     NET_LOG("net: player 2 lost - room %s reopened for rejoin\n",
            net_room_code_.c_str());
-    // Pause rather than playing on solo: waiting is the sensible default
-    // while the room is open for a rejoin (the pause key still resumes a
-    // solo session by hand). No broadcast — there is no peer to tell.
-    if (running) {
-      toggle_pause(false);
-      NET_LOG("net: paused awaiting rejoin\n");
-    }
   }
 
   // Signal socket dropped mid-rejoin: reclaim the room (M3-1) with the
@@ -2074,6 +2119,7 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // socket — resend the current one.
       NET_LOG("net: room %s reclaimed (mid-rejoin)\n", net_room_code_.c_str());
       net_rehost_offer_sent_ = false;
+      net_send_local_identity();  // re-attest for the (re)joiner
     } else if (ev.kind == NetSignal::Event::PeerJoin && net_session_) {
       // A rejoiner re-entered the room while we ALREADY have a handshaking
       // session with them. The relay sends the host a PeerJoin the instant a
@@ -2095,11 +2141,36 @@ void GLGame::net_host_rejoin_poll(int delta) {
     }
   }
 
-  // Fresh session handshaking (HELLO/WELCOME) over the new transport.
+}
+
+// Fresh session handshaking (HELLO/WELCOME) over whichever door's
+// transport was adopted (relay rehost or LAN re-pair) — called once per
+// tick from the loss branch, after both door polls. A policy-refused
+// rejoiner never reaches Ready — the session itself rejects inside the
+// handshake (net_session.cpp, RejectNotAllowed) and lands in the
+// Failed/Rejected branch below, which re-offers so the room stays open
+// for an allowed rejoiner; the refused peer got an honest MSG_REJECT and
+// its lobby stops retrying.
+void GLGame::net_host_rejoin_session_update(int delta) {
+  Ship *remote = players->size() >= 2 ? players->back()->ship : NULL;
   if (net_session_) {
     net_session_->update(delta);
     if (net_session_->phase() == NetSession::Ready) {
       net_connection_lost_ = false;
+      net_rejoin_parked_ = false;  // the next loss parks/pauses afresh
+      // Both doors are satisfied: a stale relay offer transport (the LAN
+      // door won) and the LAN door itself close down. The relay ROOM
+      // stays — it is the durable identity for codes and invites.
+      if (net_rehost_) {
+        net_rehost_->close();
+        delete net_rehost_;
+        net_rehost_ = nullptr;
+      }
+      net_lan_rejoin_reset();
+      // A rejoin re-runs the handshake, so the identity re-arrived fresh —
+      // refresh the stored badge (the rejoiner may be a different friend
+      // dropping into the empty slot via the re-advertised invite).
+      net_peer_identity_ = net_session_->peer_identity();
       net_have_input_ = false;      // re-baseline the one-shot counters
       net_input_zeroed_ = false;
       net_rtt_ms_ = -1.0f;          // fresh transport, fresh RTT baseline
@@ -2127,7 +2198,14 @@ void GLGame::net_host_rejoin_poll(int delta) {
         remote->bullets.clear();  // no lethal spawn-flash debris
       }
       net_set_generation_banner(generation);
-      net_banner_text_ = "PLAYER 2 RECONNECTED";
+      // Name the rejoiner when their identity is known ("GLENN
+      // RECONNECTED"); a legacy peer keeps the plain text.
+      net_banner_text_ =
+          net_identity_name_or(net_peer_identity_, "PLAYER 2", net_id_ctx()) +
+          " RECONNECTED";
+      net_banner_ms_ = 3000;      // the JOINED/LEFT notices' duration
+      NET_LOG("net: banner '%s' %d ms\n", net_banner_text_.c_str(), net_banner_ms_);
+      net_banner_header_ = true;  // up top, same spot as DISCONNECTED
       // Re-sync the room rule — the rejoiner may be a fresh app launch
       // whose HUD reset to its own preference.
       net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
@@ -2145,18 +2223,96 @@ void GLGame::net_host_rejoin_poll(int delta) {
       NET_LOG("net: player 2 rejoined\n");
     } else if (net_session_->phase() == NetSession::Failed ||
                net_session_->phase() == NetSession::Rejected) {
-      // Bad handshake (wrong build?): drop it and re-offer for another try.
+      // Bad handshake (wrong build?): drop it and re-open the doors for
+      // another try — the relay re-offer only where a signal exists, and
+      // the LAN door reset so its poll re-arms a fresh beacon next tick.
       delete net_session_;
       net_session_ = nullptr;
-      net_rehost_ = NetTransport::create();
-      if (net_rehost_) net_rehost_->set_trickle(true);
-      net_rehost_offer_sent_ = false;
-      if (net_rehost_) {
-        net_rehost_->set_ice_servers(net_ice_);
-        net_rehost_->start_host();
+      if (net_signal_) {
+        net_rehost_ = NetTransport::create();
+        if (net_rehost_) net_rehost_->set_trickle(true);
+        net_rehost_offer_sent_ = false;
+        if (net_rehost_) {
+          net_rehost_->set_ice_servers(net_ice_);
+          net_rehost_->start_host();
+        }
       }
+      net_lan_rejoin_reset();
     }
   }
+}
+
+// The LAN door's half of the loss handling: beacon + serve a fresh
+// lan-only offer over TCP, adopt a completed re-pair. Runs beside the
+// relay rejoin poll (both doors, like the lobby) or alone when the
+// session came through the LAN door and there is no signal. Returns
+// false when LAN discovery isn't available on this platform — with no
+// signal either, the loss is terminal as before.
+bool GLGame::net_host_lan_rejoin_poll(int delta) {
+  if (net_mode_ != NetHost || !NetLan::available()) return false;
+  // Arm once per loss — and NOT while a fresh session from either door
+  // is already handshaking (re-beaconing then would let a second
+  // completion stomp it; mirror of the relay arm's condition).
+  if (!net_lan_rehost_ && !net_lan_announce_.running() &&
+      (!net_session_ || net_session_->transport()->failed())) {
+    net_host_rejoin_park_remote();
+    if (!net_lan_announce_.start(NetLan::local_host_name())) return false;
+    net_lan_rehost_ = NetTransport::create();
+    net_lan_offer_set_ = false;
+    if (net_lan_rehost_) {
+      net_lan_rehost_->set_lan_only(true);  // host candidates only
+      net_lan_rehost_->set_trickle(false);  // the blob carries everything
+      net_lan_rehost_->start_host();
+    }
+    NET_LOG("net: player 2 lost - lan door reopened for rejoin\n");
+  }
+  if (!net_lan_offer_set_ && net_lan_rehost_ &&
+      net_lan_rehost_->local_description_ready()) {
+    net_lan_announce_.set_offer_blob(
+        Net::encode_signal(true, net_lan_rehost_->local_description()));
+    net_lan_offer_set_ = true;
+  }
+  std::string answer;
+  if (net_lan_announce_.update(delta, answer)) {
+    std::string sdp;
+    if (Net::decode_signal(answer, sdp) == 'A' && net_lan_rehost_) {
+      NET_LOG("net: lan rejoiner completed - adopting\n");
+      // The LAN door won this race. A relay rehost offer still out (or a
+      // half-open session from a flapped earlier attempt) is stale — the
+      // completed human is on THIS transport. The relay room itself
+      // stays open via net_signal_.
+      if (net_rehost_) {
+        net_rehost_->close();
+        delete net_rehost_;
+        net_rehost_ = nullptr;
+      }
+      delete net_session_;
+      net_session_ = nullptr;
+      net_lan_announce_.stop();
+      net_lan_rehost_->set_remote_answer(sdp);
+      net_session_ = new NetSession(net_lan_rehost_, NetSession::HostRole);
+      net_lan_rehost_ = nullptr;  // owned by the session now
+    }
+  }
+  return true;
+}
+
+void GLGame::net_lan_rejoin_reset() {
+  net_lan_announce_.stop();
+  if (net_lan_rehost_) {
+    net_lan_rehost_->close();
+    delete net_lan_rehost_;
+    net_lan_rehost_ = nullptr;
+  }
+  net_lan_offer_set_ = false;
+}
+
+// A rejoin door is open on the LAN side (announce beaconing, or a
+// re-pair mid-exchange): the loss is recoverable, so the input handlers
+// must not treat any key as "exit to menu" and the overlay shows the
+// waiting notice instead of the terminal card.
+bool GLGame::net_lan_door_open() const {
+  return net_lan_announce_.running() || net_lan_rehost_ != nullptr;
 }
 
 // ---- snapshot NetExtras -------------------------------------------------
@@ -2977,6 +3133,13 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
         net_room_code_.clear();
         NET_LOG("net: host bye - no rejoin\n");
       }
+      // Same for a LAN-door session: a deliberate goodbye must not send
+      // the client browsing for a host that isn't coming back.
+      if (net_mode_ == NetClient && !net_lan_host_name_.empty()) {
+        net_peer_bye_ = true;
+        net_lan_host_name_.clear();
+        NET_LOG("net: host bye - no lan rejoin\n");
+      }
       break;
     case Net::EV_ACHIEVEMENT: {
       // The host's sim detected an unlock it attributes to OUR ship (ram
@@ -3016,10 +3179,12 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
       // The host's preference is the room rule; adopt it for the HUD only
       // (damage runs in the host sim). g_prefs stays the player's own.
       bool on = arg != 0;
-      if (on != friendly_fire) {
+      if (on != friendly_fire && net_ff_synced_) {
         net_banner_text_ = on ? "FRIENDLY FIRE ON" : "FRIENDLY FIRE OFF";
         net_banner_ms_ = 2000;
+        net_banner_header_ = false;
       }
+      net_ff_synced_ = true;
       friendly_fire = on;
       // Keep the local missile sim honest too: seeking is cosmetic-ish on
       // the client but a missile visibly hunting the partner reads wrong.
@@ -3167,6 +3332,7 @@ void GLGame::net_set_generation_banner(int gen) {
     snprintf(buf, sizeof(buf), "LEVEL %d", gen + 1);
   net_banner_text_ = buf;
   net_banner_ms_ = 2000;
+  net_banner_header_ = false;
 }
 
 
@@ -3178,6 +3344,15 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
   net_mode_ = NetClient;
   Net::set_net_log_role(false);  // lobby set it too; belt & braces
   net_session_ = session;
+  net_peer_identity_ = session->peer_identity();
+  // The joiner's complement of the host's "<NAME> JOINED" greeting: name
+  // whose game this is ("JOINED GLENN SERVER"; the host is player 1, so a
+  // nameless/legacy host reads "JOINED PLAYER 1 SERVER").
+  net_banner_text_ = "JOINED " +
+      net_identity_name_or(net_peer_identity_, "PLAYER 1", net_id_ctx()) +
+      " SERVER";
+  net_banner_ms_ = 3000;
+  NET_LOG("net: banner '%s' %d ms\n", net_banner_text_.c_str(), net_banner_ms_);
   net_assembler_ = new Net::SnapshotAssembler();
   // PROTO 14: the local ship reports every shot it fires (id, spawn,
   // exact velocity) so the host spawns clones instead of re-rolling.
@@ -3496,13 +3671,26 @@ void GLGame::tick_net_client(int delta) {
     // exits to the menu via the input handlers. A finished game is the
     // exception: the host leaving AFTER game over is the expected way
     // out, not a loss to recover from — stay on the GAME OVER card.
-    if (!net_room_code_.empty() && !game_over) {
+    if ((!net_room_code_.empty() || !net_lan_host_name_.empty()) &&
+        !game_over) {
       if (net_client_rejoin_ms_ <= 0) net_client_rejoin_ms_ = 1500;
       net_client_rejoin_ms_ -= delta;
       if (net_client_rejoin_ms_ <= 0) {
-        NET_LOG("net: auto-rejoining room %s\n", net_room_code_.c_str());
-        request_state_change(new NetLobby(net_room_code_));
+        if (!net_room_code_.empty()) {
+          NET_LOG("net: auto-rejoining room %s\n", net_room_code_.c_str());
+          request_state_change(new NetLobby(net_room_code_));
+        } else {
+          // LAN-door session: rediscover the host by name — its GLGame
+          // re-beacons on loss (net_host_lan_rejoin_poll), or, if the
+          // host app was restarted, its fresh lobby beacons the same
+          // name and the rejoin lands in whatever it hosts next.
+          NET_LOG("net: auto-rejoining lan host %s\n",
+                  net_lan_host_name_.c_str());
+          request_state_change(
+              new NetLobby(net_lan_host_name_, NetLobby::LanRejoinTag()));
+        }
         net_room_code_.clear();  // fire once
+        net_lan_host_name_.clear();
       }
     }
     return;  // frozen; draw shows the reconnect notice
@@ -5464,10 +5652,18 @@ void GLGame::tick(int delta) {
       net_connection_lost_ = true;
     if (net_signal_ && !net_connection_lost_) net_host_signal_maintain(delta);
     if (net_connection_lost_) {
+      // Both rejoin doors, mirroring the lobby: the relay room (when the
+      // session came through one) and the LAN beacon (wherever LAN
+      // discovery exists — including sessions that STARTED on the LAN
+      // door, which have no signal at all; that loss used to be
+      // terminal). Whichever door's re-pair completes is adopted by the
+      // shared session update.
+      bool lan_door = net_host_lan_rejoin_poll(delta);
       if (net_signal_)
         net_host_rejoin_poll(delta);  // room open: play on, await rejoin
-      else
-        return;  // frozen; draw shows CONNECTION LOST
+      else if (!lan_door)
+        return;  // no door to reopen; draw shows CONNECTION LOST
+      net_host_rejoin_session_update(delta);
     }
     // Steam invite: while the peer is gone but the room is still open for
     // rejoin (net_signal_ live), re-advertise as joinable so a friend — or
@@ -7362,7 +7558,8 @@ void GLGame::draw_map() const {
 }
 
 void GLGame::controller(SDL_Event event) {
-  if (net_connection_lost_ && !(net_mode_ == NetHost && net_signal_)) {
+  if (net_connection_lost_ &&
+      !(net_mode_ == NetHost && (net_signal_ || net_lan_door_open()))) {
     if (event.type == SDL_CONTROLLERBUTTONDOWN)
       request_state_change(new Menu());
     return;
@@ -7775,7 +7972,8 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
   const GeneralKeys &gk = g_prefs.general_keys;
 
-  if (net_connection_lost_ && !(net_mode_ == NetHost && net_signal_)) {
+  if (net_connection_lost_ &&
+      !(net_mode_ == NetHost && (net_signal_ || net_lan_door_open()))) {
     request_state_change(new Menu());
     return;
   }

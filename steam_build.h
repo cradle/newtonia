@@ -3,6 +3,7 @@
 // Compiled only when STEAM_BUILD is defined (set by the deploy-steam workflow).
 // All functions are safe no-ops on every other build.
 
+#include <cstdlib>  // std::getenv (is_beta_feature_enabled)
 #include <string>
 
 #ifdef STEAM_BUILD
@@ -59,6 +60,13 @@ inline void steam_dismiss_floating_keyboard() {
 #endif
 }
 
+// One-shot poll: true once after the Deck's floating keyboard was
+// dismissed (FloatingGamepadTextInputDismissed_t, dispatched by
+// steam_run_callbacks). Lets the lobby bring its picker back the moment
+// the keyboard closes instead of waiting for the next controller event
+// to prove it. Always false on non-Steam builds. (steam_keyboard.cpp)
+bool steam_floating_keyboard_dismissed();
+
 // Returns the Steam beta branch the user is running on (e.g. "beta",
 // "experimental"), or an empty string when on the default/public branch or
 // when STEAM_BUILD is not defined.
@@ -74,6 +82,9 @@ inline std::string steam_get_branch() {
 // Returns true when in-progress / beta-only features should be shown.
 // Set NEWTONIA_BETA=1 in the environment to enable outside of Steam.
 inline bool is_beta_feature_enabled() {
-  if (SDL_getenv("NEWTONIA_BETA")) return true;
+  // std::getenv, not SDL_getenv: this header is otherwise SDL-free (it must
+  // stand alone — an isolated syntax-check has no SDL.h), and the codebase
+  // already reads NEWTONIA_* dev flags with std::getenv in its SDL-free TUs.
+  if (std::getenv("NEWTONIA_BETA")) return true;
   return steam_get_branch() == "beta";
 }

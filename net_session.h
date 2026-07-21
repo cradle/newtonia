@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "net_identity.h"
 #include "net_protocol.h"
 #include "net_transport.h"
 
@@ -160,8 +161,17 @@ public:
     Failed,       // transport failed or handshake timed out
   };
 
+  // Wire values in MSG_REJECT's reason byte — append only. An old build
+  // receiving a value it doesn't know renders its generic "HOST REFUSED
+  // THE CONNECTION" text, so new reasons are safe to add.
   enum RejectReason {
     RejectVersionMismatch = 1,
+    // Platform policy refused this pairing (net_policy.h,
+    // net_comms_allowed_with — checked inside the handshake, before the
+    // host's WELCOME, so a blocked joiner gets an honest refusal instead
+    // of a ghosted CONNECTED screen). Also set locally (no wire message)
+    // when the CLIENT's own policy refuses the host's identity.
+    RejectNotAllowed = 2,
   };
 
   // Takes ownership of the transport (must be non-null).
@@ -176,6 +186,12 @@ public:
   int player_id() const { return role_ == HostRole ? 1 : 2; }
   uint8_t reject_reason() const { return reject_reason_; }
 
+  // The peer's identity as parsed from its HELLO (host role) / WELCOME
+  // (client role) append — see net_protocol.h. Default-constructed (platform
+  // Unknown, empty name) for a legacy peer or before Ready. A rejoin runs a
+  // fresh NetSession, so the identity re-arrives with every handshake.
+  const NetIdentity &peer_identity() const { return peer_identity_; }
+
   NetTransport *transport() { return transport_; }
 
 private:
@@ -187,6 +203,7 @@ private:
   uint8_t reject_reason_;
   bool hello_sent_;
   int handshake_ms_;  // time spent in Handshaking, for the timeout
+  NetIdentity peer_identity_;
 };
 
 #endif /* NET_SESSION_H */

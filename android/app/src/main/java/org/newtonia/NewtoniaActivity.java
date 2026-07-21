@@ -6,10 +6,18 @@ package org.newtonia;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.media.AudioManager;
 import android.net.Uri;
+import android.net.wifi.WifiManager;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.system.Os;
+
+import com.android.installreferrer.api.InstallReferrerClient;
+import com.android.installreferrer.api.InstallReferrerStateListener;
+import com.android.installreferrer.api.ReferrerDetails;
 
 import org.libsdl.app.SDLActivity;
 
@@ -38,6 +46,69 @@ public class NewtoniaActivity extends SDLActivity {
         }
     }
 
+    // Deferred deep link (task #145): a join link tapped on a phone WITHOUT
+    // the game routes to the Play Store with the room code riding the
+    // install referrer (&referrer=code%3DXXXX on the store URL — the /join
+    // page builds it). The Play Store preserves that string across the
+    // install; on first launch we read it back and hand the code to the
+    // same native invite path a tapped App Link uses. One-shot: a stored
+    // flag stops every later launch from re-consuming a stale code, but a
+    // TRANSIENT service failure leaves the flag unset so the next launch
+    // retries (the referrer itself persists ~90 days server-side).
+    private void checkInstallReferrer() {
+        final SharedPreferences prefs =
+            getSharedPreferences("newtonia", Context.MODE_PRIVATE);
+        if (prefs.getBoolean("install_referrer_checked", false)) return;
+        final InstallReferrerClient client =
+            InstallReferrerClient.newBuilder(this).build();
+        client.startConnection(new InstallReferrerStateListener() {
+            @Override
+            public void onInstallReferrerSetupFinished(int responseCode) {
+                boolean definitive = true;
+                try {
+                    if (responseCode ==
+                        InstallReferrerClient.InstallReferrerResponse.OK) {
+                        ReferrerDetails details = client.getInstallReferrer();
+                        String code = referrerCode(details.getInstallReferrer());
+                        if (code != null) nativeAcceptInvite(code);
+                    } else if (responseCode ==
+                               InstallReferrerClient.InstallReferrerResponse
+                                   .SERVICE_UNAVAILABLE) {
+                        definitive = false;  // transient: retry next launch
+                    }
+                } catch (Exception ignored) {
+                    // Referrer is best-effort; never let it disturb launch.
+                } finally {
+                    if (definitive) {
+                        prefs.edit()
+                            .putBoolean("install_referrer_checked", true)
+                            .apply();
+                    }
+                    try { client.endConnection(); } catch (Exception ignored) {}
+                }
+            }
+            @Override
+            public void onInstallReferrerServiceDisconnected() {
+                // Retry happens naturally on the next launch (flag unset).
+            }
+        });
+    }
+
+    // Extract a room code from a referrer string like "code=XXXX" (the Play
+    // Store URL-decodes the %3D once) or "utm_source=...&code=XXXX". Codes
+    // are short upper-alnum; anything else is not ours.
+    private static String referrerCode(String referrer) {
+        if (referrer == null) return null;
+        for (String kv : referrer.split("&")) {
+            int eq = kv.indexOf('=');
+            if (eq <= 0) continue;
+            if (!kv.substring(0, eq).equals("code")) continue;
+            String v = kv.substring(eq + 1).trim().toUpperCase();
+            if (v.matches("[A-Z0-9]{1,8}")) return v;
+        }
+        return null;
+    }
+
     // Debug bridge: Android processes fork from zygote, so `adb shell` env
     // vars never reach the app. Intent extras named NEWTONIA_* are copied
     // into this process's environment instead, making every desktop debug
@@ -62,9 +133,32 @@ public class NewtoniaActivity extends SDLActivity {
         }
     }
 
+    // LAN discovery beacons (net_lan.cpp) carry a host name for the
+    // joiner's row/band; native gethostname() is a bare "localhost" on
+    // Android, so export the user-visible device name over the same env
+    // bridge the adb debug extras use (native reads NEWTONIA_DEVICE_NAME
+    // and sanitizes it into the game font). Skipped if the var is
+    // already set — an adb --es NEWTONIA_DEVICE_NAME override wins.
+    private void exportDeviceName() {
+        try {
+            if (Os.getenv("NEWTONIA_DEVICE_NAME") != null) return;
+            String name = Settings.Global.getString(
+                getContentResolver(), Settings.Global.DEVICE_NAME);
+            if (name == null || name.isEmpty())
+                name = Settings.Secure.getString(getContentResolver(),
+                                                 "bluetooth_name");
+            if (name == null || name.isEmpty()) name = Build.MODEL;
+            if (name != null && !name.isEmpty())
+                Os.setenv("NEWTONIA_DEVICE_NAME", name, true);
+        } catch (Exception ignored) {
+            // Best-effort: native falls back to its NEWTONIA default.
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         applyEnvExtras(getIntent());
+        exportDeviceName();
         super.onCreate(savedInstanceState);
 
         AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
@@ -81,6 +175,13 @@ public class NewtoniaActivity extends SDLActivity {
 
         // Cold launch from a tapped join link.
         handleInviteIntent(getIntent());
+
+        // First launch after a Play Store install: recover a join code that
+        // rode the install referrer (async; no-op on every later launch).
+        // If this launch ALSO carried an App Link intent, both feed the
+        // same pending-code slot and the menu poll drains one — the codes
+        // are identical in that scenario, so order doesn't matter.
+        checkInstallReferrer();
     }
 
     // Warm launch: singleTask (AndroidManifest) delivers a join link tapped
@@ -92,6 +193,14 @@ public class NewtoniaActivity extends SDLActivity {
         handleInviteIntent(intent);
     }
 
+    // LAN co-op discovery (net_lan.cpp): Android wifi drivers filter
+    // broadcast/multicast UDP unless a MulticastLock is held, so the
+    // native beacon browse would hear nothing. Held only while the app
+    // is foreground (acquire in onResume, release in onPause) — the
+    // lobby is the only consumer and it never runs backgrounded. Needs
+    // CHANGE_WIFI_MULTICAST_STATE (AndroidManifest, install-time grant).
+    private WifiManager.MulticastLock multicastLock;
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -99,6 +208,29 @@ public class NewtoniaActivity extends SDLActivity {
         // activity resumes before the native side re-runs its init) and
         // retry sign-in / flush queued earns after backgrounding.
         PlayGamesAchievements.onResume(this);
+        try {
+            if (multicastLock == null) {
+                WifiManager wm = (WifiManager)
+                    getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                if (wm != null) {
+                    multicastLock = wm.createMulticastLock("newtonia-lan");
+                    multicastLock.setReferenceCounted(false);
+                }
+            }
+            if (multicastLock != null) multicastLock.acquire();
+        } catch (Exception ignored) {
+            // Best-effort: without the lock LAN discovery may miss beacons
+            // on some devices, but nothing else is affected.
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        try {
+            if (multicastLock != null && multicastLock.isHeld())
+                multicastLock.release();
+        } catch (Exception ignored) {}
+        super.onPause();
     }
 
     @Override

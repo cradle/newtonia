@@ -53,6 +53,7 @@
        href="https://apps.apple.com/app/id6760685759">Get the app on the App Store</a>
     <a class="btn store hidden" id="itchBtn" target="_blank" rel="noopener"
        href="https://metonymous.itch.io/newtonia-online">Browser co-op on itch.io</a>
+    <a class="btn store hidden" id="playStoreBtn" href="#">Get it on Google Play</a>
 
     <p class="foot">Not working? Open Newtonia and enter the room code above by hand.</p>
   </main>
@@ -75,6 +76,13 @@
     // leads with the stores (Steam / App Store / paid itch) and sends the
     // no-app cases to the landing page, which lists every way to play.
     var WEB_COOP = false;
+    // ANDROID_PUBLIC: flip to true when the Play listing is public (task
+    // #145). While false the Play button stays hidden — a closed-testing
+    // store page dead-ends for non-testers. The referrer machinery below
+    // works either way: the room code rides the store URL's install
+    // referrer (&referrer=code%3DXXXX), survives the install, and
+    // NewtoniaActivity reads it back on first launch (deferred deep link).
+    var ANDROID_PUBLIC = false;
     var STEAM_APPID = "4536720";
     var params = new URLSearchParams(location.search);
     var code = (params.get("code") || "").trim();
@@ -85,6 +93,7 @@
     var steamBtn = document.getElementById("steamBtn");
     var appStoreBtn = document.getElementById("appStoreBtn");
     var itchBtn = document.getElementById("itchBtn");
+    var playStoreBtn = document.getElementById("playStoreBtn");
 
     var ua = navigator.userAgent;
     var isIOS = /iPhone|iPad|iPod/i.test(ua) ||
@@ -113,7 +122,17 @@
           appStoreBtn.classList.remove("hidden");
           subEl.textContent = "Get the app to join this game";
         } else if (isAndroid) {
-          subEl.textContent = "Joining needs the app";
+          if (ANDROID_PUBLIC) {
+            // Deferred deep link: the code rides the install referrer, so
+            // install -> first launch auto-joins this room with no typing.
+            playStoreBtn.href =
+              "https://play.google.com/store/apps/details?id=org.newtonia" +
+              "&referrer=" + encodeURIComponent("code=" + code);
+            playStoreBtn.classList.remove("hidden");
+            subEl.textContent = "Get the app to join this game";
+          } else {
+            subEl.textContent = "Joining needs the app";
+          }
         } else {
           steamBtn.href = "steam://run/" + STEAM_APPID + "//+connect%20" + enc;
           steamBtn.classList.remove("hidden");

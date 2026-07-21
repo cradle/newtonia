@@ -2398,9 +2398,19 @@ void Ship::net_spawn_reported_bullet(uint32_t id, const Point &pos,
     static Mix_Chunk *beam_snd = Mix_LoadWAV(asset_path("audio/beam.wav").c_str());
     if (beam_snd) snd = beam_snd;
   }
-  if(snd != NULL && sound_volume_scale > 0.0f) {
-    Mix_VolumeChunk(snd, (int)(MIX_MAX_VOLUME * sound_volume_scale));
-    Mix_PlayChannel(-1, snd, 0);
+  // One sound per BURST, matching the firing side (one play per trigger
+  // pull): a multi-shot pull's barrels arrive as separate MSG_SHOT
+  // clones in the same tick, and per-clone plays stacked N identical
+  // samples into one very loud bang (Glenn, PEW PEW 5 heard host-side).
+  // The 40 ms window is well under every gun's re-fire interval, so
+  // consecutive real shots still each sound; the clones all spawn.
+  uint32_t now = SDL_GetTicks();
+  if (now - net_clone_sound_ms >= 40) {
+    net_clone_sound_ms = now;
+    if(snd != NULL && sound_volume_scale > 0.0f) {
+      Mix_VolumeChunk(snd, (int)(MIX_MAX_VOLUME * sound_volume_scale));
+      Mix_PlayChannel(-1, snd, 0);
+    }
   }
   bullets.push_back(Particle(pos, vel, 2000.0f));
   Particle &b = bullets.back();

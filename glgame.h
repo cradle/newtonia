@@ -3,6 +3,7 @@
 
 #include "state.h"
 #include "savegame.h"
+#include "net_lan.h"
 #include "glship.h"
 #include "point.h"
 #include "warp_pass.h"
@@ -26,6 +27,7 @@
 #include "lance_pickup.h"
 #include "revive_pickup.h"
 #include "shock_pickup.h"
+#include "net_identity.h"
 #include "net_signal.h"
 #include "view/tap_band.h"
 #include <SDL.h>
@@ -253,6 +255,29 @@ private:
 
   NetMode net_mode_ = NetOff;
   NetSession *net_session_ = nullptr;  // owned when net_mode_ != NetOff
+  // The peer's badge identity (name + platform, net_identity.h), copied from
+  // the session at adoption and REFRESHED on every rejoin handshake — kept
+  // here rather than read through net_session_ so the badge survives the
+  // sessionless window while a dropped peer rejoins. Default (unknown) for
+  // a legacy peer: the overlay then renders exactly the identity-less UI.
+  NetIdentity net_peer_identity_;
+  // Display context for net_peer_identity_ (net_identity.h): a room-code
+  // session ran through the signaling worker, so it is ONLINE-strict — a
+  // stranger is possible, only ATTESTED fields render. The manual clipboard
+  // / LAN fallback is worker-less (OFFLINE) and renders the peer's claimed
+  // name. Default ONLINE (strict): the lobby sets it false for the manual
+  // path, so forgetting to set it can only under-render, never leak a claim.
+  bool net_worker_session_ = true;
+  NetIdentityCtx net_id_ctx() const {
+    return net_worker_session_ ? NET_ID_ONLINE : NET_ID_OFFLINE;
+  }
+  // Called by the lobby (a friend) right after construction: fold the
+  // worker's peer attestation into net_peer_identity_ and record whether a
+  // worker was in the session (see net_worker_session_).
+  void net_set_worker_session(bool worker) { net_worker_session_ = worker; }
+  void net_apply_peer_attestation(const NetIdentity &attested) {
+    net_apply_attested(net_peer_identity_, attested);
+  }
   int net_snapshot_timer_ = 0;
   uint32_t net_snapshot_id_ = 0;
   uint32_t net_last_input_seq_ = 0;
@@ -372,6 +397,16 @@ private:
   bool net_peer_bye_ = false;  // client: the host said BYE — no auto-rejoin
   int net_banner_ms_ = 0;
   std::string net_banner_text_;
+  // True for the "<NAME> RECONNECTED" notice: drawn up top at the
+  // DISCONNECTED header's position/size so the pair share a height; other
+  // banners (level, friendly fire, the JOINED greetings) keep the
+  // just-above-middle spot.
+  bool net_banner_header_ = false;
+  // Client: false until the first EV_FRIENDLY_FIRE lands. The first event
+  // is the initial room-rule sync on join, adopted silently — a banner
+  // there would stomp the "JOINED <NAME> SERVER" greeting and announce a
+  // "change" the joiner never saw. Later events are real toggles.
+  bool net_ff_synced_ = false;
   int net_last_input_time_ = 0;     // host: dead-man switch (1 s)
   bool net_input_zeroed_ = false;
   // RTT probe (MSG_PING/PONG, 1 Hz each way): smoothed round-trip in ms,
@@ -428,6 +463,9 @@ private:
   // Shared plumbing between the two loops above: the M3-1 reclaim
   // countdown, and the signal events both must treat identically.
   void net_host_signal_reclaim_tick(int delta);
+  // Re-announce the host's identity to the worker (NETPLAY.md V0/V1) after a
+  // room reclaim, so it re-attests and re-broadcasts to the (re)joiner.
+  void net_send_local_identity();
   enum NetSignalEventResult {
     NetSigUnhandled,  // not a common event — the caller's loop handles it
     NetSigHandled,    // consumed; keep polling
@@ -444,6 +482,25 @@ private:
   std::vector<std::string> net_ice_;  // TURN triples for rejoin re-hosts
   NetTransport *net_rehost_ = nullptr;  // owned until handed to a session
   bool net_rehost_offer_sent_ = false;
+  // ---- LAN rejoin (round 4; see NETPLAY.md "LAN is not a mode") ----
+  // On client loss the host re-opens the LAN door TOO: a fresh beacon +
+  // blob listener beside the relay rejoin offer (or alone, when the
+  // session came through the LAN door and there is no signal). The
+  // dropped peer rediscovers the host by name and re-pairs; whichever
+  // door completes first is adopted. Client side: net_lan_host_name_
+  // (set by the lobby on a LAN join) is the rejoin identity the way
+  // net_room_code_ is for relay joins — a loss hands the game to a
+  // browsing NetLobby that auto-selects that name when it reappears.
+  bool net_host_lan_rejoin_poll(int delta);  // false = LAN unavailable
+  void net_host_rejoin_park_remote();  // once per loss: park + pause
+  void net_host_rejoin_session_update(int delta);  // shared adopt/resume
+  void net_lan_rejoin_reset();
+  bool net_lan_door_open() const;
+  NetLan::Announce net_lan_announce_;
+  NetTransport *net_lan_rehost_ = nullptr;  // owned until adopted
+  bool net_lan_offer_set_ = false;
+  bool net_rejoin_parked_ = false;   // the once-per-loss park/pause ran
+  std::string net_lan_host_name_;    // client: LAN host to rediscover
   long net_bytes_sent_ = 0;             // M2-6 bandwidth telemetry window
 
   // M2-6 delta snapshots: what the client is known to have (reliable

@@ -33,6 +33,10 @@ private:
   static void temperature(const GLGame *glgame, const GLShip *glship);
   static void respawn_timer(const GLGame *glgame, const GLShip *glship);
   static void spectate(const GLGame *glgame, const GLShip *glship);
+  // Online: the peer's name+platform badge ("GLENN - STEAM"), a small
+  // bottom-row tag like the SPECTATING hint. Draws nothing for a legacy
+  // (pre-identity) peer — their absence must render exactly today's UI.
+  static void remote_badge(const GLGame *glgame, const GLShip *glship);
   static void keymap(const GLGame *glgame, const GLShip *glship);
   static void title_text(const GLGame *glgame, const GLShip *glship);
   static void paused(const GLGame *glgame, const GLShip *glship);

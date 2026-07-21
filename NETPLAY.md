@@ -28,7 +28,7 @@ Working doc for the netplay effort. The full approved plan is reproduced in the 
 
 ### M2 decisions (locked with Glenn 2026-07-04)
 
-- **Signaling host**: Cloudflare Worker + Durable Objects (Glenn's account; free tier). Code lives in `signal/` (worker + wrangler config); Glenn deploys with `wrangler deploy`; local dev/e2e uses `wrangler dev` (miniflare — no account needed). Default endpoint baked into the build, overridable via `signal_url` in the preferences INI.
+- **Signaling host**: Cloudflare Worker + Durable Objects (Glenn's account; free tier). Code lives in `signal/` (worker + wrangler config); deploys are automated by `deploy-signal.yml` (prod on `v*` tags, an isolated beta worker on master pushes touching `signal/` — originally Glenn deployed manually with `wrangler deploy`, which still works); local dev/e2e uses `wrangler dev` (miniflare — no account needed). Default endpoint baked into the build, overridable via `signal_url` in the preferences INI.
 - **Native WS client**: libdatachannel's built-in WebSocket (`rtcCreateWebSocket`) — flip `NO_WEBSOCKET=OFF` in `build_netplay_deps.sh` and `xbox/CMakeLists.txt` (TLS via the existing MbedTLS). Web: browser `WebSocket` in the EM_JS glue.
 - **Room codes**: 5 chars (Glenn, was 4), server-assigned, from a 29-char unambiguous alphabet (no 0/O/1/I/5/S, no F = fullscreen key), case-insensitive entry, ~2 h TTL.
 - **Signal protocol**: JSON text frames — `{t:"create"}` → `{t:"room",code}`; `{t:"join",code}`; relay `{t:"offer"|"answer",sdp}`; `{t:"peer",ev}` notifications; `{t:"err",reason}`. SDP stays **non-trickle** (the 8 s gathering fallback bounds code latency); trickle is a later optimization now that a live channel exists.
@@ -81,10 +81,600 @@ M3-1's reclaim token lives only in the host's memory: backgrounding/wifi blips a
 5. **Cleanup rules**: ticket + online save deleted on clean session end (game over, BYE, returning to menu) so stale resumes never haunt the menu.
 6. **Verification**: extend the M3-1 e2e — SIGKILL the HOST mid-game, relaunch within grace, drive the resume row, assert the client's auto-rejoin reconnects and score/lives/generation survive via the online save.
 
+## Future milestone — LAN play (offline local co-op, rough plan 2026-07-18)
+
+Two facts make this small: the TRANSPORT already works offline (WebRTC
+over host candidates needs no STUN/TURN/signaling once offer/answer are
+exchanged — the M1 loopback/LAN sessions ran with zero ICE servers, and
+DTLS handshakes fine on a closed network), and the offline PAIRING flow
+already exists (the manual INVITE blob, `decode_signal`=='O', trickle
+off, `start_join` on the stripped offer). The only reason two
+internet-less machines can't pair today is that the blob travels by
+clipboard, and clipboards don't cross machines. LAN play = move that
+blob over the local network. Native-only (browsers have no
+UDP/broadcast and the web page itself needs serving).
+
+1. **Discovery beacon (desktop-first)**: host broadcasts one small UDP
+   packet/sec on a fixed port — magic, PROTO_VERSION, player name?, and
+   the TCP port of its blob server. Joiner listens for beacons. Raw
+   broadcast is fine on mac/Windows/Linux/Deck; the only friction is
+   the first-run Windows firewall prompt.
+2. **Blob exchange over TCP**: joiner connects to the beaconed port;
+   host sends the offer blob, joiner replies with the answer blob —
+   byte-for-byte the manual clipboard flow with a socket as the
+   courier. The existing manual-join machinery then brings the WebRTC
+   session up on host candidates. Version mismatch is caught at the
+   beacon (PROTO in the packet), before any connection.
+3. **Lobby UX — LAN is not a mode** (decided with Glenn 2026-07-18,
+   supersedes the earlier LOCAL-row sketch): discovery weaves into
+   the existing HOST/JOIN screens, no third branch.
+   - **HOST**: the beacon + blob listener start unconditionally
+     alongside the relay connection; the room screen gains a
+     "VISIBLE ON THIS NETWORK" line. Offline degrades invisibly —
+     the relay times out into the existing manual-fallback screen
+     as today, but the beacon keeps running and a LAN joiner
+     connects anyway; the host never chose anything. With internet,
+     both paths are live and whichever joiner arrives first fills
+     the slot. Beacon lifetime mirrors the invite re-advertise
+     logic: while the lobby is open OR mid-game with an empty slot,
+     so LAN rejoin-after-drop works by rediscovery.
+   - **JOIN**: discovered hosts render as a section ABOVE the code
+     entry ("ON THIS NETWORK: ▸ GLENN-MBP" / "OR ENTER A ROOM
+     CODE"), absent entirely when nothing is beaconing — the screen
+     looks unchanged until the moment it's useful. Desktop:
+     up/down (nav ladder w/s) moves between host rows and the code
+     field, Enter joins the highlighted host, typing a letter
+     always goes to the code field. Controller/Deck: host rows
+     join the CodeEntry picker's navigation (the shared
+     nav_key_from_controller translator). **Touch: NOT the full
+     list** — the soft keyboard eats the bottom half (the reason
+     code entry is already hoisted top + CANCEL is a top band), so
+     touch gets a single compact tap band under the code field
+     ("JOIN GLENN-PIXEL ▸ ON THIS NETWORK", strongest/newest
+     beacon); the rare multi-host case gets a small "MORE…" chip
+     that dismisses the keyboard to reveal the full list. Mobile
+     is phase 2 anyway (discovery seam below), so this placement
+     ships with the mobile backends, not the desktop cut. Host
+     names via gethostname() on desktop (device name on mobile
+     later); PROTO mismatch shows the row greyed with "DIFFERENT
+     VERSION" instead of a doomed connect. Cap the list at 3-4; a
+     dead host's row fades after ~2 missed beacons (no flicker).
+4. **Discovery seam for mobile** (later, invites/presence-style:
+   shared logic + per-platform backends): Android needs a
+   `MulticastLock` (or `NsdManager` mDNS); iOS must NOT use raw
+   broadcast — the `com.apple.developer.networking.multicast`
+   entitlement is Apple-approval-gated — but Bonjour via
+   Network.framework (`NWBrowser`/`NWListener`) is allowed without it,
+   plus the `NSLocalNetworkUsageDescription` local-network prompt.
+5. **Verification**: two-instance Xvfb e2e on loopback broadcast —
+   host beacons, joiner discovers + pairs with the signal URL pointed
+   at a dead port (proving no relay involvement), normal room-flow
+   regression stays green.
+
+Estimate: desktop-first a couple of days including lobby UX + e2e;
+each mobile backend ~a day, mostly permission plumbing. Deck LAN
+parties are the killer use case.
+
+**Round 1 LANDED (2026-07-19, task #159)**: `net_lan.h/cpp` (seam-style:
+real UDP-beacon + non-blocking TCP blob exchange on desktop native,
+no-op stubs elsewhere; same-machine duplicate beacons deduped by
+name+port), `NetTransport::set_lan_only` (zero ICE servers — gathering
+is instant, no offline STUN wait), and the NetLobby two-door wiring
+(host always beacons beside the relay, "VISIBLE ON THIS NETWORK" /
+"A LAN PLAYER IS CONNECTING" lines; joiner rows on CodeEntry with
+arrow-key selection below the code field — keyboard flow only this
+round, controller picker + touch band are later rounds; the LAN winner
+closes the relay room). Verified by `test/e2e/lan.sh`: dead signal
+URL, discovery at t=0, 15 ms blob exchange, `ice path host/prflx`
+(zero servers), client bootstrap + gameplay; room.sh regression green
+against the production relay. Known round-2+ items: controller/Deck
+row navigation, touch band (mobile phase), mid-game re-beacon on peer
+loss + LAN rejoin by rediscovery, an Options LAN-visibility toggle if
+anyone minds the hostname broadcast.
+
+**Round 2 field fix (2026-07-20)**: on a shared clipboard (Glenn's
+one-box mac test — also macOS Universal Clipboard between one person's
+devices) the host's manual fallback puts its INVITE blob on the
+clipboard, and the joiner's CodeEntry auto-pickup used to steal the
+screen into the manual flow before the LAN row could appear. The
+AUTOMATIC blob pickup is now held while LAN browse is running and
+either lists hosts or hasn't had time to hear a first beacon (2.5 s);
+the 800 ms repoll re-offers the blob, so with no LAN host around the
+manual flow proceeds exactly as before, and an explicit paste
+(controller X) is never held. Room-code auto-join is deliberately NOT
+held — on a same-LAN relay join ICE picks host candidates anyway.
+Verified by `test/e2e/lanclip.sh`, which reproduces the exact race
+(host on the fallback first, blob delivered — the held log line proves
+it — LAN row joins over the LAN door).
+
+**Round 3 (2026-07-20): controller rows + touch bands + Android
+enablement**. Controller/Deck: the CodeEntry picker grid and the LAN
+rows are one navigation space — walking down off the grid's bottom row
+highlights the rows drawn under it (max 2 there, 3 in the keyboard
+layout; `lan_rows_shown()` caps selection to what is drawn), A joins,
+B backs out to the grid, and up from row 0 returns. Touch: discovered
+hosts appear as tap bands ("TAP TO JOIN <NAME>", max 2) in place of
+the typing hint above the soft keyboard, and the host's RoomHost
+screen shows the ALSO VISIBLE / LAN PLAYER CONNECTING line. Android
+runs the SAME raw-UDP backend as desktop (one wire protocol is the
+point — a phone must discover a desktop host, which mDNS/NSD could
+not): `NewtoniaActivity` holds a `MulticastLock` while foreground
+(CHANGE_WIFI_MULTICAST_STATE, install-time grant) so the wifi driver
+delivers beacons, and `beacon_dests()` walks interfaces via
+SIOCGIFCONF there (getifaddrs needs API 24; minSdk is 21). **iOS is
+compiled but OFF behind `NEWTONIA_LAN_IOS`**: receiving/sending
+broadcast needs the Apple-gated multicast entitlement — request it at
+developer.apple.com/contact/request/networking-multicast, then, once
+Apple grants it, (a) enable the **Multicast Networking** capability on
+the `cc.gfm.newtonia` App ID in the developer portal (Certificates,
+Identifiers & Profiles → the App ID → Capabilities) so the provisioning
+profile carries it, (b) add `com.apple.developer.networking.multicast`
+(bool true) to `ios/Entitlements.plist` + `ios/EntitlementsDev.plist`,
+(c) add `NEWTONIA_LAN_IOS` to the defines in `ios/project.yml`, and it
+lights up with no code change. Until then iOS keeps the stub (available()
+false) so the visibility line never lies. LAN sessions currently reach
+touch devices only in that pending iOS case and on Android.
+Entitlement request SUBMITTED to Apple 2026-07-20 (app id 6760685759).
+FIELD-VERIFIED (2026-07-20), both directions: Android phone hosted,
+desktop discovered and joined over the LAN door; and desktop hosted,
+the phone's TAP TO JOIN band appeared and joined. The beacon carries
+the phone's real device name (the first build showed LOCALHOST —
+Android gethostname() — fixed by exporting the Settings device name
+through the env bridge). Remaining untested: the controller/Deck row
+navigation.
+
+**Round 4 (2026-07-20): mid-game re-beacon + LAN rejoin by rediscovery**
+(field hit: Android hosted, mac joined over LAN, mac quit — the host
+showed a terminal CONNECTION LOST because the LAN door had closed its
+relay room at adoption and stopped beaconing; there was NO path back).
+Host side: on peer loss BOTH rejoin doors open, mirroring the lobby —
+the relay room re-offer where a signal exists, and a fresh LAN
+announce + lan-only offer wherever `NetLan::available()` (including
+sessions that STARTED on the LAN door and have no signal at all);
+whichever door's re-pair completes is adopted by the shared
+`net_host_rejoin_session_update` (extracted from the relay poll along
+with the park/pause block, which now runs once per loss regardless of
+door order). Client side: a LAN-door join remembers the host's NAME
+(`net_lan_host_name_`, set at bootstrap) the way a relay join
+remembers the code — on loss it hands the game to
+`NetLobby(name, LanRejoinTag)`, which browses and auto-runs the blob
+exchange the moment that name's beacon reappears (the host's game
+re-beacons; a RESTARTED host app beacons the same name from its lobby,
+so the rejoin lands in whatever it hosts next). Shares the relay
+rejoin's honest-wait screen and 60 s budget; exchange failures restart
+the browse instead of failing. EV_BYE clears the name like it clears
+the code (a deliberate goodbye is not browsed after). Verified by
+`test/e2e/lanrejoin.sh` (both directions, no relay) plus rejoin.sh /
+room.sh regressions for the refactored relay path. FIELD-VERIFIED
+(2026-07-20, Android host + mac joiner): the loss recovers over the
+LAN door, and a deliberate host quit shows the client "THE HOST LEFT
+THE GAME" (EV_BYE — no futile browsing) as designed.
+
+**Round 5 (2026-07-20): the LAN door keeps the room open.** When the
+LAN door wins the pairing the relay room used to be killed
+(send_close) so no stale code could strand a joiner — but that also
+meant a LAN session had NO code-based rejoin (Glenn asked). Now the
+lobby keeps the signal and the standard WaitConnect handoff gives it
+to GLGame (net_adopt_signal), so a LAN-paired session is
+indistinguishable from a relay session afterwards: room reclaim over
+drops, rejoin BY CODE from anywhere (the code shows on the host's
+disconnect notice), the Steam invite re-advertise on loss, and the
+relay re-offer beside the LAN re-beacon (round 4's both-doors). Cost:
+one idle socket per session — the same as every relay game already
+holds. The genuinely-offline case is unchanged (no relay, no room,
+rediscovery only). The LAN JOINER still doesn't learn the code (it
+never typed one), so ITS auto-rejoin stays rediscovery-by-name; the
+code path is for a human re-entering it. Verified by
+`test/e2e/lankeep.sh` (live local relay + xclip: clears the clipboard
+to beat the code auto-join, pairs via the LAN row, asserts the keep
+log, both doors on loss, and a re-pair) plus lan.sh / lanrejoin.sh
+regressions. FIELD-VERIFIED (2026-07-20): Android host + mac LAN
+client, mac rejoined BY CODE after a drop (the first attempt failed on
+a pre-round-5 APK, which still killed the room at adoption).
+
+**Round 2 discovery hardening (2026-07-20)**: the beacon now goes to
+every broadcast-capable interface's DIRECTED broadcast address
+(getifaddrs / SIO_GET_INTERFACE_LIST) as well as 255.255.255.255 and
+loopback — the global broadcast alone is dropped by many Wi-Fi routers
+between clients, and a multi-homed machine (VPN, virtual adapters)
+sends it out one interface of the OS's choosing. The destination set
+is recomputed every beacon (interface changes mid-lobby self-heal) and
+logged on change (`net: lan beacon -> 255.255.255.255 127.0.0.1
+192.168.1.255`), so a field log shows exactly which networks the host
+is beaconing into. This WAS the root cause on Glenn's mac + Windows
+pair: with the global-broadcast-only beacon the machines never saw
+each other; the directed-broadcast build discovered and played with
+NO firewall changes (the Windows allow rule stayed Public-only — the
+prompt's default matches the active network profile, so first-launch
+Allow is normally sufficient). Manual host/join screens also lost
+their long lines (they overflowed the Windows window width).
+FIELD-VERIFIED: mac + Windows on real Wi-Fi discovered each other and
+played (2026-07-20), one-box mac shared-clipboard flow shows the LAN
+row first.
+
+**Silent clipboard auto-join failures (2026-07-20, task #165)**: a
+typed bad code showed "NO ROOM WITH THAT CODE" twice in quick
+succession (Glenn, Deck — the Deck had hosted earlier, so its
+clipboard still held the join URL). The second attempt was the 800 ms
+clipboard repoll probing that stale code once the typed failure
+cleared the field; its identical error read as the lobby retrying. Two
+fixes: (1) relay errors for a join the player never asked for
+(`last_join_was_auto_`, set only by the clipboard AUTO path — typing
+and the explicit controller-X paste stay loud) no longer set a status,
+while the dead-marking, field clear, and keyboard re-summon all still
+run; (2) the confirmed-dead guard is now a LIST (`s_dead_codes`) —
+the old single slot meant the typed code's dead-mark EVICTED the
+clipboard code's, freeing the repoll to probe it a third time.
+Verified headless (stale join-URL on clipboard + typed bad code:
+exactly two relay joins, screenshot after the auto failure shows no
+status, after the typed one shows it), room/lan/lankeep/lanclip e2e
+green. Same pass: the CodeEntry status line dropped from y 20 to y 4 —
+at size 15 it grazed the code glyphs (which reach down to y 24).
+## Future milestone — verified peer identity (design notes 2026-07-20)
+
+**Current state (V0 + V1 SHIPPED — see the implementation plan below):**
+the peer-to-peer identity (platform tag + display name in the
+HELLO/WELCOME append) is still a self-reported **Claim**; what changed is
+that the signaling worker now **attests** it. `NET_IDENTITY_DISPLAY_ENABLED`
+is deleted; trust is per field (`NetTrust {Absent, Claimed, Attested}` for
+`platform`/`name` independently) and display is context-gated
+(`NetIdentityCtx`): an **online** (worker) session renders only Attested
+fields (Claims read PLAYER 1/PLAYER 2), an **offline** worker-less session
+(manual/LAN) renders Claims as-is. The worker verifies each side's platform
+credential and broadcasts an `identity` room message the game folds in
+(`net: identity attested ...`). **V1** implements the Steam verifier: the
+client mints a Web-API ticket (`GetAuthTicketForWebApi`,
+`steam_identity_verify.cpp`) and the worker validates it
+(`AuthenticateUserTicket` + `GetPlayerSummaries`, `signal/src/steam_verify.js`,
+publisher key `STEAM_WEBAPI_KEY`) — the attested persona comes from Steam,
+not the wire. Verification never rejects; failure/absence keeps role labels.
+Remaining before Steam ships: the **live two-account smoke test** (§5.5) and
+setting the `STEAM_WEBAPI_KEY` Cloudflare secret. V2 (Play Games), V3 (Game
+Center) and V1.5 (revocation heartbeat) are the still-unbuilt phases below.
+
+**Steam verification design (researched, not built):** Steam supports
+user-to-user auth with session tickets, no game server needed.
+
+1. Each side mints a ticket (`ISteamUser::GetAuthSessionTicket` — its
+   `SteamNetworkingIdentity` param is the recipient binding; ~1 KB,
+   signed by Steam, carries the holder's SteamID) and sends it as
+   another HELLO/WELCOME append — same append-only convention, no PROTO
+   bump, absence = unverified peer.
+2. The receiver validates via `BeginAuthSession`; the async
+   `ValidateAuthTicketResponse_t` callback confirms the ticket is
+   genuine, unexpired, owned by that SteamID, **and single-use** — a
+   replayed ticket fails with `AuthTicketInvalidAlreadyUsed`. The
+   session is monitored for its whole life: owner logs off / cancels /
+   gets VAC'd → a follow-up callback revokes mid-game, so "verified" is
+   a revocable state (drop back to role labels), and `EndAuthSession`
+   belongs in disconnect teardown. Callbacks arrive off-thread —
+   marshal to the game thread (same rule as the achievement journal).
+3. **The display name never comes from the wire.** Verification proves
+   a SteamID; the receiver then derives the name itself
+   (`GetFriendPersonaName` / `RequestUserInformation`). A lying name
+   field simply stops mattering.
+
+**Recipient binding — what's encoded in the ticket, and why it matters:**
+the issuer chooses a recipient identity at mint time; Steam signs it in
+and validation fails unless the verifier presents the same identity.
+
+- *Bind to the peer's claimed SteamID* (naive): kills offline replay and
+  all third-party reuse, but has a chicken-and-egg hole — in the
+  room-code flow the peer's SteamID is learned from the same unverified
+  handshake, so a live MITM can tell the victim "I am T", receive a
+  ticket minted for T, and relay it to the real T in real time.
+- *Bind to the connection* (preferred): use a generic identity string =
+  hash of this transport's WebRTC **DTLS certificate fingerprints**
+  (already exchanged in the SDP; libdatachannel exposes them; both ends
+  compute it locally). An MITM terminates DTLS separately per leg with
+  different certs, so the relayed ticket names the wrong channel and
+  fails — even a malicious signaling relay rewriting SDP can't make the
+  two legs' fingerprints equal. This is real channel binding: relay
+  becomes structurally impossible, not just hard.
+- Residual risk either way: a fully colluding "victim" client minting
+  tickets on demand — account sharing with extra steps, throttled by
+  Steam's one-auth-session-per-account tracking, bannable, and worth
+  only a cosmetic string (see backstop below).
+
+**Open questions (resolve at build time):**
+
+1. ~~Does client-side `BeginAuthSession` enforce generic-string
+   identities?~~ **RESOLVED against the Steamworks docs (2026-07-20):
+   default to the P2P path.** The docs treat user-to-user and Web-API
+   verification as co-equal (no stated preference; both forward to
+   Steam's backend for the reuse/ownership check). The P2P binding
+   vocabulary is the peer's **SteamID only** — `GetAuthSessionTicket`'s
+   `SteamNetworkingIdentity` param, docs: "If it is peer-to-peer then
+   the user steam ID" — so P2P gets no channel binding and keeps the
+   live-MITM residual, but needs NO secrets anywhere, delivers the
+   verdict exactly where it's used, and includes the continuous
+   session monitoring. The arbitrary **identity string** exists only on
+   the Web-API pairing (`GetAuthTicketForWebApi` +
+   `AuthenticateUserTicket` with a matching `identity` param, publisher
+   Web API key on the verifier) — the DTLS-fingerprint channel-binding
+   idea therefore requires the signal worker to hold a publisher key
+   and attest verdicts to peers (extra trust hop), and uses the string
+   as a per-connection value where Valve intends a service name —
+   unconventional; validate with Valve before relying on it.
+   ~~Decision: build P2P/SteamID-bound first.~~ **SUPERSEDED same day:
+   unified worker-based verification chosen for ALL platforms (see the
+   implementation plan below) — the P2P analysis stands as the
+   documented fallback if publisher-key custody ever becomes
+   unacceptable.**
+2. The XR-014-style rule "no account IDs on the wire" needs a
+   deliberate amendment: tickets inherently carry the SteamID (it is
+   the thing being proven). Spirit survives as: account IDs may transit
+   the handshake *for verification only* — never logged, never
+   persisted, never displayed raw. **Moot under the unified worker
+   design (credentials go client→worker over wss only; nothing
+   account-shaped ever travels peer-to-peer) — the rule stays as-is.**
+3. `NET_IDENTITY_DISPLAY_ENABLED` becomes a per-peer `verified` bit on
+   `NetIdentity` (mixed pairs: a Steam↔Steam game shows verified
+   personas, a Steam↔web game keeps role labels — web/mobile have
+   nothing to attest with until each platform grows its own
+   attestation backend behind the same seam).
+4. Verification failure = render as unverified (role labels), NOT a
+   reject — lying about a name shouldn't kick anyone;
+   `net_comms_allowed_with` stays the separate refusal gate, and policy
+   backends must keep treating the claimed platform tag as a claim
+   (enforce privileges on the LOCAL account only).
+5. Testing: headless e2e can cover the ticket plumbing and the
+   unverified-renders-role-labels half (fake/absent tickets), but real
+   validation needs a live two-Steam-account smoke test — same class of
+   manual gate as the persona smoke test.
+
+**Other platforms (researched 2026-07-20) — verification strength is
+per-platform; the per-peer verified bit carries a quality, not a bool
+in spirit:**
+
+- *Game Center (iOS)*: `GKLocalPlayer.fetchItems(forIdentityVerification
+  Signature:)` → signature over playerID+bundleID+salt+timestamp plus a
+  `publicKeyURL` to Apple's cert. Verifiable by ANYONE (fetch cert,
+  check chain to Apple root, check signature — no secret), so the peer
+  can verify client-side like Steam. BUT the signed fields are fixed:
+  no recipient/channel binding, no single-use tracking, no revocation —
+  replayable/relayable within the verifier's timestamp freshness window
+  (enforce a tight one, ~minutes; industry practice 10 min).
+- *Play Games v2 (Android)*: `GamesSignInClient.requestServerSideAccess()`
+  mints a SINGLE-USE OAuth server auth code, exchangeable only with our
+  OAuth client secret; the real player ID then comes from the Play
+  Games API (Google: never trust the client-reported ID). Strong
+  replay/recipient properties but NO client-to-client primitive — the
+  signal worker must hold the secret and act as verifier (joiner sends
+  the code up, worker exchanges + attests to the peer). Centralizes
+  verification like Steam's Web-API path.
+- *Web*: nothing to attest with — browser peers stay unverified/role-
+  labeled permanently (an own-account system contradicts the
+  no-accounts design).
+- *Xbox*: fork-side (XSTS token brokering), out of scope upstream.
+- Only Steam potentially offers DTLS channel binding; GC/PGS pairs
+  accept the platform's weaker ceiling. Cross-platform pairs verify
+  each side independently by whatever its platform supports.
+
+### Implementation plan — unified worker verification (rev 2026-07-20)
+
+**Decision (Glenn 2026-07-20): ALL platform verification runs through
+the signal worker.** Each client submits its platform credential with
+the room join/host register; the worker verifies it and attests the
+identity to the room over the already-trusted signaling channel.
+Rationale: the worker already controls room membership, so this adds no
+new trust root; ONE attestation mechanism for every platform (the
+game-side surface is "consume one room message"); display names come
+server-attested uniformly (Steam persona via GetPlayerSummaries, PGS
+via the Play Games API); and the peer-to-peer wire doesn't change at
+all — no MSG_AUTH, no account IDs between peers (the XR-014 amendment
+above is moot: credentials go client→worker over wss only). Accepted
+costs, eyes open: a publisher Web API key as a Cloudflare secret
+(created in a key group scoped to app 4536720); NO live revocation
+(verification is one-shot at join — a badge can outlive a Steam logout
+by one session; display-only stakes make that fine). The P2P
+BeginAuthSession design above remains the documented fallback.
+
+**The peer-to-peer identity append (platform + name) is RETAINED, not
+removed (decision, Glenn 2026-07-20).** The worker never needs it —
+attested names come from the platform API — so on a worker-reachable
+(online) session it is pure fallback. Its real job is the OFFLINE case:
+LAN and the manual INVITE blob have NO worker and NO relay, so the p2p
+append is the ONLY identity source there, and keeping the game 100%
+offline-capable INCLUDING usernames is a first-class goal (LAN parties,
+Deck co-op). This defines two display contexts, not one rule:
+
+- **Online (a signal worker is in the session):** strangers are
+  possible, so require attestation — render Attested fields, role
+  labels for Claimed. The p2p claim is transported but never rendered.
+- **Offline / worker-less (LAN, manual invite — `net_signal_` null):**
+  no attestation authority can exist, and every peer was invited into a
+  local room, so the p2p Claimed name/platform RENDER as-is. This is
+  the one deliberate carve-out to "never render unattested claims":
+  scoped to sessions where attestation is structurally impossible and
+  the threat model is a housemate. Impersonating an invited local peer
+  buys nothing; role labels would just make offline play worse for no
+  security gain.
+
+So the append stays; the sanitizer still runs on it (offline names are
+still untrusted bytes); it is simply never TRUSTED on an online session,
+only displayed on an offline one.
+
+Phases land green independently. Common invariants: verification NEVER
+gates play (failure / absence / worker outage = role labels, never a
+reject); the sanitizer runs on every name regardless of source; the
+worker is a NAME authority only — never a policy input; verification
+strength stays per-platform (Steam/PGS strong, GC freshness-window
+limited).
+
+**V0 — game-side plumbing (~2 days) — SHIPPED.** `NetTrust` per-field +
+`NetIdentityCtx` in `net_identity.h`; the worker `identity` message
+(`NetSignal::send_identity` / `Event::Identity`, worker `attest_identity` /
+`broadcast_identity` / replay in `signal/src/worker.js`); consumed by the
+lobby (`attested_peer_`, threaded into `GLGame` via `net_set_worker_session` +
+`net_apply_peer_attestation`) and the host in-game. Tests:
+`signal/test/identity_test.js` (worker protocol, `FAKE_VERIFY`) +
+`test/e2e/identity_attested.sh`.
+
+1. Trust is PER FIELD, not per identity (a bool can't even represent
+   the GC default below — account attested, name not): `NetIdentity`
+   gains `enum Trust { Absent, Claimed, Attested }` for `platform` and
+   `name` independently. `NET_IDENTITY_DISPLAY_ENABLED` is deleted and
+   the display helpers apply the context rule from the decision above:
+   **online (worker in session) — render Attested fields, role labels
+   for everything else** ("PLAYER 1/2" IS the unverified identifier —
+   deliberate: never render unattested claims, even with a warning
+   marker, because players read names, not markers); **offline /
+   worker-less (`net_signal_` null) — render the Claimed name/platform
+   too** (LAN/manual, the sanctioned carve-out). Every state maps for
+   free: legacy = Absent/Absent,
+   badge-only = Claimed/Absent, web = Claimed/Claimed forever, GC
+   default = Attested platform + Claimed name, revocation = a
+   transition Attested→Claimed. Anything rendered before attestation
+   arrives keeps role labels; the badge row / lobby HOSTED BY appear
+   when a field turns Attested. Polish for V1+: a small positive
+   verified glyph (✓/shield added to the Typer set) beside Attested
+   names — the only marker worth having is the positive one.
+2. New signaling room message `identity` {role, platform, name,
+   verified}, broadcast by the worker; both roles consume it into
+   `net_peer_identity_` (fields bounded, name run through
+   net_sanitize_name locally as always). The peer wire is UNCHANGED —
+   the HELLO/WELCOME identity append stays as the unverified fallback
+   and the legacy-interop path.
+3. e2e: the local wrangler dev worker fake-verifies behind a dev flag →
+   badge appears; absent/garbage attestation → role labels, no crash.
+   Greppable log: `net: identity attested ...`.
+
+**V1 — worker channel + Steam verifier (~3 days + live smoke) — SHIPPED
+(code); live smoke pending.**
+
+1. Client: ticket from `GetAuthTicketForWebApi("newtonia-signal")`
+   (`steam_identity_verify.cpp` under STEAM_BUILD; a separate verify seam
+   `NetIdentityBackend::local_verify_credential()`, warmed at lobby open
+   since the mint is async) submitted with the identity announce.
+2. Worker: `AuthenticateUserTicket` against partner.steam-api.com
+   (publisher key `STEAM_WEBAPI_KEY`, a Cloudflare secret; `identity` param
+   bound to the client's `WEBAPI_IDENTITY`), then `GetPlayerSummaries` for
+   the attested persona (`signal/src/steam_verify.js`). Failure = attest
+   nothing (peer stays role-labeled). The identity announce rides the same
+   `/ws` socket, already under the per-IP Limiter DO.
+3. Tests: `signal/test/steam_verify_test.mjs` (mocked Valve — ticket valid /
+   invalid / reused / API down / persona-lookup-down). **Still to do:** the
+   live gate (manual, same class as the persona smoke) — two Steam accounts,
+   verified persona badges both sides, worker log shows the round trip — and
+   creating the `STEAM_WEBAPI_KEY` secret in the scoped key group.
+
+**V2 — Android / Play Games verifier (~2-3 days + console prereq)**
+
+1. Prereq: the Play Console project + OAuth client (the same project
+   the commented-out `games-ids.xml` achievement ids await); worker
+   holds the OAuth client secret.
+2. Client: `GamesSignInClient.requestServerSideAccess()` (JNI beside
+   the PlayGamesAchievements bridge) → single-use server auth code →
+   submitted with join/register.
+3. Worker: exchanges the code (oauth2.googleapis.com), fetches the REAL
+   player id + display name from the Play Games API (never the
+   client-reported one — Google's own guidance), attests via V0's
+   message. Single-use + bound to our OAuth client = solid replay
+   properties.
+4. Tests: worker suite with a mocked Google exchange; live device smoke
+   vs a desktop peer.
+
+**V3 — iOS / Game Center verifier (~3 days + the name decision)**
+
+1. Client: `GKLocalPlayer.fetchItems(forIdentityVerificationSignature:)`
+   → {publicKeyURL, signature, salt, timestamp, teamPlayerID} submitted
+   with join/register.
+2. Worker verifies (no secret needed): publicKeyURL host WHITELISTED to
+   Apple's documented cert host BEFORE any fetch (a hostile URL is an
+   SSRF invitation otherwise); cert chain to Apple's root; RSA
+   signature over playerID+bundleID+salt+timestamp via WebCrypto;
+   timestamp freshness window TIGHT (~5 min) — GC's only replay
+   mitigation, residual documented in the survey above.
+3. The GC name gap decision stands: the signature attests the ACCOUNT,
+   not the name, and no server API can look an arbitrary player's name
+   up. Default: (a) verified platform badge + role-label name; options
+   (b) on-device loadPlayers lookup when the verifier is also iOS, or
+   (c) accept the claimed name once the account verifies (weakest).
+4. Tests: worker suite against a captured real signature bundle; live
+   iPhone↔desktop smoke.
+
+**V1.5 — OPTIONAL: re-attestation heartbeat (revocation recovered), ~2 days**
+
+Not required for V1 to ship; layers on cleanly later. Restores — and
+then exceeds — the live-revocation fidelity the worker model gave up
+vs P2P `BeginAuthSession`, using only documented APIs:
+
+1. The client's wss to the worker is KEPT OPEN for the whole game
+   session (today only the host's persists; Durable Object WebSocket
+   hibernation makes the idle cost ~nil), giving the worker a push
+   channel to both peers.
+2. Every few minutes each verified client submits a FRESH credential
+   over its socket (Steam: a new `GetAuthTicketForWebApi` ticket; PGS:
+   a new server auth code; GC: a fresh signature — which also shrinks
+   GC's replay window from "until timestamp expiry" to one heartbeat
+   interval). Worker re-validates; a failed or missing heartbeat →
+   broadcast the V0 `identity` message demoting the fields
+   Attested→Claimed → the badge drops to role labels live. Logout/account-loss now surfaces within
+   one interval — Steam-push doesn't exist for Web API consumers (no
+   auth-session feed; only `GetPlayerBans` polls solidly, presence is
+   privacy-unreliable), so client-driven re-attestation is the ONLY
+   clean source of this signal.
+3. One-attestation-per-account: a second connection attesting the same
+   account invalidates the FIRST attestation (broadcast, not sever) —
+   directly patches the colluding-victim residual (the real owner
+   coming online steals their identity back).
+4. INVARIANT HOLDS: revocation demotes the badge, never the game — no
+   socket severing, no kicks; the worker stays a name authority.
+   Severing remains abuse/rate-limit territory (Limiter DO) only.
+5. Budget: trivial against the Web API key's public 100k/day at our
+   concurrency; heartbeat interval is a worker-side constant.
+
+**Rollout**: V0+V1 together (Steam field-tests the channel) → V2 → V3.
+Web stays permanently role-labeled (nothing to attest). Xbox: the
+worker model is Xbox's NATIVE shape (public docs, 2026-07-20) — no
+peer-attestation primitive exists on Xbox at all; titles present XSTS
+tokens to publisher services configured as a Partner Center "relying
+party". The worker gains an XSTS verifier module: client
+`XUserGetTokenAndSignatureAsync` for our relying party → worker
+decrypts the partner XSTS token (an ENCRYPTED JWT, opaque to clients —
+readable only with the relying party's private key, one more scoped
+worker secret) → claims carry the gamertag (display/caching only per
+Microsoft's own guidance — exactly our model) + partner XUID (pXUID,
+publisher-scoped). Written from public learn.microsoft.com pages, so
+the verifier module can stay upstream; privileges
+(`XUserCheckPrivilege` via net_policy) and cross-network approval
+remain fork-side compliance, independent of this mechanism — behind
+the same V0 bit.
+
+**Architectural backstop (holds regardless):** identity is display-only.
+No matchmaking privilege, host authority, or policy decision hangs off
+the peer's claim, so even a defeated verification buys an attacker a
+name string, nothing more.
+
 ## Protocol quick-ref
 
 Header: `uint8 proto_ver(=1) | uint8 msg_type | uint8 player_id | uint8 reserved`, little-endian, explicit byte packing.
 Types: HELLO(1) C→H rel; WELCOME(2)/REJECT(3) H→C rel; INPUT(4) C→H unrel (uint32 seq, uint16 held bitmask, uint8 wrap-counters: boost/next_weapon/next_secondary/teleport/respawn_tap, 3 floats analog); SNAPSHOT_CHUNK(5) H→C rel (uint32 snap_id, uint16 idx, uint16 count, bytes); EVENT(6) rel (PAUSE/RESUME/GENERATION_START+gen/GAME_OVER/BYE); PING(8)/PONG(9) both ways unrel (uint32 sender ticks, echoed verbatim — 1 Hz RTT probe); HIT(10) C→H rel (uint32 asteroid net_id + uint32 bullet net_id — PROTO 13/14 client kill claim, always honored, killing bullet consumed by id); SHOT(11) BOTH ways rel (uint32 shot id, 2f spawn pos, 2f exact velocity, u8 flags — C→H PROTO 14: the host spawns exact clones instead of simulating the client's gun; H→C PROTO 17: the host echoes its own player's shots and the client spawns exact clones instantly with the shot sound, RTT/2-leaded to line up with the next 10 Hz bullet rebuild — host bullets used to pop in up to a snapshot interval late, obvious when spectating at the host's muzzle. The EV_REMOTE_SHOT p1 sound event is superseded. PROTO 18: flags bit2 = piercing beam bolt — clones plough through kills on both sides, and the snapshot's per-bullet records carry a flags byte so piercing/trail survive the 10 Hz rebuild; PROTO 19: the snapshot flags byte gains bit3 = world_bullet so host-side ricochets off reflective/armoured surfaces recolour white on the client too); HIT_SHIP(12) C→H rel (u8 kind: 0 enemy/1 station/2 mini, uint32 bullet net_id, uint32 target net_ship_id (0 for station/mini) — PROTO 16, 2f impact pos — PROTO 15/16, damage applies IFF the host consumes the referenced clone: exactly-once per shot; enemy claims name the exact enemy by wire id, absent = already dead = no-op; PROTO 20: bullet_id 0 = lance sentinel, enemy claims only, honored with no clone consume — kills are idempotent by id so the host's own MSG_LANCE polyline resolution can't double-count them); LANCE(13) BOTH ways rel (u8 n_points 2..17 + n x 2f polyline — PROTO 18, lance flash + sound on the peer, and since the lance-vs-ships feature the HOST also resolves a client polyline's ship/station hits from it (self on reflection, partner under friendly fire, enemies, stations) — ship damage is host authority, no extra message; a client lance's kills ride MSG_HIT claims with bullet_id 0 = no clone consume, its ray-march predicts outcomes and the claim drain kills locally; a host lance's kills replicate as removal records); BOUNCE(14) H→C rel (uint32 bullet net_id, 2f pos, 2f vel, u8 net_flags — PROTO 19 authoritative ricochet: the sim's real reflective/armour bounce overrides the client copy's local radial approximation so both screens fly the same post-bounce trajectory; unknown ids ignored).
+
+**Identity append (no PROTO bump):** HELLO and WELCOME each carry an
+appended `u8 platform (net_identity.h NetPlatform, wire-stable append-only:
+0 unknown/legacy, 1 desktop, 2 steam, 3 web, 4 ios, 5 android, 6 xbox
+reserved) | u8 name_len | name_len bytes UTF-8 display name` at the END of
+the message — display metadata for the lobby/HUD badge ("GLENN - STEAM"),
+never platform account IDs, nothing persisted. Old peers ignore the
+trailing bytes; new peers parse it only when `remaining() > 0` and treat
+absence or a lying `name_len` as "no identity" (legacy peer → exactly the
+pre-badge UI), so a mixed-version pairing handshakes exactly as before —
+the savegame append-only convention applied to the wire (guarded by
+`test/e2e/identity_legacy.sh`; `NEWTONIA_NET_NO_IDENTITY=1` makes a
+current build send the short messages). The peer identity lives on
+`NetSession::peer_identity()`, is copied to `GLGame::net_peer_identity_`
+at adoption, and refreshes with every rejoin handshake. `net_policy.h`
+(`net_online_play_allowed` / `net_comms_allowed_with`, default allow-all;
+backends must answer from a cached snapshot — hot paths): online-play
+gates the menu ONLINE row and the lobby HOST/JOIN commits; the per-peer
+comms check runs INSIDE the NetSession handshake — host: between the
+HELLO identity parse and WELCOME, refusing with MSG_REJECT reason 2
+(`RejectNotAllowed`, an appended enum value old builds render as their
+generic refusal); client: locally on the WELCOME identity — so adopters
+only ever see the Rejected phase and a refused peer is told honestly
+instead of being ghosted on a CONNECTED screen.
 
 ## Trust model & input safety
 
@@ -318,10 +908,17 @@ and configuration, not engineering. Order matters only where noted.
       Steam↔Android host/client verified live, including the join
       link on Android**; App Store build in review. Channel promotion
       proceeds per platform.
-- [ ] Post-release: watch `wrangler tail` for room/TURN errors the first
-      days; retire the netplay test pipeline (task #157 — netplay-v*
-      tags, Steam `netplay` branch, itch `html5-netplay`,
-      tag-netplay.yml).
+- [x] Post-release: netplay test pipeline RETIRED (task #157,
+      2026-07-18): netplay-v* tag globs removed from all four deploy
+      workflows (deploy-itch's channel picker collapsed — html5 +
+      the paid newtonia-online push are all that remain),
+      tag-netplay.yml deleted, docs updated. Historical netplay-v*
+      tags stay in the repo as inert history. GLENN's portal halves:
+      hide/retire the Steam `netplay` branch in Steamworks, delete
+      the itch `html5-netplay` channel/upload (already hidden), and
+      revoke + delete the NETPLAY_TAG_TOKEN repo secret. Future test
+      builds go via manual workflow dispatch. Continue watching
+      `wrangler tail` casually for the first days.
 
 ## Where things stand (2026-07-08 handoff)
 

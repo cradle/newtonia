@@ -16,16 +16,93 @@ npx wrangler dev --local --port 8787
 The game connects to `ws://127.0.0.1:8787/ws` when the `signal_url`
 preference (or `NEWTONIA_SIGNAL_URL` env var) points there.
 
-## Deploy (production)
+## Deploy
+
+Automated by `.github/workflows/deploy-signal.yml`; both targets are
+gated on the unit tests plus the `wrangler dev --local` protocol tests:
+
+- **Production** (`newtonia-signal` — the baked-in default endpoint in
+  `net_signal.cpp`): deploys on every `v*.*.*` release tag, the same
+  trigger as the other production deploys, or via manual dispatch with
+  target `production`. CI runs the exact same plain `npx wrangler
+  deploy` the manual flow always did (production is the top-level
+  wrangler config, not a named env), so runtime secrets and Durable
+  Object state carry over untouched.
+- **Beta** (`newtonia-signal-beta`, the `[env.beta]` in wrangler.toml):
+  auto-deploys on every master push that touches `signal/`, or via
+  manual dispatch (the default target). A fully separate Worker — own
+  Durable Object namespaces, own secrets, own URL — so testing never
+  disturbs live rooms. Point any build at it:
+
+  ```sh
+  NEWTONIA_SIGNAL_URL=wss://newtonia-signal-beta.gfmcc.workers.dev/ws ./newtonia
+  ```
+
+  (or set `signal_url` in the preferences INI). A fresh beta worker has
+  NO secrets: TURN stays STUN-only until `TURN_KEY_ID`/`TURN_API_TOKEN`
+  are set on the env, and the origin allowlist is the built-in default —
+  browser testing from a non-shipped origin needs `ALLOWED_ORIGINS`.
+  Manage beta secrets with `npx wrangler secret put NAME --env beta`
+  (all the secrets/kill switches below take `--env beta` the same way).
+
+Workflow credentials (GitHub repo secrets): `CLOUDFLARE_API_TOKEN`
+(custom token with permission "Workers Scripts: Edit" — the dashboard's
+"Edit Cloudflare Workers" template works) and `CLOUDFLARE_ACCOUNT_ID`
+(`npx wrangler whoami`).
+
+Manual deploy still works when needed:
 
 ```sh
 cd signal
-npx wrangler login     # once
-npx wrangler deploy
+npx wrangler login              # once
+npx wrangler deploy             # production
+npx wrangler deploy --env beta  # beta
 ```
 
-Note the `*.workers.dev` URL it prints and update `NEWTONIA_SIGNAL_URL_DEFAULT`
-in `net_signal.h`.
+### Beta TURN setup
+
+There is no separate TURN server to run — TURN is Cloudflare Realtime
+(Calls), and the worker mints short-lived credentials itself whenever
+`TURN_KEY_ID` + `TURN_API_TOKEN` are present on its env (see
+`turn_ice_servers` in `worker.js`). A fresh beta worker has neither, so
+it stays STUN-only until you attach a key. To set beta up like
+production:
+
+```sh
+cd signal
+# The Cloudflare Realtime TURN key (dashboard -> Realtime -> TURN, or the
+# Calls API POST /accounts/<id>/calls/turn_keys): key ID + its API token.
+npx wrangler secret put TURN_KEY_ID    --env beta
+npx wrangler secret put TURN_API_TOKEN --env beta
+```
+
+That's enough to enable minting — a bad pair silently yields `[]`
+(STUN-only), so verify success by connecting a host and checking for
+`turn:`/`turns:` ICE frames ahead of the room code (or `npx wrangler
+tail --env beta` -> `turn creds minted, ttl=…s`).
+
+**Beta credentials, prod bandwidth.** A dedicated beta TURN key isolates
+the *credentials* (roll or revoke beta's without touching prod), but
+relay egress bills to the one Cloudflare account — beta and prod share
+the same Realtime free tier (~1,000 GB/month). Test traffic counts
+against the same pool.
+
+**Optional budget cap on beta.** Prod's automatic TURN budget only gates
+prod minting; the beta worker checks its own env, so without these it
+mints with no auto-cutoff. To make beta pause too, set all three (any
+one missing = the budget can't be measured and minting stays open):
+
+```sh
+npx wrangler secret put CF_ANALYTICS_TOKEN --env beta  # "Account Analytics: Read" token
+npx wrangler secret put CF_ACCOUNT_ID      --env beta  # account tag (npx wrangler whoami)
+npx wrangler secret put TURN_BUDGET_GB     --env beta  # decimal GB, e.g. 100
+```
+
+`TURN_BUDGET_GB` is compared against the **account-wide** month-to-date
+egress, not beta's slice — `100` means "beta drops to STUN-only once the
+whole account crosses 100 GB this month," which layers under prod's 900
+so beta yields first. Defaults to 900 if unset. All beta secrets persist
+across deploys (Cloudflare stores them per script), so this is one-time.
 
 ## Endpoints
 
@@ -33,6 +110,30 @@ in `net_signal.h`.
 - `GET /ws?role=join&code=ABCD` — WebSocket; `{t:"joined"}` or `{t:"err",...}`
 - Host sends `{t:"offer",sdp}`; joiner sends `{t:"answer",sdp}`; the room
   relays each to the other side and replays the offer to late (re)joiners.
+- Each side sends `{t:"identity",platform,name,cred?}` (peer identity —
+  NETPLAY.md V0/V1). The worker verifies `cred` (Steam Web-API ticket,
+  `steam_verify.js`) and broadcasts `{t:"identity",role,platform,name,
+  verified}` to the PEER, storing it for replay to a late joiner / reclaimed
+  host. Verification never gates the room — a failure just leaves `verified`
+  false (the game renders a role label).
+
+## Peer-identity verification (NETPLAY.md V0/V1)
+
+The Steam verifier needs a **publisher Web-API key** (from a key group scoped
+to app 4536720) as a Cloudflare secret; without it, Steam peers stay
+role-labelled (verification is display-only — see NETPLAY.md's architectural
+backstop). Optional `STEAM_IDENTITY` overrides the identity string the ticket
+is bound to (must match the client's `WEBAPI_IDENTITY`, default
+`newtonia-signal`).
+
+```sh
+npx wrangler secret put STEAM_WEBAPI_KEY           # production
+npx wrangler secret put STEAM_WEBAPI_KEY --env beta # beta worker
+```
+
+For local e2e (`test/e2e/identity_attested.sh`, `test/identity_test.js`) the
+`FAKE_VERIFY` **dev var** attests the claim without contacting Valve — pass
+`--var FAKE_VERIFY:1` to `wrangler dev`. **Never** set it in production.
 
 ## Cost / abuse notes
 

@@ -1,20 +1,17 @@
 name: Deploy Steam
 
-# Two tag namespaces (globs can't overlap: v*.*.* never matches netplay-*):
-#   v*.*.*       — normal release pipeline, deploys to the 'beta' branch
-#   netplay-v*   — netplay test release, deploys to the 'netplay' branch
-#     (kept post-launch for future netplay test cycles)
-# Manual dispatch defaults to 'beta' (the release pipeline's branch);
-# pick 'netplay' explicitly for a test-branch push.
+# v*.*.* tags deploy to the 'beta' branch; promote to default in the
+# Steamworks portal once smoke-tested. (The netplay-v* test namespace
+# retired post-launch — task #157; test pushes go via manual dispatch
+# to a branch of your choice.)
 on:
   push:
     tags:
       - 'v*.*.*'
-      - 'netplay-v*'
   workflow_dispatch:
     inputs:
       branch:
-        description: 'Steam branch to deploy to (e.g. beta, netplay, default)'
+        description: 'Steam branch to deploy to (e.g. beta, default)'
         required: true
         default: 'beta'
 
@@ -579,4 +576,4 @@ jobs:
           depot1Path: windows
           depot2Path: macos
           depot3Path: linux
-          releaseBranch: ${{ github.event.inputs.branch || (startsWith(github.ref_name, 'netplay-') && 'netplay' || 'beta') }}
+          releaseBranch: ${{ github.event.inputs.branch || 'beta' }}

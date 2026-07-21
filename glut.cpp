@@ -13,6 +13,7 @@
 #include "preferences.h"
 #include "net_transport.h"
 #include "net_signal.h"
+#include "net_identity.h"
 #include "achievements.h"
 #include "presence.h"
 #include "invites.h"
@@ -124,7 +125,12 @@ void set_cursor_hidden(bool hide) {
 }
 
 void keyboard(unsigned char key, int x, int y) {
-  bool do_fullscreen = (key == (unsigned char)g_prefs.general_keys.toggle_fullscreen)
+  // The bare F toggle yields while a text field is consuming keystrokes
+  // (the lobby's room-code entry): the Deck's floating keyboard typing F
+  // flickered fullscreen. Alt+Enter still works — no keyboard types it.
+  bool do_fullscreen =
+      (key == (unsigned char)g_prefs.general_keys.toggle_fullscreen &&
+       !game->text_entry_active())
     || (key == '\r' && glutGetModifiers() == GLUT_ACTIVE_ALT);
   if (do_fullscreen) {
     if (!is_fullscreen) {
@@ -170,7 +176,9 @@ void special(int key, int x, int y) {
 }
 
 void keyboard_up(unsigned char key, int x, int y) {
-  bool is_fullscreen_key = (key == (unsigned char)g_prefs.general_keys.toggle_fullscreen)
+  bool is_fullscreen_key =
+      (key == (unsigned char)g_prefs.general_keys.toggle_fullscreen &&
+       !game->text_entry_active())
     || (key == '\r' && glutGetModifiers() == GLUT_ACTIVE_ALT);
   if (!is_fullscreen_key)
     game->keyboard_up(key, x, y);
@@ -225,6 +233,18 @@ static void on_focus_gained() { if (game) game->focus_gained(); }
 void check_controller() {
   SDL_Event e;
   while(SDL_PollEvent(&e)) {
+    if(e.type == SDL_QUIT) {
+      // SDL owns no window on desktop (GLUT does), so SDL_QUIT here means a
+      // caught SIGINT/SIGTERM — SDL's event subsystem translates both into
+      // this event instead of letting them kill the process. Leave through
+      // the same clean path as Alt-F4: glutLeaveMainLoop() (freeglut) /
+      // exit(0) (macOS shim), so the save + presence/invites/Steam teardown
+      // runs. Unhandled, the event was silently dropped and `kill` never
+      // stopped the game.
+      std::cout << "SDL_QUIT received - shutting down" << std::endl;
+      glutLeaveMainLoop();
+      return;
+    }
     if(e.type == SDL_CONTROLLERDEVICEADDED) {
       for(int i = 0; i < 2; i++) {
         if(controllers[i] == NULL) {
@@ -416,6 +436,12 @@ int main(int argc, char* argv[]) {
   // menu drains it and joins the room.
   Invites::init();
   Invites::capture_launch(argc, argv);
+  // Warm the netplay verification credential (NETPLAY.md V1): minting a Steam
+  // Web-API ticket is async, so kick it off at startup — it completes during
+  // menu navigation and is ready before the first host/join, closing the race
+  // where a host announced its identity before the ticket existed and stayed
+  // unverified for the session. A no-op off Steam (returns "").
+  (void)net_local_verify_credential();
   load_preferences();
   old_width  = g_prefs.window_width;
   old_height = g_prefs.window_height;
