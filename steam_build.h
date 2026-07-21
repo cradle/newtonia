@@ -3,6 +3,7 @@
 // Compiled only when STEAM_BUILD is defined (set by the deploy-steam workflow).
 // All functions are safe no-ops on every other build.
 
+#include <cstdlib>  // std::getenv (is_beta_feature_enabled)
 #include <string>
 
 #ifdef STEAM_BUILD
@@ -81,6 +82,9 @@ inline std::string steam_get_branch() {
 // Returns true when in-progress / beta-only features should be shown.
 // Set NEWTONIA_BETA=1 in the environment to enable outside of Steam.
 inline bool is_beta_feature_enabled() {
-  if (SDL_getenv("NEWTONIA_BETA")) return true;
+  // std::getenv, not SDL_getenv: this header is otherwise SDL-free (it must
+  // stand alone — an isolated syntax-check has no SDL.h), and the codebase
+  // already reads NEWTONIA_* dev flags with std::getenv in its SDL-free TUs.
+  if (std::getenv("NEWTONIA_BETA")) return true;
   return steam_get_branch() == "beta";
 }
