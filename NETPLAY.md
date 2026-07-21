@@ -204,11 +204,14 @@ delivers beacons, and `beacon_dests()` walks interfaces via
 SIOCGIFCONF there (getifaddrs needs API 24; minSdk is 21). **iOS is
 compiled but OFF behind `NEWTONIA_LAN_IOS`**: receiving/sending
 broadcast needs the Apple-gated multicast entitlement — request it at
-developer.apple.com/contact/request/networking-multicast, then (a) add
-`com.apple.developer.networking.multicast` (bool true) to
-`ios/Entitlements.plist` + `ios/EntitlementsDev.plist`, (b) add
-`NEWTONIA_LAN_IOS` to the defines in `ios/project.yml`, and it lights
-up with no code change. Until then iOS keeps the stub (available()
+developer.apple.com/contact/request/networking-multicast, then, once
+Apple grants it, (a) enable the **Multicast Networking** capability on
+the `cc.gfm.newtonia` App ID in the developer portal (Certificates,
+Identifiers & Profiles → the App ID → Capabilities) so the provisioning
+profile carries it, (b) add `com.apple.developer.networking.multicast`
+(bool true) to `ios/Entitlements.plist` + `ios/EntitlementsDev.plist`,
+(c) add `NEWTONIA_LAN_IOS` to the defines in `ios/project.yml`, and it
+lights up with no code change. Until then iOS keeps the stub (available()
 false) so the visibility line never lies. LAN sessions currently reach
 touch devices only in that pending iOS case and on Android.
 Entitlement request SUBMITTED to Apple 2026-07-20 (app id 6760685759).
