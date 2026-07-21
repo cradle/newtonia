@@ -203,15 +203,19 @@ and validation fails unless the verifier presents the same identity.
    idea therefore requires the signal worker to hold a publisher key
    and attest verdicts to peers (extra trust hop), and uses the string
    as a per-connection value where Valve intends a service name —
-   unconventional; validate with Valve before relying on it. Decision:
-   build P2P/SteamID-bound first; hold the worker path as the upgrade
-   if channel binding is ever deemed worth the key custody.
+   unconventional; validate with Valve before relying on it.
+   ~~Decision: build P2P/SteamID-bound first.~~ **SUPERSEDED same day:
+   unified worker-based verification chosen for ALL platforms (see the
+   implementation plan below) — the P2P analysis stands as the
+   documented fallback if publisher-key custody ever becomes
+   unacceptable.**
 2. The XR-014-style rule "no account IDs on the wire" needs a
    deliberate amendment: tickets inherently carry the SteamID (it is
    the thing being proven). Spirit survives as: account IDs may transit
    the handshake *for verification only* — never logged, never
-   persisted, never displayed raw. Write it into `net_identity.h` when
-   built.
+   persisted, never displayed raw. **Moot under the unified worker
+   design (credentials go client→worker over wss only; nothing
+   account-shaped ever travels peer-to-peer) — the rule stays as-is.**
 3. `NET_IDENTITY_DISPLAY_ENABLED` becomes a per-peer `verified` bit on
    `NetIdentity` (mixed pairs: a Steam↔Steam game shows verified
    personas, a Steam↔web game keeps role labels — web/mobile have
@@ -255,127 +259,107 @@ in spirit:**
   accept the platform's weaker ceiling. Cross-platform pairs verify
   each side independently by whatever its platform supports.
 
-### Implementation plan — per platform (drafted 2026-07-20)
+### Implementation plan — unified worker verification (rev 2026-07-20)
 
-Phased so each lands green on its own; V0 is prerequisite plumbing, the
-platform phases are independent after that. Common invariants across
-all phases: verification NEVER gates play (failure/absence = role
-labels, never a reject); the sanitizer runs on every name regardless of
-source; account IDs transit for verification only (never logged,
-persisted, or displayed raw — the amended XR-014 rule); policy backends
-keep treating platform tags as claims.
+**Decision (Glenn 2026-07-20): ALL platform verification runs through
+the signal worker.** Each client submits its platform credential with
+the room join/host register; the worker verifies it and attests the
+identity to the room over the already-trusted signaling channel.
+Rationale: the worker already controls room membership, so this adds no
+new trust root; ONE attestation mechanism for every platform (the
+game-side surface is "consume one room message"); display names come
+server-attested uniformly (Steam persona via GetPlayerSummaries, PGS
+via the Play Games API); and the peer-to-peer wire doesn't change at
+all — no MSG_AUTH, no account IDs between peers (the XR-014 amendment
+above is moot: credentials go client→worker over wss only). Accepted
+costs, eyes open: a publisher Web API key as a Cloudflare secret
+(created in a key group scoped to app 4536720); NO live revocation
+(verification is one-shot at join — a badge can outlive a Steam logout
+by one session; display-only stakes make that fine); and worker-less
+paths (the manual INVITE blob, future LAN mode) never verify — they
+keep role labels, acceptable for same-room scenarios. The P2P
+BeginAuthSession design above remains the documented fallback.
 
-**V0 — shared plumbing (per-peer verified bit + auth wire), ~2-3 days**
+Phases land green independently. Common invariants: verification NEVER
+gates play (failure / absence / worker outage = role labels, never a
+reject); the sanitizer runs on every name regardless of source; the
+worker is a NAME authority only — never a policy input; verification
+strength stays per-platform (Steam/PGS strong, GC freshness-window
+limited).
 
-1. `NetIdentity` gains `bool verified = false` (+ the account handle the
-   platform verifier needs, held transiently, never serialized).
-   `NET_IDENTITY_DISPLAY_ENABLED` is deleted; the display helpers key on
-   `id.verified` instead — badge/name render for a verified peer, role
-   labels otherwise. Anything rendered before the async verdict lands
-   keeps role labels (banners already fired stay as-is; the badge row
-   and lobby line appear when the bit flips). Revocation flips it back
-   off live.
-2. Wire: a new droppable `MSG_AUTH` (`u8 auth_kind, u16 len, bytes`) —
-   appended enum value; sent ONLY when the peer's HELLO/WELCOME carried
-   an identity append (a legacy peer never sees an unknown message).
-   Payload semantics per auth_kind (Steam ticket, GC signature bundle);
-   absence or a malformed payload = peer stays unverified, bounded
-   reads as everywhere (len checked before alloc, hard cap ~2 KB).
-3. e2e (`identity.sh` phase C): garbage/oversized/absent MSG_AUTH via an
-   env hook → both sides stay alive, peer stays role-labeled, logs
-   greppable (`net: auth ...` convention).
+**V0 — game-side plumbing (~2 days)**
 
-**V1 — Steam, P2P path (resolved Q1), ~3-4 days + manual live gate**
+1. `NetIdentity` gains `bool verified = false`;
+   `NET_IDENTITY_DISPLAY_ENABLED` is deleted and the display helpers
+   key on `id.verified` — badge/name render for a verified peer, role
+   labels otherwise. Anything rendered before the attestation arrives
+   keeps role labels (banners already fired stay); the badge row and
+   lobby HOSTED BY line appear when the bit flips.
+2. New signaling room message `identity` {role, platform, name,
+   verified}, broadcast by the worker; both roles consume it into
+   `net_peer_identity_` (fields bounded, name run through
+   net_sanitize_name locally as always). The peer wire is UNCHANGED —
+   the HELLO/WELCOME identity append stays as the unverified fallback
+   and the legacy-interop path.
+3. e2e: the local wrangler dev worker fake-verifies behind a dev flag →
+   badge appears; absent/garbage attestation → role labels, no crash.
+   Greppable log: `net: identity attested ...`.
 
-1. Sequencing (the HELLO/WELCOME ordering problem): the ticket must be
-   bound to the RECIPIENT's SteamID, which the client doesn't know at
-   HELLO time. So: HELLO/WELCOME identity appends each gain the local
-   claimed SteamID (u64, verification-transit only) when STEAM_BUILD;
-   WELCOME→client then MSG_AUTH host-ticket (bound to the client's
-   claimed SteamID from HELLO); client replies MSG_AUTH client-ticket
-   (bound to the host's claimed SteamID from WELCOME). A lying claimed
-   SteamID just makes the counterpart ticket fail validation.
-2. `steam_identity_verify.cpp` under STEAM_BUILD:
-   `GetAuthSessionTicket(SteamNetworkingIdentity{claimed peer id})` to
-   mint; `BeginAuthSession` on receive; verdict in
-   `ValidateAuthTicketResponse_t` (game-thread via the existing
-   SteamAPI_RunCallbacks pump) → verified=true + confirmed SteamID;
-   `EndAuthSession`/`CancelAuthTicket` in session teardown; the
-   revocation callback (owner logged off / canceled / banned) clears
-   verified mid-game.
-3. Name: NEVER from the wire — `GetFriendPersonaName(confirmed id)`,
-   with `RequestUserInformation` + `PersonaStateChange_t` for
-   non-friends; sanitizer applies to the result.
-4. Stub additions for the syntax gate: CSteamID/SteamNetworkingIdentity
-   minimal types, GetAuthSessionTicket, BeginAuthSession,
-   EndAuthSession, CancelAuthTicket, ValidateAuthTicketResponse_t,
-   RequestUserInformation, GetFriendPersonaName.
-5. Verification: stub gate + V0 fakes headless; the real validation is
-   a LIVE two-Steam-account smoke (same manual gate class as the
-   persona test): both sides show verified persona badges, then kill
-   one Steam client and watch the badge drop to role labels.
+**V1 — worker channel + Steam verifier (~3 days + live smoke)**
 
-**V2 — worker attestation channel (prereq for Android; reusable), ~3 days**
+1. Client: ticket from `GetAuthTicketForWebApi("newtonia-signal")`
+   (`steam_identity_verify.cpp` under STEAM_BUILD; stub-gate addition:
+   just that call) submitted with join/register.
+2. Worker: `AuthenticateUserTicket` against partner.steam-api.com
+   (publisher key from the scoped key group, stored as a Cloudflare
+   secret), then `GetPlayerSummaries` for the attested persona.
+   Failure = attest nothing (peer stays role-labeled); reasons logged
+   worker-side. Credential submissions rate-limited via the existing
+   Limiter DO.
+3. Tests: worker suite with mocked Valve endpoints (ticket valid /
+   invalid / reused / API down); live gate (manual, same class as the
+   persona smoke): two Steam accounts, verified persona badges on both
+   sides, worker log shows the round trip.
 
-Some platforms can't verify peer-side; the signal worker becomes the
-verifier and attests over the ALREADY-TRUSTED signaling channel (it
-brokers the room; peers accept its room messages today).
+**V2 — Android / Play Games verifier (~2-3 days + console prereq)**
 
-1. Worker endpoint: client submits its platform credential during the
-   room join/host register; worker verifies (per-platform below) and
-   broadcasts an `identity` room message {role, platform, name,
-   verified} to the peer. Signed by nothing extra — transport is the
-   existing wss to the worker.
-2. Client: consume the room message into `net_peer_identity_`
-   (verified=true, name sanitized locally as always). MSG_AUTH unused
-   for worker-attested platforms.
-3. Worker tests join the existing signal-worker suite (TESTING.md §3);
-   the game-side consumption gets an e2e with a stub worker response.
-4. Trust note for the plan: this hop makes the worker a name authority.
-   Acceptable (it already controls room membership); do NOT extend it
-   to policy decisions.
-
-**V3 — Android / Play Games v2 (worker-verified), ~2-3 days + console setup**
-
-1. Prereq: the Play Console project + OAuth client (same project the
-   commented-out `games-ids.xml` achievements await); worker gets the
-   OAuth client secret.
+1. Prereq: the Play Console project + OAuth client (the same project
+   the commented-out `games-ids.xml` achievement ids await); worker
+   holds the OAuth client secret.
 2. Client: `GamesSignInClient.requestServerSideAccess()` (JNI beside
    the PlayGamesAchievements bridge) → single-use server auth code →
-   sent to the worker with the join/register.
-3. Worker: exchanges the code (oauth2.googleapis.com), queries the Play
-   Games API for the REAL player id + display name (never trust the
-   client-reported one — Google's own guidance), attests via V2.
-   Single-use + bound to our OAuth client = solid replay properties.
-4. Verification: worker tests with a mocked Google exchange; live
-   device smoke vs a desktop peer (badge shows the Play Games name).
+   submitted with join/register.
+3. Worker: exchanges the code (oauth2.googleapis.com), fetches the REAL
+   player id + display name from the Play Games API (never the
+   client-reported one — Google's own guidance), attests via V0's
+   message. Single-use + bound to our OAuth client = solid replay
+   properties.
+4. Tests: worker suite with a mocked Google exchange; live device smoke
+   vs a desktop peer.
 
-**V4 — iOS / Game Center (worker-verified), ~3 days + a name decision**
+**V3 — iOS / Game Center verifier (~3 days + the name decision)**
 
 1. Client: `GKLocalPlayer.fetchItems(forIdentityVerificationSignature:)`
-   → {publicKeyURL, signature, salt, timestamp, teamPlayerID} → to the
-   worker with join/register (auth bundle, not MSG_AUTH).
-2. Worker verifies (no secret needed): URL host WHITELISTED to Apple's
-   documented cert host before any fetch (a hostile URL is an SSRF
-   invitation otherwise), cert chain to Apple's root, RSA signature
-   over playerID+bundleID+salt+timestamp (WebCrypto), timestamp
-   freshness window TIGHT (~5 min — the only replay mitigation GC has;
-   documented residual: replay/relay inside the window).
-3. OPEN QUESTION — the GC name gap: the signature attests the ACCOUNT,
-   not the display name (unlike Steam/PGS there is no server API to
-   look up an arbitrary player's name; `GKPlayer.loadPlayers` works
-   only on-device). Options: (a) verified badge + role-label name
-   (honest, recommended default), (b) on-device loadPlayers lookup when
-   the VERIFYING side is also iOS, (c) accept the claimed name once the
-   account is verified (weakest — a real account can still lie about
-   its name). Decide at build; default (a).
-4. Verification: worker tests against a captured real signature bundle;
-   live iPhone↔desktop smoke.
+   → {publicKeyURL, signature, salt, timestamp, teamPlayerID} submitted
+   with join/register.
+2. Worker verifies (no secret needed): publicKeyURL host WHITELISTED to
+   Apple's documented cert host BEFORE any fetch (a hostile URL is an
+   SSRF invitation otherwise); cert chain to Apple's root; RSA
+   signature over playerID+bundleID+salt+timestamp via WebCrypto;
+   timestamp freshness window TIGHT (~5 min) — GC's only replay
+   mitigation, residual documented in the survey above.
+3. The GC name gap decision stands: the signature attests the ACCOUNT,
+   not the name, and no server API can look an arbitrary player's name
+   up. Default: (a) verified platform badge + role-label name; options
+   (b) on-device loadPlayers lookup when the verifier is also iOS, or
+   (c) accept the claimed name once the account verifies (weakest).
+4. Tests: worker suite against a captured real signature bundle; live
+   iPhone↔desktop smoke.
 
-**Rollout order**: V0 → V1 (Steam is the field-test population) → V2+V3
-together (Android next by install base) → V4. Web stays permanently
-role-labeled (nothing to attest). Xbox rides the fork (XSTS is its V1,
-behind the same V0 bit).
+**Rollout**: V0+V1 together (Steam field-tests the channel) → V2 → V3.
+Web stays permanently role-labeled (nothing to attest). Xbox fork: an
+XSTS verifier as another worker module (or a fork-side equivalent)
+behind the same V0 bit.
 
 **Architectural backstop (holds regardless):** identity is display-only.
 No matchmaking privilege, host authority, or policy decision hangs off
