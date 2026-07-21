@@ -57,6 +57,10 @@ const MAX_IDENTITY_NAME = 24;
 // Credential (Steam ticket hex) cap — see steam_verify.MAX_TICKET_HEX; bound
 // here too so an oversized frame is dropped before any verification work.
 const MAX_IDENTITY_CRED = 8192;
+// Min interval between Valve verifications for a given role (denial-of-wallet
+// guard — see attest_identity). Well under any legitimate re-verify cadence
+// (reclaim, future heartbeat), so it only trims floods.
+const VERIFY_MIN_INTERVAL_MS = 3000;
 
 // Browser origins allowed to open a signaling socket. Browsers always send an
 // Origin header on the WebSocket handshake and cannot forge it, so this stops
@@ -602,10 +606,29 @@ export class Room {
       // contacting any platform backend. NEVER set in production.
       attested = { platform, name, verified: true };
     } else if (platform === 2 /* NET_PLATFORM_STEAM */ && cred) {
+      // Denial-of-wallet guard: every verify is a Valve round-trip against
+      // the publisher key's daily budget. The per-IP connect limiter bounds
+      // NEW sockets but not per-message floods over an already-open one, and
+      // WS frames never pass through the fetch-handler Limiter — so throttle
+      // the Valve call per role here. Legit re-verifies (host reclaim, a
+      // future V1.5 heartbeat) are seconds-to-minutes apart; only a flood is
+      // dropped, and a dropped frame KEEPS the last attestation (no demote).
+      const now = Date.now();
+      const at_key = role === "host" ? "host_verify_at" : "joiner_verify_at";
+      if (this.r[at_key] && now - this.r[at_key] < VERIFY_MIN_INTERVAL_MS)
+        return;  // flooded: keep the prior attestation, spend no Valve call
+      this.r[at_key] = now;
       const v = await verifySteamTicket(this.env, cred);
-      // Attested name comes from Steam, not the wire (a lying name field
-      // stops mattering); the account being proven is enough to badge STEAM.
-      if (v) attested = { platform: 2, name: v.persona || "", verified: true };
+      if (v) {
+        // Attested name comes from Steam, not the wire (a lying name field
+        // stops mattering); the account proven is enough to badge STEAM.
+        attested = { platform: 2, name: v.persona || "", verified: true };
+      } else {
+        // Verify failed (bad/expired/reused ticket, Valve down): don't demote
+        // an already-verified badge on a transient failure — keep the prior.
+        const prev = role === "host" ? this.r.host_identity : this.r.joiner_identity;
+        if (prev && prev.verified) return;
+      }
     }
 
     this.r[role === "host" ? "host_identity" : "joiner_identity"] = attested;
