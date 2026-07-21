@@ -43,6 +43,13 @@ public:
   // BEFORE start_host()/start_join(); default no-op.
   virtual void set_force_relay(bool on) { (void)on; }
 
+  // LAN pairing (net_lan.h): configure NO ICE servers at all — host
+  // candidates are the whole plan on a local network, and skipping STUN
+  // means gathering completes immediately instead of waiting out an
+  // (offline-unreachable) STUN query. Must be called BEFORE
+  // start_host()/start_join(); default no-op.
+  virtual void set_lan_only(bool on) { (void)on; }
+
   // Bytes queued in the transport's send buffers (both channels) that
   // have not reached the wire yet. Diagnosis telemetry: climbing during
   // an outage = OUR sender is blocked (the peer stopped acking — the

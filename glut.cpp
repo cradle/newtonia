@@ -124,7 +124,12 @@ void set_cursor_hidden(bool hide) {
 }
 
 void keyboard(unsigned char key, int x, int y) {
-  bool do_fullscreen = (key == (unsigned char)g_prefs.general_keys.toggle_fullscreen)
+  // The bare F toggle yields while a text field is consuming keystrokes
+  // (the lobby's room-code entry): the Deck's floating keyboard typing F
+  // flickered fullscreen. Alt+Enter still works — no keyboard types it.
+  bool do_fullscreen =
+      (key == (unsigned char)g_prefs.general_keys.toggle_fullscreen &&
+       !game->text_entry_active())
     || (key == '\r' && glutGetModifiers() == GLUT_ACTIVE_ALT);
   if (do_fullscreen) {
     if (!is_fullscreen) {
@@ -170,7 +175,9 @@ void special(int key, int x, int y) {
 }
 
 void keyboard_up(unsigned char key, int x, int y) {
-  bool is_fullscreen_key = (key == (unsigned char)g_prefs.general_keys.toggle_fullscreen)
+  bool is_fullscreen_key =
+      (key == (unsigned char)g_prefs.general_keys.toggle_fullscreen &&
+       !game->text_entry_active())
     || (key == '\r' && glutGetModifiers() == GLUT_ACTIVE_ALT);
   if (!is_fullscreen_key)
     game->keyboard_up(key, x, y);

@@ -8,6 +8,11 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- LAN co-op discovery (net_lan.cpp): the MulticastLock that stops
+         the wifi driver filtering the UDP discovery beacons. Install-time
+         grant, no runtime prompt. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
     <!-- Declare that we use OpenGL ES 2.0 -->
     <uses-feature android:glEsVersion="0x00020000" android:required="true" />
 

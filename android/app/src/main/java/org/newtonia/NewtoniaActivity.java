@@ -9,7 +9,10 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.media.AudioManager;
 import android.net.Uri;
+import android.net.wifi.WifiManager;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.system.Os;
 
 import com.android.installreferrer.api.InstallReferrerClient;
@@ -130,9 +133,32 @@ public class NewtoniaActivity extends SDLActivity {
         }
     }
 
+    // LAN discovery beacons (net_lan.cpp) carry a host name for the
+    // joiner's row/band; native gethostname() is a bare "localhost" on
+    // Android, so export the user-visible device name over the same env
+    // bridge the adb debug extras use (native reads NEWTONIA_DEVICE_NAME
+    // and sanitizes it into the game font). Skipped if the var is
+    // already set — an adb --es NEWTONIA_DEVICE_NAME override wins.
+    private void exportDeviceName() {
+        try {
+            if (Os.getenv("NEWTONIA_DEVICE_NAME") != null) return;
+            String name = Settings.Global.getString(
+                getContentResolver(), Settings.Global.DEVICE_NAME);
+            if (name == null || name.isEmpty())
+                name = Settings.Secure.getString(getContentResolver(),
+                                                 "bluetooth_name");
+            if (name == null || name.isEmpty()) name = Build.MODEL;
+            if (name != null && !name.isEmpty())
+                Os.setenv("NEWTONIA_DEVICE_NAME", name, true);
+        } catch (Exception ignored) {
+            // Best-effort: native falls back to its NEWTONIA default.
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         applyEnvExtras(getIntent());
+        exportDeviceName();
         super.onCreate(savedInstanceState);
 
         AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
@@ -167,6 +193,14 @@ public class NewtoniaActivity extends SDLActivity {
         handleInviteIntent(intent);
     }
 
+    // LAN co-op discovery (net_lan.cpp): Android wifi drivers filter
+    // broadcast/multicast UDP unless a MulticastLock is held, so the
+    // native beacon browse would hear nothing. Held only while the app
+    // is foreground (acquire in onResume, release in onPause) — the
+    // lobby is the only consumer and it never runs backgrounded. Needs
+    // CHANGE_WIFI_MULTICAST_STATE (AndroidManifest, install-time grant).
+    private WifiManager.MulticastLock multicastLock;
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -174,6 +208,29 @@ public class NewtoniaActivity extends SDLActivity {
         // activity resumes before the native side re-runs its init) and
         // retry sign-in / flush queued earns after backgrounding.
         PlayGamesAchievements.onResume(this);
+        try {
+            if (multicastLock == null) {
+                WifiManager wm = (WifiManager)
+                    getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                if (wm != null) {
+                    multicastLock = wm.createMulticastLock("newtonia-lan");
+                    multicastLock.setReferenceCounted(false);
+                }
+            }
+            if (multicastLock != null) multicastLock.acquire();
+        } catch (Exception ignored) {
+            // Best-effort: without the lock LAN discovery may miss beacons
+            // on some devices, but nothing else is affected.
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        try {
+            if (multicastLock != null && multicastLock.isHeld())
+                multicastLock.release();
+        } catch (Exception ignored) {}
+        super.onPause();
     }
 
     @Override

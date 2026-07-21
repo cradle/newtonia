@@ -40,7 +40,17 @@ const int SIGNAL_TIMEOUT_MS = 12000;
 // auto-copies its code to the clipboard, so after quitting a game the
 // JOIN screen would otherwise auto-join the player's own dead room.
 static std::string s_last_hosted_code;
-static std::string s_dead_code;  // room confirmed dead (host BYE / relay says gone)
+// Rooms confirmed dead this run (host BYE / relay says gone). A list, not
+// one slot: a typed bad code dead-marks too, and with a single slot it
+// EVICTED the stale clipboard code marked moments earlier — freeing the
+// repoll to probe it a second time (the engine of task #165's double
+// attempt).
+static std::vector<std::string> s_dead_codes;
+static bool room_is_dead(const std::string &code) {
+  for (size_t i = 0; i < s_dead_codes.size(); i++)
+    if (s_dead_codes[i] == code) return true;
+  return false;
+}
 
 // TURN test hook, process-wide: a "0" typed before the room code (0 is
 // not in the code alphabet) toggles relay-only joins — the one-phone
@@ -56,16 +66,29 @@ static bool s_join_force_relay = false;
 // CodeEntry: the soft keyboard buries the bottom exit strip, so the way
 // out lives top-right beside the hoisted header.
 const TapBand kBackBand(0.85f, 480, 22, 6.0f, /*to_top=*/true, false, 0.72f);
-// RoomHost: the "TAP HERE TO SHARE IT" line, padded to finger height.
+// RoomHost: the "TAP TO SHARE" line, padded to finger height.
 const TapBand kShareBand(0.5f, -80, 18, 42.0f);
+// CodeEntry LAN host bands (touch): above the soft keyboard (max 3).
+// Filled BOTTOM-UP — one host uses only the lowest band, sitting in
+// the free space just above the keyboard, well clear of the code
+// (Glenn's S25 screenshot); a full list grows upward toward the
+// compressed slots. The lowest band bottoms out ~y 49: tall phone
+// keyboards reach ~y 48 in Typer units (measured on the S25 — the
+// "half the screen" assumption undershot it).
+const int kLanBandCount = 3;
+const TapBand kLanBand[kLanBandCount] = {TapBand(0.5f, 225, 18, 12.0f),
+                                         TapBand(0.5f, 155, 18, 12.0f),
+                                         TapBand(0.5f, 85, 18, 12.0f)};
 
 // CodeEntry controller picker: the code alphabet as a grid under the
 // code slots (desktop layout — touch uses the soft keyboard instead).
-// Two rows sit between the button-hint line at -20 (glyphs reach ~-56)
-// and the transient status line at -320 (selected cells grow to size 22
-// → 44 tall, so the second row bottoms out around -226).
+// Non-Deck pads only — where the floating keyboard has actually shown,
+// the keyboard replaces the grid entirely (Glenn). Two rows sit between
+// the button-hint line at -48 (glyphs reach ~-84) and the LAN rows
+// below (selected cells grow to size 22 → 44 tall, so the second row
+// bottoms out around -248).
 const int PICKER_COLS = 15;
-const float PICKER_TOP_Y = -130.0f;
+const float PICKER_TOP_Y = -152.0f;
 const float PICKER_ROW_H = 52.0f;
 const float PICKER_CELL_W = 45.0f;
 
@@ -99,7 +122,9 @@ static std::string room_code_from_clip(const std::string &text) {
 
 }  // namespace
 
-void NetLobby::mark_room_dead(const std::string &code) { s_dead_code = code; }
+void NetLobby::mark_room_dead(const std::string &code) {
+  if (!code.empty() && !room_is_dead(code)) s_dead_codes.push_back(code);
+}
 
 NetLobby::NetLobby()
     : screen_(Choose),
@@ -196,7 +221,7 @@ void NetLobby::draw_picker() {
 // physical keyboard carries code entry. Returns true when the floating
 // keyboard actually came up (Deck) — the caller hides the picker under
 // it (floating_kb_up_).
-static bool code_entry_keyboard(bool open) {
+bool NetLobby::code_entry_keyboard(bool open) {
   if (is_touch_mode()) {
     if (open) SDL_StartTextInput();
     else SDL_StopTextInput();
@@ -212,8 +237,39 @@ static bool code_entry_keyboard(bool open) {
     return steam_show_floating_keyboard(Typer::window_width / 4, top,
                                         Typer::window_width / 2, height);
   }
+  // Count the dismiss only when the keyboard is believed up: it then
+  // fires exactly one Dismissed callback, which the tick drain credits
+  // to us rather than reading as a user dismiss (see the member doc).
+  // The dismiss call itself is always issued — harmless if already down.
+  if (floating_kb_up_) floating_kb_dismiss_pending_++;
   steam_dismiss_floating_keyboard();
   return false;
+}
+
+// LAN rejoin (round 4): the lost session came through the LAN door, so
+// there is no room code — browse for the remembered host name and
+// auto-pair when its beacon reappears (the host's game re-beacons on
+// loss; a restarted host beacons the same name from its lobby). Shares
+// the relay rejoin's honest-wait display and 60 s budget.
+NetLobby::NetLobby(const std::string &lan_host_name, LanRejoinTag)
+    : NetLobby() {
+  hosting_ = false;
+  Presence::set_joining();
+  Net::set_net_log_role(false);
+  transport_ = NetTransport::create();
+  if (!transport_ || !NetLan::available() || !lan_browse_.start()) {
+    set_status("NETPLAY NOT AVAILABLE ON THIS BUILD");
+    screen_ = LobbyFailed;
+    return;
+  }
+  lan_rejoin_ = true;
+  lan_rejoin_name_ = lan_host_name;
+  lan_browse_ms_ = 0;
+  rejoin_mode_ = true;
+  rejoin_budget_ms_ = 60000;
+  screen_ = RoomJoining;
+  set_status("RECONNECTING");
+  NET_LOG("[lobby] lan rejoin: browsing for %s\n", lan_rejoin_name_.c_str());
 }
 
 // A rejoin attempt failed in a retryable way (network still down, relay
@@ -235,6 +291,12 @@ void NetLobby::schedule_rejoin_retry(const char *why, int delay_ms) {
 // next attempt reclaims the room within the remaining budget.
 bool NetLobby::rejoin_retry_after_session_loss(const char *why) {
   if (!rejoin_mode_ || rejoin_budget_ms_ <= 0) return false;
+  // LAN rejoin: the retry is a fresh browse, not a relay reconnect.
+  if (lan_rejoin_) {
+    connect_wait_ms_ = 0;
+    lan_rejoin_restart(why);
+    return true;
+  }
   delete session_;
   session_ = nullptr;
   if (transport_) {
@@ -253,6 +315,7 @@ NetLobby::~NetLobby() {
   // menu): no longer joinable — the co-op slot is full or gone. A no-op if we
   // never advertised (joiner, or non-Steam build).
   Invites::clear_joinable();
+  lan_teardown();  // beacon/browse sockets + the LAN door's transport
   delete session_;  // closes + deletes the transport it owns
   if (!session_ && transport_) {
     transport_->close();
@@ -293,6 +356,8 @@ void NetLobby::reset_to_choose() {
   connect_wait_ms_ = 0;
   rejoin_mode_ = false;  // a manual retry is a fresh join, not a rejoin
   rejoin_retry_ms_ = 0;
+  lan_teardown();  // re-picking HOST/JOIN re-opens the LAN door fresh
+  lan_host_name_.clear();
   screen_ = Choose;
 }
 
@@ -332,6 +397,18 @@ void NetLobby::confirm() {
     if (signal_) transport_->set_trickle(true);
     if (hosting_) {
       Presence::set_hosting();  // "Hosting a Co-Op Game" in the friends list
+      // LAN door (NETPLAY.md "LAN is not a mode"): beacon + serve the
+      // manual INVITE blob over TCP from its own no-STUN transport,
+      // unconditionally beside the relay flow. Offline this is what
+      // still works; online it's the couch shortcut.
+      if (NetLan::available() && lan_announce_.start(NetLan::local_host_name())) {
+        lan_transport_ = NetTransport::create();
+        if (lan_transport_) {
+          lan_transport_->set_lan_only(true);
+          lan_transport_->set_trickle(false);
+          lan_transport_->start_host();
+        }
+      }
       if (signal_) {
         // start_host() waits for the Room frame: the relay sends the TURN
         // credentials first, and ICE servers bind at pc creation.
@@ -344,9 +421,15 @@ void NetLobby::confirm() {
       }
     } else {
       Presence::set_joining();  // "Joining a Co-Op Game"
+      if (NetLan::available()) {
+        lan_browse_.start();
+        lan_browse_ms_ = 0;
+        lan_blob_held_ = false;
+      }
       if (signal_) {
         screen_ = CodeEntry;
         floating_kb_up_ = code_entry_keyboard(true);
+        if (floating_kb_up_) floating_kb_available_ = true;
         // If the clipboard already holds the friend's code (the host side
         // auto-copies it), prefill and join without any typing. Started
         // here so the web backend's read stays inside the user gesture.
@@ -360,10 +443,16 @@ void NetLobby::confirm() {
     if (code_entry_.size() == (size_t)NET_ROOM_CODE_LEN) {
       code_entry_keyboard(false);
       floating_kb_up_ = false;
+      // Every join through here is player-driven; the clipboard AUTO-join
+      // site re-flags it right after this call (its failure stays silent —
+      // task #165). The join itself is sent synchronously below, the
+      // relay's verdict only ever arrives later via pump_signal.
+      last_join_was_auto_ = false;
       // Applied here, not at transport creation: the "0" arming happens
       // while typing, after the transport already exists. The pc (and its
       // ICE policy) is only built at start_join, so this is in time.
       if (transport_) transport_->set_force_relay(s_join_force_relay);
+      NET_LOG("[lobby] joining room %s\n", code_entry_.c_str());
       signal_->connect_join(net_signal_url(), code_entry_);
       signal_wait_ms_ = 0;
       screen_ = RoomJoining;
@@ -402,6 +491,184 @@ void NetLobby::fall_back_to_manual(const char *why) {
   if (transport_) transport_->set_trickle(false);
   if (hosting_ && transport_) transport_->start_host();  // was deferred
   screen_ = hosting_ ? HostGathering : JoinWaitOffer;
+}
+
+// Close the LAN door: the co-op slot is spoken for (either door's joiner
+// completed, or the lobby is being torn down/reset).
+void NetLobby::lan_teardown() {
+  lan_announce_.stop();
+  lan_browse_.stop();
+  if (lan_transport_) {
+    lan_transport_->close();
+    delete lan_transport_;
+    lan_transport_ = nullptr;
+  }
+  lan_offer_set_ = false;
+  lan_joining_ = false;
+  lan_sel_ = -1;
+  lan_browse_ms_ = 0;
+  lan_blob_held_ = false;
+}
+
+// Host side of the LAN door, every tick while hosting: feed the announcer
+// the offer blob once gathering mints it, and adopt a completed joiner —
+// the LAN transport becomes THE session transport and the relay door
+// closes (its room is killed so the code dies with it).
+void NetLobby::lan_host_update(int delta) {
+  if (!lan_announce_.running()) return;
+  if (session_) {  // the relay door won while we were beaconing
+    lan_teardown();
+    return;
+  }
+  if (!lan_offer_set_ && lan_transport_ &&
+      lan_transport_->local_description_ready()) {
+    lan_announce_.set_offer_blob(
+        Net::encode_signal(true, lan_transport_->local_description()));
+    lan_offer_set_ = true;
+  }
+  std::string answer_blob;
+  if (!lan_announce_.update(delta, answer_blob)) return;
+
+  std::string sdp;
+  if (Net::decode_signal(answer_blob, sdp) != 'A' || !lan_transport_) {
+    NET_LOG("[lobby] lan answer blob invalid - ignoring\n");
+    return;
+  }
+  NET_LOG("[lobby] lan joiner completed - adopting the lan transport\n");
+  // The room stays OPEN (it used to be killed here): the WaitConnect
+  // handoff gives it to GLGame via net_adopt_signal exactly like a
+  // relay pairing, so a LAN session keeps the relay session's whole
+  // loss toolkit — rejoin by code from anywhere, the Steam invite
+  // re-advertise, and the fresh relay re-offer beside the LAN
+  // re-beacon. Costs one idle socket; the code stays on the host's
+  // screen for anyone who needs it. (The stored lobby offer goes stale
+  // with the transport below — the rejoin poll re-offers fresh.)
+  if (signal_)
+    NET_LOG("[lobby] lan door won - keeping room %s open\n",
+            room_code_.c_str());
+  if (transport_) {
+    transport_->close();
+    delete transport_;
+    transport_ = nullptr;
+  }
+  lan_announce_.stop();
+  lan_transport_->set_remote_answer(sdp);
+  session_ = new NetSession(lan_transport_, NetSession::HostRole);
+  lan_transport_ = nullptr;  // owned by the session now
+  screen_ = WaitConnect;
+  connect_wait_ms_ = 0;
+}
+
+// Joiner side: pump discovery (and a committed exchange). The offer blob
+// arriving runs the exact manual-join machinery with the socket as the
+// clipboard; the answer goes back in tick's JoinGathering case.
+void NetLobby::lan_join_update(int delta) {
+  if (lan_browse_.running()) lan_browse_ms_ += delta;
+  lan_browse_.update(delta);
+
+  // Never let a vanished row silently shift the highlight onto a
+  // different host (the mis-tap class of bug) — drop to the code field.
+  if (lan_sel_ >= lan_rows_shown()) lan_sel_ = -1;
+
+  // LAN rejoin auto-select: the moment the remembered host's beacon is
+  // back (and speaks our protocol), run the join as if its row was
+  // picked. A connect refusal just waits for the next beacon; the
+  // shared rejoin budget bounds the whole wait.
+  if (lan_rejoin_ && !lan_joining_ && !session_ && screen_ == RoomJoining) {
+    const std::vector<NetLan::HostInfo> &hosts = lan_browse_.hosts();
+    for (size_t i = 0; i < hosts.size(); i++) {
+      if (hosts[i].name == lan_rejoin_name_ &&
+          hosts[i].proto == Net::PROTO_VERSION) {
+        NET_LOG("[lobby] lan rejoin: %s reappeared\n",
+                lan_rejoin_name_.c_str());
+        lan_sel_ = (int)i;
+        lan_join_selected();
+        break;
+      }
+    }
+  }
+
+  if (!lan_joining_) return;
+
+  std::string offer_blob;
+  if (lan_browse_.offer_ready(offer_blob)) {
+    std::string sdp;
+    if (Net::decode_signal(offer_blob, sdp) == 'O' && transport_) {
+      // The relay is out of the picture from here: LAN pairing is the
+      // manual flow (non-trickle, and no STUN — host candidates only).
+      if (signal_) {
+        signal_->close();
+        delete signal_;
+        signal_ = nullptr;
+      }
+      transport_->set_trickle(false);
+      transport_->set_lan_only(true);
+      transport_->start_join(Net::strip_ice_candidates(sdp));
+      screen_ = JoinGathering;
+    } else {
+      NET_LOG("[lobby] lan offer blob invalid\n");
+      lan_joining_ = false;
+      if (lan_rejoin_) {
+        lan_rejoin_restart("invalid blob");
+      } else {
+        fail_headline_ = "COULD NOT JOIN THE LAN GAME";
+        screen_ = LobbyFailed;
+      }
+    }
+  }
+
+  if (lan_browse_.failed() && screen_ != LobbyFailed) {
+    lan_joining_ = false;
+    // Rejoin mode keeps trying — the host may still be reopening its
+    // door — bounded by the shared budget. A first join fails honestly.
+    if (lan_rejoin_) {
+      lan_rejoin_restart("exchange failed");
+    } else {
+      fail_headline_ = "COULD NOT JOIN THE LAN GAME";
+      set_status("THE HOST DID NOT RESPOND");
+      screen_ = LobbyFailed;
+    }
+  }
+}
+
+// One failed LAN rejoin attempt: back to browsing with fresh sockets
+// (and a fresh transport if the old one was consumed by a start_join).
+// The shared rejoin budget keeps ticking, so this can't loop forever.
+void NetLobby::lan_rejoin_restart(const char *why) {
+  NET_LOG("[lobby] lan rejoin retry (%s)\n", why);
+  delete session_;
+  session_ = nullptr;
+  if (transport_) {
+    transport_->close();
+    delete transport_;
+  }
+  transport_ = NetTransport::create();
+  lan_joining_ = false;
+  lan_sel_ = -1;
+  lan_browse_.start();
+  lan_browse_ms_ = 0;
+  screen_ = RoomJoining;
+  set_status("RECONNECTING");
+}
+
+// A host row on CodeEntry was chosen (Enter on the highlight).
+void NetLobby::lan_join_selected() {
+  const std::vector<NetLan::HostInfo> &hosts = lan_browse_.hosts();
+  if (lan_sel_ < 0 || lan_sel_ >= (int)hosts.size()) return;
+  if (hosts[lan_sel_].proto != Net::PROTO_VERSION) {
+    set_status("DIFFERENT GAME VERSION - UPDATE BOTH GAMES");
+    return;
+  }
+  if (!lan_browse_.connect_host(lan_sel_)) {
+    set_status("COULD NOT REACH THAT HOST");
+    return;
+  }
+  lan_host_name_ = hosts[lan_sel_].name;
+  lan_joining_ = true;
+  code_entry_keyboard(false);
+  floating_kb_up_ = false;
+  screen_ = RoomJoining;
+  join_wait_ms_ = 0;
 }
 
 // The JOINER's signal path died before the room answered. The host in
@@ -622,11 +889,24 @@ void NetLobby::pump_signal(int delta) {
           break;
         }
         if (screen_ == RoomJoining || screen_ == CodeEntry) {
-          if (ev.text == "no-such-room") set_status("NO ROOM WITH THAT CODE");
-          else if (ev.text == "room-full") set_status("THAT ROOM IS FULL");
-          else if (ev.text == "rate-limited") set_status("TOO MANY TRIES - WAIT A MINUTE");
-          else if (ev.text == "host-closed") set_status("THAT SERVER WAS SHUT DOWN");
-          else set_status("THE ROOM HAS EXPIRED");
+          NET_LOG("[lobby] relay err '%s' (screen %d)\n", ev.text.c_str(),
+                  (int)screen_);
+          // A failed clipboard AUTO-join stays silent: the player never
+          // asked for it, so its error reads as the lobby retrying — a
+          // typed bad code was followed ~800 ms later by the repoll
+          // probing a stale clipboard code, showing "NO ROOM WITH THAT
+          // CODE" twice (Glenn, Deck, task #165). Dead-marking below
+          // still stops further probes of that code.
+          if (!last_join_was_auto_) {
+            if (ev.text == "no-such-room") set_status("NO ROOM WITH THAT CODE");
+            else if (ev.text == "room-full") set_status("THAT ROOM IS FULL");
+            // The worker's fixed window is 10 min from the FIRST try, so
+            // "a minute" oversold it (Glenn hit it while field-testing).
+            else if (ev.text == "rate-limited") set_status("TOO MANY TRIES - WAIT A FEW MINUTES");
+            else if (ev.text == "host-closed") set_status("THAT SERVER WAS SHUT DOWN");
+            else set_status("THE ROOM HAS EXPIRED");
+          }
+          last_join_was_auto_ = false;
           // Any of these except rate-limited means the code is dead — stop
           // the clipboard auto-join from walking back into it.
           if (ev.text != "rate-limited") mark_room_dead(code_entry_);
@@ -635,6 +915,7 @@ void NetLobby::pump_signal(int delta) {
           answer_sent_ = false;
           screen_ = CodeEntry;
           floating_kb_up_ = code_entry_keyboard(true);
+          if (floating_kb_up_) floating_kb_available_ = true;
         } else if (screen_ == RoomHost) {
           // fall_back_to_manual deletes signal_ — the poll loop must stop.
           fall_back_to_manual(ev.text.c_str());
@@ -678,6 +959,26 @@ void NetLobby::tick(int delta) {
   if (status_ms_ > 0) status_ms_ -= delta;
 
   pump_signal(delta);
+
+  // Deck: bring the picker (and LAN rows) back the MOMENT the floating
+  // keyboard is dismissed. The old proof — the next controller event
+  // reaching us — left the keyboard-up layout on screen until the
+  // player pressed something else (Glenn, Deck beta test). A dismiss we
+  // issued ourselves (backing out, LAN join, and above all the
+  // dismiss-then-reshow of a rate-limit bounce) latches the same
+  // callback, so credit those to floating_kb_dismiss_pending_ first;
+  // only an UNcounted dismiss is the user closing the keyboard, which
+  // brings the picker/hints back. Without this the stale callback from a
+  // same-frame dismiss+reshow hid the keyboard's layer and drew the hint
+  // under the still-visible keyboard (Glenn: "TOO MANY RETRIES").
+  if (steam_floating_keyboard_dismissed()) {
+    if (floating_kb_dismiss_pending_ > 0) floating_kb_dismiss_pending_--;
+    else if (floating_kb_up_) floating_kb_up_ = false;
+  }
+
+  // The LAN door (no-ops where NetLan isn't available or nothing runs).
+  if (hosting_) lan_host_update(delta);
+  else lan_join_update(delta);
 
   // Trickle ICE (M3-2b): relay candidates our transport gathers to the
   // peer as they appear ("mid\ncand" strings from the backend). Only after
@@ -789,9 +1090,28 @@ void NetLobby::tick(int delta) {
         // content can't land here. This is the deliberate replacement
         // for the old silent timeout-into-manual fallback (see
         // join_unreachable).
+        // ...but the LAN rows outrank the AUTOMATIC blob pickup. On a
+        // shared clipboard (one box, or macOS Universal Clipboard between
+        // one person's devices) the host's manual fallback copies its
+        // INVITE blob right as the joiner's CodeEntry opens, and acting on
+        // it here would steal the screen into the manual flow before the
+        // beaconing host's row can even appear (field-hit on a one-box
+        // mac test). Hold the auto pickup while LAN hosts are listed — or
+        // while browse hasn't had time to hear a first beacon yet — and
+        // let the 800 ms repoll re-offer the blob; if no host ever shows,
+        // the manual flow proceeds as before. An explicit paste
+        // (controller X) is user intent and is never held.
         std::string sdp;
-        if (!ok && code_entry_.empty() && transport_ &&
-            Net::decode_signal(clip, sdp) == 'O') {
+        bool lan_hold =
+            !code_clip_explicit_ && lan_browse_.running() &&
+            (!lan_browse_.hosts().empty() || lan_browse_ms_ < 2500);
+        bool is_blob = !ok && code_entry_.empty() && transport_ &&
+                       Net::decode_signal(clip, sdp) == 'O';
+        if (is_blob && lan_hold && !lan_blob_held_) {
+          lan_blob_held_ = true;
+          NET_LOG("[lobby] invite blob on clipboard held - lan rows first\n");
+        }
+        if (is_blob && !lan_hold) {
           NET_LOG("[lobby] manual invite found at code entry\n");
           code_clip_explicit_ = false;
           code_entry_keyboard(false);
@@ -812,7 +1132,7 @@ void NetLobby::tick(int delta) {
         // when it left) or one confirmed dead. An EXPLICIT paste (the
         // controller X hint) is user intent, like typing — no guards.
         if (ok && !code_clip_explicit_ &&
-            (code == s_last_hosted_code || code == s_dead_code))
+            (code == s_last_hosted_code || room_is_dead(code)))
           ok = false;
         // A code matching only the PERSISTED last-hosted pref is
         // ambiguous: another live instance on this machine hosting right
@@ -822,10 +1142,14 @@ void NetLobby::tick(int delta) {
         // a live room answers in seconds, the orphan never does.
         own_room_probe_ =
             ok && !code_clip_explicit_ && code == g_prefs.last_hosted_code;
+        bool was_explicit = code_clip_explicit_;
         code_clip_explicit_ = false;
         if (ok && code_entry_.empty()) {
           code_entry_ = code;
           confirm();
+          // AFTER confirm (which defaults the flag to player-driven):
+          // an unsolicited clipboard probe fails silently.
+          last_join_was_auto_ = !was_explicit;
         }
       }
     }
@@ -883,7 +1207,14 @@ void NetLobby::tick(int delta) {
 
     case JoinGathering:
       if (transport_ && transport_->local_description_ready()) {
-        copy_local_description();
+        if (lan_joining_) {
+          // LAN pairing: the answer rides the TCP socket, not the
+          // clipboard (lan_join_update keeps pumping the flush).
+          lan_browse_.send_answer(
+              Net::encode_signal(false, transport_->local_description()));
+        } else {
+          copy_local_description();
+        }
         status_ms_ = 0;
         screen_ = WaitConnect;
         connect_wait_ms_ = 0;
@@ -971,6 +1302,9 @@ void NetLobby::tick(int delta) {
         session_ = nullptr;
         GLGame *game = new GLGame(s, session, (SDL_GameController *)0);
         game->net_room_code_ = room_code_;  // enables client auto-rejoin
+        // A LAN-door join remembers the host's NAME the way a relay join
+        // remembers the code — it is the rejoin identity (round 4).
+        game->net_lan_host_name_ = lan_host_name_;
         game->net_apply_extras(in, s);
         request_state_change(game);
         return;
@@ -1050,24 +1384,31 @@ void NetLobby::draw() {
       } else if (is_touch_mode()) {
         // Spread over the full height under the hoisted header — the
         // default stack hugs the lower half of a phone screen.
+        // Sparse on purpose (Glenn): the code + one clipboard/share line
+        // say it all, and the LAN line only appears when a joiner is
+        // actually mid-exchange.
         Typer::draw_centered(0, 340, "ROOM CODE", sz);
         Typer::draw_centered(0, 220, room_code_.c_str(), 48);
-        Typer::draw_centered(0, 40, "TELL YOUR FRIEND THE CODE", sz);
         if (net_share_available()) {
-          kShareBand.draw("TAP HERE TO SHARE IT");
+          kShareBand.draw("TAP TO SHARE");
         } else {
-          Typer::draw_centered(0, -80, "IT IS ON YOUR CLIPBOARD", sz);
+          Typer::draw_centered(0, -80, "COPIED TO CLIPBOARD", sz);
         }
+        if (lan_announce_.running() && lan_announce_.peer_engaged())
+          Typer::draw_centered(0, -180, "A LAN PLAYER IS CONNECTING", 12);
         if (blink)
           Typer::draw_centered(0, -220, "WAITING FOR PLAYER 2", sz);
       } else {
         lines.push_back("ROOM CODE");
         Typer::draw_centered(0, 20, room_code_.c_str(), 48);
         y = -100;
-        lines.push_back("TELL YOUR FRIEND THE CODE");
-        lines.push_back("IT IS ON YOUR CLIPBOARD");
+        lines.push_back("COPIED TO CLIPBOARD");
         lines.push_back("");
-        if (blink) lines.push_back("WAITING FOR PLAYER 2");
+        // Pushed on the off-phase too (as a blank) — a conditional push
+        // here makes every line below it jump each blink.
+        lines.push_back(blink ? "WAITING FOR PLAYER 2" : "");
+        if (lan_announce_.running() && lan_announce_.peer_engaged())
+          lines.push_back("A LAN PLAYER IS CONNECTING");
       }
       break;
     case CodeEntry: {
@@ -1084,28 +1425,124 @@ void NetLobby::draw() {
         // RIGHT instead (see touch_tap) — the centre of the top strip is
         // the ONLINE CO-OP header.
         kBackBand.draw("BACK");
-        Typer::draw_centered(0, 360, "ENTER THE ROOM CODE", sz);
-        Typer::draw_centered(0, 230, slots.c_str(), 48);
+        // LAN host bands under the code slots while hosts are visible
+        // (tapped in touch_tap; a mismatched version still taps through
+        // to lan_join_selected, which explains instead of joining). No
+        // typing hint: the heading + blank slots say it all. With hosts
+        // the code block compresses upward so three finger-sized bands
+        // fit above the soft keyboard (see kLanBand).
+        const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
+        int show =
+            (int)lh.size() > kLanBandCount ? kLanBandCount : (int)lh.size();
+        if (show > 0) {
+          // Clear of the ONLINE CO-OP title (glyphs reach ~y 400).
+          Typer::draw_centered(0, 375, "ENTER THE ROOM CODE", 14);
+          Typer::draw_centered(0, 315, slots.c_str(), 34);
+        } else {
+          Typer::draw_centered(0, 360, "ENTER THE ROOM CODE", sz);
+          Typer::draw_centered(0, 230, slots.c_str(), 48);
+        }
         y = 80;
-        lines.push_back("TYPE THE CODE YOUR HOST SEES");
+        for (int i = 0; i < show; i++) {
+          std::string label =
+              lh[i].proto == Net::PROTO_VERSION
+                  ? "TAP TO JOIN " + lh[i].name
+                  : lh[i].name + " - DIFFERENT VERSION";
+          // Bottom-up fill: host 0 takes the LOWEST band.
+          kLanBand[kLanBandCount - show + i].draw(label.c_str());
+        }
       } else {
         // Heading + code live in the top half: the Steam Deck's floating
         // keyboard docks over the bottom half of the screen (same reason
         // the touch layout hoists them above the soft keyboard).
         Typer::draw_centered(0, 200, "ENTER THE ROOM CODE", sz);
         Typer::draw_centered(0, 120, slots.c_str(), 48);
-        y = -20;
-        if (controller_seen_ && !floating_kb_up_) {
-          // Controller flow: button hints replace the keyboard hint,
-          // picker grid below. Hidden while the Deck's floating
-          // keyboard is up — the keyboard IS the input then, and it
-          // types plain key events; the first controller event that
-          // reaches us proves it was dismissed (it consumes controller
-          // input while showing) and brings the picker back.
-          lines.push_back("A - TYPE   B - DELETE   X - PASTE");
+        // The LAN rows live in the bottom half, which the Deck's floating
+        // keyboard covers — mirror the touch layout's while-typing
+        // visibility with a compact line in the free strip above the
+        // header (keyboard input is consumed by the keyboard, so joining
+        // has to wait for its dismissal anyway).
+        if (floating_kb_up_ && !lan_browse_.hosts().empty()) {
+          std::string top = "ON THIS NETWORK - " + lan_browse_.hosts()[0].name;
+          if (lan_browse_.hosts().size() > 1) top += " +";
+          Typer::draw_centered(0, 428, top.c_str(), 12);
+          Typer::draw_centered(0, 392, "CLOSE THE KEYBOARD TO JOIN", 9);
+        }
+        // Controller flow: button hints replace the keyboard hint.
+        // Hidden while the Deck's floating keyboard is up — the
+        // keyboard IS the input then, and it types plain key events;
+        // the first controller event that reaches us proves it was
+        // dismissed (it consumes controller input while showing).
+        // Drawn directly, not via the shared lines stack (its y sits
+        // in the error text): -48 keeps breathing room under the
+        // transient status (glyphs to ~-26) (Glenn, Deck, twice).
+        // On hardware where the floating keyboard has actually shown
+        // (Deck) the picker grid never draws at all — the keyboard is
+        // the typing surface and Y re-summons it (Glenn), so the LAN
+        // rows take the roomier keyboard-flow spots below instead.
+        bool grid = controller_seen_ && !floating_kb_up_ &&
+                    !floating_kb_available_;
+        // The Deck hint omits B - DELETE: the floating keyboard owns
+        // typing AND has its own backspace, so a delete key hint is
+        // noise there (Glenn). B still backs out of a highlighted LAN
+        // row and deletes a typed char — it's just not advertised.
+        if (controller_seen_ && !floating_kb_up_)
+          Typer::draw_centered(0, -48,
+                               floating_kb_available_
+                                   ? "X - PASTE   Y - KEYBOARD"
+                                   : "A - TYPE   B - DELETE   X - PASTE",
+                               sz);
+        if (grid) {
           draw_picker();
+          // LAN host rows under the picker grid (grid bottom ~ -204):
+          // walking down off the grid's last row highlights them, A
+          // joins, B backs out (see controller()).
+          // Between the picker's second row (bottoms ~ -248) and the
+          // RETURN TO MENU band text at -420.
+          const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
+          int show = lan_rows_shown();
+          if (show > 0) {
+            Typer::draw_centered(0, -262, "ON THIS NETWORK", 9);
+            for (int i = 0; i < show; i++) {
+              std::string row =
+                  (lan_sel_ == i ? "> " : "  ") + lh[i].name;
+              if (lh[i].proto != Net::PROTO_VERSION)
+                row += " - DIFFERENT VERSION";
+              Typer::draw_centered(0, -288.0f - (float)i * 32.0f,
+                                   row.c_str(), lan_sel_ == i ? 14 : 11);
+            }
+            // The keyboard flow's join hint in the pad's vocabulary
+            // (Glenn, Deck). The status line moved to the top half for
+            // this layout, so the 2-row stack can reach down here
+            // freely (bottom ~ -376, clear of the band text at -420).
+            Typer::draw_centered(0, -296.0f - (float)show * 32.0f,
+                                 "UP/DOWN AND A TO JOIN", 8);
+          }
         } else {
-          lines.push_back("TYPE THE CODE YOUR HOST SEES");
+          // LAN host rows clear of the header (y=320) and heading/code
+          // (200/120) above; up/down moves the highlight (arrows or
+          // pad — see keyboard()/picker_nav), Enter or A joins.
+          const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
+          int show = lan_rows_shown();
+          if (show > 0) {
+            Typer::draw_centered(0, -110, "ON THIS NETWORK", 12);
+            for (int i = 0; i < show; i++) {
+              std::string row =
+                  (lan_sel_ == i ? "> " : "  ") + lh[i].name;
+              if (lh[i].proto != Net::PROTO_VERSION)
+                row += " - DIFFERENT VERSION";
+              Typer::draw_centered(0, -160.0f - (float)i * 46.0f,
+                                   row.c_str(), lan_sel_ == i ? 18 : 14);
+            }
+            // 14 extra under the last row: a SELECTED row's size-18
+            // glyphs reach ~36 below their anchor, which left the hint
+            // nearly touching the name (Glenn's screenshot).
+            Typer::draw_centered(0, -174.0f - (float)show * 46.0f,
+                                 controller_seen_
+                                     ? "UP/DOWN AND A TO JOIN"
+                                     : "UP/DOWN AND ENTER TO JOIN",
+                                 10);
+          }
         }
       }
       break;
@@ -1121,6 +1558,10 @@ void NetLobby::draw() {
         snprintf(left, sizeof(left), "GIVING UP IN %d",
                  rejoin_budget_ms_ > 0 ? rejoin_budget_ms_ / 1000 + 1 : 0);
         lines.push_back(left);
+      } else if (lan_joining_) {
+        lines.push_back(("JOINING " + lan_host_name_).c_str());
+        lines.push_back("ON THIS NETWORK");
+        if (blink) lines.push_back("PLEASE WAIT");
       } else {
         lines.push_back("JOINING THE ROOM");
         if (blink) lines.push_back("PLEASE WAIT");
@@ -1131,14 +1572,16 @@ void NetLobby::draw() {
       if (blink) lines.push_back("PLEASE WAIT");
       break;
     case HostWaitAnswer:
-      lines.push_back("1. INVITE CODE COPIED - SEND IT TO YOUR FRIEND");
-      lines.push_back("2. THEY JOIN AND SEND YOU A REPLY CODE");
-      lines.push_back("3. COPY THE REPLY, THEN PRESS V HERE");
+      lines.push_back("INVITE CODE COPIED");
+      lines.push_back("SEND IT TO YOUR FRIEND");
+      lines.push_back("V - PASTE THEIR REPLY");
       lines.push_back("");
       lines.push_back("C - COPY THE INVITE AGAIN");
+      if (lan_announce_.running() && lan_announce_.peer_engaged())
+        lines.push_back("A LAN PLAYER IS CONNECTING");
       break;
     case JoinWaitOffer:
-      lines.push_back("GET THE INVITE CODE FROM YOUR HOST");
+      lines.push_back("GET THE INVITE FROM YOUR HOST");
       lines.push_back("");
       lines.push_back("V - PASTE THE INVITE CODE");
       break;
@@ -1159,7 +1602,8 @@ void NetLobby::draw() {
         lines.push_back("REPLY CODE COPIED TO CLIPBOARD");
         lines.push_back("SEND IT BACK TO THE HOST");
         lines.push_back("");
-        if (blink) lines.push_back("WAITING FOR CONNECTION");
+        // Blank on the off-phase so the COPY hint below doesn't jump.
+        lines.push_back(blink ? "WAITING FOR CONNECTION" : "");
         lines.push_back("");
         lines.push_back("C - COPY THE REPLY AGAIN");
       }
@@ -1205,7 +1649,15 @@ void NetLobby::draw() {
   if (status_ms_ > 0 && !status_.empty() && !status_redundant) {
     // Touch code entry: the usual status spot is behind the soft
     // keyboard; tuck it under the hint line instead.
-    int sy = (is_touch_mode() && screen_ == CodeEntry) ? 20 : -320;
+    // CodeEntry hoists the status out of the bottom half on touch (soft
+    // keyboard) AND in the controller layout (picker + LAN rows + join
+    // hint own the space down to ~-376); it sits in the gap between the
+    // code slots (glyphs to 24) and the button-hint line at -48 — low in
+    // that gap, since at size 15 it descends to ~-26 and y 20 grazed the
+    // code glyphs (Glenn, Deck).
+    int sy = (screen_ == CodeEntry && (is_touch_mode() || controller_seen_))
+                 ? 4
+                 : -320;
     Typer::draw_centered(0, sy, status_.c_str(), 15);
   }
 
@@ -1227,6 +1679,50 @@ void NetLobby::keyboard(unsigned char key, int x, int y) {
   // Touch synthesizes '\r' on finger-down too, and a full code auto-joins,
   // so Enter is meaningless there — it would only flash the length hint.
   if (is_touch_mode() && (key == '\r' || key == '\n')) return;
+  // Deck: a Steam-shortcut keyboard summon is invisible (Steamworks has
+  // no SHOWN callback — Y is the observable path), but its keystrokes
+  // are not: a typed character arriving while the controller layout is
+  // up, on hardware where the floating keyboard has shown, means an OSD
+  // is open over it. Flip on the first keystroke. Never fires on
+  // desktop — floating_kb_available_ only latches where the keyboard
+  // really shows.
+  if (controller_seen_ && floating_kb_available_ && !floating_kb_up_ &&
+      !is_touch_mode()) {
+    bool typed = (key >= 'a' && key <= 'z') || (key >= 'A' && key <= 'Z') ||
+                 (key >= '0' && key <= '9') || key == 8 || key == 127;
+    if (typed) floating_kb_up_ = true;
+  }
+  // Arrow keys (128+GLUT specials — code entry ignores them, so the
+  // keys were free; deliberately NOT nav_key-translated, which would
+  // turn them into W/A/D code letters).
+  if (!is_touch_mode() && controller_seen_ && !floating_kb_up_) {
+    // The picker is showing: arrows drive the same grid+LAN-row
+    // navigation the pad does, and Enter acts like the pad's A —
+    // type the highlighted character, or join a highlighted host.
+    // Direct typing/backspace still work through code_entry_key.
+    switch (key) {
+      case 128 + 100: picker_nav('a'); return;  // left
+      case 128 + 101: picker_nav('w'); return;  // up
+      case 128 + 102: picker_nav('d'); return;  // right
+      case 128 + 103: picker_nav('s'); return;  // down
+    }
+    if (key == '\r' || key == '\n') {
+      controller_confirm();
+      return;
+    }
+  } else if (!is_touch_mode() && lan_rows_shown() > 0) {
+    // No picker (pure keyboard flow): up/down moves the highlight
+    // between the discovered hosts and the code field (-1).
+    int n = lan_rows_shown();
+    if (key == 128 + 101) {  // up: code field wraps to the last row
+      lan_sel_ = (lan_sel_ <= -1) ? n - 1 : lan_sel_ - 1;
+      return;
+    }
+    if (key == 128 + 103) {  // down: past the last row = code field
+      lan_sel_ = (lan_sel_ >= n - 1) ? -1 : lan_sel_ + 1;
+      return;
+    }
+  }
   code_entry_key(key);
 }
 
@@ -1235,6 +1731,10 @@ void NetLobby::keyboard(unsigned char key, int x, int y) {
 // all valid code characters.
 void NetLobby::code_entry_key(unsigned char key) {
   if (key == '\r' || key == '\n') {
+    if (lan_sel_ >= 0) {  // a LAN host row is highlighted: join it
+      lan_join_selected();
+      return;
+    }
     confirm();
     return;
   }
@@ -1266,7 +1766,7 @@ void NetLobby::code_entry_key(unsigned char key) {
     // Deliberately absent from the code alphabet: 0/O, 1/I and 5/S are
     // confusable in the game font, F is the fullscreen key. Say so
     // instead of silently eating the keystroke.
-    set_status("CODES NEVER USE 0 O 1 I 5 S OR F");
+    set_status("CODES NEVER USE 0 I OR F");
   }
 }
 
@@ -1322,6 +1822,45 @@ void NetLobby::nav_input(unsigned char key) {
   }
 }
 
+// One navigation model for the picker grid + the LAN host rows under
+// it, spoken in logical wasd. Fed by BOTH the controller translator
+// (dpad/stick) and the keyboard arrow keys — the picker shows whenever
+// a controller has been seen, but a player with both devices in reach
+// uses either, and the arrows previously did nothing there (Glenn).
+void NetLobby::picker_nav(unsigned char key) {
+  // Deck (floating keyboard proven): there is no picker grid — the
+  // keyboard types, so up/down just walk the code field (-1) and the
+  // LAN host rows, and left/right mean nothing (Glenn).
+  if (floating_kb_available_) {
+    if (key == 's' && lan_sel_ < lan_rows_shown() - 1) lan_sel_++;
+    else if (key == 'w' && lan_sel_ >= 0) lan_sel_--;
+    return;
+  }
+  switch (key) {
+    case 'w':
+      if (lan_sel_ >= 0) lan_sel_--;  // -1 = back onto the grid
+      else picker_move(0, -1);
+      break;
+    case 's':
+      if (lan_sel_ >= 0) {
+        if (lan_sel_ < lan_rows_shown() - 1) lan_sel_++;
+      } else if (lan_rows_shown() > 0 && picker_on_bottom_row()) {
+        lan_sel_ = 0;  // walk off the grid into the rows
+      } else {
+        picker_move(0, 1);
+      }
+      break;
+    case 'a':
+      if (lan_sel_ < 0) picker_move(-1, 0);
+      break;
+    case 'd':
+      if (lan_sel_ < 0) picker_move(1, 0);
+      break;
+    default:
+      break;
+  }
+}
+
 // Wraps the picker selection through the alphabet: dx walks the strip
 // (wrapping row to row), dy jumps a row keeping the column.
 void NetLobby::picker_move(int dx, int dy) {
@@ -1342,10 +1881,39 @@ void NetLobby::controller_confirm() {
   // Touch platforms never draw the picker (the soft keyboard owns code
   // entry there), so a paired controller must not type from it blind.
   if (screen_ == CodeEntry && !is_touch_mode()) {
+    if (lan_sel_ >= 0) {  // a LAN host row is highlighted: join it
+      lan_join_selected();
+      return;
+    }
+    // Deck: no picker to type from — A acts like Enter on the typed
+    // code (join on full, length hint otherwise).
+    if (floating_kb_available_) {
+      confirm();
+      return;
+    }
     code_entry_key((unsigned char)NET_ROOM_CODE_ALPHABET[picker_index_]);
     return;
   }
   confirm();
+}
+
+// The picker's last (possibly short) row — walking down off it enters
+// the LAN host rows drawn underneath.
+bool NetLobby::picker_on_bottom_row() const {
+  int n = (int)strlen(NET_ROOM_CODE_ALPHABET);
+  int rows = (n + PICKER_COLS - 1) / PICKER_COLS;
+  return picker_index_ / PICKER_COLS == rows - 1;
+}
+
+// How many LAN host rows the current screen draws — the picker layout
+// fits 2 under the grid; the keyboard layout AND the Deck's gridless
+// controller layout (floating keyboard proven, rows in the same
+// roomier spots) fit 3. Draw and selection both use this so the
+// highlight can never land on an invisible host.
+int NetLobby::lan_rows_shown() const {
+  int n = (int)lan_browse_.hosts().size();
+  int cap = (controller_seen_ && !floating_kb_available_) ? 2 : 3;
+  return n > cap ? cap : n;
 }
 
 void NetLobby::controller(SDL_Event event) {
@@ -1385,6 +1953,16 @@ void NetLobby::controller(SDL_Event event) {
       return;
     }
     if (event.cbutton.button == SDL_CONTROLLER_BUTTON_Y) {
+      // Deck: Y re-summons the floating keyboard on CodeEntry (its copy
+      // meaning is useless there — nothing local to copy yet). Steam
+      // has no keyboard-SHOWN callback, so a Steam+X summon leaves the
+      // layout stuck in controller mode (Glenn); Y routes the summon
+      // through the game so the mode toggles reliably both ways.
+      if (screen_ == CodeEntry && floating_kb_available_ &&
+          !is_touch_mode()) {
+        floating_kb_up_ = code_entry_keyboard(true);
+        return;
+      }
       copy_local_description();
       return;
     }
@@ -1401,6 +1979,13 @@ void NetLobby::controller(SDL_Event event) {
   if (screen_ == CodeEntry) {
     if (event.type == SDL_CONTROLLERBUTTONDOWN &&
         event.cbutton.button == SDL_CONTROLLER_BUTTON_B &&
+        !is_touch_mode() && lan_sel_ >= 0) {
+      // B steps back out of the LAN host rows before it deletes/leaves.
+      lan_sel_ = -1;
+      return;
+    }
+    if (event.type == SDL_CONTROLLERBUTTONDOWN &&
+        event.cbutton.button == SDL_CONTROLLER_BUTTON_B &&
         !is_touch_mode() && !code_entry_.empty()) {
       // Console convention: B deletes while there is something to delete,
       // and only backs out of an empty code field (non-touch only — the
@@ -1411,11 +1996,15 @@ void NetLobby::controller(SDL_Event event) {
     if (event.type == SDL_CONTROLLERBUTTONDOWN &&
         event.cbutton.button == SDL_CONTROLLER_BUTTON_START)
       return;  // Start is not a picker key (A/RT type, and joins on full)
-    switch (nav_key_from_controller(event)) {
-      case 'w':  picker_move(0, -1); break;
-      case 's':  picker_move(0, 1);  break;
-      case 'a':  picker_move(-1, 0); break;
-      case 'd':  picker_move(1, 0);  break;
+    // LAN host rows sit BELOW the picker grid (max 2 drawn): walking down
+    // off the grid's bottom row enters them, up from the top row returns
+    // to the grid, A joins the highlighted host (controller_confirm), B
+    // backs out (above). lan_sel_ -1 = the picker owns the pad.
+    unsigned char nk = nav_key_from_controller(event);
+    switch (nk) {
+      case 'w': case 's': case 'a': case 'd':
+        picker_nav(nk);
+        break;
       case '\r': controller_confirm(); break;
       case 27:   leave_to_menu(); break;
       default:   break;
@@ -1449,8 +2038,24 @@ void NetLobby::touch_tap(float nx, float ny) {
         leave_to_menu();
         return;
       }
+      // LAN host bands (drawn in place of the typing hint). A version
+      // mismatch taps through to the explanatory status message.
+      {
+        const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
+        int show =
+            (int)lh.size() > kLanBandCount ? kLanBandCount : (int)lh.size();
+        for (int i = 0; i < show; i++) {
+          // Mirror of the draw's bottom-up fill.
+          if (kLanBand[kLanBandCount - show + i].contains(nx, ny)) {
+            lan_sel_ = i;
+            lan_join_selected();
+            return;
+          }
+        }
+      }
       // Re-summon a dismissed soft keyboard (touch; no-op elsewhere).
       floating_kb_up_ = code_entry_keyboard(true);
+        if (floating_kb_up_) floating_kb_available_ = true;
       break;
     case RoomHost:
       if (kShareBand.contains(nx, ny) && !room_code_.empty() &&

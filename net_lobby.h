@@ -25,6 +25,7 @@
 #include <string>
 #include <vector>
 
+#include "net_lan.h"
 #include "net_session.h"
 #include "state.h"
 
@@ -36,6 +37,12 @@ class NetLobby : public State {
 public:
   NetLobby();
   virtual ~NetLobby();
+
+  // True while the room-code field is consuming typed characters — the
+  // platform layer suppresses global single-key hotkeys (the bare F
+  // fullscreen toggle) so typing into the field can't trigger them
+  // (StateManager::text_entry_active).
+  bool code_entry_active() const { return screen_ == CodeEntry; }
 
   void draw() override;
   void keyboard(unsigned char key, int x, int y) override;
@@ -78,6 +85,15 @@ private:
   void fail_online_not_allowed();
   // show_ms <= 0 = the default 4 s; known-error advisories pass longer.
   void set_status(const char *text, int show_ms = -1);
+  // Summon (open=true) / dismiss the code-entry keyboard: the touch soft
+  // keyboard, or the Steam Deck floating keyboard (returns true when the
+  // floating keyboard actually came up). A programmatic dismiss issued
+  // while the keyboard is believed up is counted, so its async
+  // FloatingGamepadTextInputDismissed_t callback is absorbed by the tick
+  // drain instead of being mistaken for a USER dismiss (which would clear
+  // floating_kb_up_ while a re-summoned keyboard is still visible — the
+  // rate-limit bounce dismissed-then-reshowed within one frame; Glenn).
+  bool code_entry_keyboard(bool open);
   void pump_signal(int delta);
   void fall_back_to_manual(const char *why);
   // The joiner's twin of the host's manual fallback: the signal server
@@ -96,11 +112,38 @@ private:
   // shows a character-picker grid of the code alphabet once a controller
   // is seen — d-pad/stick moves, A or right trigger types, B deletes.
   void picker_move(int dx, int dy);
+  // Shared picker-grid + LAN-row navigation in logical wasd, fed by the
+  // controller translator AND the keyboard arrows (raw 128+specials —
+  // nav_key's wasd outputs are code letters, so CodeEntry can't use it).
+  void picker_nav(unsigned char key);
   void controller_confirm();  // A / right trigger
   void draw_picker();
+  // LAN play (net_lan.h; NETPLAY.md "LAN is not a mode"): the host's
+  // lobby always beacons + serves the manual INVITE blob over TCP as a
+  // second door beside the relay; the joiner's CodeEntry lists beaconing
+  // hosts above the code field. Whichever door's joiner completes first
+  // takes the co-op slot.
+  void lan_host_update(int delta);
+  void lan_join_update(int delta);
+  void lan_join_selected();
+  void lan_teardown();
+  // Round 3: every input flavour reaches the LAN rows. Controller walks
+  // down off the picker grid into them; the caps keep the highlight on
+  // rows that are actually drawn (2 under the picker, 3 keyboard-flow).
+  bool picker_on_bottom_row() const;
+  int lan_rows_shown() const;
+  void lan_rejoin_restart(const char *why);
 public:
   // M3-1 auto-rejoin: skip Choose and join the known room immediately.
   explicit NetLobby(const std::string &rejoin_code);
+  // LAN rejoin (round 4): the session came through the LAN door, so the
+  // way back is rediscovery, not a room code — browse for the remembered
+  // host NAME and auto-run the blob exchange when its beacon reappears
+  // (the host's GLGame re-beacons on loss; a restarted host app beacons
+  // the same name from its lobby). The tag disambiguates from the
+  // room-code ctor above.
+  struct LanRejoinTag {};
+  NetLobby(const std::string &lan_host_name, LanRejoinTag);
   // A room known to be dead (host said BYE, or the relay reported it
   // closed/gone): the clipboard auto-join refuses it for the rest of this
   // run — typing it manually still works.
@@ -129,6 +172,12 @@ private:
   // so the own-room auto-join guards don't apply, and an empty/invalid
   // clipboard gets told off instead of silently ignored.
   bool code_clip_explicit_ = false;
+  // The in-flight join came from the clipboard AUTO-join, not the
+  // player: its relay failure stays silent (dead-marking still stops
+  // retries). A typed bad code followed ~800 ms later by the repoll
+  // probing a stale clipboard code showed TWO "NO ROOM WITH THAT CODE"
+  // errors — reading as the lobby retrying (Glenn, Deck, task #165).
+  bool last_join_was_auto_ = false;
   int code_clip_retry_ms_;   // Android 10 focus-gated reads: brief retry
   int code_clip_repoll_ms_ = 0;  // desktop: idle re-poll for late codes/invites
   // M3-1 auto-rejoin retries: a mobile client's own network is often still
@@ -161,10 +210,36 @@ private:
   // translator; only the picker's own bits remain here).
   bool controller_seen_ = false;  // draws the picker + button hints
   // The Deck's floating keyboard is showing: hide the picker under it.
-  // Cleared when a controller event reaches us (the keyboard consumes
+  // Cleared by the Steamworks dismissed callback (instant), or by a
+  // controller event reaching us (fallback — the keyboard consumes
   // controller input while up, so an event proves it was dismissed).
   bool floating_kb_up_ = false;
+  // This hardware has actually shown the floating keyboard (Deck):
+  // enables the Y - KEYBOARD re-summon and its hint. Steam has no
+  // keyboard-SHOWN callback, so a Steam+X summon is invisible to the
+  // game — Y routes the re-summon through a path it can see.
+  bool floating_kb_available_ = false;
+  // Programmatic floating-keyboard dismisses awaiting their async
+  // Dismissed callback: the tick drain decrements this instead of
+  // clearing floating_kb_up_, so only a genuine user dismiss brings the
+  // picker/hints back (see code_entry_keyboard).
+  int floating_kb_dismiss_pending_ = 0;
   int picker_index_ = 0;
+
+  // LAN state. lan_transport_ is the host's LAN-door peer connection
+  // (no STUN, non-trickle) — the relay keeps its own transport_ so an
+  // SDP is never answered twice across the two doors.
+  NetLan::Announce lan_announce_;
+  NetLan::Browse lan_browse_;
+  NetTransport *lan_transport_ = nullptr;
+  bool lan_offer_set_ = false;   // offer blob handed to the announcer
+  int lan_sel_ = -1;             // CodeEntry host row (-1 = code field)
+  bool lan_joining_ = false;     // joiner committed to a LAN host
+  std::string lan_host_name_;    // the host we committed to (for draw)
+  int lan_browse_ms_ = 0;        // time browsing (blob-pickup hold grace)
+  bool lan_blob_held_ = false;   // logged the hold once (repoll re-fires it)
+  bool lan_rejoin_ = false;      // round 4: rediscover-and-rejoin mode
+  std::string lan_rejoin_name_;  // the host name to auto-select
 
   int currentTime;
   WrappedPoint viewpoint;
