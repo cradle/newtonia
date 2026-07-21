@@ -59,6 +59,43 @@ shot() {
 # newtonia_windows: window ids of all game instances, oldest first
 newtonia_windows() { xdotool search --name Newtonia | sort -n; }
 
+# wait_no_windows: poll until every game window is gone (15 s cap). Use
+# between sequential pairings in one Xvfb session — a lingering window from
+# the previous pairing otherwise gets scooped up by newtonia_windows and
+# eats the next pairing's keystrokes.
+wait_no_windows() {
+  local i
+  for i in $(seq 1 15); do
+    [ -z "$(newtonia_windows)" ] && return 0
+    sleep 1
+  done
+  echo "stale game windows never closed"; exit 1
+}
+
+# kill_pair PID PID: SIGTERM (clean quit through the SDL_QUIT path — saves
+# run, an online host says BYE) with a SIGKILL fallback so a wedged
+# instance can never hang the driver's wait/teardown. Logs are already
+# written by teardown time; the hard kill loses nothing.
+kill_pair() {
+  kill "$@" 2>/dev/null; sleep 2
+  kill -9 "$@" 2>/dev/null; wait "$@" 2>/dev/null
+}
+
+# nav_host WINDOW: attract -> menu -> ONLINE -> HOST (fresh-prefs menu
+# layout: NEW GAME, ONLINE, OPTIONS — no CONTINUE).
+nav_host() {
+  key "$1" Return; sleep 1; key "$1" s; key "$1" Return; sleep 1; key "$1" Return
+}
+
+# nav_join WINDOW CODE: attract -> menu -> ONLINE -> JOIN -> type the code
+# (the join fires when the fifth character lands).
+nav_join() {
+  local c
+  key "$1" Return; sleep 1; key "$1" s; key "$1" Return; sleep 1
+  key "$1" s; key "$1" Return; sleep 1
+  for c in $(echo "$2" | grep -o .); do key "$1" "$c"; done
+}
+
 # host_room_code LOGNAME: poll the host's log for the room code (30 s)
 host_room_code() {
   local code="" i

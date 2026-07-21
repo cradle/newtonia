@@ -3,6 +3,7 @@
 #include <cmath>
 #include <vector>
 
+#include "net_policy.h"
 #include "net_protocol.h"
 #include "savegame.h"
 
@@ -263,11 +264,79 @@ const uint32_t BUILD_ID = 0;
 // the peer is not a compatible game — give up rather than sit forever.
 const int HANDSHAKE_TIMEOUT_MS = 10000;
 
+// Test hook: send the pre-identity (short) HELLO/WELCOME so the e2e
+// mixed-version drivers (test/e2e/identity_legacy.sh) can act as an old
+// build without needing an old binary on disk.
+bool identity_suppressed() {
+  const char *e = std::getenv("NEWTONIA_NET_NO_IDENTITY");
+  return e && e[0] && e[0] != '0';
+}
+
+// Test hook: send the identity with the name withheld (name_len 0) — the
+// badge-only state. Valid on the wire by design: a console backend may
+// withhold the display name while still sending the platform tag (the tag
+// alone satisfies cross-network identifiability; names are optional
+// everywhere). test/e2e/identity.sh asserts the badge-only path with this.
+bool identity_name_withheld() {
+  const char *e = std::getenv("NEWTONIA_NET_ANON_IDENTITY");
+  return e && e[0] && e[0] != '0';
+}
+
+// Append-only identity extension shared by HELLO and WELCOME — see the
+// PROTO_VERSION comment in net_protocol.h. Old peers ignore the trailing
+// bytes; the parse side reads them only when present.
+void append_identity(std::vector<uint8_t> &msg) {
+  if (identity_suppressed()) return;
+  const NetIdentity &id = net_local_identity();
+  size_t n = identity_name_withheld() ? 0 : id.name.size();
+  if (n > (size_t)NET_IDENTITY_NAME_MAX) n = NET_IDENTITY_NAME_MAX;
+  Net::put_u8(msg, id.platform);
+  Net::put_u8(msg, (uint8_t)n);
+  if (n) Net::put_bytes(msg, id.name.data(), n);
+}
+
+// Parses the appended identity, tolerating every legacy/hostile shape: a
+// short (old-build) message means "no identity", name_len 0 is a VALID
+// name-withheld identity (platform known, badge-only — NOT the legacy
+// case; renders as badge + generic fallback name), and a lying name_len must
+// neither fault the reader nor fail the otherwise-valid handshake — the
+// caller runs this only AFTER accepting the message, and ignores r.ok
+// from here on.
+void parse_identity(Net::Reader &r, NetIdentity &out) {
+  out = NetIdentity();
+  if (r.remaining() < 2) return;  // legacy peer: nothing appended
+  uint8_t platform = r.u8();
+  uint8_t name_len = r.u8();
+  std::string name;
+  if (name_len) {
+    // bytes() is the single lying-length guard: it bounds-checks and
+    // returns null on over-read (flipping r.ok, which the caller no
+    // longer consults after accepting the message).
+    const uint8_t *bytes = r.bytes(name_len);
+    if (!bytes) return;  // inconsistent length: treat as no identity
+    name.assign((const char *)bytes, name_len);
+  }
+  out.platform = platform;
+  out.name = net_sanitize_name(name);  // cap + Typer glyph set, our side
+}
+
+// One greppable line per handshake, the presence/invites log convention
+// (test/e2e/identity.sh asserts on it). Display name only — never IDs.
+void log_identity(const NetIdentity &id) {
+  if (id.known())
+    NET_LOG("net: identity peer name='%s' platform=%s(%u)\n",
+            id.name.c_str(), net_platform_label(id.platform),
+            (unsigned)id.platform);
+  else
+    NET_LOG("net: identity none (legacy peer)\n");
+}
+
 void send_hello(NetTransport *t) {
   std::vector<uint8_t> msg;
   Net::put_header(msg, Net::MSG_HELLO, 2);
   Net::put_u16(msg, Save::GameState::VERSION);
   Net::put_u32(msg, BUILD_ID);
+  append_identity(msg);
   t->send_reliable(&msg[0], msg.size());
 }
 
@@ -277,6 +346,7 @@ void send_welcome(NetTransport *t) {
   Net::put_u8(msg, 2);     // assigned player id
   Net::put_u16(msg, 8);    // step_size (ms) — informational for now
   Net::put_u16(msg, 100);  // snapshot period (ms)
+  append_identity(msg);
   t->send_reliable(&msg[0], msg.size());
 }
 
@@ -343,6 +413,22 @@ void NetSession::update(int delta_ms) {
         phase_ = Rejected;
         return;
       }
+      // Accept path only, AFTER the version gate: the identity append is
+      // metadata and must never fail the handshake — but it IS the input
+      // to the comms-policy gate (net_policy.h; default backend always
+      // allows), which must run HERE, before the WELCOME goes out: refusing
+      // after Ready would ghost the joiner on a CONNECTED screen it was
+      // never entitled to, and every session adopter (lobby, mid-game
+      // rejoin) inherits this single chokepoint instead of re-checking.
+      parse_identity(r, peer_identity_);
+      log_identity(peer_identity_);
+      if (!net_comms_allowed_with(peer_identity_)) {
+        NET_LOG("net: identity - peer refused by policy\n");
+        send_reject(transport_, RejectNotAllowed);
+        reject_reason_ = RejectNotAllowed;
+        phase_ = Rejected;
+        return;
+      }
       send_welcome(transport_);
       phase_ = Ready;
       return;
@@ -353,6 +439,18 @@ void NetSession::update(int delta_ms) {
       (void)r.u16();  // step size
       (void)r.u16();  // snapshot period
       if (!r.ok || assigned != 2) continue;
+      parse_identity(r, peer_identity_);
+      log_identity(peer_identity_);
+      // The client-side twin of the host's pre-WELCOME policy gate. There
+      // is no client->host reject message; the host experiences the local
+      // refusal as a peer that never sends INPUT and takes its normal
+      // disconnect/rejoin path.
+      if (!net_comms_allowed_with(peer_identity_)) {
+        NET_LOG("net: identity - peer refused by policy\n");
+        reject_reason_ = RejectNotAllowed;
+        phase_ = Rejected;
+        return;
+      }
       phase_ = Ready;
       return;
     }

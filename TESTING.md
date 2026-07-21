@@ -118,6 +118,24 @@ test/e2e/shock_hazards_net.sh # PROTO 22 shock vs a hazard: host skips to gen 9
                      # trip both ways, the pulsar replicated, nobody crashed
                      # (the client now seeks hostiles + drains hazard/partner
                      # struck entries), clean log. Guards #142.
+test/e2e/identity.sh # peer-identity happy path: named exchange both ways
+                     # (NEWTONIA_NET_NAME=GLENN/BOB — default builds send
+                     # no name) logged as "net: identity peer name='GLENN'
+                     # platform=DESKTOP(1)"; phase B is the badge-only
+                     # state (NEWTONIA_NET_ANON_IDENTITY=1 host sends
+                     # name_len 0 — platform known, name withheld, distinct
+                     # from the legacy no-append case) and the receiver's
+                     # role labels (PLAYER 1 = host, PLAYER 2 = client)
+test/e2e/identity_legacy.sh # mixed-version interop: a legacy peer (short
+                     # HELLO/WELCOME via NEWTONIA_NET_NO_IDENTITY=1, both
+                     # directions) must still handshake + bootstrap, with the
+                     # current side logging "net: identity none (legacy peer)"
+                     # — guards the append-only wire convention (no PROTO bump)
+test/e2e/policy.sh   # net_policy refusal path: a host refusing all peers
+                     # (NEWTONIA_NET_TEST_REFUSE_COMMS=1, default backend's
+                     # inert hook) must reject INSIDE the handshake (MSG_REJECT
+                     # RejectNotAllowed before WELCOME); the joiner never
+                     # bootstraps and both sides stay alive
 ```
 
 `NEWTONIA_TEST_SPAWN_PICKUPS=1` (offline, inert without the env var) rings
