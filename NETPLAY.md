@@ -289,12 +289,22 @@ limited).
 
 **V0 — game-side plumbing (~2 days)**
 
-1. `NetIdentity` gains `bool verified = false`;
-   `NET_IDENTITY_DISPLAY_ENABLED` is deleted and the display helpers
-   key on `id.verified` — badge/name render for a verified peer, role
-   labels otherwise. Anything rendered before the attestation arrives
-   keeps role labels (banners already fired stay); the badge row and
-   lobby HOSTED BY line appear when the bit flips.
+1. Trust is PER FIELD, not per identity (a bool can't even represent
+   the GC default below — account attested, name not): `NetIdentity`
+   gains `enum Trust { Absent, Claimed, Attested }` for `platform` and
+   `name` independently. `NET_IDENTITY_DISPLAY_ENABLED` is deleted and
+   the display helpers apply ONE rule with no special cases: **render
+   Attested fields; role labels for everything else** ("PLAYER 1/2" IS
+   the unverified identifier — deliberate: never render unattested
+   claims, even with a warning marker, because players read names, not
+   markers). Every state maps for free: legacy = Absent/Absent,
+   badge-only = Claimed/Absent, web = Claimed/Claimed forever, GC
+   default = Attested platform + Claimed name, revocation = a
+   transition Attested→Claimed. Anything rendered before attestation
+   arrives keeps role labels; the badge row / lobby HOSTED BY appear
+   when a field turns Attested. Polish for V1+: a small positive
+   verified glyph (✓/shield added to the Typer set) beside Attested
+   names — the only marker worth having is the positive one.
 2. New signaling room message `identity` {role, platform, name,
    verified}, broadcast by the worker; both roles consume it into
    `net_peer_identity_` (fields bounded, name run through
@@ -371,8 +381,8 @@ vs P2P `BeginAuthSession`, using only documented APIs:
    a new server auth code; GC: a fresh signature — which also shrinks
    GC's replay window from "until timestamp expiry" to one heartbeat
    interval). Worker re-validates; a failed or missing heartbeat →
-   broadcast the V0 `identity` message with verified=false → the badge
-   drops to role labels live. Logout/account-loss now surfaces within
+   broadcast the V0 `identity` message demoting the fields
+   Attested→Claimed → the badge drops to role labels live. Logout/account-loss now surfaces within
    one interval — Steam-push doesn't exist for Web API consumers (no
    auth-session feed; only `GetPlayerBans` polls solidly, presence is
    privacy-unreliable), so client-driven re-attestation is the ONLY
