@@ -59,6 +59,51 @@ npx wrangler deploy             # production
 npx wrangler deploy --env beta  # beta
 ```
 
+### Beta TURN setup
+
+There is no separate TURN server to run — TURN is Cloudflare Realtime
+(Calls), and the worker mints short-lived credentials itself whenever
+`TURN_KEY_ID` + `TURN_API_TOKEN` are present on its env (see
+`turn_ice_servers` in `worker.js`). A fresh beta worker has neither, so
+it stays STUN-only until you attach a key. To set beta up like
+production:
+
+```sh
+cd signal
+# The Cloudflare Realtime TURN key (dashboard -> Realtime -> TURN, or the
+# Calls API POST /accounts/<id>/calls/turn_keys): key ID + its API token.
+npx wrangler secret put TURN_KEY_ID    --env beta
+npx wrangler secret put TURN_API_TOKEN --env beta
+```
+
+That's enough to enable minting — a bad pair silently yields `[]`
+(STUN-only), so verify success by connecting a host and checking for
+`turn:`/`turns:` ICE frames ahead of the room code (or `npx wrangler
+tail --env beta` -> `turn creds minted, ttl=…s`).
+
+**Beta credentials, prod bandwidth.** A dedicated beta TURN key isolates
+the *credentials* (roll or revoke beta's without touching prod), but
+relay egress bills to the one Cloudflare account — beta and prod share
+the same Realtime free tier (~1,000 GB/month). Test traffic counts
+against the same pool.
+
+**Optional budget cap on beta.** Prod's automatic TURN budget only gates
+prod minting; the beta worker checks its own env, so without these it
+mints with no auto-cutoff. To make beta pause too, set all three (any
+one missing = the budget can't be measured and minting stays open):
+
+```sh
+npx wrangler secret put CF_ANALYTICS_TOKEN --env beta  # "Account Analytics: Read" token
+npx wrangler secret put CF_ACCOUNT_ID      --env beta  # account tag (npx wrangler whoami)
+npx wrangler secret put TURN_BUDGET_GB     --env beta  # decimal GB, e.g. 100
+```
+
+`TURN_BUDGET_GB` is compared against the **account-wide** month-to-date
+egress, not beta's slice — `100` means "beta drops to STUN-only once the
+whole account crosses 100 GB this month," which layers under prod's 900
+so beta yields first. Defaults to 900 if unset. All beta secrets persist
+across deploys (Cloudflare stores them per script), so this is one-time.
+
 ## Endpoints
 
 - `GET /ws?role=host` — WebSocket; server replies `{t:"room",code:"ABCD"}`
