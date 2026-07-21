@@ -1476,10 +1476,14 @@ void NetLobby::draw() {
         // rows take the roomier keyboard-flow spots below instead.
         bool grid = controller_seen_ && !floating_kb_up_ &&
                     !floating_kb_available_;
+        // The Deck hint omits B - DELETE: the floating keyboard owns
+        // typing AND has its own backspace, so a delete key hint is
+        // noise there (Glenn). B still backs out of a highlighted LAN
+        // row and deletes a typed char — it's just not advertised.
         if (controller_seen_ && !floating_kb_up_)
           Typer::draw_centered(0, -48,
                                floating_kb_available_
-                                   ? "B - DELETE   X - PASTE   Y - KEYBOARD"
+                                   ? "X - PASTE   Y - KEYBOARD"
                                    : "A - TYPE   B - DELETE   X - PASTE",
                                sz);
         if (grid) {
