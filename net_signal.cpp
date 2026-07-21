@@ -201,6 +201,8 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
   if (!json_field(frame, "t", t)) return false;
   ev.text.clear();
   ev.text2.clear();
+  ev.platform = 0;       // Identity-only fields — reset so a prior event's
+  ev.verified = false;   // values can never leak into a reused Event.
   if (t == "room") {
     ev.kind = NetSignal::Event::Room;
     json_field(frame, "token", ev.text2);  // reclaim token (M3-1)

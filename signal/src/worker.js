@@ -617,8 +617,17 @@ export class Room {
       const at_key = role === "host" ? "host_verify_at" : "joiner_verify_at";
       if (this.r[at_key] && now - this.r[at_key] < VERIFY_MIN_INTERVAL_MS)
         return;  // flooded: keep the prior attestation, spend no Valve call
+      // PERSIST the throttle stamp BEFORE the Valve call: this DO hibernates
+      // between idle messages, and an unpersisted stamp would reset on
+      // eviction — a peer pacing frames across evictions could then defeat
+      // the guard. Saving first makes it durable.
       this.r[at_key] = now;
+      await this.save();
       const v = await verifySteamTicket(this.env, cred);
+      // The room can be torn down (host `close`, TTL/grace expiry) while the
+      // verify fetch is in flight — the input gate is open across a non-storage
+      // await. Don't write identity back onto a dead/tombstoned room.
+      if (this.r.closed || !this.r.host_token) return;
       if (v) {
         // Attested name comes from Steam, not the wire (a lying name field
         // stops mattering); the account proven is enough to badge STEAM.
@@ -811,8 +820,12 @@ export class Room {
     this.r.offer_pv = null;
     this.r.host_cands = [];
     // The departed joiner's attestation is stale — a different player may
-    // take the slot. Drop it so a host reclaim can't replay the old identity.
+    // take the slot. Drop it so a host reclaim can't replay the old identity,
+    // and clear the verify throttle stamp too: a fast Steam rejoiner (within
+    // VERIFY_MIN_INTERVAL_MS) would otherwise be throttled and never attested,
+    // since clients announce their identity only once on connect.
     this.r.joiner_identity = null;
+    this.r.joiner_verify_at = 0;
     await this.save();
     const h = this.hostWs();
     if (h) this.safeSend(h, { t: "peer", ev: "leave" });
