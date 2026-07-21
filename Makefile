@@ -255,6 +255,16 @@ ifeq ($(UNAME), Darwin)
   STEAM_RUNTIME = libsteam_api.dylib
   STEAM_SDK_LIB = $(STEAM_SDK)/redistributable_bin/osx/libsteam_api.dylib
   STEAM_LINK = -L. -lsteam_api
+else ifneq (,$(findstring _NT,$(UNAME)))
+  # Windows (MSYS2 MINGW64): the SDK ships steam_api64.dll. MinGW's linker
+  # links directly against the DLL — no gendef/dlltool import library needed
+  # — and the DLL rides beside newtonia-steam.exe at runtime (copied by the
+  # $(STEAM_RUNTIME) rule below). The Windows _NT netplay branch above already
+  # put SDL/GL/libdatachannel/Winsock into $(LIBS); this only adds the Steam
+  # DLL. Mirrors the deploy-steam Windows job.
+  STEAM_RUNTIME = steam_api64.dll
+  STEAM_SDK_LIB = $(STEAM_SDK)/redistributable_bin/win64/steam_api64.dll
+  STEAM_LINK = ./steam_api64.dll
 else
   STEAM_RUNTIME = libsteam_api.so
   STEAM_SDK_LIB = $(STEAM_SDK)/redistributable_bin/linux64/libsteam_api.so
@@ -308,7 +318,7 @@ steam_appid.txt:
 	echo $(STEAM_APPID) > $@
 
 steam-clean:
-	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam $(STEAM_RUNTIME) steam_appid.txt Newtonia.app
+	rm -rf $(STEAM_OBJFILES) $(STEAM_DEPFILES) newtonia-steam newtonia-steam.exe $(STEAM_RUNTIME) steam_appid.txt Newtonia.app
 
 %.steam.o: %.cpp
 	$(CC) $(STEAM_CFLAGS) -c -o $@ $<
