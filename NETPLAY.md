@@ -357,9 +357,21 @@ limited).
    iPhone↔desktop smoke.
 
 **Rollout**: V0+V1 together (Steam field-tests the channel) → V2 → V3.
-Web stays permanently role-labeled (nothing to attest). Xbox fork: an
-XSTS verifier as another worker module (or a fork-side equivalent)
-behind the same V0 bit.
+Web stays permanently role-labeled (nothing to attest). Xbox: the
+worker model is Xbox's NATIVE shape (public docs, 2026-07-20) — no
+peer-attestation primitive exists on Xbox at all; titles present XSTS
+tokens to publisher services configured as a Partner Center "relying
+party". The worker gains an XSTS verifier module: client
+`XUserGetTokenAndSignatureAsync` for our relying party → worker
+decrypts the partner XSTS token (an ENCRYPTED JWT, opaque to clients —
+readable only with the relying party's private key, one more scoped
+worker secret) → claims carry the gamertag (display/caching only per
+Microsoft's own guidance — exactly our model) + partner XUID (pXUID,
+publisher-scoped). Written from public learn.microsoft.com pages, so
+the verifier module can stay upstream; privileges
+(`XUserCheckPrivilege` via net_policy) and cross-network approval
+remain fork-side compliance, independent of this mechanism — behind
+the same V0 bit.
 
 **Architectural backstop (holds regardless):** identity is display-only.
 No matchmaking privilege, host authority, or policy decision hangs off
