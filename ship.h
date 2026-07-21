@@ -240,6 +240,12 @@ class Ship : public CompositeObject {
     // by GLGame's INPUT handler; cleared on reset().
     int net_queued_shot_presses = 0;
     uint32_t net_shot_seq = 0;  // id mint for reported shots
+    // Last time a reported-clone spawn played the shot sound: a
+    // multi-shot trigger pull arrives as one MSG_SHOT per barrel in the
+    // same tick, and playing the chunk per clone stacks N identical
+    // samples into one very loud bang (the firing side plays ONE sound
+    // per pull). Sound-only dedupe — every clone still spawns.
+    uint32_t net_clone_sound_ms = 0;
     struct NetShotReport {
       uint32_t id;
       float x, y, vx, vy;

@@ -26,7 +26,7 @@ touches the Steam API against it:
 
 ```sh
 g++ -std=c++11 -fsyntax-only -DSTEAM_BUILD -Itest/steam_stub -I. -I/usr/include/SDL2 \
-    net_lobby.cpp menu.cpp steam_presence.cpp steam_invites.cpp \
+    net_lobby.cpp menu.cpp steam_presence.cpp steam_invites.cpp steam_keyboard.cpp \
     steam_identity.cpp steam_identity_verify.cpp
 ```
 
@@ -91,6 +91,29 @@ cd signal && npx wrangler dev --local --port 8787 &         # relay
 make clean && make -j                                       # netplay build (default)
 
 test/e2e/room.sh     # connect via room code, 3 level skips, both fire 8s
+test/e2e/lan.sh      # LAN play, NO relay: dead signal URL -> host beacons +
+                     # manual fallback, joiner discovers on CodeEntry
+                     # (loopback beacon), arrow-selects, blob exchange over
+                     # TCP, host-candidate session to bootstrap. Uses a
+                     # private NEWTONIA_LAN_PORT so parallel runs (or a
+                     # real session) don't cross-beacon.
+test/e2e/lanclip.sh  # the LAN-vs-clipboard race (one-box mac field bug): host
+                     # reaches the manual fallback FIRST so its INVITE blob is
+                     # on the shared clipboard when the joiner opens CodeEntry;
+                     # asserts the auto blob pickup is HELD ("invite blob on
+                     # clipboard held"), the LAN row appears, and the join runs
+                     # over the LAN door anyway.
+test/e2e/lankeep.sh  # LAN door + LIVE relay (needs the local wrangler +
+                     # xclip): the room stays open when the LAN door wins
+                     # the pairing - clears the clipboard to beat the code
+                     # auto-join, pairs via the LAN row, then asserts BOTH
+                     # rejoin doors open on peer loss and a re-pair lands.
+test/e2e/lanrejoin.sh # LAN mid-game rejoin, both directions, no relay:
+                     # SIGKILL the LAN joiner -> host reopens the LAN door
+                     # (re-beacon + pause) and a NEW instance re-pairs in;
+                     # then SIGKILL the host -> the client auto-browses for
+                     # the host NAME and re-pairs into a freshly launched
+                     # host's game (2nd bootstrap).
 test/e2e/rejoin.sh   # SIGKILL joiner mid-game -> auto-pause -> rejoin -> resume
 test/e2e/impacts.sh  # gen-3 spin-and-fire: joiner detects cosmetic impacts locally
 test/e2e/ownroom.sh  # shared-prefs auto-join probe (mac host+client on one box)

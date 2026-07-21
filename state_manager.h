@@ -28,6 +28,11 @@ public:
   // True while an online session (in-game or lobby) needs the loop to
   // keep ticking even when the browser tab is hidden (web build).
   bool wants_background_ticks();
+  // True while the current screen is consuming typed text (the lobby's
+  // room-code entry): global single-key hotkeys — the bare F fullscreen
+  // toggle — must not fire on keystrokes meant for the text field (the
+  // Deck's floating keyboard typing F flickered fullscreen; Glenn).
+  bool text_entry_active();
   bool back_pressed();
   void focus_lost();
   void focus_gained();

@@ -279,7 +279,16 @@ jobs:
             echo "--- $3 (${waited}s) ---"; cat "$3"
           }
 
-          run_selftest NEWTONIA_NET_SELFTEST "NET SELFTEST" selftest.log 180
+          # Retried once: `simctl --console-pty` can drop the tail of the
+          # app's output, losing the verdict line even though the test ran
+          # (seen 2026-07-20: offer/answer/connected logged, PASS line
+          # never delivered, watchdog burned). The test itself is pure
+          # loopback, so a genuine regression fails both attempts.
+          for attempt in 1 2; do
+            run_selftest NEWTONIA_NET_SELFTEST "NET SELFTEST" selftest.log 180
+            grep -q "NET SELFTEST PASS" selftest.log && break
+            echo "net selftest attempt $attempt failed"
+          done
           grep -q "NET SELFTEST PASS" selftest.log
 
           # Signal self-test: wss + TLS + a full room round-trip against the

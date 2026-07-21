@@ -124,6 +124,8 @@ public:
 
   void set_force_relay(bool on) override { relay_only_ = on; }
 
+  void set_lan_only(bool on) override { lan_only_ = on; }
+
   // ---- trickle ICE (M3-2b) ----
   void set_trickle(bool on) override { trickle_ = on; }
 
@@ -346,10 +348,15 @@ private:
     rtcConfiguration config;
     std::memset(&config, 0, sizeof(config));
     ice_ptrs_.clear();
-    ice_ptrs_.push_back(STUN_SERVER);
-    for (size_t i = 0; i < ice_extra_.size(); i++)
-      ice_ptrs_.push_back(ice_extra_[i].c_str());
-    config.iceServers = &ice_ptrs_[0];
+    if (!lan_only_) {
+      ice_ptrs_.push_back(STUN_SERVER);
+      for (size_t i = 0; i < ice_extra_.size(); i++)
+        ice_ptrs_.push_back(ice_extra_[i].c_str());
+    }
+    // LAN pairing: zero ICE servers — host candidates gather instantly
+    // (no offline-unreachable STUN query to wait out) and are all a
+    // local network needs.
+    config.iceServers = ice_ptrs_.empty() ? nullptr : &ice_ptrs_[0];
     config.iceServersCount = (int)ice_ptrs_.size();
     if (force_relay() || relay_only_) {
       config.iceTransportPolicy = RTC_TRANSPORT_POLICY_RELAY;
@@ -482,6 +489,7 @@ private:
   std::vector<std::string> ice_extra_;   // composed turn: URLs
   std::vector<const char *> ice_ptrs_;
   bool relay_only_ = false;              // set_force_relay (lobby test hook)
+  bool lan_only_ = false;                // set_lan_only (net_lan pairing)
 
   std::atomic<bool> rel_open_, unrel_open_;
   mutable std::atomic<bool> desc_ready_;

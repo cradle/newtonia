@@ -29,6 +29,8 @@ public:
 // Posted to a running game when Steam hands it a fresh launch command line
 // (an API-delivered Join / steam:// while already open) — steam_invites.cpp.
 struct NewUrlLaunchParameters_t { int m_unused; };
+// Posted when the Deck's floating keyboard is dismissed — steam_keyboard.cpp.
+struct FloatingGamepadTextInputDismissed_t { int m_unused; };
 // Rich Presence surface used by steam_presence.cpp and steam_invites.cpp;
 // persona name used by steam_identity.cpp.
 class ISteamFriends {

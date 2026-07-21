@@ -105,10 +105,40 @@ UDP/broadcast and the web page itself needs serving).
    courier. The existing manual-join machinery then brings the WebRTC
    session up on host candidates. Version mismatch is caught at the
    beacon (PROTO in the packet), before any connection.
-3. **Lobby UX**: a LOCAL row beside HOST/JOIN. Hosting = beacon +
-   listen with a "HOSTING ON THIS NETWORK" screen; joining = a
-   discovered-hosts list (usually exactly one, tap to join). No room
-   codes, no Worker, no invite links.
+3. **Lobby UX — LAN is not a mode** (decided with Glenn 2026-07-18,
+   supersedes the earlier LOCAL-row sketch): discovery weaves into
+   the existing HOST/JOIN screens, no third branch.
+   - **HOST**: the beacon + blob listener start unconditionally
+     alongside the relay connection; the room screen gains a
+     "VISIBLE ON THIS NETWORK" line. Offline degrades invisibly —
+     the relay times out into the existing manual-fallback screen
+     as today, but the beacon keeps running and a LAN joiner
+     connects anyway; the host never chose anything. With internet,
+     both paths are live and whichever joiner arrives first fills
+     the slot. Beacon lifetime mirrors the invite re-advertise
+     logic: while the lobby is open OR mid-game with an empty slot,
+     so LAN rejoin-after-drop works by rediscovery.
+   - **JOIN**: discovered hosts render as a section ABOVE the code
+     entry ("ON THIS NETWORK: ▸ GLENN-MBP" / "OR ENTER A ROOM
+     CODE"), absent entirely when nothing is beaconing — the screen
+     looks unchanged until the moment it's useful. Desktop:
+     up/down (nav ladder w/s) moves between host rows and the code
+     field, Enter joins the highlighted host, typing a letter
+     always goes to the code field. Controller/Deck: host rows
+     join the CodeEntry picker's navigation (the shared
+     nav_key_from_controller translator). **Touch: NOT the full
+     list** — the soft keyboard eats the bottom half (the reason
+     code entry is already hoisted top + CANCEL is a top band), so
+     touch gets a single compact tap band under the code field
+     ("JOIN GLENN-PIXEL ▸ ON THIS NETWORK", strongest/newest
+     beacon); the rare multi-host case gets a small "MORE…" chip
+     that dismisses the keyboard to reveal the full list. Mobile
+     is phase 2 anyway (discovery seam below), so this placement
+     ships with the mobile backends, not the desktop cut. Host
+     names via gethostname() on desktop (device name on mobile
+     later); PROTO mismatch shows the row greyed with "DIFFERENT
+     VERSION" instead of a doomed connect. Cap the list at 3-4; a
+     dead host's row fades after ~2 missed beacons (no flicker).
 4. **Discovery seam for mobile** (later, invites/presence-style:
    shared logic + per-platform backends): Android needs a
    `MulticastLock` (or `NsdManager` mDNS); iOS must NOT use raw
@@ -125,6 +155,161 @@ Estimate: desktop-first a couple of days including lobby UX + e2e;
 each mobile backend ~a day, mostly permission plumbing. Deck LAN
 parties are the killer use case.
 
+**Round 1 LANDED (2026-07-19, task #159)**: `net_lan.h/cpp` (seam-style:
+real UDP-beacon + non-blocking TCP blob exchange on desktop native,
+no-op stubs elsewhere; same-machine duplicate beacons deduped by
+name+port), `NetTransport::set_lan_only` (zero ICE servers — gathering
+is instant, no offline STUN wait), and the NetLobby two-door wiring
+(host always beacons beside the relay, "VISIBLE ON THIS NETWORK" /
+"A LAN PLAYER IS CONNECTING" lines; joiner rows on CodeEntry with
+arrow-key selection below the code field — keyboard flow only this
+round, controller picker + touch band are later rounds; the LAN winner
+closes the relay room). Verified by `test/e2e/lan.sh`: dead signal
+URL, discovery at t=0, 15 ms blob exchange, `ice path host/prflx`
+(zero servers), client bootstrap + gameplay; room.sh regression green
+against the production relay. Known round-2+ items: controller/Deck
+row navigation, touch band (mobile phase), mid-game re-beacon on peer
+loss + LAN rejoin by rediscovery, an Options LAN-visibility toggle if
+anyone minds the hostname broadcast.
+
+**Round 2 field fix (2026-07-20)**: on a shared clipboard (Glenn's
+one-box mac test — also macOS Universal Clipboard between one person's
+devices) the host's manual fallback puts its INVITE blob on the
+clipboard, and the joiner's CodeEntry auto-pickup used to steal the
+screen into the manual flow before the LAN row could appear. The
+AUTOMATIC blob pickup is now held while LAN browse is running and
+either lists hosts or hasn't had time to hear a first beacon (2.5 s);
+the 800 ms repoll re-offers the blob, so with no LAN host around the
+manual flow proceeds exactly as before, and an explicit paste
+(controller X) is never held. Room-code auto-join is deliberately NOT
+held — on a same-LAN relay join ICE picks host candidates anyway.
+Verified by `test/e2e/lanclip.sh`, which reproduces the exact race
+(host on the fallback first, blob delivered — the held log line proves
+it — LAN row joins over the LAN door).
+
+**Round 3 (2026-07-20): controller rows + touch bands + Android
+enablement**. Controller/Deck: the CodeEntry picker grid and the LAN
+rows are one navigation space — walking down off the grid's bottom row
+highlights the rows drawn under it (max 2 there, 3 in the keyboard
+layout; `lan_rows_shown()` caps selection to what is drawn), A joins,
+B backs out to the grid, and up from row 0 returns. Touch: discovered
+hosts appear as tap bands ("TAP TO JOIN <NAME>", max 2) in place of
+the typing hint above the soft keyboard, and the host's RoomHost
+screen shows the ALSO VISIBLE / LAN PLAYER CONNECTING line. Android
+runs the SAME raw-UDP backend as desktop (one wire protocol is the
+point — a phone must discover a desktop host, which mDNS/NSD could
+not): `NewtoniaActivity` holds a `MulticastLock` while foreground
+(CHANGE_WIFI_MULTICAST_STATE, install-time grant) so the wifi driver
+delivers beacons, and `beacon_dests()` walks interfaces via
+SIOCGIFCONF there (getifaddrs needs API 24; minSdk is 21). **iOS is
+compiled but OFF behind `NEWTONIA_LAN_IOS`**: receiving/sending
+broadcast needs the Apple-gated multicast entitlement — request it at
+developer.apple.com/contact/request/networking-multicast, then, once
+Apple grants it, (a) enable the **Multicast Networking** capability on
+the `cc.gfm.newtonia` App ID in the developer portal (Certificates,
+Identifiers & Profiles → the App ID → Capabilities) so the provisioning
+profile carries it, (b) add `com.apple.developer.networking.multicast`
+(bool true) to `ios/Entitlements.plist` + `ios/EntitlementsDev.plist`,
+(c) add `NEWTONIA_LAN_IOS` to the defines in `ios/project.yml`, and it
+lights up with no code change. Until then iOS keeps the stub (available()
+false) so the visibility line never lies. LAN sessions currently reach
+touch devices only in that pending iOS case and on Android.
+Entitlement request SUBMITTED to Apple 2026-07-20 (app id 6760685759).
+FIELD-VERIFIED (2026-07-20), both directions: Android phone hosted,
+desktop discovered and joined over the LAN door; and desktop hosted,
+the phone's TAP TO JOIN band appeared and joined. The beacon carries
+the phone's real device name (the first build showed LOCALHOST —
+Android gethostname() — fixed by exporting the Settings device name
+through the env bridge). Remaining untested: the controller/Deck row
+navigation.
+
+**Round 4 (2026-07-20): mid-game re-beacon + LAN rejoin by rediscovery**
+(field hit: Android hosted, mac joined over LAN, mac quit — the host
+showed a terminal CONNECTION LOST because the LAN door had closed its
+relay room at adoption and stopped beaconing; there was NO path back).
+Host side: on peer loss BOTH rejoin doors open, mirroring the lobby —
+the relay room re-offer where a signal exists, and a fresh LAN
+announce + lan-only offer wherever `NetLan::available()` (including
+sessions that STARTED on the LAN door and have no signal at all);
+whichever door's re-pair completes is adopted by the shared
+`net_host_rejoin_session_update` (extracted from the relay poll along
+with the park/pause block, which now runs once per loss regardless of
+door order). Client side: a LAN-door join remembers the host's NAME
+(`net_lan_host_name_`, set at bootstrap) the way a relay join
+remembers the code — on loss it hands the game to
+`NetLobby(name, LanRejoinTag)`, which browses and auto-runs the blob
+exchange the moment that name's beacon reappears (the host's game
+re-beacons; a RESTARTED host app beacons the same name from its lobby,
+so the rejoin lands in whatever it hosts next). Shares the relay
+rejoin's honest-wait screen and 60 s budget; exchange failures restart
+the browse instead of failing. EV_BYE clears the name like it clears
+the code (a deliberate goodbye is not browsed after). Verified by
+`test/e2e/lanrejoin.sh` (both directions, no relay) plus rejoin.sh /
+room.sh regressions for the refactored relay path. FIELD-VERIFIED
+(2026-07-20, Android host + mac joiner): the loss recovers over the
+LAN door, and a deliberate host quit shows the client "THE HOST LEFT
+THE GAME" (EV_BYE — no futile browsing) as designed.
+
+**Round 5 (2026-07-20): the LAN door keeps the room open.** When the
+LAN door wins the pairing the relay room used to be killed
+(send_close) so no stale code could strand a joiner — but that also
+meant a LAN session had NO code-based rejoin (Glenn asked). Now the
+lobby keeps the signal and the standard WaitConnect handoff gives it
+to GLGame (net_adopt_signal), so a LAN-paired session is
+indistinguishable from a relay session afterwards: room reclaim over
+drops, rejoin BY CODE from anywhere (the code shows on the host's
+disconnect notice), the Steam invite re-advertise on loss, and the
+relay re-offer beside the LAN re-beacon (round 4's both-doors). Cost:
+one idle socket per session — the same as every relay game already
+holds. The genuinely-offline case is unchanged (no relay, no room,
+rediscovery only). The LAN JOINER still doesn't learn the code (it
+never typed one), so ITS auto-rejoin stays rediscovery-by-name; the
+code path is for a human re-entering it. Verified by
+`test/e2e/lankeep.sh` (live local relay + xclip: clears the clipboard
+to beat the code auto-join, pairs via the LAN row, asserts the keep
+log, both doors on loss, and a re-pair) plus lan.sh / lanrejoin.sh
+regressions. FIELD-VERIFIED (2026-07-20): Android host + mac LAN
+client, mac rejoined BY CODE after a drop (the first attempt failed on
+a pre-round-5 APK, which still killed the room at adoption).
+
+**Round 2 discovery hardening (2026-07-20)**: the beacon now goes to
+every broadcast-capable interface's DIRECTED broadcast address
+(getifaddrs / SIO_GET_INTERFACE_LIST) as well as 255.255.255.255 and
+loopback — the global broadcast alone is dropped by many Wi-Fi routers
+between clients, and a multi-homed machine (VPN, virtual adapters)
+sends it out one interface of the OS's choosing. The destination set
+is recomputed every beacon (interface changes mid-lobby self-heal) and
+logged on change (`net: lan beacon -> 255.255.255.255 127.0.0.1
+192.168.1.255`), so a field log shows exactly which networks the host
+is beaconing into. This WAS the root cause on Glenn's mac + Windows
+pair: with the global-broadcast-only beacon the machines never saw
+each other; the directed-broadcast build discovered and played with
+NO firewall changes (the Windows allow rule stayed Public-only — the
+prompt's default matches the active network profile, so first-launch
+Allow is normally sufficient). Manual host/join screens also lost
+their long lines (they overflowed the Windows window width).
+FIELD-VERIFIED: mac + Windows on real Wi-Fi discovered each other and
+played (2026-07-20), one-box mac shared-clipboard flow shows the LAN
+row first.
+
+**Silent clipboard auto-join failures (2026-07-20, task #165)**: a
+typed bad code showed "NO ROOM WITH THAT CODE" twice in quick
+succession (Glenn, Deck — the Deck had hosted earlier, so its
+clipboard still held the join URL). The second attempt was the 800 ms
+clipboard repoll probing that stale code once the typed failure
+cleared the field; its identical error read as the lobby retrying. Two
+fixes: (1) relay errors for a join the player never asked for
+(`last_join_was_auto_`, set only by the clipboard AUTO path — typing
+and the explicit controller-X paste stay loud) no longer set a status,
+while the dead-marking, field clear, and keyboard re-summon all still
+run; (2) the confirmed-dead guard is now a LIST (`s_dead_codes`) —
+the old single slot meant the typed code's dead-mark EVICTED the
+clipboard code's, freeing the repoll to probe it a third time.
+Verified headless (stale join-URL on clipboard + typed bad code:
+exactly two relay joins, screenshot after the auto failure shows no
+status, after the typed one shows it), room/lan/lankeep/lanclip e2e
+green. Same pass: the CodeEntry status line dropped from y 20 to y 4 —
+at size 15 it grazed the code glyphs (which reach down to y 24).
 ## Future milestone — verified peer identity (design notes 2026-07-20)
 
 **Current state (V0 + V1 SHIPPED — see the implementation plan below):**

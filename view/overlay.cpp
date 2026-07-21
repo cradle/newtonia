@@ -79,21 +79,29 @@ void Overlay::net_overlays(const GLGame *glgame) {
   }
 
   if (glgame->net_connection_lost_ && glgame->net_mode_ == GLGame::NetHost &&
-      glgame->net_signal_) {
+      (glgame->net_signal_ || glgame->net_lan_door_open())) {
     // Rejoinable loss: the game continues — a quiet notice, not a card.
     // A "P2 DISCONNECTED" header over the room code (steady, no blink): the
     // host may be reading the code out to the other player, and it explains
     // why the code is back on screen. Named when the peer's identity is
     // known ("GLENN DISCONNECTED"); a legacy peer keeps the plain text.
+    // A LAN-door session has no code — the reopened beacon is the way
+    // back, so say that instead.
     std::string who =
         net_identity_name_or(glgame->net_peer_identity_, "PLAYER 2",
                              glgame->net_id_ctx());
     Typer::draw_centered(0, vh * 0.80f, (who + " DISCONNECTED").c_str(), 20);
-    std::string room = "ROOM " + glgame->net_room_code_;
-    Typer::draw_centered(0, vh * 0.67f, room.c_str(), 18);
+    if (glgame->net_signal_) {
+      std::string room = "ROOM " + glgame->net_room_code_;
+      Typer::draw_centered(0, vh * 0.67f, room.c_str(), 18);
+    }
+    if (glgame->net_lan_door_open())
+      Typer::draw_centered(0, vh * (glgame->net_signal_ ? 0.57f : 0.67f),
+                           "VISIBLE ON THIS NETWORK", 14);
   } else if (glgame->net_connection_lost_ &&
              glgame->net_mode_ == GLGame::NetClient &&
-             !glgame->net_room_code_.empty()) {
+             (!glgame->net_room_code_.empty() ||
+              !glgame->net_lan_host_name_.empty())) {
     Typer::draw_centered(0, 60, "CONNECTION LOST", 34);
     if ((now / 700) % 2 == 0)
       Typer::draw_centered(0, -80, "REJOINING", 16);

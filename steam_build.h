@@ -59,6 +59,13 @@ inline void steam_dismiss_floating_keyboard() {
 #endif
 }
 
+// One-shot poll: true once after the Deck's floating keyboard was
+// dismissed (FloatingGamepadTextInputDismissed_t, dispatched by
+// steam_run_callbacks). Lets the lobby bring its picker back the moment
+// the keyboard closes instead of waiting for the next controller event
+// to prove it. Always false on non-Steam builds. (steam_keyboard.cpp)
+bool steam_floating_keyboard_dismissed();
+
 // Returns the Steam beta branch the user is running on (e.g. "beta",
 // "experimental"), or an empty string when on the default/public branch or
 // when STEAM_BUILD is not defined.
