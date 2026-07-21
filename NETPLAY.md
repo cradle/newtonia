@@ -356,6 +356,37 @@ limited).
 4. Tests: worker suite against a captured real signature bundle; live
    iPhone↔desktop smoke.
 
+**V1.5 — OPTIONAL: re-attestation heartbeat (revocation recovered), ~2 days**
+
+Not required for V1 to ship; layers on cleanly later. Restores — and
+then exceeds — the live-revocation fidelity the worker model gave up
+vs P2P `BeginAuthSession`, using only documented APIs:
+
+1. The client's wss to the worker is KEPT OPEN for the whole game
+   session (today only the host's persists; Durable Object WebSocket
+   hibernation makes the idle cost ~nil), giving the worker a push
+   channel to both peers.
+2. Every few minutes each verified client submits a FRESH credential
+   over its socket (Steam: a new `GetAuthTicketForWebApi` ticket; PGS:
+   a new server auth code; GC: a fresh signature — which also shrinks
+   GC's replay window from "until timestamp expiry" to one heartbeat
+   interval). Worker re-validates; a failed or missing heartbeat →
+   broadcast the V0 `identity` message with verified=false → the badge
+   drops to role labels live. Logout/account-loss now surfaces within
+   one interval — Steam-push doesn't exist for Web API consumers (no
+   auth-session feed; only `GetPlayerBans` polls solidly, presence is
+   privacy-unreliable), so client-driven re-attestation is the ONLY
+   clean source of this signal.
+3. One-attestation-per-account: a second connection attesting the same
+   account invalidates the FIRST attestation (broadcast, not sever) —
+   directly patches the colluding-victim residual (the real owner
+   coming online steals their identity back).
+4. INVARIANT HOLDS: revocation demotes the badge, never the game — no
+   socket severing, no kicks; the worker stays a name authority.
+   Severing remains abuse/rate-limit territory (Limiter DO) only.
+5. Budget: trivial against the Web API key's public 100k/day at our
+   concurrency; heartbeat interval is a worker-side constant.
+
 **Rollout**: V0+V1 together (Steam field-tests the channel) → V2 → V3.
 Web stays permanently role-labeled (nothing to attest). Xbox: the
 worker model is Xbox's NATIVE shape (public docs, 2026-07-20) — no
