@@ -80,9 +80,11 @@ const TapBand kLanBand[kLanBandCount] = {TapBand(0.5f, 225, 18, 12.0f),
 
 // CodeEntry controller picker: the code alphabet as a grid under the
 // code slots (desktop layout — touch uses the soft keyboard instead).
-// Two rows sit between the button-hint lines at -48/-100 (glyphs reach
-// ~-136) and the LAN rows below (selected cells grow to size 22 → 44
-// tall, so the second row bottoms out around -248).
+// Non-Deck pads only — where the floating keyboard has actually shown,
+// the keyboard replaces the grid entirely (Glenn). Two rows sit between
+// the button-hint line at -48 (glyphs reach ~-84) and the LAN rows
+// below (selected cells grow to size 22 → 44 tall, so the second row
+// bottoms out around -248).
 const int PICKER_COLS = 15;
 const float PICKER_TOP_Y = -152.0f;
 const float PICKER_ROW_H = 52.0f;
@@ -1424,25 +1426,27 @@ void NetLobby::draw() {
           Typer::draw_centered(0, 428, top.c_str(), 12);
           Typer::draw_centered(0, 392, "CLOSE THE KEYBOARD TO JOIN", 9);
         }
-        if (controller_seen_ && !floating_kb_up_) {
-          // Controller flow: button hints replace the keyboard hint,
-          // picker grid below. Hidden while the Deck's floating
-          // keyboard is up — the keyboard IS the input then, and it
-          // types plain key events; the first controller event that
-          // reaches us proves it was dismissed (it consumes controller
-          // input while showing) and brings the picker back.
-          // Drawn directly, not via the shared lines stack (its y sits
-          // in the error text): the main line at -48 keeps breathing
-          // room under the transient status (glyphs to ~-26), the Y
-          // hint matches its size at -100 (glyphs to ~-136), and the
-          // picker + LAN stack below shifted down to fit (Glenn, Deck,
-          // three passes).
-          Typer::draw_centered(0, -48, "A - TYPE   B - DELETE   X - PASTE",
+        // Controller flow: button hints replace the keyboard hint.
+        // Hidden while the Deck's floating keyboard is up — the
+        // keyboard IS the input then, and it types plain key events;
+        // the first controller event that reaches us proves it was
+        // dismissed (it consumes controller input while showing).
+        // Drawn directly, not via the shared lines stack (its y sits
+        // in the error text): -48 keeps breathing room under the
+        // transient status (glyphs to ~-26) (Glenn, Deck, twice).
+        // On hardware where the floating keyboard has actually shown
+        // (Deck) the picker grid never draws at all — the keyboard is
+        // the typing surface and Y re-summons it (Glenn), so the LAN
+        // rows take the roomier keyboard-flow spots below instead.
+        bool grid = controller_seen_ && !floating_kb_up_ &&
+                    !floating_kb_available_;
+        if (controller_seen_ && !floating_kb_up_)
+          Typer::draw_centered(0, -48,
+                               floating_kb_available_
+                                   ? "B - DELETE   X - PASTE   Y - KEYBOARD"
+                                   : "A - TYPE   B - DELETE   X - PASTE",
                                sz);
-          // Second hint line only where the floating keyboard has
-          // actually shown (Deck) — Y re-summons it (see controller()).
-          if (floating_kb_available_)
-            Typer::draw_centered(0, -100, "Y - KEYBOARD", sz);
+        if (grid) {
           draw_picker();
           // LAN host rows under the picker grid (grid bottom ~ -204):
           // walking down off the grid's last row highlights them, A
@@ -1462,18 +1466,16 @@ void NetLobby::draw() {
                                    row.c_str(), lan_sel_ == i ? 14 : 11);
             }
             // The keyboard flow's join hint in the pad's vocabulary
-            // (Glenn, Deck). Keyboard arrows/Enter land in the same
-            // places for a desk setup with both devices. The status
-            // line moved to the top half for this layout, so the
-            // 2-row stack can reach down here freely (bottom ~ -376,
-            // clear of the band text at -420).
+            // (Glenn, Deck). The status line moved to the top half for
+            // this layout, so the 2-row stack can reach down here
+            // freely (bottom ~ -376, clear of the band text at -420).
             Typer::draw_centered(0, -296.0f - (float)show * 32.0f,
                                  "UP/DOWN AND A TO JOIN", 8);
           }
         } else {
           // LAN host rows clear of the header (y=320) and heading/code
-          // (200/120) above; arrows move the highlight (see
-          // keyboard()), Enter joins.
+          // (200/120) above; up/down moves the highlight (arrows or
+          // pad — see keyboard()/picker_nav), Enter or A joins.
           const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
           int show = lan_rows_shown();
           if (show > 0) {
@@ -1490,7 +1492,10 @@ void NetLobby::draw() {
             // glyphs reach ~36 below their anchor, which left the hint
             // nearly touching the name (Glenn's screenshot).
             Typer::draw_centered(0, -174.0f - (float)show * 46.0f,
-                                 "UP/DOWN AND ENTER TO JOIN", 10);
+                                 controller_seen_
+                                     ? "UP/DOWN AND A TO JOIN"
+                                     : "UP/DOWN AND ENTER TO JOIN",
+                                 10);
           }
         }
       }
@@ -1621,10 +1626,11 @@ void NetLobby::keyboard(unsigned char key, int x, int y) {
   if (is_touch_mode() && (key == '\r' || key == '\n')) return;
   // Deck: a Steam-shortcut keyboard summon is invisible (Steamworks has
   // no SHOWN callback — Y is the observable path), but its keystrokes
-  // are not: a typed character arriving while the picker layout is up,
-  // on hardware where the floating keyboard has shown, means an OSD is
-  // open over it. Flip on the first keystroke. Never fires on desktop —
-  // floating_kb_available_ only latches where the keyboard really shows.
+  // are not: a typed character arriving while the controller layout is
+  // up, on hardware where the floating keyboard has shown, means an OSD
+  // is open over it. Flip on the first keystroke. Never fires on
+  // desktop — floating_kb_available_ only latches where the keyboard
+  // really shows.
   if (controller_seen_ && floating_kb_available_ && !floating_kb_up_ &&
       !is_touch_mode()) {
     bool typed = (key >= 'a' && key <= 'z') || (key >= 'A' && key <= 'Z') ||
@@ -1767,6 +1773,14 @@ void NetLobby::nav_input(unsigned char key) {
 // a controller has been seen, but a player with both devices in reach
 // uses either, and the arrows previously did nothing there (Glenn).
 void NetLobby::picker_nav(unsigned char key) {
+  // Deck (floating keyboard proven): there is no picker grid — the
+  // keyboard types, so up/down just walk the code field (-1) and the
+  // LAN host rows, and left/right mean nothing (Glenn).
+  if (floating_kb_available_) {
+    if (key == 's' && lan_sel_ < lan_rows_shown() - 1) lan_sel_++;
+    else if (key == 'w' && lan_sel_ >= 0) lan_sel_--;
+    return;
+  }
   switch (key) {
     case 'w':
       if (lan_sel_ >= 0) lan_sel_--;  // -1 = back onto the grid
@@ -1816,6 +1830,12 @@ void NetLobby::controller_confirm() {
       lan_join_selected();
       return;
     }
+    // Deck: no picker to type from — A acts like Enter on the typed
+    // code (join on full, length hint otherwise).
+    if (floating_kb_available_) {
+      confirm();
+      return;
+    }
     code_entry_key((unsigned char)NET_ROOM_CODE_ALPHABET[picker_index_]);
     return;
   }
@@ -1830,13 +1850,14 @@ bool NetLobby::picker_on_bottom_row() const {
   return picker_index_ / PICKER_COLS == rows - 1;
 }
 
-// How many LAN host rows the current screen draws — the controller
-// layout fits 2 under the picker, the keyboard layout 3 below the hint.
-// Draw and selection both use this so the highlight can never land on
-// an invisible host.
+// How many LAN host rows the current screen draws — the picker layout
+// fits 2 under the grid; the keyboard layout AND the Deck's gridless
+// controller layout (floating keyboard proven, rows in the same
+// roomier spots) fit 3. Draw and selection both use this so the
+// highlight can never land on an invisible host.
 int NetLobby::lan_rows_shown() const {
   int n = (int)lan_browse_.hosts().size();
-  int cap = controller_seen_ ? 2 : 3;
+  int cap = (controller_seen_ && !floating_kb_available_) ? 2 : 3;
   return n > cap ? cap : n;
 }
 
