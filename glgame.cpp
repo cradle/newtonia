@@ -316,7 +316,8 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
   // Greet the friend who just connected the moment the hosted game starts
   // ("GLENN JOINED"), at the attention-drawing banner spot above centre.
   net_banner_text_ =
-      net_identity_name_or(net_peer_identity_, "PLAYER 2") + " JOINED";
+      net_identity_name_or(net_peer_identity_, "PLAYER 2", net_id_ctx()) +
+      " JOINED";
   net_banner_ms_ = 3000;
   NET_LOG("net: banner '%s' %d ms\n", net_banner_text_.c_str(), net_banner_ms_);
   Ship::net_report_bounces = true;  // PROTO 19: sim ricochets -> MSG_BOUNCE
@@ -1819,6 +1820,13 @@ void GLGame::net_adopt_signal(NetSignal *signal, const std::string &room_code,
   net_ice_ = ice_servers;
 }
 
+void GLGame::net_send_local_identity() {
+  if (!net_signal_) return;
+  const NetIdentity &me = net_local_identity();
+  net_signal_->send_identity(me.platform, me.name,
+                             net_local_verify_credential());
+}
+
 // M3-1 reclaim countdown, shared by both host signal loops: the relay
 // socket dropped, so count down and reattach to the room with the token.
 void GLGame::net_host_signal_reclaim_tick(int delta) {
@@ -1842,6 +1850,22 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
     case NetSignal::Event::Ice:
       net_ice_.push_back(ev.text);
       if (net_rehost_) net_rehost_->set_ice_servers(net_ice_);
+      return NetSigHandled;
+    case NetSignal::Event::Identity:
+      // Worker peer attestation (NETPLAY.md V0): a rejoiner re-attests, so
+      // refresh the badge in-game. Only a verified result promotes fields.
+      if (ev.verified) {
+        NetIdentity att;
+        att.platform = ev.platform;
+        att.platform_trust = NET_TRUST_ATTESTED;
+        att.name = net_sanitize_name(ev.text);
+        att.name_trust =
+            att.name.empty() ? NET_TRUST_ABSENT : NET_TRUST_ATTESTED;
+        net_apply_attested(net_peer_identity_, att);
+        NET_LOG("net: identity attested name='%s' platform=%s(%u)\n",
+                att.name.c_str(), net_platform_label(ev.platform),
+                (unsigned)ev.platform);
+      }
       return NetSigHandled;
     case NetSignal::Event::Closed:
       if (net_room_token_.empty()) {
@@ -1901,6 +1925,7 @@ void GLGame::net_host_signal_maintain(int delta) {
     switch (ev.kind) {
       case NetSignal::Event::Room:
         NET_LOG("net: room %s reclaimed\n", net_room_code_.c_str());
+        net_send_local_identity();  // re-attest for the (re)joiner
         break;
       case NetSignal::Event::PeerJoin:
         // The client re-entered the room: its transport is dead even if
@@ -2021,6 +2046,7 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // socket — resend the current one.
       NET_LOG("net: room %s reclaimed (mid-rejoin)\n", net_room_code_.c_str());
       net_rehost_offer_sent_ = false;
+      net_send_local_identity();  // re-attest for the (re)joiner
     } else if (ev.kind == NetSignal::Event::PeerJoin && net_session_) {
       // A rejoiner re-entered the room while we ALREADY have a handshaking
       // session with them. The relay sends the host a PeerJoin the instant a
@@ -2086,7 +2112,7 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // Name the rejoiner when their identity is known ("GLENN
       // RECONNECTED"); a legacy peer keeps the plain text.
       net_banner_text_ =
-          net_identity_name_or(net_peer_identity_, "PLAYER 2") +
+          net_identity_name_or(net_peer_identity_, "PLAYER 2", net_id_ctx()) +
           " RECONNECTED";
       net_banner_ms_ = 3000;      // the JOINED/LEFT notices' duration
       NET_LOG("net: banner '%s' %d ms\n", net_banner_text_.c_str(), net_banner_ms_);
@@ -2660,7 +2686,8 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
   // whose game this is ("JOINED GLENN SERVER"; the host is player 1, so a
   // nameless/legacy host reads "JOINED PLAYER 1 SERVER").
   net_banner_text_ = "JOINED " +
-      net_identity_name_or(net_peer_identity_, "PLAYER 1") + " SERVER";
+      net_identity_name_or(net_peer_identity_, "PLAYER 1", net_id_ctx()) +
+      " SERVER";
   net_banner_ms_ = 3000;
   NET_LOG("net: banner '%s' %d ms\n", net_banner_text_.c_str(), net_banner_ms_);
   net_assembler_ = new Net::SnapshotAssembler();

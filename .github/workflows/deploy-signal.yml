@@ -63,6 +63,7 @@ jobs:
           node test/rate_key_test.mjs
           node test/origin_test.mjs
           node test/turn_budget_test.mjs
+          node test/steam_verify_test.mjs
 
       # Protocol tests against the real worker code under miniflare — no
       # Cloudflare account involved. wrangler@4's workerd/SQLite mismatch
@@ -70,7 +71,10 @@ jobs:
       # checkout has none.
       - name: Protocol tests (wrangler dev --local)
         run: |
-          npx wrangler@4 dev --local --port 8787 > wrangler-dev.log 2>&1 &
+          # FAKE_VERIFY lets identity_test.js exercise attestation without a
+          # platform backend; it's inert for the other protocol tests (they
+          # never send an identity frame).
+          npx wrangler@4 dev --local --port 8787 --var FAKE_VERIFY:1 > wrangler-dev.log 2>&1 &
           DEV_PID=$!
           for i in $(seq 1 60); do
             curl -s -o /dev/null http://127.0.0.1:8787/ && break
@@ -79,6 +83,7 @@ jobs:
           done
           node test/reclaim_test.js
           node test/pv_replay_test.mjs
+          node test/identity_test.js
           kill $DEV_PID
 
   deploy:

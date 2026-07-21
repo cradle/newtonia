@@ -318,6 +318,11 @@ void parse_identity(Net::Reader &r, NetIdentity &out) {
   }
   out.platform = platform;
   out.name = net_sanitize_name(name);  // cap + Typer glyph set, our side
+  // Straight off the peer-to-peer wire: a self-report, so CLAIMED (rendered
+  // only on a worker-less session). A withheld name stays ABSENT. The
+  // worker's `identity` message later promotes fields to ATTESTED.
+  out.platform_trust = NET_TRUST_CLAIMED;
+  out.name_trust = out.name.empty() ? NET_TRUST_ABSENT : NET_TRUST_CLAIMED;
 }
 
 // One greppable line per handshake, the presence/invites log convention

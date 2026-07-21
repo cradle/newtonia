@@ -20,6 +20,20 @@ std::string local_name();
 }
 #endif
 
+// The verification-credential backend is a SEPARATE seam from the
+// name/platform backend: a platform can supply a display identity without
+// supplying an attestation credential (and vice versa). Steam supplies both
+// (steam_identity.cpp names, steam_identity_verify.cpp the Web-API ticket);
+// a future Xbox fork would define NEWTONIA_NET_VERIFY_BACKEND and provide
+// NetIdentityBackend::local_verify_credential() in its own TU. Without either
+// the credential is empty and the peer simply stays unattested.
+#if defined(STEAM_BUILD) || defined(NEWTONIA_NET_VERIFY_BACKEND)
+#define IDENTITY_HAVE_VERIFY 1
+namespace NetIdentityBackend {
+std::string local_verify_credential();
+}
+#endif
+
 namespace {
 
 // Compile-time platform detection — the no-backend default. Uses the
@@ -65,6 +79,25 @@ const NetIdentity &net_local_identity() {
   return id;
 }
 
+std::string net_local_verify_credential() {
+#ifdef IDENTITY_HAVE_VERIFY
+  return NetIdentityBackend::local_verify_credential();
+#else
+  return "";
+#endif
+}
+
+void net_apply_attested(NetIdentity &into, const NetIdentity &attested) {
+  if (attested.platform_trust == NET_TRUST_ATTESTED) {
+    into.platform = attested.platform;
+    into.platform_trust = NET_TRUST_ATTESTED;
+  }
+  if (attested.name_trust == NET_TRUST_ATTESTED) {
+    into.name = attested.name;  // already sanitized on receipt
+    into.name_trust = NET_TRUST_ATTESTED;
+  }
+}
+
 const char *net_platform_label(uint8_t platform) {
   switch (platform) {
     case NET_PLATFORM_DESKTOP: return "DESKTOP";
@@ -99,26 +132,42 @@ std::string net_sanitize_name(const std::string &raw) {
   return out.substr(begin, end - begin + 1);
 }
 
-std::string net_identity_badge(const NetIdentity &id) {
-  if (!NET_IDENTITY_DISPLAY_ENABLED) return "";  // unverified: no badge
-  std::string label = net_platform_label(id.platform);
-  if (id.name.empty()) return label;  // may be "" — caller renders nothing
-  if (label.empty()) return id.name;  // future platform: name-only badge
+namespace {
+// A field renders when it is attested, or when it is a claim on a worker-less
+// (offline) session — the one sanctioned carve-out (net_identity.h). An
+// unattested claim on an online session never renders.
+bool render_field(uint8_t trust, NetIdentityCtx ctx) {
+  if (trust == NET_TRUST_ATTESTED) return true;
+  return trust == NET_TRUST_CLAIMED && ctx == NET_ID_OFFLINE;
+}
+}  // namespace
+
+std::string net_identity_badge(const NetIdentity &id, NetIdentityCtx ctx) {
+  bool show_plat = render_field(id.platform_trust, ctx);
+  bool show_name = render_field(id.name_trust, ctx) && !id.name.empty();
+  if (!show_plat && !show_name) return "";  // nothing renderable: no badge
+  std::string label = show_plat ? net_platform_label(id.platform) : "";
+  if (!show_name) return label;       // may be "" — caller renders nothing
+  if (label.empty()) return id.name;  // future/unshown platform: name-only
   return id.name + " - " + label;
 }
 
 std::string net_identity_badge_or(const NetIdentity &id,
-                                  const char *fallback_name) {
-  if (!NET_IDENTITY_DISPLAY_ENABLED) return "";  // unverified: no badge
-  if (!id.known()) return "";  // legacy peer: no badge, no placeholder
-  std::string name = id.name.empty() ? std::string(fallback_name) : id.name;
-  std::string label = net_platform_label(id.platform);
-  if (label.empty()) return name;  // future platform: name-only badge
+                                  const char *fallback_name,
+                                  NetIdentityCtx ctx) {
+  bool show_plat = render_field(id.platform_trust, ctx);
+  bool show_name = render_field(id.name_trust, ctx) && !id.name.empty();
+  // Nothing renders (legacy peer, or an online unattested peer): no badge,
+  // no placeholder — the pre-badge UI stays exact.
+  if (!show_plat && !show_name) return "";
+  std::string name = show_name ? id.name : std::string(fallback_name);
+  std::string label = show_plat ? net_platform_label(id.platform) : "";
+  if (label.empty()) return name;  // future/unshown platform: name-only badge
   return name + " - " + label;
 }
 
-std::string net_identity_name_or(const NetIdentity &id, const char *fallback) {
-  // Unverified claims never render — the role fallback always wins.
-  if (!NET_IDENTITY_DISPLAY_ENABLED) return fallback;
-  return id.name.empty() ? std::string(fallback) : id.name;
+std::string net_identity_name_or(const NetIdentity &id, const char *fallback,
+                                 NetIdentityCtx ctx) {
+  if (render_field(id.name_trust, ctx) && !id.name.empty()) return id.name;
+  return fallback;  // unattested/withheld: role label wins
 }

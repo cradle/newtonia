@@ -127,18 +127,25 @@ parties are the killer use case.
 
 ## Future milestone — verified peer identity (design notes 2026-07-20)
 
-**Current state (shipped on the identity branch):** the peer identity
-(platform tag + display name in the HELLO/WELCOME append) is a
-self-reported claim — no attestation binds it to a real account, so a
-modified client can call itself anything on any platform. Decision
-(Glenn 2026-07-20): **nothing claimed reaches the screen until
-verification exists.** `NET_IDENTITY_DISPLAY_ENABLED = false` in
-`net_identity.h` is the single display chokepoint: badge helpers return
-"" (no bottom-row badge, no lobby HOSTED BY line — exact pre-badge UI)
-and `net_identity_name_or` always returns its role fallback, so every
-notice reads PLAYER 1 (host) / PLAYER 2 (client). The wire exchange,
-`net: identity` logs, and policy plumbing stay live — the seam keeps
-working, and verification flips display back on.
+**Current state (V0 + V1 SHIPPED — see the implementation plan below):**
+the peer-to-peer identity (platform tag + display name in the
+HELLO/WELCOME append) is still a self-reported **Claim**; what changed is
+that the signaling worker now **attests** it. `NET_IDENTITY_DISPLAY_ENABLED`
+is deleted; trust is per field (`NetTrust {Absent, Claimed, Attested}` for
+`platform`/`name` independently) and display is context-gated
+(`NetIdentityCtx`): an **online** (worker) session renders only Attested
+fields (Claims read PLAYER 1/PLAYER 2), an **offline** worker-less session
+(manual/LAN) renders Claims as-is. The worker verifies each side's platform
+credential and broadcasts an `identity` room message the game folds in
+(`net: identity attested ...`). **V1** implements the Steam verifier: the
+client mints a Web-API ticket (`GetAuthTicketForWebApi`,
+`steam_identity_verify.cpp`) and the worker validates it
+(`AuthenticateUserTicket` + `GetPlayerSummaries`, `signal/src/steam_verify.js`,
+publisher key `STEAM_WEBAPI_KEY`) — the attested persona comes from Steam,
+not the wire. Verification never rejects; failure/absence keeps role labels.
+Remaining before Steam ships: the **live two-account smoke test** (§5.5) and
+setting the `STEAM_WEBAPI_KEY` Cloudflare secret. V2 (Play Games), V3 (Game
+Center) and V1.5 (revocation heartbeat) are the still-unbuilt phases below.
 
 **Steam verification design (researched, not built):** Steam supports
 user-to-user auth with session tickets, no game server needed.
@@ -310,7 +317,14 @@ worker is a NAME authority only — never a policy input; verification
 strength stays per-platform (Steam/PGS strong, GC freshness-window
 limited).
 
-**V0 — game-side plumbing (~2 days)**
+**V0 — game-side plumbing (~2 days) — SHIPPED.** `NetTrust` per-field +
+`NetIdentityCtx` in `net_identity.h`; the worker `identity` message
+(`NetSignal::send_identity` / `Event::Identity`, worker `attest_identity` /
+`broadcast_identity` / replay in `signal/src/worker.js`); consumed by the
+lobby (`attested_peer_`, threaded into `GLGame` via `net_set_worker_session` +
+`net_apply_peer_attestation`) and the host in-game. Tests:
+`signal/test/identity_test.js` (worker protocol, `FAKE_VERIFY`) +
+`test/e2e/identity_attested.sh`.
 
 1. Trust is PER FIELD, not per identity (a bool can't even represent
    the GC default below — account attested, name not): `NetIdentity`
@@ -341,21 +355,24 @@ limited).
    badge appears; absent/garbage attestation → role labels, no crash.
    Greppable log: `net: identity attested ...`.
 
-**V1 — worker channel + Steam verifier (~3 days + live smoke)**
+**V1 — worker channel + Steam verifier (~3 days + live smoke) — SHIPPED
+(code); live smoke pending.**
 
 1. Client: ticket from `GetAuthTicketForWebApi("newtonia-signal")`
-   (`steam_identity_verify.cpp` under STEAM_BUILD; stub-gate addition:
-   just that call) submitted with join/register.
+   (`steam_identity_verify.cpp` under STEAM_BUILD; a separate verify seam
+   `NetIdentityBackend::local_verify_credential()`, warmed at lobby open
+   since the mint is async) submitted with the identity announce.
 2. Worker: `AuthenticateUserTicket` against partner.steam-api.com
-   (publisher key from the scoped key group, stored as a Cloudflare
-   secret), then `GetPlayerSummaries` for the attested persona.
-   Failure = attest nothing (peer stays role-labeled); reasons logged
-   worker-side. Credential submissions rate-limited via the existing
-   Limiter DO.
-3. Tests: worker suite with mocked Valve endpoints (ticket valid /
-   invalid / reused / API down); live gate (manual, same class as the
-   persona smoke): two Steam accounts, verified persona badges on both
-   sides, worker log shows the round trip.
+   (publisher key `STEAM_WEBAPI_KEY`, a Cloudflare secret; `identity` param
+   bound to the client's `WEBAPI_IDENTITY`), then `GetPlayerSummaries` for
+   the attested persona (`signal/src/steam_verify.js`). Failure = attest
+   nothing (peer stays role-labeled). The identity announce rides the same
+   `/ws` socket, already under the per-IP Limiter DO.
+3. Tests: `signal/test/steam_verify_test.mjs` (mocked Valve — ticket valid /
+   invalid / reused / API down / persona-lookup-down). **Still to do:** the
+   live gate (manual, same class as the persona smoke) — two Steam accounts,
+   verified persona badges both sides, worker log shows the round trip — and
+   creating the `STEAM_WEBAPI_KEY` secret in the scoped key group.
 
 **V2 — Android / Play Games verifier (~2-3 days + console prereq)**
 

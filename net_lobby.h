@@ -157,6 +157,24 @@ private:
   // maybe our own kill-orphaned room — the no-offer timeout is short.
   bool own_room_probe_ = false;
 
+  // Peer attestation from the signaling worker (NETPLAY.md V0). The worker
+  // verifies each side's platform credential (Steam Web-API ticket, etc.)
+  // and broadcasts an `identity` message; we fold the peer's attested fields
+  // in here and hand it to the GLGame at construction. Empty until the
+  // `identity` message arrives (or forever, on a legacy/unverified peer).
+  NetIdentity attested_peer_;
+  // A signaling worker was actually used (room-code flow) — the session is
+  // ONLINE-strict for identity display. The manual clipboard fallback clears
+  // this (worker-less = OFFLINE, the peer's claimed name renders). Set true
+  // on the first Room/Joined event, false in fall_back_to_manual.
+  bool used_worker_ = false;
+  // Announce our identity to the worker; re-sent on every Room/Joined event
+  // (each fresh socket, including a host reclaim), which the worker re-attests.
+  void send_local_identity();
+  // Consume a worker `identity` broadcast describing the peer.
+  void apply_peer_attestation(uint8_t platform, const std::string &name,
+                              bool verified);
+
   // Controller state (stick/trigger edges live in State's shared nav
   // translator; only the picker's own bits remain here).
   bool controller_seen_ = false;  // draws the picker + button hints

@@ -130,6 +130,12 @@ NetLobby::NetLobby()
 #ifndef __EMSCRIPTEN__
   controller_seen_ = SDL_NumJoysticks() > 0;
 #endif
+  // Warm the platform verification credential (NETPLAY.md V1): minting a
+  // Steam Web-API ticket is async, so kick it off the moment the lobby opens
+  // — by the time a room is created/joined (socket + relay round-trip later)
+  // the ticket has completed and rides the first identity announce. A no-op
+  // on builds without a verification backend (returns "").
+  (void)net_local_verify_credential();
 }
 
 void NetLobby::fail_online_not_allowed() {
@@ -395,6 +401,10 @@ void NetLobby::fall_back_to_manual(const char *why) {
     delete signal_;
     signal_ = nullptr;
   }
+  // No worker: this is a worker-less (OFFLINE) session — the peer's claimed
+  // name/platform render as-is (net_identity.h), and nothing is attested.
+  used_worker_ = false;
+  attested_peer_ = NetIdentity();
   set_status("NO ROOM SERVER - USING MANUAL CODES");
   // The clipboard blob must carry every candidate: back to non-trickle
   // (always before start_* — the host deferred its start to the Room
@@ -477,6 +487,34 @@ void NetLobby::copy_local_description() {
   set_status("COPIED TO CLIPBOARD");
 }
 
+// Announce our identity to the signaling worker (NETPLAY.md V0/V1): the
+// claimed platform + display name, plus the platform verification credential
+// (Steam Web-API ticket, "" otherwise) for the worker to attest. Sent when a
+// socket comes up (Room/Joined) — the worker verifies and broadcasts the
+// result to the peer.
+void NetLobby::send_local_identity() {
+  if (!signal_) return;
+  const NetIdentity &me = net_local_identity();
+  signal_->send_identity(me.platform, me.name, net_local_verify_credential());
+}
+
+// Consume the worker's `identity` broadcast describing the peer. Only a
+// verified attestation is stored (promoted to ATTESTED and folded into the
+// game at hand-off); an unverified broadcast leaves the peer role-labelled
+// online. The name is re-sanitized locally, as every name-bearing path is.
+void NetLobby::apply_peer_attestation(uint8_t platform, const std::string &name,
+                                      bool verified) {
+  if (!verified) return;
+  attested_peer_.platform = platform;
+  attested_peer_.platform_trust = NET_TRUST_ATTESTED;
+  std::string clean = net_sanitize_name(name);
+  attested_peer_.name = clean;
+  attested_peer_.name_trust =
+      clean.empty() ? NET_TRUST_ABSENT : NET_TRUST_ATTESTED;
+  NET_LOG("net: identity attested name='%s' platform=%s(%u)\n",
+          clean.c_str(), net_platform_label(platform), (unsigned)platform);
+}
+
 // Drives the room-code flow: pushes our SDP into the room when ready and
 // reacts to relay events. No-op in the manual fallback (signal_ == null).
 void NetLobby::pump_signal(int delta) {
@@ -522,6 +560,8 @@ void NetLobby::pump_signal(int delta) {
       case NetSignal::Event::Room:
         room_code_ = ev.text;
         room_token_ = ev.text2;  // reclaim proof, handed to the game
+        used_worker_ = true;     // a worker is in the session (ONLINE-strict)
+        send_local_identity();   // announce ourselves for the worker to attest
         s_last_hosted_code = room_code_;  // never auto-join our own room
         // Persist it too: a killed-and-relaunched app loses the static, and
         // its own code is still on the clipboard — the auto-join would walk
@@ -548,7 +588,14 @@ void NetLobby::pump_signal(int delta) {
         break;
       case NetSignal::Event::Joined:
         room_code_ = code_entry_;  // acked — also disarms the timeout below
+        used_worker_ = true;       // a worker is in the session (ONLINE-strict)
+        send_local_identity();     // announce ourselves for the worker to attest
         set_status("ROOM FOUND - WAITING FOR THE HOST");
+        break;
+      case NetSignal::Event::Identity:
+        // Worker peer attestation (NETPLAY.md V0): fold it in for the badge
+        // and hand it to the game at construction.
+        apply_peer_attestation(ev.platform, ev.text, ev.verified);
         break;
       case NetSignal::Event::PeerJoin:
         set_status("PLAYER 2 IS CONNECTING");
@@ -905,6 +952,8 @@ void NetLobby::tick(int delta) {
           NetSession *session = session_;
           session_ = nullptr;
           GLGame *game = new GLGame(session, (SDL_GameController *)0);
+          game->net_set_worker_session(used_worker_);
+          game->net_apply_peer_attestation(attested_peer_);
           if (signal_) {
             game->net_adopt_signal(signal_, room_code_, ice_servers_,
                                    room_token_);
@@ -971,6 +1020,8 @@ void NetLobby::tick(int delta) {
         session_ = nullptr;
         GLGame *game = new GLGame(s, session, (SDL_GameController *)0);
         game->net_room_code_ = room_code_;  // enables client auto-rejoin
+        game->net_set_worker_session(used_worker_);
+        game->net_apply_peer_attestation(attested_peer_);
         game->net_apply_extras(in, s);
         request_state_change(game);
         return;
@@ -1172,10 +1223,14 @@ void NetLobby::draw() {
       // The host's identity badge from the WELCOME append ("HOSTED BY
       // GLENN - STEAM"; a nameless host is player 1, "HOSTED BY
       // PLAYER 1 - DESKTOP"); a legacy host draws exactly the old screen.
-      std::string badge =
-          session_ ? net_identity_badge_or(session_->peer_identity(),
-                                           "PLAYER 1")
-                   : "";
+      std::string badge;
+      if (session_) {
+        NetIdentity host_id = session_->peer_identity();  // claimed (WELCOME)
+        net_apply_attested(host_id, attested_peer_);       // worker overlay
+        badge = net_identity_badge_or(
+            host_id, "PLAYER 1",
+            used_worker_ ? NET_ID_ONLINE : NET_ID_OFFLINE);
+      }
       if (!badge.empty()) lines.push_back("HOSTED BY " + badge);
       lines.push_back("");
       if (blink) lines.push_back("WAITING FOR THE HOST'S WORLD");

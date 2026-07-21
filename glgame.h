@@ -226,6 +226,23 @@ private:
   // sessionless window while a dropped peer rejoins. Default (unknown) for
   // a legacy peer: the overlay then renders exactly the identity-less UI.
   NetIdentity net_peer_identity_;
+  // Display context for net_peer_identity_ (net_identity.h): a room-code
+  // session ran through the signaling worker, so it is ONLINE-strict — a
+  // stranger is possible, only ATTESTED fields render. The manual clipboard
+  // / LAN fallback is worker-less (OFFLINE) and renders the peer's claimed
+  // name. Default ONLINE (strict): the lobby sets it false for the manual
+  // path, so forgetting to set it can only under-render, never leak a claim.
+  bool net_worker_session_ = true;
+  NetIdentityCtx net_id_ctx() const {
+    return net_worker_session_ ? NET_ID_ONLINE : NET_ID_OFFLINE;
+  }
+  // Called by the lobby (a friend) right after construction: fold the
+  // worker's peer attestation into net_peer_identity_ and record whether a
+  // worker was in the session (see net_worker_session_).
+  void net_set_worker_session(bool worker) { net_worker_session_ = worker; }
+  void net_apply_peer_attestation(const NetIdentity &attested) {
+    net_apply_attested(net_peer_identity_, attested);
+  }
   int net_snapshot_timer_ = 0;
   uint32_t net_snapshot_id_ = 0;
   uint32_t net_last_input_seq_ = 0;
@@ -411,6 +428,9 @@ private:
   // Shared plumbing between the two loops above: the M3-1 reclaim
   // countdown, and the signal events both must treat identically.
   void net_host_signal_reclaim_tick(int delta);
+  // Re-announce the host's identity to the worker (NETPLAY.md V0/V1) after a
+  // room reclaim, so it re-attests and re-broadcasts to the (re)joiner.
+  void net_send_local_identity();
   enum NetSignalEventResult {
     NetSigUnhandled,  // not a common event — the caller's loop handles it
     NetSigHandled,    // consumed; keep polling

@@ -20,6 +20,8 @@
 // nullptr everywhere else. Callbacks enqueue raw frames; poll() parses on
 // the main thread.
 
+#include <stdint.h>
+
 #include <string>
 
 class NetSignal {
@@ -34,12 +36,17 @@ public:
       PeerLeave,  // the joiner left the room (host)
       Ice,        // text = "urls\nusername\ncredential" (one per server)
       Cand,       // trickle ICE: text = candidate line, text2 = mid
+      Identity,   // worker peer attestation (NETPLAY.md V0): text = attested
+                  // display name, text2 = role ("host"/"joiner"), platform +
+                  // verified in the fields below
       Error,      // text = reason ("no-such-room", "room-full", "expired")
       Closed,     // socket closed / connect failed
     };
     Kind kind;
     std::string text;
-    std::string text2;  // secondary field (Room: the reclaim token)
+    std::string text2;   // secondary field (Room: the reclaim token)
+    uint8_t platform = 0;  // Identity: NetPlatform tag the worker attested
+    bool verified = false; // Identity: true = worker-attested, false = claim
   };
 
   virtual ~NetSignal() {}
@@ -58,6 +65,13 @@ public:
   virtual void send_answer(const std::string &sdp) = 0;
   // Trickle ICE (M3-2b): one gathered candidate, relayed to the peer.
   virtual void send_cand(const std::string &mid, const std::string &cand) = 0;
+  // Announce this side's identity to the worker (NETPLAY.md V0/V1): the
+  // claimed platform tag + display name, plus an optional verification
+  // credential (Steam Web-API ticket hex, "" when none) for the worker to
+  // attest. The worker verifies and broadcasts the result to the peer as an
+  // Identity event. Sent once the socket is up (Room/Joined received).
+  virtual void send_identity(uint8_t platform, const std::string &name,
+                             const std::string &cred) = 0;
   // Host only, deliberate teardown (quit to menu, game over): tells the
   // relay to kill the room NOW instead of holding the reclaim grace open
   // for a host that isn't coming back.
@@ -105,8 +119,18 @@ std::string json_escape(const std::string &s);
 // builds don't send the field; its absence identifies them.
 std::string offer_frame(const std::string &sdp);
 std::string answer_frame(const std::string &sdp);
+// The client->worker identity announcement (NETPLAY.md V0/V1): platform tag,
+// display name, and an optional verification credential (Steam Web-API ticket
+// hex; omitted when empty). The worker stamps the role and verifies.
+std::string identity_frame(uint8_t platform, const std::string &name,
+                           const std::string &cred);
 // Extracts "key":"value" from a one-level object; false if absent.
 bool json_field(const std::string &json, const char *key, std::string &out);
+// Extracts a bare numeric ("key":123) or boolean ("key":true) value from a
+// one-level object — the worker's identity broadcast sends platform/verified
+// as JSON scalars, not strings. False if absent or unparseable.
+bool json_uint_field(const std::string &json, const char *key, unsigned &out);
+bool json_bool_field(const std::string &json, const char *key, bool &out);
 // Parses one raw frame from the worker into an Event; false = unknown.
 bool parse_frame(const std::string &frame, NetSignal::Event &ev);
 }  // namespace NetSig

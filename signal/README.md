@@ -110,6 +110,30 @@ across deploys (Cloudflare stores them per script), so this is one-time.
 - `GET /ws?role=join&code=ABCD` — WebSocket; `{t:"joined"}` or `{t:"err",...}`
 - Host sends `{t:"offer",sdp}`; joiner sends `{t:"answer",sdp}`; the room
   relays each to the other side and replays the offer to late (re)joiners.
+- Each side sends `{t:"identity",platform,name,cred?}` (peer identity —
+  NETPLAY.md V0/V1). The worker verifies `cred` (Steam Web-API ticket,
+  `steam_verify.js`) and broadcasts `{t:"identity",role,platform,name,
+  verified}` to the PEER, storing it for replay to a late joiner / reclaimed
+  host. Verification never gates the room — a failure just leaves `verified`
+  false (the game renders a role label).
+
+## Peer-identity verification (NETPLAY.md V0/V1)
+
+The Steam verifier needs a **publisher Web-API key** (from a key group scoped
+to app 4536720) as a Cloudflare secret; without it, Steam peers stay
+role-labelled (verification is display-only — see NETPLAY.md's architectural
+backstop). Optional `STEAM_IDENTITY` overrides the identity string the ticket
+is bound to (must match the client's `WEBAPI_IDENTITY`, default
+`newtonia-signal`).
+
+```sh
+npx wrangler secret put STEAM_WEBAPI_KEY           # production
+npx wrangler secret put STEAM_WEBAPI_KEY --env beta # beta worker
+```
+
+For local e2e (`test/e2e/identity_attested.sh`, `test/identity_test.js`) the
+`FAKE_VERIFY` **dev var** attests the claim without contacting Valve — pass
+`--var FAKE_VERIFY:1` to `wrangler dev`. **Never** set it in production.
 
 ## Cost / abuse notes
 

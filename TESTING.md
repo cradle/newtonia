@@ -26,7 +26,8 @@ touches the Steam API against it:
 
 ```sh
 g++ -std=c++11 -fsyntax-only -DSTEAM_BUILD -Itest/steam_stub -I. -I/usr/include/SDL2 \
-    net_lobby.cpp menu.cpp steam_presence.cpp steam_invites.cpp
+    net_lobby.cpp menu.cpp steam_presence.cpp steam_invites.cpp \
+    steam_identity.cpp steam_identity_verify.cpp
 ```
 
 When adding a Steamworks call: verify the signature against the SDK docs /
@@ -64,7 +65,17 @@ node test/reclaim_test.js                # M3-1 protocol: token + grace + reclai
                                          #   host socket (ghost eviction)
 node test/rate_key_test.mjs              # rate_key /64-collapse unit test
 node test/pv_replay_test.mjs             # stored-offer replay keeps the version stamp
+node test/steam_verify_test.mjs          # V1 Steam verifier, mocked Valve (unit)
+# The identity protocol test needs the FAKE_VERIFY dev flag set on the relay:
+#   npx wrangler dev --local --port 8787 --var FAKE_VERIFY:1
+node test/identity_test.js               # V0 identity attest/broadcast/replay
 ```
+
+Note on the Limiter: `wrangler dev --local` has no `CF-Connecting-IP`, so every
+socket shares the rate-limit key `local` (HOST_LIMIT 10 / 10 min). Repeated
+host-creates across many test runs can trip it (`[lobby] manual fallback:
+rate-limited` in a game log) — `rm -rf signal/.wrangler` resets the persisted
+Limiter DO between heavy runs.
 
 `SIGNAL_WS=wss://... node test/pv_replay_test.mjs` points a test at another
 relay (e.g. production after a worker deploy).
@@ -125,7 +136,15 @@ test/e2e/identity.sh # peer-identity happy path: named exchange both ways
                      # state (NEWTONIA_NET_ANON_IDENTITY=1 host sends
                      # name_len 0 — platform known, name withheld, distinct
                      # from the legacy no-append case) and the receiver's
-                     # role labels (PLAYER 1 = host, PLAYER 2 = client)
+                     # role labels (PLAYER 1 = host, PLAYER 2 = client). Run
+                     # against a PLAIN relay (no FAKE_VERIFY) — the claim must
+                     # stay unattested so the display shows role labels.
+test/e2e/identity_attested.sh # V0/V1 worker attestation: self-hosts its OWN
+                     # FAKE_VERIFY relay (private port, so the shared :8787 dev
+                     # relay is untouched), connects a named host+joiner, and
+                     # asserts BOTH sides log "net: identity attested
+                     # name='GLENN'/'BOB' platform=DESKTOP(1)" — the worker
+                     # verified each side and the game folded it in as ATTESTED
 test/e2e/identity_legacy.sh # mixed-version interop: a legacy peer (short
                      # HELLO/WELCOME via NEWTONIA_NET_NO_IDENTITY=1, both
                      # directions) must still handshake + bootstrap, with the

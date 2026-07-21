@@ -15,6 +15,8 @@
 // reopens when the joiner disconnects (Milestone 2 rejoin); the room dies
 // when the host disconnects or after ROOM_TTL_MS.
 
+import { verifySteamTicket } from "./steam_verify.js";
+
 const CODE_ALPHABET = "ABCDEGHJKLMNPQRTUVWXYZ2346789"; // no 0/O/1/I/5/S (confusable in the game font) or F (game fullscreen key)
 const CODE_LEN = 5;
 const ROOM_TTL_MS = 2 * 60 * 60 * 1000;
@@ -37,6 +39,17 @@ const MAX_SDP_LEN = 16384;
 // produces a handful — the caps bound a flooding peer.
 const MAX_CAND_LEN = 512;
 const MAX_CANDS = 32;
+
+// Peer identity attestation (NETPLAY.md V0/V1). Each side announces its
+// claimed platform + display name (and, on Steam, a Web-API auth ticket) with
+// an {t:"identity"} frame; the worker verifies the credential against the
+// platform backend and broadcasts an {t:"identity", role, platform, name,
+// verified} frame to the peer. The display-name cap mirrors the game's
+// NET_IDENTITY_NAME_MAX so a truncation can't disagree across the wire.
+const MAX_IDENTITY_NAME = 24;
+// Credential (Steam ticket hex) cap — see steam_verify.MAX_TICKET_HEX; bound
+// here too so an oversized frame is dropped before any verification work.
+const MAX_IDENTITY_CRED = 8192;
 
 // Browser origins allowed to open a signaling socket. Browsers always send an
 // Origin header on the WebSocket handshake and cannot forge it, so this stops
@@ -438,10 +451,14 @@ export class Limiter {
 // getWebSockets(). Timers are a single storage alarm (grace/TTL cleanup);
 // correctness still rides the lazy expiry checks in fetch().
 export class Room {
-  constructor(state) {
+  constructor(state, env) {
     this.state = state;
+    this.env = env;  // for the identity verifier's platform API key / dev flag
     this.r = { offer: null, host_cands: [], host_token: null,
-               host_lost_at: 0, created: 0, closed: false };
+               host_lost_at: 0, created: 0, closed: false,
+               // Last attested identity per role, kept for replay to a peer
+               // that arrives (or a host that reclaims) after attestation.
+               host_identity: null, joiner_identity: null };
     state.blockConcurrencyWhile(async () => {
       const stored = await state.storage.get("room");
       if (stored) this.r = stored;
@@ -557,10 +574,63 @@ export class Room {
                           username: s.username, credential: s.credential });
   }
 
+  // ---- peer identity attestation (NETPLAY.md V0/V1) ----------------------
+  // A client announced {t:"identity", platform, name, cred?}. Bound the
+  // claimed fields, verify the credential against the platform backend, store
+  // the attested result for replay, and push it to the peer. Verification
+  // NEVER rejects the room: a failure attests nothing (verified:false) and
+  // the peer renders a role label.
+  async attest_identity(role, msg) {
+    let platform = Number(msg.platform);
+    if (!Number.isInteger(platform) || platform < 0 || platform > 255)
+      platform = 0;
+    const name = typeof msg.name === "string"
+        ? msg.name.slice(0, MAX_IDENTITY_NAME) : "";
+    const cred = typeof msg.cred === "string" &&
+                 msg.cred.length <= MAX_IDENTITY_CRED ? msg.cred : "";
+
+    let attested = { platform, name, verified: false };
+    if (this.env && this.env.FAKE_VERIFY) {
+      // Dev/e2e shortcut (wrangler dev only): attest the claim without
+      // contacting any platform backend. NEVER set in production.
+      attested = { platform, name, verified: true };
+    } else if (platform === 2 /* NET_PLATFORM_STEAM */ && cred) {
+      const v = await verifySteamTicket(this.env, cred);
+      // Attested name comes from Steam, not the wire (a lying name field
+      // stops mattering); the account being proven is enough to badge STEAM.
+      if (v) attested = { platform: 2, name: v.persona || "", verified: true };
+    }
+
+    this.r[role === "host" ? "host_identity" : "joiner_identity"] = attested;
+    await this.save();
+    this.broadcast_identity(role);
+    console.log(`identity ${role} platform=${attested.platform} ` +
+                `verified=${attested.verified}`);
+  }
+
+  // Push a role's stored attestation to the OTHER side (the peer consumes it
+  // as its partner's identity). No-op when the peer isn't connected yet — the
+  // stored copy is replayed on join/reclaim instead.
+  broadcast_identity(role) {
+    const id = role === "host" ? this.r.host_identity : this.r.joiner_identity;
+    if (!id) return;
+    const peer = role === "host" ? this.joinerWs() : this.hostWs();
+    if (peer) this.safeSend(peer, { t: "identity", role, platform: id.platform,
+                                    name: id.name, verified: id.verified });
+  }
+
+  // Replay a role's stored attestation to a socket that just (re)joined.
+  replay_identity(ws, role) {
+    const id = role === "host" ? this.r.host_identity : this.r.joiner_identity;
+    if (id) this.safeSend(ws, { t: "identity", role, platform: id.platform,
+                                name: id.name, verified: id.verified });
+  }
+
   async accept_host(ws, code, now, ice) {
     this.state.acceptWebSocket(ws, ["host"]);
     this.r = { offer: null, host_cands: [], host_token: crypto.randomUUID(),
-               host_lost_at: 0, created: now, closed: false };
+               host_lost_at: 0, created: now, closed: false,
+               host_identity: null, joiner_identity: null };
     await this.save();
     await this.state.storage.setAlarm(now + ROOM_TTL_MS);
     this.send_ice(ws, ice);
@@ -588,6 +658,9 @@ export class Room {
     this.safeSend(ws, { t: "room", code, token: this.r.host_token });
     const j = this.joinerWs();
     if (j) this.safeSend(j, { t: "peer", ev: "host-back" });
+    // The reclaimed host missed any identity the joiner sent while it was
+    // gone; replay it. The host re-announces its own on the fresh Room frame.
+    this.replay_identity(ws, "joiner");
   }
 
   async accept_joiner(ws, ice) {
@@ -603,6 +676,9 @@ export class Room {
       // Trickle: candidates the host gathered before this joiner arrived.
       for (const c of this.r.host_cands) this.safeSend(ws, c);
     }
+    // Replay the host's attested identity to a joiner that arrived after it
+    // was announced (the common ordering: host registers, then joiner).
+    this.replay_identity(ws, "host");
   }
 
   // ---- hibernation event handlers ----------------------------------------
@@ -631,6 +707,7 @@ export class Room {
     // us it isn't coming back. Crashes send nothing, so grace still
     // covers real drops.
     if (msg.t === "close") { await this.expire("host-closed"); return; }
+    if (msg.t === "identity") { await this.attest_identity("host", msg); return; }
     if (msg.t === "offer" && typeof msg.sdp === "string" &&
         msg.sdp.length <= MAX_SDP_LEN) {
       this.r.offer = msg.sdp; // kept for a joiner (or rejoiner) arriving later
@@ -664,6 +741,7 @@ export class Room {
   }
 
   async from_joiner(msg) {
+    if (msg.t === "identity") { await this.attest_identity("joiner", msg); return; }
     if (msg.t === "answer" && typeof msg.sdp === "string" &&
         msg.sdp.length <= MAX_SDP_LEN) {
       const h = this.hostWs();
@@ -702,6 +780,9 @@ export class Room {
     this.r.offer = null;
     this.r.offer_pv = null;
     this.r.host_cands = [];
+    // The departed joiner's attestation is stale — a different player may
+    // take the slot. Drop it so a host reclaim can't replay the old identity.
+    this.r.joiner_identity = null;
     await this.save();
     const h = this.hostWs();
     if (h) this.safeSend(h, { t: "peer", ev: "leave" });
