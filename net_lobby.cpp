@@ -331,6 +331,11 @@ NetLobby::~NetLobby() {
     signal_->close();
     delete signal_;
   }
+  // Cancel any verification ticket still outstanding (the one warmed on open
+  // if we never joined, or a spent one). Safe here: the lobby's one identity
+  // send has long since been validated, and clearing the cache means an
+  // in-game host reclaim re-warms rather than re-sending a cancelled ticket.
+  net_release_verify_credentials();
   delete starfield;  // owned; heap + GPU buffers leak per lobby visit otherwise
 }
 

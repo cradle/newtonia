@@ -378,6 +378,10 @@ GLGame::~GLGame() {
     delete net_lan_rehost_;
   }
   // net_lan_announce_ stops itself in its destructor.
+  // Cancel any verification ticket handles minted in-game (host reclaim
+  // re-attests mint fresh ones). No-op on builds without a verify backend,
+  // and on a non-net game nothing was ever warmed.
+  if (net_active()) net_release_verify_credentials();
 
   //TODO: Make erase, use boost::ptr_list? something better
   // std::erase(std::remove_if(v.begin(),v.end(),true), v.end());
