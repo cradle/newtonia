@@ -275,10 +275,33 @@ above is moot: credentials go client→worker over wss only). Accepted
 costs, eyes open: a publisher Web API key as a Cloudflare secret
 (created in a key group scoped to app 4536720); NO live revocation
 (verification is one-shot at join — a badge can outlive a Steam logout
-by one session; display-only stakes make that fine); and worker-less
-paths (the manual INVITE blob, future LAN mode) never verify — they
-keep role labels, acceptable for same-room scenarios. The P2P
+by one session; display-only stakes make that fine). The P2P
 BeginAuthSession design above remains the documented fallback.
+
+**The peer-to-peer identity append (platform + name) is RETAINED, not
+removed (decision, Glenn 2026-07-20).** The worker never needs it —
+attested names come from the platform API — so on a worker-reachable
+(online) session it is pure fallback. Its real job is the OFFLINE case:
+LAN and the manual INVITE blob have NO worker and NO relay, so the p2p
+append is the ONLY identity source there, and keeping the game 100%
+offline-capable INCLUDING usernames is a first-class goal (LAN parties,
+Deck co-op). This defines two display contexts, not one rule:
+
+- **Online (a signal worker is in the session):** strangers are
+  possible, so require attestation — render Attested fields, role
+  labels for Claimed. The p2p claim is transported but never rendered.
+- **Offline / worker-less (LAN, manual invite — `net_signal_` null):**
+  no attestation authority can exist, and every peer was invited into a
+  local room, so the p2p Claimed name/platform RENDER as-is. This is
+  the one deliberate carve-out to "never render unattested claims":
+  scoped to sessions where attestation is structurally impossible and
+  the threat model is a housemate. Impersonating an invited local peer
+  buys nothing; role labels would just make offline play worse for no
+  security gain.
+
+So the append stays; the sanitizer still runs on it (offline names are
+still untrusted bytes); it is simply never TRUSTED on an online session,
+only displayed on an offline one.
 
 Phases land green independently. Common invariants: verification NEVER
 gates play (failure / absence / worker outage = role labels, never a
@@ -293,11 +316,14 @@ limited).
    the GC default below — account attested, name not): `NetIdentity`
    gains `enum Trust { Absent, Claimed, Attested }` for `platform` and
    `name` independently. `NET_IDENTITY_DISPLAY_ENABLED` is deleted and
-   the display helpers apply ONE rule with no special cases: **render
-   Attested fields; role labels for everything else** ("PLAYER 1/2" IS
-   the unverified identifier — deliberate: never render unattested
-   claims, even with a warning marker, because players read names, not
-   markers). Every state maps for free: legacy = Absent/Absent,
+   the display helpers apply the context rule from the decision above:
+   **online (worker in session) — render Attested fields, role labels
+   for everything else** ("PLAYER 1/2" IS the unverified identifier —
+   deliberate: never render unattested claims, even with a warning
+   marker, because players read names, not markers); **offline /
+   worker-less (`net_signal_` null) — render the Claimed name/platform
+   too** (LAN/manual, the sanctioned carve-out). Every state maps for
+   free: legacy = Absent/Absent,
    badge-only = Claimed/Absent, web = Claimed/Claimed forever, GC
    default = Attested platform + Claimed name, revocation = a
    transition Attested→Claimed. Anything rendered before attestation
