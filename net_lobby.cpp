@@ -221,7 +221,7 @@ void NetLobby::draw_picker() {
 // physical keyboard carries code entry. Returns true when the floating
 // keyboard actually came up (Deck) — the caller hides the picker under
 // it (floating_kb_up_).
-static bool code_entry_keyboard(bool open) {
+bool NetLobby::code_entry_keyboard(bool open) {
   if (is_touch_mode()) {
     if (open) SDL_StartTextInput();
     else SDL_StopTextInput();
@@ -234,12 +234,14 @@ static bool code_entry_keyboard(bool open) {
     float H = Typer::scaled_window_height;
     int top = (int)((1.0f - 120.0f / H) * Typer::window_height * 0.5f);
     int height = (int)((96.0f / H) * Typer::window_height * 0.5f);
-    // Belt-and-braces beside the tick drain: any dismissal event from a
-    // PREVIOUS keyboard must not be read as this one closing.
-    steam_floating_keyboard_dismissed();
     return steam_show_floating_keyboard(Typer::window_width / 4, top,
                                         Typer::window_width / 2, height);
   }
+  // Count the dismiss only when the keyboard is believed up: it then
+  // fires exactly one Dismissed callback, which the tick drain credits
+  // to us rather than reading as a user dismiss (see the member doc).
+  // The dismiss call itself is always issued — harmless if already down.
+  if (floating_kb_up_) floating_kb_dismiss_pending_++;
   steam_dismiss_floating_keyboard();
   return false;
 }
@@ -961,14 +963,18 @@ void NetLobby::tick(int delta) {
   // Deck: bring the picker (and LAN rows) back the MOMENT the floating
   // keyboard is dismissed. The old proof — the next controller event
   // reaching us — left the keyboard-up layout on screen until the
-  // player pressed something else (Glenn, Deck beta test). The event
-  // path stays as a fallback for a missed callback. Drained EVERY tick,
-  // not just while floating_kb_up_: a programmatic dismissal (backing
-  // out, LAN join) latches the event too, and an unconsumed latch made
-  // the NEXT summon flip back instantly — button hints drawn under the
-  // live keyboard (Glenn's second Deck report).
-  bool kb_dismissed = steam_floating_keyboard_dismissed();
-  if (floating_kb_up_ && kb_dismissed) floating_kb_up_ = false;
+  // player pressed something else (Glenn, Deck beta test). A dismiss we
+  // issued ourselves (backing out, LAN join, and above all the
+  // dismiss-then-reshow of a rate-limit bounce) latches the same
+  // callback, so credit those to floating_kb_dismiss_pending_ first;
+  // only an UNcounted dismiss is the user closing the keyboard, which
+  // brings the picker/hints back. Without this the stale callback from a
+  // same-frame dismiss+reshow hid the keyboard's layer and drew the hint
+  // under the still-visible keyboard (Glenn: "TOO MANY RETRIES").
+  if (steam_floating_keyboard_dismissed()) {
+    if (floating_kb_dismiss_pending_ > 0) floating_kb_dismiss_pending_--;
+    else if (floating_kb_up_) floating_kb_up_ = false;
+  }
 
   // The LAN door (no-ops where NetLan isn't available or nothing runs).
   if (hosting_) lan_host_update(delta);

@@ -85,6 +85,15 @@ private:
   void fail_online_not_allowed();
   // show_ms <= 0 = the default 4 s; known-error advisories pass longer.
   void set_status(const char *text, int show_ms = -1);
+  // Summon (open=true) / dismiss the code-entry keyboard: the touch soft
+  // keyboard, or the Steam Deck floating keyboard (returns true when the
+  // floating keyboard actually came up). A programmatic dismiss issued
+  // while the keyboard is believed up is counted, so its async
+  // FloatingGamepadTextInputDismissed_t callback is absorbed by the tick
+  // drain instead of being mistaken for a USER dismiss (which would clear
+  // floating_kb_up_ while a re-summoned keyboard is still visible — the
+  // rate-limit bounce dismissed-then-reshowed within one frame; Glenn).
+  bool code_entry_keyboard(bool open);
   void pump_signal(int delta);
   void fall_back_to_manual(const char *why);
   // The joiner's twin of the host's manual fallback: the signal server
@@ -210,6 +219,11 @@ private:
   // keyboard-SHOWN callback, so a Steam+X summon is invisible to the
   // game — Y routes the re-summon through a path it can see.
   bool floating_kb_available_ = false;
+  // Programmatic floating-keyboard dismisses awaiting their async
+  // Dismissed callback: the tick drain decrements this instead of
+  // clearing floating_kb_up_, so only a genuine user dismiss brings the
+  // picker/hints back (see code_entry_keyboard).
+  int floating_kb_dismiss_pending_ = 0;
   int picker_index_ = 0;
 
   // LAN state. lan_transport_ is the host's LAN-door peer connection
