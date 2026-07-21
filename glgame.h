@@ -27,6 +27,7 @@
 #include "lance_pickup.h"
 #include "revive_pickup.h"
 #include "shock_pickup.h"
+#include "net_identity.h"
 #include "net_signal.h"
 #include "view/tap_band.h"
 #include <SDL.h>
@@ -220,6 +221,12 @@ private:
 
   NetMode net_mode_ = NetOff;
   NetSession *net_session_ = nullptr;  // owned when net_mode_ != NetOff
+  // The peer's badge identity (name + platform, net_identity.h), copied from
+  // the session at adoption and REFRESHED on every rejoin handshake — kept
+  // here rather than read through net_session_ so the badge survives the
+  // sessionless window while a dropped peer rejoins. Default (unknown) for
+  // a legacy peer: the overlay then renders exactly the identity-less UI.
+  NetIdentity net_peer_identity_;
   int net_snapshot_timer_ = 0;
   uint32_t net_snapshot_id_ = 0;
   uint32_t net_last_input_seq_ = 0;
@@ -339,6 +346,16 @@ private:
   bool net_peer_bye_ = false;  // client: the host said BYE — no auto-rejoin
   int net_banner_ms_ = 0;
   std::string net_banner_text_;
+  // True for the "<NAME> RECONNECTED" notice: drawn up top at the
+  // DISCONNECTED header's position/size so the pair share a height; other
+  // banners (level, friendly fire, the JOINED greetings) keep the
+  // just-above-middle spot.
+  bool net_banner_header_ = false;
+  // Client: false until the first EV_FRIENDLY_FIRE lands. The first event
+  // is the initial room-rule sync on join, adopted silently — a banner
+  // there would stomp the "JOINED <NAME> SERVER" greeting and announce a
+  // "change" the joiner never saw. Later events are real toggles.
+  bool net_ff_synced_ = false;
   int net_last_input_time_ = 0;     // host: dead-man switch (1 s)
   bool net_input_zeroed_ = false;
   // RTT probe (MSG_PING/PONG, 1 Hz each way): smoothed round-trip in ms,

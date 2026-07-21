@@ -23,9 +23,11 @@ public:
 struct NewUrlLaunchParameters_t { int m_unused; };
 // Posted when the Deck's floating keyboard is dismissed — steam_keyboard.cpp.
 struct FloatingGamepadTextInputDismissed_t { int m_unused; };
-// Rich Presence surface used by steam_presence.cpp and steam_invites.cpp.
+// Rich Presence surface used by steam_presence.cpp and steam_invites.cpp;
+// persona name used by steam_identity.cpp.
 class ISteamFriends {
 public:
+  virtual const char *GetPersonaName() = 0;
   virtual void SetRichPresence( const char *pchKey, const char *pchValue ) = 0;
   virtual void ClearRichPresence() = 0;
 };

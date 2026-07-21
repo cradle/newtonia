@@ -312,6 +312,13 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
   net_mode_ = NetHost;
   Net::set_net_log_role(true);  // lobby set it too; belt & braces
   net_session_ = session;
+  net_peer_identity_ = session->peer_identity();
+  // Greet the friend who just connected the moment the hosted game starts
+  // ("GLENN JOINED"), at the attention-drawing banner spot above centre.
+  net_banner_text_ =
+      net_identity_name_or(net_peer_identity_, "PLAYER 2") + " JOINED";
+  net_banner_ms_ = 3000;
+  NET_LOG("net: banner '%s' %d ms\n", net_banner_text_.c_str(), net_banner_ms_);
   Ship::net_report_bounces = true;  // PROTO 19: sim ricochets -> MSG_BOUNCE
   // A fresh game's player 1 starts dead (offline you wait out the initial
   // countdown or tap fire). Online the host just finished the lobby, so
@@ -2052,7 +2059,12 @@ void GLGame::net_host_rejoin_poll(int delta) {
 
 // Fresh session handshaking (HELLO/WELCOME) over whichever door's
 // transport was adopted (relay rehost or LAN re-pair) — called once per
-// tick from the loss branch, after both door polls.
+// tick from the loss branch, after both door polls. A policy-refused
+// rejoiner never reaches Ready — the session itself rejects inside the
+// handshake (net_session.cpp, RejectNotAllowed) and lands in the
+// Failed/Rejected branch below, which re-offers so the room stays open
+// for an allowed rejoiner; the refused peer got an honest MSG_REJECT and
+// its lobby stops retrying.
 void GLGame::net_host_rejoin_session_update(int delta) {
   Ship *remote = players->size() >= 2 ? players->back()->ship : NULL;
   if (net_session_) {
@@ -2069,6 +2081,10 @@ void GLGame::net_host_rejoin_session_update(int delta) {
         net_rehost_ = nullptr;
       }
       net_lan_rejoin_reset();
+      // A rejoin re-runs the handshake, so the identity re-arrived fresh —
+      // refresh the stored badge (the rejoiner may be a different friend
+      // dropping into the empty slot via the re-advertised invite).
+      net_peer_identity_ = net_session_->peer_identity();
       net_have_input_ = false;      // re-baseline the one-shot counters
       net_input_zeroed_ = false;
       net_rtt_ms_ = -1.0f;          // fresh transport, fresh RTT baseline
@@ -2096,7 +2112,14 @@ void GLGame::net_host_rejoin_session_update(int delta) {
         remote->bullets.clear();  // no lethal spawn-flash debris
       }
       net_set_generation_banner(generation);
-      net_banner_text_ = "PLAYER 2 RECONNECTED";
+      // Name the rejoiner when their identity is known ("GLENN
+      // RECONNECTED"); a legacy peer keeps the plain text.
+      net_banner_text_ =
+          net_identity_name_or(net_peer_identity_, "PLAYER 2") +
+          " RECONNECTED";
+      net_banner_ms_ = 3000;      // the JOINED/LEFT notices' duration
+      NET_LOG("net: banner '%s' %d ms\n", net_banner_text_.c_str(), net_banner_ms_);
+      net_banner_header_ = true;  // up top, same spot as DISCONNECTED
       // Re-sync the room rule — the rejoiner may be a fresh app launch
       // whose HUD reset to its own preference.
       net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
@@ -2581,10 +2604,12 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
       // The host's preference is the room rule; adopt it for the HUD only
       // (damage runs in the host sim). g_prefs stays the player's own.
       bool on = arg != 0;
-      if (on != friendly_fire) {
+      if (on != friendly_fire && net_ff_synced_) {
         net_banner_text_ = on ? "FRIENDLY FIRE ON" : "FRIENDLY FIRE OFF";
         net_banner_ms_ = 2000;
+        net_banner_header_ = false;
       }
+      net_ff_synced_ = true;
       friendly_fire = on;
       // Keep the local missile sim honest too: seeking is cosmetic-ish on
       // the client but a missile visibly hunting the partner reads wrong.
@@ -2732,6 +2757,7 @@ void GLGame::net_set_generation_banner(int gen) {
     snprintf(buf, sizeof(buf), "LEVEL %d", gen + 1);
   net_banner_text_ = buf;
   net_banner_ms_ = 2000;
+  net_banner_header_ = false;
 }
 
 
@@ -2743,6 +2769,14 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
   net_mode_ = NetClient;
   Net::set_net_log_role(false);  // lobby set it too; belt & braces
   net_session_ = session;
+  net_peer_identity_ = session->peer_identity();
+  // The joiner's complement of the host's "<NAME> JOINED" greeting: name
+  // whose game this is ("JOINED GLENN SERVER"; the host is player 1, so a
+  // nameless/legacy host reads "JOINED PLAYER 1 SERVER").
+  net_banner_text_ = "JOINED " +
+      net_identity_name_or(net_peer_identity_, "PLAYER 1") + " SERVER";
+  net_banner_ms_ = 3000;
+  NET_LOG("net: banner '%s' %d ms\n", net_banner_text_.c_str(), net_banner_ms_);
   net_assembler_ = new Net::SnapshotAssembler();
   // PROTO 14: the local ship reports every shot it fires (id, spawn,
   // exact velocity) so the host spawns clones instead of re-rolling.

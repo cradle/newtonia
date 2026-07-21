@@ -6,6 +6,7 @@
 #include "menu.h"
 #include "invites.h"
 #include "net_lobby.h"
+#include "net_policy.h"
 #include "net_transport.h"
 #include "preferences.h"
 #include "presence.h"
@@ -557,7 +558,10 @@ int Menu::max_menu_items() const {
 }
 
 bool Menu::show_online_row() const {
-  return net_available();
+  // Build capability AND platform policy (net_policy.h; the default
+  // backend always allows — only a platform privilege backend can hide
+  // the row on a capable build).
+  return net_available() && net_online_play_allowed();
 }
 
 bool Menu::show_options_row() const {

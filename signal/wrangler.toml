@@ -24,3 +24,24 @@ new_sqlite_classes = ["Room"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["Limiter"]
+
+# ---- beta environment ---------------------------------------------------
+# Auto-deployed by deploy-signal.yml on master pushes touching signal/
+# (production stays the top-level config above — plain `wrangler deploy`).
+# A named env is a SEPARATE Worker script: its own workers.dev URL, its
+# own Durable Object namespaces (never the live rooms/limits), its own
+# secrets (`wrangler secret put NAME --env beta`; none are required —
+# without TURN keys it just stays STUN-only). Point a build at it with
+#   NEWTONIA_SIGNAL_URL=wss://newtonia-signal-beta.gfmcc.workers.dev/ws
+# DO bindings are NOT inherited by named envs, so they repeat here;
+# [[migrations]] are top-level-only and apply to each script on deploy.
+[env.beta]
+name = "newtonia-signal-beta"
+
+[[env.beta.durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+[[env.beta.durable_objects.bindings]]
+name = "LIMITS"
+class_name = "Limiter"

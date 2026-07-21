@@ -232,6 +232,18 @@ static void on_focus_gained() { if (game) game->focus_gained(); }
 void check_controller() {
   SDL_Event e;
   while(SDL_PollEvent(&e)) {
+    if(e.type == SDL_QUIT) {
+      // SDL owns no window on desktop (GLUT does), so SDL_QUIT here means a
+      // caught SIGINT/SIGTERM — SDL's event subsystem translates both into
+      // this event instead of letting them kill the process. Leave through
+      // the same clean path as Alt-F4: glutLeaveMainLoop() (freeglut) /
+      // exit(0) (macOS shim), so the save + presence/invites/Steam teardown
+      // runs. Unhandled, the event was silently dropped and `kill` never
+      // stopped the game.
+      std::cout << "SDL_QUIT received - shutting down" << std::endl;
+      glutLeaveMainLoop();
+      return;
+    }
     if(e.type == SDL_CONTROLLERDEVICEADDED) {
       for(int i = 0; i < 2; i++) {
         if(controllers[i] == NULL) {

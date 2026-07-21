@@ -12,6 +12,8 @@
 #include "glstarfield.h"
 #include "mat4.h"
 #include "menu.h"
+#include "net_identity.h"
+#include "net_policy.h"
 #include "net_session.h"
 #include "net_signal.h"
 #include "net_transport.h"
@@ -155,8 +157,21 @@ NetLobby::NetLobby()
 #endif
 }
 
+void NetLobby::fail_online_not_allowed() {
+  fail_headline_ = "ONLINE PLAY NOT ALLOWED";
+  set_status("THIS ACCOUNT CANNOT PLAY ONLINE", 2 * STATUS_SHOW_MS);
+  policy_blocked_ = true;
+  screen_ = LobbyFailed;
+}
+
 NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
   hosting_ = false;
+  // Same policy gate as the interactive JOIN commit (confirm()): this ctor
+  // is a join commit too — auto-rejoin and platform invite accepts.
+  if (!net_online_play_allowed()) {
+    fail_online_not_allowed();
+    return;
+  }
   Presence::set_joining();  // auto-rejoin / invite-accept: joining a game
   Net::set_net_log_role(false);  // rejoin is always the client side
   transport_ = NetTransport::create();
@@ -355,6 +370,13 @@ void NetLobby::leave_to_menu() {
 
 void NetLobby::confirm() {
   if (screen_ == Choose) {
+    // Platform policy gate (net_policy.h; the default backend always
+    // allows). The menu already hides ONLINE when disallowed — this covers
+    // a mid-session privilege change and any path straight into the lobby.
+    if (!net_online_play_allowed()) {
+      fail_online_not_allowed();
+      return;
+    }
     hosting_ = (selection_ == 0);
     // Every NET_LOG from here on says which side it came from —
     // side-by-side host+client captures otherwise read as one soup.
@@ -436,6 +458,13 @@ void NetLobby::confirm() {
       set_status("THE CODE IS 5 LETTERS");
     }
   } else if (screen_ == LobbyFailed) {
+    // A policy-blocked account gets no chooser: HOST and JOIN would both
+    // refuse with the same headline, an infinite dead-end — back to the
+    // menu, where show_online_row() hides ONLINE for the same reason.
+    if (policy_blocked_) {
+      leave_to_menu();
+      return;
+    }
     // Back to the HOST/JOIN chooser for everyone (Glenn). A failed JOIN
     // used to rebuild an empty join screen via retry_join(), but that
     // screen deliberately skips the clipboard auto-read — re-entering
@@ -1214,6 +1243,13 @@ void NetLobby::tick(int delta) {
         if (session_->reject_reason() == NetSession::RejectVersionMismatch) {
           fail_headline_ = "VERSION MISMATCH";
           set_status("UPDATE BOTH GAMES", 2 * STATUS_SHOW_MS);
+        } else if (session_->reject_reason() == NetSession::RejectNotAllowed) {
+          // Platform policy refused the pairing — the session decided this
+          // inside the handshake (host: MSG_REJECT before WELCOME; client:
+          // locally on the host's identity). Terminal, so a rejoin loop
+          // can't thrash against a refusal that will never change.
+          fail_headline_ = "CANNOT PLAY WITH THAT PLAYER";
+          set_status("BLOCKED BY PLATFORM POLICY", 2 * STATUS_SHOW_MS);
         } else {
           fail_headline_ = "HOST REFUSED THE CONNECTION";
         }
@@ -1562,14 +1598,23 @@ void NetLobby::draw() {
         lines.push_back("C - COPY THE REPLY AGAIN");
       }
       break;
-    case Connected:
+    case Connected: {
       // Only the joiner sees this screen, and only for the moment between
       // the handshake and the first world snapshot arriving.
       lines.push_back("CONNECTED!");
       lines.push_back("YOU ARE PLAYER 2");
+      // The host's identity badge from the WELCOME append ("HOSTED BY
+      // GLENN - STEAM"; a nameless host is player 1, "HOSTED BY
+      // PLAYER 1 - DESKTOP"); a legacy host draws exactly the old screen.
+      std::string badge =
+          session_ ? net_identity_badge_or(session_->peer_identity(),
+                                           "PLAYER 1")
+                   : "";
+      if (!badge.empty()) lines.push_back("HOSTED BY " + badge);
       lines.push_back("");
       if (blink) lines.push_back("WAITING FOR THE HOST'S WORLD");
       break;
+    }
     case LobbyFailed:
       lines.push_back(fail_headline_);
       lines.push_back("");

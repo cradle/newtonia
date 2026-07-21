@@ -28,7 +28,7 @@ Working doc for the netplay effort. The full approved plan is reproduced in the 
 
 ### M2 decisions (locked with Glenn 2026-07-04)
 
-- **Signaling host**: Cloudflare Worker + Durable Objects (Glenn's account; free tier). Code lives in `signal/` (worker + wrangler config); Glenn deploys with `wrangler deploy`; local dev/e2e uses `wrangler dev` (miniflare — no account needed). Default endpoint baked into the build, overridable via `signal_url` in the preferences INI.
+- **Signaling host**: Cloudflare Worker + Durable Objects (Glenn's account; free tier). Code lives in `signal/` (worker + wrangler config); deploys are automated by `deploy-signal.yml` (prod on `v*` tags, an isolated beta worker on master pushes touching `signal/` — originally Glenn deployed manually with `wrangler deploy`, which still works); local dev/e2e uses `wrangler dev` (miniflare — no account needed). Default endpoint baked into the build, overridable via `signal_url` in the preferences INI.
 - **Native WS client**: libdatachannel's built-in WebSocket (`rtcCreateWebSocket`) — flip `NO_WEBSOCKET=OFF` in `build_netplay_deps.sh` and `xbox/CMakeLists.txt` (TLS via the existing MbedTLS). Web: browser `WebSocket` in the EM_JS glue.
 - **Room codes**: 5 chars (Glenn, was 4), server-assigned, from a 29-char unambiguous alphabet (no 0/O/1/I/5/S, no F = fullscreen key), case-insensitive entry, ~2 h TTL.
 - **Signal protocol**: JSON text frames — `{t:"create"}` → `{t:"room",code}`; `{t:"join",code}`; relay `{t:"offer"|"answer",sdp}`; `{t:"peer",ev}` notifications; `{t:"err",reason}`. SDP stays **non-trickle** (the 8 s gathering fallback bounds code latency); trickle is a later optimization now that a live channel exists.
@@ -307,11 +307,354 @@ exactly two relay joins, screenshot after the auto failure shows no
 status, after the typed one shows it), room/lan/lankeep/lanclip e2e
 green. Same pass: the CodeEntry status line dropped from y 20 to y 4 —
 at size 15 it grazed the code glyphs (which reach down to y 24).
+## Future milestone — verified peer identity (design notes 2026-07-20)
+
+**Current state (shipped on the identity branch):** the peer identity
+(platform tag + display name in the HELLO/WELCOME append) is a
+self-reported claim — no attestation binds it to a real account, so a
+modified client can call itself anything on any platform. Decision
+(Glenn 2026-07-20): **nothing claimed reaches the screen until
+verification exists.** `NET_IDENTITY_DISPLAY_ENABLED = false` in
+`net_identity.h` is the single display chokepoint: badge helpers return
+"" (no bottom-row badge, no lobby HOSTED BY line — exact pre-badge UI)
+and `net_identity_name_or` always returns its role fallback, so every
+notice reads PLAYER 1 (host) / PLAYER 2 (client). The wire exchange,
+`net: identity` logs, and policy plumbing stay live — the seam keeps
+working, and verification flips display back on.
+
+**Steam verification design (researched, not built):** Steam supports
+user-to-user auth with session tickets, no game server needed.
+
+1. Each side mints a ticket (`ISteamUser::GetAuthSessionTicket` — its
+   `SteamNetworkingIdentity` param is the recipient binding; ~1 KB,
+   signed by Steam, carries the holder's SteamID) and sends it as
+   another HELLO/WELCOME append — same append-only convention, no PROTO
+   bump, absence = unverified peer.
+2. The receiver validates via `BeginAuthSession`; the async
+   `ValidateAuthTicketResponse_t` callback confirms the ticket is
+   genuine, unexpired, owned by that SteamID, **and single-use** — a
+   replayed ticket fails with `AuthTicketInvalidAlreadyUsed`. The
+   session is monitored for its whole life: owner logs off / cancels /
+   gets VAC'd → a follow-up callback revokes mid-game, so "verified" is
+   a revocable state (drop back to role labels), and `EndAuthSession`
+   belongs in disconnect teardown. Callbacks arrive off-thread —
+   marshal to the game thread (same rule as the achievement journal).
+3. **The display name never comes from the wire.** Verification proves
+   a SteamID; the receiver then derives the name itself
+   (`GetFriendPersonaName` / `RequestUserInformation`). A lying name
+   field simply stops mattering.
+
+**Recipient binding — what's encoded in the ticket, and why it matters:**
+the issuer chooses a recipient identity at mint time; Steam signs it in
+and validation fails unless the verifier presents the same identity.
+
+- *Bind to the peer's claimed SteamID* (naive): kills offline replay and
+  all third-party reuse, but has a chicken-and-egg hole — in the
+  room-code flow the peer's SteamID is learned from the same unverified
+  handshake, so a live MITM can tell the victim "I am T", receive a
+  ticket minted for T, and relay it to the real T in real time.
+- *Bind to the connection* (preferred): use a generic identity string =
+  hash of this transport's WebRTC **DTLS certificate fingerprints**
+  (already exchanged in the SDP; libdatachannel exposes them; both ends
+  compute it locally). An MITM terminates DTLS separately per leg with
+  different certs, so the relayed ticket names the wrong channel and
+  fails — even a malicious signaling relay rewriting SDP can't make the
+  two legs' fingerprints equal. This is real channel binding: relay
+  becomes structurally impossible, not just hard.
+- Residual risk either way: a fully colluding "victim" client minting
+  tickets on demand — account sharing with extra steps, throttled by
+  Steam's one-auth-session-per-account tracking, bannable, and worth
+  only a cosmetic string (see backstop below).
+
+**Open questions (resolve at build time):**
+
+1. ~~Does client-side `BeginAuthSession` enforce generic-string
+   identities?~~ **RESOLVED against the Steamworks docs (2026-07-20):
+   default to the P2P path.** The docs treat user-to-user and Web-API
+   verification as co-equal (no stated preference; both forward to
+   Steam's backend for the reuse/ownership check). The P2P binding
+   vocabulary is the peer's **SteamID only** — `GetAuthSessionTicket`'s
+   `SteamNetworkingIdentity` param, docs: "If it is peer-to-peer then
+   the user steam ID" — so P2P gets no channel binding and keeps the
+   live-MITM residual, but needs NO secrets anywhere, delivers the
+   verdict exactly where it's used, and includes the continuous
+   session monitoring. The arbitrary **identity string** exists only on
+   the Web-API pairing (`GetAuthTicketForWebApi` +
+   `AuthenticateUserTicket` with a matching `identity` param, publisher
+   Web API key on the verifier) — the DTLS-fingerprint channel-binding
+   idea therefore requires the signal worker to hold a publisher key
+   and attest verdicts to peers (extra trust hop), and uses the string
+   as a per-connection value where Valve intends a service name —
+   unconventional; validate with Valve before relying on it.
+   ~~Decision: build P2P/SteamID-bound first.~~ **SUPERSEDED same day:
+   unified worker-based verification chosen for ALL platforms (see the
+   implementation plan below) — the P2P analysis stands as the
+   documented fallback if publisher-key custody ever becomes
+   unacceptable.**
+2. The XR-014-style rule "no account IDs on the wire" needs a
+   deliberate amendment: tickets inherently carry the SteamID (it is
+   the thing being proven). Spirit survives as: account IDs may transit
+   the handshake *for verification only* — never logged, never
+   persisted, never displayed raw. **Moot under the unified worker
+   design (credentials go client→worker over wss only; nothing
+   account-shaped ever travels peer-to-peer) — the rule stays as-is.**
+3. `NET_IDENTITY_DISPLAY_ENABLED` becomes a per-peer `verified` bit on
+   `NetIdentity` (mixed pairs: a Steam↔Steam game shows verified
+   personas, a Steam↔web game keeps role labels — web/mobile have
+   nothing to attest with until each platform grows its own
+   attestation backend behind the same seam).
+4. Verification failure = render as unverified (role labels), NOT a
+   reject — lying about a name shouldn't kick anyone;
+   `net_comms_allowed_with` stays the separate refusal gate, and policy
+   backends must keep treating the claimed platform tag as a claim
+   (enforce privileges on the LOCAL account only).
+5. Testing: headless e2e can cover the ticket plumbing and the
+   unverified-renders-role-labels half (fake/absent tickets), but real
+   validation needs a live two-Steam-account smoke test — same class of
+   manual gate as the persona smoke test.
+
+**Other platforms (researched 2026-07-20) — verification strength is
+per-platform; the per-peer verified bit carries a quality, not a bool
+in spirit:**
+
+- *Game Center (iOS)*: `GKLocalPlayer.fetchItems(forIdentityVerification
+  Signature:)` → signature over playerID+bundleID+salt+timestamp plus a
+  `publicKeyURL` to Apple's cert. Verifiable by ANYONE (fetch cert,
+  check chain to Apple root, check signature — no secret), so the peer
+  can verify client-side like Steam. BUT the signed fields are fixed:
+  no recipient/channel binding, no single-use tracking, no revocation —
+  replayable/relayable within the verifier's timestamp freshness window
+  (enforce a tight one, ~minutes; industry practice 10 min).
+- *Play Games v2 (Android)*: `GamesSignInClient.requestServerSideAccess()`
+  mints a SINGLE-USE OAuth server auth code, exchangeable only with our
+  OAuth client secret; the real player ID then comes from the Play
+  Games API (Google: never trust the client-reported ID). Strong
+  replay/recipient properties but NO client-to-client primitive — the
+  signal worker must hold the secret and act as verifier (joiner sends
+  the code up, worker exchanges + attests to the peer). Centralizes
+  verification like Steam's Web-API path.
+- *Web*: nothing to attest with — browser peers stay unverified/role-
+  labeled permanently (an own-account system contradicts the
+  no-accounts design).
+- *Xbox*: fork-side (XSTS token brokering), out of scope upstream.
+- Only Steam potentially offers DTLS channel binding; GC/PGS pairs
+  accept the platform's weaker ceiling. Cross-platform pairs verify
+  each side independently by whatever its platform supports.
+
+### Implementation plan — unified worker verification (rev 2026-07-20)
+
+**Decision (Glenn 2026-07-20): ALL platform verification runs through
+the signal worker.** Each client submits its platform credential with
+the room join/host register; the worker verifies it and attests the
+identity to the room over the already-trusted signaling channel.
+Rationale: the worker already controls room membership, so this adds no
+new trust root; ONE attestation mechanism for every platform (the
+game-side surface is "consume one room message"); display names come
+server-attested uniformly (Steam persona via GetPlayerSummaries, PGS
+via the Play Games API); and the peer-to-peer wire doesn't change at
+all — no MSG_AUTH, no account IDs between peers (the XR-014 amendment
+above is moot: credentials go client→worker over wss only). Accepted
+costs, eyes open: a publisher Web API key as a Cloudflare secret
+(created in a key group scoped to app 4536720); NO live revocation
+(verification is one-shot at join — a badge can outlive a Steam logout
+by one session; display-only stakes make that fine). The P2P
+BeginAuthSession design above remains the documented fallback.
+
+**The peer-to-peer identity append (platform + name) is RETAINED, not
+removed (decision, Glenn 2026-07-20).** The worker never needs it —
+attested names come from the platform API — so on a worker-reachable
+(online) session it is pure fallback. Its real job is the OFFLINE case:
+LAN and the manual INVITE blob have NO worker and NO relay, so the p2p
+append is the ONLY identity source there, and keeping the game 100%
+offline-capable INCLUDING usernames is a first-class goal (LAN parties,
+Deck co-op). This defines two display contexts, not one rule:
+
+- **Online (a signal worker is in the session):** strangers are
+  possible, so require attestation — render Attested fields, role
+  labels for Claimed. The p2p claim is transported but never rendered.
+- **Offline / worker-less (LAN, manual invite — `net_signal_` null):**
+  no attestation authority can exist, and every peer was invited into a
+  local room, so the p2p Claimed name/platform RENDER as-is. This is
+  the one deliberate carve-out to "never render unattested claims":
+  scoped to sessions where attestation is structurally impossible and
+  the threat model is a housemate. Impersonating an invited local peer
+  buys nothing; role labels would just make offline play worse for no
+  security gain.
+
+So the append stays; the sanitizer still runs on it (offline names are
+still untrusted bytes); it is simply never TRUSTED on an online session,
+only displayed on an offline one.
+
+Phases land green independently. Common invariants: verification NEVER
+gates play (failure / absence / worker outage = role labels, never a
+reject); the sanitizer runs on every name regardless of source; the
+worker is a NAME authority only — never a policy input; verification
+strength stays per-platform (Steam/PGS strong, GC freshness-window
+limited).
+
+**V0 — game-side plumbing (~2 days)**
+
+1. Trust is PER FIELD, not per identity (a bool can't even represent
+   the GC default below — account attested, name not): `NetIdentity`
+   gains `enum Trust { Absent, Claimed, Attested }` for `platform` and
+   `name` independently. `NET_IDENTITY_DISPLAY_ENABLED` is deleted and
+   the display helpers apply the context rule from the decision above:
+   **online (worker in session) — render Attested fields, role labels
+   for everything else** ("PLAYER 1/2" IS the unverified identifier —
+   deliberate: never render unattested claims, even with a warning
+   marker, because players read names, not markers); **offline /
+   worker-less (`net_signal_` null) — render the Claimed name/platform
+   too** (LAN/manual, the sanctioned carve-out). Every state maps for
+   free: legacy = Absent/Absent,
+   badge-only = Claimed/Absent, web = Claimed/Claimed forever, GC
+   default = Attested platform + Claimed name, revocation = a
+   transition Attested→Claimed. Anything rendered before attestation
+   arrives keeps role labels; the badge row / lobby HOSTED BY appear
+   when a field turns Attested. Polish for V1+: a small positive
+   verified glyph (✓/shield added to the Typer set) beside Attested
+   names — the only marker worth having is the positive one.
+2. New signaling room message `identity` {role, platform, name,
+   verified}, broadcast by the worker; both roles consume it into
+   `net_peer_identity_` (fields bounded, name run through
+   net_sanitize_name locally as always). The peer wire is UNCHANGED —
+   the HELLO/WELCOME identity append stays as the unverified fallback
+   and the legacy-interop path.
+3. e2e: the local wrangler dev worker fake-verifies behind a dev flag →
+   badge appears; absent/garbage attestation → role labels, no crash.
+   Greppable log: `net: identity attested ...`.
+
+**V1 — worker channel + Steam verifier (~3 days + live smoke)**
+
+1. Client: ticket from `GetAuthTicketForWebApi("newtonia-signal")`
+   (`steam_identity_verify.cpp` under STEAM_BUILD; stub-gate addition:
+   just that call) submitted with join/register.
+2. Worker: `AuthenticateUserTicket` against partner.steam-api.com
+   (publisher key from the scoped key group, stored as a Cloudflare
+   secret), then `GetPlayerSummaries` for the attested persona.
+   Failure = attest nothing (peer stays role-labeled); reasons logged
+   worker-side. Credential submissions rate-limited via the existing
+   Limiter DO.
+3. Tests: worker suite with mocked Valve endpoints (ticket valid /
+   invalid / reused / API down); live gate (manual, same class as the
+   persona smoke): two Steam accounts, verified persona badges on both
+   sides, worker log shows the round trip.
+
+**V2 — Android / Play Games verifier (~2-3 days + console prereq)**
+
+1. Prereq: the Play Console project + OAuth client (the same project
+   the commented-out `games-ids.xml` achievement ids await); worker
+   holds the OAuth client secret.
+2. Client: `GamesSignInClient.requestServerSideAccess()` (JNI beside
+   the PlayGamesAchievements bridge) → single-use server auth code →
+   submitted with join/register.
+3. Worker: exchanges the code (oauth2.googleapis.com), fetches the REAL
+   player id + display name from the Play Games API (never the
+   client-reported one — Google's own guidance), attests via V0's
+   message. Single-use + bound to our OAuth client = solid replay
+   properties.
+4. Tests: worker suite with a mocked Google exchange; live device smoke
+   vs a desktop peer.
+
+**V3 — iOS / Game Center verifier (~3 days + the name decision)**
+
+1. Client: `GKLocalPlayer.fetchItems(forIdentityVerificationSignature:)`
+   → {publicKeyURL, signature, salt, timestamp, teamPlayerID} submitted
+   with join/register.
+2. Worker verifies (no secret needed): publicKeyURL host WHITELISTED to
+   Apple's documented cert host BEFORE any fetch (a hostile URL is an
+   SSRF invitation otherwise); cert chain to Apple's root; RSA
+   signature over playerID+bundleID+salt+timestamp via WebCrypto;
+   timestamp freshness window TIGHT (~5 min) — GC's only replay
+   mitigation, residual documented in the survey above.
+3. The GC name gap decision stands: the signature attests the ACCOUNT,
+   not the name, and no server API can look an arbitrary player's name
+   up. Default: (a) verified platform badge + role-label name; options
+   (b) on-device loadPlayers lookup when the verifier is also iOS, or
+   (c) accept the claimed name once the account verifies (weakest).
+4. Tests: worker suite against a captured real signature bundle; live
+   iPhone↔desktop smoke.
+
+**V1.5 — OPTIONAL: re-attestation heartbeat (revocation recovered), ~2 days**
+
+Not required for V1 to ship; layers on cleanly later. Restores — and
+then exceeds — the live-revocation fidelity the worker model gave up
+vs P2P `BeginAuthSession`, using only documented APIs:
+
+1. The client's wss to the worker is KEPT OPEN for the whole game
+   session (today only the host's persists; Durable Object WebSocket
+   hibernation makes the idle cost ~nil), giving the worker a push
+   channel to both peers.
+2. Every few minutes each verified client submits a FRESH credential
+   over its socket (Steam: a new `GetAuthTicketForWebApi` ticket; PGS:
+   a new server auth code; GC: a fresh signature — which also shrinks
+   GC's replay window from "until timestamp expiry" to one heartbeat
+   interval). Worker re-validates; a failed or missing heartbeat →
+   broadcast the V0 `identity` message demoting the fields
+   Attested→Claimed → the badge drops to role labels live. Logout/account-loss now surfaces within
+   one interval — Steam-push doesn't exist for Web API consumers (no
+   auth-session feed; only `GetPlayerBans` polls solidly, presence is
+   privacy-unreliable), so client-driven re-attestation is the ONLY
+   clean source of this signal.
+3. One-attestation-per-account: a second connection attesting the same
+   account invalidates the FIRST attestation (broadcast, not sever) —
+   directly patches the colluding-victim residual (the real owner
+   coming online steals their identity back).
+4. INVARIANT HOLDS: revocation demotes the badge, never the game — no
+   socket severing, no kicks; the worker stays a name authority.
+   Severing remains abuse/rate-limit territory (Limiter DO) only.
+5. Budget: trivial against the Web API key's public 100k/day at our
+   concurrency; heartbeat interval is a worker-side constant.
+
+**Rollout**: V0+V1 together (Steam field-tests the channel) → V2 → V3.
+Web stays permanently role-labeled (nothing to attest). Xbox: the
+worker model is Xbox's NATIVE shape (public docs, 2026-07-20) — no
+peer-attestation primitive exists on Xbox at all; titles present XSTS
+tokens to publisher services configured as a Partner Center "relying
+party". The worker gains an XSTS verifier module: client
+`XUserGetTokenAndSignatureAsync` for our relying party → worker
+decrypts the partner XSTS token (an ENCRYPTED JWT, opaque to clients —
+readable only with the relying party's private key, one more scoped
+worker secret) → claims carry the gamertag (display/caching only per
+Microsoft's own guidance — exactly our model) + partner XUID (pXUID,
+publisher-scoped). Written from public learn.microsoft.com pages, so
+the verifier module can stay upstream; privileges
+(`XUserCheckPrivilege` via net_policy) and cross-network approval
+remain fork-side compliance, independent of this mechanism — behind
+the same V0 bit.
+
+**Architectural backstop (holds regardless):** identity is display-only.
+No matchmaking privilege, host authority, or policy decision hangs off
+the peer's claim, so even a defeated verification buys an attacker a
+name string, nothing more.
 
 ## Protocol quick-ref
 
 Header: `uint8 proto_ver(=1) | uint8 msg_type | uint8 player_id | uint8 reserved`, little-endian, explicit byte packing.
 Types: HELLO(1) C→H rel; WELCOME(2)/REJECT(3) H→C rel; INPUT(4) C→H unrel (uint32 seq, uint16 held bitmask, uint8 wrap-counters: boost/next_weapon/next_secondary/teleport/respawn_tap, 3 floats analog); SNAPSHOT_CHUNK(5) H→C rel (uint32 snap_id, uint16 idx, uint16 count, bytes); EVENT(6) rel (PAUSE/RESUME/GENERATION_START+gen/GAME_OVER/BYE); PING(8)/PONG(9) both ways unrel (uint32 sender ticks, echoed verbatim — 1 Hz RTT probe); HIT(10) C→H rel (uint32 asteroid net_id + uint32 bullet net_id — PROTO 13/14 client kill claim, always honored, killing bullet consumed by id); SHOT(11) BOTH ways rel (uint32 shot id, 2f spawn pos, 2f exact velocity, u8 flags — C→H PROTO 14: the host spawns exact clones instead of simulating the client's gun; H→C PROTO 17: the host echoes its own player's shots and the client spawns exact clones instantly with the shot sound, RTT/2-leaded to line up with the next 10 Hz bullet rebuild — host bullets used to pop in up to a snapshot interval late, obvious when spectating at the host's muzzle. The EV_REMOTE_SHOT p1 sound event is superseded. PROTO 18: flags bit2 = piercing beam bolt — clones plough through kills on both sides, and the snapshot's per-bullet records carry a flags byte so piercing/trail survive the 10 Hz rebuild; PROTO 19: the snapshot flags byte gains bit3 = world_bullet so host-side ricochets off reflective/armoured surfaces recolour white on the client too); HIT_SHIP(12) C→H rel (u8 kind: 0 enemy/1 station/2 mini, uint32 bullet net_id, uint32 target net_ship_id (0 for station/mini) — PROTO 16, 2f impact pos — PROTO 15/16, damage applies IFF the host consumes the referenced clone: exactly-once per shot; enemy claims name the exact enemy by wire id, absent = already dead = no-op; PROTO 20: bullet_id 0 = lance sentinel, enemy claims only, honored with no clone consume — kills are idempotent by id so the host's own MSG_LANCE polyline resolution can't double-count them); LANCE(13) BOTH ways rel (u8 n_points 2..17 + n x 2f polyline — PROTO 18, lance flash + sound on the peer, and since the lance-vs-ships feature the HOST also resolves a client polyline's ship/station hits from it (self on reflection, partner under friendly fire, enemies, stations) — ship damage is host authority, no extra message; a client lance's kills ride MSG_HIT claims with bullet_id 0 = no clone consume, its ray-march predicts outcomes and the claim drain kills locally; a host lance's kills replicate as removal records); BOUNCE(14) H→C rel (uint32 bullet net_id, 2f pos, 2f vel, u8 net_flags — PROTO 19 authoritative ricochet: the sim's real reflective/armour bounce overrides the client copy's local radial approximation so both screens fly the same post-bounce trajectory; unknown ids ignored).
+
+**Identity append (no PROTO bump):** HELLO and WELCOME each carry an
+appended `u8 platform (net_identity.h NetPlatform, wire-stable append-only:
+0 unknown/legacy, 1 desktop, 2 steam, 3 web, 4 ios, 5 android, 6 xbox
+reserved) | u8 name_len | name_len bytes UTF-8 display name` at the END of
+the message — display metadata for the lobby/HUD badge ("GLENN - STEAM"),
+never platform account IDs, nothing persisted. Old peers ignore the
+trailing bytes; new peers parse it only when `remaining() > 0` and treat
+absence or a lying `name_len` as "no identity" (legacy peer → exactly the
+pre-badge UI), so a mixed-version pairing handshakes exactly as before —
+the savegame append-only convention applied to the wire (guarded by
+`test/e2e/identity_legacy.sh`; `NEWTONIA_NET_NO_IDENTITY=1` makes a
+current build send the short messages). The peer identity lives on
+`NetSession::peer_identity()`, is copied to `GLGame::net_peer_identity_`
+at adoption, and refreshes with every rejoin handshake. `net_policy.h`
+(`net_online_play_allowed` / `net_comms_allowed_with`, default allow-all;
+backends must answer from a cached snapshot — hot paths): online-play
+gates the menu ONLINE row and the lobby HOST/JOIN commits; the per-peer
+comms check runs INSIDE the NetSession handshake — host: between the
+HELLO identity parse and WELCOME, refusing with MSG_REJECT reason 2
+(`RejectNotAllowed`, an appended enum value old builds render as their
+generic refusal); client: locally on the WELCOME identity — so adopters
+only ever see the Rejected phase and a refused peer is told honestly
+instead of being ghosted on a CONNECTED screen.
 
 ## Trust model & input safety
 

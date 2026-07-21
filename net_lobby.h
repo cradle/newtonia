@@ -78,6 +78,11 @@ private:
   void copy_local_description();
   void reset_to_choose();
   void leave_to_menu();
+  // Platform policy forbids online play (net_policy.h): shared refusal for
+  // every lobby commit point (interactive HOST/JOIN and the rejoin/invite
+  // ctor). Sets LobbyFailed with policy_blocked_, whose TRY AGAIN exits to
+  // the menu — re-offering the HOST/JOIN chooser would just refuse again.
+  void fail_online_not_allowed();
   // show_ms <= 0 = the default 4 s; known-error advisories pass longer.
   void set_status(const char *text, int show_ms = -1);
   void pump_signal(int delta);
@@ -180,6 +185,9 @@ private:
   // LobbyFailed headline; "SERVER SHUT DOWN" when the host deliberately
   // closed the room (worker err "host-closed").
   std::string fail_headline_ = "SOMETHING WENT WRONG";
+  // This LobbyFailed came from the online-play policy gate: the fail
+  // screen's confirm leaves to the menu instead of the HOST/JOIN chooser.
+  bool policy_blocked_ = false;
   // Joiner: time on the RoomJoining screen. A room can be joined while
   // hostless (reclaim grace) — if no host ever offers, fail instead of
   // showing "JOINING THE ROOM" forever.
