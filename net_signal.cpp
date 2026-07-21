@@ -114,6 +114,61 @@ static bool unescape_into(const std::string &s, size_t begin, size_t end,
   return true;
 }
 
+std::string identity_frame(uint8_t platform, const std::string &name,
+                           const std::string &cred) {
+  std::string f = "{\"t\":\"identity\",\"platform\":" +
+                  std::to_string((unsigned)platform) +
+                  ",\"name\":\"" + json_escape(name) + "\"";
+  if (!cred.empty()) f += ",\"cred\":\"" + json_escape(cred) + "\"";
+  f += "}";
+  return f;
+}
+
+// Locate the value text of a bare (unquoted) scalar field "key":<value>.
+// Returns the [begin,end) span of the value, or false if the key is absent
+// or immediately followed by a string (which json_field handles instead).
+static bool scalar_span(const std::string &json, const char *key,
+                        size_t &begin, size_t &end) {
+  std::string needle = "\"";
+  needle += key;
+  needle += "\":";
+  size_t at = json.find(needle);
+  if (at == std::string::npos) return false;
+  size_t i = at + needle.size();
+  while (i < json.size() && (json[i] == ' ' || json[i] == '\t')) i++;
+  if (i >= json.size() || json[i] == '"') return false;  // a string value
+  begin = i;
+  while (i < json.size() && json[i] != ',' && json[i] != '}' &&
+         json[i] != ' ' && json[i] != '\t')
+    i++;
+  end = i;
+  return end > begin;
+}
+
+bool json_uint_field(const std::string &json, const char *key, unsigned &out) {
+  size_t b, e;
+  if (!scalar_span(json, key, b, e)) return false;
+  unsigned v = 0;
+  bool any = false;
+  for (size_t i = b; i < e; i++) {
+    if (json[i] < '0' || json[i] > '9') return false;
+    v = v * 10 + (unsigned)(json[i] - '0');
+    any = true;
+  }
+  if (!any) return false;
+  out = v;
+  return true;
+}
+
+bool json_bool_field(const std::string &json, const char *key, bool &out) {
+  size_t b, e;
+  if (!scalar_span(json, key, b, e)) return false;
+  std::string v = json.substr(b, e - b);
+  if (v == "true" || v == "1") { out = true; return true; }
+  if (v == "false" || v == "0") { out = false; return true; }
+  return false;
+}
+
 bool json_field(const std::string &json, const char *key, std::string &out) {
   std::string needle = "\"";
   needle += key;
@@ -146,6 +201,8 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
   if (!json_field(frame, "t", t)) return false;
   ev.text.clear();
   ev.text2.clear();
+  ev.platform = 0;       // Identity-only fields — reset so a prior event's
+  ev.verified = false;   // values can never leak into a reused Event.
   if (t == "room") {
     ev.kind = NetSignal::Event::Room;
     json_field(frame, "token", ev.text2);  // reclaim token (M3-1)
@@ -175,6 +232,19 @@ bool parse_frame(const std::string &frame, NetSignal::Event &ev) {
     ev.kind = NetSignal::Event::Answer;
     json_field(frame, "pv", ev.text2);
     return json_field(frame, "sdp", ev.text);
+  }
+  if (t == "identity") {
+    // Worker peer attestation (NETPLAY.md V0): {role, platform, name,
+    // verified}. Name is optional (badge-only / role-labelled); platform and
+    // verified are JSON scalars. The name is sanitized by the consumer.
+    ev.kind = NetSignal::Event::Identity;
+    json_field(frame, "role", ev.text2);
+    json_field(frame, "name", ev.text);
+    unsigned plat = 0;
+    ev.platform = json_uint_field(frame, "platform", plat) ? (uint8_t)plat : 0;
+    bool ver = false;
+    ev.verified = json_bool_field(frame, "verified", ver) ? ver : false;
+    return true;
   }
   if (t == "err")    { ev.kind = NetSignal::Event::Error;  json_field(frame, "reason", ev.text); return true; }
   if (t == "peer") {

@@ -64,8 +64,10 @@ grep -aq "net: identity peer name='BOB' platform=DESKTOP(1)" "$OUT/host.log" ||
   { echo "IDENTITY-E2E-FAIL: host never logged the client identity"; exit 1; }
 grep -aq "net: identity peer name='GLENN' platform=DESKTOP(1)" "$OUT/joiner.log" ||
   { echo "IDENTITY-E2E-FAIL: joiner never logged the host identity"; exit 1; }
-# DISPLAY GATE (net_identity.h): claimed identities are unverified and must
-# never render — the joiner's greeting uses the role label, not GLENN.
+# Unattested claim (net_identity.h): on an online (worker) session a claimed
+# identity must never render — the joiner's greeting uses the role label, not
+# GLENN. (This relay is PLAIN — no FAKE_VERIFY — so nothing is attested;
+# identity_attested.sh covers the attested path.)
 grep -aq "net: banner 'JOINED PLAYER 1 SERVER'" "$OUT/joiner.log" ||
   { echo "IDENTITY-E2E-FAIL: joiner greeting missing the role label"; exit 1; }
 grep -aq "net: banner 'JOINED GLENN SERVER'" "$OUT/joiner.log" &&

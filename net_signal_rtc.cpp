@@ -58,6 +58,11 @@ public:
 
   void send_close() override { send_frame("{\"t\":\"close\"}"); }
 
+  void send_identity(uint8_t platform, const std::string &name,
+                     const std::string &cred) override {
+    send_frame(NetSig::identity_frame(platform, name, cred));
+  }
+
   bool poll(Event &ev) override {
     {
       std::lock_guard<std::mutex> lock(mutex_);

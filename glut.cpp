@@ -13,6 +13,7 @@
 #include "preferences.h"
 #include "net_transport.h"
 #include "net_signal.h"
+#include "net_identity.h"
 #include "achievements.h"
 #include "presence.h"
 #include "invites.h"
@@ -435,6 +436,12 @@ int main(int argc, char* argv[]) {
   // menu drains it and joins the room.
   Invites::init();
   Invites::capture_launch(argc, argv);
+  // Warm the netplay verification credential (NETPLAY.md V1): minting a Steam
+  // Web-API ticket is async, so kick it off at startup — it completes during
+  // menu navigation and is ready before the first host/join, closing the race
+  // where a host announced its identity before the ticket existed and stayed
+  // unverified for the session. A no-op off Steam (returns "").
+  (void)net_local_verify_credential();
   load_preferences();
   old_width  = g_prefs.window_width;
   old_height = g_prefs.window_height;

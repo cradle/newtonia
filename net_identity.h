@@ -17,17 +17,40 @@
 
 #include <string>
 
-// DISPLAY GATE: the peer identity is UNVERIFIED — a self-reported claim
-// on the wire, with no attestation binding it to a real account (a
-// modified client can claim any name or platform). Until a verification
-// path exists (e.g. Steam auth-session tickets riding the same
-// HELLO/WELCOME append), the UI must not show a peer's claimed name or
-// platform: with this false, net_identity_name_or returns its role
-// fallback ("PLAYER 1"/"PLAYER 2") and the badge helpers return "" (no
-// badge row, no HOSTED BY line — the exact pre-badge UI). The wire
-// exchange, the greppable logs, and the policy plumbing stay live so the
-// seam keeps working and verification can flip this back on.
-const bool NET_IDENTITY_DISPLAY_ENABLED = false;
+// TRUST — per field, not per identity (see NETPLAY.md V0). The platform tag
+// and the display name each carry a trust level independently, so a partly
+// attested identity (Game Center attests the account but not the name) is
+// representable. APPEND ONLY.
+enum NetTrust {
+  // Nothing arrived for this field: a legacy peer, or a name withheld on the
+  // wire. Never rendered.
+  NET_TRUST_ABSENT = 0,
+  // Self-reported on the peer-to-peer wire (the HELLO/WELCOME append). A
+  // modified client can claim anything, so this is rendered ONLY on a
+  // worker-less (LAN / manual-invite) session, where every peer was invited
+  // into a local room and attestation is structurally impossible — the one
+  // sanctioned carve-out (NETPLAY.md). On a worker session it renders as a
+  // role label ("PLAYER 1"/"PLAYER 2"), never the claimed string.
+  NET_TRUST_CLAIMED = 1,
+  // Verified by the signaling worker against the platform's own backend
+  // (Steam AuthenticateUserTicket + GetPlayerSummaries, etc.) and attested
+  // to the room over the already-trusted signaling channel. Always rendered.
+  NET_TRUST_ATTESTED = 2,
+};
+
+// Display context — decides whether a NET_TRUST_CLAIMED field renders.
+//   NET_ID_ONLINE  : a signaling worker is (or was) in the session, so a
+//                    stranger is possible and attestation is required —
+//                    render Attested fields only, role labels otherwise.
+//   NET_ID_OFFLINE : no worker (LAN / manual invite), attestation is
+//                    structurally impossible and every peer was locally
+//                    invited — the Claimed name/platform render as-is.
+// The default is deliberately ONLINE (strict): a caller that forgets to pass
+// the context can never leak an unattested claim, only under-render.
+enum NetIdentityCtx {
+  NET_ID_ONLINE = 0,
+  NET_ID_OFFLINE = 1,
+};
 
 // Wire-stable platform tags — APPEND ONLY, never renumber: these travel in
 // the HELLO/WELCOME identity append and a mixed-version pairing must agree
@@ -62,10 +85,21 @@ const int NET_IDENTITY_NAME_MAX = 24;
 struct NetIdentity {
   uint8_t platform;   // NetPlatform value
   std::string name;   // sanitized display name; empty = withheld/none
-  NetIdentity() : platform(NET_PLATFORM_UNKNOWN) {}
+  uint8_t platform_trust;  // NetTrust for `platform`
+  uint8_t name_trust;      // NetTrust for `name`
+  NetIdentity()
+      : platform(NET_PLATFORM_UNKNOWN),
+        platform_trust(NET_TRUST_ABSENT),
+        name_trust(NET_TRUST_ABSENT) {}
   // False for a legacy peer (nothing arrived on the wire) — the badge UX
   // must then render exactly the identity-less UI, no placeholder.
   bool known() const { return platform != NET_PLATFORM_UNKNOWN || !name.empty(); }
+  // True once any field carries a worker attestation — the badge/HOSTED BY
+  // row appears (and the greppable "net: identity attested" line is logged).
+  bool attested() const {
+    return platform_trust == NET_TRUST_ATTESTED ||
+           name_trust == NET_TRUST_ATTESTED;
+  }
 };
 
 // The local player's identity: compile-time platform detection plus the
@@ -85,6 +119,21 @@ struct NetIdentity {
 // layer. Backend returns platform 0 / empty name to keep the defaults.
 const NetIdentity &net_local_identity();
 
+// The local player's platform verification credential for the signaling
+// worker to attest (NETPLAY.md V1): the Steam Web-API auth ticket (hex) from
+// GetAuthTicketForWebApi under STEAM_BUILD, empty on every build without a
+// verification backend. Submitted client->worker only (never peer-to-peer),
+// so it carries no XR-014 concern. Backends supply
+// NetIdentityBackend::local_verify_credential(); the default is "".
+std::string net_local_verify_credential();
+
+// Merge a worker attestation into a peer identity built from the p2p wire.
+// Each ATTESTED field in `attested` overwrites the corresponding field and
+// promotes its trust; CLAIMED/ABSENT fields leave the existing value alone
+// (the p2p claim, or a role fallback, stays). Used by the lobby/game when the
+// worker's `identity` message arrives.
+void net_apply_attested(NetIdentity &into, const NetIdentity &attested);
+
 // Badge label for a platform tag ("STEAM", "WEB", ...); "" for Unknown and
 // for values this build doesn't know (future platforms render name-only).
 const char *net_platform_label(uint8_t platform);
@@ -98,21 +147,28 @@ const char *net_platform_label(uint8_t platform);
 // any future glyph-set growth.
 std::string net_sanitize_name(const std::string &raw);
 
-// "GLENN - STEAM" (name + platform), "GLENN" (unknown label), "STEAM"
-// (name filtered to nothing), or "" (no identity — render no badge).
-std::string net_identity_badge(const NetIdentity &id);
+// Every display helper takes the session context (NET_ID_ONLINE/OFFLINE):
+// a field renders when it is ATTESTED, or when it is CLAIMED on an OFFLINE
+// (worker-less) session. Online, an unattested claim renders as "" / the
+// role fallback — never the claimed string.
 
-// Like net_identity_badge but a nameless-yet-known peer gets the role
+// "GLENN - STEAM" (name + platform), "GLENN" (unknown label), "STEAM"
+// (name filtered to nothing), or "" (nothing renderable — render no badge).
+std::string net_identity_badge(const NetIdentity &id, NetIdentityCtx ctx);
+
+// Like net_identity_badge but a nameless-yet-renderable peer gets the role
 // fallback instead of a name-less badge: "PLAYER 1 - DESKTOP" (pass
 // "PLAYER 1" when the peer is the host, "PLAYER 2" when it's the client).
-// Still "" for a legacy peer — the no-badge rendering stays exact.
+// Still "" when nothing renders (legacy peer, or an online unattested peer).
 std::string net_identity_badge_or(const NetIdentity &id,
-                                  const char *fallback_name);
+                                  const char *fallback_name,
+                                  NetIdentityCtx ctx);
 
-// The peer's name, or `fallback` for a legacy/nameless peer — the one rule
+// The peer's name, or `fallback` when its name doesn't render — the one rule
 // for every name-bearing message ("GLENN DISCONNECTED" vs "PLAYER 2
 // DISCONNECTED"), so the DISCONNECTED and RECONNECTED texts can't drift.
-std::string net_identity_name_or(const NetIdentity &id, const char *fallback);
+std::string net_identity_name_or(const NetIdentity &id, const char *fallback,
+                                 NetIdentityCtx ctx);
 
 // True when the Typer font can draw `c`. DEFINED IN typer.cpp, right next
 // to the glyph table it must mirror, so a glyph addition updates both in

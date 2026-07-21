@@ -88,7 +88,8 @@ void Overlay::net_overlays(const GLGame *glgame) {
     // A LAN-door session has no code — the reopened beacon is the way
     // back, so say that instead.
     std::string who =
-        net_identity_name_or(glgame->net_peer_identity_, "PLAYER 2");
+        net_identity_name_or(glgame->net_peer_identity_, "PLAYER 2",
+                             glgame->net_id_ctx());
     Typer::draw_centered(0, vh * 0.80f, (who + " DISCONNECTED").c_str(), 20);
     if (glgame->net_signal_) {
       std::string room = "ROOM " + glgame->net_room_code_;
@@ -112,7 +113,8 @@ void Overlay::net_overlays(const GLGame *glgame) {
       // pause overlay's "Paused" at y=30 — both show when the host
       // leaves a paused game.
       std::string who =
-          net_identity_name_or(glgame->net_peer_identity_, "PLAYER 1");
+          net_identity_name_or(glgame->net_peer_identity_, "PLAYER 1",
+                               glgame->net_id_ctx());
       Typer::draw_centered(0, vh * 0.55f, (who + " LEFT THE GAME").c_str(),
                            22);
     } else {
@@ -350,7 +352,8 @@ void Overlay::remote_badge(const GLGame *glgame, const GLShip *glship) {
   // (player 1), the host at the client (player 2).
   std::string badge = net_identity_badge_or(
       glgame->net_peer_identity_,
-      glgame->net_mode_ == GLGame::NetClient ? "PLAYER 1" : "PLAYER 2");
+      glgame->net_mode_ == GLGame::NetClient ? "PLAYER 1" : "PLAYER 2",
+      glgame->net_id_ctx());
   if (badge.empty()) return;  // legacy peer: no badge, no placeholder
   // Bottom row like the SPECTATING hint, clear of the touch RETURN TO MENU
   // band and the title-safe margin; hoisted above SPECTATING when the

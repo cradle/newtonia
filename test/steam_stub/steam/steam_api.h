@@ -2,6 +2,14 @@
 // signatures copied verbatim from the real SDK headers — syntax-checks
 // the STEAM_BUILD code paths without the proprietary SDK.
 #pragma once
+#include <stdint.h>
+// The SDK's steamtypes.h fixed-width aliases (a subset).
+typedef uint8_t uint8;
+typedef uint32_t uint32;
+typedef uint32 HAuthTicket;
+const HAuthTicket k_HAuthTicketInvalid = 0;
+// EResult subset — only the OK we branch on (real enum has ~120 values).
+enum EResult { k_EResultOK = 1 };
 enum EFloatingGamepadTextInputMode {
   k_EFloatingGamepadTextInputModeModeSingleLine = 0,
   k_EFloatingGamepadTextInputModeModeMultipleLines = 1,
@@ -36,6 +44,21 @@ public:
 struct GameRichPresenceJoinRequested_t {
   char m_rgchConnect[256];
 };
+// Web-API auth ticket response (steam_identity_verify.cpp): posted when an
+// async GetAuthTicketForWebApi() call completes, carrying the ticket bytes.
+struct GetTicketForWebApiResponse_t {
+  HAuthTicket m_hAuthTicket;
+  EResult m_eResult;
+  int m_cubTicket;
+  uint8 m_rgubTicket[2560];
+};
+// User surface — the Web-API ticket mint used by the netplay identity
+// verifier (steam_identity_verify.cpp).
+class ISteamUser {
+public:
+  virtual HAuthTicket GetAuthTicketForWebApi( const char *pchIdentity ) = 0;
+  virtual void CancelAuthTicket( HAuthTicket hAuthTicket ) = 0;
+};
 // Minimal stand-in for the SDK's CCallback registration helper — enough to
 // syntax-check the backends' member-callback wiring without the real SDK.
 template <class T, class P>
@@ -49,3 +72,4 @@ inline void SteamAPI_RunCallbacks() {}
 inline ISteamUtils *SteamUtils() { return nullptr; }
 inline ISteamApps *SteamApps() { return nullptr; }
 inline ISteamFriends *SteamFriends() { return nullptr; }
+inline ISteamUser *SteamUser() { return nullptr; }
