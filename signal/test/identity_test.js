@@ -47,6 +47,13 @@ function check(name, cond) {
   const room = await host._recvType("room");
   check("room frame", !!room && !!room.code);
   const code = room.code;
+
+  // Robustness: valid-JSON but non-object frames must not crash the message
+  // handler (JSON.parse("null") -> null, then null.t would throw). If any of
+  // these tore the socket down, the identity flow below would fail.
+  host.send("null"); host.send("5"); host.send('"x"'); host.send("[]");
+  await t(100);
+
   host.send(JSON.stringify({ t: "identity", platform: 1, name: "GLENN" }));
   await t(200);  // let the worker attest + store it
 

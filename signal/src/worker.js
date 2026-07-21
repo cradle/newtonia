@@ -726,6 +726,10 @@ export class Room {
     if (typeof message !== "string") return;  // frames are JSON text
     let msg;
     try { msg = JSON.parse(message); } catch (e) { return; }
+    // A valid-JSON but non-object frame ("null", "5", "\"x\"") would make the
+    // handlers read `.t` off a non-object — `null.t` throws. Only dispatch
+    // real objects; everything else is an ill-formed frame, dropped.
+    if (!msg || typeof msg !== "object") return;
     const tags = this.state.getTags(ws);
     if (tags.includes("host")) await this.from_host(msg);
     else if (tags.includes("joiner")) await this.from_joiner(msg);
