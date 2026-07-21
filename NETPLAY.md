@@ -28,7 +28,7 @@ Working doc for the netplay effort. The full approved plan is reproduced in the 
 
 ### M2 decisions (locked with Glenn 2026-07-04)
 
-- **Signaling host**: Cloudflare Worker + Durable Objects (Glenn's account; free tier). Code lives in `signal/` (worker + wrangler config); Glenn deploys with `wrangler deploy`; local dev/e2e uses `wrangler dev` (miniflare — no account needed). Default endpoint baked into the build, overridable via `signal_url` in the preferences INI.
+- **Signaling host**: Cloudflare Worker + Durable Objects (Glenn's account; free tier). Code lives in `signal/` (worker + wrangler config); deploys are automated by `deploy-signal.yml` (prod on `v*` tags, an isolated beta worker on master pushes touching `signal/` — originally Glenn deployed manually with `wrangler deploy`, which still works); local dev/e2e uses `wrangler dev` (miniflare — no account needed). Default endpoint baked into the build, overridable via `signal_url` in the preferences INI.
 - **Native WS client**: libdatachannel's built-in WebSocket (`rtcCreateWebSocket`) — flip `NO_WEBSOCKET=OFF` in `build_netplay_deps.sh` and `xbox/CMakeLists.txt` (TLS via the existing MbedTLS). Web: browser `WebSocket` in the EM_JS glue.
 - **Room codes**: 5 chars (Glenn, was 4), server-assigned, from a 29-char unambiguous alphabet (no 0/O/1/I/5/S, no F = fullscreen key), case-insensitive entry, ~2 h TTL.
 - **Signal protocol**: JSON text frames — `{t:"create"}` → `{t:"room",code}`; `{t:"join",code}`; relay `{t:"offer"|"answer",sdp}`; `{t:"peer",ev}` notifications; `{t:"err",reason}`. SDP stays **non-trickle** (the 8 s gathering fallback bounds code latency); trickle is a later optimization now that a live channel exists.

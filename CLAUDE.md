@@ -478,6 +478,7 @@ GitHub Actions runs builds on every push to `master`/`main` and on PRs (feature 
 - `.github/workflows/deploy-ios.yml` — TestFlight
 - `.github/workflows/deploy-android.yml` — Play Store
 - `.github/workflows/deploy-itch.yml` — Itch.io (pushes only the playable game `web/dist/play`, not the landing page)
+- `.github/workflows/deploy-signal.yml` — the Cloudflare signaling Worker (`signal/`): `v*.*.*` tags deploy production (`newtonia-signal`, a plain `wrangler deploy` — the top-level config, so runtime secrets/DO state carry over); pushes to master touching `signal/**` auto-deploy the isolated beta worker (`newtonia-signal-beta`, wrangler.toml's `[env.beta]` — own DO namespaces and secrets; point a build at it with `NEWTONIA_SIGNAL_URL=wss://newtonia-signal-beta.gfmcc.workers.dev/ws`); manual dispatch picks either (default beta). Both gated on the signal unit tests + the `wrangler dev --local` protocol tests. Needs repo secrets `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`
 
 All deploy artifacts build with netplay (NETPLAY.md M3-5): web/Android have it inherently (Emscripten backend is unconditional; root CMakeLists defaults `NEWTONIA_NET=ON`), deploy-ios feeds the device libdatachannel build through the pbxproj's `NEWTONIA_NET_DEFINE`/`NEWTONIA_NET_HEADER_PATH` vars, and deploy-steam builds libdatachannel per platform. Each native deploy job runs the headless `NEWTONIA_NET_SELFTEST` loopback as a gate; the dev workflows above prove the same recipes on every push.
 
