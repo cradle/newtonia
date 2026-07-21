@@ -336,7 +336,8 @@ gate.
 | Xcode project compile with netplay vars (pbxproj regressions) | ios.yml |
 | Web/Emscripten compile (only web-code gate — no emcc in dev containers) | web.yml |
 | Xbox compile paths | xbox-dev.yml, xbox-console-smoke.yml |
-| Worker deploy | manual `npx wrangler deploy` (see signal/README.md) |
+| Worker unit + protocol tests (`signal/test/`) | deploy-signal.yml, as the deploy gate (prod on v* tags, beta worker on master pushes touching signal/) |
+| Worker deploy | deploy-signal.yml (manual `npx wrangler deploy` still works — see signal/README.md) |
 
 The e2e drivers are currently run locally/by-agent, not in CI (wrangler dev
 + Xvfb in Actions is possible if flakiness proves acceptable).

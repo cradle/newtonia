@@ -16,16 +16,48 @@ npx wrangler dev --local --port 8787
 The game connects to `ws://127.0.0.1:8787/ws` when the `signal_url`
 preference (or `NEWTONIA_SIGNAL_URL` env var) points there.
 
-## Deploy (production)
+## Deploy
+
+Automated by `.github/workflows/deploy-signal.yml`; both targets are
+gated on the unit tests plus the `wrangler dev --local` protocol tests:
+
+- **Production** (`newtonia-signal` — the baked-in default endpoint in
+  `net_signal.cpp`): deploys on every `v*.*.*` release tag, the same
+  trigger as the other production deploys, or via manual dispatch with
+  target `production`. CI runs the exact same plain `npx wrangler
+  deploy` the manual flow always did (production is the top-level
+  wrangler config, not a named env), so runtime secrets and Durable
+  Object state carry over untouched.
+- **Beta** (`newtonia-signal-beta`, the `[env.beta]` in wrangler.toml):
+  auto-deploys on every master push that touches `signal/`, or via
+  manual dispatch (the default target). A fully separate Worker — own
+  Durable Object namespaces, own secrets, own URL — so testing never
+  disturbs live rooms. Point any build at it:
+
+  ```sh
+  NEWTONIA_SIGNAL_URL=wss://newtonia-signal-beta.gfmcc.workers.dev/ws ./newtonia
+  ```
+
+  (or set `signal_url` in the preferences INI). A fresh beta worker has
+  NO secrets: TURN stays STUN-only until `TURN_KEY_ID`/`TURN_API_TOKEN`
+  are set on the env, and the origin allowlist is the built-in default —
+  browser testing from a non-shipped origin needs `ALLOWED_ORIGINS`.
+  Manage beta secrets with `npx wrangler secret put NAME --env beta`
+  (all the secrets/kill switches below take `--env beta` the same way).
+
+Workflow credentials (GitHub repo secrets): `CLOUDFLARE_API_TOKEN`
+(custom token with permission "Workers Scripts: Edit" — the dashboard's
+"Edit Cloudflare Workers" template works) and `CLOUDFLARE_ACCOUNT_ID`
+(`npx wrangler whoami`).
+
+Manual deploy still works when needed:
 
 ```sh
 cd signal
-npx wrangler login     # once
-npx wrangler deploy
+npx wrangler login              # once
+npx wrangler deploy             # production
+npx wrangler deploy --env beta  # beta
 ```
-
-Note the `*.workers.dev` URL it prints and update `NEWTONIA_SIGNAL_URL_DEFAULT`
-in `net_signal.h`.
 
 ## Endpoints
 
