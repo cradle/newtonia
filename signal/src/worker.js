@@ -677,8 +677,12 @@ export class Room {
     this.r[role === "host" ? "host_identity" : "joiner_identity"] = attested;
     await this.save();
     this.broadcast_identity(role);
+    // credlen distinguishes "client sent no credential" (credlen=0 — e.g. the
+    // iOS simulator not issuing an identity-verification signature) from
+    // "credential sent but rejected" (credlen>0 with verified=false — a real
+    // verifier/data issue worth debugging).
     console.log(`identity ${role} platform=${attested.platform} ` +
-                `verified=${attested.verified}`);
+                `verified=${attested.verified} credlen=${cred.length}`);
   }
 
   // Push a role's stored attestation to the OTHER side (the peer consumes it
