@@ -82,7 +82,11 @@ void kick_fetch() {
       return;
     }
     if (@available(iOS 13.5, *)) {
-      [lp fetchItemsForIdentityVerificationSignatureWithCompletionHandler:
+      // ObjC selector for the modern API (Swift: fetchItems(forIdentity
+      // VerificationSignature:)) — the completion block is the unlabeled
+      // argument; there is NO "WithCompletionHandler:" suffix (that was the
+      // deprecated generateIdentityVerificationSignature… form).
+      [lp fetchItemsForIdentityVerificationSignature:
           ^(NSURL *publicKeyURL, NSData *signature, NSData *salt,
             uint64_t timestamp, NSError *error) {
         if (error || !publicKeyURL || !signature || !salt) {
