@@ -49,16 +49,18 @@ void Overlay::replay_hud(const GLGame *glgame) {
   // The replay HUD lives at the BOTTOM (at the top the REPLAY watermark
   // collided with the per-viewport LEVEL text). Stack, top to bottom:
   // watermark, timeline, then the controls hint — lifted well clear of the
-  // screen edge and generously spaced so the big watermark never touches the
-  // line under it. On touch the controls are tap bands lower down, so only
-  // the watermark + timeline sit here, just above them.
+  // screen edge. Typer draws each glyph offset DOWN by 2*size (see
+  // pre_draw), so a line's real footprint is ~[y-2*size, y] and a bigger
+  // font drops further: the gaps below clear 2*size + margin per line, or
+  // the watermark overlaps the line under it. On touch the controls are tap
+  // bands lower down, so only the watermark + timeline sit here, above them.
   char text[48];
   if (glgame->replay_speed_ != 1.0f) {
     snprintf(text, sizeof(text), "REPLAY x%g", (double)glgame->replay_speed_);
   } else {
     snprintf(text, sizeof(text), "REPLAY");
   }
-  Typer::draw_centered(0, touch ? -175.0f : -vh + 250, text, 18);
+  Typer::draw_centered(0, touch ? -155.0f : -vh + 295, text, 18);
 
   int total_ms = glgame->replay_reader_
                      ? (glgame->replay_reader_->last_slot() + 1) * 100
@@ -68,7 +70,7 @@ void Overlay::replay_hud(const GLGame *glgame) {
   snprintf(text, sizeof(text), "%d:%02d / %d:%02d", elapsed_ms / 60000,
            (elapsed_ms / 1000) % 60, total_ms / 60000,
            (total_ms / 1000) % 60);
-  Typer::draw_centered(0, touch ? -228.0f : -vh + 200, text, 14);
+  Typer::draw_centered(0, touch ? -235.0f : -vh + 220, text, 14);
 
   // On-screen controls. Touch: real tap targets (one definition with the
   // hit-tests in GLGame::touch_tap — the TapBand rule). Desktop/controller:
