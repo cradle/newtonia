@@ -17,6 +17,11 @@ on:
         options:
           - production
           - beta
+      version:
+        description: 'Marketing version for a manual build. MUST exceed the latest App Store version AND any in-review version (1.46.1 in review as of 2026-07), or App Store Connect rejects it / collides with the review. Ignored on tag builds (they use the tag).'
+        required: false
+        default: '1.47.0'
+        type: string
 
 jobs:
   deploy:
@@ -185,12 +190,23 @@ jobs:
 
       - name: Set version numbers
         run: |
+          # Tag build -> use the tag's version; manual dispatch -> use the
+          # `version` input (which the dispatch prefers over the branch ref).
           TAG_VERSION="${{ github.ref_name }}"
           SHORT_VERSION="${TAG_VERSION#v}"
-          # Fall back to 1.0 if not triggered by a version tag
-          if ! echo "$SHORT_VERSION" | grep -qE '^[0-9]+(\.[0-9]+){0,2}$'; then
-            SHORT_VERSION="1.0"
+          INPUT_VERSION="${{ github.event.inputs.version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            SHORT_VERSION="$INPUT_VERSION"
           fi
+          # Guard: must be a dotted numeric version. Fall back ABOVE the store
+          # version AND any in-review version — App Store Connect rejects a
+          # marketing version <= the latest approved one, closes old trains, and
+          # collides with a version in review (1.45.0 shipped, 1.46.1 in review
+          # as of 2026-07; the old 1.0 fallback failed every dispatch build).
+          if ! echo "$SHORT_VERSION" | grep -qE '^[0-9]+(\.[0-9]+){0,2}$'; then
+            SHORT_VERSION="1.47.0"
+          fi
+          echo "::notice::iOS build version $SHORT_VERSION (build ${{ github.run_number }})"
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" newtonia/ios/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SHORT_VERSION" newtonia/ios/Info.plist
 
