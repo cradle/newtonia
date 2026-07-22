@@ -8,6 +8,15 @@ on:
     tags:
       - 'v*.*.*'
   workflow_dispatch:
+    inputs:
+      signal_worker:
+        description: 'Signaling worker the build points at (beta = staging, no production impact)'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - beta
 
 jobs:
   deploy:
@@ -214,9 +223,20 @@ jobs:
           NETLIBS=$(find "$(pwd)/libdatachannel/build-ios" "$(pwd)/netlibs/lib" -name "*.a" | sort -u | tr '\n' ' ')
           OTHER_LD="-ObjC $SDL2MAIN_LIB $SDL2_LIB $SDL2MIX_LIB $NETLIBS"
 
-          # NEWTONIA_NET_DEFINE / NEWTONIA_NET_HEADER_PATH are referenced by
-          # the project's GCC_PREPROCESSOR_DEFINITIONS / HEADER_SEARCH_PATHS
-          # (empty when unset, so plain Xcode builds are unaffected).
+          # Point the build at the beta signaling worker when the manual dispatch
+          # asks for it; tag pushes (and the production default) leave it empty,
+          # so the baked production URL stands. Fills the project's
+          # $(NEWTONIA_SIGNAL_DEFINE) placeholder (net_signal.cpp).
+          SIGNAL_DEFINE=""
+          if [ "${{ github.event.inputs.signal_worker }}" = "beta" ]; then
+            SIGNAL_DEFINE="NEWTONIA_SIGNAL_BETA=1"
+            echo "::notice::Build points at the BETA signaling worker (newtonia-signal-beta)."
+          fi
+
+          # NEWTONIA_NET_DEFINE / NEWTONIA_NET_HEADER_PATH / NEWTONIA_SIGNAL_DEFINE
+          # are referenced by the project's GCC_PREPROCESSOR_DEFINITIONS /
+          # HEADER_SEARCH_PATHS (empty when unset, so plain Xcode builds are
+          # unaffected).
           xcodebuild archive \
             -project newtonia/ios/Newtonia-iOS.xcodeproj \
             -scheme Newtonia \
@@ -227,6 +247,7 @@ jobs:
             "SDL2_MIXER_HEADER_PATH=$(pwd)/SDL2_mixer/include" \
             "NEWTONIA_NET_DEFINE=NEWTONIA_NET_RTC=1" \
             "NEWTONIA_NET_HEADER_PATH=$(pwd)/libdatachannel/include" \
+            "NEWTONIA_SIGNAL_DEFINE=$SIGNAL_DEFINE" \
             "OTHER_LDFLAGS=$OTHER_LD" \
             "CODE_SIGN_ENTITLEMENTS=$(pwd)/entitlements-final.plist" \
             DEVELOPMENT_TEAM="$TEAM_ID" \
