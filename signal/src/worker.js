@@ -626,6 +626,9 @@ export class Room {
       else if (platform === 4 /* NET_PLATFORM_IOS */)
         verify = async () => {
           const v = await verifyGameCenterCred(this.env, cred);
+          // Log WHICH (identifier, digest) Apple actually signed — the device
+          // test's answer to the open M3-4 question (greppable in wrangler tail).
+          if (v) console.log(`game center verified idKind=${v.idKind} hash=${v.hash}`);
           // Account proven, name unavailable from Apple: attest the empty name
           // (platform ATTESTED, name ABSENT -> peer renders "PLAYER N - IOS").
           return v ? { name: "" } : null;

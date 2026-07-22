@@ -135,9 +135,13 @@ export function is_apple_host(host) {
 }
 
 // Verify a Game Center identity bundle. `cred` is the JSON string the client
-// packed (game_center_identity.mm). Returns { identifier } on success (the
-// proven scoped id) or null on any failure — a null result leaves the peer
-// unattested (role-labelled); verification NEVER rejects the room.
+// packed (game_center_identity.mm). Returns { identifier, idKind, hash } on
+// success — the proven scoped id plus WHICH identifier kind ("gamePlayerID" /
+// "teamPlayerID") and WHICH digest ("SHA-256" / "SHA-1") actually verified, so
+// the worker can log the winning combination (the device-test answer to
+// "which one does Apple sign?" — NETPLAY.md M3-4). Returns null on any failure
+// — a null result leaves the peer unattested (role-labelled); verification
+// NEVER rejects the room.
 //
 // The caller attests { platform: ios, name: "" } — account only; the alias is
 // never derived here (Apple provides no such lookup).
@@ -210,8 +214,11 @@ export async function verifyGameCenterCred(env, cred, fetcher = fetch,
   const tsBytes = uint64BE(ts);
 
   // Try every (identifier, digest) combination — see the header note on why
-  // this is safe. Any single pass proves the account.
-  const ids = [gpid, tpid].filter((s) => s.length > 0);
+  // this is safe. Any single pass proves the account; we report which one won.
+  const candidates = [
+    { id: gpid, kind: "gamePlayerID" },
+    { id: tpid, kind: "teamPlayerID" },
+  ].filter((c) => c.id.length > 0);
   const hashes = ["SHA-256", "SHA-1"];
   for (const hash of hashes) {
     let key;
@@ -221,15 +228,15 @@ export async function verifyGameCenterCred(env, cred, fetcher = fetch,
     } catch (e) {
       continue; // key algo/hash mismatch — try the next hash
     }
-    for (const id of ids) {
-      const payload = concatBytes([enc.encode(id), bidBytes, tsBytes, salt]);
+    for (const c of candidates) {
+      const payload = concatBytes([enc.encode(c.id), bidBytes, tsBytes, salt]);
       let ok = false;
       try {
         ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, sig, payload);
       } catch (e) {
         ok = false;
       }
-      if (ok) return { identifier: id };
+      if (ok) return { identifier: c.id, idKind: c.kind, hash };
     }
   }
   return null;

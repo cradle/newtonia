@@ -114,7 +114,8 @@ eq("apple.com.evil.com rejected", is_apple_host("apple.com.evil.com"), false);
 {
   const { fetcher, urls } = apple();
   const v = await verifyGameCenterCred(ENV, cred(), fetcher, TS);
-  deep("valid gpid signature -> account proven", v, { identifier: GPID });
+  deep("valid gpid signature -> account proven + winning combo reported", v,
+       { identifier: GPID, idKind: "gamePlayerID", hash: "SHA-256" });
   eq("fetched the apple cert url", urls[0], PK_URL);
 }
 
@@ -131,7 +132,8 @@ eq("apple.com.evil.com rejected", is_apple_host("apple.com.evil.com"), false);
   const { fetcher } = apple();
   const c = cred({ _signId: TPID });
   const v = await verifyGameCenterCred(ENV, c, fetcher, TS);
-  deep("tpid signature -> proven via teamPlayerID", v, { identifier: TPID });
+  deep("tpid signature -> proven via teamPlayerID", v,
+       { identifier: TPID, idKind: "teamPlayerID", hash: "SHA-256" });
 }
 
 // ---- digest fallback: a SHA-1 signature still verifies ----
@@ -139,7 +141,8 @@ eq("apple.com.evil.com rejected", is_apple_host("apple.com.evil.com"), false);
   const { fetcher } = apple();
   const c = cred({ _alg: "RSA-SHA1" });
   const v = await verifyGameCenterCred(ENV, c, fetcher, TS);
-  deep("SHA-1 signature accepted via digest fallback", v, { identifier: GPID });
+  deep("SHA-1 signature accepted + reported as SHA-1", v,
+       { identifier: GPID, idKind: "gamePlayerID", hash: "SHA-1" });
 }
 
 // ---- wrong bundle id in cred: rejected before any fetch ----
@@ -157,7 +160,8 @@ eq("apple.com.evil.com rejected", is_apple_host("apple.com.evil.com"), false);
   const { fetcher } = apple();
   const c = cred({ bid: "cc.gfm.NewtoniaBeta", sig: sign(GPID, "cc.gfm.NewtoniaBeta", TS, SALT).toString("base64") });
   const v = await verifyGameCenterCred({ GAME_CENTER_BUNDLE_ID: "cc.gfm.NewtoniaBeta" }, c, fetcher, TS);
-  deep("env override accepts a matching bundle id", v, { identifier: GPID });
+  deep("env override accepts a matching bundle id", v,
+       { identifier: GPID, idKind: "gamePlayerID", hash: "SHA-256" });
 }
 
 // ---- non-apple / non-https publicKeyURL: rejected before fetch ----

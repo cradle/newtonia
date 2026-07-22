@@ -362,6 +362,11 @@ alias" (confirmed against Apple's docs — that API does not exist). Unit-tested
 platform-agnostic `identity_attested.sh` path. Remaining: the **live
 two-Game-Center-account device smoke test** (confirms the signed identifier and
 digest — the verifier tries all combinations, but a device test pins reality).
+**Which combo Apple signs is answered by the worker log** `game center verified
+idKind=<gamePlayerID|teamPlayerID> hash=<SHA-256|SHA-1>` (greppable in
+`wrangler tail newtonia-signal` during the device test) — the verifier reports
+the winning pair, so the open ambiguity resolves itself the first time a real
+device attests.
 V1.5 (revocation heartbeat) is the still-unbuilt phase below.
 
 **Steam verification design (researched, not built):** Steam supports
