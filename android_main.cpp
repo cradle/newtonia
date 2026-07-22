@@ -139,6 +139,23 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     }
 }
 
+// Send the app to the background (Home), preserving state — the modern
+// Android root-Back behaviour (Menu::back_pressed on Android calls this instead
+// of raising a quit dialog). moveTaskToBack keeps the task alive so a relaunch
+// resumes instantly; focus_lost() has already auto-saved. Plain C++ linkage to
+// match the forward declaration in menu.cpp.
+void app_move_to_background() {
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (!env || !activity) return;
+    jclass cls = env->GetObjectClass(activity);
+    jmethodID mid = cls ? env->GetMethodID(cls, "moveTaskToBack", "(Z)Z") : NULL;
+    if (mid) env->CallBooleanMethod(activity, mid, JNI_TRUE);
+    if (env->ExceptionCheck()) { env->ExceptionDescribe(); env->ExceptionClear(); }
+    if (cls) env->DeleteLocalRef(cls);
+    env->DeleteLocalRef(activity);
+}
+
 // OS share sheet via ACTION_SEND chooser (see net_transport.h seam).
 bool net_share_available() { return true; }
 void net_share_text(const std::string &text) {
