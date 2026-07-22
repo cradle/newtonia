@@ -55,7 +55,7 @@ targets:
           - "*.cpp"
           - "weapon/*.cpp"
           - "view/*.cpp"
-          - "*.mm"                  # ios_main / ios_share / game_center / universal_link
+          - "*.mm"                  # ios_main / ios_share / game_center{,_identity} / universal_link
         excludes:
           - "android_main.cpp"      # Android SDL entry point
           - "glut.cpp"              # desktop GLUT entry point
@@ -89,6 +89,13 @@ targets:
         GCC_PREPROCESSOR_DEFINITIONS:
           - "__IOS__=1"
           - "GAME_CENTER_BUILD=1"
+          # Enable the Game Center netplay-identity backend (net_identity.h V3):
+          # net_identity.cpp calls NetIdentityBackend::local_name/platform and
+          # local_verify_credential, which game_center_identity.mm supplies. The
+          # display alias (offline claim) + the Apple identity-verification
+          # signature the worker attests the ACCOUNT with (game_center_verify.js).
+          - "NEWTONIA_NET_IDENTITY_BACKEND=1"
+          - "NEWTONIA_NET_VERIFY_BACKEND=1"
           - "$(NEWTONIA_NET_DEFINE)"
           - "$(inherited)"
       configs:
@@ -97,6 +104,8 @@ targets:
           GCC_PREPROCESSOR_DEFINITIONS:
             - "__IOS__=1"
             - "GAME_CENTER_BUILD=1"
+            - "NEWTONIA_NET_IDENTITY_BACKEND=1"
+            - "NEWTONIA_NET_VERIFY_BACKEND=1"
             - "DEBUG=1"
             - "$(NEWTONIA_NET_DEFINE)"
             - "$(inherited)"
