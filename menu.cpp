@@ -552,6 +552,13 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
   }
 }
 
+#if defined(__ANDROID__)
+// Defined in android_main.cpp (moveTaskToBack). Plain C++ linkage; the call is
+// compiled only in the __ANDROID__ branch below, so no other platform needs
+// the symbol.
+extern void app_move_to_background();
+#endif
+
 bool Menu::back_pressed() {
   if (options_mode_) {
     close_options();  // persists and returns to the menu
@@ -577,9 +584,17 @@ bool Menu::back_pressed() {
     quit_confirm_ = false; // dismiss = No
     return true;
   }
+#if defined(__ANDROID__)
+  // Root Back on Android = go Home (background the app, state preserved) — the
+  // platform convention, not a quit dialog. focus_lost() auto-saves; the task
+  // stays alive so a relaunch resumes on this menu.
+  app_move_to_background();
+  return true;
+#else
   quit_confirm_ = true;
   quit_selection_ = 0;
   return true;
+#endif
 }
 
 void Menu::touch_tap(float nx, float ny) {

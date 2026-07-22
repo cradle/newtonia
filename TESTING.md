@@ -66,6 +66,9 @@ node test/reclaim_test.js                # M3-1 protocol: token + grace + reclai
 node test/rate_key_test.mjs              # rate_key /64-collapse unit test
 node test/pv_replay_test.mjs             # stored-offer replay keeps the version stamp
 node test/steam_verify_test.mjs          # V1 Steam verifier, mocked Valve (unit)
+node test/play_games_verify_test.mjs     # V2 Play Games verifier, mocked Google (unit)
+node test/game_center_verify_test.mjs    # V3 Game Center verifier, real RSA + synthetic
+                                         #   Apple cert, mocked fetch (unit)
 # The identity protocol test needs the FAKE_VERIFY dev flag set on the relay:
 #   npx wrangler dev --local --port 8787 --var FAKE_VERIFY:1
 node test/identity_test.js               # V0 identity attest/broadcast/replay
@@ -201,6 +204,9 @@ test/e2e/identity.sh # peer-identity happy path: named exchange both ways
                      # role labels (PLAYER 1 = host, PLAYER 2 = client). Run
                      # against a PLAIN relay (no FAKE_VERIFY) — the claim must
                      # stay unattested so the display shows role labels.
+                     # Phase C: accented names (BJÖRN/RENÉE) must fold to their
+                     # ASCII base (BJORN/RENEE) over the wire — Tier-1
+                     # transliteration in net_sanitize_name.
 test/e2e/identity_attested.sh # V0/V1 worker attestation: self-hosts its OWN
                      # FAKE_VERIFY relay (private port, so the shared :8787 dev
                      # relay is untouched), connects a named host+joiner, and
@@ -426,6 +432,71 @@ normal game would let a stray tap cheat-flag the run). It synthesizes a
 full n press+release, so it works on intro screens like the desktop key.
 `adb shell input keyevent KEYCODE_N` works on Android regardless of the
 gate.
+
+### Running on an emulator or device (+ the Play Games attestation smoke test)
+
+**Get a target attached** (`adb devices` should list it):
+- *Physical device*: Developer options → USB debugging, plug in, accept the RSA prompt.
+- *Emulator*: create an AVD from a **Google Play** system image. Play Games
+  sign-in and server-side access need Google Play Services, so a plain
+  "Google APIs" / AOSP image can **not** exercise identity attestation (it can
+  still run the game and LAN/local play):
+  ```sh
+  sdkmanager "platform-tools" "emulator" "system-images;android-34;google_apis_playstore;x86_64"
+  avdmanager create avd -n newtonia -k "system-images;android-34;google_apis_playstore;x86_64" -d pixel_6
+  emulator -avd newtonia          # or Android Studio → Device Manager
+  ```
+  Then sign into a Google account inside the emulator (Settings → Passwords &
+  accounts) so Play Games can authenticate.
+
+**Build + install** (full toolchain — NDK + SDL2/SDL2_mixer siblings — per the
+`### Android` build section in CLAUDE.md):
+```sh
+make android-install            # build the debug APK + adb install onto the attached target
+# or install a CI artifact instead: adb install -r app-debug.apk   (from an android.yml run)
+```
+
+**Register the debug keystore's SHA-1 for a locally-built APK.** Play Games
+matches *package name + signing SHA-1* against a registered OAuth Android
+client, and only the **release / Play App Signing** SHA-1 is registered by
+default. A locally-built APK is **debug-signed** (a different SHA-1), so Play
+Games sign-in fails with `DEVELOPER_ERROR` ("Play Games not signed in — earns
+held in memory" in logcat), and with no sign-in the phone fetches no name and
+mints no server auth code → it sends an empty credential and the worker logs
+`identity … platform=5 verified=false`. Fix: in **Google Cloud Console → APIs &
+Services → Credentials → Create credentials → OAuth client ID → Android** (the
+game's project — `717199808901`), add package `org.newtonia` + the debug SHA-1,
+and make sure the test account is on the Play Games Services **testers** list.
+The failing `SignInAuthenticator` logcat dump prints the exact SHA-1 to
+register; or `keytool -list -v -keystore ~/.android/debug.keystore -alias
+androiddebugkey -storepass android`. Play Store builds are unaffected (their
+Play App Signing SHA-1 is already registered) — this is only for local/debug
+installs. Give it a few minutes to propagate, then force-stop + relaunch.
+
+**Play Games identity attestation smoke test** (NETPLAY.md V2). Prereqs: a
+signal worker with the OAuth secrets set (`signal/README.md` — the beta worker
+has them once master's `signal/` deploy has run, and Play Games needs BOTH
+`PLAY_GAMES_OAUTH_CLIENT_ID`/`_SECRET` set with `--env beta`, not just the Steam
+key), the debug SHA-1 registered (above), and **two** Google accounts (two
+devices, or two accounts on one device). Launch each side pointed at the
+beta relay with net debug on — Android delivers env via intent extras, and
+`net:` lines are gated on `NEWTONIA_NET_DEBUG` (`-S` forces a fresh process so
+the extras are read; see §5):
+```sh
+adb shell am start -S -n org.newtonia/.NewtoniaActivity \
+    --es NEWTONIA_NET_DEBUG 1 \
+    --es NEWTONIA_SIGNAL_URL wss://newtonia-signal-beta.gfmcc.workers.dev/ws
+adb logcat -s SDL/APP | grep "net: identity"     # fallback if the tag differs: adb logcat | grep "net:"
+```
+HOST on one side, JOIN with the room code on the other. **Pass** = each side
+logs the peer's *attested* identity and the lobby "HOSTED BY" / badge shows the
+real name (not "PLAYER 1/2"):
+```
+net: identity attested name='<real Play Games name>' platform=ANDROID(5)
+```
+Negative cases degrade gracefully to the role label (never a crash): a build/
+worker without the OAuth secret, a plain-AOSP emulator, or a not-signed-in
+account all stay `net: identity` (claim) without the `attested` line.
 
 ## 6. What CI runs where
 

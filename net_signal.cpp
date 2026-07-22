@@ -11,8 +11,25 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Glenn's production worker (deployed 2026-07-04 — signal/README.md).
-static const char *SIGNAL_URL_DEFAULT = "wss://newtonia-signal.gfmcc.workers.dev/ws";
+// The baked default signaling worker (Glenn's production worker, deployed
+// 2026-07-04 — signal/README.md). Overridable at COMPILE time; the RUNTIME
+// overrides in net_signal_url() (the NEWTONIA_SIGNAL_URL env var, the prefs
+// `signal_url`) still win over whatever is baked here:
+//   -DNEWTONIA_SIGNAL_BETA=1  -> the isolated beta worker (its own Durable
+//        Objects + secrets; deploy-signal auto-deploys it on master pushes
+//        touching signal/**). deploy-ios's `signal_worker: beta` dispatch sets
+//        this so a TestFlight build can be tested against beta WITHOUT touching
+//        production. wrangler.toml [env.beta] name = newtonia-signal-beta.
+//   -DNEWTONIA_SIGNAL_URL_DEFAULT='"wss://.../ws"'  -> any arbitrary worker
+//        (the general escape hatch; quote the string for the preprocessor).
+#ifndef NEWTONIA_SIGNAL_URL_DEFAULT
+#  if defined(NEWTONIA_SIGNAL_BETA)
+#    define NEWTONIA_SIGNAL_URL_DEFAULT "wss://newtonia-signal-beta.gfmcc.workers.dev/ws"
+#  else
+#    define NEWTONIA_SIGNAL_URL_DEFAULT "wss://newtonia-signal.gfmcc.workers.dev/ws"
+#  endif
+#endif
+static const char *SIGNAL_URL_DEFAULT = NEWTONIA_SIGNAL_URL_DEFAULT;
 
 #ifdef __EMSCRIPTEN__
 std::string net_signal_url_web_override();  // net_signal_web.cpp

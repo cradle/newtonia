@@ -16,6 +16,8 @@
 // when the host disconnects or after ROOM_TTL_MS.
 
 import { verifySteamTicket } from "./steam_verify.js";
+import { verifyPlayGamesCode } from "./play_games_verify.js";
+import { verifyGameCenterCred } from "./game_center_verify.js";
 
 const CODE_ALPHABET = "ABCDEGHJKLMNPQRTUVWXYZ2346789"; // no 0/O/1/I/5/S (confusable in the game font) or F (game fullscreen key)
 const CODE_LEN = 5;
@@ -605,46 +607,82 @@ export class Room {
       // Dev/e2e shortcut (wrangler dev only): attest the claim without
       // contacting any platform backend. NEVER set in production.
       attested = { platform, name, verified: true };
-    } else if (platform === 2 /* NET_PLATFORM_STEAM */ && cred) {
-      // Denial-of-wallet guard: every verify is a Valve round-trip against
-      // the publisher key's daily budget. The per-IP connect limiter bounds
-      // NEW sockets but not per-message floods over an already-open one, and
-      // WS frames never pass through the fetch-handler Limiter — so throttle
-      // the Valve call per role here. Legit re-verifies (host reclaim, a
-      // future V1.5 heartbeat) are seconds-to-minutes apart; only a flood is
-      // dropped, and a dropped frame KEEPS the last attestation (no demote).
-      const now = Date.now();
-      const at_key = role === "host" ? "host_verify_at" : "joiner_verify_at";
-      if (this.r[at_key] && now - this.r[at_key] < VERIFY_MIN_INTERVAL_MS)
-        return;  // flooded: keep the prior attestation, spend no Valve call
-      // PERSIST the throttle stamp BEFORE the Valve call: this DO hibernates
-      // between idle messages, and an unpersisted stamp would reset on
-      // eviction — a peer pacing frames across evictions could then defeat
-      // the guard. Saving first makes it durable.
-      this.r[at_key] = now;
-      await this.save();
-      const v = await verifySteamTicket(this.env, cred);
-      // The room can be torn down (host `close`, TTL/grace expiry) while the
-      // verify fetch is in flight — the input gate is open across a non-storage
-      // await. Don't write identity back onto a dead/tombstoned room.
-      if (this.r.closed || !this.r.host_token) return;
-      if (v) {
-        // Attested name comes from Steam, not the wire (a lying name field
-        // stops mattering); the account proven is enough to badge STEAM.
-        attested = { platform: 2, name: v.persona || "", verified: true };
-      } else {
-        // Verify failed (bad/expired/reused ticket, Valve down): don't demote
-        // an already-verified badge on a transient failure — keep the prior.
-        const prev = role === "host" ? this.r.host_identity : this.r.joiner_identity;
-        if (prev && prev.verified) return;
+    } else if (cred) {
+      // Per-platform verifier: each proves the account against the platform's
+      // own backend and returns the display NAME to attest (the wire name is
+      // never trusted). An unknown/unverifiable platform has no verifier and
+      // stays a claim.
+      //   Steam   (2): Web-API auth ticket -> AuthenticateUserTicket + persona.
+      //   iOS     (4): Game Center id signature -> Apple cert verify (account
+      //                only; Apple exposes no server-side alias lookup, so the
+      //                attested name is always empty — see game_center_verify.js).
+      //   Android (5): Play Games server auth code -> token exchange + player.
+      let verify = null;
+      if (platform === 2 /* NET_PLATFORM_STEAM */)
+        verify = async () => {
+          const v = await verifySteamTicket(this.env, cred);
+          return v ? { name: v.persona || "" } : null;
+        };
+      else if (platform === 4 /* NET_PLATFORM_IOS */)
+        verify = async () => {
+          const v = await verifyGameCenterCred(this.env, cred);
+          // Log WHICH (identifier, digest) Apple actually signed — the device
+          // test's answer to the open M3-4 question (greppable in wrangler tail).
+          if (v) console.log(`game center verified idKind=${v.idKind} hash=${v.hash}`);
+          // Account proven, name unavailable from Apple: attest the empty name
+          // (platform ATTESTED, name ABSENT -> peer renders "PLAYER N - IOS").
+          return v ? { name: "" } : null;
+        };
+      else if (platform === 5 /* NET_PLATFORM_ANDROID */)
+        verify = async () => {
+          const v = await verifyPlayGamesCode(this.env, cred);
+          return v ? { name: v.name || "" } : null;
+        };
+      if (verify) {
+        // Denial-of-wallet guard: every verify is a round-trip against the
+        // platform backend's budget/quota. The per-IP connect limiter bounds
+        // NEW sockets but not per-message floods over an already-open one, and
+        // WS frames never pass through the fetch-handler Limiter — so throttle
+        // the backend call per role here. Legit re-verifies (host reclaim, a
+        // future heartbeat) are seconds-to-minutes apart; only a flood is
+        // dropped, and a dropped frame KEEPS the last attestation (no demote).
+        const now = Date.now();
+        const at_key = role === "host" ? "host_verify_at" : "joiner_verify_at";
+        if (this.r[at_key] && now - this.r[at_key] < VERIFY_MIN_INTERVAL_MS)
+          return;  // flooded: keep the prior attestation, spend no backend call
+        // PERSIST the throttle stamp BEFORE the backend call: this DO hibernates
+        // between idle messages, and an unpersisted stamp would reset on
+        // eviction — a peer pacing frames across evictions could then defeat
+        // the guard. Saving first makes it durable.
+        this.r[at_key] = now;
+        await this.save();
+        const v = await verify();
+        // The room can be torn down (host `close`, TTL/grace expiry) while the
+        // verify fetch is in flight — the input gate is open across a non-storage
+        // await. Don't write identity back onto a dead/tombstoned room.
+        if (this.r.closed || !this.r.host_token) return;
+        if (v) {
+          // Attested name comes from the platform, not the wire (a lying name
+          // field stops mattering); the account proven is enough to badge.
+          attested = { platform, name: v.name || "", verified: true };
+        } else {
+          // Verify failed (bad/expired/reused credential, backend down): don't
+          // demote an already-verified badge on a transient failure — keep it.
+          const prev = role === "host" ? this.r.host_identity : this.r.joiner_identity;
+          if (prev && prev.verified) return;
+        }
       }
     }
 
     this.r[role === "host" ? "host_identity" : "joiner_identity"] = attested;
     await this.save();
     this.broadcast_identity(role);
+    // credlen distinguishes "client sent no credential" (credlen=0 — e.g. the
+    // iOS simulator not issuing an identity-verification signature) from
+    // "credential sent but rejected" (credlen>0 with verified=false — a real
+    // verifier/data issue worth debugging).
     console.log(`identity ${role} platform=${attested.platform} ` +
-                `verified=${attested.verified}`);
+                `verified=${attested.verified} credlen=${cred.length}`);
   }
 
   // Push a role's stored attestation to the OTHER side (the peer consumes it

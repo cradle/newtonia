@@ -127,6 +127,20 @@ const NetIdentity &net_local_identity();
 // NetIdentityBackend::local_verify_credential(); the default is "".
 std::string net_local_verify_credential();
 
+// Release any outstanding verification-credential handles the backend still
+// holds — the Steamworks CancelAuthTicket cleanup for every handle
+// GetAuthTicketForWebApi minted (Valve asks callers to cancel when done).
+// Called at netplay TEARDOWN (~NetLobby, ~GLGame), which is by construction
+// AFTER the worker's one-shot AuthenticateUserTicket window has closed, so it
+// never cancels a ticket still in flight to the worker; it also mops up a
+// ticket that was warmed but never sent (the lobby warms one on open, so a
+// player who backs out to the menu leaves one outstanding). The backend also
+// drops its cached credential, so a subsequent mint re-warms from scratch and
+// a cancelled ticket can never be re-sent. A no-op on every build without a
+// verification backend. Backends supply
+// NetIdentityBackend::release_verify_credentials().
+void net_release_verify_credentials();
+
 // Merge a worker attestation into a peer identity built from the p2p wire.
 // Each ATTESTED field in `attested` overwrites the corresponding field and
 // promotes its trust; CLAIMED/ABSENT fields leave the existing value alone
@@ -138,13 +152,18 @@ void net_apply_attested(NetIdentity &into, const NetIdentity &attested);
 // for values this build doesn't know (future platforms render name-only).
 const char *net_platform_label(uint8_t platform);
 
-// Clamp to NET_IDENTITY_NAME_MAX bytes and keep only characters the Typer
-// font can draw (letters map to the shared upper/lower glyphs, so case is
-// preserved as-is); everything else — including multi-byte UTF-8 — is
-// dropped. Surrounding whitespace is trimmed. Control bytes and non-ASCII
-// are ALSO stripped explicitly, independent of the glyph predicate — a
-// security boundary (no terminal-escape/log injection) that must survive
-// any future glyph-set growth.
+// Decode UTF-8 and reduce a peer's raw display name to at most
+// NET_IDENTITY_NAME_MAX Typer-drawable glyphs. Latin scripts are folded to
+// their ASCII base so accented Western names survive ("JOSÉ" -> "JOSE",
+// "Störmer" -> "STORMER") rather than losing characters; letters keep the
+// shared upper/lower glyphs, so case is preserved. Everything the font can't
+// render — Greek, Cyrillic, CJK, emoji, combining marks — is dropped, and a
+// name that reduces to nothing renders as the peer's role label. Surrounding
+// whitespace is trimmed. Control bytes and any un-folded non-ASCII are
+// stripped explicitly, and every folded byte is re-gated through the drawable
+// predicate — a security boundary (no terminal-escape/log injection) that
+// must survive any future glyph-set growth. The output is ASCII, so it stays
+// <= NET_IDENTITY_NAME_MAX bytes on the wire.
 std::string net_sanitize_name(const std::string &raw);
 
 // Every display helper takes the session context (NET_ID_ONLINE/OFFLINE):

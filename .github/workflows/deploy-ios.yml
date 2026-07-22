@@ -8,6 +8,20 @@ on:
     tags:
       - 'v*.*.*'
   workflow_dispatch:
+    inputs:
+      signal_worker:
+        description: 'Signaling worker the build points at (beta = staging, no production impact)'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - beta
+      version:
+        description: 'Marketing version for a manual build. MUST exceed the latest App Store version AND any in-review version (1.46.1 in review as of 2026-07), or App Store Connect rejects it / collides with the review. Ignored on tag builds (they use the tag).'
+        required: false
+        default: '1.47.0'
+        type: string
 
 jobs:
   deploy:
@@ -176,12 +190,23 @@ jobs:
 
       - name: Set version numbers
         run: |
+          # Tag build -> use the tag's version; manual dispatch -> use the
+          # `version` input (which the dispatch prefers over the branch ref).
           TAG_VERSION="${{ github.ref_name }}"
           SHORT_VERSION="${TAG_VERSION#v}"
-          # Fall back to 1.0 if not triggered by a version tag
-          if ! echo "$SHORT_VERSION" | grep -qE '^[0-9]+(\.[0-9]+){0,2}$'; then
-            SHORT_VERSION="1.0"
+          INPUT_VERSION="${{ github.event.inputs.version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            SHORT_VERSION="$INPUT_VERSION"
           fi
+          # Guard: must be a dotted numeric version. Fall back ABOVE the store
+          # version AND any in-review version — App Store Connect rejects a
+          # marketing version <= the latest approved one, closes old trains, and
+          # collides with a version in review (1.45.0 shipped, 1.46.1 in review
+          # as of 2026-07; the old 1.0 fallback failed every dispatch build).
+          if ! echo "$SHORT_VERSION" | grep -qE '^[0-9]+(\.[0-9]+){0,2}$'; then
+            SHORT_VERSION="1.47.0"
+          fi
+          echo "::notice::iOS build version $SHORT_VERSION (build ${{ github.run_number }})"
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" newtonia/ios/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SHORT_VERSION" newtonia/ios/Info.plist
 
@@ -214,9 +239,20 @@ jobs:
           NETLIBS=$(find "$(pwd)/libdatachannel/build-ios" "$(pwd)/netlibs/lib" -name "*.a" | sort -u | tr '\n' ' ')
           OTHER_LD="-ObjC $SDL2MAIN_LIB $SDL2_LIB $SDL2MIX_LIB $NETLIBS"
 
-          # NEWTONIA_NET_DEFINE / NEWTONIA_NET_HEADER_PATH are referenced by
-          # the project's GCC_PREPROCESSOR_DEFINITIONS / HEADER_SEARCH_PATHS
-          # (empty when unset, so plain Xcode builds are unaffected).
+          # Point the build at the beta signaling worker when the manual dispatch
+          # asks for it; tag pushes (and the production default) leave it empty,
+          # so the baked production URL stands. Fills the project's
+          # $(NEWTONIA_SIGNAL_DEFINE) placeholder (net_signal.cpp).
+          SIGNAL_DEFINE=""
+          if [ "${{ github.event.inputs.signal_worker }}" = "beta" ]; then
+            SIGNAL_DEFINE="NEWTONIA_SIGNAL_BETA=1"
+            echo "::notice::Build points at the BETA signaling worker (newtonia-signal-beta)."
+          fi
+
+          # NEWTONIA_NET_DEFINE / NEWTONIA_NET_HEADER_PATH / NEWTONIA_SIGNAL_DEFINE
+          # are referenced by the project's GCC_PREPROCESSOR_DEFINITIONS /
+          # HEADER_SEARCH_PATHS (empty when unset, so plain Xcode builds are
+          # unaffected).
           xcodebuild archive \
             -project newtonia/ios/Newtonia-iOS.xcodeproj \
             -scheme Newtonia \
@@ -227,6 +263,7 @@ jobs:
             "SDL2_MIXER_HEADER_PATH=$(pwd)/SDL2_mixer/include" \
             "NEWTONIA_NET_DEFINE=NEWTONIA_NET_RTC=1" \
             "NEWTONIA_NET_HEADER_PATH=$(pwd)/libdatachannel/include" \
+            "NEWTONIA_SIGNAL_DEFINE=$SIGNAL_DEFINE" \
             "OTHER_LDFLAGS=$OTHER_LD" \
             "CODE_SIGN_ENTITLEMENTS=$(pwd)/entitlements-final.plist" \
             DEVELOPMENT_TEAM="$TEAM_ID" \
@@ -266,10 +303,59 @@ jobs:
 
       # Upload to TestFlight. Testers can install immediately;
       # submit for App Store review from App Store Connect UI.
+      #
+      # We invoke altool directly (rather than the
+      # apple-actions/upload-testflight-build action) so the job's outcome
+      # reflects the ACTUAL upload result. On run 217 the action reported the
+      # job as "success" even though altool printed "UPLOAD FAILED with 3
+      # errors" and nothing reached TestFlight — a rejected build looked green.
+      # altool's --output-format xml result plist is the source of truth: a
+      # failed upload carries a `product-errors` array, a successful one does
+      # not. We parse it (and honour any non-zero altool exit) and fail the job
+      # when the upload didn't actually go through.
       - name: Upload to TestFlight
-        uses: apple-actions/upload-testflight-build@v3
-        with:
-          app-path: IPA/Newtonia.ipa
-          issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          api-key-id: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          api-private-key: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+        env:
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          API_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+        run: |
+          # altool locates the App Store Connect API key by ID in a set of
+          # well-known dirs; ~/.appstoreconnect/private_keys is the canonical one.
+          mkdir -p ~/.appstoreconnect/private_keys
+          printf '%s\n' "$API_PRIVATE_KEY" \
+            > ~/.appstoreconnect/private_keys/AuthKey_"$API_KEY_ID".p8
+
+          # Run the upload, capturing the XML result plist to a file. Don't let
+          # a non-zero exit abort the step before we've inspected the output.
+          set +e
+          xcrun altool --output-format xml --upload-app \
+            --file IPA/Newtonia.ipa --type ios \
+            --apiKey "$API_KEY_ID" --apiIssuer "$API_ISSUER_ID" \
+            1> upload-result.plist 2> upload-error.log
+          ALTOOL_STATUS=$?
+          set -e
+
+          echo "altool exit status: $ALTOOL_STATUS"
+          echo "===== altool stderr ====="
+          cat upload-error.log 2>/dev/null || true
+          echo "===== altool XML output ====="
+          cat upload-result.plist 2>/dev/null || true
+          echo "========================="
+
+          # A failed upload's result plist carries a product-errors array;
+          # a successful one does not. Treat its presence — or any non-zero
+          # altool exit — as failure so the job status can't go green on a
+          # rejected build.
+          if /usr/libexec/PlistBuddy -c 'Print :product-errors' upload-result.plist >/dev/null 2>&1; then
+            echo "::error::TestFlight upload FAILED — altool reported product-errors:"
+            /usr/libexec/PlistBuddy -c 'Print :product-errors' upload-result.plist 2>&1 \
+              | sed 's/^/    /'
+            exit 1
+          fi
+
+          if [ "$ALTOOL_STATUS" -ne 0 ]; then
+            echo "::error::TestFlight upload FAILED — altool exited $ALTOOL_STATUS (see stderr above)."
+            exit "$ALTOOL_STATUS"
+          fi
+
+          echo "::notice::TestFlight upload succeeded."

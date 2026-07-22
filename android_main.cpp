@@ -139,6 +139,23 @@ static void finger_down(SDL_FingerID id, float x, float y) {
     }
 }
 
+// Send the app to the background (Home), preserving state — the modern
+// Android root-Back behaviour (Menu::back_pressed on Android calls this instead
+// of raising a quit dialog). moveTaskToBack keeps the task alive so a relaunch
+// resumes instantly; focus_lost() has already auto-saved. Plain C++ linkage to
+// match the forward declaration in menu.cpp.
+void app_move_to_background() {
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (!env || !activity) return;
+    jclass cls = env->GetObjectClass(activity);
+    jmethodID mid = cls ? env->GetMethodID(cls, "moveTaskToBack", "(Z)Z") : NULL;
+    if (mid) env->CallBooleanMethod(activity, mid, JNI_TRUE);
+    if (env->ExceptionCheck()) { env->ExceptionDescribe(); env->ExceptionClear(); }
+    if (cls) env->DeleteLocalRef(cls);
+    env->DeleteLocalRef(activity);
+}
+
 // OS share sheet via ACTION_SEND chooser (see net_transport.h seam).
 bool net_share_available() { return true; }
 void net_share_text(const std::string &text) {
@@ -241,6 +258,14 @@ static void finger_motion(SDL_FingerID id, float x, float y) {
 }
 
 // ============================================================
+#if defined(PLAY_GAMES_BUILD)
+// Netplay identity backend warm hook (play_games_identity.cpp). Declared at
+// file scope: a linkage-specification (extern "C") is only legal at namespace
+// scope, never inside a function body. extern "C" so the name matches the
+// backend's definition (both give it C linkage).
+extern "C" void net_android_identity_init();
+#endif
+
 // SDL2 main
 // ============================================================
 extern "C" int SDL_main(int argc, char *argv[]) {
@@ -369,6 +394,15 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     // after SDL_Init) and must precede the state machine, whose constructors
     // can already fire earns from a resumed save.
     Achievements::init();
+
+#if defined(PLAY_GAMES_BUILD)
+    // Netplay identity backend (NETPLAY.md V2): pre-warm the Play Games player
+    // name so it's cached before the lobby builds net_local_identity(). Runs
+    // AFTER Achievements::init(), which brings up the Play Games SDK +
+    // automatic sign-in this backend piggybacks on. (Declared at file scope
+    // above — extern "C" can't appear inside a function body.)
+    net_android_identity_init();
+#endif
 
     // Load user preferences before creating the state machine so that GLShip
     // constructors can read them (e.g. rotate_view).

@@ -15,6 +15,19 @@
      export's names. -->
 <resources>
     <string name="game_services_project_id" translatable="false">717199808901</string>
+
+    <!-- Netplay identity attestation (NETPLAY.md V2, PlayGamesIdentity.java).
+         The OAuth 2.0 WEB client id (Google Cloud console → Credentials, the
+         "web" client under this game's project — NOT the Android client id).
+         GamesSignInClient.requestServerSideAccess mints an auth code redeemable
+         only with the matching client SECRET, which the signal worker holds
+         (Cloudflare secret PLAY_GAMES_OAUTH_CLIENT_SECRET; play_games_verify.js).
+         With the resource absent, no server auth code is minted and an Android
+         peer stays role-labelled online — the same graceful degradation as the
+         worker running without its secret. The matching client SECRET is a
+         Cloudflare worker secret (PLAY_GAMES_OAUTH_CLIENT_SECRET), never
+         checked in. -->
+    <string name="play_games_oauth_client_id" translatable="false">717199808901-7pro0pf964n006mhkhps328jserq87rq.apps.googleusercontent.com</string>
     <!-- First Blood -->
     <string name="achievement_first_kill" translatable="false">CgkIhbPC4-8UEAIQAw</string>
     <!-- Clear Skies -->
