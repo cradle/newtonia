@@ -153,7 +153,12 @@ std::string call_string(jmethodID &m) {
 // to the Java bridge and pre-fetches the display name so it is cached before
 // the lobby ever builds net_local_identity(). Safe to call more than once (a
 // kept-alive SDL_main re-entry) — the Java side just refreshes its reference.
-void net_android_identity_init() {
+//
+// extern "C": android_main.cpp declares this at block scope inside the
+// extern "C" SDL_main, which gives the reference C linkage — so the definition
+// must have C linkage too, or the mangled/unmangled names don't match and the
+// Android link fails with "undefined symbol: net_android_identity_init".
+extern "C" void net_android_identity_init() {
   JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
   jobject activity = (jobject)SDL_AndroidGetActivity();
   if (!env || !activity) {

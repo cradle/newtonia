@@ -241,6 +241,14 @@ static void finger_motion(SDL_FingerID id, float x, float y) {
 }
 
 // ============================================================
+#if defined(PLAY_GAMES_BUILD)
+// Netplay identity backend warm hook (play_games_identity.cpp). Declared at
+// file scope: a linkage-specification (extern "C") is only legal at namespace
+// scope, never inside a function body. extern "C" so the name matches the
+// backend's definition (both give it C linkage).
+extern "C" void net_android_identity_init();
+#endif
+
 // SDL2 main
 // ============================================================
 extern "C" int SDL_main(int argc, char *argv[]) {
@@ -374,8 +382,8 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     // Netplay identity backend (NETPLAY.md V2): pre-warm the Play Games player
     // name so it's cached before the lobby builds net_local_identity(). Runs
     // AFTER Achievements::init(), which brings up the Play Games SDK +
-    // automatic sign-in this backend piggybacks on.
-    extern void net_android_identity_init();
+    // automatic sign-in this backend piggybacks on. (Declared at file scope
+    // above — extern "C" can't appear inside a function body.)
     net_android_identity_init();
 #endif
 
