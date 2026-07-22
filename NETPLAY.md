@@ -337,11 +337,32 @@ with our OAuth client secret and reads the verified player from the Play Games
 REST API (`signal/src/play_games_verify.js`; secrets
 `PLAY_GAMES_OAUTH_CLIENT_ID`/`_SECRET`, and the web client id in
 `games-ids.xml`) — the attested display name comes from Google, not the wire.
-The worker's `attest_identity` now dispatches per platform (Steam=2,
+The worker's `attest_identity` now dispatches per platform (Steam=2, iOS=4,
 Android=5) through one shared throttle. Remaining before Play Games ships: the
 **live two-account smoke test**, creating the web OAuth client (uncomment
-`play_games_oauth_client_id`), and setting the two Cloudflare secrets. V3 (Game
-Center) and V1.5 (revocation heartbeat) are the still-unbuilt phases below.
+`play_games_oauth_client_id`), and setting the two Cloudflare secrets.
+
+**V3 (Game Center, iOS) — BUILT.** Client `game_center_identity.mm`
+(`__IOS__ && GAME_CENTER_BUILD`; `ios/project.yml` + `ios.yml` define
+`NEWTONIA_NET_IDENTITY_BACKEND`/`NEWTONIA_NET_VERIFY_BACKEND`): the alias from
+`GKLocalPlayer.alias` (offline claim) + an identity-verification bundle from
+`fetchItemsForIdentityVerificationSignature` (publicKeyURL/signature/salt/
+timestamp + both scoped ids + bundle id, packed as JSON in `cred`). Worker
+`signal/src/game_center_verify.js`: fetches Apple's cert (pinned `*.apple.com`
+over TLS — public cert, NO secret), extracts the SPKI and RSA-verifies the
+signature, trying each identifier × {SHA-256, SHA-1} (the signed id is ambiguous
+across Apple's docs and iOS is device-untested — M3-4; multiple crypto attempts
+are safe, only a genuine Apple signature over one exact payload passes).
+**Account-only** (Glenn 2026-07-22): Apple has no server-side alias lookup and
+the signature never covers the alias, so the worker attests `{platform: ios,
+name: ""}` — the online iOS peer renders the IOS badge + role label, and there
+is NO `fetchProfileAuthorizationCode` / "Game Center Management API returning
+alias" (confirmed against Apple's docs — that API does not exist). Unit-tested
+`signal/test/game_center_verify_test.mjs`; game-side folding is the
+platform-agnostic `identity_attested.sh` path. Remaining: the **live
+two-Game-Center-account device smoke test** (confirms the signed identifier and
+digest — the verifier tries all combinations, but a device test pins reality).
+V1.5 (revocation heartbeat) is the still-unbuilt phase below.
 
 **Steam verification design (researched, not built):** Steam supports
 user-to-user auth with session tickets, no game server needed.
@@ -438,14 +459,26 @@ and validation fails unless the verifier presents the same identity.
 per-platform; the per-peer verified bit carries a quality, not a bool
 in spirit:**
 
-- *Game Center (iOS)*: `GKLocalPlayer.fetchItems(forIdentityVerification
-  Signature:)` → signature over playerID+bundleID+salt+timestamp plus a
-  `publicKeyURL` to Apple's cert. Verifiable by ANYONE (fetch cert,
-  check chain to Apple root, check signature — no secret), so the peer
-  can verify client-side like Steam. BUT the signed fields are fixed:
-  no recipient/channel binding, no single-use tracking, no revocation —
-  replayable/relayable within the verifier's timestamp freshness window
-  (enforce a tight one, ~minutes; industry practice 10 min).
+- *Game Center (iOS)* — **BUILT (V3)**: `GKLocalPlayer.fetchItems(forIdentity
+  VerificationSignature:)` → signature over identifier+bundleID+salt+timestamp
+  plus a `publicKeyURL` to Apple's cert. Verifiable by ANYONE (fetch cert,
+  check signature — no secret), so it COULD verify client-side, but per the
+  unified-worker decision the signal worker does it (one attest path for every
+  platform). The signed fields are fixed: no recipient/channel binding, no
+  single-use tracking, no revocation — replayable/relayable within the
+  verifier's timestamp freshness window (we enforce ~10 min). **Account-only:**
+  the signature does NOT cover the alias, and Apple has NO server-side alias
+  lookup (no `fetchProfileAuthorizationCode`, no REST alias API — confirmed
+  2026-07-22), so the worker proves the ACCOUNT and attests an empty name (the
+  online iOS peer is IOS-badge + role-labelled; the alias renders only offline).
+  This preserves the invariant that attested names come only from a platform
+  server (Steam/Android), which trusting a self-reported alias would break.
+  Implemented: client `game_center_identity.mm` (alias + the signature bundle),
+  worker `signal/src/game_center_verify.js` (Apple-cert RSA verify, `*.apple.com`
+  pin, tries both scoped ids × {SHA-256, SHA-1} since Apple's docs disagree on
+  the signed id and iOS is device-untested — M3-4). Unit test
+  `signal/test/game_center_verify_test.mjs` (real RSA keypair + synthetic cert);
+  game-side folding via `test/e2e/identity_attested.sh` (FAKE_VERIFY).
 - *Play Games v2 (Android)* — **BUILT (V2)**:
   `GamesSignInClient.requestServerSideAccess()` mints a SINGLE-USE OAuth
   server auth code, exchangeable only with our OAuth client secret; the

@@ -166,6 +166,8 @@ jobs:
               -D__IOS__=1 \
               -DNEWTONIA_NET_RTC \
               -DGAME_CENTER_BUILD=1 \
+              -DNEWTONIA_NET_IDENTITY_BACKEND=1 \
+              -DNEWTONIA_NET_VERIFY_BACKEND=1 \
               -Inewtonia -Inewtonia/view -Inewtonia/weapon \
               -I libdatachannel/include \
               -I SDL2/include \

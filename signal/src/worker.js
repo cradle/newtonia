@@ -17,6 +17,7 @@
 
 import { verifySteamTicket } from "./steam_verify.js";
 import { verifyPlayGamesCode } from "./play_games_verify.js";
+import { verifyGameCenterCred } from "./game_center_verify.js";
 
 const CODE_ALPHABET = "ABCDEGHJKLMNPQRTUVWXYZ2346789"; // no 0/O/1/I/5/S (confusable in the game font) or F (game fullscreen key)
 const CODE_LEN = 5;
@@ -612,12 +613,22 @@ export class Room {
       // never trusted). An unknown/unverifiable platform has no verifier and
       // stays a claim.
       //   Steam   (2): Web-API auth ticket -> AuthenticateUserTicket + persona.
+      //   iOS     (4): Game Center id signature -> Apple cert verify (account
+      //                only; Apple exposes no server-side alias lookup, so the
+      //                attested name is always empty — see game_center_verify.js).
       //   Android (5): Play Games server auth code -> token exchange + player.
       let verify = null;
       if (platform === 2 /* NET_PLATFORM_STEAM */)
         verify = async () => {
           const v = await verifySteamTicket(this.env, cred);
           return v ? { name: v.persona || "" } : null;
+        };
+      else if (platform === 4 /* NET_PLATFORM_IOS */)
+        verify = async () => {
+          const v = await verifyGameCenterCred(this.env, cred);
+          // Account proven, name unavailable from Apple: attest the empty name
+          // (platform ATTESTED, name ABSENT -> peer renders "PLAYER N - IOS").
+          return v ? { name: "" } : null;
         };
       else if (platform === 5 /* NET_PLATFORM_ANDROID */)
         verify = async () => {
