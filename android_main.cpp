@@ -370,6 +370,15 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     // can already fire earns from a resumed save.
     Achievements::init();
 
+#if defined(PLAY_GAMES_BUILD)
+    // Netplay identity backend (NETPLAY.md V2): pre-warm the Play Games player
+    // name so it's cached before the lobby builds net_local_identity(). Runs
+    // AFTER Achievements::init(), which brings up the Play Games SDK +
+    // automatic sign-in this backend piggybacks on.
+    extern void net_android_identity_init();
+    net_android_identity_init();
+#endif
+
     // Load user preferences before creating the state machine so that GLShip
     // constructors can read them (e.g. rotate_view).
     load_preferences();

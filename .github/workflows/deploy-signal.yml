@@ -64,6 +64,7 @@ jobs:
           node test/origin_test.mjs
           node test/turn_budget_test.mjs
           node test/steam_verify_test.mjs
+          node test/play_games_verify_test.mjs
 
       # Protocol tests against the real worker code under miniflare — no
       # Cloudflare account involved. wrangler@4's workerd/SQLite mismatch
