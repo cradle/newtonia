@@ -72,6 +72,33 @@ The pre-commit hook in `.claude/settings.json` runs this automatically on staged
 g++ -std=c++11 -fsyntax-only -I. -I/usr/include/SDL2 <file.cpp>
 ```
 
+**This desktop check does NOT exercise Android-only code.** It compiles without
+`__ANDROID__`, so every `#if defined(__ANDROID__)` branch is skipped and the
+Play Games TUs (`play_games_*.cpp`, guarded on `__ANDROID__ && PLAY_GAMES_BUILD`)
+collapse to empty translation units. A change to `android_main.cpp` or any
+Android-guarded code can pass the desktop check and still break the NDK build —
+two ways this has actually bitten: a block-scope `extern "C"` (illegal outside
+namespace scope; the NDK Clang rejects it) and a C-vs-C++ linkage mismatch on a
+free function shared across TUs. Neither showed up until `android.yml` ran.
+
+**Android compile-check on Linux (no NDK needed).** For a fast parse/semantic
+check of an Android translation unit with the real headers and the Android
+build's defines:
+```sh
+sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libgles2-mesa-dev  # SDL.h, SDL_mixer.h, GLES2/gl2.h
+JNIDIR=$(dirname "$(find /usr/lib/jvm -name jni.h | head -1)")            # jni.h ships with the JDK
+g++ -std=c++11 -fsyntax-only -D__ANDROID__ -DPLAY_GAMES_BUILD \
+    -DNEWTONIA_NET_IDENTITY_BACKEND -DNEWTONIA_NET_VERIFY_BACKEND -DNEWTONIA_NET_RTC \
+    -I"$JNIDIR" -I"$JNIDIR/linux" -I. -Iview -Iweapon -I/usr/include/SDL2 \
+    android_main.cpp
+```
+Run this after ANY edit to `android_main.cpp` or an Android-guarded/`play_games_*`
+TU. **Caveat:** it is a host-toolchain PARSE check — it catches syntax, type,
+and linkage-specification errors (e.g. the block-scope `extern "C"`) and missing
+declarations, but NOT cross-TU **link** errors (undefined-symbol / name-mangling
+mismatches) or NDK/ABI issues. For those the only real gate is a full Android
+build (`make android`) or the `android.yml` CI.
+
 #### Headless runtime testing & debugging (Linux, no display)
 **See TESTING.md for the full test inventory** — build gates, in-binary
 selftests (`NEWTONIA_NET_SELFTEST`), signal-worker tests, the committed
