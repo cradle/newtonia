@@ -24,16 +24,18 @@
 // freshness window (the signed blob carries no recipient binding or single-use
 // tracking, so freshness is the only replay defence — NETPLAY.md V3).
 //
-// Two ambiguities, both resolved by trying every combination — safe because an
-// RSA verify against Apple's genuine key is unforgeable, so a wrong combination
-// simply fails and only a real Apple signature over one exact payload passes
-// (no false positives from the extra attempts):
-//   - identifier: Apple's own docs/ecosystem disagree over gamePlayerID vs
-//     teamPlayerID for fetchItems (see the client TU). The client sends both;
-//     we try each.
-//   - digest: iOS verification is device-untested here (NETPLAY.md M3-4).
-//     Modern Apple GC certs sign SHA-256, but we also try SHA-1 so a wrong
-//     guess can't silently kill ALL iOS attestation with no remote debug path.
+// CONFIRMED ON-DEVICE (2026-07-22, NETPLAY.md M3-4): Apple signs the
+// teamPlayerID with SHA-256. So:
+//   - digest: SHA-256 only. The speculative SHA-1 fallback (a guard for the
+//     device-untested phase) is now confirmed unused and dropped — no
+//     deprecated-hash verify path ships in the production worker.
+//   - identifier: we still try BOTH gamePlayerID and teamPlayerID (teamPlayerID
+//     first, the confirmed one), since only one device/iOS version has been
+//     observed and Apple's docs/ecosystem disagree on which id is signed. This
+//     is cheap insurance: trying the extra identifier can't produce a false
+//     positive (an RSA verify against Apple's genuine key is unforgeable), and a
+//     mismatch just leaves the peer unattested (role-labelled), never breaks the
+//     room.
 
 // Our app's bundle identifier (ios/project.yml PRODUCT_BUNDLE_IDENTIFIER). The
 // signature binds to it, so a signature minted by a DIFFERENT app won't verify
@@ -137,9 +139,9 @@ export function is_apple_host(host) {
 // Verify a Game Center identity bundle. `cred` is the JSON string the client
 // packed (game_center_identity.mm). Returns { identifier, idKind, hash } on
 // success — the proven scoped id plus WHICH identifier kind ("gamePlayerID" /
-// "teamPlayerID") and WHICH digest ("SHA-256" / "SHA-1") actually verified, so
-// the worker can log the winning combination (the device-test answer to
-// "which one does Apple sign?" — NETPLAY.md M3-4). Returns null on any failure
+// "teamPlayerID") verified and the digest ("SHA-256", always — SHA-1 dropped),
+// so the worker can log the winning combination (the device-confirmed answer:
+// teamPlayerID + SHA-256 — NETPLAY.md M3-4). Returns null on any failure
 // — a null result leaves the peer unattested (role-labelled); verification
 // NEVER rejects the room.
 //
@@ -213,31 +215,30 @@ export async function verifyGameCenterCred(env, cred, fetcher = fetch,
   const bidBytes = enc.encode(bid);
   const tsBytes = uint64BE(ts);
 
-  // Try every (identifier, digest) combination — see the header note on why
-  // this is safe. Any single pass proves the account; we report which one won.
+  // SHA-256 only (confirmed — see the header note). Try teamPlayerID first (the
+  // confirmed id), then gamePlayerID as cross-device insurance; any single pass
+  // proves the account, and we report which id won.
   const candidates = [
-    { id: gpid, kind: "gamePlayerID" },
     { id: tpid, kind: "teamPlayerID" },
+    { id: gpid, kind: "gamePlayerID" },
   ].filter((c) => c.id.length > 0);
-  const hashes = ["SHA-256", "SHA-1"];
-  for (const hash of hashes) {
-    let key;
+  let key;
+  try {
+    key = await crypto.subtle.importKey(
+      "spki", spki, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false,
+      ["verify"]);
+  } catch (e) {
+    return null; // cert public key unusable for RSASSA-PKCS1-v1_5 / SHA-256
+  }
+  for (const c of candidates) {
+    const payload = concatBytes([enc.encode(c.id), bidBytes, tsBytes, salt]);
+    let ok = false;
     try {
-      key = await crypto.subtle.importKey(
-        "spki", spki, { name: "RSASSA-PKCS1-v1_5", hash }, false, ["verify"]);
+      ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, sig, payload);
     } catch (e) {
-      continue; // key algo/hash mismatch — try the next hash
+      ok = false;
     }
-    for (const c of candidates) {
-      const payload = concatBytes([enc.encode(c.id), bidBytes, tsBytes, salt]);
-      let ok = false;
-      try {
-        ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, sig, payload);
-      } catch (e) {
-        ok = false;
-      }
-      if (ok) return { identifier: c.id, idKind: c.kind, hash };
-    }
+    if (ok) return { identifier: c.id, idKind: c.kind, hash: "SHA-256" };
   }
   return null;
 }

@@ -136,13 +136,21 @@ eq("apple.com.evil.com rejected", is_apple_host("apple.com.evil.com"), false);
        { identifier: TPID, idKind: "teamPlayerID", hash: "SHA-256" });
 }
 
-// ---- digest fallback: a SHA-1 signature still verifies ----
+// ---- SHA-1 is no longer accepted (confirmed unused; dropped for production) ----
 {
   const { fetcher } = apple();
   const c = cred({ _alg: "RSA-SHA1" });
   const v = await verifyGameCenterCred(ENV, c, fetcher, TS);
-  deep("SHA-1 signature accepted + reported as SHA-1", v,
-       { identifier: GPID, idKind: "gamePlayerID", hash: "SHA-1" });
+  eq("SHA-1 signature rejected (SHA-256 only)", v, null);
+}
+
+// ---- the confirmed real-world case: teamPlayerID signed with SHA-256 ----
+{
+  const { fetcher } = apple();
+  const c = cred({ _signId: TPID });
+  const v = await verifyGameCenterCred(ENV, c, fetcher, TS);
+  deep("teamPlayerID + SHA-256 (the on-device combo) verifies", v,
+       { identifier: TPID, idKind: "teamPlayerID", hash: "SHA-256" });
 }
 
 // ---- wrong bundle id in cred: rejected before any fetch ----

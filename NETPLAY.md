@@ -350,23 +350,24 @@ Android=5) through one shared throttle. Remaining before Play Games ships: the
 timestamp + both scoped ids + bundle id, packed as JSON in `cred`). Worker
 `signal/src/game_center_verify.js`: fetches Apple's cert (pinned `*.apple.com`
 over TLS — public cert, NO secret), extracts the SPKI and RSA-verifies the
-signature, trying each identifier × {SHA-256, SHA-1} (the signed id is ambiguous
-across Apple's docs and iOS is device-untested — M3-4; multiple crypto attempts
-are safe, only a genuine Apple signature over one exact payload passes).
+signature with SHA-256, trying `teamPlayerID` then `gamePlayerID`.
+**Device-verified (2026-07-22): Apple signs the `teamPlayerID` with SHA-256**
+(the worker logged `game center verified idKind=teamPlayerID hash=SHA-256` on a
+real device against the beta worker). The SHA-1 fallback used during the
+device-untested phase is dropped — SHA-256 only, no deprecated hash in the
+production worker; both scoped ids are still tried (teamPlayerID first) as cheap
+cross-device insurance, safe because a wrong id just fails the RSA verify (only a
+genuine Apple signature over one exact payload passes) and a mismatch leaves the
+peer unattested, never breaking the room.
 **Account-only** (Glenn 2026-07-22): Apple has no server-side alias lookup and
 the signature never covers the alias, so the worker attests `{platform: ios,
 name: ""}` — the online iOS peer renders the IOS badge + role label, and there
 is NO `fetchProfileAuthorizationCode` / "Game Center Management API returning
 alias" (confirmed against Apple's docs — that API does not exist). Unit-tested
 `signal/test/game_center_verify_test.mjs`; game-side folding is the
-platform-agnostic `identity_attested.sh` path. Remaining: the **live
-two-Game-Center-account device smoke test** (confirms the signed identifier and
-digest — the verifier tries all combinations, but a device test pins reality).
-**Which combo Apple signs is answered by the worker log** `game center verified
-idKind=<gamePlayerID|teamPlayerID> hash=<SHA-256|SHA-1>` (greppable in
-`wrangler tail newtonia-signal` during the device test) — the verifier reports
-the winning pair, so the open ambiguity resolves itself the first time a real
-device attests.
+platform-agnostic `identity_attested.sh` path. Greppable device-test verdict:
+`game center verified idKind=teamPlayerID hash=SHA-256` in
+`wrangler tail newtonia-signal[-beta]`.
 V1.5 (revocation heartbeat) is the still-unbuilt phase below.
 
 **Steam verification design (researched, not built):** Steam supports
@@ -480,10 +481,13 @@ in spirit:**
   server (Steam/Android), which trusting a self-reported alias would break.
   Implemented: client `game_center_identity.mm` (alias + the signature bundle),
   worker `signal/src/game_center_verify.js` (Apple-cert RSA verify, `*.apple.com`
-  pin, tries both scoped ids × {SHA-256, SHA-1} since Apple's docs disagree on
-  the signed id and iOS is device-untested — M3-4). Unit test
-  `signal/test/game_center_verify_test.mjs` (real RSA keypair + synthetic cert);
-  game-side folding via `test/e2e/identity_attested.sh` (FAKE_VERIFY).
+  pin, SHA-256 over `teamPlayerID` then `gamePlayerID`). **Device-verified
+  2026-07-22: Apple signs `teamPlayerID` + SHA-256** — confirmed on a real device
+  against the beta worker; the SHA-1 fallback from the untested phase is dropped
+  (SHA-256 only), both ids still tried (teamPlayerID first) as cross-device
+  insurance. Unit test `signal/test/game_center_verify_test.mjs` (real RSA
+  keypair + synthetic cert); game-side folding via
+  `test/e2e/identity_attested.sh` (FAKE_VERIFY).
 - *Play Games v2 (Android)* — **BUILT (V2)**:
   `GamesSignInClient.requestServerSideAccess()` mints a SINGLE-USE OAuth
   server auth code, exchangeable only with our OAuth client secret; the
