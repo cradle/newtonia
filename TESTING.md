@@ -163,6 +163,9 @@ test/e2e/identity.sh # peer-identity happy path: named exchange both ways
                      # role labels (PLAYER 1 = host, PLAYER 2 = client). Run
                      # against a PLAIN relay (no FAKE_VERIFY) — the claim must
                      # stay unattested so the display shows role labels.
+                     # Phase C: accented names (BJÖRN/RENÉE) must fold to their
+                     # ASCII base (BJORN/RENEE) over the wire — Tier-1
+                     # transliteration in net_sanitize_name.
 test/e2e/identity_attested.sh # V0/V1 worker attestation: self-hosts its OWN
                      # FAKE_VERIFY relay (private port, so the shared :8787 dev
                      # relay is untouched), connects a named host+joiner, and
