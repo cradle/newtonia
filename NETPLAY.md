@@ -329,7 +329,18 @@ client mints a Web-API ticket (`GetAuthTicketForWebApi`,
 publisher key `STEAM_WEBAPI_KEY`) — the attested persona comes from Steam,
 not the wire. Verification never rejects; failure/absence keeps role labels.
 Remaining before Steam ships: the **live two-account smoke test** (§5.5) and
-setting the `STEAM_WEBAPI_KEY` Cloudflare secret. V2 (Play Games), V3 (Game
+setting the `STEAM_WEBAPI_KEY` Cloudflare secret. **V2** implements the Play
+Games (Android) verifier symmetrically: the client mints a single-use OAuth
+server auth code (`GamesSignInClient.requestServerSideAccess`,
+`play_games_identity.cpp` + `PlayGamesIdentity.java`) and the worker redeems it
+with our OAuth client secret and reads the verified player from the Play Games
+REST API (`signal/src/play_games_verify.js`; secrets
+`PLAY_GAMES_OAUTH_CLIENT_ID`/`_SECRET`, and the web client id in
+`games-ids.xml`) — the attested display name comes from Google, not the wire.
+The worker's `attest_identity` now dispatches per platform (Steam=2,
+Android=5) through one shared throttle. Remaining before Play Games ships: the
+**live two-account smoke test**, creating the web OAuth client (uncomment
+`play_games_oauth_client_id`), and setting the two Cloudflare secrets. V3 (Game
 Center) and V1.5 (revocation heartbeat) are the still-unbuilt phases below.
 
 **Steam verification design (researched, not built):** Steam supports
@@ -435,14 +446,23 @@ in spirit:**
   no recipient/channel binding, no single-use tracking, no revocation —
   replayable/relayable within the verifier's timestamp freshness window
   (enforce a tight one, ~minutes; industry practice 10 min).
-- *Play Games v2 (Android)*: `GamesSignInClient.requestServerSideAccess()`
-  mints a SINGLE-USE OAuth server auth code, exchangeable only with our
-  OAuth client secret; the real player ID then comes from the Play
-  Games API (Google: never trust the client-reported ID). Strong
-  replay/recipient properties but NO client-to-client primitive — the
-  signal worker must hold the secret and act as verifier (joiner sends
-  the code up, worker exchanges + attests to the peer). Centralizes
-  verification like Steam's Web-API path.
+- *Play Games v2 (Android)* — **BUILT (V2)**:
+  `GamesSignInClient.requestServerSideAccess()` mints a SINGLE-USE OAuth
+  server auth code, exchangeable only with our OAuth client secret; the
+  real player ID then comes from the Play Games API (Google: never trust
+  the client-reported ID). Strong replay/recipient properties but NO
+  client-to-client primitive — the signal worker holds the secret and
+  acts as verifier (joiner sends the code up, worker exchanges + attests
+  to the peer). Centralizes verification like Steam's Web-API path.
+  Implemented: client `play_games_identity.cpp` + `PlayGamesIdentity.java`
+  (name from `PlayersClient.getCurrentPlayer`, code from
+  `requestServerSideAccess`); worker `signal/src/play_games_verify.js`
+  (token exchange → `games/v1/players/me`) behind the
+  `PLAY_GAMES_OAUTH_CLIENT_ID`/`_SECRET` secrets; the web client id in
+  `res/values/games-ids.xml` (`play_games_oauth_client_id`). Unit test
+  `signal/test/play_games_verify_test.mjs` (mocked Google); the
+  attestation game-side folding is covered platform-agnostically by
+  `test/e2e/identity_attested.sh` (FAKE_VERIFY).
 - *Web*: nothing to attest with — browser peers stay unverified/role-
   labeled permanently (an own-account system contradicts the
   no-accounts design).

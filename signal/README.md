@@ -111,19 +111,25 @@ across deploys (Cloudflare stores them per script), so this is one-time.
 - Host sends `{t:"offer",sdp}`; joiner sends `{t:"answer",sdp}`; the room
   relays each to the other side and replays the offer to late (re)joiners.
 - Each side sends `{t:"identity",platform,name,cred?}` (peer identity —
-  NETPLAY.md V0/V1). The worker verifies `cred` (Steam Web-API ticket,
-  `steam_verify.js`) and broadcasts `{t:"identity",role,platform,name,
-  verified}` to the PEER, storing it for replay to a late joiner / reclaimed
-  host. Verification never gates the room — a failure just leaves `verified`
-  false (the game renders a role label).
+  NETPLAY.md V0/V1/V2). The worker verifies `cred` against the claimed
+  platform's backend — Steam Web-API ticket (`steam_verify.js`) or Play Games
+  server auth code (`play_games_verify.js`) — and broadcasts
+  `{t:"identity",role,platform,name,verified}` to the PEER, storing it for
+  replay to a late joiner / reclaimed host. Verification never gates the room —
+  a failure just leaves `verified` false (the game renders a role label).
 
-## Peer-identity verification (NETPLAY.md V0/V1)
+## Peer-identity verification (NETPLAY.md V0/V1/V2)
 
-The Steam verifier needs a **publisher Web-API key** (from a key group scoped
-to app 4536720) as a Cloudflare secret; without it, Steam peers stay
-role-labelled (verification is display-only — see NETPLAY.md's architectural
-backstop). Optional `STEAM_IDENTITY` overrides the identity string the ticket
-is bound to (must match the client's `WEBAPI_IDENTITY`, default
+Each platform verifier attests a claimed identity by proving the account with
+the platform's own backend and deriving the display name server-side (a lying
+wire `name` stops mattering). Verification is display-only and NEVER gates the
+room — a missing secret, or any failure, leaves the peer role-labelled (see
+NETPLAY.md's architectural backstop). Credentials travel client→worker over
+wss only; nothing account-shaped ever goes peer-to-peer.
+
+**Steam (V1)** needs a **publisher Web-API key** (from a key group scoped to
+app 4536720). Optional `STEAM_IDENTITY` overrides the identity string the
+ticket is bound to (must match the client's `WEBAPI_IDENTITY`, default
 `newtonia-signal`).
 
 ```sh
@@ -131,9 +137,26 @@ npx wrangler secret put STEAM_WEBAPI_KEY           # production
 npx wrangler secret put STEAM_WEBAPI_KEY --env beta # beta worker
 ```
 
+**Play Games / Android (V2)** needs the game's OAuth 2.0 **web** client id +
+secret (Google Cloud console → Credentials, under the Play Games project). The
+client mints a single-use server auth code
+(`GamesSignInClient.requestServerSideAccess`, `PlayGamesIdentity.java`); the
+worker redeems it at Google's token endpoint and reads the verified player from
+`games/v1/players/me`. The matching web client id also goes into the app
+(`play_games_oauth_client_id` in `res/values/games-ids.xml`).
+
+```sh
+npx wrangler secret put PLAY_GAMES_OAUTH_CLIENT_ID       # production
+npx wrangler secret put PLAY_GAMES_OAUTH_CLIENT_SECRET
+npx wrangler secret put PLAY_GAMES_OAUTH_CLIENT_ID     --env beta
+npx wrangler secret put PLAY_GAMES_OAUTH_CLIENT_SECRET --env beta
+```
+
 For local e2e (`test/e2e/identity_attested.sh`, `test/identity_test.js`) the
-`FAKE_VERIFY` **dev var** attests the claim without contacting Valve — pass
-`--var FAKE_VERIFY:1` to `wrangler dev`. **Never** set it in production.
+`FAKE_VERIFY` **dev var** attests the claim without contacting any platform
+backend — pass `--var FAKE_VERIFY:1` to `wrangler dev`. **Never** set it in
+production. Unit coverage of the verifiers is mocked (no account involved):
+`node test/steam_verify_test.mjs`, `node test/play_games_verify_test.mjs`.
 
 ## Cost / abuse notes
 
@@ -234,3 +257,8 @@ which revokes every outstanding credential instantly.
 - `node test/origin_test.mjs` — `origin_allowed` allowlist unit test.
 - `node test/pv_replay_test.mjs` — stored-offer `pv` replay test (needs
   `wrangler dev` on :8787).
+- `node test/steam_verify_test.mjs` — Steam identity verifier, mocked Valve.
+- `node test/play_games_verify_test.mjs` — Play Games identity verifier,
+  mocked Google (token exchange + `players/me`).
+- `node test/identity_test.js` — identity attest/broadcast/replay protocol
+  test (needs `wrangler dev` on :8787 with `--var FAKE_VERIFY:1`).

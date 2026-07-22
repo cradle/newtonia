@@ -62,6 +62,7 @@ targets:
           - "web_main.cpp"          # Emscripten entry point
           - "xbox_main.cpp"         # Xbox/GDK entry point
           - "play_games_achievements.cpp"  # Android Play Games backend
+          - "play_games_identity.cpp"      # Android Play Games identity backend
           - "Newtonia.mm"           # macOS-only
           - "macos_window.mm"       # macOS-only
       - path: Assets.xcassets

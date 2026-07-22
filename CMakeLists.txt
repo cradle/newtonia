@@ -118,7 +118,15 @@ target_link_libraries(newtonia
 # PLAY_GAMES_BUILD enables the Play Games achievements backend
 # (play_games_achievements.cpp + PlayGamesAchievements.java); this CMake file
 # only builds the Android library, so it is always on here.
-target_compile_definitions(newtonia PRIVATE __ANDROID__ PLAY_GAMES_BUILD)
+#
+# NEWTONIA_NET_IDENTITY_BACKEND / NEWTONIA_NET_VERIFY_BACKEND route the netplay
+# peer-identity seam (net_identity.cpp) to the Play Games backend
+# (play_games_identity.cpp + PlayGamesIdentity.java, NETPLAY.md V2): the player
+# display name for the badge and the single-use server auth code the signal
+# worker attests with. Both TUs guard on __ANDROID__ && PLAY_GAMES_BUILD, so
+# they are empty everywhere else and these defines only matter here.
+target_compile_definitions(newtonia PRIVATE __ANDROID__ PLAY_GAMES_BUILD
+    NEWTONIA_NET_IDENTITY_BACKEND NEWTONIA_NET_VERIFY_BACKEND)
 
 if(NEWTONIA_NET)
     # Activates net_transport_rtc.cpp / net_signal_rtc.cpp (empty TUs

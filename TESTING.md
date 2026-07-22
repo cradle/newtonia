@@ -66,6 +66,7 @@ node test/reclaim_test.js                # M3-1 protocol: token + grace + reclai
 node test/rate_key_test.mjs              # rate_key /64-collapse unit test
 node test/pv_replay_test.mjs             # stored-offer replay keeps the version stamp
 node test/steam_verify_test.mjs          # V1 Steam verifier, mocked Valve (unit)
+node test/play_games_verify_test.mjs     # V2 Play Games verifier, mocked Google (unit)
 # The identity protocol test needs the FAKE_VERIFY dev flag set on the relay:
 #   npx wrangler dev --local --port 8787 --var FAKE_VERIFY:1
 node test/identity_test.js               # V0 identity attest/broadcast/replay
