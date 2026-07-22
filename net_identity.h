@@ -152,13 +152,18 @@ void net_apply_attested(NetIdentity &into, const NetIdentity &attested);
 // for values this build doesn't know (future platforms render name-only).
 const char *net_platform_label(uint8_t platform);
 
-// Clamp to NET_IDENTITY_NAME_MAX bytes and keep only characters the Typer
-// font can draw (letters map to the shared upper/lower glyphs, so case is
-// preserved as-is); everything else — including multi-byte UTF-8 — is
-// dropped. Surrounding whitespace is trimmed. Control bytes and non-ASCII
-// are ALSO stripped explicitly, independent of the glyph predicate — a
-// security boundary (no terminal-escape/log injection) that must survive
-// any future glyph-set growth.
+// Decode UTF-8 and reduce a peer's raw display name to at most
+// NET_IDENTITY_NAME_MAX Typer-drawable glyphs. Latin scripts are folded to
+// their ASCII base so accented Western names survive ("JOSÉ" -> "JOSE",
+// "Störmer" -> "STORMER") rather than losing characters; letters keep the
+// shared upper/lower glyphs, so case is preserved. Everything the font can't
+// render — Greek, Cyrillic, CJK, emoji, combining marks — is dropped, and a
+// name that reduces to nothing renders as the peer's role label. Surrounding
+// whitespace is trimmed. Control bytes and any un-folded non-ASCII are
+// stripped explicitly, and every folded byte is re-gated through the drawable
+// predicate — a security boundary (no terminal-escape/log injection) that
+// must survive any future glyph-set growth. The output is ASCII, so it stays
+// <= NET_IDENTITY_NAME_MAX bytes on the wire.
 std::string net_sanitize_name(const std::string &raw);
 
 // Every display helper takes the session context (NET_ID_ONLINE/OFFLINE):

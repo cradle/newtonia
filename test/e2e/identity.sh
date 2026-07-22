@@ -1,5 +1,5 @@
 #!/bin/bash
-# Peer-identity happy path, three assertions across two pairings:
+# Peer-identity happy path, assertions across three pairings:
 #   A) named exchange: both sides carry a display name (the
 #      NEWTONIA_NET_NAME dev hook — desktop default builds send no name)
 #      and each side must log the OTHER's from the HELLO/WELCOME append
@@ -11,6 +11,9 @@
 #      (name='' with the platform still known, NOT the legacy "identity
 #      none" line) and connect normally; the receiver renders role labels
 #      (PLAYER 1 = host, PLAYER 2 = client) in name-bearing text.
+#   C) accented names: a name with Latin accents (BJÖRN, RENÉE) must fold
+#      to its Typer-drawable ASCII base (BJORN, RENEE) rather than dropping
+#      the accented letters — Tier-1 transliteration in net_sanitize_name.
 # Guards the identity exchange end-to-end (net_identity.*, net_session.cpp).
 # Prints IDENTITY-E2E-OK. See TESTING.md.
 set -u
@@ -88,5 +91,17 @@ grep -aq "net: banner 'JOINED PLAYER 1 SERVER'" "$OUT/anon_joiner.log" ||
 # The joiner's own identity is unaffected by the host's hook.
 grep -aq "net: identity peer name='BOB' platform=DESKTOP(1)" "$OUT/anon_host.log" ||
   { echo "IDENTITY-E2E-FAIL: anon host never logged the client identity"; exit 1; }
+
+echo "=== C: accented names fold to ASCII on the wire (Tier-1 transliteration)"
+# net_sanitize_name decodes UTF-8 and folds Latin scripts to their Typer-
+# drawable base (BJÖRN -> BJORN, RENÉE -> RENEE) instead of dropping the
+# accented letters. The fold runs on send (net_identity.cpp) and again on
+# receive (net_session.cpp); the logged peer name proves the whole path.
+# Bytes: Ö = C3 96, É = C3 89.
+pair accent_host accent_joiner 0 $'BJ\xc3\x96RN' $'REN\xc3\x89E'
+grep -aq "net: identity peer name='RENEE' platform=DESKTOP(1)" "$OUT/accent_host.log" ||
+  { echo "IDENTITY-E2E-FAIL: accented client name did not fold to RENEE"; exit 1; }
+grep -aq "net: identity peer name='BJORN' platform=DESKTOP(1)" "$OUT/accent_joiner.log" ||
+  { echo "IDENTITY-E2E-FAIL: accented host name did not fold to BJORN"; exit 1; }
 
 echo "IDENTITY-E2E-OK"
