@@ -22,12 +22,12 @@
          GamesSignInClient.requestServerSideAccess mints an auth code redeemable
          only with the matching client SECRET, which the signal worker holds
          (Cloudflare secret PLAY_GAMES_OAUTH_CLIENT_SECRET; play_games_verify.js).
-         Left commented out until the web OAuth client exists: with the resource
-         absent, no server auth code is minted and an Android peer stays
-         role-labelled online — the same graceful degradation as the worker
-         running without its secret. Uncomment and paste the id to enable
-         attestation. -->
-    <!-- <string name="play_games_oauth_client_id" translatable="false">PASTE_WEB_OAUTH_CLIENT_ID_HERE.apps.googleusercontent.com</string> -->
+         With the resource absent, no server auth code is minted and an Android
+         peer stays role-labelled online — the same graceful degradation as the
+         worker running without its secret. The matching client SECRET is a
+         Cloudflare worker secret (PLAY_GAMES_OAUTH_CLIENT_SECRET), never
+         checked in. -->
+    <string name="play_games_oauth_client_id" translatable="false">717199808901-7pro0pf964n006mhkhps328jserq87rq.apps.googleusercontent.com</string>
     <!-- First Blood -->
     <string name="achievement_first_kill" translatable="false">CgkIhbPC4-8UEAIQAw</string>
     <!-- Clear Skies -->
