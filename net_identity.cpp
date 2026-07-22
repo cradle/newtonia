@@ -55,27 +55,49 @@ uint8_t default_platform() {
 }  // namespace
 
 const NetIdentity &net_local_identity() {
+  // Called only on the game thread (every netplay call site: the HELLO/WELCOME
+  // append, the lobby/in-game send_identity), so the statics below need no
+  // locking.
   static NetIdentity id;
-  static bool built = false;
-  if (!built) {
-    built = true;
+  static bool platform_built = false;
+  static bool name_built = false;
+  if (!platform_built) {
+    platform_built = true;
     id.platform = default_platform();
-    std::string name;
 #ifdef IDENTITY_HAVE_BACKEND
     uint8_t backend_platform = NetIdentityBackend::local_platform();
     if (backend_platform != NET_PLATFORM_UNKNOWN) id.platform = backend_platform;
+#endif
+  }
+  // The display name can arrive LATE and must NOT be frozen empty: a backend
+  // whose name lookup is async (Play Games getCurrentPlayer, resolved after
+  // sign-in) returns "" until it completes. Caching that "" for the process
+  // would leave an Android peer role-labelled forever — invisible online (the
+  // worker attests the real name from the verified player) but VISIBLE on a
+  // LAN/offline session, where the CLAIMED name renders as-is with no worker
+  // to fill it in. So retry the lookup on each call until it yields a name,
+  // then freeze it (a resolved name is stable; env / no-backend builds resolve
+  // on the first call, and a build with no name at all just keeps sending the
+  // badge-only identity, retrying a cheap lookup each infrequent handshake).
+  if (!name_built) {
+    std::string name;
+#ifdef IDENTITY_HAVE_BACKEND
     name = NetIdentityBackend::local_name();
 #endif
     if (name.empty()) {
       // Dev/test hook (and stopgap until a name preference exists): no
-      // placeholder default — a build without a name backend sends the
+      // placeholder default — a build without a name source sends the
       // badge-only identity (name_len 0) and the RECEIVER labels the peer
       // by role ("PLAYER 1" = host, "PLAYER 2" = client), which carries
       // strictly more information than a canned name could.
       const char *e = std::getenv("NEWTONIA_NET_NAME");
       if (e) name = e;
     }
-    id.name = net_sanitize_name(name);
+    std::string clean = net_sanitize_name(name);
+    if (!clean.empty()) {
+      id.name = clean;
+      name_built = true;  // resolved: freeze for the rest of the process
+    }
   }
   return id;
 }
