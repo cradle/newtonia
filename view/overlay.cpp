@@ -45,13 +45,16 @@ void Overlay::replay_hud(const GLGame *glgame) {
   float vh = Typer::scaled_window_height;
   int now = glgame->current_time;
 
+  // The REPLAY watermark lives at the BOTTOM (above the controls hint and
+  // timeline): at the top it collided with the per-viewport LEVEL text,
+  // which sits centred at the top of each view.
   char text[48];
   if (glgame->replay_speed_ != 1.0f) {
     snprintf(text, sizeof(text), "REPLAY x%g", (double)glgame->replay_speed_);
   } else {
     snprintf(text, sizeof(text), "REPLAY");
   }
-  Typer::draw_centered(0, vh - 40, text, 18);
+  Typer::draw_centered(0, -vh + 94, text, 18);
 
   int total_ms = glgame->replay_reader_
                      ? (glgame->replay_reader_->last_slot() + 1) * 100
