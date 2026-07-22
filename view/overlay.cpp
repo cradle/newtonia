@@ -44,17 +44,21 @@ void Overlay::replay_hud(const GLGame *glgame) {
 
   float vh = Typer::scaled_window_height;
   int now = glgame->current_time;
+  bool touch = is_touch_mode();
 
-  // The REPLAY watermark lives at the BOTTOM (above the controls hint and
-  // timeline): at the top it collided with the per-viewport LEVEL text,
-  // which sits centred at the top of each view.
+  // The replay HUD lives at the BOTTOM (at the top the REPLAY watermark
+  // collided with the per-viewport LEVEL text). Stack, top to bottom:
+  // watermark, timeline, then the controls hint — lifted well clear of the
+  // screen edge and generously spaced so the big watermark never touches the
+  // line under it. On touch the controls are tap bands lower down, so only
+  // the watermark + timeline sit here, just above them.
   char text[48];
   if (glgame->replay_speed_ != 1.0f) {
     snprintf(text, sizeof(text), "REPLAY x%g", (double)glgame->replay_speed_);
   } else {
     snprintf(text, sizeof(text), "REPLAY");
   }
-  Typer::draw_centered(0, -vh + 94, text, 18);
+  Typer::draw_centered(0, touch ? -175.0f : -vh + 250, text, 18);
 
   int total_ms = glgame->replay_reader_
                      ? (glgame->replay_reader_->last_slot() + 1) * 100
@@ -64,12 +68,12 @@ void Overlay::replay_hud(const GLGame *glgame) {
   snprintf(text, sizeof(text), "%d:%02d / %d:%02d", elapsed_ms / 60000,
            (elapsed_ms / 1000) % 60, total_ms / 60000,
            (total_ms / 1000) % 60);
-  Typer::draw_centered(0, -vh + 30, text, 14);
+  Typer::draw_centered(0, touch ? -228.0f : -vh + 200, text, 14);
 
   // On-screen controls. Touch: real tap targets (one definition with the
   // hit-tests in GLGame::touch_tap — the TapBand rule). Desktop/controller:
-  // a dim hint line above the timeline, built from the live bindings.
-  if (is_touch_mode()) {
+  // a dim hint line under the timeline, from live bindings.
+  if (touch) {
     TapBand::replay_slower.draw("SLOWER");
     TapBand::replay_pause.draw(glgame->running ? "PAUSE" : "RESUME");
     TapBand::replay_faster.draw("FASTER");
@@ -87,7 +91,7 @@ void Overlay::replay_hud(const GLGame *glgame) {
                toupper(gk.pause), (char)gk.time_speed_up,
                (char)gk.time_slow_down);
     }
-    Typer::draw_centered(0, -vh + 62, text, 9);
+    Typer::draw_centered(0, -vh + 155, text, 9);
   }
 
   if (glgame->replay_finished_ && !glgame->game_over && (now / 700) % 2 == 0)
