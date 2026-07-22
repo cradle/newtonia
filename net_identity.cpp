@@ -31,6 +31,7 @@ std::string local_name();
 #define IDENTITY_HAVE_VERIFY 1
 namespace NetIdentityBackend {
 std::string local_verify_credential();
+void release_verify_credentials();
 }
 #endif
 
@@ -84,6 +85,12 @@ std::string net_local_verify_credential() {
   return NetIdentityBackend::local_verify_credential();
 #else
   return "";
+#endif
+}
+
+void net_release_verify_credentials() {
+#ifdef IDENTITY_HAVE_VERIFY
+  NetIdentityBackend::release_verify_credentials();
 #endif
 }
 

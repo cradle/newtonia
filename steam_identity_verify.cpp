@@ -20,7 +20,9 @@
 
 #include <steam/steam_api.h>
 
+#include <algorithm>
 #include <string>
+#include <vector>
 
 #include "net_identity.h"
 
@@ -40,8 +42,21 @@ namespace {
 // Web-API tickets are single-use: the worker's AuthenticateUserTicket
 // consumes one, and a replay fails AuthTicketInvalidAlreadyUsed. Firing a
 // fresh request per call keeps the cache from re-serving a spent ticket
-// across sessions (a re-host / rejoin gets a new one). A ticket that is
-// warmed but never sent is simply never validated — harmless.
+// across sessions (a re-host / rejoin gets a new one).
+//
+// Handle cleanup (Steamworks asks callers to CancelAuthTicket every handle
+// GetAuthTicketForWebApi returns): every minted handle is tracked in
+// `handles_` and cancelled together in release(), called at netplay teardown
+// (~NetLobby / ~GLGame). Teardown is AFTER the worker's one-shot validation
+// window, so cancelling never invalidates a ticket still in flight to the
+// worker — and it also cancels a ticket that was warmed but never sent (the
+// lobby warms one on open; a player who backs out to the menu leaves it
+// outstanding). Cancelling a ticket the worker already consumed is a harmless
+// no-op. release() also clears hex_ so a subsequent send can never re-hand a
+// ticket whose handle was just cancelled; the next credential() re-warms from
+// scratch. A callback that lands after release (its handle no longer in
+// handles_) is ignored, so a late arrival can't repopulate hex_ with an
+// invalidated ticket.
 class SteamTicketFetcher {
  public:
   SteamTicketFetcher()
@@ -52,19 +67,32 @@ class SteamTicketFetcher {
     return hex_;         // hand back the last one that completed ("" if none)
   }
 
+  void release() {
+    if (ISteamUser *user = SteamUser()) {
+      for (HAuthTicket h : handles_) user->CancelAuthTicket(h);
+    }
+    handles_.clear();
+    hex_.clear();
+  }
+
  private:
   void request() {
     ISteamUser *user = SteamUser();
     if (!user) return;   // Steam client not up yet — try again next call
-    // Multiple outstanding tickets are allowed; we don't cancel the prior
-    // handle (display-only stakes, and cancelling a still-in-flight ticket
-    // the worker is validating would be counterproductive).
+    // Multiple outstanding tickets are allowed. Track the handle so
+    // release() can CancelAuthTicket it at teardown.
     HAuthTicket h = user->GetAuthTicketForWebApi(WEBAPI_IDENTITY);
     if (h == k_HAuthTicketInvalid) return;  // mint failed; hex_ unchanged
+    handles_.push_back(h);
   }
 
   void on_response(GetTicketForWebApiResponse_t *r) {
     if (!r || r->m_eResult != k_EResultOK || r->m_cubTicket <= 0) return;
+    // Ignore a completion for a handle we already released (cancelled) — its
+    // ticket is invalid now, so it must not become hex_ and get sent.
+    if (std::find(handles_.begin(), handles_.end(), r->m_hAuthTicket) ==
+        handles_.end())
+      return;
     int n = r->m_cubTicket;
     if (n > (int)sizeof(r->m_rgubTicket)) n = (int)sizeof(r->m_rgubTicket);
     static const char kHex[] = "0123456789abcdef";
@@ -80,16 +108,23 @@ class SteamTicketFetcher {
 
   CCallback<SteamTicketFetcher, GetTicketForWebApiResponse_t> response_cb_;
   std::string hex_;
+  std::vector<HAuthTicket> handles_;  // outstanding, cancelled in release()
 };
+
+// One process-wide fetcher, shared by the mint and the teardown-cancel paths
+// (both run on the game thread that pumps SteamAPI_RunCallbacks).
+SteamTicketFetcher &fetcher() {
+  static SteamTicketFetcher instance;
+  return instance;
+}
 
 }  // namespace
 
 namespace NetIdentityBackend {
 
-std::string local_verify_credential() {
-  static SteamTicketFetcher fetcher;
-  return fetcher.credential();
-}
+std::string local_verify_credential() { return fetcher().credential(); }
+
+void release_verify_credentials() { fetcher().release(); }
 
 }  // namespace NetIdentityBackend
 
