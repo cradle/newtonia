@@ -412,10 +412,29 @@ make android-install            # build the debug APK + adb install onto the att
 # or install a CI artifact instead: adb install -r app-debug.apk   (from an android.yml run)
 ```
 
+**Register the debug keystore's SHA-1 for a locally-built APK.** Play Games
+matches *package name + signing SHA-1* against a registered OAuth Android
+client, and only the **release / Play App Signing** SHA-1 is registered by
+default. A locally-built APK is **debug-signed** (a different SHA-1), so Play
+Games sign-in fails with `DEVELOPER_ERROR` ("Play Games not signed in — earns
+held in memory" in logcat), and with no sign-in the phone fetches no name and
+mints no server auth code → it sends an empty credential and the worker logs
+`identity … platform=5 verified=false`. Fix: in **Google Cloud Console → APIs &
+Services → Credentials → Create credentials → OAuth client ID → Android** (the
+game's project — `717199808901`), add package `org.newtonia` + the debug SHA-1,
+and make sure the test account is on the Play Games Services **testers** list.
+The failing `SignInAuthenticator` logcat dump prints the exact SHA-1 to
+register; or `keytool -list -v -keystore ~/.android/debug.keystore -alias
+androiddebugkey -storepass android`. Play Store builds are unaffected (their
+Play App Signing SHA-1 is already registered) — this is only for local/debug
+installs. Give it a few minutes to propagate, then force-stop + relaunch.
+
 **Play Games identity attestation smoke test** (NETPLAY.md V2). Prereqs: a
 signal worker with the OAuth secrets set (`signal/README.md` — the beta worker
-has them once master's `signal/` deploy has run) and **two** Google accounts
-(two devices, or two accounts on one device). Launch each side pointed at the
+has them once master's `signal/` deploy has run, and Play Games needs BOTH
+`PLAY_GAMES_OAUTH_CLIENT_ID`/`_SECRET` set with `--env beta`, not just the Steam
+key), the debug SHA-1 registered (above), and **two** Google accounts (two
+devices, or two accounts on one device). Launch each side pointed at the
 beta relay with net debug on — Android delivers env via intent extras, and
 `net:` lines are gated on `NEWTONIA_NET_DEBUG` (`-S` forces a fresh process so
 the extras are read; see §5):
