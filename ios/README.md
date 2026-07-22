@@ -39,6 +39,21 @@ Xcode build with netplay:
 Without those steps the project still builds — the netplay TUs compile
 empty and the menu simply hides ONLINE.
 
+### Testing a TestFlight build against the beta signaling worker
+
+A stock build talks to the **production** signaling worker (the baked
+`SIGNAL_URL_DEFAULT` in `net_signal.cpp`). To test a real-device build
+without touching production, run **deploy-ios** from the Actions tab with the
+**`signal_worker: beta`** input — it compiles `-DNEWTONIA_SIGNAL_BETA=1`, so
+the TestFlight build points at `newtonia-signal-beta` (auto-deployed on master
+pushes touching `signal/**`). Tag pushes and the default always ship
+production. This is the hands-off path for the M3-4 Game Center
+identity-verification device check: install from TestFlight, sign into Game
+Center, host, and watch `wrangler tail newtonia-signal-beta` for
+`game center verified idKind=… hash=…`. (A local Xcode run can do the same via
+the scheme env var `NEWTONIA_SIGNAL_URL=wss://newtonia-signal-beta.gfmcc.workers.dev/ws`
+— no rebuild needed.)
+
 ## Game Center in the simulator build
 
 The simulator artifact compiles the Game Center achievements backend
