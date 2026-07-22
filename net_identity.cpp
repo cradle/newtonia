@@ -139,22 +139,142 @@ const char *net_platform_label(uint8_t platform) {
   return "";  // Unknown/legacy, and platforms newer than this build
 }
 
+namespace {
+
+// Decode one UTF-8 sequence beginning at raw[i]. On success advances i past
+// the sequence and returns the codepoint. On ANY malformed byte (stray
+// continuation, truncated/over-long/surrogate/out-of-range) advances i by a
+// single byte and returns kBadCodepoint — the caller drops it, so bad input
+// can neither desync the scan nor smuggle a byte through.
+const uint32_t kBadCodepoint = 0xFFFFFFFFu;
+uint32_t utf8_next(const std::string &raw, size_t &i) {
+  unsigned char c0 = (unsigned char)raw[i];
+  if (c0 < 0x80) { i += 1; return c0; }
+  int len;
+  uint32_t cp, min_cp;
+  if ((c0 & 0xE0) == 0xC0)      { len = 2; cp = c0 & 0x1F; min_cp = 0x80; }
+  else if ((c0 & 0xF0) == 0xE0) { len = 3; cp = c0 & 0x0F; min_cp = 0x800; }
+  else if ((c0 & 0xF8) == 0xF0) { len = 4; cp = c0 & 0x07; min_cp = 0x10000; }
+  else { i += 1; return kBadCodepoint; }  // lone continuation / invalid lead
+  if (i + (size_t)len > raw.size()) { i += 1; return kBadCodepoint; }
+  for (int k = 1; k < len; k++) {
+    unsigned char cc = (unsigned char)raw[i + k];
+    if ((cc & 0xC0) != 0x80) { i += 1; return kBadCodepoint; }  // truncated
+    cp = (cp << 6) | (cc & 0x3F);
+  }
+  i += len;
+  if (cp < min_cp) return kBadCodepoint;                       // overlong
+  if (cp >= 0xD800 && cp <= 0xDFFF) return kBadCodepoint;      // UTF-16 surrogate
+  if (cp > 0x10FFFF) return kBadCodepoint;                     // out of range
+  return cp;
+}
+
+// Fold a non-ASCII codepoint to Typer-drawable ASCII, or return nullptr to
+// drop it. Latin scripts collapse to their base letter so accented Western
+// names survive intact ("JOSÉ" -> "JOSE", "Störmer" -> "STORMER") instead of
+// silently losing characters; combining marks drop (their base already
+// passed through); everything we can't render — Greek, Cyrillic, CJK, emoji,
+// symbols — returns nullptr and the peer falls back to its role label. This
+// is a RENDERING concern: the caller still gates every emitted byte through
+// net_name_char_drawable, so a stray non-ASCII substitution could never leak.
+const char *translit_codepoint(uint32_t cp) {
+  // Latin-1 Supplement letters (U+00C0..U+00FF). "" marks the two non-letter
+  // symbols in the range (× U+00D7, ÷ U+00F7), which drop.
+  static const char *const kLatin1[] = {
+    "A","A","A","A","A","A","AE","C","E","E","E","E","I","I","I","I",   // C0..CF
+    "D","N","O","O","O","O","O","","O","U","U","U","U","Y","TH","ss",   // D0..DF (ß is lowercase)
+    "a","a","a","a","a","a","ae","c","e","e","e","e","i","i","i","i",   // E0..EF
+    "d","n","o","o","o","o","o","","o","u","u","u","u","y","th","y",    // F0..FF
+  };
+  if (cp >= 0xC0 && cp <= 0xFF) {
+    const char *s = kLatin1[cp - 0xC0];
+    return s[0] ? s : nullptr;
+  }
+  // Latin Extended-A (U+0100..U+017F): Central/Eastern-European letters.
+  switch (cp) {
+    case 0x0100: case 0x0102: case 0x0104: return "A";
+    case 0x0101: case 0x0103: case 0x0105: return "a";
+    case 0x0106: case 0x0108: case 0x010A: case 0x010C: return "C";
+    case 0x0107: case 0x0109: case 0x010B: case 0x010D: return "c";
+    case 0x010E: case 0x0110: return "D";
+    case 0x010F: case 0x0111: return "d";
+    case 0x0112: case 0x0114: case 0x0116: case 0x0118: case 0x011A: return "E";
+    case 0x0113: case 0x0115: case 0x0117: case 0x0119: case 0x011B: return "e";
+    case 0x011C: case 0x011E: case 0x0120: case 0x0122: return "G";
+    case 0x011D: case 0x011F: case 0x0121: case 0x0123: return "g";
+    case 0x0124: case 0x0126: return "H";
+    case 0x0125: case 0x0127: return "h";
+    case 0x0128: case 0x012A: case 0x012C: case 0x012E: case 0x0130: return "I";
+    case 0x0129: case 0x012B: case 0x012D: case 0x012F: case 0x0131: return "i";
+    case 0x0134: return "J";
+    case 0x0135: return "j";
+    case 0x0136: return "K";
+    case 0x0137: return "k";
+    case 0x0139: case 0x013B: case 0x013D: case 0x013F: case 0x0141: return "L";
+    case 0x013A: case 0x013C: case 0x013E: case 0x0140: case 0x0142: return "l";
+    case 0x0143: case 0x0145: case 0x0147: return "N";
+    case 0x0144: case 0x0146: case 0x0148: return "n";
+    case 0x014C: case 0x014E: case 0x0150: return "O";
+    case 0x014D: case 0x014F: case 0x0151: return "o";
+    case 0x0152: return "OE";
+    case 0x0153: return "oe";
+    case 0x0154: case 0x0156: case 0x0158: return "R";
+    case 0x0155: case 0x0157: case 0x0159: return "r";
+    case 0x015A: case 0x015C: case 0x015E: case 0x0160: return "S";
+    case 0x015B: case 0x015D: case 0x015F: case 0x0161: return "s";
+    case 0x0162: case 0x0164: case 0x0166: return "T";
+    case 0x0163: case 0x0165: case 0x0167: return "t";
+    case 0x0168: case 0x016A: case 0x016C: case 0x016E: case 0x0170: case 0x0172: return "U";
+    case 0x0169: case 0x016B: case 0x016D: case 0x016F: case 0x0171: case 0x0173: return "u";
+    case 0x0174: return "W";
+    case 0x0175: return "w";
+    case 0x0176: case 0x0178: return "Y";
+    case 0x0177: return "y";
+    case 0x0179: case 0x017B: case 0x017D: return "Z";
+    case 0x017A: case 0x017C: case 0x017E: return "z";
+    case 0x017F: return "s";  // long s
+  }
+  // Combining diacritical marks (U+0300..U+036F) and anything else drop: the
+  // decomposed base already emitted, so this discards the lone accent (== NFKD
+  // then strip-marks), and every unrenderable script falls through to here.
+  return nullptr;
+}
+
+}  // namespace
+
 std::string net_sanitize_name(const std::string &raw) {
   std::string out;
-  for (size_t i = 0; i < raw.size() && out.size() < (size_t)NET_IDENTITY_NAME_MAX;
-       i++) {
-    char c = raw[i];
-    // SECURITY INVARIANT, deliberately independent of the glyph set:
-    // control bytes (ESC/CSI, NUL, DEL) and non-ASCII must never survive
-    // into the logs or the display, even if the Typer glyph table someday
-    // grows entries outside printable ASCII. The drawable check below is
-    // a rendering concern and may evolve; this line is the security
-    // boundary and must stay.
-    unsigned char u = (unsigned char)c;
-    if (u < 0x20 || u >= 0x7f) continue;
-    if (net_name_char_drawable(c)) out += c;
+  // Cap by DRAWABLE GLYPHS, not raw bytes: multi-byte UTF-8 must not count
+  // double, and a fold can expand (ß -> SS, Œ -> OE). Output stays ASCII, so
+  // it is still <= NET_IDENTITY_NAME_MAX bytes on the wire.
+  size_t glyphs = 0;
+  size_t i = 0;
+  while (i < raw.size() && glyphs < (size_t)NET_IDENTITY_NAME_MAX) {
+    uint32_t cp = utf8_next(raw, i);  // always advances i, even on bad bytes
+    if (cp == kBadCodepoint) continue;
+
+    if (cp < 0x80) {
+      // SECURITY INVARIANT, deliberately independent of the glyph set:
+      // control bytes (ESC/CSI, NUL, DEL) must never survive into the logs
+      // or the display. The drawable check below is a rendering concern and
+      // may evolve; this bound is the security boundary and must stay.
+      if (cp < 0x20 || cp == 0x7f) continue;
+      char c = (char)cp;
+      if (net_name_char_drawable(c)) { out += c; glyphs++; }
+      continue;
+    }
+
+    // Non-ASCII: fold Latin scripts to their ASCII base, drop the rest.
+    // Nothing above 0x7f is ever emitted raw — every substitution byte is
+    // re-checked against the drawable set, so the security boundary above
+    // extends to the transliterated output too.
+    const char *sub = translit_codepoint(cp);
+    if (!sub) continue;
+    for (const char *p = sub; *p && glyphs < (size_t)NET_IDENTITY_NAME_MAX; p++) {
+      if (net_name_char_drawable(*p)) { out += *p; glyphs++; }
+    }
   }
-  // Trim surrounding spaces (dropped UTF-8 can leave stray separators).
+  // Trim surrounding spaces (dropped characters can leave stray separators).
   size_t begin = out.find_first_not_of(' ');
   if (begin == std::string::npos) return "";
   size_t end = out.find_last_not_of(' ');
