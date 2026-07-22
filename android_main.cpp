@@ -374,8 +374,11 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     // Netplay identity backend (NETPLAY.md V2): pre-warm the Play Games player
     // name so it's cached before the lobby builds net_local_identity(). Runs
     // AFTER Achievements::init(), which brings up the Play Games SDK +
-    // automatic sign-in this backend piggybacks on.
-    extern void net_android_identity_init();
+    // automatic sign-in this backend piggybacks on. extern "C" on BOTH sides
+    // (see play_games_identity.cpp): this block-scope declaration sits inside
+    // the extern "C" SDL_main, so it takes C linkage — the definition must too,
+    // or the names don't match and the Android link fails (undefined symbol).
+    extern "C" void net_android_identity_init();
     net_android_identity_init();
 #endif
 
