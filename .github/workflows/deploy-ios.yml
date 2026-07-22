@@ -303,10 +303,59 @@ jobs:
 
       # Upload to TestFlight. Testers can install immediately;
       # submit for App Store review from App Store Connect UI.
+      #
+      # We invoke altool directly (rather than the
+      # apple-actions/upload-testflight-build action) so the job's outcome
+      # reflects the ACTUAL upload result. On run 217 the action reported the
+      # job as "success" even though altool printed "UPLOAD FAILED with 3
+      # errors" and nothing reached TestFlight — a rejected build looked green.
+      # altool's --output-format xml result plist is the source of truth: a
+      # failed upload carries a `product-errors` array, a successful one does
+      # not. We parse it (and honour any non-zero altool exit) and fail the job
+      # when the upload didn't actually go through.
       - name: Upload to TestFlight
-        uses: apple-actions/upload-testflight-build@v3
-        with:
-          app-path: IPA/Newtonia.ipa
-          issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          api-key-id: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          api-private-key: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+        env:
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          API_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+        run: |
+          # altool locates the App Store Connect API key by ID in a set of
+          # well-known dirs; ~/.appstoreconnect/private_keys is the canonical one.
+          mkdir -p ~/.appstoreconnect/private_keys
+          printf '%s\n' "$API_PRIVATE_KEY" \
+            > ~/.appstoreconnect/private_keys/AuthKey_"$API_KEY_ID".p8
+
+          # Run the upload, capturing the XML result plist to a file. Don't let
+          # a non-zero exit abort the step before we've inspected the output.
+          set +e
+          xcrun altool --output-format xml --upload-app \
+            --file IPA/Newtonia.ipa --type ios \
+            --apiKey "$API_KEY_ID" --apiIssuer "$API_ISSUER_ID" \
+            1> upload-result.plist 2> upload-error.log
+          ALTOOL_STATUS=$?
+          set -e
+
+          echo "altool exit status: $ALTOOL_STATUS"
+          echo "===== altool stderr ====="
+          cat upload-error.log 2>/dev/null || true
+          echo "===== altool XML output ====="
+          cat upload-result.plist 2>/dev/null || true
+          echo "========================="
+
+          # A failed upload's result plist carries a product-errors array;
+          # a successful one does not. Treat its presence — or any non-zero
+          # altool exit — as failure so the job status can't go green on a
+          # rejected build.
+          if /usr/libexec/PlistBuddy -c 'Print :product-errors' upload-result.plist >/dev/null 2>&1; then
+            echo "::error::TestFlight upload FAILED — altool reported product-errors:"
+            /usr/libexec/PlistBuddy -c 'Print :product-errors' upload-result.plist 2>&1 \
+              | sed 's/^/    /'
+            exit 1
+          fi
+
+          if [ "$ALTOOL_STATUS" -ne 0 ]; then
+            echo "::error::TestFlight upload FAILED — altool exited $ALTOOL_STATUS (see stderr above)."
+            exit "$ALTOOL_STATUS"
+          fi
+
+          echo "::notice::TestFlight upload succeeded."
