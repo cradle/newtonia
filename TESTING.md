@@ -100,6 +100,12 @@ test/e2e/lan.sh      # LAN play, NO relay: dead signal URL -> host beacons +
                      # TCP, host-candidate session to bootstrap. Uses a
                      # private NEWTONIA_LAN_PORT so parallel runs (or a
                      # real session) don't cross-beacon.
+test/e2e/lan_hidden.sh # LAN-visibility opt-out: preseeds lan_visible=0 in the
+                     # run's INI, drives the same host/join flow as lan.sh, and
+                     # asserts the host NEVER beacons ("lan announce up" absent)
+                     # and the joiner discovers nothing ("lan host found"
+                     # absent) - the host still reaches the manual fallback, so
+                     # the missing beacon is the pref, not a stalled flow.
 test/e2e/lanclip.sh  # the LAN-vs-clipboard race (one-box mac field bug): host
                      # reaches the manual fallback FIRST so its INVITE blob is
                      # on the shared clipboard when the joiner opens CodeEntry;

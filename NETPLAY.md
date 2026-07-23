@@ -324,8 +324,11 @@ already gates on `lan_announce_.running()`, so they vanish for free. Not
 surfaced in the Options screen by decision (it's a niche
 privacy/firewall knob) — `preferences.ini` only. Default-on means lan.sh
 and the other LAN e2e drivers, which never set the pref, still beacon
-and stay green; the OFF path is verified by the INI load/save round-trip
-(`lan_visible=0` survives a relaunch).
+and stay green (lan.sh reverified LAN-E2E-OK with this change in). The
+OFF path has its own driver, `test/e2e/lan_hidden.sh` (LAN-HIDDEN-OK):
+lan_visible=0 preseeded in the run's INI, the host reaches the manual
+fallback but NEVER beacons ("lan announce up" absent) and a joiner
+browsing the same loopback discovers nothing ("lan host found" absent).
 
 ## Future milestone — verified peer identity (design notes 2026-07-20)
 
