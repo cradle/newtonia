@@ -430,3 +430,10 @@ R4's field.
   the shared-options one-row form, P2 rows unaffected. Decide alongside any
   other Options-screen additions so the menu grows in one pass rather than
   one toggle at a time.
+- **Extend the mobile-overhead pass to the low end.** The overhead question
+  above was resolved on a mid-range Android (2026-07-20); a low-end
+  field pass on real hardware (Moto E14 2 GB Go for CPU/RAM/lifecycle, Moto
+  G05 eMMC for storage flush) is the belt-and-braces confirmation. The
+  device rationale and step-by-step `adb` procedure live in TESTING.md §7
+  ("Replay recorder overhead on low-end Android"); run it when the phones
+  arrive and record the result there.

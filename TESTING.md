@@ -525,3 +525,56 @@ Things no headless rig covers — verify on device after a `netplay-v*` tag:
 - Controller navigation generally — synthetic controller events can't be
   injected under Xvfb, so lobby/menu pad handling is verified by pattern
   (mirrors of proven menu code) plus on-device feel.
+
+### Replay recorder overhead on low-end Android (REPLAY.md open item)
+
+The headless e2e prove the recorder is *correct*; only a real low-end phone
+proves it's *cheap enough* — the last open item in REPLAY.md (mobile
+overhead). One phone can't cover it: the recorder has three cost axes and no
+single sub-$200 handset stresses all three. Two cheap devices between them do
+(both bought 2026-07; add newer equivalents as they replace these):
+
+| Device | SoC | RAM | Storage | Stresses |
+|--------|-----|-----|---------|----------|
+| **Moto E14** | Unisoc T606 (weakest current) | 2 GB, Android 14 **Go** | UFS 2.2 | CPU (10 Hz snapshot build) + RAM (buffer + whole-file Reader) + **lifecycle** (Go kills backgrounded apps hardest) |
+| **Moto G05** | Helio G81 | 4 GB | **eMMC 5.1** | **storage-flush I/O** (the checkpoint appends — small slow writes) |
+
+Counterintuitively the *cheaper* E14 has the *faster* storage (UFS), so it
+does NOT exercise the flush-latency worry — the eMMC G05 is the only one that
+does. Get the eMMC device for storage, the 2 GB Go device for everything else.
+
+**Method (both devices).** Isolate the recorder's cost with an A/B — its
+`perf: fps` contribution is the delta between recording on and off:
+
+```sh
+# Late-generation load (100+ asteroids is the worst case); KEYCODE_N marches
+# levels fast (works on the intro screens too). NEWTONIA_* ride intent extras
+# (see "Env vars on Android"); -S forces a fresh process that reads them.
+adb shell am start -S -n org.newtonia/.NewtoniaActivity \
+    --es NEWTONIA_BETA 1 --es NEWTONIA_START_GENERATION 9      # recording ON (default)
+adb shell input keyevent KEYCODE_N        # ... march to a dense generation, play
+adb logcat -s SDL/APP | grep "perf:"      # capture the perf lines
+
+adb shell am start -S -n org.newtonia/.NewtoniaActivity \
+    --es NEWTONIA_BETA 1 --es NEWTONIA_START_GENERATION 9 --es NEWTONIA_REPLAY_DISABLE 1
+# ... same play, same capture. The fps/tick delta vs the first run = recorder cost.
+```
+
+**Per-device focus:**
+- **E14 (durability / onPause budget):** background the app mid-run, then kill
+  it from the task switcher; relaunch and confirm the replay plays back intact
+  (`NEWTONIA_REPLAY_PLAY=last`, or the REPLAYS menu). Android Go suspends/kills
+  most aggressively, so if the checkpoint flush fits *its* onPause window it
+  fits everywhere. (This is the same guarantee the Xbox suspend-budget rule
+  needs — REPLAY.md.)
+- **G05 (flush latency):** watch for a frame hitch landing exactly on a
+  checkpoint flush — level clear, pause, focus loss — where a slow eMMC write
+  would show. The bounded-append design means each flush is ~one level of
+  records; the eMMC G05 is where that bound gets its on-device proof.
+
+**Pass:** no perceptible hitch through play or at level boundaries, the on/off
+`perf` delta stays below the ~55 fps report threshold (recorder below the
+noise floor), and the E14 replay survives a switcher-kill. Green on both
+closes the REPLAY.md mobile-overhead question on real low-end hardware. The
+first field pass (2026-07-20, a mid-range Android) already came back clean;
+these two devices extend it to the low end.
