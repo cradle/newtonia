@@ -2253,7 +2253,10 @@ void GLGame::net_host_rejoin_session_update(int delta) {
 // false when LAN discovery isn't available on this platform — with no
 // signal either, the loss is terminal as before.
 bool GLGame::net_host_lan_rejoin_poll(int delta) {
-  if (net_mode_ != NetHost || !NetLan::available()) return false;
+  // lan_visible off (INI-only pref) means this host never beacons — the
+  // mid-game re-host door stays closed too, mirroring the lobby gate.
+  if (net_mode_ != NetHost || !NetLan::available() || !g_prefs.lan_visible)
+    return false;
   // Arm once per loss — and NOT while a fresh session from either door
   // is already handshaking (re-beaconing then would let a second
   // completion stomp it; mirror of the relay arm's condition).

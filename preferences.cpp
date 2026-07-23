@@ -199,6 +199,8 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "star_density") == 0) {
         float v = (float)atof(val);
         if (v >= 0.0f) g_prefs.star_density = v;
+    } else if (strcmp(key, "lan_visible") == 0) {
+        g_prefs.lan_visible = (val[0] == '1');
     } else if (strcmp(key, "signal_url") == 0) {
         g_prefs.signal_url = val;
     } else if (strcmp(key, "last_hosted_code") == 0) {
@@ -283,6 +285,7 @@ void save_preferences() {
     fprintf(f, "friendly_fire=%d\n",           g_prefs.friendly_fire      ? 1 : 0);
     fprintf(f, "auto_record_replays=%d\n",     g_prefs.auto_record_replays ? 1 : 0);
     fprintf(f, "star_density=%.4f\n",           g_prefs.star_density);
+    fprintf(f, "lan_visible=%d\n",             g_prefs.lan_visible        ? 1 : 0);
     if (!g_prefs.signal_url.empty())
         fprintf(f, "signal_url=%s\n",             g_prefs.signal_url.c_str());
     if (!g_prefs.last_hosted_code.empty())

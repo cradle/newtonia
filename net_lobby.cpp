@@ -410,9 +410,11 @@ void NetLobby::confirm() {
       Presence::set_hosting();  // "Hosting a Co-Op Game" in the friends list
       // LAN door (NETPLAY.md "LAN is not a mode"): beacon + serve the
       // manual INVITE blob over TCP from its own no-STUN transport,
-      // unconditionally beside the relay flow. Offline this is what
-      // still works; online it's the couch shortcut.
-      if (NetLan::available() && lan_announce_.start(NetLan::local_host_name())) {
+      // beside the relay flow. Offline this is what still works; online
+      // it's the couch shortcut. The lan_visible pref (INI-only) opts a
+      // host out of the hostname broadcast entirely.
+      if (g_prefs.lan_visible && NetLan::available() &&
+          lan_announce_.start(NetLan::local_host_name())) {
         lan_transport_ = NetTransport::create();
         if (lan_transport_) {
           lan_transport_->set_lan_only(true);

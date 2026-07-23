@@ -86,6 +86,12 @@ struct Preferences {
     int  window_width        = 800;    // last windowed resolution (desktop only)
     int  window_height       = 600;
     float star_density       = 1.0f;   // star-count multiplier; user-editable in INI
+    bool  lan_visible        = true;   // broadcast this host on the local network
+                                       // (NETPLAY.md LAN play): when false the lobby
+                                       // and mid-game re-host skip the UDP beacon +
+                                       // TCP blob listener, so the machine is never
+                                       // discoverable — the relay/manual flows are
+                                       // untouched. INI-only (no Options row).
     std::string signal_url;            // netplay room server override (empty = baked default)
     std::string last_hosted_code;      // last room code this install hosted — the
                                        // lobby's clipboard auto-join refuses it, so a
