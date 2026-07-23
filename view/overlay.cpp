@@ -495,7 +495,9 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
 #endif
         }
       } else if(!is_touch_mode()) {
-        Typer::draw_centered(0, Typer::scaled_window_height-40, glship->has_controller() ? "return to menu with start" : "return to menu with ESC", 8);
+        // Just above the GameOver text draw_respawn_timer() renders (its
+        // 20x viewport puts the glyphs at y 0..80 in this space).
+        Typer::draw_centered(0, 140, glship->has_controller() ? "return to menu with start" : "return to menu with ESC", 8);
       }
     }
     if(!glship->last_input_was_controller && !is_touch_mode()) {
