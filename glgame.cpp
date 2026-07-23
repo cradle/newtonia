@@ -2643,11 +2643,14 @@ bool GLGame::net_send_delta(bool can_send) {
 // disconnect gap simply compresses out (slots are emission counts, not
 // wall clock).
 void GLGame::replay_start() {
-  // Opt-out: the auto-record preference (INI, default ON — REPLAY.md) or the
-  // env override. Checked at game start so a mid-run toggle never orphans a
-  // half-written file; an existing current.nrp is simply left untouched.
-  if (!g_prefs.auto_record_replays) return;
-  if (SDL_getenv("NEWTONIA_REPLAY_DISABLE")) return;
+  // Opt-in: recording is OFF by default (REPLAY.md ship posture). The
+  // preference or NEWTONIA_REPLAY_ENABLE (tests/CI, power users) turns it
+  // on; NEWTONIA_REPLAY_DISABLE forces it off and wins. Resolved at game
+  // start so a mid-run change never orphans a half-written file — an
+  // existing current.nrp is simply left untouched.
+  bool enabled = g_prefs.auto_record_replays ||
+                 SDL_getenv("NEWTONIA_REPLAY_ENABLE") != nullptr;
+  if (!enabled || SDL_getenv("NEWTONIA_REPLAY_DISABLE")) return;
   if (net_mode_ == NetHost || net_mode_ == NetClient) {
     Replay::Header h;
     bool resumed = Replay::read_header(Replay::online_path(), h) &&

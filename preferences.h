@@ -75,12 +75,14 @@ struct Preferences {
                                        // migration/downgrade seed now — the game
                                        // reads PlayerKeys::rotate_view per player
     bool friendly_fire       = true;   // players damage each other
-    // Auto-record replays (REPLAY.md). Default ON — the "always record,
-    // never ask" decision — but INI-editable so a storage-conscious player
-    // can opt out; also the visible perf escape hatch (superset of the
-    // NEWTONIA_REPLAY_DISABLE env var). The recorder checks it at game start
-    // (GLGame::replay_start). No Options-menu row yet — see REPLAY.md.
-    bool auto_record_replays = true;
+    // Auto-record replays (REPLAY.md). Default OFF — the feature ships
+    // opt-in until the low-end field pass confirms the recorder is free on
+    // real hardware (REPLAY.md "To revisit" / TESTING.md §7). INI-editable
+    // (`auto_record_replays=1` to opt in); NEWTONIA_REPLAY_ENABLE forces it
+    // on and NEWTONIA_REPLAY_DISABLE off, both overriding the pref. The
+    // recorder checks the result at game start (GLGame::replay_start). No
+    // Options-menu row yet — see REPLAY.md.
+    bool auto_record_replays = false;
     int  window_width        = 800;    // last windowed resolution (desktop only)
     int  window_height       = 600;
     float star_density       = 1.0f;   // star-count multiplier; user-editable in INI

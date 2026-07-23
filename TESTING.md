@@ -374,6 +374,8 @@ game so achievements stay suppressed):
 | `NEWTONIA_FRAME_LOG=1` | Logs every frame slower than 50 ms; on desktop the line carries `draws=` (shim/Mesh draw calls) and `segs=` (thick-line segments CPU-expanded) for that frame |
 | `NEWTONIA_LINE_EMULATION=1` | Forces the thick-line quad emulation on platforms whose driver would draw wide lines natively (Android/iOS) — for A/B against the native path |
 | `NEWTONIA_TEST_SPAWN_PICKUPS=1` | Pickup-icon ring (see above) |
+| `NEWTONIA_REPLAY_ENABLE=1` | Force replay recording ON (it ships opt-in / default OFF — `Preferences::auto_record_replays`). The replay e2e drivers set this; `NEWTONIA_REPLAY_DISABLE=1` forces OFF and wins |
+| `NEWTONIA_REPLAY_PLAY=<current\|recent\|online\|best\|last\|path>` | Boot straight into playback of that replay file (dev entry for R2; the REPLAYS menu is the real path) |
 
 Independent of any env var, the game SDL_Logs a **perf report** once per
 second whenever fps drops below 55 —
@@ -550,13 +552,14 @@ does. Get the eMMC device for storage, the 2 GB Go device for everything else.
 # Late-generation load (100+ asteroids is the worst case); KEYCODE_N marches
 # levels fast (works on the intro screens too). NEWTONIA_* ride intent extras
 # (see "Env vars on Android"); -S forces a fresh process that reads them.
+# Recording ships opt-in (default OFF), so the ON run must force it on.
 adb shell am start -S -n org.newtonia/.NewtoniaActivity \
-    --es NEWTONIA_BETA 1 --es NEWTONIA_START_GENERATION 9      # recording ON (default)
+    --es NEWTONIA_BETA 1 --es NEWTONIA_START_GENERATION 9 --es NEWTONIA_REPLAY_ENABLE 1
 adb shell input keyevent KEYCODE_N        # ... march to a dense generation, play
 adb logcat -s SDL/APP | grep "perf:"      # capture the perf lines
 
 adb shell am start -S -n org.newtonia/.NewtoniaActivity \
-    --es NEWTONIA_BETA 1 --es NEWTONIA_START_GENERATION 9 --es NEWTONIA_REPLAY_DISABLE 1
+    --es NEWTONIA_BETA 1 --es NEWTONIA_START_GENERATION 9      # recording OFF (default)
 # ... same play, same capture. The fps/tick delta vs the first run = recorder cost.
 ```
 

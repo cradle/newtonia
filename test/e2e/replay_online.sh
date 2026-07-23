@@ -28,6 +28,8 @@ if [ -z "${DISPLAY:-}" ]; then
   exec xvfb-run -a -s "-screen 0 1280x800x24" "$0" "$@"
 fi
 . "$(dirname "$0")/lib.sh"
+# Recording defaults OFF (opt-in ship posture); force it on for these drivers.
+export NEWTONIA_REPLAY_ENABLE=1
 relay_check
 
 XDG_A="$OUT/xdg-host"; XDG_B="$OUT/xdg-joiner"

@@ -16,8 +16,16 @@ criteria. Nothing here is built yet.
   cross-platform playback, instant seek at keyframes, and it reuses the
   net-client machinery that months of "invisible on the client" fixes have
   already hardened. Cost: a few MB per long run vs tens of KB — fine.
-- **Always record, never ask.** Recording starts silently at every new solo
-  game (kilobytes-per-second budget). No "save replay?" prompt anywhere.
+- **Record silently, never ask — but ship opt-in (revised 2026-07-23).** The
+  design is "no 'save replay?' prompt anywhere": when recording is enabled it
+  starts silently at every new game (kilobytes-per-second budget). The
+  ORIGINAL plan had it default ON ("always record"); the shipped default is
+  **OFF** (`Preferences::auto_record_replays`), a conservative posture until
+  the low-end field pass (TESTING.md §7) proves the recorder is free on real
+  hardware — then the default can flip back to ON in a one-line change. The
+  "never ask" half stands regardless: enabling is a preference, not a
+  per-game prompt. `NEWTONIA_REPLAY_ENABLE` / `NEWTONIA_REPLAY_DISABLE` force
+  the toggle for tests and power users (enable loses to disable).
 - **Auto-keep three local replay files — all three watchable**:
   `replays/current.nrp` — the active (live or resumable) run; watching it
   from the menu is allowed and useful — review what just happened before
@@ -412,14 +420,15 @@ R4's field.
   leaderboard submission path can cap/reject server-side).
 - ~~Maybe: an "Auto-record replays" toggle on the Options screen~~
   **PARTLY DONE (2026-07-22): the preference exists, the Options row does
-  not.** `Preferences::auto_record_replays` (default ON) is INI-backed
-  (`auto_record_replays=` in preferences.ini) and gates the recorder at
-  game start (`GLGame::replay_start`) — a superset of the
-  `NEWTONIA_REPLAY_DISABLE` env hatch, so storage-conscious players can opt
-  out by hand-editing the INI, and it doubles as the perf escape hatch. The
-  user-facing Options-screen row is deliberately NOT wired yet (see the
-  revisit item below) — kept off the menu for now because it's arguably
-  clutter for a feature meant to be invisible.
+  not.** `Preferences::auto_record_replays` (**default OFF** — opt-in ship
+  posture, 2026-07-23) is INI-backed (`auto_record_replays=1` in
+  preferences.ini to opt in) and gates the recorder at game start
+  (`GLGame::replay_start`); `NEWTONIA_REPLAY_ENABLE` forces it on (tests/CI,
+  power users) and `NEWTONIA_REPLAY_DISABLE` forces it off (enable loses to
+  disable). The user-facing Options-screen row is deliberately NOT wired yet
+  (see the revisit item below) — kept off the menu for now because the
+  default-off state is temporary pending the low-end field pass, after which
+  the toggle (and a possible default flip to ON) get decided together.
 
 ## To revisit
 
