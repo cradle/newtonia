@@ -3,6 +3,17 @@ project(Newtonia CXX)
 
 set(CMAKE_CXX_STANDARD 11)
 
+# 16 KB page-size support (Google Play requirement for 16 KB-page devices).
+# NDK r28+ aligns ELF LOAD segments to 16 KB by default, but set the linker
+# flags explicitly so the requirement stays visible in the build and survives
+# an accidental NDK downgrade (r27 and lower align to 4 KB otherwise). Applied
+# through the shared-linker flags BEFORE the SDL2 / SDL2_mixer subdirectories
+# so every .so we ship (libnewtonia, libSDL2, libSDL2_mixer) carries it.
+if(ANDROID)
+    string(APPEND CMAKE_SHARED_LINKER_FLAGS
+           " -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384")
+endif()
+
 # Collect all game source files (everything except the desktop GLUT main).
 file(GLOB_RECURSE GAME_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"

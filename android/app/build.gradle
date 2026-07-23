@@ -6,6 +6,13 @@ android {
     namespace 'org.newtonia'
     compileSdk 36
 
+    // NDK r28 compiles native libraries with 16 KB-aligned ELF LOAD
+    // segments by default (r27 and lower default to 4 KB), which Google
+    // Play now requires so the app installs and runs on 16 KB-page-size
+    // devices. Pinned here as the single source of truth; the android.yml
+    // / deploy-android.yml CI installs this exact revision via sdkmanager.
+    ndkVersion '28.2.13676358'
+
     defaultConfig {
         applicationId "org.newtonia"
         minSdk 21           // Android 5.0 (GLES2 guaranteed)
