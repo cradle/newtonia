@@ -2,6 +2,7 @@
 #define MENU_H
 
 #include <SDL.h>
+#include <string>
 #include <vector>
 #include "state.h"
 #include "savegame.h"
@@ -35,6 +36,24 @@ private:
   // OPTIONS row: always shown. The options screen works on keyboard,
   // controller, and touch (tap a row to cycle its value).
   bool show_options_row() const;
+  int  options_row_index() const;  // -1 when hidden
+  // REPLAYS row (REPLAY.md R3): shown only while at least one .nrp exists.
+  // The list screen offers one row per existing file — CURRENT RUN
+  // (live/resumable offline), LAST RUN (most recently completed offline),
+  // ONLINE RUN (the most recent online session, ended or abandoned) and
+  // BEST RUN — with score/level/date; files this build can't parse render
+  // as unselectable OLDER VERSION rows. Selecting a row starts R2 playback.
+  bool show_replays_row() const { return !replay_rows_.empty(); }
+  int  replays_row_index() const;  // -1 when hidden
+  void scan_replays();             // rebuild replay_rows_ from disk
+  void open_replays();
+  struct ReplayRow {
+    std::string label;   // CURRENT RUN / LAST RUN / ONLINE RUN / BEST RUN
+    std::string path;
+    bool ok;             // readable by this build; false = OLDER VERSION
+    uint32_t score, level;
+    std::string date;    // YYYY-MM-DD from the header's creation date
+  };
   // Shared vertical row layout for the main menu (desktop cursor rows and
   // touch tap targets use the same geometry).
   static int menu_row_size();
@@ -49,6 +68,9 @@ private:
   bool has_save_ = false;
   int  menu_selection = 0;
   bool options_mode_ = false;
+  bool replays_mode_ = false;
+  int  replay_sel_ = 0;                 // cursor in the replays list
+  std::vector<ReplayRow> replay_rows_;  // rebuilt by scan_replays()
   int  sensitivity_index_[2] = {2, 2};  // per-player index into SENSITIVITY_VALUES
   int  smoothing_index_[2]   = {1, 1};  // per-player index into SMOOTHING_VALUES (1=NORMAL=0.004)
   int  star_density_index_   = 4;       // index into STAR_DENSITY_MULTIPLIERS (4=full)

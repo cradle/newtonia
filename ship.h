@@ -115,6 +115,12 @@ class Ship : public CompositeObject {
     // Returns whether the ship actually died (false = shield/invincible).
     bool kill_stop();
 
+    // Replay bootstrap (REPLAY.md R2): return a restore-resurrected ship to
+    // its recorded dead-in-countdown state with NONE of kill()'s theatre —
+    // no CompositeObject::explode() hull debris, no explode sound, no boom
+    // relay, no detonate flash. Initial state is state, not an event.
+    void quiet_unspawn();
+
     std::vector<Particle> bullets, mines, giga_mines, bullet_trails;
     std::vector<MissileShot> missiles;
     std::vector<Shockwave> shockwaves;
@@ -270,6 +276,31 @@ class Ship : public CompositeObject {
     // Build a display-only replica bolt from a received polyline (already
     // grown, just fades; never seeks or kills). Used by the MSG_SHOCK handler.
     void net_receive_shock(const std::vector<Point> &pts);
+
+    // Replay-recorder outboxes (REPLAY.md R2 effect fidelity): the flash-
+    // class weapon visuals the snapshots don't carry — lance pulses, shock
+    // arcs, nova/giga shockwave rings. Pushed UNCONDITIONALLY at their mint
+    // sites (a handful per fight — the net_* twins above stay gated on
+    // net_report_shots so wire behaviour is untouched) and drained once per
+    // tick by GLGame: recorded when a replay recorder is live, discarded
+    // otherwise. Ship* attribution so 2P recordings flash the right ghost.
+    struct ReplayRing {
+        const Ship *ship;
+        float x, y, max_r, speed, duration;
+        bool nova;
+    };
+    static std::vector<std::pair<const Ship *, std::vector<Point>>>
+        replay_lance_flashes;
+    static std::vector<std::pair<const Ship *, std::vector<Point>>>
+        replay_shock_flashes;
+    static std::vector<ReplayRing> replay_rings;
+    // Gun-shot sound cues (position only — the bullets themselves ride the
+    // snapshots; online the SOUND rides the MSG_SHOT echo / EV_WORLD_SHOT,
+    // neither of which a solo recording emits). One entry per pew from any
+    // ship: players, enemies, god-mode rapid fire, the mini-station.
+    // Beam fires cue separately (beam.wav, the piercing-clone rule).
+    static std::vector<Point> replay_pews;
+    static std::vector<Point> replay_beam_pews;
 
     // Lance ship/station hits: the pulse's ray-march only sees asteroids
     // (ships and stations live in GLGame's lists), so every firer parks

@@ -41,6 +41,7 @@ using namespace std;
 class NetSession;
 class NetTransport;
 namespace Net { class SnapshotAssembler; struct Reader; }
+namespace Replay { class Recorder; class Reader; }
 
 class GLGame : public State {
 public:
@@ -55,6 +56,14 @@ public:
   // machine's player is the LAST in the list; player 1 is the remote host.
   GLGame(const Save::GameState &snapshot, NetSession *session,
          SDL_GameController *controller);
+  // Replay playback (REPLAY.md R2): world bootstrapped from the file's
+  // first keyframe — the same restore a joining net client gets — then
+  // records drive it through the client apply path. Takes ownership of the
+  // reader. Use start_replay_playback(), which parses the bootstrap.
+  GLGame(const Save::GameState &snapshot, Replay::Reader *reader);
+  // Opens and validates a replay file, returns the playback state — NULL
+  // (with a log line) on unreadable/older-version/keyframe-less files.
+  static GLGame *start_replay_playback(const std::string &path);
   GLGame(GLGame const &other);
   virtual ~GLGame();
 
@@ -113,10 +122,20 @@ public:
   int num_y_viewports() const;
   // Two local players share this machine's screen; online each machine
   // draws only its own full-screen view even though players->size() == 2.
-  bool split_screen() const { return net_mode_ == NetOff && players->size() > 1; }
+  // A 2-player REPLAY renders the same split-screen the game showed while
+  // being played — both viewports, each following its own ghost.
+  bool split_screen() const {
+    return (net_mode_ == NetOff || net_mode_ == NetReplay) &&
+           players->size() > 1;
+  }
   // Online game in progress (host or client) — the web build keeps a
   // hidden tab ticking only for these (see web_background_tick).
   bool net_active() const { return net_mode_ != NetOff; }
+  // The game has ended for everyone: every player dead with no lives left,
+  // or the game_over latch (which also covers the terminal spectator case —
+  // losing the host while already out). Drives the shared GAME OVER card
+  // and the "no pausing a finished game" gate in toggle_pause.
+  bool all_players_out() const;
   bool is_visible_to_any_player(const Ship &ship) const;
   bool is_visible_to_any_player(Point p) const;
   float sound_volume_for_point(Point p) const;
@@ -183,7 +202,11 @@ private:
   // ---- netplay (see NETPLAY.md) ----
   // All no-ops when net_mode_ == NetOff. Online, every local-save path is
   // hard-gated off so online play can never clobber the solo save.
-  enum NetMode { NetOff, NetHost, NetClient };
+  // NetReplay (REPLAY.md R2) rides the NetClient apply/extrapolate path fed
+  // from a file instead of a transport: no session, no INPUT, every ship a
+  // ghost. It is a DISTINCT mode value on purpose — net_apply_state's
+  // NetClient-gated achievement blocks must stay cold while watching.
+  enum NetMode { NetOff, NetHost, NetClient, NetReplay };
   void add_remote_player();       // player 2 without local input bindings
   void net_host_poll();           // apply queued INPUT messages
   // Elastic asteroid-asteroid physics, shared by the host sim
@@ -213,7 +236,18 @@ private:
                                        const Save::GameState &s);
   void net_apply_delta_asteroids(Save::Stream &in,
                                  bool membership_only = false);
-  bool net_send_delta();          // false: too big / not possible -> keyframe
+  // Build (and tee to the recorder) one delta; send it when can_send.
+  // false: too big / not possible -> caller does a keyframe instead.
+  bool net_send_delta(bool can_send);
+
+  // REPLAY.md R1 seam: payload builders shared by the online host and the
+  // replay recorder (they must never fork). Both move net_known_, the delta
+  // baseline — safe, because only one consumer is ever active: offline the
+  // recorder's cadence calls them, online ONLY the host send path does and
+  // the recorder tees the built bytes (never a second build).
+  // counts (optional): out {new, dyn, removed} for telemetry.
+  void net_build_keyframe_payload(Save::MemStream &payload);
+  bool net_build_delta_payload(Save::MemStream &payload, int counts[3] = NULL);
 
   // The lobby bootstraps the client game (constructor + first snapshot's
   // NetExtras) before handing over the state.
@@ -485,6 +519,59 @@ private:
   // deduped in the Presence layer.
   void update_presence() const;
 
+  // ---- replay recording (REPLAY.md R1) ----
+  // Every solo game records into replays/current.nrp via the snapshot-
+  // builder seam above; every ONLINE game records into replays/online.nrp
+  // (host: tee of the snapshots it builds and sends; client: tee of the
+  // stream it receives). Started lazily on the first tick (the net ctors
+  // delegate to the offline ctors and set net_mode_ afterwards, so
+  // construction can't know the game's mode); NEWTONIA_REPLAY_DISABLE
+  // is the escape hatch. Checkpoint flushes: level rollover (the intro
+  // screen, when one follows, is the slack window the write lands in),
+  // pause, focus loss. finalize+rotation at game over / destruction.
+  void replay_start();
+  void replay_record_slot(int delta);  // one KEYFRAME/DELTA per 100 ms run
+                                       // (offline cadence only — the host
+                                       // tees inside net_host_send_snapshot)
+  // Drain the Ship::replay_* effect outboxes (lance/shock/ring visuals the
+  // snapshots don't carry): recorded as REC_EFFECT when recording, else
+  // discarded. Called once per offline/host tick and per client tick; a
+  // non-recording game just gets the keep-empty clear.
+  void replay_drain_effects();
+  // Receive-side effect tees (online recording): the REMOTE player's
+  // weapon visuals arrive as MSG_LANCE/MSG_SHOCK/MSG_SHOT, not through the
+  // local outboxes — record them at their receive sites.
+  void replay_record_polyline(uint8_t subtype, const Ship *shooter,
+                              const std::vector<Point> &pts);
+  void replay_record_shot(float x, float y, uint8_t kind);
+  // Index of a ship in the players list (-1 if absent) — the REC_EFFECT
+  // attribution byte, resolved the same way on record and playback.
+  int player_index_of(const Ship *s) const;
+  void replay_finish(bool ended);      // finalize; deletes replay_
+  Replay::Recorder *replay_ = nullptr;
+  bool replay_tried_ = false;          // lazy-start ran (or was skipped)
+  int replay_slot_timer_ = 0;          // 100 ms cadence accumulator
+  // Random id stamped into the savegame (v17) and the replay header so a
+  // resume can continue the same recording (run-scoped replays). Set by
+  // both offline ctors; carried by saves; 0 never happens for new games.
+  uint64_t run_id_ = 0;
+  bool replay_resume_candidate_ = false;  // the loaded save carried a run_id
+
+  // ---- replay playback (REPLAY.md R2; net_mode_ == NetReplay) ----
+  // Apply records that have come due on the playback clock (the file-fed
+  // stand-in for net_client_poll).
+  void tick_replay_poll(int delta);
+  Replay::Reader *replay_reader_ = nullptr;  // owned
+  int replay_clock_ms_ = 0;       // timeline position (slot * 100 domain)
+  float replay_speed_ = 1.0f;     // 0.25x..4x, =/- keys (never a cheat)
+  bool replay_finished_ = false;  // past the last record: world frozen
+  uint16_t replay_save_version_ = 0;  // savegame format of the payloads
+  // True only while the factory applies the bootstrap keyframe's extras:
+  // an alive→dead "transition" there is initial state, not an event — a
+  // new game starts dead in the spawn countdown, and detonating painted
+  // an explosion no real new game shows.
+  bool replay_bootstrap_apply_ = false;
+
   static const int step_size = 8;
 
   Point world;
@@ -516,6 +603,7 @@ private:
   // submission vs the rest = swap/present) with the live object counts.
   // Silent at healthy frame rates; no env plumbing needed on device.
   Uint32 perf_window_start_ = 0;
+  Uint32 perf_last_frame_ = 0;  // gap detector: >500 ms = not-running window
   Uint32 perf_tick_ms_ = 0, perf_draw_ms_ = 0;
   Uint32 perf_tick_max_ = 0, perf_draw_max_ = 0;
   // Lens/warp share of draw (mutable: accumulated inside const draw paths).

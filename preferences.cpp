@@ -194,6 +194,8 @@ static void parse_line(const char *key, const char *val) {
         g_prefs.p2_keys.rotate_view = v;
     } else if (strcmp(key, "friendly_fire") == 0) {
         g_prefs.friendly_fire = (val[0] == '1');
+    } else if (strcmp(key, "auto_record_replays") == 0) {
+        g_prefs.auto_record_replays = (val[0] == '1');
     } else if (strcmp(key, "star_density") == 0) {
         float v = (float)atof(val);
         if (v >= 0.0f) g_prefs.star_density = v;
@@ -281,6 +283,7 @@ void save_preferences() {
     // still reads a sane camera setting; new builds use p1_/p2_rotate_view.
     fprintf(f, "rotate_view=%d\n",             g_prefs.p1_keys.rotate_view ? 1 : 0);
     fprintf(f, "friendly_fire=%d\n",           g_prefs.friendly_fire      ? 1 : 0);
+    fprintf(f, "auto_record_replays=%d\n",     g_prefs.auto_record_replays ? 1 : 0);
     fprintf(f, "star_density=%.4f\n",           g_prefs.star_density);
     fprintf(f, "lan_visible=%d\n",             g_prefs.lan_visible        ? 1 : 0);
     if (!g_prefs.signal_url.empty())

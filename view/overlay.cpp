@@ -8,6 +8,9 @@
 #include "../typer.h"
 #include "../ship.h"
 #include "../touch_controls.h"
+#include "../preferences.h"
+#include "../replay.h"
+#include <cctype>
 
 #include "../gl_compat.h"
 #include "../mat4.h"
@@ -27,24 +30,90 @@ const float Overlay::SAFE_AREA_SCALE = 1.0f;
 // pass, not per-viewport): the 2 s generation banner (replaces the offline
 // Intro state) and the CONNECTION LOST / rejoin card. Overlay is a friend
 // of GLGame, so it reads the net_* state directly.
+// Replay playback chrome (REPLAY.md R2): one full-screen pass drawn after
+// net_overlays. Watermark + speed top-centre, elapsed/total bottom-centre,
+// and the flashing exit hint when the recording ends without a game over
+// (the shared GAME OVER card handles the other ending).
+void Overlay::replay_hud(const GLGame *glgame) {
+  glViewport(0, 0, glgame->window.x(), glgame->window.y());
+  float hw = glgame->window.x() / Overlay::SAFE_AREA_SCALE;
+  float hh = glgame->window.y() / Overlay::SAFE_AREA_SCALE;
+  float ortho[16];
+  mat4_ortho(ortho, -hw, hw, -hh, hh, -1.0f, 1.0f);
+  gles2_set_vp(ortho);
+
+  float vh = Typer::scaled_window_height;
+  int now = glgame->current_time;
+  bool touch = is_touch_mode();
+
+  // The replay HUD lives at the BOTTOM (at the top the REPLAY watermark
+  // collided with the per-viewport LEVEL text). Stack, top to bottom:
+  // watermark, timeline, then the controls hint — lifted well clear of the
+  // screen edge. Typer draws each glyph offset DOWN by 2*size (see
+  // pre_draw), so a line's real footprint is ~[y-2*size, y] and a bigger
+  // font drops further: the gaps below clear 2*size + margin per line, or
+  // the watermark overlaps the line under it. On touch the controls are tap
+  // bands lower down, so only the watermark + timeline sit here, above them.
+  char text[48];
+  if (glgame->replay_speed_ != 1.0f) {
+    snprintf(text, sizeof(text), "REPLAY x%g", (double)glgame->replay_speed_);
+  } else {
+    snprintf(text, sizeof(text), "REPLAY");
+  }
+  Typer::draw_centered(0, touch ? -155.0f : -vh + 295, text, 18);
+
+  int total_ms = glgame->replay_reader_
+                     ? (glgame->replay_reader_->last_slot() + 1) * 100
+                     : 0;
+  int elapsed_ms = glgame->replay_clock_ms_;
+  if (elapsed_ms > total_ms) elapsed_ms = total_ms;
+  snprintf(text, sizeof(text), "%d:%02d / %d:%02d", elapsed_ms / 60000,
+           (elapsed_ms / 1000) % 60, total_ms / 60000,
+           (total_ms / 1000) % 60);
+  Typer::draw_centered(0, touch ? -235.0f : -vh + 220, text, 14);
+
+  // On-screen controls. Touch: real tap targets (one definition with the
+  // hit-tests in GLGame::touch_tap — the TapBand rule). Desktop/controller:
+  // a dim hint line under the timeline, from live bindings.
+  if (touch) {
+    TapBand::replay_slower.draw("SLOWER");
+    TapBand::replay_pause.draw(glgame->running ? "PAUSE" : "RESUME");
+    TapBand::replay_faster.draw("FASTER");
+    TapBand::return_to_menu.draw("RETURN TO MENU", now);
+  } else {
+    bool has_ctrl = false;
+    int nc = SDL_NumJoysticks();
+    for (int i = 0; i < nc; i++)
+      if (SDL_IsGameController(i)) { has_ctrl = true; break; }
+    if (has_ctrl) {
+      snprintf(text, sizeof(text), "START PAUSE   B MENU");
+    } else {
+      const GeneralKeys &gk = g_prefs.general_keys;
+      snprintf(text, sizeof(text), "%c PAUSE   %c/%c SPEED   ESC MENU",
+               toupper(gk.pause), (char)gk.time_speed_up,
+               (char)gk.time_slow_down);
+    }
+    Typer::draw_centered(0, -vh + 155, text, 9);
+  }
+
+  if (glgame->replay_finished_ && !glgame->game_over && (now / 700) % 2 == 0)
+    Typer::draw_centered(0, -80,
+                         is_touch_mode() ? "REPLAY ENDED - TAP BELOW FOR MENU"
+                                         : "REPLAY ENDED - ESC FOR MENU",
+                         16);
+}
+
 void Overlay::net_overlays(const GLGame *glgame) {
   // All players out = the game ended. Lives replicate, so both roles see
   // this at the same moment — and it outranks every connection card: the
   // host leaving right after game over used to greet the client with
   // "THE HOST LEFT THE GAME", so the game never LOOKED finished there
   // (Glenn: "no gameover state for the client, it just disconnects").
-  bool all_game_over = !glgame->players->empty();
-  for (auto *gs : *glgame->players)
-    if (gs->ship->is_alive() || gs->ship->lives > 0) {
-      all_game_over = false;
-      break;
-    }
-
-  // game_over latches "the game is over for us": it fires with all_game_over,
-  // and also when a spectating player loses the peer (terminal — nothing left
-  // to rejoin for). Treat it as game over so the card, not the reconnect
-  // notice, is the ending in that case.
-  if (glgame->game_over) all_game_over = true;
+  // all_players_out() also folds in the game_over latch: it fires with
+  // all-out, and also when a spectating player loses the peer (terminal —
+  // nothing left to rejoin for). Treat that as game over so the card, not
+  // the reconnect notice, is the ending in that case.
+  bool all_game_over = glgame->all_players_out();
 
   if (!all_game_over && glgame->net_banner_ms_ <= 0 &&
       !glgame->net_connection_lost_)
@@ -140,11 +209,16 @@ void Overlay::net_overlays(const GLGame *glgame) {
 }
 
 void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
-  title_text(glgame, glship);
+  // Replay playback: keep the run's own HUD (score/lives/weapons/level —
+  // part of the story) but drop every overlay that invites input the
+  // replay won't take — join/help hints, the keymap card, the touch OSD
+  // (replay_hud carries the touch exit hint; R3 owns richer touch UX).
+  bool replaying = glgame->net_mode_ == GLGame::NetReplay;
+  if (!replaying) title_text(glgame, glship);
   level(glgame, glship);
   god_mode(glgame, glship);
   score(glgame, glship);
-  keymap(glgame, glship);
+  if (!replaying) keymap(glgame, glship);
   level_cleared(glgame, glship);
   lives(glgame, glship);
   weapons(glgame, glship);
@@ -153,7 +227,7 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   spectate(glgame, glship);
   remote_badge(glgame, glship);
   paused(glgame, glship);
-  touch_controls(glgame, glship);
+  if (!replaying) touch_controls(glgame, glship);
   edge_indicators(glgame, glship);
   if (glgame->debug_grid) debug_info(glgame, glship);
 }
@@ -247,6 +321,13 @@ void Overlay::edge_indicators(const GLGame *glgame, const GLShip *glship) {
 }
 
 void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
+  // Once the game is over, the game-over messaging (the shared GAME OVER
+  // card online / in replays, the per-ship indicator offline) owns the
+  // centre of the screen — never stack "Paused" under it. toggle_pause
+  // refuses new pauses on a finished game; this covers a game that ENDS
+  // while already paused (e.g. the host leaving a paused game is terminal
+  // for a spectating client).
+  if (glgame->all_players_out()) return;
   if(!glgame->running && !glship->show_help) {
     Typer::draw_centered(0, 30, "Paused", 25);
     if(is_touch_mode())

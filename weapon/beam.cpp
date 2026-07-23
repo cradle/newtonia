@@ -68,6 +68,9 @@ namespace Weapon {
       Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * ship->sound_volume_scale));
       Mix_PlayChannel(-1, shoot_sound, 0);
     }
+    // Replay recorder: beam fire cue (kind 1 = beam.wav on playback).
+    Ship::replay_beam_pews.push_back(
+        Point(ship->position.x(), ship->position.y()));
 
     Point dir = Point(ship->facing);
     ship->bullets.push_back(Particle(ship->gun(), dir * BOLT_SPEED + ship->velocity * 0.99, BOLT_TTL));

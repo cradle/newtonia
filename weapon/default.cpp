@@ -109,6 +109,11 @@ namespace Weapon {
         Mix_PlayChannel(-1, shoot_sound, 0);
       }
     }
+    // Replay recorder: one pew cue per trigger pull (all variants, players
+    // and enemies alike); playback re-attenuates against its own camera.
+    if (!sim_only)
+      Ship::replay_pews.push_back(
+          Point(ship->position.x(), ship->position.y()));
     Point dir = Point(ship->facing);
     switch(level) {
       case(0):

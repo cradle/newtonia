@@ -29,6 +29,11 @@ std::vector<const Ship*> Ship::net_booms;
 std::vector<Ship::NetKillClaim> Ship::net_kill_claims;
 std::vector<Ship::NetShotReport> Ship::net_shot_reports;
 std::vector<std::vector<Point>> Ship::net_lance_reports;
+std::vector<std::pair<const Ship *, std::vector<Point>>> Ship::replay_lance_flashes;
+std::vector<std::pair<const Ship *, std::vector<Point>>> Ship::replay_shock_flashes;
+std::vector<Ship::ReplayRing> Ship::replay_rings;
+std::vector<Point> Ship::replay_pews;
+std::vector<Point> Ship::replay_beam_pews;
 std::vector<std::vector<Point>> Ship::net_shock_reports;
 std::vector<Ship::NetBounceReport> Ship::net_bounce_reports;
 bool Ship::net_report_bounces = false;
@@ -760,6 +765,8 @@ void Ship::nova_detonate() {
   const float max_r = 1500.0f;
   const float speed = 1.5f;
   shockwaves.push_back(Shockwave(position, max_r, speed, max_r / speed, true));
+  replay_rings.push_back({this, position.x(), position.y(), max_r, speed,
+                          max_r / speed, true});
 }
 
 int Ship::god_mode_time_remaining() const {
@@ -1216,6 +1223,21 @@ bool Ship::kill_stop() {
     return true;
   }
   return false;
+}
+
+void Ship::quiet_unspawn() {
+  alive = false;
+  invincible = false;
+  velocity.zero();
+  thrusting = false;
+  reversing = false;
+  rotation_direction = NONE;
+  still_rotating_left = false;
+  still_rotating_right = false;
+  bullets.clear();  // the restore's respawn-detonate flash (real bullets)
+  if(boost_sound != NULL) Mix_VolumeChunk(boost_sound, 0);
+  set_shield_hum(false);
+  stop_god_mode_music();
 }
 
 bool Ship::is_removable() const {
@@ -1832,6 +1854,8 @@ void Ship::fire_lance_pulse(const Grid &grid) {
   // (net_report_shots covers exactly the two reporters: the client's own
   // ship and, since PROTO 17, the host's player ship).
   if(net_report_shots) net_lance_reports.push_back(pulse.points);
+  // Replay recorder: every fired pulse, unconditionally (REPLAY.md R2).
+  replay_lance_flashes.push_back({this, pulse.points});
 
   // Park the polyline for GLGame's ship/station hit resolution: the
   // authoritative pass offline/host-side, or the client's enemy-replica
@@ -1924,6 +1948,8 @@ void Ship::giga_detonate(Point const position) {
   float duration = 700.0f;
   float speed = max_r / duration;
   shockwaves.push_back(Shockwave(position, max_r, speed, duration));
+  replay_rings.push_back({this, position.x(), position.y(), max_r, speed,
+                          duration, false});
 }
 
 void Ship::shoot(bool on) {
@@ -2334,6 +2360,10 @@ void Ship::fire_bullet_from_gun() {
     Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * sound_volume_scale));
     Mix_PlayChannel(-1, shoot_sound, 0);
   }
+  // Replay recorder: the pew cue with its position (unconditional — the
+  // recording-side volume gate is view-relative, and playback re-attenuates
+  // against its own camera, which is the same view).
+  replay_pews.push_back(Point(position.x(), position.y()));
   net_shots.push_back(this);  // net host relays its player's shots
   bullets.push_back(Particle(gun(), facing * 0.615f + velocity * 0.99f, 2000.0f));
   mark_last_bullet_trail();
@@ -2636,6 +2666,13 @@ void Ship::step(float delta, const Grid &grid) {
        !shocks[i].growing && shocks[i].points.size() >= 2) {
       net_shock_reports.push_back(shocks[i].points);
       shocks[i].net_reported = true;
+    }
+    // Replay recorder twin: same once-per-bolt rule, no net_report_shots
+    // gate (a solo game never arms it). Display replicas stay excluded.
+    if(!shocks[i].net_display && !shocks[i].replay_reported &&
+       !shocks[i].growing && shocks[i].points.size() >= 2) {
+      replay_shock_flashes.push_back({this, shocks[i].points});
+      shocks[i].replay_reported = true;
     }
     if(!shocks[i].is_alive() && shocks[i].struck.empty()) {
       shocks[i] = std::move(shocks.back());

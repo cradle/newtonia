@@ -161,6 +161,45 @@ test/e2e/shock_hazards_net.sh # PROTO 22 shock vs a hazard: host skips to gen 9
                      # trip both ways, the pulsar replicated, nobody crashed
                      # (the client now seeks hostiles + drains hazard/partner
                      # struck entries), clean log. Guards #142.
+test/e2e/replay_playback.sh # REPLAY.md R2 exit criteria, solo (no relay):
+                     # record a run, play it back (NEWTONIA_REPLAY_PLAY=
+                     # current) — world unfolds (screenshots differ over
+                     # time), pause survives, playback reaches the end and
+                     # Esc exits; x4 speed finishes the file in under half
+                     # real time; a 2-player recording grows the ghost
+                     # roster at the recorded join ("replay: player 2
+                     # joined") and plays back split-screen; a game-over
+                     # recording reaches the GAME OVER card; an ALL_WEAPONS
+                     # run round-trips the flash-class effects (REC_EFFECT:
+                     # lance pulse, shock arc, nova ring — asserted via the
+                     # record + receive log lines).
+test/e2e/replay_menu.sh # REPLAY.md R3: the REPLAYS menu row (shown once a
+                     # .nrp exists) opens the list screen; selecting
+                     # CURRENT RUN starts playback ("replay: playback
+                     # started"), Esc returns to the menu, and the list
+                     # backs out cleanly on a second visit.
+test/e2e/replay_online.sh # REPLAY.md online recording (needs the relay):
+                     # host + client each record their session into their
+                     # own pref dir's replays/online.nrp (per-instance
+                     # XDG_DATA_HOME — one shared dir would interleave).
+                     # Asserts both sides bank keyframes/deltas/effects
+                     # after the pause checkpoint flush; the host records
+                     # straight through a SIGKILLed peer (file grows while
+                     # sends are skipped); the relaunched joiner's rejoin
+                     # RESUMES its file ("replay: resuming recording" — the
+                     # run_id seam rides the snapshots); clean abandons
+                     # patch both headers (host marked 2P); both files
+                     # play back (NEWTONIA_REPLAY_PLAY=online); and the
+                     # REPLAYS menu's ONLINE RUN row starts the same
+                     # playback (the 4th slot — online.nrp never rotates).
+test/e2e/replay.sh   # REPLAY.md R1 exit criteria, solo (no relay needed):
+                     # abandon leaves a resumable current.nrp; CONTINUE
+                     # appends to the SAME file (one run_id, seam keyframe,
+                     # continuous slots); NEW GAME rotates old runs into
+                     # recent.nrp; clean higher scores promote best.nrp;
+                     # cheat runs and crashed (stale-header) runs never do;
+                     # game over patches the header (ENDED) and deletes the
+                     # save. Headers/records parsed by test/e2e/replay_check.py.
 test/e2e/identity.sh # peer-identity happy path: named exchange both ways
                      # (NEWTONIA_NET_NAME=GLENN/BOB — default builds send
                      # no name) logged as "net: identity peer name='GLENN'
@@ -341,6 +380,8 @@ game so achievements stay suppressed):
 | `NEWTONIA_FRAME_LOG=1` | Logs every frame slower than 50 ms; on desktop the line carries `draws=` (shim/Mesh draw calls) and `segs=` (thick-line segments CPU-expanded) for that frame |
 | `NEWTONIA_LINE_EMULATION=1` | Forces the thick-line quad emulation on platforms whose driver would draw wide lines natively (Android/iOS) — for A/B against the native path |
 | `NEWTONIA_TEST_SPAWN_PICKUPS=1` | Pickup-icon ring (see above) |
+| `NEWTONIA_REPLAY_ENABLE=1` | Force replay recording ON (it ships opt-in / default OFF — `Preferences::auto_record_replays`). The replay e2e drivers set this; `NEWTONIA_REPLAY_DISABLE=1` forces OFF and wins |
+| `NEWTONIA_REPLAY_PLAY=<current\|recent\|online\|best\|last\|path>` | Boot straight into playback of that replay file (dev entry for R2; the REPLAYS menu is the real path) |
 
 Independent of any env var, the game SDL_Logs a **perf report** once per
 second whenever fps drops below 55 —
@@ -492,3 +533,57 @@ Things no headless rig covers — verify on device after a `netplay-v*` tag:
 - Controller navigation generally — synthetic controller events can't be
   injected under Xvfb, so lobby/menu pad handling is verified by pattern
   (mirrors of proven menu code) plus on-device feel.
+
+### Replay recorder overhead on low-end Android (REPLAY.md open item)
+
+The headless e2e prove the recorder is *correct*; only a real low-end phone
+proves it's *cheap enough* — the last open item in REPLAY.md (mobile
+overhead). One phone can't cover it: the recorder has three cost axes and no
+single sub-$200 handset stresses all three. Two cheap devices between them do
+(both bought 2026-07; add newer equivalents as they replace these):
+
+| Device | SoC | RAM | Storage | Stresses |
+|--------|-----|-----|---------|----------|
+| **Moto E14** | Unisoc T606 (weakest current) | 2 GB, Android 14 **Go** | UFS 2.2 | CPU (10 Hz snapshot build) + RAM (buffer + whole-file Reader) + **lifecycle** (Go kills backgrounded apps hardest) |
+| **Moto G05** | Helio G81 | 4 GB | **eMMC 5.1** | **storage-flush I/O** (the checkpoint appends — small slow writes) |
+
+Counterintuitively the *cheaper* E14 has the *faster* storage (UFS), so it
+does NOT exercise the flush-latency worry — the eMMC G05 is the only one that
+does. Get the eMMC device for storage, the 2 GB Go device for everything else.
+
+**Method (both devices).** Isolate the recorder's cost with an A/B — its
+`perf: fps` contribution is the delta between recording on and off:
+
+```sh
+# Late-generation load (100+ asteroids is the worst case); KEYCODE_N marches
+# levels fast (works on the intro screens too). NEWTONIA_* ride intent extras
+# (see "Env vars on Android"); -S forces a fresh process that reads them.
+# Recording ships opt-in (default OFF), so the ON run must force it on.
+adb shell am start -S -n org.newtonia/.NewtoniaActivity \
+    --es NEWTONIA_BETA 1 --es NEWTONIA_START_GENERATION 9 --es NEWTONIA_REPLAY_ENABLE 1
+adb shell input keyevent KEYCODE_N        # ... march to a dense generation, play
+adb logcat -s SDL/APP | grep "perf:"      # capture the perf lines
+
+adb shell am start -S -n org.newtonia/.NewtoniaActivity \
+    --es NEWTONIA_BETA 1 --es NEWTONIA_START_GENERATION 9      # recording OFF (default)
+# ... same play, same capture. The fps/tick delta vs the first run = recorder cost.
+```
+
+**Per-device focus:**
+- **E14 (durability / onPause budget):** background the app mid-run, then kill
+  it from the task switcher; relaunch and confirm the replay plays back intact
+  (`NEWTONIA_REPLAY_PLAY=last`, or the REPLAYS menu). Android Go suspends/kills
+  most aggressively, so if the checkpoint flush fits *its* onPause window it
+  fits everywhere. (This is the same guarantee the Xbox suspend-budget rule
+  needs — REPLAY.md.)
+- **G05 (flush latency):** watch for a frame hitch landing exactly on a
+  checkpoint flush — level clear, pause, focus loss — where a slow eMMC write
+  would show. The bounded-append design means each flush is ~one level of
+  records; the eMMC G05 is where that bound gets its on-device proof.
+
+**Pass:** no perceptible hitch through play or at level boundaries, the on/off
+`perf` delta stays below the ~55 fps report threshold (recorder below the
+noise floor), and the E14 replay survives a switcher-kill. Green on both
+closes the REPLAY.md mobile-overhead question on real low-end hardware. The
+first field pass (2026-07-20, a mid-range Android) already came back clean;
+these two devices extend it to the low end.
