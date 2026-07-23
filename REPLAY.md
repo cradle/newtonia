@@ -410,14 +410,23 @@ R4's field.
   the existing file — and the run it holds — is left exactly as it was).
 - Cap on file size for marathon runs (proposal: none locally; the
   leaderboard submission path can cap/reject server-side).
-- **Maybe: an "Auto-record replays" toggle on the Options screen** (not
-  committed). Default ON — the "always record, never ask" decision stands as
-  the default — but a user-facing off switch would double as the perf escape
-  hatch from the recorder-overhead question above (replaces the env/pref-only
-  fallback with a visible control), and lets storage-conscious players opt
-  out. Wiring is cheap: one `opt_row` in the data-driven Options list (`bool`,
-  ON/OFF like friendly-fire) backed by a `preferences.h` flag the recorder
-  checks at game start; touch shows the shared-options one-row form, P2 rows
-  unaffected. Open because it's arguably clutter for a feature that's meant to
-  be invisible — decide alongside the mobile-overhead measurement, since the
-  two share the same off-switch plumbing.
+- ~~Maybe: an "Auto-record replays" toggle on the Options screen~~
+  **PARTLY DONE (2026-07-22): the preference exists, the Options row does
+  not.** `Preferences::auto_record_replays` (default ON) is INI-backed
+  (`auto_record_replays=` in preferences.ini) and gates the recorder at
+  game start (`GLGame::replay_start`) — a superset of the
+  `NEWTONIA_REPLAY_DISABLE` env hatch, so storage-conscious players can opt
+  out by hand-editing the INI, and it doubles as the perf escape hatch. The
+  user-facing Options-screen row is deliberately NOT wired yet (see the
+  revisit item below) — kept off the menu for now because it's arguably
+  clutter for a feature meant to be invisible.
+
+## To revisit
+
+- **Surface `auto_record_replays` on the Options screen.** The preference
+  and its recorder gate already exist (above); this is just the UI. Wiring
+  is cheap: one `opt_row` in the data-driven Options list (`bool`, ON/OFF
+  like friendly-fire) bound to `g_prefs.auto_record_replays`; touch shows
+  the shared-options one-row form, P2 rows unaffected. Decide alongside any
+  other Options-screen additions so the menu grows in one pass rather than
+  one toggle at a time.
