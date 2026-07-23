@@ -12,6 +12,13 @@ public:
   // UI inside the title-safe region, so GDK builds shrink the HUD/menu
   // projection to the central 90%. 1.0 everywhere else (no change).
   static const float SAFE_AREA_SCALE;
+  // Display-cutout safe-area insets (camera notch / punch-hole), physical
+  // pixels from each screen edge. Reported by the platform entry point
+  // (Android: NewtoniaActivity's DisplayCutout via android_main, re-read on
+  // rotation); 0 everywhere else. The top-anchored HUD row shifts down by
+  // the top inset so LEVEL/score/weapons clear the camera in portrait.
+  static void set_safe_insets(float top, float bottom, float left, float right);
+  static float safe_inset_top();
   static void draw(const GLGame * glgame, const GLShip *glship);
   // Full-screen text layered over the online game view (one full-screen
   // pass, not per-viewport): the generation banner and CONNECTION LOST card.

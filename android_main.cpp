@@ -17,6 +17,7 @@
 #include "asteroid.h"
 #include "preferences.h"
 #include "invites.h"
+#include "view/overlay.h"
 
 #include <iostream>
 #include <cmath>
@@ -50,6 +51,35 @@ static bool          s_running       = true;
 static bool          s_reset_tick    = false;  // set on focus-gained to skip catch-up
 
 // ---- Utility ----
+
+// Display-cutout safe insets: NewtoniaActivity keeps them in static fields
+// (populated in onCreate, refreshed in onConfigurationChanged on rotation —
+// same JNI pattern as the audio params). Forwarded to the HUD so the
+// top-anchored row (LEVEL/score/weapons) clears the camera notch. Called at
+// startup and again on every SDL resize, which is what rotation delivers.
+static void read_display_safe_insets() {
+    int top = 0, bottom = 0, left = 0, right = 0;
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (env && activity) {
+        jclass clazz = env->GetObjectClass(activity);
+        if (clazz) {
+            jfieldID fTop    = env->GetStaticFieldID(clazz, "sSafeInsetTop", "I");
+            jfieldID fBottom = env->GetStaticFieldID(clazz, "sSafeInsetBottom", "I");
+            jfieldID fLeft   = env->GetStaticFieldID(clazz, "sSafeInsetLeft", "I");
+            jfieldID fRight  = env->GetStaticFieldID(clazz, "sSafeInsetRight", "I");
+            if (fTop)    top    = env->GetStaticIntField(clazz, fTop);
+            if (fBottom) bottom = env->GetStaticIntField(clazz, fBottom);
+            if (fLeft)   left   = env->GetStaticIntField(clazz, fLeft);
+            if (fRight)  right  = env->GetStaticIntField(clazz, fRight);
+            env->DeleteLocalRef(clazz);
+        }
+        env->DeleteLocalRef(activity);
+    }
+    Overlay::set_safe_insets((float)top, (float)bottom, (float)left, (float)right);
+    SDL_Log("Safe insets: top=%d bottom=%d left=%d right=%d",
+            top, bottom, left, right);
+}
 
 static inline float tc_dist(float ax, float ay, float bx, float by) {
     float dx = ax - bx, dy = ay - by;
@@ -413,6 +443,7 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     s_game->resize(s_w, s_h);
     Typer::resize(s_w, s_h);
     touch_controls_resize(s_w, s_h);
+    read_display_safe_insets();
 
     Uint32 last_tick = SDL_GetTicks();
 
@@ -501,6 +532,18 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                           e.window.event == SDL_WINDOWEVENT_RESTORED) {
                     s_game->focus_gained();
                     s_reset_tick = true;
+                } else if(e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+                    // Rotation (orientation is unlocked; configChanges keeps
+                    // the activity alive, so it arrives as a plain resize).
+                    // Re-lay-out everything and re-read the cutout insets —
+                    // a portrait top notch becomes a landscape side one.
+                    s_w = e.window.data1;
+                    s_h = e.window.data2;
+                    s_game->resize(s_w, s_h);
+                    Typer::resize(s_w, s_h);
+                    touch_controls_resize(s_w, s_h);
+                    touch_controls_reset(s_game);
+                    read_display_safe_insets();
                 }
                 break;
 

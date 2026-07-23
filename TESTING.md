@@ -382,6 +382,7 @@ game so achievements stay suppressed):
 | `NEWTONIA_TEST_SPAWN_PICKUPS=1` | Pickup-icon ring (see above) |
 | `NEWTONIA_REPLAY_ENABLE=1` | Force replay recording ON (it ships opt-in / default OFF — `Preferences::auto_record_replays`). The replay e2e drivers set this; `NEWTONIA_REPLAY_DISABLE=1` forces OFF and wins |
 | `NEWTONIA_REPLAY_PLAY=<current\|recent\|online\|best\|last\|path>` | Boot straight into playback of that replay file (dev entry for R2; the REPLAYS menu is the real path) |
+| `NEWTONIA_SAFE_INSET_TOP=N` | Forces a top display-cutout inset of N px, so the notch HUD layout (LEVEL/score/weapons shifted below the camera) is testable without cutout hardware. The real inset comes from `NewtoniaActivity`'s `DisplayCutout` on Android |
 
 Independent of any env var, the game SDL_Logs a **perf report** once per
 second whenever fps drops below 55 —
