@@ -267,10 +267,17 @@ std::string net_sanitize_name(const std::string &raw) {
     // Non-ASCII: fold Latin scripts to their ASCII base, drop the rest.
     // Nothing above 0x7f is ever emitted raw — every substitution byte is
     // re-checked against the drawable set, so the security boundary above
-    // extends to the transliterated output too.
+    // extends to the transliterated output too. A fold is atomic at the
+    // glyph cap: an expanding substitution (Æ -> AE, ß -> ss) that doesn't
+    // fit whole is dropped whole — truncating one mid-fold would render Æ
+    // as a bare "A" as the name's last glyph.
     const char *sub = translit_codepoint(cp);
     if (!sub) continue;
-    for (const char *p = sub; *p && glyphs < (size_t)NET_IDENTITY_NAME_MAX; p++) {
+    size_t sub_glyphs = 0;
+    for (const char *p = sub; *p; p++)
+      if (net_name_char_drawable(*p)) sub_glyphs++;
+    if (glyphs + sub_glyphs > (size_t)NET_IDENTITY_NAME_MAX) break;
+    for (const char *p = sub; *p; p++) {
       if (net_name_char_drawable(*p)) { out += *p; glyphs++; }
     }
   }

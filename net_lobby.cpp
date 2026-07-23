@@ -377,6 +377,13 @@ void NetLobby::reset_to_choose() {
 }
 
 void NetLobby::leave_to_menu() {
+  // The hand-off to GLGame is committed once handed_off_to_game_ is set:
+  // an input landing in the one-frame window before the StateManager
+  // swap would overwrite next_state (request_state_change reassigns
+  // without deleting), leaking the constructed game with its live
+  // session — and, for a host, send_close would kill the room the game
+  // is about to own. Ignore the exit; the swap happens next tick.
+  if (handed_off_to_game_) return;
   code_entry_keyboard(false);
   floating_kb_up_ = false;
   // Host abandoning the room: kill it at the relay now, or its code stays
@@ -880,6 +887,14 @@ void NetLobby::pump_signal(int delta) {
         break;
       case NetSignal::Event::PeerLeave:
         set_status("PLAYER 2 LEFT THE ROOM");
+        // The departed joiner's attestation leaves with them (the worker
+        // nulls its copy in drop_joiner for the same reason): a DIFFERENT
+        // player can take the slot, and if their own verify fails or their
+        // platform has no verifier, a kept attested_peer_ would be folded
+        // onto them at hand-off — the replacement would wear the previous
+        // joiner's attested name and badge for the whole game. The new
+        // joiner's announce re-attests through the worker as usual.
+        attested_peer_ = NetIdentity();
         // The room drops its stored offer with the joiner; put ours back
         // so the next joiner gets it replayed.
         if (hosting_ && transport_ && transport_->local_description_ready())

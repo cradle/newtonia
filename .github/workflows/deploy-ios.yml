@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       signal_worker:
-        description: 'Signaling worker the build points at (beta = staging, no production impact)'
+        description: 'Signaling worker the build points at. beta = staging: the build is pinned to a 0.0.N version train so TestFlight never auto-updates testers onto it (it cannot reach production rooms)'
         required: true
         default: 'production'
         type: choice
@@ -191,11 +191,16 @@ jobs:
       - name: Set version numbers
         run: |
           # Tag build -> use the tag's version; manual dispatch -> use the
-          # `version` input (which the dispatch prefers over the branch ref).
+          # `version` input. The ref-type gate matters: a dispatch can
+          # target a TAG ref (re-running a failed tag deploy from the
+          # Actions tab), and the input is ALWAYS non-empty on dispatch
+          # (it has a default) — without the gate the default would
+          # override the tag and upload the rebuild into the wrong
+          # TestFlight train, burning the reserved next version.
           TAG_VERSION="${{ github.ref_name }}"
           SHORT_VERSION="${TAG_VERSION#v}"
           INPUT_VERSION="${{ github.event.inputs.version }}"
-          if [ -n "$INPUT_VERSION" ]; then
+          if [ "${{ github.ref_type }}" != "tag" ] && [ -n "$INPUT_VERSION" ]; then
             SHORT_VERSION="$INPUT_VERSION"
           fi
           # Guard: must be a dotted numeric version. Fall back ABOVE the store
@@ -205,6 +210,20 @@ jobs:
           # as of 2026-07; the old 1.0 fallback failed every dispatch build).
           if ! echo "$SHORT_VERSION" | grep -qE '^[0-9]+(\.[0-9]+){0,2}$'; then
             SHORT_VERSION="1.47.0"
+          fi
+          # Beta-worker builds are staging clients (hard-wired to the
+          # isolated newtonia-signal-beta worker — their room codes never
+          # resolve against production peers). Uploading one under the
+          # release version would make it the build every TestFlight
+          # tester auto-updates to, indistinguishable from production and
+          # promotable to the App Store from ASC. Pin it to a 0.0.N train
+          # instead: TestFlight never auto-updates onto a LOWER version,
+          # testers opt in to it explicitly from the version list, and it
+          # can never be mistaken for (or submitted as) a release. This
+          # deliberately overrides an explicit `version` input too.
+          if [ "${{ github.event.inputs.signal_worker }}" = "beta" ]; then
+            SHORT_VERSION="0.0.${{ github.run_number }}"
+            echo "::warning::signal_worker=beta - version pinned to $SHORT_VERSION (staging train, not auto-updated to testers)"
           fi
           echo "::notice::iOS build version $SHORT_VERSION (build ${{ github.run_number }})"
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" newtonia/ios/Info.plist

@@ -656,11 +656,26 @@ export class Room {
         // the guard. Saving first makes it durable.
         this.r[at_key] = now;
         await this.save();
+        // Occupancy epoch, captured before the verify: the input gate is
+        // open across the non-storage await, so the announcing socket can
+        // drop AND a different player can take the role while the platform
+        // round-trip is in flight. drop_joiner/drop_host bump the epoch; a
+        // mismatch after the await means whoever we verified no longer
+        // occupies the slot — writing their identity back would resurrect a
+        // departed player's verified badge onto the replacement (and the
+        // never-demote guard would then pin it against correction).
+        const ep_key = role === "host" ? "host_id_epoch" : "joiner_id_epoch";
+        const epoch = this.r[ep_key] || 0;
         const v = await verify();
         // The room can be torn down (host `close`, TTL/grace expiry) while the
         // verify fetch is in flight — the input gate is open across a non-storage
         // await. Don't write identity back onto a dead/tombstoned room.
         if (this.r.closed || !this.r.host_token) return;
+        if ((this.r[ep_key] || 0) !== epoch) {
+          console.log(`identity ${role} verify discarded (slot changed ` +
+                      `occupants mid-verify)`);
+          return;
+        }
         if (v) {
           // Attested name comes from the platform, not the wire (a lying name
           // field stops mattering); the account proven is enough to badge.
@@ -684,6 +699,24 @@ export class Room {
       console.log(`identity ${role} kept verified attestation ` +
                   `(unverified re-announce, credlen=${cred.length})`);
       return;
+    }
+    if (!attested.verified) {
+      // Unverified claims bypass the backend-verify throttle above but
+      // still cost a billed storage put (the whole room record) plus a
+      // relay per frame — the same per-message flood gap the verify
+      // throttle was added for. An identical repeat claim is free to drop
+      // (nothing to store, the peer already heard it / replay covers late
+      // joiners); a CHANGED claim is rate-limited per role on its own
+      // stamp, so a claim flood can't meter-spin storage writes while a
+      // later credentialed verify (separate stamp) is unaffected.
+      if (prev && !prev.verified && prev.platform === attested.platform &&
+          prev.name === attested.name)
+        return;
+      const c_key = role === "host" ? "host_claim_at" : "joiner_claim_at";
+      const cnow = Date.now();
+      if (this.r[c_key] && cnow - this.r[c_key] < VERIFY_MIN_INTERVAL_MS)
+        return;  // flooded: keep the prior claim, spend no storage write
+      this.r[c_key] = cnow;
     }
     this.r[id_key] = attested;
     await this.save();
@@ -857,6 +890,11 @@ export class Room {
     this.r.offer_pv = null;
     this.r.host_cands = [];
     this.r.host_lost_at = Date.now();
+    // Invalidate any host verify still in flight (see attest_identity's
+    // epoch check). Reclaim requires the token, so the occupant can't
+    // actually change accounts — but the reclaimed socket re-announces and
+    // re-attests anyway, so discarding a cross-flap verify costs nothing.
+    this.r.host_id_epoch = (this.r.host_id_epoch || 0) + 1;
     await this.save();
     await this.state.storage.setAlarm(this.r.host_lost_at + HOST_GRACE_MS);
     const j = this.joinerWs();
@@ -874,11 +912,17 @@ export class Room {
     this.r.host_cands = [];
     // The departed joiner's attestation is stale — a different player may
     // take the slot. Drop it so a host reclaim can't replay the old identity,
-    // and clear the verify throttle stamp too: a fast Steam rejoiner (within
-    // VERIFY_MIN_INTERVAL_MS) would otherwise be throttled and never attested,
-    // since clients announce their identity only once on connect.
+    // and clear the verify/claim throttle stamps too: a fast rejoiner
+    // (within VERIFY_MIN_INTERVAL_MS) would otherwise be throttled and
+    // never attested, since clients announce their identity only once on
+    // connect. Bumping the epoch invalidates any verify still in flight
+    // for the departed occupant (see attest_identity) — without it the
+    // resolving verify would write the old identity right back over this
+    // deliberate null.
     this.r.joiner_identity = null;
     this.r.joiner_verify_at = 0;
+    this.r.joiner_claim_at = 0;
+    this.r.joiner_id_epoch = (this.r.joiner_id_epoch || 0) + 1;
     await this.save();
     const h = this.hostWs();
     if (h) this.safeSend(h, { t: "peer", ev: "leave" });

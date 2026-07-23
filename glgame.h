@@ -295,9 +295,12 @@ private:
     net_refresh_join_banner();
   }
   // Recompose the initial JOINED greeting from the current identity and
-  // display context. Only meaningful between the net constructor and the
-  // first tick (the lobby's post-construction calls above).
+  // display context. Safe to call any time: it refreshes only while the
+  // greeting is still the banner on screen (tracked via
+  // net_join_banner_text_), so a late in-game attestation can rename it
+  // but can never clobber a LEVEL/RECONNECTED banner.
   void net_refresh_join_banner();
+  std::string net_join_banner_text_;  // what the greeting last composed
   int net_snapshot_timer_ = 0;
   uint32_t net_snapshot_id_ = 0;
   uint32_t net_last_input_seq_ = 0;

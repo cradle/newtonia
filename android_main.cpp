@@ -501,6 +501,21 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                           e.window.event == SDL_WINDOWEVENT_RESTORED) {
                     s_game->focus_gained();
                     s_reset_tick = true;
+                } else if(e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+                    // Rotation / freeform-window resize (the manifest keeps
+                    // configChanges=orientation|screenSize, so this event is
+                    // the ONLY notification — the activity is not recreated).
+                    // s_w/s_h also feed the finger_* normalized->pixel maps,
+                    // so without this the viewport, text scale, and every
+                    // touch zone stay in the old orientation's geometry.
+                    // SIZE_CHANGED (not RESIZED) fires for system-driven
+                    // changes like rotation as well as user resizes.
+                    touch_controls_reset(s_game);
+                    s_w = e.window.data1;
+                    s_h = e.window.data2;
+                    s_game->resize(s_w, s_h);
+                    Typer::resize(s_w, s_h);
+                    touch_controls_resize(s_w, s_h);
                 }
                 break;
 

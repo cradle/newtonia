@@ -1904,8 +1904,17 @@ void GLGame::net_send_local_identity() {
 // and the worker-session context, so the first composition can never show a
 // name (strict default context + claim-only identity); the lobby's
 // post-construction net_set_worker_session / net_apply_peer_attestation
-// calls land here to redo it with the final state.
+// calls land here to redo it with the final state — and so does a worker
+// attestation that arrives IN-GAME (fast ICE hands off before the ~300 ms
+// verify round-trip completes; Event::Identity below). That late caller is
+// why the join-window guard exists: recomposing is only legal while the
+// greeting is still the banner on screen — net_join_banner_text_ remembers
+// what this function last composed, and any other banner (LEVEL,
+// RECONNECTED, ...) or an expired timer closes the window.
 void GLGame::net_refresh_join_banner() {
+  if (!net_join_banner_text_.empty() &&
+      (net_banner_ms_ <= 0 || net_banner_text_ != net_join_banner_text_))
+    return;  // the greeting is no longer showing — nothing to refresh
   std::string prev = net_banner_text_;
   if (net_mode_ == NetHost)
     net_banner_text_ =
@@ -1917,6 +1926,7 @@ void GLGame::net_refresh_join_banner() {
         " SERVER";
   else
     return;
+  net_join_banner_text_ = net_banner_text_;
   // Log on change only: the ctor composition logs once, and a recompose
   // that actually renames the greeting logs the final text (greppable —
   // the e2e assertions match these lines).
@@ -1964,6 +1974,12 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
         // this copy so the badge survives the handshake.
         net_peer_attested_ = att;
         net_apply_attested(net_peer_identity_, att);
+        // Fast-ICE ordering: the hand-off can beat the verify round-trip,
+        // in which case the JOINED greeting composed with the role label is
+        // still on screen — rename it now that the attested name is known
+        // (the join-window guard makes this a no-op once any other banner
+        // has taken over).
+        net_refresh_join_banner();
         NET_LOG("net: identity attested name='%s' platform=%s(%u)\n",
                 att.name.c_str(), net_platform_label(ev.platform),
                 (unsigned)ev.platform);
@@ -2184,6 +2200,10 @@ void GLGame::net_host_rejoin_poll(int delta) {
       // it and let the top-of-poll block re-offer a fresh one next tick,
       // instead of waiting out its ~30 s ICE timeout.
       NET_LOG("net: peer re-joined onto a stale session - re-offering\n");
+      // The abandoned attempt's attestation goes with its session (same
+      // reasoning as the Failed/Rejected branch): the re-entering joiner
+      // re-announces on its fresh socket and re-attests through the worker.
+      net_peer_attested_ = NetIdentity();
       delete net_session_;
       net_session_ = nullptr;
       net_rehost_offer_sent_ = false;
@@ -2284,6 +2304,12 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       // Bad handshake (wrong build?): drop it and re-open the doors for
       // another try — the relay re-offer only where a signal exists, and
       // the LAN door reset so its poll re-arms a fresh beacon next tick.
+      // The failed candidate's worker attestation dies with their session:
+      // the park-time clear ran once per loss, so without this a verified
+      // candidate whose handshake then failed would leave their attested
+      // name to be folded onto whoever completes the NEXT attempt (an
+      // unverified or legacy joiner would wear it at the Ready re-fold).
+      net_peer_attested_ = NetIdentity();
       delete net_session_;
       net_session_ = nullptr;
       if (net_signal_) {
@@ -7628,7 +7654,9 @@ void GLGame::draw_map() const {
 void GLGame::controller(SDL_Event event) {
   if (net_connection_lost_ &&
       !(net_mode_ == NetHost && (net_signal_ || net_lan_door_open()))) {
-    if (event.type == SDL_CONTROLLERBUTTONDOWN)
+    // Same one-frame guard as keyboard_up: a committed auto-rejoin
+    // hand-off must not be overwritten (the pending lobby would leak).
+    if (event.type == SDL_CONTROLLERBUTTONDOWN && !net_handed_to_lobby_)
       request_state_change(new Menu());
     return;
   }
@@ -7812,6 +7840,9 @@ void GLGame::touch_tap(float nx, float ny) {
   bool local_over = net_mode_ != NetOff && local &&
                     !local->ship->is_alive() && local->ship->lives <= 0;
   if (!running || local_over) {
+    // Same one-frame guard as keyboard_up/controller: a committed
+    // auto-rejoin hand-off must not be overwritten by the exit band.
+    if (net_handed_to_lobby_) return;
     save_progress();
     request_state_change(new Menu());
     return;
@@ -8042,7 +8073,12 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
 
   if (net_connection_lost_ &&
       !(net_mode_ == NetHost && (net_signal_ || net_lan_door_open()))) {
-    request_state_change(new Menu());
+    // Once the auto-rejoin has constructed its lobby the hand-off is
+    // committed: request_state_change here would overwrite next_state in
+    // the one-frame window before the swap, orphaning that lobby (its
+    // ctor already opened the room's joiner socket) and leaving the
+    // armed net_handed_to_lobby_ skipping the credential release.
+    if (!net_handed_to_lobby_) request_state_change(new Menu());
     return;
   }
 
