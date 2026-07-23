@@ -20,7 +20,7 @@
     <uses-feature android:name="android.hardware.audio.low_latency"
                   android:required="false" />
 
-    <!-- Landscape orientation fits the game best -->
+    <!-- Touchscreen is not required (controllers / large-screen devices) -->
     <uses-feature android:name="android.hardware.touchscreen"
                   android:required="false" />
 
@@ -48,10 +48,20 @@
             android:name="org.newtonia.NewtoniaActivity"
             android:label="@string/app_name"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
-            android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|fontScale|screenLayout|density|uiMode"
             android:launchMode="singleTask"
-            android:exported="true">
+            android:exported="true"><!--
+            No android:screenOrientation lock: Google Play flags orientation
+            restrictions on large-screen devices, and at targetSdk 36 (Android
+            16) the system already ignores the lock on screens >= 600dp
+            (tablets, foldables, desktop windowing). The game adapts to any
+            window size at runtime — android_main.cpp forwards every size change
+            to GLGame::resize / Typer::resize / touch_controls_resize, the touch
+            layout is computed proportionally, and the projection is
+            aspect-symmetric (half_w = half_h * aspect) — so portrait renders a
+            taller/narrower slice rather than breaking. configChanges above
+            (orientation|screenSize) keeps rotation from recreating the
+            activity, so it's a seamless SDL resize. -->
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
