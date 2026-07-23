@@ -15,15 +15,30 @@ void touch_controls_resize(int w, int h) {
     g_touch_controls.joy_hint_cx  = (float)w * 0.15f;
     g_touch_controls.joy_hint_cy  = (float)h * 0.75f;
 
-    // Action buttons: bottom-right area
+    // Action buttons: bottom-right. The natural positions are 0.75/0.90 of the
+    // width, but those are width fractions while the radius scales with the
+    // SHORTER dimension — so at a narrow portrait width the two buttons bunch
+    // together and the mine button ends up jammed against the right bezel.
+    // Clamp both: keep the mine button a button-radius of margin off the right
+    // edge, and keep a fixed centre-to-centre gap between the two. Both clamps
+    // are no-ops at landscape aspect (the width fractions already sit well
+    // inside them), so the landscape layout is unchanged.
     float btnR = minDim * 0.07f;
 
-    g_touch_controls.shoot_cx     = (float)w * 0.75f;
-    g_touch_controls.shoot_cy     = (float)h * 0.80f;
+    // Mine (outer, rightmost): never closer to the right edge than 2*btnR from
+    // its centre, i.e. a visible ~btnR gap to the bezel.
+    float mine_cx = std::min((float)w * 0.90f, (float)w - 2.0f * btnR);
+    // Shoot (inner): always at least this far to the LEFT of the mine centre so
+    // the two circles keep a visible gap (2.5*btnR centres => ~0.5*btnR apart).
+    float shoot_cx = std::min((float)w * 0.75f, mine_cx - 2.5f * btnR);
+    float btn_cy   = (float)h * 0.80f;
+
+    g_touch_controls.shoot_cx     = shoot_cx;
+    g_touch_controls.shoot_cy     = btn_cy;
     g_touch_controls.shoot_radius = btnR;
 
-    g_touch_controls.mine_cx      = (float)w * 0.90f;
-    g_touch_controls.mine_cy      = (float)h * 0.80f;
+    g_touch_controls.mine_cx      = mine_cx;
+    g_touch_controls.mine_cy      = btn_cy;
     g_touch_controls.mine_radius  = btnR;
 
     // Hit radius: half the distance between the two button centres so the touch
