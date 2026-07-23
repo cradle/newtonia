@@ -53,7 +53,10 @@ if grep -aq "lan host found" "$OUT/joiner.log"; then
 fi
 # Sanity: the host DID reach the relay-dead manual fallback, proving it got
 # to the HOST screen (so the missing beacon is the pref, not a stalled flow).
-grep -aq "manual" "$OUT/host.log" || grep -aq "fall_back_to_manual\|invite" "$OUT/host.log" || true
+if ! grep -aq "manual fallback" "$OUT/host.log"; then
+  echo "FAIL: host never reached the manual fallback (stalled flow?) - the missing beacon proves nothing"
+  kill $PA $PB; exit 1
+fi
 
 shot $A lan-hidden-host; shot $B lan-hidden-joiner
 kill $PA $PB 2>/dev/null; wait $PA $PB 2>/dev/null

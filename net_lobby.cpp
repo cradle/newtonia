@@ -332,10 +332,14 @@ NetLobby::~NetLobby() {
     delete signal_;
   }
   // Cancel any verification ticket still outstanding (the one warmed on open
-  // if we never joined, or a spent one). Safe here: the lobby's one identity
-  // send has long since been validated, and clearing the cache means an
-  // in-game host reclaim re-warms rather than re-sending a cancelled ticket.
-  net_release_verify_credentials();
+  // if we never joined, or a spent one) — but ONLY when this lobby ends the
+  // netplay chain (backed out / failed to the menu). On a hand-off the GLGame
+  // owns the credential lifetime: a host-reclaim re-attest needs the warmed
+  // ticket (releasing here shipped every reclaim announce credential-less),
+  // and on a fast ICE connect the hand-off can beat the worker's validation
+  // round-trip, so cancelling here could invalidate a ticket still in
+  // flight. ~GLGame mops up at the true end of the chain.
+  if (!handed_off_to_game_) net_release_verify_credentials();
   delete starfield;  // owned; heap + GPU buffers leak per lobby visit otherwise
 }
 
@@ -1297,6 +1301,7 @@ void NetLobby::tick(int delta) {
                                    room_token_);
             signal_ = nullptr;
           }
+          handed_off_to_game_ = true;  // credential lifetime moves to the game
           request_state_change(game);
           return;
         }
@@ -1364,6 +1369,7 @@ void NetLobby::tick(int delta) {
         // remembers the code — it is the rejoin identity (round 4).
         game->net_lan_host_name_ = lan_host_name_;
         game->net_apply_extras(in, s);
+        handed_off_to_game_ = true;  // credential lifetime moves to the game
         request_state_change(game);
         return;
       }

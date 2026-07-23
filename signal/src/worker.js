@@ -665,16 +665,27 @@ export class Room {
           // Attested name comes from the platform, not the wire (a lying name
           // field stops mattering); the account proven is enough to badge.
           attested = { platform, name: v.name || "", verified: true };
-        } else {
-          // Verify failed (bad/expired/reused credential, backend down): don't
-          // demote an already-verified badge on a transient failure — keep it.
-          const prev = role === "host" ? this.r.host_identity : this.r.joiner_identity;
-          if (prev && prev.verified) return;
         }
+        // Verify failed (bad/expired/reused credential, backend down): fall
+        // through to the never-demote guard below, which keeps the badge.
       }
     }
 
-    this.r[role === "host" ? "host_identity" : "joiner_identity"] = attested;
+    // Never demote a verified badge. An unverified re-announce reaches here
+    // three ways — a failed backend verify, a no-verifier platform, and a
+    // credential-LESS frame (a host reclaim re-announces its identity, and
+    // the warmed single-use credential may be gone by then) — and none of
+    // them may overwrite verified:true with verified:false: keep the stored
+    // attestation and re-push it so a reclaimed peer still hears it.
+    const id_key = role === "host" ? "host_identity" : "joiner_identity";
+    const prev = this.r[id_key];
+    if (!attested.verified && prev && prev.verified) {
+      this.broadcast_identity(role);
+      console.log(`identity ${role} kept verified attestation ` +
+                  `(unverified re-announce, credlen=${cred.length})`);
+      return;
+    }
+    this.r[id_key] = attested;
     await this.save();
     this.broadcast_identity(role);
     // credlen distinguishes "client sent no credential" (credlen=0 — e.g. the

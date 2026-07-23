@@ -319,11 +319,11 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
   net_peer_identity_ = session->peer_identity();
   // Greet the friend who just connected the moment the hosted game starts
   // ("GLENN JOINED"), at the attention-drawing banner spot above centre.
-  net_banner_text_ =
-      net_identity_name_or(net_peer_identity_, "PLAYER 2", net_id_ctx()) +
-      " JOINED";
+  // Composed again by the lobby's post-construction attestation/context
+  // hand-over (net_refresh_join_banner) — at this point the identity is
+  // claim-only and the strict default context hides the name.
   net_banner_ms_ = 3000;
-  NET_LOG("net: banner '%s' %d ms\n", net_banner_text_.c_str(), net_banner_ms_);
+  net_refresh_join_banner();
   Ship::net_report_bounces = true;  // PROTO 19: sim ricochets -> MSG_BOUNCE
   // A fresh game's player 1 starts dead (offline you wait out the initial
   // countdown or tap fire). Online the host just finished the lobby, so
@@ -388,10 +388,13 @@ GLGame::~GLGame() {
     delete net_lan_rehost_;
   }
   // net_lan_announce_ stops itself in its destructor.
-  // Cancel any verification ticket handles minted in-game (host reclaim
-  // re-attests mint fresh ones). No-op on builds without a verify backend,
-  // and on a non-net game nothing was ever warmed.
-  if (net_active()) net_release_verify_credentials();
+  // Cancel any verification ticket handles still outstanding (the lobby's
+  // warm rides through the hand-off; host reclaims mint fresh ones). Skipped
+  // when a client auto-rejoin handed the flow to a fresh NetLobby — that
+  // lobby warmed its own ticket and releasing here would cancel it. No-op on
+  // builds without a verify backend, and on a non-net game nothing was ever
+  // warmed.
+  if (net_active() && !net_handed_to_lobby_) net_release_verify_credentials();
 
   //TODO: Make erase, use boost::ptr_list? something better
   // std::erase(std::remove_if(v.begin(),v.end(),true), v.end());
@@ -1896,6 +1899,32 @@ void GLGame::net_send_local_identity() {
                              net_local_verify_credential());
 }
 
+// Recompose the initial JOINED / "JOINED X SERVER" greeting. The net
+// constructors compose it before the lobby hands over the worker attestation
+// and the worker-session context, so the first composition can never show a
+// name (strict default context + claim-only identity); the lobby's
+// post-construction net_set_worker_session / net_apply_peer_attestation
+// calls land here to redo it with the final state.
+void GLGame::net_refresh_join_banner() {
+  std::string prev = net_banner_text_;
+  if (net_mode_ == NetHost)
+    net_banner_text_ =
+        net_identity_name_or(net_peer_identity_, "PLAYER 2", net_id_ctx()) +
+        " JOINED";
+  else if (net_mode_ == NetClient)
+    net_banner_text_ = "JOINED " +
+        net_identity_name_or(net_peer_identity_, "PLAYER 1", net_id_ctx()) +
+        " SERVER";
+  else
+    return;
+  // Log on change only: the ctor composition logs once, and a recompose
+  // that actually renames the greeting logs the final text (greppable —
+  // the e2e assertions match these lines).
+  if (net_banner_text_ != prev)
+    NET_LOG("net: banner '%s' %d ms\n", net_banner_text_.c_str(),
+            net_banner_ms_);
+}
+
 // M3-1 reclaim countdown, shared by both host signal loops: the relay
 // socket dropped, so count down and reattach to the room with the token.
 void GLGame::net_host_signal_reclaim_tick(int delta) {
@@ -1930,6 +1959,10 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
         att.name = net_sanitize_name(ev.text);
         att.name_trust =
             att.name.empty() ? NET_TRUST_ABSENT : NET_TRUST_ATTESTED;
+        // Keep the raw attestation too: the rejoin-Ready refresh replaces
+        // net_peer_identity_ with the claim-only wire parse and re-folds
+        // this copy so the badge survives the handshake.
+        net_peer_attested_ = att;
         net_apply_attested(net_peer_identity_, att);
         NET_LOG("net: identity attested name='%s' platform=%s(%u)\n",
                 att.name.c_str(), net_platform_label(ev.platform),
@@ -1937,6 +1970,13 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
       }
       return NetSigHandled;
     case NetSignal::Event::Closed:
+      // Warm a fresh verification credential the moment the reclaim
+      // countdown arms: the mint is async (seconds on Steam/Play Games) and
+      // the reclaim's identity re-announce reads the cache — warming here
+      // means the ticket exists by the time the Room event re-attests,
+      // instead of the announce shipping credential-less. No-op off
+      // verify-backend builds.
+      if (net_signal_retry_ms_ <= 0) (void)net_local_verify_credential();
       if (net_room_token_.empty()) {
         // Pre-token relay: no reclaim protocol — drop the signal (the
         // old behaviour; rejoin stops being possible).
@@ -2024,6 +2064,12 @@ void GLGame::net_host_signal_maintain(int delta) {
 void GLGame::net_host_rejoin_park_remote() {
   if (net_rejoin_parked_) return;
   net_rejoin_parked_ = true;
+  // The departed peer's worker attestation dies with them: whoever fills
+  // the slot re-attests through their own announce (Event::Identity), and
+  // without this a DIFFERENT friend whose verify failed would inherit the
+  // old friend's attested name. net_peer_identity_ itself survives — the
+  // DISCONNECTED banner still names who dropped.
+  net_peer_attested_ = NetIdentity();
   Ship *remote = players->size() >= 2 ? players->back()->ship : NULL;
   if (remote) {
     if (remote->is_alive()) {
@@ -2173,8 +2219,16 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       net_lan_rejoin_reset();
       // A rejoin re-runs the handshake, so the identity re-arrived fresh —
       // refresh the stored badge (the rejoiner may be a different friend
-      // dropping into the empty slot via the re-advertised invite).
+      // dropping into the empty slot via the re-advertised invite). The
+      // wire parse is claim-only: re-fold the worker attestation on top,
+      // or the attested badge demotes to the role label right here. The
+      // common ordering delivers the rejoiner's Event::Identity (worker
+      // verify, ~300 ms) BEFORE p2p Ready (ICE, seconds) — and it was
+      // cleared at park time, so a stale attestation can't label a
+      // different friend; a verify that lands after Ready folds live via
+      // net_host_signal_common_event as before.
       net_peer_identity_ = net_session_->peer_identity();
+      net_apply_attested(net_peer_identity_, net_peer_attested_);
       net_have_input_ = false;      // re-baseline the one-shot counters
       net_input_zeroed_ = false;
       net_rtt_ms_ = -1.0f;          // fresh transport, fresh RTT baseline
@@ -3361,12 +3415,10 @@ GLGame::GLGame(const Save::GameState &snapshot, NetSession *session,
   net_peer_identity_ = session->peer_identity();
   // The joiner's complement of the host's "<NAME> JOINED" greeting: name
   // whose game this is ("JOINED GLENN SERVER"; the host is player 1, so a
-  // nameless/legacy host reads "JOINED PLAYER 1 SERVER").
-  net_banner_text_ = "JOINED " +
-      net_identity_name_or(net_peer_identity_, "PLAYER 1", net_id_ctx()) +
-      " SERVER";
+  // nameless/legacy host reads "JOINED PLAYER 1 SERVER"). Composed again by
+  // the lobby's post-construction attestation/context hand-over.
   net_banner_ms_ = 3000;
-  NET_LOG("net: banner '%s' %d ms\n", net_banner_text_.c_str(), net_banner_ms_);
+  net_refresh_join_banner();
   net_assembler_ = new Net::SnapshotAssembler();
   // PROTO 14: the local ship reports every shot it fires (id, spawn,
   // exact velocity) so the host spawns clones instead of re-rolling.
@@ -3692,6 +3744,7 @@ void GLGame::tick_net_client(int delta) {
       if (net_client_rejoin_ms_ <= 0) {
         if (!net_room_code_.empty()) {
           NET_LOG("net: auto-rejoining room %s\n", net_room_code_.c_str());
+          net_handed_to_lobby_ = true;  // its warmed ticket outlives us
           request_state_change(new NetLobby(net_room_code_));
         } else {
           // LAN-door session: rediscover the host by name — its GLGame
@@ -3700,6 +3753,7 @@ void GLGame::tick_net_client(int delta) {
           // name and the rejoin lands in whatever it hosts next.
           NET_LOG("net: auto-rejoining lan host %s\n",
                   net_lan_host_name_.c_str());
+          net_handed_to_lobby_ = true;  // its warmed ticket outlives us
           request_state_change(
               new NetLobby(net_lan_host_name_, NetLobby::LanRejoinTag()));
         }

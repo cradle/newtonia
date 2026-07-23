@@ -46,11 +46,12 @@ namespace {
 //
 // Handle cleanup (Steamworks asks callers to CancelAuthTicket every handle
 // GetAuthTicketForWebApi returns): every minted handle is tracked in
-// `handles_` and cancelled together in release(), called at netplay teardown
-// (~NetLobby / ~GLGame). Teardown is AFTER the worker's one-shot validation
-// window, so cancelling never invalidates a ticket still in flight to the
-// worker — and it also cancels a ticket that was warmed but never sent (the
-// lobby warms one on open; a player who backs out to the menu leaves it
+// `handles_` and cancelled together in release(), called only when the
+// netplay state chain ENDS (a lobby backing out to the menu, a net GLGame
+// exiting) — never on a lobby->game or game->rejoin-lobby hand-off, whose
+// successor still needs the warm ticket for reclaim/rejoin re-attests (see
+// net_identity.h). It also cancels a ticket that was warmed but never sent
+// (the lobby warms one on open; a player who backs out to the menu leaves it
 // outstanding). Cancelling a ticket the worker already consumed is a harmless
 // no-op. release() also clears hex_ so a subsequent send can never re-hand a
 // ticket whose handle was just cancelled; the next credential() re-warms from

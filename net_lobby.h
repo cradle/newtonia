@@ -217,6 +217,12 @@ private:
   // this (worker-less = OFFLINE, the peer's claimed name renders). Set true
   // on the first Room/Joined event, false in fall_back_to_manual.
   bool used_worker_ = false;
+  // The lobby handed its session to a GLGame (request_state_change). The
+  // dtor then leaves the warmed verification credential alone — the game
+  // needs it for host-reclaim re-attests, and releasing here would cancel
+  // a ticket the worker may still be validating. Only a lobby that ends the
+  // netplay chain (backed out to the menu) mops the credential up.
+  bool handed_off_to_game_ = false;
   // Announce our identity to the worker; re-sent on every Room/Joined event
   // (each fresh socket, including a host reclaim), which the worker re-attests.
   void send_local_identity();
