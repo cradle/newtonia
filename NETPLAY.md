@@ -310,6 +310,23 @@ exactly two relay joins, screenshot after the auto failure shows no
 status, after the typed one shows it), room/lan/lankeep/lanclip e2e
 green. Same pass: the CodeEntry status line dropped from y 20 to y 4 —
 at size 15 it grazed the code glyphs (which reach down to y 24).
+
+**LAN-visibility opt-out (2026-07-23)**: the last "round-2+" leftover —
+"an Options LAN-visibility toggle if anyone minds the hostname
+broadcast" — landed as an INI-only preference, `lan_visible` (defaults
+1). When false the lobby host path and the mid-game re-host door
+(`GLGame::net_host_lan_rejoin_poll`) both skip `Announce::start()`, so
+the machine never beacons or serves a blob and never appears in another
+device's JOIN list; the relay and manual clipboard flows are untouched,
+and JOIN-side browse is unaffected (visibility is about being *seen*).
+Every "VISIBLE ON THIS NETWORK" / "A LAN PLAYER IS CONNECTING" line
+already gates on `lan_announce_.running()`, so they vanish for free. Not
+surfaced in the Options screen by decision (it's a niche
+privacy/firewall knob) — `preferences.ini` only. Default-on means lan.sh
+and the other LAN e2e drivers, which never set the pref, still beacon
+and stay green; the OFF path is verified by the INI load/save round-trip
+(`lan_visible=0` survives a relaunch).
+
 ## Future milestone — verified peer identity (design notes 2026-07-20)
 
 **Current state (V0 + V1 SHIPPED — see the implementation plan below):**
