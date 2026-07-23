@@ -6,6 +6,13 @@ android {
     namespace 'org.newtonia'
     compileSdk 36
 
+    // NDK r28 compiles native libraries with 16 KB-aligned ELF LOAD
+    // segments by default (r27 and lower default to 4 KB), which Google
+    // Play now requires so the app installs and runs on 16 KB-page-size
+    // devices. Pinned here as the single source of truth; the android.yml
+    // / deploy-android.yml CI installs this exact revision via sdkmanager.
+    ndkVersion '28.2.13676358'
+
     defaultConfig {
         applicationId "org.newtonia"
         minSdk 21           // Android 5.0 (GLES2 guaranteed)
@@ -62,6 +69,13 @@ dependencies {
     // an outdated SDK on every release. Gradle resolves to the highest
     // requested version, so this one line lifts the whole tree.
     implementation 'androidx.activity:activity:1.9.3'
+    // Same story for androidx.fragment: play-services pulls it in
+    // transitively at 1.1.0, which the Play Console flags as outdated.
+    // This floor lifts it to the modern tree. 1.8.9 stays on
+    // kotlin-stdlib 1.8.22 (matching the BOM below) and its own
+    // transitive floors (activity 1.8.1, lifecycle 2.6.1) sit under the
+    // versions already resolved, so nothing else moves.
+    implementation 'androidx.fragment:fragment:1.8.9'
     // activity 1.9 brings kotlin-stdlib 1.8, which absorbed the old
     // -jdk7/-jdk8 split; play-services still pulls kotlin-stdlib-jdk8
     // 1.6 and the pair trips checkDuplicateClasses. The BOM aligns every

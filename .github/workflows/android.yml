@@ -41,7 +41,7 @@ jobs:
         # doesn't fail the whole build.
         run: |
           for attempt in 1 2 3; do
-            if sdkmanager "ndk;26.3.11579264" "cmake;3.22.1"; then
+            if sdkmanager "ndk;28.2.13676358" "cmake;3.22.1"; then
               exit 0
             fi
             echo "sdkmanager failed (attempt $attempt), retrying in $((attempt * 10))s..."
@@ -57,7 +57,7 @@ jobs:
         working-directory: newtonia/android
         run: ./gradlew assembleDebug --stacktrace
         env:
-          ANDROID_NDK_ROOT: ${{ env.ANDROID_HOME }}/ndk/26.3.11579264
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_HOME }}/ndk/28.2.13676358
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
