@@ -65,6 +65,11 @@ public class NewtoniaActivity extends SDLActivity {
         updateSafeInsets();
     }
 
+    // Soft-keyboard coverage for the lobby's touch layout: fraction of the
+    // window height the keyboard covers, 0 when hidden (android_main.cpp
+    // stores it; net_lobby.cpp lifts the LAN tap bands clear of it).
+    private static native void nativeKeyboardFraction(float fraction);
+
     // Hands a co-op join link's room code to the native invite layer
     // (android_main.cpp → Invites::note_accepted). super.onCreate has already
     // loaded libnewtonia by the time we call this, so the symbol resolves.
@@ -210,6 +215,28 @@ public class NewtoniaActivity extends SDLActivity {
         }
 
         updateSafeInsets();
+
+        // Report soft-keyboard coverage on every layout pass: the visible
+        // display frame shrinks by the keyboard's height while it is up
+        // (immersive mode keeps the frame full-height otherwise), and the
+        // lobby lifts its LAN tap bands clear of the reported fraction.
+        // Registered after super.onCreate so the native lib is loaded.
+        final android.view.View decor = getWindow().getDecorView();
+        decor.getViewTreeObserver().addOnGlobalLayoutListener(
+            new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+                @Override
+                public void onGlobalLayout() {
+                    android.graphics.Rect visible = new android.graphics.Rect();
+                    decor.getWindowVisibleDisplayFrame(visible);
+                    int h = decor.getHeight();
+                    float f = h > 0
+                        ? Math.max(0f, (h - visible.bottom) / (float) h)
+                        : 0f;
+                    try {
+                        nativeKeyboardFraction(f);
+                    } catch (UnsatisfiedLinkError ignored) {}
+                }
+            });
 
         // Cold launch from a tapped join link.
         handleInviteIntent(getIntent());

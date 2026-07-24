@@ -72,13 +72,74 @@ const TapBand kShareBand(0.5f, -80, 18, 42.0f);
 // Filled BOTTOM-UP — one host uses only the lowest band, sitting in
 // the free space just above the keyboard, well clear of the code
 // (Glenn's S25 screenshot); a full list grows upward toward the
-// compressed slots. The lowest band bottoms out ~y 49: tall phone
-// keyboards reach ~y 48 in Typer units (measured on the S25 — the
-// "half the screen" assumption undershot it).
+// compressed slots. These are the BASE positions (lowest band bottoms
+// out ~y 49); the real keyboard is measured at runtime and the stack
+// lifts clear of it — see lan_band_lift below. Field results that
+// killed the fixed layout: the S25's keyboard reaches ~y 48 (the
+// "half the screen" assumption undershot it, and even the measured
+// position overlapped slightly), and an iPhone landscape keyboard
+// covers ~60% of the screen (~y 120), drowning the lowest band
+// entirely.
 const int kLanBandCount = 3;
 const TapBand kLanBand[kLanBandCount] = {TapBand(0.5f, 225, 18, 12.0f),
                                          TapBand(0.5f, 155, 18, 12.0f),
                                          TapBand(0.5f, 85, 18, 12.0f)};
+const float kLanBandSpacing = 70.0f;  // anchor-to-anchor in kLanBand
+
+// Measured soft-keyboard coverage (fraction of the window height, 0 =
+// hidden/unknown): UIKit keyboard-frame notifications on iOS
+// (ios_keyboard.mm), the activity's visible-display-frame listener on
+// Android (NewtoniaActivity → android_main.cpp). Fraction 0 reproduces
+// the base layout exactly, so platforms without a backend are
+// untouched.
+#if defined(__IOS__)
+extern "C" float ios_keyboard_cover_fraction(void);
+static float soft_keyboard_fraction() { return ios_keyboard_cover_fraction(); }
+#elif defined(__ANDROID__)
+// Plain C++ linkage on both sides (android_main.cpp defines it) — a
+// C-vs-C++ linkage mismatch across TUs is a known NDK-link bite.
+float android_keyboard_cover_fraction();
+static float soft_keyboard_fraction() {
+  return android_keyboard_cover_fraction();
+}
+#else
+static float soft_keyboard_fraction() { return 0.0f; }
+#endif
+
+// How far the band stack must rise (Typer units) so the lowest band
+// clears the measured keyboard. 0 with no (or a low-enough) keyboard.
+// Fractions under 0.15 are ignored — a visible nav/gesture bar shrinks
+// the Android visible frame a few percent without any keyboard up.
+static float lan_band_lift() {
+  float f = soft_keyboard_fraction();
+  if (f < 0.15f) return 0.0f;
+  const TapBand &low = kLanBand[kLanBandCount - 1];
+  float band_bottom = (low.y - low.size) - (low.size + low.pad);
+  float kb_top = (2.0f * f - 1.0f) * Typer::scaled_window_height;
+  float lift = kb_top + 12.0f - band_bottom;
+  return lift > 0.0f ? lift : 0.0f;
+}
+
+// How many bands fit between the lifted stack's bottom and the code
+// slots. The draw side compresses the heading/slots upward whenever a
+// lift is active (slots y 345 size 28 → glyphs reach y 289), so the
+// ceiling here matches that squeezed layout.
+static int lan_bands_fit(float lift) {
+  if (lift <= 0.0f) return kLanBandCount;
+  const TapBand &low = kLanBand[kLanBandCount - 1];
+  float band_top0 = (low.y - low.size) + (low.size + low.pad) + lift;
+  int fit = 1 + (int)((285.0f - band_top0) / kLanBandSpacing);
+  if (fit < 1) fit = 1;
+  if (fit > kLanBandCount) fit = kLanBandCount;
+  return fit;
+}
+
+// The band at kLanBand[idx] raised by the active lift — ONE geometry
+// feeding both draw and hit-test, preserving the TapBand invariant.
+static TapBand lan_band_at(int idx, float lift) {
+  const TapBand &b = kLanBand[idx];
+  return TapBand(b.nx, b.y + lift, b.size, b.pad);
+}
 
 // CodeEntry controller picker: the code alphabet as a grid under the
 // code slots (desktop layout — touch uses the soft keyboard instead).
@@ -1511,12 +1572,21 @@ void NetLobby::draw() {
         // the code block compresses upward so three finger-sized bands
         // fit above the soft keyboard (see kLanBand).
         const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
-        int show =
-            (int)lh.size() > kLanBandCount ? kLanBandCount : (int)lh.size();
+        float lift = lan_band_lift();
+        int fit = lan_bands_fit(lift);
+        int show = (int)lh.size() > fit ? fit : (int)lh.size();
         if (show > 0) {
-          // Clear of the ONLINE CO-OP title (glyphs reach ~y 400).
-          Typer::draw_centered(0, 375, "ENTER THE ROOM CODE", 14);
-          Typer::draw_centered(0, 315, slots.c_str(), 34);
+          if (lift > 0.0f) {
+            // The measured keyboard reaches above the base band stack
+            // (iPhone landscape ~60% coverage) — squeeze the heading and
+            // code upward so the lifted bands have room underneath.
+            Typer::draw_centered(0, 395, "ENTER THE ROOM CODE", 12);
+            Typer::draw_centered(0, 345, slots.c_str(), 28);
+          } else {
+            // Clear of the ONLINE CO-OP title (glyphs reach ~y 400).
+            Typer::draw_centered(0, 375, "ENTER THE ROOM CODE", 14);
+            Typer::draw_centered(0, 315, slots.c_str(), 34);
+          }
         } else {
           Typer::draw_centered(0, 360, "ENTER THE ROOM CODE", sz);
           Typer::draw_centered(0, 230, slots.c_str(), 48);
@@ -1528,7 +1598,7 @@ void NetLobby::draw() {
                   ? "TAP TO JOIN " + lh[i].name
                   : lh[i].name + " - DIFFERENT VERSION";
           // Bottom-up fill: host 0 takes the LOWEST band.
-          kLanBand[kLanBandCount - show + i].draw(label.c_str());
+          lan_band_at(kLanBandCount - show + i, lift).draw(label.c_str());
         }
       } else {
         // Heading + code live in the top half: the Steam Deck's floating
@@ -2125,11 +2195,12 @@ void NetLobby::touch_tap(float nx, float ny) {
       // mismatch taps through to the explanatory status message.
       {
         const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
-        int show =
-            (int)lh.size() > kLanBandCount ? kLanBandCount : (int)lh.size();
+        float lift = lan_band_lift();
+        int fit = lan_bands_fit(lift);
+        int show = (int)lh.size() > fit ? fit : (int)lh.size();
         for (int i = 0; i < show; i++) {
-          // Mirror of the draw's bottom-up fill.
-          if (kLanBand[kLanBandCount - show + i].contains(nx, ny)) {
+          // Mirror of the draw's bottom-up fill (and its keyboard lift).
+          if (lan_band_at(kLanBandCount - show + i, lift).contains(nx, ny)) {
             lan_sel_ = i;
             lan_join_selected();
             return;

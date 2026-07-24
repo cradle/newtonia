@@ -229,8 +229,21 @@ is a useless "localhost", same disease as Android's) — fixed by
 "iPhone" there unless the Apple-approval-gated
 `com.apple.developer.device-information.user-assigned-device-name`
 entitlement is granted (request like multicast was, if "IPHONE" ever
-grates). Remaining untested on iOS: the join direction (desktop hosts,
-phone's TAP TO JOIN band).
+grates; the first fixed build beaconed "IPHONE", confirming the generic
+path). Join direction (Android hosted, iPhone joining — a first for
+that pairing): the iPhone DID discover the host, but its TAP TO JOIN
+band drew under the soft keyboard — iPhone landscape keyboards cover
+~60% of the screen (~y 120 in Typer units), far above the S25-measured
+fixed band position (~y 48), and Glenn reported even the S25 overlaps
+slightly. Fixed by measuring the real keyboard instead of guessing:
+`soft_keyboard_fraction()` (net_lobby.cpp) fed by UIKit keyboard-frame
+notifications (`ios_keyboard.mm`) and Android's visible-display-frame
+listener (`NewtoniaActivity` → `nativeKeyboardFraction`), with the band
+stack lifted clear, the heading/code squeezed upward while lifted, and
+the shown-band count capped to what fits (iPhone landscape: 2).
+Fraction 0 (desktop/no keyboard) reproduces the old layout exactly.
+To re-verify after the lift: the Android host's NAME on the iPhone band
+(possibly just occluded before), and both join directions end-to-end.
 FIELD-VERIFIED (2026-07-20), both directions: Android phone hosted,
 desktop discovered and joined over the LAN door; and desktop hosted,
 the phone's TAP TO JOIN band appeared and joined. The beacon carries
