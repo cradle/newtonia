@@ -49,14 +49,16 @@ void touch_controls_resize(int w, int h) {
     float mineEdge  = (float)w - g_touch_controls.mine_cx;
     g_touch_controls.btn_hit_radius = (halfGap < mineEdge) ? halfGap : mineEdge;
 
-    // Pause button: top-right, below score and multiplier. The score row sits
-    // ~75 Typer units below the top edge and the multiplier row ("20x") ends
-    // ~190 units down, both shifted by the display-cutout inset; one Typer
-    // unit is ts/2 px. The fixed 160*ts centre clears that at landscape
-    // aspect, but in narrow portrait the radius grows with the WIDTH while
-    // the text does not — and a camera-notch inset pushes the text down under
-    // the circle — so also require the circle's TOP edge to clear the
-    // multiplier row (200 units incl. margin = 100*ts px, plus the inset).
+    // Pause button: top-right, below the score AND the multiplier row under
+    // it. The HUD stack in Typer units below the top edge (1 unit = ts/2 px;
+    // glyphs extend 2*size DOWN from their anchor; everything shifted by the
+    // display-cutout inset): score anchored at 75, bottom 115; multiplier
+    // "20x" anchored at 135/147, bottom ~177. The fixed 160*ts centre clears
+    // that at landscape aspect, but in narrow portrait the radius grows with
+    // the WIDTH while the text does not — and a camera-notch inset pushes
+    // the text down under the circle — so also require the circle's TOP edge
+    // to clear the multiplier bottom (~200 units incl. margin = 100*ts px,
+    // plus the inset).
     float pr         = minDim * 0.06f;
     float hud_bottom = 100.0f * ts + Overlay::safe_inset_top();
     g_touch_controls.pause_cx         = (float)w - pr - 0.015f * (float)w;
