@@ -16,6 +16,7 @@
 #include "../mat4.h"
 #include "../mesh.h"
 #include <cstdio>
+#include <cstdlib>
 #include <cmath>
 
 const float Overlay::CORNER_INSET = 55.0f;
@@ -25,6 +26,41 @@ const float Overlay::SAFE_AREA_SCALE = 0.9f;
 #else
 const float Overlay::SAFE_AREA_SCALE = 1.0f;
 #endif
+
+// Display-cutout insets in physical pixels (top, bottom, left, right); see
+// overlay.h. NEWTONIA_SAFE_INSET_TOP=N forces the top inset on any platform
+// so the notch layout is testable without cutout hardware.
+static float s_safe_inset[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+
+void Overlay::set_safe_insets(float top, float bottom, float left, float right) {
+  s_safe_inset[0] = top;
+  s_safe_inset[1] = bottom;
+  s_safe_inset[2] = left;
+  s_safe_inset[3] = right;
+}
+
+float Overlay::safe_inset_top() {
+  static float forced = -1.0f;
+  if (forced < 0.0f) {
+    const char *env = SDL_getenv("NEWTONIA_SAFE_INSET_TOP");
+    forced = (env != NULL) ? (float)atof(env) : 0.0f;
+  }
+  return (forced > 0.0f) ? forced : s_safe_inset[0];
+}
+
+// The cutout's top inset in Typer virtual units: the HUD ortho spans
+// ±viewport pixels (so one physical pixel = two ortho units) and Typer
+// coords are multiplied by Typer::scale — hence px * 2 / scale.
+static float safe_inset_top_v() {
+  return Overlay::safe_inset_top() * 2.0f / Typer::scale;
+}
+
+// The top-anchored HUD row's y anchor in Typer virtual units: the title-safe
+// top, pulled down by the cutout inset.
+static float top_hud_y(const GLGame *glgame) {
+  float vh = Typer::scaled_window_height / glgame->num_y_viewports();
+  return vh - 20 - Overlay::CORNER_INSET - safe_inset_top_v();
+}
 
 // Full-screen text layered over the online game view (one full-screen
 // pass, not per-viewport): the 2 s generation banner (replaces the offline
@@ -345,15 +381,13 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
 void Overlay::level(const GLGame *glgame, const GLShip *glship) {
   char buf[20];
   snprintf(buf, sizeof(buf), "LEVEL %d", glgame->generation + 1);
-  float vh = Typer::scaled_window_height / glgame->num_y_viewports();
-  Typer::draw_centered(0, vh - 20 - CORNER_INSET, buf, 12);
+  Typer::draw_centered(0, top_hud_y(glgame), buf, 12);
 }
 
 void Overlay::god_mode(const GLGame *glgame, const GLShip *glship) {
   int remaining = glship->ship->god_mode_time_remaining();
   if(remaining <= 0) return;
-  float vh = Typer::scaled_window_height / glgame->num_y_viewports();
-  float base_y = vh - 20 - CORNER_INSET;
+  float base_y = top_hud_y(glgame);
   Typer::draw_centered(0, base_y - 62, "God mode", 10);
   Typer::draw_centered(0, base_y - 100, remaining / 1000, 10);
 }
@@ -361,10 +395,12 @@ void Overlay::god_mode(const GLGame *glgame, const GLShip *glship) {
 void Overlay::score(const GLGame *glgame, const GLShip *glship) {
   float vw = Typer::scaled_window_width / glgame->num_x_viewports();
   float vh = Typer::scaled_window_height / glgame->num_y_viewports();
-  Typer::draw(vw - 40 - CORNER_INSET, vh - 20 - CORNER_INSET, glship->ship->score, 20);
+  float top_y = top_hud_y(glgame);
+  float drop = (vh - 20 - CORNER_INSET) - top_y;  // cutout shift, 0 without one
+  Typer::draw(vw - 40 - CORNER_INSET, top_y, glship->ship->score, 20);
   if(glship->ship->multiplier() > 1) {
-    Typer::draw(vw - 35 - CORNER_INSET, vh - 92 - CORNER_INSET, "x", 15);
-    Typer::draw(vw - 65 - CORNER_INSET, vh - 80 - CORNER_INSET, glship->ship->multiplier(), 20);
+    Typer::draw(vw - 35 - CORNER_INSET, vh - 92 - CORNER_INSET - drop, "x", 15);
+    Typer::draw(vw - 65 - CORNER_INSET, vh - 80 - CORNER_INSET - drop, glship->ship->multiplier(), 20);
   }
 }
 
@@ -384,7 +420,8 @@ void Overlay::weapons(const GLGame *glgame, const GLShip *glship) {
   float s = Typer::scale;
   float vp[16]; mat4_translate(vp, saved,
     (-Typer::scaled_window_width/glgame->num_x_viewports()+CORNER_INSET) * s,
-    (Typer::scaled_window_height/glgame->num_y_viewports()-CORNER_INSET) * s, 0.0f);
+    (Typer::scaled_window_height/glgame->num_y_viewports()-CORNER_INSET) * s
+        - safe_inset_top() * 2.0f, 0.0f);
   gles2_set_vp(vp);
   glship->draw_weapons();
   gles2_set_vp(saved);
@@ -481,31 +518,36 @@ static void key_hint(int key, char *out, size_t n, const char *verb) {
 void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   Ship* p1 = glgame->players->front()->ship;
   if(glgame->players->size() < 2) {
+    // -40 (not -10): a real margin inside the title-safe edge, matching the
+    // bottom-row hints (Xbox compliance) — pulled down further by the
+    // cutout inset so this row stays aligned with the LEVEL/score/weapons
+    // row below the camera notch.
+    float top_y = Typer::scaled_window_height - 40 - safe_inset_top_v();
     if((glgame->current_time/1400) % 2) {
       if(p1->is_alive() || p1->lives > 0) {
         if(!is_touch_mode()) {
-          // -40 (not -10): a real margin inside the title-safe edge,
-          // matching the bottom-row hints (Xbox compliance).
           if(glgame->has_free_controller())
-            Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-40, "player 2 press start to join", 8);
+            Typer::draw_centered(Typer::scaled_window_width/2, top_y, "player 2 press start to join", 8);
 #ifndef _GAMING_XBOX
           // Keyboard join hint — on Xbox the only join path is a second controller.
           else if(!is_steam_gamemode())
-            Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-40, "player 2 press enter to join", 8);
+            Typer::draw_centered(Typer::scaled_window_width/2, top_y, "player 2 press enter to join", 8);
 #endif
         }
       } else if(!is_touch_mode()) {
-        Typer::draw_centered(0, Typer::scaled_window_height-40, glship->has_controller() ? "return to menu with start" : "return to menu with ESC", 8);
+        // Just above the GameOver text draw_respawn_timer() renders (its
+        // 20x viewport puts the glyphs at y 0..80 in this space).
+        Typer::draw_centered(0, 140, glship->has_controller() ? "return to menu with start" : "return to menu with ESC", 8);
       }
     }
     if(!glship->last_input_was_controller && !is_touch_mode()) {
       char hint[48];
       if(glship->show_help) {
         key_hint(glship->help_key.primary(), hint, sizeof(hint), "hide");
-        Typer::draw_centered(-1*Typer::scaled_window_width/2, Typer::scaled_window_height-40, hint, 8);
+        Typer::draw_centered(-1*Typer::scaled_window_width/2, top_y, hint, 8);
       } else if ((glgame->current_time)/12000 % 2) {
         key_hint(glship->help_key.primary(), hint, sizeof(hint), "show");
-        Typer::draw_centered(-1*Typer::scaled_window_width/2, Typer::scaled_window_height-40, hint, 8);
+        Typer::draw_centered(-1*Typer::scaled_window_width/2, top_y, hint, 8);
       }
     }
   } else {

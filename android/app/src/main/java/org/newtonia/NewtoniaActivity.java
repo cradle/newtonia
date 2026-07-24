@@ -7,6 +7,7 @@ package org.newtonia;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
@@ -14,6 +15,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.system.Os;
+import android.view.Display;
+import android.view.DisplayCutout;
 
 import com.android.installreferrer.api.InstallReferrerClient;
 import com.android.installreferrer.api.InstallReferrerStateListener;
@@ -28,6 +31,39 @@ public class NewtoniaActivity extends SDLActivity {
     // sample rate and buffer size for this hardware.
     static int sOptimalSampleRate      = 48000;
     static int sOptimalFramesPerBuffer = 512;
+
+    // Display-cutout safe insets in physical px (the fullscreen surface
+    // extends under the camera notch/punch-hole). Read by the native layer
+    // like the audio params above; updated on rotation via
+    // onConfigurationChanged, which android_main follows with a JNI re-read
+    // on the SDL resize event.
+    static int sSafeInsetTop = 0, sSafeInsetBottom = 0;
+    static int sSafeInsetLeft = 0, sSafeInsetRight = 0;
+
+    // Display.getCutout() (API 29+) already reflects the current rotation,
+    // and is callable synchronously from any lifecycle point — unlike the
+    // window insets, which need a listener and an attached window. Cutout
+    // phones still on API 28 keep 0 insets (cosmetic only: the HUD row
+    // stays at the screen edge there, as it always has).
+    private void updateSafeInsets() {
+        if (Build.VERSION.SDK_INT < 29) return;
+        try {
+            Display d = getWindowManager().getDefaultDisplay();
+            DisplayCutout c = d != null ? d.getCutout() : null;
+            sSafeInsetTop    = c != null ? c.getSafeInsetTop()    : 0;
+            sSafeInsetBottom = c != null ? c.getSafeInsetBottom() : 0;
+            sSafeInsetLeft   = c != null ? c.getSafeInsetLeft()   : 0;
+            sSafeInsetRight  = c != null ? c.getSafeInsetRight()  : 0;
+        } catch (Exception ignored) {
+            // Best-effort: without the insets the HUD keeps its edge layout.
+        }
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        updateSafeInsets();
+    }
 
     // Hands a co-op join link's room code to the native invite layer
     // (android_main.cpp → Invites::note_accepted). super.onCreate has already
@@ -172,6 +208,8 @@ public class NewtoniaActivity extends SDLActivity {
                 if (fpb != null) sOptimalFramesPerBuffer = Integer.parseInt(fpb);
             } catch (NumberFormatException ignored) {}
         }
+
+        updateSafeInsets();
 
         // Cold launch from a tapped join link.
         handleInviteIntent(getIntent());
