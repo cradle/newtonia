@@ -449,8 +449,10 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     s_game = new StateManager();
     s_game->resize(s_w, s_h);
     Typer::resize(s_w, s_h);
-    touch_controls_resize(s_w, s_h);
+    // Insets before touch layout — the pause button clears the inset-shifted
+    // HUD row, so touch_controls_resize needs the cutout inset already known.
     read_display_safe_insets();
+    touch_controls_resize(s_w, s_h);
 
     Uint32 last_tick = SDL_GetTicks();
 
@@ -553,10 +555,12 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                     s_h = e.window.data2;
                     s_game->resize(s_w, s_h);
                     Typer::resize(s_w, s_h);
-                    touch_controls_resize(s_w, s_h);
                     // Cutout insets rotate with the display — a portrait top
-                    // notch becomes a landscape side one.
+                    // notch becomes a landscape side one. Read them before
+                    // the touch layout, which places the pause button below
+                    // the inset-shifted HUD row.
                     read_display_safe_insets();
+                    touch_controls_resize(s_w, s_h);
                 }
                 break;
 
