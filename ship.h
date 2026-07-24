@@ -173,6 +173,10 @@ class Ship : public CompositeObject {
     void previous_weapon();
     void next_secondary_weapon();
     void add_weapon(int weapon_index);
+    // Random gun-drop pool: draws only the automatic weapon_configs[] rows.
+    // The semi-auto variants are excluded — one shot per trigger pull made
+    // them a downgrade the moment a pickup swapped the player onto one.
+    static int random_drop_weapon_index();
     void add_mine_ammo(int amount);
     void add_giga_mine_ammo(int amount);
     void add_missile_ammo(int amount);

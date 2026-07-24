@@ -345,6 +345,10 @@ struct WeaponConfig {
   int time_between_shots;
 };
 
+// Rows 0-6 (the semi-auto variants) are retired from the random drop pool
+// (Ship::random_drop_weapon_index) but must stay in the table: savegames and
+// netplay snapshots store weapon_index as an index into this array, so rows
+// can never shift or disappear.
 static const WeaponConfig weapon_configs[] = {
   { false, 1, 0.1f, 100 },   // 0
   { false, 2, 0.1f, 100 },   // 1
@@ -364,6 +368,14 @@ static const WeaponConfig weapon_configs[] = {
 };
 
 static const int num_weapon_configs = sizeof(weapon_configs) / sizeof(weapon_configs[0]);
+
+int Ship::random_drop_weapon_index() {
+  int eligible[num_weapon_configs];
+  int n = 0;
+  for (int i = 0; i < num_weapon_configs; i++)
+    if (weapon_configs[i].automatic) eligible[n++] = i;
+  return eligible[rand() % n];
+}
 
 void Ship::add_weapon(int weapon_index) {
   if(weapon_index < 0 || weapon_index >= num_weapon_configs) return;
