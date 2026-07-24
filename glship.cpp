@@ -922,15 +922,25 @@ void GLShip::draw_weapons() const {
     // The 3-char HUD slot only fits one key, so show the binding's primary.
     int cycle_key_kb = cycle_key_bind.primary();
     int fire_key_kb  = fire_key_bind.primary();
+    // Low-ammo warning: flash the whole row title — name and count — at
+    // 2 Hz over the last LOW_AMMO_WARN rounds so a gun running dry is
+    // visible before the dry-switch takes it away. GodMode is excluded —
+    // its "ammo" is remaining milliseconds and it has its own indicator.
+    bool low = !weapon->is_unlimited() && weapon->ammo() > 0 &&
+               weapon->ammo() <= Weapon::Base::LOW_AMMO_WARN &&
+               !dynamic_cast<Weapon::GodMode*>(weapon);
+    bool blink_hidden = low && (SDL_GetTicks() / 250) % 2 != 0;
+
     // Line 1: NAME  ammo
     int cx = 10;
-    Typer::draw(cx, row_y, weapon->name(), size);
+    if (!blink_hidden)
+      Typer::draw(cx, row_y, weapon->name(), size);
     cx += (int)strlen(weapon->name()) * cw + 2 * cw;  // name + gap
 
     if (!weapon->is_unlimited()) {
       if (weapon->ammo() == 0) {
         Typer::draw(cx, row_y, "empty", size);
-      } else {
+      } else if (!blink_hidden) {
         int display_ammo = dynamic_cast<Weapon::GodMode*>(weapon) ? weapon->ammo()/1000 : weapon->ammo();
         Typer::draw_lefted(cx + 2*cw, row_y, display_ammo, size);
       }

@@ -8,6 +8,11 @@ class Ship;
 namespace Weapon {
   class Base {
   public:
+    // Ammo at or below this counts as "running dry": the HUD flashes the
+    // count (GLShip::draw_weapons) and the default gun layers a faint
+    // dry-click under each shot (Weapon::Default::fire).
+    static const int LOW_AMMO_WARN = 15;
+
     Base(Ship *ship) : ship(ship), _name("unnamed"), shooting(false), unlimited(true) {}
     virtual ~Base() {};
   

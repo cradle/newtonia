@@ -317,10 +317,30 @@ static void finger_motion(SDL_FingerID id, float x, float y) {
 extern "C" void net_android_identity_init();
 #endif
 
+// SDL assertions must never show a message box on Android. The default
+// handler's box (SDLActivity.messageboxShowMessageBox) blocks the calling
+// thread in wait() until a dialog button is pressed — but SDL delivers some
+// callbacks ON the UI thread (e.g. SDLAudioManager's audio-device hotplug),
+// and a box shown from there waits on the very looper that must render the
+// dialog and deliver the click. The dialog never appears, the UI thread is
+// wedged for good, and every later tap/focus event ANRs ("Waited 10000ms
+// for FocusEvent") while the game thread renders on — hit in the field when
+// a Bluetooth audio sink connected on the menu (debug APKs only: release
+// builds compile SDL_assert out). Log and carry on instead; the assertion
+// text still lands in logcat, where it's actually diagnosable.
+static SDL_AssertState android_assert_handler(const SDL_AssertData *data,
+                                              void *userdata) {
+    (void)userdata;
+    SDL_Log("SDL assertion '%s' failed at %s:%d (%s) - ignoring",
+            data->condition, data->filename, data->linenum, data->function);
+    return SDL_ASSERTION_ALWAYS_IGNORE;
+}
+
 // SDL2 main
 // ============================================================
 extern "C" int SDL_main(int argc, char *argv[]) {
     (void)argc; (void)argv;
+    SDL_SetAssertionHandler(android_assert_handler, NULL);  // before any SDL call that can assert
     s_running = true;  // reset in case process was kept alive after a previous quit
     srand(time(NULL));
 

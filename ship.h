@@ -480,6 +480,12 @@ class Ship : public CompositeObject {
     // shock, expired god mode): the remembered selection first, then the
     // previous list neighbour, wrapping forward only from the front.
     list<Weapon::Base *>::iterator fallback_primary(list<Weapon::Base *>::iterator to_remove);
+    // Remove the selected primary (it ran dry) and move the selection to
+    // fallback_primary(), with the weapon-cycle click so the swap is
+    // audible. Shared by the press path (shoot()) and the mid-burst
+    // dry-switch in step().
+    void drop_exhausted_primary();
+    void record_primary_fired();  // weapons_7 kind-detect for the selected primary
 
     void play_rotating_sound(bool on);
     void update_god_mode_music(int time_remaining);
