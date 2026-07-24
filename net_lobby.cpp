@@ -1619,10 +1619,22 @@ void NetLobby::draw() {
         if (show > 0) {
           if (lift > 0.0f) {
             // The measured keyboard reaches above the base band stack
-            // (iPhone landscape ~60% coverage) — squeeze the heading and
-            // code upward so the lifted bands have room underneath.
-            Typer::draw_centered(0, 395, "ENTER THE ROOM CODE", 12);
-            Typer::draw_centered(0, 345, slots.c_str(), 28);
+            // (iPhone landscape ~60% coverage) — the heading and code
+            // move up so the lifted bands have room underneath. Sit them
+            // RELATIVE to the topmost visible band rather than at the
+            // worst-case fixed spot: with one host row there is ~100
+            // units of free air, and parking the code at the ceiling
+            // crowded the ONLINE CO-OP header (field report). Clamped to
+            // the old fixed position (345) so a tall keyboard + full
+            // band list never pushes into the header.
+            const TapBand &low = kLanBand[kLanBandCount - 1];
+            float stack_top = (low.y - low.size) + (low.size + low.pad) +
+                              lift + (show - 1) * kLanBandSpacing;
+            float slots_y = stack_top + 76.0f;  // glyphs reach 2*28 down
+            if (slots_y > 345.0f) slots_y = 345.0f;
+            Typer::draw_centered(0, slots_y + 50.0f, "ENTER THE ROOM CODE",
+                                 12);
+            Typer::draw_centered(0, slots_y, slots.c_str(), 28);
           } else {
             // Clear of the ONLINE CO-OP title (glyphs reach ~y 400).
             Typer::draw_centered(0, 375, "ENTER THE ROOM CODE", 14);
