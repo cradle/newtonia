@@ -685,6 +685,7 @@ private:
   list<Object*> *ship_objects;  // Ship* (as Object*) for missile homing
   list<Object*> *shock_targets; // enemies + stations (as Object*) for shock-bolt seeking
   bool all_weapons_cheat = false;  // NEWTONIA_ALL_WEAPONS: grant full arsenal each life
+  int all_weapons_ammo = 999;      // rounds per weapon; a numeric env value > 1 overrides
 };
 
 #endif
