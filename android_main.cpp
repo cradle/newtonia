@@ -335,10 +335,17 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         s_h = dm.h;
     }
 
+    // SDL_WINDOW_RESIZABLE is what allows device rotation: without it,
+    // SDLActivity.setOrientation() locks the activity to the launch
+    // orientation via setRequestedOrientation(SENSOR_LANDSCAPE/PORTRAIT),
+    // overriding the manifest (which deliberately has no orientation lock).
+    // With it, SDL requests UNSPECIFIED and rotation arrives as a plain
+    // resize (manifest configChanges keeps the activity alive).
     s_window = SDL_CreateWindow("Newtonia",
                                 SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                                 s_w, s_h,
-                                SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN);
+                                SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN |
+                                SDL_WINDOW_RESIZABLE);
     if (!s_window) {
         SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());
         SDL_Quit();
