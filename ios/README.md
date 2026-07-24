@@ -1,4 +1,35 @@
-# Newtonia – iOS Simulator
+# Newtonia – iOS
+
+## Building & running on a device from the command line
+
+No Xcode GUI project setup needed — `make ios` drives the XcodeGen
+project entirely from the CLI. One-time setup on the Mac:
+
+```bash
+brew install xcodegen
+./build_sdl_deps_ios.sh device       # static SDL2 + SDL2_mixer -> sdl-libs-ios/
+./build_netplay_deps_ios.sh device   # static MbedTLS + libdatachannel -> netplay-libs-ios/
+```
+
+plus one GUI step that cannot be scripted: open Xcode → Settings →
+Accounts and sign in the Apple ID once (automatic signing then mints and
+refreshes the development profile from the command line via
+`-allowProvisioningUpdates` — the team defaults to `4RWPRHJG6D`,
+override with `IOS_TEAM=`). Then, from the repo root:
+
+```bash
+make ios           # signed device .app (Debug; IOS_CONFIG=Release for -O3)
+make ios-install   # build + install + launch on the connected device
+```
+
+The device needs Developer Mode enabled (Settings → Privacy & Security)
+and to be plugged in / paired; `make ios-install` auto-picks the first
+connected device, or set `IOS_DEVICE=<name-or-udid>`. Debug builds sign
+with `EntitlementsDev.plist` (Game Center sandbox, universal links, and
+the multicast entitlement for LAN discovery), and netplay defines/libs
+are passed automatically — the manual Build Settings wiring that used to
+be documented here is gone. Audio is bundled by the project itself (a
+folder resource in `project.yml`), so the .app is complete as signed.
 
 ## Running in the iOS Simulator
 
@@ -25,19 +56,13 @@ xcrun simctl launch booted cc.gfm.Newtonia
 ## Netplay (M3-4)
 
 CI compiles the simulator build netplay-on (see .github/workflows/ios.yml —
-it hand-builds the source list and deps, not the xcodeproj). For a local
-Xcode build with netplay:
-
-1. `./build_netplay_deps_ios.sh device` (or `simulator`) — static MbedTLS +
-   libdatachannel into `netplay-libs-ios[-sim]/`.
-2. In the project's Build Settings: add `NEWTONIA_NET_RTC=1` to
-   *Preprocessor Macros*, and `$(SRCROOT)/../netplay-libs-ios/include` to
-   *Header Search Paths*.
-3. Add every `.a` from `netplay-libs-ios/lib` to *Link Binary With
-   Libraries*.
-
-Without those steps the project still builds — the netplay TUs compile
-empty and the menu simply hides ONLINE.
+it hand-builds the source list and deps, not the xcodeproj). `make ios`
+passes the netplay define, header path, and static archives to xcodebuild
+automatically (the same build-settings hand-off deploy-ios.yml uses), so
+no Build Settings editing is needed — just run
+`./build_netplay_deps_ios.sh device` once. A GUI Xcode build through the
+bare project (without those settings) still builds — the netplay TUs
+compile empty and the menu simply hides ONLINE.
 
 ### Testing a TestFlight build against the beta signaling worker
 

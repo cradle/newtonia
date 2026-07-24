@@ -302,8 +302,12 @@ jobs:
             PROVISIONING_PROFILE="$PROFILE_UUID" \
             CODE_SIGN_IDENTITY="Apple Distribution"
 
-      - name: Copy audio into app bundle
-        run: cp -r newtonia/audio "Newtonia.xcarchive/Products/Applications/Newtonia.app/audio"
+      # Audio is bundled by the ios/project.yml folder resource (shared with
+      # `make ios`, which needs it inside the signed bundle), so the archive
+      # already contains it — verify instead of copying, so a project.yml
+      # regression fails the deploy here rather than shipping a silent app.
+      - name: Verify audio bundled by the project
+        run: test -f "Newtonia.xcarchive/Products/Applications/Newtonia.app/audio/click.wav"
 
       - name: Export .ipa
         run: |

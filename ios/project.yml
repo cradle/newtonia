@@ -66,6 +66,14 @@ targets:
           - "Newtonia.mm"           # macOS-only
           - "macos_window.mm"       # macOS-only
       - path: Assets.xcassets
+      # Audio ships as a folder reference in the Resources phase, so every
+      # build path (make ios, deploy-ios.yml) gets a complete bundle BEFORE
+      # signing — deploy-ios only verifies it's there, and local device
+      # builds don't need a post-sign copy (which would break the seal).
+      - path: ../audio
+        name: audio
+        type: folder
+        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: Newtonia

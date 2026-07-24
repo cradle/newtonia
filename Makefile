@@ -36,7 +36,7 @@ endif
 NETPLAY ?= 1
 ifeq ($(NETPLAY),1)
   NETPLAY_PREFIX ?= $(CURDIR)/netplay-libs
-  ifeq ($(filter clean web-clean android android-install android-assets android-clean web,$(MAKECMDGOALS)),)
+  ifeq ($(filter clean web-clean android android-install android-assets android-clean web ios ios-install ios-deps-check ios-clean,$(MAKECMDGOALS)),)
     ifeq ($(wildcard $(NETPLAY_PREFIX)/include/rtc/rtc.h),)
       $(error netplay builds by default but $(NETPLAY_PREFIX)/include/rtc/rtc.h \
 is missing — run ./build_netplay_deps.sh once (--universal for `make osx`), \
@@ -234,6 +234,81 @@ android-install: android-assets
 android-clean:
 	cd $(ANDROID_DIR) && ./gradlew clean
 	rm -rf $(ANDROID_ASSETS)/audio
+
+# ============================================================
+# iOS device build: make ios / make ios-install
+# ============================================================
+# Command-line device build through the XcodeGen project — no Xcode GUI
+# project configuration needed. One-time setup on the Mac:
+#   brew install xcodegen
+#   ./build_sdl_deps_ios.sh device       # SDL2 + SDL2_mixer -> sdl-libs-ios/
+#   ./build_netplay_deps_ios.sh device   # MbedTLS + libdatachannel -> netplay-libs-ios/
+#   Xcode > Settings > Accounts: sign in the Apple ID once (automatic
+#   signing then mints/refreshes the dev profile from the CLI via
+#   -allowProvisioningUpdates; the Debug config signs with
+#   ios/EntitlementsDev.plist).
+# `make ios` builds the signed .app; `make ios-install` installs + launches
+# it on the connected device (auto-detected; override with
+# IOS_DEVICE=<name-or-udid>; the phone needs Developer Mode on).
+# Audio ships via the ios/project.yml folder resource, so the bundle is
+# complete as signed — nothing is copied in afterwards.
+
+IOS_TEAM ?= 4RWPRHJG6D
+IOS_CONFIG ?= Debug
+IOS_SDL_PREFIX = sdl-libs-ios
+IOS_NET_PREFIX = netplay-libs-ios
+IOS_DERIVED = ios/build
+IOS_APP = $(IOS_DERIVED)/Build/Products/$(IOS_CONFIG)-iphoneos/Newtonia.app
+
+.PHONY: ios ios-install ios-deps-check ios-clean
+
+# Hard error on a missing prefix (same convention as the desktop netplay
+# build — never a silent fallback).
+ios-deps-check:
+	@test -f $(IOS_SDL_PREFIX)/lib/libSDL2.a || { \
+	  echo "error: $(IOS_SDL_PREFIX)/ missing or incomplete —" ; \
+	  echo "       build it ONCE with: ./build_sdl_deps_ios.sh device" ; \
+	  exit 1 ; }
+	@test -n "$(wildcard $(IOS_NET_PREFIX)/lib/*.a)" || { \
+	  echo "error: $(IOS_NET_PREFIX)/ missing or incomplete —" ; \
+	  echo "       build it ONCE with: ./build_netplay_deps_ios.sh device" ; \
+	  exit 1 ; }
+
+ios: ios-deps-check
+	cd ios && xcodegen generate
+	xcodebuild build \
+	  -project ios/Newtonia-iOS.xcodeproj \
+	  -scheme Newtonia \
+	  -configuration $(IOS_CONFIG) \
+	  -destination "generic/platform=iOS" \
+	  -derivedDataPath $(IOS_DERIVED) \
+	  -allowProvisioningUpdates \
+	  DEVELOPMENT_TEAM=$(IOS_TEAM) \
+	  "SDL2_HEADER_PATH=$(abspath $(IOS_SDL_PREFIX))/include/SDL2" \
+	  "SDL2_MIXER_HEADER_PATH=$(abspath $(IOS_SDL_PREFIX))/include/SDL2" \
+	  "NEWTONIA_NET_DEFINE=NEWTONIA_NET_RTC=1" \
+	  "NEWTONIA_NET_HEADER_PATH=$(abspath $(IOS_NET_PREFIX))/include" \
+	  "OTHER_LDFLAGS=-ObjC $(abspath $(IOS_SDL_PREFIX))/lib/libSDL2main.a $(abspath $(IOS_SDL_PREFIX))/lib/libSDL2.a $(abspath $(IOS_SDL_PREFIX))/lib/libSDL2_mixer.a $(abspath $(wildcard $(IOS_NET_PREFIX)/lib/*.a))"
+	@echo "App: $(IOS_APP)"
+
+# Install + launch on a device. Auto-picks the first connected device from
+# devicectl (prefers an active tunnel); IOS_DEVICE=<name-or-udid> overrides.
+ios-install: ios
+	@set -e; \
+	DEV="$(IOS_DEVICE)"; \
+	if [ -z "$$DEV" ]; then \
+	  JSON=$$(mktemp); \
+	  xcrun devicectl list devices --json-output "$$JSON" >/dev/null; \
+	  DEV=$$(python3 -c "import json;ds=json.load(open('$$JSON'))['result']['devices'];print(next((d['identifier'] for d in ds if d.get('connectionProperties',{}).get('tunnelState')=='connected'),ds[0]['identifier'] if ds else ''))"); \
+	  rm -f "$$JSON"; \
+	fi; \
+	test -n "$$DEV" || { echo "error: no device found — plug one in or set IOS_DEVICE=<name-or-udid>"; exit 1; }; \
+	echo "Installing to device $$DEV"; \
+	xcrun devicectl device install app --device "$$DEV" "$(IOS_APP)"; \
+	xcrun devicectl device process launch --terminate-existing --device "$$DEV" cc.gfm.Newtonia
+
+ios-clean:
+	rm -rf $(IOS_DERIVED)
 
 # ============================================================
 # Steam build (local testing): make steam
