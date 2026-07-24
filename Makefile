@@ -283,6 +283,7 @@ ios: ios-deps-check
 	  -destination "generic/platform=iOS" \
 	  -derivedDataPath $(IOS_DERIVED) \
 	  -allowProvisioningUpdates \
+	  -allowProvisioningDeviceRegistration \
 	  DEVELOPMENT_TEAM=$(IOS_TEAM) \
 	  "SDL2_HEADER_PATH=$(abspath $(IOS_SDL_PREFIX))/include/SDL2" \
 	  "SDL2_MIXER_HEADER_PATH=$(abspath $(IOS_SDL_PREFIX))/include/SDL2" \

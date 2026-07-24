@@ -24,7 +24,14 @@ make ios-install   # build + install + launch on the connected device
 
 The device needs Developer Mode enabled (Settings → Privacy & Security)
 and to be plugged in / paired; `make ios-install` auto-picks the first
-connected device, or set `IOS_DEVICE=<name-or-udid>`. Debug builds sign
+connected device, or set `IOS_DEVICE=<name-or-udid>`. **Plug the phone
+in for the first `make ios` too** — a team that has only ever deployed
+via TestFlight has no registered development devices, and the build
+registers the connected phone on the portal automatically
+(`-allowProvisioningDeviceRegistration`); with no device connected that
+first build fails with "Your team has no devices". (Manual fallback:
+add the UDID at https://developer.apple.com/account/resources/devices/list
+— Finder shows it when you click the device's info line.) Debug builds sign
 with `EntitlementsDev.plist` (Game Center sandbox, universal links, and
 the multicast entitlement for LAN discovery), and netplay defines/libs
 are passed automatically — the manual Build Settings wiring that used to
