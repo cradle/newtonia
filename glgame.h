@@ -261,6 +261,14 @@ private:
   // sessionless window while a dropped peer rejoins. Default (unknown) for
   // a legacy peer: the overlay then renders exactly the identity-less UI.
   NetIdentity net_peer_identity_;
+  // The worker's attestation of the peer, kept SEPARATELY from the folded
+  // identity above: the rejoin-Ready refresh replaces net_peer_identity_
+  // wholesale with the CLAIMED wire parse, which would demote an attested
+  // badge to the role label — so the refresh re-folds this copy on top.
+  // Cleared once per loss (net_host_rejoin_park_remote): the slot may be
+  // refilled by a DIFFERENT friend, whose own announce re-attests through
+  // the worker (Event::Identity below restores it).
+  NetIdentity net_peer_attested_;
   // Display context for net_peer_identity_ (net_identity.h): a room-code
   // session ran through the signaling worker, so it is ONLINE-strict — a
   // stranger is possible, only ATTESTED fields render. The manual clipboard
@@ -273,11 +281,26 @@ private:
   }
   // Called by the lobby (a friend) right after construction: fold the
   // worker's peer attestation into net_peer_identity_ and record whether a
-  // worker was in the session (see net_worker_session_).
-  void net_set_worker_session(bool worker) { net_worker_session_ = worker; }
-  void net_apply_peer_attestation(const NetIdentity &attested) {
-    net_apply_attested(net_peer_identity_, attested);
+  // worker was in the session (see net_worker_session_). Both run AFTER the
+  // net constructor composed the JOINED greeting — with the strict default
+  // context and a claimed-only identity, so the name could never render —
+  // hence each recomposes the banner with the final identity/context.
+  void net_set_worker_session(bool worker) {
+    net_worker_session_ = worker;
+    net_refresh_join_banner();
   }
+  void net_apply_peer_attestation(const NetIdentity &attested) {
+    net_peer_attested_ = attested;
+    net_apply_attested(net_peer_identity_, attested);
+    net_refresh_join_banner();
+  }
+  // Recompose the initial JOINED greeting from the current identity and
+  // display context. Safe to call any time: it refreshes only while the
+  // greeting is still the banner on screen (tracked via
+  // net_join_banner_text_), so a late in-game attestation can rename it
+  // but can never clobber a LEVEL/RECONNECTED banner.
+  void net_refresh_join_banner();
+  std::string net_join_banner_text_;  // what the greeting last composed
   int net_snapshot_timer_ = 0;
   uint32_t net_snapshot_id_ = 0;
   uint32_t net_last_input_seq_ = 0;
@@ -501,6 +524,11 @@ private:
   bool net_lan_offer_set_ = false;
   bool net_rejoin_parked_ = false;   // the once-per-loss park/pause ran
   std::string net_lan_host_name_;    // client: LAN host to rediscover
+  // Client auto-rejoin handed the flow to a fresh NetLobby: the dtor then
+  // leaves the verification credential alone (that lobby warmed its own
+  // ticket in its constructor — releasing here would cancel it and ship the
+  // rejoin's identity announce credential-less). See ~NetLobby's twin flag.
+  bool net_handed_to_lobby_ = false;
   long net_bytes_sent_ = 0;             // M2-6 bandwidth telemetry window
 
   // M2-6 delta snapshots: what the client is known to have (reliable

@@ -161,10 +161,7 @@ std::string call_string(jmethodID &m) {
 extern "C" void net_android_identity_init() {
   JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
   jobject activity = (jobject)SDL_AndroidGetActivity();
-  if (!env || !activity) {
-    if (env && activity) env->DeleteLocalRef(activity);
-    return;
-  }
+  if (!env || !activity) return;
   if (ensure_bridge(env)) {
     env->CallStaticVoidMethod(g_bridge, g_init, activity);
     clear_exception(env);

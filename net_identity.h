@@ -130,14 +130,18 @@ std::string net_local_verify_credential();
 // Release any outstanding verification-credential handles the backend still
 // holds — the Steamworks CancelAuthTicket cleanup for every handle
 // GetAuthTicketForWebApi minted (Valve asks callers to cancel when done).
-// Called at netplay TEARDOWN (~NetLobby, ~GLGame), which is by construction
-// AFTER the worker's one-shot AuthenticateUserTicket window has closed, so it
-// never cancels a ticket still in flight to the worker; it also mops up a
-// ticket that was warmed but never sent (the lobby warms one on open, so a
-// player who backs out to the menu leaves one outstanding). The backend also
-// drops its cached credential, so a subsequent mint re-warms from scratch and
-// a cancelled ticket can never be re-sent. A no-op on every build without a
-// verification backend. Backends supply
+// Called ONLY at the END of the netplay state chain — a lobby that backs
+// out / fails to the menu, or a net GLGame exiting — never on a hand-off
+// between net states (lobby -> game, game -> auto-rejoin lobby). The
+// successor state needs the warmed credential (a host reclaim re-attests
+// with it, a rejoin lobby announces with it), and an early release can
+// cancel a ticket the worker is still validating (a fast ICE connect
+// reaches hand-off within the verify round-trip). It also mops up a ticket
+// that was warmed but never sent (the lobby warms one on open, so a player
+// who backs out to the menu leaves one outstanding). The backend also
+// drops its cached credential, so a subsequent mint re-warms from scratch
+// and a cancelled ticket can never be re-sent. A no-op on every build
+// without a verification backend. Backends supply
 // NetIdentityBackend::release_verify_credentials().
 void net_release_verify_credentials();
 
