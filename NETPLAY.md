@@ -226,17 +226,24 @@ LAN door. The beacon showed the "NEWTONIA" fallback (iOS gethostname()
 is a useless "localhost", same disease as Android's) — fixed by
 `ios_device_name.mm` exporting UIDevice's name over the same
 `NEWTONIA_DEVICE_NAME` env bridge; note iOS 16+ returns the generic
-"iPhone" there unless the Apple-approval-gated
+"iPhone" there unless the app carries the Apple-approval-gated
 `com.apple.developer.device-information.user-assigned-device-name`
-entitlement is granted (the first fixed build beaconed "IPHONE",
-confirming the generic path). Entitlement request SUBMITTED to Apple
-2026-07-24 (developer.apple.com/contact/request/user-assigned-device-name,
-app id 6760685759). Once granted: enable the capability on the App ID +
-regenerate the provisioning profile (and refresh the TestFlight
-PROVISIONING_PROFILE_BASE64 secret), then add
-`com.apple.developer.device-information.user-assigned-device-name`
-(bool true) to `ios/Entitlements.plist` + `ios/EntitlementsDev.plist` —
-no code change, `ios_device_name.mm` already reads UIDevice.name. Join direction (Android hosted, iPhone joining — a first for
+entitlement (the first fixed build beaconed "IPHONE", confirming the
+generic path). Entitlement request REJECTED by Apple (submitted and
+rejected 2026-07-24): per its documentation the entitlement exists so
+an app can show the OWNER their own device names — differentiating
+their phone from their iPad — not to broadcast a name to other people,
+which is exactly what the beacon does. Permanently off the table; do
+not re-request. Replacement: `ios_device_name.mm` upgrades the env
+bridge to the public **Game Center alias** once sign-in resolves (a
+`GKPlayerAuthenticationDidChange` observer, `GAME_CENTER_BUILD` only),
+overwriting only its own generic model-name export — an Xcode-scheme
+override or a real pre-iOS-16 device name stays untouched, and a fully
+non-Latin alias (nothing the Typer sanitizer keeps) keeps the generic
+name rather than collapsing to "NEWTONIA". The alias is a name Apple
+already shows other players and matches the in-game LAN identity claim
+(`game_center_identity.mm`), so the lobby band and in-game name agree;
+signed-out devices still beacon "IPHONE". Join direction (Android hosted, iPhone joining — a first for
 that pairing): the iPhone DID discover the host, but its TAP TO JOIN
 band drew under the soft keyboard — iPhone landscape keyboards cover
 ~60% of the screen (~y 120 in Typer units), far above the S25-measured
