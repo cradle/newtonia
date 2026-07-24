@@ -23,6 +23,18 @@
 #include "view/overlay.h"
 #include "view/tap_band.h"
 
+#if defined(__ANDROID__)
+// Soft-keyboard coverage backend (android_main.cpp). Declared at file scope,
+// OUTSIDE the anonymous namespace below: an anonymous-namespace declaration
+// gets internal linkage (even with `extern`), so it can never match a
+// definition in another TU — the NDK link fails with an undefined
+// (anonymous namespace)::android_keyboard_cover_fraction(). Plain C++
+// linkage on both sides (a C-vs-C++ linkage mismatch across TUs is the
+// other known NDK-link bite). The iOS twin lives inside the namespace
+// unharmed: extern "C" names ignore namespaces for linkage.
+float android_keyboard_cover_fraction();
+#endif
+
 namespace {
 
 const int WORLD_W = 5000, WORLD_H = 5000;  // starfield extent (as in Menu)
@@ -96,9 +108,7 @@ const float kLanBandSpacing = 70.0f;  // anchor-to-anchor in kLanBand
 extern "C" float ios_keyboard_cover_fraction(void);
 static float soft_keyboard_fraction() { return ios_keyboard_cover_fraction(); }
 #elif defined(__ANDROID__)
-// Plain C++ linkage on both sides (android_main.cpp defines it) — a
-// C-vs-C++ linkage mismatch across TUs is a known NDK-link bite.
-float android_keyboard_cover_fraction();
+// Backend declared at file scope above this namespace (linkage — see there).
 static float soft_keyboard_fraction() {
   return android_keyboard_cover_fraction();
 }
