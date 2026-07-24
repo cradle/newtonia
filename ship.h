@@ -476,6 +476,21 @@ class Ship : public CompositeObject {
     // shock, expired god mode): the remembered selection first, then the
     // previous list neighbour, wrapping forward only from the front.
     list<Weapon::Base *>::iterator fallback_primary(list<Weapon::Base *>::iterator to_remove);
+    // Remove the selected primary (it ran dry) and move the selection to
+    // fallback_primary(), with the weapon-cycle click so the swap is
+    // audible. Shared by the press path (shoot()) and the mid-burst
+    // dry-switch in step().
+    void drop_exhausted_primary();
+    void record_primary_fired();  // weapons_7 kind-detect for the selected primary
+    // A held trigger outliving an automatic primary that ran dry mid-burst:
+    // step() drops the spent gun and hands the hold to the fallback. An
+    // automatic fallback just keeps firing; the semi-auto base gun can't
+    // hold-to-fire, so while this is set step() re-arms it at its own shot
+    // interval — cleared on trigger release (shoot(false)) or when the
+    // selection moves off the unlimited gun. GLGame (a friend) preserves it
+    // across the net client's 10 Hz snapshot re-arm like the other held
+    // inputs.
+    bool rescue_hold = false;
 
     void play_rotating_sound(bool on);
     void update_god_mode_music(int time_remaining);

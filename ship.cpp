@@ -1952,35 +1952,50 @@ void Ship::giga_detonate(Point const position) {
                           duration, false});
 }
 
+// Remove the selected primary (it ran dry) and move the selection to
+// fallback_primary(), with the weapon-cycle click so the swap is audible
+// (the swap used to be silent, which is how it surprised players).
+void Ship::drop_exhausted_primary() {
+  auto to_remove = primary;
+  auto next = fallback_primary(to_remove);
+  delete *to_remove;
+  primary_weapons.erase(to_remove);
+  primary = primary_weapons.empty() ? primary_weapons.end() : next;
+  if(click_sound != NULL && !net_remote_gun) {
+    Mix_PlayChannel(-1, click_sound, 0);
+  }
+}
+
+// weapons_7 tracking: name the branch's extra primaries too, not just
+// master's GodMode/Default pair.
+void Ship::record_primary_fired() {
+  Save::WeaponEntry::Kind kind = Save::WeaponEntry::Kind::Default;
+  if(dynamic_cast<Weapon::GodMode*>(*primary))
+    kind = Save::WeaponEntry::Kind::GodMode;
+  else if(dynamic_cast<Weapon::Beam*>(*primary))
+    kind = Save::WeaponEntry::Kind::Beam;
+  else if(dynamic_cast<Weapon::Lance*>(*primary))
+    kind = Save::WeaponEntry::Kind::Lance;
+  else if(dynamic_cast<Weapon::Shock*>(*primary))
+    kind = Save::WeaponEntry::Kind::Shock;
+  record_weapon_fired(kind);
+}
+
 void Ship::shoot(bool on) {
+  if(!on) rescue_hold = false;  // trigger released: end any dry-switch rescue
   if(primary_weapons.empty()) return;
   if((*primary)->empty() && on) {
     // Firing an empty limited primary (beam/lance/shock) drops it from the
     // list, exactly like fire_secondary() below — it used to just switch
     // away and leave the spent weapon cluttering the cycle. The default
     // gun is unlimited, so the list never empties for real.
-    auto to_remove = primary;
-    auto next = fallback_primary(to_remove);
-    delete *to_remove;
-    primary_weapons.erase(to_remove);
-    primary = primary_weapons.empty() ? primary_weapons.end() : next;
-  } else {
-    if(on) {
-      // weapons_7 tracking: name the branch's extra primaries too, not
-      // just master's GodMode/Default pair.
-      Save::WeaponEntry::Kind kind = Save::WeaponEntry::Kind::Default;
-      if(dynamic_cast<Weapon::GodMode*>(*primary))
-        kind = Save::WeaponEntry::Kind::GodMode;
-      else if(dynamic_cast<Weapon::Beam*>(*primary))
-        kind = Save::WeaponEntry::Kind::Beam;
-      else if(dynamic_cast<Weapon::Lance*>(*primary))
-        kind = Save::WeaponEntry::Kind::Lance;
-      else if(dynamic_cast<Weapon::Shock*>(*primary))
-        kind = Save::WeaponEntry::Kind::Shock;
-      record_weapon_fired(kind);
-    }
-    (*primary)->shoot(on);
+    drop_exhausted_primary();
+    if(primary == primary_weapons.end()) return;
+    // Fall through: the press that found the weapon empty fires the
+    // fallback instead of being consumed by the switch (a dead pull).
   }
+  if(on) record_primary_fired();
+  (*primary)->shoot(on);
 }
 
 void Ship::fire_secondary(bool on) {
@@ -2507,6 +2522,42 @@ void Ship::step(float delta, const Grid &grid) {
         ++it;
       }
     }
+
+    // Mid-burst dry-switch: an automatic primary that ran dry while the
+    // trigger was held used to dry-click empty.wav until the next press —
+    // shoot() only runs on press edges, so its exhausted-weapon drop was
+    // unreachable with the button held down. Drop it the moment it empties
+    // and hand the still-held trigger to the fallback weapon: an automatic
+    // fallback keeps firing seamlessly, a semi-auto fires the carried-over
+    // shot. Runs identically on the host's remote-gun sim (its ammo
+    // bookkeeping mirrors the client's), so the rosters converge.
+    if(primary != primary_weapons.end() && (*primary)->empty() &&
+       (*primary)->is_shooting()) {
+      drop_exhausted_primary();
+      if(primary != primary_weapons.end()) {
+        if(!(*primary)->is_automatic() && (*primary)->is_unlimited())
+          rescue_hold = true;
+        record_primary_fired();
+        (*primary)->shoot(true);
+      }
+    }
+    // Rescue hold: the dry-switch above landed on the semi-auto base gun,
+    // which self-disarms after every shot — a held trigger would fire once
+    // and go dead mid-fight. Keep re-arming it at its own shot interval
+    // until the trigger is released (shoot(false) clears the flag) or the
+    // selection moves off the unlimited gun (pickup, manual cycle). Limited
+    // semi-autos (beam/lance/shock) are deliberately excluded: auto-draining
+    // precision ammo the player never tapped for is worse than stopping.
+    if(rescue_hold) {
+      if(primary == primary_weapons.end() || (*primary)->is_automatic() ||
+         !(*primary)->is_unlimited()) {
+        rescue_hold = false;
+      } else if(!(*primary)->is_shooting()) {
+        record_primary_fired();
+        (*primary)->shoot(true);
+      }
+    }
+
     for(auto it = secondary_weapons.begin(); it != secondary_weapons.end(); ++it) {
       if (!dynamic_cast<Weapon::Missile*>(*it))
         (*it)->step(delta);
