@@ -20,10 +20,13 @@
 // sign-in resolves (the auth-change observer below): the alias is a name
 // Apple already shows to other players, and it matches the LAN identity
 // claim game_center_identity.mm renders in-game, so the lobby band and
-// the in-game name agree. Sign-in lands seconds into launch and
-// local_host_name() reads the env at host-start time, so the upgrade is
-// in place before a beacon can carry it. The generic "IPHONE" stays as
-// the signed-out fallback.
+// the in-game name agree. Sign-in usually lands seconds into launch,
+// before a lobby can open; when it lands later, the still-unpaired
+// lobby renames its beacon in place (NetLobby::lan_host_update ->
+// Announce::set_host_name), and from pairing on the name is frozen for
+// the session (GLGame::net_lan_beacon_name_) so rejoin-by-name can't
+// miss on a drifted name. The generic "IPHONE" stays as the signed-out
+// fallback.
 
 #ifdef __IOS__
 

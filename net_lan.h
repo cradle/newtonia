@@ -63,6 +63,13 @@ class Announce {
   bool running() const;
   // A joiner's TCP exchange is in flight (drawn as "PLAYER CONNECTING").
   bool peer_engaged() const;
+  // Rename a running beacon in place (same sockets, same TCP port) — the
+  // iOS Game Center alias can resolve after the door opened, changing
+  // local_host_name(). Call only while unpaired: a browsing joiner keys
+  // rows by (port, name), so the renamed host appears as a fresh row and
+  // the old one ages out in ~2 missed beacons. No-op when not running or
+  // when the name is unchanged.
+  void set_host_name(const std::string &host_name);
 
  private:
   struct Impl;

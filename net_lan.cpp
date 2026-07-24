@@ -334,6 +334,22 @@ void Announce::set_offer_blob(const std::string &blob) {
   impl_->offer_blob = blob;
 }
 
+// The beacon packet: "NWLN" ver proto tcp_port name_len name. Tiny, so a
+// rename (set_host_name) just rebuilds it whole.
+static std::string build_beacon(uint16_t tcp_port,
+                                const std::string &host_name) {
+  std::string name = host_name.substr(0, MAX_NAME);
+  std::string b(MAGIC, 4);
+  b.push_back((char)BEACON_VERSION);
+  b.push_back((char)(Net::PROTO_VERSION & 0xff));
+  b.push_back((char)((Net::PROTO_VERSION >> 8) & 0xff));
+  b.push_back((char)(tcp_port & 0xff));
+  b.push_back((char)((tcp_port >> 8) & 0xff));
+  b.push_back((char)name.size());
+  b += name;
+  return b;
+}
+
 bool Announce::start(const std::string &host_name) {
   if (!lan_sockets_init()) return false;
   stop();
@@ -369,18 +385,21 @@ bool Announce::start(const std::string &host_name) {
   setsockopt(im.udp, SOL_SOCKET, SO_BROADCAST, (const char *)&yes,
              sizeof(yes));
 
-  std::string name = host_name.substr(0, MAX_NAME);
-  im.beacon.assign(MAGIC, 4);
-  im.beacon.push_back((char)BEACON_VERSION);
-  im.beacon.push_back((char)(Net::PROTO_VERSION & 0xff));
-  im.beacon.push_back((char)((Net::PROTO_VERSION >> 8) & 0xff));
-  im.beacon.push_back((char)(im.tcp_port & 0xff));
-  im.beacon.push_back((char)((im.tcp_port >> 8) & 0xff));
-  im.beacon.push_back((char)name.size());
-  im.beacon += name;
+  im.beacon = build_beacon(im.tcp_port, host_name);
   im.beacon_ms = 0;  // first beacon on the next update
   NET_LOG("net: lan announce up (tcp %d)\n", (int)im.tcp_port);
   return true;
+}
+
+void Announce::set_host_name(const std::string &host_name) {
+  Impl &im = *impl_;
+  if (im.udp == LAN_INVALID) return;
+  std::string beacon = build_beacon(im.tcp_port, host_name);
+  if (beacon == im.beacon) return;
+  im.beacon = beacon;
+  im.beacon_ms = 0;  // carry the new name out now; the old row ages out
+  NET_LOG("net: lan beacon renamed to %s\n",
+          host_name.substr(0, MAX_NAME).c_str());
 }
 
 void Announce::stop() {
@@ -718,6 +737,7 @@ void Announce::set_offer_blob(const std::string &) {}
 bool Announce::update(int, std::string &) { return false; }
 bool Announce::running() const { return false; }
 bool Announce::peer_engaged() const { return false; }
+void Announce::set_host_name(const std::string &) {}
 
 struct Browse::Impl {};
 Browse::Browse() : impl_(nullptr) {}

@@ -2357,7 +2357,12 @@ bool GLGame::net_host_lan_rejoin_poll(int delta) {
   if (!net_lan_rehost_ && !net_lan_announce_.running() &&
       (!net_session_ || net_session_->transport()->failed())) {
     net_host_rejoin_park_remote();
-    if (!net_lan_announce_.start(NetLan::local_host_name())) return false;
+    // Re-beacon the session's frozen name (set at the lobby hand-off) so
+    // the dropped client's rediscover-by-name matches; never re-read
+    // local_host_name() here — it can have drifted (iOS alias).
+    if (net_lan_beacon_name_.empty())
+      net_lan_beacon_name_ = NetLan::local_host_name();
+    if (!net_lan_announce_.start(net_lan_beacon_name_)) return false;
     net_lan_rehost_ = NetTransport::create();
     net_lan_offer_set_ = false;
     if (net_lan_rehost_) {

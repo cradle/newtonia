@@ -495,8 +495,9 @@ void NetLobby::confirm() {
       // beside the relay flow. Offline this is what still works; online
       // it's the couch shortcut. The lan_visible pref (INI-only) opts a
       // host out of the hostname broadcast entirely.
+      lan_beacon_name_ = NetLan::local_host_name();
       if (g_prefs.lan_visible && NetLan::available() &&
-          lan_announce_.start(NetLan::local_host_name())) {
+          lan_announce_.start(lan_beacon_name_)) {
         lan_transport_ = NetTransport::create();
         if (lan_transport_) {
           lan_transport_->set_lan_only(true);
@@ -618,6 +619,21 @@ void NetLobby::lan_host_update(int delta) {
   if (session_) {  // the relay door won while we were beaconing
     lan_teardown();
     return;
+  }
+  // Follow a name change while nobody is engaged (the iOS Game Center
+  // alias resolves after the door opened when hosting starts fast, or
+  // seconds into a restarted app whose dropped client is browsing for
+  // the alias): fresh joiners see the current name instead of a stale
+  // generic one, and the rejoin-by-name window converges. From pairing
+  // on the name is frozen for the session — the hand-off below copies
+  // lan_beacon_name_ to the game, whose loss re-beacon repeats it
+  // verbatim, so the name a client tapped and remembered can't drift.
+  if (!lan_announce_.peer_engaged()) {
+    std::string name = NetLan::local_host_name();
+    if (name != lan_beacon_name_) {
+      lan_beacon_name_ = name;
+      lan_announce_.set_host_name(name);
+    }
   }
   if (!lan_offer_set_ && lan_transport_ &&
       lan_transport_->local_description_ready()) {
@@ -1423,6 +1439,11 @@ void NetLobby::tick(int delta) {
           GLGame *game = new GLGame(session, (SDL_GameController *)0);
           game->net_set_worker_session(used_worker_);
           game->net_apply_peer_attestation(attested_peer_);
+          // The advertised name freezes here for the session: the loss
+          // re-beacon must repeat what a LAN joiner tapped and remembered
+          // (its net_lan_host_name_), not a fresh local_host_name() read
+          // that may have drifted (iOS Game Center alias).
+          game->net_lan_beacon_name_ = lan_beacon_name_;
           if (signal_) {
             game->net_adopt_signal(signal_, room_code_, ice_servers_,
                                    room_token_);
