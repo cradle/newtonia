@@ -248,8 +248,17 @@ listener (`NewtoniaActivity` → `nativeKeyboardFraction`), with the band
 stack lifted clear, the heading/code squeezed upward while lifted, and
 the shown-band count capped to what fits (iPhone landscape: 2).
 Fraction 0 (desktop/no keyboard) reproduces the old layout exactly.
-To re-verify after the lift: the Android host's NAME on the iPhone band
-(possibly just occluded before), and both join directions end-to-end.
+ALL FIELD-VERIFIED same day (2026-07-24), Android↔iOS both directions:
+host/client both ways over the LAN door, the lifted TAP TO JOIN bands
+clear of both keyboards, the squeezed code block no longer crowding the
+header (a follow-up sat it relative to the topmost band instead of the
+worst-case ceiling), and the in-game "name - platform" identity display
+working both ways (the earlier missing iOS name was Game Center not
+signed in — the claim legitimately carries no name then; the fallback
+now shows the beaconed device name, e.g. "IPHONE - IOS", instead of a
+bare role label). Also fixed on the way: the spectating badge printed
+exactly on the touch RETURN TO MENU text (hoisted above the band's
+whole glyph reach).
 The same field session surfaced two lobby bugs, both fixed: (1) the
 own-old-room clipboard probe wedged CodeEntry on iOS — the phone's own
 auto-copied join link (from an earlier hosting run, surviving app
@@ -257,7 +266,8 @@ restarts via the persisted last-hosted pref) kept walking the screen
 into the 8 s "THAT LOOKS LIKE YOUR OWN OLD ROOM" probe, hiding the LAN
 rows and blocking typing; the probe is now HELD while LAN rows are
 listed/warming (like the blob hold) and a failed probe marks the code
-dead so it can never loop. (2) In-game identity showed bare role labels
+dead so it can never loop (fix field-verified same day). (2) In-game
+identity showed bare role labels
 instead of the peer's claimed name/platform on a LAN pairing: the
 session was left ONLINE-strict — on the host because the relay room
 stays open as a rejoin door after the LAN door wins, on the client
