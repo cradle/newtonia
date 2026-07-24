@@ -5010,10 +5010,14 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     // it is re-armed — an extra shot (and shoot sound) every snapshot
     // while the trigger is held.
     int shot_cooldown = 0;
+    int shot_burst_pending = 0;  // burst shots still owed by the current pull
     int shock_cooldown = -1;  // -1: the selected primary is not a Shock
     if (!ship->primary_weapons.empty()) {
       Weapon::Default *dw = dynamic_cast<Weapon::Default *>(*ship->primary);
-      if (dw) shot_cooldown = dw->cooldown();
+      if (dw) {
+        shot_cooldown = dw->cooldown();
+        shot_burst_pending = dw->burst_pending();
+      }
       Weapon::Shock *sw = dynamic_cast<Weapon::Shock *>(*ship->primary);
       if (sw) shock_cooldown = sw->get_cooldown();
     }
@@ -5084,9 +5088,13 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       }
       ship->shoot(armed_shoot);
       ship->fire_secondary(armed_secondary);
-      if (shot_cooldown > 0 && !ship->primary_weapons.empty()) {
+      if ((shot_cooldown > 0 || shot_burst_pending > 0) &&
+          !ship->primary_weapons.empty()) {
         Weapon::Default *dw = dynamic_cast<Weapon::Default *>(*ship->primary);
-        if (dw) dw->set_cooldown(shot_cooldown);
+        if (dw) {
+          if (shot_cooldown > 0) dw->set_cooldown(shot_cooldown);
+          dw->set_burst_pending(shot_burst_pending);
+        }
       }
       ship->rotation_scale = analog_rot;
       ship->thrust_analog = analog_thrust;
@@ -6167,7 +6175,7 @@ void GLGame::tick(int delta) {
           if(roll < extra_life_drop_chance) {
             pickups->push_back(new ExtraLife((*oi)->position));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance) {
-            int weapon_index = rand() % 15;
+            int weapon_index = rand() % Ship::num_weapon_variants();
             pickups->push_back(new WeaponPickup((*oi)->position, weapon_index));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance) {
             pickups->push_back(new MinePickup((*oi)->position));

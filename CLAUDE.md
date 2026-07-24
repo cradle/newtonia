@@ -304,7 +304,7 @@ There are three states:
 
 | File | Weapon | Notes |
 |------|--------|-------|
-| `weapon/default` | Default gun | Automatic/semi-auto; `level` controls accuracy; `time_between_shots` |
+| `weapon/default` | Default gun | Automatic/semi-auto; `level` controls accuracy; `time_between_shots`; burst variants (`burst_count` > 1 in `weapon_configs`) fire a semi-auto N-shot burst per trigger pull at `burst_interval` ms spacing, one ammo per shot — a started burst completes even if the trigger is released, and cancels when the magazine runs dry |
 | `weapon/mine` | Mine | Deployable, limited ammo, large blast |
 | `weapon/giga_mine` | Giga Mine | Larger blast than mine |
 | `weapon/missile` | Missile | Homing AI; `set_asteroids()` / `set_ship_targets()`; seeks via `query_segment()` |

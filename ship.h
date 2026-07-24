@@ -173,6 +173,9 @@ class Ship : public CompositeObject {
     void previous_weapon();
     void next_secondary_weapon();
     void add_weapon(int weapon_index);
+    // Number of rows in the primary-gun variant table (valid weapon_index
+    // range for add_weapon and the generic weapon pickup roll).
+    static int num_weapon_variants();
     void add_mine_ammo(int amount);
     void add_giga_mine_ammo(int amount);
     void add_missile_ammo(int amount);
