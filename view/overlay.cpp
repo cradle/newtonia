@@ -48,14 +48,18 @@ float Overlay::safe_inset_top() {
   return (forced > 0.0f) ? forced : s_safe_inset[0];
 }
 
+// The cutout's top inset in Typer virtual units: the HUD ortho spans
+// ±viewport pixels (so one physical pixel = two ortho units) and Typer
+// coords are multiplied by Typer::scale — hence px * 2 / scale.
+static float safe_inset_top_v() {
+  return Overlay::safe_inset_top() * 2.0f / Typer::scale;
+}
+
 // The top-anchored HUD row's y anchor in Typer virtual units: the title-safe
-// top, pulled down by the cutout inset. The HUD ortho spans ±viewport pixels
-// (so one physical pixel = two ortho units) and Typer coords are multiplied
-// by Typer::scale — hence px * 2 / scale to convert.
+// top, pulled down by the cutout inset.
 static float top_hud_y(const GLGame *glgame) {
   float vh = Typer::scaled_window_height / glgame->num_y_viewports();
-  return vh - 20 - Overlay::CORNER_INSET -
-         Overlay::safe_inset_top() * 2.0f / Typer::scale;
+  return vh - 20 - Overlay::CORNER_INSET - safe_inset_top_v();
 }
 
 // Full-screen text layered over the online game view (one full-screen
@@ -514,17 +518,20 @@ static void key_hint(int key, char *out, size_t n, const char *verb) {
 void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   Ship* p1 = glgame->players->front()->ship;
   if(glgame->players->size() < 2) {
+    // -40 (not -10): a real margin inside the title-safe edge, matching the
+    // bottom-row hints (Xbox compliance) — pulled down further by the
+    // cutout inset so this row stays aligned with the LEVEL/score/weapons
+    // row below the camera notch.
+    float top_y = Typer::scaled_window_height - 40 - safe_inset_top_v();
     if((glgame->current_time/1400) % 2) {
       if(p1->is_alive() || p1->lives > 0) {
         if(!is_touch_mode()) {
-          // -40 (not -10): a real margin inside the title-safe edge,
-          // matching the bottom-row hints (Xbox compliance).
           if(glgame->has_free_controller())
-            Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-40, "player 2 press start to join", 8);
+            Typer::draw_centered(Typer::scaled_window_width/2, top_y, "player 2 press start to join", 8);
 #ifndef _GAMING_XBOX
           // Keyboard join hint — on Xbox the only join path is a second controller.
           else if(!is_steam_gamemode())
-            Typer::draw_centered(Typer::scaled_window_width/2, Typer::scaled_window_height-40, "player 2 press enter to join", 8);
+            Typer::draw_centered(Typer::scaled_window_width/2, top_y, "player 2 press enter to join", 8);
 #endif
         }
       } else if(!is_touch_mode()) {
@@ -537,10 +544,10 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
       char hint[48];
       if(glship->show_help) {
         key_hint(glship->help_key.primary(), hint, sizeof(hint), "hide");
-        Typer::draw_centered(-1*Typer::scaled_window_width/2, Typer::scaled_window_height-40, hint, 8);
+        Typer::draw_centered(-1*Typer::scaled_window_width/2, top_y, hint, 8);
       } else if ((glgame->current_time)/12000 % 2) {
         key_hint(glship->help_key.primary(), hint, sizeof(hint), "show");
-        Typer::draw_centered(-1*Typer::scaled_window_width/2, Typer::scaled_window_height-40, hint, 8);
+        Typer::draw_centered(-1*Typer::scaled_window_width/2, top_y, hint, 8);
       }
     }
   } else {
