@@ -220,8 +220,17 @@ is set in `ios/Info.plist` for the one-time iOS 14+ local-network
 permission prompt the first beacon triggers; if the user declines it,
 the OS silently drops broadcast (Settings → Privacy → Local Network
 to re-enable) — same failure shape as the pre-entitlement stub, so
-field-test with the prompt accepted. On-device verification (phone
-discovers desktop host / phone hosts, desktop joins) still pending.
+field-test with the prompt accepted. FIELD-VERIFIED (2026-07-24),
+hosting direction: iPhone hosted, desktop discovered + joined over the
+LAN door. The beacon showed the "NEWTONIA" fallback (iOS gethostname()
+is a useless "localhost", same disease as Android's) — fixed by
+`ios_device_name.mm` exporting UIDevice's name over the same
+`NEWTONIA_DEVICE_NAME` env bridge; note iOS 16+ returns the generic
+"iPhone" there unless the Apple-approval-gated
+`com.apple.developer.device-information.user-assigned-device-name`
+entitlement is granted (request like multicast was, if "IPHONE" ever
+grates). Remaining untested on iOS: the join direction (desktop hosts,
+phone's TAP TO JOIN band).
 FIELD-VERIFIED (2026-07-20), both directions: Android phone hosted,
 desktop discovered and joined over the LAN door; and desktop hosted,
 the phone's TAP TO JOIN band appeared and joined. The beacon carries
