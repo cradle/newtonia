@@ -27,11 +27,20 @@ and to be plugged in / paired; `make ios-install` auto-picks the first
 connected device, or set `IOS_DEVICE=<name-or-udid>`. **Plug the phone
 in for the first `make ios` too** — a team that has only ever deployed
 via TestFlight has no registered development devices, and the build
-registers the connected phone on the portal automatically
-(`-allowProvisioningDeviceRegistration`); with no device connected that
-first build fails with "Your team has no devices". (Manual fallback:
-add the UDID at https://developer.apple.com/account/resources/devices/list
-— Finder shows it when you click the device's info line.) Debug builds sign
+targets the connected phone (`platform=iOS,id=<udid>`, falling back to
+`generic/platform=iOS` with none attached) precisely so
+`-allowProvisioningDeviceRegistration` has a device to register; with
+no phone connected that first build fails with "Your team has no
+devices". Manual fallback if auto-registration balks (e.g. Developer
+Mode still off): print the UDID with
+
+```bash
+xcrun devicectl list devices --json-output /tmp/devs.json >/dev/null && \
+  python3 -c "import json; [print(d['deviceProperties'].get('name'), d.get('hardwareProperties',{}).get('udid')) for d in json.load(open('/tmp/devs.json'))['result']['devices']]"
+```
+
+and add it at https://developer.apple.com/account/resources/devices/list,
+then re-run `make ios` (the generic build then provisions fine). Debug builds sign
 with `EntitlementsDev.plist` (Game Center sandbox, universal links, and
 the multicast entitlement for LAN discovery), and netplay defines/libs
 are passed automatically — the manual Build Settings wiring that used to

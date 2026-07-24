@@ -276,11 +276,20 @@ ios-deps-check:
 
 ios: ios-deps-check
 	cd ios && xcodegen generate
+	@set -e; \
+	DEST="generic/platform=iOS"; \
+	JSON=$$(mktemp); \
+	if xcrun devicectl list devices --json-output "$$JSON" >/dev/null 2>&1; then \
+	  UDID=$$(python3 -c "import json,sys;ds=json.load(open(sys.argv[1]))['result']['devices'];u=lambda d:d.get('hardwareProperties',{}).get('udid') or '';c=[d for d in ds if d.get('connectionProperties',{}).get('tunnelState')=='connected'];print(next((u(d) for d in c+ds if u(d)),''))" "$$JSON"); \
+	  if [ -n "$$UDID" ]; then DEST="platform=iOS,id=$$UDID"; fi; \
+	fi; \
+	rm -f "$$JSON"; \
+	echo "Build destination: $$DEST"; \
 	xcodebuild build \
 	  -project ios/Newtonia-iOS.xcodeproj \
 	  -scheme Newtonia \
 	  -configuration $(IOS_CONFIG) \
-	  -destination "generic/platform=iOS" \
+	  -destination "$$DEST" \
 	  -derivedDataPath $(IOS_DERIVED) \
 	  -allowProvisioningUpdates \
 	  -allowProvisioningDeviceRegistration \
