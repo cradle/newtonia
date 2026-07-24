@@ -13,14 +13,17 @@
 using namespace std;
 
 namespace Weapon {
-  Default::Default(Ship *ship, bool automatic, int level, float accuracy, int time_between_shots, int weapon_index) :
+  Default::Default(Ship *ship, bool automatic, int level, float accuracy, int time_between_shots, int weapon_index, int burst_count, int burst_interval) :
     Base(ship),
     automatic(automatic),
     accuracy(accuracy),
     time_until_next_shot(0),
     time_between_shots(time_between_shots),
     level(level),
-    _weapon_index(weapon_index) {
+    _weapon_index(weapon_index),
+    burst_count(burst_count > 1 ? burst_count : 1),
+    burst_interval(burst_interval),
+    burst_shots_left(0) {
       stringstream temp_name;
       temp_name << "PEW PEW";
       if(level == 5) {
@@ -42,6 +45,9 @@ namespace Weapon {
       }
       if(automatic) {
         temp_name << " AUTO";
+      }
+      if(this->burst_count > 1) {
+        temp_name << " BURST";
       }
       _name = temp_name.str();
 
@@ -77,10 +83,19 @@ namespace Weapon {
 
   void Default::step(int delta) {
     time_until_next_shot -= delta;
+    // A started burst finishes on its own clock: the semi-auto disarm in
+    // fire_shot() ends the trigger PULL, not the burst, and releasing the
+    // trigger mid-burst must not cancel the shots already owed.
+    while(burst_shots_left > 0 && time_until_next_shot <= 0) {
+      burst_shots_left--;
+      fire();
+      time_until_next_shot += burst_shots_left > 0 ? burst_interval : time_between_shots;
+    }
     if(shooting) {
-    	while(time_until_next_shot <= 0) {
+    	while(shooting && time_until_next_shot <= 0) {
+    	  if(burst_count > 1) burst_shots_left = burst_count - 1;
     	  fire();
-    	  time_until_next_shot += time_between_shots;
+    	  time_until_next_shot += burst_shots_left > 0 ? burst_interval : time_between_shots;
     	}
     }
   }
@@ -92,6 +107,7 @@ namespace Weapon {
     bool sim_only = ship->net_remote_gun;
     if(!unlimited) {
       if(_ammo == 0) {
+        burst_shots_left = 0;  // dead trigger clicks once, not per burst shot
         if(empty_sound != NULL && !sim_only) {
           Mix_PlayChannel(-1, empty_sound, 0);
         }

@@ -343,29 +343,38 @@ struct WeaponConfig {
   int level;
   float accuracy;
   int time_between_shots;
+  int burst_count;     // > 1: semi-auto burst — one pull fires this many shots
+  int burst_interval;  // ms between the shots of one burst
 };
 
 // The slow semi-auto rows (no hold-to-fire AND a >100ms re-press limit —
 // row 6) are retired from the random drop pool (Ship::random_drop_weapon_index)
 // but must stay in the table: savegames and netplay snapshots store
 // weapon_index as an index into this array, so rows can never shift or
-// disappear.
+// disappear — append new variants at the end, never reorder.
 static const WeaponConfig weapon_configs[] = {
-  { false, 1, 0.1f, 100 },   // 0
-  { false, 2, 0.1f, 100 },   // 1
-  { false, 3, 0.1f, 100 },   // 2
-  { false, 4, 0.1f, 100 },   // 3
-  { false, 5, 0.1f, 100 },   // 4
-  { false, 0, 0.1f,  50 },   // 5
-  { false, 0, 0.0f, 200 },   // 6
-  { true,  0, 0.1f, 100 },   // 7
-  { true,  1, 0.1f, 100 },   // 8
-  { true,  2, 0.1f, 100 },   // 9
-  { true,  3, 0.1f, 100 },   // 10
-  { true,  4, 0.1f, 100 },   // 11
-  { true,  5, 0.1f, 100 },   // 12
-  { true,  0, 0.1f,  50 },   // 13
-  { true,  0, 0.0f, 200 },   // 14
+  { false, 1, 0.1f, 100, 1,  0 },   // 0
+  { false, 2, 0.1f, 100, 1,  0 },   // 1
+  { false, 3, 0.1f, 100, 1,  0 },   // 2
+  { false, 4, 0.1f, 100, 1,  0 },   // 3
+  { false, 5, 0.1f, 100, 1,  0 },   // 4
+  { false, 0, 0.1f,  50, 1,  0 },   // 5
+  { false, 0, 0.0f, 200, 1,  0 },   // 6
+  { true,  0, 0.1f, 100, 1,  0 },   // 7
+  { true,  1, 0.1f, 100, 1,  0 },   // 8
+  { true,  2, 0.1f, 100, 1,  0 },   // 9
+  { true,  3, 0.1f, 100, 1,  0 },   // 10
+  { true,  4, 0.1f, 100, 1,  0 },   // 11
+  { true,  5, 0.1f, 100, 1,  0 },   // 12
+  { true,  0, 0.1f,  50, 1,  0 },   // 13
+  { true,  0, 0.0f, 200, 1,  0 },   // 14
+  { false, 0, 0.1f, 100, 3, 40 },   // 15  PEW PEW BURST
+  { false, 0, 0.0f, 100, 3, 40 },   // 16  PEW PEW POINT BURST
+  { false, 1, 0.1f, 100, 3, 40 },   // 17  PEW PEW 2 BURST (twin barrel)
+  { false, 2, 0.1f, 100, 3, 40 },   // 18  PEW PEW 3 BURST
+  { false, 3, 0.1f, 100, 3, 40 },   // 19  PEW PEW 4 BURST
+  { false, 4, 0.1f, 100, 3, 40 },   // 20  PEW PEW 5 BURST
+  { false, 5, 0.1f, 100, 3, 40 },   // 21  PEW PEW SCATTER BURST
 };
 
 static const int num_weapon_configs = sizeof(weapon_configs) / sizeof(weapon_configs[0]);
@@ -400,7 +409,7 @@ void Ship::add_weapon(int weapon_index) {
     }
   }
 
-  primary_weapons.push_back(new Weapon::Default(this, cfg.automatic, cfg.level, cfg.accuracy, cfg.time_between_shots, weapon_index));
+  primary_weapons.push_back(new Weapon::Default(this, cfg.automatic, cfg.level, cfg.accuracy, cfg.time_between_shots, weapon_index, cfg.burst_count, cfg.burst_interval));
   if(!in_god_mode && !auto_shooting) {
     if (primary != primary_weapons.end()) {
       record_primary_selection();
@@ -970,7 +979,8 @@ void Ship::restore_state(const Save::Player &p, const Grid &grid) {
       } else {
         const WeaponConfig &cfg = weapon_configs[we.weapon_index];
         w = new Weapon::Default(this, cfg.automatic, cfg.level, cfg.accuracy,
-                                cfg.time_between_shots, we.weapon_index);
+                                cfg.time_between_shots, we.weapon_index,
+                                cfg.burst_count, cfg.burst_interval);
         w->set_ammo(we.ammo);
       }
       primary_weapons.push_back(w);
