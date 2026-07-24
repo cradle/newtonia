@@ -167,9 +167,14 @@ gdb -batch -ex run -ex "bt 20" --args ./newtonia > gdb.log 2>&1 &
   as a cheat, so achievements stay suppressed for that game.
 - Weapon testing: `NEWTONIA_ALL_WEAPONS=1 ./newtonia` grants every player the
   full arsenal (all primary gun variants + all secondaries) at 999 rounds,
-  re-granted on each respawn (`Ship::give_all_weapons`). God mode is excluded
+  re-granted on each respawn (`Ship::give_all_weapons`). A numeric value > 1
+  sets the rounds instead (`NEWTONIA_ALL_WEAPONS=30` — quick drain tests for
+  the low-ammo warning / exhausted-weapon switch). God mode is excluded
   (it hijacks the primary slot). Flagged as a cheat, so achievements stay
-  suppressed for that game.
+  suppressed for that game. The grant only fires when the arsenal is bare
+  (base gun only, no secondaries) — a RESUMED save's ship never qualifies, so
+  test from a fresh NEW GAME (mind the "New game?" confirm: NO is the
+  default).
 
 ### macOS App Bundle
 ```sh
@@ -337,7 +342,7 @@ All inherit from `Pickup` base class (`pickup.h`). Each pickup implements `draw(
 
 **Drop chances** (per asteroid death, constants in `glgame.cpp`): extra_life 0.3125%, weapon 1.25%, mine 1.25%, giga_mine 0.5%, missile 1.25%, shield 1.25%, god_mode 0.25%, beam 0.375%, lance 0.25%, shock 0.3125%. **Revive** is a separate 10% roll ahead of that table, active only while some player is fully out of lives with a partner still in it, and capped at one in the world at a time; collecting it sets the fallen partner's `lives = 1` and restarts their respawn countdown (`GLGame::revive_fallen_partner`), which online replicates like any respawn and ends the spectator flow by itself.
 
-**Debug cheat** — `NEWTONIA_ALL_WEAPONS=1` grants every primary (all default variants + Beam + Lance + Shock) and every secondary at 999 rounds on spawn and after each respawn (`Ship::give_all_weapons`, re-granted from `GLGame::tick`). It flags the game as cheated (`Achievements::note_cheat_used()` in both `GLGame` constructors) so no achievements or lifetime stats count, and that flag rides the savegame (`GameState::cheated`) so save/resume can't launder it.
+**Debug cheat** — `NEWTONIA_ALL_WEAPONS=1` grants every primary (all default variants + Beam + Lance + Shock) and every secondary at 999 rounds on spawn and after each respawn (`Ship::give_all_weapons`, re-granted from `GLGame::tick`; a numeric value > 1 sets the rounds instead, e.g. `NEWTONIA_ALL_WEAPONS=30` for quick drain tests). It flags the game as cheated (`Achievements::note_cheat_used()` in both `GLGame` constructors) so no achievements or lifetime stats count, and that flag rides the savegame (`GameState::cheated`) so save/resume can't launder it.
 
 ### Asteroid Special Types
 

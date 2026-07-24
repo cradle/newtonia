@@ -217,8 +217,14 @@ GLGame::GLGame(SDL_GameController *controller) :
   run_id_ = Replay::new_run_id();
   // NEWTONIA_ALL_WEAPONS: debug cheat granting the full arsenal each life.
   // Suppress achievements for the game like the other cheat paths (XR-057).
+  // A numeric value > 1 sets the rounds per weapon (NEWTONIA_ALL_WEAPONS=30
+  // makes drain tests quick); =1 or non-numeric keeps the 999 default.
   all_weapons_cheat = (SDL_getenv("NEWTONIA_ALL_WEAPONS") != NULL);
-  if(all_weapons_cheat) Achievements::note_cheat_used();
+  if(all_weapons_cheat) {
+    Achievements::note_cheat_used();
+    int v = atoi(SDL_getenv("NEWTONIA_ALL_WEAPONS"));
+    if(v > 1) all_weapons_ammo = v;
+  }
   if(controller != NULL) {
     object->set_controller(controller);
   }
@@ -487,8 +493,13 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   replay_resume_candidate_ = save.run_id != 0;
   run_id_ = save.run_id != 0 ? save.run_id : Replay::new_run_id();
   // NEWTONIA_ALL_WEAPONS: debug cheat granting the full arsenal each life.
+  // Numeric value > 1 = rounds per weapon (see the new-game constructor).
   all_weapons_cheat = (SDL_getenv("NEWTONIA_ALL_WEAPONS") != NULL);
-  if(all_weapons_cheat) Achievements::note_cheat_used();
+  if(all_weapons_cheat) {
+    Achievements::note_cheat_used();
+    int v = atoi(SDL_getenv("NEWTONIA_ALL_WEAPONS"));
+    if(v > 1) all_weapons_ammo = v;
+  }
 
   enemies = new std::list<GLShip*>;
   players = new std::list<GLShip*>;
@@ -6035,7 +6046,7 @@ void GLGame::tick(int delta) {
       for(o = players->begin(); o != players->end(); o++) {
         Ship* s = (*o)->ship;
         if(s->is_alive() && s->primary_weapons.size() <= 1 && s->secondary_weapons.empty())
-          s->give_all_weapons(999);
+          s->give_all_weapons(all_weapons_ammo);
       }
     }
 
