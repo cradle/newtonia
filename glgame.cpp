@@ -1918,11 +1918,13 @@ void GLGame::net_refresh_join_banner() {
   std::string prev = net_banner_text_;
   if (net_mode_ == NetHost)
     net_banner_text_ =
-        net_identity_name_or(net_peer_identity_, "PLAYER 2", net_id_ctx()) +
+        net_identity_name_or(net_peer_identity_, net_peer_fallback().c_str(),
+                             net_id_ctx()) +
         " JOINED";
   else if (net_mode_ == NetClient)
     net_banner_text_ = "JOINED " +
-        net_identity_name_or(net_peer_identity_, "PLAYER 1", net_id_ctx()) +
+        net_identity_name_or(net_peer_identity_, net_peer_fallback().c_str(),
+                             net_id_ctx()) +
         " SERVER";
   else
     return;
@@ -2279,7 +2281,8 @@ void GLGame::net_host_rejoin_session_update(int delta) {
       // Name the rejoiner when their identity is known ("GLENN
       // RECONNECTED"); a legacy peer keeps the plain text.
       net_banner_text_ =
-          net_identity_name_or(net_peer_identity_, "PLAYER 2", net_id_ctx()) +
+          net_identity_name_or(net_peer_identity_, net_peer_fallback().c_str(),
+                               net_id_ctx()) +
           " RECONNECTED";
       net_banner_ms_ = 3000;      // the JOINED/LEFT notices' duration
       NET_LOG("net: banner '%s' %d ms\n", net_banner_text_.c_str(), net_banner_ms_);

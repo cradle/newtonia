@@ -279,6 +279,18 @@ private:
   NetIdentityCtx net_id_ctx() const {
     return net_worker_session_ ? NET_ID_ONLINE : NET_ID_OFFLINE;
   }
+  // Fallback label when the peer's claim carries no renderable name
+  // (badge-only identity — e.g. an iOS host with no Game Center
+  // sign-in). The client of a LAN-door session knows the host's
+  // beaconed device name — the name it tapped to join, and the rejoin
+  // identity — which beats a bare role label ("IPHONE - IOS" instead of
+  // "PLAYER 1 - IOS"). Everywhere else the role label stands (the host
+  // never learns the client's device name; beacons are host->joiner).
+  std::string net_peer_fallback() const {
+    if (net_mode_ == NetClient && !net_lan_host_name_.empty())
+      return net_lan_host_name_;
+    return net_mode_ == NetClient ? "PLAYER 1" : "PLAYER 2";
+  }
   // Called by the lobby (a friend) right after construction: fold the
   // worker's peer attestation into net_peer_identity_ and record whether a
   // worker was in the session (see net_worker_session_). Both run AFTER the
