@@ -644,6 +644,16 @@ void NetLobby::lan_host_update(int delta) {
   lan_transport_->set_remote_answer(sdp);
   session_ = new NetSession(lan_transport_, NetSession::HostRole);
   lan_transport_ = nullptr;  // owned by the session now
+  // Identity display context follows HOW THE PEER WAS PAIRED — through
+  // the local beacon door, i.e. net_identity.h's offline carve-out (the
+  // claimed name/platform render as-is, like the manual-clipboard flow).
+  // The relay room kept open above is a rejoin door, not what paired
+  // this peer, and used_worker_ may be stale-true from it; a worker
+  // attestation that arrives later still upgrades the fields. Field-hit
+  // 2026-07-24: the Android host suppressed the iOS peer's claim to
+  // role labels because the open room left the session ONLINE-strict.
+  used_worker_ = false;
+  attested_peer_ = NetIdentity();
   screen_ = WaitConnect;
   connect_wait_ms_ = 0;
 }
@@ -690,6 +700,14 @@ void NetLobby::lan_join_update(int delta) {
         delete signal_;
         signal_ = nullptr;
       }
+      // Worker-less pairing → offline identity context (net_identity.h):
+      // the host's claimed name/platform render as-is. used_worker_ may
+      // be stale-true from an earlier relay attempt in this SAME lobby
+      // visit — field-hit 2026-07-24 (iOS): the own-old-room clipboard
+      // probe joined the worker, failed, and its leftover flag made the
+      // following LAN join render the Android host as a bare role label.
+      used_worker_ = false;
+      attested_peer_ = NetIdentity();
       transport_->set_trickle(false);
       transport_->set_lan_only(true);
       transport_->start_join(Net::strip_ice_candidates(sdp));
@@ -1146,7 +1164,14 @@ void NetLobby::tick(int delta) {
       join_wait_ms_ = 0;
       fail_headline_ = own_room_probe_ ? "NO ONE IS HOSTING THAT ROOM"
                                        : "THE HOST IS NOT RESPONDING";
-      if (own_room_probe_) set_status("THAT LOOKS LIKE YOUR OWN OLD ROOM");
+      if (own_room_probe_) {
+        set_status("THAT LOOKS LIKE YOUR OWN OLD ROOM");
+        // The probed room never answered — remember it dead so the
+        // clipboard auto-join can't walk back into the same 8 s probe on
+        // the next CodeEntry visit (the iOS wedge: the phone's own old
+        // link stays on the clipboard indefinitely).
+        mark_room_dead(code_entry_);
+      }
       own_room_probe_ = false;
       screen_ = LobbyFailed;
     }
@@ -1268,6 +1293,22 @@ void NetLobby::tick(int delta) {
         if (ok && !code_clip_explicit_ &&
             (code == s_last_hosted_code || room_is_dead(code)))
           ok = false;
+        // An own-room-SUSPECT auto-join (matches the persisted
+        // last-hosted pref; probed below) walks the screen into an 8 s
+        // RoomJoining probe — no LAN rows, no typing while it runs.
+        // While LAN hosts are listed (or browse is still warming) hold
+        // it exactly like the blob hold above: the row tap is the better
+        // outcome, and on desktop the 800 ms repoll re-offers the code
+        // if no host ever shows (the touch single read just skips this
+        // visit). Field-hit on iOS: the phone's OWN old link, still on
+        // the clipboard from an earlier hosting session, wedged
+        // CodeEntry in a probe/fail loop while the Android host's
+        // beacon had no row to land on.
+        if (ok && !code_clip_explicit_ && code == g_prefs.last_hosted_code &&
+            lan_hold) {
+          NET_LOG("[lobby] own-room code on clipboard held - lan rows first\n");
+          ok = false;
+        }
         // A code matching only the PERSISTED last-hosted pref is
         // ambiguous: another live instance on this machine hosting right
         // now (the prefs INI is shared — mac host + mac client on one

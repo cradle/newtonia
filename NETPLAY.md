@@ -244,6 +244,21 @@ the shown-band count capped to what fits (iPhone landscape: 2).
 Fraction 0 (desktop/no keyboard) reproduces the old layout exactly.
 To re-verify after the lift: the Android host's NAME on the iPhone band
 (possibly just occluded before), and both join directions end-to-end.
+The same field session surfaced two lobby bugs, both fixed: (1) the
+own-old-room clipboard probe wedged CodeEntry on iOS — the phone's own
+auto-copied join link (from an earlier hosting run, surviving app
+restarts via the persisted last-hosted pref) kept walking the screen
+into the 8 s "THAT LOOKS LIKE YOUR OWN OLD ROOM" probe, hiding the LAN
+rows and blocking typing; the probe is now HELD while LAN rows are
+listed/warming (like the blob hold) and a failed probe marks the code
+dead so it can never loop. (2) In-game identity showed bare role labels
+instead of the peer's claimed name/platform on a LAN pairing: the
+session was left ONLINE-strict — on the host because the relay room
+stays open as a rejoin door after the LAN door wins, on the client
+because the failed probe's worker join left used_worker_ stale-true.
+Both LAN adoption points now reset to the offline identity context
+(claims render, per net_identity.h's carve-out — pairing came through
+the local beacon; a later worker attestation still upgrades fields).
 FIELD-VERIFIED (2026-07-20), both directions: Android phone hosted,
 desktop discovered and joined over the LAN door; and desktop hosted,
 the phone's TAP TO JOIN band appeared and joined. The beacon carries
