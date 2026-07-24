@@ -228,9 +228,15 @@ is a useless "localhost", same disease as Android's) — fixed by
 `NEWTONIA_DEVICE_NAME` env bridge; note iOS 16+ returns the generic
 "iPhone" there unless the Apple-approval-gated
 `com.apple.developer.device-information.user-assigned-device-name`
-entitlement is granted (request like multicast was, if "IPHONE" ever
-grates; the first fixed build beaconed "IPHONE", confirming the generic
-path). Join direction (Android hosted, iPhone joining — a first for
+entitlement is granted (the first fixed build beaconed "IPHONE",
+confirming the generic path). Entitlement request SUBMITTED to Apple
+2026-07-24 (developer.apple.com/contact/request/user-assigned-device-name,
+app id 6760685759). Once granted: enable the capability on the App ID +
+regenerate the provisioning profile (and refresh the TestFlight
+PROVISIONING_PROFILE_BASE64 secret), then add
+`com.apple.developer.device-information.user-assigned-device-name`
+(bool true) to `ios/Entitlements.plist` + `ios/EntitlementsDev.plist` —
+no code change, `ios_device_name.mm` already reads UIDevice.name. Join direction (Android hosted, iPhone joining — a first for
 that pairing): the iPhone DID discover the host, but its TAP TO JOIN
 band drew under the soft keyboard — iPhone landscape keyboards cover
 ~60% of the screen (~y 120 in Typer units), far above the S25-measured
