@@ -475,10 +475,15 @@ void Overlay::remote_badge(const GLGame *glgame, const GLShip *glship) {
       glgame->net_id_ctx());
   if (badge.empty()) return;  // legacy peer: no badge, no placeholder
   // Bottom row like the SPECTATING hint, clear of the touch RETURN TO MENU
-  // band and the title-safe margin; hoisted above SPECTATING when the
-  // camera is on the peer (that's exactly when the tag matters most).
+  // band and the title-safe margin; hoisted when the camera is on the peer
+  // (that's exactly when the tag matters most). The spectating hoist must
+  // clear the WHOLE exit band, not just the SPECTATING text: the band's
+  // glyph box tops out ~-370 (anchor -420, size 13, pad 50, to_bottom
+  // below), and the old +175 spot printed the badge exactly on the band's
+  // RETURN TO MENU text (field: iPhone, 2026-07-24). +255 sits above the
+  // band's reach with air to spare.
   float vhb = -Typer::scaled_window_height / glgame->num_y_viewports();
-  float y = glgame->is_spectating() ? vhb + 175.0f : vhb + 130.0f;
+  float y = glgame->is_spectating() ? vhb + 255.0f : vhb + 130.0f;
   Typer::draw_centered(0, y, badge.c_str(), 11);
 }
 
