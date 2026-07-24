@@ -193,7 +193,7 @@ Output layout (see `web/README.md`): the marketing landing page (`web/site/`, in
 ### Android
 ```sh
 make android          # Copy audio assets + build debug APK (app-debug.apk)
-make android-install  # Build + install onto a connected device / emulator (adb)
+make android-install  # Build + install + (re)launch on a connected device / emulator (adb)
 # or, directly:
 cd android && ./gradlew assembleDebug
 ```

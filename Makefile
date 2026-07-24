@@ -226,10 +226,14 @@ android: android-assets
 	cd $(ANDROID_DIR) && ./gradlew assembleDebug
 	@echo "APK: $(ANDROID_APK)"
 
-# Build and install the debug APK onto a connected device / running emulator
-# (requires adb to see exactly one target).
+# Build, install AND (re)launch the debug APK on a connected device /
+# running emulator — the same build-run loop as `make ios-install`
+# (requires adb to see exactly one target; ANDROID_SERIAL=<serial>
+# selects one when several are attached, adb's own convention).
 android-install: android-assets
 	cd $(ANDROID_DIR) && ./gradlew installDebug
+	adb shell am force-stop org.newtonia
+	adb shell am start -n org.newtonia/.NewtoniaActivity
 
 android-clean:
 	cd $(ANDROID_DIR) && ./gradlew clean
