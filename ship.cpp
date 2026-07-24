@@ -368,6 +368,10 @@ static const WeaponConfig weapon_configs[] = {
   { false, 0, 0.1f, 100, 3, 40 },   // 15  PEW PEW BURST
   { false, 0, 0.0f, 100, 3, 40 },   // 16  PEW PEW POINT BURST
   { false, 1, 0.1f, 100, 3, 40 },   // 17  PEW PEW 2 BURST (twin barrel)
+  { false, 2, 0.1f, 100, 3, 40 },   // 18  PEW PEW 3 BURST
+  { false, 3, 0.1f, 100, 3, 40 },   // 19  PEW PEW 4 BURST
+  { false, 4, 0.1f, 100, 3, 40 },   // 20  PEW PEW 5 BURST
+  { false, 5, 0.1f, 100, 3, 40 },   // 21  PEW PEW SCATTER BURST
 };
 
 static const int num_weapon_configs = sizeof(weapon_configs) / sizeof(weapon_configs[0]);
