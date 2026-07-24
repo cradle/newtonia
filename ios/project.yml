@@ -96,6 +96,11 @@ targets:
           # signature the worker attests the ACCOUNT with (game_center_verify.js).
           - "NEWTONIA_NET_IDENTITY_BACKEND=1"
           - "NEWTONIA_NET_VERIFY_BACKEND=1"
+          # LAN discovery (net_lan.cpp): the Apple multicast entitlement is
+          # granted, so the raw-UDP beacon backend is on. Needs the
+          # com.apple.developer.networking.multicast entitlement in the
+          # signing entitlements (Entitlements*.plist) to work on device.
+          - "NEWTONIA_LAN_IOS=1"
           - "$(NEWTONIA_NET_DEFINE)"
           # Compile-time signaling-worker override (net_signal.cpp). Empty for a
           # plain build (baked production URL); deploy-ios's `signal_worker: beta`
@@ -111,6 +116,7 @@ targets:
             - "GAME_CENTER_BUILD=1"
             - "NEWTONIA_NET_IDENTITY_BACKEND=1"
             - "NEWTONIA_NET_VERIFY_BACKEND=1"
+            - "NEWTONIA_LAN_IOS=1"
             - "DEBUG=1"
             - "$(NEWTONIA_NET_DEFINE)"
             - "$(NEWTONIA_SIGNAL_DEFINE)"

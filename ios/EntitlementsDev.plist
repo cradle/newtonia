@@ -19,5 +19,11 @@
     <array>
         <string>applinks:newtonia.metonymous.com</string>
     </array>
+
+    <!-- LAN discovery broadcast (net_lan.cpp); needs the App ID's
+         Multicast Networking capability + a regenerated profile, see
+         Entitlements.plist. -->
+    <key>com.apple.developer.networking.multicast</key>
+    <true/>
 </dict>
 </plist>

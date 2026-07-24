@@ -201,20 +201,27 @@ point — a phone must discover a desktop host, which mDNS/NSD could
 not): `NewtoniaActivity` holds a `MulticastLock` while foreground
 (CHANGE_WIFI_MULTICAST_STATE, install-time grant) so the wifi driver
 delivers beacons, and `beacon_dests()` walks interfaces via
-SIOCGIFCONF there (getifaddrs needs API 24; minSdk is 21). **iOS is
-compiled but OFF behind `NEWTONIA_LAN_IOS`**: receiving/sending
-broadcast needs the Apple-gated multicast entitlement — request it at
-developer.apple.com/contact/request/networking-multicast, then, once
-Apple grants it, (a) enable the **Multicast Networking** capability on
-the `cc.gfm.newtonia` App ID in the developer portal (Certificates,
-Identifiers & Profiles → the App ID → Capabilities) so the provisioning
-profile carries it, (b) add `com.apple.developer.networking.multicast`
-(bool true) to `ios/Entitlements.plist` + `ios/EntitlementsDev.plist`,
-(c) add `NEWTONIA_LAN_IOS` to the defines in `ios/project.yml`, and it
-lights up with no code change. Until then iOS keeps the stub (available()
-false) so the visibility line never lies. LAN sessions currently reach
-touch devices only in that pending iOS case and on Android.
-Entitlement request SUBMITTED to Apple 2026-07-20 (app id 6760685759).
+SIOCGIFCONF there (getifaddrs needs API 24; minSdk is 21). **iOS runs
+the same backend behind `NEWTONIA_LAN_IOS` (ON since 2026-07-24)**:
+receiving/sending broadcast needs the Apple-gated multicast entitlement
+(requested at developer.apple.com/contact/request/networking-multicast
+2026-07-20, app id 6760685759; GRANTED 2026-07-24). What that took:
+(a) the **Multicast Networking** capability enabled on the
+`cc.gfm.newtonia` App ID in the developer portal (Certificates,
+Identifiers & Profiles → the App ID → Capabilities) **and the
+provisioning profile regenerated** so it carries the entitlement —
+portal-side, redo after any profile reset; (b)
+`com.apple.developer.networking.multicast` (bool true) in
+`ios/Entitlements.plist` + `ios/EntitlementsDev.plist`; (c)
+`NEWTONIA_LAN_IOS` in the defines in `ios/project.yml` (base + Debug
+lists — the Debug config restates base). No code change — the stub
+was only ever the entitlement gate. `NSLocalNetworkUsageDescription`
+is set in `ios/Info.plist` for the one-time iOS 14+ local-network
+permission prompt the first beacon triggers; if the user declines it,
+the OS silently drops broadcast (Settings → Privacy → Local Network
+to re-enable) — same failure shape as the pre-entitlement stub, so
+field-test with the prompt accepted. On-device verification (phone
+discovers desktop host / phone hosts, desktop joins) still pending.
 FIELD-VERIFIED (2026-07-20), both directions: Android phone hosted,
 desktop discovered and joined over the LAN door; and desktop hosted,
 the phone's TAP TO JOIN band appeared and joined. The beacon carries

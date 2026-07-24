@@ -26,5 +26,13 @@
     <array>
         <string>applinks:newtonia.metonymous.com</string>
     </array>
+
+    <!-- LAN discovery (net_lan.cpp, NEWTONIA_LAN_IOS): raw UDP broadcast
+         beacons need this Apple-approval-gated entitlement (granted for
+         app id 6760685759). The App ID's Multicast Networking capability
+         must be enabled in the developer portal and the provisioning
+         profile regenerated, or signing rejects this entitlement. -->
+    <key>com.apple.developer.networking.multicast</key>
+    <true/>
 </dict>
 </plist>
