@@ -6167,7 +6167,7 @@ void GLGame::tick(int delta) {
           if(roll < extra_life_drop_chance) {
             pickups->push_back(new ExtraLife((*oi)->position));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance) {
-            int weapon_index = rand() % 15;
+            int weapon_index = Ship::random_drop_weapon_index();
             pickups->push_back(new WeaponPickup((*oi)->position, weapon_index));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance) {
             pickups->push_back(new MinePickup((*oi)->position));
