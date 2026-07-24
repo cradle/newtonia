@@ -193,7 +193,8 @@ void Overlay::net_overlays(const GLGame *glgame) {
     // A LAN-door session has no code — the reopened beacon is the way
     // back, so say that instead.
     std::string who =
-        net_identity_name_or(glgame->net_peer_identity_, "PLAYER 2",
+        net_identity_name_or(glgame->net_peer_identity_,
+                             glgame->net_peer_fallback().c_str(),
                              glgame->net_id_ctx());
     Typer::draw_centered(0, vh * 0.80f, (who + " DISCONNECTED").c_str(), 20);
     if (glgame->net_signal_) {
@@ -218,7 +219,8 @@ void Overlay::net_overlays(const GLGame *glgame) {
       // pause overlay's "Paused" at y=30 — both show when the host
       // leaves a paused game.
       std::string who =
-          net_identity_name_or(glgame->net_peer_identity_, "PLAYER 1",
+          net_identity_name_or(glgame->net_peer_identity_,
+                               glgame->net_peer_fallback().c_str(),
                                glgame->net_id_ctx());
       Typer::draw_centered(0, vh * 0.55f, (who + " LEFT THE GAME").c_str(),
                            22);
@@ -469,15 +471,19 @@ void Overlay::remote_badge(const GLGame *glgame, const GLShip *glship) {
   // The badge names the REMOTE player: the client looks at the host
   // (player 1), the host at the client (player 2).
   std::string badge = net_identity_badge_or(
-      glgame->net_peer_identity_,
-      glgame->net_mode_ == GLGame::NetClient ? "PLAYER 1" : "PLAYER 2",
+      glgame->net_peer_identity_, glgame->net_peer_fallback().c_str(),
       glgame->net_id_ctx());
   if (badge.empty()) return;  // legacy peer: no badge, no placeholder
   // Bottom row like the SPECTATING hint, clear of the touch RETURN TO MENU
-  // band and the title-safe margin; hoisted above SPECTATING when the
-  // camera is on the peer (that's exactly when the tag matters most).
+  // band and the title-safe margin; hoisted when the camera is on the peer
+  // (that's exactly when the tag matters most). The spectating hoist must
+  // clear the WHOLE exit band, not just the SPECTATING text: the band's
+  // glyph box tops out ~-370 (anchor -420, size 13, pad 50, to_bottom
+  // below), and the old +175 spot printed the badge exactly on the band's
+  // RETURN TO MENU text (field: iPhone, 2026-07-24). +255 sits above the
+  // band's reach with air to spare.
   float vhb = -Typer::scaled_window_height / glgame->num_y_viewports();
-  float y = glgame->is_spectating() ? vhb + 175.0f : vhb + 130.0f;
+  float y = glgame->is_spectating() ? vhb + 255.0f : vhb + 130.0f;
   Typer::draw_centered(0, y, badge.c_str(), 11);
 }
 

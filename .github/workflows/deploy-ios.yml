@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       signal_worker:
-        description: 'Signaling worker the build points at. beta = staging: the build is pinned to a 0.0.N version train so TestFlight never auto-updates testers onto it (it cannot reach production rooms)'
+        description: 'Signaling worker the build points at. beta = staging: the build is pinned to a sentinel <version>.9xx train (it cannot reach production rooms) — expire it in App Store Connect when the test is done'
         required: true
         default: 'production'
         type: choice
@@ -18,7 +18,7 @@ on:
           - production
           - beta
       version:
-        description: 'Marketing version for a manual build. MUST exceed the latest App Store version AND any in-review version (1.46.1 in review as of 2026-07), or App Store Connect rejects it / collides with the review. Ignored on tag builds (they use the tag).'
+        description: 'Marketing version for a manual build. MUST exceed the latest App Store version AND any in-review version (1.46.5 approved as of 2026-07-24), or App Store Connect rejects it / collides with the review. Ignored on tag builds (they use the tag).'
         required: false
         default: '1.47.0'
         type: string
@@ -206,24 +206,36 @@ jobs:
           # Guard: must be a dotted numeric version. Fall back ABOVE the store
           # version AND any in-review version — App Store Connect rejects a
           # marketing version <= the latest approved one, closes old trains, and
-          # collides with a version in review (1.45.0 shipped, 1.46.1 in review
-          # as of 2026-07; the old 1.0 fallback failed every dispatch build).
+          # collides with a version in review (1.46.5 approved as of
+          # 2026-07-24; the old 1.0 fallback failed every dispatch build).
           if ! echo "$SHORT_VERSION" | grep -qE '^[0-9]+(\.[0-9]+){0,2}$'; then
             SHORT_VERSION="1.47.0"
           fi
           # Beta-worker builds are staging clients (hard-wired to the
           # isolated newtonia-signal-beta worker — their room codes never
-          # resolve against production peers). Uploading one under the
-          # release version would make it the build every TestFlight
-          # tester auto-updates to, indistinguishable from production and
-          # promotable to the App Store from ASC. Pin it to a 0.0.N train
-          # instead: TestFlight never auto-updates onto a LOWER version,
-          # testers opt in to it explicitly from the version list, and it
-          # can never be mistaken for (or submitted as) a release. This
-          # deliberately overrides an explicit `version` input too.
+          # resolve against production peers), so they must never ship as
+          # (or be mistaken for) a release. They used to pin to a 0.0.N
+          # train, which TestFlight never auto-updated testers onto, but
+          # App Store Connect now rejects ANY upload whose marketing
+          # version is below the last APPROVED version ("must contain a
+          # higher version than that of the previously approved version"
+          # — first hit 2026-07-24, 0.0.224 vs approved 1.46.5), so a
+          # below-train version can no longer upload at all. Betas now
+          # ride a sentinel patch train ABOVE the next release instead:
+          # <input major.minor>.9xx (e.g. 1.47.0 -> 1.47.9xx; the 9xx
+          # patch makes it unmistakable in the ASC version list, and the
+          # run number keeps CFBundleVersion unique). Tradeoff: until the
+          # next release ships a higher version, an internal group with
+          # automatic distribution sees the beta as the newest build and
+          # auto-updates onto it — EXPIRE the build in App Store Connect
+          # (TestFlight -> the build -> Expire) once the test is done.
+          # External groups are unaffected (builds reach them only by
+          # explicit assignment). This deliberately overrides an explicit
+          # `version` input's patch component too.
           if [ "${{ github.event.inputs.signal_worker }}" = "beta" ]; then
-            SHORT_VERSION="0.0.${{ github.run_number }}"
-            echo "::warning::signal_worker=beta - version pinned to $SHORT_VERSION (staging train, not auto-updated to testers)"
+            MAJ_MIN=$(echo "$SHORT_VERSION" | cut -d. -f1-2)
+            SHORT_VERSION="$MAJ_MIN.$((900 + ${{ github.run_number }} % 100))"
+            echo "::warning::signal_worker=beta - version pinned to $SHORT_VERSION (staging sentinel train; expire the build in ASC after testing)"
           fi
           echo "::notice::iOS build version $SHORT_VERSION (build ${{ github.run_number }})"
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" newtonia/ios/Info.plist
@@ -290,8 +302,12 @@ jobs:
             PROVISIONING_PROFILE="$PROFILE_UUID" \
             CODE_SIGN_IDENTITY="Apple Distribution"
 
-      - name: Copy audio into app bundle
-        run: cp -r newtonia/audio "Newtonia.xcarchive/Products/Applications/Newtonia.app/audio"
+      # Audio is bundled by the ios/project.yml folder resource (shared with
+      # `make ios`, which needs it inside the signed bundle), so the archive
+      # already contains it — verify instead of copying, so a project.yml
+      # regression fails the deploy here rather than shipping a silent app.
+      - name: Verify audio bundled by the project
+        run: test -f "Newtonia.xcarchive/Products/Applications/Newtonia.app/audio/click.wav"
 
       - name: Export .ipa
         run: |

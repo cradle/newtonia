@@ -56,3 +56,10 @@ xbox/build-*/
 /steamworks_sdk.zip
 ## Netplay prebuilt libs (libdatachannel/WebRTC)
 /netplay-libs/
+## iOS prebuilt deps (build_sdl_deps_ios.sh / build_netplay_deps_ios.sh)
+## and the make ios derived-data dir
+/sdl-libs-ios/
+/sdl-libs-ios-sim/
+/netplay-libs-ios/
+/netplay-libs-ios-sim/
+ios/build/

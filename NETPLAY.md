@@ -201,20 +201,80 @@ point — a phone must discover a desktop host, which mDNS/NSD could
 not): `NewtoniaActivity` holds a `MulticastLock` while foreground
 (CHANGE_WIFI_MULTICAST_STATE, install-time grant) so the wifi driver
 delivers beacons, and `beacon_dests()` walks interfaces via
-SIOCGIFCONF there (getifaddrs needs API 24; minSdk is 21). **iOS is
-compiled but OFF behind `NEWTONIA_LAN_IOS`**: receiving/sending
-broadcast needs the Apple-gated multicast entitlement — request it at
-developer.apple.com/contact/request/networking-multicast, then, once
-Apple grants it, (a) enable the **Multicast Networking** capability on
-the `cc.gfm.newtonia` App ID in the developer portal (Certificates,
-Identifiers & Profiles → the App ID → Capabilities) so the provisioning
-profile carries it, (b) add `com.apple.developer.networking.multicast`
-(bool true) to `ios/Entitlements.plist` + `ios/EntitlementsDev.plist`,
-(c) add `NEWTONIA_LAN_IOS` to the defines in `ios/project.yml`, and it
-lights up with no code change. Until then iOS keeps the stub (available()
-false) so the visibility line never lies. LAN sessions currently reach
-touch devices only in that pending iOS case and on Android.
-Entitlement request SUBMITTED to Apple 2026-07-20 (app id 6760685759).
+SIOCGIFCONF there (getifaddrs needs API 24; minSdk is 21). **iOS runs
+the same backend behind `NEWTONIA_LAN_IOS` (ON since 2026-07-24)**:
+receiving/sending broadcast needs the Apple-gated multicast entitlement
+(requested at developer.apple.com/contact/request/networking-multicast
+2026-07-20, app id 6760685759; GRANTED 2026-07-24). What that took:
+(a) the **Multicast Networking** capability enabled on the
+`cc.gfm.newtonia` App ID in the developer portal (Certificates,
+Identifiers & Profiles → the App ID → Capabilities) **and the
+provisioning profile regenerated** so it carries the entitlement —
+portal-side, redo after any profile reset; (b)
+`com.apple.developer.networking.multicast` (bool true) in
+`ios/Entitlements.plist` + `ios/EntitlementsDev.plist`; (c)
+`NEWTONIA_LAN_IOS` in the defines in `ios/project.yml` (base + Debug
+lists — the Debug config restates base). No code change — the stub
+was only ever the entitlement gate. `NSLocalNetworkUsageDescription`
+is set in `ios/Info.plist` for the one-time iOS 14+ local-network
+permission prompt the first beacon triggers; if the user declines it,
+the OS silently drops broadcast (Settings → Privacy → Local Network
+to re-enable) — same failure shape as the pre-entitlement stub, so
+field-test with the prompt accepted. FIELD-VERIFIED (2026-07-24),
+hosting direction: iPhone hosted, desktop discovered + joined over the
+LAN door. The beacon showed the "NEWTONIA" fallback (iOS gethostname()
+is a useless "localhost", same disease as Android's) — fixed by
+`ios_device_name.mm` exporting UIDevice's name over the same
+`NEWTONIA_DEVICE_NAME` env bridge; note iOS 16+ returns the generic
+"iPhone" there unless the Apple-approval-gated
+`com.apple.developer.device-information.user-assigned-device-name`
+entitlement is granted (the first fixed build beaconed "IPHONE",
+confirming the generic path). Entitlement request SUBMITTED to Apple
+2026-07-24 (developer.apple.com/contact/request/user-assigned-device-name,
+app id 6760685759). Once granted: enable the capability on the App ID +
+regenerate the provisioning profile (and refresh the TestFlight
+PROVISIONING_PROFILE_BASE64 secret), then add
+`com.apple.developer.device-information.user-assigned-device-name`
+(bool true) to `ios/Entitlements.plist` + `ios/EntitlementsDev.plist` —
+no code change, `ios_device_name.mm` already reads UIDevice.name. Join direction (Android hosted, iPhone joining — a first for
+that pairing): the iPhone DID discover the host, but its TAP TO JOIN
+band drew under the soft keyboard — iPhone landscape keyboards cover
+~60% of the screen (~y 120 in Typer units), far above the S25-measured
+fixed band position (~y 48), and Glenn reported even the S25 overlaps
+slightly. Fixed by measuring the real keyboard instead of guessing:
+`soft_keyboard_fraction()` (net_lobby.cpp) fed by UIKit keyboard-frame
+notifications (`ios_keyboard.mm`) and Android's visible-display-frame
+listener (`NewtoniaActivity` → `nativeKeyboardFraction`), with the band
+stack lifted clear, the heading/code squeezed upward while lifted, and
+the shown-band count capped to what fits (iPhone landscape: 2).
+Fraction 0 (desktop/no keyboard) reproduces the old layout exactly.
+ALL FIELD-VERIFIED same day (2026-07-24), Android↔iOS both directions:
+host/client both ways over the LAN door, the lifted TAP TO JOIN bands
+clear of both keyboards, the squeezed code block no longer crowding the
+header (a follow-up sat it relative to the topmost band instead of the
+worst-case ceiling), and the in-game "name - platform" identity display
+working both ways (the earlier missing iOS name was Game Center not
+signed in — the claim legitimately carries no name then; the fallback
+now shows the beaconed device name, e.g. "IPHONE - IOS", instead of a
+bare role label). Also fixed on the way: the spectating badge printed
+exactly on the touch RETURN TO MENU text (hoisted above the band's
+whole glyph reach).
+The same field session surfaced two lobby bugs, both fixed: (1) the
+own-old-room clipboard probe wedged CodeEntry on iOS — the phone's own
+auto-copied join link (from an earlier hosting run, surviving app
+restarts via the persisted last-hosted pref) kept walking the screen
+into the 8 s "THAT LOOKS LIKE YOUR OWN OLD ROOM" probe, hiding the LAN
+rows and blocking typing; the probe is now HELD while LAN rows are
+listed/warming (like the blob hold) and a failed probe marks the code
+dead so it can never loop (fix field-verified same day). (2) In-game
+identity showed bare role labels
+instead of the peer's claimed name/platform on a LAN pairing: the
+session was left ONLINE-strict — on the host because the relay room
+stays open as a rejoin door after the LAN door wins, on the client
+because the failed probe's worker join left used_worker_ stale-true.
+Both LAN adoption points now reset to the offline identity context
+(claims render, per net_identity.h's carve-out — pairing came through
+the local beacon; a later worker attestation still upgrades fields).
 FIELD-VERIFIED (2026-07-20), both directions: Android phone hosted,
 desktop discovered and joined over the LAN door; and desktop hosted,
 the phone's TAP TO JOIN band appeared and joined. The beacon carries

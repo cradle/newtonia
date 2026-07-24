@@ -41,6 +41,8 @@
     <string>13.0</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>This app does not use Bluetooth. This description is required because a third-party library references Bluetooth APIs.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Newtonia looks for co-op games hosted on your local network so you can join them without an internet connection.</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
     <key>UILaunchScreen</key>

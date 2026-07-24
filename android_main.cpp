@@ -19,6 +19,7 @@
 #include "invites.h"
 #include "view/overlay.h"
 
+#include <atomic>
 #include <iostream>
 #include <cmath>
 #include <cstdlib>
@@ -243,6 +244,26 @@ Java_org_newtonia_NewtoniaActivity_nativeAcceptInvite(JNIEnv *env, jclass, jstri
         Invites::note_accepted(c);
         env->ReleaseStringUTFChars(code, c);
     }
+}
+
+// Soft-keyboard coverage for the lobby's CodeEntry layout: NewtoniaActivity's
+// global-layout listener reports how much of the window the soft keyboard
+// covers (0 = hidden), and net_lobby.cpp lifts the LAN "TAP TO JOIN" bands
+// clear of it (the fixed band positions measured on one phone drowned under
+// taller keyboards). Written on the Android UI thread, read on the game
+// thread — hence the atomic.
+static std::atomic<float> s_keyboard_fraction(0.0f);
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_newtonia_NewtoniaActivity_nativeKeyboardFraction(JNIEnv *, jclass, jfloat f) {
+    s_keyboard_fraction.store((float)f, std::memory_order_relaxed);
+}
+
+// Plain C++ linkage on purpose — net_lobby.cpp declares it identically
+// (a C/C++ linkage mismatch across TUs is a known NDK-link bite, see
+// CLAUDE.md's Android build notes).
+float android_keyboard_cover_fraction() {
+    return s_keyboard_fraction.load(std::memory_order_relaxed);
 }
 
 static void finger_up(SDL_FingerID id, float x, float y) {

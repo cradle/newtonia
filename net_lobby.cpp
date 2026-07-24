@@ -23,6 +23,18 @@
 #include "view/overlay.h"
 #include "view/tap_band.h"
 
+#if defined(__ANDROID__)
+// Soft-keyboard coverage backend (android_main.cpp). Declared at file scope,
+// OUTSIDE the anonymous namespace below: an anonymous-namespace declaration
+// gets internal linkage (even with `extern`), so it can never match a
+// definition in another TU — the NDK link fails with an undefined
+// (anonymous namespace)::android_keyboard_cover_fraction(). Plain C++
+// linkage on both sides (a C-vs-C++ linkage mismatch across TUs is the
+// other known NDK-link bite). The iOS twin lives inside the namespace
+// unharmed: extern "C" names ignore namespaces for linkage.
+float android_keyboard_cover_fraction();
+#endif
+
 namespace {
 
 const int WORLD_W = 5000, WORLD_H = 5000;  // starfield extent (as in Menu)
@@ -72,13 +84,72 @@ const TapBand kShareBand(0.5f, -80, 18, 42.0f);
 // Filled BOTTOM-UP — one host uses only the lowest band, sitting in
 // the free space just above the keyboard, well clear of the code
 // (Glenn's S25 screenshot); a full list grows upward toward the
-// compressed slots. The lowest band bottoms out ~y 49: tall phone
-// keyboards reach ~y 48 in Typer units (measured on the S25 — the
-// "half the screen" assumption undershot it).
+// compressed slots. These are the BASE positions (lowest band bottoms
+// out ~y 49); the real keyboard is measured at runtime and the stack
+// lifts clear of it — see lan_band_lift below. Field results that
+// killed the fixed layout: the S25's keyboard reaches ~y 48 (the
+// "half the screen" assumption undershot it, and even the measured
+// position overlapped slightly), and an iPhone landscape keyboard
+// covers ~60% of the screen (~y 120), drowning the lowest band
+// entirely.
 const int kLanBandCount = 3;
 const TapBand kLanBand[kLanBandCount] = {TapBand(0.5f, 225, 18, 12.0f),
                                          TapBand(0.5f, 155, 18, 12.0f),
                                          TapBand(0.5f, 85, 18, 12.0f)};
+const float kLanBandSpacing = 70.0f;  // anchor-to-anchor in kLanBand
+
+// Measured soft-keyboard coverage (fraction of the window height, 0 =
+// hidden/unknown): UIKit keyboard-frame notifications on iOS
+// (ios_keyboard.mm), the activity's visible-display-frame listener on
+// Android (NewtoniaActivity → android_main.cpp). Fraction 0 reproduces
+// the base layout exactly, so platforms without a backend are
+// untouched.
+#if defined(__IOS__)
+extern "C" float ios_keyboard_cover_fraction(void);
+static float soft_keyboard_fraction() { return ios_keyboard_cover_fraction(); }
+#elif defined(__ANDROID__)
+// Backend declared at file scope above this namespace (linkage — see there).
+static float soft_keyboard_fraction() {
+  return android_keyboard_cover_fraction();
+}
+#else
+static float soft_keyboard_fraction() { return 0.0f; }
+#endif
+
+// How far the band stack must rise (Typer units) so the lowest band
+// clears the measured keyboard. 0 with no (or a low-enough) keyboard.
+// Fractions under 0.15 are ignored — a visible nav/gesture bar shrinks
+// the Android visible frame a few percent without any keyboard up.
+static float lan_band_lift() {
+  float f = soft_keyboard_fraction();
+  if (f < 0.15f) return 0.0f;
+  const TapBand &low = kLanBand[kLanBandCount - 1];
+  float band_bottom = (low.y - low.size) - (low.size + low.pad);
+  float kb_top = (2.0f * f - 1.0f) * Typer::scaled_window_height;
+  float lift = kb_top + 12.0f - band_bottom;
+  return lift > 0.0f ? lift : 0.0f;
+}
+
+// How many bands fit between the lifted stack's bottom and the code
+// slots. The draw side compresses the heading/slots upward whenever a
+// lift is active (slots y 345 size 28 → glyphs reach y 289), so the
+// ceiling here matches that squeezed layout.
+static int lan_bands_fit(float lift) {
+  if (lift <= 0.0f) return kLanBandCount;
+  const TapBand &low = kLanBand[kLanBandCount - 1];
+  float band_top0 = (low.y - low.size) + (low.size + low.pad) + lift;
+  int fit = 1 + (int)((285.0f - band_top0) / kLanBandSpacing);
+  if (fit < 1) fit = 1;
+  if (fit > kLanBandCount) fit = kLanBandCount;
+  return fit;
+}
+
+// The band at kLanBand[idx] raised by the active lift — ONE geometry
+// feeding both draw and hit-test, preserving the TapBand invariant.
+static TapBand lan_band_at(int idx, float lift) {
+  const TapBand &b = kLanBand[idx];
+  return TapBand(b.nx, b.y + lift, b.size, b.pad);
+}
 
 // CodeEntry controller picker: the code alphabet as a grid under the
 // code slots (desktop layout — touch uses the soft keyboard instead).
@@ -583,6 +654,16 @@ void NetLobby::lan_host_update(int delta) {
   lan_transport_->set_remote_answer(sdp);
   session_ = new NetSession(lan_transport_, NetSession::HostRole);
   lan_transport_ = nullptr;  // owned by the session now
+  // Identity display context follows HOW THE PEER WAS PAIRED — through
+  // the local beacon door, i.e. net_identity.h's offline carve-out (the
+  // claimed name/platform render as-is, like the manual-clipboard flow).
+  // The relay room kept open above is a rejoin door, not what paired
+  // this peer, and used_worker_ may be stale-true from it; a worker
+  // attestation that arrives later still upgrades the fields. Field-hit
+  // 2026-07-24: the Android host suppressed the iOS peer's claim to
+  // role labels because the open room left the session ONLINE-strict.
+  used_worker_ = false;
+  attested_peer_ = NetIdentity();
   screen_ = WaitConnect;
   connect_wait_ms_ = 0;
 }
@@ -629,6 +710,14 @@ void NetLobby::lan_join_update(int delta) {
         delete signal_;
         signal_ = nullptr;
       }
+      // Worker-less pairing → offline identity context (net_identity.h):
+      // the host's claimed name/platform render as-is. used_worker_ may
+      // be stale-true from an earlier relay attempt in this SAME lobby
+      // visit — field-hit 2026-07-24 (iOS): the own-old-room clipboard
+      // probe joined the worker, failed, and its leftover flag made the
+      // following LAN join render the Android host as a bare role label.
+      used_worker_ = false;
+      attested_peer_ = NetIdentity();
       transport_->set_trickle(false);
       transport_->set_lan_only(true);
       transport_->start_join(Net::strip_ice_candidates(sdp));
@@ -1085,7 +1174,14 @@ void NetLobby::tick(int delta) {
       join_wait_ms_ = 0;
       fail_headline_ = own_room_probe_ ? "NO ONE IS HOSTING THAT ROOM"
                                        : "THE HOST IS NOT RESPONDING";
-      if (own_room_probe_) set_status("THAT LOOKS LIKE YOUR OWN OLD ROOM");
+      if (own_room_probe_) {
+        set_status("THAT LOOKS LIKE YOUR OWN OLD ROOM");
+        // The probed room never answered — remember it dead so the
+        // clipboard auto-join can't walk back into the same 8 s probe on
+        // the next CodeEntry visit (the iOS wedge: the phone's own old
+        // link stays on the clipboard indefinitely).
+        mark_room_dead(code_entry_);
+      }
       own_room_probe_ = false;
       screen_ = LobbyFailed;
     }
@@ -1207,6 +1303,22 @@ void NetLobby::tick(int delta) {
         if (ok && !code_clip_explicit_ &&
             (code == s_last_hosted_code || room_is_dead(code)))
           ok = false;
+        // An own-room-SUSPECT auto-join (matches the persisted
+        // last-hosted pref; probed below) walks the screen into an 8 s
+        // RoomJoining probe — no LAN rows, no typing while it runs.
+        // While LAN hosts are listed (or browse is still warming) hold
+        // it exactly like the blob hold above: the row tap is the better
+        // outcome, and on desktop the 800 ms repoll re-offers the code
+        // if no host ever shows (the touch single read just skips this
+        // visit). Field-hit on iOS: the phone's OWN old link, still on
+        // the clipboard from an earlier hosting session, wedged
+        // CodeEntry in a probe/fail loop while the Android host's
+        // beacon had no row to land on.
+        if (ok && !code_clip_explicit_ && code == g_prefs.last_hosted_code &&
+            lan_hold) {
+          NET_LOG("[lobby] own-room code on clipboard held - lan rows first\n");
+          ok = false;
+        }
         // A code matching only the PERSISTED last-hosted pref is
         // ambiguous: another live instance on this machine hosting right
         // now (the prefs INI is shared — mac host + mac client on one
@@ -1511,12 +1623,33 @@ void NetLobby::draw() {
         // the code block compresses upward so three finger-sized bands
         // fit above the soft keyboard (see kLanBand).
         const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
-        int show =
-            (int)lh.size() > kLanBandCount ? kLanBandCount : (int)lh.size();
+        float lift = lan_band_lift();
+        int fit = lan_bands_fit(lift);
+        int show = (int)lh.size() > fit ? fit : (int)lh.size();
         if (show > 0) {
-          // Clear of the ONLINE CO-OP title (glyphs reach ~y 400).
-          Typer::draw_centered(0, 375, "ENTER THE ROOM CODE", 14);
-          Typer::draw_centered(0, 315, slots.c_str(), 34);
+          if (lift > 0.0f) {
+            // The measured keyboard reaches above the base band stack
+            // (iPhone landscape ~60% coverage) — the heading and code
+            // move up so the lifted bands have room underneath. Sit them
+            // RELATIVE to the topmost visible band rather than at the
+            // worst-case fixed spot: with one host row there is ~100
+            // units of free air, and parking the code at the ceiling
+            // crowded the ONLINE CO-OP header (field report). Clamped to
+            // the old fixed position (345) so a tall keyboard + full
+            // band list never pushes into the header.
+            const TapBand &low = kLanBand[kLanBandCount - 1];
+            float stack_top = (low.y - low.size) + (low.size + low.pad) +
+                              lift + (show - 1) * kLanBandSpacing;
+            float slots_y = stack_top + 76.0f;  // glyphs reach 2*28 down
+            if (slots_y > 345.0f) slots_y = 345.0f;
+            Typer::draw_centered(0, slots_y + 50.0f, "ENTER THE ROOM CODE",
+                                 12);
+            Typer::draw_centered(0, slots_y, slots.c_str(), 28);
+          } else {
+            // Clear of the ONLINE CO-OP title (glyphs reach ~y 400).
+            Typer::draw_centered(0, 375, "ENTER THE ROOM CODE", 14);
+            Typer::draw_centered(0, 315, slots.c_str(), 34);
+          }
         } else {
           Typer::draw_centered(0, 360, "ENTER THE ROOM CODE", sz);
           Typer::draw_centered(0, 230, slots.c_str(), 48);
@@ -1528,7 +1661,7 @@ void NetLobby::draw() {
                   ? "TAP TO JOIN " + lh[i].name
                   : lh[i].name + " - DIFFERENT VERSION";
           // Bottom-up fill: host 0 takes the LOWEST band.
-          kLanBand[kLanBandCount - show + i].draw(label.c_str());
+          lan_band_at(kLanBandCount - show + i, lift).draw(label.c_str());
         }
       } else {
         // Heading + code live in the top half: the Steam Deck's floating
@@ -2125,11 +2258,12 @@ void NetLobby::touch_tap(float nx, float ny) {
       // mismatch taps through to the explanatory status message.
       {
         const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
-        int show =
-            (int)lh.size() > kLanBandCount ? kLanBandCount : (int)lh.size();
+        float lift = lan_band_lift();
+        int fit = lan_bands_fit(lift);
+        int show = (int)lh.size() > fit ? fit : (int)lh.size();
         for (int i = 0; i < show; i++) {
-          // Mirror of the draw's bottom-up fill.
-          if (kLanBand[kLanBandCount - show + i].contains(nx, ny)) {
+          // Mirror of the draw's bottom-up fill (and its keyboard lift).
+          if (lan_band_at(kLanBandCount - show + i, lift).contains(nx, ny)) {
             lan_sel_ = i;
             lan_join_selected();
             return;

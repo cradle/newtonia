@@ -190,9 +190,18 @@ static void finger_motion(SDL_FingerID id, float x, float y) {
 // ============================================================
 // SDL2 main
 // ============================================================
+// LAN beacon name (net_lan.cpp): defined in ios_device_name.mm, a
+// Point-free TU (this file must not import UIKit — see the share-sheet
+// note above finger_up).
+extern "C" void ios_export_device_name(void);
+
 extern "C" int SDL_main(int argc, char *argv[]) {
     (void)argc; (void)argv;
     srand(time(NULL));
+
+    // Export the device name for the LAN discovery beacon before any
+    // state can open the lobby (same env bridge as Android).
+    ios_export_device_name();
 
     // Lock orientation to landscape before any window is created
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");

@@ -3,13 +3,14 @@
 // 3; NewtoniaActivity holds a MulticastLock so the wifi driver delivers
 // broadcast). One wire protocol everywhere is the point: a phone must
 // discover a DESKTOP host, so mDNS/Bonjour backends would need a second
-// advertise+browse stack on every platform. iOS has the same code but
-// stays opt-in behind NEWTONIA_LAN_IOS until the Apple-gated multicast
-// entitlement (com.apple.developer.networking.multicast) is granted —
-// without it iOS silently drops broadcast both ways, and the lobby's
-// "VISIBLE ON THIS NETWORK" line would lie. Web/Xbox compile the no-op
-// stubs (available() false) so the lobby needs no ifdefs — the same
-// pattern as invites/presence.
+// advertise+browse stack on every platform. iOS runs the same code
+// behind NEWTONIA_LAN_IOS (set by ios/project.yml since Apple granted
+// the multicast entitlement, 2026-07-24): broadcast only works when the
+// signing entitlements carry com.apple.developer.networking.multicast
+// (ios/Entitlements*.plist) — without it iOS silently drops broadcast
+// both ways, and the lobby's "VISIBLE ON THIS NETWORK" line would lie.
+// Web/Xbox compile the no-op stubs (available() false) so the lobby
+// needs no ifdefs — the same pattern as invites/presence.
 
 #include "net_lan.h"
 
