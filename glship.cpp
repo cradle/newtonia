@@ -932,7 +932,14 @@ void GLShip::draw_weapons() const {
         Typer::draw(cx, row_y, "empty", size);
       } else {
         int display_ammo = dynamic_cast<Weapon::GodMode*>(weapon) ? weapon->ammo()/1000 : weapon->ammo();
-        Typer::draw_lefted(cx + 2*cw, row_y, display_ammo, size);
+        // Low-ammo warning: flash the count over the last LOW_AMMO_WARN
+        // rounds (2 Hz) so a gun running dry is visible before the
+        // dry-switch takes it away. GodMode is excluded — its "ammo" is
+        // remaining milliseconds and it has its own countdown indicator.
+        bool low = weapon->ammo() <= Weapon::Base::LOW_AMMO_WARN &&
+                   !dynamic_cast<Weapon::GodMode*>(weapon);
+        if (!low || (SDL_GetTicks() / 250) % 2 == 0)
+          Typer::draw_lefted(cx + 2*cw, row_y, display_ammo, size);
       }
     }
 

@@ -93,6 +93,7 @@ namespace Weapon {
     if(!unlimited) {
       if(_ammo == 0) {
         if(empty_sound != NULL && !sim_only) {
+          Mix_VolumeChunk(empty_sound, MIX_MAX_VOLUME);
           Mix_PlayChannel(-1, empty_sound, 0);
         }
         return;
@@ -101,6 +102,16 @@ namespace Weapon {
         if(shoot_sound != NULL && ship->sound_volume_scale > 0.0f && !sim_only) {
           Mix_VolumeChunk(shoot_sound, (int)(MIX_MAX_VOLUME * ship->sound_volume_scale));
           Mix_PlayChannel(-1, shoot_sound, 0);
+        }
+        // Low-ammo warning: a faint dry-click layered under each of the
+        // last LOW_AMMO_WARN shots, so an automatic running dry is audible
+        // before the dry-switch takes the gun away (the HUD ammo count
+        // flashes over the same range — see GLShip::draw_weapons).
+        if(_ammo <= LOW_AMMO_WARN && empty_sound != NULL &&
+           ship->sound_volume_scale > 0.0f && !sim_only) {
+          Mix_VolumeChunk(empty_sound, (int)(MIX_MAX_VOLUME * 0.35f *
+                                             ship->sound_volume_scale));
+          Mix_PlayChannel(-1, empty_sound, 0);
         }
       }
     } else {

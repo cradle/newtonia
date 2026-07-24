@@ -5005,11 +5005,6 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     bool held_reverse = ship->reversing;
     bool armed_shoot = !ship->primary_weapons.empty() &&
                        (*ship->primary)->is_shooting();
-    // The dry-switch rescue hold (Ship::rescue_hold) is held-input state
-    // too: the semi-auto base gun self-disarms after every shot, so at
-    // most applies armed_shoot reads false and the shoot(false) re-arm
-    // below would end the rescue ~100 ms after it began.
-    bool held_rescue = ship->rescue_hold;
     // Fire cooldown of the selected primary: the restore rebuilds the
     // weapon list with fresh objects, and a fresh weapon fires the instant
     // it is re-armed — an extra shot (and shoot sound) every snapshot
@@ -5089,7 +5084,6 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       }
       ship->shoot(armed_shoot);
       ship->fire_secondary(armed_secondary);
-      ship->rescue_hold = held_rescue;
       if (shot_cooldown > 0 && !ship->primary_weapons.empty()) {
         Weapon::Default *dw = dynamic_cast<Weapon::Default *>(*ship->primary);
         if (dw) dw->set_cooldown(shot_cooldown);

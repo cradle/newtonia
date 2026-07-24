@@ -1982,7 +1982,6 @@ void Ship::record_primary_fired() {
 }
 
 void Ship::shoot(bool on) {
-  if(!on) rescue_hold = false;  // trigger released: end any dry-switch rescue
   if(primary_weapons.empty()) return;
   if((*primary)->empty() && on) {
     // Firing an empty limited primary (beam/lance/shock) drops it from the
@@ -2528,31 +2527,15 @@ void Ship::step(float delta, const Grid &grid) {
     // shoot() only runs on press edges, so its exhausted-weapon drop was
     // unreachable with the button held down. Drop it the moment it empties
     // and hand the still-held trigger to the fallback weapon: an automatic
-    // fallback keeps firing seamlessly, a semi-auto fires the carried-over
-    // shot. Runs identically on the host's remote-gun sim (its ammo
-    // bookkeeping mirrors the client's), so the rosters converge.
+    // fallback keeps firing seamlessly, a semi-auto fires one carried-over
+    // shot (then per-pull as always — the low-ammo warning in
+    // Weapon::Default::fire is what buys the pilot time to plan). Runs
+    // identically on the host's remote-gun sim (its ammo bookkeeping
+    // mirrors the client's), so the rosters converge.
     if(primary != primary_weapons.end() && (*primary)->empty() &&
        (*primary)->is_shooting()) {
       drop_exhausted_primary();
       if(primary != primary_weapons.end()) {
-        if(!(*primary)->is_automatic() && (*primary)->is_unlimited())
-          rescue_hold = true;
-        record_primary_fired();
-        (*primary)->shoot(true);
-      }
-    }
-    // Rescue hold: the dry-switch above landed on the semi-auto base gun,
-    // which self-disarms after every shot — a held trigger would fire once
-    // and go dead mid-fight. Keep re-arming it at its own shot interval
-    // until the trigger is released (shoot(false) clears the flag) or the
-    // selection moves off the unlimited gun (pickup, manual cycle). Limited
-    // semi-autos (beam/lance/shock) are deliberately excluded: auto-draining
-    // precision ammo the player never tapped for is worse than stopping.
-    if(rescue_hold) {
-      if(primary == primary_weapons.end() || (*primary)->is_automatic() ||
-         !(*primary)->is_unlimited()) {
-        rescue_hold = false;
-      } else if(!(*primary)->is_shooting()) {
         record_primary_fired();
         (*primary)->shoot(true);
       }
