@@ -257,7 +257,13 @@ the hand-off copies it to `GLGame::net_lan_beacon_name_` and the loss
 re-beacon repeats it verbatim (never a fresh `local_host_name()` read),
 so it always equals the `net_lan_host_name_` the client tapped and
 remembered. A fresh host re-reads, so alias changes (or a Game Center
-account switch) reach new sessions only. Join direction (Android hosted, iPhone joining — a first for
+account switch) reach new sessions only. The LAN rejoin wait screen
+also draws the live browse rows (same bands/rows and inputs as
+CodeEntry; `lan_rejoin_browsing()` gates confirm/nav/tap) — the
+remembered name still auto-joins the instant it reappears, and the
+rows are the manual escape hatch when the host comes back under a
+DIFFERENT name (re-signed into Game Center, or the sub-second
+tap-vs-rename race) instead of riding out the 60 s budget. Join direction (Android hosted, iPhone joining — a first for
 that pairing): the iPhone DID discover the host, but its TAP TO JOIN
 band drew under the soft keyboard — iPhone landscape keyboards cover
 ~60% of the screen (~y 120 in Typer units), far above the S25-measured

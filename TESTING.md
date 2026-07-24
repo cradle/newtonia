@@ -123,6 +123,11 @@ test/e2e/lanrejoin.sh # LAN mid-game rejoin, both directions, no relay:
                      # then SIGKILL the host -> the client auto-browses for
                      # the host NAME and re-pairs into a freshly launched
                      # host's game (2nd bootstrap).
+test/e2e/lanrename.sh # LAN rejoin vs a RENAMED host (NEWTONIA_DEVICE_NAME
+                     # override): the client browses for the old name, a
+                     # fresh host beacons a different one -> auto-rejoin
+                     # must NOT fire, the rejoin wait screen lists the
+                     # live rows, and a manual Down+Enter joins it.
 test/e2e/rejoin.sh   # SIGKILL joiner mid-game -> auto-pause -> rejoin -> resume
 test/e2e/impacts.sh  # gen-3 spin-and-fire: joiner detects cosmetic impacts locally
 test/e2e/ownroom.sh  # shared-prefs auto-join probe (mac host+client on one box)

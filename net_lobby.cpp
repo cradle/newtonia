@@ -555,6 +555,10 @@ void NetLobby::confirm() {
     } else {
       set_status("THE CODE IS 5 LETTERS");
     }
+  } else if (lan_rejoin_browsing() && lan_sel_ >= 0) {
+    // Enter/A on a highlighted row of the rejoin wait screen (see draw's
+    // RoomJoining case): join it instead of waiting out the budget.
+    lan_join_selected();
   } else if (screen_ == LobbyFailed) {
     // A policy-blocked account gets no chooser: HOST and JOIN would both
     // refuse with the same headline, an infinite dead-end — back to the
@@ -782,6 +786,12 @@ void NetLobby::lan_rejoin_restart(const char *why) {
   lan_browse_ms_ = 0;
   screen_ = RoomJoining;
   set_status("RECONNECTING");
+}
+
+// The LAN rejoin wait screen is showing its live host rows (see draw's
+// RoomJoining case) and nothing is committed yet — rows are selectable.
+bool NetLobby::lan_rejoin_browsing() const {
+  return screen_ == RoomJoining && lan_rejoin_ && !lan_joining_ && !session_;
 }
 
 // A host row on CodeEntry was chosen (Enter on the highlight).
@@ -1791,6 +1801,48 @@ void NetLobby::draw() {
         snprintf(left, sizeof(left), "GIVING UP IN %d",
                  rejoin_budget_ms_ > 0 ? rejoin_budget_ms_ / 1000 + 1 : 0);
         lines.push_back(left);
+        // LAN rejoin: the browse is live the whole wait, so show what it
+        // hears. The remembered name still auto-joins the instant it
+        // reappears; the rows are the manual escape hatch for a host
+        // that comes back under a DIFFERENT name (re-signed into Game
+        // Center, or the beacon renamed in the tap-vs-rename window) —
+        // or for joining someone else instead of riding out the budget.
+        // Same layout and inputs as the CodeEntry rows (tap bands on
+        // touch, highlight + Enter/A elsewhere — see lan_rejoin_browsing
+        // in confirm/nav_input/touch_tap).
+        if (lan_rejoin_ && !lan_joining_) {
+          const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
+          if (is_touch_mode()) {
+            float lift = lan_band_lift();
+            int fit = lan_bands_fit(lift);
+            int show = (int)lh.size() > fit ? fit : (int)lh.size();
+            if (show > 0) y = -120;  // the bands own the y 49..225 strip
+            for (int i = 0; i < show; i++) {
+              std::string label =
+                  lh[i].proto == Net::PROTO_VERSION
+                      ? "TAP TO JOIN " + lh[i].name
+                      : lh[i].name + " - DIFFERENT VERSION";
+              lan_band_at(kLanBandCount - show + i, lift).draw(label.c_str());
+            }
+          } else {
+            int show = lan_rows_shown();
+            if (show > 0) {
+              Typer::draw_centered(0, -110, "ON THIS NETWORK", 12);
+              for (int i = 0; i < show; i++) {
+                std::string row = (lan_sel_ == i ? "> " : "  ") + lh[i].name;
+                if (lh[i].proto != Net::PROTO_VERSION)
+                  row += " - DIFFERENT VERSION";
+                Typer::draw_centered(0, -160.0f - (float)i * 46.0f,
+                                     row.c_str(), lan_sel_ == i ? 18 : 14);
+              }
+              Typer::draw_centered(0, -174.0f - (float)show * 46.0f,
+                                   controller_seen_
+                                       ? "UP/DOWN AND A TO JOIN"
+                                       : "UP/DOWN AND ENTER TO JOIN",
+                                   10);
+            }
+          }
+        }
       } else if (lan_joining_) {
         lines.push_back(("JOINING " + lan_host_name_).c_str());
         lines.push_back("ON THIS NETWORK");
@@ -2036,10 +2088,14 @@ void NetLobby::nav_input(unsigned char key) {
     case 'w':
     case 'W':
       if (screen_ == Choose && selection_ > 0) selection_--;
+      else if (lan_rejoin_browsing() && lan_sel_ >= 0)
+        lan_sel_--;  // -1 = nothing highlighted
       break;
     case 's':
     case 'S':
       if (screen_ == Choose && selection_ < 1) selection_++;
+      else if (lan_rejoin_browsing() && lan_sel_ < lan_rows_shown() - 1)
+        lan_sel_++;
       break;
     case ' ':
     case '\r':
@@ -2306,6 +2362,24 @@ void NetLobby::touch_tap(float nx, float ny) {
         // rides along in the text for manual entry.
         net_share_text("Join my Newtonia co-op game: " + net_join_url(room_code_) +
                        "  (room code: " + room_code_ + ")");
+      break;
+    case RoomJoining:
+      // The rejoin wait screen's live host rows (see draw): the manual
+      // escape hatch when the host came back under a different name.
+      if (lan_rejoin_browsing()) {
+        const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
+        float lift = lan_band_lift();
+        int fit = lan_bands_fit(lift);
+        int show = (int)lh.size() > fit ? fit : (int)lh.size();
+        for (int i = 0; i < show; i++) {
+          // Mirror of the draw's bottom-up fill.
+          if (lan_band_at(kLanBandCount - show + i, lift).contains(nx, ny)) {
+            lan_sel_ = i;
+            lan_join_selected();
+            return;
+          }
+        }
+      }
       break;
     case LobbyFailed:
       confirm();  // same as ENTER: back to the choose screen
