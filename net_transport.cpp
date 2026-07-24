@@ -78,7 +78,7 @@ static void selftest_sleep(int ms) {
 // Drives a full host/join handshake and a bidirectional echo over both
 // channels using only the public NetTransport interface — the same calls
 // the lobby and game will make.
-bool net_selftest() {
+static bool net_selftest_attempt() {
   NetTransport* host = NetTransport::create();
   NetTransport* join = NetTransport::create();
   if (!host || !join) {
@@ -161,6 +161,20 @@ bool net_selftest() {
   delete host;
   delete join;
   return pass;
+}
+
+bool net_selftest() {
+  // The loopback ICE handshake can flake on CI runners: offer and answer
+  // ready in ~100 ms, then the connect wait times out with neither side
+  // failed (seen on windows-latest). A fresh transport pair gets fresh
+  // sockets and a fresh ICE session, so retry before failing the gate.
+  const int ATTEMPTS = 3;
+  for (int attempt = 1; attempt <= ATTEMPTS; ++attempt) {
+    if (attempt > 1)
+      SDL_Log("net_selftest: retrying (attempt %d/%d)", attempt, ATTEMPTS);
+    if (net_selftest_attempt()) return true;
+  }
+  return false;
 }
 
 #endif /* NEWTONIA_NET_RTC */
