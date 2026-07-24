@@ -332,10 +332,14 @@ NetLobby::~NetLobby() {
     delete signal_;
   }
   // Cancel any verification ticket still outstanding (the one warmed on open
-  // if we never joined, or a spent one). Safe here: the lobby's one identity
-  // send has long since been validated, and clearing the cache means an
-  // in-game host reclaim re-warms rather than re-sending a cancelled ticket.
-  net_release_verify_credentials();
+  // if we never joined, or a spent one) — but ONLY when this lobby ends the
+  // netplay chain (backed out / failed to the menu). On a hand-off the GLGame
+  // owns the credential lifetime: a host-reclaim re-attest needs the warmed
+  // ticket (releasing here shipped every reclaim announce credential-less),
+  // and on a fast ICE connect the hand-off can beat the worker's validation
+  // round-trip, so cancelling here could invalidate a ticket still in
+  // flight. ~GLGame mops up at the true end of the chain.
+  if (!handed_off_to_game_) net_release_verify_credentials();
   delete starfield;  // owned; heap + GPU buffers leak per lobby visit otherwise
 }
 
@@ -373,6 +377,13 @@ void NetLobby::reset_to_choose() {
 }
 
 void NetLobby::leave_to_menu() {
+  // The hand-off to GLGame is committed once handed_off_to_game_ is set:
+  // an input landing in the one-frame window before the StateManager
+  // swap would overwrite next_state (request_state_change reassigns
+  // without deleting), leaking the constructed game with its live
+  // session — and, for a host, send_close would kill the room the game
+  // is about to own. Ignore the exit; the swap happens next tick.
+  if (handed_off_to_game_) return;
   code_entry_keyboard(false);
   floating_kb_up_ = false;
   // Host abandoning the room: kill it at the relay now, or its code stays
@@ -876,6 +887,14 @@ void NetLobby::pump_signal(int delta) {
         break;
       case NetSignal::Event::PeerLeave:
         set_status("PLAYER 2 LEFT THE ROOM");
+        // The departed joiner's attestation leaves with them (the worker
+        // nulls its copy in drop_joiner for the same reason): a DIFFERENT
+        // player can take the slot, and if their own verify fails or their
+        // platform has no verifier, a kept attested_peer_ would be folded
+        // onto them at hand-off — the replacement would wear the previous
+        // joiner's attested name and badge for the whole game. The new
+        // joiner's announce re-attests through the worker as usual.
+        attested_peer_ = NetIdentity();
         // The room drops its stored offer with the joiner; put ours back
         // so the next joiner gets it replayed.
         if (hosting_ && transport_ && transport_->local_description_ready())
@@ -1297,6 +1316,7 @@ void NetLobby::tick(int delta) {
                                    room_token_);
             signal_ = nullptr;
           }
+          handed_off_to_game_ = true;  // credential lifetime moves to the game
           request_state_change(game);
           return;
         }
@@ -1364,6 +1384,7 @@ void NetLobby::tick(int delta) {
         // remembers the code — it is the rejoin identity (round 4).
         game->net_lan_host_name_ = lan_host_name_;
         game->net_apply_extras(in, s);
+        handed_off_to_game_ = true;  // credential lifetime moves to the game
         request_state_change(game);
         return;
       }
