@@ -242,10 +242,13 @@ void Menu::draw() {
         Typer::draw(-180, y, "OLDER VERSION", 13);
       }
     }
-    if (touch) {
+    if (touch)
       Typer::draw_centered(0, -270, "TAP A RUN TO WATCH IT", 12);
-      TapBand::return_to_menu.draw("RETURN TO MENU", currentTime);
-    }
+    // Bottom exit band on BOTH layouts (the lobby's convention): desktop
+    // labels the key but stays tappable — the Steam Deck runs the desktop
+    // layout and touch needs a way out (field report 2026-07-25).
+    TapBand::return_to_menu.draw(
+        touch ? "RETURN TO MENU" : "ESC - BACK TO MENU", currentTime);
   } else if (options_mode_) {
     bool touch = is_touch_mode();
     Typer::draw_centered(0, touch ? 340 : 368, "OPTIONS", touch ? 30 : 26);
@@ -299,10 +302,11 @@ void Menu::draw() {
       Typer::draw(VALUE_X, y, lbl[cur_idx], 12);         // value description, right
     }
 
-    if (touch) {
+    if (touch)
       Typer::draw_centered(0, -270, "TAP AN OPTION TO CHANGE IT", 12);
-      TapBand::return_to_menu.draw("RETURN TO MENU", currentTime);
-    }
+    // Tappable exit on both layouts — see the replays band note above.
+    TapBand::return_to_menu.draw(
+        touch ? "RETURN TO MENU" : "ESC - BACK TO MENU", currentTime);
   } else {
     Typer::draw_centered(0, 320, "Newtonia", 80);
     if (high_score > 0) {
@@ -624,11 +628,10 @@ void Menu::touch_tap(float nx, float ny) {
   }
   if (options_mode_) {
     // Tapping a row cycles that option to its next value, wrapping at the
-    // end. Touch: the bottom strip exits (and persists via close_options).
-    // Desktop (Steam Deck touchscreen clicks) has no exit band — its rows
-    // use the deeper desktop band, and Esc/B still closes.
-    if (is_touch_mode() &&
-        TapBand::return_to_menu.contains(nx, ny)) { close_options(); return; }
+    // end; the bottom strip exits (and persists via close_options) on both
+    // layouts — the band is drawn on desktop too, where its zone sits well
+    // below the deeper desktop rows (rows end ~-285, band reach tops ~-370).
+    if (TapBand::return_to_menu.contains(nx, ny)) { close_options(); return; }
     int row = is_touch_mode()
                   ? touch_opt_row_at(ny, opt_row_count())
                   : opt_row_at(ny, opt_row_count(), DESK_OPT_TOP, DESK_OPT_BOTTOM);
@@ -639,8 +642,7 @@ void Menu::touch_tap(float nx, float ny) {
     return;
   }
   if (replays_mode_) {
-    if (is_touch_mode() &&
-        TapBand::return_to_menu.contains(nx, ny)) { replays_mode_ = false; return; }
+    if (TapBand::return_to_menu.contains(nx, ny)) { replays_mode_ = false; return; }
     int row = is_touch_mode()
                   ? touch_opt_row_at(ny, (int)replay_rows_.size())
                   : opt_row_at(ny, (int)replay_rows_.size(), DESK_OPT_TOP, DESK_OPT_BOTTOM);
