@@ -304,6 +304,17 @@ void Intro::controller(SDL_Event event) {
   }
 }
 
+void Intro::touch_tap(float nx, float ny) {
+  // Desktop clicks (Steam Deck touchscreen taps arrive as clicks — see
+  // glut.cpp mouse()) dismiss like a fire press, under the same gates.
+  // Touch platforms keep the fire-button-only rule (the OSD fire button
+  // synthesizes the shoot key into keyboard()); a tap anywhere stays inert
+  // there so the intro still teaches where the fire button is.
+  if (is_touch_mode()) return;
+  if (is_finished() || paused || time < input_delay_ms) return;
+  dismiss();
+}
+
 bool Intro::back_pressed() {
   if (!is_finished()) leave_to_menu();
   return true;

@@ -36,6 +36,7 @@ public:
   void keyboard(unsigned char key, int x, int y) override;
   void keyboard_up(unsigned char key, int x, int y) override;
   void controller(SDL_Event event) override;
+  void touch_tap(float nx, float ny) override;
   bool back_pressed() override;
 
   // Called by StateManager (which cannot go through State virtuals for
