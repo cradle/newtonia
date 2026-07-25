@@ -281,12 +281,26 @@ static int s_touch_opcode = -1;
 static int s_touch_active_id = -1;  // first-finger tracking: extra fingers
                                     // during a sequence don't fire taps
 
+// X errors on either connection are fatal by default (Xlib exits the
+// process); async errors from an XI2 selection would kill the game long
+// after the offending call. Log-and-continue instead.
+static int x_error_logger(Display *dpy, XErrorEvent *e) {
+  char text[128];
+  XGetErrorText(dpy, e->error_code, text, sizeof(text));
+  char buf[192];
+  snprintf(buf, sizeof(buf), "X ERROR %s req %d.%d", text,
+           e->request_code, e->minor_code);
+  tap_debug_note(buf);
+  return 0;
+}
+
 static void touch_listener_init() {
   Display *glut_dpy = glXGetCurrentDisplay();
   Window win = glut_dpy ? (Window)glXGetCurrentDrawable() : 0;
   if (!win) { tap_debug_note("TOUCH LISTENER OFF - no GLX window"); return; }
   s_touch_dpy = XOpenDisplay(DisplayString(glut_dpy));
   if (!s_touch_dpy) { tap_debug_note("TOUCH LISTENER OFF - XOpenDisplay failed"); return; }
+  XSetErrorHandler(x_error_logger);
   int event, error;
   int major = 2, minor = 2;  // must announce XI 2.2+ or touch is withheld
   if (!XQueryExtension(s_touch_dpy, "XInputExtension", &s_touch_opcode,
@@ -298,15 +312,37 @@ static void touch_listener_init() {
     s_touch_dpy = NULL;
     return;
   }
+  // XIAllDevices, not XIAllMasterDevices: a touchscreen that floats as an
+  // unattached slave (input remapping setups do this) only matches an
+  // all-devices selection; attached ones match either way. Duplicate
+  // master+slave copies of one touch collapse in forward_tap's dedup.
   XIEventMask mask;
   unsigned char flags[XIMaskLen(XI_LASTEVENT)] = {0};
-  mask.deviceid = XIAllMasterDevices;
+  mask.deviceid = XIAllDevices;
   mask.mask_len = sizeof(flags);
   mask.mask = flags;
   XISetMask(flags, XI_TouchBegin);
   XISetMask(flags, XI_TouchUpdate);
   XISetMask(flags, XI_TouchEnd);
   XISelectEvents(s_touch_dpy, win, &mask, 1);
+  // Diagnostic spy (log-only, never forwards a tap): RAW touch/button on
+  // the root window. Raw selections are non-exclusive and delivered no
+  // matter which window the event routes to, so with NEWTONIA_TAP_DEBUG
+  // the log answers the one question a silent window can't: does the X
+  // server see the finger AT ALL, or is the touchscreen consumed upstream
+  // (Steam Input) before X ever hears about it?
+  if (s_tap_debug) {
+    XIEventMask raw_mask;
+    unsigned char raw_flags[XIMaskLen(XI_LASTEVENT)] = {0};
+    raw_mask.deviceid = XIAllDevices;
+    raw_mask.mask_len = sizeof(raw_flags);
+    raw_mask.mask = raw_flags;
+    XISetMask(raw_flags, XI_RawTouchBegin);
+    XISetMask(raw_flags, XI_RawTouchEnd);
+    XISetMask(raw_flags, XI_RawButtonPress);
+    XISetMask(raw_flags, XI_RawButtonRelease);
+    XISelectEvents(s_touch_dpy, DefaultRootWindow(s_touch_dpy), &raw_mask, 1);
+  }
   XFlush(s_touch_dpy);
   tap_debug_note(s_tap_debug ? "TAP DEBUG ON - TOUCH LISTENER OK"
                              : "TOUCH LISTENER OK");
@@ -320,22 +356,47 @@ static void touch_listener_poll() {
     if (ev.type != GenericEvent || ev.xcookie.extension != s_touch_opcode)
       continue;
     if (!XGetEventData(s_touch_dpy, &ev.xcookie)) continue;
-    XIDeviceEvent *de = (XIDeviceEvent *)ev.xcookie.data;
-    if (ev.xcookie.evtype == XI_TouchBegin) {
-      char buf[96];
-      snprintf(buf, sizeof(buf), "TOUCH BEGIN %d,%d",
-               (int)de->event_x, (int)de->event_y);
-      tap_debug_note(buf);
-      if (s_touch_active_id < 0) s_touch_active_id = de->detail;
-    } else if (ev.xcookie.evtype == XI_TouchEnd) {
-      char buf[96];
-      snprintf(buf, sizeof(buf), "TOUCH END %d,%d",
-               (int)de->event_x, (int)de->event_y);
-      tap_debug_note(buf);
-      if (de->detail == s_touch_active_id) {
-        s_touch_active_id = -1;
-        forward_tap((float)de->event_x, (float)de->event_y);
+    char buf[96];
+    switch (ev.xcookie.evtype) {
+      case XI_TouchBegin: {
+        XIDeviceEvent *de = (XIDeviceEvent *)ev.xcookie.data;
+        snprintf(buf, sizeof(buf), "TOUCH BEGIN %d,%d dev %d/%d",
+                 (int)de->event_x, (int)de->event_y, de->deviceid,
+                 de->sourceid);
+        tap_debug_note(buf);
+        if (s_touch_active_id < 0) s_touch_active_id = de->detail;
+        break;
       }
+      case XI_TouchEnd: {
+        XIDeviceEvent *de = (XIDeviceEvent *)ev.xcookie.data;
+        snprintf(buf, sizeof(buf), "TOUCH END %d,%d dev %d/%d",
+                 (int)de->event_x, (int)de->event_y, de->deviceid,
+                 de->sourceid);
+        tap_debug_note(buf);
+        if (de->detail == s_touch_active_id) {
+          s_touch_active_id = -1;
+          forward_tap((float)de->event_x, (float)de->event_y);
+        }
+        break;
+      }
+      case XI_RawTouchBegin:
+      case XI_RawTouchEnd:
+      case XI_RawButtonPress:
+      case XI_RawButtonRelease: {
+        // Spy only — proves the server saw the input; never taps.
+        XIRawEvent *re = (XIRawEvent *)ev.xcookie.data;
+        const char *kind =
+            ev.xcookie.evtype == XI_RawTouchBegin     ? "RAW TOUCH DOWN"
+            : ev.xcookie.evtype == XI_RawTouchEnd     ? "RAW TOUCH UP"
+            : ev.xcookie.evtype == XI_RawButtonPress  ? "RAW BTN DOWN"
+                                                      : "RAW BTN UP";
+        snprintf(buf, sizeof(buf), "%s dev %d/%d detail %d", kind,
+                 re->deviceid, re->sourceid, re->detail);
+        tap_debug_note(buf);
+        break;
+      }
+      default:
+        break;
     }
     XFreeEventData(s_touch_dpy, &ev.xcookie);
   }
