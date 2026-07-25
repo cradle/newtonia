@@ -188,6 +188,20 @@ void special_up(int key, int x, int y) {
   keyboard_up(key+128, x, y);
 }
 
+// Steam Deck touch on menus: the Deck's touchscreen (and any desktop
+// touchscreen) reaches a GLUT window as synthesized pointer clicks —
+// gamescope in Gaming Mode and the desktop compositors both emulate a
+// left-button press/release at the touch point. Forward releases as taps,
+// matching the mobile ports where menu selections fire on finger-up; this
+// doubles as plain mouse support on the menus. In-game clicks stay inert
+// (GLGame::touch_tap guards on is_touch_mode()).
+void mouse(int button, int state, int x, int y) {
+  if (button != GLUT_LEFT_BUTTON || state != GLUT_UP || !game) return;
+  int w = glutGet(GLUT_WINDOW_WIDTH), h = glutGet(GLUT_WINDOW_HEIGHT);
+  if (w <= 0 || h <= 0) return;
+  game->touch_tap(x / (float)w, y / (float)h);
+}
+
 void resize(int width, int height) {
   Typer::resize(width, height);
   if (game) game->resize(width, height);
@@ -533,6 +547,7 @@ void init(int &argc, char* argv[], float width, float height) {
   glutKeyboardUpFunc(keyboard_up);
   glutSpecialFunc(special);
   glutSpecialUpFunc(special_up);
+  glutMouseFunc(mouse);
   glutReshapeFunc(resize);
 #ifdef __APPLE__
   glutPassiveMotionFunc(mouse_passive);
