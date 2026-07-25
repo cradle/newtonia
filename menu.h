@@ -30,6 +30,14 @@ private:
   void nav_input(unsigned char key, SDL_GameController *src);
   void confirm_selection(SDL_GameController *ctrl);
   int  max_menu_items() const;
+  // RESUME HOSTING row (NETPLAY.md host process-death resume): shown at
+  // the top when a fresh NetResume ticket + online save survived a killed
+  // hosting process and the room's reclaim grace may still be open.
+  // Expiry, or picking any other way into a game, deletes both files.
+  int  base_menu_rows() const;  // rows above ONLINE: resume?/continue?/new
+  int  continue_row_index() const;  // -1 when hidden
+  void decline_net_resume();
+  void scan_net_resume();
   // ONLINE row (netplay lobby): only on builds with a net backend.
   bool show_online_row() const;
   int  online_row_index() const;  // -1 when the row is hidden
@@ -66,6 +74,10 @@ private:
   int currentTime;
   int high_score;
   bool has_save_ = false;
+  bool has_net_resume_ = false;      // RESUME HOSTING row shown
+  bool net_resume_scanned_ = false;  // ticket checked (first tick, not ctor)
+  std::string net_resume_code_;      // its room code, for the row label
+  Uint32 net_resume_expire_at_ = 0;  // SDL_GetTicks() when grace runs out
   int  menu_selection = 0;
   bool options_mode_ = false;
   bool replays_mode_ = false;

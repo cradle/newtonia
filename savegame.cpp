@@ -11,13 +11,17 @@
 static const char *SG_ORG  = "cc.gfm";
 static const char *SG_APP  = "newtonia";
 static const char *SG_FILE = "savegame.dat";
+// Host process-death resume (NETPLAY.md): the hosted online world saves
+// into its own slot beside the resume ticket. The solo save above stays
+// hard-gated against online play; the two never mix.
+static const char *SG_ONLINE_FILE = "online_savegame.dat";
 
 // ── Path helper ──────────────────────────────────────────────────────────────
 
-static std::string save_path() {
+static std::string save_path(const char *file = SG_FILE) {
     char *dir = SDL_GetPrefPath(SG_ORG, SG_APP);
     if (!dir) return "";
-    std::string path = std::string(dir) + SG_FILE;
+    std::string path = std::string(dir) + file;
     SDL_free(dir);
     return path;
 }
@@ -522,36 +526,38 @@ bool Save::deserialize_game(Save::Stream &f, Save::GameState &s, uint16_t versio
     return ok;
 }
 
-bool Save::save_exists() {
-    std::string path = save_path();
+// The solo save and the online-host resume slot (SG_ONLINE_FILE) share
+// these bodies; only the filename differs.
+static bool save_exists_in(const char *file) {
+    std::string path = save_path(file);
     if (path.empty()) return false;
     FILE *fp = fopen(path.c_str(), "rb");
     if (!fp) return false;
-    FileStream f(fp);
+    Save::FileStream f(fp);
     uint32_t magic   = 0;
     uint16_t version = 0;
     bool ok = rv(f, magic) && rv(f, version)
-              && magic   == GameState::MAGIC
-              && version >= GameState::MIN_VERSION
-              && version <= GameState::VERSION;
+              && magic   == Save::GameState::MAGIC
+              && version >= Save::GameState::MIN_VERSION
+              && version <= Save::GameState::VERSION;
     fclose(fp);
     return ok;
 }
 
-bool Save::save_game(const Save::GameState &s) {
-    std::string path = save_path();
+static bool save_game_in(const char *file, const Save::GameState &s) {
+    std::string path = save_path(file);
     if (path.empty()) return false;
 
     FILE *fp = fopen(path.c_str(), "wb");
     if (!fp) return false;
 
-    FileStream f(fp);
+    Save::FileStream f(fp);
     bool ok = true;
-    uint32_t magic   = GameState::MAGIC;
-    uint16_t version = GameState::VERSION;
+    uint32_t magic   = Save::GameState::MAGIC;
+    uint16_t version = Save::GameState::VERSION;
     ok = ok && wv(f, magic);
     ok = ok && wv(f, version);
-    ok = ok && serialize_game(f, s);
+    ok = ok && Save::serialize_game(f, s);
 
     fclose(fp);
 
@@ -566,30 +572,30 @@ bool Save::save_game(const Save::GameState &s) {
     return ok;
 }
 
-bool Save::load_game(Save::GameState &s) {
-    std::string path = save_path();
+static bool load_game_in(const char *file, Save::GameState &s) {
+    std::string path = save_path(file);
     if (path.empty()) return false;
 
     FILE *fp = fopen(path.c_str(), "rb");
     if (!fp) return false;
 
-    FileStream f(fp);
+    Save::FileStream f(fp);
 
     // Validate header. Accept any format from MIN_VERSION up to the current
     // VERSION; fields added in newer versions are read back conditionally in
     // deserialize_game.
-    uint32_t magic;   if (!rv(f, magic)   || magic != GameState::MAGIC) { fclose(fp); return false; }
-    uint16_t version; if (!rv(f, version) || version < GameState::MIN_VERSION
-                                          || version > GameState::VERSION) { fclose(fp); return false; }
+    uint32_t magic;   if (!rv(f, magic)   || magic != Save::GameState::MAGIC) { fclose(fp); return false; }
+    uint16_t version; if (!rv(f, version) || version < Save::GameState::MIN_VERSION
+                                          || version > Save::GameState::VERSION) { fclose(fp); return false; }
 
-    bool ok = deserialize_game(f, s, version);
+    bool ok = Save::deserialize_game(f, s, version);
 
     fclose(fp);
     return ok;
 }
 
-void Save::delete_save() {
-    std::string path = save_path();
+static void delete_save_in(const char *file) {
+    std::string path = save_path(file);
     if (path.empty()) return;
     std::remove(path.c_str());
 #ifdef __EMSCRIPTEN__
@@ -600,3 +606,13 @@ void Save::delete_save() {
     );
 #endif
 }
+
+bool Save::save_exists()                     { return save_exists_in(SG_FILE); }
+bool Save::save_game(const Save::GameState &s) { return save_game_in(SG_FILE, s); }
+bool Save::load_game(Save::GameState &s)     { return load_game_in(SG_FILE, s); }
+void Save::delete_save()                     { delete_save_in(SG_FILE); }
+
+bool Save::online_save_exists()                     { return save_exists_in(SG_ONLINE_FILE); }
+bool Save::online_save_game(const Save::GameState &s) { return save_game_in(SG_ONLINE_FILE, s); }
+bool Save::online_load_game(Save::GameState &s)     { return load_game_in(SG_ONLINE_FILE, s); }
+void Save::delete_online_save()                     { delete_save_in(SG_ONLINE_FILE); }

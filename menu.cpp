@@ -7,6 +7,7 @@
 #include "invites.h"
 #include "net_lobby.h"
 #include "net_policy.h"
+#include "net_resume.h"
 #include "net_transport.h"
 #include "preferences.h"
 #include "presence.h"
@@ -333,16 +334,10 @@ void Menu::draw() {
         Typer::draw_centered(0,  -40, yes_str.c_str(), 22);
         Typer::draw_centered(0, -110, no_str.c_str(),  22);
       }
-    } else if (has_save_) {
-      std::vector<std::string> rows;
-      rows.push_back("CONTINUE");
-      rows.push_back("NEW GAME");
-      if (show_online_row()) rows.push_back("ONLINE");
-      if (show_options_row()) rows.push_back("OPTIONS");
-      if (show_replays_row()) rows.push_back("REPLAYS");
-      draw_menu_rows(rows);
     } else {
       std::vector<std::string> rows;
+      if (has_net_resume_) rows.push_back("RESUME HOSTING " + net_resume_code_);
+      if (has_save_) rows.push_back("CONTINUE");
       rows.push_back("NEW GAME");
       if (show_online_row()) rows.push_back("ONLINE");
       if (show_options_row()) rows.push_back("OPTIONS");
@@ -369,6 +364,14 @@ void Menu::tick(int delta) {
         return;
       }
     }
+  }
+
+  scan_net_resume();
+  // The reclaim grace ran out while the menu sat open: the room is gone,
+  // so the RESUME HOSTING row (and its files) go too.
+  if (has_net_resume_ && SDL_GetTicks() >= net_resume_expire_at_) {
+    decline_net_resume();
+    if (menu_selection >= max_menu_items()) menu_selection = 0;
   }
 
   currentTime += delta;
@@ -665,8 +668,20 @@ void Menu::touch_tap(float nx, float ny) {
   confirm_selection(nullptr);
 }
 
+// The fixed game-entry rows above ONLINE: RESUME HOSTING (when a killed
+// hosted session is resumable), CONTINUE (when a solo save exists), and
+// NEW GAME. Every later row's index builds on this count.
+int Menu::base_menu_rows() const {
+  return (has_net_resume_ ? 1 : 0) + (has_save_ ? 2 : 1);
+}
+
+int Menu::continue_row_index() const {
+  if (!has_save_) return -1;
+  return has_net_resume_ ? 1 : 0;
+}
+
 int Menu::max_menu_items() const {
-  int n = has_save_ ? 2 : 1;
+  int n = base_menu_rows();
   if (show_online_row()) n++;
   if (show_options_row()) n++;
   if (show_replays_row()) n++;
@@ -729,7 +744,7 @@ int Menu::menu_row_at(float ny) const {
 
 int Menu::online_row_index() const {
   if (!show_online_row()) return -1;
-  return has_save_ ? 2 : 1;  // directly after NEW GAME
+  return base_menu_rows();  // directly after NEW GAME
 }
 
 void Menu::open_options() {
@@ -777,14 +792,14 @@ void Menu::scan_replays() {
 
 int Menu::options_row_index() const {
   if (!show_options_row()) return -1;
-  int i = has_save_ ? 2 : 1;
+  int i = base_menu_rows();
   if (show_online_row()) i++;
   return i;
 }
 
 int Menu::replays_row_index() const {
   if (!show_replays_row()) return -1;
-  int i = has_save_ ? 2 : 1;
+  int i = base_menu_rows();
   if (show_online_row()) i++;
   if (show_options_row()) i++;
   return i;
@@ -832,17 +847,73 @@ void Menu::close_options() {
   options_mode_ = false;
 }
 
+// Host process-death resume (NETPLAY.md): a fresh ticket + online save
+// mean a hosted room's process died and its reclaim grace may still be
+// open — offer RESUME HOSTING at the top. Expired or mismatched leftovers
+// are deleted on sight so a stale row never haunts the menu. Runs on the
+// FIRST TICK, not in the constructor: a quit-to-menu constructs the Menu
+// before the outgoing GLGame's destructor deletes the files (StateManager
+// swaps — and deletes the old state — at the next tick), so a ctor-time
+// scan would offer a room that deliberate teardown is about to close.
+void Menu::scan_net_resume() {
+  if (net_resume_scanned_) return;
+  net_resume_scanned_ = true;
+  if (!show_online_row()) return;
+  std::string code, token;
+  long long age_ms = 0;
+  if (!NetResume::read(code, token, age_ms)) return;
+  if (age_ms < NetResume::GRACE_MS && Save::online_save_exists()) {
+    has_net_resume_ = true;
+    net_resume_code_ = code;
+    net_resume_expire_at_ =
+        SDL_GetTicks() + (Uint32)(NetResume::GRACE_MS - age_ms);
+  } else {
+    NetResume::clear_with_save();
+  }
+}
+
+// Any other way into a game is a decline of the pending host resume: the
+// ticket and online save are deleted (the plan's "decline or expiry"), so
+// the row can't reappear after that session ends.
+void Menu::decline_net_resume() {
+  if (!has_net_resume_) return;
+  NetResume::clear_with_save();
+  has_net_resume_ = false;
+  net_resume_code_.clear();
+}
+
 void Menu::confirm_selection(SDL_GameController *ctrl) {
+  if (has_net_resume_ && menu_selection == 0) {
+    // RESUME HOSTING: rebuild the hosted world from the online save and
+    // hand it a game that reclaims the room and awaits the client's
+    // auto-rejoin (the resume constructor; see NETPLAY.md).
+    std::string code, token;
+    long long age_ms = 0;
+    Save::GameState s;
+    if (NetResume::read(code, token, age_ms) && Save::online_load_game(s)) {
+#ifdef __EMSCRIPTEN__
+      EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
+#endif
+      request_state_change(new GLGame(s, code, token, ctrl));
+      return;
+    }
+    // Unreadable leftovers: drop the row and stay on the menu.
+    decline_net_resume();
+    if (menu_selection >= max_menu_items()) menu_selection = 0;
+    return;
+  }
   if (menu_selection == online_row_index()) {
+    decline_net_resume();
     request_state_change(new NetLobby());
     return;
   }
-  if (has_save_ && menu_selection == 0) {
+  if (has_save_ && menu_selection == continue_row_index()) {
     Save::GameState s;
     if (Save::load_game(s)) {
 #ifdef __EMSCRIPTEN__
       EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
+      decline_net_resume();
       request_state_change(new GLGame(s, ctrl));
       return;
     }
@@ -860,5 +931,6 @@ void Menu::confirm_selection(SDL_GameController *ctrl) {
 #ifdef __EMSCRIPTEN__
   EM_ASM(if (window.setMenuMode) window.setMenuMode(0););
 #endif
+  decline_net_resume();
   request_state_change(new GLGame(ctrl));
 }
