@@ -56,6 +56,14 @@ public:
   // machine's player is the LAST in the list; player 1 is the remote host.
   GLGame(const Save::GameState &snapshot, NetSession *session,
          SDL_GameController *controller);
+  // Host process-death resume (NETPLAY.md): rebuild the hosted world from
+  // the online save slot (Save::online_load_game) and boot straight into
+  // the mid-game client-loss state — reclaim the room with the persisted
+  // NetResume ticket and hold both rejoin doors open for the client's
+  // auto-rejoin to meet in the middle. Entered from the menu's RESUME
+  // HOSTING row, not the lobby.
+  GLGame(const Save::GameState &save, const std::string &room_code,
+         const std::string &room_token, SDL_GameController *controller);
   // Replay playback (REPLAY.md R2): world bootstrapped from the file's
   // first keyframe — the same restore a joining net client gets — then
   // records drive it through the client apply path. Takes ownership of the
@@ -511,6 +519,15 @@ private:
   std::string net_room_code_;
   std::string net_room_token_;        // proves room ownership on reclaim
   bool net_invite_advertised_ = false; // host: "connect" key live for rejoin
+  // Host process-death resume (NETPLAY.md): checkpoint the session ticket
+  // (NetResume) + the online world save so a killed process can offer
+  // RESUME HOSTING on relaunch. Rides every auto-save moment plus client
+  // join/leave; a game over or deliberate teardown deletes both files.
+  void net_host_resume_persist();
+  // Refresh cadence for the ticket file alone (~100 bytes) — its age is
+  // how a relaunch tells "host died moments ago, reclaim grace open"
+  // from a stale leftover. The world save stays on the auto-save moments.
+  int net_resume_ticket_ms_ = 0;
 
   int net_signal_retry_ms_ = 0;       // >0: reclaim attempt countdown
   int net_client_rejoin_ms_ = 0;      // client: auto-rejoin countdown

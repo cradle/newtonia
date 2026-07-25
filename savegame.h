@@ -255,6 +255,15 @@ bool save_game(const GameState &state);  // returns false on I/O error
 bool load_game(GameState &state);        // returns false if absent or format mismatch
 void delete_save();
 
+// Online-host resume slot (NETPLAY.md host process-death resume): the same
+// format in a dedicated online_savegame.dat, written at the hosted game's
+// checkpoints beside the NetResume ticket. Kept apart so the solo save
+// stays hard-gated against online play — the two never mix.
+bool online_save_exists();
+bool online_save_game(const GameState &state);
+bool online_load_game(GameState &state);
+void delete_online_save();
+
 // Header-less body serialization: save_game/load_game wrap these with the
 // MAGIC/VERSION header and the save file's path; netplay snapshots call them
 // directly on a MemStream. deserialize_game takes the format version the

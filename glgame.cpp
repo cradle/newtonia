@@ -16,6 +16,7 @@
 #include "weapon/beam.h"
 #include "weapon/lance.h"
 #include "weapon/god_mode.h"
+#include "net_resume.h"
 #include "net_signal.h"
 #include "net_transport.h"
 #include "glcar.h"
@@ -351,7 +352,57 @@ GLGame::GLGame(NetSession *session, SDL_GameController *controller)
   net_send_event(Net::EV_FRIENDLY_FIRE, friendly_fire ? 1u : 0u);
 }
 
+// Host process-death resume (NETPLAY.md): the OS killed the hosting
+// process; the menu rebuilt the world from the online save slot and this
+// constructor re-enters the state a live host is in after losing its
+// peer. The first tick's rejoin poll parks the remote hull, pauses, and
+// re-opens both rejoin doors (relay offer + LAN re-beacon); the reclaim
+// countdown re-attaches to the room with the persisted token exactly like
+// a mid-game signal drop (fresh TURN creds ride the reclaim reply), and
+// the client's auto-rejoin retries meet it in the middle.
+GLGame::GLGame(const Save::GameState &save, const std::string &room_code,
+               const std::string &room_token, SDL_GameController *controller)
+  : GLGame(save, controller) {
+  net_mode_ = NetHost;
+  Net::set_net_log_role(true);
+  Ship::net_report_bounces = true;  // PROTO 19: sim ricochets -> MSG_BOUNCE
+  net_room_code_ = room_code;
+  net_room_token_ = room_token;
+  // The save-restore base constructor made every saved ship a local
+  // player; the last one is the REMOTE peer's — strip its bindings and
+  // arm the host-side remote semantics (add_remote_player's arming minus
+  // the spawn: restore_state already placed the hull).
+  if (players->size() >= 2) {
+    GLShip *remote = players->back();
+    remote->ship->is_local_player = false;
+    remote->clear_keys();
+    remote->set_controller(NULL);
+    remote->ship->net_remote_gun = true;
+    players->front()->ship->net_report_shots = true;
+  }
+  net_connection_lost_ = true;
+  net_signal_ = NetSignal::create();
+  // Arm the shared reclaim countdown rather than connecting here: the
+  // first tick runs net_host_signal_reclaim_tick, which clears the ICE
+  // list and issues connect_host_reclaim — the exact path a dropped
+  // socket takes, including its retry/backoff on failure.
+  if (net_signal_) net_signal_retry_ms_ = 1;
+  NET_LOG("net: resuming hosted room %s after process death\n",
+          room_code.c_str());
+  update_presence();
+}
+
 GLGame::~GLGame() {
+  // Deliberate teardown of a hosted room (quit to menu, game over, clean
+  // app exit — the send_close below kills the room NOW): the process-death
+  // resume ticket and online save go with it. A crash or OS kill never
+  // runs this destructor, which is exactly what leaves them behind for
+  // the menu's RESUME HOSTING row. Token cleared so save_progress below
+  // can't re-mint the checkpoint it just deleted.
+  if (net_mode_ == NetHost && !net_room_token_.empty()) {
+    NetResume::clear_with_save();
+    net_room_token_.clear();
+  }
   save_progress();
   // Abandon-to-menu finalize: patch the header (clean, resumable) but keep
   // current.nrp in place — CONTINUE appends to it (REPLAY.md run-scoping).
@@ -634,8 +685,12 @@ void GLGame::save_progress() {
   Stats::flush();  // lifetime stats persist regardless of campaign-save eligibility
   // Online play never touches the local solo save (see NETPLAY.md): the
   // hosted world is not the solo game, and the game-over delete below
-  // would otherwise wipe real progress.
-  if (net_mode_ != NetOff) return;
+  // would otherwise wipe real progress. The host instead checkpoints the
+  // process-death resume slot (ticket + online save) at these moments.
+  if (net_mode_ != NetOff) {
+    net_host_resume_persist();
+    return;
+  }
   if (game_over) return;
   if (score_saved) return;
   for (auto* gs : *players) {
@@ -656,6 +711,22 @@ void GLGame::save_progress() {
     Save::delete_save();
     save_deleted_ = true;
   }
+}
+
+// Host process-death resume (NETPLAY.md): checkpoint the hosted session —
+// the reclaim ticket beside the dedicated online world save — so a killed
+// process can offer RESUME HOSTING on relaunch. No-op unless this machine
+// hosts a token-bearing room (clients, LAN/manual sessions and solo games
+// have nothing to reclaim). A game over ends the session's resumability
+// instead: both files are deleted, mirroring the solo save's delete.
+void GLGame::net_host_resume_persist() {
+  if (net_mode_ != NetHost || net_room_token_.empty()) return;
+  if (game_over) {
+    NetResume::clear_with_save();
+    return;
+  }
+  Save::online_save_game(build_save_data());
+  NetResume::write(net_room_code_, net_room_token_);
 }
 
 Save::GameState GLGame::build_save_data(bool include_asteroids) const {
@@ -1901,6 +1972,9 @@ void GLGame::net_adopt_signal(NetSignal *signal, const std::string &room_code,
   net_room_code_ = room_code;
   net_room_token_ = room_token;
   net_ice_ = ice_servers;
+  // First process-death resume checkpoint the moment the room identity
+  // exists — the session is resumable from minute one, not first pause.
+  net_host_resume_persist();
 }
 
 void GLGame::net_send_local_identity() {
@@ -2035,9 +2109,12 @@ GLGame::net_host_signal_common_event(const NetSignal::Event &ev) {
         net_signal_retry_ms_ = 3000;
         return NetSigHandled;
       }
-      // no-such-room / expired on reclaim: the room is gone for good.
+      // no-such-room / expired on reclaim: the room is gone for good —
+      // and with it any process-death resume of this session.
       NET_LOG("net: room %s lost (%s)\n", net_room_code_.c_str(),
              ev.text.c_str());
+      NetResume::clear_with_save();
+      net_room_token_.clear();  // stop the ticket refresh re-minting it
       net_signal_->close();
       delete net_signal_;
       net_signal_ = nullptr;
@@ -2121,6 +2198,7 @@ void GLGame::net_host_rejoin_park_remote() {
     toggle_pause(false);
     NET_LOG("net: paused awaiting rejoin\n");
   }
+  net_host_resume_persist();  // client-leave checkpoint (see NETPLAY.md)
 }
 
 // Client gone but the room is still open: keep simulating solo, offer a
@@ -2313,6 +2391,7 @@ void GLGame::net_host_rejoin_session_update(int delta) {
         net_host_send_snapshot(0);
       }
       NET_LOG("net: player 2 rejoined\n");
+      net_host_resume_persist();  // client-join checkpoint (see NETPLAY.md)
     } else if (net_session_->phase() == NetSession::Failed ||
                net_session_->phase() == NetSession::Rejected) {
       // Bad handshake (wrong build?): drop it and re-open the doors for
@@ -5804,11 +5883,30 @@ void GLGame::tick(int delta) {
       net_invite_advertised_ = false;
       NET_LOG("net: invite - room no longer joinable\n");
     }
+    // Process-death resume: keep the ticket's timestamp fresh (a ~100
+    // byte write) while the room is reclaimable, so a relaunch can tell
+    // "host died moments ago, grace still open" from a stale leftover.
+    // The world save stays on the auto-save moments (save_progress).
+    if (net_signal_ && !net_room_token_.empty() && !game_over) {
+      net_resume_ticket_ms_ -= delta;
+      if (net_resume_ticket_ms_ <= 0) {
+        net_resume_ticket_ms_ = 10000;
+        NetResume::write(net_room_code_, net_room_token_);
+      }
+    }
     if (net_banner_ms_ > 0) net_banner_ms_ -= delta;
   }
 
   if (!running) {
     last_tick += delta;
+    // A paused client legitimately goes quiet (tick_net_client returns
+    // before its INPUT send while !running), but current_time keeps
+    // advancing here — without this refresh the RX watchdog's baseline
+    // ages by the whole pause and the first running tick after any >10 s
+    // pause kills a healthy session (seen as a spurious loss/rejoin cycle
+    // the moment a resumed host unpaused). Mirrors the client's paused
+    // net_last_rx_time_ refresh.
+    if (net_mode_ == NetHost) net_last_input_time_ = current_time;
     return;
   }
 

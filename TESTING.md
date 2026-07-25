@@ -129,6 +129,14 @@ test/e2e/lanrename.sh # LAN rejoin vs a RENAMED host (NEWTONIA_DEVICE_NAME
                      # must NOT fire, the rejoin wait screen lists the
                      # live rows, and a manual Down+Enter joins it.
 test/e2e/rejoin.sh   # SIGKILL joiner mid-game -> auto-pause -> rejoin -> resume
+test/e2e/hostresume.sh # host process-death resume: SIGKILL the HOST mid-game,
+                     # relaunch within the reclaim grace, drive the menu's
+                     # RESUME HOSTING row -> room reclaimed, client auto-rejoin
+                     # reconnects, generation survives via the online save;
+                     # also guards the paused-unpause RX-watchdog fix and
+                     # asserts quit-to-menu deletes the ticket + online save.
+                     # Per-instance XDG_DATA_HOME (the relaunched host must
+                     # find ITS ticket; the joiner must never see one).
 test/e2e/impacts.sh  # gen-3 spin-and-fire: joiner detects cosmetic impacts locally
 test/e2e/ownroom.sh  # shared-prefs auto-join probe (mac host+client on one box)
 test/e2e/mismatch.sh # fake pv-less old host (node) -> instant VERSION MISMATCH
