@@ -21,6 +21,10 @@
 // gl_compat.h pulls in GLUT (for window management) and gles2_compat.h
 // (for the VBO/VAO/shader shim that replaces all legacy GL calls).
 #include "gl_compat.h"
+#include "mat4.h"
+
+#include <cstdio>
+#include <string>
 
 #ifdef __APPLE__
 // CGL is needed for VSync configuration only.
@@ -60,6 +64,8 @@ void hide_cursor_after_fullscreen(int);
 
 static int s_last_frame_draws = 0, s_last_frame_segs = 0;
 
+static void draw_tap_debug();
+
 void draw() {
   if (!game) return;
   int current_time = glutGet(GLUT_ELAPSED_TIME);
@@ -67,6 +73,7 @@ void draw() {
   game->draw();  // StateManager::draw zeroes the dbg counters at entry
   s_last_frame_draws = g_gles2_dbg_draws;
   s_last_frame_segs  = g_gles2_dbg_line_segs;
+  draw_tap_debug();
   glutSwapBuffers();
   // A Steam join accepted while the game is already running (steam://run into
   // an already-open game) does not bring us to the front. Drain the request
@@ -195,11 +202,45 @@ void special_up(int key, int x, int y) {
 // matching the mobile ports where menu selections fire on finger-up; this
 // doubles as plain mouse support on the menus. In-game clicks stay inert
 // (GLGame::touch_tap guards on is_touch_mode()).
+//
+// NEWTONIA_TAP_DEBUG=1 (Steam launch options: NEWTONIA_TAP_DEBUG=1
+// %command%) overlays the last mouse event on screen — field diagnosis for
+// whether gamescope delivers clicks at all, and where, without needing a
+// terminal. Every event is also logged to stdout (greppable in headless
+// driver runs and Desktop-Mode terminal launches).
+static bool s_tap_debug = false;
+static std::string s_tap_debug_line;
+static int s_tap_debug_time = -100000;
+
 void mouse(int button, int state, int x, int y) {
+  char buf[96];
+  snprintf(buf, sizeof(buf), "MOUSE B%d %s %d,%d", button,
+           state == GLUT_DOWN ? "DOWN" : "UP", x, y);
+  std::cout << "tap: " << buf << std::endl;
+  if (s_tap_debug) {
+    s_tap_debug_line = buf;
+    s_tap_debug_time = glutGet(GLUT_ELAPSED_TIME);
+  }
   if (button != GLUT_LEFT_BUTTON || state != GLUT_UP || !game) return;
   int w = glutGet(GLUT_WINDOW_WIDTH), h = glutGet(GLUT_WINDOW_HEIGHT);
   if (w <= 0 || h <= 0) return;
   game->touch_tap(x / (float)w, y / (float)h);
+}
+
+// Drawn from draw() after the state renders, ortho like the menus'; fades
+// out a few seconds after the last event.
+static void draw_tap_debug() {
+  if (!s_tap_debug || s_tap_debug_line.empty()) return;
+  if (glutGet(GLUT_ELAPSED_TIME) - s_tap_debug_time > 4000) return;
+  int w = glutGet(GLUT_WINDOW_WIDTH), h = glutGet(GLUT_WINDOW_HEIGHT);
+  if (w <= 0 || h <= 0) return;
+  float ortho[16];
+  mat4_ortho(ortho, (float)-w, (float)w, (float)-h, (float)h, -1.0f, 1.0f);
+  gles2_set_vp(ortho);
+  // Typer coordinates are virtual units (multiplied by Typer::scale), so
+  // convert the ortho half-height into Typer units, as Intro::draw does.
+  float top = h / Typer::scale;
+  Typer::draw_centered(0, -top * 0.8f, s_tap_debug_line.c_str(), 14);
 }
 
 void resize(int width, int height) {
@@ -438,6 +479,8 @@ int main(int argc, char* argv[]) {
     }
   }
 #endif
+  s_tap_debug = SDL_getenv("NEWTONIA_TAP_DEBUG") != NULL;
+  if (s_tap_debug) std::cout << "tap: debug overlay enabled" << std::endl;
   if (!steam_init())
     std::cout << "Steam API unavailable (offline / direct-launch mode)" << std::endl;
   // Must precede the first frame: the Steam backend registers its stat
