@@ -257,7 +257,16 @@ the hand-off copies it to `GLGame::net_lan_beacon_name_` and the loss
 re-beacon repeats it verbatim (never a fresh `local_host_name()` read),
 so it always equals the `net_lan_host_name_` the client tapped and
 remembered. A fresh host re-reads, so alias changes (or a Game Center
-account switch) reach new sessions only. The LAN rejoin wait screen
+account switch) reach new sessions only. FIELD-VERIFIED (2026-07-25),
+alias beacon: a signed-in iPhone host shows the Game Center alias in
+the join row and "<ALIAS> - IOS" in-game. The rename window (sign-in
+landing after the door opened) and the escape-hatch manual join were
+too fast to catch in the field — sign-in resolves before the lobby
+opens and auto-rejoin wins the race, both by design — so those two
+paths are pinned by `test/e2e/lanrename.sh` instead; the signed-out
+generic-name path is the pre-existing field-verified behavior and the
+alias code only ever overwrites its own generic export after a
+successful sign-in. The LAN rejoin wait screen
 also draws the live browse rows (same bands/rows and inputs as
 CodeEntry; `lan_rejoin_browsing()` gates confirm/nav/tap) — the
 remembered name still auto-joins the instant it reappears, and the
