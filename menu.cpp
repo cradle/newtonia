@@ -590,6 +590,12 @@ bool Menu::back_pressed() {
   // stays alive so a relaunch resumes on this menu.
   app_move_to_background();
   return true;
+#elif defined(__IOS__)
+  // Root Back on iOS (hardware-keyboard Escape) = handled but stays put:
+  // there is no public "go Home" API, and the quit dialog would be a dead
+  // end — its YES calls glutLeaveMainLoop(), a no-op on iOS by design
+  // (iOS apps never self-quit). The Home gesture is the way out.
+  return true;
 #else
   quit_confirm_ = true;
   quit_selection_ = 0;
