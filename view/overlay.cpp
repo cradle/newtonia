@@ -601,7 +601,7 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     bool local_over = glgame->net_active() && local &&
                       !local->ship->is_alive() && local->ship->lives <= 0;
     if(all_over || !glgame->running || local_over)
-      TapBand::return_to_menu.draw("RETURN TO MENU", glgame->current_time);
+      glgame->exit_band().draw("RETURN TO MENU", glgame->current_time);
   }
 }
 

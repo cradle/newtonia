@@ -7920,6 +7920,25 @@ TapBand GLGame::ff_toggle_band() const {
                  0.38f, 0.62f);
 }
 
+// Landscape keeps the shared lobby band: -420 IS the bottom strip when
+// the virtual half-height is 600. Portrait stretches the virtual height
+// (600/aspect, ~1300 on a tall phone), which left that anchor a third of
+// the way up the screen — the label printed right at the joystick's top
+// edge and the to_bottom tap region swallowed the entire touch-controls
+// area, so a stray tap near the (inert but thumb-parked) controls on the
+// pause screen quit to the menu — and online that deliberate teardown
+// closes the room (field: Android portrait, 2026-07-25). Re-anchor it
+// just above the bottom text rows (badge/SPECTATING at vhb+130,
+// friendly-fire at vhb+55) instead: label and tap region sit between
+// that text and the controls, touching neither — the spectating badge
+// hoist at vhb+255 stays clear above it too.
+TapBand GLGame::exit_band() const {
+  if (Typer::scaled_window_height <= Typer::original_window_height)
+    return TapBand::return_to_menu;
+  float vhb = -Typer::scaled_window_height / num_y_viewports();
+  return TapBand(0.5f, vhb + 215, 13, 35.0f);
+}
+
 void GLGame::touch_tap(float nx, float ny) {
   if (!is_touch_mode()) return;
   // The bottom strip is the RETURN TO MENU band the overlay labels (the
@@ -7944,7 +7963,15 @@ void GLGame::touch_tap(float nx, float ny) {
       request_state_change(new Menu());
     return;
   }
-  if (!TapBand::return_to_menu.contains(nx, ny)) return;
+  if (!exit_band().contains(nx, ny)) {
+    // Portrait moved the exit strip off the bottom text, so the
+    // friendly-fire toggle no longer nests inside it — hit-test it
+    // independently (mid-play, host, 2P, same gates as the tail below).
+    if (running && players->size() >= 2 && net_mode_ != NetClient &&
+        ff_toggle_band().contains(nx, ny))
+      host_toggle_friendly_fire();
+    return;
+  }
   bool all_game_over = !players->empty();
   for (auto *glship : *players) {
     if (glship->ship->is_alive() || glship->ship->lives > 0) {

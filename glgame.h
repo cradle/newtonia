@@ -179,6 +179,12 @@ private:
   // region — one definition for the drawn text (Overlay) and the tap
   // hit-test (touch_tap); see view/tap_band.h.
   TapBand ff_toggle_band() const;
+  // The in-game touch exit strip (pause / game over / spectator-out) —
+  // one definition for the drawn label (Overlay) and the tap hit-test
+  // (touch_tap). Landscape reuses the shared TapBand::return_to_menu;
+  // portrait re-anchors it near the true bottom, clear of the touch
+  // controls (see the definition for the geometry story).
+  TapBand exit_band() const;
   // Co-op revive (revive_pickup.h): put a fully-out partner back on their
   // last life. Called from the pickup collection site and the
   // NEWTONIA_NET_TEST_REVIVE_MS e2e hook.
