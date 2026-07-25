@@ -917,6 +917,7 @@ void GLShip::draw_weapons() const {
   //   NAME  [ammo]
   //   FIRE [key]      NEXT [key]
   auto draw_weapon_row = [&](int row_y, Weapon::Base *weapon, bool has_next,
+                             bool flash_low,
                              const KeyBinding &cycle_key_bind, SDL_GameControllerButton cycle_btn,
                              const KeyBinding &fire_key_bind,  SDL_GameControllerButton fire_btn) {
     // The 3-char HUD slot only fits one key, so show the binding's primary.
@@ -924,9 +925,13 @@ void GLShip::draw_weapons() const {
     int fire_key_kb  = fire_key_bind.primary();
     // Low-ammo warning: flash the whole row title — name and count — at
     // 2 Hz over the last LOW_AMMO_WARN rounds so a gun running dry is
-    // visible before the dry-switch takes it away. GodMode is excluded —
-    // its "ammo" is remaining milliseconds and it has its own indicator.
-    bool low = !weapon->is_unlimited() && weapon->ammo() > 0 &&
+    // visible before the dry-switch takes it away. Primaries only
+    // (flash_low): secondaries are deliberate single shots with visible
+    // counts, and a flashing mine row read as an alarm. GodMode is
+    // excluded — its "ammo" is remaining milliseconds and it has its own
+    // indicator.
+    bool low = flash_low &&
+               !weapon->is_unlimited() && weapon->ammo() > 0 &&
                weapon->ammo() <= Weapon::Base::LOW_AMMO_WARN &&
                !dynamic_cast<Weapon::GodMode*>(weapon);
     bool blink_hidden = low && (SDL_GetTicks() / 250) % 2 != 0;
@@ -986,6 +991,7 @@ void GLShip::draw_weapons() const {
     Weapon::Base *weapon = *(ship->primary);
     if (weapon != NULL) {
       draw_weapon_row(y, weapon, ship->primary_weapons.size() > 1,
+        /*flash_low=*/true,
         next_weapon_key,   SDL_CONTROLLER_BUTTON_X,
         shoot_key,         SDL_CONTROLLER_BUTTON_A);
     }
@@ -997,6 +1003,7 @@ void GLShip::draw_weapons() const {
     Weapon::Nova *nova_w = dynamic_cast<Weapon::Nova*>(weapon);
     if (weapon != NULL && (!nova_w || nova_w->ammo() > 0)) {
       draw_weapon_row(y - (is_touch_mode() ? 45 : 80), weapon, ship->secondary_weapons.size() > 1,
+        /*flash_low=*/false,
         next_secondary_key, SDL_CONTROLLER_BUTTON_Y,
         mine_key,           SDL_CONTROLLER_BUTTON_B);
     }
