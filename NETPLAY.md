@@ -226,17 +226,53 @@ LAN door. The beacon showed the "NEWTONIA" fallback (iOS gethostname()
 is a useless "localhost", same disease as Android's) — fixed by
 `ios_device_name.mm` exporting UIDevice's name over the same
 `NEWTONIA_DEVICE_NAME` env bridge; note iOS 16+ returns the generic
-"iPhone" there unless the Apple-approval-gated
+"iPhone" there unless the app carries the Apple-approval-gated
 `com.apple.developer.device-information.user-assigned-device-name`
-entitlement is granted (the first fixed build beaconed "IPHONE",
-confirming the generic path). Entitlement request SUBMITTED to Apple
-2026-07-24 (developer.apple.com/contact/request/user-assigned-device-name,
-app id 6760685759). Once granted: enable the capability on the App ID +
-regenerate the provisioning profile (and refresh the TestFlight
-PROVISIONING_PROFILE_BASE64 secret), then add
-`com.apple.developer.device-information.user-assigned-device-name`
-(bool true) to `ios/Entitlements.plist` + `ios/EntitlementsDev.plist` —
-no code change, `ios_device_name.mm` already reads UIDevice.name. Join direction (Android hosted, iPhone joining — a first for
+entitlement (the first fixed build beaconed "IPHONE", confirming the
+generic path). Entitlement request REJECTED by Apple (submitted and
+rejected 2026-07-24): per its documentation the entitlement exists so
+an app can show the OWNER their own device names — differentiating
+their phone from their iPad — not to broadcast a name to other people,
+which is exactly what the beacon does. Permanently off the table; do
+not re-request. Replacement: `ios_device_name.mm` upgrades the env
+bridge to the public **Game Center alias** once sign-in resolves (a
+`GKPlayerAuthenticationDidChange` observer, `GAME_CENTER_BUILD` only),
+overwriting only its own generic model-name export — an Xcode-scheme
+override or a real pre-iOS-16 device name stays untouched, and a fully
+non-Latin alias (nothing the Typer sanitizer keeps) keeps the generic
+name rather than collapsing to "NEWTONIA". The alias is a name Apple
+already shows other players and matches the in-game LAN identity claim
+(`game_center_identity.mm`), so the lobby band and in-game name agree;
+signed-out devices still beacon "IPHONE". The alias makes
+`local_host_name()` TIME-VARYING, which the rejoin-by-name door can't
+tolerate, so beacon names are now **session-frozen with lobby-side
+drift-follow**: the host lobby records what it advertises
+(`lan_beacon_name_`) and, while still unpaired, renames the beacon in
+place on a name change (`Announce::set_host_name` — same sockets/port;
+browse keys rows by (port, name) so the old row ages out in ~2 beacons,
+and a raced tap on it still reaches the same TCP door) — fresh joiners
+see the current name and a restarted host converges onto the alias a
+rejoining client is browsing for. From pairing on the name is frozen:
+the hand-off copies it to `GLGame::net_lan_beacon_name_` and the loss
+re-beacon repeats it verbatim (never a fresh `local_host_name()` read),
+so it always equals the `net_lan_host_name_` the client tapped and
+remembered. A fresh host re-reads, so alias changes (or a Game Center
+account switch) reach new sessions only. FIELD-VERIFIED (2026-07-25),
+alias beacon: a signed-in iPhone host shows the Game Center alias in
+the join row and "<ALIAS> - IOS" in-game. The rename window (sign-in
+landing after the door opened) and the escape-hatch manual join were
+too fast to catch in the field — sign-in resolves before the lobby
+opens and auto-rejoin wins the race, both by design — so those two
+paths are pinned by `test/e2e/lanrename.sh` instead; the signed-out
+generic-name path is the pre-existing field-verified behavior and the
+alias code only ever overwrites its own generic export after a
+successful sign-in. The LAN rejoin wait screen
+also draws the live browse rows (same bands/rows and inputs as
+CodeEntry; `lan_rejoin_browsing()` gates confirm/nav/tap) — the
+remembered name still auto-joins the instant it reappears, and the
+rows are the manual escape hatch when the host comes back under a
+DIFFERENT name (re-signed into Game Center, or the sub-second
+tap-vs-rename race) instead of riding out the 60 s budget. Join direction (Android hosted, iPhone joining — a first for
 that pairing): the iPhone DID discover the host, but its TAP TO JOIN
 band drew under the soft keyboard — iPhone landscape keyboards cover
 ~60% of the screen (~y 120 in Typer units), far above the S25-measured

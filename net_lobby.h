@@ -260,6 +260,9 @@ private:
   int lan_sel_ = -1;             // CodeEntry host row (-1 = code field)
   bool lan_joining_ = false;     // joiner committed to a LAN host
   std::string lan_host_name_;    // the host we committed to (for draw)
+  std::string lan_beacon_name_;  // host: the name our beacon advertises
+  // Rejoin wait screen showing selectable host rows (nothing committed).
+  bool lan_rejoin_browsing() const;
   int lan_browse_ms_ = 0;        // time browsing (blob-pickup hold grace)
   bool lan_blob_held_ = false;   // logged the hold once (repoll re-fires it)
   bool lan_rejoin_ = false;      // round 4: rediscover-and-rejoin mode

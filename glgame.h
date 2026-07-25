@@ -536,6 +536,14 @@ private:
   bool net_lan_offer_set_ = false;
   bool net_rejoin_parked_ = false;   // the once-per-loss park/pause ran
   std::string net_lan_host_name_;    // client: LAN host to rediscover
+  // Host: the name the lobby's beacon advertised, frozen at hand-off for
+  // the whole session — the loss re-beacon repeats it verbatim so a
+  // dropped client's rediscover-by-name can't miss on a drifted
+  // local_host_name() (the iOS Game Center alias changes it when sign-in
+  // resolves). The lobby always sets it; the re-beacon's empty-fallback
+  // (fresh read, frozen from then on) is belt-and-suspenders for any
+  // future host-game path that skips the lobby.
+  std::string net_lan_beacon_name_;
   // Client auto-rejoin handed the flow to a fresh NetLobby: the dtor then
   // leaves the verification credential alone (that lobby warmed its own
   // ticket in its constructor — releasing here would cancel it and ship the
