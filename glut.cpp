@@ -39,6 +39,9 @@ extern "C" void install_macos_focus_observer(void (*lost)(), void (*gained)());
 // GLX lets us retrieve the X11 Display/drawable so we can poll keyboard focus.
 #include <GL/glx.h>
 #include <X11/Xlib.h>
+// XInput2 for the direct touchscreen listener (Steam Deck) — see
+// touch_listener_init below.
+#include <X11/extensions/XInput2.h>
 #endif
 // On Windows, <windows.h> is already pulled in by gl_compat.h.
 
@@ -204,34 +207,50 @@ void special_up(int key, int x, int y) {
 // (GLGame::touch_tap guards on is_touch_mode()).
 //
 // NEWTONIA_TAP_DEBUG=1 (Steam launch options: NEWTONIA_TAP_DEBUG=1
-// %command%) overlays the last mouse event on screen — field diagnosis for
-// whether gamescope delivers clicks at all, and where, without needing a
-// terminal. Every event is also logged to stdout (greppable in headless
-// driver runs and Desktop-Mode terminal launches).
+// %command%) overlays the last input event on screen — field diagnosis for
+// whether clicks/touches reach the game at all, and where, without needing
+// a terminal. The overlay is persistent while enabled (it starts as a
+// status line the moment the env var is set), so "no overlay at all"
+// always means the env var isn't set, never "no events yet". Every event
+// is also logged to stdout (greppable in headless driver runs and
+// Desktop-Mode terminal launches).
 static bool s_tap_debug = false;
 static std::string s_tap_debug_line;
-static int s_tap_debug_time = -100000;
+
+static void tap_debug_note(const char *line) {
+  std::cout << "tap: " << line << std::endl;
+  if (s_tap_debug) s_tap_debug_line = line;
+}
+
+// The one tap delivery point for both input paths (mouse release, XI2
+// touch end). The mouse path and the touch listener can BOTH see the same
+// physical tap in environments that emulate clicks from touch, so a second
+// tap right on top of the previous one (time and place) is dropped.
+static void forward_tap(float px, float py) {
+  static int last_ms = -100000;
+  static float last_px = -1000, last_py = -1000;
+  int now = glutGet(GLUT_ELAPSED_TIME);
+  float dx = px - last_px, dy = py - last_py;
+  bool dup = (now - last_ms) < 250 && dx * dx + dy * dy < 30.0f * 30.0f;
+  last_ms = now; last_px = px; last_py = py;
+  if (dup || !game) return;
+  int w = glutGet(GLUT_WINDOW_WIDTH), h = glutGet(GLUT_WINDOW_HEIGHT);
+  if (w <= 0 || h <= 0) return;
+  game->touch_tap(px / (float)w, py / (float)h);
+}
 
 void mouse(int button, int state, int x, int y) {
   char buf[96];
   snprintf(buf, sizeof(buf), "MOUSE B%d %s %d,%d", button,
            state == GLUT_DOWN ? "DOWN" : "UP", x, y);
-  std::cout << "tap: " << buf << std::endl;
-  if (s_tap_debug) {
-    s_tap_debug_line = buf;
-    s_tap_debug_time = glutGet(GLUT_ELAPSED_TIME);
-  }
-  if (button != GLUT_LEFT_BUTTON || state != GLUT_UP || !game) return;
-  int w = glutGet(GLUT_WINDOW_WIDTH), h = glutGet(GLUT_WINDOW_HEIGHT);
-  if (w <= 0 || h <= 0) return;
-  game->touch_tap(x / (float)w, y / (float)h);
+  tap_debug_note(buf);
+  if (button != GLUT_LEFT_BUTTON || state != GLUT_UP) return;
+  forward_tap((float)x, (float)y);
 }
 
-// Drawn from draw() after the state renders, ortho like the menus'; fades
-// out a few seconds after the last event.
+// Drawn from draw() after the state renders, ortho like the menus'.
 static void draw_tap_debug() {
   if (!s_tap_debug || s_tap_debug_line.empty()) return;
-  if (glutGet(GLUT_ELAPSED_TIME) - s_tap_debug_time > 4000) return;
   int w = glutGet(GLUT_WINDOW_WIDTH), h = glutGet(GLUT_WINDOW_HEIGHT);
   if (w <= 0 || h <= 0) return;
   float ortho[16];
@@ -242,6 +261,86 @@ static void draw_tap_debug() {
   float top = h / Typer::scale;
   Typer::draw_centered(0, -top * 0.8f, s_tap_debug_line.c_str(), 14);
 }
+
+#ifdef __linux__
+// Steam Deck touch, the real delivery path. Both gamescope (Gaming Mode)
+// and the Plasma desktop present the touchscreen to X11 clients as
+// XInput2 TOUCH events; the pointer-emulated clicks we first relied on
+// never reached the freeglut window in either environment (field result
+// 2026-07-25 on the beta depot — mouse clicks work, touches arrive as
+// nothing). freeglut 2.8 (the Steam runtime's libglut) selects XI2
+// pointer events but no touch masks, and its event loop drops XI2 event
+// types it doesn't know, so touch can't be handled through it. Instead:
+// a SECOND X connection announces XI 2.2 and selects touch on the GLUT
+// window (a per-client selection — freeglut's own connection is
+// unaffected), polled non-blocking each tick; a touch sequence's END
+// forwards the same tap a mouse release does. Failure at any init step
+// logs and degrades to mouse-only, exactly the pre-listener behavior.
+static Display *s_touch_dpy = NULL;
+static int s_touch_opcode = -1;
+static int s_touch_active_id = -1;  // first-finger tracking: extra fingers
+                                    // during a sequence don't fire taps
+
+static void touch_listener_init() {
+  Display *glut_dpy = glXGetCurrentDisplay();
+  Window win = glut_dpy ? (Window)glXGetCurrentDrawable() : 0;
+  if (!win) { tap_debug_note("TOUCH LISTENER OFF - no GLX window"); return; }
+  s_touch_dpy = XOpenDisplay(DisplayString(glut_dpy));
+  if (!s_touch_dpy) { tap_debug_note("TOUCH LISTENER OFF - XOpenDisplay failed"); return; }
+  int event, error;
+  int major = 2, minor = 2;  // must announce XI 2.2+ or touch is withheld
+  if (!XQueryExtension(s_touch_dpy, "XInputExtension", &s_touch_opcode,
+                       &event, &error) ||
+      XIQueryVersion(s_touch_dpy, &major, &minor) != Success ||
+      (major * 100 + minor) < 202) {
+    tap_debug_note("TOUCH LISTENER OFF - no XInput 2.2");
+    XCloseDisplay(s_touch_dpy);
+    s_touch_dpy = NULL;
+    return;
+  }
+  XIEventMask mask;
+  unsigned char flags[XIMaskLen(XI_LASTEVENT)] = {0};
+  mask.deviceid = XIAllMasterDevices;
+  mask.mask_len = sizeof(flags);
+  mask.mask = flags;
+  XISetMask(flags, XI_TouchBegin);
+  XISetMask(flags, XI_TouchUpdate);
+  XISetMask(flags, XI_TouchEnd);
+  XISelectEvents(s_touch_dpy, win, &mask, 1);
+  XFlush(s_touch_dpy);
+  tap_debug_note(s_tap_debug ? "TAP DEBUG ON - TOUCH LISTENER OK"
+                             : "TOUCH LISTENER OK");
+}
+
+static void touch_listener_poll() {
+  if (!s_touch_dpy) return;
+  while (XPending(s_touch_dpy)) {
+    XEvent ev;
+    XNextEvent(s_touch_dpy, &ev);
+    if (ev.type != GenericEvent || ev.xcookie.extension != s_touch_opcode)
+      continue;
+    if (!XGetEventData(s_touch_dpy, &ev.xcookie)) continue;
+    XIDeviceEvent *de = (XIDeviceEvent *)ev.xcookie.data;
+    if (ev.xcookie.evtype == XI_TouchBegin) {
+      char buf[96];
+      snprintf(buf, sizeof(buf), "TOUCH BEGIN %d,%d",
+               (int)de->event_x, (int)de->event_y);
+      tap_debug_note(buf);
+      if (s_touch_active_id < 0) s_touch_active_id = de->detail;
+    } else if (ev.xcookie.evtype == XI_TouchEnd) {
+      char buf[96];
+      snprintf(buf, sizeof(buf), "TOUCH END %d,%d",
+               (int)de->event_x, (int)de->event_y);
+      tap_debug_note(buf);
+      if (de->detail == s_touch_active_id) {
+        s_touch_active_id = -1;
+        forward_tap((float)de->event_x, (float)de->event_y);
+      }
+    }
+    XFreeEventData(s_touch_dpy, &ev.xcookie);
+  }
+}
+#endif // __linux__
 
 void resize(int width, int height) {
   Typer::resize(width, height);
@@ -390,6 +489,7 @@ void tick() {
               << " segs=" << s_last_frame_segs << std::endl;
   check_controller();
 #ifdef __linux__
+  touch_listener_poll();
   check_linux_focus();
 #endif
 #ifdef _WIN32
@@ -480,7 +580,7 @@ int main(int argc, char* argv[]) {
   }
 #endif
   s_tap_debug = SDL_getenv("NEWTONIA_TAP_DEBUG") != NULL;
-  if (s_tap_debug) std::cout << "tap: debug overlay enabled" << std::endl;
+  if (s_tap_debug) tap_debug_note("TAP DEBUG ON");
   if (!steam_init())
     std::cout << "Steam API unavailable (offline / direct-launch mode)" << std::endl;
   // Must precede the first frame: the Steam backend registers its stat
@@ -592,6 +692,11 @@ void init(int &argc, char* argv[], float width, float height) {
   glutSpecialUpFunc(special_up);
   glutMouseFunc(mouse);
   glutReshapeFunc(resize);
+#ifdef __linux__
+  // After glutCreateWindow: the GLX context is current (gles2_init above
+  // relies on that too), so the window/display are retrievable.
+  touch_listener_init();
+#endif
 #ifdef __APPLE__
   glutPassiveMotionFunc(mouse_passive);
 #endif

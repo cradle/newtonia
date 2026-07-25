@@ -18,7 +18,8 @@ else ifneq (,$(findstring _NT,$(UNAME)))
          -lopengl32 -lglu32
   ALL_SRCS := $(filter-out $(ANDROID_SRCS),$(wildcard *.cpp) $(wildcard */*.cpp))
 else
-  LIBS = -lglut -lGL -lGLU -lX11 $(SDL2_LIBS)
+  # -lXi: the XInput2 touchscreen listener in glut.cpp (Steam Deck touch).
+  LIBS = -lglut -lGL -lGLU -lX11 -lXi $(SDL2_LIBS)
   ALL_SRCS := $(filter-out $(ANDROID_SRCS),$(wildcard *.cpp) $(wildcard */*.cpp))
 endif
 
