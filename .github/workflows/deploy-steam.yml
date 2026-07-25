@@ -441,6 +441,7 @@ jobs:
             libgl1-mesa-dev \
             libglu1-mesa-dev \
             libssl-dev \
+            libxi-dev \
             cmake \
             libudev-dev \
             libasound2-dev \
@@ -516,7 +517,7 @@ jobs:
             -L./netplay-libs/lib -ldatachannel \
             -L./sdk/redistributable_bin/linux64 -lsteam_api \
             -Wl,-rpath,'$ORIGIN' -Wl,-rpath,"$PWD/netplay-libs/lib" \
-            -lX11
+            -lX11 -lXi
 
       # In-process WebRTC loopback — runs before any window/GL is created,
       # so it works headless inside the container. libsteam_api.so resolves

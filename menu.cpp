@@ -61,21 +61,45 @@ static const OptRow &opt_row(int r) {
   return is_touch_mode() ? OPT_ROWS_TOUCH[r] : OPT_ROWS_DESKTOP[r];
 }
 
-// Touch options row geometry — shared by the draw and the tap hit-test so a
-// tap always lands on the row it appears on. Rows fill the band above the
-// RETURN TO MENU strip; row i's vertical centre and the row a tap falls in
-// both come from here.
+// Options/replays row-band geometry — shared by the draw and the tap
+// hit-test so a tap always lands on the row it appears on. Touch rows fill
+// the band above the RETURN TO MENU strip; desktop rows run deeper (no exit
+// strip below) — and desktop taps are real input too: the Steam Deck's
+// touchscreen reaches the desktop build as pointer clicks (glut.cpp
+// forwards them as taps), so the desktop layout needs the same
+// draw/hit-test pairing the touch layout has.
 static const float TOUCH_OPT_TOP = 250.0f, TOUCH_OPT_BOTTOM = -210.0f;
-static int touch_opt_center(int i, int n) {
-  float pitch = (TOUCH_OPT_TOP - TOUCH_OPT_BOTTOM) / n;
-  return (int)(TOUCH_OPT_TOP - (i + 0.5f) * pitch);
+static const float DESK_OPT_TOP = 250.0f, DESK_OPT_BOTTOM = -300.0f;
+static int opt_row_center(int i, int n, float top, float bottom) {
+  float pitch = (top - bottom) / n;
+  return (int)(top - (i + 0.5f) * pitch);
 }
-static int touch_opt_row_at(float ny, int n) {
+static int opt_row_at(float ny, int n, float top, float bottom) {
   float y = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
-  float pitch = (TOUCH_OPT_TOP - TOUCH_OPT_BOTTOM) / n;
-  float t = TOUCH_OPT_TOP - y;
+  float pitch = (top - bottom) / n;
+  float t = top - y;
   if (t < 0 || t >= pitch * n) return -1;
   return (int)(t / pitch);
+}
+static int touch_opt_center(int i, int n) {
+  return opt_row_center(i, n, TOUCH_OPT_TOP, TOUCH_OPT_BOTTOM);
+}
+static int touch_opt_row_at(float ny, int n) {
+  return opt_row_at(ny, n, TOUCH_OPT_TOP, TOUCH_OPT_BOTTOM);
+}
+
+// The desktop confirm dialogs (Quit? / New game?) stack Yes above No.
+// One geometry definition feeds the draw and the tap hit-test. Returns
+// 0 = Yes, 1 = No, -1 = outside the stack (glyphs extend ~2*size below
+// their anchor; the two zones pad a half-line outward and meet midway
+// between the glyph boxes).
+static const int CONFIRM_YES_Y = -40, CONFIRM_NO_Y = -110, CONFIRM_SZ = 22;
+static int desktop_confirm_pick(float ny) {
+  float y = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
+  if (y > CONFIRM_YES_Y + CONFIRM_SZ || y < CONFIRM_NO_Y - 3 * CONFIRM_SZ)
+    return -1;
+  float boundary = 0.5f * ((CONFIRM_YES_Y - 2 * CONFIRM_SZ) + CONFIRM_NO_Y);
+  return y > boundary ? 0 : 1;
 }
 
 static int sensitivity_index_for(float value) {
@@ -207,9 +231,7 @@ void Menu::draw() {
         }
         continue;
       }
-      const float band_top = 250.0f, band_bottom = -300.0f;
-      float pitch = (band_top - band_bottom) / n;
-      int y = (int)(band_top - (i + 0.5f) * pitch);
+      int y = opt_row_center(i, n, DESK_OPT_TOP, DESK_OPT_BOTTOM);
       std::string heading =
           std::string(replay_sel_ == i ? "> " : "  ") + r.label;
       Typer::draw(-590, y, heading.c_str(), 14);
@@ -221,10 +243,13 @@ void Menu::draw() {
         Typer::draw(-180, y, "OLDER VERSION", 13);
       }
     }
-    if (touch) {
+    if (touch)
       Typer::draw_centered(0, -270, "TAP A RUN TO WATCH IT", 12);
-      TapBand::return_to_menu.draw("RETURN TO MENU", currentTime);
-    }
+    // Bottom exit band on BOTH layouts (the lobby's convention): desktop
+    // labels the key but stays tappable — the Steam Deck runs the desktop
+    // layout and touch needs a way out (field report 2026-07-25).
+    TapBand::return_to_menu.draw(
+        touch ? "RETURN TO MENU" : "ESC - BACK TO MENU", currentTime);
   } else if (options_mode_) {
     bool touch = is_touch_mode();
     Typer::draw_centered(0, touch ? 340 : 368, "OPTIONS", touch ? 30 : 26);
@@ -234,8 +259,6 @@ void Menu::draw() {
     // left, numbered choices in the middle, value description on the right.
     // Touch: one big tappable row per option, name left / value right (tap
     // to cycle).
-    const float band_top = 250.0f, band_bottom = -300.0f;
-    float pitch = (band_top - band_bottom) / n;
     // Desktop columns (virtual units; the ±200 step span sits well inside
     // the visible width even at 4:3): name left-anchored, step marks
     // centred just right of centre, value left-anchored on the right.
@@ -262,7 +285,7 @@ void Menu::draw() {
         continue;
       }
 
-      int y = (int)(band_top - (row + 0.5f) * pitch);
+      int y = opt_row_center(row, n, DESK_OPT_TOP, DESK_OPT_BOTTOM);
       std::string heading = std::string(active_row_ == row ? "> " : "  ") + r.name;
       Typer::draw(NAME_X, y, heading.c_str(), 12);       // name, left
       const float step_sz = 13.0f;
@@ -280,10 +303,11 @@ void Menu::draw() {
       Typer::draw(VALUE_X, y, lbl[cur_idx], 12);         // value description, right
     }
 
-    if (touch) {
+    if (touch)
       Typer::draw_centered(0, -270, "TAP AN OPTION TO CHANGE IT", 12);
-      TapBand::return_to_menu.draw("RETURN TO MENU", currentTime);
-    }
+    // Tappable exit on both layouts — see the replays band note above.
+    TapBand::return_to_menu.draw(
+        touch ? "RETURN TO MENU" : "ESC - BACK TO MENU", currentTime);
   } else {
     Typer::draw_centered(0, 320, "Newtonia", 80);
     if (high_score > 0) {
@@ -320,8 +344,8 @@ void Menu::draw() {
       } else {
         std::string yes_str = std::string(quit_selection_ == 0 ? "> " : "  ") + "Yes";
         std::string no_str  = std::string(quit_selection_ == 1 ? "> " : "  ") + "No";
-        Typer::draw_centered(0,  -40, yes_str.c_str(), 22);
-        Typer::draw_centered(0, -110, no_str.c_str(),  22);
+        Typer::draw_centered(0, CONFIRM_YES_Y, yes_str.c_str(), CONFIRM_SZ);
+        Typer::draw_centered(0, CONFIRM_NO_Y,  no_str.c_str(),  CONFIRM_SZ);
       }
     } else if (new_confirm_) {
       Typer::draw_centered(0, 50, "New game?", 30);
@@ -331,8 +355,8 @@ void Menu::draw() {
       } else {
         std::string yes_str = std::string(new_selection_ == 0 ? "> " : "  ") + "YES";
         std::string no_str  = std::string(new_selection_ == 1 ? "> " : "  ") + "NO";
-        Typer::draw_centered(0,  -40, yes_str.c_str(), 22);
-        Typer::draw_centered(0, -110, no_str.c_str(),  22);
+        Typer::draw_centered(0, CONFIRM_YES_Y, yes_str.c_str(), CONFIRM_SZ);
+        Typer::draw_centered(0, CONFIRM_NO_Y,  no_str.c_str(),  CONFIRM_SZ);
       }
     } else {
       std::vector<std::string> rows;
@@ -612,10 +636,14 @@ void Menu::touch_tap(float nx, float ny) {
     return;
   }
   if (options_mode_) {
-    // Bottom strip exits (and persists via close_options); tapping a row
-    // cycles that option to its next value, wrapping at the end.
+    // Tapping a row cycles that option to its next value, wrapping at the
+    // end; the bottom strip exits (and persists via close_options) on both
+    // layouts — the band is drawn on desktop too, where its zone sits well
+    // below the deeper desktop rows (rows end ~-285, band reach tops ~-370).
     if (TapBand::return_to_menu.contains(nx, ny)) { close_options(); return; }
-    int row = touch_opt_row_at(ny, opt_row_count());
+    int row = is_touch_mode()
+                  ? touch_opt_row_at(ny, opt_row_count())
+                  : opt_row_at(ny, opt_row_count(), DESK_OPT_TOP, DESK_OPT_BOTTOM);
     if (row >= 0) {
       active_row_ = row;
       adjust_active_row(+1, /*wrap=*/true);
@@ -624,8 +652,11 @@ void Menu::touch_tap(float nx, float ny) {
   }
   if (replays_mode_) {
     if (TapBand::return_to_menu.contains(nx, ny)) { replays_mode_ = false; return; }
-    int row = touch_opt_row_at(ny, (int)replay_rows_.size());
+    int row = is_touch_mode()
+                  ? touch_opt_row_at(ny, (int)replay_rows_.size())
+                  : opt_row_at(ny, (int)replay_rows_.size(), DESK_OPT_TOP, DESK_OPT_BOTTOM);
     if (row >= 0 && replay_rows_[row].ok) {
+      replay_sel_ = row;
       if (GLGame *g = GLGame::start_replay_playback(replay_rows_[row].path)) {
         request_state_change(g);
         return;
@@ -636,20 +667,33 @@ void Menu::touch_tap(float nx, float ny) {
     return;
   }
   if (quit_confirm_) {
-    // Left half = Yes (quit), right half = No (dismiss)
-    if (nx < 0.5f) {
-      glutLeaveMainLoop();
+    if (is_touch_mode()) {
+      // Left half = Yes (quit), right half = No (dismiss)
+      if (nx < 0.5f) {
+        glutLeaveMainLoop();
+      } else {
+        quit_confirm_ = false;
+      }
     } else {
-      quit_confirm_ = false;
+      // Desktop stacks Yes above No — hit-test the drawn stack.
+      int pick = desktop_confirm_pick(ny);
+      if (pick == 0) glutLeaveMainLoop();
+      else if (pick == 1) quit_confirm_ = false;
     }
     return;
   }
   if (new_confirm_) {
-    // Left half = YES (wipe save, start fresh), right half = NO (keep save)
-    if (nx < 0.5f) {
-      confirm_selection(nullptr);
+    if (is_touch_mode()) {
+      // Left half = YES (wipe save, start fresh), right half = NO (keep save)
+      if (nx < 0.5f) {
+        confirm_selection(nullptr);
+      } else {
+        new_confirm_ = false;
+      }
     } else {
-      new_confirm_ = false;
+      int pick = desktop_confirm_pick(ny);
+      if (pick == 0) confirm_selection(nullptr);
+      else if (pick == 1) new_confirm_ = false;
     }
     return;
   }
