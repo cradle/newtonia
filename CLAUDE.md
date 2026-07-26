@@ -524,6 +524,35 @@ Every change lands through a pull request. Concretely:
 - **Prefer not to rewrite shared history.** Force-push only an unmerged branch
   that is solely your own in-flight work, and prefer `--force-with-lease`.
 
+## Scheduled check-ins (Routines / `send_later`)
+
+Babysitting a PR or a deploy usually means arming a `send_later` wake-up. Two
+rules, both learned the expensive way (2026-07-25: **53 identical
+`delete_trigger` calls over 4.5 hours**, each one interrupted and each retry
+re-sending the whole conversation — a very costly no-op).
+
+- **Never retry an interrupted or denied tool call verbatim.** A denial is the
+  user declining, not a transient error: adjust the call, pick a different
+  approach, or stop and say what's blocked. One retry is defensible if the
+  failure looks transient (a network blip); a *second identical* call that
+  fails the same way means it will never succeed. This is the general rule —
+  it is not specific to Routines, and it is the actual cause of the incident
+  above.
+- **Never delete a one-shot Routine that has already fired.** `send_later`
+  creates a one-shot (`run_once_at`), and firing self-disables it with
+  `ended_reason: run_once_fired` — it can never fire again, so there is
+  nothing to clean up and no cleanup call to make. Check `ended_reason` via
+  `list_triggers` before even considering a delete: if it is set, do nothing.
+
+`delete_trigger` accepts any Routine, but it is only *worth* calling on a
+recurring (`cron_expression`) Routine — those never self-disable and deletion
+is the only way to stop them permanently — or on a one-shot you want to cancel
+**before** it fires. Note the minimum cron interval is hourly, so a recurring
+Routine can't wake faster than that. To fix a bad cron or a wrong prompt, or to
+pause something reversibly, prefer `update_trigger` (`enabled: false`, or edit
+the fields in place): it keeps the Routine's ID and run history, which
+delete-and-recreate throws away.
+
 ## CI/CD
 
 GitHub Actions runs builds on every push to `master`/`main` and on PRs (feature branches build once via their PR, not twice):
