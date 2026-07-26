@@ -43,7 +43,7 @@ Working doc for the netplay effort. The full approved plan is reproduced in the 
 - [x] **M2-2 — lobby rooms**: HOST shows "ROOM CODE ABCD"; JOIN gets a 4-char entry screen; automatic offer/answer through the room; e2e vs local relay (Xvfb native, Playwright web). **DONE** — new lobby screens RoomHost (big code + WAITING FOR PLAYER 2), CodeEntry (`Y K - -` slots; V/C/W/S are valid code letters so entry mode bypasses the shortcut keys), RoomJoining; `pump_signal()` pushes the offer when gathering yields it and reacts to relay events; NO candidate stripping in the room flow (both ends live — full offer, ICE starts both sides at once; the strip stays in the clipboard path). Manual clipboard flow kept as automatic fallback (`fall_back_to_manual`) on signal-server timeout (12 s), refusal, or socket close; join errors (no-such-room/full/expired) bounce back to CodeEntry with a message. Web builds resolve the signal URL via `Module.NWTN_SIGNAL_URL` or `?signal=` query (no env vars in browsers). **Verified**: native↔native Xvfb e2e (scratchpad `drive_room.sh` — reads the code from the host log, types it into the joiner; both in-game, joiner flying in the host's world) and web↔web Playwright (`pwtest/room_test.js` — two tabs, code typed through the real UI, joiner bootstrapped into the game). No clipboard involved in either.
 - [x] **M2-3 — deploy**: Glenn runs `wrangler deploy`; bake the production URL; cross-machine + cross-play verification over the real internet. **Deployed** — `wss://newtonia-signal.gfmcc.workers.dev/ws` baked as `SIGNAL_URL_DEFAULT`. Deploy notes: Cloudflare's dashboard wouldn't enable the hello-world Deploy button without a workers.dev subdomain and wouldn't offer the claim UI (chicken-and-egg, error 10063 from wrangler); registered the subdomain directly via `PUT /accounts/{id}/workers/subdomain` with the Global API Key, then `npx wrangler deploy` sailed through. The dev container's egress proxy blocks TLS to workers.dev, so production verification runs on real machines: `NEWTONIA_SIGNAL_SELFTEST=1 ./newtonia` (defaults to the baked URL) → SIGNAL SELFTEST PASS expected, then a real room-code session between machines.
 - [x] **M2-4 — rejoin**: host reopens the room on client loss; client rejoin flow; verified mid-game drop/reconnect. **Design (locked)**: the host GLGame adopts the lobby's NetSignal (room stays open all game); on client loss the host keeps simulating solo ("PLAYER 2 DISCONNECTED - ROOM ABCD OPEN" notice), parks the remote ship (kill_stop + frozen respawn timer so it can't bleed lives), builds a fresh NetTransport and pushes a new offer into the room; a rejoining client is a plain JOIN with the same code (full snapshot bootstrap — zero new client code), on whose arrival the host swaps in the new session, re-baselines the INPUT counters (net_have_input_=false, held suppression armed), unfreezes + respawns the remote ship (time_until_respawn=0), and play resumes with the joiner's score/lives/weapons intact. Worker needs no changes (slot reopen + offer replay shipped in M2-0). e2e: connect, SIGKILL the joiner mid-game, relaunch, rejoin same code, verify score/lives survive. **DONE & VERIFIED** (scratchpad drive_rejoin.sh): host prints "player 2 lost - room reopened" then "player 2 rejoined"; rejoined ship alive with all 4 lives (unpark respawns explicitly — the step-countdown respawn would charge a life). Gotcha: the rehost block must trigger only on a DEAD-or-absent session, not on net_connection_lost_ alone, or it destroys the fresh handshaking session created from the rejoin answer (first e2e failed exactly there). SIGKILL detection takes several seconds (no clean close — waits for ICE failure), so the host notices the loss late; fine.
-- [x] **M2-5 — TURN (code side)**: credentials endpoint + ICE config plumbing in both backends. **Landed; awaiting Glenn's TURN key to activate.** **Design**: Cloudflare Calls TURN. Glenn creates a TURN key in the dashboard (Calls -> TURN), then `wrangler secret put TURN_KEY_ID` + `wrangler secret put TURN_API_TOKEN` and redeploys. The worker mints short-lived creds per connection (POST rtc.live.cloudflare.com/v1/turn/keys/{id}/credentials/generate, ttl ~2h) and sends them as flat `{t:"ice", urls, username, credential}` frames (one per server) BEFORE the room/joined frame; without the secrets it sends none and clients stay STUN-only (graceful). Client: NetSignal Event::Ice; NetTransport::set_ice_servers() (native: "turn:user:pass@host:port?transport=udp" strings in rtcConfiguration; web: RTCIceServer objects) — must be called before pc creation, so the HOST defers start_host() until the Room frame arrives (joiner already starts at the Offer, after Joined). Manual fallback keeps STUN-only.
+- [x] **M2-5 — TURN (code side)**: credentials endpoint + ICE config plumbing in both backends. **Landed and ACTIVE** — the TURN key and its worker secrets are in place, and live relay sessions have been running since Gate 1 (this line long read "awaiting Glenn's TURN key"; corrected 2026-07-26). **Design**: Cloudflare Calls TURN. Glenn creates a TURN key in the dashboard (Calls -> TURN), then `wrangler secret put TURN_KEY_ID` + `wrangler secret put TURN_API_TOKEN` and redeploys. The worker mints short-lived creds per connection (POST rtc.live.cloudflare.com/v1/turn/keys/{id}/credentials/generate, ttl ~2h) and sends them as flat `{t:"ice", urls, username, credential}` frames (one per server) BEFORE the room/joined frame; without the secrets it sends none and clients stay STUN-only (graceful). Client: NetSignal Event::Ice; NetTransport::set_ice_servers() (native: "turn:user:pass@host:port?transport=udp" strings in rtcConfiguration; web: RTCIceServer objects) — must be called before pc creation, so the HOST defers start_host() until the Room frame arrives (joiner already starts at the Offer, after Joined). Manual fallback keeps STUN-only.
 - [x] **M2-6 — delta snapshots**: keyframe + per-object delta encoding, bandwidth counters, late-game measurements. **Design (locked)**: measure first (periodic host log of snapshot bytes; e2e skipped to late generations). Then: KEYFRAMES stay the exact current full snapshot (savegame body + extras — bootstrap/rejoin keep working unchanged) but drop to 1 Hz; between them, MSG_DELTA (reliable channel) at 10 Hz carries players + ship extras in full (small) plus per-asteroid DYNAMIC records only (net_id, pos, vel, rotation, health, transient state bytes) for asteroids the client already knows, full records only for ids never sent — the reliable ordered channel means the host KNOWS what the client has received, so no acks: host tracks the sent-id set, removals stay implicit (ids absent from the delta are killed, as today). Pickups/black holes/station ride in the delta wholesale (small). PROTO_VERSION 2→3. **MEASURED (telemetry now in net_host_send_snapshot, a line per 100 snapshots)**: gen 2 / 27 asteroids = 2.5 KB/snap = 10 KB/s; gen 13 / 164 = 14 KB = 114 KB/s; gen 24 / 327 = 28 KB = 274 KB/s sustained (~2.2 Mbps) — asteroids dominate at ~80 B each. **Refinement**: deltas carry an asteroid record ONLY when its velocity or transient state changed since last sent (bounce/hit/teleport/phase) or the id is new — straight-line drift is client-extrapolated (already stepped) and trued up by the 1 Hz keyframe. Projected steady state at gen 24: ~60 KB/s (keyframe 28 KB + near-empty deltas). **LANDED & MEASURED: gen 24 = 274 KB/s -> ~33 KB/s (8.3x); gen 2 = 10 -> 2.8 KB/s.** Deltas run 260-800 bytes carrying 0-16 dynamic asteroid records. Verified: bandwidth e2e through 24 generation changes, room e2e (joiner synced in the host world on deltas), rejoin e2e (forced keyframe on session swap). Bonus fix found by the run: fall_back_to_manual() called from inside pump_signal's poll loop deleted signal_ and the loop kept polling it (use-after-free crash whenever the relay socket closed pre-room, latent since M2-2) — the loop now returns immediately after any in-loop fallback. **Implementation spec**: PROTO_VERSION 2->3; new MSG_DELTA=7 (reliable, single message; if a built delta exceeds SNAPSHOT_CHUNK_BYTES the host sends a keyframe in that slot instead — escape hatch, no delta chunking). Every 10th snapshot slot (and the first, and after a rejoin via net_force_keyframe_) is a KEYFRAME = today's full chunked snapshot, at which the host RESETS its per-client asteroid baseline map net_known_ (net_id -> {pos, vel, health, state byte, sent time}) to the keyframe contents. MSG_DELTA body reuses the whole existing pipeline: (a) serialize_game() of a mini GameState with the asteroid vector EMPTY (players/pickups/black holes/station/mini all ride wholesale — small); client applies it via net_apply_state(s, apply_asteroids=false) (new default-true flag; empty list must NOT kill asteroids); (b) the ship half of NetExtras (net_apply_extras split into ship part + asteroid-id part so deltas reuse the ship part); (c) asteroid delta section: u16 n_new {net_id + full Save::Asteroid record — split children appear here}, u16 n_dyn {net_id, pos 2f, vel 2f, health u8, state u8 bits: phased/teleport_vulnerable/teleport_pending/quantum_observed}, u16 n_removed {net_id — client kills like the absent-id path today}. DIRTY RULE per known asteroid: |vel - vel_sent| > 0.01, health changed, state byte changed, or |pos - (pos_sent + vel_sent*dt)| > 50 (catches teleports); baseline updated whenever a record is sent. Client defensively ignores dynamic records for unknown ids (next keyframe reconciles). Client additionally applies black-hole gravity to non-invincible asteroids in tick_net_client (mirrors the host loop, ignore swallow return) so gen>=9 drift stays small between keyframes — otherwise gravity dirties every asteroid every delta. Save:: needs its per-struct player/asteroid writers exposed (they exist as internal helpers in savegame.cpp) for the delta player/new-asteroid records.
 
 ## Milestone 3 — mobile netplay (plan, locked with Glenn 2026-07-05)
@@ -66,7 +66,7 @@ Scope decisions (Glenn 2026-07-05): **Xbox netplay is DEFERRED to a future miles
 - **Joining, layer 1 — clipboard auto-join** (shipped in M2 polish): copy the code from the chat message, open the game, tap JOIN — zero typing. M3 hardening: iOS shows a paste banner (fine); Android 10+ only allows clipboard reads with window focus, so the read may need a short retry after resume instead of firing on the first frame.
 - **Joining, layer 2 — soft-keyboard entry**: covered by M3-2.
 - **Joining, layer 3 — deep links / universal join link** (SHIPPED, field-verified on iOS + Android + Steam): host shares `https://newtonia.metonymous.com/join?code=<CODE>` (`net_join_url`, sent by both the SHARE band and the clipboard auto-copy — the clipboard is the only share affordance on desktop/Steam). The static `/join` page (`web/site/join/`) routes by device: installed iOS/Android apps intercept it via Universal / App Links (`ios_universal_link.mm`; `AndroidManifest` `autoVerify` + JNI), Steam desktop gets a `steam://run/4536720//+connect` button (consumed by `steam_invites.cpp`), everyone else falls through to `/play/?code=` (`web_main.cpp` `web_accept_invite` ← `web/main.ts`). All funnel into `Invites::note_accepted → poll_accepted_invite → NetLobby(code)`. The `.well-known/{apple-app-site-association,assetlinks.json}` association files are live from master with the real Team ID + Android SHAs. Pasting the link into JOIN also works (`room_code_from_clip` extracts the code). See CLAUDE.md "Universal join link" for the full wiring. Remaining human config: none — iOS Associated Domains and the Steamworks promptless `+connect` Launch Option are both configured and field-tested. The `/join` page's *no-app* fallback: iOS (public App Store) shows the Smart App Banner + a "Get the app" button (App Store id 6760685759, no silent redirect); Android (internal-testing only for now) and everything else fall through to the browser game.
-  - **Follow-up (task #145), gated on Android going public**: add a Play Store button to `/join` and implement **install→auto-join** for a fresh Android install. Android can do deferred deep linking *for free* via the Play Store **Install Referrer** API — append the code as `&referrer=code%3D<CODE>` to the Play URL, read it on first launch (`NewtoniaActivity`, Install Referrer library) and feed `Invites::note_accepted`. iOS deferred deep-link is deliberately NOT pursued (no free mechanism — only paid attribution SDKs like Branch/AppsFlyer; the browser "Play now" path is the iOS one-tap answer). Also fill `assetlinks.json` with the public Play App Signing SHA-256.
+  - **Follow-up (task #145) — BUILT (2026-07-26), inert until Android goes public.** The Play Store button is on `/join` behind the `ANDROID_PUBLIC` flag, and **install→auto-join** is implemented: the store URL carries the code as `&referrer=code%3D<CODE>`, and `NewtoniaActivity` reads it on first launch through the Play **Install Referrer** API (`com.android.installreferrer:2.2`, one-shot behind an `install_referrer_checked` pref, best-effort so it can never disturb launch) → `referrerCode()` → `Invites::note_accepted`. iOS deferred deep-link is deliberately NOT pursued (no free mechanism — only paid attribution SDKs like Branch/AppsFlyer; the browser "Play now" path is the iOS one-tap answer). **Two one-line steps remain for publish day**: flip `ANDROID_PUBLIC` to `true` in `web/site/join/index.html`, and add the public Play App Signing SHA-256 to `assetlinks.json` (which today carries the release + debug fingerprints).
 
 Explicitly NOT needing new design (checked 2026-07-05): NAT/cellular (TURN covers CGNAT), late-game bandwidth on mobile data (~33 KB/s after delta snapshots), touch input plumbing (the touch joystick's analog values already ride MSG_INPUT), and app-store version skew (the PROTO_VERSION mismatch REJECT is already clean).
 
@@ -734,16 +734,20 @@ lobby (`attested_peer_`, threaded into `GLGame` via `net_set_worker_session` +
    nothing (peer stays role-labeled). The identity announce rides the same
    `/ws` socket, already under the per-IP Limiter DO.
 3. Tests: `signal/test/steam_verify_test.mjs` (mocked Valve — ticket valid /
-   invalid / reused / API down / persona-lookup-down). **Still to do:** the
-   live gate (manual, same class as the persona smoke) — two Steam accounts,
-   verified persona badges both sides, worker log shows the round trip — and
-   creating the `STEAM_WEBAPI_KEY` secret in the scoped key group.
+   invalid / reused / API down / persona-lookup-down). The
+   `STEAM_WEBAPI_KEY` secret is **created (2026-07-26)**. **Still to do:**
+   the live gate only (manual, same class as the persona smoke) — two Steam
+   accounts, verified persona badges both sides, worker log shows the round
+   trip.
 
 **V2 — Android / Play Games verifier (~2-3 days + console prereq)**
 
 1. Prereq: the Play Console project + OAuth client (the same project
-   the commented-out `games-ids.xml` achievement ids await); worker
-   holds the OAuth client secret.
+   that carries the `games-ids.xml` achievement ids); worker holds the
+   OAuth client secret. **Done 2026-07-26** — the web OAuth client is
+   created and its id is live in `games-ids.xml`
+   (`play_games_oauth_client_id`), and both Cloudflare secrets
+   (`PLAY_GAMES_OAUTH_CLIENT_ID` / `_SECRET`) are set.
 2. Client: `GamesSignInClient.requestServerSideAccess()` (JNI beside
    the PlayGamesAchievements bridge) → single-use server auth code →
    submitted with join/register.
@@ -752,8 +756,9 @@ lobby (`attested_peer_`, threaded into `GLGame` via `net_set_worker_session` +
    client-reported one — Google's own guidance), attests via V0's
    message. Single-use + bound to our OAuth client = solid replay
    properties.
-4. Tests: worker suite with a mocked Google exchange; live device smoke
-   vs a desktop peer.
+4. Tests: worker suite with a mocked Google exchange
+   (`signal/test/play_games_verify_test.mjs`, landed). **Still to do:**
+   the live device smoke vs a desktop peer — the only open V2 item.
 
 **V3 — iOS / Game Center verifier (~3 days + the name decision)**
 
@@ -1031,13 +1036,13 @@ and configuration, not engineering. Order matters only where noted.
       n=1 machine — if launch-week players report flags, the recourse
       remains re-submitting the FP report per build and, only if it
       persists, code signing. Gate 4 COMPLETE.
-- [x] `coop_clear` mobile mappings: DEFERRED POST-LAUNCH by decision
-      (Glenn 2026-07-18) — tasks #153 (Game Center: one mapping line +
-      App Store Connect definition at 40 pts) and #154 (Play Games:
-      console-generated ID, pairs with Android going public / #145).
-      Nothing is lost meanwhile: unmapped earns drop silently and the
-      shared hook re-fires on any future co-op clear. Not a release
-      blocker.
+- [x] `coop_clear` mobile mappings: deferred post-launch by decision
+      (Glenn 2026-07-18), then **DELIVERED 2026-07-26** — task #153
+      (Game Center: mapping line + App Store Connect definition at
+      40 pts) and task #154 (Play Games: console-generated ID in
+      `games-ids.xml`) are both closed, so co-op clears now earn on
+      all three platforms. See ACHIEVEMENTS.md §2 for the portal
+      records.
 
 ### Gate 5 — release mechanics
 - [x] Merge netplay branch → master — DONE (PR #323, 2026-07-18), with
@@ -1093,12 +1098,12 @@ and configuration, not engineering. Order matters only where noted.
       workflows (deploy-itch's channel picker collapsed — html5 +
       the paid newtonia-online push are all that remain),
       tag-netplay.yml deleted, docs updated. Historical netplay-v*
-      tags stay in the repo as inert history. GLENN's portal halves:
-      hide/retire the Steam `netplay` branch in Steamworks, delete
-      the itch `html5-netplay` channel/upload (already hidden), and
-      revoke + delete the NETPLAY_TAG_TOKEN repo secret. Future test
-      builds go via manual workflow dispatch. Continue watching
-      `wrangler tail` casually for the first days.
+      tags stay in the repo as inert history. **Glenn's portal halves
+      are DONE (2026-07-26)**: the Steam `netplay` branch retired, the
+      itch `html5-netplay` channel/upload deleted, and the
+      NETPLAY_TAG_TOKEN repo secret revoked and deleted. Future test
+      builds go via manual workflow dispatch. Task #157 is closed —
+      the retirement is complete on both the repo and portal sides.
 
 ## Where things stand (2026-07-08 handoff)
 
