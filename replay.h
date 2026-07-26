@@ -46,6 +46,10 @@ namespace Replay {
 struct Header {
     static const uint32_t MAGIC = 0x5052574Eu;  // "NWRP" (little-endian)
     static const uint16_t FORMAT_VERSION = 1;
+    // Oldest format this build still reads. Equal to FORMAT_VERSION today —
+    // there has only ever been one — so "too old" cannot happen yet; raise
+    // this, not the check, when support for a format is dropped.
+    static const uint16_t MIN_FORMAT_VERSION = 1;
     static const size_t   SIZE = 64;            // v1 header size on disk
     static const size_t   GAME_VERSION_LEN = 24;
     // Patchable tail: flags..duration_ms live at bytes [PATCH_OFFSET, SIZE).
@@ -104,7 +108,31 @@ std::string online_path();
 
 uint64_t new_run_id();  // never returns 0
 
+// Why a file's header would not load. The replays list shows these to the
+// player, so they are kept apart rather than collapsed into one "can't read
+// it": a file from a newer build tells the player something they can act on
+// (update the game), while a damaged one does not, and calling either of
+// them "older" would simply be wrong.
+enum HeaderStatus {
+    HEADER_OK = 0,
+    // Missing, too short, wrong magic, or a nonsense header_size/version 0.
+    // Damage or not a replay at all — nothing to do with format versions.
+    HEADER_DAMAGED,
+    // A format version this build no longer reads. Unreachable while
+    // MIN_FORMAT_VERSION == FORMAT_VERSION == 1; it becomes real the day the
+    // format bumps and support for the old one is dropped.
+    HEADER_TOO_OLD,
+    // Recorded by a newer build than this one.
+    HEADER_TOO_NEW,
+};
+
+// Reads+validates a header (magic, format version, sane header_size) and
+// says which of the above it is. `h` is only filled on HEADER_OK.
+HeaderStatus read_header_status(const std::string &path, Header &h);
+
 // Reads+validates a header (magic, format version, sane header_size).
+// Shorthand for read_header_status(...) == HEADER_OK, for the callers that
+// only need "can I play this".
 bool read_header(const std::string &path, Header &h);
 
 // True if the file contains at least one DELTA record — a record-less

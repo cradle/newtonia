@@ -233,7 +233,7 @@ void Menu::draw() {
           Typer::draw_centered(60, cy, score_buf, 14);
           Typer::draw(320, cy, r.date.c_str(), 11);
         } else {
-          Typer::draw_centered(145, cy, "OLDER VERSION", 14);
+          Typer::draw_centered(145, cy, replay_status_text(r.status), 14);
         }
         continue;
       }
@@ -245,7 +245,7 @@ void Menu::draw() {
         Typer::draw(LEVEL_X, y, level_buf, 13);
         Typer::draw(DATE_X, y, r.date.c_str(), 10);
       } else {
-        Typer::draw(SCORE_X, y, "OLDER VERSION", 13);
+        Typer::draw(SCORE_X, y, replay_status_text(r.status), 13);
       }
     }
     // Bottom exit band on BOTH layouts (the lobby's convention): desktop
@@ -524,8 +524,9 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
     } else if (confirm && replay_sel_ < (int)replay_rows_.size()) {
       const ReplayRow &r = replay_rows_[replay_sel_];
       if (r.ok) {
-        // The cursor can rest on an OLDER VERSION row; only readable runs
-        // confirm. A NULL here means the file changed underneath us
+        // The cursor can rest on an unreadable row (damaged / newer
+        // version); only readable runs confirm. A NULL here means the file
+        // changed underneath us
         // (rotated/deleted) — rescan so the list matches reality.
         if (GLGame *g = GLGame::start_replay_playback(r.path)) {
           request_state_change(g);
@@ -805,9 +806,21 @@ void Menu::open_options() {
 
 // Build the replays list from disk (REPLAY.md R3). A readable header makes
 // a selectable row with its score/level/date; a file that exists but this
-// build can't parse (older/newer format) still shows, unselectable, as
-// OLDER VERSION — the polite decline the plan asks for. Absent files make
-// no row, and no rows hides the whole REPLAYS menu row.
+// build can't parse still shows, unselectable, saying WHY (see
+// replay_status_text) — the polite decline the plan asks for. Absent files
+// make no row, and no rows hides the whole REPLAYS menu row.
+// One wording per reason. "OLDER VERSION" used to stand for every failure,
+// which was wrong in the only two cases that can actually happen today:
+// there has never been more than one replay format, so a file this build
+// cannot read is either damaged or from a build newer than this one.
+const char *Menu::replay_status_text(int status) {
+  switch (status) {
+    case Replay::HEADER_TOO_NEW: return "NEWER VERSION";
+    case Replay::HEADER_TOO_OLD: return "OLDER VERSION";
+    default:                     return "DAMAGED FILE";
+  }
+}
+
 void Menu::scan_replays() {
   replay_rows_.clear();
   struct { const char *label; std::string path; } sources[4] = {
@@ -825,7 +838,8 @@ void Menu::scan_replays() {
     row.label = sources[i].label;
     row.path = sources[i].path;
     Replay::Header h;
-    row.ok = Replay::read_header(sources[i].path, h);
+    row.status = Replay::read_header_status(sources[i].path, h);
+    row.ok = row.status == Replay::HEADER_OK;
     if (row.ok) {
       row.score = h.final_score;
       row.level = h.generation + 1;  // displayed level, like everywhere else
