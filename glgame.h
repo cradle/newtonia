@@ -2,6 +2,7 @@
 #define GL_GAME_H
 
 #include "state.h"
+#include "menu_select.h"
 #include "savegame.h"
 #include "net_lan.h"
 #include "glship.h"
@@ -173,6 +174,30 @@ private:
   void save_progress();   // save only when at least one player is alive or has lives
   void toggle_pause(bool broadcast = true);  // broadcast=false: applying a
                                              // peer's PAUSE/RESUME event
+  // Pause-screen menu, drawn by Overlay::paused. Every pause opens on
+  // RESUME — never on the exit row left armed by the last one.
+  enum PauseRow { PAUSE_RESUME = 0, PAUSE_EXIT = 1, PAUSE_ROWS = 2 };
+  int pause_selection_ = PAUSE_RESUME;
+  // True when the pause menu is on screen AND owns navigation input. Touch
+  // is excluded: it draws no cursor anywhere and already has both actions
+  // (the pause button resumes, the RETURN TO MENU band leaves).
+  bool pause_menu_active() const;
+  // RESUME / RETURN TO MENU ladder in logical keys, shared by the keyboard
+  // and pad paths — the Menu::nav_input pattern, one decision path per
+  // screen.
+  void pause_nav(unsigned char key);
+  // Is this pad already bound to a player? The pause menu only answers to
+  // pads that are playing, so an unknown pad's A still joins player 2.
+  bool is_player_controller(SDL_JoystickID which) const;
+  // Every screen whose only move is "leave" — the GAME OVER card, the
+  // terminal disconnect card, a finished replay — draws the shared
+  // RETURN TO MENU row, so all of them answer like a menu: confirm
+  // (fire/Enter/A/Start/RT) or back (Esc/B/Back), and nothing else. Taking
+  // ANY key, as they each used to, meant a stray press ate the score
+  // screen. Takes a key already through nav_key/nav_key_from_controller.
+  static bool is_exit_key(unsigned char nav) {
+    return MenuSelect::is_confirm(nav) || MenuSelect::is_back(nav);
+  }
   void host_toggle_friendly_fire();  // G key / HUD-text tap; announces the
                                      // room rule online (EV_FRIENDLY_FIRE)
   // The "friendly fire on/off" HUD line doubles as the touch toggle

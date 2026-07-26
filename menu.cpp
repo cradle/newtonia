@@ -4,6 +4,7 @@
 #include "glstarfield.h"
 #include "glgame.h"
 #include "menu.h"
+#include "menu_select.h"
 #include "invites.h"
 #include "net_lobby.h"
 #include "net_policy.h"
@@ -86,18 +87,6 @@ static int touch_opt_center(int i, int n) {
 }
 static int touch_opt_row_at(float ny, int n) {
   return opt_row_at(ny, n, TOUCH_OPT_TOP, TOUCH_OPT_BOTTOM);
-}
-
-// Row-list counterpart to Typer::cursored, for the desktop options and
-// replays screens: the selected row is flanked by '>' and '<' like a
-// centred menu item, but at fixed x's rather than wrapped around a label.
-// A multi-column row has no single word to wrap — hugging the first column
-// would slide the closing mark sideways every time the selection moved, and
-// on the options screen the longest name would push it into the step marks
-// — so the pair brackets the whole row and the columns keep their x.
-static void draw_row_cursor(float left_x, float right_x, float y, float size) {
-  Typer::draw(left_x, y, '>', size);
-  Typer::draw(right_x, y, '<', size);
 }
 
 // The desktop confirm dialogs (Quit? / New game?) stack Yes above No.
@@ -249,7 +238,7 @@ void Menu::draw() {
         continue;
       }
       int y = opt_row_center(i, n, DESK_OPT_TOP, DESK_OPT_BOTTOM);
-      if (replay_sel_ == i) draw_row_cursor(CURSOR_L, CURSOR_R, y, 14);
+      MenuSelect::draw_row_cursor(replay_sel_ == i, CURSOR_L, CURSOR_R, y, 14);
       Typer::draw(LABEL_X, y, r.label.c_str(), 14);
       if (r.ok) {
         Typer::draw(SCORE_X, y, score_buf, 13);
@@ -264,8 +253,13 @@ void Menu::draw() {
     // Bottom exit band on BOTH layouts (the lobby's convention): desktop
     // labels the key but stays tappable — the Steam Deck runs the desktop
     // layout and touch needs a way out (field report 2026-07-25).
+    // Touch: the band IS the button, so it carries the menu cursor like a
+    // selected row. Desktop labels a key instead — a key hint is not a
+    // thing you point a cursor at.
     TapBand::return_to_menu.draw(
-        touch ? "RETURN TO MENU" : "ESC - BACK TO MENU", currentTime);
+        touch ? Typer::cursored("RETURN TO MENU", true).c_str()
+              : "ESC - BACK TO MENU",
+        currentTime);
   } else if (options_mode_) {
     bool touch = is_touch_mode();
     Typer::draw_centered(0, touch ? 340 : 368, "OPTIONS", touch ? 30 : 26);
@@ -306,7 +300,8 @@ void Menu::draw() {
       }
 
       int y = opt_row_center(row, n, DESK_OPT_TOP, DESK_OPT_BOTTOM);
-      if (active_row_ == row) draw_row_cursor(CURSOR_L, CURSOR_R, y, 12);
+      MenuSelect::draw_row_cursor(active_row_ == row, CURSOR_L, CURSOR_R, y,
+                                12);
       Typer::draw(NAME_X, y, r.name, 12);                // name, left
       const float step_sz = 13.0f;
       for (int i = 0; i < num_steps; i++) {              // numbered choices, mid
@@ -323,11 +318,14 @@ void Menu::draw() {
       Typer::draw(VALUE_X, y, lbl[cur_idx], 12);         // value description, right
     }
 
-    if (touch)
-      Typer::draw_centered(0, -270, "TAP AN OPTION TO CHANGE IT", 12);
     // Tappable exit on both layouts — see the replays band note above.
+    // Touch: the band IS the button, so it carries the menu cursor like a
+    // selected row. Desktop labels a key instead — a key hint is not a
+    // thing you point a cursor at.
     TapBand::return_to_menu.draw(
-        touch ? "RETURN TO MENU" : "ESC - BACK TO MENU", currentTime);
+        touch ? Typer::cursored("RETURN TO MENU", true).c_str()
+              : "ESC - BACK TO MENU",
+        currentTime);
   } else {
     Typer::draw_centered(0, 320, "Newtonia", 80);
     if (high_score > 0) {
@@ -362,10 +360,10 @@ void Menu::draw() {
         Typer::draw_centered(-Typer::scaled_window_width / 2, -50, "Yes", 26);
         Typer::draw_centered( Typer::scaled_window_width / 2, -50, "No",  26);
       } else {
-        std::string yes_str = Typer::cursored("Yes", quit_selection_ == 0);
-        std::string no_str  = Typer::cursored("No",  quit_selection_ == 1);
-        Typer::draw_centered(0, CONFIRM_YES_Y, yes_str.c_str(), CONFIRM_SZ);
-        Typer::draw_centered(0, CONFIRM_NO_Y,  no_str.c_str(),  CONFIRM_SZ);
+        MenuSelect::draw_row(CONFIRM_YES_Y, "Yes", CONFIRM_SZ,
+                             quit_selection_ == 0);
+        MenuSelect::draw_row(CONFIRM_NO_Y, "No", CONFIRM_SZ,
+                             quit_selection_ == 1);
       }
     } else if (new_confirm_) {
       Typer::draw_centered(0, 50, "New game?", 30);
@@ -373,10 +371,10 @@ void Menu::draw() {
         Typer::draw_centered(-Typer::scaled_window_width / 2, -50, "YES", 26);
         Typer::draw_centered( Typer::scaled_window_width / 2, -50, "NO",  26);
       } else {
-        std::string yes_str = Typer::cursored("YES", new_selection_ == 0);
-        std::string no_str  = Typer::cursored("NO",  new_selection_ == 1);
-        Typer::draw_centered(0, CONFIRM_YES_Y, yes_str.c_str(), CONFIRM_SZ);
-        Typer::draw_centered(0, CONFIRM_NO_Y,  no_str.c_str(),  CONFIRM_SZ);
+        MenuSelect::draw_row(CONFIRM_YES_Y, "YES", CONFIRM_SZ,
+                             new_selection_ == 0);
+        MenuSelect::draw_row(CONFIRM_NO_Y, "NO", CONFIRM_SZ,
+                             new_selection_ == 1);
       }
     } else {
       std::vector<std::string> rows;
@@ -494,13 +492,13 @@ void Menu::keyboard_up(unsigned char key, int x, int y) {
 // keyboard, controller buttons/stick, the tick() trigger poll — lands here,
 // so each screen's rules exist exactly once.
 void Menu::nav_input(unsigned char key, SDL_GameController *src) {
-  bool confirm = (key == ' ' || key == '\r' || key == '\n');
+  bool confirm = MenuSelect::is_confirm(key);
   if (attract_mode_) {
     if (confirm) {
       attract_mode_ = false;
     }
 #ifndef __EMSCRIPTEN__
-    else if (key == 27) {
+    else if (MenuSelect::is_back(key)) {
       attract_mode_ = false;
       quit_confirm_ = true;
       quit_selection_ = 0;
@@ -509,25 +507,21 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
     return;
   }
   if (options_mode_) {
-    if (key == 'w' || key == 'W') {
-      if (active_row_ > 0) active_row_--;
-    } else if (key == 's' || key == 'S') {
-      if (active_row_ < opt_row_count() - 1) active_row_++;
-    } else if (key == 'a' || key == 'A') {
+    if (MenuSelect::move(key, active_row_, opt_row_count())) {
+      // moved
+    } else if (MenuSelect::is_left(key)) {
       adjust_active_row(-1);
-    } else if (key == 'd' || key == 'D') {
+    } else if (MenuSelect::is_right(key)) {
       adjust_active_row(1);
-    } else if (key == 27 || confirm) {
+    } else if (MenuSelect::is_back(key) || confirm) {
       close_options();
     }
     return;
   }
   if (replays_mode_) {
-    if (key == 'w' || key == 'W') {
-      if (replay_sel_ > 0) replay_sel_--;
-    } else if (key == 's' || key == 'S') {
-      if (replay_sel_ < (int)replay_rows_.size() - 1) replay_sel_++;
-    } else if (key == 27) {
+    if (MenuSelect::move(key, replay_sel_, (int)replay_rows_.size())) {
+      // moved
+    } else if (MenuSelect::is_back(key)) {
       replays_mode_ = false;
     } else if (confirm && replay_sel_ < (int)replay_rows_.size()) {
       const ReplayRow &r = replay_rows_[replay_sel_];
@@ -548,7 +542,7 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
   }
   int n = max_menu_items();
   if (quit_confirm_) {
-    if (key == 27) {
+    if (MenuSelect::is_back(key)) {
       quit_confirm_ = false;  // back = No
     } else if (confirm) {
       if (quit_selection_ == 0) {
@@ -556,13 +550,11 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
       } else {
         quit_confirm_ = false;
       }
-    } else if (key == 'w' || key == 'W') {
-      quit_selection_ = 0;
-    } else if (key == 's' || key == 'S') {
-      quit_selection_ = 1;
+    } else {
+      MenuSelect::move(key, quit_selection_, 2);
     }
   } else if (new_confirm_) {
-    if (key == 27) {
+    if (MenuSelect::is_back(key)) {
       new_confirm_ = false;  // back = No, keep the save
     } else if (confirm) {
       if (new_selection_ == 0) {
@@ -570,13 +562,11 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
       } else {
         new_confirm_ = false;
       }
-    } else if (key == 'w' || key == 'W') {
-      new_selection_ = 0;
-    } else if (key == 's' || key == 'S') {
-      new_selection_ = 1;
+    } else {
+      MenuSelect::move(key, new_selection_, 2);
     }
   } else {
-    if (key == 27) {
+    if (MenuSelect::is_back(key)) {
       // Quit confirmation is compiled out on web (the browser tab owns
       // closing); Esc/B is a no-op on the root menu there.
 #ifndef __EMSCRIPTEN__
@@ -591,10 +581,8 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
       } else {
         confirm_selection(src);
       }
-    } else if (key == 'w' || key == 'W') {
-      if (menu_selection > 0) menu_selection--;
-    } else if (key == 's' || key == 'S') {
-      if (menu_selection < n - 1) menu_selection++;
+    } else {
+      MenuSelect::move(key, menu_selection, n);
     }
   }
 }
@@ -784,10 +772,12 @@ void Menu::draw_menu_rows(const std::vector<std::string> &rows) {
   int n = (int)rows.size();
   int gap = menu_row_gap(n, h);
   for (int i = 0; i < n; i++) {
-    std::string row = rows[i];
-    if (!is_touch_mode())
-      row = Typer::cursored(row, menu_selection == i);
-    Typer::draw_centered(0, 160 - (i + 1) * gap - i * h, row.c_str(), sz);
+    float y = 160 - (i + 1) * gap - i * h;
+    // Touch draws the label bare — no cursor on any touch screen.
+    if (is_touch_mode())
+      Typer::draw_centered(0, y, rows[i].c_str(), sz);
+    else
+      MenuSelect::draw_row(y, rows[i], sz, menu_selection == i);
   }
 }
 

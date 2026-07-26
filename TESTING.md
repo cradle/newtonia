@@ -128,6 +128,11 @@ test/e2e/lanrename.sh # LAN rejoin vs a RENAMED host (NEWTONIA_DEVICE_NAME
                      # fresh host beacons a different one -> auto-rejoin
                      # must NOT fire, the rejoin wait screen lists the
                      # live rows, and a manual Down+Enter joins it.
+test/e2e/byecard.sh  # terminal disconnect card answers like a menu, no relay:
+                     # host leaves to the menu (a deliberate BYE, so the
+                     # joiner has nothing to rejoin) -> the joiner's card
+                     # must survive movement keys (it used to take ANY key
+                     # as "exit") and leave only on confirm.
 test/e2e/rejoin.sh   # SIGKILL joiner mid-game -> auto-pause -> rejoin -> resume
 test/e2e/hostresume.sh # host process-death resume: SIGKILL the HOST mid-game,
                      # relaunch within the reclaim grace, drive the menu's

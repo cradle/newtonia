@@ -24,6 +24,7 @@
 #include "wrapped_point.h"
 #include "intro.h"
 #include "menu.h"
+#include "menu_select.h"
 #include "net_lobby.h"
 #include "state.h"
 #include "asteroid.h"
@@ -956,6 +957,9 @@ void GLGame::toggle_pause(bool broadcast) {
   // terminal for a spectating client).
   if (running && all_players_out()) return;
   running = !running;
+  // The pause menu always opens on RESUME: leaving the highlight where the
+  // last pause left it would put RETURN TO MENU under a reflexive confirm.
+  if (!running) pause_selection_ = PAUSE_RESUME;
   // Pausing auto-saves (the long-documented behavior — it previously only
   // happened via the focus-loss path, so quitting in a way that skips the
   // exit hooks (force-kill, crash, a killed mobile-web tab) lost everything
@@ -987,6 +991,40 @@ void GLGame::toggle_pause(bool broadcast) {
       pause_music_channel = Mix_PlayChannel(-1, pause_music_sound, -1);
     }
   }
+}
+
+bool GLGame::pause_menu_active() const {
+  if (running) return false;
+  // Touch draws no selection cursor on any screen, and the pause screen
+  // there already has both actions as touch targets.
+  if (is_touch_mode()) return false;
+  // Nothing left to resume — the GAME OVER card owns the screen.
+  if (all_players_out()) return false;
+  // A replay's pause is a playback control, not a menu.
+  if (net_mode_ == NetReplay) return false;
+  // The help card takes the pause text's place, so the menu isn't drawn.
+  // Navigating a menu you cannot see is how a game gets quit by accident.
+  for (auto *gs : *players)
+    if (gs->showing_help()) return false;
+  return true;
+}
+
+void GLGame::pause_nav(unsigned char key) {
+  if (MenuSelect::move(key, pause_selection_, PAUSE_ROWS)) return;
+  if (!MenuSelect::is_confirm(key)) return;
+  if (pause_selection_ == PAUSE_RESUME) {
+    toggle_pause();
+  } else {
+    // Exactly what the menu key does — save first, then hand over.
+    save_progress();
+    request_state_change(new Menu());
+  }
+}
+
+bool GLGame::is_player_controller(SDL_JoystickID which) const {
+  for (auto *gs : *players)
+    if (gs->wasMyController(which)) return true;
+  return false;
 }
 
 bool GLGame::back_pressed() {
@@ -7781,7 +7819,10 @@ void GLGame::controller(SDL_Event event) {
       !(net_mode_ == NetHost && (net_signal_ || net_lan_door_open()))) {
     // Same one-frame guard as keyboard_up: a committed auto-rejoin
     // hand-off must not be overwritten (the pending lobby would leak).
-    if (event.type == SDL_CONTROLLERBUTTONDOWN && !net_handed_to_lobby_)
+    if (net_handed_to_lobby_) return;
+    // A/Start/right-trigger confirm the card's row, B/Back leave — the
+    // keyboard twin above, through the shared pad translator.
+    if (is_exit_key(nav_key_from_controller(event)))
       request_state_change(new Menu());
     return;
   }
@@ -7791,11 +7832,46 @@ void GLGame::controller(SDL_Event event) {
     if (event.type == SDL_CONTROLLERBUTTONDOWN) {
       if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) toggle_pause();
       else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_B ||
-               (game_over && current_time - game_over_time >= 3000))
+               (game_over && current_time - game_over_time >= 3000 &&
+                is_exit_key(nav_key_from_controller(event))))
         request_state_change(new Menu());
     }
     return;
   }
+  // Paused with the menu up: dpad and left stick move the highlight, A
+  // confirms — but only from a pad that is already playing, so an unknown
+  // pad's A still joins player 2 through the ladder below. START (toggle
+  // pause) and BACK (exit) fall through untouched, so the pad shortcuts
+  // are exactly as they were.
+  if (pause_menu_active()) {
+    if (event.type == SDL_CONTROLLERBUTTONDOWN &&
+        is_player_controller(event.cbutton.which)) {
+      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
+        pause_nav('w');
+        return;
+      }
+      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
+        pause_nav('s');
+        return;
+      }
+      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A) {
+        pause_nav('\r');
+        return;
+      }
+    } else if (event.type == SDL_CONTROLLERAXISMOTION &&
+               is_player_controller(event.caxis.which)) {
+      // Stick nav through the shared arm/release hysteresis, so the pause
+      // menu feels like every other screen. Only w/s are taken — the
+      // translator also maps the right trigger to confirm, and in-game
+      // that trigger is fire.
+      unsigned char nav = nav_key_from_controller(event);
+      if (MenuSelect::is_up(nav) || MenuSelect::is_down(nav)) {
+        pause_nav(nav);
+        return;
+      }
+    }
+  }
+
   if(event.cbutton.type == SDL_CONTROLLERBUTTONDOWN) {
     if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) {
       bool known_player = false;
@@ -7846,7 +7922,11 @@ void GLGame::controller(SDL_Event event) {
           }
         }
         if (all_game_over) {
-          if (!(game_over_time >= 0 && current_time - game_over_time < 3000)) {
+          // A and B are the card's confirm and back; X and Y are neither,
+          // so they no longer leave (they still join player 2 below on a
+          // pad that isn't playing yet).
+          if (is_exit_key(nav_key_from_controller(event)) &&
+              !(game_over_time >= 0 && current_time - game_over_time < 3000)) {
             for (auto* glship : *players)
               save_high_score(glship->ship->score);
             request_state_change(new Menu());
@@ -7991,7 +8071,10 @@ void GLGame::touch_tap(float nx, float ny) {
   GLShip *local = local_player();
   bool local_over = net_mode_ != NetOff && local &&
                     !local->ship->is_alive() && local->ship->lives <= 0;
-  if (!running || local_over) {
+  // net_connection_lost_: the overlay draws the exit band on a lost link
+  // too, so touch has ONE way out of every end-state instead of the card's
+  // old "tap fire" — the band has to actually leave, or it is a lie.
+  if (!running || local_over || net_connection_lost_) {
     // Same one-frame guard as keyboard_up/controller: a committed
     // auto-rejoin hand-off must not be overwritten by the exit band.
     if (net_handed_to_lobby_) return;
@@ -8230,7 +8313,13 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     // the one-frame window before the swap, orphaning that lobby (its
     // ctor already opened the room's joiner socket) and leaving the
     // armed net_handed_to_lobby_ skipping the credential release.
-    if (!net_handed_to_lobby_) request_state_change(new Menu());
+    if (net_handed_to_lobby_) return;
+    // The disconnect card carries a RETURN TO MENU row, so it answers like
+    // every other menu: confirm activates the row, back leaves outright,
+    // and nothing else does anything. Fire IS a confirm, so the touch
+    // card's "TAP FIRE FOR MENU" still reads true — but a stray keypress
+    // no longer throws the session away.
+    if (is_exit_key(nav_key(key))) request_state_change(new Menu());
     return;
   }
 
@@ -8240,8 +8329,11 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   // gameplay/cheat key can touch the recorded world. After the recording's
   // game over, any key exits (mirrors the offline game-over flow).
   if (net_mode_ == NetReplay) {
+    // The finished-replay card draws the shared RETURN TO MENU row, so it
+    // answers like one; the menu key stays a direct shortcut mid-playback.
     if (key == (unsigned char)gk.menu ||
-        (game_over && current_time - game_over_time >= 3000)) {
+        (game_over && current_time - game_over_time >= 3000 &&
+         is_exit_key(nav_key(key)))) {
       request_state_change(new Menu());
       return;
     }
@@ -8252,6 +8344,22 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       replay_speed_ *= 0.5f;
     if (key == (unsigned char)gk.time_reset) replay_speed_ = 1.0f;
     return;
+  }
+
+  // Paused with the menu up: w/s (and the arrows) move the highlight,
+  // Enter/space confirm. The pause and menu keys are checked first so they
+  // keep working as direct shortcuts even if someone has bound one of them
+  // onto a nav key. Swallowing the rest can't latch a control: pausing
+  // force-releases everything (toggle_pause) and key-downs are already
+  // dropped while paused.
+  if (pause_menu_active() && key != (unsigned char)gk.pause &&
+      key != (unsigned char)gk.menu) {
+    unsigned char nav = nav_key(key);  // arrows navigate like WASD
+    if (MenuSelect::is_up(nav) || MenuSelect::is_down(nav) ||
+        MenuSelect::is_confirm(nav)) {
+      pause_nav(nav);
+      return;
+    }
   }
 
   // Host-only / debug keys are ignored on the online client — it never
@@ -8323,8 +8431,10 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
 #endif
-  // On all platforms: any non-menu key goes to menu when all players are game over,
-  // with a short delay so the last shoot input doesn't immediately skip the game over screen.
+  // The GAME OVER screen draws the shared RETURN TO MENU row, so it answers
+  // like one: confirm or back, never "any key" — a stray press used to eat
+  // the score screen. The short delay still stops the last shoot input from
+  // skipping it. The menu key keeps its own path below.
   if (key != (unsigned char)gk.menu) {
     bool all_game_over = !players->empty();
     for (auto* glship : *players) {
@@ -8334,6 +8444,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       }
     }
     if (all_game_over) {
+      if (!is_exit_key(nav_key(key))) return;
       if (game_over_time >= 0 && current_time - game_over_time < 3000)
         return;
       for (auto* glship : *players)

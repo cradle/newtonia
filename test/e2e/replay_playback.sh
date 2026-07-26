@@ -161,12 +161,19 @@ sleep 0.5; key "$W" space                     # request spawn
 sleep 3.5                                     # ...and wait out the countdown:
                                               # a dead ship ignores fire, so
                                               # cycling early records nothing
-# The grant's primary list is [15 default variants, beam, lance, shock]
-# with shock selected. Fire TWICE at EVERY position (then advance) and walk
-# one position past a full lap, so beam/lance/shock each get trigger pulls
-# even when Xvfb drops keypresses — single pulls per position still flaked.
-# Then every secondary (x fires the selection; nova mints its ring).
-for i in $(seq 1 20); do key "$W" space; key "$W" space; key "$W" q; done
+# The grant's primary list is [weapon_configs, beam, lance, shock] with shock
+# selected — 25 entries today, and weapon_configs (ship.cpp) is the part that
+# grows: the burst rows took it from 15 to 22 and this loop, still walking 20
+# positions, silently stopped reaching beam and lance. Shock kept passing
+# only because the grant leaves it selected. So walk MORE than the whole list
+# and keep it that way when weapons are added — with slack on top, because a
+# death re-grants the arsenal (NEWTONIA_ALL_WEAPONS re-arms on respawn) and
+# puts the selection back on shock, rewinding the walk. Not TOO much slack:
+# the recording is played back at 1x below, so every extra position costs
+# twice. Fire TWICE at every position (then advance), because single pulls
+# flaked when Xvfb dropped keypresses. Then every secondary (x fires the
+# selection; nova mints its ring).
+for i in $(seq 1 40); do key "$W" space; key "$W" space; key "$W" q; done
 sleep 1
 for i in $(seq 1 5); do key "$W" c; key "$W" x; sleep 0.3; done
 sleep 2
@@ -179,7 +186,7 @@ echo "recorded $FX effect records"
 P=$(NEWTONIA_REPLAY_PLAY=current "$ROOT/newtonia" > "$OUT/play-fx.log" 2>&1 & echo $!)
 sleep 2; W=$(win)
 wait_log play-fx "replay: playback started" 10 || fail "S6: playback never started"
-wait_log play-fx "playback finished" 60 || fail "S6: playback never finished"
+wait_log play-fx "playback finished" 120 || fail "S6: playback never finished"
 grep -q "lance pulse received" "$OUT/play-fx.log" || fail "S6: lance flash never played back"
 grep -q "shock bolt received" "$OUT/play-fx.log"  || fail "S6: shock arc never played back"
 grep -q "replay ring" "$OUT/play-fx.log"          || fail "S6: nova/giga ring never played back"

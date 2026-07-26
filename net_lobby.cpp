@@ -12,6 +12,7 @@
 #include "glstarfield.h"
 #include "mat4.h"
 #include "menu.h"
+#include "menu_select.h"
 #include "net_identity.h"
 #include "net_policy.h"
 #include "net_session.h"
@@ -1592,10 +1593,8 @@ void NetLobby::draw() {
         lines.push_back("HOST MAKES A ROOM CODE");
         lines.push_back("JOIN ENTERS A FRIEND'S CODE");
       } else {
-        std::string host = Typer::cursored("HOST", selection_ == 0);
-        std::string join = Typer::cursored("JOIN", selection_ == 1);
-        Typer::draw_centered(0, 60, host.c_str(), 26);
-        Typer::draw_centered(0, -40, join.c_str(), 26);
+        MenuSelect::draw_row(60, "HOST", 26, selection_ == 0);
+        MenuSelect::draw_row(-40, "JOIN", 26, selection_ == 1);
         lines.push_back("");
         y = -160;
         lines.push_back("HOST MAKES A ROOM CODE");
@@ -1754,9 +1753,8 @@ void NetLobby::draw() {
               std::string row = lh[i].name;
               if (lh[i].proto != Net::PROTO_VERSION)
                 row += " - DIFFERENT VERSION";
-              row = Typer::cursored(row, lan_sel_ == i);
-              Typer::draw_centered(0, -288.0f - (float)i * 32.0f,
-                                   row.c_str(), lan_sel_ == i ? 14 : 11);
+              MenuSelect::draw_row(-288.0f - (float)i * 32.0f, row,
+                                   lan_sel_ == i ? 14 : 11, lan_sel_ == i);
             }
             // The keyboard flow's join hint in the pad's vocabulary
             // (Glenn, Deck). The status line moved to the top half for
@@ -1777,9 +1775,8 @@ void NetLobby::draw() {
               std::string row = lh[i].name;
               if (lh[i].proto != Net::PROTO_VERSION)
                 row += " - DIFFERENT VERSION";
-              row = Typer::cursored(row, lan_sel_ == i);
-              Typer::draw_centered(0, -160.0f - (float)i * 46.0f,
-                                   row.c_str(), lan_sel_ == i ? 18 : 14);
+              MenuSelect::draw_row(-160.0f - (float)i * 46.0f, row,
+                                   lan_sel_ == i ? 18 : 14, lan_sel_ == i);
             }
             // 14 extra under the last row: a SELECTED row's size-18
             // glyphs reach ~36 below their anchor, which left the hint
@@ -1836,9 +1833,8 @@ void NetLobby::draw() {
                 std::string row = lh[i].name;
                 if (lh[i].proto != Net::PROTO_VERSION)
                   row += " - DIFFERENT VERSION";
-                row = Typer::cursored(row, lan_sel_ == i);
-                Typer::draw_centered(0, -160.0f - (float)i * 46.0f,
-                                     row.c_str(), lan_sel_ == i ? 18 : 14);
+                MenuSelect::draw_row(-160.0f - (float)i * 46.0f, row,
+                                     lan_sel_ == i ? 18 : 14, lan_sel_ == i);
               }
               Typer::draw_centered(0, -174.0f - (float)show * 46.0f,
                                    controller_seen_
@@ -1963,7 +1959,9 @@ void NetLobby::draw() {
   // Touch: the bottom strip is a tap zone (see touch_tap), so label it as
   // an action rather than a key hint.
   TapBand::return_to_menu.draw(
-      is_touch_mode() ? "RETURN TO MENU" : "ESC - BACK TO MENU", currentTime);
+      is_touch_mode() ? Typer::cursored("RETURN TO MENU", true).c_str()
+                      : "ESC - BACK TO MENU",
+      currentTime);
 }
 
 void NetLobby::keyboard(unsigned char key, int x, int y) {
@@ -2091,27 +2089,23 @@ void NetLobby::keyboard_up(unsigned char key, int x, int y) {
 // The single lobby decision ladder (see net_lobby.h) — everything that
 // navigates off the CodeEntry screen lands here exactly once.
 void NetLobby::nav_input(unsigned char key) {
+  if (MenuSelect::is_back(key)) {
+    leave_to_menu();
+    return;
+  }
+  if (MenuSelect::is_confirm(key)) {
+    confirm();
+    return;
+  }
+  if (screen_ == Choose) {
+    if (MenuSelect::move(key, selection_, 2)) return;
+  } else if (lan_rejoin_browsing()) {
+    // lo = -1: the highlight can walk off the top of the list to "nothing
+    // selected", which is where the rejoin wait sits until a host is picked.
+    if (MenuSelect::move_within(key, lan_sel_, -1, lan_rows_shown() - 1))
+      return;
+  }
   switch (key) {
-    case 27:
-      leave_to_menu();
-      break;
-    case 'w':
-    case 'W':
-      if (screen_ == Choose && selection_ > 0) selection_--;
-      else if (lan_rejoin_browsing() && lan_sel_ >= 0)
-        lan_sel_--;  // -1 = nothing highlighted
-      break;
-    case 's':
-    case 'S':
-      if (screen_ == Choose && selection_ < 1) selection_++;
-      else if (lan_rejoin_browsing() && lan_sel_ < lan_rows_shown() - 1)
-        lan_sel_++;
-      break;
-    case ' ':
-    case '\r':
-    case '\n':
-      confirm();
-      break;
     case 'v':
     case 'V':
       start_paste();
@@ -2135,8 +2129,7 @@ void NetLobby::picker_nav(unsigned char key) {
   // keyboard types, so up/down just walk the code field (-1) and the
   // LAN host rows, and left/right mean nothing (Glenn).
   if (floating_kb_available_) {
-    if (key == 's' && lan_sel_ < lan_rows_shown() - 1) lan_sel_++;
-    else if (key == 'w' && lan_sel_ >= 0) lan_sel_--;
+    MenuSelect::move_within(key, lan_sel_, -1, lan_rows_shown() - 1);
     return;
   }
   switch (key) {
