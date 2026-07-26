@@ -727,6 +727,9 @@ lobby (`attested_peer_`, threaded into `GLGame` via `net_set_worker_session` +
    the test case); (c) the glyph's character slot is a CONTROL byte, which
    `net_sanitize_name` already strips as a security boundary, so a peer
    cannot smuggle a forged tick into a display name.
+   Covered by `test/e2e/identity_tick.sh`, which runs the FAKE_VERIFY
+   pairing and then screenshots the HUD badge — the only driver that checks
+   a badge visually rather than by log line.
 2. New signaling room message `identity` {role, platform, name,
    verified}, broadcast by the worker; both roles consume it into
    `net_peer_identity_` (fields bounded, name run through

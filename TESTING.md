@@ -232,6 +232,18 @@ test/e2e/identity_attested.sh # V0/V1 worker attestation: self-hosts its OWN
                      # asserts BOTH sides log "net: identity attested
                      # name='GLENN'/'BOB' platform=DESKTOP(1)" — the worker
                      # verified each side and the game folded it in as ATTESTED
+test/e2e/identity_tick.sh # the VERIFIED TICK on an attested badge (the V0
+                     # polish item). Same FAKE_VERIFY pairing as
+                     # identity_attested.sh, but goes on to capture what the
+                     # PLAYER sees: the in-game HUD badge. ASSERTS the
+                     # attestation logs, that both badge bands contain ink (a
+                     # blank band = the HUD or badge regressed) and that both
+                     # games survive the capture; the tick's SHAPE is left to
+                     # the two PNGs in $OUT — pixel-geometry checks would be
+                     # brittle across layout changes. Expect "BOB - DESKTOP"
+                     # (host) and "GLENN - DESKTOP" (joiner), each with a
+                     # checkmark after it. The only driver that checks a badge
+                     # visually rather than by log line
 test/e2e/identity_legacy.sh # mixed-version interop: a legacy peer (short
                      # HELLO/WELCOME via NEWTONIA_NET_NO_IDENTITY=1, both
                      # directions) must still handshake + bootstrap, with the
