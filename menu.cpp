@@ -248,8 +248,6 @@ void Menu::draw() {
         Typer::draw(SCORE_X, y, "OLDER VERSION", 13);
       }
     }
-    if (touch)
-      Typer::draw_centered(0, -270, "TAP A RUN TO WATCH IT", 12);
     // Bottom exit band on BOTH layouts (the lobby's convention): desktop
     // labels the key but stays tappable — the Steam Deck runs the desktop
     // layout and touch needs a way out (field report 2026-07-25).
