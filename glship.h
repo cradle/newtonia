@@ -44,6 +44,10 @@ public:
   }
   void set_controller(SDL_GameController *game_controller);
   bool has_controller() const;
+  // The keymap card is up, so it — not the pause text — owns the screen.
+  // GLGame gates the pause menu on this (Overlay reads show_help directly
+  // as a friend).
+  bool showing_help() const { return show_help; }
   bool is_my_controller_id(SDL_JoystickID id) const;
   void genForceShield();
   void genRepulsor();

@@ -264,8 +264,13 @@ void Menu::draw() {
     // Bottom exit band on BOTH layouts (the lobby's convention): desktop
     // labels the key but stays tappable — the Steam Deck runs the desktop
     // layout and touch needs a way out (field report 2026-07-25).
+    // Touch: the band IS the button, so it carries the menu cursor like a
+    // selected row. Desktop labels a key instead — a key hint is not a
+    // thing you point a cursor at.
     TapBand::return_to_menu.draw(
-        touch ? "RETURN TO MENU" : "ESC - BACK TO MENU", currentTime);
+        touch ? Typer::cursored("RETURN TO MENU", true).c_str()
+              : "ESC - BACK TO MENU",
+        currentTime);
   } else if (options_mode_) {
     bool touch = is_touch_mode();
     Typer::draw_centered(0, touch ? 340 : 368, "OPTIONS", touch ? 30 : 26);
@@ -326,8 +331,13 @@ void Menu::draw() {
     if (touch)
       Typer::draw_centered(0, -270, "TAP AN OPTION TO CHANGE IT", 12);
     // Tappable exit on both layouts — see the replays band note above.
+    // Touch: the band IS the button, so it carries the menu cursor like a
+    // selected row. Desktop labels a key instead — a key hint is not a
+    // thing you point a cursor at.
     TapBand::return_to_menu.draw(
-        touch ? "RETURN TO MENU" : "ESC - BACK TO MENU", currentTime);
+        touch ? Typer::cursored("RETURN TO MENU", true).c_str()
+              : "ESC - BACK TO MENU",
+        currentTime);
   } else {
     Typer::draw_centered(0, 320, "Newtonia", 80);
     if (high_score > 0) {

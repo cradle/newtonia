@@ -1954,7 +1954,9 @@ void NetLobby::draw() {
   // Touch: the bottom strip is a tap zone (see touch_tap), so label it as
   // an action rather than a key hint.
   TapBand::return_to_menu.draw(
-      is_touch_mode() ? "RETURN TO MENU" : "ESC - BACK TO MENU", currentTime);
+      is_touch_mode() ? Typer::cursored("RETURN TO MENU", true).c_str()
+                      : "ESC - BACK TO MENU",
+      currentTime);
 }
 
 void NetLobby::keyboard(unsigned char key, int x, int y) {

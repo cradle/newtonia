@@ -32,6 +32,11 @@ const float Overlay::SAFE_AREA_SCALE = 1.0f;
 // so the notch layout is testable without cutout hardware.
 static float s_safe_inset[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 
+// Pause-menu row geometry (Overlay::paused). Sized to sit under "Paused"
+// (anchor 30, size 25, glyphs to -20) and still finish above the
+// disconnect overlay's "PRESS FIRE FOR MENU" at y=-130.
+static const int PAUSE_ROW_SZ = 13, PAUSE_ROW_Y0 = -42, PAUSE_ROW_Y1 = -80;
+
 void Overlay::set_safe_insets(float top, float bottom, float left, float right) {
   s_safe_inset[0] = top;
   s_safe_inset[1] = bottom;
@@ -112,10 +117,13 @@ void Overlay::replay_hud(const GLGame *glgame) {
   // hit-tests in GLGame::touch_tap — the TapBand rule). Desktop/controller:
   // a dim hint line under the timeline, from live bindings.
   if (touch) {
+    // The three-way transport strip stays unmarked: the cursor says "this
+    // one is picked", and all three of these are live at once.
     TapBand::replay_slower.draw("SLOWER");
     TapBand::replay_pause.draw(glgame->running ? "PAUSE" : "RESUME");
     TapBand::replay_faster.draw("FASTER");
-    TapBand::return_to_menu.draw("RETURN TO MENU", now);
+    TapBand::return_to_menu.draw(
+        Typer::cursored("RETURN TO MENU", true).c_str(), now);
   } else {
     bool has_ctrl = false;
     int nc = SDL_NumJoysticks();
@@ -228,9 +236,9 @@ void Overlay::net_overlays(const GLGame *glgame) {
       // y=160, not 60: clear of the pause overlay's "Paused" at y=30.
       Typer::draw_centered(0, 160, "CONNECTION LOST", 34);
     }
-    // y=-130: clear of the pause overlay's sub-lines ("press p to
-    // resume" at -40, "press esc..." at -70, glyphs reaching ~-86) —
-    // the game auto-pauses on a disconnect, so both stacks show at once.
+    // y=-130: clear of the pause overlay's menu rows (RESUME at -42,
+    // RETURN TO MENU at -80, glyphs reaching ~-106) — the game
+    // auto-pauses on a disconnect, so both stacks show at once.
     if ((now / 700) % 2 == 0)
       Typer::draw_centered(0, -130,
                            is_touch_mode() ? "TAP FIRE FOR MENU"
@@ -368,14 +376,28 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
   if (glgame->all_players_out()) return;
   if(!glgame->running && !glship->show_help) {
     Typer::draw_centered(0, 30, "Paused", 25);
-    if(is_touch_mode())
+    if(is_touch_mode()) {
+      // Touch has no cursor on any screen: the pause button resumes and the
+      // RETURN TO MENU band below leaves.
       Typer::draw_centered(0, -40, "press play to resume", 8);
-    else if(glship->has_controller())
-      Typer::draw_centered(0, -40, "press start to resume", 8);
-    else {
-      Typer::draw_centered(0, -40, "press p to resume", 8);
-      Typer::draw_centered(0, -70, "press esc to return to menu", 8);
+      return;
     }
+    // Selectable rows carrying the shared menu cursor. The stack must stay
+    // clear of the disconnect overlay's "PRESS FIRE FOR MENU" at y=-130 —
+    // a disconnect auto-pauses, so both show at once — which is what sizes
+    // it: size 13 rows at -42 and -80 bottom out around -106.
+    Typer::draw_centered(
+        0, PAUSE_ROW_Y0,
+        Typer::cursored("RESUME",
+                        glgame->pause_selection_ == GLGame::PAUSE_RESUME)
+            .c_str(),
+        PAUSE_ROW_SZ);
+    Typer::draw_centered(
+        0, PAUSE_ROW_Y1,
+        Typer::cursored("RETURN TO MENU",
+                        glgame->pause_selection_ == GLGame::PAUSE_EXIT)
+            .c_str(),
+        PAUSE_ROW_SZ);
   }
 }
 
@@ -601,7 +623,9 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     bool local_over = glgame->net_active() && local &&
                       !local->ship->is_alive() && local->ship->lives <= 0;
     if(all_over || !glgame->running || local_over)
-      glgame->exit_band().draw("RETURN TO MENU", glgame->current_time);
+      glgame->exit_band().draw(
+          Typer::cursored("RETURN TO MENU", true).c_str(),
+          glgame->current_time);
   }
 }
 

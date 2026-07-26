@@ -956,6 +956,9 @@ void GLGame::toggle_pause(bool broadcast) {
   // terminal for a spectating client).
   if (running && all_players_out()) return;
   running = !running;
+  // The pause menu always opens on RESUME: leaving the highlight where the
+  // last pause left it would put RETURN TO MENU under a reflexive confirm.
+  if (!running) pause_selection_ = PAUSE_RESUME;
   // Pausing auto-saves (the long-documented behavior — it previously only
   // happened via the focus-loss path, so quitting in a way that skips the
   // exit hooks (force-kill, crash, a killed mobile-web tab) lost everything
@@ -987,6 +990,44 @@ void GLGame::toggle_pause(bool broadcast) {
       pause_music_channel = Mix_PlayChannel(-1, pause_music_sound, -1);
     }
   }
+}
+
+bool GLGame::pause_menu_active() const {
+  if (running) return false;
+  // Touch draws no selection cursor on any screen, and the pause screen
+  // there already has both actions as touch targets.
+  if (is_touch_mode()) return false;
+  // Nothing left to resume — the GAME OVER card owns the screen.
+  if (all_players_out()) return false;
+  // A replay's pause is a playback control, not a menu.
+  if (net_mode_ == NetReplay) return false;
+  // The help card takes the pause text's place, so the menu isn't drawn.
+  // Navigating a menu you cannot see is how a game gets quit by accident.
+  for (auto *gs : *players)
+    if (gs->showing_help()) return false;
+  return true;
+}
+
+void GLGame::pause_nav(unsigned char key) {
+  if (key == 'w' || key == 'W') {
+    pause_selection_ = PAUSE_RESUME;
+  } else if (key == 's' || key == 'S') {
+    pause_selection_ = PAUSE_EXIT;
+  } else if (key == ' ' || key == '\r' || key == '\n') {
+    if (pause_selection_ == PAUSE_RESUME) {
+      toggle_pause();
+    } else {
+      // Exactly what the menu key does — save first, then hand over.
+      save_progress();
+      request_state_change(new Menu());
+    }
+  }
+}
+
+bool GLGame::is_player_controller(SDL_JoystickID which) const {
+  for (auto *gs : *players)
+    if (gs->wasMyController(which)) return true;
+  return false;
 }
 
 bool GLGame::back_pressed() {
@@ -7796,6 +7837,40 @@ void GLGame::controller(SDL_Event event) {
     }
     return;
   }
+  // Paused with the menu up: dpad and left stick move the highlight, A
+  // confirms — but only from a pad that is already playing, so an unknown
+  // pad's A still joins player 2 through the ladder below. START (toggle
+  // pause) and BACK (exit) fall through untouched, so the pad shortcuts
+  // are exactly as they were.
+  if (pause_menu_active()) {
+    if (event.type == SDL_CONTROLLERBUTTONDOWN &&
+        is_player_controller(event.cbutton.which)) {
+      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
+        pause_nav('w');
+        return;
+      }
+      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
+        pause_nav('s');
+        return;
+      }
+      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A) {
+        pause_nav('\r');
+        return;
+      }
+    } else if (event.type == SDL_CONTROLLERAXISMOTION &&
+               is_player_controller(event.caxis.which)) {
+      // Stick nav through the shared arm/release hysteresis, so the pause
+      // menu feels like every other screen. Only w/s are taken — the
+      // translator also maps the right trigger to confirm, and in-game
+      // that trigger is fire.
+      unsigned char nav = nav_key_from_controller(event);
+      if (nav == 'w' || nav == 's') {
+        pause_nav(nav);
+        return;
+      }
+    }
+  }
+
   if(event.cbutton.type == SDL_CONTROLLERBUTTONDOWN) {
     if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) {
       bool known_player = false;
@@ -8252,6 +8327,22 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       replay_speed_ *= 0.5f;
     if (key == (unsigned char)gk.time_reset) replay_speed_ = 1.0f;
     return;
+  }
+
+  // Paused with the menu up: w/s (and the arrows) move the highlight,
+  // Enter/space confirm. The pause and menu keys are checked first so they
+  // keep working as direct shortcuts even if someone has bound one of them
+  // onto a nav key. Swallowing the rest can't latch a control: pausing
+  // force-releases everything (toggle_pause) and key-downs are already
+  // dropped while paused.
+  if (pause_menu_active() && key != (unsigned char)gk.pause &&
+      key != (unsigned char)gk.menu) {
+    unsigned char nav = nav_key(key);  // arrows navigate like WASD
+    if (nav == 'w' || nav == 'W' || nav == 's' || nav == 'S' ||
+        nav == ' ' || nav == '\r' || nav == '\n') {
+      pause_nav(nav);
+      return;
+    }
   }
 
   // Host-only / debug keys are ignored on the online client — it never
