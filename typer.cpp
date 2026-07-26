@@ -106,6 +106,10 @@ const float *Typer::text_colour() {
   return colour;
 }
 
+std::string Typer::cursored(const std::string &text, bool selected) {
+  return selected ? "> " + text + " <" : "  " + text + "  ";
+}
+
 void Typer::draw_lefted(float x, float y, int number, float size, int time) {
   int length = -1;
   int temp = number/10;

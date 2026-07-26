@@ -88,6 +88,18 @@ static int touch_opt_row_at(float ny, int n) {
   return opt_row_at(ny, n, TOUCH_OPT_TOP, TOUCH_OPT_BOTTOM);
 }
 
+// Row-list counterpart to Typer::cursored, for the desktop options and
+// replays screens: the selected row is flanked by '>' and '<' like a
+// centred menu item, but at fixed x's rather than wrapped around a label.
+// A multi-column row has no single word to wrap — hugging the first column
+// would slide the closing mark sideways every time the selection moved, and
+// on the options screen the longest name would push it into the step marks
+// — so the pair brackets the whole row and the columns keep their x.
+static void draw_row_cursor(float left_x, float right_x, float y, float size) {
+  Typer::draw(left_x, y, '>', size);
+  Typer::draw(right_x, y, '<', size);
+}
+
 // The desktop confirm dialogs (Quit? / New game?) stack Yes above No.
 // One geometry definition feeds the draw and the tap hit-test. Returns
 // 0 = Yes, 1 = No, -1 = outside the stack (glyphs extend ~2*size below
@@ -211,15 +223,20 @@ void Menu::draw() {
     bool touch = is_touch_mode();
     Typer::draw_centered(0, touch ? 340 : 368, "REPLAYS", touch ? 30 : 26);
     int n = (int)replay_rows_.size();
+    // Desktop column x's chosen so the whole row block spans symmetrically
+    // about x=0 (the worst-case row — both cursor marks + "CURRENT RUN" + a
+    // 6-digit score + LEVEL 99 + date — runs ±623, comfortably inside the
+    // ±800 the narrowest aspect ratio shows); a right-heavy set read as
+    // off-centre against the centred title. Both marks stand three glyph
+    // widths clear of the columns they bracket — squeezed closer, the
+    // closing one reads as another character on the end of the date.
+    const int CURSOR_L = -623, LABEL_X = -567, SCORE_X = -213, LEVEL_X = 142,
+              DATE_X = 377, CURSOR_R = 609;
     for (int i = 0; i < n; i++) {
       const ReplayRow &r = replay_rows_[i];
       char score_buf[24], level_buf[16];
       snprintf(score_buf, sizeof(score_buf), "SCORE %u", r.score);
       snprintf(level_buf, sizeof(level_buf), "LEVEL %u", r.level);
-      // Column x's chosen so the whole row block spans symmetrically about
-      // x=0 (the worst-case row — "> CURRENT RUN" + a 6-digit score +
-      // LEVEL 99 + date — runs ~-590..610); a right-heavy set read as
-      // off-centre against the centred title.
       if (touch) {
         int cy = touch_opt_center(i, n);
         Typer::draw(-500, cy, r.label.c_str(), 16);
@@ -232,15 +249,14 @@ void Menu::draw() {
         continue;
       }
       int y = opt_row_center(i, n, DESK_OPT_TOP, DESK_OPT_BOTTOM);
-      std::string heading =
-          std::string(replay_sel_ == i ? "> " : "  ") + r.label;
-      Typer::draw(-590, y, heading.c_str(), 14);
+      if (replay_sel_ == i) draw_row_cursor(CURSOR_L, CURSOR_R, y, 14);
+      Typer::draw(LABEL_X, y, r.label.c_str(), 14);
       if (r.ok) {
-        Typer::draw(-180, y, score_buf, 13);
-        Typer::draw(175, y, level_buf, 13);
-        Typer::draw(410, y, r.date.c_str(), 10);
+        Typer::draw(SCORE_X, y, score_buf, 13);
+        Typer::draw(LEVEL_X, y, level_buf, 13);
+        Typer::draw(DATE_X, y, r.date.c_str(), 10);
       } else {
-        Typer::draw(-180, y, "OLDER VERSION", 13);
+        Typer::draw(SCORE_X, y, "OLDER VERSION", 13);
       }
     }
     if (touch)
@@ -260,9 +276,13 @@ void Menu::draw() {
     // Touch: one big tappable row per option, name left / value right (tap
     // to cycle).
     // Desktop columns (virtual units; the ±200 step span sits well inside
-    // the visible width even at 4:3): name left-anchored, step marks
-    // centred just right of centre, value left-anchored on the right.
-    const int NAME_X = -470, STEP_CX = 95, STEP_GAP = 50, VALUE_X = 265;
+    // the visible width even at 4:3): cursor mark, name left-anchored, step
+    // marks centred just right of centre, value left-anchored on the right,
+    // closing cursor mark clear of the widest value label. Both marks stand
+    // three glyph widths off their column, and the pair spans ±470 — the
+    // row block sits centred under the title like the replays list.
+    const int CURSOR_L = -470, NAME_X = -422, STEP_CX = 95, STEP_GAP = 50,
+              VALUE_X = 265, CURSOR_R = 457;
 
     for (int row = 0; row < n; row++) {
       const OptRow &r = opt_row(row);
@@ -286,8 +306,8 @@ void Menu::draw() {
       }
 
       int y = opt_row_center(row, n, DESK_OPT_TOP, DESK_OPT_BOTTOM);
-      std::string heading = std::string(active_row_ == row ? "> " : "  ") + r.name;
-      Typer::draw(NAME_X, y, heading.c_str(), 12);       // name, left
+      if (active_row_ == row) draw_row_cursor(CURSOR_L, CURSOR_R, y, 12);
+      Typer::draw(NAME_X, y, r.name, 12);                // name, left
       const float step_sz = 13.0f;
       for (int i = 0; i < num_steps; i++) {              // numbered choices, mid
         int x = STEP_CX + (int)((i - (num_steps - 1) * 0.5f) * STEP_GAP);
@@ -342,8 +362,8 @@ void Menu::draw() {
         Typer::draw_centered(-Typer::scaled_window_width / 2, -50, "Yes", 26);
         Typer::draw_centered( Typer::scaled_window_width / 2, -50, "No",  26);
       } else {
-        std::string yes_str = std::string(quit_selection_ == 0 ? "> " : "  ") + "Yes";
-        std::string no_str  = std::string(quit_selection_ == 1 ? "> " : "  ") + "No";
+        std::string yes_str = Typer::cursored("Yes", quit_selection_ == 0);
+        std::string no_str  = Typer::cursored("No",  quit_selection_ == 1);
         Typer::draw_centered(0, CONFIRM_YES_Y, yes_str.c_str(), CONFIRM_SZ);
         Typer::draw_centered(0, CONFIRM_NO_Y,  no_str.c_str(),  CONFIRM_SZ);
       }
@@ -353,8 +373,8 @@ void Menu::draw() {
         Typer::draw_centered(-Typer::scaled_window_width / 2, -50, "YES", 26);
         Typer::draw_centered( Typer::scaled_window_width / 2, -50, "NO",  26);
       } else {
-        std::string yes_str = std::string(new_selection_ == 0 ? "> " : "  ") + "YES";
-        std::string no_str  = std::string(new_selection_ == 1 ? "> " : "  ") + "NO";
+        std::string yes_str = Typer::cursored("YES", new_selection_ == 0);
+        std::string no_str  = Typer::cursored("NO",  new_selection_ == 1);
         Typer::draw_centered(0, CONFIRM_YES_Y, yes_str.c_str(), CONFIRM_SZ);
         Typer::draw_centered(0, CONFIRM_NO_Y,  no_str.c_str(),  CONFIRM_SZ);
       }
@@ -766,7 +786,7 @@ void Menu::draw_menu_rows(const std::vector<std::string> &rows) {
   for (int i = 0; i < n; i++) {
     std::string row = rows[i];
     if (!is_touch_mode())
-      row = std::string(menu_selection == i ? "> " : "  ") + row;
+      row = Typer::cursored(row, menu_selection == i);
     Typer::draw_centered(0, 160 - (i + 1) * gap - i * h, row.c_str(), sz);
   }
 }

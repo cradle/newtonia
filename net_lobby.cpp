@@ -1588,8 +1588,8 @@ void NetLobby::draw() {
         lines.push_back("HOST MAKES A ROOM CODE");
         lines.push_back("JOIN ENTERS A FRIEND'S CODE");
       } else {
-        std::string host = std::string(selection_ == 0 ? "> " : "  ") + "HOST";
-        std::string join = std::string(selection_ == 1 ? "> " : "  ") + "JOIN";
+        std::string host = Typer::cursored("HOST", selection_ == 0);
+        std::string join = Typer::cursored("JOIN", selection_ == 1);
         Typer::draw_centered(0, 60, host.c_str(), 26);
         Typer::draw_centered(0, -40, join.c_str(), 26);
         lines.push_back("");
@@ -1747,10 +1747,10 @@ void NetLobby::draw() {
           if (show > 0) {
             Typer::draw_centered(0, -262, "ON THIS NETWORK", 9);
             for (int i = 0; i < show; i++) {
-              std::string row =
-                  (lan_sel_ == i ? "> " : "  ") + lh[i].name;
+              std::string row = lh[i].name;
               if (lh[i].proto != Net::PROTO_VERSION)
                 row += " - DIFFERENT VERSION";
+              row = Typer::cursored(row, lan_sel_ == i);
               Typer::draw_centered(0, -288.0f - (float)i * 32.0f,
                                    row.c_str(), lan_sel_ == i ? 14 : 11);
             }
@@ -1770,10 +1770,10 @@ void NetLobby::draw() {
           if (show > 0) {
             Typer::draw_centered(0, -110, "ON THIS NETWORK", 12);
             for (int i = 0; i < show; i++) {
-              std::string row =
-                  (lan_sel_ == i ? "> " : "  ") + lh[i].name;
+              std::string row = lh[i].name;
               if (lh[i].proto != Net::PROTO_VERSION)
                 row += " - DIFFERENT VERSION";
+              row = Typer::cursored(row, lan_sel_ == i);
               Typer::draw_centered(0, -160.0f - (float)i * 46.0f,
                                    row.c_str(), lan_sel_ == i ? 18 : 14);
             }
@@ -1829,9 +1829,10 @@ void NetLobby::draw() {
             if (show > 0) {
               Typer::draw_centered(0, -110, "ON THIS NETWORK", 12);
               for (int i = 0; i < show; i++) {
-                std::string row = (lan_sel_ == i ? "> " : "  ") + lh[i].name;
+                std::string row = lh[i].name;
                 if (lh[i].proto != Net::PROTO_VERSION)
                   row += " - DIFFERENT VERSION";
+                row = Typer::cursored(row, lan_sel_ == i);
                 Typer::draw_centered(0, -160.0f - (float)i * 46.0f,
                                      row.c_str(), lan_sel_ == i ? 18 : 14);
               }
