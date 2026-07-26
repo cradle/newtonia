@@ -484,7 +484,11 @@ void Overlay::remote_badge(const GLGame *glgame, const GLShip *glship) {
   // band's reach with air to spare.
   float vhb = -Typer::scaled_window_height / glgame->num_y_viewports();
   float y = glgame->is_spectating() ? vhb + 255.0f : vhb + 130.0f;
-  Typer::draw_centered(0, y, badge.c_str(), 11);
+  // A worker-attested peer earns the verified tick; a LAN/manual peer's badge
+  // is a claim and draws bare (net_identity_verified owns that rule).
+  Typer::draw_centered_verified(
+      0, y, badge.c_str(), 11,
+      net_identity_verified(glgame->net_peer_identity_, glgame->net_id_ctx()));
 }
 
 void Overlay::spectate(const GLGame *glgame, const GLShip *glship) {

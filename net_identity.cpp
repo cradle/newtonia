@@ -327,3 +327,8 @@ std::string net_identity_name_or(const NetIdentity &id, const char *fallback,
   if (render_field(id.name_trust, ctx) && !id.name.empty()) return id.name;
   return fallback;  // unattested/withheld: role label wins
 }
+
+bool net_identity_verified(const NetIdentity &id, NetIdentityCtx ctx) {
+  (void)ctx;  // an offline session has nothing attested; see net_identity.h
+  return id.attested();
+}

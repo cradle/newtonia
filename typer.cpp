@@ -144,6 +144,32 @@ void Typer::draw_centered(float x, float y, const char * text, float size, int t
   draw(x-size*(n+0.5)+size, y, text, size, time);
 }
 
+// Verified-tick layout. GAP is in COLUMN ADVANCES after the last character
+// (an advance is 2 * size; the normal inter-glyph gap is 1 * size, so 0.6
+// advances leaves 2.2 * size of air — enough that the tick reads as a mark
+// about the name rather than its last letter). SCALE lifts it clear of the
+// cap line so it registers without a second ink colour, which this HUD does
+// not have (Typer::colour is fixed green).
+static const float TICK_GAP = 0.6f;
+static const float TICK_SCALE = 1.4f;
+
+void Typer::draw_centered_verified(float x, float y, const char *text,
+                                   float size, bool verified, int time) {
+  if (!verified) { draw_centered(x, y, text, size, time); return; }
+  size_t n = 0;
+  for (const char *c = text; *c; c++)
+    if (*c != '\'') n++;  // no apostrophe glyph — matches draw()/draw_centered
+  // Centre the PAIR: the unit runs from the text's first column to the far
+  // edge of the tick, i.e. (n + GAP) advances plus the tick's own width.
+  float start = x - size * ((float)n + TICK_GAP + TICK_SCALE * 0.5f);
+  draw(start, y, text, size, time);
+  // pre_draw anchors a glyph by its CAP TOP, so a bigger glyph on the same y
+  // would grow upward and sit high; this offset keeps the tick's ink centred
+  // on the text's mid-line instead.
+  draw(start + ((float)n + TICK_GAP) * 2.0f * size,
+       y + size * (TICK_SCALE - 1.0f), VERIFIED_TICK, size * TICK_SCALE, time);
+}
+
 void Typer::draw(float x, float y, const char * text, float size, int time) {
   if (!meshes_initialized) init_meshes();
   // Whole string as one cached mesh where possible: one thick-line draw
@@ -217,6 +243,11 @@ static const float TC  = TW / 2.0f;    // center            = 0.5
 // because the net layer must stay free of typer.h's SDL/GL includes.
 // Deliberately excludes the fallback-path glyphs ('?' and the animated ©):
 // they draw, but per-char only, and have no place in a player name.
+// It also excludes Typer::VERIFIED_TICK, and that exclusion is a SECURITY
+// one rather than a cosmetic one: a name allowed to contain the tick could
+// forge an attestation badge. The whitelist below is the second line of
+// defence — the first is net_sanitize_name stripping control bytes, which
+// the tick's slot deliberately is.
 bool net_name_char_drawable(char c) {
   if (c >= 'A' && c <= 'Z') return true;
   if (c >= 'a' && c <= 'z') return true;
@@ -468,6 +499,17 @@ void Typer::init_meshes() {
   { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
     mb.vertex(TW,TH); mb.vertex(0,0);
     mb.end(); upload('/', mb); }
+
+  // The verified tick (netplay identity attestation). Vertically inset to
+  // TH*0.1..TH*0.9 like '>' and '<' above — the font's convention for a mark
+  // that is not a letter. The arms are deliberately ASYMMETRIC (short one
+  // ~half the long one, vertex a third across): a symmetric pair reads as
+  // the letter V, which is a real collision here since a peer's name can
+  // contain one and the HUD has only a single ink colour to distinguish
+  // them. Character slot is a control byte — see Typer::VERIFIED_TICK.
+  { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
+    mb.vertex(0,TML); mb.vertex(TW-TMW,TH*0.1f); mb.vertex(TW,TH*0.9f);
+    mb.end(); upload(VERIFIED_TICK, mb); }
 
   { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
     mb.vertex(TW/2.0f,TH/3.0f); mb.vertex(0,0);
