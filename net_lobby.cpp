@@ -1575,6 +1575,10 @@ void NetLobby::draw() {
   const int sz = 18, line = 52;
   int y = 120;
   std::vector<std::string> lines;
+  // Index into `lines` of the one row that carries the verified tick (the
+  // HOSTED BY badge), or -1. The tick is drawn larger than the text, so it
+  // can't ride the string — the draw loop needs to know which row it is.
+  int verified_line = -1;
   bool blink = (currentTime / 700) % 2 == 0;
 
   switch (screen_) {
@@ -1902,14 +1906,18 @@ void NetLobby::draw() {
       // GLENN - STEAM"; a nameless host is player 1, "HOSTED BY
       // PLAYER 1 - DESKTOP"); a legacy host draws exactly the old screen.
       std::string badge;
+      bool badge_verified = false;
       if (session_) {
         NetIdentity host_id = session_->peer_identity();  // claimed (WELCOME)
         net_apply_attested(host_id, attested_peer_);       // worker overlay
-        badge = net_identity_badge_or(
-            host_id, "PLAYER 1",
-            used_worker_ ? NET_ID_ONLINE : NET_ID_OFFLINE);
+        NetIdentityCtx ctx = used_worker_ ? NET_ID_ONLINE : NET_ID_OFFLINE;
+        badge = net_identity_badge_or(host_id, "PLAYER 1", ctx);
+        badge_verified = net_identity_verified(host_id, ctx);
       }
-      if (!badge.empty()) lines.push_back("HOSTED BY " + badge);
+      if (!badge.empty()) {
+        if (badge_verified) verified_line = (int)lines.size();
+        lines.push_back("HOSTED BY " + badge);
+      }
       lines.push_back("");
       if (blink) lines.push_back("WAITING FOR THE HOST'S WORLD");
       break;
@@ -1923,7 +1931,8 @@ void NetLobby::draw() {
 
   for (size_t i = 0; i < lines.size(); i++) {
     if (!lines[i].empty())
-      Typer::draw_centered(0, y - (int)i * line, lines[i].c_str(), sz);
+      Typer::draw_centered_verified(0, y - (int)i * line, lines[i].c_str(), sz,
+                                    (int)i == verified_line);
   }
 
   // (The joiner waiting screens used to add a CANCEL band above the

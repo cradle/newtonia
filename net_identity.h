@@ -193,6 +193,17 @@ std::string net_identity_badge_or(const NetIdentity &id,
 std::string net_identity_name_or(const NetIdentity &id, const char *fallback,
                                  NetIdentityCtx ctx);
 
+// True when a badge for this identity should carry the verified tick: some
+// field is worker-ATTESTED. The one rule for every badge site, so the HUD and
+// the lobby can't drift apart. An OFFLINE (LAN / manual) session never ticks
+// — its rendered fields are claims, which is the whole distinction the tick
+// exists to draw — and that falls out of attestation being impossible there
+// rather than being a second rule. Note the tick marks the ROW, not a field:
+// Game Center attests the account but not the alias, so an iOS peer renders
+// "PLAYER 2 - IOS" with a tick vouching for the platform badge, the role
+// label being ours and never a claim.
+bool net_identity_verified(const NetIdentity &id, NetIdentityCtx ctx);
+
 // True when the Typer font can draw `c`. DEFINED IN typer.cpp, right next
 // to the glyph table it must mirror, so a glyph addition updates both in
 // one file; declared here so the SDL/GL-free net_identity.cpp can call it

@@ -710,9 +710,23 @@ lobby (`attested_peer_`, threaded into `GLGame` via `net_set_worker_session` +
    default = Attested platform + Claimed name, revocation = a
    transition Attested→Claimed. Anything rendered before attestation
    arrives keeps role labels; the badge row / lobby HOSTED BY appear
-   when a field turns Attested. Polish for V1+: a small positive
-   verified glyph (✓/shield added to the Typer set) beside Attested
-   names — the only marker worth having is the positive one.
+   when a field turns Attested. **The verified glyph SHIPPED (2026-07-26)**
+   — the polish item here, and the only marker worth having is indeed the
+   positive one. `Typer::VERIFIED_TICK` is a checkmark in the Typer set,
+   drawn by `Typer::draw_centered_verified` after the badge on both badge
+   sites (HUD `Overlay::remote_badge`, lobby `HOSTED BY`), gated by
+   `net_identity_verified()` so the rule lives in one place. Three design
+   points worth keeping if it is ever revisited: (a) the tick marks the
+   ROW, not a field — one tick, since the worker attests platform and name
+   together and a name can't be attested without its platform, so iOS's
+   account-only attestation renders "PLAYER 2 - IOS ✓" with the tick
+   vouching for the badge; (b) the arms are deliberately ASYMMETRIC,
+   because a symmetric tick reads as the letter V and `Typer::colour` is a
+   fixed green with no setter — there is no second ink colour to separate
+   them, so shape carries the whole distinction ("STEVEN - STEAM ✓" was
+   the test case); (c) the glyph's character slot is a CONTROL byte, which
+   `net_sanitize_name` already strips as a security boundary, so a peer
+   cannot smuggle a forged tick into a display name.
 2. New signaling room message `identity` {role, platform, name,
    verified}, broadcast by the worker; both roles consume it into
    `net_peer_identity_` (fields bounded, name run through
