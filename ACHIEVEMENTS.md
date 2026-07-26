@@ -246,7 +246,8 @@ over the SDL window once it exists.
    automatic there): earns show as GameKit banners; use the dev reset
    above to re-test from scratch. **Done 2026-07-26.**
 
-**Portal text as entered in App Store Connect (2026-07-13).** Achievement
+**Portal text as entered in App Store Connect (2026-07-13; `coop_clear`
+2026-07-26).** Achievement
 definitions live only in Apple's portal, so this table is the repo's copy
 of record — keep it in sync with any portal edits. Wording deviations from
 §5 are deliberate: Myriad spells out "across all your games" to
@@ -274,13 +275,8 @@ the earn.
 | `cc.gfm.newtonia.kills_10000_lifetime` | Myriad | Destroy 10,000 asteroids across all your games | You destroyed 10,000 asteroids across all your games | 40 |
 | `cc.gfm.newtonia.score_3m` | Megascore | Score 3,000,000 points in one game | You scored 3,000,000 points in one game | 60 |
 | `cc.gfm.newtonia.reach_level15` | Deep Space | Reach level 15 | You reached level 15 | 40 |
-| `cc.gfm.newtonia.coop_clear` † | Co-Pilot | Clear a level in 2-player mode | You cleared a level in 2-player mode | 40 |
+| `cc.gfm.newtonia.coop_clear` | Co-Pilot | Clear a level in 2-player mode | You cleared a level in 2-player mode | 40 |
 | | | | **Total** | **940** |
-
-† Added 2026-07-26, after netplay made 2P earnable on touch devices. The
-wording above is §5's master text; if the portal entry was phrased
-differently, correct this row rather than the portal — the other 17 rows
-were transcribed from the portal itself.
 
 ### Play Games backend (`play_games_achievements.cpp` + `PlayGamesAchievements.java`)
 
