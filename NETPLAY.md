@@ -446,8 +446,9 @@ client mints a Web-API ticket (`GetAuthTicketForWebApi`,
 (`AuthenticateUserTicket` + `GetPlayerSummaries`, `signal/src/steam_verify.js`,
 publisher key `STEAM_WEBAPI_KEY`) — the attested persona comes from Steam,
 not the wire. Verification never rejects; failure/absence keeps role labels.
-Remaining before Steam ships: the **live two-account smoke test** (§5.5) and
-setting the `STEAM_WEBAPI_KEY` Cloudflare secret. **V2** implements the Play
+The `STEAM_WEBAPI_KEY` Cloudflare secret is set (2026-07-26), leaving the
+**live two-account smoke test** (§5.5) as the only thing remaining before
+Steam ships. **V2** implements the Play
 Games (Android) verifier symmetrically: the client mints a single-use OAuth
 server auth code (`GamesSignInClient.requestServerSideAccess`,
 `play_games_identity.cpp` + `PlayGamesIdentity.java`) and the worker redeems it
@@ -456,9 +457,10 @@ REST API (`signal/src/play_games_verify.js`; secrets
 `PLAY_GAMES_OAUTH_CLIENT_ID`/`_SECRET`, and the web client id in
 `games-ids.xml`) — the attested display name comes from Google, not the wire.
 The worker's `attest_identity` now dispatches per platform (Steam=2, iOS=4,
-Android=5) through one shared throttle. Remaining before Play Games ships: the
-**live two-account smoke test**, creating the web OAuth client (uncomment
-`play_games_oauth_client_id`), and setting the two Cloudflare secrets.
+Android=5) through one shared throttle. The web OAuth client exists and its id
+is live in `games-ids.xml`, and both Cloudflare secrets are set (2026-07-26),
+leaving the **live two-account smoke test** as the only thing remaining before
+Play Games ships.
 
 **V3 (Game Center, iOS) — BUILT.** Client `game_center_identity.mm`
 (`__IOS__ && GAME_CENTER_BUILD`; `ios/project.yml` + `ios.yml` define
