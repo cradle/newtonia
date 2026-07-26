@@ -10,7 +10,9 @@
       "mcp__github__actions_list",
       "mcp__github__actions_get",
       "mcp__github__get_job_logs",
-      "mcp__github__get_check_run"
+      "mcp__github__get_check_run",
+      "mcp__Claude_Code_Remote__subscribe_pr_activity",
+      "mcp__Claude_Code_Remote__unsubscribe_pr_activity"
     ]
   },
   "hooks": {
