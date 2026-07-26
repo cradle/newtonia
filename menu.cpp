@@ -342,8 +342,8 @@ void Menu::draw() {
         Typer::draw_centered(-Typer::scaled_window_width / 2, -50, "Yes", 26);
         Typer::draw_centered( Typer::scaled_window_width / 2, -50, "No",  26);
       } else {
-        std::string yes_str = std::string(quit_selection_ == 0 ? "> " : "  ") + "Yes";
-        std::string no_str  = std::string(quit_selection_ == 1 ? "> " : "  ") + "No";
+        std::string yes_str = Typer::cursored("Yes", quit_selection_ == 0);
+        std::string no_str  = Typer::cursored("No",  quit_selection_ == 1);
         Typer::draw_centered(0, CONFIRM_YES_Y, yes_str.c_str(), CONFIRM_SZ);
         Typer::draw_centered(0, CONFIRM_NO_Y,  no_str.c_str(),  CONFIRM_SZ);
       }
@@ -353,8 +353,8 @@ void Menu::draw() {
         Typer::draw_centered(-Typer::scaled_window_width / 2, -50, "YES", 26);
         Typer::draw_centered( Typer::scaled_window_width / 2, -50, "NO",  26);
       } else {
-        std::string yes_str = std::string(new_selection_ == 0 ? "> " : "  ") + "YES";
-        std::string no_str  = std::string(new_selection_ == 1 ? "> " : "  ") + "NO";
+        std::string yes_str = Typer::cursored("YES", new_selection_ == 0);
+        std::string no_str  = Typer::cursored("NO",  new_selection_ == 1);
         Typer::draw_centered(0, CONFIRM_YES_Y, yes_str.c_str(), CONFIRM_SZ);
         Typer::draw_centered(0, CONFIRM_NO_Y,  no_str.c_str(),  CONFIRM_SZ);
       }
@@ -766,7 +766,7 @@ void Menu::draw_menu_rows(const std::vector<std::string> &rows) {
   for (int i = 0; i < n; i++) {
     std::string row = rows[i];
     if (!is_touch_mode())
-      row = std::string(menu_selection == i ? "> " : "  ") + row;
+      row = Typer::cursored(row, menu_selection == i);
     Typer::draw_centered(0, 160 - (i + 1) * gap - i * h, row.c_str(), sz);
   }
 }

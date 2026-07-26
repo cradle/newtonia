@@ -3,10 +3,16 @@
 
 #include "glship.h"
 #include "mesh.h"
+#include <string>
 class GLShip;
 
 class Typer {
 public:
+  // Selection cursor for a draw_centered row: "> ITEM <" when selected,
+  // "  ITEM  " when not. Both forms pad symmetrically, so the item's own
+  // glyphs sit on the centre line either way — a bare "> " prefix shifted
+  // every selected row right by half a cursor's width.
+  static std::string cursored(const std::string &text, bool selected);
   static void draw_lefted(float x, float y, int number, float size = 1, int time = 0);
   static void draw(float x, float y, int number, float size = 1, int time = 0);
   static void draw(float x, float y, const char *text, float size = 1, int time = 0);
