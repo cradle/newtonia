@@ -430,7 +430,8 @@ browsing the same loopback discovers nothing ("lan host found" absent).
 
 ## Future milestone — verified peer identity (design notes 2026-07-20)
 
-**Current state (V0 + V1 SHIPPED — see the implementation plan below):**
+**Current state (V0–V3 SHIPPED AND LIVE-VERIFIED, 2026-07-26 — see the
+implementation plan below; V1.5 is the only unbuilt phase):**
 the peer-to-peer identity (platform tag + display name in the
 HELLO/WELCOME append) is still a self-reported **Claim**; what changed is
 that the signaling worker now **attests** it. `NET_IDENTITY_DISPLAY_ENABLED`
@@ -446,9 +447,9 @@ client mints a Web-API ticket (`GetAuthTicketForWebApi`,
 (`AuthenticateUserTicket` + `GetPlayerSummaries`, `signal/src/steam_verify.js`,
 publisher key `STEAM_WEBAPI_KEY`) — the attested persona comes from Steam,
 not the wire. Verification never rejects; failure/absence keeps role labels.
-The `STEAM_WEBAPI_KEY` Cloudflare secret is set (2026-07-26), leaving the
-**live two-account smoke test** (§5.5) as the only thing remaining before
-Steam ships. **V2** implements the Play
+The `STEAM_WEBAPI_KEY` Cloudflare secret is set and the **live two-account
+smoke test passed (2026-07-26)** — V1 is complete, nothing outstanding.
+**V2** implements the Play
 Games (Android) verifier symmetrically: the client mints a single-use OAuth
 server auth code (`GamesSignInClient.requestServerSideAccess`,
 `play_games_identity.cpp` + `PlayGamesIdentity.java`) and the worker redeems it
@@ -458,9 +459,9 @@ REST API (`signal/src/play_games_verify.js`; secrets
 `games-ids.xml`) — the attested display name comes from Google, not the wire.
 The worker's `attest_identity` now dispatches per platform (Steam=2, iOS=4,
 Android=5) through one shared throttle. The web OAuth client exists and its id
-is live in `games-ids.xml`, and both Cloudflare secrets are set (2026-07-26),
-leaving the **live two-account smoke test** as the only thing remaining before
-Play Games ships.
+is live in `games-ids.xml`, both Cloudflare secrets are set, and the **live
+two-account smoke test passed (2026-07-26)** — V2 is complete, nothing
+outstanding.
 
 **V3 (Game Center, iOS) — BUILT.** Client `game_center_identity.mm`
 (`__IOS__ && GAME_CENTER_BUILD`; `ios/project.yml` + `ios.yml` define
@@ -737,10 +738,9 @@ lobby (`attested_peer_`, threaded into `GLGame` via `net_set_worker_session` +
    `/ws` socket, already under the per-IP Limiter DO.
 3. Tests: `signal/test/steam_verify_test.mjs` (mocked Valve — ticket valid /
    invalid / reused / API down / persona-lookup-down). The
-   `STEAM_WEBAPI_KEY` secret is **created (2026-07-26)**. **Still to do:**
-   the live gate only (manual, same class as the persona smoke) — two Steam
-   accounts, verified persona badges both sides, worker log shows the round
-   trip.
+   `STEAM_WEBAPI_KEY` secret is created and the live gate is **PASSED
+   (2026-07-26)** — two Steam accounts, verified persona badges both sides,
+   worker log showing the round trip. **V1 is done.**
 
 **V2 — Android / Play Games verifier (~2-3 days + console prereq)**
 
@@ -759,8 +759,8 @@ lobby (`attested_peer_`, threaded into `GLGame` via `net_set_worker_session` +
    message. Single-use + bound to our OAuth client = solid replay
    properties.
 4. Tests: worker suite with a mocked Google exchange
-   (`signal/test/play_games_verify_test.mjs`, landed). **Still to do:**
-   the live device smoke vs a desktop peer — the only open V2 item.
+   (`signal/test/play_games_verify_test.mjs`, landed) plus the live device
+   smoke vs a desktop peer, **PASSED (2026-07-26)**. **V2 is done.**
 
 **V3 — iOS / Game Center verifier (~3 days + the name decision)**
 

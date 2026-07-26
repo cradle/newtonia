@@ -520,6 +520,11 @@ Negative cases degrade gracefully to the role label (never a crash): a build/
 worker without the OAuth secret, a plain-AOSP emulator, or a not-signed-in
 account all stay `net: identity` (claim) without the `attested` line.
 
+**Last run: PASSED 2026-07-26**, alongside the equivalent Steam two-account
+smoke (NETPLAY.md V1 §5.5). Both verifiers are live-verified; re-run this
+procedure after any change to the credential mint, the worker's
+`attest_identity` dispatch, or the per-platform verify modules.
+
 ## 6. What CI runs where
 
 | Gate | Where |
