@@ -85,15 +85,18 @@ static void pack_header(uint8_t out[Header::SIZE], const Header &h) {
     memcpy(out + 60, &h.duration_ms, 4);
 }
 
-static bool unpack_header(const uint8_t in[Header::SIZE], Header &h) {
+static HeaderStatus unpack_header(const uint8_t in[Header::SIZE], Header &h) {
     uint32_t magic = 0;
     memcpy(&magic, in + 0, 4);
-    if (magic != Header::MAGIC) return false;
+    if (magic != Header::MAGIC) return HEADER_DAMAGED;
     memcpy(&h.format_version, in + 4, 2);
     memcpy(&h.header_size, in + 6, 2);
-    if (h.format_version < 1 || h.format_version > Header::FORMAT_VERSION)
-        return false;
-    if (h.header_size < Header::SIZE || h.header_size > 4096) return false;
+    // Version 0 is not a format anyone ever wrote — that is damage, not age.
+    if (h.format_version == 0) return HEADER_DAMAGED;
+    if (h.format_version < Header::MIN_FORMAT_VERSION) return HEADER_TOO_OLD;
+    if (h.format_version > Header::FORMAT_VERSION) return HEADER_TOO_NEW;
+    if (h.header_size < Header::SIZE || h.header_size > 4096)
+        return HEADER_DAMAGED;
     memcpy(h.game_version, in + 8, Header::GAME_VERSION_LEN);
     h.game_version[Header::GAME_VERSION_LEN - 1] = '\0';
     memcpy(&h.run_id, in + 32, 8);
@@ -104,17 +107,23 @@ static bool unpack_header(const uint8_t in[Header::SIZE], Header &h) {
     memcpy(&h.final_score, in + 52, 4);
     memcpy(&h.generation, in + 56, 4);
     memcpy(&h.duration_ms, in + 60, 4);
-    return true;
+    return HEADER_OK;
+}
+
+HeaderStatus read_header_status(const std::string &path, Header &h) {
+    if (path.empty()) return HEADER_DAMAGED;
+    FILE *fp = fopen(path.c_str(), "rb");
+    if (!fp) return HEADER_DAMAGED;
+    uint8_t buf[Header::SIZE];
+    bool full = fread(buf, 1, Header::SIZE, fp) == Header::SIZE;
+    fclose(fp);
+    // Short of a whole header there is nothing to version-check.
+    if (!full) return HEADER_DAMAGED;
+    return unpack_header(buf, h);
 }
 
 bool read_header(const std::string &path, Header &h) {
-    if (path.empty()) return false;
-    FILE *fp = fopen(path.c_str(), "rb");
-    if (!fp) return false;
-    uint8_t buf[Header::SIZE];
-    bool ok = fread(buf, 1, Header::SIZE, fp) == Header::SIZE;
-    fclose(fp);
-    return ok && unpack_header(buf, h);
+    return read_header_status(path, h) == HEADER_OK;
 }
 
 // ── Record scan ──────────────────────────────────────────────────────────────
@@ -188,7 +197,10 @@ Reader::Reader(const std::string &path) {
     data_.resize((size_t)fsize);
     bool read_ok = fread(&data_[0], 1, data_.size(), fp) == data_.size();
     fclose(fp);
-    if (!read_ok || !unpack_header(&data_[0], header_)) {
+    // Compare against HEADER_OK explicitly: unpack_header returns a status,
+    // not a bool, and HEADER_OK is 0 — so a bare `!unpack_header(...)` reads
+    // as "failed" while meaning "succeeded".
+    if (!read_ok || unpack_header(&data_[0], header_) != HEADER_OK) {
         data_.clear();
         return;
     }

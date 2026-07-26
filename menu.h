@@ -50,7 +50,8 @@ private:
   // (live/resumable offline), LAST RUN (most recently completed offline),
   // ONLINE RUN (the most recent online session, ended or abandoned) and
   // BEST RUN — with score/level/date; files this build can't parse render
-  // as unselectable OLDER VERSION rows. Selecting a row starts R2 playback.
+  // as unselectable rows naming the reason (damaged / newer version).
+  // Selecting a row starts R2 playback.
   bool show_replays_row() const { return !replay_rows_.empty(); }
   int  replays_row_index() const;  // -1 when hidden
   void scan_replays();             // rebuild replay_rows_ from disk
@@ -58,10 +59,15 @@ private:
   struct ReplayRow {
     std::string label;   // CURRENT RUN / LAST RUN / ONLINE RUN / BEST RUN
     std::string path;
-    bool ok;             // readable by this build; false = OLDER VERSION
+    bool ok;             // readable by this build (status == HEADER_OK)
+    // Why not, when !ok — the row prints this instead of score/level/date,
+    // so a damaged file and one from a newer build read differently.
+    int status;          // Replay::HeaderStatus
     uint32_t score, level;
     std::string date;    // YYYY-MM-DD from the header's creation date
   };
+  // The unselectable row's text for a status that isn't HEADER_OK.
+  static const char *replay_status_text(int status);
   // Shared vertical row layout for the main menu (desktop cursor rows and
   // touch tap targets use the same geometry).
   static int menu_row_size();
