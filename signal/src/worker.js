@@ -61,7 +61,9 @@ const MAX_IDENTITY_NAME = 24;
 const MAX_IDENTITY_CRED = 8192;
 // Min interval between Valve verifications for a given role (denial-of-wallet
 // guard — see attest_identity). Well under any legitimate re-verify cadence
-// (reclaim, future heartbeat), so it only trims floods.
+// (join, rejoin, host reclaim — attestation is one-shot per session, the
+// periodic heartbeat being declined in NETPLAY.md V1.5), so it only trims
+// floods.
 const VERIFY_MIN_INTERVAL_MS = 3000;
 
 // Browser origins allowed to open a signaling socket. Browsers always send an
@@ -644,7 +646,7 @@ export class Room {
         // NEW sockets but not per-message floods over an already-open one, and
         // WS frames never pass through the fetch-handler Limiter — so throttle
         // the backend call per role here. Legit re-verifies (host reclaim, a
-        // future heartbeat) are seconds-to-minutes apart; only a flood is
+        // client rejoin) are seconds-to-minutes apart; only a flood is
         // dropped, and a dropped frame KEEPS the last attestation (no demote).
         const now = Date.now();
         const at_key = role === "host" ? "host_verify_at" : "joiner_verify_at";

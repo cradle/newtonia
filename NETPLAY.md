@@ -431,7 +431,8 @@ browsing the same loopback discovers nothing ("lan host found" absent).
 ## Future milestone — verified peer identity (design notes 2026-07-20)
 
 **Current state (V0–V3 SHIPPED AND LIVE-VERIFIED, 2026-07-26 — see the
-implementation plan below; V1.5 is the only unbuilt phase):**
+implementation plan below; V1.5, the re-attestation heartbeat, is
+DECLINED, so the milestone is complete):**
 the peer-to-peer identity (platform tag + display name in the
 HELLO/WELCOME append) is still a self-reported **Claim**; what changed is
 that the signaling worker now **attests** it. `NET_IDENTITY_DISPLAY_ENABLED`
@@ -489,7 +490,7 @@ alias" (confirmed against Apple's docs — that API does not exist). Unit-tested
 platform-agnostic `identity_attested.sh` path. Greppable device-test verdict:
 `game center verified idKind=teamPlayerID hash=SHA-256` in
 `wrangler tail newtonia-signal[-beta]`.
-V1.5 (revocation heartbeat) is the still-unbuilt phase below.
+V1.5 (revocation heartbeat) is DECLINED — see the decision below.
 
 **Steam verification design (researched, not built):** Steam supports
 user-to-user auth with session tickets, no game server needed.
@@ -798,10 +799,85 @@ lobby (`attested_peer_`, threaded into `GLGame` via `net_set_worker_session` +
 4. Tests: worker suite against a captured real signature bundle; live
    iPhone↔desktop smoke.
 
-**V1.5 — OPTIONAL: re-attestation heartbeat (revocation recovered), ~2 days**
+**V1.5 — DECLINED: re-attestation heartbeat (revocation recovered)**
 
-Not required for V1 to ship; layers on cleanly later. Restores — and
-then exceeds — the live-revocation fidelity the worker model gave up
+**Decision (Glenn 2026-07-26): NOT BUILDING THIS.** Attestation stays
+one-shot per session — at join, at rejoin, and at host reclaim, which is
+every point where the session's membership materially changes. The
+design below is kept as a record of what was considered and as the
+starting point if one of the reopening conditions at the end ever fires.
+
+**No platform requires it** (checked against the live docs 2026-07-26,
+not just the 2026-07-20 survey). Xbox is the only platform with written
+rules in this area, and its two relevant XRs both point away from a
+heartbeat. **XR-007**'s
+cross-network clause is a DISPLAY requirement — "Titles must visually
+identify Xbox network users when they are playing with players from
+non-Xbox gaming networks" — imposing no verification duty at all, let
+alone revalidation (the platform badge satisfies it whole). **XR-015**
+is the only document that names a cadence, and it scopes the check to
+"the beginning of a session or when a new user joins the session"; its
+one recurring-cadence sentence ("a regular cadence (e.g., hourly)") is a
+RELAXATION granted to large-scale chat, which we don't have. XR-015 also
+governs the LOCAL user's communication permissions — the `net_policy`
+seam, not the peer's identity — and the handshake chokepoint already
+checks it exactly when XR-015 asks, re-running on every rejoin. Steam's
+`ISteamUserAuth` docs say nothing about periodic re-authentication (the
+only operational note is "These requests are rate limited");
+`EndAuthSession` and the revocation callback belong to the
+`BeginAuthSession` P2P path we deliberately did not take, and are not
+part of the Web-API contract. Apple imposes no refresh obligation on the
+identity-verification signature, and Google's server auth code is
+single-use by design — a replay defence, not a re-verification duty.
+
+**What it would have bought is close to nothing.** All three residuals
+are cosmetic, and the sharpest one is worth the least: Game Center has
+the weakest replay defence (a ~10 min freshness window, no single-use,
+no recipient binding) but the worker attests `{platform: ios, name: ""}`,
+so a replayed bundle buys an attacker the IOS badge and a tick beside the
+role label they would have shown anyway. Steam and PGS credentials are
+single-use and cannot be replayed at all. That leaves (a) the
+colluding-victim case — an account owner minting fresh credentials on
+demand so someone else wears their name, which needs an actively
+cooperating victim and yields a display string — and (b) a badge
+outliving a Steam logout by one session, the mildest of the three.
+
+**And it costs more than the ~2 days estimated,** because item 1 is
+load-bearing. Only the HOST adopts the signalling socket into the game
+(`net_adopt_signal`, `net_lobby.cpp`); the client destroys its
+`NetSignal` with the lobby and enters `GLGame` with no worker channel at
+all. Giving the client a persistent socket means rebuilding the host's
+`net_host_signal_maintain` reclaim machinery client-side, mobile
+suspend/resume reconnection included. Then every platform must re-mint a
+credential on a timer mid-gameplay (async Steamworks call, JNI round
+trip, GameKit fetch), each Steam heartbeat spending two rate-limited
+Valve calls per peer. Worst of all is the failure mode: a missed
+heartbeat demotes Attested→Claimed, so a phone with a flaky signal
+watches its partner's name flicker to "PLAYER 2" mid-game — degrading
+the common honest case to defend a rare dishonest one, and needing
+hysteresis and grace periods to not, which is more complexity again.
+
+**The backstop is what makes declining safe:** identity is display-only.
+No matchmaking, host authority, or policy decision hangs off the peer's
+claim, and `net_comms_allowed_with` treats the platform tag as a claim,
+enforcing privileges on the LOCAL account only. Preserving that
+invariant is worth more than any freshness guarantee.
+
+**What would reopen this** (in rough order of likelihood): (1) identity
+becoming a POLICY input anywhere — the moment a peer's attested platform
+or name gates something, staleness stops being cosmetic and this
+milestone is back on; (2) a platform publishing an actual revalidation
+requirement, most plausibly Xbox at fork-side cert; (3) a real-world
+impersonation report, which would tell us the collusion residual isn't
+theoretical. **Cheaper alternative that stays open regardless:** halving
+`MAX_TIMESTAMP_SKEW_MS` in `signal/src/game_center_verify.js` (10 min
+today; the V3 plan above said "~5 min") takes a real bite out of the
+only replay window we have for one constant and no architecture — the
+counter-argument being that the window absorbs device clock skew in both
+directions, so 10 min is also defensible.
+
+**The design, for the record** — what V1.5 would have been. It restores
+(and then exceeds) the live-revocation fidelity the worker model gave up
 vs P2P `BeginAuthSession`, using only documented APIs:
 
 1. The client's wss to the worker is KEPT OPEN for the whole game
