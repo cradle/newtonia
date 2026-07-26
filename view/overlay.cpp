@@ -142,11 +142,13 @@ void Overlay::replay_hud(const GLGame *glgame) {
     Typer::draw_centered(0, -vh + 155, text, 9);
   }
 
-  if (glgame->replay_finished_ && !glgame->game_over && (now / 700) % 2 == 0)
-    Typer::draw_centered(0, -80,
-                         is_touch_mode() ? "REPLAY ENDED - TAP BELOW FOR MENU"
-                                         : "REPLAY ENDED - ESC FOR MENU",
-                         16);
+  if (glgame->replay_finished_ && !glgame->game_over) {
+    Typer::draw_centered(0, -40, "REPLAY ENDED", 16);
+    // The exit affordance every other end-state uses; touch has the band
+    // above (replay_hud draws it unconditionally).
+    if (!is_touch_mode())
+      MenuSelect::draw_row(-100, "RETURN TO MENU", 16, true);
+  }
 }
 
 void Overlay::net_overlays(const GLGame *glgame) {
@@ -186,10 +188,12 @@ void Overlay::net_overlays(const GLGame *glgame) {
     // screen. One shared card for both roles; the 3 s guard in the input
     // handlers still stops a mid-fight trigger from skipping it.
     Typer::draw_centered(0, 60, "GAME OVER", 34);
-    if ((now / 700) % 2 == 0)
-      Typer::draw_centered(0, -80,
-                           is_touch_mode() ? "TAP FIRE FOR MENU"
-                                           : "PRESS FIRE FOR MENU", 16);
+    // Every screen whose only move is "leave" says so the same way: the
+    // shared RETURN TO MENU row, answered by confirm or back. Touch draws
+    // no cursor and already has the tap band under this card (title_text
+    // shows it whenever the game is over), so the row would just repeat it.
+    if (!is_touch_mode())
+      MenuSelect::draw_row(-80, "RETURN TO MENU", 16, true);
     return;
   }
 
@@ -243,19 +247,13 @@ void Overlay::net_overlays(const GLGame *glgame) {
     // on a side that is normally still running — the auto-pause belongs
     // to the host-with-a-door case above — but a hand pause before the
     // loss stacks the two, so keep the gap.
-    if (is_touch_mode()) {
-      // Touch has no cursor and no exit band here (the band only shows
-      // when paused/over), so the fire button stays the way out and the
-      // flashing prompt stays the way to say so.
-      if ((now / 700) % 2 == 0)
-        Typer::draw_centered(0, -130, "TAP FIRE FOR MENU", 16);
-    } else {
-      // Elsewhere it is a menu row, not an any-key prompt: confirm or back
-      // leaves and nothing else does, so a stray keypress can't end the
-      // session. Steady, not flashing — a cursor row is a thing you act
-      // on, not an alert.
+    // A menu row, not an any-key prompt: confirm or back leaves and
+    // nothing else does, so a stray keypress can't end the session.
+    // Steady, not flashing — a cursor row is a thing you act on, not an
+    // alert. Touch draws no cursor and takes the tap band instead, which
+    // title_text now shows on a lost link like it does at game over.
+    if (!is_touch_mode())
       MenuSelect::draw_row(-130, "RETURN TO MENU", 16, true);
-    }
   } else if (glgame->net_banner_ms_ > 0) {
     // A header banner ("<NAME> RECONNECTED") takes the DISCONNECTED
     // header's exact position and size, so the notice swaps in place
@@ -556,22 +554,27 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     // cutout inset so this row stays aligned with the LEVEL/score/weapons
     // row below the camera notch.
     float top_y = Typer::scaled_window_height - 40 - safe_inset_top_v();
-    if((glgame->current_time/1400) % 2) {
-      if(p1->is_alive() || p1->lives > 0) {
-        if(!is_touch_mode()) {
-          if(glgame->has_free_controller())
-            Typer::draw_centered(Typer::scaled_window_width/2, top_y, "player 2 press start to join", 8);
+    if(p1->is_alive() || p1->lives > 0) {
+      // The join invitation blinks — it is an offer, not the only move here.
+      if((glgame->current_time/1400) % 2 && !is_touch_mode()) {
+        if(glgame->has_free_controller())
+          Typer::draw_centered(Typer::scaled_window_width/2, top_y, "player 2 press start to join", 8);
 #ifndef _GAMING_XBOX
-          // Keyboard join hint — on Xbox the only join path is a second controller.
-          else if(!is_steam_gamemode())
-            Typer::draw_centered(Typer::scaled_window_width/2, top_y, "player 2 press enter to join", 8);
+        // Keyboard join hint — on Xbox the only join path is a second controller.
+        else if(!is_steam_gamemode())
+          Typer::draw_centered(Typer::scaled_window_width/2, top_y, "player 2 press enter to join", 8);
 #endif
-        }
-      } else if(!is_touch_mode()) {
-        // Just above the GameOver text draw_respawn_timer() renders (its
-        // 20x viewport puts the glyphs at y 0..80 in this space).
-        Typer::draw_centered(0, 140, glship->has_controller() ? "return to menu with start" : "return to menu with ESC", 8);
       }
+    } else if(!is_touch_mode()) {
+      // Game over: the same row, at the same size, that the online GAME
+      // OVER card and the disconnect card draw — one exit affordance across
+      // every end-state instead of a hint naming a different key per
+      // screen, and steady like those, because it IS the move here.
+      // BELOW the ending like the online card (which stacks GAME OVER at
+      // 60 over the row at -80): draw_respawn_timer's 20x viewport puts
+      // "GameOver" at y 80..0 and the score at -20..-60 in this space, so
+      // -100 clears both.
+      MenuSelect::draw_row(-100, "RETURN TO MENU", 16, true);
     }
     if(!glship->last_input_was_controller && !is_touch_mode()) {
       char hint[48];
@@ -627,7 +630,8 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
     const GLShip* local = glgame->local_player();
     bool local_over = glgame->net_active() && local &&
                       !local->ship->is_alive() && local->ship->lives <= 0;
-    if(all_over || !glgame->running || local_over)
+    if(all_over || !glgame->running || local_over ||
+       glgame->net_connection_lost_)
       glgame->exit_band().draw(
           Typer::cursored("RETURN TO MENU", true).c_str(),
           glgame->current_time);

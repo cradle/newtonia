@@ -7822,8 +7822,7 @@ void GLGame::controller(SDL_Event event) {
     if (net_handed_to_lobby_) return;
     // A/Start/right-trigger confirm the card's row, B/Back leave — the
     // keyboard twin above, through the shared pad translator.
-    unsigned char nav = nav_key_from_controller(event);
-    if (MenuSelect::is_confirm(nav) || MenuSelect::is_back(nav))
+    if (is_exit_key(nav_key_from_controller(event)))
       request_state_change(new Menu());
     return;
   }
@@ -7833,7 +7832,8 @@ void GLGame::controller(SDL_Event event) {
     if (event.type == SDL_CONTROLLERBUTTONDOWN) {
       if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) toggle_pause();
       else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_B ||
-               (game_over && current_time - game_over_time >= 3000))
+               (game_over && current_time - game_over_time >= 3000 &&
+                is_exit_key(nav_key_from_controller(event))))
         request_state_change(new Menu());
     }
     return;
@@ -7922,7 +7922,11 @@ void GLGame::controller(SDL_Event event) {
           }
         }
         if (all_game_over) {
-          if (!(game_over_time >= 0 && current_time - game_over_time < 3000)) {
+          // A and B are the card's confirm and back; X and Y are neither,
+          // so they no longer leave (they still join player 2 below on a
+          // pad that isn't playing yet).
+          if (is_exit_key(nav_key_from_controller(event)) &&
+              !(game_over_time >= 0 && current_time - game_over_time < 3000)) {
             for (auto* glship : *players)
               save_high_score(glship->ship->score);
             request_state_change(new Menu());
@@ -8067,7 +8071,10 @@ void GLGame::touch_tap(float nx, float ny) {
   GLShip *local = local_player();
   bool local_over = net_mode_ != NetOff && local &&
                     !local->ship->is_alive() && local->ship->lives <= 0;
-  if (!running || local_over) {
+  // net_connection_lost_: the overlay draws the exit band on a lost link
+  // too, so touch has ONE way out of every end-state instead of the card's
+  // old "tap fire" — the band has to actually leave, or it is a lie.
+  if (!running || local_over || net_connection_lost_) {
     // Same one-frame guard as keyboard_up/controller: a committed
     // auto-rejoin hand-off must not be overwritten by the exit band.
     if (net_handed_to_lobby_) return;
@@ -8312,9 +8319,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     // and nothing else does anything. Fire IS a confirm, so the touch
     // card's "TAP FIRE FOR MENU" still reads true — but a stray keypress
     // no longer throws the session away.
-    unsigned char nav = nav_key(key);
-    if (MenuSelect::is_confirm(nav) || MenuSelect::is_back(nav))
-      request_state_change(new Menu());
+    if (is_exit_key(nav_key(key))) request_state_change(new Menu());
     return;
   }
 
@@ -8324,8 +8329,11 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   // gameplay/cheat key can touch the recorded world. After the recording's
   // game over, any key exits (mirrors the offline game-over flow).
   if (net_mode_ == NetReplay) {
+    // The finished-replay card draws the shared RETURN TO MENU row, so it
+    // answers like one; the menu key stays a direct shortcut mid-playback.
     if (key == (unsigned char)gk.menu ||
-        (game_over && current_time - game_over_time >= 3000)) {
+        (game_over && current_time - game_over_time >= 3000 &&
+         is_exit_key(nav_key(key)))) {
       request_state_change(new Menu());
       return;
     }
@@ -8423,8 +8431,10 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
 #endif
-  // On all platforms: any non-menu key goes to menu when all players are game over,
-  // with a short delay so the last shoot input doesn't immediately skip the game over screen.
+  // The GAME OVER screen draws the shared RETURN TO MENU row, so it answers
+  // like one: confirm or back, never "any key" — a stray press used to eat
+  // the score screen. The short delay still stops the last shoot input from
+  // skipping it. The menu key keeps its own path below.
   if (key != (unsigned char)gk.menu) {
     bool all_game_over = !players->empty();
     for (auto* glship : *players) {
@@ -8434,6 +8444,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       }
     }
     if (all_game_over) {
+      if (!is_exit_key(nav_key(key))) return;
       if (game_over_time >= 0 && current_time - game_over_time < 3000)
         return;
       for (auto* glship : *players)

@@ -2,6 +2,7 @@
 #define GL_GAME_H
 
 #include "state.h"
+#include "menu_select.h"
 #include "savegame.h"
 #include "net_lan.h"
 #include "glship.h"
@@ -188,6 +189,15 @@ private:
   // Is this pad already bound to a player? The pause menu only answers to
   // pads that are playing, so an unknown pad's A still joins player 2.
   bool is_player_controller(SDL_JoystickID which) const;
+  // Every screen whose only move is "leave" — the GAME OVER card, the
+  // terminal disconnect card, a finished replay — draws the shared
+  // RETURN TO MENU row, so all of them answer like a menu: confirm
+  // (fire/Enter/A/Start/RT) or back (Esc/B/Back), and nothing else. Taking
+  // ANY key, as they each used to, meant a stray press ate the score
+  // screen. Takes a key already through nav_key/nav_key_from_controller.
+  static bool is_exit_key(unsigned char nav) {
+    return MenuSelect::is_confirm(nav) || MenuSelect::is_back(nav);
+  }
   void host_toggle_friendly_fire();  // G key / HUD-text tap; announces the
                                      // room rule online (EV_FRIENDLY_FIRE)
   // The "friendly fire on/off" HUD line doubles as the touch toggle
