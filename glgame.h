@@ -175,7 +175,7 @@ private:
                                              // peer's PAUSE/RESUME event
   // Pause-screen menu, drawn by Overlay::paused. Every pause opens on
   // RESUME — never on the exit row left armed by the last one.
-  enum PauseRow { PAUSE_RESUME = 0, PAUSE_EXIT = 1 };
+  enum PauseRow { PAUSE_RESUME = 0, PAUSE_EXIT = 1, PAUSE_ROWS = 2 };
   int pause_selection_ = PAUSE_RESUME;
   // True when the pause menu is on screen AND owns navigation input. Touch
   // is excluded: it draws no cursor anywhere and already has both actions

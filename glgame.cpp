@@ -24,6 +24,7 @@
 #include "wrapped_point.h"
 #include "intro.h"
 #include "menu.h"
+#include "menu_select.h"
 #include "net_lobby.h"
 #include "state.h"
 #include "asteroid.h"
@@ -1009,18 +1010,14 @@ bool GLGame::pause_menu_active() const {
 }
 
 void GLGame::pause_nav(unsigned char key) {
-  if (key == 'w' || key == 'W') {
-    pause_selection_ = PAUSE_RESUME;
-  } else if (key == 's' || key == 'S') {
-    pause_selection_ = PAUSE_EXIT;
-  } else if (key == ' ' || key == '\r' || key == '\n') {
-    if (pause_selection_ == PAUSE_RESUME) {
-      toggle_pause();
-    } else {
-      // Exactly what the menu key does — save first, then hand over.
-      save_progress();
-      request_state_change(new Menu());
-    }
+  if (MenuSelect::move(key, pause_selection_, PAUSE_ROWS)) return;
+  if (!MenuSelect::is_confirm(key)) return;
+  if (pause_selection_ == PAUSE_RESUME) {
+    toggle_pause();
+  } else {
+    // Exactly what the menu key does — save first, then hand over.
+    save_progress();
+    request_state_change(new Menu());
   }
 }
 
@@ -7864,7 +7861,7 @@ void GLGame::controller(SDL_Event event) {
       // translator also maps the right trigger to confirm, and in-game
       // that trigger is fire.
       unsigned char nav = nav_key_from_controller(event);
-      if (nav == 'w' || nav == 's') {
+      if (MenuSelect::is_up(nav) || MenuSelect::is_down(nav)) {
         pause_nav(nav);
         return;
       }
@@ -8338,8 +8335,8 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (pause_menu_active() && key != (unsigned char)gk.pause &&
       key != (unsigned char)gk.menu) {
     unsigned char nav = nav_key(key);  // arrows navigate like WASD
-    if (nav == 'w' || nav == 'W' || nav == 's' || nav == 'S' ||
-        nav == ' ' || nav == '\r' || nav == '\n') {
+    if (MenuSelect::is_up(nav) || MenuSelect::is_down(nav) ||
+        MenuSelect::is_confirm(nav)) {
       pause_nav(nav);
       return;
     }

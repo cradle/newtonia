@@ -1,4 +1,6 @@
 #include "overlay.h"
+
+#include "../menu_select.h"
 #include "tap_band.h"
 #include "../net_identity.h"
 #include "../net_session.h"
@@ -386,18 +388,10 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
     // clear of the disconnect overlay's "PRESS FIRE FOR MENU" at y=-130 —
     // a disconnect auto-pauses, so both show at once — which is what sizes
     // it: size 13 rows at -42 and -80 bottom out around -106.
-    Typer::draw_centered(
-        0, PAUSE_ROW_Y0,
-        Typer::cursored("RESUME",
-                        glgame->pause_selection_ == GLGame::PAUSE_RESUME)
-            .c_str(),
-        PAUSE_ROW_SZ);
-    Typer::draw_centered(
-        0, PAUSE_ROW_Y1,
-        Typer::cursored("RETURN TO MENU",
-                        glgame->pause_selection_ == GLGame::PAUSE_EXIT)
-            .c_str(),
-        PAUSE_ROW_SZ);
+    MenuSelect::draw_row(PAUSE_ROW_Y0, "RESUME", PAUSE_ROW_SZ,
+                         glgame->pause_selection_ == GLGame::PAUSE_RESUME);
+    MenuSelect::draw_row(PAUSE_ROW_Y1, "RETURN TO MENU", PAUSE_ROW_SZ,
+                         glgame->pause_selection_ == GLGame::PAUSE_EXIT);
   }
 }
 
