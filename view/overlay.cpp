@@ -239,12 +239,23 @@ void Overlay::net_overlays(const GLGame *glgame) {
       Typer::draw_centered(0, 160, "CONNECTION LOST", 34);
     }
     // y=-130: clear of the pause overlay's menu rows (RESUME at -42,
-    // RETURN TO MENU at -80, glyphs reaching ~-106) — the game
-    // auto-pauses on a disconnect, so both stacks show at once.
-    if ((now / 700) % 2 == 0)
-      Typer::draw_centered(0, -130,
-                           is_touch_mode() ? "TAP FIRE FOR MENU"
-                                           : "PRESS FIRE FOR MENU", 16);
+    // RETURN TO MENU at -80, glyphs reaching ~-106). This card is drawn
+    // on a side that is normally still running — the auto-pause belongs
+    // to the host-with-a-door case above — but a hand pause before the
+    // loss stacks the two, so keep the gap.
+    if (is_touch_mode()) {
+      // Touch has no cursor and no exit band here (the band only shows
+      // when paused/over), so the fire button stays the way out and the
+      // flashing prompt stays the way to say so.
+      if ((now / 700) % 2 == 0)
+        Typer::draw_centered(0, -130, "TAP FIRE FOR MENU", 16);
+    } else {
+      // Elsewhere it is a menu row, not an any-key prompt: confirm or back
+      // leaves and nothing else does, so a stray keypress can't end the
+      // session. Steady, not flashing — a cursor row is a thing you act
+      // on, not an alert.
+      MenuSelect::draw_row(-130, "RETURN TO MENU", 16, true);
+    }
   } else if (glgame->net_banner_ms_ > 0) {
     // A header banner ("<NAME> RECONNECTED") takes the DISCONNECTED
     // header's exact position and size, so the notice swaps in place

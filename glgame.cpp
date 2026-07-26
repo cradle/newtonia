@@ -7819,7 +7819,11 @@ void GLGame::controller(SDL_Event event) {
       !(net_mode_ == NetHost && (net_signal_ || net_lan_door_open()))) {
     // Same one-frame guard as keyboard_up: a committed auto-rejoin
     // hand-off must not be overwritten (the pending lobby would leak).
-    if (event.type == SDL_CONTROLLERBUTTONDOWN && !net_handed_to_lobby_)
+    if (net_handed_to_lobby_) return;
+    // A/Start/right-trigger confirm the card's row, B/Back leave — the
+    // keyboard twin above, through the shared pad translator.
+    unsigned char nav = nav_key_from_controller(event);
+    if (MenuSelect::is_confirm(nav) || MenuSelect::is_back(nav))
       request_state_change(new Menu());
     return;
   }
@@ -8302,7 +8306,15 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     // the one-frame window before the swap, orphaning that lobby (its
     // ctor already opened the room's joiner socket) and leaving the
     // armed net_handed_to_lobby_ skipping the credential release.
-    if (!net_handed_to_lobby_) request_state_change(new Menu());
+    if (net_handed_to_lobby_) return;
+    // The disconnect card carries a RETURN TO MENU row, so it answers like
+    // every other menu: confirm activates the row, back leaves outright,
+    // and nothing else does anything. Fire IS a confirm, so the touch
+    // card's "TAP FIRE FOR MENU" still reads true — but a stray keypress
+    // no longer throws the session away.
+    unsigned char nav = nav_key(key);
+    if (MenuSelect::is_confirm(nav) || MenuSelect::is_back(nav))
+      request_state_change(new Menu());
     return;
   }
 
