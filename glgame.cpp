@@ -8028,18 +8028,24 @@ void GLGame::touch_tap(float nx, float ny) {
   // Replay playback controls (labels drawn by Overlay::replay_hud — the
   // TapBand rule: one definition for text and hit-test).
   if (net_mode_ == NetReplay) {
-    if (TapBand::replay_pause.contains(nx, ny)) { toggle_pause(); return; }
-    if (TapBand::replay_slower.contains(nx, ny)) {
+    // The SAME lift Overlay::replay_hud draws these with — the TapBand
+    // invariant is only held if both sides transform alike.
+    float lift = TapBand::bottom_lift();
+    if (TapBand::replay_pause.lifted(lift).contains(nx, ny)) {
+      toggle_pause();
+      return;
+    }
+    if (TapBand::replay_slower.lifted(lift).contains(nx, ny)) {
       if (replay_speed_ > 0.26f) replay_speed_ *= 0.5f;
       return;
     }
-    if (TapBand::replay_faster.contains(nx, ny)) {
+    if (TapBand::replay_faster.lifted(lift).contains(nx, ny)) {
       if (replay_speed_ < 4.0f) replay_speed_ *= 2.0f;
       return;
     }
     // The exit band always exits (nothing in a replay needs protecting
     // from an accidental tap).
-    if (TapBand::return_to_menu.contains(nx, ny))
+    if (TapBand::return_to_menu.lifted(lift).contains(nx, ny))
       request_state_change(new Menu());
     return;
   }

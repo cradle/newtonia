@@ -317,7 +317,14 @@ Playback gained on-screen controls: touch gets real tap targets (SLOWER |
 PAUSE/RESUME | FASTER stacked above the labeled RETURN TO MENU band, the
 TapBand one-definition rule), desktop/controller a dim hint line above the
 timeline built from the live bindings ("P PAUSE  =/- SPEED  ESC MENU" /
-"START PAUSE  B MENU"). Rewind stays out per the v1 decision, but the
+"START PAUSE  B MENU"). The whole touch stack — watermark, timeline, the
+three transport bands and the exit band — is bottom-anchored through
+`TapBand::bottom_lift()` (2026-07-27): its anchors are landscape geometry
+measured against a 600 virtual half-height, and portrait stretches that to
+600/aspect, which stranded the entire stack mid-screen directly under the
+ship (field: Moto E14 portrait). Same portrait-stretch bug, and the same
+fix, as `GLGame::exit_band()`; the lift is 0 in landscape, so that layout
+is untouched. Rewind stays out per the v1 decision, but the
 format's keyframe seek makes a "jump back 10 s" control a bounded add-on
 (restart the reader, apply silently to the target slot) if wanted later.
 Menu row REPLAYS (hidden while no `.nrp` exists) → list screen: CURRENT RUN
