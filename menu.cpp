@@ -823,11 +823,16 @@ const char *Menu::replay_status_text(int status) {
 
 void Menu::scan_replays() {
   replay_rows_.clear();
+  // ONLINE RUN sits last, under the offline slots: current/recent/best are
+  // one chain (a run rotates current -> recent, and is best-checked on the
+  // way), while online.nrp never rotates through any of them — it is its
+  // own slot, overwritten per session. Listing it after the chain rather
+  // than inside it matches that.
   struct { const char *label; std::string path; } sources[4] = {
       {"CURRENT RUN", Replay::current_path()},
       {"LAST RUN", Replay::recent_path()},
-      {"ONLINE RUN", Replay::online_path()},
       {"BEST RUN", Replay::best_path()},
+      {"ONLINE RUN", Replay::online_path()},
   };
   for (int i = 0; i < 4; i++) {
     if (sources[i].path.empty()) continue;
