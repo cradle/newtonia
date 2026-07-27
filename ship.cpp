@@ -19,6 +19,7 @@
 #include "weapon/lance.h"
 #include "weapon/shock.h"
 #include "net_protocol.h"  // NET_LOG
+#include "world_sound.h"
 
 static const int NOVA_MAX_AMMO = 10;
 
@@ -1274,34 +1275,35 @@ bool Ship::is_alive() const {
 
 void Ship::thrust(bool on) {
   thrusting = on;
-  if(boost_sound != NULL) {
-    if(on && !reversing) {
-      Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/8);
-    }
-    if(!on && !reversing) {
-      if(still_rotating_left || still_rotating_right) {
-        Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/16);
-      } else {
-        Mix_VolumeChunk(boost_sound, 0);
-      }
-    }
-  }
+  update_boost_volume();
 }
 
 void Ship::reverse(bool on) {
   reversing = on;
-  if(boost_sound != NULL) {
-    if(on && !thrusting) {
-      Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/8);
-    }
-    if(!on && !thrusting) {
-      if(still_rotating_left || still_rotating_right) {
-        Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/16);
-      } else {
-        Mix_VolumeChunk(boost_sound, 0);
-      }
-    }
-  }
+  update_boost_volume();
+}
+
+// The thruster hum is a looping channel, so its level is chunk volume rather
+// than a play-time argument: whatever it was last set to is what keeps
+// playing. It used to be set to a flat MIX_MAX_VOLUME/8 by whichever control
+// call last fired, which meant a ship's thrusters were as loud across the
+// world as they were in your own cockpit — the far end of a co-op level
+// sounded like a ship in your lap. Fold in sound_volume_scale (0 for an
+// unseen enemy, listener distance for the other player) like every one-shot
+// cue does, and re-run it per tick from GLGame: distance keeps changing while
+// a held thrust key fires this exactly once.
+void Ship::update_boost_volume() {
+  if(boost_sound == NULL) return;
+  float level = 0.0f;
+  if(thrusting || reversing) level = 1.0f/8.0f;
+  // rotation_direction as well as the key flags: a replicated ghost gets the
+  // direction written raw from the snapshot extras and never the key flags,
+  // so keying off those alone left a turning peer silent.
+  else if(still_rotating_left || still_rotating_right ||
+          rotation_direction != NONE) level = 1.0f/16.0f;
+  float scale = sound_volume_scale < 0.0f ? 0.0f
+              : sound_volume_scale > 1.0f ? 1.0f : sound_volume_scale;
+  Mix_VolumeChunk(boost_sound, (int)(MIX_MAX_VOLUME * level * scale));
 }
 
 void Ship::boost() {
@@ -1385,7 +1387,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
             Uint32 now = SDL_GetTicks();
             if(now - last_armour_ting >= 125) {
               last_armour_ting = now;
-              Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
+              WorldSound::play(Asteroid::ting_sound, position);
             }
           }
         } else if(object->kill()) {
@@ -1677,7 +1679,7 @@ void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
             Uint32 now = SDL_GetTicks();
             if (now - last_armour_ting >= 125) {
               last_armour_ting = now;
-              Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
+              WorldSound::play(Asteroid::ting_sound, entry);
             }
           }
           bullets[i].world_bullet = true;
@@ -1811,9 +1813,7 @@ void Ship::fire_lance_pulse(const Grid &grid) {
         : -1.0f;
       if(shield_dot > -0.5f) {
         reflect = true;
-        if(Asteroid::ting_sound != NULL && sound_volume_scale > 0.0f) {
-          Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
-        }
+        WorldSound::play(Asteroid::ting_sound, best_entry);
       }
     }
 
@@ -2140,12 +2140,15 @@ void Ship::net_cosmetic_impacts(const Grid &grid, bool claim_kills) {
     if (!deflect) explode(b.position, o->velocity);
     Mix_Chunk *snd = ting ? Asteroid::ting_sound : Asteroid::thud_sound;
     if (snd != NULL) {
-      // Same 125 ms cue rate limit the host-side impact sites use.
+      // Same 125 ms cue rate limit the host-side impact sites use. This pass
+      // runs over EVERY player's bullets, the peer's included, so the cue is
+      // placed at the contact point rather than played flat — the partner
+      // plinking rocks across the level is not a sound in your cockpit.
       static Uint32 last_cosmetic_cue = UINT32_MAX;
       Uint32 now = SDL_GetTicks();
       if (now - last_cosmetic_cue >= 125) {
         last_cosmetic_cue = now;
-        Mix_PlayChannel(-1, snd, 0);
+        WorldSound::play(snd, b.position);
       }
     }
     NET_LOG("net: cosmetic impact %s\n", ting ? "ting" : "thud");
@@ -2190,7 +2193,7 @@ void Ship::net_cosmetic_ship_impacts(
         Uint32 now = SDL_GetTicks();
         if (now - last_ship_thud >= 125) {
           last_ship_thud = now;
-          Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+          WorldSound::play(Asteroid::thud_sound, b.position);
         }
       }
       NetShipHit c;
@@ -2340,7 +2343,7 @@ void Ship::rotate_left(bool on) {
   } else {
     rotation_direction = NONE;
   }
-  play_rotating_sound(on);
+  update_boost_volume();
 }
 
 void Ship::rotate_right(bool on) {
@@ -2352,22 +2355,7 @@ void Ship::rotate_right(bool on) {
   } else {
     rotation_direction = NONE;
   }
-  play_rotating_sound(on);
-}
-
-void Ship::play_rotating_sound(bool on) {
-  if(boost_sound != NULL) {
-    if(on && !thrusting && !reversing) {
-      Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/16);
-    }
-    if(!on) {
-      if(thrusting || reversing) {
-        Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/8);
-      } else {
-        Mix_VolumeChunk(boost_sound, 0);
-      }
-    }
-  }
+  update_boost_volume();
 }
 
 WrappedPoint Ship::gun() const {

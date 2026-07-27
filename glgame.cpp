@@ -37,6 +37,7 @@
 #include "net_session.h"
 #include "replay.h"
 #include "teleport.h"
+#include "world_sound.h"
 #include <math.h>
 #include <cmath>
 #include <SDL.h>
@@ -50,6 +51,13 @@
 #include <map>
 #include <set>
 #include <unordered_map>
+
+// WorldSound listener trampoline: the hook is a plain function pointer so
+// nothing outside GLGame (Asteroid, in particular) has to know the class
+// exists. Installed by both base constructors, dropped by the destructor.
+static float glgame_world_volume(const void *ctx, Point p) {
+  return static_cast<const GLGame *>(ctx)->world_volume(p);
+}
 
 // First point along segment a->b entering the circle (centre target_pos,
 // radius r), with the target translated to its wrapped copy nearest a —
@@ -175,6 +183,9 @@ GLGame::GLGame(SDL_GameController *controller) :
 
   WrappedPoint::set_boundaries(world);
 
+  // World cues that belong to no ship (the shared Asteroid impact chunks)
+  // ask us how far away they happened. Dropped again in the destructor.
+  WorldSound::set_listener(glgame_world_volume, this);
 
   starfield = new GLStarfield(world, star_density_scale());
   warp_pass_ = new WarpPass();
@@ -394,6 +405,9 @@ GLGame::GLGame(const Save::GameState &save, const std::string &room_code,
 }
 
 GLGame::~GLGame() {
+  // Stop answering distance queries — no-op if a newer game already took
+  // the hook over (states are built before their predecessor is deleted).
+  WorldSound::clear_listener(this);
   // Deliberate teardown of a hosted room (quit to menu, game over, clean
   // app exit — the send_close below kills the room NOW): the process-death
   // resume ticket and online save go with it. A crash or OS kill never
@@ -566,6 +580,10 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   net_clear_event_outboxes();
 
   WrappedPoint::set_boundaries(world);
+
+  // See the new-game constructor: world cues that belong to no ship ask us
+  // how far away they happened.
+  WorldSound::set_listener(glgame_world_volume, this);
 
   starfield = new GLStarfield(world, star_density_scale());
 
@@ -1247,8 +1265,7 @@ void GLGame::elastic_asteroid_collisions(bool announce) {
           Uint32 now = SDL_GetTicks();
           if(now - last_asteroid_ting_tick >= 125) {
             last_asteroid_ting_tick = now;
-            Mix_VolumeChunk(Asteroid::asteroid_ting_sound, (int)(MIX_MAX_VOLUME * vol));
-            Mix_PlayChannel(-1, Asteroid::asteroid_ting_sound, 0);
+            WorldSound::play(Asteroid::asteroid_ting_sound, contact);
             net_send_event(Net::EV_ROID_BOUNCE, (uint32_t)(vol * 255.0f));
           }
         }
@@ -1727,8 +1744,7 @@ void GLGame::net_host_poll() {
       } else if (kind == 1 && station != NULL && station->is_alive()) {
         // Host-local hull-thud only — the claiming client already played
         // its own cue at consume (relaying EV_ROID_THUD would double it).
-        if (Asteroid::thud_sound != NULL)
-          Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+        WorldSound::play(Asteroid::thud_sound, station->position);
         station->hit();
         NET_LOG("net: ship hit claim honored (station)\n");
       } else if (kind == 2 && mini_station != NULL &&
@@ -3430,10 +3446,10 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
       // Play the cue and spark any asteroid near the packed position.
       Mix_Chunk *snd = code == Net::EV_ROID_TING ? Asteroid::ting_sound
                                                  : Asteroid::thud_sound;
-      if (snd) Mix_PlayChannel(-1, snd, 0);
       NET_LOG("net: roid impact\n");
       float ix, iy;
       Net::unpack_pos(arg, ix, iy, world.x(), world.y());
+      WorldSound::play(snd, Point(ix, iy));
       net_spark_asteroid_at(ix, iy);
       break;
     }
@@ -3514,8 +3530,8 @@ void GLGame::net_handle_event(uint8_t code, uint32_t arg) {
       else if (idx == 2 && players->size() >= 2) gs = players->back();
       if (gs && gs->ship->is_alive()) {
         gs->ship->explode(gs->ship->position, gs->ship->velocity * 0.25f);
-        if ((arg & 0x100) && Asteroid::ting_sound)
-          Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
+        if (arg & 0x100)
+          WorldSound::play(Asteroid::ting_sound, gs->ship->position);
       }
       break;
     }
@@ -3801,11 +3817,9 @@ void GLGame::tick_net_client(int delta) {
   // received replicas never push, or recording disabled — this is just the
   // keep-empty clear it always was.
   replay_drain_effects();
-  // Remote (host) ship: attenuate its self-played sounds (death
-  // explosion, god-mode tics) by distance to the local ship.
-  if (players->size() >= 2)
-    players->front()->ship->sound_volume_scale =
-        net_listener_volume(players->front()->ship->position);
+  // Attenuate the peer's self-played sounds (gun, thrusters, death
+  // explosion, god-mode tics) by distance to the local camera.
+  update_player_sound_volumes();
 
   if (net_mode_ == NetReplay) {
     // The file is the transport: apply whatever has come due.
@@ -3955,29 +3969,12 @@ void GLGame::tick_net_client(int delta) {
     return;
   }
 
-  // Ghost engine audio (REPLAY.md R2): the boost loop's volume is driven
-  // only by the local input methods (thrust/reverse/rotate) — the extras
-  // write ghost flags raw precisely so remote ships can't fight the local
-  // player's engine volume. A replay has no local input to protect, so
-  // drive the shared chunk from the replicated flags: any ghost under
-  // power at full engine volume, else any still turning at the rotation
-  // murmur, else silent (the same ladder thrust()/play_rotating_sound()
-  // implement for live input).
-  if (net_mode_ == NetReplay && !players->empty()) {
-    Mix_Chunk *bs = players->front()->ship->boost_sound;
-    if (bs != NULL) {
-      bool powered = false, turning = false;
-      for (auto *gs : *players) {
-        Ship *sh = gs->ship;
-        if (!sh->is_alive()) continue;
-        if (sh->thrusting || sh->reversing) powered = true;
-        else if (sh->rotation_direction != Ship::NONE) turning = true;
-      }
-      Mix_VolumeChunk(bs, powered   ? MIX_MAX_VOLUME / 8
-                          : turning ? MIX_MAX_VOLUME / 16
-                                    : 0);
-    }
-  }
+  // (Ghost engine audio — REPLAY.md R2 — used to be a special case here: the
+  // boost loop's volume was driven only by the local input methods, and the
+  // extras write ghost flags raw, so a replay drove one shared chunk from
+  // "is ANY ghost under power". update_player_sound_volumes above now levels
+  // every ship's own loop from its own replicated flags, which is the same
+  // thing done per ghost.)
 
   // Hitch breakdown: "net: frame hitch" (tick()) names the stall but not
   // the culprit — split this tick into poll (applies) vs step-loop time,
@@ -4147,12 +4144,7 @@ void GLGame::tick_net_client(int delta) {
             if (!h->is_alive()) continue;
             if (h->Object::collide(sh->bullets[bi])) {
               sh->explode(sh->bullets[bi].position, Point());
-              float vol = net_listener_volume(
-                  Point(sh->bullets[bi].position.x(), sh->bullets[bi].position.y()));
-              if (vol > 0.0f && Asteroid::thud_sound != NULL) {
-                Mix_VolumeChunk(Asteroid::thud_sound, (int)(MIX_MAX_VOLUME * vol));
-                Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
-              }
+              WorldSound::play(Asteroid::thud_sound, sh->bullets[bi].position);
               hit = true;
               break;
             }
@@ -4218,8 +4210,7 @@ void GLGame::tick_net_client(int delta) {
             // and the host skips its EV_ROID_THUD relay for our polyline
             // so this cue isn't doubled.
             lme->explode(where, e->velocity);
-            if (t.kind == 1 && Asteroid::thud_sound != NULL)
-              Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+            if (t.kind == 1) WorldSound::play(Asteroid::thud_sound, where);
             continue;
           }
           if (e->kill_stop()) {
@@ -4282,8 +4273,7 @@ void GLGame::tick_net_client(int delta) {
           if (Hazard *hz = dynamic_cast<Hazard *>(obj)) {
             if (hz->is_alive()) {
               sme->explode(hz->position, hz->velocity);
-              if (Asteroid::thud_sound != NULL)
-                Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+              WorldSound::play(Asteroid::thud_sound, hz->position);
               if (hz->kind_of() != Hazard::SEEKER)
                 bolt.stop();
             }
@@ -4310,8 +4300,7 @@ void GLGame::tick_net_client(int delta) {
             // Station / mini hull: cosmetic only; damage is host-authoritative.
             // The station/mini survive multiple hits, so the arc stops here.
             sme->explode(e->position, e->velocity);
-            if (t->kind == 1 && Asteroid::thud_sound != NULL)
-              Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+            if (t->kind == 1) WorldSound::play(Asteroid::thud_sound, e->position);
             bolt.stop();
             continue;
           }
@@ -4524,7 +4513,7 @@ void GLGame::tick_net_client(int delta) {
         if (!players->empty())
           players->back()->ship->credit_asteroid_kill(a, false);
         if (!a->is_alive() && !a->is_removable()) {
-          Asteroid::play_explode_sound();
+          Asteroid::play_explode_sound(a->position);
           dead_objects->push_back(a);
         } else {
           delete a;
@@ -4975,7 +4964,7 @@ void GLGame::net_apply_delta_asteroids(Save::Stream &in, bool membership_only) {
       // ones stay for their debris.
       if (!a->is_alive() && !a->is_removable()) {
         // Real death: explosion audio (add_children is host-only).
-        Asteroid::play_explode_sound();
+        Asteroid::play_explode_sound(a->position);
         dead_objects->push_back(a);
       } else {
         delete a;
@@ -5667,7 +5656,7 @@ void GLGame::net_apply_keyframe_asteroid_ids(Save::Stream &in,
       if (!(*oi)->is_alive() && !(*oi)->is_removable()) {
         // A real host-side death: the sound lives in add_children(),
         // which only the host runs — play it with the debris here.
-        Asteroid::play_explode_sound();
+        Asteroid::play_explode_sound((*oi)->position);
         dead_objects->push_back(*oi);
       } else {
         delete *oi;
@@ -6139,10 +6128,7 @@ void GLGame::tick(int delta) {
     if(mini_station != NULL) {
       // Attenuate its shot sound: nearest player (solo/split), or the
       // local player only when hosting online.
-      mini_station->sound_volume_scale =
-          net_mode_ != NetOff
-              ? net_listener_volume(mini_station->position)
-              : sound_volume_for_point(mini_station->position);
+      mini_station->sound_volume_scale = world_volume(mini_station->position);
       mini_station->step(step_size, grid);
     }
 
@@ -6214,6 +6200,7 @@ void GLGame::tick(int delta) {
       for(o = players->begin(); o != players->end(); o++)
         shock_targets->push_back((*o)->ship);
 
+    update_player_sound_volumes();
     for(o = players->begin(); o != players->end(); o++) {
       (*o)->step(step_size, grid);
     }
@@ -6270,20 +6257,13 @@ void GLGame::tick(int delta) {
       // Online host: attenuate by distance to the LOCAL player — the
       // visibility test counts the remote player's view too, which
       // plays full-volume shots from someone else's dogfight.
-      s->sound_volume_scale = net_mode_ != NetOff
-          ? 0.5f * net_listener_volume(s->position)
-          : (is_visible_to_any_player(*s) ? 0.5f : 0.0f);
+      s->sound_volume_scale = all_players_local()
+          ? (is_visible_to_any_player(*s) ? 0.5f : 0.0f)
+          : 0.5f * net_listener_volume(s->position);
       (*o)->step(step_size, grid);
-      // Re-apply boost volume after step since thrust() inside may have reset it
-      if(s->boost_sound != NULL) {
-        if(s->thrusting || s->reversing) {
-          Mix_VolumeChunk(s->boost_sound, (int)(MIX_MAX_VOLUME/8 * s->sound_volume_scale));
-        } else if(s->still_rotating_left || s->still_rotating_right) {
-          Mix_VolumeChunk(s->boost_sound, (int)(MIX_MAX_VOLUME/16 * s->sound_volume_scale));
-        } else {
-          Mix_VolumeChunk(s->boost_sound, 0);
-        }
-      }
+      // Re-level the thruster hum after the step: thrust() inside it fires
+      // only on a control change, and the distance in the scale has moved.
+      s->update_boost_volume();
     }
 
     /* UPDATE COLLISION MAP */
@@ -6501,7 +6481,7 @@ void GLGame::tick(int delta) {
               Uint32 now = SDL_GetTicks();
               if (now - last_station_thud >= 125) {
                 last_station_thud = now;
-                Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+                WorldSound::play(Asteroid::thud_sound, bpos);
                 // Station-hull deflection: same thud cue for the net client.
                 net_send_event(Net::EV_ROID_THUD, Net::pack_pos(bpos.x(), bpos.y(), world.x(), world.y()));
               }
@@ -6765,11 +6745,8 @@ void GLGame::tick(int delta) {
       // destroyed it, play the destruction sound once — attenuated by
       // listener distance, and relayed to the net client.
       if (!mini_station->is_alive()) {
-        play_priority_chunk(
-            station_explode_sound,
-            net_mode_ != NetOff
-                ? net_listener_volume(mini_station->position)
-                : sound_volume_for_point(mini_station->position));
+        play_priority_chunk(station_explode_sound,
+                            world_volume(mini_station->position));
         net_send_event(Net::EV_STATION_BOOM,
                        Net::pack_pos(mini_station->position.x(),
                                      mini_station->position.y(),
@@ -6894,9 +6871,7 @@ void GLGame::tick(int delta) {
       bool station_alive_now = station != NULL && station->is_alive();
       if (station_alive_prev && !station_alive_now && station != NULL) {
         play_priority_chunk(station_explode_sound,
-                            net_mode_ != NetOff
-                                ? net_listener_volume(station->position)
-                                : sound_volume_for_point(station->position));
+                            world_volume(station->position));
         net_send_event(Net::EV_STATION_BOOM,
                        Net::pack_pos(station->position.x(),
                                      station->position.y(),
@@ -7034,10 +7009,9 @@ void GLGame::tick(int delta) {
   if (net_mode_ == NetHost && players->size() >= 2) {
     Ship *remote = players->back()->ship;
     remote->set_shield_hum(false);
-    // The sim plays the remote player's own sounds (gun etc.) like a
-    // split-screen partner's — full volume. Online the only listener
-    // here is the local player: attenuate by distance.
-    remote->sound_volume_scale = net_listener_volume(remote->position);
+    // (The sim would play the remote player's own sounds like a split-screen
+    // partner's — full volume. update_player_sound_volumes, in the step loop
+    // above, attenuates them by distance to the local camera instead.)
     // While parked for rejoin, re-assert the shield every tick: level
     // rebuilds respawn all players with the normal 1.5 s window, which
     // would otherwise expire and leave the pilotless hull killable.
@@ -7418,6 +7392,42 @@ float GLGame::net_listener_volume(Point p) const {
   float dist = me->ship->position.distance_to(p);
   if (dist >= cull_r) return 0.0f;
   return 1.0f - dist / cull_r;
+}
+
+bool GLGame::all_players_local() const {
+  // Split-screen shows every player on this screen, so every player is a
+  // listener. That covers an offline 2P game and a 2P replay (both ghosts
+  // get a viewport) — live online is the case where the peer is somewhere
+  // else entirely and only the local camera has ears.
+  return net_mode_ == NetOff || net_mode_ == NetReplay;
+}
+
+float GLGame::world_volume(Point p) const {
+  return all_players_local() ? sound_volume_for_point(p) : net_listener_volume(p);
+}
+
+// Per-tick listener bookkeeping for the player ships. Only the sounds a ship
+// plays for itself are covered here (gun, thrusters, explosion, respawn tics)
+// — Ship multiplies them all by sound_volume_scale.
+//
+// The local player always hears itself at full volume, dead or alive: its
+// respawn tics and god-mode music are cues about YOUR ship, not sounds
+// arriving from somewhere in the world. The peer is a sound source like any
+// other and fades with distance to the camera. Offline (and in a split-screen
+// replay) nobody fades — both players are watching the same screen.
+//
+// Re-run every tick rather than on control changes: the thruster hum is a
+// looping channel whose level is chunk volume, and the distance behind that
+// level keeps moving while a thrust key is simply held down.
+void GLGame::update_player_sound_volumes() {
+  GLShip *local = local_player();
+  for (auto *gs : *players) {
+    Ship *s = gs->ship;
+    s->sound_volume_scale = (all_players_local() || gs == local)
+                                ? 1.0f
+                                : net_listener_volume(s->position);
+    s->update_boost_volume();
+  }
 }
 
 float GLGame::sound_volume_for_point(Point p) const {
@@ -8162,11 +8172,8 @@ void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts)
                firer == remote_player()->ship) {
       net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_MINI_STATION_KILL);
     }
-    play_priority_chunk(
-        station_explode_sound,
-        net_mode_ != NetOff
-            ? net_listener_volume(mini_station->position)
-            : sound_volume_for_point(mini_station->position));
+    play_priority_chunk(station_explode_sound,
+                        world_volume(mini_station->position));
     net_send_event(Net::EV_STATION_BOOM,
                    Net::pack_pos(mini_station->position.x(),
                                  mini_station->position.y(),
@@ -8189,8 +8196,7 @@ void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts)
                firer == remote_player()->ship)
         net_send_event(Net::EV_ACHIEVEMENT, Net::ACH_STATION_DESTROYED);
     }
-    if (Asteroid::thud_sound != NULL)
-      Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+    WorldSound::play(Asteroid::thud_sound, where);
     // A client firer already played its own splash + thud at contact
     // (the PROTO 20 pass in tick_net_client) — relaying would double it.
     bool remote_firer = net_mode_ == NetHost && remote_player() != NULL &&
