@@ -389,15 +389,22 @@ is the only thing that would say why.
 Verification status, deliberately split:
 - **Host: field-verified** on two Android devices (2026-07-27) — recorded
   a session, replay played back. This is the path that was broken.
-- **Client: headless only.** `replay_online.sh` covers it (479 records, 49
-  keyframes, `first_kind=keyframes`, plays back in S4, lists and plays
-  from the menu in S5) but it has NOT been confirmed on device. The
-  keyframe ordering is not the risk there — the mobile-specific one is the
-  rejoin-resume seam, where backgrounding drops the link and the auto-
-  rejoin rebuilds the game around the same `run_id`, making the recorder
-  append rather than truncate. Look for "replay: resuming recording" after
-  a rejoin; a "recording started" instead means the seam missed and the
-  earlier records were truncated away.
+- **Client: rejoin-resume field-verified** on Android (2026-07-27) — a
+  rejoin logged "replay: resuming recording", so the `run_id` seam rode
+  the snapshots and the recorder APPENDED to the leftover instead of
+  truncating it. That was the mobile-specific risk (keyframe ordering
+  never applied here — the client self-builds its opening keyframe
+  synchronously). Still unconfirmed on device: that the resumed file plays
+  back end to end. `replay_online.sh` covers that headlessly (479 records,
+  49 keyframes, `first_kind=keyframes`, plays in S4, lists and plays from
+  the menu in S5).
+- **Testing trap, hit twice (2026-07-27):** a rejoin via an invite
+  launches a FRESH process, which gets no intent extras — so
+  `NEWTONIA_REPLAY_ENABLE` is gone exactly when testing resume, and
+  `replay_start` returns before constructing the recorder, logging
+  NOTHING at all (both lines live in the constructor). Silence there means
+  "not enabled", not "broken". Set `auto_record_replays=1` in
+  preferences.ini instead — it survives every launch method.
 - Note the e2e passes WITHOUT exercising the drop path (the trace never
   fires), so it proves the fix non-breaking, not that it repairs the
   ordering. Provoking the first-100 ms window is still an open test gap.
