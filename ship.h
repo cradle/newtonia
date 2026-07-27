@@ -106,6 +106,16 @@ class Ship : public CompositeObject {
     float radius_squared;
     bool thrusting, reversing, boosting;
     float sound_volume_scale = 1.0f;  // 0=silent, 1=full; set by GLGame for enemy AI
+    // "Cues about THIS ship, for whoever is flying it": the shield hum and
+    // god-mode music loops, and the respawn countdown tics. Not a volume —
+    // a question about whose ship it is. These used to test
+    // sound_volume_scale >= 1.0f, which answered it only by accident, back
+    // when the attenuation curve peaked at literally zero distance. Now that
+    // it holds full volume across the whole visible screen, anything you can
+    // see would pass that test, so the question is asked directly. GLGame
+    // owns it like the scale: the ships whose screen this is get true, the
+    // online peer and the world actors false.
+    bool sound_own_cues = true;
 
     // Analog scale factors (0.0–1.0); set by joystick/controller input
     float rotation_scale;  // scales rotation_force (default 1.0)

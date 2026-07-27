@@ -2287,12 +2287,12 @@ std::shared_ptr<int> Ship::net_start_missile_fly_loop() {
 
 void Ship::set_shield_hum(bool on) {
   if(on) {
-    // The distance gate applies only to STARTING the hum. It used to gate
-    // the whole function, so a hum started at full volume could never be
-    // halted once the ship drifted out of earshot (the host re-scales a
-    // remote ship's sound_volume_scale by listener distance every tick) —
-    // the loop played forever: Glenn's "hum stuck on".
-    if(shield_hum_sound == NULL || sound_volume_scale < 1.0f) return;
+    // The gate applies only to STARTING the hum. It used to gate the whole
+    // function, so a hum started at full volume could never be halted once
+    // the ship stopped qualifying — the loop played forever: Glenn's "hum
+    // stuck on". sound_own_cues can't flip mid-life the way the distance
+    // test it replaced could, so that trap is gone as well as guarded.
+    if(shield_hum_sound == NULL || !sound_own_cues) return;
     if(shield_hum_channel >= 0) return; // already playing, don't leak a new channel
     shield_hum_channel = Mix_PlayChannel(-1, shield_hum_sound, -1);
   } else if(shield_hum_channel >= 0) {
@@ -2310,7 +2310,7 @@ void Ship::stop_god_mode_music() {
 }
 
 void Ship::update_god_mode_music(int time_remaining) {
-  if(sound_volume_scale < 1.0f) return;
+  if(!sound_own_cues) return;
   if(time_remaining <= 0) {
     stop_god_mode_music();
     return;
@@ -2568,7 +2568,7 @@ void Ship::step(float delta, const Grid &grid) {
     // God mode music: update phase transitions and play rapid tic beeps in last second
     int gm_time = god_mode_time_remaining();
     update_god_mode_music(gm_time);
-    if(gm_time > 0 && gm_time <= 1000 && sound_volume_scale >= 1.0f && tic_sound != NULL) {
+    if(gm_time > 0 && gm_time <= 1000 && sound_own_cues && tic_sound != NULL) {
       int prev_gm_time = gm_time + (int)delta;
       if((prev_gm_time / 200) != (gm_time / 200)) {
         Mix_PlayChannel(-1, tic_sound, 0);
@@ -2576,7 +2576,7 @@ void Ship::step(float delta, const Grid &grid) {
     }
 
   } else if (lives > 0) {
-    if(sound_volume_scale >= 1.0f) {
+    if(sound_own_cues) {
       if(floor((time_until_respawn-1)/1000) != floor((time_until_respawn-delta-1)/1000)) {
         if(time_until_respawn > 1000) {
           if(tic_sound != NULL) {

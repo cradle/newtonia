@@ -6129,6 +6129,7 @@ void GLGame::tick(int delta) {
       // Attenuate its shot sound: nearest player (solo/split), or the
       // local player only when hosting online.
       mini_station->sound_volume_scale = world_volume(mini_station->position);
+      mini_station->sound_own_cues = false;  // not a ship anyone is flying
       mini_station->step(step_size, grid);
     }
 
@@ -6260,6 +6261,7 @@ void GLGame::tick(int delta) {
       s->sound_volume_scale = all_players_local()
           ? (is_visible_to_any_player(*s) ? 0.5f : 0.0f)
           : 0.5f * net_listener_volume(s->position);
+      s->sound_own_cues = false;  // not a ship anyone is flying
       (*o)->step(step_size, grid);
       // Re-level the thruster hum after the step: thrust() inside it fires
       // only on a control change, and the distance in the scale has moved.
@@ -7378,20 +7380,42 @@ static bool shock_bolt_reaches(const std::vector<Point> &pts,
   return false;
 }
 
+// Half-diagonal, in world units, of what one camera can see. Anything nearer
+// than this MIGHT be on screen; anything further certainly is not.
+static float camera_screen_radius(float fov_deg, Point window, int y_viewports) {
+  float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
+  float half_w = half_h * (window.x() / (window.y() / (float)y_viewports));
+  return sqrtf(half_w * half_w + half_h * half_h);
+}
+
+// How loud a source `dist` away is to a camera that can see `screen_r` around
+// itself: FULL VOLUME while it could still be on screen, then a linear fade
+// to silence over another screen-radius past the edge.
+//
+// The fade band is what makes the plateau safe to have — cutting out at the
+// edge instead would pop every sound off as it left the view. And the plateau
+// is the point: falling off from the CENTRE (what this did at first) quietened
+// the whole game, because an asteroid dying at arm's length in front of you is
+// already a good fraction of a screen away.
+static const float kAudibleScreenRadii = 2.0f;
+
+static float listener_falloff(float dist, float screen_r) {
+  if (screen_r <= 0.0f) return 0.0f;
+  if (dist <= screen_r) return 1.0f;
+  float fade = screen_r * (kAudibleScreenRadii - 1.0f);
+  float t = (dist - screen_r) / fade;
+  return t >= 1.0f ? 0.0f : 1.0f - t;
+}
+
 float GLGame::net_listener_volume(Point p) const {
   // The listener is whoever the camera follows: normally the local player,
   // but the peer while spectating — the spectator hears the action they
   // are watching (their own wreck is dead and would mute everything).
   GLShip *me = camera_target();
   if (!me || !me->ship->is_alive()) return 0.0f;
-  float fov_deg = me->view_angle();
-  float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
-  float aspect = window.x() / (float)window.y();
-  float half_w = half_h * aspect;
-  float cull_r = sqrtf(half_w * half_w + half_h * half_h) * sqrtf(1.1f);
-  float dist = me->ship->position.distance_to(p);
-  if (dist >= cull_r) return 0.0f;
-  return 1.0f - dist / cull_r;
+  // Online is always one full-window viewport (the peer is on their own box).
+  return listener_falloff(me->ship->position.distance_to(p),
+                          camera_screen_radius(me->view_angle(), window, 1));
 }
 
 bool GLGame::all_players_local() const {
@@ -7423,9 +7447,9 @@ void GLGame::update_player_sound_volumes() {
   GLShip *local = local_player();
   for (auto *gs : *players) {
     Ship *s = gs->ship;
-    s->sound_volume_scale = (all_players_local() || gs == local)
-                                ? 1.0f
-                                : net_listener_volume(s->position);
+    bool mine = all_players_local() || gs == local;
+    s->sound_volume_scale = mine ? 1.0f : net_listener_volume(s->position);
+    s->sound_own_cues = mine;
     s->update_boost_volume();
   }
 }
@@ -7434,16 +7458,11 @@ float GLGame::sound_volume_for_point(Point p) const {
   float best = 0.0f;
   for(auto* glship : *players) {
     if(!glship->ship->is_alive()) continue;
-    float fov_deg = glship->view_angle();
-    float half_h = tanf(fov_deg * (float)M_PI / 360.0f) * 1000.0f;
-    float aspect = window.x() / (float)(window.y() / num_y_viewports());
-    float half_w = half_h * aspect;
-    float cull_r = sqrtf(half_w * half_w + half_h * half_h) * sqrtf(1.1f);
-    float dist = glship->ship->position.distance_to(p);
-    if(dist < cull_r) {
-      float v = 1.0f - dist / cull_r;
-      if(v > best) best = v;
-    }
+    // Split-screen: each player's viewport is a fraction of the window.
+    float v = listener_falloff(
+        glship->ship->position.distance_to(p),
+        camera_screen_radius(glship->view_angle(), window, num_y_viewports()));
+    if(v > best) best = v;
   }
   return best;
 }
