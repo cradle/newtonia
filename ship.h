@@ -206,6 +206,22 @@ class Ship : public CompositeObject {
     // hum is started ONLY by explicit set_shield_hum calls (the snapshot
     // extras decide), never by respawn itself.
     static bool net_quiet_respawn;
+    // Deployed projectiles (mines, giga mines, missiles) are spawned
+    // locally the instant the trigger is pulled — the pilot gets no
+    // latency — but on a net CLIENT the host owns their lifecycle and
+    // echoes them back a round trip later, and the snapshot rebuild
+    // replaces the list wholesale (nx_read_projectiles in glgame.cpp).
+    // A just-fired one is therefore missing from the host's set for the
+    // first apply or two, which the vanish detection below read as "the
+    // host detonated it": every client-fired missile blew up at the
+    // muzzle and then the host's echo flew off — Glenn's "double missile
+    // where one explodes instantly". Ship::fire_secondary stamps each
+    // fresh deploy with this many applies of grace; the rebuild holds an
+    // unmatched one (and never explodes it) until the count runs out,
+    // by which point the echo has either adopted it or the host never
+    // fired it at all (ammo desync) and it goes quietly. 5 applies is
+    // ~500 ms at the 10 Hz apply rate — well past any playable RTT.
+    static const uint8_t NET_DEPLOY_GRACE = 5;
     // Net client: a replicated missile vanished mid-flight — the host saw
     // it hit something. Blast + explosion sound at its last position.
     void net_missile_exploded(const Point &pos, const Point &vel);
@@ -249,6 +265,12 @@ class Ship : public CompositeObject {
     // collapsing them fired once for N presses and desynced ammo. Fed only
     // by GLGame's INPUT handler; cleared on reset().
     int net_queued_shot_presses = 0;
+    // The secondary's twin of the above, same host-side INPUT plumbing. A
+    // secondary fires one deploy per press with no auto-fire, so firing
+    // once for N batched presses left the client holding mines/missiles it
+    // had already spawned and decremented locally — the host never made
+    // them, and the client's copies expired unconfirmed (NET_DEPLOY_GRACE).
+    int net_queued_secondary_presses = 0;
     uint32_t net_shot_seq = 0;  // id mint for reported shots
     // Last time a reported-clone spawn played the shot sound: a
     // multi-shot trigger pull arrives as one MSG_SHOT per barrel in the

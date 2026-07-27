@@ -21,6 +21,13 @@ public:
   // 0 = not a reported shot (debris, host-native bullets).
   uint32_t net_id = 0;
 
+  // Net client, locally-deployed mine / giga mine the host has not echoed
+  // back yet — see Ship::NET_DEPLOY_GRACE. Counts down one per snapshot
+  // apply; while it is nonzero the snapshot rebuild holds this mine
+  // instead of reading its absence as a host-side detonation. Transient;
+  // never serialized (host-echoed copies are confirmed by construction).
+  uint8_t net_unconfirmed = 0;
+
   // PROTO 18/19 wire flags (snapshot per-bullet byte): bit0 kills_invincible,
   // bit1 has_trail, bit2 piercing, bit3 world_bullet (P19: ricochets off
   // reflective/armoured surfaces recolour white on the client too) — the

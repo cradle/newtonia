@@ -1974,9 +1974,14 @@ void GLGame::net_host_poll() {
     else if (!(held & Net::IN_SHOOT) &&
              remote->net_queued_shot_presses == 0)
       remote->shoot(false);
+    // Secondaries queue on exactly the same terms (see the drain in
+    // Ship::step): one deploy per press, none of them automatic, so a
+    // collapsed batch made fewer mines/missiles than the client fired.
     if (sec_presses)
-      remote->fire_secondary(true);
-    else if (!(held & Net::IN_SECONDARY))
+      remote->net_queued_secondary_presses +=
+          (sec_presses > 4 ? 4 : sec_presses);
+    else if (!(held & Net::IN_SECONDARY) &&
+             remote->net_queued_secondary_presses == 0)
       remote->fire_secondary(false);
 
     if (boosts > 4) boosts = 4;
@@ -3633,6 +3638,74 @@ struct NetShipExtras {
   uint8_t move_flags;  // bit0 thrust, bit1 reverse, bits 2-3 rotation (1=L, 2=R)
 };
 
+// Which previous copy of a projectile an incoming host one continues, or
+// -1 for none. Two passes, and the order matters:
+//
+// A copy the host has already confirmed wins, within `reach`. An echo
+// that can be explained by a projectile the host already had IS that one,
+// and letting it claim a fresh local copy instead leaves the older one
+// unmatched — read as a detonation that never happened. Nearest-first
+// alone is a coin toss the moment a burst puts several in one cluster.
+//
+// Failing that it takes the nearest just-launched local copy at ANY
+// distance. Every entry in this list belongs to this one ship, so a host
+// entry that no confirmed copy explains can only be the echo of one of
+// our own launches — and an unconfirmed copy has no identity worth
+// preserving (it is a duplicate of exactly this, drawn early for the
+// pilot). Bounding that pass by distance instead left the two to drift
+// apart — both seek their own targets — until the local one aged out
+// unmatched and the echo showed up beside it as a second missile.
+template <typename T>
+int nx_match_previous(const std::vector<T> &old_list, const WrappedPoint &pos,
+                      float reach) {
+  int best = -1, best_unconfirmed = -1;
+  float best_d = reach, best_unconfirmed_d = -1.0f;
+  for (size_t j = 0; j < old_list.size(); j++) {
+    float d = old_list[j].position.distance_to(pos);
+    if (old_list[j].net_unconfirmed) {
+      if (best_unconfirmed < 0 || d < best_unconfirmed_d) {
+        best_unconfirmed_d = d;
+        best_unconfirmed = (int)j;
+      }
+    } else if (d < best_d) {
+      best_d = d;
+      best = (int)j;
+    }
+  }
+  return best >= 0 ? best : best_unconfirmed;
+}
+
+// Leftovers of a wholesale projectile rebuild: everything the host's set
+// no longer carries. Most of those really did vanish host-side (the
+// caller explodes them), but a deploy this machine fired moments ago is
+// simply too young to be in the host's snapshot — it flies locally for
+// the pilot while the press is still travelling. Holding it (see
+// Ship::NET_DEPLOY_GRACE) for a few applies is what stops the client's
+// own missile from blowing up at the muzzle a beat before the host's
+// echo of the SAME missile arrives and flies. Returns the genuinely
+// vanished ones; the held ones are appended back to `live`.
+template <typename T>
+std::vector<T> nx_hold_unconfirmed(std::vector<T> &old_list,
+                                   std::vector<T> &live, bool quiet,
+                                   const char *what) {
+  std::vector<T> vanished;
+  for (auto &o : old_list) {
+    if (o.net_unconfirmed == 0) { vanished.push_back(std::move(o)); continue; }
+    // A quiet apply is a world rebuild (level rollover) — every projectile
+    // goes at once and there is nothing left to be confirmed against.
+    if (quiet) continue;
+    // Grace spent: the host never fired this one (ammo desync, or we died
+    // in between). It leaves silently — it was never the host's to detonate.
+    if (--o.net_unconfirmed == 0) {
+      NET_LOG("net: %s deploy dropped, no host echo within the grace\n", what);
+      continue;
+    }
+    NET_LOG("net: %s deploy held for the host echo\n", what);
+    live.push_back(std::move(o));
+  }
+  return vanished;
+}
+
 // quiet: suppress vanish explosions for this apply (level rollover wipes
 // every projectile at once — that's a rebuild, not a barrage of booms).
 // s == NULL: parse-only — advance the stream past the projectile sections
@@ -3679,15 +3752,18 @@ bool nx_read_projectiles(Save::Stream &in, Ship *s, bool quiet,
     if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
     if (!s) continue;
     s->mines.push_back(Particle(Point(x, y), Point(vx, vy), 60000.0f));
-    for (size_t j = 0; j < old_mines.size(); j++) {
-      if (old_mines[j].position.distance_to(WrappedPoint(x, y)) < 100.0f) {
-        old_mines.erase(old_mines.begin() + j);
-        break;
-      }
+    int j = nx_match_previous(old_mines, WrappedPoint(x, y), 100.0f);
+    if (j >= 0) {
+      if (old_mines[j].net_unconfirmed)
+        NET_LOG("net: mine deploy confirmed by the host echo\n");
+      old_mines.erase(old_mines.begin() + j);
     }
   }
-  if (s && !quiet)
-    for (auto &om : old_mines) s->net_mine_exploded(om.position, om.velocity);
+  if (s) {
+    std::vector<Particle> gone = nx_hold_unconfirmed(old_mines, s->mines, quiet, "mine");
+    if (!quiet)
+      for (auto &om : gone) s->net_mine_exploded(om.position, om.velocity);
+  }
 
   if (!nx_read(in, n)) return false;
   std::vector<Particle> old_gigas;
@@ -3696,15 +3772,19 @@ bool nx_read_projectiles(Save::Stream &in, Ship *s, bool quiet,
     if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
     if (!s) continue;
     s->giga_mines.push_back(Particle(Point(x, y), Point(vx, vy), 60000.0f));
-    for (size_t j = 0; j < old_gigas.size(); j++) {
-      if (old_gigas[j].position.distance_to(WrappedPoint(x, y)) < 100.0f) {
-        old_gigas.erase(old_gigas.begin() + j);
-        break;
-      }
+    int j = nx_match_previous(old_gigas, WrappedPoint(x, y), 100.0f);
+    if (j >= 0) {
+      if (old_gigas[j].net_unconfirmed)
+        NET_LOG("net: giga mine deploy confirmed by the host echo\n");
+      old_gigas.erase(old_gigas.begin() + j);
     }
   }
-  if (s && !quiet)
-    for (auto &og : old_gigas) s->net_giga_mine_exploded(og.position);
+  if (s) {
+    std::vector<Particle> gone =
+        nx_hold_unconfirmed(old_gigas, s->giga_mines, quiet, "giga mine");
+    if (!quiet)
+      for (auto &og : gone) s->net_giga_mine_exploded(og.position);
+  }
 
   if (!nx_read(in, n)) return false;
   // Missiles carry local presentation state the wire doesn't (trail,
@@ -3721,26 +3801,38 @@ bool nx_read_projectiles(Save::Stream &in, Ship *s, bool quiet,
     MissileShot m(WrappedPoint(x, y), Point(fx, fy), Point(0, 0));
     m.velocity = Point(vx, vy);
     m.time_left = time_left;
-    int best = -1;
-    float best_d = 150.0f;  // a missile moves well under this per delta
-    for (size_t j = 0; j < old_missiles.size(); j++) {
-      float d = old_missiles[j].position.distance_to(m.position);
-      if (d < best_d) { best_d = d; best = (int)j; }
-    }
+    // 150 units: a missile moves well under this per delta.
+    int best = nx_match_previous(old_missiles, m.position, 150.0f);
     if (best >= 0) {
       m.trail = std::move(old_missiles[best].trail);
       m.thrust = old_missiles[best].thrust;
       m.sound_handle = old_missiles[best].sound_handle;
+      // Our own launch, now echoed back: the host copy takes over from
+      // here (and inherits the trail the local one has already drawn).
+      if (old_missiles[best].net_unconfirmed)
+        NET_LOG("net: missile deploy confirmed by the host echo\n");
       old_missiles.erase(old_missiles.begin() + best);
     }
     s->missiles.push_back(m);
   }
   // A missile that vanished with life remaining exploded on the host
   // (collision) — the expiry case detonates locally in Ship::step. Play
-  // the explosion here since the client never simulates the impact.
-  for (auto &om : old_missiles) {
-    if (s && !quiet && om.time_left > 300.0f)
-      s->net_missile_exploded(om.position, om.velocity);
+  // the explosion here since the client never simulates the impact. One
+  // we fired ourselves a moment ago is held instead: the host's echo of
+  // it is still in flight (nx_hold_unconfirmed).
+  if (s) {
+    std::vector<MissileShot> gone =
+        nx_hold_unconfirmed(old_missiles, s->missiles, quiet, "missile");
+    if (!quiet)
+      for (auto &om : gone)
+        if (om.time_left > 300.0f) {
+          // The life is the regression handle: a missile that vanishes
+          // with nearly all of its 3 s left never flew far enough to hit
+          // anything — that is the muzzle-blast bug, not a host kill.
+          NET_LOG("net: missile vanished (host detonation), life %d ms\n",
+                  (int)om.time_left);
+          s->net_missile_exploded(om.position, om.velocity);
+        }
   }
   // Fly loop: locally-fired missiles get it from the weapon; replicated
   // ones share one channel per ship, kept alive via the adopted handles
