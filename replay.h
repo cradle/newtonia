@@ -45,10 +45,13 @@ namespace Replay {
 
 struct Header {
     static const uint32_t MAGIC = 0x5052574Eu;  // "NWRP" (little-endian)
-    static const uint16_t FORMAT_VERSION = 1;
-    // Oldest format this build still reads. Equal to FORMAT_VERSION today —
-    // there has only ever been one — so "too old" cannot happen yet; raise
-    // this, not the check, when support for a format is dropped.
+    // v2 adds FX_BULLET (see EffectSubtype). Purely additive: a v1 file
+    // simply carries none, and playback falls back to the snapshot-rebuilt
+    // bullets it always used — so v1 files keep loading and behaving as
+    // they do today.
+    static const uint16_t FORMAT_VERSION = 2;
+    // Oldest format this build still reads. Raise this, not the check,
+    // when support for a format is actually dropped.
     static const uint16_t MIN_FORMAT_VERSION = 1;
     static const size_t   SIZE = 64;            // v1 header size on disk
     static const size_t   GAME_VERSION_LEN = 24;
@@ -97,7 +100,21 @@ enum EffectSubtype : uint8_t {
     FX_SHOCK = 2,  // MSG_SHOCK body: u8 count | count * (f32 x, f32 y)
     FX_RING  = 3,  // shockwave ring: f32 x,y,max_r,speed,duration | u8 nova
     FX_SHOT  = 4,  // gun-shot sound cue: f32 x, f32 y | u8 kind (0 pew, 1 beam)
-                   // (bullets ride snapshots; the SOUND rode MSG_SHOT/EV_WORLD_SHOT)
+                   // (the SOUND rode MSG_SHOT/EV_WORLD_SHOT). One per trigger
+                   // pull, from ANY ship — enemies and the mini-station too.
+    // v2: one per spawned BULLET, on the owning player (the record's idx).
+    // f32 x, f32 y, f32 vx, f32 vy | u8 flags (1 kills_invincible, 2 trail,
+    // 4 piercing) — net_spawn_reported_bullet's argument order.
+    //
+    // Playback spawns an exact clone from this, which is the whole point:
+    // a bullet used to reach playback ONLY via the 10 Hz snapshot rebuild,
+    // so it popped into view up to a snapshot interval late and already
+    // down-range, on a heading that no longer matched the nose it left.
+    // PROTO 17 fixed the identical complaint online by echoing MSG_SHOT so
+    // the client spawns clones instantly; this is that fix for the file.
+    // The next apply replaces the clone with authority's copy, exactly as
+    // the online client's snapshot rebuild does.
+    FX_BULLET = 5,
 };
 
 // Paths in <pref>/replays/ (created on demand). Empty string on failure.

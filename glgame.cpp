@@ -3065,12 +3065,28 @@ void GLGame::replay_drain_effects() {
       replay_record_shot(p.x(), p.y(), 0);  // sound kind: pew
     for (const Point &p : Ship::replay_beam_pews)
       replay_record_shot(p.x(), p.y(), 1);  // sound kind: beam
+    // v2: one clone record per bullet, stamped with its owning player.
+    // Enemy / mini-station shots have no player index and keep riding the
+    // snapshots — nobody watches a bullet leave THEIR nose, and the sound
+    // cue above already covers them.
+    for (const auto &rs : Ship::replay_shots) {
+      int idx = player_index_of(rs.ship);
+      if (idx < 0) continue;
+      std::vector<uint8_t> body;
+      Net::put_f32(body, rs.pos.x());
+      Net::put_f32(body, rs.pos.y());
+      Net::put_f32(body, rs.vel.x());
+      Net::put_f32(body, rs.vel.y());
+      Net::put_u8(body, rs.flags);
+      replay_->record_effect(Replay::FX_BULLET, (uint8_t)idx, body);
+    }
   }
   Ship::replay_lance_flashes.clear();
   Ship::replay_shock_flashes.clear();
   Ship::replay_rings.clear();
   Ship::replay_pews.clear();
   Ship::replay_beam_pews.clear();
+  Ship::replay_shots.clear();
 }
 
 // Finalize (header patch) and drop the recorder. ended=true (game over)
@@ -3256,6 +3272,24 @@ void GLGame::tick_replay_poll(int delta) {
             Mix_PlayChannel(-1, snd, 0);
           }
         }
+      } else if (subtype == Replay::FX_BULLET && rec.len >= 2 + 17) {
+        // v2: spawn the exact bullet at its muzzle, the moment it was
+        // fired, instead of letting it first appear in the next 10 Hz
+        // snapshot already down-range and off the nose. Quiet — the
+        // FX_SHOT cue above is this shot's sound. The next apply's
+        // wholesale rebuild replaces the clone with authority's copy,
+        // exactly as it does for the online client's MSG_SHOT clones.
+        float bx, by, bvx, bvy;
+        memcpy(&bx, rec.payload + 2, 4);
+        memcpy(&by, rec.payload + 6, 4);
+        memcpy(&bvx, rec.payload + 10, 4);
+        memcpy(&bvy, rec.payload + 14, 4);
+        uint8_t bflags = rec.payload[18];
+        if (std::isfinite(bx) && std::isfinite(by) && std::isfinite(bvx) &&
+            std::isfinite(bvy))
+          fx_ship->net_spawn_reported_bullet(
+              0, Point(bx, by), Point(bvx, bvy), (bflags & 1) != 0,
+              (bflags & 2) != 0, (bflags & 4) != 0, /*quiet=*/true);
       } else if (subtype == Replay::FX_RING && rec.len >= 2 + 21) {
         float x, y, max_r, speed, duration;
         memcpy(&x, rec.payload + 2, 4);
@@ -3345,6 +3379,7 @@ void GLGame::net_clear_event_outboxes() {
   Ship::replay_rings.clear();
   Ship::replay_pews.clear();
   Ship::replay_beam_pews.clear();
+  Ship::replay_shots.clear();
 }
 
 void GLGame::net_send_event(uint8_t code, uint32_t arg) {

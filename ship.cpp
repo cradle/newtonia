@@ -34,6 +34,7 @@ std::vector<std::pair<const Ship *, std::vector<Point>>> Ship::replay_shock_flas
 std::vector<Ship::ReplayRing> Ship::replay_rings;
 std::vector<Point> Ship::replay_pews;
 std::vector<Point> Ship::replay_beam_pews;
+std::vector<Ship::ReplayShot> Ship::replay_shots;
 std::vector<std::vector<Point>> Ship::net_shock_reports;
 std::vector<Ship::NetBounceReport> Ship::net_bounce_reports;
 bool Ship::net_report_bounces = false;
@@ -2410,7 +2411,22 @@ void Ship::fire_bullet_from_gun() {
 }
 
 void Ship::net_report_last_bullet() {
-  if (!net_report_shots || bullets.empty()) return;
+  if (bullets.empty()) return;
+  // Replay outbox first: EVERY spawned bullet, whatever this machine's net
+  // role, so playback can clone it at the muzzle instead of waiting for the
+  // next snapshot (REPLAY.md / FX_BULLET). Unconditional and cheap — the
+  // drain clears it every tick whether or not a recording is running.
+  {
+    const Particle &nb = bullets.back();
+    ReplayShot rs;
+    rs.ship = this;
+    rs.pos = Point(nb.position.x(), nb.position.y());
+    rs.vel = nb.velocity;
+    rs.flags = (uint8_t)((nb.kills_invincible ? 1 : 0) | (nb.has_trail ? 2 : 0) |
+                         (nb.piercing ? 4 : 0));
+    replay_shots.push_back(rs);
+  }
+  if (!net_report_shots) return;
   Particle &b = bullets.back();
   b.net_id = ++net_shot_seq;
   NetShotReport r;
@@ -2428,11 +2444,11 @@ void Ship::net_report_last_bullet() {
 // client), same identity for the MSG_HIT consume.
 void Ship::net_spawn_reported_bullet(uint32_t id, const Point &pos,
                                      const Point &vel, bool kills_inv,
-                                     bool trail, bool piercing) {
+                                     bool trail, bool piercing, bool quiet) {
   // A piercing clone is a beam bolt — play the beam's own sound, not the
   // pew (the chunk is shared/cached; every play site sets volume first).
-  Mix_Chunk *snd = shoot_sound;
-  if (piercing) {
+  Mix_Chunk *snd = quiet ? NULL : shoot_sound;
+  if (piercing && !quiet) {
     static Mix_Chunk *beam_snd = Mix_LoadWAV(asset_path("audio/beam.wav").c_str());
     if (beam_snd) snd = beam_snd;
   }
@@ -2443,7 +2459,7 @@ void Ship::net_spawn_reported_bullet(uint32_t id, const Point &pos,
   // The 40 ms window is well under every gun's re-fire interval, so
   // consecutive real shots still each sound; the clones all spawn.
   uint32_t now = SDL_GetTicks();
-  if (now - net_clone_sound_ms >= 40) {
+  if (!quiet && now - net_clone_sound_ms >= 40) {
     net_clone_sound_ms = now;
     if(snd != NULL && sound_volume_scale > 0.0f) {
       Mix_VolumeChunk(snd, (int)(MIX_MAX_VOLUME * sound_volume_scale));
