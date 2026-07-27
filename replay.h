@@ -135,9 +135,9 @@ enum HeaderStatus {
     // Missing, too short, wrong magic, or a nonsense header_size/version 0.
     // Damage or not a replay at all — nothing to do with format versions.
     HEADER_DAMAGED,
-    // A format version this build no longer reads. Unreachable while
-    // MIN_FORMAT_VERSION == FORMAT_VERSION == 1; it becomes real the day the
-    // format bumps and support for the old one is dropped.
+    // A format version this build no longer reads. Still unreachable — the
+    // format is at v2 but MIN_FORMAT_VERSION is 1, so both are accepted;
+    // this becomes real the day support for v1 is actually dropped.
     HEADER_TOO_OLD,
     // Recorded by a newer build than this one.
     HEADER_TOO_NEW,
@@ -270,6 +270,7 @@ public:
                   bool ended, uint8_t player_count);
 
 private:
+    void note_predawn_drop();  // a record offered before the opening keyframe
     void append_record(uint32_t slot, uint8_t kind, const uint8_t *data,
                        size_t len);
     void write_chunk();  // append the RAM chunk to the file (no ok_ gate)
@@ -288,6 +289,19 @@ private:
     int  deltas_this_session_ = 0;  // REC_DELTA records this session
     bool resumed_ = false;
     bool ok_ = false;
+    // A file must OPEN with a keyframe — playback has no baseline to apply
+    // anything against until one arrives, and the reader rejects the whole
+    // recording outright ("no leading keyframe"). Events and effects are
+    // recorded the moment they happen, but the ONLINE host's opening
+    // keyframe rides its 10 Hz send tee and so cannot land for up to
+    // 100 ms; anything fired in that window used to be appended first and
+    // cost the session its entire recording (field: Android host, online,
+    // 2026-07-27 — 317 KB of records, unplayable). Rather than ask two
+    // call sites to order themselves correctly, the recorder simply drops
+    // records until it has written one. A resumed file already has its
+    // leading keyframe, so it starts satisfied.
+    bool have_keyframe_ = false;
+    int  predawn_drops_ = 0;   // records held out awaiting that keyframe
 };
 
 }  // namespace Replay

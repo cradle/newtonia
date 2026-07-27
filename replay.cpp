@@ -342,7 +342,7 @@ void best_check_online() {
 
 Recorder::Recorder(uint64_t run_id, uint8_t player_count, bool resumed,
                    const std::string &path)
-    : resumed_(resumed) {
+    : resumed_(resumed), have_keyframe_(resumed) {
     path_ = path;
     if (path_.empty()) return;
 
@@ -393,13 +393,28 @@ void Recorder::append_record(uint32_t slot, uint8_t kind, const uint8_t *data,
     if (len) chunk_.insert(chunk_.end(), data, data + len);
 }
 
+// Records offered before the opening keyframe are dropped (see
+// have_keyframe_). Normal in the online host's first 100 ms, so this stays
+// quiet after the first one — but it must not be SILENT: if the keyframe
+// never arrives, every record is dropped and the session ends with an
+// empty recording, and this line is the only thing that would say why.
+void Recorder::note_predawn_drop() {
+    if (predawn_drops_++ == 0)
+        SDL_Log("replay: holding records until the opening keyframe");
+}
+
 void Recorder::record_keyframe(const std::vector<uint8_t> &payload) {
+    if (!have_keyframe_ && predawn_drops_ > 0)
+        SDL_Log("replay: opening keyframe written (%d record(s) held out)",
+                predawn_drops_);
+    have_keyframe_ = true;  // the file now has its baseline
     last_slot_++;
     append_record((uint32_t)last_slot_, REC_KEYFRAME,
                   payload.empty() ? NULL : &payload[0], payload.size());
 }
 
 void Recorder::record_delta(const std::vector<uint8_t> &payload) {
+    if (!have_keyframe_) return note_predawn_drop();
     last_slot_++;
     append_record((uint32_t)last_slot_, REC_DELTA,
                   payload.empty() ? NULL : &payload[0], payload.size());
@@ -407,6 +422,7 @@ void Recorder::record_delta(const std::vector<uint8_t> &payload) {
 }
 
 void Recorder::record_event(uint8_t code, uint32_t arg) {
+    if (!have_keyframe_) return note_predawn_drop();
     uint8_t payload[5];
     payload[0] = code;
     memcpy(payload + 1, &arg, 4);
@@ -416,6 +432,7 @@ void Recorder::record_event(uint8_t code, uint32_t arg) {
 
 void Recorder::record_effect(uint8_t subtype, uint8_t player_idx,
                              const std::vector<uint8_t> &body) {
+    if (!have_keyframe_) return note_predawn_drop();
     std::vector<uint8_t> payload;
     payload.reserve(2 + body.size());
     payload.push_back(subtype);
