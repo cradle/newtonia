@@ -398,6 +398,49 @@ Verification status, deliberately split:
   back end to end. `replay_online.sh` covers that headlessly (479 records,
   49 keyframes, `first_kind=keyframes`, plays in S4, lists and plays from
   the menu in S5).
+**Post-rejoin drift in CLIENT recordings — fixed 2026-07-27.** Watching a
+client recording that contained a rejoin, asteroids slid into a new
+position roughly once a second for the rest of the file. Measured on the
+field recording: ~2 corrections/s at ~10 units before the seam, **13-20/s
+at 50-70 units for the whole 100 s after it**, zero snaps — every one
+under `net_reconcile_pose`'s snap threshold, so `net_smooth_step` glided
+them, which is what made it read as a slide rather than a jump.
+
+Cause: `replay_start` substituted an opening keyframe built from the
+CLIENT's own replica, because the bootstrap keyframe went to the lobby
+before the game existed and was never recorded. But the client records the
+host's keyframes and deltas VERBATIM, so every delta is encoded against a
+HOST keyframe. A replica-derived stand-in is close but not equal, and the
+gap never closes: objects a delta does not mention keep the error until
+the next full host keyframe re-seeds it, one second later, forever. Fixed
+by waiting for a real host keyframe instead (`Recorder::await_keyframe`,
+re-armed explicitly on resume — a resumed recorder starts satisfied by the
+LEFTOVER's keyframe, which belongs to the previous session and is just as
+wrong a baseline). Field-confirmed: near-silent afterwards apart from the
+one-off snap per rejoin, which is correct — the world genuinely moved on
+while the client was away.
+
+Ruled out by measurement along the way, recorded so nobody re-derives them:
+- **Clock drift**: `replay_clock_ms_` vs stepped world time held at -4..-8
+  ms for a whole file, identical either side of the seam.
+- **World content**: object count flat at 16 across the onset — nothing
+  spawned, and the generation rebuild was 8 s earlier.
+- **Ordinary collision divergence** (the 30-100 unit deviations
+  `net_reconcile_pose`'s comment calls routine): a no-rejoin CONTROL
+  session on the same world and generation logged **zero** corrections
+  over 72 s. Whatever this was, it was not the asteroid field being
+  unpredictable.
+- The error/speed ratio held at **0.33** across 438 samples on moving
+  objects (1 of 438 was near-stationary) — a consistent fraction of a
+  second's travel, not scattered noise, which is what pointed away from
+  corrupt velocities and toward a baseline offset.
+
+One loose end: an intermediate field test still showed the plateau with
+the fix demonstrably present on the client ("replay: holding records..." in
+logcat). Most likely that recording predated the install on one device;
+it was never conclusively explained, and the symptom has not recurred with
+current builds on both sides.
+
 - **Testing trap, hit twice (2026-07-27):** a rejoin via an invite
   launches a FRESH process, which gets no intent extras — so
   `NEWTONIA_REPLAY_ENABLE` is gone exactly when testing resume, and
