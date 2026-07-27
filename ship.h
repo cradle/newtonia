@@ -265,6 +265,12 @@ class Ship : public CompositeObject {
     // collapsing them fired once for N presses and desynced ammo. Fed only
     // by GLGame's INPUT handler; cleared on reset().
     int net_queued_shot_presses = 0;
+    // The secondary's twin of the above, same host-side INPUT plumbing. A
+    // secondary fires one deploy per press with no auto-fire, so firing
+    // once for N batched presses left the client holding mines/missiles it
+    // had already spawned and decremented locally — the host never made
+    // them, and the client's copies expired unconfirmed (NET_DEPLOY_GRACE).
+    int net_queued_secondary_presses = 0;
     uint32_t net_shot_seq = 0;  // id mint for reported shots
     // Last time a reported-clone spawn played the shot sound: a
     // multi-shot trigger pull arrives as one MSG_SHOT per barrel in the

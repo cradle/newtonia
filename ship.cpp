@@ -1155,6 +1155,7 @@ void Ship::reset(bool was_killed) {
   reversing = false;
   shoot(false);
   net_queued_shot_presses = 0;  // don't fire stale presses across a respawn
+  net_queued_secondary_presses = 0;
   // On a net client reset() runs inside EVERY 10 Hz snapshot restore
   // (restore_state → respawn) — the same story as debris/lance_pulses
   // below. Clearing the projectile lists here emptied them moments before
@@ -2540,6 +2541,30 @@ void Ship::step(float delta, const Grid &grid) {
         // handler (it waits for an empty queue). Semi-autos are never armed
         // here — they disarm in their own step(), after this drain.
         net_queued_shot_presses = 0;
+      }
+    }
+
+    // The secondary twin of the drain above, for the same reason: every
+    // secondary fires one deploy per press (none is automatic), so presses
+    // the client batched into one INPUT must arm it once EACH. Firing once
+    // for N left the client holding mines/missiles it had already spawned
+    // and decremented locally — the host made fewer, and the extra local
+    // copies expired unconfirmed (NET_DEPLOY_GRACE).
+    //
+    // fire_secondary() is the entry point, not (*secondary)->shoot(): the
+    // exhausted-weapon drop and the weapon-kind bookkeeping live there.
+    // A hold-style secondary (the shield reports is_shooting()) swallows
+    // the rest of the queue exactly as god mode does on the primary side —
+    // extra presses mean nothing while it holds, and a stuck queue would
+    // block the release-disarm in the INPUT handler.
+    if(net_queued_secondary_presses > 0) {
+      if(secondary_weapons.empty() || secondary == secondary_weapons.end()) {
+        net_queued_secondary_presses = 0;  // nothing armed: never block the release
+      } else if(!(*secondary)->is_shooting()) {
+        fire_secondary(true);              // replay one press per step
+        net_queued_secondary_presses--;
+      } else {
+        net_queued_secondary_presses = 0;
       }
     }
 
