@@ -5780,6 +5780,20 @@ void GLGame::tick(int delta) {
     // that no reconciliation can hide.
     time_between_steps = step_size;
   }
+  // Paused playback freezes the recorded world. Both things that advance it
+  // — the replay clock in tick_replay_poll and the ghost extrapolation —
+  // live inside tick_net_client, which never consulted `running`, so the
+  // pause card used to sit over a world still playing on underneath (field:
+  // Android, 2026-07-27). Not running it is the only thing that stops both.
+  // current_time still advances so the card and the flashing exit row keep
+  // animating, exactly as in a paused offline game (which banks current_time
+  // before its own pause gate); keys and taps dispatch outside tick(), so the
+  // transport controls and the exit stay live. NetClient is deliberately not
+  // included — online, a local pause must not stop the peer's world.
+  if (net_mode_ == NetReplay && !running) {
+    current_time += delta;
+    return;
+  }
   if (net_mode_ == NetClient || net_mode_ == NetReplay) {
     if (net_mode_ == NetReplay) {
       // Playback speed scales time itself — clock, extrapolation and
