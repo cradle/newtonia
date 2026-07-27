@@ -367,6 +367,41 @@ rejoin ("replay: resuming recording"); clean abandons patch both headers;
 both files play back split-screen with the joiner's timeline shorter by
 exactly the compressed disconnect gap.
 
+**Opening-keyframe bug + field pass (2026-07-27).** An online session on
+Android recorded 317 KB and would not play: the reader rejects a file
+whose first record is not a keyframe, and that one opened with an EVENT.
+Cause was ordering, host-side only — events and effects record the moment
+they happen, but the host's opening keyframe rides its 10 Hz send tee and
+`net_host_send_snapshot` returns early until `net_snapshot_timer_` reaches
+100 ms, so anything fired inside that window landed first and cost the
+session its whole recording. Offline never hit it (little fires in the
+first 100 ms); the client was never susceptible, since it self-builds its
+opening keyframe synchronously in `replay_start`. Fixed by making it an
+invariant of `Replay::Recorder` rather than something two call sites must
+arrange: records offered before the opening keyframe are dropped (a
+resumed file already has one, so it starts satisfied), which also avoids
+the second `net_build_keyframe_payload` call that would have corrupted the
+shared delta baseline. The drop is traced once per recording — if a
+keyframe never arrives, EVERY record is dropped and the session ends
+silently empty, which is worse than the failure it replaces, and that line
+is the only thing that would say why.
+
+Verification status, deliberately split:
+- **Host: field-verified** on two Android devices (2026-07-27) — recorded
+  a session, replay played back. This is the path that was broken.
+- **Client: headless only.** `replay_online.sh` covers it (479 records, 49
+  keyframes, `first_kind=keyframes`, plays back in S4, lists and plays
+  from the menu in S5) but it has NOT been confirmed on device. The
+  keyframe ordering is not the risk there — the mobile-specific one is the
+  rejoin-resume seam, where backgrounding drops the link and the auto-
+  rejoin rebuilds the game around the same `run_id`, making the recorder
+  append rather than truncate. Look for "replay: resuming recording" after
+  a rejoin; a "recording started" instead means the seam missed and the
+  earlier records were truncated away.
+- Note the e2e passes WITHOUT exercising the drop path (the trace never
+  fires), so it proves the fix non-breaking, not that it repairs the
+  ordering. Provoking the first-100 ms window is still an open test gap.
+
 ### R4 — leaderboard hooks (with the leaderboard project)
 Score submission attaches the finalized replay blob; server stores it;
 leaderboard rows link to watchable replays (download → R2 playback).
