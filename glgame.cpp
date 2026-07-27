@@ -1441,6 +1441,42 @@ void net_smooth_step(Object &o, int delta) {
   o.net_pose_err = o.net_pose_err - c;
 }
 
+// Facing twin of net_reconcile_pose, and for the same reason. restore_state
+// hard-assigns the authoritative facing every apply, while a replicated
+// ship's rotation only extrapolates when a snapshot happens to catch
+// rotation_direction set. So a turn's first ~100 ms of rotation arrives in
+// ONE step: measured at +25 deg in a single 8 ms step on a replay ghost,
+// against a dead-constant 2.29 deg/step through the sustained part of the
+// same turn (2026-07-27) — and every start/stop of a turn does it, which is
+// why it reads as continuous jerkiness rather than an occasional jump. Bank
+// the difference and keep the drawn facing, exactly as net_pose_err does for
+// position. Big flips still snap: a teleport or respawn should look instant,
+// not swing round.
+void net_reconcile_facing(Ship &s, const Point &old_facing) {
+  // Signed angle old->authoritative, in radians (Point::rotate's unit).
+  float dot = old_facing.x() * s.facing.x() + old_facing.y() * s.facing.y();
+  float crs = old_facing.x() * s.facing.y() - old_facing.y() * s.facing.x();
+  float d = atan2f(crs, dot);
+  if (fabsf(d) > 1.5f) {  // ~86 deg: not a turn, a flip — let it snap
+    s.net_facing_err = 0.0f;
+    return;
+  }
+  s.facing = old_facing;
+  s.net_facing_err = d;
+}
+
+// Drain it on net_smooth_step's time constant so a ship's rotation and its
+// position corrections glide together rather than at different rates.
+void net_smooth_facing(Ship &s, int delta) {
+  if (fabsf(s.net_facing_err) < 0.0005f) {
+    s.net_facing_err = 0.0f;
+    return;
+  }
+  float c = s.net_facing_err * (1.0f - expf(-(float)delta / 65.0f));
+  s.facing.rotate(c);
+  s.net_facing_err -= c;
+}
+
 // Asteroid flavour (sim_exact reconcile): the sim pose already rides the
 // authority — only the drawn-continuity offset fades. Exponential for
 // small offsets (invisible), RATE-CAPPED for big ones: a post-gap burst
@@ -4069,7 +4105,10 @@ void GLGame::tick_net_client(int delta) {
     // The remote (host) ship reconciles like the asteroids; the LOCAL
     // ship never banks an error (its pose is authoritative, v12), so
     // this is a no-op for it.
-    for (auto *gs : *players) net_smooth_step(*gs->ship, step_size);
+    for (auto *gs : *players) {
+      net_smooth_step(*gs->ship, step_size);
+      net_smooth_facing(*gs->ship, step_size);
+    }
     // v12: with pose authority the black hole must pull the pilot HERE —
     // the host's pull is overwritten by every adopted INPUT. Same
     // reduced-pull rule as the host's ship loop; the event-horizon kill
@@ -5190,9 +5229,13 @@ void GLGame::net_apply_state(const Save::GameState &s) {
     // The remote (host) ship is client-extrapolated between applies like
     // every other world object — reconcile instead of overwriting, or it
     // shimmers with the channel's delivery jitter exactly like the
-    // asteroids did. Facing/velocity stay authoritative.
-    if (!is_local && was_alive && ship->is_alive() && !world_rebuilt)
+    // asteroids did. Velocity stays authoritative; facing is reconciled the
+    // same way as position (see net_reconcile_facing) — the value is still
+    // authority's, only the drawn approach to it is smoothed.
+    if (!is_local && was_alive && ship->is_alive() && !world_rebuilt) {
       net_reconcile_pose(*ship, old_pos, /*sim_exact=*/false);
+      net_reconcile_facing(*ship, old_facing);
+    }
 
     if (is_local && was_alive && ship->is_alive() && !world_rebuilt) {
       // v12: this machine's pose is AUTHORITATIVE — the host adopts it
@@ -5207,6 +5250,7 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       ship->velocity = old_vel;
       ship->facing = old_facing;
       ship->net_pose_err = Point(0.0f, 0.0f);
+      ship->net_facing_err = 0.0f;  // nothing owed: this facing IS authority
 
       ship->rotate_left(held_left);
       ship->rotate_right(held_right);

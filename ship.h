@@ -110,6 +110,11 @@ class Ship : public CompositeObject {
     //TODO: make friends with gltrail (or some other way around these public)
     WrappedPoint tail() const;
     Point facing;
+    // Angular twin of Object::net_pose_err (radians): the facing correction
+    // a replicated ship owes authority, drained by net_smooth_facing so a
+    // snapshot's rotation lands as a glide instead of a snap. Zero on the
+    // local ship, whose facing is authoritative (PROTO 12).
+    float net_facing_err = 0.0f;
 
     //TODO: somehow get around this public for glstation
     // Returns whether the ship actually died (false = shield/invincible).
