@@ -444,5 +444,12 @@ R4's field.
   field pass on real hardware (Moto E14 2 GB Go for CPU/RAM/lifecycle, Moto
   G05 eMMC for storage flush) is the belt-and-braces confirmation. The
   device rationale and step-by-step `adb` procedure live in TESTING.md §7
-  ("Replay recorder overhead on low-end Android"); run it when the phones
-  arrive and record the result there.
+  ("Replay recorder overhead on low-end Android"), where the results are
+  recorded as the phones arrive. **E14 half done (PASSED 2026-07-27)**:
+  generation 13 recording, no `perf:` lines at all (so ≥55 fps sustained),
+  and the replay survived a force-quit — CPU, RAM and lifecycle all green on
+  the weakest current SoC, and the onPause-budget half of the
+  checkpoint-flush question above now confirmed on Android Go rather than
+  mid-range. **Outstanding: the G05 storage-flush run** — the E14's UFS 2.2
+  can't exercise slow-write latency, so that axis is exactly as open as it
+  was.

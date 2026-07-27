@@ -605,13 +605,38 @@ adb shell am start -S -n org.newtonia/.NewtoniaActivity \
 # ... same play, same capture. The fps/tick delta vs the first run = recorder cost.
 ```
 
+**No `perf:` lines is the pass, not a broken capture** — the report is gated
+on the second's frame count falling under 55 fps (`GLGame::perf_report`), so
+a fast device is silent. Two things do have to be ruled out before banking
+that silence: that recording was actually on (grep the same `SDL/APP` tag for
+`replay: recording started (run_id=…)`, or `adb shell run-as org.newtonia ls
+-l files/replays/`), and that the extras were read at all (`-S`, and a
+`NEWTONIA_START_GENERATION` that visibly lands proves the whole extras path).
+If the ON run is silent the A/B is already decided — the OFF run can at best
+also be silent, so the delta cannot exceed the threshold. Note too that
+`perf_report` restarts its window on any frame gap over 500 ms (intros, state
+handoffs, backgrounding), which is what keeps bogus `fps=0` lines out; it
+can also swallow a hitch landing exactly on a level boundary, so the
+subjective "no perceptible hitch" check still earns its place below.
+
 **Per-device focus:**
 - **E14 (durability / onPause budget):** background the app mid-run, then kill
   it from the task switcher; relaunch and confirm the replay plays back intact
   (`NEWTONIA_REPLAY_PLAY=last`, or the REPLAYS menu). Android Go suspends/kills
   most aggressively, so if the checkpoint flush fits *its* onPause window it
   fits everywhere. (This is the same guarantee the Xbox suspend-budget rule
-  needs — REPLAY.md.)
+  needs — REPLAY.md.) **Know what a killed file looks like before judging
+  it:** `finalize()` never runs, so the header keeps its initial score,
+  generation and duration and `FLAG_CLEAN` stays unset — expected, not a
+  failure, and it gates only best-promotion (`maybe_promote_best`), never
+  playback. A truncated final record is likewise a designed-for crash
+  artifact the reader's walk simply stops at. So "intact" means playable up
+  to roughly the moment of backgrounding: losing the seconds after the last
+  flush is a pass, losing the run is the failure. Play it back *before*
+  starting anything else — `NEWTONIA_REPLAY_PLAY=last` resolves to
+  `current.nrp` while its header reads, but a new game rotates that to
+  `recent.nrp` (and the zero-tick rule can delete it outright if the new
+  game records nothing).
 - **G05 (flush latency):** watch for a frame hitch landing exactly on a
   checkpoint flush — level clear, pause, focus loss — where a slow eMMC write
   would show. The bounded-append design means each flush is ~one level of
@@ -623,3 +648,15 @@ noise floor), and the E14 replay survives a switcher-kill. Green on both
 closes the REPLAY.md mobile-overhead question on real low-end hardware. The
 first field pass (2026-07-20, a mid-range Android) already came back clean;
 these two devices extend it to the low end.
+
+**E14: PASSED 2026-07-27.** Generation 13 with recording forced on — live,
+not assumed: the file was watched playing back afterwards — logged **no
+`perf:` lines at all**, i.e. it held ≥55 fps throughout. Per the note above
+that also settles the A/B on its own, so the recording-off control run was
+skipped as a formality. Durability green in the same session: force-quit
+mid-run, and the replay played back after relaunch, so the background flush
+fits Android Go's `onPause` window — the tightest one going. CPU, RAM and
+lifecycle are therefore all confirmed on the weakest current SoC.
+**Storage flush stays open**: the E14's UFS 2.2 cannot exercise it, which is
+the whole reason the eMMC G05 is the other half of the pair. That run is
+still outstanding, and with it the REPLAY.md question.
