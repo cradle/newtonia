@@ -157,6 +157,13 @@ test/e2e/weapons_net.sh # PROTO 18: lance pulses + beam clones both ways (normal
                         # both ships and replicates; on a client it is a no-op,
                         # since weapons are host-owned and a local grant would
                         # fight the snapshot restore)
+test/e2e/missile_net.sh # client-fired deploys: the joiner empties ~120 missiles
+                     # (host launches with NEWTONIA_ALL_WEAPONS=1 — weapons are
+                     # host-owned, so its grant stocks both ships). Asserts the
+                     # launches come back as "missile deploy confirmed" and that
+                     # NOT ONE missile vanished with most of its 3 s life left —
+                     # a missile that never flew cannot have hit anything, so
+                     # that is the muzzle blast (Ship::NET_DEPLOY_GRACE).
 test/e2e/revive.sh   # co-op revive: drop gating (partner out, 10%, one at a time)
                      # + the NEWTONIA_NET_TEST_REVIVE_MS payload hook -> the
                      # fallen joiner leaves spectate and respawns, no GAME OVER

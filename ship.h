@@ -206,6 +206,22 @@ class Ship : public CompositeObject {
     // hum is started ONLY by explicit set_shield_hum calls (the snapshot
     // extras decide), never by respawn itself.
     static bool net_quiet_respawn;
+    // Deployed projectiles (mines, giga mines, missiles) are spawned
+    // locally the instant the trigger is pulled — the pilot gets no
+    // latency — but on a net CLIENT the host owns their lifecycle and
+    // echoes them back a round trip later, and the snapshot rebuild
+    // replaces the list wholesale (nx_read_projectiles in glgame.cpp).
+    // A just-fired one is therefore missing from the host's set for the
+    // first apply or two, which the vanish detection below read as "the
+    // host detonated it": every client-fired missile blew up at the
+    // muzzle and then the host's echo flew off — Glenn's "double missile
+    // where one explodes instantly". Ship::fire_secondary stamps each
+    // fresh deploy with this many applies of grace; the rebuild holds an
+    // unmatched one (and never explodes it) until the count runs out,
+    // by which point the echo has either adopted it or the host never
+    // fired it at all (ammo desync) and it goes quietly. 5 applies is
+    // ~500 ms at the 10 Hz apply rate — well past any playable RTT.
+    static const uint8_t NET_DEPLOY_GRACE = 5;
     // Net client: a replicated missile vanished mid-flight — the host saw
     // it hit something. Blast + explosion sound at its last position.
     void net_missile_exploded(const Point &pos, const Point &vel);

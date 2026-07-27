@@ -2041,7 +2041,20 @@ void Ship::fire_secondary(bool on) {
       else if (dynamic_cast<Weapon::Nova*>(*secondary))     kind = Save::WeaponEntry::Kind::Nova;
       record_weapon_fired(kind);
     }
+    // Mark whatever this press deploys as not-yet-confirmed by the host.
+    // Only a net client's snapshot rebuild ever READS the mark (see
+    // Ship::NET_DEPLOY_GRACE); on the host, offline, and for replay ghosts
+    // it is inert, so the marking is unconditional rather than gated on a
+    // role flag nobody would remember to arm on every rejoin path.
+    size_t pre_mines = mines.size(), pre_gigas = giga_mines.size(),
+           pre_missiles = missiles.size();
     (*secondary)->shoot(on);
+    for (size_t i = pre_mines; i < mines.size(); i++)
+      mines[i].net_unconfirmed = NET_DEPLOY_GRACE;
+    for (size_t i = pre_gigas; i < giga_mines.size(); i++)
+      giga_mines[i].net_unconfirmed = NET_DEPLOY_GRACE;
+    for (size_t i = pre_missiles; i < missiles.size(); i++)
+      missiles[i].net_unconfirmed = NET_DEPLOY_GRACE;
   }
 }
 

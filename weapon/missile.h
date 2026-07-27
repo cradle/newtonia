@@ -8,6 +8,7 @@
 #include <deque>
 #include <list>
 #include <memory>
+#include <stdint.h>
 #include <SDL_mixer.h>
 
 struct MissileShot : public Object {
@@ -16,6 +17,12 @@ struct MissileShot : public Object {
   float time_left;
   std::deque<WrappedPoint> trail;
   std::shared_ptr<int> sound_handle;
+  // Net client, locally-fired missile the host has not echoed back yet —
+  // see Ship::NET_DEPLOY_GRACE. Counts down one per snapshot apply;
+  // while it is nonzero the snapshot rebuild holds this missile instead
+  // of reading its absence as a host-side detonation. Transient; never
+  // serialized (host-echoed copies are confirmed by construction).
+  uint8_t net_unconfirmed = 0;
 
   static const float TIME_TO_LIVE;
   static const float INITIAL_SPEED;
