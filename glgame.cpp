@@ -2925,17 +2925,28 @@ void GLGame::replay_start() {
       replay_ = nullptr;
       return;
     }
-    // The client's wire stream has no opening record (the lobby consumed
-    // the bootstrap keyframe before this game existed): serialize the
-    // freshly bootstrapped replica as the file's first keyframe — which is
-    // also the rejoin resume seam. Harmless net_known_ churn: the client
-    // never builds deltas. The host's opening keyframe rides the send tee
-    // (net_force_keyframe_ guarantees the first slot is one).
-    if (net_mode_ == NetClient) {
-      Save::MemStream payload;
-      net_build_keyframe_payload(payload);
-      replay_->record_keyframe(payload.data());
-    }
+    // The client's wire stream has no opening record: the lobby consumed
+    // the bootstrap keyframe before this game existed, so it never reached
+    // the file. This used to substitute a keyframe built from the freshly
+    // bootstrapped replica — but the client records the HOST's keyframes
+    // and deltas VERBATIM, so every delta is encoded against a host
+    // keyframe, and a replica-derived stand-in is not that baseline. It is
+    // close (the replica came from the bootstrap) but not equal, and the
+    // gap never closes: objects a delta does not mention keep the error
+    // until the next full host keyframe re-seeds it, one second later,
+    // forever. Field-measured on an Android client rejoin (2026-07-27):
+    // ~2 corrections/s at ~10 units before the seam, ~20/s at 50-70 units
+    // for the whole 100 s after it — every one under the snap threshold,
+    // so net_smooth_step glided them and the world visibly slid once a
+    // second.
+    //
+    // Wait for a REAL host keyframe instead (recorded by the net_client_poll
+    // tee, at most one second out). Costs those records; buys a file whose
+    // every baseline is authority's. A resumed recorder must be re-armed
+    // explicitly — it starts satisfied by the leftover's keyframe, which
+    // belongs to the PREVIOUS session and is just as wrong a baseline for
+    // this one's deltas.
+    if (net_mode_ == NetClient) replay_->await_keyframe();
     net_force_keyframe_ = true;
     return;
   }

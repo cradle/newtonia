@@ -470,6 +470,8 @@ void Recorder::write_chunk() {
     web_sync();
 }
 
+void Recorder::await_keyframe() { have_keyframe_ = false; }
+
 void Recorder::flush() {
     if (!ok_) return;
     write_chunk();

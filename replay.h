@@ -251,6 +251,21 @@ public:
     void record_effect(uint8_t subtype, uint8_t player_idx,
                        const std::vector<uint8_t> &body);
 
+    // Hold records again until the next keyframe. The online CLIENT needs
+    // this: it records the HOST's keyframes and deltas verbatim, so every
+    // delta is encoded against a host keyframe — but on (re)join the
+    // bootstrap keyframe went to the LOBBY before the game existed and was
+    // never recorded. Substituting a keyframe built from the client's own
+    // replica leaves the file's baseline subtly different from the one the
+    // following deltas assume, and objects those deltas do not mention keep
+    // the error until the next full host keyframe re-seeds it — a
+    // correction every second, forever (field: Android client rejoin,
+    // 2026-07-27: ~2 corrections/s at ~10 units before the seam, ~20/s at
+    // 50-70 units for the whole 100 s after it). Waiting for a REAL host
+    // keyframe costs up to a second of records and buys one consistent
+    // baseline for the whole file.
+    void await_keyframe();
+
     // Append the in-RAM chunk to current.nrp (checkpoint: level clear,
     // pause, focus loss). No-op when nothing new was recorded.
     void flush();
