@@ -93,6 +93,7 @@ private:
   int  smoothing_index_[2]   = {1, 1};  // per-player index into SMOOTHING_VALUES (1=NORMAL=0.004)
   int  star_density_index_   = 4;       // index into STAR_DENSITY_MULTIPLIERS (4=full)
   int  camera_index_[2]      = {1, 1};  // per-player: 0=FIXED, 1=ROTATE
+  int  auto_record_index_    = 0;       // 0=OFF, 1=ON (Preferences::auto_record_replays)
   int  active_row_ = 0;                 // index into the options row list (see opt_row)
   WrappedPoint viewpoint;
   GLStarfield *starfield;

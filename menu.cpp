@@ -39,20 +39,32 @@ static const int NUM_STAR_DENSITY = 5;
 static const char* CAMERA_LABELS[] = {"FIXED", "ROTATE"};
 static const int NUM_CAMERA = 2;
 
+// Auto-record replays (REPLAY.md): 0 = OFF, 1 = ON. Default OFF is the
+// ship posture — this row only makes the pref reachable without hand-editing
+// preferences.ini or setting NEWTONIA_REPLAY_ENABLE, which is lost on any
+// launch the player does not control (an invite starts a fresh process with
+// no intent extras, so recording silently stayed off exactly when testing a
+// rejoin).
+static const char* RECORD_LABELS[] = {"OFF", "ON"};
+static const int NUM_RECORD = 2;
+
 // The Options screen rows, in display order. kind: 0=sensitivity, 1=smoothing,
-// 2=camera, 3=star density. P2 rows are desktop-only — mobile (touch) shows
-// Player 1 plus the shared options. Options is desktop/controller-only today
-// (see Menu::show_options_row), so the touch list is future-proofing.
+// 2=camera, 3=star density, 4=auto-record replays. P2 rows are desktop-only
+// — mobile (touch) shows Player 1 plus the shared options. Options is
+// desktop/controller-only today (see Menu::show_options_row), so the touch
+// list is future-proofing.
 namespace { struct OptRow { int kind; int player; const char *name; }; }
 static const OptRow OPT_ROWS_DESKTOP[] = {
   {0, 0, "P1  SENSITIVITY"}, {1, 0, "P1  SMOOTHING"}, {2, 0, "P1  CAMERA"},
   {0, 1, "P2  SENSITIVITY"}, {1, 1, "P2  SMOOTHING"}, {2, 1, "P2  CAMERA"},
   {3, 0, "STAR  DENSITY"},
+  {4, 0, "RECORD  REPLAYS"},
 };
 // Mobile shows Player 1 + shared options only, so the "P1" prefix is dropped.
 static const OptRow OPT_ROWS_TOUCH[] = {
   {0, 0, "SENSITIVITY"}, {1, 0, "SMOOTHING"}, {2, 0, "CAMERA"},
   {3, 0, "STAR DENSITY"},
+  {4, 0, "RECORD REPLAYS"},
 };
 static int opt_row_count() {
   return is_touch_mode() ? (int)(sizeof(OPT_ROWS_TOUCH) / sizeof(OPT_ROWS_TOUCH[0]))
@@ -154,6 +166,7 @@ Menu::Menu() :
   camera_index_[0]      = g_prefs.p1_keys.rotate_view ? 1 : 0;
   camera_index_[1]      = g_prefs.p2_keys.rotate_view ? 1 : 0;
   star_density_index_   = star_density_index_for(g_prefs.star_density);
+  auto_record_index_    = g_prefs.auto_record_replays ? 1 : 0;
   scan_replays();
   Presence::set_menu();
 #ifdef __EMSCRIPTEN__
@@ -285,13 +298,15 @@ void Menu::draw() {
         case 0: num_steps = NUM_SENSITIVITY;  cur_idx = sensitivity_index_[r.player]; lbl = SENSITIVITY_LABELS;   break;
         case 1: num_steps = NUM_SMOOTHING;    cur_idx = smoothing_index_[r.player];   lbl = SMOOTHING_LABELS;     break;
         case 2: num_steps = NUM_CAMERA;       cur_idx = camera_index_[r.player];      lbl = CAMERA_LABELS;        break;
-        default:num_steps = NUM_STAR_DENSITY; cur_idx = star_density_index_;          lbl = STAR_DENSITY_LABELS;  break;
+        case 3: num_steps = NUM_STAR_DENSITY; cur_idx = star_density_index_;          lbl = STAR_DENSITY_LABELS;  break;
+        default:num_steps = NUM_RECORD;       cur_idx = auto_record_index_;           lbl = RECORD_LABELS;        break;
       }
 
       if (touch) {
         int cy = touch_opt_center(row, n);
         // Name left, value right. Name font sized so the longest label
-        // ("SENSITIVITY"/"STAR DENSITY") clears the value column.
+        // ("RECORD REPLAYS", ahead of "SENSITIVITY"/"STAR DENSITY") still
+        // clears the value column — check this pairing when adding a row.
         Typer::draw(-315, cy, r.name, 16);               // name, left-aligned
         Typer::draw_centered(205, cy, lbl[cur_idx], 18); // value
         continue;
@@ -891,7 +906,8 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     case 0: idx = &sensitivity_index_[r.player]; num = NUM_SENSITIVITY;  break;
     case 1: idx = &smoothing_index_[r.player];   num = NUM_SMOOTHING;    break;
     case 2: idx = &camera_index_[r.player];      num = NUM_CAMERA;       break;
-    default:idx = &star_density_index_;          num = NUM_STAR_DENSITY; break;
+    case 3: idx = &star_density_index_;          num = NUM_STAR_DENSITY; break;
+    default:idx = &auto_record_index_;           num = NUM_RECORD;       break;
   }
   *idx += delta;
   if (wrap) {
@@ -911,6 +927,7 @@ void Menu::close_options() {
   g_prefs.p1_keys.rotate_view          = (camera_index_[0] == 1);
   g_prefs.p2_keys.rotate_view          = (camera_index_[1] == 1);
   g_prefs.star_density                 = STAR_DENSITY_MULTIPLIERS[star_density_index_];
+  g_prefs.auto_record_replays          = (auto_record_index_ == 1);
   save_preferences();
   delete starfield;
   starfield = new GLStarfield(Point(default_world_width, default_world_height),
