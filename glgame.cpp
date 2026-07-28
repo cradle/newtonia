@@ -1278,7 +1278,11 @@ void GLGame::elastic_asteroid_collisions(bool announce) {
   }
   if(elastics.empty()) return;
 
-  std::vector<Object*> near;
+  // NOT "near": that is a legacy segment-qualifier macro the Windows
+  // headers still define, so a local of that name miscompiles under MinGW
+  // with an error naming neither the variable nor the real cause (CI,
+  // 2026-07-28). Same trap as the `nearest` note further up this file.
+  std::vector<Object*> nearby;
   std::vector<int> cand;
   std::list<Asteroid*>::iterator ai;
   size_t ei = 0;  // elastics[ei..] are the elastic asteroids AFTER *ai
@@ -1304,12 +1308,12 @@ void GLGame::elastic_asteroid_collisions(bool announce) {
     // order keeps the pair sequence identical to the old all-pairs scan,
     // which matters because the separation push below mutates positions
     // as it goes.
-    grid.query_neighbours(*a, near);
+    grid.query_neighbours(*a, nearby);
     int a_idx = order[a];
     cand.clear();
-    for(size_t k = 0; k < near.size(); ++k) {
+    for(size_t k = 0; k < nearby.size(); ++k) {
       std::unordered_map<const Object*, int>::const_iterator f =
-          order.find(near[k]);
+          order.find(nearby[k]);
       if(f == order.end()) continue;   // not one of this list's asteroids
       if(f->second <= a_idx) continue; // pair each combination once only
       cand.push_back(f->second);

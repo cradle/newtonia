@@ -64,7 +64,14 @@ shows when piped from a shell (e.g. the `NEWTONIA_NET_SELFTEST=1` gate).
 libdatachannel + vendored archives copied into `netplay-libs/lib/*.a`, all
 linked in one `--start-group` with msys2's static OpenSSL. `%zu` in
 `SDL_Log` formats warns (and misprints) under MinGW — cast to `unsigned`
-and use `%u`.
+and use `%u`. **Do not name a local `near` or `far`**: the Windows headers
+still define those 16-bit segment qualifiers as macros, so the code
+miscompiles with an error that names neither the variable nor the real
+cause (a `std::vector` called `near` surfaced as "no matching function for
+call to `unordered_map::find(<lambda()>)`"). Bitten twice — once in
+`glgame.cpp`'s spawn-distance check, once in the elastic-collision grid
+pass. Neither the desktop syntax check nor a Linux build catches it; only
+windows.yml does.
 
 #### Syntax-check without a full build
 The pre-commit hook in `.claude/settings.json` runs this automatically on staged files:
