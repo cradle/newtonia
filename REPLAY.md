@@ -544,7 +544,7 @@ R4's field.
   checkpoint-flush question above now confirmed on Android Go rather than
   mid-range. **G05 half done too (PASSED 2026-07-28)** — the storage axis
   the E14's UFS 2.2 could not reach: ~50 level boundaries back to back with
-  no hitch, and a normally played ~4.4 minute level (2614 records banked,
-  ~100x a level-skip's chunk) cleared clean. **This question is CLOSED**:
+  no hitch, and a normally played ~3.6 minute level (2614 records over 2149
+  slots, ~100x a level-skip's chunk) cleared clean. **This question is CLOSED**:
   the recorder is free on real low-end hardware across CPU, RAM, lifecycle
   and storage flush. The default-ON decision below is unblocked.

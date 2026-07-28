@@ -684,15 +684,19 @@ replay survived a force-quit, and repeated background/resume cycles stayed
 clean. On flush latency specifically, which is the only axis the E14's UFS
 2.2 could not reach: ~50 level boundaries marched back to back with no
 perceptible hitch, and — the case that actually matters — a normally
-played level of ~4.4 minutes (2614 records banked, ~100x what a two-second
-level skip produces) cleared with no hitch at the boundary. Rapid skipping
+played level of ~3.6 minutes (2614 records banked over 2149 slots, ~100x
+what a two-second level skip produces) cleared with no hitch at the
+boundary. Rapid skipping
 alone would NOT have proved this: it banks the smallest possible chunk, so
 it tests flush frequency rather than flush size.
 
 Two notes for anyone repeating it. A live recording reads `duration_ms=0`
 — the header's tail is patched only at a clean stop, and the reader is
-built to tolerate a header staler than the records behind it, so use
-`records` (10/s of play) to judge how much a flush actually banked. And
+built to tolerate a header staler than the records behind it. Judge chunk
+size by `records`, but note records EXCEED slots — events and effects
+attach to the upcoming slot without advancing it, so 2614 records spanned
+2149 slots here (~1.2x). `duration_ms` after a clean stop is the honest
+play-time figure; the record count is the honest write-volume one. And
 the perf logger cannot answer this on its own: its window restarts on any
 frame gap over 500 ms, so a hitch landing exactly on a level boundary can
 fall into a discarded window — the subjective check is load-bearing here,
