@@ -299,7 +299,17 @@ void Menu::draw() {
         case 1: num_steps = NUM_SMOOTHING;    cur_idx = smoothing_index_[r.player];   lbl = SMOOTHING_LABELS;     break;
         case 2: num_steps = NUM_CAMERA;       cur_idx = camera_index_[r.player];      lbl = CAMERA_LABELS;        break;
         case 3: num_steps = NUM_STAR_DENSITY; cur_idx = star_density_index_;          lbl = STAR_DENSITY_LABELS;  break;
-        default:num_steps = NUM_RECORD;       cur_idx = auto_record_index_;           lbl = RECORD_LABELS;        break;
+        default:
+          num_steps = NUM_RECORD; lbl = RECORD_LABELS;
+          // Show what WILL happen, not what is stored: an env override beats
+          // the pref in GLGame::replay_start, and a row reading OFF while
+          // NEWTONIA_REPLAY_ENABLE quietly recorded anyway sent us hunting a
+          // phantom bug (field, 2026-07-28). The stored value is untouched —
+          // only the display follows the override.
+          cur_idx = Replay::recording_override() >= 0
+                        ? Replay::recording_override()
+                        : auto_record_index_;
+          break;
       }
 
       if (touch) {

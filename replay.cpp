@@ -470,6 +470,12 @@ void Recorder::write_chunk() {
     web_sync();
 }
 
+int recording_override() {
+    if (SDL_getenv("NEWTONIA_REPLAY_DISABLE")) return 0;  // disable wins
+    if (SDL_getenv("NEWTONIA_REPLAY_ENABLE")) return 1;
+    return -1;
+}
+
 void Recorder::await_keyframe() { have_keyframe_ = false; }
 
 void Recorder::flush() {

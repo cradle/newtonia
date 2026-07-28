@@ -125,6 +125,15 @@ std::string online_path();
 
 uint64_t new_run_id();  // never returns 0
 
+// Whether an environment override is forcing recording on or off, and which
+// way: -1 none, 0 forced OFF, 1 forced ON (DISABLE wins over ENABLE). ONE
+// definition, shared by the recorder gate (GLGame::replay_start) and the
+// Options row, so the screen cannot claim something the gate will not do —
+// a row reading OFF while NEWTONIA_REPLAY_ENABLE recorded anyway cost a
+// real debugging session (field, 2026-07-28: the var rode an adb intent
+// extra and outlived every relaunch that reused the process).
+int recording_override();
+
 // Why a file's header would not load. The replays list shows these to the
 // player, so they are kept apart rather than collapsed into one "can't read
 // it": a file from a newer build tells the player something they can act on

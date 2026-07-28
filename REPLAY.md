@@ -442,6 +442,28 @@ logcat). Most likely that recording predated the install on one device;
 it was never conclusively explained, and the symptom has not recurred with
 current builds on both sides.
 
+- **The env override beats the preference, and now says so
+  (2026-07-28).** `NEWTONIA_REPLAY_ENABLE` / `_DISABLE` outrank
+  `auto_record_replays` in `GLGame::replay_start` — by design, but on
+  Android the var rides an adb intent extra into the process environment
+  and OUTLIVES every relaunch that reuses the process (icon, task
+  switcher). Turning the Options row off then had no effect, and the row
+  still read OFF while recording continued: the screen stated something
+  untrue and cost a debugging session chasing a phantom. Now
+  `Replay::recording_override()` is the single definition both the gate and
+  the row consult, so the row displays what WILL happen rather than what is
+  stored (the stored pref is untouched — only the display follows), and
+  game start logs `replay: NEWTONIA_REPLAY_* overrides the preference`.
+  `adb shell am force-stop org.newtonia` is what actually clears it.
+
+- **Turning recording off does not remove the CURRENT RUN row**, and should
+  not: `current.nrp` is a real recording of a real run, and hiding it would
+  destroy access to data the player legitimately has. The row keeps
+  pointing at the last recorded run until a new game rotates it into LAST
+  RUN. Mildly confusing (the label says "current" when nothing current is
+  being recorded), accepted deliberately — the score/level/date columns
+  disambiguate.
+
 - **Testing trap, hit twice (2026-07-27):** a rejoin via an invite
   launches a FRESH process, which gets no intent extras — so
   `NEWTONIA_REPLAY_ENABLE` is gone exactly when testing resume, and
