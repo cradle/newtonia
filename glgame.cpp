@@ -50,6 +50,7 @@
 #include <map>
 #include <set>
 #include <unordered_map>
+#include <algorithm>
 
 // First point along segment a->b entering the circle (centre target_pos,
 // radius r), with the target translated to its wrapped copy nearest a —
@@ -1183,76 +1184,141 @@ void GLGame::add_remote_player() {
 // pairing-dependent, so without the mirror every one of them was a
 // surprise the authoritative records corrected 100 ms later (the last
 // source of asteroid jitter; gravity is mirrored the same way).
-void GLGame::elastic_asteroid_collisions(bool announce) {
-  std::list<Asteroid*>::iterator ai, bi;
-  for(ai = objects->begin(); ai != objects->end(); ++ai) {
-    Asteroid *a = *ai;
-    if(!a->alive) continue;
-    bi = ai; ++bi;
-    for(; bi != objects->end(); ++bi) {
-      Asteroid *b = *bi;
-      if(!b->alive) continue;
-      if(!a->elastic && !b->elastic) continue;
+// Resolve one elastic asteroid pair (at least one of a/b is elastic):
+// separation push, mass-proportional impulse, and the visible-bounce
+// ting. ONE definition for both scan paths in
+// elastic_asteroid_collisions, so the shrunk inner loop cannot drift
+// from the full one.
+void GLGame::collide_elastic_pair(Asteroid *a, Asteroid *b, bool announce) {
+    // Use world-wrap aware distance: get closest copy of A to B
+    Point a_near = a->position.closest_to(b->position);
+    float dx = a_near.x() - b->position.x();
+    float dy = a_near.y() - b->position.y();
+    float dist2 = dx * dx + dy * dy;
+    float sum_r = a->radius + b->radius;
+    if(dist2 >= sum_r * sum_r) return; // no overlap
 
-      // Use world-wrap aware distance: get closest copy of A to B
-      Point a_near = a->position.closest_to(b->position);
-      float dx = a_near.x() - b->position.x();
-      float dy = a_near.y() - b->position.y();
-      float dist2 = dx * dx + dy * dy;
-      float sum_r = a->radius + b->radius;
-      if(dist2 >= sum_r * sum_r) continue; // no overlap
+    float dist = sqrtf(dist2);
+    if(dist < 1e-4f) return; // degenerate overlap, skip
 
-      float dist = sqrtf(dist2);
-      if(dist < 1e-4f) continue; // degenerate overlap, skip
+    // Collision normal pointing from B to A
+    float nx = dx / dist;
+    float ny = dy / dist;
 
-      // Collision normal pointing from B to A
-      float nx = dx / dist;
-      float ny = dy / dist;
+    // Positional correction: push apart to resolve overlap, including
+    // children spawning inside each other. Proportional ONLY — a flat
+    // +0.5/tick bias made host and client (which mirrors this pass)
+    // diverge at up to ~60 units/s whenever they disagreed about a
+    // borderline contact, since the bias fires at any overlap depth.
+    float overlap = sum_r - dist;
+    float push = overlap * 0.6f;
+    a->position += Point(nx, ny) * push;
+    a->position.wrap();
+    b->position += Point(-nx, -ny) * push;
+    b->position.wrap();
 
-      // Positional correction: push apart to resolve overlap, including
-      // children spawning inside each other. Proportional ONLY — a flat
-      // +0.5/tick bias made host and client (which mirrors this pass)
-      // diverge at up to ~60 units/s whenever they disagreed about a
-      // borderline contact, since the bias fires at any overlap depth.
-      float overlap = sum_r - dist;
-      float push = overlap * 0.6f;
-      a->position += Point(nx, ny) * push;
-      a->position.wrap();
-      b->position += Point(-nx, -ny) * push;
-      b->position.wrap();
+    // Velocity impulse: only when approaching (negative = approaching)
+    float vrel_n = (a->velocity.x() - b->velocity.x()) * nx
+                 + (a->velocity.y() - b->velocity.y()) * ny;
+    if(vrel_n >= 0.0f) return; // already separating, no impulse needed
 
-      // Velocity impulse: only when approaching (negative = approaching)
-      float vrel_n = (a->velocity.x() - b->velocity.x()) * nx
-                   + (a->velocity.y() - b->velocity.y()) * ny;
-      if(vrel_n >= 0.0f) continue; // already separating, no impulse needed
+    // Mass proportional to area (radius^2)
+    float ma = a->radius * a->radius;
+    float mb = b->radius * b->radius;
+    float impulse = -2.0f * vrel_n * ma * mb / (ma + mb);
 
-      // Mass proportional to area (radius^2)
-      float ma = a->radius * a->radius;
-      float mb = b->radius * b->radius;
-      float impulse = -2.0f * vrel_n * ma * mb / (ma + mb);
+    a->velocity = a->velocity + Point(nx, ny) * (impulse / ma);
+    b->velocity = b->velocity - Point(nx, ny) * (impulse / mb);
 
-      a->velocity = a->velocity + Point(nx, ny) * (impulse / ma);
-      b->velocity = b->velocity - Point(nx, ny) * (impulse / mb);
-
-      // Play a deep metallic ting when an asteroid strikes a reflective one,
-      // but only if the collision is visible to any player.
-      if(announce && (a->reflective || b->reflective) &&
-         Asteroid::asteroid_ting_sound != NULL) {
-        Point contact(
-          (a->position.x() + b->position.x()) * 0.5f,
-          (a->position.y() + b->position.y()) * 0.5f);
-        float vol = sound_volume_for_point(contact);
-        if(vol > 0.0f) {
-          static Uint32 last_asteroid_ting_tick = UINT32_MAX;
-          Uint32 now = SDL_GetTicks();
-          if(now - last_asteroid_ting_tick >= 125) {
-            last_asteroid_ting_tick = now;
-            Mix_VolumeChunk(Asteroid::asteroid_ting_sound, (int)(MIX_MAX_VOLUME * vol));
-            Mix_PlayChannel(-1, Asteroid::asteroid_ting_sound, 0);
-            net_send_event(Net::EV_ROID_BOUNCE, (uint32_t)(vol * 255.0f));
-          }
+    // Play a deep metallic ting when an asteroid strikes a reflective one,
+    // but only if the collision is visible to any player.
+    if(announce && (a->reflective || b->reflective) &&
+       Asteroid::asteroid_ting_sound != NULL) {
+      Point contact(
+        (a->position.x() + b->position.x()) * 0.5f,
+        (a->position.y() + b->position.y()) * 0.5f);
+      float vol = sound_volume_for_point(contact);
+      if(vol > 0.0f) {
+        static Uint32 last_asteroid_ting_tick = UINT32_MAX;
+        Uint32 now = SDL_GetTicks();
+        if(now - last_asteroid_ting_tick >= 125) {
+          last_asteroid_ting_tick = now;
+          Mix_VolumeChunk(Asteroid::asteroid_ting_sound, (int)(MIX_MAX_VOLUME * vol));
+          Mix_PlayChannel(-1, Asteroid::asteroid_ting_sound, 0);
+          net_send_event(Net::EV_ROID_BOUNCE, (uint32_t)(vol * 255.0f));
         }
       }
+    }
+}
+
+void GLGame::elastic_asteroid_collisions(bool announce) {
+  // Only pairs with at least one elastic member can do anything, and
+  // elastic asteroids are RARE: num_reflective is (generation-2)/2+1, so
+  // generation 25 has 12 of them among 321 asteroids. Visiting all
+  // n(n-1)/2 pairs to discard ~93% of them cost 120 ms/s of a 145 ms/s
+  // tick budget on desktop at that generation — and the whole frame on a
+  // low-end phone (field: Moto G05, 2-5 fps at gen 25, tick ~1050 ms/s).
+  //
+  // So shrink the INNER loop, not the outer one. Walking the outer list
+  // unchanged and scanning only the elastic asteroids after a non-elastic
+  // one yields the exact same pairs in the exact same ORDER — which
+  // matters: the positional correction below mutates positions as it
+  // goes, so a later pair's overlap test can depend on an earlier
+  // correction. Iterating elastics as the outer loop instead would
+  // reorder every (non-elastic, elastic) pair, and the net client mirrors
+  // this pass step for step.
+  std::vector<Asteroid*> elastics, by_index;
+  std::unordered_map<const Object*, int> order;
+  by_index.reserve(objects->size());
+  order.reserve(objects->size() * 2);
+  for(Asteroid *a : *objects) {
+    order[a] = (int)by_index.size();
+    by_index.push_back(a);
+    if(a->alive && a->elastic) elastics.push_back(a);
+  }
+  if(elastics.empty()) return;
+
+  std::vector<Object*> near;
+  std::vector<int> cand;
+  std::list<Asteroid*>::iterator ai;
+  size_t ei = 0;  // elastics[ei..] are the elastic asteroids AFTER *ai
+  for(ai = objects->begin(); ai != objects->end(); ++ai) {
+    Asteroid *a = *ai;
+    if(ei < elastics.size() && elastics[ei] == a) ++ei;
+    if(!a->alive) continue;
+
+    // Non-elastic outer: its only possible partners are the elastics still
+    // ahead of it, and there are a handful of those — no grid needed.
+    if(!a->elastic) {
+      for(size_t k = ei; k < elastics.size(); ++k) {
+        Asteroid *b = elastics[k];
+        if(b->alive) collide_elastic_pair(a, b, announce);
+      }
+      continue;
+    }
+
+    // Elastic outer: only rocks sharing a cell (or the +/-1 ring) can be
+    // within sum_r, because cells are 2*max_radius across and update()
+    // files a body into every cell it overlaps — the same guarantee
+    // Grid::collide() relies on. Sorting the candidates back into list
+    // order keeps the pair sequence identical to the old all-pairs scan,
+    // which matters because the separation push below mutates positions
+    // as it goes.
+    grid.query_neighbours(*a, near);
+    int a_idx = order[a];
+    cand.clear();
+    for(size_t k = 0; k < near.size(); ++k) {
+      std::unordered_map<const Object*, int>::const_iterator f =
+          order.find(near[k]);
+      if(f == order.end()) continue;   // not one of this list's asteroids
+      if(f->second <= a_idx) continue; // pair each combination once only
+      cand.push_back(f->second);
+    }
+    std::sort(cand.begin(), cand.end());
+    cand.erase(std::unique(cand.begin(), cand.end()), cand.end());
+    for(size_t k = 0; k < cand.size(); ++k) {
+      Asteroid *b = by_index[cand[k]];
+      if(b->alive) collide_elastic_pair(a, b, announce);
     }
   }
 }

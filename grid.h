@@ -17,6 +17,13 @@ public:
   void update(const list<Object *> *objects);
   Object * collide(const Object &object, float proximity = 0.0f, bool skip_invincible = false) const;
   void query_segment(Point a, Point b, vector<Object *> &out) const;
+  // Every object whose cell footprint could touch `object` (broad phase
+  // only — the caller does its own exact test). Duplicates are possible
+  // when an object spans several of the queried cells, and `object`
+  // itself may be included; both are the caller's to filter. Used by the
+  // elastic-asteroid pass, which otherwise tested every rock against
+  // every other one each step.
+  void query_neighbours(const Object &object, vector<Object *> &out) const;
 
 private:
   const vector<Object *> &get(int row, int col) const;
