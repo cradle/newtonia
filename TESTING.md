@@ -677,6 +677,23 @@ skipped as a formality. Durability green in the same session: force-quit
 mid-run, and the replay played back after relaunch, so the background flush
 fits Android Go's `onPause` window — the tightest one going. CPU, RAM and
 lifecycle are therefore all confirmed on the weakest current SoC.
-**Storage flush stays open**: the E14's UFS 2.2 cannot exercise it, which is
-the whole reason the eMMC G05 is the other half of the pair. That run is
-still outstanding, and with it the REPLAY.md question.
+**G05: PASSED 2026-07-28**, closing the storage axis and with it the
+REPLAY.md mobile-overhead question. No `perf:` lines through play or death
+at generation 9 (recording confirmed on — a replay was watched back), the
+replay survived a force-quit, and repeated background/resume cycles stayed
+clean. On flush latency specifically, which is the only axis the E14's UFS
+2.2 could not reach: ~50 level boundaries marched back to back with no
+perceptible hitch, and — the case that actually matters — a normally
+played level of ~4.4 minutes (2614 records banked, ~100x what a two-second
+level skip produces) cleared with no hitch at the boundary. Rapid skipping
+alone would NOT have proved this: it banks the smallest possible chunk, so
+it tests flush frequency rather than flush size.
+
+Two notes for anyone repeating it. A live recording reads `duration_ms=0`
+— the header's tail is patched only at a clean stop, and the reader is
+built to tolerate a header staler than the records behind it, so use
+`records` (10/s of play) to judge how much a flush actually banked. And
+the perf logger cannot answer this on its own: its window restarts on any
+frame gap over 500 ms, so a hitch landing exactly on a level boundary can
+fall into a discarded window — the subjective check is load-bearing here,
+not a formality.

@@ -542,6 +542,9 @@ R4's field.
   and the replay survived a force-quit — CPU, RAM and lifecycle all green on
   the weakest current SoC, and the onPause-budget half of the
   checkpoint-flush question above now confirmed on Android Go rather than
-  mid-range. **Outstanding: the G05 storage-flush run** — the E14's UFS 2.2
-  can't exercise slow-write latency, so that axis is exactly as open as it
-  was.
+  mid-range. **G05 half done too (PASSED 2026-07-28)** — the storage axis
+  the E14's UFS 2.2 could not reach: ~50 level boundaries back to back with
+  no hitch, and a normally played ~4.4 minute level (2614 records banked,
+  ~100x a level-skip's chunk) cleared clean. **This question is CLOSED**:
+  the recorder is free on real low-end hardware across CPU, RAM, lifecycle
+  and storage flush. The default-ON decision below is unblocked.
