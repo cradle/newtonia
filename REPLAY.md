@@ -21,8 +21,9 @@ criteria. Nothing here is built yet.
   starts silently at every new game (kilobytes-per-second budget). The
   ORIGINAL plan had it default ON ("always record"); the shipped default is
   **OFF** (`Preferences::auto_record_replays`), a conservative posture until
-  the low-end field pass (TESTING.md §7) proves the recorder is free on real
-  hardware — then the default can flip back to ON in a one-line change. The
+  the low-end field pass (TESTING.md §7) proved the recorder is free on real
+  hardware. That pass PASSED on both devices (2026-07-28) and the default
+  flipped back to **ON**, as the original design intended. The
   "never ask" half stands regardless: enabling is a preference, not a
   per-game prompt. `NEWTONIA_REPLAY_ENABLE` / `NEWTONIA_REPLAY_DISABLE` force
   the toggle for tests and power users (enable loses to disable).
@@ -524,13 +525,21 @@ R4's field.
 
 ## To revisit
 
-- **Surface `auto_record_replays` on the Options screen.** The preference
-  and its recorder gate already exist (above); this is just the UI. Wiring
-  is cheap: one `opt_row` in the data-driven Options list (`bool`, ON/OFF
-  like friendly-fire) bound to `g_prefs.auto_record_replays`; touch shows
-  the shared-options one-row form, P2 rows unaffected. Decide alongside any
-  other Options-screen additions so the menu grows in one pass rather than
-  one toggle at a time.
+- ~~**Surface `auto_record_replays` on the Options screen**, and decide the
+  default alongside it.~~ **BOTH DONE 2026-07-28.** The row shipped as
+  "RECORD REPLAYS", last in the data-driven Options list, ON/OFF like
+  friendly-fire, picked up by the touch one-row form for free. The default
+  then flipped to **ON** once the low-end field pass cleared (see the entry
+  below) — restoring the original record-silently design.
+
+  The flip is the whole migration, deliberately: `save_preferences()` writes
+  every key, so anyone who has already launched carries an explicit
+  `auto_record_replays=0` and keeps it; only a fresh install takes the new
+  default. A marker to sweep those zeros to ON was considered and rejected —
+  it would override exactly the players the rule exists to protect. The one
+  behaviour change for an existing install is an INI predating the key,
+  which takes the new default; a small population that has never seen the
+  feature.
 - **Extend the mobile-overhead pass to the low end.** The overhead question
   above was resolved on a mid-range Android (2026-07-20); a low-end
   field pass on real hardware (Moto E14 2 GB Go for CPU/RAM/lifecycle, Moto

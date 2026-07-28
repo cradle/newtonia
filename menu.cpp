@@ -39,12 +39,12 @@ static const int NUM_STAR_DENSITY = 5;
 static const char* CAMERA_LABELS[] = {"FIXED", "ROTATE"};
 static const int NUM_CAMERA = 2;
 
-// Auto-record replays (REPLAY.md): 0 = OFF, 1 = ON. Default OFF is the
-// ship posture — this row only makes the pref reachable without hand-editing
-// preferences.ini or setting NEWTONIA_REPLAY_ENABLE, which is lost on any
-// launch the player does not control (an invite starts a fresh process with
-// no intent extras, so recording silently stayed off exactly when testing a
-// rejoin).
+// Auto-record replays (REPLAY.md): 0 = OFF, 1 = ON. Default is now ON for
+// fresh installs (the low-end field pass cleared the recorder on real
+// hardware, 2026-07-28), so this row is mostly an opt-OUT — and the reason
+// it has to exist at all: NEWTONIA_REPLAY_ENABLE is lost on any launch the
+// player does not control (an invite starts a fresh process with no intent
+// extras), and hand-editing preferences.ini is not a player-facing answer.
 static const char* RECORD_LABELS[] = {"OFF", "ON"};
 static const int NUM_RECORD = 2;
 
