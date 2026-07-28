@@ -63,3 +63,5 @@ xbox/build-*/
 /netplay-libs-ios/
 /netplay-libs-ios-sim/
 ios/build/
+## Store screenshot captures (capture_store_screenshots.sh)
+/store_shots/
