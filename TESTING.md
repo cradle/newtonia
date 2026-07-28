@@ -431,6 +431,19 @@ capture for any "it got slow" report; it works on every platform:
 - **Desktop**: run from a terminal.
 - **Android**: `adb logcat -s SDL/APP` (filter on `perf:`).
 - **iOS**: Xcode console.
+**Worked example — the late-generation collapse (2026-07-28).** A Moto G05
+at generation 25 ran at 3-6 fps with `tick≈1070ms(max 269)` and
+`draw≈25ms`: the split named the simulation immediately, and `max` (one
+physics step) mattered more than the accumulated second. Cause was
+`elastic_asteroid_collisions` testing every asteroid pair every step —
+51,360 pairs at 321 asteroids, ~125 steps/s — to service the dozen
+reflective rocks that generation has. Grid broad-phase fixed it (see
+`Grid::query_neighbours`); the same device then reached generation 48 with
+621 asteroids at 26-45 fps and `max` down to 16-51 ms. Two lessons for the
+next report of this shape: **read `max`, not just the total** (a 10x win
+showed there most clearly), and **suspect an all-pairs scan** whenever
+`tick` grows faster than the object count.
+
 - **Web**: the browser console — on a phone, attach remote DevTools
   (Android: `chrome://inspect/#devices` on a cabled desktop Chrome →
   *inspect* the tab; iOS: Safari's Develop menu).
