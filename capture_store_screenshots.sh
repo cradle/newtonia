@@ -1,12 +1,28 @@
 #!/bin/bash
 # Drive the game headlessly and capture frames for the store pages.
 #
-#   ./capture_store_screenshots.sh <generation> <tag> [frames-per-weapon]
+#   ./capture_store_screenshots.sh <generation> <tag> [frames-per-weapon] [mode]
 #
-# Starts a new game at <generation> with the full arsenal, walks every primary
-# and secondary weapon firing at each, and screenshots mid-burst. Frames land in
-# store_shots/<tag>_NNN.png; a contact sheet goes to store_shots/<tag>_sheet.png
-# so a whole run can be reviewed at a glance.
+# mode: "walk" (default) — cycle every primary and secondary, firing at each.
+#       "shock"          — fragment the field with the automatic gun, then fire
+#                          Shock into the debris (see the note on chaining
+#                          below). For the hero/capsule shot.
+#
+# Starts a new game at <generation> with the full arsenal and screenshots
+# mid-burst. Frames land in store_shots/<tag>_NNN.png; a contact sheet goes to
+# store_shots/<tag>_sheet.png so a whole run can be reviewed at a glance.
+#
+# Two things that are easy to get wrong here, both learned the hard way:
+#
+#   1. A leftover savegame turns NEW GAME into a YES/NO confirm that defaults to
+#      NO. A blind Return therefore RESUMES, and a resumed ship never qualifies
+#      for the ALL_WEAPONS grant (Ship::give_all_weapons only fires on a bare
+#      arsenal) — so you silently capture the old save's level and weapon
+#      instead. Every session below deletes savegame.dat first.
+#   2. Shock only chains onward from a KILLING hit, so a field of big rocks
+#      stops every bolt at the first one and you get a single thin arc. The
+#      "shock" mode shreds the field with the automatic base gun first so the
+#      bolts have one-shot fragments to chain between.
 #
 # This is a FRAMING tool, not a capture-of-record tool. It runs under Xvfb with
 # software GL, which is fine for finding compositions and checking that a weapon
@@ -25,9 +41,10 @@
 
 set -u
 
-GEN=${1:?usage: capture_store_screenshots.sh <generation> <tag> [frames-per-weapon]}
-TAG=${2:?usage: capture_store_screenshots.sh <generation> <tag> [frames-per-weapon]}
+GEN=${1:?usage: capture_store_screenshots.sh <generation> <tag> [frames-per-weapon] [mode]}
+TAG=${2:?usage: capture_store_screenshots.sh <generation> <tag> [frames-per-weapon] [mode]}
 PER=${3:-3}
+MODE=${4:-walk}
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 OUT=$HERE/store_shots
@@ -43,10 +60,13 @@ mkdir -p "$OUT"
 # Re-exec under Xvfb at store resolution if we are not already inside one.
 if [ -z "${NEWTONIA_CAPTURE_INSIDE_XVFB:-}" ]; then
   export NEWTONIA_CAPTURE_INSIDE_XVFB=1
-  exec xvfb-run -a -s "-screen 0 1920x1080x24" "$0" "$GEN" "$TAG" "$PER"
+  exec xvfb-run -a -s "-screen 0 1920x1080x24" "$0" "$GEN" "$TAG" "$PER" "$MODE"
 fi
 
 export SDL_AUDIODRIVER=dummy
+
+# See note 1 in the header: without this the run silently resumes an old save.
+rm -f "$HOME/.local/share/cc.gfm/newtonia/savegame.dat"
 
 NEWTONIA_BETA=1 NEWTONIA_START_GENERATION="$GEN" NEWTONIA_ALL_WEAPONS=1 \
   "$GAME" > "$OUT/$TAG.log" 2>&1 &
@@ -67,6 +87,39 @@ K space;  sleep 1.0     # dismiss the generation's intro screen, if one is due
 K space;  sleep 0.8
 
 n=0
+
+if [ "$MODE" = shock ]; then
+  # Primary order is 22 gun variants, then Beam, Lance, Shock — 25 in all, with
+  # Shock armed at spawn because add_shock splices itself last. So one `q` lands
+  # on gun variant 0, and 24 more wrap back round to Shock.
+  K q; sleep 0.4
+  for i in $(seq 1 70); do                # shred the field with the auto gun
+    alive || break
+    K space
+    [ $((i % 10)) -eq 0 ] && K d
+    sleep 0.05
+  done
+  for _ in $(seq 1 24); do K q; done      # back to Shock
+  sleep 0.5
+
+  for f in $(seq 1 $((PER * 10))); do
+    alive || break
+    K space
+    sleep 0.11                            # bolt grows ~126 ms; grab it extended
+    n=$((n+1)); shot $n
+    [ $((f % 4)) -eq 0 ] && K d
+    sleep 0.10
+  done
+
+  kill $PID 2>/dev/null; wait $PID 2>/dev/null
+  rm -f "$OUT/.tmp.xwd"
+  montage "$OUT/${TAG}"_*.png -tile 6x -geometry 300x169+2+2 \
+          -background '#222' "$OUT/${TAG}_sheet.png" 2>/dev/null
+  echo "captured $n frames -> $OUT/${TAG}_*.png (contact sheet: ${TAG}_sheet.png)"
+  echo "Pick by eye from the sheet — no automatic metric reliably finds the good"
+  echo "bolts, and the ship's own blue hull outscores a thin arc on every one."
+  exit 0
+fi
 
 # Primaries: 22 gun variants plus Beam, Lance and Shock (see Ship::give_all_weapons).
 for _ in $(seq 1 26); do
