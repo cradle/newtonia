@@ -451,9 +451,14 @@ current builds on both sides.
   still read OFF while recording continued: the screen stated something
   untrue and cost a debugging session chasing a phantom. Now
   `Replay::recording_override()` is the single definition both the gate and
-  the row consult, so the row displays what WILL happen rather than what is
-  stored (the stored pref is untouched — only the display follows), and
-  game start logs `replay: NEWTONIA_REPLAY_* overrides the preference`.
+  the row consult. The row keeps showing and editing the STORED preference —
+  a control that silently ignores you is no clearer than one that lies — and
+  appends `ENV ON` / `ENV OFF` to say what is actually in force, so
+  `OFF ENV ON` reads as "you set OFF, the environment is forcing ON". Game
+  start also logs `replay: NEWTONIA_REPLAY_* overrides the preference`.
+  (No parentheses, and a smaller glyph size: the desktop value column only
+  spans VALUE_X..CURSOR_R, and `OFF (ENV ON)` overruns the closing cursor
+  mark.)
   `adb shell am force-stop org.newtonia` is what actually clears it.
 
 - **Turning recording off does not remove the CURRENT RUN row**, and should

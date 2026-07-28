@@ -128,10 +128,13 @@ uint64_t new_run_id();  // never returns 0
 // Whether an environment override is forcing recording on or off, and which
 // way: -1 none, 0 forced OFF, 1 forced ON (DISABLE wins over ENABLE). ONE
 // definition, shared by the recorder gate (GLGame::replay_start) and the
-// Options row, so the screen cannot claim something the gate will not do —
-// a row reading OFF while NEWTONIA_REPLAY_ENABLE recorded anyway cost a
-// real debugging session (field, 2026-07-28: the var rode an adb intent
-// extra and outlived every relaunch that reused the process).
+// Options row, which appends "ENV ON"/"ENV OFF" while one is active — a row
+// reading OFF while NEWTONIA_REPLAY_ENABLE recorded anyway cost a real
+// debugging session (field, 2026-07-28: the var rode an adb intent extra
+// and outlived every relaunch that reused the process). The row still
+// shows and edits the STORED preference: a control that silently ignores
+// input is no clearer than one that lies, so the marker carries the
+// warning instead of the value doing it.
 int recording_override();
 
 // Why a file's header would not load. The replays list shows these to the

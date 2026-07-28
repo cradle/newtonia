@@ -21,6 +21,7 @@
 #include <ctime>
 #include <iostream>
 #include <string>
+#include <cstring>
 
 static const float SENSITIVITY_VALUES[] = {0.5f, 0.75f, 1.0f, 1.5f, 2.0f};
 static const char* SENSITIVITY_LABELS[] = {"SLOW", "LOW", "NORMAL", "HIGH", "MAX"};
@@ -293,6 +294,7 @@ void Menu::draw() {
       const OptRow &r = opt_row(row);
 
       int num_steps, cur_idx;
+      int rec_override = -1;  // >=0 on the RECORD REPLAYS row when forced
       const char* const *lbl;
       switch (r.kind) {
         case 0: num_steps = NUM_SENSITIVITY;  cur_idx = sensitivity_index_[r.player]; lbl = SENSITIVITY_LABELS;   break;
@@ -306,9 +308,14 @@ void Menu::draw() {
           // NEWTONIA_REPLAY_ENABLE quietly recorded anyway sent us hunting a
           // phantom bug (field, 2026-07-28). The stored value is untouched —
           // only the display follows the override.
-          cur_idx = Replay::recording_override() >= 0
-                        ? Replay::recording_override()
-                        : auto_record_index_;
+          // Show the STORED setting, not the override's effective value:
+          // the row has to respond when you change it, or a control that
+          // ignores you is just a different flavour of the lie this marker
+          // exists to prevent. The "(ENV)" suffix carries the truth — an
+          // environment variable is overriding this right now, and game
+          // start logs which one and which way.
+          rec_override = Replay::recording_override();
+          cur_idx = auto_record_index_;
           break;
       }
 
@@ -319,6 +326,13 @@ void Menu::draw() {
         // clears the value column — check this pairing when adding a row.
         Typer::draw(-315, cy, r.name, 16);               // name, left-aligned
         Typer::draw_centered(205, cy, lbl[cur_idx], 18); // value
+        // Which WAY the env forces it, after the stored value: "OFF ENV ON"
+        // reads as "you set OFF, the environment is forcing ON". Smaller
+        // than the value so it clears the name column — at value size it
+        // would run into "RECORD REPLAYS".
+        if (rec_override >= 0)
+          Typer::draw(205 + (int)strlen(lbl[cur_idx]) * 18 + 14, cy,
+                      rec_override == 1 ? "ENV ON" : "ENV OFF", 11);
         continue;
       }
 
@@ -339,6 +353,12 @@ void Menu::draw() {
         }
       }
       Typer::draw(VALUE_X, y, lbl[cur_idx], 12);         // value description, right
+      // Same note. Size 8 and no parentheses because the value column only
+      // spans VALUE_X..CURSOR_R (192 units): "OFF (ENV ON)" overruns the
+      // closing cursor mark, "OFF ENV ON" clears it with room to spare.
+      if (rec_override >= 0)
+        Typer::draw(VALUE_X + (int)strlen(lbl[cur_idx]) * 24 + 8, y,
+                    rec_override == 1 ? "ENV ON" : "ENV OFF", 8);
     }
 
     // Tappable exit on both layouts — see the replays band note above.
