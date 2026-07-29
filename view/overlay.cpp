@@ -409,6 +409,15 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
     // clear of the disconnect overlay's "PRESS FIRE FOR MENU" at y=-130 —
     // a disconnect auto-pauses, so both show at once — which is what sizes
     // it: size 13 rows at -42 and -80 bottom out around -106.
+    //
+    // Ask the game whether the menu is LIVE rather than re-deriving it. The
+    // conditions had already drifted apart: this function tests the help
+    // card on the viewport's own ship, while pause_menu_active() refuses
+    // when ANY player has help open — so in split-screen, with P2's help
+    // card up and the game paused, P1's viewport drew a highlighted RESUME
+    // over a RETURN TO MENU that answered nothing. Same shape as the three
+    // replay ones. One predicate, both sides.
+    if (!glgame->pause_menu_active()) return;
     MenuSelect::draw_row(PAUSE_ROW_Y0, "RESUME", PAUSE_ROW_SZ,
                          glgame->pause_selection_ == GLGame::PAUSE_RESUME);
     MenuSelect::draw_row(PAUSE_ROW_Y1, "RETURN TO MENU", PAUSE_ROW_SZ,
