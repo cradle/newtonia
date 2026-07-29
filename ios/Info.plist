@@ -28,8 +28,14 @@
     </array>
     <key>DTPlatformName</key>
     <string>iphoneos</string>
+    <!-- All four: the app follows the device, like the Android build.
+         SDL intersects its SDL_HINT_ORIENTATIONS (ios_main.mm) with this
+         list, so both have to allow an orientation for it to happen; SDL
+         drops PortraitUpsideDown on phones itself, leaving it for iPad. -->
     <key>UISupportedInterfaceOrientations</key>
     <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationPortraitUpsideDown</string>
         <string>UIInterfaceOrientationLandscapeLeft</string>
         <string>UIInterfaceOrientationLandscapeRight</string>
     </array>

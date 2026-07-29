@@ -17,6 +17,7 @@
 #include "typer.h"
 #include "asteroid.h"
 #include "preferences.h"
+#include "view/overlay.h"
 
 #include <iostream>
 #include <cmath>
@@ -50,6 +51,61 @@ static bool          s_running       = true;
 static bool          s_reset_tick    = false;  // set on focus-gained to skip catch-up
 
 // ---- Utility ----
+
+// Display safe insets: ios_safe_area.mm reads UIKit's safeAreaInsets (a
+// Point-free TU — this file cannot import UIKit). Forwarded to the HUD so
+// the top-anchored row (LEVEL/score/weapons) clears the camera notch in
+// portrait, exactly as android_main.cpp does with DisplayCutout. Called at
+// startup and again on every SDL resize, which is what rotation delivers.
+//
+// UIKit reports insets in logical POINTS; Overlay wants physical pixels
+// (what Android hands it), and s_w/s_h are the HiDPI drawable's pixels —
+// so scale by the drawable/points ratio SDL knows.
+extern "C" void ios_safe_area_insets(float *top, float *bottom,
+                                     float *left, float *right);
+
+static void read_display_safe_insets() {
+    float top = 0.0f, bottom = 0.0f, left = 0.0f, right = 0.0f;
+    ios_safe_area_insets(&top, &bottom, &left, &right);
+
+    int pw = 0, ph = 0;
+    SDL_GetWindowSize(s_window, &pw, &ph);   // points
+    float scale = (pw > 0) ? (float)s_w / (float)pw : 1.0f;
+    top *= scale; bottom *= scale; left *= scale; right *= scale;
+
+    Overlay::set_safe_insets(top, bottom, left, right);
+    SDL_Log("Safe insets: top=%d bottom=%d left=%d right=%d",
+            (int)top, (int)bottom, (int)left, (int)right);
+}
+
+// Rotation (and any other window-size change). SDL's UIKit backend reports
+// it from -viewDidLayoutSubviews as a plain window resize, so this is the
+// ONLY notification the game gets — and s_w/s_h also feed the finger_*
+// normalized->pixel maps, so without it the viewport, text scale, and every
+// touch zone would stay in the old orientation's geometry.
+//
+// The event payload is in logical POINTS (the view's bounds), not the HiDPI
+// drawable pixels the rest of this file works in, so the new size is
+// re-queried rather than taken from data1/data2 — the one place iOS differs
+// from android_main.cpp, which has no points/pixels split.
+static void apply_window_size() {
+    if (!s_game || !s_window) return;
+
+    int w = 0, h = 0;
+    SDL_GL_GetDrawableSize(s_window, &w, &h);
+    if (w <= 0 || h <= 0 || (w == s_w && h == s_h)) return;
+
+    touch_controls_reset(s_game);   // held touches: their zones just moved
+    s_w = w;
+    s_h = h;
+    s_game->resize(s_w, s_h);
+    Typer::resize(s_w, s_h);
+    // Insets before the touch layout — the pause button clears the
+    // inset-shifted HUD row, and the insets rotate with the display (a
+    // portrait top notch becomes a landscape side one).
+    read_display_safe_insets();
+    touch_controls_resize(s_w, s_h);
+}
 
 static inline float tc_dist(float ax, float ay, float bx, float by) {
     float dx = ax - bx, dy = ay - by;
@@ -203,8 +259,22 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     // state can open the lobby (same env bridge as Android).
     ios_export_device_name();
 
-    // Lock orientation to landscape before any window is created
-    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+    // Orientation: follow the device, matching the Android build. Set
+    // before any window is created.
+    //
+    // This hint is the ONE control that matters on iOS — SDL's
+    // UIKit_GetSupportedOrientations gives a non-empty hint priority over
+    // the window flags entirely (SDL_WINDOW_RESIZABLE, which is what
+    // unlocks rotation on Android, is only consulted when the hint is
+    // absent), and then intersects the result with the app's declared
+    // orientations. So the hint and Info.plist's
+    // UISupportedInterfaceOrientations have to be widened together: either
+    // one left at landscape keeps the app pinned to landscape.
+    //
+    // PortraitUpsideDown is listed for iPad; SDL strips it on phones
+    // itself, so a call is always answered the natural way up.
+    SDL_SetHint(SDL_HINT_ORIENTATIONS,
+                "LandscapeLeft LandscapeRight Portrait PortraitUpsideDown");
 
     // Initialise SDL
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -318,6 +388,9 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     s_game = new StateManager();
     s_game->resize(s_w, s_h);
     Typer::resize(s_w, s_h);
+    // Insets before touch layout — the pause button clears the inset-shifted
+    // HUD row, so touch_controls_resize needs the notch inset already known.
+    read_display_safe_insets();
     touch_controls_resize(s_w, s_h);
 
     Uint32 last_tick = SDL_GetTicks();
@@ -393,6 +466,13 @@ extern "C" int SDL_main(int argc, char *argv[]) {
                           e.window.event == SDL_WINDOWEVENT_RESTORED) {
                     s_game->focus_gained();
                     s_reset_tick = true;
+                } else if(e.window.event == SDL_WINDOWEVENT_RESIZED ||
+                          e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+                    // Device rotation. The UIKit backend posts RESIZED,
+                    // which SDL turns into a SIZE_CHANGED as well; both are
+                    // handled because apply_window_size() no-ops on an
+                    // unchanged drawable, so the pair costs nothing.
+                    apply_window_size();
                 }
                 break;
 
