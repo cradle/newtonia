@@ -591,8 +591,18 @@ R4's field.
   DELTA records is never rotated into `recent`; that covers
   new-game-instant-quit, and a resume-then-instant-quit appends nothing, so
   the existing file — and the run it holds — is left exactly as it was).
-- Cap on file size for marathon runs (proposal: none locally; the
-  leaderboard submission path can cap/reject server-side).
+- ~~Cap on file size for marathon runs (proposal: none locally; the
+  leaderboard submission path can cap/reject server-side).~~ **RESOLVED
+  2026-07-29: none on native, 32 MB on web** (`Recorder::over_size_cap`,
+  ~2 h of play). "None locally" was right while recording was opt-in and
+  desktop-shaped, and wrong the moment the web default went ON: IndexedDB
+  is an ORIGIN quota shared with savegame.dat, preferences.ini and
+  stats.dat, and a browser under storage pressure evicts the origin as a
+  unit — so an unbounded replay can cost the player their SAVE. No replay
+  is worth that. At the cap the recorder banks what it holds, patches an
+  honest header and stops growing; the run stays playable and simply ends
+  there, the same shape as any abandoned run. Native keeps the old
+  behaviour (a real filesystem, no shared quota).
 - ~~Maybe: an "Auto-record replays" toggle on the Options screen~~
   **PARTLY DONE (2026-07-22): the preference exists, the Options row does
   not.** `Preferences::auto_record_replays` (**default OFF** — opt-in ship

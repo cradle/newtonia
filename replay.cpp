@@ -140,10 +140,12 @@ static void scan_records(const std::string &path, bool stop_at_delta,
     FILE *fp = fopen(path.c_str(), "rb");
     if (!fp) return;
     fseek(fp, 0, SEEK_END);
-    long fsize = ftell(fp);
+    // Offsets as 64-bit: `long` is 32 bits on wasm32 and Windows alike, and
+    // this walk (unlike Reader) has no file-size cap in front of it.
+    int64_t fsize = (int64_t)ftell(fp);
     if (fseek(fp, (long)h.header_size, SEEK_SET) == 0) {
         for (;;) {
-            long pos = ftell(fp);
+            int64_t pos = (int64_t)ftell(fp);
             uint32_t slot = 0, len = 0;
             uint8_t kind = 0;
             if (fread(&slot, 4, 1, fp) != 1) break;
@@ -152,7 +154,7 @@ static void scan_records(const std::string &path, bool stop_at_delta,
             if (len > MAX_RECORD_BYTES) break;
             // Only count a record whose payload is fully present — a
             // truncated final record (crash artifact) ends the walk.
-            if (pos + 9 + (long)len > fsize) break;
+            if (pos + 9 + (int64_t)len > fsize) break;
             if (fseek(fp, (long)len, SEEK_CUR) != 0) break;
             if (last_slot && (int)slot > *last_slot) *last_slot = (int)slot;
             if (kind == REC_DELTA && has_delta) {
@@ -178,6 +180,10 @@ int last_record_slot(const std::string &path) {
 
 // ── Reader ───────────────────────────────────────────────────────────────────
 
+// True while an intact record starts at pos (frame + full payload).
+static bool record_at(const std::vector<uint8_t> &data, size_t pos,
+                      uint32_t *slot, uint8_t *kind, uint32_t *len);
+
 Reader::Reader(const std::string &path) {
     if (path.empty()) return;
     FILE *fp = fopen(path.c_str(), "rb");
@@ -200,12 +206,22 @@ Reader::Reader(const std::string &path) {
         return;
     }
     pos_ = header_.header_size;
-    // Timeline length from the records, not the (possibly stale) header.
-    last_slot_ = last_record_slot(path);
+    // Timeline length from the records, not the (possibly stale) header —
+    // walked over the buffer we just read, NOT via last_record_slot(path),
+    // which reopens the file and reads every byte a second time. On a
+    // 20 MB replay that was 40 MB of I/O and two full passes to open a
+    // playback.
+    last_slot_ = -1;
+    for (size_t p = pos_;;) {
+        uint32_t slot = 0, len = 0;
+        uint8_t kind = 0;
+        if (!record_at(data_, p, &slot, &kind, &len)) break;
+        if ((int)slot > last_slot_) last_slot_ = (int)slot;
+        p += 9 + len;
+    }
     ok_ = true;
 }
 
-// True while an intact record starts at pos_ (frame + full payload).
 static bool record_at(const std::vector<uint8_t> &data, size_t pos,
                       uint32_t *slot, uint8_t *kind, uint32_t *len) {
     if (pos + 9 > data.size()) return false;
@@ -300,7 +316,13 @@ static void rotate_to_recent(const std::string &from) {
         return;
     }
     maybe_promote_best(from, h);
-    std::remove(recent_path().c_str());
+    // Never destroy the old recent until its replacement is in place. The
+    // remove used to come FIRST, to clear the way for the rename — so a
+    // rename that failed AND a copy that failed left the player with
+    // neither run: the previous recent deleted and the new one still
+    // sitting in current. rename() overwrites an existing destination on
+    // POSIX and Windows alike, and the copy fallback opens the destination
+    // with "wb", so neither needs the clearing.
     if (std::rename(from.c_str(), recent_path().c_str()) != 0) {
         // Cross-volume or locked-file fallback: copy then delete.
         if (copy_file(from, recent_path())) std::remove(from.c_str());
@@ -379,6 +401,20 @@ Recorder::Recorder(uint64_t run_id, uint8_t player_count, bool resumed,
 void Recorder::append_record(uint32_t slot, uint8_t kind, const uint8_t *data,
                              size_t len) {
     if (!ok_) return;
+    // The reader refuses any record longer than MAX_RECORD_BYTES and stops
+    // the walk there, so writing one would silently truncate the recording
+    // from this point on — a file that looks like an ordinary crash
+    // artifact while the run continued for another ten minutes. Nothing
+    // approaches 8 MB today (a generation-48 keyframe is tens of KB), which
+    // is exactly why the writer must say so if it ever does.
+    if (len > MAX_RECORD_BYTES) {
+        SDL_Log("replay: recording stopped (record of %u bytes exceeds the "
+                "%u-byte limit the reader accepts)",
+                (unsigned)len, (unsigned)MAX_RECORD_BYTES);
+        chunk_.clear();
+        ok_ = false;
+        return;
+    }
     uint32_t l = (uint32_t)len;
     const uint8_t *sp = (const uint8_t *)&slot;
     const uint8_t *lp = (const uint8_t *)&l;
@@ -399,9 +435,17 @@ void Recorder::note_predawn_drop() {
 }
 
 void Recorder::record_keyframe(const std::vector<uint8_t> &payload) {
-    if (!have_keyframe_ && predawn_drops_ > 0)
+    if (have_keyframe_ && over_size_cap()) return;  // never drop the FIRST one
+    if (!have_keyframe_ && predawn_drops_ > 0) {
         SDL_Log("replay: opening keyframe written (%d record(s) held out)",
                 predawn_drops_);
+        // Per-seam, not per-session: await_keyframe can re-open the window
+        // on a client rejoin, and a cumulative total there reported every
+        // record the session had EVER held rather than the ones this seam
+        // did (5 where 2 were held, in the very case the line exists to
+        // explain).
+        predawn_drops_ = 0;
+    }
     have_keyframe_ = true;  // the file now has its baseline
     last_slot_++;
     append_record((uint32_t)last_slot_, REC_KEYFRAME,
@@ -410,6 +454,7 @@ void Recorder::record_keyframe(const std::vector<uint8_t> &payload) {
 
 void Recorder::record_delta(const std::vector<uint8_t> &payload) {
     if (!have_keyframe_) return note_predawn_drop();
+    if (over_size_cap()) return;
     last_slot_++;
     append_record((uint32_t)last_slot_, REC_DELTA,
                   payload.empty() ? NULL : &payload[0], payload.size());
@@ -456,6 +501,7 @@ void Recorder::record_delta(const std::vector<uint8_t> &payload) {
 
 void Recorder::record_event(uint8_t code, uint32_t arg) {
     if (!have_keyframe_) return note_predawn_drop();
+    if (over_size_cap()) return;
     uint8_t payload[5];
     payload[0] = code;
     memcpy(payload + 1, &arg, 4);
@@ -466,6 +512,7 @@ void Recorder::record_event(uint8_t code, uint32_t arg) {
 void Recorder::record_effect(uint8_t subtype, uint8_t player_idx,
                              const std::vector<uint8_t> &body) {
     if (!have_keyframe_) return note_predawn_drop();
+    if (over_size_cap()) return;
     std::vector<uint8_t> payload;
     payload.reserve(2 + body.size());
     payload.push_back(subtype);
@@ -475,8 +522,10 @@ void Recorder::record_effect(uint8_t subtype, uint8_t player_idx,
                   payload.empty() ? NULL : &payload[0], payload.size());
 }
 
-void Recorder::write_chunk() {
-    if (chunk_.empty()) return;
+// True when bytes reached the file (the caller owns the web sync, so a
+// flush syncs once for the chunk AND the header patch behind it).
+bool Recorder::write_chunk() {
+    if (chunk_.empty()) return false;
     FILE *fp = fopen(path_.c_str(), "ab");
     if (!fp) {
         // Keep the chunk for the next checkpoint — a transient failure
@@ -492,16 +541,16 @@ void Recorder::write_chunk() {
             chunk_.clear();
             ok_ = false;
         }
-        return;
+        return false;
     }
     failed_writes_ = 0;
     // A short write leaves a truncated final record; the reader detects and
     // drops it (self-delimiting framing), so no cleanup is attempted here.
     fwrite(&chunk_[0], 1, chunk_.size(), fp);
     fclose(fp);
-    file_bytes_ += chunk_.size();   // sizes the web sync interval
+    file_bytes_ += chunk_.size();   // sizes the web sync interval and the cap
     chunk_.clear();
-    web_sync();
+    return true;
 }
 
 int recording_override() {
@@ -510,12 +559,50 @@ int recording_override() {
     return -1;
 }
 
+// Stop growing a recording that has outrun its storage, keeping everything
+// recorded so far. Unbounded growth was an accepted limitation while
+// recording was opt-in and desktop-shaped (REPLAY.md: "cap on file size for
+// marathon runs — none locally"); default-ON on the web changes the stakes,
+// because IndexedDB is an ORIGIN quota shared with savegame.dat,
+// preferences.ini and stats.dat, and a browser under storage pressure
+// evicts the origin as a unit. An unbounded replay can therefore cost the
+// player their save, which no replay is worth. Native platforms write to a
+// real filesystem and keep the old behaviour.
+//
+// The file stays perfectly playable — it simply ends where the cap fell,
+// which is the same shape as any abandoned run.
+bool Recorder::over_size_cap() {
+#ifdef __EMSCRIPTEN__
+    static const size_t CAP = 32u * 1024u * 1024u;  // ~2 h of play
+    if (file_bytes_ + chunk_.size() < CAP) return false;
+    if (!size_capped_) {
+        size_capped_ = true;
+        SDL_Log("replay: size cap reached (%u MB) - recording stops here, "
+                "the run so far stays playable",
+                (unsigned)(CAP / (1024u * 1024u)));
+        write_chunk();       // bank what is already in RAM
+        patch_header_tail(); // and leave an honest header behind it
+        web_sync();
+    }
+    return true;
+#else
+    return false;
+#endif
+}
+
 void Recorder::await_keyframe() { have_keyframe_ = false; }
 
 void Recorder::flush() {
     if (!ok_) return;
-    write_chunk();
-    patch_header_tail();
+    // Patch BEFORE the sync, not after. write_chunk schedules FS.syncfs and
+    // the patch then mutates the same file; that only ever worked because
+    // syncfs does its reading on a later turn of the event loop — an
+    // ordering nothing stated or enforced. Doing the writes first and
+    // syncing once at the end needs no such assumption, and covers the
+    // empty-chunk case, where write_chunk returns before its own sync and
+    // the patched tail used to sit in MEMFS until something else synced.
+    bool wrote = write_chunk();
+    if (patch_header_tail() || wrote) web_sync();
 }
 
 // Refresh the patchable tail (score / generation / duration) on every
@@ -532,17 +619,20 @@ void Recorder::flush() {
 // FLAG_CLEAN still belongs to finalize alone: it is what marks a run
 // properly closed, and maybe_promote_best gates on it, so a crash artifact
 // stays watchable-but-not-promotable exactly as before.
-void Recorder::patch_header_tail() {
-    if (!ok_) return;
+bool Recorder::patch_header_tail() {
+    if (!ok_) return false;
     header_.duration_ms = (uint32_t)((last_slot_ + 1) * 100);
     FILE *fp = fopen(path_.c_str(), "r+b");
-    if (!fp) return;
+    if (!fp) return false;
     uint8_t buf[Header::SIZE];
     pack_header(buf, header_);
+    bool wrote = false;
     if (fseek(fp, (long)Header::PATCH_OFFSET, SEEK_SET) == 0)
-        fwrite(buf + Header::PATCH_OFFSET, 1,
-               Header::SIZE - Header::PATCH_OFFSET, fp);
+        wrote = fwrite(buf + Header::PATCH_OFFSET, 1,
+                       Header::SIZE - Header::PATCH_OFFSET, fp) ==
+                Header::SIZE - Header::PATCH_OFFSET;
     fclose(fp);
+    return wrote;
 }
 
 // The caller owns the score/generation; the recorder just banks them so
@@ -578,7 +668,10 @@ void Recorder::finalize(uint32_t score, uint32_t generation, bool cheated,
     header_.flags = (uint8_t)((cheated ? FLAG_CHEATED : 0) | FLAG_CLEAN |
                               (ended ? FLAG_ENDED : 0));
     if (player_count > header_.player_count) header_.player_count = player_count;
-    header_.final_score = score;
+    // note_progress banks the running max; the caller's figure is the same
+    // by construction today, but the bank exists because a caller's value
+    // can be stale, so keep the higher of the two rather than assuming.
+    if (score > header_.final_score) header_.final_score = score;
     header_.generation = generation;
     // Timeline length = slot count * the 10 Hz cadence: pure play time
     // (pauses emitted no slots), continuous across resumes.

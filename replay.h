@@ -304,10 +304,13 @@ public:
 
 private:
     void note_predawn_drop();  // a record offered before the opening keyframe
-    void patch_header_tail();  // rewrite score/generation/duration in place
+    bool patch_header_tail();  // rewrite score/generation/duration; true if it wrote
+    // True once the recording has hit its storage cap (web only) — see the
+    // definition. Banks what is in RAM the first time it trips.
+    bool over_size_cap();
     void append_record(uint32_t slot, uint8_t kind, const uint8_t *data,
                        size_t len);
-    void write_chunk();  // append the RAM chunk to the file (no ok_ gate)
+    bool write_chunk();  // append the RAM chunk (no ok_ gate); true if it wrote
     void retire();       // truly-over run: rotate (offline) / best check (online)
 
     // Consecutive failed chunk appends before the recording declares
@@ -344,6 +347,7 @@ private:
     // re-stores the whole file every sync, so the cost is the file, not the
     // chunk (see record_delta).
     size_t file_bytes_ = 0;
+    bool size_capped_ = false;  // cap tripped: recorded, not growing
 };
 
 }  // namespace Replay
