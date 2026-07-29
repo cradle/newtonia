@@ -1,3 +1,4 @@
+#include "web_fs.h"
 #include "preferences.h"
 #include <SDL.h>
 #include <cstdio>
@@ -354,13 +355,6 @@ void save_preferences() {
 
     fclose(f);
 
-#ifdef __EMSCRIPTEN__
-    // Flush the in-memory filesystem to IndexedDB so preferences survive page
-    // refreshes.
-    EM_ASM(
-        FS.syncfs(false, function(err) {
-            if (err) console.error('[newtonia] IDBFS pref save failed:', err);
-        });
-    );
-#endif
+    // Persist to IndexedDB so preferences survive a page refresh.
+    web_fs_sync("preferences");
 }

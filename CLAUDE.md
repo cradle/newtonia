@@ -64,7 +64,14 @@ shows when piped from a shell (e.g. the `NEWTONIA_NET_SELFTEST=1` gate).
 libdatachannel + vendored archives copied into `netplay-libs/lib/*.a`, all
 linked in one `--start-group` with msys2's static OpenSSL. `%zu` in
 `SDL_Log` formats warns (and misprints) under MinGW — cast to `unsigned`
-and use `%u`.
+and use `%u`. **Do not name a local `near` or `far`**: the Windows headers
+still define those 16-bit segment qualifiers as macros, so the code
+miscompiles with an error that names neither the variable nor the real
+cause (a `std::vector` called `near` surfaced as "no matching function for
+call to `unordered_map::find(<lambda()>)`"). Bitten twice — once in
+`glgame.cpp`'s spawn-distance check, once in the elastic-collision grid
+pass. Neither the desktop syntax check nor a Linux build catches it; only
+windows.yml does.
 
 #### Syntax-check without a full build
 The pre-commit hook in `.claude/settings.json` runs this automatically on staged files:
@@ -526,6 +533,23 @@ Every change lands through a pull request. Concretely:
   that is solely your own in-flight work, and prefer `--force-with-lease`.
 
 ## Scheduled check-ins (Routines / `send_later`)
+
+**Watch a PR until it is GREEN, then stop.** The default end condition for PR
+babysitting is *CI green with nothing unanswered* — not "merged or closed".
+Once every check on the head commit has passed (skipped counts as passed) and
+no review comment is waiting on a reply, the watch is done: say so in one line,
+`unsubscribe_pr_activity`, and arm no further check-ins. Waiting on a human to
+review or merge is **not** a reason to keep polling — a PR sitting green for
+hours produces one identical wake-up after another, each one re-sending the
+whole conversation for no new information.
+
+Keep watching past green **only when the human explicitly asks for it** —
+"watch it until it merges", "merge it when green" (merge authority implies
+waiting for the merge), "tell me when it lands". Absent that, green is the
+finish line. This overrides any general PR-babysitting guidance that says a
+subscription ends only at merge or close; it does not change the
+drive-to-green posture *before* green — a failing check on our own PR is still
+ours to fix, and a new review comment still gets addressed or answered.
 
 Babysitting a PR or a deploy usually means arming a `send_later` wake-up. Two
 rules, both learned the expensive way (2026-07-25: **53 identical

@@ -85,10 +85,23 @@ sleep 2;  shot "$W" play-t2
 sleep 2;  shot "$W" play-t3
 cmp -s "$OUT/play-t1.png" "$OUT/play-t2.png" && fail "S2: t1==t2 (world frozen?)"
 cmp -s "$OUT/play-t2.png" "$OUT/play-t3.png" && fail "S2: t2==t3 (world frozen?)"
-# Pause/unpause after the motion assertions (a lost unpause key used to
-# freeze the world between screenshot pairs — flake); a genuinely stuck
-# pause is still caught: "playback finished" below never arrives.
-key "$W" p; sleep 1; key "$W" p
+# Pause must FREEZE the recorded world, not just draw a card over it. Both
+# things that advance playback — the replay clock in tick_replay_poll and the
+# ghost extrapolation — live inside tick_net_client, which for a long time
+# never consulted `running`: the pause text sat over a world still playing on
+# underneath (field: Android, 2026-07-27). Screenshotting either side of a
+# wait is the only way to see that; "playback finished" arriving still only
+# proves the unpause worked.
+key "$W" p; sleep 1
+shot "$W" play-pause1
+sleep 3
+shot "$W" play-pause2
+cmp -s "$OUT/play-pause1.png" "$OUT/play-pause2.png" \
+  || fail "S2: world still moving while paused"
+key "$W" p; sleep 2
+shot "$W" play-resumed
+cmp -s "$OUT/play-pause2.png" "$OUT/play-resumed.png" \
+  && fail "S2: unpause did not resume playback"
 wait_log play1 "replay: playback finished" $(( DUR_MS / 1000 + 15 )) \
   || fail "S2: playback never finished"
 alive $P play1

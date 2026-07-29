@@ -35,7 +35,10 @@ def main():
     if magic != MAGIC:
         print("bad magic", file=sys.stderr)
         return 1
-    if not (1 <= fmt <= 1) or not (HEADER_SIZE <= hsize <= 4096):
+    # Track Replay::Header::MIN_FORMAT_VERSION..FORMAT_VERSION. v2 added the
+    # FX_BULLET effect subtype; the header layout is unchanged, so both
+    # versions parse identically here.
+    if not (1 <= fmt <= 2) or not (HEADER_SIZE <= hsize <= 4096):
         print(f"bad format/header_size: {fmt}/{hsize}", file=sys.stderr)
         return 1
     game_version = data[8:32].split(b"\0")[0].decode("ascii", "replace")

@@ -75,14 +75,25 @@ struct Preferences {
                                        // migration/downgrade seed now — the game
                                        // reads PlayerKeys::rotate_view per player
     bool friendly_fire       = true;   // players damage each other
-    // Auto-record replays (REPLAY.md). Default OFF — the feature ships
-    // opt-in until the low-end field pass confirms the recorder is free on
-    // real hardware (REPLAY.md "To revisit" / TESTING.md §7). INI-editable
-    // (`auto_record_replays=1` to opt in); NEWTONIA_REPLAY_ENABLE forces it
-    // on and NEWTONIA_REPLAY_DISABLE off, both overriding the pref. The
-    // recorder checks the result at game start (GLGame::replay_start). No
-    // Options-menu row yet — see REPLAY.md.
-    bool auto_record_replays = false;
+    // Auto-record replays (REPLAY.md). Default ON since 2026-07-28: the
+    // low-end field pass cleared the recorder on real hardware across all
+    // four axes (Moto E14 for CPU/RAM/lifecycle, Moto G05 for storage
+    // flush — TESTING.md §7), which was the condition the original
+    // record-silently design was held back on.
+    //
+    // Flipping the default alone is deliberately the WHOLE migration.
+    // save_preferences() writes every key, so anyone who has already
+    // launched the game carries an explicit `auto_record_replays=0` from
+    // the old default and keeps it; only a fresh install (no INI, or one
+    // predating the key) takes the new default. A migration marker to
+    // sweep those zeros to ON was considered and rejected — it would
+    // override exactly the people the rule is meant to leave alone.
+    //
+    // Reachable from Options ("RECORD REPLAYS", last row); NEWTONIA_REPLAY_ENABLE
+    // forces it on and NEWTONIA_REPLAY_DISABLE off, both overriding the
+    // pref. The recorder checks the result at game start
+    // (GLGame::replay_start).
+    bool auto_record_replays = true;
     int  window_width        = 800;    // last windowed resolution (desktop only)
     int  window_height       = 600;
     float star_density       = 1.0f;   // star-count multiplier; user-editable in INI

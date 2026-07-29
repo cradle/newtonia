@@ -40,7 +40,25 @@ struct TapBand {
   // Replay playback controls (REPLAY.md R3): a three-way strip stacked
   // above the exit band — SLOWER | PAUSE/RESUME | FASTER. Drawn by
   // Overlay::replay_hud, hit-tested by GLGame::touch_tap in NetReplay.
+  // Their anchors below are LANDSCAPE geometry: apply bottom_lift() at
+  // both sites (see below).
   static const TapBand replay_slower, replay_pause, replay_faster;
+
+  // Turns a landscape-tuned anchor into a bottom-anchored one. The fixed
+  // anchors above are measured against a 600 virtual half-height, which
+  // IS the landscape bottom strip; portrait stretches the half-height to
+  // 600/aspect (~1300+ on a tall phone), stranding those anchors near
+  // mid-screen where replay chrome sits on top of the action instead of
+  // under it. This is the same portrait-stretch bug GLGame::exit_band()
+  // was re-anchored for. The lift is 0 whenever the virtual height is
+  // unstretched, so landscape keeps its tuned stack byte-for-byte.
+  //
+  // Both the draw and the hit-test must apply the SAME lift or the label
+  // and its tap zone drift apart — the whole invariant this struct
+  // exists to hold. Overlay::replay_hud and GLGame::touch_tap are the
+  // two sites.
+  static float bottom_lift();
+  TapBand lifted(float dy) const;
 };
 
 #endif
