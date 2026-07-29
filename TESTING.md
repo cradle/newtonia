@@ -811,6 +811,12 @@ correct and no close-time hook can be made reliable. That result is why
 the recorder flushes on a slot interval on web (`Recorder::record_delta`)
 rather than trusting `pagehide`.
 
+**Field-confirmed on Safari private browsing (2026-07-29)** once the
+coalescer and the scaled interval shipped: no freeze through play, ESC to
+menu or level clears, and no `FS.syncfs operations in flight` warning. The
+container work sized the fix; only the browser that showed the bug can
+close it.
+
 ### Replay end-states and crash artifacts (headless drivers)
 
 Two conditions that only appear on files no CI test produces, both

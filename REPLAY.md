@@ -569,7 +569,10 @@ R4's field.
   kept 99 slots of a run that previously kept 25. The lifecycle hooks stay
   for the case the browser does grant time (tab hidden, closed later), but
   nothing close-time can be made reliable — on the web the periodic flush
-  is the guarantee.
+  is the guarantee. **Confirmed on Safari (private browsing,
+  2026-07-29)**: no freeze through play, ESC to menu and level clears, and
+  emscripten's "N FS.syncfs operations in flight at once" warning is gone
+  — the symptoms that opened this entry.
 - **Xbox certification is why the append rule is global, not an
   optimisation.** On Xbox/GDK the recorder flushes through the same
   `focus_lost()` hook the PLM suspend callback already calls
