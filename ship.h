@@ -102,6 +102,18 @@ class Ship : public CompositeObject {
     bool thrusting, reversing, boosting;
     float sound_volume_scale = 1.0f;  // 0=silent, 1=full; set by GLGame for enemy AI
 
+    // Extrapolation damping for a ship whose rotation this machine is
+    // GUESSING rather than driving: the client (and replay playback) turns
+    // a replicated ship from the held-rotation flag in the 10 Hz snapshot,
+    // so it keeps turning until the next one says stop — up to 100 ms of
+    // rotation at 286 deg/s. The reconcile then unwinds that overshoot, and
+    // a reversal at the end of every turn is far more noticeable than a
+    // small steady lag. Turning slower than real makes the per-snapshot
+    // correction point FORWARD instead, which reads as continuous motion.
+    // 1.0 (no damping) everywhere the rotation is known rather than
+    // guessed: the local pilot, and the host applying INPUT flags that
+    // arrive far faster than snapshots.
+    float net_rotation_damp = 1.0f;
     // Analog scale factors (0.0–1.0); set by joystick/controller input
     float rotation_scale;  // scales rotation_force (default 1.0)
     float thrust_analog;   // scales thrust_force   (default 1.0)

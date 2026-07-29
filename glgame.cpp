@@ -1525,6 +1525,18 @@ void net_smooth_step(Object &o, int delta) {
   o.net_pose_err = o.net_pose_err - c;
 }
 
+// How fast a replicated ship turns relative to the real one while the
+// client extrapolates between snapshots (Ship::net_rotation_damp). At 1.0
+// a turn that ends just after a snapshot overshoots by a full interval —
+// 100 ms at 286 deg/s is 29 degrees — and the reconcile visibly unwinds
+// it: "rotates a bit further, then un-rotates" at the end of every turn
+// (field, 2026-07-29). Below 1.0 the ship instead runs slightly BEHIND
+// authority, so each correction points the way it is already turning and
+// disappears into the motion. Lower = less overshoot, more lag; 0.6 keeps
+// a sustained turn tracking within a few degrees while cutting the
+// end-of-turn reversal by 40%.
+static const float NET_ROTATION_DAMP = 0.6f;
+
 // Facing twin of net_reconcile_pose, and for the same reason. restore_state
 // hard-assigns the authoritative facing every apply, while a replicated
 // ship's rotation only extrapolates when a snapshot happens to catch
@@ -5689,6 +5701,12 @@ bool GLGame::net_apply_ship_extras(Save::Stream &in, const Save::GameState &s,
       ship->rotation_direction = rot == 1   ? Ship::LEFT
                                  : rot == 2 ? Ship::RIGHT
                                             : Ship::NONE;
+      // This flag is a 10 Hz guess about a key that is still held, so turn
+      // slower than the real ship and let each snapshot's reconcile make up
+      // the difference forwards — see Ship::net_rotation_damp. Applies to
+      // replay ghosts for the same reason: the records are the same 10 Hz
+      // cadence.
+      ship->net_rotation_damp = NET_ROTATION_DAMP;
     }
     // god-mode / shield presentation on the client is a Milestone-1 cut
     // (both still function — the host simulates them; only their local

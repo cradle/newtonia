@@ -830,3 +830,36 @@ reproducible with the Xvfb pattern from §4:
   useful form — the record count stays identical, so only the summary
   moves (2026-07-29: score 0/gen 0/dur 0 → score 31/gen 2/dur 4700 across
   52 records).
+
+### Measuring replicated-ship rotation (the end-of-turn correction)
+
+A replay ghost is a client with none of the setup: its records arrive at
+the same 10 Hz cadence the wire uses, so any extrapolation artifact a
+netplay client shows is reproducible from a file, single process, no
+relay. The technique, used to size `NET_ROTATION_DAMP`:
+
+1. Record a run of DELIBERATE turn/stop cycles — hold a rotate key ~1 s,
+   then a full stop ~1 s, alternating. The artifact lives in the stop.
+2. Play it back with a temporary trace printing the ghost's drawn facing
+   (`Ship::facing` after `net_smooth_facing` — the reconcile rewinds
+   `facing` and feeds the error back in, so `facing` IS what the player
+   sees) and its `rotation_direction`, one line per 8 ms step.
+3. Analyse per-step signed deltas around each rotating→stopped edge: how
+   far the drawn facing continues in the turn's direction (lag being paid
+   back) versus how far it travels BACKWARD (the visible correction).
+
+Make the tuning constant env-overridable for the sweep and the whole
+curve comes out of one recording. Measured 2026-07-29 over six cycles:
+
+```
+damp  reversal med  reversal max  fwd med  turn rate
+ 0.4         0.0°          1.3°    14.2°   2.25 deg/step
+ 0.6         0.0°          8.5°     7.0°   2.30
+ 0.8         4.2°         15.6°     0.0°   2.36
+ 1.0        11.4°         22.7°     0.0°   2.42
+```
+
+The turn-rate column is the check that matters as much as the reversal:
+it barely moves, because the per-snapshot reconcile makes up whatever the
+damping holds back. Damping changes WHERE the correction points, not how
+fast the ship turns.
