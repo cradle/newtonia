@@ -772,11 +772,29 @@ package usually wants a newer build number than the image ships, so pass
 the binary explicitly rather than running `playwright install`:
 
 ```sh
-npm install playwright                     # in a scratch dir, not the repo
+npm install playwright --no-save           # AT THE REPO ROOT (node_modules
+                                           # is gitignored): these are ESM
+                                           # drivers, so `import 'playwright'`
+                                           # resolves from the SCRIPT's
+                                           # directory upward — installing it
+                                           # elsewhere and cd-ing there does
+                                           # not work, and NODE_PATH is
+                                           # CommonJS-only
 python3 -m http.server 8099 --bind 127.0.0.1 -d web/dist/play &
 CHROME=/opt/pw-browsers/chromium-1194/chrome-linux/chrome \
-  node test/e2e/web_replay_tabkill.mjs
+  node test/e2e/web_replay_tabkill.mjs     # tab-close durability
+CHROME=/opt/pw-browsers/chromium-1194/chrome-linux/chrome \
+  node test/e2e/web_replay_promote.mjs     # best-promotion regression
 ```
+
+`web_replay_promote.mjs` guards a bug worth remembering: `copy_file` used a
+64 KB stack buffer, and emscripten's default stack is 64 KB, so promoting a
+run to `best.nrp` aborted the module. It hid because promotion skips
+cheat-flagged runs and EVERY skip-level soak run is cheat-flagged — the
+driver therefore plays a clean run with no skips. Build with
+`EMCC_CFLAGS="-sASSERTIONS=2 -sSAFE_HEAP=1 -g2"` when chasing a trap: it
+turns `index out of bounds` at some wasm offset into
+`Aborted(stack overflow ... stack limits [0x00065da0 - 0x00075da0])`.
 
 `launchPersistentContext(profileDir)` is what makes a returning player
 testable: IDBFS lives in IndexedDB, so a fresh `newPage` on the same

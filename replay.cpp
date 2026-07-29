@@ -273,11 +273,22 @@ static bool copy_file(const std::string &from, const std::string &to) {
     if (!src) return false;
     FILE *dst = fopen(to.c_str(), "wb");
     if (!dst) { fclose(src); return false; }
-    uint8_t buf[64 * 1024];
+    // HEAP, not stack. This was `uint8_t buf[64 * 1024]` — and emscripten's
+    // default stack is 64 KB exactly, so the buffer WAS the whole stack and
+    // every call blew it: "Aborted(stack overflow ... stack limits
+    // [0x00065da0 - 0x00075da0])", a 0x10000 span. Native platforms have
+    // megabytes of stack and never noticed.
+    //
+    // It surfaced the day recording became the default, because the only
+    // caller that runs routinely is maybe_promote_best — and promotion skips
+    // cheat-flagged runs, so it takes an ordinary clean run to reach. Field
+    // reports on the itch build showed it as "index out of bounds" and
+    // "Aborted()" in the main loop, both immediately after "promoted best".
+    std::vector<uint8_t> buf(64 * 1024);
     size_t n;
     bool ok = true;
-    while ((n = fread(buf, 1, sizeof(buf), src)) > 0)
-        if (fwrite(buf, 1, n, dst) != n) { ok = false; break; }
+    while ((n = fread(&buf[0], 1, buf.size(), src)) > 0)
+        if (fwrite(&buf[0], 1, n, dst) != n) { ok = false; break; }
     ok = ok && !ferror(src);
     fclose(src);
     if (fclose(dst) != 0) ok = false;
