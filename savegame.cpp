@@ -1,3 +1,4 @@
+#include "web_fs.h"
 #include "savegame.h"
 #include <SDL.h>
 #include <cstdio>
@@ -561,13 +562,7 @@ static bool save_game_in(const char *file, const Save::GameState &s) {
 
     fclose(fp);
 
-#ifdef __EMSCRIPTEN__
-    EM_ASM(
-        FS.syncfs(false, function(err) {
-            if (err) console.error('[newtonia] IDBFS save failed:', err);
-        });
-    );
-#endif
+    web_fs_sync("savegame");
 
     return ok;
 }
@@ -598,13 +593,7 @@ static void delete_save_in(const char *file) {
     std::string path = save_path(file);
     if (path.empty()) return;
     std::remove(path.c_str());
-#ifdef __EMSCRIPTEN__
-    EM_ASM(
-        FS.syncfs(false, function(err) {
-            if (err) console.error('[newtonia] IDBFS delete failed:', err);
-        });
-    );
-#endif
+    web_fs_sync("savegame-delete");
 }
 
 bool Save::save_exists()                     { return save_exists_in(SG_FILE); }

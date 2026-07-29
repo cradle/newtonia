@@ -218,7 +218,7 @@ jobs:
         with:
           name: newtonia-ios-simulator
           path: Newtonia-iOS-Simulator.zip
-          retention-days: 30
+          retention-days: 7
 
       # Headers + static archives the xcode-parity job links against —
       # artifact hand-off instead of a shared cache so parity can never

@@ -157,6 +157,18 @@ test/e2e/weapons_net.sh # PROTO 18: lance pulses + beam clones both ways (normal
                         # both ships and replicates; on a client it is a no-op,
                         # since weapons are host-owned and a local grant would
                         # fight the snapshot restore)
+test/e2e/missile_net.sh # client-fired deploys (host launches with
+                     # NEWTONIA_ALL_WEAPONS=1 — weapons are host-owned, so its
+                     # grant stocks both ships). Two assertions, both A/B'd:
+                     # (1) NOT ONE missile vanished having flown under 200 ms —
+                     # a missile that never flew cannot have hit anything, so
+                     # that is the muzzle blast (Ship::NET_DEPLOY_GRACE; 9 of
+                     # them with the hold disabled). (2) NO launch aged out
+                     # unmade ("deploy dropped") — the final phase SIGSTOPs the
+                     # joiner so three presses pile up in X and arrive in ONE
+                     # INPUT, the shape a lost-packet stall delivers on
+                     # recovery; 12 of 18 were lost before the host queued
+                     # secondary presses like it queues primary ones.
 test/e2e/revive.sh   # co-op revive: drop gating (partner out, 10%, one at a time)
                      # + the NEWTONIA_NET_TEST_REVIVE_MS payload hook -> the
                      # fallen joiner leaves spectate and respawns, no GAME OVER
@@ -210,6 +222,13 @@ test/e2e/replay_online.sh # REPLAY.md online recording (needs the relay):
                      # play back (NEWTONIA_REPLAY_PLAY=online); and the
                      # REPLAYS menu's ONLINE RUN row starts the same
                      # playback (the 4th slot — online.nrp never rotates).
+                     # Does NOT exercise the opening-keyframe drop path
+                     # (REPLAY.md, 2026-07-27): nothing here fires inside
+                     # the host's first 100 ms, so the recorder's
+                     # "holding records until the opening keyframe" trace
+                     # never appears. Provoking that window is an open
+                     # gap — the bug it guards was found in the field, not
+                     # by this driver.
 test/e2e/replay.sh   # REPLAY.md R1 exit criteria, solo (no relay needed):
                      # abandon leaves a resumable current.nrp; CONTINUE
                      # appends to the SAME file (one run_id, seam keyframe,
@@ -424,6 +443,19 @@ capture for any "it got slow" report; it works on every platform:
 - **Desktop**: run from a terminal.
 - **Android**: `adb logcat -s SDL/APP` (filter on `perf:`).
 - **iOS**: Xcode console.
+**Worked example — the late-generation collapse (2026-07-28).** A Moto G05
+at generation 25 ran at 3-6 fps with `tick≈1070ms(max 269)` and
+`draw≈25ms`: the split named the simulation immediately, and `max` (one
+physics step) mattered more than the accumulated second. Cause was
+`elastic_asteroid_collisions` testing every asteroid pair every step —
+51,360 pairs at 321 asteroids, ~125 steps/s — to service the dozen
+reflective rocks that generation has. Grid broad-phase fixed it (see
+`Grid::query_neighbours`); the same device then reached generation 48 with
+621 asteroids at 26-45 fps and `max` down to 16-51 ms. Two lessons for the
+next report of this shape: **read `max`, not just the total** (a 10x win
+showed there most clearly), and **suspect an all-pairs scan** whenever
+`tick` grows faster than the object count.
+
 - **Web**: the browser console — on a phone, attach remote DevTools
   (Android: `chrome://inspect/#devices` on a cabled desktop Chrome →
   *inspect* the tab; iOS: Safari's Develop menu).
@@ -605,13 +637,38 @@ adb shell am start -S -n org.newtonia/.NewtoniaActivity \
 # ... same play, same capture. The fps/tick delta vs the first run = recorder cost.
 ```
 
+**No `perf:` lines is the pass, not a broken capture** — the report is gated
+on the second's frame count falling under 55 fps (`GLGame::perf_report`), so
+a fast device is silent. Two things do have to be ruled out before banking
+that silence: that recording was actually on (grep the same `SDL/APP` tag for
+`replay: recording started (run_id=…)`, or `adb shell run-as org.newtonia ls
+-l files/replays/`), and that the extras were read at all (`-S`, and a
+`NEWTONIA_START_GENERATION` that visibly lands proves the whole extras path).
+If the ON run is silent the A/B is already decided — the OFF run can at best
+also be silent, so the delta cannot exceed the threshold. Note too that
+`perf_report` restarts its window on any frame gap over 500 ms (intros, state
+handoffs, backgrounding), which is what keeps bogus `fps=0` lines out; it
+can also swallow a hitch landing exactly on a level boundary, so the
+subjective "no perceptible hitch" check still earns its place below.
+
 **Per-device focus:**
 - **E14 (durability / onPause budget):** background the app mid-run, then kill
   it from the task switcher; relaunch and confirm the replay plays back intact
   (`NEWTONIA_REPLAY_PLAY=last`, or the REPLAYS menu). Android Go suspends/kills
   most aggressively, so if the checkpoint flush fits *its* onPause window it
   fits everywhere. (This is the same guarantee the Xbox suspend-budget rule
-  needs — REPLAY.md.)
+  needs — REPLAY.md.) **Know what a killed file looks like before judging
+  it:** `finalize()` never runs, so the header keeps its initial score,
+  generation and duration and `FLAG_CLEAN` stays unset — expected, not a
+  failure, and it gates only best-promotion (`maybe_promote_best`), never
+  playback. A truncated final record is likewise a designed-for crash
+  artifact the reader's walk simply stops at. So "intact" means playable up
+  to roughly the moment of backgrounding: losing the seconds after the last
+  flush is a pass, losing the run is the failure. Play it back *before*
+  starting anything else — `NEWTONIA_REPLAY_PLAY=last` resolves to
+  `current.nrp` while its header reads, but a new game rotates that to
+  `recent.nrp` (and the zero-tick rule can delete it outright if the new
+  game records nothing).
 - **G05 (flush latency):** watch for a frame hitch landing exactly on a
   checkpoint flush — level clear, pause, focus loss — where a slow eMMC write
   would show. The bounded-append design means each flush is ~one level of
@@ -623,3 +680,222 @@ noise floor), and the E14 replay survives a switcher-kill. Green on both
 closes the REPLAY.md mobile-overhead question on real low-end hardware. The
 first field pass (2026-07-20, a mid-range Android) already came back clean;
 these two devices extend it to the low end.
+
+**E14: PASSED 2026-07-27.** Generation 13 with recording forced on — live,
+not assumed: the file was watched playing back afterwards — logged **no
+`perf:` lines at all**, i.e. it held ≥55 fps throughout. Per the note above
+that also settles the A/B on its own, so the recording-off control run was
+skipped as a formality. Durability green in the same session: force-quit
+mid-run, and the replay played back after relaunch, so the background flush
+fits Android Go's `onPause` window — the tightest one going. CPU, RAM and
+lifecycle are therefore all confirmed on the weakest current SoC.
+**G05: PASSED 2026-07-28**, closing the storage axis and with it the
+REPLAY.md mobile-overhead question. No `perf:` lines through play or death
+at generation 9 (recording confirmed on — a replay was watched back), the
+replay survived a force-quit, and repeated background/resume cycles stayed
+clean. On flush latency specifically, which is the only axis the E14's UFS
+2.2 could not reach: ~50 level boundaries marched back to back with no
+perceptible hitch, and — the case that actually matters — a normally
+played level of ~3.6 minutes (2614 records banked over 2149 slots, ~100x
+what a two-second level skip produces) cleared with no hitch at the
+boundary. Rapid skipping
+alone would NOT have proved this: it banks the smallest possible chunk, so
+it tests flush frequency rather than flush size.
+
+Two notes for anyone repeating it. A live recording reads `duration_ms=0`
+— the header's tail is patched only at a clean stop, and the reader is
+built to tolerate a header staler than the records behind it. Judge chunk
+size by `records`, but note records EXCEED slots — events and effects
+attach to the upcoming slot without advancing it, so 2614 records spanned
+2149 slots here (~1.2x). `duration_ms` after a clean stop is the honest
+play-time figure; the record count is the honest write-volume one. And
+the perf logger cannot answer this on its own: its window restarts on any
+frame gap over 500 ms, so a hitch landing exactly on a level boundary can
+fall into a discarded window — the subjective check is load-bearing here,
+not a formality.
+
+## 8. Web build in a dev container (emcc + a real browser)
+
+The web target was long the one platform a container could not build —
+`web.yml` was "the only emcc gate". It can, with two workarounds for the
+agent proxy. Worth the ten minutes whenever a change touches
+`web_main.cpp`, IDBFS persistence, or anything whose failure mode is
+browser-shaped.
+
+### Install the SDK
+
+```sh
+git clone --depth 1 https://github.com/emscripten-core/emsdk.git ~/emsdk
+cd ~/emsdk && ./emsdk install latest && ./emsdk activate latest
+source ~/emsdk/emsdk_env.sh          # every shell that runs `make web`
+```
+
+### Work around the blocked port archives
+
+`emcc` fetches SDL2/SDL2_mixer as GitHub **archive zips**, and the proxy
+403s `github.com/*/archive/*` and `codeload.github.com` alike (plain `git`
+and `raw.githubusercontent.com` are fine — that asymmetry is the whole
+trick). Clone the ports at the exact tags the SDK asks for instead:
+
+```sh
+mkdir -p ~/ports && cd ~/ports
+# tags come from upstream/emscripten/tools/ports/{sdl2,sdl2_mixer}.py
+git clone -q --depth 1 -b release-2.32.10 https://github.com/libsdl-org/SDL.git       SDL-release-2.32.10
+git clone -q --depth 1 -b release-2.8.0   https://github.com/libsdl-org/SDL_mixer.git SDL_mixer-release-2.8.0
+```
+
+Then one build with `EMCC_LOCAL_PORTS` to unpack them into the SDK cache:
+
+```sh
+export EMCC_LOCAL_PORTS="sdl2=$HOME/ports/SDL-release-2.32.10,sdl2_mixer=$HOME/ports/SDL_mixer-release-2.8.0"
+make web
+```
+
+Two snags, both in the SDK rather than this repo, both one-line fixes to
+`~/emsdk/upstream/emscripten/tools/ports/`:
+
+- `sdl2_mixer.py` has no `SUBDIR`, which `EMCC_LOCAL_PORTS` requires —
+  add `SUBDIR = 'SDL_mixer-' + TAG` next to `TAG`.
+- With `EMCC_LOCAL_PORTS` still set, the parallel compile subprocesses each
+  try to re-unpack the port and trip an `EM_CACHE_IS_LOCKED` assert. Once
+  `cache/ports/{sdl2,sdl2_mixer}/` are populated, **unset it** and make the
+  two `get()` functions skip their `ports.fetch_project(...)` call — the
+  sources are already there, and the fetch is the only thing the proxy
+  blocks. (mpg123 downloads fine; only the GitHub archives are refused.)
+
+`make web` then works normally, and stays working — the cache persists.
+
+### Drive it in a browser
+
+Chromium is pre-installed (`/opt/pw-browsers`), but the npm `playwright`
+package usually wants a newer build number than the image ships, so pass
+the binary explicitly rather than running `playwright install`:
+
+```sh
+npm install playwright --no-save           # AT THE REPO ROOT (node_modules
+                                           # is gitignored): these are ESM
+                                           # drivers, so `import 'playwright'`
+                                           # resolves from the SCRIPT's
+                                           # directory upward — installing it
+                                           # elsewhere and cd-ing there does
+                                           # not work, and NODE_PATH is
+                                           # CommonJS-only
+python3 -m http.server 8099 --bind 127.0.0.1 -d web/dist/play &
+CHROME=/opt/pw-browsers/chromium-1194/chrome-linux/chrome \
+  node test/e2e/web_replay_tabkill.mjs     # tab-close durability
+CHROME=/opt/pw-browsers/chromium-1194/chrome-linux/chrome \
+  node test/e2e/web_replay_promote.mjs     # best-promotion regression
+```
+
+`web_replay_promote.mjs` guards a bug worth remembering: `copy_file` used a
+64 KB stack buffer, and emscripten's default stack is 64 KB, so promoting a
+run to `best.nrp` aborted the module. It hid because promotion skips
+cheat-flagged runs and EVERY skip-level soak run is cheat-flagged — the
+driver therefore plays a clean run with no skips. Build with
+`EMCC_CFLAGS="-sASSERTIONS=2 -sSAFE_HEAP=1 -g2"` when chasing a trap: it
+turns `index out of bounds` at some wasm offset into
+`Aborted(stack overflow ... stack limits [0x00065da0 - 0x00075da0])`.
+
+`launchPersistentContext(profileDir)` is what makes a returning player
+testable: IDBFS lives in IndexedDB, so a fresh `newPage` on the same
+profile is the same save, and deleting the profile dir is a fresh install
+(the check §7's default-ON flip needs).
+
+### Reading the game's files back out
+
+IDBFS keeps one IndexedDB database named after the mount point, with an
+object store `FILE_DATA` keyed by absolute path — so a driver can pull the
+bytes out and hand them to the same checkers the native tests use:
+
+```js
+const db = await new Promise(res => {
+  const r = indexedDB.open('/libsdl/cc.gfm/newtonia'); r.onsuccess = () => res(r.result); });
+const store = db.transaction('FILE_DATA', 'readonly').objectStore('FILE_DATA');
+const v = await new Promise(res => {
+  const r = store.get('/libsdl/cc.gfm/newtonia/replays/current.nrp'); r.onsuccess = () => res(r.result); });
+// v.contents is a Uint8Array -> write it to disk -> test/e2e/replay_check.py
+```
+
+**A file's presence proves nothing about its contents** — a 64-byte
+`current.nrp` is a header with no records. Always run `replay_check.py` on
+the bytes and read `last_slot` (slots are 10 Hz, so `last_slot/10` is
+seconds of play persisted); that number is what distinguishes "saved the
+run" from "saved the level boundary".
+
+### The measurement that separates flushing from committing
+
+Web writes are two-stage — a flush writes MEMFS, `FS.syncfs` commits to
+IndexedDB on a later turn of the event loop — so "the data is missing"
+has two very different causes. Force the hook by hand and vary only the
+grace period before the close:
+
+```sh
+EXPLICIT=wait   node test/e2e/web_replay_tabkill.mjs   # 2.5 s before closing
+EXPLICIT=nowait node test/e2e/web_replay_tabkill.mjs   # close immediately
+```
+
+Same code path, so a difference is entirely commit timing. Measured
+2026-07-29: `wait` persisted 171 records (the whole 13.8 s run), `nowait`
+26 (only up to the level boundary) — which is how we know the flush is
+correct and no close-time hook can be made reliable. That result is why
+the recorder flushes on a slot interval on web (`Recorder::record_delta`)
+rather than trusting `pagehide`.
+
+**Field-confirmed on Safari private browsing (2026-07-29)** once the
+coalescer and the scaled interval shipped: no freeze through play, ESC to
+menu or level clears, and no `FS.syncfs operations in flight` warning. The
+container work sized the fix; only the browser that showed the bug can
+close it.
+
+### Replay end-states and crash artifacts (headless drivers)
+
+Two conditions that only appear on files no CI test produces, both
+reproducible with the Xvfb pattern from §4:
+
+- **REPLAY ENDED (records ran out, no game over).** Record a run and
+  ABANDON it (Esc to menu) so the file ends without a death, then play it
+  back (`NEWTONIA_REPLAY_PLAY=current`) and outrun the recording. The card
+  draws RETURN TO MENU; ENTER must return to the menu, not only ESC. Verify
+  by screenshot — the process stays alive either way, so liveness proves
+  nothing here.
+- **Crash artifact header.** Play across a level boundary (a flush), then
+  `kill -9` the process, and read the header with `replay_check.py`. A
+  killed run never finalizes, so the check is whether the header still
+  DESCRIBES the run: `score`/`generation`/`duration_ms` non-zero,
+  `clean=0`. Comparing the same driver before and after a change is the
+  useful form — the record count stays identical, so only the summary
+  moves (2026-07-29: score 0/gen 0/dur 0 → score 31/gen 2/dur 4700 across
+  52 records).
+
+### Measuring replicated-ship rotation (the end-of-turn correction)
+
+A replay ghost is a client with none of the setup: its records arrive at
+the same 10 Hz cadence the wire uses, so any extrapolation artifact a
+netplay client shows is reproducible from a file, single process, no
+relay. The technique, used to size `NET_ROTATION_DAMP`:
+
+1. Record a run of DELIBERATE turn/stop cycles — hold a rotate key ~1 s,
+   then a full stop ~1 s, alternating. The artifact lives in the stop.
+2. Play it back with a temporary trace printing the ghost's drawn facing
+   (`Ship::facing` after `net_smooth_facing` — the reconcile rewinds
+   `facing` and feeds the error back in, so `facing` IS what the player
+   sees) and its `rotation_direction`, one line per 8 ms step.
+3. Analyse per-step signed deltas around each rotating→stopped edge: how
+   far the drawn facing continues in the turn's direction (lag being paid
+   back) versus how far it travels BACKWARD (the visible correction).
+
+Make the tuning constant env-overridable for the sweep and the whole
+curve comes out of one recording. Measured 2026-07-29 over six cycles:
+
+```
+damp  reversal med  reversal max  fwd med  turn rate
+ 0.4         0.0°          1.3°    14.2°   2.25 deg/step
+ 0.6         0.0°          8.5°     7.0°   2.30
+ 0.8         4.2°         15.6°     0.0°   2.36
+ 1.0        11.4°         22.7°     0.0°   2.42
+```
+
+The turn-rate column is the check that matters as much as the reversal:
+it barely moves, because the per-snapshot reconcile makes up whatever the
+damping holds back. Damping changes WHERE the correction points, not how
+fast the ship turns.

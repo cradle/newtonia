@@ -15,7 +15,20 @@ if(ANDROID)
 endif()
 
 # Collect all game source files (everything except the desktop GLUT main).
-file(GLOB_RECURSE GAME_SOURCES
+#
+# CONFIGURE_DEPENDS makes the build re-check these patterns on every build
+# instead of only at configure time. Without it the source list is frozen
+# into the CMake cache the first time a build directory is configured, so a
+# NEWLY ADDED .cpp is silently left out of an EXISTING local build tree and
+# only shows up as an undefined symbol at link — e.g.
+# `undefined symbol: MenuSelect::draw_row(...)` after menu_select.cpp landed,
+# against an android/app/.cxx cache configured before it existed. CI never
+# hits this (a fresh checkout configures from scratch every run), so it is
+# purely a local-rebuild trap, and `gradlew clean` does NOT clear it —
+# android/app/.cxx survives, which is where the stale list lives.
+# Costs a directory stat per build; supported since CMake 3.12, well under
+# the 3.18 minimum above and the 3.22.1 android/app/build.gradle pins.
+file(GLOB_RECURSE GAME_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/view/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/weapon/*.cpp"

@@ -191,6 +191,9 @@ private:
   // is excluded: it draws no cursor anywhere and already has both actions
   // (the pause button resumes, the RETURN TO MENU band leaves).
   bool pause_menu_active() const;
+  // A replay offers RETURN TO MENU from two different cards — see the
+  // definition in glgame.cpp.
+  bool replay_exit_offered() const;
   // RESUME / RETURN TO MENU ladder in logical keys, shared by the keyboard
   // and pad paths — the Menu::nav_input pattern, one decision path per
   // screen.
@@ -262,6 +265,8 @@ private:
   // per-step mirror — unmirrored, every bounce was a surprise the
   // authoritative records corrected 100 ms later (client-side jitter).
   void elastic_asteroid_collisions(bool announce);
+  // One elastic pair's separation + impulse + ting (see the .cpp).
+  void collide_elastic_pair(Asteroid *a, Asteroid *b, bool announce);
   // Quantum observation flips (4x speed), shared by the host sim and the
   // net client's per-step mirror — see the definition for why.
   void update_quantum_observation();

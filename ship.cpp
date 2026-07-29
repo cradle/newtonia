@@ -35,6 +35,7 @@ std::vector<std::pair<const Ship *, std::vector<Point>>> Ship::replay_shock_flas
 std::vector<Ship::ReplayRing> Ship::replay_rings;
 std::vector<Point> Ship::replay_pews;
 std::vector<Point> Ship::replay_beam_pews;
+std::vector<Ship::ReplayShot> Ship::replay_shots;
 std::vector<std::vector<Point>> Ship::net_shock_reports;
 std::vector<Ship::NetBounceReport> Ship::net_bounce_reports;
 bool Ship::net_report_bounces = false;
@@ -1156,6 +1157,7 @@ void Ship::reset(bool was_killed) {
   reversing = false;
   shoot(false);
   net_queued_shot_presses = 0;  // don't fire stale presses across a respawn
+  net_queued_secondary_presses = 0;
   // On a net client reset() runs inside EVERY 10 Hz snapshot restore
   // (restore_state → respawn) — the same story as debris/lance_pulses
   // below. Clearing the projectile lists here emptied them moments before
@@ -2041,7 +2043,20 @@ void Ship::fire_secondary(bool on) {
       else if (dynamic_cast<Weapon::Nova*>(*secondary))     kind = Save::WeaponEntry::Kind::Nova;
       record_weapon_fired(kind);
     }
+    // Mark whatever this press deploys as not-yet-confirmed by the host.
+    // Only a net client's snapshot rebuild ever READS the mark (see
+    // Ship::NET_DEPLOY_GRACE); on the host, offline, and for replay ghosts
+    // it is inert, so the marking is unconditional rather than gated on a
+    // role flag nobody would remember to arm on every rejoin path.
+    size_t pre_mines = mines.size(), pre_gigas = giga_mines.size(),
+           pre_missiles = missiles.size();
     (*secondary)->shoot(on);
+    for (size_t i = pre_mines; i < mines.size(); i++)
+      mines[i].net_unconfirmed = NET_DEPLOY_GRACE;
+    for (size_t i = pre_gigas; i < giga_mines.size(); i++)
+      giga_mines[i].net_unconfirmed = NET_DEPLOY_GRACE;
+    for (size_t i = pre_missiles; i < missiles.size(); i++)
+      missiles[i].net_unconfirmed = NET_DEPLOY_GRACE;
   }
 }
 
@@ -2398,7 +2413,22 @@ void Ship::fire_bullet_from_gun() {
 }
 
 void Ship::net_report_last_bullet() {
-  if (!net_report_shots || bullets.empty()) return;
+  if (bullets.empty()) return;
+  // Replay outbox first: EVERY spawned bullet, whatever this machine's net
+  // role, so playback can clone it at the muzzle instead of waiting for the
+  // next snapshot (REPLAY.md / FX_BULLET). Unconditional and cheap — the
+  // drain clears it every tick whether or not a recording is running.
+  {
+    const Particle &nb = bullets.back();
+    ReplayShot rs;
+    rs.ship = this;
+    rs.pos = Point(nb.position.x(), nb.position.y());
+    rs.vel = nb.velocity;
+    rs.flags = (uint8_t)((nb.kills_invincible ? 1 : 0) | (nb.has_trail ? 2 : 0) |
+                         (nb.piercing ? 4 : 0));
+    replay_shots.push_back(rs);
+  }
+  if (!net_report_shots) return;
   Particle &b = bullets.back();
   b.net_id = ++net_shot_seq;
   NetShotReport r;
@@ -2416,11 +2446,11 @@ void Ship::net_report_last_bullet() {
 // client), same identity for the MSG_HIT consume.
 void Ship::net_spawn_reported_bullet(uint32_t id, const Point &pos,
                                      const Point &vel, bool kills_inv,
-                                     bool trail, bool piercing) {
+                                     bool trail, bool piercing, bool quiet) {
   // A piercing clone is a beam bolt — play the beam's own sound, not the
   // pew (the chunk is shared/cached; every play site sets volume first).
-  Mix_Chunk *snd = shoot_sound;
-  if (piercing) {
+  Mix_Chunk *snd = quiet ? NULL : shoot_sound;
+  if (piercing && !quiet) {
     static Mix_Chunk *beam_snd = Mix_LoadWAV(asset_path("audio/beam.wav").c_str());
     if (beam_snd) snd = beam_snd;
   }
@@ -2431,7 +2461,7 @@ void Ship::net_spawn_reported_bullet(uint32_t id, const Point &pos,
   // The 40 ms window is well under every gun's re-fire interval, so
   // consecutive real shots still each sound; the clones all spawn.
   uint32_t now = SDL_GetTicks();
-  if (now - net_clone_sound_ms >= 40) {
+  if (!quiet && now - net_clone_sound_ms >= 40) {
     net_clone_sound_ms = now;
     if(snd != NULL && sound_volume_scale > 0.0f) {
       Mix_VolumeChunk(snd, (int)(MIX_MAX_VOLUME * sound_volume_scale));
@@ -2518,6 +2548,30 @@ void Ship::step(float delta, const Grid &grid) {
       }
     }
 
+    // The secondary twin of the drain above, for the same reason: every
+    // secondary fires one deploy per press (none is automatic), so presses
+    // the client batched into one INPUT must arm it once EACH. Firing once
+    // for N left the client holding mines/missiles it had already spawned
+    // and decremented locally — the host made fewer, and the extra local
+    // copies expired unconfirmed (NET_DEPLOY_GRACE).
+    //
+    // fire_secondary() is the entry point, not (*secondary)->shoot(): the
+    // exhausted-weapon drop and the weapon-kind bookkeeping live there.
+    // A hold-style secondary (the shield reports is_shooting()) swallows
+    // the rest of the queue exactly as god mode does on the primary side —
+    // extra presses mean nothing while it holds, and a stuck queue would
+    // block the release-disarm in the INPUT handler.
+    if(net_queued_secondary_presses > 0) {
+      if(secondary_weapons.empty() || secondary == secondary_weapons.end()) {
+        net_queued_secondary_presses = 0;  // nothing armed: never block the release
+      } else if(!(*secondary)->is_shooting()) {
+        fire_secondary(true);              // replay one press per step
+        net_queued_secondary_presses--;
+      } else {
+        net_queued_secondary_presses = 0;
+      }
+    }
+
     for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ) {
       (*it)->step(delta);
       Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
@@ -2595,7 +2649,8 @@ void Ship::step(float delta, const Grid &grid) {
     }
   }
 
-  facing.rotate(rotation_direction * rotation_force * rotation_scale / mass * delta);
+  facing.rotate(rotation_direction * rotation_force * rotation_scale *
+                net_rotation_damp / mass * delta);
   Point acceleration = Point(0,0);
   if(boosting) {
   	acceleration += ((facing * boost_force) / mass);

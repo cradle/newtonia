@@ -1,3 +1,4 @@
+#include "web_fs.h"
 #include "replay.h"
 #include "savegame.h"
 
@@ -51,17 +52,11 @@ std::string online_path() {
     return d.empty() ? "" : d + "online.nrp";
 }
 
-// Mirror the savegame's IDBFS behaviour: MEMFS writes only survive a web
-// reload once synced to IndexedDB, so every flush/patch/rotation syncs.
-static void web_sync() {
-#ifdef __EMSCRIPTEN__
-    EM_ASM(
-        FS.syncfs(false, function(err) {
-            if (err) console.error('[newtonia] replay sync failed:', err);
-        });
-    );
-#endif
-}
+// MEMFS writes only survive a web reload once synced to IndexedDB, so every
+// flush/patch/rotation syncs. Goes through the shared coalescer: a rotation
+// renames and deletes files while the flush that preceded it may still be
+// mid-sync, which used to fail that sync outright (web_fs.h).
+static void web_sync() { web_fs_sync("replay"); }
 
 // ── Header pack/unpack ───────────────────────────────────────────────────────
 // Fixed 64-byte layout (see replay.h). Packed by hand so the patchable tail
@@ -145,10 +140,12 @@ static void scan_records(const std::string &path, bool stop_at_delta,
     FILE *fp = fopen(path.c_str(), "rb");
     if (!fp) return;
     fseek(fp, 0, SEEK_END);
-    long fsize = ftell(fp);
+    // Offsets as 64-bit: `long` is 32 bits on wasm32 and Windows alike, and
+    // this walk (unlike Reader) has no file-size cap in front of it.
+    int64_t fsize = (int64_t)ftell(fp);
     if (fseek(fp, (long)h.header_size, SEEK_SET) == 0) {
         for (;;) {
-            long pos = ftell(fp);
+            int64_t pos = (int64_t)ftell(fp);
             uint32_t slot = 0, len = 0;
             uint8_t kind = 0;
             if (fread(&slot, 4, 1, fp) != 1) break;
@@ -157,7 +154,7 @@ static void scan_records(const std::string &path, bool stop_at_delta,
             if (len > MAX_RECORD_BYTES) break;
             // Only count a record whose payload is fully present — a
             // truncated final record (crash artifact) ends the walk.
-            if (pos + 9 + (long)len > fsize) break;
+            if (pos + 9 + (int64_t)len > fsize) break;
             if (fseek(fp, (long)len, SEEK_CUR) != 0) break;
             if (last_slot && (int)slot > *last_slot) *last_slot = (int)slot;
             if (kind == REC_DELTA && has_delta) {
@@ -183,6 +180,10 @@ int last_record_slot(const std::string &path) {
 
 // ── Reader ───────────────────────────────────────────────────────────────────
 
+// True while an intact record starts at pos (frame + full payload).
+static bool record_at(const std::vector<uint8_t> &data, size_t pos,
+                      uint32_t *slot, uint8_t *kind, uint32_t *len);
+
 Reader::Reader(const std::string &path) {
     if (path.empty()) return;
     FILE *fp = fopen(path.c_str(), "rb");
@@ -205,12 +206,22 @@ Reader::Reader(const std::string &path) {
         return;
     }
     pos_ = header_.header_size;
-    // Timeline length from the records, not the (possibly stale) header.
-    last_slot_ = last_record_slot(path);
+    // Timeline length from the records, not the (possibly stale) header —
+    // walked over the buffer we just read, NOT via last_record_slot(path),
+    // which reopens the file and reads every byte a second time. On a
+    // 20 MB replay that was 40 MB of I/O and two full passes to open a
+    // playback.
+    last_slot_ = -1;
+    for (size_t p = pos_;;) {
+        uint32_t slot = 0, len = 0;
+        uint8_t kind = 0;
+        if (!record_at(data_, p, &slot, &kind, &len)) break;
+        if ((int)slot > last_slot_) last_slot_ = (int)slot;
+        p += 9 + len;
+    }
     ok_ = true;
 }
 
-// True while an intact record starts at pos_ (frame + full payload).
 static bool record_at(const std::vector<uint8_t> &data, size_t pos,
                       uint32_t *slot, uint8_t *kind, uint32_t *len) {
     if (pos + 9 > data.size()) return false;
@@ -262,11 +273,22 @@ static bool copy_file(const std::string &from, const std::string &to) {
     if (!src) return false;
     FILE *dst = fopen(to.c_str(), "wb");
     if (!dst) { fclose(src); return false; }
-    uint8_t buf[64 * 1024];
+    // HEAP, not stack. This was `uint8_t buf[64 * 1024]` — and emscripten's
+    // default stack is 64 KB exactly, so the buffer WAS the whole stack and
+    // every call blew it: "Aborted(stack overflow ... stack limits
+    // [0x00065da0 - 0x00075da0])", a 0x10000 span. Native platforms have
+    // megabytes of stack and never noticed.
+    //
+    // It surfaced the day recording became the default, because the only
+    // caller that runs routinely is maybe_promote_best — and promotion skips
+    // cheat-flagged runs, so it takes an ordinary clean run to reach. Field
+    // reports on the itch build showed it as "index out of bounds" and
+    // "Aborted()" in the main loop, both immediately after "promoted best".
+    std::vector<uint8_t> buf(64 * 1024);
     size_t n;
     bool ok = true;
-    while ((n = fread(buf, 1, sizeof(buf), src)) > 0)
-        if (fwrite(buf, 1, n, dst) != n) { ok = false; break; }
+    while ((n = fread(&buf[0], 1, buf.size(), src)) > 0)
+        if (fwrite(&buf[0], 1, n, dst) != n) { ok = false; break; }
     ok = ok && !ferror(src);
     fclose(src);
     if (fclose(dst) != 0) ok = false;
@@ -305,7 +327,13 @@ static void rotate_to_recent(const std::string &from) {
         return;
     }
     maybe_promote_best(from, h);
-    std::remove(recent_path().c_str());
+    // Never destroy the old recent until its replacement is in place. The
+    // remove used to come FIRST, to clear the way for the rename — so a
+    // rename that failed AND a copy that failed left the player with
+    // neither run: the previous recent deleted and the new one still
+    // sitting in current. rename() overwrites an existing destination on
+    // POSIX and Windows alike, and the copy fallback opens the destination
+    // with "wb", so neither needs the clearing.
     if (std::rename(from.c_str(), recent_path().c_str()) != 0) {
         // Cross-volume or locked-file fallback: copy then delete.
         if (copy_file(from, recent_path())) std::remove(from.c_str());
@@ -342,7 +370,7 @@ void best_check_online() {
 
 Recorder::Recorder(uint64_t run_id, uint8_t player_count, bool resumed,
                    const std::string &path)
-    : resumed_(resumed) {
+    : resumed_(resumed), have_keyframe_(resumed) {
     path_ = path;
     if (path_.empty()) return;
 
@@ -384,6 +412,20 @@ Recorder::Recorder(uint64_t run_id, uint8_t player_count, bool resumed,
 void Recorder::append_record(uint32_t slot, uint8_t kind, const uint8_t *data,
                              size_t len) {
     if (!ok_) return;
+    // The reader refuses any record longer than MAX_RECORD_BYTES and stops
+    // the walk there, so writing one would silently truncate the recording
+    // from this point on — a file that looks like an ordinary crash
+    // artifact while the run continued for another ten minutes. Nothing
+    // approaches 8 MB today (a generation-48 keyframe is tens of KB), which
+    // is exactly why the writer must say so if it ever does.
+    if (len > MAX_RECORD_BYTES) {
+        SDL_Log("replay: recording stopped (record of %u bytes exceeds the "
+                "%u-byte limit the reader accepts)",
+                (unsigned)len, (unsigned)MAX_RECORD_BYTES);
+        chunk_.clear();
+        ok_ = false;
+        return;
+    }
     uint32_t l = (uint32_t)len;
     const uint8_t *sp = (const uint8_t *)&slot;
     const uint8_t *lp = (const uint8_t *)&l;
@@ -393,20 +435,84 @@ void Recorder::append_record(uint32_t slot, uint8_t kind, const uint8_t *data,
     if (len) chunk_.insert(chunk_.end(), data, data + len);
 }
 
+// Records offered before the opening keyframe are dropped (see
+// have_keyframe_). Normal in the online host's first 100 ms, so this stays
+// quiet after the first one — but it must not be SILENT: if the keyframe
+// never arrives, every record is dropped and the session ends with an
+// empty recording, and this line is the only thing that would say why.
+void Recorder::note_predawn_drop() {
+    if (predawn_drops_++ == 0)
+        SDL_Log("replay: holding records until the opening keyframe");
+}
+
 void Recorder::record_keyframe(const std::vector<uint8_t> &payload) {
+    if (have_keyframe_ && over_size_cap()) return;  // never drop the FIRST one
+    if (!have_keyframe_ && predawn_drops_ > 0) {
+        SDL_Log("replay: opening keyframe written (%d record(s) held out)",
+                predawn_drops_);
+        // Per-seam, not per-session: await_keyframe can re-open the window
+        // on a client rejoin, and a cumulative total there reported every
+        // record the session had EVER held rather than the ones this seam
+        // did (5 where 2 were held, in the very case the line exists to
+        // explain).
+        predawn_drops_ = 0;
+    }
+    have_keyframe_ = true;  // the file now has its baseline
     last_slot_++;
     append_record((uint32_t)last_slot_, REC_KEYFRAME,
                   payload.empty() ? NULL : &payload[0], payload.size());
 }
 
 void Recorder::record_delta(const std::vector<uint8_t> &payload) {
+    if (!have_keyframe_) return note_predawn_drop();
+    if (over_size_cap()) return;
     last_slot_++;
     append_record((uint32_t)last_slot_, REC_DELTA,
                   payload.empty() ? NULL : &payload[0], payload.size());
     deltas_this_session_++;
+
+#ifdef __EMSCRIPTEN__
+    // Web only: flush on a slot interval as well as at the checkpoints.
+    //
+    // Every other platform gets its last flush in before the process dies —
+    // Android in onPause, Xbox before the suspend ack, desktop on focus
+    // loss — because the write is synchronous. The web's is not: a flush
+    // writes MEMFS and schedules FS.syncfs, and IndexedDB commits on a
+    // later turn of the event loop. A closing tab does not survive to see
+    // it. Measured in-container (headless Chromium, 2026-07-29): the
+    // pagehide hook firing and the tab closing immediately persisted 26
+    // records, while the identical run given 2.5 s before the close
+    // persisted 171 — the flush is right, the commit just never lands.
+    //
+    // So bound the loss instead of chasing the close: flush on a slot
+    // interval (10 Hz emission, so 50 slots = 5 s of play) as well as at the
+    // checkpoints. The lifecycle hooks stay for the case the browser DOES
+    // grant time (tab hidden, then closed later).
+    //
+    // The interval GROWS with the recording, because IDBFS has no partial
+    // write: every sync re-stores the WHOLE file. Measured in Chromium
+    // (2026-07-29): 0.5 MB syncs in ~5 ms, 2 MB in 77, 8 MB in 203, 20 MB in
+    // 560 — all on the main thread. A fixed 5 s interval therefore costs
+    // more and more as the run goes on, and since each in-flight sync also
+    // holds its own copy of the data, a long Safari session ended up with
+    // emscripten's own "3 FS.syncfs operations in flight at once" warning,
+    // a frozen tab and eventually a crash (field, 2026-07-29). Scaling the
+    // interval with the file keeps the IDB write rate roughly flat at about
+    // 100 KB/s: 5 s under half a MB, 25 s at 2 MB, ~85 s at 8 MB. The loss
+    // window grows with it, which is the honest trade — the alternative is
+    // a tab that stops responding, and every checkpoint still flushes.
+    // web_fs.h's coalescer is the other half: never two syncs at once.
+    int interval = 50 * (1 + (int)(file_bytes_ / (512 * 1024)));
+    if (last_slot_ - last_synced_slot_ >= interval) {
+        last_synced_slot_ = last_slot_;
+        flush();
+    }
+#endif
 }
 
 void Recorder::record_event(uint8_t code, uint32_t arg) {
+    if (!have_keyframe_) return note_predawn_drop();
+    if (over_size_cap()) return;
     uint8_t payload[5];
     payload[0] = code;
     memcpy(payload + 1, &arg, 4);
@@ -416,6 +522,8 @@ void Recorder::record_event(uint8_t code, uint32_t arg) {
 
 void Recorder::record_effect(uint8_t subtype, uint8_t player_idx,
                              const std::vector<uint8_t> &body) {
+    if (!have_keyframe_) return note_predawn_drop();
+    if (over_size_cap()) return;
     std::vector<uint8_t> payload;
     payload.reserve(2 + body.size());
     payload.push_back(subtype);
@@ -425,8 +533,10 @@ void Recorder::record_effect(uint8_t subtype, uint8_t player_idx,
                   payload.empty() ? NULL : &payload[0], payload.size());
 }
 
-void Recorder::write_chunk() {
-    if (chunk_.empty()) return;
+// True when bytes reached the file (the caller owns the web sync, so a
+// flush syncs once for the chunk AND the header patch behind it).
+bool Recorder::write_chunk() {
+    if (chunk_.empty()) return false;
     FILE *fp = fopen(path_.c_str(), "ab");
     if (!fp) {
         // Keep the chunk for the next checkpoint — a transient failure
@@ -442,20 +552,106 @@ void Recorder::write_chunk() {
             chunk_.clear();
             ok_ = false;
         }
-        return;
+        return false;
     }
     failed_writes_ = 0;
     // A short write leaves a truncated final record; the reader detects and
     // drops it (self-delimiting framing), so no cleanup is attempted here.
     fwrite(&chunk_[0], 1, chunk_.size(), fp);
     fclose(fp);
+    file_bytes_ += chunk_.size();   // sizes the web sync interval and the cap
     chunk_.clear();
-    web_sync();
+    return true;
 }
+
+int recording_override() {
+    if (SDL_getenv("NEWTONIA_REPLAY_DISABLE")) return 0;  // disable wins
+    if (SDL_getenv("NEWTONIA_REPLAY_ENABLE")) return 1;
+    return -1;
+}
+
+// Stop growing a recording that has outrun its storage, keeping everything
+// recorded so far. Unbounded growth was an accepted limitation while
+// recording was opt-in and desktop-shaped (REPLAY.md: "cap on file size for
+// marathon runs — none locally"); default-ON on the web changes the stakes,
+// because IndexedDB is an ORIGIN quota shared with savegame.dat,
+// preferences.ini and stats.dat, and a browser under storage pressure
+// evicts the origin as a unit. An unbounded replay can therefore cost the
+// player their save, which no replay is worth. Native platforms write to a
+// real filesystem and keep the old behaviour.
+//
+// The file stays perfectly playable — it simply ends where the cap fell,
+// which is the same shape as any abandoned run.
+bool Recorder::over_size_cap() {
+#ifdef __EMSCRIPTEN__
+    static const size_t CAP = 32u * 1024u * 1024u;  // ~2 h of play
+    if (file_bytes_ + chunk_.size() < CAP) return false;
+    if (!size_capped_) {
+        size_capped_ = true;
+        SDL_Log("replay: size cap reached (%u MB) - recording stops here, "
+                "the run so far stays playable",
+                (unsigned)(CAP / (1024u * 1024u)));
+        write_chunk();       // bank what is already in RAM
+        patch_header_tail(); // and leave an honest header behind it
+        web_sync();
+    }
+    return true;
+#else
+    return false;
+#endif
+}
+
+void Recorder::await_keyframe() { have_keyframe_ = false; }
 
 void Recorder::flush() {
     if (!ok_) return;
-    write_chunk();
+    // Patch BEFORE the sync, not after. write_chunk schedules FS.syncfs and
+    // the patch then mutates the same file; that only ever worked because
+    // syncfs does its reading on a later turn of the event loop — an
+    // ordering nothing stated or enforced. Doing the writes first and
+    // syncing once at the end needs no such assumption, and covers the
+    // empty-chunk case, where write_chunk returns before its own sync and
+    // the patched tail used to sit in MEMFS until something else synced.
+    bool wrote = write_chunk();
+    if (patch_header_tail() || wrote) web_sync();
+}
+
+// Refresh the patchable tail (score / generation / duration) on every
+// flush, not only at finalize.
+//
+// The header is written once at creation and patched at a clean stop, so
+// any run that never reaches finalize — a crash, a killed tab — kept the
+// creation values: score 0, generation 0, duration 0. That was invisible
+// while such files were rare and unplayable; the web's interval flush
+// makes them ordinary, and the REPLAYS list rendered a ten-level run as
+// "SCORE 0  LEVEL 1" (field, 2026-07-29). The records were always right —
+// only the summary lied.
+//
+// FLAG_CLEAN still belongs to finalize alone: it is what marks a run
+// properly closed, and maybe_promote_best gates on it, so a crash artifact
+// stays watchable-but-not-promotable exactly as before.
+bool Recorder::patch_header_tail() {
+    if (!ok_) return false;
+    header_.duration_ms = (uint32_t)((last_slot_ + 1) * 100);
+    FILE *fp = fopen(path_.c_str(), "r+b");
+    if (!fp) return false;
+    uint8_t buf[Header::SIZE];
+    pack_header(buf, header_);
+    bool wrote = false;
+    if (fseek(fp, (long)Header::PATCH_OFFSET, SEEK_SET) == 0)
+        wrote = fwrite(buf + Header::PATCH_OFFSET, 1,
+                       Header::SIZE - Header::PATCH_OFFSET, fp) ==
+                Header::SIZE - Header::PATCH_OFFSET;
+    fclose(fp);
+    return wrote;
+}
+
+// The caller owns the score/generation; the recorder just banks them so
+// the next flush can write them out (the web's interval flush has no other
+// way to learn them).
+void Recorder::note_progress(uint32_t score, uint32_t generation) {
+    if (score > header_.final_score) header_.final_score = score;
+    header_.generation = generation;
 }
 
 void Recorder::finalize(uint32_t score, uint32_t generation, bool cheated,
@@ -483,7 +679,10 @@ void Recorder::finalize(uint32_t score, uint32_t generation, bool cheated,
     header_.flags = (uint8_t)((cheated ? FLAG_CHEATED : 0) | FLAG_CLEAN |
                               (ended ? FLAG_ENDED : 0));
     if (player_count > header_.player_count) header_.player_count = player_count;
-    header_.final_score = score;
+    // note_progress banks the running max; the caller's figure is the same
+    // by construction today, but the bank exists because a caller's value
+    // can be stale, so keep the higher of the two rather than assuming.
+    if (score > header_.final_score) header_.final_score = score;
     header_.generation = generation;
     // Timeline length = slot count * the 10 Hz cadence: pure play time
     // (pauses emitted no slots), continuous across resumes.

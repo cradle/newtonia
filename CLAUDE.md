@@ -64,7 +64,14 @@ shows when piped from a shell (e.g. the `NEWTONIA_NET_SELFTEST=1` gate).
 libdatachannel + vendored archives copied into `netplay-libs/lib/*.a`, all
 linked in one `--start-group` with msys2's static OpenSSL. `%zu` in
 `SDL_Log` formats warns (and misprints) under MinGW — cast to `unsigned`
-and use `%u`.
+and use `%u`. **Do not name a local `near` or `far`**: the Windows headers
+still define those 16-bit segment qualifiers as macros, so the code
+miscompiles with an error that names neither the variable nor the real
+cause (a `std::vector` called `near` surfaced as "no matching function for
+call to `unordered_map::find(<lambda()>)`"). Bitten twice — once in
+`glgame.cpp`'s spawn-distance check, once in the elastic-collision grid
+pass. Neither the desktop syntax check nor a Linux build catches it; only
+windows.yml does.
 
 #### Syntax-check without a full build
 The pre-commit hook in `.claude/settings.json` runs this automatically on staged files:
@@ -462,7 +469,7 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 
 **Backward compatibility:** `GameState::MIN_VERSION..VERSION` all load; older or newer files are ignored. New fields are only ever **appended at the end** and read back gated on `version >= N`, so an older save stops short and the new fields take their defaults (e.g. v9 saves load with no mini-station). Loading then re-saving upgrades the file to the current `VERSION`. Keep this convention when bumping the version so existing saves survive.
 
-**Netplay reuses these structs — update the snapshot rebuild too.** Snapshots serialize through the same `Save::` types, and the restore logic exists in TWO places: the savefile-load switch in the `GLGame(save)` constructor AND the wholesale rebuild in `net_apply_state()` (what a net client applies 10x/s). Anything added to the savefile — a new `PickupType`, `WeaponEntry::Kind`, object list — must be handled in **both**, or the addition silently vanishes on net clients (a missing case is skipped, not an error: the Beam/Lance pickups arrived in client snapshots invisible for exactly this reason; the mid-game hazards merged from master round-tripped through the savegame but were invisible online until `net_apply_state` learned to rebuild them, and the Shock pickup repeated the pattern). **Pickups are now immune**: both paths share the single `make_pickup()` factory in `glgame.cpp` (no `default:` case, so a missed new `PickupType` is a `-Wswitch` warning) — add new pickup types there only. For everything else, grep for the existing enum's cases and extend every switch you find. Objects that MOVE (mini-station, station, comet/seeker hazards) also need a `net_state_sane` bound, a nearest/in-place reconcile in `net_apply_state` (a wholesale delete+recreate teleports them at the 10 Hz apply rate) and an extrapolation step in `tick_net_client` so they glide between snapshots. A world FORCE on the local ship (black-hole pull, pulsar shockwave push) must additionally be re-applied to `players->back()->ship` in `tick_net_client` — the host applies it to its copy, but the client's authoritative pose (PROTO 12) discards that every INPUT, so without the client-side mirror the effect passes straight through the pilot. The resulting collision/death still resolves host-side and replicates.
+**Netplay reuses these structs — update the snapshot rebuild too.** Snapshots serialize through the same `Save::` types, and the restore logic exists in TWO places: the savefile-load switch in the `GLGame(save)` constructor AND the wholesale rebuild in `net_apply_state()` (what a net client applies 10x/s). Anything added to the savefile — a new `PickupType`, `WeaponEntry::Kind`, object list — must be handled in **both**, or the addition silently vanishes on net clients (a missing case is skipped, not an error: the Beam/Lance pickups arrived in client snapshots invisible for exactly this reason; the mid-game hazards merged from master round-tripped through the savegame but were invisible online until `net_apply_state` learned to rebuild them, and the Shock pickup repeated the pattern). **Pickups are now immune**: both paths share the single `make_pickup()` factory in `glgame.cpp` (no `default:` case, so a missed new `PickupType` is a `-Wswitch` warning) — add new pickup types there only. For everything else, grep for the existing enum's cases and extend every switch you find. Objects that MOVE (mini-station, station, comet/seeker hazards) also need a `net_state_sane` bound, a nearest/in-place reconcile in `net_apply_state` (a wholesale delete+recreate teleports them at the 10 Hz apply rate) and an extrapolation step in `tick_net_client` so they glide between snapshots. A world FORCE on the local ship (black-hole pull, pulsar shockwave push) must additionally be re-applied to `players->back()->ship` in `tick_net_client` — the host applies it to its copy, but the client's authoritative pose (PROTO 12) discards that every INPUT, so without the client-side mirror the effect passes straight through the pilot. The resulting collision/death still resolves host-side and replicates. Conversely, anything the CLIENT deploys locally for instant feedback (mines, giga mines, missiles — spawned by `Ship::fire_secondary` while the press is still travelling) is missing from the host's set for the first apply or two, which the wholesale rebuild's vanish detection reads as a host-side detonation: each one blew up at the muzzle and then the host's echo of the SAME projectile flew off ("a double missile where one explodes instantly"). `Ship::NET_DEPLOY_GRACE` stamps every fresh deploy and `nx_hold_unconfirmed` holds an unmatched one for a few applies instead of exploding it — any new locally-predicted deploy needs the same stamp.
 
 Auto-save triggers on pause or player death if the player has lives or score remaining, and on level completion.
 
@@ -534,6 +541,23 @@ Every change lands through a pull request. Concretely:
   that is solely your own in-flight work, and prefer `--force-with-lease`.
 
 ## Scheduled check-ins (Routines / `send_later`)
+
+**Watch a PR until it is GREEN, then stop.** The default end condition for PR
+babysitting is *CI green with nothing unanswered* — not "merged or closed".
+Once every check on the head commit has passed (skipped counts as passed) and
+no review comment is waiting on a reply, the watch is done: say so in one line,
+`unsubscribe_pr_activity`, and arm no further check-ins. Waiting on a human to
+review or merge is **not** a reason to keep polling — a PR sitting green for
+hours produces one identical wake-up after another, each one re-sending the
+whole conversation for no new information.
+
+Keep watching past green **only when the human explicitly asks for it** —
+"watch it until it merges", "merge it when green" (merge authority implies
+waiting for the merge), "tell me when it lands". Absent that, green is the
+finish line. This overrides any general PR-babysitting guidance that says a
+subscription ends only at merge or close; it does not change the
+drive-to-green posture *before* green — a failing check on our own PR is still
+ours to fix, and a new review comment still gets addressed or answered.
 
 Babysitting a PR or a deploy usually means arming a `send_later` wake-up. Two
 rules, both learned the expensive way (2026-07-25: **53 identical
