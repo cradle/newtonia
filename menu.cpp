@@ -890,6 +890,16 @@ void Menu::scan_replays() {
     Replay::Header h;
     row.status = Replay::read_header_status(sources[i].path, h);
     row.ok = row.status == Replay::HEADER_OK;
+    // A readable header is not a watchable run. Playback needs a leading
+    // keyframe, so a file with no sim records — a crash, or a web tab
+    // closed before the first flush ever reached IndexedDB (the header
+    // rides there anyway, since FS.syncfs persists the whole filesystem) —
+    // declines at pick time and the row does NOTHING. It listed as a
+    // normal CURRENT RUN at score 0, level 1, dated today. Drop it on the
+    // same test rotate_to_recent already deletes it by, so the list agrees
+    // with what the file is worth. A DAMAGED/NEWER/OLDER row still shows:
+    // there the wording is the point.
+    if (row.ok && !Replay::has_delta_record(sources[i].path)) continue;
     if (row.ok) {
       row.score = h.final_score;
       row.level = h.generation + 1;  // displayed level, like everywhere else
