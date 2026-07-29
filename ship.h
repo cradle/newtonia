@@ -66,6 +66,11 @@ class Ship : public CompositeObject {
     void rotate_right(bool on = true);
     void thrust(bool on = true);
     void reverse(bool on = true);
+    // Re-level the looping thruster hum from the current thrust/rotate state
+    // and sound_volume_scale. The control calls do it on every change; GLGame
+    // also runs it per tick, because the listener distance folded into the
+    // scale keeps moving while the keys are simply held down.
+    void update_boost_volume();
     void shoot(bool on = true);
     void shoot_weapon(bool on = true);
     void fire_secondary(bool on = true);
@@ -101,7 +106,29 @@ class Ship : public CompositeObject {
     float radius_squared;
     bool thrusting, reversing, boosting;
     float sound_volume_scale = 1.0f;  // 0=silent, 1=full; set by GLGame for enemy AI
+    // "Cues about THIS ship, for whoever is flying it": the shield hum and
+    // god-mode music loops, and the respawn countdown tics. Not a volume —
+    // a question about whose ship it is. These used to test
+    // sound_volume_scale >= 1.0f, which answered it only by accident, back
+    // when the attenuation curve peaked at literally zero distance. Now that
+    // it holds full volume across the whole visible screen, anything you can
+    // see would pass that test, so the question is asked directly. GLGame
+    // owns it like the scale: the ships whose screen this is get true, the
+    // online peer and the world actors false.
+    bool sound_own_cues = true;
 
+    // Extrapolation damping for a ship whose rotation this machine is
+    // GUESSING rather than driving: the client (and replay playback) turns
+    // a replicated ship from the held-rotation flag in the 10 Hz snapshot,
+    // so it keeps turning until the next one says stop — up to 100 ms of
+    // rotation at 286 deg/s. The reconcile then unwinds that overshoot, and
+    // a reversal at the end of every turn is far more noticeable than a
+    // small steady lag. Turning slower than real makes the per-snapshot
+    // correction point FORWARD instead, which reads as continuous motion.
+    // 1.0 (no damping) everywhere the rotation is known rather than
+    // guessed: the local pilot, and the host applying INPUT flags that
+    // arrive far faster than snapshots.
+    float net_rotation_damp = 1.0f;
     // Analog scale factors (0.0–1.0); set by joystick/controller input
     float rotation_scale;  // scales rotation_force (default 1.0)
     float thrust_analog;   // scales thrust_force   (default 1.0)
@@ -110,6 +137,11 @@ class Ship : public CompositeObject {
     //TODO: make friends with gltrail (or some other way around these public)
     WrappedPoint tail() const;
     Point facing;
+    // Angular twin of Object::net_pose_err (radians): the facing correction
+    // a replicated ship owes authority, drained by net_smooth_facing so a
+    // snapshot's rotation lands as a glide instead of a snap. Zero on the
+    // local ship, whose facing is authoritative (PROTO 12).
+    float net_facing_err = 0.0f;
 
     //TODO: somehow get around this public for glstation
     // Returns whether the ship actually died (false = shield/invincible).
@@ -206,6 +238,22 @@ class Ship : public CompositeObject {
     // hum is started ONLY by explicit set_shield_hum calls (the snapshot
     // extras decide), never by respawn itself.
     static bool net_quiet_respawn;
+    // Deployed projectiles (mines, giga mines, missiles) are spawned
+    // locally the instant the trigger is pulled — the pilot gets no
+    // latency — but on a net CLIENT the host owns their lifecycle and
+    // echoes them back a round trip later, and the snapshot rebuild
+    // replaces the list wholesale (nx_read_projectiles in glgame.cpp).
+    // A just-fired one is therefore missing from the host's set for the
+    // first apply or two, which the vanish detection below read as "the
+    // host detonated it": every client-fired missile blew up at the
+    // muzzle and then the host's echo flew off — Glenn's "double missile
+    // where one explodes instantly". Ship::fire_secondary stamps each
+    // fresh deploy with this many applies of grace; the rebuild holds an
+    // unmatched one (and never explodes it) until the count runs out,
+    // by which point the echo has either adopted it or the host never
+    // fired it at all (ammo desync) and it goes quietly. 5 applies is
+    // ~500 ms at the 10 Hz apply rate — well past any playable RTT.
+    static const uint8_t NET_DEPLOY_GRACE = 5;
     // Net client: a replicated missile vanished mid-flight — the host saw
     // it hit something. Blast + explosion sound at its last position.
     void net_missile_exploded(const Point &pos, const Point &vel);
@@ -249,6 +297,12 @@ class Ship : public CompositeObject {
     // collapsing them fired once for N presses and desynced ammo. Fed only
     // by GLGame's INPUT handler; cleared on reset().
     int net_queued_shot_presses = 0;
+    // The secondary's twin of the above, same host-side INPUT plumbing. A
+    // secondary fires one deploy per press with no auto-fire, so firing
+    // once for N batched presses left the client holding mines/missiles it
+    // had already spawned and decremented locally — the host never made
+    // them, and the client's copies expired unconfirmed (NET_DEPLOY_GRACE).
+    int net_queued_secondary_presses = 0;
     uint32_t net_shot_seq = 0;  // id mint for reported shots
     // Last time a reported-clone spawn played the shot sound: a
     // multi-shot trigger pull arrives as one MSG_SHOT per barrel in the
@@ -305,6 +359,16 @@ class Ship : public CompositeObject {
     // Beam fires cue separately (beam.wav, the piercing-clone rule).
     static std::vector<Point> replay_pews;
     static std::vector<Point> replay_beam_pews;
+
+    // One entry per spawned BULLET (the pew lists above are per trigger
+    // pull, and a multi-barrel gun fires several bullets per pull), giving
+    // the recorder everything it needs to write an FX_BULLET clone record.
+    struct ReplayShot {
+      Ship *ship;      // owner; the drain resolves it to a player index
+      Point pos, vel;
+      uint8_t flags;   // 1 kills_invincible, 2 trail, 4 piercing
+    };
+    static std::vector<ReplayShot> replay_shots;
 
     // Lance ship/station hits: the pulse's ray-march only sees asteroids
     // (ships and stations live in GLGame's lists), so every firer parks
@@ -373,9 +437,15 @@ class Ship : public CompositeObject {
     // no shot sound — the real bullets arrive as MSG_SHOT reports via
     // net_spawn_reported_bullet (sound + exact Particle clone).
     bool net_remote_gun = false;
+    // quiet: spawn the clone without its gun sound. Replay playback needs
+    // this — the recording already carries a separate FX_SHOT cue (one per
+    // trigger pull, correctly attenuated against the playback camera), so
+    // letting the clone sound off too would double every shot, and a
+    // multi-barrel pull would stack one bang per barrel.
     void net_spawn_reported_bullet(uint32_t id, const Point &pos,
                                    const Point &vel, bool kills_inv,
-                                   bool trail, bool piercing = false);
+                                   bool trail, bool piercing = false,
+                                   bool quiet = false);
     // Start the looping missile-fly sound for replicated missiles (the
     // weapon starts it for locally-fired ones); the handle halts the
     // channel when the last missile holding it is destroyed.
@@ -487,7 +557,6 @@ class Ship : public CompositeObject {
     void drop_exhausted_primary();
     void record_primary_fired();  // weapons_7 kind-detect for the selected primary
 
-    void play_rotating_sound(bool on);
     void update_god_mode_music(int time_remaining);
     void stop_god_mode_music();
     Mix_Chunk *boost_sound = NULL, *tic_sound = NULL, *tic_low_sound = NULL, *click_sound = NULL;

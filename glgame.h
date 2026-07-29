@@ -150,6 +150,15 @@ public:
   float sound_volume_for_point(Point p) const;
   // Online: attenuation with the LOCAL player as the only listener.
   float net_listener_volume(Point p) const;
+  // The listener rule for anything happening at a world point, picking
+  // between the two above by mode: online only the local camera hears,
+  // split-screen every live local player does. Installed as the WorldSound
+  // listener for the life of the game, so the shared Asteroid impact
+  // chunks — which can see neither a ship nor the GLGame — attenuate too.
+  float world_volume(Point p) const;
+  // True when every player is on this screen (offline, or a replay's
+  // split-screen ghosts) and so every player is a listener.
+  bool all_players_local() const;
   bool is_point_faced_by_any_player(Point p) const;
   bool has_free_controller() const;
   // Force-release all players' held controls. Called by states that swallow
@@ -182,6 +191,9 @@ private:
   // is excluded: it draws no cursor anywhere and already has both actions
   // (the pause button resumes, the RETURN TO MENU band leaves).
   bool pause_menu_active() const;
+  // A replay offers RETURN TO MENU from two different cards — see the
+  // definition in glgame.cpp.
+  bool replay_exit_offered() const;
   // RESUME / RETURN TO MENU ladder in logical keys, shared by the keyboard
   // and pad paths — the Menu::nav_input pattern, one decision path per
   // screen.
@@ -253,6 +265,8 @@ private:
   // per-step mirror — unmirrored, every bounce was a surprise the
   // authoritative records corrected 100 ms later (client-side jitter).
   void elastic_asteroid_collisions(bool announce);
+  // One elastic pair's separation + impulse + ting (see the .cpp).
+  void collide_elastic_pair(Asteroid *a, Asteroid *b, bool announce);
   // Quantum observation flips (4x speed), shared by the host sim and the
   // net client's per-step mirror — see the definition for why.
   void update_quantum_observation();
@@ -715,6 +729,10 @@ private:
   int spectate_death_time_ = -1;
   static const int kSpectateDelayMs = 5000;
   void update_spectate();
+  // Re-level every player ship's self-played audio (thrusters included) for
+  // the current listener distances. Called once per tick from both the
+  // sim tick and the net-client tick.
+  void update_player_sound_volumes();
 
   static const int default_world_width, default_world_height;
   static const int default_num_asteroids, extra_num_asteroids;

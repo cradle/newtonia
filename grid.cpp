@@ -73,6 +73,28 @@ Object * Grid::collide(const Object &object, float proximity, bool skip_invincib
   return collided;
 }
 
+// Broad-phase neighbour gather — same cell walk as collide(), including
+// the +/-1 ring that lets row/col run out of bounds so world-wrap
+// neighbours are found. No exact test and no early-out: the caller wants
+// every candidate, not the first hit.
+void Grid::query_neighbours(const Object &object, vector<Object *> &out) const {
+  out.clear();
+  float r = object.radius;
+  int row_min = (int)floor((object.position.x() - r) / cell_size.x()) - 1;
+  int row_max = (int)floor((object.position.x() + r) / cell_size.x()) + 1;
+  int col_min = (int)floor((object.position.y() - r) / cell_size.y()) - 1;
+  int col_max = (int)floor((object.position.y() + r) / cell_size.y()) + 1;
+
+  for(int row = row_min; row <= row_max; row++) {
+    for(int col = col_min; col <= col_max; col++) {
+      const vector<Object *> &others = get(row, col);
+      for(vector<Object *>::const_iterator o = others.begin();
+          o != others.end(); ++o)
+        out.push_back(*o);
+    }
+  }
+}
+
 void Grid::update(const list<Object *> *objects) {
   for(int i = 0; i < num_rows; i++)
     for(int j = 0; j < num_cols; j++)

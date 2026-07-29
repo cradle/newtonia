@@ -12,6 +12,9 @@
 #   S6  weapon visual effects round-trip: an ALL_WEAPONS run firing the
 #       whole arsenal records REC_EFFECT records, and playback shows the
 #       lance flash, shock arc and nova ring via the net receive paths
+#   S7  a recording that ends with the shield hum on leaves the REPLAY ENDED
+#       screen SILENT (the records drive the loop; nothing turns it off once
+#       they stop) — checked against the mixer's actual output
 set -u
 if [ -z "${DISPLAY:-}" ]; then
   exec xvfb-run -a -s "-screen 0 1280x800x24" "$0" "$@"
@@ -85,10 +88,23 @@ sleep 2;  shot "$W" play-t2
 sleep 2;  shot "$W" play-t3
 cmp -s "$OUT/play-t1.png" "$OUT/play-t2.png" && fail "S2: t1==t2 (world frozen?)"
 cmp -s "$OUT/play-t2.png" "$OUT/play-t3.png" && fail "S2: t2==t3 (world frozen?)"
-# Pause/unpause after the motion assertions (a lost unpause key used to
-# freeze the world between screenshot pairs — flake); a genuinely stuck
-# pause is still caught: "playback finished" below never arrives.
-key "$W" p; sleep 1; key "$W" p
+# Pause must FREEZE the recorded world, not just draw a card over it. Both
+# things that advance playback — the replay clock in tick_replay_poll and the
+# ghost extrapolation — live inside tick_net_client, which for a long time
+# never consulted `running`: the pause text sat over a world still playing on
+# underneath (field: Android, 2026-07-27). Screenshotting either side of a
+# wait is the only way to see that; "playback finished" arriving still only
+# proves the unpause worked.
+key "$W" p; sleep 1
+shot "$W" play-pause1
+sleep 3
+shot "$W" play-pause2
+cmp -s "$OUT/play-pause1.png" "$OUT/play-pause2.png" \
+  || fail "S2: world still moving while paused"
+key "$W" p; sleep 2
+shot "$W" play-resumed
+cmp -s "$OUT/play-pause2.png" "$OUT/play-resumed.png" \
+  && fail "S2: unpause did not resume playback"
 wait_log play1 "replay: playback finished" $(( DUR_MS / 1000 + 15 )) \
   || fail "S2: playback never finished"
 alive $P play1
@@ -191,6 +207,52 @@ grep -q "lance pulse received" "$OUT/play-fx.log" || fail "S6: lance flash never
 grep -q "shock bolt received" "$OUT/play-fx.log"  || fail "S6: shock arc never played back"
 grep -q "replay ring" "$OUT/play-fx.log"          || fail "S6: nova/giga ring never played back"
 stop_hard $P
+
+echo "===== S7: the ended-replay screen is silent ====="
+# Continuous loops in playback are driven by the records (net_apply_state sets
+# the shield hum from each snapshot's invincibility). Past the last record the
+# world freezes and no snapshot ever arrives to turn one off, so a recording
+# that ENDS with the hum on used to drone forever behind the REPLAY ENDED card.
+# Land inside a hum window on purpose: the spawn countdown is 4000 ms and the
+# spawn invincibility that follows is 1500 ms, so quit at ~4.8 s and the last
+# records carry a live, invincible ship.
+use_home p5
+P=$(launch_game rec5); sleep 2; W=$(win)
+key "$W" Return; sleep 0.5; key "$W" Return   # attract -> NEW GAME
+sleep 4.8
+kill $P; wait $P 2>/dev/null                  # SIGTERM: clean quit, tail flushed
+sleep 0.5
+# Play it back with SDL writing the mixer's output to a file. Everything after
+# the "playback finished" mark must be digital silence — and the part before it
+# must NOT be, or a mixer that never opened would pass this vacuously.
+RAW="$OUT/hum.raw"
+P=$(SDL_AUDIODRIVER=disk SDL_DISKAUDIOFILE="$RAW" NEWTONIA_REPLAY_PLAY=current \
+      "$ROOT/newtonia" > "$OUT/play-hum.log" 2>&1 & echo $!)
+sleep 2
+if wait_log play-hum "playback finished" 60; then
+  MARK=$(stat -c %s "$RAW" 2>/dev/null || echo 0)
+  sleep 4                                     # ...of REPLAY ENDED screen
+  stop_hard $P
+  python3 - "$RAW" "$MARK" <<'PY' || fail "S7: hum still playing on the ended-replay screen"
+import array, sys
+data = open(sys.argv[1], 'rb').read()
+mark = int(sys.argv[2])
+def peak(b):
+    a = array.array('h'); a.frombytes(b[:len(b) // 2 * 2])
+    return max((abs(v) for v in a), default=0)
+# Skip a buffer's worth past the mark so audio already queued when the file
+# ended isn't counted against the frozen screen.
+head, tail = peak(data[:mark]), peak(data[mark + 65536:])
+print("S7: peak before=%d after=%d" % (head, tail))
+if head < 1000:
+    print("S7: no audio was written at all - disk driver unusable?")
+    sys.exit(1)
+sys.exit(1 if tail >= 64 else 0)
+PY
+else
+  fail "S7: playback never finished"
+  stop_hard $P
+fi
 
 echo
 if [ "$FAIL" = 0 ]; then echo "REPLAY-R2-OK"; else echo "REPLAY-R2-FAIL"; exit 1; fi

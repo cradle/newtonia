@@ -21,8 +21,9 @@ criteria. Nothing here is built yet.
   starts silently at every new game (kilobytes-per-second budget). The
   ORIGINAL plan had it default ON ("always record"); the shipped default is
   **OFF** (`Preferences::auto_record_replays`), a conservative posture until
-  the low-end field pass (TESTING.md §7) proves the recorder is free on real
-  hardware — then the default can flip back to ON in a one-line change. The
+  the low-end field pass (TESTING.md §7) proved the recorder is free on real
+  hardware. That pass PASSED on both devices (2026-07-28) and the default
+  flipped back to **ON**, as the original design intended. The
   "never ask" half stands regardless: enabling is a preference, not a
   per-game prompt. `NEWTONIA_REPLAY_ENABLE` / `NEWTONIA_REPLAY_DISABLE` force
   the toggle for tests and power users (enable loses to disable).
@@ -317,7 +318,14 @@ Playback gained on-screen controls: touch gets real tap targets (SLOWER |
 PAUSE/RESUME | FASTER stacked above the labeled RETURN TO MENU band, the
 TapBand one-definition rule), desktop/controller a dim hint line above the
 timeline built from the live bindings ("P PAUSE  =/- SPEED  ESC MENU" /
-"START PAUSE  B MENU"). Rewind stays out per the v1 decision, but the
+"START PAUSE  B MENU"). The whole touch stack — watermark, timeline, the
+three transport bands and the exit band — is bottom-anchored through
+`TapBand::bottom_lift()` (2026-07-27): its anchors are landscape geometry
+measured against a 600 virtual half-height, and portrait stretches that to
+600/aspect, which stranded the entire stack mid-screen directly under the
+ship (field: Moto E14 portrait). Same portrait-stretch bug, and the same
+fix, as `GLGame::exit_band()`; the lift is 0 in landscape, so that layout
+is untouched. Rewind stays out per the v1 decision, but the
 format's keyframe seek makes a "jump back 10 s" control a bounded add-on
 (restart the reader, apply silently to the target slot) if wanted later.
 Menu row REPLAYS (hidden while no `.nrp` exists) → list screen: CURRENT RUN
@@ -360,6 +368,118 @@ rejoin ("replay: resuming recording"); clean abandons patch both headers;
 both files play back split-screen with the joiner's timeline shorter by
 exactly the compressed disconnect gap.
 
+**Opening-keyframe bug + field pass (2026-07-27).** An online session on
+Android recorded 317 KB and would not play: the reader rejects a file
+whose first record is not a keyframe, and that one opened with an EVENT.
+Cause was ordering, host-side only — events and effects record the moment
+they happen, but the host's opening keyframe rides its 10 Hz send tee and
+`net_host_send_snapshot` returns early until `net_snapshot_timer_` reaches
+100 ms, so anything fired inside that window landed first and cost the
+session its whole recording. Offline never hit it (little fires in the
+first 100 ms); the client was never susceptible, since it self-builds its
+opening keyframe synchronously in `replay_start`. Fixed by making it an
+invariant of `Replay::Recorder` rather than something two call sites must
+arrange: records offered before the opening keyframe are dropped (a
+resumed file already has one, so it starts satisfied), which also avoids
+the second `net_build_keyframe_payload` call that would have corrupted the
+shared delta baseline. The drop is traced once per recording — if a
+keyframe never arrives, EVERY record is dropped and the session ends
+silently empty, which is worse than the failure it replaces, and that line
+is the only thing that would say why.
+
+Verification status, deliberately split:
+- **Host: field-verified** on two Android devices (2026-07-27) — recorded
+  a session, replay played back. This is the path that was broken.
+- **Client: rejoin-resume field-verified** on Android (2026-07-27) — a
+  rejoin logged "replay: resuming recording", so the `run_id` seam rode
+  the snapshots and the recorder APPENDED to the leftover instead of
+  truncating it. That was the mobile-specific risk (keyframe ordering
+  never applied here — the client self-builds its opening keyframe
+  synchronously). Still unconfirmed on device: that the resumed file plays
+  back end to end. `replay_online.sh` covers that headlessly (479 records,
+  49 keyframes, `first_kind=keyframes`, plays in S4, lists and plays from
+  the menu in S5).
+**Post-rejoin drift in CLIENT recordings — fixed 2026-07-27.** Watching a
+client recording that contained a rejoin, asteroids slid into a new
+position roughly once a second for the rest of the file. Measured on the
+field recording: ~2 corrections/s at ~10 units before the seam, **13-20/s
+at 50-70 units for the whole 100 s after it**, zero snaps — every one
+under `net_reconcile_pose`'s snap threshold, so `net_smooth_step` glided
+them, which is what made it read as a slide rather than a jump.
+
+Cause: `replay_start` substituted an opening keyframe built from the
+CLIENT's own replica, because the bootstrap keyframe went to the lobby
+before the game existed and was never recorded. But the client records the
+host's keyframes and deltas VERBATIM, so every delta is encoded against a
+HOST keyframe. A replica-derived stand-in is close but not equal, and the
+gap never closes: objects a delta does not mention keep the error until
+the next full host keyframe re-seeds it, one second later, forever. Fixed
+by waiting for a real host keyframe instead (`Recorder::await_keyframe`,
+re-armed explicitly on resume — a resumed recorder starts satisfied by the
+LEFTOVER's keyframe, which belongs to the previous session and is just as
+wrong a baseline). Field-confirmed: near-silent afterwards apart from the
+one-off snap per rejoin, which is correct — the world genuinely moved on
+while the client was away.
+
+Ruled out by measurement along the way, recorded so nobody re-derives them:
+- **Clock drift**: `replay_clock_ms_` vs stepped world time held at -4..-8
+  ms for a whole file, identical either side of the seam.
+- **World content**: object count flat at 16 across the onset — nothing
+  spawned, and the generation rebuild was 8 s earlier.
+- **Ordinary collision divergence** (the 30-100 unit deviations
+  `net_reconcile_pose`'s comment calls routine): a no-rejoin CONTROL
+  session on the same world and generation logged **zero** corrections
+  over 72 s. Whatever this was, it was not the asteroid field being
+  unpredictable.
+- The error/speed ratio held at **0.33** across 438 samples on moving
+  objects (1 of 438 was near-stationary) — a consistent fraction of a
+  second's travel, not scattered noise, which is what pointed away from
+  corrupt velocities and toward a baseline offset.
+
+One loose end: an intermediate field test still showed the plateau with
+the fix demonstrably present on the client ("replay: holding records..." in
+logcat). Most likely that recording predated the install on one device;
+it was never conclusively explained, and the symptom has not recurred with
+current builds on both sides.
+
+- **The env override beats the preference, and now says so
+  (2026-07-28).** `NEWTONIA_REPLAY_ENABLE` / `_DISABLE` outrank
+  `auto_record_replays` in `GLGame::replay_start` — by design, but on
+  Android the var rides an adb intent extra into the process environment
+  and OUTLIVES every relaunch that reuses the process (icon, task
+  switcher). Turning the Options row off then had no effect, and the row
+  still read OFF while recording continued: the screen stated something
+  untrue and cost a debugging session chasing a phantom. Now
+  `Replay::recording_override()` is the single definition both the gate and
+  the row consult. The row keeps showing and editing the STORED preference —
+  a control that silently ignores you is no clearer than one that lies — and
+  appends `ENV ON` / `ENV OFF` to say what is actually in force, so
+  `OFF ENV ON` reads as "you set OFF, the environment is forcing ON". Game
+  start also logs `replay: NEWTONIA_REPLAY_* overrides the preference`.
+  (No parentheses, and a smaller glyph size: the desktop value column only
+  spans VALUE_X..CURSOR_R, and `OFF (ENV ON)` overruns the closing cursor
+  mark.)
+  `adb shell am force-stop org.newtonia` is what actually clears it.
+
+- **Turning recording off does not remove the CURRENT RUN row**, and should
+  not: `current.nrp` is a real recording of a real run, and hiding it would
+  destroy access to data the player legitimately has. The row keeps
+  pointing at the last recorded run until a new game rotates it into LAST
+  RUN. Mildly confusing (the label says "current" when nothing current is
+  being recorded), accepted deliberately — the score/level/date columns
+  disambiguate.
+
+- **Testing trap, hit twice (2026-07-27):** a rejoin via an invite
+  launches a FRESH process, which gets no intent extras — so
+  `NEWTONIA_REPLAY_ENABLE` is gone exactly when testing resume, and
+  `replay_start` returns before constructing the recorder, logging
+  NOTHING at all (both lines live in the constructor). Silence there means
+  "not enabled", not "broken". Set `auto_record_replays=1` in
+  preferences.ini instead — it survives every launch method.
+- Note the e2e passes WITHOUT exercising the drop path (the trace never
+  fires), so it proves the fix non-breaking, not that it repairs the
+  ordering. Provoking the first-100 ms window is still an open test gap.
+
 ### R4 — leaderboard hooks (with the leaderboard project)
 Score submission attaches the finalized replay blob; server stores it;
 leaderboard rows link to watchable replays (download → R2 playback).
@@ -395,6 +515,64 @@ R4's field.
   background flush landed and the replay played back intact after relaunch
   (so the append also fit the `onPause` budget); latency — no perceptible
   hitches through play including level boundaries, where the flushes land.
+- **On web every persistent write shares one filesystem, and they must not
+  sync at once.** IDBFS has no partial write: `FS.syncfs` re-stores whole
+  files, and it enumerates the tree before reading each one inside an async
+  transaction. Seven places persist something (savegame, preferences,
+  replay chunks and header patches, stats, high score, the resume ticket)
+  and several fire in the same frame — a pause writes the savegame, flushes
+  stats and flushes the replay. Uncoordinated that produced emscripten's own
+  "3 FS.syncfs operations in flight at once" warning, an `ErrnoError` every
+  time the current -> recent rotation renamed a file out from under an
+  in-flight sync, and — on Safari with a long run — a frozen tab and a
+  crash (field, 2026-07-29). Two fixes: `web_fs_sync` (web_fs.h) serializes
+  them, never more than one in flight and exactly one trailing pass for
+  anything that asked while it was busy; and the interval flush now SCALES
+  with the recording, because sync cost is the file, not the chunk —
+  measured in Chromium: 0.5 MB in ~5 ms, 2 MB 77, 8 MB 203, 20 MB 560, all
+  on the main thread. 5 s under half a MB, 25 s at 2 MB, ~85 s at 8 MB,
+  holding the IDB write rate near 100 KB/s. The loss window grows with the
+  file, which is the honest trade against a tab that stops responding.
+- **A crashed run's header used to lie.** The header is written at
+  creation and patched at a clean stop, so a run that never reached
+  finalize kept score 0, generation 0, duration 0 — invisible while such
+  files were rare and unplayable, glaring once the web's interval flush
+  made them ordinary: a multi-level run listed as "SCORE 0  LEVEL 1"
+  (field, 2026-07-29). `Recorder::flush` now patches the tail every time,
+  fed by `note_progress` from the slot cadence. FLAG_CLEAN still belongs to
+  finalize alone — it is what marks a run properly closed, and
+  `maybe_promote_best` gates on it — so a crash artifact stays
+  watchable-but-not-promotable exactly as before. Verified by SIGKILLing a
+  run mid-level: the same 52 records that read score 0 / gen 0 / dur 0 now
+  read score 31 / gen 2 / dur 4700.
+- **The web had no lifecycle hook at all until 2026-07-29.** The background
+  flush rides `GLGame::focus_lost()`, and every other entry point calls it
+  (glut.cpp polls X11 focus, android_main.cpp handles
+  `SDL_APP_WILLENTERBACKGROUND`, xbox_main.cpp hangs it off the PLM suspend
+  callback) — but the emscripten SDL backend surfaces no focus event, so
+  hiding or closing a tab reached nothing. With recording defaulting to ON
+  that became visible immediately: a tab closed mid-level kept only the
+  records up to the last generation boundary (field-confirmed on the web
+  build — a run closed during level 2 played back to the end of level 1 and
+  stopped). `web_main.cpp` now wires `visibilitychange` (tab switch) and
+  `pagehide` (close/navigate-away, and the only one iOS Safari reliably
+  fires before killing a backgrounded tab) to `web_focus_lost` /
+  `web_focus_gained`. **The hooks are not sufficient on their own**, and
+  measurement is the only reason we know: `FS.syncfs` commits on a later
+  turn of the event loop, and a closing tab does not survive to see it.
+  Driven in headless Chromium (TESTING.md §8, 2026-07-29) the same run
+  persisted 26 records when the hook fired and the tab closed immediately,
+  and 171 — the whole 13.8 s — when given 2.5 s first. The flush is right;
+  the commit never lands. So web also flushes on a SLOT INTERVAL while
+  playing (`Recorder::record_delta`, every 50 slots = 5 s of play), which
+  bounds the loss to one interval instead of one level; the same test then
+  kept 99 slots of a run that previously kept 25. The lifecycle hooks stay
+  for the case the browser does grant time (tab hidden, closed later), but
+  nothing close-time can be made reliable — on the web the periodic flush
+  is the guarantee. **Confirmed on Safari (private browsing,
+  2026-07-29)**: no freeze through play, ESC to menu and level clears, and
+  emscripten's "N FS.syncfs operations in flight at once" warning is gone
+  — the symptoms that opened this entry.
 - **Xbox certification is why the append rule is global, not an
   optimisation.** On Xbox/GDK the recorder flushes through the same
   `focus_lost()` hook the PLM suspend callback already calls
@@ -416,8 +594,18 @@ R4's field.
   DELTA records is never rotated into `recent`; that covers
   new-game-instant-quit, and a resume-then-instant-quit appends nothing, so
   the existing file — and the run it holds — is left exactly as it was).
-- Cap on file size for marathon runs (proposal: none locally; the
-  leaderboard submission path can cap/reject server-side).
+- ~~Cap on file size for marathon runs (proposal: none locally; the
+  leaderboard submission path can cap/reject server-side).~~ **RESOLVED
+  2026-07-29: none on native, 32 MB on web** (`Recorder::over_size_cap`,
+  ~2 h of play). "None locally" was right while recording was opt-in and
+  desktop-shaped, and wrong the moment the web default went ON: IndexedDB
+  is an ORIGIN quota shared with savegame.dat, preferences.ini and
+  stats.dat, and a browser under storage pressure evicts the origin as a
+  unit — so an unbounded replay can cost the player their SAVE. No replay
+  is worth that. At the cap the recorder banks what it holds, patches an
+  honest header and stops growing; the run stays playable and simply ends
+  there, the same shape as any abandoned run. Native keeps the old
+  behaviour (a real filesystem, no shared quota).
 - ~~Maybe: an "Auto-record replays" toggle on the Options screen~~
   **PARTLY DONE (2026-07-22): the preference exists, the Options row does
   not.** `Preferences::auto_record_replays` (**default OFF** — opt-in ship
@@ -432,17 +620,35 @@ R4's field.
 
 ## To revisit
 
-- **Surface `auto_record_replays` on the Options screen.** The preference
-  and its recorder gate already exist (above); this is just the UI. Wiring
-  is cheap: one `opt_row` in the data-driven Options list (`bool`, ON/OFF
-  like friendly-fire) bound to `g_prefs.auto_record_replays`; touch shows
-  the shared-options one-row form, P2 rows unaffected. Decide alongside any
-  other Options-screen additions so the menu grows in one pass rather than
-  one toggle at a time.
+- ~~**Surface `auto_record_replays` on the Options screen**, and decide the
+  default alongside it.~~ **BOTH DONE 2026-07-28.** The row shipped as
+  "RECORD REPLAYS", last in the data-driven Options list, ON/OFF like
+  friendly-fire, picked up by the touch one-row form for free. The default
+  then flipped to **ON** once the low-end field pass cleared (see the entry
+  below) — restoring the original record-silently design.
+
+  The flip is the whole migration, deliberately: `save_preferences()` writes
+  every key, so anyone who has already launched carries an explicit
+  `auto_record_replays=0` and keeps it; only a fresh install takes the new
+  default. A marker to sweep those zeros to ON was considered and rejected —
+  it would override exactly the players the rule exists to protect. The one
+  behaviour change for an existing install is an INI predating the key,
+  which takes the new default; a small population that has never seen the
+  feature.
 - **Extend the mobile-overhead pass to the low end.** The overhead question
   above was resolved on a mid-range Android (2026-07-20); a low-end
   field pass on real hardware (Moto E14 2 GB Go for CPU/RAM/lifecycle, Moto
   G05 eMMC for storage flush) is the belt-and-braces confirmation. The
   device rationale and step-by-step `adb` procedure live in TESTING.md §7
-  ("Replay recorder overhead on low-end Android"); run it when the phones
-  arrive and record the result there.
+  ("Replay recorder overhead on low-end Android"), where the results are
+  recorded as the phones arrive. **E14 half done (PASSED 2026-07-27)**:
+  generation 13 recording, no `perf:` lines at all (so ≥55 fps sustained),
+  and the replay survived a force-quit — CPU, RAM and lifecycle all green on
+  the weakest current SoC, and the onPause-budget half of the
+  checkpoint-flush question above now confirmed on Android Go rather than
+  mid-range. **G05 half done too (PASSED 2026-07-28)** — the storage axis
+  the E14's UFS 2.2 could not reach: ~50 level boundaries back to back with
+  no hitch, and a normally played ~3.6 minute level (2614 records over 2149
+  slots, ~100x a level-skip's chunk) cleared clean. **This question is CLOSED**:
+  the recorder is free on real low-end hardware across CPU, RAM, lifecycle
+  and storage flush. The default-ON decision below is unblocked.

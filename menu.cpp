@@ -21,6 +21,7 @@
 #include <ctime>
 #include <iostream>
 #include <string>
+#include <cstring>
 
 static const float SENSITIVITY_VALUES[] = {0.5f, 0.75f, 1.0f, 1.5f, 2.0f};
 static const char* SENSITIVITY_LABELS[] = {"SLOW", "LOW", "NORMAL", "HIGH", "MAX"};
@@ -39,20 +40,32 @@ static const int NUM_STAR_DENSITY = 5;
 static const char* CAMERA_LABELS[] = {"FIXED", "ROTATE"};
 static const int NUM_CAMERA = 2;
 
+// Auto-record replays (REPLAY.md): 0 = OFF, 1 = ON. Default is now ON for
+// fresh installs (the low-end field pass cleared the recorder on real
+// hardware, 2026-07-28), so this row is mostly an opt-OUT — and the reason
+// it has to exist at all: NEWTONIA_REPLAY_ENABLE is lost on any launch the
+// player does not control (an invite starts a fresh process with no intent
+// extras), and hand-editing preferences.ini is not a player-facing answer.
+static const char* RECORD_LABELS[] = {"OFF", "ON"};
+static const int NUM_RECORD = 2;
+
 // The Options screen rows, in display order. kind: 0=sensitivity, 1=smoothing,
-// 2=camera, 3=star density. P2 rows are desktop-only — mobile (touch) shows
-// Player 1 plus the shared options. Options is desktop/controller-only today
-// (see Menu::show_options_row), so the touch list is future-proofing.
+// 2=camera, 3=star density, 4=auto-record replays. P2 rows are desktop-only
+// — mobile (touch) shows Player 1 plus the shared options. Options is
+// desktop/controller-only today (see Menu::show_options_row), so the touch
+// list is future-proofing.
 namespace { struct OptRow { int kind; int player; const char *name; }; }
 static const OptRow OPT_ROWS_DESKTOP[] = {
   {0, 0, "P1  SENSITIVITY"}, {1, 0, "P1  SMOOTHING"}, {2, 0, "P1  CAMERA"},
   {0, 1, "P2  SENSITIVITY"}, {1, 1, "P2  SMOOTHING"}, {2, 1, "P2  CAMERA"},
   {3, 0, "STAR  DENSITY"},
+  {4, 0, "RECORD  REPLAYS"},
 };
 // Mobile shows Player 1 + shared options only, so the "P1" prefix is dropped.
 static const OptRow OPT_ROWS_TOUCH[] = {
   {0, 0, "SENSITIVITY"}, {1, 0, "SMOOTHING"}, {2, 0, "CAMERA"},
   {3, 0, "STAR DENSITY"},
+  {4, 0, "RECORD REPLAYS"},
 };
 static int opt_row_count() {
   return is_touch_mode() ? (int)(sizeof(OPT_ROWS_TOUCH) / sizeof(OPT_ROWS_TOUCH[0]))
@@ -154,6 +167,7 @@ Menu::Menu() :
   camera_index_[0]      = g_prefs.p1_keys.rotate_view ? 1 : 0;
   camera_index_[1]      = g_prefs.p2_keys.rotate_view ? 1 : 0;
   star_density_index_   = star_density_index_for(g_prefs.star_density);
+  auto_record_index_    = g_prefs.auto_record_replays ? 1 : 0;
   scan_replays();
   Presence::set_menu();
 #ifdef __EMSCRIPTEN__
@@ -280,20 +294,45 @@ void Menu::draw() {
       const OptRow &r = opt_row(row);
 
       int num_steps, cur_idx;
+      int rec_override = -1;  // >=0 on the RECORD REPLAYS row when forced
       const char* const *lbl;
       switch (r.kind) {
         case 0: num_steps = NUM_SENSITIVITY;  cur_idx = sensitivity_index_[r.player]; lbl = SENSITIVITY_LABELS;   break;
         case 1: num_steps = NUM_SMOOTHING;    cur_idx = smoothing_index_[r.player];   lbl = SMOOTHING_LABELS;     break;
         case 2: num_steps = NUM_CAMERA;       cur_idx = camera_index_[r.player];      lbl = CAMERA_LABELS;        break;
-        default:num_steps = NUM_STAR_DENSITY; cur_idx = star_density_index_;          lbl = STAR_DENSITY_LABELS;  break;
+        case 3: num_steps = NUM_STAR_DENSITY; cur_idx = star_density_index_;          lbl = STAR_DENSITY_LABELS;  break;
+        default:
+          num_steps = NUM_RECORD; lbl = RECORD_LABELS;
+          // Show what WILL happen, not what is stored: an env override beats
+          // the pref in GLGame::replay_start, and a row reading OFF while
+          // NEWTONIA_REPLAY_ENABLE quietly recorded anyway sent us hunting a
+          // phantom bug (field, 2026-07-28). The stored value is untouched —
+          // only the display follows the override.
+          // Show the STORED setting, not the override's effective value:
+          // the row has to respond when you change it, or a control that
+          // ignores you is just a different flavour of the lie this marker
+          // exists to prevent. The "(ENV)" suffix carries the truth — an
+          // environment variable is overriding this right now, and game
+          // start logs which one and which way.
+          rec_override = Replay::recording_override();
+          cur_idx = auto_record_index_;
+          break;
       }
 
       if (touch) {
         int cy = touch_opt_center(row, n);
         // Name left, value right. Name font sized so the longest label
-        // ("SENSITIVITY"/"STAR DENSITY") clears the value column.
+        // ("RECORD REPLAYS", ahead of "SENSITIVITY"/"STAR DENSITY") still
+        // clears the value column — check this pairing when adding a row.
         Typer::draw(-315, cy, r.name, 16);               // name, left-aligned
         Typer::draw_centered(205, cy, lbl[cur_idx], 18); // value
+        // Which WAY the env forces it, after the stored value: "OFF ENV ON"
+        // reads as "you set OFF, the environment is forcing ON". Smaller
+        // than the value so it clears the name column — at value size it
+        // would run into "RECORD REPLAYS".
+        if (rec_override >= 0)
+          Typer::draw(205 + (int)strlen(lbl[cur_idx]) * 18 + 14, cy,
+                      rec_override == 1 ? "ENV ON" : "ENV OFF", 11);
         continue;
       }
 
@@ -314,6 +353,12 @@ void Menu::draw() {
         }
       }
       Typer::draw(VALUE_X, y, lbl[cur_idx], 12);         // value description, right
+      // Same note. Size 8 and no parentheses because the value column only
+      // spans VALUE_X..CURSOR_R (192 units): "OFF (ENV ON)" overruns the
+      // closing cursor mark, "OFF ENV ON" clears it with room to spare.
+      if (rec_override >= 0)
+        Typer::draw(VALUE_X + (int)strlen(lbl[cur_idx]) * 24 + 8, y,
+                    rec_override == 1 ? "ENV ON" : "ENV OFF", 8);
     }
 
     // Tappable exit on both layouts — see the replays band note above.
@@ -823,11 +868,16 @@ const char *Menu::replay_status_text(int status) {
 
 void Menu::scan_replays() {
   replay_rows_.clear();
+  // ONLINE RUN sits last, under the offline slots: current/recent/best are
+  // one chain (a run rotates current -> recent, and is best-checked on the
+  // way), while online.nrp never rotates through any of them — it is its
+  // own slot, overwritten per session. Listing it after the chain rather
+  // than inside it matches that.
   struct { const char *label; std::string path; } sources[4] = {
       {"CURRENT RUN", Replay::current_path()},
       {"LAST RUN", Replay::recent_path()},
-      {"ONLINE RUN", Replay::online_path()},
       {"BEST RUN", Replay::best_path()},
+      {"ONLINE RUN", Replay::online_path()},
   };
   for (int i = 0; i < 4; i++) {
     if (sources[i].path.empty()) continue;
@@ -840,6 +890,16 @@ void Menu::scan_replays() {
     Replay::Header h;
     row.status = Replay::read_header_status(sources[i].path, h);
     row.ok = row.status == Replay::HEADER_OK;
+    // A readable header is not a watchable run. Playback needs a leading
+    // keyframe, so a file with no sim records — a crash, or a web tab
+    // closed before the first flush ever reached IndexedDB (the header
+    // rides there anyway, since FS.syncfs persists the whole filesystem) —
+    // declines at pick time and the row does NOTHING. It listed as a
+    // normal CURRENT RUN at score 0, level 1, dated today. Drop it on the
+    // same test rotate_to_recent already deletes it by, so the list agrees
+    // with what the file is worth. A DAMAGED/NEWER/OLDER row still shows:
+    // there the wording is the point.
+    if (row.ok && !Replay::has_delta_record(sources[i].path)) continue;
     if (row.ok) {
       row.score = h.final_score;
       row.level = h.generation + 1;  // displayed level, like everywhere else
@@ -886,7 +946,8 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     case 0: idx = &sensitivity_index_[r.player]; num = NUM_SENSITIVITY;  break;
     case 1: idx = &smoothing_index_[r.player];   num = NUM_SMOOTHING;    break;
     case 2: idx = &camera_index_[r.player];      num = NUM_CAMERA;       break;
-    default:idx = &star_density_index_;          num = NUM_STAR_DENSITY; break;
+    case 3: idx = &star_density_index_;          num = NUM_STAR_DENSITY; break;
+    default:idx = &auto_record_index_;           num = NUM_RECORD;       break;
   }
   *idx += delta;
   if (wrap) {
@@ -906,6 +967,7 @@ void Menu::close_options() {
   g_prefs.p1_keys.rotate_view          = (camera_index_[0] == 1);
   g_prefs.p2_keys.rotate_view          = (camera_index_[1] == 1);
   g_prefs.star_density                 = STAR_DENSITY_MULTIPLIERS[star_density_index_];
+  g_prefs.auto_record_replays          = (auto_record_index_ == 1);
   save_preferences();
   delete starfield;
   starfield = new GLStarfield(Point(default_world_width, default_world_height),

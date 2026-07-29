@@ -49,10 +49,11 @@ public:
 
   static Mix_Chunk *explode_sound, *thud_sound, *ting_sound, *asteroid_ting_sound;
 
-  // Death explosion, clamped to once per millisecond tick (stacked
-  // same-frame deaths would clip). Shared by the host's add_children and
-  // the net client's removal paths, which never run add_children.
-  static void play_explode_sound();
+  // Death explosion at `at`, clamped to once per millisecond tick (stacked
+  // same-frame deaths would clip) and attenuated by listener distance.
+  // Shared by the host's add_children and the net client's removal paths,
+  // which never run add_children.
+  static void play_explode_sound(Point at);
 
   static void free_sounds();
 

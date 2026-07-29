@@ -19,6 +19,7 @@
 #include "weapon/lance.h"
 #include "weapon/shock.h"
 #include "net_protocol.h"  // NET_LOG
+#include "world_sound.h"
 
 static const int NOVA_MAX_AMMO = 10;
 
@@ -34,6 +35,7 @@ std::vector<std::pair<const Ship *, std::vector<Point>>> Ship::replay_shock_flas
 std::vector<Ship::ReplayRing> Ship::replay_rings;
 std::vector<Point> Ship::replay_pews;
 std::vector<Point> Ship::replay_beam_pews;
+std::vector<Ship::ReplayShot> Ship::replay_shots;
 std::vector<std::vector<Point>> Ship::net_shock_reports;
 std::vector<Ship::NetBounceReport> Ship::net_bounce_reports;
 bool Ship::net_report_bounces = false;
@@ -1155,6 +1157,7 @@ void Ship::reset(bool was_killed) {
   reversing = false;
   shoot(false);
   net_queued_shot_presses = 0;  // don't fire stale presses across a respawn
+  net_queued_secondary_presses = 0;
   // On a net client reset() runs inside EVERY 10 Hz snapshot restore
   // (restore_state → respawn) — the same story as debris/lance_pulses
   // below. Clearing the projectile lists here emptied them moments before
@@ -1274,34 +1277,35 @@ bool Ship::is_alive() const {
 
 void Ship::thrust(bool on) {
   thrusting = on;
-  if(boost_sound != NULL) {
-    if(on && !reversing) {
-      Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/8);
-    }
-    if(!on && !reversing) {
-      if(still_rotating_left || still_rotating_right) {
-        Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/16);
-      } else {
-        Mix_VolumeChunk(boost_sound, 0);
-      }
-    }
-  }
+  update_boost_volume();
 }
 
 void Ship::reverse(bool on) {
   reversing = on;
-  if(boost_sound != NULL) {
-    if(on && !thrusting) {
-      Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/8);
-    }
-    if(!on && !thrusting) {
-      if(still_rotating_left || still_rotating_right) {
-        Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/16);
-      } else {
-        Mix_VolumeChunk(boost_sound, 0);
-      }
-    }
-  }
+  update_boost_volume();
+}
+
+// The thruster hum is a looping channel, so its level is chunk volume rather
+// than a play-time argument: whatever it was last set to is what keeps
+// playing. It used to be set to a flat MIX_MAX_VOLUME/8 by whichever control
+// call last fired, which meant a ship's thrusters were as loud across the
+// world as they were in your own cockpit — the far end of a co-op level
+// sounded like a ship in your lap. Fold in sound_volume_scale (0 for an
+// unseen enemy, listener distance for the other player) like every one-shot
+// cue does, and re-run it per tick from GLGame: distance keeps changing while
+// a held thrust key fires this exactly once.
+void Ship::update_boost_volume() {
+  if(boost_sound == NULL) return;
+  float level = 0.0f;
+  if(thrusting || reversing) level = 1.0f/8.0f;
+  // rotation_direction as well as the key flags: a replicated ghost gets the
+  // direction written raw from the snapshot extras and never the key flags,
+  // so keying off those alone left a turning peer silent.
+  else if(still_rotating_left || still_rotating_right ||
+          rotation_direction != NONE) level = 1.0f/16.0f;
+  float scale = sound_volume_scale < 0.0f ? 0.0f
+              : sound_volume_scale > 1.0f ? 1.0f : sound_volume_scale;
+  Mix_VolumeChunk(boost_sound, (int)(MIX_MAX_VOLUME * level * scale));
 }
 
 void Ship::boost() {
@@ -1385,7 +1389,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
             Uint32 now = SDL_GetTicks();
             if(now - last_armour_ting >= 125) {
               last_armour_ting = now;
-              Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
+              WorldSound::play(Asteroid::ting_sound, position);
             }
           }
         } else if(object->kill()) {
@@ -1677,7 +1681,7 @@ void Ship::collide_bullets_with_asteroids(const Grid &grid, int delta) {
             Uint32 now = SDL_GetTicks();
             if (now - last_armour_ting >= 125) {
               last_armour_ting = now;
-              Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
+              WorldSound::play(Asteroid::ting_sound, entry);
             }
           }
           bullets[i].world_bullet = true;
@@ -1811,9 +1815,7 @@ void Ship::fire_lance_pulse(const Grid &grid) {
         : -1.0f;
       if(shield_dot > -0.5f) {
         reflect = true;
-        if(Asteroid::ting_sound != NULL && sound_volume_scale > 0.0f) {
-          Mix_PlayChannel(-1, Asteroid::ting_sound, 0);
-        }
+        WorldSound::play(Asteroid::ting_sound, best_entry);
       }
     }
 
@@ -2041,7 +2043,20 @@ void Ship::fire_secondary(bool on) {
       else if (dynamic_cast<Weapon::Nova*>(*secondary))     kind = Save::WeaponEntry::Kind::Nova;
       record_weapon_fired(kind);
     }
+    // Mark whatever this press deploys as not-yet-confirmed by the host.
+    // Only a net client's snapshot rebuild ever READS the mark (see
+    // Ship::NET_DEPLOY_GRACE); on the host, offline, and for replay ghosts
+    // it is inert, so the marking is unconditional rather than gated on a
+    // role flag nobody would remember to arm on every rejoin path.
+    size_t pre_mines = mines.size(), pre_gigas = giga_mines.size(),
+           pre_missiles = missiles.size();
     (*secondary)->shoot(on);
+    for (size_t i = pre_mines; i < mines.size(); i++)
+      mines[i].net_unconfirmed = NET_DEPLOY_GRACE;
+    for (size_t i = pre_gigas; i < giga_mines.size(); i++)
+      giga_mines[i].net_unconfirmed = NET_DEPLOY_GRACE;
+    for (size_t i = pre_missiles; i < missiles.size(); i++)
+      missiles[i].net_unconfirmed = NET_DEPLOY_GRACE;
   }
 }
 
@@ -2140,12 +2155,15 @@ void Ship::net_cosmetic_impacts(const Grid &grid, bool claim_kills) {
     if (!deflect) explode(b.position, o->velocity);
     Mix_Chunk *snd = ting ? Asteroid::ting_sound : Asteroid::thud_sound;
     if (snd != NULL) {
-      // Same 125 ms cue rate limit the host-side impact sites use.
+      // Same 125 ms cue rate limit the host-side impact sites use. This pass
+      // runs over EVERY player's bullets, the peer's included, so the cue is
+      // placed at the contact point rather than played flat — the partner
+      // plinking rocks across the level is not a sound in your cockpit.
       static Uint32 last_cosmetic_cue = UINT32_MAX;
       Uint32 now = SDL_GetTicks();
       if (now - last_cosmetic_cue >= 125) {
         last_cosmetic_cue = now;
-        Mix_PlayChannel(-1, snd, 0);
+        WorldSound::play(snd, b.position);
       }
     }
     NET_LOG("net: cosmetic impact %s\n", ting ? "ting" : "thud");
@@ -2190,7 +2208,7 @@ void Ship::net_cosmetic_ship_impacts(
         Uint32 now = SDL_GetTicks();
         if (now - last_ship_thud >= 125) {
           last_ship_thud = now;
-          Mix_PlayChannel(-1, Asteroid::thud_sound, 0);
+          WorldSound::play(Asteroid::thud_sound, b.position);
         }
       }
       NetShipHit c;
@@ -2284,12 +2302,12 @@ std::shared_ptr<int> Ship::net_start_missile_fly_loop() {
 
 void Ship::set_shield_hum(bool on) {
   if(on) {
-    // The distance gate applies only to STARTING the hum. It used to gate
-    // the whole function, so a hum started at full volume could never be
-    // halted once the ship drifted out of earshot (the host re-scales a
-    // remote ship's sound_volume_scale by listener distance every tick) —
-    // the loop played forever: Glenn's "hum stuck on".
-    if(shield_hum_sound == NULL || sound_volume_scale < 1.0f) return;
+    // The gate applies only to STARTING the hum. It used to gate the whole
+    // function, so a hum started at full volume could never be halted once
+    // the ship stopped qualifying — the loop played forever: Glenn's "hum
+    // stuck on". sound_own_cues can't flip mid-life the way the distance
+    // test it replaced could, so that trap is gone as well as guarded.
+    if(shield_hum_sound == NULL || !sound_own_cues) return;
     if(shield_hum_channel >= 0) return; // already playing, don't leak a new channel
     shield_hum_channel = Mix_PlayChannel(-1, shield_hum_sound, -1);
   } else if(shield_hum_channel >= 0) {
@@ -2307,7 +2325,7 @@ void Ship::stop_god_mode_music() {
 }
 
 void Ship::update_god_mode_music(int time_remaining) {
-  if(sound_volume_scale < 1.0f) return;
+  if(!sound_own_cues) return;
   if(time_remaining <= 0) {
     stop_god_mode_music();
     return;
@@ -2340,7 +2358,7 @@ void Ship::rotate_left(bool on) {
   } else {
     rotation_direction = NONE;
   }
-  play_rotating_sound(on);
+  update_boost_volume();
 }
 
 void Ship::rotate_right(bool on) {
@@ -2352,22 +2370,7 @@ void Ship::rotate_right(bool on) {
   } else {
     rotation_direction = NONE;
   }
-  play_rotating_sound(on);
-}
-
-void Ship::play_rotating_sound(bool on) {
-  if(boost_sound != NULL) {
-    if(on && !thrusting && !reversing) {
-      Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/16);
-    }
-    if(!on) {
-      if(thrusting || reversing) {
-        Mix_VolumeChunk(boost_sound, MIX_MAX_VOLUME/8);
-      } else {
-        Mix_VolumeChunk(boost_sound, 0);
-      }
-    }
-  }
+  update_boost_volume();
 }
 
 WrappedPoint Ship::gun() const {
@@ -2410,7 +2413,22 @@ void Ship::fire_bullet_from_gun() {
 }
 
 void Ship::net_report_last_bullet() {
-  if (!net_report_shots || bullets.empty()) return;
+  if (bullets.empty()) return;
+  // Replay outbox first: EVERY spawned bullet, whatever this machine's net
+  // role, so playback can clone it at the muzzle instead of waiting for the
+  // next snapshot (REPLAY.md / FX_BULLET). Unconditional and cheap — the
+  // drain clears it every tick whether or not a recording is running.
+  {
+    const Particle &nb = bullets.back();
+    ReplayShot rs;
+    rs.ship = this;
+    rs.pos = Point(nb.position.x(), nb.position.y());
+    rs.vel = nb.velocity;
+    rs.flags = (uint8_t)((nb.kills_invincible ? 1 : 0) | (nb.has_trail ? 2 : 0) |
+                         (nb.piercing ? 4 : 0));
+    replay_shots.push_back(rs);
+  }
+  if (!net_report_shots) return;
   Particle &b = bullets.back();
   b.net_id = ++net_shot_seq;
   NetShotReport r;
@@ -2428,11 +2446,11 @@ void Ship::net_report_last_bullet() {
 // client), same identity for the MSG_HIT consume.
 void Ship::net_spawn_reported_bullet(uint32_t id, const Point &pos,
                                      const Point &vel, bool kills_inv,
-                                     bool trail, bool piercing) {
+                                     bool trail, bool piercing, bool quiet) {
   // A piercing clone is a beam bolt — play the beam's own sound, not the
   // pew (the chunk is shared/cached; every play site sets volume first).
-  Mix_Chunk *snd = shoot_sound;
-  if (piercing) {
+  Mix_Chunk *snd = quiet ? NULL : shoot_sound;
+  if (piercing && !quiet) {
     static Mix_Chunk *beam_snd = Mix_LoadWAV(asset_path("audio/beam.wav").c_str());
     if (beam_snd) snd = beam_snd;
   }
@@ -2443,7 +2461,7 @@ void Ship::net_spawn_reported_bullet(uint32_t id, const Point &pos,
   // The 40 ms window is well under every gun's re-fire interval, so
   // consecutive real shots still each sound; the clones all spawn.
   uint32_t now = SDL_GetTicks();
-  if (now - net_clone_sound_ms >= 40) {
+  if (!quiet && now - net_clone_sound_ms >= 40) {
     net_clone_sound_ms = now;
     if(snd != NULL && sound_volume_scale > 0.0f) {
       Mix_VolumeChunk(snd, (int)(MIX_MAX_VOLUME * sound_volume_scale));
@@ -2530,6 +2548,30 @@ void Ship::step(float delta, const Grid &grid) {
       }
     }
 
+    // The secondary twin of the drain above, for the same reason: every
+    // secondary fires one deploy per press (none is automatic), so presses
+    // the client batched into one INPUT must arm it once EACH. Firing once
+    // for N left the client holding mines/missiles it had already spawned
+    // and decremented locally — the host made fewer, and the extra local
+    // copies expired unconfirmed (NET_DEPLOY_GRACE).
+    //
+    // fire_secondary() is the entry point, not (*secondary)->shoot(): the
+    // exhausted-weapon drop and the weapon-kind bookkeeping live there.
+    // A hold-style secondary (the shield reports is_shooting()) swallows
+    // the rest of the queue exactly as god mode does on the primary side —
+    // extra presses mean nothing while it holds, and a stuck queue would
+    // block the release-disarm in the INPUT handler.
+    if(net_queued_secondary_presses > 0) {
+      if(secondary_weapons.empty() || secondary == secondary_weapons.end()) {
+        net_queued_secondary_presses = 0;  // nothing armed: never block the release
+      } else if(!(*secondary)->is_shooting()) {
+        fire_secondary(true);              // replay one press per step
+        net_queued_secondary_presses--;
+      } else {
+        net_queued_secondary_presses = 0;
+      }
+    }
+
     for(auto it = primary_weapons.begin(); it != primary_weapons.end(); ) {
       (*it)->step(delta);
       Weapon::GodMode *gm = dynamic_cast<Weapon::GodMode*>(*it);
@@ -2580,7 +2622,7 @@ void Ship::step(float delta, const Grid &grid) {
     // God mode music: update phase transitions and play rapid tic beeps in last second
     int gm_time = god_mode_time_remaining();
     update_god_mode_music(gm_time);
-    if(gm_time > 0 && gm_time <= 1000 && sound_volume_scale >= 1.0f && tic_sound != NULL) {
+    if(gm_time > 0 && gm_time <= 1000 && sound_own_cues && tic_sound != NULL) {
       int prev_gm_time = gm_time + (int)delta;
       if((prev_gm_time / 200) != (gm_time / 200)) {
         Mix_PlayChannel(-1, tic_sound, 0);
@@ -2588,7 +2630,7 @@ void Ship::step(float delta, const Grid &grid) {
     }
 
   } else if (lives > 0) {
-    if(sound_volume_scale >= 1.0f) {
+    if(sound_own_cues) {
       if(floor((time_until_respawn-1)/1000) != floor((time_until_respawn-delta-1)/1000)) {
         if(time_until_respawn > 1000) {
           if(tic_sound != NULL) {
@@ -2607,7 +2649,8 @@ void Ship::step(float delta, const Grid &grid) {
     }
   }
 
-  facing.rotate(rotation_direction * rotation_force * rotation_scale / mass * delta);
+  facing.rotate(rotation_direction * rotation_force * rotation_scale *
+                net_rotation_damp / mass * delta);
   Point acceleration = Point(0,0);
   if(boosting) {
   	acceleration += ((facing * boost_force) / mass);

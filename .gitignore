@@ -63,3 +63,11 @@ xbox/build-*/
 /netplay-libs-ios/
 /netplay-libs-ios-sim/
 ios/build/
+
+# tsc output. web/main.js predates the TypeScript conversion — it was
+# hand-written JS, main.ts arrived later, and tsc emits over the same path,
+# so the file stayed tracked by accident rather than intent. Nothing reads
+# the committed copy: the Makefile and both web workflows run tsc before
+# the copy into web/dist/play, and Pages publishes web/dist. Tracking it
+# only let it drift from the source, which it did.
+web/main.js
