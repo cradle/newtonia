@@ -419,6 +419,32 @@ void Recorder::record_delta(const std::vector<uint8_t> &payload) {
     append_record((uint32_t)last_slot_, REC_DELTA,
                   payload.empty() ? NULL : &payload[0], payload.size());
     deltas_this_session_++;
+
+#ifdef __EMSCRIPTEN__
+    // Web only: flush on a slot interval as well as at the checkpoints.
+    //
+    // Every other platform gets its last flush in before the process dies —
+    // Android in onPause, Xbox before the suspend ack, desktop on focus
+    // loss — because the write is synchronous. The web's is not: a flush
+    // writes MEMFS and schedules FS.syncfs, and IndexedDB commits on a
+    // later turn of the event loop. A closing tab does not survive to see
+    // it. Measured in-container (headless Chromium, 2026-07-29): the
+    // pagehide hook firing and the tab closing immediately persisted 26
+    // records, while the identical run given 2.5 s before the close
+    // persisted 171 — the flush is right, the commit just never lands.
+    //
+    // So bound the loss instead of chasing the close: every SLOTS_PER_SYNC
+    // slots (10 Hz emission, so 50 = 5 s of play), leaving at most that
+    // much unwritten at any instant. The append is already bounded, and
+    // this is the same cost the level-boundary flush pays, just on a timer.
+    // The lifecycle hooks stay: when the browser DOES give us time (tab
+    // hidden, then closed later) they still save the remainder.
+    static const int SLOTS_PER_SYNC = 50;
+    if (last_slot_ - last_synced_slot_ >= SLOTS_PER_SYNC) {
+        last_synced_slot_ = last_slot_;
+        flush();
+    }
+#endif
 }
 
 void Recorder::record_event(uint8_t code, uint32_t arg) {

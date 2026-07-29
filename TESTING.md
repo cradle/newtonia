@@ -701,3 +701,112 @@ the perf logger cannot answer this on its own: its window restarts on any
 frame gap over 500 ms, so a hitch landing exactly on a level boundary can
 fall into a discarded window — the subjective check is load-bearing here,
 not a formality.
+
+## 8. Web build in a dev container (emcc + a real browser)
+
+The web target was long the one platform a container could not build —
+`web.yml` was "the only emcc gate". It can, with two workarounds for the
+agent proxy. Worth the ten minutes whenever a change touches
+`web_main.cpp`, IDBFS persistence, or anything whose failure mode is
+browser-shaped.
+
+### Install the SDK
+
+```sh
+git clone --depth 1 https://github.com/emscripten-core/emsdk.git ~/emsdk
+cd ~/emsdk && ./emsdk install latest && ./emsdk activate latest
+source ~/emsdk/emsdk_env.sh          # every shell that runs `make web`
+```
+
+### Work around the blocked port archives
+
+`emcc` fetches SDL2/SDL2_mixer as GitHub **archive zips**, and the proxy
+403s `github.com/*/archive/*` and `codeload.github.com` alike (plain `git`
+and `raw.githubusercontent.com` are fine — that asymmetry is the whole
+trick). Clone the ports at the exact tags the SDK asks for instead:
+
+```sh
+mkdir -p ~/ports && cd ~/ports
+# tags come from upstream/emscripten/tools/ports/{sdl2,sdl2_mixer}.py
+git clone -q --depth 1 -b release-2.32.10 https://github.com/libsdl-org/SDL.git       SDL-release-2.32.10
+git clone -q --depth 1 -b release-2.8.0   https://github.com/libsdl-org/SDL_mixer.git SDL_mixer-release-2.8.0
+```
+
+Then one build with `EMCC_LOCAL_PORTS` to unpack them into the SDK cache:
+
+```sh
+export EMCC_LOCAL_PORTS="sdl2=$HOME/ports/SDL-release-2.32.10,sdl2_mixer=$HOME/ports/SDL_mixer-release-2.8.0"
+make web
+```
+
+Two snags, both in the SDK rather than this repo, both one-line fixes to
+`~/emsdk/upstream/emscripten/tools/ports/`:
+
+- `sdl2_mixer.py` has no `SUBDIR`, which `EMCC_LOCAL_PORTS` requires —
+  add `SUBDIR = 'SDL_mixer-' + TAG` next to `TAG`.
+- With `EMCC_LOCAL_PORTS` still set, the parallel compile subprocesses each
+  try to re-unpack the port and trip an `EM_CACHE_IS_LOCKED` assert. Once
+  `cache/ports/{sdl2,sdl2_mixer}/` are populated, **unset it** and make the
+  two `get()` functions skip their `ports.fetch_project(...)` call — the
+  sources are already there, and the fetch is the only thing the proxy
+  blocks. (mpg123 downloads fine; only the GitHub archives are refused.)
+
+`make web` then works normally, and stays working — the cache persists.
+
+### Drive it in a browser
+
+Chromium is pre-installed (`/opt/pw-browsers`), but the npm `playwright`
+package usually wants a newer build number than the image ships, so pass
+the binary explicitly rather than running `playwright install`:
+
+```sh
+npm install playwright                     # in a scratch dir, not the repo
+python3 -m http.server 8099 --bind 127.0.0.1 -d web/dist/play &
+CHROME=/opt/pw-browsers/chromium-1194/chrome-linux/chrome \
+  node test/e2e/web_replay_tabkill.mjs
+```
+
+`launchPersistentContext(profileDir)` is what makes a returning player
+testable: IDBFS lives in IndexedDB, so a fresh `newPage` on the same
+profile is the same save, and deleting the profile dir is a fresh install
+(the check §7's default-ON flip needs).
+
+### Reading the game's files back out
+
+IDBFS keeps one IndexedDB database named after the mount point, with an
+object store `FILE_DATA` keyed by absolute path — so a driver can pull the
+bytes out and hand them to the same checkers the native tests use:
+
+```js
+const db = await new Promise(res => {
+  const r = indexedDB.open('/libsdl/cc.gfm/newtonia'); r.onsuccess = () => res(r.result); });
+const store = db.transaction('FILE_DATA', 'readonly').objectStore('FILE_DATA');
+const v = await new Promise(res => {
+  const r = store.get('/libsdl/cc.gfm/newtonia/replays/current.nrp'); r.onsuccess = () => res(r.result); });
+// v.contents is a Uint8Array -> write it to disk -> test/e2e/replay_check.py
+```
+
+**A file's presence proves nothing about its contents** — a 64-byte
+`current.nrp` is a header with no records. Always run `replay_check.py` on
+the bytes and read `last_slot` (slots are 10 Hz, so `last_slot/10` is
+seconds of play persisted); that number is what distinguishes "saved the
+run" from "saved the level boundary".
+
+### The measurement that separates flushing from committing
+
+Web writes are two-stage — a flush writes MEMFS, `FS.syncfs` commits to
+IndexedDB on a later turn of the event loop — so "the data is missing"
+has two very different causes. Force the hook by hand and vary only the
+grace period before the close:
+
+```sh
+EXPLICIT=wait   node test/e2e/web_replay_tabkill.mjs   # 2.5 s before closing
+EXPLICIT=nowait node test/e2e/web_replay_tabkill.mjs   # close immediately
+```
+
+Same code path, so a difference is entirely commit timing. Measured
+2026-07-29: `wait` persisted 171 records (the whole 13.8 s run), `nowait`
+26 (only up to the level boundary) — which is how we know the flush is
+correct and no close-time hook can be made reliable. That result is why
+the recorder flushes on a slot interval on web (`Recorder::record_delta`)
+rather than trusting `pagehide`.

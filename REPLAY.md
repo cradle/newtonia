@@ -527,10 +527,19 @@ R4's field.
   stopped). `web_main.cpp` now wires `visibilitychange` (tab switch) and
   `pagehide` (close/navigate-away, and the only one iOS Safari reliably
   fires before killing a backgrounded tab) to `web_focus_lost` /
-  `web_focus_gained`. The residual window is the `FS.syncfs` a flush
-  schedules: it is asynchronous, so a tab closing in that same instant can
-  still lose the sync — the same shape of guarantee the other platforms
-  give, reduced from a whole level to one sync.
+  `web_focus_gained`. **The hooks are not sufficient on their own**, and
+  measurement is the only reason we know: `FS.syncfs` commits on a later
+  turn of the event loop, and a closing tab does not survive to see it.
+  Driven in headless Chromium (TESTING.md §8, 2026-07-29) the same run
+  persisted 26 records when the hook fired and the tab closed immediately,
+  and 171 — the whole 13.8 s — when given 2.5 s first. The flush is right;
+  the commit never lands. So web also flushes on a SLOT INTERVAL while
+  playing (`Recorder::record_delta`, every 50 slots = 5 s of play), which
+  bounds the loss to one interval instead of one level; the same test then
+  kept 99 slots of a run that previously kept 25. The lifecycle hooks stay
+  for the case the browser does grant time (tab hidden, closed later), but
+  nothing close-time can be made reliable — on the web the periodic flush
+  is the guarantee.
 - **Xbox certification is why the append rule is global, not an
   optimisation.** On Xbox/GDK the recorder flushes through the same
   `focus_lost()` hook the PLM suspend callback already calls

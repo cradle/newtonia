@@ -329,6 +329,10 @@ private:
     // leading keyframe, so it starts satisfied.
     bool have_keyframe_ = false;
     int  predawn_drops_ = 0;   // records held out awaiting that keyframe
+    // Web only (see record_delta): slot of the last interval flush. IndexedDB
+    // commits asynchronously, so a closing tab loses whatever the checkpoint
+    // flush had not committed yet — this bounds that to one interval.
+    int  last_synced_slot_ = -1;
 };
 
 }  // namespace Replay
