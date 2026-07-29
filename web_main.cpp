@@ -295,6 +295,46 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_background_tick() {
     main_loop();
 }
 
+// The web's focus_lost/focus_gained. Every other platform has one — glut.cpp
+// polls X11 focus, android_main.cpp handles SDL_APP_WILLENTERBACKGROUND,
+// xbox_main.cpp hangs it off the PLM suspend callback — but the emscripten
+// SDL backend surfaces no focus event, so hiding or closing a tab reached
+// nothing. That cost the recorder its background checkpoint: with replays now
+// on by default, closing a tab mid-level dropped every record since the last
+// generation boundary (field-confirmed on the web build, 2026-07-29 — a run
+// closed during level 2 played back only to the end of level 1). Wire the two
+// page-lifecycle events to the same StateManager entry points instead.
+//
+// `pagehide` is the close/navigate-away signal and the only one iOS Safari
+// reliably fires before killing a backgrounded tab; `visibilitychange` covers
+// tab switching, and both landing on focus_lost is harmless — save_progress
+// and the replay flush are both no-ops with nothing new, and toggle_pause
+// refuses when already paused. The final `FS.syncfs` a flush schedules is
+// still asynchronous, so a tab closing in the same instant can lose it: this
+// shrinks the window to the sync itself rather than a whole level, which is
+// the same guarantee the other platforms give.
+extern "C" EMSCRIPTEN_KEEPALIVE void web_focus_lost() {
+    if (!s_idb_ready || !s_game) return;
+    // A finger down when the tab hides never delivers its touchend, so its
+    // key would stay held. Release them here — the web build tracks fingers
+    // itself (s_finger_keys) rather than through touch_controls.
+    for (int i = 0; i < s_finger_count; ++i)
+        s_game->keyboard_up(s_finger_keys[i].key, 0, 0);
+    s_finger_count = 0;
+    s_game->focus_lost();
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void web_focus_gained() {
+    if (!s_idb_ready || !s_game) return;
+    // rAF stopped while hidden, so `now - s_last_tick` is the whole
+    // background period. Re-anchor it or the first frame back tries to
+    // simulate every step of it at once (the same reason android_main sets
+    // s_reset_tick). An online session kept ticking through
+    // web_background_tick, which caps its own catch-up the same way.
+    s_last_tick = SDL_GetTicks();
+    s_game->focus_gained();
+}
+
 // Called from JS after FS.syncfs(true) completes (IDBFS → memory).
 // Initialises the StateManager then releases the main loop gate.
 // EMSCRIPTEN_KEEPALIVE exports this so JS can call Module._web_on_idb_ready().
@@ -484,6 +524,19 @@ int main(int argc, char *argv[]) {
         setInterval(function() {
             if (document.hidden) Module._web_background_tick();
         }, 500);
+    });
+
+    // Page lifecycle → focus_lost/focus_gained (see web_focus_lost).
+    EM_ASM({
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) Module._web_focus_lost();
+            else Module._web_focus_gained();
+        });
+        // Fires on tab close, navigation away, and iOS Safari's
+        // background-kill — the cases visibilitychange alone can miss.
+        window.addEventListener('pagehide', function() {
+            Module._web_focus_lost();
+        });
     });
 
     // emscripten_set_main_loop stays in main() so the WebGL context is never

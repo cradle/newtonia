@@ -515,6 +515,22 @@ R4's field.
   background flush landed and the replay played back intact after relaunch
   (so the append also fit the `onPause` budget); latency — no perceptible
   hitches through play including level boundaries, where the flushes land.
+- **The web had no lifecycle hook at all until 2026-07-29.** The background
+  flush rides `GLGame::focus_lost()`, and every other entry point calls it
+  (glut.cpp polls X11 focus, android_main.cpp handles
+  `SDL_APP_WILLENTERBACKGROUND`, xbox_main.cpp hangs it off the PLM suspend
+  callback) — but the emscripten SDL backend surfaces no focus event, so
+  hiding or closing a tab reached nothing. With recording defaulting to ON
+  that became visible immediately: a tab closed mid-level kept only the
+  records up to the last generation boundary (field-confirmed on the web
+  build — a run closed during level 2 played back to the end of level 1 and
+  stopped). `web_main.cpp` now wires `visibilitychange` (tab switch) and
+  `pagehide` (close/navigate-away, and the only one iOS Safari reliably
+  fires before killing a backgrounded tab) to `web_focus_lost` /
+  `web_focus_gained`. The residual window is the `FS.syncfs` a flush
+  schedules: it is asynchronous, so a tab closing in that same instant can
+  still lose the sync — the same shape of guarantee the other platforms
+  give, reduced from a whole level to one sync.
 - **Xbox certification is why the append rule is global, not an
   optimisation.** On Xbox/GDK the recorder flushes through the same
   `focus_lost()` hook the PLM suspend callback already calls
