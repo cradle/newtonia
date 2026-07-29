@@ -3382,6 +3382,14 @@ void GLGame::tick_replay_poll(int delta) {
     int slot = replay_reader_->peek_slot();
     if (slot < 0) {
       replay_finished_ = true;
+      // Past the last record the world freezes and no further state applies
+      // — so every continuous loop the records were driving (the shield hum
+      // from a ghost's invincibility window, god-mode music) would be left
+      // playing forever on the REPLAY ENDED screen. Same shape as the
+      // client's lost-host silencing: when the state source stops, nothing
+      // is left to turn them off, so turn them off here. The engine loop is
+      // muted by the freeze block in tick_net_client.
+      for (auto *gs : *players) gs->ship->silence_loops();
       SDL_Log("replay: playback finished (slot %d)",
               replay_reader_->last_slot());
       break;

@@ -202,7 +202,12 @@ test/e2e/replay_playback.sh # REPLAY.md R2 exit criteria, solo (no relay):
                      # recording reaches the GAME OVER card; an ALL_WEAPONS
                      # run round-trips the flash-class effects (REC_EFFECT:
                      # lance pulse, shock arc, nova ring — asserted via the
-                     # record + receive log lines).
+                     # record + receive log lines); and a recording that
+                     # ends mid-hum leaves the REPLAY ENDED screen silent —
+                     # S7 plays back under SDL_AUDIODRIVER=disk and checks
+                     # the mixer's own output (loud before the end-of-file
+                     # mark, digital silence after it), the only assertion
+                     # here that can see a stuck sound loop at all.
 test/e2e/replay_menu.sh # REPLAY.md R3: the REPLAYS menu row (shown once a
                      # .nrp exists) opens the list screen; selecting
                      # CURRENT RUN starts playback ("replay: playback
