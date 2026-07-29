@@ -5,6 +5,7 @@
 #include "steam_build.h"
 #include <cstdlib>
 #include "asset_path.h"
+#include "sound_cache.h"
 #include "highscore.h"
 #include "stats.h"
 #include "preferences.h"
@@ -3345,6 +3346,17 @@ void GLGame::tick_replay_poll(int delta) {
   if (replay_finished_ || !replay_reader_) return;
   replay_clock_ms_ += delta;
   net_event_effect_budget_ = NET_EVENT_EFFECTS_PER_POLL;
+  // Cap the catch-up. Unlike the live client — which applies records as the
+  // network hands them over — playback applies everything the CLOCK says is
+  // due, and the clock is the raw frame delta (nothing upstream clamps it)
+  // multiplied by up to 4x for fast-forward. So one stalled frame turns
+  // into a burst of full deserialize + world-rebuild applies inside the
+  // next frame, which lengthens it, which enlarges the next burst. Bound
+  // the burst and leave the clock alone: the backlog drains over the
+  // following frames (8 per frame at 60 fps is 480 records/s, so even a
+  // 12-second stall is caught up in a quarter of a second) instead of
+  // landing in one hitch.
+  int budget = 8;
   for (;;) {
     int slot = replay_reader_->peek_slot();
     if (slot < 0) {
@@ -3353,7 +3365,12 @@ void GLGame::tick_replay_poll(int delta) {
               replay_reader_->last_slot());
       break;
     }
-    if (slot * 100 > replay_clock_ms_) break;
+    // 64-bit: slot is a u32 off the file, and `slot * 100` as int overflows
+    // above ~21M — reachable only by a corrupt or hostile file today, but
+    // R4 downloads replay blobs from a leaderboard, and this is the
+    // arithmetic that decides when to apply them.
+    if ((int64_t)slot * 100 > (int64_t)replay_clock_ms_) break;
+    if (budget-- <= 0) break;
     Replay::Reader::Record rec;
     replay_reader_->next(rec);
     if (rec.kind == Replay::REC_EFFECT) {
@@ -3388,9 +3405,12 @@ void GLGame::tick_replay_poll(int delta) {
           // game played by (net_listener_volume would ignore P2's viewport).
           float vol = sound_volume_for_point(Point(sx, sy));
           Mix_Chunk *snd = fx_ship->shoot_sound;
+          // Cached, not a lazy Mix_LoadWAV: decoding a WAV costs ~50 ms
+          // (the cost sound_cache.h exists to pay once), and a lazy load
+          // spends it inside the frame that plays the first beam shot of a
+          // playback.
           if (snd_kind == 1) {
-            static Mix_Chunk *beam_snd =
-                Mix_LoadWAV(asset_path("audio/beam.wav").c_str());
+            Mix_Chunk *beam_snd = load_wav_cached("audio/beam.wav");
             if (beam_snd) snd = beam_snd;
           }
           if (vol > 0.0f && snd != NULL) {
