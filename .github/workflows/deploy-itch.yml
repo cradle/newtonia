@@ -47,9 +47,20 @@ jobs:
 
       - name: Install butler
         run: |
-          BUTLER_VERSION=$(curl -s https://api.github.com/repos/itchio/butler/releases/latest | jq -r .tag_name)
-          curl -L -o butler.zip "https://github.com/itchio/butler/releases/download/${BUTLER_VERSION}/butler-linux-amd64.zip"
-          unzip butler.zip
+          set -euo pipefail
+          # itch's own distribution channel, not the GitHub API. The old step
+          # asked api.github.com for butler's latest tag UNAUTHENTICATED,
+          # which is rate-limited per runner IP: on v1.48.0 the query came
+          # back without a tag_name, `jq -r` printed "null", the download URL
+          # 404'd, and butler.zip was a 9-byte "Not Found" that unzip
+          # rejected with a message about multi-part archives — a failure
+          # that named neither the rate limit nor the release. broth is what
+          # itch documents, needs no API call, and always serves LATEST.
+          curl -fL --retry 3 --retry-all-errors -o butler.zip \
+            https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          # broth's archive has butler at the root; the push steps below
+          # expect linux-amd64/butler, so unpack it there.
+          unzip -q butler.zip -d linux-amd64
           chmod +x linux-amd64/butler
           linux-amd64/butler -V
 
