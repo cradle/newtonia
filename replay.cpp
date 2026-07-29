@@ -1,3 +1,4 @@
+#include "web_fs.h"
 #include "replay.h"
 #include "savegame.h"
 
@@ -51,17 +52,11 @@ std::string online_path() {
     return d.empty() ? "" : d + "online.nrp";
 }
 
-// Mirror the savegame's IDBFS behaviour: MEMFS writes only survive a web
-// reload once synced to IndexedDB, so every flush/patch/rotation syncs.
-static void web_sync() {
-#ifdef __EMSCRIPTEN__
-    EM_ASM(
-        FS.syncfs(false, function(err) {
-            if (err) console.error('[newtonia] replay sync failed:', err);
-        });
-    );
-#endif
-}
+// MEMFS writes only survive a web reload once synced to IndexedDB, so every
+// flush/patch/rotation syncs. Goes through the shared coalescer: a rotation
+// renames and deletes files while the flush that preceded it may still be
+// mid-sync, which used to fail that sync outright (web_fs.h).
+static void web_sync() { web_fs_sync("replay"); }
 
 // ── Header pack/unpack ───────────────────────────────────────────────────────
 // Fixed 64-byte layout (see replay.h). Packed by hand so the patchable tail
@@ -433,14 +428,26 @@ void Recorder::record_delta(const std::vector<uint8_t> &payload) {
     // records, while the identical run given 2.5 s before the close
     // persisted 171 — the flush is right, the commit just never lands.
     //
-    // So bound the loss instead of chasing the close: every SLOTS_PER_SYNC
-    // slots (10 Hz emission, so 50 = 5 s of play), leaving at most that
-    // much unwritten at any instant. The append is already bounded, and
-    // this is the same cost the level-boundary flush pays, just on a timer.
-    // The lifecycle hooks stay: when the browser DOES give us time (tab
-    // hidden, then closed later) they still save the remainder.
-    static const int SLOTS_PER_SYNC = 50;
-    if (last_slot_ - last_synced_slot_ >= SLOTS_PER_SYNC) {
+    // So bound the loss instead of chasing the close: flush on a slot
+    // interval (10 Hz emission, so 50 slots = 5 s of play) as well as at the
+    // checkpoints. The lifecycle hooks stay for the case the browser DOES
+    // grant time (tab hidden, then closed later).
+    //
+    // The interval GROWS with the recording, because IDBFS has no partial
+    // write: every sync re-stores the WHOLE file. Measured in Chromium
+    // (2026-07-29): 0.5 MB syncs in ~5 ms, 2 MB in 77, 8 MB in 203, 20 MB in
+    // 560 — all on the main thread. A fixed 5 s interval therefore costs
+    // more and more as the run goes on, and since each in-flight sync also
+    // holds its own copy of the data, a long Safari session ended up with
+    // emscripten's own "3 FS.syncfs operations in flight at once" warning,
+    // a frozen tab and eventually a crash (field, 2026-07-29). Scaling the
+    // interval with the file keeps the IDB write rate roughly flat at about
+    // 100 KB/s: 5 s under half a MB, 25 s at 2 MB, ~85 s at 8 MB. The loss
+    // window grows with it, which is the honest trade — the alternative is
+    // a tab that stops responding, and every checkpoint still flushes.
+    // web_fs.h's coalescer is the other half: never two syncs at once.
+    int interval = 50 * (1 + (int)(file_bytes_ / (512 * 1024)));
+    if (last_slot_ - last_synced_slot_ >= interval) {
         last_synced_slot_ = last_slot_;
         flush();
     }
@@ -492,6 +499,7 @@ void Recorder::write_chunk() {
     // drops it (self-delimiting framing), so no cleanup is attempted here.
     fwrite(&chunk_[0], 1, chunk_.size(), fp);
     fclose(fp);
+    file_bytes_ += chunk_.size();   // sizes the web sync interval
     chunk_.clear();
     web_sync();
 }

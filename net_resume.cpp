@@ -1,3 +1,4 @@
+#include "web_fs.h"
 #include "net_resume.h"
 
 #include <SDL.h>
@@ -66,13 +67,7 @@ bool process_alive(long long pid) {
 }
 
 void idbfs_sync() {
-#ifdef __EMSCRIPTEN__
-  EM_ASM(
-      FS.syncfs(false, function(err) {
-        if (err) console.error('[newtonia] IDBFS resume-ticket sync failed:', err);
-      });
-  );
-#endif
+  web_fs_sync("resume-ticket");
 }
 
 }  // namespace

@@ -1,3 +1,4 @@
+#include "web_fs.h"
 #include "stats.h"
 #include <SDL.h>
 #include <string>
@@ -77,15 +78,8 @@ void save() {
   if (!ok) return;
   dirty = false;
   unsaved_kills = 0;
-#ifdef __EMSCRIPTEN__
-  // Flush the in-memory filesystem to IndexedDB so the stats survive
-  // page refreshes.
-  EM_ASM(
-    FS.syncfs(false, function(err) {
-      if (err) console.error('[newtonia] IDBFS stats save failed:', err);
-    });
-  );
-#endif
+  // Persist to IndexedDB so the stats survive a page refresh.
+  web_fs_sync("stats");
 }
 
 } // namespace

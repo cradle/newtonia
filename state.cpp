@@ -4,8 +4,15 @@ State::State() : finished(false), next_state(NULL), ownership_transferred_(false
 
 void State::resize(int x, int y) {
   window = Point(x, y);
-  glClearAccum(0.0f, 0.0f, 0.0f, 1.0f);
-  glClear(GL_ACCUM_BUFFER_BIT);
+  // No accumulation-buffer clear here. It dated from the fixed-function
+  // build and cannot work on anything this game now runs on: accumulation
+  // buffers were removed in GL 3.2 core (the desktop context) and never
+  // existed in GLES2, where gles2_compat.h stubs glClearAccum to nothing but
+  // still hands glClear the legacy 0x200 bit — an invalid mask, which WebGL
+  // reports as "INVALID_VALUE: glClear: Invalid mask bits" (field, private
+  // Safari, 2026-07-29) and desktop core GL swallows silently. Every resize
+  // raised it: load, rotate, URL-bar show/hide. Nothing accumulates and
+  // nothing drew it, so the call only ever produced the error.
 }
 
 bool State::is_finished() {

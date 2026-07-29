@@ -515,6 +515,24 @@ R4's field.
   background flush landed and the replay played back intact after relaunch
   (so the append also fit the `onPause` budget); latency — no perceptible
   hitches through play including level boundaries, where the flushes land.
+- **On web every persistent write shares one filesystem, and they must not
+  sync at once.** IDBFS has no partial write: `FS.syncfs` re-stores whole
+  files, and it enumerates the tree before reading each one inside an async
+  transaction. Seven places persist something (savegame, preferences,
+  replay chunks and header patches, stats, high score, the resume ticket)
+  and several fire in the same frame — a pause writes the savegame, flushes
+  stats and flushes the replay. Uncoordinated that produced emscripten's own
+  "3 FS.syncfs operations in flight at once" warning, an `ErrnoError` every
+  time the current -> recent rotation renamed a file out from under an
+  in-flight sync, and — on Safari with a long run — a frozen tab and a
+  crash (field, 2026-07-29). Two fixes: `web_fs_sync` (web_fs.h) serializes
+  them, never more than one in flight and exactly one trailing pass for
+  anything that asked while it was busy; and the interval flush now SCALES
+  with the recording, because sync cost is the file, not the chunk —
+  measured in Chromium: 0.5 MB in ~5 ms, 2 MB 77, 8 MB 203, 20 MB 560, all
+  on the main thread. 5 s under half a MB, 25 s at 2 MB, ~85 s at 8 MB,
+  holding the IDB write rate near 100 KB/s. The loss window grows with the
+  file, which is the honest trade against a tab that stops responding.
 - **A crashed run's header used to lie.** The header is written at
   creation and patched at a clean stop, so a run that never reached
   finalize kept score 0, generation 0, duration 0 — invisible while such

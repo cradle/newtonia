@@ -1,3 +1,4 @@
+#include "web_fs.h"
 #include "highscore.h"
 #include <SDL.h>
 #include <string>
@@ -32,14 +33,7 @@ void save_high_score(int score) {
   if (f) {
     fwrite(&score, sizeof(int), 1, f);
     fclose(f);
-#ifdef __EMSCRIPTEN__
-    // Flush the in-memory filesystem to IndexedDB so the score
-    // survives page refreshes.
-    EM_ASM(
-      FS.syncfs(false, function(err) {
-        if (err) console.error('[newtonia] IDBFS save failed:', err);
-      });
-    );
-#endif
+    // Persist to IndexedDB so the score survives a page refresh.
+    web_fs_sync("highscore");
   }
 }
