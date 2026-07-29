@@ -1015,8 +1015,14 @@ bool GLGame::pause_menu_active() const {
   if (is_touch_mode()) return false;
   // Nothing left to resume — the GAME OVER card owns the screen.
   if (all_players_out()) return false;
-  // A replay's pause is a playback control, not a menu.
-  if (net_mode_ == NetReplay) return false;
+  // A paused REPLAY gets the menu too. It used to be excluded — "a replay's
+  // pause is a playback control, not a menu" — but the overlay draws the
+  // two rows from `!running` alone, so a paused replay showed RESUME
+  // highlighted and RETURN TO MENU under it and answered neither: only ESC
+  // did anything (field, 2026-07-29). Drawn and interactive have to agree,
+  // and both rows mean something here — the recording resumes, or you leave
+  // it. `pause_nav`'s exit is safe: `save_progress` no-ops for any net mode
+  // but NetOff, so nothing writes the ghost world over a real save.
   // The help card takes the pause text's place, so the menu isn't drawn.
   // Navigating a menu you cannot see is how a game gets quit by accident.
   for (auto *gs : *players)
@@ -8048,6 +8054,16 @@ void GLGame::controller(SDL_Event event) {
   // Replay playback: Start pauses, B (or any button once the recording's
   // game over has sat 3 s) exits; ghosts take no pad input.
   if (net_mode_ == NetReplay) {
+    // Paused, the pause menu answers the pad exactly as it does offline
+    // (dpad/stick move, A confirms) — the keyboard twin above.
+    if (pause_menu_active()) {
+      unsigned char nav = nav_key_from_controller(event);
+      if (MenuSelect::is_up(nav) || MenuSelect::is_down(nav) ||
+          MenuSelect::is_confirm(nav)) {
+        pause_nav(nav);
+        return;
+      }
+    }
     if (event.type == SDL_CONTROLLERBUTTONDOWN) {
       if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) toggle_pause();
       else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_B ||
@@ -8562,6 +8578,16 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
       return;
     }
     if (key == (unsigned char)gk.pause) { toggle_pause(); return; }
+    // Paused, the pause menu owns w/s and confirm — the same ladder the
+    // offline pause screen uses, so the drawn rows answer here too.
+    if (pause_menu_active()) {
+      unsigned char nav = nav_key(key);
+      if (MenuSelect::is_up(nav) || MenuSelect::is_down(nav) ||
+          MenuSelect::is_confirm(nav)) {
+        pause_nav(nav);
+        return;
+      }
+    }
     if (key == (unsigned char)gk.time_speed_up && replay_speed_ < 4.0f)
       replay_speed_ *= 2.0f;
     if (key == (unsigned char)gk.time_slow_down && replay_speed_ > 0.26f)
