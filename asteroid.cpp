@@ -1,5 +1,6 @@
 #include "asteroid.h"
 #include "asset_path.h"
+#include "world_sound.h"
 #include "wrapped_point.h"
 
 #include <list>
@@ -123,8 +124,6 @@ Asteroid::Asteroid(bool invincible, bool invisible, bool reflective, bool telepo
     thud_sound = Mix_LoadWAV(asset_path("audio/thud.wav").c_str());
     if(thud_sound == NULL) {
         std::cout << "Unable to load thud.wav (" << Mix_GetError() << ")" << std::endl;
-    } else {
-        //Mix_VolumeChunk(thud_sound, MIX_MAX_VOLUME/2); // Todo:  distance volume
     }
   }
   if(ting_sound == NULL) {
@@ -459,7 +458,7 @@ bool Asteroid::kill() {
         Uint32 now = SDL_GetTicks();
         if(now - last_teleport_tick >= 125) {
           last_teleport_tick = now;
-          Mix_PlayChannel(-1, thud_sound, 0);
+          WorldSound::play(thud_sound, position);
         }
       }
     }
@@ -472,7 +471,7 @@ bool Asteroid::kill() {
       Uint32 now = SDL_GetTicks();
       if(now - last_phase_ting >= 125) {
         last_phase_ting = now;
-        Mix_PlayChannel(-1, ting_sound, 0);
+        WorldSound::play(ting_sound, position);
       }
     }
     return false;
@@ -485,7 +484,7 @@ bool Asteroid::kill() {
       Uint32 now = SDL_GetTicks();
       if(now - last_elastic_thud >= 125) {
         last_elastic_thud = now;
-        Mix_PlayChannel(-1, thud_sound, 0);
+        WorldSound::play(thud_sound, position);
       }
     }
     return false;
@@ -496,14 +495,14 @@ bool Asteroid::kill() {
       Uint32 now = SDL_GetTicks();
       if(now - last_ting_tick >= 125) {
         last_ting_tick = now;
-        Mix_PlayChannel(-1, ting_sound, 0);
+        WorldSound::play(ting_sound, position);
       }
     } else if(thud_sound != NULL) {
       static Uint32 last_thud_tick = UINT32_MAX;
       Uint32 now = SDL_GetTicks();
       if(now - last_thud_tick >= 125) {
         last_thud_tick = now;
-        Mix_PlayChannel(-1, thud_sound, 0);
+        WorldSound::play(thud_sound, position);
       }
     }
   }
@@ -529,12 +528,12 @@ bool Asteroid::add_children(list<Asteroid*> *roids) {
     roids->push_back(new Asteroid(this));
     roids->push_back(new Asteroid(this));
   }
-  play_explode_sound();
+  play_explode_sound(position);
   velocity = velocity / 8;
   return true;
 }
 
-void Asteroid::play_explode_sound() {
+void Asteroid::play_explode_sound(Point at) {
   if(explode_sound == NULL) return;
   // Play at most once per millisecond tick: multiple asteroids dying in the
   // same frame would stack identical waveforms and clip the audio output.
@@ -542,6 +541,6 @@ void Asteroid::play_explode_sound() {
   Uint32 now = SDL_GetTicks();
   if(now != last_explode_tick) {
     last_explode_tick = now;
-    Mix_PlayChannel(-1, explode_sound, 0);
+    WorldSound::play(explode_sound, at);
   }
 }

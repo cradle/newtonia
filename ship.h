@@ -66,6 +66,11 @@ class Ship : public CompositeObject {
     void rotate_right(bool on = true);
     void thrust(bool on = true);
     void reverse(bool on = true);
+    // Re-level the looping thruster hum from the current thrust/rotate state
+    // and sound_volume_scale. The control calls do it on every change; GLGame
+    // also runs it per tick, because the listener distance folded into the
+    // scale keeps moving while the keys are simply held down.
+    void update_boost_volume();
     void shoot(bool on = true);
     void shoot_weapon(bool on = true);
     void fire_secondary(bool on = true);
@@ -101,6 +106,16 @@ class Ship : public CompositeObject {
     float radius_squared;
     bool thrusting, reversing, boosting;
     float sound_volume_scale = 1.0f;  // 0=silent, 1=full; set by GLGame for enemy AI
+    // "Cues about THIS ship, for whoever is flying it": the shield hum and
+    // god-mode music loops, and the respawn countdown tics. Not a volume —
+    // a question about whose ship it is. These used to test
+    // sound_volume_scale >= 1.0f, which answered it only by accident, back
+    // when the attenuation curve peaked at literally zero distance. Now that
+    // it holds full volume across the whole visible screen, anything you can
+    // see would pass that test, so the question is asked directly. GLGame
+    // owns it like the scale: the ships whose screen this is get true, the
+    // online peer and the world actors false.
+    bool sound_own_cues = true;
 
     // Extrapolation damping for a ship whose rotation this machine is
     // GUESSING rather than driving: the client (and replay playback) turns
@@ -542,7 +557,6 @@ class Ship : public CompositeObject {
     void drop_exhausted_primary();
     void record_primary_fired();  // weapons_7 kind-detect for the selected primary
 
-    void play_rotating_sound(bool on);
     void update_god_mode_music(int time_remaining);
     void stop_god_mode_music();
     Mix_Chunk *boost_sound = NULL, *tic_sound = NULL, *tic_low_sound = NULL, *click_sound = NULL;
