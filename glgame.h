@@ -182,6 +182,9 @@ private:
   // is excluded: it draws no cursor anywhere and already has both actions
   // (the pause button resumes, the RETURN TO MENU band leaves).
   bool pause_menu_active() const;
+  // A replay offers RETURN TO MENU from two different cards — see the
+  // definition in glgame.cpp.
+  bool replay_exit_offered() const;
   // RESUME / RETURN TO MENU ladder in logical keys, shared by the keyboard
   // and pad paths — the Menu::nav_input pattern, one decision path per
   // screen.

@@ -810,3 +810,23 @@ Same code path, so a difference is entirely commit timing. Measured
 correct and no close-time hook can be made reliable. That result is why
 the recorder flushes on a slot interval on web (`Recorder::record_delta`)
 rather than trusting `pagehide`.
+
+### Replay end-states and crash artifacts (headless drivers)
+
+Two conditions that only appear on files no CI test produces, both
+reproducible with the Xvfb pattern from §4:
+
+- **REPLAY ENDED (records ran out, no game over).** Record a run and
+  ABANDON it (Esc to menu) so the file ends without a death, then play it
+  back (`NEWTONIA_REPLAY_PLAY=current`) and outrun the recording. The card
+  draws RETURN TO MENU; ENTER must return to the menu, not only ESC. Verify
+  by screenshot — the process stays alive either way, so liveness proves
+  nothing here.
+- **Crash artifact header.** Play across a level boundary (a flush), then
+  `kill -9` the process, and read the header with `replay_check.py`. A
+  killed run never finalizes, so the check is whether the header still
+  DESCRIBES the run: `score`/`generation`/`duration_ms` non-zero,
+  `clean=0`. Comparing the same driver before and after a change is the
+  useful form — the record count stays identical, so only the summary
+  moves (2026-07-29: score 0/gen 0/dur 0 → score 31/gen 2/dur 4700 across
+  52 records).

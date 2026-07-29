@@ -282,6 +282,12 @@ public:
     // pause, focus loss). No-op when nothing new was recorded.
     void flush();
 
+    // Bank the run's score/generation so the next flush can write them into
+    // the header's patchable tail. Without this a run that never reaches
+    // finalize (crash, killed tab) keeps the creation values and lists as
+    // "SCORE 0 LEVEL 1" however far it actually got.
+    void note_progress(uint32_t score, uint32_t generation);
+
     // Final flush + in-place header patch (score/generation/duration/flags;
     // duration derives from the slot count — pure play time).
     // ended=true (game over): also retires the file — offline rotates
@@ -298,6 +304,7 @@ public:
 
 private:
     void note_predawn_drop();  // a record offered before the opening keyframe
+    void patch_header_tail();  // rewrite score/generation/duration in place
     void append_record(uint32_t slot, uint8_t kind, const uint8_t *data,
                        size_t len);
     void write_chunk();  // append the RAM chunk to the file (no ok_ gate)

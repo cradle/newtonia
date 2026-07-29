@@ -994,6 +994,20 @@ void GLGame::toggle_pause(bool broadcast) {
   }
 }
 
+// A replay ends in one of two ways, and BOTH draw the shared RETURN TO
+// MENU row: the recorded run died (GAME OVER, after its 3 s grace so a
+// stray key can't skip past the ending), or the records simply ran out
+// (REPLAY ENDED — an abandoned run, or one whose tail never made it to
+// disk). Only the first used to answer a confirm, so Enter on a REPLAY
+// ENDED card did nothing at all and Esc was the sole way out — a row that
+// says RETURN TO MENU and ignores Enter (field, 2026-07-29). Nothing needs
+// protecting once the records are exhausted: the world is frozen and
+// there is nothing left to watch.
+bool GLGame::replay_exit_offered() const {
+  return replay_finished_ ||
+         (game_over && current_time - game_over_time >= 3000);
+}
+
 bool GLGame::pause_menu_active() const {
   if (running) return false;
   // Touch draws no selection cursor on any screen, and the pause screen
@@ -3061,6 +3075,16 @@ void GLGame::replay_record_slot(int delta) {
   replay_slot_timer_ += delta;
   if (replay_slot_timer_ < 100) return;
   replay_slot_timer_ = 0;
+
+  // Keep the recorder's idea of the run current, so a flush that lands
+  // without a finalize behind it (crash, killed tab) still leaves an
+  // honest header — see Recorder::patch_header_tail.
+  uint32_t best = 0;
+  for (auto *gs : *players) {
+    int s = gs->ship->score;
+    if (s > 0 && (uint32_t)s > best) best = (uint32_t)s;
+  }
+  replay_->note_progress(best, (uint32_t)(generation < 0 ? 0 : generation));
 
   if (!net_force_keyframe_ && !replay_->keyframe_due()) {
     Save::MemStream payload;
@@ -8009,7 +8033,7 @@ void GLGame::controller(SDL_Event event) {
     if (event.type == SDL_CONTROLLERBUTTONDOWN) {
       if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) toggle_pause();
       else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_B ||
-               (game_over && current_time - game_over_time >= 3000 &&
+               (replay_exit_offered() &&
                 is_exit_key(nav_key_from_controller(event))))
         request_state_change(new Menu());
     }
@@ -8515,8 +8539,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     // The finished-replay card draws the shared RETURN TO MENU row, so it
     // answers like one; the menu key stays a direct shortcut mid-playback.
     if (key == (unsigned char)gk.menu ||
-        (game_over && current_time - game_over_time >= 3000 &&
-         is_exit_key(nav_key(key)))) {
+        (replay_exit_offered() && is_exit_key(nav_key(key)))) {
       request_state_change(new Menu());
       return;
     }

@@ -515,6 +515,18 @@ R4's field.
   background flush landed and the replay played back intact after relaunch
   (so the append also fit the `onPause` budget); latency — no perceptible
   hitches through play including level boundaries, where the flushes land.
+- **A crashed run's header used to lie.** The header is written at
+  creation and patched at a clean stop, so a run that never reached
+  finalize kept score 0, generation 0, duration 0 — invisible while such
+  files were rare and unplayable, glaring once the web's interval flush
+  made them ordinary: a multi-level run listed as "SCORE 0  LEVEL 1"
+  (field, 2026-07-29). `Recorder::flush` now patches the tail every time,
+  fed by `note_progress` from the slot cadence. FLAG_CLEAN still belongs to
+  finalize alone — it is what marks a run properly closed, and
+  `maybe_promote_best` gates on it — so a crash artifact stays
+  watchable-but-not-promotable exactly as before. Verified by SIGKILLing a
+  run mid-level: the same 52 records that read score 0 / gen 0 / dur 0 now
+  read score 31 / gen 2 / dur 4700.
 - **The web had no lifecycle hook at all until 2026-07-29.** The background
   flush rides `GLGame::focus_lost()`, and every other entry point calls it
   (glut.cpp polls X11 focus, android_main.cpp handles

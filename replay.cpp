@@ -507,6 +507,42 @@ void Recorder::await_keyframe() { have_keyframe_ = false; }
 void Recorder::flush() {
     if (!ok_) return;
     write_chunk();
+    patch_header_tail();
+}
+
+// Refresh the patchable tail (score / generation / duration) on every
+// flush, not only at finalize.
+//
+// The header is written once at creation and patched at a clean stop, so
+// any run that never reaches finalize — a crash, a killed tab — kept the
+// creation values: score 0, generation 0, duration 0. That was invisible
+// while such files were rare and unplayable; the web's interval flush
+// makes them ordinary, and the REPLAYS list rendered a ten-level run as
+// "SCORE 0  LEVEL 1" (field, 2026-07-29). The records were always right —
+// only the summary lied.
+//
+// FLAG_CLEAN still belongs to finalize alone: it is what marks a run
+// properly closed, and maybe_promote_best gates on it, so a crash artifact
+// stays watchable-but-not-promotable exactly as before.
+void Recorder::patch_header_tail() {
+    if (!ok_) return;
+    header_.duration_ms = (uint32_t)((last_slot_ + 1) * 100);
+    FILE *fp = fopen(path_.c_str(), "r+b");
+    if (!fp) return;
+    uint8_t buf[Header::SIZE];
+    pack_header(buf, header_);
+    if (fseek(fp, (long)Header::PATCH_OFFSET, SEEK_SET) == 0)
+        fwrite(buf + Header::PATCH_OFFSET, 1,
+               Header::SIZE - Header::PATCH_OFFSET, fp);
+    fclose(fp);
+}
+
+// The caller owns the score/generation; the recorder just banks them so
+// the next flush can write them out (the web's interval flush has no other
+// way to learn them).
+void Recorder::note_progress(uint32_t score, uint32_t generation) {
+    if (score > header_.final_score) header_.final_score = score;
+    header_.generation = generation;
 }
 
 void Recorder::finalize(uint32_t score, uint32_t generation, bool cheated,
