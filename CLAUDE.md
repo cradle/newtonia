@@ -17,6 +17,8 @@ make clean      # Remove build artifacts
 
 Compiler: g++ with `-Wall -O3 -std=c++11`. Sources include root, `weapon/`, and `view/`.
 
+**Every build path stamps a version** into `NEWTONIA_VERSION_STRING`, which lands in each replay file's header so leaderboard seasons can bucket runs by release (REPLAY.md R4). Resolution order is the same everywhere — `-DNEWTONIA_VERSION` / `NEWTONIA_VERSION=` , then the environment, then `git describe --tags --dirty --always` — implemented in the Makefile (desktop/Steam/web/osx), the root `CMakeLists.txt` (Android) and `xbox/CMakeLists.txt`; iOS takes it as an xcodebuild setting (`NEWTONIA_VERSION_DEFINE`, the same hand-off `NEWTONIA_NET_DEFINE` uses, wired in `ios/project.yml`). The deploy workflows pass the tag explicitly because `actions/checkout` is shallow and fetches no tags. Unresolvable falls back to `replay.h`'s `"dev"`, so this can never fail a build — but note a hand-rolled `make CFLAGS=...` override drops the stamp with the rest of `CFLAGS`.
+
 **Netplay builds by default** (the old opt-in `NETPLAY=1` still works and is
 now redundant). The default needs libdatachannel at `./netplay-libs` — build
 it ONCE with `./build_netplay_deps.sh` (`--universal` for `make osx`). A
@@ -108,8 +110,9 @@ build (`make android`) or the `android.yml` CI.
 
 #### Headless runtime testing & debugging (Linux, no display)
 **See TESTING.md for the full test inventory** — build gates, in-binary
-selftests (`NEWTONIA_NET_SELFTEST`), signal-worker tests, the committed
-netplay e2e drivers (`test/e2e/`), and the `STEAM_BUILD` stub check. This
+selftests (`NEWTONIA_NET_SELFTEST`, `NEWTONIA_REPLAY_SELFTEST`),
+signal-worker tests, the committed netplay e2e drivers (`test/e2e/`), and the
+`STEAM_BUILD` stub check. This
 section documents the underlying driver technique those drivers use.
 
 A clean build is not proof that gameplay flows work — state transitions, input

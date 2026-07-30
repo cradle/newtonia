@@ -67,7 +67,15 @@ criteria. Nothing here is built yet.
   RUN / BEST RUN with score, level, date) → playback. Same nav-ladder +
   TapBand patterns as every other screen.
 - **Version discipline**: replay files are stamped (magic `NWRP`, format
-  version, game version string) and the recorded encodings adopt the
+  version, game version string — **actually populated since 2026-07-30**;
+  it read `"dev"` in every file ever recorded until then, because nothing
+  defined `NEWTONIA_VERSION_STRING`. Now every build path does: the
+  Makefile (desktop/Steam/web/osx) and both CMakeLists (Android/Xbox)
+  resolve `-DNEWTONIA_VERSION` → `$NEWTONIA_VERSION` → `git describe`,
+  and the four deploy workflows pass the tag explicitly since a shallow
+  CI checkout has no tags to describe; iOS takes it as an xcodebuild
+  setting beside `NEWTONIA_NET_DEFINE`. Unresolvable still falls back to
+  `"dev"`, so no build can fail over it) and the recorded encodings adopt the
   savegame's append-only + version-gate convention the moment R1 lands.
   Live netplay keeps its strict PROTO match; only the replay reader needs
   tolerance. Playback of a file whose format version is out of range
@@ -478,13 +486,62 @@ current builds on both sides.
   preferences.ini instead — it survives every launch method.
 - Note the e2e passes WITHOUT exercising the drop path (the trace never
   fires), so it proves the fix non-breaking, not that it repairs the
-  ordering. Provoking the first-100 ms window is still an open test gap.
+  ordering. ~~Provoking the first-100 ms window is still an open test
+  gap.~~ **CLOSED 2026-07-30 — and the reason the e2e never fired the
+  trace turns out to be structural, not a driving problem.** The game
+  forces a keyframe as the first record of every recording
+  (`replay_start` sets `net_force_keyframe_`), and the host forces one
+  for a (re)joining client (`glgame.cpp`: "rejoined client starts from a
+  keyframe"), so from the game's own call order the first record offered
+  is *always* a keyframe and the hold path is unreachable. No amount of
+  xdotool driving can provoke it — measured: zero `holding records` lines
+  across a full `replay.sh` run. The hold is a safety net for a caller
+  that gets the order wrong, which is exactly what happened twice in the
+  field, so it is tested where it can be: `replay_selftest.cpp` drives
+  the `Recorder` directly (`NEWTONIA_REPLAY_SELFTEST=1`, no relay, no
+  display, no game), asserting that a fresh recorder holds
+  delta+event+effect without advancing a slot, that the keyframe opens
+  the file and clears the count, that `await_keyframe` re-arms the hold
+  **per seam** (2 held, not a cumulative 5), that the file reads back
+  K D D K D opening on a keyframe, and that a resumed recorder starts
+  satisfied. Driver `test/e2e/replay_keyframe.sh` (a linux.yml gate)
+  also asserts the two trace lines and their counts, since a field
+  diagnosis reads those and nothing else. Mutation-checked both ways:
+  removing the hold produces `[DKDDDDKD]` — a delta ahead of its own
+  baseline, the corrupt-baseline file the field saw — and removing the
+  per-seam reset reproduces the "5 record(s) held out" misreport.
 
 ### R4 — leaderboard hooks (with the leaderboard project)
 Score submission attaches the finalized replay blob; server stores it;
 leaderboard rows link to watchable replays (download → R2 playback).
 Seasons bucket by sim-affecting release. Submission format carries a
 reserved verification field so R5 can slot in without a format break.
+
+**Not started, and gated on a leaderboard project that does not exist yet**
+(no submission path, no server endpoint, no season logic anywhere; audited
+2026-07-30). What the recorder already hands it, so R4 need not build it:
+`best.nrp` as the submission candidate — promotion already gates on
+`FLAG_CLEAN` and excludes `FLAG_CHEATED` — plus a header carrying score,
+generation, duration, date, player count, `run_id` and `save_version`,
+patched on every flush so a crashed run reads honestly; format-version
+tolerance with a polite decline; and R2 playback of an arbitrary file,
+which is the "download → watch" half. The 64-bit slot arithmetic in
+`glgame.cpp` was hardened for this milestone's hostile input.
+
+Three things R4 has to decide, in the order they bind:
+1. ~~The season key.~~ **Done 2026-07-30**: the header's game version is
+   populated on every build path (see "Version discipline" above). It was
+   `"dev"` everywhere before that, and a header is write-once — no
+   back-fill exists for files recorded until now.
+2. **Blob size.** The 32 MB cap (`replay.cpp`, ~2 h of play) is **web-only**;
+   native recordings are unbounded, and the web's own sync measurements
+   discuss 20 MB files. So a submission may be attaching tens of megabytes:
+   whole blob, capped, or trimmed to the last N levels is a design choice
+   that constrains the format, so make it first.
+3. **The verification field.** It is an intention, not a spent byte: there
+   is no submission format yet to reserve it in. If verification ever wants
+   to live in the `.nrp` itself instead of the envelope, the header has 4
+   spare fixed bytes (44 used of the 48 before the patchable tail).
 
 ### R5 — deferred: input-log verification
 Only if forged submissions appear: sim-RNG split (~78 `rand()` sites),

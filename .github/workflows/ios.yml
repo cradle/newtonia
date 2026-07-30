@@ -358,4 +358,5 @@ jobs:
             "SDL2_MIXER_HEADER_PATH=$(pwd)/SDL2_mixer/include" \
             "NEWTONIA_NET_DEFINE=NEWTONIA_NET_RTC=1" \
             "NEWTONIA_NET_HEADER_PATH=$(pwd)/libdatachannel/include" \
+            "NEWTONIA_VERSION_DEFINE=NEWTONIA_VERSION_STRING=\\\"${{ github.ref_name }}\\\"" \
             "OTHER_LDFLAGS=$OTHER_LD"

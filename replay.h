@@ -196,6 +196,16 @@ void on_new_game();
 // accepted limitation as offline).
 void best_check_online();
 
+// Deterministic in-binary check of the keyframe-ordering invariant (the one
+// the online host's first 100 ms and every client rejoin depend on — see
+// Recorder::await_keyframe / note_predawn_drop). Writes and reads back a
+// throwaway selftest.nrp beside the real replays, then deletes it; touches
+// no game state and needs no window, GL, or SDL_Init. Logs each step and
+// returns false on the first failure.
+//   NEWTONIA_REPLAY_SELFTEST=1 ./newtonia
+// Driver: test/e2e/replay_keyframe.sh. See TESTING.md.
+bool selftest();
+
 // Playback-side file reader (R2). Loads the whole file into memory (a few
 // MB) and iterates intact records in order; a truncated final record (crash
 // artifact) simply ends iteration, and the header may understate the
@@ -244,6 +254,10 @@ public:
              const std::string &path);
 
     bool ok() const { return ok_; }
+    // Records held out since the current seam opened (see note_predawn_drop):
+    // non-zero only inside a pre-keyframe window, reset by the keyframe that
+    // closes it. Informational — the selftest asserts on it.
+    int predawn_drops() const { return predawn_drops_; }
     // Slots are the recorder's own 10 Hz emission count (continued across a
     // resume via last_record_slot), NOT wall or session clock: the caller
     // only emits while the sim runs, so pauses add no slots and the playback
