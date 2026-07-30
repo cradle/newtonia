@@ -36,6 +36,11 @@ jobs:
           ~/emsdk/emsdk activate latest
 
       - name: Build WebAssembly
+        env:
+          # Stamped into replay headers (REPLAY.md R4: leaderboard seasons
+          # bucket by release). The checkout is shallow with no tags, so pass
+          # it rather than leaving the Makefile to `git describe`.
+          NEWTONIA_VERSION: ${{ github.ref_name }}
         run: |
           source ~/emsdk/emsdk_env.sh
           emcc --version
@@ -82,6 +87,11 @@ jobs:
       # them). Same origin allowlist covers both projects
       # (metonymous.itch.io + the itch.zone/hwcdn iframe hosts).
       - name: Build WebAssembly (netplay, paid online project)
+        env:
+          # Stamped into replay headers (REPLAY.md R4: leaderboard seasons
+          # bucket by release). The checkout is shallow with no tags, so pass
+          # it rather than leaving the Makefile to `git describe`.
+          NEWTONIA_VERSION: ${{ github.ref_name }}
         run: |
           source ~/emsdk/emsdk_env.sh
           make web-clean

@@ -152,6 +152,28 @@ target_link_libraries(newtonia
 target_compile_definitions(newtonia PRIVATE __ANDROID__ PLAY_GAMES_BUILD
     NEWTONIA_NET_IDENTITY_BACKEND NEWTONIA_NET_VERIFY_BACKEND)
 
+# Version stamped into replay headers (Replay::Header::game_version, 23 chars
+# max) so leaderboard seasons can bucket runs by release — REPLAY.md R4. Same
+# resolution order as the Makefile: -DNEWTONIA_VERSION, then the environment
+# (how deploy-android.yml passes the tag through Gradle), then git describe.
+# Unresolvable leaves replay.h's "dev" default.
+if(NOT NEWTONIA_VERSION)
+    if(DEFINED ENV{NEWTONIA_VERSION})
+        set(NEWTONIA_VERSION "$ENV{NEWTONIA_VERSION}")
+    else()
+        execute_process(COMMAND git describe --tags --dirty --always
+                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                        OUTPUT_VARIABLE NEWTONIA_VERSION
+                        OUTPUT_STRIP_TRAILING_WHITESPACE
+                        ERROR_QUIET)
+    endif()
+endif()
+if(NEWTONIA_VERSION)
+    message(STATUS "Newtonia version stamp: ${NEWTONIA_VERSION}")
+    target_compile_definitions(newtonia PRIVATE
+        NEWTONIA_VERSION_STRING="${NEWTONIA_VERSION}")
+endif()
+
 if(NEWTONIA_NET)
     # Activates net_transport_rtc.cpp / net_signal_rtc.cpp (empty TUs
     # everywhere else) and net_available(); see net_transport.h.

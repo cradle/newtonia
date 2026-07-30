@@ -15,6 +15,15 @@ on:
         required: true
         default: 'beta'
 
+# Stamped into every replay header (REPLAY.md R4: leaderboard seasons bucket
+# by release). Passed explicitly rather than left to `git describe` because
+# actions/checkout is shallow and fetches no tags. On a tag build this is the
+# tag; on a manual dispatch it is the branch, which is the honest answer.
+# These jobs compile with inline g++/clang++ rather than the Makefile, so the
+# define goes on each command below.
+env:
+  NEWTONIA_VERSION: ${{ github.ref_name }}
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -81,6 +90,7 @@ jobs:
           NETLIBS=$(find netplay-deps/libdatachannel/build -name "*.a" | sort -u)
           windres icon.rc -O coff -o icon.res
           g++ -O2 -std=c++11 -D_USE_MATH_DEFINES -DFREEGLUT_STATIC -DSTEAM_BUILD \
+            -DNEWTONIA_VERSION_STRING=\"$NEWTONIA_VERSION\" \
             -DNEWTONIA_NET_RTC -DRTC_STATIC \
             -Inetplay-deps/libdatachannel/include \
             $(pkg-config --cflags sdl2 SDL2_mixer freeglut) \
@@ -210,6 +220,7 @@ jobs:
           clang++ -O2 -std=c++11 -arch arm64 \
             -mmacosx-version-min=12.0 \
             -DGL_SILENCE_DEPRECATION -DSTEAM_BUILD \
+            -DNEWTONIA_VERSION_STRING=\"$NEWTONIA_VERSION\" \
             -DNEWTONIA_NET_RTC -I./netplay-libs/include \
             -I./sdk/public \
             -o newtonia-arm64 $(cat srcs.txt) macos_window.mm \
@@ -241,6 +252,7 @@ jobs:
           clang++ -O2 -std=c++11 -arch x86_64 \
             -mmacosx-version-min=12.0 \
             -DGL_SILENCE_DEPRECATION -DSTEAM_BUILD \
+            -DNEWTONIA_VERSION_STRING=\"$NEWTONIA_VERSION\" \
             -DNEWTONIA_NET_RTC -I./netplay-libs/include \
             -I./sdk/public \
             -o newtonia-x86_64 $(cat srcs.txt) macos_window.mm \
@@ -508,6 +520,7 @@ jobs:
             -not -path "./SDL2_mixer/*")
           g++ -O2 -Wall -std=c++11 \
             -DSTEAM_BUILD \
+            -DNEWTONIA_VERSION_STRING=\"$NEWTONIA_VERSION\" \
             -DNEWTONIA_NET_RTC -I./netplay-libs/include \
             $(sdl2-config --cflags) -I/usr/local/include/SDL2 \
             -I./sdk/public \

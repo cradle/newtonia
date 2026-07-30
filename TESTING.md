@@ -231,9 +231,26 @@ test/e2e/replay_online.sh # REPLAY.md online recording (needs the relay):
                      # (REPLAY.md, 2026-07-27): nothing here fires inside
                      # the host's first 100 ms, so the recorder's
                      # "holding records until the opening keyframe" trace
-                     # never appears. Provoking that window is an open
-                     # gap — the bug it guards was found in the field, not
-                     # by this driver.
+                     # never appears here. It cannot: the game forces a
+                     # keyframe as its first record either way (see the
+                     # keyframe driver below, which covers that window
+                     # directly).
+test/e2e/replay_keyframe.sh # REPLAY.md keyframe ordering, via the in-binary
+                     # recorder selftest (NEWTONIA_REPLAY_SELFTEST=1 — no
+                     # relay, no display, no game). The ONLY coverage of the
+                     # pre-keyframe hold: records offered before the opening
+                     # keyframe are held, not written and not answered with a
+                     # locally-built stand-in, and the count resets per seam
+                     # (await_keyframe re-arms it on a client rejoin). Asserts
+                     # the recorded file is K D D K D, both trace lines with
+                     # their per-seam counts (3 then 2, never a cumulative 5),
+                     # and that the throwaway selftest.nrp is cleaned up
+                     # without touching the four real slots. Mutation-checked
+                     # both ways (2026-07-30): deleting the hold yields
+                     # [DKDDDDKD] — a delta before its own baseline, the field
+                     # bug's exact shape — and deleting the reset reproduces
+                     # the "5 record(s) held out" misreport. Also a linux.yml
+                     # build gate.
 test/e2e/replay.sh   # REPLAY.md R1 exit criteria, solo (no relay needed):
                      # abandon leaves a resumable current.nrp; CONTINUE
                      # appends to the SAME file (one run_id, seam keyframe,
@@ -454,6 +471,7 @@ game so achievements stay suppressed):
 | `NEWTONIA_TEST_SPAWN_PICKUPS=1` | Pickup-icon ring (see above) |
 | `NEWTONIA_REPLAY_ENABLE=1` | Force replay recording ON (it ships opt-in / default OFF — `Preferences::auto_record_replays`). The replay e2e drivers set this; `NEWTONIA_REPLAY_DISABLE=1` forces OFF and wins |
 | `NEWTONIA_REPLAY_PLAY=<current\|recent\|online\|best\|last\|path>` | Boot straight into playback of that replay file (dev entry for R2; the REPLAYS menu is the real path) |
+| `NEWTONIA_REPLAY_SELFTEST=1` | Run the recorder's keyframe-ordering selftest and exit 0/1 (`replay_selftest.cpp`), before any window or GL — the same hidden-hook shape as `NEWTONIA_NET_SELFTEST`, but present in netless builds too since replays are a solo feature. Driver: `test/e2e/replay_keyframe.sh` |
 | `NEWTONIA_SAFE_INSET_TOP=N` | Forces a top display-cutout inset of N px, so the notch HUD layout (LEVEL/score/weapons shifted below the camera) is testable without cutout hardware. The real inset comes from `NewtoniaActivity`'s `DisplayCutout` on Android |
 
 Independent of any env var, the game SDL_Logs a **perf report** once per

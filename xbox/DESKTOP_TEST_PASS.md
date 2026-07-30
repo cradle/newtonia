@@ -1,5 +1,13 @@
 # GDK Desktop — manual test pass checklist (Phase 1)
 
+> **DEFERRED (2026-07-30): the remaining pass is run and recorded in the
+> private repo `cradle/newtonia-xbox`,** which owns all Xbox work — see
+> `xbox/PRIVATE_REPO.md`. Nothing here needs NDA material (a Windows PC plus
+> the artifact from this repo's green `xbox-dev.yml` run is the whole setup),
+> so this one is deferred by ownership, not by a blocker: sections A and D
+> passed on 2026-06-12 and B, C, E–K have never been run. The copy below is
+> the frozen reference; file findings against the private repo.
+
 Validates the Windows GDK Desktop build at runtime. Needs: a Windows 10/11
 PC, one or two Xbox controllers (USB or Bluetooth), ~15 minutes.
 Record results inline (✅/❌ + notes) and file anything broken as an issue

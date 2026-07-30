@@ -46,6 +46,7 @@ package-lock.json
 Newtonia.app/
 netplay-libs/
 flavor.stamp
+version.stamp
 ## Xbox/GDK local build trees (cmake -B xbox/build-*)
 xbox/build-*/
 ## Steam local build (make steam)

@@ -97,6 +97,11 @@ targets:
         GCC_PREPROCESSOR_DEFINITIONS:
           - "__IOS__=1"
           - "GAME_CENTER_BUILD=1"
+          # Version stamped into replay headers (REPLAY.md R4 seasons).
+          # Passed as an xcodebuild setting by `make ios` / ios.yml /
+          # deploy-ios.yml; expands to nothing when nobody passes it, and
+          # replay.h's "dev" default stands.
+          - "$(NEWTONIA_VERSION_DEFINE)"
           # Enable the Game Center netplay-identity backend (net_identity.h V3):
           # net_identity.cpp calls NetIdentityBackend::local_name/platform and
           # local_verify_credential, which game_center_identity.mm supplies. The
@@ -126,6 +131,7 @@ targets:
             - "NEWTONIA_NET_VERIFY_BACKEND=1"
             - "NEWTONIA_LAN_IOS=1"
             - "DEBUG=1"
+            - "$(NEWTONIA_VERSION_DEFINE)"
             - "$(NEWTONIA_NET_DEFINE)"
             - "$(NEWTONIA_SIGNAL_DEFINE)"
             - "$(inherited)"

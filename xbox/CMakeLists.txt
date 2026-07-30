@@ -215,6 +215,27 @@ target_compile_definitions(newtonia PRIVATE
     _USE_MATH_DEFINES  # M_PI etc. for files that include <math.h> before SDL headers
 )
 
+# Version stamped into replay headers (REPLAY.md R4 seasons) — same
+# resolution order as the Makefile and the root CMakeLists: -DNEWTONIA_VERSION,
+# then the environment, then git describe. Unresolvable (e.g. no git on the
+# runner) leaves replay.h's "dev" default, so this can never fail a build.
+if(NOT NEWTONIA_VERSION)
+    if(DEFINED ENV{NEWTONIA_VERSION})
+        set(NEWTONIA_VERSION "$ENV{NEWTONIA_VERSION}")
+    else()
+        execute_process(COMMAND git describe --tags --dirty --always
+                        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                        OUTPUT_VARIABLE NEWTONIA_VERSION
+                        OUTPUT_STRIP_TRAILING_WHITESPACE
+                        ERROR_QUIET)
+    endif()
+endif()
+if(NEWTONIA_VERSION)
+    message(STATUS "Newtonia version stamp: ${NEWTONIA_VERSION}")
+    target_compile_definitions(newtonia PRIVATE
+        NEWTONIA_VERSION_STRING="${NEWTONIA_VERSION}")
+endif()
+
 if(NEWTONIA_NET)
     # Activates net_transport_rtc.cpp (an empty TU everywhere else) and
     # net_available(); see net_transport.h.

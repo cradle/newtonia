@@ -63,6 +63,34 @@ endif
 
 CFLAGS += -MMD -MP
 
+# --- Version stamp -------------------------------------------------------
+# Stamped into every replay header (Replay::Header::game_version, 23 chars
+# max) so leaderboard seasons can bucket runs by release — REPLAY.md R4.
+# Write-once per file and never back-fillable, so every build path defines
+# it: this one, the osx/web/ios targets below, the root and xbox
+# CMakeLists (Android/Xbox), and the deploy workflows, which pass the tag
+# explicitly because a shallow CI checkout has no tags to describe.
+#
+#   make                        -> git describe (tag, or the short sha)
+#   make NEWTONIA_VERSION=v1.2.3 -> exactly that
+#
+# Empty (no git, e.g. a source tarball) leaves replay.h's "dev" default.
+# A CFLAGS override on the command line drops the stamp with everything
+# else in CFLAGS — that only affects hand-rolled debug builds, which are
+# honestly "dev".
+NEWTONIA_VERSION ?= $(shell git describe --tags --dirty --always 2>/dev/null)
+ifneq ($(NEWTONIA_VERSION),)
+  VERSION_CFLAGS = -DNEWTONIA_VERSION_STRING='"$(NEWTONIA_VERSION)"'
+  # The iOS build takes it as an xcodebuild setting, the same hand-off
+  # NEWTONIA_NET_DEFINE uses (project.yml expands the placeholder into
+  # GCC_PREPROCESSOR_DEFINITIONS, and to nothing when it isn't passed).
+  # The \\\" survives make -> shell -> xcodebuild as a literal \" , which
+  # is the escaping Xcode needs to define a string macro.
+  IOS_VERSION_SETTING = \
+    "NEWTONIA_VERSION_DEFINE=NEWTONIA_VERSION_STRING=\\\"$(NEWTONIA_VERSION)\\\""
+endif
+CFLAGS += $(VERSION_CFLAGS)
+
 COMPILE = $(CC) $(CFLAGS) -c
 OBJFILES := $(patsubst %.cpp,%.o,$(ALL_SRCS))
 ifeq ($(UNAME), Darwin)
@@ -83,6 +111,16 @@ FORCE: ;
 flavor.stamp: FORCE
 	@[ "`cat flavor.stamp 2>/dev/null`" = "$(FLAVOR)" ] || echo "$(FLAVOR)" > flavor.stamp
 $(OBJFILES): flavor.stamp
+
+# Version stamp, same trick, one object: make doesn't notice a changed
+# -D, so an incremental build would keep stamping the sha replay.o was
+# first compiled with. Only replay.cpp reads the macro, so scope the
+# rebuild to it — hanging every object off this would mean a full rebuild
+# on every commit.
+version.stamp: FORCE
+	@[ "`cat version.stamp 2>/dev/null`" = "$(NEWTONIA_VERSION)" ] || \
+	  echo "$(NEWTONIA_VERSION)" > version.stamp
+replay.o: version.stamp
 
 # --- macOS universal bundle ----------------------------------------------
 # Two whole-program compiles (arm64 + x86_64) lipo'd together, mirroring
@@ -106,6 +144,7 @@ newtonia-x86_64: OSX_SDL = $(OSX_SDL_X86)
 newtonia-arm64 newtonia-x86_64: osx-netplay-check FORCE
 	$(CC) -O3 -Wall -std=c++11 -arch $(patsubst newtonia-%,%,$@) $(OSX_MIN) \
 	  -DGL_SILENCE_DEPRECATION -Wno-char-subscripts $(OSX_NET_CFLAGS) \
+	  $(VERSION_CFLAGS) \
 	  -I$(OSX_SDL)/include/SDL2 -D_THREAD_SAFE \
 	  -o $@ $(ALL_SRCS) macos_window.mm \
 	  -L$(OSX_SDL)/lib -lSDL2 -lSDL2_mixer $(OSX_NET_LIBS) \
@@ -171,6 +210,7 @@ WEB_FLAGS = -std=c++11 -O2 \
             --shell-file web/shell.html
 
 WEB_FLAGS += --preload-file audio@audio
+WEB_FLAGS += $(VERSION_CFLAGS)
 
 # `make web NETPLAY=0` ships the web game with netplay force-disabled
 # (NEWTONIA_NET_DISABLED: ONLINE row hidden, invite codes drained and
@@ -303,6 +343,7 @@ ios: ios-deps-check
 	  "SDL2_MIXER_HEADER_PATH=$(abspath $(IOS_SDL_PREFIX))/include/SDL2" \
 	  "NEWTONIA_NET_DEFINE=NEWTONIA_NET_RTC=1" \
 	  "NEWTONIA_NET_HEADER_PATH=$(abspath $(IOS_NET_PREFIX))/include" \
+	  $(IOS_VERSION_SETTING) \
 	  "OTHER_LDFLAGS=-ObjC $(abspath $(IOS_SDL_PREFIX))/lib/libSDL2main.a $(abspath $(IOS_SDL_PREFIX))/lib/libSDL2.a $(abspath $(IOS_SDL_PREFIX))/lib/libSDL2_mixer.a $(abspath $(wildcard $(IOS_NET_PREFIX)/lib/*.a))"
 	@echo "App: $(IOS_APP)"
 

@@ -729,7 +729,9 @@ the ghost too) never earns on the wrong machine.
 
 Items 1–5 are **all done**, and as of 2026-07-26 so is every portal
 configuration behind them (Steamworks, App Store Connect, Play Console).
-The only achievement work left anywhere is the Xbox backend, below.
+The only achievement work left anywhere is the Xbox backend, and since
+2026-07-30 that is deferred to the private repo (see below), so **this repo
+has no open achievement engineering** — only the §5 playtests.
 
 1. `achievements.h/.cpp` — seam + no-op default backend. **Done.**
 2. Hooks at the §3 call sites in `GLGame`/`Ship`, using the symbolic IDs
@@ -738,7 +740,8 @@ The only achievement work left anywhere is the Xbox backend, below.
    local-player attribution rule. **Done** — though `SaveStorage` itself
    does not exist upstream yet (§4), so the file I/O still mirrors
    `highscore.dat`'s pattern directly and moves behind the abstraction
-   unchanged when `xbox/PORT_PLAN.md` work item 10 lands.
+   unchanged if `xbox/PORT_PLAN.md` work item 10 ever lands — that item is
+   private-repo work now, and would arrive here as an upstream PR.
 4. The XR-057 cheat-suppression flag (game-scoped `cheated`, set by
    skip-level and time-scale keys, cleared only on new game, persisted in
    the savegame) gating all unlocks in the shared layer. **Done.**
@@ -749,8 +752,10 @@ The only achievement work left anywhere is the Xbox backend, below.
    `PlayGamesAchievements.java`).
 
 The Xbox backend (GDK Achievements Manager wiring, Partner Center config,
-sandbox testing) is tracked in the private GDKX mirror and consumes this
-work as-is.
+sandbox testing) is **deferred to the private repo** `cradle/newtonia-xbox`
+along with the rest of the Xbox port (2026-07-30 — `xbox/PRIVATE_REPO.md`),
+and consumes this work as-is. It is not tracked as work in this repo; the
+shared seam it lands against needs no further change.
 
 **Remaining across §5 is playtesting, not configuration:** the
 `reach_level15` continuous 10–15 run, and re-playtesting the black-hole

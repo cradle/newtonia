@@ -72,6 +72,13 @@ jobs:
           NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia | tee selftest.log
           grep -q "NET SELFTEST PASS" selftest.log
 
+      # Replay recorder keyframe-ordering invariant (REPLAY.md) — also
+      # windowless, and the only coverage of the pre-keyframe hold, which the
+      # game's own call order can never reach. The driver asserts the per-seam
+      # drop counts too, not just the verdict.
+      - name: Replay recorder self-test
+        run: ./test/e2e/replay_keyframe.sh
+
       - name: Bundle
         run: |
           mkdir -p dist
