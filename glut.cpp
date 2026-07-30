@@ -17,6 +17,7 @@
 #include "achievements.h"
 #include "presence.h"
 #include "invites.h"
+#include "world_sound.h"
 
 // gl_compat.h pulls in GLUT (for window management) and gles2_compat.h
 // (for the VBO/VAO/shader shim that replaces all legacy GL calls).
@@ -590,8 +591,12 @@ void init_controllers_and_audio() {
     // 64 channels: gen-20+ firefights (enemy shot cues, booms, boost and
     // missile loops) can pin 32 and silently drop new sounds. Channels 0/1
     // are reserved out of -1 allocation as a guaranteed-loop-free fallback
-    // for must-hear booms (see play_priority_chunk in glgame.cpp).
-    if(ENABLE_AUDIO) { Mix_AllocateChannels(64); Mix_ReserveChannels(2); }
+    // for must-hear booms (see play_priority_chunk in glgame.cpp), plus
+    // WorldSound's per-channel-volume pool behind them (world_sound.h).
+    if(ENABLE_AUDIO) {
+      Mix_AllocateChannels(64);
+      Mix_ReserveChannels(WorldSound::FIRST_CHANNEL + WorldSound::POOL);
+    }
     SDL_JoystickEventState(SDL_ENABLE);
     int opened = 0;
     for (int i = 0; i < SDL_NumJoysticks() && opened < 2; ++i) {

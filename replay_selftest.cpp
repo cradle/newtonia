@@ -209,6 +209,71 @@ bool selftest() {
     // make playback jump backwards mid-timeline.
     check(slots_ok2 == 1, "slot indices never go backwards across the resume");
 
+    // ── Effects attach to the LAST slot, after its state record ──────────
+    // Playback applies records in file order as they come due; an effect
+    // stamped with the UPCOMING slot preceded that slot's state rebuild in
+    // the same poll batch, and an FX_BULLET muzzle clone was destroyed
+    // before a single draw. Pin the contract: an effect shares the slot of
+    // the record it follows.
+    {
+        Recorder r(run_id, 1, /*resumed=*/true, path);
+        check(r.ok(), "effect-slot recorder resumes the file");
+        if (r.ok()) {
+            r.record_keyframe(blob(64, 0xA3));
+            r.record_effect(FX_SHOT, 0, blob(8, 0xF2));
+            // At least one delta this session, or finalize's zero-tick rule
+            // discards the chunk instead of writing it.
+            r.record_delta(blob(32, 0xD9));
+            r.finalize(1234, 2, false, false, 1);
+        }
+    }
+    {
+        Reader rd(path);
+        Reader::Record rec;
+        long long kf_slot = -1, fx_slot = -1;
+        while (rd.next(rec)) {
+            if (rec.kind == REC_KEYFRAME) kf_slot = rec.slot;
+            if (rec.kind == REC_EFFECT) fx_slot = rec.slot;
+        }
+        check(fx_slot >= 0, "the effect landed");
+        check(fx_slot >= 0 && fx_slot == kf_slot,
+              "the effect carries the slot of the record it follows");
+    }
+
+    // ── A resumed recorder over a HEADER-ONLY file must hold ─────────────
+    // The header is written at construction but records are RAM-only until
+    // a flush, so die-once → killed process → CONTINUE legitimately resumes
+    // a record-less file. Starting that seam "keyframe-satisfied" wrote
+    // early effects AHEAD of the seam keyframe, and playback then rejected
+    // the whole session ("no leading keyframe").
+    const std::string path2 = path.substr(0, path.size() - 4) + "2.nrp";
+    std::remove(path2.c_str());
+    {
+        Recorder fresh(run_id, 1, /*resumed=*/false, path2);
+        check(fresh.ok(), "header-only file: fresh recorder opens");
+        // Scope exit with no records: the header is on disk, nothing else.
+    }
+    {
+        Recorder r(run_id, 1, /*resumed=*/true, path2);
+        check(r.ok(), "header-only file: resumed recorder opens");
+        if (r.ok()) {
+            r.record_effect(FX_SHOT, 0, blob(8, 0xF3));
+            check_eq(r.predawn_drops(), 1,
+                     "header-only resume holds until the seam keyframe");
+            r.record_keyframe(blob(64, 0xA4));
+            r.record_delta(blob(32, 0xD8));
+            r.finalize(1, 0, false, false, 1);
+        }
+    }
+    {
+        int slots_ok3 = 0;
+        std::vector<uint8_t> kinds3 = record_kinds(path2, &slots_ok3);
+        log_kinds("header-only resume records", kinds3);
+        check(!kinds3.empty() && kinds3[0] == REC_KEYFRAME,
+              "header-only resume still opens on a keyframe");
+    }
+    std::remove(path2.c_str());
+
     std::remove(path.c_str());
     SDL_Log("replay selftest: %d failure(s)", failures);
     return failures == 0;

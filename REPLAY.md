@@ -26,7 +26,9 @@ criteria. Nothing here is built yet.
   flipped back to **ON**, as the original design intended. The
   "never ask" half stands regardless: enabling is a preference, not a
   per-game prompt. `NEWTONIA_REPLAY_ENABLE` / `NEWTONIA_REPLAY_DISABLE` force
-  the toggle for tests and power users (enable loses to disable).
+  the toggle for tests and power users (enable loses to disable; a value of
+  `0`/`false`/`off`/empty counts as unset, so `NEWTONIA_REPLAY_ENABLE=0`
+  does NOT force recording on).
 - **Auto-keep three local replay files — all three watchable**:
   `replays/current.nrp` — the active (live or resumable) run; watching it
   from the menu is allowed and useful — review what just happened before

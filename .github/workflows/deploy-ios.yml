@@ -240,9 +240,24 @@ jobs:
           echo "::notice::iOS build version $SHORT_VERSION (build ${{ github.run_number }})"
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" newtonia/ios/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SHORT_VERSION" newtonia/ios/Info.plist
-          # Also stamped into replay headers by the archive step below
-          # (REPLAY.md R4: leaderboard seasons bucket by release).
+          # The replay season key (REPLAY.md R4), stamped by the archive step
+          # below. Only a TAG build may stamp a release key ("v$SHORT_VERSION"
+          # == the tag): a plain dispatch falls back to a hardcoded REAL
+          # release number for the marketing version above, and stamping that
+          # into write-once replay headers filed an ad-hoc TestFlight build's
+          # runs in the genuine release's leaderboard season. Non-tag
+          # dispatches stamp the branch name instead — the same honest
+          # non-release string deploy-steam/itch stamp on dispatch — except
+          # beta-worker builds, which keep their v<maj.min>.9xx sentinel (a
+          # deliberately distinct staging bucket, never a real release's).
+          if [ "${{ github.ref_type }}" = "tag" ] || \
+             [ "${{ github.event.inputs.signal_worker }}" = "beta" ]; then
+            REPLAY_VERSION="v$SHORT_VERSION"
+          else
+            REPLAY_VERSION="${{ github.ref_name }}"
+          fi
           echo "SHORT_VERSION=$SHORT_VERSION" >> $GITHUB_ENV
+          echo "REPLAY_VERSION=$REPLAY_VERSION" >> $GITHUB_ENV
 
       - name: Generate app icons
         run: |
@@ -293,8 +308,9 @@ jobs:
           # R4 season key has to be the same string on every platform or one
           # release splits into two buckets — uncorrectably, since headers are
           # write-once. deploy-steam/itch stamp the tag verbatim ("v1.47.0"),
-          # so put the "v" back on here (and on Android).
-          REPLAY_VERSION="v$SHORT_VERSION"
+          # so the version step above puts the "v" back on for tag builds (and
+          # stamps the branch name on non-tag dispatches); $REPLAY_VERSION
+          # arrives via GITHUB_ENV.
           xcodebuild archive \
             -project newtonia/ios/Newtonia-iOS.xcodeproj \
             -scheme Newtonia \

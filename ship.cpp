@@ -161,6 +161,10 @@ void Ship::silence_loops() {
   set_shield_hum(false);
   stop_god_mode_music();
   mute_engine();
+  // The missile fly loop is handle-owned: dropping every handle halts the
+  // channel (the weapon side only holds a weak_ptr). Without this a frozen
+  // world with missiles in flight kept the loop ringing forever.
+  for (auto &m : missiles) m.sound_handle.reset();
 }
 
 void Ship::add_behaviour(Behaviour *b) {
@@ -779,8 +783,9 @@ void Ship::nova_detonate() {
   if (is_local_player)
     Achievements::unlock("nova_detonated");
 
-  if (giga_mine_explode_sound != NULL)
-    Mix_PlayChannel(-1, giga_mine_explode_sound, 0);
+  // World cue: the blast belongs to where the ship is, not to whichever
+  // volume the chunk was last left at (WorldSound doc in CLAUDE.md).
+  WorldSound::play(giga_mine_explode_sound, position);
 
   // Single nova shockwave: expands slowly enough (speed 1.5 u/ms) to catch children
   // spawned by dying parents (min child radius 30 > 1.5*16 = 24 units/frame).
@@ -1308,6 +1313,37 @@ void Ship::update_boost_volume() {
   Mix_VolumeChunk(boost_sound, (int)(MIX_MAX_VOLUME * level * scale));
 }
 
+// The missile fly loop is a LOOPING channel shared by every missile the
+// same trigger group launched, so like the thruster hum it must be
+// re-levelled per tick — but from the MISSILES' positions, not the ship's:
+// the ship stays put while its missiles cross the world. The level rides
+// the CHANNEL (the handle owns it exclusively; its deleter halts the loop
+// and restores full volume for the next -1 allocation), set to the loudest
+// missile sharing the channel.
+void Ship::update_missile_fly_volumes() {
+  const int MAX_LOOPS = 8;
+  int chs[MAX_LOOPS];
+  float vols[MAX_LOOPS];
+  int n = 0;
+  for (auto &m : missiles) {
+    if (!m.sound_handle) continue;
+    int ch = *m.sound_handle;
+    float v = WorldSound::volume_at(m.position);
+    int j = 0;
+    while (j < n && chs[j] != ch) j++;
+    if (j == n) {
+      if (n == MAX_LOOPS) continue;
+      chs[n] = ch;
+      vols[n] = v;
+      n++;
+    } else if (v > vols[j]) {
+      vols[j] = v;
+    }
+  }
+  for (int j = 0; j < n; j++)
+    Mix_Volume(chs[j], (int)(MIX_MAX_VOLUME * vols[j]));
+}
+
 void Ship::boost() {
   net_boost_count++;
   boosting = true;
@@ -1450,7 +1486,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
       // flooded the world with bullets when several mines detonated together
       // and tanked the frame rate.
       detonate(mines[i].position, mines[i].velocity, MINE_SHRAPNEL);
-      if(mine_explode_sound != NULL) Mix_PlayChannel(-1, mine_explode_sound, 0);
+      WorldSound::play(mine_explode_sound, mines[i].position);
       mines[i] = std::move(mines.back());
       mines.pop_back();
     } else {
@@ -1548,9 +1584,7 @@ void Ship::collide_grid(Grid &grid, int delta) {
         credit_asteroid_kill(object);
       }
       detonate(missiles[i].position, missiles[i].velocity, MISSILE_SHRAPNEL);
-      if(missile_explode_sound != NULL) {
-        Mix_PlayChannel(-1, missile_explode_sound, 0);
-      }
+      WorldSound::play(missile_explode_sound, missiles[i].position);
       missiles[i] = std::move(missiles.back());
       missiles.pop_back();
     } else {
@@ -1910,7 +1944,7 @@ void Ship::collide(Ship *other) {
       // Same blast as the grid (asteroid) path above — this ship-contact
       // path was silently using detonate()'s default 10.
       detonate(mines[i].position, mines[i].velocity, MINE_SHRAPNEL);
-      if(mine_explode_sound != NULL) Mix_PlayChannel(-1, mine_explode_sound, 0);
+      WorldSound::play(mine_explode_sound, mines[i].position);
       mines[i] = std::move(mines.back());
       mines.pop_back();
     } else {
@@ -1942,9 +1976,7 @@ void Ship::collide(Ship *other) {
       // No credit for a shielded/invincible target.
       if(other->kill_stop()) credit_ship_kill(other);
       detonate(missiles[i].position, missiles[i].velocity, MISSILE_SHRAPNEL);
-      if(missile_explode_sound != NULL) {
-        Mix_PlayChannel(-1, missile_explode_sound, 0);
-      }
+      WorldSound::play(missile_explode_sound, missiles[i].position);
       missiles[i] = std::move(missiles.back());
       missiles.pop_back();
     } else {
@@ -1966,9 +1998,7 @@ void Ship::detonate(Point const position, Point const velocity, int particle_cou
 }
 
 void Ship::giga_detonate(Point const position) {
-  if(giga_mine_explode_sound != NULL) {
-    Mix_PlayChannel(-1, giga_mine_explode_sound, 0);
-  }
+  WorldSound::play(giga_mine_explode_sound, position);
   // Launch expanding shockwave ring: radius grows to max_radius over ~700ms
   float max_r = (float)Asteroid::max_radius;
   float duration = 700.0f;
@@ -2255,14 +2285,12 @@ void Ship::net_blast(const Point &pos, const Point &vel, int count) {
 
 void Ship::net_missile_exploded(const Point &pos, const Point &vel) {
   net_blast(pos, vel, MISSILE_SHRAPNEL);
-  if(missile_explode_sound != NULL)
-    Mix_PlayChannel(-1, missile_explode_sound, 0);
+  WorldSound::play(missile_explode_sound, pos);
 }
 
 void Ship::net_mine_exploded(const Point &pos, const Point &vel) {
   net_blast(pos, vel, MINE_SHRAPNEL);
-  if(mine_explode_sound != NULL)
-    Mix_PlayChannel(-1, mine_explode_sound, 0);
+  WorldSound::play(mine_explode_sound, pos);
 }
 
 void Ship::net_giga_mine_exploded(const Point &pos) {
@@ -2273,8 +2301,8 @@ void Ship::net_giga_mine_exploded(const Point &pos) {
 }
 
 void Ship::net_nova_arrived() {
-  if(giga_mine_explode_sound != NULL)
-    Mix_PlayChannel(-1, giga_mine_explode_sound, 0);
+  // The nova is centred on this (the peer's replica) ship.
+  WorldSound::play(giga_mine_explode_sound, position);
 }
 
 // PROTO 22: a shock bolt the peer fired arrived as a polyline. Show it on
@@ -2297,7 +2325,15 @@ std::shared_ptr<int> Ship::net_start_missile_fly_loop() {
   if(missile_fly_sound == NULL) return nullptr;
   int ch = Mix_PlayChannel(-1, missile_fly_sound, -1);
   if(ch == -1) return nullptr;
-  return std::shared_ptr<int>(new int(ch), [](int *p) { Mix_HaltChannel(*p); delete p; });
+  // Level from the launch point now, then per tick from the missiles
+  // (update_missile_fly_volumes); the deleter restores the dynamic
+  // channel's volume for whoever is allocated it next.
+  Mix_Volume(ch, (int)(MIX_MAX_VOLUME * WorldSound::volume_at(position)));
+  return std::shared_ptr<int>(new int(ch), [](int *p) {
+    Mix_HaltChannel(*p);
+    Mix_Volume(*p, MIX_MAX_VOLUME);
+    delete p;
+  });
 }
 
 void Ship::set_shield_hum(bool on) {
@@ -2794,9 +2830,7 @@ void Ship::step(float delta, const Grid &grid) {
   for(size_t i = 0; i < missiles.size(); ) {
     if(!missiles[i].is_alive()) {
       detonate(missiles[i].position, missiles[i].velocity, MISSILE_SHRAPNEL);
-      if(missile_explode_sound != NULL) {
-        Mix_PlayChannel(-1, missile_explode_sound, 0);
-      }
+      WorldSound::play(missile_explode_sound, missiles[i].position);
       missiles[i] = std::move(missiles.back());
       missiles.pop_back();
     } else {

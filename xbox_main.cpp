@@ -66,6 +66,7 @@ extern "C" void GDK_DispatchTaskQueue(void) {}
 #include "typer.h"
 #include "asteroid.h"
 #include "preferences.h"
+#include "world_sound.h"
 #include "net_transport.h"
 #include "net_signal.h"
 
@@ -402,9 +403,10 @@ int main(int argc, char *argv[])
     // Audio: 48 kHz matches the Xbox audio subsystem's native rate.
     if (Mix_OpenAudio(48000, MIX_DEFAULT_FORMAT, 2, 512) < 0)
         SDL_Log("Mix_OpenAudio failed: %s", Mix_GetError());
-    // 64 channels + 2 reserved for must-hear booms — see glut.cpp.
+    // 64 channels; reserved: 2 for must-hear booms + WorldSound's
+    // per-channel-volume pool — see glut.cpp / world_sound.h.
     Mix_AllocateChannels(64);
-    Mix_ReserveChannels(2);
+    Mix_ReserveChannels(WorldSound::FIRST_CHANNEL + WorldSound::POOL);
 
     // Open all (up to 2) game controllers present at startup; hot-plugged
     // ones are opened by SDL_CONTROLLERDEVICEADDED in the event loop.

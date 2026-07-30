@@ -28,7 +28,15 @@ endif()
 # android/app/.cxx survives, which is where the stale list lives.
 # Costs a directory stat per build; supported since CMake 3.12, well under
 # the 3.18 minimum above and the 3.22.1 android/app/build.gradle pins.
-file(GLOB_RECURSE GAME_SOURCES CONFIGURE_DEPENDS
+#
+# Plain GLOB, not GLOB_RECURSE: the source set is exactly the Makefile's —
+# root *.cpp + view/ + weapon/ — and a recursive first pattern swept the
+# whole tree, so with CONFIGURE_DEPENDS every build re-statted tens of
+# thousands of files under an unzipped ./sdk/ or a sibling build tree, any
+# change there forced a full multi-ABI reconfigure, and
+# xbox/build-*/_deps/**.cpp (vendored libdatachannel sources, excluded by
+# NONE of the filters below) could be swept into GAME_SOURCES outright.
+file(GLOB GAME_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/view/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/weapon/*.cpp"
@@ -157,44 +165,20 @@ target_compile_definitions(newtonia PRIVATE __ANDROID__ PLAY_GAMES_BUILD
 # resolution order and the same short describe format as the Makefile:
 # -DNEWTONIA_VERSION, then the environment (how deploy-android.yml passes the
 # tag through Gradle), then git describe. Unresolvable leaves replay.h's "dev"
-# default.
-if(NOT NEWTONIA_VERSION)
-    if(DEFINED ENV{NEWTONIA_VERSION})
-        set(NEWTONIA_VERSION "$ENV{NEWTONIA_VERSION}")
-    else()
-        execute_process(COMMAND git describe --tags --abbrev=7 --dirty=+ --always
-                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-                        OUTPUT_VARIABLE NEWTONIA_VERSION
-                        OUTPUT_STRIP_TRAILING_WHITESPACE
-                        ERROR_QUIET)
-        # describe ran at CONFIGURE time, so an incremental build would keep
-        # the stamp it was configured with — the staleness the Makefile's
-        # version.stamp rule exists to prevent. Re-configure when HEAD or the
-        # branch it points at moves (a commit, a checkout), which covers every
-        # case that changes the tag/distance/sha. A merely dirty tree still
-        # keeps its `+` from the last configure; nothing cheap fixes that, and
-        # `-DNEWTONIA_VERSION=` is the override when it matters.
-        set(NEWTONIA_GIT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.git")
-        if(EXISTS "${NEWTONIA_GIT_DIR}/HEAD")
-            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-                         "${NEWTONIA_GIT_DIR}/HEAD")
-            file(READ "${NEWTONIA_GIT_DIR}/HEAD" NEWTONIA_GIT_HEAD)
-            string(STRIP "${NEWTONIA_GIT_HEAD}" NEWTONIA_GIT_HEAD)
-            if(NEWTONIA_GIT_HEAD MATCHES "^ref: (.+)$")
-                set(NEWTONIA_GIT_REF "${NEWTONIA_GIT_DIR}/${CMAKE_MATCH_1}")
-                if(EXISTS "${NEWTONIA_GIT_REF}")
-                    set_property(DIRECTORY APPEND PROPERTY
-                                 CMAKE_CONFIGURE_DEPENDS "${NEWTONIA_GIT_REF}")
-                endif()
-            endif()
-        endif()
-    endif()
-endif()
-if(NEWTONIA_VERSION)
-    message(STATUS "Newtonia version stamp: ${NEWTONIA_VERSION}")
-    target_compile_definitions(newtonia PRIVATE
-        NEWTONIA_VERSION_STRING="${NEWTONIA_VERSION}")
-endif()
+# default. Resolved at BUILD time into a generated header (write-on-change,
+# so only a moved stamp rebuilds replay.o) — cmake/version_stamp.cmake
+# explains why configure-time describe could not be kept fresh.
+add_custom_target(newtonia_version_stamp
+    COMMAND ${CMAKE_COMMAND}
+            "-DOUT=${CMAKE_BINARY_DIR}/newtonia_version.h"
+            "-DSRC_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DPINNED=${NEWTONIA_VERSION}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/version_stamp.cmake"
+    BYPRODUCTS "${CMAKE_BINARY_DIR}/newtonia_version.h"
+    COMMENT "Refreshing Newtonia version stamp")
+add_dependencies(newtonia newtonia_version_stamp)
+target_compile_definitions(newtonia PRIVATE NEWTONIA_VERSION_HEADER)
+target_include_directories(newtonia PRIVATE "${CMAKE_BINARY_DIR}")
 
 if(NEWTONIA_NET)
     # Activates net_transport_rtc.cpp / net_signal_rtc.cpp (empty TUs

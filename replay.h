@@ -39,6 +39,13 @@ namespace Replay {
 
 // Compile-time game version stamped into headers ("dev" unless the build
 // system defines it). Informational only; compatibility runs on format_version.
+// The Makefile paths define the string directly (-D, kept fresh by
+// version.stamp); the CMake paths define NEWTONIA_VERSION_HEADER and
+// generate the header at BUILD time (cmake/version_stamp.cmake), so an
+// incremental build tree can't stamp a stale describe.
+#if defined(NEWTONIA_VERSION_HEADER) && !defined(NEWTONIA_VERSION_STRING)
+#include "newtonia_version.h"
+#endif
 #ifndef NEWTONIA_VERSION_STRING
 #define NEWTONIA_VERSION_STRING "dev"
 #endif
@@ -101,7 +108,11 @@ enum EffectSubtype : uint8_t {
     FX_RING  = 3,  // shockwave ring: f32 x,y,max_r,speed,duration | u8 nova
     FX_SHOT  = 4,  // gun-shot sound cue: f32 x, f32 y | u8 kind (0 pew, 1 beam)
                    // (the SOUND rode MSG_SHOT/EV_WORLD_SHOT). One per trigger
-                   // pull, from ANY ship — enemies and the mini-station too.
+                   // pull, from ANY ship — enemies and the mini-station too —
+                   // EXCEPT the host's online tee, which mirrors MSG_SHOT and
+                   // is per BULLET (a spread gun's pull = N records in one
+                   // slot); playback dedups with the same 40 ms
+                   // one-sound-per-burst window the live receive uses.
     // v2: one per spawned BULLET, on the owning player (the record's idx).
     // f32 x, f32 y, f32 vx, f32 vy | u8 flags (1 kills_invincible, 2 trail,
     // 4 piercing) — net_spawn_reported_bullet's argument order.
@@ -274,7 +285,11 @@ public:
     // Events attach to the upcoming slot (they happened after the last
     // emitted record); teed from net_send_event.
     void record_event(uint8_t code, uint32_t arg);
-    // Transient weapon visual (REC_EFFECT), same slot rule as events.
+    // Transient weapon visual (REC_EFFECT). Unlike events these attach to
+    // the LAST emitted slot, so playback applies them after that slot's
+    // state rebuild — an FX_BULLET clone stamped with the upcoming slot
+    // would be wiped by its own slot's rebuild in the same poll batch
+    // (see record_effect).
     void record_effect(uint8_t subtype, uint8_t player_idx,
                        const std::vector<uint8_t> &body);
 

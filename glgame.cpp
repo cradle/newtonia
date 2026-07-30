@@ -90,7 +90,8 @@ static bool lance_seg_circle_entry(const Point &a, const Point &b,
 // heavy gen-20 firefight every dynamic mixing channel can be busy and
 // Mix_PlayChannel(-1) silently drops the play; fall back to the reserved
 // channels (0/1 — excluded from -1 allocation at platform init via
-// Mix_ReserveChannels, so no boost/music loop ever lives there).
+// Mix_ReserveChannels, so no boost/music loop ever lives there; the rest
+// of the reserved span, 2..9, is WorldSound's pool — world_sound.h).
 static void play_priority_chunk(Mix_Chunk *chunk, float vol) {
   if (chunk == NULL || vol <= 0.0f) return;
   Mix_VolumeChunk(chunk, (int)(MIX_MAX_VOLUME * vol));
@@ -2123,19 +2124,29 @@ void GLGame::net_host_poll() {
     // real semi-auto fires delivers shot_presses==2 on recovery, and firing
     // once for two client fires desynced the ammo — Ship::step replays one
     // queued press per step so the host decrements once per CLIENT press.
-    if (shot_presses)
+    // Absolute backlog cap on both queues (the per-message clamp alone
+    // let INPUTs arriving faster than the 125 Hz drain grow them without
+    // bound): 32 queued presses is ~256 ms of drain, far beyond any human
+    // burst, and past it the oldest presses are simply already served.
+    // Sanity, not anti-cheat (co-op) — it just keeps the int bounded.
+    const int PRESS_BACKLOG_MAX = 32;
+    if (shot_presses) {
       remote->net_queued_shot_presses +=
           (shot_presses > 4 ? 4 : shot_presses);
-    else if (!(held & Net::IN_SHOOT) &&
+      if (remote->net_queued_shot_presses > PRESS_BACKLOG_MAX)
+        remote->net_queued_shot_presses = PRESS_BACKLOG_MAX;
+    } else if (!(held & Net::IN_SHOOT) &&
              remote->net_queued_shot_presses == 0)
       remote->shoot(false);
     // Secondaries queue on exactly the same terms (see the drain in
     // Ship::step): one deploy per press, none of them automatic, so a
     // collapsed batch made fewer mines/missiles than the client fired.
-    if (sec_presses)
+    if (sec_presses) {
       remote->net_queued_secondary_presses +=
           (sec_presses > 4 ? 4 : sec_presses);
-    else if (!(held & Net::IN_SECONDARY) &&
+      if (remote->net_queued_secondary_presses > PRESS_BACKLOG_MAX)
+        remote->net_queued_secondary_presses = PRESS_BACKLOG_MAX;
+    } else if (!(held & Net::IN_SECONDARY) &&
              remote->net_queued_secondary_presses == 0)
       remote->fire_secondary(false);
 
@@ -3438,6 +3449,18 @@ void GLGame::tick_replay_poll(int delta) {
         memcpy(&sy, rec.payload + 6, 4);
         uint8_t snd_kind = rec.len >= 2 + 9 ? rec.payload[10] : 0;
         if (std::isfinite(sx) && std::isfinite(sy)) {
+          // One sound per burst, mirroring net_spawn_reported_bullet's
+          // 40 ms window: the host's online tee records one FX_SHOT per
+          // MSG_SHOT — per BULLET — so a spread gun's pull is N records
+          // in the same slot, and playing each stacked N identical
+          // samples into one very loud bang (the artifact the live
+          // window exists to prevent). Replay-clock domain, so
+          // fast-forward doesn't over-suppress.
+          if (idx < REPLAY_FX_SHOT_PLAYERS &&
+              replay_clock_ms_ - replay_fx_shot_ms_[idx] < 40)
+            continue;
+          if (idx < REPLAY_FX_SHOT_PLAYERS)
+            replay_fx_shot_ms_[idx] = replay_clock_ms_;
           // Nearest-ghost attenuation — the same offline rule the recorded
           // game played by (net_listener_volume would ignore P2's viewport).
           float vol = sound_volume_for_point(Point(sx, sy));
@@ -3466,9 +3489,14 @@ void GLGame::tick_replay_poll(int delta) {
         // v2: spawn the exact bullet at its muzzle, the moment it was
         // fired, instead of letting it first appear in the next 10 Hz
         // snapshot already down-range and off the nose. Quiet — the
-        // FX_SHOT cue above is this shot's sound. The next apply's
-        // wholesale rebuild replaces the clone with authority's copy,
-        // exactly as it does for the online client's MSG_SHOT clones.
+        // FX_SHOT cue above is this shot's sound. Ordering contract with
+        // the recorder: effects are stamped with the slot of the state
+        // record they FOLLOW (record_effect), so this clone spawns after
+        // that record's wholesale rebuild has run and lives until the
+        // NEXT slot's rebuild replaces it with authority's copy — the
+        // online client's MSG_SHOT visual. (Stamped one slot later they
+        // preceded their own slot's rebuild in the same poll batch, and
+        // every clone was destroyed before a single draw.)
         float bx, by, bvx, bvy;
         memcpy(&bx, rec.payload + 2, 4);
         memcpy(&by, rec.payload + 6, 4);
@@ -3910,32 +3938,37 @@ struct NetShipExtras {
 // unmatched — read as a detonation that never happened. Nearest-first
 // alone is a coin toss the moment a burst puts several in one cluster.
 //
-// Failing that it takes the nearest just-launched local copy at ANY
+// Failing that it takes the nearest previous copy of EITHER kind at ANY
 // distance. Every entry in this list belongs to this one ship, so a host
-// entry that no confirmed copy explains can only be the echo of one of
-// our own launches — and an unconfirmed copy has no identity worth
-// preserving (it is a duplicate of exactly this, drawn early for the
-// pilot). Bounding that pass by distance instead left the two to drift
-// apart — both seek their own targets — until the local one aged out
-// unmatched and the echo showed up beside it as a second missile.
+// entry no confirmed copy explains within reach is still the echo of one
+// of ours; distance decides which. Unbounded because a just-launched
+// unconfirmed copy and its echo drift apart — both seek their own
+// targets — and a distance bound left the local one to age out unmatched
+// while the echo showed up beside it as a second missile. Either kind
+// because a CONFIRMED copy can drift past `reach` in one 100 ms apply
+// too: restricting this pass to unconfirmed copies let such an echo
+// steal a fresh launch from across the map (teleporting it) while the
+// drifted confirmed copy it actually was detonated as a phantom vanish.
+// The drifted copy is the nearest to its own echo (they were within
+// reach an apply ago; a fresh launch sits at the distant muzzle), so
+// nearest-of-any binds both cases correctly.
 template <typename T>
 int nx_match_previous(const std::vector<T> &old_list, const WrappedPoint &pos,
                       float reach) {
-  int best = -1, best_unconfirmed = -1;
-  float best_d = reach, best_unconfirmed_d = -1.0f;
+  int best = -1, best_any = -1;
+  float best_d = reach, best_any_d = -1.0f;
   for (size_t j = 0; j < old_list.size(); j++) {
     float d = old_list[j].position.distance_to(pos);
-    if (old_list[j].net_unconfirmed) {
-      if (best_unconfirmed < 0 || d < best_unconfirmed_d) {
-        best_unconfirmed_d = d;
-        best_unconfirmed = (int)j;
-      }
-    } else if (d < best_d) {
+    if (best_any < 0 || d < best_any_d) {
+      best_any_d = d;
+      best_any = (int)j;
+    }
+    if (!old_list[j].net_unconfirmed && d < best_d) {
       best_d = d;
       best = (int)j;
     }
   }
-  return best >= 0 ? best : best_unconfirmed;
+  return best >= 0 ? best : best_any;
 }
 
 // Leftovers of a wholesale projectile rebuild: everything the host's set
@@ -7846,6 +7879,7 @@ void GLGame::update_player_sound_volumes() {
     s->sound_volume_scale = mine ? 1.0f : net_listener_volume(s->position);
     s->sound_own_cues = mine;
     s->update_boost_volume();
+    s->update_missile_fly_volumes();
   }
 }
 

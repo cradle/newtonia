@@ -51,4 +51,4 @@ await key('Enter'); await page.waitForTimeout(4000);
 await page.screenshot({ path: '/tmp/promote-after.png' });
 await play(6000);
 console.log(bad.length ? `WEB-PROMOTE-FAIL: ${bad[0].slice(0,200)}` : 'WEB-PROMOTE-OK');
-await ctx.close(); process.exit(0);
+await ctx.close(); process.exit(bad.length ? 1 : 0);

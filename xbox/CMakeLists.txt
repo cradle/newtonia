@@ -79,9 +79,13 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
 # Sources — collect from root, weapon/, and view/, then exclude
 # entry points that belong to other platforms.
 # ---------------------------------------------------------------
-file(GLOB ROOT_SRCS   "${CMAKE_SOURCE_DIR}/../*.cpp")
-file(GLOB WEAPON_SRCS "${CMAKE_SOURCE_DIR}/../weapon/*.cpp")
-file(GLOB VIEW_SRCS   "${CMAKE_SOURCE_DIR}/../view/*.cpp")
+# CONFIGURE_DEPENDS so an existing build tree re-checks the glob on every
+# build: a shared-code .cpp added at root otherwise vanished from local
+# xbox/build-* trees until a manual reconfigure (undefined symbol at link)
+# — the same frozen-glob trap the root CMakeLists fixed.
+file(GLOB ROOT_SRCS   CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/../*.cpp")
+file(GLOB WEAPON_SRCS CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/../weapon/*.cpp")
+file(GLOB VIEW_SRCS   CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/../view/*.cpp")
 
 set(ALL_SRCS ${ROOT_SRCS} ${WEAPON_SRCS} ${VIEW_SRCS})
 
@@ -219,42 +223,20 @@ target_compile_definitions(newtonia PRIVATE
 # resolution order and the same short describe format as the Makefile and the
 # root CMakeLists: -DNEWTONIA_VERSION, then the environment, then git describe.
 # Unresolvable (e.g. no git on the runner) leaves replay.h's "dev" default, so
-# this can never fail a build.
-if(NOT NEWTONIA_VERSION)
-    if(DEFINED ENV{NEWTONIA_VERSION})
-        set(NEWTONIA_VERSION "$ENV{NEWTONIA_VERSION}")
-    else()
-        execute_process(COMMAND git describe --tags --abbrev=7 --dirty=+ --always
-                        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-                        OUTPUT_VARIABLE NEWTONIA_VERSION
-                        OUTPUT_STRIP_TRAILING_WHITESPACE
-                        ERROR_QUIET)
-        # describe ran at CONFIGURE time, so an incremental build would keep
-        # the stamp it was configured with (the staleness the Makefile's
-        # version.stamp rule prevents). Re-configure when HEAD or the branch it
-        # points at moves — a commit or a checkout. A merely dirty tree keeps
-        # its `+` from the last configure; use -DNEWTONIA_VERSION= to pin.
-        set(NEWTONIA_GIT_DIR "${CMAKE_SOURCE_DIR}/../.git")
-        if(EXISTS "${NEWTONIA_GIT_DIR}/HEAD")
-            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-                         "${NEWTONIA_GIT_DIR}/HEAD")
-            file(READ "${NEWTONIA_GIT_DIR}/HEAD" NEWTONIA_GIT_HEAD)
-            string(STRIP "${NEWTONIA_GIT_HEAD}" NEWTONIA_GIT_HEAD)
-            if(NEWTONIA_GIT_HEAD MATCHES "^ref: (.+)$")
-                set(NEWTONIA_GIT_REF "${NEWTONIA_GIT_DIR}/${CMAKE_MATCH_1}")
-                if(EXISTS "${NEWTONIA_GIT_REF}")
-                    set_property(DIRECTORY APPEND PROPERTY
-                                 CMAKE_CONFIGURE_DEPENDS "${NEWTONIA_GIT_REF}")
-                endif()
-            endif()
-        endif()
-    endif()
-endif()
-if(NEWTONIA_VERSION)
-    message(STATUS "Newtonia version stamp: ${NEWTONIA_VERSION}")
-    target_compile_definitions(newtonia PRIVATE
-        NEWTONIA_VERSION_STRING="${NEWTONIA_VERSION}")
-endif()
+# this can never fail a build. Resolved at BUILD time into a generated header
+# (write-on-change) — cmake/version_stamp.cmake explains why the
+# configure-time describe could not be kept fresh.
+add_custom_target(newtonia_version_stamp
+    COMMAND ${CMAKE_COMMAND}
+            "-DOUT=${CMAKE_BINARY_DIR}/newtonia_version.h"
+            "-DSRC_DIR=${CMAKE_SOURCE_DIR}/.."
+            "-DPINNED=${NEWTONIA_VERSION}"
+            -P "${CMAKE_SOURCE_DIR}/../cmake/version_stamp.cmake"
+    BYPRODUCTS "${CMAKE_BINARY_DIR}/newtonia_version.h"
+    COMMENT "Refreshing Newtonia version stamp")
+add_dependencies(newtonia newtonia_version_stamp)
+target_compile_definitions(newtonia PRIVATE NEWTONIA_VERSION_HEADER)
+target_include_directories(newtonia PRIVATE "${CMAKE_BINARY_DIR}")
 
 if(NEWTONIA_NET)
     # Activates net_transport_rtc.cpp (an empty TU everywhere else) and

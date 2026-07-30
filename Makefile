@@ -86,7 +86,15 @@ CFLAGS += -MMD -MP
 # truncation that remains possible for a very long tag drops the sha tail
 # rather than the tag the seasons actually bucket on. Same format in the
 # root and xbox CMakeLists — keep the three in step.
-NEWTONIA_VERSION ?= $(shell git describe --tags --abbrev=7 --dirty=+ --always 2>/dev/null)
+# Memoized (:=) behind an origin check rather than ?=: a recursively
+# expanded describe re-ran git on every expansion of CFLAGS — once per
+# compiled object, ~100 subprocess spawns per full build, with a window
+# for a mid-build commit to stamp replay.o differently from what
+# version.stamp recorded. The origin test keeps ?='s semantics: command
+# line and environment still win.
+ifeq ($(origin NEWTONIA_VERSION), undefined)
+  NEWTONIA_VERSION := $(shell git describe --tags --abbrev=7 --dirty=+ --always 2>/dev/null)
+endif
 ifneq ($(NEWTONIA_VERSION),)
   VERSION_CFLAGS = -DNEWTONIA_VERSION_STRING='"$(NEWTONIA_VERSION)"'
   # The iOS build takes it as an xcodebuild setting, the same hand-off
