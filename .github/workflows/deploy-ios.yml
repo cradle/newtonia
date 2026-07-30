@@ -287,6 +287,14 @@ jobs:
           # are referenced by the project's GCC_PREPROCESSOR_DEFINITIONS /
           # HEADER_SEARCH_PATHS (empty when unset, so plain Xcode builds are
           # unaffected).
+          #
+          # The replay stamp is NOT $SHORT_VERSION: that is the marketing
+          # version App Store Connect needs (bare dotted number), while the
+          # R4 season key has to be the same string on every platform or one
+          # release splits into two buckets — uncorrectably, since headers are
+          # write-once. deploy-steam/itch stamp the tag verbatim ("v1.47.0"),
+          # so put the "v" back on here (and on Android).
+          REPLAY_VERSION="v$SHORT_VERSION"
           xcodebuild archive \
             -project newtonia/ios/Newtonia-iOS.xcodeproj \
             -scheme Newtonia \
@@ -298,7 +306,7 @@ jobs:
             "NEWTONIA_NET_DEFINE=NEWTONIA_NET_RTC=1" \
             "NEWTONIA_NET_HEADER_PATH=$(pwd)/libdatachannel/include" \
             "NEWTONIA_SIGNAL_DEFINE=$SIGNAL_DEFINE" \
-            "NEWTONIA_VERSION_DEFINE=NEWTONIA_VERSION_STRING=\\\"$SHORT_VERSION\\\"" \
+            "NEWTONIA_VERSION_DEFINE=NEWTONIA_VERSION_STRING=\\\"$REPLAY_VERSION\\\"" \
             "OTHER_LDFLAGS=$OTHER_LD" \
             "CODE_SIGN_ENTITLEMENTS=$(pwd)/entitlements-final.plist" \
             DEVELOPMENT_TEAM="$TEAM_ID" \

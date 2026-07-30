@@ -78,7 +78,15 @@ CFLAGS += -MMD -MP
 # A CFLAGS override on the command line drops the stamp with everything
 # else in CFLAGS — that only affects hand-rolled debug builds, which are
 # honestly "dev".
-NEWTONIA_VERSION ?= $(shell git describe --tags --dirty --always 2>/dev/null)
+#
+# The 23-char cap is a silent right-truncation (strncpy in replay.cpp), so
+# the describe format is kept short enough to survive it: `-dirty` would
+# spend 6 of those chars, and a tag plus commit distance plus sha already
+# runs to ~20 ("v1.47.0-27-ga24a9be"). `--dirty=+` spends one, and the
+# truncation that remains possible for a very long tag drops the sha tail
+# rather than the tag the seasons actually bucket on. Same format in the
+# root and xbox CMakeLists — keep the three in step.
+NEWTONIA_VERSION ?= $(shell git describe --tags --abbrev=7 --dirty=+ --always 2>/dev/null)
 ifneq ($(NEWTONIA_VERSION),)
   VERSION_CFLAGS = -DNEWTONIA_VERSION_STRING='"$(NEWTONIA_VERSION)"'
   # The iOS build takes it as an xcodebuild setting, the same hand-off
@@ -116,11 +124,13 @@ $(OBJFILES): flavor.stamp
 # -D, so an incremental build would keep stamping the sha replay.o was
 # first compiled with. Only replay.cpp reads the macro, so scope the
 # rebuild to it — hanging every object off this would mean a full rebuild
-# on every commit.
+# on every commit. Both flavors of that one object: replay.steam.o
+# compiles from the same $(CFLAGS) under a different rule, so it needs the
+# prerequisite too or `make steam` keeps stamping the old version.
 version.stamp: FORCE
 	@[ "`cat version.stamp 2>/dev/null`" = "$(NEWTONIA_VERSION)" ] || \
 	  echo "$(NEWTONIA_VERSION)" > version.stamp
-replay.o: version.stamp
+replay.o replay.steam.o: version.stamp
 
 # --- macOS universal bundle ----------------------------------------------
 # Two whole-program compiles (arm64 + x86_64) lipo'd together, mirroring

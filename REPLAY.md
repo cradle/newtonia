@@ -75,7 +75,14 @@ criteria. Nothing here is built yet.
   and the four deploy workflows pass the tag explicitly since a shallow
   CI checkout has no tags to describe; iOS takes it as an xcodebuild
   setting beside `NEWTONIA_NET_DEFINE`. Unresolvable still falls back to
-  `"dev"`, so no build can fail over it) and the recorded encodings adopt the
+  `"dev"`, so no build can fail over it. Two things the season key depends
+  on, both easy to break: the field holds **23 chars** and truncates
+  silently, so the describe format is the short one
+  (`--abbrev=7 --dirty=+`, ~20 chars for a released tag); and every
+  platform must stamp the **same string for one release**, so the deploy
+  workflows all pass the tag *verbatim* including its leading `v` — Play's
+  `versionName` and ASC's `CFBundleShortVersionString` need the bare dotted
+  number, and those are deliberately *not* what gets stamped) and the recorded encodings adopt the
   savegame's append-only + version-gate convention the moment R1 lands.
   Live netplay keeps its strict PROTO match; only the replay reader needs
   tolerance. Playback of a file whose format version is out of range
@@ -540,8 +547,15 @@ Three things R4 has to decide, in the order they bind:
    that constrains the format, so make it first.
 3. **The verification field.** It is an intention, not a spent byte: there
    is no submission format yet to reserve it in. If verification ever wants
-   to live in the `.nrp` itself instead of the envelope, the header has 4
-   spare fixed bytes (44 used of the 48 before the patchable tail).
+   to live in the `.nrp` itself instead of the envelope, note there are **no
+   spare bytes in the fixed head** — all 48 before the patchable tail are
+   spent (magic 4, format_version 2, header_size 2, game_version 24, run_id
+   8, date 8), and the 16-byte tail is rewritten on every patch. The room is
+   in `header_size`: records start at that offset and the reader accepts
+   anything from 64 up to 4096, so a v3 header can simply be longer, with the
+   new field after byte 63. Older builds reject it on `format_version`
+   (HEADER_TOO_NEW), which is the intended outcome for a format that adds a
+   field playback needs.
 
 ### R5 — deferred: input-log verification
 Only if forged submissions appear: sim-RNG split (~78 `rand()` sites),

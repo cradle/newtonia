@@ -27,6 +27,12 @@ echo "e2e output: $OUT"
 
 # Pref-path isolation: the selftest writes a throwaway selftest.nrp in the
 # replays dir and deletes it, but never touch a developer's real replays.
+# SDL only honours XDG_DATA_HOME on Linux/BSD — on macOS the pref path is
+# ~/Library/Application Support regardless, which would put the selftest in
+# the developer's real replays dir AND make every litter check below vacuous
+# (they'd test a directory that was never created). The dir check after the
+# run is what catches that, so this driver stays Linux-only by assertion
+# rather than by silently passing.
 export XDG_DATA_HOME="$OUT/xdg"
 export SDL_AUDIODRIVER=dummy
 
@@ -51,6 +57,7 @@ grep -q "replay selftest: 0 failure(s)" "$LOG" || fail "selftest assertions fail
 # Litter check: the throwaway file must not survive, and the real slots must
 # never have been created (the selftest writes beside them, not over them).
 R="$XDG_DATA_HOME/cc.gfm/newtonia/replays"
+[ -d "$R" ] || fail "replays dir $R never created - pref path not isolated (macOS?), the litter checks below prove nothing"
 [ -e "$R/selftest.nrp" ] && fail "selftest.nrp left behind"
 for f in current.nrp recent.nrp best.nrp online.nrp; do
   [ -e "$R/$f" ] && fail "selftest touched $f"

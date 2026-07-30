@@ -200,8 +200,9 @@ void best_check_online();
 // the online host's first 100 ms and every client rejoin depend on — see
 // Recorder::await_keyframe / note_predawn_drop). Writes and reads back a
 // throwaway selftest.nrp beside the real replays, then deletes it; touches
-// no game state and needs no window, GL, or SDL_Init. Logs each step and
-// returns false on the first failure.
+// no game state and needs no window, GL, or SDL_Init. Runs every check and
+// logs each one, then returns false if any of them failed (it does NOT stop
+// at the first — the log is meant to be a full report).
 //   NEWTONIA_REPLAY_SELFTEST=1 ./newtonia
 // Driver: test/e2e/replay_keyframe.sh. See TESTING.md.
 bool selftest();

@@ -391,6 +391,17 @@ Recorder::Recorder(uint64_t run_id, uint8_t player_count, bool resumed,
     header_ = Header();
     strncpy(header_.game_version, NEWTONIA_VERSION_STRING,
             Header::GAME_VERSION_LEN - 1);
+    // The field is write-once and the season key R4 buckets on, so a build
+    // whose version string doesn't fit says so rather than truncating
+    // silently. The build systems keep `git describe` short enough
+    // (--abbrev=7 --dirty=+); a hand-passed NEWTONIA_VERSION can still
+    // overflow, and this is the only place that would ever notice.
+    if (strlen(NEWTONIA_VERSION_STRING) > Header::GAME_VERSION_LEN - 1) {
+        SDL_Log("replay: WARNING version stamp truncated to \"%s\" (%u chars, "
+                "max %u)", header_.game_version,
+                (unsigned)strlen(NEWTONIA_VERSION_STRING),
+                (unsigned)(Header::GAME_VERSION_LEN - 1));
+    }
     header_.run_id = run_id;
     header_.date = (uint64_t)time(NULL);
     header_.player_count = player_count;
