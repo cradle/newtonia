@@ -1,5 +1,12 @@
 # Partner Center values — GitHub secrets checklist
 
+> **DEFERRED (2026-07-30): Partner Center onboarding and these secrets belong
+> to the private repo `cradle/newtonia-xbox`** along with all other Xbox work
+> — see `xbox/PRIVATE_REPO.md`. Set them on the private repo, which is where
+> a package will actually be built and submitted; the public repo's
+> `deploy-xbox.yml` stays disabled and unconfigured. The token/substitution
+> contract below is the reference for doing that.
+
 All deployment-specific values are stored as **GitHub encrypted secrets** and
 injected at build time — nothing identity-related is committed to source, so
 the repo stays reusable (same pattern as the Steam deploy's `STEAM_APP_ID`).

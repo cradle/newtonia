@@ -1,35 +1,80 @@
-# Private repo for Xbox console development
+# Xbox work is deferred to a private repo
 
-Xbox **console** (GDKX) development is under NDA, so the GDKX-touching work
-must live in a **private** repository. `cradle/newtonia` is public and stays
-that way for the game and all non-NDA work. This doc records how to split the
-work and stand up the private repo.
+Xbox **console** (GDKX) development is under NDA, so GDKX-touching work has to
+live in a **private** repository. As of **2026-07-30 the whole remaining Xbox
+effort is deferred there** — not just the NDA parts. `cradle/newtonia` is
+public and stays that way for the game; its Xbox surface is frozen at what is
+already checked in and green in CI. This doc is the authority on who owns
+what.
 
-## What stays public vs goes private
+## Decision (2026-07-30): the private repo owns every outstanding Xbox task
 
-Split by **NDA sensitivity**, not "all Xbox = private". Most of the Xbox work
-so far is public-safe — it uses only the *public* GDK, deliberately stubs
-GDKX (`xbox/smoke_stubs/`), and commits no SDK bytes.
+The public repo's Xbox scaffolding builds, is CI-gated on every push, and
+needs no further work here. Everything on the remaining-work lists moves to
+`cradle/newtonia-xbox`, **including the parts that carry no NDA material at
+all**. Rationale: the work is one port, and every item on it is either gated
+on GDKX/a dev kit or is only worth doing in service of something that is —
+splitting a single effort across two repos by NDA sensitivity costs more
+coordination than the split saves, and it leaves the public repo carrying task
+lists nobody is working. Ownership follows the *project*, not the sensitivity
+of each line.
 
-**Stays in the public repo (`cradle/newtonia`):**
-- The port plan, checklists, and this doc.
-- GDK **Desktop** CI (`xbox-dev.yml`, Ninja + BWOI of the *public* GDK).
-- Console **compile-smoke** (`xbox-console-smoke.yml`, `WINAPI_FAMILY_GAMES`,
-  GDKX headers stubbed).
-- The `_GAMING_XBOX` / `_GAMING_DESKTOP` code already in shared files
-  (SDL/EGL/standard Win32 — not NDA).
-- Identity-via-secrets plumbing, the `deploy-xbox.yml` template.
+Consequence for this repo: the `xbox/*.md` documents are **reference and
+handoff material, not task lists**. They are accurate descriptions of where
+the port stands and what remains; nothing in them is scheduled work for
+`cradle/newtonia`.
 
-**Goes to the private mirror only:**
-- Real GDKX API usage: D3D12.X / console rendering (Phase 2), and real
-  `XGameSave` / `XUser` / PLM against actual GDKX headers (Phase 4).
-- Console build config that references GDKX specifics; the Scarlett toolchain
-  if it embeds GDKX details.
-- Anything off the dev kit: logs, crash dumps, perf captures (most clearly
-  NDA-restricted).
+**The one open public-side action is standing up the private repo** (the
+recipe is below) — it gates everything else, and it is a Phase 0 item in
+`xbox/PORT_PLAN.md`.
 
-> The NDA terms are the real authority on what must be private. Confirm the
-> exact scope with your ID@Xbox contact; move the line above accordingly.
+### What moved
+
+| Deferred work | Documented in | Gate |
+|---|---|---|
+| Program prerequisites: Partner Center title + identity/StoreId, GDKX download, dev-kit loan, publisher name, IARC ratings, pricing | `PORT_PLAN.md` §3 Phase 0, `PARTNER_CENTER_VALUES.md` | Microsoft / calendar |
+| GDK Desktop manual test pass (sections B, C, E–K unrun) | `DESKTOP_TEST_PASS.md` | none — a Windows PC; deferred by ownership, not by blocker |
+| Console rendering decision spike (GLon12 vs ANGLE-on-GDKX vs native D3D12.X) | `PORT_PLAN.md` §3 Phase 2 | GDKX + dev kit |
+| Console bring-up: entry point, input, audio, file I/O, performance | `CONSOLE_BRINGUP.md`, `PORT_PLAN.md` §3 Phase 3 | GDKX + dev kit |
+| Cert feature work: PLM API verification against real GDKX headers, `XUser` sign-in/sign-out, `XGameSave`/`SaveStorage`, cert behaviour sweep | `PORT_PLAN.md` §3 Phase 4 | GDKX + dev kit |
+| Packaging, CI and store: self-hosted GDKX runner, `deploy-xbox.yml` rework, StoreBroker-vs-`.xvc` verification, real store art, Partner Center secrets | `PORT_PLAN.md` §3 Phases 5–6, `PARTNER_CENTER_VALUES.md` | GDKX (+ Partner Center for the secrets) |
+| GDK Achievements Manager backend + Partner Center achievement config + sandbox testing | `ACHIEVEMENTS.md` §6 | GDKX; already private before this decision |
+| Xbox console netplay: X1 libdatachannel-on-console spike, X3 dev-mode co-op, X4 store cert | `NETPLAY_XBOX.md` §6 | GDKX + dev kit (X1 gates the rest) |
+| Xbox-driven netplay hardening: host-side sanity bounds on client-authoritative pose/fire (8c), malformed/invalid-auth fuzzing of `Net::Reader` (8d) | `NETPLAY_XBOX.md` §7 | none — shared code; see "flowing back" below |
+
+### What the public repo keeps (frozen, no work planned)
+
+- `xbox/CMakeLists.txt`, `xbox_main.cpp`, `xbox/sdl_gdk_stubs.cpp`,
+  `xbox/smoke_stubs/`, `xbox/MicrosoftGame.config`, `xbox/PackagingLayout.xml`,
+  `xbox/Assets/` + `generate_assets.py`, and the disabled
+  `deploy-xbox.yml` template.
+- The two CI canaries, which are free and catch real regressions in shared
+  code: `xbox-dev.yml` (GDK **Desktop**, Ninja + BWOI of the *public* GDK) and
+  `xbox-console-smoke.yml` (`_GAMING_XBOX` under `WINAPI_FAMILY_GAMES`, GDKX
+  headers stubbed). **Keep both green** — that is the public repo's whole
+  ongoing Xbox obligation.
+- The `_GAMING_XBOX` / `_GAMING_DESKTOP` branches already in shared files
+  (SDL/EGL/standard Win32 — not NDA), and the platform-neutral seams the
+  private backends land against: `Achievements`, `Presence`, `Invites`,
+  `net_identity`, `net_policy`, `Overlay::SAFE_AREA_SCALE`, `asset_path()`.
+- These docs, as reference.
+
+A shared-code change made for another platform may still touch the Xbox paths
+— that is normal, and the two canaries are how it stays honest. What the
+public repo does **not** do is schedule Xbox port work.
+
+### Shared-code work, and how it flows back
+
+Some deferred items (8c, 8d, any seam a console backend needs) are plain
+cross-platform C++ with no NDA content. The private repo **drives** them
+because they are Xbox-motivated; when one is done it comes back as an ordinary
+PR against `cradle/newtonia`, per the day-to-day flow below. If some other
+platform wants one first, it can simply be done here — nothing about the
+deferral makes shared code private.
+
+> The NDA terms are the real authority on what must *never* be public.
+> Everything above is an ownership decision layered on top of that; confirm
+> the NDA scope with your ID@Xbox contact.
 
 ## Why a mirror, not a submodule
 
@@ -59,6 +104,11 @@ git clone https://github.com/cradle/newtonia-xbox.git
 cd newtonia-xbox
 git remote add upstream https://github.com/cradle/newtonia.git
 ```
+
+Then move the task lists across: the checklists in `DESKTOP_TEST_PASS.md` and
+`CONSOLE_BRINGUP.md` are meant to be *filled in* there, and their results
+tables are private records (dev-kit output is NDA material). The copies here
+stay as the frozen reference.
 
 ## Day-to-day flow
 
