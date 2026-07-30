@@ -22,7 +22,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth 0 for the tags: the Makefile stamps `git describe` into
+      # every replay header (REPLAY.md R4 — leaderboard seasons bucket by
+      # release), and this workflow deploys the PUBLIC Pages build, so it
+      # should say which release it is ahead of rather than "dev".
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Node (for tsc)
         uses: actions/setup-node@v4

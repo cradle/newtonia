@@ -22,6 +22,7 @@
 // (for the VBO/VAO/shader shim that replaces all legacy GL calls).
 #include "gl_compat.h"
 #include "mat4.h"
+#include "replay.h"
 
 #include <cstdio>
 #include <string>
@@ -640,6 +641,22 @@ int main(int argc, char* argv[]) {
     }
   }
 #endif
+  // Same hidden-hook shape, but NOT under NEWTONIA_NET_RTC: replays are a
+  // solo feature and the netless binary records too. Deterministic check of
+  // the recorder's keyframe-ordering invariant — the one the online host's
+  // first 100 ms and every client rejoin depend on, and the one the e2e
+  // drivers structurally cannot provoke (see replay_selftest.cpp).
+  {
+    const char *rs = SDL_getenv("NEWTONIA_REPLAY_SELFTEST");
+    if (rs && rs[0] == '1' && rs[1] == '\0') {
+      std::cout << "NEWTONIA_REPLAY_SELFTEST: running recorder self-test..."
+                << std::endl;
+      bool ok = Replay::selftest();
+      std::cout << (ok ? "REPLAY SELFTEST PASS" : "REPLAY SELFTEST FAIL")
+                << std::endl;
+      return ok ? 0 : 1;
+    }
+  }
   s_tap_debug = SDL_getenv("NEWTONIA_TAP_DEBUG") != NULL;
   if (s_tap_debug) tap_debug_note("TAP DEBUG ON");
   if (!steam_init())

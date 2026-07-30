@@ -1,5 +1,11 @@
 # Console bring-up — Phase 3 checklist
 
+> **DEFERRED (2026-07-30): this checklist is executed in the private repo
+> `cradle/newtonia-xbox`,** which owns all remaining Xbox work — see
+> `xbox/PRIVATE_REPO.md`. Fill it in there, not here: it needs GDKX and
+> console hardware, and dev-kit output (logs, captures) is NDA material that
+> must not land in the public repo. The copy below is the frozen reference.
+
 Validates Newtonia running on an **Xbox Series X|S** target (a dev kit, or a
 retail console in GDK Developer Mode). Companion to `DESKTOP_TEST_PASS.md`
 (which covers the GDK *Desktop* canary) and `PORT_PLAN.md` Phase 3.

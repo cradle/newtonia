@@ -1,5 +1,13 @@
 # Xbox Port — Implementation Plan
 
+> **DEFERRED (2026-07-30): every phase below is owned by the private repo
+> `cradle/newtonia-xbox`, not by `cradle/newtonia`.** See
+> `xbox/PRIVATE_REPO.md` for the ownership decision and what moved. This
+> document stays here as the handoff and reference material — it is an
+> accurate description of where the port stands, **not a task list for the
+> public repo**. The public repo's only ongoing Xbox obligation is keeping
+> `xbox-dev.yml` and `xbox-console-smoke.yml` green.
+
 Status: planning document. Companion to `xbox/CMakeLists.txt`, `xbox_main.cpp`,
 `.github/workflows/xbox-dev.yml`, and the disabled
 `.github/workflows/disabled/deploy-xbox.yml`.
@@ -56,11 +64,13 @@ Status: planning document. Companion to `xbox/CMakeLists.txt`, `xbox_main.cpp`,
    an appx/MSIX-era tool — whether it can submit GDK `.xvc` packages needs
    verification (console packages are normally uploaded via Partner Center /
    the game package upload flow).
-7. **No TV safe-area handling.** No safe-area inset exists anywhere in the
-   HUD (`view/overlay.cpp`, `Typer`). Xbox cert guidance requires critical UI
-   inside the title-safe region (~90% of the frame).
-8. **Doc bug:** `xbox/CMakeLists.txt:33-34` claims ANGLE is bundled with the
-   GDK; the workflows themselves note it is not. Fix the comment when touched.
+7. ~~**No TV safe-area handling.**~~ **RESOLVED** — `Overlay::SAFE_AREA_SCALE`
+   (90% on `_GAMING_XBOX`) insets the HUD, minimap viewport and menus; see
+   work item 11 in §4. Still wants a look on a real TV during Phase 3
+   (`CONSOLE_BRINGUP.md` section H).
+8. ~~**Doc bug:** `xbox/CMakeLists.txt` claims ANGLE is bundled with the
+   GDK.~~ **FIXED** — the comment now says ANGLE is *not* bundled and points
+   at the NuGet fetch (work item 2 in §4).
 
 ## 2. Target definition
 
@@ -78,6 +88,12 @@ Status: planning document. Companion to `xbox/CMakeLists.txt`, `xbox_main.cpp`,
   save handling only to the extent certification requires.
 
 ## 3. Phases
+
+**All phases below run in `cradle/newtonia-xbox`** (2026-07-30 deferral). The
+one exception in practice is Phase 0 item 5 — standing the private repo up —
+which is the action that unblocks every other line on this page. Non-NDA
+outcomes flow back to the public repo as ordinary PRs
+(`xbox/PRIVATE_REPO.md` → "Shared-code work, and how it flows back").
 
 ### Phase 0 — Program prerequisites (calendar time, little code)
 
@@ -98,21 +114,27 @@ Partner Center, download GDKX, and request a dev kit.
    first; GDKX download and the Phase 2 rendering spike can proceed while
    the kit ships).
 4. Decide publisher display name, age ratings (IARC questionnaire), pricing.
-5. ⏳ Stand up a **private repo** for GDKX-touching console work (NDA) — the
-   public repo keeps the game + all non-NDA work. Use a private mirror with
-   `upstream` tracking, not a submodule (the Xbox code is woven into shared
-   files). Recipe + public/private split: `xbox/PRIVATE_REPO.md`.
+5. ⏳ **Do this first — it now gates every other item on this page.** Stand up
+   the **private repo** for the console work. Since 2026-07-30 it owns the
+   whole remaining port, not only the GDKX-touching parts; the public repo
+   keeps the game plus the frozen Xbox scaffolding and its two CI canaries.
+   Use a private mirror with `upstream` tracking, not a submodule (the Xbox
+   code is woven into shared files). Recipe + ownership split:
+   `xbox/PRIVATE_REPO.md`.
 
 Exit criteria: GDKX installable on a dev machine; dev kit on the desk.
 
-### Phase 1 — Harden GDK Desktop (no new hardware needed, start now)
+### Phase 1 — Harden GDK Desktop (no new hardware needed)
 
 Status (2026-06): the GDK Desktop CI build is **green and reliable** — it
 builds via Ninja + MSVC with a BWOI (lessmsi-extracted) GDK on
 windows-latest, sidestepping the GDK MSBuild platform's VCTargetsPath probe
 (see Phase 5). The artifact runs (controller hot-plug bug found and fixed,
 issue #287; pad/game-over disconnect handling fixed). Remaining: complete the
-manual test-pass checklist.
+manual test-pass checklist — **deferred to the private repo** with the rest of
+the port (2026-07-30). It needs no NDA material, only a Windows PC and the
+artifact from this repo's green `xbox-dev.yml` run, so it is deferred by
+ownership rather than by any blocker; the results table moves with it.
 
 1. Manual test pass of the CI artifact on a Windows machine: boot, menu,
    options persistence, 1P/2P with pads, pause/focus loss, save/resume,
@@ -308,6 +330,10 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 
 ## 4. Concrete code work-item list
 
+Every unticked row is private-repo work. The ✅ rows already landed in the
+public repo and are the frozen scaffolding described in
+`xbox/PRIVATE_REPO.md`.
+
 | # | Item | Files | Phase |
 |---|------|-------|-------|
 | 1 | ✅ Hide keyboard-only rows in help overlay on controller | `glship.cpp` (draw_keymap) | 1 |
@@ -337,7 +363,9 @@ All in plain C++ behind small abstractions; testable on dev kit only.
 
 Realistic total: **3–4 months** elapsed, dominated by ID@Xbox onboarding and
 the console rendering backend. Everything before dev-kit arrival (Phases 0–1
-and the public-information half of Phase 2) is unblocked today.
+and the public-information half of Phase 2) is unblocked today — but it is
+unblocked *in the private repo*, whose creation is the first item of Phase 0.
+None of it is scheduled against `cradle/newtonia`.
 
 ## 6. Risk register
 

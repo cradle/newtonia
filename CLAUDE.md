@@ -17,6 +17,8 @@ make clean      # Remove build artifacts
 
 Compiler: g++ with `-Wall -O3 -std=c++11`. Sources include root, `weapon/`, and `view/`.
 
+**Every build path stamps a version** into `NEWTONIA_VERSION_STRING`, which lands in each replay file's header so leaderboard seasons can bucket runs by release (REPLAY.md R4). Resolution order is the same everywhere — `-DNEWTONIA_VERSION` / `NEWTONIA_VERSION=` , then the environment, then `git describe --tags --dirty --always` — implemented in the Makefile (desktop/Steam/web/osx), the root `CMakeLists.txt` (Android) and `xbox/CMakeLists.txt`; iOS takes it as an xcodebuild setting (`NEWTONIA_VERSION_DEFINE`, the same hand-off `NEWTONIA_NET_DEFINE` uses, wired in `ios/project.yml`). The deploy workflows pass the tag explicitly because `actions/checkout` is shallow and fetches no tags. Unresolvable falls back to `replay.h`'s `"dev"`, so this can never fail a build — but note a hand-rolled `make CFLAGS=...` override drops the stamp with the rest of `CFLAGS`.
+
 **Netplay builds by default** (the old opt-in `NETPLAY=1` still works and is
 now redundant). The default needs libdatachannel at `./netplay-libs` — build
 it ONCE with `./build_netplay_deps.sh` (`--universal` for `make osx`). A
@@ -108,8 +110,9 @@ build (`make android`) or the `android.yml` CI.
 
 #### Headless runtime testing & debugging (Linux, no display)
 **See TESTING.md for the full test inventory** — build gates, in-binary
-selftests (`NEWTONIA_NET_SELFTEST`), signal-worker tests, the committed
-netplay e2e drivers (`test/e2e/`), and the `STEAM_BUILD` stub check. This
+selftests (`NEWTONIA_NET_SELFTEST`, `NEWTONIA_REPLAY_SELFTEST`),
+signal-worker tests, the committed netplay e2e drivers (`test/e2e/`), and the
+`STEAM_BUILD` stub check. This
 section documents the underlying driver technique those drivers use.
 
 A clean build is not proof that gameplay flows work — state transitions, input
@@ -228,6 +231,8 @@ cmake -B xbox/build-desktop -S xbox -A Gaming.Desktop.x64
 ```
 
 `xbox/CMakeLists.txt` builds for GDK Desktop (Gaming.Desktop.x64) and Xbox Series (Gaming.Xbox.Scarlett.x64) using the VS2022 MSBuild platform registration installed by GDK 2510+ — no separate toolchain file. Renders via OpenGL ES 2 through ANGLE (libEGL/libGLESv2 from the ANGLE.WindowsStore NuGet package — not bundled with the GDK; located via `ANGLE_INCLUDE_DIR`/`ANGLE_LIB_DIR` or `GDK_ROOT`). See `xbox/PORT_PLAN.md` for the full port plan. Uses static MSVC runtime (`/MT`); `xbox/sdl_gdk_stubs.cpp` provides GDK PLM stub symbols; packaging config in `xbox/MicrosoftGame.config` and `xbox/PackagingLayout.xml`.
+
+**Xbox development is deferred to a private repo (2026-07-30).** All remaining Xbox work — console bring-up, the rendering spike, cert features, packaging/submission, the GDK achievements backend, Xbox netplay, and even the non-NDA GDK Desktop manual test pass — is owned by `cradle/newtonia-xbox`, not by this repo (decision + ownership split: `xbox/PRIVATE_REPO.md`). What stays here is frozen scaffolding: the files above, the platform-neutral seams the private backends land against, and the two CI canaries (`xbox-dev.yml`, `xbox-console-smoke.yml`) — **keep those green**, since they guard shared code, but don't schedule Xbox port work here. The `xbox/*.md` documents are reference and handoff material, not task lists. Non-NDA outcomes come back as ordinary upstream PRs.
 
 ### Sound assets
 `generate_sounds.py` procedurally generates the WAV files in `audio/`.
@@ -598,7 +603,7 @@ GitHub Actions runs builds on every push to `master`/`main` and on PRs (feature 
 | `.github/workflows/linux.yml` | Linux executable (netplay + headless loopback self-test) |
 | `.github/workflows/windows.yml` | Windows executable (netplay: MinGW-static libdatachannel + self-test — the compile gate for deploy-steam's Windows build) |
 | `.github/workflows/web.yml` | WebAssembly + GitHub Pages deploy (master/main only) |
-| `.github/workflows/xbox-dev.yml` | GDK Desktop (Gaming.Desktop.x64) build — catches Xbox-port compile errors without hardware |
+| `.github/workflows/xbox-dev.yml` | GDK Desktop (Gaming.Desktop.x64) build — catches Xbox-port compile errors without hardware. One of the two canaries this repo keeps green now that Xbox work is deferred to the private repo |
 | `.github/workflows/xbox-console-smoke.yml` | Compile-only check of the `_GAMING_XBOX` console paths with MSVC under `WINAPI_FAMILY_GAMES` (no GDKX/NDA material; GDK-only headers stubbed in `xbox/smoke_stubs/`) |
 
 **Deployment workflows** (triggered by `v*.*.*` version tags or manual dispatch; the old `netplay-v*` test namespace was retired post-launch — historical `netplay-v*` tags remain in the repo but trigger nothing):

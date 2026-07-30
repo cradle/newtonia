@@ -1,15 +1,25 @@
 # Xbox Console Netplay — Milestone Plan
 
+> **DEFERRED (2026-07-30): this whole milestone is owned by the private repo
+> `cradle/newtonia-xbox`** — see `xbox/PRIVATE_REPO.md`. That includes the two
+> §7 items that carry no NDA content (8c host-side pose/fire sanity bounds,
+> 8d malformed/invalid-auth fuzzing of `Net::Reader`): the private repo drives
+> them because they are Xbox-motivated, and either one comes back as an
+> ordinary PR against `cradle/newtonia` when it's done. Phases X0/X1/X3/X4 all
+> need GDKX and a dev kit. Nothing on this page is scheduled work for the
+> public repo; it stays as the reference and handoff material.
+
 Companion to `xbox/PORT_PLAN.md` (the console port) and `NETPLAY.md` (the
-cross-platform online co-op, which lives on the `claude/netplay-md-plan-mjas7b`
-branch). This document plans the one multiplayer milestone the netplay effort
-explicitly deferred: **online co-op on the actual Xbox Series console.**
+cross-platform online co-op). This document plans the one multiplayer milestone
+the netplay effort explicitly deferred: **online co-op on the actual Xbox
+Series console.**
 
 > Implementation note: the netplay stack (`net_transport.*`, `net_session.*`,
 > `net_lobby.*`, `net_protocol.h`, `net_signal.*`, and the `NEWTONIA_NET`
-> block in `xbox/CMakeLists.txt`) exists on `claude/netplay-md-plan-mjas7b`,
-> not on `master`. The code work below extends that branch; base the Xbox
-> milestone on it.
+> block in `xbox/CMakeLists.txt`) shipped to `master` in PR #323 (2026-07-18)
+> — the earlier `claude/netplay-md-plan-mjas7b` note is obsolete. The code
+> work below extends what is on `master`; base the Xbox milestone on the
+> private repo's mirror of it.
 
 ## 1. Context — why this milestone exists now
 
@@ -650,6 +660,9 @@ Two guidance points that sharpen our design:
 
 ## 6. Phases
 
+All phases run in the private repo (2026-07-30 deferral); X0 is itself the
+deferred console bring-up.
+
 ### Phase X0 — console bring-up (prerequisite, see PORT_PLAN)
 Not netplay work; blocks everything console-side. Renderer + SDL GDK + file I/O
 on the dev kit.
@@ -746,7 +759,14 @@ by the forum answer (§8a).
 
 ## 7. Code work-item list
 
-| # | Item | Files | Phase | Where |
+The **Where** column records where each item's code *lives* (public repo vs
+private mirror vs a portal), which is a different question from who owns the
+work. Since the 2026-07-30 deferral **every open row is driven by the private
+repo**, including the ones whose code is public-safe — those simply flow back
+upstream as normal PRs (`xbox/PRIVATE_REPO.md`). Rows marked **landed** are
+already in the public repo.
+
+| # | Item | Files | Phase | Where the code lives |
 |---|------|-------|-------|-------|
 | 1 | Scarlett netplay build block (ready-to-enable, still OFF so console-smoke stays green) | `xbox/CMakeLists.txt` | X1 | Public |
 | 2 | libdatachannel-on-console socket spike | build + dev kit | X1 | Private/hardware |
