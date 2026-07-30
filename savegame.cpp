@@ -68,6 +68,11 @@ static bool read_count(Save::Stream &f, uint32_t &cnt, uint32_t max_allowed) {
     return rv(f, cnt) && cnt <= max_allowed;
 }
 
+// Per-player weapon-list bound, shared by read_player and net_state_sane's
+// check (which runs too late to prevent the allocation — hence the bound
+// here as well as there).
+static const uint32_t MAX_WEAPONS = 64;
+
 template<typename T, int N>
 static bool wa(Save::Stream &f, const T (&a)[N]) { return f.write(a, sizeof(T) * N); }
 
@@ -124,8 +129,16 @@ bool Save::read_player(Save::Stream &f, Save::Player &p) {
     if (!rv(f, p.facing_x) || !rv(f, p.facing_y)) return false;
     if (!rv(f, p.vel_x) || !rv(f, p.vel_y))       return false;
 
+    // Bounded like every other count in the file (see read_count): this
+    // stream can be a hostile or corrupt netplay snapshot / replay record,
+    // and the resize happens long before net_state_sane() gets to reject
+    // the state. An unbounded count here was a 69-byte payload that
+    // bad_alloc'd and terminated the process — reachable from a peer's
+    // snapshot, a replay file and a savegame alike. The bound is
+    // net_state_sane()'s own weapon limit, so a count past it was going to
+    // be rejected anyway.
     uint32_t pc;
-    if (!rv(f, pc)) return false;
+    if (!read_count(f, pc, MAX_WEAPONS)) return false;
     p.primary_weapons.resize(pc);
     for (auto &w : p.primary_weapons)
         if (!read_weapon(f, w)) return false;
@@ -134,7 +147,7 @@ bool Save::read_player(Save::Stream &f, Save::Player &p) {
     p.selected_primary_idx = (int)si;
 
     uint32_t sc;
-    if (!rv(f, sc)) return false;
+    if (!read_count(f, sc, MAX_WEAPONS)) return false;
     p.secondary_weapons.resize(sc);
     for (auto &w : p.secondary_weapons)
         if (!read_weapon(f, w)) return false;

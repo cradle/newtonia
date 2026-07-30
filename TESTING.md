@@ -242,6 +242,24 @@ test/e2e/replay.sh   # REPLAY.md R1 exit criteria, solo (no relay needed):
                      # cheat runs and crashed (stale-header) runs never do;
                      # game over patches the header (ENDED) and deletes the
                      # save. Headers/records parsed by test/e2e/replay_check.py.
+test/e2e/replay_failures.sh # the recorder/reader paths that only run once
+                     # something has already gone wrong (solo, no relay), each
+                     # a bug that shipped. S1: a resume whose leftover ends in
+                     # a TRUNCATED record trims the stub first — "ab" appends
+                     # BEHIND the break, where the reader never arrives, so the
+                     # whole resumed session used to vanish while the header
+                     # patch advertised it (asserts the record count grows and
+                     # playback reaches the far segment). S2: a real SHORT
+                     # write — a 64 KB tmpfs filled by ordinary play, so fwrite
+                     # writes part of a chunk and fails — must stop the
+                     # recording, trim back to the last intact boundary and
+                     # leave a playable file (skips where mount is
+                     # unavailable). S3: a HOSTILE file is declined, not fatal:
+                     # a 69-byte keyframe payload claiming 0xFFFFFFF0 weapons
+                     # reached vector::resize and aborted the process, and the
+                     # same parse runs on a peer's netplay snapshot — the
+                     # assertion is the exit code (134 = SIGABRT) plus the
+                     # "unparseable - declining" line.
 test/e2e/identity.sh # peer-identity happy path: named exchange both ways
                      # (NEWTONIA_NET_NAME=GLENN/BOB — default builds send
                      # no name) logged as "net: identity peer name='GLENN'
