@@ -216,18 +216,38 @@ target_compile_definitions(newtonia PRIVATE
 )
 
 # Version stamped into replay headers (REPLAY.md R4 seasons) — same
-# resolution order as the Makefile and the root CMakeLists: -DNEWTONIA_VERSION,
-# then the environment, then git describe. Unresolvable (e.g. no git on the
-# runner) leaves replay.h's "dev" default, so this can never fail a build.
+# resolution order and the same short describe format as the Makefile and the
+# root CMakeLists: -DNEWTONIA_VERSION, then the environment, then git describe.
+# Unresolvable (e.g. no git on the runner) leaves replay.h's "dev" default, so
+# this can never fail a build.
 if(NOT NEWTONIA_VERSION)
     if(DEFINED ENV{NEWTONIA_VERSION})
         set(NEWTONIA_VERSION "$ENV{NEWTONIA_VERSION}")
     else()
-        execute_process(COMMAND git describe --tags --dirty --always
+        execute_process(COMMAND git describe --tags --abbrev=7 --dirty=+ --always
                         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                         OUTPUT_VARIABLE NEWTONIA_VERSION
                         OUTPUT_STRIP_TRAILING_WHITESPACE
                         ERROR_QUIET)
+        # describe ran at CONFIGURE time, so an incremental build would keep
+        # the stamp it was configured with (the staleness the Makefile's
+        # version.stamp rule prevents). Re-configure when HEAD or the branch it
+        # points at moves — a commit or a checkout. A merely dirty tree keeps
+        # its `+` from the last configure; use -DNEWTONIA_VERSION= to pin.
+        set(NEWTONIA_GIT_DIR "${CMAKE_SOURCE_DIR}/../.git")
+        if(EXISTS "${NEWTONIA_GIT_DIR}/HEAD")
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                         "${NEWTONIA_GIT_DIR}/HEAD")
+            file(READ "${NEWTONIA_GIT_DIR}/HEAD" NEWTONIA_GIT_HEAD)
+            string(STRIP "${NEWTONIA_GIT_HEAD}" NEWTONIA_GIT_HEAD)
+            if(NEWTONIA_GIT_HEAD MATCHES "^ref: (.+)$")
+                set(NEWTONIA_GIT_REF "${NEWTONIA_GIT_DIR}/${CMAKE_MATCH_1}")
+                if(EXISTS "${NEWTONIA_GIT_REF}")
+                    set_property(DIRECTORY APPEND PROPERTY
+                                 CMAKE_CONFIGURE_DEPENDS "${NEWTONIA_GIT_REF}")
+                endif()
+            endif()
+        endif()
     endif()
 endif()
 if(NEWTONIA_VERSION)

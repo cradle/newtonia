@@ -154,18 +154,40 @@ target_compile_definitions(newtonia PRIVATE __ANDROID__ PLAY_GAMES_BUILD
 
 # Version stamped into replay headers (Replay::Header::game_version, 23 chars
 # max) so leaderboard seasons can bucket runs by release — REPLAY.md R4. Same
-# resolution order as the Makefile: -DNEWTONIA_VERSION, then the environment
-# (how deploy-android.yml passes the tag through Gradle), then git describe.
-# Unresolvable leaves replay.h's "dev" default.
+# resolution order and the same short describe format as the Makefile:
+# -DNEWTONIA_VERSION, then the environment (how deploy-android.yml passes the
+# tag through Gradle), then git describe. Unresolvable leaves replay.h's "dev"
+# default.
 if(NOT NEWTONIA_VERSION)
     if(DEFINED ENV{NEWTONIA_VERSION})
         set(NEWTONIA_VERSION "$ENV{NEWTONIA_VERSION}")
     else()
-        execute_process(COMMAND git describe --tags --dirty --always
+        execute_process(COMMAND git describe --tags --abbrev=7 --dirty=+ --always
                         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
                         OUTPUT_VARIABLE NEWTONIA_VERSION
                         OUTPUT_STRIP_TRAILING_WHITESPACE
                         ERROR_QUIET)
+        # describe ran at CONFIGURE time, so an incremental build would keep
+        # the stamp it was configured with — the staleness the Makefile's
+        # version.stamp rule exists to prevent. Re-configure when HEAD or the
+        # branch it points at moves (a commit, a checkout), which covers every
+        # case that changes the tag/distance/sha. A merely dirty tree still
+        # keeps its `+` from the last configure; nothing cheap fixes that, and
+        # `-DNEWTONIA_VERSION=` is the override when it matters.
+        set(NEWTONIA_GIT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+        if(EXISTS "${NEWTONIA_GIT_DIR}/HEAD")
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                         "${NEWTONIA_GIT_DIR}/HEAD")
+            file(READ "${NEWTONIA_GIT_DIR}/HEAD" NEWTONIA_GIT_HEAD)
+            string(STRIP "${NEWTONIA_GIT_HEAD}" NEWTONIA_GIT_HEAD)
+            if(NEWTONIA_GIT_HEAD MATCHES "^ref: (.+)$")
+                set(NEWTONIA_GIT_REF "${NEWTONIA_GIT_DIR}/${CMAKE_MATCH_1}")
+                if(EXISTS "${NEWTONIA_GIT_REF}")
+                    set_property(DIRECTORY APPEND PROPERTY
+                                 CMAKE_CONFIGURE_DEPENDS "${NEWTONIA_GIT_REF}")
+                endif()
+            endif()
+        endif()
     endif()
 endif()
 if(NEWTONIA_VERSION)

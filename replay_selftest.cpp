@@ -123,6 +123,11 @@ bool selftest() {
         if (!r.ok()) {
             SDL_Log("replay selftest: FAIL - recorder would not open %s",
                     path.c_str());
+            // A half-opened recorder can still have written a header; leave
+            // nothing behind in the player's replays directory (the e2e
+            // litter check would otherwise report a second, spurious
+            // failure on top of this one).
+            std::remove(path.c_str());
             return false;
         }
 
@@ -199,6 +204,10 @@ bool selftest() {
     std::vector<uint8_t> kinds2 = record_kinds(path, &slots_ok2);
     log_kinds("records after resume", kinds2);
     check_eq((int)kinds2.size(), 6, "the resumed delta appended");
+    // The resumed recorder has to pick the slot numbering up where the file
+    // left off (it reads last_slot back from the file); restarting at 0 would
+    // make playback jump backwards mid-timeline.
+    check(slots_ok2 == 1, "slot indices never go backwards across the resume");
 
     std::remove(path.c_str());
     SDL_Log("replay selftest: %d failure(s)", failures);
