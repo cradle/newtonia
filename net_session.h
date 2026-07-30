@@ -137,8 +137,20 @@ namespace Save { struct GameState; }
 // the network paths screen the result here before applying it: a malicious
 // host could otherwise send absurd world dimensions (Grid allocation blowup)
 // or oversized entity vectors. Returns false when any field is out of the
-// range a genuine snapshot stays within.
+// range a genuine snapshot stays within — including NaN/Inf and absurd
+// magnitudes in every position/velocity, which no range comparison catches
+// on its own (see the definition).
 bool net_state_sane(const Save::GameState &s);
+
+// Per-float screens shared by net_state_sane and the projectile parse. The
+// limits are far outside anything legal (the world caps at 200000 units and
+// wire pose checks use ~3 units/ms) — they exist to keep a NaN or an absurd
+// magnitude out of WrappedPoint, Object::radius and the collision grid,
+// whose out-of-range cell normalization is a per-index loop.
+static const float NET_COORD_LIMIT = 1.0e7f;
+static const float NET_VEL_LIMIT   = 1.0e4f;
+bool net_coord_sane(float v);
+bool net_vel_sane(float v);
 
 // ---- session ------------------------------------------------------------
 // Owns the transport once signaling hands it over. update() pumps the

@@ -186,6 +186,24 @@ records: [slot index | kind | payload] ...
   crash loses only records since the last checkpoint (the background append
   covers Android's silent kill of a suspended process), and the surviving
   file is a free crash-repro artifact up to that point.
+  **A truncated record is only tolerable as the LAST thing in the file, so
+  nothing may ever be appended behind one** (2026-07-30). Tolerating it on
+  READ is half the rule: the reader stops at the break, so records written
+  after it are unreachable — a whole session banked into a part of the file
+  nothing can ever read, with the header patch in front of it advertising the
+  real score and duration. Two places could do that, and both now cut the
+  stub off first. (1) `write_chunk` ignored `fwrite`'s return, so a short
+  write — a full disk, a browser quota — left a truncated record and the
+  recording carried on appending behind it for the rest of the run; it now
+  trims back to the last intact boundary (the file's length before the
+  append, which the recorder tracks), patches an honest header over what
+  survived, and stops with a log line. (2) `Recorder(resumed=true)` opens
+  `"ab"`, which appends after whatever truncated tail a crashed session left,
+  so exit→continue over a crash artifact lost the entire resumed segment; it
+  now trims to the last intact record before appending, and refuses to resume
+  if it cannot (appending anyway is the silent-loss case). Both are covered
+  by TESTING.md's recorder-failure driver, which fills a 64 KB tmpfs to
+  provoke a real short write.
 - **Resumed games work naturally**: the first record is always a keyframe
   (full world state), exactly like a rejoining net client's bootstrap. A
   resume *within the same run* (the save's `run_id` still matches
@@ -525,8 +543,9 @@ reserved verification field so R5 can slot in without a format break.
 generation, duration, date, player count, `run_id` and `save_version`,
 patched on every flush so a crashed run reads honestly; format-version
 tolerance with a polite decline; and R2 playback of an arbitrary file,
-which is the "download → watch" half. The 64-bit slot arithmetic in
-`glgame.cpp` was hardened for this milestone's hostile input.
+which is the "download → watch" half. The slot arithmetic in `glgame.cpp`
+was hardened for this milestone's hostile input, and the bound it relies on
+now lives on the read side (see `MAX_RECORD_SLOT` below).
 
 Three things R4 has to decide, in the order they bind:
 1. ~~The season key.~~ **Done 2026-07-30**: the header's game version is
@@ -542,6 +561,33 @@ Three things R4 has to decide, in the order they bind:
    is no submission format yet to reserve it in. If verification ever wants
    to live in the `.nrp` itself instead of the envelope, the header has 4
    spare fixed bytes (44 used of the 48 before the patchable tail).
+
+**R4 turns a replay file into UNTRUSTED INPUT** — until then the only hostile
+`.nrp` a build can meet is one the player wrote themselves. The ingest
+hardening that assumption was hiding landed ahead of it (2026-07-30), because
+playback parses through the same `Save::deserialize_game` a peer's netplay
+snapshot does and the gap was reachable from both:
+- **Every container count is bounded before the resize.** The per-player
+  weapon lists were not (every other count in the file went through
+  `read_count`): a 69-byte payload with `primary_count = 0xFFFFFFF0` reached
+  `resize()`, threw `bad_alloc` and terminated the process — from a replay
+  file, a savegame, or a host's snapshot on a joining client. The bound is
+  `net_state_sane`'s own 64, which only ran *after* the allocation.
+- **Every float in a deserialized state is screened** (`net_state_sane`,
+  `net_coord_sane`/`net_vel_sane`, and the projectile section's
+  `nx_pose_sane`), not just the world dimensions. NaN slips past every range
+  comparison, and these land in `WrappedPoint`, `Object::radius` and the
+  collision grid — whose out-of-range cell normalization is a per-index loop,
+  so a merely large-but-finite coordinate is a stall, not a wrong pixel. The
+  per-message paths (MSG_SHOT, the REC_EFFECT bodies) already did this; the
+  wholesale state rebuild was the one that did not.
+- **Slot indices are bounded on read** (`MAX_RECORD_SLOT`, 23 days of play),
+  chosen so `slot * 100` — the ms timeline every consumer computes — stays
+  inside an int. A file-controlled `u32 * 100` was signed overflow before
+  anyone could range-check the result.
+- **The reader's file cap is 48 MB on web** (still 512 MB native): the whole
+  file is buffered before anything is validated, and on wasm a cap above the
+  heap is an OOM abort where the design promises a polite decline.
 
 ### R5 — deferred: input-log verification
 Only if forged submissions appear: sim-RNG split (~78 `rand()` sites),
@@ -663,6 +709,17 @@ R4's field.
   honest header and stops growing; the run stays playable and simply ends
   there, the same shape as any abandoned run. Native keeps the old
   behaviour (a real filesystem, no shared quota).
+  **Both halves of that only work if the recorder knows how big the file
+  already is** (fixed 2026-07-30): `file_bytes_` counted bytes written by the
+  live Recorder instance, so a RESUMED recording — every offline
+  exit→continue, every online client rejoin — started from zero. The cap
+  then measured only the new segment (a resumed run could reach roughly
+  double it, against the eviction risk the cap exists for) and the web sync
+  interval, which scales with the file precisely because IDBFS re-stores the
+  whole thing, dropped back to 5 s on a file that may already be megabytes —
+  the frozen-Safari-tab symptom, reintroduced by the most ordinary flow
+  there is. The resumed branch now seeds `file_bytes_` from the file's
+  intact length.
 - ~~Maybe: an "Auto-record replays" toggle on the Options screen~~
   **PARTLY DONE (2026-07-22): the preference exists, the Options row does
   not.** `Preferences::auto_record_replays` (**default OFF** — opt-in ship

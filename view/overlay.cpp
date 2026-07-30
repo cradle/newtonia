@@ -113,11 +113,15 @@ void Overlay::replay_hud(const GLGame *glgame) {
   }
   Typer::draw_centered(0, touch ? -155.0f + lift : -vh + 295, text, 18);
 
+  // last_slot() is bounded by the reader's slot sanity cap so this multiply
+  // stays inside an int (Replay::MAX_RECORD_SLOT — the file's slot indices
+  // are not otherwise this build's to trust).
   int total_ms = glgame->replay_reader_
                      ? (glgame->replay_reader_->last_slot() + 1) * 100
                      : 0;
   int elapsed_ms = glgame->replay_clock_ms_;
   if (elapsed_ms > total_ms) elapsed_ms = total_ms;
+  if (elapsed_ms < 0) elapsed_ms = 0;
   snprintf(text, sizeof(text), "%d:%02d / %d:%02d", elapsed_ms / 60000,
            (elapsed_ms / 1000) % 60, total_ms / 60000,
            (total_ms / 1000) % 60);

@@ -231,6 +231,14 @@ bool SnapshotAssembler::add_chunk(Reader &r) {
 
 // ---- deserialized-state sanity gate -------------------------------------
 
+bool net_coord_sane(float v) {
+  return std::isfinite(v) && v > -NET_COORD_LIMIT && v < NET_COORD_LIMIT;
+}
+
+bool net_vel_sane(float v) {
+  return std::isfinite(v) && v > -NET_VEL_LIMIT && v < NET_VEL_LIMIT;
+}
+
 bool net_state_sane(const Save::GameState &s) {
   // NaN/Inf must be rejected explicitly: every comparison against a NaN is
   // false, so a NaN world dimension would slip past the range checks below
@@ -248,6 +256,76 @@ bool net_state_sane(const Save::GameState &s) {
   for (size_t i = 0; i < s.players.size(); i++) {
     if (s.players[i].primary_weapons.size() > 64) return false;
     if (s.players[i].secondary_weapons.size() > 64) return false;
+  }
+  // Every OTHER float in the state, for the same reason the world dimensions
+  // are checked above: a NaN slips past every range comparison, and these
+  // reach WrappedPoint, Object::radius and the collision grid. The coordinate
+  // bound is deliberately far outside any legal value (the world caps at
+  // 200000 and poses are wrapped into it) — it exists because Grid::get()
+  // normalizes an out-of-range cell index by REPEATED ADDITION, so a merely
+  // large-but-finite coordinate turns one grid query into tens of millions of
+  // iterations. Velocities are bounded the same generous way: the wire's own
+  // pose checks use ~3 units/ms, so 1e4 rejects only nonsense.
+  //
+  // Snapshots reach here from a peer, a replay file and a savegame; the
+  // per-field validators in the MSG_/REC_ paths already do this and the
+  // wholesale state rebuild is the one ingest that did not.
+  for (size_t i = 0; i < s.players.size(); i++) {
+    const Save::Player &p = s.players[i];
+    if (!net_coord_sane(p.pos_x) || !net_coord_sane(p.pos_y)) return false;
+    if (!net_vel_sane(p.vel_x) || !net_vel_sane(p.vel_y)) return false;
+    if (!std::isfinite(p.facing_x) || !std::isfinite(p.facing_y)) return false;
+  }
+  for (size_t i = 0; i < s.asteroids.size(); i++) {
+    const Save::Asteroid &a = s.asteroids[i];
+    if (!net_coord_sane(a.pos_x) || !net_coord_sane(a.pos_y)) return false;
+    if (!net_vel_sane(a.vel_x) || !net_vel_sane(a.vel_y)) return false;
+    // Radius feeds the grid's cell span and every collision test. Only the
+    // dangerous shapes are rejected (NaN, negative, absurd — the real cap is
+    // Asteroid::max_radius, 240, so 10000 is 40x any legal value): a
+    // rejection drops the WHOLE snapshot, so anything a legitimate breakup
+    // chain could produce has to pass.
+    if (!std::isfinite(a.radius) || a.radius < 0.0f || a.radius > 10000.0f)
+      return false;
+    if (!std::isfinite(a.rotation) || !std::isfinite(a.rotation_speed))
+      return false;
+    if (!std::isfinite(a.max_vertex_offset)) return false;
+    for (int v = 0; v < 9; v++)
+      if (!std::isfinite(a.vertex_offsets[v])) return false;
+  }
+  for (size_t i = 0; i < s.pickups.size(); i++)
+    if (!net_coord_sane(s.pickups[i].pos_x) ||
+        !net_coord_sane(s.pickups[i].pos_y)) return false;
+  for (size_t i = 0; i < s.black_holes.size(); i++)
+    if (!net_coord_sane(s.black_holes[i].pos_x) ||
+        !net_coord_sane(s.black_holes[i].pos_y)) return false;
+  for (size_t i = 0; i < s.hazards.size(); i++) {
+    const Save::Hazard &h = s.hazards[i];
+    if (!net_coord_sane(h.pos_x) || !net_coord_sane(h.pos_y)) return false;
+    if (!net_vel_sane(h.vel_x) || !net_vel_sane(h.vel_y)) return false;
+    if (!std::isfinite(h.timer)) return false;
+  }
+  if (s.station.present) {
+    const Save::Station &st = s.station;
+    if (!net_coord_sane(st.pos_x) || !net_coord_sane(st.pos_y)) return false;
+    if (!net_vel_sane(st.vel_x) || !net_vel_sane(st.vel_y)) return false;
+    if (!std::isfinite(st.inner_rotation) || !std::isfinite(st.outer_rotation) ||
+        !std::isfinite(st.time_until_next_ship)) return false;
+    for (size_t i = 0; i < st.enemies.size(); i++) {
+      const Save::Enemy &e = st.enemies[i];
+      if (!net_coord_sane(e.pos_x) || !net_coord_sane(e.pos_y)) return false;
+      if (!net_vel_sane(e.vel_x) || !net_vel_sane(e.vel_y)) return false;
+      if (!std::isfinite(e.facing_x) || !std::isfinite(e.facing_y)) return false;
+      if (!std::isfinite(e.thrust_force) || !std::isfinite(e.rotation_force))
+        return false;
+    }
+  }
+  if (s.mini_station.present) {
+    const Save::MiniStation &m = s.mini_station;
+    if (!net_coord_sane(m.pos_x) || !net_coord_sane(m.pos_y)) return false;
+    if (!net_vel_sane(m.vel_x) || !net_vel_sane(m.vel_y)) return false;
+    if (!std::isfinite(m.inner_rotation) || !std::isfinite(m.outer_rotation) ||
+        !std::isfinite(m.time_until_next_shot)) return false;
   }
   return true;
 }

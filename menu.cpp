@@ -303,11 +303,6 @@ void Menu::draw() {
         case 3: num_steps = NUM_STAR_DENSITY; cur_idx = star_density_index_;          lbl = STAR_DENSITY_LABELS;  break;
         default:
           num_steps = NUM_RECORD; lbl = RECORD_LABELS;
-          // Show what WILL happen, not what is stored: an env override beats
-          // the pref in GLGame::replay_start, and a row reading OFF while
-          // NEWTONIA_REPLAY_ENABLE quietly recorded anyway sent us hunting a
-          // phantom bug (field, 2026-07-28). The stored value is untouched —
-          // only the display follows the override.
           // Show the STORED setting, not the override's effective value:
           // the row has to respond when you change it, or a control that
           // ignores you is just a different flavour of the lie this marker

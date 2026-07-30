@@ -3284,6 +3284,11 @@ GLGame::GLGame(const Save::GameState &snapshot, Replay::Reader *reader)
   // within 100 ms of appearing (sound played, flash never drew — Glenn),
   // and impact debris froze the same way the client comment describes.
   Ship::net_quiet_respawn = true;
+  // The delegated ctor reported this world as rich presence ("LEVEL 14
+  // CO-OP"), so watching a replay told your friends you were playing it —
+  // and a 2-player replay claimed a co-op game on a machine sitting in a
+  // menu. Presence is descriptive; describe watching.
+  Presence::set_menu();
   replay_reader_ = reader;
   replay_save_version_ = reader->header().save_version
                              ? reader->header().save_version
@@ -3351,6 +3356,9 @@ GLGame *GLGame::start_replay_playback(const std::string &path) {
   g->net_apply_extras(in, s);
   g->replay_bootstrap_apply_ = false;
   // The timeline starts at the bootstrap record's slot (0 for a fresh run).
+  // Reader::next only yields slots inside MAX_RECORD_SLOT, chosen so that
+  // slot * 100 stays inside an int — the guard has to be on the READ side,
+  // because the overflow would happen here in the multiply.
   g->replay_clock_ms_ = (int)rec.slot * 100;
   SDL_Log("replay: playback started (%s, %d slots, %u player%s)",
           path.c_str(), r->last_slot() + 1,
@@ -3438,8 +3446,15 @@ void GLGame::tick_replay_poll(int delta) {
           // (the cost sound_cache.h exists to pay once), and a lazy load
           // spends it inside the frame that plays the first beam shot of a
           // playback.
+          //
+          // Held in a static, like the lance/shock chunks below: what
+          // load_wav_cached caches is the decoded SAMPLE BUFFER — it hands
+          // back a fresh Mix_QuickLoad_RAW wrapper every call, and every
+          // other caller in the codebase stores that wrapper in a member its
+          // destructor frees. Calling it per record leaked one chunk header
+          // per beam shot for the length of the playback.
           if (snd_kind == 1) {
-            Mix_Chunk *beam_snd = load_wav_cached("audio/beam.wav");
+            static Mix_Chunk *beam_snd = load_wav_cached("audio/beam.wav");
             if (beam_snd) snd = beam_snd;
           }
           if (vol > 0.0f && snd != NULL) {
@@ -3503,6 +3518,13 @@ void GLGame::tick_replay_poll(int delta) {
       }
       continue;
     }
+    // Only the two state kinds reach the deserializer. An unknown kind used
+    // to fall through to it and be parsed as a delta — harmless today (the
+    // header's version gate turns away files from a build that could have
+    // written one) but exactly the kind of implicit default that stops being
+    // harmless the moment a kind is added.
+    if (rec.kind != Replay::REC_KEYFRAME && rec.kind != Replay::REC_DELTA)
+      continue;
     std::vector<uint8_t> buf(rec.payload, rec.payload + rec.len);
     Save::MemStream in(buf);
     Save::GameState s;
@@ -3947,6 +3969,18 @@ std::vector<T> nx_hold_unconfirmed(std::vector<T> &old_list,
   return vanished;
 }
 
+// A projectile's four floats, screened before they become an Object: a NaN
+// or absurd magnitude here lands in WrappedPoint and then in the collision
+// grid, whose out-of-range cell normalization is a per-index loop. Every
+// per-message path (MSG_SHOT, the REC_EFFECT bodies) already validates its
+// floats; this wholesale section did not. A bad entry is DROPPED rather than
+// failing the parse — the asteroid membership records behind this section are
+// monotonic facts the caller still wants to reach.
+static bool nx_pose_sane(float x, float y, float vx, float vy) {
+  return net_coord_sane(x) && net_coord_sane(y) && net_vel_sane(vx) &&
+         net_vel_sane(vy);
+}
+
 // quiet: suppress vanish explosions for this apply (level rollover wipes
 // every projectile at once — that's a rebuild, not a barrage of booms).
 // s == NULL: parse-only — advance the stream past the projectile sections
@@ -3972,6 +4006,7 @@ bool nx_read_projectiles(Save::Stream &in, Ship *s, bool quiet,
     uint8_t flags = 0;
     if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
     if (!nx_read(in, flags)) return false;  // PROTO 18 per-bullet flags
+    if (!nx_pose_sane(x, y, vx, vy)) continue;
     // Lead by RTT/2: bullets are rebuilt wholesale every apply, and the
     // stale pose strobed against the client's own between-apply stepping
     // (fast movers made it obvious). Mines/gigas are near-stationary and
@@ -3991,7 +4026,7 @@ bool nx_read_projectiles(Save::Stream &in, Ship *s, bool quiet,
   if (s) old_mines.swap(s->mines);
   for (int i = 0; i < n; i++) {
     if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
-    if (!s) continue;
+    if (!s || !nx_pose_sane(x, y, vx, vy)) continue;
     s->mines.push_back(Particle(Point(x, y), Point(vx, vy), 60000.0f));
     int j = nx_match_previous(old_mines, WrappedPoint(x, y), 100.0f);
     if (j >= 0) {
@@ -4011,7 +4046,7 @@ bool nx_read_projectiles(Save::Stream &in, Ship *s, bool quiet,
   if (s) old_gigas.swap(s->giga_mines);
   for (int i = 0; i < n; i++) {
     if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy)) return false;
-    if (!s) continue;
+    if (!s || !nx_pose_sane(x, y, vx, vy)) continue;
     s->giga_mines.push_back(Particle(Point(x, y), Point(vx, vy), 60000.0f));
     int j = nx_match_previous(old_gigas, WrappedPoint(x, y), 100.0f);
     if (j >= 0) {
@@ -4038,7 +4073,9 @@ bool nx_read_projectiles(Save::Stream &in, Ship *s, bool quiet,
     float fx, fy, time_left;
     if (!nx_read(in, x) || !nx_read(in, y) || !nx_read(in, vx) || !nx_read(in, vy) ||
         !nx_read(in, fx) || !nx_read(in, fy) || !nx_read(in, time_left)) return false;
-    if (!s) continue;
+    if (!s || !nx_pose_sane(x, y, vx, vy) || !std::isfinite(fx) ||
+        !std::isfinite(fy) || !std::isfinite(time_left))
+      continue;
     MissileShot m(WrappedPoint(x, y), Point(fx, fy), Point(0, 0));
     m.velocity = Point(vx, vy);
     m.time_left = time_left;
@@ -4105,6 +4142,13 @@ bool nx_read_projectiles(Save::Stream &in, Ship *s, bool quiet,
         !nx_read(in, max_radius) || !nx_read(in, speed) ||
         !nx_read(in, time_left) || !nx_read(in, is_nova)) return false;
     if (!s) continue;
+    // Same screen as the REC_EFFECT ring body (which bounds these already):
+    // a ring's radius drives per-frame geometry, its duration a countdown.
+    if (!net_coord_sane(px) || !net_coord_sane(py) ||
+        !std::isfinite(radius) || !std::isfinite(max_radius) ||
+        !std::isfinite(speed) || !std::isfinite(time_left) ||
+        max_radius <= 0.0f || max_radius > 100000.0f)
+      continue;
     Shockwave w(Point(px, py), max_radius, speed, time_left, is_nova != 0);
     w.radius = radius;
     w.prev_radius = radius;
@@ -7664,7 +7708,13 @@ bool GLGame::net_receive_lance_pulse(Net::Reader &r, Ship *shooter) {
     if (!r.ok || !std::isfinite(x) || !std::isfinite(y)) return false;
     pulse.points.push_back(Point(x, y));
   }
-  float vol = net_listener_volume(pulse.points.front());
+  // world_volume, not net_listener_volume: online they are the same call
+  // (all_players_local() is false, so the local camera is the only listener),
+  // but a REPLAY is split-screen — every ghost has a viewport, and CLAUDE.md
+  // puts that distinction in exactly one place. Keyed to the local camera,
+  // a lance was silent whenever player 1's ghost happened to be in a respawn
+  // countdown, and player 2's bolt was attenuated against player 1's screen.
+  float vol = world_volume(pulse.points.front());
   if (vol > 0.0f) {
     static Mix_Chunk *lance_snd =
         Mix_LoadWAV(asset_path("audio/lance.wav").c_str());
@@ -7691,7 +7741,7 @@ bool GLGame::net_receive_shock_pulse(Net::Reader &r, Ship *shooter,
     if (!r.ok || !std::isfinite(x) || !std::isfinite(y)) return false;
     pts.push_back(Point(x, y));
   }
-  float vol = net_listener_volume(pts.front());
+  float vol = world_volume(pts.front());  // see net_receive_lance_pulse
   if (vol > 0.0f) {
     static Mix_Chunk *shock_snd =
         Mix_LoadWAV(asset_path("audio/shock.wav").c_str());

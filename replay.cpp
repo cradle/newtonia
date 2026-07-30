@@ -10,8 +10,10 @@
 
 #ifdef _WIN32
 #include <direct.h>
+#include <io.h>
 #else
 #include <sys/stat.h>
+#include <unistd.h>
 #endif
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -127,14 +129,27 @@ bool read_header(const std::string &path, Header &h) {
 // of KB; anything past this is corruption, stop scanning.
 static const uint32_t MAX_RECORD_BYTES = 8u * 1024u * 1024u;
 
+// Sanity bound for a slot index, for the same reason and enforced in the same
+// places. Slots are a 10 Hz count, so this is 23 days of continuous play —
+// but it is chosen so that `slot * 100` (the ms timeline every consumer
+// computes, e.g. GLGame::replay_clock_ms_ and the HUD's total) stays inside a
+// signed 32-bit int. A file-controlled u32 multiplied by 100 is otherwise
+// signed overflow before anyone gets to range-check the result.
+static const uint32_t MAX_RECORD_SLOT = 20u * 1000u * 1000u;
+
 // Walk the record framing. stop_at_delta: return as soon as a DELTA is
 // seen (existence check). Otherwise walks every intact record and reports
 // the highest slot. A truncated final record (crash artifact) simply ends
 // the walk — exactly how a reader treats it.
+// intact_end (walk mode only) receives the file offset just past the last
+// INTACT record, i.e. where a reader stops: appending anywhere else puts
+// records behind a truncated one, where nothing can ever read them.
 static void scan_records(const std::string &path, bool stop_at_delta,
-                         bool *has_delta, int *last_slot) {
+                         bool *has_delta, int *last_slot,
+                         int64_t *intact_end = NULL) {
     if (has_delta) *has_delta = false;
     if (last_slot) *last_slot = -1;
+    if (intact_end) *intact_end = -1;
     Header h;
     if (!read_header(path, h)) return;
     FILE *fp = fopen(path.c_str(), "rb");
@@ -144,6 +159,7 @@ static void scan_records(const std::string &path, bool stop_at_delta,
     // this walk (unlike Reader) has no file-size cap in front of it.
     int64_t fsize = (int64_t)ftell(fp);
     if (fseek(fp, (long)h.header_size, SEEK_SET) == 0) {
+        if (intact_end) *intact_end = (int64_t)h.header_size;
         for (;;) {
             int64_t pos = (int64_t)ftell(fp);
             uint32_t slot = 0, len = 0;
@@ -151,11 +167,12 @@ static void scan_records(const std::string &path, bool stop_at_delta,
             if (fread(&slot, 4, 1, fp) != 1) break;
             if (fread(&kind, 1, 1, fp) != 1) break;
             if (fread(&len, 4, 1, fp) != 1) break;
-            if (len > MAX_RECORD_BYTES) break;
+            if (len > MAX_RECORD_BYTES || slot > MAX_RECORD_SLOT) break;
             // Only count a record whose payload is fully present — a
             // truncated final record (crash artifact) ends the walk.
             if (pos + 9 + (int64_t)len > fsize) break;
             if (fseek(fp, (long)len, SEEK_CUR) != 0) break;
+            if (intact_end) *intact_end = pos + 9 + (int64_t)len;
             if (last_slot && (int)slot > *last_slot) *last_slot = (int)slot;
             if (kind == REC_DELTA && has_delta) {
                 *has_delta = true;
@@ -178,6 +195,35 @@ int last_record_slot(const std::string &path) {
     return last;
 }
 
+// Cut a file back to `size` bytes. Only ever used to remove a truncated
+// final record before appending after it (see Recorder's resumed branch and
+// write_chunk): records written behind one are unreachable — the reader, and
+// every scan here, stops at the break — so a resumed session would have
+// banked its whole run into a part of the file nothing can read.
+static bool truncate_file(const std::string &path, int64_t size) {
+    if (path.empty() || size < 0) return false;
+#ifdef _WIN32
+    FILE *fp = fopen(path.c_str(), "r+b");
+    if (!fp) return false;
+    bool ok = _chsize_s(_fileno(fp), (__int64)size) == 0;
+    fclose(fp);
+    return ok;
+#else
+    return truncate(path.c_str(), (off_t)size) == 0;
+#endif
+}
+
+// File size in bytes (-1 when unreadable).
+static int64_t file_size_of(const std::string &path) {
+    if (path.empty()) return -1;
+    FILE *fp = fopen(path.c_str(), "rb");
+    if (!fp) return -1;
+    if (fseek(fp, 0, SEEK_END) != 0) { fclose(fp); return -1; }
+    int64_t n = (int64_t)ftell(fp);
+    fclose(fp);
+    return n;
+}
+
 // ── Reader ───────────────────────────────────────────────────────────────────
 
 // True while an intact record starts at pos (frame + full payload).
@@ -191,7 +237,18 @@ Reader::Reader(const std::string &path) {
     fseek(fp, 0, SEEK_END);
     long fsize = ftell(fp);
     fseek(fp, 0, SEEK_SET);
-    if (fsize < (long)Header::SIZE || fsize > 512L * 1024L * 1024L) {
+    // The whole file is buffered before anything is validated, so the cap is
+    // what stands between a hostile/corrupt length and an allocation the
+    // platform cannot serve. On web that must be a DECLINE, not an OOM abort:
+    // the recorder caps its own files at 32 MB there (over_size_cap) and the
+    // heap is a fraction of a native one, so anything much past the cap is
+    // not a file this build wrote.
+#ifdef __EMSCRIPTEN__
+    const long MAX_FILE_BYTES = 48L * 1024L * 1024L;
+#else
+    const long MAX_FILE_BYTES = 512L * 1024L * 1024L;
+#endif
+    if (fsize < (long)Header::SIZE || fsize > MAX_FILE_BYTES) {
         fclose(fp);
         return;
     }
@@ -228,7 +285,7 @@ static bool record_at(const std::vector<uint8_t> &data, size_t pos,
     memcpy(slot, &data[pos], 4);
     *kind = data[pos + 4];
     memcpy(len, &data[pos + 5], 4);
-    if (*len > MAX_RECORD_BYTES) return false;
+    if (*len > MAX_RECORD_BYTES || *slot > MAX_RECORD_SLOT) return false;
     if (pos + 9 + *len > data.size()) return false;
     return true;
 }
@@ -382,9 +439,40 @@ Recorder::Recorder(uint64_t run_id, uint8_t player_count, bool resumed,
         // seam) — the caller's force-keyframe state guarantees that.
         ok_ = read_header(path_, header_) && header_.run_id == run_id;
         if (!ok_) return;
-        last_slot_ = last_record_slot(path_);
-        SDL_Log("replay: resuming recording (run_id=%llx from slot %d)",
-                (unsigned long long)run_id, last_slot_);
+        int64_t intact_end = -1;
+        scan_records(path_, false, NULL, &last_slot_, &intact_end);
+        if (intact_end < (int64_t)header_.header_size)
+            intact_end = (int64_t)header_.header_size;
+        // The leftover may end in a TRUNCATED record — the crash artifact
+        // the reader is documented to tolerate. Tolerating it on READ is not
+        // enough here: "ab" appends after the break, where the reader never
+        // arrives, so this whole session would have recorded into a void
+        // while patching an honest-looking header in front of it. Cut the
+        // stub off first; it was never readable anyway.
+        int64_t fsize = file_size_of(path_);
+        if (fsize > intact_end) {
+            SDL_Log("replay: trimming %d unreadable byte(s) from the previous "
+                    "session's truncated tail before appending",
+                    (int)(fsize - intact_end));
+            if (!truncate_file(path_, intact_end)) {
+                // Appending anyway would silently lose the whole session.
+                SDL_Log("replay: cannot trim %s - not resuming", path_.c_str());
+                ok_ = false;
+                return;
+            }
+            web_sync();
+        }
+        // Records already in the file, so the web sync interval scales with
+        // the WHOLE file (its sync cost is the file, not the chunk) and the
+        // size cap counts what is already on disk. Starting from zero here
+        // put a resumed web recording back on a 5 s sync of a multi-MB file
+        // — the frozen-tab symptom the scaling exists to prevent — and let
+        // a resumed run grow past the cap that protects the player's save.
+        file_bytes_ = (size_t)(intact_end - (int64_t)header_.header_size);
+        SDL_Log("replay: resuming recording (run_id=%llx from slot %d, "
+                "%u KB on disk)",
+                (unsigned long long)run_id, last_slot_,
+                (unsigned)(file_bytes_ / 1024));
         return;
     }
 
@@ -422,6 +510,16 @@ void Recorder::append_record(uint32_t slot, uint8_t kind, const uint8_t *data,
         SDL_Log("replay: recording stopped (record of %u bytes exceeds the "
                 "%u-byte limit the reader accepts)",
                 (unsigned)len, (unsigned)MAX_RECORD_BYTES);
+        chunk_.clear();
+        ok_ = false;
+        return;
+    }
+    // Same rule for the slot index (23 days of play): past it the reader
+    // stops the walk, so the recording would silently end here while
+    // appearing to continue.
+    if (slot > MAX_RECORD_SLOT) {
+        SDL_Log("replay: recording stopped (slot %u past the %u the reader "
+                "accepts)", (unsigned)slot, (unsigned)MAX_RECORD_SLOT);
         chunk_.clear();
         ok_ = false;
         return;
@@ -555,10 +653,31 @@ bool Recorder::write_chunk() {
         return false;
     }
     failed_writes_ = 0;
-    // A short write leaves a truncated final record; the reader detects and
-    // drops it (self-delimiting framing), so no cleanup is attempted here.
-    fwrite(&chunk_[0], 1, chunk_.size(), fp);
-    fclose(fp);
+    // A short write (a full disk, a browser quota) leaves a truncated final
+    // record. The reader drops that — but only ever as the LAST thing in the
+    // file: everything appended after it sits behind the break where no
+    // reader arrives, so ignoring the error meant the rest of the run was
+    // recorded into a void while the header patch kept advertising the real
+    // score and duration. Cut back to the last intact boundary (which we
+    // know exactly: the file was this long before the append) and stop.
+    size_t wrote = fwrite(&chunk_[0], 1, chunk_.size(), fp);
+    bool wrote_ok = wrote == chunk_.size() && fflush(fp) == 0;
+    if (fclose(fp) != 0) wrote_ok = false;
+    if (!wrote_ok) {
+        SDL_Log("replay: recording stopped (write of %u bytes to %s failed "
+                "after %u) - the run so far stays playable",
+                (unsigned)chunk_.size(), path_.c_str(), (unsigned)wrote);
+        truncate_file(path_, (int64_t)header_.header_size + (int64_t)file_bytes_);
+        chunk_.clear();
+        // Leave an honest header over what survived, then stop: last_slot_
+        // counted records this append was going to add, so re-read it from
+        // the file rather than overstating the timeline.
+        last_slot_ = last_record_slot(path_);
+        patch_header_tail();
+        ok_ = false;
+        web_sync();
+        return false;
+    }
     file_bytes_ += chunk_.size();   // sizes the web sync interval and the cap
     chunk_.clear();
     return true;
