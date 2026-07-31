@@ -1254,8 +1254,13 @@ bool Menu::board_upload_row_shown() const {
   // on the screen of the season the upload would actually land in
   // (best.nrp's own): an older build's best is reachable by flipping the
   // SEASON row to it, instead of uploading invisibly from the live screen.
-  return board_best_clean_ && board_net_ != nullptr &&
-         net_board_can_submit() && board_best_season_ == board_season_;
+  // A CONCLUDED upload's status row (placed / failed) survives the socket:
+  // a refusal that arrives with (or is followed by) a close must not
+  // vanish into the generic UNAVAILABLE footer — the row is the answer
+  // the player is reading, and confirm no-ops without a socket anyway.
+  return board_best_clean_ && net_board_can_submit() &&
+         board_best_season_ == board_season_ &&
+         (board_net_ != nullptr || board_up_phase_ >= 2);
 }
 
 // Is the local best already one of the visible board rows? (run_id match —

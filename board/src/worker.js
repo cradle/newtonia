@@ -571,8 +571,14 @@ export class Session {
       const size = Number(msg.size) >>> 0;
       if (size < MIN_SUBMISSION_BYTES || size > MAX_SUBMISSION_BYTES)
         return this.err(ws, "too-large");
+      // A refusal, not a close (like the query budget above): closing
+      // here made the client render the whole screen as LEADERBOARD
+      // UNAVAILABLE instead of the upload row's TRY LATER (field report
+      // — the Closed teardown outranked the refusal it arrived with).
+      // The per-connection CONN_MAX_SUBMITS cap above still closes: that
+      // one is a misbehaving-client guard, not a budget answer.
       if (!(await within_limit(this.env, this.ip, "submit")))
-        return this.fail(ws, "rate-limited");
+        return this.err(ws, "rate-limited");
       // Attestation is an admission requirement (LEADERBOARD.md): verify
       // BEFORE accepting megabytes of chunks — a spoofed submit costs the
       // spoofer the round-trip, not us the bandwidth.
