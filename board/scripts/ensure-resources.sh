@@ -68,7 +68,11 @@ fi
 # secrets — the board refuses submissions, exactly as an unconfigured
 # worker should).
 STORE_PLACEHOLDER="00000000000000000000000000000000"
-if [ -n "${CF_SECRETS_STORE_ID:-}" ]; then
+if ! grep -q "$STORE_PLACEHOLDER" wrangler.toml; then
+  # The real store id is committed in wrangler.toml (it is an identifier,
+  # not a secret) — nothing to inject.
+  echo "secrets-store: store id committed in wrangler.toml" >&2
+elif [ -n "${CF_SECRETS_STORE_ID:-}" ]; then
   sed -i "s/$STORE_PLACEHOLDER/$CF_SECRETS_STORE_ID/g" wrangler.toml
   echo "secrets-store: bound $CF_SECRETS_STORE_ID" >&2
 else

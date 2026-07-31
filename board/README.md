@@ -84,15 +84,17 @@ npx wrangler secrets-store secret create <STORE_ID> --name STEAM_WEBAPI_KEY --sc
 npx wrangler secrets-store secret create <STORE_ID> --name PLAY_GAMES_OAUTH_CLIENT_ID --scopes workers --remote
 npx wrangler secrets-store secret create <STORE_ID> --name PLAY_GAMES_OAUTH_CLIENT_SECRET --scopes workers --remote
 
-# 3. Set the store id as a repo VARIABLE (not a secret — it's an id) so the
-#    deploy workflows inject it over the placeholder in wrangler.toml:
-#    GitHub → Settings → Secrets and variables → Actions → Variables:
-#    CF_SECRETS_STORE_ID = <STORE_ID>
+# 3. Commit the store id into BOTH wrangler.tomls (board + signal), every
+#    [[secrets_store_secrets]] / [[env.beta...]] binding — it is an
+#    identifier, not a secret. (Done 2026-07-31: store
+#    68f959729bdb4c3aa7793c420e740d97.)
 ```
 
-The store id is injected at deploy time by `scripts/ensure-resources.sh`;
-the placeholder (32 zeros) stays in git. `wrangler dev --local` ignores it
-(the tests take the `FAKE_VERIFY` path and never read the store).
+`scripts/ensure-resources.sh` reports the committed id at deploy time; the
+`CF_SECRETS_STORE_ID` repo-variable injection path remains only as a
+fallback for a checkout that still carries the 32-zero placeholder.
+`wrangler dev --local` ignores the binding either way (the tests take the
+`FAKE_VERIFY` path and never read the store).
 
 **Rollout order — beta first.** The store itself is account-level (one
 store, one id, shared by prod and beta bindings alike), so "beta first"

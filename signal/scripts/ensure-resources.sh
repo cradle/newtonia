@@ -48,7 +48,11 @@ fi
 # variable. Skip cleanly when unset (the worker then falls back to any
 # per-worker secrets still set on it).
 STORE_PLACEHOLDER="00000000000000000000000000000000"
-if [ -n "${CF_SECRETS_STORE_ID:-}" ]; then
+if ! grep -q "$STORE_PLACEHOLDER" "$TOML"; then
+  # The real store id is committed in wrangler.toml (it is an identifier,
+  # not a secret) — nothing to inject.
+  echo "secrets-store: store id committed in wrangler.toml" >&2
+elif [ -n "${CF_SECRETS_STORE_ID:-}" ]; then
   sed -i "s/$STORE_PLACEHOLDER/$CF_SECRETS_STORE_ID/g" "$TOML"
   echo "secrets-store: bound $CF_SECRETS_STORE_ID" >&2
 else

@@ -124,9 +124,10 @@ across deploys (Cloudflare stores them per script), so this is one-time.
 > verify secrets below (`STEAM_WEBAPI_KEY`, `PLAY_GAMES_OAUTH_CLIENT_ID`,
 > `PLAY_GAMES_OAUTH_CLIENT_SECRET`) are the same values the leaderboard
 > worker needs, so they now live in ONE account-level store that both
-> workers bind (`[[secrets_store_secrets]]` here and in `board/`). Create
-> the store and set the `CF_SECRETS_STORE_ID` repo variable per the
-> **board/README.md** runbook; the `wrangler secret put` commands below are
+> workers bind (`[[secrets_store_secrets]]` here and in `board/` — the
+> store id `68f959729bdb4c3aa7793c420e740d97` is committed in both
+> wrangler.tomls; store + secret creation per the **board/README.md**
+> runbook). The `wrangler secret put` commands below are
 > the legacy per-worker path (still works — `read_secret()` in
 > `src/secret.js` reads either shape — but once the store is bound, delete
 > the per-worker copies so there's a single source). TURN and other
