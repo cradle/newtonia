@@ -127,6 +127,23 @@ const NetIdentity &net_local_identity();
 // NetIdentityBackend::local_verify_credential(); the default is "".
 std::string net_local_verify_credential();
 
+// PEEK the current verification credential WITHOUT triggering a fresh async
+// re-mint (unlike net_local_verify_credential(), which returns the last
+// completed value AND fires a new request). Used by the leaderboard upload
+// retry to poll for a genuinely fresh credential after warming ONE re-mint,
+// so it never floods the platform mint. Empty until a mint completes; "" on
+// a build with no verification backend.
+std::string net_local_verify_credential_peek();
+
+// Whether this build has a verification backend at all (STEAM_BUILD or a
+// platform's NEWTONIA_NET_VERIFY_BACKEND). The credential itself is minted
+// asynchronously and so may be "" transiently even with a backend present;
+// this answers the STATIC question. The leaderboard gates its upload UI on
+// it: a build that can never mint a credential can never pass the worker's
+// attestation requirement, so it shows a view-only board rather than a
+// doomed "UPLOAD" prompt (LEADERBOARD.md attestation decision).
+bool net_has_verify_backend();
+
 // Release any outstanding verification-credential handles the backend still
 // holds — the Steamworks CancelAuthTicket cleanup for every handle
 // GetAuthTicketForWebApi minted (Valve asks callers to cancel when done).

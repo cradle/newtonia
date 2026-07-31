@@ -163,6 +163,14 @@ std::string local_verify_credential() {
   return out;
 }
 
+// Peek the last completed bundle WITHOUT firing a fresh fetch — the upload
+// retry polls this to wait for a fresh-timestamp bundle after the first
+// submit's local_verify_credential() read already kicked the re-fetch.
+std::string local_verify_credential_peek() {
+  std::lock_guard<std::mutex> lk(g_mutex);
+  return g_credential;
+}
+
 // Netplay teardown (~NetLobby / ~GLGame): drop any warmed-but-unsent bundle so a
 // later session can't re-hand a stale one. There is no client-side handle to
 // cancel (the signature is proven or rejected entirely server-side, unlike

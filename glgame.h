@@ -33,6 +33,7 @@
 #include "view/tap_band.h"
 #include <SDL.h>
 #include <list>
+#include <set>
 #include <map>
 #include <vector>
 #include <string>
@@ -41,6 +42,7 @@ using namespace std;
 
 class NetSession;
 class NetTransport;
+class NetBoard;
 namespace Net { class SnapshotAssembler; struct Reader; }
 namespace Replay { class Recorder; class Reader; }
 
@@ -686,6 +688,68 @@ private:
   // new game starts dead in the spawn countdown, and detonating painted
   // an explosion no real new game shows.
   bool replay_bootstrap_apply_ = false;
+
+  // ---- leaderboard game-over flow (LEADERBOARD.md L2) ----
+  // Armed at game-over finalize when the run just promoted best.nrp (a new
+  // personal best): an async qualify against the board worker, and only a
+  // would-place answer shows the UPLOAD TO LEADERBOARD? prompt on the GAME
+  // OVER card. The card must never block on the network: no answer within
+  // BOARD_QUALIFY_TIMEOUT_MS = no prompt, and leaving to the menu abandons
+  // everything harmlessly (~GLGame deletes board_).
+  enum BoardPhase {
+    BoardOff,         // nothing armed (the usual game over)
+    BoardQualifying,  // qualify sent, waiting (nothing drawn yet)
+    BoardPrompt,      // would place: YES/NO prompt on the card
+    BoardUploading,   // submit in flight (progress line)
+    BoardPlaced,      // done: "UPLOADED - RANK #N"
+    BoardFailed,      // done: "UPLOAD FAILED" (+ short reason)
+  };
+  static const int BOARD_QUALIFY_TIMEOUT_MS = 4000;
+  // The verification credential is minted asynchronously and re-minted per
+  // read (steam/play_games/game_center identity backends), so the value
+  // handed to a submit can be empty (mint not landed), stale (Game Center's
+  // timestamp window), or — on the single-use platforms (Steam ticket, Play
+  // Games code) — already consumed by an earlier send. The worker answers
+  // all of these with reason "unverified". On that one reason the client
+  // POLLS net_board_verify_credential_peek() (which does NOT re-mint, so it
+  // can't flood the platform mint) until a GENUINELY fresh credential — one
+  // different from the rejected value — appears, then consumes and resubmits
+  // it ONCE. The first submit's own read already fired the next mint, so no
+  // extra warm is needed; the poll just waits for it. Give up after this
+  // long (generous, since a network-minted credential — Play Games, Game
+  // Center — is a round-trip). One retry is also the per-connection submit
+  // budget, so it can't loop.
+  static const int BOARD_UPLOAD_RETRY_TIMEOUT_MS = 6000;
+  // A freshly-shown prompt can't be answered for this long — the qualify
+  // answer may arrive AFTER the card's 3 s game-over grace (the deadline
+  // is 4 s), so a keypress already in flight to leave must not land on the
+  // just-appeared YES-default prompt.
+  static const int BOARD_PROMPT_ARM_MS = 700;
+  void board_maybe_start();      // at game-over finalize (after replay_finish)
+  void board_tick();             // poll events + timeout (game_over only)
+  // The card's nav while the prompt/result owns it. Logical keys (w/s move,
+  // Enter confirms, Esc backs out = NO). True = input consumed; respects
+  // the card's 3 s grace like every other game-over input.
+  bool board_nav(char key);
+  bool board_prompt_active() const {
+    return board_phase_ == BoardPrompt || board_phase_ == BoardUploading;
+  }
+  NetBoard *board_ = nullptr;    // owned; non-null while a flow is live
+  BoardPhase board_phase_ = BoardOff;
+  int board_place_ = 0;          // projected (prompt) / final (placed) rank
+  bool board_yes_ = true;        // prompt selection (YES default — plan)
+  int board_deadline_ = 0;       // qualify timeout, current_time domain
+  int board_prompt_shown_ = 0;   // current_time when BoardPrompt began
+  bool board_up_retried_ = false; // an unverified upload has been retried once
+  int board_up_retry_deadline_ = 0; // current_time to give up polling for a
+                                    // fresh credential (0 = not waiting)
+  std::string board_up_sent_cred_;  // the rejected credential, so the retry
+                                    // waits for a DIFFERENT one
+  // Nav keys pressed (key-DOWN) while the prompt is up: keyboard_up acts
+  // only on these, so a gameplay key held at death and released into the
+  // prompt can't answer it. Cleared when the prompt opens.
+  std::set<unsigned char> board_prompt_pressed_;
+  std::string board_fail_reason_;
 
   static const int step_size = 8;
 

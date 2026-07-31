@@ -255,6 +255,7 @@ bool net_name_char_drawable(char c) {
   switch (c) {
     case ' ': case '-': case '.': case ',': case '+': case '/':
     case '(': case ')': case '[': case ']': case '<': case '>': case '=':
+    case '#':
       return true;
   }
   return false;
@@ -286,14 +287,28 @@ void Typer::init_meshes() {
     mb.vertex(0,TH*0.35f); mb.vertex(TW,TH*0.35f);
     mb.end(); upload('=', mb); }
 
-  { MeshBuilder mb; mb.begin(GL_POINTS); mb.color(1,1,1);
-    mb.vertex(TW*0.5f, TH*0.125f);
+  // A short baseline dash, NOT a GL_POINTS vertex: an unsized point
+  // rasterizes as one device pixel — invisible on retina/high-DPI (the
+  // leaderboard SEASON row was the first prominent dotted string and its
+  // dots simply didn't show). Lines go through the thickening path on
+  // every platform. (The '?' glyph's dot survives as a point only because
+  // it passes an explicit point size.)
+  { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
+    mb.vertex(TW*0.38f, TH*0.125f); mb.vertex(TW*0.62f, TH*0.125f);
     mb.end(); upload('.', mb); }
 
   { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
     mb.vertex(0,TM); mb.vertex(TW,TM);
     mb.vertex(TW*0.5f,1.75f); mb.vertex(TW*0.5f,0.25f);
     mb.end(); upload('+', mb); }
+
+  // '#' — two verticals, two horizontals (the leaderboard rank prefix).
+  { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
+    mb.vertex(TW*0.33f,0); mb.vertex(TW*0.33f,TH);
+    mb.vertex(TW*0.67f,0); mb.vertex(TW*0.67f,TH);
+    mb.vertex(0,TH*0.63f); mb.vertex(TW,TH*0.63f);
+    mb.vertex(0,TH*0.37f); mb.vertex(TW,TH*0.37f);
+    mb.end(); upload('#', mb); }
 
   // Parentheses: five segments tracing a rough semicircle at full height.
   { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);

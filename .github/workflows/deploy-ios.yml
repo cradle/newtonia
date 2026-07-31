@@ -241,18 +241,21 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" newtonia/ios/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SHORT_VERSION" newtonia/ios/Info.plist
           # The replay season key (REPLAY.md R4), stamped by the archive step
-          # below. Only a TAG build may stamp a release key ("v$SHORT_VERSION"
-          # == the tag): a plain dispatch falls back to a hardcoded REAL
-          # release number for the marketing version above, and stamping that
-          # into write-once replay headers filed an ad-hoc TestFlight build's
-          # runs in the genuine release's leaderboard season. Non-tag
-          # dispatches stamp the branch name instead — the same honest
-          # non-release string deploy-steam/itch stamp on dispatch — except
-          # beta-worker builds, which keep their v<maj.min>.9xx sentinel (a
-          # deliberately distinct staging bucket, never a real release's).
-          if [ "${{ github.ref_type }}" = "tag" ] || \
-             [ "${{ github.event.inputs.signal_worker }}" = "beta" ]; then
+          # below. Only a TAG build may stamp the release season (the SEASON
+          # file, bumped deliberately on significant gameplay changes —
+          # LEADERBOARD.md season decision): a plain dispatch falls back to a
+          # hardcoded REAL release number for the marketing version above,
+          # and stamping the release season into write-once replay headers
+          # filed an ad-hoc TestFlight build's runs in the genuine release's
+          # leaderboard season. Non-tag dispatches stamp the branch name
+          # instead — the same honest non-release string deploy-steam/itch
+          # stamp on dispatch — except beta-worker builds, which keep their
+          # v<maj.min>.9xx sentinel (a deliberately distinct staging bucket,
+          # never a real release's).
+          if [ "${{ github.event.inputs.signal_worker }}" = "beta" ]; then
             REPLAY_VERSION="v$SHORT_VERSION"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            REPLAY_VERSION="$(tr -d '[:space:]' < newtonia/SEASON)"
           else
             REPLAY_VERSION="${{ github.ref_name }}"
           fi

@@ -1,0 +1,161 @@
+name: Deploy Board Worker
+
+# The leaderboard worker (board/ — Cloudflare Worker + D1 + R2,
+# LEADERBOARD.md L1/L4). Mirrors deploy-signal.yml:
+#
+#   v*.*.* tag           -> PRODUCTION worker (newtonia-board)
+#   master push touching -> BETA worker (newtonia-board-beta), fully
+#   board/ or the shared    isolated (own D1 database, own R2 bucket, own
+#   verify modules          secrets); point a build at it with
+#                           NEWTONIA_BOARD_URL (see board/README.md)
+#   manual dispatch      -> either target (default beta).
+#
+# The verify modules are IMPORTED from signal/src (one implementation for
+# both workers), so a change there redeploys beta here too.
+#
+# GitHub applies the `paths` filter to BRANCH pushes only — tag pushes
+# ignore it — so a release tag always deploys production even when the
+# tagged commit didn't touch board/.
+#
+# Needs the same repo secrets as deploy-signal (CLOUDFLARE_API_TOKEN,
+# CLOUDFLARE_ACCOUNT_ID). The D1 databases and R2 buckets are created
+# automatically on first deploy and the real database_id is resolved and
+# injected into the config at deploy time (board/scripts/ensure-resources.sh)
+# — no Terraform, no manual paste. For that the API token additionally
+# needs D1:Edit and Workers R2 Storage:Edit (a plain Workers-Scripts:Edit
+# token can deploy but not create resources — board/README.md). The
+# worker's RUNTIME secrets (platform verify keys) live in Cloudflare per
+# script and survive every deploy; this workflow never touches them.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+    branches:
+      - master
+      - main
+    paths:
+      - 'board/**'
+      - 'signal/src/steam_verify.js'
+      - 'signal/src/play_games_verify.js'
+      - 'signal/src/game_center_verify.js'
+      - 'signal/src/secret.js'
+      - '.github/workflows/deploy-board.yml'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Worker to deploy (beta or production)'
+        required: true
+        default: 'beta'
+
+# Serialize deploys; never cancel one mid-flight (a half-applied DO
+# migration would be worse than a briefly stale worker).
+concurrency:
+  group: deploy-board
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: board
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # global WebSocket client (the protocol test uses it)
+
+      - name: Unit tests
+        run: |
+          node test/validate_test.mjs
+          node test/identity_gate_test.mjs
+          node test/retention_test.mjs
+
+      # Protocol test against the real worker code under miniflare — no
+      # Cloudflare account involved (local D1/R2 simulators). FAKE_VERIFY
+      # attests claims without a platform backend; SUBMIT_LIMIT widens the
+      # per-IP submit window for the test's burst. Never set in production.
+      - name: Protocol test (wrangler dev --local)
+        run: |
+          npx wrangler@4 dev --local --port 8788 \
+            --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 > wrangler-dev.log 2>&1 &
+          DEV_PID=$!
+          for i in $(seq 1 60); do
+            curl -s http://127.0.0.1:8788/ | grep -q newtonia-board && break
+            kill -0 $DEV_PID 2>/dev/null || { echo "wrangler dev died:"; cat wrangler-dev.log; exit 1; }
+            sleep 1
+          done
+          node test/board_test.mjs
+          kill $DEV_PID
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Resolve target
+        id: target
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TARGET="${{ github.event.inputs.target }}"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            TARGET=production
+          else
+            TARGET=beta
+          fi
+          case "$TARGET" in
+            production|beta) ;;
+            *) echo "unknown target '$TARGET' (want beta or production)"; exit 1 ;;
+          esac
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "deploying: $TARGET"
+
+      # Ensure the target's D1 database + R2 bucket exist (idempotent,
+      # lightweight — no Terraform, see board/scripts/ensure-resources.sh)
+      # and resolve the real database_id, then inject it over the config's
+      # placeholder so the deploy binds the right database. The placeholder
+      # stays in git (local `wrangler dev --local` ignores database_id).
+      - name: Ensure resources + resolve database_id
+        id: resources
+        working-directory: board
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # The shared Secrets Store id (not sensitive — an identifier). Set
+          # it once as a repo VARIABLE after creating the store (README).
+          CF_SECRETS_STORE_ID: ${{ vars.CF_SECRETS_STORE_ID }}
+        run: |
+          TARGET="${{ steps.target.outputs.target }}"
+          OUT="$(bash scripts/ensure-resources.sh "$TARGET")"
+          echo "$OUT"
+          DBID="$(echo "$OUT" | sed -n 's/^DATABASE_ID=//p')"
+          [ -n "$DBID" ] || { echo "no database_id resolved"; exit 1; }
+          # Each env's placeholder is distinct (…000 production, …001 beta),
+          # so replace only the target's line.
+          if [ "$TARGET" = "production" ]; then
+            PLACEHOLDER="00000000-0000-0000-0000-000000000000"
+          else
+            PLACEHOLDER="00000000-0000-0000-0000-000000000001"
+          fi
+          sed -i "s/$PLACEHOLDER/$DBID/" wrangler.toml
+          grep -q "$DBID" wrangler.toml || { echo "id injection failed"; exit 1; }
+
+      # Production is the TOP-LEVEL wrangler environment; beta is the
+      # named env in board/wrangler.toml (its own D1/R2 resources).
+      - name: Deploy
+        working-directory: board
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ "${{ steps.target.outputs.target }}" = "production" ]; then
+            npx wrangler@4 deploy --env=""
+          else
+            npx wrangler@4 deploy --env beta
+          fi

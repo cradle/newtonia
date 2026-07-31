@@ -16,11 +16,11 @@ on:
         default: 'beta'
 
 # Stamped into every replay header (REPLAY.md R4: leaderboard seasons bucket
-# by release). Passed explicitly rather than left to `git describe` because
-# actions/checkout is shallow and fetches no tags. On a tag build this is the
-# tag; on a manual dispatch it is the branch, which is the honest answer.
-# These jobs compile with inline g++/clang++ rather than the Makefile, so the
-# define goes on each command below.
+# by the SEASON file, bumped deliberately on significant gameplay changes —
+# LEADERBOARD.md season decision). Each build job overrides this with the
+# checked-out SEASON file's content; this env is only the fallback if that
+# step is ever skipped. These jobs compile with inline g++/clang++ rather
+# than the Makefile, so the define goes on each command below.
 env:
   NEWTONIA_VERSION: ${{ github.ref_name }}
 
@@ -32,6 +32,11 @@ jobs:
         shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Season stamp (SEASON file, tag builds only)
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: echo "NEWTONIA_VERSION=$(tr -d '[:space:]' < SEASON)" >> "$GITHUB_ENV"
 
       - uses: msys2/setup-msys2@v2
         with:
@@ -125,6 +130,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Season stamp (SEASON file, tag builds only)
+        if: github.ref_type == 'tag'
+        run: echo "NEWTONIA_VERSION=$(tr -d '[:space:]' < SEASON)" >> "$GITHUB_ENV"
 
       - name: Install arm64 dependencies
         run: brew install sdl2 mpg123
@@ -444,6 +453,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Season stamp (SEASON file, tag builds only)
+        if: github.ref_type == 'tag'
+        run: echo "NEWTONIA_VERSION=$(tr -d '[:space:]' < SEASON)" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: |

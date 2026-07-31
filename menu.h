@@ -6,6 +6,7 @@
 #include <vector>
 #include "state.h"
 #include "savegame.h"
+#include "net_board.h"
 
 class Menu : public State {
 public:
@@ -56,6 +57,26 @@ private:
   int  replays_row_index() const;  // -1 when hidden
   void scan_replays();             // rebuild replay_rows_ from disk
   void open_replays();
+  // LEADERBOARD row/screen (LEADERBOARD.md L3): shown only when the build
+  // has a NetBoard backend and online play is allowed. The list screen
+  // fetches the current season's top rows (SOLO/CO-OP toggle on the first
+  // selectable row), shows the player's own standing (rank-of footer, or
+  // " - YOU" on their visible row), lets a row with a stored replay be
+  // downloaded and watched, and carries the UPLOAD BEST RUN retry action.
+  bool show_board_row() const;
+  int  board_row_index() const;    // -1 when hidden
+  void open_board();
+  void close_board();
+  void board_request();            // (re)fetch top + rank-of for board_players_
+  void board_poll();               // drive NetBoard events (from tick)
+  void board_nav_confirm();        // confirm on the current selection
+  void board_cycle_season(int dir);// step the browsed season (SEASON row)
+  bool board_transfer_busy() const;// a fetch or upload is in flight
+  int  board_entry_count() const;  // toggle row + score rows + upload row
+  bool board_upload_row_shown() const;
+  bool board_best_on_board() const;   // local best is a visible row
+  const char *board_upload_status_text() const;  // phase-3 label
+  void board_start_upload();
   struct ReplayRow {
     std::string label;   // CURRENT RUN / LAST RUN / ONLINE RUN / BEST RUN
     std::string path;
@@ -89,11 +110,41 @@ private:
   bool replays_mode_ = false;
   int  replay_sel_ = 0;                 // cursor in the replays list
   std::vector<ReplayRow> replay_rows_;  // rebuilt by scan_replays()
+  // ---- leaderboard screen state (LEADERBOARD.md L3) ----
+  bool board_mode_ = false;
+  NetBoard *board_net_ = nullptr;       // owned; non-null while screen open
+  int  board_players_ = 1;              // 1 = SOLO board, 2 = CO-OP
+  int  board_sel_ = 0;                  // cursor over board_entry_count()
+  std::vector<NetBoard::Row> board_rows_;
+  bool board_loading_ = false;          // top fetch in flight
+  bool board_error_ = false;            // socket closed / worker error
+  int  board_your_rank_ = 0;            // rank-of answer (0 = none); a stale
+                                        // answer is dropped by matching the
+                                        // worker-echoed players field
+  std::string board_season_;            // the BROWSED season (SEASON row)
+  std::string board_build_season_;      // this build's stamp (the default)
+  std::string board_best_season_;       // best.nrp's own season (upload gate)
+  // The worker's season list (newest first; the build's season is kept at
+  // the front even before it has rows). Single-entry until the seasons
+  // answer lands — cycling is a no-op then.
+  std::vector<NetBoard::Season> board_seasons_;
+  std::string board_best_run_id_;       // own-row detection (decimal string)
+  uint32_t board_best_score_ = 0;       // rank-of query + upload row label
+  bool board_best_clean_ = false;       // upload row shown only for a clean best
+  int  board_up_phase_ = 0;             // 0 idle, 1 uploading, 2 placed, 3 failed
+  int  board_up_rank_ = 0;
+  std::string board_up_reason_;
+  bool board_up_retried_ = false;       // an unverified upload retried once
+  int  board_up_retry_deadline_ = 0;    // currentTime to give up polling (0=idle)
+  std::string board_up_sent_cred_;      // rejected credential (retry waits for
+                                        // a different one)
+  bool board_fetching_ = false;         // replay download in flight
   int  sensitivity_index_[2] = {2, 2};  // per-player index into SENSITIVITY_VALUES
   int  smoothing_index_[2]   = {1, 1};  // per-player index into SMOOTHING_VALUES (1=NORMAL=0.004)
   int  star_density_index_   = 4;       // index into STAR_DENSITY_MULTIPLIERS (4=full)
   int  camera_index_[2]      = {1, 1};  // per-player: 0=FIXED, 1=ROTATE
   int  auto_record_index_    = 0;       // 0=OFF, 1=ON (Preferences::auto_record_replays)
+  int  leaderboard_index_    = 1;       // 0=OFF, 1=ON (Preferences::leaderboard_prompts)
   int  active_row_ = 0;                 // index into the options row list (see opt_row)
   WrappedPoint viewpoint;
   GLStarfield *starfield;

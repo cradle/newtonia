@@ -2,6 +2,7 @@
 
 #include "../menu_select.h"
 #include "tap_band.h"
+#include "../net_board.h"
 #include "../net_identity.h"
 #include "../net_session.h"
 #include "../net_transport.h"
@@ -203,6 +204,11 @@ void Overlay::net_overlays(const GLGame *glgame) {
     // the online game (always 2 players) had NO game-over text on either
     // screen. One shared card for both roles; the 3 s guard in the input
     // handlers still stops a mid-fight trigger from skipping it.
+    // When a leaderboard flow is live, board_prompt() owns the ENTIRE
+    // game-over card (heading + prompt/result + its own RETURN TO MENU
+    // row), in every mode — so this online card cedes it completely to
+    // avoid drawing GAME OVER (and the row) twice.
+    if (glgame->board_phase_ != GLGame::BoardOff) return;
     Typer::draw_centered(0, 60, "GAME OVER", 34);
     // Every screen whose only move is "leave" says so the same way: the
     // shared RETURN TO MENU row, answered by confirm or back. Touch draws
@@ -501,7 +507,11 @@ void Overlay::respawn_timer(const GLGame *glgame, const GLShip *glship) {
   // SPECTATING countdown — so the per-ship indicator would just double them
   // up. Suppress it whenever the drawn ship is fully out online; the respawn
   // countdown (lives > 0) and the offline split-screen indicator still show.
-  if(glgame->net_active() && !glship->ship->is_alive() && glship->ship->lives <= 0)
+  // Also suppress it OFFLINE when a leaderboard flow is live — board_prompt
+  // then owns the whole game-over card (heading included), so this per-ship
+  // "GameOver" would collide with it.
+  if(!glship->ship->is_alive() && glship->ship->lives <= 0 &&
+     (glgame->net_active() || glgame->board_phase_ != GLGame::BoardOff))
     return;
   if(glgame->running && !glship->show_help) {
     float saved[16]; gles2_get_mvp(saved);
@@ -557,6 +567,81 @@ void Overlay::spectate(const GLGame *glgame, const GLShip *glship) {
   }
 }
 
+void Overlay::board_prompt(const GLGame *glgame) {
+  // No board flow, or the query is still silent (BoardQualifying draws
+  // nothing — the card must never look like it is waiting on the network):
+  // the ordinary GAME OVER cards own the screen.
+  if (glgame->board_phase_ == GLGame::BoardOff ||
+      glgame->board_phase_ == GLGame::BoardQualifying)
+    return;
+
+  // From here on this overlay OWNS the whole game-over card in every mode
+  // (net_overlays and the offline respawn/title cards all stand down while
+  // board_phase_ is active), so it draws its own GAME OVER heading and its
+  // own RETURN TO MENU row — everything on ONE spaced layout, no collision
+  // with the per-mode cards.
+  glViewport(0, 0, glgame->window.x(), glgame->window.y());
+  float hw = glgame->window.x() / Overlay::SAFE_AREA_SCALE;
+  float hh = glgame->window.y() / Overlay::SAFE_AREA_SCALE;
+  float ortho[16];
+  mat4_ortho(ortho, -hw, hw, -hh, hh, -1.0f, 1.0f);
+  gles2_set_vp(ortho);
+  bool touch = is_touch_mode();
+
+  Typer::draw_centered(0, 150, "GAME OVER", 30);
+
+  if (glgame->board_phase_ == GLGame::BoardPrompt) {
+    char line[64];
+    snprintf(line, sizeof(line), "WOULD PLACE #%d THIS SEASON",
+             glgame->board_place_);
+    Typer::draw_centered(0, 60, line, 14);
+    Typer::draw_centered(0, 20, "UPLOAD TO LEADERBOARD?", 16);
+    if (touch) {
+      // YES left half, NO right half (the New-game confirm's grammar). The
+      // exit band underneath still exits — GLGame::touch_tap carves it out.
+      Typer::draw_centered(-150, -50, "YES", 22);
+      Typer::draw_centered(150, -50, "NO", 22);
+    } else {
+      MenuSelect::draw_row(-40, "YES", 16, glgame->board_yes_);
+      MenuSelect::draw_row(-90, "NO", 16, !glgame->board_yes_);
+    }
+    return;
+  }
+  if (glgame->board_phase_ == GLGame::BoardUploading) {
+    int pct = glgame->board_ ? glgame->board_->transfer_pct() : -1;
+    char line[48];
+    if (pct >= 0) snprintf(line, sizeof(line), "UPLOADING %d%%", pct);
+    else          snprintf(line, sizeof(line), "UPLOADING");
+    Typer::draw_centered(0, 20, line, 18);
+    // No keyboard Esc on touch: label the exit band's cancel affordance.
+    Typer::draw_centered(0, -40, touch ? "LEAVE TO CANCEL" : "ESC TO CANCEL",
+                         11);
+    return;
+  }
+  // Terminal phases: a result line, then the RETURN TO MENU row (this
+  // overlay owns it now — the per-mode cards have stood down).
+  if (glgame->board_phase_ == GLGame::BoardPlaced) {
+    char line[48];
+    snprintf(line, sizeof(line), "UPLOADED - RANK #%d", glgame->board_place_);
+    Typer::draw_centered(0, 40, line, 16);
+  } else if (glgame->board_phase_ == GLGame::BoardFailed) {
+    // Map the (sanitized) worker reason to a player-facing line; benign
+    // refusals are not "failures".
+    const std::string &r = glgame->board_fail_reason_;
+    const char *msg = "UPLOAD FAILED";
+    if (r == "not-best" || r == "already-submitted")
+      msg = "ALREADY ON THE BOARD";
+    else if (r == "unverified") msg = "UPLOAD FAILED - NOT VERIFIED";
+    else if (r == "rate-limited") msg = "UPLOAD FAILED - TRY LATER";
+    else if (r == "connection") msg = "UPLOAD FAILED - CONNECTION";
+    Typer::draw_centered(0, 40, msg, 14);
+  }
+  // Touch already has the RETURN TO MENU tap band under the card (title_text
+  // draws it whenever the game is over); desktop/controller get the row.
+  if (!touch)
+    MenuSelect::draw_row(-60, "RETURN TO MENU", 16, true);
+}
+
 void Overlay::keymap(const GLGame *glgame, const GLShip *glship) {
   if(glship->show_help) {
     glship->draw_keymap();
@@ -602,8 +687,10 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
       // BELOW the ending like the online card (which stacks GAME OVER at
       // 60 over the row at -80): draw_respawn_timer's 20x viewport puts
       // "GameOver" at y 80..0 and the score at -20..-60 in this space, so
-      // -100 clears both.
-      MenuSelect::draw_row(-100, "RETURN TO MENU", 16, true);
+      // -100 clears both. Suppressed while a leaderboard flow owns the
+      // card (board_prompt draws its own heading + RETURN TO MENU row).
+      if (glgame->board_phase_ == GLGame::BoardOff)
+        MenuSelect::draw_row(-100, "RETURN TO MENU", 16, true);
     }
     if(!glship->last_input_was_controller && !is_touch_mode()) {
       char hint[48];

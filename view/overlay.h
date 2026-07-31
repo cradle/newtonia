@@ -23,6 +23,14 @@ public:
   // Full-screen text layered over the online game view (one full-screen
   // pass, not per-viewport): the generation banner and CONNECTION LOST card.
   static void net_overlays(const GLGame *glgame);
+  // The leaderboard game-over prompt / upload-progress / result block
+  // (LEADERBOARD.md). Drawn as its OWN full-window overlay from
+  // GLGame::draw() in EVERY mode — the offline solo game is the primary
+  // leaderboard case, and its game-over card is not net_overlays. No-op
+  // unless board_phase_ is active. When it owns the lower half (a live
+  // prompt or an upload in flight, GLGame::board_prompt_active()) the
+  // GAME OVER cards suppress their own RETURN TO MENU row.
+  static void board_prompt(const GLGame *glgame);
   // Replay playback chrome (REPLAY.md R2, one full-screen pass): REPLAY
   // watermark (+ speed when not 1x), elapsed/total timeline, the flashing
   // exit hint once the recording ends short of a game over.

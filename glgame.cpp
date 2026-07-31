@@ -36,6 +36,8 @@
 #include "typer.h"
 #include "touch_controls.h"
 #include "net_session.h"
+#include "net_board.h"
+#include "net_identity.h"
 #include "replay.h"
 #include "teleport.h"
 #include "world_sound.h"
@@ -426,6 +428,11 @@ GLGame::~GLGame() {
   // current.nrp in place — CONTINUE appends to it (REPLAY.md run-scoping).
   // After a game over the recorder is already finalized (no-op here).
   replay_finish(game_over);
+  // Any in-flight leaderboard qualify/upload is abandoned with the state —
+  // harmless by design (the worker's per-connection state dies with the
+  // socket, and a half-sent submit is simply never finalized).
+  delete board_;
+  board_ = nullptr;
   delete replay_reader_;  // playback mode (R2); null otherwise
   // Host tore down while re-advertising the open slot (peer left, then we
   // returned to the menu / quit / game over): stop showing the "Join Game"
@@ -3275,6 +3282,197 @@ void GLGame::replay_finish(bool ended) {
   replay_ = nullptr;
 }
 
+// ---- leaderboard game-over flow (LEADERBOARD.md L2) ----
+
+// Called right after replay_finish(true) at every game-over latch. The
+// trigger is the two-stage gate the plan locks: locally, the run just
+// promoted best.nrp (take_best_promoted — clean, non-cheated, a new
+// personal best, all enforced by the promotion itself); remotely, the
+// qualify answer must say the score would place. Everything is async and
+// abandonable — the GAME OVER card never waits on the network.
+void GLGame::board_maybe_start() {
+  if (net_mode_ == NetReplay) return;
+  // Consume the one-shot promotion flag unconditionally (so it can't leak
+  // into a later game over), THEN decide whether to prompt: only on a
+  // build that can actually pass the worker's attestation requirement —
+  // otherwise the upload is doomed to "unverified" (LEADERBOARD.md).
+  if (!Replay::take_best_promoted()) return;
+  if (!g_prefs.leaderboard_prompts) return;
+  if (!net_board_can_submit()) return;
+  Replay::Header h;
+  if (!Replay::read_header(Replay::best_path(), h)) return;
+  board_ = NetBoard::create();
+  if (!board_) return;
+  board_up_retried_ = false;
+  board_up_retry_deadline_ = 0;
+  board_up_sent_cred_.clear();
+  // Warm the async platform credential mint (Steam's ticket takes a
+  // round-trip) so it is ready by the time the player answers YES.
+  (void)net_board_verify_credential();
+  board_->connect(net_board_url());
+  std::string season(h.game_version,
+                     strnlen(h.game_version, sizeof(h.game_version)));
+  board_->qualify(season, h.player_count, h.final_score);
+  board_phase_ = BoardQualifying;
+  board_deadline_ = current_time + BOARD_QUALIFY_TIMEOUT_MS;
+  SDL_Log("board: qualify season=%s players=%u score=%u", season.c_str(),
+          (unsigned)h.player_count, (unsigned)h.final_score);
+}
+
+void GLGame::board_tick() {
+  if (!board_) return;
+  // Waiting for a fresh credential after an "unverified" upload (see the
+  // Error handler): poll peek (no re-mint) until a value different from the
+  // rejected one appears, then consume + resubmit it once; give up at the
+  // deadline.
+  if (board_up_retry_deadline_) {
+    std::string peek = net_board_verify_credential_peek();
+    if (!peek.empty() && peek != board_up_sent_cred_) {
+      board_up_retry_deadline_ = 0;
+      const NetIdentity &me = net_local_identity();
+      std::string fresh = net_board_verify_credential();  // consume the fresh one
+      board_up_sent_cred_ = fresh;
+      board_->submit(Replay::best_path(), me.platform, me.name, fresh);
+      board_phase_ = BoardUploading;
+      SDL_Log("board: retrying upload with a fresh credential");
+    } else if (current_time >= board_up_retry_deadline_) {
+      board_up_retry_deadline_ = 0;
+      board_phase_ = BoardFailed;
+      board_fail_reason_ = "unverified";
+      SDL_Log("board: no fresh credential before deadline - upload failed");
+      delete board_;
+      board_ = nullptr;
+      return;
+    }
+  }
+  NetBoard::Event ev;
+  while (board_->poll(ev)) {
+    if (ev.kind == NetBoard::Event::Qualify &&
+        board_phase_ == BoardQualifying) {
+      if (ev.would_place) {
+        board_phase_ = BoardPrompt;
+        board_place_ = ev.place;
+        board_yes_ = true;  // YES default (LEADERBOARD.md decision)
+        board_prompt_shown_ = current_time;  // arms its own input grace
+        board_prompt_pressed_.clear();  // only keys pressed FROM NOW act
+        SDL_Log("board: would place #%d - prompting", ev.place);
+      } else {
+        SDL_Log("board: below the cut-line (place %d) - no prompt",
+                ev.place);
+        board_phase_ = BoardOff;
+        delete board_;
+        board_ = nullptr;
+        return;
+      }
+    } else if (ev.kind == NetBoard::Event::Placed) {
+      board_phase_ = BoardPlaced;
+      board_place_ = ev.place;
+      SDL_Log("board: placed #%d", ev.place);
+      delete board_;
+      board_ = nullptr;
+      return;
+    } else if (ev.kind == NetBoard::Event::Error) {
+      SDL_Log("board: error %s", net_board_sanitize(ev.reason).c_str());
+      // An "unverified" upload is usually a credential that was empty, stale
+      // or single-use-consumed at submit time. The submit's own read already
+      // fired the next mint, so start polling for a fresh (different) one and
+      // retry ONCE (the socket stays open; the worker's err does not close
+      // it). Keep board_ alive; the poll runs from the top of board_tick.
+      if (board_phase_ == BoardUploading && !board_up_retried_ &&
+          ev.reason == "unverified") {
+        board_up_retried_ = true;
+        board_up_retry_deadline_ = current_time + BOARD_UPLOAD_RETRY_TIMEOUT_MS;
+        SDL_Log("board: upload unverified - waiting for a fresh credential");
+        continue;
+      }
+      // An error during the prompt/upload shows on the card; one during
+      // the silent qualify just cancels the whole idea.
+      if (board_phase_ == BoardUploading || board_phase_ == BoardPrompt) {
+        board_phase_ = BoardFailed;
+        board_fail_reason_ = net_board_sanitize(ev.reason, 32);
+      } else {
+        board_phase_ = BoardOff;
+      }
+      delete board_;
+      board_ = nullptr;
+      return;
+    } else if (ev.kind == NetBoard::Event::Closed) {
+      SDL_Log("board: connection closed");
+      if (board_phase_ == BoardUploading) {
+        board_phase_ = BoardFailed;
+        board_fail_reason_ = "connection";
+      } else if (board_phase_ != BoardPlaced &&
+                 board_phase_ != BoardFailed) {
+        board_phase_ = BoardOff;
+      }
+      delete board_;
+      board_ = nullptr;
+      return;
+    }
+  }
+  if (board_phase_ == BoardQualifying && current_time > board_deadline_) {
+    SDL_Log("board: qualify timed out - no prompt");
+    board_phase_ = BoardOff;
+    delete board_;
+    board_ = nullptr;
+  }
+}
+
+bool GLGame::board_nav(char key) {
+  if (board_phase_ == BoardPrompt) {
+    // The prompt can appear AFTER the card's 3 s game-over grace (the
+    // qualify deadline is 4 s), so anchor the accidental-input guard on
+    // when the PROMPT appeared, not on game over: a keypress already in
+    // flight to leave must not answer the just-shown YES-default prompt.
+    // Swallowed, not passed on — the exit paths behind us are equally
+    // graced, so nothing is lost.
+    if (current_time - board_prompt_shown_ < BOARD_PROMPT_ARM_MS)
+      return true;
+    unsigned char k = (unsigned char)key;
+    if (MenuSelect::is_up(k) || MenuSelect::is_down(k)) {
+      board_yes_ = !board_yes_;
+      return true;
+    }
+    if (MenuSelect::is_back(k)) {
+      SDL_Log("board: prompt declined");
+      board_phase_ = BoardOff;
+      delete board_;
+      board_ = nullptr;
+      return true;
+    }
+    if (MenuSelect::is_confirm(k)) {
+      if (!board_yes_) {
+        SDL_Log("board: prompt declined");
+        board_phase_ = BoardOff;
+        delete board_;
+        board_ = nullptr;
+        return true;
+      }
+      const NetIdentity &me = net_local_identity();
+      std::string cred = net_board_verify_credential();
+      board_up_sent_cred_ = cred;  // for the retry's freshness compare
+      board_->submit(Replay::best_path(), me.platform, me.name, cred);
+      board_phase_ = BoardUploading;
+      SDL_Log("board: uploading best.nrp");
+      return true;
+    }
+    return true;  // the prompt owns the card: swallow everything else
+  }
+  if (board_phase_ == BoardUploading) {
+    // Esc cancels the upload (back to the plain card); anything else is
+    // swallowed so a stray confirm can't leave mid-transfer. Leaving via
+    // the menu key still works — the destructor abandons the transfer.
+    if (MenuSelect::is_back((unsigned char)key)) {
+      SDL_Log("board: upload cancelled");
+      board_phase_ = BoardOff;
+      delete board_;
+      board_ = nullptr;
+    }
+    return true;
+  }
+  return false;  // Placed/Failed/Off: the normal exit handling runs
+}
+
 // ---- replay playback (REPLAY.md R2) ----
 
 // Playback ctor. Delegates to the save-restore ctor (the same world rebuild
@@ -4270,6 +4468,7 @@ void GLGame::tick_net_client(int delta) {
       // serializes the replica that just showed the last death, so
       // playback reaches the ended world.
       replay_finish(true);
+      board_maybe_start();  // new personal best -> leaderboard prompt
       NET_LOG("net: game over (all players out) - showing GAME OVER card\n");
 #ifdef __EMSCRIPTEN__
       EM_ASM(if (window.setMenuMode) window.setMenuMode(1););
@@ -4299,6 +4498,7 @@ void GLGame::tick_net_client(int delta) {
       spectate_death_time_ = -1;
       // Terminal for the recording too — nothing will ever append again.
       replay_finish(true);
+      board_maybe_start();  // new personal best -> leaderboard prompt
       NET_LOG("net: host lost while spectating - GAME OVER\n");
     }
     // M3-1 auto-rejoin: with a room code the loss is recoverable — hand
@@ -6162,6 +6362,9 @@ void GLGame::tick(int delta) {
     replay_tried_ = true;
     if (net_mode_ != NetReplay && !game_over) replay_start();
   }
+  // Leaderboard game-over flow: poll the qualify/upload socket while the
+  // GAME OVER card is up (board_ only exists after the game-over latch).
+  if (board_) board_tick();
   if (net_mode_ != NetOff) {
     // Name a hole in OUR OWN tick cadence (App Nap on an occluded mac
     // window, a window drag, a debugger): in every other log line it is
@@ -7382,6 +7585,7 @@ void GLGame::tick(int delta) {
       // score/generation) and retire the file — offline rotates current
       // -> recent, online best-checks the ONLINE RUN slot in place.
       replay_finish(true);
+      board_maybe_start();  // new personal best -> leaderboard prompt
       // Host: finalize's forced final keyframe rebuilt the shared delta
       // baseline without being SENT, so an asteroid spawned since the last
       // send could go missing client-side for up to a second (until the
@@ -7678,6 +7882,10 @@ void GLGame::draw(void) {
     //Draw map after - for partial translucency
     draw_map();
   }
+  // Leaderboard prompt/upload/result — its own full-window overlay so the
+  // OFFLINE game-over card gets it too (the primary solo case). No-op
+  // unless a board flow is live (LEADERBOARD.md).
+  Overlay::board_prompt(this);
   if (net_mode_ != NetOff && Net::net_debug_enabled()) {
     uint32_t draw_ms = SDL_GetTicks() - hb_draw_t0;
     if (draw_ms > 25) NET_LOG("net: slow draw %u ms\n", draw_ms);
@@ -8341,6 +8549,23 @@ void GLGame::controller(SDL_Event event) {
   }
 
   if(event.cbutton.type == SDL_CONTROLLERBUTTONDOWN) {
+    // Leaderboard prompt on the GAME OVER card: while it owns the card,
+    // dpad moves the YES/NO highlight and A/Start confirm, B backs out —
+    // ahead of every exit shortcut below so a pad can't leave through the
+    // prompt. board_nav is a no-op returning false once the prompt is done.
+    if (board_prompt_active()) {
+      char bk = 0;
+      switch (event.cbutton.button) {
+        case SDL_CONTROLLER_BUTTON_DPAD_UP: bk = 'w'; break;
+        case SDL_CONTROLLER_BUTTON_DPAD_DOWN: bk = 's'; break;
+        case SDL_CONTROLLER_BUTTON_A:
+        case SDL_CONTROLLER_BUTTON_START: bk = '\r'; break;
+        case SDL_CONTROLLER_BUTTON_B:
+        case SDL_CONTROLLER_BUTTON_BACK: bk = 27; break;
+        default: break;
+      }
+      if (bk && board_nav(bk)) return;
+    }
     if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) {
       bool known_player = false;
       for(auto* glship : *players) {
@@ -8425,6 +8650,9 @@ void GLGame::controller(SDL_Event event) {
       }
     }
     if (all_game_over) {
+      // RT is the card's confirm: while the leaderboard prompt is up it
+      // answers the highlighted YES/NO instead of leaving.
+      if (board_nav('\r')) return;
       if (game_over_time >= 0 && current_time - game_over_time < 3000)
         return;
       for (auto* glship : *players)
@@ -8489,6 +8717,27 @@ TapBand GLGame::exit_band() const {
 
 void GLGame::touch_tap(float nx, float ny) {
   if (!is_touch_mode()) return;
+  // Leaderboard prompt on the GAME OVER card: a tap on the RETURN TO MENU
+  // band still LEAVES (it is drawn under the prompt), and only taps
+  // elsewhere answer YES (left half) / NO (right half) — the New-game
+  // confirm's grammar. The arm delay (board_nav) rejects a tap already in
+  // flight when the prompt appeared.
+  if (board_phase_ == BoardPrompt) {
+    if (exit_band().contains(nx, ny)) {
+      // Decline and leave, the same as answering NO then exiting.
+      if (current_time - board_prompt_shown_ >= BOARD_PROMPT_ARM_MS) {
+        board_yes_ = false;
+        board_nav('\r');
+      }
+      // fall through to the exit band handling below (which leaves)
+    } else {
+      board_yes_ = nx < 0.0f;
+      board_nav('\r');
+      return;
+    }
+  }
+  if (board_phase_ == BoardUploading && !exit_band().contains(nx, ny))
+    return;
   // The bottom strip is the RETURN TO MENU band the overlay labels (the
   // shared TapBand). It exits to the menu from every state that has no
   // other touch exit: GAME OVER, the pause screen, and — online — a
@@ -8767,6 +9016,15 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
   if (net_mode_ == NetReplay)
     return;
 
+  // Board prompt/upload owns input on key-DOWN: record which nav keys were
+  // actually PRESSED while the prompt is up, so keyboard_up can tell a
+  // fresh press from a gameplay key released into the prompt (see there),
+  // and swallow so a dead ship's input loop never runs under the card.
+  if (board_prompt_active()) {
+    board_prompt_pressed_.insert(nav_key(key));
+    return;
+  }
+
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
     (*object)->input(key);
@@ -8910,6 +9168,21 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
   }
 #endif
+  // A live board prompt/upload OWNS all game-over input, including the menu
+  // key (Esc). Only a key whose DOWN happened while the prompt was up acts
+  // (recorded in keyboard()); a gameplay key still held at death and
+  // released INTO the prompt is ignored — otherwise a held fire key would
+  // silently confirm the YES-default upload and a held thrust key would
+  // flip the selection. Everything else here is swallowed so the exit
+  // paths below never run while the prompt owns the card.
+  if (board_prompt_active()) {
+    unsigned char nk = nav_key(key);
+    if (board_prompt_pressed_.count(nk)) {
+      board_prompt_pressed_.erase(nk);
+      board_nav((char)nk);
+    }
+    return;
+  }
   // The GAME OVER screen draws the shared RETURN TO MENU row, so it answers
   // like one: confirm or back, never "any key" — a stray press used to eat
   // the score screen. The short delay still stops the last shoot input from

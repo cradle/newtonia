@@ -103,6 +103,17 @@ public final class PlayGamesIdentity {
         return code;
     }
 
+    // Native entry point (game thread, JNI): PEEK the cached code WITHOUT
+    // consuming (clearing) it or firing a fetch — the leaderboard upload
+    // retry polls this to wait for a fresh code after the first submit's
+    // serverAuthCode() read already fired the next fetch. Merely comparing
+    // values doesn't spend the code (only the worker's token exchange does),
+    // so peeking is safe; the retry then calls serverAuthCode() ONCE to
+    // consume the fresh one for the actual resubmit.
+    public static String peekServerAuthCode() {
+        return sServerAuthCode;
+    }
+
     // Native entry point (game thread, JNI): netplay teardown drops a
     // warmed-but-unsent code so a later session can't re-hand a stale one.
     public static void release() {

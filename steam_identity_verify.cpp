@@ -68,6 +68,11 @@ class SteamTicketFetcher {
     return hex_;         // hand back the last one that completed ("" if none)
   }
 
+  // Peek the last completed ticket WITHOUT firing a fresh request — the
+  // upload retry polls this after warming one re-mint, so it can wait for a
+  // genuinely new ticket without minting one per poll.
+  const std::string &peek() const { return hex_; }
+
   void release() {
     if (ISteamUser *user = SteamUser()) {
       for (HAuthTicket h : handles_) user->CancelAuthTicket(h);
@@ -124,6 +129,8 @@ SteamTicketFetcher &fetcher() {
 namespace NetIdentityBackend {
 
 std::string local_verify_credential() { return fetcher().credential(); }
+
+std::string local_verify_credential_peek() { return fetcher().peek(); }
 
 void release_verify_credentials() { fetcher().release(); }
 

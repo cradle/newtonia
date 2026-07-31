@@ -53,6 +53,20 @@ std::string online_path() {
     std::string d = dir_path();
     return d.empty() ? "" : d + "online.nrp";
 }
+std::string download_path() {
+    std::string d = dir_path();
+    return d.empty() ? "" : d + "download.nrp";
+}
+
+std::string game_version_string() {
+    // The same silent 23-char truncation the header stamp applies
+    // (Recorder ctor) — the leaderboard's season queries must produce the
+    // byte-identical string a recorded header carries.
+    char buf[Header::GAME_VERSION_LEN];
+    strncpy(buf, NEWTONIA_VERSION_STRING, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = '\0';
+    return buf;
+}
 
 // MEMFS writes only survive a web reload once synced to IndexedDB, so every
 // flush/patch/rotation syncs. Goes through the shared coalescer: a rotation
@@ -356,12 +370,22 @@ static bool copy_file(const std::string &from, const std::string &to) {
 // the tail was patched at a clean stop). A crashed run's stale header gets
 // no check (REPLAY.md accepted limitation): the run stays watchable in its
 // slot, it just can't become best.
+// See take_best_promoted() in replay.h — one-shot flag for the
+// leaderboard's game-over prompt.
+static bool g_best_promoted = false;
+
+bool take_best_promoted() {
+    bool v = g_best_promoted;
+    g_best_promoted = false;
+    return v;
+}
+
 static void maybe_promote_best(const std::string &from, const Header &h) {
     if (!(h.flags & FLAG_CLEAN) || (h.flags & FLAG_CHEATED)) return;
     Header hb;
     bool have_best = read_header(best_path(), hb);
     if (!have_best || h.final_score > hb.final_score) {
-        copy_file(from, best_path());
+        if (copy_file(from, best_path())) g_best_promoted = true;
         // Sync the promotion itself: the online retirement path
         // (best_check_online) has no later sync of its own, so without
         // this a new best set in the session's last moments never left

@@ -6,6 +6,7 @@
 #include "menu.h"
 #include "menu_select.h"
 #include "invites.h"
+#include "net_identity.h"
 #include "net_lobby.h"
 #include "net_policy.h"
 #include "net_resume.h"
@@ -60,16 +61,24 @@ static const OptRow OPT_ROWS_DESKTOP[] = {
   {0, 1, "P2  SENSITIVITY"}, {1, 1, "P2  SMOOTHING"}, {2, 1, "P2  CAMERA"},
   {3, 0, "STAR  DENSITY"},
   {4, 0, "RECORD  REPLAYS"},
+  // Must stay LAST: opt_row_count drops it on builds with no leaderboard.
+  {5, 0, "LEADERBOARD  PROMPTS"},
 };
 // Mobile shows Player 1 + shared options only, so the "P1" prefix is dropped.
 static const OptRow OPT_ROWS_TOUCH[] = {
   {0, 0, "SENSITIVITY"}, {1, 0, "SMOOTHING"}, {2, 0, "CAMERA"},
   {3, 0, "STAR DENSITY"},
   {4, 0, "RECORD REPLAYS"},
+  {5, 0, "LEADERBOARD PROMPTS"},  // LAST — see the desktop table
 };
 static int opt_row_count() {
-  return is_touch_mode() ? (int)(sizeof(OPT_ROWS_TOUCH) / sizeof(OPT_ROWS_TOUCH[0]))
-                         : (int)(sizeof(OPT_ROWS_DESKTOP) / sizeof(OPT_ROWS_DESKTOP[0]));
+  int n = is_touch_mode()
+              ? (int)(sizeof(OPT_ROWS_TOUCH) / sizeof(OPT_ROWS_TOUCH[0]))
+              : (int)(sizeof(OPT_ROWS_DESKTOP) / sizeof(OPT_ROWS_DESKTOP[0]));
+  // No leaderboard on this build/session (netless, web-v1, policy-blocked):
+  // a prompts toggle for a feature that cannot appear would only confuse.
+  if (!net_board_available()) n--;
+  return n;
 }
 static const OptRow &opt_row(int r) {
   return is_touch_mode() ? OPT_ROWS_TOUCH[r] : OPT_ROWS_DESKTOP[r];
@@ -168,6 +177,7 @@ Menu::Menu() :
   camera_index_[1]      = g_prefs.p2_keys.rotate_view ? 1 : 0;
   star_density_index_   = star_density_index_for(g_prefs.star_density);
   auto_record_index_    = g_prefs.auto_record_replays ? 1 : 0;
+  leaderboard_index_    = g_prefs.leaderboard_prompts ? 1 : 0;
   scan_replays();
   Presence::set_menu();
 #ifdef __EMSCRIPTEN__
@@ -184,6 +194,7 @@ Menu::Menu() :
 }
 
 Menu::~Menu() {
+  delete board_net_;  // abandons any in-flight leaderboard fetch/upload
   delete starfield;
   Mix_FreeMusic(music);
 }
@@ -222,7 +233,149 @@ void Menu::draw() {
   mat4_ortho(ortho, -menu_hw, menu_hw, -menu_hh, menu_hh, -1.0f, 1.0f);
   gles2_set_vp(ortho);
 
-  if (replays_mode_) {
+  if (board_mode_) {
+    bool touch = is_touch_mode();
+    Typer::draw_centered(0, touch ? 340 : 368, "LEADERBOARD", touch ? 30 : 26);
+    // Entries: [0] the SOLO/CO-OP toggle, [1] the SEASON browser, [2..]
+    // the score rows, then the UPLOAD BEST RUN action (the game-over
+    // prompt's retry path). Same shared row geometry as the
+    // options/replays screens (TapBand rule).
+    int n = board_entry_count();
+    // Column layout: Typer's advance is 2x the size, so with the row
+    // spanning the cursors (-623..609) the right half fits an 8-digit
+    // bare score (12: 95..287), "LEVEL 101" (10: 295..475) and an 8-char
+    // yy-mm-dd date (8: 476..604) or a NO REPLAY / OTHER VER tag
+    // (8: 460..604, right-flush like the date) without the columns
+    // running into each other (they did when score and level carried
+    // word labels at 13 — "SCORE 900LEVEL...").
+    const int CURSOR_L = -623, RANK_X = -560, NAME_X = -455, BADGE_X = -70,
+              SCORE_X = 95, LEVEL_X = 295, DATE_X = 476, TAG_X = 460,
+              CURSOR_R = 609;
+    for (int e = 0; e < n; e++) {
+      char text[96];
+      if (e == 0) {
+        snprintf(text, sizeof(text), "BOARD: %s",
+                 board_players_ == 1 ? "SOLO" : "CO-OP");
+      } else if (e == 1) {
+        // The browsed season; tag which one is this build's ("LIVE") when
+        // the browser has somewhere else to go.
+        bool own = board_season_ == board_build_season_;
+        snprintf(text, sizeof(text), "SEASON: %s%s", board_season_.c_str(),
+                 (own && board_seasons_.size() > 1) ? " - LIVE" : "");
+      }
+      int y = touch ? touch_opt_center(e, n)
+                    : opt_row_center(e, n, DESK_OPT_TOP, DESK_OPT_BOTTOM);
+      if (!touch)
+        MenuSelect::draw_row_cursor(board_sel_ == e, CURSOR_L, CURSOR_R, y, 13);
+      if (e <= 1) {
+        Typer::draw_centered(0, y, text, 14);
+        continue;
+      }
+      int ri = e - 2;
+      if (ri < (int)board_rows_.size()) {
+        const NetBoard::Row &r = board_rows_[ri];
+        // Name display follows the netplay identity rule: an ATTESTED
+        // name renders as-is (sanitized), an UNVERIFIED claim (e.g. an
+        // iOS alias Apple does not attest) is NOT shown as if it were —
+        // the account is still attested for admission, so it renders as
+        // the role-style "PLAYER" plus the platform badge. Same
+        // boundary net_sanitize_name enforces on the wire name.
+        std::string name = net_sanitize_name(r.name);
+        if (!r.verified || name.empty()) name = "PLAYER";
+        if (!board_best_run_id_.empty() && r.run_id == board_best_run_id_)
+          name += " - YOU";
+        char rank_buf[12], score_buf[24], level_buf[16];
+        snprintf(rank_buf, sizeof(rank_buf), "#%d", r.rank);
+        snprintf(score_buf, sizeof(score_buf), "%u", r.score);
+        snprintf(level_buf, sizeof(level_buf), "LEVEL %u", r.generation + 1);
+        Typer::draw(RANK_X, y, rank_buf, 13);
+        Typer::draw(NAME_X, y, name.c_str(), 12);
+        // Platform badge (STEAM/WEB/IOS/ANDROID) so rows from different
+        // platforms — and the verified vs claimed distinction above — are
+        // visible, not collapsed into an anonymous name.
+        const char *badge = net_platform_label(r.platform);
+        if (badge && badge[0] && !touch) Typer::draw(BADGE_X, y, badge, 10);
+        Typer::draw(SCORE_X, y, score_buf, 12);
+        Typer::draw(LEVEL_X, y, level_buf, 10);
+        if (!touch) {
+          // The last column: the date, unless the replay cannot be watched
+          // — retention-demoted (gone) or another version's format (the
+          // season browser reaches those) — which matters more than when.
+          if (!r.has_replay) {
+            Typer::draw(TAG_X, y, "NO REPLAY", 8);
+          } else if (!net_board_replay_watchable(r)) {
+            Typer::draw(TAG_X, y, "OTHER VER", 8);
+          } else if (r.date > 0) {
+            char date_buf[16] = "";
+            time_t t = (time_t)(r.date / 1000);  // submitted_at is epoch ms
+            struct tm *tmv = localtime(&t);
+            if (tmv) strftime(date_buf, sizeof(date_buf), "%y-%m-%d", tmv);
+            Typer::draw(DATE_X, y, date_buf, 8);
+          }
+        }
+        continue;
+      }
+      // The UPLOAD BEST RUN action row, phase-labelled.
+      switch (board_up_phase_) {
+        case 1: {
+          int pct = board_net_ ? board_net_->transfer_pct() : -1;
+          if (pct >= 0)
+            snprintf(text, sizeof(text), "UPLOADING %d%%", pct);
+          else
+            snprintf(text, sizeof(text), "UPLOADING");
+          break;
+        }
+        case 2:
+          snprintf(text, sizeof(text), "UPLOADED - RANK #%d", board_up_rank_);
+          break;
+        case 3:
+          // Map the worker's terse reason to a player-facing line; benign
+          // refusals aren't failures. board_up_reason_ is already
+          // sanitized at capture, so an unknown reason is safe to show.
+          snprintf(text, sizeof(text), "%s", board_upload_status_text());
+          break;
+        default:
+          snprintf(text, sizeof(text), "UPLOAD BEST RUN - SCORE %u",
+                   board_best_score_);
+          break;
+      }
+      Typer::draw_centered(0, y, text, 14);
+    }
+    // Status / footer line between the rows and the exit band.
+    int fy = touch ? -240 : -330;
+    int sel_ri = board_sel_ - 2;  // selected score row, or out of range
+    const NetBoard::Row *sel_row =
+        (sel_ri >= 0 && sel_ri < (int)board_rows_.size())
+            ? &board_rows_[sel_ri] : nullptr;
+    if (board_error_) {
+      Typer::draw_centered(0, fy, "LEADERBOARD UNAVAILABLE", 14);
+    } else if (board_loading_) {
+      if ((currentTime / 500) % 2)
+        Typer::draw_centered(0, fy, "LOADING", 14);
+    } else if (board_rows_.empty()) {
+      Typer::draw_centered(0, fy, "NO SCORES THIS SEASON", 14);
+    } else if (sel_row && !sel_row->has_replay) {
+      // Why confirming the highlighted row does nothing (mirrors the
+      // row's last-column tag; touch has no cursor, so also its only
+      // signal after a dead tap).
+      Typer::draw_centered(0, fy, "REPLAY NO LONGER STORED", 14);
+    } else if (sel_row && !net_board_replay_watchable(*sel_row)) {
+      Typer::draw_centered(0, fy, "REPLAY FROM ANOTHER VERSION", 14);
+    } else if (board_your_rank_ > 0 && !board_best_on_board()) {
+      // The player's standing whenever their best is NOT already one of
+      // the visible rows (rank-of is a projection of the un-uploaded best,
+      // so a rank inside the visible range does NOT imply an on-board row
+      // — only an actual " - YOU" match does). Shown for both off-board
+      // AND would-place-but-not-yet-uploaded bests.
+      char yours[32];
+      snprintf(yours, sizeof(yours), "YOUR BEST: #%d", board_your_rank_);
+      Typer::draw_centered(0, fy, yours, 14);
+    }
+    TapBand::return_to_menu.draw(
+        touch ? Typer::cursored("RETURN TO MENU", true).c_str()
+              : "ESC - BACK TO MENU",
+        currentTime);
+  } else if (replays_mode_) {
     bool touch = is_touch_mode();
     Typer::draw_centered(0, touch ? 340 : 368, "REPLAYS", touch ? 30 : 26);
     int n = (int)replay_rows_.size();
@@ -301,6 +454,7 @@ void Menu::draw() {
         case 1: num_steps = NUM_SMOOTHING;    cur_idx = smoothing_index_[r.player];   lbl = SMOOTHING_LABELS;     break;
         case 2: num_steps = NUM_CAMERA;       cur_idx = camera_index_[r.player];      lbl = CAMERA_LABELS;        break;
         case 3: num_steps = NUM_STAR_DENSITY; cur_idx = star_density_index_;          lbl = STAR_DENSITY_LABELS;  break;
+        case 5: num_steps = NUM_RECORD;       cur_idx = leaderboard_index_;           lbl = RECORD_LABELS;        break;
         default:
           num_steps = NUM_RECORD; lbl = RECORD_LABELS;
           // Show the STORED setting, not the override's effective value:
@@ -375,7 +529,7 @@ void Menu::draw() {
     }
   }
 
-  if (!options_mode_ && !replays_mode_) {
+  if (!options_mode_ && !replays_mode_ && !board_mode_) {
     if (attract_mode_) {
       if (!((currentTime / 1400) % 2)) {
         // title_bot=160 (320-2*80), scores_top=-215; center single item in that gap
@@ -422,14 +576,20 @@ void Menu::draw() {
       if (show_online_row()) rows.push_back("ONLINE");
       if (show_options_row()) rows.push_back("OPTIONS");
       if (show_replays_row()) rows.push_back("REPLAYS");
+      if (show_board_row()) rows.push_back("LEADERBOARD");
       draw_menu_rows(rows);
     }
   }
-  if (!options_mode_ && !replays_mode_)
+  if (!options_mode_ && !replays_mode_ && !board_mode_)
     Typer::draw_centered(0, -420, "© 2008-2026 METONYMOUS", 13, currentTime);
 }
 
 void Menu::tick(int delta) {
+  // Leaderboard screen: drive the fetch/upload socket. May hand the state
+  // to replay playback (a downloaded row confirmed) — nothing below
+  // depends on running after that, the pending state change just waits
+  // for the manager.
+  if (board_net_) board_poll();
   // A friend's invite was accepted (or the game was launched from one):
   // jump straight into the lobby as a joiner for that room code, the same
   // programmatic path as the clipboard/rejoin auto-join.
@@ -556,6 +716,25 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
     }
     return;
   }
+  if (board_mode_) {
+    if (MenuSelect::move(key, board_sel_, board_entry_count())) {
+      // moved
+    } else if (MenuSelect::is_left(key) || MenuSelect::is_right(key)) {
+      if (board_sel_ == 1) {
+        // On the SEASON row, a/d step the browsed season instead.
+        board_cycle_season(MenuSelect::is_left(key) ? -1 : 1);
+      } else {
+        // Elsewhere a/d switch the SOLO/CO-OP board from anywhere.
+        board_players_ = board_players_ == 1 ? 2 : 1;
+        board_request();
+      }
+    } else if (MenuSelect::is_back(key)) {
+      close_board();
+    } else if (confirm) {
+      board_nav_confirm();
+    }
+    return;
+  }
   if (replays_mode_) {
     if (MenuSelect::move(key, replay_sel_, (int)replay_rows_.size())) {
       // moved
@@ -617,6 +796,8 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
         open_options();
       } else if (menu_selection == replays_row_index()) {
         open_replays();
+      } else if (menu_selection == board_row_index()) {
+        open_board();
       } else {
         confirm_selection(src);
       }
@@ -640,6 +821,10 @@ bool Menu::back_pressed() {
   }
   if (replays_mode_) {
     replays_mode_ = false;
+    return true;
+  }
+  if (board_mode_) {
+    close_board();
     return true;
   }
   if (attract_mode_) {
@@ -694,6 +879,18 @@ void Menu::touch_tap(float nx, float ny) {
     if (row >= 0) {
       active_row_ = row;
       adjust_active_row(+1, /*wrap=*/true);
+    }
+    return;
+  }
+  if (board_mode_) {
+    if (TapBand::return_to_menu.contains(nx, ny)) { close_board(); return; }
+    int n = board_entry_count();
+    int row = is_touch_mode()
+                  ? touch_opt_row_at(ny, n)
+                  : opt_row_at(ny, n, DESK_OPT_TOP, DESK_OPT_BOTTOM);
+    if (row >= 0) {
+      board_sel_ = row;
+      board_nav_confirm();
     }
     return;
   }
@@ -756,6 +953,10 @@ void Menu::touch_tap(float nx, float ny) {
     open_replays();
     return;
   }
+  if (row == board_row_index()) {
+    open_board();
+    return;
+  }
   confirm_selection(nullptr);
 }
 
@@ -776,6 +977,7 @@ int Menu::max_menu_items() const {
   if (show_online_row()) n++;
   if (show_options_row()) n++;
   if (show_replays_row()) n++;
+  if (show_board_row()) n++;
   return n;
 }
 
@@ -934,6 +1136,327 @@ void Menu::open_replays() {
   replays_mode_ = true;
 }
 
+// ---- LEADERBOARD screen (LEADERBOARD.md L3) -----------------------------
+
+// Give up polling for a fresh credential after an "unverified" upload
+// (mirrors GLGame::BOARD_UPLOAD_RETRY_TIMEOUT_MS — see the credential-
+// lifecycle note there; the retry peeks for a fresh credential rather than
+// waiting a fixed time, so this is only the give-up deadline).
+static const int BOARD_UPLOAD_RETRY_TIMEOUT_MS = 6000;
+
+bool Menu::show_board_row() const { return net_board_available(); }
+
+int Menu::board_row_index() const {
+  if (!show_board_row()) return -1;
+  int i = base_menu_rows();
+  if (show_online_row()) i++;
+  if (show_options_row()) i++;
+  if (show_replays_row()) i++;
+  return i;
+}
+
+void Menu::open_board() {
+  close_board();
+  board_net_ = NetBoard::create();
+  if (!board_net_) return;
+  // Warm the async platform credential mint so an UPLOAD confirm has it.
+  (void)net_board_verify_credential();
+  board_net_->connect(net_board_url());
+  // The browsed season opens on this build's (the one new runs land in);
+  // the SEASON row cycles through every season the worker knows
+  // (board_seasons_, fetched below). The upload candidate is best.nrp,
+  // which carries its OWN season — the UPLOAD row appears on that
+  // season's screen (usually the same one), so an older build's best is
+  // uploadable by flipping the SEASON row to it.
+  board_build_season_ = Replay::game_version_string();
+  board_season_ = board_build_season_;
+  board_seasons_.clear();
+  NetBoard::Season own;
+  own.season = board_build_season_;
+  board_seasons_.push_back(own);
+  board_net_->seasons();
+  board_best_run_id_.clear();
+  board_best_season_.clear();
+  board_best_score_ = 0;
+  board_best_clean_ = false;
+  Replay::Header h;
+  if (Replay::read_header(Replay::best_path(), h)) {
+    char rid[24];
+    snprintf(rid, sizeof(rid), "%llu", (unsigned long long)h.run_id);
+    board_best_run_id_ = rid;
+    board_best_season_.assign(
+        h.game_version, strnlen(h.game_version, sizeof(h.game_version)));
+    board_best_score_ = h.final_score;
+    board_best_clean_ = (h.flags & Replay::FLAG_CLEAN) &&
+                        !(h.flags & Replay::FLAG_CHEATED) &&
+                        h.final_score > 0;
+    board_players_ = h.player_count == 2 ? 2 : 1;
+  } else {
+    board_players_ = 1;
+  }
+  board_sel_ = 0;
+  board_loading_ = false;
+  board_error_ = false;
+  board_up_phase_ = 0;
+  board_up_retried_ = false;
+  board_up_retry_deadline_ = 0;
+  board_up_sent_cred_.clear();
+  board_fetching_ = false;
+  board_mode_ = true;
+  board_request();
+}
+
+void Menu::close_board() {
+  delete board_net_;
+  board_net_ = nullptr;
+  board_mode_ = false;
+}
+
+void Menu::board_request() {
+  if (!board_net_) return;
+  board_loading_ = true;
+  board_error_ = false;
+  board_rows_.clear();
+  board_your_rank_ = 0;
+  if (board_sel_ >= board_entry_count()) board_sel_ = 0;
+  board_net_->top(board_season_, board_players_, 8);
+  // The rank-of footer: only meaningful when the local best belongs to
+  // the browsed board (same season, same player count).
+  Replay::Header h;
+  if (board_best_score_ > 0 && board_best_season_ == board_season_ &&
+      Replay::read_header(Replay::best_path(), h)) {
+    int best_players = h.player_count == 2 ? 2 : 1;
+    if (best_players == board_players_)
+      board_net_->rank_of(board_season_, board_players_, board_best_score_);
+  }
+}
+
+int Menu::board_entry_count() const {
+  // [0] SOLO/CO-OP toggle, [1] SEASON browser, [2..] score rows, then the
+  // UPLOAD BEST RUN action when it applies to the browsed season.
+  return 2 + (int)board_rows_.size() + (board_upload_row_shown() ? 1 : 0);
+}
+
+bool Menu::board_upload_row_shown() const {
+  // The upload affordance appears only on a build that can actually pass
+  // the worker's attestation requirement — a viewer-only build (no verify
+  // backend) never shows a doomed UPLOAD row (LEADERBOARD.md) — and only
+  // on the screen of the season the upload would actually land in
+  // (best.nrp's own): an older build's best is reachable by flipping the
+  // SEASON row to it, instead of uploading invisibly from the live screen.
+  return board_best_clean_ && board_net_ != nullptr &&
+         net_board_can_submit() && board_best_season_ == board_season_;
+}
+
+// Is the local best already one of the visible board rows? (run_id match —
+// the same test the " - YOU" tag uses.) When true, the rank-of footer is
+// redundant with the tagged row and is suppressed.
+bool Menu::board_best_on_board() const {
+  if (board_best_run_id_.empty()) return false;
+  for (const NetBoard::Row &r : board_rows_)
+    if (r.run_id == board_best_run_id_) return true;
+  return false;
+}
+
+// The UPLOAD row's label when board_up_phase_ == 3 (finished, not placed).
+// Distinguishes benign refusals from real failures.
+const char *Menu::board_upload_status_text() const {
+  const std::string &r = board_up_reason_;
+  if (r == "not-best" || r == "already-submitted")
+    return "BEST ALREADY ON THE BOARD";
+  if (r == "unverified") return "UPLOAD FAILED - NOT VERIFIED";
+  if (r == "rate-limited") return "UPLOAD FAILED - TRY LATER";
+  if (r == "connection") return "UPLOAD FAILED - CONNECTION";
+  return "UPLOAD FAILED";
+}
+
+void Menu::board_start_upload() {
+  if (!board_net_ || board_transfer_busy()) return;
+  board_up_retried_ = false;
+  board_up_retry_deadline_ = 0;
+  const NetIdentity &me = net_local_identity();
+  std::string cred = net_board_verify_credential();
+  board_up_sent_cred_ = cred;  // for the retry's freshness compare
+  board_net_->submit(Replay::best_path(), me.platform, me.name, cred);
+  board_up_phase_ = 1;
+  SDL_Log("board: uploading best.nrp (menu)");
+}
+
+// The socket carries ONE transfer at a time (RtcBoard's single phase_), so
+// a fetch and an upload must never overlap — starting one mid-flight would
+// strand the other with no terminal event and wedge the screen.
+bool Menu::board_transfer_busy() const {
+  return board_fetching_ || board_up_phase_ == 1;
+}
+
+// Step the browsed season through the worker's list (wrapping). A fresh
+// request repaints the rows; the upload row and rank-of footer re-gate on
+// the new season by themselves.
+void Menu::board_cycle_season(int dir) {
+  int n = (int)board_seasons_.size();
+  if (n < 2) return;  // nothing to browse yet (or only one season exists)
+  int at = 0;
+  for (int i = 0; i < n; i++)
+    if (board_seasons_[i].season == board_season_) { at = i; break; }
+  at = (at + dir + n) % n;
+  board_season_ = board_seasons_[at].season;
+  board_request();
+}
+
+void Menu::board_nav_confirm() {
+  if (board_sel_ == 0) {
+    board_players_ = board_players_ == 1 ? 2 : 1;
+    board_request();
+    return;
+  }
+  if (board_sel_ == 1) {
+    board_cycle_season(1);
+    return;
+  }
+  int ri = board_sel_ - 2;
+  if (ri < (int)board_rows_.size()) {
+    const NetBoard::Row &r = board_rows_[ri];
+    // Score-only rows (blob demoted by retention) and rows this build
+    // cannot play back (another version's format — the season browser
+    // makes those reachable) are unselectable: nothing to watch, and the
+    // footer names why. One transfer at a time (guards BOTH a second
+    // fetch AND a fetch racing an in-flight upload).
+    if (r.has_replay && net_board_replay_watchable(r) &&
+        !board_transfer_busy() && board_net_) {
+      board_fetching_ = true;
+      board_net_->fetch(board_season_, r.run_id, Replay::download_path());
+      SDL_Log("board: fetching replay run_id=%s",
+              net_board_sanitize(r.run_id, 24).c_str());
+    }
+    return;
+  }
+  if (board_upload_row_shown() && !board_transfer_busy() &&
+      (board_up_phase_ == 0 || board_up_phase_ == 3))
+    board_start_upload();
+}
+
+void Menu::board_poll() {
+  if (!board_net_) return;
+  // A pending auto-retry after an "unverified" upload (see the Error
+  // handler): poll peek (no re-mint) until a value different from the
+  // rejected one appears, then consume + resubmit it once; give up at the
+  // deadline.
+  if (board_up_retry_deadline_) {
+    std::string peek = net_board_verify_credential_peek();
+    if (!peek.empty() && peek != board_up_sent_cred_) {
+      board_up_retry_deadline_ = 0;
+      const NetIdentity &me = net_local_identity();
+      std::string fresh = net_board_verify_credential();  // consume the fresh one
+      board_up_sent_cred_ = fresh;
+      board_net_->submit(Replay::best_path(), me.platform, me.name, fresh);
+      board_up_phase_ = 1;
+      SDL_Log("board: retrying upload with a fresh credential (menu)");
+    } else if (currentTime >= board_up_retry_deadline_) {
+      board_up_retry_deadline_ = 0;
+      board_up_phase_ = 3;
+      board_up_reason_ = "unverified";
+      SDL_Log("board: no fresh credential before deadline (menu)");
+    }
+  }
+  NetBoard::Event ev;
+  while (board_net_->poll(ev)) {
+    switch (ev.kind) {
+      case NetBoard::Event::Top:
+        board_rows_ = ev.rows;
+        board_loading_ = false;
+        if (board_sel_ >= board_entry_count())
+          board_sel_ = board_entry_count() - 1;
+        break;
+      case NetBoard::Event::RankOf:
+        // Drop an answer for a board we have since flipped away from
+        // (players is echoed by the worker).
+        if (ev.players == 0 || ev.players == board_players_)
+          board_your_rank_ = ev.place;
+        break;
+      case NetBoard::Event::Seasons:
+        // The worker's list is newest-submission-first. Every season key
+        // is drawn on the SEASON row, so it passes the socket's security
+        // boundary first (net_board.h: worker strings reach the font only
+        // sanitized — the socket skips TLS verification). A legit worker's
+        // keys pass season_ok at submit, so sanitizing is the identity
+        // for real data; anything that folds to nothing is dropped. Keep
+        // this build's season at the front even before it has any rows (a
+        // fresh season must still be the default screen and reachable by
+        // cycling).
+        board_seasons_.clear();
+        for (const NetBoard::Season &in : ev.seasons) {
+          NetBoard::Season s = in;
+          s.season = net_board_sanitize(s.season, 22);
+          if (!s.season.empty()) board_seasons_.push_back(s);
+        }
+        {
+          bool have_own = false;
+          for (const NetBoard::Season &s : board_seasons_)
+            if (s.season == board_build_season_) { have_own = true; break; }
+          if (!have_own) {
+            NetBoard::Season own;
+            own.season = board_build_season_;
+            board_seasons_.insert(board_seasons_.begin(), own);
+          }
+        }
+        break;
+      case NetBoard::Event::Placed:
+        board_up_phase_ = 2;
+        board_up_rank_ = ev.place;
+        SDL_Log("board: placed #%d (menu)", ev.place);
+        board_request();  // the new row should appear in the list
+        break;
+      case NetBoard::Event::FetchDone: {
+        board_fetching_ = false;
+        // Downloaded replays are transient (download.nrp) and hand off to
+        // the ordinary R2 playback path; a parse failure just stays here.
+        if (GLGame *g =
+                GLGame::start_replay_playback(Replay::download_path())) {
+          request_state_change(g);
+          return;
+        }
+        SDL_Log("board: downloaded replay would not play");
+        break;
+      }
+      case NetBoard::Event::Error:
+        SDL_Log("board: error %s (menu)",
+                net_board_sanitize(ev.reason).c_str());
+        if (board_up_phase_ == 1 && !board_up_retried_ &&
+            ev.reason == "unverified") {
+          // The submit's own credential read already fired the next async
+          // mint, so poll peek for a fresh (different) one and retry ONCE.
+          // The socket stays open; the poll runs from the top of board_poll.
+          board_up_retried_ = true;
+          board_up_retry_deadline_ = currentTime + BOARD_UPLOAD_RETRY_TIMEOUT_MS;
+          SDL_Log("board: upload unverified - waiting for a fresh credential (menu)");
+        } else if (board_up_phase_ == 1) {
+          board_up_phase_ = 3;
+          board_up_reason_ = net_board_sanitize(ev.reason, 32);
+        } else if (board_fetching_) {
+          board_fetching_ = false;
+        } else {
+          board_loading_ = false;
+          board_error_ = true;
+        }
+        break;
+      case NetBoard::Event::Closed:
+        SDL_Log("board: connection closed (menu)");
+        board_loading_ = false;
+        board_fetching_ = false;
+        board_error_ = true;
+        if (board_up_phase_ == 1) {
+          board_up_phase_ = 3;
+          board_up_reason_ = "connection";
+        }
+        delete board_net_;
+        board_net_ = nullptr;
+        return;
+      default:
+        break;
+    }
+  }
+}
+
 void Menu::adjust_active_row(int delta, bool wrap) {
   const OptRow &r = opt_row(active_row_);
   int *idx, num;
@@ -942,6 +1465,7 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     case 1: idx = &smoothing_index_[r.player];   num = NUM_SMOOTHING;    break;
     case 2: idx = &camera_index_[r.player];      num = NUM_CAMERA;       break;
     case 3: idx = &star_density_index_;          num = NUM_STAR_DENSITY; break;
+    case 5: idx = &leaderboard_index_;           num = NUM_RECORD;       break;
     default:idx = &auto_record_index_;           num = NUM_RECORD;       break;
   }
   *idx += delta;
@@ -963,6 +1487,7 @@ void Menu::close_options() {
   g_prefs.p2_keys.rotate_view          = (camera_index_[1] == 1);
   g_prefs.star_density                 = STAR_DENSITY_MULTIPLIERS[star_density_index_];
   g_prefs.auto_record_replays          = (auto_record_index_ == 1);
+  g_prefs.leaderboard_prompts          = (leaderboard_index_ == 1);
   save_preferences();
   delete starfield;
   starfield = new GLStarfield(Point(default_world_width, default_world_height),
