@@ -150,6 +150,23 @@ function strip_name(name) {
 // id the platform_key is derived from; `verified` says whether the NAME is
 // platform-attested (iOS proves the account but Apple exposes no alias
 // lookup, so its claimed alias stays unverified — LEADERBOARD.md).
+// A verify that never answers must not wedge the submit: the client sees
+// nothing (no submit-ok, no err — field report: "stuck at UPLOADING") and
+// the socket just hangs. Race the platform call against a deadline and
+// treat a timeout as unverified — the client's unverified retry path then
+// handles it like any other stale-credential refusal.
+const VERIFY_TIMEOUT_MS = 10 * 1000;
+function with_timeout(p, platform) {
+  let timer;
+  const gate = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      console.log(`verify timeout platform=${platform}`);
+      resolve(null);
+    }, VERIFY_TIMEOUT_MS);
+  });
+  return Promise.race([p.finally(() => clearTimeout(timer)), gate]);
+}
+
 export async function verify_identity(env, platform, name, cred) {
   const claimed = strip_name(name);
   if (typeof cred !== "string" || !cred || cred.length > MAX_CRED) return null;
@@ -165,19 +182,19 @@ export async function verify_identity(env, platform, name, cred) {
              account: `fake:${claimed || "anon"}` };
   }
   if (platform === 2 /* NET_PLATFORM_STEAM */) {
-    const v = await verifySteamTicket(env, cred);
+    const v = await with_timeout(verifySteamTicket(env, cred), platform);
     if (!v) return null;
     return { platform, name: strip_name(v.persona || ""), verified: true,
              account: `steam:${v.steamid}` };
   }
   if (platform === 4 /* NET_PLATFORM_IOS */) {
-    const v = await verifyGameCenterCred(env, cred);
+    const v = await with_timeout(verifyGameCenterCred(env, cred), platform);
     if (!v) return null;
     return { platform, name: claimed, verified: false,
              account: `gc:${v.identifier}` };
   }
   if (platform === 5 /* NET_PLATFORM_ANDROID */) {
-    const v = await verifyPlayGamesCode(env, cred);
+    const v = await with_timeout(verifyPlayGamesCode(env, cred), platform);
     if (!v) return null;
     return { platform, name: strip_name(v.name || ""), verified: true,
              account: `pg:${v.playerId}` };
