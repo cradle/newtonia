@@ -30,7 +30,6 @@
 // verify modules are imported from the signal worker — one implementation,
 // two workers.
 
-import { read_secret } from "../../signal/src/secret.js";
 import { verifySteamTicket } from "../../signal/src/steam_verify.js";
 import { verifyPlayGamesCode } from "../../signal/src/play_games_verify.js";
 import { verifyGameCenterCred } from "../../signal/src/game_center_verify.js";
@@ -52,7 +51,6 @@ const KEEP_N = 100;
 // never dormancy-stripped; see scheduled().
 const SCORE_ONLY_AFTER_MS = 180 * 24 * 60 * 60 * 1000;
 
-// Chunk size for replay downloads (uploads are client-chunked the same).
 // Replay-download chunk size (server -> client). Kept well under 16 KB to
 // mirror the client's upload chunks: field evidence showed a ~60 KB binary
 // frame silently vanishing on the real edge in the upload direction
@@ -77,7 +75,7 @@ const CONN_MAX_FETCHES = 5;
 // Cap the reassembled-upload chunk COUNT, not just the byte total: a
 // 1-byte-frame flood otherwise pins tens of millions of tiny typed-array
 // views (pointer array + per-object overhead) far past the 32 MB size cap.
-// Legit clients use 60 KB chunks (~560 for a 32 MB max); 4096 is generous.
+// Legit clients use 15 KB chunks (~2200 for a 32 MB max); 4096 is generous.
 const MAX_UPLOAD_CHUNKS = 4096;
 // Idle sockets are closed after this long (per-connection DO — nothing to
 // hibernate for, the DO dies with the socket).
@@ -296,52 +294,9 @@ function blob_key_for(season, run_id) {
 
 // ---- worker entry --------------------------------------------------------
 
-// TEMPORARY beta-debug (remove with the SUBMIT_LIMIT bump): read the
-// Secrets Store binding and report presence + length + latency — never
-// the value. The field submit stall looks like a hanging .get(); probing
-// from the stateless worker AND from inside a Session DO (below) tells
-// us whether the hang is context-specific.
-async function probe_secret(env) {
-  const t0 = Date.now();
-  const outcome = await Promise.race([
-    read_secret(env.STEAM_WEBAPI_KEY)
-        .then((s) => (s ? `ok len=${s.length}` : "empty"))
-        .catch((e) => `threw ${e && e.message}`),
-    new Promise((r) => setTimeout(() => r("TIMEOUT"), 5000)),
-  ]);
-  return `store-read ${outcome} in ${Date.now() - t0}ms`;
-}
-
-// TEMPORARY beta-debug, same lifecycle: run the REAL Steam verify with a
-// bogus ticket. Valve answers bogus tickets quickly with an error (the
-// verify returns null), so `null in ~NNNms` = the outbound fetch path is
-// fine and TIMEOUT = the fetch to partner.steam-api.com is what hangs.
-async function probe_steam(env) {
-  const t0 = Date.now();
-  const outcome = await Promise.race([
-    verifySteamTicket(env, "deadbeef00")
-        .then((v) => (v ? "unexpected-ok" : "null (expected)"))
-        .catch((e) => `threw ${e && e.message}`),
-    new Promise((r) => setTimeout(() => r("TIMEOUT"), 8000)),
-  ]);
-  return `steam-verify ${outcome} in ${Date.now() - t0}ms`;
-}
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname === "/probe-secret")
-      return new Response(await probe_secret(env));
-    if (url.pathname === "/probe-secret-do") {
-      const session = env.SESSIONS.get(env.SESSIONS.newUniqueId());
-      return session.fetch(new Request("https://session/probe-secret"));
-    }
-    if (url.pathname === "/probe-steam")
-      return new Response(await probe_steam(env));
-    if (url.pathname === "/probe-steam-do") {
-      const session = env.SESSIONS.get(env.SESSIONS.newUniqueId());
-      return session.fetch(new Request("https://session/probe-steam"));
-    }
     if (url.pathname !== "/board")
       return new Response("newtonia-board", { status: 200 });
     if (request.headers.get("Upgrade") !== "websocket")
@@ -497,13 +452,6 @@ export class Session {
 
   async fetch(request) {
     const url = new URL(request.url);
-    // TEMPORARY beta-debug probe (remove with the SUBMIT_LIMIT bump):
-    // same store read as /probe-secret, but from INSIDE the DO — a
-    // context-specific .get() hang names itself here.
-    if (url.pathname === "/probe-secret")
-      return new Response(await probe_secret(this.env));
-    if (url.pathname === "/probe-steam")
-      return new Response(await probe_steam(this.env));
     if (url.pathname !== "/connect")
       return new Response("not found", { status: 404 });
     this.ip = url.searchParams.get("ip") || "local";
@@ -526,18 +474,6 @@ export class Session {
 
   async webSocketMessage(ws, message) {
     this.arm_idle(ws);
-    // TEMPORARY beta-debug (same lifecycle as SUBMIT_LIMIT): stamp every
-    // frame AT ARRIVAL — tail logs otherwise flush at event completion,
-    // which the field stall showed can lag a full minute behind reality
-    // (the pending submit event's logs appeared only when Escape closed
-    // the socket). t= for text frames, bin= for chunk frames.
-    if (typeof message === "string") {
-      let t = "?";
-      try { t = JSON.parse(message).t || "?"; } catch (e) {}
-      console.log(`ws-in: t=${t}`);
-    } else {
-      console.log(`ws-in: bin=${message.byteLength}`);
-    }
     try {
       if (typeof message === "string") await this.on_json(ws, message);
       else await this.on_chunk(ws, message);
@@ -557,16 +493,6 @@ export class Session {
     let msg;
     try { msg = JSON.parse(text); } catch (e) { return this.fail(ws, "bad-frame"); }
     if (!msg || typeof msg !== "object") return this.fail(ws, "bad-frame");
-
-    // TEMPORARY beta-debug (same lifecycle as the SUBMIT_LIMIT bump): the
-    // /probe-steam twins proved the Valve fetch fine from fetch-context in
-    // both the worker and this DO — this frame runs it from the HIBERNATABLE
-    // webSocketMessage context, which is where the real submit's verify
-    // hangs and the one context the HTTP probes cannot reach.
-    if (msg.t === "probe-steam") {
-      this.send(ws, { t: "probe", result: await probe_steam(this.env) });
-      return;
-    }
 
     if (msg.t === "seasons") {
       // Season browser (LEADERBOARD.md): the seasons that exist, newest
@@ -677,8 +603,6 @@ export class Session {
         return this.err(ws, "unverified");
       }
       this.upload = { size, identity, chunks: [], received: 0 };
-      console.log(
-          `submit: verified platform=${identity.platform} size=${size}`);
       this.send(ws, { t: "submit-ok" });
       return;
     }
@@ -746,15 +670,10 @@ export class Session {
       return this.err(ws, v.reason);
     }
     const hd = v.header;
-    // Checkpoint logs (field debugging of a silent submit stall): each
-    // step below awaits a platform service, so a hang between two
-    // checkpoints names the culprit in the tail.
-    console.log(`submit: validated season=${hd.season} size=${blob.length}`);
     const db = this.env.DB;
     await ensure_schema(db);
     const players = hd.player_count;
     const key = await platform_key(identity.account);
-    console.log(`submit: schema+key ready`);
 
     // Same run resubmitted (clean-abandon uploaded, then resumed and
     // improved): upsert only a strictly better score.
@@ -777,7 +696,6 @@ export class Session {
 
     const blob_key = blob_key_for(hd.season, hd.run_id);
     await this.env.REPLAYS.put(blob_key, blob);
-    console.log(`submit: blob stored ${blob_key}`);
     // Atomic supersede: ON CONFLICT on the UNIQUE (season, players,
     // platform_key) index updates the player's existing row to this run
     // in one statement, but ONLY when this score is strictly better —

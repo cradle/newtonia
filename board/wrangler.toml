@@ -72,14 +72,6 @@ new_sqlite_classes = ["Session", "Limiter"]
 [env.beta]
 name = "newtonia-board-beta"
 
-# TEMPORARY (2026-08-01, field-debugging the silent submit stall): widen
-# the per-IP submit budget on BETA ONLY so repeated diagnostic uploads
-# from one machine don't trip the 6/hour window between attempts. REMOVE
-# once the stall is diagnosed — beta should normally match production's
-# budgets, and SUBMIT_LIMIT must never be set on the production env.
-[env.beta.vars]
-SUBMIT_LIMIT = "50"
-
 [env.beta.triggers]
 crons = ["17 4 * * *"]
 
