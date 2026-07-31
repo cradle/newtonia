@@ -1,0 +1,68 @@
+name = "newtonia-board"
+main = "src/worker.js"
+compatibility_date = "2026-06-01"
+
+# NOTE: no [limits] cpu_ms block — a paid-plan feature; the Free plan
+# rejects the deploy outright (same lesson as signal/wrangler.toml).
+
+# Daily retention sweep (LEADERBOARD.md): demote rows below KEEP_N to
+# score-only, strip blobs from stale seasons.
+[triggers]
+crons = ["17 4 * * *"]
+
+# One-time setup before the first deploy (see README.md):
+#   npx wrangler d1 create newtonia-board        -> paste database_id below
+#   npx wrangler r2 bucket create newtonia-replays
+# `wrangler dev --local` ignores the id (local sqlite/blob simulators).
+[[d1_databases]]
+binding = "DB"
+database_name = "newtonia-board"
+database_id = "00000000-0000-0000-0000-000000000000" # placeholder until created
+
+[[r2_buckets]]
+binding = "REPLAYS"
+bucket_name = "newtonia-replays"
+
+[[durable_objects.bindings]]
+name = "SESSIONS"
+class_name = "Session"
+
+[[durable_objects.bindings]]
+name = "LIMITS"
+class_name = "Limiter"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Session", "Limiter"]
+
+# ---- beta environment ---------------------------------------------------
+# Auto-deployed by deploy-board.yml on master pushes touching board/ (and
+# the shared verify modules); production stays the top-level config above.
+# A named env is a SEPARATE Worker script with its own DO namespaces and
+# secrets — and its own D1/R2 resources, so beta rows and blobs never mix
+# with production's. Point a build at it with
+#   NEWTONIA_BOARD_URL=wss://newtonia-board-beta.gfmcc.workers.dev/board
+# DO bindings are NOT inherited by named envs; [[migrations]] are
+# top-level-only and apply to each script on deploy.
+[env.beta]
+name = "newtonia-board-beta"
+
+[env.beta.triggers]
+crons = ["17 4 * * *"]
+
+[[env.beta.d1_databases]]
+binding = "DB"
+database_name = "newtonia-board-beta"
+database_id = "00000000-0000-0000-0000-000000000001" # placeholder until created
+
+[[env.beta.r2_buckets]]
+binding = "REPLAYS"
+bucket_name = "newtonia-replays-beta"
+
+[[env.beta.durable_objects.bindings]]
+name = "SESSIONS"
+class_name = "Session"
+
+[[env.beta.durable_objects.bindings]]
+name = "LIMITS"
+class_name = "Limiter"
