@@ -144,6 +144,21 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
   attestation story exists (no Steam/Play Games/Game Center credential
   in a browser), and enabling later is a `net_board_web.cpp` backend
   plus the factory — the UI lights up by itself.
+- **The leaderboard screen shows the player's own rank, on-board or off**
+  (decided with Glenn 2026-07-31). Opening the screen sends the player's
+  local best score (read from `best.nrp`'s header — nothing uploads)
+  in a `rank-of` query alongside the `top` fetch, and a footer line
+  renders the answer: `YOUR BEST: #214`. A player whose row is on the
+  board gets their row highlighted instead; a player with no recorded
+  best gets no footer. This is a read, not a submission, so the
+  attestation requirement doesn't apply — but a cheat-flagged best is
+  excluded client-side (it could never have been submitted, so ranking
+  it against the board would be a lie). Server cost is one D1 count on
+  the index the rank listing already uses; client cost is one more JSON
+  frame on the already-open socket — it is the `qualify` computation
+  reused for display. The motivation is the off-board majority: a
+  top-100 most players will never touch reads as someone else's game,
+  while "#214" gives everyone a ladder to climb.
 - **Downloaded replays are transient.** A leaderboard row's replay
   downloads to `replays/download.nrp`, plays via the existing
   `start_replay_playback` path, and is overwritten by the next download.
@@ -160,6 +175,10 @@ client → {t:"top", season, players, count}            // count ≤ 100
 worker → {t:"top", rows:[{rank, name, platform, verified, score,
                           generation, duration_ms, date, has_replay,
                           run_id}]}
+
+client → {t:"rank-of", season, players, score}        // display only —
+worker → {t:"rank-of", place}                         // one D1 count on
+                                                      // the rank index
 
 client → {t:"submit", size, platform, name, cred}     // size ≤ 32 MB
 worker → {t:"submit-ok"}                              // or {t:"error", reason}
@@ -261,12 +280,15 @@ run never prompts and a worker-down run degrades silently.
 drivers); field pass on one desktop + one Android device.
 
 ### L3 — leaderboard screen + watch
-LEADERBOARD menu row, list screen, SOLO/CO-OP toggle, download →
-playback via `download.nrp`. e2e extends: seed the local worker with two
-rows, open the screen, select, assert playback reaches the world (the
-replay_playback.sh technique).
+LEADERBOARD menu row, list screen, SOLO/CO-OP toggle, the `rank-of`
+footer (`YOUR BEST: #214`, own row highlighted when on-board, absent
+with no local best), download → playback via `download.nrp`. e2e
+extends: seed the local worker with rows above the player's best, open
+the screen, assert the footer rank, select a row, assert playback
+reaches the world (the replay_playback.sh technique).
 **Exit**: keyboard/controller/touch all drive list → watch → back; a
-score-only row is visibly unselectable; screenshots verified headless.
+score-only row is visibly unselectable; the footer shows the seeded
+rank; screenshots verified headless.
 
 ### L4 — deploy + season hygiene
 `deploy-board.yml` mirroring deploy-signal.yml (tags → prod, master
@@ -284,6 +306,6 @@ the social deterrent (every row is watchable) is the v1 defense.
 
 ## Open questions
 
-- **Show the player's own rank when off-board** (a `rank-of {score}`
-  query on the leaderboard screen: "YOUR BEST: #214")? Cheap to add in
-  L3, skippable.
+None — every question raised during planning has been resolved into the
+decisions above (prompt default YES, attestation required, co-op credit
+to the submitter, no web in v1, rank-of footer included).
