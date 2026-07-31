@@ -43,7 +43,9 @@ import {
 // module — a bare number export fails the deploy with "Incorrect type for
 // map entry".)
 const KEEP_N = 100;
-// Seasons with no submission newer than this lose all blobs (score-only).
+// Seasons with no submission newer than this lose all blobs (score-only) —
+// except the live season (newest submission per players count), which is
+// never dormancy-stripped; see scheduled().
 const SCORE_ONLY_AFTER_MS = 180 * 24 * 60 * 60 * 1000;
 
 // Chunk size for replay downloads (uploads are client-chunked the same).
@@ -281,14 +283,30 @@ export default {
 
   // Retention cron (LEADERBOARD.md): demote rows below KEEP_N to
   // score-only, and strip blobs from seasons whose newest submission is
-  // older than SCORE_ONLY_AFTER_MS.
+  // older than SCORE_ONLY_AFTER_MS — EXCEPT the live season. The live
+  // season per players count (the one with the newest submission anywhere)
+  // is what players are actually browsing, so its top-KEEP_N replays stay
+  // watchable no matter how long the game goes quiet; the dormancy strip
+  // exists to reclaim R2 from seasons a release has left BEHIND, not to
+  // age out the board still on screen. The live season still gets the
+  // ordinary below-KEEP_N trim.
   async scheduled(event, env) {
     await ensure_schema(env.DB);
     const boards = await env.DB.prepare(
         `SELECT DISTINCT season, players FROM scores`).all();
+    // The live season for each players count.
+    const live = new Map();
+    for (const players of [1, 2]) {
+      const r = await env.DB.prepare(
+          `SELECT season FROM scores WHERE players = ?1
+           ORDER BY submitted_at DESC LIMIT 1`).bind(players).first();
+      if (r) live.set(players, r.season);
+    }
     let demoted = 0;
     for (const b of boards.results || []) {
-      const stale = await env.DB.prepare(
+      const stale = live.get(b.players) === b.season
+          ? null
+          : await env.DB.prepare(
           `SELECT newest FROM (SELECT MAX(submitted_at) AS newest FROM scores
              WHERE season = ?1 AND players = ?2)
            WHERE newest < ?3`)

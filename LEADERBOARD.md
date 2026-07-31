@@ -127,8 +127,16 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
   season+board keep their replay in R2; a row demoted below the line has
   its blob deleted (the score row stays — REPLAY.md's "old seasons keep
   replays best-effort, eventually score-only"). A daily Cron Trigger
-  sweeps; seasons older than `SCORE_ONLY_AFTER` (180 days) drop all blobs.
-  Bounds R2 to `KEEP_N × seasons × ~5 MB` — far inside the free tier.
+  sweeps; a season with no submission in `SCORE_ONLY_AFTER` (180 days)
+  drops all blobs — **except the live season** (the one with the newest
+  submission, per players count), which is never dormancy-stripped no
+  matter how long the game goes quiet (decided with Glenn 2026-07-31: the
+  board players are actually browsing keeps its replays watchable; the
+  strip reclaims R2 from seasons a release left behind, not the current
+  one). The live season still gets the below-`KEEP_N` trim. Covered by
+  `board/test/retention_test.mjs` (drives the real cron handler against
+  in-memory D1/R2 fakes). Bounds R2 to `KEEP_N × seasons × ~5 MB` — far
+  inside the free tier.
 - **Verification field lives in the submit envelope, not the `.nrp`.** A
   reserved `verify` member of the submit JSON frame (absent in v1) is
   where R5's input-log proof slots in without a file-format break —
@@ -348,9 +356,10 @@ the real `database_id`, which the deploy step injects over the config's
 placeholder (the placeholder stays in git; local `wrangler dev` ignores
 it). The token needs D1:Edit + R2:Edit for that. Platform verify secrets
 are still set per environment by hand (secret values — nothing can invent
-them). The retention cron is code-reviewed and locally triggerable
-(`/cdn-cgi/handler/scheduled`); a seeded past-season verification against
-real D1 is owed at first deploy.
+them). The retention cron is unit-tested (`test/retention_test.mjs`
+drives the real handler — live-season exemption, KEEP_N trim, dormant
+strip) and locally triggerable (`/cdn-cgi/handler/scheduled`); a seeded
+past-season verification against real D1 is owed at first deploy.
 **Exit** (owed at first deploy): a `v*.*.*` tag deploys both workers,
 auto-creating resources; beta isolation confirmed (beta rows never appear
 in prod).
