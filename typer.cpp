@@ -287,8 +287,14 @@ void Typer::init_meshes() {
     mb.vertex(0,TH*0.35f); mb.vertex(TW,TH*0.35f);
     mb.end(); upload('=', mb); }
 
-  { MeshBuilder mb; mb.begin(GL_POINTS); mb.color(1,1,1);
-    mb.vertex(TW*0.5f, TH*0.125f);
+  // A short baseline dash, NOT a GL_POINTS vertex: an unsized point
+  // rasterizes as one device pixel — invisible on retina/high-DPI (the
+  // leaderboard SEASON row was the first prominent dotted string and its
+  // dots simply didn't show). Lines go through the thickening path on
+  // every platform. (The '?' glyph's dot survives as a point only because
+  // it passes an explicit point size.)
+  { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
+    mb.vertex(TW*0.38f, TH*0.125f); mb.vertex(TW*0.62f, TH*0.125f);
     mb.end(); upload('.', mb); }
 
   { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
