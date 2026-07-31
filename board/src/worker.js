@@ -53,7 +53,12 @@ const KEEP_N = 100;
 const SCORE_ONLY_AFTER_MS = 180 * 24 * 60 * 60 * 1000;
 
 // Chunk size for replay downloads (uploads are client-chunked the same).
-const CHUNK = 64 * 1024;
+// Replay-download chunk size (server -> client). Kept well under 16 KB to
+// mirror the client's upload chunks: field evidence showed a ~60 KB binary
+// frame silently vanishing on the real edge in the upload direction
+// (net_board_rtc.cpp CHUNK), and the download direction gets the same
+// safety margin rather than waiting to find out.
+const CHUNK = 15 * 1024;
 
 // Display-name bound — mirrors the signal worker's MAX_IDENTITY_NAME and
 // the game's NET_IDENTITY_NAME_MAX so no truncation disagreement exists.

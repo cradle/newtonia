@@ -24,7 +24,15 @@
 
 namespace {
 
-const size_t CHUNK = 60 * 1024;  // < the worker's 64 KB frame expectation
+// Upload chunk size. Well under 16 KB, NOT the worker's 64 KB frame cap:
+// field evidence (beta, 2026-08-01) showed a 60 KB binary frame never
+// reaching the worker's Session DO over the real Cloudflare edge — small
+// text frames traversed fine, then the first big binary frame and
+// EVERYTHING after it (including the submit-end text frame) silently
+// vanished, wedging the upload at 100%. Locally (wrangler dev) any size
+// works, which is why the e2e never caught it. Smaller frames also keep
+// libdatachannel's WS transport below common fragmentation thresholds.
+const size_t CHUNK = 15 * 1024;
 
 class RtcBoard : public NetBoard {
  public:
