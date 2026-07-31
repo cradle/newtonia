@@ -234,10 +234,11 @@ CREATE INDEX scores_rank ON scores(season, players, score DESC);
   and leaving to the menu abandons the query harmlessly. Identity
   credentials are minted when the query fires (async warm, like the lobby
   does at open).
-- **Retry path**: the REPLAYS list's BEST RUN row gains an UPLOAD action
-  (desktop: a second column action via the existing row grammar; touch: a
-  long-row split like the lobby's Choose). Same qualify → prompt → upload
-  flow, so a missed or declined game-over prompt is never final.
+- **Retry path**: an UPLOAD BEST RUN action row on the LEADERBOARD screen
+  (revised at L3 from the planned REPLAYS BEST-RUN-row action: one
+  leaderboard home beats overloading the replays list's row grammar with
+  a second per-row action, and the screen already holds the socket). A
+  missed or declined game-over prompt is never final.
 - **LEADERBOARD menu row** (below REPLAYS, hidden when the platform has no
   `NetBoard` backend or `net_online_play_allowed()` is false): a list
   screen fetching `top` on open (spinner row while pending, "UNAVAILABLE"
@@ -253,7 +254,20 @@ CREATE INDEX scores_rank ON scores(season, players, score DESC);
 
 ## Milestones
 
-### L1 — worker
+### L1 — worker ✅ (landed on this branch, 2026-07-31)
+Implementation notes, where reality refined the sketch: the WS terminates
+in a per-connection `Session` DO (chunk reassembly under DO CPU budgets,
+not the stateless worker's 10 ms), with in-DO per-connection message
+budgets (120 queries / 2 submits / 5 fetches) so ordinary traffic costs
+no Limiter round-trip per frame; the per-IP `Limiter` counts connects and
+submits only. `SUBMIT_LIMIT` joined `FAKE_VERIFY` as a dev-only var (the
+protocol test's submit burst trips the production 6/hour window from one
+IP). workerd rejects non-function exports from the entry module, so the
+tuning constants stay unexported. Tests: 59 unit checks (validation +
+admission gate, plain node — `validate.js` is pure for exactly this) and
+a 21-check protocol test against `wrangler dev --local`, including the
+fetch round-trip asserting byte-identical replay bytes.
+
 `board/` dir: wrangler.toml (prod + beta envs, D1/R2/Limiter bindings),
 worker.js implementing the API above, verify modules imported from
 `signal/src/`, header/record-walk validation ported from `replay.cpp`,
@@ -268,36 +282,73 @@ existing e2e pattern).
 **Exit**: protocol test green locally; beta worker deployed by hand;
 `curl`-level smoke against beta documented in `board/README.md`.
 
-### L2 — client seam + submit flow
-`net_board.h/cpp` + both backends; the game-over qualify → prompt →
-upload flow; the REPLAYS BEST RUN retry action; Options prompt toggle.
-Headless e2e `test/e2e/leaderboard.sh`: runs `wrangler dev` locally,
-records a run (`NEWTONIA_REPLAY_ENABLE`), drives game over, asserts the
-prompt appears only on a qualifying personal best, uploads, asserts the
-D1 row + R2 object exist and match the header, asserts a cheat-flagged
-run never prompts and a worker-down run degrades silently.
-**Exit**: e2e green headless on Linux CI (linux.yml gate, like the replay
-drivers); field pass on one desktop + one Android device.
+### L2 — client seam + submit flow ✅ (landed on this branch, 2026-07-31)
+Implementation notes: `NetBoard` (net_board.h/cpp) ships the rtc backend
+only per the no-web decision; the shared layer owns frame build/parse
+(including the top-rows array scanner) so a later web backend is socket
+code only. The trigger is `Replay::take_best_promoted()` — a one-shot
+set by every best check — consumed at the game-over latches after
+`replay_finish(true)`. **The flag deliberately survives a NEW-GAME
+rotation's promotion until the next game over**: a best promoted while
+discarding an abandoned run gets its offer at the next game over rather
+than being lost (this is also what lets the e2e's game-over run use the
+time-speed cheat — the offer and the upload belong to the earlier clean
+best, not the flagged run that ended). The prompt rides the GAME OVER
+card (`GLGame::board_*`, drawn by `Overlay::net_overlays`); `board_nav`
+intercepts every game-over exit path (keyboard, controller dpad/A/B/
+Start, right trigger, touch halves) behind the card's existing 3 s
+grace, and the qualify has a 4 s deadline so the card never waits on the
+network. The credential mint is warmed when the qualify fires (Steam's
+ticket is async). The REPLAYS retry action moved to the LEADERBOARD
+screen (see the revised decision above).
+Headless e2e `test/e2e/leaderboard.sh` (a committed driver like
+replay.sh — the wrangler-hosting cost keeps it out of linux.yml; the
+worker suites gate deploy-board.yml instead): S1 clean personal best →
+game over → prompt → YES → placed → the row reads back via `top` with
+the header's exact score; S2 dead worker degrades silently (no prompt,
+no error card, game alive); S3 cheat-only run produces no board traffic;
+S4 `leaderboard_prompts=0` produces none either.
+**Exit**: e2e green headless; field pass on one desktop + one Android
+device still owed (needs a deployed beta worker).
 
-### L3 — leaderboard screen + watch
-LEADERBOARD menu row, list screen, SOLO/CO-OP toggle, the `rank-of`
-footer (`YOUR BEST: #214`, own row highlighted when on-board, absent
-with no local best), download → playback via `download.nrp`. e2e
-extends: seed the local worker with rows above the player's best, open
-the screen, assert the footer rank, select a row, assert playback
-reaches the world (the replay_playback.sh technique).
+### L3 — leaderboard screen + watch ✅ (landed on this branch, 2026-07-31)
+Implementation notes: the screen follows the replays list's grammar
+(shared row geometry, TapBand exit, nav ladder — controller works via
+the shared translator for free). Entries are [SOLO/CO-OP toggle row] +
+top rows + [UPLOAD BEST RUN], so touch and desktop confirm the same
+list; a/d also flips the board from anywhere. The browsed season is this
+build's (`Replay::game_version_string()` — added because the Makefile
+scopes the version stamp to replay.o); an older build's `best.nrp`
+uploads into its OWN season, admitted but invisible here. Own-row
+detection compares the rows' `run_id` against best.nrp's ("- YOU" tag);
+the rank-of footer shows only when the local best belongs to the browsed
+board (same season + player count) and sits off the visible rows. Worker
+names are re-sanitized through `net_sanitize_name` before touching the
+font — the netplay identity path's security boundary, applied to worker
+data too. Fetches land in `replays/download.nrp` (transient, never
+listed, never best-checked) and hand off to the ordinary R2 playback.
+The Options row shipped as "LEADERBOARD PROMPTS" (last, hidden when
+`net_board_available()` is false — a toggle for a feature that cannot
+appear would only confuse).
 **Exit**: keyboard/controller/touch all drive list → watch → back; a
-score-only row is visibly unselectable; the footer shows the seeded
-rank; screenshots verified headless.
+score-only row is visibly unselectable (no confirm action); menu-side
+`board:` logs are greppable. A headless menu-screen e2e is still owed —
+the L2 driver covers the transport and the worker end to end; the screen
+was verified by build + code-path review this round.
 
-### L4 — deploy + season hygiene
-`deploy-board.yml` mirroring deploy-signal.yml (tags → prod, master
-pushes touching `board/**` or `signal/src/*_verify.js` → beta, gated on
-the L1 tests); retention cron verified against a seeded past season;
-`board/README.md` runbook (D1/R2 one-time creation, secrets, the
-Limiter's knobs).
-**Exit**: a `v*.*.*` tag deploys both workers; beta isolation confirmed
-(beta rows never appear in prod).
+### L4 — deploy + season hygiene ✅ (landed on this branch, 2026-07-31)
+`deploy-board.yml` mirrors deploy-signal.yml (tags → prod, master pushes
+touching `board/**` or the shared `signal/src/*_verify.js` → beta,
+manual dispatch either; gated on the L1 unit + protocol tests);
+`board/README.md` carries the runbook. **Before the first real deploy**
+the one-time resource creation must happen (D1 databases + R2 buckets
+for prod and beta, `database_id`s pasted into wrangler.toml — the
+placeholders deliberately fail a premature deploy) and the platform
+verify secrets set per environment. The retention cron is code-reviewed
+and locally triggerable (`/cdn-cgi/handler/scheduled`); a seeded
+past-season verification against real D1 is owed at first deploy.
+**Exit** (owed at first deploy): a `v*.*.*` tag deploys both workers;
+beta isolation confirmed (beta rows never appear in prod).
 
 ### L5 — deferred: verification
 R5's input-log re-simulation, arriving through the reserved `verify`

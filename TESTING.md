@@ -83,6 +83,22 @@ Limiter DO between heavy runs.
 `SIGNAL_WS=wss://... node test/pv_replay_test.mjs` points a test at another
 relay (e.g. production after a worker deploy).
 
+The **leaderboard worker** (`board/`, LEADERBOARD.md) mirrors the pattern —
+see `board/README.md`:
+
+```sh
+cd board
+node test/validate_test.mjs        # .nrp header/record-framing validation (unit)
+node test/identity_gate_test.mjs   # attestation admission gate (unit)
+# Protocol test against the real worker under miniflare (local D1/R2):
+npx wrangler@4 dev --local --port 8788 --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 &
+node test/board_test.mjs           # submit/supersede/dedup/fetch round-trip
+```
+
+Both suites gate `deploy-board.yml`. `SUBMIT_LIMIT` widens the per-IP
+submit window for the test's burst; like `FAKE_VERIFY`, never set it in
+production.
+
 ## 4. End-to-end drivers (`test/e2e/`)
 
 Two-instance gameplay regressions under Xvfb: real windows, real input via
@@ -259,6 +275,18 @@ test/e2e/replay.sh   # REPLAY.md R1 exit criteria, solo (no relay needed):
                      # cheat runs and crashed (stale-header) runs never do;
                      # game over patches the header (ENDED) and deletes the
                      # save. Headers/records parsed by test/e2e/replay_check.py.
+test/e2e/leaderboard.sh # LEADERBOARD.md L2 exit criteria (solo; starts a
+                     # local board worker itself unless NEWTONIA_BOARD_URL
+                     # points at one — needs node/npx): a clean personal
+                     # best + game over -> qualify -> the UPLOAD TO
+                     # LEADERBOARD? prompt -> YES uploads best.nrp, the
+                     # worker places it and the row reads back with the
+                     # header's exact score; a dead worker degrades
+                     # silently (no prompt, no error card); a cheat-only
+                     # run and leaderboard_prompts=0 produce no board
+                     # traffic at all. The scoring spray retries until the
+                     # run actually scores (a fresh world spawns asteroids
+                     # clear of the ship).
 test/e2e/replay_failures.sh # the recorder/reader paths that only run once
                      # something has already gone wrong (solo, no relay), each
                      # a bug that shipped. S1: a resume whose leftover ends in
