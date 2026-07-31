@@ -97,10 +97,25 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
   never displayed, nothing persisted client-side (XR-014 posture).
 - **Seasons = the header's `game_version` string, verbatim** (the 23-char
   season key REPLAY.md locked). The worker groups rows by exact string;
-  the "current season" is simply the version the submitting build stamps.
+  the "current season" is simply the string the submitting build stamps.
   No server-side season table to maintain — a release that changes the
   stamp opens its season implicitly. Solo and co-op are **separate boards**
   (`player_count` 1 vs 2 — scores aren't comparable across them).
+- **The stamp is the root `SEASON` file, bumped deliberately** (decided
+  with Glenn 2026-07-31; starts at `s1`): seasons rotate when the game
+  changes significantly, not on release cadence — at v1.48.x per-tag or
+  per-minor buckets would reset boards nobody wanted reset, and per-major
+  would never reset at all. All four deploy workflows stamp the checked-out
+  `SEASON` content on **tag builds only**; manual dispatches keep their
+  honest non-release buckets (branch name; iOS beta-worker keeps its
+  v<maj.min>.9xx staging sentinel, Android dispatch its 0.0.1-sha) and dev
+  builds keep `git describe`, so ad-hoc builds never chart on the live
+  board. The bump test: would the change make older replays play back
+  wrong, or older scores unfair to compete against? Then bump — a one-line
+  PR editing `SEASON` (single line, ≤23 chars, whitespace-stripped on
+  read). Because a season now spans builds, in-season replay playback
+  across patch releases is expected — another reason the bump rule tracks
+  gameplay-affecting changes.
 - **Dedup: one row per run, one row per player.** Primary key
   `(season, run_id)` — resubmitting the same run (e.g. after a clean
   abandon was uploaded, then resumed and improved) upserts if the score is

@@ -36,12 +36,17 @@ jobs:
           ~/emsdk/emsdk activate latest
 
       - name: Build WebAssembly
-        env:
-          # Stamped into replay headers (REPLAY.md R4: leaderboard seasons
-          # bucket by release). The checkout is shallow with no tags, so pass
-          # it rather than leaving the Makefile to `git describe`.
-          NEWTONIA_VERSION: ${{ github.ref_name }}
         run: |
+          # Stamped into replay headers (REPLAY.md R4: leaderboard seasons
+          # bucket by the SEASON file, bumped deliberately on significant
+          # gameplay changes — LEADERBOARD.md season decision). Tag builds
+          # stamp the SEASON file; a manual dispatch stamps the branch name,
+          # the same honest non-release bucket as deploy-steam/ios.
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            export NEWTONIA_VERSION="$(tr -d '[:space:]' < SEASON)"
+          else
+            export NEWTONIA_VERSION="${{ github.ref_name }}"
+          fi
           source ~/emsdk/emsdk_env.sh
           emcc --version
           # The FREE public channel ships netplay force-disabled
@@ -87,12 +92,17 @@ jobs:
       # them). Same origin allowlist covers both projects
       # (metonymous.itch.io + the itch.zone/hwcdn iframe hosts).
       - name: Build WebAssembly (netplay, paid online project)
-        env:
-          # Stamped into replay headers (REPLAY.md R4: leaderboard seasons
-          # bucket by release). The checkout is shallow with no tags, so pass
-          # it rather than leaving the Makefile to `git describe`.
-          NEWTONIA_VERSION: ${{ github.ref_name }}
         run: |
+          # Stamped into replay headers (REPLAY.md R4: leaderboard seasons
+          # bucket by the SEASON file, bumped deliberately on significant
+          # gameplay changes — LEADERBOARD.md season decision). Tag builds
+          # stamp the SEASON file; a manual dispatch stamps the branch name,
+          # the same honest non-release bucket as deploy-steam/ios.
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            export NEWTONIA_VERSION="$(tr -d '[:space:]' < SEASON)"
+          else
+            export NEWTONIA_VERSION="${{ github.ref_name }}"
+          fi
           source ~/emsdk/emsdk_env.sh
           make web-clean
           make web

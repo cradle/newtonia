@@ -69,13 +69,19 @@ jobs:
             VERSION="0.0.1-${SHORT_SHA}"
           fi
           # Stamped into replay headers by the root CMakeLists (REPLAY.md R4:
-          # seasons bucket by release). NOT the AAB's versionName: Play needs
-          # a bare dotted number, while the season key has to be the SAME
-          # string on every platform or one release splits into two buckets —
-          # and headers are write-once, so a mismatch can never be corrected.
-          # deploy-steam/itch stamp the tag verbatim ("v1.47.0"), so keep the
-          # tag's leading "v" here.
-          export NEWTONIA_VERSION="v${VERSION:-0.0.1}"
+          # seasons bucket by the SEASON file, bumped deliberately on
+          # significant gameplay changes — LEADERBOARD.md season decision).
+          # NOT the AAB's versionName: Play needs a bare dotted number, while
+          # the season key has to be the SAME string on every platform or one
+          # release splits into two buckets — and headers are write-once, so
+          # a mismatch can never be corrected. Tag builds stamp the SEASON
+          # file (like deploy-steam/itch/ios); non-tag dispatches keep the
+          # honest non-release 0.0.1-<sha> string.
+          if [[ "$REF" == refs/tags/v* ]]; then
+            export NEWTONIA_VERSION="$(tr -d '[:space:]' < ../SEASON)"
+          else
+            export NEWTONIA_VERSION="v${VERSION:-0.0.1}"
+          fi
           ./gradlew bundleRelease \
             -Pandroid.injected.signing.store.file="$(pwd)/release.jks" \
             -Pandroid.injected.signing.store.password="${SIGNING_STORE_PASSWORD}" \
