@@ -115,6 +115,19 @@ jobs:
           echo "target=$TARGET" >> "$GITHUB_OUTPUT"
           echo "deploying: $TARGET"
 
+      # Deploy prerequisites. Unlike the board worker (D1/R2 that must be
+      # created), the signal worker's only infra is its Durable Objects,
+      # which wrangler auto-provisions from [[migrations]] — so this just
+      # fail-fasts on missing creds and guards against a future un-bootstrapped
+      # resource type (see signal/scripts/ensure-resources.sh). Kept as a
+      # step for parity with deploy-board.yml.
+      - name: Ensure infra
+        working-directory: signal
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bash scripts/ensure-resources.sh "${{ steps.target.outputs.target }}"
+
       # Production is the TOP-LEVEL wrangler environment (a plain
       # `wrangler deploy`, exactly what the manual flow always ran), so
       # automating it changed nothing about the live worker. Beta is the
