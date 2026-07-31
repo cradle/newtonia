@@ -222,8 +222,13 @@ for i in $(seq 1 60); do
   [ "$i" = 60 ] && fail "S5: reject worker never came up"
   sleep 2
 done
+# Distinct name = distinct FAKE_VERIFY account: the reject worker shares
+# the main worker's local D1 (both `wrangler dev --local` from board/), so
+# submitting as S1's account would race its score into a "not-best"
+# refusal whenever S5's random spray scored lower.
 use_home s5
-P=$(NEWTONIA_BOARD_URL="$REJECT_URL" launch_game s5); sleep 2; W=$(win)
+P=$(NEWTONIA_NET_NAME=E2ES5 NEWTONIA_BOARD_URL="$REJECT_URL" \
+    launch_game s5); sleep 2; W=$(win)
 clean_best "$W"
 crash_to_game_over "$W" "$OUT/s5.log"
 wait_log "$OUT/s5.log" "board: would place" 15 || fail "S5: no prompt"
