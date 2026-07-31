@@ -541,6 +541,16 @@ export class Session {
     try { msg = JSON.parse(text); } catch (e) { return this.fail(ws, "bad-frame"); }
     if (!msg || typeof msg !== "object") return this.fail(ws, "bad-frame");
 
+    // TEMPORARY beta-debug (same lifecycle as the SUBMIT_LIMIT bump): the
+    // /probe-steam twins proved the Valve fetch fine from fetch-context in
+    // both the worker and this DO — this frame runs it from the HIBERNATABLE
+    // webSocketMessage context, which is where the real submit's verify
+    // hangs and the one context the HTTP probes cannot reach.
+    if (msg.t === "probe-steam") {
+      this.send(ws, { t: "probe", result: await probe_steam(this.env) });
+      return;
+    }
+
     if (msg.t === "seasons") {
       // Season browser (LEADERBOARD.md): the seasons that exist, newest
       // submission first, across BOTH boards (the client's SOLO/CO-OP
