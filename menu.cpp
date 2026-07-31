@@ -1374,10 +1374,21 @@ void Menu::board_poll() {
           board_your_rank_ = ev.place;
         break;
       case NetBoard::Event::Seasons:
-        // The worker's list is newest-submission-first. Keep this build's
-        // season at the front even before it has any rows (a fresh season
-        // must still be the default screen and reachable by cycling).
-        board_seasons_ = ev.seasons;
+        // The worker's list is newest-submission-first. Every season key
+        // is drawn on the SEASON row, so it passes the socket's security
+        // boundary first (net_board.h: worker strings reach the font only
+        // sanitized — the socket skips TLS verification). A legit worker's
+        // keys pass season_ok at submit, so sanitizing is the identity
+        // for real data; anything that folds to nothing is dropped. Keep
+        // this build's season at the front even before it has any rows (a
+        // fresh season must still be the default screen and reachable by
+        // cycling).
+        board_seasons_.clear();
+        for (const NetBoard::Season &in : ev.seasons) {
+          NetBoard::Season s = in;
+          s.season = net_board_sanitize(s.season, 22);
+          if (!s.season.empty()) board_seasons_.push_back(s);
+        }
         {
           bool have_own = false;
           for (const NetBoard::Season &s : board_seasons_)
