@@ -30,6 +30,7 @@
 // verify modules are imported from the signal worker — one implementation,
 // two workers.
 
+import { read_secret } from "../../signal/src/secret.js";
 import { verifySteamTicket } from "../../signal/src/steam_verify.js";
 import { verifyPlayGamesCode } from "../../signal/src/play_games_verify.js";
 import { verifyGameCenterCred } from "../../signal/src/game_center_verify.js";
@@ -290,9 +291,31 @@ function blob_key_for(season, run_id) {
 
 // ---- worker entry --------------------------------------------------------
 
+// TEMPORARY beta-debug (remove with the SUBMIT_LIMIT bump): read the
+// Secrets Store binding and report presence + length + latency — never
+// the value. The field submit stall looks like a hanging .get(); probing
+// from the stateless worker AND from inside a Session DO (below) tells
+// us whether the hang is context-specific.
+async function probe_secret(env) {
+  const t0 = Date.now();
+  const outcome = await Promise.race([
+    read_secret(env.STEAM_WEBAPI_KEY)
+        .then((s) => (s ? `ok len=${s.length}` : "empty"))
+        .catch((e) => `threw ${e && e.message}`),
+    new Promise((r) => setTimeout(() => r("TIMEOUT"), 5000)),
+  ]);
+  return `store-read ${outcome} in ${Date.now() - t0}ms`;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/probe-secret")
+      return new Response(await probe_secret(env));
+    if (url.pathname === "/probe-secret-do") {
+      const session = env.SESSIONS.get(env.SESSIONS.newUniqueId());
+      return session.fetch(new Request("https://session/probe-secret"));
+    }
     if (url.pathname !== "/board")
       return new Response("newtonia-board", { status: 200 });
     if (request.headers.get("Upgrade") !== "websocket")
@@ -448,6 +471,11 @@ export class Session {
 
   async fetch(request) {
     const url = new URL(request.url);
+    // TEMPORARY beta-debug probe (remove with the SUBMIT_LIMIT bump):
+    // same store read as /probe-secret, but from INSIDE the DO — a
+    // context-specific .get() hang names itself here.
+    if (url.pathname === "/probe-secret")
+      return new Response(await probe_secret(this.env));
     if (url.pathname !== "/connect")
       return new Response("not found", { status: 404 });
     this.ip = url.searchParams.get("ip") || "local";
