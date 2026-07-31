@@ -100,17 +100,30 @@ fallback for a checkout that still carries the 32-zero placeholder.
 store, one id, shared by prod and beta bindings alike), so "beta first"
 is about which WORKERS pick the binding up first:
 
-1. Create the store + the three secrets (above) and set the
-   `CF_SECRETS_STORE_ID` repo variable.
-2. Deploy the two BETA workers (manual dispatch of deploy-board.yml and
-   deploy-signal.yml with target `beta`, or any master push touching
-   them). Only they get the binding — production workers are untouched
-   until a `v*.*.*` tag.
+1. Create the store + the three secrets (above; the store id is committed
+   in both wrangler.tomls). ✅ 2026-07-31 — including a ROTATED Play Games
+   client secret (Google no longer shows existing secrets, so migration
+   forced a rotation; production's per-worker copy is stale until the tag).
+2. Deploy the two BETA workers. deploy-signal dispatches from the branch;
+   deploy-board CANNOT be manually dispatched until the workflow file is
+   on master (GitHub registers dispatchable workflows from the default
+   branch only) — its beta deploy rides the merge's `board/**` push.
+   Production workers are untouched until a `v*.*.*` tag. ✅ signal-beta
+   2026-07-31 (two ratchets worth knowing: the deploy is REFUSED with
+   "not found [10182]" until every bound secret exists in the store, and
+   with "authorization failed [10021]" until the CLOUDFLARE_API_TOKEN
+   carries the Account Secrets Store Edit permission — the old
+   "Edit Cloudflare Workers" template token predates the product).
 3. Verify on beta: point a Steam build at the beta workers
    (`NEWTONIA_SIGNAL_URL=wss://newtonia-signal-beta.gfmcc.workers.dev/ws`,
    `NEWTONIA_BOARD_URL=wss://newtonia-board-beta.gfmcc.workers.dev/board`)
    and check a lobby shows the attested badge/name (worker log:
-   `identity attested`) and a board submit places (not `unverified`).
+   `identity attested` — remember the worker attests each side TO THE
+   PEER, so the JOINER's log/lobby is where the host's attestation
+   shows; a solo host sees nothing) and a board submit places (not
+   `unverified`). ✅ Steam attestation field-verified via the beta store
+   read 2026-07-31; the board-submit check waits on the board-beta
+   deploy (step 2).
 4. Only then let the next release tag roll the binding to production.
 
 **Signal-worker migration**: once the store is bound and deployed, delete
