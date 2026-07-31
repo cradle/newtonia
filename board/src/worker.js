@@ -307,6 +307,21 @@ async function probe_secret(env) {
   return `store-read ${outcome} in ${Date.now() - t0}ms`;
 }
 
+// TEMPORARY beta-debug, same lifecycle: run the REAL Steam verify with a
+// bogus ticket. Valve answers bogus tickets quickly with an error (the
+// verify returns null), so `null in ~NNNms` = the outbound fetch path is
+// fine and TIMEOUT = the fetch to partner.steam-api.com is what hangs.
+async function probe_steam(env) {
+  const t0 = Date.now();
+  const outcome = await Promise.race([
+    verifySteamTicket(env, "deadbeef00")
+        .then((v) => (v ? "unexpected-ok" : "null (expected)"))
+        .catch((e) => `threw ${e && e.message}`),
+    new Promise((r) => setTimeout(() => r("TIMEOUT"), 8000)),
+  ]);
+  return `steam-verify ${outcome} in ${Date.now() - t0}ms`;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -315,6 +330,12 @@ export default {
     if (url.pathname === "/probe-secret-do") {
       const session = env.SESSIONS.get(env.SESSIONS.newUniqueId());
       return session.fetch(new Request("https://session/probe-secret"));
+    }
+    if (url.pathname === "/probe-steam")
+      return new Response(await probe_steam(env));
+    if (url.pathname === "/probe-steam-do") {
+      const session = env.SESSIONS.get(env.SESSIONS.newUniqueId());
+      return session.fetch(new Request("https://session/probe-steam"));
     }
     if (url.pathname !== "/board")
       return new Response("newtonia-board", { status: 200 });
@@ -476,6 +497,8 @@ export class Session {
     // context-specific .get() hang names itself here.
     if (url.pathname === "/probe-secret")
       return new Response(await probe_secret(this.env));
+    if (url.pathname === "/probe-steam")
+      return new Response(await probe_steam(this.env));
     if (url.pathname !== "/connect")
       return new Response("not found", { status: 404 });
     this.ip = url.searchParams.get("ip") || "local";
