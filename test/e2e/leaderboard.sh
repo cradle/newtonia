@@ -108,11 +108,22 @@ clean_best() {
 # it into the field. The run is cheat-flagged, which is fine: the upload
 # candidate is the earlier CLEAN best.nrp, not this run.
 crash_to_game_over() {
-  local W=$1 LOG=$2
+  local W=$1 LOG=$2 i
   key "$W" space                               # spawn out of the countdown
   for i in $(seq 1 7); do key "$W" equal; done # time cheat: 8x wall-clock
   xdotool keydown --window "$W" w              # thrust into the asteroids
-  wait_log "$LOG" "replay: run ended" 240 || fail "never reached game over"
+  # Held X key state can drop under Xvfb, and a lucky heading can cruise
+  # through open space for a long time — so while waiting, periodically
+  # re-assert the thrust hold and nudge the heading so the wraps sweep
+  # fresh parts of the field instead of retracing one lane.
+  for i in $(seq 1 48); do                     # up to 240 s, nudge every 5 s
+    grep -aq "replay: run ended" "$LOG" && break
+    kill -0 $P 2>/dev/null || { fail "game died before game over"; break; }
+    xdotool keydown --window "$W" w
+    key "$W" d
+    sleep 5
+  done
+  grep -aq "replay: run ended" "$LOG" || fail "never reached game over"
   xdotool keyup --window "$W" w
 }
 
