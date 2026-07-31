@@ -239,10 +239,13 @@ echo "===== S6: mint not landed at submit -> retry waits for it ====="
 # non-empty cred, like every real backend). The retry peek-polls until the
 # mint lands (NEWTONIA_BOARD_TEST_CRED_DELAY=3 reads), then resubmits.
 # Runs against the MAIN worker — no reject var needed; the rejection is the
-# empty credential itself. A distinct cred base isolates its worker log.
+# empty credential itself. A distinct cred base isolates its worker log, and
+# a distinct NAME keeps it a separate FAKE_VERIFY account: S1 already placed
+# a (higher) score for "E2E" on this shared board, and a same-account lower
+# score is correctly refused "not-best" — not what S6 is probing.
 use_home s6
-P=$(NEWTONIA_BOARD_TEST_CRED=e2e-c6 NEWTONIA_BOARD_TEST_CRED_DELAY=3 \
-    launch_game s6); sleep 2; W=$(win)
+P=$(NEWTONIA_NET_NAME=E2ES6 NEWTONIA_BOARD_TEST_CRED=e2e-c6 \
+    NEWTONIA_BOARD_TEST_CRED_DELAY=3 launch_game s6); sleep 2; W=$(win)
 clean_best "$W"
 crash_to_game_over "$W" "$OUT/s6.log"
 wait_log "$OUT/s6.log" "board: would place" 15 || fail "S6: no prompt"
