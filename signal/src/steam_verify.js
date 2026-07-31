@@ -17,6 +17,8 @@
 // over wss only, and only the display name is ever attested onward (the
 // XR-014 "no account IDs on the wire" rule holds — see NETPLAY.md).
 
+import { read_secret } from "./secret.js";
+
 // Newtonia's Steam AppID (steam_build.h / STEAM_APPID). The ticket is bound
 // to this app; AuthenticateUserTicket checks it.
 export const STEAM_APPID = 4536720;
@@ -40,7 +42,11 @@ export function looks_like_ticket(s) {
 //
 // `fetcher` is injectable for tests (defaults to global fetch).
 export async function verifySteamTicket(env, ticketHex, fetcher = fetch) {
-  if (!env || !env.STEAM_WEBAPI_KEY) return null;   // unconfigured: no attest
+  if (!env) return null;
+  // Resolve the Web-API key up front — it may be a plain secret/var or a
+  // Secrets Store binding (read_secret handles both). Empty = unconfigured.
+  const webapi_key = await read_secret(env.STEAM_WEBAPI_KEY);
+  if (!webapi_key) return null;                     // unconfigured: no attest
   if (!looks_like_ticket(ticketHex)) return null;
   const appid = Number(env.STEAM_APPID) || STEAM_APPID;
 
@@ -51,7 +57,7 @@ export async function verifySteamTicket(env, ticketHex, fetcher = fetch) {
   let steamid;
   try {
     const url = `${AUTH_HOST}/ISteamUserAuth/AuthenticateUserTicket/v1/` +
-      `?key=${encodeURIComponent(env.STEAM_WEBAPI_KEY)}` +
+      `?key=${encodeURIComponent(webapi_key)}` +
       `&appid=${appid}&ticket=${encodeURIComponent(ticketHex)}` +
       `&identity=${encodeURIComponent(identity)}`;
     const resp = await fetcher(url);
@@ -73,7 +79,7 @@ export async function verifySteamTicket(env, ticketHex, fetcher = fetch) {
   let persona = "";
   try {
     const url = `${AUTH_HOST}/ISteamUser/GetPlayerSummaries/v2/` +
-      `?key=${encodeURIComponent(env.STEAM_WEBAPI_KEY)}&steamids=${steamid}`;
+      `?key=${encodeURIComponent(webapi_key)}&steamids=${steamid}`;
     const resp = await fetcher(url);
     if (resp.ok) {
       const data = await resp.json();

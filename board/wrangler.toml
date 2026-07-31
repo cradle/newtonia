@@ -32,6 +32,30 @@ class_name = "Session"
 name = "LIMITS"
 class_name = "Limiter"
 
+# Shared platform-verification secrets (Steam / Play Games) live in a
+# Cloudflare Secrets Store, so the board and signal workers reference ONE
+# account-level copy instead of each holding its own per-script secret.
+# The store_id is injected at deploy time from the CF_SECRETS_STORE_ID repo
+# variable (scripts/ensure-resources.sh) — the placeholder below stays in
+# git. read_secret() (signal/src/secret.js) reads these via the async
+# .get() the store binding requires. Local dev tolerates the placeholder
+# (the tests take the FAKE_VERIFY path and never read the store). One-time
+# store + secret setup: board/README.md.
+[[secrets_store_secrets]]
+binding = "STEAM_WEBAPI_KEY"
+store_id = "00000000000000000000000000000000"
+secret_name = "STEAM_WEBAPI_KEY"
+
+[[secrets_store_secrets]]
+binding = "PLAY_GAMES_OAUTH_CLIENT_ID"
+store_id = "00000000000000000000000000000000"
+secret_name = "PLAY_GAMES_OAUTH_CLIENT_ID"
+
+[[secrets_store_secrets]]
+binding = "PLAY_GAMES_OAUTH_CLIENT_SECRET"
+store_id = "00000000000000000000000000000000"
+secret_name = "PLAY_GAMES_OAUTH_CLIENT_SECRET"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Session", "Limiter"]
@@ -67,3 +91,20 @@ class_name = "Session"
 [[env.beta.durable_objects.bindings]]
 name = "LIMITS"
 class_name = "Limiter"
+
+# Beta binds the SAME account-level store (one set of verify credentials
+# across all environments — the Steam app / Google project are the same).
+[[env.beta.secrets_store_secrets]]
+binding = "STEAM_WEBAPI_KEY"
+store_id = "00000000000000000000000000000000"
+secret_name = "STEAM_WEBAPI_KEY"
+
+[[env.beta.secrets_store_secrets]]
+binding = "PLAY_GAMES_OAUTH_CLIENT_ID"
+store_id = "00000000000000000000000000000000"
+secret_name = "PLAY_GAMES_OAUTH_CLIENT_ID"
+
+[[env.beta.secrets_store_secrets]]
+binding = "PLAY_GAMES_OAUTH_CLIENT_SECRET"
+store_id = "00000000000000000000000000000000"
+secret_name = "PLAY_GAMES_OAUTH_CLIENT_SECRET"

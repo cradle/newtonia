@@ -17,6 +17,31 @@ class_name = "Room"
 name = "LIMITS"
 class_name = "Limiter"
 
+# Shared platform-verification secrets (Steam / Play Games) — an
+# account-level Cloudflare Secrets Store this worker shares with the board
+# worker, so one copy serves both instead of duplicating per-script
+# secrets. The store_id is injected at deploy from the CF_SECRETS_STORE_ID
+# repo variable (scripts/ensure-resources.sh); the placeholder stays in git.
+# read_secret() (src/secret.js) reads these via the store's async .get().
+# MIGRATION: after this binding is live, delete the OLD per-worker secrets
+# of the same name (`wrangler secret delete STEAM_WEBAPI_KEY`, etc.) so the
+# store is the single source — see README.md. TURN and other signal-only
+# secrets stay per-worker (nothing to share).
+[[secrets_store_secrets]]
+binding = "STEAM_WEBAPI_KEY"
+store_id = "00000000000000000000000000000000"
+secret_name = "STEAM_WEBAPI_KEY"
+
+[[secrets_store_secrets]]
+binding = "PLAY_GAMES_OAUTH_CLIENT_ID"
+store_id = "00000000000000000000000000000000"
+secret_name = "PLAY_GAMES_OAUTH_CLIENT_ID"
+
+[[secrets_store_secrets]]
+binding = "PLAY_GAMES_OAUTH_CLIENT_SECRET"
+store_id = "00000000000000000000000000000000"
+secret_name = "PLAY_GAMES_OAUTH_CLIENT_SECRET"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Room"]
@@ -45,3 +70,19 @@ class_name = "Room"
 [[env.beta.durable_objects.bindings]]
 name = "LIMITS"
 class_name = "Limiter"
+
+# Beta binds the SAME account-level store as production and the board.
+[[env.beta.secrets_store_secrets]]
+binding = "STEAM_WEBAPI_KEY"
+store_id = "00000000000000000000000000000000"
+secret_name = "STEAM_WEBAPI_KEY"
+
+[[env.beta.secrets_store_secrets]]
+binding = "PLAY_GAMES_OAUTH_CLIENT_ID"
+store_id = "00000000000000000000000000000000"
+secret_name = "PLAY_GAMES_OAUTH_CLIENT_ID"
+
+[[env.beta.secrets_store_secrets]]
+binding = "PLAY_GAMES_OAUTH_CLIENT_SECRET"
+store_id = "00000000000000000000000000000000"
+secret_name = "PLAY_GAMES_OAUTH_CLIENT_SECRET"

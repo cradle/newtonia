@@ -125,6 +125,9 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # The shared Secrets Store id (not sensitive — an identifier). Set
+          # it once as a repo VARIABLE after creating the store (README).
+          CF_SECRETS_STORE_ID: ${{ vars.CF_SECRETS_STORE_ID }}
         run: |
           TARGET="${{ steps.target.outputs.target }}"
           OUT="$(bash scripts/ensure-resources.sh "$TARGET")"

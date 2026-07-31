@@ -126,6 +126,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Same shared Secrets Store id the board worker binds (README).
+          CF_SECRETS_STORE_ID: ${{ vars.CF_SECRETS_STORE_ID }}
         run: bash scripts/ensure-resources.sh "${{ steps.target.outputs.target }}"
 
       # Production is the TOP-LEVEL wrangler environment (a plain

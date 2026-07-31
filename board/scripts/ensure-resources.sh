@@ -59,4 +59,22 @@ else
   echo "r2: created $BUCKET" >&2
 fi
 
+# --- Secrets Store: inject the shared store id over the placeholder -------
+# The store + its secrets are created once by hand (README) — secret VALUES
+# can't be automated. Its id is not sensitive (an identifier), so it rides
+# a repo VARIABLE, CF_SECRETS_STORE_ID, injected here over the 32-zero
+# placeholder in wrangler.toml. Skip cleanly when unset so a repo that has
+# not set up the store yet still deploys (the worker then has no verify
+# secrets — the board refuses submissions, exactly as an unconfigured
+# worker should).
+STORE_PLACEHOLDER="00000000000000000000000000000000"
+if [ -n "${CF_SECRETS_STORE_ID:-}" ]; then
+  sed -i "s/$STORE_PLACEHOLDER/$CF_SECRETS_STORE_ID/g" wrangler.toml
+  echo "secrets-store: bound $CF_SECRETS_STORE_ID" >&2
+else
+  echo "secrets-store: CF_SECRETS_STORE_ID unset — deploying without shared" >&2
+  echo "  verify secrets (submissions will be refused until the store is set" >&2
+  echo "  up; see README.md)." >&2
+fi
+
 echo "DATABASE_ID=$ID"

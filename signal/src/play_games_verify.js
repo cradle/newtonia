@@ -21,6 +21,8 @@
 // over wss only, and only the display name is ever attested onward (the
 // XR-014 "no account IDs on the wire" rule holds — see NETPLAY.md).
 
+import { read_secret } from "./secret.js";
+
 const TOKEN_HOST = "https://oauth2.googleapis.com/token";
 const PLAYER_HOST = "https://games.googleapis.com/games/v1/players/me";
 
@@ -45,9 +47,12 @@ export function looks_like_code(s) {
 //
 // `fetcher` is injectable for tests (defaults to global fetch).
 export async function verifyPlayGamesCode(env, code, fetcher = fetch) {
-  if (!env || !env.PLAY_GAMES_OAUTH_CLIENT_ID ||
-      !env.PLAY_GAMES_OAUTH_CLIENT_SECRET)
-    return null;                       // unconfigured: attest nothing
+  if (!env) return null;
+  // Resolve the OAuth credentials up front — each may be a plain secret/var
+  // or a Secrets Store binding (read_secret handles both). Empty = unconfigured.
+  const client_id = await read_secret(env.PLAY_GAMES_OAUTH_CLIENT_ID);
+  const client_secret = await read_secret(env.PLAY_GAMES_OAUTH_CLIENT_SECRET);
+  if (!client_id || !client_secret) return null;  // unconfigured: attest nothing
   if (!looks_like_code(code)) return null;
 
   // 1. Redeem the single-use code for an access token.
@@ -55,8 +60,8 @@ export async function verifyPlayGamesCode(env, code, fetcher = fetch) {
   try {
     const body = new URLSearchParams({
       code,
-      client_id: env.PLAY_GAMES_OAUTH_CLIENT_ID,
-      client_secret: env.PLAY_GAMES_OAUTH_CLIENT_SECRET,
+      client_id,
+      client_secret,
       grant_type: "authorization_code",
     });
     const resp = await fetcher(TOKEN_HOST, {

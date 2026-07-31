@@ -41,6 +41,21 @@ if grep -qE '^\s*\[\[(d1_databases|r2_buckets|kv_namespaces)\]\]' "$TOML"; then
   exit 1
 fi
 
+# Secrets Store: inject the shared store id over the placeholder — the SAME
+# account-level store the board worker binds, so one copy of the verify
+# secrets serves both. The store + secrets are created once by hand (its
+# VALUES can't be automated); the id rides the CF_SECRETS_STORE_ID repo
+# variable. Skip cleanly when unset (the worker then falls back to any
+# per-worker secrets still set on it).
+STORE_PLACEHOLDER="00000000000000000000000000000000"
+if [ -n "${CF_SECRETS_STORE_ID:-}" ]; then
+  sed -i "s/$STORE_PLACEHOLDER/$CF_SECRETS_STORE_ID/g" "$TOML"
+  echo "secrets-store: bound $CF_SECRETS_STORE_ID" >&2
+else
+  echo "secrets-store: CF_SECRETS_STORE_ID unset — leaving placeholder" >&2
+  echo "  (see README.md; a build with per-worker secrets still verifies)." >&2
+fi
+
 # Report what will be provisioned. Durable Object classes are created (and
 # their SQLite storage migrated) by the deploy itself from [[migrations]];
 # nothing to do here.

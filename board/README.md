@@ -61,12 +61,48 @@ CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... \
 The script is idempotent — it creates a database/bucket only when absent
 and otherwise just resolves the existing id, so re-running is safe.
 
-Secrets, per environment (`--env beta` for the beta worker): the same
-platform verification secrets the signal worker uses —
-`STEAM_WEBAPI_KEY`, `PLAY_GAMES_OAUTH_CLIENT_ID`,
-`PLAY_GAMES_OAUTH_CLIENT_SECRET` (Game Center needs none). Optional:
-`ALLOWED_ORIGINS` (browser origins, v1 default is native + local dev
-only), `DISABLED` (kill switch, any value).
+### Shared verify secrets — Cloudflare Secrets Store
+
+The platform-verification secrets (`STEAM_WEBAPI_KEY`,
+`PLAY_GAMES_OAUTH_CLIENT_ID`, `PLAY_GAMES_OAUTH_CLIENT_SECRET`; Game Center
+needs none) are the SAME across the board and signal workers, so rather
+than duplicate a per-worker secret onto each of the four scripts they live
+in one **account-level Cloudflare Secrets Store** that all four bind
+(`[[secrets_store_secrets]]` in both `wrangler.toml`s). Cloudflare secrets
+are write-only, so migrating means creating them fresh with the real values
+(from the Steam partner portal / Google Play console) — you can't copy the
+signal worker's existing ones out.
+
+One-time setup:
+
+```sh
+# 1. Create the account-level store (note the store id it prints).
+npx wrangler secrets-store store create newtonia-secrets --remote
+
+# 2. Add each secret (prompts for the value; --scopes workers).
+npx wrangler secrets-store secret create <STORE_ID> --name STEAM_WEBAPI_KEY --scopes workers --remote
+npx wrangler secrets-store secret create <STORE_ID> --name PLAY_GAMES_OAUTH_CLIENT_ID --scopes workers --remote
+npx wrangler secrets-store secret create <STORE_ID> --name PLAY_GAMES_OAUTH_CLIENT_SECRET --scopes workers --remote
+
+# 3. Set the store id as a repo VARIABLE (not a secret — it's an id) so the
+#    deploy workflows inject it over the placeholder in wrangler.toml:
+#    GitHub → Settings → Secrets and variables → Actions → Variables:
+#    CF_SECRETS_STORE_ID = <STORE_ID>
+```
+
+The store id is injected at deploy time by `scripts/ensure-resources.sh`;
+the placeholder (32 zeros) stays in git. `wrangler dev --local` ignores it
+(the tests take the `FAKE_VERIFY` path and never read the store).
+
+**Signal-worker migration**: once the store is bound and deployed, delete
+the OLD per-worker copies on the signal worker so the store is the single
+source (`npx wrangler secret delete STEAM_WEBAPI_KEY`, etc., for
+`newtonia-signal` and `newtonia-signal-beta`). The signal worker's
+signal-only secrets (TURN keys, `CF_ANALYTICS_TOKEN`, …) stay per-worker.
+
+Other board secrets, per environment (`--env beta` for the beta worker):
+optional `ALLOWED_ORIGINS` (browser origins, v1 default is native + local
+dev only) and `DISABLED` (kill switch, any value).
 
 The schema is created on demand (`CREATE TABLE IF NOT EXISTS` on first
 query) — no migration step.
