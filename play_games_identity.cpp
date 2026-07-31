@@ -59,6 +59,7 @@ jclass g_bridge = NULL;            // global ref to PlayGamesIdentity
 jmethodID g_init = NULL;           // static void init(Activity)
 jmethodID g_display_name = NULL;   // static String displayName()
 jmethodID g_server_code = NULL;    // static String serverAuthCode()
+jmethodID g_server_code_peek = NULL; // static String peekServerAuthCode()
 jmethodID g_release = NULL;        // static void release()
 
 // Resolve the Java bridge class. FindClass normally works from the game
@@ -118,10 +119,14 @@ bool ensure_bridge(JNIEnv *env) {
     g_server_code = env->GetStaticMethodID(cls, "serverAuthCode",
                                            "()Ljava/lang/String;");
     clear_exception(env);
+    g_server_code_peek = env->GetStaticMethodID(cls, "peekServerAuthCode",
+                                                "()Ljava/lang/String;");
+    clear_exception(env);
     g_release = env->GetStaticMethodID(cls, "release", "()V");
     if (clear_exception(env) || !g_init || !g_display_name || !g_server_code ||
-        !g_release) {
-      g_init = g_display_name = g_server_code = g_release = NULL;
+        !g_server_code_peek || !g_release) {
+      g_init = g_display_name = g_server_code = g_server_code_peek =
+          g_release = NULL;
     } else {
       g_bridge = (jclass)env->NewGlobalRef(cls);
     }
@@ -183,6 +188,13 @@ std::string local_name() { return call_string(g_display_name); }
 // single-use — the worker's token exchange consumes it), mirroring
 // steam_identity_verify.cpp's per-call re-request.
 std::string local_verify_credential() { return call_string(g_server_code); }
+
+// Peek the cached code without consuming it or firing a fetch (see
+// PlayGamesIdentity.peekServerAuthCode) — the upload retry polls this to
+// wait for a fresh code before consuming one.
+std::string local_verify_credential_peek() {
+  return call_string(g_server_code_peek);
+}
 
 // Netplay teardown (~NetLobby / ~GLGame): drop any warmed-but-unsent code so a
 // later session can't re-hand a stale one. There is no client-side handle to

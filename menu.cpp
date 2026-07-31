@@ -1102,10 +1102,11 @@ void Menu::open_replays() {
 
 // ---- LEADERBOARD screen (LEADERBOARD.md L3) -----------------------------
 
-// Wait before auto-retrying an "unverified" upload, so the async credential
-// re-mint can land (mirrors GLGame::BOARD_UPLOAD_RETRY_MS on the game-over
-// path — see the credential-lifecycle note there).
-static const int BOARD_UPLOAD_RETRY_MS = 1200;
+// Give up polling for a fresh credential after an "unverified" upload
+// (mirrors GLGame::BOARD_UPLOAD_RETRY_TIMEOUT_MS — see the credential-
+// lifecycle note there; the retry peeks for a fresh credential rather than
+// waiting a fixed time, so this is only the give-up deadline).
+static const int BOARD_UPLOAD_RETRY_TIMEOUT_MS = 6000;
 
 bool Menu::show_board_row() const { return net_board_available(); }
 
@@ -1151,7 +1152,8 @@ void Menu::open_board() {
   board_error_ = false;
   board_up_phase_ = 0;
   board_up_retried_ = false;
-  board_up_retry_at_ = 0;
+  board_up_retry_deadline_ = 0;
+  board_up_sent_cred_.clear();
   board_fetching_ = false;
   board_mode_ = true;
   board_request();
@@ -1219,10 +1221,11 @@ const char *Menu::board_upload_status_text() const {
 void Menu::board_start_upload() {
   if (!board_net_ || board_transfer_busy()) return;
   board_up_retried_ = false;
-  board_up_retry_at_ = 0;
+  board_up_retry_deadline_ = 0;
   const NetIdentity &me = net_local_identity();
-  board_net_->submit(Replay::best_path(), me.platform, me.name,
-                     net_board_verify_credential());
+  std::string cred = net_board_verify_credential();
+  board_up_sent_cred_ = cred;  // for the retry's freshness compare
+  board_net_->submit(Replay::best_path(), me.platform, me.name, cred);
   board_up_phase_ = 1;
   SDL_Log("board: uploading best.nrp (menu)");
 }
@@ -1261,15 +1264,26 @@ void Menu::board_nav_confirm() {
 
 void Menu::board_poll() {
   if (!board_net_) return;
-  // Fire a pending auto-retry once the async credential re-mint has landed
-  // (see the Error handler): resubmit with a fresh credential.
-  if (board_up_retry_at_ && currentTime >= board_up_retry_at_) {
-    board_up_retry_at_ = 0;
-    const NetIdentity &me = net_local_identity();
-    board_net_->submit(Replay::best_path(), me.platform, me.name,
-                       net_board_verify_credential());
-    board_up_phase_ = 1;
-    SDL_Log("board: retrying upload with a fresh credential (menu)");
+  // A pending auto-retry after an "unverified" upload (see the Error
+  // handler): poll peek (no re-mint) until a value different from the
+  // rejected one appears, then consume + resubmit it once; give up at the
+  // deadline.
+  if (board_up_retry_deadline_) {
+    std::string peek = net_board_verify_credential_peek();
+    if (!peek.empty() && peek != board_up_sent_cred_) {
+      board_up_retry_deadline_ = 0;
+      const NetIdentity &me = net_local_identity();
+      std::string fresh = net_board_verify_credential();  // consume the fresh one
+      board_up_sent_cred_ = fresh;
+      board_net_->submit(Replay::best_path(), me.platform, me.name, fresh);
+      board_up_phase_ = 1;
+      SDL_Log("board: retrying upload with a fresh credential (menu)");
+    } else if (currentTime >= board_up_retry_deadline_) {
+      board_up_retry_deadline_ = 0;
+      board_up_phase_ = 3;
+      board_up_reason_ = "unverified";
+      SDL_Log("board: no fresh credential before deadline (menu)");
+    }
   }
   NetBoard::Event ev;
   while (board_net_->poll(ev)) {
@@ -1309,12 +1323,12 @@ void Menu::board_poll() {
                 net_board_sanitize(ev.reason).c_str());
         if (board_up_phase_ == 1 && !board_up_retried_ &&
             ev.reason == "unverified") {
-          // Empty/stale/single-use-consumed credential — warm a fresh one
-          // and retry the upload once (the socket stays open).
+          // The submit's own credential read already fired the next async
+          // mint, so poll peek for a fresh (different) one and retry ONCE.
+          // The socket stays open; the poll runs from the top of board_poll.
           board_up_retried_ = true;
-          (void)net_board_verify_credential();
-          board_up_retry_at_ = currentTime + BOARD_UPLOAD_RETRY_MS;
-          SDL_Log("board: upload unverified - warming a fresh credential (menu)");
+          board_up_retry_deadline_ = currentTime + BOARD_UPLOAD_RETRY_TIMEOUT_MS;
+          SDL_Log("board: upload unverified - waiting for a fresh credential (menu)");
         } else if (board_up_phase_ == 1) {
           board_up_phase_ = 3;
           board_up_reason_ = net_board_sanitize(ev.reason, 32);

@@ -706,15 +706,20 @@ private:
   };
   static const int BOARD_QUALIFY_TIMEOUT_MS = 4000;
   // The verification credential is minted asynchronously and re-minted per
-  // read (steam_identity_verify.cpp / play_games_identity.cpp), so the value
-  // handed to a submit can occasionally be empty (mint not landed yet),
-  // stale (Game Center's timestamp window), or — on the single-use platforms
-  // (Steam ticket, Play Games code) — already consumed by an earlier send.
-  // The worker answers all of these with reason "unverified". So on that one
-  // reason, warm a fresh credential and auto-retry the submit ONCE after a
-  // short wait (long enough for the async re-mint to complete). One retry is
-  // also the per-connection submit budget, so it can't loop.
-  static const int BOARD_UPLOAD_RETRY_MS = 1200;
+  // read (steam/play_games/game_center identity backends), so the value
+  // handed to a submit can be empty (mint not landed), stale (Game Center's
+  // timestamp window), or — on the single-use platforms (Steam ticket, Play
+  // Games code) — already consumed by an earlier send. The worker answers
+  // all of these with reason "unverified". On that one reason the client
+  // POLLS net_board_verify_credential_peek() (which does NOT re-mint, so it
+  // can't flood the platform mint) until a GENUINELY fresh credential — one
+  // different from the rejected value — appears, then consumes and resubmits
+  // it ONCE. The first submit's own read already fired the next mint, so no
+  // extra warm is needed; the poll just waits for it. Give up after this
+  // long (generous, since a network-minted credential — Play Games, Game
+  // Center — is a round-trip). One retry is also the per-connection submit
+  // budget, so it can't loop.
+  static const int BOARD_UPLOAD_RETRY_TIMEOUT_MS = 6000;
   // A freshly-shown prompt can't be answered for this long — the qualify
   // answer may arrive AFTER the card's 3 s game-over grace (the deadline
   // is 4 s), so a keypress already in flight to leave must not land on the
@@ -736,7 +741,10 @@ private:
   int board_deadline_ = 0;       // qualify timeout, current_time domain
   int board_prompt_shown_ = 0;   // current_time when BoardPrompt began
   bool board_up_retried_ = false; // an unverified upload has been retried once
-  int board_up_retry_at_ = 0;    // current_time to fire the retry (0 = none)
+  int board_up_retry_deadline_ = 0; // current_time to give up polling for a
+                                    // fresh credential (0 = not waiting)
+  std::string board_up_sent_cred_;  // the rejected credential, so the retry
+                                    // waits for a DIFFERENT one
   // Nav keys pressed (key-DOWN) while the prompt is up: keyboard_up acts
   // only on these, so a gameplay key held at death and released into the
   // prompt can't answer it. Cleared when the prompt opens.

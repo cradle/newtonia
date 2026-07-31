@@ -121,6 +121,12 @@ bool net_board_can_submit();
 // verify backend otherwise cannot exercise the upload path).
 std::string net_board_verify_credential();
 
+// PEEK the current verification credential without triggering a re-mint
+// (net_local_verify_credential_peek, or the test-credential simulator). The
+// upload retry polls this to detect a genuinely fresh credential after the
+// first submit's read already fired the next mint — never minting per poll.
+std::string net_board_verify_credential_peek();
+
 // Strip a worker-controlled wire string to printable 7-bit ASCII, capped
 // at max_len. Every string off the board socket (err reasons, run_ids)
 // that reaches a log or the font must pass through here first — the socket

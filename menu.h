@@ -128,7 +128,9 @@ private:
   int  board_up_rank_ = 0;
   std::string board_up_reason_;
   bool board_up_retried_ = false;       // an unverified upload retried once
-  int  board_up_retry_at_ = 0;          // currentTime to fire the retry (0=none)
+  int  board_up_retry_deadline_ = 0;    // currentTime to give up polling (0=idle)
+  std::string board_up_sent_cred_;      // rejected credential (retry waits for
+                                        // a different one)
   bool board_fetching_ = false;         // replay download in flight
   int  sensitivity_index_[2] = {2, 2};  // per-player index into SENSITIVITY_VALUES
   int  smoothing_index_[2]   = {1, 1};  // per-player index into SMOOTHING_VALUES (1=NORMAL=0.004)

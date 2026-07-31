@@ -60,9 +60,61 @@ bool net_board_can_submit() {
   return net_has_verify_backend();
 }
 
+// Test-credential simulator (dev only). A real platform credential is minted
+// asynchronously and re-minted per read, so each read hands back a DIFFERENT
+// value once the async mint lands. To let the headless retry test exercise
+// that — the retry must observe a genuinely FRESH credential (not the
+// rejected one) via peek before resubmitting — the test credential also
+// varies: reading it (consume) hands back the current value and fires a
+// "re-mint" that completes after N peeks (NEWTONIA_BOARD_TEST_CRED_DELAY,
+// default 1), modelling the async landing. Peek returns the current value
+// without consuming or firing. Both use "<base>-<gen>".
+namespace {
+int  g_test_gen = 0;
+std::string g_test_current;     // completed value ("" until the first lands)
+std::string g_test_pending;     // in-flight mint ("" = none)
+int  g_test_pending_countdown = 0;  // peeks/reads until pending promotes
+
+int test_cred_delay() {
+  const char *d = getenv("NEWTONIA_BOARD_TEST_CRED_DELAY");
+  int n = d ? atoi(d) : 1;
+  return n < 1 ? 1 : n;
+}
+// Promote an in-flight mint to current once its countdown elapses.
+void test_cred_promote() {
+  if (!g_test_pending.empty() && --g_test_pending_countdown <= 0) {
+    g_test_current = g_test_pending;
+    g_test_pending.clear();
+  }
+}
+// Fire a re-mint (only when none is in flight, mirroring one outstanding).
+void test_cred_fire(const char *base) {
+  if (!g_test_pending.empty()) return;
+  char buf[128];
+  snprintf(buf, sizeof(buf), "%s-%d", base, ++g_test_gen);
+  g_test_pending = buf;
+  g_test_pending_countdown = test_cred_delay();
+}
+std::string test_cred_consume(const char *base) {
+  test_cred_promote();
+  std::string v = g_test_current;
+  test_cred_fire(base);
+  return v;
+}
+std::string test_cred_peek() {
+  test_cred_promote();
+  return g_test_current;
+}
+}  // namespace
+
 std::string net_board_verify_credential() {
-  if (const char *c = board_test_cred()) return c;
+  if (const char *c = board_test_cred()) return test_cred_consume(c);
   return net_local_verify_credential();
+}
+
+std::string net_board_verify_credential_peek() {
+  if (board_test_cred()) return test_cred_peek();
+  return net_local_verify_credential_peek();
 }
 
 std::string net_board_sanitize(const std::string &s, size_t max_len) {

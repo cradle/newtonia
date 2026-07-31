@@ -127,6 +127,14 @@ const NetIdentity &net_local_identity();
 // NetIdentityBackend::local_verify_credential(); the default is "".
 std::string net_local_verify_credential();
 
+// PEEK the current verification credential WITHOUT triggering a fresh async
+// re-mint (unlike net_local_verify_credential(), which returns the last
+// completed value AND fires a new request). Used by the leaderboard upload
+// retry to poll for a genuinely fresh credential after warming ONE re-mint,
+// so it never floods the platform mint. Empty until a mint completes; "" on
+// a build with no verification backend.
+std::string net_local_verify_credential_peek();
+
 // Whether this build has a verification backend at all (STEAM_BUILD or a
 // platform's NEWTONIA_NET_VERIFY_BACKEND). The credential itself is minted
 // asynchronously and so may be "" transiently even with a backend present;

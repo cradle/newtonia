@@ -38,6 +38,7 @@ on:
       - 'signal/src/steam_verify.js'
       - 'signal/src/play_games_verify.js'
       - 'signal/src/game_center_verify.js'
+      - 'signal/src/secret.js'
       - '.github/workflows/deploy-board.yml'
   workflow_dispatch:
     inputs:

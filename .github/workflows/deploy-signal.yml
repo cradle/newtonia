@@ -63,6 +63,7 @@ jobs:
           node test/rate_key_test.mjs
           node test/origin_test.mjs
           node test/turn_budget_test.mjs
+          node test/secret_test.mjs
           node test/steam_verify_test.mjs
           node test/play_games_verify_test.mjs
           node test/game_center_verify_test.mjs

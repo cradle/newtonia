@@ -147,14 +147,18 @@ function strip_name(name) {
 // lookup, so its claimed alias stays unverified — LEADERBOARD.md).
 export async function verify_identity(env, platform, name, cred) {
   const claimed = strip_name(name);
+  if (typeof cred !== "string" || !cred || cred.length > MAX_CRED) return null;
   if (env.FAKE_VERIFY) {
     // Dev/e2e shortcut (wrangler dev only): attest the claim without a
-    // platform backend. The account derives from the name so two test
-    // "players" stay distinct. NEVER set in production.
+    // platform backend — but still REQUIRE a non-empty credential (above),
+    // like every real backend, so the client's empty-at-submit case tests
+    // true. The cred is logged so the retry e2e can assert the resubmit
+    // carried a genuinely different one. The account derives from the name
+    // so two test "players" stay distinct. NEVER set in production.
+    console.log(`fake-verify: cred=${cred.slice(0, 64)}`);
     return { platform, name: claimed, verified: true,
              account: `fake:${claimed || "anon"}` };
   }
-  if (typeof cred !== "string" || !cred || cred.length > MAX_CRED) return null;
   if (platform === 2 /* NET_PLATFORM_STEAM */) {
     const v = await verifySteamTicket(env, cred);
     if (!v) return null;

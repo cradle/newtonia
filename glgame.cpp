@@ -3304,7 +3304,8 @@ void GLGame::board_maybe_start() {
   board_ = NetBoard::create();
   if (!board_) return;
   board_up_retried_ = false;
-  board_up_retry_at_ = 0;
+  board_up_retry_deadline_ = 0;
+  board_up_sent_cred_.clear();
   // Warm the async platform credential mint (Steam's ticket takes a
   // round-trip) so it is ready by the time the player answers YES.
   (void)net_board_verify_credential();
@@ -3320,15 +3321,29 @@ void GLGame::board_maybe_start() {
 
 void GLGame::board_tick() {
   if (!board_) return;
-  // Fire a pending auto-retry once the async credential re-mint has had time
-  // to land (see the Error handler + BOARD_UPLOAD_RETRY_MS).
-  if (board_up_retry_at_ && current_time >= board_up_retry_at_) {
-    board_up_retry_at_ = 0;
-    const NetIdentity &me = net_local_identity();
-    board_->submit(Replay::best_path(), me.platform, me.name,
-                   net_board_verify_credential());
-    board_phase_ = BoardUploading;
-    SDL_Log("board: retrying upload with a fresh credential");
+  // Waiting for a fresh credential after an "unverified" upload (see the
+  // Error handler): poll peek (no re-mint) until a value different from the
+  // rejected one appears, then consume + resubmit it once; give up at the
+  // deadline.
+  if (board_up_retry_deadline_) {
+    std::string peek = net_board_verify_credential_peek();
+    if (!peek.empty() && peek != board_up_sent_cred_) {
+      board_up_retry_deadline_ = 0;
+      const NetIdentity &me = net_local_identity();
+      std::string fresh = net_board_verify_credential();  // consume the fresh one
+      board_up_sent_cred_ = fresh;
+      board_->submit(Replay::best_path(), me.platform, me.name, fresh);
+      board_phase_ = BoardUploading;
+      SDL_Log("board: retrying upload with a fresh credential");
+    } else if (current_time >= board_up_retry_deadline_) {
+      board_up_retry_deadline_ = 0;
+      board_phase_ = BoardFailed;
+      board_fail_reason_ = "unverified";
+      SDL_Log("board: no fresh credential before deadline - upload failed");
+      delete board_;
+      board_ = nullptr;
+      return;
+    }
   }
   NetBoard::Event ev;
   while (board_->poll(ev)) {
@@ -3359,15 +3374,15 @@ void GLGame::board_tick() {
     } else if (ev.kind == NetBoard::Event::Error) {
       SDL_Log("board: error %s", net_board_sanitize(ev.reason).c_str());
       // An "unverified" upload is usually a credential that was empty, stale
-      // or single-use-consumed at submit time — warm a fresh one and retry
-      // ONCE (the socket stays open; the worker's err does not close it).
-      // Keep board_ alive; the retry fires from the top of board_tick.
+      // or single-use-consumed at submit time. The submit's own read already
+      // fired the next mint, so start polling for a fresh (different) one and
+      // retry ONCE (the socket stays open; the worker's err does not close
+      // it). Keep board_ alive; the poll runs from the top of board_tick.
       if (board_phase_ == BoardUploading && !board_up_retried_ &&
           ev.reason == "unverified") {
         board_up_retried_ = true;
-        (void)net_board_verify_credential();  // kick a fresh async mint
-        board_up_retry_at_ = current_time + BOARD_UPLOAD_RETRY_MS;
-        SDL_Log("board: upload unverified - warming a fresh credential");
+        board_up_retry_deadline_ = current_time + BOARD_UPLOAD_RETRY_TIMEOUT_MS;
+        SDL_Log("board: upload unverified - waiting for a fresh credential");
         continue;
       }
       // An error during the prompt/upload shows on the card; one during
@@ -3434,8 +3449,9 @@ bool GLGame::board_nav(char key) {
         return true;
       }
       const NetIdentity &me = net_local_identity();
-      board_->submit(Replay::best_path(), me.platform, me.name,
-                     net_board_verify_credential());
+      std::string cred = net_board_verify_credential();
+      board_up_sent_cred_ = cred;  // for the retry's freshness compare
+      board_->submit(Replay::best_path(), me.platform, me.name, cred);
       board_phase_ = BoardUploading;
       SDL_Log("board: uploading best.nrp");
       return true;

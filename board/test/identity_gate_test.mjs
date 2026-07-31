@@ -13,11 +13,15 @@ function eq(name, a, b) {
   if (!ok) failures++;
 }
 
-// FAKE_VERIFY (dev only) attests the claim and derives a per-name account.
+// FAKE_VERIFY (dev only) attests the claim and derives a per-name account
+// — but still requires a non-empty credential, like every real backend
+// (the client's empty-at-submit retry case depends on this rejection).
 {
-  const v = await verify_identity({ FAKE_VERIFY: "1" }, 2, "ALICE", "");
+  const v = await verify_identity({ FAKE_VERIFY: "1" }, 2, "ALICE", "tick");
   eq("fake verify attests", v && v.verified, true);
   eq("fake account per name", v.account, "fake:ALICE");
+  eq("fake verify still needs a cred",
+     await verify_identity({ FAKE_VERIFY: "1" }, 2, "ALICE", ""), null);
 }
 // No credential: rejected on every platform (empty and missing alike).
 eq("steam no cred rejected", await verify_identity({}, 2, "X", ""), null);

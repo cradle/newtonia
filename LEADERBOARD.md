@@ -365,15 +365,30 @@ literally reuses the netplay credential — but because the re-mint is async,
 a submit can still read an EMPTY (mint not landed), STALE (Game Center's
 timestamp window) or already-CONSUMED value, all of which the worker
 answers with `unverified`. So the board flow warms the credential when the
-qualify fires and, on an `unverified` rejection, **warms a fresh credential
-and auto-retries the submit ONCE** after a short wait
-(`BOARD_UPLOAD_RETRY_MS`; one retry is also the per-connection submit
-budget, so it can't loop). Both the game-over path (`GLGame::board_tick`)
-and the menu UPLOAD path (`Menu::board_poll`) do this. Game Center is not
-single-use (a signature verified within a freshness window), so only the
-empty/stale cases apply there. Verified: a worker `REJECT_FIRST_VERIFY`
-dev-var forces the first submit to fail `unverified`; the client warms,
-retries and places (`test/e2e/leaderboard.sh` S5).
+qualify fires and, on an `unverified` rejection, **polls for a genuinely
+fresh credential and auto-retries the submit ONCE**: the submit's own
+credential read already fired the next async mint, so the client peeks the
+current value each tick *without re-minting*
+(`net_board_verify_credential_peek` → the backends'
+`local_verify_credential_peek`, which return the cached value without
+firing a new request — critical on the single-use platforms, where a
+per-poll re-mint would consume codes forever) until it sees a value
+DIFFERENT from the one the worker rejected, then consumes and resubmits
+exactly that once. A deadline (`BOARD_UPLOAD_RETRY_TIMEOUT_MS`, 6 s) gives
+up as `unverified` if no fresh mint lands; one retry is also the
+per-connection submit budget, so it can't loop. Both the game-over path
+(`GLGame::board_tick`) and the menu UPLOAD path (`Menu::board_poll`) do
+this. Game Center is not single-use (a signature verified within a
+freshness window), so only the empty/stale cases apply there. Verified: a
+worker `REJECT_FIRST_VERIFY` dev-var forces the first submit to fail
+`unverified`; with `NEWTONIA_BOARD_TEST_CRED` the test-credential
+simulator mints varying values (`<base>-<gen>`) on a delay
+(`NEWTONIA_BOARD_TEST_CRED_DELAY` reads before the next value lands), so
+the e2e proves both failure shapes end to end: S5 (consumed ticket — the
+worker log shows the resubmit carried a genuinely DIFFERENT credential)
+and S6 (mint not landed at submit — the empty credential is rejected,
+the retry peek-polls until the mint lands, then places;
+`test/e2e/leaderboard.sh`).
 
 ### Review pass ✅ (2026-07-31)
 A six-lens multi-agent review (worker security/correctness, C++ seam

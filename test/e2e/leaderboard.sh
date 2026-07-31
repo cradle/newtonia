@@ -8,6 +8,10 @@
 #       error card, the game stays alive)
 #   S3  no best promotion (cheat-flagged only run) -> no board traffic
 #   S4  leaderboard_prompts=0 -> no board traffic even on a personal best
+#   S5  consumed credential (REJECT_FIRST_VERIFY) -> the retry peek-polls
+#       and resubmits a provably DIFFERENT credential, and places
+#   S6  mint not landed at submit (TEST_CRED_DELAY) -> empty cred rejected,
+#       the retry waits for the mint and places
 #
 # The prompt's candidate is best.nrp, promoted by a CLEAN run — so S1/S4
 # score a clean run first (spray shots), abandon, and NEW GAME to rotate it
@@ -188,12 +192,15 @@ grep -aq "board:" "$OUT/s4.log" && fail "S4: board traffic with prompts off"
 alive $P s4
 kill -9 $P; wait $P 2>/dev/null; P=""
 
-echo "===== S5: unverified upload -> auto-retry with a fresh credential ====="
-# Credential-lifecycle hardening: the verify credential is minted async and
-# re-minted per read, so a submit can hit an empty / stale / single-use-spent
-# credential (worker answers "unverified"). The client must warm a fresh one
-# and retry ONCE. A dedicated worker with REJECT_FIRST_VERIFY rejects the
-# first submit per connection so the retry path is forced.
+echo "===== S5: consumed credential -> retry submits a FRESH one ====="
+# Credential-lifecycle hardening, single-use case: the verify credential is
+# minted async and re-minted per read, so a submit can present an
+# already-consumed value (worker answers "unverified"). The client must
+# poll peek (no re-mint) until a DIFFERENT credential lands, then resubmit
+# ONCE. A dedicated worker with REJECT_FIRST_VERIFY rejects the first
+# submit per connection to model the consumed ticket; the varying test
+# credential ("<base>-<gen>") lets the worker log prove the resubmit
+# carried a genuinely different value.
 REJECT_URL="ws://127.0.0.1:8796/board"
 ( cd "$ROOT/board" && npx -y wrangler@4 dev --local --port 8796 \
     --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 --var REJECT_FIRST_VERIFY:1 \
@@ -211,15 +218,47 @@ crash_to_game_over "$W" "$OUT/s5.log"
 wait_log "$OUT/s5.log" "board: would place" 15 || fail "S5: no prompt"
 sleep 4
 key "$W" Return                                  # YES
-wait_log "$OUT/s5.log" "board: upload unverified - warming" 10 ||
-  fail "S5: first submit not rejected/warmed"
+wait_log "$OUT/s5.log" "board: upload unverified - waiting" 10 ||
+  fail "S5: first submit not rejected"
 wait_log "$OUT/s5.log" "board: retrying upload with a fresh credential" 10 ||
   fail "S5: no retry after unverified"
 wait_log "$OUT/s5.log" "board: placed #" 25 || fail "S5: retry did not place"
+# The worker saw BOTH generations: -1 rejected, -2 accepted (distinct).
+grep -aq "cred=e2e-cred-1" "$OUT/wrangler-reject.log" ||
+  fail "S5: first submit's credential not seen by the worker"
+grep -aq "cred=e2e-cred-2" "$OUT/wrangler-reject.log" ||
+  fail "S5: retry did not carry a fresh (different) credential"
 alive $P s5
 kill -9 $P; wait $P 2>/dev/null; P=""
 kill $REJECT_PID 2>/dev/null; REJECT_PID=""
 
-assert_clean "$OUT"/s1.log "$OUT"/s2.log "$OUT"/s3.log "$OUT"/s4.log "$OUT"/s5.log
+echo "===== S6: mint not landed at submit -> retry waits for it ====="
+# Credential-lifecycle hardening, empty case: the warm's async mint has not
+# landed when the player answers YES, so the submit carries an EMPTY
+# credential, which the worker rejects (FAKE_VERIFY still requires a
+# non-empty cred, like every real backend). The retry peek-polls until the
+# mint lands (NEWTONIA_BOARD_TEST_CRED_DELAY=3 reads), then resubmits.
+# Runs against the MAIN worker — no reject var needed; the rejection is the
+# empty credential itself. A distinct cred base isolates its worker log.
+use_home s6
+P=$(NEWTONIA_BOARD_TEST_CRED=e2e-c6 NEWTONIA_BOARD_TEST_CRED_DELAY=3 \
+    launch_game s6); sleep 2; W=$(win)
+clean_best "$W"
+crash_to_game_over "$W" "$OUT/s6.log"
+wait_log "$OUT/s6.log" "board: would place" 15 || fail "S6: no prompt"
+sleep 4
+key "$W" Return                                  # YES
+wait_log "$OUT/s6.log" "board: upload unverified - waiting" 10 ||
+  fail "S6: empty-credential submit not rejected"
+wait_log "$OUT/s6.log" "board: retrying upload with a fresh credential" 10 ||
+  fail "S6: no retry once the mint landed"
+wait_log "$OUT/s6.log" "board: placed #" 25 || fail "S6: retry did not place"
+grep -aq "cred=e2e-c6-1" "$OUT/wrangler.log" ||
+  fail "S6: retry did not carry the landed credential"
+alive $P s6
+kill -9 $P; wait $P 2>/dev/null; P=""
+
+assert_clean "$OUT"/s1.log "$OUT"/s2.log "$OUT"/s3.log "$OUT"/s4.log \
+             "$OUT"/s5.log "$OUT"/s6.log
 [ "$FAIL" = 0 ] && echo "ALL PASS" || echo "FAILURES"
 exit $FAIL
