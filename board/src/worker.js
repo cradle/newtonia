@@ -521,6 +521,18 @@ export class Session {
 
   async webSocketMessage(ws, message) {
     this.arm_idle(ws);
+    // TEMPORARY beta-debug (same lifecycle as SUBMIT_LIMIT): stamp every
+    // frame AT ARRIVAL — tail logs otherwise flush at event completion,
+    // which the field stall showed can lag a full minute behind reality
+    // (the pending submit event's logs appeared only when Escape closed
+    // the socket). t= for text frames, bin= for chunk frames.
+    if (typeof message === "string") {
+      let t = "?";
+      try { t = JSON.parse(message).t || "?"; } catch (e) {}
+      console.log(`ws-in: t=${t}`);
+    } else {
+      console.log(`ws-in: bin=${message.byteLength}`);
+    }
     try {
       if (typeof message === "string") await this.on_json(ws, message);
       else await this.on_chunk(ws, message);
