@@ -18,8 +18,14 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
 - **Ask, don't auto-upload — and only ask when the run would place.** The
   trigger is a two-stage gate at game over:
   1. *Local gate*: the run finalized with `FLAG_CLEAN`, without
-     `FLAG_CHEATED`, and its score beat the previous `best.nrp` header score
-     (i.e. the best-promotion check passed — a new personal best). No
+     `FLAG_CHEATED`, and the best-promotion check passed. **Best is
+     SEASON-scoped** (decided with Glenn 2026-07-31): a clean scoring run
+     whose season differs from the stored best's promotes regardless of
+     score — a fresh season is a clean slate, and gating on the old
+     season's high score would keep any lower (but board-qualifying) run
+     from ever prompting. `best.nrp` is therefore "your best run of the
+     season you last played"; the old season's uploaded replay lives on
+     on its board. Within a season the gate stays score-beats-best. No
      network traffic for ordinary runs.
   2. *Remote gate*: an async `qualify` query to the worker — "would this
      score place on the current season's board?" The worker answers with
