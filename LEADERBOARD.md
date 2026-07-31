@@ -105,7 +105,15 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
   abandon was uploaded, then resumed and improved) upserts if the score is
   higher. Additionally, each player keeps only their best row per
   season+board (`platform_key` unique index — every row has one now that
-  attestation is required for admission). `FLAG_ENDED` is
+  attestation is required for admission).
+- **Co-op credit goes to the submitter** (decided with Glenn 2026-07-31):
+  a 2P row is admitted on the submitting player's attestation alone and
+  displays their name; the partner is unattested and uncredited (the
+  header carries a player count but no second identity, and requiring
+  two credentials would block every co-op run whose partner has left).
+  Both sides of an online run share a `run_id`, so the PK stops double
+  rows — first submitter wins the credit, and the upsert-if-higher only
+  ever replaces a row with the same run's better/final score. `FLAG_ENDED` is
   deliberately NOT required: the clean-abandon → NEW-GAME promotion path
   produces a legitimate `best.nrp` without it, and the `run_id` upsert
   makes the resume-and-improve case converge on one honest row.
@@ -270,10 +278,6 @@ the social deterrent (every row is watchable) is the v1 defense.
   leaderboard is not co-op — does the free web game get the board
   (upload? view-only? neither)? View-only is a plausible middle: the
   board as an ad for the paid online build. Binds at L4.
-- **Co-op attribution**: a 2P row credits the submitting account only
-  (the header has no second identity). Both sides of an online run share
-  a `run_id`, so the PK stops double rows; is "first submitter wins the
-  credit" acceptable for v1?
 - **Show the player's own rank when off-board** (a `rank-of {score}`
   query on the leaderboard screen: "YOUR BEST: #214")? Cheap to add in
   L3, skippable.
