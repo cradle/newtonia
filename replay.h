@@ -133,6 +133,16 @@ std::string current_path();
 std::string recent_path();
 std::string best_path();
 std::string online_path();
+// A leaderboard row's downloaded replay (LEADERBOARD.md): transient —
+// overwritten by the next download, never listed on the REPLAYS menu,
+// never best-checked.
+std::string download_path();
+
+// This build's game version exactly as a recorded header would carry it
+// (the 23-char truncation included) — the leaderboard's season key. Lives
+// here because only replay.o compiles with NEWTONIA_VERSION_STRING
+// defined (the Makefile scopes the stamp to it).
+std::string game_version_string();
 
 uint64_t new_run_id();  // never returns 0
 
@@ -195,6 +205,14 @@ void rotate_current_to_recent();
 // possibly a crash artifact): rotate it into recent so it isn't silently
 // lost, then the caller starts a fresh Recorder.
 void on_new_game();
+
+// One-shot read-and-clear: a best.nrp promotion happened since the last
+// call. Set by every best check (game-over rotation, online retirement,
+// NEW-GAME rotation of a clean abandon). The leaderboard's game-over
+// prompt trigger (LEADERBOARD.md): "a new personal best" is exactly "the
+// run just promoted", so the gate lives where the promotion does instead
+// of being re-derived from headers.
+bool take_best_promoted();
 
 // Run the best check on online.nrp in place (clean, non-cheated header
 // beating best's score → copy promoted). online.nrp never rotates — it is

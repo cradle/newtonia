@@ -1,0 +1,187 @@
+#!/bin/bash
+# LEADERBOARD.md L2 exit criteria, headless, against a local board worker
+# (wrangler dev --local with FAKE_VERIFY — no Cloudflare account involved):
+#   S1  a clean personal best + game over -> the qualify runs, the prompt
+#       appears, YES uploads best.nrp, the worker places it and the row is
+#       readable back via `top` with the header's exact score
+#   S2  worker unreachable -> the qualify degrades silently (no prompt, no
+#       error card, the game stays alive)
+#   S3  no best promotion (cheat-flagged only run) -> no board traffic
+#   S4  leaderboard_prompts=0 -> no board traffic even on a personal best
+#
+# The prompt's candidate is best.nrp, promoted by a CLEAN run — so S1/S4
+# score a clean run first (spray shots), abandon, and NEW GAME to rotate it
+# into best (arming the game-over offer, which deliberately survives to the
+# next game over). The game-over run itself may then use the time-speed
+# cheat to die fast by overheat: the cheat flags THAT run, but the offer
+# and the upload belong to the clean best.
+set -u
+if [ -z "${DISPLAY:-}" ]; then
+  exec xvfb-run -a -s "-screen 0 1280x800x24" "$0" "$@"
+fi
+. "$(dirname "$0")/lib.sh"
+export NEWTONIA_REPLAY_ENABLE=1
+export NEWTONIA_NET_NAME=E2E   # FAKE_VERIFY derives the account from this
+
+FAIL=0
+fail() { echo "FAIL: $*"; FAIL=1; }
+
+# ---- board worker: use NEWTONIA_BOARD_URL if provided, else start one ----
+WRANGLER_PID=""
+if [ -z "${NEWTONIA_BOARD_URL:-}" ]; then
+  export NEWTONIA_BOARD_URL="ws://127.0.0.1:8799/board"
+  ( cd "$ROOT/board" &&
+    npx -y wrangler@4 dev --local --port 8799 \
+      --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 \
+      > "$OUT/wrangler.log" 2>&1 ) &
+  WRANGLER_PID=$!
+fi
+BOARD_HTTP="http://${NEWTONIA_BOARD_URL#ws://}"; BOARD_HTTP="${BOARD_HTTP%/board}"
+for i in $(seq 1 60); do
+  curl -s --max-time 2 "$BOARD_HTTP" | grep -q newtonia-board && break
+  [ "$i" = 60 ] && { echo "FATAL: no board worker at $NEWTONIA_BOARD_URL"; exit 1; }
+  sleep 2
+done
+
+P=""
+trap 'kill -9 $P 2>/dev/null; [ -n "$WRANGLER_PID" ] && kill $WRANGLER_PID 2>/dev/null' EXIT
+
+use_home() {
+  export XDG_DATA_HOME="$OUT/xdg-$1"
+  RDIR="$XDG_DATA_HOME/cc.gfm/newtonia/replays"
+}
+launch_game() { "$ROOT/newtonia" > "$OUT/$1.log" 2>&1 & echo $!; }
+win() { xdotool search --name Newtonia | tail -1; }
+
+# Wait for a log line (regex), up to $3 seconds. True if it appeared.
+wait_log() {
+  local i
+  for i in $(seq 1 "$3"); do
+    grep -aq "$2" "$1" && return 0
+    kill -0 $P 2>/dev/null || { fail "game died waiting for: $2"; return 1; }
+    sleep 1
+  done
+  return 1
+}
+
+# Score a clean run, abandon it, then NEW GAME: the rotation promotes
+# best.nrp and arms the game-over offer. Leaves the game in a fresh run.
+# The spray is probabilistic (a fresh world spawns its asteroids clear of
+# the ship), so a scoreless attempt CONTINUEs the same run and sprays
+# again — the abandoned header says whether anything landed.
+clean_best() {
+  local W=$1 attempt SC
+  key "$W" Return; sleep 0.5
+  key "$W" Return                              # NEW GAME (fresh home)
+  for attempt in 1 2 3; do
+    sleep 0.5; key "$W" space                  # spawn
+    xdotool keydown --window "$W" w            # cruise into the field...
+    xdotool keydown --window "$W" d            # ...spiralling...
+    for i in $(seq 1 100); do xdotool key --window "$W" space; sleep 0.08; done
+    xdotool keyup --window "$W" d
+    xdotool keyup --window "$W" w
+    sleep 1
+    key "$W" Escape; sleep 2                   # clean abandon (header patched)
+    SC=$(python3 "$ROOT/test/e2e/replay_check.py" "$RDIR/current.nrp" |
+         sed -n 's/^score=//p')
+    [ "${SC:-0}" -gt 0 ] && break
+    key "$W" Return; sleep 0.5; key "$W" Return  # attract -> CONTINUE, retry
+  done
+  key "$W" Return; sleep 0.5                   # attract -> menu
+  key "$W" s; key "$W" Return                  # NEW GAME (CONTINUE is first)
+  key "$W" w; key "$W" Return                  # confirm YES (NO is default)
+  sleep 1
+}
+
+# Die fast in the current run: time-speed cheat + held thrust (overheat
+# explodes the ship; three lives burn down in well under a minute at 8x).
+# Each '=' press shaves 1 ms off the 8 ms step interval, so 7 presses is
+# the full 8x.
+overheat_game_over() {
+  local W=$1 LOG=$2
+  key "$W" space                               # spawn out of the countdown
+  for i in $(seq 1 7); do key "$W" equal; done # time cheat: 8x
+  xdotool keydown --window "$W" w
+  wait_log "$LOG" "replay: run ended" 240 || fail "never reached game over"
+  xdotool keyup --window "$W" w
+}
+
+echo "===== S1: personal best -> prompt -> YES -> placed ====="
+use_home s1
+P=$(launch_game s1); sleep 2; W=$(win)
+clean_best "$W"
+[ -f "$RDIR/best.nrp" ] || fail "S1: clean run did not promote best.nrp"
+BSCORE=$(python3 "$ROOT/test/e2e/replay_check.py" "$RDIR/best.nrp" |
+         sed -n 's/^score=//p')
+[ "${BSCORE:-0}" -gt 0 ] || fail "S1: scoring run scored 0 (shots missed?)"
+overheat_game_over "$W" "$OUT/s1.log"
+wait_log "$OUT/s1.log" "board: qualify" 10 || fail "S1: qualify never sent"
+wait_log "$OUT/s1.log" "board: would place .* prompting" 15 ||
+  fail "S1: prompt never armed"
+sleep 4                                        # the card's 3 s input grace
+key "$W" Return                                # YES (default highlight)
+wait_log "$OUT/s1.log" "board: uploading" 10 || fail "S1: YES did not upload"
+wait_log "$OUT/s1.log" "board: placed #" 20 || fail "S1: never placed"
+alive $P s1
+# The row is readable back with the header's exact score.
+SEASON=$(python3 - "$RDIR/best.nrp" <<'EOF'
+import sys
+h = open(sys.argv[1], "rb").read(32)
+print(h[8:32].split(b"\0")[0].decode())
+EOF
+)
+node - "$NEWTONIA_BOARD_URL" "$SEASON" "$BSCORE" <<'EOF' || fail "S1: row not on the board"
+const [url, season, score] = process.argv.slice(2);
+const ws = new WebSocket(url);
+ws.onopen = () => ws.send(JSON.stringify({ t: "top", season, players: 1, count: 10 }));
+ws.onmessage = (m) => {
+  const f = JSON.parse(m.data);
+  const hit = (f.rows || []).some((r) => r.score === Number(score) &&
+                                         r.name === "E2E" && r.has_replay);
+  console.log(hit ? "ROW OK" : "ROW MISSING " + m.data);
+  process.exit(hit ? 0 : 1);
+};
+setTimeout(() => process.exit(1), 10000);
+EOF
+key "$W" Return; sleep 1                       # leave the card
+kill -9 $P; wait $P 2>/dev/null; P=""; sleep 1
+
+echo "===== S2: worker unreachable -> silent degradation ====="
+use_home s2
+P=$(NEWTONIA_BOARD_URL="ws://127.0.0.1:9/board" launch_game s2)
+sleep 2; W=$(win)
+clean_best "$W"
+overheat_game_over "$W" "$OUT/s2.log"
+wait_log "$OUT/s2.log" "board: qualify" 10 || fail "S2: qualify never attempted"
+sleep 6                                        # closed/timeout window
+grep -aq "board: would place" "$OUT/s2.log" && fail "S2: prompt on a dead worker"
+grep -aq "board: connection closed\|board: qualify timed out" "$OUT/s2.log" ||
+  fail "S2: no silent teardown logged"
+alive $P s2
+kill -9 $P; wait $P 2>/dev/null; P=""; sleep 1
+
+echo "===== S3: no personal best -> no board traffic ====="
+use_home s3
+P=$(launch_game s3); sleep 2; W=$(win)
+key "$W" Return; sleep 0.5; key "$W" Return    # NEW GAME, no clean best first
+overheat_game_over "$W" "$OUT/s3.log"          # cheat flags this run: no promotion
+sleep 2
+grep -aq "board:" "$OUT/s3.log" && fail "S3: board traffic without a personal best"
+alive $P s3
+kill -9 $P; wait $P 2>/dev/null; P=""; sleep 1
+
+echo "===== S4: leaderboard_prompts=0 -> no board traffic ====="
+use_home s4
+mkdir -p "$XDG_DATA_HOME/cc.gfm/newtonia"
+echo "leaderboard_prompts=0" > "$XDG_DATA_HOME/cc.gfm/newtonia/preferences.ini"
+P=$(launch_game s4); sleep 2; W=$(win)
+clean_best "$W"
+overheat_game_over "$W" "$OUT/s4.log"
+sleep 2
+grep -aq "board:" "$OUT/s4.log" && fail "S4: board traffic with prompts off"
+alive $P s4
+kill -9 $P; wait $P 2>/dev/null; P=""
+
+assert_clean "$OUT"/s1.log "$OUT"/s2.log "$OUT"/s3.log "$OUT"/s4.log
+[ "$FAIL" = 0 ] && echo "ALL PASS" || echo "FAILURES"
+exit $FAIL

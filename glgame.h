@@ -41,6 +41,7 @@ using namespace std;
 
 class NetSession;
 class NetTransport;
+class NetBoard;
 namespace Net { class SnapshotAssembler; struct Reader; }
 namespace Replay { class Recorder; class Reader; }
 
@@ -686,6 +687,38 @@ private:
   // new game starts dead in the spawn countdown, and detonating painted
   // an explosion no real new game shows.
   bool replay_bootstrap_apply_ = false;
+
+  // ---- leaderboard game-over flow (LEADERBOARD.md L2) ----
+  // Armed at game-over finalize when the run just promoted best.nrp (a new
+  // personal best): an async qualify against the board worker, and only a
+  // would-place answer shows the UPLOAD TO LEADERBOARD? prompt on the GAME
+  // OVER card. The card must never block on the network: no answer within
+  // BOARD_QUALIFY_TIMEOUT_MS = no prompt, and leaving to the menu abandons
+  // everything harmlessly (~GLGame deletes board_).
+  enum BoardPhase {
+    BoardOff,         // nothing armed (the usual game over)
+    BoardQualifying,  // qualify sent, waiting (nothing drawn yet)
+    BoardPrompt,      // would place: YES/NO prompt on the card
+    BoardUploading,   // submit in flight (progress line)
+    BoardPlaced,      // done: "UPLOADED - RANK #N"
+    BoardFailed,      // done: "UPLOAD FAILED" (+ short reason)
+  };
+  static const int BOARD_QUALIFY_TIMEOUT_MS = 4000;
+  void board_maybe_start();      // at game-over finalize (after replay_finish)
+  void board_tick();             // poll events + timeout (game_over only)
+  // The card's nav while the prompt/result owns it. Logical keys (w/s move,
+  // Enter confirms, Esc backs out = NO). True = input consumed; respects
+  // the card's 3 s grace like every other game-over input.
+  bool board_nav(char key);
+  bool board_prompt_active() const {
+    return board_phase_ == BoardPrompt || board_phase_ == BoardUploading;
+  }
+  NetBoard *board_ = nullptr;    // owned; non-null while a flow is live
+  BoardPhase board_phase_ = BoardOff;
+  int board_place_ = 0;          // projected (prompt) / final (placed) rank
+  bool board_yes_ = true;        // prompt selection (YES default — plan)
+  int board_deadline_ = 0;       // qualify timeout, current_time domain
+  std::string board_fail_reason_;
 
   static const int step_size = 8;
 

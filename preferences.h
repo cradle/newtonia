@@ -94,6 +94,10 @@ struct Preferences {
     // pref. The recorder checks the result at game start
     // (GLGame::replay_start).
     bool auto_record_replays = true;
+    // Offer "UPLOAD TO LEADERBOARD?" on a qualifying new personal best at
+    // game over (LEADERBOARD.md). OFF suppresses the game-over prompt
+    // only; the REPLAYS screen's explicit upload action always works.
+    bool leaderboard_prompts = true;
     int  window_width        = 800;    // last windowed resolution (desktop only)
     int  window_height       = 600;
     float star_density       = 1.0f;   // star-count multiplier; user-editable in INI

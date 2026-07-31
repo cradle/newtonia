@@ -6,6 +6,7 @@
 #include "menu.h"
 #include "menu_select.h"
 #include "invites.h"
+#include "net_identity.h"
 #include "net_lobby.h"
 #include "net_policy.h"
 #include "net_resume.h"
@@ -60,16 +61,24 @@ static const OptRow OPT_ROWS_DESKTOP[] = {
   {0, 1, "P2  SENSITIVITY"}, {1, 1, "P2  SMOOTHING"}, {2, 1, "P2  CAMERA"},
   {3, 0, "STAR  DENSITY"},
   {4, 0, "RECORD  REPLAYS"},
+  // Must stay LAST: opt_row_count drops it on builds with no leaderboard.
+  {5, 0, "LEADERBOARD  PROMPTS"},
 };
 // Mobile shows Player 1 + shared options only, so the "P1" prefix is dropped.
 static const OptRow OPT_ROWS_TOUCH[] = {
   {0, 0, "SENSITIVITY"}, {1, 0, "SMOOTHING"}, {2, 0, "CAMERA"},
   {3, 0, "STAR DENSITY"},
   {4, 0, "RECORD REPLAYS"},
+  {5, 0, "LEADERBOARD PROMPTS"},  // LAST — see the desktop table
 };
 static int opt_row_count() {
-  return is_touch_mode() ? (int)(sizeof(OPT_ROWS_TOUCH) / sizeof(OPT_ROWS_TOUCH[0]))
-                         : (int)(sizeof(OPT_ROWS_DESKTOP) / sizeof(OPT_ROWS_DESKTOP[0]));
+  int n = is_touch_mode()
+              ? (int)(sizeof(OPT_ROWS_TOUCH) / sizeof(OPT_ROWS_TOUCH[0]))
+              : (int)(sizeof(OPT_ROWS_DESKTOP) / sizeof(OPT_ROWS_DESKTOP[0]));
+  // No leaderboard on this build/session (netless, web-v1, policy-blocked):
+  // a prompts toggle for a feature that cannot appear would only confuse.
+  if (!net_board_available()) n--;
+  return n;
 }
 static const OptRow &opt_row(int r) {
   return is_touch_mode() ? OPT_ROWS_TOUCH[r] : OPT_ROWS_DESKTOP[r];
@@ -168,6 +177,7 @@ Menu::Menu() :
   camera_index_[1]      = g_prefs.p2_keys.rotate_view ? 1 : 0;
   star_density_index_   = star_density_index_for(g_prefs.star_density);
   auto_record_index_    = g_prefs.auto_record_replays ? 1 : 0;
+  leaderboard_index_    = g_prefs.leaderboard_prompts ? 1 : 0;
   scan_replays();
   Presence::set_menu();
 #ifdef __EMSCRIPTEN__
@@ -184,6 +194,7 @@ Menu::Menu() :
 }
 
 Menu::~Menu() {
+  delete board_net_;  // abandons any in-flight leaderboard fetch/upload
   delete starfield;
   Mix_FreeMusic(music);
 }
@@ -222,7 +233,98 @@ void Menu::draw() {
   mat4_ortho(ortho, -menu_hw, menu_hw, -menu_hh, menu_hh, -1.0f, 1.0f);
   gles2_set_vp(ortho);
 
-  if (replays_mode_) {
+  if (board_mode_) {
+    bool touch = is_touch_mode();
+    Typer::draw_centered(0, touch ? 340 : 368, "LEADERBOARD", touch ? 30 : 26);
+    // Clear of the title's descent (glyphs extend ~2x size below the y)
+    // and above the row band's DESK_OPT_TOP/TOUCH_OPT_TOP.
+    Typer::draw_centered(0, touch ? 248 : 288,
+                         ("SEASON " + board_season_).c_str(), 11);
+    // Entries: [0] the SOLO/CO-OP toggle, [1..] the score rows, then the
+    // UPLOAD BEST RUN action (the game-over prompt's retry path). Same
+    // shared row geometry as the options/replays screens (TapBand rule).
+    int n = board_entry_count();
+    const int CURSOR_L = -623, RANK_X = -560, NAME_X = -455, SCORE_X = 60,
+              LEVEL_X = 330, CURSOR_R = 609;
+    for (int e = 0; e < n; e++) {
+      char text[96];
+      if (e == 0) {
+        snprintf(text, sizeof(text), "BOARD: %s",
+                 board_players_ == 1 ? "SOLO" : "CO-OP");
+      }
+      int y = touch ? touch_opt_center(e, n)
+                    : opt_row_center(e, n, DESK_OPT_TOP, DESK_OPT_BOTTOM);
+      if (!touch)
+        MenuSelect::draw_row_cursor(board_sel_ == e, CURSOR_L, CURSOR_R, y, 13);
+      if (e == 0) {
+        Typer::draw_centered(0, y, text, 14);
+        continue;
+      }
+      int ri = e - 1;
+      if (ri < (int)board_rows_.size()) {
+        const NetBoard::Row &r = board_rows_[ri];
+        // Worker data is sanitized before it can reach the font/logs —
+        // the same boundary the netplay identity path enforces.
+        std::string name = net_sanitize_name(r.name);
+        if (name.empty()) name = "PLAYER";
+        if (!board_best_run_id_.empty() && r.run_id == board_best_run_id_)
+          name += " - YOU";
+        char rank_buf[12], score_buf[24], level_buf[16];
+        snprintf(rank_buf, sizeof(rank_buf), "#%d", r.rank);
+        snprintf(score_buf, sizeof(score_buf), "SCORE %u", r.score);
+        snprintf(level_buf, sizeof(level_buf), "LEVEL %u", r.generation + 1);
+        Typer::draw(RANK_X, y, rank_buf, 13);
+        Typer::draw(NAME_X, y, name.c_str(), 12);
+        Typer::draw(SCORE_X, y, score_buf, 13);
+        Typer::draw(LEVEL_X, y, level_buf, 13);
+        continue;
+      }
+      // The UPLOAD BEST RUN action row, phase-labelled.
+      switch (board_up_phase_) {
+        case 1: {
+          int pct = board_net_ ? board_net_->transfer_pct() : -1;
+          if (pct >= 0)
+            snprintf(text, sizeof(text), "UPLOADING %d%%", pct);
+          else
+            snprintf(text, sizeof(text), "UPLOADING");
+          break;
+        }
+        case 2:
+          snprintf(text, sizeof(text), "UPLOADED - RANK #%d", board_up_rank_);
+          break;
+        case 3:
+          snprintf(text, sizeof(text), "UPLOAD FAILED - %s",
+                   board_up_reason_.c_str());
+          break;
+        default:
+          snprintf(text, sizeof(text), "UPLOAD BEST RUN - SCORE %u",
+                   board_best_score_);
+          break;
+      }
+      Typer::draw_centered(0, y, text, 14);
+    }
+    // Status / footer line between the rows and the exit band.
+    int fy = touch ? -240 : -330;
+    if (board_error_) {
+      Typer::draw_centered(0, fy, "LEADERBOARD UNAVAILABLE", 14);
+    } else if (board_loading_) {
+      if ((currentTime / 500) % 2)
+        Typer::draw_centered(0, fy, "LOADING", 14);
+    } else if (board_rows_.empty()) {
+      Typer::draw_centered(0, fy, "NO SCORES THIS SEASON", 14);
+    } else if (board_your_rank_ > 0 &&
+               (int)board_your_rank_ > (int)board_rows_.size()) {
+      // Off-board standing (LEADERBOARD.md rank-of): on-board players see
+      // their row tagged " - YOU" instead.
+      char yours[32];
+      snprintf(yours, sizeof(yours), "YOUR BEST: #%d", board_your_rank_);
+      Typer::draw_centered(0, fy, yours, 14);
+    }
+    TapBand::return_to_menu.draw(
+        touch ? Typer::cursored("RETURN TO MENU", true).c_str()
+              : "ESC - BACK TO MENU",
+        currentTime);
+  } else if (replays_mode_) {
     bool touch = is_touch_mode();
     Typer::draw_centered(0, touch ? 340 : 368, "REPLAYS", touch ? 30 : 26);
     int n = (int)replay_rows_.size();
@@ -301,6 +403,7 @@ void Menu::draw() {
         case 1: num_steps = NUM_SMOOTHING;    cur_idx = smoothing_index_[r.player];   lbl = SMOOTHING_LABELS;     break;
         case 2: num_steps = NUM_CAMERA;       cur_idx = camera_index_[r.player];      lbl = CAMERA_LABELS;        break;
         case 3: num_steps = NUM_STAR_DENSITY; cur_idx = star_density_index_;          lbl = STAR_DENSITY_LABELS;  break;
+        case 5: num_steps = NUM_RECORD;       cur_idx = leaderboard_index_;           lbl = RECORD_LABELS;        break;
         default:
           num_steps = NUM_RECORD; lbl = RECORD_LABELS;
           // Show the STORED setting, not the override's effective value:
@@ -375,7 +478,7 @@ void Menu::draw() {
     }
   }
 
-  if (!options_mode_ && !replays_mode_) {
+  if (!options_mode_ && !replays_mode_ && !board_mode_) {
     if (attract_mode_) {
       if (!((currentTime / 1400) % 2)) {
         // title_bot=160 (320-2*80), scores_top=-215; center single item in that gap
@@ -422,14 +525,20 @@ void Menu::draw() {
       if (show_online_row()) rows.push_back("ONLINE");
       if (show_options_row()) rows.push_back("OPTIONS");
       if (show_replays_row()) rows.push_back("REPLAYS");
+      if (show_board_row()) rows.push_back("LEADERBOARD");
       draw_menu_rows(rows);
     }
   }
-  if (!options_mode_ && !replays_mode_)
+  if (!options_mode_ && !replays_mode_ && !board_mode_)
     Typer::draw_centered(0, -420, "© 2008-2026 METONYMOUS", 13, currentTime);
 }
 
 void Menu::tick(int delta) {
+  // Leaderboard screen: drive the fetch/upload socket. May hand the state
+  // to replay playback (a downloaded row confirmed) — nothing below
+  // depends on running after that, the pending state change just waits
+  // for the manager.
+  if (board_net_) board_poll();
   // A friend's invite was accepted (or the game was launched from one):
   // jump straight into the lobby as a joiner for that room code, the same
   // programmatic path as the clipboard/rejoin auto-join.
@@ -556,6 +665,20 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
     }
     return;
   }
+  if (board_mode_) {
+    if (MenuSelect::move(key, board_sel_, board_entry_count())) {
+      // moved
+    } else if (MenuSelect::is_left(key) || MenuSelect::is_right(key)) {
+      // a/d switch the SOLO/CO-OP board from anywhere on the screen.
+      board_players_ = board_players_ == 1 ? 2 : 1;
+      board_request();
+    } else if (MenuSelect::is_back(key)) {
+      close_board();
+    } else if (confirm) {
+      board_nav_confirm();
+    }
+    return;
+  }
   if (replays_mode_) {
     if (MenuSelect::move(key, replay_sel_, (int)replay_rows_.size())) {
       // moved
@@ -617,6 +740,8 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
         open_options();
       } else if (menu_selection == replays_row_index()) {
         open_replays();
+      } else if (menu_selection == board_row_index()) {
+        open_board();
       } else {
         confirm_selection(src);
       }
@@ -640,6 +765,10 @@ bool Menu::back_pressed() {
   }
   if (replays_mode_) {
     replays_mode_ = false;
+    return true;
+  }
+  if (board_mode_) {
+    close_board();
     return true;
   }
   if (attract_mode_) {
@@ -694,6 +823,18 @@ void Menu::touch_tap(float nx, float ny) {
     if (row >= 0) {
       active_row_ = row;
       adjust_active_row(+1, /*wrap=*/true);
+    }
+    return;
+  }
+  if (board_mode_) {
+    if (TapBand::return_to_menu.contains(nx, ny)) { close_board(); return; }
+    int n = board_entry_count();
+    int row = is_touch_mode()
+                  ? touch_opt_row_at(ny, n)
+                  : opt_row_at(ny, n, DESK_OPT_TOP, DESK_OPT_BOTTOM);
+    if (row >= 0) {
+      board_sel_ = row;
+      board_nav_confirm();
     }
     return;
   }
@@ -776,6 +917,7 @@ int Menu::max_menu_items() const {
   if (show_online_row()) n++;
   if (show_options_row()) n++;
   if (show_replays_row()) n++;
+  if (show_board_row()) n++;
   return n;
 }
 
@@ -934,6 +1076,184 @@ void Menu::open_replays() {
   replays_mode_ = true;
 }
 
+// ---- LEADERBOARD screen (LEADERBOARD.md L3) -----------------------------
+
+bool Menu::show_board_row() const { return net_board_available(); }
+
+int Menu::board_row_index() const {
+  if (!show_board_row()) return -1;
+  int i = base_menu_rows();
+  if (show_online_row()) i++;
+  if (show_options_row()) i++;
+  if (show_replays_row()) i++;
+  return i;
+}
+
+void Menu::open_board() {
+  close_board();
+  board_net_ = NetBoard::create();
+  if (!board_net_) return;
+  // Warm the async platform credential mint so an UPLOAD confirm has it.
+  (void)net_local_verify_credential();
+  board_net_->connect(net_board_url());
+  // The browsed season is this build's (the one new runs land in). The
+  // upload candidate is best.nrp, which carries its own season — an older
+  // build's best charts in ITS season, invisible on this screen but
+  // admitted by the worker all the same.
+  board_season_ = Replay::game_version_string();
+  board_best_run_id_.clear();
+  board_best_score_ = 0;
+  board_best_clean_ = false;
+  Replay::Header h;
+  if (Replay::read_header(Replay::best_path(), h)) {
+    char rid[24];
+    snprintf(rid, sizeof(rid), "%llu", (unsigned long long)h.run_id);
+    board_best_run_id_ = rid;
+    board_best_score_ = h.final_score;
+    board_best_clean_ = (h.flags & Replay::FLAG_CLEAN) &&
+                        !(h.flags & Replay::FLAG_CHEATED) &&
+                        h.final_score > 0;
+    board_players_ = h.player_count == 2 ? 2 : 1;
+  } else {
+    board_players_ = 1;
+  }
+  board_sel_ = 0;
+  board_loading_ = false;
+  board_error_ = false;
+  board_up_phase_ = 0;
+  board_fetching_ = false;
+  board_mode_ = true;
+  board_request();
+}
+
+void Menu::close_board() {
+  delete board_net_;
+  board_net_ = nullptr;
+  board_mode_ = false;
+}
+
+void Menu::board_request() {
+  if (!board_net_) return;
+  board_loading_ = true;
+  board_error_ = false;
+  board_rows_.clear();
+  board_your_rank_ = 0;
+  if (board_sel_ >= board_entry_count()) board_sel_ = 0;
+  board_net_->top(board_season_, board_players_, 8);
+  // The rank-of footer: only meaningful when the local best belongs to
+  // the browsed board (same season, same player count).
+  Replay::Header h;
+  if (board_best_score_ > 0 && Replay::read_header(Replay::best_path(), h)) {
+    std::string best_season(h.game_version,
+                            strnlen(h.game_version, sizeof(h.game_version)));
+    int best_players = h.player_count == 2 ? 2 : 1;
+    if (best_season == board_season_ && best_players == board_players_)
+      board_net_->rank_of(board_season_, board_players_, board_best_score_);
+  }
+}
+
+int Menu::board_entry_count() const {
+  return 1 + (int)board_rows_.size() + (board_upload_row_shown() ? 1 : 0);
+}
+
+bool Menu::board_upload_row_shown() const {
+  return board_best_clean_ && board_net_ != nullptr;
+}
+
+void Menu::board_start_upload() {
+  if (!board_net_ || board_up_phase_ == 1) return;
+  const NetIdentity &me = net_local_identity();
+  board_net_->submit(Replay::best_path(), me.platform, me.name,
+                     net_local_verify_credential());
+  board_up_phase_ = 1;
+  SDL_Log("board: uploading best.nrp (menu)");
+}
+
+void Menu::board_nav_confirm() {
+  if (board_sel_ == 0) {
+    board_players_ = board_players_ == 1 ? 2 : 1;
+    board_request();
+    return;
+  }
+  int ri = board_sel_ - 1;
+  if (ri < (int)board_rows_.size()) {
+    const NetBoard::Row &r = board_rows_[ri];
+    // Score-only rows (blob demoted by retention) are visibly unselectable
+    // — nothing to watch. One download at a time.
+    if (r.has_replay && !board_fetching_ && board_net_) {
+      board_fetching_ = true;
+      board_net_->fetch(board_season_, r.run_id, Replay::download_path());
+      SDL_Log("board: fetching replay run_id=%s", r.run_id.c_str());
+    }
+    return;
+  }
+  if (board_upload_row_shown() &&
+      (board_up_phase_ == 0 || board_up_phase_ == 3))
+    board_start_upload();
+}
+
+void Menu::board_poll() {
+  if (!board_net_) return;
+  NetBoard::Event ev;
+  while (board_net_->poll(ev)) {
+    switch (ev.kind) {
+      case NetBoard::Event::Top:
+        board_rows_ = ev.rows;
+        board_loading_ = false;
+        if (board_sel_ >= board_entry_count())
+          board_sel_ = board_entry_count() - 1;
+        break;
+      case NetBoard::Event::RankOf:
+        board_your_rank_ = ev.place;
+        break;
+      case NetBoard::Event::Placed:
+        board_up_phase_ = 2;
+        board_up_rank_ = ev.place;
+        SDL_Log("board: placed #%d (menu)", ev.place);
+        board_request();  // the new row should appear in the list
+        break;
+      case NetBoard::Event::FetchDone: {
+        board_fetching_ = false;
+        // Downloaded replays are transient (download.nrp) and hand off to
+        // the ordinary R2 playback path; a parse failure just stays here.
+        if (GLGame *g =
+                GLGame::start_replay_playback(Replay::download_path())) {
+          request_state_change(g);
+          return;
+        }
+        SDL_Log("board: downloaded replay would not play");
+        break;
+      }
+      case NetBoard::Event::Error:
+        SDL_Log("board: error %s (menu)", ev.reason.c_str());
+        if (board_up_phase_ == 1) {
+          board_up_phase_ = 3;
+          board_up_reason_ = ev.reason;
+        } else if (board_fetching_) {
+          board_fetching_ = false;
+        } else {
+          board_loading_ = false;
+          board_error_ = true;
+        }
+        break;
+      case NetBoard::Event::Closed:
+        SDL_Log("board: connection closed (menu)");
+        board_loading_ = false;
+        board_fetching_ = false;
+        board_error_ = true;
+        if (board_up_phase_ == 1) {
+          board_up_phase_ = 3;
+          board_up_reason_ = "connection";
+        }
+        delete board_net_;
+        board_net_ = nullptr;
+        return;
+      default:
+        break;
+    }
+  }
+}
+
 void Menu::adjust_active_row(int delta, bool wrap) {
   const OptRow &r = opt_row(active_row_);
   int *idx, num;
@@ -942,6 +1262,7 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     case 1: idx = &smoothing_index_[r.player];   num = NUM_SMOOTHING;    break;
     case 2: idx = &camera_index_[r.player];      num = NUM_CAMERA;       break;
     case 3: idx = &star_density_index_;          num = NUM_STAR_DENSITY; break;
+    case 5: idx = &leaderboard_index_;           num = NUM_RECORD;       break;
     default:idx = &auto_record_index_;           num = NUM_RECORD;       break;
   }
   *idx += delta;
@@ -963,6 +1284,7 @@ void Menu::close_options() {
   g_prefs.p2_keys.rotate_view          = (camera_index_[1] == 1);
   g_prefs.star_density                 = STAR_DENSITY_MULTIPLIERS[star_density_index_];
   g_prefs.auto_record_replays          = (auto_record_index_ == 1);
+  g_prefs.leaderboard_prompts          = (leaderboard_index_ == 1);
   save_preferences();
   delete starfield;
   starfield = new GLStarfield(Point(default_world_width, default_world_height),

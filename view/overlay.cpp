@@ -2,6 +2,7 @@
 
 #include "../menu_select.h"
 #include "tap_band.h"
+#include "../net_board.h"
 #include "../net_identity.h"
 #include "../net_session.h"
 #include "../net_transport.h"
@@ -204,6 +205,44 @@ void Overlay::net_overlays(const GLGame *glgame) {
     // screen. One shared card for both roles; the 3 s guard in the input
     // handlers still stops a mid-fight trigger from skipping it.
     Typer::draw_centered(0, 60, "GAME OVER", 34);
+    // Leaderboard game-over flow (LEADERBOARD.md L2): the card's lower
+    // half belongs to the upload prompt while one is live. BoardQualifying
+    // draws nothing — the query is silent and the card must never look
+    // like it is waiting on the network.
+    if (glgame->board_phase_ == GLGame::BoardPrompt) {
+      char line[64];
+      snprintf(line, sizeof(line), "WOULD PLACE #%d THIS SEASON",
+               glgame->board_place_);
+      Typer::draw_centered(0, 10, line, 14);
+      Typer::draw_centered(0, -18, "UPLOAD TO LEADERBOARD?", 16);
+      if (is_touch_mode()) {
+        // YES left half, NO right half (the New-game confirm's grammar).
+        Typer::draw_centered(-120, -60, "YES", 20);
+        Typer::draw_centered(120, -60, "NO", 20);
+      } else {
+        MenuSelect::draw_row(-52, "YES", 16, glgame->board_yes_);
+        MenuSelect::draw_row(-80, "NO", 16, !glgame->board_yes_);
+      }
+      return;  // the prompt owns the card: no RETURN TO MENU row
+    }
+    if (glgame->board_phase_ == GLGame::BoardUploading) {
+      int pct = glgame->board_ ? glgame->board_->transfer_pct() : -1;
+      char line[48];
+      if (pct >= 0)
+        snprintf(line, sizeof(line), "UPLOADING %d%%", pct);
+      else
+        snprintf(line, sizeof(line), "UPLOADING");
+      Typer::draw_centered(0, -18, line, 16);
+      return;
+    }
+    if (glgame->board_phase_ == GLGame::BoardPlaced) {
+      char line[48];
+      snprintf(line, sizeof(line), "UPLOADED - RANK #%d",
+               glgame->board_place_);
+      Typer::draw_centered(0, 10, line, 14);
+    } else if (glgame->board_phase_ == GLGame::BoardFailed) {
+      Typer::draw_centered(0, 10, "UPLOAD FAILED", 14);
+    }
     // Every screen whose only move is "leave" says so the same way: the
     // shared RETURN TO MENU row, answered by confirm or back. Touch draws
     // no cursor and already has the tap band under this card (title_text
