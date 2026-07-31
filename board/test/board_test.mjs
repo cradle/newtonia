@@ -86,6 +86,22 @@ async function submit(ws, bytes, name, platform = 2) {
         f.rows[0].rank === 1 && f.rows[1].name === "ALICE");
   check("rows carry replays", f.rows.every((r) => r.has_replay === true));
   check("rows verified", f.rows.every((r) => r.verified === true));
+  // Replay compatibility metadata (season browser): the header's format
+  // and embedded savegame versions ride each row so a client can grey out
+  // rows its build cannot play back BEFORE downloading.
+  check("rows carry format versions",
+        f.rows.every((r) => r.format === 2 && r.save_format === 17),
+        JSON.stringify(f.rows));
+
+  // 4b. seasons lists this season, newest-first, with count + newest.
+  send(ws, { t: "seasons" });
+  f = await ws._recv();
+  const season_row = f.t === "seasons" &&
+      (f.rows || []).find((r) => r.season === SEASON);
+  check("seasons lists the season", !!season_row, JSON.stringify(f));
+  check("seasons row has newest + count",
+        season_row && season_row.count >= 2 && season_row.newest > 0,
+        JSON.stringify(season_row));
 
   // 5. rank-of between the two scores.
   send(ws, { t: "rank-of", season: SEASON, players: 1, score: 700 });

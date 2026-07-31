@@ -39,6 +39,20 @@ class NetBoard {
     uint64_t date = 0;       // submitted_at, epoch ms
     bool has_replay = false; // false = demoted to score-only
     std::string run_id;      // decimal string, the fetch key
+    // The replay's format + embedded savegame version, so a build browsing
+    // an old season can refuse rows it cannot play back BEFORE downloading
+    // (net_board_replay_watchable). 0 = the row predates these columns —
+    // unknown, so the download is allowed and playback decides.
+    uint16_t format = 0;
+    uint16_t save_format = 0;
+  };
+
+  // One entry of the season browser's list ({t:"seasons"} — the seasons
+  // that exist on the worker, newest submission first).
+  struct Season {
+    std::string season;
+    uint64_t newest = 0;     // newest submitted_at, epoch ms
+    uint32_t count = 0;      // rows across both boards
   };
 
   struct Event {
@@ -47,6 +61,7 @@ class NetBoard {
       Placed,    // place = final rank after upload
       Top,       // rows
       RankOf,    // place
+      Seasons,   // seasons (the browser list)
       FetchDone, // replay written to the dest_path passed to fetch()
       Error,     // reason = worker err frame ("unverified", "not-best",
                  // "already-submitted", "rate-limited", ...) or local
@@ -62,6 +77,7 @@ class NetBoard {
     bool would_place = false;
     std::string reason;
     std::vector<Row> rows;
+    std::vector<Season> seasons;
   };
 
   virtual ~NetBoard() {}
@@ -73,6 +89,8 @@ class NetBoard {
   virtual void qualify(const std::string &season, int players,
                        uint32_t score) = 0;
   virtual void top(const std::string &season, int players, int count) = 0;
+  // List the seasons that exist (newest first) — the menu's season browser.
+  virtual void seasons() = 0;
   virtual void rank_of(const std::string &season, int players,
                        uint32_t score) = 0;
   // Upload the .nrp at `path` (read on the calling thread). The identity
@@ -127,6 +145,15 @@ std::string net_board_verify_credential();
 // first submit's read already fired the next mint — never minting per poll.
 std::string net_board_verify_credential_peek();
 
+// Can THIS build play the row's replay back? False when the row's recorded
+// format_version is outside this build's Replay reader range, or its
+// embedded savegame version outside the savegame loader's — checked BEFORE
+// any download, so the season browser greys out rows an old (or newer!)
+// build wrote rather than fetching a file playback will refuse. A zero
+// field (row stored before the worker carried the columns) is unknown:
+// allowed, and playback's own decline stays the graceful fallback.
+bool net_board_replay_watchable(const NetBoard::Row &row);
+
 // Strip a worker-controlled wire string to printable 7-bit ASCII, capped
 // at max_len. Every string off the board socket (err reasons, run_ids)
 // that reaches a log or the font must pass through here first — the socket
@@ -139,6 +166,7 @@ namespace NetBoardProto {
 std::string qualify_frame(const std::string &season, int players,
                           uint32_t score);
 std::string top_frame(const std::string &season, int players, int count);
+std::string seasons_frame();
 std::string rank_of_frame(const std::string &season, int players,
                           uint32_t score);
 std::string submit_frame(size_t size, uint8_t platform,

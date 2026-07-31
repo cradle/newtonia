@@ -12,6 +12,8 @@
 #include "net_identity.h"  // net_has_verify_backend
 #include "net_policy.h"
 #include "net_signal.h"  // NetSig json helpers (shared with signaling)
+#include "replay.h"      // format range for net_board_replay_watchable
+#include "savegame.h"    // savegame version range, same predicate
 
 // The baked default board worker. Overridable at COMPILE time, mirroring
 // net_signal.cpp's scheme; the runtime NEWTONIA_BOARD_URL env var still
@@ -36,6 +38,23 @@ bool net_board_available() {
   NetBoard *probe = NetBoard::create();
   if (!probe) return false;
   delete probe;
+  return true;
+}
+
+bool net_board_replay_watchable(const NetBoard::Row &row) {
+  // Both checks mirror what playback itself enforces: the Reader refuses a
+  // format_version outside [MIN_FORMAT_VERSION, FORMAT_VERSION], and the
+  // bootstrap keyframe refuses a savegame version outside
+  // [MIN_VERSION, VERSION]. 0 = the row predates the worker's format
+  // columns — unknown, so let the download proceed and playback decide.
+  if (row.format != 0 &&
+      (row.format < Replay::Header::MIN_FORMAT_VERSION ||
+       row.format > Replay::Header::FORMAT_VERSION))
+    return false;
+  if (row.save_format != 0 &&
+      (row.save_format < Save::GameState::MIN_VERSION ||
+       row.save_format > Save::GameState::VERSION))
+    return false;
   return true;
 }
 
@@ -149,6 +168,8 @@ std::string qualify_frame(const std::string &season, int players,
            json_escape(season).c_str(), players, score);
   return buf;
 }
+
+std::string seasons_frame() { return "{\"t\":\"seasons\"}"; }
 
 std::string top_frame(const std::string &season, int players, int count) {
   char buf[192];
@@ -265,7 +286,21 @@ static bool parse_row(const std::string &obj, NetBoard::Row &row) {
   }
   json_bool_field(obj, "has_replay", row.has_replay);
   json_field(obj, "run_id", row.run_id);
+  if (json_uint_field(obj, "format", v)) row.format = (uint16_t)v;
+  if (json_uint_field(obj, "save_format", v)) row.save_format = (uint16_t)v;
   return row.rank > 0 && !row.run_id.empty();
+}
+
+static bool parse_season(const std::string &obj, NetBoard::Season &s) {
+  json_field(obj, "season", s.season);
+  // `newest` is epoch ms — parse by hand like Row::date (overflows a
+  // 32-bit unsigned long).
+  size_t at = obj.find("\"newest\":");
+  if (at != std::string::npos)
+    s.newest = strtoull(obj.c_str() + at + 9, NULL, 10);
+  unsigned v = 0;
+  if (json_uint_field(obj, "count", v)) s.count = v;
+  return !s.season.empty();
 }
 
 bool parse_frame(const std::string &frame, NetBoard::Event &ev) {
@@ -304,6 +339,17 @@ bool parse_frame(const std::string &frame, NetBoard::Event &ev) {
     for (size_t i = 0; i < objs.size(); i++) {
       NetBoard::Row row;
       if (parse_row(objs[i], row)) ev.rows.push_back(row);
+    }
+    return true;
+  }
+  if (t == "seasons") {
+    ev.kind = NetBoard::Event::Seasons;
+    ev.seasons.clear();
+    std::vector<std::string> objs;
+    if (!split_rows(frame, objs)) return false;
+    for (size_t i = 0; i < objs.size(); i++) {
+      NetBoard::Season s;
+      if (parse_season(objs[i], s)) ev.seasons.push_back(s);
     }
     return true;
   }

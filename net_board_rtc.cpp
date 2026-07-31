@@ -60,6 +60,8 @@ class RtcBoard : public NetBoard {
     send_text(NetBoardProto::top_frame(season, players, count));
   }
 
+  void seasons() override { send_text(NetBoardProto::seasons_frame()); }
+
   void rank_of(const std::string &season, int players,
                uint32_t score) override {
     send_text(NetBoardProto::rank_of_frame(season, players, score));

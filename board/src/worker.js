@@ -9,7 +9,10 @@
 //   <- {t:"qualify", place, cutline, would_place}
 //   -> {t:"top", season, players, count}
 //   <- {t:"top", rows:[{rank,name,platform,verified,score,generation,
-//                       duration_ms,date,has_replay,run_id}]}
+//                       duration_ms,date,has_replay,run_id,
+//                       format,save_format}]}
+//   -> {t:"seasons"}
+//   <- {t:"seasons", rows:[{season,newest,count}]}   newest-first, max 50
 //   -> {t:"rank-of", season, players, score}
 //   <- {t:"rank-of", place}
 //   -> {t:"submit", size, platform, name, cred}   attestation REQUIRED
@@ -203,6 +206,8 @@ async function ensure_schema(db) {
            submitted_at INTEGER NOT NULL, name TEXT NOT NULL,
            platform INTEGER NOT NULL, verified INTEGER NOT NULL,
            platform_key TEXT NOT NULL, blob_key TEXT NOT NULL,
+           format INTEGER NOT NULL DEFAULT 0,
+           save_format INTEGER NOT NULL DEFAULT 0,
            PRIMARY KEY (season, run_id))`),
     db.prepare(`CREATE INDEX IF NOT EXISTS scores_rank
                 ON scores(season, players, score DESC)`),
@@ -214,6 +219,17 @@ async function ensure_schema(db) {
     db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS scores_player_uk
                 ON scores(season, players, platform_key)`),
   ]);
+  // Append-only migrations for tables that predate a column (fresh CREATEs
+  // above already carry them): ADD COLUMN throws when the column exists,
+  // and swallowing that is the idempotence. Rows from before the migration
+  // keep the DEFAULT 0 = "format unknown", which clients treat as "let
+  // playback decide".
+  for (const ddl of [
+    `ALTER TABLE scores ADD COLUMN format INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE scores ADD COLUMN save_format INTEGER NOT NULL DEFAULT 0`,
+  ]) {
+    try { await db.prepare(ddl).run(); } catch (e) {}
+  }
   schema_ready = true;
 }
 
@@ -457,6 +473,27 @@ export class Session {
     try { msg = JSON.parse(text); } catch (e) { return this.fail(ws, "bad-frame"); }
     if (!msg || typeof msg !== "object") return this.fail(ws, "bad-frame");
 
+    if (msg.t === "seasons") {
+      // Season browser (LEADERBOARD.md): the seasons that exist, newest
+      // submission first, across BOTH boards (the client's SOLO/CO-OP
+      // toggle works within a season). Takes no season argument, so it
+      // sits before the season-keyed block below; budgeted as a query.
+      if (++this.queries > CONN_MAX_QUERIES) return this.fail(ws, "rate-limited");
+      if (!(await within_limit(this.env, this.ip, "query")))
+        return this.err(ws, "rate-limited");
+      await ensure_schema(this.env.DB);
+      const rows = await this.env.DB.prepare(
+          `SELECT season, MAX(submitted_at) AS newest, COUNT(*) AS n
+           FROM scores GROUP BY season ORDER BY newest DESC LIMIT 50`).all();
+      this.send(ws, {
+        t: "seasons",
+        rows: (rows.results || []).map((r) => ({
+          season: r.season, newest: Number(r.newest), count: Number(r.n),
+        })),
+      });
+      return;
+    }
+
     if (msg.t === "qualify" || msg.t === "rank-of" || msg.t === "top") {
       if (++this.queries > CONN_MAX_QUERIES) return this.fail(ws, "rate-limited");
       // Per-IP aggregate read budget (see LIMITS): reads are cheap to retry,
@@ -471,7 +508,7 @@ export class Session {
         const count = Math.min(Math.max(Number(msg.count) || 25, 1), KEEP_N);
         const rows = await this.env.DB.prepare(
             `SELECT run_id, score, generation, duration_ms, submitted_at,
-                    name, platform, verified, blob_key
+                    name, platform, verified, blob_key, format, save_format
              FROM scores WHERE season = ?1 AND players = ?2
              ORDER BY score DESC, submitted_at ASC LIMIT ?3`)
             .bind(season, players, count).all();
@@ -484,6 +521,10 @@ export class Session {
             duration_ms: Number(r.duration_ms),
             date: Number(r.submitted_at),
             has_replay: r.blob_key !== "", run_id: r.run_id,
+            // The replay's format + embedded savegame version, so a client
+            // browsing an old season can grey out rows its build cannot
+            // play back BEFORE downloading (0 = row predates the columns).
+            format: Number(r.format), save_format: Number(r.save_format),
           })),
         });
         return;
@@ -637,18 +678,20 @@ export class Session {
     await db.prepare(
         `INSERT INTO scores(season, players, run_id, score,
            generation, duration_ms, submitted_at, name, platform, verified,
-           platform_key, blob_key)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+           platform_key, blob_key, format, save_format)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
          ON CONFLICT(season, players, platform_key) DO UPDATE SET
            run_id = excluded.run_id, score = excluded.score,
            generation = excluded.generation, duration_ms = excluded.duration_ms,
            submitted_at = excluded.submitted_at, name = excluded.name,
            platform = excluded.platform, verified = excluded.verified,
-           blob_key = excluded.blob_key
+           blob_key = excluded.blob_key, format = excluded.format,
+           save_format = excluded.save_format
          WHERE excluded.score > scores.score`)
         .bind(hd.season, players, hd.run_id, hd.score, hd.generation,
               hd.duration_ms, Date.now(), identity.name, identity.platform,
-              identity.verified ? 1 : 0, key, blob_key).run();
+              identity.verified ? 1 : 0, key, blob_key,
+              hd.format_version, hd.save_version).run();
     // Did this run win the slot? The surviving row for this player tells
     // us unambiguously (covers the lost-the-WHERE race too).
     const survivor = await db.prepare(

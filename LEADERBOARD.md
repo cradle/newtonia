@@ -197,7 +197,14 @@ worker → {t:"qualify", place, cutline, would_place}   // one D1 read
 client → {t:"top", season, players, count}            // count ≤ 100
 worker → {t:"top", rows:[{rank, name, platform, verified, score,
                           generation, duration_ms, date, has_replay,
-                          run_id}]}
+                          run_id, format, save_format}]}
+                        // format/save_format: the replay's format_version
+                        // + embedded savegame version, so a client can
+                        // grey out rows its build cannot play back BEFORE
+                        // downloading (0 = row predates the columns)
+
+client → {t:"seasons"}                                // season browser
+worker → {t:"seasons", rows:[{season, newest, count}]}// newest-first, ≤ 50
 
 client → {t:"rank-of", season, players, score}        // display only —
 worker → {t:"rank-of", place}                         // one D1 count on
@@ -338,26 +345,47 @@ device still owed (needs a deployed beta worker).
 Implementation notes: the screen follows the replays list's grammar
 (shared row geometry, TapBand exit, nav ladder — controller works via
 the shared translator for free). Entries are [SOLO/CO-OP toggle row] +
-top rows + [UPLOAD BEST RUN], so touch and desktop confirm the same
-list; a/d also flips the board from anywhere. The browsed season is this
-build's (`Replay::game_version_string()` — added because the Makefile
-scopes the version stamp to replay.o); an older build's `best.nrp`
-uploads into its OWN season, admitted but invisible here. Own-row
-detection compares the rows' `run_id` against best.nrp's ("- YOU" tag);
-the rank-of footer shows only when the local best belongs to the browsed
-board (same season + player count) and sits off the visible rows. Worker
-names are re-sanitized through `net_sanitize_name` before touching the
-font — the netplay identity path's security boundary, applied to worker
-data too. Fetches land in `replays/download.nrp` (transient, never
-listed, never best-checked) and hand off to the ordinary R2 playback.
-The Options row shipped as "LEADERBOARD PROMPTS" (last, hidden when
+[SEASON browser row] + top rows + [UPLOAD BEST RUN], so touch and
+desktop confirm the same list; a/d flips the board from anywhere EXCEPT
+the SEASON row, where a/d (and confirm) cycle the browsed season
+instead. **Season browser** (added 2026-07-31 with the SEASON-file
+scheme): the screen opens on this build's season
+(`Replay::game_version_string()` — added because the Makefile scopes
+the version stamp to replay.o) and fetches the worker's season list
+(`{t:"seasons"}`, newest submission first; the build's season is kept
+at the front even before it has rows, tagged "- LIVE" when there is
+somewhere else to cycle to). Old seasons' rows are viewable forever
+(scores never expire; replays follow retention). **Replay downloads
+are compat-gated BEFORE the fetch**: each row carries the replay's
+`format`/`save_format` (stored at submit from the validated header),
+and `net_board_replay_watchable` refuses rows outside this build's
+Replay format range or savegame version range — the row's last column
+shows OTHER VER (or NO REPLAY when retention demoted it), the footer
+names the reason when such a row is selected, and confirm does
+nothing; 0 (a row from before the columns existed) means unknown, so
+the download proceeds and playback's own polite decline is the
+fallback. The UPLOAD row appears on the screen of the season the
+upload would LAND in (best.nrp's own) — an older build's best is
+reached by cycling the SEASON row to it, replacing the old
+"admitted but invisible" quirk. Own-row detection compares the rows'
+`run_id` against best.nrp's ("- YOU" tag); the rank-of footer shows
+only when the local best belongs to the browsed board (same season +
+player count) and sits off the visible rows. Worker names are
+re-sanitized through `net_sanitize_name` before touching the font —
+the netplay identity path's security boundary, applied to worker data
+too. Fetches land in `replays/download.nrp` (transient, never listed,
+never best-checked) and hand off to the ordinary R2 playback. The
+Options row shipped as "LEADERBOARD PROMPTS" (last, hidden when
 `net_board_available()` is false — a toggle for a feature that cannot
 appear would only confuse).
 **Exit**: keyboard/controller/touch all drive list → watch → back; a
-score-only row is visibly unselectable (no confirm action); menu-side
-`board:` logs are greppable. A headless menu-screen e2e is still owed —
-the L2 driver covers the transport and the worker end to end; the screen
-was verified by build + code-path review this round.
+score-only or other-version row is visibly unselectable (tagged, no
+confirm action, footer reason); menu-side `board:` logs are greppable.
+The season browser + compat gate were verified by an xvfb/xdotool menu
+smoke against a seeded two-season worker (one watchable, one save-18
+row: cycle → tag shown → confirm inert → watchable season's fetch
+fires); a committed headless menu-screen e2e is still owed — the L2
+driver covers the transport and the worker end to end.
 
 ### L4 — deploy + season hygiene ✅ (landed on this branch, 2026-07-31)
 `deploy-board.yml` mirrors deploy-signal.yml (tags → prod, master pushes

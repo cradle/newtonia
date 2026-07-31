@@ -70,6 +70,7 @@ private:
   void board_request();            // (re)fetch top + rank-of for board_players_
   void board_poll();               // drive NetBoard events (from tick)
   void board_nav_confirm();        // confirm on the current selection
+  void board_cycle_season(int dir);// step the browsed season (SEASON row)
   bool board_transfer_busy() const;// a fetch or upload is in flight
   int  board_entry_count() const;  // toggle row + score rows + upload row
   bool board_upload_row_shown() const;
@@ -120,7 +121,13 @@ private:
   int  board_your_rank_ = 0;            // rank-of answer (0 = none); a stale
                                         // answer is dropped by matching the
                                         // worker-echoed players field
-  std::string board_season_;            // best.nrp's, else this build's
+  std::string board_season_;            // the BROWSED season (SEASON row)
+  std::string board_build_season_;      // this build's stamp (the default)
+  std::string board_best_season_;       // best.nrp's own season (upload gate)
+  // The worker's season list (newest first; the build's season is kept at
+  // the front even before it has rows). Single-entry until the seasons
+  // answer lands — cycling is a no-op then.
+  std::vector<NetBoard::Season> board_seasons_;
   std::string board_best_run_id_;       // own-row detection (decimal string)
   uint32_t board_best_score_ = 0;       // rank-of query + upload row label
   bool board_best_clean_ = false;       // upload row shown only for a clean best
