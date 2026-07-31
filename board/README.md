@@ -35,18 +35,31 @@ node test/board_test.mjs           # BOARD_TEST_URL overrides ws://127.0.0.1:878
 The retention cron can be fired locally with
 `curl "http://127.0.0.1:8788/cdn-cgi/handler/scheduled"`.
 
-## One-time resource setup (per environment)
+## Resource setup — automated
 
-`wrangler dev --local` simulates D1/R2 and needs none of this. Before the
-first real deploy:
+`wrangler dev --local` simulates D1/R2 and needs nothing. For a REAL deploy
+the D1 databases and R2 buckets are created automatically on first run and
+the real `database_id` is resolved and injected into the config at deploy
+time by `board/scripts/ensure-resources.sh` (invoked from
+`deploy-board.yml`) — no Terraform and no hand-pasted id. The `database_id`
+in `wrangler.toml` stays an obvious placeholder in git; only the deploy
+checkout gets the real value substituted.
+
+For the automation to create resources, `CLOUDFLARE_API_TOKEN` must include
+**D1:Edit** and **Workers R2 Storage:Edit** (the dashboard's "Edit
+Cloudflare Workers" template plus those two), not just Workers Scripts:Edit.
+
+To run the bootstrap by hand (or provision without deploying):
 
 ```sh
-npx wrangler d1 create newtonia-board          # paste database_id into wrangler.toml
-npx wrangler r2 bucket create newtonia-replays
-# beta (own resources, never mixed with production):
-npx wrangler d1 create newtonia-board-beta     # paste into [env.beta]
-npx wrangler r2 bucket create newtonia-replays-beta
+cd board
+CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... \
+  bash scripts/ensure-resources.sh beta        # or: production
+# prints DATABASE_ID=<uuid>; the deploy workflow injects it for you
 ```
+
+The script is idempotent — it creates a database/bucket only when absent
+and otherwise just resolves the existing id, so re-running is safe.
 
 Secrets, per environment (`--env beta` for the beta worker): the same
 platform verification secrets the signal worker uses —

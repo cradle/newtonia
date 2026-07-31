@@ -18,10 +18,14 @@ name: Deploy Board Worker
 # tagged commit didn't touch board/.
 #
 # Needs the same repo secrets as deploy-signal (CLOUDFLARE_API_TOKEN,
-# CLOUDFLARE_ACCOUNT_ID) plus the one-time D1/R2 resource creation and
-# database_id paste documented in board/README.md. The worker's RUNTIME
-# secrets (platform verify keys) live in Cloudflare per script and
-# survive every deploy; this workflow never touches them.
+# CLOUDFLARE_ACCOUNT_ID). The D1 databases and R2 buckets are created
+# automatically on first deploy and the real database_id is resolved and
+# injected into the config at deploy time (board/scripts/ensure-resources.sh)
+# — no Terraform, no manual paste. For that the API token additionally
+# needs D1:Edit and Workers R2 Storage:Edit (a plain Workers-Scripts:Edit
+# token can deploy but not create resources — board/README.md). The
+# worker's RUNTIME secrets (platform verify keys) live in Cloudflare per
+# script and survive every deploy; this workflow never touches them.
 on:
   push:
     tags:
@@ -109,6 +113,33 @@ jobs:
           esac
           echo "target=$TARGET" >> "$GITHUB_OUTPUT"
           echo "deploying: $TARGET"
+
+      # Ensure the target's D1 database + R2 bucket exist (idempotent,
+      # lightweight — no Terraform, see board/scripts/ensure-resources.sh)
+      # and resolve the real database_id, then inject it over the config's
+      # placeholder so the deploy binds the right database. The placeholder
+      # stays in git (local `wrangler dev --local` ignores database_id).
+      - name: Ensure resources + resolve database_id
+        id: resources
+        working-directory: board
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          TARGET="${{ steps.target.outputs.target }}"
+          OUT="$(bash scripts/ensure-resources.sh "$TARGET")"
+          echo "$OUT"
+          DBID="$(echo "$OUT" | sed -n 's/^DATABASE_ID=//p')"
+          [ -n "$DBID" ] || { echo "no database_id resolved"; exit 1; }
+          # Each env's placeholder is distinct (…000 production, …001 beta),
+          # so replace only the target's line.
+          if [ "$TARGET" = "production" ]; then
+            PLACEHOLDER="00000000-0000-0000-0000-000000000000"
+          else
+            PLACEHOLDER="00000000-0000-0000-0000-000000000001"
+          fi
+          sed -i "s/$PLACEHOLDER/$DBID/" wrangler.toml
+          grep -q "$DBID" wrangler.toml || { echo "id injection failed"; exit 1; }
 
       # Production is the TOP-LEVEL wrangler environment; beta is the
       # named env in board/wrangler.toml (its own D1/R2 resources).

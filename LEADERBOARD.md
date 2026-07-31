@@ -340,15 +340,37 @@ was verified by build + code-path review this round.
 `deploy-board.yml` mirrors deploy-signal.yml (tags → prod, master pushes
 touching `board/**` or the shared `signal/src/*_verify.js` → beta,
 manual dispatch either; gated on the L1 unit + protocol tests);
-`board/README.md` carries the runbook. **Before the first real deploy**
-the one-time resource creation must happen (D1 databases + R2 buckets
-for prod and beta, `database_id`s pasted into wrangler.toml — the
-placeholders deliberately fail a premature deploy) and the platform
-verify secrets set per environment. The retention cron is code-reviewed
-and locally triggerable (`/cdn-cgi/handler/scheduled`); a seeded
-past-season verification against real D1 is owed at first deploy.
-**Exit** (owed at first deploy): a `v*.*.*` tag deploys both workers;
-beta isolation confirmed (beta rows never appear in prod).
+`board/README.md` carries the runbook. **Resource creation is automated**
+(no Terraform — the footprint is four resources that never change shape):
+`scripts/ensure-resources.sh`, invoked by the workflow before deploy,
+creates the D1 database + R2 bucket for the target if absent and resolves
+the real `database_id`, which the deploy step injects over the config's
+placeholder (the placeholder stays in git; local `wrangler dev` ignores
+it). The token needs D1:Edit + R2:Edit for that. Platform verify secrets
+are still set per environment by hand (secret values — nothing can invent
+them). The retention cron is code-reviewed and locally triggerable
+(`/cdn-cgi/handler/scheduled`); a seeded past-season verification against
+real D1 is owed at first deploy.
+**Exit** (owed at first deploy): a `v*.*.*` tag deploys both workers,
+auto-creating resources; beta isolation confirmed (beta rows never appear
+in prod).
+
+### Review pass ✅ (2026-07-31)
+A six-lens multi-agent review (worker security/correctness, C++ seam
+threading, game-over flow, menu screen, cross-layer protocol) with an
+adversarial verify stage found 21 confirmed defects (2 critical, 6 major,
+13 minor) — all fixed (commit on this branch). The two criticals were the
+offline game-over prompt rendering nothing while still intercepting input
+(a silent upload risk — `board_prompt` now owns the whole game-over card
+in every mode) and the touch/click LEADERBOARD row launching a new game.
+Majors: unmetered read/fetch paths (per-IP query/fetch limits added),
+no verify-backend gate on the upload UI, concurrent submit+fetch wedging
+the single-transfer seam, non-atomic dedup (UNIQUE index + atomic
+ON CONFLICT upsert), and unsanitized worker strings reaching logs/font.
+A bug beyond the review's scope was also fixed: the prompt navigated on
+key-RELEASE, so a fire/thrust key held through death and released into the
+prompt answered it — input now acts only on keys pressed while the prompt
+is up. e2e `test/e2e/leaderboard.sh` remains green after all fixes.
 
 ### L5 — deferred: verification
 R5's input-log re-simulation, arriving through the reserved `verify`

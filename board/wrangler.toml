@@ -10,14 +10,15 @@ compatibility_date = "2026-06-01"
 [triggers]
 crons = ["17 4 * * *"]
 
-# One-time setup before the first deploy (see README.md):
-#   npx wrangler d1 create newtonia-board        -> paste database_id below
-#   npx wrangler r2 bucket create newtonia-replays
-# `wrangler dev --local` ignores the id (local sqlite/blob simulators).
+# D1/R2 are created automatically on first deploy and the real database_id
+# is resolved + injected over the placeholder below by
+# scripts/ensure-resources.sh (deploy-board.yml). `wrangler dev --local`
+# ignores the id (local sqlite/blob simulators), so the placeholder stays
+# in git — do NOT paste a real id here. See README.md.
 [[d1_databases]]
 binding = "DB"
 database_name = "newtonia-board"
-database_id = "00000000-0000-0000-0000-000000000000" # placeholder until created
+database_id = "00000000-0000-0000-0000-000000000000" # placeholder; injected at deploy
 
 [[r2_buckets]]
 binding = "REPLAYS"
@@ -53,7 +54,7 @@ crons = ["17 4 * * *"]
 [[env.beta.d1_databases]]
 binding = "DB"
 database_name = "newtonia-board-beta"
-database_id = "00000000-0000-0000-0000-000000000001" # placeholder until created
+database_id = "00000000-0000-0000-0000-000000000001" # placeholder; injected at deploy
 
 [[env.beta.r2_buckets]]
 binding = "REPLAYS"
