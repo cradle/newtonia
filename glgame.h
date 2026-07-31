@@ -673,6 +673,11 @@ private:
   void tick_replay_poll(int delta);
   Replay::Reader *replay_reader_ = nullptr;  // owned
   int replay_clock_ms_ = 0;       // timeline position (slot * 100 domain)
+  // Last FX_SHOT sound per ghost, replay-clock domain: the playback
+  // mirror of Ship::net_clone_sound_ms's one-sound-per-burst window.
+  static const int REPLAY_FX_SHOT_PLAYERS = 4;
+  int replay_fx_shot_ms_[REPLAY_FX_SHOT_PLAYERS] = {-1000, -1000, -1000,
+                                                    -1000};
   float replay_speed_ = 1.0f;     // 0.25x..4x, =/- keys (never a cheat)
   bool replay_finished_ = false;  // past the last record: world frozen
   uint16_t replay_save_version_ = 0;  // savegame format of the payloads

@@ -17,6 +17,7 @@
 #include "typer.h"
 #include "asteroid.h"
 #include "preferences.h"
+#include "world_sound.h"
 #include "view/overlay.h"
 
 #include <iostream>
@@ -362,9 +363,10 @@ extern "C" int SDL_main(int argc, char *argv[]) {
     // Audio
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024) < 0)
         SDL_Log("Mix_OpenAudio failed: %s", Mix_GetError());
-    // 64 channels + 2 reserved for must-hear booms — see glut.cpp.
+    // 64 channels; reserved: 2 for must-hear booms + WorldSound's
+    // per-channel-volume pool — see glut.cpp / world_sound.h.
     Mix_AllocateChannels(64);
-    Mix_ReserveChannels(2);
+    Mix_ReserveChannels(WorldSound::FIRST_CHANNEL + WorldSound::POOL);
 
     // Game controller (physical gamepad via Bluetooth)
     SDL_JoystickEventState(SDL_ENABLE);

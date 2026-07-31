@@ -24,6 +24,7 @@
 #include "asteroid.h"
 #include "preferences.h"
 #include "invites.h"
+#include "world_sound.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -321,6 +322,17 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_focus_lost() {
     for (int i = 0; i < s_finger_count; ++i)
         s_game->keyboard_up(s_finger_keys[i].key, 0, 0);
     s_finger_count = 0;
+    // The pause finger is tracked outside s_finger_keys and cleared only on
+    // an exact SDL_FingerID match in finger_up — an ID that never comes
+    // back after a hide (iOS Safari never reuses touch identifiers), which
+    // left s_pause_active stuck true and both pause hit-zones dead for the
+    // session. Deliver the owed release exactly as finger_up would; the
+    // resulting pause toggle is what the mid-press finger was asking for,
+    // and focus_lost()'s auto-pause below refuses when already paused.
+    if (s_pause_active) {
+        s_pause_active = false;
+        s_game->keyboard_up('p', 0, 0);
+    }
     s_game->focus_lost();
 }
 
@@ -475,9 +487,10 @@ int main(int argc, char *argv[]) {
     // SDL2_mixer on Emscripten defers actual playback until unlocked.
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024) < 0)
         SDL_Log("Mix_OpenAudio failed: %s", Mix_GetError());
-    // 64 channels + 2 reserved for must-hear booms — see glut.cpp.
+    // 64 channels; reserved: 2 for must-hear booms + WorldSound's
+    // per-channel-volume pool — see glut.cpp / world_sound.h.
     Mix_AllocateChannels(64);
-    Mix_ReserveChannels(2);
+    Mix_ReserveChannels(WorldSound::FIRST_CHANNEL + WorldSound::POOL);
 
     SDL_JoystickEventState(SDL_ENABLE);
     for (int i = 0; i < SDL_NumJoysticks(); i++) {

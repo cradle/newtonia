@@ -30,7 +30,8 @@ namespace Weapon {
   void GigaMine::shoot(bool on) {
     if(on) {
       if(_ammo == 0) {
-        if(empty_sound != NULL) {
+        if(empty_sound != NULL && ship->sound_volume_scale > 0.0f) {
+          Mix_VolumeChunk(empty_sound, (int)(MIX_MAX_VOLUME * ship->sound_volume_scale));
           Mix_PlayChannel(-1, empty_sound, 0);
         }
         return;
@@ -38,7 +39,10 @@ namespace Weapon {
         _ammo--;
         // Drop giga-mine at ship's tail; slow rotation, long TTL like regular mine
         ship->giga_mines.push_back(Particle(ship->tail(), ship->facing*-0.1 + ship->velocity*0.1, 30000.0, 0.15f));
-        if(mine_sound != NULL) {
+        // Deploy click: the ship's own cue, scaled like every gun play
+        // site (full in your cockpit, faded for the far co-op partner).
+        if(mine_sound != NULL && ship->sound_volume_scale > 0.0f) {
+          Mix_VolumeChunk(mine_sound, (int)(MIX_MAX_VOLUME * ship->sound_volume_scale));
           Mix_PlayChannel(-1, mine_sound, 0);
         }
       }

@@ -71,6 +71,7 @@ class Ship : public CompositeObject {
     // also runs it per tick, because the listener distance folded into the
     // scale keeps moving while the keys are simply held down.
     void update_boost_volume();
+    void update_missile_fly_volumes();
     void shoot(bool on = true);
     void shoot_weapon(bool on = true);
     void fire_secondary(bool on = true);
@@ -251,8 +252,16 @@ class Ship : public CompositeObject {
     // fresh deploy with this many applies of grace; the rebuild holds an
     // unmatched one (and never explodes it) until the count runs out,
     // by which point the echo has either adopted it or the host never
-    // fired it at all (ammo desync) and it goes quietly. 5 applies is
-    // ~500 ms at the 10 Hz apply rate — well past any playable RTT.
+    // fired it at all (ammo desync) and it goes quietly. The pre-decrement
+    // makes 5 stamps = 4 unmatched applies of grace, ~400 ms at the 10 Hz
+    // apply rate — well past any playable round trip when both legs
+    // degrade together. Note the count runs on host SNAPSHOTS RECEIVED,
+    // not round trips: under asymmetric loss (INPUTs delayed while
+    // snapshots keep flowing) the grace can expire before the press ever
+    // reaches the host, and the deploy vanishes then reappears as the
+    // late echo. Accepted: the alternative (pausing the count when
+    // INPUTs aren't being acked) needs wire changes for a transient
+    // cosmetic glitch with no desync — the host stays authoritative.
     static const uint8_t NET_DEPLOY_GRACE = 5;
     // Net client: a replicated missile vanished mid-flight — the host saw
     // it hit something. Blast + explosion sound at its last position.

@@ -80,12 +80,28 @@ jobs:
             -not -path "./android/*" \
             -not -path "./.git/*" > srcs.txt
 
+      - name: Resolve version stamp
+        run: |
+          # Replay season key (REPLAY.md R4). This universal binary is the
+          # one that gets notarized on tags, so it must not stamp replay.h's
+          # "dev" fallback: the checkout is shallow with no tags, so take
+          # the ref — a tag build stamps the tag verbatim (the rule every
+          # deploy workflow follows) and everything else stamps the short
+          # sha, an honest non-release string. The `make`-built netplay
+          # binaries below inherit the same value from the environment.
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "NEWTONIA_VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
+          else
+            echo "NEWTONIA_VERSION=$(git rev-parse --short=7 HEAD)" >> $GITHUB_ENV
+          fi
+
       - name: Build arm64
         env:
           MACOSX_DEPLOYMENT_TARGET: "12.0"
         run: |
           clang++ -O2 -Wall -std=c++11 -arch arm64 \
             -DGL_SILENCE_DEPRECATION \
+            -DNEWTONIA_VERSION_STRING="\"$NEWTONIA_VERSION\"" \
             -mmacosx-version-min=12.0 \
             -o newtonia-arm64 $(cat srcs.txt) macos_window.mm \
             $(/opt/homebrew/bin/sdl2-config --cflags --libs) \
@@ -100,6 +116,7 @@ jobs:
         run: |
           clang++ -O2 -Wall -std=c++11 -arch x86_64 \
             -DGL_SILENCE_DEPRECATION \
+            -DNEWTONIA_VERSION_STRING="\"$NEWTONIA_VERSION\"" \
             -mmacosx-version-min=12.0 \
             -o newtonia-x86_64 $(cat srcs.txt) macos_window.mm \
             $(/usr/local/bin/sdl2-config --cflags --libs) \

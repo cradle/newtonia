@@ -1,4 +1,5 @@
 #include "missile.h"
+#include "../world_sound.h"
 #include "../asset_path.h"
 #include "../sound_cache.h"
 #include "../ship.h"
@@ -135,7 +136,10 @@ void Missile::shoot(bool on) {
   if (!on) return;
 
   if (_ammo == 0) {
-    if (empty_sound) Mix_PlayChannel(-1, empty_sound, 0);
+    if (empty_sound && ship->sound_volume_scale > 0.0f) {
+      Mix_VolumeChunk(empty_sound, (int)(MIX_MAX_VOLUME * ship->sound_volume_scale));
+      Mix_PlayChannel(-1, empty_sound, 0);
+    }
     return;
   }
 
@@ -147,7 +151,16 @@ void Missile::shoot(bool on) {
   if (!sp && fly_sound) {
     int ch = Mix_PlayChannel(-1, fly_sound, -1);
     if (ch != -1) {
-      sp = std::shared_ptr<int>(new int(ch), [](int *p) { Mix_HaltChannel(*p); delete p; });
+      // Level from the launch point now, then per tick from the missiles
+      // (Ship::update_missile_fly_volumes — a loop is chunk-independent
+      // channel volume, and the distance behind it keeps moving); the
+      // deleter restores the dynamic channel for its next tenant.
+      Mix_Volume(ch, (int)(MIX_MAX_VOLUME * WorldSound::volume_at(ship->position)));
+      sp = std::shared_ptr<int>(new int(ch), [](int *p) {
+        Mix_HaltChannel(*p);
+        Mix_Volume(*p, MIX_MAX_VOLUME);
+        delete p;
+      });
       fly_channel_handle = sp;
     }
   }

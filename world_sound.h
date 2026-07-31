@@ -29,6 +29,16 @@
 namespace WorldSound {
   typedef float (*VolumeFn)(const void *ctx, Point p);
 
+  // World cues play on their own reserved channel pool with per-CHANNEL
+  // volume, so a new play cannot retro-level instances of the same shared
+  // chunk still ringing (chunk volume applies at mix time to every channel
+  // playing it). Channels 0/1 stay the priority pair (glgame's
+  // play_priority_chunk); the pool is 2..2+POOL-1. Every platform entry
+  // point must reserve the whole span: Mix_ReserveChannels(FIRST_CHANNEL +
+  // POOL).
+  const int FIRST_CHANNEL = 2;
+  const int POOL = 8;
+
   // Install/remove the listener. clear() ignores a ctx that is not the
   // current one, so a departing state cannot mute the state that replaced
   // it (states are constructed before their predecessor is deleted).

@@ -17,6 +17,7 @@
 #include "asteroid.h"
 #include "preferences.h"
 #include "invites.h"
+#include "world_sound.h"
 #include "view/overlay.h"
 
 #include <atomic>
@@ -447,9 +448,10 @@ extern "C" int SDL_main(int argc, char *argv[]) {
         SDL_Log("Mix opened: %d Hz, fmt=0x%x, channels=%d, chunk=%d",
                 freq, fmt, chans, audio_frames);
     }
-    // 64 channels + 2 reserved for must-hear booms — see glut.cpp.
+    // 64 channels; reserved: 2 for must-hear booms + WorldSound's
+    // per-channel-volume pool — see glut.cpp / world_sound.h.
     Mix_AllocateChannels(64);
-    Mix_ReserveChannels(2);
+    Mix_ReserveChannels(WorldSound::FIRST_CHANNEL + WorldSound::POOL);
 
     // Pre-warm the audio pipeline so the first real sound plays without delay.
     {

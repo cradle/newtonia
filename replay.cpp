@@ -362,6 +362,13 @@ static void maybe_promote_best(const std::string &from, const Header &h) {
     bool have_best = read_header(best_path(), hb);
     if (!have_best || h.final_score > hb.final_score) {
         copy_file(from, best_path());
+        // Sync the promotion itself: the online retirement path
+        // (best_check_online) has no later sync of its own, so without
+        // this a new best set in the session's last moments never left
+        // MEMFS — closing the tab on the GAME OVER card lost it. The
+        // offline path syncs again in rotate_to_recent; web_fs coalesces
+        // the pair into one store.
+        web_sync();
         SDL_Log("replay: promoted best (score=%u gen=%u)", h.final_score,
                 h.generation);
     }
@@ -441,6 +448,15 @@ Recorder::Recorder(uint64_t run_id, uint8_t player_count, bool resumed,
         if (!ok_) return;
         int64_t intact_end = -1;
         scan_records(path_, false, NULL, &last_slot_, &intact_end);
+        // A resumed file can legitimately hold ZERO records: the header is
+        // written at construction but the chunk is RAM-only until a flush,
+        // so die-once → killed process → CONTINUE resumes a header-only
+        // file. Starting that "keyframe-satisfied" let an effect recorded
+        // in the first 100 ms land AHEAD of the seam keyframe, and playback
+        // then rejected the entire session ("no leading keyframe"). With no
+        // records banked, this is a fresh file in all but name — gate like
+        // one.
+        if (last_slot_ < 0) have_keyframe_ = false;
         if (intact_end < (int64_t)header_.header_size)
             intact_end = (int64_t)header_.header_size;
         // The leftover may end in a TRUNCATED record — the crash artifact
@@ -638,7 +654,18 @@ void Recorder::record_effect(uint8_t subtype, uint8_t player_idx,
     payload.push_back(subtype);
     payload.push_back(player_idx);
     payload.insert(payload.end(), body.begin(), body.end());
-    append_record((uint32_t)(last_slot_ + 1), REC_EFFECT,
+    // Stamped with the LAST state record's slot, not the next one's. An
+    // effect stamped last_slot_ + 1 becomes due at the same playback
+    // instant as that slot's state record and sits BEFORE it in the file,
+    // so playback applied the effect and then the state rebuild in the
+    // same poll batch — an FX_BULLET muzzle clone was destroyed before a
+    // single draw, which nullified the whole feature. At last_slot_ the
+    // effect follows the already-applied state record, spawns after its
+    // rebuild, and survives until the next one — the online client's
+    // MSG_SHOT visual, quantized to the start of the slot (≤100 ms early
+    // rather than down-range and late). have_keyframe_ guarantees
+    // last_slot_ >= 0 here.
+    append_record((uint32_t)last_slot_, REC_EFFECT,
                   payload.empty() ? NULL : &payload[0], payload.size());
 }
 
@@ -694,9 +721,20 @@ bool Recorder::write_chunk() {
     return true;
 }
 
+// A flag var set to an explicitly-false value counts as unset:
+// NEWTONIA_REPLAY_ENABLE=0 must not force recording ON (presence-only
+// testing made it do exactly that — the Options row truthfully showed
+// "ENV ON", but nobody writing =0 means on).
+static bool env_flag_set(const char *name) {
+    const char *v = SDL_getenv(name);
+    if (!v) return false;
+    return !(v[0] == '\0' || strcmp(v, "0") == 0 ||
+             SDL_strcasecmp(v, "false") == 0 || SDL_strcasecmp(v, "off") == 0);
+}
+
 int recording_override() {
-    if (SDL_getenv("NEWTONIA_REPLAY_DISABLE")) return 0;  // disable wins
-    if (SDL_getenv("NEWTONIA_REPLAY_ENABLE")) return 1;
+    if (env_flag_set("NEWTONIA_REPLAY_DISABLE")) return 0;  // disable wins
+    if (env_flag_set("NEWTONIA_REPLAY_ENABLE")) return 1;
     return -1;
 }
 
