@@ -34,8 +34,12 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
   The prompt is "UPLOAD TO LEADERBOARD?" with the projected rank shown
   ("WOULD PLACE #7 THIS SEASON"), YES/NO through the shared confirm
   grammar (`MenuSelect`, stacked on desktop/controller, half-split on
-  touch). Default highlight NO, matching the "New game?" confirm — upload
-  publishes data, so the accident-proof default is the quiet one.
+  touch). **Default highlight YES** (decided with Glenn 2026-07-31): the
+  prompt only appears for a run that qualifies, so confirming is the
+  expected action, and the two-stage gate already keeps it rare. This
+  deliberately differs from the "New game?" confirm's NO default — that
+  one guards against destroying a save; declining an upload loses
+  nothing (the REPLAYS retry path remains).
 - **The blob IS the submission.** The upload body is the finalized
   `best.nrp` bytes; the worker parses the 64-byte header server-side and
   takes score/season/duration/player-count from the FILE, never from a
@@ -249,9 +253,6 @@ the social deterrent (every row is watchable) is the v1 defense.
 
 ## Open questions
 
-- **Prompt default YES or NO?** Written as NO above (matches the repo's
-  confirm convention and the privacy posture); YES converts better.
-  Glenn's call.
 - **Public web build**: the Pages/itch `html5` deploys are netless by the
   NETPLAY.md pricing decision (`NEWTONIA_NET_DISABLED`), but the
   leaderboard is not co-op — does the free web game get the board
