@@ -127,6 +127,8 @@ private:
   int  board_up_phase_ = 0;             // 0 idle, 1 uploading, 2 placed, 3 failed
   int  board_up_rank_ = 0;
   std::string board_up_reason_;
+  bool board_up_retried_ = false;       // an unverified upload retried once
+  int  board_up_retry_at_ = 0;          // currentTime to fire the retry (0=none)
   bool board_fetching_ = false;         // replay download in flight
   int  sensitivity_index_[2] = {2, 2};  // per-player index into SENSITIVITY_VALUES
   int  smoothing_index_[2]   = {1, 1};  // per-player index into SMOOTHING_VALUES (1=NORMAL=0.004)

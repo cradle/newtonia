@@ -284,9 +284,13 @@ test/e2e/leaderboard.sh # LEADERBOARD.md L2 exit criteria (solo; starts a
                      # header's exact score; a dead worker degrades
                      # silently (no prompt, no error card); a cheat-only
                      # run and leaderboard_prompts=0 produce no board
-                     # traffic at all. The scoring spray retries until the
-                     # run actually scores (a fresh world spawns asteroids
-                     # clear of the ship).
+                     # traffic at all; S5 forces an "unverified" first
+                     # submit (a dedicated worker with REJECT_FIRST_VERIFY)
+                     # and asserts the client warms a fresh credential,
+                     # retries and places (credential-lifecycle hardening).
+                     # The scoring spray retries until the run actually
+                     # scores (a fresh world spawns asteroids clear of the
+                     # ship).
 test/e2e/replay_failures.sh # the recorder/reader paths that only run once
                      # something has already gone wrong (solo, no relay), each
                      # a bug that shipped. S1: a resume whose leftover ends in

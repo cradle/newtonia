@@ -355,6 +355,26 @@ real D1 is owed at first deploy.
 auto-creating resources; beta isolation confirmed (beta rows never appear
 in prod).
 
+### Credential lifecycle ✅ (2026-07-31)
+The upload's attestation credential is the SAME seam netplay uses
+(`net_local_verify_credential`), and on the two single-use platforms
+(Steam Web-API ticket, Play Games OAuth code) a credential validates once.
+The backends already re-mint per read (each `credential()` returns the
+last completed value and fires a fresh async request), so the client never
+literally reuses the netplay credential — but because the re-mint is async,
+a submit can still read an EMPTY (mint not landed), STALE (Game Center's
+timestamp window) or already-CONSUMED value, all of which the worker
+answers with `unverified`. So the board flow warms the credential when the
+qualify fires and, on an `unverified` rejection, **warms a fresh credential
+and auto-retries the submit ONCE** after a short wait
+(`BOARD_UPLOAD_RETRY_MS`; one retry is also the per-connection submit
+budget, so it can't loop). Both the game-over path (`GLGame::board_tick`)
+and the menu UPLOAD path (`Menu::board_poll`) do this. Game Center is not
+single-use (a signature verified within a freshness window), so only the
+empty/stale cases apply there. Verified: a worker `REJECT_FIRST_VERIFY`
+dev-var forces the first submit to fail `unverified`; the client warms,
+retries and places (`test/e2e/leaderboard.sh` S5).
+
 ### Review pass ✅ (2026-07-31)
 A six-lens multi-agent review (worker security/correctness, C++ seam
 threading, game-over flow, menu screen, cross-layer protocol) with an

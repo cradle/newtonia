@@ -502,6 +502,16 @@ export class Session {
         console.log(`submit refused: unverified platform=${msg.platform}`);
         return this.err(ws, "unverified");
       }
+      // DEV/TEST ONLY: force the FIRST submit on a connection to look
+      // unverified, so the client's warm-a-fresh-credential-and-retry path
+      // (credential-lifecycle hardening) can be exercised without a real
+      // single-use collision. The retry (2nd submit, same socket) passes.
+      // Never set in production.
+      if (this.env.REJECT_FIRST_VERIFY && !this.forced_reject_once_) {
+        this.forced_reject_once_ = true;
+        console.log("submit refused: REJECT_FIRST_VERIFY (dev retry test)");
+        return this.err(ws, "unverified");
+      }
       this.upload = { size, identity, chunks: [], received: 0 };
       this.send(ws, { t: "submit-ok" });
       return;

@@ -3303,6 +3303,8 @@ void GLGame::board_maybe_start() {
   if (!Replay::read_header(Replay::best_path(), h)) return;
   board_ = NetBoard::create();
   if (!board_) return;
+  board_up_retried_ = false;
+  board_up_retry_at_ = 0;
   // Warm the async platform credential mint (Steam's ticket takes a
   // round-trip) so it is ready by the time the player answers YES.
   (void)net_board_verify_credential();
@@ -3318,6 +3320,16 @@ void GLGame::board_maybe_start() {
 
 void GLGame::board_tick() {
   if (!board_) return;
+  // Fire a pending auto-retry once the async credential re-mint has had time
+  // to land (see the Error handler + BOARD_UPLOAD_RETRY_MS).
+  if (board_up_retry_at_ && current_time >= board_up_retry_at_) {
+    board_up_retry_at_ = 0;
+    const NetIdentity &me = net_local_identity();
+    board_->submit(Replay::best_path(), me.platform, me.name,
+                   net_board_verify_credential());
+    board_phase_ = BoardUploading;
+    SDL_Log("board: retrying upload with a fresh credential");
+  }
   NetBoard::Event ev;
   while (board_->poll(ev)) {
     if (ev.kind == NetBoard::Event::Qualify &&
@@ -3346,6 +3358,18 @@ void GLGame::board_tick() {
       return;
     } else if (ev.kind == NetBoard::Event::Error) {
       SDL_Log("board: error %s", net_board_sanitize(ev.reason).c_str());
+      // An "unverified" upload is usually a credential that was empty, stale
+      // or single-use-consumed at submit time — warm a fresh one and retry
+      // ONCE (the socket stays open; the worker's err does not close it).
+      // Keep board_ alive; the retry fires from the top of board_tick.
+      if (board_phase_ == BoardUploading && !board_up_retried_ &&
+          ev.reason == "unverified") {
+        board_up_retried_ = true;
+        (void)net_board_verify_credential();  // kick a fresh async mint
+        board_up_retry_at_ = current_time + BOARD_UPLOAD_RETRY_MS;
+        SDL_Log("board: upload unverified - warming a fresh credential");
+        continue;
+      }
       // An error during the prompt/upload shows on the card; one during
       // the silent qualify just cancels the whole idea.
       if (board_phase_ == BoardUploading || board_phase_ == BoardPrompt) {

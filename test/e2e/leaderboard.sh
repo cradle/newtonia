@@ -48,7 +48,8 @@ for i in $(seq 1 60); do
 done
 
 P=""
-trap 'kill -9 $P 2>/dev/null; [ -n "$WRANGLER_PID" ] && kill $WRANGLER_PID 2>/dev/null' EXIT
+REJECT_PID=""   # S5's dedicated reject-first worker
+trap 'kill -9 $P 2>/dev/null; [ -n "$WRANGLER_PID" ] && kill $WRANGLER_PID 2>/dev/null; [ -n "$REJECT_PID" ] && kill $REJECT_PID 2>/dev/null' EXIT
 
 use_home() {
   export XDG_DATA_HOME="$OUT/xdg-$1"
@@ -187,6 +188,38 @@ grep -aq "board:" "$OUT/s4.log" && fail "S4: board traffic with prompts off"
 alive $P s4
 kill -9 $P; wait $P 2>/dev/null; P=""
 
-assert_clean "$OUT"/s1.log "$OUT"/s2.log "$OUT"/s3.log "$OUT"/s4.log
+echo "===== S5: unverified upload -> auto-retry with a fresh credential ====="
+# Credential-lifecycle hardening: the verify credential is minted async and
+# re-minted per read, so a submit can hit an empty / stale / single-use-spent
+# credential (worker answers "unverified"). The client must warm a fresh one
+# and retry ONCE. A dedicated worker with REJECT_FIRST_VERIFY rejects the
+# first submit per connection so the retry path is forced.
+REJECT_URL="ws://127.0.0.1:8796/board"
+( cd "$ROOT/board" && npx -y wrangler@4 dev --local --port 8796 \
+    --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 --var REJECT_FIRST_VERIFY:1 \
+    > "$OUT/wrangler-reject.log" 2>&1 ) &
+REJECT_PID=$!
+for i in $(seq 1 60); do
+  curl -s --max-time 2 "http://127.0.0.1:8796" | grep -q newtonia-board && break
+  [ "$i" = 60 ] && fail "S5: reject worker never came up"
+  sleep 2
+done
+use_home s5
+P=$(NEWTONIA_BOARD_URL="$REJECT_URL" launch_game s5); sleep 2; W=$(win)
+clean_best "$W"
+crash_to_game_over "$W" "$OUT/s5.log"
+wait_log "$OUT/s5.log" "board: would place" 15 || fail "S5: no prompt"
+sleep 4
+key "$W" Return                                  # YES
+wait_log "$OUT/s5.log" "board: upload unverified - warming" 10 ||
+  fail "S5: first submit not rejected/warmed"
+wait_log "$OUT/s5.log" "board: retrying upload with a fresh credential" 10 ||
+  fail "S5: no retry after unverified"
+wait_log "$OUT/s5.log" "board: placed #" 25 || fail "S5: retry did not place"
+alive $P s5
+kill -9 $P; wait $P 2>/dev/null; P=""
+kill $REJECT_PID 2>/dev/null; REJECT_PID=""
+
+assert_clean "$OUT"/s1.log "$OUT"/s2.log "$OUT"/s3.log "$OUT"/s4.log "$OUT"/s5.log
 [ "$FAIL" = 0 ] && echo "ALL PASS" || echo "FAILURES"
 exit $FAIL
