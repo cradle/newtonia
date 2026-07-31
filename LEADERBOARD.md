@@ -53,8 +53,9 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
   web) and adding libcurl/platform-HTTP for one feature is a dependency
   and a per-platform matrix we don't need. The leaderboard client is a
   sibling seam to `NetSignal` — `NetBoard` (`net_board.h/cpp`), same
-  backend split (`net_board_rtc.cpp` / `net_board_web.cpp`), same
-  JSON-frame protocol style — speaking WSS to the leaderboard worker.
+  backend split, same JSON-frame protocol style — speaking WSS to the
+  leaderboard worker. **v1 ships the native backend only**
+  (`net_board_rtc.cpp`); see the no-web decision below.
   Uploads and replay downloads travel as binary WS frames in 64 KB chunks
   between JSON control frames. Wire cost is identical to HTTPS; code cost
   is near zero because both backends already exist in the signal seam to
@@ -132,6 +133,17 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
   reserved `verify` member of the submit JSON frame (absent in v1) is
   where R5's input-log proof slots in without a file-format break —
   REPLAY.md already established the fixed head has no spare bytes.
+- **No leaderboard on web in the first release** (decided with Glenn
+  2026-07-31) — all web builds, the netless public deploys and the paid
+  itch `newtonia-online` alike. `NetBoard::create()` returns null under
+  `__EMSCRIPTEN__`, which the existing gates turn into a fully absent
+  feature (no LEADERBOARD menu row, no game-over prompt, no REPLAYS
+  UPLOAD action) with no per-screen web special-casing. Nothing is
+  burned for later: web recording already produces a valid `best.nrp`,
+  submissions couldn't pass admission there anyway until a web
+  attestation story exists (no Steam/Play Games/Game Center credential
+  in a browser), and enabling later is a `net_board_web.cpp` backend
+  plus the factory — the UI lights up by itself.
 - **Downloaded replays are transient.** A leaderboard row's replay
   downloads to `replays/download.nrp`, plays via the existing
   `start_replay_playback` path, and is overwritten by the next download.
@@ -261,8 +273,7 @@ score-only row is visibly unselectable; screenshots verified headless.
 pushes touching `board/**` or `signal/src/*_verify.js` → beta, gated on
 the L1 tests); retention cron verified against a seeded past season;
 `board/README.md` runbook (D1/R2 one-time creation, secrets, the
-Limiter's knobs). Decide the public-web posture (see open questions)
-before this ships.
+Limiter's knobs).
 **Exit**: a `v*.*.*` tag deploys both workers; beta isolation confirmed
 (beta rows never appear in prod).
 
@@ -273,11 +284,6 @@ the social deterrent (every row is watchable) is the v1 defense.
 
 ## Open questions
 
-- **Public web build**: the Pages/itch `html5` deploys are netless by the
-  NETPLAY.md pricing decision (`NEWTONIA_NET_DISABLED`), but the
-  leaderboard is not co-op — does the free web game get the board
-  (upload? view-only? neither)? View-only is a plausible middle: the
-  board as an ad for the paid online build. Binds at L4.
 - **Show the player's own rank when off-board** (a `rank-of {score}`
   query on the leaderboard screen: "YOUR BEST: #214")? Cheap to add in
   L3, skippable.
