@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "net_identity.h"  // net_has_verify_backend
 #include "net_policy.h"
 #include "net_signal.h"  // NetSig json helpers (shared with signaling)
 
@@ -36,6 +37,49 @@ bool net_board_available() {
   if (!probe) return false;
   delete probe;
   return true;
+}
+
+// Dev/test credential hook, mirroring NEWTONIA_NET_NAME: a build with no
+// real verification backend (the plain `make` binary) can still exercise
+// the upload path against a FAKE_VERIFY worker, which attests any claim.
+// Set NEWTONIA_BOARD_TEST_CRED=<anything> to force the upload UI on and
+// send that string as the credential. Inert without it — never affects a
+// real build. Used by test/e2e/leaderboard.sh.
+static const char *board_test_cred() {
+  const char *c = getenv("NEWTONIA_BOARD_TEST_CRED");
+  return (c && c[0]) ? c : nullptr;
+}
+
+bool net_board_can_submit() {
+  // Every submission REQUIRES platform attestation (LEADERBOARD.md): a
+  // build with no verification backend can never mint a credential the
+  // worker will accept, so its upload would always end in "unverified".
+  // Gate the upload UI on this — a view-only board, not a doomed prompt.
+  if (!net_board_available()) return false;
+  if (board_test_cred()) return true;  // dev/test override
+  return net_has_verify_backend();
+}
+
+std::string net_board_verify_credential() {
+  if (const char *c = board_test_cred()) return c;
+  return net_local_verify_credential();
+}
+
+std::string net_board_sanitize(const std::string &s, size_t max_len) {
+  // Worker-controlled strings (err reasons, run_id, and anything else off
+  // the wire) reach SDL_Log and the Typer font. The board socket disables
+  // TLS verification (net_board_rtc.cpp, same as the signaling socket), so
+  // a MITM or compromised worker is in scope: strip everything that is not
+  // printable 7-bit ASCII — the same control-byte/log-injection boundary
+  // the netplay identity path enforces on peer names (CLAUDE.md). Names
+  // additionally go through net_sanitize_name for glyph folding; this is
+  // the coarse safety net every OTHER wire string needs.
+  std::string out;
+  for (size_t i = 0; i < s.size() && out.size() < max_len; i++) {
+    unsigned char c = (unsigned char)s[i];
+    if (c >= 0x20 && c < 0x7f) out += (char)c;
+  }
+  return out;
 }
 
 namespace NetBoardProto {
@@ -179,6 +223,7 @@ bool parse_frame(const std::string &frame, NetBoard::Event &ev) {
     ev.kind = NetBoard::Event::Qualify;
     unsigned v = 0;
     ev.place = json_uint_field(frame, "place", v) ? (int)v : 0;
+    ev.players = json_uint_field(frame, "players", v) ? (int)v : 0;
     // cutline is null while the board isn't full — the uint parse fails
     // there and -1 carries "no cut-line yet".
     ev.cutline = json_uint_field(frame, "cutline", v) ? (long)v : -1;
@@ -196,6 +241,7 @@ bool parse_frame(const std::string &frame, NetBoard::Event &ev) {
     ev.kind = NetBoard::Event::RankOf;
     unsigned v = 0;
     ev.place = json_uint_field(frame, "place", v) ? (int)v : 0;
+    ev.players = json_uint_field(frame, "players", v) ? (int)v : 0;
     return true;
   }
   if (t == "top") {

@@ -55,6 +55,9 @@ class NetBoard {
     };
     Kind kind;
     int place = 0;
+    int players = 0;    // Qualify/RankOf: the board the answer is for (echoed
+                        // by the worker), so a stale answer from a board the
+                        // client has since flipped away from can be dropped
     long cutline = -1;
     bool would_place = false;
     std::string reason;
@@ -101,9 +104,29 @@ class NetBoard {
 std::string net_board_url();
 
 // Whether the leaderboard feature exists for this build/session: a backend
-// exists and online play is allowed. UI entry points (game-over prompt,
-// REPLAYS upload action, LEADERBOARD menu row) all gate on this.
+// exists and online play is allowed. The LEADERBOARD menu row and the
+// viewing paths gate on this.
 bool net_board_available();
+
+// Whether this build can SUBMIT (net_board_available AND a verification
+// backend is present). The upload UI — the game-over prompt and the
+// UPLOAD BEST RUN action — gates on this, since the worker refuses any
+// unattested submission (LEADERBOARD.md). A viewer-only build sees the
+// board but no upload affordances.
+bool net_board_can_submit();
+
+// The verification credential to SEND with a submission — normally
+// net_local_verify_credential(), but overridable by NEWTONIA_BOARD_TEST_CRED
+// for headless testing against a FAKE_VERIFY worker (a build with no real
+// verify backend otherwise cannot exercise the upload path).
+std::string net_board_verify_credential();
+
+// Strip a worker-controlled wire string to printable 7-bit ASCII, capped
+// at max_len. Every string off the board socket (err reasons, run_ids)
+// that reaches a log or the font must pass through here first — the socket
+// disables TLS verification, so a hostile server is in scope (the same
+// control-byte/log-injection boundary net_sanitize_name enforces on names).
+std::string net_board_sanitize(const std::string &s, size_t max_len = 64);
 
 // ---- shared frame helpers (used by the backends; exposed for tests) -----
 namespace NetBoardProto {

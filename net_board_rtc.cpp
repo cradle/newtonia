@@ -67,6 +67,11 @@ class RtcBoard : public NetBoard {
 
   void submit(const std::string &path, uint8_t platform,
               const std::string &name, const std::string &cred) override {
+    // One transfer at a time: phase_ is shared by upload and download, so
+    // starting a second while one is live would clobber the first's state
+    // and strand it (no terminal event). The menu serializes too, but the
+    // seam must not corrupt itself if a caller slips — refuse instead.
+    if (phase_ != IDLE) { local_error("busy"); return; }
     upload_.clear();
     FILE *fp = fopen(path.c_str(), "rb");
     if (fp) {
@@ -91,6 +96,7 @@ class RtcBoard : public NetBoard {
 
   void fetch(const std::string &season, const std::string &run_id,
              const std::string &dest_path) override {
+    if (phase_ != IDLE) { local_error("busy"); return; }
     fetch_dest_ = dest_path;
     download_.clear();
     download_expect_ = 0;

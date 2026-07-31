@@ -70,8 +70,11 @@ private:
   void board_request();            // (re)fetch top + rank-of for board_players_
   void board_poll();               // drive NetBoard events (from tick)
   void board_nav_confirm();        // confirm on the current selection
+  bool board_transfer_busy() const;// a fetch or upload is in flight
   int  board_entry_count() const;  // toggle row + score rows + upload row
   bool board_upload_row_shown() const;
+  bool board_best_on_board() const;   // local best is a visible row
+  const char *board_upload_status_text() const;  // phase-3 label
   void board_start_upload();
   struct ReplayRow {
     std::string label;   // CURRENT RUN / LAST RUN / ONLINE RUN / BEST RUN
@@ -114,7 +117,9 @@ private:
   std::vector<NetBoard::Row> board_rows_;
   bool board_loading_ = false;          // top fetch in flight
   bool board_error_ = false;            // socket closed / worker error
-  int  board_your_rank_ = 0;            // rank-of answer (0 = none/on-board)
+  int  board_your_rank_ = 0;            // rank-of answer (0 = none); a stale
+                                        // answer is dropped by matching the
+                                        // worker-echoed players field
   std::string board_season_;            // best.nrp's, else this build's
   std::string board_best_run_id_;       // own-row detection (decimal string)
   uint32_t board_best_score_ = 0;       // rank-of query + upload row label

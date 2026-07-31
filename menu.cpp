@@ -244,8 +244,8 @@ void Menu::draw() {
     // UPLOAD BEST RUN action (the game-over prompt's retry path). Same
     // shared row geometry as the options/replays screens (TapBand rule).
     int n = board_entry_count();
-    const int CURSOR_L = -623, RANK_X = -560, NAME_X = -455, SCORE_X = 60,
-              LEVEL_X = 330, CURSOR_R = 609;
+    const int CURSOR_L = -623, RANK_X = -560, NAME_X = -455, BADGE_X = -70,
+              SCORE_X = 95, LEVEL_X = 330, DATE_X = 470, CURSOR_R = 609;
     for (int e = 0; e < n; e++) {
       char text[96];
       if (e == 0) {
@@ -263,10 +263,14 @@ void Menu::draw() {
       int ri = e - 1;
       if (ri < (int)board_rows_.size()) {
         const NetBoard::Row &r = board_rows_[ri];
-        // Worker data is sanitized before it can reach the font/logs —
-        // the same boundary the netplay identity path enforces.
+        // Name display follows the netplay identity rule: an ATTESTED
+        // name renders as-is (sanitized), an UNVERIFIED claim (e.g. an
+        // iOS alias Apple does not attest) is NOT shown as if it were —
+        // the account is still attested for admission, so it renders as
+        // the role-style "PLAYER" plus the platform badge. Same
+        // boundary net_sanitize_name enforces on the wire name.
         std::string name = net_sanitize_name(r.name);
-        if (name.empty()) name = "PLAYER";
+        if (!r.verified || name.empty()) name = "PLAYER";
         if (!board_best_run_id_.empty() && r.run_id == board_best_run_id_)
           name += " - YOU";
         char rank_buf[12], score_buf[24], level_buf[16];
@@ -275,8 +279,20 @@ void Menu::draw() {
         snprintf(level_buf, sizeof(level_buf), "LEVEL %u", r.generation + 1);
         Typer::draw(RANK_X, y, rank_buf, 13);
         Typer::draw(NAME_X, y, name.c_str(), 12);
+        // Platform badge (STEAM/WEB/IOS/ANDROID) so rows from different
+        // platforms — and the verified vs claimed distinction above — are
+        // visible, not collapsed into an anonymous name.
+        const char *badge = net_platform_label(r.platform);
+        if (badge && badge[0] && !touch) Typer::draw(BADGE_X, y, badge, 10);
         Typer::draw(SCORE_X, y, score_buf, 13);
         Typer::draw(LEVEL_X, y, level_buf, 13);
+        if (!touch && r.date > 0) {
+          char date_buf[16] = "";
+          time_t t = (time_t)(r.date / 1000);  // submitted_at is epoch ms
+          struct tm *tmv = localtime(&t);
+          if (tmv) strftime(date_buf, sizeof(date_buf), "%Y-%m-%d", tmv);
+          Typer::draw(DATE_X, y, date_buf, 9);
+        }
         continue;
       }
       // The UPLOAD BEST RUN action row, phase-labelled.
@@ -293,8 +309,10 @@ void Menu::draw() {
           snprintf(text, sizeof(text), "UPLOADED - RANK #%d", board_up_rank_);
           break;
         case 3:
-          snprintf(text, sizeof(text), "UPLOAD FAILED - %s",
-                   board_up_reason_.c_str());
+          // Map the worker's terse reason to a player-facing line; benign
+          // refusals aren't failures. board_up_reason_ is already
+          // sanitized at capture, so an unknown reason is safe to show.
+          snprintf(text, sizeof(text), "%s", board_upload_status_text());
           break;
         default:
           snprintf(text, sizeof(text), "UPLOAD BEST RUN - SCORE %u",
@@ -312,10 +330,12 @@ void Menu::draw() {
         Typer::draw_centered(0, fy, "LOADING", 14);
     } else if (board_rows_.empty()) {
       Typer::draw_centered(0, fy, "NO SCORES THIS SEASON", 14);
-    } else if (board_your_rank_ > 0 &&
-               (int)board_your_rank_ > (int)board_rows_.size()) {
-      // Off-board standing (LEADERBOARD.md rank-of): on-board players see
-      // their row tagged " - YOU" instead.
+    } else if (board_your_rank_ > 0 && !board_best_on_board()) {
+      // The player's standing whenever their best is NOT already one of
+      // the visible rows (rank-of is a projection of the un-uploaded best,
+      // so a rank inside the visible range does NOT imply an on-board row
+      // — only an actual " - YOU" match does). Shown for both off-board
+      // AND would-place-but-not-yet-uploaded bests.
       char yours[32];
       snprintf(yours, sizeof(yours), "YOUR BEST: #%d", board_your_rank_);
       Typer::draw_centered(0, fy, yours, 14);
@@ -897,6 +917,10 @@ void Menu::touch_tap(float nx, float ny) {
     open_replays();
     return;
   }
+  if (row == board_row_index()) {
+    open_board();
+    return;
+  }
   confirm_selection(nullptr);
 }
 
@@ -1094,7 +1118,7 @@ void Menu::open_board() {
   board_net_ = NetBoard::create();
   if (!board_net_) return;
   // Warm the async platform credential mint so an UPLOAD confirm has it.
-  (void)net_local_verify_credential();
+  (void)net_board_verify_credential();
   board_net_->connect(net_board_url());
   // The browsed season is this build's (the one new runs land in). The
   // upload candidate is best.nrp, which carries its own season — an older
@@ -1157,16 +1181,48 @@ int Menu::board_entry_count() const {
 }
 
 bool Menu::board_upload_row_shown() const {
-  return board_best_clean_ && board_net_ != nullptr;
+  // The upload affordance appears only on a build that can actually pass
+  // the worker's attestation requirement — a viewer-only build (no verify
+  // backend) never shows a doomed UPLOAD row (LEADERBOARD.md).
+  return board_best_clean_ && board_net_ != nullptr && net_board_can_submit();
+}
+
+// Is the local best already one of the visible board rows? (run_id match —
+// the same test the " - YOU" tag uses.) When true, the rank-of footer is
+// redundant with the tagged row and is suppressed.
+bool Menu::board_best_on_board() const {
+  if (board_best_run_id_.empty()) return false;
+  for (const NetBoard::Row &r : board_rows_)
+    if (r.run_id == board_best_run_id_) return true;
+  return false;
+}
+
+// The UPLOAD row's label when board_up_phase_ == 3 (finished, not placed).
+// Distinguishes benign refusals from real failures.
+const char *Menu::board_upload_status_text() const {
+  const std::string &r = board_up_reason_;
+  if (r == "not-best" || r == "already-submitted")
+    return "BEST ALREADY ON THE BOARD";
+  if (r == "unverified") return "UPLOAD FAILED - NOT VERIFIED";
+  if (r == "rate-limited") return "UPLOAD FAILED - TRY LATER";
+  if (r == "connection") return "UPLOAD FAILED - CONNECTION";
+  return "UPLOAD FAILED";
 }
 
 void Menu::board_start_upload() {
-  if (!board_net_ || board_up_phase_ == 1) return;
+  if (!board_net_ || board_transfer_busy()) return;
   const NetIdentity &me = net_local_identity();
   board_net_->submit(Replay::best_path(), me.platform, me.name,
-                     net_local_verify_credential());
+                     net_board_verify_credential());
   board_up_phase_ = 1;
   SDL_Log("board: uploading best.nrp (menu)");
+}
+
+// The socket carries ONE transfer at a time (RtcBoard's single phase_), so
+// a fetch and an upload must never overlap — starting one mid-flight would
+// strand the other with no terminal event and wedge the screen.
+bool Menu::board_transfer_busy() const {
+  return board_fetching_ || board_up_phase_ == 1;
 }
 
 void Menu::board_nav_confirm() {
@@ -1179,15 +1235,17 @@ void Menu::board_nav_confirm() {
   if (ri < (int)board_rows_.size()) {
     const NetBoard::Row &r = board_rows_[ri];
     // Score-only rows (blob demoted by retention) are visibly unselectable
-    // — nothing to watch. One download at a time.
-    if (r.has_replay && !board_fetching_ && board_net_) {
+    // — nothing to watch. One transfer at a time (guards BOTH a second
+    // fetch AND a fetch racing an in-flight upload).
+    if (r.has_replay && !board_transfer_busy() && board_net_) {
       board_fetching_ = true;
       board_net_->fetch(board_season_, r.run_id, Replay::download_path());
-      SDL_Log("board: fetching replay run_id=%s", r.run_id.c_str());
+      SDL_Log("board: fetching replay run_id=%s",
+              net_board_sanitize(r.run_id, 24).c_str());
     }
     return;
   }
-  if (board_upload_row_shown() &&
+  if (board_upload_row_shown() && !board_transfer_busy() &&
       (board_up_phase_ == 0 || board_up_phase_ == 3))
     board_start_upload();
 }
@@ -1204,7 +1262,10 @@ void Menu::board_poll() {
           board_sel_ = board_entry_count() - 1;
         break;
       case NetBoard::Event::RankOf:
-        board_your_rank_ = ev.place;
+        // Drop an answer for a board we have since flipped away from
+        // (players is echoed by the worker).
+        if (ev.players == 0 || ev.players == board_players_)
+          board_your_rank_ = ev.place;
         break;
       case NetBoard::Event::Placed:
         board_up_phase_ = 2;
@@ -1225,10 +1286,11 @@ void Menu::board_poll() {
         break;
       }
       case NetBoard::Event::Error:
-        SDL_Log("board: error %s (menu)", ev.reason.c_str());
+        SDL_Log("board: error %s (menu)",
+                net_board_sanitize(ev.reason).c_str());
         if (board_up_phase_ == 1) {
           board_up_phase_ = 3;
-          board_up_reason_ = ev.reason;
+          board_up_reason_ = net_board_sanitize(ev.reason, 32);
         } else if (board_fetching_) {
           board_fetching_ = false;
         } else {

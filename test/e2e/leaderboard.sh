@@ -22,6 +22,10 @@ fi
 . "$(dirname "$0")/lib.sh"
 export NEWTONIA_REPLAY_ENABLE=1
 export NEWTONIA_NET_NAME=E2E   # FAKE_VERIFY derives the account from this
+# The plain build has no verify backend, so the upload UI is gated off
+# (LEADERBOARD.md: no unattested submissions). This dev hook forces it on
+# and sends a dummy credential the FAKE_VERIFY worker attests.
+export NEWTONIA_BOARD_TEST_CRED=e2e-cred
 
 FAIL=0
 fail() { echo "FAIL: $*"; FAIL=1; }
@@ -93,15 +97,16 @@ clean_best() {
   sleep 1
 }
 
-# Die fast in the current run: time-speed cheat + held thrust (overheat
-# explodes the ship; three lives burn down in well under a minute at 8x).
-# Each '=' press shaves 1 ms off the 8 ms step interval, so 7 presses is
-# the full 8x.
-overheat_game_over() {
+# Die in the current run. The heat mechanic is disabled (ship.cpp), so the
+# ship does NOT overheat — it dies by colliding with asteroids while
+# thrusting. The time cheat (8x) speeds the wall-clock; held thrust drives
+# it into the field. The run is cheat-flagged, which is fine: the upload
+# candidate is the earlier CLEAN best.nrp, not this run.
+crash_to_game_over() {
   local W=$1 LOG=$2
   key "$W" space                               # spawn out of the countdown
-  for i in $(seq 1 7); do key "$W" equal; done # time cheat: 8x
-  xdotool keydown --window "$W" w
+  for i in $(seq 1 7); do key "$W" equal; done # time cheat: 8x wall-clock
+  xdotool keydown --window "$W" w              # thrust into the asteroids
   wait_log "$LOG" "replay: run ended" 240 || fail "never reached game over"
   xdotool keyup --window "$W" w
 }
@@ -114,7 +119,7 @@ clean_best "$W"
 BSCORE=$(python3 "$ROOT/test/e2e/replay_check.py" "$RDIR/best.nrp" |
          sed -n 's/^score=//p')
 [ "${BSCORE:-0}" -gt 0 ] || fail "S1: scoring run scored 0 (shots missed?)"
-overheat_game_over "$W" "$OUT/s1.log"
+crash_to_game_over "$W" "$OUT/s1.log"
 wait_log "$OUT/s1.log" "board: qualify" 10 || fail "S1: qualify never sent"
 wait_log "$OUT/s1.log" "board: would place .* prompting" 15 ||
   fail "S1: prompt never armed"
@@ -151,7 +156,7 @@ use_home s2
 P=$(NEWTONIA_BOARD_URL="ws://127.0.0.1:9/board" launch_game s2)
 sleep 2; W=$(win)
 clean_best "$W"
-overheat_game_over "$W" "$OUT/s2.log"
+crash_to_game_over "$W" "$OUT/s2.log"
 wait_log "$OUT/s2.log" "board: qualify" 10 || fail "S2: qualify never attempted"
 sleep 6                                        # closed/timeout window
 grep -aq "board: would place" "$OUT/s2.log" && fail "S2: prompt on a dead worker"
@@ -164,7 +169,7 @@ echo "===== S3: no personal best -> no board traffic ====="
 use_home s3
 P=$(launch_game s3); sleep 2; W=$(win)
 key "$W" Return; sleep 0.5; key "$W" Return    # NEW GAME, no clean best first
-overheat_game_over "$W" "$OUT/s3.log"          # cheat flags this run: no promotion
+crash_to_game_over "$W" "$OUT/s3.log"          # cheat flags this run: no promotion
 sleep 2
 grep -aq "board:" "$OUT/s3.log" && fail "S3: board traffic without a personal best"
 alive $P s3
@@ -176,7 +181,7 @@ mkdir -p "$XDG_DATA_HOME/cc.gfm/newtonia"
 echo "leaderboard_prompts=0" > "$XDG_DATA_HOME/cc.gfm/newtonia/preferences.ini"
 P=$(launch_game s4); sleep 2; W=$(win)
 clean_best "$W"
-overheat_game_over "$W" "$OUT/s4.log"
+crash_to_game_over "$W" "$OUT/s4.log"
 sleep 2
 grep -aq "board:" "$OUT/s4.log" && fail "S4: board traffic with prompts off"
 alive $P s4

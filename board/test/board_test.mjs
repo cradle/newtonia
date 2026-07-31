@@ -175,7 +175,35 @@ async function submit(ws, bytes, name, platform = 2) {
   check("co-op board separate", f.t === "top" && f.rows.length === 0,
         JSON.stringify(f));
 
-  ws.close(); ws2.close(); ws3.close();
+  // 13. rank-of / qualify echo the players field (stale-answer drop, and
+  // ties project as ABOVE a not-yet-submitted run — the projected_rank
+  // change). Board has ALICE 950 and BOB 900; a 900 tie projects to #3
+  // (both existing >= 900 count), not the optimistic #2.
+  send(ws2, { t: "rank-of", season: SEASON, players: 1, score: 900 });
+  f = await ws2._recv();
+  check("rank-of echoes players", f.t === "rank-of" && f.players === 1,
+        JSON.stringify(f));
+  check("tie projects below existing", f.place === 3, JSON.stringify(f));
+  send(ws2, { t: "qualify", season: SEASON, players: 1, score: 900 });
+  f = await ws2._recv();
+  check("qualify echoes players", f.players === 1, JSON.stringify(f));
+
+  // 14. One row per player is DB-enforced: a fresh socket submitting a
+  // DIFFERENT run for ALICE's account (FAKE_VERIFY keys the account off
+  // the name) with a higher score supersedes atomically — still one ALICE
+  // row, and the old blob is gone.
+  const ws5 = await connect();
+  const runA4 = build_nrp({ game_version: SEASON, run_id: 2001n, score: 1200 });
+  f = await submit(ws5, runA4, "ALICE");
+  check("atomic supersede placed #1", f.t === "placed" && f.rank === 1,
+        JSON.stringify(f));
+  send(ws5, { t: "top", season: SEASON, players: 1, count: 10 });
+  f = await ws5._recv();
+  const aliceRows = f.rows.filter((r) => r.name === "ALICE");
+  check("still one ALICE row after supersede", aliceRows.length === 1 &&
+        aliceRows[0].score === 1200, JSON.stringify(f.rows));
+
+  ws.close(); ws2.close(); ws3.close(); ws5.close();
   console.log(failures ? `${failures} FAILURE(S)` : "ALL PASS");
   process.exit(failures ? 1 : 0);
 })().catch((e) => { console.log("FAIL (exception) " + e.message); process.exit(1); });

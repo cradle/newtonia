@@ -110,6 +110,14 @@ std::string net_local_verify_credential() {
 #endif
 }
 
+bool net_has_verify_backend() {
+#ifdef IDENTITY_HAVE_VERIFY
+  return true;
+#else
+  return false;
+#endif
+}
+
 void net_release_verify_credentials() {
 #ifdef IDENTITY_HAVE_VERIFY
   NetIdentityBackend::release_verify_credentials();

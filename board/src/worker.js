@@ -54,23 +54,39 @@ const CHUNK = 64 * 1024;
 const MAX_NAME = 24;
 const MAX_CRED = 8192;
 
-// Per-connection budgets (in-DO, no Limiter round-trip per message): a
-// socket that exhausts one is closed. Bounds per-message floods the way
-// the signal worker's VERIFY_MIN_INTERVAL_MS does.
+// Per-connection budgets (in-DO): a socket that exhausts one is closed.
+// These bound a SINGLE connection but reset on reconnect (each connection
+// is a fresh Session DO), so they are NOT the aggregate cost bound — that
+// is the per-IP Limiter below, which reads and fetches now also pass
+// through (a fresh Session DO per connection otherwise let one IP multiply
+// D1 reads past the free-tier ceiling — connections × per-conn budget).
 const CONN_MAX_QUERIES = 120;
 const CONN_MAX_SUBMITS = 2;
 const CONN_MAX_FETCHES = 5;
+// Cap the reassembled-upload chunk COUNT, not just the byte total: a
+// 1-byte-frame flood otherwise pins tens of millions of tiny typed-array
+// views (pointer array + per-object overhead) far past the 32 MB size cap.
+// Legit clients use 60 KB chunks (~560 for a 32 MB max); 4096 is generous.
+const MAX_UPLOAD_CHUNKS = 4096;
 // Idle sockets are closed after this long (per-connection DO — nothing to
 // hibernate for, the DO dies with the socket).
 const CONN_IDLE_MS = 10 * 60 * 1000;
 
-// Per-IP fixed windows (Limiter DO). Connects gate everything upstream;
-// submits are the strict one ("a handful per IP per hour").
+// Per-IP fixed windows (Limiter DO). Connects gate new sockets; reads and
+// fetches are limited in aggregate so connection churn can't multiply
+// D1/R2 cost past the free tier (query worst case: 200 × 100 rows =
+// 20k rows / 10 min / IP ≈ 2.9M rows/day, under the 5M/day D1 free ceiling
+// even before other traffic); submits stay the strict one. NOTE: like the
+// signal worker this keys on the client IP (IPv6 collapsed to /64), so a
+// large IPv6 allocation can still spread load — an accepted limitation
+// shared with signal, not a per-IP-defeatable gap.
 // SUBMIT_LIMIT is a dev/test var (wrangler dev --var SUBMIT_LIMIT:100) so
 // the protocol test's burst of submissions from one IP doesn't trip the
 // production window; never set in production.
 const LIMITS = {
   conn: { window_ms: 10 * 60 * 1000, limit: 60 },
+  query: { window_ms: 10 * 60 * 1000, limit: 200 },
+  fetch: { window_ms: 60 * 60 * 1000, limit: 40 },
   submit: { window_ms: 60 * 60 * 1000, limit: 6 },
 };
 
@@ -184,16 +200,37 @@ async function ensure_schema(db) {
            PRIMARY KEY (season, run_id))`),
     db.prepare(`CREATE INDEX IF NOT EXISTS scores_rank
                 ON scores(season, players, score DESC)`),
-    db.prepare(`CREATE INDEX IF NOT EXISTS scores_player
+    // UNIQUE so the one-row-per-player invariant is enforced by the
+    // DATABASE, not just the procedural check-then-act in finish_submit:
+    // two concurrent submits from one account can no longer both land
+    // (the second's INSERT conflicts, and the ON CONFLICT upsert keeps
+    // the best), and no code path can leave a player with two rows.
+    db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS scores_player_uk
                 ON scores(season, players, platform_key)`),
   ]);
   schema_ready = true;
 }
 
+// Actual rank of a row already in the table: strictly-better rows + 1.
+// (Ties share this optimistic rank; the deterministic submitted_at tiebreak
+// `top` uses can only push a tied row DOWN, never up, so this never
+// over-reports for a charting check.)
 async function rank_of(db, season, players, score) {
   const r = await db.prepare(
       `SELECT COUNT(*) AS n FROM scores
        WHERE season = ?1 AND players = ?2 AND score > ?3`)
+      .bind(season, players, score).first();
+  return (r ? Number(r.n) : 0) + 1;
+}
+
+// Projected rank of a NOT-yet-submitted run: ties count as above it (a new
+// submission sorts last within its tie under `top`'s score DESC,
+// submitted_at ASC), so `qualify`/`rank-of` never promise a charting rank
+// that the listing then contradicts at the cutline.
+async function projected_rank(db, season, players, score) {
+  const r = await db.prepare(
+      `SELECT COUNT(*) AS n FROM scores
+       WHERE season = ?1 AND players = ?2 AND score >= ?3`)
       .bind(season, players, score).first();
   return (r ? Number(r.n) : 0) + 1;
 }
@@ -258,11 +295,18 @@ export default {
                WHERE season = ?1 AND players = ?2 AND blob_key != ''`)
               .bind(b.season, b.players).all()
           : await env.DB.prepare(
+              // Rank among ALL rows, not just blob-bearing ones: the OFFSET
+              // must skip the top KEEP_N of the FULL board, otherwise a
+              // blob row whose true rank is > KEEP_N keeps its blob whenever
+              // score-only rows sit above it. Filter blob_key in JS after
+              // the offset (a WHERE blob_key != '' before OFFSET would
+              // reintroduce the bug it replaces).
               `SELECT run_id, blob_key FROM scores
-               WHERE season = ?1 AND players = ?2 AND blob_key != ''
+               WHERE season = ?1 AND players = ?2
                ORDER BY score DESC, submitted_at ASC LIMIT -1 OFFSET ?3`)
               .bind(b.season, b.players, KEEP_N).all();
       for (const row of rows.results || []) {
+        if (!row.blob_key) continue;  // already score-only
         try { await env.REPLAYS.delete(row.blob_key); } catch (e) {}
         await env.DB.prepare(
             `UPDATE scores SET blob_key = ''
@@ -393,6 +437,10 @@ export class Session {
 
     if (msg.t === "qualify" || msg.t === "rank-of" || msg.t === "top") {
       if (++this.queries > CONN_MAX_QUERIES) return this.fail(ws, "rate-limited");
+      // Per-IP aggregate read budget (see LIMITS): reads are cheap to retry,
+      // so a refusal is a non-fatal err, not a socket close.
+      if (!(await within_limit(this.env, this.ip, "query")))
+        return this.err(ws, "rate-limited");
       const season = typeof msg.season === "string" ? msg.season : "";
       const players = msg.players === 2 ? 2 : 1;
       if (!season_ok(season)) return this.err(ws, "bad-season");
@@ -419,10 +467,20 @@ export class Session {
         return;
       }
       const score = Number(msg.score) >>> 0;
-      const place = await rank_of(this.env.DB, season, players, score);
-      if (msg.t === "rank-of") { this.send(ws, { t: "rank-of", place }); return; }
+      // Projected rank of a NOT-yet-submitted run: it would sort AFTER
+      // existing equal scores (top/retention order by score DESC,
+      // submitted_at ASC), so ties count as ABOVE it — consistent with
+      // where the run would actually chart. (The post-insert `placed`
+      // rank uses rank_of, which counts strictly-better rows.) `players`
+      // is echoed so a client that flips SOLO/CO-OP mid-flight can drop a
+      // stale answer.
+      const place = await projected_rank(this.env.DB, season, players, score);
+      if (msg.t === "rank-of") {
+        this.send(ws, { t: "rank-of", place, players });
+        return;
+      }
       const cut = await cutline(this.env.DB, season, players);
-      this.send(ws, { t: "qualify", place, cutline: cut,
+      this.send(ws, { t: "qualify", place, players, cutline: cut,
                       would_place: place <= KEEP_N });
       return;
     }
@@ -495,6 +553,12 @@ export class Session {
       this.upload = null;
       return this.fail(ws, "size-mismatch");
     }
+    // Cap chunk COUNT as well as bytes: a tiny-frame flood otherwise pins
+    // memory (millions of typed-array views) far beyond the byte cap.
+    if (up.chunks.length >= MAX_UPLOAD_CHUNKS) {
+      this.upload = null;
+      return this.fail(ws, "too-many-chunks");
+    }
     up.chunks.push(chunk);
     up.received += chunk.length;
   }
@@ -519,7 +583,9 @@ export class Session {
     if (run_row && Number(run_row.score) >= hd.score)
       return this.err(ws, "already-submitted");
 
-    // One row per player per season+board: only their best survives.
+    // One row per player per season+board (fast-path refusal — the
+    // atomic upsert below is the real guarantee): if the player already
+    // has a row that is not worse, don't even store the blob.
     const mine = await db.prepare(
         `SELECT run_id, score, blob_key FROM scores
          WHERE season = ?1 AND players = ?2 AND platform_key = ?3
@@ -530,20 +596,43 @@ export class Session {
 
     const blob_key = blob_key_for(hd.season, hd.run_id);
     await this.env.REPLAYS.put(blob_key, blob);
+    // Atomic supersede: ON CONFLICT on the UNIQUE (season, players,
+    // platform_key) index updates the player's existing row to this run
+    // in one statement, but ONLY when this score is strictly better —
+    // so two concurrent same-account submits can't lose the higher one,
+    // and no interleaving leaves duplicate rows. A worse score racing in
+    // no-ops here (its blob is cleaned up below).
     await db.prepare(
-        `INSERT OR REPLACE INTO scores(season, players, run_id, score,
+        `INSERT INTO scores(season, players, run_id, score,
            generation, duration_ms, submitted_at, name, platform, verified,
            platform_key, blob_key)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)`)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+         ON CONFLICT(season, players, platform_key) DO UPDATE SET
+           run_id = excluded.run_id, score = excluded.score,
+           generation = excluded.generation, duration_ms = excluded.duration_ms,
+           submitted_at = excluded.submitted_at, name = excluded.name,
+           platform = excluded.platform, verified = excluded.verified,
+           blob_key = excluded.blob_key
+         WHERE excluded.score > scores.score`)
         .bind(hd.season, players, hd.run_id, hd.score, hd.generation,
               hd.duration_ms, Date.now(), identity.name, identity.platform,
               identity.verified ? 1 : 0, key, blob_key).run();
-    if (mine) {
-      // The superseded personal best goes entirely: row and blob.
-      await db.prepare(`DELETE FROM scores WHERE season = ?1 AND run_id = ?2`)
-          .bind(hd.season, mine.run_id).run();
-      if (mine.blob_key)
+    // Did this run win the slot? The surviving row for this player tells
+    // us unambiguously (covers the lost-the-WHERE race too).
+    const survivor = await db.prepare(
+        `SELECT run_id FROM scores
+         WHERE season = ?1 AND players = ?2 AND platform_key = ?3`)
+        .bind(hd.season, players, key).first();
+    const won = survivor && survivor.run_id === hd.run_id;
+    if (won) {
+      // The superseded personal best's blob is now orphaned (its row was
+      // replaced by the upsert) — delete it.
+      if (mine && mine.blob_key && mine.blob_key !== blob_key)
         try { await this.env.REPLAYS.delete(mine.blob_key); } catch (e) {}
+    } else {
+      // A concurrent better submission won; our blob is orphaned.
+      try { await this.env.REPLAYS.delete(blob_key); } catch (e) {}
+      return this.err(ws, "not-best");
     }
     const rank = await rank_of(db, hd.season, players, hd.score);
     console.log(`placed: season=${hd.season} players=${players} ` +

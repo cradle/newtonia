@@ -33,6 +33,7 @@
 #include "view/tap_band.h"
 #include <SDL.h>
 #include <list>
+#include <set>
 #include <map>
 #include <vector>
 #include <string>
@@ -704,6 +705,11 @@ private:
     BoardFailed,      // done: "UPLOAD FAILED" (+ short reason)
   };
   static const int BOARD_QUALIFY_TIMEOUT_MS = 4000;
+  // A freshly-shown prompt can't be answered for this long — the qualify
+  // answer may arrive AFTER the card's 3 s game-over grace (the deadline
+  // is 4 s), so a keypress already in flight to leave must not land on the
+  // just-appeared YES-default prompt.
+  static const int BOARD_PROMPT_ARM_MS = 700;
   void board_maybe_start();      // at game-over finalize (after replay_finish)
   void board_tick();             // poll events + timeout (game_over only)
   // The card's nav while the prompt/result owns it. Logical keys (w/s move,
@@ -718,6 +724,11 @@ private:
   int board_place_ = 0;          // projected (prompt) / final (placed) rank
   bool board_yes_ = true;        // prompt selection (YES default — plan)
   int board_deadline_ = 0;       // qualify timeout, current_time domain
+  int board_prompt_shown_ = 0;   // current_time when BoardPrompt began
+  // Nav keys pressed (key-DOWN) while the prompt is up: keyboard_up acts
+  // only on these, so a gameplay key held at death and released into the
+  // prompt can't answer it. Cleared when the prompt opens.
+  std::set<unsigned char> board_prompt_pressed_;
   std::string board_fail_reason_;
 
   static const int step_size = 8;
