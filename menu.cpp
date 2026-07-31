@@ -69,7 +69,7 @@ static const OptRow OPT_ROWS_TOUCH[] = {
   {0, 0, "SENSITIVITY"}, {1, 0, "SMOOTHING"}, {2, 0, "CAMERA"},
   {3, 0, "STAR DENSITY"},
   {4, 0, "RECORD REPLAYS"},
-  {5, 0, "LEADERBOARD PROMPTS"},  // LAST — see the desktop table
+  {5, 0, "LEADERBOARD PROMPT"},  // LAST — see the desktop table
 };
 static int opt_row_count() {
   int n = is_touch_mode()
@@ -1186,6 +1186,16 @@ void Menu::open_board() {
     board_best_run_id_ = rid;
     board_best_season_.assign(
         h.game_version, strnlen(h.game_version, sizeof(h.game_version)));
+    // Seed the browser with best.nrp's season too: the UPLOAD row lives
+    // on ITS season's screen, and the worker only lists seasons that
+    // already have rows — an old-season best would otherwise be
+    // unreachable (nothing to cycle to) until someone else charted there.
+    if (!board_best_season_.empty() &&
+        board_best_season_ != board_build_season_) {
+      NetBoard::Season bs;
+      bs.season = board_best_season_;
+      board_seasons_.push_back(bs);
+    }
     board_best_score_ = h.final_score;
     board_best_clean_ = (h.flags & Replay::FLAG_CLEAN) &&
                         !(h.flags & Replay::FLAG_CHEATED) &&
@@ -1390,6 +1400,19 @@ void Menu::board_poll() {
           if (!s.season.empty()) board_seasons_.push_back(s);
         }
         {
+          // Ensure best.nrp's season stays reachable (its screen carries
+          // the UPLOAD row — see open_board's seed) alongside the build's.
+          if (!board_best_season_.empty() &&
+              board_best_season_ != board_build_season_) {
+            bool have_best = false;
+            for (const NetBoard::Season &s : board_seasons_)
+              if (s.season == board_best_season_) { have_best = true; break; }
+            if (!have_best) {
+              NetBoard::Season bs;
+              bs.season = board_best_season_;
+              board_seasons_.push_back(bs);
+            }
+          }
           bool have_own = false;
           for (const NetBoard::Season &s : board_seasons_)
             if (s.season == board_build_season_) { have_own = true; break; }
