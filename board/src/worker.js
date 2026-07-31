@@ -593,6 +593,8 @@ export class Session {
         return this.err(ws, "unverified");
       }
       this.upload = { size, identity, chunks: [], received: 0 };
+      console.log(
+          `submit: verified platform=${identity.platform} size=${size}`);
       this.send(ws, { t: "submit-ok" });
       return;
     }
@@ -660,10 +662,15 @@ export class Session {
       return this.err(ws, v.reason);
     }
     const hd = v.header;
+    // Checkpoint logs (field debugging of a silent submit stall): each
+    // step below awaits a platform service, so a hang between two
+    // checkpoints names the culprit in the tail.
+    console.log(`submit: validated season=${hd.season} size=${blob.length}`);
     const db = this.env.DB;
     await ensure_schema(db);
     const players = hd.player_count;
     const key = await platform_key(identity.account);
+    console.log(`submit: schema+key ready`);
 
     // Same run resubmitted (clean-abandon uploaded, then resumed and
     // improved): upsert only a strictly better score.
@@ -686,6 +693,7 @@ export class Session {
 
     const blob_key = blob_key_for(hd.season, hd.run_id);
     await this.env.REPLAYS.put(blob_key, blob);
+    console.log(`submit: blob stored ${blob_key}`);
     // Atomic supersede: ON CONFLICT on the UNIQUE (season, players,
     // platform_key) index updates the player's existing row to this run
     // in one statement, but ONLY when this score is strictly better —
