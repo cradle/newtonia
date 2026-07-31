@@ -79,12 +79,21 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
   throttle). Attested rows show the platform-verified name + badge;
   Game Center attests account-only, so an iOS row shows the badge with the
   claimed alias folded through `net_sanitize_name` but flagged unverified
-  (same rule as the online peer display). **Unattested submissions are
-  accepted** (plain desktop has no credential source) with the claimed
-  name folded/capped by the same `net_sanitize_name` and rendered
-  unverified; the Limiter bounds anonymous spam per IP. The platform
-  account key (from attestation) is stored hashed, only for per-player
-  dedup — never displayed, nothing persisted client-side (XR-014 posture).
+  (same rule as the online peer display — the ACCOUNT is still attested,
+  which is what admission requires). **Submissions REQUIRE attestation**
+  (decided with Glenn 2026-07-31): a submit whose credential is absent or
+  fails verification is rejected (`{t:"error", reason:"unverified"}`) —
+  every row on the board is tied to a real platform account, which is the
+  spam/forgery bound the Limiter alone can't give. Consequences: plain
+  non-Steam desktop builds have no credential source and cannot submit —
+  the client gates the game-over prompt and the REPLAYS UPLOAD action on
+  a present verify backend (`local_verify_credential` non-null), so those
+  builds see a view-only leaderboard rather than a doomed upload; and the
+  worker's verify modules become load-bearing for admission, not just for
+  names (their existing failure mode — attest nothing — hardens to
+  reject). Viewing (`qualify`/`top`/`fetch`) stays open to everyone. The
+  platform account key is stored hashed, only for per-player dedup —
+  never displayed, nothing persisted client-side (XR-014 posture).
 - **Seasons = the header's `game_version` string, verbatim** (the 23-char
   season key REPLAY.md locked). The worker groups rows by exact string;
   the "current season" is simply the version the submitting build stamps.
@@ -94,9 +103,9 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
 - **Dedup: one row per run, one row per player.** Primary key
   `(season, run_id)` — resubmitting the same run (e.g. after a clean
   abandon was uploaded, then resumed and improved) upserts if the score is
-  higher. Additionally, an attested player keeps only their best row per
-  season+board (`platform_key` unique index); anonymous rows skip that
-  check (no stable key) and rely on the per-IP Limiter. `FLAG_ENDED` is
+  higher. Additionally, each player keeps only their best row per
+  season+board (`platform_key` unique index — every row has one now that
+  attestation is required for admission). `FLAG_ENDED` is
   deliberately NOT required: the clean-abandon → NEW-GAME promotion path
   produces a legitimate `best.nrp` without it, and the `run_id` upsert
   makes the resume-and-improve case converge on one honest row.
@@ -160,7 +169,7 @@ D1 schema (one table):
 scores(season TEXT, players INTEGER, run_id TEXT, score INTEGER,
        generation INTEGER, duration_ms INTEGER, submitted_at INTEGER,
        name TEXT, platform INTEGER, verified INTEGER,
-       platform_key TEXT,          -- hashed attested account id, '' if none
+       platform_key TEXT,          -- hashed attested account id (required)
        blob_key TEXT,              -- R2 key, '' once demoted to score-only
        PRIMARY KEY (season, run_id))
 CREATE INDEX scores_rank ON scores(season, players, score DESC);
@@ -213,7 +222,10 @@ retention cron. Unit tests in `board/test/` (mocked D1/R2 where needed,
 the signal suite's style) + a `wrangler dev --local` protocol test
 driving qualify/submit/top/fetch end-to-end with a real recorded `.nrp`
 fixture — including rejection cases (cheat flag, oversize, bad framing,
-non-keyframe first record, rate limit).
+non-keyframe first record, rate limit, and a missing or failed-verify
+credential — attestation is an admission requirement; a `FAKE_VERIFY`
+dev var attests without contacting the platforms, the signal worker's
+existing e2e pattern).
 **Exit**: protocol test green locally; beta worker deployed by hand;
 `curl`-level smoke against beta documented in `board/README.md`.
 
@@ -262,9 +274,6 @@ the social deterrent (every row is watchable) is the v1 defense.
   (the header has no second identity). Both sides of an online run share
   a `run_id`, so the PK stops double rows; is "first submitter wins the
   credit" acceptable for v1?
-- **Anonymous rows on or off at launch?** Accepted-but-unverified is the
-  design above; if early spam outruns the Limiter, flipping to
-  attested-only is a worker-side switch, no client change.
 - **Show the player's own rank when off-board** (a `rank-of {score}`
   query on the leaderboard screen: "YOUR BEST: #214")? Cheap to add in
   L3, skippable.
