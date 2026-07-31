@@ -3313,6 +3313,7 @@ void GLGame::board_maybe_start() {
   std::string season(h.game_version,
                      strnlen(h.game_version, sizeof(h.game_version)));
   board_->qualify(season, h.player_count, h.final_score);
+  board_score_ = h.final_score;
   board_phase_ = BoardQualifying;
   board_deadline_ = current_time + BOARD_QUALIFY_TIMEOUT_MS;
   SDL_Log("board: qualify season=%s players=%u score=%u", season.c_str(),

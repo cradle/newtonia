@@ -318,15 +318,20 @@ void Menu::draw() {
       // The UPLOAD BEST RUN action row, phase-labelled.
       switch (board_up_phase_) {
         case 1: {
+          // The score stays visible through the transfer and after — the
+          // upload is about the score (same rule as the game-over card).
           int pct = board_net_ ? board_net_->transfer_pct() : -1;
           if (pct >= 0)
-            snprintf(text, sizeof(text), "UPLOADING %d%%", pct);
+            snprintf(text, sizeof(text), "UPLOADING %d%% - SCORE %u", pct,
+                     board_best_score_);
           else
-            snprintf(text, sizeof(text), "UPLOADING");
+            snprintf(text, sizeof(text), "UPLOADING - SCORE %u",
+                     board_best_score_);
           break;
         }
         case 2:
-          snprintf(text, sizeof(text), "UPLOADED - RANK #%d", board_up_rank_);
+          snprintf(text, sizeof(text), "UPLOADED #%d - SCORE %u",
+                   board_up_rank_, board_best_score_);
           break;
         case 3:
           // Map the worker's terse reason to a player-facing line; benign
