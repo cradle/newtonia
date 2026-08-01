@@ -78,7 +78,12 @@ jobs:
       # per-IP submit window for the test's burst. Never set in production.
       - name: Protocol test (wrangler dev --local)
         run: |
-          npx wrangler@4 dev --local --port 8788 \
+          # Isolated DO state per boot: wrangler dev persists to
+          # .wrangler/state by default, so without this the whitelist boot
+          # below inherits THIS boot's per-IP Limiter — the protocol test's
+          # 100-row board fill spends more submits than the second boot's
+          # budget, and its very first submit answered "rate-limited".
+          npx wrangler@4 dev --local --port 8788 --persist-to .wrangler-proto \
             --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:250 --var CONN_LIMIT:500 \
             --var CANONICAL_SEASONS_ONLY:0 > wrangler-dev.log 2>&1 &
           DEV_PID=$!
@@ -95,7 +100,7 @@ jobs:
       # qualify and must be refused at admission.
       - name: Season-whitelist test (production default)
         run: |
-          npx wrangler@4 dev --local --port 8787 \
+          npx wrangler@4 dev --local --port 8787 --persist-to .wrangler-wl \
             --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 > wrangler-wl.log 2>&1 &
           DEV_PID=$!
           for i in $(seq 1 60); do
