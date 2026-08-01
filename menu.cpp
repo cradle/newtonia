@@ -1362,10 +1362,25 @@ bool Menu::board_upload_row_shown() const {
   // a refusal that arrives with (or is followed by) a close must not
   // vanish into the generic UNAVAILABLE footer — the row is the answer
   // the player is reading, and confirm no-ops without a socket anyway.
-  return board_best_clean_ && net_board_can_submit() &&
-         board_best_season_ == board_season_ &&
-         board_best_players_ == board_players_ &&
-         (board_net_ != nullptr || board_up_phase_ >= 2);
+  if (!(board_best_clean_ && net_board_can_submit() &&
+        board_best_season_ == board_season_ &&
+        board_best_players_ == board_players_ &&
+        (board_net_ != nullptr || board_up_phase_ >= 2)))
+    return false;
+  // Nothing to offer when the best is ALREADY on the board: a fetched row
+  // carrying this exact run at (or above) the local score means an upload
+  // could only be refused already-submitted. Same-run-but-higher-local
+  // (a clean-abandoned upload later resumed and improved) keeps the row —
+  // that upload upserts the better score. Only the IDLE row hides: once
+  // an upload ran this session the row is also its status line
+  // (UPLOADED #N / failed), which must not vanish on the post-placed
+  // refresh.
+  if (board_up_phase_ == 0 && !board_best_run_id_.empty()) {
+    for (const NetBoard::Row &r : board_rows_)
+      if (r.run_id == board_best_run_id_ && r.score >= board_best_score_)
+        return false;
+  }
+  return true;
 }
 
 // Is the local best already one of the visible board rows? (run_id match —
