@@ -1270,7 +1270,8 @@ void Menu::open_board() {
     board_best_clean_ = (h.flags & Replay::FLAG_CLEAN) &&
                         !(h.flags & Replay::FLAG_CHEATED) &&
                         h.final_score > 0;
-    board_players_ = h.player_count == 2 ? 2 : 1;
+    board_best_players_ = h.player_count == 2 ? 2 : 1;
+    board_players_ = board_best_players_;
   } else {
     board_players_ = 1;
   }
@@ -1363,6 +1364,7 @@ bool Menu::board_upload_row_shown() const {
   // the player is reading, and confirm no-ops without a socket anyway.
   return board_best_clean_ && net_board_can_submit() &&
          board_best_season_ == board_season_ &&
+         board_best_players_ == board_players_ &&
          (board_net_ != nullptr || board_up_phase_ >= 2);
 }
 

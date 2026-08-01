@@ -133,6 +133,7 @@ private:
   std::string board_season_;            // the BROWSED season (SEASON row)
   std::string board_build_season_;      // this build's stamp (the default)
   std::string board_best_season_;       // best.nrp's own season (upload gate)
+  int  board_best_players_ = 1;         // best.nrp's board (upload gate)
   // The worker's season list (newest first; the build's season is kept at
   // the front even before it has rows). Single-entry until the seasons
   // answer lands — cycling is a no-op then.
