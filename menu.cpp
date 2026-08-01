@@ -111,6 +111,14 @@ static const int BOARD_Y_TOGGLE = 268, BOARD_Y_SEASON = 214,
                  BOARD_Y_HEADER = 158, BOARD_Y_ROW0 = 116,
                  BOARD_ROW_PITCH = 48, BOARD_Y_UPLOAD = -300,
                  BOARD_Y_FOOTER = -364;
+// The table shows this many rows at once; the fetch asks for the full
+// top-100 board and the window scrolls over it (BOARD_Y_RANGE = the
+// "N-M OF R" indicator under the table, tappable on touch: left half
+// pages up, right half down).
+static const int BOARD_VISIBLE_ROWS = 8, BOARD_Y_RANGE = -262;
+// Sentinel for a row entry scrolled out of the window (never drawn,
+// never hit-tested — no real slot is anywhere near it).
+static const int BOARD_Y_OFFSCREEN = 10000;
 
 static int touch_opt_center(int i, int n) {
   return opt_row_center(i, n, TOUCH_OPT_TOP, TOUCH_OPT_BOTTOM);
@@ -281,6 +289,7 @@ void Menu::draw() {
                  (own && board_seasons_.size() > 1) ? " - LIVE" : "");
       }
       int y = board_entry_y(e);
+      if (y == BOARD_Y_OFFSCREEN) continue;  // scrolled out of the window
       if (!touch)
         MenuSelect::draw_row_cursor(board_sel_ == e, CURSOR_L, CURSOR_R, y, 13);
       if (e <= 1) {
@@ -361,6 +370,17 @@ void Menu::draw() {
           break;
       }
       Typer::draw_centered(0, y, text, 14);
+    }
+    // Scroll range under the table when the board exceeds the window —
+    // both the "there is more" affordance and, on touch, the pager (tap
+    // left half = up, right half = down; see touch_tap).
+    if ((int)board_rows_.size() > BOARD_VISIBLE_ROWS) {
+      char range[40];
+      int last = board_scroll_ + BOARD_VISIBLE_ROWS;
+      if (last > (int)board_rows_.size()) last = (int)board_rows_.size();
+      snprintf(range, sizeof(range), "%d-%d OF %d", board_scroll_ + 1, last,
+               (int)board_rows_.size());
+      Typer::draw_centered(0, BOARD_Y_RANGE, range, 9);
     }
     // Status / footer line, anchored under the UPLOAD slot.
     int fy = BOARD_Y_FOOTER;
@@ -740,7 +760,7 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
   }
   if (board_mode_) {
     if (MenuSelect::move(key, board_sel_, board_entry_count())) {
-      // moved
+      board_ensure_visible();
     } else if (MenuSelect::is_left(key) || MenuSelect::is_right(key)) {
       if (board_sel_ == 1) {
         // On the SEASON row, a/d step the browsed season instead.
@@ -908,6 +928,18 @@ void Menu::touch_tap(float nx, float ny) {
     if (TapBand::return_to_menu.contains(nx, ny)) { close_board(); return; }
     // Same fixed slots the draw uses (board_entry_y — the TapBand rule).
     float ty = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
+    // The range line doubles as the touch pager: left half pages up,
+    // right half pages down (drag scrolling is not a thing this menu
+    // stack has; the indicator is the one drawn, tappable affordance).
+    if ((int)board_rows_.size() > BOARD_VISIBLE_ROWS &&
+        ty <= BOARD_Y_RANGE + BOARD_ROW_PITCH / 2 &&
+        ty >= BOARD_Y_RANGE - BOARD_ROW_PITCH / 2) {
+      int max_scroll = (int)board_rows_.size() - BOARD_VISIBLE_ROWS;
+      board_scroll_ += (nx < 0.5f) ? -BOARD_VISIBLE_ROWS : BOARD_VISIBLE_ROWS;
+      if (board_scroll_ < 0) board_scroll_ = 0;
+      if (board_scroll_ > max_scroll) board_scroll_ = max_scroll;
+      return;
+    }
     int row = board_entry_at(ty);
     if (row >= 0) {
       board_sel_ = row;
@@ -1254,7 +1286,9 @@ void Menu::board_request() {
   board_rows_.clear();
   board_your_rank_ = 0;
   if (board_sel_ >= board_entry_count()) board_sel_ = 0;
-  board_net_->top(board_season_, board_players_, 8);
+  board_scroll_ = 0;
+  board_net_->top(board_season_, board_players_, 100);  // full board; the
+                                                        // table windows it
   // The rank-of footer: only meaningful when the local best belongs to
   // the browsed board (same season, same player count).
   Replay::Header h;
@@ -1270,8 +1304,22 @@ int Menu::board_entry_y(int e) const {
   if (e == 0) return BOARD_Y_TOGGLE;
   if (e == 1) return BOARD_Y_SEASON;
   int ri = e - 2;
-  if (ri < (int)board_rows_.size()) return BOARD_Y_ROW0 - ri * BOARD_ROW_PITCH;
+  if (ri < (int)board_rows_.size()) {
+    if (ri < board_scroll_ || ri >= board_scroll_ + BOARD_VISIBLE_ROWS)
+      return BOARD_Y_OFFSCREEN;  // scrolled out of the window
+    return BOARD_Y_ROW0 - (ri - board_scroll_) * BOARD_ROW_PITCH;
+  }
   return BOARD_Y_UPLOAD;  // the UPLOAD BEST RUN action (always last)
+}
+
+// Slide the window so the selected entry is visible (rows only — the
+// fixed slots always are). Called after every selection move.
+void Menu::board_ensure_visible() {
+  int ri = board_sel_ - 2;
+  if (ri < 0 || ri >= (int)board_rows_.size()) return;
+  if (ri < board_scroll_) board_scroll_ = ri;
+  if (ri >= board_scroll_ + BOARD_VISIBLE_ROWS)
+    board_scroll_ = ri - BOARD_VISIBLE_ROWS + 1;
 }
 
 int Menu::board_entry_at(float y) const {
@@ -1426,6 +1474,7 @@ void Menu::board_poll() {
         board_loading_ = false;
         if (board_sel_ >= board_entry_count())
           board_sel_ = board_entry_count() - 1;
+        board_ensure_visible();
         break;
       case NetBoard::Event::RankOf:
         // Drop an answer for a board we have since flipped away from

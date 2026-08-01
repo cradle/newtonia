@@ -72,8 +72,9 @@ private:
   // headers, the UPLOAD action and status footer anchored at the bottom —
   // NOT the options screens' spread-N-rows-over-the-band layout, which
   // scattered this screen's few entries structurelessly.
-  int  board_entry_y(int e) const;   // centre y of entry e
+  int  board_entry_y(int e) const;   // centre y of entry e (or offscreen)
   int  board_entry_at(float y) const;// entry at ortho y, -1 = none
+  void board_ensure_visible();       // slide the window onto board_sel_
   void board_request();            // (re)fetch top + rank-of for board_players_
   void board_poll();               // drive NetBoard events (from tick)
   void board_nav_confirm();        // confirm on the current selection
@@ -122,6 +123,7 @@ private:
   NetBoard *board_net_ = nullptr;       // owned; non-null while screen open
   int  board_players_ = 1;              // 1 = SOLO board, 2 = CO-OP
   int  board_sel_ = 0;                  // cursor over board_entry_count()
+  int  board_scroll_ = 0;               // first visible table row
   std::vector<NetBoard::Row> board_rows_;
   bool board_loading_ = false;          // top fetch in flight
   bool board_error_ = false;            // socket closed / worker error
