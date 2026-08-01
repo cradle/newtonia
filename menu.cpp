@@ -1000,8 +1000,9 @@ bool Menu::show_options_row() const {
 
 int Menu::menu_row_size() { return is_touch_mode() ? 26 : 22; }
 
-// Top of the menu-row band: the title (y 410, size 80) descends to here.
-static const int MENU_ROWS_TOP = 250;
+// Top of the menu-row band: sits below the title (y 410, size 80,
+// descending to 250) with deliberate air under it.
+static const int MENU_ROWS_TOP = 200;
 
 // Bottom of the menu-row band: desktop packs rows above the high-score
 // block; touch spreads them over a taller band (they're finger targets)
