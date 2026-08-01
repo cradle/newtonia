@@ -524,11 +524,11 @@ void Menu::draw() {
               : "ESC - BACK TO MENU",
         currentTime);
   } else {
-    Typer::draw_centered(0, 320, "Newtonia", 80);
+    Typer::draw_centered(0, 370, "Newtonia", 80);
     if (high_score > 0) {
       // Touch: the menu rows spread over a taller band (bigger finger
       // targets), so the score block sits lower, above the copyright.
-      int hs_y = is_touch_mode() ? -330 : -215;
+      int hs_y = is_touch_mode() ? -330 : -320;
       Typer::draw_centered(0, hs_y, "HIGH SCORE", 14);
       Typer::draw_centered(0, hs_y - 40, high_score, 18);
     }
@@ -537,18 +537,19 @@ void Menu::draw() {
   if (!options_mode_ && !replays_mode_ && !board_mode_) {
     if (attract_mode_) {
       if (!((currentTime / 1400) % 2)) {
-        // title_bot=160 (320-2*80), scores_top=-215; center single item in that gap
+        // title_bot=210 (370-2*80), scores_top=-330/-320; center in that gap
         const int sz = 18, h = 2 * sz;
-        int gap = (160 - (-215) - h) / 2;
+        int scores_top = is_touch_mode() ? -330 : -320;
+        int gap = (210 - scores_top - h) / 2;
         if (is_touch_mode()) {
-          Typer::draw_centered(0, 160 - gap, "tap to start", sz);
+          Typer::draw_centered(0, 210 - gap, "tap to start", sz);
         } else {
           bool has_ctrl = false;
           int nc = SDL_NumJoysticks();
           for (int i = 0; i < nc; i++) {
             if (SDL_IsGameController(i)) { has_ctrl = true; break; }
           }
-          Typer::draw_centered(0, 160 - gap, has_ctrl ? "press start" : "press enter", sz);
+          Typer::draw_centered(0, 210 - gap, has_ctrl ? "press start" : "press enter", sz);
         }
       }
     } else if (quit_confirm_) {
@@ -999,16 +1000,19 @@ bool Menu::show_options_row() const {
 
 int Menu::menu_row_size() { return is_touch_mode() ? 26 : 22; }
 
+// Top of the menu-row band: the title (y 370, size 80) descends to here.
+static const int MENU_ROWS_TOP = 210;
+
 // Bottom of the menu-row band: desktop packs rows above the high-score
 // block; touch spreads them over a taller band (they're finger targets)
 // and the score block moves down to make room.
-static int menu_rows_bottom() { return is_touch_mode() ? -300 : -215; }
+static int menu_rows_bottom() { return is_touch_mode() ? -300 : -280; }
 
-// Equally space n row blocks of height h between title_bot=160 and
+// Equally space n row blocks of height h between MENU_ROWS_TOP and
 // menu_rows_bottom(). ONE definition shared by draw_menu_rows and
 // menu_row_at so taps always land on what is drawn.
 static int menu_row_gap(int n, int h) {
-  return (160 - menu_rows_bottom() - n * h) / (n + 1);
+  return (MENU_ROWS_TOP - menu_rows_bottom() - n * h) / (n + 1);
 }
 
 // Touch draws bigger glyphs and no selection cursor; menu_row_at() mirrors
@@ -1018,7 +1022,7 @@ void Menu::draw_menu_rows(const std::vector<std::string> &rows) {
   int n = (int)rows.size();
   int gap = menu_row_gap(n, h);
   for (int i = 0; i < n; i++) {
-    float y = 160 - (i + 1) * gap - i * h;
+    float y = MENU_ROWS_TOP - (i + 1) * gap - i * h;
     // Touch draws the label bare — no cursor on any touch screen.
     if (is_touch_mode())
       Typer::draw_centered(0, y, rows[i].c_str(), sz);
@@ -1036,7 +1040,7 @@ int Menu::menu_row_at(float ny) const {
   float y = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
   // Slot i covers its glyph block plus half a gap either side, so the
   // whole menu band is contiguous finger targets with no dead zones.
-  float t = (160.0f - y) - gap * 0.5f;
+  float t = ((float)MENU_ROWS_TOP - y) - gap * 0.5f;
   if (t < 0) return -1;
   int i = (int)(t / (gap + h));
   return i < n ? i : -1;
