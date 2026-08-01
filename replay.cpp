@@ -49,6 +49,10 @@ std::string best_path() {
     std::string d = dir_path();
     return d.empty() ? "" : d + "best.nrp";
 }
+std::string best_coop_path() {
+    std::string d = dir_path();
+    return d.empty() ? "" : d + "best_coop.nrp";
+}
 std::string online_path() {
     std::string d = dir_path();
     return d.empty() ? "" : d + "online.nrp";
@@ -370,20 +374,55 @@ static bool copy_file(const std::string &from, const std::string &to) {
 // the tail was patched at a clean stop). A crashed run's stale header gets
 // no check (REPLAY.md accepted limitation): the run stays watchable in its
 // slot, it just can't become best.
-// See take_best_promoted() in replay.h — one-shot flag for the
+// See take_best_promoted() in replay.h — one-shot path for the
 // leaderboard's game-over prompt.
-static bool g_best_promoted = false;
+static std::string g_best_promoted_path;
 
-bool take_best_promoted() {
-    bool v = g_best_promoted;
-    g_best_promoted = false;
+std::string take_best_promoted() {
+    std::string v = g_best_promoted_path;
+    g_best_promoted_path.clear();
     return v;
+}
+
+// One-time split migration: a best.nrp written before the co-op slot
+// existed may BE a co-op run — move it to its own slot so it competes on
+// the right board and the solo slot reopens for solo runs. Runs lazily
+// ahead of every promotion check and every best_path_for resolution (the
+// menu's reads all route through that); idempotent (post-split the solo
+// slot's header can only be solo).
+static void ensure_best_split() {
+    static bool checked = false;
+    if (checked) return;
+    checked = true;
+    Header h;
+    if (!read_header(best_path(), h) || h.player_count < 2) return;
+    FILE *fp = fopen(best_coop_path().c_str(), "rb");
+    if (fp) { fclose(fp); return; }  // both slots live — nothing to move
+    if (std::rename(best_path().c_str(), best_coop_path().c_str()) != 0) {
+        if (copy_file(best_path(), best_coop_path()))
+            std::remove(best_path().c_str());
+    }
+    web_sync();
+    SDL_Log("replay: moved co-op best into its own slot (score=%u)",
+            h.final_score);
+}
+
+// Best is PER-BOARD (LEADERBOARD.md): the worker keeps solo and co-op
+// tables apart, so the local best must too — with one shared slot a solo
+// high score silently shadowed every later co-op run (the co-op score
+// never beat it, so the run never promoted and the CO-OP board never got
+// its upload prompt; field, 2026-08-01). player_count picks the slot.
+std::string best_path_for(uint8_t player_count) {
+    ensure_best_split();
+    return player_count >= 2 ? best_coop_path() : best_path();
 }
 
 static void maybe_promote_best(const std::string &from, const Header &h) {
     if (!(h.flags & FLAG_CLEAN) || (h.flags & FLAG_CHEATED)) return;
+    ensure_best_split();
+    std::string slot = best_path_for(h.player_count);
     Header hb;
-    bool have_best = read_header(best_path(), hb);
+    bool have_best = read_header(slot, hb);
     // Best is SEASON-scoped (LEADERBOARD.md): a clean run whose season
     // differs from the stored best's promotes regardless of score — a
     // fresh season starts from a clean slate, and gating on the old
@@ -398,7 +437,7 @@ static void maybe_promote_best(const std::string &from, const Header &h) {
         memcmp(h.game_version, hb.game_version,
                Header::GAME_VERSION_LEN) != 0;
     if (!have_best || season_changed || h.final_score > hb.final_score) {
-        if (copy_file(from, best_path())) g_best_promoted = true;
+        if (copy_file(from, slot)) g_best_promoted_path = slot;
         // Sync the promotion itself: the online retirement path
         // (best_check_online) has no later sync of its own, so without
         // this a new best set in the session's last moments never left
@@ -406,7 +445,8 @@ static void maybe_promote_best(const std::string &from, const Header &h) {
         // offline path syncs again in rotate_to_recent; web_fs coalesces
         // the pair into one store.
         web_sync();
-        SDL_Log("replay: promoted best (score=%u gen=%u%s)", h.final_score,
+        SDL_Log("replay: promoted best (%s score=%u gen=%u%s)",
+                h.player_count >= 2 ? "co-op" : "solo", h.final_score,
                 h.generation, season_changed ? " new season" : "");
     }
 }

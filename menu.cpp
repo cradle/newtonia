@@ -353,8 +353,9 @@ void Menu::draw() {
         }
         continue;
       }
-      // The UPLOAD BEST RUN action row, phase-labelled.
-      switch (board_up_phase_) {
+      // The UPLOAD BEST RUN action row, phase-labelled (through the
+      // browsed board's eyes — a foreign board's upload reads as idle).
+      switch (board_up_phase_shown()) {
         case 1: {
           // The score stays visible through the transfer and after — the
           // upload is about the score (same rule as the game-over card).
@@ -1165,13 +1166,14 @@ void Menu::scan_replays() {
   // way), while online.nrp never rotates through any of them — it is its
   // own slot, overwritten per session. Listing it after the chain rather
   // than inside it matches that.
-  struct { const char *label; std::string path; } sources[4] = {
+  struct { const char *label; std::string path; } sources[5] = {
       {"CURRENT RUN", Replay::current_path()},
       {"LAST RUN", Replay::recent_path()},
-      {"BEST RUN", Replay::best_path()},
+      {"BEST RUN", Replay::best_path_for(1)},
+      {"BEST CO-OP", Replay::best_path_for(2)},
       {"ONLINE RUN", Replay::online_path()},
   };
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 5; i++) {
     if (sources[i].path.empty()) continue;
     FILE *fp = fopen(sources[i].path.c_str(), "rb");
     if (!fp) continue;
@@ -1241,6 +1243,22 @@ static const int BOARD_UPLOAD_RETRY_TIMEOUT_MS = 6000;
 
 bool Menu::show_board_row() const { return net_board_available(); }
 
+// Does this best slot hold a run the live season's UPLOAD row could offer
+// (clean, non-cheated, scored, and stamped with the build's own season)?
+// Used only to pick which board the screen OPENS on; the row's real gating
+// reads the loaded slot (board_upload_row_shown).
+static bool slot_is_upload_candidate(const std::string &path,
+                                     const std::string &build_season) {
+  Replay::Header h;
+  if (!Replay::read_header(path, h)) return false;
+  if (!(h.flags & Replay::FLAG_CLEAN) || (h.flags & Replay::FLAG_CHEATED) ||
+      h.final_score == 0)
+    return false;
+  std::string season(h.game_version,
+                     strnlen(h.game_version, sizeof(h.game_version)));
+  return season == build_season;
+}
+
 int Menu::board_row_index() const {
   if (!show_board_row()) return -1;
   int i = base_menu_rows();
@@ -1270,36 +1288,14 @@ void Menu::open_board() {
   own.season = board_build_season_;
   board_seasons_.push_back(own);
   board_net_->seasons();
-  board_best_run_id_.clear();
-  board_best_season_.clear();
-  board_best_score_ = 0;
-  board_best_clean_ = false;
-  Replay::Header h;
-  if (Replay::read_header(Replay::best_path(), h)) {
-    char rid[24];
-    snprintf(rid, sizeof(rid), "%llu", (unsigned long long)h.run_id);
-    board_best_run_id_ = rid;
-    board_best_season_.assign(
-        h.game_version, strnlen(h.game_version, sizeof(h.game_version)));
-    // Seed the browser with best.nrp's season too: the UPLOAD row lives
-    // on ITS season's screen, and the worker only lists seasons that
-    // already have rows — an old-season best would otherwise be
-    // unreachable (nothing to cycle to) until someone else charted there.
-    if (!board_best_season_.empty() &&
-        board_best_season_ != board_build_season_) {
-      NetBoard::Season bs;
-      bs.season = board_best_season_;
-      board_seasons_.push_back(bs);
-    }
-    board_best_score_ = h.final_score;
-    board_best_clean_ = (h.flags & Replay::FLAG_CLEAN) &&
-                        !(h.flags & Replay::FLAG_CHEATED) &&
-                        h.final_score > 0;
-    board_best_players_ = h.player_count == 2 ? 2 : 1;
-    board_players_ = board_best_players_;
-  } else {
-    board_players_ = 1;
-  }
+  // Best is per-board (solo best.nrp / co-op best_coop.nrp): open on the
+  // board whose slot holds a live-season upload candidate — SOLO wins a
+  // tie, and SOLO is the default when neither slot has one. The browsed
+  // board's slot itself loads in board_load_best (from board_request).
+  board_players_ =
+      !slot_is_upload_candidate(Replay::best_path_for(1), board_build_season_) &&
+      slot_is_upload_candidate(Replay::best_path_for(2), board_build_season_)
+          ? 2 : 1;
   board_sel_ = 0;
   board_loading_ = false;
   board_error_ = false;
@@ -1320,6 +1316,7 @@ void Menu::close_board() {
 
 void Menu::board_request() {
   if (!board_net_) return;
+  board_load_best();  // the browsed board's own best slot (solo/co-op)
   board_loading_ = true;
   board_error_ = false;
   board_rows_.clear();
@@ -1328,15 +1325,50 @@ void Menu::board_request() {
   board_scroll_ = 0;
   board_net_->top(board_season_, board_players_, 100);  // full board; the
                                                         // table windows it
-  // The rank-of footer: only meaningful when the local best belongs to
-  // the browsed board (same season, same player count).
+  // The rank-of footer: only meaningful when the slot's best belongs to
+  // the browsed season (the slot already matches the player count).
+  if (board_best_score_ > 0 && board_best_season_ == board_season_)
+    board_net_->rank_of(board_season_, board_players_, board_best_score_);
+}
+
+// Load the best slot that belongs to the browsed board (best is per-board:
+// solo best.nrp / co-op best_coop.nrp — LEADERBOARD.md). Refreshed on
+// every board_request so a SOLO/CO-OP flip swaps the upload candidate, the
+// " - YOU" row tag and the rank-of footer along with the rows.
+void Menu::board_load_best() {
+  board_best_run_id_.clear();
+  board_best_season_.clear();
+  board_best_score_ = 0;
+  board_best_clean_ = false;
   Replay::Header h;
-  if (board_best_score_ > 0 && board_best_season_ == board_season_ &&
-      Replay::read_header(Replay::best_path(), h)) {
-    int best_players = h.player_count == 2 ? 2 : 1;
-    if (best_players == board_players_)
-      board_net_->rank_of(board_season_, board_players_, board_best_score_);
+  if (!Replay::read_header(Replay::best_path_for((uint8_t)board_players_), h))
+    return;
+  char rid[24];
+  snprintf(rid, sizeof(rid), "%llu", (unsigned long long)h.run_id);
+  board_best_run_id_ = rid;
+  board_best_season_.assign(h.game_version,
+                            strnlen(h.game_version, sizeof(h.game_version)));
+  board_best_score_ = h.final_score;
+  board_best_clean_ = (h.flags & Replay::FLAG_CLEAN) &&
+                      !(h.flags & Replay::FLAG_CHEATED) && h.final_score > 0;
+  // Keep this slot's season reachable in the browser: the UPLOAD row lives
+  // on ITS season's screen, and the worker only lists seasons that already
+  // have rows — an old-season best would otherwise be unreachable (nothing
+  // to cycle to) until someone else charted there.
+  if (!board_best_season_.empty()) {
+    for (const NetBoard::Season &s : board_seasons_)
+      if (s.season == board_best_season_) return;
+    NetBoard::Season bs;
+    bs.season = board_best_season_;
+    board_seasons_.push_back(bs);
   }
+}
+
+// board_up_phase_, seen from the browsed board: an upload's transfer/status
+// belongs to the board it was started for (board_up_players_) — the other
+// board's UPLOAD row must read idle, not wear a foreign UPLOADED #N label.
+int Menu::board_up_phase_shown() const {
+  return board_up_players_ == board_players_ ? board_up_phase_ : 0;
 }
 
 int Menu::board_entry_y(int e) const {
@@ -1396,8 +1428,7 @@ bool Menu::board_upload_row_shown() const {
   // the player is reading, and confirm no-ops without a socket anyway.
   if (!(board_best_clean_ && net_board_can_submit() &&
         board_best_season_ == board_season_ &&
-        board_best_players_ == board_players_ &&
-        (board_net_ != nullptr || board_up_phase_ >= 2)))
+        (board_net_ != nullptr || board_up_phase_shown() >= 2)))
     return false;
   // Nothing to offer when the best is ALREADY on the board: a fetched row
   // carrying this exact run at (or above) the local score means an upload
@@ -1407,7 +1438,7 @@ bool Menu::board_upload_row_shown() const {
   // an upload ran this session the row is also its status line
   // (UPLOADED #N / failed), which must not vanish on the post-placed
   // refresh.
-  if (board_up_phase_ == 0 && !board_best_run_id_.empty()) {
+  if (board_up_phase_shown() == 0 && !board_best_run_id_.empty()) {
     for (const NetBoard::Row &r : board_rows_)
       if (r.run_id == board_best_run_id_ && r.score >= board_best_score_)
         return false;
@@ -1444,12 +1475,15 @@ void Menu::board_start_upload() {
   if (!board_net_ || board_transfer_busy()) return;
   board_up_retried_ = false;
   board_up_retry_deadline_ = 0;
+  board_up_players_ = board_players_;  // the board this upload belongs to
   const NetIdentity &me = net_local_identity();
   std::string cred = net_board_verify_credential();
   board_up_sent_cred_ = cred;  // for the retry's freshness compare
-  board_net_->submit(Replay::best_path(), me.platform, me.name, cred);
+  board_net_->submit(Replay::best_path_for((uint8_t)board_up_players_),
+                     me.platform, me.name, cred);
   board_up_phase_ = 1;
-  SDL_Log("board: uploading best.nrp (menu)");
+  SDL_Log("board: uploading %s (menu)",
+          board_up_players_ == 2 ? "best_coop.nrp" : "best.nrp");
 }
 
 // The socket carries ONE transfer at a time (RtcBoard's single phase_), so
@@ -1505,7 +1539,7 @@ void Menu::board_nav_confirm() {
     return;
   }
   if (board_upload_row_shown() && !board_transfer_busy() &&
-      (board_up_phase_ == 0 || board_up_phase_ == 3))
+      (board_up_phase_shown() == 0 || board_up_phase_shown() == 3))
     board_start_upload();
 }
 
@@ -1522,7 +1556,8 @@ void Menu::board_poll() {
       const NetIdentity &me = net_local_identity();
       std::string fresh = net_board_verify_credential();  // consume the fresh one
       board_up_sent_cred_ = fresh;
-      board_net_->submit(Replay::best_path(), me.platform, me.name, fresh);
+      board_net_->submit(Replay::best_path_for((uint8_t)board_up_players_),
+                         me.platform, me.name, fresh);
       board_up_phase_ = 1;
       SDL_Log("board: retrying upload with a fresh credential (menu)");
     } else if (currentTime >= board_up_retry_deadline_) {

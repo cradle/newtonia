@@ -3295,12 +3295,15 @@ void GLGame::board_maybe_start() {
   // Consume the one-shot promotion flag unconditionally (so it can't leak
   // into a later game over), THEN decide whether to prompt: only on a
   // build that can actually pass the worker's attestation requirement —
-  // otherwise the upload is doomed to "unverified" (LEADERBOARD.md).
-  if (!Replay::take_best_promoted()) return;
+  // otherwise the upload is doomed to "unverified" (LEADERBOARD.md). The
+  // promotion says WHICH best slot the run landed in (solo/co-op — best is
+  // per-board), and that slot is what gets qualified and uploaded.
+  board_up_path_ = Replay::take_best_promoted();
+  if (board_up_path_.empty()) return;
   if (!g_prefs.leaderboard_prompts) return;
   if (!net_board_can_submit()) return;
   Replay::Header h;
-  if (!Replay::read_header(Replay::best_path(), h)) return;
+  if (!Replay::read_header(board_up_path_, h)) return;
   board_ = NetBoard::create();
   if (!board_) return;
   board_up_retried_ = false;
@@ -3333,7 +3336,7 @@ void GLGame::board_tick() {
       const NetIdentity &me = net_local_identity();
       std::string fresh = net_board_verify_credential();  // consume the fresh one
       board_up_sent_cred_ = fresh;
-      board_->submit(Replay::best_path(), me.platform, me.name, fresh);
+      board_->submit(board_up_path_, me.platform, me.name, fresh);
       board_phase_ = BoardUploading;
       SDL_Log("board: retrying upload with a fresh credential");
     } else if (current_time >= board_up_retry_deadline_) {
@@ -3452,9 +3455,11 @@ bool GLGame::board_nav(char key) {
       const NetIdentity &me = net_local_identity();
       std::string cred = net_board_verify_credential();
       board_up_sent_cred_ = cred;  // for the retry's freshness compare
-      board_->submit(Replay::best_path(), me.platform, me.name, cred);
+      board_->submit(board_up_path_, me.platform, me.name, cred);
       board_phase_ = BoardUploading;
-      SDL_Log("board: uploading best.nrp");
+      SDL_Log("board: uploading %s",
+              board_up_path_ == Replay::best_coop_path() ? "best_coop.nrp"
+                                                         : "best.nrp");
       return true;
     }
     return true;  // the prompt owns the card: swallow everything else

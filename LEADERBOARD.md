@@ -26,7 +26,23 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
      from ever prompting. `best.nrp` is therefore "your best run of the
      season you last played"; the old season's uploaded replay lives on
      on its board. Within a season the gate stays score-beats-best. No
-     network traffic for ordinary runs.
+     network traffic for ordinary runs. **Best is PER-BOARD** (decided
+     with Glenn 2026-08-01, from a field report): the worker keeps solo
+     and co-op tables apart, so the local candidate does too —
+     `best.nrp` (solo) and `best_coop.nrp` (co-op), routed by the
+     header's `player_count` (`Replay::best_path_for`). With one shared
+     slot a solo high score silently shadowed every later co-op run:
+     the co-op score never beat it, so the run never promoted and the
+     CO-OP board never got its upload prompt. `take_best_promoted()`
+     now returns the promoted slot's PATH (empty = none) so the
+     game-over qualify/upload operate on the right file; the menu
+     screen loads the browsed board's own slot on every SOLO/CO-OP flip
+     (upload row, rank-of footer, `- YOU` tag all follow), and a
+     pre-split co-op `best.nrp` (the old code promoted co-op runs into
+     the shared slot when they DID beat the solo score) migrates to its
+     slot lazily (`ensure_best_split`, ahead of every promotion check
+     and `best_path_for` resolution). The REPLAYS list shows the new
+     slot as BEST CO-OP; `NEWTONIA_REPLAY_PLAY=bestcoop` plays it.
   2. *Remote gate*: an async `qualify` query to the worker — "would this
      score place on the current season's board?" The worker answers with
      the projected rank and the current cut-line (lowest charting score).

@@ -131,7 +131,10 @@ enum EffectSubtype : uint8_t {
 // Paths in <pref>/replays/ (created on demand). Empty string on failure.
 std::string current_path();
 std::string recent_path();
-std::string best_path();
+std::string best_path();       // solo best (LEADERBOARD.md: best is per-board)
+std::string best_coop_path();  // co-op best — its own slot, its own board
+// The slot a run of this player count competes for (>=2 -> co-op).
+std::string best_path_for(uint8_t player_count);
 std::string online_path();
 // A leaderboard row's downloaded replay (LEADERBOARD.md): transient —
 // overwritten by the next download, never listed on the REPLAYS menu,
@@ -206,13 +209,15 @@ void rotate_current_to_recent();
 // lost, then the caller starts a fresh Recorder.
 void on_new_game();
 
-// One-shot read-and-clear: a best.nrp promotion happened since the last
-// call. Set by every best check (game-over rotation, online retirement,
-// NEW-GAME rotation of a clean abandon). The leaderboard's game-over
-// prompt trigger (LEADERBOARD.md): "a new personal best" is exactly "the
-// run just promoted", so the gate lives where the promotion does instead
-// of being re-derived from headers.
-bool take_best_promoted();
+// One-shot read-and-clear: the path of the best slot a promotion landed in
+// since the last call (empty = none). Set by every best check (game-over
+// rotation, online retirement, NEW-GAME rotation of a clean abandon). The
+// leaderboard's game-over prompt trigger (LEADERBOARD.md): "a new personal
+// best" is exactly "the run just promoted", so the gate lives where the
+// promotion does instead of being re-derived from headers — and since best
+// is per-board (solo best.nrp / co-op best_coop.nrp), the path says WHICH
+// best it was, which is what the prompt must qualify and upload.
+std::string take_best_promoted();
 
 // Run the best check on online.nrp in place (clean, non-cheated header
 // beating best's score → copy promoted). online.nrp never rotates — it is
