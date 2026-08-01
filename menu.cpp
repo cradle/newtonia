@@ -524,7 +524,7 @@ void Menu::draw() {
               : "ESC - BACK TO MENU",
         currentTime);
   } else {
-    Typer::draw_centered(0, 370, "Newtonia", 80);
+    Typer::draw_centered(0, 410, "Newtonia", 80);
     if (high_score > 0) {
       // Touch: the menu rows spread over a taller band (bigger finger
       // targets), so the score block sits lower, above the copyright.
@@ -537,19 +537,19 @@ void Menu::draw() {
   if (!options_mode_ && !replays_mode_ && !board_mode_) {
     if (attract_mode_) {
       if (!((currentTime / 1400) % 2)) {
-        // title_bot=210 (370-2*80), scores_top=-330/-320; center in that gap
+        // title_bot=250 (410-2*80), scores_top=-330/-320; center in that gap
         const int sz = 18, h = 2 * sz;
         int scores_top = is_touch_mode() ? -330 : -320;
-        int gap = (210 - scores_top - h) / 2;
+        int gap = (250 - scores_top - h) / 2;
         if (is_touch_mode()) {
-          Typer::draw_centered(0, 210 - gap, "tap to start", sz);
+          Typer::draw_centered(0, 250 - gap, "tap to start", sz);
         } else {
           bool has_ctrl = false;
           int nc = SDL_NumJoysticks();
           for (int i = 0; i < nc; i++) {
             if (SDL_IsGameController(i)) { has_ctrl = true; break; }
           }
-          Typer::draw_centered(0, 210 - gap, has_ctrl ? "press start" : "press enter", sz);
+          Typer::draw_centered(0, 250 - gap, has_ctrl ? "press start" : "press enter", sz);
         }
       }
     } else if (quit_confirm_) {
@@ -1000,8 +1000,8 @@ bool Menu::show_options_row() const {
 
 int Menu::menu_row_size() { return is_touch_mode() ? 26 : 22; }
 
-// Top of the menu-row band: the title (y 370, size 80) descends to here.
-static const int MENU_ROWS_TOP = 210;
+// Top of the menu-row band: the title (y 410, size 80) descends to here.
+static const int MENU_ROWS_TOP = 250;
 
 // Bottom of the menu-row band: desktop packs rows above the high-score
 // block; touch spreads them over a taller band (they're finger targets)
