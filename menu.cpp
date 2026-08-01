@@ -104,6 +104,14 @@ static int opt_row_at(float ny, int n, float top, float bottom) {
   if (t < 0 || t >= pitch * n) return -1;
   return (int)(t / pitch);
 }
+// Fixed slots (Typer virtual units). The control pair sits tight under
+// the title, the score table runs at constant pitch under its headers,
+// and the UPLOAD action + footer hold the bottom — grouping over spread.
+static const int BOARD_Y_TOGGLE = 268, BOARD_Y_SEASON = 214,
+                 BOARD_Y_HEADER = 158, BOARD_Y_ROW0 = 116,
+                 BOARD_ROW_PITCH = 48, BOARD_Y_UPLOAD = -300,
+                 BOARD_Y_FOOTER = -364;
+
 static int touch_opt_center(int i, int n) {
   return opt_row_center(i, n, TOUCH_OPT_TOP, TOUCH_OPT_BOTTOM);
 }
@@ -251,6 +259,15 @@ void Menu::draw() {
     const int CURSOR_L = -623, RANK_X = -560, NAME_X = -455, BADGE_X = -70,
               SCORE_X = 95, LEVEL_X = 295, DATE_X = 476, TAG_X = 460,
               CURSOR_R = 609;
+    // Column headers over the score table (structure the bare values lost
+    // when the worded labels were dropped for column fit).
+    if (!board_rows_.empty()) {
+      Typer::draw(RANK_X, BOARD_Y_HEADER, "#", 9);
+      Typer::draw(NAME_X, BOARD_Y_HEADER, "PLAYER", 9);
+      Typer::draw(SCORE_X, BOARD_Y_HEADER, "SCORE", 9);
+      Typer::draw(LEVEL_X, BOARD_Y_HEADER, "LEVEL", 9);
+      if (!touch) Typer::draw(DATE_X, BOARD_Y_HEADER, "DATE", 9);
+    }
     for (int e = 0; e < n; e++) {
       char text[96];
       if (e == 0) {
@@ -263,8 +280,7 @@ void Menu::draw() {
         snprintf(text, sizeof(text), "SEASON: %s%s", board_season_.c_str(),
                  (own && board_seasons_.size() > 1) ? " - LIVE" : "");
       }
-      int y = touch ? touch_opt_center(e, n)
-                    : opt_row_center(e, n, DESK_OPT_TOP, DESK_OPT_BOTTOM);
+      int y = board_entry_y(e);
       if (!touch)
         MenuSelect::draw_row_cursor(board_sel_ == e, CURSOR_L, CURSOR_R, y, 13);
       if (e <= 1) {
@@ -287,7 +303,7 @@ void Menu::draw() {
         char rank_buf[12], score_buf[24], level_buf[16];
         snprintf(rank_buf, sizeof(rank_buf), "#%d", r.rank);
         snprintf(score_buf, sizeof(score_buf), "%u", r.score);
-        snprintf(level_buf, sizeof(level_buf), "LEVEL %u", r.generation + 1);
+        snprintf(level_buf, sizeof(level_buf), "%u", r.generation + 1);
         Typer::draw(RANK_X, y, rank_buf, 13);
         Typer::draw(NAME_X, y, name.c_str(), 12);
         // Platform badge (STEAM/WEB/IOS/ANDROID) so rows from different
@@ -346,8 +362,8 @@ void Menu::draw() {
       }
       Typer::draw_centered(0, y, text, 14);
     }
-    // Status / footer line between the rows and the exit band.
-    int fy = touch ? -240 : -330;
+    // Status / footer line, anchored under the UPLOAD slot.
+    int fy = BOARD_Y_FOOTER;
     int sel_ri = board_sel_ - 2;  // selected score row, or out of range
     const NetBoard::Row *sel_row =
         (sel_ri >= 0 && sel_ri < (int)board_rows_.size())
@@ -890,10 +906,9 @@ void Menu::touch_tap(float nx, float ny) {
   }
   if (board_mode_) {
     if (TapBand::return_to_menu.contains(nx, ny)) { close_board(); return; }
-    int n = board_entry_count();
-    int row = is_touch_mode()
-                  ? touch_opt_row_at(ny, n)
-                  : opt_row_at(ny, n, DESK_OPT_TOP, DESK_OPT_BOTTOM);
+    // Same fixed slots the draw uses (board_entry_y — the TapBand rule).
+    float ty = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
+    int row = board_entry_at(ty);
     if (row >= 0) {
       board_sel_ = row;
       board_nav_confirm();
@@ -1249,6 +1264,23 @@ void Menu::board_request() {
     if (best_players == board_players_)
       board_net_->rank_of(board_season_, board_players_, board_best_score_);
   }
+}
+
+int Menu::board_entry_y(int e) const {
+  if (e == 0) return BOARD_Y_TOGGLE;
+  if (e == 1) return BOARD_Y_SEASON;
+  int ri = e - 2;
+  if (ri < (int)board_rows_.size()) return BOARD_Y_ROW0 - ri * BOARD_ROW_PITCH;
+  return BOARD_Y_UPLOAD;  // the UPLOAD BEST RUN action (always last)
+}
+
+int Menu::board_entry_at(float y) const {
+  int n = board_entry_count();
+  for (int e = 0; e < n; e++)
+    if (y <= board_entry_y(e) + BOARD_ROW_PITCH / 2 &&
+        y >= board_entry_y(e) - BOARD_ROW_PITCH / 2)
+      return e;
+  return -1;
 }
 
 int Menu::board_entry_count() const {

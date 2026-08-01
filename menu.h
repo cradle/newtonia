@@ -67,6 +67,13 @@ private:
   int  board_row_index() const;    // -1 when hidden
   void open_board();
   void close_board();
+  // Structured board-screen geometry (one definition for draw AND taps):
+  // a compact control pair up top, a fixed-pitch score table under column
+  // headers, the UPLOAD action and status footer anchored at the bottom —
+  // NOT the options screens' spread-N-rows-over-the-band layout, which
+  // scattered this screen's few entries structurelessly.
+  int  board_entry_y(int e) const;   // centre y of entry e
+  int  board_entry_at(float y) const;// entry at ortho y, -1 = none
   void board_request();            // (re)fetch top + rank-of for board_players_
   void board_poll();               // drive NetBoard events (from tick)
   void board_nav_confirm();        // confirm on the current selection
