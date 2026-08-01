@@ -528,7 +528,7 @@ void Menu::draw() {
     if (high_score > 0) {
       // Touch: the menu rows spread over a taller band (bigger finger
       // targets), so the score block sits lower, above the copyright.
-      int hs_y = is_touch_mode() ? -330 : -320;
+      int hs_y = is_touch_mode() ? -330 : -300;
       Typer::draw_centered(0, hs_y, "HIGH SCORE", 14);
       Typer::draw_centered(0, hs_y - 40, high_score, 18);
     }
