@@ -229,6 +229,39 @@ async function submit(ws, bytes, name, platform = 2) {
   check("still one ALICE row after supersede", aliceRows.length === 1 &&
         aliceRows[0].score === 1200, JSON.stringify(f.rows));
 
+  // 15. The top-100 gate: fill a fresh season to exactly KEEP_N rows (100
+  // distinct accounts — one row per account is DB-enforced), then qualify
+  // below the cut-line: the answer must be would_place=false with the
+  // honest place and cut, which is what suppresses the game-over prompt
+  // (the "upload prevention" — a below-cut submit is still ADMITTED by
+  // design; retention prunes its blob). Above the cut stays true.
+  // Needs the CONN_LIMIT/SUBMIT_LIMIT dev vars: 50 sockets x 2 submits.
+  const FULL = "vfull-" + Date.now().toString(36); // fresh full board per run
+  for (let i = 0; i < 100; i += 2) {
+    const wsf = await connect();
+    for (let j = i; j < i + 2; j++) {
+      f = await submit(wsf, build_nrp({ game_version: FULL,
+                                        run_id: BigInt(3000 + j),
+                                        score: 100000 - j * 10 }),
+                       "FILL" + j);
+      if (f.t !== "placed")
+        check("fill row " + j + " placed", false, JSON.stringify(f));
+    }
+    wsf.close();
+  }
+  const ws6 = await connect();
+  send(ws6, { t: "qualify", season: FULL, players: 1, score: 500 });
+  f = await ws6._recv();
+  check("below-cut qualify refuses",
+        f.t === "qualify" && f.would_place === false && f.place === 101 &&
+        f.cutline === 100000 - 99 * 10, JSON.stringify(f));
+  send(ws6, { t: "qualify", season: FULL, players: 1, score: 99500 });
+  f = await ws6._recv();
+  check("above-cut qualify places",
+        f.t === "qualify" && f.would_place === true && f.place <= 100,
+        JSON.stringify(f));
+  ws6.close();
+
   ws.close(); ws2.close(); ws3.close(); ws5.close();
   console.log(failures ? `${failures} FAILURE(S)` : "ALL PASS");
   process.exit(failures ? 1 : 0);
