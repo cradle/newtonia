@@ -6412,6 +6412,77 @@ void GLGame::tick(int delta) {
   }
   current_time += delta;
 
+  // Co-op e2e hooks, live OFFLINE and as host alike (they drive the shared
+  // sim: lives, the revive payload, and a real revive pickup drop). All
+  // inert without their env vars.
+  if (players->size() >= 2) {
+    // Drive a player fully out of lives on a timer so the revive/spectate
+    // flows can be exercised headlessly. Online, lives are
+    // host-authoritative and replicate; "remote"/default = players->back()
+    // (the joiner online, P2 offline), "local" = players->front().
+    static int test_kill_ms = -2;
+    static bool test_kill_remote = true;
+    if (test_kill_ms == -2) {
+      const char *e = getenv("NEWTONIA_NET_TEST_KILL_MS");
+      test_kill_ms = e ? atoi(e) : -1;
+      const char *who = getenv("NEWTONIA_NET_TEST_KILL_WHO");
+      test_kill_remote = !(who && std::string(who) == "local");
+    }
+    if (test_kill_ms > 0) {
+      test_kill_ms -= delta;
+      if (test_kill_ms <= 0) {
+        test_kill_ms = -1;
+        GLShip *victim = test_kill_remote ? players->back() : players->front();
+        NET_LOG("net: TEST forcing %s player out of lives\n",
+                test_kill_remote ? "remote" : "local");
+        victim->ship->lives = 0;
+        victim->ship->kill();
+      }
+    }
+    // Apply the revive effect to whichever player is fully out — the
+    // pickup-collection payload without the blind-navigation problem of
+    // actually touching a pickup in a driver.
+    static int test_revive_ms = -2;
+    if (test_revive_ms == -2) {
+      const char *e = getenv("NEWTONIA_NET_TEST_REVIVE_MS");
+      test_revive_ms = e ? atoi(e) : -1;
+    }
+    if (test_revive_ms > 0) {
+      test_revive_ms -= delta;
+      if (test_revive_ms <= 0) {
+        test_revive_ms = -1;
+        NET_LOG("net: TEST applying revive\n");
+        revive_fallen_partner(NULL);
+      }
+    }
+    // Spawn a real RevivePickup on a LIVING player so the ordinary
+    // collision/collection path runs — the full field flow, minus the
+    // random drop roll. NEWTONIA_NET_TEST_REVIVE_DROP_DIST offsets the
+    // drop that many units away instead (0/absent = instant collection;
+    // a distance lets a driver exercise the pickup SURVIVING something,
+    // e.g. the generation rebuild).
+    static int test_revive_drop_ms = -2, test_revive_drop_dist = 0;
+    if (test_revive_drop_ms == -2) {
+      const char *e = getenv("NEWTONIA_NET_TEST_REVIVE_DROP_MS");
+      test_revive_drop_ms = e ? atoi(e) : -1;
+      const char *d = getenv("NEWTONIA_NET_TEST_REVIVE_DROP_DIST");
+      test_revive_drop_dist = d ? atoi(d) : 0;
+    }
+    if (test_revive_drop_ms > 0) {
+      test_revive_drop_ms -= delta;
+      if (test_revive_drop_ms <= 0) {
+        test_revive_drop_ms = -1;
+        for (auto *gs : *players) {
+          if (!gs->ship->is_alive()) continue;
+          NET_LOG("net: TEST dropping revive pickup near the living player\n");
+          pickups->push_back(new RevivePickup(
+              gs->ship->position + Point((float)test_revive_drop_dist, 0)));
+          break;
+        }
+      }
+    }
+  }
+
   // Online host: poll the peer before the pause gate — their RESUME (or a
   // dead transport) must be noticed even while paused.
   if (net_mode_ == NetHost) {
@@ -6442,49 +6513,6 @@ void GLGame::tick(int delta) {
         NET_LOG("net: TEST dropping signal socket\n");
         net_signal_->close();          // local close emits no Closed event;
         net_signal_retry_ms_ = 700;    // a real drop arrives as Event::Closed
-      }
-    }
-
-    // Spectator e2e hook: drive a player fully out of lives on a timer so
-    // the spectate flow (camera hand-off + "SPECTATING") can be exercised
-    // headlessly. Lives are host-authoritative, so this is applied here and
-    // replicates to the client. "remote" (default) empties the joiner's
-    // lives -> the CLIENT spectates the host; "local" empties the host's.
-    // Inert without the env var.
-    static int test_kill_ms = -2;
-    static bool test_kill_remote = true;
-    if (test_kill_ms == -2) {
-      const char *e = getenv("NEWTONIA_NET_TEST_KILL_MS");
-      test_kill_ms = e ? atoi(e) : -1;
-      const char *who = getenv("NEWTONIA_NET_TEST_KILL_WHO");
-      test_kill_remote = !(who && std::string(who) == "local");
-    }
-    if (test_kill_ms > 0 && players->size() >= 2) {
-      test_kill_ms -= delta;
-      if (test_kill_ms <= 0) {
-        test_kill_ms = -1;
-        GLShip *victim = test_kill_remote ? players->back() : players->front();
-        NET_LOG("net: TEST forcing %s player out of lives\n",
-                test_kill_remote ? "remote" : "local");
-        victim->ship->lives = 0;
-        victim->ship->kill();
-      }
-    }
-    // Revive e2e hook: after N ms, apply the revive effect to whichever
-    // player is fully out — the pickup-collection payload without the
-    // blind-navigation problem of actually touching a pickup in a driver.
-    // Inert without the env var.
-    static int test_revive_ms = -2;
-    if (test_revive_ms == -2) {
-      const char *e = getenv("NEWTONIA_NET_TEST_REVIVE_MS");
-      test_revive_ms = e ? atoi(e) : -1;
-    }
-    if (test_revive_ms > 0 && players->size() >= 2) {
-      test_revive_ms -= delta;
-      if (test_revive_ms <= 0) {
-        test_revive_ms = -1;
-        NET_LOG("net: TEST applying revive\n");
-        revive_fallen_partner(NULL);
       }
     }
 
@@ -6676,9 +6704,25 @@ void GLGame::tick(int delta) {
         hazards->pop_back();
       }
       add_hazards();
-      while(!pickups->empty()) {
-        delete pickups->back();
-        pickups->pop_back();
+      // Pickups are cleared for the new level — EXCEPT an uncollected
+      // revive. It only exists while a partner is fully out of lives
+      // (capped at one in the world), and the rebuild does not bring that
+      // partner back — but the drop rolls on an asteroid kill, sometimes
+      // the very kill that CLEARS the level, so the wipe could vanish the
+      // revive moments after it appeared (field, 2026-08-01: "it looked
+      // like the pickup disappeared before I picked it up") and strand the
+      // fallen player waiting on another 10% roll next level. It rides
+      // into the new level at its old position, which stays in-world (the
+      // world only grows). Online this is host sim; the pickup list
+      // replicates through the ordinary snapshot rebuild.
+      for(auto pi = pickups->begin(); pi != pickups->end();) {
+        if (dynamic_cast<RevivePickup*>(*pi) && !(*pi)->collected) {
+          NET_LOG("revive pickup carried into the new level\n");
+          ++pi;
+        } else {
+          delete *pi;
+          pi = pickups->erase(pi);
+        }
       }
       // Reposition the black hole at the new world centre.
       while(!black_holes->empty()) {
