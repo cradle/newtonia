@@ -1960,14 +1960,15 @@ void NetLobby::draw() {
     Typer::draw_centered(0, sy, status_.c_str(), 15);
   }
 
-  // Touch: the bottom strip is a tap zone (see touch_tap), so label it as
-  // an action rather than a key hint. Desktop: on the Choose screen the
-  // band is also the third selectable row (HOST / JOIN / exit); the other
-  // lobby screens have no selection ladder, so their band stays a key hint.
+  // Touch: the bottom strip is a tap zone (see touch_tap). Desktop: on the
+  // Choose screen the band is also the third selectable row (HOST / JOIN /
+  // exit); the other lobby screens have no selection ladder, so their band
+  // is a plain (unselected) label there — still tappable, and Esc still
+  // works everywhere.
   TapBand::return_to_menu.draw(
       is_touch_mode()
           ? Typer::cursored("RETURN TO MENU", true).c_str()
-          : Typer::cursored("ESC - BACK TO MENU",
+          : Typer::cursored("BACK TO MENU",
                             screen_ == Choose && selection_ == 2)
                 .c_str(),
       currentTime);

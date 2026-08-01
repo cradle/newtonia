@@ -426,12 +426,14 @@ void Menu::draw() {
       Typer::draw_centered(0, fy, yours, 14);
     }
     // The exit band is also the last selectable entry (w/s reach it, confirm
-    // closes) — the label keeps the key hint, the cursor marks show when the
-    // selection is on it. Touch draws it always-selected: the band IS the
-    // button there.
+    // closes; Esc still exits from anywhere) — the cursor marks show when
+    // the selection is on it. Touch draws it always-selected: the band IS
+    // the button there. No key prefix in the label: Esc is hard-coded in
+    // MenuSelect::is_back, not a rebindable binding, and the row reads as
+    // an action now, not a hint.
     TapBand::return_to_menu.draw(
         touch ? Typer::cursored("RETURN TO MENU", true).c_str()
-              : Typer::cursored("ESC - BACK TO MENU",
+              : Typer::cursored("BACK TO MENU",
                                 board_sel_ == board_entry_count() - 1)
                     .c_str(),
         currentTime);
@@ -475,16 +477,16 @@ void Menu::draw() {
         Typer::draw(SCORE_X, y, replay_status_text(r.status), 13);
       }
     }
-    // Bottom exit band on BOTH layouts (the lobby's convention): desktop
-    // labels the key but stays tappable — the Steam Deck runs the desktop
+    // Bottom exit band on BOTH layouts (the lobby's convention): the
+    // desktop band stays tappable — the Steam Deck runs the desktop
     // layout and touch needs a way out (field report 2026-07-25).
     // Touch: the band IS the button, so it carries the menu cursor like a
     // selected row. Desktop: the band doubles as the list's last selectable
     // row (index == replay_rows_.size()), so keyboard/controller can walk
-    // onto it and confirm out; the label keeps the key hint.
+    // onto it and confirm out; Esc still exits from anywhere.
     TapBand::return_to_menu.draw(
         touch ? Typer::cursored("RETURN TO MENU", true).c_str()
-              : Typer::cursored("ESC - BACK TO MENU",
+              : Typer::cursored("BACK TO MENU",
                                 replay_sel_ == (int)replay_rows_.size())
                     .c_str(),
         currentTime);
@@ -579,7 +581,7 @@ void Menu::draw() {
     // cycles that value (matching the touch tap).
     TapBand::return_to_menu.draw(
         touch ? Typer::cursored("RETURN TO MENU", true).c_str()
-              : Typer::cursored("ESC - BACK TO MENU",
+              : Typer::cursored("BACK TO MENU",
                                 active_row_ == opt_row_count())
                     .c_str(),
         currentTime);
