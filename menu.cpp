@@ -62,7 +62,7 @@ static const OptRow OPT_ROWS_DESKTOP[] = {
   {3, 0, "STAR  DENSITY"},
   {4, 0, "RECORD  REPLAYS"},
   // Must stay LAST: opt_row_count drops it on builds with no leaderboard.
-  {5, 0, "LEADERBOARD  PROMPTS"},
+  {5, 0, "LEADERBOARD  PROMPT"},
 };
 // Mobile shows Player 1 + shared options only, so the "P1" prefix is dropped.
 static const OptRow OPT_ROWS_TOUCH[] = {
