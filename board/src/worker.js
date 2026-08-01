@@ -140,6 +140,19 @@ export function rate_key(ip) {
   return "v4:" + ip;
 }
 
+// Canonical season key: the deliberate SEASON-file stamps (s1, s2, ...).
+// The browser lists only these everywhere; PRODUCTION also refuses
+// ADMISSION of anything else (decided with Glenn 2026-08-01: prod is a
+// whitelist, beta stays open for testing). The gate is the top-level
+// wrangler.toml var CANONICAL_SEASONS_ONLY="1" — production config is the
+// default truth; the beta env sets no vars, and the test harnesses pass
+// --var CANONICAL_SEASONS_ONLY:0 alongside FAKE_VERIFY as their explicit
+// divergence from production.
+function season_canonical(season) { return /^s[0-9]+$/.test(season); }
+function canonical_only(env) {
+  return !!env && env.CANONICAL_SEASONS_ONLY === "1";
+}
+
 function strip_name(name) {
   if (typeof name !== "string") return "";
   let out = "";
@@ -516,7 +529,7 @@ export class Session {
           `SELECT season, MAX(submitted_at) AS newest, COUNT(*) AS n
            FROM scores GROUP BY season ORDER BY newest DESC LIMIT 200`).all();
       const canonical = (rows.results || [])
-          .filter((r) => /^s[0-9]+$/.test(r.season)).slice(0, 50);
+          .filter((r) => season_canonical(r.season)).slice(0, 50);
       this.send(ws, {
         t: "seasons",
         rows: canonical.map((r) => ({
@@ -575,8 +588,13 @@ export class Session {
         return;
       }
       const cut = await cutline(this.env.DB, season, players);
+      // On a whitelisted worker (production) a non-canonical season can
+      // never be admitted, so it can never place — answering false here
+      // means a dev build pointed at production simply never prompts,
+      // instead of arming an upload doomed to bad-season.
+      const admissible = !canonical_only(this.env) || season_canonical(season);
       this.send(ws, { t: "qualify", place, players, cutline: cut,
-                      would_place: place <= KEEP_N });
+                      would_place: admissible && place <= KEEP_N });
       return;
     }
 
@@ -681,6 +699,12 @@ export class Session {
       return this.err(ws, v.reason);
     }
     const hd = v.header;
+    if (canonical_only(this.env) && !season_canonical(hd.season)) {
+      // Production whitelist: only deliberate SEASON-file seasons are
+      // admitted. Beta (no var) stays open for dev/test submissions.
+      console.log(`submit refused: bad-season ${hd.season}`);
+      return this.err(ws, "bad-season");
+    }
     const db = this.env.DB;
     await ensure_schema(db);
     const players = hd.player_count;

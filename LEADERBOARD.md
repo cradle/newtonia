@@ -107,6 +107,18 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
   No server-side season table to maintain — a release that changes the
   stamp opens its season implicitly. Solo and co-op are **separate boards**
   (`player_count` 1 vs 2 — scores aren't comparable across them).
+- **Production admits canonical seasons only** (decided with Glenn
+  2026-08-01): the production worker sets `CANONICAL_SEASONS_ONLY="1"`
+  (top-level wrangler.toml — production config is the default truth) and
+  refuses submissions whose season is not a SEASON-file stamp (`s<N>`),
+  answering `bad-season` ("SEASON NOT ACCEPTED" on the cards); `qualify`
+  answers would_place=false for them, so a dev build pointed at
+  production simply never prompts. Beta sets no vars and stays open for
+  dev/test submissions. The browser lists canonical seasons only on BOTH
+  (a build browsing its own non-listed season still can — the client
+  seeds its own and best.nrp's seasons locally). Covered by
+  `board/test/whitelist_test.mjs` (production default) and the
+  `CANONICAL_SEASONS_ONLY:0` opt-out the open-mode harnesses pass.
 - **The stamp is the root `SEASON` file, bumped deliberately** (decided
   with Glenn 2026-07-31; starts at `s1`): seasons rotate when the game
   changes significantly, not on release cadence — at v1.48.x per-tag or

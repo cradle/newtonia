@@ -1290,6 +1290,9 @@ const char *Menu::board_upload_status_text() const {
   if (r == "not-best" || r == "already-submitted")
     return "BEST ALREADY ON THE BOARD";
   if (r == "unverified") return "UPLOAD FAILED - NOT VERIFIED";
+  // Production admits only canonical SEASON-file seasons; a dev/old build's
+  // best belongs to a bucket the board does not take (LEADERBOARD.md).
+  if (r == "bad-season") return "SEASON NOT ACCEPTED";
   if (r == "rate-limited") return "UPLOAD FAILED - TRY LATER";
   if (r == "connection") return "UPLOAD FAILED - CONNECTION";
   return "UPLOAD FAILED";

@@ -5,6 +5,13 @@ compatibility_date = "2026-06-01"
 # NOTE: no [limits] cpu_ms block — a paid-plan feature; the Free plan
 # rejects the deploy outright (same lesson as signal/wrangler.toml).
 
+# PRODUCTION admits only canonical seasons (the SEASON-file stamps s1,
+# s2, ... — LEADERBOARD.md whitelist decision). The beta env sets no vars
+# (open for dev/test submissions), and the test harnesses pass
+# --var CANONICAL_SEASONS_ONLY:0 explicitly.
+[vars]
+CANONICAL_SEASONS_ONLY = "1"
+
 # Daily retention sweep (LEADERBOARD.md): demote rows below KEEP_N to
 # score-only, strip blobs from stale seasons.
 [triggers]

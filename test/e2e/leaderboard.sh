@@ -40,7 +40,7 @@ if [ -z "${NEWTONIA_BOARD_URL:-}" ]; then
   export NEWTONIA_BOARD_URL="ws://127.0.0.1:8799/board"
   ( cd "$ROOT/board" &&
     npx -y wrangler@4 dev --local --port 8799 \
-      --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 \
+      --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 --var CANONICAL_SEASONS_ONLY:0 \
       > "$OUT/wrangler.log" 2>&1 ) &
   WRANGLER_PID=$!
 fi
@@ -214,7 +214,7 @@ echo "===== S5: consumed credential -> retry submits a FRESH one ====="
 # carried a genuinely different value.
 REJECT_URL="ws://127.0.0.1:8796/board"
 ( cd "$ROOT/board" && npx -y wrangler@4 dev --local --port 8796 \
-    --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 --var REJECT_FIRST_VERIFY:1 \
+    --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 --var CANONICAL_SEASONS_ONLY:0 --var REJECT_FIRST_VERIFY:1 \
     > "$OUT/wrangler-reject.log" 2>&1 ) &
 REJECT_PID=$!
 for i in $(seq 1 60); do
