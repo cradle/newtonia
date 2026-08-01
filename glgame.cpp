@@ -6704,25 +6704,9 @@ void GLGame::tick(int delta) {
         hazards->pop_back();
       }
       add_hazards();
-      // Pickups are cleared for the new level — EXCEPT an uncollected
-      // revive. It only exists while a partner is fully out of lives
-      // (capped at one in the world), and the rebuild does not bring that
-      // partner back — but the drop rolls on an asteroid kill, sometimes
-      // the very kill that CLEARS the level, so the wipe could vanish the
-      // revive moments after it appeared (field, 2026-08-01: "it looked
-      // like the pickup disappeared before I picked it up") and strand the
-      // fallen player waiting on another 10% roll next level. It rides
-      // into the new level at its old position, which stays in-world (the
-      // world only grows). Online this is host sim; the pickup list
-      // replicates through the ordinary snapshot rebuild.
-      for(auto pi = pickups->begin(); pi != pickups->end();) {
-        if (dynamic_cast<RevivePickup*>(*pi) && !(*pi)->collected) {
-          NET_LOG("revive pickup carried into the new level\n");
-          ++pi;
-        } else {
-          delete *pi;
-          pi = pickups->erase(pi);
-        }
+      while(!pickups->empty()) {
+        delete pickups->back();
+        pickups->pop_back();
       }
       // Reposition the black hole at the new world centre.
       while(!black_holes->empty()) {
