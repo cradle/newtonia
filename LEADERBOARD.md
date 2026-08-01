@@ -358,7 +358,10 @@ instead. **Season browser** (added 2026-07-31 with the SEASON-file
 scheme): the screen opens on this build's season
 (`Replay::game_version_string()` — added because the Makefile scopes
 the version stamp to replay.o) and fetches the worker's season list
-(`{t:"seasons"}`, newest submission first; the build's season is kept
+(`{t:"seasons"}`, CANONICAL seasons only — the deliberate SEASON-file
+stamps `s<N>`, decided 2026-08-01: dev/git-describe buckets are admitted
+for upload but never listed, so they cannot clutter the browser every
+player cycles through; newest submission first; the build's season is kept
 at the front even before it has rows, tagged "- LIVE" when there is
 somewhere else to cycle to). Old seasons' rows are viewable forever
 (scores never expire; replays follow retention). **Replay downloads

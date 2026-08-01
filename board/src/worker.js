@@ -12,7 +12,8 @@
 //                       duration_ms,date,has_replay,run_id,
 //                       format,save_format}]}
 //   -> {t:"seasons"}
-//   <- {t:"seasons", rows:[{season,newest,count}]}   newest-first, max 50
+//   <- {t:"seasons", rows:[{season,newest,count}]}   canonical (s<N>)
+//                                          seasons only, newest-first, max 50
 //   -> {t:"rank-of", season, players, score}
 //   <- {t:"rank-of", place}
 //   -> {t:"submit", size, platform, name, cred}   attestation REQUIRED
@@ -499,16 +500,26 @@ export class Session {
       // submission first, across BOTH boards (the client's SOLO/CO-OP
       // toggle works within a season). Takes no season argument, so it
       // sits before the season-keyed block below; budgeted as a query.
+      //
+      // Only CANONICAL seasons are listed — the deliberate SEASON-file
+      // stamps (s1, s2, ...). Dev builds stamp git-describe strings and
+      // their submissions are admitted (an old best charts in its own
+      // bucket), but those one-off buckets must not clutter the browser
+      // every player cycles through. A build browsing its own non-listed
+      // season still can: the client seeds its own and best.nrp's
+      // seasons into the list locally.
       if (++this.queries > CONN_MAX_QUERIES) return this.fail(ws, "rate-limited");
       if (!(await within_limit(this.env, this.ip, "query")))
         return this.err(ws, "rate-limited");
       await ensure_schema(this.env.DB);
       const rows = await this.env.DB.prepare(
           `SELECT season, MAX(submitted_at) AS newest, COUNT(*) AS n
-           FROM scores GROUP BY season ORDER BY newest DESC LIMIT 50`).all();
+           FROM scores GROUP BY season ORDER BY newest DESC LIMIT 200`).all();
+      const canonical = (rows.results || [])
+          .filter((r) => /^s[0-9]+$/.test(r.season)).slice(0, 50);
       this.send(ws, {
         t: "seasons",
-        rows: (rows.results || []).map((r) => ({
+        rows: canonical.map((r) => ({
           season: r.season, newest: Number(r.newest), count: Number(r.n),
         })),
       });

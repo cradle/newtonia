@@ -93,14 +93,24 @@ async function submit(ws, bytes, name, platform = 2) {
         f.rows.every((r) => r.format === 2 && r.save_format === 17),
         JSON.stringify(f.rows));
 
-  // 4b. seasons lists this season, newest-first, with count + newest.
+  // 4b. seasons lists CANONICAL seasons only (s1, s2, ... — the SEASON-file
+  // stamps): the vtest-* season this test submits under must NOT appear
+  // (dev/git-describe buckets are admitted but never listed), while a
+  // canonical submission is listed with count + newest.
+  // (Fresh socket: `ws` has already spent its CONN_MAX_SUBMITS budget.)
+  const s99 = build_nrp({ game_version: "s99", run_id: 4242n, score: 50 });
+  const wsc = await connect();
+  f = await submit(wsc, s99, "CANON");
+  check("canonical-season submit placed", f.t === "placed", JSON.stringify(f));
+  wsc.close();
   send(ws, { t: "seasons" });
   f = await ws._recv();
-  const season_row = f.t === "seasons" &&
-      (f.rows || []).find((r) => r.season === SEASON);
-  check("seasons lists the season", !!season_row, JSON.stringify(f));
+  check("seasons omits non-canonical seasons", f.t === "seasons" &&
+        !(f.rows || []).some((r) => r.season === SEASON), JSON.stringify(f));
+  const season_row = (f.rows || []).find((r) => r.season === "s99");
+  check("seasons lists the canonical season", !!season_row, JSON.stringify(f));
   check("seasons row has newest + count",
-        season_row && season_row.count >= 2 && season_row.newest > 0,
+        season_row && season_row.count >= 1 && season_row.newest > 0,
         JSON.stringify(season_row));
 
   // 5. rank-of between the two scores.
