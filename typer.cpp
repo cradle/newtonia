@@ -310,6 +310,20 @@ void Typer::init_meshes() {
     mb.vertex(0,TH*0.37f); mb.vertex(TW,TH*0.37f);
     mb.end(); upload('#', mb); }
 
+  // '%' — full-height diagonal plus two small squares (top-left,
+  // bottom-right). The upload progress label's glyph.
+  { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
+    mb.vertex(0,0); mb.vertex(TW,TH);                       // the slash
+    mb.vertex(0,TH); mb.vertex(TW*0.3f,TH);                 // top-left box
+    mb.vertex(TW*0.3f,TH); mb.vertex(TW*0.3f,TH*0.7f);
+    mb.vertex(TW*0.3f,TH*0.7f); mb.vertex(0,TH*0.7f);
+    mb.vertex(0,TH*0.7f); mb.vertex(0,TH);
+    mb.vertex(TW*0.7f,TH*0.3f); mb.vertex(TW,TH*0.3f);      // bottom-right box
+    mb.vertex(TW,TH*0.3f); mb.vertex(TW,0);
+    mb.vertex(TW,0); mb.vertex(TW*0.7f,0);
+    mb.vertex(TW*0.7f,0); mb.vertex(TW*0.7f,TH*0.3f);
+    mb.end(); upload('%', mb); }
+
   // Parentheses: five segments tracing a rough semicircle at full height.
   { MeshBuilder mb; mb.begin(GL_LINE_STRIP); mb.color(1,1,1);
     for (int i = 0; i <= 5; i++) {

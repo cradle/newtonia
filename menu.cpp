@@ -69,7 +69,7 @@ static const OptRow OPT_ROWS_TOUCH[] = {
   {0, 0, "SENSITIVITY"}, {1, 0, "SMOOTHING"}, {2, 0, "CAMERA"},
   {3, 0, "STAR DENSITY"},
   {4, 0, "RECORD REPLAYS"},
-  {5, 0, "LEADERBOARD PROMPTS"},  // LAST — see the desktop table
+  {5, 0, "LEADERBOARD PROMPT"},  // LAST — see the desktop table
 };
 static int opt_row_count() {
   int n = is_touch_mode()
@@ -318,15 +318,20 @@ void Menu::draw() {
       // The UPLOAD BEST RUN action row, phase-labelled.
       switch (board_up_phase_) {
         case 1: {
+          // The score stays visible through the transfer and after — the
+          // upload is about the score (same rule as the game-over card).
           int pct = board_net_ ? board_net_->transfer_pct() : -1;
           if (pct >= 0)
-            snprintf(text, sizeof(text), "UPLOADING %d%%", pct);
+            snprintf(text, sizeof(text), "UPLOADING %d%% - SCORE %u", pct,
+                     board_best_score_);
           else
-            snprintf(text, sizeof(text), "UPLOADING");
+            snprintf(text, sizeof(text), "UPLOADING - SCORE %u",
+                     board_best_score_);
           break;
         }
         case 2:
-          snprintf(text, sizeof(text), "UPLOADED - RANK #%d", board_up_rank_);
+          snprintf(text, sizeof(text), "UPLOADED #%d - SCORE %u",
+                   board_up_rank_, board_best_score_);
           break;
         case 3:
           // Map the worker's terse reason to a player-facing line; benign
@@ -519,11 +524,11 @@ void Menu::draw() {
               : "ESC - BACK TO MENU",
         currentTime);
   } else {
-    Typer::draw_centered(0, 320, "Newtonia", 80);
+    Typer::draw_centered(0, 410, "Newtonia", 80);
     if (high_score > 0) {
       // Touch: the menu rows spread over a taller band (bigger finger
       // targets), so the score block sits lower, above the copyright.
-      int hs_y = is_touch_mode() ? -330 : -215;
+      int hs_y = is_touch_mode() ? -330 : -300;
       Typer::draw_centered(0, hs_y, "HIGH SCORE", 14);
       Typer::draw_centered(0, hs_y - 40, high_score, 18);
     }
@@ -532,18 +537,19 @@ void Menu::draw() {
   if (!options_mode_ && !replays_mode_ && !board_mode_) {
     if (attract_mode_) {
       if (!((currentTime / 1400) % 2)) {
-        // title_bot=160 (320-2*80), scores_top=-215; center single item in that gap
+        // title_bot=250 (410-2*80), scores_top=-330/-320; center in that gap
         const int sz = 18, h = 2 * sz;
-        int gap = (160 - (-215) - h) / 2;
+        int scores_top = is_touch_mode() ? -330 : -320;
+        int gap = (250 - scores_top - h) / 2;
         if (is_touch_mode()) {
-          Typer::draw_centered(0, 160 - gap, "tap to start", sz);
+          Typer::draw_centered(0, 250 - gap, "tap to start", sz);
         } else {
           bool has_ctrl = false;
           int nc = SDL_NumJoysticks();
           for (int i = 0; i < nc; i++) {
             if (SDL_IsGameController(i)) { has_ctrl = true; break; }
           }
-          Typer::draw_centered(0, 160 - gap, has_ctrl ? "press start" : "press enter", sz);
+          Typer::draw_centered(0, 250 - gap, has_ctrl ? "press start" : "press enter", sz);
         }
       }
     } else if (quit_confirm_) {
@@ -994,16 +1000,20 @@ bool Menu::show_options_row() const {
 
 int Menu::menu_row_size() { return is_touch_mode() ? 26 : 22; }
 
+// Top of the menu-row band: sits below the title (y 410, size 80,
+// descending to 250) with deliberate air under it.
+static const int MENU_ROWS_TOP = 200;
+
 // Bottom of the menu-row band: desktop packs rows above the high-score
 // block; touch spreads them over a taller band (they're finger targets)
 // and the score block moves down to make room.
-static int menu_rows_bottom() { return is_touch_mode() ? -300 : -215; }
+static int menu_rows_bottom() { return is_touch_mode() ? -300 : -280; }
 
-// Equally space n row blocks of height h between title_bot=160 and
+// Equally space n row blocks of height h between MENU_ROWS_TOP and
 // menu_rows_bottom(). ONE definition shared by draw_menu_rows and
 // menu_row_at so taps always land on what is drawn.
 static int menu_row_gap(int n, int h) {
-  return (160 - menu_rows_bottom() - n * h) / (n + 1);
+  return (MENU_ROWS_TOP - menu_rows_bottom() - n * h) / (n + 1);
 }
 
 // Touch draws bigger glyphs and no selection cursor; menu_row_at() mirrors
@@ -1013,7 +1023,7 @@ void Menu::draw_menu_rows(const std::vector<std::string> &rows) {
   int n = (int)rows.size();
   int gap = menu_row_gap(n, h);
   for (int i = 0; i < n; i++) {
-    float y = 160 - (i + 1) * gap - i * h;
+    float y = MENU_ROWS_TOP - (i + 1) * gap - i * h;
     // Touch draws the label bare — no cursor on any touch screen.
     if (is_touch_mode())
       Typer::draw_centered(0, y, rows[i].c_str(), sz);
@@ -1031,7 +1041,7 @@ int Menu::menu_row_at(float ny) const {
   float y = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
   // Slot i covers its glyph block plus half a gap either side, so the
   // whole menu band is contiguous finger targets with no dead zones.
-  float t = (160.0f - y) - gap * 0.5f;
+  float t = ((float)MENU_ROWS_TOP - y) - gap * 0.5f;
   if (t < 0) return -1;
   int i = (int)(t / (gap + h));
   return i < n ? i : -1;
@@ -1186,6 +1196,16 @@ void Menu::open_board() {
     board_best_run_id_ = rid;
     board_best_season_.assign(
         h.game_version, strnlen(h.game_version, sizeof(h.game_version)));
+    // Seed the browser with best.nrp's season too: the UPLOAD row lives
+    // on ITS season's screen, and the worker only lists seasons that
+    // already have rows — an old-season best would otherwise be
+    // unreachable (nothing to cycle to) until someone else charted there.
+    if (!board_best_season_.empty() &&
+        board_best_season_ != board_build_season_) {
+      NetBoard::Season bs;
+      bs.season = board_best_season_;
+      board_seasons_.push_back(bs);
+    }
     board_best_score_ = h.final_score;
     board_best_clean_ = (h.flags & Replay::FLAG_CLEAN) &&
                         !(h.flags & Replay::FLAG_CHEATED) &&
@@ -1244,8 +1264,13 @@ bool Menu::board_upload_row_shown() const {
   // on the screen of the season the upload would actually land in
   // (best.nrp's own): an older build's best is reachable by flipping the
   // SEASON row to it, instead of uploading invisibly from the live screen.
-  return board_best_clean_ && board_net_ != nullptr &&
-         net_board_can_submit() && board_best_season_ == board_season_;
+  // A CONCLUDED upload's status row (placed / failed) survives the socket:
+  // a refusal that arrives with (or is followed by) a close must not
+  // vanish into the generic UNAVAILABLE footer — the row is the answer
+  // the player is reading, and confirm no-ops without a socket anyway.
+  return board_best_clean_ && net_board_can_submit() &&
+         board_best_season_ == board_season_ &&
+         (board_net_ != nullptr || board_up_phase_ >= 2);
 }
 
 // Is the local best already one of the visible board rows? (run_id match —
@@ -1390,6 +1415,19 @@ void Menu::board_poll() {
           if (!s.season.empty()) board_seasons_.push_back(s);
         }
         {
+          // Ensure best.nrp's season stays reachable (its screen carries
+          // the UPLOAD row — see open_board's seed) alongside the build's.
+          if (!board_best_season_.empty() &&
+              board_best_season_ != board_build_season_) {
+            bool have_best = false;
+            for (const NetBoard::Season &s : board_seasons_)
+              if (s.season == board_best_season_) { have_best = true; break; }
+            if (!have_best) {
+              NetBoard::Season bs;
+              bs.season = board_best_season_;
+              board_seasons_.push_back(bs);
+            }
+          }
           bool have_own = false;
           for (const NetBoard::Season &s : board_seasons_)
             if (s.season == board_build_season_) { have_own = true; break; }

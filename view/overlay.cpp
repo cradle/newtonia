@@ -588,6 +588,15 @@ void Overlay::board_prompt(const GLGame *glgame) {
   gles2_set_vp(ortho);
   bool touch = is_touch_mode();
 
+  // The score stays front and centre through EVERY phase — the upload is
+  // about the score, so no state may hide it. Topmost, above the heading
+  // (glyphs descend ~2x size below their y: 218 - 40 = 178 stays clear of
+  // GAME OVER's 150, which itself descends to 90 clear of the phase rows).
+  {
+    char score_line[32];
+    snprintf(score_line, sizeof(score_line), "SCORE %u", glgame->board_score_);
+    Typer::draw_centered(0, 218, score_line, 20);
+  }
   Typer::draw_centered(0, 150, "GAME OVER", 30);
 
   if (glgame->board_phase_ == GLGame::BoardPrompt) {

@@ -750,6 +750,7 @@ private:
   // prompt can't answer it. Cleared when the prompt opens.
   std::set<unsigned char> board_prompt_pressed_;
   std::string board_fail_reason_;
+  uint32_t board_score_ = 0;     // the run's score, drawn on every card phase
 
   static const int step_size = 8;
 

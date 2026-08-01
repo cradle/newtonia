@@ -51,8 +51,12 @@ const KEEP_N = 100;
 // never dormancy-stripped; see scheduled().
 const SCORE_ONLY_AFTER_MS = 180 * 24 * 60 * 60 * 1000;
 
-// Chunk size for replay downloads (uploads are client-chunked the same).
-const CHUNK = 64 * 1024;
+// Replay-download chunk size (server -> client). Kept well under 16 KB to
+// mirror the client's upload chunks: field evidence showed a ~60 KB binary
+// frame silently vanishing on the real edge in the upload direction
+// (net_board_rtc.cpp CHUNK), and the download direction gets the same
+// safety margin rather than waiting to find out.
+const CHUNK = 15 * 1024;
 
 // Display-name bound — mirrors the signal worker's MAX_IDENTITY_NAME and
 // the game's NET_IDENTITY_NAME_MAX so no truncation disagreement exists.
@@ -71,7 +75,7 @@ const CONN_MAX_FETCHES = 5;
 // Cap the reassembled-upload chunk COUNT, not just the byte total: a
 // 1-byte-frame flood otherwise pins tens of millions of tiny typed-array
 // views (pointer array + per-object overhead) far past the 32 MB size cap.
-// Legit clients use 60 KB chunks (~560 for a 32 MB max); 4096 is generous.
+// Legit clients use 15 KB chunks (~2200 for a 32 MB max); 4096 is generous.
 const MAX_UPLOAD_CHUNKS = 4096;
 // Idle sockets are closed after this long (per-connection DO — nothing to
 // hibernate for, the DO dies with the socket).
@@ -150,6 +154,23 @@ function strip_name(name) {
 // id the platform_key is derived from; `verified` says whether the NAME is
 // platform-attested (iOS proves the account but Apple exposes no alias
 // lookup, so its claimed alias stays unverified — LEADERBOARD.md).
+// A verify that never answers must not wedge the submit: the client sees
+// nothing (no submit-ok, no err — field report: "stuck at UPLOADING") and
+// the socket just hangs. Race the platform call against a deadline and
+// treat a timeout as unverified — the client's unverified retry path then
+// handles it like any other stale-credential refusal.
+const VERIFY_TIMEOUT_MS = 10 * 1000;
+function with_timeout(p, platform) {
+  let timer;
+  const gate = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      console.log(`verify timeout platform=${platform}`);
+      resolve(null);
+    }, VERIFY_TIMEOUT_MS);
+  });
+  return Promise.race([p.finally(() => clearTimeout(timer)), gate]);
+}
+
 export async function verify_identity(env, platform, name, cred) {
   const claimed = strip_name(name);
   if (typeof cred !== "string" || !cred || cred.length > MAX_CRED) return null;
@@ -165,19 +186,19 @@ export async function verify_identity(env, platform, name, cred) {
              account: `fake:${claimed || "anon"}` };
   }
   if (platform === 2 /* NET_PLATFORM_STEAM */) {
-    const v = await verifySteamTicket(env, cred);
+    const v = await with_timeout(verifySteamTicket(env, cred), platform);
     if (!v) return null;
     return { platform, name: strip_name(v.persona || ""), verified: true,
              account: `steam:${v.steamid}` };
   }
   if (platform === 4 /* NET_PLATFORM_IOS */) {
-    const v = await verifyGameCenterCred(env, cred);
+    const v = await with_timeout(verifyGameCenterCred(env, cred), platform);
     if (!v) return null;
     return { platform, name: claimed, verified: false,
              account: `gc:${v.identifier}` };
   }
   if (platform === 5 /* NET_PLATFORM_ANDROID */) {
-    const v = await verifyPlayGamesCode(env, cred);
+    const v = await with_timeout(verifyPlayGamesCode(env, cred), platform);
     if (!v) return null;
     return { platform, name: strip_name(v.name || ""), verified: true,
              account: `pg:${v.playerId}` };
@@ -554,8 +575,14 @@ export class Session {
       const size = Number(msg.size) >>> 0;
       if (size < MIN_SUBMISSION_BYTES || size > MAX_SUBMISSION_BYTES)
         return this.err(ws, "too-large");
+      // A refusal, not a close (like the query budget above): closing
+      // here made the client render the whole screen as LEADERBOARD
+      // UNAVAILABLE instead of the upload row's TRY LATER (field report
+      // — the Closed teardown outranked the refusal it arrived with).
+      // The per-connection CONN_MAX_SUBMITS cap above still closes: that
+      // one is a misbehaving-client guard, not a budget answer.
       if (!(await within_limit(this.env, this.ip, "submit")))
-        return this.fail(ws, "rate-limited");
+        return this.err(ws, "rate-limited");
       // Attestation is an admission requirement (LEADERBOARD.md): verify
       // BEFORE accepting megabytes of chunks — a spoofed submit costs the
       // spoofer the round-trip, not us the bandwidth.

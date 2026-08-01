@@ -384,7 +384,20 @@ static void maybe_promote_best(const std::string &from, const Header &h) {
     if (!(h.flags & FLAG_CLEAN) || (h.flags & FLAG_CHEATED)) return;
     Header hb;
     bool have_best = read_header(best_path(), hb);
-    if (!have_best || h.final_score > hb.final_score) {
+    // Best is SEASON-scoped (LEADERBOARD.md): a clean run whose season
+    // differs from the stored best's promotes regardless of score — a
+    // fresh season starts from a clean slate, and gating on the old
+    // season's high score would keep any lower (but board-qualifying)
+    // run from ever prompting for upload. best.nrp is therefore "your
+    // best run of the season you last played"; the old season's uploaded
+    // replay lives on on its board.
+    // (score > 0: a scoreless run shouldn't displace the old season's
+    // best — the worker refuses score-0 submissions anyway, so promoting
+    // one would only arm a doomed upload prompt.)
+    bool season_changed = have_best && h.final_score > 0 &&
+        memcmp(h.game_version, hb.game_version,
+               Header::GAME_VERSION_LEN) != 0;
+    if (!have_best || season_changed || h.final_score > hb.final_score) {
         if (copy_file(from, best_path())) g_best_promoted = true;
         // Sync the promotion itself: the online retirement path
         // (best_check_online) has no later sync of its own, so without
@@ -393,8 +406,8 @@ static void maybe_promote_best(const std::string &from, const Header &h) {
         // offline path syncs again in rotate_to_recent; web_fs coalesces
         // the pair into one store.
         web_sync();
-        SDL_Log("replay: promoted best (score=%u gen=%u)", h.final_score,
-                h.generation);
+        SDL_Log("replay: promoted best (score=%u gen=%u%s)", h.final_score,
+                h.generation, season_changed ? " new season" : "");
     }
 }
 
