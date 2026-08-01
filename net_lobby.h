@@ -151,7 +151,7 @@ public:
 private:
 
   Screen screen_;
-  int selection_;  // Choose: 0 = HOST, 1 = JOIN
+  int selection_;  // Choose: 0 = HOST, 1 = JOIN, 2 = BACK TO MENU band
   bool hosting_;
 
   NetTransport *transport_;  // owned until handed to session_

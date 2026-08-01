@@ -466,6 +466,10 @@ void NetLobby::leave_to_menu() {
 
 void NetLobby::confirm() {
   if (screen_ == Choose) {
+    if (selection_ == 2) {  // the BACK TO MENU band
+      leave_to_menu();
+      return;
+    }
     // Platform policy gate (net_policy.h; the default backend always
     // allows). The menu already hides ONLINE when disallowed — this covers
     // a mid-session privilege change and any path straight into the lobby.
@@ -1957,10 +1961,15 @@ void NetLobby::draw() {
   }
 
   // Touch: the bottom strip is a tap zone (see touch_tap), so label it as
-  // an action rather than a key hint.
+  // an action rather than a key hint. Desktop: on the Choose screen the
+  // band is also the third selectable row (HOST / JOIN / exit); the other
+  // lobby screens have no selection ladder, so their band stays a key hint.
   TapBand::return_to_menu.draw(
-      is_touch_mode() ? Typer::cursored("RETURN TO MENU", true).c_str()
-                      : "ESC - BACK TO MENU",
+      is_touch_mode()
+          ? Typer::cursored("RETURN TO MENU", true).c_str()
+          : Typer::cursored("ESC - BACK TO MENU",
+                            screen_ == Choose && selection_ == 2)
+                .c_str(),
       currentTime);
 }
 
@@ -2098,7 +2107,9 @@ void NetLobby::nav_input(unsigned char key) {
     return;
   }
   if (screen_ == Choose) {
-    if (MenuSelect::move(key, selection_, 2)) return;
+    // Three rows: HOST, JOIN, and the exit band (selectable like the menu
+    // screens' bands — confirm on it leaves to the menu).
+    if (MenuSelect::move(key, selection_, 3)) return;
   } else if (lan_rejoin_browsing()) {
     // lo = -1: the highlight can walk off the top of the list to "nothing
     // selected", which is where the rejoin wait sits until a host is picked.

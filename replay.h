@@ -387,15 +387,17 @@ private:
     // leading keyframe, so it starts satisfied.
     bool have_keyframe_ = false;
     int  predawn_drops_ = 0;   // records held out awaiting that keyframe
-    // Web only (see record_delta): slot of the last interval flush. IndexedDB
-    // commits asynchronously, so a closing tab loses whatever the checkpoint
-    // flush had not committed yet — this bounds that to one interval.
-    int  last_synced_slot_ = -1;
     // Bytes appended so far. Only used to size the web sync interval: IDBFS
     // re-stores the whole file every sync, so the cost is the file, not the
     // chunk (see record_delta).
     size_t file_bytes_ = 0;
+#ifdef __EMSCRIPTEN__
+    // Web only (see record_delta): slot of the last interval flush. IndexedDB
+    // commits asynchronously, so a closing tab loses whatever the checkpoint
+    // flush had not committed yet — this bounds that to one interval.
+    int  last_synced_slot_ = -1;
     bool size_capped_ = false;  // cap tripped: recorded, not growing
+#endif
 };
 
 }  // namespace Replay

@@ -425,9 +425,15 @@ void Menu::draw() {
       snprintf(yours, sizeof(yours), "YOUR BEST: #%d", board_your_rank_);
       Typer::draw_centered(0, fy, yours, 14);
     }
+    // The exit band is also the last selectable entry (w/s reach it, confirm
+    // closes) — the label keeps the key hint, the cursor marks show when the
+    // selection is on it. Touch draws it always-selected: the band IS the
+    // button there.
     TapBand::return_to_menu.draw(
         touch ? Typer::cursored("RETURN TO MENU", true).c_str()
-              : "ESC - BACK TO MENU",
+              : Typer::cursored("ESC - BACK TO MENU",
+                                board_sel_ == board_entry_count() - 1)
+                    .c_str(),
         currentTime);
   } else if (replays_mode_) {
     bool touch = is_touch_mode();
@@ -473,11 +479,14 @@ void Menu::draw() {
     // labels the key but stays tappable — the Steam Deck runs the desktop
     // layout and touch needs a way out (field report 2026-07-25).
     // Touch: the band IS the button, so it carries the menu cursor like a
-    // selected row. Desktop labels a key instead — a key hint is not a
-    // thing you point a cursor at.
+    // selected row. Desktop: the band doubles as the list's last selectable
+    // row (index == replay_rows_.size()), so keyboard/controller can walk
+    // onto it and confirm out; the label keeps the key hint.
     TapBand::return_to_menu.draw(
         touch ? Typer::cursored("RETURN TO MENU", true).c_str()
-              : "ESC - BACK TO MENU",
+              : Typer::cursored("ESC - BACK TO MENU",
+                                replay_sel_ == (int)replay_rows_.size())
+                    .c_str(),
         currentTime);
   } else if (options_mode_) {
     bool touch = is_touch_mode();
@@ -565,12 +574,14 @@ void Menu::draw() {
     }
 
     // Tappable exit on both layouts — see the replays band note above.
-    // Touch: the band IS the button, so it carries the menu cursor like a
-    // selected row. Desktop labels a key instead — a key hint is not a
-    // thing you point a cursor at.
+    // Desktop: also the selectable row after the last option (index ==
+    // opt_row_count()); confirm on it closes, confirm on an option row
+    // cycles that value (matching the touch tap).
     TapBand::return_to_menu.draw(
         touch ? Typer::cursored("RETURN TO MENU", true).c_str()
-              : "ESC - BACK TO MENU",
+              : Typer::cursored("ESC - BACK TO MENU",
+                                active_row_ == opt_row_count())
+                    .c_str(),
         currentTime);
   } else {
     Typer::draw_centered(0, 410, "Newtonia", 80);
@@ -760,14 +771,24 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
     return;
   }
   if (options_mode_) {
-    if (MenuSelect::move(key, active_row_, opt_row_count())) {
+    // One extra index past the rows: the BACK TO MENU band (see draw).
+    if (MenuSelect::move(key, active_row_, opt_row_count() + 1)) {
       // moved
     } else if (MenuSelect::is_left(key)) {
-      adjust_active_row(-1);
+      if (active_row_ < opt_row_count()) adjust_active_row(-1);
     } else if (MenuSelect::is_right(key)) {
-      adjust_active_row(1);
-    } else if (MenuSelect::is_back(key) || confirm) {
+      if (active_row_ < opt_row_count()) adjust_active_row(1);
+    } else if (MenuSelect::is_back(key)) {
       close_options();
+    } else if (confirm) {
+      // Confirm on the band exits; on an option row it cycles the value
+      // (the touch tap's behaviour) — Enter used to close from anywhere,
+      // which made the rows the only list in the game confirm did nothing
+      // useful on.
+      if (active_row_ >= opt_row_count())
+        close_options();
+      else
+        adjust_active_row(1, /*wrap=*/true);
     }
     return;
   }
@@ -791,9 +812,11 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
     return;
   }
   if (replays_mode_) {
-    if (MenuSelect::move(key, replay_sel_, (int)replay_rows_.size())) {
+    // One extra index past the rows: the BACK TO MENU band (see draw).
+    if (MenuSelect::move(key, replay_sel_, (int)replay_rows_.size() + 1)) {
       // moved
-    } else if (MenuSelect::is_back(key)) {
+    } else if (MenuSelect::is_back(key) ||
+               (confirm && replay_sel_ >= (int)replay_rows_.size())) {
       replays_mode_ = false;
     } else if (confirm && replay_sel_ < (int)replay_rows_.size()) {
       const ReplayRow &r = replay_rows_[replay_sel_];
@@ -1323,7 +1346,12 @@ int Menu::board_entry_y(int e) const {
       return BOARD_Y_OFFSCREEN;  // scrolled out of the window
     return BOARD_Y_ROW0 - (ri - board_scroll_) * BOARD_ROW_PITCH;
   }
-  return BOARD_Y_UPLOAD;  // the UPLOAD BEST RUN action (always last)
+  if (board_upload_row_shown() && ri == (int)board_rows_.size())
+    return BOARD_Y_UPLOAD;  // the UPLOAD BEST RUN action
+  // The trailing BACK TO MENU entry: the band draws its own label and
+  // catches its own taps (TapBand::contains runs before board_entry_at),
+  // so the row machinery must never draw or hit-test a slot for it.
+  return BOARD_Y_OFFSCREEN;
 }
 
 // Slide the window so the selected entry is visible (rows only — the
@@ -1347,8 +1375,10 @@ int Menu::board_entry_at(float y) const {
 
 int Menu::board_entry_count() const {
   // [0] SOLO/CO-OP toggle, [1] SEASON browser, [2..] score rows, then the
-  // UPLOAD BEST RUN action when it applies to the browsed season.
-  return 2 + (int)board_rows_.size() + (board_upload_row_shown() ? 1 : 0);
+  // UPLOAD BEST RUN action when it applies to the browsed season, and
+  // always last: the BACK TO MENU band as a selectable entry (it draws and
+  // hit-tests itself — board_entry_y hides it from the row machinery).
+  return 2 + (int)board_rows_.size() + (board_upload_row_shown() ? 1 : 0) + 1;
 }
 
 bool Menu::board_upload_row_shown() const {
@@ -1442,6 +1472,10 @@ void Menu::board_cycle_season(int dir) {
 }
 
 void Menu::board_nav_confirm() {
+  if (board_sel_ == board_entry_count() - 1) {  // the BACK TO MENU band
+    close_board();
+    return;
+  }
   if (board_sel_ == 0) {
     board_players_ = board_players_ == 1 ? 2 : 1;
     board_request();
