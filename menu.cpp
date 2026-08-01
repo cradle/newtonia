@@ -62,7 +62,7 @@ static const OptRow OPT_ROWS_DESKTOP[] = {
   {3, 0, "STAR  DENSITY"},
   {4, 0, "RECORD  REPLAYS"},
   // Must stay LAST: opt_row_count drops it on builds with no leaderboard.
-  {5, 0, "LEADERBOARD  PROMPTS"},
+  {5, 0, "LEADERBOARD  PROMPT"},
 };
 // Mobile shows Player 1 + shared options only, so the "P1" prefix is dropped.
 static const OptRow OPT_ROWS_TOUCH[] = {
@@ -104,6 +104,22 @@ static int opt_row_at(float ny, int n, float top, float bottom) {
   if (t < 0 || t >= pitch * n) return -1;
   return (int)(t / pitch);
 }
+// Fixed slots (Typer virtual units). The control pair sits tight under
+// the title, the score table runs at constant pitch under its headers,
+// and the UPLOAD action + footer hold the bottom — grouping over spread.
+static const int BOARD_Y_TOGGLE = 268, BOARD_Y_SEASON = 214,
+                 BOARD_Y_HEADER = 158, BOARD_Y_ROW0 = 116,
+                 BOARD_ROW_PITCH = 48, BOARD_Y_UPLOAD = -300,
+                 BOARD_Y_FOOTER = -364;
+// The table shows this many rows at once; the fetch asks for the full
+// top-100 board and the window scrolls over it (BOARD_Y_RANGE = the
+// "N-M OF R" indicator under the table, tappable on touch: left half
+// pages up, right half down).
+static const int BOARD_VISIBLE_ROWS = 8, BOARD_Y_RANGE = -262;
+// Sentinel for a row entry scrolled out of the window (never drawn,
+// never hit-tested — no real slot is anywhere near it).
+static const int BOARD_Y_OFFSCREEN = 10000;
+
 static int touch_opt_center(int i, int n) {
   return opt_row_center(i, n, TOUCH_OPT_TOP, TOUCH_OPT_BOTTOM);
 }
@@ -251,6 +267,15 @@ void Menu::draw() {
     const int CURSOR_L = -623, RANK_X = -560, NAME_X = -455, BADGE_X = -70,
               SCORE_X = 95, LEVEL_X = 295, DATE_X = 476, TAG_X = 460,
               CURSOR_R = 609;
+    // Column headers over the score table (structure the bare values lost
+    // when the worded labels were dropped for column fit).
+    if (!board_rows_.empty()) {
+      Typer::draw(RANK_X, BOARD_Y_HEADER, "#", 9);
+      Typer::draw(NAME_X, BOARD_Y_HEADER, "PLAYER", 9);
+      Typer::draw(SCORE_X, BOARD_Y_HEADER, "SCORE", 9);
+      Typer::draw(LEVEL_X, BOARD_Y_HEADER, "LEVEL", 9);
+      if (!touch) Typer::draw(DATE_X, BOARD_Y_HEADER, "DATE", 9);
+    }
     for (int e = 0; e < n; e++) {
       char text[96];
       if (e == 0) {
@@ -263,8 +288,8 @@ void Menu::draw() {
         snprintf(text, sizeof(text), "SEASON: %s%s", board_season_.c_str(),
                  (own && board_seasons_.size() > 1) ? " - LIVE" : "");
       }
-      int y = touch ? touch_opt_center(e, n)
-                    : opt_row_center(e, n, DESK_OPT_TOP, DESK_OPT_BOTTOM);
+      int y = board_entry_y(e);
+      if (y == BOARD_Y_OFFSCREEN) continue;  // scrolled out of the window
       if (!touch)
         MenuSelect::draw_row_cursor(board_sel_ == e, CURSOR_L, CURSOR_R, y, 13);
       if (e <= 1) {
@@ -275,19 +300,32 @@ void Menu::draw() {
       if (ri < (int)board_rows_.size()) {
         const NetBoard::Row &r = board_rows_[ri];
         // Name display follows the netplay identity rule: an ATTESTED
-        // name renders as-is (sanitized), an UNVERIFIED claim (e.g. an
-        // iOS alias Apple does not attest) is NOT shown as if it were —
-        // the account is still attested for admission, so it renders as
-        // the role-style "PLAYER" plus the platform badge. Same
-        // boundary net_sanitize_name enforces on the wire name.
+        // name renders as-is; an iOS row's alias is a CLAIM on an
+        // ATTESTED account (Apple has no server-side alias lookup) and
+        // renders too (decided with Glenn 2026-08-01): admission already
+        // required the real account, the alias passes the same
+        // net_sanitize_name boundary as every wire name, and the stakes
+        // are display-only — the gamertag rule, deliberately looser than
+        // the online-peer identity display (a lobby stranger's claim
+        // still never renders there). Only a nameless row falls back to
+        // the role label.
         std::string name = net_sanitize_name(r.name);
-        if (!r.verified || name.empty()) name = "PLAYER";
+        bool attested_name = r.verified && !name.empty();
+        if (name.empty()) name = "PLAYER";
+        // Platform-attested names carry the verified tick inline (same
+        // forgery-proof glyph as the netplay identity UI — the char is
+        // stripped from every wire name, so only this append can draw
+        // it). iOS aliases render bare: the visible difference between a
+        // platform-vouched name and a claimed one. The platform BADGE
+        // needs no tick — admission requires attestation, so the badge's
+        // presence already is the guarantee.
+        if (attested_name) name += Typer::VERIFIED_TICK;
         if (!board_best_run_id_.empty() && r.run_id == board_best_run_id_)
           name += " - YOU";
         char rank_buf[12], score_buf[24], level_buf[16];
         snprintf(rank_buf, sizeof(rank_buf), "#%d", r.rank);
         snprintf(score_buf, sizeof(score_buf), "%u", r.score);
-        snprintf(level_buf, sizeof(level_buf), "LEVEL %u", r.generation + 1);
+        snprintf(level_buf, sizeof(level_buf), "%u", r.generation + 1);
         Typer::draw(RANK_X, y, rank_buf, 13);
         Typer::draw(NAME_X, y, name.c_str(), 12);
         // Platform badge (STEAM/WEB/IOS/ANDROID) so rows from different
@@ -315,8 +353,9 @@ void Menu::draw() {
         }
         continue;
       }
-      // The UPLOAD BEST RUN action row, phase-labelled.
-      switch (board_up_phase_) {
+      // The UPLOAD BEST RUN action row, phase-labelled (through the
+      // browsed board's eyes — a foreign board's upload reads as idle).
+      switch (board_up_phase_shown()) {
         case 1: {
           // The score stays visible through the transfer and after — the
           // upload is about the score (same rule as the game-over card).
@@ -346,8 +385,19 @@ void Menu::draw() {
       }
       Typer::draw_centered(0, y, text, 14);
     }
-    // Status / footer line between the rows and the exit band.
-    int fy = touch ? -240 : -330;
+    // Scroll range under the table when the board exceeds the window —
+    // both the "there is more" affordance and, on touch, the pager (tap
+    // left half = up, right half = down; see touch_tap).
+    if ((int)board_rows_.size() > BOARD_VISIBLE_ROWS) {
+      char range[40];
+      int last = board_scroll_ + BOARD_VISIBLE_ROWS;
+      if (last > (int)board_rows_.size()) last = (int)board_rows_.size();
+      snprintf(range, sizeof(range), "%d-%d OF %d", board_scroll_ + 1, last,
+               (int)board_rows_.size());
+      Typer::draw_centered(0, BOARD_Y_RANGE, range, 9);
+    }
+    // Status / footer line, anchored under the UPLOAD slot.
+    int fy = BOARD_Y_FOOTER;
     int sel_ri = board_sel_ - 2;  // selected score row, or out of range
     const NetBoard::Row *sel_row =
         (sel_ri >= 0 && sel_ri < (int)board_rows_.size())
@@ -376,9 +426,17 @@ void Menu::draw() {
       snprintf(yours, sizeof(yours), "YOUR BEST: #%d", board_your_rank_);
       Typer::draw_centered(0, fy, yours, 14);
     }
+    // The exit band is also the last selectable entry (w/s reach it, confirm
+    // closes; Esc still exits from anywhere) — the cursor marks show when
+    // the selection is on it. Touch draws it always-selected: the band IS
+    // the button there. No key prefix in the label: Esc is hard-coded in
+    // MenuSelect::is_back, not a rebindable binding, and the row reads as
+    // an action now, not a hint.
     TapBand::return_to_menu.draw(
         touch ? Typer::cursored("RETURN TO MENU", true).c_str()
-              : "ESC - BACK TO MENU",
+              : Typer::cursored("BACK TO MENU",
+                                board_sel_ == board_entry_count() - 1)
+                    .c_str(),
         currentTime);
   } else if (replays_mode_) {
     bool touch = is_touch_mode();
@@ -420,15 +478,18 @@ void Menu::draw() {
         Typer::draw(SCORE_X, y, replay_status_text(r.status), 13);
       }
     }
-    // Bottom exit band on BOTH layouts (the lobby's convention): desktop
-    // labels the key but stays tappable — the Steam Deck runs the desktop
+    // Bottom exit band on BOTH layouts (the lobby's convention): the
+    // desktop band stays tappable — the Steam Deck runs the desktop
     // layout and touch needs a way out (field report 2026-07-25).
     // Touch: the band IS the button, so it carries the menu cursor like a
-    // selected row. Desktop labels a key instead — a key hint is not a
-    // thing you point a cursor at.
+    // selected row. Desktop: the band doubles as the list's last selectable
+    // row (index == replay_rows_.size()), so keyboard/controller can walk
+    // onto it and confirm out; Esc still exits from anywhere.
     TapBand::return_to_menu.draw(
         touch ? Typer::cursored("RETURN TO MENU", true).c_str()
-              : "ESC - BACK TO MENU",
+              : Typer::cursored("BACK TO MENU",
+                                replay_sel_ == (int)replay_rows_.size())
+                    .c_str(),
         currentTime);
   } else if (options_mode_) {
     bool touch = is_touch_mode();
@@ -516,12 +577,14 @@ void Menu::draw() {
     }
 
     // Tappable exit on both layouts — see the replays band note above.
-    // Touch: the band IS the button, so it carries the menu cursor like a
-    // selected row. Desktop labels a key instead — a key hint is not a
-    // thing you point a cursor at.
+    // Desktop: also the selectable row after the last option (index ==
+    // opt_row_count()); confirm on it closes, confirm on an option row
+    // cycles that value (matching the touch tap).
     TapBand::return_to_menu.draw(
         touch ? Typer::cursored("RETURN TO MENU", true).c_str()
-              : "ESC - BACK TO MENU",
+              : Typer::cursored("BACK TO MENU",
+                                active_row_ == opt_row_count())
+                    .c_str(),
         currentTime);
   } else {
     Typer::draw_centered(0, 410, "Newtonia", 80);
@@ -711,20 +774,30 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
     return;
   }
   if (options_mode_) {
-    if (MenuSelect::move(key, active_row_, opt_row_count())) {
+    // One extra index past the rows: the BACK TO MENU band (see draw).
+    if (MenuSelect::move(key, active_row_, opt_row_count() + 1)) {
       // moved
     } else if (MenuSelect::is_left(key)) {
-      adjust_active_row(-1);
+      if (active_row_ < opt_row_count()) adjust_active_row(-1);
     } else if (MenuSelect::is_right(key)) {
-      adjust_active_row(1);
-    } else if (MenuSelect::is_back(key) || confirm) {
+      if (active_row_ < opt_row_count()) adjust_active_row(1);
+    } else if (MenuSelect::is_back(key)) {
       close_options();
+    } else if (confirm) {
+      // Confirm on the band exits; on an option row it cycles the value
+      // (the touch tap's behaviour) — Enter used to close from anywhere,
+      // which made the rows the only list in the game confirm did nothing
+      // useful on.
+      if (active_row_ >= opt_row_count())
+        close_options();
+      else
+        adjust_active_row(1, /*wrap=*/true);
     }
     return;
   }
   if (board_mode_) {
     if (MenuSelect::move(key, board_sel_, board_entry_count())) {
-      // moved
+      board_ensure_visible();
     } else if (MenuSelect::is_left(key) || MenuSelect::is_right(key)) {
       if (board_sel_ == 1) {
         // On the SEASON row, a/d step the browsed season instead.
@@ -742,9 +815,11 @@ void Menu::nav_input(unsigned char key, SDL_GameController *src) {
     return;
   }
   if (replays_mode_) {
-    if (MenuSelect::move(key, replay_sel_, (int)replay_rows_.size())) {
+    // One extra index past the rows: the BACK TO MENU band (see draw).
+    if (MenuSelect::move(key, replay_sel_, (int)replay_rows_.size() + 1)) {
       // moved
-    } else if (MenuSelect::is_back(key)) {
+    } else if (MenuSelect::is_back(key) ||
+               (confirm && replay_sel_ >= (int)replay_rows_.size())) {
       replays_mode_ = false;
     } else if (confirm && replay_sel_ < (int)replay_rows_.size()) {
       const ReplayRow &r = replay_rows_[replay_sel_];
@@ -890,10 +965,21 @@ void Menu::touch_tap(float nx, float ny) {
   }
   if (board_mode_) {
     if (TapBand::return_to_menu.contains(nx, ny)) { close_board(); return; }
-    int n = board_entry_count();
-    int row = is_touch_mode()
-                  ? touch_opt_row_at(ny, n)
-                  : opt_row_at(ny, n, DESK_OPT_TOP, DESK_OPT_BOTTOM);
+    // Same fixed slots the draw uses (board_entry_y — the TapBand rule).
+    float ty = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
+    // The range line doubles as the touch pager: left half pages up,
+    // right half pages down (drag scrolling is not a thing this menu
+    // stack has; the indicator is the one drawn, tappable affordance).
+    if ((int)board_rows_.size() > BOARD_VISIBLE_ROWS &&
+        ty <= BOARD_Y_RANGE + BOARD_ROW_PITCH / 2 &&
+        ty >= BOARD_Y_RANGE - BOARD_ROW_PITCH / 2) {
+      int max_scroll = (int)board_rows_.size() - BOARD_VISIBLE_ROWS;
+      board_scroll_ += (nx < 0.5f) ? -BOARD_VISIBLE_ROWS : BOARD_VISIBLE_ROWS;
+      if (board_scroll_ < 0) board_scroll_ = 0;
+      if (board_scroll_ > max_scroll) board_scroll_ = max_scroll;
+      return;
+    }
+    int row = board_entry_at(ty);
     if (row >= 0) {
       board_sel_ = row;
       board_nav_confirm();
@@ -1080,13 +1166,14 @@ void Menu::scan_replays() {
   // way), while online.nrp never rotates through any of them — it is its
   // own slot, overwritten per session. Listing it after the chain rather
   // than inside it matches that.
-  struct { const char *label; std::string path; } sources[4] = {
+  struct { const char *label; std::string path; } sources[5] = {
       {"CURRENT RUN", Replay::current_path()},
       {"LAST RUN", Replay::recent_path()},
-      {"BEST RUN", Replay::best_path()},
+      {"BEST RUN", Replay::best_path_for(1)},
+      {"BEST CO-OP", Replay::best_path_for(2)},
       {"ONLINE RUN", Replay::online_path()},
   };
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 5; i++) {
     if (sources[i].path.empty()) continue;
     FILE *fp = fopen(sources[i].path.c_str(), "rb");
     if (!fp) continue;
@@ -1156,6 +1243,22 @@ static const int BOARD_UPLOAD_RETRY_TIMEOUT_MS = 6000;
 
 bool Menu::show_board_row() const { return net_board_available(); }
 
+// Does this best slot hold a run the live season's UPLOAD row could offer
+// (clean, non-cheated, scored, and stamped with the build's own season)?
+// Used only to pick which board the screen OPENS on; the row's real gating
+// reads the loaded slot (board_upload_row_shown).
+static bool slot_is_upload_candidate(const std::string &path,
+                                     const std::string &build_season) {
+  Replay::Header h;
+  if (!Replay::read_header(path, h)) return false;
+  if (!(h.flags & Replay::FLAG_CLEAN) || (h.flags & Replay::FLAG_CHEATED) ||
+      h.final_score == 0)
+    return false;
+  std::string season(h.game_version,
+                     strnlen(h.game_version, sizeof(h.game_version)));
+  return season == build_season;
+}
+
 int Menu::board_row_index() const {
   if (!show_board_row()) return -1;
   int i = base_menu_rows();
@@ -1185,35 +1288,14 @@ void Menu::open_board() {
   own.season = board_build_season_;
   board_seasons_.push_back(own);
   board_net_->seasons();
-  board_best_run_id_.clear();
-  board_best_season_.clear();
-  board_best_score_ = 0;
-  board_best_clean_ = false;
-  Replay::Header h;
-  if (Replay::read_header(Replay::best_path(), h)) {
-    char rid[24];
-    snprintf(rid, sizeof(rid), "%llu", (unsigned long long)h.run_id);
-    board_best_run_id_ = rid;
-    board_best_season_.assign(
-        h.game_version, strnlen(h.game_version, sizeof(h.game_version)));
-    // Seed the browser with best.nrp's season too: the UPLOAD row lives
-    // on ITS season's screen, and the worker only lists seasons that
-    // already have rows — an old-season best would otherwise be
-    // unreachable (nothing to cycle to) until someone else charted there.
-    if (!board_best_season_.empty() &&
-        board_best_season_ != board_build_season_) {
-      NetBoard::Season bs;
-      bs.season = board_best_season_;
-      board_seasons_.push_back(bs);
-    }
-    board_best_score_ = h.final_score;
-    board_best_clean_ = (h.flags & Replay::FLAG_CLEAN) &&
-                        !(h.flags & Replay::FLAG_CHEATED) &&
-                        h.final_score > 0;
-    board_players_ = h.player_count == 2 ? 2 : 1;
-  } else {
-    board_players_ = 1;
-  }
+  // Best is per-board (solo best.nrp / co-op best_coop.nrp): open on the
+  // board whose slot holds a live-season upload candidate — SOLO wins a
+  // tie, and SOLO is the default when neither slot has one. The browsed
+  // board's slot itself loads in board_load_best (from board_request).
+  board_players_ =
+      !slot_is_upload_candidate(Replay::best_path_for(1), board_build_season_) &&
+      slot_is_upload_candidate(Replay::best_path_for(2), board_build_season_)
+          ? 2 : 1;
   board_sel_ = 0;
   board_loading_ = false;
   board_error_ = false;
@@ -1234,27 +1316,103 @@ void Menu::close_board() {
 
 void Menu::board_request() {
   if (!board_net_) return;
+  board_load_best();  // the browsed board's own best slot (solo/co-op)
   board_loading_ = true;
   board_error_ = false;
   board_rows_.clear();
   board_your_rank_ = 0;
   if (board_sel_ >= board_entry_count()) board_sel_ = 0;
-  board_net_->top(board_season_, board_players_, 8);
-  // The rank-of footer: only meaningful when the local best belongs to
-  // the browsed board (same season, same player count).
+  board_scroll_ = 0;
+  board_net_->top(board_season_, board_players_, 100);  // full board; the
+                                                        // table windows it
+  // The rank-of footer: only meaningful when the slot's best belongs to
+  // the browsed season (the slot already matches the player count).
+  if (board_best_score_ > 0 && board_best_season_ == board_season_)
+    board_net_->rank_of(board_season_, board_players_, board_best_score_);
+}
+
+// Load the best slot that belongs to the browsed board (best is per-board:
+// solo best.nrp / co-op best_coop.nrp — LEADERBOARD.md). Refreshed on
+// every board_request so a SOLO/CO-OP flip swaps the upload candidate, the
+// " - YOU" row tag and the rank-of footer along with the rows.
+void Menu::board_load_best() {
+  board_best_run_id_.clear();
+  board_best_season_.clear();
+  board_best_score_ = 0;
+  board_best_clean_ = false;
   Replay::Header h;
-  if (board_best_score_ > 0 && board_best_season_ == board_season_ &&
-      Replay::read_header(Replay::best_path(), h)) {
-    int best_players = h.player_count == 2 ? 2 : 1;
-    if (best_players == board_players_)
-      board_net_->rank_of(board_season_, board_players_, board_best_score_);
+  if (!Replay::read_header(Replay::best_path_for((uint8_t)board_players_), h))
+    return;
+  char rid[24];
+  snprintf(rid, sizeof(rid), "%llu", (unsigned long long)h.run_id);
+  board_best_run_id_ = rid;
+  board_best_season_.assign(h.game_version,
+                            strnlen(h.game_version, sizeof(h.game_version)));
+  board_best_score_ = h.final_score;
+  board_best_clean_ = (h.flags & Replay::FLAG_CLEAN) &&
+                      !(h.flags & Replay::FLAG_CHEATED) && h.final_score > 0;
+  // Keep this slot's season reachable in the browser: the UPLOAD row lives
+  // on ITS season's screen, and the worker only lists seasons that already
+  // have rows — an old-season best would otherwise be unreachable (nothing
+  // to cycle to) until someone else charted there.
+  if (!board_best_season_.empty()) {
+    for (const NetBoard::Season &s : board_seasons_)
+      if (s.season == board_best_season_) return;
+    NetBoard::Season bs;
+    bs.season = board_best_season_;
+    board_seasons_.push_back(bs);
   }
+}
+
+// board_up_phase_, seen from the browsed board: an upload's transfer/status
+// belongs to the board it was started for (board_up_players_) — the other
+// board's UPLOAD row must read idle, not wear a foreign UPLOADED #N label.
+int Menu::board_up_phase_shown() const {
+  return board_up_players_ == board_players_ ? board_up_phase_ : 0;
+}
+
+int Menu::board_entry_y(int e) const {
+  if (e == 0) return BOARD_Y_TOGGLE;
+  if (e == 1) return BOARD_Y_SEASON;
+  int ri = e - 2;
+  if (ri < (int)board_rows_.size()) {
+    if (ri < board_scroll_ || ri >= board_scroll_ + BOARD_VISIBLE_ROWS)
+      return BOARD_Y_OFFSCREEN;  // scrolled out of the window
+    return BOARD_Y_ROW0 - (ri - board_scroll_) * BOARD_ROW_PITCH;
+  }
+  if (board_upload_row_shown() && ri == (int)board_rows_.size())
+    return BOARD_Y_UPLOAD;  // the UPLOAD BEST RUN action
+  // The trailing BACK TO MENU entry: the band draws its own label and
+  // catches its own taps (TapBand::contains runs before board_entry_at),
+  // so the row machinery must never draw or hit-test a slot for it.
+  return BOARD_Y_OFFSCREEN;
+}
+
+// Slide the window so the selected entry is visible (rows only — the
+// fixed slots always are). Called after every selection move.
+void Menu::board_ensure_visible() {
+  int ri = board_sel_ - 2;
+  if (ri < 0 || ri >= (int)board_rows_.size()) return;
+  if (ri < board_scroll_) board_scroll_ = ri;
+  if (ri >= board_scroll_ + BOARD_VISIBLE_ROWS)
+    board_scroll_ = ri - BOARD_VISIBLE_ROWS + 1;
+}
+
+int Menu::board_entry_at(float y) const {
+  int n = board_entry_count();
+  for (int e = 0; e < n; e++)
+    if (y <= board_entry_y(e) + BOARD_ROW_PITCH / 2 &&
+        y >= board_entry_y(e) - BOARD_ROW_PITCH / 2)
+      return e;
+  return -1;
 }
 
 int Menu::board_entry_count() const {
   // [0] SOLO/CO-OP toggle, [1] SEASON browser, [2..] score rows, then the
-  // UPLOAD BEST RUN action when it applies to the browsed season.
-  return 2 + (int)board_rows_.size() + (board_upload_row_shown() ? 1 : 0);
+  // UPLOAD BEST RUN action when it applies to the browsed season, and
+  // always last: the BACK TO MENU band as a selectable entry (it draws and
+  // hit-tests itself — board_entry_y hides it from the row machinery).
+  return 2 + (int)board_rows_.size() + (board_upload_row_shown() ? 1 : 0) + 1;
 }
 
 bool Menu::board_upload_row_shown() const {
@@ -1268,9 +1426,24 @@ bool Menu::board_upload_row_shown() const {
   // a refusal that arrives with (or is followed by) a close must not
   // vanish into the generic UNAVAILABLE footer — the row is the answer
   // the player is reading, and confirm no-ops without a socket anyway.
-  return board_best_clean_ && net_board_can_submit() &&
-         board_best_season_ == board_season_ &&
-         (board_net_ != nullptr || board_up_phase_ >= 2);
+  if (!(board_best_clean_ && net_board_can_submit() &&
+        board_best_season_ == board_season_ &&
+        (board_net_ != nullptr || board_up_phase_shown() >= 2)))
+    return false;
+  // Nothing to offer when the best is ALREADY on the board: a fetched row
+  // carrying this exact run at (or above) the local score means an upload
+  // could only be refused already-submitted. Same-run-but-higher-local
+  // (a clean-abandoned upload later resumed and improved) keeps the row —
+  // that upload upserts the better score. Only the IDLE row hides: once
+  // an upload ran this session the row is also its status line
+  // (UPLOADED #N / failed), which must not vanish on the post-placed
+  // refresh.
+  if (board_up_phase_shown() == 0 && !board_best_run_id_.empty()) {
+    for (const NetBoard::Row &r : board_rows_)
+      if (r.run_id == board_best_run_id_ && r.score >= board_best_score_)
+        return false;
+  }
+  return true;
 }
 
 // Is the local best already one of the visible board rows? (run_id match —
@@ -1290,6 +1463,9 @@ const char *Menu::board_upload_status_text() const {
   if (r == "not-best" || r == "already-submitted")
     return "BEST ALREADY ON THE BOARD";
   if (r == "unverified") return "UPLOAD FAILED - NOT VERIFIED";
+  // Production admits only canonical SEASON-file seasons; a dev/old build's
+  // best belongs to a bucket the board does not take (LEADERBOARD.md).
+  if (r == "bad-season") return "SEASON NOT ACCEPTED";
   if (r == "rate-limited") return "UPLOAD FAILED - TRY LATER";
   if (r == "connection") return "UPLOAD FAILED - CONNECTION";
   return "UPLOAD FAILED";
@@ -1299,12 +1475,15 @@ void Menu::board_start_upload() {
   if (!board_net_ || board_transfer_busy()) return;
   board_up_retried_ = false;
   board_up_retry_deadline_ = 0;
+  board_up_players_ = board_players_;  // the board this upload belongs to
   const NetIdentity &me = net_local_identity();
   std::string cred = net_board_verify_credential();
   board_up_sent_cred_ = cred;  // for the retry's freshness compare
-  board_net_->submit(Replay::best_path(), me.platform, me.name, cred);
+  board_net_->submit(Replay::best_path_for((uint8_t)board_up_players_),
+                     me.platform, me.name, cred);
   board_up_phase_ = 1;
-  SDL_Log("board: uploading best.nrp (menu)");
+  SDL_Log("board: uploading %s (menu)",
+          board_up_players_ == 2 ? "best_coop.nrp" : "best.nrp");
 }
 
 // The socket carries ONE transfer at a time (RtcBoard's single phase_), so
@@ -1329,6 +1508,10 @@ void Menu::board_cycle_season(int dir) {
 }
 
 void Menu::board_nav_confirm() {
+  if (board_sel_ == board_entry_count() - 1) {  // the BACK TO MENU band
+    close_board();
+    return;
+  }
   if (board_sel_ == 0) {
     board_players_ = board_players_ == 1 ? 2 : 1;
     board_request();
@@ -1356,7 +1539,7 @@ void Menu::board_nav_confirm() {
     return;
   }
   if (board_upload_row_shown() && !board_transfer_busy() &&
-      (board_up_phase_ == 0 || board_up_phase_ == 3))
+      (board_up_phase_shown() == 0 || board_up_phase_shown() == 3))
     board_start_upload();
 }
 
@@ -1373,7 +1556,8 @@ void Menu::board_poll() {
       const NetIdentity &me = net_local_identity();
       std::string fresh = net_board_verify_credential();  // consume the fresh one
       board_up_sent_cred_ = fresh;
-      board_net_->submit(Replay::best_path(), me.platform, me.name, fresh);
+      board_net_->submit(Replay::best_path_for((uint8_t)board_up_players_),
+                         me.platform, me.name, fresh);
       board_up_phase_ = 1;
       SDL_Log("board: retrying upload with a fresh credential (menu)");
     } else if (currentTime >= board_up_retry_deadline_) {
@@ -1391,6 +1575,7 @@ void Menu::board_poll() {
         board_loading_ = false;
         if (board_sel_ >= board_entry_count())
           board_sel_ = board_entry_count() - 1;
+        board_ensure_visible();
         break;
       case NetBoard::Event::RankOf:
         // Drop an answer for a board we have since flipped away from

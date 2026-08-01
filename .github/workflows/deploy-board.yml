@@ -79,7 +79,8 @@ jobs:
       - name: Protocol test (wrangler dev --local)
         run: |
           npx wrangler@4 dev --local --port 8788 \
-            --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 > wrangler-dev.log 2>&1 &
+            --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 \
+            --var CANONICAL_SEASONS_ONLY:0 > wrangler-dev.log 2>&1 &
           DEV_PID=$!
           for i in $(seq 1 60); do
             curl -s http://127.0.0.1:8788/ | grep -q newtonia-board && break
@@ -87,6 +88,22 @@ jobs:
             sleep 1
           done
           node test/board_test.mjs
+          kill $DEV_PID
+
+      # Same worker code with the PRODUCTION default (no
+      # CANONICAL_SEASONS_ONLY:0 opt-out): non-canonical seasons must not
+      # qualify and must be refused at admission.
+      - name: Season-whitelist test (production default)
+        run: |
+          npx wrangler@4 dev --local --port 8787 \
+            --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 > wrangler-wl.log 2>&1 &
+          DEV_PID=$!
+          for i in $(seq 1 60); do
+            curl -s http://127.0.0.1:8787/ | grep -q newtonia-board && break
+            kill -0 $DEV_PID 2>/dev/null || { echo "wrangler dev died:"; cat wrangler-wl.log; exit 1; }
+            sleep 1
+          done
+          node test/whitelist_test.mjs
           kill $DEV_PID
 
   deploy:

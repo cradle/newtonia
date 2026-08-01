@@ -741,6 +741,9 @@ private:
   int board_deadline_ = 0;       // qualify timeout, current_time domain
   int board_prompt_shown_ = 0;   // current_time when BoardPrompt began
   bool board_up_retried_ = false; // an unverified upload has been retried once
+  // Which best slot the finished run promoted (solo best.nrp or co-op
+  // best_coop.nrp — best is per-board); what qualify reads and submit sends.
+  std::string board_up_path_;
   int board_up_retry_deadline_ = 0; // current_time to give up polling for a
                                     // fresh credential (0 = not waiting)
   std::string board_up_sent_cred_;  // the rejected credential, so the retry

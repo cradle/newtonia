@@ -12,7 +12,8 @@
 //                       duration_ms,date,has_replay,run_id,
 //                       format,save_format}]}
 //   -> {t:"seasons"}
-//   <- {t:"seasons", rows:[{season,newest,count}]}   newest-first, max 50
+//   <- {t:"seasons", rows:[{season,newest,count}]}   canonical (s<N>)
+//                                          seasons only, newest-first, max 50
 //   -> {t:"rank-of", season, players, score}
 //   <- {t:"rank-of", place}
 //   -> {t:"submit", size, platform, name, cred}   attestation REQUIRED
@@ -137,6 +138,19 @@ export function rate_key(ip) {
     return "v6:" + full.slice(0, 4).join(":");
   }
   return "v4:" + ip;
+}
+
+// Canonical season key: the deliberate SEASON-file stamps (s1, s2, ...).
+// The browser lists only these everywhere; PRODUCTION also refuses
+// ADMISSION of anything else (decided with Glenn 2026-08-01: prod is a
+// whitelist, beta stays open for testing). The gate is the top-level
+// wrangler.toml var CANONICAL_SEASONS_ONLY="1" — production config is the
+// default truth; the beta env sets no vars, and the test harnesses pass
+// --var CANONICAL_SEASONS_ONLY:0 alongside FAKE_VERIFY as their explicit
+// divergence from production.
+function season_canonical(season) { return /^s[0-9]+$/.test(season); }
+function canonical_only(env) {
+  return !!env && env.CANONICAL_SEASONS_ONLY === "1";
 }
 
 function strip_name(name) {
@@ -499,16 +513,26 @@ export class Session {
       // submission first, across BOTH boards (the client's SOLO/CO-OP
       // toggle works within a season). Takes no season argument, so it
       // sits before the season-keyed block below; budgeted as a query.
+      //
+      // Only CANONICAL seasons are listed — the deliberate SEASON-file
+      // stamps (s1, s2, ...). Dev builds stamp git-describe strings and
+      // their submissions are admitted (an old best charts in its own
+      // bucket), but those one-off buckets must not clutter the browser
+      // every player cycles through. A build browsing its own non-listed
+      // season still can: the client seeds its own and best.nrp's
+      // seasons into the list locally.
       if (++this.queries > CONN_MAX_QUERIES) return this.fail(ws, "rate-limited");
       if (!(await within_limit(this.env, this.ip, "query")))
         return this.err(ws, "rate-limited");
       await ensure_schema(this.env.DB);
       const rows = await this.env.DB.prepare(
           `SELECT season, MAX(submitted_at) AS newest, COUNT(*) AS n
-           FROM scores GROUP BY season ORDER BY newest DESC LIMIT 50`).all();
+           FROM scores GROUP BY season ORDER BY newest DESC LIMIT 200`).all();
+      const canonical = (rows.results || [])
+          .filter((r) => season_canonical(r.season)).slice(0, 50);
       this.send(ws, {
         t: "seasons",
-        rows: (rows.results || []).map((r) => ({
+        rows: canonical.map((r) => ({
           season: r.season, newest: Number(r.newest), count: Number(r.n),
         })),
       });
@@ -564,8 +588,13 @@ export class Session {
         return;
       }
       const cut = await cutline(this.env.DB, season, players);
+      // On a whitelisted worker (production) a non-canonical season can
+      // never be admitted, so it can never place — answering false here
+      // means a dev build pointed at production simply never prompts,
+      // instead of arming an upload doomed to bad-season.
+      const admissible = !canonical_only(this.env) || season_canonical(season);
       this.send(ws, { t: "qualify", place, players, cutline: cut,
-                      would_place: place <= KEEP_N });
+                      would_place: admissible && place <= KEEP_N });
       return;
     }
 
@@ -670,6 +699,12 @@ export class Session {
       return this.err(ws, v.reason);
     }
     const hd = v.header;
+    if (canonical_only(this.env) && !season_canonical(hd.season)) {
+      // Production whitelist: only deliberate SEASON-file seasons are
+      // admitted. Beta (no var) stays open for dev/test submissions.
+      console.log(`submit refused: bad-season ${hd.season}`);
+      return this.err(ws, "bad-season");
+    }
     const db = this.env.DB;
     await ensure_schema(db);
     const players = hd.player_count;

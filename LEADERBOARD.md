@@ -26,7 +26,23 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
      from ever prompting. `best.nrp` is therefore "your best run of the
      season you last played"; the old season's uploaded replay lives on
      on its board. Within a season the gate stays score-beats-best. No
-     network traffic for ordinary runs.
+     network traffic for ordinary runs. **Best is PER-BOARD** (decided
+     with Glenn 2026-08-01, from a field report): the worker keeps solo
+     and co-op tables apart, so the local candidate does too —
+     `best.nrp` (solo) and `best_coop.nrp` (co-op), routed by the
+     header's `player_count` (`Replay::best_path_for`). With one shared
+     slot a solo high score silently shadowed every later co-op run:
+     the co-op score never beat it, so the run never promoted and the
+     CO-OP board never got its upload prompt. `take_best_promoted()`
+     now returns the promoted slot's PATH (empty = none) so the
+     game-over qualify/upload operate on the right file; the menu
+     screen loads the browsed board's own slot on every SOLO/CO-OP flip
+     (upload row, rank-of footer, `- YOU` tag all follow), and a
+     pre-split co-op `best.nrp` (the old code promoted co-op runs into
+     the shared slot when they DID beat the solo score) migrates to its
+     slot lazily (`ensure_best_split`, ahead of every promotion check
+     and `best_path_for` resolution). The REPLAYS list shows the new
+     slot as BEST CO-OP; `NEWTONIA_REPLAY_PLAY=bestcoop` plays it.
   2. *Remote gate*: an async `qualify` query to the worker — "would this
      score place on the current season's board?" The worker answers with
      the projected rank and the current cut-line (lowest charting score).
@@ -84,10 +100,13 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
   sends, and the worker verifies it through the same per-platform modules
   (Steam ticket, Play Games auth code, Game Center signature — one shared
   throttle). Attested rows show the platform-verified name + badge;
-  Game Center attests account-only, so an iOS row shows the badge with the
-  claimed alias folded through `net_sanitize_name` but flagged unverified
-  (same rule as the online peer display — the ACCOUNT is still attested,
-  which is what admission requires). **Submissions REQUIRE attestation**
+  Game Center attests account-only, so an iOS row carries the claimed
+  alias folded through `net_sanitize_name`, flagged unverified — and the
+  board DISPLAYS it anyway (decided with Glenn 2026-08-01): the account
+  is attested for admission, the alias is sanitized, and the stakes are
+  display-only — the gamertag rule. This is deliberately looser than the
+  online-peer identity display, where a lobby stranger's claim still
+  never renders. **Submissions REQUIRE attestation**
   (decided with Glenn 2026-07-31): a submit whose credential is absent or
   fails verification is rejected (`{t:"error", reason:"unverified"}`) —
   every row on the board is tied to a real platform account, which is the
@@ -107,6 +126,18 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
   No server-side season table to maintain — a release that changes the
   stamp opens its season implicitly. Solo and co-op are **separate boards**
   (`player_count` 1 vs 2 — scores aren't comparable across them).
+- **Production admits canonical seasons only** (decided with Glenn
+  2026-08-01): the production worker sets `CANONICAL_SEASONS_ONLY="1"`
+  (top-level wrangler.toml — production config is the default truth) and
+  refuses submissions whose season is not a SEASON-file stamp (`s<N>`),
+  answering `bad-season` ("SEASON NOT ACCEPTED" on the cards); `qualify`
+  answers would_place=false for them, so a dev build pointed at
+  production simply never prompts. Beta sets no vars and stays open for
+  dev/test submissions. The browser lists canonical seasons only on BOTH
+  (a build browsing its own non-listed season still can — the client
+  seeds its own and best.nrp's seasons locally). Covered by
+  `board/test/whitelist_test.mjs` (production default) and the
+  `CANONICAL_SEASONS_ONLY:0` opt-out the open-mode harnesses pass.
 - **The stamp is the root `SEASON` file, bumped deliberately** (decided
   with Glenn 2026-07-31; starts at `s1`): seasons rotate when the game
   changes significantly, not on release cadence — at v1.48.x per-tag or
@@ -358,7 +389,10 @@ instead. **Season browser** (added 2026-07-31 with the SEASON-file
 scheme): the screen opens on this build's season
 (`Replay::game_version_string()` — added because the Makefile scopes
 the version stamp to replay.o) and fetches the worker's season list
-(`{t:"seasons"}`, newest submission first; the build's season is kept
+(`{t:"seasons"}`, CANONICAL seasons only — the deliberate SEASON-file
+stamps `s<N>`, decided 2026-08-01: dev/git-describe buckets are admitted
+for upload but never listed, so they cannot clutter the browser every
+player cycles through; newest submission first; the build's season is kept
 at the front even before it has rows, tagged "- LIVE" when there is
 somewhere else to cycle to). Old seasons' rows are viewable forever
 (scores never expire; replays follow retention). **Replay downloads

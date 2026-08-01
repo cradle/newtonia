@@ -641,6 +641,7 @@ void Overlay::board_prompt(const GLGame *glgame) {
     if (r == "not-best" || r == "already-submitted")
       msg = "ALREADY ON THE BOARD";
     else if (r == "unverified") msg = "UPLOAD FAILED - NOT VERIFIED";
+    else if (r == "bad-season") msg = "SEASON NOT ACCEPTED";
     else if (r == "rate-limited") msg = "UPLOAD FAILED - TRY LATER";
     else if (r == "connection") msg = "UPLOAD FAILED - CONNECTION";
     Typer::draw_centered(0, 40, msg, 14);

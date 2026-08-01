@@ -67,7 +67,17 @@ private:
   int  board_row_index() const;    // -1 when hidden
   void open_board();
   void close_board();
+  // Structured board-screen geometry (one definition for draw AND taps):
+  // a compact control pair up top, a fixed-pitch score table under column
+  // headers, the UPLOAD action and status footer anchored at the bottom —
+  // NOT the options screens' spread-N-rows-over-the-band layout, which
+  // scattered this screen's few entries structurelessly.
+  int  board_entry_y(int e) const;   // centre y of entry e (or offscreen)
+  int  board_entry_at(float y) const;// entry at ortho y, -1 = none
+  void board_ensure_visible();       // slide the window onto board_sel_
   void board_request();            // (re)fetch top + rank-of for board_players_
+  void board_load_best();          // load the browsed board's best slot
+  int  board_up_phase_shown() const; // board_up_phase_, but only on ITS board
   void board_poll();               // drive NetBoard events (from tick)
   void board_nav_confirm();        // confirm on the current selection
   void board_cycle_season(int dir);// step the browsed season (SEASON row)
@@ -115,6 +125,7 @@ private:
   NetBoard *board_net_ = nullptr;       // owned; non-null while screen open
   int  board_players_ = 1;              // 1 = SOLO board, 2 = CO-OP
   int  board_sel_ = 0;                  // cursor over board_entry_count()
+  int  board_scroll_ = 0;               // first visible table row
   std::vector<NetBoard::Row> board_rows_;
   bool board_loading_ = false;          // top fetch in flight
   bool board_error_ = false;            // socket closed / worker error
@@ -123,7 +134,11 @@ private:
                                         // worker-echoed players field
   std::string board_season_;            // the BROWSED season (SEASON row)
   std::string board_build_season_;      // this build's stamp (the default)
-  std::string board_best_season_;       // best.nrp's own season (upload gate)
+  // The browsed board's OWN best slot (best is per-board: solo best.nrp /
+  // co-op best_coop.nrp — LEADERBOARD.md). Reloaded by board_load_best()
+  // on every board_request so a SOLO/CO-OP flip swaps the upload
+  // candidate along with the rows.
+  std::string board_best_season_;       // that slot's season (upload gate)
   // The worker's season list (newest first; the build's season is kept at
   // the front even before it has rows). Single-entry until the seasons
   // answer lands — cycling is a no-op then.
@@ -132,6 +147,7 @@ private:
   uint32_t board_best_score_ = 0;       // rank-of query + upload row label
   bool board_best_clean_ = false;       // upload row shown only for a clean best
   int  board_up_phase_ = 0;             // 0 idle, 1 uploading, 2 placed, 3 failed
+  int  board_up_players_ = 1;           // the board that upload belongs to
   int  board_up_rank_ = 0;
   std::string board_up_reason_;
   bool board_up_retried_ = false;       // an unverified upload retried once

@@ -3295,12 +3295,15 @@ void GLGame::board_maybe_start() {
   // Consume the one-shot promotion flag unconditionally (so it can't leak
   // into a later game over), THEN decide whether to prompt: only on a
   // build that can actually pass the worker's attestation requirement —
-  // otherwise the upload is doomed to "unverified" (LEADERBOARD.md).
-  if (!Replay::take_best_promoted()) return;
+  // otherwise the upload is doomed to "unverified" (LEADERBOARD.md). The
+  // promotion says WHICH best slot the run landed in (solo/co-op — best is
+  // per-board), and that slot is what gets qualified and uploaded.
+  board_up_path_ = Replay::take_best_promoted();
+  if (board_up_path_.empty()) return;
   if (!g_prefs.leaderboard_prompts) return;
   if (!net_board_can_submit()) return;
   Replay::Header h;
-  if (!Replay::read_header(Replay::best_path(), h)) return;
+  if (!Replay::read_header(board_up_path_, h)) return;
   board_ = NetBoard::create();
   if (!board_) return;
   board_up_retried_ = false;
@@ -3333,7 +3336,7 @@ void GLGame::board_tick() {
       const NetIdentity &me = net_local_identity();
       std::string fresh = net_board_verify_credential();  // consume the fresh one
       board_up_sent_cred_ = fresh;
-      board_->submit(Replay::best_path(), me.platform, me.name, fresh);
+      board_->submit(board_up_path_, me.platform, me.name, fresh);
       board_phase_ = BoardUploading;
       SDL_Log("board: retrying upload with a fresh credential");
     } else if (current_time >= board_up_retry_deadline_) {
@@ -3452,9 +3455,11 @@ bool GLGame::board_nav(char key) {
       const NetIdentity &me = net_local_identity();
       std::string cred = net_board_verify_credential();
       board_up_sent_cred_ = cred;  // for the retry's freshness compare
-      board_->submit(Replay::best_path(), me.platform, me.name, cred);
+      board_->submit(board_up_path_, me.platform, me.name, cred);
       board_phase_ = BoardUploading;
-      SDL_Log("board: uploading best.nrp");
+      SDL_Log("board: uploading %s",
+              board_up_path_ == Replay::best_coop_path() ? "best_coop.nrp"
+                                                         : "best.nrp");
       return true;
     }
     return true;  // the prompt owns the card: swallow everything else
@@ -6407,6 +6412,77 @@ void GLGame::tick(int delta) {
   }
   current_time += delta;
 
+  // Co-op e2e hooks, live OFFLINE and as host alike (they drive the shared
+  // sim: lives, the revive payload, and a real revive pickup drop). All
+  // inert without their env vars.
+  if (players->size() >= 2) {
+    // Drive a player fully out of lives on a timer so the revive/spectate
+    // flows can be exercised headlessly. Online, lives are
+    // host-authoritative and replicate; "remote"/default = players->back()
+    // (the joiner online, P2 offline), "local" = players->front().
+    static int test_kill_ms = -2;
+    static bool test_kill_remote = true;
+    if (test_kill_ms == -2) {
+      const char *e = getenv("NEWTONIA_NET_TEST_KILL_MS");
+      test_kill_ms = e ? atoi(e) : -1;
+      const char *who = getenv("NEWTONIA_NET_TEST_KILL_WHO");
+      test_kill_remote = !(who && std::string(who) == "local");
+    }
+    if (test_kill_ms > 0) {
+      test_kill_ms -= delta;
+      if (test_kill_ms <= 0) {
+        test_kill_ms = -1;
+        GLShip *victim = test_kill_remote ? players->back() : players->front();
+        NET_LOG("net: TEST forcing %s player out of lives\n",
+                test_kill_remote ? "remote" : "local");
+        victim->ship->lives = 0;
+        victim->ship->kill();
+      }
+    }
+    // Apply the revive effect to whichever player is fully out — the
+    // pickup-collection payload without the blind-navigation problem of
+    // actually touching a pickup in a driver.
+    static int test_revive_ms = -2;
+    if (test_revive_ms == -2) {
+      const char *e = getenv("NEWTONIA_NET_TEST_REVIVE_MS");
+      test_revive_ms = e ? atoi(e) : -1;
+    }
+    if (test_revive_ms > 0) {
+      test_revive_ms -= delta;
+      if (test_revive_ms <= 0) {
+        test_revive_ms = -1;
+        NET_LOG("net: TEST applying revive\n");
+        revive_fallen_partner(NULL);
+      }
+    }
+    // Spawn a real RevivePickup on a LIVING player so the ordinary
+    // collision/collection path runs — the full field flow, minus the
+    // random drop roll. NEWTONIA_NET_TEST_REVIVE_DROP_DIST offsets the
+    // drop that many units away instead (0/absent = instant collection;
+    // a distance lets a driver exercise the pickup SURVIVING something,
+    // e.g. the generation rebuild).
+    static int test_revive_drop_ms = -2, test_revive_drop_dist = 0;
+    if (test_revive_drop_ms == -2) {
+      const char *e = getenv("NEWTONIA_NET_TEST_REVIVE_DROP_MS");
+      test_revive_drop_ms = e ? atoi(e) : -1;
+      const char *d = getenv("NEWTONIA_NET_TEST_REVIVE_DROP_DIST");
+      test_revive_drop_dist = d ? atoi(d) : 0;
+    }
+    if (test_revive_drop_ms > 0) {
+      test_revive_drop_ms -= delta;
+      if (test_revive_drop_ms <= 0) {
+        test_revive_drop_ms = -1;
+        for (auto *gs : *players) {
+          if (!gs->ship->is_alive()) continue;
+          NET_LOG("net: TEST dropping revive pickup near the living player\n");
+          pickups->push_back(new RevivePickup(
+              gs->ship->position + Point((float)test_revive_drop_dist, 0)));
+          break;
+        }
+      }
+    }
+  }
+
   // Online host: poll the peer before the pause gate — their RESUME (or a
   // dead transport) must be noticed even while paused.
   if (net_mode_ == NetHost) {
@@ -6437,49 +6513,6 @@ void GLGame::tick(int delta) {
         NET_LOG("net: TEST dropping signal socket\n");
         net_signal_->close();          // local close emits no Closed event;
         net_signal_retry_ms_ = 700;    // a real drop arrives as Event::Closed
-      }
-    }
-
-    // Spectator e2e hook: drive a player fully out of lives on a timer so
-    // the spectate flow (camera hand-off + "SPECTATING") can be exercised
-    // headlessly. Lives are host-authoritative, so this is applied here and
-    // replicates to the client. "remote" (default) empties the joiner's
-    // lives -> the CLIENT spectates the host; "local" empties the host's.
-    // Inert without the env var.
-    static int test_kill_ms = -2;
-    static bool test_kill_remote = true;
-    if (test_kill_ms == -2) {
-      const char *e = getenv("NEWTONIA_NET_TEST_KILL_MS");
-      test_kill_ms = e ? atoi(e) : -1;
-      const char *who = getenv("NEWTONIA_NET_TEST_KILL_WHO");
-      test_kill_remote = !(who && std::string(who) == "local");
-    }
-    if (test_kill_ms > 0 && players->size() >= 2) {
-      test_kill_ms -= delta;
-      if (test_kill_ms <= 0) {
-        test_kill_ms = -1;
-        GLShip *victim = test_kill_remote ? players->back() : players->front();
-        NET_LOG("net: TEST forcing %s player out of lives\n",
-                test_kill_remote ? "remote" : "local");
-        victim->ship->lives = 0;
-        victim->ship->kill();
-      }
-    }
-    // Revive e2e hook: after N ms, apply the revive effect to whichever
-    // player is fully out — the pickup-collection payload without the
-    // blind-navigation problem of actually touching a pickup in a driver.
-    // Inert without the env var.
-    static int test_revive_ms = -2;
-    if (test_revive_ms == -2) {
-      const char *e = getenv("NEWTONIA_NET_TEST_REVIVE_MS");
-      test_revive_ms = e ? atoi(e) : -1;
-    }
-    if (test_revive_ms > 0 && players->size() >= 2) {
-      test_revive_ms -= delta;
-      if (test_revive_ms <= 0) {
-        test_revive_ms = -1;
-        NET_LOG("net: TEST applying revive\n");
-        revive_fallen_partner(NULL);
       }
     }
 
