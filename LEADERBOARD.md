@@ -84,10 +84,13 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
   sends, and the worker verifies it through the same per-platform modules
   (Steam ticket, Play Games auth code, Game Center signature — one shared
   throttle). Attested rows show the platform-verified name + badge;
-  Game Center attests account-only, so an iOS row shows the badge with the
-  claimed alias folded through `net_sanitize_name` but flagged unverified
-  (same rule as the online peer display — the ACCOUNT is still attested,
-  which is what admission requires). **Submissions REQUIRE attestation**
+  Game Center attests account-only, so an iOS row carries the claimed
+  alias folded through `net_sanitize_name`, flagged unverified — and the
+  board DISPLAYS it anyway (decided with Glenn 2026-08-01): the account
+  is attested for admission, the alias is sanitized, and the stakes are
+  display-only — the gamertag rule. This is deliberately looser than the
+  online-peer identity display, where a lobby stranger's claim still
+  never renders. **Submissions REQUIRE attestation**
   (decided with Glenn 2026-07-31): a submit whose credential is absent or
   fails verification is rejected (`{t:"error", reason:"unverified"}`) —
   every row on the board is tied to a real platform account, which is the

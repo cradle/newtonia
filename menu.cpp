@@ -300,13 +300,17 @@ void Menu::draw() {
       if (ri < (int)board_rows_.size()) {
         const NetBoard::Row &r = board_rows_[ri];
         // Name display follows the netplay identity rule: an ATTESTED
-        // name renders as-is (sanitized), an UNVERIFIED claim (e.g. an
-        // iOS alias Apple does not attest) is NOT shown as if it were —
-        // the account is still attested for admission, so it renders as
-        // the role-style "PLAYER" plus the platform badge. Same
-        // boundary net_sanitize_name enforces on the wire name.
+        // name renders as-is; an iOS row's alias is a CLAIM on an
+        // ATTESTED account (Apple has no server-side alias lookup) and
+        // renders too (decided with Glenn 2026-08-01): admission already
+        // required the real account, the alias passes the same
+        // net_sanitize_name boundary as every wire name, and the stakes
+        // are display-only — the gamertag rule, deliberately looser than
+        // the online-peer identity display (a lobby stranger's claim
+        // still never renders there). Only a nameless row falls back to
+        // the role label.
         std::string name = net_sanitize_name(r.name);
-        if (!r.verified || name.empty()) name = "PLAYER";
+        if (name.empty()) name = "PLAYER";
         if (!board_best_run_id_.empty() && r.run_id == board_best_run_id_)
           name += " - YOU";
         char rank_buf[12], score_buf[24], level_buf[16];
