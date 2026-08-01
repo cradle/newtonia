@@ -90,9 +90,12 @@ const CONN_IDLE_MS = 10 * 60 * 1000;
 // signal worker this keys on the client IP (IPv6 collapsed to /64), so a
 // large IPv6 allocation can still spread load — an accepted limitation
 // shared with signal, not a per-IP-defeatable gap.
-// SUBMIT_LIMIT is a dev/test var (wrangler dev --var SUBMIT_LIMIT:100) so
-// the protocol test's burst of submissions from one IP doesn't trip the
-// production window; never set in production.
+// SUBMIT_LIMIT and CONN_LIMIT are dev/test vars (wrangler dev
+// --var SUBMIT_LIMIT:250 --var CONN_LIMIT:500) so the protocol test's
+// burst of submissions/connections from one IP doesn't trip the
+// production windows; never set in production. The full-board qualify
+// test needs both: 100 fill rows at 2 submits per socket is 50 extra
+// connections.
 const LIMITS = {
   conn: { window_ms: 10 * 60 * 1000, limit: 60 },
   query: { window_ms: 10 * 60 * 1000, limit: 200 },
@@ -104,6 +107,8 @@ function limit_for(env, action) {
   const cfg = LIMITS[action] || LIMITS.conn;
   if (action === "submit" && env && Number(env.SUBMIT_LIMIT) > 0)
     return { ...cfg, limit: Number(env.SUBMIT_LIMIT) };
+  if (action === "conn" && env && Number(env.CONN_LIMIT) > 0)
+    return { ...cfg, limit: Number(env.CONN_LIMIT) };
   return cfg;
 }
 

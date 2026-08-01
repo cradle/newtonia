@@ -79,7 +79,7 @@ jobs:
       - name: Protocol test (wrangler dev --local)
         run: |
           npx wrangler@4 dev --local --port 8788 \
-            --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 \
+            --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:250 --var CONN_LIMIT:500 \
             --var CANONICAL_SEASONS_ONLY:0 > wrangler-dev.log 2>&1 &
           DEV_PID=$!
           for i in $(seq 1 60); do
