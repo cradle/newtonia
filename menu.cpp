@@ -310,7 +310,16 @@ void Menu::draw() {
         // still never renders there). Only a nameless row falls back to
         // the role label.
         std::string name = net_sanitize_name(r.name);
+        bool attested_name = r.verified && !name.empty();
         if (name.empty()) name = "PLAYER";
+        // Platform-attested names carry the verified tick inline (same
+        // forgery-proof glyph as the netplay identity UI — the char is
+        // stripped from every wire name, so only this append can draw
+        // it). iOS aliases render bare: the visible difference between a
+        // platform-vouched name and a claimed one. The platform BADGE
+        // needs no tick — admission requires attestation, so the badge's
+        // presence already is the guarantee.
+        if (attested_name) name += Typer::VERIFIED_TICK;
         if (!board_best_run_id_.empty() && r.run_id == board_best_run_id_)
           name += " - YOU";
         char rank_buf[12], score_buf[24], level_buf[16];
