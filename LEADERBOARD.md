@@ -556,6 +556,20 @@ account, attestation (a real, bannable platform account per row),
 submit rate limits, and watchability — a stolen top run is literally
 the original video under a different name, and one D1 delete fixes it.
 
+### L7 — potential: the RECORD REPLAYS trap — NOT locked in
+Root-caused in the field 2026-08-03: the leaderboard can only offer what
+was recorded, and recording is opt-in (OFF by default — a REPLAY.md ship
+posture driven by web's IndexedDB quota). A player with the option off
+gets NO game-over prompt and NO upload row, silently — the host of a
+co-op session sat mystified while the (recording-on) phone charted.
+Diagnosis checklist that found it: empty REPLAYS menu after a game =
+nothing recorded. Possible remedies, deliberately deferred (Glenn may
+deal with it in the future): default RECORD REPLAYS to ON for native
+builds (disk is cheap, files rotate; web keeps its quota-driven opt-in),
+and/or surface the dependency — "TURN ON RECORD REPLAYS TO ENTER
+SCORES" on the LEADERBOARD screen / game-over card when recording is
+off. Until then this is a known support question.
+
 ## Open questions
 
 None — every question raised during planning has been resolved into the
