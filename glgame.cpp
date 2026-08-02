@@ -6465,24 +6465,34 @@ void GLGame::tick(int delta) {
     // Drive a player fully out of lives on a timer so the revive/spectate
     // flows can be exercised headlessly. Online, lives are
     // host-authoritative and replicate; "remote"/default = players->back()
-    // (the joiner online, P2 offline), "local" = players->front().
+    // (the joiner online, P2 offline), "local" = players->front(), and
+    // "all" empties everyone — the deterministic game-over trigger the
+    // leaderboard-prompt drivers need (a spray-scored host with a nearly
+    // cleared field can survive blind crash loops indefinitely).
     static int test_kill_ms = -2;
-    static bool test_kill_remote = true;
+    static int test_kill_who = 1;  // 0 local, 1 remote, 2 all
     if (test_kill_ms == -2) {
       const char *e = getenv("NEWTONIA_NET_TEST_KILL_MS");
       test_kill_ms = e ? atoi(e) : -1;
       const char *who = getenv("NEWTONIA_NET_TEST_KILL_WHO");
-      test_kill_remote = !(who && std::string(who) == "local");
+      test_kill_who = !who ? 1
+                    : std::string(who) == "local" ? 0
+                    : std::string(who) == "all" ? 2 : 1;
     }
     if (test_kill_ms > 0) {
       test_kill_ms -= delta;
       if (test_kill_ms <= 0) {
         test_kill_ms = -1;
-        GLShip *victim = test_kill_remote ? players->back() : players->front();
-        NET_LOG("net: TEST forcing %s player out of lives\n",
-                test_kill_remote ? "remote" : "local");
-        victim->ship->lives = 0;
-        victim->ship->kill();
+        NET_LOG("net: TEST forcing %s out of lives\n",
+                test_kill_who == 2 ? "everyone"
+                                   : test_kill_who ? "remote player"
+                                                   : "local player");
+        for (auto *gs : *players) {
+          if (test_kill_who == 0 && gs != players->front()) continue;
+          if (test_kill_who == 1 && gs != players->back()) continue;
+          gs->ship->lives = 0;
+          gs->ship->kill();
+        }
       }
     }
     // Apply the revive effect to whichever player is fully out — the
