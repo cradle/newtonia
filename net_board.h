@@ -70,9 +70,11 @@ class NetBoard {
     };
     Kind kind;
     int place = 0;
-    int players = 0;    // Qualify/RankOf: the board the answer is for (echoed
-                        // by the worker), so a stale answer from a board the
-                        // client has since flipped away from can be dropped
+    int players = 0;    // Qualify/RankOf/Top: the board the answer is for
+                        // (echoed by the worker), so a stale answer from a
+                        // board the client has flipped away from can be
+                        // dropped (0 = an old worker that echoes nothing)
+    std::string season; // Top: the season the rows belong to (same purpose)
     long cutline = -1;
     bool would_place = false;
     std::string reason;
@@ -153,6 +155,13 @@ std::string net_board_verify_credential_peek();
 // field (row stored before the worker carried the columns) is unknown:
 // allowed, and playback's own decline stays the graceful fallback.
 bool net_board_replay_watchable(const NetBoard::Row &row);
+
+// Is this season key a CANONICAL (deliberate SEASON-file) stamp — s<N>?
+// Mirrors the worker's season_canonical: only these are listed by the
+// browser and admitted by production. Anything else is a dev/git-describe
+// bucket, which the SEASON row tags "- DEV" so a dev build's own season
+// can't read as live production data (field confusion, 2026-08-02).
+bool net_board_season_canonical(const std::string &season);
 
 // Strip a worker-controlled wire string to printable 7-bit ASCII, capped
 // at max_len. Every string off the board socket (err reasons, run_ids)

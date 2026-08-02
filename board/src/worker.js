@@ -8,9 +8,10 @@
 //   -> {t:"qualify", season, players, score}
 //   <- {t:"qualify", place, cutline, would_place}
 //   -> {t:"top", season, players, count}
-//   <- {t:"top", rows:[{rank,name,platform,verified,score,generation,
-//                       duration_ms,date,has_replay,run_id,
-//                       format,save_format}]}
+//   <- {t:"top", season, players,     (echoed: stale-answer drop, like
+//       rows:[{rank,name,platform,     qualify/rank-of)
+//              verified,score,generation,duration_ms,date,has_replay,
+//              run_id,format,save_format}]}
 //   -> {t:"seasons"}
 //   <- {t:"seasons", rows:[{season,newest,count}]}   canonical (s<N>)
 //                                          seasons only, newest-first, max 50
@@ -566,6 +567,13 @@ export class Session {
             .bind(season, players, count).all();
         this.send(ws, {
           t: "top",
+          // Echo the board identity (like qualify/rank-of): handlers can
+          // answer out of order, so a client flipping SOLO/CO-OP (or
+          // cycling seasons) fast needs to drop answers for a board it
+          // has moved away from — without this a stale answer landing
+          // last left the CO-OP screen showing SOLO's empty row set
+          // (field, 2026-08-03).
+          season, players,
           rows: (rows.results || []).map((r, i) => ({
             rank: i + 1, name: r.name, platform: Number(r.platform),
             verified: !!Number(r.verified), score: Number(r.score),

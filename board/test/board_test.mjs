@@ -82,6 +82,8 @@ async function submit(ws, bytes, name, platform = 2) {
   f = await ws._recv();
   check("top has both rows", f.t === "top" && f.rows.length === 2,
         JSON.stringify(f));
+  check("top echoes board identity", f.season === SEASON && f.players === 1,
+        JSON.stringify({season: f.season, players: f.players}));
   check("top ordered by score", f.rows[0].name === "BOB" &&
         f.rows[0].rank === 1 && f.rows[1].name === "ALICE");
   check("rows carry replays", f.rows.every((r) => r.has_replay === true));

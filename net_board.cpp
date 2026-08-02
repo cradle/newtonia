@@ -136,6 +136,14 @@ std::string net_board_verify_credential_peek() {
   return net_local_verify_credential_peek();
 }
 
+bool net_board_season_canonical(const std::string &season) {
+  // ^s[0-9]+$ — the worker's season_canonical, kept in lockstep.
+  if (season.size() < 2 || season[0] != 's') return false;
+  for (size_t i = 1; i < season.size(); i++)
+    if (season[i] < '0' || season[i] > '9') return false;
+  return true;
+}
+
 std::string net_board_sanitize(const std::string &s, size_t max_len) {
   // Worker-controlled strings (err reasons, run_id, and anything else off
   // the wire) reach SDL_Log and the Typer font. The board socket disables
@@ -333,6 +341,9 @@ bool parse_frame(const std::string &frame, NetBoard::Event &ev) {
   }
   if (t == "top") {
     ev.kind = NetBoard::Event::Top;
+    unsigned v = 0;
+    ev.players = json_uint_field(frame, "players", v) ? (int)v : 0;
+    json_field(frame, "season", ev.season);  // sanitized at the display edge
     ev.rows.clear();
     std::vector<std::string> objs;
     if (!split_rows(frame, objs)) return false;

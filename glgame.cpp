@@ -1756,6 +1756,7 @@ void GLGame::net_host_poll() {
         replay_record_polyline(Replay::FX_LANCE, remote,
                                remote->lance_pulses.back().points);
         resolve_lance_ship_hits(remote, remote->lance_pulses.back().points);
+        net_resolve_polyline_block(remote->lance_pulses.back().points);
       }
       continue;
     }
@@ -1768,6 +1769,10 @@ void GLGame::net_host_poll() {
       std::vector<Point> pts;
       if (!net_receive_shock_pulse(r, remote, &pts)) continue;
       replay_record_polyline(Replay::FX_SHOCK, remote, pts);
+      // The bolt's blocked endpoint (teleport evade / tough chip / ghost
+      // feedback) is the host's call — the client stopped its arc without
+      // claiming (offline-consistency, Glenn 2026-08-02).
+      net_resolve_polyline_block(pts);
       if (station != NULL && station->is_alive() &&
           shock_bolt_reaches(pts, station->position, station->radius)) {
         station->hit();
@@ -4885,10 +4890,27 @@ void GLGame::tick_net_client(int delta) {
             // struck entry. (Even if one slipped through, the host's MSG_HIT
             // handler refuses claims on invincible rocks.)
             if (a->alive) {
-              Ship::NetKillClaim c;
-              c.ast_id = a->net_id;
-              c.bullet_id = 0;
-              Ship::net_kill_claims.push_back(c);
+              // Only claim what our LOCAL rules say a shock hit KILLS — the
+              // bullet-claim principle. A survivor (ready-to-teleport,
+              // phased ghost, tough with health left) used to be claimed
+              // anyway, and the host's claim handler FORCES claims through
+              // (vulnerable/health=1/unphased), so a client's lightning
+              // one-shot rocks the host's own bolts could not (Glenn,
+              // 2026-08-02: make it offline-consistent). Now: stop the arc
+              // like offline collide_grid does; the real outcome — teleport
+              // evade, tough chip — is the host's, resolved from our
+              // MSG_SHOCK polyline endpoint, and arrives via the snapshot.
+              if ((a->teleporting && !a->teleport_vulnerable) ||
+                  (a->phasing && a->phased) ||
+                  (a->tough && a->health > 1)) {
+                sme->explode(a->position, a->velocity);  // spark feedback
+                bolt.stop();
+              } else {
+                Ship::NetKillClaim c;
+                c.ast_id = a->net_id;
+                c.bullet_id = 0;
+                Ship::net_kill_claims.push_back(c);
+              }
             }
             continue;
           }
@@ -6443,24 +6465,34 @@ void GLGame::tick(int delta) {
     // Drive a player fully out of lives on a timer so the revive/spectate
     // flows can be exercised headlessly. Online, lives are
     // host-authoritative and replicate; "remote"/default = players->back()
-    // (the joiner online, P2 offline), "local" = players->front().
+    // (the joiner online, P2 offline), "local" = players->front(), and
+    // "all" empties everyone — the deterministic game-over trigger the
+    // leaderboard-prompt drivers need (a spray-scored host with a nearly
+    // cleared field can survive blind crash loops indefinitely).
     static int test_kill_ms = -2;
-    static bool test_kill_remote = true;
+    static int test_kill_who = 1;  // 0 local, 1 remote, 2 all
     if (test_kill_ms == -2) {
       const char *e = getenv("NEWTONIA_NET_TEST_KILL_MS");
       test_kill_ms = e ? atoi(e) : -1;
       const char *who = getenv("NEWTONIA_NET_TEST_KILL_WHO");
-      test_kill_remote = !(who && std::string(who) == "local");
+      test_kill_who = !who ? 1
+                    : std::string(who) == "local" ? 0
+                    : std::string(who) == "all" ? 2 : 1;
     }
     if (test_kill_ms > 0) {
       test_kill_ms -= delta;
       if (test_kill_ms <= 0) {
         test_kill_ms = -1;
-        GLShip *victim = test_kill_remote ? players->back() : players->front();
-        NET_LOG("net: TEST forcing %s player out of lives\n",
-                test_kill_remote ? "remote" : "local");
-        victim->ship->lives = 0;
-        victim->ship->kill();
+        NET_LOG("net: TEST forcing %s out of lives\n",
+                test_kill_who == 2 ? "everyone"
+                                   : test_kill_who ? "remote player"
+                                                   : "local player");
+        for (auto *gs : *players) {
+          if (test_kill_who == 0 && gs != players->front()) continue;
+          if (test_kill_who == 1 && gs != players->back()) continue;
+          gs->ship->lives = 0;
+          gs->ship->kill();
+        }
       }
     }
     // Apply the revive effect to whichever player is fully out — the
@@ -8789,7 +8821,12 @@ void GLGame::touch_tap(float nx, float ny) {
       }
       // fall through to the exit band handling below (which leaves)
     } else {
-      board_yes_ = nx < 0.0f;
+      // Left half = YES, right half = NO — the New-game confirm's grammar
+      // (nx is normalized 0..1, so the half-split is 0.5f: this read
+      // `nx < 0.0f`, which is never true, and EVERY tap answered NO — the
+      // prompt just vanished with no upload; field, client on a touch
+      // device, 2026-08-02).
+      board_yes_ = nx < 0.5f;
       board_nav('\r');
       return;
     }
@@ -8873,6 +8910,45 @@ void GLGame::touch_tap(float nx, float ny) {
 // How hard a lance pulse hits the gen-20 station's hull, in bullet
 // equivalents (bullets and missiles do 1 each).
 static const int LANCE_STATION_DAMAGE = 3;
+
+// A client lance pulse or shock bolt ends where something blocked it, and
+// what happens to that blocker is HOST authority: the client deliberately
+// does not claim an asteroid its local rules say SURVIVES the hit
+// (claiming would kill it — the claim handler forces claims through), it
+// just stops its weapon there. But nothing host-side ever made the call —
+// asteroid kills arrive as MSG_HIT claims and the polyline resolutions
+// only covered ships/hulls — so a ready-to-teleport asteroid never evaded
+// a client lance (field, 2026-08-02), and a client shock could not chip a
+// tough rock. Find a SURVIVOR-type asteroid at the polyline's endpoint
+// and kill() it — kill() then does exactly what the offline hit does per
+// type: teleporting evades (debris + teleport_pending), tough chips one
+// health (crack feedback), a phased ghost / invincible rock just plays
+// its feedback. The guard list is strict so a plain killable rock that
+// happens to sit at a faded bolt's tip can never be destroyed by this —
+// kills only ever arrive as claims.
+void GLGame::net_resolve_polyline_block(const std::vector<Point> &pts) {
+  if (pts.size() < 2) return;
+  const Point &end = pts.back();
+  for (Asteroid *ast : *objects) {
+    if (!ast->is_alive()) continue;
+    bool survivor = ast->invincible ||
+                    (ast->teleporting && !ast->teleport_vulnerable) ||
+                    (ast->phasing && ast->phased) ||
+                    (ast->tough && ast->health > 1);
+    if (!survivor) continue;
+    // The endpoint sits ON the blocking surface (the march's segment_hit
+    // entry point / the bolt's stop() collision point), so centre distance
+    // ~= radius; small slack for the client/host position skew at 10 Hz.
+    // Wrapped-world translation first, like every other cross-copy test.
+    Point centre = ast->position.closest_to(end);
+    float dx = centre.x() - end.x(), dy = centre.y() - end.y();
+    float reach = ast->radius + 6.0f;
+    if (dx * dx + dy * dy <= reach * reach) {
+      ast->kill();  // evade / chip / feedback — never a death (see guard)
+      break;
+    }
+  }
+}
 
 void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts) {
   if (pts.size() < 2) return;
