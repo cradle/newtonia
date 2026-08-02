@@ -423,6 +423,15 @@ static void maybe_promote_best(const std::string &from, const Header &h) {
     std::string slot = best_path_for(h.player_count);
     Header hb;
     bool have_best = read_header(slot, hb);
+    // A scoreless run never promotes AT ALL — the worker refuses score-0
+    // submissions, so promoting one only arms a doomed upload prompt.
+    // This used to guard only the season-change arm; the !have_best arm
+    // let a clean 0-score run claim an EMPTY slot, which the per-player
+    // co-op claims made routine (an idle online partner finalizes a
+    // clean 0-score recording, and everyone's best_coop.nrp starts
+    // empty): the next game over then prompted for an upload that could
+    // only fail (review, 2026-08-02).
+    if (h.final_score == 0) return;
     // Best is SEASON-scoped (LEADERBOARD.md): a clean run whose season
     // differs from the stored best's promotes regardless of score — a
     // fresh season starts from a clean slate, and gating on the old
@@ -430,10 +439,7 @@ static void maybe_promote_best(const std::string &from, const Header &h) {
     // run from ever prompting for upload. best.nrp is therefore "your
     // best run of the season you last played"; the old season's uploaded
     // replay lives on on its board.
-    // (score > 0: a scoreless run shouldn't displace the old season's
-    // best — the worker refuses score-0 submissions anyway, so promoting
-    // one would only arm a doomed upload prompt.)
-    bool season_changed = have_best && h.final_score > 0 &&
+    bool season_changed = have_best &&
         memcmp(h.game_version, hb.game_version,
                Header::GAME_VERSION_LEN) != 0;
     if (!have_best || season_changed || h.final_score > hb.final_score) {
