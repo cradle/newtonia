@@ -1756,6 +1756,7 @@ void GLGame::net_host_poll() {
         replay_record_polyline(Replay::FX_LANCE, remote,
                                remote->lance_pulses.back().points);
         resolve_lance_ship_hits(remote, remote->lance_pulses.back().points);
+        net_resolve_lance_teleport_evade(remote->lance_pulses.back().points);
       }
       continue;
     }
@@ -8873,6 +8874,37 @@ void GLGame::touch_tap(float nx, float ny) {
 // How hard a lance pulse hits the gen-20 station's hull, in bullet
 // equivalents (bullets and missiles do 1 each).
 static const int LANCE_STATION_DAMAGE = 3;
+
+// A client lance pulse ends where something blocked it, and a teleporting
+// asteroid's evade is HOST authority: the client's march deliberately does
+// not claim a ready-to-teleport asteroid (ship.cpp — claiming would kill
+// it, and the evade outcome is the host's call). But nothing host-side
+// ever MADE that call — asteroid kills arrive as MSG_HIT claims and the
+// MSG_LANCE resolution only covered ships — so the pulse stopped and the
+// asteroid just sat there (field, 2026-08-02). Find a ready-to-teleport
+// asteroid at the polyline's endpoint and kill() it: on a teleporter that
+// IS the evade (debris burst + teleport_pending, never a death), exactly
+// what the offline march's kill() does, and the snapshot replicates the
+// jump to the client.
+void GLGame::net_resolve_lance_teleport_evade(const std::vector<Point> &pts) {
+  if (pts.size() < 2) return;
+  const Point &end = pts.back();
+  for (Asteroid *ast : *objects) {
+    if (!ast->is_alive() || !ast->teleporting || ast->teleport_vulnerable)
+      continue;
+    // The endpoint sits ON the blocking surface (the march's segment_hit
+    // entry point), so centre distance ~= radius; small slack for the
+    // client/host position skew at 10 Hz. Wrapped-world translation first,
+    // like every other cross-copy test.
+    Point centre = ast->position.closest_to(end);
+    float dx = centre.x() - end.x(), dy = centre.y() - end.y();
+    float reach = ast->radius + 6.0f;
+    if (dx * dx + dy * dy <= reach * reach) {
+      ast->kill();  // evade, not a death — teleporting && !vulnerable
+      break;
+    }
+  }
+}
 
 void GLGame::resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts) {
   if (pts.size() < 2) return;
