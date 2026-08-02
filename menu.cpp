@@ -258,22 +258,25 @@ void Menu::draw() {
     // options/replays screens (TapBand rule).
     int n = board_entry_count();
     // Column layout: Typer's advance is 2x the size, so with the row
-    // spanning the cursors (-623..609) the right half fits an 8-digit
-    // bare score (12: 95..287), "LEVEL 101" (10: 295..475) and an 8-char
-    // yy-mm-dd date (8: 476..604) or a NO REPLAY / OTHER VER tag
-    // (8: 460..604, right-flush like the date) without the columns
-    // running into each other (they did when score and level carried
-    // word labels at 13 — "SCORE 900LEVEL...").
-    const int CURSOR_L = -623, RANK_X = -560, NAME_X = -455, BADGE_X = -70,
-              SCORE_X = 95, LEVEL_X = 295, DATE_X = 476, TAG_X = 460,
+    // spanning the cursors (-623..609) the name column must absorb the
+    // WORST case — a 24-glyph attested name + tick + " - YOU" — without
+    // running into the badge (field, 2026-08-03: a 16-glyph Android name
+    // mashed straight into ANDROID). Name renders at size 10 and is
+    // TRUNCATED to the 25-glyph budget (suffixes charged first), ending
+    // by x=45; then badge (9: 60..186), score (12: 200..392, 8 digits),
+    // bare level (10: 400..460) and the yy-mm-dd date (8: 476..604) or
+    // right-flush NO REPLAY / OTHER VER tag (8: 460..604).
+    const int CURSOR_L = -623, RANK_X = -560, NAME_X = -455, BADGE_X = 60,
+              SCORE_X = 200, LEVEL_X = 400, DATE_X = 476, TAG_X = 460,
               CURSOR_R = 609;
+    const int NAME_GLYPHS = 25;  // name-column glyph budget at size 10
     // Column headers over the score table (structure the bare values lost
     // when the worded labels were dropped for column fit).
     if (!board_rows_.empty()) {
       Typer::draw(RANK_X, BOARD_Y_HEADER, "#", 9);
       Typer::draw(NAME_X, BOARD_Y_HEADER, "PLAYER", 9);
       Typer::draw(SCORE_X, BOARD_Y_HEADER, "SCORE", 9);
-      Typer::draw(LEVEL_X, BOARD_Y_HEADER, "LEVEL", 9);
+      Typer::draw(LEVEL_X, BOARD_Y_HEADER, "LVL", 9);  // LEVEL overran DATE
       if (!touch) Typer::draw(DATE_X, BOARD_Y_HEADER, "DATE", 9);
     }
     for (int e = 0; e < n; e++) {
@@ -320,6 +323,12 @@ void Menu::draw() {
         std::string name = net_sanitize_name(r.name);
         bool attested_name = r.verified && !name.empty();
         if (name.empty()) name = "PLAYER";
+        // Fit the glyph budget with the suffixes charged first: the tick
+        // and " - YOU" must always survive, so the NAME truncates.
+        bool you = !board_best_run_id_.empty() && r.run_id == board_best_run_id_;
+        size_t cap = (size_t)NAME_GLYPHS - (attested_name ? 1 : 0) -
+                     (you ? 6 : 0);
+        if (name.size() > cap) name.resize(cap);
         // Platform-attested names carry the verified tick inline (same
         // forgery-proof glyph as the netplay identity UI — the char is
         // stripped from every wire name, so only this append can draw
@@ -328,19 +337,18 @@ void Menu::draw() {
         // needs no tick — admission requires attestation, so the badge's
         // presence already is the guarantee.
         if (attested_name) name += Typer::VERIFIED_TICK;
-        if (!board_best_run_id_.empty() && r.run_id == board_best_run_id_)
-          name += " - YOU";
+        if (you) name += " - YOU";
         char rank_buf[12], score_buf[24], level_buf[16];
         snprintf(rank_buf, sizeof(rank_buf), "#%d", r.rank);
         snprintf(score_buf, sizeof(score_buf), "%u", r.score);
         snprintf(level_buf, sizeof(level_buf), "%u", r.generation + 1);
-        Typer::draw(RANK_X, y, rank_buf, 13);
-        Typer::draw(NAME_X, y, name.c_str(), 12);
+        Typer::draw(RANK_X, y, rank_buf, 11);
+        Typer::draw(NAME_X, y, name.c_str(), 10);
         // Platform badge (STEAM/WEB/IOS/ANDROID) so rows from different
         // platforms — and the verified vs claimed distinction above — are
         // visible, not collapsed into an anonymous name.
         const char *badge = net_platform_label(r.platform);
-        if (badge && badge[0] && !touch) Typer::draw(BADGE_X, y, badge, 10);
+        if (badge && badge[0] && !touch) Typer::draw(BADGE_X, y, badge, 9);
         Typer::draw(SCORE_X, y, score_buf, 12);
         Typer::draw(LEVEL_X, y, level_buf, 10);
         if (!touch) {
@@ -410,7 +418,18 @@ void Menu::draw() {
     const NetBoard::Row *sel_row =
         (sel_ri >= 0 && sel_ri < (int)board_rows_.size())
             ? &board_rows_[sel_ri] : nullptr;
-    if (board_error_) {
+    if (board_fetching_) {
+      // Replay download in flight: the confirm looked dead until playback
+      // opened (field, 2026-08-03) — show live progress like the upload
+      // row does (transfer_pct is the download's once fetch-ok arrives).
+      int pct = board_net_ ? board_net_->transfer_pct() : -1;
+      char dl[32];
+      if (pct >= 0)
+        snprintf(dl, sizeof(dl), "DOWNLOADING %d%%", pct);
+      else
+        snprintf(dl, sizeof(dl), "DOWNLOADING");
+      Typer::draw_centered(0, fy, dl, 14);
+    } else if (board_error_) {
       Typer::draw_centered(0, fy, "LEADERBOARD UNAVAILABLE", 14);
     } else if (board_loading_) {
       if ((currentTime / 500) % 2)
