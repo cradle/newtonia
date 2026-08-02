@@ -282,11 +282,19 @@ void Menu::draw() {
         snprintf(text, sizeof(text), "BOARD: %s",
                  board_players_ == 1 ? "SOLO" : "CO-OP");
       } else if (e == 1) {
-        // The browsed season; tag which one is this build's ("LIVE") when
-        // the browser has somewhere else to go.
+        // The browsed season. A non-canonical season is a dev/git-describe
+        // bucket (locally seeded — production never lists or admits one);
+        // tag it DEV so it can't read as live production data. Canonical:
+        // tag this build's own ("LIVE") when the browser has somewhere
+        // else to go.
         bool own = board_season_ == board_build_season_;
+        const char *tag = "";
+        if (!net_board_season_canonical(board_season_))
+          tag = " - DEV";
+        else if (own && board_seasons_.size() > 1)
+          tag = " - LIVE";
         snprintf(text, sizeof(text), "SEASON: %s%s", board_season_.c_str(),
-                 (own && board_seasons_.size() > 1) ? " - LIVE" : "");
+                 tag);
       }
       int y = board_entry_y(e);
       if (y == BOARD_Y_OFFSCREEN) continue;  // scrolled out of the window

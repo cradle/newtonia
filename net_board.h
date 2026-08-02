@@ -154,6 +154,13 @@ std::string net_board_verify_credential_peek();
 // allowed, and playback's own decline stays the graceful fallback.
 bool net_board_replay_watchable(const NetBoard::Row &row);
 
+// Is this season key a CANONICAL (deliberate SEASON-file) stamp — s<N>?
+// Mirrors the worker's season_canonical: only these are listed by the
+// browser and admitted by production. Anything else is a dev/git-describe
+// bucket, which the SEASON row tags "- DEV" so a dev build's own season
+// can't read as live production data (field confusion, 2026-08-02).
+bool net_board_season_canonical(const std::string &season);
+
 // Strip a worker-controlled wire string to printable 7-bit ASCII, capped
 // at max_len. Every string off the board socket (err reasons, run_ids)
 // that reaches a log or the font must pass through here first — the socket
