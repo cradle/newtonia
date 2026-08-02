@@ -563,17 +563,20 @@ void Menu::draw() {
 
       if (touch) {
         int cy = touch_opt_center(row, n);
-        // Name left, value right. Name font sized so the longest label
-        // ("RECORD REPLAYS", ahead of "SENSITIVITY"/"STAR DENSITY") still
-        // clears the value column — check this pairing when adding a row.
-        Typer::draw(-315, cy, r.name, 16);               // name, left-aligned
-        Typer::draw_centered(205, cy, lbl[cur_idx], 18); // value
+        // Name left, value right. Name font sized so the LONGEST label fits
+        // clear of the value column: Typer's advance is 2x the size, so at
+        // size 13 "LEADERBOARD PROMPT" (18 glyphs) spans -360..+108, clear
+        // of the value centred at 320 (field, 2026-08-03: it ran straight
+        // over ON/OFF at size 16 from -315). Recheck this pairing — name
+        // length x 26 vs the value's left edge — whenever a row is added.
+        Typer::draw(-360, cy, r.name, 13);               // name, left-aligned
+        Typer::draw_centered(320, cy, lbl[cur_idx], 18); // value
         // Which WAY the env forces it, after the stored value: "OFF ENV ON"
         // reads as "you set OFF, the environment is forcing ON". Smaller
         // than the value so it clears the name column — at value size it
         // would run into "RECORD REPLAYS".
         if (rec_override >= 0)
-          Typer::draw(205 + (int)strlen(lbl[cur_idx]) * 18 + 14, cy,
+          Typer::draw(320 + (int)strlen(lbl[cur_idx]) * 18 + 14, cy,
                       rec_override == 1 ? "ENV ON" : "ENV OFF", 11);
         continue;
       }
