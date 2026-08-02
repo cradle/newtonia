@@ -70,9 +70,11 @@ class NetBoard {
     };
     Kind kind;
     int place = 0;
-    int players = 0;    // Qualify/RankOf: the board the answer is for (echoed
-                        // by the worker), so a stale answer from a board the
-                        // client has since flipped away from can be dropped
+    int players = 0;    // Qualify/RankOf/Top: the board the answer is for
+                        // (echoed by the worker), so a stale answer from a
+                        // board the client has flipped away from can be
+                        // dropped (0 = an old worker that echoes nothing)
+    std::string season; // Top: the season the rows belong to (same purpose)
     long cutline = -1;
     bool would_place = false;
     std::string reason;

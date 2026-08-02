@@ -341,6 +341,9 @@ bool parse_frame(const std::string &frame, NetBoard::Event &ev) {
   }
   if (t == "top") {
     ev.kind = NetBoard::Event::Top;
+    unsigned v = 0;
+    ev.players = json_uint_field(frame, "players", v) ? (int)v : 0;
+    json_field(frame, "season", ev.season);  // sanitized at the display edge
     ev.rows.clear();
     std::vector<std::string> objs;
     if (!split_rows(frame, objs)) return false;

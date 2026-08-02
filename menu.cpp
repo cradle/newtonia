@@ -1598,6 +1598,15 @@ void Menu::board_poll() {
   while (board_net_->poll(ev)) {
     switch (ev.kind) {
       case NetBoard::Event::Top:
+        // Drop an answer for a board/season we have since flipped away
+        // from (echoed by the worker; 0/"" = an old worker that echoes
+        // nothing). Handlers answer out of order under load, so rapid
+        // SOLO/CO-OP flips could land the OTHER board's answer last —
+        // the CO-OP screen sat on SOLO's empty rows (field, 2026-08-03).
+        if (ev.players != 0 && ev.players != board_players_) break;
+        if (!ev.season.empty() &&
+            net_board_sanitize(ev.season, 22) != board_season_)
+          break;
         board_rows_ = ev.rows;
         board_loading_ = false;
         if (board_sel_ >= board_entry_count())
