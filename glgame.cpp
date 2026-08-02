@@ -1756,7 +1756,7 @@ void GLGame::net_host_poll() {
         replay_record_polyline(Replay::FX_LANCE, remote,
                                remote->lance_pulses.back().points);
         resolve_lance_ship_hits(remote, remote->lance_pulses.back().points);
-        net_resolve_lance_teleport_evade(remote->lance_pulses.back().points);
+        net_resolve_polyline_block(remote->lance_pulses.back().points);
       }
       continue;
     }
@@ -1769,6 +1769,10 @@ void GLGame::net_host_poll() {
       std::vector<Point> pts;
       if (!net_receive_shock_pulse(r, remote, &pts)) continue;
       replay_record_polyline(Replay::FX_SHOCK, remote, pts);
+      // The bolt's blocked endpoint (teleport evade / tough chip / ghost
+      // feedback) is the host's call — the client stopped its arc without
+      // claiming (offline-consistency, Glenn 2026-08-02).
+      net_resolve_polyline_block(pts);
       if (station != NULL && station->is_alive() &&
           shock_bolt_reaches(pts, station->position, station->radius)) {
         station->hit();
@@ -4886,10 +4890,27 @@ void GLGame::tick_net_client(int delta) {
             // struck entry. (Even if one slipped through, the host's MSG_HIT
             // handler refuses claims on invincible rocks.)
             if (a->alive) {
-              Ship::NetKillClaim c;
-              c.ast_id = a->net_id;
-              c.bullet_id = 0;
-              Ship::net_kill_claims.push_back(c);
+              // Only claim what our LOCAL rules say a shock hit KILLS — the
+              // bullet-claim principle. A survivor (ready-to-teleport,
+              // phased ghost, tough with health left) used to be claimed
+              // anyway, and the host's claim handler FORCES claims through
+              // (vulnerable/health=1/unphased), so a client's lightning
+              // one-shot rocks the host's own bolts could not (Glenn,
+              // 2026-08-02: make it offline-consistent). Now: stop the arc
+              // like offline collide_grid does; the real outcome — teleport
+              // evade, tough chip — is the host's, resolved from our
+              // MSG_SHOCK polyline endpoint, and arrives via the snapshot.
+              if ((a->teleporting && !a->teleport_vulnerable) ||
+                  (a->phasing && a->phased) ||
+                  (a->tough && a->health > 1)) {
+                sme->explode(a->position, a->velocity);  // spark feedback
+                bolt.stop();
+              } else {
+                Ship::NetKillClaim c;
+                c.ast_id = a->net_id;
+                c.bullet_id = 0;
+                Ship::net_kill_claims.push_back(c);
+              }
             }
             continue;
           }
@@ -8880,32 +8901,40 @@ void GLGame::touch_tap(float nx, float ny) {
 // equivalents (bullets and missiles do 1 each).
 static const int LANCE_STATION_DAMAGE = 3;
 
-// A client lance pulse ends where something blocked it, and a teleporting
-// asteroid's evade is HOST authority: the client's march deliberately does
-// not claim a ready-to-teleport asteroid (ship.cpp — claiming would kill
-// it, and the evade outcome is the host's call). But nothing host-side
-// ever MADE that call — asteroid kills arrive as MSG_HIT claims and the
-// MSG_LANCE resolution only covered ships — so the pulse stopped and the
-// asteroid just sat there (field, 2026-08-02). Find a ready-to-teleport
-// asteroid at the polyline's endpoint and kill() it: on a teleporter that
-// IS the evade (debris burst + teleport_pending, never a death), exactly
-// what the offline march's kill() does, and the snapshot replicates the
-// jump to the client.
-void GLGame::net_resolve_lance_teleport_evade(const std::vector<Point> &pts) {
+// A client lance pulse or shock bolt ends where something blocked it, and
+// what happens to that blocker is HOST authority: the client deliberately
+// does not claim an asteroid its local rules say SURVIVES the hit
+// (claiming would kill it — the claim handler forces claims through), it
+// just stops its weapon there. But nothing host-side ever made the call —
+// asteroid kills arrive as MSG_HIT claims and the polyline resolutions
+// only covered ships/hulls — so a ready-to-teleport asteroid never evaded
+// a client lance (field, 2026-08-02), and a client shock could not chip a
+// tough rock. Find a SURVIVOR-type asteroid at the polyline's endpoint
+// and kill() it — kill() then does exactly what the offline hit does per
+// type: teleporting evades (debris + teleport_pending), tough chips one
+// health (crack feedback), a phased ghost / invincible rock just plays
+// its feedback. The guard list is strict so a plain killable rock that
+// happens to sit at a faded bolt's tip can never be destroyed by this —
+// kills only ever arrive as claims.
+void GLGame::net_resolve_polyline_block(const std::vector<Point> &pts) {
   if (pts.size() < 2) return;
   const Point &end = pts.back();
   for (Asteroid *ast : *objects) {
-    if (!ast->is_alive() || !ast->teleporting || ast->teleport_vulnerable)
-      continue;
+    if (!ast->is_alive()) continue;
+    bool survivor = ast->invincible ||
+                    (ast->teleporting && !ast->teleport_vulnerable) ||
+                    (ast->phasing && ast->phased) ||
+                    (ast->tough && ast->health > 1);
+    if (!survivor) continue;
     // The endpoint sits ON the blocking surface (the march's segment_hit
-    // entry point), so centre distance ~= radius; small slack for the
-    // client/host position skew at 10 Hz. Wrapped-world translation first,
-    // like every other cross-copy test.
+    // entry point / the bolt's stop() collision point), so centre distance
+    // ~= radius; small slack for the client/host position skew at 10 Hz.
+    // Wrapped-world translation first, like every other cross-copy test.
     Point centre = ast->position.closest_to(end);
     float dx = centre.x() - end.x(), dy = centre.y() - end.y();
     float reach = ast->radius + 6.0f;
     if (dx * dx + dy * dy <= reach * reach) {
-      ast->kill();  // evade, not a death — teleporting && !vulnerable
+      ast->kill();  // evade / chip / feedback — never a death (see guard)
       break;
     }
   }

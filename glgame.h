@@ -236,10 +236,12 @@ private:
   // IS the first reflection); the partner needs friendly_fire; enemies and
   // the mini-station die; the station hull takes multi-hit damage.
   void resolve_lance_ship_hits(Ship *firer, const std::vector<Point> &pts);
-  // Host-side teleport evade for a CLIENT lance (MSG_LANCE): the client's
-  // march deliberately doesn't claim a ready-to-teleport asteroid ("the
-  // host's call"), so the host must make that call from the polyline.
-  void net_resolve_lance_teleport_evade(const std::vector<Point> &pts);
+  // Host-side resolution of a CLIENT weapon polyline's blocked endpoint
+  // (MSG_LANCE / MSG_SHOCK): the client stops its lance/shock at an
+  // asteroid its local rules say survives, without claiming — the actual
+  // outcome (teleport evade, tough chip, ghost/invincible feedback) is
+  // the host's call, made here via the survivor's own kill().
+  void net_resolve_polyline_block(const std::vector<Point> &pts);
   void draw_map() const;
   // cull_r > 0 skips asteroids further than cull_r + radius from
   // (cam_x, cam_y) — the camera centre in the calling tile's object space —
