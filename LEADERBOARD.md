@@ -518,6 +518,44 @@ R5's input-log re-simulation, arriving through the reserved `verify`
 envelope field. Nothing built until forged submissions actually appear;
 the social deterrent (every row is watchable) is the v1 defense.
 
+### L6 — potential: run witnessing (replay-theft binding) — NOT locked in
+Sketched with Glenn 2026-08-02, deliberately unbuilt. The threat: replays
+are public and nothing in a file proves WHO played it, so an attacker
+with a real attested account can hex-edit a downloaded (or copied)
+replay's run_id and submit a score they didn't earn.
+
+Pure cryptographic binding is impossible from this trust model: the
+client is untrusted (anything it signs over its own file it can sign
+over a stolen one), and no platform attestation primitive (Steam ticket,
+Play Games code, Game Center signature) will sign arbitrary application
+data — they prove account PRESENCE, never authorship of bytes.
+
+The practical near-equivalent is TEMPORAL WITNESSING — shift the proof
+from "who signed the file" to "whose account the worker watched this run
+being created by":
+- at game start (or first checkpoint) the client REGISTERS the run_id
+  with the worker under its attested account;
+- during play it sends a rolling hash of the recording-so-far (one tiny
+  frame every few minutes);
+- at submission the worker requires the file to match the witness chain:
+  registered by the submitting account, checkpoint hashes consistent
+  with prefixes of the submitted bytes, registration older than the
+  run's duration_ms.
+A thief cannot retro-register (timestamps predate them), cannot have
+produced the incremental hashes during the original play, and editing
+run_id breaks the chain — defeating both download-resubmission and
+copied-save-dir theft with no client-side crypto to forge.
+
+Costs that keep this OUT of scope until score theft is a live problem:
+runs played offline can never be witnessed (either they cannot chart or
+a lower-trust tier appears), every run adds worker writes (free-tier
+budget + rate-limit design), and it is a real protocol addition on both
+sides. The current deterrent stack is proportionate for now: run_id
+dedupe (cross-account resubmission cleanly refused), one row per
+account, attestation (a real, bannable platform account per row),
+submit rate limits, and watchability — a stolen top run is literally
+the original video under a different name, and one D1 delete fixes it.
+
 ## Open questions
 
 None — every question raised during planning has been resolved into the
