@@ -8790,7 +8790,12 @@ void GLGame::touch_tap(float nx, float ny) {
       }
       // fall through to the exit band handling below (which leaves)
     } else {
-      board_yes_ = nx < 0.0f;
+      // Left half = YES, right half = NO — the New-game confirm's grammar
+      // (nx is normalized 0..1, so the half-split is 0.5f: this read
+      // `nx < 0.0f`, which is never true, and EVERY tap answered NO — the
+      // prompt just vanished with no upload; field, client on a touch
+      // device, 2026-08-02).
+      board_yes_ = nx < 0.5f;
       board_nav('\r');
       return;
     }
