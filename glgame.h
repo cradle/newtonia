@@ -701,7 +701,10 @@ private:
   // would-place answer shows the UPLOAD TO LEADERBOARD? prompt on the GAME
   // OVER card. The card must never block on the network: no answer within
   // BOARD_QUALIFY_TIMEOUT_MS = no prompt, and leaving to the menu abandons
-  // everything harmlessly (~GLGame deletes board_).
+  // everything harmlessly (~GLGame deletes board_). A connection that drops
+  // while qualifying is silently reconnected ONCE (board_q_retried_) — a
+  // phone's first WS connect after a radio wake routinely fails or crawls,
+  // which field-tested as "no prompt on the first game, fine on the second".
   enum BoardPhase {
     BoardOff,         // nothing armed (the usual game over)
     BoardQualifying,  // qualify sent, waiting (nothing drawn yet)
@@ -710,7 +713,11 @@ private:
     BoardPlaced,      // done: "UPLOADED - RANK #N"
     BoardFailed,      // done: "UPLOAD FAILED" (+ short reason)
   };
-  static const int BOARD_QUALIFY_TIMEOUT_MS = 4000;
+  // Generous: the card sits until dismissed anyway, a late prompt is safe
+  // (BOARD_PROMPT_ARM_MS anchors on when the PROMPT appears), and a cold
+  // mobile connection — DNS + TLS + WS + a Durable Object spin-up on a
+  // just-woken radio — can take well over the old 4 s.
+  static const int BOARD_QUALIFY_TIMEOUT_MS = 15000;
   // The verification credential is minted asynchronously and re-minted per
   // read (steam/play_games/game_center identity backends), so the value
   // handed to a submit can be empty (mint not landed), stale (Game Center's
@@ -727,9 +734,9 @@ private:
   // budget, so it can't loop.
   static const int BOARD_UPLOAD_RETRY_TIMEOUT_MS = 6000;
   // A freshly-shown prompt can't be answered for this long — the qualify
-  // answer may arrive AFTER the card's 3 s game-over grace (the deadline
-  // is 4 s), so a keypress already in flight to leave must not land on the
-  // just-appeared YES-default prompt.
+  // answer can arrive AFTER the card's 3 s game-over grace (its deadline
+  // runs 15 s), so a keypress already in flight to leave must not land on
+  // the just-appeared YES-default prompt.
   static const int BOARD_PROMPT_ARM_MS = 700;
   void board_maybe_start();      // at game-over finalize (after replay_finish)
   void board_tick();             // poll events + timeout (game_over only)
@@ -747,6 +754,11 @@ private:
   int board_deadline_ = 0;       // qualify timeout, current_time domain
   int board_prompt_shown_ = 0;   // current_time when BoardPrompt began
   bool board_up_retried_ = false; // an unverified upload has been retried once
+  bool board_q_retried_ = false;  // the qualify connection was retried once
+  // The qualify's board identity, kept for the reconnect's re-send (the
+  // header was read once in board_maybe_start; score is board_score_).
+  std::string board_q_season_;
+  int board_q_players_ = 0;
   // Which best slot the finished run promoted (solo best.nrp or co-op
   // best_coop.nrp — best is per-board); what qualify reads and submit sends.
   std::string board_up_path_;

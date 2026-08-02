@@ -3346,6 +3346,9 @@ void GLGame::board_maybe_start() {
                      strnlen(h.game_version, sizeof(h.game_version)));
   board_->qualify(season, h.player_count, h.final_score);
   board_score_ = h.final_score;
+  board_q_season_ = season;
+  board_q_players_ = h.player_count;
+  board_q_retried_ = false;
   board_phase_ = BoardQualifying;
   board_deadline_ = current_time + BOARD_QUALIFY_TIMEOUT_MS;
   SDL_Log("board: qualify season=%s players=%u score=%u", season.c_str(),
@@ -3430,6 +3433,24 @@ void GLGame::board_tick() {
       board_ = nullptr;
       return;
     } else if (ev.kind == NetBoard::Event::Closed) {
+      // A drop while still qualifying gets ONE silent reconnect (a phone's
+      // first connection after a radio wake routinely fails); the qualify
+      // frame re-queues until the new socket opens, and the original
+      // deadline still bounds the whole affair.
+      if (board_phase_ == BoardQualifying && !board_q_retried_ &&
+          current_time < board_deadline_) {
+        board_q_retried_ = true;
+        delete board_;
+        board_ = NetBoard::create();
+        if (board_) {
+          SDL_Log("board: connection lost while qualifying - retrying");
+          board_->connect(net_board_url());
+          board_->qualify(board_q_season_, board_q_players_, board_score_);
+          return;  // fresh socket; poll it next tick
+        }
+        board_phase_ = BoardOff;
+        return;
+      }
       SDL_Log("board: connection closed");
       if (board_phase_ == BoardUploading) {
         board_phase_ = BoardFailed;
@@ -3454,7 +3475,7 @@ void GLGame::board_tick() {
 bool GLGame::board_nav(char key) {
   if (board_phase_ == BoardPrompt) {
     // The prompt can appear AFTER the card's 3 s game-over grace (the
-    // qualify deadline is 4 s), so anchor the accidental-input guard on
+    // qualify deadline runs 15 s), so anchor the accidental-input guard on
     // when the PROMPT appeared, not on game over: a keypress already in
     // flight to leave must not answer the just-shown YES-default prompt.
     // Swallowed, not passed on — the exit paths behind us are equally
