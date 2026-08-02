@@ -72,4 +72,5 @@ ios/build/
 # the copy into web/dist/play, and Pages publishes web/dist. Tracking it
 # only let it drift from the source, which it did.
 web/main.js
-board/.wrangler/
+board/.wrangler*/
+signal/.wrangler*/

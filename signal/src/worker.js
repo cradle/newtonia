@@ -605,9 +605,12 @@ export class Room {
                  msg.cred.length <= MAX_IDENTITY_CRED ? msg.cred : "";
 
     let attested = { platform, name, verified: false };
-    if (this.env && this.env.FAKE_VERIFY) {
+    if (this.env && this.env.FAKE_VERIFY === "1") {
       // Dev/e2e shortcut (wrangler dev only): attest the claim without
-      // contacting any platform backend. NEVER set in production.
+      // contacting any platform backend. NEVER set in production. Compared
+      // to "1" exactly (the value every harness passes): a plain truthiness
+      // test made FAKE_VERIFY=0 ENABLE the fake — the footgun class where
+      // setting a flag "off" turns it on.
       attested = { platform, name, verified: true };
     } else if (cred) {
       // Per-platform verifier: each proves the account against the platform's

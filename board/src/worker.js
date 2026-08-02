@@ -193,13 +193,15 @@ function with_timeout(p, platform) {
 export async function verify_identity(env, platform, name, cred) {
   const claimed = strip_name(name);
   if (typeof cred !== "string" || !cred || cred.length > MAX_CRED) return null;
-  if (env.FAKE_VERIFY) {
+  if (env.FAKE_VERIFY === "1") {
     // Dev/e2e shortcut (wrangler dev only): attest the claim without a
     // platform backend — but still REQUIRE a non-empty credential (above),
     // like every real backend, so the client's empty-at-submit case tests
     // true. The cred is logged so the retry e2e can assert the resubmit
     // carried a genuinely different one. The account derives from the name
     // so two test "players" stay distinct. NEVER set in production.
+    // Compared to "1" exactly (the value every harness passes): a plain
+    // truthiness test made FAKE_VERIFY=0 ENABLE the fake.
     console.log(`fake-verify: cred=${cred.slice(0, 64)}`);
     return { platform, name: claimed, verified: true,
              account: `fake:${claimed || "anon"}` };
@@ -607,8 +609,10 @@ export class Session {
       if (this.upload) return this.fail(ws, "bad-frame");
       if (++this.submits > CONN_MAX_SUBMITS) return this.fail(ws, "rate-limited");
       const size = Number(msg.size) >>> 0;
-      if (size < MIN_SUBMISSION_BYTES || size > MAX_SUBMISSION_BYTES)
-        return this.err(ws, "too-large");
+      // Distinct reasons (matching validate.js's blob-side pair): a
+      // below-minimum announcement used to answer "too-large".
+      if (size < MIN_SUBMISSION_BYTES) return this.err(ws, "too-small");
+      if (size > MAX_SUBMISSION_BYTES) return this.err(ws, "too-large");
       // A refusal, not a close (like the query budget above): closing
       // here made the client render the whole screen as LEADERBOARD
       // UNAVAILABLE instead of the upload row's TRY LATER (field report
@@ -631,7 +635,7 @@ export class Session {
       // (credential-lifecycle hardening) can be exercised without a real
       // single-use collision. The retry (2nd submit, same socket) passes.
       // Never set in production.
-      if (this.env.REJECT_FIRST_VERIFY && !this.forced_reject_once_) {
+      if (this.env.REJECT_FIRST_VERIFY === "1" && !this.forced_reject_once_) {
         this.forced_reject_once_ = true;
         console.log("submit refused: REJECT_FIRST_VERIFY (dev retry test)");
         return this.err(ws, "unverified");
@@ -655,6 +659,13 @@ export class Session {
 
     if (msg.t === "fetch") {
       if (++this.fetches > CONN_MAX_FETCHES) return this.fail(ws, "rate-limited");
+      // Per-IP aggregate fetch budget (LIMITS.fetch): the per-connection
+      // cap above resets on reconnect, so without this gate connection
+      // churn multiplied R2 reads to conn-limit x CONN_MAX_FETCHES per
+      // window — the config existed but no code consulted it (review,
+      // 2026-08-01). A refusal is a non-fatal err like the query budget's.
+      if (!(await within_limit(this.env, this.ip, "fetch")))
+        return this.err(ws, "rate-limited");
       const season = typeof msg.season === "string" ? msg.season : "";
       const run_id = typeof msg.run_id === "string" ? msg.run_id : "";
       if (!season_ok(season) || !/^[0-9]{1,20}$/.test(run_id))

@@ -163,6 +163,16 @@ async function submit(ws, bytes, name, platform = 2) {
   f = await ws4._recv();
   check("oversize announcement refused", f.t === "err" &&
         f.reason === "too-large", JSON.stringify(f));
+  {
+    // Own socket so 9b's per-connection budget arithmetic stays intact.
+    const wsU = await connect();
+    send(wsU, { t: "submit", size: 10, platform: 2,
+                name: "MALLORY", cred: "x" });
+    f = await wsU._recv();
+    check("undersize announcement refused", f.t === "err" &&
+          f.reason === "too-small", JSON.stringify(f));
+    wsU.close();
+  }
 
   // 9b. Per-connection submit budget: every submit announcement consumes
   // a slot (noKey, then the oversize refusal), so the 3rd on this socket
