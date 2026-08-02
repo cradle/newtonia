@@ -3052,9 +3052,20 @@ void GLGame::replay_start() {
             override_ == 1 ? "ENABLE" : "DISABLE", enabled ? "ON" : "OFF");
   if (!enabled) return;
   if (net_mode_ == NetHost || net_mode_ == NetClient) {
+    // The CLIENT records under a DERIVED id (bitwise NOT of the shared
+    // run_id_): both peers record the same session, but online co-op
+    // board entries are PERSONAL claims — two accounts, two rows
+    // (LEADERBOARD.md, decided 2026-08-02) — and the worker keys rows by
+    // run_id, so the two files must not share one. The derivation is
+    // deterministic (a rejoin re-receives the host's run_id and derives
+    // the same value, so resume still matches) and collision-safe
+    // against random 64-bit ids. run_id_ itself — saves, snapshots, the
+    // wire — stays the host's everywhere else.
+    uint64_t rec_id = net_mode_ == NetClient ? ~run_id_ : run_id_;
+    if (rec_id == 0) rec_id = 1;  // ~x is 0 only for x = UINT64_MAX
     Replay::Header h;
     bool resumed = Replay::read_header(Replay::online_path(), h) &&
-                   run_id_ != 0 && h.run_id == run_id_ &&
+                   run_id_ != 0 && h.run_id == rec_id &&
                    // Same version fence as the offline resume below.
                    h.save_version == Save::GameState::VERSION &&
                    h.format_version == Replay::Header::FORMAT_VERSION;
@@ -3063,7 +3074,7 @@ void GLGame::replay_start() {
     // rotation check). Ended runs were checked at finalize — repeating
     // the check is an idempotent no-op.
     if (!resumed) Replay::best_check_online();
-    replay_ = new Replay::Recorder(run_id_, (uint8_t)players->size(),
+    replay_ = new Replay::Recorder(rec_id, (uint8_t)players->size(),
                                    resumed, Replay::online_path());
     if (!replay_->ok()) {
       delete replay_;
@@ -3270,10 +3281,23 @@ void GLGame::replay_finish(bool ended) {
     net_build_keyframe_payload(payload);
     replay_->record_keyframe(payload.data());
   }
+  // The stamped score is what the leaderboard charts (LEADERBOARD.md).
+  // ONLINE each side stamps its OWN pilot's score: co-op entries are
+  // personal claims — one row per account, the partner's recording
+  // carries theirs (decided 2026-08-02, replacing the shared max that
+  // made the second submission a duplicate). OFFLINE keeps the best
+  // ship's score — local 2P is one account claiming the run.
   uint32_t score = 0;
-  for (auto *gs : *players) {
-    int s = gs->ship->score;
-    if (s > 0 && (uint32_t)s > score) score = (uint32_t)s;
+  if (net_mode_ == NetHost || net_mode_ == NetClient) {
+    if (GLShip *me = local_player()) {
+      int s = me->ship->score;
+      if (s > 0) score = (uint32_t)s;
+    }
+  } else {
+    for (auto *gs : *players) {
+      int s = gs->ship->score;
+      if (s > 0 && (uint32_t)s > score) score = (uint32_t)s;
+    }
   }
   replay_->finalize(score, (uint32_t)(generation < 0 ? 0 : generation),
                     Achievements::unlocks_suppressed(), ended,

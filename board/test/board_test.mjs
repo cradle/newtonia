@@ -239,6 +239,17 @@ async function submit(ws, bytes, name, platform = 2) {
   check("still one ALICE row after supersede", aliceRows.length === 1 &&
         aliceRows[0].score === 1200, JSON.stringify(f.rows));
 
+  // 14b. A DIFFERENT account submitting the same run_id — even at a higher
+  // score (a copied replay with a hex-edited header, or an online peer's
+  // pre-split recording) — is refused cleanly, not left to die on the
+  // primary key as "internal". Online co-op peers post-split never hit
+  // this: each side records under its own derived run_id.
+  const runEve = build_nrp({ game_version: SEASON, run_id: 2001n,
+                             score: 5000 });
+  f = await submit(ws5, runEve, "EVE");
+  check("same run other account refused", f.t === "err" &&
+        f.reason === "already-submitted", JSON.stringify(f));
+
   // 15. The top-100 gate: fill a fresh season to exactly KEEP_N rows (100
   // distinct accounts — one row per account is DB-enforced), then qualify
   // below the cut-line: the answer must be would_place=false with the
