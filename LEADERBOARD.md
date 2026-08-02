@@ -43,6 +43,20 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
      slot lazily (`ensure_best_split`, ahead of every promotion check
      and `best_path_for` resolution). The REPLAYS list shows the new
      slot as BEST CO-OP; `NEWTONIA_REPLAY_PLAY=bestcoop` plays it.
+     **Online co-op entries are PERSONAL claims** (decided with Glenn
+     2026-08-02): each side's recording stamps its OWN pilot's score
+     (`GLGame::replay_finish` — offline 2P keeps the best ship's score,
+     one account claiming the run), and the CLIENT records under a
+     derived run_id (bitwise NOT of the shared one — deterministic, so
+     rejoin/resume matching still works), so both players' submissions
+     are distinct rows on the CO-OP board under their own accounts and
+     scores. No shared rows, no claim flow: a carried partner charts
+     lower than their carrier, which is what a high-score table should
+     say. The worker cleanly refuses a same-run_id submit from a
+     DIFFERENT account ("already-submitted" — copied files, or a
+     pre-split peer recording; it used to die on the primary key as
+     "internal"). Verified headless: host+client loopback, complement
+     run_ids, host stamps its own spray score, idle client stamps 0.
   2. *Remote gate*: an async `qualify` query to the worker — "would this
      score place on the current season's board?" The worker answers with
      the projected rank and the current cut-line (lowest charting score).

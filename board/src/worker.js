@@ -727,11 +727,18 @@ export class Session {
     const key = await platform_key(identity.account);
 
     // Same run resubmitted (clean-abandon uploaded, then resumed and
-    // improved): upsert only a strictly better score.
+    // improved): upsert only a strictly better score — and only by the
+    // SAME account. A different account holding the same run_id (a copied
+    // file, or an online peer's pre-split recording — post-split each
+    // side records under its own derived id) is refused cleanly: without
+    // this it slipped past the score check and died on the (season,
+    // run_id) primary key as a raw "internal" error.
     const run_row = await db.prepare(
-        `SELECT score FROM scores WHERE season = ?1 AND run_id = ?2`)
+        `SELECT score, platform_key FROM scores
+         WHERE season = ?1 AND run_id = ?2`)
         .bind(hd.season, hd.run_id).first();
-    if (run_row && Number(run_row.score) >= hd.score)
+    if (run_row && (Number(run_row.score) >= hd.score ||
+                    run_row.platform_key !== key))
       return this.err(ws, "already-submitted");
 
     // One row per player per season+board (fast-path refusal — the
