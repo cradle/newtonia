@@ -311,8 +311,12 @@ CREATE INDEX scores_rank ON scores(season, players, score DESC);
   answer swaps the card's lower half to the UPLOAD prompt; YES starts the
   upload with a progress line ("UPLOADING… 43%", Esc cancels), then
   "UPLOADED — RANK #7" or "UPLOAD FAILED — TRY AGAIN FROM REPLAYS". The
-  card must never block on the network: no answer within ~4 s = no prompt,
-  and leaving to the menu abandons the query harmlessly. Identity
+  card must never block on the network: no answer within the qualify
+  deadline (15 s — generous because a phone's first connection after a
+  radio wake is slow, and a drop mid-qualify gets one silent reconnect;
+  field-tested as "no prompt on the first game, fine on the second" at
+  the original 4 s) = no prompt, and leaving to the menu abandons the
+  query harmlessly. Identity
   credentials are minted when the query fires (async warm, like the lobby
   does at open).
 - **Retry path**: an UPLOAD BEST RUN action row on the LEADERBOARD screen
@@ -378,8 +382,8 @@ best, not the flagged run that ended). The prompt rides the GAME OVER
 card (`GLGame::board_*`, drawn by `Overlay::net_overlays`); `board_nav`
 intercepts every game-over exit path (keyboard, controller dpad/A/B/
 Start, right trigger, touch halves) behind the card's existing 3 s
-grace, and the qualify has a 4 s deadline so the card never waits on the
-network. The credential mint is warmed when the qualify fires (Steam's
+grace, and the qualify has a 15 s deadline (with one silent reconnect on
+a mid-qualify drop) so the card never waits on the network. The credential mint is warmed when the qualify fires (Steam's
 ticket is async). The REPLAYS retry action moved to the LEADERBOARD
 screen (see the revised decision above).
 Headless e2e `test/e2e/leaderboard.sh` (a committed driver like
