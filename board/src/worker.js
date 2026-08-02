@@ -655,6 +655,13 @@ export class Session {
 
     if (msg.t === "fetch") {
       if (++this.fetches > CONN_MAX_FETCHES) return this.fail(ws, "rate-limited");
+      // Per-IP aggregate fetch budget (LIMITS.fetch): the per-connection
+      // cap above resets on reconnect, so without this gate connection
+      // churn multiplied R2 reads to conn-limit x CONN_MAX_FETCHES per
+      // window — the config existed but no code consulted it (review,
+      // 2026-08-01). A refusal is a non-fatal err like the query budget's.
+      if (!(await within_limit(this.env, this.ip, "fetch")))
+        return this.err(ws, "rate-limited");
       const season = typeof msg.season === "string" ? msg.season : "";
       const run_id = typeof msg.run_id === "string" ? msg.run_id : "";
       if (!season_ok(season) || !/^[0-9]{1,20}$/.test(run_id))
