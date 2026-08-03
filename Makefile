@@ -44,6 +44,16 @@ is missing — run ./build_netplay_deps.sh once (--universal for `make osx`), \
 point NETPLAY_PREFIX at an existing install, or build without netplay: \
 make NETPLAY=0)
     endif
+    # A prefix built BEFORE patches/libdatachannel-ws-ca-cert.patch has no
+    # caCertificatePemFile, so the TLS-verifying sockets fail to compile
+    # (LEADERBOARD.md S1) — correctly, but a few hundred lines into the build
+    # and pointing at our source rather than the stale dependency. Say it here
+    # instead. The check is a grep of one header, once per make invocation.
+    ifeq ($(shell grep -c caCertificatePemFile $(NETPLAY_PREFIX)/include/rtc/rtc.h 2>/dev/null),0)
+      $(error $(NETPLAY_PREFIX) predates patches/libdatachannel-ws-ca-cert.patch \
+(no caCertificatePemFile in rtc/rtc.h) — rebuild it: ./build_netplay_deps.sh \
+(--universal for `make osx`))
+    endif
   endif
   CFLAGS += -DNEWTONIA_NET_RTC -I$(NETPLAY_PREFIX)/include
   ifneq (,$(findstring _NT,$(UNAME)))
@@ -177,6 +187,10 @@ ifeq ($(NETPLAY),1)
 	@lipo -info $(NETPLAY_PREFIX)/lib/libdatachannel.dylib | grep -q x86_64 && \
 	 lipo -info $(NETPLAY_PREFIX)/lib/libdatachannel.dylib | grep -q arm64 || { \
 	  echo "error: $(NETPLAY_PREFIX)/lib/libdatachannel.dylib is not universal —" ; \
+	  echo "       rebuild the deps with: ./build_netplay_deps.sh --universal" ; \
+	  exit 1 ; }
+	@grep -q caCertificatePemFile $(NETPLAY_PREFIX)/include/rtc/rtc.h || { \
+	  echo "error: $(NETPLAY_PREFIX) predates the WS CA patch —" ; \
 	  echo "       rebuild the deps with: ./build_netplay_deps.sh --universal" ; \
 	  exit 1 ; }
 endif
@@ -335,6 +349,10 @@ ios-deps-check:
 	@test -n "$(wildcard $(IOS_NET_PREFIX)/lib/*.a)" || { \
 	  echo "error: $(IOS_NET_PREFIX)/ missing or incomplete —" ; \
 	  echo "       build it ONCE with: ./build_netplay_deps_ios.sh device" ; \
+	  exit 1 ; }
+	@grep -q caCertificatePemFile $(IOS_NET_PREFIX)/include/rtc/rtc.h || { \
+	  echo "error: $(IOS_NET_PREFIX) predates the WS CA patch —" ; \
+	  echo "       rebuild it with: ./build_netplay_deps_ios.sh device" ; \
 	  exit 1 ; }
 
 ios: ios-deps-check
