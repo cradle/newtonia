@@ -329,7 +329,11 @@ CREATE INDEX scores_rank ON scores(season, players, score DESC);
   screen fetching `top` on open (spinner row while pending, "UNAVAILABLE"
   on error/timeout), rows showing rank, name + platform badge (the
   attested-display rules), score, level, date; SOLO/CO-OP toggle on a
-  header row. Selecting a `has_replay` row downloads with progress and
+  header row. Touch draws each entry over TWO lines (rank/name/score,
+  then badge/level/date beneath — portrait has no width for the
+  desktop's six columns; revised 2026-08-03), and every screen's
+  vertical anchors hang off the portrait-aware half-height (half the
+  portrait surplus, exactly the classic layout in landscape). Selecting a `has_replay` row downloads with progress and
   hands `download.nrp` to `start_replay_playback`; rows without a blob are
   unselectable (score-only). Shared nav ladder + TapBand geometry
   throughout — no hand-rolled input.
