@@ -155,9 +155,14 @@ static void finger_down(SDL_FingerID id, float x, float y) {
         return;
     }
 
-    // Centre-screen pause zone (large invisible area, avoids edges used by controls)
+    // Centre-screen pause zone (invisible convenience area; the visible
+    // top-right button is the primary control). Deliberately small — the
+    // floating joystick claims the whole left half, and in narrow portrait
+    // a left thumb strays past 0.30 of the width, so the old
+    // 0.30..0.70 x 0.25..0.75 box paused mid-manoeuvre (matches
+    // android_main.cpp).
     if(!g_touch_controls.pause_active &&
-       x >= 0.30f && x <= 0.70f && y >= 0.25f && y <= 0.75f) {
+       x >= 0.38f && x <= 0.62f && y >= 0.30f && y <= 0.60f) {
         g_touch_controls.pause_active = true;
         g_touch_controls.pause_finger = id;
         s_game->keyboard('\r', 0, 0);
