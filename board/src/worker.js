@@ -38,6 +38,7 @@ import { verifyGameCenterCred } from "../../signal/src/game_center_verify.js";
 import {
   validate_submission,
   season_ok,
+  shape_note,
   MAX_SUBMISSION_BYTES,
   MIN_SUBMISSION_BYTES,
 } from "./validate.js";
@@ -760,6 +761,18 @@ export class Session {
       return this.err(ws, v.reason);
     }
     const hd = v.header;
+    // Does the file's shape agree with the duration its header claims?
+    // Logged, never enforced (LEADERBOARD.md S3): legitimate crash
+    // artifacts can disagree, and the check is no defence against the real
+    // threat anyway — an edited score leaves a perfectly consistent file.
+    // This exists to answer "are fabricated submissions actually showing
+    // up?" with evidence instead of a guess, which is the trigger L5 waits
+    // on. Both interpolated fields are already bounded: season passed
+    // season_ok (printable ASCII, no space) and run_id is decimal digits.
+    const shape = shape_note(hd, v.stats);
+    if (shape)
+      console.log(`submit shape: ${shape} ` +
+                  `(season=${hd.season} run=${hd.run_id} score=${hd.score})`);
     if (canonical_only(this.env) && !season_canonical(hd.season)) {
       // Production whitelist: only deliberate SEASON-file seasons are
       // admitted. Beta (no var) stays open for dev/test submissions.

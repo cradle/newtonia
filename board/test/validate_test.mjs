@@ -2,9 +2,9 @@
 // port of the game's header/record-framing checks. Pure node, no wrangler.
 // Run: node test/validate_test.mjs
 import {
-  parse_header, walk_records, validate_submission, season_ok,
+  parse_header, walk_records, validate_submission, season_ok, shape_note,
   FLAG_CHEATED, FLAG_CLEAN, FLAG_ENDED,
-  REC_KEYFRAME, REC_DELTA, REC_EFFECT,
+  REC_KEYFRAME, REC_DELTA, REC_EFFECT, REC_EVENTS,
   MAX_RECORD_SLOT, MAX_SUBMISSION_BYTES,
 } from "../src/validate.js";
 import {
@@ -131,5 +131,42 @@ eq("oversize rejected",
    "too-large");
 eq("undersize rejected",
    validate_submission(new Uint8Array(64)).reason, "too-small");
+
+// ---- shape_note (LEADERBOARD.md S3: observation only, never a rejection) ----
+{
+  // The recorder derives duration_ms = (last_slot + 1) * 100, so a file whose
+  // records end at slot 3 claims 400 ms.
+  const recs = [
+    build_record(0, REC_KEYFRAME, 20), build_record(1, REC_DELTA, 8),
+    build_record(2, REC_DELTA, 8), build_record(3, REC_DELTA, 8),
+  ];
+  let v = validate_submission(concat(build_header({ duration_ms: 400 }), ...recs));
+  eq("consistent file validates", v.ok, true);
+  eq("consistent file has no shape note", shape_note(v.header, v.stats), null);
+
+  // REC_EVENTS stamps the UPCOMING slot, so a file ending on one legally
+  // carries a max slot above the header's count.
+  v = validate_submission(concat(build_header({ duration_ms: 400 }), ...recs,
+                                 build_record(4, REC_EVENTS, 5)));
+  eq("trailing event is not a mismatch", shape_note(v.header, v.stats), null);
+
+  // A fabricated run: four records claiming half an hour. NOTED, not refused.
+  v = validate_submission(concat(build_header({ duration_ms: 1800000 }), ...recs));
+  eq("fabricated duration still ADMITTED", v.ok, true);
+  eq("fabricated duration noted", shape_note(v.header, v.stats),
+     "header claims 18000 slot(s), file carries 4");
+
+  // A stale header over newer records — the crash artifact that made this
+  // unenforceable. Noted the other way round, and still admitted.
+  v = validate_submission(concat(build_header({ duration_ms: 200 }), ...recs));
+  eq("stale header still ADMITTED", v.ok, true);
+  eq("stale header noted", shape_note(v.header, v.stats),
+     "file carries 4 slot(s), header claims 2");
+
+  // A duration that is not a whole slot cannot have come from the recorder.
+  v = validate_submission(concat(build_header({ duration_ms: 450 }), ...recs));
+  eq("part-slot duration noted", shape_note(v.header, v.stats),
+     "duration 450ms is not a whole slot");
+}
 
 process.exit(failures ? 1 : 0);

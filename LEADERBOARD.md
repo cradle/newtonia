@@ -664,7 +664,8 @@ referenced blob untouched). Full board suite green: units,
 `board_test.mjs`, and `whitelist_test.mjs` against `wrangler dev --local`.
 
 **S3 — the header's score is never cross-checked against the recording
-(`board/src/validate.js` `validate_submission`).** ⬜ (bounded by L5/L6 —
+(`board/src/validate.js` `validate_submission`).** ✅ CLOSED (2026-08-03,
+below — as an observation, deliberately not a gate) (bounded by L5/L6 —
 this is the accepted tier, not a defect.) Editing one `u32` at header
 offset 52 charts any score. Worth noting anyway because a cheap partial
 sits unused INSIDE the current design: `walk_records` already computes
@@ -674,6 +675,53 @@ all of it except `deltas === 0`. Requiring `duration_ms` to agree with
 count) makes the trivial hex-edit inconsistent with its own file — still
 forgeable, but a real bar where there is currently none, and it sharpens
 the social deterrent rather than replacing it.
+
+*Outcome (Glenn, 2026-08-03): logged, never enforced — and no score cap.*
+Investigating the invariant properly changed the answer, so the reasoning is
+worth keeping:
+
+- **The invariant is exact.** `duration_ms` is not measured, it is DERIVED:
+  `header_.duration_ms = (last_slot_ + 1) * 100` (`replay.cpp`). So the
+  worker can compare it against the walk it already performs.
+- **An online rejoin does NOT break it** (the first thing Glenn asked, and
+  the right question). Every drop path — the pre-keyframe hold that
+  `await_keyframe()` reopens on a client rejoin, the size cap, a failed
+  write — returns BEFORE the `last_slot_++`, so records held out never
+  advance the timeline. The slot line stays dense and a P2 reconnect simply
+  yields a replay shorter than wall-clock. Only `REC_EVENTS` wobbles it, by
+  stamping the UPCOMING slot, so a file ending on an event carries a max
+  slot one above the header's count.
+- **But a legitimate file CAN fall outside it.** The header is patched at
+  each clean stop and recording continues afterwards, so a process that dies
+  before the next patch leaves a stale header over newer records — and that
+  file still carries FLAG_CLEAN, so `maybe_promote_best` promotes it
+  happily. Corners like that cannot be enumerated with confidence, and a
+  player silently losing a real run is a worse outcome than the fabricated
+  file the gate would have caught.
+- **The check is no defence against the actual threat regardless.**
+  `final_score` is copied from live game state at patch time and has no
+  structural correlate: a file with one hex-edited `u32` at offset 52
+  satisfies the duration band, the record walk and the keyframe cadence
+  alike. Fixing THAT is L5 or L6, not this.
+- **No score cap either.** A ceiling would only stop absurd vandalism (a
+  `u32`-max row parked at #1), not a forger picking a plausible number — and
+  vandalism is one D1 delete away from fixed.
+- **Parsing the keyframe's savegame body in JS was rejected outright.** It
+  is the only real server-side answer available, but it duplicates the
+  savegame format in a second language and would start refusing every new
+  submission the day `GameState::VERSION` bumps and the worker lags. That
+  failure mode is worse than the threat.
+
+So `shape_note()` computes the band and the worker LOGS `submit shape: ...`
+while admitting the submission regardless. That turns L5's trigger ("nothing
+built until forged submissions actually appear") from a guess into
+something observable, at zero risk to any player; tightening later is a
+one-line change with evidence behind it. Verified: `validate_test.mjs`
+covers the consistent file, the trailing-event wobble, a fabricated duration
+and a stale header (both NOTED and ADMITTED), and a part-slot duration. The
+shared `nrp_fixture` default was made self-consistent so a note appearing in
+a protocol-test log means something — the full `board_test.mjs` run now logs
+zero.
 
 **S4 — iOS rows publish a fully self-chosen display name** (`worker.js`
 `verify_identity` platform 4 → `{name: claimed, verified: false}`, rendered

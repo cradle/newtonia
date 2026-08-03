@@ -10,7 +10,12 @@ export function build_header(over = {}) {
     magic: MAGIC, format_version: 2, header_size: 64,
     game_version: "v1.2.3", run_id: 12345678901n, date: 1753900000n,
     flags: FLAG_CLEAN, player_count: 1, save_version: 17,
-    score: 4200, generation: 7, duration_ms: 300000,
+    // duration_ms matches build_nrp's default record set the way the
+    // recorder derives it — (last_slot + 1) * 100, and those records end at
+    // slot 2. Keeping the fixture self-consistent keeps shape_note quiet for
+    // every test that is not about it (LEADERBOARD.md S3), so a note in a
+    // protocol-test log means something.
+    score: 4200, generation: 7, duration_ms: 300,
     ...over,
   };
   const buf = new Uint8Array(64);
