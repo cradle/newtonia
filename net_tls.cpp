@@ -86,6 +86,19 @@ std::string materialize() {
   }
   if (!ok) {
     remove(tmp.c_str());
+    // A failed refresh must not discard a bundle that still exists: the
+    // pre-update file at `path` is stale but its roots still verify (the
+    // Mozilla set barely moves year to year), and returning empty here
+    // means NO CA — which fails closed on MbedTLS but connects UNVERIFIED
+    // on Windows, the very outcome this file exists to prevent. Windows is
+    // also where the refresh most plausibly fails: the pre-rename remove()
+    // loses to another instance's TLS stack holding the old file open.
+    if (FILE *old = fopen(path.c_str(), "rb")) {
+      fclose(old);
+      SDL_Log("net: tls - failed refreshing the CA bundle at %s; "
+              "keeping the previous one", path.c_str());
+      return path;
+    }
     SDL_Log("net: tls - failed writing the CA bundle to %s", path.c_str());
     return std::string();
   }
