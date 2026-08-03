@@ -49,6 +49,13 @@ static const int NUM_CAMERA = 2;
 // extras), and hand-editing preferences.ini is not a player-facing answer.
 static const char* RECORD_LABELS[] = {"OFF", "ON"};
 static const int NUM_RECORD = 2;
+// leaderboard_prompts: ON = ask at game over (the per-run opt-out), OFF =
+// upload a qualifying best automatically, still showing the card's
+// UPLOADING/UPLOADED status text (decided with Glenn 2026-08-03). Labelled
+// ASK/AUTO so "off" can't be read as "uploads off" — a missed prompt is
+// what surfaced the old never-upload reading in the field.
+static const char* LEADERBOARD_LABELS[] = {"AUTO", "ASK"};
+static const int NUM_LEADERBOARD = 2;
 
 // The Options screen rows, in display order. kind: 0=sensitivity, 1=smoothing,
 // 2=camera, 3=star density, 4=auto-record replays. P2 rows are desktop-only
@@ -62,14 +69,14 @@ static const OptRow OPT_ROWS_DESKTOP[] = {
   {3, 0, "STAR  DENSITY"},
   {4, 0, "RECORD  REPLAYS"},
   // Must stay LAST: opt_row_count drops it on builds with no leaderboard.
-  {5, 0, "LEADERBOARD  PROMPT"},
+  {5, 0, "LEADERBOARD  UPLOAD"},
 };
 // Mobile shows Player 1 + shared options only, so the "P1" prefix is dropped.
 static const OptRow OPT_ROWS_TOUCH[] = {
   {0, 0, "SENSITIVITY"}, {1, 0, "SMOOTHING"}, {2, 0, "CAMERA"},
   {3, 0, "STAR DENSITY"},
   {4, 0, "RECORD REPLAYS"},
-  {5, 0, "LEADERBOARD PROMPT"},  // LAST — see the desktop table
+  {5, 0, "LEADERBOARD UPLOAD"},  // LAST — see the desktop table
 };
 static int opt_row_count() {
   int n = is_touch_mode()
@@ -82,6 +89,48 @@ static int opt_row_count() {
 }
 static const OptRow &opt_row(int r) {
   return is_touch_mode() ? OPT_ROWS_TOUCH[r] : OPT_ROWS_DESKTOP[r];
+}
+
+// ---- main-menu vertical anchors ----
+// All hang off an effective half-height: landscape aspect pins
+// Typer::scaled_window_height at 600, so these reduce to the classic
+// fixed layout (title 410, rows 200..-300/-280, high score -330/-300,
+// copyright -420). Portrait GROWS the real half-height (600/aspect);
+// taking HALF that surplus spreads the menu into the extra vertical
+// real estate without exploding it to the screen edges — full-surplus
+// anchoring was field-tested and rejected as too sparse (2026-08-03).
+// Read live — scaled_window_height changes on resize.
+static int menu_half_height() {
+  return 600 + ((int)Typer::scaled_window_height - 600) / 2;
+}
+static int menu_title_y()     { return menu_half_height() - 190; }
+// Breathing room between the high-score / copyright cluster's lines in
+// portrait (0 in landscape — the classic layout keeps its tight stack).
+static int menu_cluster_pad() { return (menu_half_height() - 600) / 12; }
+// Top of the menu-row band: below the title (size 80 descends 160) with
+// deliberate air under it.
+static int menu_rows_top()    { return menu_title_y() - 210; }
+// Bottom of the menu-row band: desktop packs rows above the high-score
+// block; touch spreads them over a taller band (they're finger targets)
+// and the score block moves down to make room.
+static int menu_rows_bottom() {
+  return is_touch_mode() ? -(menu_half_height() - 300)
+                         : -(menu_half_height() - 320);
+}
+static int menu_high_score_y() {
+  return menu_rows_bottom() - (is_touch_mode() ? 30 : 20) - menu_cluster_pad();
+}
+static int menu_high_score_num_y() {
+  return menu_high_score_y() - 40 - menu_cluster_pad();
+}
+// Below the score number when the cluster is present (landscape gaps: 50
+// touch / 80 desktop reproduce the classic -420); the fixed near-bottom
+// anchor otherwise.
+static int menu_copyright_y(bool has_high_score) {
+  if (has_high_score)
+    return menu_high_score_num_y() - (is_touch_mode() ? 50 : 80) -
+           menu_cluster_pad();
+  return -(menu_half_height() - 180);
 }
 
 // Options/replays row-band geometry — shared by the draw and the tap
@@ -547,7 +596,7 @@ void Menu::draw() {
         case 1: num_steps = NUM_SMOOTHING;    cur_idx = smoothing_index_[r.player];   lbl = SMOOTHING_LABELS;     break;
         case 2: num_steps = NUM_CAMERA;       cur_idx = camera_index_[r.player];      lbl = CAMERA_LABELS;        break;
         case 3: num_steps = NUM_STAR_DENSITY; cur_idx = star_density_index_;          lbl = STAR_DENSITY_LABELS;  break;
-        case 5: num_steps = NUM_RECORD;       cur_idx = leaderboard_index_;           lbl = RECORD_LABELS;        break;
+        case 5: num_steps = NUM_LEADERBOARD;  cur_idx = leaderboard_index_;           lbl = LEADERBOARD_LABELS;   break;
         default:
           num_steps = NUM_RECORD; lbl = RECORD_LABELS;
           // Show the STORED setting, not the override's effective value:
@@ -617,32 +666,33 @@ void Menu::draw() {
                     .c_str(),
         currentTime);
   } else {
-    Typer::draw_centered(0, 410, "Newtonia", 80);
+    Typer::draw_centered(0, menu_title_y(), "Newtonia", 80);
     if (high_score > 0) {
-      // Touch: the menu rows spread over a taller band (bigger finger
-      // targets), so the score block sits lower, above the copyright.
-      int hs_y = is_touch_mode() ? -330 : -300;
-      Typer::draw_centered(0, hs_y, "HIGH SCORE", 14);
-      Typer::draw_centered(0, hs_y - 40, high_score, 18);
+      // Below the row band, above the copyright (portrait-aware anchors —
+      // touch sits a little lower, its row band being taller).
+      Typer::draw_centered(0, menu_high_score_y(), "HIGH SCORE", 14);
+      Typer::draw_centered(0, menu_high_score_num_y(), high_score, 18);
     }
   }
 
   if (!options_mode_ && !replays_mode_ && !board_mode_) {
     if (attract_mode_) {
       if (!((currentTime / 1400) % 2)) {
-        // title_bot=250 (410-2*80), scores_top=-330/-320; center in that gap
+        // Centered between the title bottom (size 80 descends 160) and the
+        // high-score block, both portrait-aware.
         const int sz = 18, h = 2 * sz;
-        int scores_top = is_touch_mode() ? -330 : -320;
-        int gap = (250 - scores_top - h) / 2;
+        int title_bot = menu_title_y() - 160;
+        int scores_top = menu_high_score_y() - (is_touch_mode() ? 0 : 20);
+        int gap = (title_bot - scores_top - h) / 2;
         if (is_touch_mode()) {
-          Typer::draw_centered(0, 250 - gap, "tap to start", sz);
+          Typer::draw_centered(0, title_bot - gap, "tap to start", sz);
         } else {
           bool has_ctrl = false;
           int nc = SDL_NumJoysticks();
           for (int i = 0; i < nc; i++) {
             if (SDL_IsGameController(i)) { has_ctrl = true; break; }
           }
-          Typer::draw_centered(0, 250 - gap, has_ctrl ? "press start" : "press enter", sz);
+          Typer::draw_centered(0, title_bot - gap, has_ctrl ? "press start" : "press enter", sz);
         }
       }
     } else if (quit_confirm_) {
@@ -680,7 +730,8 @@ void Menu::draw() {
     }
   }
   if (!options_mode_ && !replays_mode_ && !board_mode_)
-    Typer::draw_centered(0, -420, "© 2008-2026 METONYMOUS", 13, currentTime);
+    Typer::draw_centered(0, menu_copyright_y(high_score > 0),
+                         "© 2008-2026 METONYMOUS", 13, currentTime);
 }
 
 void Menu::tick(int delta) {
@@ -1116,20 +1167,12 @@ bool Menu::show_options_row() const {
 
 int Menu::menu_row_size() { return is_touch_mode() ? 26 : 22; }
 
-// Top of the menu-row band: sits below the title (y 410, size 80,
-// descending to 250) with deliberate air under it.
-static const int MENU_ROWS_TOP = 200;
-
-// Bottom of the menu-row band: desktop packs rows above the high-score
-// block; touch spreads them over a taller band (they're finger targets)
-// and the score block moves down to make room.
-static int menu_rows_bottom() { return is_touch_mode() ? -300 : -280; }
-
-// Equally space n row blocks of height h between MENU_ROWS_TOP and
-// menu_rows_bottom(). ONE definition shared by draw_menu_rows and
-// menu_row_at so taps always land on what is drawn.
+// Equally space n row blocks of height h between menu_rows_top() and
+// menu_rows_bottom() (the portrait-aware anchors near the top of this
+// file). ONE definition shared by draw_menu_rows and menu_row_at so taps
+// always land on what is drawn.
 static int menu_row_gap(int n, int h) {
-  return (MENU_ROWS_TOP - menu_rows_bottom() - n * h) / (n + 1);
+  return (menu_rows_top() - menu_rows_bottom() - n * h) / (n + 1);
 }
 
 // Touch draws bigger glyphs and no selection cursor; menu_row_at() mirrors
@@ -1139,7 +1182,7 @@ void Menu::draw_menu_rows(const std::vector<std::string> &rows) {
   int n = (int)rows.size();
   int gap = menu_row_gap(n, h);
   for (int i = 0; i < n; i++) {
-    float y = MENU_ROWS_TOP - (i + 1) * gap - i * h;
+    float y = menu_rows_top() - (i + 1) * gap - i * h;
     // Touch draws the label bare — no cursor on any touch screen.
     if (is_touch_mode())
       Typer::draw_centered(0, y, rows[i].c_str(), sz);
@@ -1157,7 +1200,7 @@ int Menu::menu_row_at(float ny) const {
   float y = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
   // Slot i covers its glyph block plus half a gap either side, so the
   // whole menu band is contiguous finger targets with no dead zones.
-  float t = ((float)MENU_ROWS_TOP - y) - gap * 0.5f;
+  float t = ((float)menu_rows_top() - y) - gap * 0.5f;
   if (t < 0) return -1;
   int i = (int)(t / (gap + h));
   return i < n ? i : -1;
@@ -1468,10 +1511,18 @@ bool Menu::board_upload_row_shown() const {
   // an upload ran this session the row is also its status line
   // (UPLOADED #N / failed), which must not vanish on the post-placed
   // refresh.
-  if (board_up_phase_shown() == 0 && !board_best_run_id_.empty()) {
-    for (const NetBoard::Row &r : board_rows_)
-      if (r.run_id == board_best_run_id_ && r.score >= board_best_score_)
-        return false;
+  if (board_up_phase_shown() == 0) {
+    // ...and that check can only answer once the top rows have ARRIVED:
+    // while the fetch is in flight the row stays hidden rather than
+    // flashing an offer that the loaded rows then retract (field report
+    // 2026-08-03). The rows land together with board_loading_ clearing,
+    // so this gate and the loop below always agree.
+    if (board_loading_) return false;
+    if (!board_best_run_id_.empty()) {
+      for (const NetBoard::Row &r : board_rows_)
+        if (r.run_id == board_best_run_id_ && r.score >= board_best_score_)
+          return false;
+    }
   }
   return true;
 }
@@ -1727,7 +1778,7 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     case 1: idx = &smoothing_index_[r.player];   num = NUM_SMOOTHING;    break;
     case 2: idx = &camera_index_[r.player];      num = NUM_CAMERA;       break;
     case 3: idx = &star_density_index_;          num = NUM_STAR_DENSITY; break;
-    case 5: idx = &leaderboard_index_;           num = NUM_RECORD;       break;
+    case 5: idx = &leaderboard_index_;           num = NUM_LEADERBOARD;  break;
     default:idx = &auto_record_index_;           num = NUM_RECORD;       break;
   }
   *idx += delta;

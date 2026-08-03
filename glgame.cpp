@@ -924,6 +924,12 @@ void GLGame::maybe_start_intro() {
   // No Intro states online: both machines must keep ticking in lockstep
   // with the snapshot stream (a 2 s banner replaces them — Phase 8).
   if (net_mode_ != NetOff) return;
+  // Never after game over: the background world keeps simulating behind
+  // the GAME OVER card, and if it clears its level the generation still
+  // advances — but handing the state to an Intro would steal the screen
+  // AND the input from the card (the leaderboard prompt's YES landed on
+  // "PRESS FIRE TO START"; caught by the e2e's time-cheated S5).
+  if (game_over) return;
   const char *name = NULL;
   Asteroid *display = NULL;
   Intro::Kind kind = Intro::ASTEROID;
@@ -3329,7 +3335,9 @@ void GLGame::board_maybe_start() {
   // per-board), and that slot is what gets qualified and uploaded.
   board_up_path_ = Replay::take_best_promoted();
   if (board_up_path_.empty()) return;
-  if (!g_prefs.leaderboard_prompts) return;
+  // leaderboard_prompts no longer gates the flow — it chooses how the
+  // would-place answer is handled (ASK shows the prompt, AUTO uploads
+  // straight away; see board_tick).
   if (!net_board_can_submit()) return;
   Replay::Header h;
   if (!Replay::read_header(board_up_path_, h)) return;
@@ -3386,6 +3394,22 @@ void GLGame::board_tick() {
     if (ev.kind == NetBoard::Event::Qualify &&
         board_phase_ == BoardQualifying) {
       if (ev.would_place) {
+        if (!g_prefs.leaderboard_prompts) {
+          // LEADERBOARD UPLOAD = AUTO: skip the question and upload the
+          // best straight away — the card shows the same UPLOADING /
+          // UPLOADED - RANK #N status text the prompted path shows
+          // (decided with Glenn 2026-08-03: the setting picks ask-vs-auto,
+          // it never means "don't upload"; declining per run is what ASK
+          // is for).
+          const NetIdentity &me = net_local_identity();
+          std::string cred = net_board_verify_credential();
+          board_up_sent_cred_ = cred;  // for the retry's freshness compare
+          board_->submit(board_up_path_, me.platform, me.name, cred);
+          board_phase_ = BoardUploading;
+          SDL_Log("board: would place #%d - auto-uploading (prompt off)",
+                  ev.place);
+          continue;
+        }
         board_phase_ = BoardPrompt;
         board_place_ = ev.place;
         board_yes_ = true;  // YES default (LEADERBOARD.md decision)

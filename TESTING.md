@@ -283,8 +283,9 @@ test/e2e/leaderboard.sh # LEADERBOARD.md L2 exit criteria (solo; starts a
                      # worker places it and the row reads back with the
                      # header's exact score; a dead worker degrades
                      # silently (no prompt, no error card); a cheat-only
-                     # run and leaderboard_prompts=0 produce no board
-                     # traffic at all; S5 forces an "unverified" first
+                     # run produces no board traffic, and
+                     # leaderboard_prompts=0 AUTO-uploads without asking
+                     # (the setting is ask-vs-auto); S5 forces an "unverified" first
                      # submit (a dedicated worker with REJECT_FIRST_VERIFY)
                      # and asserts the client warms a fresh credential,
                      # retries and places (credential-lifecycle hardening).

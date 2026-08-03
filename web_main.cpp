@@ -92,11 +92,15 @@ static void finger_down(SDL_FingerID id, float x, float y) {
         return;
     }
 
-    // Centre-screen pause zone (large invisible area, avoids edges used by
-    // controls). Right edge stops at 0.60: the shoot button's circle starts
-    // at ~0.65, and a near-miss to its left must not pause (this zone is
-    // checked BEFORE touch_to_key, so any overlap steals fire taps).
-    if(!s_pause_active && x >= 0.30f && x <= 0.60f && y >= 0.25f && y <= 0.75f) {
+    // Centre-screen pause zone (invisible convenience area; the visible
+    // top-right button is the primary control). Right edge stops at 0.60:
+    // the shoot button's circle starts at ~0.65, and a near-miss to its
+    // left must not pause (this zone is checked BEFORE touch_to_key, so
+    // any overlap steals fire taps). Left/vertical edges shrunk with the
+    // mobile entry points (android_main.cpp): the left half is the
+    // steering pad, and in narrow portrait a left thumb strays past 0.30
+    // of the width.
+    if(!s_pause_active && x >= 0.38f && x <= 0.60f && y >= 0.30f && y <= 0.60f) {
         s_pause_active = true;
         s_pause_finger = id;
         s_game->keyboard('\r', 0, 0);
