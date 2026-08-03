@@ -25,10 +25,24 @@ PREFIX="${1:-$PWD/netplay-libs}"
 TAG=v0.24.5           # keep in lockstep with xbox/CMakeLists.txt (see NETPLAY.md)
 MBEDTLS_TAG=v3.6.6    # same pin as the Windows FetchContent build
 
+# Clones retry with backoff, wiping the partial clone between attempts —
+# transient GitHub 503 waves have taken out whole CI runs (2026-08-03).
+clone_retry() {
+  local dest="$1"; shift
+  local i
+  for i in 1 2 3; do
+    if git clone "$@" "$dest"; then return 0; fi
+    if [ "$i" = 3 ]; then return 1; fi
+    echo "== clone attempt $i failed; retrying in $((i*20))s"
+    sleep $((i*20))
+    rm -rf "$dest"
+  done
+}
+
 SRC="$(mktemp -d)/libdatachannel"
 echo "== cloning libdatachannel $TAG"
-git clone --branch "$TAG" --depth 1 --recurse-submodules --shallow-submodules \
-  https://github.com/paullouisageneau/libdatachannel.git "$SRC"
+clone_retry "$SRC" --branch "$TAG" --depth 1 --recurse-submodules --shallow-submodules \
+  https://github.com/paullouisageneau/libdatachannel.git
 
 # Windows (MSYS2 MINGW64 shell) — mirrors .github/workflows/windows.yml:
 # static libdatachannel (+ vendored libjuice/usrsctp) against msys2's
@@ -71,8 +85,8 @@ if [ "$UNIVERSAL" = "1" ]; then
 
   MTLS="$(dirname "$SRC")/mbedtls"
   echo "== cloning mbedtls $MBEDTLS_TAG"
-  git clone --branch "$MBEDTLS_TAG" --depth 1 --recurse-submodules --shallow-submodules \
-    https://github.com/Mbed-TLS/mbedtls.git "$MTLS"
+  clone_retry "$MTLS" --branch "$MBEDTLS_TAG" --depth 1 --recurse-submodules --shallow-submodules \
+    https://github.com/Mbed-TLS/mbedtls.git
   echo "== building mbedtls (universal)"
   cmake -B "$MTLS/build" -S "$MTLS" \
     -DCMAKE_BUILD_TYPE=Release \

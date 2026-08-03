@@ -14,14 +14,29 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # Both brew steps retry with backoff — a transient CDN failure in
+      # `brew update` killed this workflow's x86_64 step outright
+      # (2026-08-03; the SDL_mixer curl below already carried --retry).
       - name: Install arm64 dependencies
-        run: brew install sdl2 mpg123
+        run: |
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
+          try brew install sdl2 mpg123
 
       - name: Install x86_64 Homebrew and dependencies
         run: |
-          arch -x86_64 /bin/bash -c \
-            "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          arch -x86_64 /usr/local/bin/brew install sdl2 mpg123
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
+          install_x86_brew() {
+            arch -x86_64 /bin/bash -c \
+              "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          }
+          try install_x86_brew
+          try arch -x86_64 /usr/local/bin/brew install sdl2 mpg123
 
       - name: Build SDL2_mixer from source (WAV + MP3 only)
         run: |

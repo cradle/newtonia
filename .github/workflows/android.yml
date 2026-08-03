@@ -18,13 +18,30 @@ jobs:
         with:
           path: newtonia
 
+      # Network fetches retry with backoff, wiping partial state between
+      # attempts — one transient GitHub 503 wave took out four workflow
+      # runs at once (2026-08-03).
       - name: Clone SDL2
-        run: git clone --depth 1 --branch release-2.32.10 https://github.com/libsdl-org/SDL.git SDL2
+        run: |
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20))
+                    if [ -n "${CLEAN:-}" ]; then rm -rf $CLEAN; fi; done; }
+          CLEAN=SDL2 try git clone --depth 1 --branch release-2.32.10 https://github.com/libsdl-org/SDL.git SDL2
 
       - name: Clone SDL2_mixer
         run: |
-          git clone --depth 1 --branch release-2.8.2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
-          git -C SDL2_mixer submodule update --init --depth 1
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20))
+                    if [ -n "${CLEAN:-}" ]; then rm -rf $CLEAN; fi; done; }
+          fetch() {
+            git clone --depth 1 --branch release-2.8.2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer &&
+            git -C SDL2_mixer submodule update --init --depth 1
+          }
+          CLEAN=SDL2_mixer try fetch
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -53,9 +70,17 @@ jobs:
       - name: Copy audio assets
         run: mkdir -p newtonia/android/app/src/main/assets && cp -r newtonia/audio newtonia/android/app/src/main/assets/
 
+      # CMake's FetchContent clones libdatachannel inside this step, so the
+      # retry wipes the native build dir to unwedge a partial fetch.
       - name: Build debug APK
         working-directory: newtonia/android
-        run: ./gradlew assembleDebug --stacktrace
+        run: |
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20))
+                    if [ -n "${CLEAN:-}" ]; then rm -rf $CLEAN; fi; done; }
+          CLEAN=app/.cxx try ./gradlew assembleDebug --stacktrace
         env:
           ANDROID_NDK_ROOT: ${{ env.ANDROID_HOME }}/ndk/28.2.13676358
 

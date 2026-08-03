@@ -22,8 +22,16 @@ jobs:
         with:
           node-version: 20
 
+      # Network fetches retry with backoff, wiping partial state between
+      # attempts — one transient GitHub 503 wave took out four workflow
+      # runs at once (2026-08-03).
       - name: Install TypeScript
-        run: npm install -g typescript
+        run: |
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
+          try npm install -g typescript
 
       - name: Compile TypeScript UI
         working-directory: web
@@ -31,9 +39,17 @@ jobs:
 
       - name: Install Emscripten SDK
         run: |
-          git clone https://github.com/emscripten-core/emsdk.git ~/emsdk
-          ~/emsdk/emsdk install latest
-          ~/emsdk/emsdk activate latest
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20))
+                    if [ -n "${CLEAN:-}" ]; then rm -rf $CLEAN; fi; done; }
+          fetch() {
+            git clone https://github.com/emscripten-core/emsdk.git ~/emsdk &&
+            ~/emsdk/emsdk install latest &&
+            ~/emsdk/emsdk activate latest
+          }
+          CLEAN=$HOME/emsdk try fetch
 
       - name: Build WebAssembly
         run: |

@@ -20,13 +20,30 @@ jobs:
         with:
           path: newtonia
 
+      # Network fetches retry with backoff, wiping partial state between
+      # attempts — one transient GitHub 503 wave took out four workflow
+      # runs at once (2026-08-03).
       - name: Clone SDL2
-        run: git clone --depth 1 --branch release-2.32.10 https://github.com/libsdl-org/SDL.git SDL2
+        run: |
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20))
+                    if [ -n "${CLEAN:-}" ]; then rm -rf $CLEAN; fi; done; }
+          CLEAN=SDL2 try git clone --depth 1 --branch release-2.32.10 https://github.com/libsdl-org/SDL.git SDL2
 
       - name: Clone SDL2_mixer
         run: |
-          git clone --depth 1 --branch release-2.8.2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
-          git -C SDL2_mixer submodule update --init --depth 1
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20))
+                    if [ -n "${CLEAN:-}" ]; then rm -rf $CLEAN; fi; done; }
+          fetch() {
+            git clone --depth 1 --branch release-2.8.2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer &&
+            git -C SDL2_mixer submodule update --init --depth 1
+          }
+          CLEAN=SDL2_mixer try fetch
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -82,14 +99,25 @@ jobs:
           else
             export NEWTONIA_VERSION="v${VERSION:-0.0.1}"
           fi
-          ./gradlew bundleRelease \
-            -Pandroid.injected.signing.store.file="$(pwd)/release.jks" \
-            -Pandroid.injected.signing.store.password="${SIGNING_STORE_PASSWORD}" \
-            -Pandroid.injected.signing.key.alias="${SIGNING_KEY_ALIAS}" \
-            -Pandroid.injected.signing.key.password="${SIGNING_KEY_PASSWORD}" \
-            -PversionName="${VERSION:-0.0.1}" \
-            -PversionCode="${{ github.run_number }}" \
-            --stacktrace
+          # CMake's FetchContent clones libdatachannel inside gradle, so the
+          # retry wipes the native build dir to unwedge a partial fetch
+          # (transient GitHub 503s, 2026-08-03).
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20))
+                    if [ -n "${CLEAN:-}" ]; then rm -rf $CLEAN; fi; done; }
+          build() {
+            ./gradlew bundleRelease \
+              -Pandroid.injected.signing.store.file="$(pwd)/release.jks" \
+              -Pandroid.injected.signing.store.password="${SIGNING_STORE_PASSWORD}" \
+              -Pandroid.injected.signing.key.alias="${SIGNING_KEY_ALIAS}" \
+              -Pandroid.injected.signing.key.password="${SIGNING_KEY_PASSWORD}" \
+              -PversionName="${VERSION:-0.0.1}" \
+              -PversionCode="${{ github.run_number }}" \
+              --stacktrace
+          }
+          CLEAN=app/.cxx try build
 
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v4
