@@ -108,9 +108,23 @@ adb logcat -c && adb logcat -s SDL/APP | grep -E "net: tls|net: signal"
 #   LEADERBOARD exercises the board socket the same way.
 ```
 
-(iOS: read the same lines from the Xcode/`devicectl` console instead of
-logcat. If the Android tag filter comes up empty, `adb logcat | grep "net:"`
-— the tag varies, see §5.)
+**iOS needs the unified log, NOT a stdout stream.** SDL routes its log
+through NSLog on Apple and is explicitly excluded from the `fprintf(stderr)`
+fallback (`SDL_log.c` — the `__APPLE__ && (COCOA || UIKIT)` branch returns,
+and the stdio block excludes the same condition), so
+`devicectl … process launch --console` shows nothing. On macOS the lines
+appear in a terminal only because NSLog falls back to stderr when one is
+attached; a phone has none. Use Console.app (select the device in the
+sidebar, filter `net:`) or:
+
+```sh
+brew install libimobiledevice
+idevicesyslog | grep "net:"        # -u <udid> if several devices are attached
+```
+
+(`log stream --device` is gone from recent macOS — the `log` command no
+longer talks to attached devices at all. If the Android tag filter comes up
+empty, `adb logcat | grep "net:"` — the tag varies, see §5.)
 
 Two things to confirm either way:
 1. **The log line** — `net: tls - verifying server certificates against
