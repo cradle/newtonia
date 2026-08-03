@@ -7,7 +7,7 @@
 #   S2  worker unreachable -> the qualify degrades silently (no prompt, no
 #       error card, the game stays alive)
 #   S3  no best promotion (cheat-flagged only run) -> no board traffic
-#   S4  leaderboard_prompts=0 -> no board traffic even on a personal best
+#   S4  leaderboard_prompts=0 -> AUTO-upload (no prompt, same status text)
 #   S5  consumed credential (REJECT_FIRST_VERIFY) -> the retry peek-polls
 #       and resubmits a provably DIFFERENT credential, and places
 #   S6  mint not landed at submit (TEST_CRED_DELAY) -> empty cred rejected,
@@ -191,15 +191,22 @@ grep -aq "board:" "$OUT/s3.log" && fail "S3: board traffic without a personal be
 alive $P s3
 kill -9 $P; wait $P 2>/dev/null; P=""; sleep 1
 
-echo "===== S4: leaderboard_prompts=0 -> no board traffic ====="
+echo "===== S4: leaderboard_prompts=0 -> AUTO-upload, no prompt ====="
+# The setting picks ask-vs-auto, never "don't upload": with prompts off a
+# qualifying best skips the question and uploads straight away, showing
+# the same status text (decided 2026-08-03).
 use_home s4
 mkdir -p "$XDG_DATA_HOME/cc.gfm/newtonia"
 echo "leaderboard_prompts=0" > "$XDG_DATA_HOME/cc.gfm/newtonia/preferences.ini"
 P=$(launch_game s4); sleep 2; W=$(win)
 clean_best "$W"
 crash_to_game_over "$W" "$OUT/s4.log"
-sleep 2
-grep -aq "board:" "$OUT/s4.log" && fail "S4: board traffic with prompts off"
+for i in $(seq 1 20); do
+  grep -aq "board: placed" "$OUT/s4.log" && break; sleep 1
+done
+grep -aq "auto-uploading" "$OUT/s4.log" || fail "S4: no auto-upload with prompts off"
+grep -aq "board: placed" "$OUT/s4.log" || fail "S4: auto-upload never placed"
+grep -aq " - prompting" "$OUT/s4.log" && fail "S4: prompt shown with prompts off"
 alive $P s4
 kill -9 $P; wait $P 2>/dev/null; P=""
 

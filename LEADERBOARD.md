@@ -333,9 +333,15 @@ CREATE INDEX scores_rank ON scores(season, players, score DESC);
   hands `download.nrp` to `start_replay_playback`; rows without a blob are
   unselectable (score-only). Shared nav ladder + TapBand geometry
   throughout — no hand-rolled input.
-- **Prompt fatigue valve**: an Options row "LEADERBOARD PROMPTS ON/OFF"
-  (default ON). OFF suppresses the game-over prompt only; the REPLAYS
-  UPLOAD action always works.
+- **Prompt fatigue valve**: an Options row "LEADERBOARD UPLOAD ASK/AUTO"
+  (`leaderboard_prompts`, default ASK). Revised 2026-08-03 from the
+  original ON/OFF suppress-the-prompt design after a field tester read
+  OFF as "no upload" when a prompt went missing: the setting picks how a
+  qualifying would-place best is handled at game over — ASK shows the
+  UPLOAD TO LEADERBOARD? prompt (the per-run opt-out), AUTO skips the
+  question and uploads immediately, showing the same UPLOADING /
+  UPLOADED - RANK #N status text. It never means "don't upload"; the
+  LEADERBOARD screen's explicit upload action always works too.
 
 ## Milestones
 
@@ -392,7 +398,10 @@ worker suites gate deploy-board.yml instead): S1 clean personal best →
 game over → prompt → YES → placed → the row reads back via `top` with
 the header's exact score; S2 dead worker degrades silently (no prompt,
 no error card, game alive); S3 cheat-only run produces no board traffic;
-S4 `leaderboard_prompts=0` produces none either.
+S4 `leaderboard_prompts=0` auto-uploads without a prompt (revised
+2026-08-03 — the preference picks ASK vs AUTO, it never suppresses the
+upload; a field tester read the old OFF as "no upload" after a missed
+prompt).
 **Exit**: e2e green headless; field pass on one desktop + one Android
 device still owed (needs a deployed beta worker).
 

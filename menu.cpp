@@ -49,6 +49,13 @@ static const int NUM_CAMERA = 2;
 // extras), and hand-editing preferences.ini is not a player-facing answer.
 static const char* RECORD_LABELS[] = {"OFF", "ON"};
 static const int NUM_RECORD = 2;
+// leaderboard_prompts: ON = ask at game over (the per-run opt-out), OFF =
+// upload a qualifying best automatically, still showing the card's
+// UPLOADING/UPLOADED status text (decided with Glenn 2026-08-03). Labelled
+// ASK/AUTO so "off" can't be read as "uploads off" — a missed prompt is
+// what surfaced the old never-upload reading in the field.
+static const char* LEADERBOARD_LABELS[] = {"AUTO", "ASK"};
+static const int NUM_LEADERBOARD = 2;
 
 // The Options screen rows, in display order. kind: 0=sensitivity, 1=smoothing,
 // 2=camera, 3=star density, 4=auto-record replays. P2 rows are desktop-only
@@ -62,14 +69,14 @@ static const OptRow OPT_ROWS_DESKTOP[] = {
   {3, 0, "STAR  DENSITY"},
   {4, 0, "RECORD  REPLAYS"},
   // Must stay LAST: opt_row_count drops it on builds with no leaderboard.
-  {5, 0, "LEADERBOARD  PROMPT"},
+  {5, 0, "LEADERBOARD  UPLOAD"},
 };
 // Mobile shows Player 1 + shared options only, so the "P1" prefix is dropped.
 static const OptRow OPT_ROWS_TOUCH[] = {
   {0, 0, "SENSITIVITY"}, {1, 0, "SMOOTHING"}, {2, 0, "CAMERA"},
   {3, 0, "STAR DENSITY"},
   {4, 0, "RECORD REPLAYS"},
-  {5, 0, "LEADERBOARD PROMPT"},  // LAST — see the desktop table
+  {5, 0, "LEADERBOARD UPLOAD"},  // LAST — see the desktop table
 };
 static int opt_row_count() {
   int n = is_touch_mode()
@@ -547,7 +554,7 @@ void Menu::draw() {
         case 1: num_steps = NUM_SMOOTHING;    cur_idx = smoothing_index_[r.player];   lbl = SMOOTHING_LABELS;     break;
         case 2: num_steps = NUM_CAMERA;       cur_idx = camera_index_[r.player];      lbl = CAMERA_LABELS;        break;
         case 3: num_steps = NUM_STAR_DENSITY; cur_idx = star_density_index_;          lbl = STAR_DENSITY_LABELS;  break;
-        case 5: num_steps = NUM_RECORD;       cur_idx = leaderboard_index_;           lbl = RECORD_LABELS;        break;
+        case 5: num_steps = NUM_LEADERBOARD;  cur_idx = leaderboard_index_;           lbl = LEADERBOARD_LABELS;   break;
         default:
           num_steps = NUM_RECORD; lbl = RECORD_LABELS;
           // Show the STORED setting, not the override's effective value:
@@ -1735,7 +1742,7 @@ void Menu::adjust_active_row(int delta, bool wrap) {
     case 1: idx = &smoothing_index_[r.player];   num = NUM_SMOOTHING;    break;
     case 2: idx = &camera_index_[r.player];      num = NUM_CAMERA;       break;
     case 3: idx = &star_density_index_;          num = NUM_STAR_DENSITY; break;
-    case 5: idx = &leaderboard_index_;           num = NUM_RECORD;       break;
+    case 5: idx = &leaderboard_index_;           num = NUM_LEADERBOARD;  break;
     default:idx = &auto_record_index_;           num = NUM_RECORD;       break;
   }
   *idx += delta;
