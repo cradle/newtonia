@@ -1468,10 +1468,18 @@ bool Menu::board_upload_row_shown() const {
   // an upload ran this session the row is also its status line
   // (UPLOADED #N / failed), which must not vanish on the post-placed
   // refresh.
-  if (board_up_phase_shown() == 0 && !board_best_run_id_.empty()) {
-    for (const NetBoard::Row &r : board_rows_)
-      if (r.run_id == board_best_run_id_ && r.score >= board_best_score_)
-        return false;
+  if (board_up_phase_shown() == 0) {
+    // ...and that check can only answer once the top rows have ARRIVED:
+    // while the fetch is in flight the row stays hidden rather than
+    // flashing an offer that the loaded rows then retract (field report
+    // 2026-08-03). The rows land together with board_loading_ clearing,
+    // so this gate and the loop below always agree.
+    if (board_loading_) return false;
+    if (!board_best_run_id_.empty()) {
+      for (const NetBoard::Row &r : board_rows_)
+        if (r.run_id == board_best_run_id_ && r.score >= board_best_score_)
+          return false;
+    }
   }
   return true;
 }
