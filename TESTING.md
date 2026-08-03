@@ -78,16 +78,6 @@ backends, and it is the one with a system trust store to fall back on:
 | iOS, Android, Xbox | MbedTLS | our bundle ONLY | ⬜ |
 | Windows | OpenSSL | our bundle ONLY (OpenSSL cannot read the CryptoAPI store) | ⬜ |
 
-The macOS ✅ is worth more than one row: `VerifiedTlsTransport` sets
-`MBEDTLS_SSL_VERIFY_REQUIRED` against our chain ALONE, so a completed
-handshake proves the bundle wrote, MbedTLS parsed it, and Cloudflare's real
-chain verified against the carried roots — `SIGNAL SELFTEST PASS` is the
-evidence by itself. That retires the failure this section warns about (a
-root silently skipped at parse time) for every MbedTLS build; iOS, Android
-and Xbox still need their own pass for the toolchain and packaging, not for
-the bundle. Windows is the odd one out and stays worth doing: it is the
-only row that falls back to UNVERIFIED instead of failing closed.
-
 So on four of those rows the carried roots are the *whole* trust story, and
 before LEADERBOARD.md S1 none of them had ever completed a VERIFIED
 handshake — verification was off everywhere. CI proves each platform still
@@ -120,6 +110,16 @@ there and the log line is the only tell. MbedTLS is also the likelier place
 for a surprise: it parses the bundle itself, and `mbedtls_x509_crt_parse_file`
 SKIPS certificates it dislikes rather than failing (libdatachannel throws
 only on a negative return), so a root could go missing with no error at all.
+
+The macOS ✅ is worth more than one row: `VerifiedTlsTransport` sets
+`MBEDTLS_SSL_VERIFY_REQUIRED` against our chain ALONE, so a completed
+handshake proves the bundle wrote, MbedTLS parsed it, and Cloudflare's real
+chain verified against the carried roots — `SIGNAL SELFTEST PASS` is the
+evidence by itself. That retires the failure this section warns about (a
+root silently skipped at parse time) for every MbedTLS build; iOS, Android
+and Xbox still need their own pass for the toolchain and packaging, not for
+the bundle. Windows is the odd one out and stays worth doing: it is the
+only row that falls back to UNVERIFIED instead of failing closed.
 
 The deploy jobs currently gate on `NEWTONIA_NET_SELFTEST` — an in-process
 loopback that involves no TLS whatever. Adding `NEWTONIA_SIGNAL_SELFTEST`
