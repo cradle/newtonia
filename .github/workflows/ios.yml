@@ -26,6 +26,12 @@ jobs:
       # from source — identical output every run, so cache the built trees
       # and skip the clone+build steps entirely on a hit. Bump the key when
       # changing any pin below or the MbedTLS user config.
+      #
+      # The PATCH is part of the key too (LEADERBOARD.md S1). The cached tree
+      # is a BUILT libdatachannel, so a key that ignores the patch restores a
+      # pre-patch prefix and skips the clone+patch+build step that would have
+      # fixed it — the game then fails on the unknown caCertificatePemFile,
+      # pointing at our source rather than at the stale cache (2026-08-03).
       - name: Cache simulator dependencies
         id: deps
         uses: actions/cache@v4
@@ -35,7 +41,7 @@ jobs:
             SDL2_mixer
             libdatachannel
             netlibs
-          key: ios-sim-deps-v1-sdl2.32.10-mix2.8.2-mbedtls3.6.6-ldc0.24.5-${{ hashFiles('newtonia/xbox/mbedtls_user_config.h') }}
+          key: ios-sim-deps-v1-sdl2.32.10-mix2.8.2-mbedtls3.6.6-ldc0.24.5-${{ hashFiles('newtonia/xbox/mbedtls_user_config.h', 'newtonia/patches/libdatachannel-ws-ca-cert.patch') }}
 
       # Network fetches retry with backoff, wiping partial state between
       # attempts — one transient GitHub 503 wave took out four workflow
@@ -135,6 +141,11 @@ jobs:
 
           CLEAN=libdatachannel try git clone --branch v0.24.5 --depth 1 --recurse-submodules --shallow-submodules \
             https://github.com/paullouisageneau/libdatachannel.git libdatachannel
+          # WS CA patch (LEADERBOARD.md S1): the C API gains caCertificatePemFile,
+          # without which the credential-carrying sockets cannot verify anything.
+          # $GITHUB_WORKSPACE/newtonia, not $GITHUB_WORKSPACE: this workflow
+          # checks the repo out into a subdirectory (path: newtonia).
+          git -C libdatachannel apply "$GITHUB_WORKSPACE/newtonia/patches/libdatachannel-ws-ca-cert.patch"
           cmake -S libdatachannel -B libdatachannel/build-ios-sim \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT=iphonesimulator \

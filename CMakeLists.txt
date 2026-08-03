@@ -109,9 +109,17 @@ if(NEWTONIA_NET)
         add_library(MbedTLS::MbedCrypto ALIAS mbedcrypto)
     endif()
 
+    # The WS CA patch (LEADERBOARD.md S1): upstream exposes
+    # caCertificatePemFile only on the C++ configuration, and the game speaks
+    # the C API. Without it net_tls.cpp's callers do not compile — a loud
+    # failure, which is the one we want if this step is ever skipped.
     FetchContent_Declare(libdatachannel
         GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
         GIT_TAG        v0.24.5
+        PATCH_COMMAND ${CMAKE_COMMAND}
+            -DPATCH=${CMAKE_CURRENT_SOURCE_DIR}/patches/libdatachannel-ws-ca-cert.patch
+            -DREPO=<SOURCE_DIR>
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_patch.cmake
     )
     set(USE_MBEDTLS  ON  CACHE BOOL "" FORCE)
     set(NO_MEDIA     ON  CACHE BOOL "" FORCE)

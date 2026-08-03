@@ -12,6 +12,7 @@
 #ifdef NEWTONIA_NET_RTC
 
 #include "net_board.h"
+#include "net_tls.h"
 
 #include <rtc/rtc.h>
 
@@ -41,12 +42,18 @@ class RtcBoard : public NetBoard {
 
   void connect(const std::string &url) override {
     close();
-    // Same explicit TLS-verification disable as net_signal_rtc.cpp:
-    // MbedTLS reaches no OS trust store here, and this socket carries no
-    // game-channel security (nothing peer-to-peer rides it).
+    net_tls_log_state();
+    // Verify against our carried roots (net_tls.h). This socket is the one
+    // that most needs it: the submit frame puts the platform verification
+    // credential on the wire, and an on-path attacker who drops our frame
+    // and spends that credential against the real worker places a score
+    // under this player's attested identity. Same call shape as
+    // net_signal_rtc.cpp — one policy, two sockets.
     rtcWsConfiguration cfg;
     memset(&cfg, 0, sizeof(cfg));
-    cfg.disableTlsVerification = true;
+    cfg.disableTlsVerification = net_tls_insecure();
+    const std::string &ca = net_ca_bundle_path();
+    if (!ca.empty()) cfg.caCertificatePemFile = ca.c_str();
     ws_ = rtcCreateWebSocketEx(url.c_str(), &cfg);
     if (ws_ < 0) {
       closed_flag_ = true;

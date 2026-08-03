@@ -26,6 +26,23 @@ missing prefix is a hard `make` error (never a silent netless fallback);
 `make NETPLAY=0` is the explicit opt-out. `make web` / `make android*` don't
 need the prefix (web's backend is unconditional; Android builds via Gradle).
 
+**libdatachannel is PATCHED** — `patches/libdatachannel-ws-ca-cert.patch`
+(9 lines) adds `caCertificatePemFile` to the C `rtcWsConfiguration` and lets
+Windows verify when a CA is supplied. Without it the signalling and
+leaderboard sockets can verify nothing, and they carry the platform
+verification credential (LEADERBOARD.md S1). Every path that builds the
+library applies it — both `build_netplay_deps*.sh`, both FetchContent
+`CMakeLists` (through `cmake/apply_patch.cmake`, idempotent on re-populate),
+and the four workflows that clone it themselves (`windows`, `deploy-steam`,
+`ios`, `deploy-ios`). A prefix built WITHOUT the patch fails to compile the
+game on the unknown field, which is deliberate: an unverified socket must
+never be the quiet outcome. **Re-check the three hunks on any libdatachannel
+bump.** The roots themselves ship in the binary (`net_ca_bundle.cpp`, written
+to the pref path by `net_tls.cpp` on first connect) because MbedTLS reaches
+no system trust store anywhere and OpenSSL reaches none on Windows;
+`NEWTONIA_NET_TLS_INSECURE=1` turns verification off for field debugging and
+is set by no shipped build.
+
 #### Steam build (local achievement/overlay testing)
 ```sh
 make steam       # Build ./newtonia-steam with -DSTEAM_BUILD
@@ -236,6 +253,9 @@ cmake -B xbox/build-desktop -S xbox -A Gaming.Desktop.x64
 
 ### Sound assets
 `generate_sounds.py` procedurally generates the WAV files in `audio/`.
+
+### CA roots
+`generate_ca_bundle.py` regenerates `net_ca_bundle.cpp` — the Mozilla root program (curl's `cacert.pem`, 119 certificates) embedded as chunked string literals, which `net_tls.cpp` writes to the pref path for libdatachannel to verify the signalling/leaderboard sockets against (LEADERBOARD.md S1). Deliberately the full bundle rather than Cloudflare's current four CAs: they rotate per certificate, so a narrow set is a silent tripwire, and the win here is verification, not pinning. The output is committed so no build needs the network; rerun after a root-program change (a year or two apart), then run `./test/tls/run.sh`.
 
 ### Achievement icons
 `generate_achievement_icons.py` (requires Pillow) procedurally generates the 256×256 achieved/locked Steam achievement icon pairs into `steam/icons/` and the 512×512 Game Center variants (achieved art only — Game Center renders its own locked state) into `gamecenter/icons/`, porting the in-game glyph constructions (ship/station/asteroid meshes, Typer font, in-game colours) so the icons match the game's look. One deterministic scene function per §5 symbolic ID — rerun after any achievement list change.

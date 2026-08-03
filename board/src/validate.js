@@ -142,6 +142,42 @@ export function walk_records(buf, header_size) {
   return { ok: true, records, keyframes, deltas, last_slot, truncated };
 }
 
+// Does the header's claimed duration agree with the records actually
+// present? Returns null when it does (or when the disagreement is explained)
+// and a short human-readable note otherwise. OBSERVATION ONLY — the caller
+// logs it and admits the submission regardless. See LEADERBOARD.md S3.
+//
+// The invariant is exact, not statistical: the recorder derives the field as
+// `duration_ms = (last_slot_ + 1) * 100` (replay.cpp), and every drop path
+// (pre-keyframe hold across an online rejoin seam, size cap, failed write)
+// returns BEFORE the `last_slot_++`, so held-out records never advance the
+// timeline and the slot line stays dense. The one legal wobble upward is
+// REC_EVENTS, which stamps the UPCOMING slot (`last_slot_ + 1`), so a file
+// whose final record is an event carries a max slot one above the header's.
+//
+// It is deliberately NOT an admission gate, because legitimate files can
+// still fall outside it: the header is patched at each clean stop and
+// recording continues afterwards, so a process that dies before the next
+// patch leaves a stale header over newer records — and that file still
+// carries FLAG_CLEAN, so maybe_promote_best will happily promote it. A
+// player losing a real run to a corner like that is a worse outcome than
+// the fabricated file this would have caught, especially since the check is
+// no defence at all against the actual threat: `final_score` has no
+// structural correlate here, so a hex-edited score leaves a file that
+// satisfies every bound in this module (L5/L6 remain the answer to that).
+export function shape_note(hd, w) {
+  if (hd.duration_ms % 100 !== 0)
+    return `duration ${hd.duration_ms}ms is not a whole slot`;
+  const slots = hd.duration_ms / 100;  // last_slot + 1 at patch time
+  const carried = w.last_slot + 1;
+  if (carried === slots || carried === slots + 1) return null;  // exact, or events
+  if (carried < slots)
+    return w.truncated
+        ? null  // tail cut mid-record: the reader tolerates it, so do we
+        : `header claims ${slots} slot(s), file carries ${carried}`;
+  return `file carries ${carried} slot(s), header claims ${slots}`;
+}
+
 // Full submission check: header + admission flags + record walk. The
 // header is the source of truth for everything the row stores (score,
 // season, players, run_id) — there is no separately claimed score to

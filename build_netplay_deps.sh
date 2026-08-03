@@ -44,6 +44,14 @@ echo "== cloning libdatachannel $TAG"
 clone_retry "$SRC" --branch "$TAG" --depth 1 --recurse-submodules --shallow-submodules \
   https://github.com/paullouisageneau/libdatachannel.git
 
+# WS CA patch (LEADERBOARD.md S1): upstream exposes caCertificatePemFile only
+# on the C++ configuration and the game speaks the C API, so the sockets that
+# carry platform credentials could not verify anything without it. The clone
+# is fresh every run, so a plain apply is enough — the CMake build paths use
+# cmake/apply_patch.cmake for the same job with re-run idempotence.
+echo "== patching libdatachannel (WS CA certificate)"
+git -C "$SRC" apply "$ROOT/patches/libdatachannel-ws-ca-cert.patch"
+
 # Windows (MSYS2 MINGW64 shell) — mirrors .github/workflows/windows.yml:
 # static libdatachannel (+ vendored libjuice/usrsctp) against msys2's
 # OpenSSL. No `cmake --install` (it wants the shared target); instead the

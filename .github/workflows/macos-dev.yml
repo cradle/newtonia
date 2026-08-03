@@ -93,6 +93,7 @@ jobs:
         run: |
           find . -name "*.cpp" \
             -not -path "./android/*" \
+            -not -path "./test/*" \
             -not -path "./.git/*" > srcs.txt
 
       - name: Resolve version stamp

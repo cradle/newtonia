@@ -146,6 +146,11 @@ jobs:
 
           CLEAN=libdatachannel try git clone --branch v0.24.5 --depth 1 --recurse-submodules --shallow-submodules \
             https://github.com/paullouisageneau/libdatachannel.git libdatachannel
+          # WS CA patch (LEADERBOARD.md S1): the C API gains caCertificatePemFile,
+          # without which the credential-carrying sockets cannot verify anything.
+          # $GITHUB_WORKSPACE/newtonia, not $GITHUB_WORKSPACE: this workflow
+          # checks the repo out into a subdirectory (path: newtonia).
+          git -C libdatachannel apply "$GITHUB_WORKSPACE/newtonia/patches/libdatachannel-ws-ca-cert.patch"
           cmake -S libdatachannel -B libdatachannel/build-ios \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT=iphoneos \

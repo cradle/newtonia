@@ -65,6 +65,7 @@ targets:
           - "play_games_identity.cpp"      # Android Play Games identity backend
           - "Newtonia.mm"           # macOS-only
           - "macos_window.mm"       # macOS-only
+          - "test"                  # standalone test binaries (own main())
       - path: Assets.xcassets
       # Audio ships as a folder reference in the Resources phase, so every
       # build path (make ios, deploy-ios.yml) gets a complete bundle BEFORE

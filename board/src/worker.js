@@ -38,6 +38,7 @@ import { verifyGameCenterCred } from "../../signal/src/game_center_verify.js";
 import {
   validate_submission,
   season_ok,
+  shape_note,
   MAX_SUBMISSION_BYTES,
   MIN_SUBMISSION_BYTES,
 } from "./validate.js";
@@ -79,8 +80,12 @@ const CONN_MAX_FETCHES = 5;
 // views (pointer array + per-object overhead) far past the 32 MB size cap.
 // Legit clients use 15 KB chunks (~2200 for a 32 MB max); 4096 is generous.
 const MAX_UPLOAD_CHUNKS = 4096;
-// Idle sockets are closed after this long (per-connection DO — nothing to
-// hibernate for, the DO dies with the socket).
+// Idle sockets are closed after this long. NOTE the side effect: a pending
+// setTimeout keeps the DO resident, so this timer is also the reason
+// hibernation never actually happens today. The budgets no longer DEPEND on
+// that (Session.hydrate carries them on the socket — S5), so converting this
+// to the storage alarm the hibernation docs recommend is now a safe change
+// to make for its own reasons.
 const CONN_IDLE_MS = 10 * 60 * 1000;
 
 // Per-IP fixed windows (Limiter DO). Connects gate new sockets; reads and
@@ -94,8 +99,10 @@ const CONN_IDLE_MS = 10 * 60 * 1000;
 // SUBMIT_LIMIT and CONN_LIMIT are dev/test vars (wrangler dev
 // --var SUBMIT_LIMIT:250 --var CONN_LIMIT:500) so the protocol test's
 // burst of submissions/connections from one IP doesn't trip the
-// production windows; never set in production. The full-board qualify
-// test needs both: 100 fill rows at 2 submits per socket is 50 extra
+// production windows; never set in production — and since S6 they cannot
+// take effect there, since limit_for ignores them unless the request
+// arrived on a loopback host (is_dev_host). The full-board qualify test
+// needs both: 100 fill rows at 2 submits per socket is 50 extra
 // connections.
 const LIMITS = {
   conn: { window_ms: 10 * 60 * 1000, limit: 60 },
@@ -104,13 +111,48 @@ const LIMITS = {
   submit: { window_ms: 60 * 60 * 1000, limit: 6 },
 };
 
-function limit_for(env, action) {
+function limit_for(env, action, dev) {
   const cfg = LIMITS[action] || LIMITS.conn;
+  if (!dev) return cfg;  // the widened windows are dev-only (see is_dev_host)
   if (action === "submit" && env && Number(env.SUBMIT_LIMIT) > 0)
     return { ...cfg, limit: Number(env.SUBMIT_LIMIT) };
   if (action === "conn" && env && Number(env.CONN_LIMIT) > 0)
     return { ...cfg, limit: Number(env.CONN_LIMIT) };
   return cfg;
+}
+
+// Is this request talking to a LOCAL dev worker? Every dev/test switch below
+// (FAKE_VERIFY, REJECT_FIRST_VERIFY, the widened rate windows) requires this
+// as a SECOND condition, so none of them can be turned on by configuration
+// alone (LEADERBOARD.md S6). FAKE_VERIFY in particular attests any claim —
+// one stray dashboard variable would otherwise convert production into an
+// open board with no attestation at all, silently.
+//
+// Every harness runs `wrangler dev --local` and connects over loopback
+// (board_test/whitelist_test on 127.0.0.1, test/e2e/leaderboard.sh on
+// 127.0.0.1:8799), while a deployed worker is only ever reached at its
+// workers.dev or custom hostname — Cloudflare routes by that hostname, so a
+// forged Host header cannot arrive here wearing a loopback name. A remote
+// `wrangler dev` preview is deliberately NOT dev by this test: something on
+// the public edge should not be faking attestation.
+export function is_dev_host(hostname) {
+  return hostname === "localhost" || hostname === "127.0.0.1" ||
+         hostname === "::1" || hostname === "[::1]" ||
+         hostname.endsWith(".localhost");
+}
+
+// Client-controlled text that reaches a log line. Strips anything outside
+// printable ASCII (a newline lets a hostile value forge whole log entries)
+// and caps the length — the same boundary net_board_sanitize enforces on the
+// game side, in the other direction.
+export function log_str(v, max = 64) {
+  let out = "";
+  for (const c of String(v)) {
+    if (out.length >= max) break;
+    const b = c.charCodeAt(0);
+    if (b >= 0x20 && b < 0x7f) out += c;
+  }
+  return out;
 }
 
 // v1 has no web client (LEADERBOARD.md: no leaderboard on web in the first
@@ -191,19 +233,21 @@ function with_timeout(p, platform) {
   return Promise.race([p.finally(() => clearTimeout(timer)), gate]);
 }
 
-export async function verify_identity(env, platform, name, cred) {
+export async function verify_identity(env, platform, name, cred, dev) {
   const claimed = strip_name(name);
   if (typeof cred !== "string" || !cred || cred.length > MAX_CRED) return null;
-  if (env.FAKE_VERIFY === "1") {
+  if (dev && env.FAKE_VERIFY === "1") {
     // Dev/e2e shortcut (wrangler dev only): attest the claim without a
     // platform backend — but still REQUIRE a non-empty credential (above),
     // like every real backend, so the client's empty-at-submit case tests
     // true. The cred is logged so the retry e2e can assert the resubmit
     // carried a genuinely different one. The account derives from the name
-    // so two test "players" stay distinct. NEVER set in production.
-    // Compared to "1" exactly (the value every harness passes): a plain
-    // truthiness test made FAKE_VERIFY=0 ENABLE the fake.
-    console.log(`fake-verify: cred=${cred.slice(0, 64)}`);
+    // so two test "players" stay distinct. NEVER set in production — and
+    // now it cannot BE set in production: `dev` demands the request arrived
+    // over loopback (is_dev_host), so the variable alone does nothing on a
+    // deployed worker. Compared to "1" exactly (the value every harness
+    // passes): a plain truthiness test made FAKE_VERIFY=0 ENABLE the fake.
+    console.log(`fake-verify: cred=${log_str(cred)}`);
     return { platform, name: claimed, verified: true,
              account: `fake:${claimed || "anon"}` };
   }
@@ -328,8 +372,9 @@ export default {
     // Kill switch, same shape as the signal worker's.
     if (env.DISABLED) return reject_ws("disabled");
 
+    const dev = is_dev_host(url.hostname);
     const ip = rate_key(request.headers.get("CF-Connecting-IP") || "local");
-    if (!(await within_limit(env, ip, "conn")))
+    if (!(await within_limit(env, ip, "conn", dev)))
       return reject_ws("rate-limited");
 
     // One DO per connection: isolates state, and DO message events get
@@ -337,7 +382,8 @@ export default {
     // free plan's per-invocation budget in a stateless worker socket).
     const session = env.SESSIONS.get(env.SESSIONS.newUniqueId());
     return session.fetch(new Request(
-        `https://session/connect?ip=${encodeURIComponent(ip)}`, request));
+        `https://session/connect?ip=${encodeURIComponent(ip)}` +
+        (dev ? "&dev=1" : ""), request));
   },
 
   // Retention cron (LEADERBOARD.md): demote rows below KEEP_N to
@@ -397,17 +443,77 @@ export default {
       }
     }
     if (demoted) console.log(`retention: demoted ${demoted} row(s) to score-only`);
+    // Best-effort: the demote pass above has already committed its work, and
+    // an R2 hiccup in the sweep must not fail the whole cron invocation (or
+    // hide the demote count behind an exception). The next run picks up
+    // whatever this one missed.
+    try {
+      await sweep_orphans(env);
+    } catch (e) {
+      console.log(`retention: orphan sweep failed: ${log_str(e && e.message)}`);
+    }
   },
 };
 
-async function within_limit(env, ip, action) {
+// Objects in R2 that no row points at (S2). The submit path deletes its own
+// blob on every failure now, so this should find nothing — which is exactly
+// why it exists: an orphan is invisible (no row mentions it), costs storage
+// forever, and the retention pass above can never see one because it walks
+// ROWS. Anything a future code path leaks lands here within a day.
+//
+// The grace period is not politeness, it is correctness: a submission in
+// flight has already stored its blob and not yet inserted its row, and
+// deleting that would break a live upload. Only objects older than a full
+// day are candidates.
+const ORPHAN_GRACE_MS = 24 * 60 * 60 * 1000;
+
+async function sweep_orphans(env) {
+  // One pass over the blob_keys D1 knows: bounded by the row count (KEEP_N
+  // per board per season), so this is far cheaper than a query per object.
+  const known = new Set();
+  const rows = await env.DB.prepare(
+      `SELECT blob_key FROM scores WHERE blob_key != ''`).all();
+  for (const r of rows.results || []) known.add(r.blob_key);
+
+  const cutoff = Date.now() - ORPHAN_GRACE_MS;
+  let cursor;
+  let swept = 0;
+  do {
+    const page = await env.REPLAYS.list({ cursor, limit: 1000 });
+    for (const obj of page.objects || []) {
+      if (known.has(obj.key)) continue;
+      const uploaded = obj.uploaded ? new Date(obj.uploaded).getTime() : 0;
+      if (!(uploaded && uploaded < cutoff)) continue;  // in flight, or unknown
+      try { await env.REPLAYS.delete(obj.key); swept++; } catch (e) {}
+    }
+    cursor = page.truncated ? page.cursor : null;
+  } while (cursor);
+  if (swept) console.log(`retention: swept ${swept} orphaned blob(s)`);
+}
+
+// Actions where an UNANSWERABLE limiter means "no", not "yes" (S5). The
+// per-IP Limiter is the only durable bound on submissions — the
+// per-connection cap resets on reconnect by design — so failing open on it
+// means an outage lifts the submit ceiling entirely, and a submit is the
+// expensive, abuse-sensitive path (an R2 write plus D1 rows). Reads stay
+// fail-open: they are cheap to serve and locking the whole board out over a
+// limiter hiccup is the worse failure. A refused submit is not lost work
+// either — the client's upload row offers TRY LATER, and best.nrp keeps the
+// run until it succeeds.
+const FAIL_CLOSED = ["submit"];
+
+export async function within_limit(env, ip, action, dev) {
   const limiter = env.LIMITS.get(env.LIMITS.idFromName(ip));
   try {
-    const resp = await limiter.fetch(`https://limiter/hit?action=${action}`);
+    const resp = await limiter.fetch(
+        `https://limiter/hit?action=${action}` + (dev ? "&dev=1" : ""));
     const data = await resp.json();
     return !!data.allowed;
   } catch (e) {
-    return true; // a limiter hiccup must not lock everyone out
+    const open = !FAIL_CLOSED.includes(action);
+    console.log(`limiter unavailable for ${log_str(action, 16)}: ` +
+                `${open ? "allowing" : "refusing"} (${log_str(e && e.message)})`);
+    return open;
   }
 }
 
@@ -433,8 +539,9 @@ export class Limiter {
   }
 
   async fetch(request) {
-    const action = new URL(request.url).searchParams.get("action");
-    const cfg = limit_for(this.env, action);
+    const params = new URL(request.url).searchParams;
+    const action = params.get("action");
+    const cfg = limit_for(this.env, action, params.get("dev") === "1");
     const now = Date.now();
     let a = this.l[action];
     if (!a || now - a.start > cfg.window_ms) a = { start: now, count: 0 };
@@ -464,12 +571,67 @@ export class Session {
     this.state = state;
     this.env = env;
     this.ip = "local";
+    // Set from the connect URL: true only when the request arrived on a
+    // loopback host, which is what every dev/test switch also requires.
+    this.dev = false;
     this.queries = 0;
     this.submits = 0;
     this.fetches = 0;
     // In-flight upload: null, or {size, identity, chunks:[], received}.
     this.upload = null;
     this.idle_timer = null;
+    // Have we restored this connection's counters from the socket yet? See
+    // hydrate() — false on a freshly constructed instance, which is exactly
+    // what a post-hibernation delivery gets.
+    this.hydrated = false;
+  }
+
+  // Per-connection state lives in memory, and `acceptWebSocket` opts this DO
+  // into hibernation — so an eviction between messages would reconstruct the
+  // class with every budget back at zero, and `ip`/`dev` back at their
+  // defaults (S5). Today the idle setTimeout keeps the object resident, so
+  // it does not happen; that is an accident of an unrelated timer, not a
+  // guarantee, and it would quietly stop being true the day the timer
+  // becomes the storage alarm the hibernation docs recommend.
+  //
+  // So carry the state on the SOCKET, which is what survives hibernation by
+  // design: restore once per instance, persist whenever a budget moves. The
+  // in-memory object stays authoritative after the first hydrate, so
+  // interleaved handlers (a message delivered while another awaits a verify)
+  // still share one set of counters — no read-modify-write race.
+  //
+  // The in-flight upload deliberately does NOT ride along: it is up to 32 MB
+  // of chunks, far past what an attachment may hold. If a hibernation ever
+  // did land mid-upload the chunks would be gone and the next chunk would
+  // meet a null `upload` — which already answers "bad-frame" and closes,
+  // a clean refusal rather than a silently truncated replay.
+  hydrate(ws) {
+    if (this.hydrated) return;
+    this.hydrated = true;
+    let a = null;
+    try { a = ws.deserializeAttachment(); } catch (e) {}
+    if (!a) return;
+    // Coerce every counter. A field this code did not write — an attachment
+    // from a different version of the shape, say — would otherwise restore
+    // `undefined`, and `++undefined` is NaN, which compares false against
+    // EVERY cap: the per-connection budget would silently stop existing.
+    // A guard must not fail open because a field went missing.
+    this.ip = typeof a.ip === "string" ? a.ip : this.ip;
+    this.dev = a.dev === true;
+    this.queries = Number(a.queries) || 0;
+    this.submits = Number(a.submits) || 0;
+    this.fetches = Number(a.fetches) || 0;
+    this.forced_reject_once_ = a.forced === true;
+  }
+
+  persist(ws) {
+    try {
+      ws.serializeAttachment({
+        ip: this.ip, dev: this.dev, queries: this.queries,
+        submits: this.submits, fetches: this.fetches,
+        forced: !!this.forced_reject_once_,
+      });
+    } catch (e) {}
   }
 
   async fetch(request) {
@@ -477,8 +639,11 @@ export class Session {
     if (url.pathname !== "/connect")
       return new Response("not found", { status: 404 });
     this.ip = url.searchParams.get("ip") || "local";
+    this.dev = url.searchParams.get("dev") === "1";
     const pair = new WebSocketPair();
     this.state.acceptWebSocket(pair[1]);
+    this.hydrated = true;  // this instance IS the connection's origin
+    this.persist(pair[1]);
     this.arm_idle(pair[1]);
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
@@ -495,6 +660,7 @@ export class Session {
   fail(ws, reason) { this.err(ws, reason); try { ws.close(1000); } catch (e) {} }
 
   async webSocketMessage(ws, message) {
+    this.hydrate(ws);
     this.arm_idle(ws);
     try {
       if (typeof message === "string") await this.on_json(ws, message);
@@ -530,7 +696,8 @@ export class Session {
       // season still can: the client seeds its own and best.nrp's
       // seasons into the list locally.
       if (++this.queries > CONN_MAX_QUERIES) return this.fail(ws, "rate-limited");
-      if (!(await within_limit(this.env, this.ip, "query")))
+      this.persist(ws);
+      if (!(await within_limit(this.env, this.ip, "query", this.dev)))
         return this.err(ws, "rate-limited");
       await ensure_schema(this.env.DB);
       const rows = await this.env.DB.prepare(
@@ -549,9 +716,10 @@ export class Session {
 
     if (msg.t === "qualify" || msg.t === "rank-of" || msg.t === "top") {
       if (++this.queries > CONN_MAX_QUERIES) return this.fail(ws, "rate-limited");
+      this.persist(ws);
       // Per-IP aggregate read budget (see LIMITS): reads are cheap to retry,
       // so a refusal is a non-fatal err, not a socket close.
-      if (!(await within_limit(this.env, this.ip, "query")))
+      if (!(await within_limit(this.env, this.ip, "query", this.dev)))
         return this.err(ws, "rate-limited");
       const season = typeof msg.season === "string" ? msg.season : "";
       const players = msg.players === 2 ? 2 : 1;
@@ -616,6 +784,7 @@ export class Session {
     if (msg.t === "submit") {
       if (this.upload) return this.fail(ws, "bad-frame");
       if (++this.submits > CONN_MAX_SUBMITS) return this.fail(ws, "rate-limited");
+      this.persist(ws);
       const size = Number(msg.size) >>> 0;
       // Distinct reasons (matching validate.js's blob-side pair): a
       // below-minimum announcement used to answer "too-large".
@@ -627,24 +796,32 @@ export class Session {
       // — the Closed teardown outranked the refusal it arrived with).
       // The per-connection CONN_MAX_SUBMITS cap above still closes: that
       // one is a misbehaving-client guard, not a budget answer.
-      if (!(await within_limit(this.env, this.ip, "submit")))
+      if (!(await within_limit(this.env, this.ip, "submit", this.dev)))
         return this.err(ws, "rate-limited");
       // Attestation is an admission requirement (LEADERBOARD.md): verify
       // BEFORE accepting megabytes of chunks — a spoofed submit costs the
       // spoofer the round-trip, not us the bandwidth.
+      const platform = Number(msg.platform) >>> 0;
       const identity = await verify_identity(
-          this.env, Number(msg.platform) >>> 0, msg.name, msg.cred);
+          this.env, platform, msg.name, msg.cred, this.dev);
       if (!identity) {
-        console.log(`submit refused: unverified platform=${msg.platform}`);
+        // The COERCED number, not msg.platform: the raw field is whatever
+        // the client sent, up to the 32 KB frame cap and including
+        // newlines, so interpolating it let a submitter write arbitrary
+        // lines into our logs (LEADERBOARD.md S6).
+        console.log(`submit refused: unverified platform=${platform}`);
         return this.err(ws, "unverified");
       }
       // DEV/TEST ONLY: force the FIRST submit on a connection to look
       // unverified, so the client's warm-a-fresh-credential-and-retry path
       // (credential-lifecycle hardening) can be exercised without a real
       // single-use collision. The retry (2nd submit, same socket) passes.
-      // Never set in production.
-      if (this.env.REJECT_FIRST_VERIFY === "1" && !this.forced_reject_once_) {
+      // Never set in production — and, like FAKE_VERIFY, it now cannot BE
+      // set there: this.dev demands a loopback host (is_dev_host).
+      if (this.dev && this.env.REJECT_FIRST_VERIFY === "1" &&
+          !this.forced_reject_once_) {
         this.forced_reject_once_ = true;
+        this.persist(ws);
         console.log("submit refused: REJECT_FIRST_VERIFY (dev retry test)");
         return this.err(ws, "unverified");
       }
@@ -667,12 +844,13 @@ export class Session {
 
     if (msg.t === "fetch") {
       if (++this.fetches > CONN_MAX_FETCHES) return this.fail(ws, "rate-limited");
+      this.persist(ws);
       // Per-IP aggregate fetch budget (LIMITS.fetch): the per-connection
       // cap above resets on reconnect, so without this gate connection
       // churn multiplied R2 reads to conn-limit x CONN_MAX_FETCHES per
       // window — the config existed but no code consulted it (review,
       // 2026-08-01). A refusal is a non-fatal err like the query budget's.
-      if (!(await within_limit(this.env, this.ip, "fetch")))
+      if (!(await within_limit(this.env, this.ip, "fetch", this.dev)))
         return this.err(ws, "rate-limited");
       const season = typeof msg.season === "string" ? msg.season : "";
       const run_id = typeof msg.run_id === "string" ? msg.run_id : "";
@@ -723,6 +901,18 @@ export class Session {
       return this.err(ws, v.reason);
     }
     const hd = v.header;
+    // Does the file's shape agree with the duration its header claims?
+    // Logged, never enforced (LEADERBOARD.md S3): legitimate crash
+    // artifacts can disagree, and the check is no defence against the real
+    // threat anyway — an edited score leaves a perfectly consistent file.
+    // This exists to answer "are fabricated submissions actually showing
+    // up?" with evidence instead of a guess, which is the trigger L5 waits
+    // on. Both interpolated fields are already bounded: season passed
+    // season_ok (printable ASCII, no space) and run_id is decimal digits.
+    const shape = shape_note(hd, v.stats);
+    if (shape)
+      console.log(`submit shape: ${shape} ` +
+                  `(season=${hd.season} run=${hd.run_id} score=${hd.score})`);
     if (canonical_only(this.env) && !season_canonical(hd.season)) {
       // Production whitelist: only deliberate SEASON-file seasons are
       // admitted. Beta (no var) stays open for dev/test submissions.
@@ -742,12 +932,21 @@ export class Session {
     // this it slipped past the score check and died on the (season,
     // run_id) primary key as a raw "internal" error.
     const run_row = await db.prepare(
-        `SELECT score, platform_key FROM scores
+        `SELECT score, platform_key, players FROM scores
          WHERE season = ?1 AND run_id = ?2`)
         .bind(hd.season, hd.run_id).first();
     if (run_row && (Number(run_row.score) >= hd.score ||
-                    run_row.platform_key !== key))
+                    run_row.platform_key !== key ||
+                    Number(run_row.players) !== players))
       return this.err(ws, "already-submitted");
+    // That last clause is the same refusal for a run_id already held on the
+    // OTHER board. It cannot be left to the upsert: the ON CONFLICT target
+    // is (season, players, platform_key), and when the row it collides with
+    // differs in `players` the violated constraint is the (season, run_id)
+    // PRIMARY KEY instead — a target SQLite's upsert does not cover, so the
+    // statement ABORTS. That threw a raw "internal" after the blob was
+    // already stored, orphaning it (S2). Both header fields are
+    // attacker-chosen, so it was a repeatable way to grow R2 for free.
 
     // One row per player per season+board (fast-path refusal — the
     // atomic upsert below is the real guarantee): if the player already
@@ -762,12 +961,34 @@ export class Session {
 
     const blob_key = blob_key_for(hd.season, hd.run_id);
     await this.env.REPLAYS.put(blob_key, blob);
-    // Atomic supersede: ON CONFLICT on the UNIQUE (season, players,
-    // platform_key) index updates the player's existing row to this run
-    // in one statement, but ONLY when this score is strictly better —
-    // so two concurrent same-account submits can't lose the higher one,
-    // and no interleaving leaves duplicate rows. A worse score racing in
-    // no-ops here (its blob is cleaned up below).
+    // From here the blob EXISTS, so every exit has to account for it. The
+    // refusal paths below delete it explicitly; this catch covers the rest
+    // (a D1 outage, a constraint nobody predicted) — without it a throw
+    // unwound to webSocketMessage's generic handler and left an object no
+    // row points at, which the retention cron never looks at because it
+    // walks rows. That is a leak that only ever grows (S2). The orphan
+    // sweep in scheduled() is the backstop for whatever still slips
+    // through; this is the fix for what we can see.
+    let won;
+    try {
+      won = await this.place_row(db, hd, players, key, blob_key, identity,
+                                 mine);
+    } catch (e) {
+      try { await this.env.REPLAYS.delete(blob_key); } catch (e2) {}
+      throw e;
+    }
+    if (!won) return this.err(ws, "not-best");
+    const rank = await rank_of(db, hd.season, players, hd.score);
+    console.log(`placed: season=${hd.season} players=${players} ` +
+                `score=${hd.score} rank=${rank} platform=${identity.platform}`);
+    this.send(ws, { t: "placed", rank });
+  }
+
+  // The row half of a submission: upsert, decide whether this run won the
+  // player's slot, and delete whichever blob lost. Returns false when OUR
+  // blob was the loser (already deleted here), so the caller answers
+  // not-best instead of placed.
+  async place_row(db, hd, players, key, blob_key, identity, mine) {
     await db.prepare(
         `INSERT INTO scores(season, players, run_id, score,
            generation, duration_ms, submitted_at, name, platform, verified,
@@ -797,14 +1018,10 @@ export class Session {
       // replaced by the upsert) — delete it.
       if (mine && mine.blob_key && mine.blob_key !== blob_key)
         try { await this.env.REPLAYS.delete(mine.blob_key); } catch (e) {}
-    } else {
-      // A concurrent better submission won; our blob is orphaned.
-      try { await this.env.REPLAYS.delete(blob_key); } catch (e) {}
-      return this.err(ws, "not-best");
+      return true;
     }
-    const rank = await rank_of(db, hd.season, players, hd.score);
-    console.log(`placed: season=${hd.season} players=${players} ` +
-                `score=${hd.score} rank=${rank} platform=${identity.platform}`);
-    this.send(ws, { t: "placed", rank });
+    // A concurrent better submission won; our blob is orphaned.
+    try { await this.env.REPLAYS.delete(blob_key); } catch (e) {}
+    return false;
   }
 }

@@ -1,0 +1,10 @@
+# Patch files are applied byte-for-byte against a freshly cloned upstream
+# tree, so their line endings must never be translated. Without this,
+# actions/checkout converts patches/*.patch to CRLF on the Windows runner
+# while the libdatachannel clone stays LF, and every context line mismatches:
+#   error: patch failed: include/rtc/rtc.h:481
+#   error: include/rtc/rtc.h: patch does not apply
+# (windows.yml, 2026-08-03 — the Linux and macOS runners were unaffected,
+# which is exactly why it reached CI rather than a local build.)
+*.patch -text
+*.diff -text

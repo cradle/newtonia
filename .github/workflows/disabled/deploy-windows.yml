@@ -35,6 +35,7 @@ jobs:
         run: |
           SRCS=$(find . -name "*.cpp" \
             -not -path "./android/*" \
+            -not -path "./test/*" \
             -not -path "./.git/*" \
             -not -name "gles2_compat.cpp")
           windres icon.rc -O coff -o icon.res

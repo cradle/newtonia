@@ -252,6 +252,26 @@ async function submit(ws, bytes, name, platform = 2) {
   check("same run other account refused", f.t === "err" &&
         f.reason === "already-submitted", JSON.stringify(f));
 
+  // 14c. The SAME account reusing its own run_id on the OTHER board (S2).
+  // Both header fields are attacker-chosen, and this used to sail past every
+  // check above and abort on the (season, run_id) PRIMARY KEY — which the
+  // upsert's ON CONFLICT target does not cover — AFTER the blob was stored,
+  // answering "internal" and leaving an object no row points at. A repeat
+  // offender could grow R2 for free at the submit limit. It must refuse
+  // cleanly, like every other run_id collision.
+  // (Fresh socket: CONN_MAX_SUBMITS is 2 and ws5 has spent both.)
+  const ws5b = await connect();
+  const runA4coop = build_nrp({ game_version: SEASON, run_id: 2001n,
+                                score: 9000, player_count: 2 });
+  f = await submit(ws5b, runA4coop, "ALICE");
+  check("same run_id on the other board refused", f.t === "err" &&
+        f.reason === "already-submitted", JSON.stringify(f));
+  // And the co-op board is untouched by the refusal — no half-written row.
+  send(ws5b, { t: "top", season: SEASON, players: 2, count: 10 });
+  f = await ws5b._recv();
+  check("co-op board still empty after the refusal",
+        f.t === "top" && f.rows.length === 0, JSON.stringify(f));
+
   // 15. The top-100 gate: fill a fresh season to exactly KEEP_N rows (100
   // distinct accounts — one row per account is DB-enforced), then qualify
   // below the cut-line: the answer must be would_place=false with the

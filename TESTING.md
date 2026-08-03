@@ -48,6 +48,156 @@ NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy xvfb-run -a ./newtonia
 NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy xvfb-run -a ./newtonia
 ```
 
+### WebSocket TLS verification gate (`test/tls/`)
+Not an in-binary selftest — a standalone binary against the same
+libdatachannel prefix the game links, run by `linux.yml` on every push:
+
+```sh
+./test/tls/run.sh                 # or: ./test/tls/run.sh /path/to/netplay-libs
+# -> tls: PASS
+```
+
+It mints a throwaway CA, stands up a local TLS WebSocket server, and checks
+the three outcomes the signalling/leaderboard sockets depend on
+(LEADERBOARD.md S1): the correct CA connects, an **unrelated CA is refused**,
+and `disableTlsVerification` still connects (the `NEWTONIA_NET_TLS_INSECURE`
+escape hatch). The middle case is the one that matters — if it ever starts
+connecting, the platform credential a submit puts on the wire is readable by
+anyone on the path. Needs `openssl(1)` and a prefix built WITH
+`patches/libdatachannel-ws-ca-cert.patch` (an unpatched one cannot compile
+the gate, or the game).
+
+### Per-platform TLS pass — MANUAL, and not optional
+The gate above runs on Linux against **OpenSSL**. That is one of two TLS
+backends, and it is the one with a system trust store to fall back on:
+
+| build | TLS backend | trust source | verified |
+|-------|-------------|--------------|----------|
+| Linux, `make` on macOS | OpenSSL | system store **+** our bundle | ✅ `linux.yml` gate |
+| `make osx` (universal — the SHIPPED mac build) | MbedTLS | our bundle ONLY | ✅ 2026-08-03 |
+| Android | MbedTLS | our bundle ONLY | ✅ 2026-08-04 |
+| iOS | MbedTLS | our bundle ONLY | ✅ 2026-08-04 |
+| Windows | OpenSSL | our bundle ONLY (OpenSSL cannot read the CryptoAPI store) | ✅ 2026-08-04 |
+| Xbox | MbedTLS | our bundle ONLY | ⬜ — `cradle/newtonia-xbox` owns console runtime work |
+
+So on four of those rows the carried roots are the *whole* trust story, and
+before LEADERBOARD.md S1 none of them had ever completed a VERIFIED
+handshake — verification was off everywhere. CI proves each platform still
+COMPILES (an unpatched libdatachannel fails on the unknown field), not that
+a real handshake succeeds. Run this once per platform after any change to
+`net_ca_bundle.cpp`, `net_tls.cpp`, the patch, or a libdatachannel bump:
+
+**Desktop** (`make`, `make osx`, the MSYS2 Windows build) — the selftest
+hooks live in `glut.cpp`, so they exist here and nowhere else:
+
+```sh
+./build_netplay_deps.sh            # MUST be re-run: an old prefix has no
+                                   # caCertificatePemFile and won't compile
+make                               # or: make osx   /   MSYS2 make -j8
+NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia
+```
+
+**iOS HAS the selftests** (`ios_main.mm`, under `NEWTONIA_NET_RTC`) — and
+because each ends in `exit(ok ? 0 : 1)`, the process exit status IS the
+verdict, so this works even when no log line reaches you:
+
+```sh
+xcrun devicectl list devices                    # grab the identifier
+xcrun devicectl device process launch --console --terminate-existing \
+  --environment-variables '{"NEWTONIA_SIGNAL_SELFTEST":"1"}' \
+  --device <DEV> cc.gfm.Newtonia
+#   -> devicectl reports the termination status: 0 = PASS, 1 = FAIL
+```
+
+(CI drives the same hooks on the SIMULATOR through `SIMCTL_CHILD_*` env
+vars instead — see `ios.yml`.)
+
+**Android has NO selftest hook** — `android_main.cpp` never reads those env
+vars — so drive the real feature there, which is stronger evidence anyway:
+a room code cannot appear unless the WSS handshake to the production worker
+completed.
+
+```sh
+make android-install
+adb logcat -c && adb logcat -s SDL/APP | grep -E "net: tls|net: signal"
+#   ...then on the device: ONLINE -> HOST, and watch for a room code.
+#   LEADERBOARD exercises the board socket the same way.
+```
+
+Note either way that `net_tls_log_state()` fires on the FIRST SOCKET, not at
+startup: launching the app and filtering for `net:` shows nothing until you
+actually reach ONLINE or LEADERBOARD.
+
+**iOS needs the unified log, NOT a stdout stream.** SDL routes its log
+through NSLog on Apple and is explicitly excluded from the `fprintf(stderr)`
+fallback (`SDL_log.c` — the `__APPLE__ && (COCOA || UIKIT)` branch returns,
+and the stdio block excludes the same condition), so
+`devicectl … process launch --console` shows nothing. On macOS the lines
+appear in a terminal only because NSLog falls back to stderr when one is
+attached; a phone has none. Use Console.app (select the device in the
+sidebar, filter `net:`) or:
+
+```sh
+brew install libimobiledevice
+idevicesyslog | grep "net:"        # -u <udid> if several devices are attached
+```
+
+(`log stream --device` is gone from recent macOS — the `log` command no
+longer talks to attached devices at all. If the Android tag filter comes up
+empty, `adb logcat | grep "net:"` — the tag varies, see §5.)
+
+Two things to confirm either way:
+1. **The log line** — `net: tls - verifying server certificates against
+   <path>`, emitted once by the first socket that opens. Anything else is a
+   finding: `no CA bundle on disk` means the write failed (fatal on the
+   MbedTLS rows above, silently UNVERIFIED on Windows), and `VERIFICATION
+   DISABLED` means `NEWTONIA_NET_TLS_INSECURE` leaked into the environment.
+2. **The connection actually completes** — a selftest PASS on desktop, a
+   room code (or board rows) on mobile. Either way it is a real round trip
+   against the production worker, exercising the actual Cloudflare chain
+   through that platform's TLS stack; a verification failure shows up as a
+   socket that never opens.
+
+What a failure means, by platform: on MbedTLS builds the handshake fails
+CLOSED (no online play at all — loud); on Windows libdatachannel falls back
+to unverified when no CA is supplied, so a failed bundle write is SILENT
+there and the log line is the only tell. MbedTLS is also the likelier place
+for a surprise: it parses the bundle itself, and `mbedtls_x509_crt_parse_file`
+SKIPS certificates it dislikes rather than failing (libdatachannel throws
+only on a negative return), so a root could go missing with no error at all.
+
+Why those ✅s settle the trust material: `VerifiedTlsTransport` sets
+`MBEDTLS_SSL_VERIFY_REQUIRED` against our chain ALONE, so on an MbedTLS
+build a handshake that completes at all proves the bundle wrote, MbedTLS
+parsed it, and Cloudflare's real chain verified against the carried roots.
+That has now happened on THREE MbedTLS platforms and three toolchains —
+macOS universal (`SIGNAL SELFTEST PASS`, 2026-08-03), Android (bundle at
+`/data/data/org.newtonia/files/cacert.pem`, exact expected size, then a
+room code, 2026-08-04) and iOS (selftest against the production relay,
+room `H8T7L`, 2026-08-04) — which retires the failure this section warns
+about, a root silently skipped at parse time.
+
+Windows was the one that mattered most and is also done (2026-08-04: bundle
+at `C:\Users\…\AppData\Roaming\cc.gfm\newtonia\cacert.pem`, room
+`Y8JZP`, `SIGNAL SELFTEST PASS`). It is the only platform upstream
+libdatachannel refuses to verify on at all, so that run is the field proof
+of the patch's SECOND hunk — and the proof is two-sided: the game compiles
+only if `caCertificatePemFile` exists, and `git apply` is atomic, so a
+Windows build that exists at all carries the `#ifdef _WIN32` relaxation too.
+It is also the only row that falls back to UNVERIFIED rather than failing
+closed, which is why the log line is the thing to re-check there after any
+libdatachannel bump: a silent regression looks exactly like success.
+
+Xbox shares the MbedTLS trust path proven three times above, and console
+runtime work belongs to the private repo (CLAUDE.md) — the canaries here
+only prove it still compiles.
+
+The deploy jobs currently gate on `NEWTONIA_NET_SELFTEST` — an in-process
+loopback that involves no TLS whatever. Adding `NEWTONIA_SIGNAL_SELFTEST`
+there would automate this pass; deferred for now (it makes release builds
+depend on the production worker being reachable), so until then the manual
+pass above is the only coverage the MbedTLS platforms get.
+
 ## 3. Signal worker tests (node, no game build)
 
 The worker (`signal/`) has its own tests — see `signal/README.md`:

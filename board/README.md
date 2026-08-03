@@ -20,12 +20,20 @@ share one implementation.
 ```sh
 node test/validate_test.mjs        # header/framing validation
 node test/identity_gate_test.mjs   # attestation admission gate
+node test/retention_test.mjs       # retention cron + orphan sweep
+node test/budget_test.mjs          # limiter fail-closed + per-conn budgets
 ```
 
 Protocol test against the real worker code under miniflare (no Cloudflare
 account involved). `FAKE_VERIFY` attests claims without a platform
 backend; `SUBMIT_LIMIT` widens the per-IP submit window for the test's
-burst. Never set either in production.
+burst. Never set either in production — and since LEADERBOARD.md S6 they
+cannot take effect there anyway: every dev switch also requires the
+request to have arrived on a **loopback host** (`is_dev_host`), so the
+variable alone does nothing on a deployed worker. The corollary for
+testing is that the harness must connect over `localhost`/`127.0.0.1`;
+reach the same dev worker by any other hostname and attestation is real
+again (which is exactly what `identity_gate_test.mjs` pins).
 
 ```sh
 npx wrangler@4 dev --local --port 8788 --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100
