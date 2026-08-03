@@ -725,7 +725,20 @@ zero.
 
 **S4 — iOS rows publish a fully self-chosen display name** (`worker.js`
 `verify_identity` platform 4 → `{name: claimed, verified: false}`, rendered
-as-is by `menu.cpp`). ⬜ Correct that Apple exposes no alias lookup; the
+as-is by `menu.cpp`). ✅ ACCEPTED as-is (Glenn, 2026-08-03): iOS names stay
+unattested and stay rendered, without a tick — no code change. The
+2026-08-01 gamertag-rule decision stands; this pass only re-examined it.
+Two facts make that comfortable. The tick is **unforgeable by
+construction**, not by convention: `Typer::VERIFIED_TICK` is `'\x01'`, a
+control byte, so `net_sanitize_name` strips it from every wire name AND
+`net_name_char_drawable` excludes it from the glyph whitelist — two
+independent lines, both commented as security rather than cosmetic. And
+admission still required a cryptographically proven Apple account, so an
+impersonating row is attached to a real, bannable identity and one D1
+delete away from gone. Reversing costs little if impersonation ever shows
+up in the field: it is the display rule in `menu.cpp` plus what
+`verify_identity` attests, not a protocol change. Original finding, for
+that day: correct that Apple exposes no alias lookup; the
 question is the DISPLAY decision (2026-08-01, deliberately the looser
 "gamertag rule"). A player can put another player's Steam persona on the
 board, distinguished only by the ABSENCE of the verified tick — a signal
