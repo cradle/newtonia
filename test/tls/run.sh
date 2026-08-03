@@ -6,7 +6,7 @@
 # Needs the same libdatachannel prefix the game links against (built by
 # build_netplay_deps.sh, WITH patches/libdatachannel-ws-ca-cert.patch) plus
 # openssl(1) to mint the throwaway certificates. Exits non-zero if any of the
-# three cases in verify_test.cpp misbehaves.
+# three cases in verify_test.cc misbehaves.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -45,7 +45,7 @@ else
 fi
 # shellcheck disable=SC2086
 g++ -std=c++17 -O1 -I"$PREFIX/include" -o "$WORK/verify_test" \
-  "$ROOT/test/tls/verify_test.cpp" $LIBS -lpthread
+  "$ROOT/test/tls/verify_test.cc" $LIBS -lpthread
 
 echo "tls: running"
 "$WORK/verify_test" "$WORK"

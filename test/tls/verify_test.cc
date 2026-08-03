@@ -1,6 +1,14 @@
 // Regression gate for the WebSocket TLS verification the credential-carrying
 // sockets rely on (LEADERBOARD.md S1). Run via test/tls/run.sh.
 //
+// Deliberately .cc, not .cpp: this is a standalone binary with its own
+// main(), and every build in the project sweeps game sources by *.cpp —
+// the Makefile's wildcard, CMake's GLOB, CI's `find -name "*.cpp"` and
+// XcodeGen's include patterns. The CI ones are RECURSIVE, so a .cpp here
+// gets compiled into the game (it did: ios.yml, 2026-08-03). The find
+// exclusions and the XcodeGen `test` exclude are belt and braces; the
+// extension is what makes it impossible.
+//
 // Stands up a local TLS WebSocket server signed by a throwaway CA, then
 // connects three ways through the SAME rtcWsConfiguration path the game uses
 // (net_tls.h -> net_signal_rtc.cpp / net_board_rtc.cpp):
