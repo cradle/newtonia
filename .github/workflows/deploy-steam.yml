@@ -68,6 +68,9 @@ jobs:
           mkdir netplay-deps
           CLEAN=netplay-deps/libdatachannel try git clone --branch v0.24.5 --depth 1 --recurse-submodules --shallow-submodules \
             https://github.com/paullouisageneau/libdatachannel.git netplay-deps/libdatachannel
+          # WS CA patch (LEADERBOARD.md S1): the C API gains caCertificatePemFile,
+          # without which the credential-carrying sockets cannot verify anything.
+          git -C netplay-deps/libdatachannel apply "$GITHUB_WORKSPACE/patches/libdatachannel-ws-ca-cert.patch"
           cmake -S netplay-deps/libdatachannel -B netplay-deps/libdatachannel/build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=OFF \

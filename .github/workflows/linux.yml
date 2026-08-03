@@ -77,6 +77,13 @@ jobs:
             -L./netplay-libs/lib -ldatachannel \
             -Wl,-rpath,'$ORIGIN' -Wl,-rpath,"$PWD/netplay-libs/lib"
 
+      # The credential-carrying sockets must verify the server certificate
+      # (LEADERBOARD.md S1). Stands up a local TLS WS server and proves a
+      # certificate we did not sign is REFUSED — the only automated check
+      # that an on-path attacker cannot read a submit's platform credential.
+      - name: WebSocket TLS verification gate
+        run: ./test/tls/run.sh
+
       # In-process WebRTC loopback — runs before any window/GL is created
       # (glut.cpp), so no display is needed.
       - name: Netplay loopback self-test

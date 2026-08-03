@@ -1,0 +1,43 @@
+diff --git a/include/rtc/rtc.h b/include/rtc/rtc.h
+index 73a0567..33b66c9 100644
+--- a/include/rtc/rtc.h
++++ b/include/rtc/rtc.h
+@@ -481,6 +481,7 @@ typedef struct {
+ 	int pingIntervalMs;      // in milliseconds, 0 means default, < 0 means disabled
+ 	int maxOutstandingPings; // 0 means default, < 0 means disabled
+ 	int maxMessageSize;      // <= 0 means default
++	const char *caCertificatePemFile; // NULL to use the system trust store
+ } rtcWsConfiguration;
+ 
+ RTC_C_EXPORT int rtcCreateWebSocket(const char *url); // returns ws id
+diff --git a/src/capi.cpp b/src/capi.cpp
+index 4777e9a..35ddf57 100644
+--- a/src/capi.cpp
++++ b/src/capi.cpp
+@@ -1574,6 +1574,9 @@ int rtcCreateWebSocketEx(const char *url, const rtcWsConfiguration *config) {
+ 		if (config->proxyServer)
+ 			c.proxyServer.emplace(config->proxyServer);
+ 
++		if (config->caCertificatePemFile)
++			c.caCertificatePemFile.emplace(config->caCertificatePemFile);
++
+ 		for (int i = 0; i < config->protocolsCount; ++i)
+ 			c.protocols.emplace_back(string(config->protocols[i]));
+ 
+diff --git a/src/impl/websocket.cpp b/src/impl/websocket.cpp
+index 93dfe49..fdd4ceb 100644
+--- a/src/impl/websocket.cpp
++++ b/src/impl/websocket.cpp
+@@ -372,7 +372,11 @@ shared_ptr<TlsTransport> WebSocket::initTlsTransport() {
+ 		bool verify = mHostname.has_value() && !config.disableTlsVerification;
+ 
+ #ifdef _WIN32
+-		if (std::exchange(verify, false)) {
++		// Windows has no trust store the TLS backends can read (OpenSSL does
++		// not consult the CryptoAPI ROOT store, and its default verify paths
++		// are a Unix path baked in at build time), so verification can only
++		// work against an explicitly supplied CA bundle.
++		if (!config.caCertificatePemFile && std::exchange(verify, false)) {
+ 			PLOG_WARNING << "TLS certificate verification with root CA is not supported on Windows";
+ 		}
+ #endif

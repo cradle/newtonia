@@ -193,9 +193,14 @@ if(NEWTONIA_NET)
         add_library(MbedTLS::MbedCrypto ALIAS mbedcrypto)
     endif()
 
+    # WS CA patch — see the root CMakeLists' copy (LEADERBOARD.md S1).
     FetchContent_Declare(libdatachannel
         GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
         GIT_TAG        v0.24.5
+        PATCH_COMMAND ${CMAKE_COMMAND}
+            -DPATCH=${CMAKE_SOURCE_DIR}/../patches/libdatachannel-ws-ca-cert.patch
+            -DREPO=<SOURCE_DIR>
+            -P ${CMAKE_SOURCE_DIR}/../cmake/apply_patch.cmake
     )
     set(USE_MBEDTLS  ON  CACHE BOOL "" FORCE)
     set(NO_MEDIA     ON  CACHE BOOL "" FORCE)

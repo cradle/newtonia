@@ -40,6 +40,8 @@ cmake --install "$SRC/mbedtls/build"
 echo "== libdatachannel v0.24.5 ($KIND)"
 git clone --branch v0.24.5 --depth 1 --recurse-submodules --shallow-submodules \
   https://github.com/paullouisageneau/libdatachannel.git "$SRC/libdatachannel"
+# WS CA patch — see build_netplay_deps.sh's copy (LEADERBOARD.md S1).
+git -C "$SRC/libdatachannel" apply "$ROOT/patches/libdatachannel-ws-ca-cert.patch"
 cmake -S "$SRC/libdatachannel" -B "$SRC/libdatachannel/build" "${IOSFLAGS[@]}" \
   -DBUILD_SHARED_LIBS=OFF \
   -DUSE_MBEDTLS=ON -DNO_MEDIA=ON -DNO_WEBSOCKET=OFF \

@@ -48,6 +48,25 @@ NEWTONIA_NET_SELFTEST=1 SDL_AUDIODRIVER=dummy xvfb-run -a ./newtonia
 NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy xvfb-run -a ./newtonia
 ```
 
+### WebSocket TLS verification gate (`test/tls/`)
+Not an in-binary selftest — a standalone binary against the same
+libdatachannel prefix the game links, run by `linux.yml` on every push:
+
+```sh
+./test/tls/run.sh                 # or: ./test/tls/run.sh /path/to/netplay-libs
+# -> tls: PASS
+```
+
+It mints a throwaway CA, stands up a local TLS WebSocket server, and checks
+the three outcomes the signalling/leaderboard sockets depend on
+(LEADERBOARD.md S1): the correct CA connects, an **unrelated CA is refused**,
+and `disableTlsVerification` still connects (the `NEWTONIA_NET_TLS_INSECURE`
+escape hatch). The middle case is the one that matters — if it ever starts
+connecting, the platform credential a submit puts on the wire is readable by
+anyone on the path. Needs `openssl(1)` and a prefix built WITH
+`patches/libdatachannel-ws-ca-cert.patch` (an unpatched one cannot compile
+the gate, or the game).
+
 ## 3. Signal worker tests (node, no game build)
 
 The worker (`signal/`) has its own tests — see `signal/README.md`:

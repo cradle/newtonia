@@ -9,6 +9,7 @@
 #ifdef NEWTONIA_NET_RTC
 
 #include "net_signal.h"
+#include "net_tls.h"
 
 #include <rtc/rtc.h>
 
@@ -91,16 +92,19 @@ public:
 private:
   void open(const std::string &full_url) {
     close();
-    // TLS verification must be disabled explicitly: libdatachannel cannot
-    // reach any OS trust store through MbedTLS (the wss:// handshake to the
-    // relay fails instantly with VERIFY_REQUIRED and no CA), and upstream
-    // already hard-disables verification on Windows for the same reason.
-    // The C API has no CA-file field, so this matches that behaviour on
-    // every platform. Game-channel security is unaffected — the WebRTC
-    // DTLS handshake authenticates via SDP fingerprints, not this socket.
+    // Verify the relay's certificate against our own roots (net_tls.h): the
+    // game channel is authenticated by the DTLS/SDP fingerprints and needs
+    // nothing from this socket, but the identity announcement rides it —
+    // a Steam ticket / Play Games code / Game Center signature — and an
+    // on-path attacker who captures one can attest as that player on the
+    // leaderboard. libdatachannel reaches no OS trust store through MbedTLS
+    // (nor through OpenSSL on Windows), which is why the bundle is carried
+    // rather than borrowed.
     rtcWsConfiguration cfg;
     memset(&cfg, 0, sizeof(cfg));
-    cfg.disableTlsVerification = true;
+    cfg.disableTlsVerification = net_tls_insecure();
+    const std::string &ca = net_ca_bundle_path();
+    if (!ca.empty()) cfg.caCertificatePemFile = ca.c_str();
     ws_ = rtcCreateWebSocketEx(full_url.c_str(), &cfg);
     if (ws_ < 0) {
       closed_flag_ = true;
