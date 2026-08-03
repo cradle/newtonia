@@ -75,7 +75,8 @@ backends, and it is the one with a system trust store to fall back on:
 |-------|-------------|--------------|----------|
 | Linux, `make` on macOS | OpenSSL | system store **+** our bundle | ✅ `linux.yml` gate |
 | `make osx` (universal — the SHIPPED mac build) | MbedTLS | our bundle ONLY | ✅ 2026-08-03 |
-| iOS, Android, Xbox | MbedTLS | our bundle ONLY | ⬜ |
+| Android | MbedTLS | our bundle ONLY | ✅ 2026-08-04 |
+| iOS, Xbox | MbedTLS | our bundle ONLY | ⬜ |
 | Windows | OpenSSL | our bundle ONLY (OpenSSL cannot read the CryptoAPI store) | ⬜ |
 
 So on four of those rows the carried roots are the *whole* trust story, and
@@ -85,22 +86,42 @@ COMPILES (an unpatched libdatachannel fails on the unknown field), not that
 a real handshake succeeds. Run this once per platform after any change to
 `net_ca_bundle.cpp`, `net_tls.cpp`, the patch, or a libdatachannel bump:
 
+**Desktop** (`make`, `make osx`, the MSYS2 Windows build) — the selftest
+hooks live in `glut.cpp`, so they exist here and nowhere else:
+
 ```sh
 ./build_netplay_deps.sh            # MUST be re-run: an old prefix has no
                                    # caCertificatePemFile and won't compile
-make                               # or make osx / android / ios / the MSYS2 build
+make                               # or: make osx   /   MSYS2 make -j8
 NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia
 ```
 
-Two things to confirm:
+**Android / iOS** have NO selftest hook (`android_main.cpp` and
+`ios_main.mm` never read those env vars), so drive the real feature — which
+is stronger evidence anyway, since a room code cannot appear unless the WSS
+handshake to the production worker completed:
+
+```sh
+make android-install               # or make ios-install
+adb logcat -c && adb logcat -s SDL/APP | grep -E "net: tls|net: signal"
+#   ...then on the device: ONLINE -> HOST, and watch for a room code.
+#   LEADERBOARD exercises the board socket the same way.
+```
+
+(iOS: read the same lines from the Xcode/`devicectl` console instead of
+logcat. If the Android tag filter comes up empty, `adb logcat | grep "net:"`
+— the tag varies, see §5.)
+
+Two things to confirm either way:
 1. **The log line** — `net: tls - verifying server certificates against
    <path>`, emitted once by the first socket that opens. Anything else is a
    finding: `no CA bundle on disk` means the write failed (fatal on the
    MbedTLS rows above, silently UNVERIFIED on Windows), and `VERIFICATION
    DISABLED` means `NEWTONIA_NET_TLS_INSECURE` leaked into the environment.
-2. **The selftest passes** — it does a real round trip against the
-   production signal worker, so it exercises the actual Cloudflare chain
-   through that platform's TLS stack. A verification failure shows up as a
+2. **The connection actually completes** — a selftest PASS on desktop, a
+   room code (or board rows) on mobile. Either way it is a real round trip
+   against the production worker, exercising the actual Cloudflare chain
+   through that platform's TLS stack; a verification failure shows up as a
    socket that never opens.
 
 What a failure means, by platform: on MbedTLS builds the handshake fails
@@ -116,10 +137,14 @@ The macOS ✅ is worth more than one row: `VerifiedTlsTransport` sets
 handshake proves the bundle wrote, MbedTLS parsed it, and Cloudflare's real
 chain verified against the carried roots — `SIGNAL SELFTEST PASS` is the
 evidence by itself. That retires the failure this section warns about (a
-root silently skipped at parse time) for every MbedTLS build; iOS, Android
-and Xbox still need their own pass for the toolchain and packaging, not for
-the bundle. Windows is the odd one out and stays worth doing: it is the
-only row that falls back to UNVERIFIED instead of failing closed.
+root silently skipped at parse time) for every MbedTLS build; iOS and Xbox
+still need their own pass for the toolchain and packaging, not for the
+bundle. Android confirmed the same thing independently on 2026-08-04
+(bundle written to `/data/data/org.newtonia/files/cacert.pem` at the exact
+expected size, then a room code), so the carried roots are now proven
+through MbedTLS on two platforms and two toolchains. Windows is the odd one
+out and stays the one worth doing: it is the only row that falls back to
+UNVERIFIED instead of failing closed, so a regression there is silent.
 
 The deploy jobs currently gate on `NEWTONIA_NET_SELFTEST` — an in-process
 loopback that involves no TLS whatever. Adding `NEWTONIA_SIGNAL_SELFTEST`
