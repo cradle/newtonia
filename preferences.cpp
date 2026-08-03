@@ -208,10 +208,6 @@ static void parse_line(const char *key, const char *val) {
         g_prefs.signal_url = val;
     } else if (strcmp(key, "last_hosted_code") == 0) {
         g_prefs.last_hosted_code = val;
-    } else if (strcmp(key, "net_run_id_salt") == 0) {
-        // Unsigned 64-bit, decimal. A malformed or zero value just leaves it
-        // unset, and Replay::run_id_salt() mints a fresh one.
-        g_prefs.net_run_id_salt = strtoull(val, NULL, 10);
     } else if (strcmp(key, "window_width") == 0) {
         int w = atoi(val);
         if (w > 0) g_prefs.window_width = w;
@@ -298,9 +294,6 @@ void save_preferences() {
         fprintf(f, "signal_url=%s\n",             g_prefs.signal_url.c_str());
     if (!g_prefs.last_hosted_code.empty())
         fprintf(f, "last_hosted_code=%s\n",       g_prefs.last_hosted_code.c_str());
-    if (g_prefs.net_run_id_salt)
-        fprintf(f, "net_run_id_salt=%llu\n",
-                (unsigned long long)g_prefs.net_run_id_salt);
     fprintf(f, "window_width=%d\n",            g_prefs.window_width);
     fprintf(f, "window_height=%d\n",           g_prefs.window_height);
 

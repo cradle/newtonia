@@ -504,7 +504,6 @@ Auto-save triggers on pause or player death if the player has lives or score rem
 - Display: `fullscreen` flag, `window_width`/`window_height`
 - Camera: legacy global `rotate_view` flag — superseded by the per-player `PlayerKeys::rotate_view`; kept only as a load-time migration seed (old INIs) and a downgrade fallback written from P1
 - Gameplay: `friendly_fire` flag, `star_density` multiplier (user-editable float in the INI)
-- Netplay: `net_run_id_salt` — a per-install secret (minted on first use by `Replay::run_id_salt()`, INI-only) that an ONLINE CLIENT xors the host's `run_id` with to get the id it records its own co-op replay under. It used to be the bitwise NOT, but the board publishes run_ids on every row, so that let anyone compute a not-yet-uploaded partner's id and block their run forever by submitting a crafted blob carrying it (LEADERBOARD.md S7). **Call `run_id_salt()` only after `load_preferences()`** — minting saves, so an early call writes a defaults-only `g_prefs` over the player's INI (this bit the recorder selftest, which runs pre-load)
 - API: `load_preferences()`, `save_preferences()`; missing keys in old files are silently ignored
 
 **High Score** (`highscore.h`) — `load_high_score()` / `save_high_score(score)`.

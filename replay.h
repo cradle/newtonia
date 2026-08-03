@@ -149,14 +149,6 @@ std::string game_version_string();
 
 uint64_t new_run_id();  // never returns 0
 
-// Per-install secret an ONLINE CLIENT xors the host's run_id with to get the
-// id it records its own co-op replay under (LEADERBOARD.md S7). Minted and
-// persisted (Preferences::net_run_id_salt) on first use; never 0, since a
-// zero salt would hand the client the HOST's id. The derivation must stay
-// deterministic — a rejoin re-derives it to resume the same recording — so
-// this is a stored secret rather than a fresh random each time.
-uint64_t run_id_salt();
-
 // Whether an environment override is forcing recording on or off, and which
 // way: -1 none, 0 forced OFF, 1 forced ON (DISABLE wins over ENABLE). ONE
 // definition, shared by the recorder gate (GLGame::replay_start) and the

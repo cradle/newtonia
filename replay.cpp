@@ -1,7 +1,6 @@
 #include "web_fs.h"
 #include "replay.h"
 #include "savegame.h"
-#include "preferences.h"
 
 #include <SDL.h>
 #include <cstdio>
@@ -340,27 +339,6 @@ uint64_t new_run_id() {
     id ^= (uint64_t)SDL_GetTicks();
     if (id == 0) id = 1;
     return id;
-}
-
-// Call only AFTER load_preferences(): minting saves, so an early call would
-// write a defaults-only g_prefs over the player's INI. The one production
-// caller is GLGame::replay_start, long past startup.
-uint64_t run_id_salt() {
-    if (g_prefs.net_run_id_salt == 0) {
-        // Same mix as new_run_id: random_device, plus wall/boot time in case
-        // a platform's random_device is weak.
-        std::random_device rd;
-        uint64_t s = ((uint64_t)rd() << 32) ^ (uint64_t)rd();
-        s ^= (uint64_t)time(NULL) << 20;
-        s ^= (uint64_t)SDL_GetTicks();
-        // Never 0 — that would make the client record under the HOST's id and
-        // collide with its row.
-        if (s == 0) s = 0x9e3779b97f4a7c15ULL;
-        g_prefs.net_run_id_salt = s;
-        save_preferences();
-        SDL_Log("replay: minted this install's run-id salt");
-    }
-    return g_prefs.net_run_id_salt;
 }
 
 // ── Rotation ─────────────────────────────────────────────────────────────────

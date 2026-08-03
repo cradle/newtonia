@@ -443,7 +443,15 @@ export default {
       }
     }
     if (demoted) console.log(`retention: demoted ${demoted} row(s) to score-only`);
-    await sweep_orphans(env);
+    // Best-effort: the demote pass above has already committed its work, and
+    // an R2 hiccup in the sweep must not fail the whole cron invocation (or
+    // hide the demote count behind an exception). The next run picks up
+    // whatever this one missed.
+    try {
+      await sweep_orphans(env);
+    } catch (e) {
+      console.log(`retention: orphan sweep failed: ${log_str(e && e.message)}`);
+    }
   },
 };
 
@@ -603,12 +611,17 @@ export class Session {
     let a = null;
     try { a = ws.deserializeAttachment(); } catch (e) {}
     if (!a) return;
-    this.ip = a.ip;
-    this.dev = a.dev;
-    this.queries = a.queries;
-    this.submits = a.submits;
-    this.fetches = a.fetches;
-    this.forced_reject_once_ = a.forced;
+    // Coerce every counter. A field this code did not write — an attachment
+    // from a different version of the shape, say — would otherwise restore
+    // `undefined`, and `++undefined` is NaN, which compares false against
+    // EVERY cap: the per-connection budget would silently stop existing.
+    // A guard must not fail open because a field went missing.
+    this.ip = typeof a.ip === "string" ? a.ip : this.ip;
+    this.dev = a.dev === true;
+    this.queries = Number(a.queries) || 0;
+    this.submits = Number(a.submits) || 0;
+    this.fetches = Number(a.fetches) || 0;
+    this.forced_reject_once_ = a.forced === true;
   }
 
   persist(ws) {

@@ -1,7 +1,5 @@
 #pragma once
 
-#include <stdint.h>
-
 #include <string>
 
 // User preferences persisted to an INI file in the SDL pref path.
@@ -113,19 +111,6 @@ struct Preferences {
                                        // discoverable — the relay/manual flows are
                                        // untouched. INI-only (no Options row).
     std::string signal_url;            // netplay room server override (empty = baked default)
-    // Per-install secret that makes an ONLINE CLIENT's replay run_id
-    // underivable by anyone else (LEADERBOARD.md S7). The client records a
-    // co-op session under its own id so both peers can chart, and that id
-    // used to be a published function of the host's (bitwise NOT) — but the
-    // board publishes run_ids on every row, so a stranger could compute a
-    // not-yet-uploaded partner's id, submit a crafted blob carrying it, and
-    // permanently block that run (the worker refuses a run_id already held
-    // by another account, which is the same rule that stops replay theft).
-    // XORing with this instead keeps every property the derivation needed —
-    // distinct from the host's, deterministic so a rejoin resumes the same
-    // recording, uniformly distributed — while making it unguessable.
-    // Generated on first use (0 = not yet); see Replay::run_id_salt().
-    uint64_t net_run_id_salt = 0;
     std::string last_hosted_code;      // last room code this install hosted — the
                                        // lobby's clipboard auto-join refuses it, so a
                                        // killed-and-relaunched host can't walk into its

@@ -108,6 +108,30 @@ function fake_ws() {
 }
 
 {
+  // A PARTIAL attachment — a field this code did not write — must not
+  // restore `undefined`: ++undefined is NaN, and NaN compares false against
+  // every cap, so the budget would silently stop existing. A guard may not
+  // fail open because a field went missing.
+  const ws = fake_ws();
+  ws.serializeAttachment({ ip: "v4:203.0.113.9", dev: false });  // no counters
+  const s = new Session({}, {});
+  s.hydrate(ws);
+  eq("missing counter restores 0, not undefined", s.queries, 0);
+  s.queries++;
+  eq("counter still counts after a partial attachment", s.queries, 1);
+  eq("budget still bites", (s.queries = 121) > 120, true);
+  // Junk in the fields is coerced too, never trusted through.
+  const s2 = new Session({}, {});
+  s2.hydrate({ deserializeAttachment: () => ({
+    ip: 42, dev: "yes", queries: "lots", submits: null, fetches: {},
+    forced: "true" }) });
+  eq("non-numeric counter coerced to 0", s2.queries, 0);
+  eq("non-string ip left at the default", s2.ip, "local");
+  eq("non-boolean dev is false", s2.dev, false);
+  eq("non-boolean forced flag is false", s2.forced_reject_once_, false);
+}
+
+{
   // A socket with no attachment (or one that throws) must leave defaults
   // rather than crash the message handler.
   const s = new Session({}, {});
