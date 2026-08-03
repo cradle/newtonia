@@ -133,15 +133,33 @@ static int menu_copyright_y(bool has_high_score) {
   return -(menu_half_height() - 180);
 }
 
+// ---- sub-screen (options/replays/board) portrait anchors ----
+// Same rule as the main menu: everything hangs off menu_half_height(),
+// reducing to the classic fixed layout in landscape and spreading over
+// half the portrait surplus otherwise (field request 2026-08-03).
+static int menu_screen_heading_y() {
+  return menu_half_height() - (is_touch_mode() ? 260 : 232);
+}
+// The RETURN/BACK TO MENU band, re-anchored the same half-surplus down
+// (0 in landscape). ONE definition feeds the three screens' draw AND
+// hit-test (the TapBand rule).
+static float menu_band_lift() { return (float)(600 - menu_half_height()); }
+static TapBand menu_exit_band() {
+  return TapBand::return_to_menu.lifted(menu_band_lift());
+}
+
 // Options/replays row-band geometry — shared by the draw and the tap
 // hit-test so a tap always lands on the row it appears on. Touch rows fill
 // the band above the RETURN TO MENU strip; desktop rows run deeper (no exit
 // strip below) — and desktop taps are real input too: the Steam Deck's
 // touchscreen reaches the desktop build as pointer clicks (glut.cpp
 // forwards them as taps), so the desktop layout needs the same
-// draw/hit-test pairing the touch layout has.
-static const float TOUCH_OPT_TOP = 250.0f, TOUCH_OPT_BOTTOM = -210.0f;
-static const float DESK_OPT_TOP = 250.0f, DESK_OPT_BOTTOM = -300.0f;
+// draw/hit-test pairing the touch layout has. Landscape values: touch
+// 250..-210, desktop 250..-300.
+static float touch_opt_top()    { return (float)(menu_half_height() - 350); }
+static float touch_opt_bottom() { return -(float)(menu_half_height() - 390); }
+static float desk_opt_top()     { return (float)(menu_half_height() - 350); }
+static float desk_opt_bottom()  { return -(float)(menu_half_height() - 300); }
 static int opt_row_center(int i, int n, float top, float bottom) {
   float pitch = (top - bottom) / n;
   return (int)(top - (i + 0.5f) * pitch);
@@ -153,27 +171,39 @@ static int opt_row_at(float ny, int n, float top, float bottom) {
   if (t < 0 || t >= pitch * n) return -1;
   return (int)(t / pitch);
 }
-// Fixed slots (Typer virtual units). The control pair sits tight under
-// the title, the score table runs at constant pitch under its headers,
-// and the UPLOAD action + footer hold the bottom — grouping over spread.
-static const int BOARD_Y_TOGGLE = 268, BOARD_Y_SEASON = 214,
-                 BOARD_Y_HEADER = 158, BOARD_Y_ROW0 = 116,
-                 BOARD_ROW_PITCH = 48, BOARD_Y_UPLOAD = -300,
-                 BOARD_Y_FOOTER = -364;
-// The table shows this many rows at once; the fetch asks for the full
-// top-100 board and the window scrolls over it (BOARD_Y_RANGE = the
-// "N-M OF R" indicator under the table, tappable on touch: left half
-// pages up, right half down).
-static const int BOARD_VISIBLE_ROWS = 8, BOARD_Y_RANGE = -262;
+// Board slots (Typer virtual units), hanging off the same portrait-aware
+// half-height: the control pair sits tight under the title, the score
+// table runs at constant pitch under its headers, and the UPLOAD action +
+// footer hold the bottom. Landscape values: 268/214/158/116, pitch 48,
+// -262/-300/-364. Touch rows draw over TWO lines (name/score above,
+// platform badge/level/date below — portrait has no width for the
+// desktop's six columns), so their pitch is taller.
+static int board_y_toggle() { return menu_half_height() - 332; }
+static int board_y_season() { return menu_half_height() - 386; }
+static int board_y_header() { return menu_half_height() - 442; }
+static int board_y_row0()   { return menu_half_height() - 484; }
+static int board_row_pitch() { return is_touch_mode() ? 76 : 48; }
+static int board_y_range()  { return -(menu_half_height() - 338); }
+static int board_y_upload() { return -(menu_half_height() - 300); }
+static int board_y_footer() { return -(menu_half_height() - 236); }
+// How many rows the table window shows at once: as many as fit between
+// the first row slot and the range indicator (8 on landscape desktop —
+// the classic layout; portrait's taller band fits more). The fetch asks
+// for the full top-100 board and the window scrolls over it (the range
+// indicator is the "N-M OF R" line under the table, tappable on touch:
+// left half pages up, right half down).
+static int board_visible_rows() {
+  return (board_y_row0() - board_y_range() - 26) / board_row_pitch() + 1;
+}
 // Sentinel for a row entry scrolled out of the window (never drawn,
 // never hit-tested — no real slot is anywhere near it).
 static const int BOARD_Y_OFFSCREEN = 10000;
 
 static int touch_opt_center(int i, int n) {
-  return opt_row_center(i, n, TOUCH_OPT_TOP, TOUCH_OPT_BOTTOM);
+  return opt_row_center(i, n, touch_opt_top(), touch_opt_bottom());
 }
 static int touch_opt_row_at(float ny, int n) {
-  return opt_row_at(ny, n, TOUCH_OPT_TOP, TOUCH_OPT_BOTTOM);
+  return opt_row_at(ny, n, touch_opt_top(), touch_opt_bottom());
 }
 
 // The desktop confirm dialogs (Quit? / New game?) stack Yes above No.
@@ -300,7 +330,8 @@ void Menu::draw() {
 
   if (board_mode_) {
     bool touch = is_touch_mode();
-    Typer::draw_centered(0, touch ? 340 : 368, "LEADERBOARD", touch ? 30 : 26);
+    Typer::draw_centered(0, menu_screen_heading_y(), "LEADERBOARD",
+                         touch ? 30 : 26);
     // Entries: [0] the SOLO/CO-OP toggle, [1] the SEASON browser, [2..]
     // the score rows, then the UPLOAD BEST RUN action (the game-over
     // prompt's retry path). Same shared row geometry as the
@@ -322,11 +353,15 @@ void Menu::draw() {
     // Column headers over the score table (structure the bare values lost
     // when the worded labels were dropped for column fit).
     if (!board_rows_.empty()) {
-      Typer::draw(RANK_X, BOARD_Y_HEADER, "#", 9);
-      Typer::draw(NAME_X, BOARD_Y_HEADER, "PLAYER", 9);
-      Typer::draw(SCORE_X, BOARD_Y_HEADER, "SCORE", 9);
-      Typer::draw(LEVEL_X, BOARD_Y_HEADER, "LVL", 9);  // LEVEL overran DATE
-      if (!touch) Typer::draw(DATE_X, BOARD_Y_HEADER, "DATE", 9);
+      Typer::draw(RANK_X, board_y_header(), "#", 9);
+      Typer::draw(NAME_X, board_y_header(), "PLAYER", 9);
+      Typer::draw(SCORE_X, board_y_header(), "SCORE", 9);
+      // Touch rows carry "LVL n" and the date inline on their second
+      // line, so only the desktop's columns get headers for them.
+      if (!touch) {
+        Typer::draw(LEVEL_X, board_y_header(), "LVL", 9);  // LEVEL overran DATE
+        Typer::draw(DATE_X, board_y_header(), "DATE", 9);
+      }
     }
     for (int e = 0; e < n; e++) {
       char text[96];
@@ -391,30 +426,51 @@ void Menu::draw() {
         snprintf(rank_buf, sizeof(rank_buf), "#%d", r.rank);
         snprintf(score_buf, sizeof(score_buf), "%u", r.score);
         snprintf(level_buf, sizeof(level_buf), "%u", r.generation + 1);
-        Typer::draw(RANK_X, y, rank_buf, 11);
-        Typer::draw(NAME_X, y, name.c_str(), 10);
+        // The last column's content: the date, unless the replay cannot
+        // be watched — retention-demoted (gone) or another version's
+        // format (the season browser reaches those) — which matters more
+        // than when.
+        const char *tag = NULL;
+        char date_buf[16] = "";
+        if (!r.has_replay) {
+          tag = "NO REPLAY";
+        } else if (!net_board_replay_watchable(r)) {
+          tag = "OTHER VER";
+        } else if (r.date > 0) {
+          time_t t = (time_t)(r.date / 1000);  // submitted_at is epoch ms
+          struct tm *tmv = localtime(&t);
+          if (tmv) strftime(date_buf, sizeof(date_buf), "%y-%m-%d", tmv);
+        }
         // Platform badge (STEAM/WEB/IOS/ANDROID) so rows from different
         // platforms — and the verified vs claimed distinction above — are
         // visible, not collapsed into an anonymous name.
         const char *badge = net_platform_label(r.platform);
-        if (badge && badge[0] && !touch) Typer::draw(BADGE_X, y, badge, 9);
+        Typer::draw(RANK_X, y, rank_buf, 11);
+        Typer::draw(NAME_X, y, name.c_str(), 10);
         Typer::draw(SCORE_X, y, score_buf, 12);
-        Typer::draw(LEVEL_X, y, level_buf, 10);
-        if (!touch) {
-          // The last column: the date, unless the replay cannot be watched
-          // — retention-demoted (gone) or another version's format (the
-          // season browser reaches those) — which matters more than when.
-          if (!r.has_replay) {
-            Typer::draw(TAG_X, y, "NO REPLAY", 8);
-          } else if (!net_board_replay_watchable(r)) {
-            Typer::draw(TAG_X, y, "OTHER VER", 8);
-          } else if (r.date > 0) {
-            char date_buf[16] = "";
-            time_t t = (time_t)(r.date / 1000);  // submitted_at is epoch ms
-            struct tm *tmv = localtime(&t);
-            if (tmv) strftime(date_buf, sizeof(date_buf), "%y-%m-%d", tmv);
+        if (touch) {
+          // Second line: the columns portrait has no width for — the
+          // platform badge under the name, "LVL n" under the score, and
+          // the date / unwatchable tag on the right. Offset chosen so the
+          // within-entry gap (32) is clearly tighter than the gap to the
+          // next entry (44 at the 76 pitch) — equal gaps made the pairing
+          // ambiguous.
+          int y2 = y - 32;
+          if (badge && badge[0]) Typer::draw(NAME_X, y2, badge, 9);
+          char lvl2[24];
+          snprintf(lvl2, sizeof(lvl2), "LVL %s", level_buf);
+          Typer::draw(SCORE_X, y2, lvl2, 9);
+          if (tag)
+            Typer::draw(LEVEL_X, y2, tag, 8);
+          else if (date_buf[0])
+            Typer::draw(LEVEL_X, y2, date_buf, 8);
+        } else {
+          if (badge && badge[0]) Typer::draw(BADGE_X, y, badge, 9);
+          Typer::draw(LEVEL_X, y, level_buf, 10);
+          if (tag)
+            Typer::draw(TAG_X, y, tag, 8);
+          else if (date_buf[0])
             Typer::draw(DATE_X, y, date_buf, 8);
-          }
         }
         continue;
       }
@@ -453,16 +509,16 @@ void Menu::draw() {
     // Scroll range under the table when the board exceeds the window —
     // both the "there is more" affordance and, on touch, the pager (tap
     // left half = up, right half = down; see touch_tap).
-    if ((int)board_rows_.size() > BOARD_VISIBLE_ROWS) {
+    if ((int)board_rows_.size() > board_visible_rows()) {
       char range[40];
-      int last = board_scroll_ + BOARD_VISIBLE_ROWS;
+      int last = board_scroll_ + board_visible_rows();
       if (last > (int)board_rows_.size()) last = (int)board_rows_.size();
       snprintf(range, sizeof(range), "%d-%d OF %d", board_scroll_ + 1, last,
                (int)board_rows_.size());
-      Typer::draw_centered(0, BOARD_Y_RANGE, range, 9);
+      Typer::draw_centered(0, board_y_range(), range, 9);
     }
     // Status / footer line, anchored under the UPLOAD slot.
-    int fy = BOARD_Y_FOOTER;
+    int fy = board_y_footer();
     int sel_ri = board_sel_ - 2;  // selected score row, or out of range
     const NetBoard::Row *sel_row =
         (sel_ri >= 0 && sel_ri < (int)board_rows_.size())
@@ -508,7 +564,7 @@ void Menu::draw() {
     // the button there. No key prefix in the label: Esc is hard-coded in
     // MenuSelect::is_back, not a rebindable binding, and the row reads as
     // an action now, not a hint.
-    TapBand::return_to_menu.draw(
+    menu_exit_band().draw(
         touch ? Typer::cursored("RETURN TO MENU", true).c_str()
               : Typer::cursored("BACK TO MENU",
                                 board_sel_ == board_entry_count() - 1)
@@ -516,7 +572,8 @@ void Menu::draw() {
         currentTime);
   } else if (replays_mode_) {
     bool touch = is_touch_mode();
-    Typer::draw_centered(0, touch ? 340 : 368, "REPLAYS", touch ? 30 : 26);
+    Typer::draw_centered(0, menu_screen_heading_y(), "REPLAYS",
+                         touch ? 30 : 26);
     int n = (int)replay_rows_.size();
     // Desktop column x's chosen so the whole row block spans symmetrically
     // about x=0 (the worst-case row — both cursor marks + "CURRENT RUN" + a
@@ -543,7 +600,7 @@ void Menu::draw() {
         }
         continue;
       }
-      int y = opt_row_center(i, n, DESK_OPT_TOP, DESK_OPT_BOTTOM);
+      int y = opt_row_center(i, n, desk_opt_top(), desk_opt_bottom());
       MenuSelect::draw_row_cursor(replay_sel_ == i, CURSOR_L, CURSOR_R, y, 14);
       Typer::draw(LABEL_X, y, r.label.c_str(), 14);
       if (r.ok) {
@@ -561,7 +618,7 @@ void Menu::draw() {
     // selected row. Desktop: the band doubles as the list's last selectable
     // row (index == replay_rows_.size()), so keyboard/controller can walk
     // onto it and confirm out; Esc still exits from anywhere.
-    TapBand::return_to_menu.draw(
+    menu_exit_band().draw(
         touch ? Typer::cursored("RETURN TO MENU", true).c_str()
               : Typer::cursored("BACK TO MENU",
                                 replay_sel_ == (int)replay_rows_.size())
@@ -569,7 +626,8 @@ void Menu::draw() {
         currentTime);
   } else if (options_mode_) {
     bool touch = is_touch_mode();
-    Typer::draw_centered(0, touch ? 340 : 368, "OPTIONS", touch ? 30 : 26);
+    Typer::draw_centered(0, menu_screen_heading_y(), "OPTIONS",
+                         touch ? 30 : 26);
 
     int n = opt_row_count();
     // Desktop: one line per option, using the horizontal room — name on the
@@ -630,7 +688,7 @@ void Menu::draw() {
         continue;
       }
 
-      int y = opt_row_center(row, n, DESK_OPT_TOP, DESK_OPT_BOTTOM);
+      int y = opt_row_center(row, n, desk_opt_top(), desk_opt_bottom());
       MenuSelect::draw_row_cursor(active_row_ == row, CURSOR_L, CURSOR_R, y,
                                 12);
       Typer::draw(NAME_X, y, r.name, 12);                // name, left
@@ -659,7 +717,7 @@ void Menu::draw() {
     // Desktop: also the selectable row after the last option (index ==
     // opt_row_count()); confirm on it closes, confirm on an option row
     // cycles that value (matching the touch tap).
-    TapBand::return_to_menu.draw(
+    menu_exit_band().draw(
         touch ? Typer::cursored("RETURN TO MENU", true).c_str()
               : Typer::cursored("BACK TO MENU",
                                 active_row_ == opt_row_count())
@@ -1034,10 +1092,11 @@ void Menu::touch_tap(float nx, float ny) {
     // end; the bottom strip exits (and persists via close_options) on both
     // layouts — the band is drawn on desktop too, where its zone sits well
     // below the deeper desktop rows (rows end ~-285, band reach tops ~-370).
-    if (TapBand::return_to_menu.contains(nx, ny)) { close_options(); return; }
+    if (menu_exit_band().contains(nx, ny)) { close_options(); return; }
     int row = is_touch_mode()
                   ? touch_opt_row_at(ny, opt_row_count())
-                  : opt_row_at(ny, opt_row_count(), DESK_OPT_TOP, DESK_OPT_BOTTOM);
+                  : opt_row_at(ny, opt_row_count(), desk_opt_top(),
+                               desk_opt_bottom());
     if (row >= 0) {
       active_row_ = row;
       adjust_active_row(+1, /*wrap=*/true);
@@ -1045,17 +1104,17 @@ void Menu::touch_tap(float nx, float ny) {
     return;
   }
   if (board_mode_) {
-    if (TapBand::return_to_menu.contains(nx, ny)) { close_board(); return; }
+    if (menu_exit_band().contains(nx, ny)) { close_board(); return; }
     // Same fixed slots the draw uses (board_entry_y — the TapBand rule).
     float ty = (1.0f - 2.0f * ny) * Typer::scaled_window_height;
     // The range line doubles as the touch pager: left half pages up,
     // right half pages down (drag scrolling is not a thing this menu
     // stack has; the indicator is the one drawn, tappable affordance).
-    if ((int)board_rows_.size() > BOARD_VISIBLE_ROWS &&
-        ty <= BOARD_Y_RANGE + BOARD_ROW_PITCH / 2 &&
-        ty >= BOARD_Y_RANGE - BOARD_ROW_PITCH / 2) {
-      int max_scroll = (int)board_rows_.size() - BOARD_VISIBLE_ROWS;
-      board_scroll_ += (nx < 0.5f) ? -BOARD_VISIBLE_ROWS : BOARD_VISIBLE_ROWS;
+    if ((int)board_rows_.size() > board_visible_rows() &&
+        ty <= board_y_range() + board_row_pitch() / 2 &&
+        ty >= board_y_range() - board_row_pitch() / 2) {
+      int max_scroll = (int)board_rows_.size() - board_visible_rows();
+      board_scroll_ += (nx < 0.5f) ? -board_visible_rows() : board_visible_rows();
       if (board_scroll_ < 0) board_scroll_ = 0;
       if (board_scroll_ > max_scroll) board_scroll_ = max_scroll;
       return;
@@ -1068,10 +1127,11 @@ void Menu::touch_tap(float nx, float ny) {
     return;
   }
   if (replays_mode_) {
-    if (TapBand::return_to_menu.contains(nx, ny)) { replays_mode_ = false; return; }
+    if (menu_exit_band().contains(nx, ny)) { replays_mode_ = false; return; }
     int row = is_touch_mode()
                   ? touch_opt_row_at(ny, (int)replay_rows_.size())
-                  : opt_row_at(ny, (int)replay_rows_.size(), DESK_OPT_TOP, DESK_OPT_BOTTOM);
+                  : opt_row_at(ny, (int)replay_rows_.size(), desk_opt_top(),
+                               desk_opt_bottom());
     if (row >= 0 && replay_rows_[row].ok) {
       replay_sel_ = row;
       if (GLGame *g = GLGame::start_replay_playback(replay_rows_[row].path)) {
@@ -1445,16 +1505,16 @@ int Menu::board_up_phase_shown() const {
 }
 
 int Menu::board_entry_y(int e) const {
-  if (e == 0) return BOARD_Y_TOGGLE;
-  if (e == 1) return BOARD_Y_SEASON;
+  if (e == 0) return board_y_toggle();
+  if (e == 1) return board_y_season();
   int ri = e - 2;
   if (ri < (int)board_rows_.size()) {
-    if (ri < board_scroll_ || ri >= board_scroll_ + BOARD_VISIBLE_ROWS)
+    if (ri < board_scroll_ || ri >= board_scroll_ + board_visible_rows())
       return BOARD_Y_OFFSCREEN;  // scrolled out of the window
-    return BOARD_Y_ROW0 - (ri - board_scroll_) * BOARD_ROW_PITCH;
+    return board_y_row0() - (ri - board_scroll_) * board_row_pitch();
   }
   if (board_upload_row_shown() && ri == (int)board_rows_.size())
-    return BOARD_Y_UPLOAD;  // the UPLOAD BEST RUN action
+    return board_y_upload();  // the UPLOAD BEST RUN action
   // The trailing BACK TO MENU entry: the band draws its own label and
   // catches its own taps (TapBand::contains runs before board_entry_at),
   // so the row machinery must never draw or hit-test a slot for it.
@@ -1467,15 +1527,15 @@ void Menu::board_ensure_visible() {
   int ri = board_sel_ - 2;
   if (ri < 0 || ri >= (int)board_rows_.size()) return;
   if (ri < board_scroll_) board_scroll_ = ri;
-  if (ri >= board_scroll_ + BOARD_VISIBLE_ROWS)
-    board_scroll_ = ri - BOARD_VISIBLE_ROWS + 1;
+  if (ri >= board_scroll_ + board_visible_rows())
+    board_scroll_ = ri - board_visible_rows() + 1;
 }
 
 int Menu::board_entry_at(float y) const {
   int n = board_entry_count();
   for (int e = 0; e < n; e++)
-    if (y <= board_entry_y(e) + BOARD_ROW_PITCH / 2 &&
-        y >= board_entry_y(e) - BOARD_ROW_PITCH / 2)
+    if (y <= board_entry_y(e) + board_row_pitch() / 2 &&
+        y >= board_entry_y(e) - board_row_pitch() / 2)
       return e;
   return -1;
 }
