@@ -16,10 +16,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Network fetches retry with backoff, wiping partial state between
+      # attempts — one transient GitHub 503 wave took out four workflow
+      # runs at once (2026-08-03).
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
+          try sudo apt-get update
+          try sudo apt-get install -y \
             libsdl2-dev \
             freeglut3-dev \
             libgl1-mesa-dev \
@@ -30,7 +37,12 @@ jobs:
 
       - name: Build SDL2_mixer (WAV + MP3 only)
         run: |
-          git clone --depth 1 --branch release-2.8.2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20))
+                    if [ -n "${CLEAN:-}" ]; then rm -rf $CLEAN; fi; done; }
+          CLEAN=SDL2_mixer try git clone --depth 1 --branch release-2.8.2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
           cmake -S SDL2_mixer -B SDL2_mixer/build \
             -DSDL2MIXER_WAV=ON \
             -DSDL2MIXER_MP3=ON \

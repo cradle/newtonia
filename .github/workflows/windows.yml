@@ -43,8 +43,16 @@ jobs:
       # Same libdatachannel pin as build_netplay_deps.sh / xbox.
       - name: Build libdatachannel (netplay, static)
         run: |
+          # Retry with backoff, wiping the partial clone — a transient
+          # GitHub 503 wave killed the deploy-steam twin of this step
+          # (2026-08-03).
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20))
+                    if [ -n "${CLEAN:-}" ]; then rm -rf $CLEAN; fi; done; }
           mkdir netplay-deps
-          git clone --branch v0.24.5 --depth 1 --recurse-submodules --shallow-submodules \
+          CLEAN=netplay-deps/libdatachannel try git clone --branch v0.24.5 --depth 1 --recurse-submodules --shallow-submodules \
             https://github.com/paullouisageneau/libdatachannel.git netplay-deps/libdatachannel
           cmake -S netplay-deps/libdatachannel -B netplay-deps/libdatachannel/build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \

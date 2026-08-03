@@ -37,15 +37,32 @@ jobs:
             netlibs
           key: ios-sim-deps-v1-sdl2.32.10-mix2.8.2-mbedtls3.6.6-ldc0.24.5-${{ hashFiles('newtonia/xbox/mbedtls_user_config.h') }}
 
+      # Network fetches retry with backoff, wiping partial state between
+      # attempts — one transient GitHub 503 wave took out four workflow
+      # runs at once (2026-08-03).
       - name: Clone SDL2
         if: steps.deps.outputs.cache-hit != 'true'
-        run: git clone --depth 1 --branch release-2.32.10 https://github.com/libsdl-org/SDL.git SDL2
+        run: |
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20))
+                    if [ -n "${CLEAN:-}" ]; then rm -rf $CLEAN; fi; done; }
+          CLEAN=SDL2 try git clone --depth 1 --branch release-2.32.10 https://github.com/libsdl-org/SDL.git SDL2
 
       - name: Clone SDL2_mixer
         if: steps.deps.outputs.cache-hit != 'true'
         run: |
-          git clone --depth 1 --branch release-2.8.2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
-          git -C SDL2_mixer submodule update --init --depth 1
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20))
+                    if [ -n "${CLEAN:-}" ]; then rm -rf $CLEAN; fi; done; }
+          fetch() {
+            git clone --depth 1 --branch release-2.8.2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer &&
+            git -C SDL2_mixer submodule update --init --depth 1
+          }
+          CLEAN=SDL2_mixer try fetch
 
       - name: Build SDL2 static library for iOS Simulator
         if: steps.deps.outputs.cache-hit != 'true'
@@ -96,8 +113,13 @@ jobs:
           # Same pins and DTLS-SRTP user config as every other platform
           # (see NETPLAY.md). Quotes must survive shell->CMake->compiler,
           # hence the backslash escaping (same trick as build_netplay_deps.sh).
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20))
+                    if [ -n "${CLEAN:-}" ]; then rm -rf $CLEAN; fi; done; }
           UCFG="-DMBEDTLS_USER_CONFIG_FILE=\\\"$(pwd)/newtonia/xbox/mbedtls_user_config.h\\\""
-          git clone --branch v3.6.6 --depth 1 --recurse-submodules --shallow-submodules \
+          CLEAN=mbedtls try git clone --branch v3.6.6 --depth 1 --recurse-submodules --shallow-submodules \
             https://github.com/Mbed-TLS/mbedtls.git mbedtls
           cmake -S mbedtls -B mbedtls/build-ios-sim \
             -DCMAKE_SYSTEM_NAME=iOS \
@@ -111,7 +133,7 @@ jobs:
           cmake --build mbedtls/build-ios-sim -j3
           cmake --install mbedtls/build-ios-sim
 
-          git clone --branch v0.24.5 --depth 1 --recurse-submodules --shallow-submodules \
+          CLEAN=libdatachannel try git clone --branch v0.24.5 --depth 1 --recurse-submodules --shallow-submodules \
             https://github.com/paullouisageneau/libdatachannel.git libdatachannel
           cmake -S libdatachannel -B libdatachannel/build-ios-sim \
             -DCMAKE_SYSTEM_NAME=iOS \
@@ -326,7 +348,11 @@ jobs:
       # .cpp is picked up by the glob with no pbxproj edit.
       - name: Generate Xcode project (XcodeGen)
         run: |
-          brew install xcodegen
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
+          try brew install xcodegen
           cd newtonia/ios && xcodegen generate --spec project.yml
 
       - name: Download deps artifact

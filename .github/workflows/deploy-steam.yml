@@ -58,8 +58,15 @@ jobs:
       # recipe as windows.yml (the dev CI is the compile gate for this).
       - name: Build libdatachannel (netplay, static)
         run: |
+          # Retry with backoff, wiping the partial clone — a transient
+          # GitHub 503 wave killed this exact step (2026-08-03).
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20))
+                    if [ -n "${CLEAN:-}" ]; then rm -rf $CLEAN; fi; done; }
           mkdir netplay-deps
-          git clone --branch v0.24.5 --depth 1 --recurse-submodules --shallow-submodules \
+          CLEAN=netplay-deps/libdatachannel try git clone --branch v0.24.5 --depth 1 --recurse-submodules --shallow-submodules \
             https://github.com/paullouisageneau/libdatachannel.git netplay-deps/libdatachannel
           cmake -S netplay-deps/libdatachannel -B netplay-deps/libdatachannel/build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -135,19 +142,39 @@ jobs:
         if: github.ref_type == 'tag'
         run: echo "NEWTONIA_VERSION=$(tr -d '[:space:]' < SEASON)" >> "$GITHUB_ENV"
 
+      # Network fetches retry with backoff — one transient GitHub/CDN 503
+      # wave took out four workflow runs at once (2026-08-03; the macOS Dev
+      # twin of the x86_64 Homebrew step was among them).
       - name: Install arm64 dependencies
-        run: brew install sdl2 mpg123
+        run: |
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
+          try brew install sdl2 mpg123
 
       - name: Install x86_64 Homebrew and dependencies
         run: |
-          arch -x86_64 /bin/bash -c \
-            "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          arch -x86_64 /usr/local/bin/brew install sdl2 mpg123
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
+          install_x86_brew() {
+            arch -x86_64 /bin/bash -c \
+              "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          }
+          try install_x86_brew
+          try arch -x86_64 /usr/local/bin/brew install sdl2 mpg123
 
       - name: Build SDL2_mixer from source (WAV + MP3 only)
         run: |
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
           SDL_MIXER_VER=2.8.2
-          curl -fsSL https://github.com/libsdl-org/SDL_mixer/releases/download/release-${SDL_MIXER_VER}/SDL2_mixer-${SDL_MIXER_VER}.tar.gz | tar xz
+          fetch() { curl -fsSL https://github.com/libsdl-org/SDL_mixer/releases/download/release-${SDL_MIXER_VER}/SDL2_mixer-${SDL_MIXER_VER}.tar.gz | tar xz; }
+          try fetch
           cd SDL2_mixer-${SDL_MIXER_VER}
 
           cmake_flags=(
@@ -193,15 +220,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.STEAM_SDK_TOKEN }}
         run: |
-          ASSET_URL=$(curl -fsSL \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/cradle/assets/releases/tags/sdk-latest" \
-            | python3 -c "import sys,json;data=json.load(sys.stdin);print(next(a['url'] for a in data['assets'] if a['name']=='steamworks_sdk.zip'))")
-          curl -fsSL \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/octet-stream" \
-            "$ASSET_URL" -o steamworks_sdk.zip
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
+          fetch_sdk() {
+            ASSET_URL=$(curl -fsSL \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/cradle/assets/releases/tags/sdk-latest" \
+              | python3 -c "import sys,json;data=json.load(sys.stdin);print(next(a['url'] for a in data['assets'] if a['name']=='steamworks_sdk.zip'))") &&
+            curl -fsSL \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/octet-stream" \
+              "$ASSET_URL" -o steamworks_sdk.zip
+          }
+          try fetch_sdk
           unzip -q steamworks_sdk.zip
           # Set the install name so the linker embeds the correct Frameworks path
           install_name_tool -id \
@@ -458,10 +492,17 @@ jobs:
         if: github.ref_type == 'tag'
         run: echo "NEWTONIA_VERSION=$(tr -d '[:space:]' < SEASON)" >> "$GITHUB_ENV"
 
+      # Network fetches retry with backoff — one transient GitHub/CDN 503
+      # wave took out four workflow runs at once (2026-08-03; this job's
+      # SDL clone was among them).
       - name: Install dependencies
         run: |
-          apt-get update
-          apt-get install -y \
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
+          try apt-get update
+          try apt-get install -y \
             freeglut3-dev \
             libgl1-mesa-dev \
             libglu1-mesa-dev \
@@ -477,20 +518,32 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.STEAM_SDK_TOKEN }}
         run: |
-          ASSET_URL=$(curl -fsSL \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/cradle/assets/releases/tags/sdk-latest" \
-            | python3 -c "import sys,json;data=json.load(sys.stdin);print(next(a['url'] for a in data['assets'] if a['name']=='steamworks_sdk.zip'))")
-          curl -fsSL \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/octet-stream" \
-            "$ASSET_URL" -o steamworks_sdk.zip
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
+          fetch_sdk() {
+            ASSET_URL=$(curl -fsSL \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/cradle/assets/releases/tags/sdk-latest" \
+              | python3 -c "import sys,json;data=json.load(sys.stdin);print(next(a['url'] for a in data['assets'] if a['name']=='steamworks_sdk.zip'))") &&
+            curl -fsSL \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/octet-stream" \
+              "$ASSET_URL" -o steamworks_sdk.zip
+          }
+          try fetch_sdk
           unzip -q steamworks_sdk.zip
 
       - name: Build SDL2 from source
         run: |
-          git clone --depth 1 --branch release-2.32.10 https://github.com/libsdl-org/SDL.git SDL2_source
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20))
+                    if [ -n "${CLEAN:-}" ]; then rm -rf $CLEAN; fi; done; }
+          CLEAN=SDL2_source try git clone --depth 1 --branch release-2.32.10 https://github.com/libsdl-org/SDL.git SDL2_source
           cmake -S SDL2_source -B SDL2_source/build \
             -DCMAKE_BUILD_TYPE=Release \
             -DSDL_SHARED=OFF \
@@ -501,7 +554,12 @@ jobs:
 
       - name: Build SDL2_mixer (WAV + MP3 only)
         run: |
-          git clone --depth 1 --branch release-2.8.2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20))
+                    if [ -n "${CLEAN:-}" ]; then rm -rf $CLEAN; fi; done; }
+          CLEAN=SDL2_mixer try git clone --depth 1 --branch release-2.8.2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
           cmake -S SDL2_mixer -B SDL2_mixer/build \
             -DSDL2MIXER_WAV=ON \
             -DSDL2MIXER_MP3=ON \
