@@ -92,16 +92,19 @@ static const OptRow &opt_row(int r) {
 }
 
 // ---- main-menu vertical anchors ----
-// All hang off the virtual half-height: landscape aspect pins
+// All hang off an effective half-height: landscape aspect pins
 // Typer::scaled_window_height at 600, so these reduce to the classic
 // fixed layout (title 410, rows 200..-300/-280, high score -330/-300,
-// copyright -420). Portrait GROWS the half-height (600/aspect), and
-// anchoring the top elements to the top edge and the bottom elements to
-// the bottom edge spreads the menu over the extra vertical real estate
-// instead of bunching everything in the middle third (field request
-// 2026-08-03). Read live — scaled_window_height changes on resize.
-static int menu_title_y()     { return (int)Typer::scaled_window_height - 190; }
-static int menu_copyright_y() { return -((int)Typer::scaled_window_height - 180); }
+// copyright -420). Portrait GROWS the real half-height (600/aspect);
+// taking HALF that surplus spreads the menu into the extra vertical
+// real estate without exploding it to the screen edges — full-surplus
+// anchoring was field-tested and rejected as too sparse (2026-08-03).
+// Read live — scaled_window_height changes on resize.
+static int menu_half_height() {
+  return 600 + ((int)Typer::scaled_window_height - 600) / 2;
+}
+static int menu_title_y()     { return menu_half_height() - 190; }
+static int menu_copyright_y() { return -(menu_half_height() - 180); }
 // Top of the menu-row band: below the title (size 80 descends 160) with
 // deliberate air under it.
 static int menu_rows_top()    { return menu_title_y() - 210; }
@@ -109,8 +112,8 @@ static int menu_rows_top()    { return menu_title_y() - 210; }
 // block; touch spreads them over a taller band (they're finger targets)
 // and the score block moves down to make room.
 static int menu_rows_bottom() {
-  return is_touch_mode() ? -((int)Typer::scaled_window_height - 300)
-                         : -((int)Typer::scaled_window_height - 320);
+  return is_touch_mode() ? -(menu_half_height() - 300)
+                         : -(menu_half_height() - 320);
 }
 static int menu_high_score_y() {
   return menu_rows_bottom() - (is_touch_mode() ? 30 : 20);
