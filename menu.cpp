@@ -193,7 +193,7 @@ static int board_y_header() {
   return board_y_season() - (is_touch_mode() ? 72 : 56);
 }
 static int board_y_row0()   { return board_y_header() - 42; }
-static int board_row_pitch() { return is_touch_mode() ? 96 : 48; }
+static int board_row_pitch() { return is_touch_mode() ? 150 : 48; }
 static int board_y_range()  { return -(menu_half_height() - 338); }
 static int board_y_upload() { return -(menu_half_height() - 300); }
 static int board_y_footer() { return -(menu_half_height() - 236); }
@@ -357,16 +357,31 @@ void Menu::draw() {
     // by x=45; then badge (9: 60..186), score (12: 200..392, 8 digits),
     // bare level (10: 400..460) and the yy-mm-dd date (8: 476..604) or
     // right-flush NO REPLAY / OTHER VER tag (8: 460..604).
-    const int CURSOR_L = -623, RANK_X = -560, NAME_X = -455, BADGE_X = 60,
-              SCORE_X = 200, LEVEL_X = 400, DATE_X = 476, TAG_X = 460,
-              CURSOR_R = 609;
-    const int NAME_GLYPHS = 25;  // name-column glyph budget at size 10
+    const int CURSOR_L = -623, CURSOR_R = 609;
+    // Touch reads at arm's length on a phone, so its two-line entries use
+    // larger glyphs than the desktop's six-column table — with their own
+    // columns sized for them (field-iterated 2026-08-03: sized up twice;
+    // ~10 big entries per portrait page beat 14 small ones). Touch
+    // line 1: rank (16: 4 glyphs from -640), name (16, a 22-glyph budget
+    // ending by x=214), score (18: 260..548, 8 digits). Line 2: badge
+    // (13: -490..), "LVL n" (13: 260..), date/tag (12: 500..716 worst
+    // case, inside portrait's ±800). Desktop keeps the classic sizes and
+    // columns.
+    const int RANK_X  = touch ? -640 : -560;
+    const int NAME_X  = touch ? -490 : -455;
+    const int SCORE_X = touch ? 260 : 200;
+    const int BADGE_X = 60, LEVEL_X = 400, DATE_X = 476, TAG_X = 460;
+    const int TAG2_X = 500;  // touch line 2's date/tag column
+    const int NAME_GLYPHS = touch ? 22 : 25;  // name-column glyph budget
+    const int SZ_RANK = touch ? 16 : 11, SZ_NAME = touch ? 16 : 10,
+              SZ_SCORE = touch ? 18 : 12, SZ_HDR = touch ? 13 : 9,
+              SZ_SUB = touch ? 13 : 9, SZ_TAG = touch ? 12 : 8;
     // Column headers over the score table (structure the bare values lost
     // when the worded labels were dropped for column fit).
     if (!board_rows_.empty()) {
-      Typer::draw(RANK_X, board_y_header(), "#", 9);
-      Typer::draw(NAME_X, board_y_header(), "PLAYER", 9);
-      Typer::draw(SCORE_X, board_y_header(), "SCORE", 9);
+      Typer::draw(RANK_X, board_y_header(), "#", SZ_HDR);
+      Typer::draw(NAME_X, board_y_header(), "PLAYER", SZ_HDR);
+      Typer::draw(SCORE_X, board_y_header(), "SCORE", SZ_HDR);
       // Touch rows carry "LVL n" and the date inline on their second
       // line, so only the desktop's columns get headers for them.
       if (!touch) {
@@ -399,7 +414,7 @@ void Menu::draw() {
       if (!touch)
         MenuSelect::draw_row_cursor(board_sel_ == e, CURSOR_L, CURSOR_R, y, 13);
       if (e <= 1) {
-        Typer::draw_centered(0, y, text, 14);
+        Typer::draw_centered(0, y, text, touch ? 18 : 14);
         continue;
       }
       int ri = e - 2;
@@ -456,26 +471,26 @@ void Menu::draw() {
         // platforms — and the verified vs claimed distinction above — are
         // visible, not collapsed into an anonymous name.
         const char *badge = net_platform_label(r.platform);
-        Typer::draw(RANK_X, y, rank_buf, 11);
-        Typer::draw(NAME_X, y, name.c_str(), 10);
-        Typer::draw(SCORE_X, y, score_buf, 12);
+        Typer::draw(RANK_X, y, rank_buf, SZ_RANK);
+        Typer::draw(NAME_X, y, name.c_str(), SZ_NAME);
+        Typer::draw(SCORE_X, y, score_buf, SZ_SCORE);
         if (touch) {
           // Second line: the columns portrait has no width for — the
           // platform badge under the name, "LVL n" under the score, and
           // the date / unwatchable tag on the right. Offset chosen so the
-          // within-entry gap (38) stays clearly tighter than the gap to
-          // the next entry (58 at the 96 pitch) — equal gaps made the
+          // within-entry gap (52) stays clearly tighter than the gap to
+          // the next entry (98 at the 150 pitch) — equal gaps made the
           // pairing ambiguous — while the two lines keep a little air
           // between themselves too (field-iterated 2026-08-03).
-          int y2 = y - 38;
-          if (badge && badge[0]) Typer::draw(NAME_X, y2, badge, 9);
+          int y2 = y - 52;
+          if (badge && badge[0]) Typer::draw(NAME_X, y2, badge, SZ_SUB);
           char lvl2[24];
           snprintf(lvl2, sizeof(lvl2), "LVL %s", level_buf);
-          Typer::draw(SCORE_X, y2, lvl2, 9);
+          Typer::draw(SCORE_X, y2, lvl2, SZ_SUB);
           if (tag)
-            Typer::draw(LEVEL_X, y2, tag, 8);
+            Typer::draw(TAG2_X, y2, tag, SZ_TAG);
           else if (date_buf[0])
-            Typer::draw(LEVEL_X, y2, date_buf, 8);
+            Typer::draw(TAG2_X, y2, date_buf, SZ_TAG);
         } else {
           if (badge && badge[0]) Typer::draw(BADGE_X, y, badge, 9);
           Typer::draw(LEVEL_X, y, level_buf, 10);
@@ -516,7 +531,7 @@ void Menu::draw() {
                    board_best_score_);
           break;
       }
-      Typer::draw_centered(0, y, text, 14);
+      Typer::draw_centered(0, y, text, touch ? 18 : 14);
     }
     // Scroll range under the table when the board exceeds the window —
     // both the "there is more" affordance and, on touch, the pager (tap
@@ -527,9 +542,10 @@ void Menu::draw() {
       if (last > (int)board_rows_.size()) last = (int)board_rows_.size();
       snprintf(range, sizeof(range), "%d-%d OF %d", board_scroll_ + 1, last,
                (int)board_rows_.size());
-      Typer::draw_centered(0, board_y_range(), range, 9);
+      Typer::draw_centered(0, board_y_range(), range, touch ? 13 : 9);
     }
     // Status / footer line, anchored under the UPLOAD slot.
+    const int fsz = touch ? 18 : 14;  // footer text follows the touch bump
     int fy = board_y_footer();
     int sel_ri = board_sel_ - 2;  // selected score row, or out of range
     const NetBoard::Row *sel_row =
@@ -545,21 +561,21 @@ void Menu::draw() {
         snprintf(dl, sizeof(dl), "DOWNLOADING %d%%", pct);
       else
         snprintf(dl, sizeof(dl), "DOWNLOADING");
-      Typer::draw_centered(0, fy, dl, 14);
+      Typer::draw_centered(0, fy, dl, fsz);
     } else if (board_error_) {
-      Typer::draw_centered(0, fy, "LEADERBOARD UNAVAILABLE", 14);
+      Typer::draw_centered(0, fy, "LEADERBOARD UNAVAILABLE", fsz);
     } else if (board_loading_) {
       if ((currentTime / 500) % 2)
-        Typer::draw_centered(0, fy, "LOADING", 14);
+        Typer::draw_centered(0, fy, "LOADING", fsz);
     } else if (board_rows_.empty()) {
-      Typer::draw_centered(0, fy, "NO SCORES THIS SEASON", 14);
+      Typer::draw_centered(0, fy, "NO SCORES THIS SEASON", fsz);
     } else if (sel_row && !sel_row->has_replay) {
       // Why confirming the highlighted row does nothing (mirrors the
       // row's last-column tag; touch has no cursor, so also its only
       // signal after a dead tap).
-      Typer::draw_centered(0, fy, "REPLAY NO LONGER STORED", 14);
+      Typer::draw_centered(0, fy, "REPLAY NO LONGER STORED", fsz);
     } else if (sel_row && !net_board_replay_watchable(*sel_row)) {
-      Typer::draw_centered(0, fy, "REPLAY FROM ANOTHER VERSION", 14);
+      Typer::draw_centered(0, fy, "REPLAY FROM ANOTHER VERSION", fsz);
     } else if (board_your_rank_ > 0 && !board_best_on_board()) {
       // The player's standing whenever their best is NOT already one of
       // the visible rows (rank-of is a projection of the un-uploaded best,
@@ -568,7 +584,7 @@ void Menu::draw() {
       // AND would-place-but-not-yet-uploaded bests.
       char yours[32];
       snprintf(yours, sizeof(yours), "YOUR BEST: #%d", board_your_rank_);
-      Typer::draw_centered(0, fy, yours, 14);
+      Typer::draw_centered(0, fy, yours, fsz);
     }
     // The exit band is also the last selectable entry (w/s reach it, confirm
     // closes; Esc still exits from anywhere) — the cursor marks show when
