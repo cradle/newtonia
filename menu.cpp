@@ -104,7 +104,9 @@ static int menu_half_height() {
   return 600 + ((int)Typer::scaled_window_height - 600) / 2;
 }
 static int menu_title_y()     { return menu_half_height() - 190; }
-static int menu_copyright_y() { return -(menu_half_height() - 180); }
+// Breathing room between the high-score / copyright cluster's lines in
+// portrait (0 in landscape — the classic layout keeps its tight stack).
+static int menu_cluster_pad() { return (menu_half_height() - 600) / 12; }
 // Top of the menu-row band: below the title (size 80 descends 160) with
 // deliberate air under it.
 static int menu_rows_top()    { return menu_title_y() - 210; }
@@ -116,7 +118,19 @@ static int menu_rows_bottom() {
                          : -(menu_half_height() - 320);
 }
 static int menu_high_score_y() {
-  return menu_rows_bottom() - (is_touch_mode() ? 30 : 20);
+  return menu_rows_bottom() - (is_touch_mode() ? 30 : 20) - menu_cluster_pad();
+}
+static int menu_high_score_num_y() {
+  return menu_high_score_y() - 40 - menu_cluster_pad();
+}
+// Below the score number when the cluster is present (landscape gaps: 50
+// touch / 80 desktop reproduce the classic -420); the fixed near-bottom
+// anchor otherwise.
+static int menu_copyright_y(bool has_high_score) {
+  if (has_high_score)
+    return menu_high_score_num_y() - (is_touch_mode() ? 50 : 80) -
+           menu_cluster_pad();
+  return -(menu_half_height() - 180);
 }
 
 // Options/replays row-band geometry — shared by the draw and the tap
@@ -656,9 +670,8 @@ void Menu::draw() {
     if (high_score > 0) {
       // Below the row band, above the copyright (portrait-aware anchors —
       // touch sits a little lower, its row band being taller).
-      int hs_y = menu_high_score_y();
-      Typer::draw_centered(0, hs_y, "HIGH SCORE", 14);
-      Typer::draw_centered(0, hs_y - 40, high_score, 18);
+      Typer::draw_centered(0, menu_high_score_y(), "HIGH SCORE", 14);
+      Typer::draw_centered(0, menu_high_score_num_y(), high_score, 18);
     }
   }
 
@@ -717,8 +730,8 @@ void Menu::draw() {
     }
   }
   if (!options_mode_ && !replays_mode_ && !board_mode_)
-    Typer::draw_centered(0, menu_copyright_y(), "© 2008-2026 METONYMOUS", 13,
-                         currentTime);
+    Typer::draw_centered(0, menu_copyright_y(high_score > 0),
+                         "© 2008-2026 METONYMOUS", 13, currentTime);
 }
 
 void Menu::tick(int delta) {
