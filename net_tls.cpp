@@ -123,13 +123,24 @@ void net_tls_log_state() {
   if (!ca.empty()) {
     SDL_Log("net: tls - verifying server certificates against %s", ca.c_str());
   } else {
-    // No bundle on disk. On a build whose TLS backend reads a system trust
-    // store (OpenSSL on Linux/macOS) this still verifies; on MbedTLS there
-    // is nothing to fall back to and connections will fail, and on Windows
-    // libdatachannel drops to UNVERIFIED. Say so rather than leaving the
-    // difference invisible.
-    SDL_Log("net: tls - no CA bundle on disk; verification falls back to the "
-            "system trust store, which MbedTLS builds do not have");
+    // No bundle on disk. What that means differs by platform, and this line
+    // is the only field evidence (TESTING.md), so say the right thing for
+    // THIS build rather than hedging across all of them. Windows is the
+    // dangerous case: with no CA supplied, libdatachannel drops to an
+    // unverified connection that otherwise looks exactly like success.
+    // Elsewhere the TLS backend decides — OpenSSL (Linux, plain macOS) has
+    // already loaded the system store and still verifies; MbedTLS (the
+    // shipped macOS universal, iOS, Android) has nothing to fall back to
+    // and fails closed.
+#ifdef _WIN32
+    SDL_Log("net: tls - no CA bundle on disk; on Windows connections proceed "
+            "UNVERIFIED without one (credentials on this connection are "
+            "exposed to any on-path attacker)");
+#else
+    SDL_Log("net: tls - no CA bundle on disk; OpenSSL builds fall back to "
+            "the system trust store, MbedTLS builds fail closed (no online "
+            "play)");
+#endif
   }
 }
 
