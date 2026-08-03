@@ -96,17 +96,36 @@ make                               # or: make osx   /   MSYS2 make -j8
 NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia
 ```
 
-**Android / iOS** have NO selftest hook (`android_main.cpp` and
-`ios_main.mm` never read those env vars), so drive the real feature — which
-is stronger evidence anyway, since a room code cannot appear unless the WSS
-handshake to the production worker completed:
+**iOS HAS the selftests** (`ios_main.mm`, under `NEWTONIA_NET_RTC`) — and
+because each ends in `exit(ok ? 0 : 1)`, the process exit status IS the
+verdict, so this works even when no log line reaches you:
 
 ```sh
-make android-install               # or make ios-install
+xcrun devicectl list devices                    # grab the identifier
+xcrun devicectl device process launch --console --terminate-existing \
+  --environment-variables '{"NEWTONIA_SIGNAL_SELFTEST":"1"}' \
+  --device <DEV> cc.gfm.Newtonia
+#   -> devicectl reports the termination status: 0 = PASS, 1 = FAIL
+```
+
+(CI drives the same hooks on the SIMULATOR through `SIMCTL_CHILD_*` env
+vars instead — see `ios.yml`.)
+
+**Android has NO selftest hook** — `android_main.cpp` never reads those env
+vars — so drive the real feature there, which is stronger evidence anyway:
+a room code cannot appear unless the WSS handshake to the production worker
+completed.
+
+```sh
+make android-install
 adb logcat -c && adb logcat -s SDL/APP | grep -E "net: tls|net: signal"
 #   ...then on the device: ONLINE -> HOST, and watch for a room code.
 #   LEADERBOARD exercises the board socket the same way.
 ```
+
+Note either way that `net_tls_log_state()` fires on the FIRST SOCKET, not at
+startup: launching the app and filtering for `net:` shows nothing until you
+actually reach ONLINE or LEADERBOARD.
 
 **iOS needs the unified log, NOT a stdout stream.** SDL routes its log
 through NSLog on Apple and is explicitly excluded from the `fprintf(stderr)`
