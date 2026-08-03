@@ -74,6 +74,7 @@ jobs:
         run: |
           find . -name "*.cpp" \
             -not -path "./android/*" \
+            -not -path "./test/*" \
             -not -path "./.git/*" \
             -not -name "gles2_compat.cpp" > srcs.txt
 

@@ -67,6 +67,7 @@ jobs:
         run: |
           SRCS=$(find . -name "*.cpp" \
             -not -path "./android/*" \
+            -not -path "./test/*" \
             -not -path "./.git/*")
           g++ -O2 -Wall -std=c++11 \
             -DNEWTONIA_NET_RTC -I./netplay-libs/include \

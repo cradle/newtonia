@@ -99,6 +99,7 @@ jobs:
         run: |
           SRCS=$(find . -name "*.cpp" \
             -not -path "./android/*" \
+            -not -path "./test/*" \
             -not -path "./.git/*" \
             -not -path "./sdk/*" \
             -not -path "./netplay-deps/*")
@@ -256,6 +257,7 @@ jobs:
         run: |
           find . -name "*.cpp" \
             -not -path "./android/*" \
+            -not -path "./test/*" \
             -not -path "./.git/*" \
             -not -path "./sdk/*" > srcs.txt
 
@@ -588,6 +590,7 @@ jobs:
         run: |
           SRCS=$(find . -name "*.cpp" \
             -not -path "./android/*" \
+            -not -path "./test/*" \
             -not -path "./.git/*" \
             -not -path "./sdk/*" \
             -not -path "./SDL2_source/*" \

@@ -67,6 +67,7 @@ jobs:
         run: |
           SRCS=$(find . -name "*.cpp" \
             -not -path "./android/*" \
+            -not -path "./test/*" \
             -not -path "./.git/*" \
             -not -path "./netplay-deps/*")
           # All static archives from the libdatachannel build tree (itself +
