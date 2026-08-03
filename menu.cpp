@@ -542,7 +542,18 @@ void Menu::draw() {
       if (last > (int)board_rows_.size()) last = (int)board_rows_.size();
       snprintf(range, sizeof(range), "%d-%d OF %d", board_scroll_ + 1, last,
                (int)board_rows_.size());
-      Typer::draw_centered(0, board_y_range(), range, touch ? 13 : 9);
+      int rsz = touch ? 13 : 9;
+      Typer::draw_centered(0, board_y_range(), range, rsz);
+      // Paging cues (field request 2026-08-03): the line already pages on
+      // tap — left half back, right half forward — but nothing said so.
+      // Flank it with an arrow on each side that HAS a further page, one
+      // glyph-advance of air off the centered text (advance = 2*size, so
+      // the text's half-width is strlen*size).
+      int half_w = (int)strlen(range) * rsz;
+      if (board_scroll_ > 0)
+        Typer::draw(-half_w - 3 * rsz, board_y_range(), "<", rsz);
+      if (last < (int)board_rows_.size())
+        Typer::draw(half_w + rsz, board_y_range(), ">", rsz);
     }
     // Status / footer line, anchored under the UPLOAD slot.
     const int fsz = touch ? 18 : 14;  // footer text follows the touch bump
