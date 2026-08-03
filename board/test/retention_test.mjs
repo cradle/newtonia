@@ -53,6 +53,9 @@ function fake_db(rows) {
           throw new Error("unexpected first(): " + sql);
         },
         async all() {
+          if (sql.includes("SELECT blob_key FROM scores"))  // orphan sweep
+            return { results: rows.filter((r) => r.blob_key !== "")
+                .map((r) => ({ blob_key: r.blob_key })) };
           if (sql.includes("SELECT DISTINCT")) {
             const seen = new Map();
             for (const r of rows)
@@ -84,10 +87,21 @@ function fake_db(rows) {
   };
 }
 
-function fake_r2() { return { deleted: [], async delete(k) { this.deleted.push(k); } }; }
+// `objects` seeds what R2 holds, for the orphan sweep ({key, uploaded}).
+function fake_r2(objects = []) {
+  return {
+    deleted: [],
+    objects: objects.slice(),
+    async delete(k) {
+      this.deleted.push(k);
+      this.objects = this.objects.filter((o) => o.key !== k);
+    },
+    async list() { return { objects: this.objects, truncated: false }; },
+  };
+}
 
-async function run_cron(rows) {
-  const r2 = fake_r2();
+async function run_cron(rows, objects = []) {
+  const r2 = fake_r2(objects);
   await worker.scheduled({}, { DB: fake_db(rows), REPLAYS: r2 });
   return r2;
 }
@@ -141,6 +155,28 @@ function blobs(rows, season, players) {
   await run_cron(rows);
   check("solo board of the old season stripped", blobs(rows, "vA", 1) === 0);
   check("same season live on co-op keeps blobs", blobs(rows, "vA", 2) === 1);
+}
+
+// 5. Orphan sweep (S2): objects no row points at are deleted, but only once
+// they are past the grace period — a submission in flight has stored its
+// blob and not yet inserted its row, and deleting that would break a live
+// upload. Referenced blobs are never touched.
+{
+  const rows = [row("vB", 1, 500, FRESH)];  // live season, keeps its blob
+  const r2 = await run_cron(rows, [
+    { key: rows[0].blob_key, uploaded: new Date(FRESH).toISOString() },
+    { key: "vB/orphan-old.nrp", uploaded: new Date(NOW - 2 * DAY).toISOString() },
+    { key: "vB/orphan-new.nrp", uploaded: new Date(NOW - 60 * 1000).toISOString() },
+    { key: "vB/orphan-nodate.nrp" },
+  ]);
+  check("stale orphan swept", r2.deleted.includes("vB/orphan-old.nrp"),
+        JSON.stringify(r2.deleted));
+  check("in-flight upload spared",
+        !r2.deleted.includes("vB/orphan-new.nrp"), JSON.stringify(r2.deleted));
+  check("undated object spared",
+        !r2.deleted.includes("vB/orphan-nodate.nrp"), JSON.stringify(r2.deleted));
+  check("referenced blob untouched",
+        !r2.deleted.includes(rows[0].blob_key), JSON.stringify(r2.deleted));
 }
 
 console.log(failures ? `${failures} FAILURE(S)` : "ALL PASS");

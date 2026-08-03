@@ -397,8 +397,45 @@ export default {
       }
     }
     if (demoted) console.log(`retention: demoted ${demoted} row(s) to score-only`);
+    await sweep_orphans(env);
   },
 };
+
+// Objects in R2 that no row points at (S2). The submit path deletes its own
+// blob on every failure now, so this should find nothing — which is exactly
+// why it exists: an orphan is invisible (no row mentions it), costs storage
+// forever, and the retention pass above can never see one because it walks
+// ROWS. Anything a future code path leaks lands here within a day.
+//
+// The grace period is not politeness, it is correctness: a submission in
+// flight has already stored its blob and not yet inserted its row, and
+// deleting that would break a live upload. Only objects older than a full
+// day are candidates.
+const ORPHAN_GRACE_MS = 24 * 60 * 60 * 1000;
+
+async function sweep_orphans(env) {
+  // One pass over the blob_keys D1 knows: bounded by the row count (KEEP_N
+  // per board per season), so this is far cheaper than a query per object.
+  const known = new Set();
+  const rows = await env.DB.prepare(
+      `SELECT blob_key FROM scores WHERE blob_key != ''`).all();
+  for (const r of rows.results || []) known.add(r.blob_key);
+
+  const cutoff = Date.now() - ORPHAN_GRACE_MS;
+  let cursor;
+  let swept = 0;
+  do {
+    const page = await env.REPLAYS.list({ cursor, limit: 1000 });
+    for (const obj of page.objects || []) {
+      if (known.has(obj.key)) continue;
+      const uploaded = obj.uploaded ? new Date(obj.uploaded).getTime() : 0;
+      if (!(uploaded && uploaded < cutoff)) continue;  // in flight, or unknown
+      try { await env.REPLAYS.delete(obj.key); swept++; } catch (e) {}
+    }
+    cursor = page.truncated ? page.cursor : null;
+  } while (cursor);
+  if (swept) console.log(`retention: swept ${swept} orphaned blob(s)`);
+}
 
 async function within_limit(env, ip, action) {
   const limiter = env.LIMITS.get(env.LIMITS.idFromName(ip));
@@ -742,12 +779,21 @@ export class Session {
     // this it slipped past the score check and died on the (season,
     // run_id) primary key as a raw "internal" error.
     const run_row = await db.prepare(
-        `SELECT score, platform_key FROM scores
+        `SELECT score, platform_key, players FROM scores
          WHERE season = ?1 AND run_id = ?2`)
         .bind(hd.season, hd.run_id).first();
     if (run_row && (Number(run_row.score) >= hd.score ||
-                    run_row.platform_key !== key))
+                    run_row.platform_key !== key ||
+                    Number(run_row.players) !== players))
       return this.err(ws, "already-submitted");
+    // That last clause is the same refusal for a run_id already held on the
+    // OTHER board. It cannot be left to the upsert: the ON CONFLICT target
+    // is (season, players, platform_key), and when the row it collides with
+    // differs in `players` the violated constraint is the (season, run_id)
+    // PRIMARY KEY instead — a target SQLite's upsert does not cover, so the
+    // statement ABORTS. That threw a raw "internal" after the blob was
+    // already stored, orphaning it (S2). Both header fields are
+    // attacker-chosen, so it was a repeatable way to grow R2 for free.
 
     // One row per player per season+board (fast-path refusal — the
     // atomic upsert below is the real guarantee): if the player already
@@ -762,12 +808,34 @@ export class Session {
 
     const blob_key = blob_key_for(hd.season, hd.run_id);
     await this.env.REPLAYS.put(blob_key, blob);
-    // Atomic supersede: ON CONFLICT on the UNIQUE (season, players,
-    // platform_key) index updates the player's existing row to this run
-    // in one statement, but ONLY when this score is strictly better —
-    // so two concurrent same-account submits can't lose the higher one,
-    // and no interleaving leaves duplicate rows. A worse score racing in
-    // no-ops here (its blob is cleaned up below).
+    // From here the blob EXISTS, so every exit has to account for it. The
+    // refusal paths below delete it explicitly; this catch covers the rest
+    // (a D1 outage, a constraint nobody predicted) — without it a throw
+    // unwound to webSocketMessage's generic handler and left an object no
+    // row points at, which the retention cron never looks at because it
+    // walks rows. That is a leak that only ever grows (S2). The orphan
+    // sweep in scheduled() is the backstop for whatever still slips
+    // through; this is the fix for what we can see.
+    let won;
+    try {
+      won = await this.place_row(db, hd, players, key, blob_key, identity,
+                                 mine);
+    } catch (e) {
+      try { await this.env.REPLAYS.delete(blob_key); } catch (e2) {}
+      throw e;
+    }
+    if (!won) return this.err(ws, "not-best");
+    const rank = await rank_of(db, hd.season, players, hd.score);
+    console.log(`placed: season=${hd.season} players=${players} ` +
+                `score=${hd.score} rank=${rank} platform=${identity.platform}`);
+    this.send(ws, { t: "placed", rank });
+  }
+
+  // The row half of a submission: upsert, decide whether this run won the
+  // player's slot, and delete whichever blob lost. Returns false when OUR
+  // blob was the loser (already deleted here), so the caller answers
+  // not-best instead of placed.
+  async place_row(db, hd, players, key, blob_key, identity, mine) {
     await db.prepare(
         `INSERT INTO scores(season, players, run_id, score,
            generation, duration_ms, submitted_at, name, platform, verified,
@@ -797,14 +865,10 @@ export class Session {
       // replaced by the upsert) — delete it.
       if (mine && mine.blob_key && mine.blob_key !== blob_key)
         try { await this.env.REPLAYS.delete(mine.blob_key); } catch (e) {}
-    } else {
-      // A concurrent better submission won; our blob is orphaned.
-      try { await this.env.REPLAYS.delete(blob_key); } catch (e) {}
-      return this.err(ws, "not-best");
+      return true;
     }
-    const rank = await rank_of(db, hd.season, players, hd.score);
-    console.log(`placed: season=${hd.season} players=${players} ` +
-                `score=${hd.score} rank=${rank} platform=${identity.platform}`);
-    this.send(ws, { t: "placed", rank });
+    // A concurrent better submission won; our blob is orphaned.
+    try { await this.env.REPLAYS.delete(blob_key); } catch (e) {}
+    return false;
   }
 }

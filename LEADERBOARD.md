@@ -616,7 +616,8 @@ is a fork until upstream takes it, so a libdatachannel bump must re-check the
 three hunks still apply.
 
 **S2 — a failed INSERT orphans the R2 blob forever (`board/src/worker.js`
-`finish_submit`).** ⬜ `REPLAYS.put` runs BEFORE the upsert, and retention
+`finish_submit`).** ✅ FIXED (2026-08-03, below) `REPLAYS.put` ran BEFORE the
+upsert, and retention
 walks rows only — so an object whose row never lands is unreachable and
 never reaped, while the generic `catch` reports a bare `internal`. Not
 merely a D1-hiccup path: the upsert targets `(season, players,
@@ -633,6 +634,34 @@ repeats at the submit limit with a ≤32 MB orphan each time. Fixes: store
 the blob only once the row has won (or delete it on any failure), refuse
 the cross-`players` `run_id` collision explicitly like the cross-account
 one, and add a reaper for keys with no row.
+
+*Fix.* All three, in that order of importance:
+
+1. **The collision is refused where every other `run_id` collision is** —
+   `run_row` now selects `players` too, and a mismatch answers
+   `already-submitted` before anything is stored. With the score check and
+   the `platform_key` check already there, no surviving path can reach the
+   INSERT with a row that collides on the PK but not on the upsert's target,
+   so the abort is unreachable rather than merely handled.
+2. **Every exit past the `put` accounts for the blob.** The row work moved
+   into `place_row()`; the caller wraps it so ANY throw (a D1 outage, a
+   constraint nobody predicted) deletes the blob before unwinding. The
+   not-best race already deleted its own and still does.
+3. **A daily orphan sweep backstops both** (`sweep_orphans`, called from
+   `scheduled()`): one query for the `blob_key`s D1 knows, one paginated R2
+   walk, delete anything unreferenced and **older than a 24 h grace**. The
+   grace is correctness, not politeness — a submission in flight has stored
+   its blob and not yet inserted its row, and sweeping that would break a
+   live upload. It is also the only thing that can clean up whatever leaked
+   before this fix, since an orphan is invisible to a row-walking cron.
+
+Verified: `board_test.mjs` gained the cross-board `run_id` case (refused
+cleanly, and the co-op board stays empty — no half-written row), which was
+confirmed to FAIL against the pre-fix worker with exactly the reported
+`{"t":"err","reason":"internal"}`; `retention_test.mjs` gained the sweep
+cases (stale orphan deleted, in-flight upload spared, undated object spared,
+referenced blob untouched). Full board suite green: units,
+`board_test.mjs`, and `whitelist_test.mjs` against `wrangler dev --local`.
 
 **S3 — the header's score is never cross-checked against the recording
 (`board/src/validate.js` `validate_submission`).** ⬜ (bounded by L5/L6 —
