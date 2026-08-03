@@ -76,8 +76,9 @@ backends, and it is the one with a system trust store to fall back on:
 | Linux, `make` on macOS | OpenSSL | system store **+** our bundle | ✅ `linux.yml` gate |
 | `make osx` (universal — the SHIPPED mac build) | MbedTLS | our bundle ONLY | ✅ 2026-08-03 |
 | Android | MbedTLS | our bundle ONLY | ✅ 2026-08-04 |
-| iOS, Xbox | MbedTLS | our bundle ONLY | ⬜ |
+| iOS | MbedTLS | our bundle ONLY | ✅ 2026-08-04 |
 | Windows | OpenSSL | our bundle ONLY (OpenSSL cannot read the CryptoAPI store) | ⬜ |
+| Xbox | MbedTLS | our bundle ONLY | ⬜ — `cradle/newtonia-xbox` owns console runtime work |
 
 So on four of those rows the carried roots are the *whole* trust story, and
 before LEADERBOARD.md S1 none of them had ever completed a VERIFIED
@@ -165,19 +166,22 @@ for a surprise: it parses the bundle itself, and `mbedtls_x509_crt_parse_file`
 SKIPS certificates it dislikes rather than failing (libdatachannel throws
 only on a negative return), so a root could go missing with no error at all.
 
-The macOS ✅ is worth more than one row: `VerifiedTlsTransport` sets
-`MBEDTLS_SSL_VERIFY_REQUIRED` against our chain ALONE, so a completed
-handshake proves the bundle wrote, MbedTLS parsed it, and Cloudflare's real
-chain verified against the carried roots — `SIGNAL SELFTEST PASS` is the
-evidence by itself. That retires the failure this section warns about (a
-root silently skipped at parse time) for every MbedTLS build; iOS and Xbox
-still need their own pass for the toolchain and packaging, not for the
-bundle. Android confirmed the same thing independently on 2026-08-04
-(bundle written to `/data/data/org.newtonia/files/cacert.pem` at the exact
-expected size, then a room code), so the carried roots are now proven
-through MbedTLS on two platforms and two toolchains. Windows is the odd one
-out and stays the one worth doing: it is the only row that falls back to
-UNVERIFIED instead of failing closed, so a regression there is silent.
+Why those ✅s settle the trust material: `VerifiedTlsTransport` sets
+`MBEDTLS_SSL_VERIFY_REQUIRED` against our chain ALONE, so on an MbedTLS
+build a handshake that completes at all proves the bundle wrote, MbedTLS
+parsed it, and Cloudflare's real chain verified against the carried roots.
+That has now happened on THREE MbedTLS platforms and three toolchains —
+macOS universal (`SIGNAL SELFTEST PASS`, 2026-08-03), Android (bundle at
+`/data/data/org.newtonia/files/cacert.pem`, exact expected size, then a
+room code, 2026-08-04) and iOS (selftest against the production relay,
+room `H8T7L`, 2026-08-04) — which retires the failure this section warns
+about, a root silently skipped at parse time.
+
+Windows is what remains, and it is the one that matters: the only row that
+falls back to UNVERIFIED rather than failing closed, so a regression there
+is silent. Xbox shares the same MbedTLS trust path as the three ✅ rows, and
+console runtime work belongs to the private repo (CLAUDE.md) — the canaries
+here only prove it still compiles.
 
 The deploy jobs currently gate on `NEWTONIA_NET_SELFTEST` — an in-process
 loopback that involves no TLS whatever. Adding `NEWTONIA_SIGNAL_SELFTEST`
