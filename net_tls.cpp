@@ -86,6 +86,19 @@ std::string materialize() {
   }
   if (!ok) {
     remove(tmp.c_str());
+    // A failed refresh must not discard a bundle that still exists: the
+    // pre-update file at `path` is stale but its roots still verify (the
+    // Mozilla set barely moves year to year), and returning empty here
+    // means NO CA — which fails closed on MbedTLS but connects UNVERIFIED
+    // on Windows, the very outcome this file exists to prevent. Windows is
+    // also where the refresh most plausibly fails: the pre-rename remove()
+    // loses to another instance's TLS stack holding the old file open.
+    if (FILE *old = fopen(path.c_str(), "rb")) {
+      fclose(old);
+      SDL_Log("net: tls - failed refreshing the CA bundle at %s; "
+              "keeping the previous one", path.c_str());
+      return path;
+    }
     SDL_Log("net: tls - failed writing the CA bundle to %s", path.c_str());
     return std::string();
   }
@@ -110,13 +123,24 @@ void net_tls_log_state() {
   if (!ca.empty()) {
     SDL_Log("net: tls - verifying server certificates against %s", ca.c_str());
   } else {
-    // No bundle on disk. On a build whose TLS backend reads a system trust
-    // store (OpenSSL on Linux/macOS) this still verifies; on MbedTLS there
-    // is nothing to fall back to and connections will fail, and on Windows
-    // libdatachannel drops to UNVERIFIED. Say so rather than leaving the
-    // difference invisible.
-    SDL_Log("net: tls - no CA bundle on disk; verification falls back to the "
-            "system trust store, which MbedTLS builds do not have");
+    // No bundle on disk. What that means differs by platform, and this line
+    // is the only field evidence (TESTING.md), so say the right thing for
+    // THIS build rather than hedging across all of them. Windows is the
+    // dangerous case: with no CA supplied, libdatachannel drops to an
+    // unverified connection that otherwise looks exactly like success.
+    // Elsewhere the TLS backend decides — OpenSSL (Linux, plain macOS) has
+    // already loaded the system store and still verifies; MbedTLS (the
+    // shipped macOS universal, iOS, Android) has nothing to fall back to
+    // and fails closed.
+#ifdef _WIN32
+    SDL_Log("net: tls - no CA bundle on disk; on Windows connections proceed "
+            "UNVERIFIED without one (credentials on this connection are "
+            "exposed to any on-path attacker)");
+#else
+    SDL_Log("net: tls - no CA bundle on disk; OpenSSL builds fall back to "
+            "the system trust store, MbedTLS builds fail closed (no online "
+            "play)");
+#endif
   }
 }
 
