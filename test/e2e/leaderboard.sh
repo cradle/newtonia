@@ -40,6 +40,7 @@ if [ -z "${NEWTONIA_BOARD_URL:-}" ]; then
   export NEWTONIA_BOARD_URL="ws://127.0.0.1:8799/board"
   ( cd "$ROOT/board" &&
     npx -y wrangler@4 dev --local --port 8799 \
+      --persist-to "$OUT/wrangler-state" \
       --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 --var CANONICAL_SEASONS_ONLY:0 \
       > "$OUT/wrangler.log" 2>&1 ) &
   WRANGLER_PID=$!
@@ -224,6 +225,7 @@ echo "===== S5: consumed credential -> retry submits a FRESH one ====="
 # carried a genuinely different value.
 REJECT_URL="ws://127.0.0.1:8796/board"
 ( cd "$ROOT/board" && npx -y wrangler@4 dev --local --port 8796 \
+    --persist-to "$OUT/wrangler-state-reject" \
     --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100 --var CANONICAL_SEASONS_ONLY:0 --var REJECT_FIRST_VERIFY:1 \
     > "$OUT/wrangler-reject.log" 2>&1 ) &
 REJECT_PID=$!
@@ -232,10 +234,12 @@ for i in $(seq 1 60); do
   [ "$i" = 60 ] && fail "S5: reject worker never came up"
   sleep 2
 done
-# Distinct name = distinct FAKE_VERIFY account: the reject worker shares
-# the main worker's local D1 (both `wrangler dev --local` from board/), so
-# submitting as S1's account would race its score into a "not-best"
-# refusal whenever S5's random spray scored lower.
+# Distinct name = distinct FAKE_VERIFY account, so this scenario can
+# never collide with another scenario's placed row in a "not-best"
+# refusal. (Each worker also gets an isolated --persist-to state dir —
+# without it wrangler defaults to board/.wrangler/state, which survives
+# across runs, and a rerun at the same commit = same season collided
+# with the rows the previous run placed.)
 use_home s5
 P=$(NEWTONIA_NET_NAME=E2ES5 NEWTONIA_BOARD_URL="$REJECT_URL" \
     launch_game s5); sleep 2; W=$(win)
