@@ -182,7 +182,7 @@ static int board_y_toggle() { return menu_half_height() - 332; }
 static int board_y_season() { return menu_half_height() - 386; }
 static int board_y_header() { return menu_half_height() - 442; }
 static int board_y_row0()   { return menu_half_height() - 484; }
-static int board_row_pitch() { return is_touch_mode() ? 76 : 48; }
+static int board_row_pitch() { return is_touch_mode() ? 96 : 48; }
 static int board_y_range()  { return -(menu_half_height() - 338); }
 static int board_y_upload() { return -(menu_half_height() - 300); }
 static int board_y_footer() { return -(menu_half_height() - 236); }
@@ -453,8 +453,9 @@ void Menu::draw() {
           // platform badge under the name, "LVL n" under the score, and
           // the date / unwatchable tag on the right. Offset chosen so the
           // within-entry gap (32) is clearly tighter than the gap to the
-          // next entry (44 at the 76 pitch) — equal gaps made the pairing
-          // ambiguous.
+          // next entry (64 at the 96 pitch) — equal gaps made the pairing
+          // ambiguous, and the field pass then asked for more air between
+          // entries on top.
           int y2 = y - 32;
           if (badge && badge[0]) Typer::draw(NAME_X, y2, badge, 9);
           char lvl2[24];
