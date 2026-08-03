@@ -452,11 +452,11 @@ void Menu::draw() {
           // Second line: the columns portrait has no width for — the
           // platform badge under the name, "LVL n" under the score, and
           // the date / unwatchable tag on the right. Offset chosen so the
-          // within-entry gap (32) is clearly tighter than the gap to the
-          // next entry (64 at the 96 pitch) — equal gaps made the pairing
-          // ambiguous, and the field pass then asked for more air between
-          // entries on top.
-          int y2 = y - 32;
+          // within-entry gap (38) stays clearly tighter than the gap to
+          // the next entry (58 at the 96 pitch) — equal gaps made the
+          // pairing ambiguous — while the two lines keep a little air
+          // between themselves too (field-iterated 2026-08-03).
+          int y2 = y - 38;
           if (badge && badge[0]) Typer::draw(NAME_X, y2, badge, 9);
           char lvl2[24];
           snprintf(lvl2, sizeof(lvl2), "LVL %s", level_buf);
