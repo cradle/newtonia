@@ -836,13 +836,70 @@ the lookalike hostnames (`localhost.evil.com`, `notlocalhost`,
 `127.0.0.1.evil.com` are all non-dev) and the `log_str` boundary
 (newline, control bytes, non-ASCII, length, non-string input).
 
-**S7 — a co-op partner can pre-claim your derived run_id.** ⬜ Both peers
-know the shared run_id and hence its complement, and `finish_submit`
-refuses any run_id already held by a different `platform_key`. A malicious
-partner can spend their own co-op row on a crafted blob carrying the
-victim's derived id, permanently blocking that specific run. Self-limiting
-(one row per account; the victim just plays another run), noted so the
-dedupe rule's cost is on the record.
+**S7 — a co-op partner can pre-claim your derived run_id.** ✅ FIXED
+(2026-08-03, below) — and it was worse than first written: **anyone** could,
+not just the partner. Both peers know the shared run_id and hence its
+complement, and `finish_submit` refuses any run_id already held by a
+different `platform_key`. A malicious partner can spend their own co-op row
+on a crafted blob carrying the victim's derived id, permanently blocking
+that specific run. Self-limiting (one row per account; the victim just plays
+another run), noted so the dedupe rule's cost is on the record.
+
+*Escalation found while looking for a cheap fix.* The board PUBLISHES
+run_ids — they are the fetch key, returned on every `top` row and used by
+`menu.cpp` for downloads and the `- YOU` tag. The client recorded under
+`~run_id_`, so a charted HOST row handed any stranger the partner's id by
+inspection: craft a blob carrying it, submit from any attested account, and
+that partner can never upload that run. No shared session needed, symmetric
+(a charted client row exposes the host's id the same way), and the window
+stays open indefinitely against anyone who has not uploaded yet — a player
+who defers, or comes back via UPLOAD BEST RUN. That moved this from a
+nuisance to a targeted, public denial.
+
+*Why the fix is client-side.* Nothing cheap exists on the worker: any rule
+that would admit both rows still meets `PRIMARY KEY (season, run_id)`, so a
+cross-account collision MUST be refused whatever logic sits above it —
+relaxing that means changing the primary key, which SQLite can only do by
+rebuilding the table. (Content-hash dedupe, which is equally strong against
+verbatim theft and not squattable, hits the same wall.) Worth knowing before
+anyone reopens the dedupe design: it costs a live-table migration.
+
+*Fix — salt the derivation (`glgame.cpp` `replay_start`,
+`Replay::run_id_salt`).* The client now records under
+`run_id_ ^ run_id_salt()`, where the salt is a per-install secret minted on
+first use and persisted as `Preferences::net_run_id_salt`. That keeps every
+property the derivation actually needed — distinct from the host's,
+deterministic so a rejoin re-derives it and RESUMES the same recording,
+uniformly distributed — while making it unguessable by strangers and by the
+partner alike. The host never computes the client's id, so nothing else had
+to change: no worker change, no schema change, no protocol change.
+
+Two things checked before committing to it. **The `- YOU` tag is
+unaffected**: `board_load_best()` reads `run_id` out of the local
+`best.nrp` header and compares that string to the row's; nothing
+re-derives it, so the match is what it always was (it does not survive an
+uninstall today either — the tag means "the run in my local best slot", not
+"my account"). **The upgrade edge is the pre-existing one**: a client that
+updates mid-session and rejoins computes a different id than the in-flight
+`online.nrp` header, so that recording does not resume — exactly what the
+`save_version`/`format_version` fences in the same condition already do on
+any version-bumping release, and `best_check_online()` still gives the
+leftover its promotion check first. Deliberately no legacy-id compatibility
+branch (Glenn, 2026-08-03).
+
+Verified: the recorder selftest gained the derivation's contract (an
+existing salt returns unchanged, reading never re-mints, the derived id is
+never the host's, never zero, and never the NOT the board could compute),
+and the INI round trip is proven end to end — a seeded salt survives a full
+load+save cycle, and a mint writes one. Both `replay_keyframe.sh` and the
+netplay loopback selftest stay green.
+
+*A bug this caught on the way in:* the first version called `run_id_salt()`
+from the selftest, which runs BEFORE `load_preferences()` (`glut.cpp`) — so
+it minted against a defaults-only `g_prefs` and called `save_preferences()`,
+overwriting the player's real INI. The selftest now seeds and restores a
+known salt instead of minting, and `run_id_salt()` carries a call-after-load
+warning.
 
 **Held up well:** attestation is checked BEFORE any bytes are accepted, so
 a spoofed submit costs the sender a round-trip and us nothing; the header

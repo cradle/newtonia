@@ -3063,17 +3063,29 @@ void GLGame::replay_start() {
             override_ == 1 ? "ENABLE" : "DISABLE", enabled ? "ON" : "OFF");
   if (!enabled) return;
   if (net_mode_ == NetHost || net_mode_ == NetClient) {
-    // The CLIENT records under a DERIVED id (bitwise NOT of the shared
-    // run_id_): both peers record the same session, but online co-op
-    // board entries are PERSONAL claims — two accounts, two rows
-    // (LEADERBOARD.md, decided 2026-08-02) — and the worker keys rows by
-    // run_id, so the two files must not share one. The derivation is
-    // deterministic (a rejoin re-receives the host's run_id and derives
-    // the same value, so resume still matches) and collision-safe
-    // against random 64-bit ids. run_id_ itself — saves, snapshots, the
-    // wire — stays the host's everywhere else.
-    uint64_t rec_id = net_mode_ == NetClient ? ~run_id_ : run_id_;
-    if (rec_id == 0) rec_id = 1;  // ~x is 0 only for x = UINT64_MAX
+    // The CLIENT records under a DERIVED id: both peers record the same
+    // session, but online co-op board entries are PERSONAL claims — two
+    // accounts, two rows (LEADERBOARD.md, decided 2026-08-02) — and the
+    // worker keys rows by run_id, so the two files must not share one.
+    //
+    // The derivation xors in this install's SECRET salt rather than being
+    // a published function of the host's id (it was the bitwise NOT until
+    // LEADERBOARD.md S7). The board publishes run_ids on every row — they
+    // are the fetch key — so a NOT was computable by anyone: read the
+    // host's charted row, craft a blob carrying the partner's id, submit
+    // it from any attested account, and that partner can never upload
+    // their own run (the worker refuses a run_id already held by another
+    // account, which is the same rule that stops replay theft). A salted
+    // id keeps every property the derivation actually needs — distinct
+    // from the host's, deterministic so a rejoin re-derives it and
+    // resumes the same recording, uniformly distributed — while making it
+    // unguessable by the peer and by strangers alike.
+    //
+    // run_id_ itself — saves, snapshots, the wire — stays the host's
+    // everywhere else.
+    uint64_t rec_id = net_mode_ == NetClient ? (run_id_ ^ Replay::run_id_salt())
+                                            : run_id_;
+    if (rec_id == 0) rec_id = 1;  // only when the salt equals run_id_
     Replay::Header h;
     bool resumed = Replay::read_header(Replay::online_path(), h) &&
                    run_id_ != 0 && h.run_id == rec_id &&

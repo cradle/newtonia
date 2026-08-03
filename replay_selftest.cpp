@@ -25,6 +25,7 @@
 // records lost) rather than broken (an unplayable or drifting file).
 
 #include "replay.h"
+#include "preferences.h"
 
 #include <SDL.h>
 #include <cstdio>
@@ -275,6 +276,41 @@ bool selftest() {
     std::remove(path2.c_str());
 
     std::remove(path.c_str());
+
+    // ---- run-id salt (LEADERBOARD.md S7) --------------------------------
+    // The online CLIENT records under run_id ^ salt so its id is not a
+    // published function of the host's. Pin the contract the derivation
+    // depends on: an existing salt is returned unchanged (a value that moved
+    // per call would break the rejoin resume, which re-derives the id to
+    // match the file's header), and the derived id is neither the host's nor
+    // the bitwise NOT the board could compute.
+    //
+    // Deliberately does NOT let the accessor MINT: this selftest runs before
+    // load_preferences() (glut.cpp), so a mint would call save_preferences()
+    // over a defaults-only g_prefs and overwrite the player's real INI.
+    // Seed a known salt, exercise against it, restore.
+    {
+        const uint64_t SEED = 0x0123456789abcdefULL;
+        uint64_t saved = g_prefs.net_run_id_salt;
+        g_prefs.net_run_id_salt = SEED;
+        uint64_t salt = run_id_salt();
+        check(salt == SEED, "an existing salt is returned unchanged");
+        check(run_id_salt() == salt, "salt is stable within a run");
+        check(g_prefs.net_run_id_salt == SEED, "reading a salt never re-mints");
+
+        const uint64_t hosts[] = { 1ULL, 0x7fffffffffffffffULL,
+                                   0xffffffffffffffffULL, 0xfedcba9876543210ULL };
+        for (size_t i = 0; i < sizeof(hosts) / sizeof(hosts[0]); i++) {
+            uint64_t rec = hosts[i] ^ salt;
+            check(rec != hosts[i], "client id differs from the host's");
+            check(rec != 0, "client id is never zero");
+            check(rec == (hosts[i] ^ salt), "derivation is deterministic");
+            check(rec != ~hosts[i],
+                  "client id is not the NOT the board could compute");
+        }
+        g_prefs.net_run_id_salt = saved;
+    }
+
     SDL_Log("replay selftest: %d failure(s)", failures);
     return failures == 0;
 }
