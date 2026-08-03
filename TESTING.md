@@ -67,6 +67,56 @@ anyone on the path. Needs `openssl(1)` and a prefix built WITH
 `patches/libdatachannel-ws-ca-cert.patch` (an unpatched one cannot compile
 the gate, or the game).
 
+### Per-platform TLS pass — MANUAL, and not optional
+The gate above runs on Linux against **OpenSSL**. That is one of two TLS
+backends, and it is the one with a system trust store to fall back on:
+
+| build | TLS backend | trust source |
+|-------|-------------|--------------|
+| Linux, `make` on macOS | OpenSSL | system store **+** our bundle |
+| `make osx` (universal — the SHIPPED mac build) | MbedTLS | our bundle ONLY |
+| iOS, Android, Xbox | MbedTLS | our bundle ONLY |
+| Windows | OpenSSL | our bundle ONLY (OpenSSL cannot read the CryptoAPI store) |
+
+So on four of those rows the carried roots are the *whole* trust story, and
+before LEADERBOARD.md S1 none of them had ever completed a VERIFIED
+handshake — verification was off everywhere. CI proves each platform still
+COMPILES (an unpatched libdatachannel fails on the unknown field), not that
+a real handshake succeeds. Run this once per platform after any change to
+`net_ca_bundle.cpp`, `net_tls.cpp`, the patch, or a libdatachannel bump:
+
+```sh
+./build_netplay_deps.sh            # MUST be re-run: an old prefix has no
+                                   # caCertificatePemFile and won't compile
+make                               # or make osx / android / ios / the MSYS2 build
+NEWTONIA_SIGNAL_SELFTEST=1 SDL_AUDIODRIVER=dummy ./newtonia
+```
+
+Two things to confirm:
+1. **The log line** — `net: tls - verifying server certificates against
+   <path>`, emitted once by the first socket that opens. Anything else is a
+   finding: `no CA bundle on disk` means the write failed (fatal on the
+   MbedTLS rows above, silently UNVERIFIED on Windows), and `VERIFICATION
+   DISABLED` means `NEWTONIA_NET_TLS_INSECURE` leaked into the environment.
+2. **The selftest passes** — it does a real round trip against the
+   production signal worker, so it exercises the actual Cloudflare chain
+   through that platform's TLS stack. A verification failure shows up as a
+   socket that never opens.
+
+What a failure means, by platform: on MbedTLS builds the handshake fails
+CLOSED (no online play at all — loud); on Windows libdatachannel falls back
+to unverified when no CA is supplied, so a failed bundle write is SILENT
+there and the log line is the only tell. MbedTLS is also the likelier place
+for a surprise: it parses the bundle itself, and `mbedtls_x509_crt_parse_file`
+SKIPS certificates it dislikes rather than failing (libdatachannel throws
+only on a negative return), so a root could go missing with no error at all.
+
+The deploy jobs currently gate on `NEWTONIA_NET_SELFTEST` — an in-process
+loopback that involves no TLS whatever. Adding `NEWTONIA_SIGNAL_SELFTEST`
+there would automate this pass; deferred for now (it makes release builds
+depend on the production worker being reachable), so until then the manual
+pass above is the only coverage the MbedTLS platforms get.
+
 ## 3. Signal worker tests (node, no game build)
 
 The worker (`signal/`) has its own tests — see `signal/README.md`:

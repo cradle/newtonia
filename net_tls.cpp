@@ -101,6 +101,25 @@ const std::string &net_ca_bundle_path() {
   return path;
 }
 
+void net_tls_log_state() {
+  static bool logged = false;
+  if (logged) return;
+  logged = true;
+  if (net_tls_insecure()) return;  // net_tls_insecure() logs its own warning
+  const std::string &ca = net_ca_bundle_path();
+  if (!ca.empty()) {
+    SDL_Log("net: tls - verifying server certificates against %s", ca.c_str());
+  } else {
+    // No bundle on disk. On a build whose TLS backend reads a system trust
+    // store (OpenSSL on Linux/macOS) this still verifies; on MbedTLS there
+    // is nothing to fall back to and connections will fail, and on Windows
+    // libdatachannel drops to UNVERIFIED. Say so rather than leaving the
+    // difference invisible.
+    SDL_Log("net: tls - no CA bundle on disk; verification falls back to the "
+            "system trust store, which MbedTLS builds do not have");
+  }
+}
+
 bool net_tls_insecure() {
   static int cached = -1;
   if (cached < 0) {

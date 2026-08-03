@@ -37,6 +37,14 @@
 // result is cached for the process lifetime and stays valid forever.
 const std::string &net_ca_bundle_path();
 
+// Log what this process will actually do — once, on the first socket that
+// asks. Without it there is NO steady-state evidence either way: the bundle
+// is written on the first connect after an update and silently reused
+// forever after, so "is it verifying?" had no answer short of deleting the
+// file or setting the escape hatch. A manual per-platform pass (TESTING.md)
+// is this line plus NEWTONIA_SIGNAL_SELFTEST against the real worker.
+void net_tls_log_state();
+
 // NEWTONIA_NET_TLS_INSECURE=1 disables certificate verification on both
 // sockets. A field-debugging escape hatch for a TLS-terminating middlebox or
 // a broken bundle — never set by any shipped build, and logged loudly every

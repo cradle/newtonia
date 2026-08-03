@@ -42,6 +42,7 @@ class RtcBoard : public NetBoard {
 
   void connect(const std::string &url) override {
     close();
+    net_tls_log_state();
     // Verify against our carried roots (net_tls.h). This socket is the one
     // that most needs it: the submit frame puts the platform verification
     // credential on the wire, and an on-path attacker who drops our frame

@@ -92,6 +92,7 @@ public:
 private:
   void open(const std::string &full_url) {
     close();
+    net_tls_log_state();
     // Verify the relay's certificate against our own roots (net_tls.h): the
     // game channel is authenticated by the DTLS/SDP fingerprints and needs
     // nothing from this socket, but the identity announcement rides it —
