@@ -749,7 +749,7 @@ marker instead of a missing one.
 
 **S5 — per-connection budgets are in-memory on a hibernation-enabled DO,
 and the per-IP limiter fails open (`worker.js` `Session`,
-`within_limit`).** ⬜ `state.acceptWebSocket` opts into hibernation while
+`within_limit`).** ✅ FIXED (2026-08-03, below) `state.acceptWebSocket` opts into hibernation while
 `queries`/`submits`/`fetches` and the in-flight `upload` live in
 constructor-initialised fields, so an eviction resets them; the 10-minute
 idle `setTimeout` probably keeps the DO resident, but nothing enforces
@@ -757,6 +757,50 @@ that. The per-IP `Limiter` is therefore the only durable bound — and it
 returns `true` on any limiter error, by design ("a limiter hiccup must not
 lock everyone out"), so pressure on the Limiter DO relaxes it. Reasonable
 for reads; `submit` should fail CLOSED.
+
+*Fix.* Both halves, and the second one is the more interesting.
+
+**`submit` now fails closed.** `FAIL_CLOSED` lists it; every other action
+keeps the old fail-open behaviour, and either way the outcome is logged
+rather than silent. The asymmetry is the point: the per-IP window is the
+only DURABLE bound on submissions (the per-connection cap resets on
+reconnect by design), so failing open there lifts the submit ceiling
+entirely for the duration of an outage, and a submit is the expensive path
+— an R2 write plus D1 rows. A refused submit also costs the player
+nothing: the upload row offers TRY LATER and `best.nrp` holds the run until
+it lands. Reads stay open because locking the whole board out over a
+limiter hiccup is the worse failure.
+
+**Budgets now ride the socket, not the instance.** `Session.hydrate()` /
+`persist()` keep `{ip, dev, queries, submits, fetches, forced}` in the
+WebSocket attachment — the thing that survives hibernation by design —
+restoring once per instance and persisting whenever a budget moves (so
+chunk frames, which touch no counter, cost nothing). The in-memory object
+stays authoritative after that first hydrate, which is what keeps
+interleaved handlers race-free: a message delivered while another awaits a
+verify shares one set of counters rather than racing a read-modify-write.
+Worth recording WHY this needed doing at all, since the old code was not
+actually broken: a pending `setTimeout` keeps a DO resident, so the idle
+timer means hibernation never happens today. The budgets were correct **by
+accident of an unrelated timer**, and would have gone quietly wrong the day
+someone converted that timer to the storage alarm the hibernation docs
+recommend. That conversion is now a safe change to make on its own merits,
+and the `CONN_IDLE_MS` comment says so instead of asserting the old
+"nothing to hibernate for".
+
+The in-flight upload deliberately does not ride along — 32 MB of chunks is
+far past what an attachment may hold — and does not need to: a chunk
+arriving with no `upload` already answers `bad-frame` and closes, a clean
+refusal rather than a silently truncated replay.
+
+Verified: new `budget_test.mjs` (wired into `deploy-board.yml`) pins the
+fail-closed/fail-open split across both breakage shapes (a throwing limiter
+and one returning garbage), and pins the budgets surviving a
+hibernation-style reconstruction — a second `Session` built from the same
+socket restores all six fields and still refuses past the cap — plus
+hydrate-twice being a no-op and a missing/throwing attachment leaving
+defaults instead of crashing the handler. The protocol test's existing
+`per-conn submit budget` case confirms the caps still bite end to end.
 
 **S6 — minor, worker.** ✅ FIXED (2026-08-03, below) (a) `submit refused: unverified
 platform=${msg.platform}` logs the RAW client field (any bytes, up to the

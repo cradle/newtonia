@@ -20,6 +20,8 @@ share one implementation.
 ```sh
 node test/validate_test.mjs        # header/framing validation
 node test/identity_gate_test.mjs   # attestation admission gate
+node test/retention_test.mjs       # retention cron + orphan sweep
+node test/budget_test.mjs          # limiter fail-closed + per-conn budgets
 ```
 
 Protocol test against the real worker code under miniflare (no Cloudflare

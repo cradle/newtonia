@@ -80,8 +80,12 @@ const CONN_MAX_FETCHES = 5;
 // views (pointer array + per-object overhead) far past the 32 MB size cap.
 // Legit clients use 15 KB chunks (~2200 for a 32 MB max); 4096 is generous.
 const MAX_UPLOAD_CHUNKS = 4096;
-// Idle sockets are closed after this long (per-connection DO — nothing to
-// hibernate for, the DO dies with the socket).
+// Idle sockets are closed after this long. NOTE the side effect: a pending
+// setTimeout keeps the DO resident, so this timer is also the reason
+// hibernation never actually happens today. The budgets no longer DEPEND on
+// that (Session.hydrate carries them on the socket — S5), so converting this
+// to the storage alarm the hibernation docs recommend is now a safe change
+// to make for its own reasons.
 const CONN_IDLE_MS = 10 * 60 * 1000;
 
 // Per-IP fixed windows (Limiter DO). Connects gate new sockets; reads and
@@ -479,7 +483,18 @@ async function sweep_orphans(env) {
   if (swept) console.log(`retention: swept ${swept} orphaned blob(s)`);
 }
 
-async function within_limit(env, ip, action, dev) {
+// Actions where an UNANSWERABLE limiter means "no", not "yes" (S5). The
+// per-IP Limiter is the only durable bound on submissions — the
+// per-connection cap resets on reconnect by design — so failing open on it
+// means an outage lifts the submit ceiling entirely, and a submit is the
+// expensive, abuse-sensitive path (an R2 write plus D1 rows). Reads stay
+// fail-open: they are cheap to serve and locking the whole board out over a
+// limiter hiccup is the worse failure. A refused submit is not lost work
+// either — the client's upload row offers TRY LATER, and best.nrp keeps the
+// run until it succeeds.
+const FAIL_CLOSED = ["submit"];
+
+export async function within_limit(env, ip, action, dev) {
   const limiter = env.LIMITS.get(env.LIMITS.idFromName(ip));
   try {
     const resp = await limiter.fetch(
@@ -487,7 +502,10 @@ async function within_limit(env, ip, action, dev) {
     const data = await resp.json();
     return !!data.allowed;
   } catch (e) {
-    return true; // a limiter hiccup must not lock everyone out
+    const open = !FAIL_CLOSED.includes(action);
+    console.log(`limiter unavailable for ${log_str(action, 16)}: ` +
+                `${open ? "allowing" : "refusing"} (${log_str(e && e.message)})`);
+    return open;
   }
 }
 
@@ -554,6 +572,53 @@ export class Session {
     // In-flight upload: null, or {size, identity, chunks:[], received}.
     this.upload = null;
     this.idle_timer = null;
+    // Have we restored this connection's counters from the socket yet? See
+    // hydrate() — false on a freshly constructed instance, which is exactly
+    // what a post-hibernation delivery gets.
+    this.hydrated = false;
+  }
+
+  // Per-connection state lives in memory, and `acceptWebSocket` opts this DO
+  // into hibernation — so an eviction between messages would reconstruct the
+  // class with every budget back at zero, and `ip`/`dev` back at their
+  // defaults (S5). Today the idle setTimeout keeps the object resident, so
+  // it does not happen; that is an accident of an unrelated timer, not a
+  // guarantee, and it would quietly stop being true the day the timer
+  // becomes the storage alarm the hibernation docs recommend.
+  //
+  // So carry the state on the SOCKET, which is what survives hibernation by
+  // design: restore once per instance, persist whenever a budget moves. The
+  // in-memory object stays authoritative after the first hydrate, so
+  // interleaved handlers (a message delivered while another awaits a verify)
+  // still share one set of counters — no read-modify-write race.
+  //
+  // The in-flight upload deliberately does NOT ride along: it is up to 32 MB
+  // of chunks, far past what an attachment may hold. If a hibernation ever
+  // did land mid-upload the chunks would be gone and the next chunk would
+  // meet a null `upload` — which already answers "bad-frame" and closes,
+  // a clean refusal rather than a silently truncated replay.
+  hydrate(ws) {
+    if (this.hydrated) return;
+    this.hydrated = true;
+    let a = null;
+    try { a = ws.deserializeAttachment(); } catch (e) {}
+    if (!a) return;
+    this.ip = a.ip;
+    this.dev = a.dev;
+    this.queries = a.queries;
+    this.submits = a.submits;
+    this.fetches = a.fetches;
+    this.forced_reject_once_ = a.forced;
+  }
+
+  persist(ws) {
+    try {
+      ws.serializeAttachment({
+        ip: this.ip, dev: this.dev, queries: this.queries,
+        submits: this.submits, fetches: this.fetches,
+        forced: !!this.forced_reject_once_,
+      });
+    } catch (e) {}
   }
 
   async fetch(request) {
@@ -564,6 +629,8 @@ export class Session {
     this.dev = url.searchParams.get("dev") === "1";
     const pair = new WebSocketPair();
     this.state.acceptWebSocket(pair[1]);
+    this.hydrated = true;  // this instance IS the connection's origin
+    this.persist(pair[1]);
     this.arm_idle(pair[1]);
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
@@ -580,6 +647,7 @@ export class Session {
   fail(ws, reason) { this.err(ws, reason); try { ws.close(1000); } catch (e) {} }
 
   async webSocketMessage(ws, message) {
+    this.hydrate(ws);
     this.arm_idle(ws);
     try {
       if (typeof message === "string") await this.on_json(ws, message);
@@ -615,6 +683,7 @@ export class Session {
       // season still can: the client seeds its own and best.nrp's
       // seasons into the list locally.
       if (++this.queries > CONN_MAX_QUERIES) return this.fail(ws, "rate-limited");
+      this.persist(ws);
       if (!(await within_limit(this.env, this.ip, "query", this.dev)))
         return this.err(ws, "rate-limited");
       await ensure_schema(this.env.DB);
@@ -634,6 +703,7 @@ export class Session {
 
     if (msg.t === "qualify" || msg.t === "rank-of" || msg.t === "top") {
       if (++this.queries > CONN_MAX_QUERIES) return this.fail(ws, "rate-limited");
+      this.persist(ws);
       // Per-IP aggregate read budget (see LIMITS): reads are cheap to retry,
       // so a refusal is a non-fatal err, not a socket close.
       if (!(await within_limit(this.env, this.ip, "query", this.dev)))
@@ -701,6 +771,7 @@ export class Session {
     if (msg.t === "submit") {
       if (this.upload) return this.fail(ws, "bad-frame");
       if (++this.submits > CONN_MAX_SUBMITS) return this.fail(ws, "rate-limited");
+      this.persist(ws);
       const size = Number(msg.size) >>> 0;
       // Distinct reasons (matching validate.js's blob-side pair): a
       // below-minimum announcement used to answer "too-large".
@@ -737,6 +808,7 @@ export class Session {
       if (this.dev && this.env.REJECT_FIRST_VERIFY === "1" &&
           !this.forced_reject_once_) {
         this.forced_reject_once_ = true;
+        this.persist(ws);
         console.log("submit refused: REJECT_FIRST_VERIFY (dev retry test)");
         return this.err(ws, "unverified");
       }
@@ -759,6 +831,7 @@ export class Session {
 
     if (msg.t === "fetch") {
       if (++this.fetches > CONN_MAX_FETCHES) return this.fail(ws, "rate-limited");
+      this.persist(ws);
       // Per-IP aggregate fetch budget (LIMITS.fetch): the per-connection
       // cap above resets on reconnect, so without this gate connection
       // churn multiplied R2 reads to conn-limit x CONN_MAX_FETCHES per
