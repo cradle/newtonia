@@ -611,9 +611,16 @@ WS server and proves the three outcomes — correct CA connects, **unrelated CA
 refused** (`certificate verify failed`), insecure flag still connects; the
 bundle materializes to the pref path and OpenSSL parses all 119 certificates
 back out; and the full Linux game builds and passes `NEWTONIA_NET_SELFTEST`
-against the patched library. Residual: nothing platform-wide — but the patch
-is a fork until upstream takes it, so a libdatachannel bump must re-check the
-three hunks still apply.
+against the patched library. **Field-verified on every platform this repo
+ships** (TESTING.md's per-platform matrix): Linux/OpenSSL via the CI gate,
+then real handshakes against the production worker from macOS universal,
+Android, iOS (all MbedTLS, where our roots are the ONLY trust source) and
+Windows (2026-08-03/04). The Windows run doubles as the field proof of the
+patch's second hunk, since upstream refuses to verify there at all. Residual:
+the patch is a fork until upstream takes it, so a libdatachannel bump must
+re-check the three hunks still apply — and Windows is the row to re-run
+first, being the only one that degrades to UNVERIFIED silently instead of
+failing closed.
 
 **S2 — a failed INSERT orphans the R2 blob forever (`board/src/worker.js`
 `finish_submit`).** ✅ FIXED (2026-08-03, below) `REPLAYS.put` ran BEFORE the

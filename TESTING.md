@@ -77,7 +77,7 @@ backends, and it is the one with a system trust store to fall back on:
 | `make osx` (universal — the SHIPPED mac build) | MbedTLS | our bundle ONLY | ✅ 2026-08-03 |
 | Android | MbedTLS | our bundle ONLY | ✅ 2026-08-04 |
 | iOS | MbedTLS | our bundle ONLY | ✅ 2026-08-04 |
-| Windows | OpenSSL | our bundle ONLY (OpenSSL cannot read the CryptoAPI store) | ⬜ |
+| Windows | OpenSSL | our bundle ONLY (OpenSSL cannot read the CryptoAPI store) | ✅ 2026-08-04 |
 | Xbox | MbedTLS | our bundle ONLY | ⬜ — `cradle/newtonia-xbox` owns console runtime work |
 
 So on four of those rows the carried roots are the *whole* trust story, and
@@ -177,11 +177,20 @@ room code, 2026-08-04) and iOS (selftest against the production relay,
 room `H8T7L`, 2026-08-04) — which retires the failure this section warns
 about, a root silently skipped at parse time.
 
-Windows is what remains, and it is the one that matters: the only row that
-falls back to UNVERIFIED rather than failing closed, so a regression there
-is silent. Xbox shares the same MbedTLS trust path as the three ✅ rows, and
-console runtime work belongs to the private repo (CLAUDE.md) — the canaries
-here only prove it still compiles.
+Windows was the one that mattered most and is also done (2026-08-04: bundle
+at `C:\Users\…\AppData\Roaming\cc.gfm\newtonia\cacert.pem`, room
+`Y8JZP`, `SIGNAL SELFTEST PASS`). It is the only platform upstream
+libdatachannel refuses to verify on at all, so that run is the field proof
+of the patch's SECOND hunk — and the proof is two-sided: the game compiles
+only if `caCertificatePemFile` exists, and `git apply` is atomic, so a
+Windows build that exists at all carries the `#ifdef _WIN32` relaxation too.
+It is also the only row that falls back to UNVERIFIED rather than failing
+closed, which is why the log line is the thing to re-check there after any
+libdatachannel bump: a silent regression looks exactly like success.
+
+Xbox shares the MbedTLS trust path proven three times above, and console
+runtime work belongs to the private repo (CLAUDE.md) — the canaries here
+only prove it still compiles.
 
 The deploy jobs currently gate on `NEWTONIA_NET_SELFTEST` — an in-process
 loopback that involves no TLS whatever. Adding `NEWTONIA_SIGNAL_SELFTEST`
