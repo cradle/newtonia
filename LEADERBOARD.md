@@ -530,6 +530,127 @@ key-RELEASE, so a fire/thrust key held through death and released into the
 prompt answered it — input now acts only on keys pressed while the prompt
 is up. e2e `test/e2e/leaderboard.sh` remains green after all fixes.
 
+### Security review (2026-08-03) — attestation / upload / download / worker
+A focused second pass over the four surfaces the feature actually exposes:
+the platform-attestation path (`signal/src/*_verify.js` + the board's
+`verify_identity`), the submit path, the download/playback path, and the
+worker's own budgets. Findings below, most severe first, with a status
+marker each. Nothing here contradicts the L5/L6 posture — the deliberate
+"header is the truth, watchability is the deterrent" tier is called out
+where it bounds a finding rather than being one.
+
+**S1 — TLS verification is disabled on a socket that carries credentials
+(`net_board_rtc.cpp` `connect`).** ⬜ The flag is inherited verbatim from
+`net_signal_rtc.cpp`, where the rationale holds: the p2p channel is
+authenticated by DTLS/SDP fingerprints, so the signalling socket carries
+nothing security-bearing. `/board` is different — it carries the platform
+verification credential (Steam Web-API ticket, Play Games single-use
+server auth code, Game Center signature bundle), the replay published
+under the player's account, and the blob playback then parses. An on-path
+attacker can present any certificate, capture the credential and DROP the
+victim's submit, then spend that credential against the real worker to
+place a forged score under the victim's attested account and name — the
+single-use property protects nothing when the MITM controls whether the
+legitimate use ever happens, and a Game Center bundle needs no race at all
+(no single-use binding, replayable for the full 10-minute freshness
+window). Two aggravating details: the flag is unconditional, so it also
+disables verification on the builds that link OpenSSL and could verify
+today (`build_netplay_deps.sh`'s non-`--universal` path — only the
+`--universal` macOS branch and Windows use MbedTLS); and the "the C API has
+no CA-file field" comment predates the pinned libdatachannel (v0.24.5),
+whose `rtcWsConfiguration` exposes `caCertificatePemFile` — to be confirmed
+against the pinned header. Note the same credential already rides the
+signalling socket under the same flag, so the exposure predates the board;
+what the board adds is the durable, public, account-attributed artifact at
+the end of it.
+
+**S2 — a failed INSERT orphans the R2 blob forever (`board/src/worker.js`
+`finish_submit`).** ⬜ `REPLAYS.put` runs BEFORE the upsert, and retention
+walks rows only — so an object whose row never lands is unreachable and
+never reaped, while the generic `catch` reports a bare `internal`. Not
+merely a D1-hiccup path: the upsert targets `(season, players,
+platform_key)` but the table also has `PRIMARY KEY (season, run_id)`, and
+SQLite aborts when the violated constraint is not the conflict target.
+Confirmed both ways against SQLite:
+`same account / same run_id / same players` upserts cleanly, while
+`same account / same run_id / players 1 then 2` throws
+`UNIQUE constraint failed: scores.season, scores.run_id`. That second case
+clears every prior guard — the `run_row` check matches on `(season,
+run_id)` and finds the submitter's OWN key, and the `mine` query filters
+`run_id != ?4` — and both fields are attacker-chosen header bytes, so it
+repeats at the submit limit with a ≤32 MB orphan each time. Fixes: store
+the blob only once the row has won (or delete it on any failure), refuse
+the cross-`players` `run_id` collision explicitly like the cross-account
+one, and add a reaper for keys with no row.
+
+**S3 — the header's score is never cross-checked against the recording
+(`board/src/validate.js` `validate_submission`).** ⬜ (bounded by L5/L6 —
+this is the accepted tier, not a defect.) Editing one `u32` at header
+offset 52 charts any score. Worth noting anyway because a cheap partial
+sits unused INSIDE the current design: `walk_records` already computes
+`last_slot`, `records` and `keyframes`, and `validate_submission` discards
+all of it except `deltas === 0`. Requiring `duration_ms` to agree with
+`last_slot * 100` (and `generation` to be plausible against the record
+count) makes the trivial hex-edit inconsistent with its own file — still
+forgeable, but a real bar where there is currently none, and it sharpens
+the social deterrent rather than replacing it.
+
+**S4 — iOS rows publish a fully self-chosen display name** (`worker.js`
+`verify_identity` platform 4 → `{name: claimed, verified: false}`, rendered
+as-is by `menu.cpp`). ⬜ Correct that Apple exposes no alias lookup; the
+question is the DISPLAY decision (2026-08-01, deliberately the looser
+"gamertag rule"). A player can put another player's Steam persona on the
+board, distinguished only by the ABSENCE of the verified tick — a signal
+read by nobody who does not already know to look for it, and the IOS badge
+does not say "this name is unverified". Options: badge + role label for
+iOS (matching the online-peer identity rule), or a positive unverified
+marker instead of a missing one.
+
+**S5 — per-connection budgets are in-memory on a hibernation-enabled DO,
+and the per-IP limiter fails open (`worker.js` `Session`,
+`within_limit`).** ⬜ `state.acceptWebSocket` opts into hibernation while
+`queries`/`submits`/`fetches` and the in-flight `upload` live in
+constructor-initialised fields, so an eviction resets them; the 10-minute
+idle `setTimeout` probably keeps the DO resident, but nothing enforces
+that. The per-IP `Limiter` is therefore the only durable bound — and it
+returns `true` on any limiter error, by design ("a limiter hiccup must not
+lock everyone out"), so pressure on the Limiter DO relaxes it. Reasonable
+for reads; `submit` should fail CLOSED.
+
+**S6 — minor, worker.** ⬜ (a) `submit refused: unverified
+platform=${msg.platform}` logs the RAW client field (any bytes, up to the
+32 KB frame cap) instead of the coerced number computed one line above —
+the one unsanitised log token left. (b) The dev switches `FAKE_VERIFY`,
+`REJECT_FIRST_VERIFY`, `SUBMIT_LIMIT`/`CONN_LIMIT` are gated on env vars
+alone: correctly absent from `wrangler.toml` and passed only by
+`wrangler dev`, but one stray dashboard variable turns production into an
+open board, and the fake path logs the credential prefix. A second
+condition (refuse the fake path on the production script name) makes that
+unreachable by misconfiguration.
+
+**S7 — a co-op partner can pre-claim your derived run_id.** ⬜ Both peers
+know the shared run_id and hence its complement, and `finish_submit`
+refuses any run_id already held by a different `platform_key`. A malicious
+partner can spend their own co-op row on a crafted blob carrying the
+victim's derived id, permanently blocking that specific run. Self-limiting
+(one row per account; the victim just plays another run), noted so the
+dedupe rule's cost is on the record.
+
+**Held up well:** attestation is checked BEFORE any bytes are accepted, so
+a spoofed submit costs the sender a round-trip and us nothing; the header
+is a single source of truth with no claimed score to reconcile; run_id
+dedupe, the UNIQUE index + atomic conditional upsert, the chunk-COUNT cap
+beside the byte cap, and the verify deadline are all the right shape;
+Apple's cert fetch is host-pinned with a tight freshness window; Steam and
+Play Games names come from the platform API, never the wire; no secrets in
+git. Client side: every worker-controlled string is sanitised before it
+reaches `SDL_Log` or the font (`net_board_sanitize`, `net_sanitize_name`,
+and the season list), the download size is bounded before buffering, and a
+downloaded replay lands in the hardened reader — `Reader` caps file size
+and record bounds and `deserialize_game` bounds every container count
+before resizing, which is what makes "the worker does not validate
+payloads" a defensible split rather than a hole.
+
 ### L5 — deferred: verification
 R5's input-log re-simulation, arriving through the reserved `verify`
 envelope field. Nothing built until forged submissions actually appear;
