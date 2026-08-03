@@ -178,10 +178,21 @@ static int opt_row_at(float ny, int n, float top, float bottom) {
 // -262/-300/-364. Touch rows draw over TWO lines (name/score above,
 // platform badge/level/date below — portrait has no width for the
 // desktop's six columns), so their pitch is taller.
-static int board_y_toggle() { return menu_half_height() - 332; }
-static int board_y_season() { return menu_half_height() - 386; }
-static int board_y_header() { return menu_half_height() - 442; }
-static int board_y_row0()   { return menu_half_height() - 484; }
+// The BOARD toggle and SEASON browser are primary tap targets: on touch
+// they sit a full hit zone apart (104 > the ±50 control zones in
+// board_entry_at — at the classic 54 the zones overlapped and every tap
+// between them landed on BOARD, the first entry tested). Desktop keeps
+// the classic tight stack; the header/table slots cascade below.
+static int board_y_toggle() {
+  return menu_half_height() - (is_touch_mode() ? 348 : 332);
+}
+static int board_y_season() {
+  return board_y_toggle() - (is_touch_mode() ? 104 : 54);
+}
+static int board_y_header() {
+  return board_y_season() - (is_touch_mode() ? 72 : 56);
+}
+static int board_y_row0()   { return board_y_header() - 42; }
 static int board_row_pitch() { return is_touch_mode() ? 96 : 48; }
 static int board_y_range()  { return -(menu_half_height() - 338); }
 static int board_y_upload() { return -(menu_half_height() - 300); }
@@ -1534,10 +1545,15 @@ void Menu::board_ensure_visible() {
 
 int Menu::board_entry_at(float y) const {
   int n = board_entry_count();
-  for (int e = 0; e < n; e++)
-    if (y <= board_entry_y(e) + board_row_pitch() / 2 &&
-        y >= board_entry_y(e) - board_row_pitch() / 2)
+  for (int e = 0; e < n; e++) {
+    // The single-line control rows (BOARD toggle, SEASON) carry their own
+    // zone size: on touch a generous ±50 that their 104 separation keeps
+    // overlap-free; the score rows use the row pitch. Desktop keeps the
+    // uniform classic half-pitch (24) everywhere.
+    int half = (e <= 1 && is_touch_mode()) ? 50 : board_row_pitch() / 2;
+    if (y <= board_entry_y(e) + half && y >= board_entry_y(e) - half)
       return e;
+  }
   return -1;
 }
 
