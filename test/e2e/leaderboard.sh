@@ -198,7 +198,10 @@ echo "===== S4: leaderboard_prompts=0 -> AUTO-upload, no prompt ====="
 use_home s4
 mkdir -p "$XDG_DATA_HOME/cc.gfm/newtonia"
 echo "leaderboard_prompts=0" > "$XDG_DATA_HOME/cc.gfm/newtonia/preferences.ini"
-P=$(launch_game s4); sleep 2; W=$(win)
+# Distinct name = distinct FAKE_VERIFY account (see S5): submitting as
+# S1's account would hit a correct "not-best" refusal whenever this
+# scenario's random spray scores lower than S1's placed row.
+P=$(NEWTONIA_NET_NAME=E2ES4 launch_game s4); sleep 2; W=$(win)
 clean_best "$W"
 crash_to_game_over "$W" "$OUT/s4.log"
 for i in $(seq 1 20); do

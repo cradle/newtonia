@@ -924,6 +924,12 @@ void GLGame::maybe_start_intro() {
   // No Intro states online: both machines must keep ticking in lockstep
   // with the snapshot stream (a 2 s banner replaces them — Phase 8).
   if (net_mode_ != NetOff) return;
+  // Never after game over: the background world keeps simulating behind
+  // the GAME OVER card, and if it clears its level the generation still
+  // advances — but handing the state to an Intro would steal the screen
+  // AND the input from the card (the leaderboard prompt's YES landed on
+  // "PRESS FIRE TO START"; caught by the e2e's time-cheated S5).
+  if (game_over) return;
   const char *name = NULL;
   Asteroid *display = NULL;
   Intro::Kind kind = Intro::ASTEROID;
