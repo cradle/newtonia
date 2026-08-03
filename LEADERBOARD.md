@@ -758,7 +758,7 @@ returns `true` on any limiter error, by design ("a limiter hiccup must not
 lock everyone out"), so pressure on the Limiter DO relaxes it. Reasonable
 for reads; `submit` should fail CLOSED.
 
-**S6 — minor, worker.** ⬜ (a) `submit refused: unverified
+**S6 — minor, worker.** ✅ FIXED (2026-08-03, below) (a) `submit refused: unverified
 platform=${msg.platform}` logs the RAW client field (any bytes, up to the
 32 KB frame cap) instead of the coerced number computed one line above —
 the one unsanitised log token left. (b) The dev switches `FAKE_VERIFY`,
@@ -768,6 +768,29 @@ alone: correctly absent from `wrangler.toml` and passed only by
 open board, and the fake path logs the credential prefix. A second
 condition (refuse the fake path on the production script name) makes that
 unreachable by misconfiguration.
+
+*Fix.* (a) The log line interpolates the COERCED number, and `log_str()`
+now names the boundary for any client text that reaches a log — printable
+ASCII only, length-capped, the mirror of `net_board_sanitize` on the game
+side. It is used for the dev credential log too. (b) Every dev switch
+gained a second condition, `is_dev_host()`: the request must have arrived
+on a loopback hostname, or `FAKE_VERIFY`, `REJECT_FIRST_VERIFY` and the
+widened `SUBMIT_LIMIT`/`CONN_LIMIT` windows all do nothing. Configuration
+alone can no longer disable attestation, because the deciding input is
+where the request came from, not what the environment says. Cloudflare
+routes by hostname, so a forged `Host` cannot reach a deployed worker
+wearing a loopback name; a remote `wrangler dev` preview is deliberately
+not "dev" either. The flag is decided once in `fetch()` and passed to the
+Session DO and the Limiter, so all three switches read the same answer.
+
+Verified end to end against a real `wrangler dev --local` running WITH
+`FAKE_VERIFY:1`: reached over `127.0.0.1` a submit answers `submit-ok`
+(dev path intact), and the SAME worker reached over a non-loopback
+hostname pointed at the same port answers `unverified` — the fake
+attestation is inert. `identity_gate_test.mjs` pins both directions plus
+the lookalike hostnames (`localhost.evil.com`, `notlocalhost`,
+`127.0.0.1.evil.com` are all non-dev) and the `log_str` boundary
+(newline, control bytes, non-ASCII, length, non-string input).
 
 **S7 — a co-op partner can pre-claim your derived run_id.** ⬜ Both peers
 know the shared run_id and hence its complement, and `finish_submit`

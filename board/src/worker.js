@@ -95,8 +95,10 @@ const CONN_IDLE_MS = 10 * 60 * 1000;
 // SUBMIT_LIMIT and CONN_LIMIT are dev/test vars (wrangler dev
 // --var SUBMIT_LIMIT:250 --var CONN_LIMIT:500) so the protocol test's
 // burst of submissions/connections from one IP doesn't trip the
-// production windows; never set in production. The full-board qualify
-// test needs both: 100 fill rows at 2 submits per socket is 50 extra
+// production windows; never set in production — and since S6 they cannot
+// take effect there, since limit_for ignores them unless the request
+// arrived on a loopback host (is_dev_host). The full-board qualify test
+// needs both: 100 fill rows at 2 submits per socket is 50 extra
 // connections.
 const LIMITS = {
   conn: { window_ms: 10 * 60 * 1000, limit: 60 },
@@ -105,13 +107,48 @@ const LIMITS = {
   submit: { window_ms: 60 * 60 * 1000, limit: 6 },
 };
 
-function limit_for(env, action) {
+function limit_for(env, action, dev) {
   const cfg = LIMITS[action] || LIMITS.conn;
+  if (!dev) return cfg;  // the widened windows are dev-only (see is_dev_host)
   if (action === "submit" && env && Number(env.SUBMIT_LIMIT) > 0)
     return { ...cfg, limit: Number(env.SUBMIT_LIMIT) };
   if (action === "conn" && env && Number(env.CONN_LIMIT) > 0)
     return { ...cfg, limit: Number(env.CONN_LIMIT) };
   return cfg;
+}
+
+// Is this request talking to a LOCAL dev worker? Every dev/test switch below
+// (FAKE_VERIFY, REJECT_FIRST_VERIFY, the widened rate windows) requires this
+// as a SECOND condition, so none of them can be turned on by configuration
+// alone (LEADERBOARD.md S6). FAKE_VERIFY in particular attests any claim —
+// one stray dashboard variable would otherwise convert production into an
+// open board with no attestation at all, silently.
+//
+// Every harness runs `wrangler dev --local` and connects over loopback
+// (board_test/whitelist_test on 127.0.0.1, test/e2e/leaderboard.sh on
+// 127.0.0.1:8799), while a deployed worker is only ever reached at its
+// workers.dev or custom hostname — Cloudflare routes by that hostname, so a
+// forged Host header cannot arrive here wearing a loopback name. A remote
+// `wrangler dev` preview is deliberately NOT dev by this test: something on
+// the public edge should not be faking attestation.
+export function is_dev_host(hostname) {
+  return hostname === "localhost" || hostname === "127.0.0.1" ||
+         hostname === "::1" || hostname === "[::1]" ||
+         hostname.endsWith(".localhost");
+}
+
+// Client-controlled text that reaches a log line. Strips anything outside
+// printable ASCII (a newline lets a hostile value forge whole log entries)
+// and caps the length — the same boundary net_board_sanitize enforces on the
+// game side, in the other direction.
+export function log_str(v, max = 64) {
+  let out = "";
+  for (const c of String(v)) {
+    if (out.length >= max) break;
+    const b = c.charCodeAt(0);
+    if (b >= 0x20 && b < 0x7f) out += c;
+  }
+  return out;
 }
 
 // v1 has no web client (LEADERBOARD.md: no leaderboard on web in the first
@@ -192,19 +229,21 @@ function with_timeout(p, platform) {
   return Promise.race([p.finally(() => clearTimeout(timer)), gate]);
 }
 
-export async function verify_identity(env, platform, name, cred) {
+export async function verify_identity(env, platform, name, cred, dev) {
   const claimed = strip_name(name);
   if (typeof cred !== "string" || !cred || cred.length > MAX_CRED) return null;
-  if (env.FAKE_VERIFY === "1") {
+  if (dev && env.FAKE_VERIFY === "1") {
     // Dev/e2e shortcut (wrangler dev only): attest the claim without a
     // platform backend — but still REQUIRE a non-empty credential (above),
     // like every real backend, so the client's empty-at-submit case tests
     // true. The cred is logged so the retry e2e can assert the resubmit
     // carried a genuinely different one. The account derives from the name
-    // so two test "players" stay distinct. NEVER set in production.
-    // Compared to "1" exactly (the value every harness passes): a plain
-    // truthiness test made FAKE_VERIFY=0 ENABLE the fake.
-    console.log(`fake-verify: cred=${cred.slice(0, 64)}`);
+    // so two test "players" stay distinct. NEVER set in production — and
+    // now it cannot BE set in production: `dev` demands the request arrived
+    // over loopback (is_dev_host), so the variable alone does nothing on a
+    // deployed worker. Compared to "1" exactly (the value every harness
+    // passes): a plain truthiness test made FAKE_VERIFY=0 ENABLE the fake.
+    console.log(`fake-verify: cred=${log_str(cred)}`);
     return { platform, name: claimed, verified: true,
              account: `fake:${claimed || "anon"}` };
   }
@@ -329,8 +368,9 @@ export default {
     // Kill switch, same shape as the signal worker's.
     if (env.DISABLED) return reject_ws("disabled");
 
+    const dev = is_dev_host(url.hostname);
     const ip = rate_key(request.headers.get("CF-Connecting-IP") || "local");
-    if (!(await within_limit(env, ip, "conn")))
+    if (!(await within_limit(env, ip, "conn", dev)))
       return reject_ws("rate-limited");
 
     // One DO per connection: isolates state, and DO message events get
@@ -338,7 +378,8 @@ export default {
     // free plan's per-invocation budget in a stateless worker socket).
     const session = env.SESSIONS.get(env.SESSIONS.newUniqueId());
     return session.fetch(new Request(
-        `https://session/connect?ip=${encodeURIComponent(ip)}`, request));
+        `https://session/connect?ip=${encodeURIComponent(ip)}` +
+        (dev ? "&dev=1" : ""), request));
   },
 
   // Retention cron (LEADERBOARD.md): demote rows below KEEP_N to
@@ -438,10 +479,11 @@ async function sweep_orphans(env) {
   if (swept) console.log(`retention: swept ${swept} orphaned blob(s)`);
 }
 
-async function within_limit(env, ip, action) {
+async function within_limit(env, ip, action, dev) {
   const limiter = env.LIMITS.get(env.LIMITS.idFromName(ip));
   try {
-    const resp = await limiter.fetch(`https://limiter/hit?action=${action}`);
+    const resp = await limiter.fetch(
+        `https://limiter/hit?action=${action}` + (dev ? "&dev=1" : ""));
     const data = await resp.json();
     return !!data.allowed;
   } catch (e) {
@@ -471,8 +513,9 @@ export class Limiter {
   }
 
   async fetch(request) {
-    const action = new URL(request.url).searchParams.get("action");
-    const cfg = limit_for(this.env, action);
+    const params = new URL(request.url).searchParams;
+    const action = params.get("action");
+    const cfg = limit_for(this.env, action, params.get("dev") === "1");
     const now = Date.now();
     let a = this.l[action];
     if (!a || now - a.start > cfg.window_ms) a = { start: now, count: 0 };
@@ -502,6 +545,9 @@ export class Session {
     this.state = state;
     this.env = env;
     this.ip = "local";
+    // Set from the connect URL: true only when the request arrived on a
+    // loopback host, which is what every dev/test switch also requires.
+    this.dev = false;
     this.queries = 0;
     this.submits = 0;
     this.fetches = 0;
@@ -515,6 +561,7 @@ export class Session {
     if (url.pathname !== "/connect")
       return new Response("not found", { status: 404 });
     this.ip = url.searchParams.get("ip") || "local";
+    this.dev = url.searchParams.get("dev") === "1";
     const pair = new WebSocketPair();
     this.state.acceptWebSocket(pair[1]);
     this.arm_idle(pair[1]);
@@ -568,7 +615,7 @@ export class Session {
       // season still can: the client seeds its own and best.nrp's
       // seasons into the list locally.
       if (++this.queries > CONN_MAX_QUERIES) return this.fail(ws, "rate-limited");
-      if (!(await within_limit(this.env, this.ip, "query")))
+      if (!(await within_limit(this.env, this.ip, "query", this.dev)))
         return this.err(ws, "rate-limited");
       await ensure_schema(this.env.DB);
       const rows = await this.env.DB.prepare(
@@ -589,7 +636,7 @@ export class Session {
       if (++this.queries > CONN_MAX_QUERIES) return this.fail(ws, "rate-limited");
       // Per-IP aggregate read budget (see LIMITS): reads are cheap to retry,
       // so a refusal is a non-fatal err, not a socket close.
-      if (!(await within_limit(this.env, this.ip, "query")))
+      if (!(await within_limit(this.env, this.ip, "query", this.dev)))
         return this.err(ws, "rate-limited");
       const season = typeof msg.season === "string" ? msg.season : "";
       const players = msg.players === 2 ? 2 : 1;
@@ -665,23 +712,30 @@ export class Session {
       // — the Closed teardown outranked the refusal it arrived with).
       // The per-connection CONN_MAX_SUBMITS cap above still closes: that
       // one is a misbehaving-client guard, not a budget answer.
-      if (!(await within_limit(this.env, this.ip, "submit")))
+      if (!(await within_limit(this.env, this.ip, "submit", this.dev)))
         return this.err(ws, "rate-limited");
       // Attestation is an admission requirement (LEADERBOARD.md): verify
       // BEFORE accepting megabytes of chunks — a spoofed submit costs the
       // spoofer the round-trip, not us the bandwidth.
+      const platform = Number(msg.platform) >>> 0;
       const identity = await verify_identity(
-          this.env, Number(msg.platform) >>> 0, msg.name, msg.cred);
+          this.env, platform, msg.name, msg.cred, this.dev);
       if (!identity) {
-        console.log(`submit refused: unverified platform=${msg.platform}`);
+        // The COERCED number, not msg.platform: the raw field is whatever
+        // the client sent, up to the 32 KB frame cap and including
+        // newlines, so interpolating it let a submitter write arbitrary
+        // lines into our logs (LEADERBOARD.md S6).
+        console.log(`submit refused: unverified platform=${platform}`);
         return this.err(ws, "unverified");
       }
       // DEV/TEST ONLY: force the FIRST submit on a connection to look
       // unverified, so the client's warm-a-fresh-credential-and-retry path
       // (credential-lifecycle hardening) can be exercised without a real
       // single-use collision. The retry (2nd submit, same socket) passes.
-      // Never set in production.
-      if (this.env.REJECT_FIRST_VERIFY === "1" && !this.forced_reject_once_) {
+      // Never set in production — and, like FAKE_VERIFY, it now cannot BE
+      // set there: this.dev demands a loopback host (is_dev_host).
+      if (this.dev && this.env.REJECT_FIRST_VERIFY === "1" &&
+          !this.forced_reject_once_) {
         this.forced_reject_once_ = true;
         console.log("submit refused: REJECT_FIRST_VERIFY (dev retry test)");
         return this.err(ws, "unverified");
@@ -710,7 +764,7 @@ export class Session {
       // churn multiplied R2 reads to conn-limit x CONN_MAX_FETCHES per
       // window — the config existed but no code consulted it (review,
       // 2026-08-01). A refusal is a non-fatal err like the query budget's.
-      if (!(await within_limit(this.env, this.ip, "fetch")))
+      if (!(await within_limit(this.env, this.ip, "fetch", this.dev)))
         return this.err(ws, "rate-limited");
       const season = typeof msg.season === "string" ? msg.season : "";
       const run_id = typeof msg.run_id === "string" ? msg.run_id : "";
