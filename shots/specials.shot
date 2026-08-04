@@ -4,7 +4,7 @@ seed 11
 sim 800
 clear
 hud off
-ship 0 0 90
+ship 0 0 0
 asteroid -600 330 tough r=110 v=0,0
 asteroid 0 330 reflective r=110 v=0,0
 asteroid 600 330 armoured r=110 v=0,0

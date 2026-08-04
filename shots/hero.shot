@@ -4,7 +4,8 @@
 seed 7
 sim 1500
 clear
-ship 0 -150 90
+camera fixed
+ship 0 -150 25
 asteroid -520 260 tough r=120
 asteroid 480 330 reflective r=90 v=-30,-10
 asteroid 700 -280 r=70 v=-40,20

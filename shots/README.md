@@ -65,10 +65,17 @@ clear                  # empty the generated world (asteroids, hazards,
 hud off                # hide the HUD and minimap
 zoom 60                # vertical FOV degrees (default 85; smaller = closer;
                        #   much wider shows the toroidal wrap copies)
+camera fixed           # keep the world's orientation on screen. Default is
+                       #   the game's default, `rotate`: the view follows
+                       #   the ship's heading, so the ship ALWAYS draws
+                       #   pointing up and world placements appear rotated
+                       #   by -heading. Composed scenes with angled ships
+                       #   want `fixed` (WYSIWYG).
 players 2              # local split-screen co-op
 
-ship 0 -150 90         # move player 1 (and the camera) / set heading (deg)
-ship2 300 0            # move player 2 (with `players 2`)
+ship 0 -150 25         # move player 1 (and the camera) / heading in degrees
+                       #   (0 = up, positive = counter-clockwise)
+ship2 300 0 -30        # move player 2 (with `players 2`)
 
 # TYPE flags combine; r= clamps to Asteroid::max_radius; v= units/second.
 asteroid X Y [normal|invincible|invisible|reflective|teleporting|quantum|
@@ -85,6 +92,9 @@ text X Y SIZE WORDS... # caption in the Typer font (uppercased). X/Y are
 key NAME [at_ms]       # synthesized key press at sim time (default: 200,
                        #   then +400 per key). NAME: a character, or
                        #   enter space esc up down left right
+hold NAME [at_ms]      # like key, but never released — thrust flames and
+                       #   autofire stay live in the captured frame.
+                       #   P1: w thrust, space shoot. P2: i thrust, / shoot
 ```
 
 Notes:
@@ -93,6 +103,13 @@ Notes:
   velocities (and homing seekers, cruising comets, AI enemies) move during
   `sim`, so compose where things should be **at capture time**; the fixed
   seed keeps the result stable once it looks right.
+- Ships spawn alive with the spawn-shield ring already expired, and
+  generation-spawned asteroids are swept clear of every placed ship and
+  enemy (composed spawns are left where you put them). Composed enemies
+  wake alive with their AI lock delay skipped, so they engage within the
+  sim window. At capture the harness logs one `shot: player N alive=...`
+  line per player (plus an enemies line) so a script can assert the cast
+  survived without eyeballing the render.
 - State transitions are deliberately not followed: `key`-ing the menu into
   NEW GAME leaves the menu on screen (the Menu's own screens — options,
   replays — are fine, they're the same state). Use `game` for gameplay.

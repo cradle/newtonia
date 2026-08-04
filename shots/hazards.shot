@@ -5,6 +5,7 @@ seed 9
 sim 1400
 clear
 hud off
+camera fixed
 ship 0 -250 45
 hazard pulsar -700 200
 hazard comet 850 550 v=-260,-100

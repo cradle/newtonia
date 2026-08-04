@@ -7,6 +7,7 @@
 
 #include "glgame.h"
 #include "glenemy.h"
+#include "follower.h"
 #include "menu.h"
 #include "achievements.h"
 #include "preferences.h"
@@ -46,6 +47,7 @@ struct SceneText   { float x = 0, y = 0, size = 8; std::string text; };
 struct SceneKey {
   unsigned char key = 0;
   int at_ms = 0;
+  bool hold = false;  // `hold`: press and keep held through capture
   bool downed = false, upped = false;
 };
 
@@ -59,9 +61,14 @@ struct Scene {
   bool hud = true;
   bool two_players = false;
   float zoom = 0;                 // vertical FOV degrees; 0 = default (85)
+  // Camera mode. The game's default is ROTATE (view follows the ship's
+  // heading, ship always drawn pointing up). FIXED keeps the world's
+  // orientation on screen — WYSIWYG for composed scenes with angled ships.
+  bool camera_rotate = true;
   bool ship_set = false;   float ship_x = 0, ship_y = 0;
   bool ship_angle_set = false;  float ship_angle = 0;
   bool ship2_set = false;  float ship2_x = 0, ship2_y = 0;
+  bool ship2_angle_set = false; float ship2_angle = 0;
   std::vector<SceneAsteroid> asteroids;
   std::vector<SceneEnemy> enemies;
   std::vector<SceneHazard> hazards;
@@ -143,18 +150,24 @@ bool parse_scene_file(const char *path) {
       if (!(in >> n) || n < 1 || n > 2)
         return parse_error(line_no, line, "players must be 1 or 2");
       s_scene.two_players = (n == 2);
+    } else if (cmd == "camera") {
+      std::string v;  in >> v;
+      if (v == "fixed")       s_scene.camera_rotate = false;
+      else if (v == "rotate") s_scene.camera_rotate = true;
+      else return parse_error(line_no, line, "camera fixed|rotate");
     } else if (cmd == "zoom") {
       if (!(in >> s_scene.zoom) || s_scene.zoom < 10 || s_scene.zoom > 170)
         return parse_error(line_no, line, "zoom must be 10..170 (FOV degrees)");
     } else if (cmd == "ship" || cmd == "ship2") {
       float x, y;
       if (!(in >> x >> y)) return parse_error(line_no, line, "ship needs X Y");
+      float a;
       if (cmd == "ship") {
         s_scene.ship_set = true;  s_scene.ship_x = x;  s_scene.ship_y = y;
-        float a;
         if (in >> a) { s_scene.ship_angle_set = true; s_scene.ship_angle = a; }
       } else {
         s_scene.ship2_set = true; s_scene.ship2_x = x; s_scene.ship2_y = y;
+        if (in >> a) { s_scene.ship2_angle_set = true; s_scene.ship2_angle = a; }
       }
     } else if (cmd == "asteroid") {
       SceneAsteroid a;
@@ -230,11 +243,12 @@ bool parse_scene_file(const char *path) {
       for (size_t i = 0; i < t.text.size(); i++)
         t.text[i] = (char)std::toupper((unsigned char)t.text[i]);
       s_scene.texts.push_back(t);
-    } else if (cmd == "key") {
+    } else if (cmd == "key" || cmd == "hold") {
       std::string name;
       if (!(in >> name)) return parse_error(line_no, line, "key needs a name");
       SceneKey k;
       k.key = key_from_name(name);
+      k.hold = (cmd == "hold");
       if (k.key == 0) return parse_error(line_no, line, "unknown key name");
       if (!(in >> k.at_ms)) { k.at_ms = next_key_ms; }
       next_key_ms = k.at_ms + 400;
@@ -415,28 +429,68 @@ State *ShotScene::build_state() {
   Achievements::note_cheat_used();  // stats/achievements stay cold
   g->shot_hide_hud_ = !s_scene.hud;
 
-  if (s_scene.two_players) g->add_player2(NULL);
+  if (s_scene.two_players) {
+    g->add_player2(NULL);
+    // add_player2 is the controller-join path — it binds no keyboard keys
+    // (the Enter-join path does that itself). Scene `hold`/`key` events
+    // reach player 2 through the standard P2 bindings (i/j/l, '/').
+    g->players->back()->set_keys(g_prefs.p2_keys);
+  }
 
   // Ships start alive and settled (a fresh game's player 1 opens dead in
   // the respawn countdown), with the camera snapped for determinism.
+  // `camera` command state — static so the pref pointer the ships keep
+  // outlives this call (an in-game toggle would write through it).
+  static bool s_cam_rotate;
+  s_cam_rotate = s_scene.camera_rotate;
   for (GLShip *gs : *g->players) {
     gs->ship->respawn(g->grid, false);
     gs->ship->bullets.clear();  // no lethal spawn-flash debris
+    gs->ship->time_left_invincible = 0;  // no spawn-shield ring in shots
     gs->set_camera_smoothing(0);
+    gs->set_rotate_view_pref(&s_cam_rotate);
     if (s_scene.zoom > 0) gs->set_view_angle(s_scene.zoom);
   }
 
   // Scene coordinates are offsets from player 1's spawn — the camera
   // centre — so compositions read in screen terms (±~900 units vertically
   // at the default zoom).
+  // A ship's pointing is its `facing` vector; heading() is derived with
+  // 0 deg = up, positive counter-clockwise. Scene angles use the same
+  // convention.
+  auto facing_from_deg = [](float deg) {
+    float rad = (deg + 90.0f) * (float)M_PI / 180.0f;
+    return Point(cosf(rad), sinf(rad));
+  };
   Ship *p1 = g->players->front()->ship;
   const float ox = p1->position.x(), oy = p1->position.y();
   if (s_scene.ship_set)
     p1->position = WrappedPoint(ox + s_scene.ship_x, oy + s_scene.ship_y);
-  if (s_scene.ship_angle_set) p1->rotation = s_scene.ship_angle;
-  if (s_scene.two_players && s_scene.ship2_set)
+  if (s_scene.ship_angle_set) p1->facing = facing_from_deg(s_scene.ship_angle);
+  if (s_scene.two_players && s_scene.ship2_set) {
     g->players->back()->ship->position =
         WrappedPoint(ox + s_scene.ship2_x, oy + s_scene.ship2_y);
+    if (s_scene.ship2_angle_set)
+      g->players->back()->ship->facing = facing_from_deg(s_scene.ship2_angle);
+  }
+
+  // Scene `ship`/`ship2` placement overrides respawn's safe_position, so a
+  // busy generation could drop a ship straight onto a rock (or right next
+  // to one it then thrusts into). Sweep generation-spawned asteroids clear
+  // of each player — runs BEFORE the composed spawns, which are placed on
+  // purpose.
+  for (GLShip *gs : *g->players) {
+    auto it = g->objects->begin();
+    while (it != g->objects->end()) {
+      float clearance = (*it)->effective_radius() + 300.0f;
+      if ((*it)->position.distance_to(gs->ship->position) < clearance) {
+        delete *it;
+        it = g->objects->erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
 
   if (s_scene.clear_world) {
     for (Asteroid *a : *g->objects) delete a;
@@ -468,9 +522,36 @@ State *ShotScene::build_state() {
     if (sa.has_v) a->velocity = Point(sa.vx / 1000.0f, sa.vy / 1000.0f);
     g->objects->push_back(a);
   }
+  // Composed enemies get the same clearance sweep as the players — a dense
+  // late generation otherwise drops them onto rocks.
+  for (const SceneEnemy &se : s_scene.enemies) {
+    WrappedPoint at(ox + se.x, oy + se.y);
+    auto it = g->objects->begin();
+    while (it != g->objects->end()) {
+      if ((*it)->position.distance_to(at) <
+          (*it)->effective_radius() + 250.0f) {
+        delete *it;
+        it = g->objects->erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+  // The sweeps/clear above deleted asteroids the grid still points at, and
+  // the enemy constructor's safe_position consults the grid — refresh it
+  // before anything walks it.
+  g->grid.update((std::list<Object *> *)g->objects);
   for (const SceneEnemy &se : s_scene.enemies) {
     GLEnemy *e = new GLEnemy(g->grid, ox + se.x, oy + se.y, g->players,
                              se.difficulty, (std::list<Object *> *)g->objects);
+    // A bare Ship starts dead awaiting respawn; wake it the way the
+    // station's restore path does, and skip the Follower's initial lock
+    // delay so it engages within the shot's sim window.
+    e->ship->alive = true;
+    e->ship->position = WrappedPoint(ox + se.x, oy + se.y);
+    if (!e->ship->behaviours.empty())
+      if (Follower *f = dynamic_cast<Follower *>(e->ship->behaviours.front()))
+        f->lock_now();
     g->enemies->push_back(e);
     g->ship_objects->push_back(e->ship);
   }
@@ -502,6 +583,32 @@ State *ShotScene::build_state() {
   return g;
 }
 
+void ShotScene::log_state(State *state) {
+  GLGame *g = dynamic_cast<GLGame *>(state);
+  if (!g) return;
+  int i = 0;
+  for (GLShip *gs : *g->players) {
+    std::cout << "shot: player " << ++i << " alive=" << gs->ship->is_alive()
+              << " score=" << gs->ship->score << std::endl;
+  }
+  if (!g->enemies->empty()) {
+    int alive = 0;
+    Ship *p1 = g->players->front()->ship;
+    std::string near_txt;
+    for (GLShip *e : *g->enemies) {
+      if (!e->ship->is_alive()) continue;
+      alive++;
+      char buf[64];
+      snprintf(buf, sizeof(buf), " (%.0f,%.0f)",
+               e->ship->position.x() - p1->position.x(),
+               e->ship->position.y() - p1->position.y());
+      near_txt += buf;
+    }
+    std::cout << "shot: enemies alive=" << alive << " rel-p1:" << near_txt
+              << std::endl;
+  }
+}
+
 void ShotScene::pump_keys(State *state, int t_ms) {
   for (SceneKey &k : s_scene.keys) {
     if (!k.downed && t_ms >= k.at_ms) {
@@ -509,7 +616,9 @@ void ShotScene::pump_keys(State *state, int t_ms) {
       state->keyboard(k.key, 0, 0);
     }
     // Release a beat later — menus act on key-up, gameplay on held keys.
-    if (k.downed && !k.upped && t_ms >= k.at_ms + 100) {
+    // A `hold` never releases: thrust flames and autofire stay live in the
+    // captured frame.
+    if (!k.hold && k.downed && !k.upped && t_ms >= k.at_ms + 100) {
       k.upped = true;
       state->keyboard_up(k.key, 0, 0);
     }

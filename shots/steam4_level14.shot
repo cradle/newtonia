@@ -1,0 +1,15 @@
+# Steam shot 4: level 14 — the black-hole generation. The natural world has
+# one at the centre (plus pulsars/comets/seekers and the mini-station); a
+# composed one near the ship guarantees the lens is in frame.
+size 1920 1080
+seed 8
+sim 1400
+game 13
+camera fixed
+ship 0 -150 35
+hold w 800
+hold space 300
+blackhole -420 280
+asteroid 700 500 r=90 v=-35,-20
+asteroid -850 -350 tough r=110 v=20,15
+asteroid 600 -500 r=70 v=-25,20

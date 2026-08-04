@@ -1,0 +1,15 @@
+# Steam shot 5: level 20 — deep endgame, a wing of enemy ships in frame
+# closing on the player.
+size 1920 1080
+seed 5
+sim 1000
+game 19
+camera fixed
+ship 0 0 10
+hold w 550
+hold space 300
+enemy 600 420 0.8
+enemy -650 320 0.8
+enemy 350 -480 0.6
+asteroid -850 -400 armoured r=100 v=20,10
+asteroid 800 -550 r=75 v=-25,15

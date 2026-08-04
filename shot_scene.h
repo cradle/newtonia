@@ -44,6 +44,10 @@ public:
   static void draw_overlays(int window_w, int window_h);
   // glReadPixels the back buffer and write the output file. Logs shot: lines.
   static bool capture(int window_w, int window_h);
+  // One "shot: player N alive=..." line per player at capture time, so a
+  // driver can assert the composed cast survived the sim without eyeballing
+  // every render.
+  static void log_state(State *state);
 };
 
 #endif

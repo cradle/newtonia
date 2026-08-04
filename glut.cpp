@@ -647,6 +647,7 @@ static void shot_display() {
     shot_written = true;
     // Read the back buffer BEFORE the swap — its contents are undefined
     // after.
+    ShotScene::log_state(shot_state);
     shot_ok = ShotScene::capture(w, h);
     glutSwapBuffers();
     glutLeaveMainLoop();
