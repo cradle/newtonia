@@ -19,6 +19,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -260,6 +261,21 @@ bool parse_scene_file(const char *path) {
   return true;
 }
 
+// On Windows SDL_setenv writes the Win32 environment block, which the
+// CRT's std::getenv — a startup snapshot — never sees. The game reads its
+// dev flags through BOTH getters (is_beta_feature_enabled() uses
+// std::getenv, the replay/START_GENERATION reads use SDL_getenv), so a
+// scene's `game N` silently stayed at generation 0 on Windows until the
+// flag was set in both worlds.
+void set_env_both(const char *k, const char *v) {
+  SDL_setenv(k, v, 1);
+#ifdef _WIN32
+  _putenv_s(k, v);
+#else
+  setenv(k, v, 1);
+#endif
+}
+
 Pickup *make_scene_pickup(const std::string &type, const WrappedPoint &at) {
   if (type == "weapon")  return new WeaponPickup(at, 1);
   if (type == "mine")    return new MinePickup(at);
@@ -416,12 +432,12 @@ State *ShotScene::build_state() {
   if (s_scene.menu_mode) return new Menu();
 
   // A shot game must never touch real player data (see shot_scene.h).
-  SDL_setenv("NEWTONIA_REPLAY_DISABLE", "1", 1);
+  set_env_both("NEWTONIA_REPLAY_DISABLE", "1");
   if (s_scene.generation > 0) {
-    SDL_setenv("NEWTONIA_BETA", "1", 1);
+    set_env_both("NEWTONIA_BETA", "1");
     char gen[16];
     snprintf(gen, sizeof(gen), "%d", s_scene.generation);
-    SDL_setenv("NEWTONIA_START_GENERATION", gen, 1);
+    set_env_both("NEWTONIA_START_GENERATION", gen);
   }
   GLGame *g = new GLGame((SDL_GameController *)NULL);
   g->score_saved = true;    // save_progress() no-ops for the whole run
