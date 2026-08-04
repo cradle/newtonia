@@ -229,7 +229,12 @@ WEB_SRCS := $(filter-out $(WEB_EXCL), $(wildcard *.cpp) $(wildcard */*.cpp))
 # its TextDecoder rejects views over resizable ArrayBuffers, crashing
 # UTF8ToString at startup. Requires emcc >= 4.0.12 to recognise the setting.
 # ccall is used by the netplay test hooks (nwtest_* in net_transport_web.cpp)
-# to pass SDP strings from JS; harmless to production pages.
+# to pass SDP strings from JS; harmless to production pages. HEAPU8 +
+# _malloc/_free let main.ts hand a downloaded leaderboard replay blob to
+# web_watch_replay (?replay= watch link) — ccall's "array" type would put
+# multi-MB blobs on the wasm STACK, so the heap route is deliberate.
+# (_main must be listed once EXPORTED_FUNCTIONS is set at all;
+# EMSCRIPTEN_KEEPALIVE exports ride along regardless.)
 WEB_FLAGS = -std=c++11 -O2 \
             -s USE_SDL=2 \
             -s USE_SDL_MIXER=2 \
@@ -237,7 +242,8 @@ WEB_FLAGS = -std=c++11 -O2 \
             -s FULL_ES2=1 \
             -s ALLOW_MEMORY_GROWTH=1 \
             -s GROWABLE_ARRAYBUFFERS=0 \
-            -s EXPORTED_RUNTIME_METHODS='["ccall"]' \
+            -s EXPORTED_RUNTIME_METHODS='["ccall","HEAPU8"]' \
+            -s EXPORTED_FUNCTIONS='["_main","_malloc","_free"]' \
             -lidbfs.js \
             --shell-file web/shell.html
 
@@ -270,6 +276,10 @@ web:
 	# cp list above skips them, so copy the dirs explicitly.
 	cp -r web/site/join web/dist/join
 	cp -r web/site/.well-known web/dist/.well-known
+	# Site leaderboard (LEADERBOARD.md "site leaderboard"): a static page
+	# that renders the board worker's daily snapshot and deep-links row
+	# replays into /play/?replay= for in-browser playback.
+	cp -r web/site/leaderboard web/dist/leaderboard
 
 web-clean:
 	rm -rf web/dist

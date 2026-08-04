@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Google Analytics (GA4) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-03BDC6CK12"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-03BDC6CK12');
+  </script>
+
+  <title>Newtonia — Leaderboard</title>
+  <meta name="description" content="The Newtonia online leaderboard — top pilots by season, solo and co-op. Watch the best runs replayed right in your browser.">
+  <meta name="theme-color" content="#040d07">
+
+  <meta property="og:title" content="Newtonia — Leaderboard">
+  <meta property="og:description" content="Top pilots by season, solo and co-op. Watch the best runs in your browser.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="../icon.png">
+
+  <link rel="icon" type="image/png" href="../icon.png">
+  <link rel="stylesheet" href="../styles.css">
+  <style>
+    /* Page-local styles: the score table, board/season pickers. Everything
+       else (starfield, nav, colours) comes from the shared styles.css. */
+    .board-head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.8rem 1.4rem;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.4rem;
+    }
+    .board-pickers { display: flex; flex-wrap: wrap; gap: 0.8rem; }
+    .seg {
+      display: inline-flex;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+    .seg button {
+      font: inherit;
+      color: var(--muted);
+      background: none;
+      border: 0;
+      padding: 0.45rem 1.1rem;
+      cursor: pointer;
+      letter-spacing: 0.08em;
+    }
+    .seg button.on { color: var(--acc); background: rgba(40, 255, 120, 0.14); }
+    .seg button:hover { color: var(--ink); }
+    select.season {
+      font: inherit;
+      color: var(--ink);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      padding: 0.45rem 0.8rem;
+      /* NO letter-spacing here: WebKit sizes a <select> from its options'
+         text WITHOUT counting letter-spacing, so any tracking clips the
+         label ("SEASON S1 — CURRENT" lost its tail — field report,
+         2026-08-04). The pickers' spacing is cosmetic; the select goes
+         without. */
+      letter-spacing: normal;
+    }
+    .board-updated { color: var(--muted); font-size: 0.78rem; letter-spacing: 0.05em; }
+    .board-wrap { overflow-x: auto; border: 1px solid var(--line); background: var(--panel); }
+    table.board {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      min-width: 620px;
+    }
+    table.board th, table.board td {
+      padding: 0.55rem 0.9rem;
+      text-align: left;
+      white-space: nowrap;
+    }
+    table.board th {
+      color: var(--acc);
+      font-weight: 400;
+      letter-spacing: 0.14em;
+      font-size: 0.72rem;
+      border-bottom: 1px solid var(--line);
+    }
+    table.board td { border-bottom: 1px solid var(--line-dim); }
+    table.board tr:last-child td { border-bottom: none; }
+    table.board tr:hover td { background: rgba(40, 255, 120, 0.05); }
+    td.rank { color: var(--muted); }
+    tr.top1 td.rank, tr.top1 td.score { color: var(--gold); }
+    td.score { color: var(--acc-bright); }
+    td.num { text-align: right; }
+    .badge {
+      display: inline-block;
+      margin-left: 0.55em;
+      padding: 0.05em 0.45em;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.68rem;
+      letter-spacing: 0.1em;
+      vertical-align: 0.08em;
+    }
+    .tick { color: var(--acc); margin-left: 0.3em; }
+    a.watch {
+      color: var(--acc);
+      border: 1px solid var(--line);
+      padding: 0.15em 0.7em;
+      font-size: 0.78rem;
+      letter-spacing: 0.1em;
+    }
+    a.watch:hover { background: rgba(40, 255, 120, 0.16); color: var(--acc-bright); }
+    .board-note {
+      padding: 2.2rem 1rem;
+      text-align: center;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+    }
+    @media (max-width: 560px) {
+      table.board { font-size: 0.8rem; }
+      table.board th, table.board td { padding: 0.45rem 0.55rem; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="stars" aria-hidden="true"></canvas>
+
+  <header class="nav">
+    <a class="brand" href="../">
+      <svg viewBox="-12 -12 24 24" width="26" height="26" aria-hidden="true" fill="none" stroke="#4876ff" stroke-width="1.6" stroke-linejoin="round">
+        <path d="M 0 -10 L -8 10 L 0 5 L 8 10 Z"/>
+      </svg>
+      <span>NEWTONIA</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../#features">Features</a>
+      <a href="../#platforms">Platforms</a>
+      <a href="../#controls">Controls</a>
+      <a href="./" aria-current="page">Leaderboard</a>
+      <a class="nav-cta" href="../play/">▶ PLAY</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="section">
+      <h2><span class="sec-tag">// </span> LEADERBOARD</h2>
+
+      <div class="board-head">
+        <div class="board-pickers">
+          <div class="seg" id="players-seg" role="tablist" aria-label="Board">
+            <button id="btn-solo" class="on">SOLO</button>
+            <button id="btn-coop">CO-OP</button>
+          </div>
+          <!-- Season browser; hidden until it has seasons to offer (an
+               empty select renders as a broken-looking stub). -->
+          <select class="season" id="season-select" aria-label="Season" hidden></select>
+        </div>
+        <div class="board-updated" id="updated"></div>
+      </div>
+
+      <div class="board-wrap">
+        <table class="board" id="board" hidden>
+          <thead>
+            <tr>
+              <th>RANK</th><th>PILOT</th><th class="num">SCORE</th>
+              <th class="num">LEVEL</th><th class="num">TIME</th>
+              <th>DATE</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <div class="board-note" id="note">CONTACTING STATION&hellip;</div>
+      </div>
+
+      <p class="note">Scores upload from the game on Steam, iOS and Android.
+        New scores appear within minutes. Click WATCH to replay a run in your browser.</p>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Newtonia — written in C++ with SDL2 &amp; OpenGL.</p>
+    <p>Built with WebAssembly. Runs in any modern browser.</p>
+  </footer>
+
+  <script src="../site.js"></script>
+  <script src="leaderboard.js"></script>
+</body>
+</html>

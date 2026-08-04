@@ -24,9 +24,11 @@
 #include "asteroid.h"
 #include "preferences.h"
 #include "invites.h"
+#include "replay.h"
 #include "world_sound.h"
 
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <string>
@@ -272,6 +274,56 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_touch_joystick(float nx, float ny) {
 // as a joiner — the same handoff Steam/iOS/Android deep links use.
 extern "C" EMSCRIPTEN_KEEPALIVE void web_accept_invite(const char *code) {
     if (code && code[0]) Invites::note_accepted(code);
+}
+
+// ---- Leaderboard watch deep link (/play/?replay=<season>/<run_id>) ----
+// The site's /leaderboard/ WATCH links land here: main.ts downloads the
+// blob from the board worker's /replay/ endpoint and hands the bytes over
+// once the runtime is up. The file goes to Replay::download_path() — the
+// same transient slot the in-game leaderboard's downloads use — and
+// Menu::tick polls web_take_replay_watch() to start the ordinary playback
+// (the state machine must change states from its own tick, not from an
+// arbitrary JS callback).
+//
+// Returns 0 = not ready yet (IDBFS still mounting; JS retries), 1 =
+// accepted and pending, -1 = this build can't play the file (unreadable,
+// or another format version) — main.ts tells the user.
+static bool s_replay_watch_pending = false;
+
+extern "C" EMSCRIPTEN_KEEPALIVE int web_watch_replay(const unsigned char *data,
+                                                     int len) {
+    if (!s_idb_ready) return 0;
+    if (!data || len <= 0) return -1;
+    std::string path = Replay::download_path();
+    if (path.empty()) return -1;
+    FILE *f = fopen(path.c_str(), "wb");
+    if (!f) return -1;
+    size_t wrote = fwrite(data, 1, (size_t)len, f);
+    fclose(f);
+    if (wrote != (size_t)len) {
+        remove(path.c_str());
+        return -1;
+    }
+    // Same pre-flight the replays screen applies: refuse a file this build
+    // can't read NOW, so the page can say so, instead of a silent no-op
+    // when the pending playback declines later.
+    Replay::Header h;
+    if (Replay::read_header_status(path, h) != Replay::HEADER_OK) {
+        SDL_Log("web: ?replay= file is not playable on this build");
+        return -1;
+    }
+    SDL_Log("web: ?replay= replay staged (%d bytes, score=%u)", len,
+            h.final_score);
+    s_replay_watch_pending = true;
+    return 1;
+}
+
+// Menu::tick's poll (deliberately plain C++ linkage on both sides —
+// declared in menu.cpp under __EMSCRIPTEN__).
+bool web_take_replay_watch() {
+    bool pending = s_replay_watch_pending;
+    s_replay_watch_pending = false;
+    return pending;
 }
 
 // Called from the JS menu overlay on touchend with normalised [0,1] tap position.

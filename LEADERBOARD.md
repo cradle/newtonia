@@ -209,7 +209,10 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
   REPLAY.md already established the fixed head has no spare bytes.
 - **No leaderboard on web in the first release** (decided with Glenn
   2026-07-31) — all web builds, the netless public deploys and the paid
-  itch `newtonia-online` alike. `NetBoard::create()` returns null under
+  itch `newtonia-online` alike. (The read-only **site** leaderboard page
+  + watch deep link added 2026-08-04 — see "Site leaderboard" below —
+  does not reopen this: it is the website rendering public board data,
+  not the in-game feature, and it cannot submit.) `NetBoard::create()` returns null under
   `__EMSCRIPTEN__`, which the existing gates turn into a fully absent
   feature (no LEADERBOARD menu row, no game-over prompt, no REPLAYS
   UPLOAD action) with no per-screen web special-casing. Nothing is
@@ -294,6 +297,55 @@ scores(season TEXT, players INTEGER, run_id TEXT, score INTEGER,
        PRIMARY KEY (season, run_id))
 CREATE INDEX scores_rank ON scores(season, players, score DESC);
 ```
+
+## Site leaderboard — the website's read-only view (2026-08-04)
+
+The GitHub Pages site gets its own leaderboard URL,
+`https://newtonia.metonymous.com/leaderboard/`, with in-browser replay
+playback — WITHOUT changing the no-web-client decision: the game's
+in-game leaderboard stays absent on web builds, and nothing here can
+submit (admission is unchanged, WS + platform attestation only).
+
+- **Daily task = the worker's existing retention cron.** After the
+  retention/orphan passes, `scheduled()` builds a snapshot of every
+  canonical season's top `KEEP_N` rows (both boards, live board per
+  players count flagged) and writes it to R2 at `site/leaderboard.json`
+  (a reserved prefix `sweep_orphans` skips). One extra publish per day,
+  zero marginal D1 load from page views.
+- **Two public read-only HTTP endpoints** on the board worker, CORS `*`
+  (the data is what the WS protocol already serves any native client):
+  `GET /site/leaderboard.json` (serves the snapshot; a cold miss builds
+  and stores it, so a fresh deploy never 404s, and a **freshness probe**
+  — one indexed `MAX(submitted_at)` head-read per view against the build
+  time in the object's R2 metadata — rebuilds it whenever a submission
+  is newer, so new scores appear on the next page view instead of hiding
+  until the cron; field report 2026-08-04) and
+  `GET /replay/<season>/<run_id>.nrp` (the blob download the WS `fetch`
+  flow serves, same row/blob admission checks). Both ride the existing
+  per-IP `Limiter` (`query` / `fetch` actions) and the `DISABLED` kill
+  switch; the WS origin gate is untouched.
+- **The page** (`web/site/leaderboard/`, copied by the `make web` cp
+  list, deployed by the ordinary Pages build) renders the snapshot:
+  SOLO/CO-OP toggle, season browser, platform badges + verified ticks,
+  `?players=`/`?season=` deep links, `?board=beta` for the beta worker.
+  Worker-supplied names render via `textContent` only. Staleness is
+  bounded by the freshness probe plus a 5 min `Cache-Control`; the daily
+  cron republish still matters because retention demotions change data
+  without a new submission.
+- **WATCH → in-browser playback.** Replay-bearing rows link
+  `/play/?replay=<season>/<run_id>`: `web/main.ts` downloads the blob
+  from `/replay/` and hands the bytes to `web_watch_replay`
+  (`web_main.cpp`), which writes `Replay::download_path()`, pre-flights
+  the header (a build that can't read the file alerts instead of
+  silently no-oping), and stages a one-shot flag `Menu::tick` polls into
+  the same `GLGame::start_replay_playback` path the in-game
+  leaderboard's downloads use. The Pages build tracks master, so the
+  live season's replays are playable there; old-season rows another
+  format can refuse at the pre-flight.
+- Tests: `board/test/site_test.mjs` (endpoints + snapshot staleness/cron
+  refresh, driven through wrangler's `--test-scheduled` hook) and the
+  snapshot-publish/orphan-exemption cases in `retention_test.mjs` — both
+  gate `deploy-board.yml`.
 
 ## Client — `net_board.h/cpp` + UI
 

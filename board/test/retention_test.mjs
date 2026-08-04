@@ -53,6 +53,23 @@ function fake_db(rows) {
           throw new Error("unexpected first(): " + sql);
         },
         async all() {
+          if (sql.includes("GROUP BY season"))  // snapshot seasons list
+            return { results: [...new Set(rows.map((r) => r.season))]
+                .map((season) => {
+                  const s = rows.filter((r) => r.season === season);
+                  return { season,
+                           newest: Math.max(...s.map((r) => r.submitted_at)),
+                           n: s.length };
+                }).sort((x, y) => y.newest - x.newest) };
+          if (sql.includes("save_format"))  // snapshot top rows
+            return { results: rows.filter((r) => r.season === a[0] &&
+                r.players === a[1])
+                .sort((x, y) => y.score - x.score ||
+                                x.submitted_at - y.submitted_at)
+                .slice(0, a[2])
+                .map((r) => ({ name: "N", platform: 2, verified: 1,
+                               generation: 3, duration_ms: 60000,
+                               format: 1, save_format: 16, ...r })) };
           if (sql.includes("SELECT blob_key FROM scores"))  // orphan sweep
             return { results: rows.filter((r) => r.blob_key !== "")
                 .map((r) => ({ blob_key: r.blob_key })) };
@@ -91,11 +108,13 @@ function fake_db(rows) {
 function fake_r2(objects = []) {
   return {
     deleted: [],
+    puts: {},  // key -> body (the snapshot publish lands here)
     objects: objects.slice(),
     async delete(k) {
       this.deleted.push(k);
       this.objects = this.objects.filter((o) => o.key !== k);
     },
+    async put(k, body) { this.puts[k] = body; },
     async list() { return { objects: this.objects, truncated: false }; },
   };
 }
@@ -177,6 +196,45 @@ function blobs(rows, season, players) {
         !r2.deleted.includes("vB/orphan-nodate.nrp"), JSON.stringify(r2.deleted));
   check("referenced blob untouched",
         !r2.deleted.includes(rows[0].blob_key), JSON.stringify(r2.deleted));
+}
+
+// 6. Site snapshot publish: every cron run rewrites site/leaderboard.json
+// with the canonical seasons only, live flags per players count, and rows
+// that survived this run's retention. The snapshot object itself must be
+// exempt from the orphan sweep (no row points at it) no matter how old.
+{
+  const rows = [
+    row("s1", 1, 500, FRESH), row("s1", 1, 400, FRESH - DAY),
+    row("s2", 1, 300, FRESH + DAY),          // live solo season
+    row("s1", 2, 800, FRESH),                 // live (only) co-op season
+    row("vdev-abc", 1, 999, FRESH + 2 * DAY), // non-canonical: never listed
+  ];
+  const r2 = await run_cron(rows, [
+    { key: "site/leaderboard.json",
+      uploaded: new Date(NOW - 30 * DAY).toISOString() },
+  ]);
+  check("old snapshot object spared by orphan sweep",
+        !r2.deleted.includes("site/leaderboard.json"),
+        JSON.stringify(r2.deleted));
+  const snap = JSON.parse(r2.puts["site/leaderboard.json"] || "null");
+  check("snapshot published", !!snap && Array.isArray(snap.boards));
+  const key = (b) => `${b.season}/${b.players}`;
+  const names = snap.boards.map(key).sort();
+  check("snapshot lists canonical boards only",
+        JSON.stringify(names) === JSON.stringify(["s1/1", "s1/2", "s2/1"]),
+        JSON.stringify(names));
+  const live = snap.boards.filter((b) => b.live).map(key).sort();
+  check("live flag follows newest submission per players count",
+        JSON.stringify(live) === JSON.stringify(["s1/2", "s2/1"]),
+        JSON.stringify(live));
+  const s1 = snap.boards.find((b) => b.season === "s1" && b.players === 1);
+  check("rows ranked by score", s1.rows.length === 2 &&
+        s1.rows[0].rank === 1 && s1.rows[0].score === 500 &&
+        s1.rows[1].score === 400, JSON.stringify(s1 && s1.rows));
+  check("rows carry the watch fields",
+        s1.rows[0].has_replay === true &&
+        typeof s1.rows[0].run_id === "string" &&
+        typeof s1.rows[0].date === "number");
 }
 
 console.log(failures ? `${failures} FAILURE(S)` : "ALL PASS");

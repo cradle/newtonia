@@ -32,7 +32,10 @@ srcs.txt
 ios/Newtonia-iOS.xcodeproj/
 ## Web build output
 web/dist/
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/skills/
+!.claude/rules/
 ## Python
 __pycache__/
 *.pyc
@@ -74,6 +77,7 @@ ios/build/
 web/main.js
 board/.wrangler*/
 signal/.wrangler*/
+.wrangler*/
 
-# Screenshot harness output (shots/run.sh)
+# Screenshot harness output (shots/run.sh); approved renders are force-added
 shots/out/

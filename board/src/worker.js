@@ -25,6 +25,18 @@
 //   <- {t:"fetch-ok", size} + binary chunks + {t:"fetch-end"}
 //   any error: {t:"err", reason}
 //
+// Read-only HTTP endpoints for the WEBSITE (the GitHub Pages /leaderboard/
+// page and the /play/?replay= watch deep link — LEADERBOARD.md "site
+// leaderboard"). Both are public data the WS protocol already serves to any
+// native client, so they answer with Access-Control-Allow-Origin: * and
+// change nothing about admission (submissions stay WS + attestation only):
+//   GET /site/leaderboard.json          the snapshot (top KEEP_N of every
+//                                       canonical season, both boards),
+//                                       republished by the daily retention
+//                                       cron and rebuilt on read whenever
+//                                       a newer submission exists
+//   GET /replay/<season>/<run_id>.nrp   a charting row's replay blob
+//
 // Admission (LEADERBOARD.md decisions): the blob is the submission — score,
 // season, players and run_id come from the parsed header, never from a
 // claimed field; FLAG_CLEAN required, FLAG_CHEATED rejected; and the
@@ -159,6 +171,9 @@ export function log_str(v, max = 64) {
 // release), so browser origins are refused except local dev. Native
 // clients send no Origin and pass. ALLOWED_ORIGINS secret overrides
 // without a redeploy (comma-separated; leading dot = subdomain match).
+// This gates the WS endpoint only — the website's read-only views go
+// through the plain-HTTP /site + /replay endpoints above, which serve
+// public data to any origin and cannot submit.
 const DEFAULT_ALLOWED_ORIGINS = [".localhost", ".127.0.0.1"];
 
 export function origin_allowed(env, origin) {
@@ -305,6 +320,12 @@ async function ensure_schema(db) {
     // the best), and no code path can leave a player with two rows.
     db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS scores_player_uk
                 ON scores(season, players, platform_key)`),
+    // The site snapshot's freshness probe (serve_snapshot) is
+    // MAX(submitted_at) over the whole table on every page view — this
+    // index makes that a head lookup instead of a full scan (D1 bills
+    // rows scanned).
+    db.prepare(`CREATE INDEX IF NOT EXISTS scores_submitted
+                ON scores(submitted_at DESC)`),
   ]);
   // Append-only migrations for tables that predate a column (fresh CREATEs
   // above already carry them): ADD COLUMN throws when the column exists,
@@ -358,11 +379,171 @@ function blob_key_for(season, run_id) {
   return `${season}/${run_id}.nrp`;
 }
 
+// ---- site endpoints ------------------------------------------------------
+// The website's read path (the Pages /leaderboard/ page and the
+// /play/?replay= watch link). Everything here is data the WS protocol
+// already hands to any native client; the only thing the site can NOT do is
+// submit, which stays WS + platform attestation.
+
+// R2 key of the daily snapshot. Lives in the replay bucket under a
+// reserved prefix the orphan sweep skips (sweep_orphans) — every other
+// object in the bucket is a blob_key some row points at.
+const SNAPSHOT_KEY = "site/leaderboard.json";
+
+const CORS = { "Access-Control-Allow-Origin": "*" };
+
+function site_error(status, text) {
+  return new Response(text, { status, headers: CORS });
+}
+
+// One board's rows, in the exact shape the WS `top` reply uses — the page
+// and the game render the same fields.
+function site_rows(results) {
+  return (results || []).map((r, i) => ({
+    rank: i + 1, name: r.name, platform: Number(r.platform),
+    verified: !!Number(r.verified), score: Number(r.score),
+    generation: Number(r.generation), duration_ms: Number(r.duration_ms),
+    date: Number(r.submitted_at),
+    has_replay: r.blob_key !== "", run_id: r.run_id,
+    format: Number(r.format), save_format: Number(r.save_format),
+  }));
+}
+
+// The whole site snapshot: top KEEP_N of BOTH boards for every canonical
+// season (the WS seasons listing's filter), newest-first, with the live
+// season per players count flagged. Bounded work: <= 50 seasons x 2 boards
+// x KEEP_N rows, run once a day by the cron (and once on a cold miss).
+export async function build_site_snapshot(env) {
+  await ensure_schema(env.DB);
+  const seasons = await env.DB.prepare(
+      `SELECT season, MAX(submitted_at) AS newest, COUNT(*) AS n
+       FROM scores GROUP BY season ORDER BY newest DESC LIMIT 200`).all();
+  const canonical = (seasons.results || [])
+      .filter((r) => season_canonical(r.season)).slice(0, 50);
+  const boards = [];
+  for (const players of [1, 2]) {
+    for (const s of canonical) {
+      const rows = await env.DB.prepare(
+          `SELECT run_id, score, generation, duration_ms, submitted_at,
+                  name, platform, verified, blob_key, format, save_format
+           FROM scores WHERE season = ?1 AND players = ?2
+           ORDER BY score DESC, submitted_at ASC LIMIT ?3`)
+          .bind(s.season, players, KEEP_N).all();
+      const list = site_rows(rows.results);
+      if (!list.length) continue; // a season can be solo- or co-op-only
+      boards.push({ season: s.season, players, live: false, rows: list });
+    }
+    // The live board per players count = the listed board with the newest
+    // submission — computed over the LISTED (canonical) boards, not the
+    // whole table, so a dev-season submission on beta can't leave the site
+    // with no live board to open on.
+    let newest = null;
+    for (const b of boards) {
+      if (b.players !== players) continue;
+      b.newest_ = Math.max(...b.rows.map((r) => r.date));
+      if (!newest || b.newest_ > newest.newest_) newest = b;
+    }
+    for (const b of boards)
+      if (b.players === players) { b.live = b === newest; delete b.newest_; }
+  }
+  return { generated_at: Date.now(), boards };
+}
+
+// Store the snapshot with its build time in R2 metadata, so the freshness
+// probe below can read it without parsing the (potentially large) body.
+async function store_snapshot(env, snap) {
+  await env.REPLAYS.put(SNAPSHOT_KEY, JSON.stringify(snap), {
+    customMetadata: { generated_at: String(snap.generated_at) },
+  });
+}
+
+async function serve_snapshot(request, env, dev) {
+  const ip = rate_key(request.headers.get("CF-Connecting-IP") || "local");
+  if (!(await within_limit(env, ip, "query", dev)))
+    return site_error(429, "rate limited");
+  let body = null;
+  const obj = await env.REPLAYS.get(SNAPSHOT_KEY);
+  if (obj) {
+    // Freshness probe: a submission newer than the stored snapshot makes
+    // it stale — new scores must not hide until the next daily cron
+    // (field report, 2026-08-04: a fresh beta submission was invisible
+    // behind an empty stored snapshot). One indexed D1 head-read per
+    // view; the rebuild itself only runs when something actually landed.
+    // A pre-metadata object (older deploy) counts as stale once.
+    body = await obj.text();
+    const built = Number((obj.customMetadata || {}).generated_at) || 0;
+    if (built) {
+      await ensure_schema(env.DB);
+      const r = await env.DB.prepare(
+          `SELECT MAX(submitted_at) AS newest FROM scores`).first();
+      if (r && Number(r.newest) > built) body = null;
+    } else {
+      body = null;
+    }
+  }
+  if (body === null) {
+    // Cold start (a fresh deploy the cron hasn't visited yet) or stale:
+    // build now and store, so the page always shows what D1 holds.
+    const snap = await build_site_snapshot(env);
+    body = JSON.stringify(snap);
+    await store_snapshot(env, snap);
+  }
+  return new Response(body, { headers: {
+    ...CORS,
+    "Content-Type": "application/json",
+    // Short browser cache: new scores should appear within minutes, and
+    // the freshness probe already keeps repeat worker hits cheap.
+    "Cache-Control": "public, max-age=300",
+  } });
+}
+
+// The blob download the WS `fetch` flow serves, as a plain GET for the web
+// client's watch deep link. Same admission checks as the WS path: the row
+// must exist and still hold its blob (charting rank).
+async function serve_replay(request, env, dev, season, run_id) {
+  const ip = rate_key(request.headers.get("CF-Connecting-IP") || "local");
+  if (!season_ok(season) || !/^[0-9]{1,20}$/.test(run_id))
+    return site_error(404, "no replay");
+  if (!(await within_limit(env, ip, "fetch", dev)))
+    return site_error(429, "rate limited");
+  await ensure_schema(env.DB);
+  const row = await env.DB.prepare(
+      `SELECT blob_key FROM scores WHERE season = ?1 AND run_id = ?2`)
+      .bind(season, run_id).first();
+  if (!row || row.blob_key === "") return site_error(404, "no replay");
+  const obj = await env.REPLAYS.get(row.blob_key);
+  if (!obj) return site_error(404, "no replay"); // row/blob drift (cron race)
+  return new Response(obj.body, { headers: {
+    ...CORS,
+    "Content-Type": "application/octet-stream",
+    // A run_id's blob can be replaced by the same account improving the
+    // same run, so cap staleness at an hour rather than caching forever.
+    "Cache-Control": "public, max-age=3600",
+  } });
+}
+
 // ---- worker entry --------------------------------------------------------
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    // Website read endpoints (plain HTTP, CORS *) — see the header comment.
+    // The kill switch covers them like the WS path.
+    if (url.pathname === "/site/leaderboard.json" ||
+        url.pathname.startsWith("/replay/")) {
+      if (request.method !== "GET") return site_error(405, "method not allowed");
+      if (env.DISABLED) return site_error(503, "disabled");
+      const dev = is_dev_host(url.hostname);
+      if (url.pathname === "/site/leaderboard.json")
+        return serve_snapshot(request, env, dev);
+      const m = url.pathname.match(/^\/replay\/([^/]+)\/([^/]+)\.nrp$/);
+      if (!m) return site_error(404, "no replay");
+      let season;
+      try { season = decodeURIComponent(m[1]); } catch (e) {
+        return site_error(404, "no replay");
+      }
+      return serve_replay(request, env, dev, season, m[2]);
+    }
     if (url.pathname !== "/board")
       return new Response("newtonia-board", { status: 200 });
     if (request.headers.get("Upgrade") !== "websocket")
@@ -452,6 +633,18 @@ export default {
     } catch (e) {
       console.log(`retention: orphan sweep failed: ${log_str(e && e.message)}`);
     }
+    // Publish the website's daily leaderboard snapshot (LEADERBOARD.md
+    // "site leaderboard") AFTER retention, so it never lists a blob the
+    // demote pass just deleted. Best-effort like the sweep: a failed
+    // publish leaves yesterday's snapshot serving, which is exactly the
+    // staleness the site already tolerates.
+    try {
+      const snap = await build_site_snapshot(env);
+      await store_snapshot(env, snap);
+      console.log(`site: published snapshot (${snap.boards.length} board(s))`);
+    } catch (e) {
+      console.log(`site: snapshot publish failed: ${log_str(e && e.message)}`);
+    }
   },
 };
 
@@ -481,6 +674,10 @@ async function sweep_orphans(env) {
   do {
     const page = await env.REPLAYS.list({ cursor, limit: 1000 });
     for (const obj of page.objects || []) {
+      // The site/ prefix is the daily snapshot, not a replay — no row ever
+      // points at it, so without this skip the sweep would delete it a day
+      // after every publish.
+      if (obj.key.startsWith("site/")) continue;
       if (known.has(obj.key)) continue;
       const uploaded = obj.uploaded ? new Date(obj.uploaded).getTime() : 0;
       if (!(uploaded && uploaded < cutoff)) continue;  // in flight, or unknown
