@@ -1,0 +1,8 @@
+# Steam page background (1438x810): bare starfield, nothing else.
+size 1438 810
+seed 5
+sim 300
+clear
+hud off
+noship
+stars 0.15

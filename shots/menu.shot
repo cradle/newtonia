@@ -1,0 +1,5 @@
+# The main menu, past the attract screen.
+seed 3
+menu
+sim 1200
+key enter 200

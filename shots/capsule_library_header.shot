@@ -1,0 +1,35 @@
+# Steam LIBRARY HEADER (920x430), classic-card style: monochrome rocks,
+# big ones cut by the frame edges (centres sit outside the view), grouped
+# asymmetrically — heavy upper-left and lower-right, sparse opposite —
+# around a clear title strip. zoom 60 keeps the wide view inside the
+# gen-0 world (default zoom at this aspect spans past the wrap and
+# doubles every rock).
+size 920 430
+seed 5
+sim 300
+clear
+hud off
+noship
+stars 0.15
+zoom 60
+text 0 0 160 NEWTONIA
+# upper-left mass
+asteroid -1150 620 invincible r=180 v=0,0
+asteroid -780 640 invincible r=140 v=0,0
+asteroid -950 430 r=80 v=0,0
+asteroid -600 520 r=50 v=0,0
+# top centre / right — sparser, deep cuts
+asteroid 150 640 invincible r=170 v=0,0
+asteroid 900 660 invincible r=200 v=0,0
+asteroid 1250 450 r=100 v=0,0
+asteroid 560 480 r=45 v=0,0
+# lower-right mass
+asteroid 1100 -630 invincible r=190 v=0,0
+asteroid 700 -560 invincible r=130 v=0,0
+asteroid 900 -380 r=60 v=0,0
+asteroid 1290 -330 invincible r=110 v=0,0
+# lower-left — lighter
+asteroid -1050 -520 r=120 v=0,0
+asteroid -680 -420 r=70 v=0,0
+asteroid -400 -560 r=45 v=0,0
+asteroid -1290 -250 r=90 v=0,0

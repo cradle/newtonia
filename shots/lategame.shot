@@ -1,0 +1,7 @@
+# Natural late-game chaos: generation 14 spawns the station, black hole,
+# mini-station and every special/hazard count the game would have by then.
+# No `clear`, so the generated world is the content; a longer sim lets the
+# station deploy and the hazards animate.
+seed 4
+game 14
+sim 4000

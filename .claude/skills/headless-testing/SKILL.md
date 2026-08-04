@@ -81,3 +81,20 @@ gdb -batch -ex run -ex "bt 20" --args ./newtonia > gdb.log 2>&1 &
   test from a fresh NEW GAME (mind the "New game?" confirm: NO is the
   default).
 
+
+# Screenshot harness (NEWTONIA_SHOT)
+
+For composed, reproducible screenshots — store assets, reference cards,
+visual repros — prefer the screenshot harness over hand-driving:
+`NEWTONIA_SHOT=out.png NEWTONIA_SHOT_SCENE=file.shot` renders one scene
+(menu or a game world built to order: asteroid special types, hazards,
+enemies, pickups, Typer text captions, held keys for thrust/fire, taps,
+touch OSD via `NEWTONIA_FORCE_TOUCH`) at any window size and exits.
+Sandboxed by design: no preference writes, replays disabled,
+savegame/high-score/stats latched off. A scene's `seed` makes output
+byte-identical per platform (rand() differs across CRTs). Drivers:
+`shots/run.sh` (Xvfb), `shots/run.ps1` (Windows, real GPU),
+`shots/mobile.sh|ps1` (mobile store sizes). Full DSL reference in
+`shots/README.md`. At capture the harness logs `shot: player N alive=...`
+plus world/asteroid counts — drivers assert compositions survived the sim
+instead of eyeballing renders.

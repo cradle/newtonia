@@ -1,0 +1,15 @@
+# Steam shot 1: level 1 — a few asteroids, the ship mid-screen flying and
+# shooting, bullets streaming toward a rock up the fire line.
+size 1920 1080
+seed 21
+sim 1300
+game 0
+camera fixed
+ship 0 -100 20
+hold w 100
+hold space 300
+asteroid -350 750 r=95 v=-20,-40
+asteroid 800 450 tough r=110 v=-25,-10
+asteroid 650 -400 r=70 v=-30,20
+asteroid -700 -350 r=60 v=15,25
+asteroid -950 250 r=75 v=25,-15

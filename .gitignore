@@ -78,3 +78,6 @@ web/main.js
 board/.wrangler*/
 signal/.wrangler*/
 .wrangler*/
+
+# Screenshot harness output (shots/run.sh); approved renders are force-added
+shots/out/

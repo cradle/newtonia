@@ -1,0 +1,18 @@
+# Steam shot 2: level 5 co-op split-screen — both ships alive, flying and
+# shooting near each other, so each viewport also shows the partner.
+size 1920 1080
+seed 33
+sim 900
+game 4
+camera fixed
+players 2
+ship -200 0 15
+ship2 350 -120 -30
+hold w 450
+hold space 250
+hold i 450
+hold / 250
+asteroid 500 600 r=90 v=-30,-20
+asteroid -650 450 reflective r=100 v=20,-15
+asteroid -450 -500 r=75 v=15,25
+asteroid 750 -400 tough r=105 v=-25,10

@@ -1,0 +1,28 @@
+# Steam library capsule (748x896), in the spirit of the classic card:
+# monochrome clustered rocks — filled (invincible) anchors with small
+# chunk satellites and outline (plain) rocks — banded above and below a
+# clear strip around the title at the upper-middle.
+size 748 896
+seed 5
+sim 300
+clear
+hud off
+noship
+stars 0.15
+text 0 0.2 95 NEWTONIA
+asteroid -520 720 invincible r=100 v=0,0
+asteroid -260 810 r=45 v=0,0
+asteroid -650 550 r=55 v=0,0
+asteroid 60 690 r=85 v=0,0
+asteroid 420 780 invincible r=110 v=0,0
+asteroid 660 600 r=50 v=0,0
+asteroid 240 560 r=40 v=0,0
+asteroid -600 -280 invincible r=90 v=0,0
+asteroid -680 -520 r=50 v=0,0
+asteroid -350 -700 r=105 v=0,0
+asteroid -80 -400 r=45 v=0,0
+asteroid 150 -600 invincible r=115 v=0,0
+asteroid 420 -350 r=60 v=0,0
+asteroid 640 -750 invincible r=95 v=0,0
+asteroid 300 -850 r=50 v=0,0
+asteroid -250 -880 invincible r=70 v=0,0

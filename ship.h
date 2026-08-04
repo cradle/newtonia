@@ -527,6 +527,9 @@ class Ship : public CompositeObject {
     friend class GLEnemy;
     friend class GLGame;
     friend class GLTrail;
+    // Screenshot harness: respawns the shot game's ships alive at build
+    // time (a fresh game's player 1 opens dead in the countdown).
+    friend class ShotScene;
 
   private:
     void safe_position(const Grid &grid, bool try_current = false);

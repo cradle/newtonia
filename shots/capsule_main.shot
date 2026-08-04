@@ -1,0 +1,9 @@
+# Steam capsule (main, 1232x706): the Typer title over a bare starfield.
+size 1232 706
+seed 5
+sim 300
+clear
+hud off
+noship
+stars 0.15
+text 0 0 120 NEWTONIA

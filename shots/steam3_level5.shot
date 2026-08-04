@@ -1,0 +1,14 @@
+# Steam shot 3: level 5 solo — the natural generation-4 field (reflective,
+# teleporting, invisible specials in the mix) with a few placed close.
+size 1920 1080
+seed 14
+sim 1200
+game 4
+camera fixed
+ship 0 0 -25
+hold w 100
+hold space 300
+asteroid 350 800 r=90 v=-30,-40
+asteroid -750 350 reflective r=100 v=25,-10
+asteroid 700 -400 teleporting r=85 v=-20,15
+asteroid -550 -550 r=65 v=10,20

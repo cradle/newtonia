@@ -1,0 +1,11 @@
+# Transparent logo (1280x720): just the word, alpha everywhere else —
+# `transparent` maps black to full transparency in the written PNG.
+size 1280 720
+seed 5
+sim 300
+clear
+hud off
+noship
+stars 0
+transparent
+text 0 0 130 NEWTONIA

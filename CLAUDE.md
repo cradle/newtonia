@@ -122,6 +122,17 @@ build (`make android`) or the `android.yml` CI.
 #### Headless testing, other platforms & asset generators
 The Xvfb/xdotool headless runtime-testing driver technique (per-step liveness checks, screenshots, gdb backtraces, the `NEWTONIA_BETA`/`NEWTONIA_START_GENERATION`/`NEWTONIA_ALL_WEAPONS` test hooks) lives in the `headless-testing` skill; TESTING.md holds the full test inventory. Steam, macOS bundle, Web/Emscripten, Android, iOS, and Xbox/GDK build instructions plus the asset-generator scripts (`generate_sounds.py`, `generate_ca_bundle.py`, `generate_achievement_icons.py`, `generate_online_announcement.py`) live in the `platform-builds` skill. Xbox work remains deferred to the private repo (`xbox/PRIVATE_REPO.md`) — keep the two xbox CI canaries green, but don't schedule Xbox port work here.
 
+#### Screenshot harness (`NEWTONIA_SHOT` — see shots/README.md)
+`NEWTONIA_SHOT=out.png` turns the desktop binary into a one-shot scene
+renderer for store/marketing assets: scene scripts (`shots/*.shot`) compose
+menu or game worlds (asteroid types, hazards, enemies, Typer text captions,
+touch OSD via `NEWTONIA_FORCE_TOUCH`), rendered at any size, deterministic
+per platform, sandboxed from all player data. Drivers: `shots/run.sh`
+(Xvfb), `shots/run.ps1` (Windows/GPU), `shots/mobile.sh|ps1` (store
+screenshot sizes). Full DSL reference and gotchas in `shots/README.md`;
+approved renders are committed under `shots/out/`.
+
+
 ## Architecture
 
 ### Game Loop
