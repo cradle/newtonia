@@ -5,6 +5,12 @@ compatibility_date = "2026-06-01"
 # NOTE: no [limits] cpu_ms block — a paid-plan feature; the Free plan
 # rejects the deploy outright (same lesson as signal/wrangler.toml).
 
+# Workers Logs in the dashboard (console.log lines + one invocation record
+# per request). Named envs do NOT inherit observability — beta repeats it.
+[observability.logs]
+enabled = true
+invocation_logs = true
+
 # PRODUCTION admits only canonical seasons (the SEASON-file stamps s1,
 # s2, ... — LEADERBOARD.md whitelist decision). The beta env sets no vars
 # (open for dev/test submissions), and the test harnesses pass
@@ -78,6 +84,10 @@ new_sqlite_classes = ["Session", "Limiter"]
 # top-level-only and apply to each script on deploy.
 [env.beta]
 name = "newtonia-board-beta"
+
+[env.beta.observability.logs]
+enabled = true
+invocation_logs = true
 
 [env.beta.triggers]
 crons = ["17 4 * * *"]
