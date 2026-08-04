@@ -8529,9 +8529,9 @@ void GLGame::draw_perspective(GLShip *glship) const {
 }
 
 void GLGame::draw_map() const {
-#if defined(__ANDROID__) || defined(__IOS__)
-  return;
-#endif
+  // No minimap on touch (and on forced-touch screenshot renders, which
+  // must match the devices) — same runtime gate as the OSD.
+  if (touch_osd_enabled()) return;
   float minimap_size = num_y_viewports() == 2 ? window.y()/6 : window.y()/4;
 
   if(split_screen()) {
