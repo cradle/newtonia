@@ -675,10 +675,14 @@ void ShotScene::draw_overlays(int window_w, int window_h) {
   gles2_set_vp(ortho);
   // Typer coordinates are virtual units (multiplied by Typer::scale); a
   // caption's X/Y are window fractions, -1..1 with (0,0) the centre, +y up.
+  // draw_centered() centres horizontally but TOP-anchors vertically (glyphs
+  // descend 2*size below the given y — see the menu title comments); adding
+  // size makes the scene's Y the text's vertical CENTRE, so `text 0 0`
+  // lands dead centre.
   for (const SceneText &t : s_scene.texts)
     Typer::draw_centered(t.x * window_w / Typer::scale,
-                         t.y * window_h / Typer::scale, t.text.c_str(),
-                         t.size);
+                         t.y * window_h / Typer::scale + t.size,
+                         t.text.c_str(), t.size);
 }
 
 bool ShotScene::capture(int window_w, int window_h) {

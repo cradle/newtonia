@@ -7,7 +7,7 @@ clear
 hud off
 noship
 stars 0.15
-text 0 0.25 95 NEWTONIA
+text 0 0.2 95 NEWTONIA
 asteroid -500 700 tough r=90 v=0,0
 asteroid -100 780 r=70 v=0,0
 asteroid 350 700 reflective r=85 v=0,0

@@ -112,8 +112,10 @@ pickup TYPE X Y        # weapon mine giga missile shield god nova beam
                        #   lance shock revive life
 
 text X Y SIZE WORDS... # caption in the Typer font (uppercased). X/Y are
-                       #   window fractions, -1..1, (0,0) centre, +y up;
-                       #   SIZE like the menus use (5 small, 16 title)
+                       #   window fractions, -1..1, (0,0) centre, +y up,
+                       #   anchored at the text's CENTRE both ways — so
+                       #   `text 0 0` is dead centre. SIZE like the menus
+                       #   use (5 small, 16 title, 80+ capsule art)
 key NAME [at_ms]       # synthesized key press at sim time (default: 200,
                        #   then +400 per key). NAME: a character, or
                        #   enter space esc up down left right

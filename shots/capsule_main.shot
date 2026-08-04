@@ -6,4 +6,4 @@ clear
 hud off
 noship
 stars 0.15
-text 0 0.2 120 NEWTONIA
+text 0 0 120 NEWTONIA
