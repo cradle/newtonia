@@ -19,12 +19,22 @@ Windows (PowerShell, after the MSYS2 build — see CLAUDE.md): no Xvfb
 involved, a real window opens briefly per scene, rendered on the actual
 GPU. If the requested size is taller than the desktop, the window manager
 may clamp the window — the `shot: wrote` line prints the size actually
-captured, so check it (remedy: a display at least as tall as the shot).
+captured, so check it. On a 1080p display set
+`NEWTONIA_SHOT_FULLSCREEN=1` to render fullscreen at exactly the desktop
+resolution instead.
 
 ```powershell
 .\shots\run.ps1                            # every shots\*.shot
 .\shots\run.ps1 shots\steam1_level1.shot   # just one
+$env:NEWTONIA_SHOT_FULLSCREEN=1; .\shots\run.ps1   # 1080p-display fix
 ```
+
+**Seeds are per-platform.** The world generator rides the C runtime's
+`rand()`, and MinGW's differs from glibc's — the same scene renders the
+same *composition* everywhere, but the generation-spawned background
+(rock arrangement, shapes, spawn pocket, starfield) rolls differently
+per OS. Iterate the scene's `seed` on the machine you render on until
+the background looks right; it is stable there from then on.
 
 Or drive the binary directly (this is all `run.sh` does):
 

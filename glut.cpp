@@ -673,6 +673,11 @@ static int shot_main(int argc, char *argv[]) {
   int w = ShotScene::width()  > 0 ? ShotScene::width()  : g_prefs.window_width;
   int h = ShotScene::height() > 0 ? ShotScene::height() : g_prefs.window_height;
   init(argc, argv, (float)w, (float)h, /*shot_mode=*/true);
+  // A window taller than the desktop gets clamped by the WM (Windows
+  // especially: title bar + taskbar make a 1080p display unable to hold a
+  // 1080-tall window). Fullscreen sidesteps that — the capture is the
+  // desktop resolution exactly.
+  if (SDL_getenv("NEWTONIA_SHOT_FULLSCREEN")) glutFullScreen();
   init_controllers_and_audio();  // sound assets load; SDL_AUDIODRIVER=dummy
                                  // is the headless escape (TESTING.md)
   shot_state = ShotScene::build_state();
