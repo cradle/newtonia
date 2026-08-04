@@ -58,7 +58,12 @@
       background: var(--panel);
       border: 1px solid var(--line);
       padding: 0.45rem 0.8rem;
-      letter-spacing: 0.08em;
+      /* NO letter-spacing here: WebKit sizes a <select> from its options'
+         text WITHOUT counting letter-spacing, so any tracking clips the
+         label ("SEASON S1 — CURRENT" lost its tail — field report,
+         2026-08-04). The pickers' spacing is cosmetic; the select goes
+         without. */
+      letter-spacing: normal;
     }
     .board-updated { color: var(--muted); font-size: 0.78rem; letter-spacing: 0.05em; }
     .board-wrap { overflow-x: auto; border: 1px solid var(--line); background: var(--panel); }
