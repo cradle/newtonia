@@ -61,6 +61,7 @@ struct Scene {
   bool clear_world = false;
   bool hud = true;
   bool no_ship = false;  // hold every player unspawned: pure-scenery shots
+  float star_density = -1;  // `stars`: overrides the preference; -1 = keep
   bool two_players = false;
   float zoom = 0;                 // vertical FOV degrees; 0 = default (85)
   // Camera mode. The game's default is ROTATE (view follows the ship's
@@ -146,6 +147,10 @@ bool parse_scene_file(const char *path) {
       s_scene.clear_world = true;
     } else if (cmd == "noship") {
       s_scene.no_ship = true;
+    } else if (cmd == "stars") {
+      if (!(in >> s_scene.star_density) || s_scene.star_density < 0.0f ||
+          s_scene.star_density > 1.0f)
+        return parse_error(line_no, line, "stars wants 0..1 (density scale)");
     } else if (cmd == "hud") {
       std::string v;  in >> v;
       s_scene.hud = (v != "off");
@@ -432,6 +437,10 @@ int ShotScene::sim_ms() { return s_scene.sim_ms; }
 State *ShotScene::build_state() {
   // Same seed, same shot: asteroid shapes, starfield, spawn spots.
   srand(s_scene.seed);
+  // Starfield density override — shot mode never saves preferences, so
+  // poking the live pref is scene-scoped by construction. Set before the
+  // state constructors read star_density_scale().
+  if (s_scene.star_density >= 0.0f) g_prefs.star_density = s_scene.star_density;
   if (s_scene.menu_mode) return new Menu();
 
   // A shot game must never touch real player data (see shot_scene.h).

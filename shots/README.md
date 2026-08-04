@@ -84,6 +84,10 @@ game 14                # base: in-game at generation N (worlds, hazards,
 clear                  # empty the generated world (asteroids, hazards,
                        #   pickups, black holes) before composing
 hud off                # hide the HUD and minimap
+stars 0.15             # starfield density 0..1, overriding the preference
+                       #   (shot mode never writes preferences back)
+noship                 # hold every player unspawned — pure-scenery shots
+                       #   (title cards, capsules); camera stays put
 zoom 60                # vertical FOV degrees (default 85; smaller = closer;
                        #   much wider shows the toroidal wrap copies)
 camera fixed           # keep the world's orientation on screen. Default is

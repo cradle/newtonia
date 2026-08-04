@@ -6,6 +6,7 @@ sim 300
 clear
 hud off
 noship
+stars 0.15
 text 0 0.25 95 NEWTONIA
 asteroid -500 700 tough r=90 v=0,0
 asteroid -100 780 r=70 v=0,0

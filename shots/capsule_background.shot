@@ -5,3 +5,4 @@ sim 300
 clear
 hud off
 noship
+stars 0.15
