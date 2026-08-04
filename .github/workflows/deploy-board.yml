@@ -112,6 +112,25 @@ jobs:
           node test/whitelist_test.mjs
           kill $DEV_PID
 
+      # Website read endpoints (the Pages /leaderboard/ page + the
+      # /play/?replay= watch link): snapshot build/staleness/cron-refresh
+      # and the replay blob GET. Runs with the production-default season
+      # whitelist (the test submits canonical seasons); --test-scheduled
+      # exposes the /__scheduled hook the test uses to drive the cron.
+      - name: Site endpoints test
+        run: |
+          npx wrangler@4 dev --local --test-scheduled --port 8790 \
+            --persist-to .wrangler-site \
+            --var FAKE_VERIFY:1 > wrangler-site.log 2>&1 &
+          DEV_PID=$!
+          for i in $(seq 1 60); do
+            curl -s http://127.0.0.1:8790/ | grep -q newtonia-board && break
+            kill -0 $DEV_PID 2>/dev/null || { echo "wrangler dev died:"; cat wrangler-site.log; exit 1; }
+            sleep 1
+          done
+          node test/site_test.mjs
+          kill $DEV_PID
+
   deploy:
     needs: test
     runs-on: ubuntu-latest
