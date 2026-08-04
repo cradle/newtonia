@@ -109,22 +109,33 @@ function board_of(snap, season, players) {
   check("co-op board present with its row", !!coopB &&
         coopB.rows.length >= 1 && coopB.rows[0].score === 700);
 
-  // The stored snapshot is the daily artifact: a new submission does NOT
-  // appear until the cron republishes.
+  // Freshness: a submission newer than the stored snapshot triggers a
+  // rebuild on the next read — new scores must not hide until the cron.
+  const prev_generated = snap.generated_at;
   const soloC = build_nrp({ game_version: SEASON, run_id: 7004n, score: 950 });
   check("solo C placed", (await submit(soloC, "CHARLIE")).t === "placed");
   snap = await (await fetch(`${HTTP_BASE}/site/leaderboard.json`)).json();
   solo = board_of(snap, SEASON, 1);
-  check("snapshot stale until cron", !!solo && solo.rows[0].score === 900,
+  check("snapshot refreshed by newer submission",
+        !!solo && solo.rows[0].score === 950 && solo.rows[0].name === "CHARLIE",
         solo && JSON.stringify(solo.rows[0]));
+  check("refresh advanced generated_at", snap.generated_at > prev_generated,
+        `${prev_generated} -> ${snap.generated_at}`);
+  // A read with nothing new serves the stored snapshot unchanged.
+  const again = await (await fetch(`${HTTP_BASE}/site/leaderboard.json`)).json();
+  check("no rebuild without a newer submission",
+        again.generated_at === snap.generated_at,
+        `${snap.generated_at} -> ${again.generated_at}`);
+  // The daily cron still republishes (retention demotions change data
+  // without a new submission, so the cron write matters).
   await run_cron();
-  snap = await (await fetch(`${HTTP_BASE}/site/leaderboard.json`)).json();
-  solo = board_of(snap, SEASON, 1);
-  check("cron republished snapshot", !!solo && solo.rows[0].score === 950 &&
-        solo.rows[0].name === "CHARLIE",
-        solo && JSON.stringify(solo.rows[0]));
+  const post = await (await fetch(`${HTTP_BASE}/site/leaderboard.json`)).json();
+  check("cron republished snapshot", post.generated_at > snap.generated_at,
+        `${snap.generated_at} -> ${post.generated_at}`);
+  solo = board_of(post, SEASON, 1);
+  check("cron snapshot content intact", !!solo && solo.rows[0].score === 950);
   check("live flag set on a listed board",
-        (snap.boards || []).some((b) => b.players === 1 && b.live === true));
+        (post.boards || []).some((b) => b.players === 1 && b.live === true));
 
   // Replay blob download: byte-identical to the submission, CORS'd, and
   // 404 on anything that isn't a charting row's blob.

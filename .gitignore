@@ -77,3 +77,4 @@ ios/build/
 web/main.js
 board/.wrangler*/
 signal/.wrangler*/
+.wrangler*/
