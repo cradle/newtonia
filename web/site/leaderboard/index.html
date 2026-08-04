@@ -131,6 +131,8 @@
     <nav class="nav-links">
       <a href="../#features">Features</a>
       <a href="../#platforms">Platforms</a>
+      <a href="../#controls">Controls</a>
+      <a href="./" aria-current="page">Leaderboard</a>
       <a class="nav-cta" href="../play/">▶ PLAY</a>
     </nav>
   </header>
@@ -145,7 +147,9 @@
             <button id="btn-solo" class="on">SOLO</button>
             <button id="btn-coop">CO-OP</button>
           </div>
-          <select class="season" id="season-select" aria-label="Season"></select>
+          <!-- Season browser; hidden until it has seasons to offer (an
+               empty select renders as a broken-looking stub). -->
+          <select class="season" id="season-select" aria-label="Season" hidden></select>
         </div>
         <div class="board-updated" id="updated"></div>
       </div>

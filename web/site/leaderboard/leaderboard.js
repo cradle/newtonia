@@ -86,15 +86,18 @@
 
     var b = currentBoard();
     // Season picker: the seasons that exist for this players count,
-    // snapshot order (newest submission first).
+    // snapshot order (newest submission first). Stays hidden while empty —
+    // an option-less select renders as a broken-looking stub.
     elSeason.innerHTML = '';
-    boardsFor(players).forEach(function (s) {
+    var list = boardsFor(players);
+    list.forEach(function (s) {
       var opt = document.createElement('option');
       opt.value = s.season;
       opt.textContent = 'SEASON ' + s.season.toUpperCase() +
           (s.live ? ' — CURRENT' : '');
       elSeason.appendChild(opt);
     });
+    elSeason.hidden = list.length === 0;
     if (!b) {
       // Keep the URL truthful even for an empty board (a CO-OP toggle with
       // no co-op scores yet): players updates, the stale season drops.
