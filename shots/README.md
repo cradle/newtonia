@@ -1,0 +1,111 @@
+# Screenshot harness
+
+Renders one composed scene — the menu, or a game world built to order — at
+an arbitrary window size, writes a PNG, and exits. For store/marketing
+shots, reference cards, and visual bug reports, all reproducible from the
+command line. Runs on any desktop build (netplay or `NETPLAY=0`), windowed
+or headless under Xvfb.
+
+## Quick start
+
+```sh
+make NETPLAY=0                  # any desktop build works
+shots/run.sh                    # render every shots/*.shot -> shots/out/
+shots/run.sh shots/hero.shot    # just one
+NEWTONIA_SHOT_SIZE=2560x1440 shots/run.sh shots/hero.shot
+```
+
+Or drive the binary directly (this is all `run.sh` does):
+
+```sh
+SDL_AUDIODRIVER=dummy \
+NEWTONIA_SHOT=out.png NEWTONIA_SHOT_SCENE=shots/hero.shot \
+NEWTONIA_SHOT_SIZE=1920x1080 \
+xvfb-run -a -s "-screen 0 1920x1080x24" ./newtonia
+```
+
+## Environment variables
+
+| Variable | Meaning |
+|----------|---------|
+| `NEWTONIA_SHOT=out.png` | Enables shot mode; output path (`.png`, or `.bmp` via SDL) |
+| `NEWTONIA_SHOT_SIZE=WxH` | Window/image size (beats the scene's `size`; default: preferences) |
+| `NEWTONIA_SHOT_SCENE=file` | Scene script (default: a plain new game) |
+| `NEWTONIA_SHOT_MS=N` | Simulated ms before capture (beats the scene's `sim`) |
+
+Shot mode never touches real player data: no Steam init, no preference
+writes, replay recording disabled, savegame/high-score/stats paths latched
+off (the game is marked cheated). The sim runs on a fixed 16 ms step, so a
+scene's `seed` makes the output byte-for-byte reproducible.
+
+The existing debug env vars compose: `NEWTONIA_ALL_WEAPONS=1` fills the
+HUD's weapon list, `NEWTONIA_TEST_SPAWN_PICKUPS=1` rings every pickup
+around the spawn.
+
+## Scene scripts
+
+Line-based; `#` comments. Positions are **world units relative to player
+1's spawn**, which is the camera centre: `(0,0)` is mid-screen, +y up. At
+the default zoom about ±900 units are visible vertically (the horizontal
+span scales with the aspect ratio). Everything is optional — an empty
+scene is a plain new game.
+
+```
+size 1920 1080         # window size (or "size 1920x1080")
+sim 1500               # simulated ms before capture (default 1000)
+seed 7                 # RNG seed: same scene, same shot (default 1337)
+
+menu                   # base: the menu instead of a game (attract screen;
+                       #   `key enter` to reach the main menu)
+game 14                # base: in-game at generation N (worlds, hazards,
+                       #   stations and counts the game would have by then)
+
+clear                  # empty the generated world (asteroids, hazards,
+                       #   pickups, black holes) before composing
+hud off                # hide the HUD and minimap
+zoom 60                # vertical FOV degrees (default 85; smaller = closer;
+                       #   much wider shows the toroidal wrap copies)
+players 2              # local split-screen co-op
+
+ship 0 -150 90         # move player 1 (and the camera) / set heading (deg)
+ship2 300 0            # move player 2 (with `players 2`)
+
+# TYPE flags combine; r= clamps to Asteroid::max_radius; v= units/second.
+asteroid X Y [normal|invincible|invisible|reflective|teleporting|quantum|
+              tough|armoured|phasing]... [r=R] [v=VX,VY]
+enemy X Y [difficulty]         # AI ship (it will fight!)
+hazard pulsar|comet|seeker X Y [v=VX,VY]   # a natural comet cruises ~280 u/s
+blackhole X Y
+pickup TYPE X Y        # weapon mine giga missile shield god nova beam
+                       #   lance shock revive life
+
+text X Y SIZE WORDS... # caption in the Typer font (uppercased). X/Y are
+                       #   window fractions, -1..1, (0,0) centre, +y up;
+                       #   SIZE like the menus use (5 small, 16 title)
+key NAME [at_ms]       # synthesized key press at sim time (default: 200,
+                       #   then +400 per key). NAME: a character, or
+                       #   enter space esc up down left right
+```
+
+Notes:
+
+- The camera **is** player 1's ship — `ship` moves both. Objects with
+  velocities (and homing seekers, cruising comets, AI enemies) move during
+  `sim`, so compose where things should be **at capture time**; the fixed
+  seed keeps the result stable once it looks right.
+- State transitions are deliberately not followed: `key`-ing the menu into
+  NEW GAME leaves the menu on screen (the Menu's own screens — options,
+  replays — are fine, they're the same state). Use `game` for gameplay.
+- Keep `sim` under ~5000 for a `clear`ed scene, or leave a killable
+  asteroid in it — with nothing left to destroy the level-clear countdown
+  would rebuild the world mid-shot (the harness guards the common case).
+
+## Example scenes
+
+| Scene | Shows |
+|-------|-------|
+| `hero.shot` | Composed asteroid field + title captions |
+| `menu.shot` | Main menu (attract dismissed via `key enter`) |
+| `specials.shot` | Labelled reference card of the special asteroid types |
+| `hazards.shot` | Pulsar, comet, seeker and a black hole, HUD off |
+| `lategame.shot` | Natural generation-14 chaos (station, black hole, full counts) |

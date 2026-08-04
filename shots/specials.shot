@@ -1,0 +1,19 @@
+# One of each named special asteroid, labelled — a clean reference card.
+# The camera is the ship, so the ship stays at the origin between the rows.
+seed 11
+sim 800
+clear
+hud off
+ship 0 0 90
+asteroid -600 330 tough r=110 v=0,0
+asteroid 0 330 reflective r=110 v=0,0
+asteroid 600 330 armoured r=110 v=0,0
+asteroid -600 -330 teleporting r=110 v=0,0
+asteroid 0 -330 quantum r=110 v=0,0
+asteroid 600 -330 phasing r=110 v=0,0
+text -0.41 0.18 5 TOUGH
+text 0 0.18 5 REFLECTIVE
+text 0.41 0.18 5 ARMOURED
+text -0.41 -0.54 5 TELEPORTING
+text 0 -0.54 5 QUANTUM
+text 0.41 -0.54 5 PHASING

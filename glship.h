@@ -64,6 +64,9 @@ public:
   bool rotate_view() const;
   float camera_facing() const;
   float view_angle() const;
+  // Screenshot harness framing (`zoom`): vertical FOV in degrees (default
+  // 85 — smaller is closer). Nothing in gameplay changes it.
+  void set_view_angle(float degrees) { camera_angle = degrees; }
   void snap_camera_to_heading();
   void smooth_camera(int frame_delta);
 

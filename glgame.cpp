@@ -8015,7 +8015,7 @@ void GLGame::draw(void) {
       draw_world(players->back(), false);
     }
     //Draw map after - for partial translucency
-    draw_map();
+    if (!shot_hide_hud_) draw_map();
   }
   // Leaderboard prompt/upload/result — its own full-window overlay so the
   // OFFLINE game-over card gets it too (the primary solo case). No-op
@@ -8313,7 +8313,7 @@ void GLGame::draw_world(GLShip *glship, bool primary) const {
   float saved_sw = Typer::scaled_window_width;
   Typer::scaled_window_width = capped_hw / Typer::scale * nx;
   Uint64 pc0 = SDL_GetPerformanceCounter();
-  Overlay::draw(this, glship);
+  if (!shot_hide_hud_) Overlay::draw(this, glship);
   perf_osd_pc_ += SDL_GetPerformanceCounter() - pc0;
   Typer::scaled_window_width = saved_sw;
 }

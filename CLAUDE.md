@@ -203,6 +203,20 @@ gdb -batch -ex run -ex "bt 20" --args ./newtonia > gdb.log 2>&1 &
   test from a fresh NEW GAME (mind the "New game?" confirm: NO is the
   default).
 
+#### Screenshot harness (`NEWTONIA_SHOT` — see shots/README.md)
+`NEWTONIA_SHOT=out.png` turns the desktop binary into a one-shot scene
+renderer: build the state, run a fixed-step sim, write a PNG at any window
+size, exit. `NEWTONIA_SHOT_SIZE=WxH`, `NEWTONIA_SHOT_MS=N`, and
+`NEWTONIA_SHOT_SCENE=file.shot` (a small scene DSL: `menu`/`game N`,
+`clear`, `asteroid X Y tough r=120 v=VX,VY`, `hazard`, `enemy`, `pickup`,
+`text`, `key`, `zoom`, `seed`, `players 2`) compose arbitrary content —
+store shots, labelled reference cards, visual repros. `shots/run.sh`
+renders every `shots/*.shot` headlessly under Xvfb; a scene's `seed` makes
+the output byte-identical across runs. Shot mode is sandboxed by design —
+no Steam init, no preference writes, replays disabled, savegame/high-score
+/stats latched off (`ShotScene` in `shot_scene.h/cpp`, the frame loop in
+`glut.cpp`) — so it can never clobber real player data.
+
 ### macOS App Bundle
 ```sh
 make osx      # Build universal arm64+x86_64 .app bundle

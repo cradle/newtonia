@@ -74,3 +74,6 @@ ios/build/
 web/main.js
 board/.wrangler*/
 signal/.wrangler*/
+
+# Screenshot harness output (shots/run.sh)
+shots/out/

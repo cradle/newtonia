@@ -110,6 +110,9 @@ public:
   // The between-level intro state adopts the game while it runs (drawing the
   // frozen world's starfield/objects) and hands it back on dismissal.
   friend class Intro;
+  // The screenshot harness (shot_scene.h) composes a shot game to order:
+  // clears/spawns objects, parks ships, latches every persistence path off.
+  friend class ShotScene;
 
   bool cleared() const;
 
@@ -863,6 +866,9 @@ private:
   list<Object*> *shock_targets; // enemies + stations (as Object*) for shock-bolt seeking
   bool all_weapons_cheat = false;  // NEWTONIA_ALL_WEAPONS: grant full arsenal each life
   int all_weapons_ammo = 999;      // rounds per weapon; a numeric env value > 1 overrides
+  // Screenshot harness (`hud off`): skip the HUD overlay and the minimap so
+  // a composed shot is just the world. Only ShotScene ever sets it.
+  bool shot_hide_hud_ = false;
 };
 
 #endif

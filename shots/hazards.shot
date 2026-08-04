@@ -1,0 +1,15 @@
+# The three mid-game hazards plus a black hole. Note: widening `zoom` much
+# past the default shows the toroidal world's wrap copies at generation-0
+# world size — frame tight instead.
+seed 9
+sim 1400
+clear
+hud off
+ship 0 -250 45
+hazard pulsar -700 200
+hazard comet 850 550 v=-260,-100
+hazard seeker 650 -250
+blackhole 350 150
+asteroid -800 -500 r=80
+asteroid 900 50 r=60 v=-20,-20
+text 0 0.8 7 HAZARDS AHEAD

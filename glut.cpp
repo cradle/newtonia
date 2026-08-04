@@ -11,6 +11,8 @@
 #include "asteroid.h"
 #include "typer.h"
 #include "preferences.h"
+#include "shot_scene.h"
+#include "state.h"
 #include "net_transport.h"
 #include "net_signal.h"
 #include "net_identity.h"
@@ -618,7 +620,66 @@ void init_controllers_and_audio() {
   }
 }
 
-void init(int &argc, char* argv[], float width, float height);
+void init(int &argc, char* argv[], float width, float height,
+          bool shot_mode = false);
+
+// ---- screenshot harness (NEWTONIA_SHOT; see shots/README.md) ----
+// A parallel, minimal frame loop: no StateManager, no Steam, no preference
+// writes, no saves. ShotScene builds the state; this loop ticks it on a
+// FIXED 16 ms step (deterministic given the scene's seed, and faster than
+// real time when the machine allows), draws, captures, and leaves.
+static State *shot_state = nullptr;
+static int shot_sim_done = 0;
+static bool shot_ok = false;
+static bool shot_written = false;
+
+static void shot_reshape(int w, int h) {
+  Typer::resize(w, h);
+  if (shot_state) shot_state->resize(w, h);
+}
+
+static void shot_display() {
+  if (!shot_state) return;
+  shot_state->draw();
+  int w = glutGet(GLUT_WINDOW_WIDTH), h = glutGet(GLUT_WINDOW_HEIGHT);
+  ShotScene::draw_overlays(w, h);
+  if (shot_sim_done >= ShotScene::sim_ms() && !shot_written) {
+    shot_written = true;
+    // Read the back buffer BEFORE the swap — its contents are undefined
+    // after.
+    shot_ok = ShotScene::capture(w, h);
+    glutSwapBuffers();
+    glutLeaveMainLoop();
+    return;
+  }
+  glutSwapBuffers();
+}
+
+static void shot_tick() {
+  if (!shot_state) return;
+  if (shot_sim_done < ShotScene::sim_ms()) {
+    ShotScene::pump_keys(shot_state, shot_sim_done);
+    const int STEP = 16;
+    shot_state->tick(STEP);
+    shot_sim_done += STEP;
+  }
+  glutPostRedisplay();
+}
+
+static int shot_main(int argc, char *argv[]) {
+  if (!ShotScene::init()) return 1;
+  load_preferences();  // star density etc.; never written back
+  int w = ShotScene::width()  > 0 ? ShotScene::width()  : g_prefs.window_width;
+  int h = ShotScene::height() > 0 ? ShotScene::height() : g_prefs.window_height;
+  init(argc, argv, (float)w, (float)h, /*shot_mode=*/true);
+  init_controllers_and_audio();  // sound assets load; SDL_AUDIODRIVER=dummy
+                                 // is the headless escape (TESTING.md)
+  shot_state = ShotScene::build_state();
+  if (!shot_state) return 1;
+  shot_reshape(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT));
+  glutMainLoop();
+  return shot_ok ? EXIT_SUCCESS : 1;
+}
 
 int main(int argc, char* argv[]) {
   srand(time(NULL));
@@ -662,6 +723,9 @@ int main(int argc, char* argv[]) {
       return ok ? 0 : 1;
     }
   }
+  // Screenshot harness: render one composed scene to an image and exit —
+  // before Steam/achievements/invites init, none of which a shot needs.
+  if (ShotScene::requested()) return shot_main(argc, argv);
   s_tap_debug = SDL_getenv("NEWTONIA_TAP_DEBUG") != NULL;
   if (s_tap_debug) tap_debug_note("TAP DEBUG ON");
   if (!steam_init())
@@ -727,7 +791,8 @@ int main(int argc, char* argv[]) {
   return EXIT_SUCCESS;
 }
 
-void init(int &argc, char* argv[], float width, float height) {
+void init(int &argc, char* argv[], float width, float height,
+          bool shot_mode) {
   glutInit(&argc, argv);
 
   // Request an OpenGL 3.3 Core Profile context.
@@ -762,6 +827,15 @@ void init(int &argc, char* argv[], float width, float height) {
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+  if (shot_mode) {
+    // Screenshot harness: its own display/idle/reshape trio, and nothing
+    // else — the interactive callbacks below dereference the StateManager
+    // (never created in shot mode) and write preferences on reshape.
+    glutDisplayFunc(shot_display);
+    glutReshapeFunc(shot_reshape);
+    glutIdleFunc(shot_tick);
+    return;
+  }
   glutDisplayFunc(draw);
   // Deliver only real presses: without this, holding a key streams
   // auto-repeat keydowns that re-arm the semi-automatic primaries

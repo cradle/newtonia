@@ -1,0 +1,16 @@
+# Hero shot: a composed asteroid field around the ship, with a caption.
+# Coordinates are offsets from the ship (the camera centre), +y up;
+# roughly +-900 units are visible vertically at the default zoom.
+seed 7
+sim 1500
+clear
+ship 0 -150 90
+asteroid -520 260 tough r=120
+asteroid 480 330 reflective r=90 v=-30,-10
+asteroid 700 -280 r=70 v=-40,20
+asteroid -750 -320 armoured r=100
+asteroid 150 620 r=55 v=10,-35
+asteroid -260 -520 r=45 v=25,15
+pickup god 320 60
+text 0 0.72 16 NEWTONIA
+text 0 0.55 6 GRAVITY IS THE WEAPON
