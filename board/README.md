@@ -7,6 +7,13 @@ of `src/worker.js`). Admission requires platform attestation — the verify
 modules are imported from `../signal/src/` so signaling and leaderboard
 share one implementation.
 
+Two public read-only HTTP endpoints serve the website (CORS `*`, rate
+limited, no submissions): `GET /site/leaderboard.json` — the daily
+snapshot the retention cron publishes to R2 (`site/leaderboard.json`),
+rendered by the Pages site's `/leaderboard/` page — and
+`GET /replay/<season>/<run_id>.nrp` — a charting row's blob, fetched by
+the web game's `?replay=` watch deep link.
+
 ## Layout
 
 - `src/worker.js` — fetch router, per-connection `Session` DO, per-IP
@@ -20,7 +27,7 @@ share one implementation.
 ```sh
 node test/validate_test.mjs        # header/framing validation
 node test/identity_gate_test.mjs   # attestation admission gate
-node test/retention_test.mjs       # retention cron + orphan sweep
+node test/retention_test.mjs       # retention cron + orphan sweep + site snapshot
 node test/budget_test.mjs          # limiter fail-closed + per-conn budgets
 ```
 
@@ -38,6 +45,15 @@ again (which is exactly what `identity_gate_test.mjs` pins).
 ```sh
 npx wrangler@4 dev --local --port 8788 --var FAKE_VERIFY:1 --var SUBMIT_LIMIT:100
 node test/board_test.mjs           # BOARD_TEST_URL overrides ws://127.0.0.1:8788/board
+```
+
+The site endpoints test needs `--test-scheduled` (it drives the snapshot
+cron through wrangler's `/__scheduled` hook) and the production-default
+season whitelist:
+
+```sh
+npx wrangler@4 dev --local --test-scheduled --port 8790 --var FAKE_VERIFY:1
+node test/site_test.mjs            # SITE_TEST_WS_URL / SITE_TEST_HTTP_URL override
 ```
 
 The retention cron can be fired locally with
