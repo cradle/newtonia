@@ -36,6 +36,59 @@ declare const Module: {
     deliver();
   })();
 
+  // ---- Leaderboard watch link (?replay=<season>/<run_id>) ----
+  // A WATCH link on the site's /leaderboard/ page opens the game with
+  // ?replay=. Download the blob from the board worker's public /replay/
+  // endpoint, then hand the bytes to the wasm module once its runtime and
+  // IDBFS are up (web_watch_replay stages download.nrp and Menu::tick
+  // starts the ordinary downloaded-replay playback). The param is kept in
+  // the URL — the link is a shareable, refresh-to-rewatch view.
+  (function handleReplayLink() {
+    const q = new URLSearchParams(window.location.search);
+    const spec = q.get("replay");
+    // <season>/<run_id>: season is the header's stamp (printable ASCII, no
+    // slash/backslash, <= 23 chars — the worker re-validates), run_id
+    // decimal. Anything else is ignored.
+    if (!spec || !/^[!-~]{1,23}\/[0-9]{1,20}$/.test(spec) ||
+        spec.indexOf("\\") !== -1) return;
+    const host = q.get("board") === "beta"
+        ? "https://newtonia-board-beta.gfmcc.workers.dev"
+        : "https://newtonia-board.gfmcc.workers.dev";
+    const [season, run] = spec.split("/");
+    fetch(`${host}/replay/${encodeURIComponent(season)}/${run}.nrp`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.arrayBuffer();
+      })
+      .then((buf) => {
+        const bytes = new Uint8Array(buf);
+        const m = Module as any;
+        let tries = 0;
+        const deliver = () => {
+          if (m._web_watch_replay && m._malloc && m._free && m.HEAPU8) {
+            const ptr = m._malloc(bytes.length);
+            m.HEAPU8.set(bytes, ptr);
+            const res = m._web_watch_replay(ptr, bytes.length);
+            m._free(ptr);
+            if (res === 0 && tries++ < 600) {
+              setTimeout(deliver, 100); // IDBFS still mounting (~60 s cap)
+              return;
+            }
+            if (res < 0)
+              alert("This replay can't be played by the current web build " +
+                    "(it was recorded by a different game version).");
+            return;
+          }
+          if (tries++ < 600) setTimeout(deliver, 100);
+        };
+        deliver();
+      })
+      .catch((e) => {
+        console.warn("[newtonia] replay download failed:", e);
+        alert("Replay download failed — it may have dropped off the leaderboard.");
+      });
+  })();
+
   // ---- Fullscreen ----
   function toggleFullscreen() {
     if (!document.fullscreenElement) {

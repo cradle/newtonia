@@ -24,6 +24,12 @@
 #include <string>
 #include <cstring>
 
+#ifdef __EMSCRIPTEN__
+// web_main.cpp: one-shot, true once a /play/?replay= watch deep link has
+// staged download.nrp for playback (polled below in Menu::tick).
+bool web_take_replay_watch();
+#endif
+
 static const float SENSITIVITY_VALUES[] = {0.5f, 0.75f, 1.0f, 1.5f, 2.0f};
 static const char* SENSITIVITY_LABELS[] = {"SLOW", "LOW", "NORMAL", "HIGH", "MAX"};
 static const int NUM_SENSITIVITY = 5;
@@ -852,6 +858,22 @@ void Menu::tick(int delta) {
       }
     }
   }
+
+#ifdef __EMSCRIPTEN__
+  // A leaderboard WATCH deep link (/play/?replay=<season>/<run_id>):
+  // main.ts downloaded the blob into download.nrp and web_main.cpp staged
+  // it (web_watch_replay). Hand off to the same downloaded-replay playback
+  // path the in-game leaderboard uses. The stage step already
+  // header-checked the file, so a NULL here (e.g. no leading keyframe) is
+  // rare — log and stay in the menu, like the board's FetchDone does.
+  if (web_take_replay_watch()) {
+    if (GLGame *g = GLGame::start_replay_playback(Replay::download_path())) {
+      request_state_change(g);
+      return;
+    }
+    SDL_Log("replay: ?replay= download would not play");
+  }
+#endif
 
   scan_net_resume();
   // The reclaim grace ran out while the menu sat open: the room is gone,
