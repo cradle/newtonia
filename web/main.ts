@@ -46,15 +46,19 @@ declare const Module: {
   (function handleReplayLink() {
     const q = new URLSearchParams(window.location.search);
     const spec = q.get("replay");
+    if (!spec) return;
     // <season>/<run_id>: season is the header's stamp (printable ASCII, no
-    // slash/backslash, <= 23 chars — the worker re-validates), run_id
-    // decimal. Anything else is ignored.
-    if (!spec || !/^[!-~]{1,23}\/[0-9]{1,20}$/.test(spec) ||
-        spec.indexOf("\\") !== -1) return;
+    // space/slash/backslash, <= 23 chars — the worker re-validates), run_id
+    // decimal. Split first, then validate each part — a class-based test on
+    // the whole spec would let a stray extra slash through.
+    const parts = spec.split("/");
+    if (parts.length !== 2) return;
+    const [season, run] = parts;
+    if (!/^[!-~]{1,23}$/.test(season) || season.indexOf("\\") !== -1 ||
+        !/^[0-9]{1,20}$/.test(run)) return;
     const host = q.get("board") === "beta"
         ? "https://newtonia-board-beta.gfmcc.workers.dev"
         : "https://newtonia-board.gfmcc.workers.dev";
-    const [season, run] = spec.split("/");
     fetch(`${host}/replay/${encodeURIComponent(season)}/${run}.nrp`)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);

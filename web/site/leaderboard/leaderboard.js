@@ -73,13 +73,16 @@
   function syncUrl() {
     var q = new URLSearchParams(location.search);
     q.set('players', String(players));
-    q.set('season', season);
+    if (season) q.set('season', season);
+    else q.delete('season');
     history.replaceState({}, '', location.pathname + '?' + q);
   }
 
   function render() {
     btnSolo.classList.toggle('on', players === 1);
     btnCoop.classList.toggle('on', players === 2);
+    btnSolo.setAttribute('aria-pressed', String(players === 1));
+    btnCoop.setAttribute('aria-pressed', String(players === 2));
 
     var b = currentBoard();
     // Season picker: the seasons that exist for this players count,
@@ -92,7 +95,14 @@
           (s.live ? ' — CURRENT' : '');
       elSeason.appendChild(opt);
     });
-    if (!b) { note('NO SCORES YET — BE THE FIRST'); return; }
+    if (!b) {
+      // Keep the URL truthful even for an empty board (a CO-OP toggle with
+      // no co-op scores yet): players updates, the stale season drops.
+      season = '';
+      syncUrl();
+      note('NO SCORES YET — BE THE FIRST');
+      return;
+    }
     season = b.season;
     elSeason.value = season;
     syncUrl();
