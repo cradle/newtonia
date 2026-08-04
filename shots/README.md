@@ -147,3 +147,5 @@ Notes:
 | `specials.shot` | Labelled reference card of the special asteroid types |
 | `hazards.shot` | Pulsar, comet, seeker and a black hole, HUD off |
 | `lategame.shot` | Natural generation-14 chaos (station, black hole, full counts) |
+| `steam*.shot` | The five 1920x1080 store screenshots (levels 1, 5 co-op, 5, 14, 20) |
+| `capsule_*.shot` | Store capsule art: the Typer title over bare starfield (`noship`) at each Steam capsule size, the library one ringed with asteroids, plus a bare-starfield page background |

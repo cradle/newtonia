@@ -60,6 +60,7 @@ struct Scene {
   int generation = 0;             // game base: NEWTONIA_START_GENERATION path
   bool clear_world = false;
   bool hud = true;
+  bool no_ship = false;  // hold every player unspawned: pure-scenery shots
   bool two_players = false;
   float zoom = 0;                 // vertical FOV degrees; 0 = default (85)
   // Camera mode. The game's default is ROTATE (view follows the ship's
@@ -143,6 +144,8 @@ bool parse_scene_file(const char *path) {
       if (in >> gen) s_scene.generation = gen;
     } else if (cmd == "clear") {
       s_scene.clear_world = true;
+    } else if (cmd == "noship") {
+      s_scene.no_ship = true;
     } else if (cmd == "hud") {
       std::string v;  in >> v;
       s_scene.hud = (v != "off");
@@ -460,9 +463,16 @@ State *ShotScene::build_state() {
   static bool s_cam_rotate;
   s_cam_rotate = s_scene.camera_rotate;
   for (GLShip *gs : *g->players) {
-    gs->ship->respawn(g->grid, false);
-    gs->ship->bullets.clear();  // no lethal spawn-flash debris
-    gs->ship->time_left_invincible = 0;  // no spawn-shield ring in shots
+    if (s_scene.no_ship) {
+      // Pure-scenery shots (title cards, capsules): a fresh ship starts
+      // dead in the respawn countdown — park it there for the whole sim
+      // so nothing is ever drawn. The camera still sits on its position.
+      gs->ship->time_until_respawn = 1 << 30;
+    } else {
+      gs->ship->respawn(g->grid, false);
+      gs->ship->bullets.clear();  // no lethal spawn-flash debris
+      gs->ship->time_left_invincible = 0;  // no spawn-shield ring in shots
+    }
     gs->set_camera_smoothing(0);
     gs->set_rotate_view_pref(&s_cam_rotate);
     if (s_scene.zoom > 0) gs->set_view_angle(s_scene.zoom);

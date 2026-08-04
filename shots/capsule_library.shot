@@ -1,0 +1,19 @@
+# Steam library capsule (748x896): the title upper-middle with asteroids
+# ringing it above and below — a clear band keeps the text unobscured.
+size 748 896
+seed 5
+sim 300
+clear
+hud off
+noship
+text 0 0.25 95 NEWTONIA
+asteroid -500 700 tough r=90 v=0,0
+asteroid -100 780 r=70 v=0,0
+asteroid 350 700 reflective r=85 v=0,0
+asteroid 620 560 r=60 v=0,0
+asteroid -580 -350 r=100 v=0,0
+asteroid -150 -500 quantum r=85 v=0,0
+asteroid 300 -380 r=75 v=0,0
+asteroid 600 -600 tough r=90 v=0,0
+asteroid -500 -750 r=65 v=0,0
+asteroid 150 -800 r=80 v=0,0

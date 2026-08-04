@@ -1,0 +1,8 @@
+# Steam capsule (header, 920x430): the Typer title over a bare starfield.
+size 920 430
+seed 5
+sim 300
+clear
+hud off
+noship
+text 0 0.16 160 NEWTONIA
