@@ -270,6 +270,10 @@ web:
 	# cp list above skips them, so copy the dirs explicitly.
 	cp -r web/site/join web/dist/join
 	cp -r web/site/.well-known web/dist/.well-known
+	# Site leaderboard (LEADERBOARD.md "site leaderboard"): a static page
+	# that renders the board worker's daily snapshot and deep-links row
+	# replays into /play/?replay= for in-browser playback.
+	cp -r web/site/leaderboard web/dist/leaderboard
 
 web-clean:
 	rm -rf web/dist
