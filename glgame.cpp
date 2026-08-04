@@ -8567,12 +8567,12 @@ void GLGame::draw_map() const {
     gles2_set_vp(minimap_ortho);
   }
   if (!split_screen()) {
-#if defined(__ANDROID__) || defined(__IOS__)
-    // Shift the minimap right of the virtual joystick so they don't overlap.
-    int map_x = (int)(g_touch_controls.joy_hint_cx + g_touch_controls.joy_radius + Overlay::CORNER_INSET);
-#else
-    int map_x = (int)Overlay::CORNER_INSET;
-#endif
+    // Shift the minimap right of the virtual joystick so they don't
+    // overlap (wherever the OSD draws — see touch_osd_enabled()).
+    int map_x = touch_osd_enabled()
+        ? (int)(g_touch_controls.joy_hint_cx + g_touch_controls.joy_radius +
+                Overlay::CORNER_INSET)
+        : (int)Overlay::CORNER_INSET;
     // The minimap is positioned with a raw pixel viewport, so the safe-area
     // margin must be added here in pixels (the HUD ortho trick can't reach it).
     int safe_px_x = (int)(window.x() * (1.0f - Overlay::SAFE_AREA_SCALE) / 2.0f);

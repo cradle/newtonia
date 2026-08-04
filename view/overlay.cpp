@@ -786,7 +786,9 @@ void Overlay::draw_circle(float cx, float cy, float r, int segs, bool filled,
 }
 
 void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
-#if defined(__ANDROID__) || defined(__IOS__)
+  // Touch platforms always; desktop only when the screenshot harness (or
+  // the layout test hook) forces touch mode — see touch_osd_enabled().
+  if (!touch_osd_enabled()) return;
   // Only the locally-controlled ship's viewport gets the OSD (on a net
   // client that is the LAST player, not the first). While spectating the
   // camera follows the peer, so this already fails; the extra guard also
@@ -892,7 +894,6 @@ void Overlay::touch_controls(const GLGame *glgame, const GLShip *glship) {
     mesh_icon.upload(mb, GL_DYNAMIC_DRAW);
     mesh_icon.draw();
   }
-#endif // __ANDROID__ || __IOS__
 }
 
 void Overlay::debug_info(const GLGame *glgame, const GLShip *glship) {

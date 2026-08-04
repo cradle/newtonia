@@ -13,6 +13,7 @@
 #include "preferences.h"
 #include "shot_scene.h"
 #include "state.h"
+#include "touch_controls.h"
 #include "net_transport.h"
 #include "net_signal.h"
 #include "net_identity.h"
@@ -635,6 +636,10 @@ static bool shot_written = false;
 
 static void shot_reshape(int w, int h) {
   Typer::resize(w, h);
+  // Mobile-store shots force touch mode (NEWTONIA_FORCE_TOUCH); the touch
+  // OSD only draws once its layout has been sized, which on the real
+  // platforms the mobile entry points do. Harmless when not in touch mode.
+  touch_controls_resize(w, h);
   if (shot_state) shot_state->resize(w, h);
 }
 

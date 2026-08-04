@@ -1,5 +1,5 @@
-#if defined(__ANDROID__) || defined(__IOS__)
-
+// Compiled on every platform (see touch_controls.h): pure geometry +
+// state, drawn only where touch_osd_enabled().
 #include "touch_controls.h"
 #include "state_manager.h"
 #include "view/overlay.h"
@@ -88,5 +88,3 @@ void touch_controls_reset(StateManager *game) {
         game->keyboard_up('p', 0, 0);
     }
 }
-
-#endif // __ANDROID__ || __IOS__
