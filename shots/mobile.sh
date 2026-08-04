@@ -21,7 +21,7 @@ command -v xvfb-run >/dev/null || { echo "mobile.sh: xvfb-run not found"; exit 1
 
 DEVICES="iphone69:2868x1320 ipad13:2752x2064 android:1920x1080 androidtab:2560x1600"
 SCENES=("$@")
-[ ${#SCENES[@]} -gt 0 ] || SCENES=(steam1_level1 steam3_level5 steam4_level14 steam5_level20)
+[ ${#SCENES[@]} -gt 0 ] || SCENES=(menu_mobile steam1_level1 steam3_level5 steam4_level14 steam5_level20)
 
 OUT=shots/out/mobile
 mkdir -p "$OUT"

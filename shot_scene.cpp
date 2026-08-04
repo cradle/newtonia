@@ -51,6 +51,11 @@ struct SceneKey {
   bool hold = false;  // `hold`: press and keep held through capture
   bool downed = false, upped = false;
 };
+struct SceneTap {
+  float nx = 0.5f, ny = 0.5f;  // 0..1, top-left origin (State::touch_tap)
+  int at_ms = 0;
+  bool sent = false;
+};
 
 struct Scene {
   int width = 0, height = 0;      // 0 = preferences
@@ -83,6 +88,7 @@ struct Scene {
   std::vector<SceneBlackHole> black_holes;
   std::vector<SceneText> texts;
   std::vector<SceneKey> keys;
+  std::vector<SceneTap> taps;
 };
 
 Scene s_scene;
@@ -258,6 +264,13 @@ bool parse_scene_file(const char *path) {
       for (size_t i = 0; i < t.text.size(); i++)
         t.text[i] = (char)std::toupper((unsigned char)t.text[i]);
       s_scene.texts.push_back(t);
+    } else if (cmd == "tap") {
+      SceneTap t;
+      if (!(in >> t.nx >> t.ny))
+        return parse_error(line_no, line, "tap needs NX NY (0..1)");
+      if (!(in >> t.at_ms)) { t.at_ms = next_key_ms; }
+      next_key_ms = t.at_ms + 400;
+      s_scene.taps.push_back(t);
     } else if (cmd == "key" || cmd == "hold") {
       std::string name;
       if (!(in >> name)) return parse_error(line_no, line, "key needs a name");
@@ -658,6 +671,12 @@ void ShotScene::log_state(State *state) {
 }
 
 void ShotScene::pump_keys(State *state, int t_ms) {
+  for (SceneTap &t : s_scene.taps) {
+    if (!t.sent && t_ms >= t.at_ms) {
+      t.sent = true;
+      state->touch_tap(t.nx, t.ny);
+    }
+  }
   for (SceneKey &k : s_scene.keys) {
     if (!k.downed && t_ms >= k.at_ms) {
       k.downed = true;

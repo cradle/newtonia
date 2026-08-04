@@ -7756,7 +7756,11 @@ void GLGame::tick(int delta) {
         else                         any_dead_no_lives   = true;
       }
     }
-    if (any_dead_with_lives && !any_dead_no_lives && !save_written_this_death_) {
+    // score_saved doubles as the "never persist" latch the screenshot
+    // harness sets (shot_scene.h) — this direct write must respect it like
+    // every save_progress path does.
+    if (any_dead_with_lives && !any_dead_no_lives && !save_written_this_death_ &&
+        !score_saved) {
       Save::save_game(build_save_data());
       save_written_this_death_ = true;
     }

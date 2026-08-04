@@ -124,6 +124,9 @@ key NAME [at_ms]       # synthesized key press at sim time (default: 200,
 hold NAME [at_ms]      # like key, but never released — thrust flames and
                        #   autofire stay live in the captured frame.
                        #   P1: w thrust, space shoot. P2: i thrust, / shoot
+tap NX NY [at_ms]      # synthesized touch tap (0..1 fractions, top-left
+                       #   origin) — the authentic input for touch-layout
+                       #   shots (dismisses TAP TO START, hits tap bands)
 ```
 
 Notes:

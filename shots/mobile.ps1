@@ -17,7 +17,7 @@ $Out = "shots\out\mobile"
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 
 if (-not $Scenes -or $Scenes.Count -eq 0) {
-  $Scenes = @("steam1_level1", "steam3_level5", "steam4_level14", "steam5_level20")
+  $Scenes = @("menu_mobile", "steam1_level1", "steam3_level5", "steam4_level14", "steam5_level20")
 }
 $Devices = @(
   @{ name = "iphone69";   size = "2868x1320" },
