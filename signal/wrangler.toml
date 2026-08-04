@@ -9,6 +9,12 @@ compatibility_date = "2026-06-01"
 # 50 ms this used to request. If the account moves to a paid plan,
 # restore:  [limits]  cpu_ms = 50
 
+# Workers Logs in the dashboard (console.log lines + one invocation record
+# per request). Named envs do NOT inherit observability — beta repeats it.
+[observability.logs]
+enabled = true
+invocation_logs = true
+
 [[durable_objects.bindings]]
 name = "ROOMS"
 class_name = "Room"
@@ -62,6 +68,10 @@ new_sqlite_classes = ["Limiter"]
 # [[migrations]] are top-level-only and apply to each script on deploy.
 [env.beta]
 name = "newtonia-signal-beta"
+
+[env.beta.observability.logs]
+enabled = true
+invocation_logs = true
 
 [[env.beta.durable_objects.bindings]]
 name = "ROOMS"
