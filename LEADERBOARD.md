@@ -319,7 +319,15 @@ submit (admission is unchanged, WS + platform attestation only).
   — one indexed `MAX(submitted_at)` head-read per view against the build
   time in the object's R2 metadata — rebuilds it whenever a submission
   is newer, so new scores appear on the next page view instead of hiding
-  until the cron; field report 2026-08-04) and
+  until the cron; field report 2026-08-04. The rebuild is ~10,000x a
+  view and reachable from an unauthenticated GET, so it is
+  **single-flighted** — concurrent stale views share one rebuild, making
+  the steady-state ceiling one rebuild per *submission*, itself the most
+  rate-limited action there is — and a **failed** rebuild serves the
+  stale body and backs off for a minute rather than 500ing. Clearing the
+  body before rebuilding turned any persistent failure into a permanent
+  per-view retry loop; security review 2026-08-04 F1, unit-tested in
+  `board/test/snapshot_guard_test.mjs`) and
   `GET /replay/<season>/<run_id>.nrp` (the blob download the WS `fetch`
   flow serves, same row/blob admission checks). Both ride the existing
   per-IP `Limiter` (`query` / `fetch` actions) and the `DISABLED` kill

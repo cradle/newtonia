@@ -18,6 +18,14 @@
   // net_identity.h platform tags (append-only enum).
   var PLATFORMS = ['', 'PC', 'STEAM', 'WEB', 'IOS', 'ANDROID', 'XBOX'];
 
+  // Defensive bounds on worker-supplied data. The worker caps names at 24
+  // chars and the board at KEEP_N rows, but the PAGE must not depend on
+  // that: a compromised or buggy worker otherwise froze the tab (a
+  // 50k-row response blocked it for ~30 s) or pushed the WATCH button off
+  // screen behind a 4000-char name. Security review 2026-08-04.
+  var MAX_ROWS = 200;
+  var MAX_NAME = 24;
+
   var elRows = document.getElementById('rows');
   var elBoard = document.getElementById('board');
   var elNote = document.getElementById('note');
@@ -50,6 +58,20 @@
     elBoard.hidden = true;
     elNote.hidden = false;
     elNote.textContent = text;
+  }
+
+  // Display names are player-chosen. The worker strips control bytes, but
+  // that leaves two rendering tricks this page has to defuse itself
+  // (security review 2026-08-04): Unicode format characters — a bidi
+  // override reverses reading order, so "‮ymene" draws as "enemy" —
+  // and check glyphs, which impersonate the verified badge. Strip both,
+  // then bound the length.
+  function cleanName(s) {
+    if (typeof s !== 'string') return '';
+    return s.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, '')
+            .replace(/[\u2713\u2714\u2705\u17D9]/g, '')
+            .trim()
+            .slice(0, MAX_NAME);
   }
 
   function fmtScore(n) {
@@ -110,8 +132,14 @@
     elSeason.value = season;
     syncUrl();
 
+    // A board with no usable row array is a broken response, not an empty
+    // board: say so rather than drawing a headers-only grid.
+    if (!Array.isArray(b.rows)) {
+      note('LEADERBOARD UNAVAILABLE — TRY AGAIN LATER');
+      return;
+    }
     elRows.innerHTML = '';
-    b.rows.forEach(function (r) {
+    b.rows.slice(0, MAX_ROWS).forEach(function (r) {
       var tr = document.createElement('tr');
       if (r.rank === 1) tr.className = 'top1';
 
@@ -126,10 +154,11 @@
       td('rank', '#' + r.rank);
 
       var pilot = document.createElement('td');
+      var pilot_name = cleanName(r.name);
       var name = document.createElement('span');
-      name.textContent = r.name || 'PILOT #' + r.rank;
+      name.textContent = pilot_name || 'PILOT #' + r.rank;
       pilot.appendChild(name);
-      if (r.verified && r.name) {
+      if (r.verified && pilot_name) {
         var tick = document.createElement('span');
         tick.className = 'tick';
         tick.textContent = '✓';
@@ -172,14 +201,29 @@
     elBoard.hidden = false;
   }
 
+  // The initial load's render() is inside the fetch promise chain, so a
+  // throw there lands on the .catch below. These three are not — without
+  // their own guard a malformed board left the table cleared and the note
+  // hidden, i.e. an empty grid with no explanation (security review
+  // 2026-08-04).
+  function safeRender() {
+    if (!snapshot) return;
+    try {
+      render();
+    } catch (e) {
+      note('LEADERBOARD UNAVAILABLE — TRY AGAIN LATER');
+      console.warn('[newtonia] leaderboard render failed:', e);
+    }
+  }
+
   btnSolo.addEventListener('click', function () {
-    players = 1; season = ''; if (snapshot) render();
+    players = 1; season = ''; safeRender();
   });
   btnCoop.addEventListener('click', function () {
-    players = 2; season = ''; if (snapshot) render();
+    players = 2; season = ''; safeRender();
   });
   elSeason.addEventListener('change', function () {
-    season = elSeason.value; if (snapshot) render();
+    season = elSeason.value; safeRender();
   });
 
   fetch(HOST + '/site/leaderboard.json')

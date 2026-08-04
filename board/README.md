@@ -29,6 +29,7 @@ node test/validate_test.mjs        # header/framing validation
 node test/identity_gate_test.mjs   # attestation admission gate
 node test/retention_test.mjs       # retention cron + orphan sweep + site snapshot
 node test/budget_test.mjs          # limiter fail-closed + per-conn budgets
+node test/snapshot_guard_test.mjs  # site-snapshot rebuild single-flight + stale-on-failure
 ```
 
 Protocol test against the real worker code under miniflare (no Cloudflare
