@@ -85,7 +85,9 @@ clear                  # empty the generated world (asteroids, hazards,
                        #   pickups, black holes) before composing
 hud off                # hide the HUD and minimap
 stars 0.15             # starfield density 0..1, overriding the preference
-                       #   (shot mode never writes preferences back)
+                       #   (shot mode never writes preferences back; 0 = none)
+transparent            # write RGBA: black becomes full transparency, dim
+                       #   stroke edges translucent (logo/text assets)
 noship                 # hold every player unspawned — pure-scenery shots
                        #   (title cards, capsules); camera stays put
 zoom 60                # vertical FOV degrees (default 85; smaller = closer;
@@ -154,4 +156,5 @@ Notes:
 | `hazards.shot` | Pulsar, comet, seeker and a black hole, HUD off |
 | `lategame.shot` | Natural generation-14 chaos (station, black hole, full counts) |
 | `steam*.shot` | The five 1920x1080 store screenshots (levels 1, 5 co-op, 5, 14, 20) |
-| `capsule_*.shot` | Store capsule art: the Typer title over bare starfield (`noship`) at each Steam capsule size, the library one ringed with asteroids, plus a bare-starfield page background |
+| `capsule_*.shot` | Store capsule art: the Typer title over bare starfield (`noship`) at each Steam capsule size — the library card and `capsule_header_rocks` banded with monochrome asteroid clusters — plus a bare-starfield page background |
+| `logo_transparent.shot` | 1280x720 RGBA logo: just the word, transparent everywhere else |

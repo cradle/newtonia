@@ -62,6 +62,10 @@ struct Scene {
   bool hud = true;
   bool no_ship = false;  // hold every player unspawned: pure-scenery shots
   float star_density = -1;  // `stars`: overrides the preference; -1 = keep
+  // `transparent`: write RGBA with black as full transparency (logo/text
+  // assets). Alpha = the brightest channel, colour un-premultiplied, so
+  // dim edge pixels become translucent instead of dark.
+  bool transparent = false;
   bool two_players = false;
   float zoom = 0;                 // vertical FOV degrees; 0 = default (85)
   // Camera mode. The game's default is ROTATE (view follows the ship's
@@ -147,6 +151,8 @@ bool parse_scene_file(const char *path) {
       s_scene.clear_world = true;
     } else if (cmd == "noship") {
       s_scene.no_ship = true;
+    } else if (cmd == "transparent") {
+      s_scene.transparent = true;
     } else if (cmd == "stars") {
       if (!(in >> s_scene.star_density) || s_scene.star_density < 0.0f ||
           s_scene.star_density > 1.0f)
@@ -336,14 +342,15 @@ void png_chunk(std::vector<unsigned char> &out, const char type[4],
   put_be32(out, crc32_of(&out[type_at], 4 + data.size()));
 }
 
-bool write_png(const std::string &path, const unsigned char *rgb,
-               int w, int h) {
-  // Raw scanlines: filter byte 0 + RGB row.
+bool write_png(const std::string &path, const unsigned char *px,
+               int w, int h, int channels = 3) {
+  // Raw scanlines: filter byte 0 + RGB/RGBA row.
   std::vector<unsigned char> raw;
-  raw.reserve((size_t)h * (w * 3 + 1));
+  raw.reserve((size_t)h * (w * channels + 1));
   for (int y = 0; y < h; y++) {
     raw.push_back(0);
-    raw.insert(raw.end(), rgb + (size_t)y * w * 3, rgb + (size_t)(y + 1) * w * 3);
+    raw.insert(raw.end(), px + (size_t)y * w * channels,
+               px + (size_t)(y + 1) * w * channels);
   }
   // zlib stream: header + stored deflate blocks + adler32.
   std::vector<unsigned char> z;
@@ -375,8 +382,8 @@ bool write_png(const std::string &path, const unsigned char *rgb,
   std::vector<unsigned char> ihdr;
   put_be32(ihdr, (uint32_t)w);
   put_be32(ihdr, (uint32_t)h);
-  ihdr.push_back(8);   // bit depth
-  ihdr.push_back(2);   // colour type: truecolour RGB
+  ihdr.push_back(8);                          // bit depth
+  ihdr.push_back(channels == 4 ? 6 : 2);      // truecolour (+alpha)
   ihdr.push_back(0);  ihdr.push_back(0);  ihdr.push_back(0);
   png_chunk(out, "IHDR", ihdr);
   png_chunk(out, "IDAT", z);
@@ -704,8 +711,29 @@ bool ShotScene::capture(int window_w, int window_h) {
   }
   bool bmp = s_out_path.size() > 4 &&
              s_out_path.compare(s_out_path.size() - 4, 4, ".bmp") == 0;
-  bool ok = bmp ? write_bmp(s_out_path, rgb.data(), window_w, window_h)
-                : write_png(s_out_path, rgb.data(), window_w, window_h);
+  bool ok;
+  if (s_scene.transparent && !bmp) {
+    // Black is the void: alpha = the brightest channel, colour scaled back
+    // to full strength (un-premultiplied) so partially-covered stroke
+    // pixels composite as translucent green, not dark green.
+    std::vector<unsigned char> out((size_t)window_w * window_h * 4);
+    for (size_t i = 0, n = (size_t)window_w * window_h; i < n; i++) {
+      unsigned char r = rgb[i * 3], g = rgb[i * 3 + 1], b = rgb[i * 3 + 2];
+      unsigned char a = r > g ? (r > b ? r : b) : (g > b ? g : b);
+      if (a > 0) {
+        out[i * 4 + 0] = (unsigned char)((r * 255 + a / 2) / a);
+        out[i * 4 + 1] = (unsigned char)((g * 255 + a / 2) / a);
+        out[i * 4 + 2] = (unsigned char)((b * 255 + a / 2) / a);
+      } else {
+        out[i * 4 + 0] = out[i * 4 + 1] = out[i * 4 + 2] = 0;
+      }
+      out[i * 4 + 3] = a;
+    }
+    ok = write_png(s_out_path, out.data(), window_w, window_h, 4);
+  } else {
+    ok = bmp ? write_bmp(s_out_path, rgb.data(), window_w, window_h)
+             : write_png(s_out_path, rgb.data(), window_w, window_h);
+  }
   std::cout << (ok ? "shot: wrote " : "shot: FAILED writing ") << s_out_path
             << " (" << window_w << "x" << window_h << ", sim "
             << s_scene.sim_ms << " ms)" << std::endl;

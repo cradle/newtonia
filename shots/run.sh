@@ -60,7 +60,7 @@ for s in "${SCENES[@]}"; do
   if [ -f "$OUT/$name.png" ] && command -v convert >/dev/null; then
     # Lossless recompress: the in-game encoder stores uncompressed deflate
     # (fast, no deps); ImageMagick re-encodes the same pixels ~10x smaller.
-    convert "$OUT/$name.png" -strip PNG24:"$OUT/.$name.tmp.png" \
+    convert "$OUT/$name.png" -strip "$OUT/.$name.tmp.png" \
       && mv "$OUT/.$name.tmp.png" "$OUT/$name.png"
   fi
   if [ -n "${NEWTONIA_SHOT_JPG:-}" ] && [ -f "$OUT/$name.png" ]; then

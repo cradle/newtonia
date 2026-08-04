@@ -50,7 +50,7 @@ foreach ($s in $Scenes) {
 
   $png = "shots\out\$name.png"
   if ((Test-Path $png) -and (Get-Command magick -ErrorAction SilentlyContinue)) {
-    magick $png -strip "PNG24:$png.tmp.png"
+    magick $png -strip "$png.tmp.png"
     if ($LASTEXITCODE -eq 0) { Move-Item -Force "$png.tmp.png" $png }
   }
 }
