@@ -32,7 +32,10 @@ srcs.txt
 ios/Newtonia-iOS.xcodeproj/
 ## Web build output
 web/dist/
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/skills/
+!.claude/rules/
 ## Python
 __pycache__/
 *.pyc
