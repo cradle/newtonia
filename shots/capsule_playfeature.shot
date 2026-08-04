@@ -1,0 +1,33 @@
+# Play Store feature graphic (1024x500): the title centred, with the
+# VARIED asteroid types — reflective teal, quantum purple, tough,
+# armoured, phasing, teleporting, filled invincible — ringing the border,
+# several cut by the frame edges, and a clear band around the text.
+# zoom 60 keeps the wide view inside the gen-0 world (no wrap twins).
+size 1024 500
+seed 5
+sim 300
+clear
+hud off
+noship
+stars 0.15
+zoom 60
+text 0 0 140 NEWTONIA
+# top border
+asteroid -1000 520 invincible r=140 v=0,0
+asteroid -600 480 reflective r=90 v=0,0
+asteroid -250 600 r=70 v=0,0
+asteroid 100 470 tough r=100 v=0,0
+asteroid 550 520 quantum r=95 v=0,0
+asteroid 900 480 invincible r=120 v=0,0
+asteroid 1180 620 r=80 v=0,0
+# bottom border
+asteroid -1150 -500 phasing r=100 v=0,0
+asteroid -700 -480 invincible r=110 v=0,0
+asteroid -350 -600 r=60 v=0,0
+asteroid 0 -470 armoured r=95 v=0,0
+asteroid 400 -470 teleporting r=75 v=0,0
+asteroid 800 -580 reflective r=105 v=0,0
+asteroid 1150 -450 invincible r=90 v=0,0
+# side accents, clear of the title
+asteroid -1250 100 r=85 v=0,0
+asteroid 1250 -50 tough r=90 v=0,0
