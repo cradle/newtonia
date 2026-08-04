@@ -315,7 +315,11 @@ submit (admission is unchanged, WS + platform attestation only).
 - **Two public read-only HTTP endpoints** on the board worker, CORS `*`
   (the data is what the WS protocol already serves any native client):
   `GET /site/leaderboard.json` (serves the snapshot; a cold miss builds
-  and stores it, so a fresh deploy never 404s) and
+  and stores it, so a fresh deploy never 404s, and a **freshness probe**
+  — one indexed `MAX(submitted_at)` head-read per view against the build
+  time in the object's R2 metadata — rebuilds it whenever a submission
+  is newer, so new scores appear on the next page view instead of hiding
+  until the cron; field report 2026-08-04) and
   `GET /replay/<season>/<run_id>.nrp` (the blob download the WS `fetch`
   flow serves, same row/blob admission checks). Both ride the existing
   per-IP `Limiter` (`query` / `fetch` actions) and the `DISABLED` kill
@@ -324,9 +328,10 @@ submit (admission is unchanged, WS + platform attestation only).
   list, deployed by the ordinary Pages build) renders the snapshot:
   SOLO/CO-OP toggle, season browser, platform badges + verified ticks,
   `?players=`/`?season=` deep links, `?board=beta` for the beta worker.
-  Worker-supplied names render via `textContent` only. Data is at most a
-  day stale by design (plus a 1 h `Cache-Control`) — the page says
-  "standings refresh daily".
+  Worker-supplied names render via `textContent` only. Staleness is
+  bounded by the freshness probe plus a 5 min `Cache-Control`; the daily
+  cron republish still matters because retention demotions change data
+  without a new submission.
 - **WATCH → in-browser playback.** Replay-bearing rows link
   `/play/?replay=<season>/<run_id>`: `web/main.ts` downloads the blob
   from `/replay/` and hands the bytes to `web_watch_replay`

@@ -30,10 +30,11 @@
 // leaderboard"). Both are public data the WS protocol already serves to any
 // native client, so they answer with Access-Control-Allow-Origin: * and
 // change nothing about admission (submissions stay WS + attestation only):
-//   GET /site/leaderboard.json          the daily snapshot (top KEEP_N of
-//                                       every canonical season, both
-//                                       boards), rebuilt by the retention
-//                                       cron and on first miss
+//   GET /site/leaderboard.json          the snapshot (top KEEP_N of every
+//                                       canonical season, both boards),
+//                                       republished by the daily retention
+//                                       cron and rebuilt on read whenever
+//                                       a newer submission exists
 //   GET /replay/<season>/<run_id>.nrp   a charting row's replay blob
 //
 // Admission (LEADERBOARD.md decisions): the blob is the submission — score,
@@ -319,6 +320,12 @@ async function ensure_schema(db) {
     // the best), and no code path can leave a player with two rows.
     db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS scores_player_uk
                 ON scores(season, players, platform_key)`),
+    // The site snapshot's freshness probe (serve_snapshot) is
+    // MAX(submitted_at) over the whole table on every page view — this
+    // index makes that a head lookup instead of a full scan (D1 bills
+    // rows scanned).
+    db.prepare(`CREATE INDEX IF NOT EXISTS scores_submitted
+                ON scores(submitted_at DESC)`),
   ]);
   // Append-only migrations for tables that predate a column (fresh CREATEs
   // above already carry them): ADD COLUMN throws when the column exists,
@@ -442,26 +449,51 @@ export async function build_site_snapshot(env) {
   return { generated_at: Date.now(), boards };
 }
 
+// Store the snapshot with its build time in R2 metadata, so the freshness
+// probe below can read it without parsing the (potentially large) body.
+async function store_snapshot(env, snap) {
+  await env.REPLAYS.put(SNAPSHOT_KEY, JSON.stringify(snap), {
+    customMetadata: { generated_at: String(snap.generated_at) },
+  });
+}
+
 async function serve_snapshot(request, env, dev) {
   const ip = rate_key(request.headers.get("CF-Connecting-IP") || "local");
   if (!(await within_limit(env, ip, "query", dev)))
     return site_error(429, "rate limited");
-  let body;
+  let body = null;
   const obj = await env.REPLAYS.get(SNAPSHOT_KEY);
   if (obj) {
+    // Freshness probe: a submission newer than the stored snapshot makes
+    // it stale — new scores must not hide until the next daily cron
+    // (field report, 2026-08-04: a fresh beta submission was invisible
+    // behind an empty stored snapshot). One indexed D1 head-read per
+    // view; the rebuild itself only runs when something actually landed.
+    // A pre-metadata object (older deploy) counts as stale once.
     body = await obj.text();
-  } else {
-    // Cold start (a fresh deploy the cron hasn't visited yet): build now
-    // and store, so the page never 404s while the data exists.
-    body = JSON.stringify(await build_site_snapshot(env));
-    await env.REPLAYS.put(SNAPSHOT_KEY, body);
+    const built = Number((obj.customMetadata || {}).generated_at) || 0;
+    if (built) {
+      await ensure_schema(env.DB);
+      const r = await env.DB.prepare(
+          `SELECT MAX(submitted_at) AS newest FROM scores`).first();
+      if (r && Number(r.newest) > built) body = null;
+    } else {
+      body = null;
+    }
+  }
+  if (body === null) {
+    // Cold start (a fresh deploy the cron hasn't visited yet) or stale:
+    // build now and store, so the page always shows what D1 holds.
+    const snap = await build_site_snapshot(env);
+    body = JSON.stringify(snap);
+    await store_snapshot(env, snap);
   }
   return new Response(body, { headers: {
     ...CORS,
     "Content-Type": "application/json",
-    // The snapshot refreshes daily; an hour of browser staleness is fine
-    // and keeps repeat views off R2.
-    "Cache-Control": "public, max-age=3600",
+    // Short browser cache: new scores should appear within minutes, and
+    // the freshness probe already keeps repeat worker hits cheap.
+    "Cache-Control": "public, max-age=300",
   } });
 }
 
@@ -608,7 +640,7 @@ export default {
     // staleness the site already tolerates.
     try {
       const snap = await build_site_snapshot(env);
-      await env.REPLAYS.put(SNAPSHOT_KEY, JSON.stringify(snap));
+      await store_snapshot(env, snap);
       console.log(`site: published snapshot (${snap.boards.length} board(s))`);
     } catch (e) {
       console.log(`site: snapshot publish failed: ${log_str(e && e.message)}`);
