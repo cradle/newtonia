@@ -503,6 +503,24 @@ State *ShotScene::build_state() {
     g->black_holes->clear();
   }
 
+  // Composed enemies get the same clearance sweep as the players — a dense
+  // late generation otherwise drops them onto rocks. Runs BEFORE the
+  // composed asteroid spawns so it can only cull generation rocks, never
+  // scene-placed ones.
+  for (const SceneEnemy &se : s_scene.enemies) {
+    WrappedPoint at(ox + se.x, oy + se.y);
+    auto it = g->objects->begin();
+    while (it != g->objects->end()) {
+      if ((*it)->position.distance_to(at) <
+          (*it)->effective_radius() + 250.0f) {
+        delete *it;
+        it = g->objects->erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
   for (const SceneAsteroid &sa : s_scene.asteroids) {
     Asteroid *a = new Asteroid(sa.inv, sa.invis, sa.refl, sa.tele, sa.quant,
                                sa.tough, sa.arm, sa.phas);
@@ -521,21 +539,6 @@ State *ShotScene::build_state() {
     // Scene velocities are units/second; Object::step integrates per ms.
     if (sa.has_v) a->velocity = Point(sa.vx / 1000.0f, sa.vy / 1000.0f);
     g->objects->push_back(a);
-  }
-  // Composed enemies get the same clearance sweep as the players — a dense
-  // late generation otherwise drops them onto rocks.
-  for (const SceneEnemy &se : s_scene.enemies) {
-    WrappedPoint at(ox + se.x, oy + se.y);
-    auto it = g->objects->begin();
-    while (it != g->objects->end()) {
-      if ((*it)->position.distance_to(at) <
-          (*it)->effective_radius() + 250.0f) {
-        delete *it;
-        it = g->objects->erase(it);
-      } else {
-        ++it;
-      }
-    }
   }
   // The sweeps/clear above deleted asteroids the grid still points at, and
   // the enemy constructor's safe_position consults the grid — refresh it
@@ -591,6 +594,9 @@ void ShotScene::log_state(State *state) {
     std::cout << "shot: player " << ++i << " alive=" << gs->ship->is_alive()
               << " score=" << gs->ship->score << std::endl;
   }
+  std::cout << "shot: world " << g->world.x() << "x" << g->world.y() << ", "
+            << g->objects->size() << " asteroids, " << g->hazards->size()
+            << " hazards" << std::endl;
   if (!g->enemies->empty()) {
     int alive = 0;
     Ship *p1 = g->players->front()->ship;
