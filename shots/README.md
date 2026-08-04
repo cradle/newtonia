@@ -15,6 +15,17 @@ shots/run.sh shots/hero.shot    # just one
 NEWTONIA_SHOT_SIZE=2560x1440 shots/run.sh shots/hero.shot
 ```
 
+Windows (PowerShell, after the MSYS2 build — see CLAUDE.md): no Xvfb
+involved, a real window opens briefly per scene, rendered on the actual
+GPU. If the requested size is taller than the desktop, the window manager
+may clamp the window — the `shot: wrote` line prints the size actually
+captured, so check it (remedy: a display at least as tall as the shot).
+
+```powershell
+.\shots\run.ps1                            # every shots\*.shot
+.\shots\run.ps1 shots\steam1_level1.shot   # just one
+```
+
 Or drive the binary directly (this is all `run.sh` does):
 
 ```sh
