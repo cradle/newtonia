@@ -1,0 +1,184 @@
+name: Render replay video
+
+# Render a recorded replay to an MP4 on a runner and hand it back as a
+# downloadable artifact (shots/README.md "Video capture").
+#
+# This exists so making a trailer needs NO local toolchain: no build, no
+# MSYS2/bash on Windows, no ffmpeg, no Xvfb, no GPU. Download the mp4 from
+# the run's Artifacts when it finishes.
+#
+# Two ways in, because they are available at different times:
+#   * workflow_dispatch — the Run workflow button, with all the knobs. GitHub
+#     only shows it once this file is on the DEFAULT branch, so it is useless
+#     until this lands on master.
+#   * push — editing this file on a claude/** branch renders with the
+#     defaults below. That is the escape hatch while the button doesn't
+#     exist: push a change to the parameters here and collect the artifact.
+#
+# The replay can be a leaderboard run (season/run_id — the same pair the
+# site's WATCH link carries, e.g. s1/16124542961030418748), any URL to a
+# .nrp, or a path to one committed in the repo.
+
+on:
+  workflow_dispatch:
+    inputs:
+      replay:
+        description: "season/run_id (e.g. s1/16124542961030418748), a URL to a .nrp, or a repo path"
+        required: true
+      start:
+        description: "Skip this far into the run first (S, M:SS, or 500ms)"
+        default: "0"
+      duration:
+        description: "How much to capture (S or M:SS; 0 = to the end of the recording)"
+        default: "1:30"
+      size:
+        description: "Frame size. Render ABOVE your target: YouTube gives 1440p a better codec and bitrate than 1080p, which starfields need"
+        default: "2560x1440"
+      fps:
+        default: "60"
+      crf:
+        description: "x264 quality, lower is better. 16 is the visually-lossless master; raise it if the artifact is slow to download"
+        default: "16"
+      hud:
+        description: "Draw the in-game HUD and minimap"
+        type: boolean
+        default: true
+      chrome:
+        description: "Draw the REPLAY watermark, timeline and control hints"
+        type: boolean
+        default: false
+  push:
+    branches: ["claude/**"]
+    paths: [".github/workflows/video.yml"]
+
+jobs:
+  render:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+
+    # Defaults for the push path, where there are no inputs to fill in. Edit
+    # these and push to render something else before the button exists.
+    env:
+      IN_REPLAY: ${{ inputs.replay }}
+      IN_START: ${{ inputs.start }}
+      IN_DURATION: ${{ inputs.duration }}
+      IN_SIZE: ${{ inputs.size }}
+      IN_FPS: ${{ inputs.fps }}
+      IN_CRF: ${{ inputs.crf }}
+      IN_HUD: ${{ inputs.hud }}
+      IN_CHROME: ${{ inputs.chrome }}
+      DEF_REPLAY: "s1/16124542961030418748"
+      DEF_START: "0"
+      DEF_DURATION: "1:30"
+      DEF_SIZE: "2560x1440"
+      DEF_FPS: "60"
+      DEF_CRF: "16"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same recipe as linux.yml's build, plus the two the harness needs:
+      # xvfb (a runner has no display) and ffmpeg (the encoder). No netplay —
+      # playback is a solo feature, and NETPLAY=0 skips libdatachannel, which
+      # is most of that workflow's build time.
+      - name: Install dependencies
+        run: |
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
+          try sudo apt-get update
+          try sudo apt-get install -y \
+            libsdl2-dev \
+            freeglut3-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libxi-dev \
+            cmake \
+            xvfb \
+            ffmpeg
+
+      - name: Build SDL2_mixer (WAV + MP3 only)
+        run: |
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20))
+                    if [ -n "${CLEAN:-}" ]; then rm -rf $CLEAN; fi; done; }
+          CLEAN=SDL2_mixer try git clone --depth 1 --branch release-2.8.2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
+          cmake -S SDL2_mixer -B SDL2_mixer/build \
+            -DSDL2MIXER_WAV=ON -DSDL2MIXER_MP3=ON \
+            -DSDL2MIXER_FLAC=OFF -DSDL2MIXER_VORBIS=OFF -DSDL2MIXER_OPUS=OFF \
+            -DSDL2MIXER_MOD=OFF -DSDL2MIXER_MIDI=OFF -DSDL2MIXER_WAVPACK=OFF \
+            -DBUILD_SHARED_LIBS=OFF -DSDL2MIXER_SAMPLES=OFF
+          cmake --build SDL2_mixer/build --parallel
+          sudo cmake --install SDL2_mixer/build
+
+      - name: Build
+        run: make NETPLAY=0 -j$(nproc)
+
+      # season/run_id -> the board's public blob endpoint (the same GET the
+      # site's WATCH deep link uses); a URL is fetched as given; anything else
+      # is taken as a path already in the checkout.
+      - name: Fetch the replay
+        id: fetch
+        run: |
+          set -u
+          REPLAY=${IN_REPLAY:-$DEF_REPLAY}
+          case "$REPLAY" in
+            http://*|https://*) url=$REPLAY ;;
+            *.nrp)
+              if [ -f "$REPLAY" ]; then
+                echo "using the committed file $REPLAY"
+                echo "path=$REPLAY" >> "$GITHUB_OUTPUT"; exit 0
+              fi
+              url="https://newtonia-board.gfmcc.workers.dev/replay/$REPLAY" ;;
+            *)
+              url="https://newtonia-board.gfmcc.workers.dev/replay/${REPLAY}.nrp" ;;
+          esac
+          echo "fetching $url"
+          curl -fsSL --retry 3 --retry-delay 5 -o run.nrp "$url" || {
+            echo "::error::could not download the replay from $url"; exit 1; }
+          ls -l run.nrp
+          echo "path=run.nrp" >> "$GITHUB_OUTPUT"
+
+      # What the file actually holds (score, level, length, players) — logged
+      # BEFORE the long render, so a wrong replay is obvious immediately
+      # rather than after half an hour of encoding.
+      - name: Replay header
+        run: |
+          NEWTONIA_VIDEO=/dev/null NEWTONIA_VIDEO_INFO=1 \
+            NEWTONIA_VIDEO_REPLAY="${{ steps.fetch.outputs.path }}" \
+            ./newtonia 2>&1 | grep -E "video:" || true
+
+      - name: Render
+        run: |
+          set -u
+          # Flags are assembled in the shell, not in ${{ }}: on the push path
+          # every input is an empty string, and an empty string tests equal to
+          # false in a workflow expression — which would silently render every
+          # push with the HUD off.
+          args=(--replay "${{ steps.fetch.outputs.path }}"
+                --start "${IN_START:-$DEF_START}"
+                --duration "${IN_DURATION:-$DEF_DURATION}"
+                --size "${IN_SIZE:-$DEF_SIZE}"
+                --fps "${IN_FPS:-$DEF_FPS}"
+                --crf "${IN_CRF:-$DEF_CRF}"
+                --out gameplay.mp4)
+          [ "${IN_HUD:-true}" = "false" ] && args+=(--no-hud)
+          [ "${IN_CHROME:-false}" = "true" ] && args+=(--chrome)
+          echo "shots/video.sh ${args[*]}"
+          shots/video.sh "${args[@]}"
+          ls -l gameplay.mp4
+
+      # The whole point: a file a browser can download, with no toolchain at
+      # the other end. The action zips what it uploads; an mp4 is already
+      # compressed, so level 0 skips a pointless second pass over a file this
+      # size.
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: gameplay-mp4
+          path: gameplay.mp4
+          compression-level: 0
+          retention-days: 30
