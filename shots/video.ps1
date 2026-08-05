@@ -57,7 +57,9 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
-if (-not (Test-Path .\newtonia.exe)) {
+$exe = $null
+if (Test-Path .\newtonia.exe) { $exe = (Resolve-Path .\newtonia.exe).Path }
+if (-not $exe) {
   Write-Error ("video.ps1: newtonia.exe not found. Build it in an MSYS2 " +
     "MINGW64 shell (make NETPLAY=0 -j8), or take the Windows workflow's " +
     "artifact from a green run. With neither, the 'Render replay video' " +
@@ -65,6 +67,20 @@ if (-not (Test-Path .\newtonia.exe)) {
     "toolchain at all.")
   exit 1
 }
+
+# An exe built before the video harness existed knows nothing about
+# NEWTONIA_VIDEO, so it ignores every variable set below and opens the ordinary
+# game instead: two windows sitting at the menu, no frames, no error. Look for
+# the harness in the binary rather than letting that happen - env var names are
+# plain strings in the image, so this is a substring search, not a launch.
+$img = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($exe))
+if ($img.IndexOf("NEWTONIA_VIDEO_REPLAY") -lt 0) {
+  Write-Error ("video.ps1: this newtonia.exe predates the video harness - it " +
+    "would just open the game. Rebuild it after pulling: in an MSYS2 MINGW64 " +
+    "shell, 'make NETPLAY=0 -j8'.")
+  exit 1
+}
+$img = $null
 
 # "90", "1:30" and "500ms" -> milliseconds, matching video.sh's to_ms.
 function ConvertTo-Ms([string]$t) {
@@ -107,7 +123,13 @@ Remove-Item Env:\NEWTONIA_VIDEO_INFO -ErrorAction SilentlyContinue
 if ($Info) {
   $env:NEWTONIA_VIDEO = "NUL"
   $env:NEWTONIA_VIDEO_INFO = "1"
-  & .\newtonia.exe 2>&1 | Select-String -Pattern "video:"
+  $iOut = Join-Path $env:TEMP "newtonia-info.txt"
+  $iErr = Join-Path $env:TEMP "newtonia-info.err"
+  Start-Process -FilePath $exe -NoNewWindow -Wait `
+    -RedirectStandardOutput $iOut -RedirectStandardError $iErr | Out-Null
+  foreach ($f in @($iOut, $iErr)) {
+    if (Test-Path $f) { Get-Content $f | Select-String -Pattern "video:" }
+  }
   exit 0
 }
 
@@ -170,8 +192,19 @@ $rate = 44100
 $ch   = 2
 if (-not $NoAudio) {
   $env:NEWTONIA_VIDEO_AUDIO = $raw
-  $alog = & .\newtonia.exe 2>&1
+  # Start-Process -Wait, not the call operator: newtonia.exe is built for the
+  # GUI subsystem (see CLAUDE.md), and PowerShell does not block on a GUI app -
+  # it returns at once and the next pass starts on top of this one. That is the
+  # second half of "two instances at the menu".
+  $aOut = Join-Path $work "audio.out"
+  $aErr = Join-Path $work "audio.err"
+  Start-Process -FilePath $exe -NoNewWindow -Wait `
+    -RedirectStandardOutput $aOut -RedirectStandardError $aErr | Out-Null
   Remove-Item Env:\NEWTONIA_VIDEO_AUDIO
+  $alog = @()
+  foreach ($f in @($aOut, $aErr)) {
+    if (Test-Path $f) { $alog += (Get-Content $f) }
+  }
   $alog | Select-String -Pattern "video:" | ForEach-Object { Write-Host "audio pass: $_" }
   # The raw stream carries no format; take the rate and channels the pass
   # actually opened rather than assuming them.
@@ -188,7 +221,6 @@ if (-not $NoAudio) {
 # hell, and a path with a space in it (OneDrive\Documents, say) is exactly
 # where it bites.
 $env:NEWTONIA_VIDEO = "-"
-$exe = (Resolve-Path .\newtonia.exe).Path
 $bat = Join-Path $work "render.bat"
 
 # The .bat is built with a HERE-STRING, not by concatenating pieces. Building
