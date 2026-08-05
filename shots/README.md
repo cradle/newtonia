@@ -265,6 +265,16 @@ frame rate and GOP so the concat demuxer joins them without artefacts at the
 seams, and it takes each beat's frame interval from the harness's own log
 rather than assuming, exactly as `gif.sh` does.
 
+**The finished mp4 is not committed.** Unlike the still renders under
+`shots/out/`, it is ~24 MB and git stores every version of it in full, so a
+few re-cuts would outweigh the rest of the repository. It rebuilds
+deterministically from the committed scenes in about four minutes, which is
+cheaper than carrying it. Keep the scenes under review, not the output.
+
+Check any new end-card claim against what a viewer can actually go and do:
+the card says Steam and iOS because Android is still an email-gated internal
+beta, and naming it would send people to a dead end.
+
 ## Mobile store screenshots (touch OSD)
 
 `NEWTONIA_FORCE_TOUCH=1` renders any scene with the real touch UI — the

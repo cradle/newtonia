@@ -12,4 +12,7 @@ stars 0.35
 text 0 0.30 90 NEWTONIA
 text 0 0.02 9 PLAY FREE IN YOUR BROWSER
 text 0 -0.12 7 NEWTONIA.METONYMOUS.COM
-text 0 -0.42 7 ALSO ON STEAM - IOS - ANDROID
+# Steam and iOS only. Android is an email-gated internal beta (see the
+# platform list on web/site/index.html), so naming it here would send
+# viewers to a dead end.
+text 0 -0.34 7 ALSO ON STEAM AND IOS
