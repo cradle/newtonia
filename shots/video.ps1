@@ -190,19 +190,30 @@ if (-not $NoAudio) {
 $env:NEWTONIA_VIDEO = "-"
 $exe = (Resolve-Path .\newtonia.exe).Path
 $bat = Join-Path $work "render.bat"
-$ff  = '"' + $FfmpegExe + '"' +
-       " -hide_banner -loglevel warning -y -f rawvideo -pix_fmt rgb24 " +
-       "-s ${W}x${H} -r $Fps -i - -an -c:v libx264 -preset slow -crf $Crf " +
-       "-pix_fmt yuv420p -movflags +faststart " + '"' + $silent + '"'
-Set-Content -Path $bat -Encoding ASCII -Value @(
-  "@echo off",
-  '"' + $exe + '" | ' + $ff
-)
+
+# The .bat is built with a HERE-STRING, not by concatenating pieces. Building
+# it as '"' + $exe + '" | ' + $ff inside an array literal did not produce one
+# line: PowerShell took the fragments as separate ARRAY ELEMENTS, Set-Content
+# wrote one per line, and cmd then tried to execute a lone quote as a command
+# ("'"' is not recognized as an internal or external command"). A double-quoted
+# here-string interpolates variables and leaves quotes alone, so what you read
+# here is exactly what lands in the file.
+$batText = @"
+@echo off
+"$exe" | "$FfmpegExe" -hide_banner -loglevel warning -y -f rawvideo -pix_fmt rgb24 -s ${W}x${H} -r $Fps -i - -an -c:v libx264 -preset slow -crf $Crf -pix_fmt yuv420p -movflags +faststart "$silent"
+"@
+Set-Content -Path $bat -Value $batText -Encoding ASCII
+
+# Echo the pipeline. If it fails, the command that failed is on screen rather
+# than inside a temporary file that the cleanup below has already deleted.
+Write-Host "=== $((Get-Content $bat)[1])"
 & cmd /c "`"$bat`""
 $rc = $LASTEXITCODE
 Remove-Item Env:\NEWTONIA_VIDEO
 if ($rc -ne 0 -or -not (Test-Path $silent)) {
-  Write-Error "video.ps1: the render failed (exit $rc)"
+  Write-Host "--- $bat was:"
+  Get-Content $bat | ForEach-Object { Write-Host "    $_" }
+  Write-Error "video.ps1: the render failed (exit $rc). The pipeline above is what cmd ran."
   exit 1
 }
 
