@@ -29,9 +29,10 @@
 # video.sh streams frames through a FIFO, and MSYS2's fifos are emulated for
 # MSYS2-linked programs: a native newtonia.exe cannot open one. So that script
 # cannot work here however it is invoked. This uses NEWTONIA_VIDEO=- instead:
-# frames on stdout, piped to ffmpeg by cmd, which is byte-clean. A PowerShell
-# pipeline is not - it decodes bytes as text and would destroy the frames -
-# which is why the pipe runs inside a generated .bat below.
+# frames on stdout. The two processes are joined by .NET streams below rather
+# than by a shell: a PowerShell pipeline decodes bytes as text and would
+# destroy the frames, and handing the pipeline to cmd instead cost four
+# separate failures before this approach replaced it.
 #
 # The two passes run one after the other here rather than together as they do
 # on POSIX. The audio pass is paced by the audio device and cannot be starved
@@ -215,74 +216,57 @@ if (-not $NoAudio) {
   }
 }
 
-# --- video pass: frames on stdout, piped to ffmpeg ---
-# The pipeline goes in a generated .bat rather than on a cmd /c command line:
-# cmd's quote handling for /c strings with embedded quotes is its own special
-# hell, and a path with a space in it (OneDrive\Documents, say) is exactly
-# where it bites.
+# --- video pass: frames on stdout, straight into ffmpeg ---
+# The two processes are connected by .NET, NOT by cmd. Every failure on this
+# script so far came from handing a pipeline to cmd: a lone quote executed as
+# a command, then a pipeline that produced no output file at all. Meanwhile
+# the harness itself was never at fault - writing frames to a FILE on this
+# machine produced exactly the byte count Linux produces, which is what
+# narrowed it to the plumbing.
+#
+# So there is no plumbing left to get wrong. Start both processes, copy the
+# bytes between them, and let each keep OUR stderr so the game's progress and
+# ffmpeg's warnings appear live in this window instead of inside a temporary
+# file.
 $env:NEWTONIA_VIDEO = "-"
-$bat = Join-Path $work "render.bat"
 
-# The .bat is built with a HERE-STRING, not by concatenating pieces. Building
-# it as '"' + $exe + '" | ' + $ff inside an array literal did not produce one
-# line: PowerShell took the fragments as separate ARRAY ELEMENTS, Set-Content
-# wrote one per line, and cmd then tried to execute a lone quote as a command
-# ("'"' is not recognized as an internal or external command"). A double-quoted
-# here-string interpolates variables and leaves quotes alone, so what you read
-# here is exactly what lands in the file.
-$vErr = Join-Path $work "render.err"
-$batText = @"
-@echo off
-"$exe" 2>"$vErr" | "$FfmpegExe" -hide_banner -loglevel warning -y -f rawvideo -pix_fmt rgb24 -s ${W}x${H} -r $Fps -i - -an -c:v libx264 -preset slow -crf $Crf -pix_fmt yuv420p -movflags +faststart "$silent"
-"@
-Set-Content -Path $bat -Value $batText -Encoding ASCII
+$ffArgs = "-hide_banner -loglevel warning -y -f rawvideo -pix_fmt rgb24 " +
+          "-s ${W}x${H} -r $Fps -i - -an -c:v libx264 -preset slow -crf $Crf " +
+          "-pix_fmt yuv420p -movflags +faststart `"$silent`""
+Write-Host "=== $FfmpegExe $ffArgs"
 
-# Echo the pipeline. If it fails, the command that failed is on screen rather
-# than inside a temporary file that the cleanup below has already deleted.
-Write-Host "=== $((Get-Content $bat)[1])"
-Write-Host "=== the game logs to $vErr"
+$gi = New-Object Diagnostics.ProcessStartInfo
+$gi.FileName = $exe
+$gi.UseShellExecute = $false
+$gi.RedirectStandardOutput = $true      # the frames; stderr stays on screen
 
-# Run the pipeline in the background and TAIL its log, rather than waiting in
-# silence for a job that takes minutes. Printing the log only after cmd
-# returned meant a stall showed nothing at all - no progress, no error, just a
-# white window - and the file holding the answer was deleted by the cleanup
-# before anyone could read it.
-$proc = Start-Process -FilePath $env:ComSpec -ArgumentList "/c", "`"$bat`"" `
-          -NoNewWindow -PassThru
-$shown = 0
-while (-not $proc.HasExited) {
-  Start-Sleep -Milliseconds 500
-  if (Test-Path $vErr) {
-    $lines = @(Get-Content $vErr -ErrorAction SilentlyContinue)
-    if ($lines.Count -gt $shown) {
-      $lines[$shown..($lines.Count - 1)] |
-        Where-Object { $_ -match "video:|replay:" } |
-        ForEach-Object { Write-Host "  $_" }
-      $shown = $lines.Count
-    }
-  }
+$fi = New-Object Diagnostics.ProcessStartInfo
+$fi.FileName = $FfmpegExe
+$fi.Arguments = $ffArgs
+$fi.UseShellExecute = $false
+$fi.RedirectStandardInput = $true       # the frames; stderr stays on screen
+
+$game = [Diagnostics.Process]::Start($gi)
+$enc  = [Diagnostics.Process]::Start($fi)
+
+# BaseStream, not the StreamReader on top of it: the reader decodes text and
+# would corrupt every frame. A 1 MB buffer keeps a 1440p frame (11 MB) moving
+# in a few copies.
+try {
+  $game.StandardOutput.BaseStream.CopyTo($enc.StandardInput.BaseStream, 1048576)
+} catch {
+  Write-Host "video.ps1: the frame stream stopped early: $($_.Exception.Message)"
 }
-$proc.WaitForExit()
-$rc = $proc.ExitCode
+$enc.StandardInput.Close()
+$game.WaitForExit()
+$enc.WaitForExit()
+$rc = $game.ExitCode
+if ($rc -eq 0) { $rc = $enc.ExitCode }
 Remove-Item Env:\NEWTONIA_VIDEO
-# Anything the tail missed between its last poll and the exit.
-if (Test-Path $vErr) {
-  $lines = @(Get-Content $vErr -ErrorAction SilentlyContinue)
-  if ($lines.Count -gt $shown) {
-    $lines[$shown..($lines.Count - 1)] |
-      Where-Object { $_ -match "video:|replay:" } |
-      ForEach-Object { Write-Host "  $_" }
-  }
-}
 if ($rc -ne 0 -or -not (Test-Path $silent)) {
-  Write-Host "--- $bat was:"
-  Get-Content $bat | ForEach-Object { Write-Host "    $_" }
-  if (Test-Path $vErr) {
-    Write-Host "--- the game said:"
-    Get-Content $vErr | ForEach-Object { Write-Host "    $_" }
-  }
+  Write-Host "--- game exit $($game.ExitCode), ffmpeg exit $($enc.ExitCode)"
   Write-Host "--- keeping $work for inspection"
-  Write-Error "video.ps1: the render failed (exit $rc). The pipeline above is what cmd ran."
+  Write-Error "video.ps1: the render failed. Both programs logged to this window above."
   exit 1
 }
 
