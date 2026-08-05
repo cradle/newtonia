@@ -58,15 +58,20 @@ jobs:
 
     # Defaults for the push path, where there are no inputs to fill in. Edit
     # these and push to render something else before the button exists.
+    # `inputs` is only defined for workflow_dispatch/workflow_call: naming it
+    # on a push run is an unrecognized named-value, which fails the whole run
+    # before a single job starts (run 1 of this workflow, exactly that).
+    # `github.event.inputs` resolves on every event and is simply empty when
+    # there was no dispatch, which is what the defaults below are for.
     env:
-      IN_REPLAY: ${{ inputs.replay }}
-      IN_START: ${{ inputs.start }}
-      IN_DURATION: ${{ inputs.duration }}
-      IN_SIZE: ${{ inputs.size }}
-      IN_FPS: ${{ inputs.fps }}
-      IN_CRF: ${{ inputs.crf }}
-      IN_HUD: ${{ inputs.hud }}
-      IN_CHROME: ${{ inputs.chrome }}
+      IN_REPLAY: ${{ github.event.inputs.replay }}
+      IN_START: ${{ github.event.inputs.start }}
+      IN_DURATION: ${{ github.event.inputs.duration }}
+      IN_SIZE: ${{ github.event.inputs.size }}
+      IN_FPS: ${{ github.event.inputs.fps }}
+      IN_CRF: ${{ github.event.inputs.crf }}
+      IN_HUD: ${{ github.event.inputs.hud }}
+      IN_CHROME: ${{ github.event.inputs.chrome }}
       DEF_REPLAY: "s1/16124542961030418748"
       DEF_START: "0"
       DEF_DURATION: "1:30"
