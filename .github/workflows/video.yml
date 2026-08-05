@@ -159,10 +159,17 @@ jobs:
       - name: Render
         run: |
           set -u
-          # Flags are assembled in the shell, not in ${{ }}: on the push path
-          # every input is an empty string, and an empty string tests equal to
-          # false in a workflow expression — which would silently render every
-          # push with the HUD off.
+          # Flags are assembled in the shell rather than in workflow
+          # expressions: on the push path every input is an empty string, and
+          # an empty string tests equal to false in an expression — which
+          # would silently render every push with the HUD off.
+          #
+          # (And note this comment names no expression literally. A run block
+          # is scanned for expressions in full, comments included, so an empty
+          # "dollar-brace-brace" pair written here is a syntax error that
+          # invalidates the whole FILE — runs 1 and 2 of this workflow died
+          # that way, before a single job started, with the run named after
+          # the file path because nothing could be parsed to find its name.)
           args=(--replay "${{ steps.fetch.outputs.path }}"
                 --start "${IN_START:-$DEF_START}"
                 --duration "${IN_DURATION:-$DEF_DURATION}"
