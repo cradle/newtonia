@@ -25,6 +25,8 @@
 #include <cstring>
 
 #ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#include <cstdio>
 // web_main.cpp: one-shot, true once a /play/?replay= watch deep link has
 // staged download.nrp for playback (polled below in Menu::tick).
 bool web_take_replay_watch();
@@ -871,7 +873,15 @@ void Menu::tick(int delta) {
       request_state_change(g);
       return;
     }
+    // The header passed its pre-flight but the body didn't parse. Say so —
+    // the staging call already answered "accepted", so main.ts has shown
+    // nothing and the player would otherwise just sit on the menu
+    // wondering what their click did.
     SDL_Log("replay: ?replay= download would not play");
+    remove(Replay::download_path().c_str());
+    EM_ASM({
+      alert("That replay could not be played by this version of the game.");
+    });
   }
 #endif
 

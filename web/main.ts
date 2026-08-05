@@ -54,36 +54,88 @@ declare const Module: {
     const parts = spec.split("/");
     if (parts.length !== 2) return;
     const [season, run] = parts;
+    // Dot segments are printable ASCII, so the class test alone lets `..`
+    // through, and encodeURIComponent does not escape `.` — the fetch URL
+    // then normalises to a different path on the worker (same origin, so
+    // never an SSRF, but it should not be attempted at all).
     if (!/^[!-~]{1,23}$/.test(season) || season.indexOf("\\") !== -1 ||
+        season === "." || season === ".." ||
         !/^[0-9]{1,20}$/.test(run)) return;
     const host = q.get("board") === "beta"
         ? "https://newtonia-board-beta.gfmcc.workers.dev"
         : "https://newtonia-board.gfmcc.workers.dev";
+    // The reader's own web ceiling (REPLAY.md). Bounding the download
+    // matters for more than politeness: the body is materialised three
+    // times over (JS ArrayBuffer, the wasm heap copy, then the MEMFS file),
+    // wasm memory never shrinks once grown, and an unbounded body is what
+    // makes a failed _malloc reachable at all.
+    const MAX_REPLAY_BYTES = 48 * 1024 * 1024;
+    const tooBig = () => {
+      alert("That replay is too large for the web build to play.");
+    };
     fetch(`${host}/replay/${encodeURIComponent(season)}/${run}.nrp`)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        // Content-Length can lie or be absent (and says nothing about the
+        // DECOMPRESSED size), so this is only an early out — the real
+        // check is on the decoded bytes below.
+        const declared = Number(r.headers.get("content-length"));
+        if (declared > MAX_REPLAY_BYTES) {
+          tooBig();
+          return null;
+        }
         return r.arrayBuffer();
       })
       .then((buf) => {
+        if (!buf) return;               // already refused above
         const bytes = new Uint8Array(buf);
+        if (!bytes.length || bytes.length > MAX_REPLAY_BYTES) {
+          tooBig();
+          return;
+        }
         const m = Module as any;
         let tries = 0;
+        const retry = () => {
+          if (tries++ < 600) setTimeout(deliver, 100); // ~60 s of warmup
+        };
         const deliver = () => {
-          if (m._web_watch_replay && m._malloc && m._free && m.HEAPU8) {
-            const ptr = m._malloc(bytes.length);
-            m.HEAPU8.set(bytes, ptr);
-            const res = m._web_watch_replay(ptr, bytes.length);
-            m._free(ptr);
-            if (res === 0 && tries++ < 600) {
-              setTimeout(deliver, 100); // IDBFS still mounting (~60 s cap)
+          if (!(m._web_watch_replay && m._malloc && m._free && m.HEAPU8))
+            return retry();
+          // Readiness probe that costs no allocation. web_watch_replay
+          // answers 0 for "IDBFS still mounting" BEFORE it validates its
+          // arguments, and -1 for "ready, bad arguments" after — so a null
+          // call distinguishes the two. Retrying the real call instead
+          // re-malloc'd and re-copied the whole blob every 100 ms (~9.6 GB
+          // of memcpy across a full retry budget).
+          if (m._web_watch_replay(0, 0) === 0) return retry();
+          let ptr = 0;
+          try {
+            ptr = m._malloc(bytes.length);
+            // A failed allocation returns 0 in this build (ABORTING_MALLOC
+            // is off), and set(bytes, 0) would write the blob over wasm
+            // address 0 — smashing the static data segments and trapping
+            // the game loop every frame thereafter.
+            if (!ptr) {
+              tooBig();
               return;
             }
-            if (res < 0)
+            // Read HEAPU8 *after* the malloc, never before: a growth
+            // detaches the old buffer and emscripten installs a fresh view
+            // on Module. Hoisting this into a variable above the malloc is
+            // the obvious refactor and it silently breaks the copy.
+            m.HEAPU8.set(bytes, ptr);
+            if (m._web_watch_replay(ptr, bytes.length) < 0)
               alert("This replay can't be played by the current web build " +
                     "(it was recorded by a different game version).");
-            return;
+          } catch (e) {
+            // Past the first setTimeout this runs outside the promise
+            // chain, so without catching here the failure would surface as
+            // an uncaught page error and the user would see nothing.
+            console.warn("[newtonia] replay hand-off failed:", e);
+            alert("This replay could not be loaded.");
+          } finally {
+            if (ptr) m._free(ptr);
           }
-          if (tries++ < 600) setTimeout(deliver, 100);
         };
         deliver();
       })
