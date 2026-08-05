@@ -12,9 +12,26 @@
 #include <SDL.h>
 #include <SDL_mixer.h>
 #include <cstdio>
+#include <iostream>
 #include <cstdlib>
 #include <cstring>
 #include <string>
+// Frames-on-stdout needs the low-level fd calls; they are spelled differently
+// on Windows, which is the platform that needs this path most.
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#define FD_NO   _fileno
+#define FD_DUP  _dup
+#define FD_DUP2 _dup2
+#define FD_OPEN _fdopen
+#else
+#include <unistd.h>
+#define FD_NO   fileno
+#define FD_DUP  dup
+#define FD_DUP2 dup2
+#define FD_OPEN fdopen
+#endif
 #include <vector>
 
 namespace {
@@ -33,6 +50,7 @@ bool s_info_only = false;
 unsigned s_seed = 1337;  // particle/debris rolls; the shot harness's default
 
 FILE   *s_frames = NULL;
+bool    s_frames_is_stdout = false;
 FILE   *s_audio = NULL;
 GLGame *s_game = NULL;
 
@@ -201,16 +219,48 @@ bool VideoCapture::init() {
   set_env("NEWTONIA_REPLAY_DISABLE", "1");
 
   if (!s_frame_path.empty()) {
-    // Opening the frame stream can BLOCK: the usual target is a fifo, and a
-    // fifo's open waits for a reader. Say what is happening first, so a driver
-    // script that never started its encoder looks like a stuck open rather
-    // than a stuck game.
+    // Opening the frame stream can BLOCK: a fifo's open waits for a reader.
+    // Say what is happening first, so a driver script that never started its
+    // encoder looks like a stuck open rather than a stuck game.
     SDL_Log("video: %dx%d @ %d fps -> %s", s_width, s_height, s_fps,
             s_frame_path.c_str());
-    s_frames = fopen(s_frame_path.c_str(), "wb");
-    if (!s_frames) {
-      SDL_Log("video: cannot open %s for writing", s_frame_path.c_str());
-      return false;
+    if (s_frame_path == "-") {
+      // Frames on stdout, for piping straight into an encoder. This is the
+      // ONLY mechanism that works on Windows: the POSIX driver hands the game
+      // a fifo, and MSYS2's fifos are emulated for MSYS2 programs — a native
+      // newtonia.exe cannot open one. A pipe through cmd is byte-clean.
+      //
+      // Take a DUPLICATE of the pipe for the frames, then point stdout itself
+      // at stderr. Every logger in the process then writes somewhere harmless
+      // without having to be found and changed one by one — and they do need
+      // finding: SDL_Log goes to stdout on this build, as do the "Grid: 6x6"
+      // and "Presence:" lines and the controller banner. Redirecting only the
+      // C++ stream left 487 bytes of text in the stream, which shifts every
+      // frame after it (ffmpeg: "packet size 487 < expected frame_size").
+      int fd = FD_DUP(FD_NO(stdout));
+      if (fd < 0) {
+        SDL_Log("video: cannot duplicate stdout for the frame stream");
+        return false;
+      }
+      s_frames = FD_OPEN(fd, "wb");
+      if (!s_frames) {
+        SDL_Log("video: cannot open the duplicated stdout");
+        return false;
+      }
+      s_frames_is_stdout = true;
+      fflush(stdout);
+      FD_DUP2(FD_NO(stderr), FD_NO(stdout));
+#ifdef _WIN32
+      // Without this the CRT turns every 0x0A in the frame data into 0x0D 0x0A
+      // and the video is shredded.
+      _setmode(fd, _O_BINARY);
+#endif
+    } else {
+      s_frames = fopen(s_frame_path.c_str(), "wb");
+      if (!s_frames) {
+        SDL_Log("video: cannot open %s for writing", s_frame_path.c_str());
+        return false;
+      }
     }
   } else {
     SDL_Log("video: audio pass (%dx%d viewport) -> %s", s_width, s_height,
@@ -382,7 +432,12 @@ void VideoCapture::finish() {
     SDL_AtomicSet(&s_audio_armed, 0);
   }
   Mix_SetPostMix(NULL, NULL);
-  if (s_frames) { fclose(s_frames); s_frames = NULL; }
+  if (s_frames) {
+    // stdout belongs to the process, not to us: flush it and let exit close
+    // it, or the summary below has nowhere to go on a build that logs there.
+    if (s_frames_is_stdout) fflush(s_frames); else fclose(s_frames);
+    s_frames = NULL;
+  }
   if (s_audio)  { fclose(s_audio);  s_audio = NULL; }
 
   if (!s_frame_path.empty()) {

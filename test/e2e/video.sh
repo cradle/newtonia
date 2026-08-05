@@ -15,6 +15,10 @@
 #       whole frames — never a short one the encoder would shear
 #   S7  --info reads the header without rendering; asking for both streams at
 #       once is refused (they are separate passes)
+#   S8  NEWTONIA_VIDEO=- streams frames on stdout with NOTHING else in them —
+#       the mechanism Windows needs, where the fifo the driver uses cannot
+#       work (MSYS2 emulates fifos for MSYS2 programs; a native .exe cannot
+#       open one)
 set -u
 if [ -z "${DISPLAY:-}" ]; then
   # 640x360 is the capture size below; S6 deliberately asks for more.
@@ -164,6 +168,31 @@ env NEWTONIA_VIDEO="$OUT/x.raw" NEWTONIA_VIDEO_AUDIO="$OUT/x.pcm" \
 grep -q "separate passes" "$OUT/v8.log" \
   || fail "S7 asking for both streams at once was not refused"
 ok_if_clean "header-only run, and both-streams refused"
+
+mark
+echo "===== S8: frames on stdout ====="
+# stdout carries the frames, stderr carries every log line. The game writes
+# through a DUPLICATE of stdout and points stdout itself at stderr, so a
+# logger nobody remembered cannot land in the middle of a frame — which is
+# exactly what happened while building this: SDL_Log and several std::cout
+# lines went to stdout and put 487 bytes of text in the stream.
+#
+# Note the two streams must be separated HERE, per invocation. Wrapping the
+# game in xvfb-run merges them, which silently defeats the whole scheme (and
+# cost an hour of chasing a phantom bug).
+env NEWTONIA_VIDEO=- NEWTONIA_VIDEO_REPLAY=current NEWTONIA_VIDEO_SIZE="${W}x${H}" \
+    NEWTONIA_VIDEO_FPS=$FPS NEWTONIA_VIDEO_MS=1000 \
+    "$ROOT/newtonia" 2> "$OUT/v8.log" > "$OUT/pipe.raw"
+praw=$(stat -c%s "$OUT/pipe.raw" 2>/dev/null || echo 0)
+pframe=$((W * H * 3))
+[ "$((praw % pframe))" = "0" ] && [ "$((praw / pframe))" = "$FPS" ] \
+  || fail "S8 stdout stream is $praw bytes: $((praw / pframe)) frames + $((praw % pframe)) bytes of something else"
+grep -q "video: wrote" "$OUT/v8.log" || fail "S8 the summary did not go to stderr"
+# Byte-identical to the same render written to a file: same frames, no framing
+# differences from the pipe.
+render "" "$OUT/d.raw" NEWTONIA_VIDEO="$OUT/d.raw" NEWTONIA_VIDEO_MS=1000 > /dev/null 2>&1
+cmp -s "$OUT/pipe.raw" "$OUT/d.raw" || fail "S8 stdout frames differ from file frames"
+ok_if_clean "$((praw / pframe)) clean frames on stdout, logs on stderr"
 
 echo
 [ "$FAIL" = "0" ] && echo "VIDEO E2E PASS" || echo "VIDEO E2E FAIL"

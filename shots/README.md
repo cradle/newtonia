@@ -248,8 +248,25 @@ clock on a 4-core software-GL box, so a 90 s clip is a few minutes) and a
 correspondingly bigger file. The muxed audio is AAC 320k — cheap next to the
 video, and a master should not be the place quality is saved.
 
+**On Windows use `shots\video.ps1`, not video.sh.** The POSIX script streams
+frames through a fifo, and MSYS2's fifos are emulated for MSYS2-linked
+programs — a native `newtonia.exe` cannot open one, so that script cannot work
+there however it is invoked. The PowerShell twin takes the same options
+(`-Replay`, `-Start`, `-Duration`, `-Size`, `-Crf`, `-NoHud`, `-Chrome`,
+`-Info`), downloads a leaderboard `season/run_id` for you, and uses
+`NEWTONIA_VIDEO=-` — frames on stdout, piped to ffmpeg **through cmd**,
+because a PowerShell pipeline decodes bytes as text and would destroy them.
+It also runs the two passes one after the other rather than together: the
+audio pass is the real-time half and starving it costs sync.
+
+**Or render it in CI and skip all of that.** The `Render replay video`
+workflow builds, renders and uploads the mp4 as a downloadable artifact — no
+build, no bash, no ffmpeg, no GPU at the other end. It takes the same
+parameters from the Run workflow button, and an 8-minute run produced a 90 s
+1440p60 clip of a real leaderboard replay.
+
 Direct control, if you'd rather not use the script — `NEWTONIA_VIDEO`
-(rgb24 frame stream, a fifo works), `NEWTONIA_VIDEO_AUDIO` (s16 mix; the
+(rgb24 frame stream; a fifo works, and `-` means stdout), `NEWTONIA_VIDEO_AUDIO` (s16 mix; the
 other pass), `NEWTONIA_VIDEO_REPLAY`, `_SIZE`, `_FPS`, `_START_MS`,
 `_MS`, `_HUD`, `_CHROME`, `_SEED`, `_INFO`. Full notes in
 `video_capture.h`.
