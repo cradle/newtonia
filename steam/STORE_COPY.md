@@ -191,7 +191,41 @@ with the app ID opens the store page where the review button lives.
 
 ---
 
-## 5. What this copy deliberately does not say
+## 5. Publish checklist
+
+Store page content is portal-only — there is no API for descriptions, so none
+of this can be scripted from the repo. It is a paste job at
+[partner.steamgames.com](https://partner.steamgames.com) against app 4536720.
+
+Live state as of 2026-08-05: short description still
+`A retro 2D top-down space-shooter.`, website unset, zero reviews.
+
+**Ship these three now.** All settled, and between them they are most of the
+available win:
+
+| # | Steamworks location | Paste |
+|---|---|---|
+| 1 | Store Presence → Basic Info → Short Description | §1, Glenn's 271-char copy |
+| 2 | Store Presence → Basic Info → website/links | `https://newtonia.metonymous.com` |
+| 3 | Store Presence → tags (up to 20, **ordered**) | §3, first few matter most |
+
+**Hold this one.** The §2 About This Game body is unrewritten assistant prose
+and reads like it. It is the least urgent field on the page — nobody reads it
+before deciding — so publishing the three above without it loses nothing, and
+publishing it as-is puts a voice on the page that does not match the short
+description directly above it.
+
+Then:
+
+- **Edits save as a draft; the Store Presence section has a separate publish
+  step.** A saved change that was never published is the classic way this
+  ends with nothing actually live. Reload the public store page after
+  publishing and confirm the new short description is really there.
+- The short description propagates to search results, hover capsules, the
+  library shelf and wishlist mail, but not instantly everywhere — do not
+  re-edit in a panic if a cached surface still shows the old line.
+
+## 6. What this copy deliberately does not say
 
 Worth writing down so it does not creep back in:
 
