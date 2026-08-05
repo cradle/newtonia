@@ -19,25 +19,41 @@ page — it is what shows in search results, in the hover capsule, on the
 library shelf, and in every wishlist mail. The current one
 ("A retro 2D top-down space-shooter.") does the reader's dismissing for them.
 
-> Thrust, drift, and never quite stop. A physics-driven space shooter where
-> the rocks fight back: mirrors that bounce your shots, rocks that teleport,
-> and ones you only see by the light they bend. Unlimited levels, ten
-> weapons, split-screen and online co-op.
+Glenn's copy, 271 of 300 characters:
 
-*(256 characters, of 300.)*
+> Newtonia is a 2D top-down space shooter. Think Asteroids with powerful
+> weapons and challenging asteroids. Progress level after level against
+> increasing challenge with advanced weapons dropping regularly. Try and get
+> a high score, or play co-operatively with your friends.
 
-Alternates, if that reads long — same job, different emphasis (245 and 259
-characters respectively):
+The load-bearing line is "Think Asteroids with powerful weapons and
+challenging asteroids". Naming the comparison outright and answering it in
+the same breath beats working around it: "Asteroids clone" is the reflex this
+page has to survive in the first two seconds, and a reader who has already
+been given the answer has nothing left to dismiss.
 
-> **Mechanic-first:** There is no brake. You thrust, you drift, and the world
-> wraps around behind you. Every level adds something new to kill you —
-> teleporting rocks, mirrored armour, pulsars, black holes. Unlimited levels,
-> ten weapons, split-screen and online co-op.
+Optional tightening, same voice, 279 characters — three changes, each
+independent:
 
-> **Co-op-first:** A physics-driven space shooter for one or two pilots.
-> Thrust, drift, and never quite stop while the asteroids get stranger every
-> level. Split-screen on one machine, or online co-op and PvP. Unlimited
-> levels, ten weapons, a leaderboard that verifies every run.
+> A 2D top-down space shooter. Think Asteroids with powerful weapons and far
+> more dangerous rocks. Progress level after level against increasing
+> challenge, with advanced weapons dropping regularly. Go for a high score,
+> or play co-operatively with a friend — split-screen or online.
+
+1. Drops "Newtonia is a" — 13 characters restating the name printed directly
+   above it, and the opening is the part that survives truncation in a search
+   result.
+2. "asteroids" appears twice in one sentence (the game, then the rocks), and
+   "challenging" runs straight into "increasing challenge".
+3. "co-operatively with your friends" is vaguer than the truth. Split-screen,
+   online co-op, PvP and Remote Play Together are each their own Steam
+   category, and naming them catches the people filtering for exactly that.
+
+**Do not let a rewrite creep back in past those three points.** An earlier
+draft of this file opened "Thrust, drift, and never quite stop… ones you only
+see by the light they bend" — three list-of-three rhythms in four sentences,
+and a lyrical flourish spent on the invisible asteroids, which are the least
+visible thing in the game (shots/README.md → Clips). Plain beats poetic here.
 
 ---
 
