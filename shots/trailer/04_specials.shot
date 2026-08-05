@@ -1,0 +1,19 @@
+# "The rocks start cheating": the special types, moving, with a caption.
+# Reflective (teal) and armoured read best in a still; teleporting and
+# phasing do their thing during the window. ~5s.
+seed 11
+sim 400
+frames 156
+fps 30
+size 1920 1080
+clear
+hud off
+camera fixed
+zoom 70
+ship 0 -420 0
+asteroid -540 240 reflective r=115 v=18,-6
+asteroid 0 330 armoured r=120
+asteroid 560 250 teleporting r=110
+asteroid -330 -120 phasing r=100 v=-8,12
+asteroid 340 -140 tough r=115
+text 0 0.74 8 EVERY LEVEL ADDS A NEW WAY TO DIE

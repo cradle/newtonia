@@ -1,0 +1,15 @@
+# End card. The browser build is the call to action, not the store: it costs
+# the viewer nothing and it is the top of the funnel (PROMOTION.md section 1).
+seed 5
+sim 300
+frames 125
+fps 30
+size 1920 1080
+clear
+hud off
+noship
+stars 0.35
+text 0 0.30 90 NEWTONIA
+text 0 0.02 9 PLAY FREE IN YOUR BROWSER
+text 0 -0.12 7 NEWTONIA.METONYMOUS.COM
+text 0 -0.42 7 ALSO ON STEAM - IOS - ANDROID

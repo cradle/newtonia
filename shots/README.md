@@ -227,6 +227,44 @@ Gotchas that cost real time here:
   (`Ship::add_lance_ammo` and friends), which is the tidiest way to put a
   specific weapon in the ship's hands at frame one.
 
+## The store trailer
+
+`shots/trailer.sh` builds the whole trailer from `shots/trailer/*.shot` —
+render every beat, join them, lay the music under it, write
+`shots/out/trailer/newtonia_trailer.mp4` (1920x1080, H.264 + AAC, which Steam,
+YouTube and Reddit all accept without transcoding complaints).
+
+```sh
+shots/trailer.sh                        # the whole thing, ~4 min headless
+NEWTONIA_TRAILER_SIZE=1280x720 shots/trailer.sh   # faster proof cut
+NEWTONIA_TRAILER_KEEP=1 shots/trailer.sh          # keep per-beat mp4s + frames
+```
+
+The beats are just clip scenes, assembled in filename order, so re-cutting the
+trailer is renaming files and changing one beat re-renders only that beat.
+Nothing in `trailer.sh` knows anything the clip harness does not.
+
+| Beat | Shows |
+|------|-------|
+| `01_open` | Cold open: the lance mirror-bouncing. No title, no caption |
+| `02_title` | NEWTONIA over a bare starfield |
+| `03_gameplay` | A real generated level, rotate camera — the player's own view |
+| `04_specials` | The special asteroid types, captioned |
+| `05_pulsar` | Charge, fire, and the shockwave shoving the ship |
+| `06_shock` | Chain lightning hopping a ladder of rocks |
+| `07_lategame` | Natural generation 14: station, black hole, full hazard counts |
+| `08_coop` | Split-screen co-op, both pilots alive |
+| `09_end` | End card: the free browser build as the call to action |
+
+The music is the game's own 16 s pause theme (`audio/pause.wav`), looped under
+the cut and faded at both ends — it loops rather than stretches, so the cut
+can be any length without the tempo drifting.
+
+Two things the script does deliberately: it re-encodes each beat at a fixed
+frame rate and GOP so the concat demuxer joins them without artefacts at the
+seams, and it takes each beat's frame interval from the harness's own log
+rather than assuming, exactly as `gif.sh` does.
+
 ## Mobile store screenshots (touch OSD)
 
 `NEWTONIA_FORCE_TOUCH=1` renders any scene with the real touch UI — the

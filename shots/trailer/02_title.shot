@@ -1,0 +1,12 @@
+# Title card over a bare starfield. ~2.5s.
+seed 5
+sim 300
+frames 78
+fps 30
+size 1920 1080
+clear
+hud off
+noship
+stars 0.35
+text 0 0.05 110 NEWTONIA
+text 0 -0.22 9 A TOP-DOWN SPACE SHOOTER

@@ -1,0 +1,26 @@
+# Split-screen co-op: both pilots alive, flying and shooting near each other
+# so each viewport also carries the partner. ~5s.
+seed 33
+sim 700
+frames 156
+fps 30
+size 1920 1080
+game 4
+camera fixed
+players 2
+ship -200 0 15
+ship2 350 -120 -30
+hold space 250
+hold / 250
+key w 600
+key w 1200
+key i 900
+key i 1500
+key w 2200
+key i 2600
+key w 3300
+key i 3700
+asteroid 500 600 r=90 v=-30,-20
+asteroid -650 450 reflective r=100 v=20,-15
+asteroid -450 -500 r=75 v=15,25
+asteroid 750 -400 tough r=105 v=-25,10

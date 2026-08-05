@@ -1,0 +1,17 @@
+# Late game: generation 14 is where the enemy station, the black hole and
+# the full hazard counts all exist at once. Natural generation, not composed
+# — the point of this beat is that the game really gets like this. ~5s.
+seed 19
+sim 900
+frames 156
+fps 30
+size 1920 1080
+hud off
+game 14
+hold space
+key w 1000
+key d 1500
+key w 2000
+key a 2800
+key w 3200
+key w 3900

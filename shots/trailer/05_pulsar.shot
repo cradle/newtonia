@@ -1,0 +1,15 @@
+# Pulsar: charge, fire, and the shockwave shoving the ship. Timed to the
+# 2400ms charge / 1100ms expansion cycle in hazard.cpp. ~5.5s.
+seed 61
+sim 1900
+frames 172
+fps 30
+size 1920 1080
+clear
+hud off
+camera fixed
+zoom 62
+ship 250 0 0
+hazard pulsar -120 0
+asteroid 520 340 r=60
+asteroid -480 -300 r=55

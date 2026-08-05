@@ -1,0 +1,19 @@
+# Core gameplay: a real generated level, flown and shot, rotate camera —
+# the view a player actually has. ~6s.
+seed 73
+sim 600
+frames 188
+fps 30
+size 1920 1080
+hud off
+game 5
+hold space
+key w 700
+key w 1100
+key d 1600
+key w 2100
+key a 2700
+key w 3000
+key w 3400
+key d 4200
+key w 4600
