@@ -38,7 +38,7 @@ independent:
 > A 2D top-down space shooter. Think Asteroids with powerful weapons and far
 > more dangerous rocks. Progress level after level against increasing
 > challenge, with advanced weapons dropping regularly. Go for a high score,
-> or play co-operatively with a friend; split-screen or online.
+> or play co-operatively with a friend: split-screen or online.
 
 1. Drops "Newtonia is a" — 13 characters restating the name printed directly
    above it, and the opening is the part that survives truncation in a search
