@@ -246,6 +246,19 @@ $fi.Arguments = $ffArgs
 $fi.UseShellExecute = $false
 $fi.RedirectStandardInput = $true       # the frames; stderr stays on screen
 
+# Touching $enc.StandardInput builds a StreamWriter over the pipe, and its
+# construction (AutoFlush = true) flushes the encoding's preamble down it AT
+# ONCE - with the console at codepage 65001 that is a 3-byte UTF-8 BOM ahead
+# of the first frame, which silently shifts EVERY frame in the stream by
+# three bytes. ffmpeg only shows the symptom at the far end ("Packet corrupt
+# (dts = <last>) ... Packet too small (3)"), which points at the tail when
+# the damage is at the head. The writer takes Console.InputEncoding, so hand
+# it one with no preamble; measured against the game's stream, which is
+# byte-exact (600 frames, 0 bytes over, at exactly this size).
+try { [Console]::InputEncoding = New-Object Text.UTF8Encoding($false) } catch {
+  Write-Host "video.ps1: cannot set a BOM-less stdin encoding ($($_.Exception.Message)) - expect a 3-byte shift warning from ffmpeg"
+}
+
 $game = [Diagnostics.Process]::Start($gi)
 $enc  = [Diagnostics.Process]::Start($fi)
 
@@ -257,7 +270,11 @@ try {
 } catch {
   Write-Host "video.ps1: the frame stream stopped early: $($_.Exception.Message)"
 }
-$enc.StandardInput.Close()
+# Close the raw pipe, not the StreamWriter around it - the writer's close
+# also flushes, and flushing is how the preamble above got written. With the
+# BOM-less encoding that flush is empty, but the base stream is the thing we
+# actually used, so it is the thing to close.
+$enc.StandardInput.BaseStream.Close()
 $game.WaitForExit()
 $enc.WaitForExit()
 $rc = $game.ExitCode
