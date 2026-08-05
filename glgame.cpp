@@ -8534,8 +8534,11 @@ void GLGame::draw_perspective(GLShip *glship) const {
 
 void GLGame::draw_map() const {
   // No minimap on touch (and on forced-touch screenshot renders, which
-  // must match the devices) — same runtime gate as the OSD.
-  if (touch_osd_enabled()) return;
+  // must match the devices). Gated on is_touch_mode(), NOT the OSD: web
+  // draws its on-screen controls from the page (web/main.ts), so
+  // touch_osd_enabled() is false there and a phone browser kept the
+  // minimap while every other layout had gone touch.
+  if (is_touch_mode()) return;
   float minimap_size = num_y_viewports() == 2 ? window.y()/6 : window.y()/4;
 
   if(split_screen()) {
