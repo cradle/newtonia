@@ -102,20 +102,28 @@
       letter-spacing: 0.1em;
       vertical-align: 0.08em;
     }
-    /* The verified mark is a BORDERED badge, not a bare glyph: a player
-       can put a check character in their own display name, and a naked ✓
-       beside the name was near-indistinguishable from the real thing
-       (security review 2026-08-04). The box is what a name cannot forge. */
+    /* The verified mark is an ENCLOSED glyph, not a bare character: a
+       player can put a check character in their own display name, and a
+       naked ✓ beside the name was near-indistinguishable from the real
+       thing (security review 2026-08-04). The enclosure is what a name
+       cannot forge — names land via textContent, so no row can draw
+       vector art. It's the game's own asteroid spinning around a static
+       tick, the same rock-around-a-mark idea as the in-game © glyph
+       (typer.cpp), which turns its ring inside a still bracket. */
     .tick {
       display: inline-block;
-      margin-left: 0.55em;
-      padding: 0.05em 0.4em;
-      border: 1px solid var(--acc);
+      width: 1.5em;
+      height: 1.5em;
+      margin-left: 0.4em;
+      vertical-align: -0.45em;
       color: var(--acc);
-      font-size: 0.68rem;
-      letter-spacing: 0.1em;
-      vertical-align: 0.08em;
     }
+    .tick svg { display: block; width: 100%; height: 100%; overflow: visible; }
+    /* Spin the ROCK only — the tick stays upright and readable. The class
+       carries .spin-slow's keyframes and transform-box from styles.css
+       (so the reduced-motion rule there still stops it); only the period
+       changes, since 26s reads as motionless at badge size. */
+    .tick .rock { animation-duration: 13s; }
     a.watch {
       color: var(--acc);
       border: 1px solid var(--line);
@@ -190,6 +198,23 @@
         New scores appear within minutes. Click WATCH to replay a run in your browser.</p>
     </section>
   </main>
+
+  <!-- Verified-name mark, cloned per attested row by leaderboard.js (SVG
+       needs createElementNS, and the geometry belongs beside the page's
+       other vector art). The rock is asteroid.cpp's 9-vertex irregular
+       polygon — the same outline the home-page hero spins; the tick
+       inside is typer.cpp's VERIFIED_TICK glyph, whose arms are
+       deliberately asymmetric so it cannot read as a "V". -->
+  <template id="tick-tpl">
+    <span class="tick" title="Platform-verified name">
+      <svg viewBox="-12 -12 24 24" role="img" aria-label="Platform-verified name"
+           fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+        <polygon class="rock spin-slow" stroke-width="1.2"
+                 points="10,0 6.5,5.5 1.9,10.8 -4.5,7.8 -9.9,3.6 -7.5,-2.7 -4.75,-8.2 1.9,-10.8 6.9,-5.8"/>
+        <path stroke-width="2" d="M -2.6 0.3 L -0.9 4.1 L 2.6 -4.1"/>
+      </svg>
+    </span>
+  </template>
 
   <footer class="footer">
     <p>Newtonia — written in C++ with SDL2 &amp; OpenGL.</p>

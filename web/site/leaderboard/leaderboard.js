@@ -33,6 +33,14 @@
   var elUpdated = document.getElementById('updated');
   var btnSolo = document.getElementById('btn-solo');
   var btnCoop = document.getElementById('btn-coop');
+  var tickTpl = document.getElementById('tick-tpl');
+
+  // The verified mark: a spinning asteroid around a static tick, cloned
+  // from the page template. Vector art, deliberately — a name arrives as
+  // text and so can never draw one (see the .tick comment in index.html).
+  function verifiedMark() {
+    return tickTpl.content.firstElementChild.cloneNode(true);
+  }
 
   var snapshot = null;                 // {generated_at, boards:[...]}
   var players = params.get('players') === '2' ? 2 : 1;
@@ -158,13 +166,7 @@
       var name = document.createElement('span');
       name.textContent = pilot_name || 'PILOT #' + r.rank;
       pilot.appendChild(name);
-      if (r.verified && pilot_name) {
-        var tick = document.createElement('span');
-        tick.className = 'tick';
-        tick.textContent = '✓';
-        tick.title = 'Platform-verified name';
-        pilot.appendChild(tick);
-      }
+      if (r.verified && pilot_name) pilot.appendChild(verifiedMark());
       var platform = PLATFORMS[r.platform] || '';
       if (platform) {
         var badge = document.createElement('span');
