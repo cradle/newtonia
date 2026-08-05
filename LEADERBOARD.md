@@ -208,8 +208,12 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
   where R5's input-log proof slots in without a file-format break —
   REPLAY.md already established the fixed head has no spare bytes.
 - **No leaderboard on web in the first release** (decided with Glenn
-  2026-07-31) — all web builds, the netless public deploys and the paid
-  itch `newtonia-online` alike. (The read-only **site** leaderboard page
+  2026-07-31) — all web builds, the netless public deploys and the
+  netplay-ON `newtonia-online` itch build alike — that project is
+  UNPUBLISHED/Draft, since itch cannot purchase-gate HTML5 embeds
+  (NETPLAY.md Gate 5), but deploy-itch pushes a build to it on every
+  release tag, so the binary exists and the rule has to cover it.
+  (The read-only **site** leaderboard page
   + watch deep link added 2026-08-04 — see "Site leaderboard" below —
   does not reopen this: it is the website rendering public board data,
   not the in-game feature, and it cannot submit.) `NetBoard::create()` returns null under
@@ -221,6 +225,22 @@ ingest hardening that treats a stranger's `.nrp` as hostile input
   attestation story exists (no Steam/Play Games/Game Center credential
   in a browser), and enabling later is a `net_board_web.cpp` backend
   plus the factory — the UI lights up by itself.
+  **On what that attestation story would have to be** (talked through
+  2026-08-05, nothing built): consumer OIDC — Google/Apple/Facebook
+  sign-in — is the cheap option technically (an ID token verifies with
+  JWKS alone, no secrets, unlike the Steam/Play Games verifiers) but it
+  is the wrong primitive. Attestation here is not buying a NAME, it is
+  buying scarcity and bannability — "a real, bannable platform account
+  per row" is a load-bearing item in the L6 deterrent stack, and it
+  holds only because those accounts are costly to mint and tied to a
+  purchase. A free throwaway inbox satisfies the check while dissolving
+  the property, with no run verification (L5) behind it to fall back on.
+  The credential that WOULD work is itch's — the server-side purchase
+  verification sketched for the paid-web-co-op unblock (task #156,
+  NETPLAY.md Gate 5) proves ownership and identity in one token, lands
+  in the same `verify_identity` seam, and would be one piece of work
+  with unparking `newtonia-online` rather than two. Until that exists,
+  web stays view-only.
 - **The leaderboard screen shows the player's own rank, on-board or off**
   (decided with Glenn 2026-07-31). Opening the screen sends the player's
   local best score (read from `best.nrp`'s header — nothing uploads)

@@ -2,9 +2,10 @@ name: Deploy Itch.io
 
 # v*.*.* tags (or manual dispatch) push two builds: the public html5
 # channel (netless — pricing decision in NETPLAY.md) and the netplay-ON
-# build to the purchase-gated newtonia-online project. (The netplay-v*
-# test namespace and its html5-netplay channel retired post-launch —
-# task #157.)
+# build to the newtonia-online project, which is UNPUBLISHED (Draft) —
+# that push is deliberately inert, see the step's comment below. (The
+# netplay-v* test namespace and its html5-netplay channel retired
+# post-launch — task #157.)
 on:
   push:
     tags:
@@ -67,8 +68,10 @@ jobs:
           emcc --version
           # The FREE public channel ships netplay force-disabled
           # permanently (pricing decision in NETPLAY.md: paid on
-          # Steam/iOS, browser co-op is the paid newtonia-online
-          # project below).
+          # Steam/iOS, so free browser co-op would undercut them).
+          # Browser co-op was to be the newtonia-online project below,
+          # which is parked/unpublished — that does not change this
+          # channel, which is netless either way.
           make web NETPLAY=0
 
       - name: Install butler
@@ -100,11 +103,20 @@ jobs:
             ${{ secrets.ITCH_GAME }}:html5 \
             --userversion "${{ github.ref_name || github.sha }}"
 
-      # Paid web co-op (task #156): every public release also ships the
-      # netplay-ON build to the purchase-gated newtonia-online project —
-      # itch is the accounts system, so only buyers get the embed. The
-      # free public page above stays NETPLAY=0 by the pricing decision in
-      # NETPLAY.md (paid on Steam/iOS; free browser co-op would undercut
+      # Paid web co-op (task #156) — WIRED BUT INERT. Every public release
+      # ships the netplay-ON build to newtonia-online, but that project is
+      # UNPUBLISHED (Draft) and nobody can reach it: itch CANNOT
+      # purchase-gate an HTML5 embed (a minimum price restricts downloads
+      # only — a long-declined itch feature), so "itch is the accounts
+      # system" does not hold and the original design fell through
+      # (NETPLAY.md Gate 5, 2026-07-18). The viable unblock is server-side
+      # purchase verification in the signaling Worker (itch download key /
+      # OAuth); until someone builds it, publishing the project would give
+      # away paid co-op. The push stays wired so that day is a portal
+      # action, not a workflow change. Not a release dependency — this step
+      # failing blocks nothing real.
+      # The free public page above stays NETPLAY=0 by the pricing decision
+      # in NETPLAY.md (paid on Steam/iOS; free browser co-op would undercut
       # them). Same origin allowlist covers both projects
       # (metonymous.itch.io + the itch.zone/hwcdn iframe hosts).
       - name: Build WebAssembly (netplay, paid online project)
