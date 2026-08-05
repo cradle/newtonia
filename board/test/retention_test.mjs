@@ -212,10 +212,18 @@ function blobs(rows, season, players) {
   const r2 = await run_cron(rows, [
     { key: "site/leaderboard.json",
       uploaded: new Date(NOW - 30 * DAY).toISOString() },
+    // `site` is a legal season key (season_ok allows it), so a submission
+    // can land a blob INSIDE the snapshot's prefix. The sweep's skip must
+    // be the exact snapshot key, not the prefix — otherwise that whole
+    // namespace escapes the orphan backstop forever (security review F2).
+    { key: "site/424242.nrp",
+      uploaded: new Date(NOW - 2 * DAY).toISOString() },
   ]);
   check("old snapshot object spared by orphan sweep",
         !r2.deleted.includes("site/leaderboard.json"),
         JSON.stringify(r2.deleted));
+  check("orphan inside the site/ prefix is still swept",
+        r2.deleted.includes("site/424242.nrp"), JSON.stringify(r2.deleted));
   const snap = JSON.parse(r2.puts["site/leaderboard.json"] || "null");
   check("snapshot published", !!snap && Array.isArray(snap.boards));
   const key = (b) => `${b.season}/${b.players}`;

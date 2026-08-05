@@ -102,7 +102,20 @@
       letter-spacing: 0.1em;
       vertical-align: 0.08em;
     }
-    .tick { color: var(--acc); margin-left: 0.3em; }
+    /* The verified mark is a BORDERED badge, not a bare glyph: a player
+       can put a check character in their own display name, and a naked ✓
+       beside the name was near-indistinguishable from the real thing
+       (security review 2026-08-04). The box is what a name cannot forge. */
+    .tick {
+      display: inline-block;
+      margin-left: 0.55em;
+      padding: 0.05em 0.4em;
+      border: 1px solid var(--acc);
+      color: var(--acc);
+      font-size: 0.68rem;
+      letter-spacing: 0.1em;
+      vertical-align: 0.08em;
+    }
     a.watch {
       color: var(--acc);
       border: 1px solid var(--line);

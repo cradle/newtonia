@@ -72,6 +72,7 @@ jobs:
           node test/identity_gate_test.mjs
           node test/retention_test.mjs
           node test/budget_test.mjs
+          node test/snapshot_guard_test.mjs
 
       # Protocol test against the real worker code under miniflare — no
       # Cloudflare account involved (local D1/R2 simulators). FAKE_VERIFY

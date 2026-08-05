@@ -457,36 +457,78 @@ async function store_snapshot(env, snap) {
   });
 }
 
+// A rebuild is ~10,000x the cost of an ordinary view (the GROUP BY scan
+// plus up to 50 seasons x 2 boards x KEEP_N rows, plus an R2 write), and it
+// is reachable from an unauthenticated GET — so it must not be per-request
+// work (security review 2026-08-04, F1). Two bounds, deliberately chosen so
+// that a SUCCESSFUL rebuild is never delayed (a new score must show on the
+// next view — that freshness is the whole point of the probe, field-
+// verified 2026-08-04):
+//   - SINGLE-FLIGHT: concurrent views share one rebuild instead of each
+//     running their own, so the flood of views inside one stale window
+//     costs one rebuild per isolate, not one per request. The window
+//     closes as soon as the rebuild stores, so the steady-state ceiling is
+//     one rebuild per SUBMISSION — and submissions are already the most
+//     tightly rate-limited action there is (6/hour/IP).
+//   - FAILURE BACKOFF: only failures cool down. Discarding the stale body
+//     before attempting a rebuild meant any persistent failure (a D1
+//     hiccup, an R2 write error, the CPU cap on a large board) returned
+//     500 AND left the snapshot stale, so every later view retried the
+//     rebuild forever — a self-sustaining loop that needed no attacker.
+//     Now a failure serves the stale body and stops retrying for a minute.
+const REBUILD_BACKOFF_MS = 60 * 1000;
+let rebuild_inflight = null;   // per-isolate; null when none is running
+let rebuild_blocked_until = 0; // set only after a failed rebuild
+
+function rebuild_snapshot(env) {
+  if (rebuild_inflight) return rebuild_inflight;
+  const done = (async () => {
+    try {
+      const snap = await build_site_snapshot(env);
+      await store_snapshot(env, snap);
+      return snap;
+    } catch (e) {
+      rebuild_blocked_until = Date.now() + REBUILD_BACKOFF_MS;
+      throw e;
+    }
+  })().finally(() => { rebuild_inflight = null; });
+  rebuild_inflight = done;
+  return done;
+}
+
+// Has a submission landed since this snapshot was built? One indexed
+// head-read (scores_submitted makes it a seek, not a scan). A snapshot with
+// no build time is a pre-metadata object from an older deploy: treat it as
+// stale once — store_snapshot always writes the field, so it self-heals.
+async function snapshot_stale(env, built) {
+  if (!built) return true;
+  await ensure_schema(env.DB);
+  const r = await env.DB.prepare(
+      `SELECT MAX(submitted_at) AS newest FROM scores`).first();
+  return !!(r && Number(r.newest) > built);
+}
+
 async function serve_snapshot(request, env, dev) {
   const ip = rate_key(request.headers.get("CF-Connecting-IP") || "local");
   if (!(await within_limit(env, ip, "query", dev)))
     return site_error(429, "rate limited");
-  let body = null;
   const obj = await env.REPLAYS.get(SNAPSHOT_KEY);
-  if (obj) {
-    // Freshness probe: a submission newer than the stored snapshot makes
-    // it stale — new scores must not hide until the next daily cron
-    // (field report, 2026-08-04: a fresh beta submission was invisible
-    // behind an empty stored snapshot). One indexed D1 head-read per
-    // view; the rebuild itself only runs when something actually landed.
-    // A pre-metadata object (older deploy) counts as stale once.
-    body = await obj.text();
-    const built = Number((obj.customMetadata || {}).generated_at) || 0;
-    if (built) {
-      await ensure_schema(env.DB);
-      const r = await env.DB.prepare(
-          `SELECT MAX(submitted_at) AS newest FROM scores`).first();
-      if (r && Number(r.newest) > built) body = null;
+  let body = obj ? await obj.text() : null;
+  const built = obj ? Number((obj.customMetadata || {}).generated_at) || 0 : 0;
+  // `!body` short-circuits the probe, so a cold miss costs no D1 read.
+  if (!body || await snapshot_stale(env, built)) {
+    if (body && Date.now() < rebuild_blocked_until) {
+      // A recent rebuild failed. Serve what we have rather than hammering
+      // the failing path once per view.
     } else {
-      body = null;
+      try {
+        body = JSON.stringify(await rebuild_snapshot(env));
+      } catch (e) {
+        console.log(`site: snapshot rebuild failed: ${log_str(e && e.message)}`);
+        // Stale beats nothing; with no stored body there is nothing to serve.
+        if (!body) return site_error(503, "leaderboard unavailable");
+      }
     }
-  }
-  if (body === null) {
-    // Cold start (a fresh deploy the cron hasn't visited yet) or stale:
-    // build now and store, so the page always shows what D1 holds.
-    const snap = await build_site_snapshot(env);
-    body = JSON.stringify(snap);
-    await store_snapshot(env, snap);
   }
   return new Response(body, { headers: {
     ...CORS,
@@ -638,9 +680,11 @@ export default {
     // demote pass just deleted. Best-effort like the sweep: a failed
     // publish leaves yesterday's snapshot serving, which is exactly the
     // staleness the site already tolerates.
+    // Goes through rebuild_snapshot (not build+store directly) so it
+    // shares the single-flight guard with any concurrent view and arms the
+    // min-interval window behind it.
     try {
-      const snap = await build_site_snapshot(env);
-      await store_snapshot(env, snap);
+      const snap = await rebuild_snapshot(env);
       console.log(`site: published snapshot (${snap.boards.length} board(s))`);
     } catch (e) {
       console.log(`site: snapshot publish failed: ${log_str(e && e.message)}`);
@@ -674,10 +718,16 @@ async function sweep_orphans(env) {
   do {
     const page = await env.REPLAYS.list({ cursor, limit: 1000 });
     for (const obj of page.objects || []) {
-      // The site/ prefix is the daily snapshot, not a replay — no row ever
-      // points at it, so without this skip the sweep would delete it a day
-      // after every publish.
-      if (obj.key.startsWith("site/")) continue;
+      // The snapshot is not a replay — no row ever points at it, so without
+      // this skip the sweep would delete it a day after every publish.
+      // Matched EXACTLY, not by prefix: `site` is a legal season key
+      // (season_ok allows it), so blob_key_for can put a submitted replay
+      // at site/<run_id>.nrp — a prefix skip would exempt that whole
+      // namespace from the orphan backstop, letting anything leaked there
+      // grow R2 forever, invisible to every reaper (security review
+      // 2026-08-04, F2; confirmed reachable on an env with no season
+      // whitelist).
+      if (obj.key === SNAPSHOT_KEY) continue;
       if (known.has(obj.key)) continue;
       const uploaded = obj.uploaded ? new Date(obj.uploaded).getTime() : 0;
       if (!(uploaded && uploaded < cutoff)) continue;  // in flight, or unknown
