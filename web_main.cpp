@@ -288,7 +288,19 @@ extern "C" EMSCRIPTEN_KEEPALIVE void web_accept_invite(const char *code) {
 // Returns 0 = not ready yet (IDBFS still mounting; JS retries), 1 =
 // accepted and pending, -1 = this build can't play the file (unreadable,
 // or another format version) — main.ts tells the user.
-static bool s_replay_watch_pending = false;
+//
+// The ORDER of the two guards below is a contract with main.ts: the
+// readiness test comes FIRST, so a null/empty call is a zero-cost "are you
+// ready?" probe (0 = still mounting, -1 = ready). main.ts uses it to avoid
+// re-copying a multi-MB blob into the heap on every retry. Do not reorder.
+static bool   s_replay_watch_pending = false;
+static Uint32 s_replay_watch_at = 0;
+// A staged watch that nobody consumed within this long is dropped. The
+// download can land while the player has already started a game, and
+// Menu::tick only drains the flag when it next runs — without a TTL that
+// meant being yanked into a replay on some later, unrelated visit to the
+// menu.
+static const Uint32 REPLAY_WATCH_TTL_MS = 30 * 1000;
 
 extern "C" EMSCRIPTEN_KEEPALIVE int web_watch_replay(const unsigned char *data,
                                                      int len) {
@@ -310,20 +322,31 @@ extern "C" EMSCRIPTEN_KEEPALIVE int web_watch_replay(const unsigned char *data,
     Replay::Header h;
     if (Replay::read_header_status(path, h) != Replay::HEADER_OK) {
         SDL_Log("web: ?replay= file is not playable on this build");
+        // Don't leave the rejected bytes on the filesystem: web storage is
+        // an IndexedDB quota shared with the savegame, stats and the
+        // recorder, and a refused file would otherwise sit there until
+        // something else happened to overwrite it.
+        remove(path.c_str());
         return -1;
     }
     SDL_Log("web: ?replay= replay staged (%d bytes, score=%u)", len,
             h.final_score);
     s_replay_watch_pending = true;
+    s_replay_watch_at = SDL_GetTicks();
     return 1;
 }
 
 // Menu::tick's poll (deliberately plain C++ linkage on both sides —
 // declared in menu.cpp under __EMSCRIPTEN__).
 bool web_take_replay_watch() {
-    bool pending = s_replay_watch_pending;
+    if (!s_replay_watch_pending) return false;
     s_replay_watch_pending = false;
-    return pending;
+    if (SDL_GetTicks() - s_replay_watch_at > REPLAY_WATCH_TTL_MS) {
+        SDL_Log("web: ?replay= staged replay expired unconsumed - ignoring");
+        remove(Replay::download_path().c_str());
+        return false;
+    }
+    return true;
 }
 
 // Called from the JS menu overlay on touchend with normalised [0,1] tap position.
