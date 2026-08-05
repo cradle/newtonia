@@ -237,6 +237,17 @@ rendered alone measured 23 ms. If the pass warns about a stall anyway, free
 up the machine and re-run it — a smaller `--size` will not help, that pass
 never draws.
 
+**Uploading it somewhere.** Every platform re-encodes what you give it, so
+hand over the harness's own output and never a re-encode of it — two lossy
+passes over a starfield is where the stars turn to mush. That is also the
+argument for rendering ABOVE the resolution you're targeting: YouTube gives
+1440p and 2160p uploads a better codec and a far bigger bitrate allowance
+than 1080p, which this game's content needs more than most. `--size
+2560x1440` costs about 1.7x the render time of 1080p (10 s took 40 s of wall
+clock on a 4-core software-GL box, so a 90 s clip is a few minutes) and a
+correspondingly bigger file. The muxed audio is AAC 320k — cheap next to the
+video, and a master should not be the place quality is saved.
+
 Direct control, if you'd rather not use the script — `NEWTONIA_VIDEO`
 (rgb24 frame stream, a fifo works), `NEWTONIA_VIDEO_AUDIO` (s16 mix; the
 other pass), `NEWTONIA_VIDEO_REPLAY`, `_SIZE`, `_FPS`, `_START_MS`,

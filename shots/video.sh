@@ -195,7 +195,7 @@ if [ "$AUDIO" = "1" ] && [ "$APX" = "0" ] && [ -s "$RAW" ]; then
   ARATE=${SPEC% *}; ACH=${SPEC#* }
   ffmpeg -hide_banner -loglevel error -y -i "$SILENT" \
     -f s16le -ar "${ARATE:-44100}" -ac "${ACH:-2}" -i "$RAW" \
-    -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart "$OUT"
+    -c:v copy -c:a aac -b:a 320k -shortest -movflags +faststart "$OUT"
 else
   [ "$AUDIO" = "1" ] && echo "video.sh: the audio pass produced nothing - writing silent"
   mv "$SILENT" "$OUT"
