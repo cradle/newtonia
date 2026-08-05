@@ -12,7 +12,10 @@
 # carries - it is downloaded for you), a path to a .nrp, or one of the local
 # shorthands best/recent/current/bestcoop/online/last.
 #
-# Wants .\newtonia.exe and ffmpeg on PATH (winget install Gyan.FFmpeg).
+# Wants .\newtonia.exe and ffmpeg. If ffmpeg is not on PATH the usual places
+# are checked (MSYS2, winget, choco, scoop, Program Files) and -Ffmpeg takes an
+# explicit path. Install with:  winget install Gyan.FFmpeg  - and then open a
+# NEW terminal, because winget updates PATH for new sessions only.
 #
 # KEEP THIS FILE PURE ASCII. Windows PowerShell 5.1 reads a .ps1 as ANSI
 # unless it has a UTF-8 BOM, so a UTF-8 em dash arrives as three CP1252
@@ -47,7 +50,8 @@ param(
   [switch]$NoHud,
   [switch]$Chrome,
   [switch]$Keep,
-  [switch]$Info
+  [switch]$Info,
+  [string]$Ffmpeg = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -107,10 +111,48 @@ if ($Info) {
   exit 0
 }
 
-if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
-  Write-Error "video.ps1: ffmpeg not found on PATH (winget install Gyan.FFmpeg)"
+# ffmpeg: PATH first, then the places Windows installers actually put it. A
+# fresh "winget install" does not reach an already-open shell, which makes
+# "not on PATH" the single most likely way this script fails for someone who
+# has just installed it.
+function Resolve-Ffmpeg {
+  if ($Ffmpeg) {
+    if (Test-Path $Ffmpeg) { return (Resolve-Path $Ffmpeg).Path }
+    Write-Error "video.ps1: -Ffmpeg '$Ffmpeg' does not exist"
+    exit 1
+  }
+  $onPath = Get-Command ffmpeg -ErrorAction SilentlyContinue
+  if ($onPath) { return $onPath.Source }
+  $candidates = @(
+    "C:\msys64\mingw64\bin\ffmpeg.exe",
+    "$env:LOCALAPPDATA\Microsoft\WinGet\Links\ffmpeg.exe",
+    "$env:ProgramData\chocolatey\bin\ffmpeg.exe",
+    "$env:USERPROFILE\scoop\shims\ffmpeg.exe",
+    "$env:ProgramFiles\ffmpeg\bin\ffmpeg.exe"
+  )
+  foreach ($c in $candidates) { if ($c -and (Test-Path $c)) { return $c } }
+  # WinGet installs the real binary under a versioned Packages directory and
+  # only links it into Links\; if the link is missing, go find the binary.
+  $pkg = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
+  if (Test-Path $pkg) {
+    $found = Get-ChildItem -Path $pkg -Filter ffmpeg.exe -Recurse -ErrorAction SilentlyContinue |
+             Select-Object -First 1
+    if ($found) { return $found.FullName }
+  }
+  return $null
+}
+
+$FfmpegExe = Resolve-Ffmpeg
+if (-not $FfmpegExe) {
+  Write-Error ("video.ps1: ffmpeg not found. Install it with " +
+    "'winget install Gyan.FFmpeg' and then open a NEW terminal (winget " +
+    "updates PATH for new sessions only), or pass -Ffmpeg C:\path\to\" +
+    "ffmpeg.exe. No ffmpeg at all? The 'Render replay video' workflow does " +
+    "the whole job in CI and hands back an mp4.")
   exit 1
 }
+Write-Host "=== ffmpeg: $FfmpegExe"
+$FfprobeExe = Join-Path (Split-Path -Parent $FfmpegExe) "ffprobe.exe"
 
 $outDir = Split-Path -Parent $Out
 if (-not $outDir) { $outDir = "." }
@@ -148,7 +190,8 @@ if (-not $NoAudio) {
 $env:NEWTONIA_VIDEO = "-"
 $exe = (Resolve-Path .\newtonia.exe).Path
 $bat = Join-Path $work "render.bat"
-$ff  = "ffmpeg -hide_banner -loglevel warning -y -f rawvideo -pix_fmt rgb24 " +
+$ff  = '"' + $FfmpegExe + '"' +
+       " -hide_banner -loglevel warning -y -f rawvideo -pix_fmt rgb24 " +
        "-s ${W}x${H} -r $Fps -i - -an -c:v libx264 -preset slow -crf $Crf " +
        "-pix_fmt yuv420p -movflags +faststart " + '"' + $silent + '"'
 Set-Content -Path $bat -Encoding ASCII -Value @(
@@ -165,7 +208,7 @@ if ($rc -ne 0 -or -not (Test-Path $silent)) {
 
 # --- mux: the video is copied, not re-encoded ---
 if ((-not $NoAudio) -and (Test-Path $raw) -and ((Get-Item $raw).Length -gt 0)) {
-  & ffmpeg -hide_banner -loglevel error -y -i $silent `
+  & $FfmpegExe -hide_banner -loglevel error -y -i $silent `
       -f s16le -ar $rate -ac $ch -i $raw `
       -c:v copy -c:a aac -b:a 320k -shortest -movflags +faststart $Out
 } else {
@@ -175,8 +218,8 @@ if ((-not $NoAudio) -and (Test-Path $raw) -and ((Get-Item $raw).Length -gt 0)) {
 if (-not $Keep) { Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue }
 
 Write-Host "video.ps1: wrote $Out"
-if (Get-Command ffprobe -ErrorAction SilentlyContinue) {
-  & ffprobe -hide_banner -loglevel error -show_entries `
+if (Test-Path $FfprobeExe) {
+  & $FfprobeExe -hide_banner -loglevel error -show_entries `
       "format=duration,size:stream=codec_name,width,height,r_frame_rate" `
       -of default=noprint_wrappers=1 $Out
 }
