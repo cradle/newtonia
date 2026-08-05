@@ -259,20 +259,19 @@ because a PowerShell pipeline decodes bytes as text and would destroy them.
 It also runs the two passes one after the other rather than together: the
 audio pass is the real-time half and starving it costs sync.
 
-**Or render it in CI and skip all of that.** The `Render replay video`
-workflow builds, renders and uploads the mp4 as a downloadable artifact — no
-build, no bash, no ffmpeg, no GPU at the other end. It takes the same
-parameters from the Run workflow button, and an 8-minute run produced a 90 s
-1440p60 clip of a real leaderboard replay.
+**There is also a CI route, parked.** `.github/workflows/disabled/video.yml`
+builds, renders and uploads the mp4 as a downloadable artifact — no build, no
+bash, no ffmpeg, no GPU at the other end, which is the answer for a machine
+that cannot build the game. It is kept in `disabled/` rather than live because
+artifact storage is a 2 GB quota shared with every other workflow in this repo
+and a 90 s 1440p CRF 16 render is ~240 MB of it; a handful of trailers would
+fill the account. Move the file into `.github/workflows/`, render what you
+need, download it, delete the artifact, and move the file back. It keeps
+artifacts for one day and prints their size and share of the quota into the
+job summary. `crf` is the cheap lever if you do need it live: 20 roughly
+halves the file, 24 roughly quarters it.
 
-Mind the **artifact quota** when you do: that clip was 240 MB, and the free
-plan allows 2 GB of artifact storage in total, so a handful of renders fills
-it. The job prints the size and what share of 2 GB it took, and keeps the
-artifact for **one day** by default (`retention` raises it) — download it the
-same day, and delete the artifact afterwards to reclaim the space immediately
-rather than waiting for expiry. `crf` is the other lever: 20 roughly halves
-the file, 24 roughly quarters it. Re-rendering is deterministic and takes
-minutes, so a deleted artifact is never a loss.
+Rendering locally costs no quota at all, so that is the habit worth having.
 
 Direct control, if you'd rather not use the script — `NEWTONIA_VIDEO`
 (rgb24 frame stream; a fifo works, and `-` means stdout), `NEWTONIA_VIDEO_AUDIO` (s16 mix; the

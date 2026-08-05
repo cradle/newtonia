@@ -7,6 +7,15 @@ name: Render replay video
 # MSYS2/bash on Windows, no ffmpeg, no Xvfb, no GPU. Download the mp4 from
 # the run's Artifacts when it finishes.
 #
+# PARKED IN disabled/ AND DOES NOT RUN. Artifact storage is a 2 GB quota
+# shared with every other workflow here, and a 90 s 1440p render is ~240 MB of
+# it — too expensive to keep on tap for something that is wanted a few times a
+# year. Move this file back into .github/workflows/ to re-enable it (the
+# repo's convention for the deploy workflows beside it), render what you need,
+# and move it back out. Local rendering — shots/video.sh, shots\video.ps1 —
+# costs no quota at all and is the better habit; this is for the machine that
+# cannot build the game.
+#
 # Two ways in, because they are available at different times:
 #   * workflow_dispatch — the Run workflow button, with all the knobs. GitHub
 #     only shows it once this file is on the DEFAULT branch, so it is useless
