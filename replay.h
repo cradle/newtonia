@@ -141,6 +141,15 @@ std::string online_path();
 // never best-checked.
 std::string download_path();
 
+// The shorthand names the harnesses take instead of a path — "current",
+// "recent", "best", "bestcoop", "online", and "last" ("the last thing I
+// played": the live/resumable run if there is one, else the most recently
+// completed, since a finished run rotates current -> recent). Anything else
+// is returned unchanged, so a real path always works. ONE definition, shared
+// by NEWTONIA_REPLAY_PLAY (state_manager.cpp) and NEWTONIA_VIDEO_REPLAY
+// (video_capture.cpp) — a second copy would drift the moment a slot is added.
+std::string path_for_name(const std::string &name);
+
 // This build's game version exactly as a recorded header would carry it
 // (the 23-char truncation included) — the leaderboard's season key. Lives
 // here because only replay.o compiles with NEWTONIA_VERSION_STRING

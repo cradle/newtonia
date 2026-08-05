@@ -197,7 +197,6 @@ GLGame::GLGame(SDL_GameController *controller) :
 
   time_until_next_step = 0;
   num_frames = 0;
-  last_draw_time_ = SDL_GetTicks();
 
   generation = 0;
   // Dev/testing (beta builds only): NEWTONIA_START_GENERATION=N starts a new
@@ -599,7 +598,6 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
 
   time_until_next_step = 0;
   num_frames = 0;
-  last_draw_time_ = SDL_GetTicks();
 
   // Restore asteroids
   Asteroid::num_killable = 0;
@@ -6451,6 +6449,10 @@ void GLGame::perf_report() {
 
 void GLGame::tick(int delta) {
   PerfScope perf_scope_(&perf_tick_ms_, &perf_tick_max_);
+  // The camera's follow rate is a per-frame amount, and the frame it belongs
+  // to is a SIMULATED one — draw() banks it from here rather than reading a
+  // clock (see the note there).
+  camera_delta_pending_ += delta;
   // Replay recording starts on the first tick — the earliest point that
   // knows the game's mode (the net ctors delegate to the offline ctors and
   // set net_mode_ only afterwards). Offline AND online games record
@@ -7979,9 +7981,17 @@ void GLGame::draw_objects(float direction, bool minimap,
 void GLGame::draw(void) {
   PerfScope perf_scope_(&perf_draw_ms_, &perf_draw_max_);
   perf_report();  // once per second, only while below ~55 fps
-  Uint32 now = SDL_GetTicks();
-  int frame_delta = (int)(now - last_draw_time_);
-  last_draw_time_ = now;
+  // Camera smoothing advances by SIMULATED time, not by how long the last
+  // frame took to draw. Those are the same thing while the game runs at
+  // speed, and nothing like it otherwise: under the time-scale debug keys or
+  // a replay's 4x fast-forward the world moved at one rate and the camera
+  // chased at another, and in an offline video render (shots/video.sh), where
+  // a 1080p frame can take a tenth of a second on software GL, a wall clock
+  // made every frame's smoothing step enormous — the captured camera snapped
+  // where the played camera glides. Banked in tick() so a draw that skips a
+  // tick (or a tick with no draw) still gets exactly the time that passed.
+  int frame_delta = camera_delta_pending_;
+  camera_delta_pending_ = 0;
   // Hitch breakdown, draw half (see the "slow tick" line): a slow frame
   // that ISN'T in poll/steps is render-side.
   uint32_t hb_draw_t0 = SDL_GetTicks();
@@ -7998,9 +8008,9 @@ void GLGame::draw(void) {
     // run, each following its own ghost (REPLAY.md R2).
     draw_world(players->front(), true);
     if (players->size() > 1) draw_world(players->back(), false);
-    draw_map();
+    if (!shot_hide_hud_) draw_map();
     Overlay::net_overlays(this);  // generation banner + shared GAME OVER card
-    Overlay::replay_hud(this);
+    if (!replay_hide_chrome_) Overlay::replay_hud(this);
   }
   else if(net_mode_ != NetOff) {
     // Online: one full-screen view following the local player (host =

@@ -13,21 +13,8 @@ StateManager::StateManager() {
   // Falls back to the menu (with a log line) when the file declines.
   const char *rp = SDL_getenv("NEWTONIA_REPLAY_PLAY");
   if (rp && *rp) {
-    std::string path = rp;
-    if (path == "current")     path = Replay::current_path();
-    else if (path == "recent") path = Replay::recent_path();
-    else if (path == "best")   path = Replay::best_path();
-    else if (path == "bestcoop") path = Replay::best_path_for(2);
-    else if (path == "online") path = Replay::online_path();
-    else if (path == "last") {
-      // "The last thing I played": the live/resumable run if one exists,
-      // otherwise the most recently completed one — a finished run rotates
-      // current -> recent, so plain `current` finds nothing after game over.
-      Replay::Header h;
-      path = Replay::read_header(Replay::current_path(), h)
-                 ? Replay::current_path()
-                 : Replay::recent_path();
-    }
+    // current/recent/best/bestcoop/online/last, or a path as given.
+    std::string path = Replay::path_for_name(rp);
     if (State *s = GLGame::start_replay_playback(path)) {
       state = s;
       return;

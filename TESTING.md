@@ -401,6 +401,23 @@ test/e2e/replay_online.sh # REPLAY.md online recording (needs the relay):
                      # keyframe as its first record either way (see the
                      # keyframe driver below, which covers that window
                      # directly).
+test/e2e/video.sh     # The video capture harness (shots/README.md "Video
+                     # capture"): records a run, then renders it. Asserts the
+                     # video pass writes exactly fps x seconds frames and a
+                     # stream that is a whole number of full frames (a raw
+                     # stream carries no geometry, so a short frame would
+                     # shear the encode); the audio pass writes one second of
+                     # s16 per second of run with a sync margin of about one
+                     # mixer buffer and no lag warning; --start/--duration
+                     # trim to the right length AND to different pixels; and
+                     # shots/video.sh muxes both into an mp4 of the right
+                     # duration with both streams (that step SKIPS without
+                     # ffmpeg). The load-bearing one is S3: **the same replay
+                     # must render byte-identically twice**, which is how the
+                     # two wall clocks in the frame path were found (the
+                     # GLTrail spawn cadence and GLGame::draw's camera
+                     # smoothing, both since on sim time). Any new
+                     # SDL_GetTicks in a draw path fails there first.
 test/e2e/replay_keyframe.sh # REPLAY.md keyframe ordering, via the in-binary
                      # recorder selftest (NEWTONIA_REPLAY_SELFTEST=1 — no
                      # relay, no display, no game). The ONLY coverage of the

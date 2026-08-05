@@ -176,3 +176,60 @@ is deliberately excluded — local split screen doesn't exist on the touch
 platforms. The iPhone's extra-wide aspect can show toroidal wrap twins of
 off-centre rocks in the small early-level worlds; if one bothers you,
 nudge that scene or crop.
+
+## Video capture (`shots/video.sh`)
+
+The same idea one dimension further: instead of composing a scene and
+capturing one instant, **render a recorded replay** (REPLAY.md) frame by
+frame to an MP4. That's a gameplay video of a real run — the store page's
+trailer footage — rebuildable from the command line whenever the game
+changes.
+
+```sh
+shots/video.sh --info                             # what's in best.nrp?
+shots/video.sh                                    # best.nrp -> shots/out/gameplay.mp4
+shots/video.sh --replay recent --out promo.mp4
+shots/video.sh --start 0:30 --duration 1:00       # trim to a highlight
+shots/video.sh --no-hud --size 2560x1440          # pure world, 1440p
+```
+
+Pick the run first — a replay file is a whole run, and a trailer wants a
+minute of it. `--info` prints the header (score, level reached, length),
+`--start`/`--duration` take `90`, `1:30` or `500ms`. Whatever you cut,
+the harness skips ahead **without rendering**, so trimming makes the
+render shorter rather than throwing frames away afterwards.
+
+Defaults worth knowing: 1920x1080 at 60 fps, the in-game HUD ON (a store
+video usually wants the score and lives) and the REPLAY watermark,
+timeline and control hints OFF — `--chrome` puts them back, `--no-hud`
+takes the HUD and minimap away too.
+
+**This is a render, not a screen recording.** Frame N is always exactly
+one frame time after frame N-1, whatever the machine managed, so a slow
+headless GL context produces a smooth 60 fps video rather than a stuttery
+one — and the same replay renders the same frames every time (the e2e
+driver asserts that byte for byte). Under Xvfb expect 1080p to run well
+below real time; it is still every frame.
+
+Picture and sound are **two passes over the same replay**, run in
+parallel, because they cannot be one: SDL calls the audio callback with
+the mixer lock held and the game takes that lock on every sound call, so
+pacing the mixer from inside the callback deadlocks the game thread. The
+video pass renders as fast as it can with no audio; the audio pass walks
+the same records with the same fixed timestep, never draws, and throttles
+itself to the audio device's real-time rate — so it costs the clip's own
+duration, and the two line up by construction. The script muxes them
+(x264 CRF 16 + AAC). Each pass reports its numbers; the audio pass also
+prints a **sync margin** (one mixer buffer, ~23 ms, is the floor) and
+warns if the sim ever fell behind the device, which is the one condition
+that would drift sound against picture.
+
+Direct control, if you'd rather not use the script — `NEWTONIA_VIDEO`
+(rgb24 frame stream, a fifo works), `NEWTONIA_VIDEO_AUDIO` (s16 mix; the
+other pass), `NEWTONIA_VIDEO_REPLAY`, `_SIZE`, `_FPS`, `_START_MS`,
+`_MS`, `_HUD`, `_CHROME`, `_SEED`, `_INFO`. Full notes in
+`video_capture.h`.
+
+Like shot mode, a capture touches no player data: no Steam, no
+achievements, no preference writes, no saves (playback already writes
+nothing). Verified end to end by `test/e2e/video.sh`.

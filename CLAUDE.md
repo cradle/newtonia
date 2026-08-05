@@ -132,6 +132,23 @@ per platform, sandboxed from all player data. Drivers: `shots/run.sh`
 screenshot sizes). Full DSL reference and gotchas in `shots/README.md`;
 approved renders are committed under `shots/out/`.
 
+#### Video capture (`NEWTONIA_VIDEO` — see shots/README.md, video_capture.h)
+`shots/video.sh` renders a **recorded replay** (REPLAY.md) to an MP4 — store
+trailer footage rebuilt from the command line, with `--info` to read a run's
+header and `--start`/`--duration` to cut a highlight (the skip-ahead doesn't
+render). A render, not a screen recording: the timestep is fixed, so a slow
+headless context still yields a smooth 60 fps and the same file renders the
+same frames every time. **Picture and sound are two passes** — SDL holds the
+mixer lock across the audio callback and the game takes it on every sound
+call, so pacing the mixer from inside the callback deadlocks the game thread
+(measured: 52 s of a 53 s render inside `tick`). The video pass runs flat out
+and silent; the audio pass replays the same records without drawing and
+throttles itself to the device's real-time rate; the script muxes them. Two
+wall-clock reads in the render path had to become sim time for this — the
+`GLTrail` spawn cadence and `GLGame::draw`'s camera-smoothing `frame_delta` —
+both of which were also wrong under the time-scale keys and a replay's 4x
+fast-forward. Verified by `test/e2e/video.sh`.
+
 
 ## Architecture
 

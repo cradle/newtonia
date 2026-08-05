@@ -113,6 +113,10 @@ public:
   // The screenshot harness (shot_scene.h) composes a shot game to order:
   // clears/spawns objects, parks ships, latches every persistence path off.
   friend class ShotScene;
+  // The video harness (video_capture.h) renders a replay to a frame stream:
+  // it picks the chrome flags and reads the playback clock to know when the
+  // recording has run out.
+  friend class VideoCapture;
 
   bool cleared() const;
 
@@ -782,7 +786,8 @@ private:
 
   int generation;
   int last_tick, time_until_next_step, num_frames, current_time, time_between_steps;
-  Uint32 last_draw_time_;
+  // Simulated ms ticked since the last draw, for the camera follow rate.
+  int camera_delta_pending_ = 0;
   int time_until_next_generation;
   // game_over: latches once the game has ended for us — all players out, or
   // (netplay) a spectator who then lost the peer. Gates the one-time
@@ -869,6 +874,12 @@ private:
   // Screenshot harness (`hud off`): skip the HUD overlay and the minimap so
   // a composed shot is just the world. Only ShotScene ever sets it.
   bool shot_hide_hud_ = false;
+  // Video harness: drop the playback chrome (REPLAY watermark, timeline,
+  // control hints, the REPLAY ENDED card) so a captured replay looks like
+  // gameplay rather than like someone watching a replay. The in-game HUD is
+  // a separate decision (shot_hide_hud_) — a store video usually wants the
+  // score and lives, and never wants the watermark. Only VideoCapture sets it.
+  bool replay_hide_chrome_ = false;
 };
 
 #endif

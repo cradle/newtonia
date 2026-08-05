@@ -62,6 +62,21 @@ std::string download_path() {
     return d.empty() ? "" : d + "download.nrp";
 }
 
+std::string path_for_name(const std::string &name) {
+    if (name == "current")  return current_path();
+    if (name == "recent")   return recent_path();
+    if (name == "best")     return best_path();
+    if (name == "bestcoop") return best_path_for(2);
+    if (name == "online")   return online_path();
+    if (name == "last") {
+        // A finished run rotates current -> recent, so plain `current` finds
+        // nothing after game over: fall through to the completed run.
+        Header h;
+        return read_header(current_path(), h) ? current_path() : recent_path();
+    }
+    return name;
+}
+
 std::string game_version_string() {
     // The same silent 23-char truncation the header stamp applies
     // (Recorder ctor) — the leaderboard's season queries must produce the

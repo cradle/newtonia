@@ -55,7 +55,9 @@ private:
   void add();
 
   static const int add_interval = 15;
-  int last_add_time;
+  // Sim milliseconds since the last point was added (see GLTrail::step for
+  // why this is not a wall clock).
+  float since_add;
   int type;
   GLShip* ship;
   Point offset;
