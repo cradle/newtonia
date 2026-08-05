@@ -147,6 +147,18 @@ bool VideoCapture::ok() {
 }
 
 bool VideoCapture::init() {
+  // Send SDL's log to stderr explicitly, first thing. Its default output on
+  // Windows is OutputDebugString plus a console if one is attached - and the
+  // Windows build is a GUI-subsystem binary (CLAUDE.md), so launched from a
+  // pipeline it has NO console and every video:/replay: line disappears into a
+  // debugger channel nobody is watching. A silent render is indistinguishable
+  // from a stuck one, which is exactly how it was reported (field, 2026-08-05).
+  // stderr is also the right destination when the frames are on stdout.
+  SDL_LogSetOutputFunction([](void *fp, int, SDL_LogPriority, const char *msg) {
+    fprintf((FILE *)fp, "%s\n", msg);
+    fflush((FILE *)fp);
+  }, stderr);
+
   SDL_AtomicSet(&s_audio_ms, 0);
   SDL_AtomicSet(&s_audio_armed, 0);
 

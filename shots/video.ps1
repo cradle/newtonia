@@ -240,16 +240,39 @@ Set-Content -Path $bat -Value $batText -Encoding ASCII
 # Echo the pipeline. If it fails, the command that failed is on screen rather
 # than inside a temporary file that the cleanup below has already deleted.
 Write-Host "=== $((Get-Content $bat)[1])"
-& cmd /c "`"$bat`""
-$rc = $LASTEXITCODE
+Write-Host "=== the game logs to $vErr"
+
+# Run the pipeline in the background and TAIL its log, rather than waiting in
+# silence for a job that takes minutes. Printing the log only after cmd
+# returned meant a stall showed nothing at all - no progress, no error, just a
+# white window - and the file holding the answer was deleted by the cleanup
+# before anyone could read it.
+$proc = Start-Process -FilePath $env:ComSpec -ArgumentList "/c", "`"$bat`"" `
+          -NoNewWindow -PassThru
+$shown = 0
+while (-not $proc.HasExited) {
+  Start-Sleep -Milliseconds 500
+  if (Test-Path $vErr) {
+    $lines = @(Get-Content $vErr -ErrorAction SilentlyContinue)
+    if ($lines.Count -gt $shown) {
+      $lines[$shown..($lines.Count - 1)] |
+        Where-Object { $_ -match "video:|replay:" } |
+        ForEach-Object { Write-Host "  $_" }
+      $shown = $lines.Count
+    }
+  }
+}
+$proc.WaitForExit()
+$rc = $proc.ExitCode
 Remove-Item Env:\NEWTONIA_VIDEO
-# The game is a GUI-subsystem binary: run from cmd it has no console, so
-# everything it logged went to the file the .bat redirected stderr into.
-# Without printing it, a refusal (a window the desktop could not hold, an
-# unreadable replay) looks exactly like a hang.
+# Anything the tail missed between its last poll and the exit.
 if (Test-Path $vErr) {
-  Get-Content $vErr | Select-String -Pattern "video:|replay:" |
-    ForEach-Object { Write-Host "  $_" }
+  $lines = @(Get-Content $vErr -ErrorAction SilentlyContinue)
+  if ($lines.Count -gt $shown) {
+    $lines[$shown..($lines.Count - 1)] |
+      Where-Object { $_ -match "video:|replay:" } |
+      ForEach-Object { Write-Host "  $_" }
+  }
 }
 if ($rc -ne 0 -or -not (Test-Path $silent)) {
   Write-Host "--- $bat was:"
@@ -258,6 +281,7 @@ if ($rc -ne 0 -or -not (Test-Path $silent)) {
     Write-Host "--- the game said:"
     Get-Content $vErr | ForEach-Object { Write-Host "    $_" }
   }
+  Write-Host "--- keeping $work for inspection"
   Write-Error "video.ps1: the render failed (exit $rc). The pipeline above is what cmd ran."
   exit 1
 }
