@@ -230,9 +230,10 @@ $bat = Join-Path $work "render.bat"
 # ("'"' is not recognized as an internal or external command"). A double-quoted
 # here-string interpolates variables and leaves quotes alone, so what you read
 # here is exactly what lands in the file.
+$vErr = Join-Path $work "render.err"
 $batText = @"
 @echo off
-"$exe" | "$FfmpegExe" -hide_banner -loglevel warning -y -f rawvideo -pix_fmt rgb24 -s ${W}x${H} -r $Fps -i - -an -c:v libx264 -preset slow -crf $Crf -pix_fmt yuv420p -movflags +faststart "$silent"
+"$exe" 2>"$vErr" | "$FfmpegExe" -hide_banner -loglevel warning -y -f rawvideo -pix_fmt rgb24 -s ${W}x${H} -r $Fps -i - -an -c:v libx264 -preset slow -crf $Crf -pix_fmt yuv420p -movflags +faststart "$silent"
 "@
 Set-Content -Path $bat -Value $batText -Encoding ASCII
 
@@ -242,9 +243,21 @@ Write-Host "=== $((Get-Content $bat)[1])"
 & cmd /c "`"$bat`""
 $rc = $LASTEXITCODE
 Remove-Item Env:\NEWTONIA_VIDEO
+# The game is a GUI-subsystem binary: run from cmd it has no console, so
+# everything it logged went to the file the .bat redirected stderr into.
+# Without printing it, a refusal (a window the desktop could not hold, an
+# unreadable replay) looks exactly like a hang.
+if (Test-Path $vErr) {
+  Get-Content $vErr | Select-String -Pattern "video:|replay:" |
+    ForEach-Object { Write-Host "  $_" }
+}
 if ($rc -ne 0 -or -not (Test-Path $silent)) {
   Write-Host "--- $bat was:"
   Get-Content $bat | ForEach-Object { Write-Host "    $_" }
+  if (Test-Path $vErr) {
+    Write-Host "--- the game said:"
+    Get-Content $vErr | ForEach-Object { Write-Host "    $_" }
+  }
   Write-Error "video.ps1: the render failed (exit $rc). The pipeline above is what cmd ran."
   exit 1
 }

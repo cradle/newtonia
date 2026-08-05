@@ -379,6 +379,20 @@ bool VideoCapture::capture(int window_w, int window_h) {
     return false;
   }
   s_frame_count++;
+  // Progress, every five seconds of captured video. A 1440p clip can take
+  // minutes, and without this an offline render is indistinguishable from a
+  // hung one - especially on Windows, where the window belongs to a loop that
+  // is busy reading pixels and stops repainting, so it goes white.
+  if (s_frame_count % (s_fps * 5) == 0) {
+    int done_ms = (int)(s_frame_count * 1000 / s_fps);
+    if (s_duration_ms > 0)
+      SDL_Log("video: %ld frames, %d:%02d of %d:%02d", s_frame_count,
+              done_ms / 60000, (done_ms / 1000) % 60,
+              s_duration_ms / 60000, (s_duration_ms / 1000) % 60);
+    else
+      SDL_Log("video: %ld frames, %d:%02d", s_frame_count, done_ms / 60000,
+              (done_ms / 1000) % 60);
+  }
   return true;
 }
 
