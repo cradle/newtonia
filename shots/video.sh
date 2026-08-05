@@ -96,13 +96,14 @@ mkdir -p "$(dirname "$OUT")"
 # Headless needs a virtual screen at least as big as the frame: a clamped
 # window would change the frame geometry, which a raw stream cannot express
 # (the game refuses rather than shearing the video — see VideoCapture::capture).
+# NICE_RUN (set per call) deprioritises a pass against the real-time one.
 run_game() {
   if [ -n "${DISPLAY:-}" ]; then
-    env "$@" "$BIN"
+    ${NICE_RUN:-} env "$@" "$BIN"
   else
     command -v xvfb-run >/dev/null || {
       echo "video.sh: no DISPLAY and no xvfb-run (apt-get install xvfb)"; exit 1; }
-    env "$@" xvfb-run -a -s "-screen 0 ${W}x${H}x24" "$BIN"
+    ${NICE_RUN:-} env "$@" xvfb-run -a -s "-screen 0 ${W}x${H}x24" "$BIN"
   fi
 }
 
@@ -137,6 +138,17 @@ echo "=== rendering $REPLAY -> $OUT (${W}x${H} @ ${FPS}fps)"
 
 # The audio pass first, in the background: it runs at the replay's own speed,
 # so it is usually the shorter of the two and costs nothing to overlap.
+#
+# It is also the only REAL-TIME half, and that makes it the one to protect.
+# Overlapped without this, the render and x264 saturate every core and stall
+# the paced sim: measured on a 4-core box, a late-game 1080p clip reported a
+# 135 ms sync margin overlapped and 23 ms — one mixer buffer, the floor —
+# running alone. So the video side is niced below it; the audio pass needs
+# barely a tenth of a core (12 s of CPU for a 90 s clip) and simply has to
+# get it on time.
+NICE=""
+command -v nice >/dev/null && NICE="nice -n 19"
+NICE_RUN=""   # set only for the video pass, below
 AP=""
 if [ "$AUDIO" = "1" ]; then
   ( run_game "${COMMON[@]}" NEWTONIA_VIDEO_AUDIO="$RAW" \
@@ -146,13 +158,14 @@ fi
 
 # The encoder must be reading before the game opens the fifo — opening a fifo
 # for writing blocks until there is a reader.
-ffmpeg -hide_banner -loglevel warning -y \
+$NICE ffmpeg -hide_banner -loglevel warning -y \
   -f rawvideo -pix_fmt rgb24 -s "${W}x${H}" -r "$FPS" -i "$FIFO" \
   -an -c:v libx264 -preset slow -crf "$CRF" -pix_fmt yuv420p \
   -movflags +faststart "$SILENT" &
 FF=$!
 
 set +e
+NICE_RUN=$NICE
 run_game "${COMMON[@]}" NEWTONIA_VIDEO="$FIFO" 2>&1 \
   | grep -E "^(INFO: )?(video|replay):"
 GAME=${PIPESTATUS[0]}

@@ -224,6 +224,19 @@ prints a **sync margin** (one mixer buffer, ~23 ms, is the floor) and
 warns if the sim ever fell behind the device, which is the one condition
 that would drift sound against picture.
 
+**Two things about the output that surprise.** Star fields are the worst
+case h264 has: thousands of tiny high-contrast points, all moving, all
+different every frame. The opening 90 s of a real run came out at 177 MB at
+the default CRF 16 (visually lossless, the right default for a master you
+hand to a store) — `--crf 20` roughly halves it and `--crf 24` roughly
+quarters it, with the stars the first thing to go soft. And the audio pass
+is the only REAL-TIME half of the render, so it is the one to protect: the
+script nices the video pass and the encoder below it, because saturating
+every core measured a 135 ms stall in the paced sim where the same window
+rendered alone measured 23 ms. If the pass warns about a stall anyway, free
+up the machine and re-run it — a smaller `--size` will not help, that pass
+never draws.
+
 Direct control, if you'd rather not use the script — `NEWTONIA_VIDEO`
 (rgb24 frame stream, a fifo works), `NEWTONIA_VIDEO_AUDIO` (s16 mix; the
 other pass), `NEWTONIA_VIDEO_REPLAY`, `_SIZE`, `_FPS`, `_START_MS`,

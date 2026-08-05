@@ -350,10 +350,12 @@ void VideoCapture::frame_done() {
     }
     SDL_Delay(1);
   }
-  // The other direction is the failure this pass cannot fix: if the sim is
-  // slower than real time the device runs on regardless, and the stream gains
-  // audio the video has no frames for. Track the worst case and report it — a
-  // silently desynced capture is the one outcome worth being loud about.
+  // The other direction is the one this pass cannot hold: the device runs on
+  // regardless, so a sim frame that takes longer than real time lets the
+  // stream gain audio the sim had no game time for. It does NOT accumulate —
+  // the wait above re-pins sim time to the device every frame — so the cost
+  // is local: cues around a stall land up to that late. Track the worst and
+  // report it; a silently misaligned capture is worth being loud about.
   int lag = SDL_AtomicGet(&s_audio_ms) - s_captured_ms;
   if (lag > s_worst_lag_ms) s_worst_lag_ms = lag;
 }
@@ -403,10 +405,16 @@ void VideoCapture::finish() {
     // A frame of slack is inaudible; a growing gap means the sim could not
     // keep up with the device and the two passes no longer describe the same
     // instants.
+    // One buffer is the floor and inaudible; a big one means the sim was
+    // starved. Almost always that is OTHER LOAD, not the game — running this
+    // pass beside the video render and x264 on a busy box measured 135 ms
+    // where the same window alone measured 23. Do not suggest a smaller
+    // --size: this pass never draws, so the frame size costs it nothing.
     if (s_worst_lag_ms > 100)
-      SDL_Log("video: WARNING - the sim fell up to %d ms behind the audio "
-              "device; sound and picture will drift by about that much. "
-              "Render at a smaller --size, or on a faster machine.",
+      SDL_Log("video: WARNING - a sim frame stalled up to %d ms behind the "
+              "audio device, so cues around it land up to that late (the "
+              "timeline re-pins afterwards, it does not accumulate). Free up "
+              "the machine and re-run this pass.",
               s_worst_lag_ms);
   }
 }
