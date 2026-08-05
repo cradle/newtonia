@@ -51,6 +51,12 @@ on:
     branches: ["claude/**"]
     paths: [".github/workflows/video.yml"]
 
+# A newer push supersedes an in-flight render rather than queueing another
+# half-hour job behind it.
+concurrency:
+  group: render-video-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   render:
     runs-on: ubuntu-22.04
@@ -82,10 +88,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Same recipe as linux.yml's build, plus the two the harness needs:
-      # xvfb (a runner has no display) and ffmpeg (the encoder). No netplay —
-      # playback is a solo feature, and NETPLAY=0 skips libdatachannel, which
-      # is most of that workflow's build time.
+      # linux.yml's build, MINUS its from-source SDL2_mixer and PLUS the two
+      # the harness needs: xvfb (a runner has no display) and ffmpeg (the
+      # encoder). No netplay either — playback is a solo feature, and
+      # NETPLAY=0 skips libdatachannel, most of that workflow's build time.
+      #
+      # The mixer comes from apt here, deliberately. linux.yml builds it from
+      # source to cut the codecs it ships and then compiles by invoking g++
+      # directly with a matching -I/usr/local/include/SDL2; this job uses the
+      # Makefile, which looks in /usr/include/SDL2 and cannot see a
+      # /usr/local install — copying that step verbatim failed the build on
+      # "SDL_mixer.h: No such file or directory". A render does not care which
+      # codecs the mixer supports.
       - name: Install dependencies
         run: |
           try() { local i; for i in 1 2 3; do
@@ -95,29 +109,13 @@ jobs:
           try sudo apt-get update
           try sudo apt-get install -y \
             libsdl2-dev \
+            libsdl2-mixer-dev \
             freeglut3-dev \
             libgl1-mesa-dev \
             libglu1-mesa-dev \
             libxi-dev \
-            cmake \
             xvfb \
             ffmpeg
-
-      - name: Build SDL2_mixer (WAV + MP3 only)
-        run: |
-          try() { local i; for i in 1 2 3; do
-                    if "$@"; then return 0; fi
-                    if [ "$i" = 3 ]; then return 1; fi
-                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20))
-                    if [ -n "${CLEAN:-}" ]; then rm -rf $CLEAN; fi; done; }
-          CLEAN=SDL2_mixer try git clone --depth 1 --branch release-2.8.2 https://github.com/libsdl-org/SDL_mixer.git SDL2_mixer
-          cmake -S SDL2_mixer -B SDL2_mixer/build \
-            -DSDL2MIXER_WAV=ON -DSDL2MIXER_MP3=ON \
-            -DSDL2MIXER_FLAC=OFF -DSDL2MIXER_VORBIS=OFF -DSDL2MIXER_OPUS=OFF \
-            -DSDL2MIXER_MOD=OFF -DSDL2MIXER_MIDI=OFF -DSDL2MIXER_WAVPACK=OFF \
-            -DBUILD_SHARED_LIBS=OFF -DSDL2MIXER_SAMPLES=OFF
-          cmake --build SDL2_mixer/build --parallel
-          sudo cmake --install SDL2_mixer/build
 
       - name: Build
         run: make NETPLAY=0 -j$(nproc)
