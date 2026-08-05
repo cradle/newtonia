@@ -69,12 +69,15 @@
     // WEB_COOP: the FREE public web build ships with netplay disabled
     // permanently (NEWTONIA_NET_DISABLED — pricing decision in NETPLAY.md:
     // the game is paid on Steam/iOS, so free browser co-op stays off), so
-    // this page's own /play cannot JOIN. Browser co-op lives on the PAID
-    // itch project instead (metonymous.itch.io/newtonia-online, task #156)
-    // — buyers open it there and type the room code shown above (the itch
-    // iframe URL can't carry ?code=). While WEB_COOP is false this page
-    // leads with the stores (Steam / App Store / paid itch) and sends the
-    // no-app cases to the landing page, which lists every way to play.
+    // this page's own /play cannot JOIN. Browser co-op was to live on the
+    // PAID itch project instead (metonymous.itch.io/newtonia-online, task
+    // #156) — buyers would open it there and type the room code shown
+    // above (the itch iframe URL can't carry ?code=) — but that project is
+    // unpublished and parked, because itch cannot purchase-gate an HTML5
+    // embed (NETPLAY.md Gate 5), so itchBtn stays hidden throughout (see
+    // the route below). While WEB_COOP is false this page leads with the
+    // reachable stores (Steam / App Store) and sends the no-app cases to
+    // the landing page, which lists every way to play.
     var WEB_COOP = false;
     // ANDROID_PUBLIC: flip to true when the Play listing is public (task
     // #145). While false the Play button stays hidden — a closed-testing

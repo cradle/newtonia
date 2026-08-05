@@ -70,9 +70,12 @@ jobs:
           emcc --version   # triggers sanity checks + sysroot initialisation
           # The free public site (GitHub Pages) ships with netplay
           # force-disabled permanently (NEWTONIA_NET_DISABLED — pricing
-          # decision in NETPLAY.md: paid on Steam/iOS, browser co-op is
-          # the paid newtonia-online itch project, which deploy-itch
-          # builds netplay-ON).
+          # decision in NETPLAY.md: paid on Steam/iOS, so free browser
+          # co-op would undercut them). Browser co-op was to live on the
+          # paid newtonia-online itch project, which deploy-itch still
+          # builds netplay-ON — but that project is unpublished and
+          # parked (itch cannot purchase-gate HTML5 embeds, NETPLAY.md
+          # Gate 5). The netless default here is unaffected either way.
           make web NETPLAY=0
 
       - name: Upload Pages artifact
