@@ -149,15 +149,44 @@ native build.
 
 ### Tags
 
-Tags drive more Steam discovery than the description does, and they are
-ordered — the first few matter most. Suggested, most-important first:
+Tags drive more Steam discovery than the description does. Currently set, and
+already accurate — 20 of a possible 20, so anything new has to displace
+something:
 
-> Space, Arcade, Shoot 'Em Up, 2D, Physics, Score Attack, Local Co-Op,
-> Split Screen, Online Co-Op, Action, Indie, Singleplayer, Multiplayer,
-> Retro, Minimalist, Difficult, Replay Value, PvP
+| Group | Tags |
+|---|---|
+| Top-Level Genres | Action, Casual |
+| Genres | Arcade |
+| Sub-Genres | Top-Down Shooter |
+| Visuals & Viewpoint | Split Screen, 2D, Top-Down |
+| Themes & Moods | Retro, Old School, Space |
+| Features | PvP, Combat, Controller |
+| Players | Local Multiplayer, Local Co-Op, Co-op, Multiplayer, Singleplayer, Online Co-Op |
+| Other | Indie |
 
-**Do not tag Twin Stick Shooter.** It is rotate-and-thrust, not twin-stick,
-and the mismatch buys refunds from exactly the people the tag attracts.
+Two real gaps, both describing what actually separates this from the other
+top-down shooters:
+
+- **Physics** — Newtonian momentum is the differentiator and is not tagged.
+- **Score Attack** — a high-score chase with a verified leaderboard, also not
+  tagged.
+
+Two worth trading away for them:
+
+- **Combat** — near-universal across action games, so it filters nobody
+  toward this one.
+- **Controller** — the controller-support field already states this
+  authoritatively (Partial Controller Support), so the tag is redundant.
+
+A third slot if **Difficult** or **Minimalist** appeals: *Retro* and *Old
+School* are near-synonyms spending two slots on one idea.
+
+Note that "retro" is fine as a tag while being wrong in the prose (§6): a tag
+is a filter people opt into, a description is a pitch they judge you on.
+
+**Do not add Twin Stick Shooter.** It is rotate-and-thrust, not twin-stick,
+and the mismatch buys refunds from exactly the people the tag attracts. It is
+correctly absent today; this note exists so it stays that way.
 
 ### Two rules to not trip over
 
