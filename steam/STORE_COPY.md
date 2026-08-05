@@ -38,7 +38,7 @@ independent:
 > A 2D top-down space shooter. Think Asteroids with powerful weapons and far
 > more dangerous rocks. Progress level after level against increasing
 > challenge, with advanced weapons dropping regularly. Go for a high score,
-> or play co-operatively with a friend — split-screen or online.
+> or play co-operatively with a friend; split-screen or online.
 
 1. Drops "Newtonia is a" — 13 characters restating the name printed directly
    above it, and the opening is the part that survives truncation in a search
@@ -66,7 +66,7 @@ BBCode. Paste as-is.
 There is no brake.
 
 Newtonia is a top-down space shooter built on momentum. You thrust, you
-drift, and the world wraps around behind you — every shot you take pushes
+drift, and the world wraps around behind you. Every shot you take pushes
 you somewhere you have to deal with a second later. Clear the field to
 advance. The field gets bigger, stranger and more crowded every time.
 
@@ -74,13 +74,13 @@ advance. The field gets bigger, stranger and more crowded every time.
 It starts with rocks. Then the rocks start cheating.
 
 [list]
-[*][b]Reflective[/b] — bounces your bullets straight back at you
-[*][b]Teleporting[/b] — gone before your shot arrives
-[*][b]Invisible[/b] — no body at all; you find it by the light it bends
-[*][b]Quantum[/b] — only solid while someone is looking at it
-[*][b]Tough[/b] — five hits, cracking as it goes
-[*][b]Armoured[/b] — one rotating face deflects everything; hit the seam
-[*][b]Phasing[/b] — solid, then not, then solid again
+[*][b]Reflective[/b]: bounces your bullets straight back at you
+[*][b]Teleporting[/b]: gone before your shot arrives
+[*][b]Invisible[/b]: no body at all; you find it by the light it bends
+[*][b]Quantum[/b]: only solid while someone is looking at it
+[*][b]Tough[/b]: five hits, cracking as it goes
+[*][b]Armoured[/b]: one rotating face deflects everything; hit the seam
+[*][b]Phasing[/b]: solid, then not, then solid again
 [/list]
 
 Then the things that are not rocks arrive. Pulsars that charge up and shove
@@ -94,28 +94,28 @@ when you do.
 
 [h2]Ten weapons, and none of them are just "the gun"[/h2]
 [list]
-[*][b]Lance[/b] — one instantaneous full-length pulse that mirror-bounces
+[*][b]Lance[/b]: one instantaneous full-length pulse that mirror-bounces
 off reflective surfaces and keeps going
-[*][b]Shock[/b] — chain lightning that hops from kill to kill, and bursts
+[*][b]Shock[/b]: chain lightning that hops from kill to kill, and bursts
 into sparks against anything it cannot destroy
-[*][b]Pierce Beam[/b] — ploughs through a whole line of asteroids, stopping
+[*][b]Pierce Beam[/b]: ploughs through a whole line of asteroids, stopping
 only at one it cannot break
-[*][b]Nova[/b] — charges off your kill streak, then clears the screen
-[*][b]Homing missiles, mines, giga mines, shields, and God Mode[/b] — ten
+[*][b]Nova[/b]: charges off your kill streak, then clears the screen
+[*][b]Homing missiles, mines, giga mines, shields, and God Mode[/b]: ten
 seconds of invincibility that fires shockwaves while it lasts
 [/list]
 
 [h2]Bring someone[/h2]
 Split-screen co-op on one machine, online co-op over the internet, or LAN.
 Turn friendly fire on if you trust each other less than that. If your
-partner runs out of lives, a revive pickup drops — reach it and they are
+partner runs out of lives, a revive pickup drops. Reach it and they are
 back in the fight. Play PvP if you would rather settle it directly.
 
 Also supports Remote Play Together, so a second pilot does not need a copy.
 
 [h2]A leaderboard that can prove it[/h2]
 Every run can be recorded as a replay, and the leaderboard verifies scores
-against them — a run gets on the board because the server watched it happen,
+against them. A run gets on the board because the server watched it happen,
 not because the client claimed a number. Replays are watchable in a browser,
 so a top run is a link you can send someone.
 
