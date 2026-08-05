@@ -1,0 +1,32 @@
+# Shock: chain lightning. The bolt grows ahead of the ship, seeks the nearest
+# target in a forward 135-degree cone, and chains onward only from a KILLING
+# hit — so a field of small breakable rocks makes it hop, and the tough one
+# top-right stops it dead in a spark burst. That contrast is the clip.
+# Pickup on the spawn selects it (Ship::add_shock); semi-automatic, so one
+# `key space` per bolt.
+seed 41
+sim 500
+frames 90
+fps 30
+size 960 540
+clear
+hud off
+camera fixed
+zoom 55
+ship 0 0 0
+pickup shock 0 0
+# A staggered ladder, not a scatter: the bolt hops to the nearest target near
+# its advancing tip, so tight alternating offsets make it visibly zigzag.
+# Spread them wide and it just runs straight up through two of them.
+asteroid -95 165 r=42
+asteroid 85 255 r=40
+asteroid -80 345 r=42
+asteroid 100 430 r=40
+asteroid -70 515 r=38
+asteroid 250 155 r=40
+asteroid -260 250 r=40
+asteroid 330 480 tough r=85
+key space 700
+key space 1600
+key space 2500
+key space 3300

@@ -1,0 +1,26 @@
+# Black hole: it swallows whatever drifts too close.
+#
+# The hole draws NOTHING in the world view — its ring is minimap-only
+# (black_hole.cpp) — so the clip shows it purely by its effect: rocks given
+# slow, mostly-tangential velocities curve visibly before they go. Fast
+# radial approaches just blink out and read as rocks despawning.
+#
+# HUD stays OFF despite the minimap being the only thing that draws the hole:
+# in one-player the HUD also carries a "PLAYER 2 PRESS ENTER TO JOIN" banner,
+# which is not something to put in a marketing clip. The curve has to carry it.
+seed 51
+sim 400
+frames 120
+fps 30
+size 960 540
+clear
+hud off
+camera fixed
+zoom 60
+ship -400 -260 25
+blackhole 60 40
+asteroid -340 380 r=70 v=62,4
+asteroid 470 330 r=60 v=-10,-64
+asteroid 450 -290 r=65 v=-8,60
+asteroid -320 -280 r=55 v=58,10
+asteroid 40 470 r=50 v=66,-6

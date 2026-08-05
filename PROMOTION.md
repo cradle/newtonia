@@ -95,27 +95,42 @@ Reddit also ranks native uploads well above external links, so these should be
 uploaded directly to Reddit as GIF/video, with the play link in the body or
 first comment.
 
-### Capture list (each 3–6s, looping, no HUD clutter)
+### The capture harness — built, see `shots/clips/`
 
-Ordered by how well they answer "why isn't this just Asteroids?":
+`shots/gif.sh` renders composed scenes straight to looping MP4 + GIF, headless
+and deterministically (`shots/README.md` → Clips). Four usable clips exist
+today, ordered by how well they answer "why isn't this just Asteroids?":
 
-1. **Invisible asteroids** — visible only as gravitational-lens distortion
-   (`WarpPass`). Genuinely strange, reads instantly as "wait, what?". Best
-   single hook we have.
-2. **Lance mirror-bounce** — one pulse ray-marching and reflecting off
-   reflective asteroids, killing a chain of rocks around a corner.
-3. **Shock chain lightning** — arc hopping rock to rock, then hitting a tough
-   asteroid and bursting into sparks instead of chaining.
-4. **Black hole** — space bending, asteroids spiralling past the horizon.
-5. **Pulsar shockwave** — the ring hitting the ship and physically shoving it.
-6. **Nova detonation** — full-screen wipe at 9 charges.
-7. **Split-screen co-op + revive** — two ships, one dies, partner grabs the
-   green cross and revives them. Sells the couch-co-op angle in one loop.
+1. **Lance mirror-bounce** (`lance.shot`) — one pulse reflecting off a mirror
+   asteroid and killing a chain of rocks around the corner. **The strongest
+   asset we have.** Lead with it.
+2. **Pulsar shockwave** (`pulsar.shot`) — a big amber ring expanding out and
+   physically shoving the ship.
+3. **Shock chain lightning** (`shock.shot`) — the arc snaking rock to rock,
+   stopped dead by a tough one.
+4. **Plain gameplay** (`gameplay.shot`) — a real generation-5 level, flown and
+   shot. The "what is it actually like" clip that most feeds want.
 
-The `headless-testing` skill (Xvfb + xdotool) can drive real gameplay
-headlessly, and `NEWTONIA_ALL_WEAPONS=1` grants every weapon on spawn — so
-these can be captured deterministically rather than fished for by hand. Say
-the word and I'll build the capture harness.
+**Correction to an earlier draft of this plan:** it called the invisible
+asteroids "the best single hook we have". Having actually rendered them, that
+was wrong — it was a judgement made from reading the code rather than looking
+at output. The lens is a screen-space warp with no outline of its own; at GIF
+resolution it is close to invisible in the unhelpful sense. The black hole is
+worse: it draws *nothing* in the world view (its ring is minimap-only), so a
+clip shows only rocks curving into nowhere. Both scenes are kept and
+documented, neither is a lead asset.
+
+If the invisible asteroids are ever to earn a post, it needs the **reveal**,
+not the lens: empty space, a shot fired into it, something unseen breaking
+into visible fragments. That's a story in three seconds. It needs more
+scripting than the current scenes do.
+
+Still worth capturing when there's an appetite:
+
+- **Nova detonation** — full-screen wipe at 9 charges.
+- **Split-screen co-op + revive** — one ship dies, the partner grabs the green
+  cross and brings them back. Sells the couch-co-op angle in one loop, and no
+  current clip shows two players at all.
 
 ---
 
@@ -168,15 +183,15 @@ that is the pattern spam filters catch.
 
 | Week | Post | Asset |
 |---|---|---|
-| 0 | *(no posting)* — do §2 store fixes, capture GIFs | — |
-| 1 | r/WebGames | Invisible-asteroid GIF |
-| 1 | r/playmygame | Template + gameplay clip |
-| 2 | r/indiegames | Lance mirror-bounce GIF |
+| 0 | *(no posting)* — do §2 store fixes | clips are already rendered |
+| 1 | r/WebGames | `gameplay.mp4` |
+| 1 | r/playmygame | Template + `gameplay.mp4` |
+| 2 | r/indiegames | `lance.mp4` — the strongest clip, to the biggest showcase sub |
 | 2 | r/IndieDev | "No engine, 7 platforms" + screenshots |
 | 3 | r/DestroyMyGame | Trailer or 60s raw gameplay |
-| 3 | r/IndieGaming | Chain-lightning GIF |
+| 3 | r/IndieGaming | `shock.mp4` |
 | 4 | r/cpp | Technical writeup |
-| 4 | r/CoOpGaming | Split-screen revive GIF |
+| 4 | r/CoOpGaming | Split-screen revive clip *(needs capturing)* |
 | 5 | Show HN | Netplay + replay-verified board writeup |
 | 6 | r/SteamDeck *(if verified)* | Deck footage |
 
@@ -189,8 +204,8 @@ plain, specific, and slightly self-deprecating. Keep it that way.
 
 ### r/WebGames
 
-> **Title:** Newtonia — free browser space shooter where the asteroids you
-> can't see bend the light around them
+> **Title:** Newtonia — free browser space shooter with Newtonian drift, no
+> braking, and a wrapping world
 >
 > Been building this on and off for a while. It's a top-down shooter with
 > proper Newtonian movement — you thrust and drift, there's no braking, and

@@ -1,0 +1,31 @@
+# The lance: one instantaneous full-length pulse per trigger pull, mirrored
+# off every reflective asteroid it meets and carrying its remaining distance
+# through the bounce. The pickup sits on the spawn so the ship collects it on
+# frame one, which also selects it (Ship::add_lance_ammo).
+# Semi-automatic, so each `key space` is one pull — `hold` would fire once.
+#
+# The mirrors (teal) are placed to send the pulse back ACROSS the frame
+# rather than off the top, so the bounce is the thing you watch. Ship sits
+# low-centre with the geometry above it; zoomed in so it isn't a speck.
+seed 31
+sim 500
+frames 90
+fps 30
+size 960 540
+clear
+hud off
+camera fixed
+zoom 55
+ship 0 -230 0
+pickup lance 0 -230
+asteroid -300 170 reflective r=110
+asteroid 330 210 reflective r=110
+asteroid 20 400 reflective r=120
+asteroid -120 40 r=60
+asteroid 165 15 r=55
+asteroid 420 -60 r=55
+asteroid -420 -30 r=50
+key space 700
+key space 1500
+key space 2300
+key space 3100

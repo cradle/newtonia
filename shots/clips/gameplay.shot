@@ -1,0 +1,26 @@
+# Plain gameplay: a real generated level, flown and shot. No composed set
+# piece — this is the "what is the game actually like" clip, and it is the
+# one most feeds want. Generation 5 is the sweet spot: the specials have
+# unlocked (reflective, teleporting, invisible, quantum) so the field has
+# variety, but the world is still small enough to stay busy on screen.
+#
+# Default rotate camera, unlike the composed scenes: this is the view a
+# player actually has, and the world swinging around the ship is a good part
+# of how the game reads in motion.
+# Thrust in pulses rather than `hold w` — held thrust just accelerates away
+# and leaves the rocks behind. The gun is automatic, so fire is held.
+seed 73
+sim 600
+frames 110
+fps 30
+size 960 540
+hud off
+game 5
+hold space
+key w 700
+key w 1100
+key d 1600
+key w 2100
+key a 2700
+key w 3000
+key w 3400

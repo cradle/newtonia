@@ -57,9 +57,20 @@ struct SceneTap {
   bool sent = false;
 };
 
+// The shot loop's fixed sim step (glut.cpp shot_tick). Frame intervals are
+// quantised to it so every captured frame is a distinct simulated instant.
+const int SIM_STEP_MS = 16;
+
 struct Scene {
   int width = 0, height = 0;      // 0 = preferences
   int sim_ms = 1000;
+  // Clip mode (`frames` > 1): capture a numbered sequence instead of one
+  // still, advancing frame_step_ms of sim between captures. The step is
+  // quantised to the loop's 16 ms sim step, so the effective fps is
+  // 1000/frame_step_ms — `fps` sugar sets it and the harness logs what it
+  // actually got. Assembled into GIF/mp4 by shots/gif.sh.
+  int frames = 1;
+  int frame_step_ms = 32;         // ~31 fps; always a multiple of SIM_STEP_MS
   unsigned seed = 1337;           // srand() before build: same scene, same shot
   bool menu_mode = false;
   int generation = 0;             // game base: NEWTONIA_START_GENERATION path
@@ -93,6 +104,23 @@ struct Scene {
 
 Scene s_scene;
 std::string s_out_path;
+
+// Round a requested frame interval to the sim loop's fixed step. Sub-step
+// intervals would capture the same simulated instant twice, so clamp up.
+int quantise_step(int ms) {
+  int steps = (ms + SIM_STEP_MS / 2) / SIM_STEP_MS;
+  return (steps < 1 ? 1 : steps) * SIM_STEP_MS;
+}
+
+// Clip frames land beside the still's path with a _0000 index before the
+// extension: out.png -> out_0000.png, out_0001.png, ...
+std::string frame_path(const std::string &path, int index) {
+  size_t dot = path.find_last_of('.');
+  if (dot == std::string::npos) dot = path.size();
+  char idx[16];
+  snprintf(idx, sizeof(idx), "_%04d", index);
+  return path.substr(0, dot) + idx + path.substr(dot);
+}
 
 bool parse_error(int line_no, const std::string &line, const char *why) {
   std::cout << "shot: scene line " << line_no << ": " << why << " -- \""
@@ -145,6 +173,14 @@ bool parse_scene_file(const char *path) {
     } else if (cmd == "sim") {
       if (!(in >> s_scene.sim_ms) || s_scene.sim_ms < 0)
         return parse_error(line_no, line, "bad sim ms");
+    } else if (cmd == "frames") {
+      if (!(in >> s_scene.frames) || s_scene.frames < 1)
+        return parse_error(line_no, line, "bad frame count");
+    } else if (cmd == "fps") {
+      int fps = 0;
+      if (!(in >> fps) || fps < 1 || fps > 1000 / SIM_STEP_MS)
+        return parse_error(line_no, line, "bad fps");
+      s_scene.frame_step_ms = quantise_step(1000 / fps);
     } else if (cmd == "seed") {
       if (!(in >> s_scene.seed)) return parse_error(line_no, line, "bad seed");
     } else if (cmd == "menu") {
@@ -444,15 +480,43 @@ bool ShotScene::init() {
   }
   const char *ms = SDL_getenv("NEWTONIA_SHOT_MS");
   if (ms && ms[0]) s_scene.sim_ms = atoi(ms);
+  const char *frames = SDL_getenv("NEWTONIA_SHOT_FRAMES");
+  if (frames && frames[0]) {
+    s_scene.frames = atoi(frames);
+    if (s_scene.frames < 1) {
+      std::cout << "shot: bad NEWTONIA_SHOT_FRAMES (want >= 1): " << frames
+                << std::endl;
+      return false;
+    }
+  }
+  const char *fps = SDL_getenv("NEWTONIA_SHOT_FPS");
+  if (fps && fps[0]) {
+    int n = atoi(fps);
+    if (n < 1 || n > 1000 / SIM_STEP_MS) {
+      std::cout << "shot: bad NEWTONIA_SHOT_FPS (want 1.." << 1000 / SIM_STEP_MS
+                << "): " << fps << std::endl;
+      return false;
+    }
+    s_scene.frame_step_ms = quantise_step(1000 / n);
+  }
   std::cout << "shot: rendering " << (s_scene.menu_mode ? "menu" : "game")
             << " scene, sim " << s_scene.sim_ms << " ms -> " << s_out_path
             << std::endl;
+  if (s_scene.frames > 1)
+    std::cout << "shot: clip " << s_scene.frames << " frames @ "
+              << s_scene.frame_step_ms << " ms ("
+              << 1000 / s_scene.frame_step_ms << " fps), "
+              << s_scene.frames * s_scene.frame_step_ms << " ms of play"
+              << std::endl;
   return true;
 }
 
 int ShotScene::width()  { return s_scene.width; }
 int ShotScene::height() { return s_scene.height; }
 int ShotScene::sim_ms() { return s_scene.sim_ms; }
+int ShotScene::frames() { return s_scene.frames; }
+int ShotScene::frame_step_ms() { return s_scene.frame_step_ms; }
+int ShotScene::sim_step_ms() { return SIM_STEP_MS; }
 
 State *ShotScene::build_state() {
   // Same seed, same shot: asteroid shapes, starfield, spawn spots.
@@ -711,7 +775,12 @@ void ShotScene::draw_overlays(int window_w, int window_h) {
                          t.text.c_str(), t.size);
 }
 
-bool ShotScene::capture(int window_w, int window_h) {
+bool ShotScene::capture(int window_w, int window_h, int frame_index) {
+  // A still keeps the bare path; a clip numbers every frame, frame 0
+  // included, so the sequence globs cleanly for the assembler.
+  const std::string path = s_scene.frames > 1
+                               ? frame_path(s_out_path, frame_index)
+                               : s_out_path;
   std::vector<unsigned char> rgba((size_t)window_w * window_h * 4);
   glPixelStorei(GL_PACK_ALIGNMENT, 1);
   glReadPixels(0, 0, window_w, window_h, GL_RGBA, GL_UNSIGNED_BYTE,
@@ -728,8 +797,8 @@ bool ShotScene::capture(int window_w, int window_h) {
       dst[x * 3 + 2] = src[x * 4 + 2];
     }
   }
-  bool bmp = s_out_path.size() > 4 &&
-             s_out_path.compare(s_out_path.size() - 4, 4, ".bmp") == 0;
+  bool bmp = path.size() > 4 &&
+             path.compare(path.size() - 4, 4, ".bmp") == 0;
   bool ok;
   if (s_scene.transparent && !bmp) {
     // Black is the void: alpha = the brightest channel, colour scaled back
@@ -748,13 +817,18 @@ bool ShotScene::capture(int window_w, int window_h) {
       }
       out[i * 4 + 3] = a;
     }
-    ok = write_png(s_out_path, out.data(), window_w, window_h, 4);
+    ok = write_png(path, out.data(), window_w, window_h, 4);
   } else {
-    ok = bmp ? write_bmp(s_out_path, rgb.data(), window_w, window_h)
-             : write_png(s_out_path, rgb.data(), window_w, window_h);
+    ok = bmp ? write_bmp(path, rgb.data(), window_w, window_h)
+             : write_png(path, rgb.data(), window_w, window_h);
   }
-  std::cout << (ok ? "shot: wrote " : "shot: FAILED writing ") << s_out_path
-            << " (" << window_w << "x" << window_h << ", sim "
-            << s_scene.sim_ms << " ms)" << std::endl;
+  // Clips write hundreds of frames — one line each would bury the log, so
+  // only the first and last report. A still is unchanged.
+  if (s_scene.frames == 1 || !ok || frame_index == 0 ||
+      frame_index == s_scene.frames - 1)
+    std::cout << (ok ? "shot: wrote " : "shot: FAILED writing ") << path
+              << " (" << window_w << "x" << window_h << ", sim "
+              << s_scene.sim_ms + frame_index * s_scene.frame_step_ms << " ms)"
+              << std::endl;
   return ok;
 }

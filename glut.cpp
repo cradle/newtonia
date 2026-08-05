@@ -633,6 +633,11 @@ static State *shot_state = nullptr;
 static int shot_sim_done = 0;
 static bool shot_ok = false;
 static bool shot_written = false;
+// Clip mode (ShotScene::frames() > 1): the next frame to capture, and the
+// sim time it is due at. Frame 0 falls on sim_ms(), so a still is just the
+// one-frame case of the same loop.
+static int shot_frame = 0;
+static int shot_next_capture_ms = 0;
 
 static void shot_reshape(int w, int h) {
   Typer::resize(w, h);
@@ -648,24 +653,31 @@ static void shot_display() {
   shot_state->draw();
   int w = glutGet(GLUT_WINDOW_WIDTH), h = glutGet(GLUT_WINDOW_HEIGHT);
   ShotScene::draw_overlays(w, h);
-  if (shot_sim_done >= ShotScene::sim_ms() && !shot_written) {
-    shot_written = true;
+  if (shot_sim_done >= shot_next_capture_ms && !shot_written) {
     // Read the back buffer BEFORE the swap — its contents are undefined
-    // after.
-    ShotScene::log_state(shot_state);
-    shot_ok = ShotScene::capture(w, h);
-    glutSwapBuffers();
-    glutLeaveMainLoop();
-    return;
+    // after. Only the first frame logs the cast; a clip's later frames would
+    // just repeat it.
+    if (shot_frame == 0) ShotScene::log_state(shot_state);
+    bool ok = ShotScene::capture(w, h, shot_frame);
+    if (shot_frame == 0) shot_ok = ok;
+    else shot_ok = shot_ok && ok;
+    shot_frame++;
+    if (!ok || shot_frame >= ShotScene::frames()) {
+      shot_written = true;
+      glutSwapBuffers();
+      glutLeaveMainLoop();
+      return;
+    }
+    shot_next_capture_ms += ShotScene::frame_step_ms();
   }
   glutSwapBuffers();
 }
 
 static void shot_tick() {
   if (!shot_state) return;
-  if (shot_sim_done < ShotScene::sim_ms()) {
+  if (!shot_written && shot_sim_done < shot_next_capture_ms) {
+    const int STEP = ShotScene::sim_step_ms();
     ShotScene::pump_keys(shot_state, shot_sim_done);
-    const int STEP = 16;
     shot_state->tick(STEP);
     shot_sim_done += STEP;
   }
@@ -687,6 +699,7 @@ static int shot_main(int argc, char *argv[]) {
                                  // is the headless escape (TESTING.md)
   shot_state = ShotScene::build_state();
   if (!shot_state) return 1;
+  shot_next_capture_ms = ShotScene::sim_ms();
   shot_reshape(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT));
   glutMainLoop();
   return shot_ok ? EXIT_SUCCESS : 1;

@@ -53,6 +53,8 @@ xvfb-run -a -s "-screen 0 1920x1080x24" ./newtonia
 | `NEWTONIA_SHOT_SIZE=WxH` | Window/image size (beats the scene's `size`; default: preferences) |
 | `NEWTONIA_SHOT_SCENE=file` | Scene script (default: a plain new game) |
 | `NEWTONIA_SHOT_MS=N` | Simulated ms before capture (beats the scene's `sim`) |
+| `NEWTONIA_SHOT_FRAMES=N` | Capture N frames instead of one — clip mode (see below) |
+| `NEWTONIA_SHOT_FPS=N` | Clip frame rate (quantised to the 16 ms sim step) |
 
 Shot mode never touches real player data: no Steam init, no preference
 writes, replay recording disabled, savegame/high-score/stats paths latched
@@ -74,6 +76,9 @@ scene is a plain new game.
 ```
 size 1920 1080         # window size (or "size 1920x1080")
 sim 1500               # simulated ms before capture (default 1000)
+frames 90              # capture a CLIP of N frames, not one still (default 1)
+fps 30                 # clip frame rate (default ~31; quantised to the 16 ms
+                       #   sim step, so the harness logs what it really used)
 seed 7                 # RNG seed: same scene, same shot (default 1337)
 
 menu                   # base: the menu instead of a game (attract screen;
@@ -161,6 +166,66 @@ Notes:
 | `steam*.shot` | The five 1920x1080 store screenshots (levels 1, 5 co-op, 5, 14, 20) |
 | `capsule_*.shot` | Store capsule art: the Typer title over bare starfield (`noship`) at each Steam capsule size — the library card and `capsule_library_header` banded with monochrome asteroid clusters — plus a bare-starfield page background |
 | `logo_transparent.shot` | 1280x720 RGBA logo: just the word, transparent everywhere else |
+
+## Clips (GIF + MP4)
+
+`frames N` turns a scene into a clip: the harness captures N frames, advancing
+`1000/fps` ms of simulation between each, writing `out_0000.png`,
+`out_0001.png`, … beside the still's path. `shots/gif.sh` renders the scenes
+in `shots/clips/` and assembles each into a looping MP4 and GIF in
+`shots/out/clips/`:
+
+```sh
+shots/gif.sh                                # every shots/clips/*.shot
+shots/gif.sh shots/clips/lance.shot         # just one
+NEWTONIA_GIF_WIDTH=480 shots/gif.sh         # narrower GIF (smaller file)
+NEWTONIA_GIF_KEEP=1 shots/gif.sh            # keep the PNG frames
+```
+
+These are the social/feed assets — see PROMOTION.md §3. Prefer the MP4
+wherever the target takes video; it is half the size and cleaner than the GIF.
+
+Frame intervals are quantised to the loop's fixed 16 ms sim step, so a
+requested fps that doesn't divide evenly is rounded (25 → 20). The harness
+logs the interval it actually used and `gif.sh` reads that back, so playback
+always matches simulated speed. Everything that makes a still reproducible
+holds for a clip: same seed, same frames.
+
+| Scene | Shows | Reads well? |
+|-------|-------|-------------|
+| `lance.shot` | Lance pulse mirror-bouncing off reflective asteroids | **Yes** — the strongest of the set |
+| `pulsar.shot` | Pulsar shockwave expanding and shoving the ship | **Yes** |
+| `shock.shot` | Chain lightning hopping a ladder of rocks, stopped by a tough one | Yes |
+| `gameplay.shot` | Plain generation-5 play, flown and shot | Yes — the "what is it like" clip |
+| `blackhole.shot` | Rocks curving in and vanishing | Marginal — see below |
+| `invisible.shot` | Invisible asteroids as starfield lens distortion | Marginal — see below |
+
+**Two effects do not survive capture, and it is worth knowing why before
+spending an afternoon on them.** The invisible asteroid's lens is a
+screen-space warp with no outline of its own: it needs dense stars and a big
+on-screen radius even to be noticed, and at GIF resolution it is close to
+nothing. The black hole draws *nothing at all* in the world view — its ring is
+minimap-only — so a clip can only show it by the curve of what falls in. Both
+scenes are kept, correct and documented, but neither is a lead asset.
+
+Gotchas that cost real time here:
+
+- **The camera IS player 1**, so `ship` cannot be used to move the pilot out
+  of a hazard's way — it slides the whole view too. Leave the ship at the
+  origin and route the hazard past it.
+- A big rock that reaches the ship kills it and sheds **visible** fragments,
+  which in an invisible-asteroid scene gives the whole trick away.
+- Hazards on fixed cycles need the window timed to them: the pulsar charges
+  for `PULSAR_CHARGE_MS` (2400) before a `PULSAR_EXPAND_MS` (1100) expansion,
+  so an untimed clip catches a blinking star and nothing else.
+- **`hud off` for anything public.** In one-player the HUD carries a
+  "PLAYER 2 PRESS ENTER TO JOIN" banner, which is not something to put in a
+  marketing clip.
+- Semi-automatic weapons (beam, lance, shock) fire once per trigger pull, so
+  they want repeated `key space` lines — a `hold` fires a single shot.
+- Dropping a weapon `pickup` on the spawn both arms and **selects** it
+  (`Ship::add_lance_ammo` and friends), which is the tidiest way to put a
+  specific weapon in the ship's hands at frame one.
 
 ## Mobile store screenshots (touch OSD)
 

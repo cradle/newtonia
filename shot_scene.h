@@ -34,7 +34,15 @@ public:
   static bool init();
   static int width();   // requested window size; 0 = use preferences
   static int height();
-  static int sim_ms();  // simulated time to run before capture
+  static int sim_ms();  // simulated time to run before the first capture
+  // Clip mode: frames() > 1 captures a numbered sequence (out_0000.png, ...),
+  // advancing frame_step_ms of simulation between captures. Both default to
+  // a single still. shots/gif.sh assembles the sequence.
+  static int frames();
+  static int frame_step_ms();
+  // The fixed sim step the shot loop must tick at. Frame intervals are
+  // quantised to it, so the frame loop and this share one definition.
+  static int sim_step_ms();
   // Build the configured state (Menu, or GLGame plus scene mutations).
   // Needs a live GL context — the constructors upload meshes.
   static State *build_state();
@@ -43,7 +51,8 @@ public:
   // Draw the scene's `text` captions over the whole window.
   static void draw_overlays(int window_w, int window_h);
   // glReadPixels the back buffer and write the output file. Logs shot: lines.
-  static bool capture(int window_w, int window_h);
+  // frame_index numbers the file in clip mode; it is ignored for a still.
+  static bool capture(int window_w, int window_h, int frame_index = 0);
   // One "shot: player N alive=..." line per player at capture time, so a
   // driver can assert the composed cast survived the sim without eyeballing
   // every render.

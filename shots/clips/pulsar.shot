@@ -1,0 +1,23 @@
+# Pulsar: a neutron star that charges, then fires an expanding shockwave ring
+# which SHOVES the ship outward instead of killing it.
+#
+# The cycle is fixed (hazard.cpp): PULSAR_CHARGE_MS 2400 then PULSAR_EXPAND_MS
+# 1100 out to PULSAR_MAX_RADIUS 520. So `sim` skips most of the first charge
+# and the window covers the fire, the full expansion and the shove after it —
+# an untimed window catches nothing but a blinking star, which is what the
+# first cut of this scene did.
+# The ship sits ~370 units out with NO thrust held: every bit of movement you
+# see is the wave doing it.
+seed 61
+sim 1900
+frames 110
+fps 30
+size 960 540
+clear
+hud off
+camera fixed
+zoom 62
+ship 250 0 0
+hazard pulsar -120 0
+asteroid 520 340 r=60
+asteroid -480 -300 r=55

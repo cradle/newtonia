@@ -1,0 +1,27 @@
+# Invisible asteroids — no body at all, only the gravitational lens they
+# bend the starfield through (WarpPass). The whole effect is motion: a still
+# of this reads as an empty field, which is exactly why it's a clip.
+#
+# Two things this scene learned the hard way:
+#  - The lens is a SCREEN-SPACE radial warp with no outline of its own, so it
+#    only reads against dense stars (`stars 1.0`) at a big on-screen radius
+#    (r=240 is Asteroid::max_radius). Zoomed far out it vanishes entirely.
+#  - Keep them off the ship. A big rock that reaches the spawn kills the
+#    pilot and sheds VISIBLE fragments, which gives the trick away — that is
+#    what the white outlines in the first cut of this scene actually were.
+#    Note the ship cannot be moved out of the way to arrange that: the camera
+#    IS player 1, so `ship` slides the whole view with it. Leave the ship at
+#    the origin and route the rocks past it (|y| > r + ship radius) instead.
+seed 21
+sim 300
+frames 90
+fps 30
+size 960 540
+clear
+hud off
+camera fixed
+zoom 55
+stars 1.0
+ship 0 0 0
+asteroid -780 330 invisible r=240 v=230,0
+asteroid 780 -330 invisible r=240 v=-230,0
