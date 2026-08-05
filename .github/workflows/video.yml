@@ -14,6 +14,8 @@ name: Render replay video
 #   * push — editing this file on a claude/** branch renders with the
 #     defaults below. That is the escape hatch while the button doesn't
 #     exist: push a change to the parameters here and collect the artifact.
+#     Put [skip ci] in the commit message to edit this file WITHOUT starting a
+#     render — each one costs a chunk of the artifact quota (see the Size step).
 #
 # The replay can be a leaderboard run (season/run_id — the same pair the
 # site's WATCH link carries, e.g. s1/16124542961030418748), any URL to a
@@ -47,6 +49,9 @@ on:
         description: "Draw the REPLAY watermark, timeline and control hints"
         type: boolean
         default: false
+      retention:
+        description: "Days to keep the artifact. Artifact storage is a QUOTA (2 GB on the free plan) and a 90 s 1440p CRF 16 clip is ~240 MB, so the default is short on purpose - download it the same day"
+        default: "1"
   push:
     branches: ["claude/**"]
     paths: [".github/workflows/video.yml"]
@@ -78,12 +83,14 @@ jobs:
       IN_CRF: ${{ github.event.inputs.crf }}
       IN_HUD: ${{ github.event.inputs.hud }}
       IN_CHROME: ${{ github.event.inputs.chrome }}
+      IN_RETENTION: ${{ github.event.inputs.retention }}
       DEF_REPLAY: "s1/16124542961030418748"
       DEF_START: "0"
       DEF_DURATION: "1:30"
       DEF_SIZE: "2560x1440"
       DEF_FPS: "60"
       DEF_CRF: "16"
+      DEF_RETENTION: "1"
 
     steps:
       - uses: actions/checkout@v4
@@ -181,6 +188,20 @@ jobs:
           shots/video.sh "${args[@]}"
           ls -l gameplay.mp4
 
+      # What the artifact costs, printed where it is impossible to miss.
+      # Artifact storage is a hard quota (2 GB on the free plan), and this
+      # output is big: 90 s at 1440p CRF 16 measured ~240 MB, which is more
+      # than a tenth of it. Deleting an artifact reclaims the space at once;
+      # otherwise it goes when the retention below expires.
+      - name: Size
+        run: |
+          bytes=$(stat -c%s gameplay.mp4)
+          mb=$((bytes / 1048576))
+          echo "gameplay.mp4 is ${mb} MB ($((mb * 100 / 2048))% of a 2 GB artifact quota)" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "kept for ${IN_RETENTION:-$DEF_RETENTION} day(s) - delete the artifact once downloaded to reclaim it sooner" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
       # The whole point: a file a browser can download, with no toolchain at
       # the other end. The action zips what it uploads; an mp4 is already
       # compressed, so level 0 skips a pointless second pass over a file this
@@ -191,4 +212,4 @@ jobs:
           name: gameplay-mp4
           path: gameplay.mp4
           compression-level: 0
-          retention-days: 30
+          retention-days: ${{ github.event.inputs.retention || '1' }}

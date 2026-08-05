@@ -265,6 +265,15 @@ build, no bash, no ffmpeg, no GPU at the other end. It takes the same
 parameters from the Run workflow button, and an 8-minute run produced a 90 s
 1440p60 clip of a real leaderboard replay.
 
+Mind the **artifact quota** when you do: that clip was 240 MB, and the free
+plan allows 2 GB of artifact storage in total, so a handful of renders fills
+it. The job prints the size and what share of 2 GB it took, and keeps the
+artifact for **one day** by default (`retention` raises it) — download it the
+same day, and delete the artifact afterwards to reclaim the space immediately
+rather than waiting for expiry. `crf` is the other lever: 20 roughly halves
+the file, 24 roughly quarters it. Re-rendering is deterministic and takes
+minutes, so a deleted artifact is never a loss.
+
 Direct control, if you'd rather not use the script — `NEWTONIA_VIDEO`
 (rgb24 frame stream; a fifo works, and `-` means stdout), `NEWTONIA_VIDEO_AUDIO` (s16 mix; the
 other pass), `NEWTONIA_VIDEO_REPLAY`, `_SIZE`, `_FPS`, `_START_MS`,
