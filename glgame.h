@@ -858,6 +858,14 @@ private:
   // rotation comp when it closes (client copies are re-asserted by every
   // snapshot apply; this keeps the in-between steps honest).
   void time_slow_step();
+  // Start/end audio cues (a pitch dive when time slows, the reverse sweep
+  // when it releases). Global state-change sounds like the level-countdown
+  // tics — played unattenuated, deliberately not WorldSound (the effect has
+  // no world position). The refractory timestamps dedupe the client's
+  // countdown-vs-apply boundary races so an end can never double-play.
+  void time_slow_cue(bool starting);
+  int time_slow_start_cue_ms_ = -100000;  // current_time of the last cue
+  int time_slow_end_cue_ms_ = -100000;
   // Re-level every player ship's self-played audio (thrusters included) for
   // the current listener distances. Called once per tick from both the
   // sim tick and the net-client tick.
@@ -886,6 +894,8 @@ private:
   Mix_Chunk *warp_sound = NULL;
   Mix_Chunk *station_explode_sound = NULL;
   Mix_Chunk *pause_music_sound = NULL;
+  Mix_Chunk *time_slow_start_sound = NULL;
+  Mix_Chunk *time_slow_end_sound = NULL;
   int pause_music_channel = -1;  // looping pause tune; halted on unpause
 
   Grid grid;

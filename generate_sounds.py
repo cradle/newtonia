@@ -359,6 +359,48 @@ def make_warp():
         samples.append((tone + noise) * env * 0.85)
     return samples
 
+def make_time_slow_start():
+    """Time-slow engage: a tape-style pitch dive, 1400->170 Hz over 0.9s with
+    a sub-octave under it and a shimmer that drags as it falls — the world's
+    clock winding down. Phase-accumulated so the glide stays smooth."""
+    dur = 0.9
+    n = int(SAMPLE_RATE * dur)
+    samples = []
+    phase = 0.0
+    phase_sub = 0.0
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        p = i / n
+        freq = 1400.0 * (170.0 / 1400.0) ** p
+        phase += 2 * math.pi * freq / SAMPLE_RATE
+        phase_sub += 2 * math.pi * (freq * 0.5) / SAMPLE_RATE
+        env = min(1.0, t / 0.02) * (1.0 - p) ** 0.35
+        s = math.sin(phase) * 0.55 + math.sin(phase_sub) * 0.25
+        # Shimmer that slows with the sweep — 6 Hz down to 2 Hz.
+        s *= 1.0 + 0.15 * math.sin(2 * math.pi * (6.0 - 4.0 * p) * t)
+        samples.append(s * env * 0.8)
+    return samples
+
+def make_time_slow_end():
+    """Time-slow release: the reverse sweep, 170->1400 Hz over 0.6s — the
+    clock spinning back up to full speed."""
+    dur = 0.6
+    n = int(SAMPLE_RATE * dur)
+    samples = []
+    phase = 0.0
+    phase_sub = 0.0
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        p = i / n
+        freq = 170.0 * (1400.0 / 170.0) ** p
+        phase += 2 * math.pi * freq / SAMPLE_RATE
+        phase_sub += 2 * math.pi * (freq * 0.5) / SAMPLE_RATE
+        env = min(1.0, t / 0.02) * min(1.0, (dur - t) / 0.08)
+        s = math.sin(phase) * 0.55 + math.sin(phase_sub) * 0.25
+        s *= 1.0 + 0.15 * math.sin(2 * math.pi * (2.0 + 4.0 * p) * t)
+        samples.append(s * env * 0.8)
+    return samples
+
 def make_pickup():
     """Item pickup: cheerful rising chime, 200ms."""
     n = int(SAMPLE_RATE * 0.2)
@@ -792,6 +834,8 @@ if __name__ == '__main__':
         'ting.wav':              make_ting,
         'asteroid_ting.wav':     make_asteroid_ting,
         'warp.wav':              make_warp,
+        'time_slow_start.wav':   make_time_slow_start,
+        'time_slow_end.wav':     make_time_slow_end,
     }
 
     for filename, fn in sounds.items():

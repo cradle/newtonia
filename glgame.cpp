@@ -337,6 +337,18 @@ GLGame::GLGame(SDL_GameController *controller) :
       std::cout << "Unable to load pause.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
+  if(time_slow_start_sound == NULL) {
+    time_slow_start_sound = Mix_LoadWAV(asset_path("audio/time_slow_start.wav").c_str());
+    if(time_slow_start_sound == NULL) {
+      std::cout << "Unable to load time_slow_start.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(time_slow_end_sound == NULL) {
+    time_slow_end_sound = Mix_LoadWAV(asset_path("audio/time_slow_end.wav").c_str());
+    if(time_slow_end_sound == NULL) {
+      std::cout << "Unable to load time_slow_end.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
 }
 
 GLGame::GLGame(NetSession *session, SDL_GameController *controller)
@@ -545,6 +557,12 @@ GLGame::~GLGame() {
   if(pause_music_sound != NULL) {
     Mix_FreeChunk(pause_music_sound);
   }
+  if(time_slow_start_sound != NULL) {
+    Mix_FreeChunk(time_slow_start_sound);
+  }
+  if(time_slow_end_sound != NULL) {
+    Mix_FreeChunk(time_slow_end_sound);
+  }
   delete warp_pass_;
 }
 
@@ -729,6 +747,18 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     pause_music_sound = Mix_LoadWAV(asset_path("audio/pause.wav").c_str());
     if(pause_music_sound == NULL) {
       std::cout << "Unable to load pause.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(time_slow_start_sound == NULL) {
+    time_slow_start_sound = Mix_LoadWAV(asset_path("audio/time_slow_start.wav").c_str());
+    if(time_slow_start_sound == NULL) {
+      std::cout << "Unable to load time_slow_start.wav (" << Mix_GetError() << ")" << std::endl;
+    }
+  }
+  if(time_slow_end_sound == NULL) {
+    time_slow_end_sound = Mix_LoadWAV(asset_path("audio/time_slow_end.wav").c_str());
+    if(time_slow_end_sound == NULL) {
+      std::cout << "Unable to load time_slow_end.wav (" << Mix_GetError() << ")" << std::endl;
     }
   }
 }
@@ -5820,6 +5850,18 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       ms = kTimeSlowWallMs / kTimeSlowFactor;
     if ((ms > 0) != time_slow_active())
       NET_LOG("net: time slow %s (%d ms)\n", ms > 0 ? "adopted" : "ended", ms);
+    // Audio edges. A fresh window (or a mid-effect REFILL, which never
+    // flips the active bit) plays the engage dive; the >1000 ms floors keep
+    // the boundary race quiet — after a local countdown end, one more apply
+    // can still carry a ~100 ms residue, which must not re-cue. The end
+    // sweep is refractory-deduped against time_slow_step's.
+    {
+      int prev = time_slow_ms_left_;
+      bool was = time_slow_active();
+      if (ms > 0 && ((!was && ms > 1000) || (was && ms > prev + 1000)))
+        time_slow_cue(true);
+      if (ms == 0 && was) time_slow_cue(false);
+    }
     time_slow_ms_left_ = ms;
     time_slow_ship_ = NULL;
     uint8_t idx = 0;
@@ -9256,6 +9298,7 @@ void GLGame::start_time_slow(Ship *collector) {
   time_slow_ship_ = collector;
   time_slow_ship_->time_slow_rotation_comp = (float)kTimeSlowFactor;
   time_slow_ms_left_ = kTimeSlowWallMs / kTimeSlowFactor;
+  time_slow_cue(true);
   NET_LOG("time slow started (%d sim ms, owner %s)\n", time_slow_ms_left_,
           !players->empty() && collector == players->front()->ship
               ? "player 1" : "player 2");
@@ -9269,8 +9312,18 @@ void GLGame::time_slow_step() {
     time_slow_ms_left_ = 0;
     for (auto *gs : *players) gs->ship->time_slow_rotation_comp = 1.0f;
     time_slow_ship_ = NULL;
+    time_slow_cue(false);
     NET_LOG("time slow ended\n");
   }
+}
+
+// See glgame.h: the engage dive / release sweep, refractory-deduped.
+void GLGame::time_slow_cue(bool starting) {
+  int *last = starting ? &time_slow_start_cue_ms_ : &time_slow_end_cue_ms_;
+  if (current_time - *last < 1500) return;
+  *last = current_time;
+  Mix_Chunk *c = starting ? time_slow_start_sound : time_slow_end_sound;
+  if (c != NULL) Mix_PlayChannel(-1, c, 0);
 }
 
 GLShip *GLGame::local_player() const {
