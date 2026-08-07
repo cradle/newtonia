@@ -1,10 +1,12 @@
 name: Web / GitHub Pages
 
-# Branch pushes compile-gate the web build (the only emcc gate — dev
-# containers have no emsdk); only master/main deploy to GitHub Pages.
+# PRs compile-gate the web build (the only emcc gate — dev containers
+# have no emsdk); feature branches build once via their PR, not on every
+# push. Only master/main deploy to GitHub Pages.
 on:
   push:
-    branches: [master, main, 'claude/**']
+    branches: [master, main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
