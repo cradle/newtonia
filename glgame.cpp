@@ -1048,6 +1048,12 @@ bool GLGame::pause_menu_active() const {
   if (is_touch_mode()) return false;
   // Nothing left to resume — the GAME OVER card owns the screen.
   if (all_players_out()) return false;
+  // The connection-lost card owns input (keyboard_up/controller return
+  // before the pause ladder, answering only the card's own RETURN TO MENU
+  // row), so the menu must not be drawn under it. Without this, the host
+  // pausing and then leaving showed the client a highlighted RESUME over
+  // a second RETURN TO MENU, and neither answered (field, 2026-08-07).
+  if (net_card_owns_input()) return false;
   // A paused REPLAY gets the menu too. It used to be excluded — "a replay's
   // pause is a playback control, not a menu" — but the overlay draws the
   // two rows from `!running` alone, so a paused replay showed RESUME
@@ -8623,8 +8629,7 @@ void GLGame::draw_map() const {
 }
 
 void GLGame::controller(SDL_Event event) {
-  if (net_connection_lost_ &&
-      !(net_mode_ == NetHost && (net_signal_ || net_lan_door_open()))) {
+  if (net_card_owns_input()) {
     // Same one-frame guard as keyboard_up: a committed auto-rejoin
     // hand-off must not be overwritten (the pending lobby would leak).
     if (net_handed_to_lobby_) return;
@@ -9220,8 +9225,7 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
   const GeneralKeys &gk = g_prefs.general_keys;
 
-  if (net_connection_lost_ &&
-      !(net_mode_ == NetHost && (net_signal_ || net_lan_door_open()))) {
+  if (net_card_owns_input()) {
     // Once the auto-rejoin has constructed its lobby the hand-off is
     // committed: request_state_change here would overwrite next_state in
     // the one-frame window before the swap, orphaning that lobby (its

@@ -264,11 +264,14 @@ void Overlay::net_overlays(const GLGame *glgame) {
       // y=160, not 60: clear of the pause overlay's "Paused" at y=30.
       Typer::draw_centered(0, 160, "CONNECTION LOST", 34);
     }
-    // y=-130: clear of the pause overlay's menu rows (RESUME at -42,
-    // RETURN TO MENU at -80, glyphs reaching ~-106). This card is drawn
-    // on a side that is normally still running — the auto-pause belongs
-    // to the host-with-a-door case above — but a hand pause before the
-    // loss stacks the two, so keep the gap.
+    // y=-130: clear of where the pause overlay's menu rows sit (RESUME at
+    // -42, RETURN TO MENU at -80, glyphs reaching ~-106). Those rows are
+    // never drawn beside this card any more — the input handlers answer
+    // only THIS row while the link is down, so pause_menu_active() refuses
+    // and a loss landing on a paused game shows just the "Paused" heading
+    // (the host pausing and then leaving used to give the client two dead
+    // rows above this live one). The position keeps the historical gap so
+    // nothing shifts.
     // A menu row, not an any-key prompt: confirm or back leaves and
     // nothing else does, so a stray keypress can't end the session.
     // Steady, not flashing — a cursor row is a thing you act on, not an
@@ -415,10 +418,11 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
       Typer::draw_centered(0, -40, "press play to resume", 8);
       return;
     }
-    // Selectable rows carrying the shared menu cursor. The stack must stay
-    // clear of the disconnect overlay's "PRESS FIRE FOR MENU" at y=-130 —
-    // a disconnect auto-pauses, so both show at once — which is what sizes
-    // it: size 13 rows at -42 and -80 bottom out around -106.
+    // Selectable rows carrying the shared menu cursor, sized so the stack
+    // (size 13 rows at -42 and -80) bottoms out around -106, clear of the
+    // disconnect card's row at y=-130. The two no longer show at once —
+    // pause_menu_active() refuses while that card owns input — but the
+    // positions stay put so neither screen shifts.
     //
     // Ask the game whether the menu is LIVE rather than re-deriving it. The
     // conditions had already drifted apart: this function tests the help
