@@ -134,12 +134,46 @@ fallback is collapsing the three per-player kinds into one row per player
 cycling a sub-value — but try the simple thing first. Touch table is
 untouched (single local player).
 
+**D10 — One co-op leaderboard for all player counts (decided 2026-08-07).**
+Every run with `player_count >= 2` competes on the single co-op board; 3P/4P
+do not get boards of their own. The client half already works this way —
+`best_path_for` slots any ≥2 count into the one best-co-op file
+(replay.cpp:415) — but the board Worker does not:
+- `validate_submission` rejects anything but 1 or 2 outright
+  (`bad-players`, board/src/validate.js:195) → accept `1..MAX_PLAYERS`.
+- Scores are keyed by the literal count (`const players = hd.player_count`,
+  board/src/worker.js:1171, and the `players` field on the `qualify` /
+  `top` / `rank-of` messages), so an accepted 4P run would land on a separate
+  `players=4` board. Canonicalise to a **slot** — `players >= 2 ? 2 : 1` — on
+  the server for submit and every query (authoritative, robust against any
+  client), and send the same slot from the client's `qualify`
+  (glgame.cpp:3355). Retention/liveness ("per players count") then keeps
+  exactly its two slots.
+- The replay header keeps recording the *true* count (display/forensics);
+  only the board keying collapses.
+- **Deploy order**: board first (beta via master push, then production),
+  before any 4P-capable client ships — an old Worker fails safe (refuses the
+  upload with `bad-players`, nothing corrupts), but the run's score would
+  never chart.
+
 ---
 
 ## 3. Phase A work plan (local 4-player)
 
 Ordered so each step compiles and is testable on its own. Estimated shape:
-~6 PRs.
+~7 PRs.
+
+### A0 — Board: one co-op slot (its own PR, deployed first)
+Implements D10, entirely in `board/` plus one client line, shippable ahead of
+everything else:
+- board/src/validate.js:195: accept `player_count` 1..4.
+- board/src/worker.js: normalise the keying slot (`>= 2 → 2`) at submit
+  (:1171) and on the `qualify`/`top`/`rank-of` message handlers.
+- glgame.cpp:3355: send `min(player_count, 2)` in `qualify`.
+- Tests: extend board/test/validate_test.mjs (3 and 4 accepted, keyed as 2)
+  and the protocol tests; the deploy-board pipeline gates on them. Deploy
+  beta via master push, production with the next tag — before any
+  4P-capable client build exists.
 
 ### A1 — Identity & preferences plumbing
 - glgame.h: `static const int MAX_PLAYERS = 4;`
@@ -234,8 +268,8 @@ The core of the phase.
   re-offer (the pad re-scan at :652 already loops).
 - Replays: `Recorder` already takes `player_count`; confirm nothing between
   record and playback truncates indices > 1 (the effect records carry a u8
-  player index). `best_path_for` keeps slotting ≥2 as co-op — see Open
-  Questions for the leaderboard implication.
+  player index). `best_path_for` keeps slotting ≥2 as co-op, matching the
+  single co-op leaderboard (D10/A0).
 
 ### A6 — Tests, shots, docs
 - Headless e2e: xdotool can synthesise Enter (P2 join) but not controllers,
@@ -289,12 +323,6 @@ spectate/resume → M4 polish).
 
 ## 5. Open questions
 
-- **Leaderboard slotting**: `best_path_for` treats every ≥2 count as one
-  co-op slot, so 4P runs would compete on the 2P co-op board. The replay
-  header already records the exact `player_count`, so the board *can*
-  distinguish — decide with LEADERBOARD.md whether 3P/4P get their own boards,
-  share "co-op", or are excluded initially. (Board-side change deploys
-  independently of the client.)
 - **Achievements**: `coop_clear` currently means "≥2 players" — presumably
   unchanged (4P clears still count). Confirm no achievement text says "two".
 - **Options layout**: flat 15-row list vs per-player sub-rows (D9 fallback) —
