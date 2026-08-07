@@ -1,5 +1,6 @@
 #include "net_identity.h"
 
+#include <chrono>
 #include <cstdlib>
 
 // Shared layer of the peer-identity seam (net_identity.h). Compiles in every
@@ -55,10 +56,12 @@ uint8_t default_platform() {
 
 }  // namespace
 
-const NetIdentity &net_local_identity() {
+namespace {
+
+const NetIdentity &local_identity_impl(bool throttled) {
   // Called only on the game thread (every netplay call site: the HELLO/WELCOME
-  // append, the lobby/in-game send_identity), so the statics below need no
-  // locking.
+  // append, the lobby/in-game send_identity, the HUD badge row), so the
+  // statics below need no locking.
   static NetIdentity id;
   static bool platform_built = false;
   static bool name_built = false;
@@ -81,6 +84,19 @@ const NetIdentity &net_local_identity() {
   // on the first call, and a build with no name at all just keeps sending the
   // badge-only identity, retrying a cheap lookup each infrequent handshake).
   if (!name_built) {
+    // `throttled` (the per-frame HUD caller): retry an unresolved name at
+    // most every 2 s — the lookup can be a JNI round-trip (Play Games
+    // before sign-in) and must not run at frame rate. The wire/announce
+    // callers stay unthrottled: a handshake is a ONE-SHOT send, and
+    // skipping its retry could append a nameless identity moments after
+    // the name actually resolved — role-labelling the player for a whole
+    // LAN session.
+    static std::chrono::steady_clock::time_point last_try;
+    auto now = std::chrono::steady_clock::now();
+    if (throttled && last_try.time_since_epoch().count() != 0 &&
+        now - last_try < std::chrono::seconds(2))
+      return id;
+    last_try = now;
     std::string name;
 #ifdef IDENTITY_HAVE_BACKEND
     name = NetIdentityBackend::local_name();
@@ -102,6 +118,10 @@ const NetIdentity &net_local_identity() {
   }
   return id;
 }
+
+}  // namespace
+
+const NetIdentity &net_local_identity() { return local_identity_impl(false); }
 
 std::string net_local_verify_credential() {
 #ifdef IDENTITY_HAVE_VERIFY
@@ -313,16 +333,24 @@ bool render_field(uint8_t trust, NetIdentityCtx ctx) {
   if (trust == NET_TRUST_ATTESTED) return true;
   return trust == NET_TRUST_CLAIMED && ctx == NET_ID_OFFLINE;
 }
+
+// The ONE badge-composition rule ("NAME - LABEL"): empty label = name alone
+// (a future/unshown platform), empty name = label alone (badge-only), both
+// empty = "" (nothing renderable). Every badge composer goes through this so
+// the HUD's local row and the peer rows below it can never drift in format.
+std::string compose_badge(const std::string &name, const char *label) {
+  if (!label[0]) return name;
+  if (name.empty()) return label;
+  return name + " - " + label;
+}
 }  // namespace
 
 std::string net_identity_badge(const NetIdentity &id, NetIdentityCtx ctx) {
   bool show_plat = render_field(id.platform_trust, ctx);
   bool show_name = render_field(id.name_trust, ctx) && !id.name.empty();
   if (!show_plat && !show_name) return "";  // nothing renderable: no badge
-  std::string label = show_plat ? net_platform_label(id.platform) : "";
-  if (!show_name) return label;       // may be "" — caller renders nothing
-  if (label.empty()) return id.name;  // future/unshown platform: name-only
-  return id.name + " - " + label;
+  return compose_badge(show_name ? id.name : std::string(),
+                       show_plat ? net_platform_label(id.platform) : "");
 }
 
 std::string net_identity_badge_or(const NetIdentity &id,
@@ -333,10 +361,17 @@ std::string net_identity_badge_or(const NetIdentity &id,
   // Nothing renders (legacy peer, or an online unattested peer): no badge,
   // no placeholder — the pre-badge UI stays exact.
   if (!show_plat && !show_name) return "";
-  std::string name = show_name ? id.name : std::string(fallback_name);
-  std::string label = show_plat ? net_platform_label(id.platform) : "";
-  if (label.empty()) return name;  // future/unshown platform: name-only badge
-  return name + " - " + label;
+  return compose_badge(show_name ? id.name : std::string(fallback_name),
+                       show_plat ? net_platform_label(id.platform) : "");
+}
+
+std::string net_local_identity_badge(const char *fallback_name) {
+  // Self-display: no render_field gate (see net_identity.h) — the same
+  // compose_badge rule as the peer badges, minus the trust checks. The one
+  // per-frame caller, hence the throttled lookup (see local_identity_impl).
+  const NetIdentity &id = local_identity_impl(true);
+  return compose_badge(id.name.empty() ? std::string(fallback_name) : id.name,
+                       net_platform_label(id.platform));
 }
 
 std::string net_identity_name_or(const NetIdentity &id, const char *fallback,

@@ -8846,15 +8846,29 @@ TapBand GLGame::ff_toggle_band() const {
 // area, so a stray tap near the (inert but thumb-parked) controls on the
 // pause screen quit to the menu — and online that deliberate teardown
 // closes the room (field: Android portrait, 2026-07-25). Re-anchor it
-// just above the bottom text rows (badge/SPECTATING at vhb+130,
-// friendly-fire at vhb+55) instead: label and tap region sit between
-// that text and the controls, touching neither — the spectating badge
-// hoist at vhb+255 stays clear above it too.
+// just above the bottom text rows (badge rows at vhb+130 and vhb+168,
+// SPECTATING at vhb+130, friendly-fire at vhb+55) instead: label and tap
+// region sit between that text and the controls, touching neither — and
+// whenever this band is actually shown the badge rows hoist to
+// vhb+255/vhb+293 (Overlay::net_badges via exit_band_showing), clear
+// above it in both orientations.
 TapBand GLGame::exit_band() const {
   if (Typer::scaled_window_height <= Typer::original_window_height)
     return TapBand::return_to_menu;
   float vhb = -Typer::scaled_window_height / num_y_viewports();
   return TapBand(0.5f, vhb + 215, 13, 35.0f);
+}
+
+bool GLGame::exit_band_showing() const {
+  if (!is_touch_mode()) return false;
+  if (net_mode_ == NetReplay) return false;  // replay chrome owns its bands
+  bool all_over = !players->empty();
+  for (auto *gs : *players)
+    if (gs->ship->is_alive() || gs->ship->lives > 0) { all_over = false; break; }
+  const GLShip *local = local_player();
+  bool local_over = net_active() && local && !local->ship->is_alive() &&
+                    local->ship->lives <= 0;
+  return all_over || !running || local_over || net_connection_lost_;
 }
 
 void GLGame::touch_tap(float nx, float ny) {
@@ -8922,6 +8936,19 @@ void GLGame::touch_tap(float nx, float ny) {
       host_toggle_friendly_fire();
     return;
   }
+  if (!exit_band_showing()) {
+    // Band not on screen: the tap is just a tap near the bottom. Mid-play,
+    // the "friendly fire on/off" HUD text (two-player only) is a toggle
+    // region — host only, mirroring the G key.
+    if (players->size() >= 2 && net_mode_ != NetClient &&
+        ff_toggle_band().contains(nx, ny))
+      host_toggle_friendly_fire();
+    return;
+  }
+  // The band is up — it has to actually leave, or it is a lie (that ONE
+  // rule, exit_band_showing, is shared with the overlay's draw site; a
+  // lost link counts, so touch has one way out of every end-state instead
+  // of the card's old "tap fire"). The branches keep their own guards.
   bool all_game_over = !players->empty();
   for (auto *glship : *players) {
     if (glship->ship->is_alive() || glship->ship->lives > 0) {
@@ -8938,25 +8965,12 @@ void GLGame::touch_tap(float nx, float ny) {
     request_state_change(new Menu());
     return;
   }
-  GLShip *local = local_player();
-  bool local_over = net_mode_ != NetOff && local &&
-                    !local->ship->is_alive() && local->ship->lives <= 0;
-  // net_connection_lost_: the overlay draws the exit band on a lost link
-  // too, so touch has ONE way out of every end-state instead of the card's
-  // old "tap fire" — the band has to actually leave, or it is a lie.
-  if (!running || local_over || net_connection_lost_) {
-    // Same one-frame guard as keyboard_up/controller: a committed
-    // auto-rejoin hand-off must not be overwritten by the exit band.
-    if (net_handed_to_lobby_) return;
-    save_progress();
-    request_state_change(new Menu());
-    return;
-  }
-  // Mid-play, the "friendly fire on/off" HUD text (two-player only) is a
-  // toggle region — host only, mirroring the G key.
-  if (players->size() >= 2 && net_mode_ != NetClient &&
-      ff_toggle_band().contains(nx, ny))
-    host_toggle_friendly_fire();
+  // A paused game, a fully-out local ship spectating on, or a lost link.
+  // Same one-frame guard as keyboard_up/controller: a committed
+  // auto-rejoin hand-off must not be overwritten by the exit band.
+  if (net_handed_to_lobby_) return;
+  save_progress();
+  request_state_change(new Menu());
 }
 
 // How hard a lance pulse hits the gen-20 station's hull, in bullet

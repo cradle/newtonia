@@ -605,7 +605,9 @@ export class Room {
                  msg.cred.length <= MAX_IDENTITY_CRED ? msg.cred : "";
 
     let attested = { platform, name, verified: false };
-    if (this.env && this.env.FAKE_VERIFY === "1") {
+    const fake = this.env && this.env.FAKE_VERIFY === "1";
+    const fake_slow = fake && /^SLOW(FAIL)?:\d+$/.test(cred);
+    if (fake && !fake_slow) {
       // Dev/e2e shortcut (wrangler dev only): attest the claim without
       // contacting any platform backend. NEVER set in production. Compared
       // to "1" exactly (the value every harness passes): a plain truthiness
@@ -623,7 +625,20 @@ export class Room {
       //                attested name is always empty — see game_center_verify.js).
       //   Android (5): Play Games server auth code -> token exchange + player.
       let verify = null;
-      if (platform === 2 /* NET_PLATFORM_STEAM */)
+      if (fake_slow)
+        // Dev/e2e slow-verify hook (FAKE_VERIFY-gated like the fast path,
+        // so it can never run in production): a cred of "SLOW:<ms>" /
+        // "SLOWFAIL:<ms>" runs the FULL async verify machinery — throttle,
+        // epoch capture, the vacant-slot late path — with an injected delay
+        // standing in for the platform round-trip, succeeding/failing the
+        // verify respectively. identity_test.js races it against a socket
+        // close.
+        verify = async () => {
+          const delay_ms = Math.min(Number(cred.split(":")[1]) || 0, 5000);
+          await new Promise((res) => setTimeout(res, delay_ms));
+          return cred.startsWith("SLOWFAIL") ? null : { name };
+        };
+      else if (platform === 2 /* NET_PLATFORM_STEAM */)
         verify = async () => {
           const v = await verifySteamTicket(this.env, cred);
           return v ? { name: v.persona || "" } : null;
@@ -677,8 +692,38 @@ export class Room {
         // await. Don't write identity back onto a dead/tombstoned room.
         if (this.r.closed || !this.r.host_token) return;
         if ((this.r[ep_key] || 0) !== epoch) {
-          console.log(`identity ${role} verify discarded (slot changed ` +
-                      `occupants mid-verify)`);
+          // The announcing socket dropped mid-verify (drop_host/drop_joiner
+          // bumped the epoch). Two very different cases share that bump:
+          //   OCCUPIED again — a different player may hold the slot now:
+          //   discard, or the departed occupant's verified badge would land
+          //   on the replacement (and never-demote would pin it there).
+          //   VACANT — the common, field-hit case (Steam joiner vs Android
+          //   host, 2026-08-07): a fast ICE connect hands the lobby off and
+          //   the JOINER closes its signaling socket while the platform
+          //   round-trip is still in flight. The account just proven is
+          //   still the player the peer is mid-game with over the
+          //   (independent) WebRTC transport — store the attestation (a
+          //   host reclaim replays it) and push it to the peer now. A later
+          //   replacement can't inherit it: accept_joiner clears any stored
+          //   joiner identity when a new socket takes the slot.
+          const occupied = role === "host" ? this.hostWs() : this.joinerWs();
+          // The +1 proves the ONLY occupancy change since this announce is
+          // the announcer's own departure. Anything more (a replacement
+          // joined — whether or not it has also departed by now) means this
+          // verify belongs to an OLDER occupant: last-resolver-wins would
+          // let its slow verify overwrite the newer late-stored badge.
+          const sole_departure = (this.r[ep_key] || 0) === epoch + 1;
+          if (!v || occupied || !sole_departure) {
+            console.log(`identity ${role} verify discarded (slot changed ` +
+                        `occupants mid-verify)`);
+            return;
+          }
+          const late_key = role === "host" ? "host_identity" : "joiner_identity";
+          this.r[late_key] = { platform, name: v.name || "", verified: true };
+          await this.save();
+          this.broadcast_identity(role);
+          console.log(`identity ${role} late verify attested to vacant slot ` +
+                      `(announcer closed mid-verify)`);
           return;
         }
         if (v) {
@@ -791,6 +836,15 @@ export class Room {
 
   async accept_joiner(ws, ice) {
     this.state.acceptWebSocket(ws, ["joiner"]);
+    // A vacant-slot late verify (attest_identity's epoch-mismatch path) may
+    // have stored the DEPARTED occupant's identity after drop_joiner nulled
+    // it. This socket may be a different player: clear the stale badge so
+    // the never-demote guard can't pin the old verified name onto the new
+    // occupant (whose own announce arrives momentarily).
+    if (this.r.joiner_identity) {
+      this.r.joiner_identity = null;
+      await this.save();
+    }
     this.send_ice(ws, ice);
     this.safeSend(ws, { t: "joined" });
     const h = this.hostWs();

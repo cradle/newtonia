@@ -304,7 +304,7 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   temperature(glgame, glship);
   respawn_timer(glgame, glship);
   spectate(glgame, glship);
-  remote_badge(glgame, glship);
+  net_badges(glgame, glship);
   paused(glgame, glship);
   if (!replaying) touch_controls(glgame, glship);
   edge_indicators(glgame, glship);
@@ -522,35 +522,81 @@ void Overlay::respawn_timer(const GLGame *glgame, const GLShip *glship) {
   }
 }
 
-// Spectator flow (netplay co-op): a "SPECTATING IN N" countdown on the local
-// wreck, then "SPECTATING" at the bottom once the camera has handed off to the
-// peer. Both phases are driven by GLGame::spectate_death_time_.
-void Overlay::remote_badge(const GLGame *glgame, const GLShip *glship) {
+void Overlay::net_badges(const GLGame *glgame, const GLShip *glship) {
   (void)glship;
   if (!glgame->net_active()) return;
-  // The badge names the REMOTE player: the client looks at the host
-  // (player 1), the host at the client (player 2).
+  // Bottom rows like the SPECTATING hint, clear of the touch RETURN TO MENU
+  // band and the title-safe margin; hoisted whenever that band is up —
+  // spectating (the camera is on the peer, exactly when the tag matters
+  // most), but also the touch pause / game-over / connection-lost states:
+  // the band's landscape label ink runs -420..-446 and the LOCAL row at
+  // vhb+168 (-432..-454) would print straight through it. The hoist must
+  // clear the WHOLE band, not just its label: the band's glyph box tops
+  // out ~-370 (anchor -420, size 13, pad 50, to_bottom below), and the old
+  // +175 spot printed the badge exactly on the band's RETURN TO MENU text
+  // (field: iPhone, 2026-07-24). +255 sits above the band's reach with air
+  // to spare (portrait's vhb+215 re-anchor stays clear too).
+  float vhb = -Typer::scaled_window_height / glgame->num_y_viewports();
+  bool hoist = glgame->is_spectating() || glgame->exit_band_showing();
+  float y = hoist ? vhb + 255.0f : vhb + 130.0f;
+  // The LOCAL player's own badge, one row above the peer's (glyphs descend
+  // ~2x size below their y, so +38 clears the size-11 row below with a
+  // visible gap — +30 read as almost touching in the field).
+  // Live play only — net_active() is also true in a NetReplay, where the
+  // ghosts may be anyone's (a downloaded run), so "you" has no row. No
+  // verified tick here: the tick vouches to YOU about the PEER (the worker
+  // attests each side to the OTHER, never back to its claimant), and your
+  // own machine needs no vouching about itself.
+  // Each row carries its pilot's live score (": 4200") — both scores are
+  // already on this machine with no wire changes: the host sims and credits
+  // both ships authoritatively, and the client's 10 Hz snapshot restores
+  // every player's score (net_apply_state). The score rides as
+  // draw_centered_verified's SUFFIX so the verified tick stays beside the
+  // identity it vouches for, never after the score.
+  if (glgame->net_mode_ == GLGame::NetHost ||
+      glgame->net_mode_ == GLGame::NetClient) {
+    std::string self =
+        net_local_identity_badge(glgame->net_local_fallback().c_str());
+    char self_score[16];
+    snprintf(self_score, sizeof self_score, ": %d",
+             glgame->local_player()->ship->score);
+    Typer::draw_centered_verified(0, y + 38.0f, self.c_str(), 11, false, 0,
+                                  self_score);
+  }
+  // The peer badge names the REMOTE player: the client looks at the host
+  // (player 1), the host at the client (player 2). When nothing renders —
+  // a legacy peer, or an online peer whose attestation never arrived — the
+  // row falls back to the bare role label rather than vanishing: the score
+  // is always known locally, and a scoreless blank row read as a bug in
+  // the field (Android/Steam pairing, 2026-08-07). Live play only, like
+  // the local row — a replay's ghosts get no fallback row.
   std::string badge = net_identity_badge_or(
       glgame->net_peer_identity_, glgame->net_peer_fallback().c_str(),
       glgame->net_id_ctx());
-  if (badge.empty()) return;  // legacy peer: no badge, no placeholder
-  // Bottom row like the SPECTATING hint, clear of the touch RETURN TO MENU
-  // band and the title-safe margin; hoisted when the camera is on the peer
-  // (that's exactly when the tag matters most). The spectating hoist must
-  // clear the WHOLE exit band, not just the SPECTATING text: the band's
-  // glyph box tops out ~-370 (anchor -420, size 13, pad 50, to_bottom
-  // below), and the old +175 spot printed the badge exactly on the band's
-  // RETURN TO MENU text (field: iPhone, 2026-07-24). +255 sits above the
-  // band's reach with air to spare.
-  float vhb = -Typer::scaled_window_height / glgame->num_y_viewports();
-  float y = glgame->is_spectating() ? vhb + 255.0f : vhb + 130.0f;
+  if (badge.empty()) {
+    if (glgame->net_mode_ != GLGame::NetHost &&
+        glgame->net_mode_ != GLGame::NetClient)
+      return;
+    badge = glgame->net_peer_fallback();
+  }
+  const GLShip *peer = glgame->remote_player();
+  char peer_score[16];
+  const char *peer_suffix = nullptr;
+  if (peer) {
+    snprintf(peer_score, sizeof peer_score, ": %d", peer->ship->score);
+    peer_suffix = peer_score;
+  }
   // A worker-attested peer earns the verified tick; a LAN/manual peer's badge
   // is a claim and draws bare (net_identity_verified owns that rule).
   Typer::draw_centered_verified(
       0, y, badge.c_str(), 11,
-      net_identity_verified(glgame->net_peer_identity_, glgame->net_id_ctx()));
+      net_identity_verified(glgame->net_peer_identity_, glgame->net_id_ctx()),
+      0, peer_suffix);
 }
 
+// Spectator flow (netplay co-op): a "SPECTATING IN N" countdown on the local
+// wreck, then "SPECTATING" at the bottom once the camera has handed off to the
+// peer. Both phases are driven by GLGame::spectate_death_time_.
 void Overlay::spectate(const GLGame *glgame, const GLShip *glship) {
   (void)glship;
   if (glgame->spectate_arming()) {
@@ -747,21 +793,12 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   // Touch: exit affordance — the bottom strip is a tap band
   // (GLGame::touch_tap), same placement as the lobby's return band. Shown
   // at GAME OVER, on the pause screen, and — online — when the LOCAL ship
-  // is fully out while the peer plays on (all-over never fires there).
-  if(is_touch_mode()) {
-    bool all_over = !glgame->players->empty();
-    for(auto* gs : *glgame->players) {
-      if(gs->ship->is_alive() || gs->ship->lives > 0) { all_over = false; break; }
-    }
-    const GLShip* local = glgame->local_player();
-    bool local_over = glgame->net_active() && local &&
-                      !local->ship->is_alive() && local->ship->lives <= 0;
-    if(all_over || !glgame->running || local_over ||
-       glgame->net_connection_lost_)
-      glgame->exit_band().draw(
-          Typer::cursored("RETURN TO MENU", true).c_str(),
-          glgame->current_time);
-  }
+  // is fully out while the peer plays on (all-over never fires there);
+  // exit_band_showing() is that rule, shared with the badge rows' hoist.
+  if(glgame->exit_band_showing())
+    glgame->exit_band().draw(
+        Typer::cursored("RETURN TO MENU", true).c_str(),
+        glgame->current_time);
 }
 
 void Overlay::draw_circle(float cx, float cy, float r, int segs, bool filled,
