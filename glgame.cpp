@@ -8633,10 +8633,38 @@ void GLGame::controller(SDL_Event event) {
     // Same one-frame guard as keyboard_up: a committed auto-rejoin
     // hand-off must not be overwritten (the pending lobby would leak).
     if (net_handed_to_lobby_) return;
+    // The leaderboard prompt outranks the card — the keyboard and touch
+    // twins' ordering. Everything else is swallowed while it owns the
+    // game-over card, like the keyboard twin, so no button exits through
+    // the prompt.
+    if (board_prompt_active()) {
+      if (event.type == SDL_CONTROLLERBUTTONDOWN) {
+        char bk = 0;
+        switch (event.cbutton.button) {
+          case SDL_CONTROLLER_BUTTON_DPAD_UP: bk = 'w'; break;
+          case SDL_CONTROLLER_BUTTON_DPAD_DOWN: bk = 's'; break;
+          case SDL_CONTROLLER_BUTTON_A:
+          case SDL_CONTROLLER_BUTTON_START: bk = '\r'; break;
+          case SDL_CONTROLLER_BUTTON_B:
+          case SDL_CONTROLLER_BUTTON_BACK: bk = 27; break;
+          default: break;
+        }
+        if (bk) board_nav(bk);
+      }
+      return;
+    }
     // A/Start/right-trigger confirm the card's row, B/Back leave — the
-    // keyboard twin above, through the shared pad translator.
-    if (is_exit_key(nav_key_from_controller(event)))
+    // keyboard twin, through the shared pad translator. Pad confirms are
+    // discrete presses (buttons emit on DOWN, the trigger on its arming
+    // crossing — a release emits nothing), so no held-through-the-loss
+    // release race exists here and no down-tracking is needed; the
+    // game-over grace matches the keyboard.
+    if (is_exit_key(nav_key_from_controller(event))) {
+      if (all_players_out() && game_over_time >= 0 &&
+          current_time - game_over_time < 3000)
+        return;
       request_state_change(new Menu());
+    }
     return;
   }
   // Replay playback: Start pauses, B (or any button once the recording's
@@ -9201,20 +9229,35 @@ void GLGame::touch_joystick(float nx, float ny) {
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
+  // Board prompt/upload owns input on key-DOWN: record which nav keys were
+  // actually PRESSED while the prompt is up, so keyboard_up can tell a
+  // fresh press from a gameplay key released into the prompt (see there),
+  // and swallow so a dead ship's input loop never runs under the card.
+  // Ahead of the !running drop: a lost-link game over can land on a game
+  // the host had paused, and the prompt must still answer there. (Never
+  // live in a replay — board_maybe_start refuses NetReplay.)
+  if (board_prompt_active()) {
+    board_prompt_pressed_.insert(nav_key(key));
+    return;
+  }
+  // The connection-lost card is next in rank, with the same down-tracking
+  // (net_card_pressed_): keyboard_up exits only on a key PRESSED while the
+  // card was up, so a fire key held through the disconnect and released
+  // into the card can't throw a rejoinable session away. Also ahead of the
+  // !running drop — the card shows on a paused game too (host paused, then
+  // left), and a fresh press there must still arm the exit.
+  if (net_card_owns_input()) {
+    net_card_pressed_.insert(nav_key(key));
+    return;
+  }
+  // Link healthy (or restored): presses recorded under a previous card are
+  // stale — never let one confirm an exit on a later loss.
+  if (!net_card_pressed_.empty()) net_card_pressed_.clear();
   if (!running)
     return;
   // Replay ghosts take no input — the records drive them.
   if (net_mode_ == NetReplay)
     return;
-
-  // Board prompt/upload owns input on key-DOWN: record which nav keys were
-  // actually PRESSED while the prompt is up, so keyboard_up can tell a
-  // fresh press from a gameplay key released into the prompt (see there),
-  // and swallow so a dead ship's input loop never runs under the card.
-  if (board_prompt_active()) {
-    board_prompt_pressed_.insert(nav_key(key));
-    return;
-  }
 
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
@@ -9232,12 +9275,35 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     // ctor already opened the room's joiner socket) and leaving the
     // armed net_handed_to_lobby_ skipping the credential release.
     if (net_handed_to_lobby_) return;
+    // The leaderboard prompt outranks the card: a lost-link game over (the
+    // spectator's host leaving) still starts the board flow, and its drawn
+    // YES/NO prompt must answer — not sit dead while confirm quietly
+    // destroys the upload by exiting. touch_tap already orders it this
+    // way. Same fresh-press rule as the healthy-game block below.
+    if (board_prompt_active()) {
+      unsigned char nk = nav_key(key);
+      if (board_prompt_pressed_.count(nk)) {
+        board_prompt_pressed_.erase(nk);
+        board_nav((char)nk);
+      }
+      return;
+    }
     // The disconnect card carries a RETURN TO MENU row, so it answers like
     // every other menu: confirm activates the row, back leaves outright,
     // and nothing else does anything. Fire IS a confirm, so the touch
-    // card's "TAP FIRE FOR MENU" still reads true — but a stray keypress
-    // no longer throws the session away.
-    if (is_exit_key(nav_key(key))) request_state_change(new Menu());
+    // card's "TAP FIRE FOR MENU" still reads true. Only a key whose DOWN
+    // happened while the card was up acts (net_card_pressed_, recorded in
+    // keyboard()) — a fire key held through the disconnect and released
+    // into the card used to throw a rejoinable session away. And when the
+    // loss lands at game over (that card outranks this one's overlay),
+    // the same 3 s grace as every other game-over exit applies.
+    unsigned char nav = nav_key(key);
+    if (net_card_pressed_.erase(nav) == 0) return;
+    if (!is_exit_key(nav)) return;
+    if (all_players_out() && game_over_time >= 0 &&
+        current_time - game_over_time < 3000)
+      return;
+    request_state_change(new Menu());
     return;
   }
 

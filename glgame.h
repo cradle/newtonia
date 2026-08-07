@@ -496,16 +496,24 @@ private:
   bool net_peer_bye_ = false;  // client: the host said BYE — no auto-rejoin
   // True while the connection-lost card owns input: every lost link EXCEPT
   // the host-with-an-open-door notice, where the game plays on. While this
-  // holds, keyboard_up/controller answer ONLY the card's RETURN TO MENU row
-  // — so pause_menu_active() refuses too, or the pause menu draws two live-
-  // looking rows over input the card is swallowing (the host pausing and
-  // then leaving handed the client a highlighted RESUME and a second
-  // RETURN TO MENU that answered nothing; field, 2026-08-07). One predicate
-  // for the input handlers and the overlay, like pause_menu_active itself.
+  // holds, keyboard_up/controller answer only the leaderboard prompt
+  // (which outranks the card at a lost-link game over) and the card's own
+  // exits — so pause_menu_active() refuses too, or the pause menu draws
+  // live-looking rows over input the card is swallowing (the host pausing
+  // and then leaving handed the client a highlighted RESUME and a second
+  // RETURN TO MENU that answered nothing; field, 2026-08-07). One
+  // predicate for the input handlers and the overlay — net_overlays keys
+  // its host-notice branch off it too — like pause_menu_active itself.
   bool net_card_owns_input() const {
     return net_connection_lost_ &&
            !(net_mode_ == NetHost && (net_signal_ || net_lan_door_open()));
   }
+  // Nav keys pressed (key-DOWN) while the card owns input: keyboard_up
+  // exits only on these — board_prompt_pressed_'s pattern — so a fire key
+  // held through the disconnect and released into the card can't throw
+  // the session away. Stale entries are cleared on the first key-down
+  // after the link is healthy again.
+  std::set<unsigned char> net_card_pressed_;
   int net_banner_ms_ = 0;
   std::string net_banner_text_;
   // True for the "<NAME> RECONNECTED" notice: drawn up top at the

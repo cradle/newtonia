@@ -219,8 +219,12 @@ void Overlay::net_overlays(const GLGame *glgame) {
     return;
   }
 
-  if (glgame->net_connection_lost_ && glgame->net_mode_ == GLGame::NetHost &&
-      (glgame->net_signal_ || glgame->net_lan_door_open())) {
+  // The one lost-link state that is a quiet notice, not a card, is exactly
+  // the state net_card_owns_input() excludes — ask the game rather than
+  // re-derive the condition here, or the two copies drift and the overlay
+  // draws a card whose input the handlers aren't answering (the pause-row
+  // lesson, overlay.cpp paused()).
+  if (glgame->net_connection_lost_ && !glgame->net_card_owns_input()) {
     // Rejoinable loss: the game continues — a quiet notice, not a card.
     // A "P2 DISCONNECTED" header over the room code (steady, no blink): the
     // host may be reading the code out to the other player, and it explains
@@ -244,7 +248,11 @@ void Overlay::net_overlays(const GLGame *glgame) {
              glgame->net_mode_ == GLGame::NetClient &&
              (!glgame->net_room_code_.empty() ||
               !glgame->net_lan_host_name_.empty())) {
-    Typer::draw_centered(0, 60, "CONNECTION LOST", 34);
+    // y=160, not 60: clear of the pause overlay's "Paused" at y=30 — the
+    // terminal branch below moved for this same collision, and this one
+    // stacks with "Paused" the same way (host pauses the shared game, then
+    // its process dies without BYE while the room code is live).
+    Typer::draw_centered(0, 160, "CONNECTION LOST", 34);
     if ((now / 700) % 2 == 0)
       Typer::draw_centered(0, -80, "REJOINING", 16);
   } else if (glgame->net_connection_lost_) {
@@ -266,12 +274,11 @@ void Overlay::net_overlays(const GLGame *glgame) {
     }
     // y=-130: clear of where the pause overlay's menu rows sit (RESUME at
     // -42, RETURN TO MENU at -80, glyphs reaching ~-106). Those rows are
-    // never drawn beside this card any more — the input handlers answer
-    // only THIS row while the link is down, so pause_menu_active() refuses
-    // and a loss landing on a paused game shows just the "Paused" heading
-    // (the host pausing and then leaving used to give the client two dead
-    // rows above this live one). The position keeps the historical gap so
-    // nothing shifts.
+    // never drawn beside this card any more — pause_menu_active() refuses
+    // while the card owns input, so a loss landing on a paused game keeps
+    // the "Paused" heading but not the menu under it (the host pausing and
+    // then leaving used to give the client two dead rows above this live
+    // one). The position keeps the historical gap so nothing shifts.
     // A menu row, not an any-key prompt: confirm or back leaves and
     // nothing else does, so a stray keypress can't end the session.
     // Steady, not flashing — a cursor row is a thing you act on, not an
