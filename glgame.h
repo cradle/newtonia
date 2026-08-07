@@ -355,6 +355,11 @@ private:
       return net_lan_host_name_;
     return net_mode_ == NetClient ? "PLAYER 1" : "PLAYER 2";
   }
+  // The LOCAL player's own role label (the badge row above the peer's,
+  // Overlay::net_badges): the host is player 1, the client player 2.
+  std::string net_local_fallback() const {
+    return net_mode_ == NetClient ? "PLAYER 2" : "PLAYER 1";
+  }
   // Called by the lobby (a friend) right after construction: fold the
   // worker's peer attestation into net_peer_identity_ and record whether a
   // worker was in the session (see net_worker_session_). Both run AFTER the

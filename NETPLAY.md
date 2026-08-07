@@ -715,8 +715,13 @@ lobby (`attested_peer_`, threaded into `GLGame` via `net_set_worker_session` +
    — the polish item here, and the only marker worth having is indeed the
    positive one. `Typer::VERIFIED_TICK` is a checkmark in the Typer set,
    drawn by `Typer::draw_centered_verified` after the badge on both badge
-   sites (HUD `Overlay::remote_badge`, lobby `HOSTED BY`), gated by
-   `net_identity_verified()` so the rule lives in one place. Three design
+   sites (the HUD peer row in `Overlay::net_badges`, lobby `HOSTED BY`),
+   gated by `net_identity_verified()` so the rule lives in one place.
+   (`net_badges` also draws the LOCAL player's own badge one row above the
+   peer's — `net_local_identity_badge()`, trust-free by design since it
+   never crossed a wire — with no tick: the worker attests each side to the
+   OTHER, never back to its claimant, so the local row has nothing to be
+   vouched by and needs no vouching.) Three design
    points worth keeping if it is ever revisited: (a) the tick marks the
    ROW, not a field — one tick, since the worker attests platform and name
    together and a name can't be attested without its platform, so iOS's

@@ -204,6 +204,15 @@ std::string net_identity_badge_or(const NetIdentity &id,
                                   const char *fallback_name,
                                   NetIdentityCtx ctx);
 
+// The LOCAL player's own badge ("GLENN - STEAM"), for self-display — the HUD
+// row above the peer badge. Deliberately NOT trust-gated: net_local_identity()
+// carries no trust marks (trust is stamped when an identity crosses the wire),
+// and the context rule exists to stop a PEER's unattested claim reaching the
+// screen — your own machine showing you its own identity is neither. A build
+// with no name source gets `fallback_name` (the local role label), so on a
+// known platform the result is never "".
+std::string net_local_identity_badge(const char *fallback_name);
+
 // The peer's name, or `fallback` when its name doesn't render — the one rule
 // for every name-bearing message ("GLENN DISCONNECTED" vs "PLAYER 2
 // DISCONNECTED"), so the DISCONNECTED and RECONNECTED texts can't drift.

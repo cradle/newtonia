@@ -339,6 +339,16 @@ std::string net_identity_badge_or(const NetIdentity &id,
   return name + " - " + label;
 }
 
+std::string net_local_identity_badge(const char *fallback_name) {
+  // Self-display: no render_field gate (see net_identity.h) — the same
+  // name+label composition as net_identity_badge_or, minus the trust checks.
+  const NetIdentity &id = net_local_identity();
+  std::string name = id.name.empty() ? std::string(fallback_name) : id.name;
+  std::string label = net_platform_label(id.platform);
+  if (label.empty()) return name;
+  return name + " - " + label;
+}
+
 std::string net_identity_name_or(const NetIdentity &id, const char *fallback,
                                  NetIdentityCtx ctx) {
   if (render_field(id.name_trust, ctx) && !id.name.empty()) return id.name;

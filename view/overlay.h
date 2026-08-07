@@ -48,10 +48,13 @@ private:
   static void temperature(const GLGame *glgame, const GLShip *glship);
   static void respawn_timer(const GLGame *glgame, const GLShip *glship);
   static void spectate(const GLGame *glgame, const GLShip *glship);
-  // Online: the peer's name+platform badge ("GLENN - STEAM"), a small
-  // bottom-row tag like the SPECTATING hint. Draws nothing for a legacy
-  // (pre-identity) peer — their absence must render exactly today's UI.
-  static void remote_badge(const GLGame *glgame, const GLShip *glship);
+  // Online: the identity badge rows, small bottom-row tags like the
+  // SPECTATING hint — the peer's name+platform badge ("GLENN - STEAM",
+  // verified tick when worker-attested) with the local player's own badge
+  // above it. The peer row draws nothing for a legacy (pre-identity) peer —
+  // their absence must render exactly the badge-less row; the local row is
+  // independent of the peer and skipped only in replay playback.
+  static void net_badges(const GLGame *glgame, const GLShip *glship);
   static void keymap(const GLGame *glgame, const GLShip *glship);
   static void title_text(const GLGame *glgame, const GLShip *glship);
   static void paused(const GLGame *glgame, const GLShip *glship);
