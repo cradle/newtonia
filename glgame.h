@@ -28,6 +28,7 @@
 #include "lance_pickup.h"
 #include "revive_pickup.h"
 #include "shock_pickup.h"
+#include "time_slow_pickup.h"
 #include "net_identity.h"
 #include "net_signal.h"
 #include "view/tap_band.h"
@@ -823,6 +824,27 @@ private:
   int spectate_death_time_ = -1;
   static const int kSpectateDelayMs = 5000;
   void update_spectate();
+  // ---- time-slow pickup (time_slow_pickup.h) ----
+  // The world's wall-clock rate is divided by the factor for the pickup's
+  // wall duration: each sim step still advances step_size ms of GAME time
+  // (fire rate, thrust, physics all keep their in-game rates), the steps are
+  // just scheduled kTimeSlowFactor times further apart, exactly like the
+  // debug slow-down key — but temporary, and never a cheat. The collector's
+  // rotation is compensated (Ship::time_slow_rotation_comp) so their turn
+  // rate feels unchanged in wall time: an aiming window, the pickup's whole
+  // point. The countdown runs in SIM ms (wall / factor) so pause and the
+  // intro freeze it and it rides the savegame deterministically. Offline
+  // only — online pins time_between_steps to step_size (a per-machine rate
+  // change is permanent rubberbanding), so the pickup never drops there.
+  static const int kTimeSlowFactor = 2;
+  static const int kTimeSlowWallMs = 10000;
+  int time_slow_ms_left_ = 0;      // SIM ms remaining; 0 = inactive
+  Ship *time_slow_ship_ = nullptr; // collector: owns the rotation comp
+  bool time_slow_active() const { return time_slow_ms_left_ > 0; }
+  int time_slow_wall_ms_remaining() const {
+    return time_slow_ms_left_ * kTimeSlowFactor;
+  }
+  void start_time_slow(Ship *collector);
   // Re-level every player ship's self-played audio (thrusters included) for
   // the current listener distances. Called once per tick from both the
   // sim tick and the net-client tick.
@@ -840,6 +862,7 @@ private:
   static const float beam_pickup_drop_chance;
   static const float lance_pickup_drop_chance;
   static const float shock_pickup_drop_chance;
+  static const float time_slow_pickup_drop_chance;
   // Co-op revive: 10% per asteroid kill while a
   // partner is fully out, at most one in the world at a time.
   static const float revive_pickup_drop_chance;

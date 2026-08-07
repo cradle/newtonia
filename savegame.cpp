@@ -453,6 +453,9 @@ bool Save::serialize_game(Save::Stream &f, const Save::GameState &s) {
     // v17 append: replay run id (REPLAY.md).
     ok = ok && wv(f, s.run_id);
 
+    // v18 append: in-flight time-slow effect (sim ms remaining + owner).
+    ok = ok && wv(f, s.time_slow_ms_left) && wv(f, s.time_slow_player);
+
     return ok;
 }
 
@@ -535,6 +538,12 @@ bool Save::deserialize_game(Save::Stream &f, Save::GameState &s, uint16_t versio
     // recording to continue).
     if (version >= 17) {
         ok = ok && rv(f, s.run_id);
+    }
+
+    // In-flight time-slow effect appended in v18; older saves keep the 0
+    // default (= no effect running).
+    if (version >= 18) {
+        ok = ok && rv(f, s.time_slow_ms_left) && rv(f, s.time_slow_player);
     }
 
     return ok;

@@ -130,6 +130,12 @@ class Ship : public CompositeObject {
     // guessed: the local pilot, and the host applying INPUT flags that
     // arrive far faster than snapshots.
     float net_rotation_damp = 1.0f;
+    // Time-slow pickup compensation (GLGame::start_time_slow): while the
+    // world's wall-clock rate is divided by the slow factor, the collector's
+    // per-step rotation is multiplied by it, so turning FEELS unchanged in
+    // wall time while everything else — thrust, fire rate, the world — runs
+    // slow. 1.0 everywhere except the collecting ship during the effect.
+    float time_slow_rotation_comp = 1.0f;
     // Analog scale factors (0.0–1.0); set by joystick/controller input
     float rotation_scale;  // scales rotation_force (default 1.0)
     float thrust_analog;   // scales thrust_force   (default 1.0)

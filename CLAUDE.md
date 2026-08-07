@@ -208,10 +208,11 @@ All inherit from `Pickup` base class (`pickup.h`). Each pickup implements `draw(
 | `beam_pickup` | Pierce Beam | +100 beam bolts (violet star) |
 | `lance_pickup` | Lance | +100 lance pulses (amber star) |
 | `shock_pickup` | Shock | +100 shock bolts (chain-lightning primary; lightning-arc icon) |
+| `time_slow_pickup` | Time Slow | Clock icon; on pickup the whole world's wall-clock rate halves for 10 wall seconds (`GLGame::kTimeSlowFactor`/`kTimeSlowWallMs`) while the collector's rotation is compensated (`Ship::time_slow_rotation_comp`) so turning feels unchanged — an aiming window; fire rate/thrust keep their in-game rates (they slow with the world). Offline only: online pins `time_between_steps`, so it never drops there. Not a cheat (unlike the `-`/`=` time keys) |
 | `revive_pickup` | Revive | Co-op only (green cross): revives the fallen partner on their last life; GLGame applies it at the collection site (the pickup can't see the player list) |
 | `extra_life` | Extra Life | +1 life (heart shape) |
 
-**Drop chances** (per asteroid death, constants in `glgame.cpp`): extra_life 0.3125%, weapon 1.25%, mine 1.25%, giga_mine 0.5%, missile 1.25%, shield 1.25%, god_mode 0.25%, beam 0.375%, lance 0.25%, shock 0.3125%. **Revive** is a separate 10% roll ahead of that table, active only while some player is fully out of lives with a partner still in it, and capped at one in the world at a time; collecting it sets the fallen partner's `lives = 1` and restarts their respawn countdown (`GLGame::revive_fallen_partner`), which online replicates like any respawn and ends the spectator flow by itself.
+**Drop chances** (per asteroid death, constants in `glgame.cpp`): extra_life 0.3125%, weapon 1.25%, mine 1.25%, giga_mine 0.5%, missile 1.25%, shield 1.25%, god_mode 0.25%, beam 0.375%, lance 0.25%, shock 0.3125%, time_slow 0.25% (offline games only). **Revive** is a separate 10% roll ahead of that table, active only while some player is fully out of lives with a partner still in it, and capped at one in the world at a time; collecting it sets the fallen partner's `lives = 1` and restarts their respawn countdown (`GLGame::revive_fallen_partner`), which online replicates like any respawn and ends the spectator flow by itself.
 
 **Debug cheat** — `NEWTONIA_ALL_WEAPONS=1` grants every primary (all default variants + Beam + Lance + Shock) and every secondary at 999 rounds on spawn and after each respawn (`Ship::give_all_weapons`, re-granted from `GLGame::tick`; a numeric value > 1 sets the rounds instead, e.g. `NEWTONIA_ALL_WEAPONS=30` for quick drain tests). It flags the game as cheated (`Achievements::note_cheat_used()` in both `GLGame` constructors) so no achievements or lifetime stats count, and that flag rides the savegame (`GameState::cheated`) so save/resume can't launder it.
 
@@ -293,15 +294,15 @@ mesh.upload(); mesh.draw(); mesh.draw_tinted(); mesh.draw_at(); mesh.draw_with_m
 
 ### Save / Load
 
-**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 16:
+**Savegame** (`savegame.h/cpp`) — binary format, magic "NWTN", version 18:
 - `WeaponEntry`: kind, weapon_index, ammo (kinds include the primaries `Beam`, `Lance`, and `Shock` — all captured/restored in the primary-weapon list; `Shock` appended in v15 after the branch's Beam/Lance to keep wire ordinals stable)
 - `Player`: score, lives, kills, respawning flag, position, velocity, facing, weapons, nova state, achievements bookkeeping (asteroid kills, enemy-ship kills, died-this-generation, weapons-fired mask; appended in v14 together with the game-scoped cheat flag)
 - `Asteroid`: position, velocity, radius, health, all special flags and transient state
-- `Pickup`: type, position, weapon_index (the `ShockWeapon` pickup type merged from master; a new enum value, so older saves still load — they just never contain it)
+- `Pickup`: type, position, weapon_index (the `ShockWeapon` pickup type merged from master, and `TimeSlow` appended in v18; new enum values, so older saves still load — they just never contain them)
 - `BlackHole`, `Enemy`, `Station`: positional/state data (Station includes its deployed enemies)
 - `MiniStation`: present flag, alive, position, drift velocity, rotations, shot timer
 - `Hazard`: kind, position, velocity, shockwave phase timer (mid-game pulsar/comet/seeker; merged from master and appended at end of file in v16)
-- `GameState`: generation, world size, level_cleared, players, all object lists, game-scoped achievements cheat flag (appended in v11→renumbered v14 on this branch), hazard list (appended in v16)
+- `GameState`: generation, world size, level_cleared, players, all object lists, game-scoped achievements cheat flag (appended in v11→renumbered v14 on this branch), hazard list (appended in v16), in-flight time-slow effect — sim ms remaining + owning player index (appended in v18)
 
 **Backward compatibility:** `GameState::MIN_VERSION..VERSION` all load; older or newer files are ignored. New fields are only ever **appended at the end** and read back gated on `version >= N`, so an older save stops short and the new fields take their defaults (e.g. v9 saves load with no mini-station). Loading then re-saving upgrades the file to the current `VERSION`. Keep this convention when bumping the version so existing saves survive.
 

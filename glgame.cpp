@@ -127,6 +127,8 @@ const float GLGame::god_mode_pickup_drop_chance = 0.0025f;
 const float GLGame::beam_pickup_drop_chance = 0.00375f;
 const float GLGame::lance_pickup_drop_chance = 0.0025f;
 const float GLGame::shock_pickup_drop_chance = 0.003125f;
+// Rare like god mode/lance: a whole-world effect, not an ammo top-up.
+const float GLGame::time_slow_pickup_drop_chance = 0.0025f;
 // Defined below; used by the host's MSG_SHOCK handler above it.
 static bool shock_bolt_reaches(const std::vector<Point> &pts,
                                const WrappedPoint &pos, float radius);
@@ -153,6 +155,7 @@ static Pickup *make_pickup(const Save::Pickup &sp) {
     case Save::PickupType::Lance:       return new LancePickup(pos);
     case Save::PickupType::Revive:      return new RevivePickup(pos);
     case Save::PickupType::ShockWeapon: return new ShockPickup(pos);
+    case Save::PickupType::TimeSlow:    return new TimeSlowPickup(pos);
   }
   return NULL;  // unknown value from a newer save: skip, matching old behavior
 }
@@ -269,6 +272,7 @@ GLGame::GLGame(SDL_GameController *controller) :
       new NovaChargePickup(WrappedPoint(0, 0)), new BeamPickup(WrappedPoint(0, 0)),
       new LancePickup(WrappedPoint(0, 0)),     new ShockPickup(WrappedPoint(0, 0)),
       new RevivePickup(WrappedPoint(0, 0)),    new ExtraLife(WrappedPoint(0, 0)),
+      new TimeSlowPickup(WrappedPoint(0, 0)),
     };
     for (size_t i = 0; i < ring.size(); i++) {
       float a = i * 2.0f * (float)M_PI / ring.size();
@@ -649,6 +653,19 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     players->push_back(gs);
   }
 
+  // Resume an in-flight time-slow effect (v18): remaining sim ms plus the
+  // collector's rotation compensation, restored onto the saved player index.
+  if (save.time_slow_ms_left > 0 && !players->empty()) {
+    time_slow_ms_left_ = save.time_slow_ms_left;
+    uint8_t idx = 0;
+    for (auto* gs : *players) {
+      if (idx == save.time_slow_player) { time_slow_ship_ = gs->ship; break; }
+      idx++;
+    }
+    if (time_slow_ship_ == NULL) time_slow_ship_ = players->front()->ship;
+    time_slow_ship_->time_slow_rotation_comp = (float)kTimeSlowFactor;
+  }
+
   // Assign any already-connected controllers to players that don't have one yet
   // (controller_added only fires for newly connected controllers, not pre-existing ones)
   for (int i = 0; i < SDL_NumJoysticks(); i++) {
@@ -768,6 +785,17 @@ Save::GameState GLGame::build_save_data(bool include_asteroids) const {
   s.current_time               = current_time;
   s.cheated                    = Achievements::unlocks_suppressed();
   s.run_id                     = run_id_;
+  // v18: an in-flight time-slow effect rides the save (like god mode's
+  // remaining ms riding its weapon entry). Always 0 online — the pickup
+  // never drops there — so net snapshots carry nothing to apply.
+  s.time_slow_ms_left          = time_slow_ms_left_;
+  if (time_slow_ship_ != NULL) {
+    uint8_t idx = 0;
+    for (auto* gs : *players) {
+      if (gs->ship == time_slow_ship_) { s.time_slow_player = idx; break; }
+      idx++;
+    }
+  }
 
   for (auto* gs : *players)
     s.players.push_back(gs->ship->capture_state());
@@ -809,6 +837,8 @@ Save::GameState GLGame::build_save_data(bool include_asteroids) const {
       sp.type = Save::PickupType::Revive;
     } else if (dynamic_cast<ShockPickup*>(p)) {
       sp.type = Save::PickupType::ShockWeapon;
+    } else if (dynamic_cast<TimeSlowPickup*>(p)) {
+      sp.type = Save::PickupType::TimeSlow;
     } else {
       continue; // unknown pickup type, skip
     }
@@ -3582,6 +3612,17 @@ GLGame::GLGame(const Save::GameState &snapshot, Replay::Reader *reader)
   replay_save_version_ = reader->header().save_version
                              ? reader->header().save_version
                              : Save::GameState::VERSION;
+  // The delegated restore resumed any in-flight time-slow effect (a
+  // keyframe recorded mid-effect carries it), but playback re-applies
+  // nothing: the slow motion is already baked into the recorded wall-clock
+  // pacing, nothing decrements the countdown in NetReplay (it would sit
+  // frozen on the HUD forever), and the rotation comp would double the
+  // ghost's extrapolated turning against every reconcile.
+  time_slow_ms_left_ = 0;
+  if (time_slow_ship_ != NULL) {
+    time_slow_ship_->time_slow_rotation_comp = 1.0f;
+    time_slow_ship_ = NULL;
+  }
   for (auto *gs : *players) {
     gs->ship->is_local_player = false;
     // The delegated restore resurrects a mid-countdown ship instantly
@@ -7090,6 +7131,11 @@ void GLGame::tick(int delta) {
             pickups->push_back(new LancePickup((*oi)->position));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance + beam_pickup_drop_chance + lance_pickup_drop_chance + shock_pickup_drop_chance) {
             pickups->push_back(new ShockPickup((*oi)->position));
+          } else if(net_mode_ == NetOff && roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance + beam_pickup_drop_chance + lance_pickup_drop_chance + shock_pickup_drop_chance + time_slow_pickup_drop_chance) {
+            // Offline only: the effect changes the wall-clock step rate,
+            // which online is pinned to step_size on both machines (see the
+            // net tick) — a host-side slow could never replicate.
+            pickups->push_back(new TimeSlowPickup((*oi)->position));
           }
           }
         }
@@ -7668,6 +7714,11 @@ void GLGame::tick(int delta) {
           // way) is just the pickup sound.
           if (dynamic_cast<RevivePickup*>(*pi))
             revive_fallen_partner((*o)->ship);
+          // The time-slow clock is a world effect like the revive: the
+          // pickup can't see the game's step clock, so GLGame starts it at
+          // the collection site.
+          if (dynamic_cast<TimeSlowPickup*>(*pi))
+            start_time_slow((*o)->ship);
           if(pickup_sound != NULL)
             Mix_PlayChannel(-1, pickup_sound, 0);
           // Collection cue for the client. The arg names WHICH of the
@@ -7700,7 +7751,22 @@ void GLGame::tick(int delta) {
       }
     }
 
-    time_until_next_step += time_between_steps;
+    // Time-slow pickup: count down in SIM ms (so pause and the intro freeze
+    // it), and while active schedule the next step kTimeSlowFactor times
+    // further apart — the sim still advances step_size of game time per
+    // step, so nothing in-game changes rate; the wall clock just watches it
+    // in slow motion, except the collector's compensated turning.
+    if (net_mode_ == NetOff && time_slow_ms_left_ > 0) {
+      time_slow_ms_left_ -= step_size;
+      if (time_slow_ms_left_ <= 0) {
+        time_slow_ms_left_ = 0;
+        if (time_slow_ship_ != NULL)
+          time_slow_ship_->time_slow_rotation_comp = 1.0f;
+        time_slow_ship_ = NULL;
+      }
+    }
+    time_until_next_step += time_between_steps *
+        (net_mode_ == NetOff && time_slow_active() ? kTimeSlowFactor : 1);
   }
   /* Save high score automatically on game over */
   if (!game_over && !players->empty()) {
@@ -9124,6 +9190,21 @@ void GLGame::revive_fallen_partner(Ship *except) {
       break;
     }
   }
+}
+
+// Time-slow pickup collected: slow the WORLD's wall-clock rate for
+// kTimeSlowWallMs while the collector keeps wall-normal turning — an aiming
+// window (see the members in glgame.h for the full story). The countdown
+// runs in sim ms, so the wall duration divides by the factor here. A second
+// clock collected mid-effect refills the window; if the other player grabs
+// it, the compensation moves with it.
+void GLGame::start_time_slow(Ship *collector) {
+  if (net_mode_ != NetOff) return;  // never online (the drop is gated too)
+  if (time_slow_ship_ != NULL && time_slow_ship_ != collector)
+    time_slow_ship_->time_slow_rotation_comp = 1.0f;
+  time_slow_ship_ = collector;
+  time_slow_ship_->time_slow_rotation_comp = (float)kTimeSlowFactor;
+  time_slow_ms_left_ = kTimeSlowWallMs / kTimeSlowFactor;
 }
 
 GLShip *GLGame::local_player() const {
