@@ -8846,15 +8846,29 @@ TapBand GLGame::ff_toggle_band() const {
 // area, so a stray tap near the (inert but thumb-parked) controls on the
 // pause screen quit to the menu — and online that deliberate teardown
 // closes the room (field: Android portrait, 2026-07-25). Re-anchor it
-// just above the bottom text rows (badge/SPECTATING at vhb+130,
-// friendly-fire at vhb+55) instead: label and tap region sit between
-// that text and the controls, touching neither — the spectating badge
-// hoist at vhb+255 stays clear above it too.
+// just above the bottom text rows (badge rows at vhb+130 and vhb+168,
+// SPECTATING at vhb+130, friendly-fire at vhb+55) instead: label and tap
+// region sit between that text and the controls, touching neither — and
+// whenever this band is actually shown the badge rows hoist to
+// vhb+255/vhb+293 (Overlay::net_badges via exit_band_showing), clear
+// above it in both orientations.
 TapBand GLGame::exit_band() const {
   if (Typer::scaled_window_height <= Typer::original_window_height)
     return TapBand::return_to_menu;
   float vhb = -Typer::scaled_window_height / num_y_viewports();
   return TapBand(0.5f, vhb + 215, 13, 35.0f);
+}
+
+bool GLGame::exit_band_showing() const {
+  if (!is_touch_mode()) return false;
+  if (net_mode_ == NetReplay) return false;  // replay chrome owns its bands
+  bool all_over = !players->empty();
+  for (auto *gs : *players)
+    if (gs->ship->is_alive() || gs->ship->lives > 0) { all_over = false; break; }
+  const GLShip *local = local_player();
+  bool local_over = net_active() && local && !local->ship->is_alive() &&
+                    local->ship->lives <= 0;
+  return all_over || !running || local_over || net_connection_lost_;
 }
 
 void GLGame::touch_tap(float nx, float ny) {

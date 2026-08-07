@@ -526,15 +526,19 @@ void Overlay::net_badges(const GLGame *glgame, const GLShip *glship) {
   (void)glship;
   if (!glgame->net_active()) return;
   // Bottom rows like the SPECTATING hint, clear of the touch RETURN TO MENU
-  // band and the title-safe margin; hoisted when the camera is on the peer
-  // (that's exactly when the tag matters most). The spectating hoist must
-  // clear the WHOLE exit band, not just the SPECTATING text: the band's
-  // glyph box tops out ~-370 (anchor -420, size 13, pad 50, to_bottom
-  // below), and the old +175 spot printed the badge exactly on the band's
-  // RETURN TO MENU text (field: iPhone, 2026-07-24). +255 sits above the
-  // band's reach with air to spare.
+  // band and the title-safe margin; hoisted whenever that band is up —
+  // spectating (the camera is on the peer, exactly when the tag matters
+  // most), but also the touch pause / game-over / connection-lost states:
+  // the band's landscape label ink runs -420..-446 and the LOCAL row at
+  // vhb+168 (-432..-454) would print straight through it. The hoist must
+  // clear the WHOLE band, not just its label: the band's glyph box tops
+  // out ~-370 (anchor -420, size 13, pad 50, to_bottom below), and the old
+  // +175 spot printed the badge exactly on the band's RETURN TO MENU text
+  // (field: iPhone, 2026-07-24). +255 sits above the band's reach with air
+  // to spare (portrait's vhb+215 re-anchor stays clear too).
   float vhb = -Typer::scaled_window_height / glgame->num_y_viewports();
-  float y = glgame->is_spectating() ? vhb + 255.0f : vhb + 130.0f;
+  bool hoist = glgame->is_spectating() || glgame->exit_band_showing();
+  float y = hoist ? vhb + 255.0f : vhb + 130.0f;
   // The LOCAL player's own badge, one row above the peer's (glyphs descend
   // ~2x size below their y, so +38 clears the size-11 row below with a
   // visible gap — +30 read as almost touching in the field).
@@ -779,21 +783,12 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   // Touch: exit affordance — the bottom strip is a tap band
   // (GLGame::touch_tap), same placement as the lobby's return band. Shown
   // at GAME OVER, on the pause screen, and — online — when the LOCAL ship
-  // is fully out while the peer plays on (all-over never fires there).
-  if(is_touch_mode()) {
-    bool all_over = !glgame->players->empty();
-    for(auto* gs : *glgame->players) {
-      if(gs->ship->is_alive() || gs->ship->lives > 0) { all_over = false; break; }
-    }
-    const GLShip* local = glgame->local_player();
-    bool local_over = glgame->net_active() && local &&
-                      !local->ship->is_alive() && local->ship->lives <= 0;
-    if(all_over || !glgame->running || local_over ||
-       glgame->net_connection_lost_)
-      glgame->exit_band().draw(
-          Typer::cursored("RETURN TO MENU", true).c_str(),
-          glgame->current_time);
-  }
+  // is fully out while the peer plays on (all-over never fires there);
+  // exit_band_showing() is that rule, shared with the badge rows' hoist.
+  if(glgame->exit_band_showing())
+    glgame->exit_band().draw(
+        Typer::cursored("RETURN TO MENU", true).c_str(),
+        glgame->current_time);
 }
 
 void Overlay::draw_circle(float cx, float cy, float r, int segs, bool filled,

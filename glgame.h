@@ -227,6 +227,12 @@ private:
   // portrait re-anchors it near the true bottom, clear of the touch
   // controls (see the definition for the geometry story).
   TapBand exit_band() const;
+  // Whether that strip is on screen right now (touch only): GAME OVER, the
+  // pause screen, online a fully-out local ship while the peer plays on, or
+  // the connection-lost card. ONE rule shared by the band's draw site
+  // (Overlay) and the badge rows' hoist decision (Overlay::net_badges) —
+  // the unhoisted local row would print through the band's label.
+  bool exit_band_showing() const;
   // Co-op revive (revive_pickup.h): put a fully-out partner back on their
   // last life. Called from the pickup collection site and the
   // NEWTONIA_NET_TEST_REVIVE_MS e2e hook.
