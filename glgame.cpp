@@ -3612,17 +3612,11 @@ GLGame::GLGame(const Save::GameState &snapshot, Replay::Reader *reader)
   replay_save_version_ = reader->header().save_version
                              ? reader->header().save_version
                              : Save::GameState::VERSION;
-  // The delegated restore resumed any in-flight time-slow effect (a
-  // keyframe recorded mid-effect carries it), but playback re-applies
-  // nothing: the slow motion is already baked into the recorded wall-clock
-  // pacing, nothing decrements the countdown in NetReplay (it would sit
-  // frozen on the HUD forever), and the rotation comp would double the
-  // ghost's extrapolated turning against every reconcile.
-  time_slow_ms_left_ = 0;
-  if (time_slow_ship_ != NULL) {
-    time_slow_ship_->time_slow_rotation_comp = 1.0f;
-    time_slow_ship_ = NULL;
-  }
+  // A bootstrap keyframe recorded mid-time-slow seeds the effect via the
+  // delegated restore — kept: the client-path mirror (net_apply_state
+  // adopt + the extrapolation loop's paced countdown) plays it back
+  // exactly like a live client, against record spacing that already
+  // carries the slow motion in wall time.
   for (auto *gs : *players) {
     gs->ship->is_local_player = false;
     // The delegated restore resurrects a mid-countdown ship instantly
@@ -5089,7 +5083,15 @@ void GLGame::tick_net_client(int delta) {
     }
 
     if (net_mode_ == NetClient) net_client_send_input();
-    time_until_next_step += time_between_steps;
+    // Time-slow mirror (PROTO 24): the host's snapshots carry the countdown
+    // and net_apply_state adopted it — pace THIS loop by the same factor so
+    // the extrapolation (and the local ship's sim) advances at the host's
+    // slowed wall rate instead of overshooting into every reconcile. The
+    // per-step countdown keeps the window honest between applies; replays
+    // ride the same mirror against their recorded wall-clock spacing.
+    time_slow_step();
+    time_until_next_step += time_between_steps *
+        (time_slow_active() ? kTimeSlowFactor : 1);
   }
   if (Net::net_debug_enabled()) {
     uint32_t steps_ms = SDL_GetTicks() - hb_steps_t0;
@@ -5796,6 +5798,30 @@ void GLGame::net_apply_state(const Save::GameState &s) {
   level_cleared = s.level_cleared;
   time_until_next_generation = s.time_until_next_generation;
   current_time = s.current_time;
+
+  // Time-slow effect (PROTO 24): adopt the host's countdown and re-assert
+  // the collector's rotation comp from the owner index, so this machine's
+  // extrapolation loop slows its step scheduling in lockstep with the
+  // host's sim (and a replay shows the recorded slow motion the same way).
+  // Clamped to the legal window: a hostile snapshot could otherwise slow
+  // this machine indefinitely.
+  {
+    int ms = s.time_slow_ms_left;
+    if (ms < 0) ms = 0;
+    if (ms > kTimeSlowWallMs / kTimeSlowFactor)
+      ms = kTimeSlowWallMs / kTimeSlowFactor;
+    if ((ms > 0) != time_slow_active())
+      NET_LOG("net: time slow %s (%d ms)\n", ms > 0 ? "adopted" : "ended", ms);
+    time_slow_ms_left_ = ms;
+    time_slow_ship_ = NULL;
+    uint8_t idx = 0;
+    for (auto *gs : *players) {
+      bool owner = ms > 0 && idx == s.time_slow_player;
+      gs->ship->time_slow_rotation_comp = owner ? (float)kTimeSlowFactor : 1.0f;
+      if (owner) time_slow_ship_ = gs->ship;
+      idx++;
+    }
+  }
 
   // The grid still holds raw pointers from the last step-loop rebuild,
   // but this poll drain may already have DELETED asteroids (removal
@@ -6624,6 +6650,29 @@ void GLGame::tick(int delta) {
       }
     }
   }
+  // Spawn a real TimeSlowPickup on a living player so the ordinary
+  // collection path runs (collision -> start_time_slow -> snapshot
+  // replication) — the revive-drop hook's pattern, but solo-friendly:
+  // time slow works with any player count. Inert without the env var.
+  {
+    static int test_time_slow_ms = -2;
+    if (test_time_slow_ms == -2) {
+      const char *e = getenv("NEWTONIA_NET_TEST_TIME_SLOW_MS");
+      test_time_slow_ms = e ? atoi(e) : -1;
+    }
+    if (test_time_slow_ms > 0) {
+      test_time_slow_ms -= delta;
+      if (test_time_slow_ms <= 0) {
+        test_time_slow_ms = -1;
+        for (auto *gs : *players) {
+          if (!gs->ship->is_alive()) continue;
+          NET_LOG("net: TEST dropping time-slow pickup on the living player\n");
+          pickups->push_back(new TimeSlowPickup(gs->ship->position));
+          break;
+        }
+      }
+    }
+  }
 
   // Online host: poll the peer before the pause gate — their RESUME (or a
   // dead transport) must be noticed even while paused.
@@ -7131,10 +7180,7 @@ void GLGame::tick(int delta) {
             pickups->push_back(new LancePickup((*oi)->position));
           } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance + beam_pickup_drop_chance + lance_pickup_drop_chance + shock_pickup_drop_chance) {
             pickups->push_back(new ShockPickup((*oi)->position));
-          } else if(net_mode_ == NetOff && roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance + beam_pickup_drop_chance + lance_pickup_drop_chance + shock_pickup_drop_chance + time_slow_pickup_drop_chance) {
-            // Offline only: the effect changes the wall-clock step rate,
-            // which online is pinned to step_size on both machines (see the
-            // net tick) — a host-side slow could never replicate.
+          } else if(roll < extra_life_drop_chance + weapon_pickup_drop_chance + mine_pickup_drop_chance + giga_mine_pickup_drop_chance + missile_pickup_drop_chance + shield_pickup_drop_chance + god_mode_pickup_drop_chance + beam_pickup_drop_chance + lance_pickup_drop_chance + shock_pickup_drop_chance + time_slow_pickup_drop_chance) {
             pickups->push_back(new TimeSlowPickup((*oi)->position));
           }
           }
@@ -7755,18 +7801,13 @@ void GLGame::tick(int delta) {
     // it), and while active schedule the next step kTimeSlowFactor times
     // further apart — the sim still advances step_size of game time per
     // step, so nothing in-game changes rate; the wall clock just watches it
-    // in slow motion, except the collector's compensated turning.
-    if (net_mode_ == NetOff && time_slow_ms_left_ > 0) {
-      time_slow_ms_left_ -= step_size;
-      if (time_slow_ms_left_ <= 0) {
-        time_slow_ms_left_ = 0;
-        if (time_slow_ship_ != NULL)
-          time_slow_ship_->time_slow_rotation_comp = 1.0f;
-        time_slow_ship_ = NULL;
-      }
-    }
+    // in slow motion, except the collector's compensated turning. Online
+    // the countdown rides every snapshot and the client mirrors this exact
+    // pacing in tick_net_client, so both machines slow in lockstep
+    // (PROTO 24).
+    time_slow_step();
     time_until_next_step += time_between_steps *
-        (net_mode_ == NetOff && time_slow_active() ? kTimeSlowFactor : 1);
+        (time_slow_active() ? kTimeSlowFactor : 1);
   }
   /* Save high score automatically on game over */
   if (!game_over && !players->empty()) {
@@ -9197,14 +9238,31 @@ void GLGame::revive_fallen_partner(Ship *except) {
 // window (see the members in glgame.h for the full story). The countdown
 // runs in sim ms, so the wall duration divides by the factor here. A second
 // clock collected mid-effect refills the window; if the other player grabs
-// it, the compensation moves with it.
+// it, the compensation moves with it. Runs offline and host-side alike
+// (collection lives in the authoritative sim); the client/replay side only
+// ever adopts the replicated state in net_apply_state.
 void GLGame::start_time_slow(Ship *collector) {
-  if (net_mode_ != NetOff) return;  // never online (the drop is gated too)
+  if (net_mode_ == NetClient || net_mode_ == NetReplay) return;
   if (time_slow_ship_ != NULL && time_slow_ship_ != collector)
     time_slow_ship_->time_slow_rotation_comp = 1.0f;
   time_slow_ship_ = collector;
   time_slow_ship_->time_slow_rotation_comp = (float)kTimeSlowFactor;
   time_slow_ms_left_ = kTimeSlowWallMs / kTimeSlowFactor;
+  NET_LOG("time slow started (%d sim ms, owner %s)\n", time_slow_ms_left_,
+          !players->empty() && collector == players->front()->ship
+              ? "player 1" : "player 2");
+}
+
+// See glgame.h: shared per-step countdown for both step loops.
+void GLGame::time_slow_step() {
+  if (time_slow_ms_left_ <= 0) return;
+  time_slow_ms_left_ -= step_size;
+  if (time_slow_ms_left_ <= 0) {
+    time_slow_ms_left_ = 0;
+    for (auto *gs : *players) gs->ship->time_slow_rotation_comp = 1.0f;
+    time_slow_ship_ = NULL;
+    NET_LOG("time slow ended\n");
+  }
 }
 
 GLShip *GLGame::local_player() const {

@@ -248,6 +248,9 @@ bool net_state_sane(const Save::GameState &s) {
   if (s.world_x < 500.0f || s.world_x > 200000.0f) return false;
   if (s.world_y < 500.0f || s.world_y > 200000.0f) return false;
   if (s.players.size() < 1 || s.players.size() > 2) return false;
+  // Time-slow countdown (PROTO 24): the apply clamps to the legal window;
+  // reject only values no honest peer can produce (negative / absurd).
+  if (s.time_slow_ms_left < 0 || s.time_slow_ms_left > 60000) return false;
   if (s.asteroids.size() > 5000) return false;
   if (s.pickups.size() > 500) return false;
   if (s.black_holes.size() > 16) return false;

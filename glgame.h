@@ -828,14 +828,22 @@ private:
   // The world's wall-clock rate is divided by the factor for the pickup's
   // wall duration: each sim step still advances step_size ms of GAME time
   // (fire rate, thrust, physics all keep their in-game rates), the steps are
-  // just scheduled kTimeSlowFactor times further apart, exactly like the
+  // just SCHEDULED kTimeSlowFactor times further apart, exactly like the
   // debug slow-down key — but temporary, and never a cheat. The collector's
   // rotation is compensated (Ship::time_slow_rotation_comp) so their turn
   // rate feels unchanged in wall time: an aiming window, the pickup's whole
   // point. The countdown runs in SIM ms (wall / factor) so pause and the
-  // intro freeze it and it rides the savegame deterministically. Offline
-  // only — online pins time_between_steps to step_size (a per-machine rate
-  // change is permanent rubberbanding), so the pickup never drops there.
+  // intro freeze it and it rides the savegame deterministically.
+  // ONLINE (PROTO 24) the host owns the effect like everything else and the
+  // countdown + owner index ride every snapshot: net_apply_state adopts
+  // them, the client's extrapolation loop multiplies its OWN step
+  // scheduling by the same factor, and both machines slow in lockstep —
+  // this is a shared *scheduling* multiplier on top of the pinned
+  // time_between_steps, not the per-machine rate cheat the pin exists to
+  // prevent (current_time and the stale gates are wall-based and
+  // unaffected). Replays inherit the client path: the recorded wall-clock
+  // record spacing IS the slow motion, and the mirrored factor keeps the
+  // extrapolation between records at the matching rate.
   static const int kTimeSlowFactor = 2;
   static const int kTimeSlowWallMs = 10000;
   int time_slow_ms_left_ = 0;      // SIM ms remaining; 0 = inactive
@@ -845,6 +853,11 @@ private:
     return time_slow_ms_left_ * kTimeSlowFactor;
   }
   void start_time_slow(Ship *collector);
+  // Per-sim-step countdown, shared by the host/offline loop and the
+  // client/replay extrapolation loop: ticks the window down and drops the
+  // rotation comp when it closes (client copies are re-asserted by every
+  // snapshot apply; this keeps the in-between steps honest).
+  void time_slow_step();
   // Re-level every player ship's self-played audio (thrusters included) for
   // the current listener distances. Called once per tick from both the
   // sim tick and the net-client tick.
