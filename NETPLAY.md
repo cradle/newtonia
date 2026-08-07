@@ -952,8 +952,10 @@ reserved) | u8 name_len | name_len bytes UTF-8 display name` at the END of
 the message — display metadata for the lobby/HUD badge ("GLENN - STEAM"),
 never platform account IDs, nothing persisted. Old peers ignore the
 trailing bytes; new peers parse it only when `remaining() > 0` and treat
-absence or a lying `name_len` as "no identity" (legacy peer → exactly the
-pre-badge UI), so a mixed-version pairing handshakes exactly as before —
+absence or a lying `name_len` as "no identity" (legacy peer → no badge, no
+placeholder name; the HUD badge rows still show its role label + live
+score, like any unattested peer), so a mixed-version pairing handshakes
+exactly as before —
 the savegame append-only convention applied to the wire (guarded by
 `test/e2e/identity_legacy.sh`; `NEWTONIA_NET_NO_IDENTITY=1` makes a
 current build send the short messages). The peer identity lives on

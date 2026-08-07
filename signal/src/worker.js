@@ -707,7 +707,13 @@ export class Room {
           //   replacement can't inherit it: accept_joiner clears any stored
           //   joiner identity when a new socket takes the slot.
           const occupied = role === "host" ? this.hostWs() : this.joinerWs();
-          if (!v || occupied) {
+          // The +1 proves the ONLY occupancy change since this announce is
+          // the announcer's own departure. Anything more (a replacement
+          // joined — whether or not it has also departed by now) means this
+          // verify belongs to an OLDER occupant: last-resolver-wins would
+          // let its slow verify overwrite the newer late-stored badge.
+          const sole_departure = (this.r[ep_key] || 0) === epoch + 1;
+          if (!v || occupied || !sole_departure) {
             console.log(`identity ${role} verify discarded (slot changed ` +
                         `occupants mid-verify)`);
             return;

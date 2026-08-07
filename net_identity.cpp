@@ -56,10 +56,12 @@ uint8_t default_platform() {
 
 }  // namespace
 
-const NetIdentity &net_local_identity() {
+namespace {
+
+const NetIdentity &local_identity_impl(bool throttled) {
   // Called only on the game thread (every netplay call site: the HELLO/WELCOME
-  // append, the lobby/in-game send_identity), so the statics below need no
-  // locking.
+  // append, the lobby/in-game send_identity, the HUD badge row), so the
+  // statics below need no locking.
   static NetIdentity id;
   static bool platform_built = false;
   static bool name_built = false;
@@ -82,14 +84,16 @@ const NetIdentity &net_local_identity() {
   // on the first call, and a build with no name at all just keeps sending the
   // badge-only identity, retrying a cheap lookup each infrequent handshake).
   if (!name_built) {
-    // Throttle the retry: the lookup was sized for handshake-frequency
-    // callers, but the HUD badge row (Overlay::net_badges) now calls this
-    // once per rendered frame — an unresolved name (Play Games before
-    // sign-in) must not become a per-frame JNI round-trip. 2 s keeps the
-    // retry-until-it-yields behaviour on a human timescale.
+    // `throttled` (the per-frame HUD caller): retry an unresolved name at
+    // most every 2 s — the lookup can be a JNI round-trip (Play Games
+    // before sign-in) and must not run at frame rate. The wire/announce
+    // callers stay unthrottled: a handshake is a ONE-SHOT send, and
+    // skipping its retry could append a nameless identity moments after
+    // the name actually resolved — role-labelling the player for a whole
+    // LAN session.
     static std::chrono::steady_clock::time_point last_try;
     auto now = std::chrono::steady_clock::now();
-    if (last_try.time_since_epoch().count() != 0 &&
+    if (throttled && last_try.time_since_epoch().count() != 0 &&
         now - last_try < std::chrono::seconds(2))
       return id;
     last_try = now;
@@ -114,6 +118,10 @@ const NetIdentity &net_local_identity() {
   }
   return id;
 }
+
+}  // namespace
+
+const NetIdentity &net_local_identity() { return local_identity_impl(false); }
 
 std::string net_local_verify_credential() {
 #ifdef IDENTITY_HAVE_VERIFY
@@ -359,8 +367,9 @@ std::string net_identity_badge_or(const NetIdentity &id,
 
 std::string net_local_identity_badge(const char *fallback_name) {
   // Self-display: no render_field gate (see net_identity.h) — the same
-  // compose_badge rule as the peer badges, minus the trust checks.
-  const NetIdentity &id = net_local_identity();
+  // compose_badge rule as the peer badges, minus the trust checks. The one
+  // per-frame caller, hence the throttled lookup (see local_identity_impl).
+  const NetIdentity &id = local_identity_impl(true);
   return compose_badge(id.name.empty() ? std::string(fallback_name) : id.name,
                        net_platform_label(id.platform));
 }

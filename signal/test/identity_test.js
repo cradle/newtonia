@@ -122,7 +122,41 @@ function check(name, cond) {
         !!claim && claim.role === "joiner" && claim.name === "EVE" &&
         claim.platform === 3 && claim.verified === false);
 
-  host.close(); join3.close();
+  // 8. An OLDER departed occupant's slower verify must not overwrite the
+  //    newer late-stored badge (last-resolver-wins): A announces slow and
+  //    drops; B replaces it, announces faster, and also drops. B's verify
+  //    lands (sole departure since its announce); A's resolves later and
+  //    must be discarded — the host's next identity after B's is C's own,
+  //    never A's.
+  join3.close();
+  await host._recvType("peer");  // leave
+  await t(200);                  // let the drop settle before the next join
+  const joinA = await connect(`?role=join&code=${code}`);
+  await joinA._recvType("joined");
+  joinA.send(JSON.stringify({ t: "identity", platform: 5, name: "OLDA",
+                              cred: "SLOW:2500" }));
+  await t(100); joinA.close();
+  await t(300);  // A's drop must process (epoch bump) before B takes the slot
+  const joinB = await connect(`?role=join&code=${code}`);
+  await joinB._recvType("joined");
+  joinB.send(JSON.stringify({ t: "identity", platform: 5, name: "NEWB",
+                              cred: "SLOW:300" }));
+  await t(100); joinB.close();
+  const lateB = await host._recvType("identity");
+  check("newest departed occupant's late verify lands",
+        !!lateB && lateB.role === "joiner" && lateB.name === "NEWB" &&
+        lateB.verified === true);
+  await t(2600);  // let A's stale verify resolve (and be discarded)
+  const joinC = await connect(`?role=join&code=${code}`);
+  await joinC._recvType("joined");
+  await joinC._recvType("identity");  // the host's identity, replayed
+  joinC.send(JSON.stringify({ t: "identity", platform: 1, name: "CARL" }));
+  const afterStale = await host._recvType("identity");
+  check("stale verify from an older occupant never overwrites",
+        !!afterStale && afterStale.role === "joiner" &&
+        afterStale.name === "CARL");
+
+  host.close(); joinC.close();
   console.log(failures ? `\n${failures} FAILURES` : "\nIDENTITY-TEST-OK");
   process.exit(failures ? 1 : 0);
 })().catch((e) => { console.error("test crashed:", e); process.exit(1); });
