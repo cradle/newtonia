@@ -1037,8 +1037,7 @@ void GLGame::toggle_pause(bool broadcast) {
 // protecting once the records are exhausted: the world is frozen and
 // there is nothing left to watch.
 bool GLGame::replay_exit_offered() const {
-  return replay_finished_ ||
-         (game_over && current_time - game_over_time >= 3000);
+  return replay_finished_ || (game_over && !game_over_grace_active());
 }
 
 bool GLGame::pause_menu_active() const {
@@ -8628,6 +8627,23 @@ void GLGame::draw_map() const {
   }
 }
 
+// Pad-button → logical-key vocabulary for the leaderboard prompt (dpad
+// moves, A/Start confirm, B/Back = Esc), shared by the healthy game-over
+// block and the connection-lost card path below so the two prompts can't
+// drift apart. 0 = not a prompt key.
+static char board_pad_key(const SDL_Event &event) {
+  if (event.type != SDL_CONTROLLERBUTTONDOWN) return 0;
+  switch (event.cbutton.button) {
+    case SDL_CONTROLLER_BUTTON_DPAD_UP: return 'w';
+    case SDL_CONTROLLER_BUTTON_DPAD_DOWN: return 's';
+    case SDL_CONTROLLER_BUTTON_A:
+    case SDL_CONTROLLER_BUTTON_START: return '\r';
+    case SDL_CONTROLLER_BUTTON_B:
+    case SDL_CONTROLLER_BUTTON_BACK: return 27;
+    default: return 0;
+  }
+}
+
 void GLGame::controller(SDL_Event event) {
   if (net_card_owns_input()) {
     // Same one-frame guard as keyboard_up: a committed auto-rejoin
@@ -8636,33 +8652,29 @@ void GLGame::controller(SDL_Event event) {
     // The leaderboard prompt outranks the card — the keyboard and touch
     // twins' ordering. Everything else is swallowed while it owns the
     // game-over card, like the keyboard twin, so no button exits through
-    // the prompt.
+    // the prompt. RT confirms it exactly as on the healthy game-over card
+    // (board_nav carries the 3 s grace and the YES default itself).
     if (board_prompt_active()) {
-      if (event.type == SDL_CONTROLLERBUTTONDOWN) {
-        char bk = 0;
-        switch (event.cbutton.button) {
-          case SDL_CONTROLLER_BUTTON_DPAD_UP: bk = 'w'; break;
-          case SDL_CONTROLLER_BUTTON_DPAD_DOWN: bk = 's'; break;
-          case SDL_CONTROLLER_BUTTON_A:
-          case SDL_CONTROLLER_BUTTON_START: bk = '\r'; break;
-          case SDL_CONTROLLER_BUTTON_B:
-          case SDL_CONTROLLER_BUTTON_BACK: bk = 27; break;
-          default: break;
-        }
-        if (bk) board_nav(bk);
-      }
+      char bk = board_pad_key(event);
+      if (event.type == SDL_CONTROLLERAXISMOTION &&
+          event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT &&
+          event.caxis.value > 8000)
+        bk = '\r';
+      if (bk) board_nav(bk);
       return;
     }
-    // A/Start/right-trigger confirm the card's row, B/Back leave — the
-    // keyboard twin, through the shared pad translator. Pad confirms are
-    // discrete presses (buttons emit on DOWN, the trigger on its arming
-    // crossing — a release emits nothing), so no held-through-the-loss
-    // release race exists here and no down-tracking is needed; the
-    // game-over grace matches the keyboard.
-    if (is_exit_key(nav_key_from_controller(event))) {
-      if (all_players_out() && game_over_time >= 0 &&
-          current_time - game_over_time < 3000)
-        return;
+    // A/Start confirm the card's row, B/Back leave — buttons ONLY: a
+    // button DOWN is a fresh press by construction, the pad's equivalent
+    // of net_card_pressed_. The trigger is deliberately NOT a confirm
+    // here, unlike the healthy game-over card: gameplay routes trigger
+    // events to the ships, never the nav translator, so the translator's
+    // RT edge state is stale-false during play, and a trigger held to
+    // FIRE through the disconnect (or jittering on its release ramp)
+    // would register as a fresh confirm and throw the rejoinable session
+    // away — the held-fire race, pad edition.
+    if (event.type == SDL_CONTROLLERBUTTONDOWN &&
+        is_exit_key(nav_key_from_controller(event))) {
+      if (all_players_out() && game_over_grace_active()) return;
       request_state_change(new Menu());
     }
     return;
@@ -8729,16 +8741,7 @@ void GLGame::controller(SDL_Event event) {
     // ahead of every exit shortcut below so a pad can't leave through the
     // prompt. board_nav is a no-op returning false once the prompt is done.
     if (board_prompt_active()) {
-      char bk = 0;
-      switch (event.cbutton.button) {
-        case SDL_CONTROLLER_BUTTON_DPAD_UP: bk = 'w'; break;
-        case SDL_CONTROLLER_BUTTON_DPAD_DOWN: bk = 's'; break;
-        case SDL_CONTROLLER_BUTTON_A:
-        case SDL_CONTROLLER_BUTTON_START: bk = '\r'; break;
-        case SDL_CONTROLLER_BUTTON_B:
-        case SDL_CONTROLLER_BUTTON_BACK: bk = 27; break;
-        default: break;
-      }
+      char bk = board_pad_key(event);
       if (bk && board_nav(bk)) return;
     }
     if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) {
@@ -8758,7 +8761,7 @@ void GLGame::controller(SDL_Event event) {
           }
         }
         if (all_game_over) {
-          if (!(game_over_time >= 0 && current_time - game_over_time < 3000)) {
+          if (!game_over_grace_active()) {
             for (auto* glship : *players)
               save_high_score(glship->ship->score);
             request_state_change(new Menu());
@@ -8794,7 +8797,7 @@ void GLGame::controller(SDL_Event event) {
           // so they no longer leave (they still join player 2 below on a
           // pad that isn't playing yet).
           if (is_exit_key(nav_key_from_controller(event)) &&
-              !(game_over_time >= 0 && current_time - game_over_time < 3000)) {
+              !game_over_grace_active()) {
             for (auto* glship : *players)
               save_high_score(glship->ship->score);
             request_state_change(new Menu());
@@ -8828,7 +8831,7 @@ void GLGame::controller(SDL_Event event) {
       // RT is the card's confirm: while the leaderboard prompt is up it
       // answers the highlighted YES/NO instead of leaving.
       if (board_nav('\r')) return;
-      if (game_over_time >= 0 && current_time - game_over_time < 3000)
+      if (game_over_grace_active())
         return;
       for (auto* glship : *players)
         save_high_score(glship->ship->score);
@@ -8965,7 +8968,7 @@ void GLGame::touch_tap(float nx, float ny) {
   if (all_game_over) {
     // The 3 s grace mirrors the key/controller exits so a frantic
     // last-second tap can't skip past the game over screen.
-    if (game_over_time >= 0 && current_time - game_over_time < 3000) return;
+    if (game_over_grace_active()) return;
     for (auto *glship : *players)
       save_high_score(glship->ship->score);
     request_state_change(new Menu());
@@ -9300,9 +9303,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     unsigned char nav = nav_key(key);
     if (net_card_pressed_.erase(nav) == 0) return;
     if (!is_exit_key(nav)) return;
-    if (all_players_out() && game_over_time >= 0 &&
-        current_time - game_over_time < 3000)
-      return;
+    if (all_players_out() && game_over_grace_active()) return;
     request_state_change(new Menu());
     return;
   }
@@ -9453,7 +9454,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
     if (all_game_over) {
       if (!is_exit_key(nav_key(key))) return;
-      if (game_over_time >= 0 && current_time - game_over_time < 3000)
+      if (game_over_grace_active())
         return;
       for (auto* glship : *players)
         save_high_score(glship->ship->score);

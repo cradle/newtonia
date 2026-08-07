@@ -215,6 +215,14 @@ private:
   static bool is_exit_key(unsigned char nav) {
     return MenuSelect::is_confirm(nav) || MenuSelect::is_back(nav);
   }
+  // The 3 s guard on every game-over exit — a mid-fight fire/confirm still
+  // travelling when the game ends must not skip the score screen. One
+  // helper because the exits are many (key, pad button, right trigger,
+  // touch, the connection-lost card) and the window must not drift
+  // between them.
+  bool game_over_grace_active() const {
+    return game_over_time >= 0 && current_time - game_over_time < 3000;
+  }
   void host_toggle_friendly_fire();  // G key / HUD-text tap; announces the
                                      // room rule online (EV_FRIENDLY_FIRE)
   // The "friendly fire on/off" HUD line doubles as the touch toggle

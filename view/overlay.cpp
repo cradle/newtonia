@@ -255,6 +255,12 @@ void Overlay::net_overlays(const GLGame *glgame) {
     Typer::draw_centered(0, 160, "CONNECTION LOST", 34);
     if ((now / 700) % 2 == 0)
       Typer::draw_centered(0, -80, "REJOINING", 16);
+    // The exits stay live during a rejoin — confirm/back abandons it for
+    // the menu — so the affordance must be drawn (drawn and interactive
+    // agree): the terminal card's shared row, same spot. Touch draws no
+    // cursor and has the exit band instead.
+    if (!is_touch_mode())
+      MenuSelect::draw_row(-130, "RETURN TO MENU", 16, true);
   } else if (glgame->net_connection_lost_) {
     if (glgame->net_peer_bye_) {
       // Named like DISCONNECTED/RECONNECTED but near the middle, at the
@@ -474,6 +480,11 @@ void Overlay::score(const GLGame *glgame, const GLShip *glship) {
 }
 
 void Overlay::level_cleared(const GLGame *glgame, const GLShip *glship) {
+  // The connection-lost card owns the centre of the screen, and this
+  // countdown is going nowhere without the host — CLEARED at y=150 sat
+  // right under the card's heading at y=160. The host-with-a-door notice
+  // keeps it: that game (and its countdown) really is still running.
+  if (glgame->net_card_owns_input()) return;
   if(glgame->running && glgame->level_cleared && (glship->ship->is_alive() || glship->ship->lives > 0)) {
     Typer::draw_centered(0, 150, "CLEARED", 50);
     Typer::draw_centered(0, -60, (glgame->time_until_next_generation / 1000)+1, 20);
