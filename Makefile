@@ -219,7 +219,10 @@ clean:
 # ============================================================
 # Web / Emscripten target
 # ============================================================
-EMCC = emcc
+# em++, not emcc: web.yml installs emsdk "latest", and current Emscripten
+# only links the C++ runtime (libc++, exceptions) when the driver is the
+# C++ one — emcc-as-linker fails on undefined operator delete/__cxa_throw.
+EMCC = em++
 
 # Exclude desktop and Android entry points; add web entry point
 WEB_EXCL = glut.cpp android_main.cpp
