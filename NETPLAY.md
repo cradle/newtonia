@@ -721,7 +721,12 @@ lobby (`attested_peer_`, threaded into `GLGame` via `net_set_worker_session` +
    peer's — `net_local_identity_badge()`, trust-free by design since it
    never crossed a wire — with no tick: the worker attests each side to the
    OTHER, never back to its claimant, so the local row has nothing to be
-   vouched by and needs no vouching.) Three design
+   vouched by and needs no vouching. Each row carries its pilot's live
+   score as `draw_centered_verified`'s suffix — drawn AFTER the tick, which
+   must sit beside the identity it vouches for; both scores are already
+   local knowledge, the host simming both ships and the client's 10 Hz
+   snapshot restoring every player's score, so nothing new is on the
+   wire.) Three design
    points worth keeping if it is ever revisited: (a) the tick marks the
    ROW, not a field — one tick, since the worker attests platform and name
    together and a name can't be attested without its platform, so iOS's

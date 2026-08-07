@@ -543,11 +543,21 @@ void Overlay::net_badges(const GLGame *glgame, const GLShip *glship) {
   // verified tick here: the tick vouches to YOU about the PEER (the worker
   // attests each side to the OTHER, never back to its claimant), and your
   // own machine needs no vouching about itself.
+  // Each row carries its pilot's live score (": 4200") — both scores are
+  // already on this machine with no wire changes: the host sims and credits
+  // both ships authoritatively, and the client's 10 Hz snapshot restores
+  // every player's score (net_apply_state). The score rides as
+  // draw_centered_verified's SUFFIX so the verified tick stays beside the
+  // identity it vouches for, never after the score.
   if (glgame->net_mode_ == GLGame::NetHost ||
       glgame->net_mode_ == GLGame::NetClient) {
     std::string self =
         net_local_identity_badge(glgame->net_local_fallback().c_str());
-    Typer::draw_centered(0, y + 38.0f, self.c_str(), 11);
+    char self_score[16];
+    snprintf(self_score, sizeof self_score, ": %d",
+             glgame->local_player()->ship->score);
+    Typer::draw_centered_verified(0, y + 38.0f, self.c_str(), 11, false, 0,
+                                  self_score);
   }
   // The peer badge names the REMOTE player: the client looks at the host
   // (player 1), the host at the client (player 2).
@@ -555,11 +565,19 @@ void Overlay::net_badges(const GLGame *glgame, const GLShip *glship) {
       glgame->net_peer_identity_, glgame->net_peer_fallback().c_str(),
       glgame->net_id_ctx());
   if (badge.empty()) return;  // legacy peer: no badge, no placeholder
+  const GLShip *peer = glgame->remote_player();
+  char peer_score[16];
+  const char *peer_suffix = nullptr;
+  if (peer) {
+    snprintf(peer_score, sizeof peer_score, ": %d", peer->ship->score);
+    peer_suffix = peer_score;
+  }
   // A worker-attested peer earns the verified tick; a LAN/manual peer's badge
   // is a claim and draws bare (net_identity_verified owns that rule).
   Typer::draw_centered_verified(
       0, y, badge.c_str(), 11,
-      net_identity_verified(glgame->net_peer_identity_, glgame->net_id_ctx()));
+      net_identity_verified(glgame->net_peer_identity_, glgame->net_id_ctx()),
+      0, peer_suffix);
 }
 
 // Spectator flow (netplay co-op): a "SPECTATING IN N" countdown on the local
