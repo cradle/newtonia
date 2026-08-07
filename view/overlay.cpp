@@ -536,7 +536,8 @@ void Overlay::net_badges(const GLGame *glgame, const GLShip *glship) {
   float vhb = -Typer::scaled_window_height / glgame->num_y_viewports();
   float y = glgame->is_spectating() ? vhb + 255.0f : vhb + 130.0f;
   // The LOCAL player's own badge, one row above the peer's (glyphs descend
-  // ~2x size below their y, so +30 clears the size-11 row below with air).
+  // ~2x size below their y, so +38 clears the size-11 row below with a
+  // visible gap — +30 read as almost touching in the field).
   // Live play only — net_active() is also true in a NetReplay, where the
   // ghosts may be anyone's (a downloaded run), so "you" has no row. No
   // verified tick here: the tick vouches to YOU about the PEER (the worker
@@ -546,7 +547,7 @@ void Overlay::net_badges(const GLGame *glgame, const GLShip *glship) {
       glgame->net_mode_ == GLGame::NetClient) {
     std::string self =
         net_local_identity_badge(glgame->net_local_fallback().c_str());
-    Typer::draw_centered(0, y + 30.0f, self.c_str(), 11);
+    Typer::draw_centered(0, y + 38.0f, self.c_str(), 11);
   }
   // The peer badge names the REMOTE player: the client looks at the host
   // (player 1), the host at the client (player 2).
