@@ -655,8 +655,14 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
 
   // Resume an in-flight time-slow effect (v18): remaining sim ms plus the
   // collector's rotation compensation, restored onto the saved player index.
+  // Clamped to the legal window like the net apply — this ctor also seeds
+  // replay playback, and a downloaded (untrusted) replay's bootstrap
+  // keyframe or a doctored save could otherwise start an over-long or
+  // permanent slow (net_state_sane's bound is deliberately looser).
   if (save.time_slow_ms_left > 0 && !players->empty()) {
     time_slow_ms_left_ = save.time_slow_ms_left;
+    if (time_slow_ms_left_ > kTimeSlowWallMs / kTimeSlowFactor)
+      time_slow_ms_left_ = kTimeSlowWallMs / kTimeSlowFactor;
     uint8_t idx = 0;
     for (auto* gs : *players) {
       if (idx == save.time_slow_player) { time_slow_ship_ = gs->ship; break; }
@@ -785,9 +791,11 @@ Save::GameState GLGame::build_save_data(bool include_asteroids) const {
   s.current_time               = current_time;
   s.cheated                    = Achievements::unlocks_suppressed();
   s.run_id                     = run_id_;
-  // v18: an in-flight time-slow effect rides the save (like god mode's
-  // remaining ms riding its weapon entry). Always 0 online — the pickup
-  // never drops there — so net snapshots carry nothing to apply.
+  // v18: the in-flight time-slow effect rides the save (like god mode's
+  // remaining ms riding its weapon entry) — and, since snapshots serialize
+  // through this same struct, it is ALSO how the effect replicates online
+  // and into replays: net_apply_state adopts these two scalars from every
+  // keyframe/delta (PROTO 24).
   s.time_slow_ms_left          = time_slow_ms_left_;
   if (time_slow_ship_ != NULL) {
     uint8_t idx = 0;

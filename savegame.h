@@ -209,7 +209,9 @@ struct GameState {
     // v18 append (end of file): an in-flight time-slow pickup effect — SIM
     // ms remaining (wall ms / slow factor; see GLGame::start_time_slow) and
     // the collecting player's index (who keeps wall-normal turning). 0 = no
-    // effect running; always 0 online, where the pickup never drops.
+    // effect running. Snapshots share this struct, so these two scalars are
+    // also the effect's ONLINE/replay replication (PROTO 24): the host
+    // writes them into every keyframe/delta and net_apply_state adopts them.
     int32_t time_slow_ms_left = 0;
     uint8_t time_slow_player  = 0;
 
