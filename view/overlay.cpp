@@ -564,11 +564,21 @@ void Overlay::net_badges(const GLGame *glgame, const GLShip *glship) {
                                   self_score);
   }
   // The peer badge names the REMOTE player: the client looks at the host
-  // (player 1), the host at the client (player 2).
+  // (player 1), the host at the client (player 2). When nothing renders —
+  // a legacy peer, or an online peer whose attestation never arrived — the
+  // row falls back to the bare role label rather than vanishing: the score
+  // is always known locally, and a scoreless blank row read as a bug in
+  // the field (Android/Steam pairing, 2026-08-07). Live play only, like
+  // the local row — a replay's ghosts get no fallback row.
   std::string badge = net_identity_badge_or(
       glgame->net_peer_identity_, glgame->net_peer_fallback().c_str(),
       glgame->net_id_ctx());
-  if (badge.empty()) return;  // legacy peer: no badge, no placeholder
+  if (badge.empty()) {
+    if (glgame->net_mode_ != GLGame::NetHost &&
+        glgame->net_mode_ != GLGame::NetClient)
+      return;
+    badge = glgame->net_peer_fallback();
+  }
   const GLShip *peer = glgame->remote_player();
   char peer_score[16];
   const char *peer_suffix = nullptr;

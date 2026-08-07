@@ -51,10 +51,10 @@ private:
   // Online: the identity badge rows, small bottom-row tags like the
   // SPECTATING hint — the peer's name+platform badge ("GLENN - STEAM",
   // verified tick when worker-attested) with the local player's own badge
-  // above it, each carrying its pilot's live score (": 4200"). The peer row
-  // draws nothing for a legacy (pre-identity) peer — their absence must
-  // render exactly the badge-less row; the local row is independent of the
-  // peer and skipped only in replay playback.
+  // above it, each carrying its pilot's live score (": 4200"). A peer whose
+  // badge doesn't render (legacy build, or an attestation that never
+  // arrived) falls back to its bare role label ("PLAYER 2 : 300") in live
+  // play; only replay playback draws no rows.
   static void net_badges(const GLGame *glgame, const GLShip *glship);
   static void keymap(const GLGame *glgame, const GLShip *glship);
   static void title_text(const GLGame *glgame, const GLShip *glship);

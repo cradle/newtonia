@@ -726,7 +726,10 @@ lobby (`attested_peer_`, threaded into `GLGame` via `net_set_worker_session` +
    must sit beside the identity it vouches for; both scores are already
    local knowledge, the host simming both ships and the client's 10 Hz
    snapshot restoring every player's score, so nothing new is on the
-   wire.) Three design
+   wire. A peer whose badge doesn't render — legacy build, or an
+   attestation that never arrived — falls back to its bare role label
+   ("PLAYER 2 : 300") in live play rather than vanishing: a scoreless
+   blank row read as a bug in the field, 2026-08-07.) Three design
    points worth keeping if it is ever revisited: (a) the tick marks the
    ROW, not a field — one tick, since the worker attests platform and name
    together and a name can't be attested without its platform, so iOS's
