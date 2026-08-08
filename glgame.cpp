@@ -8721,6 +8721,14 @@ void GLGame::controller(SDL_Event event) {
         pause_nav('\r');
         return;
       }
+      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_B) {
+        // B backs out one level — the same thing it means on every other
+        // screen; here that closes the pause menu (resume). It used to do
+        // nothing while paused (field, 2026-08-08). BACK below stays the
+        // quit-to-menu shortcut, START still resumes directly.
+        toggle_pause();
+        return;
+      }
     } else if (event.type == SDL_CONTROLLERAXISMOTION &&
                is_player_controller(event.caxis.which)) {
       // Stick nav through the shared arm/release hysteresis, so the pause
@@ -8811,8 +8819,12 @@ void GLGame::controller(SDL_Event event) {
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE) {
       if(running) toggle_pause();
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
-      for (auto* glship : *players)
-        save_high_score(glship->ship->score);
+      // Exactly what the keyboard menu key (and back_pressed) does — save
+      // first, then hand over. This used to bank only the HIGH SCORE: a
+      // BACK during live play threw away all progress since the last
+      // auto-save, and banked an unfinished run's score, which the
+      // keyboard path never did (field, 2026-08-08).
+      save_progress();
       request_state_change(new Menu());
     }
   }
