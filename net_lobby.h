@@ -153,6 +153,10 @@ private:
 
   Screen screen_;
   int selection_;  // Choose: 0 = HOST, 1 = JOIN, 2 = BACK TO MENU band
+  // CodeEntry's controller picker layout (grid + compact rows under it)
+  // vs the keyboard layout — one flag for the draw and the mouse
+  // hit-test, so the two can't disagree about which rows are on screen.
+  bool code_entry_grid() const;
   // Nav keys pressed (key-DOWN) while THIS lobby was on screen: a confirm
   // release in keyboard_up acts only if its press is in here — the
   // board_prompt_pressed_ / net_card_pressed_ pattern. The auto-rejoin
