@@ -164,6 +164,12 @@ private:
   // through the disconnect releases into this lobby; per-instance, so a
   // key pressed before the lobby existed is stale by construction.
   std::set<unsigned char> nav_pressed_;
+  // Lifetime of this lobby (ticked in tick): a rejoin lobby ignores taps
+  // on the exit band for its first moments — on touch the fire zone
+  // overlaps that strip, and a fire-mash tail arriving with the hand-off
+  // must not abandon the rejoin (see touch_tap).
+  int age_ms_ = 0;
+  static const int kRejoinTapGraceMs = 700;
   bool hosting_;
 
   NetTransport *transport_;  // owned until handed to session_

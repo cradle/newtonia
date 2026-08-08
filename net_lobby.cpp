@@ -258,6 +258,14 @@ void NetLobby::fail_online_not_allowed() {
 
 NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
   hosting_ = false;
+  // An auto-rejoin arrives from gameplay with the fire trigger plausibly
+  // still down, and a fresh state's RT edge would read its next sample as
+  // a confirm. Pre-arm the edge BEFORE the early exits below — a policy
+  // fail or netless build lands on LobbyFailed, where that phantom
+  // confirm would dismiss the fail screen unread. Invite accepts share
+  // this ctor and inherit the pre-arm: arriving from the menu it just
+  // costs one swallowed first pull, the safe default.
+  nav_assume_rt_held();
   // Same policy gate as the interactive JOIN commit (confirm()): this ctor
   // is a join commit too — auto-rejoin and platform invite accepts.
   if (!net_online_play_allowed()) {
@@ -275,10 +283,6 @@ NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
   }
   code_entry_ = rejoin_code;
   rejoin_mode_ = true;
-  // Arrived from gameplay: the fire trigger is plausibly still down, and
-  // a fresh state's RT edge would read its next sample as a confirm —
-  // which now exits the rejoin wait. Require a seen release first.
-  nav_assume_rt_held();
   // A backgrounded host that hasn't resumed within a minute usually isn't
   // coming back soon (the room's reclaim grace is 2 min, but waiting it
   // out reads as a hang — the joiner can TRY AGAIN from the fail screen).
@@ -350,6 +354,9 @@ bool NetLobby::code_entry_keyboard(bool open) {
 NetLobby::NetLobby(const std::string &lan_host_name, LanRejoinTag)
     : NetLobby() {
   hosting_ = false;
+  // Before the early exit, like the relay twin — the fire trigger may
+  // still be down from the game this rejoin left.
+  nav_assume_rt_held();
   Presence::set_joining();
   Net::set_net_log_role(false);
   transport_ = NetTransport::create();
@@ -362,7 +369,6 @@ NetLobby::NetLobby(const std::string &lan_host_name, LanRejoinTag)
   lan_rejoin_name_ = lan_host_name;
   lan_browse_ms_ = 0;
   rejoin_mode_ = true;
-  nav_assume_rt_held();  // fire trigger may still be down — see the relay twin
   rejoin_budget_ms_ = 60000;
   screen_ = RoomJoining;
   set_status("RECONNECTING");
@@ -1174,6 +1180,7 @@ void NetLobby::pump_signal(int delta) {
 
 void NetLobby::tick(int delta) {
   currentTime += delta;
+  age_ms_ += delta;
   viewpoint += Point(1, 0) * (0.025 * delta);
   if (viewpoint.x() > WORLD_W) viewpoint += Point(-WORLD_W, 0);
   if (status_ms_ > 0) status_ms_ -= delta;
@@ -2377,6 +2384,14 @@ void NetLobby::controller(SDL_Event event) {
 void NetLobby::touch_tap(float nx, float ny) {
   // Bottom strip on every screen = RETURN TO MENU.
   if (TapBand::return_to_menu.contains(nx, ny)) {
+    // A rejoin lobby arrives mid-fight, and on touch the in-game fire
+    // zone overlaps this strip — a fire-mash tail landing just after the
+    // hand-off would abandon the recoverable rejoin (the touch twin of
+    // the held-fire race the fresh-press ledgers stop for keys and pads;
+    // taps carry no held state, so a short arm delay stands in). A
+    // deliberate exit tap comes later than a mash tail.
+    if (rejoin_mode_ && is_touch_mode() && age_ms_ < kRejoinTapGraceMs)
+      return;
     leave_to_menu();
     return;
   }

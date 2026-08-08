@@ -72,7 +72,6 @@ protected:
   static const int NAV_STICK_OFF = 8000;
   Point window;
 
-protected:
   // A state can be entered MID-HOLD: the auto-rejoin lobby arrives from
   // gameplay with the fire trigger plausibly still down, and this fresh
   // state's right-trigger edge starts "released" — so the hold's next
