@@ -564,6 +564,14 @@ void NetLobby::confirm() {
     // Enter/A on a highlighted row of the rejoin wait screen (see draw's
     // RoomJoining case): join it instead of waiting out the budget.
     lan_join_selected();
+  } else if (rejoin_mode_ && screen_ == RoomJoining) {
+    // The rejoin wait's BACK TO MENU is a real menu row — it draws the
+    // shared cursor (see the band draw), so confirm must answer it: give
+    // up the rejoin and leave. It used to be a dead label that only Esc
+    // or a tap could activate (Glenn: "couldn't select return to menu as
+    // a menu item", 2026-08-07). A highlighted LAN host row was already
+    // taken by the branch above, so confirm here always means the exit.
+    leave_to_menu();
   } else if (screen_ == LobbyFailed) {
     // A policy-blocked account gets no chooser: HOST and JOIN would both
     // refuse with the same headline, an infinite dead-end — back to the
@@ -1962,15 +1970,19 @@ void NetLobby::draw() {
 
   // Touch: the bottom strip is a tap zone (see touch_tap). Desktop: on the
   // Choose screen the band is also the third selectable row (HOST / JOIN /
-  // exit); the other lobby screens have no selection ladder, so their band
-  // is a plain (unselected) label there — still tappable, and Esc still
-  // works everywhere.
+  // exit), and on the rejoin wait it is the screen's ONE menu row — always
+  // cursored, because confirm answers it there (unless a LAN host row
+  // holds the highlight, where Enter joins that row instead). The other
+  // lobby screens have no selection ladder, so their band is a plain
+  // (unselected) label — still tappable, and Esc still works everywhere.
+  bool band_armed =
+      (screen_ == Choose && selection_ == 2) ||
+      (rejoin_mode_ && screen_ == RoomJoining &&
+       !(lan_rejoin_browsing() && lan_sel_ >= 0));
   TapBand::return_to_menu.draw(
       is_touch_mode()
           ? Typer::cursored("RETURN TO MENU", true).c_str()
-          : Typer::cursored("BACK TO MENU",
-                            screen_ == Choose && selection_ == 2)
-                .c_str(),
+          : Typer::cursored("BACK TO MENU", band_armed).c_str(),
       currentTime);
 }
 
