@@ -303,7 +303,10 @@ test/e2e/rejoin.sh   # SIGKILL joiner mid-game -> auto-pause -> rejoin -> resume
 test/e2e/rejoinexit.sh # the auto-rejoin wait screen answers like a menu:
                      # SIGKILL the HOST -> joiner's rejoin lobby -> its
                      # cursored BACK TO MENU row leaves on Enter (round 1)
-                     # and Esc (round 2); per-round fresh prefs.
+                     # and Esc (round 2), and a fire key held through the
+                     # disconnect releases into the lobby WITHOUT exiting
+                     # (round 3 — space is a confirm key; only a press the
+                     # lobby saw may confirm); per-round fresh prefs.
 test/e2e/hostresume.sh # host process-death resume: SIGKILL the HOST mid-game,
                      # relaunch within the reclaim grace, drive the menu's
                      # RESUME HOSTING row -> room reclaimed, client auto-rejoin

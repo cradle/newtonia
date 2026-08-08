@@ -22,6 +22,7 @@
 
 #include <SDL.h>
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -152,6 +153,13 @@ private:
 
   Screen screen_;
   int selection_;  // Choose: 0 = HOST, 1 = JOIN, 2 = BACK TO MENU band
+  // Nav keys pressed (key-DOWN) while THIS lobby was on screen: a confirm
+  // release in keyboard_up acts only if its press is in here — the
+  // board_prompt_pressed_ / net_card_pressed_ pattern. The auto-rejoin
+  // hand-off arrives mid-fight, so a fire key (space IS a confirm) held
+  // through the disconnect releases into this lobby; per-instance, so a
+  // key pressed before the lobby existed is stale by construction.
+  std::set<unsigned char> nav_pressed_;
   bool hosting_;
 
   NetTransport *transport_;  // owned until handed to session_

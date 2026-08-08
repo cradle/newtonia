@@ -261,6 +261,10 @@ NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
   }
   code_entry_ = rejoin_code;
   rejoin_mode_ = true;
+  // Arrived from gameplay: the fire trigger is plausibly still down, and
+  // a fresh state's RT edge would read its next sample as a confirm —
+  // which now exits the rejoin wait. Require a seen release first.
+  nav_assume_rt_held();
   // A backgrounded host that hasn't resumed within a minute usually isn't
   // coming back soon (the room's reclaim grace is 2 min, but waiting it
   // out reads as a hang — the joiner can TRY AGAIN from the fail screen).
@@ -344,6 +348,7 @@ NetLobby::NetLobby(const std::string &lan_host_name, LanRejoinTag)
   lan_rejoin_name_ = lan_host_name;
   lan_browse_ms_ = 0;
   rejoin_mode_ = true;
+  nav_assume_rt_held();  // fire trigger may still be down — see the relay twin
   rejoin_budget_ms_ = 60000;
   screen_ = RoomJoining;
   set_status("RECONNECTING");
@@ -1989,6 +1994,8 @@ void NetLobby::draw() {
 void NetLobby::keyboard(unsigned char key, int x, int y) {
   (void)x;
   (void)y;
+  // Fresh-press ledger for keyboard_up's confirm gate (see there).
+  nav_pressed_.insert(nav_key(key));
   // Code entry happens on key-down: this is where real characters arrive
   // on every platform (GLUT char events, SDL_TEXTINPUT on mobile). The
   // key-up path must NOT also feed the code field — Android's touch layer
@@ -2105,6 +2112,14 @@ void NetLobby::keyboard_up(unsigned char key, int x, int y) {
   // Code characters are consumed on key-down in keyboard(); swallowing
   // them here keeps V/C/W/S shortcuts from also firing while typing.
   if (screen_ == CodeEntry) return;
+  // A confirm release acts only if its PRESS landed in this lobby
+  // (nav_pressed_, recorded in keyboard()): the auto-rejoin hand-off
+  // arrives mid-fight, so a fire key held through the disconnect used to
+  // release HERE — onto the rejoin wait, where confirm exits — and threw
+  // the rejoin away (field, 2026-08-08). Esc stays immediate: it is not
+  // a gameplay-hold key, and in-game it already meant "leave".
+  bool fresh = nav_pressed_.erase(key) > 0;
+  if (MenuSelect::is_confirm(key) && !fresh) return;
   nav_input(key);
 }
 
