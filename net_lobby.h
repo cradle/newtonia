@@ -22,6 +22,7 @@
 
 #include <SDL.h>
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -152,6 +153,23 @@ private:
 
   Screen screen_;
   int selection_;  // Choose: 0 = HOST, 1 = JOIN, 2 = BACK TO MENU band
+  // CodeEntry's controller picker layout (grid + compact rows under it)
+  // vs the keyboard layout — one flag for the draw and the mouse
+  // hit-test, so the two can't disagree about which rows are on screen.
+  bool code_entry_grid() const;
+  // Nav keys pressed (key-DOWN) while THIS lobby was on screen: a confirm
+  // release in keyboard_up acts only if its press is in here — the
+  // board_prompt_pressed_ / net_card_pressed_ pattern. The auto-rejoin
+  // hand-off arrives mid-fight, so a fire key (space IS a confirm) held
+  // through the disconnect releases into this lobby; per-instance, so a
+  // key pressed before the lobby existed is stale by construction.
+  std::set<unsigned char> nav_pressed_;
+  // Lifetime of this lobby (ticked in tick): a rejoin lobby ignores taps
+  // on the exit band for its first moments — on touch the fire zone
+  // overlaps that strip, and a fire-mash tail arriving with the hand-off
+  // must not abandon the rejoin (see touch_tap).
+  int age_ms_ = 0;
+  static const int kRejoinTapGraceMs = 700;
   bool hosting_;
 
   NetTransport *transport_;  // owned until handed to session_

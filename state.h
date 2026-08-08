@@ -72,6 +72,14 @@ protected:
   static const int NAV_STICK_OFF = 8000;
   Point window;
 
+  // A state can be entered MID-HOLD: the auto-rejoin lobby arrives from
+  // gameplay with the fire trigger plausibly still down, and this fresh
+  // state's right-trigger edge starts "released" — so the hold's next
+  // axis sample (jitter, or the release ramp) would read as a fresh
+  // confirm. Pre-arm the edge: the trigger must be SEEN released before
+  // it can confirm in this state.
+  void nav_assume_rt_held() { nav_rt_ = true; }
+
 private:
   // nav_key_from_controller hysteresis: stick up/down/left/right armed, and
   // the right-trigger edge.

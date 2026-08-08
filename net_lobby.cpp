@@ -147,6 +147,20 @@ static int lan_bands_fit(float lift) {
 
 // The band at kLanBand[idx] raised by the active lift — ONE geometry
 // feeding both draw and hit-test, preserving the TapBand invariant.
+// Desktop LAN-row geometry: the same anchors the draws use, as TapBands,
+// so the drawn rows and the MOUSE hit-test share one definition (the
+// TapBand rule; the touch layout's bands are kLanBand above). Hit-testing
+// the touch bands on desktop put the click zone up beside the code slots
+// — clicking the code field joined a LAN host while clicking the drawn
+// host name did nothing (Glenn, Windows mouse, 2026-08-08). Sized to the
+// SELECTED row's glyphs so the zone doesn't move with the highlight;
+// pads keep adjacent zones apart (keyboard rows sit 46 apart with
+// 36-unit glyph boxes, grid rows 32 apart with 28).
+static TapBand lan_desktop_row_band(int i, bool grid) {
+  return grid ? TapBand(0.5f, -288.0f - (float)i * 32.0f, 14, 2.0f)
+              : TapBand(0.5f, -160.0f - (float)i * 46.0f, 18, 4.0f);
+}
+
 static TapBand lan_band_at(int idx, float lift) {
   const TapBand &b = kLanBand[idx];
   return TapBand(b.nx, b.y + lift, b.size, b.pad);
@@ -244,6 +258,14 @@ void NetLobby::fail_online_not_allowed() {
 
 NetLobby::NetLobby(const std::string &rejoin_code) : NetLobby() {
   hosting_ = false;
+  // An auto-rejoin arrives from gameplay with the fire trigger plausibly
+  // still down, and a fresh state's RT edge would read its next sample as
+  // a confirm. Pre-arm the edge BEFORE the early exits below — a policy
+  // fail or netless build lands on LobbyFailed, where that phantom
+  // confirm would dismiss the fail screen unread. Invite accepts share
+  // this ctor and inherit the pre-arm: arriving from the menu it just
+  // costs one swallowed first pull, the safe default.
+  nav_assume_rt_held();
   // Same policy gate as the interactive JOIN commit (confirm()): this ctor
   // is a join commit too — auto-rejoin and platform invite accepts.
   if (!net_online_play_allowed()) {
@@ -332,6 +354,9 @@ bool NetLobby::code_entry_keyboard(bool open) {
 NetLobby::NetLobby(const std::string &lan_host_name, LanRejoinTag)
     : NetLobby() {
   hosting_ = false;
+  // Before the early exit, like the relay twin — the fire trigger may
+  // still be down from the game this rejoin left.
+  nav_assume_rt_held();
   Presence::set_joining();
   Net::set_net_log_role(false);
   transport_ = NetTransport::create();
@@ -564,6 +589,14 @@ void NetLobby::confirm() {
     // Enter/A on a highlighted row of the rejoin wait screen (see draw's
     // RoomJoining case): join it instead of waiting out the budget.
     lan_join_selected();
+  } else if (rejoin_mode_ && screen_ == RoomJoining) {
+    // The rejoin wait's BACK TO MENU is a real menu row — it draws the
+    // shared cursor (see the band draw), so confirm must answer it: give
+    // up the rejoin and leave. It used to be a dead label that only Esc
+    // or a tap could activate (Glenn: "couldn't select return to menu as
+    // a menu item", 2026-08-07). A highlighted LAN host row was already
+    // taken by the branch above, so confirm here always means the exit.
+    leave_to_menu();
   } else if (screen_ == LobbyFailed) {
     // A policy-blocked account gets no chooser: HOST and JOIN would both
     // refuse with the same headline, an infinite dead-end — back to the
@@ -1147,6 +1180,7 @@ void NetLobby::pump_signal(int delta) {
 
 void NetLobby::tick(int delta) {
   currentTime += delta;
+  age_ms_ += delta;
   viewpoint += Point(1, 0) * (0.025 * delta);
   if (viewpoint.x() > WORLD_W) viewpoint += Point(-WORLD_W, 0);
   if (status_ms_ > 0) status_ms_ -= delta;
@@ -1730,8 +1764,7 @@ void NetLobby::draw() {
         // (Deck) the picker grid never draws at all — the keyboard is
         // the typing surface and Y re-summons it (Glenn), so the LAN
         // rows take the roomier keyboard-flow spots below instead.
-        bool grid = controller_seen_ && !floating_kb_up_ &&
-                    !floating_kb_available_;
+        bool grid = code_entry_grid();
         // The Deck hint omits B - DELETE: the floating keyboard owns
         // typing AND has its own backspace, so a delete key hint is
         // noise there (Glenn). B still backs out of a highlighted LAN
@@ -1757,7 +1790,7 @@ void NetLobby::draw() {
               std::string row = lh[i].name;
               if (lh[i].proto != Net::PROTO_VERSION)
                 row += " - DIFFERENT VERSION";
-              MenuSelect::draw_row(-288.0f - (float)i * 32.0f, row,
+              MenuSelect::draw_row(lan_desktop_row_band(i, true).y, row,
                                    lan_sel_ == i ? 14 : 11, lan_sel_ == i);
             }
             // The keyboard flow's join hint in the pad's vocabulary
@@ -1779,7 +1812,7 @@ void NetLobby::draw() {
               std::string row = lh[i].name;
               if (lh[i].proto != Net::PROTO_VERSION)
                 row += " - DIFFERENT VERSION";
-              MenuSelect::draw_row(-160.0f - (float)i * 46.0f, row,
+              MenuSelect::draw_row(lan_desktop_row_band(i, false).y, row,
                                    lan_sel_ == i ? 18 : 14, lan_sel_ == i);
             }
             // 14 extra under the last row: a SELECTED row's size-18
@@ -1837,7 +1870,7 @@ void NetLobby::draw() {
                 std::string row = lh[i].name;
                 if (lh[i].proto != Net::PROTO_VERSION)
                   row += " - DIFFERENT VERSION";
-                MenuSelect::draw_row(-160.0f - (float)i * 46.0f, row,
+                MenuSelect::draw_row(lan_desktop_row_band(i, false).y, row,
                                      lan_sel_ == i ? 18 : 14, lan_sel_ == i);
               }
               Typer::draw_centered(0, -174.0f - (float)show * 46.0f,
@@ -1962,21 +1995,27 @@ void NetLobby::draw() {
 
   // Touch: the bottom strip is a tap zone (see touch_tap). Desktop: on the
   // Choose screen the band is also the third selectable row (HOST / JOIN /
-  // exit); the other lobby screens have no selection ladder, so their band
-  // is a plain (unselected) label there — still tappable, and Esc still
-  // works everywhere.
+  // exit), and on the rejoin wait it is the screen's ONE menu row — always
+  // cursored, because confirm answers it there (unless a LAN host row
+  // holds the highlight, where Enter joins that row instead). The other
+  // lobby screens have no selection ladder, so their band is a plain
+  // (unselected) label — still tappable, and Esc still works everywhere.
+  bool band_armed =
+      (screen_ == Choose && selection_ == 2) ||
+      (rejoin_mode_ && screen_ == RoomJoining &&
+       !(lan_rejoin_browsing() && lan_sel_ >= 0));
   TapBand::return_to_menu.draw(
       is_touch_mode()
           ? Typer::cursored("RETURN TO MENU", true).c_str()
-          : Typer::cursored("BACK TO MENU",
-                            screen_ == Choose && selection_ == 2)
-                .c_str(),
+          : Typer::cursored("BACK TO MENU", band_armed).c_str(),
       currentTime);
 }
 
 void NetLobby::keyboard(unsigned char key, int x, int y) {
   (void)x;
   (void)y;
+  // Fresh-press ledger for keyboard_up's confirm gate (see there).
+  nav_pressed_.insert(nav_key(key));
   // Code entry happens on key-down: this is where real characters arrive
   // on every platform (GLUT char events, SDL_TEXTINPUT on mobile). The
   // key-up path must NOT also feed the code field — Android's touch layer
@@ -2093,6 +2132,14 @@ void NetLobby::keyboard_up(unsigned char key, int x, int y) {
   // Code characters are consumed on key-down in keyboard(); swallowing
   // them here keeps V/C/W/S shortcuts from also firing while typing.
   if (screen_ == CodeEntry) return;
+  // A confirm release acts only if its PRESS landed in this lobby
+  // (nav_pressed_, recorded in keyboard()): the auto-rejoin hand-off
+  // arrives mid-fight, so a fire key held through the disconnect used to
+  // release HERE — onto the rejoin wait, where confirm exits — and threw
+  // the rejoin away (field, 2026-08-08). Esc stays immediate: it is not
+  // a gameplay-hold key, and in-game it already meant "leave".
+  bool fresh = nav_pressed_.erase(key) > 0;
+  if (MenuSelect::is_confirm(key) && !fresh) return;
   nav_input(key);
 }
 
@@ -2224,6 +2271,14 @@ int NetLobby::lan_rows_shown() const {
   return n > cap ? cap : n;
 }
 
+// CodeEntry draws the controller picker grid (with its compact LAN rows)
+// only when a pad has been seen and no floating keyboard is up or proven;
+// everywhere else the keyboard layout's roomier rows draw. The mouse
+// hit-test keys off the same flag (see touch_tap's CodeEntry case).
+bool NetLobby::code_entry_grid() const {
+  return controller_seen_ && !floating_kb_up_ && !floating_kb_available_;
+}
+
 void NetLobby::controller(SDL_Event event) {
   // Only real controller events prove a pad: platform loops (web_main's
   // default case in particular) forward OTHER unhandled event types
@@ -2329,6 +2384,14 @@ void NetLobby::controller(SDL_Event event) {
 void NetLobby::touch_tap(float nx, float ny) {
   // Bottom strip on every screen = RETURN TO MENU.
   if (TapBand::return_to_menu.contains(nx, ny)) {
+    // A rejoin lobby arrives mid-fight, and on touch the in-game fire
+    // zone overlaps this strip — a fire-mash tail landing just after the
+    // hand-off would abandon the recoverable rejoin (the touch twin of
+    // the held-fire race the fresh-press ledgers stop for keys and pads;
+    // taps carry no held state, so a short arm delay stands in). A
+    // deliberate exit tap comes later than a mash tail.
+    if (rejoin_mode_ && is_touch_mode() && age_ms_ < kRejoinTapGraceMs)
+      return;
     leave_to_menu();
     return;
   }
@@ -2339,16 +2402,17 @@ void NetLobby::touch_tap(float nx, float ny) {
       confirm();
       break;
     case CodeEntry:
-      // Top-right = BACK: the usual bottom exit band is physically under
-      // the soft keyboard, so this is the only reachable way out of code
-      // entry on touch.
-      if (kBackBand.contains(nx, ny)) {
-        leave_to_menu();
-        return;
-      }
-      // LAN host bands (drawn in place of the typing hint). A version
-      // mismatch taps through to the explanatory status message.
-      {
+      if (is_touch_mode()) {
+        // Top-right = BACK: the usual bottom exit band is physically
+        // under the soft keyboard, so this is the only reachable way out
+        // of code entry on touch. Touch-only, like the band it stands in
+        // for — on desktop it drew nothing and still ate clicks.
+        if (kBackBand.contains(nx, ny)) {
+          leave_to_menu();
+          return;
+        }
+        // LAN host bands (drawn in place of the typing hint). A version
+        // mismatch taps through to the explanatory status message.
         const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
         float lift = lan_band_lift();
         int fit = lan_bands_fit(lift);
@@ -2356,6 +2420,21 @@ void NetLobby::touch_tap(float nx, float ny) {
         for (int i = 0; i < show; i++) {
           // Mirror of the draw's bottom-up fill (and its keyboard lift).
           if (lan_band_at(kLanBandCount - show + i, lift).contains(nx, ny)) {
+            lan_sel_ = i;
+            lan_join_selected();
+            return;
+          }
+        }
+      } else {
+        // Mouse: hit-test the rows this layout actually DRAWS (grid or
+        // keyboard flow), not the touch bands — those sit up beside the
+        // code slots here, so clicking the code field joined a LAN host
+        // while clicking the drawn host name did nothing (Glenn, Windows
+        // mouse, 2026-08-08).
+        int show = lan_rows_shown();
+        bool grid = code_entry_grid();
+        for (int i = 0; i < show; i++) {
+          if (lan_desktop_row_band(i, grid).contains(nx, ny)) {
             lan_sel_ = i;
             lan_join_selected();
             return;
@@ -2382,16 +2461,29 @@ void NetLobby::touch_tap(float nx, float ny) {
       // The rejoin wait screen's live host rows (see draw): the manual
       // escape hatch when the host came back under a different name.
       if (lan_rejoin_browsing()) {
-        const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
-        float lift = lan_band_lift();
-        int fit = lan_bands_fit(lift);
-        int show = (int)lh.size() > fit ? fit : (int)lh.size();
-        for (int i = 0; i < show; i++) {
-          // Mirror of the draw's bottom-up fill.
-          if (lan_band_at(kLanBandCount - show + i, lift).contains(nx, ny)) {
-            lan_sel_ = i;
-            lan_join_selected();
-            return;
+        if (is_touch_mode()) {
+          const std::vector<NetLan::HostInfo> &lh = lan_browse_.hosts();
+          float lift = lan_band_lift();
+          int fit = lan_bands_fit(lift);
+          int show = (int)lh.size() > fit ? fit : (int)lh.size();
+          for (int i = 0; i < show; i++) {
+            // Mirror of the draw's bottom-up fill.
+            if (lan_band_at(kLanBandCount - show + i, lift).contains(nx, ny)) {
+              lan_sel_ = i;
+              lan_join_selected();
+              return;
+            }
+          }
+        } else {
+          // Mouse: the drawn desktop rows, same geometry as the draw —
+          // the CodeEntry twin above explains why not the touch bands.
+          int show = lan_rows_shown();
+          for (int i = 0; i < show; i++) {
+            if (lan_desktop_row_band(i, false).contains(nx, ny)) {
+              lan_sel_ = i;
+              lan_join_selected();
+              return;
+            }
           }
         }
       }

@@ -219,8 +219,12 @@ void Overlay::net_overlays(const GLGame *glgame) {
     return;
   }
 
-  if (glgame->net_connection_lost_ && glgame->net_mode_ == GLGame::NetHost &&
-      (glgame->net_signal_ || glgame->net_lan_door_open())) {
+  // The one lost-link state that is a quiet notice, not a card, is exactly
+  // the state net_card_owns_input() excludes — ask the game rather than
+  // re-derive the condition here, or the two copies drift and the overlay
+  // draws a card whose input the handlers aren't answering (the pause-row
+  // lesson, overlay.cpp paused()).
+  if (glgame->net_connection_lost_ && !glgame->net_card_owns_input()) {
     // Rejoinable loss: the game continues — a quiet notice, not a card.
     // A "P2 DISCONNECTED" header over the room code (steady, no blink): the
     // host may be reading the code out to the other player, and it explains
@@ -244,9 +248,19 @@ void Overlay::net_overlays(const GLGame *glgame) {
              glgame->net_mode_ == GLGame::NetClient &&
              (!glgame->net_room_code_.empty() ||
               !glgame->net_lan_host_name_.empty())) {
-    Typer::draw_centered(0, 60, "CONNECTION LOST", 34);
+    // y=160, not 60: clear of the pause overlay's "Paused" at y=30 — the
+    // terminal branch below moved for this same collision, and this one
+    // stacks with "Paused" the same way (host pauses the shared game, then
+    // its process dies without BYE while the room code is live).
+    Typer::draw_centered(0, 160, "CONNECTION LOST", 34);
     if ((now / 700) % 2 == 0)
       Typer::draw_centered(0, -80, "REJOINING", 16);
+    // The exits stay live during a rejoin — confirm/back abandons it for
+    // the menu — so the affordance must be drawn (drawn and interactive
+    // agree): the terminal card's shared row, same spot. Touch draws no
+    // cursor and has the exit band instead.
+    if (!is_touch_mode())
+      MenuSelect::draw_row(-130, "RETURN TO MENU", 16, true);
   } else if (glgame->net_connection_lost_) {
     if (glgame->net_peer_bye_) {
       // Named like DISCONNECTED/RECONNECTED but near the middle, at the
@@ -264,11 +278,13 @@ void Overlay::net_overlays(const GLGame *glgame) {
       // y=160, not 60: clear of the pause overlay's "Paused" at y=30.
       Typer::draw_centered(0, 160, "CONNECTION LOST", 34);
     }
-    // y=-130: clear of the pause overlay's menu rows (RESUME at -42,
-    // RETURN TO MENU at -80, glyphs reaching ~-106). This card is drawn
-    // on a side that is normally still running — the auto-pause belongs
-    // to the host-with-a-door case above — but a hand pause before the
-    // loss stacks the two, so keep the gap.
+    // y=-130: clear of where the pause overlay's menu rows sit (RESUME at
+    // -42, RETURN TO MENU at -80, glyphs reaching ~-106). Those rows are
+    // never drawn beside this card any more — pause_menu_active() refuses
+    // while the card owns input, so a loss landing on a paused game keeps
+    // the "Paused" heading but not the menu under it (the host pausing and
+    // then leaving used to give the client two dead rows above this live
+    // one). The position keeps the historical gap so nothing shifts.
     // A menu row, not an any-key prompt: confirm or back leaves and
     // nothing else does, so a stray keypress can't end the session.
     // Steady, not flashing — a cursor row is a thing you act on, not an
@@ -415,10 +431,11 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
       Typer::draw_centered(0, -40, "press play to resume", 8);
       return;
     }
-    // Selectable rows carrying the shared menu cursor. The stack must stay
-    // clear of the disconnect overlay's "PRESS FIRE FOR MENU" at y=-130 —
-    // a disconnect auto-pauses, so both show at once — which is what sizes
-    // it: size 13 rows at -42 and -80 bottom out around -106.
+    // Selectable rows carrying the shared menu cursor, sized so the stack
+    // (size 13 rows at -42 and -80) bottoms out around -106, clear of the
+    // disconnect card's row at y=-130. The two no longer show at once —
+    // pause_menu_active() refuses while that card owns input — but the
+    // positions stay put so neither screen shifts.
     //
     // Ask the game whether the menu is LIVE rather than re-deriving it. The
     // conditions had already drifted apart: this function tests the help
@@ -463,6 +480,11 @@ void Overlay::score(const GLGame *glgame, const GLShip *glship) {
 }
 
 void Overlay::level_cleared(const GLGame *glgame, const GLShip *glship) {
+  // The connection-lost card owns the centre of the screen, and this
+  // countdown is going nowhere without the host — CLEARED at y=150 sat
+  // right under the card's heading at y=160. The host-with-a-door notice
+  // keeps it: that game (and its countdown) really is still running.
+  if (glgame->net_card_owns_input()) return;
   if(glgame->running && glgame->level_cleared && (glship->ship->is_alive() || glship->ship->lives > 0)) {
     Typer::draw_centered(0, 150, "CLEARED", 50);
     Typer::draw_centered(0, -60, (glgame->time_until_next_generation / 1000)+1, 20);

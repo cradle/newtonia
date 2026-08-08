@@ -1037,8 +1037,7 @@ void GLGame::toggle_pause(bool broadcast) {
 // protecting once the records are exhausted: the world is frozen and
 // there is nothing left to watch.
 bool GLGame::replay_exit_offered() const {
-  return replay_finished_ ||
-         (game_over && current_time - game_over_time >= 3000);
+  return replay_finished_ || (game_over && !game_over_grace_active());
 }
 
 bool GLGame::pause_menu_active() const {
@@ -1048,6 +1047,12 @@ bool GLGame::pause_menu_active() const {
   if (is_touch_mode()) return false;
   // Nothing left to resume — the GAME OVER card owns the screen.
   if (all_players_out()) return false;
+  // The connection-lost card owns input (keyboard_up/controller return
+  // before the pause ladder, answering only the card's own RETURN TO MENU
+  // row), so the menu must not be drawn under it. Without this, the host
+  // pausing and then leaving showed the client a highlighted RESUME over
+  // a second RETURN TO MENU, and neither answered (field, 2026-08-07).
+  if (net_card_owns_input()) return false;
   // A paused REPLAY gets the menu too. It used to be excluded — "a replay's
   // pause is a playback control, not a menu" — but the overlay draws the
   // two rows from `!running` alone, so a paused replay showed RESUME
@@ -8622,16 +8627,56 @@ void GLGame::draw_map() const {
   }
 }
 
+// Pad-button → logical-key vocabulary for the leaderboard prompt (dpad
+// moves, A/Start confirm, B/Back = Esc), shared by the healthy game-over
+// block and the connection-lost card path below so the two prompts can't
+// drift apart. 0 = not a prompt key.
+static char board_pad_key(const SDL_Event &event) {
+  if (event.type != SDL_CONTROLLERBUTTONDOWN) return 0;
+  switch (event.cbutton.button) {
+    case SDL_CONTROLLER_BUTTON_DPAD_UP: return 'w';
+    case SDL_CONTROLLER_BUTTON_DPAD_DOWN: return 's';
+    case SDL_CONTROLLER_BUTTON_A:
+    case SDL_CONTROLLER_BUTTON_START: return '\r';
+    case SDL_CONTROLLER_BUTTON_B:
+    case SDL_CONTROLLER_BUTTON_BACK: return 27;
+    default: return 0;
+  }
+}
+
 void GLGame::controller(SDL_Event event) {
-  if (net_connection_lost_ &&
-      !(net_mode_ == NetHost && (net_signal_ || net_lan_door_open()))) {
+  if (net_card_owns_input()) {
     // Same one-frame guard as keyboard_up: a committed auto-rejoin
     // hand-off must not be overwritten (the pending lobby would leak).
     if (net_handed_to_lobby_) return;
-    // A/Start/right-trigger confirm the card's row, B/Back leave — the
-    // keyboard twin above, through the shared pad translator.
-    if (is_exit_key(nav_key_from_controller(event)))
+    // The leaderboard prompt outranks the card — the keyboard and touch
+    // twins' ordering. Everything else is swallowed while it owns the
+    // game-over card, like the keyboard twin, so no button exits through
+    // the prompt. RT confirms it exactly as on the healthy game-over card
+    // (board_nav carries the 3 s grace and the YES default itself).
+    if (board_prompt_active()) {
+      char bk = board_pad_key(event);
+      if (event.type == SDL_CONTROLLERAXISMOTION &&
+          event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT &&
+          event.caxis.value > 8000)
+        bk = '\r';
+      if (bk) board_nav(bk);
+      return;
+    }
+    // A/Start confirm the card's row, B/Back leave — buttons ONLY: a
+    // button DOWN is a fresh press by construction, the pad's equivalent
+    // of net_card_pressed_. The trigger is deliberately NOT a confirm
+    // here, unlike the healthy game-over card: gameplay routes trigger
+    // events to the ships, never the nav translator, so the translator's
+    // RT edge state is stale-false during play, and a trigger held to
+    // FIRE through the disconnect (or jittering on its release ramp)
+    // would register as a fresh confirm and throw the rejoinable session
+    // away — the held-fire race, pad edition.
+    if (event.type == SDL_CONTROLLERBUTTONDOWN &&
+        is_exit_key(nav_key_from_controller(event))) {
+      if (all_players_out() && game_over_grace_active()) return;
       request_state_change(new Menu());
+    }
     return;
   }
   // Replay playback: Start pauses, B (or any button once the recording's
@@ -8676,6 +8721,14 @@ void GLGame::controller(SDL_Event event) {
         pause_nav('\r');
         return;
       }
+      if (event.cbutton.button == SDL_CONTROLLER_BUTTON_B) {
+        // B backs out one level — the same thing it means on every other
+        // screen; here that closes the pause menu (resume). It used to do
+        // nothing while paused (field, 2026-08-08). BACK below stays the
+        // quit-to-menu shortcut, START still resumes directly.
+        toggle_pause();
+        return;
+      }
     } else if (event.type == SDL_CONTROLLERAXISMOTION &&
                is_player_controller(event.caxis.which)) {
       // Stick nav through the shared arm/release hysteresis, so the pause
@@ -8696,16 +8749,7 @@ void GLGame::controller(SDL_Event event) {
     // ahead of every exit shortcut below so a pad can't leave through the
     // prompt. board_nav is a no-op returning false once the prompt is done.
     if (board_prompt_active()) {
-      char bk = 0;
-      switch (event.cbutton.button) {
-        case SDL_CONTROLLER_BUTTON_DPAD_UP: bk = 'w'; break;
-        case SDL_CONTROLLER_BUTTON_DPAD_DOWN: bk = 's'; break;
-        case SDL_CONTROLLER_BUTTON_A:
-        case SDL_CONTROLLER_BUTTON_START: bk = '\r'; break;
-        case SDL_CONTROLLER_BUTTON_B:
-        case SDL_CONTROLLER_BUTTON_BACK: bk = 27; break;
-        default: break;
-      }
+      char bk = board_pad_key(event);
       if (bk && board_nav(bk)) return;
     }
     if (event.cbutton.button == SDL_CONTROLLER_BUTTON_START) {
@@ -8725,7 +8769,7 @@ void GLGame::controller(SDL_Event event) {
           }
         }
         if (all_game_over) {
-          if (!(game_over_time >= 0 && current_time - game_over_time < 3000)) {
+          if (!game_over_grace_active()) {
             for (auto* glship : *players)
               save_high_score(glship->ship->score);
             request_state_change(new Menu());
@@ -8761,7 +8805,7 @@ void GLGame::controller(SDL_Event event) {
           // so they no longer leave (they still join player 2 below on a
           // pad that isn't playing yet).
           if (is_exit_key(nav_key_from_controller(event)) &&
-              !(game_over_time >= 0 && current_time - game_over_time < 3000)) {
+              !game_over_grace_active()) {
             for (auto* glship : *players)
               save_high_score(glship->ship->score);
             request_state_change(new Menu());
@@ -8775,8 +8819,12 @@ void GLGame::controller(SDL_Event event) {
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE) {
       if(running) toggle_pause();
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
-      for (auto* glship : *players)
-        save_high_score(glship->ship->score);
+      // Exactly what the keyboard menu key (and back_pressed) does — save
+      // first, then hand over. This used to bank only the HIGH SCORE: a
+      // BACK during live play threw away all progress since the last
+      // auto-save, and banked an unfinished run's score, which the
+      // keyboard path never did (field, 2026-08-08).
+      save_progress();
       request_state_change(new Menu());
     }
   }
@@ -8795,7 +8843,7 @@ void GLGame::controller(SDL_Event event) {
       // RT is the card's confirm: while the leaderboard prompt is up it
       // answers the highlighted YES/NO instead of leaving.
       if (board_nav('\r')) return;
-      if (game_over_time >= 0 && current_time - game_over_time < 3000)
+      if (game_over_grace_active())
         return;
       for (auto* glship : *players)
         save_high_score(glship->ship->score);
@@ -8959,7 +9007,7 @@ void GLGame::touch_tap(float nx, float ny) {
   if (all_game_over) {
     // The 3 s grace mirrors the key/controller exits so a frantic
     // last-second tap can't skip past the game over screen.
-    if (game_over_time >= 0 && current_time - game_over_time < 3000) return;
+    if (game_over_grace_active()) return;
     for (auto *glship : *players)
       save_high_score(glship->ship->score);
     request_state_change(new Menu());
@@ -9210,20 +9258,35 @@ void GLGame::touch_joystick(float nx, float ny) {
 }
 
 void GLGame::keyboard (unsigned char key, int x, int y) {
+  // Board prompt/upload owns input on key-DOWN: record which nav keys were
+  // actually PRESSED while the prompt is up, so keyboard_up can tell a
+  // fresh press from a gameplay key released into the prompt (see there),
+  // and swallow so a dead ship's input loop never runs under the card.
+  // Ahead of the !running drop: a lost-link game over can land on a game
+  // the host had paused, and the prompt must still answer there. (Never
+  // live in a replay — board_maybe_start refuses NetReplay.)
+  if (board_prompt_active()) {
+    board_prompt_pressed_.insert(nav_key(key));
+    return;
+  }
+  // The connection-lost card is next in rank, with the same down-tracking
+  // (net_card_pressed_): keyboard_up exits only on a key PRESSED while the
+  // card was up, so a fire key held through the disconnect and released
+  // into the card can't throw a rejoinable session away. Also ahead of the
+  // !running drop — the card shows on a paused game too (host paused, then
+  // left), and a fresh press there must still arm the exit.
+  if (net_card_owns_input()) {
+    net_card_pressed_.insert(nav_key(key));
+    return;
+  }
+  // Link healthy (or restored): presses recorded under a previous card are
+  // stale — never let one confirm an exit on a later loss.
+  if (!net_card_pressed_.empty()) net_card_pressed_.clear();
   if (!running)
     return;
   // Replay ghosts take no input — the records drive them.
   if (net_mode_ == NetReplay)
     return;
-
-  // Board prompt/upload owns input on key-DOWN: record which nav keys were
-  // actually PRESSED while the prompt is up, so keyboard_up can tell a
-  // fresh press from a gameplay key released into the prompt (see there),
-  // and swallow so a dead ship's input loop never runs under the card.
-  if (board_prompt_active()) {
-    board_prompt_pressed_.insert(nav_key(key));
-    return;
-  }
 
   std::list<GLShip*>::iterator object;
   for(object = players->begin(); object != players->end(); object++) {
@@ -9234,20 +9297,40 @@ void GLGame::keyboard (unsigned char key, int x, int y) {
 void GLGame::keyboard_up (unsigned char key, int x, int y) {
   const GeneralKeys &gk = g_prefs.general_keys;
 
-  if (net_connection_lost_ &&
-      !(net_mode_ == NetHost && (net_signal_ || net_lan_door_open()))) {
+  if (net_card_owns_input()) {
     // Once the auto-rejoin has constructed its lobby the hand-off is
     // committed: request_state_change here would overwrite next_state in
     // the one-frame window before the swap, orphaning that lobby (its
     // ctor already opened the room's joiner socket) and leaving the
     // armed net_handed_to_lobby_ skipping the credential release.
     if (net_handed_to_lobby_) return;
+    // The leaderboard prompt outranks the card: a lost-link game over (the
+    // spectator's host leaving) still starts the board flow, and its drawn
+    // YES/NO prompt must answer — not sit dead while confirm quietly
+    // destroys the upload by exiting. touch_tap already orders it this
+    // way. Same fresh-press rule as the healthy-game block below.
+    if (board_prompt_active()) {
+      unsigned char nk = nav_key(key);
+      if (board_prompt_pressed_.count(nk)) {
+        board_prompt_pressed_.erase(nk);
+        board_nav((char)nk);
+      }
+      return;
+    }
     // The disconnect card carries a RETURN TO MENU row, so it answers like
     // every other menu: confirm activates the row, back leaves outright,
     // and nothing else does anything. Fire IS a confirm, so the touch
-    // card's "TAP FIRE FOR MENU" still reads true — but a stray keypress
-    // no longer throws the session away.
-    if (is_exit_key(nav_key(key))) request_state_change(new Menu());
+    // card's "TAP FIRE FOR MENU" still reads true. Only a key whose DOWN
+    // happened while the card was up acts (net_card_pressed_, recorded in
+    // keyboard()) — a fire key held through the disconnect and released
+    // into the card used to throw a rejoinable session away. And when the
+    // loss lands at game over (that card outranks this one's overlay),
+    // the same 3 s grace as every other game-over exit applies.
+    unsigned char nav = nav_key(key);
+    if (net_card_pressed_.erase(nav) == 0) return;
+    if (!is_exit_key(nav)) return;
+    if (all_players_out() && game_over_grace_active()) return;
+    request_state_change(new Menu());
     return;
   }
 
@@ -9397,7 +9480,7 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
     }
     if (all_game_over) {
       if (!is_exit_key(nav_key(key))) return;
-      if (game_over_time >= 0 && current_time - game_over_time < 3000)
+      if (game_over_grace_active())
         return;
       for (auto* glship : *players)
         save_high_score(glship->ship->score);
