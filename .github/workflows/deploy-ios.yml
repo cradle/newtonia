@@ -81,7 +81,7 @@ jobs:
           cmake -S SDL2 -B SDL2/build-ios \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT=iphoneos \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DSDL_SHARED=OFF \
             -DSDL_STATIC=ON \
@@ -98,7 +98,7 @@ jobs:
           cmake -S SDL2_mixer -B SDL2_mixer/build-ios \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT=iphoneos \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DSDL_SHARED=OFF \
             -DSDL2MIXER_SHARED=OFF \
@@ -135,7 +135,7 @@ jobs:
           cmake -S mbedtls -B mbedtls/build-ios \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT=iphoneos \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_BUILD_TYPE=Release \
             -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF \
@@ -154,7 +154,7 @@ jobs:
           cmake -S libdatachannel -B libdatachannel/build-ios \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT=iphoneos \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=OFF \
