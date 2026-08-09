@@ -98,11 +98,11 @@ camera fixed           # keep the world's orientation on screen. Default is
                        #   pointing up and world placements appear rotated
                        #   by -heading. Composed scenes with angled ships
                        #   want `fixed` (WYSIWYG).
-players 2              # local split-screen co-op
+players 2              # local split-screen co-op (1..4; 3-4 use the 2x2 grid)
 
 ship 0 -150 25         # move player 1 (and the camera) / heading in degrees
                        #   (0 = up, positive = counter-clockwise)
-ship2 300 0 -30        # move player 2 (with `players 2`)
+ship2 300 0 -30        # move player 2 (ship3/ship4 likewise with `players 3|4`)
 
 # TYPE flags combine; r= clamps to Asteroid::max_radius; v= units/second.
 asteroid X Y [normal|invincible|invisible|reflective|teleporting|quantum|

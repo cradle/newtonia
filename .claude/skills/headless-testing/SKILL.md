@@ -67,6 +67,10 @@ gdb -batch -ex run -ex "bt 20" --args ./newtonia > gdb.log 2>&1 &
   under Xvfb; they are harmless — filter with `grep -v XGetInputFocus`.
 - Give the driver a hard `timeout` and log to a file; a hung X client can
   otherwise keep `xvfb-run` alive forever.
+- Multiplayer testing: `NEWTONIA_BETA=1 NEWTONIA_START_PLAYERS=N ./newtonia`
+  starts a new game with N local players (2-4), bypassing the 4P dark-launch
+  gate (`LOCAL_PLAYER_CAP`, FOURPLAYER.md). Cheat-flagged; offline only — do
+  not combine with hosting.
 - Late-game testing: `NEWTONIA_BETA=1 NEWTONIA_START_GENERATION=N ./newtonia`
   starts a new game at generation N (world size + hazards included). Flagged
   as a cheat, so achievements stay suppressed for that game.

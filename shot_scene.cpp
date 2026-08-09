@@ -71,16 +71,17 @@ struct Scene {
   // assets). Alpha = the brightest channel, colour un-premultiplied, so
   // dim edge pixels become translucent instead of dark.
   bool transparent = false;
-  bool two_players = false;
+  int num_players = 1;            // `players N`, 1..MAX_PLAYERS local seats
   float zoom = 0;                 // vertical FOV degrees; 0 = default (85)
   // Camera mode. The game's default is ROTATE (view follows the ship's
   // heading, ship always drawn pointing up). FIXED keeps the world's
   // orientation on screen — WYSIWYG for composed scenes with angled ships.
   bool camera_rotate = true;
-  bool ship_set = false;   float ship_x = 0, ship_y = 0;
-  bool ship_angle_set = false;  float ship_angle = 0;
-  bool ship2_set = false;  float ship2_x = 0, ship2_y = 0;
-  bool ship2_angle_set = false; float ship2_angle = 0;
+  // Per-seat placement: slot 0 = `ship`, 1..3 = `ship2`..`ship4`.
+  bool  ship_set[MAX_PLAYERS] = {};
+  float ship_x[MAX_PLAYERS] = {}, ship_y[MAX_PLAYERS] = {};
+  bool  ship_angle_set[MAX_PLAYERS] = {};
+  float ship_angle[MAX_PLAYERS] = {};
   std::vector<SceneAsteroid> asteroids;
   std::vector<SceneEnemy> enemies;
   std::vector<SceneHazard> hazards;
@@ -168,9 +169,9 @@ bool parse_scene_file(const char *path) {
       s_scene.hud = (v != "off");
     } else if (cmd == "players") {
       int n = 1;
-      if (!(in >> n) || n < 1 || n > 2)
-        return parse_error(line_no, line, "players must be 1 or 2");
-      s_scene.two_players = (n == 2);
+      if (!(in >> n) || n < 1 || n > MAX_PLAYERS)
+        return parse_error(line_no, line, "players must be 1..4");
+      s_scene.num_players = n;
     } else if (cmd == "camera") {
       std::string v;  in >> v;
       if (v == "fixed")       s_scene.camera_rotate = false;
@@ -179,16 +180,18 @@ bool parse_scene_file(const char *path) {
     } else if (cmd == "zoom") {
       if (!(in >> s_scene.zoom) || s_scene.zoom < 10 || s_scene.zoom > 170)
         return parse_error(line_no, line, "zoom must be 10..170 (FOV degrees)");
-    } else if (cmd == "ship" || cmd == "ship2") {
+    } else if (cmd == "ship" || cmd == "ship2" || cmd == "ship3" ||
+               cmd == "ship4") {
+      int seat = (cmd == "ship") ? 0 : cmd[4] - '1';
       float x, y;
       if (!(in >> x >> y)) return parse_error(line_no, line, "ship needs X Y");
+      s_scene.ship_set[seat] = true;
+      s_scene.ship_x[seat] = x;
+      s_scene.ship_y[seat] = y;
       float a;
-      if (cmd == "ship") {
-        s_scene.ship_set = true;  s_scene.ship_x = x;  s_scene.ship_y = y;
-        if (in >> a) { s_scene.ship_angle_set = true; s_scene.ship_angle = a; }
-      } else {
-        s_scene.ship2_set = true; s_scene.ship2_x = x; s_scene.ship2_y = y;
-        if (in >> a) { s_scene.ship2_angle_set = true; s_scene.ship2_angle = a; }
+      if (in >> a) {
+        s_scene.ship_angle_set[seat] = true;
+        s_scene.ship_angle[seat] = a;
       }
     } else if (cmd == "asteroid") {
       SceneAsteroid a;
@@ -479,11 +482,12 @@ State *ShotScene::build_state() {
   Achievements::note_cheat_used();  // stats/achievements stay cold
   g->shot_hide_hud_ = !s_scene.hud;
 
-  if (s_scene.two_players) {
-    // with_keys binds the seat's PlayerKeys slot, so scene `hold`/`key`
-    // events reach player 2 through the standard P2 bindings (i/j/l, '/').
-    g->add_local_player(NULL, /*with_keys=*/true);
-  }
+  // with_keys binds each seat's PlayerKeys slot, so scene `hold`/`key`
+  // events reach player 2 through the standard P2 bindings (i/j/l, '/').
+  // bypass_cap: composed 3-4P shots must work while the dark-launch gate
+  // (LOCAL_PLAYER_CAP) still holds; the harness is sandboxed anyway.
+  for (int i = 1; i < s_scene.num_players; i++)
+    g->add_local_player(NULL, /*with_keys=*/true, /*bypass_cap=*/true);
 
   // Ships start alive and settled (a fresh game's player 1 opens dead in
   // the respawn countdown), with the camera snapped for determinism.
@@ -519,14 +523,17 @@ State *ShotScene::build_state() {
   };
   Ship *p1 = g->players->front()->ship;
   const float ox = p1->position.x(), oy = p1->position.y();
-  if (s_scene.ship_set)
-    p1->position = WrappedPoint(ox + s_scene.ship_x, oy + s_scene.ship_y);
-  if (s_scene.ship_angle_set) p1->facing = facing_from_deg(s_scene.ship_angle);
-  if (s_scene.two_players && s_scene.ship2_set) {
-    g->players->back()->ship->position =
-        WrappedPoint(ox + s_scene.ship2_x, oy + s_scene.ship2_y);
-    if (s_scene.ship2_angle_set)
-      g->players->back()->ship->facing = facing_from_deg(s_scene.ship2_angle);
+  {
+    int seat = 0;
+    for (GLShip *gs : *g->players) {
+      if (seat >= MAX_PLAYERS) break;
+      if (s_scene.ship_set[seat])
+        gs->ship->position = WrappedPoint(ox + s_scene.ship_x[seat],
+                                          oy + s_scene.ship_y[seat]);
+      if (s_scene.ship_angle_set[seat])
+        gs->ship->facing = facing_from_deg(s_scene.ship_angle[seat]);
+      seat++;
+    }
   }
 
   // Scene `ship`/`ship2` placement overrides respawn's safe_position, so a
