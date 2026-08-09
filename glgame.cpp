@@ -106,7 +106,9 @@ static void play_priority_chunk(Mix_Chunk *chunk, float vol) {
 // KeyBinding, so no translation pass is needed here and an arrow bound to
 // any player's action just works.
 static void set_player_keys(GLShip *gs, int player_index) {
-  PlayerKeys &k = (player_index == 0) ? g_prefs.p1_keys : g_prefs.p2_keys;
+  if (player_index < 0) player_index = 0;
+  if (player_index >= MAX_PLAYERS) player_index = MAX_PLAYERS - 1;
+  PlayerKeys &k = g_prefs.player_keys[player_index];
   gs->set_keys(k);
   gs->set_keyboard_sensitivity(k.keyboard_sensitivity);
   gs->set_camera_smoothing(k.camera_smoothing);
@@ -632,7 +634,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   for (const auto &sp : save.players) {
     bool is_p1 = players->empty();
     GLShip *gs = is_p1 ? new GLShip(grid, true) : new GLCar(grid, true);
-    set_player_keys(gs, is_p1 ? 0 : 1);
+    set_player_keys(gs, (int)players->size());
     // Set before restore_state() so restored weapons attribute correctly.
     gs->ship->is_local_player = true;
     if (controller != NULL && is_p1) {

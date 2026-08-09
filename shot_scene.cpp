@@ -482,7 +482,7 @@ State *ShotScene::build_state() {
     // add_player2 is the controller-join path — it binds no keyboard keys
     // (the Enter-join path does that itself). Scene `hold`/`key` events
     // reach player 2 through the standard P2 bindings (i/j/l, '/').
-    g->players->back()->set_keys(g_prefs.p2_keys);
+    g->players->back()->set_keys(g_prefs.player_keys[1]);
   }
 
   // Ships start alive and settled (a fresh game's player 1 opens dead in

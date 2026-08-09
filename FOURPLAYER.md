@@ -1,6 +1,7 @@
 # 4-Player Mode — Implementation Plan
 
-Status: **plan only — no implementation yet.**
+Status: **Phase A in progress** — A0 (board co-op slot) and A1 (player
+slots/preferences) implemented; A2–A6 pending.
 
 Goal: raise the local co-op cap from 2 to 4 players (split-screen, desktop +
 controllers), and lay the groundwork for — but not yet ship — 4-player online.

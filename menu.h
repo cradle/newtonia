@@ -7,6 +7,7 @@
 #include "state.h"
 #include "savegame.h"
 #include "net_board.h"
+#include "preferences.h"  // MAX_PLAYERS sizes the per-player option arrays
 
 class Menu : public State {
 public:
@@ -155,10 +156,10 @@ private:
   std::string board_up_sent_cred_;      // rejected credential (retry waits for
                                         // a different one)
   bool board_fetching_ = false;         // replay download in flight
-  int  sensitivity_index_[2] = {2, 2};  // per-player index into SENSITIVITY_VALUES
-  int  smoothing_index_[2]   = {1, 1};  // per-player index into SMOOTHING_VALUES (1=NORMAL=0.004)
+  int  sensitivity_index_[MAX_PLAYERS] = {2, 2, 2, 2};  // per-player index into SENSITIVITY_VALUES
+  int  smoothing_index_[MAX_PLAYERS]   = {1, 1, 1, 1};  // per-player index into SMOOTHING_VALUES (1=NORMAL=0.004)
   int  star_density_index_   = 4;       // index into STAR_DENSITY_MULTIPLIERS (4=full)
-  int  camera_index_[2]      = {1, 1};  // per-player: 0=FIXED, 1=ROTATE
+  int  camera_index_[MAX_PLAYERS]      = {1, 1, 1, 1};  // per-player: 0=FIXED, 1=ROTATE
   int  auto_record_index_    = 0;       // 0=OFF, 1=ON (Preferences::auto_record_replays)
   int  leaderboard_index_    = 1;       // 0=OFF, 1=ON (Preferences::leaderboard_prompts)
   int  active_row_ = 0;                 // index into the options row list (see opt_row)

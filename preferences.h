@@ -10,6 +10,11 @@
 // keyboard dispatch: printable ASCII (0–127) plus GLUT special keys encoded as
 // 128 + GLUT_KEY_* (e.g. F1 = 129, F8 = 136, F11 = 139).
 
+// Local co-op player cap (FOURPLAYER.md D1). Lives here because every
+// per-player slot in the game — key bindings, options rows, pad registries —
+// sizes off the preference slots.
+const int MAX_PLAYERS = 4;
+
 // One game action's keyboard binding: up to two key aliases (slot 0 is the
 // primary shown on the keymap, slot 1 an alternate; 0 = empty slot).
 //
@@ -115,11 +120,17 @@ struct Preferences {
                                        // lobby's clipboard auto-join refuses it, so a
                                        // killed-and-relaunched host can't walk into its
                                        // own dead room (typing it manually still works)
-    PlayerKeys  p1_keys;          // player 1 keyboard bindings (p1 defaults)
-    PlayerKeys  p2_keys;          // player 2 keyboard bindings (p2 defaults set in ctor)
+    // Per-player key bindings + camera scalars, slot 0 = player 1. The ctor
+    // gives slot 1 the IJKL layout and ships slots 2–3 keyboard-inert
+    // (FOURPLAYER.md D3: P3/P4 join by controller; empty bindings match
+    // nothing, and p3_*/p4_* INI lines can still hand-bind them). NOTE for
+    // downgrades: an older build rewriting the INI drops the p3_/p4_ lines —
+    // the whole-file rewrite in save_preferences() only writes slots it
+    // knows about.
+    PlayerKeys  player_keys[MAX_PLAYERS];
     GeneralKeys general_keys;
 
-    Preferences(); // sets p2_keys to player-2 defaults
+    Preferences(); // sets slot 1 to player-2 defaults, clears slots 2-3's keys
 };
 
 // Returns the star-count multiplier from g_prefs (clamped to a safe range).
