@@ -81,49 +81,41 @@ void kick_fetch() {
       g_fetch_in_flight = false;
       return;
     }
-    if (@available(iOS 13.5, *)) {
-      // ObjC selector for the modern API (Swift: fetchItems(forIdentity
-      // VerificationSignature:)) — the completion block is the unlabeled
-      // argument; there is NO "WithCompletionHandler:" suffix (that was the
-      // deprecated generateIdentityVerificationSignature… form).
-      [lp fetchItemsForIdentityVerificationSignature:
-          ^(NSURL *publicKeyURL, NSData *signature, NSData *salt,
-            uint64_t timestamp, NSError *error) {
-        if (error || !publicKeyURL || !signature || !salt) {
-          std::lock_guard<std::mutex> lk(g_mutex);
-          g_fetch_in_flight = false;
-          return;
-        }
-        // Pack the bundle. NSJSONSerialization escapes every field correctly,
-        // so the JSON survives being re-escaped into the wss identity frame
-        // (NetSig::identity_frame). Both scoped identifiers ride along so the
-        // worker can try each (see the header note). The alias is NOT included
-        // — the worker never attests it (account-only); it travels as the
-        // separate p2p `name` claim for the offline case.
-        NSString *bundleId = [[NSBundle mainBundle] bundleIdentifier];
-        NSDictionary *d = @{
-          @"pk": publicKeyURL.absoluteString ?: @"",
-          @"sig": [signature base64EncodedStringWithOptions:0],
-          @"salt": [salt base64EncodedStringWithOptions:0],
-          @"ts": @(timestamp),
-          @"gpid": lp.gamePlayerID ?: @"",
-          @"tpid": lp.teamPlayerID ?: @"",
-          @"bid": bundleId ?: @"",
-        };
-        NSData *json = [NSJSONSerialization dataWithJSONObject:d options:0
-                                                        error:nil];
+    // ObjC selector for the modern API (Swift: fetchItems(forIdentity
+    // VerificationSignature:)) — the completion block is the unlabeled
+    // argument; there is NO "WithCompletionHandler:" suffix (that was the
+    // deprecated generateIdentityVerificationSignature… form).
+    [lp fetchItemsForIdentityVerificationSignature:
+        ^(NSURL *publicKeyURL, NSData *signature, NSData *salt,
+          uint64_t timestamp, NSError *error) {
+      if (error || !publicKeyURL || !signature || !salt) {
         std::lock_guard<std::mutex> lk(g_mutex);
-        if (json && json.length > 0)
-          g_credential.assign((const char *)json.bytes, json.length);
         g_fetch_in_flight = false;
-      }];
-    } else {
-      // Pre-13.5 device: no fetchItems API. Leave the credential empty — the
-      // peer simply stays unattested (role-labelled), and this is a vanishingly
-      // small install base (deployment target is 13.0).
+        return;
+      }
+      // Pack the bundle. NSJSONSerialization escapes every field correctly,
+      // so the JSON survives being re-escaped into the wss identity frame
+      // (NetSig::identity_frame). Both scoped identifiers ride along so the
+      // worker can try each (see the header note). The alias is NOT included
+      // — the worker never attests it (account-only); it travels as the
+      // separate p2p `name` claim for the offline case.
+      NSString *bundleId = [[NSBundle mainBundle] bundleIdentifier];
+      NSDictionary *d = @{
+        @"pk": publicKeyURL.absoluteString ?: @"",
+        @"sig": [signature base64EncodedStringWithOptions:0],
+        @"salt": [salt base64EncodedStringWithOptions:0],
+        @"ts": @(timestamp),
+        @"gpid": lp.gamePlayerID ?: @"",
+        @"tpid": lp.teamPlayerID ?: @"",
+        @"bid": bundleId ?: @"",
+      };
+      NSData *json = [NSJSONSerialization dataWithJSONObject:d options:0
+                                                      error:nil];
       std::lock_guard<std::mutex> lk(g_mutex);
+      if (json && json.length > 0)
+        g_credential.assign((const char *)json.bytes, json.length);
       g_fetch_in_flight = false;
-    }
+    }];
   });
 }
 
