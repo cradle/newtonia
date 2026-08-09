@@ -8,7 +8,8 @@
 
 using namespace std;
 
-GLCar::GLCar(const Grid &grid, bool has_friction) : GLShip(grid, has_friction) {
+GLCar::GLCar(const Grid &grid, bool has_friction, const float *tint)
+    : GLShip(grid, has_friction) {
   ship = new Ship(grid, has_friction);
   ship->player_ship = true;
   trails.clear();
@@ -20,6 +21,11 @@ GLCar::GLCar(const Grid &grid, bool has_friction) : GLShip(grid, has_friction) {
   color[0] = 255/255.0;
   color[1] = 69/255.0;
   color[2] = 0/255.0;
+  if (tint != NULL) {
+    color[0] = tint[0];
+    color[1] = tint[1];
+    color[2] = tint[2];
+  }
 
   {
     MeshBuilder mb;

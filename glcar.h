@@ -7,7 +7,10 @@
 
 class GLCar : public GLShip {
 public:
-  GLCar(const Grid &grid, bool has_friction);
+  // tint: optional seat colour (FOURPLAYER.md D7) applied BEFORE the body
+  // meshes bake; NULL keeps the classic orange. The minimap dot and lives
+  // icons read `color` live, so they follow automatically.
+  GLCar(const Grid &grid, bool has_friction, const float *tint = NULL);
   virtual ~GLCar();
 
 protected:
