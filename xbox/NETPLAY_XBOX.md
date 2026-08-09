@@ -711,8 +711,9 @@ seam pattern.
 > `STEAM_BUILD`, and the fork's gamertag backend defines
 > `NEWTONIA_NET_IDENTITY_BACKEND` and returns `NET_PLATFORM_XBOX` in its own
 > TU, no shared-layer edit), the badge UX (lobby "HOSTED BY <NAME> -
-> <PLATFORM>", `Overlay::remote_badge` bottom-row tag, name-based
-> DISCONNECTED/RECONNECTED — a legacy peer renders exactly the pre-badge UI),
+> <PLATFORM>", `Overlay::net_badges` bottom-row tags (peer + local), name-based
+> DISCONNECTED/RECONNECTED — a legacy peer renders no badge and no
+> placeholder name, just the HUD rows' role-label + score fallback),
 > and the `net_policy.*` seam (default allow-all; the private backend defines
 > `NEWTONIA_NET_POLICY_BACKEND` and supplies the `XUserCheckPrivilege` checks
 > — multiplayer 254, cross-network 185, per the public GDK docs — from a

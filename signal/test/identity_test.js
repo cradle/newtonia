@@ -92,7 +92,71 @@ function check(name, cond) {
   check("replay still works for a replacement joiner",
         !!hostId2 && hostId2.role === "host" && hostId2.verified === true);
 
-  host.close(); join2.close();
+  // 6. Late verify vs socket close — the vacant-slot race (field: Steam
+  //    joiner vs Android host, 2026-08-07). A joiner announces with a SLOW
+  //    credential (the FAKE_VERIFY slow-verify hook: full async machinery,
+  //    injected delay) and disconnects before the verify resolves — the
+  //    fast-ICE-connect handoff pattern. The attestation must still reach
+  //    the host: the player is mid-game over WebRTC, only the signaling
+  //    socket closed.
+  join2.send(JSON.stringify({ t: "identity", platform: 5, name: "DROID",
+                              cred: "SLOW:800" }));
+  await t(100);   // let the announce start its (slow) verify
+  join2.close();  // signaling socket gone while the verify is in flight
+  const late = await host._recvType("identity");
+  check("late verify reaches host after joiner socket closed",
+        !!late && late.role === "joiner" && late.name === "DROID" &&
+        late.platform === 5 && late.verified === true);
+
+  // 7. A replacement joiner does NOT inherit the late-stored badge:
+  //    accept_joiner clears the stored identity, so the replacement's own
+  //    FAILED verify lands as its unverified claim — the never-demote guard
+  //    must not re-push the departed player's verified name onto it.
+  const join3 = await connect(`?role=join&code=${code}`);
+  await join3._recvType("joined");
+  await join3._recvType("identity");  // the host's identity, replayed
+  join3.send(JSON.stringify({ t: "identity", platform: 3, name: "EVE",
+                              cred: "SLOWFAIL:0" }));
+  const claim = await host._recvType("identity");
+  check("replacement joiner not pinned to the departed verified badge",
+        !!claim && claim.role === "joiner" && claim.name === "EVE" &&
+        claim.platform === 3 && claim.verified === false);
+
+  // 8. An OLDER departed occupant's slower verify must not overwrite the
+  //    newer late-stored badge (last-resolver-wins): A announces slow and
+  //    drops; B replaces it, announces faster, and also drops. B's verify
+  //    lands (sole departure since its announce); A's resolves later and
+  //    must be discarded — the host's next identity after B's is C's own,
+  //    never A's.
+  join3.close();
+  await host._recvType("peer");  // leave
+  await t(200);                  // let the drop settle before the next join
+  const joinA = await connect(`?role=join&code=${code}`);
+  await joinA._recvType("joined");
+  joinA.send(JSON.stringify({ t: "identity", platform: 5, name: "OLDA",
+                              cred: "SLOW:2500" }));
+  await t(100); joinA.close();
+  await t(300);  // A's drop must process (epoch bump) before B takes the slot
+  const joinB = await connect(`?role=join&code=${code}`);
+  await joinB._recvType("joined");
+  joinB.send(JSON.stringify({ t: "identity", platform: 5, name: "NEWB",
+                              cred: "SLOW:300" }));
+  await t(100); joinB.close();
+  const lateB = await host._recvType("identity");
+  check("newest departed occupant's late verify lands",
+        !!lateB && lateB.role === "joiner" && lateB.name === "NEWB" &&
+        lateB.verified === true);
+  await t(2600);  // let A's stale verify resolve (and be discarded)
+  const joinC = await connect(`?role=join&code=${code}`);
+  await joinC._recvType("joined");
+  await joinC._recvType("identity");  // the host's identity, replayed
+  joinC.send(JSON.stringify({ t: "identity", platform: 1, name: "CARL" }));
+  const afterStale = await host._recvType("identity");
+  check("stale verify from an older occupant never overwrites",
+        !!afterStale && afterStale.role === "joiner" &&
+        afterStale.name === "CARL");
+
+  host.close(); joinC.close();
   console.log(failures ? `\n${failures} FAILURES` : "\nIDENTITY-TEST-OK");
   process.exit(failures ? 1 : 0);
 })().catch((e) => { console.error("test crashed:", e); process.exit(1); });

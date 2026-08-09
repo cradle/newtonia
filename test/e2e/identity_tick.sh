@@ -40,8 +40,8 @@ done
 . "$HERE/lib.sh"
 relay_check
 
-# badge_has_ink PNG NAME: the badge sits in the bottom fifth of the viewport
-# (Overlay::remote_badge). Fully black there = nothing drew.
+# badge_has_ink PNG NAME: the badge rows sit in the bottom fifth of the
+# viewport (Overlay::net_badges). Fully black there = nothing drew.
 badge_has_ink() {
   local band="$OUT/$2_badge.png" peak
   convert "$1" -gravity South -crop 100%x20%+0+0 +repage "$band" || return 1

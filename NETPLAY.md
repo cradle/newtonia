@@ -715,8 +715,21 @@ lobby (`attested_peer_`, threaded into `GLGame` via `net_set_worker_session` +
    — the polish item here, and the only marker worth having is indeed the
    positive one. `Typer::VERIFIED_TICK` is a checkmark in the Typer set,
    drawn by `Typer::draw_centered_verified` after the badge on both badge
-   sites (HUD `Overlay::remote_badge`, lobby `HOSTED BY`), gated by
-   `net_identity_verified()` so the rule lives in one place. Three design
+   sites (the HUD peer row in `Overlay::net_badges`, lobby `HOSTED BY`),
+   gated by `net_identity_verified()` so the rule lives in one place.
+   (`net_badges` also draws the LOCAL player's own badge one row above the
+   peer's — `net_local_identity_badge()`, trust-free by design since it
+   never crossed a wire — with no tick: the worker attests each side to the
+   OTHER, never back to its claimant, so the local row has nothing to be
+   vouched by and needs no vouching. Each row carries its pilot's live
+   score as `draw_centered_verified`'s suffix — drawn AFTER the tick, which
+   must sit beside the identity it vouches for; both scores are already
+   local knowledge, the host simming both ships and the client's 10 Hz
+   snapshot restoring every player's score, so nothing new is on the
+   wire. A peer whose badge doesn't render — legacy build, or an
+   attestation that never arrived — falls back to its bare role label
+   ("PLAYER 2 : 300") in live play rather than vanishing: a scoreless
+   blank row read as a bug in the field, 2026-08-07.) Three design
    points worth keeping if it is ever revisited: (a) the tick marks the
    ROW, not a field — one tick, since the worker attests platform and name
    together and a name can't be attested without its platform, so iOS's
@@ -939,8 +952,10 @@ reserved) | u8 name_len | name_len bytes UTF-8 display name` at the END of
 the message — display metadata for the lobby/HUD badge ("GLENN - STEAM"),
 never platform account IDs, nothing persisted. Old peers ignore the
 trailing bytes; new peers parse it only when `remaining() > 0` and treat
-absence or a lying `name_len` as "no identity" (legacy peer → exactly the
-pre-badge UI), so a mixed-version pairing handshakes exactly as before —
+absence or a lying `name_len` as "no identity" (legacy peer → no badge, no
+placeholder name; the HUD badge rows still show its role label + live
+score, like any unattested peer), so a mixed-version pairing handshakes
+exactly as before —
 the savegame append-only convention applied to the wire (guarded by
 `test/e2e/identity_legacy.sh`; `NEWTONIA_NET_NO_IDENTITY=1` makes a
 current build send the short messages). The peer identity lives on

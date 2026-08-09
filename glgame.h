@@ -216,6 +216,14 @@ private:
   static bool is_exit_key(unsigned char nav) {
     return MenuSelect::is_confirm(nav) || MenuSelect::is_back(nav);
   }
+  // The 3 s guard on every game-over exit — a mid-fight fire/confirm still
+  // travelling when the game ends must not skip the score screen. One
+  // helper because the exits are many (key, pad button, right trigger,
+  // touch, the connection-lost card) and the window must not drift
+  // between them.
+  bool game_over_grace_active() const {
+    return game_over_time >= 0 && current_time - game_over_time < 3000;
+  }
   void host_toggle_friendly_fire();  // G key / HUD-text tap; announces the
                                      // room rule online (EV_FRIENDLY_FIRE)
   // The "friendly fire on/off" HUD line doubles as the touch toggle
@@ -228,6 +236,12 @@ private:
   // portrait re-anchors it near the true bottom, clear of the touch
   // controls (see the definition for the geometry story).
   TapBand exit_band() const;
+  // Whether that strip is on screen right now (touch only): GAME OVER, the
+  // pause screen, online a fully-out local ship while the peer plays on, or
+  // the connection-lost card. ONE rule shared by the band's draw site
+  // (Overlay) and the badge rows' hoist decision (Overlay::net_badges) —
+  // the unhoisted local row would print through the band's label.
+  bool exit_band_showing() const;
   // Co-op revive (revive_pickup.h): put a fully-out partner back on their
   // last life. Called from the pickup collection site and the
   // NEWTONIA_NET_TEST_REVIVE_MS e2e hook.
@@ -355,6 +369,11 @@ private:
     if (net_mode_ == NetClient && !net_lan_host_name_.empty())
       return net_lan_host_name_;
     return net_mode_ == NetClient ? "PLAYER 1" : "PLAYER 2";
+  }
+  // The LOCAL player's own role label (the badge row above the peer's,
+  // Overlay::net_badges): the host is player 1, the client player 2.
+  std::string net_local_fallback() const {
+    return net_mode_ == NetClient ? "PLAYER 2" : "PLAYER 1";
   }
   // Called by the lobby (a friend) right after construction: fold the
   // worker's peer attestation into net_peer_identity_ and record whether a
@@ -495,6 +514,26 @@ private:
   void net_set_generation_banner(int gen);
   bool net_connection_lost_ = false;
   bool net_peer_bye_ = false;  // client: the host said BYE — no auto-rejoin
+  // True while the connection-lost card owns input: every lost link EXCEPT
+  // the host-with-an-open-door notice, where the game plays on. While this
+  // holds, keyboard_up/controller answer only the leaderboard prompt
+  // (which outranks the card at a lost-link game over) and the card's own
+  // exits — so pause_menu_active() refuses too, or the pause menu draws
+  // live-looking rows over input the card is swallowing (the host pausing
+  // and then leaving handed the client a highlighted RESUME and a second
+  // RETURN TO MENU that answered nothing; field, 2026-08-07). One
+  // predicate for the input handlers and the overlay — net_overlays keys
+  // its host-notice branch off it too — like pause_menu_active itself.
+  bool net_card_owns_input() const {
+    return net_connection_lost_ &&
+           !(net_mode_ == NetHost && (net_signal_ || net_lan_door_open()));
+  }
+  // Nav keys pressed (key-DOWN) while the card owns input: keyboard_up
+  // exits only on these — board_prompt_pressed_'s pattern — so a fire key
+  // held through the disconnect and released into the card can't throw
+  // the session away. Stale entries are cleared on the first key-down
+  // after the link is healthy again.
+  std::set<unsigned char> net_card_pressed_;
   int net_banner_ms_ = 0;
   std::string net_banner_text_;
   // True for the "<NAME> RECONNECTED" notice: drawn up top at the

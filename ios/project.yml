@@ -22,7 +22,7 @@ name: Newtonia-iOS
 options:
   bundleIdPrefix: cc.gfm
   deploymentTarget:
-    iOS: "13.0"
+    iOS: "15.0"
   developmentLanguage: en
   createIntermediateGroups: true
 

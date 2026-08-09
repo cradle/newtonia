@@ -23,9 +23,13 @@ public:
   // Centred text with an optional "verified" tick after it (netplay identity
   // attestation, NETPLAY.md V0). The tick is drawn LARGER than the text and
   // so cannot ride the string — this draws the pair as one centred unit.
-  // verified == false is exactly draw_centered().
+  // `suffix` (the badge rows' score, ": 4200") joins that unit AFTER the
+  // tick, at plain text size — the tick must sit beside the identity it
+  // vouches for, never after the score. verified == false is exactly
+  // draw_centered() of text (+ " " + suffix when one is given).
   static void draw_centered_verified(float x, float y, const char *text,
-                                     float size, bool verified, int time = 0);
+                                     float size, bool verified, int time = 0,
+                                     const char *suffix = nullptr);
   static void draw_button(float x, float y, char c, float size = 1);
   static void resize(int width, int height);
   static void cleanup();

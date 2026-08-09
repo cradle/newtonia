@@ -41,7 +41,7 @@ jobs:
             SDL2_mixer
             libdatachannel
             netlibs
-          key: ios-sim-deps-v1-sdl2.32.10-mix2.8.2-mbedtls3.6.6-ldc0.24.5-${{ hashFiles('newtonia/xbox/mbedtls_user_config.h', 'newtonia/patches/libdatachannel-ws-ca-cert.patch') }}
+          key: ios-sim-deps-v1-min15.0-sdl2.32.10-mix2.8.2-mbedtls3.6.6-ldc0.24.5-${{ hashFiles('newtonia/xbox/mbedtls_user_config.h', 'newtonia/patches/libdatachannel-ws-ca-cert.patch') }}
 
       # Network fetches retry with backoff, wiping partial state between
       # attempts — one transient GitHub 503 wave took out four workflow
@@ -76,7 +76,7 @@ jobs:
           cmake -S SDL2 -B SDL2/build-ios-sim \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT=iphonesimulator \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
             "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" \
             -DSDL_SHARED=OFF \
             -DSDL_STATIC=ON \
@@ -94,7 +94,7 @@ jobs:
           cmake -S SDL2_mixer -B SDL2_mixer/build-ios-sim \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT=iphonesimulator \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
             "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" \
             -DSDL_SHARED=OFF \
             -DSDL2MIXER_SHARED=OFF \
@@ -130,7 +130,7 @@ jobs:
           cmake -S mbedtls -B mbedtls/build-ios-sim \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT=iphonesimulator \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
             "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" \
             -DCMAKE_BUILD_TYPE=Release \
             -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF \
@@ -149,7 +149,7 @@ jobs:
           cmake -S libdatachannel -B libdatachannel/build-ios-sim \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT=iphonesimulator \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
             "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=OFF \
@@ -184,7 +184,7 @@ jobs:
       - name: Compile and link Newtonia for iOS Simulator
         run: |
           SYSROOT=$(xcrun --sdk iphonesimulator --show-sdk-path)
-          SIM_FLAGS="-arch arm64 -arch x86_64 -isysroot $SYSROOT -miphonesimulator-version-min=13.0"
+          SIM_FLAGS="-arch arm64 -arch x86_64 -isysroot $SYSROOT -miphonesimulator-version-min=15.0"
           SDL2_LIB=$(find SDL2/build-ios-sim -name "libSDL2.a" | head -1)
           SDL2MAIN_LIB=$(find SDL2/build-ios-sim -name "libSDL2main.a" | head -1)
           SDL2MIX_LIB=$(find SDL2_mixer/build-ios-sim -name "libSDL2_mixer.a" | head -1)

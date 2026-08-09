@@ -219,8 +219,12 @@ void Overlay::net_overlays(const GLGame *glgame) {
     return;
   }
 
-  if (glgame->net_connection_lost_ && glgame->net_mode_ == GLGame::NetHost &&
-      (glgame->net_signal_ || glgame->net_lan_door_open())) {
+  // The one lost-link state that is a quiet notice, not a card, is exactly
+  // the state net_card_owns_input() excludes — ask the game rather than
+  // re-derive the condition here, or the two copies drift and the overlay
+  // draws a card whose input the handlers aren't answering (the pause-row
+  // lesson, overlay.cpp paused()).
+  if (glgame->net_connection_lost_ && !glgame->net_card_owns_input()) {
     // Rejoinable loss: the game continues — a quiet notice, not a card.
     // A "P2 DISCONNECTED" header over the room code (steady, no blink): the
     // host may be reading the code out to the other player, and it explains
@@ -244,9 +248,19 @@ void Overlay::net_overlays(const GLGame *glgame) {
              glgame->net_mode_ == GLGame::NetClient &&
              (!glgame->net_room_code_.empty() ||
               !glgame->net_lan_host_name_.empty())) {
-    Typer::draw_centered(0, 60, "CONNECTION LOST", 34);
+    // y=160, not 60: clear of the pause overlay's "Paused" at y=30 — the
+    // terminal branch below moved for this same collision, and this one
+    // stacks with "Paused" the same way (host pauses the shared game, then
+    // its process dies without BYE while the room code is live).
+    Typer::draw_centered(0, 160, "CONNECTION LOST", 34);
     if ((now / 700) % 2 == 0)
       Typer::draw_centered(0, -80, "REJOINING", 16);
+    // The exits stay live during a rejoin — confirm/back abandons it for
+    // the menu — so the affordance must be drawn (drawn and interactive
+    // agree): the terminal card's shared row, same spot. Touch draws no
+    // cursor and has the exit band instead.
+    if (!is_touch_mode())
+      MenuSelect::draw_row(-130, "RETURN TO MENU", 16, true);
   } else if (glgame->net_connection_lost_) {
     if (glgame->net_peer_bye_) {
       // Named like DISCONNECTED/RECONNECTED but near the middle, at the
@@ -264,11 +278,13 @@ void Overlay::net_overlays(const GLGame *glgame) {
       // y=160, not 60: clear of the pause overlay's "Paused" at y=30.
       Typer::draw_centered(0, 160, "CONNECTION LOST", 34);
     }
-    // y=-130: clear of the pause overlay's menu rows (RESUME at -42,
-    // RETURN TO MENU at -80, glyphs reaching ~-106). This card is drawn
-    // on a side that is normally still running — the auto-pause belongs
-    // to the host-with-a-door case above — but a hand pause before the
-    // loss stacks the two, so keep the gap.
+    // y=-130: clear of where the pause overlay's menu rows sit (RESUME at
+    // -42, RETURN TO MENU at -80, glyphs reaching ~-106). Those rows are
+    // never drawn beside this card any more — pause_menu_active() refuses
+    // while the card owns input, so a loss landing on a paused game keeps
+    // the "Paused" heading but not the menu under it (the host pausing and
+    // then leaving used to give the client two dead rows above this live
+    // one). The position keeps the historical gap so nothing shifts.
     // A menu row, not an any-key prompt: confirm or back leaves and
     // nothing else does, so a stray keypress can't end the session.
     // Steady, not flashing — a cursor row is a thing you act on, not an
@@ -305,7 +321,7 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   temperature(glgame, glship);
   respawn_timer(glgame, glship);
   spectate(glgame, glship);
-  remote_badge(glgame, glship);
+  net_badges(glgame, glship);
   paused(glgame, glship);
   if (!replaying) touch_controls(glgame, glship);
   edge_indicators(glgame, glship);
@@ -416,10 +432,11 @@ void Overlay::paused(const GLGame *glgame, const GLShip *glship) {
       Typer::draw_centered(0, -40, "press play to resume", 8);
       return;
     }
-    // Selectable rows carrying the shared menu cursor. The stack must stay
-    // clear of the disconnect overlay's "PRESS FIRE FOR MENU" at y=-130 —
-    // a disconnect auto-pauses, so both show at once — which is what sizes
-    // it: size 13 rows at -42 and -80 bottom out around -106.
+    // Selectable rows carrying the shared menu cursor, sized so the stack
+    // (size 13 rows at -42 and -80) bottoms out around -106, clear of the
+    // disconnect card's row at y=-130. The two no longer show at once —
+    // pause_menu_active() refuses while that card owns input — but the
+    // positions stay put so neither screen shifts.
     //
     // Ask the game whether the menu is LIVE rather than re-deriving it. The
     // conditions had already drifted apart: this function tests the help
@@ -476,6 +493,11 @@ void Overlay::score(const GLGame *glgame, const GLShip *glship) {
 }
 
 void Overlay::level_cleared(const GLGame *glgame, const GLShip *glship) {
+  // The connection-lost card owns the centre of the screen, and this
+  // countdown is going nowhere without the host — CLEARED at y=150 sat
+  // right under the card's heading at y=160. The host-with-a-door notice
+  // keeps it: that game (and its countdown) really is still running.
+  if (glgame->net_card_owns_input()) return;
   if(glgame->running && glgame->level_cleared && (glship->ship->is_alive() || glship->ship->lives > 0)) {
     Typer::draw_centered(0, 150, "CLEARED", 50);
     Typer::draw_centered(0, -60, (glgame->time_until_next_generation / 1000)+1, 20);
@@ -535,35 +557,81 @@ void Overlay::respawn_timer(const GLGame *glgame, const GLShip *glship) {
   }
 }
 
-// Spectator flow (netplay co-op): a "SPECTATING IN N" countdown on the local
-// wreck, then "SPECTATING" at the bottom once the camera has handed off to the
-// peer. Both phases are driven by GLGame::spectate_death_time_.
-void Overlay::remote_badge(const GLGame *glgame, const GLShip *glship) {
+void Overlay::net_badges(const GLGame *glgame, const GLShip *glship) {
   (void)glship;
   if (!glgame->net_active()) return;
-  // The badge names the REMOTE player: the client looks at the host
-  // (player 1), the host at the client (player 2).
+  // Bottom rows like the SPECTATING hint, clear of the touch RETURN TO MENU
+  // band and the title-safe margin; hoisted whenever that band is up —
+  // spectating (the camera is on the peer, exactly when the tag matters
+  // most), but also the touch pause / game-over / connection-lost states:
+  // the band's landscape label ink runs -420..-446 and the LOCAL row at
+  // vhb+168 (-432..-454) would print straight through it. The hoist must
+  // clear the WHOLE band, not just its label: the band's glyph box tops
+  // out ~-370 (anchor -420, size 13, pad 50, to_bottom below), and the old
+  // +175 spot printed the badge exactly on the band's RETURN TO MENU text
+  // (field: iPhone, 2026-07-24). +255 sits above the band's reach with air
+  // to spare (portrait's vhb+215 re-anchor stays clear too).
+  float vhb = -Typer::scaled_window_height / glgame->num_y_viewports();
+  bool hoist = glgame->is_spectating() || glgame->exit_band_showing();
+  float y = hoist ? vhb + 255.0f : vhb + 130.0f;
+  // The LOCAL player's own badge, one row above the peer's (glyphs descend
+  // ~2x size below their y, so +38 clears the size-11 row below with a
+  // visible gap — +30 read as almost touching in the field).
+  // Live play only — net_active() is also true in a NetReplay, where the
+  // ghosts may be anyone's (a downloaded run), so "you" has no row. No
+  // verified tick here: the tick vouches to YOU about the PEER (the worker
+  // attests each side to the OTHER, never back to its claimant), and your
+  // own machine needs no vouching about itself.
+  // Each row carries its pilot's live score (": 4200") — both scores are
+  // already on this machine with no wire changes: the host sims and credits
+  // both ships authoritatively, and the client's 10 Hz snapshot restores
+  // every player's score (net_apply_state). The score rides as
+  // draw_centered_verified's SUFFIX so the verified tick stays beside the
+  // identity it vouches for, never after the score.
+  if (glgame->net_mode_ == GLGame::NetHost ||
+      glgame->net_mode_ == GLGame::NetClient) {
+    std::string self =
+        net_local_identity_badge(glgame->net_local_fallback().c_str());
+    char self_score[16];
+    snprintf(self_score, sizeof self_score, ": %d",
+             glgame->local_player()->ship->score);
+    Typer::draw_centered_verified(0, y + 38.0f, self.c_str(), 11, false, 0,
+                                  self_score);
+  }
+  // The peer badge names the REMOTE player: the client looks at the host
+  // (player 1), the host at the client (player 2). When nothing renders —
+  // a legacy peer, or an online peer whose attestation never arrived — the
+  // row falls back to the bare role label rather than vanishing: the score
+  // is always known locally, and a scoreless blank row read as a bug in
+  // the field (Android/Steam pairing, 2026-08-07). Live play only, like
+  // the local row — a replay's ghosts get no fallback row.
   std::string badge = net_identity_badge_or(
       glgame->net_peer_identity_, glgame->net_peer_fallback().c_str(),
       glgame->net_id_ctx());
-  if (badge.empty()) return;  // legacy peer: no badge, no placeholder
-  // Bottom row like the SPECTATING hint, clear of the touch RETURN TO MENU
-  // band and the title-safe margin; hoisted when the camera is on the peer
-  // (that's exactly when the tag matters most). The spectating hoist must
-  // clear the WHOLE exit band, not just the SPECTATING text: the band's
-  // glyph box tops out ~-370 (anchor -420, size 13, pad 50, to_bottom
-  // below), and the old +175 spot printed the badge exactly on the band's
-  // RETURN TO MENU text (field: iPhone, 2026-07-24). +255 sits above the
-  // band's reach with air to spare.
-  float vhb = -Typer::scaled_window_height / glgame->num_y_viewports();
-  float y = glgame->is_spectating() ? vhb + 255.0f : vhb + 130.0f;
+  if (badge.empty()) {
+    if (glgame->net_mode_ != GLGame::NetHost &&
+        glgame->net_mode_ != GLGame::NetClient)
+      return;
+    badge = glgame->net_peer_fallback();
+  }
+  const GLShip *peer = glgame->remote_player();
+  char peer_score[16];
+  const char *peer_suffix = nullptr;
+  if (peer) {
+    snprintf(peer_score, sizeof peer_score, ": %d", peer->ship->score);
+    peer_suffix = peer_score;
+  }
   // A worker-attested peer earns the verified tick; a LAN/manual peer's badge
   // is a claim and draws bare (net_identity_verified owns that rule).
   Typer::draw_centered_verified(
       0, y, badge.c_str(), 11,
-      net_identity_verified(glgame->net_peer_identity_, glgame->net_id_ctx()));
+      net_identity_verified(glgame->net_peer_identity_, glgame->net_id_ctx()),
+      0, peer_suffix);
 }
 
+// Spectator flow (netplay co-op): a "SPECTATING IN N" countdown on the local
+// wreck, then "SPECTATING" at the bottom once the camera has handed off to the
+// peer. Both phases are driven by GLGame::spectate_death_time_.
 void Overlay::spectate(const GLGame *glgame, const GLShip *glship) {
   (void)glship;
   if (glgame->spectate_arming()) {
@@ -760,21 +828,12 @@ void Overlay::title_text(const GLGame *glgame, const GLShip *glship) {
   // Touch: exit affordance — the bottom strip is a tap band
   // (GLGame::touch_tap), same placement as the lobby's return band. Shown
   // at GAME OVER, on the pause screen, and — online — when the LOCAL ship
-  // is fully out while the peer plays on (all-over never fires there).
-  if(is_touch_mode()) {
-    bool all_over = !glgame->players->empty();
-    for(auto* gs : *glgame->players) {
-      if(gs->ship->is_alive() || gs->ship->lives > 0) { all_over = false; break; }
-    }
-    const GLShip* local = glgame->local_player();
-    bool local_over = glgame->net_active() && local &&
-                      !local->ship->is_alive() && local->ship->lives <= 0;
-    if(all_over || !glgame->running || local_over ||
-       glgame->net_connection_lost_)
-      glgame->exit_band().draw(
-          Typer::cursored("RETURN TO MENU", true).c_str(),
-          glgame->current_time);
-  }
+  // is fully out while the peer plays on (all-over never fires there);
+  // exit_band_showing() is that rule, shared with the badge rows' hoist.
+  if(glgame->exit_band_showing())
+    glgame->exit_band().draw(
+        Typer::cursored("RETURN TO MENU", true).c_str(),
+        glgame->current_time);
 }
 
 void Overlay::draw_circle(float cx, float cy, float r, int segs, bool filled,

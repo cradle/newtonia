@@ -154,20 +154,40 @@ static const float TICK_GAP = 0.6f;
 static const float TICK_SCALE = 1.4f;
 
 void Typer::draw_centered_verified(float x, float y, const char *text,
-                                   float size, bool verified, int time) {
-  if (!verified) { draw_centered(x, y, text, size, time); return; }
+                                   float size, bool verified, int time,
+                                   const char *suffix) {
+  if (!verified) {
+    // No tick: the suffix can simply ride the string, one space between.
+    if (suffix && *suffix) {
+      std::string joined = std::string(text) + " " + suffix;
+      draw_centered(x, y, joined.c_str(), size, time);
+    } else {
+      draw_centered(x, y, text, size, time);
+    }
+    return;
+  }
   size_t n = 0;
   for (const char *c = text; *c; c++)
     if (*c != '\'') n++;  // no apostrophe glyph — matches draw()/draw_centered
-  // Centre the PAIR: the unit runs from the text's first column to the far
-  // edge of the tick, i.e. (n + GAP) advances plus the tick's own width.
-  float start = x - size * ((float)n + TICK_GAP + TICK_SCALE * 0.5f);
+  size_t m = 0;
+  if (suffix)
+    for (const char *c = suffix; *c; c++)
+      if (*c != '\'') m++;
+  // Centre the UNIT: text's first column to the far edge of the tick — (n +
+  // GAP) advances plus the tick's own width — plus, when a suffix rides
+  // along, a full advance of air (the unverified branch's joining space
+  // reads the same) and the suffix's m advances.
+  float start = x - size * ((float)n + TICK_GAP + TICK_SCALE * 0.5f +
+                            (m ? (float)m + 0.5f : 0.0f));
   draw(start, y, text, size, time);
   // pre_draw anchors a glyph by its CAP TOP, so a bigger glyph on the same y
   // would grow upward and sit high; this offset keeps the tick's ink centred
   // on the text's mid-line instead.
   draw(start + ((float)n + TICK_GAP) * 2.0f * size,
        y + size * (TICK_SCALE - 1.0f), VERIFIED_TICK, size * TICK_SCALE, time);
+  if (m)
+    draw(start + size * (((float)n + TICK_GAP) * 2.0f + TICK_SCALE + 2.0f),
+         y, suffix, size, time);
 }
 
 void Typer::draw(float x, float y, const char * text, float size, int time) {
@@ -296,6 +316,15 @@ void Typer::init_meshes() {
   { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
     mb.vertex(TW*0.38f, TH*0.125f); mb.vertex(TW*0.62f, TH*0.125f);
     mb.end(); upload('.', mb); }
+
+  // ':' — the netplay badge rows' score separator ("BOB - DESKTOP : 4200").
+  // Two of the '.' glyph's dashes: one at the '.' baseline spot, one at the
+  // '-' dash's height. Like '%', drawable but deliberately NOT in the
+  // net_name_char_drawable whitelist — HUD punctuation, not a name character.
+  { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
+    mb.vertex(TW*0.38f, TM); mb.vertex(TW*0.62f, TM);
+    mb.vertex(TW*0.38f, TH*0.125f); mb.vertex(TW*0.62f, TH*0.125f);
+    mb.end(); upload(':', mb); }
 
   { MeshBuilder mb; mb.begin(GL_LINES); mb.color(1,1,1);
     mb.vertex(0,TM); mb.vertex(TW,TM);
