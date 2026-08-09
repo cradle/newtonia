@@ -63,28 +63,36 @@ unsigned char State::nav_key_from_controller(const SDL_Event &e,
   } else if (e.type == SDL_CONTROLLERAXISMOTION) {
     which = e.caxis.which;
     int v = e.caxis.value;
+    NavPad &pad = nav_pad(which);
     if (e.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
-      bool up   = v < -(nav_stick_[0] ? NAV_STICK_OFF : NAV_STICK_ON);
-      bool down = v >  (nav_stick_[1] ? NAV_STICK_OFF : NAV_STICK_ON);
-      if (up   && !nav_stick_[0]) key = 'w';
-      if (down && !nav_stick_[1]) key = 's';
-      nav_stick_[0] = up;
-      nav_stick_[1] = down;
+      bool up   = v < -(pad.stick[0] ? NAV_STICK_OFF : NAV_STICK_ON);
+      bool down = v >  (pad.stick[1] ? NAV_STICK_OFF : NAV_STICK_ON);
+      if (up   && !pad.stick[0]) key = 'w';
+      if (down && !pad.stick[1]) key = 's';
+      pad.stick[0] = up;
+      pad.stick[1] = down;
     } else if (e.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) {
-      bool l = v < -(nav_stick_[2] ? NAV_STICK_OFF : NAV_STICK_ON);
-      bool r = v >  (nav_stick_[3] ? NAV_STICK_OFF : NAV_STICK_ON);
-      if (l && !nav_stick_[2]) key = 'a';
-      if (r && !nav_stick_[3]) key = 'd';
-      nav_stick_[2] = l;
-      nav_stick_[3] = r;
+      bool l = v < -(pad.stick[2] ? NAV_STICK_OFF : NAV_STICK_ON);
+      bool r = v >  (pad.stick[3] ? NAV_STICK_OFF : NAV_STICK_ON);
+      if (l && !pad.stick[2]) key = 'a';
+      if (r && !pad.stick[3]) key = 'd';
+      pad.stick[2] = l;
+      pad.stick[3] = r;
     } else if (e.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) {
       // Triggers spring fully back to zero, so a plain edge suffices.
       bool pressed = v > 8000;
-      if (pressed && !nav_rt_) key = '\r';
-      nav_rt_ = pressed;
+      if (pressed && !pad.rt) key = '\r';
+      pad.rt = pressed;
     }
   }
   if (key && src)
     *src = SDL_GameControllerFromInstanceID(which);
   return key;
+}
+State::NavPad &State::nav_pad(SDL_JoystickID which) {
+  for (int i = 0; i < NAV_PADS; i++)
+    if (nav_pads_[i].id == which) return nav_pads_[i];
+  for (int i = 0; i < NAV_PADS; i++)
+    if (nav_pads_[i].id == -1) { nav_pads_[i].id = which; return nav_pads_[i]; }
+  return nav_pads_[0];
 }
