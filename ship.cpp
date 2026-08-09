@@ -2686,7 +2686,7 @@ void Ship::step(float delta, const Grid &grid) {
   }
 
   facing.rotate(rotation_direction * rotation_force * rotation_scale *
-                net_rotation_damp / mass * delta);
+                net_rotation_damp * time_slow_rotation_comp / mass * delta);
   Point acceleration = Point(0,0);
   if(boosting) {
   	acceleration += ((facing * boost_force) / mass);

@@ -312,6 +312,7 @@ void Overlay::draw(const GLGame *glgame, const GLShip *glship) {
   if (!replaying) title_text(glgame, glship);
   level(glgame, glship);
   god_mode(glgame, glship);
+  time_slow(glgame, glship);
   score(glgame, glship);
   if (!replaying) keymap(glgame, glship);
   level_cleared(glgame, glship);
@@ -465,6 +466,18 @@ void Overlay::god_mode(const GLGame *glgame, const GLShip *glship) {
   float base_y = top_hud_y(glgame);
   Typer::draw_centered(0, base_y - 62, "God mode", 10);
   Typer::draw_centered(0, base_y - 100, remaining / 1000, 10);
+}
+
+// The time-slow pickup's countdown, in WALL seconds (the number the player
+// experiences). Drawn a block below the god-mode indicator so the two never
+// overlap when both are running.
+void Overlay::time_slow(const GLGame *glgame, const GLShip *glship) {
+  (void)glship;  // a world effect: every viewport shows the same countdown
+  int remaining = glgame->time_slow_wall_ms_remaining();
+  if(remaining <= 0) return;
+  float base_y = top_hud_y(glgame);
+  Typer::draw_centered(0, base_y - 137, "Time slow", 10);
+  Typer::draw_centered(0, base_y - 175, (remaining + 999) / 1000, 10);
 }
 
 void Overlay::score(const GLGame *glgame, const GLShip *glship) {

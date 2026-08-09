@@ -163,7 +163,16 @@ namespace Net {
 //     ship's local shock sim (net_remote_gun) so bolts come only from the wire.
 // 23: savegame v17 appended run_id (REPLAY.md) — snapshots serialize through
 //     the same structs, so every keyframe/delta grew 8 bytes.
-const uint8_t PROTO_VERSION = 23;
+// 24: Time-slow pickup online. Savegame v18 appended the TimeSlow pickup
+//     type and the in-flight effect (sim ms remaining + owning player
+//     index) to the GameState — snapshots share the struct, so every
+//     keyframe/delta grew 5 bytes. No new message: the host runs the
+//     effect and the countdown rides every snapshot; both sides multiply
+//     their step SCHEDULING by the same factor from that scalar (the sim
+//     still advances step_size per step), so the whole session slows in
+//     lockstep and the collector's rotation comp is re-asserted from the
+//     owner index on each apply.
+const uint8_t PROTO_VERSION = 24;
 
 // Peer identity (badge metadata) rides HELLO/WELCOME as an APPEND, not a
 // PROTO bump: `u8 platform (NetPlatform), u8 name_len, name_len bytes

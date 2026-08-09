@@ -61,6 +61,7 @@ private:
   static void paused(const GLGame *glgame, const GLShip *glship);
   static void level(const GLGame *glgame, const GLShip *glship);
   static void god_mode(const GLGame *glgame, const GLShip *glship);
+  static void time_slow(const GLGame *glgame, const GLShip *glship);
   static void edge_indicators(const GLGame *glgame, const GLShip *glship);
   static void debug_info(const GLGame *glgame, const GLShip *glship);
   static void draw_circle(float cx, float cy, float r, int segs, bool filled,

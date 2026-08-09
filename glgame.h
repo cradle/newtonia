@@ -28,6 +28,7 @@
 #include "lance_pickup.h"
 #include "revive_pickup.h"
 #include "shock_pickup.h"
+#include "time_slow_pickup.h"
 #include "net_identity.h"
 #include "net_signal.h"
 #include "view/tap_band.h"
@@ -862,6 +863,48 @@ private:
   int spectate_death_time_ = -1;
   static const int kSpectateDelayMs = 5000;
   void update_spectate();
+  // ---- time-slow pickup (time_slow_pickup.h) ----
+  // The world's wall-clock rate is divided by the factor for the pickup's
+  // wall duration: each sim step still advances step_size ms of GAME time
+  // (fire rate, thrust, physics all keep their in-game rates), the steps are
+  // just SCHEDULED kTimeSlowFactor times further apart, exactly like the
+  // debug slow-down key — but temporary, and never a cheat. The collector's
+  // rotation is compensated (Ship::time_slow_rotation_comp) so their turn
+  // rate feels unchanged in wall time: an aiming window, the pickup's whole
+  // point. The countdown runs in SIM ms (wall / factor) so pause and the
+  // intro freeze it and it rides the savegame deterministically.
+  // ONLINE (PROTO 24) the host owns the effect like everything else and the
+  // countdown + owner index ride every snapshot: net_apply_state adopts
+  // them, the client's extrapolation loop multiplies its OWN step
+  // scheduling by the same factor, and both machines slow in lockstep —
+  // this is a shared *scheduling* multiplier on top of the pinned
+  // time_between_steps, not the per-machine rate cheat the pin exists to
+  // prevent (current_time and the stale gates are wall-based and
+  // unaffected). Replays inherit the client path: the recorded wall-clock
+  // record spacing IS the slow motion, and the mirrored factor keeps the
+  // extrapolation between records at the matching rate.
+  static const int kTimeSlowFactor = 2;
+  static const int kTimeSlowWallMs = 10000;
+  int time_slow_ms_left_ = 0;      // SIM ms remaining; 0 = inactive
+  Ship *time_slow_ship_ = nullptr; // collector: owns the rotation comp
+  bool time_slow_active() const { return time_slow_ms_left_ > 0; }
+  int time_slow_wall_ms_remaining() const {
+    return time_slow_ms_left_ * kTimeSlowFactor;
+  }
+  void start_time_slow(Ship *collector);
+  // Per-sim-step countdown, shared by the host/offline loop and the
+  // client/replay extrapolation loop: ticks the window down and drops the
+  // rotation comp when it closes (client copies are re-asserted by every
+  // snapshot apply; this keeps the in-between steps honest).
+  void time_slow_step();
+  // Start/end audio cues (a pitch dive when time slows, the reverse sweep
+  // when it releases). Global state-change sounds like the level-countdown
+  // tics — played unattenuated, deliberately not WorldSound (the effect has
+  // no world position). The refractory timestamps dedupe the client's
+  // countdown-vs-apply boundary races so an end can never double-play.
+  void time_slow_cue(bool starting);
+  int time_slow_start_cue_ms_ = -100000;  // current_time of the last cue
+  int time_slow_end_cue_ms_ = -100000;
   // Re-level every player ship's self-played audio (thrusters included) for
   // the current listener distances. Called once per tick from both the
   // sim tick and the net-client tick.
@@ -879,6 +922,7 @@ private:
   static const float beam_pickup_drop_chance;
   static const float lance_pickup_drop_chance;
   static const float shock_pickup_drop_chance;
+  static const float time_slow_pickup_drop_chance;
   // Co-op revive: 10% per asteroid kill while a
   // partner is fully out, at most one in the world at a time.
   static const float revive_pickup_drop_chance;
@@ -889,6 +933,8 @@ private:
   Mix_Chunk *warp_sound = NULL;
   Mix_Chunk *station_explode_sound = NULL;
   Mix_Chunk *pause_music_sound = NULL;
+  Mix_Chunk *time_slow_start_sound = NULL;
+  Mix_Chunk *time_slow_end_sound = NULL;
   int pause_music_channel = -1;  // looping pause tune; halted on unpause
 
   Grid grid;

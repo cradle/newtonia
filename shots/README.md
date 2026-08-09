@@ -111,7 +111,7 @@ enemy X Y [difficulty]         # AI ship (it will fight!)
 hazard pulsar|comet|seeker X Y [v=VX,VY]   # a natural comet cruises ~280 u/s
 blackhole X Y
 pickup TYPE X Y        # weapon mine giga missile shield god nova beam
-                       #   lance shock revive life
+                       #   lance shock revive life timeslow
 
 text X Y SIZE WORDS... # caption in the Typer font (uppercased). X/Y are
                        #   window fractions, -1..1, (0,0) centre, +y up,

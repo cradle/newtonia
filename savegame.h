@@ -98,7 +98,8 @@ struct Asteroid {
 enum class PickupType : uint8_t {
     Weapon, Mine, GigaMine, Missile, Shield, GodMode, ExtraLife, NovaCharge, Beam, Lance,
     Revive,       // co-op: revives the fallen partner (v13)
-    ShockWeapon   // chain-lightning primary drop (appended after Revive, v15)
+    ShockWeapon,  // chain-lightning primary drop (appended after Revive, v15)
+    TimeSlow      // clock: slows the world's wall-clock rate (appended, v18)
 };
 
 struct Pickup {
@@ -181,7 +182,9 @@ struct GameState {
     // from master's "v12"; renumbered onto this branch's higher version).
     // 17 = run_id appended (REPLAY.md: ties the replay recording to the save
     // so exit→continue appends to one continuous replay file).
-    static constexpr uint16_t VERSION = 17;
+    // 18 = TimeSlow pickup type + in-flight time-slow effect (ms remaining
+    // and the owning player's index) appended at the end.
+    static constexpr uint16_t VERSION = 18;
     // Oldest save format we can still read. Saves from MIN_VERSION..VERSION all
     // load; anything older (or from a newer build) is ignored. To keep old saves
     // working across a version bump, only ever APPEND new fields at the end of
@@ -203,6 +206,14 @@ struct GameState {
     // header on resume to continue the same recording (REPLAY.md). 0 = save
     // predates replays (a resume then starts a fresh recording).
     uint64_t run_id = 0;
+    // v18 append (end of file): an in-flight time-slow pickup effect — SIM
+    // ms remaining (wall ms / slow factor; see GLGame::start_time_slow) and
+    // the collecting player's index (who keeps wall-normal turning). 0 = no
+    // effect running. Snapshots share this struct, so these two scalars are
+    // also the effect's ONLINE/replay replication (PROTO 24): the host
+    // writes them into every keyframe/delta and net_apply_state adopts them.
+    int32_t time_slow_ms_left = 0;
+    uint8_t time_slow_player  = 0;
 
     std::vector<Player>    players;
     std::vector<Asteroid>  asteroids;

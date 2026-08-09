@@ -316,6 +316,7 @@ Pickup *make_scene_pickup(const std::string &type, const WrappedPoint &at) {
   if (type == "shock")   return new ShockPickup(at);
   if (type == "revive")  return new RevivePickup(at);
   if (type == "life")    return new ExtraLife(at);
+  if (type == "timeslow") return new TimeSlowPickup(at);
   return NULL;
 }
 
