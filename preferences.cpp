@@ -92,6 +92,12 @@ static int special_key_code(const char *name) {
 //   F1–F12 (129–140) → "F1"–"F12"
 //   anything else    → decimal integer (fallback)
 static std::string key_to_ini(int key) {
+    // An empty slot must write "none", never the decimal fallback's "0":
+    // ini_to_key parses "0" as the literal '0' key, so a zeroed binding
+    // (P3/P4 ship keyboard-inert) would come back bound after one
+    // save/load cycle. ini_to_key already maps "none" to 0, on old builds
+    // too.
+    if (key == 0) return "none";
     if (const char *n = special_key_name(key)) return n;
     if (key >= 129 && key <= 140) {
         char buf[8];
@@ -315,10 +321,11 @@ void save_preferences() {
 // An empty alternate is written explicitly as "none" so a cleared alternate
 // is not resurrected by the bare-value default-keeping rule on the next load.
 // Expects the enclosing player loop's `p` (1-based slot number) in scope.
+// key_to_ini writes empty slots as "none" (primary and alternate alike).
 #define WRITE_PLAYER_BINDING(action, b) \
     fprintf(f, "p%d_" action "=%s\n" "p%d_" action "_alt=%s\n", \
         p, key_to_ini((b).keys[0]).c_str(), \
-        p, (b).keys[1] ? key_to_ini((b).keys[1]).c_str() : "none")
+        p, key_to_ini((b).keys[1]).c_str())
 
     // Per-player keybinds + scalars, one block per slot (p1..p4). p3_/p4_
     // lines are unknown keys to older builds (ignored on load, dropped on
