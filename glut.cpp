@@ -908,8 +908,14 @@ void init(int &argc, char* argv[], float width, float height,
     // stream cannot gain or lose a frame against the sim clock; idle only
     // asks for the next one. glutLeaveMainLoop has to RETURN here rather than
     // exit() (freeglut's default) — the capture is only finished once the
-    // stream is closed and the summary logged.
+    // stream is closed and the summary logged. The option and its constants
+    // are freeglut extensions (#defines, hence the guard); Apple's GLUT has
+    // neither, and doesn't need them — its glutLeaveMainLoop is already the
+    // exit(0) shim (gl_compat.h), where stdio teardown flushes the streams
+    // and only the summary is lost.
+#ifdef GLUT_ACTION_ON_WINDOW_CLOSE
     glutSetOption(GLUT_ACTION_ON_WINDOW_CLOSE, GLUT_ACTION_GLUTMAINLOOP_RETURNS);
+#endif
     glutDisplayFunc(video_frame);
     glutReshapeFunc(video_reshape);
     glutIdleFunc(glutPostRedisplay);
