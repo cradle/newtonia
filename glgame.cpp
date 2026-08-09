@@ -105,6 +105,20 @@ static void play_priority_chunk(Mix_Chunk *chunk, float vol) {
 // defaults, preferences.h) — GLShip::input matches either slot of each
 // KeyBinding, so no translation pass is needed here and an arrow bound to
 // any player's action just works.
+// Per-seat GLCar tints (FOURPLAYER.md D7): P2 keeps the classic orange;
+// P3/P4 get their own hues so four cars read apart on screen, in the lives
+// rows and on the minimap. Index 0 is unused (P1 is the blue GLShip).
+static const float kSeatTints[MAX_PLAYERS][3] = {
+    {0.0f, 0.0f, 0.0f},
+    {255 / 255.0f, 69 / 255.0f, 0 / 255.0f},    // P2 orange (GLCar default)
+    {80 / 255.0f, 220 / 255.0f, 100 / 255.0f},  // P3 green
+    {200 / 255.0f, 120 / 255.0f, 255 / 255.0f}, // P4 violet
+};
+static const float *seat_tint(int player_index) {
+  if (player_index < 1 || player_index >= MAX_PLAYERS) return NULL;
+  return kSeatTints[player_index];
+}
+
 // with_bindings=false applies only the seat's scalars (sensitivity, camera
 // smoothing, rotate/fixed pref) — the pad-join path, where the pad is the
 // controls but the seat's Options settings must still take effect.
@@ -679,7 +693,8 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
   // Restore players — player 1 is GLShip, player 2+ is GLCar (matches add_local_player)
   for (const auto &sp : save.players) {
     bool is_p1 = players->empty();
-    GLShip *gs = is_p1 ? new GLShip(grid, true) : new GLCar(grid, true);
+    GLShip *gs = is_p1 ? new GLShip(grid, true)
+                       : new GLCar(grid, true, seat_tint((int)players->size()));
     set_player_keys(gs, (int)players->size());
     // Set before restore_state() so restored weapons attribute correctly.
     gs->ship->is_local_player = true;
@@ -1180,6 +1195,17 @@ bool GLGame::is_player_controller(SDL_JoystickID which) const {
   return false;
 }
 
+// An opened pad that owns no seat must not carry run-ending authority
+// (FOURPLAYER.md A4): GUIDE-pause, BACK-exit and the game-over confirms act
+// only from a player's pad — or from any pad in a game where NO player has
+// one (keyboard players with a couch pad, the long-shipped behaviour).
+bool GLGame::pad_may_command(SDL_JoystickID which) const {
+  if (is_player_controller(which)) return true;
+  for (auto *gs : *players)
+    if (gs->has_controller()) return false;
+  return true;
+}
+
 bool GLGame::back_pressed() {
   save_progress();
   request_state_change(new Menu());
@@ -1272,7 +1298,7 @@ void GLGame::add_local_player(SDL_GameController *ctrl, bool with_keys,
   if((int)players->size() >= MAX_PLAYERS) return;
   Ship* p1 = players->front()->ship;
   if(!p1->is_alive() && !p1->lives) return;
-  GLShip* object = new GLCar(grid, true);
+  GLShip* object = new GLCar(grid, true, seat_tint((int)players->size()));
   set_player_keys(object, (int)players->size(), /*with_bindings=*/with_keys);
   if(ctrl != NULL) object->set_controller(ctrl);
   object->ship->is_local_player = true;
@@ -5938,7 +5964,7 @@ void GLGame::net_apply_state(const Save::GameState &s) {
   if (net_mode_ == NetReplay) {
     while (players->size() < s.players.size() &&
            (int)players->size() < MAX_PLAYERS) {
-      GLShip *ghost = new GLCar(grid, true);
+      GLShip *ghost = new GLCar(grid, true, seat_tint((int)players->size()));
       ghost->ship->set_missile_asteroids((std::list<Object *> *)objects);
       ship_objects->push_back(ghost->ship);
       for (auto *p : *players) p->ship->set_missile_ships(ship_objects);
@@ -5947,7 +5973,7 @@ void GLGame::net_apply_state(const Save::GameState &s) {
       ghost->ship->set_black_holes(black_holes);
       ghost->ship->net_remote_gun = true;
       players->push_back(ghost);
-      SDL_Log("replay: player 2 joined");
+      SDL_Log("replay: player %d joined", (int)players->size());
     }
   }
 
@@ -9062,8 +9088,9 @@ void GLGame::controller(SDL_Event event) {
         if(ctrl) add_local_player(ctrl, /*with_keys=*/false);
       }
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE) {
-      if(running) toggle_pause();
-    } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
+      if(running && pad_may_command(event.cbutton.which)) toggle_pause();
+    } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK &&
+               pad_may_command(event.cbutton.which)) {
       // Exactly what the keyboard menu key (and back_pressed) does — save
       // first, then hand over. This used to bank only the HIGH SCORE: a
       // BACK during live play threw away all progress since the last
@@ -9076,7 +9103,7 @@ void GLGame::controller(SDL_Event event) {
 
   if(event.type == SDL_CONTROLLERAXISMOTION &&
      event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT &&
-     event.caxis.value > 8000) {
+     event.caxis.value > 8000 && pad_may_command(event.caxis.which)) {
     bool all_game_over = !players->empty();
     for (auto* glship : *players) {
       if (glship->ship->is_alive() || glship->ship->lives > 0) {
