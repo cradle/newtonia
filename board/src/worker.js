@@ -341,6 +341,15 @@ async function ensure_schema(db) {
   schema_ready = true;
 }
 
+// Board slot for a player count: every co-op run (>= 2 players) competes
+// on the single players=2 co-op board — 3P/4P get no boards of their own
+// (FOURPLAYER.md D10). Applied authoritatively on submit AND on every
+// query that carries a `players` field, so the `scores.players` column
+// only ever holds 1 or 2 regardless of what a client sends.
+function board_slot(players) {
+  return players >= 2 ? 2 : 1;
+}
+
 // Actual rank of a row already in the table: strictly-better rows + 1.
 // (Ties share this optimistic rank; the deterministic submitted_at tiebreak
 // `top` uses can only push a tied row DOWN, never up, so this never
@@ -969,7 +978,7 @@ export class Session {
       if (!(await within_limit(this.env, this.ip, "query", this.dev)))
         return this.err(ws, "rate-limited");
       const season = typeof msg.season === "string" ? msg.season : "";
-      const players = msg.players === 2 ? 2 : 1;
+      const players = board_slot(Number(msg.players));
       if (!season_ok(season)) return this.err(ws, "bad-season");
       await ensure_schema(this.env.DB);
       if (msg.t === "top") {
@@ -1168,7 +1177,7 @@ export class Session {
     }
     const db = this.env.DB;
     await ensure_schema(db);
-    const players = hd.player_count;
+    const players = board_slot(hd.player_count);
     const key = await platform_key(identity.account);
 
     // Same run resubmitted (clean-abandon uploaded, then resumed and

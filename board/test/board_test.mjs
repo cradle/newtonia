@@ -272,6 +272,34 @@ async function submit(ws, bytes, name, platform = 2) {
   check("co-op board still empty after the refusal",
         f.t === "top" && f.rows.length === 0, JSON.stringify(f));
 
+  // 14d. One co-op slot (FOURPLAYER.md D10): 3P and 4P runs are admitted
+  // and stored/ranked on the single players=2 co-op board — they get no
+  // boards of their own — and a query carrying players=3/4 is answered
+  // from (and echoes) that same slot.
+  const ws5c = await connect();
+  const run3p = build_nrp({ game_version: SEASON, run_id: 7001n,
+                            score: 3300, player_count: 3 });
+  f = await submit(ws5c, run3p, "CARA");
+  check("3P run placed", f.t === "placed" && f.rank === 1,
+        JSON.stringify(f));
+  const run4p = build_nrp({ game_version: SEASON, run_id: 7002n,
+                            score: 4400, player_count: 4 });
+  f = await submit(ws5c, run4p, "DANA");
+  check("4P run placed above the 3P run", f.t === "placed" && f.rank === 1,
+        JSON.stringify(f));
+  send(ws5c, { t: "top", season: SEASON, players: 2, count: 10 });
+  f = await ws5c._recv();
+  check("3P/4P runs chart on the co-op board",
+        f.t === "top" && f.players === 2 && f.rows.length === 2 &&
+        f.rows[0].name === "DANA" && f.rows[0].score === 4400 &&
+        f.rows[1].name === "CARA" && f.rows[1].score === 3300,
+        JSON.stringify(f.rows));
+  send(ws5c, { t: "rank-of", season: SEASON, players: 4, score: 3300 });
+  f = await ws5c._recv();
+  check("players=4 query answered from the co-op slot",
+        f.t === "rank-of" && f.players === 2 && f.place === 3,
+        JSON.stringify(f));
+
   // 15. The top-100 gate: fill a fresh season to exactly KEEP_N rows (100
   // distinct accounts — one row per account is DB-enforced), then qualify
   // below the cut-line: the answer must be would_place=false with the

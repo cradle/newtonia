@@ -117,10 +117,18 @@ eq("ended not required",
    validate_submission(build_nrp({ flags: FLAG_CLEAN | FLAG_ENDED })).ok, true);
 eq("zero score rejected",
    validate_submission(build_nrp({ score: 0 })).reason, "zero-score");
-eq("bad player count",
-   validate_submission(build_nrp({ player_count: 3 })).reason, "bad-players");
 eq("two players accepted",
    validate_submission(build_nrp({ player_count: 2 })).ok, true);
+// 3–4 player runs are admitted (FOURPLAYER.md D10; the worker keys every
+// co-op count onto the single players=2 board).
+eq("three players accepted",
+   validate_submission(build_nrp({ player_count: 3 })).ok, true);
+eq("four players accepted",
+   validate_submission(build_nrp({ player_count: 4 })).ok, true);
+eq("zero players rejected",
+   validate_submission(build_nrp({ player_count: 0 })).reason, "bad-players");
+eq("five players rejected",
+   validate_submission(build_nrp({ player_count: 5 })).reason, "bad-players");
 {
   // No delta at all (zero-tick rule twin): rejected.
   const file = build_nrp({}, [build_record(0, REC_KEYFRAME, 10)]);
