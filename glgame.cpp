@@ -105,11 +105,15 @@ static void play_priority_chunk(Mix_Chunk *chunk, float vol) {
 // defaults, preferences.h) — GLShip::input matches either slot of each
 // KeyBinding, so no translation pass is needed here and an arrow bound to
 // any player's action just works.
-static void set_player_keys(GLShip *gs, int player_index) {
+// with_bindings=false applies only the seat's scalars (sensitivity, camera
+// smoothing, rotate/fixed pref) — the pad-join path, where the pad is the
+// controls but the seat's Options settings must still take effect.
+static void set_player_keys(GLShip *gs, int player_index,
+                            bool with_bindings = true) {
   if (player_index < 0) player_index = 0;
   if (player_index >= MAX_PLAYERS) player_index = MAX_PLAYERS - 1;
   PlayerKeys &k = g_prefs.player_keys[player_index];
-  gs->set_keys(k);
+  if (with_bindings) gs->set_keys(k);
   gs->set_keyboard_sensitivity(k.keyboard_sensitivity);
   gs->set_camera_smoothing(k.camera_smoothing);
   gs->set_rotate_view_pref(&k.rotate_view);
@@ -163,7 +167,7 @@ static Pickup *make_pickup(const Save::Pickup &sp) {
 // world — generous by design, it is the fallen player's only way back.
 const float GLGame::revive_pickup_drop_chance = 0.1f;
 
-GLGame::GLGame(SDL_GameController *controller) :
+GLGame::GLGame(SDL_GameController *controller, bool allow_dev_players) :
   State(),
   world(Point(default_world_width, default_world_height)),
   current_time(0),
@@ -259,12 +263,15 @@ GLGame::GLGame(SDL_GameController *controller) :
   // Dev/testing (beta builds only): NEWTONIA_START_PLAYERS=N starts the game
   // with N local players, bypassing LOCAL_PLAYER_CAP so the 3-4P code paths
   // stay testable while the dark-launch gate holds (FOURPLAYER.md §3).
-  // Offline only (add_local_player refuses online) — don't set it when
-  // hosting, or the remote seat is already taken. Cheat-marked like the
-  // other hooks (XR-057): a synthetic co-op run must never chart or earn.
+  // allow_dev_players is false on the delegating host ctor (net_mode_ isn't
+  // set until after delegation, so the online guard can't catch it there —
+  // an extra local seat would steal the peer's) and on the shots harness.
+  // Cheat-marked like the other hooks (XR-057): a synthetic co-op run must
+  // never chart or earn.
   {
     const char *sp = SDL_getenv("NEWTONIA_START_PLAYERS");
-    if (sp != NULL && is_beta_feature_enabled() && atoi(sp) > 1) {
+    if (allow_dev_players && sp != NULL && is_beta_feature_enabled() &&
+        atoi(sp) > 1) {
       Achievements::note_cheat_used();
       int n = atoi(sp);
       if (n > MAX_PLAYERS) n = MAX_PLAYERS;
@@ -357,7 +364,7 @@ GLGame::GLGame(SDL_GameController *controller) :
 }
 
 GLGame::GLGame(NetSession *session, SDL_GameController *controller)
-  : GLGame(controller) {
+  : GLGame(controller, /*allow_dev_players=*/false) {
   net_mode_ = NetHost;
   Net::set_net_log_role(true);  // lobby set it too; belt & braces
   net_session_ = session;
@@ -1200,7 +1207,7 @@ void GLGame::add_local_player(SDL_GameController *ctrl, bool with_keys,
   Ship* p1 = players->front()->ship;
   if(!p1->is_alive() && !p1->lives) return;
   GLShip* object = new GLCar(grid, true);
-  if(with_keys) set_player_keys(object, (int)players->size());
+  set_player_keys(object, (int)players->size(), /*with_bindings=*/with_keys);
   if(ctrl != NULL) object->set_controller(ctrl);
   object->ship->is_local_player = true;
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);

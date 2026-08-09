@@ -42,7 +42,7 @@ public:
 
 private:
   SDL_GameController *active_controllers[MAX_PLAYERS] = {};
-  SDL_JoystickID active_controller_ids[MAX_PLAYERS] = {-1, -1, -1, -1};
+  SDL_JoystickID active_controller_ids[MAX_PLAYERS] = {-1, -1, -1, -1}; // one -1 per slot: 0 is a VALID SDL instance id
   Point window;
   State *state;
 

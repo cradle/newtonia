@@ -88,7 +88,7 @@ static bool             s_reset_tick = false; // discard delta after resume
 // SDL only delivers controller events for opened devices, so hot-plugged
 // pads must be opened here on SDL_CONTROLLERDEVICEADDED (issue #287).
 static SDL_GameController *s_controllers[MAX_PLAYERS]    = {};
-static SDL_JoystickID      s_controller_ids[MAX_PLAYERS] = { -1, -1, -1, -1 };
+static SDL_JoystickID      s_controller_ids[MAX_PLAYERS] = { -1, -1, -1, -1 }; // one -1 per slot: 0 is a VALID SDL instance id
 
 // EGL handles — used on both Desktop and Xbox.
 static EGLDisplay s_egl_display = EGL_NO_DISPLAY;
@@ -421,7 +421,7 @@ int main(int argc, char *argv[])
                 name ? name : "(unnamed)",
                 SDL_IsGameController(i) ? " [gamecontroller]" : " [NOT a gamecontroller]");
         if (!SDL_IsGameController(i)) continue;
-        for (int s = 0; s < 2; s++) {
+        for (int s = 0; s < LOCAL_PLAYER_CAP; s++) {
             if (s_controllers[s]) continue;
             s_controllers[s] = SDL_GameControllerOpen(i);
             if (s_controllers[s]) {
@@ -541,8 +541,13 @@ int main(int argc, char *argv[])
             case SDL_CONTROLLERDEVICEADDED: {
                 SDL_Log("SDL_CONTROLLERDEVICEADDED (device index %d)", (int)e.cdevice.which);
                 SDL_JoystickID add_id = SDL_JoystickGetDeviceInstanceID(e.cdevice.which);
-                if (add_id != s_controller_ids[0] && add_id != s_controller_ids[1]) {
-                    for (int i = 0; i < MAX_PLAYERS; i++) {
+                bool known = false;
+                for (int i = 0; i < MAX_PLAYERS; i++)
+                    if (s_controller_ids[i] == add_id) known = true;
+                if (!known) {
+                    // Opens bounded by LOCAL_PLAYER_CAP (dark-launch rule):
+                    // an unseatable pad stays unopened, so no events flow.
+                    for (int i = 0; i < LOCAL_PLAYER_CAP; i++) {
                         if (s_controllers[i]) continue;
                         s_controllers[i] = SDL_GameControllerOpen(e.cdevice.which);
                         if (s_controllers[i]) {

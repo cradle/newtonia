@@ -48,7 +48,7 @@ namespace Replay { class Recorder; class Reader; }
 
 class GLGame : public State {
 public:
-  GLGame(SDL_GameController *controller = NULL);
+  GLGame(SDL_GameController *controller = NULL, bool allow_dev_players = true);
   GLGame(const Save::GameState &save, SDL_GameController *controller = NULL);
   // Online host: adopts the Ready session from the lobby; the remote peer
   // drives player 2 via INPUT messages and receives 10 Hz snapshots.

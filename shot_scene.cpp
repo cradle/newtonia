@@ -471,7 +471,8 @@ State *ShotScene::build_state() {
     snprintf(gen, sizeof(gen), "%d", s_scene.generation);
     set_env_both("NEWTONIA_START_GENERATION", gen);
   }
-  GLGame *g = new GLGame((SDL_GameController *)NULL);
+  GLGame *g = new GLGame((SDL_GameController *)NULL,
+                         /*allow_dev_players=*/false);  // scenes own the roster
   g->score_saved = true;    // save_progress() no-ops for the whole run
   g->save_deleted_ = true;  // the game-over savegame delete never fires
   Achievements::note_cheat_used();  // stats/achievements stay cold

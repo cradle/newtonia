@@ -262,6 +262,16 @@ The core of the phase.
   N captures/frame round-robin (`lens_on_screen` already skips off-screen).
 
 ### A4 — Gameplay N-safety sweep
+- **Unknown-pad authority (flip blocker, found in A2 review):** an opened pad
+  that owns no seat can BACK-exit a live run (glgame.cpp unknown-pad ladder),
+  GUIDE-pause, and drive the game-over card/board prompt with RT; menus also
+  run every pad through ONE shared nav-stick hysteresis (state.cpp
+  `nav_stick_`), so a drifting idle pad can deaden nav for everyone. Harmless
+  today (only seatable pads are opened — A2 bounds opens by
+  LOCAL_PLAYER_CAP), but the flip makes pads 3/4 openable, and an unseated
+  pad must not keep quit/pause/confirm authority. Gate those branches on
+  `is_player_controller` (or an explicit "no-seat pads navigate only" rule)
+  and make the nav hysteresis per-pad BEFORE the flip PR.
 - intro.cpp:249: dismissal iterates every player's shoot binding instead of
   the p1/p2 pair.
 - Nova/blast partner checks (glgame.cpp:1831, :4985): loop all other players

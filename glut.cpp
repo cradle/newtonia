@@ -54,7 +54,7 @@ extern "C" void install_macos_focus_observer(void (*lost)(), void (*gained)());
 StateManager *game;
 
 SDL_GameController *controllers[MAX_PLAYERS] = {};
-SDL_JoystickID controller_ids[MAX_PLAYERS] = {-1, -1, -1, -1};
+SDL_JoystickID controller_ids[MAX_PLAYERS] = {-1, -1, -1, -1}; // one -1 per slot: 0 is a VALID SDL instance id
 bool ENABLE_AUDIO = true;
 
 int last_render_time;
@@ -466,7 +466,16 @@ void check_controller() {
       return;
     }
     if(e.type == SDL_CONTROLLERDEVICEADDED) {
-      for(int i = 0; i < MAX_PLAYERS; i++) {
+      // SDL also queues DEVICEADDED for pads the startup scan already opened
+      // — without this dedup the queued event re-opens the same pad into the
+      // next free slot and eats it (mirrors xbox_main.cpp). Opens are bounded
+      // by LOCAL_PLAYER_CAP, not the array size: an unseatable pad must stay
+      // unopened so its events never reach the game (dark-launch rule).
+      SDL_JoystickID added_id = SDL_JoystickGetDeviceInstanceID(e.cdevice.which);
+      bool known = false;
+      for(int i = 0; i < MAX_PLAYERS; i++)
+        if(controller_ids[i] == added_id) known = true;
+      if(!known) for(int i = 0; i < LOCAL_PLAYER_CAP; i++) {
         if(controllers[i] == NULL) {
           controllers[i] = SDL_GameControllerOpen(e.cdevice.which);
           if(controllers[i]) {
@@ -602,7 +611,7 @@ void init_controllers_and_audio() {
     }
     SDL_JoystickEventState(SDL_ENABLE);
     int opened = 0;
-    for (int i = 0; i < SDL_NumJoysticks() && opened < MAX_PLAYERS; ++i) {
+    for (int i = 0; i < SDL_NumJoysticks() && opened < LOCAL_PLAYER_CAP; ++i) {
       if (SDL_IsGameController(i)) {
         controllers[opened] = SDL_GameControllerOpen(i);
         if (controllers[opened]) {
