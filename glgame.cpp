@@ -256,6 +256,25 @@ GLGame::GLGame(SDL_GameController *controller) :
   object->ship->set_black_holes(black_holes);
   players->push_back(object);
 
+  // Dev/testing (beta builds only): NEWTONIA_START_PLAYERS=N starts the game
+  // with N local players, bypassing LOCAL_PLAYER_CAP so the 3-4P code paths
+  // stay testable while the dark-launch gate holds (FOURPLAYER.md §3).
+  // Offline only (add_local_player refuses online) — don't set it when
+  // hosting, or the remote seat is already taken. Cheat-marked like the
+  // other hooks (XR-057): a synthetic co-op run must never chart or earn.
+  {
+    const char *sp = SDL_getenv("NEWTONIA_START_PLAYERS");
+    if (sp != NULL && is_beta_feature_enabled() && atoi(sp) > 1) {
+      Achievements::note_cheat_used();
+      int n = atoi(sp);
+      if (n > MAX_PLAYERS) n = MAX_PLAYERS;
+      for (int i = (int)players->size(); i < n; i++)
+        add_local_player(NULL, /*with_keys=*/true, /*bypass_cap=*/true);
+      std::cout << "DEV: starting with " << players->size() << " players"
+                << std::endl;
+    }
+  }
+
   // Test hook (inert without the env var): ring one of each pickup around
   // the spawn so a driver can screenshot the full icon set (TESTING.md).
   if (SDL_getenv("NEWTONIA_TEST_SPAWN_PICKUPS")) {
@@ -630,7 +649,7 @@ GLGame::GLGame(const Save::GameState &save, SDL_GameController *controller) :
     hazards->push_back(Hazard::from_state(sh, world));
   }
 
-  // Restore players — player 1 is GLShip, player 2+ is GLCar (matches add_player2)
+  // Restore players — player 1 is GLShip, player 2+ is GLCar (matches add_local_player)
   for (const auto &sp : save.players) {
     bool is_p1 = players->empty();
     GLShip *gs = is_p1 ? new GLShip(grid, true) : new GLCar(grid, true);
@@ -1168,13 +1187,21 @@ void GLGame::controller_removed(SDL_JoystickID id) {
   }
 }
 
-void GLGame::add_player2(SDL_GameController *ctrl) {
-  if(net_mode_ != NetOff) return;  // player 2 is the remote peer online
-  if(players->size() >= 2) return;
+// The one local-join path (FOURPLAYER.md D6): pad joins pass the pad and no
+// keyboard bindings (the pad is the controls), the Enter join passes
+// with_keys so the new seat's PlayerKeys slot binds. Gated on
+// LOCAL_PLAYER_CAP, not MAX_PLAYERS — the dark-launch rule (FOURPLAYER.md
+// §3); bypass_cap is the NEWTONIA_START_PLAYERS test hook's door.
+void GLGame::add_local_player(SDL_GameController *ctrl, bool with_keys,
+                              bool bypass_cap) {
+  if(net_mode_ != NetOff) return;  // extra seats online are Phase B
+  if(!bypass_cap && (int)players->size() >= LOCAL_PLAYER_CAP) return;
+  if((int)players->size() >= MAX_PLAYERS) return;
   Ship* p1 = players->front()->ship;
   if(!p1->is_alive() && !p1->lives) return;
   GLShip* object = new GLCar(grid, true);
-  object->set_controller(ctrl);
+  if(with_keys) set_player_keys(object, (int)players->size());
+  if(ctrl != NULL) object->set_controller(ctrl);
   object->ship->is_local_player = true;
   object->ship->set_missile_asteroids((std::list<Object*>*)objects);
   ship_objects->push_back(object->ship);
@@ -1193,7 +1220,7 @@ void GLGame::update_presence() const {
   Presence::set_level(generation + 1, (int)players->size());
 }
 
-// Player 2 for online play: same wiring as add_player2 but with no local
+// Player 2 for online play: same wiring as add_local_player but with no local
 // controller or key bindings — the peer drives it via INPUT messages.
 void GLGame::add_remote_player() {
   if(players->size() >= 2) return;
@@ -8784,9 +8811,9 @@ void GLGame::controller(SDL_Event event) {
         } else {
           toggle_pause();
         }
-      } else if(players->size() < 2 && net_mode_ == NetOff) {
+      } else if((int)players->size() < LOCAL_PLAYER_CAP && net_mode_ == NetOff) {
         SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(event.cbutton.which);
-        if(ctrl) add_player2(ctrl);
+        if(ctrl) add_local_player(ctrl, /*with_keys=*/false);
       }
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A ||
                event.cbutton.button == SDL_CONTROLLER_BUTTON_B ||
@@ -8819,9 +8846,9 @@ void GLGame::controller(SDL_Event event) {
           }
           return;
         }
-      } else if(players->size() < 2 && net_mode_ == NetOff) {
+      } else if((int)players->size() < LOCAL_PLAYER_CAP && net_mode_ == NetOff) {
         SDL_GameController *ctrl = SDL_GameControllerFromInstanceID(event.cbutton.which);
-        if(ctrl) add_player2(ctrl);
+        if(ctrl) add_local_player(ctrl, /*with_keys=*/false);
       }
     } else if (event.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE) {
       if(running) toggle_pause();
@@ -9441,22 +9468,10 @@ void GLGame::keyboard_up (unsigned char key, int x, int y) {
   if (host_keys && key == (unsigned char)gk.time_reset) time_between_steps = step_size;
   if (key == (unsigned char)gk.pause) toggle_pause();
 #if !defined(__ANDROID__) && !defined(__IOS__)
-  if (key == (unsigned char)gk.add_player2 && players->size() < 2 && net_mode_ == NetOff) {
-    Ship* p1 = players->front()->ship;
-    if(p1->is_alive() || p1->lives) {
-      GLShip* object = new GLCar(grid, true);
-      set_player_keys(object, 1);
-      object->ship->is_local_player = true;
-      object->ship->set_missile_asteroids((std::list<Object*>*)objects);
-      ship_objects->push_back(object->ship);
-      for (auto *p : *players) p->ship->set_missile_ships(ship_objects);
-      object->ship->set_missile_ships(ship_objects);
-      object->ship->missiles_seek_players = friendly_fire;
-      object->ship->set_shock_targets(shock_targets);
-      players->push_back(object);
-      update_presence();
-    }
-  }
+  // Enter joins the P2 seat only (FOURPLAYER.md D3) — P3/P4 are
+  // controller-first, and the keyboard has no third layout to hand out.
+  if (key == (unsigned char)gk.add_player2 && players->size() < 2)
+    add_local_player(NULL, /*with_keys=*/true);
 #endif
   // A live board prompt/upload OWNS all game-over input, including the menu
   // key (Esc). Only a key whose DOWN happened while the prompt was up acts

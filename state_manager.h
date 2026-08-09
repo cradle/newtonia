@@ -2,6 +2,7 @@
 #define STATE_MANAGER_H
 
 #include "state.h"
+#include "preferences.h" // MAX_PLAYERS sizes the pad registry
 #include <map>
 #include <SDL.h>
 
@@ -40,8 +41,8 @@ public:
   void controller_removed(SDL_JoystickID id);
 
 private:
-  SDL_GameController *active_controllers[2] = {NULL, NULL};
-  SDL_JoystickID active_controller_ids[2] = {-1, -1};
+  SDL_GameController *active_controllers[MAX_PLAYERS] = {};
+  SDL_JoystickID active_controller_ids[MAX_PLAYERS] = {-1, -1, -1, -1};
   Point window;
   State *state;
 

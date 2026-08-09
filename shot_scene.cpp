@@ -478,11 +478,9 @@ State *ShotScene::build_state() {
   g->shot_hide_hud_ = !s_scene.hud;
 
   if (s_scene.two_players) {
-    g->add_player2(NULL);
-    // add_player2 is the controller-join path — it binds no keyboard keys
-    // (the Enter-join path does that itself). Scene `hold`/`key` events
-    // reach player 2 through the standard P2 bindings (i/j/l, '/').
-    g->players->back()->set_keys(g_prefs.player_keys[1]);
+    // with_keys binds the seat's PlayerKeys slot, so scene `hold`/`key`
+    // events reach player 2 through the standard P2 bindings (i/j/l, '/').
+    g->add_local_player(NULL, /*with_keys=*/true);
   }
 
   // Ships start alive and settled (a fresh game's player 1 opens dead in

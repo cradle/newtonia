@@ -1,7 +1,8 @@
 # 4-Player Mode — Implementation Plan
 
-Status: **Phase A in progress** — A0 (board co-op slot) and A1 (player
-slots/preferences) implemented; A2–A6 pending.
+Status: **Phase A in progress** — A0 (board co-op slot), A1 (player
+slots/preferences) and A2 (unified join + pad registries, gated) merged or
+in review; A3–A6 pending.
 
 Goal: raise the local co-op cap from 2 to 4 players (split-screen, desktop +
 controllers), and lay the groundwork for — but not yet ship — 4-player online.
@@ -289,9 +290,8 @@ The core of the phase.
 
 ### A6 — Tests, shots, docs
 - Headless e2e: xdotool can synthesise Enter (P2 join) but not controllers,
-  so add a test hook env `NEWTONIA_START_PLAYERS=N` (alongside
-  `NEWTONIA_START_GENERATION`/`NEWTONIA_ALL_WEAPONS`) that spawns N players at
-  game start, keyboard-inert beyond P2. E2e cases: 4P spawn + split renders
+  so the `NEWTONIA_START_PLAYERS=N` hook (landed with A2; beta-gated,
+  cheat-marked, bypasses LOCAL_PLAYER_CAP) spawns N players at game start. E2e cases: 4P spawn + split renders
   (screenshot), 3P minimap cell, revive with 2 fallen, 4P save/resume, 4P
   game-over latch, 4P replay playback.
 - shots/: a 4P split scene for store assets and layout review (also the

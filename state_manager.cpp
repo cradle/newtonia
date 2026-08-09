@@ -76,7 +76,7 @@ void StateManager::controller(SDL_Event event) {
 
 void StateManager::controller_added(SDL_GameController *ctrl) {
   SDL_JoystickID id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(ctrl));
-  for(int i = 0; i < 2; i++) {
+  for(int i = 0; i < MAX_PLAYERS; i++) {
     if(active_controllers[i] == NULL) {
       active_controllers[i] = ctrl;
       active_controller_ids[i] = id;
@@ -90,7 +90,7 @@ void StateManager::controller_added(SDL_GameController *ctrl) {
 }
 
 void StateManager::controller_removed(SDL_JoystickID id) {
-  for(int i = 0; i < 2; i++) {
+  for(int i = 0; i < MAX_PLAYERS; i++) {
     if(active_controller_ids[i] == id) {
       active_controllers[i] = NULL;
       active_controller_ids[i] = -1;
@@ -117,7 +117,7 @@ void StateManager::tick(int delta) {
     state = next_state;
     GLGame *game = dynamic_cast<GLGame*>(state);
     if(game) {
-      for(int i = 0; i < 2; i++) {
+      for(int i = 0; i < MAX_PLAYERS; i++) {
         if(active_controllers[i]) game->controller_added(active_controllers[i]);
       }
     }
