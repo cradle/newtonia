@@ -10,7 +10,7 @@ using namespace std;
 
 GLTrail::GLTrail(GLShip* ship, float deviation, Point offset, float speed, float rotation, int type, float life)
  : type(type), ship(ship), offset(offset), deviation(deviation), rotation(rotation), speed(speed), life(life) {
-   last_add_time = glutGet(GLUT_ELAPSED_TIME);
+   since_add = 0.0f;
    point_size = 3.5f;
  }
 
@@ -46,16 +46,29 @@ void GLTrail::step(float delta) {
       ++i;
     }
   }
+  // Spawn cadence on SIM time, like the points' own ageing above. It used to
+  // read the wall clock, which is the same thing at 60 fps and nothing like it
+  // otherwise: under the time-scale debug keys, a replay's 4x fast-forward, or
+  // an offline video render (shots/video.sh — where a frame can take a tenth
+  // of a second to draw), the world moved at one rate and the exhaust puffed
+  // at another. It also made the render non-reproducible, since the trail then
+  // depended on how fast the machine happened to be.
+  since_add += delta;
   if (type & ALWAYS ||
       (type & THRUSTING && ship->ship->thrusting) ||
       (type & REVERSING && ship->ship->reversing) ||
       (type & LEFT      && ship->ship->rotation_direction == Ship::LEFT) ||
       (type & RIGHT     && ship->ship->rotation_direction == Ship::RIGHT)) {
-    int current_time = glutGet(GLUT_ELAPSED_TIME);
-    if (last_add_time + add_interval < current_time) {
+    if (since_add > add_interval) {
       add();
-      last_add_time = current_time;
+      // Carry the remainder so the rate holds when a step is longer than the
+      // interval, but never bank more than one (a long pause between thrusts
+      // must not fire a burst on the first frame of the next one).
+      since_add -= add_interval;
+      if (since_add > add_interval) since_add = add_interval;
     }
+  } else if (since_add > add_interval) {
+    since_add = add_interval;  // armed, not accumulating: same as before
   }
 }
 

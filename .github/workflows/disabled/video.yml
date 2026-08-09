@@ -1,0 +1,224 @@
+name: Render replay video
+
+# Render a recorded replay to an MP4 on a runner and hand it back as a
+# downloadable artifact (shots/README.md "Video capture").
+#
+# This exists so making a trailer needs NO local toolchain: no build, no
+# MSYS2/bash on Windows, no ffmpeg, no Xvfb, no GPU. Download the mp4 from
+# the run's Artifacts when it finishes.
+#
+# PARKED IN disabled/ AND DOES NOT RUN. Artifact storage is a 2 GB quota
+# shared with every other workflow here, and a 90 s 1440p render is ~240 MB of
+# it — too expensive to keep on tap for something that is wanted a few times a
+# year. Move this file back into .github/workflows/ to re-enable it (the
+# repo's convention for the deploy workflows beside it), render what you need,
+# and move it back out. Local rendering — shots/video.sh, shots\video.ps1 —
+# costs no quota at all and is the better habit; this is for the machine that
+# cannot build the game.
+#
+# Two ways in, because they are available at different times:
+#   * workflow_dispatch — the Run workflow button, with all the knobs. GitHub
+#     only shows it once this file is on the DEFAULT branch, so it is useless
+#     until this lands on master.
+#   * push — editing this file on a claude/** branch renders with the
+#     defaults below. That is the escape hatch while the button doesn't
+#     exist: push a change to the parameters here and collect the artifact.
+#     Put [skip ci] in the commit message to edit this file WITHOUT starting a
+#     render — each one costs a chunk of the artifact quota (see the Size step).
+#
+# The replay can be a leaderboard run (season/run_id — the same pair the
+# site's WATCH link carries, e.g. s1/16124542961030418748), any URL to a
+# .nrp, or a path to one committed in the repo.
+
+on:
+  workflow_dispatch:
+    inputs:
+      replay:
+        description: "season/run_id (e.g. s1/16124542961030418748), a URL to a .nrp, or a repo path"
+        required: true
+      start:
+        description: "Skip this far into the run first (S, M:SS, or 500ms)"
+        default: "0"
+      duration:
+        description: "How much to capture (S or M:SS; 0 = to the end of the recording)"
+        default: "1:30"
+      size:
+        description: "Frame size. Render ABOVE your target: YouTube gives 1440p a better codec and bitrate than 1080p, which starfields need"
+        default: "2560x1440"
+      fps:
+        default: "60"
+      crf:
+        description: "x264 quality, lower is better. 16 is the visually-lossless master; raise it if the artifact is slow to download"
+        default: "16"
+      hud:
+        description: "Draw the in-game HUD and minimap"
+        type: boolean
+        default: true
+      chrome:
+        description: "Draw the REPLAY watermark, timeline and control hints"
+        type: boolean
+        default: false
+      retention:
+        description: "Days to keep the artifact. Artifact storage is a QUOTA (2 GB on the free plan) and a 90 s 1440p CRF 16 clip is ~240 MB, so the default is short on purpose - download it the same day"
+        default: "1"
+  push:
+    branches: ["claude/**"]
+    paths: [".github/workflows/video.yml"]
+
+# A newer push supersedes an in-flight render rather than queueing another
+# half-hour job behind it.
+concurrency:
+  group: render-video-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+
+    # Defaults for the push path, where there are no inputs to fill in. Edit
+    # these and push to render something else before the button exists.
+    # `inputs` is only defined for workflow_dispatch/workflow_call: naming it
+    # on a push run is an unrecognized named-value, which fails the whole run
+    # before a single job starts (run 1 of this workflow, exactly that).
+    # `github.event.inputs` resolves on every event and is simply empty when
+    # there was no dispatch, which is what the defaults below are for.
+    env:
+      IN_REPLAY: ${{ github.event.inputs.replay }}
+      IN_START: ${{ github.event.inputs.start }}
+      IN_DURATION: ${{ github.event.inputs.duration }}
+      IN_SIZE: ${{ github.event.inputs.size }}
+      IN_FPS: ${{ github.event.inputs.fps }}
+      IN_CRF: ${{ github.event.inputs.crf }}
+      IN_HUD: ${{ github.event.inputs.hud }}
+      IN_CHROME: ${{ github.event.inputs.chrome }}
+      IN_RETENTION: ${{ github.event.inputs.retention }}
+      DEF_REPLAY: "s1/16124542961030418748"
+      DEF_START: "0"
+      DEF_DURATION: "1:30"
+      DEF_SIZE: "2560x1440"
+      DEF_FPS: "60"
+      DEF_CRF: "16"
+      DEF_RETENTION: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # linux.yml's build, MINUS its from-source SDL2_mixer and PLUS the two
+      # the harness needs: xvfb (a runner has no display) and ffmpeg (the
+      # encoder). No netplay either — playback is a solo feature, and
+      # NETPLAY=0 skips libdatachannel, most of that workflow's build time.
+      #
+      # The mixer comes from apt here, deliberately. linux.yml builds it from
+      # source to cut the codecs it ships and then compiles by invoking g++
+      # directly with a matching -I/usr/local/include/SDL2; this job uses the
+      # Makefile, which looks in /usr/include/SDL2 and cannot see a
+      # /usr/local install — copying that step verbatim failed the build on
+      # "SDL_mixer.h: No such file or directory". A render does not care which
+      # codecs the mixer supports.
+      - name: Install dependencies
+        run: |
+          try() { local i; for i in 1 2 3; do
+                    if "$@"; then return 0; fi
+                    if [ "$i" = 3 ]; then return 1; fi
+                    echo "attempt $i failed; retrying in $((i*20))s"; sleep $((i*20)); done; }
+          try sudo apt-get update
+          try sudo apt-get install -y \
+            libsdl2-dev \
+            libsdl2-mixer-dev \
+            freeglut3-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libxi-dev \
+            xvfb \
+            ffmpeg
+
+      - name: Build
+        run: make NETPLAY=0 -j$(nproc)
+
+      # season/run_id -> the board's public blob endpoint (the same GET the
+      # site's WATCH deep link uses); a URL is fetched as given; anything else
+      # is taken as a path already in the checkout.
+      - name: Fetch the replay
+        id: fetch
+        run: |
+          set -u
+          REPLAY=${IN_REPLAY:-$DEF_REPLAY}
+          case "$REPLAY" in
+            http://*|https://*) url=$REPLAY ;;
+            *.nrp)
+              if [ -f "$REPLAY" ]; then
+                echo "using the committed file $REPLAY"
+                echo "path=$REPLAY" >> "$GITHUB_OUTPUT"; exit 0
+              fi
+              url="https://newtonia-board.gfmcc.workers.dev/replay/$REPLAY" ;;
+            *)
+              url="https://newtonia-board.gfmcc.workers.dev/replay/${REPLAY}.nrp" ;;
+          esac
+          echo "fetching $url"
+          curl -fsSL --retry 3 --retry-delay 5 -o run.nrp "$url" || {
+            echo "::error::could not download the replay from $url"; exit 1; }
+          ls -l run.nrp
+          echo "path=run.nrp" >> "$GITHUB_OUTPUT"
+
+      # What the file actually holds (score, level, length, players) — logged
+      # BEFORE the long render, so a wrong replay is obvious immediately
+      # rather than after half an hour of encoding.
+      - name: Replay header
+        run: |
+          NEWTONIA_VIDEO=/dev/null NEWTONIA_VIDEO_INFO=1 \
+            NEWTONIA_VIDEO_REPLAY="${{ steps.fetch.outputs.path }}" \
+            ./newtonia 2>&1 | grep -E "video:" || true
+
+      - name: Render
+        run: |
+          set -u
+          # Flags are assembled in the shell rather than in workflow
+          # expressions: on the push path every input is an empty string, and
+          # an empty string tests equal to false in an expression — which
+          # would silently render every push with the HUD off.
+          #
+          # (And note this comment names no expression literally. A run block
+          # is scanned for expressions in full, comments included, so an empty
+          # "dollar-brace-brace" pair written here is a syntax error that
+          # invalidates the whole FILE — runs 1 and 2 of this workflow died
+          # that way, before a single job started, with the run named after
+          # the file path because nothing could be parsed to find its name.)
+          args=(--replay "${{ steps.fetch.outputs.path }}"
+                --start "${IN_START:-$DEF_START}"
+                --duration "${IN_DURATION:-$DEF_DURATION}"
+                --size "${IN_SIZE:-$DEF_SIZE}"
+                --fps "${IN_FPS:-$DEF_FPS}"
+                --crf "${IN_CRF:-$DEF_CRF}"
+                --out gameplay.mp4)
+          [ "${IN_HUD:-true}" = "false" ] && args+=(--no-hud)
+          [ "${IN_CHROME:-false}" = "true" ] && args+=(--chrome)
+          echo "shots/video.sh ${args[*]}"
+          shots/video.sh "${args[@]}"
+          ls -l gameplay.mp4
+
+      # What the artifact costs, printed where it is impossible to miss.
+      # Artifact storage is a hard quota (2 GB on the free plan), and this
+      # output is big: 90 s at 1440p CRF 16 measured ~240 MB, which is more
+      # than a tenth of it. Deleting an artifact reclaims the space at once;
+      # otherwise it goes when the retention below expires.
+      - name: Size
+        run: |
+          bytes=$(stat -c%s gameplay.mp4)
+          mb=$((bytes / 1048576))
+          echo "gameplay.mp4 is ${mb} MB ($((mb * 100 / 2048))% of a 2 GB artifact quota)" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "kept for ${IN_RETENTION:-$DEF_RETENTION} day(s) - delete the artifact once downloaded to reclaim it sooner" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The whole point: a file a browser can download, with no toolchain at
+      # the other end. The action zips what it uploads; an mp4 is already
+      # compressed, so level 0 skips a pointless second pass over a file this
+      # size.
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: gameplay-mp4
+          path: gameplay.mp4
+          compression-level: 0
+          retention-days: ${{ github.event.inputs.retention || '1' }}
