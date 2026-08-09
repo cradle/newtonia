@@ -1,6 +1,7 @@
 # 4-Player Mode — Implementation Plan
 
-Status: **plan only — no implementation yet.**
+Status: **Phase A in progress** — A0 (board co-op slot) and A1 (player
+slots/preferences) implemented; A2–A6 pending.
 
 Goal: raise the local co-op cap from 2 to 4 players (split-screen, desktop +
 controllers), and lay the groundwork for — but not yet ship — 4-player online.
@@ -21,38 +22,38 @@ the code is already N-player-safe.
 
 **Already generic (loops over `players`, no cap):**
 - `all_players_out()` (glgame.cpp:977), `revive_fallen_partner()`
-  (glgame.cpp:9116), `release_player_controls()`, `player_index_of()`,
+  (glgame.cpp:9178), `release_player_controls()`, `player_index_of()`,
   `is_player_controller()`, `has_free_controller()`
 - Keyboard dispatch is a broadcast — every `GLShip` filters against its own
-  `KeyBinding` copies (glgame.cpp:9214, glship.cpp:575); controller events are
-  likewise broadcast and filtered by `wasMyController` (glgame.cpp:8810)
+  `KeyBinding` copies (glgame.cpp:9292, glship.cpp:575); controller events are
+  likewise broadcast and filtered by `wasMyController` (glgame.cpp:8860)
 - `controller_added` assigns a new pad to the first player without one
-  (glgame.cpp:1112) — no fixed pad→player table
+  (glgame.cpp:1117) — no fixed pad→player table
 - Pickup collection, ship–ship collision pairs, high-score save loops
 - The save format's player list is variable-length (`uint32 count` + N
-  records, savegame.cpp:417); the save-load ctor loops it (glgame.cpp:632)
+  records, savegame.cpp:417); the save-load ctor loops it (glgame.cpp:631)
 - The replay format carries `player_count` (replay.h:75) and per-record player
   indices; `best_path_for(player_count)` already slots ≥2 as "co-op"
 - `num_x_viewports()`/`num_y_viewports()` literally return `players->size()`
-  (glgame.cpp:8035–8045) — the viewport *count* is generic; only the renderer
+  (glgame.cpp:8040–8050) — the viewport *count* is generic; only the renderer
   behind it is not
 
 **The hardcoded-2 choke points (Phase A must touch all of these):**
 
 | Area | Where the 2 lives |
 |---|---|
-| Join caps | `players->size() >= 2` at glgame.cpp:1166 (add_player2), :1192 (add_remote_player), :5778 (replay ghost join), :8736/:8771 (pad join), :9340 (Enter join) |
+| Join caps | `players->size() >= 2` at glgame.cpp:1171 (add_player2), :1197 (add_remote_player), :5783 (replay ghost join), :8782/:8817 (pad join), :9437 (Enter join) |
 | Prefs | `p1_keys`/`p2_keys` named members (preferences.h:118); `binding_for()`'s two-prefix test (preferences.cpp:145); hand-unrolled scalar load/save pairs (preferences.cpp:217–235, :310–342) |
 | Key selection | `set_player_keys`: `player_index == 0 ? p1_keys : p2_keys` (glgame.cpp:108) — save-load gives every player past #1 the P2 keymap (glgame.cpp:635) |
 | Controller registry | `active_controllers[2]` in state_manager.h:43, loops `for(i<2)` at state_manager.cpp:79/93/120; `controllers[2]` + `opened < 2` in glut.cpp:56/605; same in xbox_main.cpp:90 |
-| Renderer | `draw()` calls `draw_world(front(), true)` + `draw_world(back(), false)` only (glgame.cpp:7992–8022); `setup_viewport(bool primary)` with the portrait `//HACK` flip (glgame.cpp:8275) |
-| Viewport math | aspect computed as `window.x() / (window.y()/ny)` — missing `/nx` — at glgame.cpp:8052, 8066, 8262, 8336; `camera_screen_radius` takes only `y_viewports` (glgame.cpp:8160) |
-| Minimap/divider | `num_y_viewports() == 2 ? y/6 : y/4` (glgame.cpp:8542); single centre divider + minimap hardcoded at `window/2` (glgame.cpp:8544–8589) |
-| HUD | `title_text` gated on `size() < 2`, reads `front()` as p1 (view/overlay.cpp:673); `debug_info` drawn only in `front()`'s viewport (view/overlay.cpp:899) |
-| Gameplay stragglers | Nova/blast friendly-fire partner check assumes partner is `front()` (glgame.cpp:1825, :4979); Intro dismissal ORs exactly the p1/p2 shoot bindings (intro.cpp:249) |
+| Renderer | `draw()` calls `draw_world(front(), true)` + `draw_world(back(), false)` only (glgame.cpp:7984–8027); `setup_viewport(bool primary)` with the portrait `//HACK` flip (glgame.cpp:8280) |
+| Viewport math | aspect computed as `window.x() / (window.y()/ny)` — missing `/nx` — at glgame.cpp:8057, 8071, 8267, 8341; `camera_screen_radius` takes only `y_viewports` (glgame.cpp:8165) |
+| Minimap/divider | `num_y_viewports() == 2 ? y/6 : y/4` (glgame.cpp:8547); single centre divider + minimap hardcoded at `window/2` (glgame.cpp:8549–8594) |
+| HUD | `title_text` gated on `size() < 2`, reads `front()` as p1 (view/overlay.cpp:742); `debug_info` drawn only in `front()`'s viewport (view/overlay.cpp:958) |
+| Gameplay stragglers | Nova/blast friendly-fire partner check assumes partner is `front()` (glgame.cpp:1831, :4985); Intro dismissal ORs exactly the p1/p2 shoot bindings (intro.cpp:249) |
 | Options menu | `OPT_ROWS_DESKTOP` P1/P2 rows (menu.cpp:73); `[2]` state arrays (menu.h:158); hand-unrolled seed/commit (menu.cpp:286, :1930) |
 | Save read cap | `read_count(f, cnt, 2)` for players (savegame.cpp:479); `net_state_sane` rejects >2 (net_session.cpp:250) |
-| Netplay (Phase B) | one `NetSession`/transport/assembler/delta-baseline; `player_id() = role==Host ? 1 : 2` (net_session.h:198); WELCOME hardcodes id 2 (net_session.cpp:429/524); positional player matching in snapshots (glgame.cpp:5800); signal worker rooms are host+1 joiner (signal/src/worker.js:14/566); lobby strings "PLAYER 2 …" |
+| Netplay (Phase B) | one `NetSession`/transport/assembler/delta-baseline; `player_id() = role==Host ? 1 : 2` (net_session.h:198); WELCOME hardcodes id 2 (net_session.cpp:429/524); positional player matching in snapshots (glgame.cpp:5805); signal worker rooms are host+1 joiner (signal/src/worker.js:14/566); lobby strings "PLAYER 2 …" |
 
 ---
 
@@ -102,10 +103,10 @@ conservative but `camera_screen_radius` would inflate the audible radius for
 parameter and all four aspect sites divide by `nx`. This slightly shrinks the
 audible plateau in the existing landscape 2P split — that is the geometry
 being computed *correctly* for the first time; CLAUDE.md's audio note gets
-updated to match. (`edge_indicators` at view/overlay.cpp:329 already does it
+updated to match. (`edge_indicators` at view/overlay.cpp:330 already does it
 right and is the reference.)
 
-**D6 — One join function.** The Enter-join at glgame.cpp:9340 is a hand-copy
+**D6 — One join function.** The Enter-join at glgame.cpp:9437 is a hand-copy
 of `add_player2` that drops `set_black_holes` (a live inconsistency today).
 Phase A extracts `add_local_player(SDL_GameController *ctrl, bool with_keys)`:
 allocates the `GLCar`, wires missiles/shock/black-holes/friendly-fire, keys by
@@ -147,7 +148,7 @@ do not get boards of their own. The client half already works this way —
   `players=4` board. Canonicalise to a **slot** — `players >= 2 ? 2 : 1` — on
   the server for submit and every query (authoritative, robust against any
   client), and send the same slot from the client's `qualify`
-  (glgame.cpp:3355). Retention/liveness ("per players count") then keeps
+  (glgame.cpp:3360). Retention/liveness ("per players count") then keeps
   exactly its two slots.
 - The replay header keeps recording the *true* count (display/forensics);
   only the board keying collapses.
@@ -163,13 +164,28 @@ do not get boards of their own. The client half already works this way —
 Ordered so each step compiles and is testable on its own. Estimated shape:
 ~7 PRs.
 
+**Landing strategy (decided 2026-08-09): master-based PRs + a dark-launch
+gate — no unfinished behavior in master.** Every PR bases on master and
+merges sequentially (a step's dependency arrives through master, never by
+stacking PRs). Because tags and Steam beta deploys can be cut from master
+at any time, every intermediate merge must be inert: A2–A5 implement
+against `MAX_PLAYERS`, but the JOIN caps keep reading a separate
+activation constant (`LOCAL_PLAYER_CAP`, = 2 until further notice) so a
+third player cannot join a real game before the whole feature is in —
+without this, the window between A2 (join caps raised) and A3 (grid
+renderer) would let a player join and get no viewport. The
+`NEWTONIA_START_PLAYERS` test hook (A6) bypasses the gate under an env
+var so headless CI and the shots harness exercise 3–4P throughout.
+Phase A then ends with one final one-line PR flipping `LOCAL_PLAYER_CAP`
+to `MAX_PLAYERS` once everything is verified — 4P appears atomically.
+
 ### A0 — Board: one co-op slot (its own PR, deployed first)
 Implements D10, entirely in `board/` plus one client line, shippable ahead of
 everything else:
 - board/src/validate.js:195: accept `player_count` 1..4.
 - board/src/worker.js: normalise the keying slot (`>= 2 → 2`) at submit
   (:1171) and on the `qualify`/`top`/`rank-of` message handlers.
-- glgame.cpp:3355: send `min(player_count, 2)` in `qualify`.
+- glgame.cpp:3360: send `min(player_count, 2)` in `qualify`.
 - Tests: extend board/test/validate_test.mjs (3 and 4 accepted, keyed as 2)
   and the protocol tests; the deploy-board pipeline gates on them. Deploy
   beta via master push, production with the next tag — before any
@@ -202,13 +218,13 @@ everything else:
 
 ### A2 — Join paths & controller registry
 - Extract `add_local_player` (D6); rewire `add_player2` (:1164), the Enter
-  join (:9340 — keeps `set_player_keys(…, 1)` and the P2-only semantics), and
-  the pad-join sites (:8736, :8771) to it. All caps become `MAX_PLAYERS`.
+  join (:9437 — keeps `set_player_keys(…, 1)` and the P2-only semantics), and
+  the pad-join sites (:8782, :8817) to it. All caps become `MAX_PLAYERS`.
 - state_manager.h/.cpp: `active_controllers[2]` → `[MAX_PLAYERS]`; the three
   `for(i < 2)` loops follow. Same in glut.cpp (:56, :605) and xbox_main.cpp
   (:90). (Do **not** name any new local `near`/`far` — windows.yml is the only
   CI that catches it.)
-- overlay join hints (view/overlay.cpp:673–690): the gate `size() < 2` becomes
+- overlay join hints (view/overlay.cpp:741–758): the gate `size() < 2` becomes
   `size() < MAX_PLAYERS`; wording generalises ("PLAYER n: PRESS START TO
   JOIN" when a free pad exists). The block currently suppressed entirely in
   split-screen needs a re-think: show the join hint in a corner of the
@@ -222,14 +238,14 @@ The core of the phase.
   3–4). `num_x_viewports()`/`num_y_viewports()` reimplemented on top of it
   (2×2 → nx=ny=2) so every existing `/nx`,`/ny` consumer — overlay layout,
   tap bands, FOV, HUD ortho — keeps working by construction.
-- `draw()` (glgame.cpp:7992): replace the front/back branches with
+- `draw()` (glgame.cpp:7984): replace the front/back branches with
   `for (i, gs in *players) draw_world(gs, i)` on the offline and NetReplay
-  paths (replay ghost cap at :5778 raised to MAX_PLAYERS at the same time —
+  paths (replay ghost cap at :5783 raised to MAX_PLAYERS at the same time —
   4P replays then draw for free). Online branch untouched.
 - `setup_viewport(int i)` from `viewport_rect`; delete the `//HACK` flip.
 - FOV: keep `view_angle() * 0.75f` whenever the viewport's height is halved
   (ny == 2), which now includes the grid.
-- Aspect/audio fixes per D5: glgame.cpp:8052, :8066, :8262, :8336 divide by
+- Aspect/audio fixes per D5: glgame.cpp:8057, :8071, :8267, :8341 divide by
   nx; `camera_screen_radius(fov, window, x_viewports, y_viewports)`; update
   callers (:8240 and `net_listener_volume`, which passes 1,1) and the
   CLAUDE.md audio paragraph.
@@ -237,9 +253,9 @@ The core of the phase.
   `viewport_rect` edges; minimap placement per D4 (free cell at 3P, centre at
   4P); replace `num_y_viewports() == 2 ? y/6 : y/4` with a rule keyed on
   "am I in a split at all" plus available cell size.
-- Overlay: `debug_info` gate (overlay.cpp:899) becomes "viewport index 0";
+- Overlay: `debug_info` gate (overlay.cpp:958) becomes "viewport index 0";
   everything else already divides by nx/ny and comes along for the ride.
-- WarpPass reads the live viewport rect (glgame.cpp:8495) so it is
+- WarpPass reads the live viewport rect (glgame.cpp:8500) so it is
   grid-correct for free, but up to 4 captures/frame when lenses are on
   multiple screens — measure on the headless driver; if it hurts, gate to
   N captures/frame round-robin (`lens_on_screen` already skips off-screen).
@@ -247,23 +263,23 @@ The core of the phase.
 ### A4 — Gameplay N-safety sweep
 - intro.cpp:249: dismissal iterates every player's shoot binding instead of
   the p1/p2 pair.
-- Nova/blast partner checks (glgame.cpp:1825, :4979): loop all other players
+- Nova/blast partner checks (glgame.cpp:1831, :4985): loop all other players
   instead of assuming the partner is `front()`.
-- Verify the friendly-fire body-collision site (glgame.cpp:7181) iterates all
+- Verify the friendly-fire body-collision site (glgame.cpp:7187) iterates all
   player *pairs* (it sits inside the object-pair loop, so it should — confirm
   with a 3P test, don't assume).
 - Revive: mechanics are already N-safe (revives the first fallen; multiple
   fallen partners take successive pickups — one in the world at a time is the
   existing rule and stays).
-- `all_players_out()`'s six inlined copies (glgame.cpp:4532, :7706, :8720,
-  :8752, :8787, :8925, :9377) are already loops — leave them, or fold into the
+- `all_players_out()`'s seven inlined copies (glgame.cpp:4540, :7714, :8766,
+  :8798, :8837, :9002, :9476) are already loops — leave them, or fold into the
   helper opportunistically while touching those files.
 - Per-index tint (D7) in GLCar draw + lives/score HUD + minimap dots.
 
 ### A5 — Save/replay cap
 - savegame.cpp:479: `read_count(f, cnt, MAX_PLAYERS)`; comment the downgrade
   behaviour in savegame.h (old builds ignore 3+-player saves).
-- Auto-save/death-save logic (glgame.cpp:7750) is count-agnostic — verify with
+- Auto-save/death-save logic (glgame.cpp:7756) is count-agnostic — verify with
   a 3P save/resume cycle that P3 restores with keys, tint, and controller
   re-offer (the pad re-scan at :652 already loops).
 - Replays: `Recorder` already takes `player_count`; confirm nothing between
@@ -294,15 +310,15 @@ forecloses it:
    `vector<NetSession*>`; every `net_session_->…` site becomes a fan-out, and
    the per-peer state currently living as scalars on GLGame (input baselines,
    RTT ring, dead-man timers, and critically the `net_known_` delta baseline
-   map, glgame.h:634) moves into a per-peer struct.
+   map, glgame.h:673) moves into a per-peer struct.
 2. **Identity on the wire**: WELCOME assigns player id 2..4 (net_session.cpp:429
    sends a literal 2 today; the client rejects ≠2 at :524). The protocol
    header already carries a `player_id` byte that *nothing reads*
    (net_protocol.h:340) — routing keys off it instead of attributing every
-   message to `players->back()` (glgame.cpp:1649). Snapshot ship records gain
+   message to `players->back()` (glgame.cpp:1654). Snapshot ship records gain
    a player id (the way enemies got `net_ship_id` in PROTO 16) replacing
    positional matching (`is_local = (*it == players->back())`,
-   glgame.cpp:5800). `EV_SHIP_IMPACT`'s 1=host/2=client arg widens.
+   glgame.cpp:5805). `EV_SHIP_IMPACT`'s 1=host/2=client arg widens.
    `Ship`'s static claim outboxes (ship.h:293 …) must become per-ship or carry
    the owner id. All of this is one PROTO bump (flag day, as 21/23 were) plus
    raising `net_state_sane` to MAX_PLAYERS.

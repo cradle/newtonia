@@ -20,20 +20,30 @@ float star_density_scale() {
 }
 
 Preferences::Preferences() {
-    // p1_keys and general_keys use their struct default member initializers.
-    // Override p2_keys with player-2 defaults.
-    p2_keys.left           = 'j';
-    p2_keys.right          = 'l';
-    p2_keys.thrust         = 'i';
-    p2_keys.shoot          = '/';
-    p2_keys.reverse        = 'k';
-    p2_keys.mine           = ',';
-    p2_keys.next_weapon    = 'u';
-    p2_keys.next_secondary = '.';
-    p2_keys.boost          = 'o';
-    p2_keys.teleport       = 'y';
-    p2_keys.help               = 136; // F8  (128 + GLUT_KEY_F8)
-    p2_keys.toggle_rotate_view = ';'; // right of L, within IJKL cluster
+    // Slot 0 and general_keys use their struct default member initializers.
+    // Override slot 1 with player-2 defaults.
+    PlayerKeys &p2 = player_keys[1];
+    p2.left           = 'j';
+    p2.right          = 'l';
+    p2.thrust         = 'i';
+    p2.shoot          = '/';
+    p2.reverse        = 'k';
+    p2.mine           = ',';
+    p2.next_weapon    = 'u';
+    p2.next_secondary = '.';
+    p2.boost          = 'o';
+    p2.teleport       = 'y';
+    p2.help               = 136; // F8  (128 + GLUT_KEY_F8)
+    p2.toggle_rotate_view = ';'; // right of L, within IJKL cluster
+    // Slots 2+ ship keyboard-inert (FOURPLAYER.md D3): the keyboard has no
+    // room for two more clusters, so P3/P4 join by controller. Scalars keep
+    // the slot-0 defaults; p3_*/p4_* INI lines can still bind keys by hand.
+    for (int i = 2; i < MAX_PLAYERS; i++) {
+        PlayerKeys &pk = player_keys[i];
+        pk.left = pk.right = pk.thrust = pk.shoot = pk.reverse = pk.mine = 0;
+        pk.next_weapon = pk.next_secondary = pk.boost = pk.teleport = 0;
+        pk.help = pk.toggle_rotate_view = 0;
+    }
 }
 
 static const char* PREF_ORG  = "cc.gfm";
@@ -82,6 +92,12 @@ static int special_key_code(const char *name) {
 //   F1–F12 (129–140) → "F1"–"F12"
 //   anything else    → decimal integer (fallback)
 static std::string key_to_ini(int key) {
+    // An empty slot must write "none", never the decimal fallback's "0":
+    // ini_to_key parses "0" as the literal '0' key, so a zeroed binding
+    // (P3/P4 ship keyboard-inert) would come back bound after one
+    // save/load cycle. ini_to_key already maps "none" to 0, on old builds
+    // too.
+    if (key == 0) return "none";
     if (const char *n = special_key_name(key)) return n;
     if (key >= 129 && key <= 140) {
         char buf[8];
@@ -139,13 +155,20 @@ static void ini_to_binding(const char *val, KeyBinding &b) {
     b.keys[1] = ini_to_key(comma + 1);
 }
 
-// Map an INI binding name ("p1_thrust", "p2_mine", ...) to its KeyBinding.
+// Map a "pN_" INI name prefix (N = 1..MAX_PLAYERS) to that player's slot;
+// NULL for any other name.
+static PlayerKeys *player_keys_for_prefix(const char *name) {
+    if (name[0] == 'p' && name[1] >= '1' && name[1] < '1' + MAX_PLAYERS &&
+        name[2] == '_')
+        return &g_prefs.player_keys[name[1] - '1'];
+    return NULL;
+}
+
+// Map an INI binding name ("p1_thrust", "p4_mine", ...) to its KeyBinding.
 // Returns NULL for anything else (p1_keyboard_sensitivity etc. fall through
 // to the scalar rows in parse_line).
 static KeyBinding *binding_for(const char *name) {
-    PlayerKeys *pk = NULL;
-    if      (strncmp(name, "p1_", 3) == 0) pk = &g_prefs.p1_keys;
-    else if (strncmp(name, "p2_", 3) == 0) pk = &g_prefs.p2_keys;
+    PlayerKeys *pk = player_keys_for_prefix(name);
     if (!pk) return NULL;
     const char *a = name + 3;
     if (strcmp(a, "left")               == 0) return &pk->left;
@@ -186,13 +209,13 @@ static void parse_line(const char *key, const char *val) {
     if (strcmp(key, "fullscreen") == 0) {
         g_prefs.fullscreen = (val[0] == '1');
     } else if (strcmp(key, "rotate_view") == 0) {
-        // Legacy single global (pre-per-player). Seed BOTH players from it so
-        // an old INI's one setting migrates; explicit p1_/p2_rotate_view lines
-        // below (written after this in newer files) override per player.
+        // Legacy single global (pre-per-player). Seed EVERY player from it so
+        // an old INI's one setting migrates; explicit pN_rotate_view lines
+        // (written after this in newer files) override per player.
         bool v = (val[0] == '1');
         g_prefs.rotate_view = v;
-        g_prefs.p1_keys.rotate_view = v;
-        g_prefs.p2_keys.rotate_view = v;
+        for (int i = 0; i < MAX_PLAYERS; i++)
+            g_prefs.player_keys[i].rotate_view = v;
     } else if (strcmp(key, "friendly_fire") == 0) {
         g_prefs.friendly_fire = (val[0] == '1');
     } else if (strcmp(key, "auto_record_replays") == 0) {
@@ -214,25 +237,19 @@ static void parse_line(const char *key, const char *val) {
     } else if (strcmp(key, "window_height") == 0) {
         int h = atoi(val);
         if (h > 0) g_prefs.window_height = h;
-    // Player 1 scalars (bindings are handled generically above)
-    } else if (strcmp(key, "p1_keyboard_sensitivity") == 0) {
-        float v = (float)atof(val);
-        if (v >= 0.1f && v <= 5.0f) g_prefs.p1_keys.keyboard_sensitivity = v;
-    } else if (strcmp(key, "p1_camera_smoothing") == 0) {
-        float v = (float)atof(val);
-        if (v >= 0.0f && v <= 0.1f) g_prefs.p1_keys.camera_smoothing = v;
-    } else if (strcmp(key, "p1_rotate_view") == 0) {
-        g_prefs.p1_keys.rotate_view = (val[0] == '1');
-
-    // Player 2 scalars
-    } else if (strcmp(key, "p2_keyboard_sensitivity") == 0) {
-        float v = (float)atof(val);
-        if (v >= 0.1f && v <= 5.0f) g_prefs.p2_keys.keyboard_sensitivity = v;
-    } else if (strcmp(key, "p2_camera_smoothing") == 0) {
-        float v = (float)atof(val);
-        if (v >= 0.0f && v <= 0.1f) g_prefs.p2_keys.camera_smoothing = v;
-    } else if (strcmp(key, "p2_rotate_view") == 0) {
-        g_prefs.p2_keys.rotate_view = (val[0] == '1');
+    // Per-player scalars, any pN_ slot (bindings are handled generically
+    // above, so a pN_ name reaching here is a scalar or unknown)
+    } else if (PlayerKeys *pk = player_keys_for_prefix(key)) {
+        const char *a = key + 3;
+        if (strcmp(a, "keyboard_sensitivity") == 0) {
+            float v = (float)atof(val);
+            if (v >= 0.1f && v <= 5.0f) pk->keyboard_sensitivity = v;
+        } else if (strcmp(a, "camera_smoothing") == 0) {
+            float v = (float)atof(val);
+            if (v >= 0.0f && v <= 0.1f) pk->camera_smoothing = v;
+        } else if (strcmp(a, "rotate_view") == 0) {
+            pk->rotate_view = (val[0] == '1');
+        }
 
     // General keybinds
     } else if (strcmp(key, "general_pause")                == 0) { g_prefs.general_keys.pause                = ini_to_key(val);
@@ -284,7 +301,7 @@ void save_preferences() {
     fprintf(f, "fullscreen=%d\n",              g_prefs.fullscreen         ? 1 : 0);
     // Legacy global written from P1 so a downgrade to a pre-per-player build
     // still reads a sane camera setting; new builds use p1_/p2_rotate_view.
-    fprintf(f, "rotate_view=%d\n",             g_prefs.p1_keys.rotate_view ? 1 : 0);
+    fprintf(f, "rotate_view=%d\n",             g_prefs.player_keys[0].rotate_view ? 1 : 0);
     fprintf(f, "friendly_fire=%d\n",           g_prefs.friendly_fire      ? 1 : 0);
     fprintf(f, "auto_record_replays=%d\n",     g_prefs.auto_record_replays ? 1 : 0);
     fprintf(f, "leaderboard_prompts=%d\n",     g_prefs.leaderboard_prompts ? 1 : 0);
@@ -303,43 +320,35 @@ void save_preferences() {
 // before), and the alternate rides a "_alt" line older builds ignore.
 // An empty alternate is written explicitly as "none" so a cleared alternate
 // is not resurrected by the bare-value default-keeping rule on the next load.
-#define WRITE_BINDING(name, b) fprintf(f, name "=%s\n" name "_alt=%s\n", \
-        key_to_ini((b).keys[0]).c_str(), \
-        (b).keys[1] ? key_to_ini((b).keys[1]).c_str() : "none")
+// Expects the enclosing player loop's `p` (1-based slot number) in scope.
+// key_to_ini writes empty slots as "none" (primary and alternate alike).
+#define WRITE_PLAYER_BINDING(action, b) \
+    fprintf(f, "p%d_" action "=%s\n" "p%d_" action "_alt=%s\n", \
+        p, key_to_ini((b).keys[0]).c_str(), \
+        p, key_to_ini((b).keys[1]).c_str())
 
-    // Player 1 keybinds
-    WRITE_BINDING("p1_left",           g_prefs.p1_keys.left);
-    WRITE_BINDING("p1_right",          g_prefs.p1_keys.right);
-    WRITE_BINDING("p1_thrust",         g_prefs.p1_keys.thrust);
-    WRITE_BINDING("p1_shoot",          g_prefs.p1_keys.shoot);
-    WRITE_BINDING("p1_reverse",        g_prefs.p1_keys.reverse);
-    WRITE_BINDING("p1_mine",           g_prefs.p1_keys.mine);
-    WRITE_BINDING("p1_next_weapon",    g_prefs.p1_keys.next_weapon);
-    WRITE_BINDING("p1_next_secondary", g_prefs.p1_keys.next_secondary);
-    WRITE_BINDING("p1_boost",          g_prefs.p1_keys.boost);
-    WRITE_BINDING("p1_teleport",       g_prefs.p1_keys.teleport);
-    WRITE_BINDING("p1_help",               g_prefs.p1_keys.help);
-    WRITE_BINDING("p1_toggle_rotate_view", g_prefs.p1_keys.toggle_rotate_view);
-    fprintf(f, "p1_keyboard_sensitivity=%.2f\n", g_prefs.p1_keys.keyboard_sensitivity);
-    fprintf(f, "p1_camera_smoothing=%.4f\n",     g_prefs.p1_keys.camera_smoothing);
-    fprintf(f, "p1_rotate_view=%d\n",            g_prefs.p1_keys.rotate_view ? 1 : 0);
-
-    // Player 2 keybinds
-    WRITE_BINDING("p2_left",           g_prefs.p2_keys.left);
-    WRITE_BINDING("p2_right",          g_prefs.p2_keys.right);
-    WRITE_BINDING("p2_thrust",         g_prefs.p2_keys.thrust);
-    WRITE_BINDING("p2_shoot",          g_prefs.p2_keys.shoot);
-    WRITE_BINDING("p2_reverse",        g_prefs.p2_keys.reverse);
-    WRITE_BINDING("p2_mine",           g_prefs.p2_keys.mine);
-    WRITE_BINDING("p2_next_weapon",    g_prefs.p2_keys.next_weapon);
-    WRITE_BINDING("p2_next_secondary", g_prefs.p2_keys.next_secondary);
-    WRITE_BINDING("p2_boost",          g_prefs.p2_keys.boost);
-    WRITE_BINDING("p2_teleport",       g_prefs.p2_keys.teleport);
-    WRITE_BINDING("p2_help",               g_prefs.p2_keys.help);
-    WRITE_BINDING("p2_toggle_rotate_view", g_prefs.p2_keys.toggle_rotate_view);
-    fprintf(f, "p2_keyboard_sensitivity=%.2f\n", g_prefs.p2_keys.keyboard_sensitivity);
-    fprintf(f, "p2_camera_smoothing=%.4f\n",     g_prefs.p2_keys.camera_smoothing);
-    fprintf(f, "p2_rotate_view=%d\n",            g_prefs.p2_keys.rotate_view ? 1 : 0);
+    // Per-player keybinds + scalars, one block per slot (p1..p4). p3_/p4_
+    // lines are unknown keys to older builds (ignored on load, dropped on
+    // their whole-file rewrite — see the player_keys note in preferences.h).
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        const PlayerKeys &pk = g_prefs.player_keys[i];
+        const int p = i + 1;
+        WRITE_PLAYER_BINDING("left",           pk.left);
+        WRITE_PLAYER_BINDING("right",          pk.right);
+        WRITE_PLAYER_BINDING("thrust",         pk.thrust);
+        WRITE_PLAYER_BINDING("shoot",          pk.shoot);
+        WRITE_PLAYER_BINDING("reverse",        pk.reverse);
+        WRITE_PLAYER_BINDING("mine",           pk.mine);
+        WRITE_PLAYER_BINDING("next_weapon",    pk.next_weapon);
+        WRITE_PLAYER_BINDING("next_secondary", pk.next_secondary);
+        WRITE_PLAYER_BINDING("boost",          pk.boost);
+        WRITE_PLAYER_BINDING("teleport",       pk.teleport);
+        WRITE_PLAYER_BINDING("help",               pk.help);
+        WRITE_PLAYER_BINDING("toggle_rotate_view", pk.toggle_rotate_view);
+        fprintf(f, "p%d_keyboard_sensitivity=%.2f\n", p, pk.keyboard_sensitivity);
+        fprintf(f, "p%d_camera_smoothing=%.4f\n",     p, pk.camera_smoothing);
+        fprintf(f, "p%d_rotate_view=%d\n",            p, pk.rotate_view ? 1 : 0);
+    }
 
     // General keybinds
     WRITE_KEY("general_pause",                g_prefs.general_keys.pause);
@@ -354,7 +363,7 @@ void save_preferences() {
     WRITE_KEY("general_toggle_fullscreen",    g_prefs.general_keys.toggle_fullscreen);
 
 #undef WRITE_KEY
-#undef WRITE_BINDING
+#undef WRITE_PLAYER_BINDING
 
     fclose(f);
 

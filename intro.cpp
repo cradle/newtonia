@@ -246,10 +246,13 @@ void Intro::keyboard(unsigned char key, int x, int y) {
   // paused). Small delay so a shoot key held over the level transition doesn't
   // dismiss the intro before it is seen. The touch fire button arrives here
   // too (it synthesises the shoot key).
-  if (!paused && time >= input_delay_ms &&
-      (g_prefs.p1_keys.shoot.matches(key) ||
-       g_prefs.p2_keys.shoot.matches(key))) {
-    dismiss();
+  if (!paused && time >= input_delay_ms) {
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+      if (g_prefs.player_keys[i].shoot.matches(key)) {
+        dismiss();
+        break;
+      }
+    }
   }
 }
 

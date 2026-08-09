@@ -74,6 +74,8 @@ namespace { struct OptRow { int kind; int player; const char *name; }; }
 static const OptRow OPT_ROWS_DESKTOP[] = {
   {0, 0, "P1  SENSITIVITY"}, {1, 0, "P1  SMOOTHING"}, {2, 0, "P1  CAMERA"},
   {0, 1, "P2  SENSITIVITY"}, {1, 1, "P2  SMOOTHING"}, {2, 1, "P2  CAMERA"},
+  {0, 2, "P3  SENSITIVITY"}, {1, 2, "P3  SMOOTHING"}, {2, 2, "P3  CAMERA"},
+  {0, 3, "P4  SENSITIVITY"}, {1, 3, "P4  SMOOTHING"}, {2, 3, "P4  CAMERA"},
   {3, 0, "STAR  DENSITY"},
   {4, 0, "RECORD  REPLAYS"},
   // Must stay LAST: opt_row_count drops it on builds with no leaderboard.
@@ -283,12 +285,11 @@ Menu::Menu() :
   menu_selection(0),
   viewpoint(Point(0,default_world_height/2)),
   starfield(new GLStarfield(Point(default_world_width, default_world_height), star_density_scale())) {
-  sensitivity_index_[0] = sensitivity_index_for(g_prefs.p1_keys.keyboard_sensitivity);
-  sensitivity_index_[1] = sensitivity_index_for(g_prefs.p2_keys.keyboard_sensitivity);
-  smoothing_index_[0]   = smoothing_index_for(g_prefs.p1_keys.camera_smoothing);
-  smoothing_index_[1]   = smoothing_index_for(g_prefs.p2_keys.camera_smoothing);
-  camera_index_[0]      = g_prefs.p1_keys.rotate_view ? 1 : 0;
-  camera_index_[1]      = g_prefs.p2_keys.rotate_view ? 1 : 0;
+  for (int i = 0; i < MAX_PLAYERS; i++) {
+    sensitivity_index_[i] = sensitivity_index_for(g_prefs.player_keys[i].keyboard_sensitivity);
+    smoothing_index_[i]   = smoothing_index_for(g_prefs.player_keys[i].camera_smoothing);
+    camera_index_[i]      = g_prefs.player_keys[i].rotate_view ? 1 : 0;
+  }
   star_density_index_   = star_density_index_for(g_prefs.star_density);
   auto_record_index_    = g_prefs.auto_record_replays ? 1 : 0;
   leaderboard_index_    = g_prefs.leaderboard_prompts ? 1 : 0;
@@ -1928,12 +1929,11 @@ void Menu::adjust_active_row(int delta, bool wrap) {
 }
 
 void Menu::close_options() {
-  g_prefs.p1_keys.keyboard_sensitivity = SENSITIVITY_VALUES[sensitivity_index_[0]];
-  g_prefs.p2_keys.keyboard_sensitivity = SENSITIVITY_VALUES[sensitivity_index_[1]];
-  g_prefs.p1_keys.camera_smoothing     = SMOOTHING_VALUES[smoothing_index_[0]];
-  g_prefs.p2_keys.camera_smoothing     = SMOOTHING_VALUES[smoothing_index_[1]];
-  g_prefs.p1_keys.rotate_view          = (camera_index_[0] == 1);
-  g_prefs.p2_keys.rotate_view          = (camera_index_[1] == 1);
+  for (int i = 0; i < MAX_PLAYERS; i++) {
+    g_prefs.player_keys[i].keyboard_sensitivity = SENSITIVITY_VALUES[sensitivity_index_[i]];
+    g_prefs.player_keys[i].camera_smoothing     = SMOOTHING_VALUES[smoothing_index_[i]];
+    g_prefs.player_keys[i].rotate_view          = (camera_index_[i] == 1);
+  }
   g_prefs.star_density                 = STAR_DENSITY_MULTIPLIERS[star_density_index_];
   g_prefs.auto_record_replays          = (auto_record_index_ == 1);
   g_prefs.leaderboard_prompts          = (leaderboard_index_ == 1);
